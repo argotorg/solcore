@@ -38,20 +38,31 @@ function snd(p: Pair(a, b)) -> b {
 
 data Proxy(t) = Proxy;
 
-// References
+// Type Abstraction
+
+class abs:Typedef(rep) {
+    function abs(x:rep) -> abs;
+    function rep(x:abs) -> rep;
+}
+
+// Generalized References
+
+class ref:Loadable (deref) {
+    function load (r : ref) -> deref;
+}
+
+class ref:Storable (deref) {
+    function store (r : ref, d : deref) -> Unit;
+}
+
+class ( ref : Loadable(deref) , ref : Storable(deref)) => ref:Ref (deref) {}
+
+// Concrete Reference Types
 
 data calldata(t) = calldata(word);
 data memory(t) = memory(word);
 data storage(t) = storage(word);
 data returndata(t) = returndata(word);
-
-// Type Classification
-
-// types that can be completely represented by a single stack slot
-class abs:Typedef(rep) {
-    function abs(x:rep) -> abs;
-    function rep(x:abs) -> rep;
-}
 
 instance memory(t) : Typedef(word) {
     function abs(x: word) -> memory(t) {
@@ -65,13 +76,7 @@ instance memory(t) : Typedef(word) {
     }
 }
 
-class ref:Ref(deref) {
-    function load(loc: ref) -> deref;
-    function store(loc: ref, value: deref) -> Unit;
-}
-
-
-instance memory(t) : Ref(t) {
+instance memory(t) : Loadable(t) {
     function load(loc: memory(t)) -> t {
         let rw : word = Typedef.rep(loc);
         let res = 0;
@@ -79,9 +84,10 @@ instance memory(t) : Ref(t) {
             res := mload(rw)
         };
         return Typedef.abs(res);
-
     }
+}
 
+instance memory(t) : Storable(t) {
     function store(loc: memory(t), value: t) -> Unit {
         let rw : word = Typedef.rep(loc);
         let vw : word = Typedef.rep(value);
@@ -91,9 +97,9 @@ instance memory(t) : Ref(t) {
     }
 }
 
+instance memory(t) : Ref(t) {}
 
-
-// memory Layout
+// Free Memory Pointer
 
 function get_free_memory() -> word {
     let res : word;
@@ -110,10 +116,11 @@ function set_free_memory(loc : word) {
 }
 
 
-// Bytes
+// bytes
 
-data Bytes = Bytes;
 // TODO: bytes should be indexable (but not ref since it can't live on stack...)
+// TODO: we would really want this to be a typedef to void (or a datatype with no constructors)
+data bytes = bytes;
 
 // ABI Encoding
 
@@ -132,7 +139,7 @@ class t:Encode {
     function headSize(x:Proxy(t)) -> word;
 }
 
-forall t:Encode, t:EncodeInto . function encode(val:t) -> memory(Bytes) {
+forall t:Encode, t:EncodeInto . function encode(val:t) -> memory(bytes) {
     let p : Proxy(t);
     let hdSz = Encode.headSize(p);
     let ptr : word = get_free_memory();
@@ -147,7 +154,7 @@ forall t:Encode, t:EncodeInto . function encode(val:t) -> memory(Bytes) {
     assembly {
         mstore(ptr, sub(tl, head))
     };
-    let mem : memory(Bytes) = memory(ptr);
+    let mem : memory(bytes) = memory(ptr);
     return mem;
 }
 
