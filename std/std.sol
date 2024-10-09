@@ -34,17 +34,16 @@ function snd(p: Pair(a, b)) -> b {
     };
 }
 
-//
+// Proxy Type for Passing Types as Paramaters
 
 data Proxy(t) = Proxy;
 
 // References
 
-data Calldata(t) = Calladata(word);
-data Memory(t) = Memory(word);
-data Storage(t) = Storage(word);
-data Returndata(t) = ReturnData(word);
-data Stack(t) = Stack(word);
+data calldata(t) = calldata(word);
+data memory(t) = memory(word);
+data storage(t) = storage(word);
+data returndata(t) = returndata(word);
 
 // Type Classification
 
@@ -54,14 +53,14 @@ class t:ValueTy {
     function rep(x:t) -> word;
 }
 
-instance Memory(t) : ValueTy {
-    function abs(x: word) -> Memory(t) {
-        return Memory(x);
+instance memory(t) : ValueTy {
+    function abs(x: word) -> memory(t) {
+        return memory(x);
     }
 
-    function rep(x: Memory(t)) -> word {
+    function rep(x: memory(t)) -> word {
         match x {
-        | Memory(w) => return w;
+        | memory(w) => return w;
        };
     }
 }
@@ -72,8 +71,8 @@ class ref:Ref(deref) {
 }
 
 
-instance Memory(t) : Ref(t) {
-    function load(loc: Memory(t)) -> t {
+instance memory(t) : Ref(t) {
+    function load(loc: memory(t)) -> t {
         let rw = ValueTy.rep(loc);
         let res = 0;
         assembly {
@@ -83,7 +82,7 @@ instance Memory(t) : Ref(t) {
 
     }
 
-    function store(loc: Memory(t), value: t) -> Unit {
+    function store(loc: memory(t), value: t) -> Unit {
         let rw = ValueTy.rep(loc);
         let vw = ValueTy.rep(value);
         assembly {
@@ -94,7 +93,7 @@ instance Memory(t) : Ref(t) {
 
 
 
-// Memory Layout
+// memory Layout
 
 function get_free_memory() -> word {
     let res : word;
@@ -133,7 +132,7 @@ class t:Encode {
     function headSize(x:Proxy(t)) -> word;
 }
 
-forall t:Encode, t:EncodeInto . function encode(val:t) -> Memory(Bytes) {
+forall t:Encode, t:EncodeInto . function encode(val:t) -> memory(Bytes) {
     let p : Proxy(t);
     let hdSz = Encode.headSize(p);
     let ptr : word = get_free_memory();
@@ -148,7 +147,7 @@ forall t:Encode, t:EncodeInto . function encode(val:t) -> Memory(Bytes) {
     assembly {
         mstore(ptr, sub(tl, head))
     };
-    let mem : Memory(Bytes) = Memory(ptr);
+    let mem : memory(Bytes) = memory(ptr);
     return mem;
 }
 
