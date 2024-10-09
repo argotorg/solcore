@@ -48,12 +48,12 @@ data returndata(t) = returndata(word);
 // Type Classification
 
 // types that can be completely represented by a single stack slot
-class t:ValueTy {
-    function abs(x:word) -> t;
-    function rep(x:t) -> word;
+class abs:Typedef(rep) {
+    function abs(x:rep) -> abs;
+    function rep(x:abs) -> rep;
 }
 
-instance memory(t) : ValueTy {
+instance memory(t) : Typedef(word) {
     function abs(x: word) -> memory(t) {
         return memory(x);
     }
@@ -73,18 +73,18 @@ class ref:Ref(deref) {
 
 instance memory(t) : Ref(t) {
     function load(loc: memory(t)) -> t {
-        let rw = ValueTy.rep(loc);
+        let rw : word = Typedef.rep(loc);
         let res = 0;
         assembly {
             res := mload(rw)
         };
-        return ValueTy.abs(res);
+        return Typedef.abs(res);
 
     }
 
     function store(loc: memory(t), value: t) -> Unit {
-        let rw = ValueTy.rep(loc);
-        let vw = ValueTy.rep(value);
+        let rw : word = Typedef.rep(loc);
+        let vw : word = Typedef.rep(value);
         assembly {
           mstore(rw, vw)
         };
@@ -188,7 +188,7 @@ instance (l:EncodeInto, r:EncodeInto) => Pair(l,r):EncodeInto {
 // Uint256
 data Uint256 = Uint256(word);
 
-instance Uint256 : ValueTy {
+instance Uint256 : Typedef(word) {
     function abs(x:word) -> Uint256 {
         return Uint256(x);
     }
@@ -212,7 +212,7 @@ instance Uint256:Encode {
 
 instance Uint256:EncodeInto {
     function encodeInto(v: Uint256, hd: word, tl: word) -> Pair(word, word) {
-        let vw = ValueTy.rep(v);
+        let vw : word = Typedef.rep(v);
         let hd_ : word;
         assembly {
             hd_ := add(hd, 32)
