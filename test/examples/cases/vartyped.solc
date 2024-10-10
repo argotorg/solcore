@@ -1,4 +1,4 @@
 function foo () {
   let f : (word) -> word = lam (x) { return x ; } ;
-  f(1);
+  return f(1);
 }

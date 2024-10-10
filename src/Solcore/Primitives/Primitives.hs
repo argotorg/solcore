@@ -6,6 +6,7 @@ import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt 
 import Solcore.Frontend.Syntax.Ty 
+import Solcore.Frontend.TypeInference.Id
 
 -- basic type classes 
 
@@ -33,7 +34,7 @@ invokePred
 
          
 
-invokeSignature :: Signature Name 
+invokeSignature :: Signature Name
 invokeSignature 
   = Signature [selfVar, argsVar]
               []

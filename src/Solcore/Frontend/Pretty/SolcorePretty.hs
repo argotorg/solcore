@@ -225,7 +225,11 @@ pprOptTy :: Maybe Ty -> Doc
 pprOptTy Nothing = empty 
 pprOptTy (Just t)
   | isVar t = empty 
-  | otherwise = text "::" <+> ppr t 
+  | otherwise = case splitTy t of 
+                  ([],t') -> text ":" <+> ppr t' 
+                  (ts', t') -> 
+                    text ":" <+> parens (commaSep (map ppr ts')) <+> 
+                    text "->" <+> ppr t'
 
 isVar (TyVar _) = True 
 isVar _ = False 

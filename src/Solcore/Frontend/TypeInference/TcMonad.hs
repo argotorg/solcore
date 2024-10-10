@@ -252,7 +252,7 @@ reduceContext preds
   = do 
       depth <- askMaxRecursionDepth 
       unless (null preds) $ info ["> reduce context ", pretty preds]
-      ps1 <- toHnfs depth preds `wrapError` preds
+      ps1 <- toHnfs depth preds
       ps2 <- withCurrentSubst ps1 
       unless (null preds) $ info ["> reduced context ", pretty (nub ps2)]
       pure (nub ps2)

@@ -38,9 +38,12 @@ tcStmt e@(Let n mt me)
                       (Just t, Just e1) -> do
                         (e', ps1, t1) <- tcExp e1
                         kindCheck t1 `wrapError` e
-                        s <- match t1 t `wrapError` e
+                        let t' = if isGeneratedType t1 then 
+                                  t1 
+                                 else t 
+                        s <- match t1 t' `wrapError` e
                         extSubst s
-                        pure (Just e', apply s ps1, apply s t1)
+                        pure (Just e', apply s ps1, apply s t')
                       (Just t, Nothing) -> do 
                         return (Nothing, [], t)
                       (Nothing, Just e) -> do 
@@ -49,7 +52,7 @@ tcStmt e@(Let n mt me)
                       (Nothing, Nothing) -> 
                         (Nothing, [],) <$> freshTyVar
       extEnv n (monotype tf)
-      pure (Let (Id n tf) mt me', [], unit)
+      pure (Let (Id n tf) (Just tf) me', [], unit)
 tcStmt (StmtExp e)
   = do 
       (e', ps', t') <- tcExp e 
@@ -88,7 +91,9 @@ subsCheckInst skol sch t
       s@(Subst xs) <- mgu t t' 
       pure (Subst [(x,t) | (x,t) <- xs, x `notElem` skol])
 
-
+isGeneratedType :: Ty -> Bool 
+isGeneratedType t 
+  = take 6 (pretty t) == "Lambda" 
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations ts eqns  
