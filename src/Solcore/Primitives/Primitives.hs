@@ -6,6 +6,7 @@ import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt 
 import Solcore.Frontend.Syntax.Ty 
+import Solcore.Frontend.TypeInference.Id
 
 -- basic type classes 
 
@@ -33,7 +34,7 @@ invokePred
 
          
 
-invokeSignature :: Signature Name 
+invokeSignature :: Signature Name
 invokeSignature 
   = Signature [selfVar, argsVar]
               []
@@ -52,6 +53,22 @@ primAddWord = ("primAddWord", monotype (word :-> word :-> word))
 
 primEqWord :: (Name, Scheme)
 primEqWord = ("primEqWord", monotype (word :-> word :-> word))
+
+primInvoke :: (Name, Scheme)
+primInvoke = ( QualName (Name "invokable") "invoke"
+             , Forall [selfVar, argsVar, retVar] 
+                ([invokePred] :=> (TyVar selfVar :-> 
+                                   TyVar argsVar :-> 
+                                   TyVar retVar))
+             )
+
+primPair :: (Name, Scheme)
+primPair = (Name "pair", Forall [aVar, bVar] ([] :=> ( at :-> bt :-> pair at bt)))
+    where 
+      aVar = TVar (Name "a") False 
+      bVar = TVar (Name "b") False 
+      at = TyVar aVar 
+      bt = TyVar bVar 
 
 string :: Ty 
 string = TyCon "string" []

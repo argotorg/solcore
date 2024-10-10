@@ -29,6 +29,9 @@ wordTypeInfo = TypeInfo 0 [] []
 unitTypeInfo :: TypeInfo 
 unitTypeInfo = TypeInfo 0 [] []
 
+pairTypeInfo :: TypeInfo 
+pairTypeInfo = TypeInfo 2 [Name "pair"] []
+
 -- name of constructor and its scheme
 type ConInfo = (Name, Scheme)
 
@@ -60,6 +63,7 @@ data TcEnv
                                -- used to type check calls.
     , subst :: Subst           -- Current substitution
     , nameSupply :: NameSupply -- Fresh name supply
+    , uniqueTypes :: Map Name DataTy -- unique type map 
     , counter :: Int           -- used to generate new names 
     , logs :: [String]         -- Logging
     , warnings :: [String]     -- warnings collected to user 
@@ -72,33 +76,66 @@ data TcEnv
     }
 
 initTcEnv :: TcEnv 
-initTcEnv = TcEnv primCtx 
-                  primInstEnv
-                  primTypeEnv
-                  primClassEnv 
-                  Nothing 
-                  mempty
-                  namePool
-                  0
-                  []
-                  []
-                  True 
-                  Enabled 
-                  Enabled
-                  Enabled  
-                  100
+initTcEnv 
+  = TcEnv primCtx 
+          primInstEnv
+          primTypeEnv
+          primClassEnv 
+          Nothing 
+          mempty
+          namePool
+          primDataType 
+          0
+          []
+          []
+          True 
+          Enabled 
+          Enabled
+          Enabled  
+          100
 
 primCtx :: Env 
-primCtx = Map.fromList [primAddWord, primEqWord] 
+primCtx 
+  = Map.fromList [ primAddWord
+                 , primEqWord
+                 , primInvoke
+                 , primPair 
+                 ]
 
 primTypeEnv :: TypeTable 
 primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
                            , (Name "unit", unitTypeInfo)
+                           , (Name "pair", pairTypeInfo)
                            ]
 
 primInstEnv :: InstTable
 primInstEnv = Map.empty 
 
 primClassEnv :: ClassTable 
-primClassEnv = Map.empty 
+primClassEnv 
+  = Map.fromList [(Name "invokable", invokableInfo)]
+    where 
+      invokableInfo 
+        = ClassInfo 2 [QualName (Name "invokable") "invoke"] 
+                      (InCls (Name "invokable") self args)
+      self = TyVar (TVar (Name "self") False)
+      args = map TyVar [TVar (Name "args") False, TVar (Name "ret") False]
+
+
+primDataType :: Map Name DataTy 
+primDataType = Map.fromList [ (Name "primAddWord", dt1 )
+                            , (Name "primEqWord", dt2)
+                            , (QualName (Name "invokable") "invoke", dt3)
+                            ]
+    where 
+      dt1 = DataTy (Name "t_primAddWord") 
+                   [] 
+                   [Constr (Name "t_primAddWord") []]
+      dt2 = DataTy (Name "t_primEqWord")
+                   []
+                   [Constr (Name "t_primEqWord") []] 
+      dt3 = DataTy (Name "t_invokable.invoke") 
+                   []
+                   [Constr (Name "t_invokable.invoke") []]
+
 

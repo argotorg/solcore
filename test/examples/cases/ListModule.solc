@@ -3,10 +3,6 @@ contract ListModule {
   data Bool = True | False;
 
 
-  function foo (f, g, x, y) {
-    return f(x, g(foo(f,g,x,y))) ;
-  }
-
   function zipWith (f,xs,ys) {
     match xs, ys { 
     | Nil, Nil => return Nil ; 

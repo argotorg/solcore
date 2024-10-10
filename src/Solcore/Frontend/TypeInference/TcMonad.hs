@@ -45,6 +45,20 @@ incCounter = do
   modify (\ ctx -> ctx{counter = c + 1})
   pure c 
 
+addUniqueType :: Name -> DataTy -> TcM ()
+addUniqueType n dt 
+  = do
+      modify (\ ctx -> ctx{ uniqueTypes = Map.insert n dt (uniqueTypes ctx)})
+      modifyTypeInfo (dataName dt) (typeInfoFor dt)
+
+lookupFunAbs :: Name -> TcM (Maybe DataTy)
+lookupFunAbs n 
+  = (Map.lookup n) <$> gets uniqueTypes 
+
+typeInfoFor :: DataTy -> TypeInfo 
+typeInfoFor (DataTy n vs cons)
+  = TypeInfo (length vs) (map constrName cons) []
+
 freshTyVar :: TcM Ty 
 freshTyVar = TyVar <$> freshVar
 
@@ -68,15 +82,38 @@ matchTy t t'
       s <- match t t' 
       extSubst s 
 
+isDirectCall :: Name -> TcM Bool
+isDirectCall n 
+  = do 
+      b1 <- (Map.member n) <$> gets uniqueTypes
+      pure (b1 || isPrim)
+    where 
+      isPrim = n == Name "primAddWord" || n == Name "primEqWord"
+
+-- including contructors on environment
+
+checkDataType :: DataTy -> TcM ()
+checkDataType (DataTy n vs constrs) 
+  = do
+      vals' <- mapM (\ (n, ty) -> (n,) <$> generalize ([], ty)) vals
+      mapM_ (uncurry extEnv) vals'
+      modifyTypeInfo n ti
+    where 
+      ti = TypeInfo (length vs) (map fst vals) []
+      tc = TyCon n (TyVar <$> vs) 
+      vals = map constrBind constrs        
+      constrBind c = (constrName c, (funtype (constrTy c) tc))
+
+
 -- type instantiation 
 
 freshInst :: Scheme -> TcM (Qual Ty)
 freshInst (Forall vs qt)
   = renameVars vs qt
 
-renameVars :: HasType a => [Tyvar] -> a -> TcM a 
+renameVars :: (Pretty a, HasType a) => [Tyvar] -> a -> TcM a 
 renameVars vs t 
-  = do 
+  = do
       s <- mapM (\ v -> (v,) <$> freshTyVar) vs
       pure $ apply (Subst s) t
 
@@ -167,7 +204,7 @@ withLocalEnv :: TcM a -> TcM a
 withLocalEnv ta 
   = do 
       ctx <- gets ctx 
-      a <- ta 
+      a <- ta
       putEnv ctx 
       pure a 
 
@@ -201,8 +238,8 @@ maybeAskTypeInfo n
 
 askTypeInfo :: Name -> TcM TypeInfo 
 askTypeInfo n 
-  = do 
-      ti <- maybeAskTypeInfo n 
+  = do
+      ti <- maybeAskTypeInfo n
       maybe (undefinedType n) pure ti
 
 modifyTypeInfo :: Name -> TypeInfo -> TcM ()
@@ -239,7 +276,7 @@ generalize (ps,t)
   = do 
       envVars <- getEnvFreeVars
       (ps1,t1) <- withCurrentSubst (ps,t)
-      ps2 <- reduceContext ps1 
+      ps2 <- reduceContext ps1
       t2 <- withCurrentSubst t1 
       let vs = fv (ps2,t2)
           sch = Forall (vs \\ envVars) (ps2 :=> t2)
@@ -249,19 +286,18 @@ generalize (ps,t)
 
 reduceContext :: [Pred] -> TcM [Pred]
 reduceContext preds 
-  = do 
+  = do
       depth <- askMaxRecursionDepth 
-      unless (null preds) $ info ["> reduce context ", pretty preds]
-      ps1 <- toHnfs depth preds `wrapError` preds
+      -- unless (null preds) $ info ["> reduce context ", pretty preds]
+      ps1 <- toHnfs depth preds
       ps2 <- withCurrentSubst ps1 
-      unless (null preds) $ info ["> reduced context ", pretty (nub ps2)]
+      -- unless (null preds) $ info ["> reduced context ", pretty (nub ps2)]
       pure (nub ps2)
 
 toHnfs :: Int -> [Pred] -> TcM [Pred]
 toHnfs depth ps 
-  = do 
-      s <- getSubst 
-      ps' <- simplifyEqualities ps 
+  = do
+      ps' <- simplifyEqualities ps
       ps2 <- withCurrentSubst ps'
       toHnfs' depth ps2 
 
@@ -299,7 +335,7 @@ toHnf depth pred@(InCls n _ _)
       case byInstM ce pred of
         Nothing -> throwError ("no instance of " ++ pretty pred
                   ++"\nKnown instances:\n"++ (unlines $ map pretty is))
-        Just (preds, subst') -> do
+        Just (preds, subst', instd) -> do
             extSubst subst'
             toHnfs (depth - 1) preds
 
@@ -309,19 +345,17 @@ inHnf (InCls c t args) = hnf t where
   hnf (TyCon _ _) = False
 inHnf (_ :~: _) = False
 
-byInstM :: InstTable -> Pred -> Maybe ([Pred], Subst)
+byInstM :: InstTable -> Pred -> Maybe ([Pred], Subst, Inst)
 byInstM ce p@(InCls i t as) 
   = msum [tryInst it | it <- insts ce i] 
     where
       insts m n = maybe [] id (Map.lookup n m)
-      tryInst :: Qual Pred -> Maybe ([Pred], Subst)
+      tryInst :: Qual Pred -> Maybe ([Pred], Subst, Inst)
       tryInst c@(ps :=> h) =
           case matchPred h p of
             Left _ -> Nothing
             Right u -> let tvs = fv h
-                       in  Just (map (apply u) ps, restrict u tvs)
-
-
+                       in Just (map (apply u) ps, restrict u tvs, c)
 
 -- checking coverage pragma 
 

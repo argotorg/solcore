@@ -138,12 +138,19 @@ pprSignatures
   = vcat . map ppr
 
 instance Pretty a => Pretty (Signature a) where 
-  ppr (Signature vs ctx n ps ty)
+  ppr (Signature [] ctx n ps ty)
     = text "function" <+> 
       ppr n           <+>
-      pprContext ctx  <+> 
+      pprParams ps    <+> 
+      pprRetTy ty 
+  ppr (Signature vs ctx n ps ty) 
+    = text "forall" <+>
+      pprContext ctx <+> 
+      text "function" <+> 
+      ppr n <+> 
       pprParams ps <+> 
       pprRetTy ty 
+
 
 instance Pretty a => Pretty (Instance a) where 
   ppr (Instance ctx n tys ty funs)
@@ -160,7 +167,7 @@ instance Pretty a => Pretty (Instance a) where
 pprContext :: [Pred] -> Doc 
 pprContext [] = empty 
 pprContext ps 
-  = (parens (commaSep $ map ppr ps)) <+> text "=>"
+  = (commaSep $ map ppr ps) <+> text "."
 
 instance Pretty [Pred] where 
   ppr = hsep . map ppr 
@@ -225,7 +232,11 @@ pprOptTy :: Maybe Ty -> Doc
 pprOptTy Nothing = empty 
 pprOptTy (Just t)
   | isVar t = empty 
-  | otherwise = text "::" <+> ppr t 
+  | otherwise = case splitTy t of 
+                  ([],t') -> text ":" <+> ppr t' 
+                  (ts', t') -> 
+                    text ":" <+> parens (commaSep (map ppr ts')) <+> 
+                    text "->" <+> ppr t'
 
 isVar (TyVar _) = True 
 isVar _ = False 
@@ -236,9 +247,11 @@ pprInitOpt (Just e) = equals <+> ppr e <+> semi
 
 instance Pretty a => Pretty (Exp a) where 
   ppr (Var v) = ppr v 
-  ppr (Con n es) 
-    = ppr n <> if null es then empty 
-               else (parens $ commaSep $ map ppr es)
+  ppr (Con n es)
+    | isTuple n = parens $ commaSep (map ppr es)
+    | otherwise 
+      = ppr n <> if null es then empty 
+                 else (parens $ commaSep $ map ppr es)
   ppr (Lit l) = ppr l 
   ppr (Call e n es) 
     = pprE e <> ppr n <> (parens $ commaSep $ map ppr es)
@@ -259,8 +272,9 @@ instance Pretty a => Pretty (Pat a) where
   ppr (PVar n) 
     = ppr n
   ppr (PCon n []) = ppr n
-  ppr (PCon n ps@(_ : _)) 
-    = ppr n <> (parens $ commaSep $ map ppr ps )
+  ppr (PCon n ps@(_ : _))
+    | isTuple n = parens (commaSep $ map ppr ps) 
+    | otherwise = ppr n <> (parens $ commaSep $ map ppr ps )
   ppr PWildcard 
     = text "_"
   ppr (PLit l)
@@ -271,7 +285,7 @@ instance Pretty Literal where
   ppr (StrLit l) = quotes (text l)
 
 instance Pretty Tyvar where 
-  ppr (TVar n _) = ppr n 
+  ppr (TVar n b) = if b then text "@" <> ppr n else ppr n
 
 instance Pretty Pred where 
   ppr (InCls n t ts) =
@@ -298,7 +312,11 @@ instance Pretty Ty where
   ppr (t1 :-> t2) 
     = ppr t1 <+> (text "->") <+> ppr t2
   ppr (TyCon n ts)
-    = ppr n <> (pprTyParams ts)
+    | isTuple n = parens $ commaSep (map ppr ts)
+    | otherwise = ppr n <> (pprTyParams ts)
+
+isTuple :: Pretty a => a -> Bool 
+isTuple s = pretty s == "pair"
 
 pprTyParams :: [Ty] -> Doc 
 pprTyParams [] = empty 

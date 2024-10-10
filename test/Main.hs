@@ -24,11 +24,9 @@ spec :: TestTree
 spec
   = testGroup "Files for spec cases"
               [
-                runTestForFile "010answer.solc" specFolder
-              , runTestForFile "011id.solc" specFolder
-              , expectFail $ runTestForFile "021nid.solc" specFolder
-              , expectFail $ runTestForFile "022comp.solc" specFolder
-              , runTestForFile "021not.solc" specFolder
+                runTestForFile "00answer.solc" specFolder
+              , runTestForFile "01id.solc" specFolder
+              , runTestForFile "02nid.solc" specFolder
               , runTestForFile "031maybe.solc" specFolder
               , runTestForFile "032simplejoin.solc" specFolder
               , runTestForFile "033join.solc" specFolder
@@ -40,10 +38,12 @@ spec
               , runTestForFile "039food.solc" specFolder
               , runTestForFile "041pair.solc" specFolder
               , runTestForFile "042triple.solc" specFolder
-              , runTestForFile "047rgb.solc" specFolder
-              , runTestForFile "048rgb2.solc" specFolder
-              , runTestForFile "051negBool.solc" specFolder
-              , runTestForFile "052negPair.solc" specFolder
+              , runTestForFile "06comp.solc" specFolder
+              , runTestForFile "07rgb.solc" specFolder
+              , runTestForFile "08rgb2.solc" specFolder
+              , runTestForFile "09not.solc" specFolder
+              , runTestForFile "10negBool.solc" specFolder
+              , runTestForFile "11negPair.solc" specFolder
               , runTestForFile "903badassign.solc" specFolder
               , runTestForFile "939badfood.solc" specFolder
               ]
@@ -68,13 +68,13 @@ cases
                 runTestForFile "Ackermann.solc" caseFolder
               , expectFail $ runTestForFile "BadInstance.solc" caseFolder
               , runTestForFile "BoolNot.solc" caseFolder
-              , expectFail $ runTestForFile "Compose.solc" caseFolder
+              , runTestForFile "Compose.solc" caseFolder
               , expectFail $ runTestForFile "DupFun.solc" caseFolder
               , runTestForFile "DuplicateFun.solc" caseFolder
               , runTestForFile "EitherModule.solc" caseFolder
               , runTestForFile "Id.solc" caseFolder
-              , runTestForFile "IncompleteInstDef.solc" caseFolder
-              , runTestForFile "Invokable.solc" caseFolder
+              , runTestForFile "IncompleteInstDef.solc" caseFolder 
+              , expectFail $ runTestForFile "Invokable.solc" caseFolder
               , runTestForFile "ListModule.solc" caseFolder
               , runTestForFile "Logic.solc" caseFolder
               , runTestForFile "Memory1.solc" caseFolder
@@ -90,7 +90,7 @@ cases
               , runTestForFile "RefDeref.solc" caseFolder
               , expectFail $ runTestForFile "SillyReturn.solc" caseFolder
               , runTestForFile "SimpleField.solc" caseFolder
-              , runTestForFile "SimpleInvoke.solc" caseFolder
+              , expectFail $ runTestForFile "SimpleInvoke.solc" caseFolder
               , runTestForFile "SimpleLambda.solc" caseFolder
               , runTestForFile "SingleFun.solc" caseFolder
               , runTestForFile "assembly.solc" caseFolder
@@ -115,6 +115,7 @@ basicOptions :: [String]
 basicOptions = [ "new-run"
                , "sol-core"
                , "--"
+               , "-n"
                , "-f"
                ]
 

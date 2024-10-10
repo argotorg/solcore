@@ -9,10 +9,10 @@ contract Compose {
 
   function idid() { return compose(id,id); }
 
-//  function main() { return idid(42); }
+  // function main() { return idid(42); }
 
-  function main() {
-    let f : (word) -> word = compose(id,id);
-    return f(42);
-  }
+   function main() {
+     let f : (word) -> word = compose(id,id);
+     return f(42);
+   }
 }

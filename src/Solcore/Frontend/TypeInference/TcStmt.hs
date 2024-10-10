@@ -2,15 +2,19 @@ module Solcore.Frontend.TypeInference.TcStmt where
 
 import Control.Monad
 import Control.Monad.Except
+import Control.Monad.State
 import Control.Monad.Trans 
 
-import Data.Generics
+import Data.Generics hiding (Constr)
 import Data.List
+import qualified Data.Map as Map
+import Data.Maybe
 
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.TcEnv
+import Solcore.Frontend.TypeInference.TcInvokeGen hiding (vars, tyFromParam, schemeFromSig)
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
@@ -38,18 +42,19 @@ tcStmt e@(Let n mt me)
                       (Just t, Just e1) -> do
                         (e', ps1, t1) <- tcExp e1
                         kindCheck t1 `wrapError` e
-                        s <- match t1 t `wrapError` e
+                        t' <- translateType t t1 
+                        s <- match t1 t' `wrapError` e
                         extSubst s
                         pure (Just e', apply s ps1, apply s t1)
                       (Just t, Nothing) -> do 
                         return (Nothing, [], t)
                       (Nothing, Just e) -> do 
-                        (e', ps, t1) <- tcExp e 
+                        (e', ps, t1) <- tcExp e
                         return (Just e', ps, t1)
                       (Nothing, Nothing) -> 
                         (Nothing, [],) <$> freshTyVar
       extEnv n (monotype tf)
-      pure (Let (Id n tf) mt me', [], unit)
+      pure (Let (Id n tf) (Just tf) me', [], unit)
 tcStmt (StmtExp e)
   = do 
       (e', ps', t') <- tcExp e 
@@ -70,25 +75,22 @@ tcStmt s@(Asm yblk)
       mapM_ (flip extEnv word') newBinds
       pure (Asm yblk, [], unit)
 
-subsCheck :: Scheme -> Scheme -> TcM () 
-subsCheck sigma1 sigma2@(Forall _ (_ :=> _)) 
+translateType :: Ty -> Ty -> TcM Ty 
+translateType ann inf@(TyCon n ts)  
   = do 
-      (ps2 :=> t2) <- freshInst sigma2
-      let skol_tvs = fv t2
-      s <- subsCheckInst skol_tvs sigma1 t2
-      let esc_tvs = fv (apply s sigma1)
-          bad_tvs = filter (`elem` esc_tvs) skol_tvs
-      unless (null bad_tvs) $ do 
-        throwError "Type not polymorphic enough"
+      cond <- isGeneratedType inf  
+      if not cond then pure inf 
+      else do 
+        let (args, ret) = splitTy ann 
+            args' = if null args then unit else tupleTyFromList args
+            t' = TyCon n [args', ret]
+        pure t'
+translateType ann _ = pure ann 
 
-subsCheckInst :: [Tyvar] -> Scheme -> Ty -> TcM Subst  
-subsCheckInst skol sch t 
-  = do 
-      (ps' :=> t') <- freshInst sch 
-      s@(Subst xs) <- mgu t t' 
-      pure (Subst [(x,t) | (x,t) <- xs, x `notElem` skol])
-
-
+isGeneratedType :: Ty -> TcM Bool 
+isGeneratedType (TyVar _) = pure False 
+isGeneratedType (TyCon n _)
+  = ((elem n) . map dataName . Map.elems) <$> gets uniqueTypes
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations ts eqns  
@@ -164,9 +166,14 @@ tcExp (Lit l)
       pure (Lit l, [], t)
 tcExp (Var n) 
   = do
-      s <- askEnv n 
+      s <- askEnv n
       (ps :=> t) <- freshInst s
       pure (Var (Id n t), ps, t)
+      -- r <- lookupFunAbs n
+      -- let 
+      --     mkCon (DataTy nt vs [(Constr n _)]) = (Con (Id n t) [], TyCon nt (TyVar <$> vs))
+      --     p = maybe (Var (Id n t), t) mkCon r
+      -- pure (fst p, ps, snd p)
 tcExp e@(Con n es)
   = do
       -- typing parameters 
@@ -181,7 +188,8 @@ tcExp e@(Con n es)
       -- checking if the constructor belongs to type tn 
       checkConstr tn n
       let ps' = concat (ps : pss)
-      pure (Con (Id n t) es', apply s ps', apply s t')
+          e = Con (Id n t) es'
+      pure (e, apply s ps', apply s t')
 tcExp (FieldAccess Nothing n) 
   = throwError "Not Implemented yet!"
 tcExp (FieldAccess (Just e) n) 
@@ -196,15 +204,24 @@ tcExp (FieldAccess (Just e) n)
       pure (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExp ex@(Call me n args)
   = tcCall me n args `wrapError` ex
+--   = do 
+--       let qn = QualName (Name "invokable") "invoke"
+--       isDirect <- isDirectCall n 
+--       if isDirect then tcCall me n args `wrapError` ex
+--         else (tcCall me qn (Var n : args)) `wrapError` ex 
 tcExp e@(Lam args bd _)
-  = do 
-      (args', schs, ts') <- tcArgs args 
+  = do
+      (args', schs, ts') <- tcArgs args
       (bd',ps,t') <- withLocalCtx schs (tcBody bd)
-      s <- getSubst
-      let 
-          (ps1,t1) = apply s (ps, funtype ts' t')
-          e' = everywhere (mkT (applyI s)) (Lam args' bd' (Just t1))
-      pure (e', ps1, t1)
+      s <- getSubst 
+      let ps1 = apply s ps 
+          ts1 = apply s ts' 
+          t1 = apply s t'
+          vs = fv ps1 `union` fv t' `union` fv ts1
+      -- (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs (ts1,t1) bd'
+      -- writeDecl (TFunDef lfun)
+      -- generateDecls (lfun, (schemeFromSig (funSignature lfun)))
+      pure (Lam args' bd' (Just (funtype ts1 t1)), ps1, funtype ts1 t1)
 tcExp e1@(TyExp e ty)
   = do 
       kindCheck ty `wrapError` e1 
@@ -214,6 +231,91 @@ tcExp e1@(TyExp e ty)
       extSubst s 
       pure (TyExp e' ty, apply s ps, ty)
 
+createLambdaImpl :: [Pred] -> 
+                    [Param Id] -> 
+                    [Tyvar] -> 
+                    ([Ty],Ty) -> 
+                    Body Id -> TcM (FunDef Id, (Exp Id, Ty))
+createLambdaImpl ps args vs (argTys, rty) bdy 
+  = do
+      c <- incCounter
+      funs <- Map.keys <$> gets uniqueTypes 
+      let n = Name $ "lambda_impl" ++ show c 
+          vs' = filter (\i -> idName i `notElem` funs) (vars bdy \\ vars args)
+      (v,c,ctr,ty) <- createUniqueType vs' n (argTys, rty)
+      s <- getSubst
+      (sig',npp) <- createLambdaSig n ps (apply s args) vs rty ty vs'
+      bdy' <- createLambdaBody ty ctr vs' bdy npp
+      s <- getSubst
+      let 
+          fd = everywhere (mkT (applyI s)) (FunDef sig' bdy')
+      pure (fd, (c, ty)) 
+
+createLambdaSig :: Name -> 
+                   [Pred] -> 
+                   [Param Id] -> 
+                   [Tyvar] -> 
+                   Ty ->
+                   Ty -> 
+                   [Id] -> TcM (Signature Id, Param Id) 
+createLambdaSig n ps args vs rty ty ids 
+  = do 
+      np <- freshName 
+      let npp = Typed (Id np ty) ty
+          args' = if null ids then args else npp : args
+      pure (Signature vs ps n args' (Just rty), npp)
+      
+  
+createLambdaBody :: Ty -> 
+                    Constr -> 
+                    [Id] -> 
+                    Body Id -> 
+                    Param Id -> 
+                    TcM (Body Id)
+createLambdaBody ty ctr ids bdy (Typed pn _)
+  | null ids = pure bdy
+  | otherwise
+    = do  
+        pats <- freshPat ty ctr ids
+        pure [Match [Var pn] [(pats, bdy)]]
+
+freshPat :: Ty -> Constr -> [Id] -> TcM [Pat Id]
+freshPat t (Constr n ts) ids 
+  = do 
+      let ty = funtype ts t 
+          nps = map PVar ids 
+      pure [PCon (Id n ty) nps]
+
+schemeFromSig :: Signature Id -> Scheme 
+schemeFromSig sig 
+  = let 
+      ctx = sigContext sig 
+      argTys = map tyFromParam (sigParams sig)
+      retTy = fromJust $ sigReturn sig 
+      ty = funtype argTys retTy 
+      vs = fv (ctx :=> ty)
+    in Forall vs (ctx :=> ty)
+
+tyFromParam :: Param Id -> Ty 
+tyFromParam (Typed _ ty) = ty 
+
+createUniqueType :: [Id] -> Name -> ([Ty], Ty) -> TcM (Exp Id, Exp Id, Constr, Ty)
+createUniqueType ids n (argTys, retTy)
+     = do
+        m <- incCounter
+        argName <- freshName 
+        retName <- freshName
+        let 
+            argVar = TVar argName False 
+            retVar = TVar retName False 
+            nt = Name $ "t_" ++ pretty n ++ show m
+            dc = Constr nt (map idType ids)
+            dt = DataTy nt [argVar, retVar] [dc]
+            argTy' = if null argTys then unit else tupleTyFromList argTys
+            tc = TyCon nt [argTy', retTy]
+        writeDecl (TDataDef dt)
+        addUniqueType n dt 
+        pure (Var (Id n tc), Con (Id nt tc) (map Var ids), dc, tc)
 
 applyI :: Subst -> Ty -> Ty 
 applyI s = apply s
@@ -230,9 +332,9 @@ tcArg (Untyped n)
       v <- freshTyVar
       let ty = monotype v
       pure (Typed (Id n v) v, (n, ty), v)
-tcArg (Typed n ty)
+tcArg a@(Typed n ty)
   = do 
-      ty1 <- kindCheck ty
+      ty1 <- kindCheck ty `wrapError` a
       pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1)
 
 skolemize :: Ty -> Ty 
@@ -246,7 +348,7 @@ kindCheck (t1 :-> t2)
   = (:->) <$> kindCheck t1 <*> kindCheck t2 
 kindCheck t@(TyCon n ts) 
   = do 
-      ti <- askTypeInfo n 
+      ti <- askTypeInfo n `wrapError` t 
       unless (arity ti == length ts) $ 
         throwError $ unlines [ "Invalid number of type arguments!" 
                              , "Type " ++ pretty n ++ " is expected to have " ++
@@ -281,9 +383,9 @@ tcCall Nothing n args
       t' <- freshTyVar
       (es', pss', ts') <- unzip3 <$> mapM tcExp args
       s' <- unify (foldr (:->) t' ts') t
-      let ps' = foldr union [] (ps : pss')
-          t1 = foldr (:->) t' ts'
-      withCurrentSubst (Call Nothing (Id n t1) es', ps', t')
+      let ps' = apply s' $ foldr union [] (ps : pss')
+          t1 = apply s' $ foldr (:->) t' ts'
+      withCurrentSubst (Call Nothing (Id n t1) es', ps', apply s' t')
 tcCall (Just e) n args 
   = do 
       (e', ps , ct) <- tcExp e
@@ -308,10 +410,6 @@ typeName (TyCon n _) = pure n
 typeName t = throwError $ unlines ["Expected type, but found:"
                                   , pretty t
                                   ]
-
-instance Pretty (Param Id) where 
-  ppr (Typed (Id n t) _) = ppr n <+> text "::" <+> ppr t
-  ppr (Untyped (Id n t)) = ppr n <+> text "::" <+> ppr t
 
 -- typing Yul code 
 
@@ -460,6 +558,44 @@ instance HasType (Pat Id) where
   fv (PVar v) = fv v
   fv (PCon v ps) = fv v `union` fv ps
 
+-- determining free variables 
+
+class Vars a where 
+  vars :: a -> [Id]
+
+instance Vars a => Vars [a] where 
+  vars = foldr (union . vars) []
+
+instance Vars (Pat Id) where 
+  vars (PVar v) = [v]
+  vars (PCon _ ps) = vars ps 
+  vars _ = []
+
+instance Vars (Param Id) where 
+  vars (Typed n _) = [n]
+  vars (Untyped n) = [n]
+
+instance Vars (Stmt Id) where 
+  vars (e1 := e2) = vars [e1,e2]
+  vars (Let _ _ (Just e)) = vars e
+  vars (Let _ _ _) = []
+  vars (StmtExp e) = vars e 
+  vars (Return e) = vars e 
+  vars (Match e eqns) = vars e `union` vars eqns 
+
+instance Vars (Equation Id) where 
+  vars (_, ss) = vars ss 
+
+instance Vars (Exp Id) where 
+  vars (Var n) = [n]
+  vars (Con _ es) = vars es
+  vars (FieldAccess Nothing _) = []
+  vars (FieldAccess (Just e) _) = vars e
+  vars (Call (Just e) n es) = [n] `union` vars (e : es)
+  vars (Call Nothing n es) = [n] `union` vars es 
+  vars (Lam ps bd _) = vars bd \\ vars ps
+  vars (TyExp e _) = vars e 
+  vars _ = []
 
 -- errors 
 

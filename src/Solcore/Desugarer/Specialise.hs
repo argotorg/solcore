@@ -445,6 +445,7 @@ typeOfTcExp exp@(Call Nothing i args) = applyTo args funTy where
                        ]
 typeOfTcExp (Lam args body (Just tb))       = funtype tas tb where
   tas = map typeOfTcParam args
+typeOfTcExp (TyExp _ ty) = ty   
 typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
 
 typeOfTcStmt :: Stmt Id -> Ty
@@ -479,6 +480,7 @@ instance HasType (Exp Id) where
   apply s (Lit l) = Lit l
   apply s (Call e i es) = Call (apply s <$> e) (apply s i) (map (apply s) es)
   apply s (Lam ps b t) = Lam ps (apply s b) (apply s <$> t)
+  apply s (TyExp e t) = TyExp (apply s e) (apply s t)
 
   fv (Var i) = fv i
   fv (Con i es) = fv i ++ concatMap fv es

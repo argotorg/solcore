@@ -6,7 +6,7 @@ import qualified Data.Map as Map
 
 import Options.Applicative
 
-import Solcore.Desugarer.LambdaLifting
+import Solcore.Desugarer.CallDesugarer hiding (logs)
 import Solcore.Desugarer.MatchCompiler
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.SolcoreParser
@@ -34,26 +34,28 @@ pipeline = do
     when verbose $ do 
       putStrLn "AST after name resolution"
       putStrLn $ pretty ast 
-    withErr (lambdaLifting ast) $ \ (ast2, dStrs) -> do 
+    r2 <- sccAnalysis ast
+    withErr r2 $ \ ast' -> do
       when verbose $ do 
-        putStrLn "AST after lambda lifting"
-        putStrLn $ pretty ast2
-      r2 <- sccAnalysis ast2 
-      withErr r2 $ \ ast' -> do
-        r3 <- typeInfer ast'
-        withErr r3 $ \ (c', env) -> do
-          let warns = warnings env 
-          when (not $ null warns) do 
-           mapM_ putStrLn (reverse $ warns) 
+        putStrLn "SCC Analysis:"
+        putStrLn $ pretty ast'
+      r5 <- typeInfer ast'
+      withErr r5 $ \ (c', env) -> do
+          let warns = warnings env
+          let logsInfo = logs env
+          when (not $ null warns) $ do 
+            putStrLn "> Type inference warnings:"
+            mapM_ putStrLn (reverse $ warns) 
+          when (verbose && (not $ null logsInfo)) $ do  
+            putStrLn "> Type inference logs:"
+            mapM_ putStrLn (reverse $ logsInfo)
           when verbose $ do
-            putStrLn "Logging information:"
-            mapM_ putStrLn (reverse $ logs env)
-            putStrLn "Annotated AST:"
-            putStrLn $ pretty c' 
-          r4 <- matchCompiler c'
-          withErr r4 $ \ res -> do
+            putStrLn "> Annotated AST:"
+            putStrLn $ pretty c'
+          r6 <- matchCompiler c'
+          withErr r6 $ \ res -> do
             when (verbose || optDumpDS opts) do
-              putStrLn "Desugared contract:"
+              putStrLn "Match compilation result:"
               putStrLn (pretty res)
             unless (optNoSpec opts) do
               r7 <- specialiseCompUnit res (optDebugSpec opts) env

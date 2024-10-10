@@ -154,8 +154,7 @@ forall t:Encode, t:EncodeInto . function encode(val:t) -> memory(bytes) {
     assembly {
         mstore(ptr, sub(tl, head))
     };
-    let mem : memory(bytes) = memory(ptr);
-    return mem;
+    return memory(ptr) : memory (bytes);
 }
 
 instance (l:Encode, r:Encode) => Pair(l,r):Encode {

@@ -1,5 +1,9 @@
-contract Identity {
   function id(x) {
     return x ; 
+  }
+
+contract Id {
+  function main () {
+    return id(0);
   }
 }
