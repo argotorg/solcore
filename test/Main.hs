@@ -64,8 +64,7 @@ cases
                 runTestForFile "Ackermann.solc" caseFolder 
               , expectFail $ runTestForFile "BadInstance.solc" caseFolder
               , runTestForFile "BoolNot.solc" caseFolder
-              -- Temporarily excluded because of CI problems (unexpected success)
-              -- , expectFail $ runTestForFile "Compose.solc" caseFolder
+              , expectFail $ runTestForFile "Compose.solc" caseFolder
               , expectFail $ runTestForFile "DupFun.solc" caseFolder
               , runTestForFile "DuplicateFun.solc" caseFolder
               , runTestForFile "EitherModule.solc" caseFolder
