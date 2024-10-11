@@ -45,6 +45,16 @@ incCounter = do
   modify (\ ctx -> ctx{counter = c + 1})
   pure c 
 
+addUniqueType :: Name -> DataTy -> TcM ()
+addUniqueType n dt 
+  = do
+      modify (\ ctx -> ctx{ uniqueTypes = Map.insert n dt (uniqueTypes ctx)})
+      modifyTypeInfo n (typeInfoFor dt)
+
+typeInfoFor :: DataTy -> TypeInfo 
+typeInfoFor (DataTy n vs cons)
+  = TypeInfo (length vs) (map constrName cons) []
+
 freshTyVar :: TcM Ty 
 freshTyVar = TyVar <$> freshVar
 
@@ -167,7 +177,7 @@ withLocalEnv :: TcM a -> TcM a
 withLocalEnv ta 
   = do 
       ctx <- gets ctx 
-      a <- ta 
+      a <- ta
       putEnv ctx 
       pure a 
 
@@ -251,10 +261,10 @@ reduceContext :: [Pred] -> TcM [Pred]
 reduceContext preds 
   = do 
       depth <- askMaxRecursionDepth 
-      unless (null preds) $ info ["> reduce context ", pretty preds]
+      --unless (null preds) $ info ["> reduce context ", pretty preds]
       ps1 <- toHnfs depth preds
       ps2 <- withCurrentSubst ps1 
-      unless (null preds) $ info ["> reduced context ", pretty (nub ps2)]
+      --unless (null preds) $ info ["> reduced context ", pretty (nub ps2)]
       pure (nub ps2)
 
 toHnfs :: Int -> [Pred] -> TcM [Pred]

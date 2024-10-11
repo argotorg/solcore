@@ -1,15 +1,7 @@
-function id(x) {
-   return x;
-}
-
 contract SimpleLambda{
   function f (z : word) {
-    let n = lam (x) {
-      return x;
-    } ;
-    let m = lam (x) {
+   let m = lam (x) {
       return z ;
     } ;
-    return n(0);
   }
 }

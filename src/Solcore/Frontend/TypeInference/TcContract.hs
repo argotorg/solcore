@@ -15,6 +15,7 @@ import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
+import Solcore.Frontend.TypeInference.TcInvokeGen
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcStmt
 import Solcore.Frontend.TypeInference.TcSubst
@@ -23,10 +24,10 @@ import Solcore.Primitives.Primitives
 
 -- top level type inference function 
 
-typeInfer :: CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
-typeInfer c 
+typeInfer :: Map.Map Name DataTy -> CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
+typeInfer m c 
   = do 
-      r <- runTcM (tcCompUnit c) initTcEnv  
+      r <- runTcM (tcCompUnit c) (initTcEnv m)
       case r of 
         Left err -> pure $ Left err 
         Right (((CompUnit imps ds), ts), env) -> 
@@ -319,139 +320,11 @@ tcBindGroup binds
       let names = map (sigName . funSignature) funs 
       let p (x,y) = pretty x ++ " :: " ++ pretty y
       mapM_ (uncurry extEnv) (zip names schs)
-     -- mapM_ generateDecls (zip funs' schs)
-      info ["Results: ", unlines $ map p $ zip names schs]
+      mapM_ generateDecls (zip funs' schs)
+      -- info ["Results: ", unlines $ map p $ zip names schs]
       pure funs'
 
--- generateDecls :: (FunDef Id, Scheme) -> TcM () 
--- generateDecls ((FunDef sig bd), sch) 
---   = do
---       dt <- createUniqueType (sigName sig) sch
---       createInstance dt sig sch 
---       pure ()
---
--- createInstance :: Maybe (TopDecl Id) -> Signature Id -> Scheme -> TcM () 
--- createInstance Nothing  _ _ = pure ()
--- createInstance (Just (TDataDef dt@(DataTy n vs _))) sig sch 
---   = do
---       argTys <- mapM tyParam (sigParams sig)
---       let mainTy = TyCon n (TyVar <$> vs) 
---           retTy = fromJust $ (sigReturn sig)
---           ctx = sigContext sig
---           ni = Name "invokable"
---       bd <- createInvokeDef dt sig 
---       writeDecl (TInstDef $ Instance ctx ni [mkArgTypes argTys retTy] mainTy [ bd ])
---       pure ()
---
--- createInvokeDef :: DataTy -> Signature Id -> TcM (FunDef Id)
--- createInvokeDef dt sig 
---   = do 
---       (sig', mi) <- createInvokeSig dt sig 
---       bd <- createInvokeBody dt sig mi  
---       pure (FunDef sig' bd)
---
---
--- createInvokeSig :: DataTy -> Signature Id -> TcM (Signature Id, Maybe Id)
--- createInvokeSig (DataTy n vs cons) sig 
---   = do
---       argTys <- mapM tyParam (sigParams sig)
---       (args, mp) <- mkParamForSig argTys (TyCon n (TyVar <$> vs))
---       let ctx = sigContext sig 
---           ni = QualName (Name "invokable") "invoke"
---           vs = fv argTys `union` maybe [] fv (sigReturn sig)
---       pure (Signature vs ctx ni args (sigReturn sig), mp) 
---
--- mkParamForSig :: [Ty] -> Ty -> TcM ([Param Id], Maybe Id)
--- mkParamForSig argTys selfTy 
---   = do 
---       let selfArg = Typed (Id (Name "self") selfTy) selfTy 
---       case mkArgTy argTys of 
---         Just arg -> do 
---           paramName <- freshName 
---           let pid = Id paramName arg  
---           pure ([selfArg, Typed pid arg], Just pid)
---         Nothing -> pure ([selfArg], Nothing)
---
---
--- createInvokeBody :: DataTy -> Signature Id -> Maybe Id -> TcM (Body Id)
--- createInvokeBody _ sig Nothing
---   = do
---       let 
---           retTy = fromJust $ sigReturn sig 
---           cid = Id (sigName sig) retTy
---           cexp = Call Nothing cid []
---       pure [Return cexp]
--- createInvokeBody dt sig (Just pid)
---   = createInvokeMatch sig pid 
---
--- createInvokeMatch :: Signature Id -> Id -> TcM (Body Id)
--- createInvokeMatch sig pid@(Id _ ty)
---   = do 
---       argTys <- mapM tyParam (sigParams sig)
---       let patTys = tyConArgs ty 
---           retTy = fromJust $ sigReturn sig 
---           cid = Id (sigName sig) (foldr (:->) retTy argTys)
---       (pats, ns) <- unzip <$> mapM mkPat patTys
---       let 
---         ret = if null patTys then Return $ Call Nothing cid [Var pid] 
---                              else Return $ Call Nothing cid (Var <$> ns)
---         pat = if null patTys then PVar pid else foldr1 ppair pats 
---         stmt = if null patTys then [ret] else [Match [Var pid] [([pat], [ret])]]
---       pure stmt 
---
--- tyConArgs :: Ty -> [Ty]
--- tyConArgs (TyVar _) = []
--- tyConArgs (TyCon _ tys) = tys
---
--- ppair :: Pat Id -> Pat Id -> Pat Id 
--- ppair p1 p2 
---   = PCon pairCon [p1, p2] 
---     where 
---       pairCon = Id (Name "pair") pairTy 
---       pairTy = pair (tyFrom p1) (tyFrom p2)
---       tyFrom (PVar (Id _ t)) = t
---       tyFrom (PCon (Id _ t) _) = t 
---       
---
--- mkPat :: Ty -> TcM (Pat Id, Id)
--- mkPat ty = do 
---   n <- freshName 
---   let pid = Id n ty 
---   pure (PVar pid, pid)
---
---
--- mkArgTypes :: [Ty] -> Ty -> Ty 
--- mkArgTypes args ret 
---   = case mkArgTy args of 
---       Just arg' -> pair arg' ret 
---       Nothing -> ret 
---
--- mkArgTy :: [Ty] -> Maybe Ty 
--- mkArgTy [] = Nothing 
--- mkArgTy [arg] = Just arg 
--- mkArgTy (arg : args) 
---   = case mkArgTy args of 
---       Just arg' -> Just (pair arg arg')
---       Nothing -> Just arg 
---
---
--- createUniqueType :: Name -> Scheme -> TcM (Maybe (TopDecl Id)) 
--- createUniqueType n (Forall vs _)
---   | isLambdaGenerated (pretty n) = pure Nothing 
---   | otherwise 
---     = do
---         m <- incCounter 
---         let nt = Name $ "Type" ++ pretty n ++ show m
---             dc = Constr nt []
---             dt = TDataDef (DataTy nt vs [dc])
---         writeDecl dt
---         pure (Just dt)
---
--- isLambdaGenerated :: String -> Bool 
--- isLambdaGenerated n 
---   = "lambdaimpl" `isPrefixOf` n
---
--- -- type checking a single bind
+-- type checking a single bind
 
 tcFunDef :: FunDef Name -> TcM (FunDef Id, [Pred], Ty)
 tcFunDef d@(FunDef sig bd) 
@@ -463,7 +336,7 @@ tcFunDef d@(FunDef sig bd)
       sch <- askEnv (sigName sig) `wrapError` d 
       (ps :=> t) <- freshInst sch
       let t1 = foldr (:->) t' ts
-      sch' <- generalize (ps1, t1) `wrapError` d 
+      sch' <- generalize (ps1, t1) `wrapError` d
       s <- match t t1 `wrapError` d
       extSubst s 
       subsCheck sch sch'
@@ -639,24 +512,11 @@ checkMethod ih@(InCls n t ts) d@(FunDef sig _)
       _ <- liftEither (matchPred p ih) `wrapError` ih
       pure ()
 
-tyParam :: Param a -> TcM Ty 
-tyParam (Typed _ t) = pure t 
-tyParam (Untyped _) = freshTyVar
-
 findPred :: Name -> [Pred] -> Maybe Pred 
 findPred _ [] = Nothing 
 findPred n (p@(InCls n' _ _) : ps) 
   | n == n' = Just p 
   | otherwise = findPred n ps
-
-anfInstance :: Inst -> Inst
-anfInstance inst@(q :=> p@(InCls c t [])) = inst
-anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs 
-  where
-    q' = zipWith (:~:) bs as
-    bs = map TyVar $ take (length as) freshNames
-    tvs = fv inst
-    freshNames = filter (not . flip elem tvs) (flip TVar False <$> namePool)
 
 -- checking Patterson conditions 
 

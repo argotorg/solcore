@@ -60,6 +60,7 @@ data TcEnv
                                -- used to type check calls.
     , subst :: Subst           -- Current substitution
     , nameSupply :: NameSupply -- Fresh name supply
+    , uniqueTypes :: Map Name DataTy -- unique type map 
     , counter :: Int           -- used to generate new names 
     , logs :: [String]         -- Logging
     , warnings :: [String]     -- warnings collected to user 
@@ -71,22 +72,24 @@ data TcEnv
                                -- context reduction
     }
 
-initTcEnv :: TcEnv 
-initTcEnv = TcEnv primCtx 
-                  primInstEnv
-                  primTypeEnv
-                  primClassEnv 
-                  Nothing 
-                  mempty
-                  namePool
-                  0
-                  []
-                  []
-                  True 
-                  Enabled 
-                  Enabled
-                  Enabled  
-                  100
+initTcEnv :: Map Name DataTy -> TcEnv 
+initTcEnv m 
+  = TcEnv primCtx 
+          primInstEnv
+          primTypeEnv
+          primClassEnv 
+          Nothing 
+          mempty
+          namePool
+          m
+          0
+          []
+          []
+          True 
+          Enabled 
+          Enabled
+          Enabled  
+          100
 
 primCtx :: Env 
 primCtx = Map.fromList [primAddWord, primEqWord] 

@@ -4,13 +4,15 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Trans 
 
-import Data.Generics
+import Data.Generics hiding (Constr)
 import Data.List
+import Data.Maybe
 
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.TcEnv
+import Solcore.Frontend.TypeInference.TcInvokeGen
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
@@ -47,7 +49,7 @@ tcStmt e@(Let n mt me)
                       (Just t, Nothing) -> do 
                         return (Nothing, [], t)
                       (Nothing, Just e) -> do 
-                        (e', ps, t1) <- tcExp e 
+                        (e', ps, t1) <- tcExp e
                         return (Just e', ps, t1)
                       (Nothing, Nothing) -> 
                         (Nothing, [],) <$> freshTyVar
@@ -205,11 +207,15 @@ tcExp e@(Lam args bd _)
   = do 
       (args', schs, ts') <- tcArgs args 
       (bd',ps,t') <- withLocalCtx schs (tcBody bd)
-      s <- getSubst
-      let 
-          (ps1,t1) = apply s (ps, funtype ts' t')
-          e' = everywhere (mkT (applyI s)) (Lam args' bd' (Just t1))
-      pure (e', ps1, t1)
+      s <- getSubst 
+      let ps1 = apply s ps 
+          ts1 = apply s ts' 
+          t1 = apply s t'
+          vs = fv ps1 `union` fv t' `union` fv ts1 
+      (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs t1 bd'
+      writeDecl (TFunDef lfun)
+      generateDecls (lfun, (schemeFromSig (funSignature lfun)))
+      pure (e', ps1, ty1)
 tcExp e1@(TyExp e ty)
   = do 
       kindCheck ty `wrapError` e1 
@@ -219,6 +225,80 @@ tcExp e1@(TyExp e ty)
       extSubst s 
       pure (TyExp e' ty, apply s ps, ty)
 
+createLambdaImpl :: [Pred] -> [Param Id] -> [Tyvar] -> 
+                    Ty -> Body Id -> TcM (FunDef Id, (Exp Id, Ty))
+createLambdaImpl ps args vs rty bdy 
+  = do
+      c <- incCounter 
+      let n = Name $ "lambda_impl" ++ show c 
+          freeVars = vars bdy 
+      (v,c,ctr,ty) <- createUniqueType freeVars n
+      sig' <- createLambdaSig n ps args vs rty ty freeVars 
+      bdy' <- createLambdaBody ty ctr freeVars bdy
+      s <- getSubst 
+      let e' = if null freeVars then v else c
+          fd = everywhere (mkT (applyI s)) (FunDef sig' bdy')
+      pure (fd, (e', ty)) 
+
+createLambdaSig :: Name -> 
+                   [Pred] -> 
+                   [Param Id] -> 
+                   [Tyvar] -> 
+                   Ty ->
+                   Ty -> 
+                   [Id] -> TcM (Signature Id) 
+createLambdaSig n ps args vs rty ty ids 
+  = do 
+      np <- freshName 
+      let npp = Typed (Id np ty) ty
+          args' = if null ids then args else npp : args 
+      pure (Signature vs ps n args' (Just rty))
+      
+  
+createLambdaBody :: Ty -> Constr -> [Id] -> 
+                    Body Id -> TcM (Body Id)
+createLambdaBody ty ctr ids bdy 
+  = do  
+      pn <- freshName
+      pats <- freshPat ty ctr ids
+      pure [Match [Var (Id pn ty)] [(pats, bdy)]]
+
+freshPat :: Ty -> Constr -> [Id] -> TcM [Pat Id]
+freshPat t (Constr n ts) ids 
+  = do 
+      let ty = funtype ts t 
+      nps <- mapM (\ i -> do {
+           pure (PVar i)
+        }) ids 
+      pure [PCon (Id n ty) nps]
+
+schemeFromSig :: Signature Id -> Scheme 
+schemeFromSig sig 
+  = let 
+      ctx = sigContext sig 
+      argTys = map tyFromParam (sigParams sig)
+      retTy = fromJust $ sigReturn sig 
+      ty = funtype argTys retTy 
+      vs = fv (ctx :=> ty)
+    in Forall vs (ctx :=> ty)
+
+tyFromParam :: Param Id -> Ty 
+tyFromParam (Typed _ ty) = ty 
+
+createUniqueType :: [Id] -> Name -> TcM (Exp Id, Exp Id, Constr, Ty)
+createUniqueType ids n
+     = do
+        m <- incCounter 
+        let 
+            argVar = TVar (Name "args") False 
+            retVar = TVar (Name "ret") False 
+            nt = Name $ "t_" ++ pretty n ++ show m
+            dc = Constr nt (map idType ids)
+            dt = DataTy nt [argVar, retVar] [dc]
+            tc = TyCon nt (TyVar <$> [argVar, retVar])
+        writeDecl (TDataDef dt)
+        addUniqueType n dt 
+        pure (Var (Id n tc), Con (Id nt tc) (map Var ids), dc, tc)
 
 applyI :: Subst -> Ty -> Ty 
 applyI s = apply s
@@ -465,6 +545,44 @@ instance HasType (Pat Id) where
   fv (PVar v) = fv v
   fv (PCon v ps) = fv v `union` fv ps
 
+-- determining free variables 
+
+class Vars a where 
+  vars :: a -> [Id]
+
+instance Vars a => Vars [a] where 
+  vars = foldr (union . vars) []
+
+instance Vars (Pat Id) where 
+  vars (PVar v) = [v]
+  vars (PCon _ ps) = vars ps 
+  vars _ = []
+
+instance Vars (Param Id) where 
+  vars (Typed n _) = [n]
+  vars (Untyped n) = [n]
+
+instance Vars (Stmt Id) where 
+  vars (e1 := e2) = vars [e1,e2]
+  vars (Let _ _ (Just e)) = vars e
+  vars (Let _ _ _) = []
+  vars (StmtExp e) = vars e 
+  vars (Return e) = vars e 
+  vars (Match e eqns) = vars e `union` vars eqns 
+
+instance Vars (Equation Id) where 
+  vars (_, ss) = vars ss 
+
+instance Vars (Exp Id) where 
+  vars (Var n) = [n]
+  vars (Con _ es) = vars es
+  vars (FieldAccess Nothing _) = []
+  vars (FieldAccess (Just e) _) = vars e
+  vars (Call (Just e) n es) = [n] `union` vars (e : es)
+  vars (Call Nothing n es) = [n] `union` vars es 
+  vars (Lam ps bd _) = vars bd \\ vars ps
+  vars (TyExp e _) = vars e 
+  vars _ = []
 
 -- errors 
 

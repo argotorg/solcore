@@ -34,17 +34,17 @@ pipeline = do
     when verbose $ do 
       putStrLn "AST after name resolution"
       putStrLn $ pretty ast 
-    r2 <- desugarCalls ast  
+    r2 <- sccAnalysis ast
     withErr r2 $ \ ast' -> do
       when verbose $ do 
-        putStrLn "Desugared code:"
+        putStrLn "SCC Analysis:"
         putStrLn $ pretty ast'
-      r3 <- sccAnalysis ast' 
-      withErr r3 $ \ r4 -> do  
+      r3 <- desugarCalls ast' 
+      withErr r3 $ \ (r4, m) -> do  
         when verbose $ do 
-          putStrLn "SCC Analysis:"
+          putStrLn "Desugared calls:"
           putStrLn $ pretty r4
-        r5 <- typeInfer r4
+        r5 <- typeInfer m r4
         withErr r5 $ \ (c', env) -> do
           let warns = warnings env 
           when (not $ null warns) $ do 

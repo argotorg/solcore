@@ -15,7 +15,7 @@ import Solcore.Frontend.TypeInference.TcSubst (fv)
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Primitives.Primitives 
 
-desugarCalls :: CompUnit Name -> IO (Either String (CompUnit Name))
+desugarCalls :: CompUnit Name -> IO (Either String (CompUnit Name, Map Name DataTy))
 desugarCalls cunit = runCallM (desugarCalls' cunit)
   
 
@@ -117,9 +117,9 @@ createUniqueType' n (Forall vs _)
         m <- incCounter 
         let nt = Name $ "t_" ++ pretty n ++ show m
             dc = Constr nt []
-            dt = TDataDef (DataTy nt vs [dc])
-        writeDecl dt
-        addFunctionName n dc 
+            dt = DataTy nt vs [dc]
+        writeDecl (TDataDef dt)
+        addFunctionName n dt 
         
 -- updating indirect calls to invoke  
 
@@ -216,7 +216,7 @@ instance UpdateIndirectCall (Exp Name) where
   updateIndirectCall e@(Var v) 
     = do
         r <- lookupFunAbs v 
-        pure $ maybe e (\ (Constr n _) -> Con n []) r 
+        pure $ maybe e (\ (DataTy _ _ [(Constr n _)]) -> Con n []) r 
         
   updateIndirectCall e = pure e
 
@@ -232,17 +232,19 @@ data Env
   = Env {
       generated :: [TopDecl Name]
     , supply :: [Name] 
-    , functions :: Map Name Constr -- function names and unique type constructor.  
+    -- map between function names and unique types 
+    , functions :: Map Name DataTy  
     , counter :: Int 
     } 
 
-runCallM :: CallM a -> IO (Either String a)
+runCallM :: CallM a -> IO (Either String (a, Map Name DataTy))
 runCallM m 
   = do 
       r <- runExceptT (runStateT m initEnv)
-      return $ either Left (Right . fst) r
+      return $ either Left (Right . g) r
   where 
     initEnv = Env [] namePool Map.empty 0
+    g (ast, env) = (ast, functions env)
 
 freshTyVar :: [Name] -> CallM Tyvar 
 freshTyVar vs 
@@ -255,7 +257,11 @@ freshTyVar vs
 
 isDirectCall :: Name -> CallM Bool 
 isDirectCall n 
-  = (Map.member n) <$> gets functions
+  = do 
+      b1 <- (Map.member n) <$> gets functions
+      pure (b1 || isPrim)
+    where 
+      isPrim = n == Name "primAddWord" || n == Name "primEqWord"
 
 incCounter :: CallM Int 
 incCounter 
@@ -264,11 +270,11 @@ incCounter
       modify (\ env -> env {counter = 1 + counter env})
       return m 
 
-addFunctionName :: Name -> Constr -> CallM () 
+addFunctionName :: Name -> DataTy -> CallM () 
 addFunctionName n c 
   = modify (\ env -> env {functions = Map.insert n c (functions env)})
 
-lookupFunAbs :: Name -> CallM (Maybe Constr)
+lookupFunAbs :: Name -> CallM (Maybe DataTy)
 lookupFunAbs n 
   = (Map.lookup n) <$> gets functions 
 

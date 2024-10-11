@@ -240,9 +240,11 @@ pprInitOpt (Just e) = equals <+> ppr e <+> semi
 
 instance Pretty a => Pretty (Exp a) where 
   ppr (Var v) = ppr v 
-  ppr (Con n es) 
-    = ppr n <> if null es then empty 
-               else (parens $ commaSep $ map ppr es)
+  ppr (Con n es)
+    | isTuple n = parens $ commaSep (map ppr es)
+    | otherwise 
+      = ppr n <> if null es then empty 
+                 else (parens $ commaSep $ map ppr es)
   ppr (Lit l) = ppr l 
   ppr (Call e n es) 
     = pprE e <> ppr n <> (parens $ commaSep $ map ppr es)
@@ -263,8 +265,9 @@ instance Pretty a => Pretty (Pat a) where
   ppr (PVar n) 
     = ppr n
   ppr (PCon n []) = ppr n
-  ppr (PCon n ps@(_ : _)) 
-    = ppr n <> (parens $ commaSep $ map ppr ps )
+  ppr (PCon n ps@(_ : _))
+    | isTuple n = parens (commaSep $ map ppr ps) 
+    | otherwise = ppr n <> (parens $ commaSep $ map ppr ps )
   ppr PWildcard 
     = text "_"
   ppr (PLit l)
@@ -302,7 +305,11 @@ instance Pretty Ty where
   ppr (t1 :-> t2) 
     = ppr t1 <+> (text "->") <+> ppr t2
   ppr (TyCon n ts)
-    = ppr n <> (pprTyParams ts)
+    | isTuple n = parens $ commaSep (map ppr ts)
+    | otherwise = ppr n <> (pprTyParams ts)
+
+isTuple :: Pretty a => a -> Bool 
+isTuple s = pretty s == "pair"
 
 pprTyParams :: [Ty] -> Doc 
 pprTyParams [] = empty 
