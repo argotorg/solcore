@@ -22,7 +22,7 @@ jobs:
       id: setup
       with:
         ghc-version: '9.8.2'
-        cabal-version: '3.4'
+        cabal-version: '3.10'
 
     - name: Configure the build
       run: |
