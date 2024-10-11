@@ -22,7 +22,7 @@ jobs:
         cabal-version: '3.4'
 
     - name: Configure the build
-        run: |
+        run:
           cabal configure --enable-tests --enable-benchmarks --disable-documentation
           cabal build all --dry-run
         # The last step generates dist-newstyle/cache/plan.json for the cache key.
