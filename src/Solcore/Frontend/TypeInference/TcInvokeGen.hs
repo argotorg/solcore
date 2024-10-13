@@ -36,16 +36,23 @@ createInstance :: Maybe (TopDecl Id) -> Signature Id -> Scheme -> TcM ()
 createInstance Nothing  _ _ = pure ()
 createInstance (Just (TDataDef dt@(DataTy n vs _))) sig sch 
   = do
-      argTys <- mapM tyParam (sigParams sig)
-      let mainTy = TyCon n (TyVar <$> vs) 
+      argTys' <- createArgs sig 
+      let mainTy = TyCon n (argTys' ++ [retTy])
           retTy = fromJust $ (sigReturn sig)
           ctx = sigContext sig
           ni = Name "invokable"
       bd <- createInvokeDef dt sig
-      let instd = Instance ctx ni (mkArgTypes argTys retTy) mainTy [ bd ]
+      let instd = Instance ctx ni (argTys'  ++ [retTy]) mainTy [ bd ]
       addInstance (Name "invokable") (mkInstPred instd)
       writeDecl (TInstDef instd)
       pure ()
+
+notUniqueTyArg :: Ty -> TcM Bool 
+notUniqueTyArg (TyVar _) = pure True 
+notUniqueTyArg (TyCon n _)
+  = do 
+      uniques <- Map.elems <$> gets uniqueTypes
+      pure (all (\ d -> dataName d /= n) uniques)
 
 mkInstPred :: Instance Id -> Inst
 mkInstPred (Instance ctx n ts t _) 
@@ -60,8 +67,6 @@ anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs
     tvs = fv inst
     freshNames = filter (not . flip elem tvs) (flip TVar False <$> namePool)
 
-
-
 createInvokeDef :: DataTy -> Signature Id -> TcM (FunDef Id)
 createInvokeDef dt sig 
   = do 
@@ -73,12 +78,20 @@ createInvokeDef dt sig
 createInvokeSig :: DataTy -> Signature Id -> TcM (Signature Id, Maybe Id)
 createInvokeSig (DataTy n vs cons) sig 
   = do
-      argTys <- mapM tyParam (sigParams sig)
-      (args, mp) <- mkParamForSig argTys (TyCon n (TyVar <$> vs))
+      argTys' <- createArgs sig
+      let retTy = fromJust $ sigReturn sig
+      (args, mp) <- mkParamForSig argTys' (TyCon n (argTys' ++ [retTy]))
       let ctx = sigContext sig 
           ni = QualName (Name "invokable") "invoke"
-          vs = fv argTys `union` maybe [] fv (sigReturn sig)
+          vs = fv argTys' `union` maybe [] fv (sigReturn sig)
       pure (Signature vs ctx ni args (sigReturn sig), mp) 
+
+createArgs :: Signature Id -> TcM [Ty] 
+createArgs sig 
+  = do 
+      argTys <- mapM tyParam (sigParams sig)
+      argTys' <- filterM notUniqueTyArg argTys
+      if null argTys' then pure [unit] else pure argTys'
 
 mkParamForSig :: [Ty] -> Ty -> TcM ([Param Id], Maybe Id)
 mkParamForSig argTys selfTy 
@@ -105,15 +118,16 @@ createInvokeBody dt sig (Just pid)
 
 createInvokeMatch :: Signature Id -> Id -> TcM (Body Id)
 createInvokeMatch sig pid@(Id _ ty)
-  = do 
+  = do
       argTys <- mapM tyParam (sigParams sig)
       let patTys = tyConArgs ty 
           retTy = fromJust $ sigReturn sig 
           cid = Id (sigName sig) (foldr (:->) retTy argTys)
       (pats, ns) <- unzip <$> mapM mkPat patTys
       let 
-        ret = if null patTys then Return $ Call Nothing cid [Var pid] 
-                             else Return $ Call Nothing cid (Var <$> ns)
+        ret = if null argTys then Return $ Call Nothing cid [] 
+              else if null patTys then Return $ Call Nothing cid [Var pid] 
+                                  else Return $ Call Nothing cid (Var <$> ns)
         pat = if null patTys then PVar pid else foldr1 ppair pats 
         stmt = if null patTys then [ret] else [Match [Var pid] [([pat], [ret])]]
       pure stmt 

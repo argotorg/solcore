@@ -39,18 +39,23 @@ pipeline = do
       when verbose $ do 
         putStrLn "SCC Analysis:"
         putStrLn $ pretty ast'
-      r3 <- desugarCalls ast' 
+      r3 <- pure $ Right (ast', Map.empty) -- desugarCalls ast' 
       withErr r3 $ \ (r4, m) -> do  
         when verbose $ do 
           putStrLn "Desugared calls:"
           putStrLn $ pretty r4
         r5 <- typeInfer m r4
         withErr r5 $ \ (c', env) -> do
-          let warns = warnings env 
+          let warns = warnings env
+          let logsInfo = logs env
           when (not $ null warns) $ do 
+            putStrLn "> Type inference warnings:"
             mapM_ putStrLn (reverse $ warns) 
+          when (verbose && (not $ null logsInfo)) $ do  
+            putStrLn "> Type inference logs:"
+            mapM_ putStrLn (reverse $ logsInfo)
           when verbose $ do
-            putStrLn "Annotated AST:"
+            putStrLn "> Annotated AST:"
             putStrLn $ pretty c'
           r6 <- matchCompiler c'
           withErr r6 $ \ res -> do

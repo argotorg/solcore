@@ -2,10 +2,12 @@ module Solcore.Frontend.TypeInference.TcStmt where
 
 import Control.Monad
 import Control.Monad.Except
+import Control.Monad.State
 import Control.Monad.Trans 
 
 import Data.Generics hiding (Constr)
 import Data.List
+import qualified Data.Map as Map
 import Data.Maybe
 
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -40,12 +42,10 @@ tcStmt e@(Let n mt me)
                       (Just t, Just e1) -> do
                         (e', ps1, t1) <- tcExp e1
                         kindCheck t1 `wrapError` e
-                        let t' = if isGeneratedType t1 then 
-                                  t1 
-                                 else t 
-                        s <- match t1 t' `wrapError` e
+                        -- t' <- translateType t t1 
+                        s <- match t1 t `wrapError` e
                         extSubst s
-                        pure (Just e', apply s ps1, apply s t')
+                        pure (Just e', apply s ps1, apply s t1)
                       (Just t, Nothing) -> do 
                         return (Nothing, [], t)
                       (Nothing, Just e) -> do 
@@ -93,9 +93,20 @@ subsCheckInst skol sch t
       s@(Subst xs) <- mgu t t' 
       pure (Subst [(x,t) | (x,t) <- xs, x `notElem` skol])
 
-isGeneratedType :: Ty -> Bool 
-isGeneratedType t 
-  = take 6 (pretty t) == "Lambda" 
+translateType :: Ty -> Ty -> TcM Ty 
+translateType ann inf@(TyCon n ts)  
+  = do 
+      cond <- isGeneratedType inf  
+      if not cond then pure inf 
+      else do 
+        let (args, ret) = splitTy ann 
+            t' = TyCon n (args ++ [ret]) 
+        pure t' 
+
+isGeneratedType :: Ty -> TcM Bool 
+isGeneratedType (TyVar _) = pure False 
+isGeneratedType (TyCon n _)
+  = ((elem n) . map dataName . Map.elems) <$> gets uniqueTypes
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations ts eqns  
@@ -204,18 +215,18 @@ tcExp (FieldAccess (Just e) n)
 tcExp ex@(Call me n args)
   = tcCall me n args `wrapError` ex
 tcExp e@(Lam args bd _)
-  = do 
-      (args', schs, ts') <- tcArgs args 
+  = do
+      (args', schs, ts') <- tcArgs args
       (bd',ps,t') <- withLocalCtx schs (tcBody bd)
       s <- getSubst 
       let ps1 = apply s ps 
           ts1 = apply s ts' 
-          t1 = apply s t'
+          t1 = apply s (funtype ts' t')
           vs = fv ps1 `union` fv t' `union` fv ts1 
-      (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs t1 bd'
-      writeDecl (TFunDef lfun)
-      generateDecls (lfun, (schemeFromSig (funSignature lfun)))
-      pure (e', ps1, ty1)
+      -- (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs t1 bd'
+      -- writeDecl (TFunDef lfun)
+      -- generateDecls (lfun, (schemeFromSig (funSignature lfun)))
+      pure (Lam args' bd' (Just t1), ps1, t1)
 tcExp e1@(TyExp e ty)
   = do 
       kindCheck ty `wrapError` e1 
@@ -225,18 +236,22 @@ tcExp e1@(TyExp e ty)
       extSubst s 
       pure (TyExp e' ty, apply s ps, ty)
 
-createLambdaImpl :: [Pred] -> [Param Id] -> [Tyvar] -> 
+createLambdaImpl :: [Pred] -> 
+                    [Param Id] -> 
+                    [Tyvar] -> 
                     Ty -> Body Id -> TcM (FunDef Id, (Exp Id, Ty))
 createLambdaImpl ps args vs rty bdy 
   = do
-      c <- incCounter 
+      c <- incCounter
+      funs <- Map.keys <$> gets uniqueTypes 
       let n = Name $ "lambda_impl" ++ show c 
-          freeVars = vars bdy 
-      (v,c,ctr,ty) <- createUniqueType freeVars n
-      sig' <- createLambdaSig n ps args vs rty ty freeVars 
-      bdy' <- createLambdaBody ty ctr freeVars bdy
-      s <- getSubst 
-      let e' = if null freeVars then v else c
+          -- FIXME this is wrong
+          vs' = filter (\i -> idName i `notElem` funs) (vars bdy \\ vars args)
+      (v,c,ctr,ty) <- createUniqueType vs' n
+      (sig',npp) <- createLambdaSig n ps args vs rty ty vs' 
+      bdy' <- createLambdaBody ty ctr vs' bdy npp
+      s <- getSubst
+      let e' = if null vs' then v else c
           fd = everywhere (mkT (applyI s)) (FunDef sig' bdy')
       pure (fd, (e', ty)) 
 
@@ -246,30 +261,33 @@ createLambdaSig :: Name ->
                    [Tyvar] -> 
                    Ty ->
                    Ty -> 
-                   [Id] -> TcM (Signature Id) 
+                   [Id] -> TcM (Signature Id, Param Id) 
 createLambdaSig n ps args vs rty ty ids 
   = do 
       np <- freshName 
       let npp = Typed (Id np ty) ty
-          args' = if null ids then args else npp : args 
-      pure (Signature vs ps n args' (Just rty))
+          args' = if null ids then args else npp : args
+      pure (Signature vs ps n args' (Just rty), npp)
       
   
-createLambdaBody :: Ty -> Constr -> [Id] -> 
-                    Body Id -> TcM (Body Id)
-createLambdaBody ty ctr ids bdy 
-  = do  
-      pn <- freshName
-      pats <- freshPat ty ctr ids
-      pure [Match [Var (Id pn ty)] [(pats, bdy)]]
+createLambdaBody :: Ty -> 
+                    Constr -> 
+                    [Id] -> 
+                    Body Id -> 
+                    Param Id -> 
+                    TcM (Body Id)
+createLambdaBody ty ctr ids bdy (Typed pn _)
+  | null ids = pure bdy
+  | otherwise
+    = do  
+        pats <- freshPat ty ctr ids
+        pure [Match [Var pn] [(pats, bdy)]]
 
 freshPat :: Ty -> Constr -> [Id] -> TcM [Pat Id]
 freshPat t (Constr n ts) ids 
   = do 
       let ty = funtype ts t 
-      nps <- mapM (\ i -> do {
-           pure (PVar i)
-        }) ids 
+          nps = map PVar ids 
       pure [PCon (Id n ty) nps]
 
 schemeFromSig :: Signature Id -> Scheme 
@@ -315,9 +333,9 @@ tcArg (Untyped n)
       v <- freshTyVar
       let ty = monotype v
       pure (Typed (Id n v) v, (n, ty), v)
-tcArg (Typed n ty)
+tcArg a@(Typed n ty)
   = do 
-      ty1 <- kindCheck ty
+      ty1 <- kindCheck ty `wrapError` a
       pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1)
 
 skolemize :: Ty -> Ty 
@@ -331,7 +349,7 @@ kindCheck (t1 :-> t2)
   = (:->) <$> kindCheck t1 <*> kindCheck t2 
 kindCheck t@(TyCon n ts) 
   = do 
-      ti <- askTypeInfo n 
+      ti <- askTypeInfo n `wrapError` t 
       unless (arity ti == length ts) $ 
         throwError $ unlines [ "Invalid number of type arguments!" 
                              , "Type " ++ pretty n ++ " is expected to have " ++
@@ -393,10 +411,6 @@ typeName (TyCon n _) = pure n
 typeName t = throwError $ unlines ["Expected type, but found:"
                                   , pretty t
                                   ]
-
-instance Pretty (Param Id) where 
-  ppr (Typed (Id n t) _) = ppr n <+> text "::" <+> ppr t
-  ppr (Untyped (Id n t)) = ppr n <+> text "::" <+> ppr t
 
 -- typing Yul code 
 

@@ -114,13 +114,21 @@ tyFromParam (Typed _ ty) = ty
 createUniqueType' :: Name -> Scheme -> CallM ()
 createUniqueType' n (Forall vs _)
      = do
-        m <- incCounter 
-        let nt = Name $ "t_" ++ pretty n ++ show m
-            dc = Constr nt []
-            dt = DataTy nt vs [dc]
+        dt <- uniqueType n vs 
         writeDecl (TDataDef dt)
         addFunctionName n dt 
-        
+
+uniqueType :: Name -> [Tyvar] -> CallM DataTy 
+uniqueType n vs
+  = do 
+      m <- incCounter
+      let 
+          argVar = TVar (Name "args") False 
+          retVar = TVar (Name "ret") False 
+          nt = Name $ "t_" ++ pretty n ++ show m
+          dc = Constr nt []
+      pure $ DataTy nt [argVar, retVar] [dc]
+
 -- updating indirect calls to invoke  
 
 class UpdateIndirectCall a where 
@@ -243,8 +251,24 @@ runCallM m
       r <- runExceptT (runStateT m initEnv)
       return $ either Left (Right . g) r
   where 
-    initEnv = Env [] namePool Map.empty 0
+    initEnv = Env [] namePool primMap 0
     g (ast, env) = (ast, functions env)
+
+primMap :: Map Name DataTy 
+primMap = Map.fromList [ (Name "primAddWord", dt1 )
+                       , (Name "primEqWord", dt2)
+                       , (QualName (Name "invokable") "invoke", dt3)
+                       ]
+    where 
+      dt1 = DataTy (Name "t_primAddWord") 
+                   [] 
+                   [Constr (Name "t_primAddWord") []]
+      dt2 = DataTy (Name "t_primEqWord")
+                   []
+                   [Constr (Name "t_primEqWord") []] 
+      dt3 = DataTy (Name "t_invokable.invoke") 
+                   []
+                   [Constr (Name "t_invokable.invoke") []]
 
 freshTyVar :: [Name] -> CallM Tyvar 
 freshTyVar vs 
@@ -255,7 +279,7 @@ freshTyVar vs
       modify (\env -> env{supply = pool1}) 
       pure (TVar n False)
 
-isDirectCall :: Name -> CallM Bool 
+isDirectCall :: Name -> CallM Bool
 isDirectCall n 
   = do 
       b1 <- (Map.member n) <$> gets functions

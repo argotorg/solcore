@@ -335,10 +335,10 @@ tcFunDef d@(FunDef sig bd)
       s1 <- getSubst
       sch <- askEnv (sigName sig) `wrapError` d 
       (ps :=> t) <- freshInst sch
-      let t1 = foldr (:->) t' ts
+      let t1 = apply s1 $ foldr (:->) t' ts
       sch' <- generalize (ps1, t1) `wrapError` d
       s <- match t t1 `wrapError` d
-      extSubst s 
+      extSubst s
       subsCheck sch sch'
       rTy <- withCurrentSubst t'
       let sig' = apply s1 $ Signature (sigVars sig) 
@@ -346,7 +346,8 @@ tcFunDef d@(FunDef sig bd)
                            (sigName sig)
                            params' 
                            (Just rTy)
-      ps2 <- reduceContext (ps ++ ps1) `wrapError` d 
+      ps2 <- reduceContext (ps ++ ps1) `wrapError` d
+      info ["> Infered type for ", pretty (sigName sig), " is ", pretty sch']
       pure (apply s $ FunDef sig' bd', apply s ps2, apply s t1)
 
 scanFun :: FunDef Name -> TcM (FunDef Name)
