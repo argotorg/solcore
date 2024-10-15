@@ -23,8 +23,9 @@ import Solcore.Primitives.Primitives
 -- generate invoke instances for functions
 
 generateDecls :: (FunDef Id, Scheme) -> TcM () 
-generateDecls ((FunDef sig bd), sch) 
+generateDecls (fd@(FunDef sig bd), sch) 
   = do
+      createTypeFunDef fd 
       dt <- lookupUniqueType (sigName sig)
       createInstance dt sig sch 
       pure ()
@@ -170,5 +171,84 @@ mkArgTy (arg : args)
 tyParam :: Param a -> TcM Ty 
 tyParam (Typed _ t) = pure t 
 tyParam (Untyped _) = freshTyVar
+
+-- creating unique types 
+
+createTypeFunDef :: FunDef Id -> TcM (FunDef Id)
+createTypeFunDef (FunDef sig bdy)
+  = do 
+      sig' <- freshSignature sig  
+      createUniqueType' (sigName sig) (schemeFromSig sig')
+      pure (FunDef sig bdy)
+
+freshSignature :: Signature Id -> TcM (Signature Id)
+freshSignature sig 
+  = do 
+      let ctx = sigContext sig 
+          args = sigParams sig 
+          ret = sigReturn sig 
+          vs = vars $ fv ctx `union` fv' args `union` fv ret
+      args' <- mapM freshParam args 
+      ret' <- freshReturn ret 
+      pure sig {
+             sigParams = args' 
+           , sigReturn = ret'
+           } 
+
+freshParam :: Param Id -> TcM (Param Id)
+freshParam p@(Typed _ _) = pure p 
+freshParam (Untyped n) 
+  = do 
+      v <- freshTyVar
+      pure (Typed n v)
+
+freshReturn :: Maybe Ty -> TcM (Maybe Ty)
+freshReturn Nothing 
+  = do 
+      v <- freshTyVar
+      pure (Just v)
+freshReturn p = pure p 
+
+vars :: [Tyvar] -> [Name]
+vars = map (\ (TVar n _) -> n) 
+
+fv' :: [Param Id] -> [Tyvar]
+fv' = foldr step []
+  where 
+    step (Typed _ ty) ac = fv ty `union` ac 
+    step (Untyped _) ac = ac 
+
+schemeFromSig :: Signature Id -> Scheme 
+schemeFromSig sig 
+  = let 
+      ctx = sigContext sig 
+      argTys = map tyFromParam (sigParams sig)
+      retTy = fromJust $ sigReturn sig 
+      ty = funtype argTys retTy 
+      vs = fv (ctx :=> ty)
+    in Forall vs (ctx :=> ty)
+
+tyFromParam :: Param Id -> Ty 
+tyFromParam (Typed _ ty) = ty 
+
+createUniqueType' :: Name -> Scheme -> TcM ()
+createUniqueType' n (Forall vs _)
+     = do
+        dt <- uniqueType n vs 
+        writeDecl (TDataDef dt)
+        checkDataType dt 
+
+uniqueType :: Name -> [Tyvar] -> TcM DataTy 
+uniqueType n vs
+  = do 
+      m <- incCounter
+      let 
+          argVar = TVar (Name "args") False 
+          retVar = TVar (Name "ret") False 
+          nt = Name $ "t_" ++ pretty n ++ show m
+          dc = Constr nt []
+          dt = DataTy nt [argVar, retVar] [dc]
+      modify (\ env -> env {uniqueTypes = Map.insert n dt (uniqueTypes env)})
+      pure dt
 
 

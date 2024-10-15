@@ -39,7 +39,15 @@ desugarCalls' (CompUnit imps decls)
 
 createUniqueType :: TopDecl Name -> CallM (TopDecl Name)
 createUniqueType (TFunDef fd) 
-  = TFunDef <$> createTypeFunDef fd  
+  = TFunDef <$> createTypeFunDef fd 
+createUniqueType (TClassDef c) 
+  = do 
+      let sigs = signatures c 
+          qual s = s{sigName = QualName (className c) (pretty (sigName s))}
+          sigs' = map qual sigs 
+      mapM_ (createTypeFunDef . flip FunDef []) 
+            sigs'  
+      pure (TClassDef c)
 createUniqueType (TContr c) 
   = TContr <$> createTypesContract c 
 createUniqueType t = pure t 

@@ -72,8 +72,8 @@ data TcEnv
                                -- context reduction
     }
 
-initTcEnv :: Map Name DataTy -> TcEnv 
-initTcEnv m 
+initTcEnv :: TcEnv 
+initTcEnv 
   = TcEnv primCtx 
           primInstEnv
           primTypeEnv
@@ -81,7 +81,7 @@ initTcEnv m
           Nothing 
           mempty
           namePool
-          m
+          primDataType 
           0
           []
           []
@@ -92,7 +92,11 @@ initTcEnv m
           100
 
 primCtx :: Env 
-primCtx = Map.fromList [primAddWord, primEqWord] 
+primCtx 
+  = Map.fromList [ primAddWord
+                 , primEqWord
+                 , primInvoke
+                 ]
 
 primTypeEnv :: TypeTable 
 primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
@@ -103,5 +107,30 @@ primInstEnv :: InstTable
 primInstEnv = Map.empty 
 
 primClassEnv :: ClassTable 
-primClassEnv = Map.empty 
+primClassEnv 
+  = Map.fromList [(Name "invokable", invokableInfo)]
+    where 
+      invokableInfo 
+        = ClassInfo 2 [QualName (Name "invokable") "invoke"] 
+                      (InCls (Name "invokable") self args)
+      self = TyVar (TVar (Name "self") False)
+      args = map TyVar [TVar (Name "args") False, TVar (Name "ret") False]
+
+
+primDataType :: Map Name DataTy 
+primDataType = Map.fromList [ (Name "primAddWord", dt1 )
+                            , (Name "primEqWord", dt2)
+                            , (QualName (Name "invokable") "invoke", dt3)
+                            ]
+    where 
+      dt1 = DataTy (Name "t_primAddWord") 
+                   [] 
+                   [Constr (Name "t_primAddWord") []]
+      dt2 = DataTy (Name "t_primEqWord")
+                   []
+                   [Constr (Name "t_primEqWord") []] 
+      dt3 = DataTy (Name "t_invokable.invoke") 
+                   []
+                   [Constr (Name "t_invokable.invoke") []]
+
 

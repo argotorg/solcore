@@ -6,7 +6,7 @@ import Control.Monad.Identity
 import Control.Monad.State 
 
 import Data.List
-import Data.Maybe (isNothing)
+import Data.Maybe
 
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts) 
@@ -51,7 +51,7 @@ instance Monoid Env where
 type ElabM a = (ExceptT String (StateT Env IO)) a 
 
 runElabM :: Elab a => a -> IO (Either String (Res a))
-runElabM t = fst <$> runStateT (runExceptT (elab t)) (initialEnv t)
+runElabM t = fst <$> (runStateT (runExceptT (elab t)) $! (initialEnv t))
 
 isDefinedType :: Name -> ElabM Bool 
 isDefinedType n 
@@ -80,13 +80,16 @@ isClassName :: Maybe S.Exp -> ElabM Bool
 isClassName Nothing = pure False 
 isClassName (Just (S.ExpName _ n _)) 
   = (n `elem`) <$> gets classes 
+isClassName (Just (S.ExpVar _ n)) 
+  = (n `elem`) <$> gets classes 
 
 class Elab a where 
   type Res a
   initialEnv :: a -> Env
   elab :: a -> ElabM (Res a)
 
-  initialEnv _ = mempty 
+  initialEnv _ = mempty
+
 
 instance Elab a => Elab [a] where 
   type Res [a] = [Res a]
@@ -325,7 +328,9 @@ instance Elab S.FunDef where
   type Res S.FunDef = FunDef Name 
 
   elab (S.FunDef sig bd) 
-    = FunDef <$> elab sig <*> elab bd 
+    = FunDef <$> elab sig <*> elab bd
+
+  initialEnv (S.FunDef sig _) = initialEnv sig 
 
 instance Elab S.ContractDecl where 
   type Res S.ContractDecl = ContractDecl Name 
@@ -385,28 +390,25 @@ instance Elab S.Exp where
     = Lam <$> elab ps <*> elab bd <*> elab mt
   elab (S.TyExp e t) 
     = TyExp <$> elab e <*> elab t 
+  elab (S.ExpVar me n) 
+    = do 
+        me' <- elab me 
+        isF <- isField n 
+        if isF then 
+          pure $ FieldAccess me' n 
+        else pure $ Var n 
   elab (S.ExpName me n es) 
     = do 
         me' <- elab me 
         es' <- elab es
         isCon <- isDefinedConstr n 
-        isField <- isField n 
-        isFun <- isFunDef n 
         isClass <- isClassName me 
         -- condition for valid constructor use 
         if isCon && isNothing me' then 
           pure (Con n es')
-        -- condition for valid field use 
-        else if isField then 
-          pure (FieldAccess me' n)
         else if isClass then 
           pure (Call Nothing (mkClassName me' n) es')
         -- condition for function call 
-        else if isFun then 
-          pure (Call me' n es')
-        -- condition for variables 
-        else if isNothing me' && null es' then 
-          pure (Var n)
         else pure (Call me' n es')
 
 instance Elab S.Pat where 

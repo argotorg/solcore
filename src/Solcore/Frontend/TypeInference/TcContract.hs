@@ -24,10 +24,10 @@ import Solcore.Primitives.Primitives
 
 -- top level type inference function 
 
-typeInfer :: Map.Map Name DataTy -> CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
-typeInfer m c 
-  = do 
-      r <- runTcM (tcCompUnit c) (initTcEnv m)
+typeInfer :: CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
+typeInfer (CompUnit imps decls) 
+  = do
+      r <- runTcM (tcCompUnit (CompUnit imps decls)) initTcEnv
       case r of 
         Left err -> pure $ Left err 
         Right (((CompUnit imps ds), ts), env) -> 
@@ -178,20 +178,6 @@ extSignature sig@(Signature _ preds n ps t)
       sch <- generalize (preds, ty) 
       extEnv n sch
 
--- including contructors on environment
-
-checkDataType :: DataTy -> TcM ()
-checkDataType (DataTy n vs constrs) 
-  = do
-      vals' <- mapM (\ (n, ty) -> (n,) <$> generalize ([], ty)) vals
-      mapM_ (uncurry extEnv) vals'
-      modifyTypeInfo n ti
-    where 
-      ti = TypeInfo (length vs) (map fst vals) []
-      tc = TyCon n (TyVar <$> vs) 
-      vals = map constrBind constrs        
-      constrBind c = (constrName c, (funtype (constrTy c) tc))
-
 -- type inference for declarations
 
 tcDecl :: ContractDecl Name -> TcM (ContractDecl Id)
@@ -320,8 +306,6 @@ tcBindGroup binds
       let names = map (sigName . funSignature) funs 
       let p (x,y) = pretty x ++ " :: " ++ pretty y
       mapM_ (uncurry extEnv) (zip names schs)
-      mapM_ generateDecls (zip funs' schs)
-      -- info ["Results: ", unlines $ map p $ zip names schs]
       pure funs'
 
 -- type checking a single bind
@@ -346,8 +330,10 @@ tcFunDef d@(FunDef sig bd)
                            (sigName sig)
                            params' 
                            (Just rTy)
+          ps2 = ps ++ ps1
       ps2 <- reduceContext (ps ++ ps1) `wrapError` d
       info ["> Infered type for ", pretty (sigName sig), " is ", pretty sch']
+      generateDecls (FunDef sig' bd', sch')
       pure (apply s $ FunDef sig' bd', apply s ps2, apply s t1)
 
 scanFun :: FunDef Name -> TcM (FunDef Name)
@@ -420,7 +406,6 @@ addClassMethod p@(InCls c _ _) sig@(Signature _ ctx f ps t)
       r <- maybeAskEnv f
       unless (isNothing r) (duplicatedClassMethod f `wrapError` sig)
       extEnv qn sch
-      --createUniqueType (QualName c (pretty f)) sch 
       pure ()
 addClassMethod p@(_ :~: _) (Signature _ _ n _ _) 
   = throwError $ unlines [

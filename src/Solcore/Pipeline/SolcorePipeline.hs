@@ -39,13 +39,8 @@ pipeline = do
       when verbose $ do 
         putStrLn "SCC Analysis:"
         putStrLn $ pretty ast'
-      r3 <- pure $ Right (ast', Map.empty) -- desugarCalls ast' 
-      withErr r3 $ \ (r4, m) -> do  
-        when verbose $ do 
-          putStrLn "Desugared calls:"
-          putStrLn $ pretty r4
-        r5 <- typeInfer m r4
-        withErr r5 $ \ (c', env) -> do
+      r5 <- typeInfer ast'
+      withErr r5 $ \ (c', env) -> do
           let warns = warnings env
           let logsInfo = logs env
           when (not $ null warns) $ do 

@@ -142,7 +142,11 @@ FieldDef : Name ':' Type InitOpt ';'               {Field $1 $3 $4}
 -- algebraic data types 
 
 DataDef :: { DataTy }
-DataDef : 'data' Name OptParam '=' Constrs ';'     {DataTy $2 $3 $5}     
+DataDef : 'data' Name OptParam DataCons ';'        {DataTy $2 $3 $4}     
+
+DataCons :: {[Constr]}
+DataCons : '=' Constrs                             {$2}
+         | {- empty -}                             {[]}
 
 Constrs :: {[Constr]}
 Constrs : Constr '|' Constrs                       {$1 : $3}
@@ -273,6 +277,8 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | Literal                                     {Lit $1}
      | '(' Expr ')'                                {$2}
      | Expr '.' Name FunArgs                       {ExpName (Just $1) $3 $4}
+     | Name                                        {ExpVar Nothing $1}
+     | Expr '.' Name                               {ExpVar (Just $1) $3} 
      | 'lam' '(' ParamList ')' OptRetTy Body       {Lam $3 $6 $5}
      | Expr ':' Type                               {TyExp $1 $3}
      | '(' TupleArgs ')'                           {tupleExp $2}
@@ -283,7 +289,6 @@ TupleArgs : Expr ',' Expr                          {[$1, $3]}
 
 FunArgs :: {[Exp]}
 FunArgs : '(' ExprCommaList ')'                    {$2}
-        | {- empty -}                              {[]} 
 
 ExprCommaList :: { [Exp] }
 ExprCommaList : Expr                               {[$1]}

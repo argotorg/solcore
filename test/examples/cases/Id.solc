@@ -2,6 +2,8 @@
     return x ; 
   }
 
+contract Id {
   function main () {
     return id(0);
   }
+}

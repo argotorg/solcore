@@ -51,6 +51,10 @@ addUniqueType n dt
       modify (\ ctx -> ctx{ uniqueTypes = Map.insert n dt (uniqueTypes ctx)})
       modifyTypeInfo (dataName dt) (typeInfoFor dt)
 
+lookupFunAbs :: Name -> TcM (Maybe DataTy)
+lookupFunAbs n 
+  = (Map.lookup n) <$> gets uniqueTypes 
+
 typeInfoFor :: DataTy -> TypeInfo 
 typeInfoFor (DataTy n vs cons)
   = TypeInfo (length vs) (map constrName cons) []
@@ -78,15 +82,38 @@ matchTy t t'
       s <- match t t' 
       extSubst s 
 
+isDirectCall :: Name -> TcM Bool
+isDirectCall n 
+  = do 
+      b1 <- (Map.member n) <$> gets uniqueTypes
+      pure (b1 || isPrim)
+    where 
+      isPrim = n == Name "primAddWord" || n == Name "primEqWord"
+
+-- including contructors on environment
+
+checkDataType :: DataTy -> TcM ()
+checkDataType (DataTy n vs constrs) 
+  = do
+      vals' <- mapM (\ (n, ty) -> (n,) <$> generalize ([], ty)) vals
+      mapM_ (uncurry extEnv) vals'
+      modifyTypeInfo n ti
+    where 
+      ti = TypeInfo (length vs) (map fst vals) []
+      tc = TyCon n (TyVar <$> vs) 
+      vals = map constrBind constrs        
+      constrBind c = (constrName c, (funtype (constrTy c) tc))
+
+
 -- type instantiation 
 
 freshInst :: Scheme -> TcM (Qual Ty)
 freshInst (Forall vs qt)
   = renameVars vs qt
 
-renameVars :: HasType a => [Tyvar] -> a -> TcM a 
+renameVars :: (Pretty a, HasType a) => [Tyvar] -> a -> TcM a 
 renameVars vs t 
-  = do 
+  = do
       s <- mapM (\ v -> (v,) <$> freshTyVar) vs
       pure $ apply (Subst s) t
 

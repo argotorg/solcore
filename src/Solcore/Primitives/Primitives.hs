@@ -54,6 +54,14 @@ primAddWord = ("primAddWord", monotype (word :-> word :-> word))
 primEqWord :: (Name, Scheme)
 primEqWord = ("primEqWord", monotype (word :-> word :-> word))
 
+primInvoke :: (Name, Scheme)
+primInvoke = ( QualName (Name "invokable") "invoke"
+             , Forall [selfVar, argsVar, retVar] 
+                ([invokePred] :=> (TyVar selfVar :-> 
+                                   TyVar argsVar :-> 
+                                   TyVar retVar))
+             )
+
 string :: Ty 
 string = TyCon "string" []
 

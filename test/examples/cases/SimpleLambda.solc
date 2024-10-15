@@ -3,9 +3,9 @@ contract SimpleLambda{
     let n = lam (x) {
       return primAddWord(x,1);
     } ;
-    let m = lam (x) {
-      return primAddWord (z,x) ;
-    } ;
-    return m(n(0));
+//    let m = lam (x) {
+//      return primAddWord (z,x) ;
+//    } ;
+    return n(0) : word;
   }
 }
