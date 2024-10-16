@@ -63,7 +63,10 @@ freshTyVar :: TcM Ty
 freshTyVar = TyVar <$> freshVar
 
 writeDecl :: TopDecl Name -> TcM ()
-writeDecl d = tell [d]
+writeDecl d 
+  = do 
+      b <- gets generateDefs 
+      when b (tell [d])
 
 getEnvFreeVars :: TcM [Tyvar]
 getEnvFreeVars 

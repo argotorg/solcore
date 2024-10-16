@@ -324,6 +324,5 @@ instance Pretty Subst where
 
 
 instance Pretty Id  where 
-  ppr (Id n t) = ppr n <+> if debug then text "::" <+> ppr t else empty 
+  ppr (Id n t) = ppr n <+> text "::" <+> ppr t 
 
-debug = False 

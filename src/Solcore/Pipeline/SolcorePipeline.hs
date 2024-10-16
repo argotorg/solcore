@@ -52,6 +52,9 @@ pipeline = do
           when verbose $ do
             putStrLn "> Annotated AST:"
             putStrLn $ pretty c'
+          when verbose $ do 
+            putStrLn "> Desugared code - step 1"
+            mapM_ (putStrLn . pretty) ts 
           r6 <- matchCompiler c'
           withErr r6 $ \ res -> do
             when (verbose || optDumpDS opts) do

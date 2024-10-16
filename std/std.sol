@@ -4,7 +4,7 @@
 */
 
 
-data Bool = True | False
+data Bool = True | False;
 function and(x: Bool, y: Bool) -> Bool {
     match x, y {
     | True, y => return y;
@@ -20,7 +20,7 @@ function or(x: Bool, y: Bool) -> Bool {
 }
 
 
-data Pair(a, b) = Pair(a, b)
+data Pair(a, b) = Pair(a, b);
 
 function fst(p: Pair(a, b)) -> a {
     match p {
@@ -36,7 +36,7 @@ function snd(p: Pair(a, b)) -> b {
 
 // Basics
 
-data Proxy(t) = Proxy
+data Proxy(t) = Proxy;
 
 // References
 

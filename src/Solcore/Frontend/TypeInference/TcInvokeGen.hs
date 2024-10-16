@@ -22,7 +22,7 @@ import Solcore.Primitives.Primitives
 
 -- generate invoke instances for functions
 
-generateDecls :: (FunDef Id, Scheme) -> TcM () 
+generateDecls :: (FunDef Name, Scheme) -> TcM () 
 generateDecls (fd@(FunDef sig bd), sch) 
   = do
       createTypeFunDef fd 
@@ -30,10 +30,10 @@ generateDecls (fd@(FunDef sig bd), sch)
       createInstance dt sig sch 
       pure ()
 
-lookupUniqueType :: Name -> TcM (Maybe (TopDecl Id))
+lookupUniqueType :: Name -> TcM (Maybe (TopDecl Name))
 lookupUniqueType n = (fmap TDataDef . Map.lookup n) <$> gets uniqueTypes 
 
-createInstance :: Maybe (TopDecl Id) -> Signature Id -> Scheme -> TcM () 
+createInstance :: Maybe (TopDecl Name) -> Signature Name -> Scheme -> TcM () 
 createInstance Nothing  _ _ = pure ()
 createInstance (Just (TDataDef dt@(DataTy n vs _))) sig sch 
   = do
@@ -68,7 +68,7 @@ anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs
     tvs = fv inst
     freshNames = filter (not . flip elem tvs) (flip TVar False <$> namePool)
 
-createInvokeDef :: DataTy -> Signature Id -> TcM (FunDef Name)
+createInvokeDef :: DataTy -> Signature Name -> TcM (FunDef Name)
 createInvokeDef dt sig 
   = do 
       (sig', mi) <- createInvokeSig dt sig 
@@ -76,7 +76,7 @@ createInvokeDef dt sig
       pure (FunDef sig' bd)
 
 
-createInvokeSig :: DataTy -> Signature Id -> TcM (Signature Name, Maybe Id)
+createInvokeSig :: DataTy -> Signature Name -> TcM (Signature Name, Maybe Name)
 createInvokeSig (DataTy n vs cons) sig 
   = do
       argTys' <- createArgs sig
@@ -87,7 +87,7 @@ createInvokeSig (DataTy n vs cons) sig
           vs = fv argTys' `union` maybe [] fv (sigReturn sig)
       pure (Signature vs ctx ni args (sigReturn sig), mp) 
 
-createArgs :: Signature Id -> TcM Ty 
+createArgs :: Signature Name -> TcM Ty 
 createArgs sig 
   = do 
       argTys <- mapM tyParam (sigParams sig)
@@ -99,16 +99,15 @@ tupleTyFromList [t] = t
 tupleTyFromList [t1,t2] = pair t1 t2 
 tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 
-mkParamForSig :: Ty -> Ty -> TcM ([Param Name], Maybe Id)
+mkParamForSig :: Ty -> Ty -> TcM ([Param Name], Maybe Name)
 mkParamForSig argTy selfTy 
   = do 
       let selfArg = Typed (Name "self") selfTy 
       paramName <- freshName 
-      let pid = Id paramName argTy 
-      pure ([selfArg, Typed paramName argTy], Just pid)
+      pure ([selfArg, Typed paramName argTy], Just paramName)
 
 
-createInvokeBody :: DataTy -> Signature Id -> Maybe Id -> TcM (Body Name)
+createInvokeBody :: DataTy -> Signature Name -> Maybe Name -> TcM (Body Name)
 createInvokeBody _ sig Nothing
   = do
       let 
@@ -171,7 +170,7 @@ tyParam (Untyped _) = freshTyVar
 
 -- creating unique types 
 
-createTypeFunDef :: FunDef Id -> TcM (FunDef Id)
+createTypeFunDef :: FunDef Name -> TcM (FunDef Name)
 createTypeFunDef (FunDef sig bdy)
   = do 
       dt <- lookupUniqueType (sigName sig)

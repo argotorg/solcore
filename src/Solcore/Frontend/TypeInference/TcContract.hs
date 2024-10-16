@@ -332,7 +332,7 @@ tcFunDef d@(FunDef sig bd)
                            (Just rTy)
       ps2 <- reduceContext (ps ++ ps1) `wrapError` d
       info ["> Infered type for ", pretty (sigName sig), " is ", pretty sch']
-      -- generateDecls (FunDef sig' bd', sch')
+      generateDecls (FunDef sig' bd', sch')
       pure (apply s1 $ FunDef sig' bd', apply s1 ps2, apply s1 t1)
 
 scanFun :: FunDef Name -> TcM (FunDef Name)

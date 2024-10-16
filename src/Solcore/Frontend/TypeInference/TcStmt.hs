@@ -75,25 +75,6 @@ tcStmt s@(Asm yblk)
       mapM_ (flip extEnv word') newBinds
       pure (Asm yblk, [], unit)
 
-subsCheck :: Scheme -> Scheme -> TcM () 
-subsCheck sigma1 sigma2@(Forall _ (_ :=> _)) 
-  = do 
-      (ps2 :=> t2) <- freshInst sigma2
-      let skol_tvs = fv t2
-      s <- subsCheckInst skol_tvs sigma1 t2
-      liftIO $ putStrLn $ "S:" ++ pretty s 
-      let esc_tvs = fv (apply s sigma1)
-          bad_tvs = filter (`elem` esc_tvs) skol_tvs
-      unless (null bad_tvs) $ do 
-        throwError "Type not polymorphic enough"
-
-subsCheckInst :: [Tyvar] -> Scheme -> Ty -> TcM Subst  
-subsCheckInst skol sch t 
-  = do 
-      (ps' :=> t') <- freshInst sch 
-      s@(Subst xs) <- mgu t t' 
-      pure (Subst [(x,t) | (x,t) <- xs, x `notElem` skol])
-
 translateType :: Ty -> Ty -> TcM Ty 
 translateType ann inf@(TyCon n ts)  
   = do 
@@ -185,13 +166,16 @@ tcExp (Lit l)
 tcExp (Var n) 
   = do
       s <- askEnv n
-      (ps :=> t) <- freshInst s
-      pure (Var (Id n t), ps, t)
-      -- r <- lookupFunAbs n
-      -- let 
-      --     mkCon (DataTy nt vs [(Constr n _)]) = (Con (Id n t) [], TyCon nt (TyVar <$> vs))
-      --     p = maybe (Var (Id n t), t) mkCon r
-      -- pure (fst p, ps, snd p)
+      (ps :=> t) <- freshInst s 
+      gen <- gets generateDefs 
+      if gen then 
+        pure (Var (Id n t), ps, t)
+      else do 
+        r <- lookupFunAbs n
+        let 
+          mkCon (DataTy nt vs [(Constr n _)]) = (Con (Id n t) [], TyCon nt (TyVar <$> vs))
+          p = maybe (Var (Id n t), t) mkCon r
+        pure (fst p, ps, snd p)
 tcExp e@(Con n es)
   = do
       -- typing parameters 
@@ -221,12 +205,14 @@ tcExp (FieldAccess (Just e) n)
       (ps' :=> t') <- freshInst s 
       pure (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExp ex@(Call me n args)
-  = tcCall me n args `wrapError` ex
---   = do 
---       let qn = QualName (Name "invokable") "invoke"
---       isDirect <- isDirectCall n 
---       if isDirect then tcCall me n args `wrapError` ex
---         else (tcCall me qn (Var n : args)) `wrapError` ex 
+  = do 
+      gen <- gets generateDefs 
+      if gen then tcCall me n args `wrapError` ex
+      else do 
+        let qn = QualName (Name "invokable") "invoke"
+        isDirect <- isDirectCall n 
+        if isDirect then tcCall me n args `wrapError` ex
+          else (tcCall me qn (Var n : args)) `wrapError` ex 
 tcExp e@(Lam args bd _)
   = do
       (args', schs, ts') <- tcArgs args
@@ -236,10 +222,14 @@ tcExp e@(Lam args bd _)
           ts1 = apply s ts' 
           t1 = apply s t'
           vs = fv ps1 `union` fv t' `union` fv ts1
-      -- (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs (ts1,t1) bd'
-      -- writeDecl (TFunDef lfun)
-      -- generateDecls (lfun, (schemeFromSig (funSignature lfun)))
-      pure (Lam args' bd' (Just (funtype ts1 t1)), ps1, funtype ts1 t1)
+      gen <- gets generateDefs 
+      if gen then 
+        pure (Lam args' bd' (Just (funtype ts1 t1)), ps1, funtype ts1 t1)
+      else do 
+        (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs (ts1,t1) bd'
+        writeDecl (TFunDef lfun)
+        -- generateDecls (lfun, (schemeFromSig (funSignature lfun)))
+        pure (e', ps1, ty1)
 tcExp e1@(TyExp e ty)
   = do 
       kindCheck ty `wrapError` e1 
@@ -253,7 +243,7 @@ createLambdaImpl :: [Pred] ->
                     [Param Id] -> 
                     [Tyvar] -> 
                     ([Ty],Ty) -> 
-                    Body Id -> TcM (FunDef Id, (Exp Id, Ty))
+                    Body Id -> TcM (FunDef Name, (Exp Id, Ty))
 createLambdaImpl ps args vs (argTys, rty) bdy 
   = do
       c <- incCounter
@@ -275,34 +265,38 @@ createLambdaSig :: Name ->
                    [Tyvar] -> 
                    Ty ->
                    Ty -> 
-                   [Id] -> TcM (Signature Id, Param Id) 
+                   [Id] -> TcM (Signature Name, Param Name) 
 createLambdaSig n ps args vs rty ty ids 
   = do 
       np <- freshName 
-      let npp = Typed (Id np ty) ty
-          args' = if null ids then args else npp : args
+      let npp = Typed np ty
+          args1 = map paramIdToName args 
+          args' = if null ids then args1 else npp : args1
       pure (Signature vs ps n args' (Just rty), npp)
       
-  
+paramIdToName :: Param Id -> Param Name 
+paramIdToName (Typed (Id n _) t) = Typed n t 
+paramIdToName (Untyped (Id n t)) = Untyped n 
+
 createLambdaBody :: Ty -> 
                     Constr -> 
                     [Id] -> 
                     Body Id -> 
-                    Param Id -> 
-                    TcM (Body Id)
+                    Param Name -> 
+                    TcM (Body Name)
 createLambdaBody ty ctr ids bdy (Typed pn _)
-  | null ids = pure bdy
+  | null ids = pure (erase bdy)
   | otherwise
     = do  
-        pats <- freshPat ty ctr ids
-        pure [Match [Var pn] [(pats, bdy)]]
+        pats <- freshPat ctr ids
+        let bdy' = erase bdy 
+        pure [Match [Var pn] [(pats, bdy')]]
 
-freshPat :: Ty -> Constr -> [Id] -> TcM [Pat Id]
-freshPat t (Constr n ts) ids 
+freshPat :: Constr -> [Id] -> TcM [Pat Name]
+freshPat (Constr n ts) ids 
   = do 
-      let ty = funtype ts t 
-          nps = map PVar ids 
-      pure [PCon (Id n ty) nps]
+      let nps = map (PVar . idName) ids 
+      pure [PCon n nps]
 
 schemeFromSig :: Signature Id -> Scheme 
 schemeFromSig sig 
@@ -614,6 +608,78 @@ instance Vars (Exp Id) where
   vars (Lam ps bd _) = vars bd \\ vars ps
   vars (TyExp e _) = vars e 
   vars _ = []
+
+-- erasing Id's 
+
+class Erase a where 
+  type EraseRes a 
+  erase :: a -> EraseRes a 
+
+instance Erase a => Erase [a] where 
+  type EraseRes [a] = [EraseRes a]
+  erase = map erase 
+
+instance Erase a => Erase (Maybe a) where 
+  type EraseRes (Maybe a) = Maybe (EraseRes a) 
+  erase Nothing = Nothing 
+  erase (Just x) = Just (erase x)
+
+instance (Erase a, Erase b) => Erase (a,b) where 
+  type EraseRes (a,b) = (EraseRes a, EraseRes b)
+
+  erase (x, y) = (erase x, erase y)
+
+instance Erase (Stmt Id) where 
+  type EraseRes (Stmt Id) = Stmt Name 
+
+  erase (e1 := e2) 
+    = (erase e1) := (erase e2)
+  erase (Let n mt me) 
+    = Let (idName n) mt (erase me)
+  erase (StmtExp e)
+    = StmtExp (erase e)
+  erase (Return e)
+    = Return (erase e)
+  erase (Match es eqns)
+    = Match (erase es) (erase eqns)
+  erase (Asm blk)
+    = Asm blk 
+
+instance Erase (Exp Id) where 
+  type EraseRes (Exp Id) = Exp Name 
+
+  erase (Var v) 
+    = Var (idName v)
+  erase (Con n es) 
+    = Con (idName n) (map erase es)
+  erase (FieldAccess me n) 
+    = FieldAccess (erase me) (idName n)
+  erase (Call me n es) 
+    = Call (erase me) (idName n) (erase es)
+  erase (Lam ps bd mt) 
+    = Lam (erase ps) (erase bd) mt 
+  erase (TyExp e t)
+    = TyExp (erase e) t 
+
+instance Erase (Param Id) where 
+  type EraseRes (Param Id) = Param Name 
+
+  erase (Typed n t) 
+    = Typed (idName n) t
+  erase (Untyped n)
+    = Untyped (idName n) 
+
+instance Erase (Pat Id) where 
+  type EraseRes (Pat Id) = Pat Name 
+
+  erase (PVar n) 
+    = PVar (idName n)
+  erase (PCon n ps)
+    = PCon (idName n) (erase ps)
+  erase PWildcard
+    = PWildcard
+  erase (PLit l)
+    = PLit l 
 
 -- errors 
 
