@@ -22,9 +22,9 @@ import Solcore.Primitives.Primitives
 
 -- definition of type inference monad infrastructure 
 
-type TcM a = WriterT [TopDecl Id] (StateT TcEnv (ExceptT String IO)) a 
+type TcM a = WriterT [TopDecl Name] (StateT TcEnv (ExceptT String IO)) a 
 
-runTcM :: TcM a -> TcEnv -> IO (Either String ((a, [TopDecl Id]), TcEnv))
+runTcM :: TcM a -> TcEnv -> IO (Either String ((a, [TopDecl Name]), TcEnv))
 runTcM m env = runExceptT (runStateT (runWriterT m) env)
 
 freshVar :: TcM Tyvar 
@@ -62,7 +62,7 @@ typeInfoFor (DataTy n vs cons)
 freshTyVar :: TcM Ty 
 freshTyVar = TyVar <$> freshVar
 
-writeDecl :: TopDecl Id -> TcM ()
+writeDecl :: TopDecl Name -> TcM ()
 writeDecl d = tell [d]
 
 getEnvFreeVars :: TcM [Tyvar]

@@ -64,6 +64,7 @@ data TcEnv
     , subst :: Subst           -- Current substitution
     , nameSupply :: NameSupply -- Fresh name supply
     , uniqueTypes :: Map Name DataTy -- unique type map 
+    , generateDefs :: Bool     -- should generate new defs?
     , counter :: Int           -- used to generate new names 
     , logs :: [String]         -- Logging
     , warnings :: [String]     -- warnings collected to user 
@@ -75,8 +76,8 @@ data TcEnv
                                -- context reduction
     }
 
-initTcEnv :: TcEnv 
-initTcEnv 
+initTcEnv :: Bool -> TcEnv 
+initTcEnv genDefs 
   = TcEnv primCtx 
           primInstEnv
           primTypeEnv
@@ -84,7 +85,8 @@ initTcEnv
           Nothing 
           mempty
           namePool
-          primDataType 
+          primDataType
+          genDefs 
           0
           []
           []

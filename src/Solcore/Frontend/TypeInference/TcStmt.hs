@@ -185,7 +185,6 @@ tcExp (Lit l)
 tcExp (Var n) 
   = do
       s <- askEnv n
-      liftIO $ putStrLn $ "Var:" ++ pretty n 
       (ps :=> t) <- freshInst s
       pure (Var (Id n t), ps, t)
       -- r <- lookupFunAbs n

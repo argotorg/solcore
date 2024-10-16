@@ -22,16 +22,17 @@ import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Primitives.Primitives
 
--- top level type inference function 
+-- top level type inference function: Boolean parameter 
+-- used to determine if it will generate definitions.
 
-typeInfer :: CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
-typeInfer (CompUnit imps decls) 
+typeInfer :: Bool -> CompUnit Name -> IO (Either String (CompUnit Id, TcEnv, [TopDecl Name]))
+typeInfer genDefs (CompUnit imps decls) 
   = do
-      r <- runTcM (tcCompUnit (CompUnit imps decls)) initTcEnv
+      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv genDefs)
       case r of 
         Left err -> pure $ Left err 
         Right (((CompUnit imps ds), ts), env) -> 
-          pure (Right ((CompUnit imps (ds ++ ts)), env)) 
+          pure (Right (CompUnit imps ds, env, ts)) 
 
 -- type inference for a compilation unit 
 

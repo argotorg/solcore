@@ -39,8 +39,8 @@ pipeline = do
       when verbose $ do 
         putStrLn "SCC Analysis:"
         putStrLn $ pretty ast'
-      r5 <- typeInfer ast'
-      withErr r5 $ \ (c', env) -> do
+      r5 <- typeInfer True ast'
+      withErr r5 $ \ (c', env, ts) -> do
           let warns = warnings env
           let logsInfo = logs env
           when (not $ null warns) $ do 

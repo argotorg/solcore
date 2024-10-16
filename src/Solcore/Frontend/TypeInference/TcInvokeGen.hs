@@ -55,7 +55,7 @@ notUniqueTyArg (TyCon n _)
       uniques <- Map.elems <$> gets uniqueTypes
       pure (all (\ d -> dataName d /= n) uniques)
 
-mkInstPred :: Instance Id -> Inst
+mkInstPred :: Instance Name -> Inst
 mkInstPred (Instance ctx n ts t _) 
   = anfInstance $ ctx :=> InCls n t ts
 
@@ -68,7 +68,7 @@ anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs
     tvs = fv inst
     freshNames = filter (not . flip elem tvs) (flip TVar False <$> namePool)
 
-createInvokeDef :: DataTy -> Signature Id -> TcM (FunDef Id)
+createInvokeDef :: DataTy -> Signature Id -> TcM (FunDef Name)
 createInvokeDef dt sig 
   = do 
       (sig', mi) <- createInvokeSig dt sig 
@@ -76,7 +76,7 @@ createInvokeDef dt sig
       pure (FunDef sig' bd)
 
 
-createInvokeSig :: DataTy -> Signature Id -> TcM (Signature Id, Maybe Id)
+createInvokeSig :: DataTy -> Signature Id -> TcM (Signature Name, Maybe Id)
 createInvokeSig (DataTy n vs cons) sig 
   = do
       argTys' <- createArgs sig
@@ -99,34 +99,33 @@ tupleTyFromList [t] = t
 tupleTyFromList [t1,t2] = pair t1 t2 
 tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 
-mkParamForSig :: Ty -> Ty -> TcM ([Param Id], Maybe Id)
+mkParamForSig :: Ty -> Ty -> TcM ([Param Name], Maybe Id)
 mkParamForSig argTy selfTy 
   = do 
-      let selfArg = Typed (Id (Name "self") selfTy) selfTy 
+      let selfArg = Typed (Name "self") selfTy 
       paramName <- freshName 
       let pid = Id paramName argTy 
-      pure ([selfArg, Typed pid argTy], Just pid)
+      pure ([selfArg, Typed paramName argTy], Just pid)
 
 
-createInvokeBody :: DataTy -> Signature Id -> Maybe Id -> TcM (Body Id)
+createInvokeBody :: DataTy -> Signature Id -> Maybe Id -> TcM (Body Name)
 createInvokeBody _ sig Nothing
   = do
       let 
-          retTy = fromJust $ sigReturn sig 
-          cid = Id (sigName sig) retTy
+          cid = sigName sig
           cexp = Call Nothing cid []
       pure [Return cexp]
 createInvokeBody dt sig (Just pid)
   = createInvokeMatch sig pid 
 
-createInvokeMatch :: Signature Id -> Id -> TcM (Body Id)
-createInvokeMatch sig pid@(Id _ ty)
+createInvokeMatch :: Signature Id -> Id -> TcM (Body Name)
+createInvokeMatch sig (Id pid ty)
   = do
       argTys <- mapM tyParam (sigParams sig)
       let patTys = tyConArgs ty 
           retTy = fromJust $ sigReturn sig 
-          cid = Id (sigName sig) (foldr (:->) retTy argTys)
-      (pats, ns) <- unzip <$> mapM mkPat patTys
+          cid = sigName sig
+      (pats, ns) <- unzip <$> mapM (const mkPat) patTys
       let 
         ret = if null argTys then Return $ Call Nothing cid [] 
               else if null patTys then Return $ Call Nothing cid [Var pid] 
@@ -139,21 +138,17 @@ tyConArgs :: Ty -> [Ty]
 tyConArgs (TyVar _) = []
 tyConArgs (TyCon _ tys) = tys
 
-ppair :: Pat Id -> Pat Id -> Pat Id 
+ppair :: Pat Name -> Pat Name -> Pat Name  
 ppair p1 p2 
   = PCon pairCon [p1, p2] 
     where 
-      pairCon = Id (Name "pair") pairTy 
-      pairTy = pair (tyFrom p1) (tyFrom p2)
-      tyFrom (PVar (Id _ t)) = t
-      tyFrom (PCon (Id _ t) _) = t 
+      pairCon = Name "pair" 
       
 
-mkPat :: Ty -> TcM (Pat Id, Id)
-mkPat ty = do 
+mkPat :: TcM (Pat Name, Name)
+mkPat = do 
   n <- freshName 
-  let pid = Id n ty 
-  pure (PVar pid, pid)
+  pure (PVar n, n)
 
 
 mkArgTypes :: [Ty] -> Ty -> [Ty] 
