@@ -1,23 +1,27 @@
 module Main where
 
-import Test.Tasty 
+import Test.Tasty
 import Test.Tasty.Program
-import Test.Tasty.ExpectedFailure 
+import Test.Tasty.ExpectedFailure
 
 main :: IO ()
-main = defaultMain tests  
+main = defaultMain tests
 
-tests :: TestTree 
-tests 
+tests :: TestTree
+tests
   = testGroup "Tests"
                [
                  cases
                , pragmas
-               , spec 
+               , spec
+               , std
                ]
 
-spec :: TestTree 
-spec 
+std :: TestTree
+std = testGroup "standard library" [ runTestForFile "std.sol" "./std" ]
+
+spec :: TestTree
+spec
   = testGroup "Files for spec cases"
               [
                 runTestForFile "00answer.solc" specFolder
@@ -36,32 +40,32 @@ spec
               , runTestForFile "042triple.solc" specFolder
               , expectFail $ runTestForFile "06comp.solc" specFolder
               , runTestForFile "07rgb.solc" specFolder
-              , runTestForFile "08rgb2.solc" specFolder 
-              , runTestForFile "09not.solc" specFolder 
+              , runTestForFile "08rgb2.solc" specFolder
+              , runTestForFile "09not.solc" specFolder
               , runTestForFile "10negBool.solc" specFolder
               , runTestForFile "11negPair.solc" specFolder
               , runTestForFile "903badassign.solc" specFolder
               , runTestForFile "939badfood.solc" specFolder
               ]
-    where 
+    where
       specFolder = "./test/examples/spec"
 
-pragmas :: TestTree 
-pragmas 
+pragmas :: TestTree
+pragmas
   = testGroup "Files for pragmas cases"
               [
                 expectFail $ runTestForFile "bound.solc" pragmaFolder
               , runTestForFile "coverage.solc" pragmaFolder
               , runTestForFile "patterson.solc" pragmaFolder
-              ] 
-    where 
+              ]
+    where
       pragmaFolder = "./test/examples/pragmas"
- 
-cases :: TestTree 
-cases 
+
+cases :: TestTree
+cases
   = testGroup "Files for folder cases"
               [
-                runTestForFile "Ackermann.solc" caseFolder 
+                runTestForFile "Ackermann.solc" caseFolder
               , expectFail $ runTestForFile "BadInstance.solc" caseFolder
               , runTestForFile "BoolNot.solc" caseFolder
               , expectFail $ runTestForFile "Compose.solc" caseFolder
@@ -69,7 +73,7 @@ cases
               , runTestForFile "DuplicateFun.solc" caseFolder
               , runTestForFile "EitherModule.solc" caseFolder
               , runTestForFile "Id.solc" caseFolder
-              , runTestForFile "IncompleteInstDef.solc" caseFolder 
+              , runTestForFile "IncompleteInstDef.solc" caseFolder
               , runTestForFile "Invokable.solc" caseFolder
               , runTestForFile "ListModule.solc" caseFolder
               , runTestForFile "Logic.solc" caseFolder
@@ -91,27 +95,27 @@ cases
               , runTestForFile "SingleFun.solc" caseFolder
               , runTestForFile "assembly.solc" caseFolder
               , runTestForFile "join.solc" caseFolder
-              , runTestForFile "EqQual.solc" caseFolder 
+              , runTestForFile "EqQual.solc" caseFolder
               , expectFail $ runTestForFile "joinErr.solc" caseFolder
-              , runTestForFile "tyexp.solc" caseFolder 
+              , runTestForFile "tyexp.solc" caseFolder
               ]
-    where 
+    where
       caseFolder = "./test/examples/cases"
 
--- basic infrastructure for tests 
+-- basic infrastructure for tests
 
-type FileName = String 
-type BaseFolder = String 
+type FileName = String
+type BaseFolder = String
 
-runTestForFile :: FileName -> BaseFolder -> TestTree 
-runTestForFile file folder 
-  = testProgram file "cabal" (basicOptions ++ [folder ++ "/" ++ file]) Nothing 
+runTestForFile :: FileName -> BaseFolder -> TestTree
+runTestForFile file folder
+  = testProgram file "cabal" (basicOptions ++ [folder ++ "/" ++ file]) Nothing
 
 basicOptions :: [String]
 basicOptions = [ "new-run"
                , "sol-core"
                , "--"
                , "-f"
-               ] 
+               ]
 
 
