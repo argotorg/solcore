@@ -29,6 +29,9 @@ wordTypeInfo = TypeInfo 0 [] []
 unitTypeInfo :: TypeInfo 
 unitTypeInfo = TypeInfo 0 [] []
 
+pairTypeInfo :: TypeInfo 
+pairTypeInfo = TypeInfo 2 [Name "pair"] []
+
 -- name of constructor and its scheme
 type ConInfo = (Name, Scheme)
 
@@ -96,11 +99,13 @@ primCtx
   = Map.fromList [ primAddWord
                  , primEqWord
                  , primInvoke
+                 , primPair 
                  ]
 
 primTypeEnv :: TypeTable 
 primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
                            , (Name "unit", unitTypeInfo)
+                           , (Name "pair", pairTypeInfo)
                            ]
 
 primInstEnv :: InstTable

@@ -38,12 +38,12 @@ createInstance Nothing  _ _ = pure ()
 createInstance (Just (TDataDef dt@(DataTy n vs _))) sig sch 
   = do
       argTys' <- createArgs sig 
-      let mainTy = TyCon n (argTys' ++ [retTy])
+      let mainTy = TyCon n ([argTys', retTy])
           retTy = fromJust $ (sigReturn sig)
           ctx = sigContext sig
           ni = Name "invokable"
       bd <- createInvokeDef dt sig
-      let instd = Instance ctx ni (argTys'  ++ [retTy]) mainTy [ bd ]
+      let instd = Instance ctx ni ([argTys', retTy]) mainTy [ bd ]
       addInstance (Name "invokable") (mkInstPred instd)
       writeDecl (TInstDef instd)
       pure ()
@@ -81,29 +81,31 @@ createInvokeSig (DataTy n vs cons) sig
   = do
       argTys' <- createArgs sig
       let retTy = fromJust $ sigReturn sig
-      (args, mp) <- mkParamForSig argTys' (TyCon n (argTys' ++ [retTy]))
+      (args, mp) <- mkParamForSig argTys' (TyCon n ([argTys', retTy]))
       let ctx = sigContext sig 
           ni = QualName (Name "invokable") "invoke"
           vs = fv argTys' `union` maybe [] fv (sigReturn sig)
       pure (Signature vs ctx ni args (sigReturn sig), mp) 
 
-createArgs :: Signature Id -> TcM [Ty] 
+createArgs :: Signature Id -> TcM Ty 
 createArgs sig 
   = do 
       argTys <- mapM tyParam (sigParams sig)
       argTys' <- filterM notUniqueTyArg argTys
-      if null argTys' then pure [unit] else pure argTys'
+      if null argTys' then pure unit else pure $ tupleTyFromList argTys'
 
-mkParamForSig :: [Ty] -> Ty -> TcM ([Param Id], Maybe Id)
-mkParamForSig argTys selfTy 
+tupleTyFromList :: [Ty] -> Ty 
+tupleTyFromList [t] = t 
+tupleTyFromList [t1,t2] = pair t1 t2 
+tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
+
+mkParamForSig :: Ty -> Ty -> TcM ([Param Id], Maybe Id)
+mkParamForSig argTy selfTy 
   = do 
       let selfArg = Typed (Id (Name "self") selfTy) selfTy 
-      case mkArgTy argTys of 
-        Just arg -> do 
-          paramName <- freshName 
-          let pid = Id paramName arg  
-          pure ([selfArg, Typed pid arg], Just pid)
-        Nothing -> pure ([selfArg], Nothing)
+      paramName <- freshName 
+      let pid = Id paramName argTy 
+      pure ([selfArg, Typed pid argTy], Just pid)
 
 
 createInvokeBody :: DataTy -> Signature Id -> Maybe Id -> TcM (Body Id)
@@ -177,9 +179,13 @@ tyParam (Untyped _) = freshTyVar
 createTypeFunDef :: FunDef Id -> TcM (FunDef Id)
 createTypeFunDef (FunDef sig bdy)
   = do 
-      sig' <- freshSignature sig  
-      createUniqueType' (sigName sig) (schemeFromSig sig')
-      pure (FunDef sig bdy)
+      dt <- lookupUniqueType (sigName sig)
+      case dt of 
+        Nothing -> do 
+          sig' <- freshSignature sig  
+          createUniqueType' (sigName sig) (schemeFromSig sig')
+          pure (FunDef sig bdy)
+        Just _ -> pure (FunDef sig bdy)
 
 freshSignature :: Signature Id -> TcM (Signature Id)
 freshSignature sig 

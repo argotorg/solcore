@@ -44,7 +44,7 @@ instance Semigroup Env where
           (cls `union` cls')
 
 instance Monoid Env where 
-  mempty = Env [] [] [Name "word"] [] [] []
+  mempty = Env [] [] [Name "word", Name "pair"] [] [Name "pair"] []
 
 -- definition of the monad 
 

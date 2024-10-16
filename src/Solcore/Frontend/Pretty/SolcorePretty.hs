@@ -278,7 +278,7 @@ instance Pretty Literal where
   ppr (StrLit l) = quotes (text l)
 
 instance Pretty Tyvar where 
-  ppr (TVar n _) = ppr n 
+  ppr (TVar n b) = if b then text "@" <> ppr n else ppr n
 
 instance Pretty Pred where 
   ppr (InCls n t ts) =

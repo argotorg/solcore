@@ -3,7 +3,7 @@ contract Id1 {
     return x ;
   }
 
-  function nid() -> (word) -> word {
+  function nid() {
     return id;
   }
 

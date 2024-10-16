@@ -62,6 +62,14 @@ primInvoke = ( QualName (Name "invokable") "invoke"
                                    TyVar retVar))
              )
 
+primPair :: (Name, Scheme)
+primPair = (Name "pair", Forall [aVar, bVar] ([] :=> ( at :-> bt :-> pair at bt)))
+    where 
+      aVar = TVar (Name "a") False 
+      bVar = TVar (Name "b") False 
+      at = TyVar aVar 
+      bt = TyVar bVar 
+
 string :: Ty 
 string = TyCon "string" []
 

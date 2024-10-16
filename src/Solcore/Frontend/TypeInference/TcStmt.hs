@@ -81,6 +81,7 @@ subsCheck sigma1 sigma2@(Forall _ (_ :=> _))
       (ps2 :=> t2) <- freshInst sigma2
       let skol_tvs = fv t2
       s <- subsCheckInst skol_tvs sigma1 t2
+      liftIO $ putStrLn $ "S:" ++ pretty s 
       let esc_tvs = fv (apply s sigma1)
           bad_tvs = filter (`elem` esc_tvs) skol_tvs
       unless (null bad_tvs) $ do 
@@ -100,7 +101,8 @@ translateType ann inf@(TyCon n ts)
       if not cond then pure inf 
       else do 
         let (args, ret) = splitTy ann 
-            t' = TyCon n (args ++ [ret]) 
+            args' = if null args then unit else tupleTyFromList args
+            t' = TyCon n [args', ret]
         pure t' 
 
 isGeneratedType :: Ty -> TcM Bool 
@@ -182,13 +184,15 @@ tcExp (Lit l)
       pure (Lit l, [], t)
 tcExp (Var n) 
   = do
-      s <- askEnv n 
+      s <- askEnv n
+      liftIO $ putStrLn $ "Var:" ++ pretty n 
       (ps :=> t) <- freshInst s
-      r <- lookupFunAbs n 
-      let 
-          mkCon (DataTy _ _ [(Constr n _)]) = Con (Id n t) []
-          e = maybe (Var (Id n t)) mkCon r
-      pure (e, ps, t)
+      pure (Var (Id n t), ps, t)
+      -- r <- lookupFunAbs n
+      -- let 
+      --     mkCon (DataTy nt vs [(Constr n _)]) = (Con (Id n t) [], TyCon nt (TyVar <$> vs))
+      --     p = maybe (Var (Id n t), t) mkCon r
+      -- pure (fst p, ps, snd p)
 tcExp e@(Con n es)
   = do
       -- typing parameters 
@@ -203,7 +207,8 @@ tcExp e@(Con n es)
       -- checking if the constructor belongs to type tn 
       checkConstr tn n
       let ps' = concat (ps : pss)
-      pure (Con (Id n t) es', apply s ps', apply s t')
+          e = Con (Id n t) es'
+      pure (e, apply s ps', apply s t')
 tcExp (FieldAccess Nothing n) 
   = throwError "Not Implemented yet!"
 tcExp (FieldAccess (Just e) n) 
@@ -217,11 +222,12 @@ tcExp (FieldAccess (Just e) n)
       (ps' :=> t') <- freshInst s 
       pure (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExp ex@(Call me n args)
-  = do 
-      let qn = QualName (Name "invokable") "invoke"
-      isDirect <- isDirectCall n 
-      if isDirect then tcCall me n args `wrapError` ex
-        else (tcCall me qn (Var n : args)) `wrapError` ex 
+  = tcCall me n args `wrapError` ex
+--   = do 
+--       let qn = QualName (Name "invokable") "invoke"
+--       isDirect <- isDirectCall n 
+--       if isDirect then tcCall me n args `wrapError` ex
+--         else (tcCall me qn (Var n : args)) `wrapError` ex 
 tcExp e@(Lam args bd _)
   = do
       (args', schs, ts') <- tcArgs args
@@ -231,10 +237,10 @@ tcExp e@(Lam args bd _)
           ts1 = apply s ts' 
           t1 = apply s t'
           vs = fv ps1 `union` fv t' `union` fv ts1
-      (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs (ts1,t1) bd'
-      writeDecl (TFunDef lfun)
-      generateDecls (lfun, (schemeFromSig (funSignature lfun)))
-      pure (e', ps1, ty1)
+      -- (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs (ts1,t1) bd'
+      -- writeDecl (TFunDef lfun)
+      -- generateDecls (lfun, (schemeFromSig (funSignature lfun)))
+      pure (Lam args' bd' (Just (funtype ts1 t1)), ps1, funtype ts1 t1)
 tcExp e1@(TyExp e ty)
   = do 
       kindCheck ty `wrapError` e1 
@@ -324,7 +330,8 @@ createUniqueType ids n (argTys, retTy)
             nt = Name $ "t_" ++ pretty n ++ show m
             dc = Constr nt (map idType ids)
             dt = DataTy nt [argVar, retVar] [dc]
-            tc = TyCon nt (argTys ++ [retTy])
+            argTy' = if null argTys then unit else tupleTyFromList argTys
+            tc = TyCon nt [argTy', retTy]
         writeDecl (TDataDef dt)
         addUniqueType n dt 
         pure (Var (Id n tc), Con (Id nt tc) (map Var ids), dc, tc)
