@@ -25,14 +25,27 @@ import Solcore.Primitives.Primitives
 -- top level type inference function: Boolean parameter 
 -- used to determine if it will generate definitions.
 
-typeInfer :: Bool -> CompUnit Name -> IO (Either String (CompUnit Id, TcEnv, [TopDecl Name]))
-typeInfer genDefs (CompUnit imps decls) 
+typeInfer1 :: CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
+typeInfer1 (CompUnit imps decls) 
   = do
-      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv genDefs)
+      let ienv = initTcEnv True 
+      r <- runTcM (tcCompUnit (CompUnit imps decls)) ienv
       case r of 
         Left err -> pure $ Left err 
-        Right (((CompUnit imps ds), ts), env) -> 
-          pure (Right (CompUnit imps ds, env, ts)) 
+        Right ((CompUnit imps ds), env) -> 
+          pure (Right (CompUnit imps ds, env)) 
+
+typeInfer2 :: TcEnv -> CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
+typeInfer2 env (CompUnit imps decls) 
+  = do
+      let env1 = (initTcEnv False) {ctx = ctx env, uniqueTypes = uniqueTypes env}
+      r <- runTcM (tcCompUnit (CompUnit imps decls))  env1
+      case r of 
+        Left err -> pure $ Left err 
+        Right ((CompUnit imps ds), env) -> 
+          pure (Right (CompUnit imps ds, env)) 
+
+
 
 -- type inference for a compilation unit 
 
@@ -91,7 +104,10 @@ setupPragmas ps
 
 tcTopDecl :: TopDecl Name -> TcM (TopDecl Id)
 tcTopDecl (TContr c) 
-  = TContr <$> tcContract c
+  = do 
+      (c', assumps) <- tcContract c
+      mapM_ (uncurry extEnv) assumps 
+      pure (TContr c')
 tcTopDecl (TFunDef fd)
   = do
       fd' <- tcBindGroup [fd] 
@@ -132,12 +148,15 @@ loadImports _ = return ()
 
 -- type inference for contracts 
 
-tcContract :: Contract Name -> TcM (Contract Id) 
+tcContract :: Contract Name -> TcM (Contract Id, [(Name, Scheme)]) 
 tcContract c@(Contract n vs decls) 
-  = withLocalEnv do
+  = withLocalEnv $ withContractName n $ do
+      ctx' <- gets ctx 
       initializeEnv c
       decls' <- mapM tcDecl' decls
-      pure (Contract n vs decls')
+      ctx1 <- gets ctx
+      let assumps = map (\ (n',t) -> (QualName n (pretty n'), t)) $ Map.toList $ Map.difference ctx1 ctx' 
+      pure (Contract n vs decls', assumps)
     where 
       tcDecl' d 
         = do 
@@ -150,9 +169,7 @@ tcContract c@(Contract n vs decls)
 
 initializeEnv :: Contract Name -> TcM ()
 initializeEnv (Contract n vs decls)
-  = do 
-      setCurrentContract n (length vs) 
-      mapM_ checkDecl decls 
+  = mapM_ checkDecl decls 
 
 checkDecl :: ContractDecl Name -> TcM ()
 checkDecl (CDataDecl dt) 
@@ -170,7 +187,8 @@ extSignature sig@(Signature _ preds n ps t)
   = do
       -- checking if the function is previously defined
       te <- gets ctx
-      when (Map.member n te) (duplicatedFunDef n) `wrapError` sig
+      gen <- gets generateDefs
+      when (Map.member n te && gen) (duplicatedFunDef n) `wrapError` sig
       argTys <- mapM tyParam ps
       t' <- maybe freshTyVar pure t
       let 
@@ -269,7 +287,7 @@ typeSignature nm args ret sig
         , sigReturn = Just ret
         }
     where 
-      paramType t (Typed n _) = Typed n (skolemize t)
+      paramType _ (Typed n t) = Typed n (skolemize t)
       paramType t (Untyped n) = Typed n (skolemize t)
 
 tcClass :: Class Name -> TcM (Class Id)
@@ -321,7 +339,6 @@ tcFunDef d@(FunDef sig bd)
       sch <- askEnv (sigName sig) `wrapError` d 
       (ps :=> t) <- freshInst sch
       let t1 = apply s1 $ foldr (:->) t' ts
-      sch' <- generalize (ps1, t1) `wrapError` d
       s <- match t t1 `wrapError` d
       extSubst s 
       rTy <- withCurrentSubst t'
@@ -330,9 +347,13 @@ tcFunDef d@(FunDef sig bd)
                            (sigName sig)
                            params' 
                            (Just rTy)
+          sig1 = sig {sigReturn = Just rTy}
+      gen <- gets generateDefs
+      sch' <- generalize (ps1, t1) `wrapError` d
+      when gen (generateDecls (FunDef sig1 bd, sch'))
+      let ps2 = ps ++ ps1
       ps2 <- reduceContext (ps ++ ps1) `wrapError` d
       info ["> Infered type for ", pretty (sigName sig), " is ", pretty sch']
-      generateDecls (FunDef sig' bd', sch')
       pure (apply s1 $ FunDef sig' bd', apply s1 ps2, apply s1 t1)
 
 scanFun :: FunDef Name -> TcM (FunDef Name)
@@ -400,7 +421,7 @@ addClassMethod p@(InCls c _ _) sig@(Signature _ ctx f ps t)
       let ty = funtype tps t'
           vs = fv ty
           ctx' = [p] `union` ctx
-          qn = QualName c (pretty f)
+          qn = if isQual f then f else QualName c (pretty f)
           sch = Forall vs (ctx' :=> ty)
       r <- maybeAskEnv f
       unless (isNothing r) (duplicatedClassMethod f `wrapError` sig)
@@ -414,6 +435,10 @@ addClassMethod p@(_ :~: _) (Signature _ _ n _ _)
                   , pretty n
                   ]
 
+isQual :: Name -> Bool 
+isQual (QualName _ _) = True 
+isQual _ = False 
+
 -- checking instances and adding them in the environment
 
 checkInstances :: [Instance Name] -> TcM ()
@@ -425,7 +450,7 @@ checkInstance idef@(Instance ctx n ts t funs)
       let ipred = InCls n t ts
       -- checking the coverage condition 
       insts <- askInstEnv n `wrapError` ipred
-      checkOverlap ipred insts
+      checkOverlap ipred insts `wrapError` idef
       coverage <- askCoverage n
       unless coverage (checkCoverage n ts t `wrapError` idef)
       -- checking Patterson condition

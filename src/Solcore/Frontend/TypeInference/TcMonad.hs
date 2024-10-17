@@ -8,6 +8,7 @@ import Control.Monad.Writer
 import Data.List
 import qualified Data.List.NonEmpty as N
 import Data.Map (Map)
+import Data.Maybe
 import qualified Data.Map as Map
 
 import Solcore.Frontend.Pretty.SolcorePretty hiding((<>))
@@ -22,10 +23,10 @@ import Solcore.Primitives.Primitives
 
 -- definition of type inference monad infrastructure 
 
-type TcM a = WriterT [TopDecl Name] (StateT TcEnv (ExceptT String IO)) a 
+type TcM a = (StateT TcEnv (ExceptT String IO)) a 
 
-runTcM :: TcM a -> TcEnv -> IO (Either String ((a, [TopDecl Name]), TcEnv))
-runTcM m env = runExceptT (runStateT (runWriterT m) env)
+runTcM :: TcM a -> TcEnv -> IO (Either String (a, TcEnv))
+runTcM m env = runExceptT (runStateT m env)
 
 freshVar :: TcM Tyvar 
 freshVar 
@@ -62,11 +63,37 @@ typeInfoFor (DataTy n vs cons)
 freshTyVar :: TcM Ty 
 freshTyVar = TyVar <$> freshVar
 
-writeDecl :: TopDecl Name -> TcM ()
-writeDecl d 
+writeFunDef :: FunDef Name -> TcM ()
+writeFunDef fd = do 
+  c <- gets contract 
+  if isNothing c then writeTopDecl (TFunDef fd)
+    else writeContractDecl (CFunDecl fd)
+
+writeDataTy :: DataTy -> TcM ()
+writeDataTy dt 
+  = writeTopDecl (TDataDef dt)  
+
+writeInstance :: Instance Name -> TcM () 
+writeInstance instd 
+  = writeTopDecl (TInstDef instd)
+
+writeTopDecl :: TopDecl Name -> TcM ()
+writeTopDecl d 
   = do 
       b <- gets generateDefs 
-      when b (tell [d])
+      when b $ do 
+        (ts,cs) <- gets generated 
+        modify (\env -> env{ generated = (d : ts, cs)})
+
+writeContractDecl :: ContractDecl Name  -> TcM () 
+writeContractDecl d 
+  = do 
+      mb <- gets contract 
+      case mb of 
+        Just n -> do 
+          (ts, cs) <- gets generated 
+          modify (\env -> env {generated = (ts, Map.insertWith (++) n [d] cs)})
+        Nothing -> throwError "Impossible! Contract decl outside a contract!"
 
 getEnvFreeVars :: TcM [Tyvar]
 getEnvFreeVars 
@@ -87,7 +114,7 @@ matchTy t t'
 
 isDirectCall :: Name -> TcM Bool
 isDirectCall n 
-  = do 
+  = do
       b1 <- (Map.member n) <$> gets uniqueTypes
       pure (b1 || isPrim)
     where 
@@ -147,9 +174,21 @@ clearSubst = modify (\ st -> st {subst = mempty})
 
 -- current contract manipulation 
 
-setCurrentContract :: Name -> Arity -> TcM ()
-setCurrentContract n ar 
+withContractName :: Name -> TcM a -> TcM a 
+withContractName n m 
+  = do 
+      setCurrentContract n 
+      a <- m 
+      clearSubst
+      pure a
+
+setCurrentContract :: Name -> TcM ()
+setCurrentContract n 
   = modify (\ ctx -> ctx{ contract = Just n })
+
+clearCurrentContract :: TcM ()
+clearCurrentContract 
+  = modify (\ ctx -> ctx {contract = Nothing})
 
 askCurrentContract :: TcM Name 
 askCurrentContract 
@@ -291,10 +330,10 @@ reduceContext :: [Pred] -> TcM [Pred]
 reduceContext preds 
   = do
       depth <- askMaxRecursionDepth 
-      -- unless (null preds) $ info ["> reduce context ", pretty preds]
+      unless (null preds) $ info ["> reduce context ", pretty preds]
       ps1 <- toHnfs depth preds
       ps2 <- withCurrentSubst ps1 
-      -- unless (null preds) $ info ["> reduced context ", pretty (nub ps2)]
+      unless (null preds) $ info ["> reduced context ", pretty (nub ps2)]
       pure (nub ps2)
 
 toHnfs :: Int -> [Pred] -> TcM [Pred]

@@ -45,7 +45,7 @@ createInstance (Just (TDataDef dt@(DataTy n vs _))) sig sch
       bd <- createInvokeDef dt sig
       let instd = Instance ctx ni ([argTys', retTy]) mainTy [ bd ]
       addInstance (Name "invokable") (mkInstPred instd)
-      writeDecl (TInstDef instd)
+      writeInstance instd
       pure ()
 
 notUniqueTyArg :: Ty -> TcM Bool 
@@ -76,14 +76,14 @@ createInvokeDef dt sig
       pure (FunDef sig' bd)
 
 
-createInvokeSig :: DataTy -> Signature Name -> TcM (Signature Name, Maybe Name)
+createInvokeSig :: DataTy -> Signature Name -> TcM (Signature Name, Maybe Id)
 createInvokeSig (DataTy n vs cons) sig 
   = do
       argTys' <- createArgs sig
       let retTy = fromJust $ sigReturn sig
       (args, mp) <- mkParamForSig argTys' (TyCon n ([argTys', retTy]))
       let ctx = sigContext sig 
-          ni = QualName (Name "invokable") "invoke"
+          ni = Name "invoke"
           vs = fv argTys' `union` maybe [] fv (sigReturn sig)
       pure (Signature vs ctx ni args (sigReturn sig), mp) 
 
@@ -92,38 +92,43 @@ createArgs sig
   = do 
       argTys <- mapM tyParam (sigParams sig)
       argTys' <- filterM notUniqueTyArg argTys
-      if null argTys' then pure unit else pure $ tupleTyFromList argTys'
+      pure $ tupleTyFromList argTys'
 
-tupleTyFromList :: [Ty] -> Ty 
+tupleTyFromList :: [Ty] -> Ty
+tupleTyFromList [] = unit 
 tupleTyFromList [t] = t 
 tupleTyFromList [t1,t2] = pair t1 t2 
 tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 
-mkParamForSig :: Ty -> Ty -> TcM ([Param Name], Maybe Name)
+mkParamForSig :: Ty -> Ty -> TcM ([Param Name], Maybe Id)
 mkParamForSig argTy selfTy 
   = do 
       let selfArg = Typed (Name "self") selfTy 
       paramName <- freshName 
-      pure ([selfArg, Typed paramName argTy], Just paramName)
+      pure ([selfArg, Typed paramName argTy], Just (Id paramName argTy))
 
 
-createInvokeBody :: DataTy -> Signature Name -> Maybe Name -> TcM (Body Name)
+createInvokeBody :: DataTy -> Signature Name -> Maybe Id -> TcM (Body Name)
 createInvokeBody _ sig Nothing
   = do
+      cn <- gets contract  
       let 
-          cid = sigName sig
+          cid = if isNothing cn then sigName sig
+                else QualName (fromJust cn) (pretty $ sigName sig)
           cexp = Call Nothing cid []
       pure [Return cexp]
 createInvokeBody dt sig (Just pid)
   = createInvokeMatch sig pid 
 
-createInvokeMatch :: Signature Id -> Id -> TcM (Body Name)
+createInvokeMatch :: Signature Name -> Id -> TcM (Body Name)
 createInvokeMatch sig (Id pid ty)
   = do
+      cn <- gets contract 
       argTys <- mapM tyParam (sigParams sig)
       let patTys = tyConArgs ty 
           retTy = fromJust $ sigReturn sig 
-          cid = sigName sig
+          cid = if isNothing cn then sigName sig
+                else QualName (fromJust cn) (pretty $ sigName sig)
       (pats, ns) <- unzip <$> mapM (const mkPat) patTys
       let 
         ret = if null argTys then Return $ Call Nothing cid [] 
@@ -181,12 +186,15 @@ createTypeFunDef (FunDef sig bdy)
           pure (FunDef sig bdy)
         Just _ -> pure (FunDef sig bdy)
 
-freshSignature :: Signature Id -> TcM (Signature Id)
+freshSignature :: Signature Name -> TcM (Signature Name)
 freshSignature sig 
   = do 
       let ctx = sigContext sig 
           args = sigParams sig 
-          ret = sigReturn sig 
+          ret = sigReturn sig
+          fvArg (Typed _ ty) = fv ty 
+          fvArg _ = []
+          fv' = foldr (union . fvArg) []
           vs = vars $ fv ctx `union` fv' args `union` fv ret
       args' <- mapM freshParam args 
       ret' <- freshReturn ret 
@@ -195,7 +203,7 @@ freshSignature sig
            , sigReturn = ret'
            } 
 
-freshParam :: Param Id -> TcM (Param Id)
+freshParam :: Param Name -> TcM (Param Name)
 freshParam p@(Typed _ _) = pure p 
 freshParam (Untyped n) 
   = do 
@@ -218,7 +226,7 @@ fv' = foldr step []
     step (Typed _ ty) ac = fv ty `union` ac 
     step (Untyped _) ac = ac 
 
-schemeFromSig :: Signature Id -> Scheme 
+schemeFromSig :: Signature Name -> Scheme 
 schemeFromSig sig 
   = let 
       ctx = sigContext sig 
@@ -228,14 +236,14 @@ schemeFromSig sig
       vs = fv (ctx :=> ty)
     in Forall vs (ctx :=> ty)
 
-tyFromParam :: Param Id -> Ty 
+tyFromParam :: Param Name -> Ty 
 tyFromParam (Typed _ ty) = ty 
 
 createUniqueType' :: Name -> Scheme -> TcM ()
 createUniqueType' n (Forall vs _)
      = do
         dt <- uniqueType n vs 
-        writeDecl (TDataDef dt)
+        writeDataTy dt
         checkDataType dt 
 
 uniqueType :: Name -> [Tyvar] -> TcM DataTy 

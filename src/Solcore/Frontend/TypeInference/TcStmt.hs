@@ -42,8 +42,7 @@ tcStmt e@(Let n mt me)
                       (Just t, Just e1) -> do
                         (e', ps1, t1) <- tcExp e1
                         kindCheck t1 `wrapError` e
-                        t' <- translateType t t1 
-                        s <- match t1 t' `wrapError` e
+                        s <- match t1 t `wrapError` e
                         extSubst s
                         pure (Just e', apply s ps1, apply s t1)
                       (Just t, Nothing) -> do 
@@ -172,8 +171,13 @@ tcExp (Var n)
         pure (Var (Id n t), ps, t)
       else do 
         r <- lookupFunAbs n
-        let 
-          mkCon (DataTy nt vs [(Constr n _)]) = (Con (Id n t) [], TyCon nt (TyVar <$> vs))
+        let
+          (args,ret) = splitTy t 
+          args' = tupleTyFromList args  
+          mkCon (DataTy nt vs [(Constr n _)]) 
+            = let 
+                t1 = TyCon nt [args', ret]
+              in (Con (Id n t1) [], t1)
           p = maybe (Var (Id n t), t) mkCon r
         pure (fst p, ps, snd p)
 tcExp e@(Con n es)
@@ -207,7 +211,8 @@ tcExp (FieldAccess (Just e) n)
 tcExp ex@(Call me n args)
   = do 
       gen <- gets generateDefs 
-      if gen then tcCall me n args `wrapError` ex
+      if gen then do 
+        tcCall me n args `wrapError` ex
       else do 
         let qn = QualName (Name "invokable") "invoke"
         isDirect <- isDirectCall n 
@@ -222,13 +227,12 @@ tcExp e@(Lam args bd _)
           ts1 = apply s ts' 
           t1 = apply s t'
           vs = fv ps1 `union` fv t' `union` fv ts1
-      gen <- gets generateDefs 
-      if gen then 
+      gen <- gets generateDefs
+      (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs (ts1,t1) bd'
+      if gen then do 
+        writeFunDef lfun
         pure (Lam args' bd' (Just (funtype ts1 t1)), ps1, funtype ts1 t1)
       else do 
-        (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs (ts1,t1) bd'
-        writeDecl (TFunDef lfun)
-        -- generateDecls (lfun, (schemeFromSig (funSignature lfun)))
         pure (e', ps1, ty1)
 tcExp e1@(TyExp e ty)
   = do 
@@ -325,7 +329,7 @@ createUniqueType ids n (argTys, retTy)
             dt = DataTy nt [argVar, retVar] [dc]
             argTy' = if null argTys then unit else tupleTyFromList argTys
             tc = TyCon nt [argTy', retTy]
-        writeDecl (TDataDef dt)
+        writeDataTy dt
         addUniqueType n dt 
         pure (Var (Id n tc), Con (Id nt tc) (map Var ids), dc, tc)
 
@@ -394,7 +398,7 @@ tcCall Nothing n args
       (ps :=> t) <- freshInst s
       t' <- freshTyVar
       (es', pss', ts') <- unzip3 <$> mapM tcExp args
-      s' <- unify (foldr (:->) t' ts') t
+      s' <- unify (foldr (:->) t' ts') t 
       let ps' = apply s' $ foldr union [] (ps : pss')
           t1 = apply s' $ foldr (:->) t' ts'
       withCurrentSubst (Call Nothing (Id n t1) es', ps', apply s' t')
@@ -660,6 +664,7 @@ instance Erase (Exp Id) where
     = Lam (erase ps) (erase bd) mt 
   erase (TyExp e t)
     = TyExp (erase e) t 
+  erase (Lit l) = Lit l
 
 instance Erase (Param Id) where 
   type EraseRes (Param Id) = Param Name 

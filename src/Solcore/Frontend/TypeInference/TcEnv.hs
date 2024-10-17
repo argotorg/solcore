@@ -65,6 +65,7 @@ data TcEnv
     , nameSupply :: NameSupply -- Fresh name supply
     , uniqueTypes :: Map Name DataTy -- unique type map 
     , generateDefs :: Bool     -- should generate new defs?
+    , generated :: ([TopDecl Name], Map Name [ContractDecl Name])
     , counter :: Int           -- used to generate new names 
     , logs :: [String]         -- Logging
     , warnings :: [String]     -- warnings collected to user 
@@ -86,7 +87,8 @@ initTcEnv genDefs
           mempty
           namePool
           primDataType
-          genDefs 
+          genDefs
+          ([], Map.empty)
           0
           []
           []

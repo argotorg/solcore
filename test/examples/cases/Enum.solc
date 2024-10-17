@@ -1,8 +1,8 @@
 class a: Enum {
-  function fromEnum(a) -> Word;
+  function fromEnum(a) -> word;
 }
 
-data Food = Curry | Beans | Other
+data Food = Curry | Beans | Other;
 
 instance Food : Enum {
   function fromEnum(x : Food) {
@@ -16,6 +16,6 @@ instance Food : Enum {
 
 contract Food {
   function main() {
-    return fromEnum(Beans);
+    return Enum.fromEnum(Beans);
   }
 }

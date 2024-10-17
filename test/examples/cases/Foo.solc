@@ -1,3 +1,9 @@
-function foo(p: Word) -> Word {
-    return p;
-}
+  function one() {
+    return primAddWord(1, zero()) ; 
+  }
+
+  function zero () {
+    return 0; 
+  }
+
+
