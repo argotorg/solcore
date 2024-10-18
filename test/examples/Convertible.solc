@@ -1,0 +1,118 @@
+data Pair(a,b) = Pair(a,b);
+data Proxy(a) = Proxy;
+data Unit = Unit;
+
+class a:Typedef(r) {
+    function abs(x:r) -> a;
+    function rep(x:a) -> r;
+}
+
+
+data uint16 = uint16(word);
+
+instance uint16:Typedef(word) {
+  function abs(r:word) { return uint16(r);}
+  function rep(x: uint16) -> word {
+        match x {
+        | uint16(val) => return val;
+        };
+    }
+}
+
+data uint8 = uint8(word);
+
+instance uint8:Typedef(word) {
+  function abs(r:word) { return uint8(r);}
+  function rep(x: uint8) -> word {
+        match x {
+        | uint8(val) => return val;
+        };
+    }
+}
+
+data uint256 = uint256(word);
+
+instance uint256:Typedef(word) {
+  function abs(r:word) { return uint256(r);}
+  function rep(x: uint256) -> word {
+        match x {
+        | uint256(val) => return val;
+        };
+    }
+}
+
+
+function foo(x:word) -> uint16 {
+  let result : uint16 = Typedef.abs(x);
+  return result;
+}  
+
+
+class self:Convertible(r)
+{
+    function convert(x:self) -> r;
+}
+
+instance Pair(uint8,Proxy(uint16)):Convertible(uint16) {
+    function convert(p:Pair(uint8,Proxy(uint16))) -> uint16 {
+       match p {
+         | Pair(x, _) => return Typedef.abs(Typedef.rep(x));
+       };
+    }
+}
+
+
+
+function uint8to16(x : uint8) -> uint16 {
+  let proxy : Proxy(uint16) = Proxy;
+  let result : uint16 = Convertible.convert(Pair(x,proxy));
+  return result;
+}
+
+/*
+forall Pair(a,Proxy(b)):Convertible(b). function  convert(x:a) -> b {
+    let proxy : Proxy(b) = Proxy;
+    let result : b = Convertible.convert(Pair(x,proxy));
+    return result;
+}
+*/
+
+forall a, b. function  convert(x:a) -> b {
+    let proxy : Proxy(b) = Proxy;
+    let result : b = Convertible.convert(Pair(x,proxy));
+    return result;
+}
+
+function bar(x:Unit) -> word {
+  let result: word = convert(x);
+  return result;
+}
+
+
+instance Pair(uint8,Proxy(uint256)):Convertible(uint256) {
+    function convert(p:Pair(uint8,Proxy(uint256))) -> uint256 {
+       match p {
+         | Pair(x, _) => return Typedef.abs(Typedef.rep(x));
+       };
+    }
+}
+
+instance Pair(uint16,Proxy(uint256)):Convertible(uint256) {
+    function convert(p:Pair(uint16,Proxy(uint256))) -> uint256 {
+       match p {
+         | Pair(x, _) => return Typedef.abs(Typedef.rep(x));
+       };
+    }
+}
+
+
+
+contract Bar {
+
+function main() -> word {
+  let x = Unit;
+  let y : word = convert(x);
+  return y;
+}
+
+}
