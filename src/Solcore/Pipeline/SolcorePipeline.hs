@@ -12,7 +12,7 @@ import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.ElabTree
 import Solcore.Frontend.Syntax.Contract 
-import Solcore.Frontend.Syntax.Name
+import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
@@ -40,41 +40,45 @@ pipeline = do
         putStrLn $ pretty ast'
       r5 <- typeInfer1 ast'
       withErr r5 $ \ (c', env) -> do
-          let warns = warnings env
-              logsInfo = logs env
-              (ts, cmap) = generated env 
-          r6 <- sccAnalysis (addGenerated ast' ts cmap) 
-          withErr r6 $ \ ast2 -> do 
-            when verbose $ do 
-              putStrLn "> Desugared code - step 1"
-              putStrLn $ pretty ast2
-            r7 <- typeInfer2 env ast2 
-            withErr r7 $ \ (c1, env1) -> do 
-              let warns1 = warnings env1 
-              let logsInfo = logs env1 
-              when (not $ null warns) $ do 
-                putStrLn "> Type inference warnings:"
-                mapM_ putStrLn (reverse $ warns) 
-              when (verbose && (not $ null logsInfo)) $ do  
-                putStrLn "> Type inference logs:"
-                mapM_ putStrLn (reverse $ logsInfo)
-              when verbose $ do
-                putStrLn "> Annotated AST:"
-                putStrLn $ pretty c1
-              r8 <- matchCompiler c1
-              withErr r8 $ \ res -> do
-                when (verbose || optDumpDS opts) do
-                  putStrLn "Match compilation result:"
+        let warns = warnings env
+            logsInfo = logs env
+            tyctx = ctx env 
+            (ts, cmap) = generated env 
+        when (verbose && (not $ null logsInfo)) $ do  
+          putStrLn "> Type inference logs:"
+          mapM_ putStrLn (reverse $ logsInfo)
+        r6 <- sccAnalysis (addGenerated ast' ts cmap) 
+        withErr r6 $ \ ast2 -> do 
+          when verbose $ do 
+            putStrLn "> Desugared code - step 1"
+            putStrLn $ pretty ast2
+          r7 <- typeInfer2 env ast2 
+          withErr r7 $ \ (c1, env1) -> do 
+            let warns1 = warnings env1 
+            let logsInfo = logs env1 
+            when (not $ null warns) $ do 
+              putStrLn "> Type inference warnings:"
+              mapM_ putStrLn (reverse $ warns) 
+            when (verbose && (not $ null logsInfo)) $ do  
+              putStrLn "> Type inference logs:"
+              mapM_ putStrLn (reverse $ logsInfo)
+            when verbose $ do
+              putStrLn "> Annotated AST:"
+              putStrLn $ pretty c1
+            r8 <- matchCompiler c1
+            withErr r8 $ \ res -> do
+              when (verbose || optDumpDS opts) do
+                putStrLn "Match compilation result:"
+                putStrLn (pretty res)
+              unless (optNoSpec opts) do
+                r9 <- specialiseCompUnit res (optDebugSpec opts) env
+                when (optDumpSpec opts) do
+                  putStrLn "Specialised contract:"
                   putStrLn (pretty res)
-                unless (optNoSpec opts) do
-                  r9 <- specialiseCompUnit res (optDebugSpec opts) env
-                  when (optDumpSpec opts) do
-                    putStrLn "Specialised contract:"
-                    putStrLn (pretty res)
-                  r10 <- emitCore (optDebugCore opts) env res
-                  when (optDumpCore opts) do
-                    putStrLn "Core contract(s):"
-                    forM_ r10 (putStrLn . pretty)
+                r10 <- emitCore (optDebugCore opts) env res
+                when (optDumpCore opts) do
+                  putStrLn "Core contract(s):"
+                  forM_ r10 (putStrLn . pretty)
 
 runParser :: String -> IO (Either String (CompUnit Name))
 runParser content = do 
@@ -84,8 +88,13 @@ runParser content = do
     Right t -> do 
       buildAST t
 
--- adicionar anotações dos tipos inferidos 
--- para funções. 
+withErr :: Either String a -> (a -> IO ()) -> IO ()
+withErr r f 
+  = either err f r
+    where 
+      err s = do 
+                putStrLn s 
+                exitWith (ExitFailure 1)
 
 addGenerated :: CompUnit Name -> 
                 [TopDecl Name] -> 
@@ -98,14 +107,6 @@ addGenerated (CompUnit imps ds) ts m
       step (TContr (Contract n vs cs)) ac 
         = (TContr (Contract n vs (cs ++ Map.findWithDefault [] n m))) : ac 
       step d ac = d : ac 
-
-withErr :: Either String a -> (a -> IO ()) -> IO ()
-withErr r f 
-  = either err f r
-    where 
-      err s = do 
-                putStrLn s 
-                exitWith (ExitFailure 1)
 
 -- parsing command line arguments
 

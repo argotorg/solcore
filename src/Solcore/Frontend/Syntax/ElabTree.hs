@@ -50,8 +50,10 @@ instance Monoid Env where
 
 type ElabM a = (ExceptT String (StateT Env IO)) a 
 
-runElabM :: Elab a => a -> IO (Either String (Res a))
-runElabM t = fst <$> (runStateT (runExceptT (elab t)) $! (initialEnv t))
+runElabM :: (Show a, Elab a) => a -> IO (Either String (Res a))
+runElabM t = do 
+  let ienv = initialEnv t 
+  fst <$> (runStateT (runExceptT (elab t)) ienv)
 
 isDefinedType :: Name -> ElabM Bool 
 isDefinedType n 
@@ -393,10 +395,12 @@ instance Elab S.Exp where
   elab (S.ExpVar me n) 
     = do 
         me' <- elab me 
-        isF <- isField n 
+        isF <- isField n
+        isCon <- isDefinedConstr n 
         if isF then 
           pure $ FieldAccess me' n 
-        else pure $ Var n 
+        else if isCon && isNothing me then pure (Con n [])
+             else pure $ Var n 
   elab (S.ExpName me n es) 
     = do 
         me' <- elab me 

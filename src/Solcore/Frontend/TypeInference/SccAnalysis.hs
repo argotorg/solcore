@@ -189,7 +189,7 @@ instance FreeVars a => FreeVars [a] where
   fv = foldr (union . fv) []
 
 instance FreeVars (Exp Name) where
-  fv (Con _ es) = fv es
+  fv c@(Con _ es) = fv es
   fv (FieldAccess Nothing _) = []
   fv (FieldAccess (Just e) _) = fv e 
   fv (Call _ n es) 

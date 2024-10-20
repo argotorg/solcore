@@ -368,27 +368,41 @@ tcFunDef d@(FunDef sig bd)
       -- checking if the function isn't defined
       (params', schs, ts) <- tcArgs (sigParams sig)
       (bd', ps1, t') <- withLocalCtx schs (tcBody bd) `wrapError` d
-      s1 <- getSubst
       sch <- askEnv (sigName sig) `wrapError` d
       (ps :=> t) <- freshInst sch
-      let t1 = apply s1 $ foldr (:->) t' ts
+      t1 <- withCurrentSubst (foldr (:->) t' ts)
       s <- match t t1 `wrapError` d
       extSubst s
+      s1 <- getSubst
       rTy <- withCurrentSubst t'
+      gen <- gets generateDefs
+      ps2 <- reduceContext (ps ++ ps1) `wrapError` d
+      sch' <- generalize (ps2, t1) `wrapError` d
       let sig' = apply s1 $ Signature (sigVars sig)
                            (sigContext sig)
                            (sigName sig)
                            params'
                            (Just rTy)
-          sig1 = sig {sigReturn = Just rTy}
-      gen <- gets generateDefs
-      ps2 <- reduceContext (ps ++ ps1) `wrapError` d
-      sch' <- generalize (ps2, t1) `wrapError` d
+          sig1 = annotateSignature sch' sig
       when gen (generateDecls (FunDef sig1 bd, sch'))
       info ["> Infered type for ", pretty (sigName sig), " is ", pretty sch']
       pure (apply s1 $ FunDef sig' bd', apply s1 ps2, apply s1 t1)
 
--- try to quantify name for contract functions
+-- update types in signature 
+
+annotateSignature :: Scheme -> Signature Name -> Signature Name 
+annotateSignature (Forall vs (ps :=> t)) sig 
+  = Signature vs ps (sigName sig) params' ret 
+    where 
+      (ts,t') = splitTy t 
+      params' = zipWith annotateParam ts (sigParams sig)
+      ret = Just t' 
+
+annotateParam :: Ty -> Param Name -> Param Name 
+annotateParam t (Typed n _) = Typed n t 
+annotateParam t (Untyped n) = Typed n t 
+
+-- qualify name for contract functions
 
 correctName :: Name -> TcM Name
 correctName n@(QualName _ _) = pure n
@@ -412,8 +426,6 @@ extSignature sig@(Signature _ preds n ps t)
         vs = fv (preds :=> ty)
       sch <- generalize (preds, ty)
       extEnv n sch
-
-
 
 -- Instances for elaboration
 
