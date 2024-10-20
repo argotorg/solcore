@@ -32,9 +32,8 @@ mkScc (CompUnit imps cs) = CompUnit imps <$> depDecls cs
 depDecls :: [TopDecl Name] -> SCC [TopDecl Name]
 depDecls ds 
   = do 
-      (ds1,ds2) <- depAnalysis ds' 
-      cs' <- mapM depContract cs --- XXX Check this later. 
-      pure (cs' ++ ds2 ++ ds1)
+      cs' <- mapM depContract cs
+      (uncurry (++)) <$> depAnalysis (cs' ++ ds')
     where 
       (cs, ds') = partition isContract ds 
       isContract (TContr _) = True 
@@ -96,7 +95,7 @@ mkEdges tables pos
     findPos k 
       = case Map.lookup k pos of 
           Just n -> pure n 
-          _ -> pure minBound -- throwError $ "Undefined name:" ++ show k 
+          _ -> pure minBound
 
 mkCallTable :: HasDeps a => [a] -> SCC (Map Name [Name])
 mkCallTable ds 
@@ -169,9 +168,11 @@ instance HasDeps (TopDecl Name) where
   nameOf (TFunDef fd) = [sigName $ funSignature fd]
   nameOf (TMutualDef ds) = concatMap nameOf ds
   nameOf (TContr c) = [name c]
+  nameOf (TInstDef insd) = [instName insd]
   mkMutual = TMutualDef 
   isDecl (TFunDef _) = True
   isDecl (TContr _) = True
+  isDecl (TInstDef _) = True
   isDecl _ = False 
 
 instance HasDeps (ContractDecl Name) where 
@@ -255,8 +256,12 @@ instance FreeVars (ContractDecl Name) where
 instance FreeVars (TopDecl Name) where 
   fv (TFunDef fd) = fv fd 
   fv (TMutualDef ds) = fv ds
-  fv (TInstDef idecl) = fv idecl 
+  fv (TInstDef idecl) = fv idecl
+  fv (TContr c) = fv c 
   fv _ = []
+
+instance FreeVars (Contract Name) where 
+  fv (Contract _ _ ds) = fv ds 
 
 instance FreeVars (Instance Name) where 
   fv (Instance _ _ _ _ fds) = fv fds 

@@ -112,7 +112,8 @@ createInvokeBody dt sig Nothing
       cn <- gets contract  
       let 
           cid = if isNothing cn then sigName sig
-                else QualName (fromJust cn) (pretty $ sigName sig)
+                else QualName (fromJust cn) 
+                              (pretty $ sigName sig)
           cexp = Call Nothing cid []
       pure [Return cexp]
 createInvokeBody dt sig (Just pid)
@@ -126,7 +127,8 @@ createInvokeMatch (DataTy _ _ [Constr _ targs]) sig (Id pid ty)
       let patTys = tyConArgs ty 
           retTy = fromJust $ sigReturn sig 
           cname = if isNothing cn then sigName sig
-                  else QualName (fromJust cn) (pretty $ sigName sig)
+                  else QualName (fromJust cn) 
+                                (pretty $ sigName sig)
       (pats, ns) <- unzip <$> mapM (const mkPat) patTys
       let 
         ret = if null argTys then Return $ Call Nothing cname [] 

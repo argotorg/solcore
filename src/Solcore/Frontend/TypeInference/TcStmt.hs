@@ -373,19 +373,19 @@ tcFunDef d@(FunDef sig bd)
       t1 <- withCurrentSubst (foldr (:->) t' ts)
       s <- match t t1 `wrapError` d
       extSubst s
-      s1 <- getSubst
-      rTy <- withCurrentSubst t'
       gen <- gets generateDefs
       ps2 <- reduceContext (ps ++ ps1) `wrapError` d
       sch' <- generalize (ps2, t1) `wrapError` d
-      let sig' = apply s1 $ Signature (sigVars sig)
-                           (sigContext sig)
-                           (sigName sig)
-                           params'
-                           (Just rTy)
-          sig1 = annotateSignature sch' sig
+      rTy <- withCurrentSubst t'
+      s1 <- getSubst
+      sig' <- withCurrentSubst $ Signature (sigVars sig)
+                                           (sigContext sig)
+                                           (sigName sig)
+                                           params'
+                                           (Just rTy)
+      let sig1 = annotateSignature sch' sig
       when gen (generateDecls (FunDef sig1 bd, sch'))
-      info ["> Infered type for ", pretty (sigName sig), " is ", pretty sch']
+      info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
       pure (apply s1 $ FunDef sig' bd', apply s1 ps2, apply s1 t1)
 
 -- update types in signature 
