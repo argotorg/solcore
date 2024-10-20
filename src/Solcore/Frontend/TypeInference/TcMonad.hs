@@ -113,7 +113,7 @@ matchTy t t'
       extSubst s 
 
 isDirectCall :: Name -> TcM Bool
-isDirectCall (QualName _ _) = pure True --- XXX need to be fixed later.
+isDirectCall (QualName n _) = pure True --- XXX need to be fixed later.
 isDirectCall n 
   = do
       b1 <- (Map.member n) <$> gets uniqueTypes

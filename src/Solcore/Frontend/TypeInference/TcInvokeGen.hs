@@ -74,7 +74,6 @@ createInvokeDef dt sig
       bd <- createInvokeBody dt sig mi  
       pure (FunDef sig' bd)
 
-
 createInvokeSig :: DataTy -> Signature Name -> TcM (Signature Name, Maybe Id)
 createInvokeSig (DataTy n vs cons) sig 
   = do
@@ -108,7 +107,7 @@ mkParamForSig argTy selfTy
 
 
 createInvokeBody :: DataTy -> Signature Name -> Maybe Id -> TcM (Body Name)
-createInvokeBody _ sig Nothing
+createInvokeBody dt sig Nothing
   = do
       cn <- gets contract  
       let 
@@ -117,22 +116,26 @@ createInvokeBody _ sig Nothing
           cexp = Call Nothing cid []
       pure [Return cexp]
 createInvokeBody dt sig (Just pid)
-  = createInvokeMatch sig pid 
+  = createInvokeMatch dt sig pid 
 
-createInvokeMatch :: Signature Name -> Id -> TcM (Body Name)
-createInvokeMatch sig (Id pid ty)
+createInvokeMatch :: DataTy -> Signature Name -> Id -> TcM (Body Name)
+createInvokeMatch (DataTy _ _ [Constr _ targs]) sig (Id pid ty)
   = do
       cn <- gets contract 
       argTys <- mapM tyParam (sigParams sig)
       let patTys = tyConArgs ty 
           retTy = fromJust $ sigReturn sig 
-          cid = if isNothing cn then sigName sig
-                else QualName (fromJust cn) (pretty $ sigName sig)
+          cname = if isNothing cn then sigName sig
+                  else QualName (fromJust cn) (pretty $ sigName sig)
       (pats, ns) <- unzip <$> mapM (const mkPat) patTys
       let 
-        ret = if null argTys then Return $ Call Nothing cid [] 
-              else if null patTys then Return $ Call Nothing cid [Var pid] 
-                                  else Return $ Call Nothing cid (Var <$> ns)
+        ret = if null argTys then Return $ Call Nothing cname [] 
+              else if null patTys then 
+                if null targs then Return $ Call Nothing cname [Var pid] 
+                else Return $ Call Nothing cname [Var (Name "self"), Var pid]
+              else 
+                if null targs then Return $ Call Nothing cname (Var <$> ns)
+                else Return $ Call Nothing cname (Var <$> ((Name "self") : ns))
         pat = if null patTys then PVar pid else foldr1 ppair pats 
         stmt = if null patTys then [ret] else [Match [Var pid] [([pat], [ret])]]
       pure stmt 

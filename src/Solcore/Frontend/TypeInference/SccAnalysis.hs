@@ -33,8 +33,8 @@ depDecls :: [TopDecl Name] -> SCC [TopDecl Name]
 depDecls ds 
   = do 
       (ds1,ds2) <- depAnalysis ds' 
-      cs' <- mapM depContract cs 
-      pure (ds2 ++ ds1 ++ cs')
+      cs' <- mapM depContract cs --- XXX Check this later. 
+      pure (cs' ++ ds2 ++ ds1)
     where 
       (cs, ds') = partition isContract ds 
       isContract (TContr _) = True 
