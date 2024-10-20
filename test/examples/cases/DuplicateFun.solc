@@ -1,21 +1,21 @@
 
 class self:A {
-  function foo(p : self) -> Word;
+  function foo(p : self) -> word;
 }
 
 class self:B {
-  function foo(p : self) -> Word;
+  function foo(p : self) -> word;
 }
 
-instance Word:B {
-  function foo(x : Word) -> Word {
+instance word:B {
+  function foo(x : word) -> word {
     return x;
   }
 }
 
 // error: Constraint for A not found in type of foo
-instance Word:A {
-  function foo(x : Word) -> Word {
+instance word:A {
+  function foo(x : word) -> word {
     return x;
   }
 }

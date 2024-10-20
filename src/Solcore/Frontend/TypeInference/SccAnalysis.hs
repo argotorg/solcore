@@ -96,8 +96,7 @@ mkEdges tables pos
     findPos k 
       = case Map.lookup k pos of 
           Just n -> pure n 
-          _ -> throwError $ "Undefined name:" ++ show k 
-    err v = throwError ("Undefined name:\n" ++ show v)
+          _ -> pure minBound -- throwError $ "Undefined name:" ++ show k 
 
 mkCallTable :: HasDeps a => [a] -> SCC (Map Name [Name])
 mkCallTable ds 
@@ -198,7 +197,11 @@ instance FreeVars (Exp Name) where
   fv (Var v) 
     | isPrimitive v = [] 
     | otherwise = [v]
-  fv (Lam args bd _) = fv bd 
+  fv (Lam args bd _) = fv bd \\ ns 
+    where 
+      ns = map f args 
+      f (Typed n _) = n 
+      f (Untyped n) = n 
   fv _ = []
 
 isPrimitive :: Name -> Bool 
@@ -235,9 +238,14 @@ instance FreeVars YulExp where
 instance FreeVars (FunDef Name) where 
   fv (FunDef sig ss) = fv ss \\ ps 
     where 
-      ps = map f (sigParams sig)
+      ps = (map f (sigParams sig)) ++ letDefs 
       f (Typed n _) = n 
       f (Untyped n) = n 
+      
+      letDefs = foldr step [] ss 
+      step (Let n _ _) ac = n : ac 
+      step _ ac = ac 
+
 
 instance FreeVars (ContractDecl Name) where 
   fv (CFunDecl fd) = fv fd 
