@@ -40,10 +40,9 @@ createInstance (Just (TDataDef dt@(DataTy n vs _))) sig sch
       argTys' <- createArgs sig 
       let mainTy = TyCon n ([argTys', retTy])
           retTy = fromJust $ (sigReturn sig)
-          ctx = sigContext sig
           ni = Name "invokable"
       bd <- createInvokeDef dt sig
-      let instd = Instance ctx ni ([argTys', retTy]) mainTy [ bd ]
+      let instd = Instance [] ni ([argTys', retTy]) mainTy [ bd ]
       addInstance (Name "invokable") (mkInstPred instd)
       writeInstance instd
       pure ()
@@ -82,10 +81,10 @@ createInvokeSig (DataTy n vs cons) sig
       argTys' <- createArgs sig
       let retTy = fromJust $ sigReturn sig
       (args, mp) <- mkParamForSig argTys' (TyCon n ([argTys', retTy]))
-      let ctx = sigContext sig 
+      let  
           ni = Name "invoke"
           vs = fv argTys' `union` maybe [] fv (sigReturn sig)
-      pure (Signature vs ctx ni args (sigReturn sig), mp) 
+      pure (Signature vs [] ni args (sigReturn sig), mp) 
 
 createArgs :: Signature Name -> TcM Ty 
 createArgs sig 

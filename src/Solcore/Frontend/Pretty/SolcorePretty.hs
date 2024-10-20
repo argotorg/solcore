@@ -324,5 +324,5 @@ instance Pretty Subst where
 
 
 instance Pretty Id  where 
-  ppr (Id n t) = ppr n <> text "<" <> ppr t <> text ">" 
+  ppr (Id n t) = ppr n -- <> text "<" <> ppr t <> text ">" 
 

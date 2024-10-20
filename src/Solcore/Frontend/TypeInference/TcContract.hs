@@ -182,21 +182,6 @@ checkDecl (CMutualDecl ds)
   = mapM_ checkDecl ds
 checkDecl _ = return ()
 
-extSignature :: Signature Name -> TcM ()
-extSignature sig@(Signature _ preds n ps t)
-  = do
-      -- checking if the function is previously defined
-      te <- gets ctx
-      gen <- gets generateDefs
-      when (Map.member n te && gen) (duplicatedFunDef n) `wrapError` sig
-      argTys <- mapM tyParam ps
-      t' <- maybe freshTyVar pure t
-      let 
-        ty = funtype argTys t'
-        vs = fv (preds :=> ty)
-      sch <- generalize (preds, ty) 
-      extEnv n sch
-
 -- type inference for declarations
 
 tcDecl :: ContractDecl Name -> TcM (ContractDecl Id)
@@ -327,35 +312,6 @@ tcBindGroup binds
       mapM_ (uncurry extEnv) (zip names schs)
       pure funs'
 
--- type checking a single bind
-
-tcFunDef :: FunDef Name -> TcM (FunDef Id, [Pred], Ty)
-tcFunDef d@(FunDef sig bd) 
-  = withLocalEnv do
-      -- checking if the function isn't defined
-      (params', schs, ts) <- tcArgs (sigParams sig)
-      (bd', ps1, t') <- withLocalCtx schs (tcBody bd) `wrapError` d
-      s1 <- getSubst
-      sch <- askEnv (sigName sig) `wrapError` d 
-      (ps :=> t) <- freshInst sch
-      let t1 = apply s1 $ foldr (:->) t' ts
-      s <- match t t1 `wrapError` d
-      extSubst s 
-      rTy <- withCurrentSubst t'
-      let sig' = apply s1 $ Signature (sigVars sig) 
-                           (sigContext sig) 
-                           (sigName sig)
-                           params' 
-                           (Just rTy)
-          sig1 = sig {sigReturn = Just rTy}
-      gen <- gets generateDefs
-      sch' <- generalize (ps1, t1) `wrapError` d
-      when gen (generateDecls (FunDef sig1 bd, sch'))
-      let ps2 = ps ++ ps1
-      ps2 <- reduceContext (ps ++ ps1) `wrapError` d
-      info ["> Infered type for ", pretty (sigName sig), " is ", pretty sch']
-      pure (apply s1 $ FunDef sig' bd', apply s1 ps2, apply s1 t1)
-
 scanFun :: FunDef Name -> TcM (FunDef Name)
 scanFun (FunDef sig bd)
   = flip FunDef bd <$> fillSignature sig 
@@ -450,7 +406,7 @@ checkInstance idef@(Instance ctx n ts t funs)
       let ipred = InCls n t ts
       -- checking the coverage condition 
       insts <- askInstEnv n `wrapError` ipred
-      checkOverlap ipred insts `wrapError` idef
+      -- checkOverlap ipred insts `wrapError` idef
       coverage <- askCoverage n
       unless coverage (checkCoverage n ts t `wrapError` idef)
       -- checking Patterson condition
@@ -463,6 +419,7 @@ checkInstance idef@(Instance ctx n ts t funs)
       mapM_ (checkMethod ipred) funs
       let ninst = anfInstance $ ctx :=> InCls n t ts 
       -- add to the environment
+      gen <- gets generateDefs 
       addInstance n ninst 
 
 -- bound variable check 
@@ -544,7 +501,7 @@ signatureError :: Name -> Tyvar -> Signature Name -> Ty -> TcM ()
 signatureError n v sig@(Signature _ ctx f _ _) t
   | null ctx = throwError $ unlines ["Impossible! Class context is empty in function:" 
                                     , pretty f
-                                    , "which is a membre of the class declaration:"
+                                    , "which is a member of the class declaration:"
                                     , pretty n 
                                     ]
   | v `notElem` fv t = throwError $ unlines ["Main class type variable"
@@ -565,24 +522,8 @@ duplicatedClassMethod :: Name -> TcM ()
 duplicatedClassMethod n 
   = throwError $ "Duplicated class method definition:" ++ pretty n 
 
-duplicatedFunDef :: Name -> TcM () 
-duplicatedFunDef n 
-  = throwError $ "Duplicated function definition:" ++ pretty n
-
 invalidPragmaDecl :: [Pragma] -> TcM () 
 invalidPragmaDecl ps 
   = throwError $ unlines $ ["Invalid pragma definitions:"] ++ map pretty ps 
 
--- Instances for elaboration 
 
-instance HasType (FunDef Id) where 
-  apply s (FunDef sig bd)
-    = FunDef (apply s sig) (apply s bd)
-  fv (FunDef sig bd)
-    = fv sig `union` fv bd
-
-instance HasType (Instance Id) where 
-  apply s (Instance ctx n ts t funs) 
-    = Instance (apply s ctx) n (apply s ts) (apply s t) (apply s funs)
-  fv (Instance ctx n ts t funs) 
-    = fv ctx `union` fv (t : ts) `union` fv funs

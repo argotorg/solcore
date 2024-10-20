@@ -17,6 +17,7 @@ import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name 
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty 
+import Solcore.Frontend.Pretty.SolcorePretty
 
 -- strong connect component analysis for building mutual blocks 
 
@@ -95,7 +96,7 @@ mkEdges tables pos
     findPos k 
       = case Map.lookup k pos of 
           Just n -> pure n 
-          _ -> pure minBound 
+          _ -> throwError $ "Undefined name:" ++ show k 
     err v = throwError ("Undefined name:\n" ++ show v)
 
 mkCallTable :: HasDeps a => [a] -> SCC (Map Name [Name])
@@ -114,7 +115,7 @@ mkEmptyTable = foldr step Map.empty
   where 
     step d ac = Map.union ac (Map.fromList (zip (nameOf d) (repeat [])))
 
--- rebuilding the declaration list 
+-- rebuilding the whole module declaration list 
 
 rebuildDecls :: HasDeps a => Map Int Name -> 
                              Map Name a -> 
@@ -123,6 +124,8 @@ rebuildDecls :: HasDeps a => Map Int Name ->
 rebuildDecls posMap declMap 
   = mapM (rebuildDecl posMap declMap)
 
+-- rebuilding a set of mutual declarations out of 
+-- the node maps.
 
 rebuildDecl :: HasDeps a => Map Int Name -> 
                             Map Name a -> 
@@ -134,6 +137,8 @@ rebuildDecl pmap dmap [n]
   = rebuild pmap dmap n 
 rebuildDecl pmap dmap ns 
   = mkMutual <$> mapM (rebuild pmap dmap) ns
+
+-- getting a declaration out of the node map 
 
 rebuild :: HasDeps a => Map Int Name -> 
                         Map Name a -> 
@@ -156,16 +161,18 @@ sortDecls posMap declMap nodes
 
 -- type class for SCC analysis
 
-class FreeVars a => HasDeps a where 
+class (Pretty a, FreeVars a) => HasDeps a where 
   nameOf :: a -> [Name]
   mkMutual :: [a] -> a
   isDecl :: a -> Bool 
 
 instance HasDeps (TopDecl Name) where 
   nameOf (TFunDef fd) = [sigName $ funSignature fd]
-  nameOf (TMutualDef ds) = concatMap nameOf ds 
+  nameOf (TMutualDef ds) = concatMap nameOf ds
+  nameOf (TContr c) = [name c]
   mkMutual = TMutualDef 
-  isDecl (TFunDef _) = True 
+  isDecl (TFunDef _) = True
+  isDecl (TContr _) = True
   isDecl _ = False 
 
 instance HasDeps (ContractDecl Name) where 
@@ -185,9 +192,17 @@ instance FreeVars (Exp Name) where
   fv (Con _ es) = fv es
   fv (FieldAccess Nothing _) = []
   fv (FieldAccess (Just e) _) = fv e 
-  fv (Call _ n es) = n : fv es
-  fv (Var v) = [v]
+  fv (Call _ n es) 
+    | isPrimitive n = []
+    | otherwise = n : fv es
+  fv (Var v) 
+    | isPrimitive v = [] 
+    | otherwise = [v]
+  fv (Lam args bd _) = fv bd 
   fv _ = []
+
+isPrimitive :: Name -> Bool 
+isPrimitive n = n `elem` [Name "primAddWord", Name "primEqWord"]
 
 instance FreeVars (Stmt Name) where 
   fv (_ := e) = fv e 

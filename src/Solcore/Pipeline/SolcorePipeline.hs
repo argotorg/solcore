@@ -43,16 +43,6 @@ pipeline = do
           let warns = warnings env
               logsInfo = logs env
               (ts, cmap) = generated env 
-          when (not $ null warns) $ do 
-            putStrLn "> Type inference warnings:"
-            mapM_ putStrLn (reverse $ warns) 
-          when (verbose && (not $ null logsInfo)) $ do  
-            putStrLn "> Type inference logs:"
-            mapM_ putStrLn (reverse $ logsInfo)
-          when verbose $ do
-            putStrLn "> Annotated AST:"
-            putStrLn $ pretty c'
-          let ast1 = CompUnit imps ds
           r6 <- sccAnalysis (addGenerated ast' ts cmap) 
           withErr r6 $ \ ast2 -> do 
             when verbose $ do 
