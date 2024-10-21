@@ -42,16 +42,21 @@ depDecls ds
 depContract :: TopDecl Name -> SCC (TopDecl Name)
 depContract (TContr (Contract n vs ds))
   = do 
-      (os, ds') <- depAnalysis ds 
-      pure (TContr $ Contract n vs (os ++ ds'))
+      let
+        isFun (CFunDecl _) = True 
+        isFun _ = False 
+        (ds1, ds2) = partition isFun ds 
+      (os, ds') <- depAnalysis ds1  
+      pure (TContr $ Contract n vs (ds2 ++ os ++ ds'))
 depContract d = pure d
+
 
 -- generic dependency analysis algorithm
 
 depAnalysis :: HasDeps a => [a] -> SCC ([a], [a])
 depAnalysis ds 
   = do
-      (cgraph, posMap, declMap) <- mkCallGraph decls
+      (cgraph, posMap, declMap) <- mkCallGraph ds
       newDecls <- rebuildDecls posMap declMap (scc cgraph)
       (cgraph', posMap', declMap') <- mkCallGraph newDecls
       newDecls' <- sortDecls posMap' declMap' (topsort cgraph')
@@ -168,16 +173,16 @@ instance HasDeps (TopDecl Name) where
   nameOf (TFunDef fd) = [sigName $ funSignature fd]
   nameOf (TMutualDef ds) = concatMap nameOf ds
   nameOf (TContr c) = [name c]
-  nameOf (TInstDef insd) = [instName insd]
+  nameOf _ = []
   mkMutual = TMutualDef 
   isDecl (TFunDef _) = True
   isDecl (TContr _) = True
-  isDecl (TInstDef _) = True
   isDecl _ = False 
 
 instance HasDeps (ContractDecl Name) where 
   nameOf (CFunDecl fd) = [sigName $ funSignature fd]
-  nameOf (CMutualDecl ds) = concatMap nameOf ds --- FIXME 
+  nameOf (CMutualDecl ds) = concatMap nameOf ds
+  nameOf _ = []
   mkMutual = CMutualDecl 
   isDecl (CFunDecl _) = True 
   isDecl _ = False 
@@ -187,6 +192,9 @@ class FreeVars a where
 
 instance FreeVars a => FreeVars [a] where 
   fv = foldr (union . fv) []
+
+instance FreeVars (Class Name) where 
+  fv _ = []
 
 instance FreeVars (Exp Name) where
   fv c@(Con _ es) = fv es

@@ -47,7 +47,8 @@ pipeline = do
         when (verbose && (not $ null logsInfo)) $ do  
           putStrLn "> Type inference logs:"
           mapM_ putStrLn (reverse $ logsInfo)
-        r6 <- sccAnalysis (addGenerated ast' ts cmap) 
+        let ast0 = moveData (addGenerated ast' ts cmap)
+        r6 <- sccAnalysis ast0
         withErr r6 $ \ ast2 -> do 
           when verbose $ do 
             putStrLn "> Desugared code - step 1"
@@ -95,6 +96,28 @@ withErr r f
       err s = do 
                 putStrLn s 
                 exitWith (ExitFailure 1)
+
+-- add declarations generated in the previous step 
+-- and moving data types inside contracts to the 
+-- global scope. 
+
+moveData :: CompUnit Name -> CompUnit Name 
+moveData (CompUnit imps decls) 
+  = CompUnit imps (foldr step [] decls)
+    where 
+      step (TContr c) ac 
+        = let (dts, c') = extractData c 
+              dts' = map TDataDef dts 
+          in (TContr c') : dts' 
+      step d ac = d : ac 
+
+extractData :: Contract Name -> ([DataTy], Contract Name)
+extractData (Contract n ts ds)
+  = (ds1, Contract n ts ds0) 
+    where 
+      (ds1, ds0) = foldr step ([], []) ds 
+      step (CDataDecl dt) (dts, cs) = (dt : dts, cs)
+      step c (dts, cs) = (dts, c : cs)
 
 addGenerated :: CompUnit Name -> 
                 [TopDecl Name] -> 
