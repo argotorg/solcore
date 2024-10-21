@@ -25,6 +25,7 @@ import Solcore.Primitives.Primitives
 generateDecls :: (FunDef Name, Scheme) -> TcM () 
 generateDecls (fd@(FunDef sig bd), sch) 
   = do
+      liftIO $ putStrLn $ "Scheme:" ++ pretty sch
       createTypeFunDef fd 
       dt <- lookupUniqueType (sigName sig)
       createInstance dt sig sch 
@@ -74,7 +75,7 @@ createInvokeDef dt sig
       bd <- createInvokeBody dt sig mi  
       pure (FunDef sig' bd)
 
-createInvokeSig :: DataTy -> Signature Name -> TcM (Signature Name, Maybe Id)
+createInvokeSig :: DataTy -> Signature Name -> TcM (Signature Name, Id)
 createInvokeSig (DataTy n vs cons) sig 
   = do
       argTys' <- createArgs sig
@@ -98,31 +99,48 @@ tupleTyFromList [t] = t
 tupleTyFromList [t1,t2] = pair t1 t2 
 tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 
-mkParamForSig :: Ty -> Ty -> TcM ([Param Name], Maybe Id)
+mkParamForSig :: Ty -> Ty -> TcM ([Param Name], Id)
 mkParamForSig argTy selfTy 
   = do 
       let selfArg = Typed (Name "self") selfTy 
       paramName <- freshName 
-      pure ([selfArg, Typed paramName argTy], Just (Id paramName argTy))
+      pure ([selfArg, Typed paramName argTy], Id paramName argTy)
 
+-- creating invoke body 
 
-createInvokeBody :: DataTy -> Signature Name -> Maybe Id -> TcM (Body Name)
-createInvokeBody dt sig Nothing
-  = do
-      cn <- gets contract  
-      let 
-          cid = if isNothing cn then sigName sig
-                else QualName (fromJust cn) 
-                              (pretty $ sigName sig)
-          cexp = Call Nothing cid []
-      pure [Return cexp]
-createInvokeBody dt sig (Just pid)
-  = createInvokeMatch dt sig pid 
-
-createInvokeMatch :: DataTy -> Signature Name -> Id -> TcM (Body Name)
-createInvokeMatch (DataTy _ _ [Constr _ targs]) sig (Id pid ty)
-  = do
+mkInvokeCall :: Name -> TcM Name 
+mkInvokeCall n 
+  = do 
       cn <- gets contract 
+      if isNothing cn || isQual n then pure n 
+      else pure $ QualName (fromJust cn) (pretty n) 
+
+createInvokeBody :: DataTy -> Signature Name -> Id -> TcM (Body Name)
+createInvokeBody (DataTy _ _ [Constr _ targs]) sig (Id pid ty)
+  = do
+      let patTys = tyConArgs ty
+      liftIO $ putStrLn $ "Sig:" ++ pretty sig 
+      liftIO $ putStrLn $ "Ty:" ++ pretty ty
+      cname <- mkInvokeCall (sigName sig)
+      argTys <- mapM tyParam (sigParams sig)
+      liftIO $ putStrLn $ "ArgTys:" ++ unwords (map pretty argTys)
+      liftIO $ putStrLn $ "targs:" ++ unwords (map pretty targs)
+      (pats, ns) <- unzip <$> mapM mkPat patTys
+      -- checking if we need to match the closure
+      if [ty] == argTys then 
+        pure [Return $ Call Nothing cname [Var pid]]
+      else if null targs then do 
+        let args = if null argTys then [] else [Var pid]
+        if null patTys then pure [Return $ Call Nothing cname args]
+        else pure [Match [Var pid] [([foldr1 ppair pats], [Return $ Call Nothing cname (concat ns)])]]
+      else do 
+        if null patTys then pure [Return $ Call Nothing cname [Var pid]]
+        else pure [Match [Var pid] [([foldr1 ppair pats], [Return $ Call Nothing cname (concat ns)])]]
+
+{--
+  = do
+      cn <- gets contract
+      liftIO $ putStrLn $ "Sig:" ++ pretty sig 
       argTys <- mapM tyParam (sigParams sig)
       let patTys = tyConArgs ty 
           retTy = fromJust $ sigReturn sig 
@@ -141,6 +159,7 @@ createInvokeMatch (DataTy _ _ [Constr _ targs]) sig (Id pid ty)
         pat = if null patTys then PVar pid else foldr1 ppair pats 
         stmt = if null patTys then [ret] else [Match [Var pid] [([pat], [ret])]]
       pure stmt 
+--} 
 
 isQual :: Name -> Bool
 isQual (QualName _ _) = True 
@@ -156,11 +175,19 @@ ppair p1 p2
     where 
       pairCon = Name "pair" 
       
+epair :: Exp Name -> Exp Name -> Exp Name 
+epair e1 e2 = Con (Name "pair") [e1, e2]
 
-mkPat :: TcM (Pat Name, Name)
-mkPat = do 
+mkPat :: Ty -> TcM (Pat Name, [Exp Name])
+mkPat (TyCon (Name "pair") [t1, t2])
+  = do 
+      n1 <- freshName 
+      p <- freshName
+      (p1,e1) <- mkPat t2 
+      pure (ppair (PVar n1) p1, (Var n1) : e1)
+mkPat t = do 
   n <- freshName 
-  pure (PVar n, n)
+  pure (PVar n, [Var n])
 
 
 mkArgTypes :: [Ty] -> Ty -> [Ty] 
