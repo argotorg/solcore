@@ -108,7 +108,7 @@ moveData (CompUnit imps decls)
       step (TContr c) ac 
         = let (dts, c') = extractData c 
               dts' = map TDataDef dts 
-          in (TContr c') : dts' 
+          in (TContr c') : dts' ++ ac  
       step d ac = d : ac 
 
 extractData :: Contract Name -> ([DataTy], Contract Name)

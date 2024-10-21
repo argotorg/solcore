@@ -212,7 +212,8 @@ data Literal
   | StrLit String
   deriving (Eq, Ord, Show, Data, Typeable)
 
-
+pairTy :: Ty -> Ty -> Ty 
+pairTy t1 t2 = TyCon "pair" [t1,t2]
 
 funtype :: [Ty] -> Ty -> Ty 
 funtype ts t = foldr (:->) t ts

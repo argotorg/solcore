@@ -3,6 +3,7 @@ module Solcore.Frontend.TypeInference.SccAnalysis where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Identity 
+import Control.Monad.Reader 
 import Control.Monad.Trans
 
 import Data.Graph.Inductive hiding (mkEdges)
@@ -23,6 +24,7 @@ import Solcore.Frontend.Pretty.SolcorePretty
 
 type SCC a = (ExceptT String IO) a 
 
+
 sccAnalysis :: CompUnit Name -> IO (Either String (CompUnit Name))
 sccAnalysis m = runExceptT (mkScc m)
 
@@ -33,7 +35,7 @@ depDecls :: [TopDecl Name] -> SCC [TopDecl Name]
 depDecls ds 
   = do 
       cs' <- mapM depContract cs
-      (uncurry (++)) <$> depAnalysis (cs' ++ ds')
+      depAnalysis (cs' ++ ds')
     where 
       (cs, ds') = partition isContract ds 
       isContract (TContr _) = True 
@@ -46,24 +48,33 @@ depContract (TContr (Contract n vs ds))
         isFun (CFunDecl _) = True 
         isFun _ = False 
         (ds1, ds2) = partition isFun ds 
-      (os, ds') <- depAnalysis ds1  
-      pure (TContr $ Contract n vs (ds2 ++ os ++ ds'))
+      ds' <- depAnalysis ds1  
+      pure (TContr $ Contract n vs (ds2 ++ ds'))
 depContract d = pure d
 
 
 -- generic dependency analysis algorithm
 
-depAnalysis :: HasDeps a => [a] -> SCC ([a], [a])
+depAnalysis :: HasDeps a => [a] -> SCC [a]
 depAnalysis ds 
   = do
       (cgraph, posMap, declMap) <- mkCallGraph ds
       newDecls <- rebuildDecls posMap declMap (scc cgraph)
       (cgraph', posMap', declMap') <- mkCallGraph newDecls
       newDecls' <- sortDecls posMap' declMap' (topsort cgraph')
-      return (others, newDecls')
-    where 
-      (decls, others) = partition isDecl ds 
+      return newDecls'
 
+-- depAnalysis :: HasDeps a => [a] -> SCC ([a], [a])
+-- depAnalysis ds 
+--   = do
+--       (cgraph, posMap, declMap) <- mkCallGraph ds
+--       newDecls <- rebuildDecls posMap declMap (scc cgraph)
+--       (cgraph', posMap', declMap') <- mkCallGraph newDecls
+--       newDecls' <- sortDecls posMap' declMap' (topsort cgraph')
+--       return (others, newDecls')
+--     where 
+--       (decls, others) = partition isDecl ds 
+--
 -- creating the call graph for the dependency analysis
 
 mkCallGraph :: HasDeps a => [a] -> SCC ( Gr Name ()
@@ -173,10 +184,17 @@ instance HasDeps (TopDecl Name) where
   nameOf (TFunDef fd) = [sigName $ funSignature fd]
   nameOf (TMutualDef ds) = concatMap nameOf ds
   nameOf (TContr c) = [name c]
+  nameOf (TInstDef instd) = nameOf instd 
+  nameOf (TClassDef clsd) = nameOf clsd
+  nameOf (TDataDef dt) = [dataName dt]
+  nameOf (TPragmaDecl d) = [Name $ pretty d]
   nameOf _ = []
   mkMutual = TMutualDef 
   isDecl (TFunDef _) = True
+  isDecl (TClassDef _) = True 
+  isDecl (TInstDef _) = True
   isDecl (TContr _) = True
+  isDecl (TPragmaDecl _) = True 
   isDecl _ = False 
 
 instance HasDeps (ContractDecl Name) where 
@@ -186,6 +204,18 @@ instance HasDeps (ContractDecl Name) where
   mkMutual = CMutualDecl 
   isDecl (CFunDecl _) = True 
   isDecl _ = False 
+
+instance HasDeps (Instance Name) where 
+  nameOf (Instance _ n _ t _)
+    = [Name $ pretty t ++ ":" ++ pretty n]
+  mkMutual _ = error "HasDeps.Instance! This should not happen!"
+  isDecl _ = True 
+
+instance HasDeps (Class Name) where
+  nameOf (Class _ n _ t _) 
+    = [Name $ pretty t ++ ":" ++ pretty n]
+  mkMutual _ = error "HasDeps.Class! This should not happen!"
+  isDecl _ = True
 
 class FreeVars a where 
   fv :: a -> [Name]

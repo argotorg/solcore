@@ -449,7 +449,7 @@ kindCheck (t1 :-> t2)
 kindCheck t@(TyCon n ts)
   = do
       ti <- askTypeInfo n `wrapError` t
-      unless (arity ti == length ts) $
+      unless (n == Name "pair" || arity ti == length ts) $
         throwError $ unlines [ "Invalid number of type arguments!"
                              , "Type " ++ pretty n ++ " is expected to have " ++
                                show (arity ti) ++ " type arguments"

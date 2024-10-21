@@ -126,7 +126,7 @@ createInvokeMatch (DataTy _ _ [Constr _ targs]) sig (Id pid ty)
       argTys <- mapM tyParam (sigParams sig)
       let patTys = tyConArgs ty 
           retTy = fromJust $ sigReturn sig 
-          cname = if isNothing cn then sigName sig
+          cname = if isNothing cn || isQual (sigName sig) then sigName sig
                   else QualName (fromJust cn) 
                                 (pretty $ sigName sig)
       (pats, ns) <- unzip <$> mapM (const mkPat) patTys
@@ -141,6 +141,10 @@ createInvokeMatch (DataTy _ _ [Constr _ targs]) sig (Id pid ty)
         pat = if null patTys then PVar pid else foldr1 ppair pats 
         stmt = if null patTys then [ret] else [Match [Var pid] [([pat], [ret])]]
       pure stmt 
+
+isQual :: Name -> Bool
+isQual (QualName _ _) = True 
+isQual _ = False
 
 tyConArgs :: Ty -> [Ty]
 tyConArgs (TyVar _) = []

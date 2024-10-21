@@ -391,10 +391,6 @@ addClassMethod p@(_ :~: _) (Signature _ _ n _ _)
                   , pretty n
                   ]
 
-isQual :: Name -> Bool 
-isQual (QualName _ _) = True 
-isQual _ = False 
-
 -- checking instances and adding them in the environment
 
 checkInstances :: [Instance Name] -> TcM ()

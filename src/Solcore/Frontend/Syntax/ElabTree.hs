@@ -420,12 +420,15 @@ instance Elab S.Pat where
 
   elab S.PWildcard = pure PWildcard
   elab (S.PLit l) = PLit <$> elab l 
-  elab (S.Pat n ps) 
+  elab p@(S.Pat n ps) 
     = do 
         ps' <- elab ps 
         isCon <- isDefinedConstr n 
-        -- condition for constructors 
-        if isCon then 
+        isT <- isTuple p 
+        -- condition for tuples 
+        if isT then
+          pure $ foldr1 pairPat ps'
+        else if isCon then 
           pure (PCon n ps')
         -- condition for variables 
         else if null ps then 
@@ -433,6 +436,17 @@ instance Elab S.Pat where
         else throwError $ unlines ["Invalid pattern:"
                                   , pretty (PCon n ps')
                                   ]
+
+pairPat :: Pat Name -> Pat Name -> Pat Name
+pairPat p1 p2 = PCon (Name "pair") [p1, p2]
+
+isTuple :: S.Pat -> ElabM Bool 
+isTuple (S.Pat n ps) 
+  | n == Name "pair" && length ps /= 1 = pure True 
+  | n == Name "pair" 
+    = throwError "Invalid tuple pattern"
+  | otherwise = pure False 
+
 
 instance Elab S.Literal where 
   type Res S.Literal = Literal 

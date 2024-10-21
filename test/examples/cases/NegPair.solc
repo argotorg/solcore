@@ -4,7 +4,6 @@ class  a : Neg {
 }
 
 data B = F | T;
-data Pair(a,b) = Pair(a,b);
 
 instance B : Neg {
   function neg (x : B) { 
@@ -17,19 +16,19 @@ instance B : Neg {
 
 function fst (p) {
   match p {
-  | Pair(x,y) => return x;
+  | (x,y) => return x;
   };
 }
 
 function snd(p) {
   match p {
-  | Pair(_,y) => return y;
+  | (_,y) => return y;
   };
 }
 
-instance (a:Neg,b:Neg) => Pair(a,b):Neg {
+instance (a:Neg,b:Neg) => (a,b):Neg {
   function neg(p) {
-    return Pair(Neg.neg (fst(p)), Neg.neg(snd (p)));
+    return (Neg.neg (fst(p)), Neg.neg(snd (p)));
   }
 }
 

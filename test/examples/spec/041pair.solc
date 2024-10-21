@@ -1,13 +1,12 @@
 contract Pair {
-data Pair(a,b) = Pair(a,b);
 
   function fst(p) {
     match p {
-      | Pair(a,b) => return a;
+      | (a,b) => return a;
     };
   }
 
   function main() {
-    return fst(Pair(1,0));
+    return fst((1,0));
   }
 }

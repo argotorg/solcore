@@ -313,13 +313,14 @@ Pattern : Name PatternList                         {Pat $1 $2}
         | '_'                                      {PWildcard}
         | Literal                                  {PLit $1}
         | '(' Pattern ')'                          {$2}
+        | PatternList                              {Pat (Name "pair") $1}
 
 PatternList :: {[Pat]}
 PatternList : '(' PatList ')'                      {$2}
             | {- empty -}                          {[]}
 
 PatList :: { [Pat] }
-PatList : Pattern                                  {[$1]}
+PatList : Pattern %shift                           {[$1]}
         | Pattern ',' PatList                      {$1 : $3}
 
 -- literals 
@@ -333,6 +334,10 @@ Literal : number                                   {IntLit $ toInteger $1}
 Type :: { Ty }
 Type : Name OptTypeParam                            {TyCon $1 $2}
      | LamType                                      {uncurry funtype $1}
+     | TupleTy                                      {$1}
+
+TupleTy :: { Ty }
+TupleTy : '(' TypeCommaList ')'                     {foldr1 pairTy $2}
 
 LamType :: {([Ty], Ty)}
 LamType : '(' TypeCommaList ')' '->' Type          {($2, $5)}
