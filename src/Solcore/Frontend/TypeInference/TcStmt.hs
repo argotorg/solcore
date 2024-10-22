@@ -383,16 +383,16 @@ tcFunDef d@(FunDef sig bd)
                                            (sigName sig)
                                            params'
                                            (Just rTy)
-      let sig1 = annotateSignature sch' sig
+      sig1 <- annotateSignature sch' sig
       when gen (generateDecls (FunDef sig1 bd, sch'))
       info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
       pure (apply s1 $ FunDef sig' bd', apply s1 ps2, apply s1 t1)
 
 -- update types in signature 
 
-annotateSignature :: Scheme -> Signature Name -> Signature Name 
+annotateSignature :: Scheme -> Signature Name -> TcM (Signature Name)
 annotateSignature (Forall vs (ps :=> t)) sig 
-  = Signature vs ps (sigName sig) params' ret 
+  = pure $ Signature vs ps (sigName sig) params' ret 
     where 
       (ts,t') = splitTy t 
       params' = zipWith annotateParam ts (sigParams sig)

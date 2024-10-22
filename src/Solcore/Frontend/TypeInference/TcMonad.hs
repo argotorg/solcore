@@ -64,10 +64,7 @@ freshTyVar :: TcM Ty
 freshTyVar = TyVar <$> freshVar
 
 writeFunDef :: FunDef Name -> TcM ()
-writeFunDef fd = do 
-  c <- gets contract 
-  if isNothing c then writeTopDecl (TFunDef fd)
-    else writeContractDecl (CFunDecl fd)
+writeFunDef fd = writeTopDecl (TFunDef fd)
 
 writeDataTy :: DataTy -> TcM ()
 writeDataTy dt 
@@ -82,18 +79,8 @@ writeTopDecl d
   = do 
       b <- gets generateDefs 
       when b $ do 
-        (ts,cs) <- gets generated 
-        modify (\env -> env{ generated = (d : ts, cs)})
-
-writeContractDecl :: ContractDecl Name  -> TcM () 
-writeContractDecl d 
-  = do 
-      mb <- gets contract 
-      case mb of 
-        Just n -> do 
-          (ts, cs) <- gets generated 
-          modify (\env -> env {generated = (ts, Map.insertWith (++) n [d] cs)})
-        Nothing -> throwError "Impossible! Contract decl outside a contract!"
+        ts <- gets generated 
+        modify (\env -> env{ generated = d : ts})
 
 getEnvFreeVars :: TcM [Tyvar]
 getEnvFreeVars 
@@ -180,7 +167,7 @@ withContractName n m
   = do 
       setCurrentContract n 
       a <- m 
-      clearSubst
+      clearCurrentContract
       pure a
 
 setCurrentContract :: Name -> TcM ()

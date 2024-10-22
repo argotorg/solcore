@@ -25,7 +25,6 @@ import Solcore.Primitives.Primitives
 generateDecls :: (FunDef Name, Scheme) -> TcM () 
 generateDecls (fd@(FunDef sig bd), sch) 
   = do
-      liftIO $ putStrLn $ "Scheme:" ++ pretty sch
       createTypeFunDef fd 
       dt <- lookupUniqueType (sigName sig)
       createInstance dt sig sch 
@@ -108,34 +107,45 @@ mkParamForSig argTy selfTy
 
 -- creating invoke body 
 
-mkInvokeCall :: Name -> TcM Name 
-mkInvokeCall n 
-  = do 
-      cn <- gets contract 
-      if isNothing cn || isQual n then pure n 
-      else pure $ QualName (fromJust cn) (pretty n) 
+-- no pattern matching needed: just make a call to the function 
+-- pattern matching needed:
+-- * No closure: function receives more than one arguments, which are passed as a tuple 
+-- * Closure: pattern match on closure to get the parameters and make the call with arguments.
 
 createInvokeBody :: DataTy -> Signature Name -> Id -> TcM (Body Name)
-createInvokeBody (DataTy _ _ [Constr _ targs]) sig (Id pid ty)
+createInvokeBody (DataTy dt vs [Constr c1 targs]) sig (Id pid ty)
   = do
       let patTys = tyConArgs ty
-      liftIO $ putStrLn $ "Sig:" ++ pretty sig 
-      liftIO $ putStrLn $ "Ty:" ++ pretty ty
-      cname <- mkInvokeCall (sigName sig)
+          cname = sigName sig
       argTys <- mapM tyParam (sigParams sig)
-      liftIO $ putStrLn $ "ArgTys:" ++ unwords (map pretty argTys)
-      liftIO $ putStrLn $ "targs:" ++ unwords (map pretty targs)
       (pats, ns) <- unzip <$> mapM mkPat patTys
-      -- checking if we need to match the closure
-      if [ty] == argTys then 
+      if [ty] == argTys && null targs then 
+        -- no need to match the closure type and arguments tuple 
         pure [Return $ Call Nothing cname [Var pid]]
-      else if null targs then do 
+      else if null targs then do
+        -- no pattern matching on closure needed
         let args = if null argTys then [] else [Var pid]
-        if null patTys then pure [Return $ Call Nothing cname args]
-        else pure [Match [Var pid] [([foldr1 ppair pats], [Return $ Call Nothing cname (concat ns)])]]
+        if null patTys then 
+          -- no pattern matching on arguments tuple
+          pure [Return $ Call Nothing cname args]
+        else do 
+          -- pattern matching on arguments tuple 
+          let pats' = foldr1 ppair pats 
+              ret = Return $ Call Nothing cname (concat ns)
+          pure [Match [Var pid] [([pats'], [ret])]]
       else do 
-        if null patTys then pure [Return $ Call Nothing cname [Var pid]]
-        else pure [Match [Var pid] [([foldr1 ppair pats], [Return $ Call Nothing cname (concat ns)])]]
+        cps <- mapM (\ _ -> PVar <$> freshName) targs 
+        -- matching on closure needed
+        let n1 = Name "self"
+            cp = Typed n1 tc
+            cpat = PCon c1 cps
+            pats1 = if null pats then [PVar pid] else pats 
+            ns1 = if null ns then [Var n1, Var pid] else Var n1 : (Var pid) : (concat ns) 
+            pats' = foldr1 ppair (cpat : pats1) 
+            ret = Return $ Call Nothing cname ns1
+            tc = TyCon dt (TyVar <$> vs)
+        pure [Match [epair (Var n1) (Var pid)] [([pats'], [ret])]]
+
 
 {--
   = do

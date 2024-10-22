@@ -43,11 +43,14 @@ pipeline = do
         let warns = warnings env
             logsInfo = logs env
             tyctx = ctx env 
-            (ts, cmap) = generated env 
+            ts = generated env 
         when (verbose && (not $ null logsInfo)) $ do  
           putStrLn "> Type inference logs:"
           mapM_ putStrLn (reverse $ logsInfo)
-        let ast0 = moveData (addGenerated ast' ts cmap)
+        let ast0 = moveData (addGenerated ast' ts)
+        when verbose $ do 
+          putStrLn "> Desugared code - step 0"
+          putStrLn $ pretty ast0
         r6 <- sccAnalysis ast0
         withErr r6 $ \ ast2 -> do 
           when verbose $ do 
@@ -121,15 +124,9 @@ extractData (Contract n ts ds)
 
 addGenerated :: CompUnit Name -> 
                 [TopDecl Name] -> 
-                Map.Map Name [ContractDecl Name] -> 
                 CompUnit Name 
-addGenerated (CompUnit imps ds) ts m 
-  = CompUnit imps (ds' ++ ts) 
-    where 
-      ds' = foldr step [] ds 
-      step (TContr (Contract n vs cs)) ac 
-        = (TContr (Contract n vs (cs ++ Map.findWithDefault [] n m))) : ac 
-      step d ac = d : ac 
+addGenerated (CompUnit imps ds) ts
+  = CompUnit imps (ds ++ ts) 
 
 -- parsing command line arguments
 

@@ -157,8 +157,7 @@ tcContract c@(Contract n vs decls)
       ctx1 <- gets ctx
       let
         ctx2 = Map.toList $ Map.difference ctx1 ctx'
-        assumps = map (\ (n',t) -> (QualName n (pretty n'), t)) ctx2
-      pure (Contract n vs decls', assumps)
+      pure (Contract n vs decls', ctx2)
     where 
       tcDecl' d 
         = do 
