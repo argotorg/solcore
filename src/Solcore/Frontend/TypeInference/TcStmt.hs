@@ -375,11 +375,11 @@ tcFunDef d@(FunDef sig bd)
       extSubst s
       gen <- gets generateDefs
       ps2 <- reduceContext (ps ++ ps1) `wrapError` d
-      sch' <- generalize (ps2, t1) `wrapError` d
+      sch'@(Forall svs (sps :=> st)) <- generalize (ps2, t1) `wrapError` d
       rTy <- withCurrentSubst t'
       s1 <- getSubst
-      sig' <- withCurrentSubst $ Signature (sigVars sig)
-                                           (sigContext sig)
+      sig' <- withCurrentSubst $ Signature svs 
+                                           sps
                                            (sigName sig)
                                            params'
                                            (Just rTy)
