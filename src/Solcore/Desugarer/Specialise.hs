@@ -373,8 +373,12 @@ specMatch exps alts = do
 
 
 specName :: Name -> [Ty] -> Name
-specName n [] = n
-specName n ts = Name $ show n ++ "$" ++ intercalate "_" (map mangleTy ts)
+specName n [] = Name $ flattenQual n
+specName n ts = Name $ flattenQual n ++ "$" ++ intercalate "_" (map mangleTy ts)
+
+flattenQual :: Name -> String
+flattenQual (Name n) = n
+flattenQual (QualName n s) = flattenQual n ++ "_" ++ s
 
 mangleTy :: Ty -> String
 mangleTy (TyVar (TVar (Name n) _)) = n
