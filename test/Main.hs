@@ -93,7 +93,8 @@ cases
               , runTestForFile "join.solc" caseFolder
               , runTestForFile "EqQual.solc" caseFolder 
               , expectFail $ runTestForFile "joinErr.solc" caseFolder
-              , runTestForFile "tyexp.solc" caseFolder 
+              , runTestForFile "tyexp.solc" caseFolder
+              , runTestForFile "Uncurry.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"

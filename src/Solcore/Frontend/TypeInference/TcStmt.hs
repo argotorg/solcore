@@ -211,11 +211,11 @@ tcExp (FieldAccess (Just e) n)
 tcExp ex@(Call me n args)
   = do
       gen <- gets generateDefs
-      if gen then do
+      let qn = QualName (Name "invokable") "invoke"
+      isDirect <- isDirectCall n
+      if gen && isDirect then do
         tcCall me n args `wrapError` ex
       else do
-        let qn = QualName (Name "invokable") "invoke"
-        isDirect <- isDirectCall n
         if isDirect then tcCall me n args `wrapError` ex
           else (tcCall me qn (Var n : args)) `wrapError` ex
 tcExp e@(Lam args bd _)
