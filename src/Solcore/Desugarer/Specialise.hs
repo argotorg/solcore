@@ -19,7 +19,7 @@ import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Primitives.Primitives
 import System.Exit
-
+import Common.Pretty
 
 -- ** Specialisation state and monad
 -- SpecState and SM are meant to be local to this module.
@@ -204,7 +204,7 @@ addMethodResolution ty fd = do
   let funType = typeOfTcFunDef fd
   let fd' = FunDef sig{sigName = name'} (funDefBody fd)
   addResolution name funType fd'
-  debug ["! addMethodResolution: ", show name', " : ", pretty funType]
+  -- debug ["! addMethodResolution: ", show name', " : ", pretty funType]
 
 -- | `specExp` specialises an expression to given type
 specExp :: TcExp -> Ty -> SM TcExp
@@ -214,8 +214,30 @@ specExp e@(Call Nothing i args) ty = do
   let e' = Call Nothing i' args'
   -- debug ["< specExp (Call): ", pretty e']
   return e'
+specExp e@(Con i@(Id n conty) es) ty = do
+  let t = typeOfTcExp e
+  -- debug ["> specConApp: ", pretty e, " : ", pretty t, " ~> ", pretty ty]
+  (i' , es') <- specConApp i es ty
+  let e' = Con i' es'
+  return e'
+
 specExp e@(Var (Id n t)) ty = pure (Var (Id n ty))
+specExp e@(FieldAccess me fld) ty = error("Specialise: FieldAccess not implemented for" ++ pretty e)
 specExp e ty = atCurrentSubst e -- FIXME
+
+specConApp :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
+-- specConApp i@(Id n conTy) [] ty = pure (i, [])
+specConApp i@(Id n conTy) args ty = do
+  subst <- getSpSubst
+  let argTypes = map typeOfTcExp args
+  let argTypes' = apply subst argTypes
+  let i' = apply subst i
+  let typedArgs = zip args argTypes'
+  args' <- forM typedArgs (uncurry specExp)
+  let conTy' = foldr (:->) ty argTypes'
+  debug ["! specConApp: ", prettyId i, " : ", pretty conTy, " ~> ", prettyId i', " : ", pretty conTy']
+  debug ["< specConApp: ", prettyConApp i args,  " ~> ", prettyConApp i' args']
+  return (i', args')
 
 -- | Specialise a function call
 -- given actual arguments and the expected result type
@@ -351,10 +373,10 @@ specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
 specMatch :: [Exp Id] -> [([Pat Id], [Stmt Id])] -> SM (Stmt Id)
 specMatch exps alts = do
   subst <- getSpSubst
-  debug ["> specMatch, scrutinee: ", show exps, " @ ", pretty subst]
+  -- debug ["> specMatch, scrutinee: ", pretty exps, " @ ", pretty subst]
   exps' <- specScruts exps
   alts' <- forM alts specAlt
-  debug ["< specMatch, alts': ", show alts']
+  -- debug ["< specMatch, alts': ", show alts']
   return $ Match exps' alts'
   where
     specAlt (pat, body) = do
@@ -368,7 +390,7 @@ specMatch exps alts = do
       subst <- getSpSubst
       ty <- atCurrentSubst (typeOfTcExp e)
       e' <- specExp e ty
-      debug ["specScrut: ", show e, " to ", pretty ty, " ~>", show e']
+      -- debug ["specScrut: ", show e, " to ", pretty ty, " ~>", show e']
       return e'
 
 
@@ -384,6 +406,26 @@ mangleTy :: Ty -> String
 mangleTy (TyVar (TVar (Name n) _)) = n
 mangleTy (TyCon (Name n) []) = n
 mangleTy (TyCon (Name n) ts) = n ++ "L" ++ intercalate "_" (map mangleTy ts) ++"J"
+
+
+showId :: Id -> String
+showId i =  showsId i ""
+showsId (Id n t) = shows n .  ('@':) . showsPrec 10 t
+
+prettyId :: Id -> String
+prettyId = render . pprId
+
+pprId :: Id -> Doc
+pprId (Id n t@TyVar{}) = ppr n <> text "@" <> ppr t
+pprId (Id n t@(TyCon cn [])) = ppr n <> "@" <> ppr t
+pprId (Id n t) = ppr n <> text "@" <> parens(ppr t)
+
+pprConApp :: Id -> [TcExp] -> Doc
+pprConApp i args = pprId i <> brackets (commaSepList args)
+
+prettyConApp :: Id -> [TcExp] -> String
+prettyConApp i args = render (pprConApp i args)
+
 
 typeOfTcExp :: TcExp -> Ty
 typeOfTcExp (Var i)               = idType i
