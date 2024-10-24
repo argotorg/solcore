@@ -2,9 +2,9 @@ module Solcore.Desugarer.EmitCore(emitCore) where
 import Language.Core qualified as Core
 import Data.Map qualified as Map
 import Common.Monad
-import Control.Monad(forM, when)
+import Control.Monad(forM, when, unless)
 import Control.Monad.IO.Class
-import Control.Monad.Reader.Class
+import Control.Monad.Reader.Class ()
 import Control.Monad.State
 import Data.List(intercalate)
 import qualified Data.Map as Map
@@ -171,6 +171,7 @@ emitLit (StrLit s) = error "String literals not supported yet"
 
 emitConApp :: Id -> [Exp Id] -> Translation Core.Expr
 emitConApp con@(Id n ty) as = do
+  unless (null . fv $ ty)  (error $ "emitConApp: free variables in type " ++ pretty ty ++ " in " ++ pretty (Con con as))
   case targetType ty  of
     (TyCon tcname tas) -> do
         mti <- gets (Map.lookup tcname . ecDT)
