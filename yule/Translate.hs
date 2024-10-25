@@ -68,6 +68,9 @@ genExpr e = error ("genExpr: not implemented for "++show e)
 yulFunName :: Core.Name -> Name
 yulFunName = fromString . ("usr$" ++)
 
+yulVarName :: Core.Name -> Name
+yulVarName = fromString
+
 flattenRhs :: Location -> [YulExp]
 flattenRhs (LocWord n) = [yulInt n]
 flattenRhs (LocBool b) = [yulBool b]
@@ -127,6 +130,7 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
     yreturns <- case stripTypeName ret of -- FIXME: temp hack for main
         TUnit | name == "main" -> YReturns <$> place "_result" TWord
               | otherwise-> pure YNoReturn
+        TWord -> YReturns <$> placeResult
         _  -> YReturns <$> place "_result" ret
     yulBody <- genStmts stmts
     debug ["< SFunction: ", name, " ", show yulArgs, " -> ", show yreturns]
@@ -135,7 +139,16 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
         placeArgs :: [Arg] -> TM [Name]
         placeArgs as = concat <$> mapM placeArg as
         placeArg :: Arg -> TM [Name]
+        placeArg (TArg name TWord) = do
+            let loc = LocNamed name
+            insertVar name loc
+            return [yulVarName name]
         placeArg (TArg name typ) = place name typ
+        placeResult :: TM [Name]
+        placeResult = do
+            let resultLoc =  LocNamed "_result"
+            insertVar "_result" resultLoc
+            return ["_result"]
         place :: Core.Name -> Type -> TM [Name]
         place name typ = do
             loc <- buildLoc typ
@@ -184,10 +197,14 @@ genAlt payload (Alt con name stmt) = withLocalEnv do
         yulCon (CInK k) = YulNumber (fromIntegral k)
 
 allocVar :: Core.Name -> Type -> TM [YulStmt]
+allocVar name TWord = do
+    insertVar name (LocNamed name)
+    pure [YulAlloc (yulVarName name)]
 allocVar name typ = do
     (stmts, loc) <- coreAlloc typ
     insertVar name loc
     return stmts
+
 
 freshStackLoc :: TM Location
 freshStackLoc = LocStack <$> freshId
@@ -236,6 +253,7 @@ loadLoc :: Location -> YulExp
 loadLoc (LocWord n) = YLit (YulNumber (fromIntegral n))
 loadLoc (LocBool b) = YLit (if b then YulTrue else YulFalse)
 loadLoc (LocStack i) = YIdent (stkLoc i)
+loadLoc (LocNamed n) = YIdent (yulVarName n)
 loadLoc (LocEmpty _) = yulPoison
 loadLoc loc = error ("cannot loadLoc "++show loc)
 
@@ -245,6 +263,7 @@ copyLocs l r@(LocSeq rs) = concat $ zipWith copyLocs (flattenLoc l) (flattenLoc 
 copyLocs l@(LocSeq ls) r = concat $ zipWith copyLocs (flattenLoc l) (flattenLoc r)
 copyLocs (LocStack i) (LocEmpty _) = []
 copyLocs (LocStack i) r = [YAssign [stkLoc i] (loadLoc r)]
+copyLocs (LocNamed n) r = [YAssign [yulVarName n] (loadLoc r)]
 
 
 copyLocs l r = error $ "copy: type mismatch - LHS: " ++ show l ++ " RHS: " ++ show r

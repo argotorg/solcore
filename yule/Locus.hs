@@ -10,6 +10,7 @@ data LocTree a
     = LocWord Integer -- int literal
     | LocBool Bool    -- bool literal
     | LocStack a      -- stack location
+    | LocNamed String -- named location (e.g. argument/result)
     | LocSeq [LocTree a] -- sequence of locations
     | LocEmpty Int    -- empty location of given size
     deriving (Eq, Show)
