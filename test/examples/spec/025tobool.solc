@@ -1,0 +1,31 @@
+data Bool = False | True;
+
+function fromBool(b) {
+ match b {
+   | False => return 0;
+   | True => return 1;
+ };
+}
+function unsafeToBool(x: word) {
+  let res: Bool;
+  assembly  {
+    res := x
+  };
+  return res; 
+}
+
+function toBool(x: word) {
+  let res: Bool;
+  assembly {
+    switch x
+      case 0 { res := 0 }
+      default { res := 1 } 
+  };
+  return res;
+}
+
+contract Tobol {
+function main() {
+	 return fromBool(toBool(42));
+}
+}

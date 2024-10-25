@@ -8,6 +8,7 @@ module TM
 , getCounter
 , setCounter
 , freshId
+, maybeLookupVar
 , lookupVar
 , insertVar
 , lookupFun
@@ -69,6 +70,9 @@ freshId = do
     n <- load counter
     store counter (n+1)
     return n
+
+maybeLookupVar :: String -> TM (Maybe Location)
+maybeLookupVar x = Map.lookup x <$> getVarEnv
 
 lookupVar :: String -> TM Location
 lookupVar x = do
