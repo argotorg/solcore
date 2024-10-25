@@ -57,12 +57,16 @@ genExpr (ECall name args) = do
     let yulArgs = concatMap flattenRhs argLocs
     funInfo <- lookupFun name
     (resultCode, resultLoc) <- coreAlloc (fun_result funInfo)
-    let callExpr = YCall (fromString name) yulArgs
+    let callExpr = YCall (yulFunName name) yulArgs
     let callCode = case resultLoc of  -- handle void functions
             LocUnit -> [YExp callExpr]
             _ -> [YAssign (flattenLhs resultLoc) callExpr]
     pure (argsCode++resultCode++callCode, resultLoc)
 genExpr e = error ("genExpr: not implemented for "++show e)
+
+
+yulFunName :: Core.Name -> Name
+yulFunName = fromString . ("usr$" ++)
 
 flattenRhs :: Location -> [YulExp]
 flattenRhs (LocWord n) = [yulInt n]
@@ -85,7 +89,10 @@ genStmtWithComment s = do
     pure (comment : body)
 
 genStmt :: Stmt -> TM [YulStmt]
-genStmt (SAssembly stmts) = pure stmts
+genStmt (SAssembly stmts) = do
+    debug ["assembly:", render$ ppr (Yul stmts)]
+    pure stmts
+
 genStmt (SAlloc name typ) = allocVar name typ
 genStmt (SAssign name expr) = coreAssign name expr
 
@@ -123,7 +130,7 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
         _  -> YReturns <$> place "_result" ret
     yulBody <- genStmts stmts
     debug ["< SFunction: ", name, " ", show yulArgs, " -> ", show yreturns]
-    return [YFun (fromString name) yulArgs yreturns yulBody]
+    return [YFun (yulFunName name) yulArgs yreturns yulBody]
     where
         placeArgs :: [Arg] -> TM [Name]
         placeArgs as = concat <$> mapM placeArg as
@@ -274,7 +281,7 @@ translateStmts stmts = do
       else writeln "no main found, adding one"
     let stmts' = if hasMain then stmts else addMain stmts
     payload <- genStmts stmts'
-    let resultExp = YCall "main" []
+    let resultExp = YCall (yulFunName "main") []
     let epilog = [YAssign1 "_wrapresult" resultExp]
     return $ Yul ( payload ++ epilog )
 
