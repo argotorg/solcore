@@ -148,10 +148,6 @@ genStmt (SRevert s) = pure
   , YExp $ YCall "revert" [yulInt 0, yulInt (length s)]
   ]
 
-genStmt (SExpr e) = do
-    (stmts, loc) <- genExpr e
-    pure stmts
-
 genStmt e = error $ "genStmt unimplemented for: " ++ show e
 
 -- If the statement is a function definition, record its type
