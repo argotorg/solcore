@@ -24,9 +24,11 @@ spec :: TestTree
 spec
   = testGroup "Files for spec cases"
               [
-                runTestForFile "00answer.solc" specFolder
-              , runTestForFile "01id.solc" specFolder
-              , expectFail $ runTestForFile "02nid.solc" specFolder
+                runTestForFile "010answer.solc" specFolder
+              , runTestForFile "011id.solc" specFolder
+              , expectFail $ runTestForFile "021nid.solc" specFolder
+              , expectFail $ runTestForFile "022comp.solc" specFolder
+              , runTestForFile "021not.solc" specFolder
               , runTestForFile "031maybe.solc" specFolder
               , runTestForFile "032simplejoin.solc" specFolder
               , runTestForFile "033join.solc" specFolder
@@ -38,12 +40,10 @@ spec
               , runTestForFile "039food.solc" specFolder
               , runTestForFile "041pair.solc" specFolder
               , runTestForFile "042triple.solc" specFolder
-              , expectFail $ runTestForFile "06comp.solc" specFolder
-              , runTestForFile "07rgb.solc" specFolder
-              , runTestForFile "08rgb2.solc" specFolder
-              , runTestForFile "09not.solc" specFolder
-              , runTestForFile "10negBool.solc" specFolder
-              , runTestForFile "11negPair.solc" specFolder
+              , runTestForFile "047rgb.solc" specFolder
+              , runTestForFile "048rgb2.solc" specFolder
+              , runTestForFile "051negBool.solc" specFolder
+              , runTestForFile "052negPair.solc" specFolder
               , runTestForFile "903badassign.solc" specFolder
               , runTestForFile "939badfood.solc" specFolder
               ]
