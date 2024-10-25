@@ -1,7 +1,7 @@
 function add(x : word, y : word) {
   let res: word;
   assembly {
-     res := add(40, 2)
+     res := add(x, y)
   };
   return res;
 }
