@@ -18,7 +18,6 @@ contract Option {
     return result;
   }
 
-  
   function main() {
     return maybe(0, join(Some(Some(0))));
   }

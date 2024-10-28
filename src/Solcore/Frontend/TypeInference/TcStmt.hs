@@ -53,11 +53,12 @@ tcStmt e@(Let n mt me)
                       (Nothing, Nothing) ->
                         (Nothing, [],) <$> freshTyVar
       extEnv n (monotype tf)
-      pure (Let (Id n tf) (Just tf) me', [], unit)
+      let e' = Let (Id n tf) (Just tf) me'
+      pure (e', [], unit)
 tcStmt (StmtExp e)
   = do
       (e', ps', t') <- tcExp e
-      pure (StmtExp e', ps', t')
+      pure (StmtExp e', ps', unit)
 tcStmt m@(Return e)
   = do
       (e', ps, t) <- tcExp e
@@ -74,17 +75,6 @@ tcStmt s@(Asm yblk)
       mapM_ (flip extEnv word') newBinds
       pure (Asm yblk, [], unit)
 
-translateType :: Ty -> Ty -> TcM Ty
-translateType ann inf@(TyCon n ts)
-  = do
-      cond <- isGeneratedType inf
-      if not cond then pure inf
-      else do
-        let (args, ret) = splitTy ann
-            args' = if null args then unit else tupleTyFromList args
-            t' = TyCon n [args', ret]
-        pure t'
-
 isGeneratedType :: Ty -> TcM Bool
 isGeneratedType (TyVar _) = pure False
 isGeneratedType (TyCon n _)
@@ -93,17 +83,18 @@ isGeneratedType (TyCon n _)
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations ts eqns
   = do
-      (eqns', ps, ts') <- unzip3 <$> mapM (tcEquation ts) eqns
       resTy <- freshTyVar
-      mapM_ (unify resTy) ts'
+      (eqns', ps, ts') <- unzip3 <$> mapM (tcEquation resTy ts) eqns
+      s <- getSubst 
       withCurrentSubst (eqns', concat ps, resTy)
 
-tcEquation :: [Ty] -> Equation Name -> TcM (Equation Id, [Pred], Ty)
-tcEquation ts (ps, ss)
+tcEquation :: Ty -> [Ty] -> Equation Name -> TcM (Equation Id, [Pred], Ty)
+tcEquation retTy ts eqn@(ps, ss)
   = withLocalEnv do
       (ps', res, ts') <- tcPats ts ps
       (ss', pss', t) <- withLocalCtx res (tcBody ss)
-      withCurrentSubst ((ps', ss'), pss', t)
+      s <- unify t retTy `wrapError` eqn 
+      withCurrentSubst ((ps', ss'), pss', apply s t)
 
 tcPats :: [Ty] -> [Pat Name] -> TcM ([Pat Id], [(Name,Scheme)], [Ty])
 tcPats ts ps
@@ -166,20 +157,20 @@ tcExp (Var n)
   = do
       s <- askEnv n
       (ps :=> t) <- freshInst s
+      -- checks if it is a function name, and return 
+      -- its corresponding unique type 
       gen <- gets generateDefs
-      if gen then
-        pure (Var (Id n t), ps, t)
-      else do
-        r <- lookupFunAbs n
-        let
-          (args,ret) = splitTy t
-          args' = tupleTyFromList args
-          mkCon (DataTy nt vs [(Constr n _)])
-            = let
-                t1 = TyCon nt [args', ret]
-              in (Con (Id n t1) [], t1)
-          p = maybe (Var (Id n t), t) mkCon r
-        pure (fst p, ps, snd p)
+      r <- lookupFunAbs n
+      let
+        (args,ret) = splitTy t
+        args' = tupleTyFromList args
+        mkCon (DataTy nt vs [(Constr n _)])
+          = let
+              t1 = TyCon nt [args', ret]
+            in (Con (Id n t1) [], t1)
+        p = if gen then (Var (Id n t), t) 
+            else maybe (Var (Id n t), t) mkCon r
+      pure (fst p, ps, snd p)
 tcExp e@(Con n es)
   = do
       -- typing parameters
@@ -212,12 +203,14 @@ tcExp ex@(Call me n args)
   = do
       gen <- gets generateDefs
       let qn = QualName (Name "invokable") "invoke"
+          args' = [Var n, indirectArgs args]
       isDirect <- isDirectCall n
       if gen && isDirect then do
         tcCall me n args `wrapError` ex
       else do
         if isDirect then tcCall me n args `wrapError` ex
-          else (tcCall me qn (Var n : args)) `wrapError` ex
+          else
+            tcCall me qn args' `wrapError` ex
 tcExp e@(Lam args bd _)
   = do
       (args', schs, ts') <- tcArgs args
@@ -227,15 +220,15 @@ tcExp e@(Lam args bd _)
           ts1 = apply s ts'
           t1 = apply s t'
           vs = fv ps1 `union` fv t' `union` fv ts1
+          ty = funtype ts1 t1
       gen <- gets generateDefs
       (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs (ts1,t1) bd'
-      if gen then do
+      when gen do
         writeFunDef lfun
         extSignature (funSignature lfun)
-        (lfun', ps2, t2) <- tcFunDef lfun
-        pure (Lam args' bd' (Just (funtype ts1 t1)), ps1, funtype ts1 t1)
-      else do
-        pure (e', ps1, ty1)
+        tcFunDef lfun
+        pure ()
+      pure (e', ps1, ty1)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
@@ -244,6 +237,15 @@ tcExp e1@(TyExp e ty)
       s <- match ty' ty  `wrapError` e1
       extSubst s
       pure (TyExp e' ty, apply s ps, ty)
+
+-- building indirect function call arguments 
+
+indirectArgs :: [Exp Name] -> Exp Name 
+indirectArgs [] = Con (Name "pair") []
+indirectArgs [e] = e 
+indirectArgs (e : es) = epair e (indirectArgs es)
+  where 
+    epair e1 e2 = Con (Name "pair") [e1, e2]
 
 createLambdaImpl :: [Pred] ->
                     [Param Id] ->
@@ -256,14 +258,14 @@ createLambdaImpl ps args vs (argTys, rty) bdy
       funs <- Map.keys <$> gets uniqueTypes
       let n = Name $ "lambda_impl" ++ show c
           vs' = filter (\i -> idName i `notElem` funs) (vars bdy \\ vars args)
-      (v,c,ctr,ty) <- createUniqueType vs' n (argTys, rty)
+      (v,c',ctr,ty) <- createUniqueType vs' n (argTys, rty)
       s <- getSubst
       (sig',npp) <- createLambdaSig n ps (apply s args) vs rty ty vs'
       bdy' <- createLambdaBody ty ctr vs' bdy npp
       s <- getSubst
       let
           fd = everywhere (mkT (applyI s)) (FunDef sig' bdy')
-      pure (fd, (c, ty))
+      pure (fd, (c', ty))
 
 createLambdaSig :: Name ->
                    [Pred] ->
@@ -282,7 +284,7 @@ createLambdaSig n ps args vs rty ty ids
 
 paramIdToName :: Param Id -> Param Name
 paramIdToName (Typed (Id n _) t) = Typed n t
-paramIdToName (Untyped (Id n t)) = Untyped n
+paramIdToName (Untyped (Id n t)) = Typed n t
 
 createLambdaBody :: Ty ->
                     Constr ->
@@ -361,34 +363,59 @@ skolemize (TyVar (TVar n _)) = TyVar (TVar n True)
 skolemize (TyCon n ts) = TyCon n (map skolemize ts)
 
 -- type checking a single bind
+-- create tcSignature which should return the 
+-- function type together with its parameter types
+-- type the body using these assumptions.
+
+tcSignature :: Signature Name -> TcM ( (Name, Scheme)
+                                     , [(Name, Scheme)]
+                                     , [Ty]
+                                     )
+tcSignature (Signature _ ctx n ps rt)
+  = do 
+      (ps', pschs, ts) <- tcArgs ps 
+      t <- maybe freshTyVar pure rt
+      msch <- maybeAskEnv n
+      let sch = maybe (monotype $ funtype ts t) id msch
+      pure ((n, sch), pschs, ts)
 
 tcFunDef :: FunDef Name -> TcM (FunDef Id, [Pred], Ty)
 tcFunDef d@(FunDef sig bd)
   = withLocalEnv do
       -- checking if the function isn't defined
-      (params', schs, ts) <- tcArgs (sigParams sig)
-      (bd', ps1, t') <- withLocalCtx schs (tcBody bd) `wrapError` d
-      sch <- askEnv (sigName sig) `wrapError` d
+      ((n,sch), pschs, ts) <- tcSignature sig 
+      let lctx = (n,sch) : pschs
+      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
       (ps :=> t) <- freshInst sch
-      t1 <- withCurrentSubst (foldr (:->) t' ts)
-      s <- match t t1 `wrapError` d
-      extSubst s
-      gen <- gets generateDefs
-      ps2 <- reduceContext (ps ++ ps1) `wrapError` d
-      sch'@(Forall svs (sps :=> st)) <- generalize (ps2, t1) `wrapError` d
-      rTy <- withCurrentSubst t'
-      s1 <- getSubst
-      sig' <- withCurrentSubst $ Signature svs 
-                                           sps
-                                           (sigName sig)
-                                           params'
-                                           (Just rTy)
+      t1 <- withCurrentSubst (foldr (:->) t' ts) 
+      x <- withCurrentSubst (ps1 :=> (funtype ts t'))
+      -- liftIO $ putStrLn $ pretty (sigName sig)
+      -- liftIO $ putStrLn $ "Infered:" ++ pretty x 
+      -- liftIO $ putStrLn $ "Initial:" ++ pretty (ps :=> t) 
+      s' <- match t t1 `wrapError` bd'
+      extSubst s'
+      s <- getSubst 
+      ps2 <- reduceContext ps1 `wrapError` bd'
+      sch'@(Forall svs (sps :=> st)) <- generalize (ps2, apply s t) `wrapError` d
       sig1 <- annotateSignature sch' sig
-      when gen (generateDecls (FunDef sig1 bd, sch'))
+      s1 <- getSubst
+      gen <- gets generateDefs
+      when gen (generateDecls (FunDef sig1 bd, sch')) 
+      let sig2 = elabSignature sig1 sch' 
       info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
-      pure (apply s1 $ FunDef sig' bd', apply s1 ps2, apply s1 t1)
+      pure (apply s1 $ FunDef sig2  bd', apply s1 ps2, apply s1 t1)
 
 -- update types in signature 
+
+elabSignature :: Signature Name -> Scheme -> Signature Id
+elabSignature sig (Forall vs (ps :=> t)) 
+  = Signature vs ps (sigName sig) params' ret 
+    where 
+      (ts, t') = splitTy t 
+      params' = zipWith elabParam ts (sigParams sig)
+      ret = Just t' 
+      elabParam t1 (Typed n _) = Typed (Id n t1) t1 
+      elabParam t1 (Untyped n) = Typed (Id n t1) t1 
 
 annotateSignature :: Scheme -> Signature Name -> TcM (Signature Name)
 annotateSignature (Forall vs (ps :=> t)) sig 
@@ -416,16 +443,10 @@ extSignature :: Signature Name -> TcM ()
 extSignature sig@(Signature _ preds n ps t)
   = do
       -- checking if the function is previously defined
+      addFunctionName n
       te <- gets ctx
       gen <- gets generateDefs
       when (Map.member n te && gen) (duplicatedFunDef n) `wrapError` sig
-      argTys <- mapM tyParam ps
-      t' <- maybe freshTyVar pure t
-      let
-        ty = funtype argTys t'
-        vs = fv (preds :=> ty)
-      sch <- generalize (preds, ty)
-      extEnv n sch
 
 -- Instances for elaboration
 
@@ -482,9 +503,10 @@ tcCall Nothing n args
       (ps :=> t) <- freshInst s
       t' <- freshTyVar
       (es', pss', ts') <- unzip3 <$> mapM tcExp args
-      s' <- unify (foldr (:->) t' ts') t
+      s' <- unify (funtype ts' t') t
+      extSubst s'
       let ps' = apply s' $ foldr union [] (ps : pss')
-          t1 = apply s' $ foldr (:->) t' ts'
+          t1 = apply s' (funtype ts' t')
       withCurrentSubst (Call Nothing (Id n t1) es', ps', apply s' t')
 tcCall (Just e) n args
   = do

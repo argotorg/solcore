@@ -231,7 +231,7 @@ tcInstance :: Instance Name -> TcM (Instance Id)
 tcInstance idecl@(Instance ctx n ts t funs) 
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs) 
-      funs' <- buildSignatures n ts t funs `wrapError` idecl 
+      funs' <- buildSignatures n ts t funs `wrapError` idecl
       (funs1, pss', ts') <- unzip3 <$> mapM tcFunDef  funs' `wrapError` idecl
       withCurrentSubst (Instance ctx n ts t funs1)
 
@@ -270,7 +270,7 @@ typeSignature nm args ret sig
   = sig { 
           sigName = QualName nm (pretty $ sigName sig)
         , sigParams = zipWith paramType args (sigParams sig)
-        , sigReturn = Just ret
+        , sigReturn = Just (skolemize ret)
         }
     where 
       paramType _ (Typed n t) = Typed n (skolemize t)
@@ -322,7 +322,7 @@ scanFun (FunDef sig bd)
       fillSignature (Signature vs ctx n ps t)
         = do 
             ps' <- mapM f ps 
-            pure (Signature vs ctx n ps' t)
+            pure (Signature vs ctx n ps' (skolemize <$> t))
 
 -- type checking contract constructors
 
@@ -416,7 +416,6 @@ checkInstance idef@(Instance ctx n ts t funs)
       mapM_ (checkMethod ipred) funs
       let ninst = anfInstance $ ctx :=> InCls n t ts 
       -- add to the environment
-      gen <- gets generateDefs 
       addInstance n ninst 
 
 -- bound variable check 

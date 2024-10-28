@@ -173,6 +173,9 @@ instance Pretty a => Pretty (Field a) where
   ppr (Field n ty e)
     = ppr n <+> colon <+> (ppr ty) <+> pprInitOpt e
 
+instance Pretty a => Pretty (Body a) where 
+  ppr = vcat . map ppr
+
 instance Pretty a => Pretty (FunDef a) where 
   ppr (FunDef sig bd)
     = ppr sig <+>

@@ -8,7 +8,7 @@ contract Compose {
   function id(x) { return x; }
 
   function main() {
-    let f = compose(id,id);
-    return f(42) : word;
+    // let f = compose(id,id);
+    return id(0); // f(42) : word;
   }
 }

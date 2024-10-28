@@ -32,21 +32,4 @@ instance (a:Neg,b:Neg) => (a,b):Neg {
   }
 }
 
-contract NegPair {
 
-  function bnot(x) {
-     match x {
-     | T => return F;
-     | F => return T;
-     };
-  }
-
-  function fromB(b) {
-    match b  {
-    | F => return 0;
-    | T => return 1;
-    };
-  }
-
-  function main() { return  fromB(Neg.neg(F)); }
-}

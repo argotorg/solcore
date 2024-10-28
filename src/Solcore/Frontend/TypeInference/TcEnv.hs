@@ -32,6 +32,9 @@ unitTypeInfo = TypeInfo 0 [] []
 pairTypeInfo :: TypeInfo 
 pairTypeInfo = TypeInfo 2 [Name "pair"] []
 
+arrowTypeInfo :: TypeInfo
+arrowTypeInfo = TypeInfo 2 [] []
+
 -- name of constructor and its scheme
 type ConInfo = (Name, Scheme)
 
@@ -63,7 +66,8 @@ data TcEnv
                                -- used to type check calls.
     , subst :: Subst           -- Current substitution
     , nameSupply :: NameSupply -- Fresh name supply
-    , uniqueTypes :: Map Name DataTy -- unique type map 
+    , uniqueTypes :: Map Name DataTy -- unique type map
+    , directCalls :: [Name] -- defined function names 
     , generateDefs :: Bool     -- should generate new defs?
     , generated :: [TopDecl Name]
     , counter :: Int           -- used to generate new names 
@@ -87,6 +91,7 @@ initTcEnv genDefs
           mempty
           namePool
           primDataType
+          [Name "primAddWord", Name "primEqWord"]
           genDefs
           []
           0
@@ -108,8 +113,8 @@ primCtx
 
 primTypeEnv :: TypeTable 
 primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
-                           , (Name "unit", unitTypeInfo)
                            , (Name "pair", pairTypeInfo)
+                           , (Name "->", arrowTypeInfo)
                            ]
 
 primInstEnv :: InstTable

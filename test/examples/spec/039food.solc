@@ -19,7 +19,7 @@ contract Food {
     match x {
        | Red(f) => return f;
        | Green(f) => return f;
-       | _ => Other;
+       | _ => return Other;
     };
   }
   

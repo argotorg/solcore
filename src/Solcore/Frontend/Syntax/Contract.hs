@@ -144,5 +144,4 @@ data ContractDecl a
   | CFunDecl (FunDef a)
   | CMutualDecl [ContractDecl a] -- used only after SCC analysis
   | CConstrDecl (Constructor a)
-  | CSym TySym 
     deriving (Eq, Ord,Show, Data, Typeable)
