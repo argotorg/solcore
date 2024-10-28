@@ -173,6 +173,9 @@ instance Pretty a => Pretty (Field a) where
   ppr (Field n ty e)
     = ppr n <+> colon <+> (ppr ty) <+> pprInitOpt e
 
+instance Pretty a => Pretty (Body a) where 
+  ppr = vcat . map ppr
+
 instance Pretty a => Pretty (FunDef a) where 
   ppr (FunDef sig bd)
     = ppr sig <+>
@@ -201,7 +204,7 @@ instance Pretty a => Pretty (Stmt a) where
   ppr (StmtExp e)
     = ppr e <> semi
   ppr (Return e)
-    = text "return" <+> ppr e
+    = text "return" <+> ppr e <> semi
   ppr (Match e eqns)
     = text "match" <+> 
       (parens $ commaSep $ map ppr e) <+> 

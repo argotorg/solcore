@@ -1,14 +1,7 @@
-contract Compose {
-  function compose(f,g) {
-    return lam (x) {
-      return f(g(x));
-    } ;   
-  }
-
-  function id(x) { return x; }
-
-  function main() {
-    let f = compose(id,id);
-    return f(42) : word;
-  }
+function compose (f,g) {
+  return lam(x){ return f(g(x));} ; 
 }
+function id(x) {
+  return x;
+}
+

@@ -1,6 +1,6 @@
 /*
    Assumptions
-   - We don't have built in literals for Yul Words
+   - We don't have built in literals for Yul words
 */
 
 
@@ -40,26 +40,26 @@ data Proxy(t) = Proxy;
 
 // References
 
-data Calldata(t) = Calladata(Word)
-data Memory(t) = Memory(Word)
-data Storage(t) = Storage(Word)
-data Returndata(t) = ReturnData(Word)
-data Stack(t) = Stack(Word)
+data Calldata(t) = Calladata(word);
+data Memory(t) = Memory(word);
+data Storage(t) = Storage(word);
+data Returndata(t) = ReturnData(word);
+data Stack(t) = Stack(word);
 
 // Type Classification
 
 // types that can be completely represented by a single stack slot
 class t:ValueTy {
-    function abs(x:Word) -> t;
-    function rep(x:t) -> Word;
+    function abs(x:word) -> t;
+    function rep(x:t) -> word;
 }
 
 instance Memory(t) : ValueTy {
-    function abs(x: Word) -> Memory(T) {
+    function abs(x: word) -> Memory(T) {
         return Memory(x);
     }
 
-    function rep(x: Memory(T)) -> Word {
+    function rep(x: Memory(T)) -> word {
         match x {
         | Memory(w) => return w;
        };
@@ -74,18 +74,18 @@ class ref:Ref(deref) {
 
 instance Memory(t) : Ref(t) {
     function load(loc: Memory(t)) -> t {
-        let rw = rep(loc);
+        let rw = ValueTy.rep(loc);
         let res = 0;
         assembly {
             res := mload(rw)
         };
-        return abs(res);
+        return ValueTy.abs(res);
 
     }
 
     function store(loc: Memory(t), value: t) -> Unit {
-        let rw = rep(loc);
-        let vw = rep(value);
+        let rw = ValueTy.rep(loc);
+        let vw = ValueTy.rep(value);
         assembly {
           mstore(rw, vw)
         };
@@ -96,15 +96,15 @@ instance Memory(t) : Ref(t) {
 
 // Memory Layout
 
-function get_free_memory() -> Word {
-    let res : Word;
+function get_free_memory() -> word {
+    let res : word;
     assembly {
         res := mload(0x40)
     };
     return res;
 }
 
-function set_free_memory(loc : Word) {
+function set_free_memory(loc : word) {
     assembly {
         mstore(0x40, loc)
     };
@@ -113,13 +113,13 @@ function set_free_memory(loc : Word) {
 
 // Bytes
 
-data Bytes = Bytes
+data Bytes = Bytes;
 // TODO: bytes should be indexable (but not ref since it can't live on stack...)
 
 // ABI Encoding
 
 class t:EncodeInto {
-    function encodeInto(val : t, hd : Word, tl : Word) -> Pair(Word,Word);
+    function encodeInto(val : t, hd : word, tl : word) -> Pair(word,word);
 }
 
 class t:Encode {
@@ -130,45 +130,45 @@ class t:Encode {
     // does `t` (or any of it's children) contain a dynamic type?
     function shouldEncodeDynamic(x:Proxy(t)) -> Bool;
     // how big is the head portion of the ABI representation of `t`?
-    function headSize(x:Proxy(t)) -> Word;
+    function headSize(x:Proxy(t)) -> word;
 }
 
 function encode(val:t) -> Memory(Bytes) {
-    let hdSz = headSize(Proxy);
+    let hdSz = Encode.headSize(Proxy);
     let ptr = get_free_memory();
-    let head: Word;
-    let tail: Word;
+    let head: word;
+    let tail: word;
     assembly {
         head := add(ptr, 32);
         tail := add(head, hdSz);
     };
-    let tl = snd(encodeInto(val,head,tail));
+    let tl = snd(EncodeInto.encodeInto(val,head,tail));
     set_free_memory(tl);
     assembly {
         mstore(ptr, sub(tl, head))
     };
-    return abs(ptr);
+    return ValueTy.abs(ptr) : Memory(Bytes);
 }
 
 instance (l:Encode, r:Encode) => Pair(l,r):Encode {
     function shouldEncodeDynamic(x : Proxy(Pair(l,r))) -> Bool {
         let l: Proxy(l) = Proxy;
         let r: Proxy(r) = Proxy;
-        return and(shouldEncodeDynamic(l), shouldEncodeDynamic(l));
+        return and(Encode.shouldEncodeDynamic(l), Encode.shouldEncodeDynamic(l));
     }
 
-    function headSize(x : Proxy(Pair(l,r))) -> Word {
-        match shouldEncodeDynamic(x) {
+    function headSize(x : Proxy(Pair(l,r))) -> word {
+        match Encode.shouldEncodeDynamic(x) {
         | True =>
-            let res;
+            let res : word;
             assembly { res := 32; };
             return res;
         | False =>
             let l: Proxy(l) = Proxy;
             let r: Proxy(r) = Proxy;
-            let lsize = headSize(l);
-            let rsize = headSize(r);
-            let res;
+            let lsize = Encode.headSize(l);
+            let rsize = Encode.headSize(r);
+            let res : word;
             assembly { res := add(lsize,rsize) };
             return res;
         };
@@ -176,22 +176,22 @@ instance (l:Encode, r:Encode) => Pair(l,r):Encode {
 }
 
 instance (l:EncodeInto, r:EncodeInto) => Pair(l,r):EncodeInto {
-    function encodeInto(val, hd, tl) -> Pair(Word,Word) {
+    function encodeInto(val, hd, tl) -> Pair(word,word) {
         let first = fst(val);
         let second = snd(val);
-        let range = encodeInto(first, hd, tl);
-        return encodeInto(second, fst(range), snd(range));
+        let range = EncodeInto.encodeInto(first, hd, tl);
+        return EncodeInto.encodeInto(second, fst(range), snd(range));
     }
 }
 
 // Uint256
-data Uint256 = Uint256(Word)
+data Uint256 = Uint256(word);
 instance Uint256 : ValueTy {
-    function abs(x:Word) -> Uint256 {
+    function abs(x:word) -> Uint256 {
         return Uint256(x);
     }
 
-    function rep(x: Uint256) -> Word {
+    function rep(x: Uint256) -> word {
         match x {
         | Uint256(val) => return val;
         };
@@ -203,15 +203,15 @@ instance Uint256:Encode {
         return False;
     }
 
-    function headSize(x) -> Word {
+    function headSize(x) -> word {
         return 32;
     }
 }
 
 instance Uint256:EncodeInto {
-    function encodeInto(v: Uint256, hd: Word, tl: Word) -> Pair(Word, Word) {
-        let vw = rep(v);
-        let hd_;
+    function encodeInto(v: Uint256, hd: word, tl: word) -> Pair(word, word) {
+        let vw = ValueTy.rep(v);
+        let hd_ : word;
         assembly {
             hd_ := add(hd, 32)
             mstore(hd, vw)

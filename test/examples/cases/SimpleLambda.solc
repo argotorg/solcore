@@ -1,12 +1,12 @@
 contract SimpleLambda{
-  function f (z : word) {
+  function f (z) {
     let n = lam (x,y) {
       return primAddWord(x,primAddWord(y,1));
     } ;
     let m = lam (x) {
       return primAddWord (z,x) ;
     } ;
-    return m(0) : word;
+    return m(n(1,0));
   }
   function main() {
     return f(50);

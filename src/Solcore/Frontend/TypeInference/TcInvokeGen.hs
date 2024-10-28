@@ -22,7 +22,7 @@ import Solcore.Primitives.Primitives
 
 -- generate invoke instances for functions
 
-generateDecls :: (FunDef Name, Scheme) -> TcM () 
+generateDecls :: (FunDef Id, Scheme) -> TcM () 
 generateDecls (fd@(FunDef sig bd), sch) 
   = do
       createTypeFunDef fd 
@@ -33,17 +33,16 @@ generateDecls (fd@(FunDef sig bd), sch)
 lookupUniqueType :: Name -> TcM (Maybe (TopDecl Name))
 lookupUniqueType n = (fmap TDataDef . Map.lookup n) <$> gets uniqueTypes 
 
-createInstance :: Maybe (TopDecl Name) -> Signature Name -> Scheme -> TcM () 
+createInstance :: Maybe (TopDecl Name) -> Signature Id -> Scheme -> TcM () 
 createInstance Nothing  _ _ = pure ()
 createInstance (Just (TDataDef dt@(DataTy n vs _))) sig sch 
   = do
-      argTys' <- createArgs sig 
+      (ps :=> t) <- freshInst sch
+      (argTys', retTy) <- createArgs t   
       let mainTy = TyCon n ([argTys', retTy])
-          retTy = fromJust $ (sigReturn sig)
-          ni = Name "invokable"
-      bd <- createInvokeDef dt sig
-      let instd = Instance [] ni ([argTys', retTy]) mainTy [ bd ]
-      addInstance (Name "invokable") (mkInstPred instd)
+      bd <- createInvokeDef dt sig t 
+      let instd = Instance [] invokableName ([argTys', retTy]) mainTy [ bd ]
+      addInstance invokableName (mkInstPred instd)
       writeInstance instd
       pure ()
 
@@ -54,7 +53,7 @@ notUniqueTyArg (TyCon n _)
       uniques <- Map.elems <$> gets uniqueTypes
       pure (all (\ d -> dataName d /= n) uniques)
 
-mkInstPred :: Instance Name -> Inst
+mkInstPred :: Instance Id -> Inst
 mkInstPred (Instance ctx n ts t _) 
   = anfInstance $ ctx :=> InCls n t ts
 
@@ -67,30 +66,29 @@ anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs
     tvs = fv inst
     freshNames = filter (not . flip elem tvs) (flip TVar False <$> namePool)
 
-createInvokeDef :: DataTy -> Signature Name -> TcM (FunDef Name)
-createInvokeDef dt sig 
-  = do 
-      (sig', mi) <- createInvokeSig dt sig 
-      bd <- createInvokeBody dt sig mi  
+createInvokeDef :: DataTy -> Signature Id-> Ty -> TcM (FunDef Id)
+createInvokeDef dt sig t 
+  = do
+      (sig', mi) <- createInvokeSig dt sig t 
+      bd <- createInvokeBody dt sig mi t 
       pure (FunDef sig' bd)
 
-createInvokeSig :: DataTy -> Signature Name -> TcM (Signature Name, Id)
-createInvokeSig (DataTy n vs cons) sig 
+createInvokeSig :: DataTy -> Signature Id -> Ty -> TcM (Signature Id, Id)
+createInvokeSig (DataTy n vs cons) sig t 
   = do
-      argTys' <- createArgs sig
-      let retTy = fromJust $ sigReturn sig
+      (argTys', retTy) <- createArgs t
       (args, mp) <- mkParamForSig argTys' (TyCon n ([argTys', retTy]))
       let  
-          ni = Name "invoke"
-          vs = fv argTys' `union` maybe [] fv (sigReturn sig)
-      pure (Signature vs [] ni args (sigReturn sig), mp) 
+          vs = fv [retTy, argTys']
+          sig' = Signature vs [] invokeName args (Just retTy)
+      pure (sig', mp)
 
-createArgs :: Signature Name -> TcM Ty 
-createArgs sig 
-  = do 
-      argTys <- mapM tyParam (sigParams sig)
-      argTys' <- filterM notUniqueTyArg argTys
-      pure $ tupleTyFromList argTys'
+createArgs :: Ty -> TcM (Ty, Ty)
+createArgs t  
+  = do
+      let (ts',t') = splitTy t 
+      argTys' <- filterM notUniqueTyArg ts'
+      pure $ (tupleTyFromList argTys', t')
 
 tupleTyFromList :: [Ty] -> Ty
 tupleTyFromList [] = unit 
@@ -98,33 +96,34 @@ tupleTyFromList [t] = t
 tupleTyFromList [t1,t2] = pair t1 t2 
 tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 
-mkParamForSig :: Ty -> Ty -> TcM ([Param Name], Id)
+mkParamForSig :: Ty -> Ty -> TcM ([Param Id], Id)
 mkParamForSig argTy selfTy 
   = do 
-      let selfArg = Typed (Name "self") selfTy 
+      let selfArg = Typed (Id selfName selfTy) selfTy 
       paramName <- freshName 
-      pure ([selfArg, Typed paramName argTy], Id paramName argTy)
+      let pid = Id paramName argTy
+      pure ([selfArg, Typed pid argTy], pid)
 
 -- creating invoke body 
 
 -- no pattern matching needed: just make a call to the function 
 -- pattern matching needed:
--- * No closure: function receives more than one arguments, which are passed as a tuple 
+-- * No closure: function receives more than one argument, which are passed as a tuple 
 -- * Closure: pattern match on closure to get the parameters and make the call with arguments.
 
-createInvokeBody :: DataTy -> Signature Name -> Id -> TcM (Body Name)
-createInvokeBody (DataTy dt vs [Constr c1 targs]) sig (Id pid ty)
+createInvokeBody :: DataTy -> Signature Id -> Id -> Ty -> TcM (Body Id)
+createInvokeBody (DataTy dt vs [Constr c1 targs]) sig x@(Id pid ty) t 
   = do
       let patTys = tyConArgs ty
-          cname = sigName sig
-      argTys <- mapM tyParam (sigParams sig)
+          cname = Id (sigName sig) t 
+          (argTys, retTy) = splitTy t 
       (pats, ns) <- unzip <$> mapM mkPat patTys
       if [ty] == argTys && null targs then 
         -- no need to match the closure type and arguments tuple 
-        pure [Return $ Call Nothing cname [Var pid]]
+        pure [Return $ Call Nothing cname [Var x]]
       else if null targs then do
         -- no pattern matching on closure needed
-        let args = if null argTys then [] else [Var pid]
+        let args = if null argTys then [] else [Var x]
         if null patTys then 
           -- no pattern matching on arguments tuple
           pure [Return $ Call Nothing cname args]
@@ -132,44 +131,20 @@ createInvokeBody (DataTy dt vs [Constr c1 targs]) sig (Id pid ty)
           -- pattern matching on arguments tuple 
           let pats' = foldr1 ppair pats 
               ret = Return $ Call Nothing cname (concat ns)
-          pure [Match [Var pid] [([pats'], [ret])]]
+          pure [Match [Var x] [([pats'], [ret])]]
       else do 
-        cps <- mapM (\ _ -> PVar <$> freshName) targs 
+        cps <- mapM (\ t -> (PVar . flip Id t) <$> freshName) targs 
         -- matching on closure needed
-        let n1 = Name "self"
+        let n1 = Id (Name "self") tc 
             cp = Typed n1 tc
-            cpat = PCon c1 cps
-            pats1 = if null pats then [PVar pid] else pats 
-            ns1 = if null ns then [Var n1, Var pid] else Var n1 : (Var pid) : (concat ns) 
+            cpat = PCon (Id c1 (funtype targs tc)) cps
+            pats1 = if null pats then [PVar x] else pats 
+            ns1 = if null ns then [Var n1, Var x] else Var n1 : (Var x) : (concat ns) 
             pats' = foldr1 ppair (cpat : pats1) 
             ret = Return $ Call Nothing cname ns1
             tc = TyCon dt (TyVar <$> vs)
-        pure [Match [epair (Var n1) (Var pid)] [([pats'], [ret])]]
+        pure [Match [epair (Var n1) (Var x)] [([pats'], [ret])]]
 
-
-{--
-  = do
-      cn <- gets contract
-      liftIO $ putStrLn $ "Sig:" ++ pretty sig 
-      argTys <- mapM tyParam (sigParams sig)
-      let patTys = tyConArgs ty 
-          retTy = fromJust $ sigReturn sig 
-          cname = if isNothing cn || isQual (sigName sig) then sigName sig
-                  else QualName (fromJust cn) 
-                                (pretty $ sigName sig)
-      (pats, ns) <- unzip <$> mapM (const mkPat) patTys
-      let 
-        ret = if null argTys then Return $ Call Nothing cname [] 
-              else if null patTys then 
-                if null targs then Return $ Call Nothing cname [Var pid] 
-                else Return $ Call Nothing cname [Var (Name "self"), Var pid]
-              else 
-                if null targs then Return $ Call Nothing cname (Var <$> ns)
-                else Return $ Call Nothing cname (Var <$> ((Name "self") : ns))
-        pat = if null patTys then PVar pid else foldr1 ppair pats 
-        stmt = if null patTys then [ret] else [Match [Var pid] [([pat], [ret])]]
-      pure stmt 
---} 
 
 isQual :: Name -> Bool
 isQual (QualName _ _) = True 
@@ -179,25 +154,56 @@ tyConArgs :: Ty -> [Ty]
 tyConArgs (TyVar _) = []
 tyConArgs (TyCon _ tys) = tys
 
-ppair :: Pat Name -> Pat Name -> Pat Name  
+ppair :: Pat Id -> Pat Id -> Pat Id  
 ppair p1 p2 
-  = PCon pairCon [p1, p2] 
+  = PCon (pairCon t1 t2) [p1, p2] 
     where 
-      pairCon = Name "pair" 
-      
-epair :: Exp Name -> Exp Name -> Exp Name 
-epair e1 e2 = Con (Name "pair") [e1, e2]
+      t1 = tyFromPat p1 
+      t2 = tyFromPat p2
 
-mkPat :: Ty -> TcM (Pat Name, [Exp Name])
+-- invariant: We should remove wildcards before.
+
+tyFromPat :: Pat Id -> Ty
+tyFromPat (PVar (Id _ t)) = t 
+tyFromPat (PCon (Id _ t) _) = t 
+tyFromPat (PLit l) = tyFromLit l 
+
+tyFromLit :: Literal -> Ty 
+tyFromLit (IntLit _) = word 
+tyFromLit (StrLit _) = string 
+
+pairCon :: Ty -> Ty -> Id 
+pairCon t1 t2 = Id (Name "pair") (pairTy t1 t2)
+
+epair :: Exp Id -> Exp Id -> Exp Id 
+epair e1 e2 = Con (pairCon t1 t2) [e1, e2]
+  where 
+    t1 = tyFromExp e1 
+    t2 = tyFromExp e2
+
+tyFromExp :: Exp Id -> Ty 
+tyFromExp (Var (Id _ t)) = t 
+tyFromExp (Con (Id _ t) _) = t 
+tyFromExp (FieldAccess _ (Id _ t)) = t 
+tyFromExp (Lit l) = tyFromLit l 
+tyFromExp (Call _ (Id _ t) _) = t
+-- here we assume that we have made lambda lift 
+-- and infer types for the function of the lambda.
+-- We do not have lambdas here.
+tyFromExp (Lam _ _ (Just t)) = t
+tyFromExp (TyExp _ t) = t
+
+mkPat :: Ty -> TcM (Pat Id, [Exp Id])
 mkPat (TyCon (Name "pair") [t1, t2])
   = do 
       n1 <- freshName 
       p <- freshName
       (p1,e1) <- mkPat t2 
-      pure (ppair (PVar n1) p1, (Var n1) : e1)
+      pure (ppair (PVar (Id n1 t1)) p1, (Var (Id n1 t1)) : e1)
 mkPat t = do 
   n <- freshName 
-  pure (PVar n, [Var n])
+  let v = Id n t
+  pure (PVar v,  [Var v])
 
 
 mkArgTypes :: [Ty] -> Ty -> [Ty] 
@@ -220,7 +226,7 @@ tyParam (Untyped _) = freshTyVar
 
 -- creating unique types 
 
-createTypeFunDef :: FunDef Name -> TcM (FunDef Name)
+createTypeFunDef :: FunDef Id -> TcM (FunDef Id)
 createTypeFunDef (FunDef sig bdy)
   = do 
       dt <- lookupUniqueType (sigName sig)
@@ -231,7 +237,7 @@ createTypeFunDef (FunDef sig bdy)
           pure (FunDef sig bdy)
         Just _ -> pure (FunDef sig bdy)
 
-freshSignature :: Signature Name -> TcM (Signature Name)
+freshSignature :: Signature Id -> TcM (Signature Id)
 freshSignature sig 
   = do 
       let ctx = sigContext sig 
@@ -248,12 +254,10 @@ freshSignature sig
            , sigReturn = ret'
            } 
 
-freshParam :: Param Name -> TcM (Param Name)
+freshParam :: Param Id -> TcM (Param Id)
 freshParam p@(Typed _ _) = pure p 
-freshParam (Untyped n) 
-  = do 
-      v <- freshTyVar
-      pure (Typed n v)
+freshParam (Untyped n@(Id _ t)) 
+  = pure (Typed n t)
 
 freshReturn :: Maybe Ty -> TcM (Maybe Ty)
 freshReturn Nothing 
@@ -271,7 +275,7 @@ fv' = foldr step []
     step (Typed _ ty) ac = fv ty `union` ac 
     step (Untyped _) ac = ac 
 
-schemeFromSig :: Signature Name -> Scheme 
+schemeFromSig :: Signature Id -> Scheme 
 schemeFromSig sig 
   = let 
       ctx = sigContext sig 
@@ -281,7 +285,7 @@ schemeFromSig sig
       vs = fv (ctx :=> ty)
     in Forall vs (ctx :=> ty)
 
-tyFromParam :: Param Name -> Ty 
+tyFromParam :: Param Id -> Ty 
 tyFromParam (Typed _ ty) = ty 
 
 createUniqueType' :: Name -> Scheme -> TcM ()

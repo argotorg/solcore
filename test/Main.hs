@@ -13,8 +13,18 @@ tests
                [
                  cases
                , pragmas
-               , spec 
+               , spec
+               , std 
                ]
+
+std :: TestTree 
+std 
+  = testGroup "Standard library"
+              [
+                runTestForFile "std.sol" stdFolder
+              ]
+      where
+        stdFolder = "./std"
 
 spec :: TestTree 
 spec 
@@ -61,7 +71,8 @@ cases :: TestTree
 cases 
   = testGroup "Files for folder cases"
               [
-                runTestForFile "Ackermann.solc" caseFolder 
+                runTestForFile "Ackermann.solc" caseFolder
+              , runTestForFile "app.solc" caseFolder 
               , expectFail $ runTestForFile "BadInstance.solc" caseFolder
               , runTestForFile "BoolNot.solc" caseFolder
               , runTestForFile "Compose.solc" caseFolder

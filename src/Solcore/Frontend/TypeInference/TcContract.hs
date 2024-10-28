@@ -25,27 +25,14 @@ import Solcore.Primitives.Primitives
 -- top level type inference function: Boolean parameter 
 -- used to determine if it will generate definitions.
 
-typeInfer1 :: CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
-typeInfer1 (CompUnit imps decls) 
+typeInfer :: CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
+typeInfer (CompUnit imps decls) 
   = do
-      let ienv = initTcEnv True 
-      r <- runTcM (tcCompUnit (CompUnit imps decls)) ienv
+      r <- runTcM (tcCompUnit (CompUnit imps decls)) initTcEnv
       case r of 
         Left err -> pure $ Left err 
         Right ((CompUnit imps ds), env) -> 
-          pure (Right (CompUnit imps ds, env)) 
-
-typeInfer2 :: TcEnv -> CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
-typeInfer2 env (CompUnit imps decls) 
-  = do
-      let env1 = (initTcEnv False) {ctx = ctx env, uniqueTypes = uniqueTypes env}
-      r <- runTcM (tcCompUnit (CompUnit imps decls))  env1
-      case r of 
-        Left err -> pure $ Left err 
-        Right ((CompUnit imps ds), env) -> 
-          pure (Right (CompUnit imps ds, env)) 
-
-
+          pure (Right (CompUnit imps (ds ++ generated env), env)) 
 
 -- type inference for a compilation unit 
 
@@ -231,7 +218,7 @@ tcInstance :: Instance Name -> TcM (Instance Id)
 tcInstance idecl@(Instance ctx n ts t funs) 
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs) 
-      funs' <- buildSignatures n ts t funs `wrapError` idecl 
+      funs' <- buildSignatures n ts t funs `wrapError` idecl
       (funs1, pss', ts') <- unzip3 <$> mapM tcFunDef  funs' `wrapError` idecl
       withCurrentSubst (Instance ctx n ts t funs1)
 
@@ -270,7 +257,7 @@ typeSignature nm args ret sig
   = sig { 
           sigName = QualName nm (pretty $ sigName sig)
         , sigParams = zipWith paramType args (sigParams sig)
-        , sigReturn = Just ret
+        , sigReturn = Just (skolemize ret)
         }
     where 
       paramType _ (Typed n t) = Typed n (skolemize t)
@@ -322,7 +309,7 @@ scanFun (FunDef sig bd)
       fillSignature (Signature vs ctx n ps t)
         = do 
             ps' <- mapM f ps 
-            pure (Signature vs ctx n ps' t)
+            pure (Signature vs ctx n ps' (skolemize <$> t))
 
 -- type checking contract constructors
 
@@ -416,7 +403,6 @@ checkInstance idef@(Instance ctx n ts t funs)
       mapM_ (checkMethod ipred) funs
       let ninst = anfInstance $ ctx :=> InCls n t ts 
       -- add to the environment
-      gen <- gets generateDefs 
       addInstance n ninst 
 
 -- bound variable check 

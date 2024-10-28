@@ -34,7 +34,8 @@ freshVar
 
 freshName :: TcM Name 
 freshName 
-  = do 
+  = do
+      vs <- getEnvFreeVars
       ns <- gets nameSupply 
       let (n, ns') = newName ns 
       modify (\ ctx -> ctx {nameSupply = ns'})
@@ -63,18 +64,18 @@ typeInfoFor (DataTy n vs cons)
 freshTyVar :: TcM Ty 
 freshTyVar = TyVar <$> freshVar
 
-writeFunDef :: FunDef Name -> TcM ()
+writeFunDef :: FunDef Id -> TcM ()
 writeFunDef fd = writeTopDecl (TFunDef fd)
 
 writeDataTy :: DataTy -> TcM ()
 writeDataTy dt 
   = writeTopDecl (TDataDef dt)  
 
-writeInstance :: Instance Name -> TcM () 
+writeInstance :: Instance Id -> TcM () 
 writeInstance instd 
   = writeTopDecl (TInstDef instd)
 
-writeTopDecl :: TopDecl Name -> TcM ()
+writeTopDecl :: TopDecl Id -> TcM ()
 writeTopDecl d 
   = do 
       b <- gets generateDefs 
@@ -99,21 +100,21 @@ matchTy t t'
       s <- match t t' 
       extSubst s 
 
+addFunctionName :: Name -> TcM () 
+addFunctionName n 
+  = modify (\ env -> env {directCalls = n : directCalls env })
+
 isDirectCall :: Name -> TcM Bool
-isDirectCall (QualName n _) = pure True --- XXX need to be fixed later.
+isDirectCall (QualName n _) = pure True
 isDirectCall n 
-  = do
-      b1 <- (Map.member n) <$> gets uniqueTypes
-      pure (b1 || isPrim)
-    where 
-      isPrim = n == Name "primAddWord" || n == Name "primEqWord"
+  = (elem n) <$> gets directCalls 
 
 -- including contructors on environment
 
 checkDataType :: DataTy -> TcM ()
 checkDataType (DataTy n vs constrs) 
   = do
-      vals' <- mapM (\ (n, ty) -> (n,) <$> generalize ([], ty)) vals
+      let vals' = map (\ (n, ty) -> (n, Forall (fv ty) ([] :=> ty))) vals
       mapM_ (uncurry extEnv) vals'
       modifyTypeInfo n ti
     where 
@@ -202,8 +203,14 @@ checkConstr :: Name -> Name -> TcM ()
 checkConstr tn cn 
   = do 
       ti <- askTypeInfo tn 
-      when (cn `notElem` constrNames ti)
-           (undefinedConstr tn cn)
+      unless (validConstr cn ti)
+             (undefinedConstr tn cn)
+
+validConstr :: Name -> TypeInfo -> Bool 
+validConstr n ti = n `elem` constrNames ti || isPair n 
+  where 
+    isPair (Name n) = n == "pair"
+    isPair _ = False
 
 -- extending the environment with a new variable 
 

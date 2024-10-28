@@ -1,0 +1,16 @@
+class ref : Ref(deref) {
+  function load (r : ref) -> deref;
+  function store (r : ref, d : deref) -> unit;
+}
+
+data Memory(a) = new(a);
+
+instance Memory(a) : Ref(a) {
+  function load (r) {
+    match r {
+    | new(x) => return x;
+    };
+  }
+}
+
+

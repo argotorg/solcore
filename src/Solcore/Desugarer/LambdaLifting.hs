@@ -4,9 +4,12 @@ import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.State
 import Data.List 
+import qualified Data.Map as Map
+import Data.Maybe (isNothing)
 import Solcore.Frontend.Pretty.SolcorePretty 
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.NameSupply
+import Solcore.Frontend.TypeInference.TcEnv (primCtx)
 import Solcore.Primitives.Primitives
 
 
@@ -17,7 +20,10 @@ lambdaLifting unit
   = case runLiftM (liftLambda unit) (collect unit) of 
       Left err -> Left err 
       Right (CompUnit imps ds, env) ->
-       Right (CompUnit imps (combine (generated env) ds), debugInfo env)  
+        -- adding primitive class Invokable to the set of declarations 
+        -- of the current module
+        let decls' = TClassDef invokeClass : combine (generated env) ds 
+        in Right (CompUnit imps decls', debugInfo env)  
 
 combine :: [TopDecl Name] -> [TopDecl Name] -> [TopDecl Name]
 combine gs ds 
@@ -114,84 +120,105 @@ instance LiftLambda (Exp Name) where
   liftLambda (FieldAccess e n) 
     = flip FieldAccess n <$> liftLambda e 
   liftLambda (Call me n es)
-    = desugarCall me n es 
+    = do 
+        me' <- liftLambda me 
+        es' <- liftLambda es 
+        pure (Call me' n es')
   liftLambda e@(Lam ps bd mt) 
-    = do  
-        let free = vars bd \\ vars ps 
-        debugInfoLambda e free 
-        (e,d, arg, res) <- createLambdaType free
-        createFunction arg res free d ps bd mt
-        pure e
-  liftLambda e@(TyExp e1 ty) 
-    = flip TyExp ty <$> liftLambda e1  
+    = do 
+        fs <- gets functionNames 
+        let
+          defs = fs ++ vars ps ++ Map.keys primCtx
+          free = vars bd \\ defs 
+        mdt <- createClosureType free 
+        fd <- createFunction free mdt ps bd  
+        addDecl (TFunDef fd)
+        let e' = if isNothing mdt then Var (sigName (funSignature fd))
+                 else case mdt of 
+                        Just (DataTy _ _ [Constr cn' _]) ->
+                          Call Nothing (sigName (funSignature fd)) ([Con cn' (Var <$> free)])
+        pure e'
   liftLambda d = pure d 
 
-desugarCall :: Maybe (Exp Name) -> 
-               Name -> 
-               [Exp Name] -> 
-               LiftM (Exp Name)
-desugarCall me n es 
+createClosureType :: [Name] -> LiftM (Maybe DataTy)
+createClosureType [] = pure Nothing 
+createClosureType ns 
   = do 
-      b <- isDirectCall n 
-      me' <- liftLambda me 
-      es' <- liftLambda es 
-      let m = QualName (Name "invokable") "invoke"
-      if b then
-        pure (Call me' n es')
-      else 
-        pure (Call Nothing m (Var n : es'))
+      closureName <- freshName "t_closure"
+      let vs = take (length ns) namePool
+          dtvars = map (\ n -> TVar n False) ns 
+          con = Constr closureName (TyVar <$> dtvars)
+          dt = DataTy closureName dtvars [con]
+      addDecl (TDataDef dt)
+      pure (Just dt)
 
-
-createLambdaType :: [Name] -> LiftM (Exp Name, DataTy, Name, Name)
-createLambdaType ns 
-  = do 
-      n <- freshName "LambdaTy" 
-      arg <- freshName "arg"
-      res <- freshName "res"
-      let 
-          vs = map (flip TVar False) ns
-          vs' = map (flip TVar False) (ns ++ [arg, res]) 
-          d = DataTy n vs' [Constr n (TyVar <$> vs)]
-      debugCreateLambdaType d
-      addDecl (TDataDef d)
-      pure (Con n (Var <$> ns), d, arg, res)
-
-createFunction :: Name -> 
-                  Name -> 
-                  [Name] -> 
-                  DataTy -> 
-                  [Param Name] ->  
+createFunction :: [Name] -> 
+                  Maybe DataTy -> 
+                  [Param Name] -> 
                   Body Name -> 
-                  Maybe Ty -> LiftM ()
-createFunction arg res ns dt@(DataTy n vs [(Constr m ts)]) ps bd mt 
+                  LiftM (FunDef Name)
+createFunction free mdt ps bdy  
   = do 
-      f <- freshName "lambdaimpl"
-      let (np, pool') = newName (namePool \\ vars ps)
-          ps1 = Untyped <$> ns
-          ps' = ps1 ++ ps
-          pl = Typed np (TyCon n (TyVar <$> vs))
-          s' = Return (Call Nothing f (Var <$> (ns ++ [arg])))
-          bd' = [Match [Var np] [([PCon m pats], [s'])]]
-          pats = map PVar ns
-          parg = Untyped arg 
-          -- XXX need to check here: lambda syntax do not allow contexts
-          sig = Signature [] [] f ps' mt 
-          sig' = Signature [] [] (Name "invoke") [pl, parg] Nothing
-          fd = FunDef sig bd
-          fd' = FunDef sig' bd'
-          targ = TyVar $ TVar arg False 
-          tres = TyVar $ TVar res False 
-          mtc = TyCon n (TyVar <$> vs)
-          idecl = Instance [] (Name "invokable") [targ, tres] mtc [fd']
-      debugCreateFunction fd 
-      addDecl (TFunDef fd)
-      addDecl (TInstDef idecl)
-createFunction _ _ _ dt _ _ _ 
-  = throwError $ unlines [ "Impossible! Closure type does not have one constructor:"
-                         , pretty dt 
-                         ]
+      (sig,mp) <- createSignature mdt ps 
+      bdy' <- createBody free mp mdt bdy 
+      pure (FunDef sig bdy')
 
+createSignature :: Maybe DataTy -> 
+                   [Param Name] -> 
+                   LiftM ( Signature Name
+                         , Maybe (Param Name)
+                         )
+createSignature Nothing ps 
+  = do 
+      n <- freshName "lambda_impl"
+      pure (Signature [] [] n ps Nothing, Nothing)
+createSignature (Just dt) ps 
+  = do 
+      n <- freshName "lambda_impl"
+      np <- freshName "env"
+      let p = Typed np (tyFromData dt)
+      pure (Signature [] [] n (p : ps) Nothing, Just p)
+       
 
+tyFromData :: DataTy -> Ty 
+tyFromData dt 
+  = TyCon (dataName dt) (TyVar <$> dataParams dt)
+
+createBody :: [Name] -> 
+              Maybe (Param Name) -> 
+              Maybe DataTy -> 
+              Body Name -> 
+              LiftM (Body Name)
+createBody _ Nothing Nothing bdy 
+  = pure bdy
+createBody free (Just p) (Just dt) bdy 
+  = wrap <$> createClosureMatch free p dt bdy 
+    where 
+      wrap x = [x]
+createBody _ _ _ _ 
+  = throwError $ unwords [ "Impossible!" 
+               , "This should not happen:" 
+               , "Lambda lifting!"
+               ]
+
+createClosureMatch :: [Name] -> 
+                      Param Name -> 
+                      DataTy -> 
+                      Body Name -> 
+                      LiftM (Stmt Name)
+createClosureMatch free p dt bdy 
+  = do 
+      let 
+        s = Match [Var $ paramName p]
+                  (mkEquations free (dataName dt) bdy)
+      pure s 
+
+mkEquations :: [Name] -> 
+               Name -> 
+               Body Name -> 
+               Equations Name 
+mkEquations free c bdy 
+  = [([PCon c (PVar <$> free)], bdy)]
 
 debugCreateFunction :: FunDef Name -> LiftM ()
 debugCreateFunction fd 
@@ -234,23 +261,20 @@ type LiftM a = StateT Env (ExceptT String Identity) a
 runLiftM :: LiftM a -> [Name] -> Either String (a, Env)
 runLiftM m ns = runIdentity (runExceptT (runStateT m initEnv))
     where 
-      initEnv = Env [TClassDef invokeClass] ns' 0 []
-      ns' = map Name ["primEqWord", "primAddWord"] ++ ns ++ [QualName (Name "invokable") "invoke"]
+      initEnv = Env [] ns' 0 []
+      ns' = map Name ["primEqWord", "primAddWord", "invoke"] ++ ns
+
+inc :: LiftM Int 
+inc = do 
+  n <- gets fresh 
+  modify (\ env -> env {fresh = n + 1})
+  pure n
 
 freshName :: String -> LiftM Name 
 freshName s 
   = do 
-      n <- gets fresh 
-      modify (\ env -> env {fresh = n + 1})
+      n <- inc
       pure $ Name (s ++ show n)
-
-isDirectCall :: Name -> LiftM Bool
--- for now, we assume that qualified names are just direct call
-isDirectCall (QualName _ _) = pure True 
-isDirectCall n 
-  = do 
-      ns <- gets functionNames 
-      pure (n `elem` ns)
 
 addDecl :: TopDecl Name -> LiftM () 
 addDecl d 
@@ -336,5 +360,4 @@ instance Vars (Exp Name) where
   vars (Call (Just e) n es) = [n] `union` vars (e : es)
   vars (Call Nothing n es) = [n] `union` vars es 
   vars (Lam ps bd _) = vars bd \\ vars ps
-  vars (TyExp e _) = vars e 
   vars _ = []

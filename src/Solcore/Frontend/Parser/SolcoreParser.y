@@ -6,7 +6,7 @@ import Data.List.NonEmpty
 import Solcore.Frontend.Lexer.SolcoreLexer hiding (lexer)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
-import Solcore.Primitives.Primitives
+import Solcore.Primitives.Primitives hiding (pairTy)
 import Language.Yul
 }
 
@@ -127,7 +127,6 @@ Decl : FieldDef                                    {CFieldDecl $1}
      | DataDef                                     {CDataDecl $1}
      | Function                                    {CFunDecl $1}
      | Constructor                                 {CConstrDecl $1}
-     | TypeSynonym                                 {CSym $1}
 
 -- type synonym 
 
