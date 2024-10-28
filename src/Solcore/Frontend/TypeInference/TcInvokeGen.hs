@@ -147,30 +147,6 @@ createInvokeBody (DataTy dt vs [Constr c1 targs]) sig (Id pid ty)
         pure [Match [epair (Var n1) (Var pid)] [([pats'], [ret])]]
 
 
-{--
-  = do
-      cn <- gets contract
-      liftIO $ putStrLn $ "Sig:" ++ pretty sig 
-      argTys <- mapM tyParam (sigParams sig)
-      let patTys = tyConArgs ty 
-          retTy = fromJust $ sigReturn sig 
-          cname = if isNothing cn || isQual (sigName sig) then sigName sig
-                  else QualName (fromJust cn) 
-                                (pretty $ sigName sig)
-      (pats, ns) <- unzip <$> mapM (const mkPat) patTys
-      let 
-        ret = if null argTys then Return $ Call Nothing cname [] 
-              else if null patTys then 
-                if null targs then Return $ Call Nothing cname [Var pid] 
-                else Return $ Call Nothing cname [Var (Name "self"), Var pid]
-              else 
-                if null targs then Return $ Call Nothing cname (Var <$> ns)
-                else Return $ Call Nothing cname (Var <$> ((Name "self") : ns))
-        pat = if null patTys then PVar pid else foldr1 ppair pats 
-        stmt = if null patTys then [ret] else [Match [Var pid] [([pat], [ret])]]
-      pure stmt 
---} 
-
 isQual :: Name -> Bool
 isQual (QualName _ _) = True 
 isQual _ = False

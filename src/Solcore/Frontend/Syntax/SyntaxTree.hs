@@ -164,7 +164,6 @@ data ContractDecl
   | CFieldDecl Field
   | CFunDecl FunDef
   | CConstrDecl Constructor
-  | CSym TySym 
     deriving (Eq, Ord,Show, Data, Typeable)
 -- definition of statements 
 

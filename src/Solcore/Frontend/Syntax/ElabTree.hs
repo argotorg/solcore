@@ -341,7 +341,6 @@ instance Elab S.ContractDecl where
   initialEnv (S.CFieldDecl fd) = initialEnv fd 
   initialEnv (S.CFunDecl fd) = initialEnv fd 
   initialEnv (S.CConstrDecl c) = initialEnv c 
-  initialEnv (S.CSym t) = initialEnv t
 
   elab (S.CDataDecl dt) 
     = CDataDecl <$> elab dt 
@@ -351,8 +350,6 @@ instance Elab S.ContractDecl where
     = CFunDecl <$> elab fd 
   elab (S.CConstrDecl c)
     = CConstrDecl <$> elab c 
-  elab (S.CSym t)
-    = CSym <$> elab t
 
 instance Elab S.Stmt where 
   type Res S.Stmt = Stmt Name 

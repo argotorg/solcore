@@ -99,14 +99,14 @@ matchTy t t'
       s <- match t t' 
       extSubst s 
 
+addFunctionName :: Name -> TcM () 
+addFunctionName n 
+  = modify (\ env -> env {directCalls = n : directCalls env })
+
 isDirectCall :: Name -> TcM Bool
-isDirectCall (QualName n _) = pure True --- XXX need to be fixed later.
+isDirectCall (QualName n _) = pure True
 isDirectCall n 
-  = do
-      b1 <- (Map.member n) <$> gets uniqueTypes
-      pure (b1 || isPrim)
-    where 
-      isPrim = n == Name "primAddWord" || n == Name "primEqWord"
+  = (elem n) <$> gets directCalls 
 
 -- including contructors on environment
 
@@ -202,8 +202,14 @@ checkConstr :: Name -> Name -> TcM ()
 checkConstr tn cn 
   = do 
       ti <- askTypeInfo tn 
-      when (cn `notElem` constrNames ti)
-           (undefinedConstr tn cn)
+      unless (validConstr cn ti)
+             (undefinedConstr tn cn)
+
+validConstr :: Name -> TypeInfo -> Bool 
+validConstr n ti = n `elem` constrNames ti || isPair n 
+  where 
+    isPair (Name n) = n == "pair"
+    isPair _ = False
 
 -- extending the environment with a new variable 
 

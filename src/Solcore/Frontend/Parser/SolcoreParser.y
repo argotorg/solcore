@@ -127,7 +127,6 @@ Decl : FieldDef                                    {CFieldDecl $1}
      | DataDef                                     {CDataDecl $1}
      | Function                                    {CFunDecl $1}
      | Constructor                                 {CConstrDecl $1}
-     | TypeSynonym                                 {CSym $1}
 
 -- type synonym 
 

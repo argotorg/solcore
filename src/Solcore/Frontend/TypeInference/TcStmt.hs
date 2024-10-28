@@ -53,7 +53,8 @@ tcStmt e@(Let n mt me)
                       (Nothing, Nothing) ->
                         (Nothing, [],) <$> freshTyVar
       extEnv n (monotype tf)
-      pure (Let (Id n tf) (Just tf) me', [], unit)
+      let e' = Let (Id n tf) (Just tf) me'
+      pure (e', [], unit)
 tcStmt (StmtExp e)
   = do
       (e', ps', t') <- tcExp e
@@ -217,7 +218,10 @@ tcExp ex@(Call me n args)
         tcCall me n args `wrapError` ex
       else do
         if isDirect then tcCall me n args `wrapError` ex
-          else (tcCall me qn (Var n : args)) `wrapError` ex
+          else
+            do 
+              let args' = [Var n, indirectArgs args]
+              (tcCall me qn args') `wrapError` ex
 tcExp e@(Lam args bd _)
   = do
       (args', schs, ts') <- tcArgs args
@@ -233,7 +237,7 @@ tcExp e@(Lam args bd _)
         writeFunDef lfun
         extSignature (funSignature lfun)
         (lfun', ps2, t2) <- tcFunDef lfun
-        pure (Lam args' bd' (Just (funtype ts1 t1)), ps1, funtype ts1 t1)
+        pure (e', ps1, ty1)
       else do
         pure (e', ps1, ty1)
 tcExp e1@(TyExp e ty)
@@ -244,6 +248,15 @@ tcExp e1@(TyExp e ty)
       s <- match ty' ty  `wrapError` e1
       extSubst s
       pure (TyExp e' ty, apply s ps, ty)
+
+-- building indirect function call arguments 
+
+indirectArgs :: [Exp Name] -> Exp Name 
+indirectArgs [] = Con (Name "pair") []
+indirectArgs [e] = e 
+indirectArgs (e : es) = epair e (indirectArgs es)
+  where 
+    epair e1 e2 = Con (Name "pair") [e1, e2]
 
 createLambdaImpl :: [Pred] ->
                     [Param Id] ->
@@ -416,6 +429,7 @@ extSignature :: Signature Name -> TcM ()
 extSignature sig@(Signature _ preds n ps t)
   = do
       -- checking if the function is previously defined
+      addFunctionName n
       te <- gets ctx
       gen <- gets generateDefs
       when (Map.member n te && gen) (duplicatedFunDef n) `wrapError` sig

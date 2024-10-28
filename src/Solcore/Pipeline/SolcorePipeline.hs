@@ -31,12 +31,12 @@ pipeline = do
   t' <- runParser content 
   withErr t' $ \ ast@(CompUnit imps ds) -> do
     when verbose $ do 
-      putStrLn "AST after name resolution"
+      putStrLn "> AST after name resolution"
       putStrLn $ pretty ast 
     r2 <- sccAnalysis ast
     withErr r2 $ \ ast' -> do
       when verbose $ do 
-        putStrLn "SCC Analysis:"
+        putStrLn "> SCC Analysis:"
         putStrLn $ pretty ast'
       r5 <- typeInfer1 ast'
       withErr r5 $ \ (c', env) -> do
@@ -72,17 +72,17 @@ pipeline = do
             r8 <- matchCompiler c1
             withErr r8 $ \ res -> do
               when (verbose || optDumpDS opts) do
-                putStrLn "Match compilation result:"
+                putStrLn "> Match compilation result:"
                 putStrLn (pretty res)
               unless (optNoSpec opts) do
                 r9 <- specialiseCompUnit res (optDebugSpec opts) env
                 when (optDumpSpec opts) do
-                  putStrLn "Specialised contract:"
+                  putStrLn "> Specialised contract:"
                   putStrLn (pretty res)
-                r10 <- emitCore (optDebugCore opts) env res
-                when (optDumpCore opts) do
-                  putStrLn "Core contract(s):"
-                  forM_ r10 (putStrLn . pretty)
+                -- r10 <- emitCore (optDebugCore opts) env res
+                -- when (optDumpCore opts) do
+                --   putStrLn "> Core contract(s):"
+                --   forM_ r10 (putStrLn . pretty)
 
 runParser :: String -> IO (Either String (CompUnit Name))
 runParser content = do 
