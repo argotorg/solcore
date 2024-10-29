@@ -6,6 +6,7 @@ function fromBool(b) {
    | True => return 1;
  };
 }
+
 function unsafeToBool(x: word) {
   let res: Bool;
   assembly  {
@@ -25,7 +26,7 @@ function toBool(x: word) {
 }
 
 contract Tobol {
-function main() {
-	 return fromBool(toBool(42));
-}
+  function main() {
+    return fromBool(toBool(42));
+  }
 }
