@@ -8,8 +8,8 @@ yulBuiltins = Yul []
 
 revertStmt :: String -> [YulStmt]
 revertStmt s =  [ YExp $ YCall "mstore" [yulInt 0, YLit (YulString s)]
-  , YExp $ YCall "revert" [yulInt 0, yulInt (length s)]
-  ]
+                , YExp $ YCall "revert" [yulInt 0, yulInt (length s)]
+                ]
 
 {-
 poisonBuiltin :: [YulStmt]
