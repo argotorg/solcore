@@ -298,6 +298,12 @@ emitMatch scrutinee alts = do
     let scon = case sty of
             TyCon n _ -> n
             _ -> error ("emitMatch: scrutinee not a type constructor: " ++ show sty)
+    case scon of
+        "word" -> emitWordMatch scrutinee alts
+        _ -> emitDataMatch scon scrutinee alts
+
+emitDataMatch :: Name -> Exp Id -> Equations Id -> StateT EcState IO [Core.Stmt]
+emitDataMatch scon scrutinee alts = do
     mti <- gets (Map.lookup scon . ecDT)
     let ti = fromMaybe (error ("emitMatch: unknown type " ++ show scon)) mti
     let allCons = dataConstrs ti
@@ -306,6 +312,24 @@ emitMatch scrutinee alts = do
         [c] -> emitProdMatch scrutinee alts
         _ -> emitSumMatch allCons scrutinee alts
 
+emitWordMatch :: Exp Id -> Equations Id -> EM [Core.Stmt]
+emitWordMatch scrutinee alts = do
+    (sVal, sCode) <- emitExp scrutinee
+    let coreType = Core.TWord
+    coreAlts <- mapM emitWordAlt alts
+    return [Core.SMatch coreType sVal coreAlts]
+    where
+        emitWordAlt :: Equation Id -> EM Core.Alt
+        emitWordAlt ([PLit(IntLit i)], stmts) = do
+            coreStmts <- emitStmts stmts
+            return (Core.Alt (Core.PIntLit i) "$_" (oneStmt coreStmts))
+        emitWordAlt ([PVar (Id n _)], stmts) = do
+            coreStmts <- emitStmts stmts
+            let coreName = show n
+            return (Core.Alt (Core.PVar coreName) "$_" (oneStmt coreStmts))
+        emitWordAlt (pat, _) = error ("emitWordAlt not implemented for" ++ show pat)
+        oneStmt [stmt] = stmt
+        oneStmt stmts = Core.SBlock stmts
 type BranchMap = Map.Map Name [Core.Stmt]
 
 emitSumMatch :: [Constr] -> Exp Id -> Equations Id -> EM [Core.Stmt]
