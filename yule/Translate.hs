@@ -186,7 +186,7 @@ genNAlts :: Location -> [Alt] -> TM [(YLiteral, [YulStmt])]
 genNAlts payload alts = do mapM (genAlt payload) alts
 
 genAlt :: Location -> Alt -> TM (YLiteral, [YulStmt])
-genAlt payload (Alt con name stmt) = withLocalEnv do
+genAlt payload (Alt (PCon con) name stmt) = withLocalEnv do
     insertVar name payload
     yulStmts <- genStmt stmt
     pure (yulCon con, yulStmts)
@@ -194,6 +194,8 @@ genAlt payload (Alt con name stmt) = withLocalEnv do
         yulCon CInl = YulFalse
         yulCon CInr = YulTrue
         yulCon (CInK k) = YulNumber (fromIntegral k)
+genAlt _ alt = error ("genAlt unimplemented for: " ++ show alt)
+
 
 allocVar :: Core.Name -> Type -> TM [YulStmt]
 allocVar name TWord = do

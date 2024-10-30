@@ -379,8 +379,8 @@ emitSumMatch allCons scrutinee alts = do
         rightBranch t = error ("rightBranch: not a sum type: " ++ show t)
         left = altName False
         right = altName True
-        alt con n [stmt] = Core.Alt con n stmt
-        alt con n stmts = Core.Alt con n (Core.SBlock stmts)
+        alt con n [stmt] = Core.ConAlt con n stmt
+        alt con n stmts = Core.ConAlt con n (Core.SBlock stmts)
 
         body [stmt] = stmt
         body stmts = Core.SBlock stmts
