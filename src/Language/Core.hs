@@ -90,7 +90,9 @@ instance Pretty Stmt where
     ppr (SAssign lhs rhs) = ppr lhs <+> text ":=" <+> ppr rhs
     ppr (SAlloc x t) = text "let" <+> text x <+> text ":" <+> ppr t
     ppr (SExpr e) = ppr e
-    ppr (SAssembly stmts) = vcat (map ppr stmts)
+    ppr (SAssembly yul) = text "assembly" <+> lbrace
+                            $$ nest 2 (vcat (map ppr yul))
+                            $$ rbrace
     ppr (SReturn e) = text "return" <+> ppr e
     ppr (SComment c) = text "//" <+> text c
     ppr (SBlock stmts) = lbrace $$ nest 2 (vcat (map ppr stmts)) $$ rbrace

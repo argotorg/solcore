@@ -8,6 +8,6 @@ data Pair(a,b) = Pair(a,b);
   }
 
   function main() {
-    return fst(Pair(1,0));
+    return fst(Pair(42,0));
   }
 }

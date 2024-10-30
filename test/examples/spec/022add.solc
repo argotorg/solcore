@@ -1,0 +1,13 @@
+function add(x : word, y : word) {
+  let res: word;
+  assembly {
+     res := add(x, y)
+  };
+  return res;
+}
+
+contract Add1 {
+  function main() {
+    return add(40, 2);
+  }
+}
