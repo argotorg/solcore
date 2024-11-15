@@ -10,6 +10,7 @@ pragma no-coverage-condition ABIDecode;
     - empty types
     - better inference for Typedef.rep() calls (have to annotate atm?)
     - inline Proxy defs
+    - boolean short circuiting
 - sugar
     - Proxy (e.g. `@t ==> Proxy : Proxy t`
     - Pair (e.g. `(a,b) ==> Pair(a,b)`
@@ -22,6 +23,7 @@ pragma no-coverage-condition ABIDecode;
     - braces for blocks in matches
     - trait / impl vs class / instance
     - function -> fn?
+    - assembly vs high level return?
 */
 
 // booleans
@@ -655,7 +657,24 @@ class ty:GenerateDispatch {
     forall f:Invokable(Unit,Unit) . function dispatch_if_selector_match(x: ty) -> f;
 }
 
-data Dispatch(name,args,retvals) = Dispatch(name, args, rets);
+data Dispatch(name, args, retvals, f) = Dispatch(name, args, rets, f);
+
+forall name:Selector . function selector_matches(nm : name) -> bool {
+    return true;
+}
+
+instance (nm:Selector, args:ABIDecode, rets:ABIEncode, f:Invokable(args, rets)) => Dispatch(nm,args,rets,f):GenerateDispatch {
+    function dispatch_if_selector_match(d:Dispatch(n,a,r,f)) -> g {
+        return lam() {
+            match d {
+            | Dispatch(name, args, rets, fn) => match selector_matches(name) {
+                | false => return Unit;
+                | true =>
+                  return Unit;
+            };};
+        };
+    }
+}
 
 //// TODO: need to have a way to write predicate in class function or class itself, or have a function type.
 //// class self:GenerateDispatch {
