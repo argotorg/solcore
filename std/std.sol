@@ -110,10 +110,26 @@ instance word:Div {
 // Marker class for types that can be stored in a single word
 class ty:ValueTy {}
 
+// uint
+
+data uint = uint(word);
+instance uint:Typedef(word) {
+    function abs(w: word) -> uint {
+        return uint(w);
+    }
+
+    function rep(x: uint) -> word {
+        match x {
+        | uint(w) => return w;
+        };
+    }
+}
+
 // byte
 
 data byte = byte(word);
 
+instance byte:ValueTy {}
 instance byte:Typedef(word) {
     function abs(w: word) -> byte {
         return byte(w);
@@ -235,9 +251,52 @@ function set_free_memory(loc : word) {
 
 // Indexable Types
 
-class t:IndexAccess(idx,val) {
-    function get(c: t, i: idx) -> val;
-    function set(c: t, i: idx, v: val);
+class t:IndexAccess(val) {
+    function get(c: t, i: uint) -> val;
+    function set(c: t, i: uint, v: val);
+}
+
+// DynArray
+
+data DynArray(t) = DynArray(word);
+
+instance DynArray(t):Typedef(word) {
+    function abs(w: Word) -> DynArray(t) {
+        return DynArray(w);
+    }
+    function rep(arr: DynArray(t)) -> word {
+        match arr {
+        | DynArray(w) => return w;
+        };
+    }
+}
+
+instance (t:Typedef(word)) => memory(DynArray(t)):IndexAccess(t) {
+    function get(arr : DynArray(t), i : uint) -> t {
+        let sz : word;
+        let oob : word;
+        let iw : word = Typedef.rep(i);
+        let loc : word = Typedef.rep(arr);
+        let res : word;
+        assembly { oob := gt(iw, mload(loc)); };
+        match oob {
+        | 0 => assembly { res := mload(add(loc, mul(iw, 32))); };
+        | _ => assembly { revert(0,0); };
+        };
+        return Typedef.abs(res);
+    }
+    function set(arr : DynArray(t), i : uint, val : t) {
+        let sz : word;
+        let oob : word;
+        let iw : word = Typedef.rep(i);
+        let loc : word = Typedef.rep(arr);
+        let vw : word = Typedef.rep(val);
+        assembly { oob := gt(iw, mload(loc)); };
+        match oob {
+        | 0 => assembly { res := mstore(add(loc, mul(iw, 32)), vw); };
+        | _ => assembly { revert(0,0); };
+        };
+    }
 }
 
 // bytes (tightly packed byte arrays)
@@ -246,171 +305,243 @@ class t:IndexAccess(idx,val) {
 // TODO: we would really want this to be a typedef to void (or a datatype with no constructors)
 data bytes = bytes;
 
-// ABI Encoding
+// Slices (sized pointers)
 
-class t:EncodeInto {
-    function encodeInto(val : t, hd : word, tl : word) -> Pair(word,word);
+data slice(t) = slice(t, word);
+
+// ABI Decoding / Encoding
+
+data ABITuple(tuple) = ABITuple(tuple);
+
+class self:ABIAttribs {
+    function headSize(ty:Proxy(self)) -> word;
+    function isStatic(ty:Proxy(self)) -> bool;
 }
 
-class t:Encode {
-    // TODO: is the following ever needed??
-    // is the abi representation of `t` dynamically sized?
-    // function isDynamicallySized(x:Proxy(t)) -> bool;
-
-    // does `t` (or any of it's children) contain a dynamic type?
-    function shouldEncodeDynamic(x:Proxy(t)) -> bool;
-    // how big is the head portion of the ABI representation of `t`?
-    function headSize(x:Proxy(t)) -> word;
-}
-
-forall t:Encode, t:EncodeInto . function encode(val:t) -> memory(bytes) {
-    let p : Proxy(t);
-    let hdSz = Encode.headSize(p);
-    let ptr : word = get_free_memory();
-    let head : word;
-    let tail : word;
-    assembly {
-        head := add(ptr, 32);
-        tail := add(head, hdSz);
-    };
-    let tl = snd(EncodeInto.encodeInto(val,head,tail));
-    set_free_memory(tl);
-    assembly {
-        mstore(ptr, sub(tl, head))
-    };
-    let mem : memory(bytes) = memory(ptr);
-    return mem;
-}
-
-instance (l:Encode, r:Encode) => Pair(l,r):Encode {
-    function shouldEncodeDynamic(x : Proxy(Pair(l,r))) -> bool {
-        let l: Proxy(l) = Proxy;
-        let r: Proxy(r) = Proxy;
-        return and(Encode.shouldEncodeDynamic(l), Encode.shouldEncodeDynamic(l));
+instance (a:ABIAttribs, b:ABIAttribs) => Pair(a,b):ABIAttribs {
+    function headSize(ty) {
+        let pa : Proxy(a);
+        let pb : Proxy(b);
+        let sza = ABIAttribs.headSize(pa);
+        let szb = ABIAttribs.headSize(pb);
+        return Add.add(sza, szb);
     }
+    function isStatic(ty) {
+        let pa : Proxy(a);
+        let pb : Proxy(b);
+        return and(ABIAttribs.isStatic(pa), ABIAttribs.isStatic(pb));
+    }
+}
 
-    function headSize(x : Proxy(Pair(l,r))) -> word {
-        match Encode.shouldEncodeDynamic(x) {
-        | true =>
-            let res;
-            assembly { res := 32; };
-            return res;
-        | false =>
-            let l: Proxy(l) = Proxy;
-            let r: Proxy(r) = Proxy;
-            let lsize = Encode.headSize(l);
-            let rsize = Encode.headSize(r);
-            let res : word;
-            assembly { res := add(lsize,rsize) };
-            return res;
+instance uint:ABIAttribs {
+    function headSize(ty) { return 32; }
+    function isStatic(ty) { return true; }
+}
+instance DynArray(t):ABIAttribs {
+    function headSize(ty) { return 32; }
+    function isStatic(ty) { return false; }
+}
+
+instance (tuple:ABIAttribs) => ABITuple(tuple):ABIAttribs {
+    function headSize(ty) {
+        let px : Proxy(tuple);
+        match ABIAttribs.isStatic(px) {
+        | true => return ABIAttribs.headSize(px);
+        | false => return 32;
         };
     }
-}
-
-instance (l:EncodeInto, r:EncodeInto) => Pair(l,r):EncodeInto {
-    function encodeInto(val, hd, tl) -> Pair(word,word) {
-        let first = fst(val);
-        let second = snd(val);
-        let range = EncodeInto.encodeInto(first, hd, tl);
-        return EncodeInto.encodeInto(second, fst(range), snd(range));
+    function isStatic(ty) {
+        let px : Proxy(tuple);
+        return ABIAttribs.isStatic(px);
     }
 }
 
-// Uint256
-data Uint256 = Uint256(word);
-
-instance Uint256 : Typedef(word) {
-    function abs(x:word) -> Uint256 {
-        return Uint256(x);
+// TODO: check if these make sense
+instance (ty:ABIAttribs) => memory(ty):ABIAttribs {
+    function headSize(ty) {
+        let px : Proxy(ty);
+        return ABIAttribs.headSize(px);
     }
-
-    function rep(x: Uint256) -> word {
-        match x {
-        | Uint256(val) => return val;
-        };
+    function isStatic(ty) {
+        let px : Proxy(ty);
+        return ABIAttribs.isStatic(px);
     }
 }
-
-instance Uint256:Encode {
-    function shouldEncodeDynamic(x) -> bool {
-        return false;
+instance (ty:ABIAttribs) => calldata(ty):ABIAttribs {
+    function headSize(ty) {
+        let px : Proxy(ty);
+        return ABIAttribs.headSize(px);
     }
-
-    function headSize(x) -> word {
-        return 32;
-    }
-}
-
-instance Uint256:EncodeInto {
-    function encodeInto(v: Uint256, hd: word, tl: word) -> Pair(word, word) {
-        let vw : word = Typedef.rep(v);
-        let hd_ : word;
-        assembly {
-            hd_ := add(hd, 32)
-            mstore(hd, vw)
-        };
-        return Pair(hd_, tl);
+    function isStatic(ty) {
+        let px : Proxy(ty);
+        return ABIAttribs.isStatic(px);
     }
 }
 
 
-// Contract Entrypoint
+//class t:EncodeInto {
+    //function encodeInto(val : t, hd : word, tl : word) -> Pair(word,word);
+//}
 
-// TODO: need to have a way to write predicate in class function or class itself, or have a function type.
-// class self:GenerateDispatch {
-//     function  dispatch_if_selector_match(x: self) -> (Unit -> Unit);
-// }
-//
-// data Dispatch(name,args,retvals) = DispatchFunction name (args->retvals)
-//
-// instance args:ABI => retvals:ABI => name:Selector => dispatchFuncion[name,args,retvals]:GenerateDispatch {
-//     function dispatch_if_selector_match(self:dispatchFuncion[name,args,retvals]) -> (() -> ()) {
-//         return lambda () {
-//             let DispatchFunction(name,f) := self; // or whatever destructuring syntax we want
-//             if matches_selector(name) // checks selector in calldata
-//             {
-//                 let (result_start, result_end) = abi.encode(f(abi.decode(TYPE(retvals)))); // conceptually at least
-//                 assembly {
-//                     return(result_start, result_end); // as in EVM return, terminating the external call.
-//                 }
-//             }
-//         };
-//     }
-// }
-//
-// instance a:GenerateDispatch => b:GenerateDispatch => Pair[a,b]:GenerateDispatch {
-//     function dispatch_if_selector_match(self:Pair[a,b]) -> (() -> ()) {
-//         return lambda () . {
-//             dispatch_if_selector_match(self.first);
-//             dispatch_if_selector_match(self.second);
-//         };
-//     }
-// }
-//
-// /// Translation of the above contract
-// struct StorageContext {
-//     x:uint;
-//     y:bool;
-// }
-//
-// function C_f(ctxt:StorageContext) public {
-//     ctxt.x = 42;
-// }
-//
-//
-// function entry_C() {
-//     GenerateDispatch.dispatch_if_selector_match(DispatchFunction("f()", C_f)); // could also be (nested) pairs of dispatch functions, if the contract had more functions
-//     revert("unknown selector");
-// }
-//
-// // init code for contract creation
-// function init_C() {
-//     // constructor code
-//     let code_start := allocate_unbounded() // fetch some free memory
-//     let code_length := __builtin_fetch_code(entry_C, code_start) // sounds weirder than it is - this will just add the code for entry_C to a Yul subobject and use some Yul builtins for fetching the code to be deployed
-//     assembly {
-//         return(code_start, code_length)
-//     }
-// }
-//
-//
+//class t:Encode {
+    //// TODO: is the following ever needed??
+    //// is the abi representation of `t` dynamically sized?
+    //// function isDynamicallySized(x:Proxy(t)) -> bool;
+
+    //// does `t` (or any of it's children) contain a dynamic type?
+    //function shouldEncodeDynamic(x:Proxy(t)) -> bool;
+    //// how big is the head portion of the ABI representation of `t`?
+    //function headSize(x:Proxy(t)) -> word;
+//}
+
+//forall t:Encode, t:EncodeInto . function encode(val:t) -> memory(bytes) {
+    //let p : Proxy(t);
+    //let hdSz = Encode.headSize(p);
+    //let ptr : word = get_free_memory();
+    //let head : word;
+    //let tail : word;
+    //assembly {
+        //head := add(ptr, 32);
+        //tail := add(head, hdSz);
+    //};
+    //let tl = snd(EncodeInto.encodeInto(val,head,tail));
+    //set_free_memory(tl);
+    //assembly {
+        //mstore(ptr, sub(tl, head))
+    //};
+    //let mem : memory(bytes) = memory(ptr);
+    //return mem;
+//}
+
+//instance (l:Encode, r:Encode) => Pair(l,r):Encode {
+    //function shouldEncodeDynamic(x : Proxy(Pair(l,r))) -> bool {
+        //let l: Proxy(l) = Proxy;
+        //let r: Proxy(r) = Proxy;
+        //return and(Encode.shouldEncodeDynamic(l), Encode.shouldEncodeDynamic(l));
+    //}
+
+    //function headSize(x : Proxy(Pair(l,r))) -> word {
+        //match Encode.shouldEncodeDynamic(x) {
+        //| true =>
+            //let res;
+            //assembly { res := 32; };
+            //return res;
+        //| false =>
+            //let l: Proxy(l) = Proxy;
+            //let r: Proxy(r) = Proxy;
+            //let lsize = Encode.headSize(l);
+            //let rsize = Encode.headSize(r);
+            //let res : word;
+            //assembly { res := add(lsize,rsize) };
+            //return res;
+        //};
+    //}
+//}
+
+//instance (l:EncodeInto, r:EncodeInto) => Pair(l,r):EncodeInto {
+    //function encodeInto(val, hd, tl) -> Pair(word,word) {
+        //let first = fst(val);
+        //let second = snd(val);
+        //let range = EncodeInto.encodeInto(first, hd, tl);
+        //return EncodeInto.encodeInto(second, fst(range), snd(range));
+    //}
+//}
+
+//// Uint256
+//data Uint256 = Uint256(word);
+
+//instance Uint256 : Typedef(word) {
+    //function abs(x:word) -> Uint256 {
+        //return Uint256(x);
+    //}
+
+    //function rep(x: Uint256) -> word {
+        //match x {
+        //| Uint256(val) => return val;
+        //};
+    //}
+//}
+
+//instance Uint256:Encode {
+    //function shouldEncodeDynamic(x) -> bool {
+        //return false;
+    //}
+
+    //function headSize(x) -> word {
+        //return 32;
+    //}
+//}
+
+//instance Uint256:EncodeInto {
+    //function encodeInto(v: Uint256, hd: word, tl: word) -> Pair(word, word) {
+        //let vw : word = Typedef.rep(v);
+        //let hd_ : word;
+        //assembly {
+            //hd_ := add(hd, 32)
+            //mstore(hd, vw)
+        //};
+        //return Pair(hd_, tl);
+    //}
+//}
+
+
+//// Contract Entrypoint
+
+//// TODO: need to have a way to write predicate in class function or class itself, or have a function type.
+//// class self:GenerateDispatch {
+////     function  dispatch_if_selector_match(x: self) -> (Unit -> Unit);
+//// }
+////
+//// data Dispatch(name,args,retvals) = DispatchFunction name (args->retvals)
+////
+//// instance args:ABI => retvals:ABI => name:Selector => dispatchFuncion[name,args,retvals]:GenerateDispatch {
+////     function dispatch_if_selector_match(self:dispatchFuncion[name,args,retvals]) -> (() -> ()) {
+////         return lambda () {
+////             let DispatchFunction(name,f) := self; // or whatever destructuring syntax we want
+////             if matches_selector(name) // checks selector in calldata
+////             {
+////                 let (result_start, result_end) = abi.encode(f(abi.decode(TYPE(retvals)))); // conceptually at least
+////                 assembly {
+////                     return(result_start, result_end); // as in EVM return, terminating the external call.
+////                 }
+////             }
+////         };
+////     }
+//// }
+////
+//// instance a:GenerateDispatch => b:GenerateDispatch => Pair[a,b]:GenerateDispatch {
+////     function dispatch_if_selector_match(self:Pair[a,b]) -> (() -> ()) {
+////         return lambda () . {
+////             dispatch_if_selector_match(self.first);
+////             dispatch_if_selector_match(self.second);
+////         };
+////     }
+//// }
+////
+//// /// Translation of the above contract
+//// struct StorageContext {
+////     x:uint;
+////     y:bool;
+//// }
+////
+//// function C_f(ctxt:StorageContext) public {
+////     ctxt.x = 42;
+//// }
+////
+////
+//// function entry_C() {
+////     GenerateDispatch.dispatch_if_selector_match(DispatchFunction("f()", C_f)); // could also be (nested) pairs of dispatch functions, if the contract had more functions
+////     revert("unknown selector");
+//// }
+////
+//// // init code for contract creation
+//// function init_C() {
+////     // constructor code
+////     let code_start := allocate_unbounded() // fetch some free memory
+////     let code_length := __builtin_fetch_code(entry_C, code_start) // sounds weirder than it is - this will just add the code for entry_C to a Yul subobject and use some Yul builtins for fetching the code to be deployed
+////     assembly {
+////         return(code_start, code_length)
+////     }
+//// }
+////
+////
