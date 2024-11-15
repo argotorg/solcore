@@ -1,12 +1,20 @@
+pragma no-bounded-variable-condition ABIEncode;
+pragma no-patterson-condition ABIEncode;
+pragma no-coverage-condition ABIDecode;
 /*
 - features
     - primitive word eq
     - include stdlib
     - MPTC + optional weak args (MPTC formalization?)
     - surface for loops
-    - sugar for IndexAccess read/write (e.g. `x[i]`)
-    - explicit variable forall (type constructor in context...)
     - empty types
+    - better inference for Typedef.rep() calls (have to annotate atm?)
+    - inline Proxy defs
+- sugar
+    - Proxy (e.g. `@t ==> Proxy : Proxy t`
+    - Pair (e.g. `(a,b) ==> Pair(a,b)`
+    - IndexAccess reads (e.g. `x[i] ==> IndexAccess.get(x, i)`)
+    - auto typedef instances
 - syntax
     - brackets around constraint list in forall
     - order of type args
@@ -123,17 +131,17 @@ instance word:Div {
     }
 }
 
-// uint
+// uint256
 
-data uint = uint(word);
-instance uint:Typedef(word) {
-    function abs(w: word) -> uint {
-        return uint(w);
+data uint256 = uint256(word);
+instance uint256:Typedef(word) {
+    function abs(w: word) -> uint256 {
+        return uint256(w);
     }
 
-    function rep(x: uint) -> word {
+    function rep(x: uint256) -> word {
         match x {
-        | uint(w) => return w;
+        | uint256(w) => return w;
         };
     }
 }
@@ -198,9 +206,24 @@ instance storage(t) : Typedef(word) {
     }
 }
 
-// Calldata / Returndata (TODO)
+// Calldata
 
 data calldata(t) = calldata(word);
+
+instance calldata(t) : Typedef(word) {
+    function abs(x: word) -> calldata(t) {
+        return calldata(x);
+    }
+
+    function rep(x: calldata(t)) -> word {
+        match x {
+        | calldata(w) => return w;
+       };
+    }
+}
+
+// Returndata
+
 data returndata(t) = returndata(word);
 
 // Free Memory Pointer
@@ -218,8 +241,8 @@ function set_free_memory(loc : word) {
 // Indexable Types
 
 class t:IndexAccess(val) {
-    function get(c: t, i: uint) -> val;
-    function set(c: t, i: uint, v: val);
+    function get(c: t, i: uint256) -> val;
+    function set(c: t, i: uint256, v: val);
 }
 
 // DynArray
@@ -238,7 +261,7 @@ instance DynArray(t):Typedef(word) {
 }
 
 instance (t:Typedef(word)) => memory(DynArray(t)):IndexAccess(t) {
-    function get(arr : DynArray(t), i : uint) -> t {
+    function get(arr : DynArray(t), i : uint256) -> t {
         let sz : word;
         let oob : word;
         let iw : word = Typedef.rep(i);
@@ -251,7 +274,7 @@ instance (t:Typedef(word)) => memory(DynArray(t)):IndexAccess(t) {
         };
         return Typedef.abs(res);
     }
-    function set(arr : DynArray(t), i : uint, val : t) {
+    function set(arr : DynArray(t), i : uint256, val : t) {
         let sz : word;
         let oob : word;
         let iw : word = Typedef.rep(i);
@@ -287,33 +310,29 @@ data CalldataWordReader = CalldataWordReader(word);
 
 instance MemoryWordReader:WordReader {
     function read(reader:MemoryWordReader) -> word {
-        let result;
+        let result : word;
         match reader {
-        | MemoryWordReader(ptr) => assembly { result := mload(ptr) };
+            | MemoryWordReader(ptr) => assembly { result := mload(ptr) };
         };
         return result;
     }
     function advance(reader:MemoryWordReader, offset:word) -> MemoryWordReader {
         match reader {
-            | MemoryWordReader(ptr) =>
-                assembly { ptr := add(ptr, offset) };
-                return MemoryWordReader(ptr);
+            | MemoryWordReader(ptr) => return MemoryWordReader(Add.add(ptr, offset));
         };
     }
 }
 instance CalldataWordReader:WordReader {
-    function read(ptr:CalldataWordReader) -> word {
-        let result;
+    function read(reader:CalldataWordReader) -> word {
+        let result : word;
         match reader {
-        | CalldataWordReader(ptr) => assembly { result := calldataload(ptr) };
+            | CalldataWordReader(ptr) => assembly { result := calldataload(ptr) };
         };
         return result;
     }
     function advance(reader:CalldataWordReader, offset:word) -> CalldataWordReader {
         match reader {
-        | CalldataWordReader(ptr) =>
-            assembly { ptr := add(ptr, offset) };
-            return CalldataWordReader(ptr);
+            | CalldataWordReader(ptr) => return CalldataWordReader(Add.add(ptr, offset));
         };
     }
 }
@@ -341,6 +360,19 @@ instance calldata(bytes):HasWordReader(CalldataWordReader) {
 // TODO: I forgot why already @Daniel pls explain to me again (sorry)
 data ABITuple(tuple) = ABITuple(tuple);
 
+instance ABITuple(t):Typedef(t) {
+    function abs(t: t) -> ABITuple(t) {
+        return ABITuple(t);
+    }
+
+    function rep(x: ABITuple(t)) -> t {
+        match x {
+        | ABITuple(v) => return v;
+        };
+    }
+}
+
+
 class self:ABIAttribs {
     function headSize(ty:Proxy(self)) -> word;
     function isStatic(ty:Proxy(self)) -> bool;
@@ -361,7 +393,7 @@ instance (a:ABIAttribs, b:ABIAttribs) => Pair(a,b):ABIAttribs {
     }
 }
 
-instance uint:ABIAttribs {
+instance uint256:ABIAttribs {
     function headSize(ty) { return 32; }
     function isStatic(ty) { return true; }
 }
@@ -412,42 +444,37 @@ class self:ABIEncode {
     function encodeInto(x:self, basePtr:word, offset:word, tail:word) -> word /* newTail */;
 }
 
-instance uint:ABIEncode {
-    function encodeInto(x:uint, basePtr:word, offset:word, tail:word) -> word {
-        let repx = Typedef.rep(x);
-        assembly {
-            mstore(add(basePtr, offset), repx)
-        };
+instance uint256:ABIEncode {
+    function encodeInto(x:uint256, basePtr:word, offset:word, tail:word) -> word {
+        let repx : word = Typedef.rep(x);
+        assembly { mstore(add(basePtr, offset), repx) };
         return tail;
     }
 }
 
-instance (a:ABIAttribs,a:ABIEncode,b:ABIEncode) => Pair(a,b):ABIEncode
-{
-    function encodeInto(x:Pair(a,b), basePtr:word, offset:word, tail:word) -> word {
+instance (a:ABIAttribs,a:ABIEncode,b:ABIEncode) => Pair(a,b):ABIEncode {
+    function encodeInto(x: Pair(a,b), basePtr: word, offset: word, tail: word) -> word {
         match x {
         | Pair(l,r) =>
             let newTail = ABIEncode.encodeInto(l, basePtr, offset, tail);
-            let pa = Proxy(a);
+            let pa : Proxy(a);
             let a_sz = ABIAttribs.headSize(pa);
-            assembly { offset := add(offset, a_sz) };
-            return ABIEncode.encodeInto(r, basePtr, offset, newTail);
+            return ABIEncode.encodeInto(r, basePtr, Add.add(offset, a_sz), newTail);
         };
     }
 }
 
 
-instance (tuple:ABIEncode, tuple:ABIAttribs) => ABITuple(tuple):ABIEncode
-{
+instance (tuple:ABIEncode, tuple:ABIAttribs) => ABITuple(tuple):ABIEncode {
     function encodeInto(x:ABITuple(tuple), basePtr:word, offset:word, tail:word) -> word {
         let prx : Proxy(tuple);
         match ABIAttribs.isStatic(prx) {
         | true => return ABIEncode.encodeInto(Typedef.rep(x), basePtr, offset, tail);
         | false =>
             // Store tail pointer
-            assembly { mstore(head, sub(tail, basePtr)) };
+            assembly { mstore(basePtr, sub(tail, basePtr)) };
             let prx : Proxy(tuple);
-            let headSize = ABIAttribs.headSize(tuple);
+            let headSize = ABIAttribs.headSize(prx);
             basePtr = tail;
             assembly { tail := add(tail, headSize)  };
             return ABIEncode.encodeInto(Typedef.rep(x), basePtr, 0, tail);
@@ -463,9 +490,9 @@ class self:MemoryType(loadedType) {
     function loadFromMemory(p:Proxy(self), off:word) -> loadedType;
 }
 
-// A uint can be loaded from memory and pushed straight onto the stack
-instance uint:MemoryType(uint) {
-    function loadFromMemory(p:Proxy(uint), off:word) -> uint {
+// A uint256 can be loaded from memory and pushed straight onto the stack
+instance uint256:MemoryType(uint256) {
+    function loadFromMemory(p:Proxy(uint256), off:word) -> uint256 {
         let v;
         assembly { v := mload(off) };
         return uint256(v);
@@ -492,13 +519,14 @@ instance (ty:MemoryType(ty)) => DynArray(ty):MemoryType(slice(memory(ty))) {
 }
 
 
-// TODO: as above, weak arg on memory type should be free
-// TODO: patterson condition
-//instance (ty:MemoryType(ty), deref:ABIEncode) => memory(ty):ABIEncode {
-    //function encodeInto(x:memory(ty), basePtr:word, offset:word, tail:word) -> word {
-        //return ABIEncode.encodeInto(MemoryType.loadFromMemory(Typedef.rep(x)), basePtr, offset, tail);
-    //}
-//}
+// FAIL: patterson
+// FAIL: bound variable
+instance (ty:MemoryType(deref), deref:ABIEncode) => memory(ty):ABIEncode {
+    function encodeInto(x:memory(ty), basePtr:word, offset:word, tail:word) -> word {
+        let prx : Proxy(deref);
+        return ABIEncode.encodeInto(MemoryType.loadFromMemory(prx, Typedef.rep(x)), basePtr, offset, tail);
+    }
+}
 
 // ABI Decoding
 
@@ -512,7 +540,7 @@ data ABIDecoder(ty, reader) = ABIDecoder(reader);
 
 // If `reader` is a `WordReader` then so is our `ABIDecoder`
 instance (reader:WordReader) => ABIDecoder(ty, reader):WordReader {
-    function read(decodeer:ABIDecoder(ty, reader)) -> word {
+    function read(decoder:ABIDecoder(ty, reader)) -> word {
         match decoder {
         | ABIDecoder(ptr) => return WordReader.read(ptr);
         };
@@ -525,30 +553,31 @@ instance (reader:WordReader) => ABIDecoder(ty, reader):WordReader {
 }
 
 // ABI Decoding for uint
-instance (reader:WordReader) => ABIDecoder(uint, reader):ABIDecode(uint) {
-    function decode(ptr:ABIDecoder(uint, reader), currentHeadOffset:word) -> uint {
+instance (reader:WordReader) => ABIDecoder(uint256, reader):ABIDecode(uint256) {
+    function decode(ptr:ABIDecoder(uint256, reader), currentHeadOffset:word) -> uint256 {
         return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset)));
     }
 }
 
 // FAIL: Coverage
-instance (reader:WordReader, ABIDecoder(a,reader):ABIDecode(a_decoded), ABIDecoder(b,reader):ABIDecode(b_decoded), a:ABIAttribs) => ABIDecoder(Pair(a,b), reader):ABIDecode(Pair(a_decoded,b_decoded))
-{
-    function decode(ptr:ABIDecoder(Pair(a,b), reader), currentHeadOffset:word) -> Pair(a_decoded, b_decoded) {
-        let prx : Proxy(a);
-        return (ABIDecoder.decode(ptr, currentHeadOffset), ABIDecoder.decode(ptr, add(currentHeadOffset, ABIAttribs.headSize(prx))));
-    }
-}
+// TODO: no instance of ABIDecoder(b, reader) : ABIDecode (b_decoded)
+//instance (reader:WordReader, ABIDecoder(a,reader):ABIDecode(a_decoded), ABIDecoder(b,reader):ABIDecode(b_decoded), a:ABIAttribs) => ABIDecoder(Pair(a,b), reader):ABIDecode(Pair(a_decoded,b_decoded))
+//{
+    //function decode(ptr:ABIDecoder(Pair(a,b), reader), currentHeadOffset:word) -> Pair(a_decoded, b_decoded) {
+        //let prx : Proxy(a);
+        //return Pair(ABIDecode.decode(ptr, currentHeadOffset), ABIDecode.decode(ptr, Add.add(currentHeadOffset, ABIAttribs.headSize(prx))));
+    //}
+//}
 
 instance (reader:WordReader, tuple:ABIDecode(tuple_decoded), tuple:ABIAttribs) => ABIDecoder(ABITuple(tuple), reader):ABIDecode(tuple_decoded)
 {
     function decode(ptr:ABIDecoder(ABITuple(tuple), reader), currentHeadOffset:word) -> tuple {
         let prx : Proxy(tuple);
         match ABIAttribs.isStatic(prx) {
-        | true => return ABIDecoder.decode(WordReader.advance(ptr, currentHeadOffset), 0);
+        | true => return ABIDecode.decode(WordReader.advance(ptr, currentHeadOffset), 0);
         | false =>
             let tailPtr = WordReader.read(ptr);
-            return ABIDecoder.decode(WordReader.advance(ptr, tailPtr), 0);
+            return ABIDecode.decode(WordReader.advance(ptr, tailPtr), 0);
         };
     }
 }
@@ -558,43 +587,60 @@ instance (reader:WordReader, tuple:ABIDecode(tuple_decoded), tuple:ABIAttribs) =
     function decode(ptr:ABIDecoder(memory(ABITuple(tuple)), reader), currentHeadOffset:word) -> tuple {
         let prx : Proxy(tuple);
         match ABIAttribs.isStatic(prx) {
-        | true => return ABIDecoder.decode(WordReader.advance(ptr, currentHeadOffset), 0);
+        | true => return ABIDecode.decode(WordReader.advance(ptr, currentHeadOffset), 0);
         | false =>
             let tailPtr = WordReader.read(ptr);
-            return ABIDecoder.decode(WordReader.advance(ptr, tailPtr), 0);
+            return ABIDecode.decode(WordReader.advance(ptr, tailPtr), 0);
         };
     }
 }
 
-instance (reader:WordReader, ABIDecoder(baseType, reader):ABIDecode(baseType_decoded)) => ABIDecoder(memory(DynArray(baseType)), reader):ABIDecode(memory(DynArray(baseType_decoded)))
-{
-    function decode(ptr:ABIDecoder(memory(DynArray(baseType)), reader), currentHeadOffset:word) -> memory(DynArray(baseType)) {
-        let arrayPtr = WordReader.advance(ptr, currentHeadOffset);
-        let length = WordReader.read(arrayPtr);
-        let elementPtr:ABIDecoder(baseType, reader) = Typedef.abs(Typedef.rep(WordReader.advance(arrayPtr, 32)));
-        arrayPtr = WordReader.advance(32);
-        let result:memory(DynArray(baseType_decoded)) = allocateDynamicArray(length);
-        let offset = 0;
-        let prx : Proxy(baseType);
-        let elementHeadSize = ABIAttribs.headSize(base);
+function allocateDynamicArray(prx : Proxy(t), length : word) -> memory(DynArray(t)) {
+    // size of allocation in bytes
+    let sz : word = Mul.mul(Add.add(length, 1), 32);
 
-        // TODO: surface level loops
-        // TODO: sugar for assigning to indexAccess types (result[i])
-        //for(let i = 0; i < length; i++) {
-            //result[i] = ABIDecode.decode(elementPtr, offset);
-            //assembly { offset := add(offset, elementHeadSize) }
-        //}
+    // get start of array & increment free by sz
+    let free : word = get_free_memory();
+    set_free_memory(Add.add(free, sz));
 
-        return result;
-    }
+    // write array length and return
+    assembly { mstore(free, length) };
+    let res : memory(DynArray(t)) = Typedef.abs(free);
+    return res;
 }
 
-instance (ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded)) => ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
-{
-    function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType)) {
-        return Typedef.abs(Typedef.rep(Typedef.rep(WordReader.advance(ptr, currentHeadOffset))));
-    }
-}
+// no instance of ABIDecoder(baseType, reader) : ABIDecode (baseType_decoded)
+//instance (reader:WordReader, ABIDecoder(baseType, reader):ABIDecode(baseType_decoded)) => ABIDecoder(memory(DynArray(baseType)), reader):ABIDecode(memory(DynArray(baseType_decoded)))
+//{
+    //function decode(ptr:ABIDecoder(memory(DynArray(baseType)), reader), currentHeadOffset:word) -> memory(DynArray(baseType)) {
+        //let arrayPtr = WordReader.advance(ptr, currentHeadOffset);
+        //let length = WordReader.read(arrayPtr);
+        //let elementPtr:ABIDecoder(baseType, reader) = Typedef.abs(WordReader.advance(arrayPtr, 32));
+        //arrayPtr = WordReader.advance(arrayPtr, 32);
+        //let prx : Proxy(baseType_decoded);
+        //let result : memory(DynArray(baseType_decoded)) = allocateDynamicArray(prx, length);
+        //let offset = 0;
+        //let prx : Proxy(baseType);
+        //let elementHeadSize = ABIAttribs.headSize(prx);
+
+        //// TODO: surface level loops
+        //// TODO: sugar for assigning to indexAccess types (result[i])
+        ////for(let i = 0; i < length; i++) {
+            ////result[i] = ABIDecode.decode(elementPtr, offset);
+            ////assembly { offset := add(offset, elementHeadSize) }
+        ////}
+
+        //return result;
+    //}
+//}
+
+// no instance of ABIDecoder(baseType, CalldataWordReader) : ABIDecode (baseType_decoded)
+//instance (ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded)) => ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
+//{
+    //function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType)) {
+        //return Typedef.abs(Typedef.rep(Typedef.rep(WordReader.advance(ptr, currentHeadOffset))));
+    //}
+//}
 
 // TODO: no instance of ABIDecoder(ty, reader) : ABIDecode (ty)
 //forall decodable, reader, ty . (decodable:HasWordReader(reader), ABIDecoder(ty, reader):ABIDecode(ty)) =>
