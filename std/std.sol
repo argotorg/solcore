@@ -45,6 +45,87 @@ class abs:Typedef(rep) {
     function rep(x:abs) -> rep;
 }
 
+// Arithmetic
+
+class t:Add {
+    function add(l: t, r: t) -> t;
+}
+
+class t:Sub {
+    function sub(l: t, r: t) -> t;
+}
+
+class t:Mul {
+    function mul(l: t, r: t) -> t;
+}
+
+class t:Div {
+    function div(l: t, r: t) -> t;
+}
+
+// Word Arithmetic (unchecked for now...)
+
+instance word:Add {
+    function add(l: word, r: word) -> word {
+        let rw : word;
+        assembly {
+            rw := add(l,r);
+        };
+        return rw;
+    }
+}
+
+instance word:Sub {
+    function sub(l: word, r: word) -> word {
+        let rw : word;
+        assembly {
+            rw := sub(l,r);
+        };
+        return rw;
+    }
+}
+
+instance word:Mul {
+    function mul(l: word, r: word) -> word {
+        let rw : word;
+        assembly {
+            rw := mul(l,r);
+        };
+        return rw;
+    }
+}
+
+instance word:Div {
+    function div(l: word, r: word) -> word {
+        let rw : word;
+        assembly {
+            rw := div(l,r);
+        };
+        return rw;
+    }
+}
+
+// Type Classification
+
+// Marker class for types that can be stored in a single word
+class ty:ValueTy {}
+
+// byte
+
+data byte = byte(word);
+
+instance byte:Typedef(word) {
+    function abs(w: word) -> byte {
+        return byte(w);
+    }
+
+    function rep(x: byte) -> word {
+        match x {
+        | byte(w) => return w;
+        };
+    }
+}
+
 // Generalized References
 
 class ref:Loadable (deref) {
@@ -55,14 +136,11 @@ class ref:Storable (deref) {
     function store (r : ref, d : deref) -> Unit;
 }
 
-class ( ref : Loadable(deref) , ref : Storable(deref)) => ref:Ref (deref) {}
+class (ref : Loadable(deref), ref : Storable(deref)) => ref:Ref (deref) {}
 
-// Concrete Reference Types
+// Memory References
 
-data calldata(t) = calldata(word);
 data memory(t) = memory(word);
-data storage(t) = storage(word);
-data returndata(t) = returndata(word);
 
 instance memory(t) : Typedef(word) {
     function abs(x: word) -> memory(t) {
@@ -72,11 +150,11 @@ instance memory(t) : Typedef(word) {
     function rep(x: memory(t)) -> word {
         match x {
         | memory(w) => return w;
-       };
+        };
     }
 }
 
-instance memory(t) : Loadable(t) {
+instance (t:ValueTy) => memory(t) : Loadable(t) {
     function load(loc: memory(t)) -> t {
         let rw : word = Typedef.rep(loc);
         let res = 0;
@@ -87,7 +165,7 @@ instance memory(t) : Loadable(t) {
     }
 }
 
-instance memory(t) : Storable(t) {
+instance (t:ValueTy) => memory(t) : Storable(t) {
     function store(loc: memory(t), value: t) -> Unit {
         let rw : word = Typedef.rep(loc);
         let vw : word = Typedef.rep(value);
@@ -99,24 +177,70 @@ instance memory(t) : Storable(t) {
 
 instance memory(t) : Ref(t) {}
 
+// Storage References
+
+data storage(t) = storage(word);
+
+instance storage(t) : Typedef(word) {
+    function abs(x: word) -> storage(t) {
+        return storage(x);
+    }
+
+    function rep(x: storage(t)) -> word {
+        match x {
+        | storage(w) => return w;
+       };
+    }
+}
+
+instance (t:ValueTy) => storage(t) : Loadable(t) {
+    function load(loc: storage(t)) -> t {
+        let rw : word = Typedef.rep(loc);
+        let res = 0;
+        assembly {
+            res := sload(rw)
+        };
+        return Typedef.abs(res);
+    }
+}
+
+instance (t:ValueTy) => storage(t) : Storable(t) {
+    function store(loc: storage(t), value: t) -> Unit {
+        let rw : word = Typedef.rep(loc);
+        let vw : word = Typedef.rep(value);
+        assembly {
+          sstore(rw, vw)
+        };
+    }
+}
+
+instance (t:ValueTy) => storage(t) : Ref(t) {}
+
+// Calldata / Returndata (TODO)
+
+data calldata(t) = calldata(word);
+data returndata(t) = returndata(word);
+
 // Free Memory Pointer
 
 function get_free_memory() -> word {
     let res : word;
-    assembly {
-        res := mload(0x40)
-    };
+    assembly { res := mload(0x40) };
     return res;
 }
 
 function set_free_memory(loc : word) {
-    assembly {
-        mstore(0x40, loc)
-    };
+    assembly { mstore(0x40, loc) };
 }
 
+// Indexable Types
 
-// bytes
+class t:IndexAccess(idx,val) {
+    function get(c: t, i: idx) -> val;
+    function set(c: t, i: idx, v: val);
+}
+
+// bytes (tightly packed byte arrays)
 
 // TODO: bytes should be indexable (but not ref since it can't live on stack...)
 // TODO: we would really want this to be a typedef to void (or a datatype with no constructors)
