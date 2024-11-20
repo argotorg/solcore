@@ -91,7 +91,9 @@ initTcEnv genDefs
           mempty
           namePool
           primDataType
-          [Name "primAddWord", Name "primEqWord"]
+          [ Name "primAddWord"
+          , Name "primEqWord"
+          ]
           genDefs
           []
           0

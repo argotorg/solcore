@@ -25,27 +25,15 @@ import Solcore.Primitives.Primitives
 -- top level type inference function: Boolean parameter 
 -- used to determine if it will generate definitions.
 
-typeInfer1 :: CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
-typeInfer1 (CompUnit imps decls) 
+typeInfer :: Bool -> CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
+typeInfer b (CompUnit imps decls) 
   = do
-      let ienv = initTcEnv True 
+      let ienv = initTcEnv b
       r <- runTcM (tcCompUnit (CompUnit imps decls)) ienv
       case r of 
         Left err -> pure $ Left err 
         Right ((CompUnit imps ds), env) -> 
           pure (Right (CompUnit imps ds, env)) 
-
-typeInfer2 :: TcEnv -> CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
-typeInfer2 env (CompUnit imps decls) 
-  = do
-      let env1 = (initTcEnv False) {ctx = ctx env, uniqueTypes = uniqueTypes env}
-      r <- runTcM (tcCompUnit (CompUnit imps decls))  env1
-      case r of 
-        Left err -> pure $ Left err 
-        Right ((CompUnit imps ds), env) -> 
-          pure (Right (CompUnit imps ds, env)) 
-
-
 
 -- type inference for a compilation unit 
 

@@ -11,17 +11,17 @@ import Solcore.Frontend.TypeInference.Id
 -- basic type classes 
 
 selfVar :: Tyvar 
-selfVar = TVar (Name "self") False
+selfVar = TVar selfName False
 
 argsVar :: Tyvar 
-argsVar = TVar (Name "args") False
+argsVar = TVar argsName False
 
 retVar :: Tyvar 
-retVar = TVar (Name "ret") False 
+retVar = TVar retName False 
 
 invokeClass :: Class Name 
 invokeClass 
-  = Class [] (Name "invokable") 
+  = Class [] invokableName 
              [argsVar, retVar] 
              selfVar 
              [invokeSignature]
@@ -32,15 +32,28 @@ invokePred
           (TyVar selfVar)
           (TyVar <$> [argsVar, retVar])
 
-         
+argsName :: Name 
+argsName = Name "args"
+
+retName :: Name 
+retName = Name "ret"
+
+selfName :: Name 
+selfName = Name "self"
+
+invokableName :: Name 
+invokableName = Name "invokable"
+
+invokeName :: Name 
+invokeName = Name "invoke"
 
 invokeSignature :: Signature Name
 invokeSignature 
   = Signature [selfVar, argsVar]
               []
-              (Name "invoke")
-              [ Typed (Name "self") (TyVar selfVar)
-              , Typed (Name "args") (TyVar argsVar)
+              invokeName
+              [ Typed selfName (TyVar selfVar)
+              , Typed argsName (TyVar argsVar)
               ]
               (Just (TyVar retVar))
 -- basic types 
@@ -55,7 +68,7 @@ primEqWord :: (Name, Scheme)
 primEqWord = ("primEqWord", monotype (word :-> word :-> word))
 
 primInvoke :: (Name, Scheme)
-primInvoke = ( QualName (Name "invokable") "invoke"
+primInvoke = ( QualName invokableName "invoke"
              , Forall [selfVar, argsVar, retVar] 
                 ([invokePred] :=> (TyVar selfVar :-> 
                                    TyVar argsVar :-> 

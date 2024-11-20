@@ -7,4 +7,8 @@ contract Peano {
     | Succ(m) => return step(m, natInd(step,v,m));
     };
   }
+
+  function add(n,m) {
+    return natInd (lam (x, acc) {return Succ(acc) ; }, m, n);
+  }
 }

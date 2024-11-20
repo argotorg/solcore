@@ -217,8 +217,8 @@ tcExp e@(Lam args bd _)
       (bd',ps,t') <- withLocalCtx schs (tcBody bd)
       s <- getSubst
       let ps1 = apply s ps
-          ts1 = apply s ts'
-          t1 = apply s t'
+          ts1 = apply s (map unskol ts')
+          t1 = apply s (unskol t')
           vs = fv ps1 `union` fv t' `union` fv ts1
           ty = funtype ts1 t1
       gen <- gets generateDefs
@@ -238,6 +238,10 @@ tcExp e1@(TyExp e ty)
       extSubst s
       pure (TyExp e' ty, apply s ps, ty)
 
+unskol :: Ty -> Ty 
+unskol (TyVar (TVar v _)) = TyVar (TVar v False)
+unskol (TyCon n ts) = TyCon n (map unskol ts)
+
 -- building indirect function call arguments 
 
 indirectArgs :: [Exp Name] -> Exp Name 
@@ -246,6 +250,9 @@ indirectArgs [e] = e
 indirectArgs (e : es) = epair e (indirectArgs es)
   where 
     epair e1 e2 = Con (Name "pair") [e1, e2]
+
+-- need to retrieve generated stuff 
+-- from a lambda after first desugaring step.
 
 createLambdaImpl :: [Pred] ->
                     [Param Id] ->
@@ -333,7 +340,7 @@ createUniqueType ids n (argTys, retTy)
             dt = DataTy nt [argVar, retVar] [dc]
             argTy' = tupleTyFromList argTys
             tc = TyCon nt [argTy', retTy]
-        writeDataTy dt
+        writeDataTy dt 
         checkDataType dt
         addUniqueType n dt
         pure (Var (Id n tc), Con (Id nt tc) (map Var ids), dc, tc)
@@ -365,13 +372,12 @@ skolemize (TyCon n ts) = TyCon n (map skolemize ts)
 -- type checking a single bind
 -- create tcSignature which should return the 
 -- function type together with its parameter types
--- type the body using these assumptions.
 
 tcSignature :: Signature Name -> TcM ( (Name, Scheme)
                                      , [(Name, Scheme)]
                                      , [Ty]
                                      )
-tcSignature (Signature _ ctx n ps rt)
+tcSignature sig@(Signature _ ctx n ps rt)
   = do 
       (ps', pschs, ts) <- tcArgs ps 
       t <- maybe freshTyVar pure rt
@@ -387,23 +393,38 @@ tcFunDef d@(FunDef sig bd)
       let lctx = (n,sch) : pschs
       (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
       (ps :=> t) <- freshInst sch
-      t1 <- withCurrentSubst (foldr (:->) t' ts) 
-      x <- withCurrentSubst (ps1 :=> (funtype ts t'))
-      -- liftIO $ putStrLn $ pretty (sigName sig)
-      -- liftIO $ putStrLn $ "Infered:" ++ pretty x 
-      -- liftIO $ putStrLn $ "Initial:" ++ pretty (ps :=> t) 
-      s' <- match t t1 `wrapError` bd'
+      t1 <- withCurrentSubst (foldr (:->) t' ts)
+      nps <- patchConstraints (ps ++ ps1)
+      ps2 <- reduceContext nps `wrapError` bd'
+      s1 <- getSubst
+      s' <- match (apply s1 $ unskol t) (apply s1 $ unskol t1) `wrapError` d
       extSubst s'
       s <- getSubst 
-      ps2 <- reduceContext ps1 `wrapError` bd'
       sch'@(Forall svs (sps :=> st)) <- generalize (ps2, apply s t) `wrapError` d
       sig1 <- annotateSignature sch' sig
-      s1 <- getSubst
       gen <- gets generateDefs
       when gen (generateDecls (FunDef sig1 bd, sch')) 
-      let sig2 = elabSignature sig1 sch' 
+      let sig2 = elabSignature sig1 sch'
       info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
-      pure (apply s1 $ FunDef sig2  bd', apply s1 ps2, apply s1 t1)
+      pure (apply s $ FunDef sig2  bd', apply s ps2, apply s t1)
+
+-- patch invokable constraints to remove arrow main types. 
+-- This should be improved later.
+
+patchConstraints :: [Pred] -> TcM [Pred]
+patchConstraints = mapM patchConstraint 
+
+patchConstraint :: Pred -> TcM Pred 
+patchConstraint c@(InCls n (_ :-> _) ts) 
+  = if isInvokable n then do 
+      v <- freshTyVar 
+      pure (InCls n v ts)
+    else pure c 
+patchConstraint c = pure c
+
+isInvokable :: Name -> Bool 
+isInvokable (Name "invokable") = True
+isInvokable _ = False 
 
 -- update types in signature 
 

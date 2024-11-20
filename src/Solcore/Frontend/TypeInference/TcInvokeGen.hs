@@ -37,13 +37,12 @@ createInstance :: Maybe (TopDecl Name) -> Signature Name -> Scheme -> TcM ()
 createInstance Nothing  _ _ = pure ()
 createInstance (Just (TDataDef dt@(DataTy n vs _))) sig sch 
   = do
-      argTys' <- createArgs sig 
+      (ps :=> t) <- freshInst sch
+      (argTys', retTy) <- createArgs t   
       let mainTy = TyCon n ([argTys', retTy])
-          retTy = fromJust $ (sigReturn sig)
-          ni = Name "invokable"
-      bd <- createInvokeDef dt sig
-      let instd = Instance [] ni ([argTys', retTy]) mainTy [ bd ]
-      addInstance (Name "invokable") (mkInstPred instd)
+      bd <- createInvokeDef dt sig t 
+      let instd = Instance [] invokableName ([argTys', retTy]) mainTy [ bd ]
+      addInstance invokableName (mkInstPred instd)
       writeInstance instd
       pure ()
 
@@ -67,30 +66,29 @@ anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs
     tvs = fv inst
     freshNames = filter (not . flip elem tvs) (flip TVar False <$> namePool)
 
-createInvokeDef :: DataTy -> Signature Name -> TcM (FunDef Name)
-createInvokeDef dt sig 
-  = do 
-      (sig', mi) <- createInvokeSig dt sig 
-      bd <- createInvokeBody dt sig mi  
+createInvokeDef :: DataTy -> Signature Name -> Ty -> TcM (FunDef Name)
+createInvokeDef dt sig t 
+  = do
+      (sig', mi) <- createInvokeSig dt sig t 
+      bd <- createInvokeBody dt sig mi t 
       pure (FunDef sig' bd)
 
-createInvokeSig :: DataTy -> Signature Name -> TcM (Signature Name, Id)
-createInvokeSig (DataTy n vs cons) sig 
+createInvokeSig :: DataTy -> Signature Name -> Ty -> TcM (Signature Name, Id)
+createInvokeSig (DataTy n vs cons) sig t 
   = do
-      argTys' <- createArgs sig
-      let retTy = fromJust $ sigReturn sig
+      (argTys', retTy) <- createArgs t
       (args, mp) <- mkParamForSig argTys' (TyCon n ([argTys', retTy]))
       let  
-          ni = Name "invoke"
-          vs = fv argTys' `union` maybe [] fv (sigReturn sig)
-      pure (Signature vs [] ni args (sigReturn sig), mp) 
+          vs = fv [retTy, argTys']
+          sig' = Signature vs [] invokeName args (Just retTy)
+      pure (sig', mp)
 
-createArgs :: Signature Name -> TcM Ty 
-createArgs sig 
-  = do 
-      argTys <- mapM tyParam (sigParams sig)
-      argTys' <- filterM notUniqueTyArg argTys
-      pure $ tupleTyFromList argTys'
+createArgs :: Ty -> TcM (Ty, Ty)
+createArgs t  
+  = do
+      let (ts',t') = splitTy t 
+      argTys' <- filterM notUniqueTyArg ts'
+      pure $ (tupleTyFromList argTys', t')
 
 tupleTyFromList :: [Ty] -> Ty
 tupleTyFromList [] = unit 
@@ -101,7 +99,7 @@ tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 mkParamForSig :: Ty -> Ty -> TcM ([Param Name], Id)
 mkParamForSig argTy selfTy 
   = do 
-      let selfArg = Typed (Name "self") selfTy 
+      let selfArg = Typed selfName selfTy 
       paramName <- freshName 
       pure ([selfArg, Typed paramName argTy], Id paramName argTy)
 
@@ -109,15 +107,15 @@ mkParamForSig argTy selfTy
 
 -- no pattern matching needed: just make a call to the function 
 -- pattern matching needed:
--- * No closure: function receives more than one arguments, which are passed as a tuple 
+-- * No closure: function receives more than one argument, which are passed as a tuple 
 -- * Closure: pattern match on closure to get the parameters and make the call with arguments.
 
-createInvokeBody :: DataTy -> Signature Name -> Id -> TcM (Body Name)
-createInvokeBody (DataTy dt vs [Constr c1 targs]) sig x@(Id pid ty)
+createInvokeBody :: DataTy -> Signature Name -> Id -> Ty -> TcM (Body Name)
+createInvokeBody (DataTy dt vs [Constr c1 targs]) sig x@(Id pid ty) t 
   = do
       let patTys = tyConArgs ty
           cname = sigName sig
-      argTys <- mapM tyParam (sigParams sig)
+          (argTys, retTy) = splitTy t 
       (pats, ns) <- unzip <$> mapM mkPat patTys
       if [ty] == argTys && null targs then 
         -- no need to match the closure type and arguments tuple 
