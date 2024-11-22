@@ -6,6 +6,7 @@ import qualified Data.Map as Map
 
 import Options.Applicative
 
+import Solcore.Desugarer.LambdaLifting (lambdaLifting)
 import Solcore.Desugarer.MatchCompiler
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.SolcoreParser
@@ -32,43 +33,44 @@ pipeline = do
   withErr t' $ \ ast@(CompUnit imps ds) -> do
     when verbose $ do 
       putStrLn "> AST after name resolution"
-      putStrLn $ pretty ast 
-    r2 <- sccAnalysis ast
-    withErr r2 $ \ ast' -> do
+      putStrLn $ pretty ast
+    let r1 = lambdaLifting ast 
+    withErr r1 $ \ (ast, ss) -> do 
       when verbose $ do 
-        putStrLn "> SCC Analysis:"
-        putStrLn $ pretty ast'
-      r5 <- typeInfer True ast'
-      withErr r5 $ \ (c', env) -> do
-        let warns = warnings env
-            logsInfo = logs env
-            tyctx = ctx env 
-            ts = generated env 
-        when (verbose && (not $ null logsInfo)) $ do  
-          putStrLn "> Type inference logs:"
-          mapM_ putStrLn (reverse $ logsInfo)
-        let ast0 = moveData (addGenerated ast' ts)
+        putStrLn "> Lambda lifting:"
+        putStrLn $ pretty ast 
+      r2 <- sccAnalysis ast
+      withErr r2 $ \ ast' -> do
         when verbose $ do 
-          putStrLn "> Desugared code - step 0"
-          putStrLn $ pretty c'
-        r6 <- sccAnalysis ast0
-        withErr r6 $ \ ast2 -> do 
-          when verbose $ do 
-            putStrLn "> Desugared code - step 1"
-            putStrLn $ pretty ast2
-          r7 <- typeInfer False ast2 
-          withErr r7 $ \ (c1, env1) -> do 
-            let warns1 = warnings env1 
-            let logsInfo = logs env1 
-            when (not $ null warns) $ do 
-              putStrLn "> Type inference warnings:"
-              mapM_ putStrLn (reverse $ warns) 
-            when (verbose && (not $ null logsInfo)) $ do  
-              putStrLn "> Type inference logs:"
-              mapM_ putStrLn (reverse $ logsInfo)
-            when verbose $ do
-              putStrLn "> Annotated AST:"
-              putStrLn $ pretty c1
+          putStrLn "> SCC Analysis:"
+          putStrLn $ pretty ast'
+        r5 <- typeInfer True ast'
+        withErr r5 $ \ (c', env) -> do
+          let warns = warnings env
+              logsInfo = logs env
+              tyctx = ctx env 
+              ts = generated env 
+          when (verbose && (not $ null logsInfo)) $ do  
+            putStrLn "> Type inference logs:"
+            mapM_ putStrLn (reverse $ logsInfo)
+          r6 <- sccAnalysis (moveData (addGenerated ast' ts))
+          withErr r6 $ \ ast2 -> do 
+            when verbose $ do 
+              putStrLn "> Desugared code - step 1"
+              putStrLn $ pretty ast2
+            r7 <- typeInfer False ast2 
+            withErr r7 $ \ (c1, env1) -> do 
+              let warns1 = warnings env1 
+              let logsInfo = logs env1 
+              when (not $ null warns) $ do 
+                putStrLn "> Type inference warnings:"
+                mapM_ putStrLn (reverse $ warns) 
+              when (verbose && (not $ null logsInfo)) $ do  
+                putStrLn "> Type inference logs:"
+                mapM_ putStrLn (reverse $ logsInfo)
+              when verbose $ do
+                putStrLn "> Annotated AST:"
+                putStrLn $ pretty c1
           --   r8 <- matchCompiler c1
           --   withErr r8 $ \ res -> do
           --     when (verbose || optDumpDS opts) do

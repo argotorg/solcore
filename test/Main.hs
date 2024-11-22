@@ -61,7 +61,8 @@ cases :: TestTree
 cases 
   = testGroup "Files for folder cases"
               [
-                runTestForFile "Ackermann.solc" caseFolder 
+                runTestForFile "Ackermann.solc" caseFolder
+              , runTestForFile "app.solc" caseFolder 
               , expectFail $ runTestForFile "BadInstance.solc" caseFolder
               , runTestForFile "BoolNot.solc" caseFolder
               , runTestForFile "Compose.solc" caseFolder

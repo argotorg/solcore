@@ -1,9 +1,50 @@
-  function id(x) {
-    return x ; 
-  }
+function id() {
+    return lam (x) { return x; } ; 
+}
 
-contract Id {
-  function main () {
-    return id(0);
+function foo(x) {
+  return lam (y) { 
+      return primAddWord( id(0)
+                        , primAddWord(x,y)); 
+      } ;
+}
+/*
+
+data t_lambda_impl01(b,c) = t_lambda_impl01
+
+function lambda_impl0(x : a) -> a {
+  return x;
+} 
+
+instance t_lambda_impl01(a,a) : invokable (a,a) {
+  function invoke (self : t_lambda_impl01(a,a), x : a) -> a {
+    return x;
   }
 }
+
+data t_id2 (d,e) = t_id2
+
+function id () -> t_lambda_impl01(a,a) {
+  return t_lambda_impl01;
+}
+
+instance t_id2 (a,a) : invokable ((), t_lambda_impl01(a,a)) {
+  function invoke (self : t_id2(a,a), x : ()) -> t_lambda_impl01(a,a) {
+    return id();
+  }
+}
+
+data t_foo3 (f,g) = t_foo3 
+
+function foo() {
+  return invokable.invoke(t_id2, 0);
+}
+
+instance t_foo3 ((), word) => invokable ((), word) {
+  function invoke (self : t_foo3 ((), word), x : ()) {
+    return foo();
+  }
+}
+
+ 
+ */

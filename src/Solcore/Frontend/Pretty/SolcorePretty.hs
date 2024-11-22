@@ -204,7 +204,7 @@ instance Pretty a => Pretty (Stmt a) where
   ppr (StmtExp e)
     = ppr e <> semi
   ppr (Return e)
-    = text "return" <+> ppr e
+    = text "return" <+> ppr e <> semi
   ppr (Match e eqns)
     = text "match" <+> 
       (parens $ commaSep $ map ppr e) <+> 

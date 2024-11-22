@@ -202,7 +202,7 @@ tcExp (FieldAccess (Just e) n)
 tcExp ex@(Call me n args)
   = do
       gen <- gets generateDefs
-      let qn = QualName (Name "invokable") "invoke"
+      let qn = QualName invokableName "invoke"
           args' = [Var n, indirectArgs args]
       isDirect <- isDirectCall n
       if gen && isDirect then do
@@ -395,7 +395,7 @@ tcFunDef d@(FunDef sig bd)
       (ps :=> t) <- freshInst sch
       t1 <- withCurrentSubst (foldr (:->) t' ts)
       nps <- patchConstraints (ps ++ ps1)
-      ps2 <- reduceContext nps `wrapError` bd'
+      ps2 <- reduceContext nps `wrapError` d
       s1 <- getSubst
       s' <- match (apply s1 $ unskol t) (apply s1 $ unskol t1) `wrapError` d
       extSubst s'
