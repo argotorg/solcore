@@ -305,7 +305,7 @@ normalizeLoc loc = loc
 genStmts :: [Stmt] -> TM [YulStmt]
 genStmts stmts = do
     mapM_ scanStmt stmts   -- scan for functions and record their types
-    concat <$> mapM genStmtWithComment stmts
+    concat <$> mapM genStmt stmts
 
 translateCore :: Core -> TM Yul
 translateCore (Core stmts) = translateStmts stmts
