@@ -2,6 +2,8 @@ module Language.Core.Parser where
 import Language.Core
     ( Core(..), Contract(..),
       Alt(..),
+      Pat(..),
+      pattern ConAlt,
       Arg(..),
       Con(..),
       Stmt(SExpr, SAlloc, SReturn, SBlock, SMatch,
@@ -130,17 +132,17 @@ coreArg :: Parser Arg
 coreArg = TArg <$> identifier <*> (symbol ":" *> coreType)
 
 coreAlt :: Parser Alt
-coreAlt = choice
-    [ Alt CInl <$> (pKeyword "inl" *> identifier <* symbol "=>") <*> coreStmt
-    , Alt CInr <$> (pKeyword "inr" *> identifier <* symbol "=>") <*> coreStmt
-    , cink
-    ] where
-        cink = do
-            pKeyword "in"
-            k <- parens int
-            name <- identifier
-            symbol "=>"
-            Alt (CInK k) name <$> coreStmt
+coreAlt = Alt <$> corePat <*> identifier <* symbol "=>" <*> coreStmt
+
+corePat :: Parser Pat
+corePat = choice
+    [ PIntLit <$> integer
+    , PCon CInl <$ pKeyword "inl"
+    , PCon CInr <$ pKeyword "inr"
+    , pKeyword "in" >> PCon . CInK <$> parens int
+    , PVar <$> identifier
+    , PWildcard <$ pKeyword "_"
+    ]
 
 coreProgram :: Parser Core
 coreProgram = sc *> (Core <$> many coreStmt) <* eof

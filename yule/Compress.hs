@@ -50,16 +50,17 @@ compressMatch cty@(TSumN ts) top@(SMatch ty e alts) = SMatch ty' e' (go 0 top) w
     ty' = compress ty
     e' = compress e
     arity = length ts
+    alt = ConAlt
     go k s@(SMatch t@(TNamed n ty) e alts) = go k (SMatch ty e alts)
-    go k s@(SMatch t@(TSum lty rty) e [Alt CInl ln left, Alt CInr rn right])
+    go k s@(SMatch t@(TSum lty rty) e [ConAlt CInl ln left, ConAlt CInr rn right])
        -- last two alternatives in the chain
-       | k == arity-2 = [Alt (CInK k )ln left', Alt (CInK (k+1)) rn right']
+       | k == arity-2 = [alt (CInK k )ln left', alt (CInK (k+1)) rn right']
        -- not reached the end of the chain yet
        | otherwise = firstAlt:rest
        where
         left' = compress left
         right' = compress right
-        firstAlt = Alt (CInK k) ln left'
+        firstAlt = alt (CInK k) ln left'
         rest = go (k+1) right
     go k (SBlock [s]) = go k s
     go k s = error $ concat["compressMatch unimplemented for k=",show k," stmt: ", show s]

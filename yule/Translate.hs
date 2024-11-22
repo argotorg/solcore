@@ -120,8 +120,8 @@ genStmt (SMatch sty e alts) = do
      where
         genSwitch :: Location -> Location -> [Alt] -> TM [YulStmt]
         genSwitch tag payload alts = do
-            yulAlts <- genNAlts payload alts
-            pure [YSwitch (loadLoc tag) yulAlts Nothing]
+            (yulAlts, yulDefault) <- genNAlts payload alts
+            pure [YSwitch (loadLoc tag) yulAlts yulDefault]
 
 genStmt (SFunction name args ret stmts) = withLocalEnv do
     debug ["> SFunction: ", name, " ", show args, " -> ", show ret]
@@ -182,18 +182,34 @@ genBinAlts payload [Alt lcon lname lstmt, Alt rcon rname rstmt] = do
 genBinAlts _ alts = error("genAlts: invalid number of alternatives:\n" 
                           ++ unlines(map (render . ppr) alts) )
 
-genNAlts :: Location -> [Alt] -> TM [(YLiteral, [YulStmt])]
-genNAlts payload alts = do mapM (genAlt payload) alts
+genNAlts :: Location -> [Alt] -> TM (YulCases, YulDefault)
+genNAlts payload alts = do
+    results <- mapM (genAlt payload) alts
+    return(gather results)
+    where
+      gather = foldr combine ([], Nothing)
+      combine (Left (tag, stmts)) (cases, def) = ((tag, stmts):cases, def)
+      combine (Right stmts) (cases, def) = (cases, Just stmts)      
 
-genAlt :: Location -> Alt -> TM (YLiteral, [YulStmt])
-genAlt payload (Alt con name stmt) = withLocalEnv do
+
+genAlt :: Location -> Alt -> TM (Either YulCase YulBlock)
+genAlt payload (Alt (PCon con) name stmt) = withLocalEnv do
     insertVar name payload
     yulStmts <- genStmt stmt
-    pure (yulCon con, yulStmts)
+    pure (Left(yulCon con, yulStmts))
     where
         yulCon CInl = YulFalse
         yulCon CInr = YulTrue
         yulCon (CInK k) = YulNumber (fromIntegral k)
+genAlt payload (Alt (PIntLit k) _ stmt) = withLocalEnv do
+    yulStmts <- genStmt stmt
+    pure (Left(YulNumber (fromIntegral k), yulStmts))
+genAlt payload (Alt (PVar name) _ stmt) = do
+    insertVar name payload
+    yulStmts <- genStmt stmt
+    pure (Right yulStmts)
+genAlt _ alt = error ("genAlt unimplemented for: " ++ show alt)
+
 
 allocVar :: Core.Name -> Type -> TM [YulStmt]
 allocVar name TWord = do
