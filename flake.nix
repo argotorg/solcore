@@ -49,6 +49,8 @@
               haskellPackages.ghcid
               haskellPackages.fourmolu
               haskellPackages.cabal-fmt
+              # needed to build the specification 
+              pandoc
             ]
             ++ (builtins.attrValues (import ./scripts.nix {s = pkgs.writeShellScriptBin;}));
         });
