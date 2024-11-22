@@ -72,40 +72,42 @@ yulBool :: Bool -> YulExp
 yulBool True = YLit YulTrue
 yulBool False = YLit YulFalse
 
+
+-- auxilliary functions
+hlist = hsep . map ppr
+vlist = vcat . map ppr
+nvlist = nest 2 . vlist
+pprBlock stmts = lbrace $$ nvlist stmts $$ rbrace
+
 instance Pretty Yul where
   ppr (Yul stmts) = vcat (map ppr stmts)
 
 instance Pretty YulStmt where
-  ppr (YBlock stmts) =
-    lbrace
-      $$ nest 4 (vcat (map ppr stmts))
-      $$ rbrace
-  ppr (YFun name args rets stmts) =
-    text "function"
-      <+> ppr name
-      <+> prettyargs
-      <+> prettyrets rets
-      <+> lbrace
-      $$ nest 4 (vcat (map ppr stmts))
-      $$ rbrace
+  ppr (YBlock stmts) = pprBlock stmts
+  ppr (YFun name args rets stmts) = sep
+    [ hsep [text "function", ppr name, pprArgs, pprRets rets, lbrace]
+    , nest 2 (vlist stmts)
+    , rbrace
+    ]
     where
-        prettyargs = parens (commaSepList args)
-        prettyrets Nothing = empty
-        prettyrets (Just rs) = text "->" <+> commaSepList rs
+        pprArgs = parens (commaSepList args)
+        pprRets Nothing = empty
+        pprRets (Just rs) = text "->" <+> commaSepList rs
   ppr (YLet vars expr) =
     text "let" <+> commaSepList vars
                <+> maybe empty (\e -> text ":=" <+> ppr e) expr
   ppr (YAssign vars expr) = commaSepList vars <+> text ":=" <+> ppr expr
-  ppr (YIf cond stmts) = text "if" <+> parens (ppr cond) <+> ppr (YBlock stmts)
+  ppr (YIf cond stmts) = text "if" <+> parens (ppr cond) <+> pprBlock stmts
   ppr (YSwitch expr cases def) =
     text "switch"
       <+> ppr expr
-      $$ nest 4 (vcat (map (\(lit, stmts) -> text "case" <+> ppr lit <+> ppr (YBlock stmts)) cases))
-      $$ maybe empty (\stmts -> text "default" <+> ppr (YBlock stmts)) def
+      $$ nest 2 (vcat (map pprCase cases))
+      $$ maybe empty (\stmts -> text "default" <+> pprBlock stmts) def
+    where pprCase (lit, stmts) = text "case" <+> ppr lit <+> pprBlock stmts
   ppr (YFor pre cond post stmts) =
-    text "for" <+> braces (hsep  (map ppr pre))
+    text "for" <+> braces (hlist pre)
                <+> ppr cond
-               <+> hsep (map ppr post) <+> ppr (YBlock stmts)
+               <+> hlist post <+> pprBlock stmts
   ppr YBreak = text "break"
   ppr YContinue = text "continue"
   ppr YLeave = text "leave"
@@ -114,7 +116,7 @@ instance Pretty YulStmt where
 
 instance Pretty YulExp where
   ppr :: YulExp -> Doc
-  ppr (YCall name args) = ppr name >< parens (hsep (punctuate comma (map ppr args)))
+  ppr (YCall name args) = ppr name >< parens (commaSepList args)
   ppr (YIdent name) = ppr name
   ppr (YLit lit) = ppr lit
 
