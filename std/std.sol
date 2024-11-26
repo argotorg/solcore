@@ -1,6 +1,6 @@
 pragma no-bounded-variable-condition ABIEncode;
 pragma no-patterson-condition ABIEncode;
-pragma no-coverage-condition ABIDecode;
+pragma no-coverage-condition ABIDecode, MemoryType;
 /*
 - features
     - primitive word eq
@@ -418,7 +418,6 @@ instance (tuple:ABIAttribs) => ABITuple(tuple):ABIAttribs {
     }
 }
 
-// TODO: check if these make sense
 instance (ty:ABIAttribs) => memory(ty):ABIAttribs {
     function headSize(ty) {
         let px : Proxy(ty);
@@ -487,8 +486,8 @@ instance (tuple:ABIEncode, tuple:ABIAttribs) => ABITuple(tuple):ABIEncode {
 
 // MemoryType (types that can be stored in memory)
 
-// TODO: why do we need the Proxy here?
 class self:MemoryType(loadedType) {
+    // Proxy needed becaused class methods must mention strong type params
     function loadFromMemory(p:Proxy(self), off:word) -> loadedType;
 }
 
@@ -508,9 +507,9 @@ instance (a:MemoryType(a)) => memory(a):Loadable(a) {
     }
 }
 
-// TODO: This seems too restrictive, but allowing the weak param on MemoryType to be free violates the Bound var condition
-instance (ty:MemoryType(ty)) => DynArray(ty):MemoryType(slice(memory(ty))) {
-    function loadFromMemory(p, off:word) -> slice(memory(ty)) {
+// FAIL: bound variable
+instance (ty:MemoryType(ret)) => DynArray(ty):MemoryType(slice(memory(ret))) {
+    function loadFromMemory(p, off:word) -> slice(memory(ret)) {
         let length;
         assembly {
             length := mload(off)
@@ -563,7 +562,8 @@ instance (reader:WordReader) => ABIDecoder(uint256, reader):ABIDecode(uint256) {
 
 // FAIL: Coverage
 // TODO: no instance of ABIDecoder(b, reader) : ABIDecode (b_decoded)
-//instance (reader:WordReader, ABIDecoder(a,reader):ABIDecode(a_decoded), ABIDecoder(b,reader):ABIDecode(b_decoded), a:ABIAttribs) => ABIDecoder(Pair(a,b), reader):ABIDecode(Pair(a_decoded,b_decoded))
+// TODO: file bug
+//instance (reader:WordReader, ABIDecoder(b,reader):ABIDecode(b_decoded), ABIDecoder(a,reader):ABIDecode(a_decoded), a:ABIAttribs) => ABIDecoder(Pair(a,b), reader):ABIDecode(Pair(a_decoded,b_decoded))
 //{
     //function decode(ptr:ABIDecoder(Pair(a,b), reader), currentHeadOffset:word) -> Pair(a_decoded, b_decoded) {
         //let prx : Proxy(a);
@@ -645,10 +645,12 @@ function allocateDynamicArray(prx : Proxy(t), length : word) -> memory(DynArray(
 //}
 
 // TODO: no instance of ABIDecoder(ty, reader) : ABIDecode (ty)
+// TODO: is this instance too strict
 //forall decodable, reader, ty . (decodable:HasWordReader(reader), ABIDecoder(ty, reader):ABIDecode(ty)) =>
 //function abi_decode(decodable:decodable) -> ty
 //{
-    //return ABIDecode.decode(ABIDecoder(HasWordReader.getWordReader(decodable)):ABIDecoder(ty, decodable), 0);
+    //let decoder : ABIDecoder(ty, reader) = ABIDecoder(HasWordReader.getWordReader(decodable));
+    //return ABIDecode.decode(decoder, 0);
 //}
 
 // Contract Entrypoint
@@ -663,18 +665,18 @@ forall name:Selector . function selector_matches(nm : name) -> bool {
     return true;
 }
 
-//instance (nm:Selector, args:ABIDecode, rets:ABIEncode, f:Invokable(args, rets)) => Dispatch(nm,args,rets,f):GenerateDispatch {
-    //function dispatch_if_selector_match(d:Dispatch(n,a,r,f)) -> g {
-        //return lam() {
-            //match d {
-            //| Dispatch(name, args, rets, fn) => match selector_matches(name) {
-                //| false => return Unit;
-                //| true =>
-                  //return Unit;
-            //};};
-        //};
-    //}
-//}
+instance (nm:Selector, args:ABIDecode, rets:ABIEncode, f:Invokable(args, rets)) => Dispatch(nm,args,rets,f):GenerateDispatch {
+    function dispatch_if_selector_match(d:Dispatch(n,a,r,f)) -> g {
+        return lam() {
+            match d {
+            | Dispatch(name, args, rets, fn) => match selector_matches(name) {
+                | false => return Unit;
+                | true =>
+                  return Unit;
+            };};
+        };
+    }
+}
 
 //// TODO: need to have a way to write predicate in class function or class itself, or have a function type.
 //// class self:GenerateDispatch {
