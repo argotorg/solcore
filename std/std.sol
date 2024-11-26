@@ -662,18 +662,18 @@ forall name:Selector . function selector_matches(nm : name) -> bool {
     return true;
 }
 
-instance (nm:Selector, args:ABIDecode, rets:ABIEncode, f:Invokable(args, rets)) => Dispatch(nm,args,rets,f):GenerateDispatch {
-    function dispatch_if_selector_match(d:Dispatch(n,a,r,f)) -> g {
-        return lam() {
-            match d {
-            | Dispatch(name, args, rets, fn) => match selector_matches(name) {
-                | false => return Unit;
-                | true =>
-                  return Unit;
-            };};
-        };
-    }
-}
+//instance (nm:Selector, args:ABIDecode, rets:ABIEncode, f:Invokable(args, rets)) => Dispatch(nm,args,rets,f):GenerateDispatch {
+    //function dispatch_if_selector_match(d:Dispatch(n,a,r,f)) -> g {
+        //return lam() {
+            //match d {
+            //| Dispatch(name, args, rets, fn) => match selector_matches(name) {
+                //| false => return Unit;
+                //| true =>
+                  //return Unit;
+            //};};
+        //};
+    //}
+//}
 
 //// TODO: need to have a way to write predicate in class function or class itself, or have a function type.
 //// class self:GenerateDispatch {
