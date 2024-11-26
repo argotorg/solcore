@@ -190,9 +190,10 @@ Signature :: { Signature }
 Signature : SigPrefix 'function' Name '(' ParamList ')' OptRetTy {Signature (fst $1) (snd $1) $3 $5 $7}
 
 SigPrefix :: {([Ty], [Pred])}
-SigPrefix : 'forall' ConstraintList '.'                {(tysFrom $2, $2)}
-          | 'forall' TypeCommaList '.'                 {($2, [])}
-          | {- empty -}                                {([], [])}
+SigPrefix : 'forall' ConstraintList '.'                            {(tysFrom $2, $2)}
+          | 'forall' TypeCommaList '.'                             {($2, [])}
+          | 'forall' TypeCommaList '.' '(' ConstraintList ')' '=>' {($2, $5)}
+          | {- empty -}                                            {([], [])}
 
 ParamList :: { [Param] }
 ParamList : Param                                  {[$1]}
