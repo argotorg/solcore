@@ -1,0 +1,10 @@
+contract RGB {
+  data Color = R | G | B;
+  function main() {
+    match B {
+      | R => return 4;
+      | G => return 2;
+      | B => return 42;
+    };
+  }
+}

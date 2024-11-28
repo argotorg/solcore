@@ -1,0 +1,8 @@
+function nid() {
+  return id;
+}
+function id (x) {
+  return x;
+}
+
+

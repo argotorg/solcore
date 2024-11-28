@@ -1,0 +1,53 @@
+
+class  a : Neg {
+   function neg(x:a) -> a;
+}
+
+data B = F | T;
+
+instance B : Neg {
+  function neg (x : B) {
+    match x {
+    | F => return T;
+    | T => return F;
+    };
+  }
+}
+
+function fst (p) {
+  match p {
+  | (x,y) => return x;
+  };
+}
+
+function snd(p) {
+  match p {
+    | (x,y) => return y;
+  };
+}
+
+
+instance (a:Neg,b:Neg) => (a,b):Neg {
+  function neg(p) {
+    return (Neg.neg (fst(p)), Neg.neg(snd (p)));
+  }
+}
+
+contract NegPair {
+
+ function bnot(x) {
+   match x {
+     | T => return F;
+     | F => return T;
+   };
+}
+
+ function fromB(b) {
+  match b  {
+    | F => return 0;
+    | T => return 1;
+  };
+}
+
+ function main() { return  fromB(fst(Neg.neg((F,T)))); }
+}

@@ -1,0 +1,60 @@
+data Bool = False | True; 
+data W = W(Word);
+data U = U;
+
+// empty class needed since forall expects a nonempty context
+class a :Top {}
+instance a:Top {}
+
+/* For experiments, special handling when emitting code */
+// this does not work, typechecker forces a ~ b
+// forall a, b.(a:Top, b:Top) => function ereturn(x:a) -> b { let res: b; return res; }
+// we might have
+// forall a.(a:Top) => function ereturn(x:a) -> a
+// or
+
+forall a:Top . function ereturn(x:a) -> Unit { let res: Unit; return res; }
+// and then cast it to any type using unsafeCast
+
+/* simulate match expression
+  x = match { | False => return 77; | True => W(22) }
+*/
+function elimBool1(b:Bool) -> Word {
+   let x : W;
+   x = W(1);
+   match b {
+      // this works
+      // | False => x = unsafeCast(ereturn(77));
+      // but this does not - unknown intermediate type
+      // | False => x = unsafeCast(unsafeCast(ereturn(77)));
+      // what about "return(return 77)"?
+      // this works
+         | False => x = unsafeCast(ereturn(ereturn(77)));
+      // but this does not	 
+      //   | False => x = unsafeCast(ereturn(unsafeCast(ereturn(77))));
+      | True  => x = W(22);
+   };
+
+   match x {
+     | W(y) => return y;
+   };
+   
+}
+
+// "semicolon"
+forall a:Top . function semi(x:a) -> U { return U;}
+
+forall a:Top, b:Top . function unsafeCast(x:a) -> b {
+  let res: b; return res;
+}
+
+
+contract ExpReturn {
+
+  
+
+  function main() -> Word {
+    return elimBool1(False);
+    // return elimBool1(False);
+  }
+}
