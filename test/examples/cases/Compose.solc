@@ -4,4 +4,8 @@ function compose (f,g) {
 function id(x) {
   return x;
 }
+function main() {
+  let f = compose(id,id);
+   return f(42);
+}
 

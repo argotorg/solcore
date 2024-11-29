@@ -6,11 +6,11 @@ class  a : Neg {
 data B = F | T;
 
 instance B : Neg {
-  function neg (x : B) { 
+  function neg (x : B) {
     match x {
     | F => return T;
-    | T => return F; 
-    }; 
+    | T => return F;
+    };
   }
 }
 
@@ -22,9 +22,10 @@ function fst (p) {
 
 function snd(p) {
   match p {
-  | (_,y) => return y;
+    | (x,y) => return y;
   };
 }
+
 
 instance (a:Neg,b:Neg) => (a,b):Neg {
   function neg(p) {
@@ -32,4 +33,21 @@ instance (a:Neg,b:Neg) => (a,b):Neg {
   }
 }
 
+contract NegPair {
 
+ function bnot(x) {
+   match x {
+     | T => return F;
+     | F => return T;
+   };
+}
+
+ function fromB(b) {
+  match b  {
+    | F => return 0;
+    | T => return 1;
+  };
+}
+
+ function main() { return  fromB(fst(Neg.neg((F,T)))); }
+}
