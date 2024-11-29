@@ -5,6 +5,7 @@ import Data.List.NonEmpty (NonEmpty, cons, singleton)
 
 import Solcore.Frontend.Lexer.SolcoreLexer hiding (lexer)
 import Solcore.Frontend.Syntax.Name
+import Solcore.Frontend.Syntax.Pragma
 import Solcore.Frontend.Syntax.SyntaxTree
 import Solcore.Primitives.Primitives hiding (pairTy)
 import Language.Yul
@@ -48,6 +49,7 @@ import Language.Yul
       'no-patterson-condition' {Token _ TNoPattersonCondition}
       'no-coverage-condition'  {Token _ TNoCoverageCondition}
       'no-bounded-variable-condition' {Token _ TNoBoundVariableCondition}
+      'bool-type-decl' {Token _ TBoolType}
       'pragma'      {Token _ TPragma}
       ';'        {Token _ TSemi}
       ':='       {Token _ TYAssign}
@@ -97,11 +99,13 @@ TopDecl : Contract                                 {TContr $1}
 
 Pragma :: {Pragma}
 Pragma : 'pragma' 'no-coverage-condition' Status ';'  
-            {Pragma NoCoverageCondition $3 }
+            {InferencePragma NoCoverageCondition $3 }
        | 'pragma' 'no-patterson-condition' Status ';' 
-           {Pragma NoPattersonCondition $3}
+           {InferencePragma NoPattersonCondition $3}
        | 'pragma' 'no-bounded-variable-condition' Status ';' 
-          { Pragma NoBoundVariableCondition $3}
+          { InferencePragma NoBoundVariableCondition $3}
+       |  'pragma' 'bool-type-decl' NameList ';' 
+          { BoolTypePragma $3 }
 
 Status :: {PragmaStatus}
 Status : NameList       {DisableFor $1}

@@ -1,0 +1,3 @@
+data bool = true | false;
+
+pragma bool-type-decl bool, true, false;

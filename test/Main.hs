@@ -63,6 +63,7 @@ pragmas
                 expectFail $ runTestForFile "bound.solc" pragmaFolder
               , runTestForFile "coverage.solc" pragmaFolder
               , runTestForFile "patterson.solc" pragmaFolder
+              , runTestForFile "booltypesyntax.solc" pragmaFolder
               ] 
     where 
       pragmaFolder = "./test/examples/pragmas"
