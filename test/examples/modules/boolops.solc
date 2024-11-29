@@ -1,0 +1,8 @@
+import bool;
+
+function not(b) {
+  match b {
+  | false => return true;
+  | true => return false;
+  };
+}
