@@ -1,0 +1,1 @@
+data bool = true | false;
