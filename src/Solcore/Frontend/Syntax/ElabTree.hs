@@ -50,8 +50,10 @@ instance Monoid Env where
 
 type ElabM a = (ExceptT String (StateT Env IO)) a 
 
-runElabM :: Elab a => a -> IO (Either String (Res a))
-runElabM t = fst <$> (runStateT (runExceptT (elab t)) $! (initialEnv t))
+runElabM :: (Show a, Elab a) => a -> IO (Either String (Res a))
+runElabM t = do 
+  let ienv = initialEnv t 
+  fst <$> (runStateT (runExceptT (elab t)) ienv)
 
 isDefinedType :: Name -> ElabM Bool 
 isDefinedType n 
@@ -339,7 +341,6 @@ instance Elab S.ContractDecl where
   initialEnv (S.CFieldDecl fd) = initialEnv fd 
   initialEnv (S.CFunDecl fd) = initialEnv fd 
   initialEnv (S.CConstrDecl c) = initialEnv c 
-  initialEnv (S.CSym t) = initialEnv t
 
   elab (S.CDataDecl dt) 
     = CDataDecl <$> elab dt 
@@ -349,8 +350,6 @@ instance Elab S.ContractDecl where
     = CFunDecl <$> elab fd 
   elab (S.CConstrDecl c)
     = CConstrDecl <$> elab c 
-  elab (S.CSym t)
-    = CSym <$> elab t
 
 instance Elab S.Stmt where 
   type Res S.Stmt = Stmt Name 
@@ -393,10 +392,12 @@ instance Elab S.Exp where
   elab (S.ExpVar me n) 
     = do 
         me' <- elab me 
-        isF <- isField n 
+        isF <- isField n
+        isCon <- isDefinedConstr n 
         if isF then 
           pure $ FieldAccess me' n 
-        else pure $ Var n 
+        else if isCon && isNothing me then pure (Con n [])
+             else pure $ Var n 
   elab (S.ExpName me n es) 
     = do 
         me' <- elab me 
@@ -416,12 +417,15 @@ instance Elab S.Pat where
 
   elab S.PWildcard = pure PWildcard
   elab (S.PLit l) = PLit <$> elab l 
-  elab (S.Pat n ps) 
+  elab p@(S.Pat n ps) 
     = do 
         ps' <- elab ps 
         isCon <- isDefinedConstr n 
-        -- condition for constructors 
-        if isCon then 
+        isT <- isTuple p 
+        -- condition for tuples 
+        if isT then
+          pure $ foldr1 pairPat ps'
+        else if isCon then 
           pure (PCon n ps')
         -- condition for variables 
         else if null ps then 
@@ -429,6 +433,17 @@ instance Elab S.Pat where
         else throwError $ unlines ["Invalid pattern:"
                                   , pretty (PCon n ps')
                                   ]
+
+pairPat :: Pat Name -> Pat Name -> Pat Name
+pairPat p1 p2 = PCon (Name "pair") [p1, p2]
+
+isTuple :: S.Pat -> ElabM Bool 
+isTuple (S.Pat n ps) 
+  | n == Name "pair" && length ps /= 1 = pure True 
+  | n == Name "pair" 
+    = throwError "Invalid tuple pattern"
+  | otherwise = pure False 
+
 
 instance Elab S.Literal where 
   type Res S.Literal = Literal 

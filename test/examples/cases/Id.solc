@@ -1,9 +1,11 @@
-  function id(x) {
-    return x ; 
-  }
+function id() {
+    return lam (x) { return x; } ; 
+}
 
 contract Id {
   function main () {
     return id(0);
   }
 }
+
+

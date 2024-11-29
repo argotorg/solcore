@@ -1,13 +1,18 @@
 module Solcore.Frontend.TypeInference.SccAnalysis where 
 
+import Algebra.Graph.AdjacencyMap
+import qualified Algebra.Graph.NonEmpty.AdjacencyMap as N
+import Algebra.Graph.AdjacencyMap.Algorithm
+
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Identity 
 import Control.Monad.Trans
+import Control.Monad.Writer 
 
-import Data.Graph.Inductive hiding (mkEdges)
-import Data.Graph.Inductive.Query.DFS
 import Data.List
+import Data.List.NonEmpty (toList)
+import Data.Maybe
 import Data.Map (Map)
 import qualified Data.Map as Map 
 
@@ -17,228 +22,245 @@ import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name 
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty 
+import Solcore.Frontend.Pretty.SolcorePretty
 
 -- strong connect component analysis for building mutual blocks 
 
-type SCC a = (ExceptT String IO) a 
-
 sccAnalysis :: CompUnit Name -> IO (Either String (CompUnit Name))
-sccAnalysis m = runExceptT (mkScc m)
-
-mkScc :: CompUnit Name -> SCC (CompUnit Name)
-mkScc (CompUnit imps cs) = CompUnit imps <$> depDecls cs
-
-depDecls :: [TopDecl Name] -> SCC [TopDecl Name]
-depDecls ds 
+sccAnalysis cunit 
   = do 
-      (ds1,ds2) <- depAnalysis ds' 
-      cs' <- mapM depContract cs 
-      pure (ds2 ++ ds1 ++ cs')
+      r <- runSCC (sccAnalysis' cunit)
+      case r of 
+        Left err -> pure $ Left err 
+        Right (cunit', logs) -> pure $ Right cunit'
+
+sccAnalysis' :: CompUnit Name -> SCC (CompUnit Name)
+sccAnalysis' (CompUnit imps ds) 
+  = do 
+      cs' <- mapM sccContract cs
+      CompUnit imps <$> analysis (cs' ++ ds')
     where 
-      (cs, ds') = partition isContract ds 
       isContract (TContr _) = True 
       isContract _ = False 
 
-depContract :: TopDecl Name -> SCC (TopDecl Name)
-depContract (TContr (Contract n vs ds))
+      (cs, ds') = partition isContract ds 
+
+-- sort inner contract definitions 
+
+sccContract :: TopDecl Name -> SCC (TopDecl Name)
+sccContract (TContr (Contract n vs ds))
+  = (TContr . Contract n vs) <$> analysis ds 
+sccContract d = pure d 
+
+analysis :: (Ord a, Names a, Decl a) => [a] -> SCC [a]
+analysis ds 
   = do 
-      (os, ds') <- depAnalysis ds 
-      pure (TContr $ Contract n vs (os ++ ds'))
-depContract d = pure d
+      let grph = mkGraph ds 
+          cmps = scc grph 
+      case topSort cmps of 
+        Left _ -> pure []
+        Right ds' -> pure $ reverse $ concatMap (toList . N.vertexList1) ds'
 
--- generic dependency analysis algorithm
+-- building the dependency graph 
 
-depAnalysis :: HasDeps a => [a] -> SCC ([a], [a])
-depAnalysis ds 
-  = do
-      (cgraph, posMap, declMap) <- mkCallGraph decls
-      newDecls <- rebuildDecls posMap declMap (scc cgraph)
-      (cgraph', posMap', declMap') <- mkCallGraph newDecls
-      newDecls' <- sortDecls posMap' declMap' (topsort cgraph')
-      return (others, newDecls')
-    where 
-      (decls, others) = partition isDecl ds 
+mkGraph :: (Ord a, Names a, Decl a) => [a] -> AdjacencyMap a 
+mkGraph ds = stars $ mkEdges (mkNameEnv ds) ds 
 
--- creating the call graph for the dependency analysis
+-- definition of enviroment of definition names 
 
-mkCallGraph :: HasDeps a => [a] -> SCC ( Gr Name ()
-                                       , Map Int Name 
-                                       , Map Name a
-                                       )
-mkCallGraph ds 
-  = do 
-      let 
-        nodes' = zip [0..] (concatMap nameOf ds)
-        swap (x,y) = (y,x)
-        valMap = Map.fromList (map swap nodes')
-        declMap = mkDeclMap ds 
-      table <- mkCallTable ds 
-      edges' <- mkEdges table valMap 
-      pure (mkGraph nodes' edges', Map.fromList nodes', declMap)
+type NameEnv a = Map Name a 
 
-mkDeclMap :: HasDeps a => [a] -> Map Name a 
-mkDeclMap 
-  = foldr step Map.empty 
-    where 
-      step d ac = Map.union ac (Map.fromList (zip (nameOf d) 
-                                                  (repeat d)))
+lookupDef :: Ord a => Name -> NameEnv a -> Maybe a 
+lookupDef n env = Map.lookup n env
 
-mkEdges :: Map Name [Name] -> Map Name Int -> SCC [LEdge ()]
-mkEdges tables pos 
-  = foldM step [] (Map.toList tables)
+lookupDefs :: Ord a => [Name] -> NameEnv a -> [a]
+lookupDefs ns env = mapMaybe (flip lookupDef env) ns 
+
+mkNameEnv :: (Ord a, Names a, Decl a) => [a] -> NameEnv a 
+mkNameEnv = foldr go Map.empty 
   where 
-    step ac (k, vs) = do 
-      v' <- findPos k 
-      vs' <- mapM findPos vs 
-      let ac' = map (\ x -> (x, v', ())) vs' 
-      pure (ac' ++ ac)
-    findPos k 
-      = case Map.lookup k pos of 
-          Just n -> pure n 
-          _ -> pure minBound 
-    err v = throwError ("Undefined name:\n" ++ show v)
+    go d ac = let ns = decl d 
+              in foldr (\ n m -> Map.insert n d m) ac ns  
 
-mkCallTable :: HasDeps a => [a] -> SCC (Map Name [Name])
-mkCallTable ds 
-  = do 
-      let emptyTable = mkEmptyTable ds 
-          funs = Map.keys emptyTable
-          go d ac = Map.unionWith (++) 
-                      ac 
-                      (Map.fromList [(n, fv d) | n <- nameOf d])
-          m = foldr go emptyTable ds 
-      pure m 
+-- creating graph edges 
 
-mkEmptyTable :: HasDeps a => [a] -> Map Name [Name]
-mkEmptyTable = foldr step Map.empty 
+mkEdges :: (Ord a, Names a, Decl a) => NameEnv a -> [a] -> [(a,[a])]
+mkEdges env = foldr step []
   where 
-    step d ac = Map.union ac (Map.fromList (zip (nameOf d) (repeat [])))
+    step d ac = (d, lookupDefs (names d) env) : ac  
+                 
 
--- rebuilding the declaration list 
+-- definition of dependency analysis using type classes
 
-rebuildDecls :: HasDeps a => Map Int Name -> 
-                             Map Name a -> 
-                             [[Node]] -> 
-                             SCC [a]
-rebuildDecls posMap declMap 
-  = mapM (rebuildDecl posMap declMap)
+class Decl a where 
+  decl :: a -> [Name]  
+
+instance Decl a => Decl [a] where 
+  decl = concatMap decl 
+
+instance Decl a => Decl (Maybe a) where 
+  decl Nothing = []
+  decl (Just x) = decl x
+
+instance Decl Constr where 
+  decl (Constr n _) = [n]
+
+instance Decl DataTy where 
+  decl (DataTy n _ cs) 
+    = n : decl cs 
+
+instance Decl TySym where 
+  decl (TySym n _ _) = [n] 
+
+instance Decl (Signature Name) where 
+  decl s = [sigName s] 
+
+instance Decl (FunDef Name) where 
+  decl (FunDef sig _) = decl sig
+
+instance Decl (Contract Name) where 
+  decl (Contract n _ ds) = n : concatMap decl ds 
+
+instance Decl (Field Name) where 
+  decl d = [fieldName d]
+
+instance Decl (TopDecl Name) where 
+  decl (TContr c) = decl c
+  decl (TFunDef fd) = decl fd
+  decl (TMutualDef ds) = decl ds 
+  decl (TDataDef d) = decl d
+  decl (TSym t) = decl t
+  decl _ = []
 
 
-rebuildDecl :: HasDeps a => Map Int Name -> 
-                            Map Name a -> 
-                            [Node] -> 
-                            SCC a 
-rebuildDecl _ _ [] 
-  = throwError "Impossible! Empty node list!"
-rebuildDecl pmap dmap [n] 
-  = rebuild pmap dmap n 
-rebuildDecl pmap dmap ns 
-  = mkMutual <$> mapM (rebuild pmap dmap) ns
+instance Decl (ContractDecl Name) where 
+  decl (CDataDecl dt) = decl dt
+  decl (CFieldDecl fd) = decl fd
+  decl (CFunDecl fd) = decl fd
+  decl (CMutualDecl ds) 
+    = concatMap decl ds 
+  decl (CConstrDecl cd) = []
 
-rebuild :: HasDeps a => Map Int Name -> 
-                        Map Name a -> 
-                        Node -> 
-                        SCC a
-rebuild pmap dmap n 
-  = case Map.lookup n pmap of
-      Just k -> 
-        case Map.lookup k dmap of
-          Just d -> pure d
-          Nothing -> throwError ("Impossible! Undefined decl:" ++ (show k)) 
-      Nothing -> throwError ("Impossible! Undefined decl:" ++ show n)
+-- getting the mentioned names in a declaration 
 
-sortDecls :: HasDeps a => Map Int Name -> 
-                          Map Name a -> 
-                          [Node] -> 
-                          SCC [a]
-sortDecls posMap declMap nodes 
-  = mapM (rebuild posMap declMap) nodes
+class Names a where 
+  names :: a -> [Name] 
 
--- type class for SCC analysis
+instance Names a => Names [a] where 
+  names = foldr (union . names) []
 
-class FreeVars a => HasDeps a where 
-  nameOf :: a -> [Name]
-  mkMutual :: [a] -> a
-  isDecl :: a -> Bool 
+instance Names a => Names (Maybe a) where 
+  names Nothing = []
+  names (Just x) = names x
 
-instance HasDeps (TopDecl Name) where 
-  nameOf (TFunDef fd) = [sigName $ funSignature fd]
-  nameOf (TMutualDef ds) = concatMap nameOf ds 
-  mkMutual = TMutualDef 
-  isDecl (TFunDef _) = True 
-  isDecl _ = False 
+instance Names (Exp Name) where 
+  names (Con n es) = n : names es 
+  names (FieldAccess me n) = n : names me 
+  names (Call me n es) 
+    = n : names me `union` names es 
+  names (Lam ps bdy mt) = 
+    names ps `union` names bdy `union` names mt 
+  names (TyExp e t) = names e `union` names t 
+  names (Var n) = [n]
+  names (Lit _) = []
 
-instance HasDeps (ContractDecl Name) where 
-  nameOf (CFunDecl fd) = [sigName $ funSignature fd]
-  nameOf (CMutualDecl ds) = concatMap nameOf ds --- FIXME 
-  mkMutual = CMutualDecl 
-  isDecl (CFunDecl _) = True 
-  isDecl _ = False 
+instance Names (Param Name) where 
+  names (Typed _ t) 
+    = names t 
+  names _ = []
 
-class FreeVars a where 
-  fv :: a -> [Name]
+instance Names (Stmt Name) where 
+  names (e1 := e2)
+    = names [e1, e2]
+  names (Let _ mt me) 
+    = names mt `union` names me 
+  names (StmtExp e)
+    = names e 
+  names (Return e)
+    = names e 
+  names (Match es eqns)
+    = names es `union` names eqns 
+  names (Asm _) = []
 
-instance FreeVars a => FreeVars [a] where 
-  fv = foldr (union . fv) []
+instance Names (Equation Name) where 
+  names (_, bdy) = names bdy 
 
-instance FreeVars (Exp Name) where
-  fv (Con _ es) = fv es
-  fv (FieldAccess Nothing _) = []
-  fv (FieldAccess (Just e) _) = fv e 
-  fv (Call _ n es) = n : fv es
-  fv (Var v) = [v]
-  fv _ = []
+instance Names (Signature Name) where 
+  names (Signature _ ctx _ ps mret)
+    = names ctx `union` names ps `union` names mret 
 
-instance FreeVars (Stmt Name) where 
-  fv (_ := e) = fv e 
-  fv (Let n _ (Just e)) = fv e \\ [n]
-  fv (StmtExp e) = fv e 
-  fv (Return e) = fv e 
-  fv (Match es eqns) = fv es `union` fv eqns 
-  fv (Asm blk) = fv blk
-  fv _ = []
+instance Names (FunDef Name) where 
+  names (FunDef sig bdy)
+    = names sig `union` names bdy 
 
-instance FreeVars YulStmt where
-  fv (YBlock blk) = fv blk 
-  fv (YFun n args rets ss)
-    = fv ss \\ (n : args `union` (maybe [] id rets))
-  fv (YLet ns (Just e)) = fv e \\ ns 
-  fv (YIf e blk) = fv e `union` fv blk 
-  fv (YSwitch e cs d) 
-    = fv e `union` fv cs' `union` (maybe [] fv d)
-      where cs' = map snd cs
-  fv (YFor is e bd up) 
-    = fv e `union` fv bd `union` fv up \\ fv is 
-  fv (YExp e) = fv e 
-  fv _ = []
+instance Names (Constructor Name) where 
+  names (Constructor ps bdy)
+    = names ps `union` names bdy
 
-instance FreeVars YulExp where 
-  fv (YCall n es) = n : fv es 
-  fv (YIdent n) = [n]
-  fv _ = []
+instance Names (Class Name) where 
+  names (Class ctx _ _ _ sigs) 
+    = names ctx `union` names sigs 
 
-instance FreeVars (FunDef Name) where 
-  fv (FunDef sig ss) = fv ss \\ ps 
-    where 
-      ps = map f (sigParams sig)
-      f (Typed n _) = n 
-      f (Untyped n) = n 
+instance Names (Instance Name) where 
+  names (Instance ctx _ ts t funs)
+    = names ctx `union` names (t : ts)  `union` names funs  
 
-instance FreeVars (ContractDecl Name) where 
-  fv (CFunDecl fd) = fv fd 
-  fv (CMutualDecl ds) = fv ds
-  fv _ = []
+instance Names Ty where 
+  names (TyCon n ts) 
+    = n : names ts 
+  names _ = []
 
-instance FreeVars (TopDecl Name) where 
-  fv (TFunDef fd) = fv fd 
-  fv (TMutualDef ds) = fv ds
-  fv (TInstDef idecl) = fv idecl 
-  fv _ = []
+instance Names Pred where 
+  names (InCls n t ts) 
+    = n : names (t : ts)
+  names (t1 :~: t2) 
+    = names [t1, t2]
 
-instance FreeVars (Instance Name) where 
-  fv (Instance _ _ _ _ fds) = fv fds 
+instance Names (Field Name) where 
+  names (Field _ t me) 
+    = names t `union` names me 
 
-instance FreeVars (Equation Name) where 
-  fv = fv . snd 
+instance Names TySym where 
+  names (TySym _ _ t) 
+    = names t 
+
+instance Names Constr where 
+  names (Constr _ ts) 
+    = names ts 
+
+instance Names DataTy where 
+  names (DataTy _ _ cs) 
+    = names cs 
+
+instance Names (ContractDecl Name) where 
+  names (CDataDecl dt) = names dt 
+  names (CFieldDecl fd) = names fd 
+  names (CFunDecl fd) = names fd 
+  names (CMutualDecl cs) = names cs 
+  names (CConstrDecl cd) = names cd 
+
+instance Names (Contract Name) where 
+  names (Contract _ _ decls) 
+    = names decls 
+
+instance Names (TopDecl Name) where 
+  names (TContr c) = names c 
+  names (TFunDef fd) = names fd 
+  names (TClassDef c) = names c 
+  names (TInstDef instd) = names instd 
+  names (TMutualDef ts) = names ts 
+  names (TDataDef dt) = names dt 
+  names (TSym ts) = names ts 
+  names _ = []
+
+instance Names (CompUnit Name) where 
+  names (CompUnit _ decls) = names decls 
+
+-- monad definition 
+
+type SCC a = WriterT [String] (ExceptT String IO) a 
+
+runSCC :: SCC a -> IO (Either String (a, [String]))
+runSCC m = runExceptT (runWriterT m)
 
 

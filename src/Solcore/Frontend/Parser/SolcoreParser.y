@@ -6,7 +6,7 @@ import Data.List.NonEmpty (NonEmpty, cons, singleton)
 import Solcore.Frontend.Lexer.SolcoreLexer hiding (lexer)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
-import Solcore.Primitives.Primitives
+import Solcore.Primitives.Primitives hiding (pairTy)
 import Language.Yul
 }
 
@@ -127,7 +127,6 @@ Decl : FieldDef                                    {CFieldDecl $1}
      | DataDef                                     {CDataDecl $1}
      | Function                                    {CFunDecl $1}
      | Constructor                                 {CConstrDecl $1}
-     | TypeSynonym                                 {CSym $1}
 
 -- type synonym 
 
@@ -313,13 +312,14 @@ Pattern : Name PatternList                         {Pat $1 $2}
         | '_'                                      {PWildcard}
         | Literal                                  {PLit $1}
         | '(' Pattern ')'                          {$2}
+        | PatternList                              {Pat (Name "pair") $1}
 
 PatternList :: {[Pat]}
 PatternList : '(' PatList ')'                      {$2}
             | {- empty -}                          {[]}
 
 PatList :: { [Pat] }
-PatList : Pattern                                  {[$1]}
+PatList : Pattern %shift                           {[$1]}
         | Pattern ',' PatList                      {$1 : $3}
 
 -- literals 
@@ -333,6 +333,10 @@ Literal : number                                   {IntLit $ toInteger $1}
 Type :: { Ty }
 Type : Name OptTypeParam                            {TyCon $1 $2}
      | LamType                                      {uncurry funtype $1}
+     | TupleTy                                      {$1}
+
+TupleTy :: { Ty }
+TupleTy : '(' TypeCommaList ')'                     {foldr1 pairTy $2}
 
 LamType :: {([Ty], Ty)}
 LamType : '(' TypeCommaList ')' '->' Type          {($2, $5)}

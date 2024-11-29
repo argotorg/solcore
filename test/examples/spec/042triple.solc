@@ -1,13 +1,12 @@
 contract Triple {
-data Triple(a,b,c) = Triple(a,b,c);
 
   function asel(t) {
     match t {
-      | Triple(a,b,c) => return c;
+      | (a,b,c) => return c;
     };
   }
 
   function main() {
-    return asel(Triple(1,21,42));
+    return asel((1,21,42));
   }
 }

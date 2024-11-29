@@ -1,25 +1,24 @@
 contract PairModule {
-  data Pair(a,b) = Pair(a,b);
 
   function fst (x) {
     match x {
-    | Pair(a,_) => return a;
+    | (a,_) => return a;
     };
   }
 
   function snd(x) {
     match x {
-    | Pair(_,b) => return b;
+    | (_,b) => return b;
     };
   }
 
   function uncurry(f,x) {
     match x {
-    | Pair(a,b) => return f(a,b);
+    | (a,b) => return f(a,b);
     };
   }
 
   function curry(f,x,y) {
-    return f(Pair(x,y)) ; 
+    return f((x,y)) ; 
   }
 }

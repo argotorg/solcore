@@ -20,7 +20,7 @@ common common-opts
       base >= 4.19.0.0
     , mtl
     , containers
-    , fgl
+    , algebraic-graphs
     , array
     , pretty
     , optparse-applicative
@@ -40,16 +40,16 @@ common common-opts
                       BlockArguments
                       DeriveDataTypeable
                       ImportQualifiedPost
+                      ScopedTypeVariables
 
 library
   import: common-opts
 
   -- cabal-fmt: expand src
   exposed-modules:
-      Solcore.Desugarer.CallDesugarer
+      Solcore.Desugarer.LambdaLifting
       Solcore.Desugarer.MatchCompiler
       Solcore.Desugarer.ReplaceWildcard
-      Solcore.Desugarer.SolcoreDesugar
       Solcore.Desugarer.Specialise
       Solcore.Desugarer.EmitCore
       Solcore.Frontend.Lexer.SolcoreLexer

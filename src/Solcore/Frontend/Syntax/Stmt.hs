@@ -27,6 +27,10 @@ data Param a
   | Untyped a 
   deriving (Eq, Ord, Show, Data, Typeable)
 
+paramName :: Param a -> a 
+paramName (Typed n _) = n 
+paramName (Untyped n) = n 
+
 -- definition of the expression syntax
 
 data Exp a 

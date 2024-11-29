@@ -1,24 +1,24 @@
-// booleans
+/*
+   Assumptions
+   - We don't have built in literals for Yul words
+*/
 
-data bool = true | false;
 
-// TODO: this should short circuit. probably needs some compiler magic to do so.
-function and(x: bool, y: bool) -> bool {
+data Bool = True | False;
+function and(x: Bool, y: Bool) -> Bool {
     match x, y {
-    | true, y => return y;
-    | false, _ => return false;
+    | True, y => return y;
+    | False, _ => return False;
     };
 }
 
-// TODO: this should short circuit. probably needs some compiler magic to do so.
-function or(x: bool, y: bool) -> bool {
+function or(x: Bool, y: Bool) -> Bool {
     match x, y {
-    | true, _ => return true;
-    | false, y => return y;
+    | True, _ => return True;
+    | False, y => return y;
     };
 }
 
-// Pairs
 
 data Pair(a, b) = Pair(a, b);
 
@@ -34,72 +34,67 @@ function snd(p: Pair(a, b)) -> b {
     };
 }
 
-// Proxy Type for Passing Types as Paramaters
+// Basics
 
 data Proxy(t) = Proxy;
 
-// Type Abstraction
+// References
 
-class abs:Typedef(rep) {
-    function abs(x:rep) -> abs;
-    function rep(x:abs) -> rep;
+data Calldata(t) = Calladata(word);
+data Memory(t) = Memory(word);
+data Storage(t) = Storage(word);
+data Returndata(t) = ReturnData(word);
+data Stack(t) = Stack(word);
+
+// Type Classification
+
+// types that can be completely represented by a single stack slot
+class t:ValueTy {
+    function abs(x:word) -> t;
+    function rep(x:t) -> word;
 }
 
-// Generalized References
-
-class ref:Loadable (deref) {
-    function load (r : ref) -> deref;
-}
-
-class ref:Storable (deref) {
-    function store (r : ref, d : deref) -> Unit;
-}
-
-class ( ref : Loadable(deref) , ref : Storable(deref)) => ref:Ref (deref) {}
-
-// Concrete Reference Types
-
-data calldata(t) = calldata(word);
-data memory(t) = memory(word);
-data storage(t) = storage(word);
-data returndata(t) = returndata(word);
-
-instance memory(t) : Typedef(word) {
-    function abs(x: word) -> memory(t) {
-        return memory(x);
+instance Memory(t) : ValueTy {
+    function abs(x: word) -> Memory(T) {
+        return Memory(x);
     }
 
-    function rep(x: memory(t)) -> word {
+    function rep(x: Memory(T)) -> word {
         match x {
-        | memory(w) => return w;
+        | Memory(w) => return w;
        };
     }
 }
 
-instance memory(t) : Loadable(t) {
-    function load(loc: memory(t)) -> t {
-        let rw : word = Typedef.rep(loc);
+class ref:Ref(deref) {
+    function load(loc: ref) -> deref;
+    function store(loc: ref, value: deref) -> Unit;
+}
+
+
+instance Memory(t) : Ref(t) {
+    function load(loc: Memory(t)) -> t {
+        let rw = ValueTy.rep(loc);
         let res = 0;
         assembly {
             res := mload(rw)
         };
-        return Typedef.abs(res);
-    }
-}
+        return ValueTy.abs(res);
 
-instance memory(t) : Storable(t) {
-    function store(loc: memory(t), value: t) -> Unit {
-        let rw : word = Typedef.rep(loc);
-        let vw : word = Typedef.rep(value);
+    }
+
+    function store(loc: Memory(t), value: t) -> Unit {
+        let rw = ValueTy.rep(loc);
+        let vw = ValueTy.rep(value);
         assembly {
           mstore(rw, vw)
         };
     }
 }
 
-instance memory(t) : Ref(t) {}
 
-// Free Memory Pointer
+
+// Memory Layout
 
 function get_free_memory() -> word {
     let res : word;
@@ -116,11 +111,10 @@ function set_free_memory(loc : word) {
 }
 
 
-// bytes
+// Bytes
 
+data Bytes = Bytes;
 // TODO: bytes should be indexable (but not ref since it can't live on stack...)
-// TODO: we would really want this to be a typedef to void (or a datatype with no constructors)
-data bytes = bytes;
 
 // ABI Encoding
 
@@ -131,20 +125,19 @@ class t:EncodeInto {
 class t:Encode {
     // TODO: is the following ever needed??
     // is the abi representation of `t` dynamically sized?
-    // function isDynamicallySized(x:Proxy(t)) -> bool;
+    // function isDynamicallySized(x:Proxy(t)) -> Bool;
 
     // does `t` (or any of it's children) contain a dynamic type?
-    function shouldEncodeDynamic(x:Proxy(t)) -> bool;
+    function shouldEncodeDynamic(x:Proxy(t)) -> Bool;
     // how big is the head portion of the ABI representation of `t`?
     function headSize(x:Proxy(t)) -> word;
 }
 
-forall t:Encode, t:EncodeInto . function encode(val:t) -> memory(bytes) {
-    let p : Proxy(t);
-    let hdSz = Encode.headSize(p);
-    let ptr : word = get_free_memory();
-    let head : word;
-    let tail : word;
+function encode(val:t) -> Memory(Bytes) {
+    let hdSz = Encode.headSize(Proxy);
+    let ptr = get_free_memory();
+    let head: word;
+    let tail: word;
     assembly {
         head := add(ptr, 32);
         tail := add(head, hdSz);
@@ -154,11 +147,11 @@ forall t:Encode, t:EncodeInto . function encode(val:t) -> memory(bytes) {
     assembly {
         mstore(ptr, sub(tl, head))
     };
-    return memory(ptr) : memory (bytes);
+    return ValueTy.abs(ptr) : Memory(Bytes);
 }
 
 instance (l:Encode, r:Encode) => Pair(l,r):Encode {
-    function shouldEncodeDynamic(x : Proxy(Pair(l,r))) -> bool {
+    function shouldEncodeDynamic(x : Proxy(Pair(l,r))) -> Bool {
         let l: Proxy(l) = Proxy;
         let r: Proxy(r) = Proxy;
         return and(Encode.shouldEncodeDynamic(l), Encode.shouldEncodeDynamic(l));
@@ -166,11 +159,11 @@ instance (l:Encode, r:Encode) => Pair(l,r):Encode {
 
     function headSize(x : Proxy(Pair(l,r))) -> word {
         match Encode.shouldEncodeDynamic(x) {
-        | true =>
-            let res;
+        | True =>
+            let res : word;
             assembly { res := 32; };
             return res;
-        | false =>
+        | False =>
             let l: Proxy(l) = Proxy;
             let r: Proxy(r) = Proxy;
             let lsize = Encode.headSize(l);
@@ -193,8 +186,7 @@ instance (l:EncodeInto, r:EncodeInto) => Pair(l,r):EncodeInto {
 
 // Uint256
 data Uint256 = Uint256(word);
-
-instance Uint256 : Typedef(word) {
+instance Uint256 : ValueTy {
     function abs(x:word) -> Uint256 {
         return Uint256(x);
     }
@@ -207,8 +199,8 @@ instance Uint256 : Typedef(word) {
 }
 
 instance Uint256:Encode {
-    function shouldEncodeDynamic(x) -> bool {
-        return false;
+    function shouldEncodeDynamic(x) -> Bool {
+        return False;
     }
 
     function headSize(x) -> word {
@@ -218,7 +210,7 @@ instance Uint256:Encode {
 
 instance Uint256:EncodeInto {
     function encodeInto(v: Uint256, hd: word, tl: word) -> Pair(word, word) {
-        let vw : word = Typedef.rep(v);
+        let vw = ValueTy.rep(v);
         let hd_ : word;
         assembly {
             hd_ := add(hd, 32)

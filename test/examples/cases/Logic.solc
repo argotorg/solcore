@@ -26,8 +26,8 @@ contract Logic {
 
   function elim (f, g, x) {
     match x {
-    | True => return f(x);
-    | False => return g(x);
+    | True => return f;
+    | False => return g;
     };
   }
 }

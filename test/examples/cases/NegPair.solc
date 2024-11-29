@@ -4,50 +4,50 @@ class  a : Neg {
 }
 
 data B = F | T;
-data Pair(a,b) = Pair(a,b);
 
 instance B : Neg {
-  function neg (x : B) { 
+  function neg (x : B) {
     match x {
     | F => return T;
-    | T => return F; 
-    }; 
+    | T => return F;
+    };
   }
 }
 
 function fst (p) {
   match p {
-  | Pair(x,y) => return x;
+  | (x,y) => return x;
   };
 }
 
 function snd(p) {
   match p {
-  | Pair(_,y) => return y;
+    | (x,y) => return y;
   };
 }
 
-instance (a:Neg,b:Neg) => Pair(a,b):Neg {
+
+instance (a:Neg,b:Neg) => (a,b):Neg {
   function neg(p) {
-    return Pair(Neg.neg (fst(p)), Neg.neg(snd (p)));
+    return (Neg.neg (fst(p)), Neg.neg(snd (p)));
   }
 }
 
 contract NegPair {
 
-  function bnot(x) {
-     match x {
+ function bnot(x) {
+   match x {
      | T => return F;
      | F => return T;
-     };
-  }
+   };
+}
 
-  function fromB(b) {
-    match b  {
+ function fromB(b) {
+  match b  {
     | F => return 0;
     | T => return 1;
-    };
-  }
+  };
+}
 
-  function main() { return  fromB(Neg.neg(F)); }
+ function main() { return  fromB(fst(Neg.neg((F,T)))); }
 }

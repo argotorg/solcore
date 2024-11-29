@@ -16,3 +16,4 @@ contract Compose {
     return f(42) : word;
   }
 }
+

@@ -1,51 +1,64 @@
-module Solcore.Primitives.Primitives where 
+module Solcore.Primitives.Primitives where
 
 import Prelude hiding (words)
 
-import Solcore.Frontend.Syntax.Contract 
+import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name
-import Solcore.Frontend.Syntax.Stmt 
-import Solcore.Frontend.Syntax.Ty 
+import Solcore.Frontend.Syntax.Stmt
+import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.TypeInference.Id
 
--- basic type classes 
+-- basic type classes
 
-selfVar :: Tyvar 
-selfVar = TVar (Name "self") False
+selfVar :: Tyvar
+selfVar = TVar selfName False
 
-argsVar :: Tyvar 
-argsVar = TVar (Name "args") False
+argsVar :: Tyvar
+argsVar = TVar argsName False
 
-retVar :: Tyvar 
-retVar = TVar (Name "ret") False 
+retVar :: Tyvar
+retVar = TVar retName False
 
-invokeClass :: Class Name 
-invokeClass 
-  = Class [] (Name "invokable") 
-             [argsVar, retVar] 
-             selfVar 
+invokeClass :: Class Name
+invokeClass
+  = Class [] invokableName
+             [argsVar, retVar]
+             selfVar
              [invokeSignature]
 
-invokePred :: Pred 
-invokePred 
+invokePred :: Pred
+invokePred
   = InCls (Name "invokable")
           (TyVar selfVar)
           (TyVar <$> [argsVar, retVar])
 
-         
+argsName :: Name
+argsName = Name "args"
+
+retName :: Name
+retName = Name "ret"
+
+selfName :: Name
+selfName = Name "self"
+
+invokableName :: Name
+invokableName = Name "invokable"
+
+invokeName :: Name
+invokeName = Name "invoke"
 
 invokeSignature :: Signature Name
-invokeSignature 
+invokeSignature
   = Signature [selfVar, argsVar]
               []
-              (Name "invoke")
-              [ Typed (Name "self") (TyVar selfVar)
-              , Typed (Name "args") (TyVar argsVar)
+              invokeName
+              [ Typed selfName (TyVar selfVar)
+              , Typed argsName (TyVar argsVar)
               ]
               (Just (TyVar retVar))
--- basic types 
+-- basic types
 
-word :: Ty 
+word :: Ty
 word = TyCon "word" []
 
 primAddWord :: (Name, Scheme)
@@ -55,37 +68,40 @@ primEqWord :: (Name, Scheme)
 primEqWord = ("primEqWord", monotype (word :-> word :-> word))
 
 primInvoke :: (Name, Scheme)
-primInvoke = ( QualName (Name "invokable") "invoke"
-             , Forall [selfVar, argsVar, retVar] 
-                ([invokePred] :=> (TyVar selfVar :-> 
-                                   TyVar argsVar :-> 
+primInvoke = ( QualName invokableName "invoke"
+             , Forall [selfVar, argsVar, retVar]
+                ([invokePred] :=> (TyVar selfVar :->
+                                   TyVar argsVar :->
                                    TyVar retVar))
              )
 
 primPair :: (Name, Scheme)
-primPair = (Name "pair", Forall [aVar, bVar] ([] :=> ( at :-> bt :-> pair at bt)))
-    where 
-      aVar = TVar (Name "a") False 
-      bVar = TVar (Name "b") False 
-      at = TyVar aVar 
-      bt = TyVar bVar 
+primPair = (Name "pair", Forall [aVar, bVar] ([] :=> (pairTy at bt)))
+    where
+      aVar = TVar (Name "a") False
+      bVar = TVar (Name "b") False
+      at = TyVar aVar
+      bt = TyVar bVar
 
-string :: Ty 
+pairTy :: Ty -> Ty -> Ty 
+pairTy t1 t2 = t1 :-> t2 :-> pair t1 t2
+
+string :: Ty
 string = TyCon "string" []
 
-stack :: Ty -> Ty 
+stack :: Ty -> Ty
 stack t = TyCon "stack" [t]
 
-unit :: Ty 
-unit = TyCon "unit" []
+unit :: Ty
+unit = TyCon "pair" []
 
-pair :: Ty -> Ty -> Ty 
+pair :: Ty -> Ty -> Ty
 pair t1 t2 = TyCon "pair" [t1, t2]
 
-arr :: Name  
+arr :: Name
 arr = "->"
 
--- definition of yul primops 
+-- definition of yul primops
 
 yulPrimOps :: [(Name, Scheme)]
 yulPrimOps = [ (Name "stop", monotype unit)
@@ -166,7 +182,5 @@ yulPrimOps = [ (Name "stop", monotype unit)
              , (Name "gaslimit", monotype word)
              ]
 
-
 words :: Int -> [Ty]
-words n = replicate n word 
-
+words n = replicate n word
