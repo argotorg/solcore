@@ -3,7 +3,7 @@ module Common.Pretty
 , module Text.PrettyPrint
 , (><)  -- to avoid hiding Prelude (<>) 
 , dotSep
-, commaSep
+, commaSep, commaSepList
 , angles
 ) where
 import Text.PrettyPrint hiding((<>))

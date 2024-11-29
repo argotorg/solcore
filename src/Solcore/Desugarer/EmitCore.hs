@@ -2,9 +2,9 @@ module Solcore.Desugarer.EmitCore(emitCore) where
 import Language.Core qualified as Core
 import Data.Map qualified as Map
 import Common.Monad
-import Control.Monad(forM, when)
+import Control.Monad(forM, when, unless)
 import Control.Monad.IO.Class
-import Control.Monad.Reader.Class
+import Control.Monad.Reader.Class ()
 import Control.Monad.State
 import Data.List(intercalate)
 import qualified Data.Map as Map
@@ -171,6 +171,7 @@ emitLit (StrLit s) = error "String literals not supported yet"
 
 emitConApp :: Id -> [Exp Id] -> Translation Core.Expr
 emitConApp con@(Id n ty) as = do
+  unless (null . fv $ ty)  (error $ "emitConApp: free variables in type " ++ pretty ty ++ " in " ++ pretty (Con con as))
   case targetType ty  of
     (TyCon tcname tas) -> do
         mti <- gets (Map.lookup tcname . ecDT)
@@ -297,6 +298,12 @@ emitMatch scrutinee alts = do
     let scon = case sty of
             TyCon n _ -> n
             _ -> error ("emitMatch: scrutinee not a type constructor: " ++ show sty)
+    case scon of
+        "word" -> emitWordMatch scrutinee alts
+        _ -> emitDataMatch scon scrutinee alts
+
+emitDataMatch :: Name -> Exp Id -> Equations Id -> StateT EcState IO [Core.Stmt]
+emitDataMatch scon scrutinee alts = do
     mti <- gets (Map.lookup scon . ecDT)
     let ti = fromMaybe (error ("emitMatch: unknown type " ++ show scon)) mti
     let allCons = dataConstrs ti
@@ -305,6 +312,24 @@ emitMatch scrutinee alts = do
         [c] -> emitProdMatch scrutinee alts
         _ -> emitSumMatch allCons scrutinee alts
 
+emitWordMatch :: Exp Id -> Equations Id -> EM [Core.Stmt]
+emitWordMatch scrutinee alts = do
+    (sVal, sCode) <- emitExp scrutinee
+    let coreType = Core.TWord
+    coreAlts <- mapM emitWordAlt alts
+    return [Core.SMatch coreType sVal coreAlts]
+    where
+        emitWordAlt :: Equation Id -> EM Core.Alt
+        emitWordAlt ([PLit(IntLit i)], stmts) = do
+            coreStmts <- emitStmts stmts
+            return (Core.Alt (Core.PIntLit i) "$_" (oneStmt coreStmts))
+        emitWordAlt ([PVar (Id n _)], stmts) = do
+            coreStmts <- emitStmts stmts
+            let coreName = show n
+            return (Core.Alt (Core.PVar coreName) "$_" (oneStmt coreStmts))
+        emitWordAlt (pat, _) = error ("emitWordAlt not implemented for" ++ show pat)
+        oneStmt [stmt] = stmt
+        oneStmt stmts = Core.SBlock stmts
 type BranchMap = Map.Map Name [Core.Stmt]
 
 emitSumMatch :: [Constr] -> Exp Id -> Equations Id -> EM [Core.Stmt]
@@ -378,8 +403,8 @@ emitSumMatch allCons scrutinee alts = do
         rightBranch t = error ("rightBranch: not a sum type: " ++ show t)
         left = altName False
         right = altName True
-        alt con n [stmt] = Core.Alt con n stmt
-        alt con n stmts = Core.Alt con n (Core.SBlock stmts)
+        alt con n [stmt] = Core.ConAlt con n stmt
+        alt con n stmts = Core.ConAlt con n (Core.SBlock stmts)
 
         body [stmt] = stmt
         body stmts = Core.SBlock stmts

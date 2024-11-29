@@ -1,7 +1,7 @@
 {
 module Solcore.Frontend.Parser.SolcoreParser where
 
-import Data.List.NonEmpty 
+import Data.List.NonEmpty (NonEmpty, cons, singleton)
 
 import Solcore.Frontend.Lexer.SolcoreLexer hiding (lexer)
 import Solcore.Frontend.Syntax.Name

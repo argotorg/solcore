@@ -124,8 +124,8 @@ instance Pretty YLiteral where
   ppr YulTrue = text "true"
   ppr YulFalse = text "false"
 
-commaSepList :: Pretty a => [a] -> Doc
-commaSepList = hsep . punctuate comma . map ppr
+-- commaSepList :: Pretty a => [a] -> Doc
+-- commaSepList = hsep . punctuate comma . map ppr
 
 {- | wrap a Yul chunk in a Solidity function with the given name
    assumes result is in a variable named "_result"

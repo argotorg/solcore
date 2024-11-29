@@ -138,12 +138,19 @@ pprSignatures
   = vcat . map ppr
 
 instance Pretty a => Pretty (Signature a) where 
-  ppr (Signature vs ctx n ps ty)
+  ppr (Signature [] ctx n ps ty)
     = text "function" <+> 
       ppr n           <+>
-      pprContext ctx  <+> 
+      pprParams ps    <+> 
+      pprRetTy ty 
+  ppr (Signature vs ctx n ps ty) 
+    = text "forall" <+>
+      pprContext ctx <+> 
+      text "function" <+> 
+      ppr n <+> 
       pprParams ps <+> 
       pprRetTy ty 
+
 
 instance Pretty a => Pretty (Instance a) where 
   ppr (Instance ctx n tys ty funs)
@@ -160,7 +167,7 @@ instance Pretty a => Pretty (Instance a) where
 pprContext :: [Pred] -> Doc 
 pprContext [] = empty 
 pprContext ps 
-  = (parens (commaSep $ map ppr ps)) <+> text "=>"
+  = (commaSep $ map ppr ps) <+> text "."
 
 instance Pretty [Pred] where 
   ppr = hsep . map ppr 

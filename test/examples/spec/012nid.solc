@@ -1,0 +1,15 @@
+contract Id1 {
+  function id(x) {
+    return x ;
+  }
+
+  function nid() {
+    return id;
+  }
+
+  function const(x, y) { return x; }
+
+  function main() {
+    return const(nid(42), id(1));
+  }
+}

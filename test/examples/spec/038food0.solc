@@ -6,7 +6,7 @@ data CFood = Red(Food) | Green(Food) | Nocolor;
   function fromEnum(x : CFood) {
      match x {
        | Red(Curry) => return 1;
-       | Green(Beans) => return 2;
+       | Green(Beans) => return 42;
        | _ => return 3;
      };
   }

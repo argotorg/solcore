@@ -1,0 +1,21 @@
+contract Not {
+  data Bool = False | True;
+
+  function main() {
+    return fromBool(bnot(False));
+  }
+
+  function fromBool(b) {
+    match(b) {
+      | False => return 0;
+      | True  => return 1;
+    };
+  }
+
+  function bnot(b) {
+    match b {
+      | False => return True;
+      | True => return False;
+    };
+  }
+}

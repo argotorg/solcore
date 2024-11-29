@@ -1,0 +1,14 @@
+contract Id1 {
+
+  data Bool = False | True;
+
+  function id(x) {
+    return x ;
+  }
+
+  function const(x, y) { return x; }
+
+  function main() {
+    return const(id(42), False);
+  }
+}
