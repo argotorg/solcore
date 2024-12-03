@@ -136,7 +136,7 @@ getParamId (Untyped i) = i
 -- Translating types and value constructors
 -----------------------------------------------------------------------
 
-translateType :: Ty -> EM Core.Type
+translateType :: HasCallStack => Ty -> EM Core.Type
 translateType (TyCon "word" []) = pure Core.TWord
 -- translateType _ Fun.TBool = Core.TBool
 translateType (TyCon "unit" []) = pure Core.TUnit
