@@ -166,34 +166,6 @@ instance Pretty HexOrString where
 -- commaSepList :: Pretty a => [a] -> Doc
 -- commaSepList = hsep . punctuate comma . map ppr
 
-{- | wrap a Yul chunk in a Solidity function with the given name
-   assumes result is in a variable named "_result"
--}
-wrapInSolFunction :: Pretty a => Name -> a -> Doc
-wrapInSolFunction name yul = text "function" <+> ppr name <+> prettyargs <+> text " public pure returns (uint256 _wrapresult)" <+> lbrace
-  $$ nest 2 assembly
-  $$ rbrace
-  where
-    assembly = text "assembly" <+> lbrace
-      $$ nest 2 (ppr yul)
-      $$ rbrace
-    prettyargs = parens empty
-
-wrapInContract :: Name -> Name -> Doc -> Doc
-wrapInContract name entry body = empty
-  $$ text "// SPDX-License-Identifier: UNLICENSED"
-  $$ text "pragma solidity ^0.8.23;"
-  $$ text "import {console,Script} from \"lib/stdlib.sol\";"
-  $$ text "contract" <+> ppr name <+> text "is Script"<+> lbrace
-  $$ nest 2 run
-  $$ nest 2 body
-  $$ rbrace
-
-  where
-    run = text "function run() public view" <+> lbrace
-      $$ nest 2 (text "console.log(\"RESULT --> \","<+> ppr entry >< text ");")
-      $$ rbrace $$ text ""
-
 -- sample code
 fnUsrAdd :: YulStmt
 fnUsrAdd = YFun "usr$add" ["x", "y"] (YReturns ["result"])
