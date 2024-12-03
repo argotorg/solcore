@@ -68,6 +68,7 @@ tokens :-
         <0>    "no-coverage-condition"           {simpleToken TNoCoverageCondition}
         <0>    "no-patterson-condition"          {simpleToken TNoPattersonCondition}
         <0>    "no-bounded-variable-condition"     {simpleToken TNoBoundVariableCondition}
+        <0>    "bool-type-decl"                  {simpleToken TBoolType}
         <0>    "->"                              {simpleToken TArrow}
         <0>    "=>"                              {simpleToken TDArrow}
         <0>    ";"                               {simpleToken TSemi}
@@ -185,6 +186,7 @@ data Lexeme
   | TNoCoverageCondition
   | TNoPattersonCondition
   | TNoBoundVariableCondition
+  | TBoolType
   | TBar 
   | TEOF 
   deriving (Eq, Ord, Show)
@@ -218,6 +220,8 @@ mkIdent (st, _, _, str) len
         return $ Token (position st) TNoPattersonCondition
       "no-bounded-variable-condition" -> 
         return $ Token (position st) TNoBoundVariableCondition
+      "bool-type-decl" -> 
+        return $ Token (position st) TBoolType
       _ -> return $ Token (position st) (TIdent $ take len str)
 
 mkNumber :: AlexAction Token

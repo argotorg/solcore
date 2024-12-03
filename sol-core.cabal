@@ -1,138 +1,152 @@
 cabal-version: 3.4
+name:          sol-core
+version:       0.0.0.0
 
-name:           sol-core
-version:        0.0.0.0
 -- synopsis:       $synopsis
 -- description:    $description
 -- category:       $category
 -- homepage:       $gitrepo#readme
 -- bug-reports:    $gitrepo/issues
 -- maintainer:     $maintainer
-build-type:     Simple
+build-type:    Simple
 
 -- source-repository head
 --   type: git
 --   location: $gitrepo
 
 common common-opts
-
   build-depends:
-      base >= 4.19.0.0
-    , mtl
-    , containers
     , algebraic-graphs
     , array
-    , pretty
+    , base                  >=4.19.0.0
+    , containers
+    , megaparsec            >=9.6
+    , mtl
     , optparse-applicative
+    , parser-combinators    >=1.3
+    , pretty
     , syb
-    , megaparsec >= 9.6
-    , parser-combinators >= 1.3
 
-  build-tool-depends: happy:happy, alex:alex
+  build-tool-depends:
+    , alex:alex
+    , happy:happy
 
-  default-language: Haskell2010
-  default-extensions: OverloadedStrings
-                      FlexibleInstances
-                      FlexibleContexts
-                      PatternSynonyms
-                      TupleSections
-                      TypeFamilies
-                      BlockArguments
-                      DeriveDataTypeable
-                      ImportQualifiedPost
-                      ScopedTypeVariables
+  default-language:   Haskell2010
+  default-extensions:
+    BlockArguments
+    DeriveDataTypeable
+    FlexibleContexts
+    FlexibleInstances
+    ImportQualifiedPost
+    OverloadedStrings
+    PatternSynonyms
+    ScopedTypeVariables
+    TupleSections
+    TypeFamilies
 
 library
-  import: common-opts
+  import:          common-opts
 
   -- cabal-fmt: expand src
   exposed-modules:
-      Solcore.Desugarer.LambdaLifting
-      Solcore.Desugarer.MatchCompiler
-      Solcore.Desugarer.ReplaceWildcard
-      Solcore.Desugarer.Specialise
-      Solcore.Desugarer.EmitCore
-      Solcore.Frontend.Lexer.SolcoreLexer
-      Solcore.Frontend.Parser.SolcoreParser
-      Solcore.Frontend.Pretty.SolcorePretty
-      Solcore.Frontend.Pretty.Name
-      Solcore.Frontend.Syntax
-      Solcore.Frontend.Syntax.ElabTree
-      Solcore.Frontend.Syntax.Ty
-      Solcore.Frontend.Syntax.Contract
-      Solcore.Frontend.Syntax.Name
-      Solcore.Frontend.Syntax.Stmt
-      Solcore.Frontend.Syntax.SyntaxTree
-      Solcore.Frontend.TypeInference.Id
-      Solcore.Frontend.TypeInference.NameSupply
-      Solcore.Frontend.TypeInference.SccAnalysis
-      Solcore.Frontend.TypeInference.TcContract
-      Solcore.Frontend.TypeInference.TcEnv
-      Solcore.Frontend.TypeInference.TcInvokeGen
-      Solcore.Frontend.TypeInference.TcMonad
-      Solcore.Frontend.TypeInference.TcStmt
-      Solcore.Frontend.TypeInference.TcSubst
-      Solcore.Frontend.TypeInference.TcUnify
-      Solcore.Pipeline.SolcorePipeline
-      Solcore.Primitives.Primitives
-      Language.Core
-      Language.Core.Parser
-      Language.Core.Types
-      Language.Yul
-      Language.Yul.Parser
-      Common.LightYear
-      Common.Monad
-      Common.Pretty
-      Common.RIO
-  hs-source-dirs:
-      src
+    Common.LightYear
+    Common.Monad
+    Common.Pretty
+    Common.RIO
+    Language.Core
+    Language.Core.Parser
+    Language.Core.Types
+    Language.Yul
+    Language.Yul.Parser
+    Solcore.Desugarer.EmitCore
+    Solcore.Desugarer.LambdaLifting
+    Solcore.Desugarer.MatchCompiler
+    Solcore.Desugarer.ReplaceWildcard
+    Solcore.Desugarer.Specialise
+    Solcore.Frontend.Lexer.SolcoreLexer
+    Solcore.Frontend.Parser.SolcoreParser
+    Solcore.Frontend.Pretty.Name
+    Solcore.Frontend.Pretty.SolcorePretty
+    Solcore.Frontend.Syntax
+    Solcore.Frontend.Syntax.Contract
+    Solcore.Frontend.Syntax.ElabTree
+    Solcore.Frontend.Syntax.Name
+    Solcore.Frontend.Syntax.Pragma
+    Solcore.Frontend.Syntax.Stmt
+    Solcore.Frontend.Syntax.SyntaxTree
+    Solcore.Frontend.Syntax.Ty
+    Solcore.Frontend.TypeInference.Id
+    Solcore.Frontend.TypeInference.NameSupply
+    Solcore.Frontend.TypeInference.SccAnalysis
+    Solcore.Frontend.TypeInference.TcContract
+    Solcore.Frontend.TypeInference.TcEnv
+    Solcore.Frontend.TypeInference.TcInvokeGen
+    Solcore.Frontend.TypeInference.TcMonad
+    Solcore.Frontend.TypeInference.TcStmt
+    Solcore.Frontend.TypeInference.TcSubst
+    Solcore.Frontend.TypeInference.TcUnify
+    Solcore.Pipeline.SolcorePipeline
+    Solcore.Primitives.Primitives
+
+  hs-source-dirs:  src
 
 executable sol-core
-  import: common-opts
-  main-is: Main.hs
-  hs-source-dirs:
-      app
-  build-depends: sol-core
-  build-tool-depends: alex:alex, happy:happy
+  import:             common-opts
+  main-is:            Main.hs
+  hs-source-dirs:     app
+  build-depends:      sol-core
+  build-tool-depends:
+    , alex:alex
+    , happy:happy
+
 --  program-default-options
 --    happy-options: --debug -gcai
 
 executable yule
-    import: common-opts
-    main-is:          Main.hs
-    hs-source-dirs: yule
-    default-extensions:
-      LambdaCase
-      PatternSynonyms
-      BlockArguments
-      ImportQualifiedPost
-    other-modules: Locus, Options, TM, Translate, Builtins, Compress
-    build-depends:    base ^>=4.19.1.0,
-                      pretty >=  1.1,
-                      containers >= 0.6,
-                      mtl >= 2.3,
-                      megaparsec >= 9.6,
-                      parser-combinators >= 1.3,
-                      optparse-applicative >= 0.18,
-                      sol-core
+  import:             common-opts
+  main-is:            Main.hs
+  hs-source-dirs:     yule
+  default-extensions:
+    BlockArguments
+    ImportQualifiedPost
+    LambdaCase
+    PatternSynonyms
+
+  other-modules:
+    Builtins
+    Compress
+    Locus
+    Options
+    TM
+    Translate
+
+  build-depends:
+    , base                  ^>=4.19.1.0
+    , containers            >=0.6
+    , megaparsec            >=9.6
+    , mtl                   >=2.3
+    , optparse-applicative  >=0.18
+    , parser-combinators    >=1.3
+    , pretty                >=1.1
+    , sol-core
 
 test-suite sol-core-tests
-  import: common-opts
-  type: exitcode-stdio-1.0
-  hs-source-dirs: test
-
+  import:             common-opts
+  type:               exitcode-stdio-1.0
+  hs-source-dirs:     test
   ghc-options:
     -Wall -threaded -rtsopts -with-rtsopts=-N -fdefer-typed-holes -O0
 
-  main-is: Main.hs
+  main-is:            Main.hs
 
   -- cabal-fmt: expand test -Main
   other-modules:
-
   build-depends:
     , sol-core
     , tasty
-    , tasty-program
     , tasty-expected-failure
+    , tasty-program
 
-  build-tool-depends: sol-core:sol-core, sol-core:yule
+  build-tool-depends:
+    , sol-core:sol-core
+    , sol-core:yule
