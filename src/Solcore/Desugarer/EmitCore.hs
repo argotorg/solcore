@@ -117,7 +117,7 @@ emitFunDef (FunDef sig body) = do
 translateSig :: Signature Id -> EM (CoreName, [Core.Arg], Core.Type)
 translateSig sig@(Signature vs ctxt n args (Just ret)) = do
   dataTable <- gets ecDT
-  -- debug ["translateSig ", show sig]
+  debug ["translateSig ", show sig]
   let name = show n
   coreTyp <- translateType ret
   coreArgs <- mapM translateArg args
@@ -136,7 +136,7 @@ getParamId (Untyped i) = i
 -- Translating types and value constructors
 -----------------------------------------------------------------------
 
-translateType :: Ty -> EM Core.Type
+translateType :: HasCallStack => Ty -> EM Core.Type
 translateType (TyCon "word" []) = pure Core.TWord
 -- translateType _ Fun.TBool = Core.TBool
 translateType (TyCon "unit" []) = pure Core.TUnit
