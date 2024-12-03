@@ -312,7 +312,7 @@ translateCore (Core stmts) = translateStmts stmts
 
 translateStmts :: [Stmt] -> TM Yul
 translateStmts stmts = do
-    -- assuming the result goes into `_wrapresult`
+    -- assuming the result goes into `_mainresult`
     let hasMain = any isMain stmts
     if hasMain
       then writeln "found main"
@@ -320,7 +320,8 @@ translateStmts stmts = do
     let stmts' = if hasMain then stmts else addMain stmts
     payload <- genStmts stmts'
     let resultExp = YCall (yulFunName "main") []
-    let epilog = [YAssign1 "_wrapresult" resultExp]
+    let epilog = [ YLet ["_mainresult"] (Just resultExp)
+                 ]
     return $ Yul ( payload ++ epilog )
 
 

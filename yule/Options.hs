@@ -9,6 +9,7 @@ data Options = Options
     , verbose :: Bool
     , debug :: Bool
     , compress :: Bool
+    , wrap :: Bool
     } deriving Show
 
 optionsParser :: Parser Options
@@ -46,6 +47,11 @@ optionsParser = Options
         ( long "compress"
         <> short 'O'
         <> help "Compress sums (experimental)"
+        )
+    <*> switch
+        ( long "wrap"
+        <> short 'w'
+        <> help "Wrap Yul in a Solidity contract"
         )
 
 parseOptions :: IO Options
