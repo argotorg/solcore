@@ -142,6 +142,11 @@ instance Pretty a => Pretty (Signature a) where
     = text "function" <+> 
       ppr n           <+>
       pprParams ps    <+> 
+      pprRetTy ty
+  ppr (Signature _ [] n ps ty) 
+    = text "function" <+> 
+      ppr n           <+>
+      pprParams ps    <+> 
       pprRetTy ty 
   ppr (Signature vs ctx n ps ty) 
     = text "forall" <+>
@@ -316,7 +321,11 @@ instance Pretty Ty where
     = ppr t1 <+> (text "->") <+> ppr t2
   ppr (TyCon n ts)
     | isTuple n = parens $ commaSep (map ppr ts)
+    | isUnit n = text "()"
     | otherwise = ppr n <> (pprTyParams ts)
+
+isUnit :: Name -> Bool 
+isUnit n = pretty n == "unit"
 
 isTuple :: Pretty a => a -> Bool 
 isTuple s = pretty s == "pair"

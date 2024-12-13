@@ -93,7 +93,7 @@ stack :: Ty -> Ty
 stack t = TyCon "stack" [t]
 
 unit :: Ty
-unit = TyCon "pair" []
+unit = TyCon "unit" []
 
 pair :: Ty -> Ty -> Ty
 pair t1 t2 = TyCon "pair" [t1, t2]
