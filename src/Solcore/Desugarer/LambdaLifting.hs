@@ -13,7 +13,7 @@ import Solcore.Frontend.TypeInference.TcEnv (primCtx)
 import Solcore.Primitives.Primitives
 
 
--- lambda lifting transformation top level function for capture free lambdas 
+-- lambda lifting transformation top level function for capture free lambdas. 
 
 lambdaLifting :: CompUnit Name -> Either String (CompUnit Name, [String])
 lambdaLifting unit 
@@ -141,7 +141,9 @@ createFunction :: [Param Name] ->
                   Body Name -> 
                   LiftM (FunDef Name)
 createFunction ps bdy  
-  = (flip FunDef bdy) <$> createSignature ps 
+  = do 
+      (sig,mp) <- createSignature ps 
+      pure (FunDef sig bdy)
 
 createSignature :: [Param Name] -> 
                    LiftM (Signature Name)
