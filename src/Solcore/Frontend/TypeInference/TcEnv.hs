@@ -118,6 +118,7 @@ primTypeEnv :: TypeTable
 primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
                            , (Name "pair", pairTypeInfo)
                            , (Name "->", arrowTypeInfo)
+                           , (Name "unit", unitTypeInfo)
                            ]
 
 primInstEnv :: InstTable
