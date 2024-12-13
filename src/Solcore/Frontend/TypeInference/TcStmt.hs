@@ -389,7 +389,7 @@ tcFunDef d@(FunDef sig bd)
       (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
       (ps :=> t) <- freshInst sch
       t1 <- withCurrentSubst (foldr (:->) t' ts)
-      nps <- patchConstraints (ps ++ ps1)
+      nps <- withCurrentSubst (ps ++ ps1)
       ps2 <- reduceContext nps `wrapError` d
       s1 <- getSubst
       s' <- match (apply s1 $ unskol t) (apply s1 $ unskol t1) `wrapError` d
@@ -401,23 +401,6 @@ tcFunDef d@(FunDef sig bd)
       when gen (generateDecls (FunDef sig2 bd', sch')) 
       info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
       pure (apply s $ FunDef sig2  bd', apply s ps2, apply s t1)
-
--- patch invokable constraints to remove arrow main types. 
--- This should be improved later.
-
-patchConstraints :: [Pred] -> TcM [Pred]
-patchConstraints = mapM patchConstraint 
-
-patchConstraint :: Pred -> TcM Pred 
-patchConstraint c@(InCls n (_ :-> _) ts) 
-  = if isInvokable n then do 
-      v <- freshTyVar 
-      pure (InCls n v ts)
-    else pure c 
-patchConstraint c = pure c
-
-isInvokable :: Name -> Bool 
-isInvokable n = n == invokableName
 
 -- update types in signature 
 
