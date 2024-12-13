@@ -10,6 +10,7 @@ contract Id1 {
   function const(x, y) { return x; }
 
   function main() {
-    return const(nid(42), id(1));
+    let f = nid();
+    return const(f(42), id(1));
   }
 }
