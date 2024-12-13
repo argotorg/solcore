@@ -13,7 +13,7 @@ import Solcore.Frontend.TypeInference.TcEnv (primCtx)
 import Solcore.Primitives.Primitives
 
 
--- lambda lifting transformation top level function 
+-- lambda lifting transformation top level function for capture free lambdas. 
 
 lambdaLifting :: CompUnit Name -> Either String (CompUnit Name, [String])
 lambdaLifting unit 
@@ -129,122 +129,31 @@ instance LiftLambda (Exp Name) where
         fs <- gets functionNames 
         let
           defs = fs ++ vars ps ++ Map.keys primCtx
-          free = vars bd \\ defs 
-        mdt <- createClosureType free 
-        fd <- createFunction free mdt ps bd  
-        addDecl (TFunDef fd)
-        let e' = if isNothing mdt then Var (sigName (funSignature fd))
-                 else case mdt of 
-                        Just (DataTy _ _ [Constr cn' _]) ->
-                          Call Nothing (sigName (funSignature fd)) ([Con cn' (Var <$> free)])
-        pure e'
+          free = vars bd \\ defs
+        if null free then do 
+          fd <- createFunction ps bd  
+          addDecl (TFunDef fd)
+          pure $ Var (sigName (funSignature fd))
+        else pure e 
   liftLambda d = pure d 
 
-createClosureType :: [Name] -> LiftM (Maybe DataTy)
-createClosureType [] = pure Nothing 
-createClosureType ns 
-  = do 
-      closureName <- freshName "t_closure"
-      let vs = take (length ns) namePool
-          dtvars = map (\ n -> TVar n False) ns 
-          con = Constr closureName (TyVar <$> dtvars)
-          dt = DataTy closureName dtvars [con]
-      addDecl (TDataDef dt)
-      pure (Just dt)
-
-createFunction :: [Name] -> 
-                  Maybe DataTy -> 
-                  [Param Name] -> 
+createFunction :: [Param Name] -> 
                   Body Name -> 
                   LiftM (FunDef Name)
-createFunction free mdt ps bdy  
+createFunction ps bdy  
   = do 
-      (sig,mp) <- createSignature mdt ps 
-      bdy' <- createBody free mp mdt bdy 
-      pure (FunDef sig bdy')
+      (sig,mp) <- createSignature ps 
+      pure (FunDef sig bdy)
 
-createSignature :: Maybe DataTy -> 
-                   [Param Name] -> 
+createSignature :: [Param Name] -> 
                    LiftM ( Signature Name
                          , Maybe (Param Name)
                          )
-createSignature Nothing ps 
+createSignature ps 
   = do 
       n <- freshName "lambda_impl"
       pure (Signature [] [] n ps Nothing, Nothing)
-createSignature (Just dt) ps 
-  = do 
-      n <- freshName "lambda_impl"
-      np <- freshName "env"
-      let p = Typed np (tyFromData dt)
-      pure (Signature [] [] n (p : ps) Nothing, Just p)
-       
-
-tyFromData :: DataTy -> Ty 
-tyFromData dt 
-  = TyCon (dataName dt) (TyVar <$> dataParams dt)
-
-createBody :: [Name] -> 
-              Maybe (Param Name) -> 
-              Maybe DataTy -> 
-              Body Name -> 
-              LiftM (Body Name)
-createBody _ Nothing Nothing bdy 
-  = pure bdy
-createBody free (Just p) (Just dt) bdy 
-  = wrap <$> createClosureMatch free p dt bdy 
-    where 
-      wrap x = [x]
-createBody _ _ _ _ 
-  = throwError $ unwords [ "Impossible!" 
-               , "This should not happen:" 
-               , "Lambda lifting!"
-               ]
-
-createClosureMatch :: [Name] -> 
-                      Param Name -> 
-                      DataTy -> 
-                      Body Name -> 
-                      LiftM (Stmt Name)
-createClosureMatch free p dt bdy 
-  = do 
-      let 
-        s = Match [Var $ paramName p]
-                  (mkEquations free (dataName dt) bdy)
-      pure s 
-
-mkEquations :: [Name] -> 
-               Name -> 
-               Body Name -> 
-               Equations Name 
-mkEquations free c bdy 
-  = [([PCon c (PVar <$> free)], bdy)]
-
-debugCreateFunction :: FunDef Name -> LiftM ()
-debugCreateFunction fd 
-  = do 
-      let s = unlines [ "Creating function:"
-                      , pretty fd 
-                      ]
-      addDebugInfo s 
-
-debugCreateLambdaType :: DataTy -> LiftM () 
-debugCreateLambdaType d 
-  = do 
-      let s = unlines [ "Creating data type: "
-                      , pretty d 
-                      ]
-      addDebugInfo s 
-
-debugInfoLambda :: Exp Name -> [Name] -> LiftM () 
-debugInfoLambda e ns 
-  = do 
-      let s = unlines [ "Processing lambda:"
-                      , pretty e 
-                      , "free variables:"
-                      , unwords $ map pretty ns 
-                      ]
-      addDebugInfo s 
+      
 
 -- monad definition
 
