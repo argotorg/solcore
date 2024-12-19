@@ -141,20 +141,14 @@ createFunction :: [Param Name] ->
                   Body Name -> 
                   LiftM (FunDef Name)
 createFunction ps bdy  
-  = do 
-      (sig,mp) <- createSignature ps 
-      pure (FunDef sig bdy)
+  = (flip FunDef bdy) <$> createSignature ps 
 
-createSignature :: [Param Name] -> 
-                   LiftM ( Signature Name
-                         , Maybe (Param Name)
-                         )
+createSignature :: [Param Name] -> LiftM (Signature Name)
 createSignature ps 
   = do 
       n <- freshName "lambda_impl"
-      pure (Signature [] [] n ps Nothing, Nothing)
+      pure (Signature [] [] n ps Nothing)
       
-
 -- monad definition
 
 data Env 
