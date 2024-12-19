@@ -47,6 +47,24 @@ incCounter = do
   modify (\ ctx -> ctx{counter = c + 1})
   pure c 
 
+-- monad operations for generate defs flag 
+
+askGeneratingDefs :: TcM Bool 
+askGeneratingDefs = gets generateDefs 
+
+setGeneratingDefs :: Bool -> TcM ()
+setGeneratingDefs b 
+  = modify (\env -> env {generateDefs = b})
+
+withNoGeneratingDefs :: TcM a -> TcM a 
+withNoGeneratingDefs m 
+  = do 
+      b <- askGeneratingDefs
+      setGeneratingDefs False 
+      r <- m 
+      setGeneratingDefs b 
+      pure r
+
 addUniqueType :: Name -> DataTy -> TcM ()
 addUniqueType n dt 
   = do
@@ -78,7 +96,7 @@ writeInstance instd
 writeTopDecl :: TopDecl Id -> TcM ()
 writeTopDecl d 
   = do 
-      b <- gets generateDefs 
+      b <- askGeneratingDefs 
       when b $ do 
         ts <- gets generated 
         modify (\env -> env{ generated = d : ts})

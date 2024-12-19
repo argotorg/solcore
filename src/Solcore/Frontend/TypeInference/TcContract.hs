@@ -219,7 +219,7 @@ tcInstance idecl@(Instance ctx n ts t funs)
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs) 
       funs' <- buildSignatures n ts t funs `wrapError` idecl
-      (funs1, pss', ts') <- unzip3 <$> mapM tcFunDef  funs' `wrapError` idecl
+      (funs1, schs, pss', ts') <- unzip4 <$> mapM tcFunDef  funs' `wrapError` idecl
       withCurrentSubst (Instance ctx n ts t funs1)
 
 checkCompleteInstDef :: Name -> [Name] -> TcM ()
@@ -292,13 +292,23 @@ tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds 
   = do
       funs <- mapM scanFun binds
-      (funs', pss, ts) <- unzip3 <$> mapM tcFunDef funs 
-      ts' <- withCurrentSubst ts  
-      schs <- mapM generalize (zip pss ts')
-      let names = map (sigName . funSignature) funs 
-      let p (x,y) = pretty x ++ " :: " ++ pretty y
+      (funs', schs, pss, ts) <- unzip4 <$> mapM tcFunDef funs 
+      let names = map (sigName . funSignature) funs
       mapM_ (uncurry extEnv) (zip names schs)
+      generateTopDeclsFor (zip funs' schs) 
       pure funs'
+
+generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
+generateTopDeclsFor ps
+  = do 
+      gen <- askGeneratingDefs 
+      if gen then do 
+        (dts, instds) <- unzip <$> mapM generateDecls ps 
+        mapM_ checkDataType dts 
+        mapM_ checkInstance instds 
+        insts' <- withNoGeneratingDefs (mapM tcInstance instds)
+        mapM_ writeTopDecl ((TDataDef <$> dts) ++ (TInstDef <$> insts'))
+      else pure ()
 
 scanFun :: FunDef Name -> TcM (FunDef Name)
 scanFun (FunDef sig bd)
