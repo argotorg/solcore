@@ -141,9 +141,7 @@ createFunction :: [Param Name] ->
                   Body Name -> 
                   LiftM (FunDef Name)
 createFunction ps bdy  
-  = do 
-      (sig,mp) <- createSignature ps 
-      pure (FunDef sig bdy)
+  = (flip FunDef bdy) <$> createSignature ps 
 
 createSignature :: [Param Name] -> 
                    LiftM (Signature Name)
