@@ -37,6 +37,9 @@ pairTypeInfo = TypeInfo 2 [Name "pair"] []
 arrowTypeInfo :: TypeInfo
 arrowTypeInfo = TypeInfo 2 [] []
 
+stkRefTypeInfo :: TypeInfo
+stkRefTypeInfo = TypeInfo 1 [Name "stack"] [Name "stack"]
+
 -- name of constructor and its scheme
 type ConInfo = (Name, Scheme)
 
@@ -93,9 +96,7 @@ initTcEnv utm
           mempty
           namePool
           (Map.union utm primDataType)
-          [ Name "primAddWord"
-          , Name "primEqWord"
-          ]
+          primFunNames
           True
           []
           0
@@ -114,6 +115,8 @@ primCtx
                  , primInvoke
                  , primPair
                  , primUnit 
+                 , primStkStore
+                 , primStkLoad
                  ]
 
 primTypeEnv :: TypeTable 
@@ -121,6 +124,7 @@ primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
                            , (Name "pair", pairTypeInfo)
                            , (Name "->", arrowTypeInfo)
                            , (Name "()", unitTypeInfo)
+                           , (Name "stack", stkRefTypeInfo)
                            ]
 
 primInstEnv :: InstTable
