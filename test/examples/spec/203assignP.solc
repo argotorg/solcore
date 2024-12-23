@@ -1,0 +1,13 @@
+contract AssignPair {
+  function fst(p) {
+    match p {
+      | (a,b) => return a;
+    };
+  }
+
+  function main() {
+    let x = (42, 7) ; let y : (word, word);
+    y = x;
+    return fst(y);
+  }
+}

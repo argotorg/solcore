@@ -1,0 +1,29 @@
+class  ref : Ref(deref) {
+  function load (r:ref) -> deref;
+  function store(r:ref, v:deref) -> unit;
+}
+
+instance stack(word) : Ref(word) {
+  function load(r) { return stkLoad(r); }
+  function store(r, v) { return stkStore(r, v); }
+}
+
+contract AssignWord {
+  // builtin stkStore(word, word) -> ()
+  // builtin stkLoad(w: word) { return w;}
+
+  function main() {
+
+   // let x = 42;
+   let x : stack(word) ;
+   Ref.store(x,42);  // this does not work :(
+   // let y : word;
+   let y : stack(word) ;
+
+   // y = x;
+   stkStore(y, stkLoad(x));
+
+  // return y;
+  return Ref.load(y);
+  }
+}
