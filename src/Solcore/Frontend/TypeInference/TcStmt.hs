@@ -159,7 +159,6 @@ tcExp (Var n)
       (ps :=> t) <- freshInst s
       -- checks if it is a function name, and return 
       -- its corresponding unique type 
-      gen <- gets generateDefs
       r <- lookupFunAbs n
       let
         (args,ret) = splitTy t
@@ -168,8 +167,7 @@ tcExp (Var n)
           = let
               t1 = TyCon nt [args', ret]
             in (Con (Id n t1) [], t1)
-        p = if gen then (Var (Id n t), t) 
-            else maybe (Var (Id n t), t) mkCon r
+        p = maybe (Var (Id n t), t) mkCon r
       pure (fst p, ps, snd p)
 tcExp e@(Con n es)
   = do
@@ -201,29 +199,24 @@ tcExp (FieldAccess (Just e) n)
       pure (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExp ex@(Call me n args)
   = do
-      gen <- gets generateDefs
       let qn = QualName invokableName "invoke"
           args' = [Var n, indirectArgs args]
       isDirect <- isDirectCall n
-      if gen && isDirect then do
+      if isDirect then do
         tcCall me n args `wrapError` ex
-      else do
-        if isDirect then tcCall me n args `wrapError` ex
-          else
-            tcCall me qn args' `wrapError` ex
--- tcExp e@(Lam args bd _)
---   = do
---       (args', schs, ts') <- tcArgs args
---       (bd',ps,t') <- withLocalCtx schs (tcBody bd)
---       s <- getSubst
---       let ps1 = apply s ps
---           ts1 = apply s (map unskol ts')
---           t1 = apply s (unskol t')
---           vs = fv ps1 `union` fv t' `union` fv ts1
---           ty = funtype ts1 t1
---       gen <- gets generateDefs
---       (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs (ts1,t1) bd'
---       pure (e', ps1, ty1)
+      else tcCall me qn args' `wrapError` ex
+tcExp e@(Lam args bd _)
+   = do
+       (args', schs, ts') <- tcArgs args
+       (bd',ps,t') <- withLocalCtx schs (tcBody bd)
+       s <- getSubst
+       let ps1 = apply s ps
+           ts1 = apply s (map unskol ts')
+           t1 = apply s (unskol t')
+           vs = fv ps1 `union` fv t' `union` fv ts1
+           ty = funtype ts1 t1
+       (e', ty1) <- closureConversion ps1 args' vs (ts1,t1) bd'
+       pure (e', ps1, ty1)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
@@ -246,28 +239,86 @@ indirectArgs (e : es) = epair e (indirectArgs es)
   where 
     epair e1 e2 = Con (Name "pair") [e1, e2]
 
--- need to retrieve generated stuff 
--- from a lambda after first desugaring step.
+-- top level function to generate defs for 
+-- capturing lambdas 
+
+closureConversion :: [Pred] -> 
+                     [Param Id] -> 
+                     [Tyvar] -> 
+                     ([Ty], Ty) -> 
+                     Body Id -> 
+                     TcM (Exp Id, Ty)
+closureConversion ps args vs (argTys, rTy) bdy 
+  = do 
+      -- create the lambda function 
+      -- and its closure type 
+      (lfun, dt, r) <- createLambdaImpl ps args vs (argTys, rTy) bdy 
+      -- adding the type to the context 
+      -- and to generated declarations list 
+      checkDataType dt
+      writeDataTy dt 
+      -- type checking generated lambda function 
+      (fun', sch, ps', ty') <- tcFunDef lfun
+      writeFunDef fun' 
+      -- create unique type storing the closure 
+      let nm = sigName (funSignature fun')
+      (dt1, e1, t1) <- createUniqueTypeClosure nm sch dt (fst r)
+      -- create an instance for invoke for functions with closures 
+      createClosureInvokeInstance fun' sch dt1  
+      pure (e1, t1)
+
+createClosureInvokeInstance :: FunDef Id -> Scheme -> DataTy -> TcM ()
+createClosureInvokeInstance fd sch dt@(DataTy dn vs _)
+  = do
+      (ps :=> t) <- freshInst sch 
+      liftIO $ putStrLn $ pretty t
+      let (argTys, retTy) = splitTy t
+          (cts, argTys') = splitAt 1 argTys 
+          cty = case cts of 
+                  [] -> unit 
+                  (x : _) -> x
+      liftIO $ putStrLn $ pretty cty
+      liftIO $ putStrLn $ unwords (map pretty argTys')
+      liftIO $ putStrLn $ pretty $ ((Instance [] invokeName [tupleTyFromList argTys', retTy] cty []) :: Instance Name)
+      pure ()
+
+
+createUniqueTypeClosure :: Name -> Scheme -> DataTy -> Exp Id -> TcM (DataTy, Exp Id, Ty)
+createUniqueTypeClosure n sch dt@(DataTy d vs [ctr]) e 
+  = do 
+      c <- incCounter
+      let cn = Name $ "t_" ++ pretty n ++ show c
+          targ = TyCon d (TyVar <$> vs)
+          ctr1 = Constr cn [targ]
+          dt1 = DataTy cn vs [ctr1]
+          tres = TyCon cn (TyVar <$> vs)
+      checkDataType dt1 
+      writeDataTy dt1
+      pure (dt1, Con (Id cn (targ :-> tres)) [e], tres)
+
+
+-- creating the function for a lambda body 
 
 createLambdaImpl :: [Pred] ->
                     [Param Id] ->
                     [Tyvar] ->
                     ([Ty],Ty) ->
-                    Body Id -> TcM (FunDef Name, (Exp Id, Ty))
+                    Body Id -> 
+                    TcM (FunDef Name, DataTy, (Exp Id, Ty))
 createLambdaImpl ps args vs (argTys, rty) bdy
   = do
       c <- incCounter
       funs <- Map.keys <$> gets uniqueTypes
       let n = Name $ "lambda_impl" ++ show c
           vs' = filter (\i -> idName i `notElem` funs) (vars bdy \\ vars args)
-      (v,c',ctr,ty) <- createUniqueType vs' n (argTys, rty)
+      (v,c',ctr,ty,dt) <- createClosureType vs' n (argTys, rty)
       s <- getSubst
       (sig',npp) <- createLambdaSig n ps (apply s args) vs rty ty vs'
       bdy' <- createLambdaBody ty ctr vs' bdy npp
       s <- getSubst
       let
           fd = everywhere (mkT (applyI s)) (FunDef sig' bdy')
-      pure (fd, (c', ty))
+      pure (fd, dt, (c', ty))
 
 createLambdaSig :: Name ->
                    [Pred] ->
@@ -321,8 +372,11 @@ schemeFromSig sig
 tyFromParam :: Param Id -> Ty
 tyFromParam (Typed _ ty) = ty
 
-createUniqueType :: [Id] -> Name -> ([Ty], Ty) -> TcM (Exp Id, Exp Id, Constr, Ty)
-createUniqueType ids n (argTys, retTy)
+createClosureType :: [Id] -> 
+                    Name -> 
+                    ([Ty], Ty) -> 
+                    TcM (Exp Id, Exp Id, Constr, Ty, DataTy)
+createClosureType ids n (argTys, retTy)
      = do
         m <- incCounter
         argName <- freshName
@@ -331,14 +385,12 @@ createUniqueType ids n (argTys, retTy)
             argVar = TVar argName False
             retVar = TVar retName False
             nt = Name $ "t_" ++ pretty n ++ show m
-            dc = Constr nt (map idType ids)
-            dt = DataTy nt [argVar, retVar] [dc]
-            argTy' = tupleTyFromList argTys
-            tc = TyCon nt [argTy', retTy]
-        writeDataTy dt 
-        checkDataType dt
-        addUniqueType n dt
-        pure (Var (Id n tc), Con (Id nt tc) (map Var ids), dc, tc)
+            ts = map idType ids 
+            dc = Constr nt ts
+            argTys' = argVar : fv ts ++ [retVar]
+            dt = DataTy nt argTys'  [dc]
+            tc = TyCon nt (TyVar <$> argTys')
+        pure (Var (Id n tc), Con (Id nt tc) (map Var ids), dc, tc, dt)
 
 applyI :: Subst -> Ty -> Ty
 applyI s = apply s
@@ -380,7 +432,7 @@ tcSignature sig@(Signature _ ctx n ps rt)
       let sch = maybe (monotype $ funtype ts t) id msch
       pure ((n, sch), pschs, ts)
 
-tcFunDef :: FunDef Name -> TcM (FunDef Id, [Pred], Ty)
+tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
 tcFunDef d@(FunDef sig bd)
   = withLocalEnv do
       -- checking if the function isn't defined
@@ -397,10 +449,8 @@ tcFunDef d@(FunDef sig bd)
       s <- getSubst 
       sch'@(Forall svs (sps :=> st)) <- generalize (ps2, apply s t) `wrapError` d
       let sig2 = elabSignature sig sch'
-      gen <- gets generateDefs
-      when gen (generateDecls (FunDef sig2 bd', sch')) 
       info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
-      pure (apply s $ FunDef sig2  bd', apply s ps2, apply s t1)
+      pure (apply s $ FunDef sig2  bd', sch', apply s ps2, apply s t1)
 
 -- update types in signature 
 
@@ -442,8 +492,7 @@ extSignature sig@(Signature _ preds n ps t)
       -- checking if the function is previously defined
       addFunctionName n
       te <- gets ctx
-      gen <- gets generateDefs
-      when (Map.member n te && gen) (duplicatedFunDef n) `wrapError` sig
+      when (Map.member n te) (duplicatedFunDef n) `wrapError` sig
 
 -- typing instances
 
@@ -681,6 +730,157 @@ typeName (TyCon n _) = pure n
 typeName t = throwError $ unlines ["Expected type, but found:"
                                   , pretty t
                                   ]
+
+-- checking instances and adding them in the environment
+
+checkInstances :: [Instance Name] -> TcM ()
+checkInstances = mapM_ checkInstance 
+
+checkInstance :: Instance Name -> TcM ()
+checkInstance idef@(Instance ctx n ts t funs)
+  = do
+      let ipred = InCls n t ts
+      -- checking the coverage condition 
+      insts <- askInstEnv n `wrapError` ipred
+      -- checkOverlap ipred insts `wrapError` idef
+      coverage <- askCoverage n
+      unless coverage (checkCoverage n ts t `wrapError` idef)
+      -- checking Patterson condition
+      patterson <- askPattersonCondition n 
+      unless patterson (checkMeasure ctx ipred `wrapError` idef)
+      -- checking bound variable condition
+      bound <- askBoundVariableCondition n 
+      unless bound (checkBoundVariable ctx (fv (t : ts)) `wrapError` idef)
+      -- checking instance methods
+      mapM_ (checkMethod ipred) funs
+      let ninst = anfInstance $ ctx :=> InCls n t ts 
+      -- add to the environment
+      addInstance n ninst 
+
+-- bound variable check 
+
+checkBoundVariable :: [Pred] -> [Tyvar] -> TcM () 
+checkBoundVariable ps vs 
+  = unless (all (\ v -> v `elem` vs) (fv ps)) $ do 
+      throwError "Bounded variable condition fails!"
+
+
+checkOverlap :: Pred -> [Inst] -> TcM ()
+checkOverlap _ [] = pure ()
+checkOverlap p@(InCls _ t _) (i:is) 
+  = do 
+        i' <- renameVars (fv t) i
+        case i' of 
+          (ps :=> (InCls _ t' _)) -> 
+            case mgu t t' of
+              Right _ -> throwError (unlines [ "Overlapping instances are not supported" 
+                                             , "instance:"
+                                             , pretty p
+                                             , "overlaps with:"
+                                             , pretty i'])
+              Left _ -> checkOverlap p is
+        return ()
+
+-- check coverage condition 
+
+checkCoverage :: Name -> [Ty] -> Ty -> TcM ()
+checkCoverage cn ts t 
+  = do 
+      let strongTvs = fv t 
+          weakTvs = fv ts 
+          undetermined = weakTvs \\ strongTvs
+      unless (null undetermined) $ 
+          throwError (unlines [
+            "Coverage condition fails for class:"
+          , pretty cn 
+          , "- the type:"
+          , pretty t 
+          , "does not determine:"
+          , intercalate ", " (map pretty undetermined)
+          ])
+
+checkMethod :: Pred -> FunDef Name -> TcM () 
+checkMethod ih@(InCls n t ts) d@(FunDef sig _) 
+  = do
+      -- getting current method signature in class
+      let qn = QualName n (show (sigName sig))
+      st@(Forall _ (qs :=> ty)) <- askEnv qn `wrapError` d 
+      p <- maybeToTcM (unwords [ "Constraint for"
+                               , show n
+                               , "not found in type of"
+                               , show $ sigName sig])
+                      (findPred n qs)
+      -- matching substitution of instance head and class predicate
+      _ <- liftEither (matchPred p ih) `wrapError` ih
+      pure ()
+
+findPred :: Name -> [Pred] -> Maybe Pred 
+findPred _ [] = Nothing 
+findPred n (p@(InCls n' _ _) : ps) 
+  | n == n' = Just p 
+  | otherwise = findPred n ps
+
+tcInstance :: Instance Name -> TcM (Instance Id)
+tcInstance idecl@(Instance ctx n ts t funs) 
+  = do
+      checkCompleteInstDef n (map (sigName . funSignature) funs) 
+      funs' <- buildSignatures n ts t funs `wrapError` idecl
+      (funs1, schs, pss', ts') <- unzip4 <$> mapM tcFunDef  funs' `wrapError` idecl
+      withCurrentSubst (Instance ctx n ts t funs1)
+
+checkCompleteInstDef :: Name -> [Name] -> TcM ()
+checkCompleteInstDef n ns 
+  = do 
+      mths <- methods <$> askClassInfo n 
+      let remaining = mths \\ ns 
+      when (not $ null remaining) do 
+        warning $ unlines $ ["Incomplete definition for class:"
+                            , pretty n
+                            , "missing definitions for:"
+                            ] ++ map pretty remaining
+
+buildSignatures :: Name -> [Ty] -> Ty -> [FunDef Name] -> TcM [FunDef Name]
+buildSignatures n ts t funs 
+  = do 
+      cpred <- classpred <$> askClassInfo n 
+      sm <- matchPred cpred (InCls n t ts)
+      let qname m = QualName n (pretty m)
+      schs <- mapM (askEnv . qname . sigName . funSignature) funs
+      let  
+          app (Forall vs (_ :=> t1)) = apply sm t1
+          tinsts = map app schs
+      zipWithM (buildSignature n) tinsts funs 
+
+buildSignature :: Name -> Ty -> FunDef Name -> TcM (FunDef Name)
+buildSignature n t (FunDef sig bd)
+  = do 
+      let (args, ret) = splitTy t 
+          sig' = typeSignature n args ret sig
+      pure (FunDef sig' bd)
+
+typeSignature :: Name -> [Ty] -> Ty -> Signature Name -> Signature Name 
+typeSignature nm args ret sig 
+  = sig { 
+          sigName = QualName nm (pretty $ sigName sig)
+        , sigParams = zipWith paramType args (sigParams sig)
+        , sigReturn = Just (skolemize ret)
+        }
+    where 
+      paramType _ (Typed n t) = Typed n (skolemize t)
+      paramType t (Untyped n) = Typed n (skolemize t)
+
+
+
+-- checking Patterson conditions 
+
+checkMeasure :: [Pred] -> Pred -> TcM ()
+checkMeasure ps c 
+  = if all smaller ps then return ()
+    else throwError $ unlines [ "Instance "
+                              , pretty c
+                              , "does not satisfy the Patterson conditions."]
+    where smaller p = measure p < measure c
+
 
 -- typing Yul code
 
