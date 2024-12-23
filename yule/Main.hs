@@ -30,7 +30,7 @@ main = do
     let source = if oCompress then compress core else core
     when oCompress $ do
         putStrLn "Compressing sums"
-        putStrLn (render (nest 2 (ppr source)))
+        when (Options.verbose options) $ putStrLn (render (nest 2 (ppr source)))
     generatedYul <- runTM options (translateStmts source)
     let fooFun = wrapInSolFunction "wrapper" (yulBuiltins <> generatedYul)
     let doc = wrapInContract (fromString (ccName coreContract)) "wrapper()" fooFun
