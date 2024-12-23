@@ -11,3 +11,7 @@ function unitMatch (x) {
   | () => return 1;
   };
 }
+
+function foo (x : word) {
+  return ();
+} 
