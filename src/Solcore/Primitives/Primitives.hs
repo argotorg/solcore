@@ -83,6 +83,9 @@ primPair = (Name "pair", Forall [aVar, bVar] ([] :=> (pairTy at bt)))
       at = TyVar aVar
       bt = TyVar bVar
 
+primUnit :: (Name, Scheme)
+primUnit = (Name "()", monotype unit)
+
 pairTy :: Ty -> Ty -> Ty 
 pairTy t1 t2 = t1 :-> t2 :-> pair t1 t2
 
@@ -93,7 +96,7 @@ stack :: Ty -> Ty
 stack t = TyCon "stack" [t]
 
 unit :: Ty
-unit = TyCon "unit" []
+unit = TyCon "()" []
 
 pair :: Ty -> Ty -> Ty
 pair t1 t2 = TyCon "pair" [t1, t2]

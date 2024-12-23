@@ -44,7 +44,11 @@ instance Semigroup Env where
           (cls `union` cls')
 
 instance Monoid Env where 
-  mempty = Env [] [] [Name "word", Name "pair"] [] [Name "pair"] []
+  mempty = Env [] 
+               [] [Name "word", Name "pair", Name "()"] 
+               [] 
+               [Name "pair", Name "()"] 
+               []
 
 -- definition of the monad 
 
@@ -424,7 +428,7 @@ instance Elab S.Pat where
         isT <- isTuple p 
         -- condition for tuples 
         if isT then
-          pure $ foldr1 pairPat ps'
+          pure $ mkTuplePat ps'
         else if isCon then 
           pure (PCon n ps')
         -- condition for variables 
@@ -433,6 +437,9 @@ instance Elab S.Pat where
         else throwError $ unlines ["Invalid pattern:"
                                   , pretty (PCon n ps')
                                   ]
+mkTuplePat :: [Pat Name] -> Pat Name 
+mkTuplePat [] = PCon (Name "()") []
+mkTuplePat ps = foldr1 pairPat ps
 
 pairPat :: Pat Name -> Pat Name -> Pat Name
 pairPat p1 p2 = PCon (Name "pair") [p1, p2]

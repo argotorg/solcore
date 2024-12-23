@@ -28,7 +28,7 @@ wordTypeInfo :: TypeInfo
 wordTypeInfo = TypeInfo 0 [] []
 
 unitTypeInfo :: TypeInfo 
-unitTypeInfo = TypeInfo 0 [] []
+unitTypeInfo = TypeInfo 0 [Name "()"] []
 
 pairTypeInfo :: TypeInfo 
 pairTypeInfo = TypeInfo 2 [Name "pair"] []
@@ -111,14 +111,15 @@ primCtx
   = Map.fromList [ primAddWord
                  , primEqWord
                  , primInvoke
-                 , primPair 
+                 , primPair
+                 , primUnit 
                  ]
 
 primTypeEnv :: TypeTable 
 primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
                            , (Name "pair", pairTypeInfo)
                            , (Name "->", arrowTypeInfo)
-                           , (Name "unit", unitTypeInfo)
+                           , (Name "()", unitTypeInfo)
                            ]
 
 primInstEnv :: InstTable

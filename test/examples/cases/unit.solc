@@ -1,0 +1,13 @@
+function one (x : ()) {
+  return 1;
+}
+
+function unitVal() {
+  return ();
+}
+
+function unitMatch (x) {
+  match x {
+  | () => return 1;
+  };
+}
