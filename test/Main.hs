@@ -106,6 +106,7 @@ cases
               , expectFail $ runTestForFile "joinErr.solc" caseFolder
               , runTestForFile "tyexp.solc" caseFolder
               , runTestForFile "Uncurry.solc" caseFolder
+              , runTestForFile "unit.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"

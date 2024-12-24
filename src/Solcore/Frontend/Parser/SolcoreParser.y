@@ -218,6 +218,7 @@ OptTypeParam : '(' TypeCommaList ')'          {$2}
 TypeCommaList :: { [Ty] }
 TypeCommaList : Type ',' TypeCommaList             {$1 : $3}
               | Type                               {[$1]}
+              | {- empty -}                        { [] }
 
 Functions :: { [FunDef] }
 Functions : Function Functions                     {$1 : $2}
@@ -285,6 +286,7 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
 TupleArgs :: { [Exp] }
 TupleArgs : Expr ',' Expr                          {[$1, $3]}
           | Expr ',' TupleArgs                     {$1 : $3}
+          | {- empty -}                            {[]}
 
 FunArgs :: {[Exp]}
 FunArgs : '(' ExprCommaList ')'                    {$2}
@@ -336,7 +338,7 @@ Type : Name OptTypeParam                            {TyCon $1 $2}
      | TupleTy                                      {$1}
 
 TupleTy :: { Ty }
-TupleTy : '(' TypeCommaList ')'                     {foldr1 pairTy $2}
+TupleTy : '(' TypeCommaList ')'                     {mkTupleTy $2}
 
 LamType :: {([Ty], Ty)}
 LamType : '(' TypeCommaList ')' '->' Type          {($2, $5)}
@@ -433,10 +435,19 @@ OptSemi : ';'                                      { () }
         | {- empty -}                              { () }
 
 {
+
+unitPCon :: Pat 
+unitPCon = Pat (Name "()") []
+
+mkTupleTy :: [Ty] -> Ty 
+mkTupleTy [] = TyCon (Name "()") []
+mkTupleTy ts = foldr1 pairTy ts 
+
 pairExp :: Exp -> Exp -> Exp 
 pairExp e1 e2 = ExpName Nothing (Name "pair") [e1, e2]
 
-tupleExp :: [Exp] -> Exp 
+tupleExp :: [Exp] -> Exp
+tupleExp [] = ExpName Nothing (Name "()") []
 tupleExp [t1] = t1
 tupleExp [t1, t2] = pairExp t1 t2 
 tupleExp (t1 : ts) = pairExp t1 (tupleExp ts)
