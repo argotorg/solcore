@@ -6,7 +6,7 @@ contract SimpleLambda{
     let m = lam (x) {
       return primAddWord (z,x) ;
     } ;
-    return n(1,0);
+    return m(n(1,0));
   }
   function main() {
     return f(50);
