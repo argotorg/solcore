@@ -204,7 +204,8 @@ tcExp ex@(Call me n args)
       isDirect <- isDirectCall n
       if isDirect then do
         tcCall me n args `wrapError` ex
-      else tcCall me qn args' `wrapError` ex
+      else do
+        tcCall me qn args' `wrapError` ex
 tcExp e@(Lam args bd _)
    = do
        (args', schs, ts') <- tcArgs args
@@ -252,36 +253,90 @@ closureConversion ps args vs (argTys, rTy) bdy
   = do 
       -- create the lambda function 
       -- and its closure type 
-      (lfun, dt, r) <- createLambdaImpl ps args vs (argTys, rTy) bdy 
+      (lfun, dt, r) <- createLambdaImpl ps args vs (argTys, rTy) bdy
       -- adding the type to the context 
-      -- and to generated declarations list 
+      -- and to generated declarations list
       checkDataType dt
       writeDataTy dt 
-      -- type checking generated lambda function 
+      -- type checking generated lambda function
+      addFunctionName (sigName (funSignature lfun))
       (fun', sch, ps', ty') <- tcFunDef lfun
-      writeFunDef fun' 
+      writeFunDef fun'
       -- create unique type storing the closure 
       let nm = sigName (funSignature fun')
+      extEnv nm sch
+      clearSubst
       (dt1, e1, t1) <- createUniqueTypeClosure nm sch dt (fst r)
       -- create an instance for invoke for functions with closures 
-      createClosureInvokeInstance fun' sch dt1  
+      createClosureInvokeInstance fun' sch dt1
       pure (e1, t1)
 
 createClosureInvokeInstance :: FunDef Id -> Scheme -> DataTy -> TcM ()
 createClosureInvokeInstance fd sch dt@(DataTy dn vs _)
   = do
       (ps :=> t) <- freshInst sch 
-      liftIO $ putStrLn $ pretty t
       let (argTys, retTy) = splitTy t
           (cts, argTys') = splitAt 1 argTys 
-          cty = case cts of 
-                  [] -> unit 
-                  (x : _) -> x
-      liftIO $ putStrLn $ pretty cty
-      liftIO $ putStrLn $ unwords (map pretty argTys')
-      liftIO $ putStrLn $ pretty $ ((Instance [] invokeName [tupleTyFromList argTys', retTy] cty []) :: Instance Name)
+          cty = TyCon dn (TyVar <$> vs)
+      idef <- createClosureInvokeDef dt (funSignature fd) t  
+      let instd = Instance [] invokableName [tupleTyFromList argTys', retTy] cty [idef]
+      liftIO $ putStrLn $ pretty instd
+      addInstance invokableName $ anfInstance ([] :=> InCls invokableName cty [tupleTyFromList argTys', retTy])
+      instd' <- tcInstance instd
+      writeInstance instd'
       pure ()
 
+createClosureInvokeDef :: DataTy -> Signature Id -> Ty -> TcM (FunDef Name)
+createClosureInvokeDef dt sig t 
+  = do
+      (sig', p, p1) <- createClosureInvokeSig dt sig t 
+      bdy' <- createClosureInvokeBody dt sig (p, p1) t 
+      pure (FunDef sig' bdy')
+
+createClosureInvokeSig :: DataTy -> 
+                          Signature Id -> 
+                          Ty -> 
+                          TcM (Signature Name, Param Name, Param Name)
+createClosureInvokeSig (DataTy dn vs _) sig t 
+  = do 
+      let 
+        (argTys, retTy) = splitTy t 
+        (cts, argTys') = splitAt 1 argTys 
+        cty = TyCon dn (TyVar <$> vs)
+        vs' = fv t 
+      mn <- freshName 
+      tn <- freshName 
+      let 
+        mp = Typed mn cty 
+        tp = Typed tn (tupleTyFromList argTys')
+      pure (Signature vs' [] invokeName [mp, tp] (Just retTy), mp, tp)
+
+createClosureInvokeBody :: DataTy -> 
+                           Signature Id -> 
+                           (Param Name, Param Name) -> 
+                           Ty -> 
+                           TcM (Body Name)
+createClosureInvokeBody (DataTy dn vs _) sig (Typed pn pt, Typed tp tt) t 
+  = do 
+      c <- freshName 
+      (ps, es) <- tuplePatsAndVars tt
+      let 
+        fn = sigName sig
+        s = Match [Var pn, Var tp] eqns
+        eqns = [((PCon dn [PVar c]) : ps, [Return $ Call Nothing fn (Var c : es)])]
+      pure [s]
+
+tuplePatsAndVars :: Ty -> TcM ([Pat Name], [Exp Name])
+tuplePatsAndVars t
+  = do 
+      let 
+        args = tupleArgs t 
+      ns <- mapM (\ _ -> freshName) args 
+      pure (PVar <$> ns, Var <$> ns)
+
+tupleArgs :: Ty -> [Ty] 
+tupleArgs (TyCon (Name "pair") [t1, t2]) = t1 : tupleArgs t2
+tupleArgs t = [t]
 
 createUniqueTypeClosure :: Name -> Scheme -> DataTy -> Exp Id -> TcM (DataTy, Exp Id, Ty)
 createUniqueTypeClosure n sch dt@(DataTy d vs [ctr]) e 
@@ -436,7 +491,7 @@ tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
 tcFunDef d@(FunDef sig bd)
   = withLocalEnv do
       -- checking if the function isn't defined
-      ((n,sch), pschs, ts) <- tcSignature sig 
+      ((n,sch), pschs, ts) <- tcSignature sig
       let lctx = (n,sch) : pschs
       (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
       (ps :=> t) <- freshInst sch
@@ -753,7 +808,7 @@ checkInstance idef@(Instance ctx n ts t funs)
       unless bound (checkBoundVariable ctx (fv (t : ts)) `wrapError` idef)
       -- checking instance methods
       mapM_ (checkMethod ipred) funs
-      let ninst = anfInstance $ ctx :=> InCls n t ts 
+      let ninst = anfInstance $ ctx :=> InCls n t ts
       -- add to the environment
       addInstance n ninst 
 
