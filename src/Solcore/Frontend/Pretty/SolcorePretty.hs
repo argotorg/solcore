@@ -145,7 +145,8 @@ instance Pretty a => Pretty (Signature a) where
       pprRetTy ty
   ppr (Signature vs [] n ps ty)
     = text "forall" <+> 
-      hsep (map ppr vs) <+> 
+      hsep (map ppr vs) <+>
+      text "." <+>
       text "function" <+> 
       ppr n <+> 
       pprParams ps <+> 
