@@ -198,14 +198,7 @@ tcExp (FieldAccess (Just e) n)
       (ps' :=> t') <- freshInst s
       pure (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExp ex@(Call me n args)
-  = do
-      let qn = QualName invokableName "invoke"
-          args' = [Var n, indirectArgs args]
-      isDirect <- isDirectCall n
-      if isDirect then do
-        tcCall me n args `wrapError` ex
-      else do
-        tcCall me qn args' `wrapError` ex
+  = tcCall me n args `wrapError` ex
 tcExp e@(Lam args bd _)
    = do
        (args', schs, ts') <- tcArgs args
@@ -229,15 +222,6 @@ tcExp e1@(TyExp e ty)
 unskol :: Ty -> Ty 
 unskol (TyVar (TVar v _)) = TyVar (TVar v False)
 unskol (TyCon n ts) = TyCon n (map unskol ts)
-
--- building indirect function call arguments 
-
-indirectArgs :: [Exp Name] -> Exp Name 
-indirectArgs [] = Con (Name "pair") []
-indirectArgs [e] = e 
-indirectArgs (e : es) = epair e (indirectArgs es)
-  where 
-    epair e1 e2 = Con (Name "pair") [e1, e2]
 
 applyI :: Subst -> Ty -> Ty
 applyI s = apply s
