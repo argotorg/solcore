@@ -1,0 +1,13 @@
+import dispatch;
+
+data wad = wad(word);
+
+function foo(w : word, fn : (word) -> wad) -> wad {
+    return fn(w);
+}
+
+contract C {
+    function hi() -> () {
+        foo(10, wad);
+    }
+}
