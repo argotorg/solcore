@@ -47,6 +47,7 @@ library
 
   -- cabal-fmt: expand src
   exposed-modules:
+      Solcore.Desugarer.IndirectCall
       Solcore.Desugarer.LambdaLifting
       Solcore.Desugarer.MatchCompiler
       Solcore.Desugarer.ReplaceWildcard

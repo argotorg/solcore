@@ -6,6 +6,7 @@ import qualified Data.Map as Map
 
 import Options.Applicative
 
+import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.LambdaLifting (lambdaLifting)
 import Solcore.Desugarer.MatchCompiler
 import Solcore.Frontend.Lexer.SolcoreLexer
@@ -44,7 +45,11 @@ pipeline = do
         when verbose $ do 
           putStrLn "> SCC Analysis:"
           putStrLn $ pretty ast'
-        r5 <- typeInfer ast'
+        ast1 <- indirectCall ast'
+        when verbose $ do
+          putStrLn "> Indirect calls desugaring:"
+          putStrLn $ pretty ast1
+        r5 <- typeInfer ast1
         withErr r5 $ \ (c', env) -> do
           let warns = warnings env
               logsInfo = logs env
