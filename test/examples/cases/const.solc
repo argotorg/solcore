@@ -1,0 +1,7 @@
+function const (x, y) {
+  return y;
+}
+
+function constLam () {
+  return lam(x,y) {return y;};
+}

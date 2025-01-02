@@ -1,5 +1,4 @@
 function foo(x,z) {
-  let m = lam (y) {return primAddWord(x,primAddWord(z,y));};
-  let f = m();
-  return f(1);
+  let m = lam (y, w) {return primAddWord(x,primAddWord(z,primAddWord(w,y)));};
+  return m(1,2);
 }

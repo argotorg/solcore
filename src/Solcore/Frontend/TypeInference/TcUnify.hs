@@ -126,11 +126,12 @@ typesNotMatch t1 t2
 
 typesMatchListErr :: MonadError String m => [Ty] -> [Ty] -> m a 
 typesMatchListErr ts ts' 
-  = throwError (errMsg (zip ts ts'))
+  = throwError errMsg
     where 
-      errMsg ps = unwords  ["Types do not match:"] ++ 
-                           concatMap tyList ps  
-      tyList (t1, t2) = pretty t1 <> " and " <> pretty t2
+      errMsg = unlines ["Types do not match:" 
+                       , unwords $ map pretty ts
+                       , "with"
+                       , unwords $ map pretty ts']
 
 typesDoNotUnify :: MonadError String m => Ty -> Ty -> m a 
 typesDoNotUnify t1 t2 
