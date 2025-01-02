@@ -12,6 +12,8 @@ contract Compose {
   function apply1(f, a) { return f(a); }
 
   function main() {
-    return apply1(compose(id, id), 42);
+    let f = compose(id, id);
+    let g = f();
+    return apply1(g, 42);
   }
 }

@@ -4,6 +4,7 @@ module Solcore.Desugarer.IndirectCall where
 import Control.Monad.Identity 
 import Control.Monad.State 
 import qualified Data.Map as Map
+import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcEnv (primCtx)
@@ -11,9 +12,11 @@ import Solcore.Primitives.Primitives
 
 -- top level desugarer 
 
-indirectCall :: CompUnit Name -> IO (CompUnit Name)
-indirectCall cunit 
-  = runIndirectM (desugar cunit) (Env $ Map.keys primCtx ++ collect cunit) 
+indirectCall :: UniqueTyMap -> CompUnit Name -> IO (CompUnit Name)
+indirectCall utm cunit 
+  = runIndirectM (desugar cunit) 
+                 (Env (Map.keys primCtx ++ collect cunit) utm)
+                      
 
 
 -- type class for desugar indirect calls 
@@ -101,6 +104,12 @@ instance Desugar (Exp Name) where
           pure $ Call m' n es' 
         else
           pure $ Call Nothing qn args'
+  desugar (Var v) 
+    = do 
+        r  <- lookupFunConstr v 
+        case r of 
+          Just cn -> pure (Con cn [])
+          _       -> pure (Var v)
   desugar x = pure x
 
 instance Desugar (Equation Name) where
@@ -168,10 +177,20 @@ type IndirectM a = StateT Env IO a
 
 data Env = Env {
              funNames :: [Name]
+           , unique :: UniqueTyMap
            } deriving Show 
 
 runIndirectM :: IndirectM a -> Env -> IO a
 runIndirectM m env = evalStateT m env
+
+lookupFunConstr :: Name -> IndirectM (Maybe Name)  
+lookupFunConstr n 
+  = do 
+      r <- Map.lookup n <$> gets unique 
+      case r of 
+        Just (DataTy _ _ ((Constr cn _) : _)) -> 
+          pure (Just cn)
+        _ -> pure Nothing 
 
 isDirectCall :: Name -> IndirectM Bool 
 isDirectCall n = (elem n) <$> gets funNames

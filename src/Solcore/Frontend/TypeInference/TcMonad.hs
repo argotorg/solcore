@@ -71,8 +71,8 @@ addUniqueType n dt
       modify (\ ctx -> ctx{ uniqueTypes = Map.insert n dt (uniqueTypes ctx)})
       modifyTypeInfo (dataName dt) (typeInfoFor dt)
 
-lookupFunAbs :: Name -> TcM (Maybe DataTy)
-lookupFunAbs n 
+lookupUniqueTy :: Name -> TcM (Maybe DataTy)
+lookupUniqueTy n 
   = (Map.lookup n) <$> gets uniqueTypes 
 
 typeInfoFor :: DataTy -> TypeInfo 

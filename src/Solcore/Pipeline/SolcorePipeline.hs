@@ -9,6 +9,7 @@ import Options.Applicative
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.LambdaLifting (lambdaLifting)
 import Solcore.Desugarer.MatchCompiler
+import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -35,21 +36,25 @@ pipeline = do
     when verbose $ do 
       putStrLn "> AST after name resolution"
       putStrLn $ pretty ast
-    let r1 = lambdaLifting ast 
-    withErr r1 $ \ (ast, ss) -> do 
+    (ast0, mdt) <- uniqueTypeGen ast
+    when verbose $ do 
+      putStrLn "> Unique type generation - Parte 01:"
+      putStrLn $ pretty ast0
+    let r1 = lambdaLifting mdt ast0 
+    withErr r1 $ \ (ast1, utm, ss) -> do 
       when verbose $ do 
-        putStrLn "> Lambda lifting:"
-        putStrLn $ pretty ast 
-      r2 <- sccAnalysis ast
-      withErr r2 $ \ ast' -> do
+        putStrLn "> Lambda lifting and unique type generation - Parte 02:"
+        putStrLn $ pretty ast1 
+      r2 <- sccAnalysis ast1
+      withErr r2 $ \ ast2 -> do
         when verbose $ do 
           putStrLn "> SCC Analysis:"
-          putStrLn $ pretty ast'
-        ast1 <- indirectCall ast'
+          putStrLn $ pretty ast2
+        ast3 <- indirectCall mdt ast2
         when verbose $ do
           putStrLn "> Indirect calls desugaring:"
-          putStrLn $ pretty ast1
-        r5 <- typeInfer ast1
+          putStrLn $ pretty ast3
+        r5 <- typeInfer utm ast3
         withErr r5 $ \ (c', env) -> do
           let warns = warnings env
               logsInfo = logs env

@@ -1,3 +1,17 @@
+data Bool = True | False;
+
+function not(b) {
+  match b {
+  | True => return False;
+  | False => return True;
+  };
+}
+
+function foo () {
+  let f = app();
+  return f(not,True);
+}
+
 function app () {
   return lam (f, x) {return f(x);};
 }

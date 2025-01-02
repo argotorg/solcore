@@ -25,21 +25,53 @@ import Solcore.Primitives.Primitives
 generateDecls :: (FunDef Id, Scheme) -> TcM (DataTy, Instance Name) 
 generateDecls (fd@(FunDef sig bd), sch) 
   = do
-      dt <- createTypeFunDef fd 
+      liftIO $ putStrLn $ "Function type:" ++ pretty sch
+      dt <- lookupUniqueType (sigName sig) sch
+      liftIO $ putStrLn $ "Unique type:" ++ pretty dt
       instd <- createInstance dt sig sch 
       pure (dt, instd)
 
-lookupUniqueType :: Name -> TcM (Maybe (TopDecl Name))
-lookupUniqueType n = (fmap TDataDef . Map.lookup n) <$> gets uniqueTypes 
+lookupUniqueType :: Name -> Scheme -> TcM DataTy
+lookupUniqueType n sch 
+  = do 
+      dt <- (fromJust . Map.lookup n) <$> gets uniqueTypes
+      if isClosureData dt then 
+        genClosureData n dt sch 
+      else pure dt 
+
+genClosureData :: Name -> DataTy -> Scheme -> TcM DataTy
+genClosureData nm dt@(DataTy dn vs (Constr n ((TyCon cn ts) : _) : _)) (Forall vs' _) 
+  = do 
+      zs' <- mapM (const freshName) vs'
+      let 
+          toTVar n = TVar n False
+          toTyVar n = TyVar (toTVar n)
+          ts2 = map toTyVar zs'
+          s2 = Subst (zip vs' ts2)
+          vs1 = map toTVar zs' 
+          ts' = TyVar <$> take (length (fv ts)) vs1 
+          sch = Forall vs1 ([] :=> funtype ts' (TyCon dn (TyVar <$> vs1)))
+          dt1 = DataTy dn vs1 [Constr n [TyCon cn ts']]
+      addUniqueType nm dt1
+      pure dt1 
+
+isClosureData :: DataTy -> Bool 
+isClosureData (DataTy _ _ ((Constr _ ts) : _)) 
+  = not $ null ts 
+isClosureData _ = False
 
 createInstance :: DataTy -> Signature Id -> Scheme -> TcM (Instance Name) 
-createInstance dt@(DataTy n vs _) sig sch 
+createInstance dt@(DataTy n vs c) sig sch 
   = do
       (ps :=> t) <- freshInst sch
-      (argTys', retTy) <- createArgs t   
-      let mainTy = TyCon n ([argTys', retTy])
-      bd <- createInvokeDef dt sig t 
-      let instd = Instance [] invokableName ([argTys', retTy]) mainTy [ bd ]
+      (argTys', tys, retTy) <- createArgs t   
+      let
+        vs' = (fv (ps :=> t)) 
+        args = if isClosureData dt then (TyVar <$> vs') 
+               else [argTys', retTy]
+      let mainTy = TyCon n args
+      bd <- createInvokeDef dt sig ps t
+      let instd = Instance ps invokableName [argTys', retTy] mainTy [ bd ]
       pure instd
 
 notUniqueTyArg :: Ty -> TcM Bool 
@@ -62,29 +94,32 @@ anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs
     tvs = fv inst
     freshNames = filter (not . flip elem tvs) (flip TVar False <$> namePool)
 
-createInvokeDef :: DataTy -> Signature Id-> Ty -> TcM (FunDef Name)
-createInvokeDef dt sig t 
+createInvokeDef :: DataTy -> Signature Id -> [Pred] -> Ty -> TcM (FunDef Name)
+createInvokeDef dt sig ps t 
   = do
-      (sig', mi) <- createInvokeSig dt sig t 
+      (sig', mi) <- createInvokeSig dt sig ps t 
       bd <- createInvokeBody dt sig mi t 
       pure (FunDef sig' bd)
 
-createInvokeSig :: DataTy -> Signature Id -> Ty -> TcM (Signature Name, Id)
-createInvokeSig (DataTy n vs cons) sig t 
+createInvokeSig :: DataTy -> Signature Id -> [Pred] -> Ty -> TcM (Signature Name, Id)
+createInvokeSig dt@(DataTy n vs cons) sig ps t 
   = do
-      (argTys', retTy) <- createArgs t
-      (args, mp) <- mkParamForSig argTys' (TyCon n ([argTys', retTy]))
+      (argTys', tys, retTy) <- createArgs t
+      let
+        vs' = fv ps \\ fv t 
+        args = if isClosureData dt then tys ++ (retTy : (TyVar <$> vs')) 
+               else [argTys', retTy]
+      (args', mp) <- mkParamForSig argTys' (TyCon n args)
       let  
           vs = fv [retTy, argTys']
-          sig' = Signature vs [] invokeName args (Just retTy)
+          sig' = Signature vs ps invokeName args' (Just retTy)
       pure (sig', mp)
 
-createArgs :: Ty -> TcM (Ty, Ty)
+createArgs :: Ty -> TcM (Ty, [Ty], Ty)
 createArgs t  
   = do
       let (ts',t') = splitTy t 
-      argTys' <- filterM notUniqueTyArg ts'
-      pure $ (tupleTyFromList argTys', t')
+      pure $ (tupleTyFromList ts', ts', t')
 
 tupleTyFromList :: [Ty] -> Ty
 tupleTyFromList [] = unit 
@@ -95,10 +130,10 @@ tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 mkParamForSig :: Ty -> Ty -> TcM ([Param Name], Id)
 mkParamForSig argTy selfTy 
   = do 
-      let selfArg = Typed selfName selfTy 
+      let selfArg = Untyped selfName 
       paramName <- freshName 
       let pid = Id paramName argTy
-      pure ([selfArg, Typed paramName argTy], pid)
+      pure ([selfArg, Untyped paramName], pid)
 
 -- creating invoke body 
 
@@ -129,15 +164,17 @@ createInvokeBody (DataTy dt vs [Constr c1 targs]) sig x@(Id pid ty) t
               ret = Return $ Call Nothing cname (concat ns)
           pure [Match [Var pid] [([pats'], [ret])]]
       else do 
-        cps <- mapM (\ _ -> PVar <$> freshName) targs 
+        (cps, pvs) <- unzip <$> mapM (\ _ -> let 
+                                  g n = (PVar n, Var n) in g <$> freshName) 
+                                     targs 
         -- matching on closure needed
         let n1 = selfName
             cp = Typed n1 tc
             cpat = PCon c1 cps
             pats1 = if null pats then [PVar pid] else pats 
-            ns1 = if null ns then [Var n1, Var pid] else Var n1 : (Var pid) : (concat ns) 
+            ns1 = if null ns then [Var n1, Var pid] else concat ns 
             pats' = foldr1 ppair (cpat : pats1) 
-            ret = Return $ Call Nothing cname ns1
+            ret = Return $ Call Nothing cname (pvs ++ ns1)
             tc = TyCon dt (TyVar <$> vs)
         pure [Match [epair (Var n1) (Var pid)] [([pats'], [ret])]]
 
@@ -167,9 +204,6 @@ tyFromLit (StrLit _) = string
 
 pairCon :: Name 
 pairCon = Name "pair"
-
-epair :: Exp Name -> Exp Name -> Exp Name 
-epair e1 e2 = Con pairCon [e1, e2]
 
 tyFromExp :: Exp Id -> Ty 
 tyFromExp (Var (Id _ t)) = t 

@@ -9,7 +9,11 @@ contract Compose {
 
   function idid() { return compose(id,id); }
 
-  function foo() { return idid(42); }
+  function foo() { 
+    let f = idid(); 
+    let g = f();
+    return g(42); 
+  }
 
   function main() {
     let f = compose(id,id);

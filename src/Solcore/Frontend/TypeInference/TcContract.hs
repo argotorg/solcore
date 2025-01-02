@@ -10,12 +10,14 @@ import Data.List
 import qualified Data.Map as Map
 import Data.Maybe
 
+import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
-import Solcore.Frontend.TypeInference.TcInvokeGen
+import Solcore.Frontend.TypeInference.TcInvokeGen (tyParam, isQual)
+import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcStmt
 import Solcore.Frontend.TypeInference.TcSubst
@@ -25,10 +27,12 @@ import Solcore.Primitives.Primitives
 -- top level type inference function: Boolean parameter 
 -- used to determine if it will generate definitions.
 
-typeInfer :: CompUnit Name -> IO (Either String (CompUnit Id, TcEnv))
-typeInfer (CompUnit imps decls) 
+typeInfer :: UniqueTyMap ->
+             CompUnit Name -> 
+             IO (Either String (CompUnit Id, TcEnv))
+typeInfer utm (CompUnit imps decls) 
   = do
-      r <- runTcM (tcCompUnit (CompUnit imps decls)) initTcEnv
+      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv utm)
       case r of 
         Left err -> pure $ Left err 
         Right ((CompUnit imps ds), env) -> 
@@ -254,8 +258,8 @@ generateTopDeclsFor ps
   = do 
       gen <- askGeneratingDefs 
       if gen then do 
-        (dts, instds) <- unzip <$> mapM generateDecls ps 
-        mapM_ checkDataType dts 
+        (dts, instds) <- unzip <$> mapM generateDecls ps
+        mapM_ checkDataType dts
         mapM_ checkInstance instds 
         insts' <- withNoGeneratingDefs (mapM tcInstance instds)
         mapM_ writeTopDecl ((TDataDef <$> dts) ++ (TInstDef <$> insts'))

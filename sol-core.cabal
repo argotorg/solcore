@@ -53,6 +53,7 @@ library
       Solcore.Desugarer.ReplaceWildcard
       Solcore.Desugarer.Specialise
       Solcore.Desugarer.EmitCore
+      Solcore.Desugarer.UniqueTypeGen
       Solcore.Frontend.Lexer.SolcoreLexer
       Solcore.Frontend.Parser.SolcoreParser
       Solcore.Frontend.Pretty.SolcorePretty
@@ -66,6 +67,7 @@ library
       Solcore.Frontend.Syntax.SyntaxTree
       Solcore.Frontend.TypeInference.Erase
       Solcore.Frontend.TypeInference.Id
+      Solcore.Frontend.TypeInference.InvokeGen 
       Solcore.Frontend.TypeInference.NameSupply
       Solcore.Frontend.TypeInference.SccAnalysis
       Solcore.Frontend.TypeInference.TcContract
