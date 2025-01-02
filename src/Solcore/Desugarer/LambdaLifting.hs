@@ -134,8 +134,27 @@ instance LiftLambda (Exp Name) where
           fd <- createFunction ps bd 
           addDecl (TFunDef fd)
           pure $ Var (sigName (funSignature fd))
-        else pure e 
+        else do 
+          arg <- Untyped <$> freshName "env"
+          (dt, dn) <- createClosureType free 
+          let bd' = mkMatchBody dn free arg bd 
+          fd <- createFunction (arg : ps) [bd']
+          addDecl (TDataDef dt)
+          addDecl (TFunDef fd)
+          pure $ Call Nothing (sigName (funSignature fd)) 
+                              [Con dn (Var <$> free)]
   liftLambda d = pure d 
+
+createClosureType :: [Name] -> LiftM (DataTy, Name)  
+createClosureType ns 
+  = do 
+      n <- freshName "t_closure"
+      let vs = (flip TVar False) <$> ns 
+      pure (DataTy n vs [Constr n (TyVar <$> vs)], n)
+
+mkMatchBody :: Name -> [Name] -> Param Name -> Body Name -> Stmt Name
+mkMatchBody dn ns (Untyped n) bd 
+  = Match [Var n] [([PCon dn (PVar <$> ns)], bd)] 
 
 createFunction :: [Param Name] -> 
                   Body Name -> 
