@@ -13,7 +13,8 @@ contract Compose {
 
   function main() {
     let f = compose(id,id);
-    return f(42) : word;
+    let g = f();
+    return g(42) : word;
   }
 }
 
