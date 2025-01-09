@@ -242,7 +242,17 @@ specConApp i@(Id n conTy) args ty = do
 -- | Specialise a function call
 -- given actual arguments and the expected result type
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revert") e) args ty = pure (i, args)  -- FIXME
+specCall i@(Id (Name "revert") ity) args ty = pure (i, args)  -- FIXME
+specCall i@(Id (QualName "Ref" "store") ity@(ita1 :-> ita2 :->itb)) args ety | isStackStoreTy ity =
+  do
+    debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity, ") ",
+              show args, " : ", pretty ety] -- FIXME: why is ety variable?
+    let argTypes = [ita1, ita2]
+    let typedArgs = zip args argTypes
+    args' <- forM typedArgs (uncurry specExp)
+    let i' = Id (Name "stkStore") ity
+    debug ["< specCall **store @stack**: ", pretty i', "(",  render $ commaSepList args', ")"]
+    return (i', args')
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
@@ -275,6 +285,9 @@ specCall i args ty = do
     guardSimpleType (TyVar _) = panics ["specCall ", pretty i, ": polymorphic result type"]
     guardSimpleType (_ :-> _) = panics ["specCall ", pretty i, ": function result type"]
     guardSimpleType _ = pure ()
+
+isStackStoreTy (TyCon "stack" [_] :-> _) = True
+isStackStoreTy _ = False
 
 -- | `specFunDef` specialises a function definition
 -- to the given type of the form `arg1Ty -> arg2Ty -> ... -> resultTy`
