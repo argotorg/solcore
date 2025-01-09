@@ -243,7 +243,14 @@ specConApp i@(Id n conTy) args ty = do
 -- given actual arguments and the expected result type
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
 specCall i@(Id (Name "revert") ity) args ty = pure (i, args)  -- FIXME
-specCall i@(Id (QualName "Ref" "store") ity@(ita1 :-> ita2 :->itb)) args ety | isStackStoreTy ity =
+specCall i@(Id (QualName "Ref" "load") ity@(ita :-> itb)) [arg] ety | isStackStoreTy ita = do
+  debug ["> specCall **load @stack**: ", pretty i, "@(",pretty ity, ") ",
+              show arg, " : ", pretty ety]
+  arg' <- specExp arg ita
+  let i' = Id (Name "stkLoad") ity
+  debug ["< specCall **load @stack**: ", pretty i', "(",  pretty arg, ")"]
+  return (i', [arg'])
+specCall i@(Id (QualName "Ref" "store") ity@(ita1 :-> ita2 :->itb)) args ety | isStackStoreTy ita1 =
   do
     debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity, ") ",
               show args, " : ", pretty ety] -- FIXME: why is ety variable?
@@ -286,7 +293,7 @@ specCall i args ty = do
     guardSimpleType (_ :-> _) = panics ["specCall ", pretty i, ": function result type"]
     guardSimpleType _ = pure ()
 
-isStackStoreTy (TyCon "stack" [_] :-> _) = True
+isStackStoreTy (TyCon "stack" [_]) = True
 isStackStoreTy _ = False
 
 -- | `specFunDef` specialises a function definition
