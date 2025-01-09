@@ -1,11 +1,18 @@
+function revert(a:word,b:word) {
+  assembly {
+    revert(a,b)
+  };
+}
+
 class  ref : Ref(deref) {
   function load (r:ref) -> deref;
   function store(r:ref, v:deref) -> unit;
 }
 
 instance stack(word) : Ref(word) {
-  function load(r) { return stkLoad(r); }
-  function store(r, v) { return stkStore(r, v); }
+   // these definitions will not be used
+  function load(r) { revert(0,0); return(999999);}
+  function store(r, v) { revert(0,0);  }
 }
 
 contract AssignWord {
