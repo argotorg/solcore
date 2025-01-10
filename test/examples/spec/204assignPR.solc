@@ -1,8 +1,10 @@
-function revert(a:word,b:word) {
+
+forall any.function revert(a:word,b:word) -> any {
   assembly {
     revert(a,b)
   };
 }
+
 
 class  ref : Ref(deref) {
   function load (r:ref) -> deref;
@@ -11,7 +13,7 @@ class  ref : Ref(deref) {
 
 instance stack(a) : Ref(a) {
    // these definitions will not be used
-  function load(r) { revert(0,0); return(999999);}
+  function load(r) { return(revert(0,0)); }
   function store(r, v) { revert(0,0);  }
 }
 
@@ -20,12 +22,16 @@ instance stack(a) : Ref(a) {
 // requires function on references
 
 /*
-class self : HasFirst(a) { first(s:self) -> a }
+class self : HasFirst(a) { function first(s:self) -> a; }
 instance stack((a,b)) : HasFirst(stack(a)) {
-  // first : stack(a,b) -> stack(a);
+  // first : stack((a,b)) -> stack(a);
   // probably needs to be an intrinsic?
+  function first(pr:stack((a,b))){
+    return(revert(0,0)); // FIXME: this does not typecheck. WHY?
+  }
 }  
 */
+
 contract AssignPR {
   function fst(p) {
     match p {
@@ -42,7 +48,7 @@ contract AssignPR {
 
     let y : stack((word, word));    
     // y = x;
-    // Ref.store(y, Ref.load(x));
+    Ref.store(y, Ref.load(x));
 
     // return fst(y);
     return fst(Ref.load(y));
