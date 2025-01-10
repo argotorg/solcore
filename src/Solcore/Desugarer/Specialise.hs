@@ -29,6 +29,7 @@ emptyTable = Map.empty
 
 type TcFunDef = FunDef Id
 type TcExp = Exp Id
+type TcStmt = Stmt Id
 
 type Resolution = (Ty, TcFunDef)
 data SpecState = SpecState
@@ -40,6 +41,7 @@ data SpecState = SpecState
   , splocalEnv :: Table Ty
   , spSubst :: Subst
   , spDebug :: Bool
+  , spPendingStmts :: [TcStmt]
   }
 
 
@@ -91,6 +93,7 @@ initSpecState debugp env = SpecState
     , splocalEnv = emptyTable
     , spSubst = emptySubst
     , spDebug = debugp
+    , spPendingStmts = []
     }
 
 addSpecialisation :: Name -> TcFunDef -> SM ()
@@ -132,6 +135,12 @@ atCurrentSubst a = flip apply a <$> getSpSubst
 
 addData :: DataTy -> SM ()
 addData dt = modify (\s -> s { spDataTable = Map.insert (dataName dt) dt (spDataTable s) })
+
+deletePendingStmts :: SM ()
+deletePendingStmts = modify $ \s -> s { spPendingStmts = [] }
+
+addPendingStmts :: [TcStmt] -> SM ()
+addPendingStmts stmts = modify $ \s -> s { spPendingStmts = spPendingStmts s <> stmts }
 
 -------------------------------------------------------------------------------
 
@@ -326,8 +335,8 @@ specFunDef fd = withLocalState do
       addSpecialisation name' fd'
       return name'
 
-specBody :: [Stmt Id] -> SM [Stmt Id]
-specBody = mapM specStmt
+specBody :: [TcStmt] -> SM [TcStmt]
+specBody stmts = mconcat <$> mapM specStmt' stmts
 
 {-
 ensureSimple ty' stmt subst = case ty' of
@@ -347,7 +356,15 @@ ensureClosed ty ctxt subst = do
   unless (null tvs) $ panics ["spec(", pretty ctxt,"): free type vars in ", pretty ty, ": ", show tvs
                              , " @ subst=", pretty subst]
 
-specStmt :: Stmt Id -> SM(Stmt Id)
+-- specialise a stmt, include pending stmts
+specStmt' :: TcStmt -> SM [TcStmt]
+specStmt' stmt = do
+  stmts <- gets spPendingStmts
+  stmt' <- specStmt stmt
+  deletePendingStmts
+  return (stmts <> pure stmt')
+
+specStmt :: TcStmt -> SM TcStmt
 specStmt stmt@(Return e) = do
   subst <- getSpSubst
   let ty = typeOfTcExp e
@@ -390,7 +407,7 @@ specStmt (StmtExp e) = do
 specStmt (Asm ys) = pure (Asm ys)
 specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
 
-specMatch :: [Exp Id] -> [([Pat Id], [Stmt Id])] -> SM (Stmt Id)
+specMatch :: [Exp Id] -> [([Pat Id], [TcStmt])] -> SM (TcStmt)
 specMatch exps alts = do
   subst <- getSpSubst
   -- debug ["> specMatch, scrutinee: ", pretty exps, " @ ", pretty subst]
@@ -468,14 +485,14 @@ typeOfTcExp (Lam args body (Just tb))       = funtype tas tb where
 typeOfTcExp (TyExp _ ty) = ty   
 typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
 
-typeOfTcStmt :: Stmt Id -> Ty
+typeOfTcStmt :: TcStmt -> Ty
 typeOfTcStmt (n := e) = unit
 typeOfTcStmt (Let n _ _) = idType n
 typeOfTcStmt (StmtExp e) = typeOfTcExp e
 typeOfTcStmt (Return e) = typeOfTcExp e
 typeOfTcStmt (Match _ ((pat, body):_)) = typeOfTcBody body
 
-typeOfTcBody :: [Stmt Id] -> Ty
+typeOfTcBody :: [TcStmt] -> Ty
 typeOfTcBody []    = unit
 typeOfTcBody [s]   = typeOfTcStmt s
 typeOfTcBody (_:b) = typeOfTcBody b
@@ -509,7 +526,7 @@ instance HasType (Exp Id) where
   fv (Call e i es) = concatMap fv (Var i:es) ++ maybe [] fv e
   fv (Lam ps b t) = fv b ++ maybe [] fv t
 
-instance HasType (Stmt Id) where
+instance HasType TcStmt where
   apply s (n := e) = apply s n := apply s e
   apply s (Let n t e) = Let (apply s n) (apply s <$> t) (apply s <$> e)
   apply s (StmtExp e) = StmtExp (apply s e)
