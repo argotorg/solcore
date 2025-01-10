@@ -219,8 +219,9 @@ addMethodResolution ty fd = do
 specExp :: TcExp -> Ty -> SM TcExp
 specExp e@(Call Nothing i args) ty = do
   -- debug ["> specExp (Call): ", pretty e, " : ", pretty (idType i), " ~> ", pretty ty]
-  (i', args') <- specCall i args ty
-  let e' = Call Nothing i' args'
+  -- (i', args') <- specCall i args ty
+  -- let e' = Call Nothing i' args'
+  e' <- specCall i args ty
   -- debug ["< specExp (Call): ", pretty e']
   return e'
 specExp e@(Con i@(Id n conty) es) ty = do
@@ -250,15 +251,15 @@ specConApp i@(Id n conTy) args ty = do
 
 -- | Specialise a function call
 -- given actual arguments and the expected result type
-specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revert") ity) args ty = pure (i, args)  -- FIXME
+specCall :: Id -> [TcExp] -> Ty -> SM TcExp
+-- specCall i@(Id (Name "revert") ity) args ty = pure (Call Nothing i' args')  -- FIXME
 specCall i@(Id (QualName "Ref" "load") ity@(ita :-> itb)) [arg] ety | isStackStoreTy ita = do
   debug ["> specCall **load @stack**: ", pretty i, "@(",pretty ity, ") ",
               show arg, " : ", pretty ety]
   arg' <- specExp arg ita
   let i' = Id (Name "stkLoad") ity
   debug ["< specCall **load @stack**: ", pretty i', "(",  pretty arg, ")"]
-  return (i', [arg'])
+  return (Call Nothing i' [arg'])
 specCall i@(Id (QualName "Ref" "store") ity@(ita1 :-> ita2 :->itb)) args ety | isStackStoreTy ita1 =
   do
     debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity, ") ",
@@ -268,7 +269,7 @@ specCall i@(Id (QualName "Ref" "store") ity@(ita1 :-> ita2 :->itb)) args ety | i
     args' <- forM typedArgs (uncurry specExp)
     let i' = Id (Name "stkStore") ity
     debug ["< specCall **store @stack**: ", pretty i', "(",  render $ commaSepList args', ")"]
-    return (i', args')
+    return (Call Nothing i' args')
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
@@ -292,10 +293,11 @@ specCall i args ty = do
       name' <- specFunDef fd
       debug ["< specCall: ", pretty name']
       args'' <- atCurrentSubst args'
-      return (Id name' ty', args'')
+      let i' = Id name' ty'
+      return (Call Nothing i' args')
     Nothing -> do
       debug ["! specCall: no resolution found for ", show name, " : ", pretty funType]
-      return (i, args')
+      return (Call Nothing i args')
   where
     guardSimpleType :: Ty -> SM ()
     guardSimpleType (TyVar _) = panics ["specCall ", pretty i, ": polymorphic result type"]
