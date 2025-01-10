@@ -23,12 +23,13 @@ contract AssignWord {
 
    // let x = 42;
    let x : stack(word) ;
-   Ref.store(x,42);  // this does not work :(
+   Ref.store(x,42);
+
    // let y : word;
    let y : stack(word) ;
 
    // y = x;
-   stkStore(y, stkLoad(x));
+   Ref.store(y, Ref.load(x));
 
   // return y;
   return Ref.load(y);

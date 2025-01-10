@@ -145,7 +145,7 @@ translateType (TyCon name tas) = translateTCon name tas
 translateType t = error ("Cannot translate type " ++ show t)
 
 translateTCon :: Name -> [Ty] -> EM Core.Type
--- NB "pair" is used for all tuples
+translateTCon (Name "()") [] = pure Core.TUnit
 translateTCon (Name "pair") tas = translateProductType tas
 translateTCon (Name "stack") [t] = translateType t
 translateTCon tycon tas = do
@@ -176,6 +176,7 @@ emitConApp :: Id -> [Exp Id] -> Translation Core.Expr
 emitConApp con@(Id n ty) as = do
   unless (null . fv $ ty)  (error $ "emitConApp: free variables in type " ++ pretty ty ++ " in " ++ pretty (Con con as))
   case targetType ty  of
+    TyCon "()" [] -> pure (Core.EUnit, [])
     (TyCon "pair" _) -> translateProduct as
     (TyCon tcname tas) -> do
         mti <- gets (Map.lookup tcname . ecDT)

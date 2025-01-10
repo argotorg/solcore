@@ -5,7 +5,7 @@ This is meant to be run on typed and defunctionalised code, so no higher-order f
 -}
 
 import Common.Monad
-import Control.Monad
+import Control.Monad ( unless, forM_, void, forM, when )
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.List(intercalate)
@@ -17,7 +17,7 @@ import Solcore.Frontend.TypeInference.Id ( Id(..) )
 import Solcore.Frontend.TypeInference.TcEnv(TcEnv(..),TypeInfo(..))
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
-import Solcore.Primitives.Primitives
+import Solcore.Primitives.Primitives as Primitives
 import System.Exit
 import Common.Pretty
 
@@ -137,11 +137,15 @@ addData :: DataTy -> SM ()
 addData dt = modify (\s -> s { spDataTable = Map.insert (dataName dt) dt (spDataTable s) })
 
 deletePendingStmts :: SM ()
-deletePendingStmts = modify $ \s -> s { spPendingStmts = [] }
+deletePendingStmts = do
+  debug ["! deletePendingStmts"]
+  modify $ \s -> s { spPendingStmts = mempty }
 
 addPendingStmts :: [TcStmt] -> SM ()
-addPendingStmts stmts = modify $ \s -> s { spPendingStmts = spPendingStmts s <> stmts }
-
+addPendingStmts stmts = do
+  modify $ \s -> s { spPendingStmts = spPendingStmts s <> stmts }
+  pending <- gets spPendingStmts
+  debug ["! addPendingStmts: ", prettys stmts, ", now pending ", prettys pending]
 -------------------------------------------------------------------------------
 
 specialiseCompUnit :: CompUnit Id -> Bool -> TcEnv -> IO (CompUnit Id)
@@ -253,23 +257,33 @@ specConApp i@(Id n conTy) args ty = do
 -- given actual arguments and the expected result type
 specCall :: Id -> [TcExp] -> Ty -> SM TcExp
 -- specCall i@(Id (Name "revert") ity) args ty = pure (Call Nothing i' args')  -- FIXME
+
+-- Special case: Ref.load@stack(x) ~> x
 specCall i@(Id (QualName "Ref" "load") ity@(ita :-> itb)) [arg] ety | isStackStoreTy ita = do
   debug ["> specCall **load @stack**: ", pretty i, "@(",pretty ity, ") ",
               show arg, " : ", pretty ety]
   arg' <- specExp arg ita
   let i' = Id (Name "stkLoad") ity
-  debug ["< specCall **load @stack**: ", pretty i', "(",  pretty arg, ")"]
-  return (Call Nothing i' [arg'])
-specCall i@(Id (QualName "Ref" "store") ity@(ita1 :-> ita2 :->itb)) args ety | isStackStoreTy ita1 =
+  debug ["< specCall **load @stack**: ", pretty arg']
+  return arg'
+
+-- Special case: Ref.load@stack(x, y) ~> x := y, ()
+specCall i@(Id (QualName "Ref" "store")
+         ity@(ita1 :-> ita2 :->itb))
+         args@[arg1, arg2] ety | isStackStoreTy ita1 =
   do
     debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity, ") ",
               show args, " : ", pretty ety] -- FIXME: why is ety variable?
     let argTypes = [ita1, ita2]
     let typedArgs = zip args argTypes
-    args' <- forM typedArgs (uncurry specExp)
-    let i' = Id (Name "stkStore") ity
-    debug ["< specCall **store @stack**: ", pretty i', "(",  render $ commaSepList args', ")"]
-    return (Call Nothing i' args')
+    -- args' <- forM typedArgs (uncurry specExp)
+    arg1' <- specExp arg1 ita1
+    arg2' <- specExp arg2 ita2
+    let stmts = [arg1' := arg2']
+    addPendingStmts stmts
+    let unitval = Con (Id (Name "unit") Primitives.unit) []
+    debug ["< specCall **store @stack**: ", pretty stmts, pretty unitval]
+    return unitval
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
@@ -361,10 +375,14 @@ ensureClosed ty ctxt subst = do
 -- specialise a stmt, include pending stmts
 specStmt' :: TcStmt -> SM [TcStmt]
 specStmt' stmt = do
-  stmts <- gets spPendingStmts
+  -- debug ["> specStmt': ", pretty stmt]
   stmt' <- specStmt stmt
+  pending <- gets spPendingStmts
+  unless (null pending) (debug ["! specStmt: pending ", prettys pending])
+  let stmts' = pending <> pure stmt'
   deletePendingStmts
-  return (stmts <> pure stmt')
+  -- debug ["< specStmt': ", prettys stmts']
+  return stmts'
 
 specStmt :: TcStmt -> SM TcStmt
 specStmt stmt@(Return e) = do
