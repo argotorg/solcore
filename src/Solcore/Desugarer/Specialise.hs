@@ -136,10 +136,14 @@ atCurrentSubst a = flip apply a <$> getSpSubst
 addData :: DataTy -> SM ()
 addData dt = modify (\s -> s { spDataTable = Map.insert (dataName dt) dt (spDataTable s) })
 
-deletePendingStmts :: SM ()
-deletePendingStmts = do
-  debug ["! deletePendingStmts"]
+flushPendingStmts :: SM [TcStmt]
+flushPendingStmts = do
+  stmts <- gets spPendingStmts
   modify $ \s -> s { spPendingStmts = mempty }
+  return stmts
+
+deletePendingStmts :: SM ()
+deletePendingStmts = modify $ \s -> s { spPendingStmts = mempty }
 
 addPendingStmts :: [TcStmt] -> SM ()
 addPendingStmts stmts = do
@@ -268,6 +272,8 @@ specCall i@(Id (QualName "Ref" "load") ity@(ita :-> itb)) [arg] ety | isStackSto
   return arg'
 
 -- Special case: Ref.load@stack(x, y) ~> x := y, ()
+-- since we are specialising expressions, unit gets returned
+-- and the assignment is added to pending statementss
 specCall i@(Id (QualName "Ref" "store")
          ity@(ita1 :-> ita2 :->itb))
          args@[arg1, arg2] ety | isStackStoreTy ita1 =
@@ -377,10 +383,10 @@ specStmt' :: TcStmt -> SM [TcStmt]
 specStmt' stmt = do
   -- debug ["> specStmt': ", pretty stmt]
   stmt' <- specStmt stmt
-  pending <- gets spPendingStmts
+  pending <- flushPendingStmts
   unless (null pending) (debug ["! specStmt: pending ", prettys pending])
   let stmts' = pending <> pure stmt'
-  deletePendingStmts
+
   -- debug ["< specStmt': ", prettys stmts']
   return stmts'
 
@@ -502,7 +508,7 @@ typeOfTcExp exp@(Call Nothing i args) = applyTo args funTy where
                        ]
 typeOfTcExp (Lam args body (Just tb))       = funtype tas tb where
   tas = map typeOfTcParam args
-typeOfTcExp (TyExp _ ty) = ty   
+typeOfTcExp (TyExp _ ty) = ty
 typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
 
 typeOfTcStmt :: TcStmt -> Ty
