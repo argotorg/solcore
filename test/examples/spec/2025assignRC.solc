@@ -9,7 +9,7 @@ class  ref : Ref(deref) {
   function store(r:ref, v:deref) -> unit;
 }
 
-instance stack(word) : Ref(word) {
+instance stack(a) : Ref(a) {
    // these definitions will not be used
   function load(r) { revert(0,0); return(999999);}
   function store(r, v) { revert(0,0);  }

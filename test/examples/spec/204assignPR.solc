@@ -1,0 +1,50 @@
+function revert(a:word,b:word) {
+  assembly {
+    revert(a,b)
+  };
+}
+
+class  ref : Ref(deref) {
+  function load (r:ref) -> deref;
+  function store(r:ref, v:deref) -> unit;
+}
+
+instance stack(a) : Ref(a) {
+   // these definitions will not be used
+  function load(r) { revert(0,0); return(999999);}
+  function store(r, v) { revert(0,0);  }
+}
+
+// how to do x.first = z ?
+// store(first(x), load(z))
+// requires function on references
+
+/*
+class self : HasFirst(a) { first(s:self) -> a }
+instance stack((a,b)) : HasFirst(stack(a)) {
+  // first : stack(a,b) -> stack(a);
+  // probably needs to be an intrinsic?
+}  
+*/
+contract AssignPR {
+  function fst(p) {
+    match p {
+      | (a,b) => return a;
+    };
+  }
+
+
+  function main() {
+    // let x : (word, word) = (42, 7) ;
+    let x : stack((word, word));
+    Ref.store(x, (42, 7));
+
+
+    let y : stack((word, word));    
+    // y = x;
+    // Ref.store(y, Ref.load(x));
+
+    // return fst(y);
+    return fst(Ref.load(y));
+  }  
+}
