@@ -14,8 +14,8 @@ import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Erase
 import Solcore.Frontend.TypeInference.Id
+import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.TcEnv
-import Solcore.Frontend.TypeInference.TcInvokeGen hiding (vars, tyFromParam, schemeFromSig)
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify

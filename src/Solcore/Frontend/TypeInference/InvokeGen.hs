@@ -154,6 +154,24 @@ tupleTyFromList [t] = t
 tupleTyFromList [t1,t2] = pair t1 t2 
 tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 
+anfInstance :: Inst -> Inst
+anfInstance inst@(q :=> p@(InCls c t [])) = inst
+anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs 
+  where
+    q' = zipWith (:~:) bs as
+    bs = map TyVar $ take (length as) freshNames
+    tvs = fv inst
+    freshNames = filter (not . flip elem tvs) (flip TVar False <$> namePool)
+
+isQual :: Name -> Bool
+isQual (QualName _ _) = True 
+isQual _ = False
+
+tyParam :: Param a -> TcM Ty 
+tyParam (Typed _ t) = pure t 
+tyParam (Untyped _) = freshTyVar
+
+
 tyFromData :: DataTy -> Ty 
 tyFromData (DataTy dn vs _) 
   = TyCon dn (TyVar <$> vs)

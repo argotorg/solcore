@@ -16,7 +16,6 @@ import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
-import Solcore.Frontend.TypeInference.TcInvokeGen (tyParam, isQual)
 import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcStmt
