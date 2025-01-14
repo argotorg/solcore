@@ -79,7 +79,7 @@ cases
               , expectFail $ runTestForFile "DupFun.solc" caseFolder
               , runTestForFile "DuplicateFun.solc" caseFolder
               , runTestForFile "EitherModule.solc" caseFolder
-              , expectFail $ runTestForFile "Id.solc" caseFolder
+              , runTestForFile "Id.solc" caseFolder
               , runTestForFile "IncompleteInstDef.solc" caseFolder 
               , expectFail $ runTestForFile "Invokable.solc" caseFolder
               , runTestForFile "ListModule.solc" caseFolder
