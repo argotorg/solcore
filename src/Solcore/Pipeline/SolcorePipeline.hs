@@ -8,6 +8,7 @@ import Options.Applicative
 
 import Solcore.Desugarer.LambdaLifting (lambdaLifting)
 import Solcore.Desugarer.MatchCompiler
+import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -34,12 +35,16 @@ pipeline = do
     when verbose $ do 
       putStrLn "> AST after name resolution"
       putStrLn $ pretty ast
-    let r1 = lambdaLifting ast 
-    withErr r1 $ \ (ast, ss) -> do 
+    (ast0, mdt) <- uniqueTypeGen ast 
+    when verbose $ do 
+      putStrLn "> Unique type generation - Part 01:"
+      putStrLn $ pretty ast0 
+    let r1 = lambdaLifting mdt ast0 
+    withErr r1 $ \ (ast1, utm, ss) -> do 
       when verbose $ do 
-        putStrLn "> Lambda lifting:"
-        putStrLn $ pretty ast 
-      r2 <- sccAnalysis ast
+        putStrLn "> Lambda lifting and unique type generation - Part 02:"
+        putStrLn $ pretty ast1 
+      r2 <- sccAnalysis ast1
       withErr r2 $ \ ast' -> do
         when verbose $ do 
           putStrLn "> SCC Analysis:"
