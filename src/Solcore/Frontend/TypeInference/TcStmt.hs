@@ -160,8 +160,7 @@ tcExp (Var n)
       (ps :=> t) <- freshInst s
       -- checks if it is a function name, and return 
       -- its corresponding unique type 
-      gen <- gets generateDefs
-      r <- lookupFunAbs n
+      r <- lookupUniqueTy n
       let
         (args,ret) = splitTy t
         args' = tupleTyFromList args
@@ -169,8 +168,7 @@ tcExp (Var n)
           = let
               t1 = TyCon nt [args', ret]
             in (Con (Id n t1) [], t1)
-        p = if gen then (Var (Id n t), t) 
-            else maybe (Var (Id n t), t) mkCon r
+        p = maybe (Var (Id n t), t) mkCon r
       pure (fst p, ps, snd p)
 tcExp e@(Con n es)
   = do
@@ -201,30 +199,7 @@ tcExp (FieldAccess (Just e) n)
       (ps' :=> t') <- freshInst s
       pure (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExp ex@(Call me n args)
-  = do
-      gen <- gets generateDefs
-      let qn = QualName invokableName "invoke"
-          args' = [Var n, indirectArgs args]
-      isDirect <- isDirectCall n
-      if gen && isDirect then do
-        tcCall me n args `wrapError` ex
-      else do
-        if isDirect then tcCall me n args `wrapError` ex
-          else
-            tcCall me qn args' `wrapError` ex
--- tcExp e@(Lam args bd _)
---   = do
---       (args', schs, ts') <- tcArgs args
---       (bd',ps,t') <- withLocalCtx schs (tcBody bd)
---       s <- getSubst
---       let ps1 = apply s ps
---           ts1 = apply s (map unskol ts')
---           t1 = apply s (unskol t')
---           vs = fv ps1 `union` fv t' `union` fv ts1
---           ty = funtype ts1 t1
---       gen <- gets generateDefs
---       (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs (ts1,t1) bd'
---       pure (e', ps1, ty1)
+  = tcCall me n args `wrapError` ex
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
