@@ -75,7 +75,7 @@ cases
               , runTestForFile "app.solc" caseFolder 
               , expectFail $ runTestForFile "BadInstance.solc" caseFolder
               , runTestForFile "BoolNot.solc" caseFolder
-              , expectFail $ runTestForFile "Compose.solc" caseFolder
+              , runTestForFile "Compose.solc" caseFolder
               , expectFail $ runTestForFile "DupFun.solc" caseFolder
               , runTestForFile "DuplicateFun.solc" caseFolder
               , runTestForFile "EitherModule.solc" caseFolder
@@ -92,13 +92,13 @@ cases
               , runTestForFile "Pair.solc" caseFolder
               , expectFail $ runTestForFile "PairMatch1.solc" caseFolder
               , expectFail $ runTestForFile"PairMatch2.solc" caseFolder
-              , expectFail $ runTestForFile "Peano.solc" caseFolder
+              , runTestForFile "Peano.solc" caseFolder
               , runTestForFile "PeanoMatch.solc" caseFolder
               , runTestForFile "RefDeref.solc" caseFolder
               , expectFail $ runTestForFile "SillyReturn.solc" caseFolder
               , runTestForFile "SimpleField.solc" caseFolder
               , expectFail $ runTestForFile "SimpleInvoke.solc" caseFolder
-              , expectFail $ runTestForFile "SimpleLambda.solc" caseFolder
+              , runTestForFile "SimpleLambda.solc" caseFolder
               , runTestForFile "SingleFun.solc" caseFolder
               , runTestForFile "assembly.solc" caseFolder
               , runTestForFile "join.solc" caseFolder

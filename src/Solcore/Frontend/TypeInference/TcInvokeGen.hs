@@ -11,7 +11,7 @@ import qualified Data.Map as Map
 import Data.Maybe
 
 import Solcore.Frontend.Pretty.SolcorePretty
-import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax hiding (epair)
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv

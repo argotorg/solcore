@@ -253,7 +253,7 @@ tcSignature sig@(Signature _ ctx n ps rt)
       let sch = maybe (monotype $ funtype ts t) id msch
       pure ((n, sch), pschs, ts)
 
-tcFunDef :: FunDef Name -> TcM (FunDef Id, [Pred], Ty)
+tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
 tcFunDef d@(FunDef sig bd)
   = withLocalEnv do
       -- checking if the function isn't defined
@@ -270,10 +270,8 @@ tcFunDef d@(FunDef sig bd)
       s <- getSubst 
       sch'@(Forall svs (sps :=> st)) <- generalize (ps2, apply s t) `wrapError` d
       let sig2 = elabSignature sig sch'
-      gen <- gets generateDefs
-      when gen (generateDecls (FunDef sig2 bd', sch')) 
       info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
-      pure (apply s $ FunDef sig2  bd', apply s ps2, apply s t1)
+      pure (apply s $ FunDef sig2  bd', sch', apply s ps2, apply s t1)
 
 -- update types in signature 
 
@@ -312,11 +310,10 @@ correctName (Name s)
 extSignature :: Signature Name -> TcM ()
 extSignature sig@(Signature _ preds n ps t)
   = do
+      te <- gets directCalls 
       -- checking if the function is previously defined
-      addFunctionName n
-      te <- gets ctx
-      gen <- gets generateDefs
-      when (Map.member n te && gen) (duplicatedFunDef n) `wrapError` sig
+      when (elem n te) (duplicatedFunDef n) `wrapError` sig
+      addFunctionName n 
 
 -- typing instances
 
@@ -325,7 +322,7 @@ tcInstance idecl@(Instance ctx n ts t funs)
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs) 
       funs' <- buildSignatures n ts t funs `wrapError` idecl
-      (funs1, pss', ts') <- unzip3 <$> mapM tcFunDef  funs' `wrapError` idecl
+      (funs1, schss, pss', ts') <- unzip4 <$> mapM tcFunDef  funs' `wrapError` idecl
       withCurrentSubst (Instance ctx n ts t funs1)
 
 checkCompleteInstDef :: Name -> [Name] -> TcM ()
