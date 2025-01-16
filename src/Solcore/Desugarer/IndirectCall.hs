@@ -26,8 +26,7 @@ instance Desugar a => Desugar [a] where
   desugar = mapM desugar 
 
 instance Desugar a => Desugar (Maybe a) where 
-  desugar Nothing = pure Nothing 
-  desugar (Just x) = Just <$> desugar x
+  desugar = mapM desugar
 
 instance Desugar (CompUnit Name) where
   desugar (CompUnit imps ds) = CompUnit imps <$> desugar ds
