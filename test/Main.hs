@@ -32,7 +32,7 @@ spec
               [
                 runTestForFile "00answer.solc" specFolder
               , runTestForFile "01id.solc" specFolder
-              , expectFail $ runTestForFile "02nid.solc" specFolder
+              , runTestForFile "02nid.solc" specFolder
               , runTestForFile "031maybe.solc" specFolder
               , runTestForFile "032simplejoin.solc" specFolder
               , runTestForFile "033join.solc" specFolder

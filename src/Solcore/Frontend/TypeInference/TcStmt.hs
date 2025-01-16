@@ -160,8 +160,7 @@ tcExp (Var n)
       (ps :=> t) <- freshInst s
       -- checks if it is a function name, and return 
       -- its corresponding unique type 
-      gen <- gets generateDefs
-      r <- lookupFunAbs n
+      r <- lookupUniqueTy n
       let
         (args,ret) = splitTy t
         args' = tupleTyFromList args
@@ -169,8 +168,7 @@ tcExp (Var n)
           = let
               t1 = TyCon nt [args', ret]
             in (Con (Id n t1) [], t1)
-        p = if gen then (Var (Id n t), t) 
-            else maybe (Var (Id n t), t) mkCon r
+        p = maybe (Var (Id n t), t) mkCon r
       pure (fst p, ps, snd p)
 tcExp e@(Con n es)
   = do
@@ -201,30 +199,7 @@ tcExp (FieldAccess (Just e) n)
       (ps' :=> t') <- freshInst s
       pure (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExp ex@(Call me n args)
-  = do
-      gen <- gets generateDefs
-      let qn = QualName invokableName "invoke"
-          args' = [Var n, indirectArgs args]
-      isDirect <- isDirectCall n
-      if gen && isDirect then do
-        tcCall me n args `wrapError` ex
-      else do
-        if isDirect then tcCall me n args `wrapError` ex
-          else
-            tcCall me qn args' `wrapError` ex
--- tcExp e@(Lam args bd _)
---   = do
---       (args', schs, ts') <- tcArgs args
---       (bd',ps,t') <- withLocalCtx schs (tcBody bd)
---       s <- getSubst
---       let ps1 = apply s ps
---           ts1 = apply s (map unskol ts')
---           t1 = apply s (unskol t')
---           vs = fv ps1 `union` fv t' `union` fv ts1
---           ty = funtype ts1 t1
---       gen <- gets generateDefs
---       (lfun, (e', ty1)) <- createLambdaImpl ps1 args' vs (ts1,t1) bd'
---       pure (e', ps1, ty1)
+  = tcCall me n args `wrapError` ex
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
@@ -237,109 +212,6 @@ tcExp e1@(TyExp e ty)
 unskol :: Ty -> Ty 
 unskol (TyVar (TVar v _)) = TyVar (TVar v False)
 unskol (TyCon n ts) = TyCon n (map unskol ts)
-
--- building indirect function call arguments 
-
-indirectArgs :: [Exp Name] -> Exp Name 
-indirectArgs [] = Con (Name "pair") []
-indirectArgs [e] = e 
-indirectArgs (e : es) = epair e (indirectArgs es)
-  where 
-    epair e1 e2 = Con (Name "pair") [e1, e2]
-
--- need to retrieve generated stuff 
--- from a lambda after first desugaring step.
-
-createLambdaImpl :: [Pred] ->
-                    [Param Id] ->
-                    [Tyvar] ->
-                    ([Ty],Ty) ->
-                    Body Id -> TcM (FunDef Name, (Exp Id, Ty))
-createLambdaImpl ps args vs (argTys, rty) bdy
-  = do
-      c <- incCounter
-      funs <- Map.keys <$> gets uniqueTypes
-      let n = Name $ "lambda_impl" ++ show c
-          vs' = filter (\i -> idName i `notElem` funs) (vars bdy \\ vars args)
-      (v,c',ctr,ty) <- createUniqueType vs' n (argTys, rty)
-      s <- getSubst
-      (sig',npp) <- createLambdaSig n ps (apply s args) vs rty ty vs'
-      bdy' <- createLambdaBody ty ctr vs' bdy npp
-      s <- getSubst
-      let
-          fd = everywhere (mkT (applyI s)) (FunDef sig' bdy')
-      pure (fd, (c', ty))
-
-createLambdaSig :: Name ->
-                   [Pred] ->
-                   [Param Id] ->
-                   [Tyvar] ->
-                   Ty ->
-                   Ty ->
-                   [Id] -> TcM (Signature Name, Param Name)
-createLambdaSig n ps args vs rty ty ids
-  = do
-      np <- freshName
-      let npp = Typed np ty
-          args1 = map paramIdToName args
-          args' = if null ids then args1 else npp : args1
-      pure (Signature vs ps n args' (Just rty), npp)
-
-paramIdToName :: Param Id -> Param Name
-paramIdToName (Typed (Id n _) t) = Typed n t
-paramIdToName (Untyped (Id n t)) = Typed n t
-
-createLambdaBody :: Ty ->
-                    Constr ->
-                    [Id] ->
-                    Body Id ->
-                    Param Name ->
-                    TcM (Body Name)
-createLambdaBody ty ctr ids bdy (Typed pn _)
-  | null ids = pure (erase bdy)
-  | otherwise
-    = do
-        pats <- freshPat ctr ids
-        let bdy' = erase bdy
-        pure [Match [Var pn] [(pats, bdy')]]
-
-freshPat :: Constr -> [Id] -> TcM [Pat Name]
-freshPat (Constr n ts) ids
-  = do
-      let nps = map (PVar . idName) ids
-      pure [PCon n nps]
-
-schemeFromSig :: Signature Id -> Scheme
-schemeFromSig sig
-  = let
-      ctx = sigContext sig
-      argTys = map tyFromParam (sigParams sig)
-      retTy = fromJust $ sigReturn sig
-      ty = funtype argTys retTy
-      vs = fv (ctx :=> ty)
-    in Forall vs (ctx :=> ty)
-
-tyFromParam :: Param Id -> Ty
-tyFromParam (Typed _ ty) = ty
-
-createUniqueType :: [Id] -> Name -> ([Ty], Ty) -> TcM (Exp Id, Exp Id, Constr, Ty)
-createUniqueType ids n (argTys, retTy)
-     = do
-        m <- incCounter
-        argName <- freshName
-        retName <- freshName
-        let
-            argVar = TVar argName False
-            retVar = TVar retName False
-            nt = Name $ "t_" ++ pretty n ++ show m
-            dc = Constr nt (map idType ids)
-            dt = DataTy nt [argVar, retVar] [dc]
-            argTy' = tupleTyFromList argTys
-            tc = TyCon nt [argTy', retTy]
-        writeDataTy dt 
-        checkDataType dt
-        addUniqueType n dt
-        pure (Var (Id n tc), Con (Id nt tc) (map Var ids), dc, tc)
 
 applyI :: Subst -> Ty -> Ty
 applyI s = apply s

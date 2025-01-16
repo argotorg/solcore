@@ -6,6 +6,7 @@ import qualified Data.Map as Map
 
 import Options.Applicative
 
+import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.LambdaLifting (lambdaLifting)
 import Solcore.Desugarer.MatchCompiler
 import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
@@ -49,7 +50,11 @@ pipeline = do
         when verbose $ do 
           putStrLn "> SCC Analysis:"
           putStrLn $ pretty ast'
-        r5 <- typeInfer utm ast'
+        ast3 <- indirectCall utm ast'
+        when verbose $ do 
+          putStrLn "> Indirect call desugaring:"
+          putStrLn $ pretty ast3
+        r5 <- typeInfer utm ast3
         withErr r5 $ \ (c', env) -> do
           let warns = warnings env
               logsInfo = logs env
