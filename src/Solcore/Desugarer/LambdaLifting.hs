@@ -6,6 +6,7 @@ import Control.Monad.State
 import Data.List 
 import qualified Data.Map as Map
 import Data.Maybe (isNothing)
+import Solcore.Desugarer.UniqueTypeGen (mkUniqueType, UniqueTyMap)
 import Solcore.Frontend.Pretty.SolcorePretty 
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.NameSupply
@@ -15,15 +16,17 @@ import Solcore.Primitives.Primitives
 
 -- lambda lifting transformation top level function for capture free lambdas 
 
-lambdaLifting :: CompUnit Name -> Either String (CompUnit Name, [String])
-lambdaLifting unit 
-  = case runLiftM (liftLambda unit) (collect unit) of 
+lambdaLifting :: UniqueTyMap -> 
+                 CompUnit Name -> 
+                 Either String (CompUnit Name, UniqueTyMap, [String])
+lambdaLifting utm unit 
+  = case runLiftM (liftLambda unit) (Map.keys utm) utm of 
       Left err -> Left err 
       Right (CompUnit imps ds, env) ->
         -- adding primitive class Invokable to the set of declarations 
         -- of the current module
         let decls' = TClassDef invokeClass : combine (generated env) ds 
-        in Right (CompUnit imps decls', debugInfo env)  
+        in Right (CompUnit imps decls', uniqueTyMap env, debugInfo env)  
 
 combine :: [TopDecl Name] -> [TopDecl Name] -> [TopDecl Name]
 combine gs ds 
@@ -132,10 +135,47 @@ instance LiftLambda (Exp Name) where
           free = vars bd \\ defs 
         if null free then do 
           fd <- createFunction ps bd 
+          let nm = sigName (funSignature fd)
+          tf <- freshName ("t_" ++ pretty nm)
+          let dt = mkUniqueType tf
+          addUniqueTyMap nm dt
+          addDecl (TDataDef dt)
           addDecl (TFunDef fd)
-          pure $ Var (sigName (funSignature fd))
-        else pure e 
+          pure $ Con (dataName dt) []
+        else do 
+          arg <- Untyped <$> freshName "env"
+          (dt, dn) <- createClosureType free
+          let bd' = mkMatchBody dn free arg bd 
+          fd <- createFunction (arg : ps) [bd']
+          let nm = sigName (funSignature fd)
+          udt <- createUniqueTypeClosure nm dt
+          addDecl (TDataDef dt)
+          addDecl (TDataDef udt)
+          addUniqueTyMap nm udt 
+          addDecl (TFunDef fd)
+          pure $ Con (dataName udt) 
+                     [Con dn (Var <$> free)]
   liftLambda d = pure d 
+
+createClosureType :: [Name] -> LiftM (DataTy, Name)  
+createClosureType ns 
+  = do 
+      n <- freshName "t_closure"
+      let vs = (flip TVar False) <$> ns 
+      pure (DataTy n vs [Constr n (TyVar <$> vs)], n)
+
+createUniqueTypeClosure :: Name -> DataTy -> LiftM DataTy
+createUniqueTypeClosure n (DataTy ct vs ((Constr c ts) : _))
+  = do 
+      tn <- freshName ("t_" ++ pretty n)
+      let 
+          c' = Constr tn [TyCon c ts]
+      pure (DataTy tn vs [c'])
+
+mkMatchBody :: Name -> [Name] -> Param Name -> Body Name -> Stmt Name
+mkMatchBody dn ns (Untyped n) bd 
+  = Match [Var n] [([PCon dn (PVar <$> ns)], bd)] 
+
 
 createFunction :: [Param Name] -> 
                   Body Name -> 
@@ -156,16 +196,17 @@ data Env
   = Env {
       generated :: [TopDecl Name]
     , functionNames :: [Name]
+    , uniqueTyMap :: UniqueTyMap
     , fresh :: Int 
     , debugInfo :: [String]
     }
 
 type LiftM a = StateT Env (ExceptT String Identity) a
 
-runLiftM :: LiftM a -> [Name] -> Either String (a, Env)
-runLiftM m ns = runIdentity (runExceptT (runStateT m initEnv))
+runLiftM :: LiftM a -> [Name] -> UniqueTyMap -> Either String (a, Env)
+runLiftM m ns utm = runIdentity (runExceptT (runStateT m initEnv))
     where 
-      initEnv = Env [] ns' 0 []
+      initEnv = Env [] ns' utm 0 []
       ns' = map Name ["primEqWord", "primAddWord", "invoke"] ++ ns
 
 inc :: LiftM Int 
@@ -183,6 +224,10 @@ freshName s
 addDecl :: TopDecl Name -> LiftM () 
 addDecl d 
   = modify (\ env -> env{ generated = d : generated env })
+
+addUniqueTyMap :: Name -> DataTy -> LiftM ()
+addUniqueTyMap n t
+  = modify (\env -> env{ uniqueTyMap = Map.insert n t (uniqueTyMap env)})
 
 addDebugInfo :: String -> LiftM ()
 addDebugInfo s 

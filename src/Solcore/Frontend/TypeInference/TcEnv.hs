@@ -4,6 +4,7 @@ import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 
+import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -67,7 +68,7 @@ data TcEnv
                                -- used to type check calls.
     , subst :: Subst           -- Current substitution
     , nameSupply :: NameSupply -- Fresh name supply
-    , uniqueTypes :: Map Name DataTy -- unique type map
+    , uniqueTypes :: UniqueTyMap -- unique type map
     , directCalls :: [Name] -- defined function names 
     , generateDefs :: Bool     -- should generate new defs?
     , generated :: [TopDecl Id]
@@ -82,8 +83,8 @@ data TcEnv
                                -- context reduction
     }
 
-initTcEnv :: TcEnv 
-initTcEnv 
+initTcEnv :: UniqueTyMap -> TcEnv 
+initTcEnv utm 
   = TcEnv primCtx 
           primInstEnv
           primTypeEnv
@@ -91,7 +92,7 @@ initTcEnv
           Nothing 
           mempty
           namePool
-          primDataType
+          (Map.union utm primDataType)
           [ Name "primAddWord"
           , Name "primEqWord"
           ]

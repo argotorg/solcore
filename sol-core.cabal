@@ -52,6 +52,7 @@ library
       Solcore.Desugarer.ReplaceWildcard
       Solcore.Desugarer.Specialise
       Solcore.Desugarer.EmitCore
+      Solcore.Desugarer.UniqueTypeGen
       Solcore.Frontend.Lexer.SolcoreLexer
       Solcore.Frontend.Parser.SolcoreParser
       Solcore.Frontend.Pretty.SolcorePretty
