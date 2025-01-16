@@ -124,7 +124,6 @@ basicOptions :: [String]
 basicOptions = [ "new-run"
                , "sol-core"
                , "--"
-               , "-n"
                , "-f"
                ] 
 
