@@ -15,8 +15,7 @@ instance Erase a => Erase [a] where
 
 instance Erase a => Erase (Maybe a) where
   type EraseRes (Maybe a) = Maybe (EraseRes a)
-  erase Nothing = Nothing
-  erase (Just x) = Just (erase x)
+  erase  = fmap erase
 
 instance (Erase a, Erase b) => Erase (a,b) where
   type EraseRes (a,b) = (EraseRes a, EraseRes b)
