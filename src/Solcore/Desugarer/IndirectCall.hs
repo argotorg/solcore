@@ -134,8 +134,7 @@ instance Collect a => Collect [a] where
   collect = concatMap collect
 
 instance Collect a => Collect (Maybe a) where 
-  collect Nothing = []
-  collect (Just x) = collect x
+  collect = concatMap collect
 
 instance Collect (CompUnit Name) where 
   collect (CompUnit _ ds) = collect ds
