@@ -24,7 +24,7 @@ instance UniqueTypeGen a => UniqueTypeGen (Maybe a) where
 
 instance UniqueTypeGen (CompUnit Name) where 
   uniqueTyGen (CompUnit _ ds) 
-    = mapM_ uniqueTyGen ds 
+    = uniqueTyGen ds 
 
 instance UniqueTypeGen (TopDecl Name) where
   uniqueTyGen (TContr c) = uniqueTyGen c 
