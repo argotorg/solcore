@@ -171,7 +171,7 @@ specialiseContract decl = pure decl
 specEntry :: Name -> SM ()
 specEntry name = withLocalState do
     let any = TVar (Name "any") False
-    let anytype = TyVar any 
+    let anytype = TyVar any
     mres <- lookupResolution name anytype
     case mres of
       Just (fd, ty, subst) -> do
@@ -242,24 +242,28 @@ specConApp i@(Id n conTy) args ty = do
 -- | Specialise a function call
 -- given actual arguments and the expected result type
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revert") ity) args ty = pure (i, args)  -- FIXME
-specCall i@(Id (QualName "Ref" "load") ity@(ita :-> itb)) [arg] ety | isStackStoreTy ita = do
+specCall i@(Id name ity) args ty | isIgnoredBuiltin name = pure (i, args)
+
+specCall i@(Id (QualName "Ref" "load") ity@(ita :-> _)) [arg] ety | isStackLoadTy ity = do
+  ity' <- atCurrentSubst ity
   debug ["> specCall **load @stack**: ", pretty i, "@(",pretty ity, ") ",
               show arg, " : ", pretty ety]
   arg' <- specExp arg ita
   let i' = Id (Name "stkLoad") ity
   debug ["< specCall **load @stack**: ", pretty i', "(",  pretty arg, ")"]
   return (i', [arg'])
-specCall i@(Id (QualName "Ref" "store") ity@(ita1 :-> ita2 :->itb)) args ety | isStackStoreTy ita1 =
-  do
-    debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity, ") ",
-              show args, " : ", pretty ety] -- FIXME: why is ety variable?
-    let argTypes = [ita1, ita2]
-    let typedArgs = zip args argTypes
-    args' <- forM typedArgs (uncurry specExp)
-    let i' = Id (Name "stkStore") ity
-    debug ["< specCall **store @stack**: ", pretty i', "(",  render $ commaSepList args', ")"]
-    return (i', args')
+
+specCall i@(Id (QualName "Ref" "store") ity) args ety | isStackStoreTy ity = do
+  debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity, ") ",
+            show args, " : ", pretty ety ] -- FIXME: why is ety variable?
+  let argTypes = map typeOfTcExp args
+  argTypes' <- atCurrentSubst argTypes
+  let typedArgs = zip args argTypes'
+  args' <- forM typedArgs (uncurry specExp)
+  let i' = Id (Name "stkStore") ity
+  debug ["< specCall **store @stack**: ", pretty i', "(",  render $ commaSepList args', ")"]
+  return (i', args')
+
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
@@ -293,8 +297,12 @@ specCall i args ty = do
     guardSimpleType (_ :-> _) = panics ["specCall ", pretty i, ": function result type"]
     guardSimpleType _ = pure ()
 
-isStackStoreTy (TyCon "stack" [_]) = True
+isStackLoadTy  (TyCon "stack" [_] :-> _) = True
+isStackLoadTy  _ = False
+isStackStoreTy (TyCon "stack" [_] :-> _ :-> _) = True
 isStackStoreTy _ = False
+
+isIgnoredBuiltin name = elem name primFunNames
 
 -- | `specFunDef` specialises a function definition
 -- to the given type of the form `arg1Ty -> arg2Ty -> ... -> resultTy`
@@ -465,7 +473,7 @@ typeOfTcExp exp@(Call Nothing i args) = applyTo args funTy where
                        ]
 typeOfTcExp (Lam args body (Just tb))       = funtype tas tb where
   tas = map typeOfTcParam args
-typeOfTcExp (TyExp _ ty) = ty   
+typeOfTcExp (TyExp _ ty) = ty
 typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
 
 typeOfTcStmt :: Stmt Id -> Ty
