@@ -256,6 +256,10 @@ emitBuiltin "stkUpdFst" [e1, e2] = do
     (v1, s1) <- emitExp e1
     (v2, s2) <- emitExp e2
     pure (Core.EUnit, s1 ++ s2 ++ [Core.SAssign (Core.EFst v1) v2])
+emitBuiltin "stkUpdSnd" [e1, e2] = do
+    (v1, s1) <- emitExp e1
+    (v2, s2) <- emitExp e2
+    pure (Core.EUnit, s1 ++ s2 ++ [Core.SAssign (Core.ESnd v1) v2])
 
 -----------------------------------------------------------------------
 -- Translating statements

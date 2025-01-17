@@ -123,6 +123,7 @@ primFunNames = [ Name "primAddWord"
                , Name "stkLoad"
                , Name "stkStore"
                , Name "stkUpdFst"
+               , Name "stkUpdSnd"
               ]
 -- definition of yul primops
 

@@ -256,13 +256,20 @@ specCall i@(Id (QualName "Ref" "load") ity@(ita :-> _)) [arg] ety | isStackLoadT
 specCall i@(Id (QualName "Ref" "store") ity) args ety | isMemberStoreTy ity = do
   debug ["> specCall **store @MemberAccess **: ", pretty i, "@(",pretty ity, ") ",
             show args, " : ", pretty ety ] -- FIXME: why is ety variable?
-  let argTypes = map typeOfTcExp args
+  let [arg1, arg2] = args
+  let target = unwrapMemberAccess arg1
+  let aargs = [target, arg2]
+  let argTypes = map typeOfTcExp aargs
   argTypes' <- atCurrentSubst argTypes
-  let typedArgs = zip args argTypes'
+  let typedArgs = zip aargs argTypes'
   args' <- forM typedArgs (uncurry specExp)
-  let i' = Id (Name "stkUpdFst") ity
+  let direction = accessPath ity
+  let i' = Id (Name (accessorName direction)) ity
   debug ["< specCall **store @MemberAccess**: ", pretty i', "(",  render $ commaSepList args', ")"]
   return (i', args')
+  where
+    accessorName (Left _) = "stkUpdFst"
+    accessorName (Right _) = "stkUpdSnd"
 
 specCall i@(Id (QualName "Ref" "store") ity) args ety | isStackStoreTy ity = do
   debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity, ") ",
@@ -315,6 +322,18 @@ isStackStoreTy _ = False
 
 isMemberStoreTy (TyCon "MemberAccess" [_, _] :-> _ :-> _) = True
 isMemberStoreTy _ = False
+
+unwrapMemberAccess :: TcExp -> TcExp
+unwrapMemberAccess (TyExp e t) = unwrapMemberAccess e
+unwrapMemberAccess (Con i@(Id (Name "MemberAccess") ty) [e]) = e
+unwrapMemberAccess e = error("unwrapMemberAccess called on " ++ show e )
+
+accessPath :: Ty -> Either () ()
+accessPath (TyCon "MemberAccess" [_, TyCon (Name axor) []]  :-> _) =
+  dir axor where
+    dir "PairFst" = Left ()
+    dir "PairSnd" = Right ()
+accessPath ty = error("extractAccessFun called on " ++ show ty)
 
 isIgnoredBuiltin name = elem name primFunNames
 

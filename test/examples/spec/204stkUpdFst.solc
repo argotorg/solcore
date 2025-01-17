@@ -1,0 +1,73 @@
+
+forall any.function revert(a:word,b:word) -> any {
+  assembly {
+    revert(a,b)
+  };
+}
+
+
+class  ref : Ref(deref) {
+  function load (r:ref) -> deref;
+  function store(r:ref, v:deref) -> unit;
+}
+
+instance stack(a) : Ref(a) {
+   // these definitions will not be used
+  function load(r) { return(revert(0,0)); }
+  function store(r, v) { revert(0,0);  }
+}
+
+// how to do x.first = z ?
+// store(first(x), load(z))
+// requires function on references
+
+/*
+class self : HasFirst(a) { function first(s:self) -> a; }
+instance stack((a,b)) : HasFirst(stack(a)) {
+  // first : stack((a,b)) -> stack(a);
+  // probably needs to be an intrinsic?
+  function first(pr:stack((a,b))){
+    return(revert(0,0)); // FIXME: this does not typecheck. WHY?
+  }
+}  
+*/
+
+// "dead" is only here to compensate for non-relaxed coverage condition and
+// incorrectly implemented Paterson condition
+// data MemberAccess(ty, field, dead) = MemberAccess(ty);
+data MemberAccess(ty, field) = MemberAccess(ty);
+data Dead = Dead;
+
+data PairFst = PairFst;
+data PairSnd = PairSnd;
+
+instance MemberAccess(stack((a,b)), PairFst):Ref(a) {
+}
+instance MemberAccess(stack((a,b)), PairSnd):Ref(stack(a)) {}
+
+contract AssignPR {
+  function fst(p) {
+    match p {
+      | (a,b) => return a;
+    };
+  }
+
+
+  function main() {
+    // let x : (word, word) = (17, 7) ;
+    let x : stack((word, word));
+    Ref.store(x, (17, 7));
+
+    // x.fst = 42
+    // let fstAccess : MemberAccess(stack((word,word)), PairFst) = MemberAccess(x);
+    // Ref.store(fstAccess, 42);
+    stkUpdFst(x, 42);
+    
+    let y : stack((word, word));    
+    // y = x;
+    Ref.store(y, Ref.load(x));
+
+    // return fst(y);
+    return fst(Ref.load(y));
+  }  
+}
