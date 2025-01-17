@@ -1,0 +1,20 @@
+contract AssignWordRef {
+  // builtin stkStore(word, word) -> ()
+  // builtin stkLoad(w: word) { return w;}
+
+  function main() {
+
+   // let x = 42;
+   let x : stack(word) ;
+   stkStore(x,42);
+
+   // let y : word;
+   let y : stack(word) ;
+
+   // y = x;
+   stkStore(y, stkLoad(x));
+
+  // return y;
+  return stkLoad(y);
+  }
+}

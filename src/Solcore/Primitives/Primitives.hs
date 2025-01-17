@@ -104,6 +104,20 @@ pair t1 t2 = TyCon "pair" [t1, t2]
 arr :: Name
 arr = "->"
 
+-- stack reference handling
+primStkLoad :: (Name, Scheme)
+primStkLoad = ("stkLoad", monotype (stack word :-> word))
+
+primStkStore :: (Name, Scheme)
+primStkStore = ("stkStore", monotype (stack word :-> word :-> unit))
+
+
+primFunNames :: [Name]
+primFunNames = [ Name "primAddWord"
+               , Name "primEqWord"
+               , Name "stkLoad"
+               , Name "stkStore"
+              ]
 -- definition of yul primops
 
 yulPrimOps :: [(Name, Scheme)]

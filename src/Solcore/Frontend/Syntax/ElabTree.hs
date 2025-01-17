@@ -219,11 +219,11 @@ instance Elab S.Ty where
   elab t@(S.TyCon n ts) 
     = do 
         isTy <- isDefinedType n 
-        ts' <- elab ts 
+        ts' <- elab ts
         if isTy then pure $ TyCon n ts' 
           else if null ts then 
             pure $ TyVar (TVar n False)
-          else if isArrow n then 
+          else if isArrow n || isARef n then
             pure $ TyCon n ts'
           else throwError $ 
               unlines ["Undefined type:"
@@ -234,6 +234,9 @@ instance Elab S.Ty where
 isArrow :: Name -> Bool 
 isArrow (Name s) = s == "->"
 isArrow _ = False 
+isARef :: Name -> Bool
+isARef (Name s) = elem s ["stack"]  -- may need more ref kinds
+isARef _ = False
 
 instance Elab S.Pred where 
   type Res S.Pred = Pred
