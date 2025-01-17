@@ -253,6 +253,17 @@ specCall i@(Id (QualName "Ref" "load") ity@(ita :-> _)) [arg] ety | isStackLoadT
   debug ["< specCall **load @stack**: ", pretty i', "(",  pretty arg, ")"]
   return (i', [arg'])
 
+specCall i@(Id (QualName "Ref" "store") ity) args ety | isMemberStoreTy ity = do
+  debug ["> specCall **store @MemberAccess **: ", pretty i, "@(",pretty ity, ") ",
+            show args, " : ", pretty ety ] -- FIXME: why is ety variable?
+  let argTypes = map typeOfTcExp args
+  argTypes' <- atCurrentSubst argTypes
+  let typedArgs = zip args argTypes'
+  args' <- forM typedArgs (uncurry specExp)
+  let i' = Id (Name "stkUpdFst") ity
+  debug ["< specCall **store @MemberAccess**: ", pretty i', "(",  render $ commaSepList args', ")"]
+  return (i', args')
+
 specCall i@(Id (QualName "Ref" "store") ity) args ety | isStackStoreTy ity = do
   debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity, ") ",
             show args, " : ", pretty ety ] -- FIXME: why is ety variable?
@@ -301,6 +312,9 @@ isStackLoadTy  (TyCon "stack" [_] :-> _) = True
 isStackLoadTy  _ = False
 isStackStoreTy (TyCon "stack" [_] :-> _ :-> _) = True
 isStackStoreTy _ = False
+
+isMemberStoreTy (TyCon "MemberAccess" [_, _] :-> _ :-> _) = True
+isMemberStoreTy _ = False
 
 isIgnoredBuiltin name = elem name primFunNames
 
