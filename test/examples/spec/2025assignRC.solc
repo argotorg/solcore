@@ -1,0 +1,37 @@
+function revert(a:word,b:word) {
+  assembly {
+    revert(a,b)
+  };
+}
+
+class  ref : Ref(deref) {
+  function load (r:ref) -> deref;
+  function store(r:ref, v:deref) -> unit;
+}
+
+instance stack(a) : Ref(a) {
+   // these definitions will not be used
+  function load(r) { revert(0,0); return(999999);}
+  function store(r, v) { revert(0,0);  }
+}
+
+contract AssignWord {
+  // builtin stkStore(word, word) -> ()
+  // builtin stkLoad(w: word) { return w;}
+
+  function main() {
+
+   // let x = 42;
+   let x : stack(word) ;
+   Ref.store(x,42);
+
+   // let y : word;
+   let y : stack(word) ;
+
+   // y = x;
+   Ref.store(y, Ref.load(x));
+
+  // return y;
+  return Ref.load(y);
+  }
+}

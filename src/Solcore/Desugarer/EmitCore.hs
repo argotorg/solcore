@@ -145,8 +145,9 @@ translateType (TyCon name tas) = translateTCon name tas
 translateType t = error ("Cannot translate type " ++ show t)
 
 translateTCon :: Name -> [Ty] -> EM Core.Type
--- NB "pair" is used for all tuples
+translateTCon (Name "()") [] = pure Core.TUnit
 translateTCon (Name "pair") tas = translateProductType tas
+translateTCon (Name "stack") [t] = translateType t
 translateTCon tycon tas = do
     mti <- gets (Map.lookup tycon . ecDT)
     case mti of
@@ -175,6 +176,7 @@ emitConApp :: Id -> [Exp Id] -> Translation Core.Expr
 emitConApp con@(Id n ty) as = do
   unless (null . fv $ ty)  (error $ "emitConApp: free variables in type " ++ pretty ty ++ " in " ++ pretty (Con con as))
   case targetType ty  of
+    TyCon "()" [] -> pure (Core.EUnit, [])
     (TyCon "pair" _) -> translateProduct as
     (TyCon tcname tas) -> do
         mti <- gets (Map.lookup tcname . ecDT)
@@ -218,6 +220,8 @@ encodeCon n cons t e = errors
     [ "encodeCon: no match for ", pretty t
     , "\n", show  t
     ]
+
+
 -----------------------------------------------------------------------
 -- Translating expressions and statements
 -----------------------------------------------------------------------
@@ -229,8 +233,10 @@ emitExp (Var x) = do
     case Map.lookup (idName x) subst of
         Just e -> pure (e, [])
         Nothing -> pure (Core.EVar (unwrapId x), [])
--- special handling of revert
-emitExp (Call _ (Id "revert" _) [Lit(StrLit s)]) = pure(Core.EUnit, [Core.SRevert s])
+
+-- special handling of builtins
+emitExp (Call Nothing i args)| isBuiltin name = emitBuiltin name args where name = unwrapId i
+
 emitExp (Call Nothing f as) = do
     (coreArgs, codes) <- unzip <$> mapM emitExp as
     let call =  Core.ECall (unwrapId f) coreArgs
@@ -238,10 +244,26 @@ emitExp (Call Nothing f as) = do
 emitExp e@(Con i as) = emitConApp i as
 emitExp e = errors ["emitExp not implemented for: ", pretty e, "\n", show e]
 
+isBuiltin :: CoreName -> Bool
+isBuiltin name = name `elem` ["revert", "stkLoad", "stkStore"]
+
+emitBuiltin  "revert" [Lit(StrLit s)] = pure(Core.EUnit, [Core.SRevert s])
+emitBuiltin  "stkLoad" [e] = emitExp e
+emitBuiltin  "stkStore" [e1, e2] = do
+    (v1, s1) <- emitExp e1
+    (v2, s2) <- emitExp e2
+    pure (Core.EUnit, s1 ++ s2 ++ [Core.SAssign v1 v2])
+
+-----------------------------------------------------------------------
+-- Translating statements
+-----------------------------------------------------------------------
+
 emitStmt :: Stmt Id -> EM [Core.Stmt]
 emitStmt (StmtExp e) = do
     (e', stmts) <- emitExp e
-    pure (stmts ++ [Core.SExpr e'])
+    case e' of -- avoid emitting () expr due to "y := x ()" ambiguity
+        Core.EUnit -> pure stmts
+        _ -> pure (stmts ++ [Core.SExpr e'])
 emitStmt s@(Return e) = do
     (e', stmts) <- emitExp e
     let result = stmts ++ [Core.SReturn e']

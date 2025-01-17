@@ -5,7 +5,7 @@ This is meant to be run on typed and defunctionalised code, so no higher-order f
 -}
 
 import Common.Monad
-import Control.Monad
+import Control.Monad ( unless, forM_, void, forM, when )
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.List(intercalate)
@@ -17,7 +17,7 @@ import Solcore.Frontend.TypeInference.Id ( Id(..) )
 import Solcore.Frontend.TypeInference.TcEnv(TcEnv(..),TypeInfo(..))
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
-import Solcore.Primitives.Primitives
+import Solcore.Primitives.Primitives as Primitives
 import System.Exit
 import Common.Pretty
 
@@ -29,6 +29,7 @@ emptyTable = Map.empty
 
 type TcFunDef = FunDef Id
 type TcExp = Exp Id
+type TcStmt = Stmt Id
 
 type Resolution = (Ty, TcFunDef)
 data SpecState = SpecState
@@ -40,6 +41,7 @@ data SpecState = SpecState
   , splocalEnv :: Table Ty
   , spSubst :: Subst
   , spDebug :: Bool
+  , spPendingStmts :: [TcStmt]
   }
 
 
@@ -91,6 +93,7 @@ initSpecState debugp env = SpecState
     , splocalEnv = emptyTable
     , spSubst = emptySubst
     , spDebug = debugp
+    , spPendingStmts = []
     }
 
 addSpecialisation :: Name -> TcFunDef -> SM ()
@@ -133,6 +136,20 @@ atCurrentSubst a = flip apply a <$> getSpSubst
 addData :: DataTy -> SM ()
 addData dt = modify (\s -> s { spDataTable = Map.insert (dataName dt) dt (spDataTable s) })
 
+flushPendingStmts :: SM [TcStmt]
+flushPendingStmts = do
+  stmts <- gets spPendingStmts
+  modify $ \s -> s { spPendingStmts = mempty }
+  return stmts
+
+deletePendingStmts :: SM ()
+deletePendingStmts = modify $ \s -> s { spPendingStmts = mempty }
+
+addPendingStmts :: [TcStmt] -> SM ()
+addPendingStmts stmts = do
+  modify $ \s -> s { spPendingStmts = spPendingStmts s <> stmts }
+  pending <- gets spPendingStmts
+  debug ["! addPendingStmts: ", prettys stmts, ", now pending ", prettys pending]
 -------------------------------------------------------------------------------
 
 specialiseCompUnit :: CompUnit Id -> Bool -> TcEnv -> IO (CompUnit Id)
@@ -210,8 +227,9 @@ addMethodResolution ty fd = do
 specExp :: TcExp -> Ty -> SM TcExp
 specExp e@(Call Nothing i args) ty = do
   -- debug ["> specExp (Call): ", pretty e, " : ", pretty (idType i), " ~> ", pretty ty]
-  (i', args') <- specCall i args ty
-  let e' = Call Nothing i' args'
+  -- (i', args') <- specCall i args ty
+  -- let e' = Call Nothing i' args'
+  e' <- specCall i args ty
   -- debug ["< specExp (Call): ", pretty e']
   return e'
 specExp e@(Con i@(Id n conty) es) ty = do
@@ -241,8 +259,37 @@ specConApp i@(Id n conTy) args ty = do
 
 -- | Specialise a function call
 -- given actual arguments and the expected result type
-specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revert") e) args ty = pure (i, args)  -- FIXME
+specCall :: Id -> [TcExp] -> Ty -> SM TcExp
+-- specCall i@(Id (Name "revert") ity) args ty = pure (Call Nothing i' args')  -- FIXME
+
+-- Special case: Ref.load@stack(x) ~> x
+specCall i@(Id (QualName "Ref" "load") ity@(ita :-> itb)) [arg] ety | isStackStoreTy ita = do
+  debug ["> specCall **load @stack**: ", pretty i, "@(",pretty ity, ") ",
+              show arg, " : ", pretty ety]
+  arg' <- specExp arg ita
+  let i' = Id (Name "stkLoad") ity
+  debug ["< specCall **load @stack**: ", pretty arg']
+  return arg'
+
+-- Special case: Ref.load@stack(x, y) ~> x := y, ()
+-- since we are specialising expressions, unit gets returned
+-- and the assignment is added to pending statementss
+specCall i@(Id (QualName "Ref" "store")
+         ity@(ita1 :-> ita2 :->itb))
+         args@[arg1, arg2] ety | isStackStoreTy ita1 =
+  do
+    debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity, ") ",
+              show args, " : ", pretty ety] -- FIXME: why is ety variable?
+    let argTypes = [ita1, ita2]
+    let typedArgs = zip args argTypes
+    -- args' <- forM typedArgs (uncurry specExp)
+    arg1' <- specExp arg1 ita1
+    arg2' <- specExp arg2 ita2
+    let stmts = [arg1' := arg2']
+    addPendingStmts stmts
+    let unitval = Con (Id (Name "unit") Primitives.unit) []
+    debug ["< specCall **store @stack**: ", pretty stmts, pretty unitval]
+    return unitval
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
@@ -266,15 +313,19 @@ specCall i args ty = do
       name' <- specFunDef fd
       debug ["< specCall: ", pretty name']
       args'' <- atCurrentSubst args'
-      return (Id name' ty', args'')
+      let i' = Id name' ty'
+      return (Call Nothing i' args')
     Nothing -> do
       debug ["! specCall: no resolution found for ", show name, " : ", pretty funType]
-      return (i, args')
+      return (Call Nothing i args')
   where
     guardSimpleType :: Ty -> SM ()
     guardSimpleType (TyVar _) = panics ["specCall ", pretty i, ": polymorphic result type"]
     guardSimpleType (_ :-> _) = panics ["specCall ", pretty i, ": function result type"]
     guardSimpleType _ = pure ()
+
+isStackStoreTy (TyCon "stack" [_]) = True
+isStackStoreTy _ = False
 
 -- | `specFunDef` specialises a function definition
 -- to the given type of the form `arg1Ty -> arg2Ty -> ... -> resultTy`
@@ -306,8 +357,8 @@ specFunDef fd = withLocalState do
       addSpecialisation name' fd'
       return name'
 
-specBody :: [Stmt Id] -> SM [Stmt Id]
-specBody = mapM specStmt
+specBody :: [TcStmt] -> SM [TcStmt]
+specBody stmts = mconcat <$> mapM specStmt' stmts
 
 {-
 ensureSimple ty' stmt subst = case ty' of
@@ -327,7 +378,19 @@ ensureClosed ty ctxt subst = do
   unless (null tvs) $ panics ["spec(", pretty ctxt,"): free type vars in ", pretty ty, ": ", show tvs
                              , " @ subst=", pretty subst]
 
-specStmt :: Stmt Id -> SM(Stmt Id)
+-- specialise a stmt, include pending stmts
+specStmt' :: TcStmt -> SM [TcStmt]
+specStmt' stmt = do
+  -- debug ["> specStmt': ", pretty stmt]
+  stmt' <- specStmt stmt
+  pending <- flushPendingStmts
+  unless (null pending) (debug ["! specStmt: pending ", prettys pending])
+  let stmts' = pending <> pure stmt'
+
+  -- debug ["< specStmt': ", prettys stmts']
+  return stmts'
+
+specStmt :: TcStmt -> SM TcStmt
 specStmt stmt@(Return e) = do
   subst <- getSpSubst
   let ty = typeOfTcExp e
@@ -370,7 +433,7 @@ specStmt (StmtExp e) = do
 specStmt (Asm ys) = pure (Asm ys)
 specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
 
-specMatch :: [Exp Id] -> [([Pat Id], [Stmt Id])] -> SM (Stmt Id)
+specMatch :: [Exp Id] -> [([Pat Id], [TcStmt])] -> SM (TcStmt)
 specMatch exps alts = do
   subst <- getSpSubst
   -- debug ["> specMatch, scrutinee: ", pretty exps, " @ ", pretty subst]
@@ -445,17 +508,17 @@ typeOfTcExp exp@(Call Nothing i args) = applyTo args funTy where
                        ]
 typeOfTcExp (Lam args body (Just tb))       = funtype tas tb where
   tas = map typeOfTcParam args
-typeOfTcExp (TyExp _ ty) = ty   
+typeOfTcExp (TyExp _ ty) = ty
 typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
 
-typeOfTcStmt :: Stmt Id -> Ty
+typeOfTcStmt :: TcStmt -> Ty
 typeOfTcStmt (n := e) = unit
 typeOfTcStmt (Let n _ _) = idType n
 typeOfTcStmt (StmtExp e) = typeOfTcExp e
 typeOfTcStmt (Return e) = typeOfTcExp e
 typeOfTcStmt (Match _ ((pat, body):_)) = typeOfTcBody body
 
-typeOfTcBody :: [Stmt Id] -> Ty
+typeOfTcBody :: [TcStmt] -> Ty
 typeOfTcBody []    = unit
 typeOfTcBody [s]   = typeOfTcStmt s
 typeOfTcBody (_:b) = typeOfTcBody b
@@ -489,7 +552,7 @@ instance HasType (Exp Id) where
   fv (Call e i es) = concatMap fv (Var i:es) ++ maybe [] fv e
   fv (Lam ps b t) = fv b ++ maybe [] fv t
 
-instance HasType (Stmt Id) where
+instance HasType TcStmt where
   apply s (n := e) = apply s n := apply s e
   apply s (Let n t e) = Let (apply s n) (apply s <$> t) (apply s <$> e)
   apply s (StmtExp e) = StmtExp (apply s e)
