@@ -80,6 +80,9 @@ data Scheme
 monotype :: Ty -> Scheme 
 monotype t = Forall [] ([] :=> t)
 
+forAll :: [Name] -> Ty -> Scheme
+forAll ns t = Forall (map rv ns) ( [] :=> t) where rv n = TVar n False
+
 {-
 A measure for types, predicates and constraints for the Patterson Condition 2:
 "The constraint has fewer constructors and variables

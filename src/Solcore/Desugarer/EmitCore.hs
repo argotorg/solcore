@@ -244,14 +244,18 @@ emitExp e@(Con i as) = emitConApp i as
 emitExp e = errors ["emitExp not implemented for: ", pretty e, "\n", show e]
 
 isBuiltin :: CoreName -> Bool
-isBuiltin name = name `elem` ["revert", "stkLoad", "stkStore"]
+isBuiltin name = elem (Name name) primFunNames
 
-emitBuiltin  "revert" [Lit(StrLit s)] = pure(Core.EUnit, [Core.SRevert s])
-emitBuiltin  "stkLoad" [e] = emitExp e
-emitBuiltin  "stkStore" [e1, e2] = do
+emitBuiltin "revert" [Lit(StrLit s)] = pure(Core.EUnit, [Core.SRevert s])
+emitBuiltin "stkLoad" [e] = emitExp e
+emitBuiltin "stkStore" [e1, e2] = do
     (v1, s1) <- emitExp e1
     (v2, s2) <- emitExp e2
     pure (Core.EUnit, s1 ++ s2 ++ [Core.SAssign v1 v2])
+emitBuiltin "stkUpdFst" [e1, e2] = do
+    (v1, s1) <- emitExp e1
+    (v2, s2) <- emitExp e2
+    pure (Core.EUnit, s1 ++ s2 ++ [Core.SAssign (Core.EFst v1) v2])
 
 -----------------------------------------------------------------------
 -- Translating statements
@@ -413,8 +417,8 @@ emitSumMatch allCons scrutinee alts = do
                 }
             }
 
-          The names $left and $right are used for clarity, 
-          they can be reused in subsequent branches (no need for unique names 
+          The names $left and $right are used for clarity,
+          they can be reused in subsequent branches (no need for unique names
           as long as they do not clash with user variables)
       -}
       buildMatch :: Core.Expr -> Core.Type ->[[Core.Stmt]] -> [Core.Stmt]
