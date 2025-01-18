@@ -1,5 +1,5 @@
 contract Simple {
-  val : Word ;
+  val : word ;
 
   function getVal () {
     return val ;

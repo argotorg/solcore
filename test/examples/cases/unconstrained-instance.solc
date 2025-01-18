@@ -1,0 +1,24 @@
+data memory(t) = memory(word);
+
+class t:ValueTy {
+    function rep(x:t) -> word;
+}
+
+instance memory(t) : ValueTy {
+    function rep(x: memory(t)) -> word {
+        match x {
+        | memory(w) => return w;
+       };
+    }
+}
+
+class ref:Ref(deref) {
+    function store(loc: ref, value: deref) -> Unit;
+}
+
+instance memory(t) : Ref(t) {
+    function store(loc: memory(t), value: t) -> Unit {
+        // We don't have a `ValueTy` bound on `t` anywhere, so this should raise a type error...
+        let vw = ValueTy.rep(value);
+    }
+}

@@ -20,17 +20,15 @@ function or(x: Bool, y: Bool) -> Bool {
 }
 
 
-data Pair(a, b) = Pair(a, b);
-
-function fst(p: Pair(a, b)) -> a {
+function fst(p: (a, b)) -> a {
     match p {
-    | Pair(a, _) => return a;
+    | (a, _) => return a;
     };
 }
 
-function snd(p: Pair(a, b)) -> b {
+function snd(p: (a, b)) -> b {
     match p {
-    | Pair(_, b) => return b;
+    | (_, b) => return b;
     };
 }
 
@@ -119,7 +117,7 @@ data Bytes = Bytes;
 // ABI Encoding
 
 class t:EncodeInto {
-    function encodeInto(val : t, hd : word, tl : word) -> Pair(word,word);
+    function encodeInto(val : t, hd : word, tl : word) -> (word,word);
 }
 
 class t:Encode {
@@ -150,14 +148,14 @@ function encode(val:t) -> Memory(Bytes) {
     return ValueTy.abs(ptr) : Memory(Bytes);
 }
 
-instance (l:Encode, r:Encode) => Pair(l,r):Encode {
-    function shouldEncodeDynamic(x : Proxy(Pair(l,r))) -> Bool {
+instance (l:Encode, r:Encode) => (l,r):Encode {
+    function shouldEncodeDynamic(x : Proxy((l,r))) -> Bool {
         let l: Proxy(l) = Proxy;
         let r: Proxy(r) = Proxy;
         return and(Encode.shouldEncodeDynamic(l), Encode.shouldEncodeDynamic(l));
     }
 
-    function headSize(x : Proxy(Pair(l,r))) -> word {
+    function headSize(x : Proxy((l,r))) -> word {
         match Encode.shouldEncodeDynamic(x) {
         | True =>
             let res : word;
@@ -175,8 +173,8 @@ instance (l:Encode, r:Encode) => Pair(l,r):Encode {
     }
 }
 
-instance (l:EncodeInto, r:EncodeInto) => Pair(l,r):EncodeInto {
-    function encodeInto(val, hd, tl) -> Pair(word,word) {
+instance (l:EncodeInto, r:EncodeInto) => (l,r):EncodeInto {
+    function encodeInto(val, hd, tl) -> (word,word) {
         let first = fst(val);
         let second = snd(val);
         let range = EncodeInto.encodeInto(first, hd, tl);
@@ -209,14 +207,14 @@ instance Uint256:Encode {
 }
 
 instance Uint256:EncodeInto {
-    function encodeInto(v: Uint256, hd: word, tl: word) -> Pair(word, word) {
+    function encodeInto(v: Uint256, hd: word, tl: word) -> (word, word) {
         let vw = ValueTy.rep(v);
         let hd_ : word;
         assembly {
             hd_ := add(hd, 32)
             mstore(hd, vw)
         };
-        return Pair(hd_, tl);
+        return (hd_, tl);
     }
 }
 

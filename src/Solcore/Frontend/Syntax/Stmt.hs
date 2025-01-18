@@ -43,6 +43,9 @@ data Exp a
   | TyExp (Exp a) Ty                   -- type annotated expression
   deriving (Eq, Ord, Show, Data, Typeable)
 
+epair :: Exp Name -> Exp Name -> Exp Name 
+epair e1 e2 = Con (Name "pair") [e1, e2]
+
 -- pattern matching equations 
 
 data Pat a 

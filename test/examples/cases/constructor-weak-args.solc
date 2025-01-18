@@ -1,0 +1,7 @@
+class ref:Loadable (deref) {
+    function load (r : ref) -> deref;
+}
+
+forall t : Loadable(word) . function foo(v : t) -> word {
+  return Loadable.load(v);
+}

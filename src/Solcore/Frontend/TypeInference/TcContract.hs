@@ -14,9 +14,9 @@ import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
+import Solcore.Frontend.TypeInference.InvokeGen 
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
-import Solcore.Frontend.TypeInference.TcInvokeGen
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcStmt
 import Solcore.Frontend.TypeInference.TcSubst
@@ -246,13 +246,26 @@ tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds 
   = do
       funs <- mapM scanFun binds
-      (funs', pss, ts) <- unzip3 <$> mapM tcFunDef funs 
+      (funs', schs, pss, ts) <- unzip4 <$> mapM tcFunDef funs 
       ts' <- withCurrentSubst ts  
       schs <- mapM generalize (zip pss ts')
       let names = map (sigName . funSignature) funs 
-      let p (x,y) = pretty x ++ " :: " ++ pretty y
       mapM_ (uncurry extEnv) (zip names schs)
+      generateTopDeclsFor (zip funs' schs) 
       pure funs'
+
+generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
+generateTopDeclsFor ps
+  = do 
+      gen <- askGeneratingDefs 
+      if gen then do 
+        (dts, instds) <- unzip <$> mapM generateDecls ps
+        mapM_ checkDataType dts
+        mapM_ checkInstance instds 
+        insts' <- withNoGeneratingDefs (mapM tcInstance instds)
+        mapM_ writeTopDecl ((TDataDef <$> dts) ++ (TInstDef <$> insts'))
+      else pure ()
+
 
 scanFun :: FunDef Name -> TcM (FunDef Name)
 scanFun (FunDef sig bd)

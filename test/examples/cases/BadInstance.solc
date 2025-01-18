@@ -1,5 +1,5 @@
 class a:Enum {
-    function fromEnum(x:a) -> Word;
+    function fromEnum(x:a) -> word;
   }
 
 data Color = R | G | B;
