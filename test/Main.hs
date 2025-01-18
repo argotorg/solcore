@@ -44,7 +44,7 @@ spec
               , runTestForFile "039food.solc" specFolder
               , runTestForFile "041pair.solc" specFolder
               , runTestForFile "042triple.solc" specFolder
-              , expectFail $ runTestForFile "06comp.solc" specFolder
+              , runTestForFile "06comp.solc" specFolder
               , runTestForFile "07rgb.solc" specFolder
               , runTestForFile "08rgb2.solc" specFolder 
               , runTestForFile "09not.solc" specFolder 
@@ -107,6 +107,7 @@ cases
               , runTestForFile "tyexp.solc" caseFolder
               , runTestForFile "Uncurry.solc" caseFolder
               , runTestForFile "unit.solc" caseFolder
+              , runTestForFile "memory.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"

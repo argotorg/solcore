@@ -23,7 +23,7 @@ import Solcore.Primitives.Primitives
 
 import Language.Yul
 
-import Text.PrettyPrint.HughesPJ
+import Text.PrettyPrint.HughesPJ hiding ((<>))
 
 -- type inference for statements
 
@@ -200,6 +200,17 @@ tcExp (FieldAccess (Just e) n)
       pure (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExp ex@(Call me n args)
   = tcCall me n args `wrapError` ex
+tcExp e@(Lam args bd _)
+   = do
+       (args', schs, ts') <- tcArgs args
+       (bd',ps,t') <- withLocalCtx schs (tcBody bd)
+       s <- getSubst
+       let ps1 = apply s ps
+           ts1 = apply s (map unskol ts')
+           t1 = apply s (unskol t')
+           vs = fv ps1 `union` fv t' `union` fv ts1
+           ty = funtype ts1 t1
+       pure (Lam args' bd' (Just t1), ps1, ty)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
@@ -257,21 +268,20 @@ tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
 tcFunDef d@(FunDef sig bd)
   = withLocalEnv do
       -- checking if the function isn't defined
-      ((n,sch), pschs, ts) <- tcSignature sig 
+      ((n,sch), pschs, ts) <- tcSignature sig
       let lctx = (n,sch) : pschs
       (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
-      (ps :=> t) <- freshInst sch
-      t1 <- withCurrentSubst (foldr (:->) t' ts)
+      (ps :=> ann) <- freshInst sch
+      inf <- withCurrentSubst (foldr (:->) t' ts)
       nps <- withCurrentSubst (ps ++ ps1)
       ps2 <- reduceContext nps `wrapError` d
-      s1 <- getSubst
-      s' <- match (apply s1 $ unskol t) (apply s1 $ unskol t1) `wrapError` d
+      s' <- unify ann inf `wrapError` d
       extSubst s'
       s <- getSubst 
-      sch'@(Forall svs (sps :=> st)) <- generalize (ps2, apply s t) `wrapError` d
+      sch'@(Forall svs (sps :=> st)) <- generalize (ps2, apply s inf) `wrapError` d
       let sig2 = elabSignature sig sch'
       info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
-      pure (apply s $ FunDef sig2  bd', sch', apply s ps2, apply s t1)
+      pure (apply s $ FunDef sig2  bd', sch', apply s ps2, apply s ann)
 
 -- update types in signature 
 
@@ -771,3 +781,61 @@ wrongPatternNumber qts ps
 duplicatedFunDef :: Name -> TcM ()
 duplicatedFunDef n
   = throwError $ "Duplicated function definition:" ++ pretty n
+
+-- -- simple tests 
+--
+-- bounda :: Ty 
+-- bounda = TyVar (TVar (Name "a") True)
+--
+-- freeb :: Ty 
+-- freeb = TyVar (TVar (Name "b") False) 
+--
+-- ty1 :: Ty 
+-- ty1 = (pair bounda word) :-> bounda 
+--
+-- ty2 :: Ty 
+-- ty2 = (pair freeb word) :-> word
+--
+-- varBind1 :: Tyvar -> Ty -> TcM Subst 
+-- varBind1 v t
+--   | t == TyVar v = return mempty
+--   | v `elem` fv t = infiniteTyErr v t
+--   | rigid v && (not $ isVar1 t) = rigidVarError v t 
+--   | otherwise = return (v +-> t)
+--
+-- isVar1 :: Ty -> Bool 
+-- isVar1 (TyVar _) = True 
+-- isVar1 _ = False 
+--
+-- -- most general unifier 
+--
+-- unify1 :: Ty -> Ty -> TcM ()
+-- unify1 t1 t2 
+--   = do 
+--       s <- mgu1 t1 t2
+--       checkSubst s
+--       liftIO $ putStrLn $ "Subst:" ++ pretty s
+--
+-- mgu1 :: Ty -> Ty -> TcM Subst 
+-- mgu1 (TyCon n ts) (TyCon n' ts') 
+--   | n == n' && length ts == length ts' 
+--     = solve1 (zip ts ts') mempty 
+-- mgu1 (TyVar v) t 
+--   = do
+--       liftIO $ putStrLn $ pretty v ++ " - " ++ pretty t 
+--       varBind v t 
+-- mgu1 t (TyVar v) 
+--   = do 
+--       liftIO $ putStrLn $ pretty v ++ " - " ++ pretty t 
+--       varBind v t 
+-- mgu1 t1 t2 = typesDoNotUnify t1 t2 
+--
+-- solve1 :: [(Ty,Ty)] -> Subst -> TcM Subst 
+-- solve1 [] s = pure s 
+-- solve1 ((t1, t2) : ts) s 
+--   = do 
+--       s1 <- mgu1 (apply s t1) (apply s t2)
+--       s2 <- solve1 ts s1 
+--       pure (s2 <> s1)
+--
+

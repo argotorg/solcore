@@ -298,9 +298,9 @@ instance Elab S.Signature where
       where 
         env = mempty 
 
-  elab (S.Signature vs ctx n ps mt) 
+  elab sig@(S.Signature vs ctx n ps mt) 
     = do 
-        vs' <- elab vs 
+        vs' <- filter isTyVar <$> elab vs 
         ctx' <- elab ctx 
         ps' <- elab ps 
         mt' <- elab mt 

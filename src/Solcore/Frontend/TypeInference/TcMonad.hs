@@ -108,7 +108,22 @@ unify t t'
   = do
       s <- getSubst 
       s' <- mgu (apply s t) (apply s t')
-      extSubst s'
+      s1 <- extSubst s'
+      checkSubst s1 
+      pure s1
+    
+-- check if a substitution is valid 
+-- by checking if rigid variables are 
+-- mapped into type constructors. 
+
+checkSubst :: Subst -> TcM () 
+checkSubst (Subst ss) 
+  = mapM_ go ss 
+    where 
+      go (v1, t@(TyCon _ _))
+        | rigid v1 = rigidVarError v1 t
+        | otherwise = pure ()
+      go _ = pure ()
 
 matchTy :: Ty -> Ty -> TcM Subst 
 matchTy t t' 
