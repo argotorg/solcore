@@ -251,7 +251,7 @@ tcBindGroup binds
       schs <- mapM generalize (zip pss ts')
       let names = map (sigName . funSignature) funs 
       mapM_ (uncurry extEnv) (zip names schs)
-      generateTopDeclsFor (zip funs' schs) 
+      -- generateTopDeclsFor (zip funs' schs) 
       pure funs'
 
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()

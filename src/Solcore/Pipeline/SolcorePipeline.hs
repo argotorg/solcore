@@ -38,33 +38,33 @@ pipeline = do
       putStrLn $ pretty ast
     (ast0, mdt) <- uniqueTypeGen ast 
     when verbose $ do 
-      putStrLn "> Unique type generation - Part 01:"
+      putStrLn "> Unique type generation"
       putStrLn $ pretty ast0 
-    let r1 = lambdaLifting mdt ast0 
-    withErr r1 $ \ (ast1, utm, ss) -> do 
+    -- let r1 = lambdaLifting mdt ast0 
+    -- withErr r1 $ \ (ast1, utm, ss) -> do 
+    --   when verbose $ do 
+    --     putStrLn "> Lambda lifting and unique type generation - Part 02:"
+    --     putStrLn $ pretty ast1 
+    r2 <- sccAnalysis ast0
+    withErr r2 $ \ ast' -> do
       when verbose $ do 
-        putStrLn "> Lambda lifting and unique type generation - Part 02:"
-        putStrLn $ pretty ast1 
-      r2 <- sccAnalysis ast1
-      withErr r2 $ \ ast' -> do
-        when verbose $ do 
-          putStrLn "> SCC Analysis:"
-          putStrLn $ pretty ast'
-        ast3 <- indirectCall utm ast'
-        when verbose $ do 
-          putStrLn "> Indirect call desugaring:"
-          putStrLn $ pretty ast3
-        r5 <- typeInfer utm ast3
-        withErr r5 $ \ (c', env) -> do
-          let warns = warnings env
-              logsInfo = logs env
-              tyctx = ctx env 
-              ts = generated env 
-          when verbose $ do  
-            putStrLn "> Type inference logs:"
-            mapM_ putStrLn (reverse $ logsInfo)
-            putStrLn "> Elaborated tree:"
-            putStrLn $ pretty c'
+        putStrLn "> SCC Analysis:"
+        putStrLn $ pretty ast'
+      ast3 <- indirectCall mdt ast'
+      when verbose $ do 
+        putStrLn "> Indirect call desugaring:"
+        putStrLn $ pretty ast3
+      r5 <- typeInfer mdt ast3
+      withErr r5 $ \ (c', env) -> do
+        let warns = warnings env
+            logsInfo = logs env
+            tyctx = ctx env 
+            ts = generated env 
+        when verbose $ do  
+          putStrLn "> Type inference logs:"
+          mapM_ putStrLn (reverse $ logsInfo)
+          putStrLn "> Elaborated tree:"
+          putStrLn $ pretty c'
           -- r8 <- matchCompiler c'
           -- withErr r8 $ \ res -> do
           --   when (verbose || optDumpDS opts) do

@@ -23,9 +23,7 @@ lambdaLifting utm unit
   = case runLiftM (liftLambda unit) (Map.keys utm) utm of 
       Left err -> Left err 
       Right (CompUnit imps ds, env) ->
-        -- adding primitive class Invokable to the set of declarations 
-        -- of the current module
-        let decls' = TClassDef invokeClass : combine (generated env) ds 
+        let decls' = combine (generated env) ds 
         in Right (CompUnit imps decls', uniqueTyMap env, debugInfo env)  
 
 combine :: [TopDecl Name] -> [TopDecl Name] -> [TopDecl Name]

@@ -203,14 +203,14 @@ tcExp ex@(Call me n args)
 tcExp e@(Lam args bd _)
    = do
        (args', schs, ts') <- tcArgs args
-       (bd',ps,t') <- withLocalCtx schs (tcBody bd)
+       (bd', ps, t') <- withLocalCtx schs (tcBody bd)
        s <- getSubst
        let ps1 = apply s ps
            ts1 = apply s (map unskol ts')
            t1 = apply s (unskol t')
            vs = fv ps1 `union` fv t' `union` fv ts1
            ty = funtype ts1 t1
-       pure (Lam args' bd' (Just t1), ps1, ty)
+       pure (Lam args' bd' (Just ty), ps1, ty)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
@@ -219,6 +219,22 @@ tcExp e1@(TyExp e ty)
       s <- match ty' ty  `wrapError` e1
       extSubst s
       pure (TyExp e' ty, apply s ps, ty)
+
+closureConversion :: [Tyvar] -> 
+                     [Param Id] -> 
+                     Body Id -> 
+                     [Pred] -> 
+                     Ty -> TcM (Exp Id, Ty)
+closureConversion vs args bdy ps ty 
+  = do 
+      i <- incCounter
+      let 
+          (argTys, retTy) = splitTy ty
+          n = Name ("lambda_impl" ++ show i) 
+          sig = Signature vs ps n args (Just retTy)
+          fun = FunDef sig bdy 
+      writeFunDef fun 
+      undefined 
 
 unskol :: Ty -> Ty 
 unskol (TyVar (TVar v _)) = TyVar (TVar v False)
@@ -709,43 +725,42 @@ instance HasType (Pat Id) where
   fv (PVar v) = fv v
   fv (PCon v ps) = fv v `union` fv ps
 
--- determining free variables
+-- determining free variables 
 
-class Vars a where
+class Vars a where 
   vars :: a -> [Id]
 
-instance Vars a => Vars [a] where
+instance Vars a => Vars [a] where 
   vars = foldr (union . vars) []
 
-instance Vars (Pat Id) where
+instance Vars (Pat Id) where 
   vars (PVar v) = [v]
-  vars (PCon _ ps) = vars ps
+  vars (PCon _ ps) = vars ps 
   vars _ = []
 
-instance Vars (Param Id) where
+instance Vars (Param Id) where 
   vars (Typed n _) = [n]
   vars (Untyped n) = [n]
 
-instance Vars (Stmt Id) where
+instance Vars (Stmt Id) where 
   vars (e1 := e2) = vars [e1,e2]
   vars (Let _ _ (Just e)) = vars e
   vars (Let _ _ _) = []
-  vars (StmtExp e) = vars e
-  vars (Return e) = vars e
-  vars (Match e eqns) = vars e `union` vars eqns
+  vars (StmtExp e) = vars e 
+  vars (Return e) = vars e 
+  vars (Match e eqns) = vars e `union` vars eqns 
 
-instance Vars (Equation Id) where
-  vars (_, ss) = vars ss
+instance Vars (Equation Id) where 
+  vars (_, ss) = vars ss 
 
-instance Vars (Exp Id) where
+instance Vars (Exp Id) where 
   vars (Var n) = [n]
   vars (Con _ es) = vars es
   vars (FieldAccess Nothing _) = []
   vars (FieldAccess (Just e) _) = vars e
   vars (Call (Just e) n es) = [n] `union` vars (e : es)
-  vars (Call Nothing n es) = [n] `union` vars es
+  vars (Call Nothing n es) = [n] `union` vars es 
   vars (Lam ps bd _) = vars bd \\ vars ps
-  vars (TyExp e _) = vars e
   vars _ = []
 
 -- errors
@@ -781,61 +796,3 @@ wrongPatternNumber qts ps
 duplicatedFunDef :: Name -> TcM ()
 duplicatedFunDef n
   = throwError $ "Duplicated function definition:" ++ pretty n
-
--- -- simple tests 
---
--- bounda :: Ty 
--- bounda = TyVar (TVar (Name "a") True)
---
--- freeb :: Ty 
--- freeb = TyVar (TVar (Name "b") False) 
---
--- ty1 :: Ty 
--- ty1 = (pair bounda word) :-> bounda 
---
--- ty2 :: Ty 
--- ty2 = (pair freeb word) :-> word
---
--- varBind1 :: Tyvar -> Ty -> TcM Subst 
--- varBind1 v t
---   | t == TyVar v = return mempty
---   | v `elem` fv t = infiniteTyErr v t
---   | rigid v && (not $ isVar1 t) = rigidVarError v t 
---   | otherwise = return (v +-> t)
---
--- isVar1 :: Ty -> Bool 
--- isVar1 (TyVar _) = True 
--- isVar1 _ = False 
---
--- -- most general unifier 
---
--- unify1 :: Ty -> Ty -> TcM ()
--- unify1 t1 t2 
---   = do 
---       s <- mgu1 t1 t2
---       checkSubst s
---       liftIO $ putStrLn $ "Subst:" ++ pretty s
---
--- mgu1 :: Ty -> Ty -> TcM Subst 
--- mgu1 (TyCon n ts) (TyCon n' ts') 
---   | n == n' && length ts == length ts' 
---     = solve1 (zip ts ts') mempty 
--- mgu1 (TyVar v) t 
---   = do
---       liftIO $ putStrLn $ pretty v ++ " - " ++ pretty t 
---       varBind v t 
--- mgu1 t (TyVar v) 
---   = do 
---       liftIO $ putStrLn $ pretty v ++ " - " ++ pretty t 
---       varBind v t 
--- mgu1 t1 t2 = typesDoNotUnify t1 t2 
---
--- solve1 :: [(Ty,Ty)] -> Subst -> TcM Subst 
--- solve1 [] s = pure s 
--- solve1 ((t1, t2) : ts) s 
---   = do 
---       s1 <- mgu1 (apply s t1) (apply s t2)
---       s2 <- solve1 ts s1 
---       pure (s2 <> s1)
---
-
