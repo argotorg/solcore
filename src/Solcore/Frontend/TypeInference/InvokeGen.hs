@@ -68,8 +68,11 @@ createInstance udt fd sch
       let (args, retTy) = splitTy ty
           args' = if null args then [unit] else filter (not . isClosureTy) args 
           argTy = tupleTyFromList args'
-          argvars = union (union (fv argTy) (fv qs)) (fv retTy) 
-          selfTy = TyCon (dataName udt) (TyVar <$> argvars)
+          argvars = union (union (fv argTy) (fv qs)) (fv retTy)
+          dn = dataName udt
+          selfTy = -- if isClosureName dn then
+                      TyCon dn (TyVar <$> fv ty)
+                   -- else TyCon dn [argTy, retTy]
       -- building the invoke function signature 
       (selfParam, sn) <- freshParam "self" selfTy
       (argParam, an) <- freshParam "arg" argTy
@@ -91,9 +94,13 @@ createInstance udt fd sch
 
 freshPatData :: DataTy -> TcM (Pat Name, [Exp Name]) 
 freshPatData (DataTy dn vs ((Constr cn ts) : _))
-  = do 
-      ps <- mapM (const freshName) ts 
-      pure (PCon cn (map PVar ps), map Var ps)
+  | null ts 
+    = do 
+        pure (PCon cn [], [])
+  | otherwise
+    = do 
+        pn <- freshFromString "self" 
+        pure (PVar pn, [Var pn])
 
 freshPatArg :: Ty -> TcM (Pat Name, Exp Name)
 freshPatArg (TyCon pn ts)  
@@ -129,7 +136,7 @@ removeClosureTy :: [Ty] -> [Ty]
 removeClosureTy tys@(TyCon n _ : ts) 
   | isClosureName n = ts 
   | otherwise = tys 
-removeClosureTy tys = tys 
+removeClosureTy tys = tys
 
 isClosureName :: Name -> Bool 
 isClosureName n = isPrefixOf "t_closure" (pretty n)

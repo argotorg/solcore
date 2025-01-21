@@ -40,11 +40,6 @@ pipeline = do
     when verbose $ do 
       putStrLn "> Unique type generation"
       putStrLn $ pretty ast0 
-    -- let r1 = lambdaLifting mdt ast0 
-    -- withErr r1 $ \ (ast1, utm, ss) -> do 
-    --   when verbose $ do 
-    --     putStrLn "> Lambda lifting and unique type generation - Part 02:"
-    --     putStrLn $ pretty ast1 
     r2 <- sccAnalysis ast0
     withErr r2 $ \ ast' -> do
       when verbose $ do 
@@ -65,21 +60,21 @@ pipeline = do
           mapM_ putStrLn (reverse $ logsInfo)
           putStrLn "> Elaborated tree:"
           putStrLn $ pretty c'
-          -- r8 <- matchCompiler c'
-          -- withErr r8 $ \ res -> do
-          --   when (verbose || optDumpDS opts) do
-          --     putStrLn "> Match compilation result:"
-          --     putStrLn (pretty res)
-          --   unless (optNoSpec opts) do
-          --     r9 <- specialiseCompUnit res (optDebugSpec opts) env
-          --     when (optDumpSpec opts) do
-          --       putStrLn "> Specialised contract:"
-          --       putStrLn (pretty r9)
-          --     r10 <- emitCore (optDebugCore opts) env r9
-          --     when (optDumpCore opts) do
-          --       putStrLn "> Core contract(s):"
-          --       forM_ r10 (putStrLn . pretty)
-          --
+        r8 <- matchCompiler c'
+        withErr r8 $ \ res -> do
+          when (verbose || optDumpDS opts) do
+            putStrLn "> Match compilation result:"
+            putStrLn (pretty res)
+          unless (optNoSpec opts) do
+            r9 <- specialiseCompUnit res (optDebugSpec opts) env
+            when (optDumpSpec opts) do
+              putStrLn "> Specialised contract:"
+              putStrLn (pretty r9)
+            r10 <- emitCore (optDebugCore opts) env r9
+            when (optDumpCore opts) do
+              putStrLn "> Core contract(s):"
+              forM_ r10 (putStrLn . pretty)
+
 runParser :: String -> IO (Either String (CompUnit Name))
 runParser content = do 
   let r1 = runAlex content parser 

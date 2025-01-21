@@ -460,6 +460,15 @@ setBoundVariableCondition :: PragmaStatus -> TcM ()
 setBoundVariableCondition st 
   = modify (\ env -> env {boundVariable = st})
 
+disableBoundVariableCondition :: TcM a -> TcM a 
+disableBoundVariableCondition m 
+  = do 
+      old <- gets boundVariable
+      setBoundVariableCondition DisableAll
+      x <- m 
+      setBoundVariableCondition old 
+      pure x 
+
 -- recursion depth 
 
 askMaxRecursionDepth :: TcM Int 

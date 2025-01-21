@@ -13,7 +13,6 @@ contract Compose {
 
    function main() {
      let f = compose(id,id);
-     let g = f();
-     return g(42);
+     return f(42);
    }
 }

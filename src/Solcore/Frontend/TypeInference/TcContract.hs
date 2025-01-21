@@ -57,9 +57,19 @@ tcCompUnit (CompUnit imps cs)
       isClass _ = False 
       tcTopDecl' d = do 
         clearSubst
+        addGenDefs
         d' <- tcTopDecl d 
         s <- getSubst 
         pure (everywhere (mkT (applyI s)) d')
+
+addGenDefs :: TcM ()
+addGenDefs 
+  = do 
+      ds <- gets generated 
+      mapM_ addGen ds 
+    where 
+      addGen (TDataDef d) = checkDataType d 
+      addGen _ = pure ()
 
 -- setting up pragmas for type checking
 
@@ -251,7 +261,7 @@ tcBindGroup binds
       schs <- mapM generalize (zip pss ts')
       let names = map (sigName . funSignature) funs 
       mapM_ (uncurry extEnv) (zip names schs)
-      -- generateTopDeclsFor (zip funs' schs) 
+      generateTopDeclsFor (zip funs' schs) 
       pure funs'
 
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
@@ -261,7 +271,7 @@ generateTopDeclsFor ps
       if gen then do 
         (dts, instds) <- unzip <$> mapM generateDecls ps
         mapM_ checkDataType dts
-        mapM_ checkInstance instds 
+        disableBoundVariableCondition (mapM_ checkInstance instds)
         insts' <- withNoGeneratingDefs (mapM tcInstance instds)
         mapM_ writeTopDecl ((TDataDef <$> dts) ++ (TInstDef <$> insts'))
       else pure ()

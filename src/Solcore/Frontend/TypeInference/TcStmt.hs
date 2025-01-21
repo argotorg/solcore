@@ -10,12 +10,13 @@ import Data.List
 import qualified Data.Map as Map
 import Data.Maybe
 
+import Solcore.Desugarer.UniqueTypeGen (mkUniqueType)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Erase
 import Solcore.Frontend.TypeInference.Id
+import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.TcEnv
-import Solcore.Frontend.TypeInference.TcInvokeGen hiding (vars, tyFromParam, schemeFromSig)
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
@@ -210,7 +211,8 @@ tcExp e@(Lam args bd _)
            t1 = apply s (unskol t')
            vs = fv ps1 `union` fv t' `union` fv ts1
            ty = funtype ts1 t1
-       pure (Lam args' bd' (Just ty), ps1, ty)
+       (e, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty 
+       pure (e, ps1, t)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
@@ -228,13 +230,110 @@ closureConversion :: [Tyvar] ->
 closureConversion vs args bdy ps ty 
   = do 
       i <- incCounter
+      fs <- Map.keys <$> gets uniqueTypes 
+      let
+          fn = Name $ "lambda_impl" ++ show i
+          argsn = map idName (vars args) 
+          defs = fs ++ argsn ++ Map.keys primCtx 
+          free = filter (\ x -> notElem (idName x) defs) (vars bdy)
+      if null free then do
+        -- no closure needed for monomorphic 
+        -- lambdas!
+        j <- incCounter
+        let dn = Name $ "t_" ++ pretty fn ++ show j
+            dt = mkUniqueType dn
+            (argsTy,retTy) = splitTy ty 
+            t = TyCon dn (TyVar <$> fv ty)
+        addUniqueType fn dt 
+        fun <- createClosureFreeFun fn args bdy ps ty 
+        sch <- generalize (ps, ty)
+        (udt, instd) <- generateDecls (fun, sch)
+        writeFunDef fun
+        writeDataTy udt
+        checkDataType udt 
+        checkInstance instd
+        extEnv fn sch 
+        instd' <- tcInstance instd
+        writeInstance instd'
+        pure (Con (Id dn t) [], t) 
+      else do 
+        (cdt, e', t') <- createClosureType free vs ty
+        addUniqueType fn cdt 
+        (fun, sch) <- createClosureFun fn free cdt args bdy ps ty
+        liftIO $ putStrLn $ pretty sch
+        writeFunDef fun 
+        writeDataTy cdt
+        checkDataType cdt 
+        (_, instd) <- generateDecls (fun, sch)
+        checkInstance instd
+        extEnv fn sch 
+        instd' <- tcInstance instd
+        writeInstance instd'
+        pure (e', t')
+
+createClosureType :: [Id] -> [Tyvar] -> Ty -> TcM (DataTy, Exp Id, Ty) 
+createClosureType ids vs ty 
+  = do 
+      i <- incCounter 
       let 
-          (argTys, retTy) = splitTy ty
-          n = Name ("lambda_impl" ++ show i) 
-          sig = Signature vs ps n args (Just retTy)
-          fun = FunDef sig bdy 
-      writeFunDef fun 
-      undefined 
+          (args,ret) = splitTy ty 
+          argTy = tupleTyFromList args
+          dn = Name $ "t_closure" ++ show i 
+          ts = map idType ids
+          ns = map Var ids
+          vs' = union (fv ts) vs 
+          ty' = TyCon dn (TyVar <$> vs')
+          cid = Id dn (funtype ts ty')
+      pure (DataTy dn vs' [Constr dn ts], Con cid ns, ty')
+
+createClosureFun :: Name -> 
+                    [Id] -> 
+                    DataTy -> 
+                    [Param Id] ->
+                    Body Id -> 
+                    [Pred] -> 
+                    Ty -> 
+                    TcM (FunDef Id, Scheme) 
+createClosureFun fn free cdt args bdy ps ty 
+  = do 
+      j <- incCounter
+      ct <- closureTyCon cdt
+      let cName = Name $ "env" ++ show j
+          cParam = Typed (Id cName ct) ct 
+          args' = cParam : args 
+          (_,retTy) = splitTy ty
+          vs' = union (fv ct) (fv ps)
+          ty' = ct :-> ty 
+          sig = Signature vs' ps fn args' (Just retTy)
+      bdy' <- createClosureBody cName cdt free bdy
+      sch <- generalize (ps, ty')
+      pure (FunDef sig bdy', sch)
+ 
+
+closureTyCon :: DataTy -> TcM Ty 
+closureTyCon (DataTy dn vs _) 
+  = pure (TyCon dn (TyVar <$> vs))   
+
+createClosureBody :: Name -> DataTy -> [Id] -> Body Id -> TcM (Body Id) 
+createClosureBody n cdt@(DataTy dn vs [Constr cn ts]) ids bdy 
+  = do
+      ct <- closureTyCon cdt
+      let ps = map PVar ids
+          tc = funtype ts ct 
+      pure [Match [Var (Id n ct)] [([PCon (Id cn tc) ps], bdy)]]  
+
+createClosureFreeFun :: Name -> 
+                        [Param Id] -> 
+                        Body Id -> 
+                        [Pred] -> 
+                        Ty -> 
+                        TcM (FunDef Id)
+createClosureFreeFun fn args bdy ps ty 
+  = do
+      let
+        (_, retTy) = splitTy ty
+        sig = Signature [] ps fn args (Just retTy)
+      pure (FunDef sig bdy)
 
 unskol :: Ty -> Ty 
 unskol (TyVar (TVar v _)) = TyVar (TVar v False)
@@ -410,7 +509,7 @@ checkInstance idef@(Instance ctx n ts t funs)
       patterson <- askPattersonCondition n 
       unless patterson (checkMeasure ctx ipred `wrapError` idef)
       -- checking bound variable condition
-      bound <- askBoundVariableCondition n 
+      bound <- askBoundVariableCondition n
       unless bound (checkBoundVariable ctx (fv (t : ts)) `wrapError` idef)
       -- checking instance methods
       mapM_ (checkMethod ipred) funs
@@ -733,16 +832,19 @@ class Vars a where
 instance Vars a => Vars [a] where 
   vars = foldr (union . vars) []
 
-instance Vars (Pat Id) where 
-  vars (PVar v) = [v]
+instance Vars Id where 
+  vars n = [n]
+
+instance Vars a => Vars (Pat a) where 
+  vars (PVar v) = vars v 
   vars (PCon _ ps) = vars ps 
   vars _ = []
 
-instance Vars (Param Id) where 
-  vars (Typed n _) = [n]
-  vars (Untyped n) = [n]
+instance Vars a => Vars (Param a) where 
+  vars (Typed n _) = vars n
+  vars (Untyped n) = vars n
 
-instance Vars (Stmt Id) where 
+instance Vars a => Vars (Stmt a) where 
   vars (e1 := e2) = vars [e1,e2]
   vars (Let _ _ (Just e)) = vars e
   vars (Let _ _ _) = []
@@ -750,16 +852,16 @@ instance Vars (Stmt Id) where
   vars (Return e) = vars e 
   vars (Match e eqns) = vars e `union` vars eqns 
 
-instance Vars (Equation Id) where 
+instance Vars a => Vars (Equation a) where 
   vars (_, ss) = vars ss 
 
-instance Vars (Exp Id) where 
-  vars (Var n) = [n]
+instance Vars a => Vars (Exp a) where 
+  vars (Var n) = vars n
   vars (Con _ es) = vars es
   vars (FieldAccess Nothing _) = []
   vars (FieldAccess (Just e) _) = vars e
-  vars (Call (Just e) n es) = [n] `union` vars (e : es)
-  vars (Call Nothing n es) = [n] `union` vars es 
+  vars (Call (Just e) n es) = vars n `union` vars (e : es)
+  vars (Call Nothing n es) = vars n `union` vars es 
   vars (Lam ps bd _) = vars bd \\ vars ps
   vars _ = []
 

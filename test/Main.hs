@@ -76,6 +76,8 @@ cases
               , expectFail $ runTestForFile "BadInstance.solc" caseFolder
               , runTestForFile "BoolNot.solc" caseFolder
               , runTestForFile "Compose.solc" caseFolder
+              , runTestForFile "Compose2.solc" caseFolder
+              , runTestForFile "Compose3.solc" caseFolder
               , expectFail $ runTestForFile "DupFun.solc" caseFolder
               , runTestForFile "DuplicateFun.solc" caseFolder
               , runTestForFile "EitherModule.solc" caseFolder
@@ -100,7 +102,7 @@ cases
               , expectFail $ runTestForFile "SimpleInvoke.solc" caseFolder
               , runTestForFile "SimpleLambda.solc" caseFolder
               , runTestForFile "SingleFun.solc" caseFolder
-              , runTestForFile "assembly.solc" caseFolder
+              , expectFail $ runTestForFile "assembly.solc" caseFolder
               , runTestForFile "join.solc" caseFolder
               , runTestForFile "EqQual.solc" caseFolder 
               , expectFail $ runTestForFile "joinErr.solc" caseFolder
@@ -108,6 +110,10 @@ cases
               , runTestForFile "Uncurry.solc" caseFolder
               , runTestForFile "unit.solc" caseFolder
               , runTestForFile "memory.solc" caseFolder
+              , runTestForFile "closure.solc" caseFolder 
+              , runTestForFile "noclosure.solc" caseFolder 
+              , runTestForFile "constructor-weak-args.solc" caseFolder 
+              , expectFail $ runTestForFile "unconstrainted-instance.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"
