@@ -102,7 +102,7 @@ cases
               , expectFail $ runTestForFile "SimpleInvoke.solc" caseFolder
               , runTestForFile "SimpleLambda.solc" caseFolder
               , runTestForFile "SingleFun.solc" caseFolder
-              , expectFail $ runTestForFile "assembly.solc" caseFolder
+              , runTestForFile "assembly.solc" caseFolder
               , runTestForFile "join.solc" caseFolder
               , runTestForFile "EqQual.solc" caseFolder 
               , expectFail $ runTestForFile "joinErr.solc" caseFolder
