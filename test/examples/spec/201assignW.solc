@@ -1,0 +1,7 @@
+contract AssignWord {
+  function main() {
+    let x = 42; let y : word;
+    y = x;
+    return y;
+  }
+}

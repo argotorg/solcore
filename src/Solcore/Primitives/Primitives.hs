@@ -86,7 +86,7 @@ primPair = (Name "pair", Forall [aVar, bVar] ([] :=> (pairTy at bt)))
 primUnit :: (Name, Scheme)
 primUnit = (Name "()", monotype unit)
 
-pairTy :: Ty -> Ty -> Ty 
+pairTy :: Ty -> Ty -> Ty
 pairTy t1 t2 = t1 :-> t2 :-> pair t1 t2
 
 string :: Ty
@@ -107,6 +107,27 @@ epair e1 e2 = Con (Name "pair") [e1, e2]
 arr :: Name
 arr = "->"
 
+-- stack reference handling
+primStkLoad :: (Name, Scheme)
+primStkLoad = ("stkLoad", monotype (stack word :-> word))
+
+primStkStore :: (Name, Scheme)
+primStkStore = ("stkStore", monotype (stack word :-> word :-> unit))
+
+primStkUpdFst :: (Name, Scheme)
+primStkUpdFst = ("stkUpdFst", forAll ["a","b"] (stack (pair a b) :-> a :-> unit))
+  where
+    (a, b) = (tv "a", tv "b")
+    tv n = TyVar (TVar n False)
+
+primFunNames :: [Name]
+primFunNames = [ Name "primAddWord"
+               , Name "primEqWord"
+               , Name "stkLoad"
+               , Name "stkStore"
+               , Name "stkUpdFst"
+               , Name "stkUpdSnd"
+              ]
 -- definition of yul primops
 
 yulPrimOps :: [(Name, Scheme)]
