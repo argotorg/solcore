@@ -72,10 +72,10 @@ tcStmt (Match es eqns)
       withCurrentSubst (Match es' eqns', concat (pss1 : pss'), resTy)
 tcStmt s@(Asm yblk)
   = withLocalCtx yulPrimOps $ do
-      newBinds <- tcYulBlock yblk
+      (newBinds,t) <- tcYulBlock yblk
       let word' = monotype word
       mapM_ (flip extEnv word') newBinds
-      pure (Asm yblk, [], unit)
+      pure (Asm yblk, [], t)
 
 isGeneratedType :: Ty -> TcM Bool
 isGeneratedType (TyVar _) = pure False
@@ -678,50 +678,58 @@ typeName t = throwError $ unlines ["Expected type, but found:"
 
 -- typing Yul code
 
-tcYulBlock :: YulBlock -> TcM [Name]
-tcYulBlock yblk
-  = withLocalEnv (concat <$> mapM tcYulStmt yblk)
+tcYulBlock :: YulBlock -> TcM ([Name], Ty)
+tcYulBlock [] 
+  = pure ([], unit)
+tcYulBlock [s] 
+  = tcYulStmt s
+tcYulBlock (s : ss) 
+  = do 
+      (ns,_) <- tcYulStmt s 
+      (nss, t) <- tcYulBlock ss
+      pure (ns ++ nss, t) 
 
-tcYulStmt :: YulStmt -> TcM [Name]
+tcYulStmt :: YulStmt -> TcM ([Name], Ty)
 tcYulStmt (YAssign ns e)
   = do
       -- do not define names
       tcYulExp e
-      pure []
+      pure ([], unit)
 tcYulStmt (YBlock yblk)
   = do
       _ <- tcYulBlock yblk
       -- names defined in should not return
-      pure []
+      pure ([], unit)
 tcYulStmt (YLet ns (Just e))
   = do
       tcYulExp e
       mapM_ (flip extEnv mword) ns
-      pure ns
+      pure (ns, unit)
 tcYulStmt (YExp e)
   = do
-      tcYulExp e
-      pure []
+      t <- tcYulExp e
+      pure ([], t) 
 tcYulStmt (YIf e yblk)
   = do
       tcYulExp e
       _ <- tcYulBlock yblk
-      pure []
+      pure ([], unit)
 tcYulStmt (YSwitch e cs df)
   = do
       tcYulExp e
       tcYulCases cs
       tcYulDefault df
-      pure []
+      pure ([], unit)
 tcYulStmt (YFor init e bdy upd)
   = do
-      ns <- tcYulBlock init
+      ns <- fst <$> tcYulBlock init
       withLocalEnv do
         mapM_ (flip extEnv mword) ns
         tcYulExp e
         tcYulBlock bdy
         tcYulBlock upd
-tcYulStmt _ = pure []
+      pure ([], unit)
+tcYulStmt _ = pure ([], unit)
 
 tcYulExp :: YulExp -> TcM Ty
 tcYulExp (YLit l)
