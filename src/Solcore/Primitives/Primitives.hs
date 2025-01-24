@@ -101,6 +101,9 @@ unit = TyCon "()" []
 pair :: Ty -> Ty -> Ty
 pair t1 t2 = TyCon "pair" [t1, t2]
 
+epair :: Exp Name -> Exp Name -> Exp Name 
+epair e1 e2 = Con (Name "pair") [e1, e2]
+
 arr :: Name
 arr = "->"
 

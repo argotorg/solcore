@@ -146,12 +146,6 @@ isClosureTy (TyCon tn _)
   = isClosureName tn 
 isClosureTy _ = False 
 
-isPair :: Name -> Bool 
-isPair (Name n) = n == "pair" 
-
-isWord :: Name -> Bool 
-isWord (Name n) = n == "word"
-
 ppair :: Pat Name -> Pat Name -> Pat Name 
 ppair p1 p2 = PCon (Name "pair") [p1, p2] 
 

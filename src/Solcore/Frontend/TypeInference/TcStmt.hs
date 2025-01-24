@@ -24,7 +24,6 @@ import Solcore.Primitives.Primitives
 
 import Language.Yul
 
-import Text.PrettyPrint.HughesPJ hiding ((<>))
 
 -- type inference for statements
 
@@ -209,7 +208,7 @@ tcExp e@(Lam args bd _)
        let ps1 = apply s ps
            ts1 = apply s (map unskol ts')
            t1 = apply s (unskol t')
-           vs = fv ps1 `union` fv t' `union` fv ts1
+           vs = fv ps1 `union` fv t1 `union` fv ts1
            ty = funtype ts1 t1
        (e, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty 
        pure (e, ps1, t)
@@ -825,42 +824,42 @@ instance HasType (Pat Id) where
 
 -- determining free variables 
 
-class Vars a where 
+class Vars a where
   vars :: a -> [Id]
 
-instance Vars a => Vars [a] where 
+instance Vars a => Vars [a] where
   vars = foldr (union . vars) []
 
-instance Vars Id where 
+instance Vars Id where
   vars n = [n]
 
-instance Vars a => Vars (Pat a) where 
-  vars (PVar v) = vars v 
-  vars (PCon _ ps) = vars ps 
+instance Vars a => Vars (Pat a) where
+  vars (PVar v) = vars v
+  vars (PCon _ ps) = vars ps
   vars _ = []
 
-instance Vars a => Vars (Param a) where 
+instance Vars a => Vars (Param a) where
   vars (Typed n _) = vars n
   vars (Untyped n) = vars n
 
-instance Vars a => Vars (Stmt a) where 
+instance Vars a => Vars (Stmt a) where
   vars (e1 := e2) = vars [e1,e2]
   vars (Let _ _ (Just e)) = vars e
   vars (Let _ _ _) = []
-  vars (StmtExp e) = vars e 
-  vars (Return e) = vars e 
-  vars (Match e eqns) = vars e `union` vars eqns 
+  vars (StmtExp e) = vars e
+  vars (Return e) = vars e
+  vars (Match e eqns) = vars e `union` vars eqns
 
-instance Vars a => Vars (Equation a) where 
-  vars (_, ss) = vars ss 
+instance Vars a => Vars (Equation a) where
+  vars (_, ss) = vars ss
 
-instance Vars a => Vars (Exp a) where 
+instance Vars a => Vars (Exp a) where
   vars (Var n) = vars n
   vars (Con _ es) = vars es
   vars (FieldAccess Nothing _) = []
   vars (FieldAccess (Just e) _) = vars e
   vars (Call (Just e) n es) = vars n `union` vars (e : es)
-  vars (Call Nothing n es) = vars n `union` vars es 
+  vars (Call Nothing n es) = vars n `union` vars es
   vars (Lam ps bd _) = vars bd \\ vars ps
   vars _ = []
 
