@@ -260,7 +260,6 @@ closureConversion vs args bdy ps ty
         (cdt, e', t') <- createClosureType free vs ty
         addUniqueType fn cdt 
         (fun, sch) <- createClosureFun fn free cdt args bdy ps ty
-        liftIO $ putStrLn $ pretty sch
         writeFunDef fun 
         writeDataTy cdt
         checkDataType cdt 

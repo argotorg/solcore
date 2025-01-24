@@ -113,7 +113,7 @@ cases
               , runTestForFile "closure.solc" caseFolder 
               , runTestForFile "noclosure.solc" caseFolder 
               , runTestForFile "constructor-weak-args.solc" caseFolder 
-              , expectFail $ runTestForFile "unconstrainted-instance.solc" caseFolder
+              , expectFail $ runTestForFile"unconstrainted-instance.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"
