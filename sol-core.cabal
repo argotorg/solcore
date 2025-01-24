@@ -67,11 +67,11 @@ library
       Solcore.Frontend.Syntax.SyntaxTree
       Solcore.Frontend.TypeInference.Erase
       Solcore.Frontend.TypeInference.Id
+      Solcore.Frontend.TypeInference.InvokeGen 
       Solcore.Frontend.TypeInference.NameSupply
       Solcore.Frontend.TypeInference.SccAnalysis
       Solcore.Frontend.TypeInference.TcContract
       Solcore.Frontend.TypeInference.TcEnv
-      Solcore.Frontend.TypeInference.TcInvokeGen
       Solcore.Frontend.TypeInference.TcMonad
       Solcore.Frontend.TypeInference.TcStmt
       Solcore.Frontend.TypeInference.TcSubst

@@ -1,0 +1,13 @@
+forall any.function undefined() -> any {
+  assembly {
+    revert(0,0)
+  };
+}
+
+function useWord(w:word) {}
+
+contract Magic {
+  function main() {
+    useWord(undefined());
+  }
+}

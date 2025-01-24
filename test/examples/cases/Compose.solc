@@ -1,10 +1,9 @@
-contract Compose {
   function compose(f,g) {
     return lam (x) {
       return f(g(x));
     } ;   
   }
-
+  
   function id(x) { return x; }
 
   function idid() { return compose(id,id); }
@@ -15,5 +14,4 @@ contract Compose {
     let f = compose(id,id);
     return f(42) : word;
   }
-}
 

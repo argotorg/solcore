@@ -44,7 +44,7 @@ spec
               , runTestForFile "039food.solc" specFolder
               , runTestForFile "041pair.solc" specFolder
               , runTestForFile "042triple.solc" specFolder
-              , expectFail $ runTestForFile "06comp.solc" specFolder
+              , runTestForFile "06comp.solc" specFolder
               , runTestForFile "07rgb.solc" specFolder
               , runTestForFile "08rgb2.solc" specFolder 
               , runTestForFile "09not.solc" specFolder 
@@ -75,7 +75,9 @@ cases
               , runTestForFile "app.solc" caseFolder 
               , expectFail $ runTestForFile "BadInstance.solc" caseFolder
               , runTestForFile "BoolNot.solc" caseFolder
-              , expectFail $ runTestForFile "Compose.solc" caseFolder
+              , runTestForFile "Compose.solc" caseFolder
+              , runTestForFile "Compose2.solc" caseFolder
+              , runTestForFile "Compose3.solc" caseFolder
               , expectFail $ runTestForFile "DupFun.solc" caseFolder
               , runTestForFile "DuplicateFun.solc" caseFolder
               , runTestForFile "EitherModule.solc" caseFolder
@@ -92,13 +94,13 @@ cases
               , runTestForFile "Pair.solc" caseFolder
               , expectFail $ runTestForFile "PairMatch1.solc" caseFolder
               , expectFail $ runTestForFile"PairMatch2.solc" caseFolder
-              , expectFail $ runTestForFile "Peano.solc" caseFolder
+              , runTestForFile "Peano.solc" caseFolder
               , runTestForFile "PeanoMatch.solc" caseFolder
               , runTestForFile "RefDeref.solc" caseFolder
               , expectFail $ runTestForFile "SillyReturn.solc" caseFolder
               , runTestForFile "SimpleField.solc" caseFolder
               , expectFail $ runTestForFile "SimpleInvoke.solc" caseFolder
-              , expectFail $ runTestForFile "SimpleLambda.solc" caseFolder
+              , runTestForFile "SimpleLambda.solc" caseFolder
               , runTestForFile "SingleFun.solc" caseFolder
               , runTestForFile "assembly.solc" caseFolder
               , runTestForFile "join.solc" caseFolder
@@ -107,6 +109,11 @@ cases
               , runTestForFile "tyexp.solc" caseFolder
               , runTestForFile "Uncurry.solc" caseFolder
               , runTestForFile "unit.solc" caseFolder
+              , runTestForFile "memory.solc" caseFolder
+              , runTestForFile "closure.solc" caseFolder 
+              , runTestForFile "noclosure.solc" caseFolder 
+              , runTestForFile "constructor-weak-args.solc" caseFolder 
+              , expectFail $ runTestForFile"unconstrainted-instance.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"
@@ -124,7 +131,6 @@ basicOptions :: [String]
 basicOptions = [ "new-run"
                , "sol-core"
                , "--"
-               , "-n"
                , "-f"
                ] 
 

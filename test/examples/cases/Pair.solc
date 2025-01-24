@@ -1,12 +1,10 @@
-contract PairModule {
-
   function fst (x) {
     match x {
     | (a,_) => return a;
     };
   }
 
-  function snd(x) {
+  function snd(x : (a,b)) -> b {
     match x {
     | (_,b) => return b;
     };
@@ -21,4 +19,3 @@ contract PairModule {
   function curry(f,x,y) {
     return f((x,y)) ; 
   }
-}

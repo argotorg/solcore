@@ -14,8 +14,8 @@ namePool = Name <$> (names ++ addNumbers names [1..])
 addNumbers :: [String] -> [Int] -> [String]
 addNumbers xs ys 
   = do
-      x <- xs 
       y <- ys 
+      x <- xs 
       return (x ++ show y)
 
 newName :: NameSupply -> (Name, NameSupply)

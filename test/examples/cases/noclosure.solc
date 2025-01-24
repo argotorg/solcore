@@ -1,0 +1,6 @@
+function foo (z) {
+  let f = lam (x : word, y) {
+      return primAddWord(x,primAddWord(y,1));
+    };
+  return primAddWord(f(0,1),z);
+}

@@ -47,6 +47,22 @@ incCounter = do
   modify (\ ctx -> ctx{counter = c + 1})
   pure c 
 
+askGeneratingDefs :: TcM Bool 
+askGeneratingDefs = gets generateDefs 
+
+setGeneratingDefs :: Bool -> TcM ()
+setGeneratingDefs b 
+  = modify (\env -> env {generateDefs = b})
+
+withNoGeneratingDefs :: TcM a -> TcM a 
+withNoGeneratingDefs m 
+  = do 
+      b <- askGeneratingDefs
+      setGeneratingDefs False 
+      r <- m 
+      setGeneratingDefs b 
+      pure r
+
 addUniqueType :: Name -> DataTy -> TcM ()
 addUniqueType n dt 
   = do
@@ -92,7 +108,22 @@ unify t t'
   = do
       s <- getSubst 
       s' <- mgu (apply s t) (apply s t')
-      extSubst s'
+      s1 <- extSubst s'
+      checkSubst s1 
+      pure s1
+    
+-- check if a substitution is valid 
+-- by checking if rigid variables are 
+-- mapped into type constructors. 
+
+checkSubst :: Subst -> TcM () 
+checkSubst (Subst ss) 
+  = mapM_ go ss 
+    where 
+      go (v1, t@(TyCon _ _))
+        | rigid v1 = rigidVarError v1 t
+        | otherwise = pure ()
+      go _ = pure ()
 
 matchTy :: Ty -> Ty -> TcM Subst 
 matchTy t t' 
@@ -428,6 +459,15 @@ askBoundVariableCondition n
 setBoundVariableCondition :: PragmaStatus -> TcM ()
 setBoundVariableCondition st 
   = modify (\ env -> env {boundVariable = st})
+
+disableBoundVariableCondition :: TcM a -> TcM a 
+disableBoundVariableCondition m 
+  = do 
+      old <- gets boundVariable
+      setBoundVariableCondition DisableAll
+      x <- m 
+      setBoundVariableCondition old 
+      pure x 
 
 -- recursion depth 
 
