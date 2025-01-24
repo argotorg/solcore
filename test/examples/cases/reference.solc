@@ -1,10 +1,3 @@
-// removing this function breaks things too; WHY?
-forall any.function undefined() -> any {
-  assembly {
-    revert(0,0)
-  };
-}
-
 data stack(a) = stack(a);
 
 class  ref : Ref(deref) {
@@ -26,16 +19,14 @@ data XRef(st, field, fieldType) = XRef(st, field);
 instance (r:Ref( (a,b) ) )=>  XRef(r, PairFst, a) : Ref(a) {}
 instance (r:Ref( (a,b) ) )=>  XRef(r, PairSnd, b) : Ref(b) {}
 
-contract AssignNested {
   function main() {
     let x : stack( (word, (word, word)) );
     let z : stack( (word, (word, word)) );
 
     // either of the next lines is fine on their own, but not together
-    //Ref.store( XRef(z,PairFst), 21); 
+    Ref.store( XRef(z,PairFst), 21); 
     Ref.store( XRef(XRef(x, PairSnd), PairFst), 20 );
 
    return 77;
 
   }
-}
