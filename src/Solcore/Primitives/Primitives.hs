@@ -167,7 +167,7 @@ yulPrimOps = [ (Name "stop", monotype unit)
              , (Name "delegatecall", monotype (funtype (words 6) word))
              , (Name "staticcall", monotype (funtype (words 6) word))
              , (Name "return", monotype (word :-> word :-> unit))
-             , (Name "revert", monotype (word :-> word :-> unit))
+             , (Name "revert", Forall [aVar] ([] :=> (word :-> word :-> (TyVar aVar))))
              , (Name "selfdestruct", monotype (word :-> unit))
              , (Name "invalid", monotype unit)
              , (Name "log0", monotype (word :-> word :-> unit))
@@ -187,6 +187,9 @@ yulPrimOps = [ (Name "stop", monotype unit)
              , (Name "prevrandao", monotype word)
              , (Name "gaslimit", monotype word)
              ]
+
+aVar :: Tyvar 
+aVar = TVar (Name "a") False
 
 words :: Int -> [Ty]
 words n = replicate n word
