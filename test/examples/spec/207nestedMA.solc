@@ -45,21 +45,22 @@ MemberAccess(MemberAccess(stack((a,b), PairSnd), field)):Ref(fieldType) {}
 
 // Daniel:
 pragma no-coverage-condition Ref;
-instance
+/* instance
         (MemberAccess(stack(t), field):Ref(fieldType),
          MemberAccess(stack(fieldType), nestedField):Ref(nestedFieldType)) =>
         MemberAccess(MemberAccess(stack(t), field), nestedField):Ref(nestedFieldType) {}
-
+*/
 
 // Marcin:
 pragma no-bounded-variable-condition Ref;
 data XRef(st, field, fieldType) = XRef(st);
-instance XRef( stack( (a,b) ), PairFst, a) : Ref(a) {}
-instance XRef( stack( (a,b) ), PairSnd, b) : Ref(b) {}
-instance ( XRef(stack(t), field, fieldType) : Ref(fieldType)
-         , XRef(stack(fieldType), nestedField, nestedFieldType) : Ref(nestedFieldType)
-	 ) => XRef(XRef(stack(t), field, fieldType), nestedFieldType) : Ref(nestedFieldType)
-	 {}
+data XRef(st, field, fieldType) = XRef(st);
+instance (r:Ref( (a,b) ) )=>  XRef(r, PairFst, a) : Ref(a) {}
+instance (r:Ref( (a,b) ) )=>  XRef(r, PairSnd, b) : Ref(b) {}
+
+pragma no-patterson-condition Ref;
+instance (r:Ref( (a,b) ) )=>  MemberAccess(r, PairFst) : Ref(a) {}
+instance (r:Ref( (a,b) ) )=>  MemberAccess(r, PairSnd) : Ref(b) {}
 
 contract AssignNested {
   function fst(p) {
@@ -83,12 +84,18 @@ contract AssignNested {
   function main() {
     // let x : (word, (word, word)) = (1, (2,3)) ;
     let x : stack( (word, (word, word)) );
-    Ref.store(x, (1, (2,3)));
+    // Ref.store(x, (1, (2,3)));
 
     // x.fst = 25
     // Ref.store(MemberAccess(x):MemberAccess(stack( (word, (word,word)) ), PairFst), 25);
-
+    // Ref.store(MemberAccess(x):MemberAccess(stack( (word, (word,word)) ), PairSnd), (20,21));
     // x.snd.fst = 42
+
+    let r2 : MemberAccess
+                ( MemberAccess(stack( (word, (word,word)) ), PairSnd)
+	        , PairFst
+		) = MemberAccess(MemberAccess(x));
+    Ref.store(r2, 42);
     /*
     Ref.store(MemberAccess(MemberAccess(x)): MemberAccess
                 ( MemberAccess(stack( (word, (word,word)) ), PairSnd)
@@ -96,18 +103,20 @@ contract AssignNested {
 		)
 	     , 42);
     */
+    /*
     Ref.store( XRef(XRef(x))
-             : XRef( XRef( stack( (word, stack((word,word))))
-	                 , PairSnd, stack( (word, word) )
+             : XRef( XRef( stack( (word, (word,word)))
+	                 , PairSnd, (word, word)
 	                 )
-		   , PairFst, stack(word)
+		   , PairFst, word
 		   )
 	     , 42);
+    */
     // return y.fst
     // return Ref.load(MemberAccess(x) : MemberAccess(stack( (word, (word,word)) ), PairFst) );
-    return fst(snd(Ref.load(x)));
+    //return fst(snd(Ref.load(x)));
 
-    // return 77;
+     return 77;
 
   }
 }

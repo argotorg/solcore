@@ -11,13 +11,14 @@ import qualified Data.Map as Map
 import Data.Maybe(fromMaybe)
 import GHC.Stack( HasCallStack )
 
-import Solcore.Frontend.Pretty.SolcorePretty
+import Common.Pretty
+import Solcore.Frontend.Pretty.SolcorePretty ( pretty )
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id ( Id(..) )
 import Solcore.Frontend.TypeInference.TcEnv(TcEnv(..),TypeInfo(..), TypeTable)
 import Solcore.Frontend.TypeInference.TcSubst
-import Solcore.Frontend.TypeInference.TcUnify
-import Solcore.Primitives.Primitives
+    ( HasType(fv, apply), Subst(Subst) )
+import Solcore.Primitives.Primitives ( primFunNames )
 import Solcore.Desugarer.Specialise(typeOfTcExp)
 import System.Exit
 
@@ -250,8 +251,8 @@ isBuiltin :: CoreName -> Bool
 isBuiltin name = elem (Name name) primFunNames
 
 emitBuiltin "revert" [Lit(StrLit s)] = pure(Core.EUnit, [Core.SRevert s])
-emitBuiltin "stkLoad" [e] = emitExp e
-emitBuiltin "stkStore" [e1, e2] = do
+emitBuiltin "locLoad" [e] = emitExp e
+emitBuiltin "locStore" [e1, e2] = do
     (v1, s1) <- emitExp e1
     (v2, s2) <- emitExp e2
     pure (Core.EUnit, s1 ++ s2 ++ [Core.SAssign v1 v2])
@@ -263,6 +264,13 @@ emitBuiltin "stkUpdSnd" [e1, e2] = do
     (v1, s1) <- emitExp e1
     (v2, s2) <- emitExp e2
     pure (Core.EUnit, s1 ++ s2 ++ [Core.SAssign (Core.ESnd v1) v2])
+emitBuiltin "locFst" [e] = do
+    (v, s) <- emitExp e
+    pure (Core.EFst v, s)
+emitBuiltin "locSnd" [e] = do
+    (v, s) <- emitExp e
+    pure (Core.ESnd v, s)
+emitBuiltin s as = errors ["emitBuiltin not implemented for: ", s, prettys as, "\n", show as]
 
 -----------------------------------------------------------------------
 -- Translating statements

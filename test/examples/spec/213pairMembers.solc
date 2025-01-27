@@ -1,0 +1,75 @@
+
+forall any.function undefined() -> any {
+  assembly {
+    revert(0,0)
+  };
+}
+
+function add(x : word, y : word) {
+  let res: word;
+  assembly {
+     res := add(x, y)
+  };
+  return res;
+}
+
+class  ref : Ref(deref) {
+  function load (r:ref) -> deref;
+  function store(r:ref, v:deref) -> unit;
+}
+
+instance stack(a) : Ref(a) {}
+
+
+data MemberAccess(ty, field) = MemberAccess(ty);
+
+data PairFst = PairFst;
+data PairSnd = PairSnd;
+
+instance MemberAccess(stack((a,b)), PairFst):Ref(a) {}
+instance MemberAccess(stack((a,b)), PairSnd):Ref(b) {}
+
+contract AssignPR {
+  function fst(p) {
+    match p {
+      | (a,b) => return a;
+    };
+  }
+
+  function snd(p) {
+    match p {
+      | (a,b) => return b;
+    };
+  }
+
+  function sumPair(p) {
+    match p {
+      | (a,b) => return add(a,b);
+    };
+  }
+
+
+  function main() {
+    // let x : (word, word) = (17, 7) ;
+    let x : stack((word, word));
+    Ref.store(x, (17, 7));
+
+    // x.fst = 25
+    Ref.store(MemberAccess(x):MemberAccess(stack((word,word)), PairFst), 25);
+    // slight problem: not referentially transparent, hard to make code below work
+    // let fstAccess  = MemberAccess(x);
+    // Ref.store(fstAccess, 42);
+
+    // x.snd = 17
+    Ref.store(MemberAccess(x):MemberAccess(stack((word,word)), PairSnd), 17);
+    
+    let y : stack((word, word));    
+    // y = x;
+    Ref.store(y, Ref.load(x));
+
+    // return sumPair(y);
+    return sumPair(Ref.load(y));
+
+    // return add(y.fst,  y.snd)
+  }  
+}

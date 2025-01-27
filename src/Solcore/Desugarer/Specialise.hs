@@ -67,9 +67,6 @@ debug msg = do
 runSM :: Bool -> TcEnv -> SM a -> IO a
 runSM debugp env m = evalStateT m (initSpecState debugp env)
 
-prettys :: Pretty a => [a] -> String
-prettys = render . brackets . commaSep . map ppr
-
 -- | `withLocalState` runs a computation with a local state
 -- local changes are discarded, with the exception of the `specTable`
 withLocalState :: SM a -> SM a
@@ -249,27 +246,31 @@ specCall i@(Id (QualName "Ref" "load") ity@(ita :-> _)) [arg] ety | isStackLoadT
   debug ["> specCall **load @stack**: ", pretty i, "@(",pretty ity, ") ",
               show arg, " : ", pretty ety]
   arg' <- specExp arg ita
-  let i' = Id (Name "stkLoad") ity
+  let i' = Id (Name "locLoad") ity
   debug ["< specCall **load @stack**: ", pretty i', "(",  pretty arg, ")"]
   return (i', [arg'])
 
-specCall i@(Id (QualName "Ref" "store") ity) args ety | isMemberStoreTy ity = do
-  debug ["> specCall **store @MemberAccess **: ", pretty i, "@(",pretty ity, ") ",
-            show args, " : ", pretty ety ] -- FIXME: why is ety variable?
+specCall i@(Id (QualName "Ref" "store") ity) args ety | isLocRefStoreTy ity = do
+  debug [">>> specCall **NEW store to LocRef **: ", pretty i, "@(",pretty ity, ") ",
+            prettys args, " : ", pretty ety ] -- FIXME: why is ety variable?
   let [arg1, arg2] = args
+  -- Specialise Ref.store for local references, e.g.
+  -- store
+  -- arg1 is the reference, arg2 is the value
+  -- need to extract the access path from the reference
+  -- then build the call to store
+  -- e.g. locStore(locFst(x), value)
+  -- this will be translated in EmitCore to `fst(x) = value`
   let target = unwrapMemberAccess arg1
-  let aargs = [target, arg2]
-  let argTypes = map typeOfTcExp aargs
-  argTypes' <- atCurrentSubst argTypes
-  let typedArgs = zip aargs argTypes'
-  args' <- forM typedArgs (uncurry specExp)
-  let direction = accessPath ity
-  let i' = Id (Name (accessorName direction)) ity
-  debug ["< specCall **store @MemberAccess**: ", pretty i', "(",  render $ commaSepList args', ")"]
+  let lhsTy = typeOfTcExp target
+  debug ["! specAccess ", pretty arg1, ", i.e.\n", show arg1]
+  lhs <- specAccess arg1
+  arg2' <- atCurrentSubst arg2
+  rhs <- specExp arg2' (typeOfTcExp arg2')
+  let i' = Id (Name "locStore") ity
+  let args' = [lhs, rhs]
+  debug ["< specCall **store to LocRef**: ", pretty i', "(",  render $ commaSepList args', ")"]
   return (i', args')
-  where
-    accessorName (Left _) = "stkUpdFst"
-    accessorName (Right _) = "stkUpdSnd"
 
 specCall i@(Id (QualName "Ref" "store") ity) args ety | isStackStoreTy ity = do
   debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity, ") ",
@@ -278,7 +279,7 @@ specCall i@(Id (QualName "Ref" "store") ity) args ety | isStackStoreTy ity = do
   argTypes' <- atCurrentSubst argTypes
   let typedArgs = zip args argTypes'
   args' <- forM typedArgs (uncurry specExp)
-  let i' = Id (Name "stkStore") ity
+  let i' = Id (Name "locStore") ity
   debug ["< specCall **store @stack**: ", pretty i', "(",  render $ commaSepList args', ")"]
   return (i', args')
 
@@ -315,6 +316,36 @@ specCall i args ty = do
     guardSimpleType (_ :-> _) = panics ["specCall ", pretty i, ": function result type"]
     guardSimpleType _ = pure ()
 
+specAccess :: TcExp -> SM TcExp
+-- specialise a local reference access
+-- need to consider only XRef(XRef(...(XRef(x)...)))
+specAccess (Var i) = pure(Var i) -- TODO: allow storing references in vars
+specAccess (TyExp e _) = specAccess e
+specAccess (Con i@(Id (Name "MemberAccess") ity@(iargty :-> iresty)) [e]) = do
+  debug ["> specAccess MemberAccess", prettys [e], " : ", pretty ity]
+  let ety = typeOfTcExp e
+  debug ["! specAccess arg=", pretty e, " : ", pretty ety]
+  let dir = accessPath iresty
+  struct <- specAccess e
+  let accessor = Id (Name (accessorName dir)) ity
+  pure(Call Nothing accessor [struct])
+  where
+    accessorName (Left _) = "locFst"
+    accessorName (Right _) = "locSnd"
+
+specAccess (Con i@(Id (Name "XRef") ity@(iargty :-> _ :-> iresty)) [e, d]) = do
+  debug ["> specAccess XRef", prettys [e, d], " : ", pretty ity]
+  let ety = typeOfTcExp e
+  debug ["! specAccess arg=", pretty e, " : ", pretty ety]
+  let dir = accessPath iresty
+  struct <- specAccess e
+  let accessor = Id (Name (accessorName dir)) ity
+  pure(Call Nothing accessor [struct])
+  where
+    accessorName (Left _) = "locFst"
+    accessorName (Right _) = "locSnd"
+specAccess e = error("specAccess called on " ++ pretty e)
+
 isStackLoadTy  (TyCon "stack" [_] :-> _) = True
 isStackLoadTy  _ = False
 isStackStoreTy (TyCon "stack" [_] :-> _ :-> _) = True
@@ -323,17 +354,34 @@ isStackStoreTy _ = False
 isMemberStoreTy (TyCon "MemberAccess" [_, _] :-> _ :-> _) = True
 isMemberStoreTy _ = False
 
+
+-- TODO: add checking that it is indeed a local, not an array reference
+isLocRefStoreTy (TyCon "MemberAccess" [_, _] :-> _ :-> _) = True
+isLocRefStoreTy (TyCon "XRef" [_, _, _] :-> _ :-> _) = True
+isLocRefStoreTy _ = False
+
+
+isLocRefLoadTy (TyCon "MemberAccess" [_, _] :-> _) = True
+isLocRefLoadTy (TyCon "XRef" [_, _, _] :-> _) = True
+isLocRefLoadTy _ = False
+
 unwrapMemberAccess :: TcExp -> TcExp
 unwrapMemberAccess (TyExp e t) = unwrapMemberAccess e
 unwrapMemberAccess (Con i@(Id (Name "MemberAccess") ty) [e]) = e
+unwrapMemberAccess (Con i@(Id (Name "XRef") ty) [e, _]) = e
 unwrapMemberAccess e = error("unwrapMemberAccess called on " ++ show e )
 
 accessPath :: Ty -> Either () ()
-accessPath (TyCon "MemberAccess" [_, TyCon (Name axor) []]  :-> _) =
+accessPath (TyCon "MemberAccess" [_ref, TyCon (Name axor) []]) =
   dir axor where
     dir "PairFst" = Left ()
     dir "PairSnd" = Right ()
-accessPath ty = error("extractAccessFun called on " ++ show ty)
+accessPath (TyCon "XRef" [_ref, TyCon (Name axor) [], _deref]) =
+  dir axor where
+    dir "PairFst" = Left ()
+    dir "PairSnd" = Right ()
+accessPath ty = errors["accessPath called on " ++ pretty ty, "i.e.\n", show ty]
+
 
 isIgnoredBuiltin name = elem name primFunNames
 

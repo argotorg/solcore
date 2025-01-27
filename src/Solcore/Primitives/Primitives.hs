@@ -127,6 +127,10 @@ primFunNames = [ Name "primAddWord"
                , Name "stkStore"
                , Name "stkUpdFst"
                , Name "stkUpdSnd"
+               , Name "locFst"
+               , Name "locSnd"
+               , Name "locLoad"
+               , Name "locStore"
               ]
 -- definition of yul primops
 
