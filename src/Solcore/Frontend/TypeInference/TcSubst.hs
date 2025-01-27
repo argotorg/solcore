@@ -64,6 +64,11 @@ instance HasType Ty where
   fv (TyVar v) = [v]
   fv (TyCon _ ts) = fv ts
 
+instance HasType Constr where 
+  apply s (Constr dn ts) 
+    = Constr dn (apply s ts)
+  fv (Constr _ ts) = fv ts
+
 instance HasType Pred where 
   apply s (InCls n t ts) = InCls n (apply s t) (apply s ts) 
   apply s (t1 :~: t2) = (apply s t1) :~: (apply s t2)

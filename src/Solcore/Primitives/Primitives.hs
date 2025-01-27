@@ -101,6 +101,9 @@ unit = TyCon "()" []
 pair :: Ty -> Ty -> Ty
 pair t1 t2 = TyCon "pair" [t1, t2]
 
+epair :: Exp Name -> Exp Name -> Exp Name 
+epair e1 e2 = Con (Name "pair") [e1, e2]
+
 arr :: Name
 arr = "->"
 
@@ -185,7 +188,7 @@ yulPrimOps = [ (Name "stop", monotype unit)
              , (Name "delegatecall", monotype (funtype (words 6) word))
              , (Name "staticcall", monotype (funtype (words 6) word))
              , (Name "return", monotype (word :-> word :-> unit))
-             , (Name "revert", monotype (word :-> word :-> unit))
+             , (Name "revert", Forall [aVar] ([] :=> (word :-> word :-> (TyVar aVar))))
              , (Name "selfdestruct", monotype (word :-> unit))
              , (Name "invalid", monotype unit)
              , (Name "log0", monotype (word :-> word :-> unit))
@@ -205,6 +208,9 @@ yulPrimOps = [ (Name "stop", monotype unit)
              , (Name "prevrandao", monotype word)
              , (Name "gaslimit", monotype word)
              ]
+
+aVar :: Tyvar 
+aVar = TVar (Name "a") False
 
 words :: Int -> [Ty]
 words n = replicate n word

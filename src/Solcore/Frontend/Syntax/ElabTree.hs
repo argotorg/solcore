@@ -14,6 +14,7 @@ import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt
 import qualified Solcore.Frontend.Syntax.SyntaxTree as S 
 import Solcore.Frontend.Syntax.Ty 
+import Solcore.Primitives.Primitives
 
 -- top level elaboration / name resolution function 
 
@@ -122,7 +123,10 @@ instance Elab S.CompUnit where
   initialEnv (S.CompUnit _ ds) 
     = initialEnv ds
   elab (S.CompUnit imps ds) 
-    = CompUnit <$> elab imps <*> elab ds 
+    = do 
+        imps' <- elab imps
+        ds' <- elab ds
+        pure (CompUnit imps' ((TClassDef invokeClass) : ds'))
 
 instance Elab S.Import where 
   type Res S.Import = Import 
@@ -301,9 +305,9 @@ instance Elab S.Signature where
       where 
         env = mempty 
 
-  elab (S.Signature vs ctx n ps mt) 
+  elab sig@(S.Signature vs ctx n ps mt) 
     = do 
-        vs' <- elab vs 
+        vs' <- filter isTyVar <$> elab vs 
         ctx' <- elab ctx 
         ps' <- elab ps 
         mt' <- elab mt 

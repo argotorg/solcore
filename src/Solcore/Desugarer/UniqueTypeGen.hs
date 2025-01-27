@@ -64,7 +64,7 @@ mkUniqueType dn
       argVar = TVar (Name "args") False
       retVar = TVar (Name "ret") False
       c = Constr dn []
-    in DataTy dn [argVar, retVar] [c]
+    in DataTy dn [] [c]
 
 -- monad definition 
 

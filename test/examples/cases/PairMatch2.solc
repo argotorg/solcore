@@ -1,8 +1,7 @@
-data Pair(a, b) = Pair(a, b);
 
-function snd(p: Pair(a, word)) -> a {
+function snd(p: (a, word)) -> a {
     match p {
-    | Pair(_, w) => return w;
+    | (_, w) => return w;
     };
 }
 

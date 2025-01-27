@@ -140,6 +140,7 @@ translateType :: HasCallStack => Ty -> EM Core.Type
 translateType (TyCon "word" []) = pure Core.TWord
 -- translateType _ Fun.TBool = Core.TBool
 translateType (TyCon "unit" []) = pure Core.TUnit
+translateType (TyCon "()" []) = pure Core.TUnit
 translateType t@(u :-> v) = error ("Cannot translate function type " ++ show t)
 translateType (TyCon name tas) = translateTCon name tas
 translateType t = error ("Cannot translate type " ++ show t)
@@ -176,6 +177,8 @@ emitConApp :: Id -> [Exp Id] -> Translation Core.Expr
 emitConApp con@(Id n ty) as = do
   unless (null . fv $ ty)  (error $ "emitConApp: free variables in type " ++ pretty ty ++ " in " ++ pretty (Con con as))
   case targetType ty  of
+    (TyCon "unit" []) -> pure (Core.EUnit, [])
+    (TyCon "()" []) -> pure (Core.EUnit, [])
     (TyCon "pair" _) -> translateProduct as
     (TyCon tcname tas) -> do
         mti <- gets (Map.lookup tcname . ecDT)
@@ -336,6 +339,7 @@ emitMatch scrutinee alts = do
 
 emitDataMatch :: Name -> Exp Id -> Equations Id -> StateT EcState IO [Core.Stmt]
 emitDataMatch (Name "pair") scrutinee alts = emitProdMatch scrutinee alts
+emitDataMatch (Name "()" ) scrutinee alts = emitProdMatch scrutinee alts
 emitDataMatch scon scrutinee alts = do
     mti <- gets (Map.lookup scon . ecDT)
     let ti = fromMaybe (error ("emitMatch: unknown type " ++ show scon)) mti
