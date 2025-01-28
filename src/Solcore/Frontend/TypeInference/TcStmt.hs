@@ -210,8 +210,8 @@ tcExp e@(Lam args bd _)
            t1 = apply s (unskol t')
            vs = fv ps1 `union` fv t1 `union` fv ts1
            ty = funtype ts1 t1
-       -- (e, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty 
-       pure (Lam args' bd' (Just t1), ps1, ty)
+       (e, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty 
+       pure (e, ps1, t)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1

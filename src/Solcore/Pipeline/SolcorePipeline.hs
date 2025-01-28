@@ -36,20 +36,20 @@ pipeline = do
     when verbose $ do 
       putStrLn "> AST after name resolution"
       putStrLn $ pretty ast
-    -- (ast0, mdt) <- uniqueTypeGen ast 
-    -- when verbose $ do 
-    --   putStrLn "> Unique type generation"
-    --   putStrLn $ pretty ast0 
+    (ast0, mdt) <- uniqueTypeGen ast 
+    when verbose $ do 
+      putStrLn "> Unique type generation"
+      putStrLn $ pretty ast0 
     r2 <- sccAnalysis ast
     withErr r2 $ \ ast' -> do
       when verbose $ do 
         putStrLn "> SCC Analysis:"
         putStrLn $ pretty ast'
-      -- ast3 <- indirectCall mdt ast'
-      -- when verbose $ do 
-      --   putStrLn "> Indirect call desugaring:"
-      --   putStrLn $ pretty ast3
-      r5 <- typeInfer Map.empty ast'
+      ast3 <- indirectCall mdt ast'
+      when verbose $ do 
+        putStrLn "> Indirect call desugaring:"
+        putStrLn $ pretty ast3
+      r5 <- typeInfer mdt ast3
       withErr r5 $ \ (c', env) -> do
         let warns = warnings env
             logsInfo = logs env
