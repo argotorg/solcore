@@ -1,10 +1,3 @@
-// removing this function breaks things too; WHY?
-forall any.function undefined() -> any {
-  assembly {
-    revert(0,0)
-  };
-}
-
 class  ref : Ref(deref) {
   function load (r:ref) -> deref;
   function store(r:ref, v:deref) -> unit;
