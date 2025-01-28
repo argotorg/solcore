@@ -36,20 +36,20 @@ pipeline = do
     when verbose $ do 
       putStrLn "> AST after name resolution"
       putStrLn $ pretty ast
-    (ast0, mdt) <- uniqueTypeGen ast 
-    when verbose $ do 
-      putStrLn "> Unique type generation"
-      putStrLn $ pretty ast0 
-    r2 <- sccAnalysis ast0
+    -- (ast0, mdt) <- uniqueTypeGen ast 
+    -- when verbose $ do 
+    --   putStrLn "> Unique type generation"
+    --   putStrLn $ pretty ast0 
+    r2 <- sccAnalysis ast
     withErr r2 $ \ ast' -> do
       when verbose $ do 
         putStrLn "> SCC Analysis:"
         putStrLn $ pretty ast'
-      ast3 <- indirectCall mdt ast'
-      when verbose $ do 
-        putStrLn "> Indirect call desugaring:"
-        putStrLn $ pretty ast3
-      r5 <- typeInfer mdt ast3
+      -- ast3 <- indirectCall mdt ast'
+      -- when verbose $ do 
+      --   putStrLn "> Indirect call desugaring:"
+      --   putStrLn $ pretty ast3
+      r5 <- typeInfer Map.empty ast'
       withErr r5 $ \ (c', env) -> do
         let warns = warnings env
             logsInfo = logs env
@@ -60,20 +60,20 @@ pipeline = do
           mapM_ putStrLn (reverse $ logsInfo)
           putStrLn "> Elaborated tree:"
           putStrLn $ pretty c'
-        r8 <- matchCompiler c'
-        withErr r8 $ \ res -> do
-          when (verbose || optDumpDS opts) do
-            putStrLn "> Match compilation result:"
-            putStrLn (pretty res)
-          unless (optNoSpec opts) do
-            r9 <- specialiseCompUnit res (optDebugSpec opts) env
-            when (optDumpSpec opts) do
-              putStrLn "> Specialised contract:"
-              putStrLn (pretty r9)
-            r10 <- emitCore (optDebugCore opts) env r9
-            when (optDumpCore opts) do
-              putStrLn "> Core contract(s):"
-              forM_ r10 (putStrLn . pretty)
+        -- r8 <- matchCompiler c'
+        -- withErr r8 $ \ res -> do
+        --   when (verbose || optDumpDS opts) do
+        --     putStrLn "> Match compilation result:"
+        --     putStrLn (pretty res)
+        --   unless (optNoSpec opts) do
+        --     r9 <- specialiseCompUnit res (optDebugSpec opts) env
+        --     when (optDumpSpec opts) do
+        --       putStrLn "> Specialised contract:"
+        --       putStrLn (pretty r9)
+        --     r10 <- emitCore (optDebugCore opts) env r9
+        --     when (optDumpCore opts) do
+        --       putStrLn "> Core contract(s):"
+        --       forM_ r10 (putStrLn . pretty)
 
 runParser :: String -> IO (Either String (CompUnit Name))
 runParser content = do 
