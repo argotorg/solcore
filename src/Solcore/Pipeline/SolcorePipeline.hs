@@ -40,7 +40,7 @@ pipeline = do
     when verbose $ do 
       putStrLn "> Unique type generation"
       putStrLn $ pretty ast0 
-    r2 <- sccAnalysis ast
+    r2 <- sccAnalysis ast0
     withErr r2 $ \ ast' -> do
       when verbose $ do 
         putStrLn "> SCC Analysis:"
