@@ -68,21 +68,20 @@ contract AssignNested {
   function main() {
     // let x : (word, (word, word)) = (1, (2,3)) ;
     let x : stack( (word, (word, word)) );
-    let z : stack( (word, (word, word)) );
-    
+    let y : stack( (word, (word, word)) );
+
     Ref.store(x, (1, (2,3)));
-    
+
     // x.fst = 21
     // let r1 : XRef(stack((word, (word, word))), PairFst, word) = XRef(x,PairFst);
     // let r1 = XRef(x,PairFst);
     // Ref.store(r1, 21);
-    // Ref.store(x : XRef,PairFst) : XRef( stack((word, (word, word))), PairFst, word), 21);
-    Ref.store( XRef(z,PairFst), 21); 
+    Ref.store(XRef(x,PairFst), 21);
 
     // x.snd = (3,4)
-    // let r2 : XRef( stack((word, (word, word))), PairSnd, (word, word) ) = XRef(x,PairSnd);
-    // Ref.store( r2, (3,4)); 
-    // Ref.store( XRef(x,PairSnd) : XRef( stack((word, (word, word))), PairSnd, (word, word)), (3,4)); 
+    // let r2 : XRef( stack((word, (word, word))), PairSnd, (word, word) ) = XRef(x,PairSnd)
+    // Ref.store( r2, (3,4));
+    Ref.store( XRef(x,PairSnd) : XRef( stack((word, (word, word))), PairSnd, (word, word)), (3,4));
 
     // x.snd.fst = 42
     /*
@@ -95,17 +94,14 @@ contract AssignNested {
    */
    // let r21 : XRef(XRef(stack((word, (word, word))), PairSnd, (word, word)), PairFst, word) = XRef(XRef(x, PairSnd), PairFst);
    // Ref.store( r21, 20 );
-   // Ref.store( XRef(XRef(x, PairSnd), PairFst), 20 );
-   // Ref.store( XRef(XRef(x, PairSnd), PairFst), 20 );
+   Ref.store( XRef(XRef(x, PairSnd), PairFst), 42 );
 
     // let y = x;
-    // let y : stack( (word, (word, word)) );
-    // Ref.store(y, Ref.load(x));
+    let y : stack( (word, (word, word)) );
+    Ref.store(y, Ref.load(x));
+
     // return y.snd.fst
-
-    // return fst(snd(Ref.load(y)));
-
-    return 77;
-
+    //return fst(snd(Ref.load(y)));
+    return Ref.load(XRef(XRef(x, PairSnd), PairFst));
   }
 }

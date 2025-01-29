@@ -121,8 +121,7 @@ primStkUpdFst = ("stkUpdFst", forAll ["a","b"] (stack (pair a b) :-> a :-> unit)
     tv n = TyVar (TVar n False)
 
 primFunNames :: [Name]
-primFunNames = [ Name "primAddWord"
-               , Name "primEqWord"
+primFunNames = [ Name "primEqWord"
                , Name "stkLoad"
                , Name "stkStore"
                , Name "stkUpdFst"

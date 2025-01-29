@@ -240,6 +240,14 @@ specConApp i@(Id n conTy) args ty = do
 -- given actual arguments and the expected result type
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
 specCall i@(Id name ity) args ty | isIgnoredBuiltin name = pure (i, args)
+specCall i@(Id (QualName "Ref" "load") ity) [arg] ety | isLocRefLoadTy ity = do
+  debug [">>> specCall **load from LocRef **: ", pretty i, "@(",pretty ity, ") ",
+              prettys [arg], " : ", pretty ety ]
+  ity' <- atCurrentSubst ity
+  arg' <- specAccess arg
+  let i' = Id (Name "locLoad") ity
+  debug ["< specCall **load from LocRef**: ", pretty i', "(",  pretty arg', ")"]
+  return (i', [arg'])
 
 specCall i@(Id (QualName "Ref" "load") ity@(ita :-> _)) [arg] ety | isStackLoadTy ity = do
   ity' <- atCurrentSubst ity
@@ -247,11 +255,11 @@ specCall i@(Id (QualName "Ref" "load") ity@(ita :-> _)) [arg] ety | isStackLoadT
               show arg, " : ", pretty ety]
   arg' <- specExp arg ita
   let i' = Id (Name "locLoad") ity
-  debug ["< specCall **load @stack**: ", pretty i', "(",  pretty arg, ")"]
+  debug ["< specCall **load @stack**: ", pretty i', "(",  pretty arg', ")"]
   return (i', [arg'])
 
 specCall i@(Id (QualName "Ref" "store") ity) args ety | isLocRefStoreTy ity = do
-  debug [">>> specCall **NEW store to LocRef **: ", pretty i, "@(",pretty ity, ") ",
+  debug [">>> specCall **store to LocRef **: ", pretty i, "@(",pretty ity, ") ",
             prettys args, " : ", pretty ety ] -- FIXME: why is ety variable?
   let [arg1, arg2] = args
   -- Specialise Ref.store for local references, e.g.
