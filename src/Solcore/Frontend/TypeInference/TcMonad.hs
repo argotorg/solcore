@@ -161,7 +161,7 @@ freshInst :: Scheme -> TcM (Qual Ty)
 freshInst (Forall vs qt)
   = renameVars vs qt
 
-renameVars :: (Pretty a, HasType a) => [Tyvar] -> a -> TcM a 
+renameVars :: HasType a => [Tyvar] -> a -> TcM a 
 renameVars vs t 
   = do
       s <- mapM (\ v -> (v,) <$> freshTyVar) vs
@@ -325,7 +325,17 @@ askInstEnv n
   = maybe [] id . Map.lookup n <$> gets instEnv
 
 getInstEnv :: TcM InstTable 
-getInstEnv = gets instEnv
+getInstEnv 
+  = gets instEnv >>= renameInstEnv
+
+renameInstEnv :: InstTable -> TcM InstTable 
+renameInstEnv 
+  = Map.traverseWithKey go
+  where 
+    go k v = do 
+      let vs = fv v 
+      v' <- renameVars vs v 
+      pure v' 
 
 addInstance :: Name -> Inst -> TcM ()
 addInstance n inst 
@@ -405,6 +415,7 @@ toHnf depth pred@(InCls n _ _)
                   ++"\nKnown instances:\n"++ (unlines $ map pretty is))
         Just (preds, subst', instd) -> do
             extSubst subst'
+            x <- getSubst
             toHnfs (depth - 1) preds
 
 inHnf :: Pred -> Bool

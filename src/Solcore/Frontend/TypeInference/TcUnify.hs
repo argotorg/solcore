@@ -16,7 +16,6 @@ varBind :: MonadError String m => Tyvar -> Ty -> m Subst
 varBind v t
   | t == TyVar v = return mempty
   | v `elem` fv t = infiniteTyErr v t
-  | rigid v && (not $ isVar t) = rigidVarError v t 
   | otherwise = return (v +-> t)
 
 isVar :: Ty -> Bool 
@@ -37,8 +36,7 @@ match (TyCon n ts) (TyCon n' ts')
             merge sl sr
       go _ _ = typesMatchListErr ts ts'
 match t1@(TyVar v) t 
-  | rigid v && t1 == t = pure mempty 
-  | rigid v = rigidVarError v t 
+  | t1 == t = pure mempty 
   | otherwise = pure (v +-> t)
 match t1 t2 = typesNotMatch t1 t2
 

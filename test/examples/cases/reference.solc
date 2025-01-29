@@ -1,0 +1,32 @@
+class  ref : Ref(deref) {
+  function load (r:ref) -> deref;
+  function store(r:ref, v:deref) -> unit;
+}
+
+data stack(a) = stack(a);
+
+instance stack(a) : Ref(a) {
+}
+
+data MemberAccess(ty, field) = MemberAccess(ty);
+
+data PairFst = PairFst;
+data PairSnd = PairSnd;
+
+pragma no-bounded-variable-condition Ref;
+data XRef(st, field, fieldType) = XRef(st, field);
+instance (r:Ref( (a,b) ) )=>  XRef(r, PairFst, a) : Ref(a) {}
+instance (r:Ref( (a,b) ) )=>  XRef(r, PairSnd, b) : Ref(b) {}
+
+contract AssignNested {
+  function main() {
+    let x : stack( (word, (word, word)) );
+    let z : stack( (word, (word, word)) );
+
+    // either of the next lines is fine on their own, but not together
+    Ref.store( XRef(z,PairFst), 21); 
+    Ref.store( XRef(XRef(x, PairSnd), PairFst), 20 );
+
+    return 77;
+  }
+}
