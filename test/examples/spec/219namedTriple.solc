@@ -23,16 +23,21 @@ instance stack(a) : Ref(a) {}
 data PairFst = PairFst;
 data PairSnd = PairSnd;
 
+data Triple(a,b,c)  = Triple(a, b, c);
 
-// data MemberAccess(ty, field) = MemberAccess(ty);
-// instance MemberAccess(stack((a,b)), PairFst):Ref(a) {}
-// instance MemberAccess(stack((a,b)), PairSnd):Ref(b) {}
-
+data Sel3_1 = Sel3_1;
+data Sel3_2 = Sel3_2;
+data Sel3_3 = Sel3_3;
 
 pragma no-bounded-variable-condition Ref;
 data XRef(st, field, fieldType) = XRef(st, field);
 instance (r:Ref( (a,b) ) )=>  XRef(r, PairFst, a) : Ref(a) {}
 instance (r:Ref( (a,b) ) )=>  XRef(r, PairSnd, b) : Ref(b) {}
+
+pragma no-patterson-condition Ref;
+instance (r:Ref( Triple(a,b,c) ) )=>  XRef(r, Sel3_1, a) : Ref(a) {}
+instance (r:Ref( Triple(a,b,c) ) )=>  XRef(r, Sel3_2, b) : Ref(b) {}
+instance (r:Ref( Triple(a,b,c) ) )=>  XRef(r, Sel3_3, c) : Ref(c) {}
 
 
 contract AssignPR {
@@ -54,28 +59,22 @@ contract AssignPR {
     };
   }
 
+  function sel3_2(t) {
+    match t {
+      | Triple(a,b,c) => return b;
+    };
+  }
+
 
   function main() {
-    // let x : (word, word) = (17, 7) ;
-    let x : stack((word, word));
-    Ref.store(x, (17, 7));
+    let y : stack( Triple(word, word, word) );
+    let z : stack( Triple(word, word, word) );
 
-    // x.fst = 25
-    Ref.store(XRef(x, PairFst), 25);
-    // slight problem: not referentially transparent, hard to make code below work
-    // let fstAccess  = MemberAccess(x);
-    // Ref.store(fstAccess, 42);
+    Ref.store(y, Triple(1,2,3));
 
-    // x.snd = 17
-    Ref.store( XRef(x, PairSnd), 17);
+    Ref.store( XRef(y, Sel3_2), 21 );
+    Ref.store( z, Ref.load(y));
 
-    let y : stack((word, word));
-    // y = x;
-    Ref.store(y, Ref.load(x));
-
-    // return sumPair(y);
-    return sumPair(Ref.load(y));
-
-    // return add(y.fst,  y.snd)
+    return Ref.load(XRef(z, Sel3_2));
   }
 }

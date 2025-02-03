@@ -60,7 +60,7 @@ contract AssignPR {
     let x : stack((word, word));
     let y : stack( (word, (word, word)) );
     let z : stack( (word, (word, word)) );
-    
+
     Ref.store(y, (1, (2,3)));
 
     // FIXME: #72
@@ -69,10 +69,10 @@ contract AssignPR {
     Ref.store(XRef(x, PairFst), 25);
     // x.snd = 17
     Ref.store( XRef(x, PairSnd), 17);
-    
+
     Ref.store( XRef(XRef(y, PairSnd), PairFst), 21 );
     Ref.store( z, Ref.load(y));
 
     return fst(snd(Ref.load(z))); // TODO XRef
-  }  
+  }
 }
