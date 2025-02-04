@@ -70,6 +70,6 @@ contract AssignPR {
     Ref.store( XRef(XRef(y, PairSnd), PairFst), 21 );
     Ref.store( z, Ref.load(y));
 
-    return sel3_2(Ref.load(z)); // TODO XRef
+    return Ref.load(XRef(XRef(z, PairSnd), PairFst));
   }
 }
