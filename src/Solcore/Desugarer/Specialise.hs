@@ -282,8 +282,10 @@ specCall i@(Id (QualName "Ref" "store") ity) args ety | isLocRefStoreTy ity = do
   return (i', args')
 
 specCall i@(Id (QualName "Ref" "store") ity) args ety | isStackStoreTy ity = do
-  debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity, ") ",
-            show args, " : ", pretty ety ] -- FIXME: why is ety variable?
+  ety' <- atCurrentSubst ety
+  ity' <- atCurrentSubst ity
+  debug ["> specCall **store @stack**: ", pretty i, "@(",pretty ity', ") ",
+            show args, " : ", pretty ety' ] -- FIXME: why is ety variable?
   let argTypes = map typeOfTcExp args
   argTypes' <- atCurrentSubst argTypes
   let typedArgs = zip args argTypes'
