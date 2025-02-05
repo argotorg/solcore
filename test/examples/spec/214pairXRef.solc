@@ -68,8 +68,8 @@ contract AssignPR {
 
     // x.snd = 17
     Ref.store( XRef(x, PairSnd), 17);
-
-    let y : stack((word, word));
+    
+    let y : stack((word, word));    
     // y = x;
     Ref.store(y, Ref.load(x));
 
@@ -77,5 +77,5 @@ contract AssignPR {
     return sumPair(Ref.load(y));
 
     // return add(y.fst,  y.snd)
-  }
+  }  
 }

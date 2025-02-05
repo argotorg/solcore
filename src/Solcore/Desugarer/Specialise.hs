@@ -20,7 +20,6 @@ import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Primitives.Primitives
 import System.Exit
 import Common.Pretty
-import Text.Read(readMaybe)
 
 -- ** Specialisation state and monad
 -- SpecState and SM are meant to be local to this module.
@@ -347,13 +346,10 @@ specAccess (Con i@(Id (Name "MemberAccess") ity@(iargty :-> iresty)) [e]) = do
   let dir = accessPath iresty
   struct <- specAccess e
   let accessor = Id (Name (accessorName dir)) ity
-  -- pure(Call Nothing accessor [struct])
-  pure (callSelector dir struct)
+  pure(Call Nothing accessor [struct])
   where
-    callSelector 1 = callLocFst
-    callSelector 2 = callLocSnd
-    accessorName 1 = "locFst"
-    accessorName 2 = "locSnd"
+    accessorName (Left _) = "locFst"
+    accessorName (Right _) = "locSnd"
 
 specAccess (Con i@(Id (Name "XRef") ity@(iargty :-> _ :-> iresty)) [e, d]) = do
   debug ["> specAccess XRef", prettys [e, d], " : ", pretty ity]
@@ -364,8 +360,8 @@ specAccess (Con i@(Id (Name "XRef") ity@(iargty :-> _ :-> iresty)) [e, d]) = do
   let accessor = Id (Name (accessorName dir)) ity
   pure(Call Nothing accessor [struct])
   where
-    accessorName 1 = "locFst"
-    accessorName 2 = "locSnd"
+    accessorName (Left _) = "locFst"
+    accessorName (Right _) = "locSnd"
 specAccess e = error("specAccess called on " ++ pretty e)
 
 isStackLoadTy  (TyCon "stack" [_] :-> _) = True
@@ -393,52 +389,18 @@ unwrapMemberAccess (Con i@(Id (Name "MemberAccess") ty) [e]) = e
 unwrapMemberAccess (Con i@(Id (Name "XRef") ty) [e, _]) = e
 unwrapMemberAccess e = error("unwrapMemberAccess called on " ++ show e )
 
-accessPath :: Ty -> Int
+accessPath :: Ty -> Either () ()
 accessPath (TyCon "MemberAccess" [_ref, TyCon (Name axor) []]) =
   dir axor where
-    dir "PairFst" = 1
-    dir "PairSnd" = 2
-    dir sel = selectorDir sel
+    dir "PairFst" = Left ()
+    dir "PairSnd" = Right ()
 accessPath (TyCon "XRef" [_ref, TyCon (Name axor) [], _deref]) =
   dir axor where
-    dir "PairFst" = 1
-    dir "PairSnd" = 2
-    dir sel = selectorDir sel
+    dir "PairFst" = Left ()
+    dir "PairSnd" = Right ()
 accessPath ty = errors["accessPath called on " ++ pretty ty, "i.e.\n", show ty]
 
-selectorDir :: String -> Int
-selectorDir n = case n of     -- FIXME: better selector matching
-  "PairFst" -> 1
-  "PairSnd" -> 2
-  "Sel3_1" -> 1
-  "Sel3_2" -> 2
-  "Sel3_3" -> 3
 
-selectorArity :: String -> Int
-selectorArity n | take 4 n == "Pair" = 2
-selectorArity n | take 3 n == "Sel" = case readMaybe (drop 3 n) :: Maybe Int of
-  Just i -> i
-  Nothing -> errors ["selectorArity: invalid selector name: ", n]
-
-buildLocalSelector :: Int -> Int -> TcExp -> TcExp
--- localSelector 2 3 e = locFst(locSnd(e))
-buildLocalSelector 1 2 e = callLocFst e
-buildLocalSelector 2 2 e = callLocSnd e
-buildLocalSelector 1 n e = buildLocalSelector 1 (n-1) (callLocFst e)
-buildLocalSelector k n e = buildLocalSelector (k-1) (n-1) (callLocSnd e)
--- >>> pretty $ buildLocalSelector 2 3(simpleCall "f"[])
--- "locFst(locSnd(f()))"
-
-
-callLocFst :: TcExp -> TcExp
-callLocFst e = simpleCall "locFst" [e]
-callLocSnd e = simpleCall "locSnd" [e]
-
-simpleCall :: Name -> [TcExp] -> TcExp
-simpleCall n = Call Nothing (Id n genericType)
-genericType = (TyVar (TVar (Name "a") False) :-> TyVar (TVar (Name "b") False))
-
-isIgnoredBuiltin :: Name -> Bool
 isIgnoredBuiltin name = elem name primFunNames
 
 -- | `specFunDef` specialises a function definition
