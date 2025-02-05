@@ -237,10 +237,14 @@ specConApp i@(Id n conTy) args ty = do
   debug ["< specConApp: ", prettyConApp i args,  " ~> ", prettyConApp i' args']
   return (i', args')
 
+specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
 -- | Specialise a function call
 -- given actual arguments and the expected result type
-specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
+-- Special cases are handled first
+
 specCall i@(Id name ity) args ty | isIgnoredBuiltin name = pure (i, args)
+
+-- load from a reference to a local structure member
 specCall i@(Id (QualName "Ref" "load") ity) [arg] ety | isLocRefLoadTy ity = do
   debug [">>> specCall **load from LocRef **: ", pretty i, "@(",pretty ity, ") ",
               prettys [arg], " : ", pretty ety ]
@@ -250,6 +254,7 @@ specCall i@(Id (QualName "Ref" "load") ity) [arg] ety | isLocRefLoadTy ity = do
   debug ["< specCall **load from LocRef**: ", pretty i', "(",  pretty arg', ")"]
   return (i', [arg'])
 
+-- load from a reference to whole local structure
 specCall i@(Id (QualName "Ref" "load") ity@(ita :-> _)) [arg] ety | isStackLoadTy ity = do
   ity' <- atCurrentSubst ity
   debug ["> specCall **load @stack**: ", pretty i, "@(",pretty ity, ") ",
@@ -259,6 +264,7 @@ specCall i@(Id (QualName "Ref" "load") ity@(ita :-> _)) [arg] ety | isStackLoadT
   debug ["< specCall **load @stack**: ", pretty i', "(",  pretty arg', ")"]
   return (i', [arg'])
 
+-- store to a reference to a local structure member
 specCall i@(Id (QualName "Ref" "store") ity) args ety | isLocRefStoreTy ity = do
   debug [">>> specCall **store to LocRef **: ", pretty i, "@(",pretty ity, ") ",
             prettys args, " : ", pretty ety ] -- FIXME: why is ety variable?
@@ -281,6 +287,7 @@ specCall i@(Id (QualName "Ref" "store") ity) args ety | isLocRefStoreTy ity = do
   debug ["< specCall **store to LocRef**: ", pretty i', "(",  render $ commaSepList args', ")"]
   return (i', args')
 
+-- store to a reference to whole local structure
 specCall i@(Id (QualName "Ref" "store") ity) args ety | isStackStoreTy ity = do
   ety' <- atCurrentSubst ety
   ity' <- atCurrentSubst ity
@@ -294,6 +301,7 @@ specCall i@(Id (QualName "Ref" "store") ity) args ety | isStackStoreTy ity = do
   debug ["< specCall **store @stack**: ", pretty i', "(",  render $ commaSepList args', ")"]
   return (i', args')
 
+-- Here comes the general case
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
