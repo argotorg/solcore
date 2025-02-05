@@ -76,6 +76,7 @@ library
       Solcore.Frontend.TypeInference.TcStmt
       Solcore.Frontend.TypeInference.TcSubst
       Solcore.Frontend.TypeInference.TcUnify
+      Solcore.Pipeline.Options
       Solcore.Pipeline.SolcorePipeline
       Solcore.Primitives.Primitives
       Language.Core

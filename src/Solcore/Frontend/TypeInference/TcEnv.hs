@@ -11,6 +11,7 @@ import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
+import Solcore.Pipeline.Options
 import Solcore.Primitives.Primitives
 
 
@@ -84,29 +85,32 @@ data TcEnv
     , boundVariable :: PragmaStatus -- Disable bound variable condition for names.
     , maxRecursionDepth :: Int -- max recursion depth in
                                -- context reduction
+    , tcOptions :: Option
     }
 
-initTcEnv :: UniqueTyMap -> TcEnv
-initTcEnv utm
-  = TcEnv primCtx
-          primInstEnv
-          primTypeEnv
-          primClassEnv
-          Nothing
-          mempty
-          namePool
-          (Map.union utm primDataType)
-          primFunNames
-          True
-          []
-          0
-          []
-          []
-          True
-          Enabled
-          Enabled
-          Enabled
-          100
+initTcEnv :: Option -> UniqueTyMap -> TcEnv
+initTcEnv options utm
+  = TcEnv { ctx = primCtx
+          , instEnv = primInstEnv
+          , typeTable = primTypeEnv
+          , classTable = primClassEnv
+          , contract = Nothing
+          , subst = mempty
+          , nameSupply = namePool
+          , uniqueTypes = Map.union utm primDataType
+          , directCalls = primFunNames
+          , generateDefs = True
+          , generated = []
+          , counter = 0
+          , logs = []
+          , warnings = []
+          , enableLog = True
+          , coverage = Enabled
+          , patterson = Enabled
+          , boundVariable = Enabled
+          , maxRecursionDepth = 100
+          , tcOptions = options
+          }
 
 primCtx :: Env
 primCtx
