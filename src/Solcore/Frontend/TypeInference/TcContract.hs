@@ -21,18 +21,20 @@ import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcStmt
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
+import Solcore.Pipeline.Options
 import Solcore.Primitives.Primitives
 
 -- top level type inference function: Boolean parameter 
 -- used to determine if it will generate definitions.
 
-typeInfer :: UniqueTyMap -> 
-             CompUnit Name -> 
+typeInfer :: Option ->
+             UniqueTyMap ->
+             CompUnit Name ->
              IO (Either String (CompUnit Id, TcEnv))
-typeInfer utm (CompUnit imps decls) 
+typeInfer options utm (CompUnit imps decls)
   = do
-      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv utm)
-      case r of 
+      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options utm)
+      case r of
         Left err -> pure $ Left err 
         Right ((CompUnit imps ds), env) -> 
           pure (Right (CompUnit imps (ds ++ generated env), env)) 
@@ -261,7 +263,8 @@ tcBindGroup binds
       schs <- mapM generalize (zip pss ts')
       let names = map (sigName . funSignature) funs 
       mapM_ (uncurry extEnv) (zip names schs)
-      generateTopDeclsFor (zip funs' schs) 
+      noDesugarCalls <- getNoDesugarCalls
+      unless noDesugarCalls $ generateTopDeclsFor (zip funs' schs)
       pure funs'
 
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()

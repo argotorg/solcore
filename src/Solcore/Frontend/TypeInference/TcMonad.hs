@@ -18,6 +18,7 @@ import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
+import Solcore.Pipeline.Options(Option(..))
 import Solcore.Primitives.Primitives
 
 
@@ -484,6 +485,14 @@ disableBoundVariableCondition m
 
 askMaxRecursionDepth :: TcM Int 
 askMaxRecursionDepth = gets maxRecursionDepth 
+
+-- other options
+
+getTcOpts :: TcM Option
+getTcOpts = gets tcOptions
+
+getNoDesugarCalls :: TcM Bool
+getNoDesugarCalls = gets (optNoDesugarCalls. tcOptions)
 
 -- logging utilities
 
