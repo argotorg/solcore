@@ -55,7 +55,7 @@ tcStmt e@(Let n mt me)
                         (Nothing, [],) <$> freshTyVar
       extEnv n (monotype tf)
       let e' = Let (Id n tf) (Just tf) me'
-      pure (e', [], unit)
+      pure (e', psf, unit)
 tcStmt (StmtExp e)
   = do
       (e', ps', t') <- tcExp e
@@ -220,9 +220,9 @@ tcExp e1@(TyExp e ty)
       kindCheck ty `wrapError` e1
       (e', ps, ty') <- tcExp e
       let ty1 = skolemize ty
-      s <- match ty' ty  `wrapError` e1
+      s <- unify ty' ty1  `wrapError` e1
       extSubst s
-      pure (TyExp e' ty, apply s ps, ty)
+      pure (TyExp e' ty1, apply s ps, ty1)
 
 closureConversion :: [Tyvar] -> 
                      [Param Id] -> 

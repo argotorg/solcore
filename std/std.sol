@@ -132,7 +132,7 @@ class t:Encode {
 }
 
 function encode(val:t) -> Memory(Bytes) {
-    let hdSz = Encode.headSize(Proxy);
+    let hdSz = Encode.headSize(Proxy : Proxy(t));
     let ptr = get_free_memory();
     let head: word;
     let tail: word;
