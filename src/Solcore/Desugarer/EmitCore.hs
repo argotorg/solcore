@@ -239,6 +239,7 @@ emitExp (Call Nothing f as) = do
     let call =  Core.ECall (unwrapId f) coreArgs
     pure (call, concat codes)
 emitExp e@(Con i as) = emitConApp i as
+emitExp (TyExp e _) = emitExp e
 emitExp e = errors ["emitExp not implemented for: ", pretty e, "\n", show e]
 
 emitStmt :: Stmt Id -> EM [Core.Stmt]
