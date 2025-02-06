@@ -44,13 +44,25 @@ splitTy t = ([], t)
 funtype :: [Ty] -> Ty -> Ty
 funtype ts t = foldr (:->) t ts
 
-alphaEq :: Ty -> Ty -> Bool 
-alphaEq (TyVar _) (TyVar _) 
-  = True 
-alphaEq (TyCon n ts) (TyCon n' ts')
-  = n == n' && (and (zipWith alphaEq ts ts'))
-alphaEq _ _ 
-  = False
+class AlphaEq a where 
+  alphaEq :: a -> a -> Bool
+
+instance AlphaEq a => AlphaEq [a] where 
+  alphaEq ts ts' = and $ zipWith alphaEq ts ts'
+
+instance AlphaEq Ty where 
+  alphaEq (TyVar _) (TyVar _) 
+    = True 
+  alphaEq (TyCon n ts) (TyCon n' ts')
+    = n == n' && (and (zipWith alphaEq ts ts'))
+  alphaEq _ _ 
+    = False
+
+instance AlphaEq Pred where 
+  alphaEq (InCls n t ts) (InCls n' t' ts')
+    = n == n' && alphaEq t t' && alphaEq ts ts'
+  alphaEq (t1 :~: t2) (t1' :~: t2') 
+    = alphaEq t1 t1' && alphaEq t2 t2'
 
 -- definition of constraints 
 

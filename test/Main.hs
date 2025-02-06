@@ -114,6 +114,7 @@ cases
               , runTestForFile "noclosure.solc" caseFolder 
               , runTestForFile "constructor-weak-args.solc" caseFolder 
               , expectFail $ runTestForFile"unconstrainted-instance.solc" caseFolder
+              , runTestForFile "constrained-instance.solc" caseFolder
               , runTestForFile "reference.solc" caseFolder 
               ]
     where 
@@ -132,6 +133,8 @@ basicOptions :: [String]
 basicOptions = [ "new-run"
                , "sol-core"
                , "--"
+               , "-n" 
+               , "-s" 
                , "-f"
                ] 
 

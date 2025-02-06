@@ -370,6 +370,7 @@ skolemize (TyCon n ts) = TyCon n (map skolemize ts)
 
 tcSignature :: Signature Name -> TcM ( (Name, Scheme)
                                      , [(Name, Scheme)]
+                                     , [Pred]
                                      , [Ty]
                                      )
 tcSignature sig@(Signature _ ctx n ps rt)
@@ -377,25 +378,30 @@ tcSignature sig@(Signature _ ctx n ps rt)
       (ps', pschs, ts) <- tcArgs ps 
       t <- maybe freshTyVar pure rt
       msch <- maybeAskEnv n
-      let sch = maybe (monotype $ funtype ts t) id msch
-      pure ((n, sch), pschs, ts)
+      let
+        qt = ctx :=> (funtype ts t) 
+        vs = fv qt 
+        sch = maybe (Forall vs qt) id msch
+      pure ((n, sch), pschs, ctx, ts)
 
 tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
 tcFunDef d@(FunDef sig bd)
   = withLocalEnv do
       -- checking if the function isn't defined
-      liftIO $ putStrLn $ "Type checking " ++ show (sigName sig)
-      ((n,sch), pschs, ts) <- tcSignature sig
+      ((n,sch), pschs, qs, ts) <- tcSignature sig
+      liftIO $ putStrLn $ pretty n ++ "::" ++ pretty sch 
       let lctx = (n,sch) : pschs
       (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
       (ps :=> ann) <- freshInst sch
       s1 <- getSubst 
       let inf = apply s1 (funtype ts t')
-          nps = apply s1 (ps ++ ps1)
-      ps2 <- reduceContext nps `wrapError` d
-      liftIO $ putStrLn $ "Annotated:" ++ pretty ps
-      liftIO $ putStrLn $ "Reduced:" ++ pretty ps2
       s' <- unify ann inf `wrapError` d
+      ps2 <- reduceContext (apply s' (qs ++ ps ++ ps1)) `wrapError` d
+      liftIO $ putStrLn $ "PS:" ++ pretty (qs ++ ps ++ ps1) 
+      liftIO $ putStrLn $ "PS2:" ++ pretty ps2
+      liftIO $ putStrLn $ "INF:" ++ pretty (apply s' inf)
+      nonentail <- filterM (\ p -> not <$> entails (qs ++ ps) p) ps2 
+      unless (null nonentail) $ entailmentError ps nonentail `wrapError` d  
       extSubst s'
       s <- getSubst 
       sch'@(Forall svs (sps :=> st)) <- generalize (ps2, apply s inf) `wrapError` d
@@ -911,3 +917,11 @@ wrongPatternNumber qts ps
 duplicatedFunDef :: Name -> TcM ()
 duplicatedFunDef n
   = throwError $ "Duplicated function definition:" ++ pretty n
+
+entailmentError :: [Pred] -> [Pred] -> TcM ()
+entailmentError base nonentail 
+  = throwError $ unwords [ "Could not deduce"
+                         , pretty nonentail
+                         , "from" 
+                         , if null base then "<empty context>" else pretty base 
+                         ]
