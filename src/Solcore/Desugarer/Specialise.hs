@@ -345,11 +345,14 @@ specAccess (Con i@(Id (Name "MemberAccess") ity@(iargty :-> iresty)) [e]) = do
   debug ["! specAccess arg=", pretty e, " : ", pretty ety]
   let dir = accessPath iresty
   struct <- specAccess e
-  let accessor = Id (Name (accessorName dir)) ity
-  pure(Call Nothing accessor [struct])
+  case dir of
+    AccRep -> pure(struct)
+    _ -> do
+      let accessor = Id (Name (accessorName dir)) ity
+      pure(Call Nothing accessor [struct])
   where
-    accessorName (Left _) = "locFst"
-    accessorName (Right _) = "locSnd"
+    accessorName AccFst = "locFst"
+    accessorName AccSnd = "locSnd"
 
 specAccess (Con i@(Id (Name "XRef") ity@(iargty :-> _ :-> iresty)) [e, d]) = do
   debug ["> specAccess XRef", prettys [e, d], " : ", pretty ity]
@@ -357,11 +360,14 @@ specAccess (Con i@(Id (Name "XRef") ity@(iargty :-> _ :-> iresty)) [e, d]) = do
   debug ["! specAccess arg=", pretty e, " : ", pretty ety]
   let dir = accessPath iresty
   struct <- specAccess e
-  let accessor = Id (Name (accessorName dir)) ity
-  pure(Call Nothing accessor [struct])
+  case dir of
+    AccRep -> pure struct
+    _ -> do
+      let accessor = Id (Name (accessorName dir)) ity
+      pure(Call Nothing accessor [struct])
   where
-    accessorName (Left _) = "locFst"
-    accessorName (Right _) = "locSnd"
+    accessorName AccFst = "locFst"
+    accessorName AccSnd = "locSnd"
 specAccess e = error("specAccess called on " ++ pretty e)
 
 isStackLoadTy  (TyCon "stack" [_] :-> _) = True
@@ -389,17 +395,20 @@ unwrapMemberAccess (Con i@(Id (Name "MemberAccess") ty) [e]) = e
 unwrapMemberAccess (Con i@(Id (Name "XRef") ty) [e, _]) = e
 unwrapMemberAccess e = error("unwrapMemberAccess called on " ++ show e )
 
-accessPath :: Ty -> Either () ()
+accessPath :: Ty -> Accessor
 accessPath (TyCon "MemberAccess" [_ref, TyCon (Name axor) []]) =
   dir axor where
-    dir "PairFst" = Left ()
-    dir "PairSnd" = Right ()
+    dir "PairFst" = AccFst
+    dir "PairSnd" = AccSnd
 accessPath (TyCon "XRef" [_ref, TyCon (Name axor) [], _deref]) =
   dir axor where
-    dir "PairFst" = Left ()
-    dir "PairSnd" = Right ()
+    dir "PairFst" = AccFst
+    dir "PairSnd" = AccSnd
+    dir "Rep"     = AccRep
+    dir s = errors ["accessPath: unknown accessor ", show s]
 accessPath ty = errors["accessPath called on " ++ pretty ty, "i.e.\n", show ty]
 
+data Accessor = AccFst | AccSnd | AccRep
 
 isIgnoredBuiltin name = elem name primFunNames
 

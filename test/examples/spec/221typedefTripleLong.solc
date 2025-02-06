@@ -1,0 +1,106 @@
+class  ref : Ref(deref) {
+  function load (r:ref) -> deref;
+  function store(r:ref, v:deref) -> unit;
+}
+
+data stack(a) = stack(a);
+instance stack(a) : Ref(a) {}
+
+data PairFst = PairFst;
+data PairSnd = PairSnd;
+data Rep = Rep;
+
+class self:Typedef(underlyingType) {
+    function rep(x:self) -> underlyingType;
+    function abs(x:underlyingType) -> self;
+}
+
+pragma no-coverage-condition Typedef;
+instance (a:Typedef(b)) => stack(a):Typedef(stack(b)) {
+/*
+    function rep(x:stack(a)) -> stack(b) {
+      match x {
+        | stack(y) => return stack(Typedef.rep(y));
+      };
+    }
+*/
+}
+
+data Triple(a,b,c)  = Triple(a, b, c);
+instance Triple(a,b,c):Typedef( (a,b,c) ) {}
+
+pragma no-bounded-variable-condition Ref;
+data XRef(st, field, fieldType) = XRef(st, field);
+instance (r:Ref( (a,b) ) )=>  XRef(r, PairFst, a) : Ref(a) {}
+instance (r:Ref( (a,b) ) )=>  XRef(r, PairSnd, b) : Ref(b) {}
+
+/* if we have a reference to s and know that it is represented by u
+   we can treat it as a reference to u */
+instance (r:Ref(s), s:Typedef(u))=> XRef(r, Rep, u) : Ref(u) {
+  function load(xr : XRef(r, Rep, u)) -> u {
+    match xr {
+      | XRef(r, Rep) => let vs : s = Ref.load(r); return Typedef.rep(vs);
+    };
+  }
+
+  function store(xr : XRef(r, Rep, u), vu : u) -> ()
+  {
+      match xr {
+      | XRef(r, Rep) => let vs : s = Typedef.abs(vu); Ref.store(r, vs);
+    };
+  }
+}
+
+// forall r:Ref(a) . function forceRef(r:ref) -> deref { return Ref.load(r); }
+
+
+contract TypedefTriple {
+
+  function main() -> word {
+    let y : stack( Triple(word, word, word) );
+    let z : stack( Triple(word, word, word) );
+
+    Ref.store(y, Triple(1,2,3));
+
+    // y.1 = 20
+    let ry : XRef(stack(Triple(word, word, word)), Rep, (word, word, word))
+           = XRef(y, Rep);
+    let dry : (word, word, word) =  Ref.load(ry);
+    // typeof(ry) : Ref( (word, word, word) )
+    let ry1 : XRef( XRef(stack(Triple(word, word, word))
+        	        , Rep
+		        , (word, word, word)
+			   )
+	             , PairFst
+		     , word
+		     ) 
+            = XRef(ry, PairFst);
+    // typeof(ry1) : Ref(word)
+    // let dry1 : word = Ref.load(ry1);
+    // Ref.store(ry1, dry1:word);
+
+    // y.2 = 21
+    let ry2 : XRef( XRef(stack(Triple(word, word, word)), Rep, (word, word, word) )
+	          , PairSnd
+		  , (word, word)
+		  ) 
+            = XRef(ry, PairSnd);
+    let ry21 : XRef(XRef( XRef(stack(Triple(word, word, word)), Rep, (word, word, word) )
+	                , PairSnd
+		        , (word, word)
+		        )
+		   , PairFst
+		   , word
+		   )
+            = XRef(ry2, PairFst);
+    // Ref.store(ry21, 21);
+    
+    Ref.store( XRef(XRef(XRef(y, Rep), PairSnd), PairFst), 21 );
+
+    // z = y
+    Ref.store( z, Ref.load(y));
+
+    // return z.2
+    return Ref.load(XRef(XRef(XRef(z, Rep), PairSnd), PairFst));
+  }
+}
