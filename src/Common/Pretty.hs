@@ -5,6 +5,8 @@ module Common.Pretty
 , dotSep
 , commaSep, commaSepList
 , angles
+, pprs
+, prettys
 ) where
 import Text.PrettyPrint hiding((<>))
 import Text.PrettyPrint qualified as PP
@@ -33,3 +35,10 @@ commaSepList = hsep . punctuate comma . map ppr
 
 angles :: Doc -> Doc
 angles d = char '<' >< d ><  char '>'
+
+pprs :: Pretty a => [a] -> Doc
+pprs = brackets . commaSep . map ppr
+
+-- pprint a list of things (in brackets, comma-separated)
+prettys :: Pretty a => [a] -> String
+prettys = render . pprs

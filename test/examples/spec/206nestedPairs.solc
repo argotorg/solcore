@@ -1,0 +1,79 @@
+
+forall any.function revert(a:word,b:word) -> any {
+  assembly {
+    revert(a,b)
+  };
+}
+
+function add(x : word, y : word) {
+  let res: word;
+  assembly {
+     res := add(x, y)
+  };
+  return res;
+}
+
+class  ref : Ref(deref) {
+  function load (r:ref) -> deref;
+  function store(r:ref, v:deref) -> unit;
+}
+
+instance stack(a) : Ref(a) {
+   // these definitions will not be used
+  // function load(r) { return(revert(0,0)); }
+  // function store(r, v) { revert(0,0);  }
+}
+
+instance stack(a) : Ref(a) {}
+data MemberAccess(ty, field) = MemberAccess(ty);
+
+data PairFst = PairFst;
+data PairSnd = PairSnd;
+
+instance MemberAccess(stack( (a,b) ), PairFst):Ref(a) {}
+instance MemberAccess(stack( (a,b) ), PairSnd):Ref(b) {}
+// instance MemberAccess(stack((a,(b,c))), PairSnd):Ref((b,c)) {}
+// Daniel's suggestion
+// instance MemberAccess(stack((a,b)), PairFst):Ref(stack(a)) {}
+//or
+
+/*
+instance MemberAccess(MemberAccess(stack((a,b), c), PairFst),PairFst):Ref(a) {}
+instance (MemberAccess(stack(b), field):Ref(fieldType)) =>
+MemberAccess(MemberAccess(stack((a,b), PairSnd), field)):Ref(fieldType) {}
+*/
+contract AssignNested {
+  function fst(p) {
+    match p {
+      | (a,b) => return a;
+    };
+  }
+
+  function snd(p) {
+    match p {
+      | (a,b) => return b;
+    };
+  }
+
+  function sumPair(p) {
+    match p {
+      | (a,b) => return add(a,b);
+    };
+  }
+
+  function main() {
+    // let x : (word, (word, word)) = (1, (2,3)) ;
+    let x : stack( (word, (word, word)) );
+    Ref.store(x, (1, (2,3)));
+
+    // x.fst = 25
+    Ref.store(MemberAccess(x):MemberAccess(stack( (word, (word,word)) ), PairFst), 25);
+
+
+    // return y.fst
+    return Ref.load(MemberAccess(x) : MemberAccess(stack( (word, (word,word)) ), PairFst) );
+
+    // return 77;
+    
+  }  
+}

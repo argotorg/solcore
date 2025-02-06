@@ -1,0 +1,48 @@
+// need some functions before main, see #72
+function fst(p) {
+  match p {
+    | (a,b) => return a;
+  };
+}
+
+function snd(p) {
+  match p {
+    | (a,b) => return b;
+  };
+}
+
+class  ref : Ref(deref) {
+  function load (r:ref) -> deref;
+  function store(r:ref, v:deref) -> unit;
+}
+
+
+instance stack(a) : Ref(a) {} // special handling by EmitCore
+
+data MemberAccess(ty, field) = MemberAccess(ty);
+
+data PairFst = PairFst;
+data PairSnd = PairSnd;
+
+
+
+pragma no-bounded-variable-condition Ref;
+data XRef(st, field, fieldType) = XRef(st, field);
+instance (r:Ref( (a,b) ) )=>  XRef(r, PairFst, a) : Ref(a) {}
+instance (r:Ref( (a,b) ) )=>  XRef(r, PairSnd, b) : Ref(b) {}
+
+contract AssignNested {
+  function main() {
+    let x : stack( (word, (word, word)) );
+    // let z : stack( (word, (word, word)) );
+    
+    Ref.store(x, (1, (2,3)));
+
+    // either of the next lines is fine on their own, but not together
+    //Ref.store( XRef(z,PairFst), 21); 
+    Ref.store( XRef(XRef(x, PairSnd), PairFst), 42);
+
+   return fst(snd(Ref.load(x)));
+
+  }
+}
