@@ -258,7 +258,7 @@ tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds 
   = do
       funs <- mapM scanFun binds
-      (funs', schs, pss, ts) <- unzip4 <$> mapM tcFunDef funs 
+      (funs', schs, pss, ts) <- unzip4 <$> mapM (tcFunDef []) funs 
       ts' <- withCurrentSubst ts  
       schs <- mapM generalize (zip pss ts')
       let names = map (sigName . funSignature) funs 

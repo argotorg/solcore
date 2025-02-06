@@ -384,8 +384,8 @@ tcSignature sig@(Signature _ ctx n ps rt)
         sch = maybe (Forall vs qt) id msch
       pure ((n, sch), pschs, ctx, ts)
 
-tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
-tcFunDef d@(FunDef sig bd)
+tcFunDef :: [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
+tcFunDef rs d@(FunDef sig bd)
   = withLocalEnv do
       -- checking if the function isn't defined
       ((n,sch), pschs, qs, ts) <- tcSignature sig
@@ -396,11 +396,11 @@ tcFunDef d@(FunDef sig bd)
       s1 <- getSubst 
       let inf = apply s1 (funtype ts t')
       s' <- unify ann inf `wrapError` d
-      ps2 <- reduceContext (apply s' (qs ++ ps ++ ps1)) `wrapError` d
-      liftIO $ putStrLn $ "PS:" ++ pretty (qs ++ ps ++ ps1) 
+      ps2 <- reduceContext (apply s' (rs ++ qs ++ ps ++ ps1)) `wrapError` d
+      liftIO $ putStrLn $ "PS:" ++ pretty (rs ++ qs ++ ps ++ ps1) 
       liftIO $ putStrLn $ "PS2:" ++ pretty ps2
       liftIO $ putStrLn $ "INF:" ++ pretty (apply s' inf)
-      nonentail <- filterM (\ p -> not <$> entails (qs ++ ps) p) ps2 
+      nonentail <- filterM (\ p -> not <$> entails (rs ++ qs ++ ps) p) ps2 
       unless (null nonentail) $ entailmentError ps nonentail `wrapError` d  
       extSubst s'
       s <- getSubst 
@@ -458,7 +458,7 @@ tcInstance idecl@(Instance ctx n ts t funs)
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs) 
       funs' <- buildSignatures n ts t funs `wrapError` idecl
-      (funs1, schss, pss', ts') <- unzip4 <$> mapM tcFunDef  funs' `wrapError` idecl
+      (funs1, schss, pss', ts') <- unzip4 <$> mapM (tcFunDef ctx) funs' `wrapError` idecl
       withCurrentSubst (Instance ctx n ts t funs1)
 
 checkCompleteInstDef :: Name -> [Name] -> TcM ()

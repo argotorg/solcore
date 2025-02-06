@@ -115,6 +115,7 @@ cases
               , runTestForFile "constructor-weak-args.solc" caseFolder 
               , expectFail $ runTestForFile"unconstrainted-instance.solc" caseFolder
               , runTestForFile "constrained-instance.solc" caseFolder
+              , runTestForFile "constrained-instance-context.solc" caseFolder
               , runTestForFile "reference.solc" caseFolder 
               ]
     where 
