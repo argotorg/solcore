@@ -384,13 +384,17 @@ tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
 tcFunDef d@(FunDef sig bd)
   = withLocalEnv do
       -- checking if the function isn't defined
+      liftIO $ putStrLn $ "Type checking " ++ show (sigName sig)
       ((n,sch), pschs, ts) <- tcSignature sig
       let lctx = (n,sch) : pschs
       (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
       (ps :=> ann) <- freshInst sch
-      inf <- withCurrentSubst (foldr (:->) t' ts)
-      nps <- withCurrentSubst (ps ++ ps1)
+      s1 <- getSubst 
+      let inf = apply s1 (funtype ts t')
+          nps = apply s1 (ps ++ ps1)
       ps2 <- reduceContext nps `wrapError` d
+      liftIO $ putStrLn $ "Annotated:" ++ pretty ps
+      liftIO $ putStrLn $ "Reduced:" ++ pretty ps2
       s' <- unify ann inf `wrapError` d
       extSubst s'
       s <- getSubst 
@@ -503,7 +507,7 @@ checkInstance idef@(Instance ctx n ts t funs)
       let ipred = InCls n t ts
       -- checking the coverage condition 
       insts <- askInstEnv n `wrapError` ipred
-      -- checkOverlap ipred insts `wrapError` idef
+      checkOverlap ipred insts `wrapError` idef
       coverage <- askCoverage n
       unless coverage (checkCoverage n ts t `wrapError` idef)
       -- checking Patterson condition

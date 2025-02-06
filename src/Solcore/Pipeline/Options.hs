@@ -5,7 +5,6 @@ import Options.Applicative
 data Option
   = Option
     { fileName :: FilePath
-    , optNoClosureConvert :: !Bool 
     , optNoSpec :: !Bool
     , optNoDesugarCalls :: !Bool
     -- Options controlling printing
@@ -26,10 +25,7 @@ options
                <> short 'f'
                <> metavar "FILE"
                <> help "Input file name")
-           <*> switch (long "no-closure-convert"
-               <> short 'c'
-               <> help "Skip closure conversion")
-           <*> switch ( long "no-specialise"
+          <*> switch ( long "no-specialise"
                <> short 'n'
                <> help "Skip specialisation and core emission phases")
            <*> switch ( long "no-desugar-calls"

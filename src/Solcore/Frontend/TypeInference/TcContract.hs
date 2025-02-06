@@ -316,7 +316,7 @@ checkClass icls@(Class ps n vs v sigs)
           ms' = map sigName sigs
       bound <- askBoundVariableCondition n
       unless bound (checkBoundVariable ps (v:vs) `wrapError` icls)
-      addClassInfo n (length vs) ms' p
+      addClassInfo n (length vs) ms' ps p
       mapM_ (checkSignature p) sigs 
     where
       checkSignature p sig@(Signature vs ctx f ps mt)
@@ -328,13 +328,13 @@ checkClass icls@(Class ps n vs v sigs)
                    (signatureError n v sig ft)
             addClassMethod p sig `wrapError` icls 
 
-addClassInfo :: Name -> Arity -> [Method] -> Pred -> TcM ()
-addClassInfo n ar ms p
+addClassInfo :: Name -> Arity -> [Method] -> [Pred] -> Pred -> TcM ()
+addClassInfo n ar ms ps p
   = do 
       ct <- gets classTable
       when (Map.member n ct) (duplicatedClassDecl n)
       modify (\ env -> 
-        env{ classTable = Map.insert n (ClassInfo ar ms p) 
+        env{ classTable = Map.insert n (ClassInfo ar ms p ps) 
                                        (classTable env)})
 
 addClassMethod :: Pred -> Signature Name -> TcM ()

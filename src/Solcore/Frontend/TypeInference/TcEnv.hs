@@ -48,6 +48,7 @@ data ClassInfo
       classArity :: Arity
     , methods :: [Method]
     , classpred :: Pred
+    , supers :: [Pred] 
     }
 
 type Table a = Map Name a 
