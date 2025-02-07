@@ -10,7 +10,6 @@ import Data.List
 import qualified Data.Map as Map
 import Data.Maybe
 
-import Solcore.Desugarer.UniqueTypeGen (mkUniqueType)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Erase
@@ -53,7 +52,7 @@ tcStmt e@(Let n mt me)
                         return (Just e', ps, t1)
                       (Nothing, Nothing) ->
                         (Nothing, [],) <$> freshTyVar
-      extEnv n (monotype tf)
+      extEnv n (Forall [] (psf :=> tf))
       let e' = Let (Id n tf) (Just tf) me'
       pure (e', psf, unit)
 tcStmt (StmtExp e)
@@ -162,11 +161,9 @@ tcExp (Var n)
       -- its corresponding unique type 
       r <- lookupUniqueTy n
       let
-        (args,ret) = splitTy t
-        args' = tupleTyFromList args
         mkCon (DataTy nt vs [(Constr n _)])
           = let
-              t1 = TyCon nt [args', ret]
+              t1 = TyCon nt (map TyVar vs)
             in (Con (Id n t1) [], t1)
         p = maybe (Var (Id n t), t) mkCon r
       pure (fst p, ps, snd p)
@@ -233,6 +230,7 @@ closureConversion vs args bdy ps ty
   = do 
       i <- incCounter
       fs <- Map.keys <$> gets uniqueTypes 
+      sch <- generalize (ps, ty)
       let
           fn = Name $ "lambda_impl" ++ show i
           argsn = map idName (vars args) 
@@ -241,15 +239,10 @@ closureConversion vs args bdy ps ty
       if null free then do
         -- no closure needed for monomorphic 
         -- lambdas!
-        j <- incCounter
-        let dn = Name $ "t_" ++ pretty fn ++ show j
-            dt = mkUniqueType dn
-            (argsTy,retTy) = splitTy ty 
-            t = TyCon dn (TyVar <$> fv ty)
-        addUniqueType fn dt 
-        fun <- createClosureFreeFun fn args bdy ps ty 
+        fun <- createClosureFreeFun fn args bdy ps ty
         sch <- generalize (ps, ty)
-        (udt, instd) <- generateDecls (fun, sch)
+        (udt@(DataTy dn vs _), instd) <- generateDecls (fun, sch)
+        let t = TyCon dn (TyVar <$> vs)
         writeFunDef fun
         writeDataTy udt
         checkDataType udt 
@@ -265,7 +258,7 @@ closureConversion vs args bdy ps ty
         writeFunDef fun 
         writeDataTy cdt
         checkDataType cdt 
-        (_, instd) <- generateDecls (fun, sch)
+        instd <- createInstance cdt fun sch
         checkInstance instd
         extEnv fn sch 
         instd' <- tcInstance instd
@@ -389,7 +382,6 @@ tcFunDef rs d@(FunDef sig bd)
   = withLocalEnv do
       -- checking if the function isn't defined
       ((n,sch), pschs, qs, ts) <- tcSignature sig
-      liftIO $ putStrLn $ pretty n ++ "::" ++ pretty sch 
       let lctx = (n,sch) : pschs
       (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
       (ps :=> ann) <- freshInst sch
@@ -397,11 +389,9 @@ tcFunDef rs d@(FunDef sig bd)
       let inf = apply s1 (funtype ts t')
       s' <- unify ann inf `wrapError` d
       ps2 <- reduceContext (apply s' (rs ++ qs ++ ps ++ ps1)) `wrapError` d
-      liftIO $ putStrLn $ "PS:" ++ pretty (rs ++ qs ++ ps ++ ps1) 
-      liftIO $ putStrLn $ "PS2:" ++ pretty ps2
-      liftIO $ putStrLn $ "INF:" ++ pretty (apply s' inf)
       nonentail <- filterM (\ p -> not <$> entails (rs ++ qs ++ ps) p) ps2 
-      unless (null nonentail) $ entailmentError ps nonentail `wrapError` d  
+      let entailsOk = all isPrimitivePred nonentail
+      unless entailsOk $ entailmentError ps nonentail `wrapError` d  
       extSubst s'
       s <- getSubst 
       sch'@(Forall svs (sps :=> st)) <- generalize (ps2, apply s inf) `wrapError` d
@@ -409,15 +399,22 @@ tcFunDef rs d@(FunDef sig bd)
       info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
       pure (apply s $ FunDef sig2  bd', sch', apply s ps2, apply s ann)
 
+isPrimitivePred :: Pred -> Bool
+isPrimitivePred (InCls n _ _) 
+  = n `elem` [Name "invokable"]
+
 -- update types in signature 
 
 elabSignature :: Signature Name -> Scheme -> Signature Id
 elabSignature sig (Forall vs (ps :=> t)) 
   = Signature vs ps (sigName sig) params' ret 
-    where 
-      (ts, t') = splitTy t 
-      params' = zipWith elabParam ts (sigParams sig)
-      ret = Just $ if null params' then t else t' 
+    where
+      params = sigParams sig 
+      nparams = length params 
+      (ts, t') = splitTy t
+      (ts', rs) = splitAt nparams ts 
+      params' = zipWith elabParam ts' params 
+      ret = Just $ if null params' then t else (funtype rs t') 
       elabParam t1 (Typed n _) = Typed (Id n t1) t1 
       elabParam t1 (Untyped n) = Typed (Id n t1) t1 
 
@@ -446,7 +443,7 @@ correctName (Name s)
 extSignature :: Signature Name -> TcM ()
 extSignature sig@(Signature _ preds n ps t)
   = do
-      te <- gets directCalls 
+      te <- Map.keys <$> gets uniqueTypes 
       -- checking if the function is previously defined
       when (elem n te) (duplicatedFunDef n) `wrapError` sig
       addFunctionName n 

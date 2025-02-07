@@ -42,22 +42,18 @@ pipeline = do
           when verbose $ do
             putStrLn "> SCC Analysis:"
             putStrLn $ pretty ast'
-          typeInfer opts Map.empty ast'
+          typeInfer opts [] ast'
       else do
-        (ast0, mdt) <- uniqueTypeGen ast
-        when verbose $ do
-          putStrLn "> Unique type generation"
-          putStrLn $ pretty ast0
-        r2 <- sccAnalysis ast0
+        r2 <- sccAnalysis ast
         withErr r2 $ \ ast' -> do
           when verbose $ do
             putStrLn "> SCC Analysis:"
             putStrLn $ pretty ast'
-          ast3 <- indirectCall mdt ast'
+          (ast3, fnames) <- indirectCall ast'
           when verbose $ do
             putStrLn "> Indirect call desugaring:"
             putStrLn $ pretty ast3
-          typeInfer opts mdt ast3
+          typeInfer opts fnames ast3
     withErr r5 $ \ (c', env) -> do
         let warns = warnings env
             logsInfo = logs env

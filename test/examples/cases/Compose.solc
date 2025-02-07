@@ -6,12 +6,8 @@
   
   function id(x) { return x; }
 
-  function idid() { return compose(id,id); }
-
- //  function main() { return idid(42); }
-
   function main() {
     let f = compose(id,id);
-    return f(42) : word;
+    return f(42);
   }
 

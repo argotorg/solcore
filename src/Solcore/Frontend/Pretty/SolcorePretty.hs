@@ -138,24 +138,19 @@ pprSignatures
   = vcat . map ppr
 
 instance Pretty a => Pretty (Signature a) where 
-  ppr (Signature [] ctx n ps ty)
-    = text "function" <+> 
-      ppr n           <+>
-      pprParams ps    <+> 
-      pprRetTy ty
-  ppr (Signature _ [] n ps ty) 
-    = text "function" <+> 
-      ppr n           <+>
-      pprParams ps    <+> 
-      pprRetTy ty 
-  ppr (Signature vs ctx n ps ty) 
-    = text "forall" <+>
-      pprContext ctx <+> 
+   ppr (Signature vs ctx n ps ty) 
+    = pprSigPrefix vs ctx <+> 
       text "function" <+> 
       ppr n <+> 
       pprParams ps <+> 
       pprRetTy ty 
 
+pprSigPrefix :: [Tyvar] -> [Pred] -> Doc 
+pprSigPrefix [] [] = empty 
+pprSigPrefix vs [] 
+  = text "forall" <+> hsep (map ppr vs) <+> text "." 
+pprSigPrefix _ ps 
+  = text "forall" <+> pprContext ps 
 
 instance Pretty a => Pretty (Instance a) where 
   ppr (Instance ctx n tys ty funs)

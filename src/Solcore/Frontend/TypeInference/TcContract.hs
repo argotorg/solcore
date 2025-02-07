@@ -28,12 +28,12 @@ import Solcore.Primitives.Primitives
 -- used to determine if it will generate definitions.
 
 typeInfer :: Option ->
-             UniqueTyMap ->
+             [Name] ->
              CompUnit Name ->
              IO (Either String (CompUnit Id, TcEnv))
-typeInfer options utm (CompUnit imps decls)
+typeInfer options fnames (CompUnit imps decls)
   = do
-      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options utm)
+      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options fnames)
       case r of
         Left err -> pure $ Left err 
         Right ((CompUnit imps ds), env) -> 

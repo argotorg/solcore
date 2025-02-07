@@ -344,8 +344,9 @@ renameInstEnv
 
 addInstance :: Name -> Inst -> TcM ()
 addInstance n inst 
-  = modify (\ ctx -> 
-      ctx{instEnv = Map.insertWith (++) n [inst] (instEnv ctx)})  
+  = do 
+      modify (\ ctx -> 
+        ctx{instEnv = Map.insertWith (++) n [inst] (instEnv ctx)})  
       
 
 maybeToTcM :: String -> Maybe a -> TcM a 
@@ -423,8 +424,12 @@ toHnf depth pred@(InCls n _ _)
         Nothing -> tcmError ("no instance of " ++ pretty pred
                   ++"\nKnown instances:\n"++ (unlines $ map pretty is))
         Just (preds, subst', instd) -> do
+            info ["> Solving ", pretty pred] 
+            info [">> using instance: ", pretty instd] 
+            info [">> substitution: ", pretty subst']
             extSubst subst'
             x <- getSubst
+            info [">> context next iteration: ", pretty $ apply x preds]
             toHnfs (depth - 1) preds
 
 inHnf :: Pred -> Bool
@@ -444,6 +449,7 @@ byInstM ce p@(InCls i t as)
             Left _ -> Nothing
             Right u -> let tvs = fv h
                        in Just (map (apply u) ps, restrict u tvs, c)
+byInstM _ _ = Nothing
 
 bySuperM :: Pred -> TcM [Pred] 
 bySuperM p@(InCls n t ts) 
@@ -458,16 +464,21 @@ bySuperM _ = pure []
 
 -- entailment 
 
-entails :: [Pred] -> Pred -> TcM Bool 
+entails :: [Pred] -> Pred -> TcM Bool
 entails ps p 
   = do 
       qs <- mapM bySuperM ps
-      let cond1 = any (p `alphaEq`) (concat qs)
+      let
+        cond1 = any (p `alphaEq`) (concat qs)
       itbl <- getInstEnv
       cond2 <- case byInstM itbl p of 
                  Nothing -> pure False 
                  Just (qs', u, _) -> and <$> mapM (entails ps) qs'
       pure (cond1 || cond2)
+
+isGenPred :: Pred -> Bool 
+isGenPred (InCls n _ _) 
+  = n `elem` [Name "invokable"]
 
 -- checking coverage pragma 
 
