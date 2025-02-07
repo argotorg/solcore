@@ -116,7 +116,8 @@ cases
               , expectFail $ runTestForFile"unconstrainted-instance.solc" caseFolder
               , runTestForFile "constrained-instance.solc" caseFolder
               , runTestForFile "constrained-instance-context.solc" caseFolder
-              , runTestForFile "reference.solc" caseFolder 
+              , runTestForFile "reference.solc" caseFolder
+              , runTestForFile "super-class.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"
