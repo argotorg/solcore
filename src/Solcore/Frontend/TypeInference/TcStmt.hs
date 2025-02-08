@@ -388,7 +388,8 @@ tcFunDef rs d@(FunDef sig bd)
       s1 <- getSubst 
       let inf = apply s1 (funtype ts t')
       s' <- unify ann inf `wrapError` d
-      ps2 <- reduceContext (apply s' (rs ++ qs ++ ps ++ ps1)) `wrapError` d
+      let ps' = apply s' (rs ++ qs ++ ps ++ ps1)
+      ps2 <- reduceContext ps' `wrapError` d
       nonentail <- filterM (\ p -> not <$> entails (rs ++ qs ++ ps) p) ps2 
       let entailsOk = all isPrimitivePred nonentail
       unless entailsOk $ entailmentError ps nonentail `wrapError` d  

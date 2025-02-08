@@ -63,6 +63,7 @@ instance AlphaEq Pred where
     = n == n' && alphaEq t t' && alphaEq ts ts'
   alphaEq (t1 :~: t2) (t1' :~: t2') 
     = alphaEq t1 t1' && alphaEq t2 t2'
+  alphaEq _ _ = False  
 
 -- definition of constraints 
 

@@ -553,7 +553,6 @@ info ss = do
             let msg = concat ss
             logging <- isLogging
             verbose <- isVerbose
-            when verbose $ liftIO $ putStrLn msg
             when logging $ modify (\ r -> r{ logs = msg : logs r })
 
 warning :: String -> TcM ()

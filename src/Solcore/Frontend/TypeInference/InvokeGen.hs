@@ -56,11 +56,12 @@ createInstance udt fd sch
       (qs' :=> ty') <- askEnv invoke >>= freshInst 
       -- getting arguments and return type from signature 
       let (args, retTy) = splitTy ty
-          args' = if null args then [unit] else filter (not . isClosureTy) args 
+          args' = if null args then [unit] else filter (not . isClosureTy) args
+          vunreach = fv qt \\ fv ty 
           argTy = tupleTyFromList args'
-          argvars = union (union (fv argTy) (fv qs)) (fv retTy)
+          argvars = fv qt 
           dn = dataName udt
-          selfTy = TyCon dn (TyVar <$> fv qt)
+          selfTy = TyCon dn (TyVar <$> fv ty `union` fv qs)
       -- building the invoke function signature 
       (selfParam, sn) <- freshParam "self" selfTy
       (argParam, an) <- freshParam "arg" argTy
