@@ -118,6 +118,7 @@ cases
               , runTestForFile "constrained-instance-context.solc" caseFolder
               , runTestForFile "reference.solc" caseFolder
               , runTestForFile "super-class.solc" caseFolder
+              , runTestForFile "proxy.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"
