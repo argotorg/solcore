@@ -918,7 +918,7 @@ duplicatedFunDef n
 
 entailmentError :: [Pred] -> [Pred] -> TcM ()
 entailmentError base nonentail 
-  = throwError $ unwords [ "Could not deduce"
+  = tcmError $ unwords [ "Could not deduce"
                          , pretty nonentail
                          , "from" 
                          , if null base then "<empty context>" else pretty base 
