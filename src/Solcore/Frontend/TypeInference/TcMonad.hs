@@ -108,7 +108,7 @@ unify :: Ty -> Ty -> TcM Subst
 unify t t' 
   = do
       s <- getSubst 
-      s' <- mgu (apply s t) (apply s t')
+      s' <- tcmMgu (apply s t) (apply s t')
       s1 <- extSubst s'
       checkSubst s1 
       pure s1
@@ -321,6 +321,10 @@ modifyTypeInfo n ti
 
 -- manipulating the instance environment 
 
+getClassEnv :: TcM ClassTable 
+getClassEnv 
+  = gets classTable
+
 askInstEnv :: Name -> TcM [Inst]
 askInstEnv n 
   = maybe [] id . Map.lookup n <$> gets instEnv
@@ -340,8 +344,9 @@ renameInstEnv
 
 addInstance :: Name -> Inst -> TcM ()
 addInstance n inst 
-  = modify (\ ctx -> 
-      ctx{instEnv = Map.insertWith (++) n [inst] (instEnv ctx)})  
+  = do 
+      modify (\ ctx -> 
+        ctx{instEnv = Map.insertWith (++) n [inst] (instEnv ctx)})  
       
 
 maybeToTcM :: String -> Maybe a -> TcM a 
@@ -364,13 +369,14 @@ generalize (ps,t)
 -- context reduction 
 
 reduceContext :: [Pred] -> TcM [Pred]
-reduceContext preds 
+reduceContext preds0
   = do
+      preds <- withCurrentSubst preds0
       depth <- askMaxRecursionDepth 
       unless (null preds) $ info ["> reduce context ", pretty preds]
       ps1 <- toHnfs depth preds
       ps2 <- withCurrentSubst ps1 
-      unless (null preds) $ info ["> reduced context ", pretty (nub ps2)]
+      unless (null preds) $ info ["< reduced context ", pretty (nub ps2)]
       pure (nub ps2)
 
 toHnfs :: Int -> [Pred] -> TcM [Pred]
@@ -378,13 +384,15 @@ toHnfs depth ps
   = do
       ps' <- simplifyEqualities ps
       ps2 <- withCurrentSubst ps'
+      unless (null ps2) $ info ["! toHnfs > toHnfs' ", show depth, " ", pretty (nub ps2)]
       toHnfs' depth ps2 
 
 simplifyEqualities :: [Pred] -> TcM [Pred]
 simplifyEqualities ps = go [] ps where
     go rs [] = return rs
     go rs ((t :~: u) : ps) = do
-      phi <- mgu t u
+      info ["> simplifyEqualities step ", pretty t, " ~ ", pretty u]
+      phi <- tcmMgu t u
       extSubst phi
       ps' <- withCurrentSubst ps
       rs' <- withCurrentSubst rs
@@ -396,6 +404,7 @@ toHnfs' _ [] = return []
 toHnfs' 0 ps = throwError("Max context reduction depth exceeded")
 toHnfs' d preds@(p:ps) = do
   let d' = d - 1
+  info ["! toHnfs' > toHnf ", show d, " ", pretty p]
   rs1 <- toHnf d' p
   ps' <- withCurrentSubst ps   -- important, toHnf may have extended the subst
   rs2 <- toHnfs' d' ps'
@@ -403,7 +412,7 @@ toHnfs' d preds@(p:ps) = do
 
 toHnf :: Int -> Pred -> TcM [Pred]
 toHnf _ (t :~: u) = do
-  subst1 <- mgu t u
+  subst1 <- tcmMgu t u
   extSubst subst1
   return []
 toHnf depth pred@(InCls n _ _)
@@ -412,11 +421,15 @@ toHnf depth pred@(InCls n _ _)
       ce <- getInstEnv
       is <- askInstEnv n
       case byInstM ce pred of
-        Nothing -> throwError ("no instance of " ++ pretty pred
+        Nothing -> tcmError ("no instance of " ++ pretty pred
                   ++"\nKnown instances:\n"++ (unlines $ map pretty is))
         Just (preds, subst', instd) -> do
+            info ["> Solving ", pretty pred] 
+            info [">> using instance: ", pretty instd] 
+            info [">> substitution: ", pretty subst']
             extSubst subst'
             x <- getSubst
+            info [">> context next iteration: ", pretty $ apply x preds]
             toHnfs (depth - 1) preds
 
 inHnf :: Pred -> Bool
@@ -436,6 +449,36 @@ byInstM ce p@(InCls i t as)
             Left _ -> Nothing
             Right u -> let tvs = fv h
                        in Just (map (apply u) ps, restrict u tvs, c)
+byInstM _ _ = Nothing
+
+bySuperM :: Pred -> TcM [Pred] 
+bySuperM p@(InCls n t ts) 
+  = do 
+      ctbl <- getClassEnv 
+      case Map.lookup n ctbl of 
+        Nothing -> pure []
+        Just cinfo -> do 
+           ps' <- concat <$> mapM bySuperM (supers cinfo)
+           pure (p : ps')
+bySuperM _ = pure []
+
+-- entailment 
+
+entails :: [Pred] -> Pred -> TcM Bool
+entails ps p 
+  = do 
+      qs <- mapM bySuperM ps
+      let
+        cond1 = any (p `alphaEq`) (concat qs)
+      itbl <- getInstEnv
+      cond2 <- case byInstM itbl p of 
+                 Nothing -> pure False 
+                 Just (qs', u, _) -> and <$> mapM (entails ps) qs'
+      pure (cond1 || cond2)
+
+isGenPred :: Pred -> Bool 
+isGenPred (InCls n _ _) 
+  = n `elem` [Name "invokable"]
 
 -- checking coverage pragma 
 
@@ -502,14 +545,26 @@ setLogging b = modify (\ r -> r{enableLog = b})
 isLogging :: TcM Bool 
 isLogging = gets enableLog
 
+isVerbose :: TcM Bool
+isVerbose = gets (optVerbose . tcOptions)
+
 info :: [String] -> TcM ()
 info ss = do
+            let msg = concat ss
             logging <- isLogging
-            when logging $ modify (\ r -> r{ logs = concat ss : logs r })
+            verbose <- isVerbose
+            when logging $ modify (\ r -> r{ logs = msg : logs r })
 
 warning :: String -> TcM ()
 warning s = do 
   modify (\ r -> r{ warnings = s : "Warning:" : warnings r })
+
+dumpLogs :: TcM ()
+dumpLogs = do
+  records <- gets logs
+  liftIO $ putStrLn "\nLogs:"
+  liftIO $ putStrLn $ unlines $ reverse records
+  liftIO $ putStrLn "------------------------------------------------------------------"
 
 -- wrapping error messages 
 
@@ -520,7 +575,16 @@ wrapError m e
       handler msg = throwError (decorate msg)
       decorate msg = msg ++ "\n - in:" ++ pretty e
 
+tcmMgu :: Ty -> Ty -> TcM Subst
+tcmMgu t u = mgu t u `catchError` tcmError
+
 -- error messages 
+
+tcmError :: String -> TcM a
+tcmError s = do
+  verbose <- isVerbose
+  when verbose dumpLogs
+  throwError s
 
 undefinedName :: Name -> TcM a 
 undefinedName n 

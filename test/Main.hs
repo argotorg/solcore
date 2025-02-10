@@ -114,7 +114,11 @@ cases
               , runTestForFile "noclosure.solc" caseFolder 
               , runTestForFile "constructor-weak-args.solc" caseFolder 
               , expectFail $ runTestForFile"unconstrainted-instance.solc" caseFolder
-              , runTestForFile "reference.solc" caseFolder 
+              , runTestForFile "constrained-instance.solc" caseFolder
+              , runTestForFile "constrained-instance-context.solc" caseFolder
+              , runTestForFile "reference.solc" caseFolder
+              , runTestForFile "super-class.solc" caseFolder
+              , runTestForFile "proxy.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"

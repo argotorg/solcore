@@ -1,0 +1,63 @@
+data List(a) = Nil | Cons(a,List(a)); 
+data Bool = False | True;
+
+function and (x,y) {
+  match x,y {
+  | False, _ => return False;
+  | True, y => return y;
+  };
+}
+
+class a : Eq {
+  function eq(x : a, y : a) -> Bool;
+}
+
+class (a : Eq) => a : Ord {
+  function le (x : a, y : a) -> Bool;
+}
+
+instance Bool : Eq {
+  function eq (x : Bool, y : Bool) -> Bool {
+    match x, y {
+    | False, False => return True;
+    | True, True => return True;
+    | _, _ => return False;
+    };
+  }
+}
+
+instance Bool : Ord {
+  function le(x : Bool, y : Bool) -> Bool {
+    match x, y {
+    | False, _ => return True; 
+    | _ , True => return True;
+    | _ , _ => return False;
+    };
+  }
+}
+
+instance (a : Eq) => (List(a)) : Eq {
+  function eq (xs : List(a), ys : List(a)) -> Bool {
+    match xs, ys {
+    | Nil, Nil => return True;
+    | Cons(x,xs), Cons(y,ys) => 
+        return and(Eq.eq(x,y),Eq.eq(xs,ys));
+    };
+  }
+}
+
+instance (a : Ord) => List(a): Ord {
+  function le (xs : List(a), ys : List(a)) -> Bool {
+    match xs, ys {
+    | Nil, _ => return True ; 
+    | Cons(_,_), Nil => return False;
+    | Cons(x,xs), Cons(y,ys) =>
+      return and(Ord.le(x,y), Ord.le(xs,ys));
+    };
+  }
+}
+
+function foo() {
+  let x = Eq.eq(True, False);
+  let y = Ord.le(Cons(True,Nil), Cons(False,Nil));
+}

@@ -28,12 +28,12 @@ import Solcore.Primitives.Primitives
 -- used to determine if it will generate definitions.
 
 typeInfer :: Option ->
-             UniqueTyMap ->
+             [Name] ->
              CompUnit Name ->
              IO (Either String (CompUnit Id, TcEnv))
-typeInfer options utm (CompUnit imps decls)
+typeInfer options fnames (CompUnit imps decls)
   = do
-      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options utm)
+      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options fnames)
       case r of
         Left err -> pure $ Left err 
         Right ((CompUnit imps ds), env) -> 
@@ -258,7 +258,7 @@ tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds 
   = do
       funs <- mapM scanFun binds
-      (funs', schs, pss, ts) <- unzip4 <$> mapM tcFunDef funs 
+      (funs', schs, pss, ts) <- unzip4 <$> mapM (tcFunDef []) funs 
       ts' <- withCurrentSubst ts  
       schs <- mapM generalize (zip pss ts')
       let names = map (sigName . funSignature) funs 
@@ -316,7 +316,7 @@ checkClass icls@(Class ps n vs v sigs)
           ms' = map sigName sigs
       bound <- askBoundVariableCondition n
       unless bound (checkBoundVariable ps (v:vs) `wrapError` icls)
-      addClassInfo n (length vs) ms' p
+      addClassInfo n (length vs) ms' ps p
       mapM_ (checkSignature p) sigs 
     where
       checkSignature p sig@(Signature vs ctx f ps mt)
@@ -328,13 +328,13 @@ checkClass icls@(Class ps n vs v sigs)
                    (signatureError n v sig ft)
             addClassMethod p sig `wrapError` icls 
 
-addClassInfo :: Name -> Arity -> [Method] -> Pred -> TcM ()
-addClassInfo n ar ms p
+addClassInfo :: Name -> Arity -> [Method] -> [Pred] -> Pred -> TcM ()
+addClassInfo n ar ms ps p
   = do 
       ct <- gets classTable
       when (Map.member n ct) (duplicatedClassDecl n)
       modify (\ env -> 
-        env{ classTable = Map.insert n (ClassInfo ar ms p) 
+        env{ classTable = Map.insert n (ClassInfo ar ms p ps) 
                                        (classTable env)})
 
 addClassMethod :: Pred -> Signature Name -> TcM ()

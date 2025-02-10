@@ -176,8 +176,10 @@ emitLit (StrLit s) = error "String literals not supported yet"
 
 emitConApp :: Id -> [Exp Id] -> Translation Core.Expr
 emitConApp con@(Id n ty) as = do
-  unless (null . fv $ ty)  (error $ "emitConApp: free variables in type " ++ pretty ty ++ " in " ++ pretty (Con con as))
-  case targetType ty  of
+  unless (null . fv $ argTypes ty)
+    (error $ "emitConApp: free variables in type " ++ pretty ty ++ " in " ++ pretty (Con con as))
+  -- check for free type vars only in args because of phantom types such as Proxy(a) = Proxy
+  case targetType ty of
     (TyCon "unit" []) -> pure (Core.EUnit, [])
     (TyCon "()" []) -> pure (Core.EUnit, [])
     (TyCon "pair" _) -> translateProduct as
@@ -202,6 +204,9 @@ emitConApp con@(Id n ty) as = do
     targetType :: Ty -> Ty
     targetType (u :-> v) = targetType v
     targetType t = t
+    argTypes :: Ty -> [Ty]
+    argTypes (u :-> v) = u : argTypes v
+    argTypes t = []
 
 translateProduct :: [Exp Id] -> Translation Core.Expr
 translateProduct [] = pure (Core.EUnit, [])
@@ -245,6 +250,7 @@ emitExp (Call Nothing f as) = do
     let call =  Core.ECall (unwrapId f) coreArgs
     pure (call, concat codes)
 emitExp e@(Con i as) = emitConApp i as
+emitExp (TyExp e _) = emitExp e
 emitExp e = errors ["emitExp not implemented for: ", pretty e, "\n", show e]
 
 isBuiltin :: CoreName -> Bool

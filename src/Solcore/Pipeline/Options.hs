@@ -25,7 +25,7 @@ options
                <> short 'f'
                <> metavar "FILE"
                <> help "Input file name")
-           <*> switch ( long "no-specialise"
+          <*> switch ( long "no-specialise"
                <> short 'n'
                <> help "Skip specialisation and core emission phases")
            <*> switch ( long "no-desugar-calls"

@@ -55,7 +55,7 @@ instance Monoid Env where
 
 type ElabM a = (ExceptT String (StateT Env IO)) a 
 
-runElabM :: (Show a, Elab a) => a -> IO (Either String (Res a))
+runElabM :: (Show a, Elab a) => a -> IO (Either String (Res a)) 
 runElabM t = do 
   let ienv = initialEnv t 
   fst <$> (runStateT (runExceptT (elab t)) ienv)

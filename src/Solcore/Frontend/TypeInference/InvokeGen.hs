@@ -24,36 +24,26 @@ import Solcore.Primitives.Primitives
 
 generateDecls :: (FunDef Id, Scheme) -> TcM (DataTy, Instance Name)
 generateDecls (fd, sch) 
-  = do 
-      udt <- lookupUniqueType fd sch
+  = do
+      let funname = sigName (funSignature fd)
+      udt <- mkUniqueType funname sch
       instd <- createInstance udt fd sch
       pure (udt, instd) 
 
--- looking up the unique function type or generate a unique 
--- type for closures. 
+-- creating unique function type 
 
-lookupUniqueType :: FunDef Id -> Scheme -> TcM DataTy 
-lookupUniqueType fd sch 
-  = do 
-      let funname = sigName (funSignature fd)
-      udt <- fromJust <$> lookupUniqueTy funname
-      checkUniqueType funname udt sch  
-
-checkUniqueType :: Name -> DataTy -> Scheme -> TcM DataTy
-checkUniqueType fn (DataTy dn dvs [c]) (Forall vs qt) 
-   = do
-        let (vs0, vs1) = splitAt (length dvs) vs
-            s = Subst (zip dvs (map TyVar vs0)) 
-            udt' = DataTy dn vs [apply s c]
-        addUniqueType fn udt' 
-        pure udt'
-checkUniqueType fn (DataTy dn dvs cs) (Forall vs qt) 
-   = do 
-        let (vs0, vs1) = splitAt (length dvs) vs 
-            s = Subst (zip dvs (map TyVar vs0)) 
-            udt' = DataTy dn vs (apply s cs)
-        addUniqueType fn udt' 
-        pure udt'
+mkUniqueType :: Name -> Scheme -> TcM DataTy 
+mkUniqueType n sch@(Forall vs _)  
+  = do
+      info ["!> Creating unique type for ", pretty n, " :: ", pretty sch]
+      i <- incCounter
+      let dn = Name $ "t_" ++ pretty n ++ show i 
+          tc = TyCon dn (TyVar <$> vs)
+          c = Constr dn []
+          dt = DataTy dn vs [c]
+      info ["!>>> Result:", pretty dt]
+      addUniqueType n dt 
+      pure dt 
 
 -- creating the invoke instances 
 
@@ -61,18 +51,17 @@ createInstance :: DataTy -> FunDef Id -> Scheme -> TcM (Instance Name)
 createInstance udt fd sch 
   = do
       -- instantiating function type signature 
-      (qs :=> ty) <- freshInst sch 
+      qt@(qs :=> ty) <- freshInst sch 
       -- getting invoke type from context 
       (qs' :=> ty') <- askEnv invoke >>= freshInst 
       -- getting arguments and return type from signature 
       let (args, retTy) = splitTy ty
-          args' = if null args then [unit] else filter (not . isClosureTy) args 
+          args' = if null args then [unit] else filter (not . isClosureTy) args
+          vunreach = fv qt \\ fv ty 
           argTy = tupleTyFromList args'
-          argvars = union (union (fv argTy) (fv qs)) (fv retTy)
+          argvars = fv qt 
           dn = dataName udt
-          selfTy = -- if isClosureName dn then
-                      TyCon dn (TyVar <$> fv ty)
-                   -- else TyCon dn [argTy, retTy]
+          selfTy = TyCon dn (TyVar <$> fv ty `union` fv qs)
       -- building the invoke function signature 
       (selfParam, sn) <- freshParam "self" selfTy
       (argParam, an) <- freshParam "arg" argTy
@@ -90,7 +79,9 @@ createInstance udt fd sch
         scall = Return (Call Nothing fname ssargs)
         bdy = Match [discr] [([foldr1 ppair (spvs : sargs)], [scall])] 
         ifd = FunDef isig [bdy]
-      pure (Instance qs invokableName [argTy, retTy] selfTy [ifd]) 
+        instd = Instance qs invokableName [argTy, retTy] selfTy [ifd]
+      info [">> Generated invokable instance:\n", pretty instd]
+      pure instd 
 
 freshPatData :: DataTy -> TcM (Pat Name, [Exp Name]) 
 freshPatData (DataTy dn vs ((Constr cn ts) : _))
