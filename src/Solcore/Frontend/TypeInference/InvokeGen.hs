@@ -80,7 +80,7 @@ createInstance udt fd sch
         bdy = Match [discr] [([foldr1 ppair (spvs : sargs)], [scall])] 
         ifd = FunDef isig [bdy]
         instd = Instance qs invokableName [argTy, retTy] selfTy [ifd]
-      info [">> Generated invoke instance:\n", pretty instd]
+      info [">> Generated invokable instance:\n", pretty instd]
       pure instd 
 
 freshPatData :: DataTy -> TcM (Pat Name, [Exp Name]) 
