@@ -48,6 +48,7 @@ data ClassInfo
       classArity :: Arity
     , methods :: [Method]
     , classpred :: Pred
+    , supers :: [Pred] 
     }
 
 type Table a = Map Name a 
@@ -85,8 +86,8 @@ data TcEnv
     , tcOptions :: Option
     }
 
-initTcEnv :: Option -> UniqueTyMap -> TcEnv
-initTcEnv options utm
+initTcEnv :: Option -> [Name] -> TcEnv
+initTcEnv options fnames 
   = TcEnv { ctx = primCtx
           , instEnv = primInstEnv
           , typeTable = primTypeEnv
@@ -94,10 +95,10 @@ initTcEnv options utm
           , contract = Nothing
           , subst = mempty
           , nameSupply = namePool
-          , uniqueTypes = Map.union utm primDataType
-          , directCalls = [ Name "primAddWord"
-                          , Name "primEqWord"
-                          ]
+          , uniqueTypes = primDataType
+          , directCalls = Name "primAddWord" : 
+                          Name "primEqWord" : 
+                          fnames 
           , generateDefs = True
           , generated = []
           , counter = 0

@@ -66,22 +66,21 @@ instance Memory(t) : ValueTy {
 
 class ref:Ref(deref) {
     function load(loc: ref) -> deref;
-    function store(loc: ref, value: deref) -> Unit;
+    function store(loc: ref, value: deref) -> ();
 }
 
 
 instance Memory(t) : Ref(t) {
-    function load(loc: Memory(t)) -> t {
+    forall t : ValueTy . function load(loc: Memory(t)) -> t {
         let rw = ValueTy.rep(loc);
         let res = 0;
         assembly {
             res := mload(rw)
         };
         return ValueTy.abs(res);
-
     }
 
-    function store(loc: Memory(t), value: t) -> Unit {
+    forall t : ValueTy . function store(loc: Memory(t), value: t) -> () {
         let rw = ValueTy.rep(loc);
         let vw = ValueTy.rep(value);
         assembly {
@@ -131,8 +130,8 @@ class t:Encode {
     function headSize(x:Proxy(t)) -> word;
 }
 
-function encode(val:t) -> Memory(Bytes) {
-    let hdSz = Encode.headSize(Proxy);
+forall t : Encode, t : EncodeInto . function encode(val:t) -> Memory(Bytes) {
+    let hdSz = Encode.headSize(Proxy : Proxy(t));
     let ptr = get_free_memory();
     let head: word;
     let tail: word;

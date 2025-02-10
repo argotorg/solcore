@@ -1,0 +1,10 @@
+data Proxy(a) = Proxy;
+
+class self:BaseMemoryType {
+    function memorySize(x:Proxy(self)) -> word;
+}
+
+
+forall t : BaseMemoryType . function morefun(p:Proxy(t)) -> word { 
+  return BaseMemoryType.memorySize(Proxy:Proxy(t)); 
+}
