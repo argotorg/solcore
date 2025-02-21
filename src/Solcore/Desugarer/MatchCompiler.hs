@@ -401,6 +401,7 @@ instance Apply (Exp Id) where
     = Call (apply s me) n (apply s es)
   apply s (Lam args bd mt) 
     = Lam args (apply s bd) mt
+  apply s (TyExp e t) = TyExp (apply s e) t
 
   ids (Var n) = [n]
   ids (Con _ es) = ids es 
@@ -408,6 +409,7 @@ instance Apply (Exp Id) where
   ids (Call me _ es) = ids me `union` ids es 
   ids (Lam args bd _) 
     = ids bd \\ ids args
+  ids (TyExp e t) = ids e
   ids _ = []
 
 instance Apply (Param Id) where 
