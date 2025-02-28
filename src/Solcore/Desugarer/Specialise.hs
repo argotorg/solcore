@@ -380,14 +380,19 @@ isMemberStoreTy _ = False
 
 
 -- TODO: add checking that it is indeed a local, not an array reference
-isLocRefStoreTy (TyCon "MemberAccess" [_, _] :-> _ :-> _) = True
-isLocRefStoreTy (TyCon "XRef" [_, _, _] :-> _ :-> _) = True
+isLocRefStoreTy (TyCon "MemberAccess" [r, _] :-> _ :-> _) = isLocRef r
+isLocRefStoreTy (TyCon "XRef" [r, _, _] :-> _ :-> _) = isLocRef r
 isLocRefStoreTy _ = False
 
 
-isLocRefLoadTy (TyCon "MemberAccess" [_, _] :-> _) = True
-isLocRefLoadTy (TyCon "XRef" [_, _, _] :-> _) = True
+isLocRefLoadTy (TyCon "MemberAccess" [r, _] :-> _) = isLocRef r
+isLocRefLoadTy (TyCon "XRef" [r, _, _] :-> _) = isLocRef r
 isLocRefLoadTy _ = False
+
+isLocRef :: Ty -> Bool
+isLocRef (TyCon "stack" [_]) = True
+isLocRef (TyCon "XRef" [r, _, _]) = isLocRef r
+isLocRef _ = False
 
 unwrapMemberAccess :: TcExp -> TcExp
 unwrapMemberAccess (TyExp e t) = unwrapMemberAccess e
