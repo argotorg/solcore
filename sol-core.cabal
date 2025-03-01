@@ -55,7 +55,9 @@ library
       Solcore.Desugarer.EmitCore
       Solcore.Desugarer.UniqueTypeGen
       Solcore.Frontend.Lexer.SolcoreLexer
+      Solcore.Frontend.Lexer.SolverInputLexer
       Solcore.Frontend.Parser.SolcoreParser
+      Solcore.Frontend.Parser.SolverInputParser
       Solcore.Frontend.Pretty.SolcorePretty
       Solcore.Frontend.Pretty.Name
       Solcore.Frontend.Syntax
@@ -73,6 +75,7 @@ library
       Solcore.Frontend.TypeInference.TcContract
       Solcore.Frontend.TypeInference.TcEnv
       Solcore.Frontend.TypeInference.TcMonad
+      Solcore.Frontend.TypeInference.TcSat
       Solcore.Frontend.TypeInference.TcStmt
       Solcore.Frontend.TypeInference.TcSubst
       Solcore.Frontend.TypeInference.TcUnify
@@ -132,6 +135,7 @@ test-suite sol-core-tests
 
   -- cabal-fmt: expand test -Main
   other-modules:
+    Cases
 
   build-depends:
     , sol-core
