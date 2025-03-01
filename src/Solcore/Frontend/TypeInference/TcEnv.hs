@@ -49,7 +49,7 @@ data ClassInfo
     , methods :: [Method]
     , classpred :: Pred
     , supers :: [Pred] 
-    }
+    } deriving Show
 
 type Table a = Map Name a 
 
