@@ -206,8 +206,13 @@ function main () -> word {
 We start by defining some notations used in the 
 source language abstract syntax. As usual, all 
 meta-variables can appear primed or subscripted. 
-We let $[x]$ denote an optional occurrence of $x$ and 
-$\overline{x}$ a sequence of $x$'s.
+We let $[x]$ denote an optional occurrence of $x$ and  
+$\overline{x}$ a sequence of $x$'s. Sometimes 
+we use notation $x_1,...,x_n$ to denote $\overline{x} $
+and use Haskell list syntax to represent empty 
+and head / tail sequences. We also allow ourselves 
+a bit of informality by using set operations on 
+sequences with their usual meaning.
 
 \begin{table}[H]
   \begin{tabular}{|c|l|} 
@@ -297,34 +302,34 @@ Our formalization will use the following environments:
 
 \begin{figure}[H] 
   \begin{tabular}{rcl}
-    $mod \in $ Module & $\to$ & $imp_1$ ; ... ; $imp_n;$ $decl_1$; ...; $decl_m$\\
+    $mod \in $ Module & $\to$ & $\overline{imp}$ ; $\overline{decl}$\\
     $imp \in$ Import & $\to$ & \texttt{import} $Q$; \\
     $decl \in$ Declaration & $\to$ & $classdecl$ $|$ $instdecl$ $|$ $datadecl$ $|$ $fundecl$ $|$ $contract$ \\
-    $classdecl$ $\in$ Class & $\to$ & $\forall$ $\alpha_1$ ... $\alpha_n$ $P$ $.$ \texttt{class} $\alpha$ : $C$($\alpha_1$, ..., $\alpha_n$) $sig_1$; ... ; $sig_k$ \\  
-    $instdecl$ $\in$ Instance & $\to$ & $\forall$ $\alpha_1$ ... $\alpha_n$ $P$ $.$ \texttt{instance} $\tau$ : C($\tau_1$, ... , $\tau_m$) $fundecl_1$ ; ... ; $fundecl_k$ \\ 
-    $datadecl$ $\in$ Data Type & $\to$ & \texttt{data} $T$($\alpha_1$,...,$\alpha_n$) \texttt{=} $dconstr_1$ ... $dconstr_m$\\
+    $classdecl$ $\in$ Class & $\to$ & $\forall$ $\overline{\alpha}$ $.$ $P$ $\Rightarrow$ \texttt{class} $\alpha$ : $C$($\overline{\alpha'}$) $\overline{sig}$\\  
+    $instdecl$ $\in$ Instance & $\to$ & $\forall$ $\overline{\alpha}$ $.$ $P$ $\Rightarrow$ \texttt{instance} $\tau$ : C($\overline{\tau'}$) $\overline{fundecl}$\\ 
+    $datadecl$ $\in$ Data Type & $\to$ & \texttt{data} $T$($\overline{\alpha}$) \texttt{=} $\overline{dconstr}$\\
     $fundecl$ $\in$ Function & $\to$ & $sig$ $body$ \\
-    $contract$ $\in$ Contract & $\to$ & \texttt{contract} $X$($\alpha_1$, ... , $\alpha_n$) $cdecl_1$ ;...; $cdecl_m$ \\
-    $P$ $\in$ Context & $\to$ & $\pi_1$ ... $\pi_n$ \\ 
-    $sig$ $\in$ Signature & $\to$ & $\forall$ $\alpha_1$ ... $\alpha_n$ $P$ $.$ \texttt{function} $f$ ($arg_1$,..., $arg_m$) $[\to\tau]$\\ 
-    $dconstr$ $\in$ Data Constr. & $\to$ & $D$($\tau_1$,...,$\tau_n$)\\
-    $body$ $\in$ Function body & $\to$ & $stmt_1$ ... $stmt_n$\\ 
+    $contract$ $\in$ Contract & $\to$ & \texttt{contract} $X$($\overline{\alpha}$) $\overline{cdecl}$ \\
+    $P$ $\in$ Context & $\to$ & $\overline{\pi}$\\ 
+    $sig$ $\in$ Signature & $\to$ & $\forall$ $\overline{\alpha}$ $.$ $P$ $\Rightarrow$ \texttt{function} $f$ ($\overline{arg}$) $[\to\tau]$\\ 
+    $dconstr$ $\in$ Data Constr. & $\to$ & $D$($\overline{\tau}$)\\
+    $body$ $\in$ Function body & $\to$ & $\overline{s}$\\ 
     $cdecl$ $\in$ Contract Decl. & $\to$ & $constr$ $|$ $fundecl$ $|$ $fielddecl$\\
-    $pi$ $\in$ Predicate & $\to$ & $\tau$ $:$ $C$($\tau_1$,...,$\tau_n$)\\
+    $\pi$ $\in$ Predicate & $\to$ & $\tau$ $:$ $C$($\overline{\tau'}$)\\
     $arg$ $\in$ Argument & $\to$ & $v [:\tau]$\\
-    $constr$ $\in$ Contract Constr. & $\to$ & \texttt{constructor} ($arg_1$, ..., $arg_n$) $body$ \\ 
+    $constr$ $\in$ Contract Constr. & $\to$ & \texttt{constructor} ($\overline{arg}$) $body$ \\ 
     $fielddecl$ $\in$ Field Decl. & $\to$ & $\tau$ $v$ $[=\,e]$\\ 
-    $stmt$ $\in$ Statement & $\to$ & \texttt{let} $[\tau]$ $v$ $[=\:e]$ $|$ $lvalue$ $=$ $e$ $|$ $e$ $|$ \texttt{return} $e$\\ 
+    $s$ $\in$ Statement & $\to$ & \texttt{let} $[\tau]$ $v$ $[=\:e]$ $|$ $lvalue$ $=$ $e$ $|$ $e$ $|$ \texttt{return} $e$\\ 
                      & $|$ &  $match$ $|$ \texttt{assembly} $asm$\\
-    $e$ $\in$ Expr. & $\to$ & $w$ $|$ $v$ $|$ $D(e_1,...,e_n)$ $|$ $e.v$ $|$ \texttt{lam}$(arg_1,...,arg_n)$ $body$ \\ 
-                 & $|$ & $f(e_1,...,e_n)$ $|$ $e : \sigma$\\
-    $match$ $\in$ Match & $\to$ & \texttt{match} $e_1$, ..., $e_n$ \texttt{with} $eqn_1$, ..., $eqn_m$\\
-    $asm$ $\in$ Assembly & $\to$ & $\{ystmt_1$ ; ... ; $ystmt_n\}$\\ 
-    $eqn$ $\in$ Equation & $\to$ & $(pat_1,...,pat_n)$ \texttt{=>} $body$\\ 
-    $pat$ $\in$ Pattern & $\to$ & $w$ $|$ $v$ $|$ $D(pat_1,...,pat_n)$ $|$ $\_$ \\
-    $ystmt$ $\in$ Yul Stmt. & $\to$ & $v$ $=$ $yexp$ $|$ \texttt{let} $v$ $[=yexp]$ $|$ $yexp$ $|$ $\{ystmt_1;...;ystmt_n\}$ $|$ \texttt{if} $e$ $asm$\\
-                      & $|$ & \texttt{for} $asm$ $yexp$ $asm$ $asm$ $|$ \texttt{switch} $yexp$ $\{case_1 ; ... ; case_n $ $[default]\}$\\
-    $yexp$ $\in$ Yul Exp. & $\to$ & $w$ $|$ $v$ $|$ $I(yexp_1, ..., yexp_n)$\\
+    $e$ $\in$ Expr. & $\to$ & $w$ $|$ $v$ $|$ $D(\overline{e})$ $|$ $e.v$ $|$ \texttt{lam}$(\overline{arg})$ $body$ \\ 
+                    & $|$ & $f(\overline{e})$ $|$ $e : \sigma$\\
+    $match$ $\in$ Match & $\to$ & \texttt{match} $\overline{e}$ \texttt{with} $\overline{eqn}$\\
+    $asm$ $\in$ Assembly & $\to$ & $\{\overline{ys}\}$\\ 
+    $eqn$ $\in$ Equation & $\to$ & $\overline{pat}\Rightarrow body$\\ 
+    $pat$ $\in$ Pattern & $\to$ & $w$ $|$ $v$ $|$ $D(\overline{pat})$ \\
+    $ys$ $\in$ Yul Stmt. & $\to$ & $v$ $=$ $ye$ $|$ \texttt{let} $v$ $[=ye]$ $|$ $ye$ $|$ $\{\overline{ys}\}$ $|$ \texttt{if} $e$ $asm$\\
+                            & $|$ & \texttt{for} $asm$ $yexp$ $asm$ $asm$ $|$ \texttt{switch} $ye$ $\{\overline{case}$ $[default]\}$\\
+    $ye$ $\in$ Yul Exp. & $\to$ & $w$ $|$ $v$ $|$ $I(\overline{ye})$\\
     $case$ $\in$ Case & $\to$ & $w$ \texttt{=>} $asm$ \\
     $default$ $\in$ Def. Case & $\to$ & \texttt{default} $asm$\\ 
  \end{tabular}
@@ -377,7 +382,7 @@ Notation $P,Q$ denote the union of the predicate sets, $P\cup Q$.
 A type scheme ($\sigma$) is qualified type 
 which has a set of quantified type variables.
 Notation $\ftv(\sigma)$ denotes the set of $\sigma$'s free type variables.
-We slighly abuse notation by using $ftv$ for typing context 
+We slighly abuse notation by using $\ftv$ for typing context 
 and environments with its obvious definition. We let $\fpv(x)$ denote 
 the set of $x$'s free program variables. A \emph{substitution} is a 
 finite function associating type variables 
@@ -763,6 +768,9 @@ reachable variables and the simple type $\tau$.
 
 \section{Type system definition}
 
+In this section, we describe the typing rules for the new Solidity 
+language.
+
 \subsection{Typing rules for expressions} 
 
 We define expression typing by the following judgement 
@@ -798,33 +806,41 @@ We start presenting typing rules for basic expressions
             {\Theta\,|\,\Gamma\typing{exp} v \leadsto v : \rho} 
             {\Gamma(v) = \sigma & \sigma \sqsubseteq \rho & \Theta_U(v) = \bot} 
       \\ \\
-      \infer[_{\{Varf\}}]
-            {\Theta\,|\,\Gamma\typing{exp} v \leadsto D : \rho} 
-            {\begin{array}{cr} 
-              \multicolumn{2}{c}{
-                \Theta_U(v) = \mathtt{data}\:T(\alpha_{args},\alpha_{ret}) \mathtt{=} D
-              } 
-              \\ 
-              \Gamma(D) = \sigma 
-              & 
-              \sigma \sqsubseteq \rho
-             \end{array}} 
-      &
-      \infer[_{\{Con\}}]
-            {\Theta\,|\,\Gamma\typing{exp} D(e_1,...,e_n) \leadsto D(e'_1,...,e'_n) : \rho}
-            {\begin{array}{cc} 
-               \Gamma(D) = \sigma
-               & 
-               \sigma \inst \tau_1 \times ... \times \tau_n \to \tau
-               \\ 
-               \multicolumn{2}{c}{
-                 \forall i. 1 \leq i \leq n \to \Theta\,|\,\Gamma\typing{exp} e_i \leadsto e'_i : P_i \Rightarrow \tau_i 
-               }
-               \\ 
-               \multicolumn{2}{c}{
-                 \rho = \left(\bigcup_{1 \leq i \leq n} P_i\right)\Rightarrow \tau
-               }
-             \end{array}}
+      \multicolumn{2}{c}{
+        \infer[_{\{Varf\}}]
+              {\Theta\,|\,\Gamma\typing{exp} v \leadsto D : \rho} 
+              {\begin{array}{cr} 
+                \multicolumn{2}{c}{
+                  \Theta_U(v) = \mathtt{data}\:T(\alpha_{args},\alpha_{ret}) \mathtt{=} D
+                } 
+                \\ 
+                \Gamma(D) = \sigma 
+                & 
+                \sigma \sqsubseteq \rho
+              \end{array}}
+      }\\ \\ 
+      \multicolumn{2}{c}{
+        \infer[_{\{Con\}}]
+        {\Theta\,|\,\Gamma\typing{exp} D(\overline{e}) \leadsto \langle D(\overline{e'}) , P\Rightarrow \tau, \Theta', \Gamma' \rangle}
+              {\begin{array}{cc} 
+                 \Gamma(D) = \sigma
+                 &
+                 \sigma \inst \overline{\tau'} \to \tau
+                 \\ 
+                 \multicolumn{2}{c}{\Theta\,|\,\Gamma\typing{args} \overline{e} \leadsto \langle \overline{e'}, P, \overline{\tau'}, \Theta', \Gamma' \rangle} 
+               \end{array}}
+      }
+      \\ \\ 
+      \infer[_{\{ANil\}}]
+            {\Theta\,|\,\Gamma \typing{args} [] \leadsto \langle [], [], [], \Theta, \Gamma\rangle}
+            {}
+      & 
+      \infer[_{\{ACons\}}]
+      {\Theta\,|\,\Gamma\typing{args} e\,:\,\overline{e}_s \leadsto \langle e'\,:\,\overline{e'}_s, Q\cup Q_s, \tau\,:\,\overline{\tau}_s, \Theta', \Gamma' \rangle}
+      {\begin{array}{c}
+          \Theta\,|\,\Gamma\typing{exp} e\leadsto \langle e', Q, \tau, \Theta_1, \Gamma_1 \rangle \\ 
+          \Theta_1\,|\,\Gamma_1 \typing{args} \overline{e}_s \leadsto \langle \overline{e'}_s, Q_s,\overline{\tau}_s, \Theta',\Gamma'\rangle 
+       \end{array}}
     \end{array}
   \]    
   \caption{Expressions, part 01.} 
@@ -842,7 +858,7 @@ the required argument type.
     \begin{array}{cc}
       \infer[_{\{FieldAcc\}}] 
             {\Theta\,|\,\Gamma \typing{exp} e.v \leadsto e'.v : \tau}
-            {\Theta\,|\,\Gamma\typing{exp} e \leadsto e' : T(\tau_1,...,\tau_n) & 
+            {\Theta\,|\,\Gamma\typing{exp} e \leadsto e' : T(\overline{\tau}_s) & 
              \Theta_X(T) = \Gamma_f & 
              \Gamma_f(v) = \tau}
       &
@@ -858,7 +874,7 @@ the required argument type.
 \end{figure}
 Rule $FieldAcc$ shows how to type and desugar a field access 
 expression: we start by checking that expression $e$ has a 
-contract type $T(\tau_1,...,\tau_n)$ and then we check that 
+contract type $T(\overline{\tau}_s)$ and then we check that 
 type $T$ does have a field named $v$ and return its type.
 We check type annotated expressions by infering its type, $\sigma'$, 
 and then check if it is as least as polymorphic as $\sigma$ 
@@ -868,33 +884,27 @@ and then check if it is as least as polymorphic as $\sigma$
   \[
     \begin{array}{c}
       \infer[_{\{CallD\}}] 
-            {\Theta\,|\,\Gamma\typing{exp} f(e_1,...,e_n) \leadsto f(e'_1,...,e'_n) : \rho}
+            {\Theta\,|\,\Gamma\typing{exp} f(\overline{e}) \leadsto \langle f(\overline{e'}), \rho, \Theta', \Gamma' \rangle}
             {\begin{array}{cc} 
               f \in \dom{\Theta_U} & \Gamma(f) = \sigma \\
                \multicolumn{2}{c}{
-                  \sigma \sqsubseteq P \Rightarrow \tau_1 \times ... \times \tau_n \to \tau 
-               }\\ 
-               \multicolumn{2}{c}{
-                 \forall i. 1 \leq i \leq n \to \Theta\,|\,\Gamma\typing{exp} e_i \leadsto e'_i : P_i \Rightarrow \tau_i
-               }\\ 
-               \multicolumn{2}{c}{
-                 \rho = \left(\{P\}\cup \bigcup_{1 \leq i \leq n} P_i\right) \Rightarrow \tau 
-               }
+                 \sigma \sqsubseteq P \Rightarrow \overline{\tau}_s \to \tau 
+               }\\
+               \Theta\,|\,\Gamma\typing{args} \overline{e} \leadsto \langle \overline{e'}, Q, \overline{\tau}, \Theta', \Gamma' \rangle 
+               & 
+               \rho = (P, Q) \Rightarrow \tau 
              \end{array}}
       \\ \\ 
       \infer[_{\{CallI\}}] 
-            {\Theta\,|\,\Gamma \typing{exp} f(e_1,...,e_n) \leadsto \invoke(f,(e_1,...,e_n)) : \rho}
+            {\Theta\,|\,\Gamma \typing{exp} f(\overline{e}) \leadsto \langle \invoke(f,\overline{e'}), \rho, \Theta', \Gamma' \rangle}
             {\begin{array}{cc}
-              f \not\in \dom{\Theta_U(f)} & \Gamma(f) = T(\alpha_1,...,\alpha_n) \\ 
+               f \not\in \dom{\Theta_U(f)} & \Gamma(f) = T(\overline{\alpha}) \\ 
                \multicolumn{2}{c}{
-                 \forall i. 1 \leq i \leq n \to \Theta\,|\,\Gamma \typing{exp} e_i \leadsto e'_i : P_i \Rightarrow \tau_i 
+                 \Theta\,|\,\Gamma \typing{args} \overline{e} \leadsto \langle \overline{e'}, P, \overline{\tau'} , \Theta', \Gamma' \rangle 
                }\\ 
-               \multicolumn{2}{c}{
-                 \pi = T(\tau_1 ,... ,\tau_n)\,:\,\invokable(\tau_1 ,... ,\tau_n)
-               }\\
-               \multicolumn{2}{c}{
-                 \rho = \left(\{\pi\} \cup \bigcup_{1\leq i \leq n} P_i \right)\Rightarrow \tau_{ret}
-               }
+               \pi = T(\tau_1 ,... ,\tau_n)\,:\,\invokable(\tau_1 ,... ,\tau_n)
+               & 
+               \rho = (\{\pi\} \cup P)\Rightarrow \tau_{ret}
              \end{array}}
     \end{array}
   \]
@@ -928,10 +938,10 @@ $\lambda$'s type and body to produce:
   \[
     \begin{array}{c}
       \infer[_{\{Lam\}}]
-            {\Theta\,|\,\Gamma\typing{exp}\mathtt{lam}\,(x_1 : \tau_1,...,x_n : \tau_n)\:body \leadsto \langle D, \rho , \Theta', \Gamma' \rangle } 
+            {\Theta\,|\,\Gamma\typing{exp}\mathtt{lam}\,(\overline{x : \tau})\:body \leadsto \langle D, \rho , \Theta', \Gamma' \rangle } 
             {\begin{array}{c}
-              \Theta\,|\,\Gamma,x_1:\tau_1,...,x_n:\tau_n\typing{body} body \leadsto \langle body', P' \Rightarrow \tau', \Theta_1, \Gamma_1\rangle\\
-              \Theta;\Gamma; (P' \Rightarrow x_1 : \tau_1\times ... \times x_n : \tau_n \to \tau'); body' \overset{cc}{\leadsto} \langle D, \rho, \Theta', \Gamma'\rangle\\ 
+                \Theta\,|\,\Gamma,\overline{x : \tau}\typing{body} body \leadsto \langle body', P' \Rightarrow \tau', \Theta_1, \Gamma_1\rangle\\
+                \Theta;\Gamma; (P' \Rightarrow \overline{x : \tau} \to \tau'); body' \overset{cc}{\leadsto} \langle D, \rho, \Theta', \Gamma'\rangle\\ 
              \end{array}}
     \end{array}
   \]
@@ -939,14 +949,144 @@ $\lambda$'s type and body to produce:
   \caption{Expressions, part 04.}
 \end{figure}
 
-\section{Typing rules for statements}
+\subsection{Typing rules for statements}
+
+
+We define statement typing by the following judgement 
+
+\[
+  \Theta\,|\,\Gamma \typing{stmt} s \leadsto \langle s', P, \tau, \Theta' , \Gamma' \rangle  
+\]
+
+where $\Theta$ denotes the global definition environment which 
+holds information about class / instance declarations, 
+data type and  function definitions; and $\Gamma$ is 
+the typing environment, which holds type information for 
+all variables, functions and data type constructor currently 
+in scope.
+
+\begin{figure}[H] 
+  \[
+    \begin{array}{c}
+      \infer[_{\{SLet\}}]
+            {\Theta\,|\,\Gamma \typing{stmt} \mathtt{let}\:\tau\:v\: = \:e \leadsto \langle\mathtt{let}\:\tau\:v\:=\:e', P, \unit, \Theta', \Gamma' \rangle}
+            {
+              \Theta\,|\,\Gamma \typing{exp} e \leadsto \langle e', P, \tau, \Theta', \Gamma_1 \rangle
+              & 
+              \Gamma' = \Gamma_1, v : \tau 
+            } \\ \\ 
+      \infer[_{\{SAssign\}}]
+            {\Theta\,|\,\Gamma \typing{stmt} v\:=\:e \leadsto \langle v\:=\:e',P,\unit,\Theta',\Gamma' \rangle} 
+            {\Gamma(v) = \tau 
+             & 
+             \Theta\,|\,\Gamma \typing{exp} e \leadsto \langle e', P, \tau, \Theta', \Gamma' \rangle
+            }\\ \\
+      \infer[_{\{SExp\}}]
+            {\Theta\,|\,\Gamma \typing{stmt} e \leadsto \langle e', P, \unit, \Theta', \Gamma'\rangle}
+            { 
+              \Theta\,|\,\Gamma \typing{exp} e \leadsto \langle e', P, \tau, \Theta', \Gamma' \rangle
+            } \\ \\ 
+      \infer[_{\{SRet\}}]
+      {\Theta\,|\,\Gamma \typing{stmt} \mathtt{return}\:e \leadsto \langle \mathtt{return}\:e', P, \tau, \Theta', \Gamma'\rangle}
+            { 
+              \Theta\,|\,\Gamma \typing{exp} e \leadsto \langle e', P, \tau, \Theta', \Gamma' \rangle
+            } 
+    \end{array}
+  \]
+  \centering
+  \caption{Statements, part 01}
+  \label{fig:typingstmt}
+\end{figure}
+The first set of typing rule for statements are immediate: typing 
+the subexpressions and return the modified environments. The interesting 
+cases of statement typing are matching and assembly blocks. Typing a 
+match statement consist of typing the discriminee expressions and then use 
+its type to check each equation. Typing assembly blocks consists in typing 
+the assembly code and returning its newly defined names into context.
+
+\begin{figure}[H]
+  \[
+    \begin{array}{c}
+      \infer[_{\{SMatch\}}]
+            {\Theta\,|\,\Gamma \typing{stmt} \mathtt{match}\:\overline{e}\:\mathtt{with}\:\overline{eqn} \leadsto\langle \mathtt{match}\:\overline{e}_s\:\mathtt{with}\:\overline{eqn}_s, (Q,Q'), \unit, \Theta', \Gamma'\rangle}
+            {\begin{array}{c}
+              \Theta\,|\,\Gamma \typing{args}\overline{e}\leadsto \langle \overline{e}_s, Q, \overline{\tau}_s, \Theta_1, \Gamma_1\rangle
+              \\
+              \Theta_1\,|\,\Gamma_1 ; \overline{\tau}_s\typing{eqns} \overline{eqn} \leadsto \langle \overline{eqn}_s, Q', \Theta', \Gamma' \rangle 
+             \end{array}}
+             \\ \\ 
+             \infer[_{\{SAsm\}}]
+                   {\Theta\,|\,\Gamma \typing{stmt} \mathtt{assembly}\:\overline{ys} \leadsto \langle \mathtt{assembly}\:\overline{ys}_s, [], \unit, \Theta, \Gamma \cup \Gamma_n \rangle}
+                   {\Theta\,|\,\Gamma \typing{asm} \overline{ys} \leadsto \langle \overline{ys}_s, \Gamma_n \rangle}
+    \end{array}
+  \]
+  \centering
+  \caption{Statements, part 02}
+  \label{fig:typingmatch}
+\end{figure}
+
+Typing equations takes as input the type of the discriminees used to check 
+patterns.
+
+\begin{figure}[H]
+  \[
+    \begin{array}{cc}
+      \infer[_{\{EQNil\}}]
+      {\Theta \,|\, \Gamma ; \overline{\tau} \typing{eqns} [] \leadsto \langle [], [], \Theta, \Gamma \rangle}
+            {}
+      &
+      \infer[_{\{EQCons\}}]
+      {\Theta\,|\,\Gamma ; \overline{\tau}\typing{eqns} eqn : \overline{eqn} \leadsto \langle eqn' : \overline{eqn}', (Q, Q'), \Theta', \Gamma' \rangle}
+            {\begin{array}{c}
+                \Theta\,|\,\Gamma ; \overline{\tau}\typing{eqn} eqn \leadsto \langle eqn', Q, \Theta_1, \Gamma_1 \rangle \\ 
+                \Theta_1\,|\,\Gamma_1; \overline{\tau} \typing{eqns} \overline{eqn} \leadsto \langle \overline{eqn}', Q', \Theta', \Gamma' \rangle 
+             \end{array}} \\ \\ 
+      \multicolumn{2}{c}{
+        \infer[_{\{Eqn\}}]
+              {\Theta\,|\,\Gamma ; \overline{\tau}\typing{eqn} \overline{pat} \Rightarrow \overline{s} \leadsto \langle \overline{pat}' \Rightarrow \overline{s}', P, \unit, \Theta', \Gamma' - \Gamma_s\rangle}
+              {\Theta\,|\,\Gamma;\overline{\tau}\typing{pats} \overline{pat} \leadsto \Gamma_s
+               & 
+               \Theta\,|\,\Gamma \cup \Gamma_s \typing{body} \overline{s} \leadsto \langle \overline{s}', P, \tau, \Theta', \Gamma' \rangle 
+              }
+      }    
+    \end{array}
+  \]
+  \centering 
+  \caption{Typing equations}
+  \label{fig:equations}
+\end{figure}
+
+Typin patterns 
+
+\begin{figure}[H]
+  \[
+    \begin{array}{cc}
+      \infer[_{\{Pnil\}}]
+            {\Theta\,|\,\Gamma ; [] \typing{pats} [] \leadsto []}
+            {}
+      & 
+      \infer[_{\{Pcons\}}]
+            {\Theta\,|\,\Gamma ; \tau : \overline{\tau}_s \typing{pats} pat : \overline{pat}_s \leadsto  }
+            {}
+    \end{array}
+  \]
+  \centering
+  \caption{Typing patterns}
+  \label{fig:patterns}
+\end{figure}
 
 \section{Typing rules for declarations}
 
 \section{Desugaring}\label{sec:desugar} 
 
 In this section we describe the desugaring steps performed by new 
-Solidity implementation.
+Solidity implementation. Some of these steps are done during type inference 
+and others are performed later using the elaborated syntax produced by 
+the type inference engine. We start by describing the desugaring 
+of $\lambda$-abstractions, generation of unique function types and 
+$\invokable$ instance generation.
+
+\subsection{Desugaring of $\lambda$-abstractions}
 
 The desugaring of abstractions is done by $\overset{cc}{\leadsto}$ predicate (Figure~\ref{fig:closurepred}), 
 which has two rules. The first rule, $NC$, deal with the abstractions which does not 
@@ -1012,6 +1152,8 @@ by current global context $\Theta$.
   \label{fig:genlambdasig} 
 \end{figure}
 
+\subsection{Generation of unique function types}
+
 Generation of unique data type for a function using its type information. 
 Basically, the judgement $\unique$ just creates fresh names for the
 type and data constructor. The generated type will use the type variables 
@@ -1028,6 +1170,9 @@ for the function infered type as its arguments.
   \caption{Generation of unique types for functions.}
   \label{fig:genuniquetype}
 \end{figure}
+
+\subsection{Generation of $\invokable$ instances}
+
 Next, we turn our attention to $\invokable$ instance generation, using rule 
 $\geninvoke$. The rule starts by generating the $\invoke$ function body which
 is formed by a call to function $f$, that triggered the instance creation, 
