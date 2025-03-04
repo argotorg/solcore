@@ -545,6 +545,7 @@ flattenQual (QualName n s) = flattenQual n ++ "_" ++ s
 
 mangleTy :: Ty -> String
 mangleTy (TyVar (TVar (Name n) _)) = n
+mangleTy (TyCon (Name "()") []) = "unit"
 mangleTy (TyCon (Name n) []) = n
 mangleTy (TyCon (Name n) ts) = n ++ "L" ++ intercalate "_" (map mangleTy ts) ++"J"
 
