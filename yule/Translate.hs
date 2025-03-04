@@ -78,7 +78,7 @@ flattenRhs (LocStack i) = [YIdent (stkLoc i)]
 flattenRhs (LocSeq ls) = concatMap flattenRhs ls
 flattenRhs (LocEmpty size) = replicate size yulPoison
 flattenRhs (LocNamed n) = [YIdent (yulVarName n)]
-flattenRhs l = error ("flattenRhs: not implemented for "++show l)
+-- flattenRhs r = error ("flattenRhs: not implemented for "++show r)
 
 flattenLhs :: Location -> [Name]
 flattenLhs (LocStack i) = [stkLoc i]

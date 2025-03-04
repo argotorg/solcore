@@ -27,3 +27,5 @@ Tasks.md
 *~
 output.core
 ./src/Solcore/Frontend/Parser/SolcoreParser.hs
+.vscode
+test/examples/spec/attic
