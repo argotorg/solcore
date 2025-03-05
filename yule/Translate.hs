@@ -78,7 +78,7 @@ flattenRhs (LocStack i) = [YIdent (stkLoc i)]
 flattenRhs (LocSeq ls) = concatMap flattenRhs ls
 flattenRhs (LocEmpty size) = replicate size yulPoison
 flattenRhs (LocNamed n) = [YIdent (yulVarName n)]
-flattenRhs l = error ("flattenRhs: not implemented for "++show l)
+-- flattenRhs l = error ("flattenRhs: not implemented for "++show l)
 
 flattenLhs :: Location -> [Name]
 flattenLhs (LocStack i) = [stkLoc i]
@@ -113,13 +113,14 @@ genStmt (SReturn expr) = do
 genStmt (SBlock stmts) = withLocalEnv do genStmts stmts
 
 genStmt (SMatch sty e alts) = do
-    (stmts, scrutineeLoc) <- genExpr e
+    (scrutStmts, scrutineeLoc) <- genExpr e
     -- debug ["> SMatch: ", show e , ":", show sty, " @ " , show scrutineeLoc]
-    case normalizeLoc scrutineeLoc of
+    matchStmts <- case normalizeLoc scrutineeLoc of
         loc@(LocEmpty n) -> error ("SMatch: invalid location " ++ show loc)
         LocSeq (loctag:rest) ->  genSwitch loctag (LocSeq rest) alts
         -- Special case: only tag, empty payload
         loctag -> genSwitch loctag LocUnit alts
+    pure (scrutStmts ++ matchStmts)
      where
         genSwitch :: Location -> Location -> [Alt] -> TM [YulStmt]
         genSwitch tag payload alts = do
