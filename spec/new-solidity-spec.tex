@@ -325,8 +325,8 @@ Our formalization will use the following environments:
                     & $|$ & $f(\overline{e})$ $|$ $e : \sigma$\\
     $match$ $\in$ Match & $\to$ & \texttt{match} $\overline{e}$ \texttt{with} $\overline{eqn}$\\
     $asm$ $\in$ Assembly & $\to$ & $\{\overline{ys}\}$\\ 
-    $eqn$ $\in$ Equation & $\to$ & $\overline{pat}\Rightarrow body$\\ 
-    $pat$ $\in$ Pattern & $\to$ & $w$ $|$ $v$ $|$ $D(\overline{pat})$ \\
+    $eqn$ $\in$ Equation & $\to$ & $\overline{p}\Rightarrow body$\\ 
+    $p$ $\in$ Pattern & $\to$ & $w$ $|$ $v$ $|$ $D(\overline{p})$ \\
     $ys$ $\in$ Yul Stmt. & $\to$ & $v$ $=$ $ye$ $|$ \texttt{let} $v$ $[=ye]$ $|$ $ye$ $|$ $\{\overline{ys}\}$ $|$ \texttt{if} $e$ $asm$\\
                             & $|$ & \texttt{for} $asm$ $yexp$ $asm$ $asm$ $|$ \texttt{switch} $ye$ $\{\overline{case}$ $[default]\}$\\
     $ye$ $\in$ Yul Exp. & $\to$ & $w$ $|$ $v$ $|$ $I(\overline{ye})$\\
@@ -366,11 +366,7 @@ the existence of the following primitive type constructors:
     unit type and its element by $()$.
   \item $\mathtt{arrow}$: function type constructor, written as right 
     associative infix operator as $\tau_1\to\tau_2$. Sometimes we 
-    write $n$-ary arrows in curried form as a syntax sugar to its 
-    uncurryied version.
-    \[ 
-      \tau_1 \times ... \times \tau_{n - 1} \to \tau_n = \tau_1 \to ... \to \tau_{n - 1} \to \tau_n
-    \]
+    write $n$-ary arrows as $\overline{\tau}_a \to \tau_r$
   \item $\mathtt{tuples}$: We assume the existence of $n$-ary tuples ($n\geq 2$),
     which are translated internally into right-nested pairs.
 \end{itemize}
@@ -424,7 +420,7 @@ correctly with type annotations.
   \begin{array}{ccc} 
     \infer[_{\{Skol\}}] 
           {\sigma \leq \forall\,\overline{\alpha}.\rho}
-          {\overline{\alpha}\subseteq ftv(\sigma) & 
+          {\overline{\alpha}\subseteq \ftv(\sigma) & 
             \sigma \leq \rho}
     & 
     \infer[_{\{Spec\}}]
@@ -1025,6 +1021,8 @@ the assembly code and returning its newly defined names into context.
   \label{fig:typingmatch}
 \end{figure}
 
+Blocks of statements 
+
 Typing equations takes as input the type of the discriminees used to check 
 patterns.
 
@@ -1043,12 +1041,12 @@ patterns.
              \end{array}} \\ \\ 
       \multicolumn{2}{c}{
         \infer[_{\{Eqn\}}]
-              {\Theta\,|\,\Gamma ; \overline{\tau}\typing{eqn} \overline{pat} \Rightarrow \overline{s} \leadsto \langle \overline{pat}' \Rightarrow \overline{s}', P, \unit, \Theta', \Gamma' - \Gamma_s\rangle}
-              {\Theta\,|\,\Gamma;\overline{\tau}\typing{pats} \overline{pat} \leadsto \Gamma_s
+              {\Theta\,|\,\Gamma ; \overline{\tau}\typing{eqn} \overline{p} \Rightarrow \overline{s} \leadsto \langle \overline{p}' \Rightarrow \overline{s}', P, \Theta', \Gamma' - \Gamma_s\rangle}
+              {\Theta\,|\,\Gamma;\overline{\tau}\typing{pats} \overline{p} \leadsto \langle \overline{p}',\Gamma_s\rangle 
                & 
                \Theta\,|\,\Gamma \cup \Gamma_s \typing{body} \overline{s} \leadsto \langle \overline{s}', P, \tau, \Theta', \Gamma' \rangle 
               }
-      }    
+      } 
     \end{array}
   \]
   \centering 
@@ -1056,7 +1054,8 @@ patterns.
   \label{fig:equations}
 \end{figure}
 
-Typin patterns 
+Rules to typing patterns just produce the extra assumptions to be added at typing 
+context to check the body of a pattern matching case.
 
 \begin{figure}[H]
   \[
@@ -1066,14 +1065,36 @@ Typin patterns
             {}
       & 
       \infer[_{\{Pcons\}}]
-            {\Theta\,|\,\Gamma ; \tau : \overline{\tau}_s \typing{pats} pat : \overline{pat}_s \leadsto  }
-            {}
+            {\Theta\,|\,\Gamma ; \tau : \overline{\tau}_s \typing{pats} p : \overline{p}_s \leadsto  \langle p' : \overline{p}'_s, \Gamma_1 \cup \Gamma_s \rangle}
+            {\Theta\,|\,\Gamma ; \tau \typing{pat} p \leadsto \Gamma_1 
+             &
+             \Theta\,|\,\Gamma ; \overline{\tau}_s \typing{pats} \overline{p}_s \leadsto \langle \overline{p}'_s, \Gamma_s \rangle}
+      \\ \\ 
+        \infer[_{\{PLit\}}]
+              {\Theta\,|\,\Gamma ; \word \typing{pat} w \leadsto \langle w, []\rangle}
+              {}
+      & 
+        \infer[_{\{PVar\}}]
+              {\Theta\,|\,\Gamma ; \tau \typing{pat} v \leadsto \langle v, [v \mapsto \tau] \rangle}
+              {}
+      \\ \\
+      \multicolumn{2}{c}{
+        \infer[_{\{PCon\}}]
+              {\Theta\,|\,\Gamma ; T\,\overline{\tau}_a \typing{pat} D(\overline{p}) \leadsto \langle D(\overline{p}'), \Gamma' \rangle}
+              {\begin{array}{cc}
+                  \Gamma(D) = \overline{\tau}_b \to T (\overline{\tau}_a) 
+                  & 
+                  \Theta\,|\,\Gamma ; \overline{\tau}_b \typing{pats} \overline{p} \leadsto \langle \overline{p}', \Gamma'\rangle
+               \end{array}}
+      }
     \end{array}
   \]
   \centering
   \caption{Typing patterns}
   \label{fig:patterns}
 \end{figure}
+
+
 
 \section{Typing rules for declarations}
 
