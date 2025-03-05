@@ -1,0 +1,13 @@
+data Bool = False | True;
+
+contract MatchCall {
+  function f() {
+    return True;
+  }
+
+  function main() {
+    match f() {
+     | True => return 42;
+    };
+  }
+}
