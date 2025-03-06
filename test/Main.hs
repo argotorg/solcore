@@ -1,6 +1,7 @@
 module Main where
 
-import Cases 
+import Cases
+import Solver 
 import Test.Tasty 
 
 main :: IO ()
@@ -14,4 +15,5 @@ tests
                , pragmas
                , spec
                , std 
+               , satTests
                ]

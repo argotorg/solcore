@@ -136,11 +136,14 @@ test-suite sol-core-tests
   -- cabal-fmt: expand test -Main
   other-modules:
     Cases
+    Solver 
 
   build-depends:
     , sol-core
     , tasty
     , tasty-program
     , tasty-expected-failure
+    , tasty-hunit
+    , HUnit 
 
   build-tool-depends: sol-core:sol-core, sol-core:yule

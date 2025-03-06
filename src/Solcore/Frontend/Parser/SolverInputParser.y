@@ -33,7 +33,7 @@ import Language.Yul
 %expect 0
 
 %%
--- compilation unit definition 
+-- input definition 
 
 Input :: { ([Qual Pred], [Pred]) }
 Input :  TopDeclList ToSolve { ($1, $2) } 
@@ -126,4 +126,8 @@ parseError (Token (line, col) lexeme)
 
 lexer :: (Token -> Alex a) -> Alex a
 lexer = (=<< alexMonadScan)
+
+runParser :: String -> Either String ([Qual Pred], [Pred])
+runParser content = do
+  runAlex content parser
 }

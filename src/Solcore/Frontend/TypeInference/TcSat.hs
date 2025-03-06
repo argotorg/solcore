@@ -32,13 +32,21 @@ step t (ps :=> h@(InCls _ t' _))
 
 -- constraint set satisfiability
 
+satPred :: Int -> Pred -> TcM [Subst]
+satPred n p = do -- rule SInst 
+  delta <- satI n p
+  ss <- concat <$> mapM (\ (s,q,_) -> sat (n - 1) q) delta
+  pure $ [s' <> s | (s, _, _) <- delta, s' <- ss]
+ 
+
 sat :: Int -> [Pred] -> TcM [Subst]
 sat 0 _ = pure [] -- rule SFail 
 sat n [] = pure [mempty] -- rule SEmpty 
-sat n [p] = do -- rule SInst 
-  delta <- satI n p
-  ss <- concat <$> mapM (\ (_,q,_) -> sat (n - 1) q) delta 
-  pure $ [s' <> s | (s, _, _) <- delta, s' <- ss]
+sat n (p : ps) 
+  = do      --rule SConj
+      ss0 <- satPred n p 
+      ss1 <- concat <$> mapM (\ s0 -> sat (n - 1) (apply s0 ps)) ss0
+      pure $ [s' <> s | s <- ss0, s' <- ss1]
 
 
 -- closure 
@@ -56,11 +64,3 @@ closure ps vs
 subset :: Eq a => [a] -> [a] -> Bool 
 subset ps qs = all (\ x -> x `elem` qs) ps
 
--- running the satisfiability (for tests) 
-
-runSat :: [Qual Pred] -> [Pred] -> IO Bool 
-runSat insts ps 
-  = isRight <$> runTcM (sat maxIter ps) senv
-    where 
-      senv = initTcEnv (emptyOption "") []
-      maxIter = 20
