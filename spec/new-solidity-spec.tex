@@ -38,6 +38,7 @@
 
 \newcommand{\word}{\ensuremath{\mathtt{word}}}
 \newcommand{\unit}{\ensuremath{\mathtt{unit}}}
+\newcommand{\bool}{\ensuremath{\mathtt{bool}}}
 \newcommand{\typing}[1]{\ensuremath{\overset{\text{\tiny{#1}}}{\vdash}}}
 \newcommand{\cc}{\ensuremath{\overset{\text{cc}}}{\leadsto}}
 \newcommand{\inst}{\ensuremath{\sqsubseteq}}
@@ -58,7 +59,17 @@
 \newcommand{\impr}{\vdash^{\mathtt{impr}}}
 \newcommand{\solidity}{new Solidity } 
 
+\newtheorem{Lemma}{Lemma}
+\newtheorem{Theorem}{Theorem}
+\newtheorem{Corollary}{Corollary}
+\theoremstyle{definition}
+\newtheorem{Definition}{Definition}
+\newtheorem{Example}{Example}
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% Introduction                                                          %%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 \section{Introduction}\label{sec:introduction}
 
@@ -273,22 +284,40 @@ Additionally, we use the following notations over finite maps:
     \]
 \end{itemize}
 
+\subsection{Contexts}
+
 Our formalization will use the following environments:
 
 \begin{itemize}
   \item $\Theta$: global definition environment, which is formed by the 
-    following environments:
+    following components:
     \begin{itemize}
-      \item $\Theta_U$: environment associating function names to 
+      \item $\Theta^U$: environment associating function names to 
         its respective unique data type definitions.
-      \item $\Theta_X$: environment associating contract names to 
-        a environment containing its field names and its respective 
-        types.
-      \item $\Theta_C$: environment associating class names to 
-        a pair formed by the class declaration itself and a 
-        list of its defined instances. We let $\Theta[C \mapsto^i instdecl]$ 
-        denote the operation of including a new instance declaration 
-        for class $C$ in $\Theta_C$.
+      \item $\Theta^X$: environment associating contract names to 
+        a environment containing its field names and 
+        its respective types.
+      \item $\Theta^{cls}$: environment associating class names 
+        to the constraint associated with it. 
+        A class definition 
+        \begin{lstlisting}
+          forall v1 ... vn . P => class vj : C(...) {
+            ...
+          }
+        \end{lstlisting}
+        introduces the constraint
+        $\forall \overline{\alpha} . P \Rightarrow \alpha_j : C(...)$
+        under the key $C$ in $\Theta^{cls}$.
+      \item $\Theta^{ins}$: environment associating class names 
+        to the list of defined instances for this class. 
+        Each instance definition 
+        \begin{lstlisting}
+          forall v1 ... vn . P => instance t : C(...) {
+            ...
+          }
+        \end{lstlisting}
+        introduces the constraint $\forall{\alpha} . P \Rightarrow \tau : C (...)$
+        in the list of instances under the key $C$ in $\Theta^{ins}$.
     \end{itemize}
   \item $\Gamma$: typing environment, which holds definitions of 
         defined variables in scope, data constructors and 
@@ -298,21 +327,26 @@ Our formalization will use the following environments:
 \end{itemize}
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% Syntax definitions                                                    %%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
 \section{Source language abstract syntax}\label{sec:source-abstract-syntax}
 
 \begin{figure}[H] 
   \begin{tabular}{rcl}
-    $mod \in $ Module & $\to$ & $\overline{imp}$ ; $\overline{decl}$\\
+    $mod \in $ Module & $\to$ & $\overline{imp}$ ; $\overline{d}$\\
     $imp \in$ Import & $\to$ & \texttt{import} $Q$; \\
-    $decl \in$ Declaration & $\to$ & $classdecl$ $|$ $instdecl$ $|$ $datadecl$ $|$ $fundecl$ $|$ $contract$ \\
+    $d \in$ Declaration & $\to$ & $classdecl$ $|$ $instdecl$ $|$ $datadecl$ $|$ $fundecl$ $|$ $contract$ \\
     $classdecl$ $\in$ Class & $\to$ & $\forall$ $\overline{\alpha}$ $.$ $P$ $\Rightarrow$ \texttt{class} $\alpha$ : $C$($\overline{\alpha'}$) $\overline{sig}$\\  
     $instdecl$ $\in$ Instance & $\to$ & $\forall$ $\overline{\alpha}$ $.$ $P$ $\Rightarrow$ \texttt{instance} $\tau$ : C($\overline{\tau'}$) $\overline{fundecl}$\\ 
-    $datadecl$ $\in$ Data Type & $\to$ & \texttt{data} $T$($\overline{\alpha}$) \texttt{=} $\overline{dconstr}$\\
+    $datadecl$ $\in$ Data Type & $\to$ & \texttt{data} $T$($\overline{\alpha}$) \texttt{=} $\overline{dc}$\\
     $fundecl$ $\in$ Function & $\to$ & $sig$ $body$ \\
     $contract$ $\in$ Contract & $\to$ & \texttt{contract} $X$($\overline{\alpha}$) $\overline{cdecl}$ \\
     $P$ $\in$ Context & $\to$ & $\overline{\pi}$\\ 
     $sig$ $\in$ Signature & $\to$ & $\forall$ $\overline{\alpha}$ $.$ $P$ $\Rightarrow$ \texttt{function} $f$ ($\overline{arg}$) $[\to\tau]$\\ 
-    $dconstr$ $\in$ Data Constr. & $\to$ & $D$($\overline{\tau}$)\\
+    $dc$ $\in$ Data Constr. & $\to$ & $D$($\overline{\tau}$)\\
     $body$ $\in$ Function body & $\to$ & $\overline{s}$\\ 
     $cdecl$ $\in$ Contract Decl. & $\to$ & $constr$ $|$ $fundecl$ $|$ $fielddecl$\\
     $\pi$ $\in$ Predicate & $\to$ & $\tau$ $:$ $C$($\overline{\tau'}$)\\
@@ -437,6 +471,13 @@ correctly with type annotations.
   \label{fig:subsumption}
 \end{figure}
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% Constraint solving                                                    %%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
 \section{Ambiguity and type improvement}
 
 Type inference proceeds by collecting constraints generated 
@@ -511,6 +552,7 @@ When $P = \emptyset$, we use notation $\Theta \Vdash Q$.
   \]
   \centering
   \caption{Constraint entailment.}
+  \label{fig:constraint-entailment}
 \end{figure}
 The three first rules shows the requirements for an entailment 
 relation: monotonicity, transitivity and closure under 
@@ -521,6 +563,42 @@ there's an instance
 $\forall \overline{\alpha} .  P \Rightarrow \tau : C(\overline{\tau'})$. 
 Finally, rule $Super$ allows the entailment of a predicate 
 by using super class information.
+
+
+\begin{Example}
+As an example an entailment proof, let's consider the following class 
+and instance constraints:
+\begin{itemize}
+  \item $\Theta^{ins} = \{\mathtt{word}:\mathtt{Eq}, \forall \alpha. \{\alpha:\mathtt{Eq}\}\Rightarrow \mathtt{Foo}(\alpha):\mathtt{Eq}\}$.
+  \item $\Theta^{cls} =\{\forall \alpha . \alpha : \mathtt{Eq}\}$
+\end{itemize}
+
+Using rules in Figure~\ref{fig:constraint-entailment} we can show 
+that $\Theta\Vdash \mathtt{Foo}(\mathtt{word}) : \mathtt{Eq}$
+by the following derivation:
+
+\[
+  \infer[_{\{\mathtt{Trans}\}}]
+		{\Theta\,\Vdash\,\mathtt{Foo(word):Eq}}
+		{
+      \infer[_{\{\mathtt{Inst}\}}]
+				{\Theta\,\Vdash\,\mathtt{word : Eq}}
+				{\mathtt{word : Eq}\in\Theta^{ins}(\texttt{Eq})}
+			&
+      \infer[_{\{\mathtt{Subst}\}}]
+				{\Theta,\,\texttt{word:Eq}\Vdash\,\texttt{Foo(word):Eq}}
+				{
+          \infer[_{\{\mathtt{Inst}\}}]
+            {\Theta,\,\alpha : \texttt{Eq}\,\Vdash\,\mathtt{Foo}(\alpha) : \texttt{Eq}}
+						{\forall\,\alpha.\,\alpha : \texttt{Eq}\Rightarrow\,\texttt{Foo($\alpha$):Eq}\in
+							\Theta^{ins}(\texttt{Eq})}
+					& S = \texttt{[$\alpha\mapsto$ Int]}
+				}
+		}
+\]
+
+\end{Example}
+
 
 \subsection{Constraint satisfiability}
 
@@ -584,6 +662,119 @@ satisfy the input constraints.
   \caption{Constraint satisfiability.}
   \label{fig:sat-algorithm}
 \end{figure}
+
+\begin{Example}
+  Consider the constraint set $P =\{A\:a\:b,D\:b\}$ and that 
+  the following instance constraints are available at the 
+  global environment $\Theta$:
+  \[
+    \Theta^{inst} = \left[
+      \begin{array}{lcl}
+        A & \mapsto & [Foo(\word):A(\word), \:\mathtt{Foo}(\bool):A(\word)], \\ 
+        C & \mapsto & [\word : C], \\
+        D & \mapsto&  [\forall \alpha. \alpha : C \Rightarrow \mathtt{Foo}(\alpha) : D]
+      \end{array}
+    \right]
+  \]
+We can show that $P$ is satisfiable by $\Theta$ by producing 
+a set of substitutions $\mathbb{S}$, using rule $\texttt{SConj}$,
+as follows:
+
+  \[ 
+    \infer[_{\{\texttt{SConj}\}}]
+          {\sats{b : A(a) : \{b : D\}}{\mathbb{S}}{n_0}}
+   	      { \begin{array}{l}
+              \sats{b : A(a)}{\mathbb{S}_0}{n_0}\\
+              \mathbb{S} = \{S'\circ S\,|\,S \in \mathbb{S}_0, \sats{\{b : D\}}{\mathbb{S}_1}{n_0 - 1}, S' \in \mathbb{S}_1\}
+            \end{array} }
+  \]
+  next, we build the set $\mathbb{S}_1$ using rule $\texttt{SInst}$ in the 
+  constraint $b : A (a)$ as follows:
+  \[
+    \infer[_{\{SInst\}}]
+          {\sats{b : A(a)}{\mathbb{S}_1}{n_0 - 1}}
+          {\begin{array}{l}
+              n_0 - 1 > 0\\
+              \Delta_0 = sat(\Theta, b : A(a)) = \{(S_1, \emptyset, \mathtt{Foo}(\word) : A (\word)), (S_2, \emptyset, \mathtt{Foo}(\bool) : A(\word))\}\\
+              \mathbb{S}_1 = \{S'\circ S\,|\,(S,Q,\pi') \in \Delta_0, \sats{Q}{\mathbb{S}}{n_0 - 2}, S' \in \mathbb{S}\}
+           \end{array}}
+  \]
+  where 
+  \[
+    \begin{array}{lcl}
+      S_1 & = & [a \mapsto \word, b\mapsto \mathtt{Foo}(\word)]\\ 
+      S_2 & = & [a \mapsto \word, b \mapsto \mathtt{Foo}(\bool)]
+    \end{array}
+  \] 
+  Continuing the rule $\mathtt{SConj}$, we need to test the satisfiability of the $b : D$ 
+  for each substitutions, $S_1$ and $S_2$. Now, applying $\mathtt{SInst}$ to 
+  $S_1(b : D) = \mathtt{Foo}(\word) : D$, we have: 
+  \[
+    \infer[_{\{SInst\}}]
+          {\sats{\mathtt{Foo}(\word) : D}{\mathbb{S}^1_1}{n_0 - 2}}
+          {\begin{array}{l}
+              n_0 - 2 > 0\\
+              \Delta_1 = sat(\Theta, \mathtt{Foo}(\word) : D) = \{(S'_1\,|_\emptyset, \{\word : C\}, \mathtt{Foo}(\word) : D)\}\\
+              \mathbb{S}^1_1 = \{S'\circ S\,|\,(S,Q,\pi') \in \Delta_1, \sats{Q}{\mathbb{S}}{n_0 - 2}, S' \in \mathbb{S}\} = \{id\}
+           \end{array}}
+  \]
+  where $S'_1 = [b\mapsto \word]$ and $S'_1\,|_\emptyset = id$. Now, considering 
+  $S_2(b : D) =\mathtt{Foo}(\bool) : D$, we have:
+  \[
+    \infer[_{\{SInst\}}]
+          {\sats{\mathtt{Foo}(\bool) : D}{\mathbb{S}^2_1}{n_0 - 2}}
+          {\begin{array}{l}
+              n_0 - 2 > 0\\
+              \Delta_2 = sat(\Theta, \mathtt{Foo}(\word) : D) = \{(S'_2\,|_\emptyset, \{\bool : C\}, \mathtt{Foo}(\bool) : D)\}\\
+              \mathbb{S}^2_1 = \{S'\circ S\,|\,(S,Q,\pi') \in \Delta_2, \sats{Q}{\mathbb{S}}{n_0 - 2}, S' \in \mathbb{S}\} = \emptyset 
+           \end{array}}
+  \]
+ 
+
+
+%   \[ \infer[^\texttt{SInst}]
+%        	{\Theta \sats A\,a\,b  \leadsto \mathbb{S}_0 }
+%        	{\begin{array}{l}
+% 	      \Delta_0 = \{ (S_1, \emptyset, A\,\Int\,\tylist\Int),
+%                             (S_2, \emptyset, A\,\Int\,\,\tylist\Bool) \} \vspace{.1cm} \\
+% 	      \mathbb{S}_0 = \left\{ S'S \,\left\vert\,(S,Q,\pi') \in \Delta_0,\,
+% 													 S' \in \mathbb{S}',
+%                                  					\Theta \sats Q \leadsto \mathbb{S}'
+% 													\right. \right\} \\
+% 	\end{array}}
+%   \]
+% onde $S_1=[a \mapsto \Int,\, b\mapsto \tylist\Int]$,
+%       $S_2=[a \mapsto \Int,\, b\mapsto \tylist\Bool]$.
+%
+% Pela regra \texttt{SConj}, o conjunto de substitui\c{c}\~oes para
+% $S_1(D\:b)= D\,\tylist\Int$ and $S_2(D\:b)= D\,\tylist\Bool$
+% \'e dado por:
+%   \[ \infer[^\texttt{SInst}]
+%        	{\Theta \sats D\,\tylist\Int \leadsto \mathbb{S}_1^1}
+%        	{\begin{array}{ll}
+% 	      \Delta_1 = \{ (S_1'|_\emptyset, \{C\,\Int\}, D\,\tylist b) \} &\vspace{.1cm} \\
+% 	      \mathbb{S}_1^1 = \left\{ S'S \,\left\vert\,(S,Q,\pi') \in \Delta_1,\, S' \in \mathbb{S}',\Theta \sats Q \leadsto \mathbb{S}'
+% 													  \right.
+% 									\right\} \\
+% 	\end{array}}
+%   \]
+%   onde $S_1' = [b_1\mapsto \Int]$, $b_1$ \'e uma nova vari\'avel, $S_1'|_\emptyset = \id$, e
+%   \[ \infer[^\texttt{ SInst}]
+%        	{\Theta \sats D\,\tylist\Bool] \leadsto \mathbb{S}_1^2 }
+%        	{\begin{array}{l}
+% 	      \Delta_2 = \{ (S_2'|_\emptyset, \{ C\,\Bool\}, D\,\,\tylist b) \} \vspace{.1cm} \\
+% 	      \mathbb{S}_1^2 = \left\{
+% 									S'S \,\left\vert\, (S,Q,\pi') \in \Delta_2,
+% 															 S' \in \mathbb{S}',
+% 					  					                    \Theta \sats Q \leadsto \mathbb{S}'
+% 												\right .
+% 								\right\}
+% 	\end{array}}
+%   \]
+% onde $S_2' = [b_2\mapsto \Bool]$, $b_2$ \'e uma nova vari\'avel,
+% $S_2'|_\emptyset = \id$.  Now, $\mathbb{S}_1^1 = \{ \id \}$ and $\mathbb{S}_1^2 =
+% \emptyset$.  Assim, temos que $\mathbb{S} = \{S_1\}$.
+\end{Example}
 
 \subsection{Context reduction} 
 
@@ -760,6 +951,10 @@ satisfiability algorithm on the set of constraints which has
 unreachable variables aiming to find a unique solution to them. 
 The final type scheme is built from the reduced constraints with 
 reachable variables and the simple type $\tau$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% Type system definition                                                %%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 \section{Type system definition}
@@ -1021,7 +1216,38 @@ the assembly code and returning its newly defined names into context.
   \label{fig:typingmatch}
 \end{figure}
 
-Blocks of statements 
+Blocks of statements are typed by recursing over each statement.
+The unique exception is on variable declarations which we need to 
+remove after typing the whole block.
+
+\begin{figure}[H]
+  \[
+    \begin{array}{cc}
+      \infer[_{\{BNil\}}]
+            {\Theta\,|\,\Gamma \typing{body} [] \leadsto \langle [], [], \Theta, \Gamma\rangle}
+            {}
+      & 
+      \infer[_{\{BLet\}}]
+            {\Theta\,|\,\Gamma \typing{body} \tau v = e : \overline{s} \leadsto \langle s' : \overline{s}', (P \cup P'), \Theta', \Gamma' - \{v : \tau\}\rangle}
+            {\begin{array}{c} 
+              \Theta\,|\,\Gamma\typing{stmt} \tau\:v=e \leadsto\langle s', P, \tau, \Theta_1, \Gamma_1 \rangle \\
+              \Theta_1\,|\,\Gamma_1, v : \tau \typing{body} \overline{s} \leadsto \langle \overline{s}', P', \tau', \Theta', \Gamma' \rangle 
+             \end{array}}
+      \\ \\
+      \multicolumn{2}{c}{
+        \infer[_{\{BCons\}}]
+              {\Theta\,|\,\Gamma \typing{body} s : \overline{s} \leadsto \langle s' : \overline{s}', (P \cup P'), \Theta', \Gamma'\rangle}
+              {\begin{array}{c} 
+                \Theta\,|\,\Gamma\typing{stmt} s \leadsto\langle s', P, \tau, \Theta_1, \Gamma_1 \rangle \\
+                \Theta_1\,|\,\Gamma_1 \typing{body} \overline{s} \leadsto \langle \overline{s}', P', \tau', \Theta', \Gamma' \rangle 
+               \end{array}}
+      }
+    \end{array}
+  \]
+  \centering 
+  \caption{Typing blocks}
+  \label{fig:block}
+\end{figure}
 
 Typing equations takes as input the type of the discriminees used to check 
 patterns.
@@ -1075,7 +1301,7 @@ context to check the body of a pattern matching case.
               {}
       & 
         \infer[_{\{PVar\}}]
-              {\Theta\,|\,\Gamma ; \tau \typing{pat} v \leadsto \langle v, [v \mapsto \tau] \rangle}
+              {\Theta\,|\,\Gamma ; \tau \typing{pat} v \leadsto \langle v, [v : \tau] \rangle}
               {}
       \\ \\
       \multicolumn{2}{c}{
@@ -1094,9 +1320,45 @@ context to check the body of a pattern matching case.
   \label{fig:patterns}
 \end{figure}
 
+\subsection{Typing rules for declarations}
 
+Typing rules for declarations is defined by the following judgement
+\[\Theta\,|\,\Gamma \typing{decl} d \leadsto \langle \Theta', \Gamma' \rangle\]
+which produces new environments from the input declaration and environments.
+We start by defining the rule for new data type definitions.
 
-\section{Typing rules for declarations}
+\begin{figure}[H]
+  \[
+    \begin{array}{cc}
+      \infer[_{\{DNil\}}]
+            {\Theta\,|\,\Gamma ; T(\overline{\alpha})\typing{cons} [] \leadsto \langle \Theta, \Gamma \rangle}
+            {}
+      &
+      \infer[_{\{DCons\}}]
+            {\Theta\,|\,\Gamma ; T(\overline{\alpha}) \typing{cons} D(\overline{\tau}) : \overline{dc}\leadsto \langle \Theta, \Gamma' \rangle }
+            {\begin{array}{c}
+              \Gamma_1 = \Gamma, D : \forall \overline{\alpha} . \overline{\tau} \to T(\overline{\alpha})\\
+              \Theta\,|\,\Gamma_1 \typing{cons} \overline{dc} \leadsto \langle \Theta, \Gamma' \rangle  
+             \end{array}}
+      \\ \\
+      \multicolumn{2}{c}{
+        \infer[_{\{Data\}}]
+              {\Theta\,|\,\Gamma \typing{data} \mathtt{data}\:T(\overline{\alpha}) = \overline{dc} \leadsto \langle \Theta, \Gamma' \rangle}
+              {\Theta\,|\,\Gamma ; T(\overline{\alpha})\typing{cons} \overline{dc} \leadsto \langle \Theta, \Gamma' \rangle}
+      }
+    \end{array}
+  \]
+  \centering
+  \caption{Typing data declarations.}
+  \label{fig:datatyping}
+\end{figure}
+
+The main work of typing rules for data declarations is to populate the 
+environments with data constructors types.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% Desugaring                                                            %%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \section{Desugaring}\label{sec:desugar} 
 
@@ -1119,10 +1381,10 @@ tasks are done by a specific rule, presented next.
   \[
     \begin{array}{c}
       \infer[_{\{NC\}}]
-            {\Theta;\Gamma;(P \Rightarrow x_1 : \tau_1\times ... \times x_n : \tau_n \to \tau_r); body \cc \langle D, \rho, \Theta', \Gamma' \rangle}
+            {\Theta;\Gamma;(P \Rightarrow \overline{x : \tau} \to \tau_r); body \cc \langle D, \rho, \Theta', \Gamma' \rangle}
             {\begin{array}{c}
-              \fpv(body) - \{x_1, ...,x_n \} = \emptyset\\
-              P \Rightarrow \tau_1\times ... \times \tau_n \to \tau_r \sig \langle sig, f, \forall \overline{\alpha} . \rho \rangle\\ 
+              \fpv(body) - \overline{x} = \emptyset\\
+              P \Rightarrow \overline{\tau} \to \tau_r \sig \langle sig, f, \forall \overline{\alpha} . \rho \rangle\\ 
               f ; \forall \overline{\alpha}. \rho \unique \mathtt{data}\:T(\overline{\alpha}) = D\\
               sig ; \mathtt{data}\:T(\overline{\alpha}) = D \geninvoke instd\\ 
               \Gamma' = \Gamma, f : \forall\overline{\alpha}.\rho, D : \forall\overline{\alpha} . T(\overline{\alpha})\\
