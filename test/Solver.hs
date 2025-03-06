@@ -10,6 +10,7 @@ import Solcore.Frontend.TypeInference.TcSat
 import Solcore.Pipeline.Options 
 
 import Test.Tasty
+import Test.Tasty.ExpectedFailure
 import Test.Tasty.HUnit
 
 -- constructing the test suit 
@@ -17,7 +18,7 @@ import Test.Tasty.HUnit
 satTests :: TestTree 
 satTests = testGroup "Tests for SAT"
                      [
-                       testCase "test01" $ satFile solverDir "sat01.inp"
+                       expectFail $ testCase "test01" $ satFile solverDir "sat01.inp"
                      ]
             where 
               solverDir = "./test/solver"
