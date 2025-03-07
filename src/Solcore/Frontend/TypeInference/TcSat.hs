@@ -1,5 +1,6 @@
 module Solcore.Frontend.TypeInference.TcSat where 
 
+import Control.Monad.Trans
 import Data.Either (isRight)
 
 import Solcore.Frontend.Syntax
@@ -34,6 +35,7 @@ step t (ps :=> h@(InCls _ t' _))
 
 satPred :: Int -> Pred -> TcM [Subst]
 satPred n p = do -- rule SInst 
+  liftIO $ putStrLn $ "Trying to sat:" ++ pretty p 
   delta <- satI n p
   ss <- concat <$> mapM (\ (s,q,_) -> sat (n - 1) q) delta
   pure $ [s' <> s | (s, _, _) <- delta, s' <- ss]

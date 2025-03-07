@@ -29,6 +29,8 @@ import Language.Yul
       '=>'       {Token _ TDArrow}
       '('        {Token _ TLParen}
       ')'        {Token _ TRParen}
+      '{'        {Token _ TLBrace}
+      '}'        {Token _ TRBrace}
 
 %expect 0
 
@@ -43,7 +45,7 @@ TopDeclList : TopDecl TopDeclList                  { $1 : $2 }
              | {- empty -}                         { [] }
 
 ToSolve :: { [Pred] }
-ToSolve : 'sat' ':' ConstraintList ';'             {$3}
+ToSolve : 'sat' ':' '{' ConstraintList '}' ';'     {$4}
 
 -- top level declarations 
 
@@ -75,6 +77,7 @@ Context : '(' ConstraintList ')' '=>'              { $2 }
 ConstraintList :: { [Pred] }
 ConstraintList : Constraint ',' ConstraintList     {$1 : $3}
                | Constraint                        {[$1]}
+               |                                   {[]}
 
 Constraint :: { Pred }
 Constraint : Type ':' Name OptTypeParam             {InCls $3 $1 $4} 
