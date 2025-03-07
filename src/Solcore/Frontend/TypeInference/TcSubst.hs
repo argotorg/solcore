@@ -8,7 +8,7 @@ import Solcore.Frontend.Syntax
 -- basic substitution infrastructure
 
 newtype Subst 
-  = Subst { unSubst :: [(Tyvar, Ty)] }
+  = Subst { unSubst :: [(Tyvar, Ty)] } deriving (Eq, Show)
 
 restrict :: Subst -> [Tyvar] -> Subst
 restrict (Subst s) vs 

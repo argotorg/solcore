@@ -1,7 +1,8 @@
 module Solcore.Frontend.TypeInference.TcSat where 
 
+import Control.Monad.Except
 import Control.Monad.Trans
-import Data.Either (isRight)
+import Data.Maybe
 
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.Parser.SolverInputParser
@@ -15,36 +16,47 @@ import Solcore.Pipeline.Options
 
 -- function sat 
 
-satI :: Int -> Pred -> TcM [(Subst, [Pred], Pred)]
+satI :: Int -> Pred -> TcM [(Subst, [Pred])]
 satI n p@(InCls c t ts)  
   | n <= 0 = tcmError $ unwords ["Cannot satisfy constraint:"
                                 , pretty p
                                 , "since we reached the maximum number of recursive calls"]
   | otherwise = do 
       insts <- askInstEnv c 
-      liftIO $ print insts 
-      mapM (step t) insts 
+      catMaybes <$> mapM (\ i -> defaultM (step t i)) insts 
 satI _ p = tcmError $ "Invalid constraint:" ++ pretty p
 
-step :: Ty -> Inst -> TcM (Subst, [Pred], Pred)
-step t (ps :=> h@(InCls _ t' _)) 
-  = do 
-      s <- mgu t t'
-      pure (s, apply s ps, h)
+step :: Ty -> Inst -> TcM (Subst, [Pred])
+step t k@(ps :=> h@(InCls _ t' _)) 
+  = do {
+      s <- mgu t t' ; 
+      pure (s, apply s ps) 
+    }
+
+defaultM :: TcM a -> TcM (Maybe a)
+defaultM m 
+  = do {
+      x <- m ;
+      pure (Just x)
+    } `catchError` (\ _ -> pure Nothing)
 
 -- constraint set satisfiability
 
 satPred :: Int -> Pred -> TcM [Subst]
-satPred n p = do -- rule SInst
-  liftIO $ putStrLn $ pretty p 
-  delta <- satI n p
-  liftIO $ print $ length delta
-  ss <- concat <$> mapM (\ (s,q,_) -> sat (n - 1) q) delta
-  pure $ [s' <> s | (s, _, _) <- delta, s' <- ss]
+satPred n p = do -- rule Inst
+  -- liftIO $ putStrLn $ "constraint:" ++ pretty p
+  delta <- satI n p 
+  let f (s, ps) = pretty s ++ " - " ++ pretty ps 
+  -- liftIO $ putStrLn $ unwords $ map f delta
+  ss <- concat <$> mapM (\ (s,q) -> sat (n - 1) q) delta
+  pure $ [s' <> s | (s, _) <- delta, s' <- ss]
  
 
 sat :: Int -> [Pred] -> TcM [Subst]
-sat 0 _ = pure [] -- rule SFail 
+sat 0 p = throwError $ unwords [ "Could not deduce:"
+                               , pretty p 
+                               , "using the current step limit"
+                               ]
 sat n [] = pure [mempty] -- rule SEmpty 
 sat n (p : ps) 
   = do      --rule SConj

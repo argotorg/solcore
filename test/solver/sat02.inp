@@ -1,4 +1,3 @@
-class a : Eq; 
 instance word : Eq ;
 instance (a : Eq) => Foo(a) : Eq;
 
