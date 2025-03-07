@@ -740,20 +740,26 @@ consume the whole step counter for recursive calls.
 
 \begin{Example}
 Let's consider the following instance context 
-$\Theta^{ins} = [C \mapsto \{\forall a,b.\,\{C\: a\: b\} \Rightarrow C\:(T^2\:
-a)\: b \}$ and try to compute the set of satisfiable instances for $\pi = C\:a\: (T\:a)$ 
-em rela\c{c}\~ao a $\Theta$.
-Temos que $\pi$ unifica com a cabe\c{c}a da inst\^ancia $\forall
-a,b.\:(C\: a\: b)\: \Rightarrow\: C\: (T^2\: a)\: b$, produzindo a
-substitui\c{c}\~ao $S= [a \mapsto T^2\:a_1,\, b_1 \mapsto T^3\:a_1]$. Ent\~ao
-deve-se computar recursivamente a satisfazibilidade de
-$S(C\:a_1\:b_1) = C\:a_1\:(T^3\:a_1)$.  Mas este tamb\'em unifica com
-$\forall a,b.\,(C\: a\: b) \Rightarrow C\: (T^2\:
-a)\:b$, produzindo $S_1= [a_1 \mapsto (T^2\:a_2), b_2 \mapsto
-  (T^3 a_1 = T^5\:a_2)]$. Ent\~ao, novamente, devemos computar a
-satisfazibilidade de $S_1(C\:a_2\:b_2) = C\:a_2\:(T^5\:a_2)$, repetindo todo o processo e
-ocasionando a n\~ao termina\c{c}\~ao.
-\
+\[
+  \Theta^{ins} = [C \mapsto \{\forall a,b.\,\{a : C(b)\} \Rightarrow (T(T(a)) : C(b)\}]
+\]
+and try to compute the set of satisfiable instances for 
+$\pi = T(a) : C(a)$. 
+We have that $\pi$ unifies with the 
+instance $\forall a,b.\,\{a : C(b)\} \Rightarrow (T(T(a)) : C(b)$ 
+producing the substitution 
+\[
+  S= [a \mapsto T(T(a_1)),\, b_1 \mapsto T(T(T(\:a_1)))]
+\] 
+Then, we need to recursively compute the satisfiability of 
+\[
+  S(a_1 : C(b_1)) = T(T(a_1)) : C(T(T(T(a_1))))
+\] 
+which unifies again with the same instance, leading the process into 
+an infinite loop. Since the satisfiability test uses a 
+fuel parameter to ensure termination, the loop will not happen 
+but the algorithm will return an error due to not having enough 
+gas to finish the computation. 
 \end{Example}
 
 \subsection{Context reduction} 
