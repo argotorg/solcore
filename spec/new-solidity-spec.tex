@@ -4,7 +4,7 @@
 \usepackage[utf8]{inputenc}
 \usepackage{textcomp}
 \usepackage{graphicx} 
-\usepackage{amsmath,amssymb,amsfonts,amsthm}  
+\usepackage{amsmath,amssymb,amsfonts,amsthm,thmtools}  
 \usepackage{bm}  
 \usepackage[pdftex,bookmarks,colorlinks,breaklinks]{hyperref}  
 \usepackage{memhfixc} 
@@ -18,6 +18,14 @@
 \title{Specification for the new Solidity Language}
 \author{The Argot Collective}
 %\date{}
+
+\newtheorem{Lemma}{Lemma}
+\newtheorem{Theorem}{Theorem}
+\newtheorem{Corollary}{Corollary}
+\theoremstyle{definition}
+\newtheorem{Definition}{Definition}
+\declaretheorem[name=Example,qed=$\square$]{Example}
+
 
 \begin{document}
 \maketitle
@@ -58,13 +66,6 @@
 \newcommand{\simp}{\vdash^{\mathtt{simp}}}
 \newcommand{\impr}{\vdash^{\mathtt{impr}}}
 \newcommand{\solidity}{new Solidity } 
-
-\newtheorem{Lemma}{Lemma}
-\newtheorem{Theorem}{Theorem}
-\newtheorem{Corollary}{Corollary}
-\theoremstyle{definition}
-\newtheorem{Definition}{Definition}
-\newtheorem{Example}{Example}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% Introduction                                                          %%%%
@@ -726,54 +727,33 @@ as follows:
           {\begin{array}{l}
               n_0 - 2 > 0\\
               \Delta_2 = sat(\Theta, \mathtt{Foo}(\word) : D) = \{(S'_2\,|_\emptyset, \{\bool : C\}, \mathtt{Foo}(\bool) : D)\}\\
-              \mathbb{S}^2_1 = \{S'\circ S\,|\,(S,Q,\pi') \in \Delta_2, \sats{Q}{\mathbb{S}}{n_0 - 2}, S' \in \mathbb{S}\} = \emptyset 
+              \mathbb{S}^2_1 = \{S'\circ S\,|\,(S,Q,\pi') \in \Delta_2, \sats{Q}{\mathbb{S}_2}{n_0 - 2}, S' \in \mathbb{S}_2\} = \emptyset 
            \end{array}}
   \]
- 
+  we have that $\mathbb{S}_2 = \emptyset$ since there is no instance in $\Theta$ which 
+  unifies with $\bool : C$, which is the constraint produced by the call 
+  of $sat(\Theta,\mathtt{Foo}(\word) : D)$.
+\end{Example}
 
+The next examples shows a constraint which will make the algorithm 
+consume the whole step counter for recursive calls.
 
-%   \[ \infer[^\texttt{SInst}]
-%        	{\Theta \sats A\,a\,b  \leadsto \mathbb{S}_0 }
-%        	{\begin{array}{l}
-% 	      \Delta_0 = \{ (S_1, \emptyset, A\,\Int\,\tylist\Int),
-%                             (S_2, \emptyset, A\,\Int\,\,\tylist\Bool) \} \vspace{.1cm} \\
-% 	      \mathbb{S}_0 = \left\{ S'S \,\left\vert\,(S,Q,\pi') \in \Delta_0,\,
-% 													 S' \in \mathbb{S}',
-%                                  					\Theta \sats Q \leadsto \mathbb{S}'
-% 													\right. \right\} \\
-% 	\end{array}}
-%   \]
-% onde $S_1=[a \mapsto \Int,\, b\mapsto \tylist\Int]$,
-%       $S_2=[a \mapsto \Int,\, b\mapsto \tylist\Bool]$.
-%
-% Pela regra \texttt{SConj}, o conjunto de substitui\c{c}\~oes para
-% $S_1(D\:b)= D\,\tylist\Int$ and $S_2(D\:b)= D\,\tylist\Bool$
-% \'e dado por:
-%   \[ \infer[^\texttt{SInst}]
-%        	{\Theta \sats D\,\tylist\Int \leadsto \mathbb{S}_1^1}
-%        	{\begin{array}{ll}
-% 	      \Delta_1 = \{ (S_1'|_\emptyset, \{C\,\Int\}, D\,\tylist b) \} &\vspace{.1cm} \\
-% 	      \mathbb{S}_1^1 = \left\{ S'S \,\left\vert\,(S,Q,\pi') \in \Delta_1,\, S' \in \mathbb{S}',\Theta \sats Q \leadsto \mathbb{S}'
-% 													  \right.
-% 									\right\} \\
-% 	\end{array}}
-%   \]
-%   onde $S_1' = [b_1\mapsto \Int]$, $b_1$ \'e uma nova vari\'avel, $S_1'|_\emptyset = \id$, e
-%   \[ \infer[^\texttt{ SInst}]
-%        	{\Theta \sats D\,\tylist\Bool] \leadsto \mathbb{S}_1^2 }
-%        	{\begin{array}{l}
-% 	      \Delta_2 = \{ (S_2'|_\emptyset, \{ C\,\Bool\}, D\,\,\tylist b) \} \vspace{.1cm} \\
-% 	      \mathbb{S}_1^2 = \left\{
-% 									S'S \,\left\vert\, (S,Q,\pi') \in \Delta_2,
-% 															 S' \in \mathbb{S}',
-% 					  					                    \Theta \sats Q \leadsto \mathbb{S}'
-% 												\right .
-% 								\right\}
-% 	\end{array}}
-%   \]
-% onde $S_2' = [b_2\mapsto \Bool]$, $b_2$ \'e uma nova vari\'avel,
-% $S_2'|_\emptyset = \id$.  Now, $\mathbb{S}_1^1 = \{ \id \}$ and $\mathbb{S}_1^2 =
-% \emptyset$.  Assim, temos que $\mathbb{S} = \{S_1\}$.
+\begin{Example}
+Let's consider the following instance context 
+$\Theta^{ins} = [C \mapsto \{\forall a,b.\,\{C\: a\: b\} \Rightarrow C\:(T^2\:
+a)\: b \}$ and try to compute the set of satisfiable instances for $\pi = C\:a\: (T\:a)$ 
+em rela\c{c}\~ao a $\Theta$.
+Temos que $\pi$ unifica com a cabe\c{c}a da inst\^ancia $\forall
+a,b.\:(C\: a\: b)\: \Rightarrow\: C\: (T^2\: a)\: b$, produzindo a
+substitui\c{c}\~ao $S= [a \mapsto T^2\:a_1,\, b_1 \mapsto T^3\:a_1]$. Ent\~ao
+deve-se computar recursivamente a satisfazibilidade de
+$S(C\:a_1\:b_1) = C\:a_1\:(T^3\:a_1)$.  Mas este tamb\'em unifica com
+$\forall a,b.\,(C\: a\: b) \Rightarrow C\: (T^2\:
+a)\:b$, produzindo $S_1= [a_1 \mapsto (T^2\:a_2), b_2 \mapsto
+  (T^3 a_1 = T^5\:a_2)]$. Ent\~ao, novamente, devemos computar a
+satisfazibilidade de $S_1(C\:a_2\:b_2) = C\:a_2\:(T^5\:a_2)$, repetindo todo o processo e
+ocasionando a n\~ao termina\c{c}\~ao.
+\
 \end{Example}
 
 \subsection{Context reduction} 
