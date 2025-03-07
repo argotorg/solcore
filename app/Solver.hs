@@ -8,7 +8,9 @@ main
   = do
       args <- getArgs 
       case args of 
-        [path] -> runForFile path 
+        [path] -> do 
+          b <- runForFile path 
+          if b then pure () else exitFailure
         _ -> do 
           putStrLn "Usage: solver <path to solver input file>"
           exitFailure 
