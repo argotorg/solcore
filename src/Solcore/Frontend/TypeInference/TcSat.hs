@@ -21,22 +21,24 @@ satI n p@(InCls c t ts)
                                 , pretty p
                                 , "since we reached the maximum number of recursive calls"]
   | otherwise = do 
-      insts <- askInstEnv c
+      insts <- askInstEnv c 
+      liftIO $ print insts 
       mapM (step t) insts 
 satI _ p = tcmError $ "Invalid constraint:" ++ pretty p
 
 step :: Ty -> Inst -> TcM (Subst, [Pred], Pred)
 step t (ps :=> h@(InCls _ t' _)) 
   = do 
-      s <- mgu t t' 
+      s <- mgu t t'
       pure (s, apply s ps, h)
 
 -- constraint set satisfiability
 
 satPred :: Int -> Pred -> TcM [Subst]
-satPred n p = do -- rule SInst 
-  liftIO $ putStrLn $ "Trying to sat:" ++ pretty p 
+satPred n p = do -- rule SInst
+  liftIO $ putStrLn $ pretty p 
   delta <- satI n p
+  liftIO $ print $ length delta
   ss <- concat <$> mapM (\ (s,q,_) -> sat (n - 1) q) delta
   pure $ [s' <> s | (s, _, _) <- delta, s' <- ss]
  
@@ -46,7 +48,7 @@ sat 0 _ = pure [] -- rule SFail
 sat n [] = pure [mempty] -- rule SEmpty 
 sat n (p : ps) 
   = do      --rule SConj
-      ss0 <- satPred n p 
+      ss0 <- satPred n p
       ss1 <- concat <$> mapM (\ s0 -> sat (n - 1) (apply s0 ps)) ss0
       pure $ [s' <> s | s <- ss0, s' <- ss1]
 

@@ -35,7 +35,7 @@ runSat insts ps
           pure False 
         Right _ -> do  
           putStrLn $ unlines [ "Instances:"
-                             , unwords $ map pretty insts 
+                             , render $ commaSep $ map ppr insts 
                              , "Constraints:"
                              , unwords $ map pretty ps
                              , "are satisfiable"
