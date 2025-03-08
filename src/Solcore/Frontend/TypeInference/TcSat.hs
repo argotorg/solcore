@@ -2,6 +2,7 @@ module Solcore.Frontend.TypeInference.TcSat where
 
 import Control.Monad.Except
 import Control.Monad.Trans
+import Data.List
 import Data.Maybe
 
 import Solcore.Frontend.Syntax
@@ -44,7 +45,7 @@ defaultM m
 
 satPred :: Int -> Pred -> TcM [Subst]
 satPred n p = do -- rule Inst
-  -- liftIO $ putStrLn $ "constraint:" ++ pretty p
+  liftIO $ putStrLn $ "constraint:" ++ pretty p
   delta <- satI n p 
   let f (s, ps) = pretty s ++ " - " ++ pretty ps 
   -- liftIO $ putStrLn $ unwords $ map f delta
@@ -61,7 +62,9 @@ sat n [] = pure [mempty] -- rule SEmpty
 sat n (p : ps) 
   = do      --rule SConj
       ss0 <- satPred n p
-      ss1 <- concat <$> mapM (\ s0 -> sat (n - 1) (apply s0 ps)) ss0
+      liftIO $ putStrLn $ unwords $ map pretty (nub ss0) 
+      ss1 <- (nub . concat) <$> mapM (\ s0 -> sat (n - 1) (apply s0 ps)) ss0
+      liftIO $ putStrLn $ unwords $ map pretty ss1
       pure $ [s' <> s | s <- ss0, s' <- ss1]
 
 
