@@ -1,5 +1,6 @@
 module Solcore.Frontend.TypeInference.TcSat where 
 
+import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Trans
 import Data.List
@@ -15,24 +16,55 @@ import Solcore.Frontend.TypeInference.TcUnify
 
 import Solcore.Pipeline.Options
 
--- function sat 
+sat :: Int -> [Pred] -> TcM [Subst]
+sat 0 p = throwError $ unwords [ "Could not deduce:"
+                               , pretty p 
+                               , "because the solver exceeded the max number of iterations!"
+                               ]
+sat n [] = pure [mempty] -- rule SEmpty
+sat n [p] = satOne n p -- rule SInst 
+sat n (p : ps) 
+  = do      --rule SConj
+      ss0 <- satOne n p 
+      ss1 <- mapM (sat (n - 1)) [apply s ps | s <- ss0]
+      pure $ [s' <> s | s <- ss0, s1 <- ss1, s' <- s1]
 
-satI :: Int -> Pred -> TcM [(Subst, [Pred])]
-satI n p@(InCls c t ts)  
-  | n <= 0 = tcmError $ unwords ["Cannot satisfy constraint:"
-                                , pretty p
-                                , "since we reached the maximum number of recursive calls"]
-  | otherwise = do 
+-- rule SInst 
+
+satOne :: Int -> Pred -> TcM [Subst]
+satOne n p = do -- rule Inst
+  delta <- sats p
+  when (null delta) $ 
+    throwError $ unwords ["There is no instance to satisfy", pretty p]
+  ss <- mapM (\ (s,q) -> sat (n - 1) q) delta
+  foldM (step n p) [mempty] delta 
+ 
+step :: Int -> Pred -> [Subst] -> (Subst, [Pred]) -> TcM [Subst]
+step 0 p _ _ = throwError $ unwords [ "Could not deduce:"
+                                    , pretty p 
+                                    , "because the solver exceeded the max number of iterations!"
+                                    ] 
+step n p sacc (s,ps) 
+  = do 
+      ss <- liftM (map (s <>)) (sat (n - 1) ps)
+      return [s' <> s1 | s' <- ss, s1 <- sacc]
+
+-- function sats 
+
+sats :: Pred -> TcM [(Subst, [Pred])]
+sats p@(InCls c t ts) 
+  = do 
       insts <- askInstEnv c 
-      catMaybes <$> mapM (\ i -> defaultM (step t i)) insts 
-satI _ p = tcmError $ "Invalid constraint:" ++ pretty p
+      catMaybes <$> mapM (gen t) insts 
+sats p = tcmError $ "Invalid constraint:" ++ pretty p
 
-step :: Ty -> Inst -> TcM (Subst, [Pred])
-step t k@(ps :=> h@(InCls _ t' _)) 
-  = do {
-      s <- mgu t t' ; 
-      pure (s, apply s ps) 
-    }
+gen :: Ty -> Inst -> TcM (Maybe (Subst, [Pred]))
+gen t k@(ps :=> h@(InCls _ t' _)) 
+  = do 
+      r <- defaultM (mgu t t')  
+      case r of 
+        Just s -> pure $ Just (s, apply s ps) 
+        Nothing -> pure Nothing
 
 defaultM :: TcM a -> TcM (Maybe a)
 defaultM m 
@@ -40,33 +72,6 @@ defaultM m
       x <- m ;
       pure (Just x)
     } `catchError` (\ _ -> pure Nothing)
-
--- constraint set satisfiability
-
-satPred :: Int -> Pred -> TcM [Subst]
-satPred n p = do -- rule Inst
-  liftIO $ putStrLn $ "constraint:" ++ pretty p
-  delta <- satI n p 
-  let f (s, ps) = pretty s ++ " - " ++ pretty ps 
-  -- liftIO $ putStrLn $ unwords $ map f delta
-  ss <- concat <$> mapM (\ (s,q) -> sat (n - 1) q) delta
-  pure $ [s' <> s | (s, _) <- delta, s' <- ss]
- 
-
-sat :: Int -> [Pred] -> TcM [Subst]
-sat 0 p = throwError $ unwords [ "Could not deduce:"
-                               , pretty p 
-                               , "using the current step limit"
-                               ]
-sat n [] = pure [mempty] -- rule SEmpty 
-sat n (p : ps) 
-  = do      --rule SConj
-      ss0 <- satPred n p
-      liftIO $ putStrLn $ unwords $ map pretty (nub ss0) 
-      ss1 <- (nub . concat) <$> mapM (\ s0 -> sat (n - 1) (apply s0 ps)) ss0
-      liftIO $ putStrLn $ unwords $ map pretty ss1
-      pure $ [s' <> s | s <- ss0, s' <- ss1]
-
 
 -- closure 
 
