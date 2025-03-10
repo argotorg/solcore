@@ -18,6 +18,19 @@ data Option
     , optDebugCore :: !Bool
     } deriving (Eq, Show)
 
+emptyOption :: FilePath -> Option 
+emptyOption path = Option path 
+                          False 
+                          False 
+                          False 
+                          False 
+                          False 
+                          False 
+                          False 
+                          False 
+                          False 
+
+
 options :: Parser Option
 options
   = Option <$> strOption (

@@ -1,0 +1,6 @@
+instance Foo(word) : A(word);
+instance Foo(bool) : A(word);
+instance word : C;
+instance (a : C) => Foo(a) : D;
+
+sat : {b : A(a), b : D};

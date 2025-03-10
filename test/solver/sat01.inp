@@ -1,0 +1,4 @@
+instance word : Eq ;
+instance (a : Eq) => Foo(a) : Eq ;
+
+sat : {Foo(word) : Eq};
