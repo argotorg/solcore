@@ -35,7 +35,7 @@ satOne :: Int -> Pred -> TcM [Subst]
 satOne n p = do -- rule Inst
   delta <- sats p
   when (null delta) $ 
-    throwError $ unwords ["There is no instance to satisfy", pretty p]
+    throwError $ unwords ["There is no instance to satisfy:", pretty p]
   ss <- mapM (\ (s,q) -> sat (n - 1) q) delta
   foldM (step n p) [mempty] delta 
  
