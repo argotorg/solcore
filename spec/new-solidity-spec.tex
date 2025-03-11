@@ -138,9 +138,9 @@ class self : Invokable (argsTy, retTy) {
 \end{lstlisting}
 which call a function using the arguments $args : argsTy$. The compiler 
 uses the $\invokable$ class to deal with high-order functions. The 
-strategy is to generate a type for each defined function and a 
-instance of the $\invokable$ class for each function using as main 
-type argument a generated \emph{unique type} for the function. 
+strategy is to generate for each defined function a unique type and an
+instance of the $\invokable$ class for it 
+(using the generated \emph{unique type} as the main type argument).
 Unique types have just one constructor with no arguments. Considering 
 functions \texttt{id}, \texttt{compose} and \texttt{main}; the compiler 
 will generate the following unique type definitions:
