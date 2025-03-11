@@ -115,6 +115,11 @@ contract Ex {
   forall a b c . function compose(f : b -> c, g : a -> b) : a -> c {
     return lam(x){ return f(g(x));};
   }
+  function main1 () -> word {
+    let f : a -> a = id();
+    return f(42);
+  }
+  
   function main () -> word {
     let f : a -> a = compose(id,id);
     return f(42);
