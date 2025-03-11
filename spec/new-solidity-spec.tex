@@ -141,9 +141,9 @@ uses the $\invokable$ class to deal with high-order functions. The
 strategy is to generate for each defined function a unique type and an
 instance of the $\invokable$ class for it 
 (using the generated \emph{unique type} as the main type argument).
-Unique types have just one constructor with no arguments. Considering 
-functions \texttt{id}, \texttt{compose} and \texttt{main}; the compiler 
-will generate the following unique type definitions:
+Unique types always have two type arguments representing the argument and result types of the original function, and have just one constructor with no arguments. 
+For the functions \texttt{id}, \texttt{compose} and \texttt{main},
+the compiler will generate the following unique type definitions:
 
 \begin{lstlisting}[language=solidity]
 data t_id0(args,ret) = t_id0 
