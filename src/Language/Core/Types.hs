@@ -14,3 +14,9 @@ data Type
 stripTypeName :: Type -> Type
 stripTypeName (TNamed _ t) = stripTypeName t
 stripTypeName t = t
+
+zeroSizedType :: Type -> Bool
+zeroSizedType TUnit         = True
+zeroSizedType (TNamed _ t)  = zeroSizedType t
+zeroSizedType (TPair t1 t2) = zeroSizedType t1 && zeroSizedType t2
+zeroSizedType _             = False
