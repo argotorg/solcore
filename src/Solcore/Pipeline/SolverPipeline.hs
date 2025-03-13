@@ -9,7 +9,8 @@ import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.TypeInference.TcEnv 
-import Solcore.Frontend.TypeInference.TcMonad
+import Solcore.Frontend.TypeInference.TcMonad 
+import Solcore.Frontend.TypeInference.TcReduce
 import Solcore.Frontend.TypeInference.TcSat 
 import Solcore.Pipeline.Options 
 
@@ -24,8 +25,18 @@ runForFile file
         Left err -> do 
           putStrLn err 
           pure False 
-        Right (ps, p) -> 
-          runSat (correct ps) (correct p)
+        Right state -> do  
+          runSolver state
+
+runSolver :: SolverState -> IO Bool 
+runSolver (SolverState (Theta cls insts) p)
+  = solveProblem cls insts p 
+
+solveProblem :: [Qual Pred] -> [Qual Pred] -> SolverProblem -> IO Bool 
+solveProblem cls insts (Sat ps) 
+  = runSat (correct cls) (correct insts) (correct ps) 
+solveProblem cls insts (Reduce ps qs) 
+  = runReduce (correct cls) (correct insts) (correct ps) (correct qs)
 
 -- simple hack: type variables on tests 
 -- should be strings of length 1
@@ -54,34 +65,52 @@ instance Correct (Qual Pred) where
 isVar :: Name -> Bool 
 isVar n = length (pretty n) == 1
 
-runSat :: [Qual Pred] -> [Pred] -> IO Bool 
-runSat insts ps 
+runSat :: [Qual Pred] -> [Qual Pred] -> [Pred] -> IO Bool 
+runSat cls insts ps 
   = do 
       let 
-        senv = buildEnv insts 
-        maxIter = 20
-      res <- runTcM (sat maxIter ps) senv
+        senv = buildEnv cls insts 
+      res <- runTcM (sat ps) senv
       case res of 
         Left err -> do 
           putStrLn err
           pure False 
-        Right ([s], _) -> do  
-          -- putStrLn $ unlines [ "Instances:"
-          --                    , render $ commaSep $ map ppr insts 
-          --                    , "Constraints:"
-          --                    , unwords $ map pretty ps
-          --                    , "are satisfiable!"
-          --                    , "Substitution:"
-          --                    , pretty s 
-          --                    ]
-          pure True 
+        Right ([s], _) -> do
+         putStrLn "Constraint is satisfiable!"
+         pure True 
         Right (ss, _) -> do 
           when (null ss) (putStrLn $ "Could not satisfy " ++ unwords (map pretty ps))
           unless (null ss) (putStrLn $ "Not unique solution for " ++ unwords (map pretty ps))
           pure False
-          
-buildEnv :: [Qual Pred] -> TcEnv 
-buildEnv 
+
+runReduce :: [Qual Pred] -> [Qual Pred] -> [Pred] -> [Pred] -> IO Bool 
+runReduce cls insts ps qs 
+  = do 
+      let 
+        senv = buildEnv cls insts 
+      res <- runTcM (reduce ps) senv 
+      case res of 
+        Left err -> do 
+          putStrLn err
+          pure False 
+        Right (ps', _) -> do
+          putStrLn $ "Reduced constraints:" ++ pretty ps'
+          putStrLn $ "Desired:" ++ pretty qs
+          pure (ps' == qs)
+
+buildEnv :: [Qual Pred] -> [Qual Pred] -> TcEnv 
+buildEnv cls insts = insertClasses cls (insertInsts insts)
+
+insertClasses :: [Qual Pred] -> TcEnv -> TcEnv 
+insertClasses cls env = foldr step env cls 
+  where 
+    step c@(ps :=> h@(InCls n t ts)) senv 
+      = let 
+          info = ClassInfo (length (t : ts)) [] h ps
+        in senv {classTable = Map.insert n info (classTable senv) }
+
+insertInsts :: [Qual Pred] -> TcEnv 
+insertInsts
   = foldr step (initTcEnv (emptyOption "") [])
     where 
       step i@(ps :=> h@(InCls c _ _)) senv 

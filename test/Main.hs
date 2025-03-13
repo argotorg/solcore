@@ -16,4 +16,5 @@ tests
                , spec
                , std 
                , satTests
+               , reduceTests 
                ]

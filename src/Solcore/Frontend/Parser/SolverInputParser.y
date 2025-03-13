@@ -1,6 +1,7 @@
 {
 module Solcore.Frontend.Parser.SolverInputParser where
 
+import Data.Either
 import Data.List.NonEmpty (NonEmpty, cons, singleton)
 
 import Solcore.Frontend.Lexer.SolverInputLexer hiding (lexer)
@@ -21,10 +22,12 @@ import Language.Yul
       identifier {Token _ (TIdent $$)}
       '.'        {Token _ TDot}
       'sat'      {Token _ TSat}
+      'reduce'   {Token _ TReduce}
       'class'    {Token _ TClass}
       'instance' {Token _ TInstance}
       ';'        {Token _ TSemi}
       ':'        {Token _ TColon}
+      '~'        {Token _ TEquiv}
       ','        {Token _ TComma}
       '=>'       {Token _ TDArrow}
       '('        {Token _ TLParen}
@@ -37,21 +40,22 @@ import Language.Yul
 %%
 -- input definition 
 
-Input :: { ([Qual Pred], [Pred]) }
-Input :  TopDeclList ToSolve { ($1, $2) } 
+Input :: { SolverState }
+Input :  TopDeclList ToSolve { SolverState (uncurry Theta (partitionEithers $1)) $2 } 
 
-TopDeclList :: { [Qual Pred] }
+TopDeclList :: { [Either (Qual Pred) (Qual Pred)] }
 TopDeclList : TopDecl TopDeclList                  { $1 : $2 }
              | {- empty -}                         { [] }
 
-ToSolve :: { [Pred] }
-ToSolve : 'sat' ':' '{' ConstraintList '}' ';'     {$4}
+ToSolve :: { SolverProblem }
+ToSolve : 'sat' ':' '{' ConstraintList '}' ';'     {Sat $4}
+        | 'reduce' ':' '{' ConstraintList '}' '~' '{' ConstraintList '}' ';'  {Reduce $4 $8}
 
 -- top level declarations 
 
-TopDecl :: { Qual Pred }
-TopDecl : ClassDef                                 {$1}
-        | InstDef                                  {$1}
+TopDecl :: { Either (Qual Pred) (Qual Pred) }
+TopDecl : ClassDef                                 {Left $1}
+        | InstDef                                  {Right $1}
 
 -- class definitions 
 
@@ -116,6 +120,24 @@ QualName :: { (Name, String) }
 QualName : QualName '.' identifier              { (QualName (fst $1) (snd $1), $3)}
 
 {
+data Theta 
+  = Theta {
+      classes :: [Qual Pred]
+    , insts :: [Qual Pred]
+    } deriving Show
+
+data SolverState 
+  = SolverState {
+      theta :: Theta
+    , problem :: SolverProblem 
+    } deriving Show 
+
+data SolverProblem 
+  = Sat [Pred] 
+  | Reduce [Pred] [Pred]
+  | Improvement Scheme 
+  deriving Show 
+
 pairTy :: Ty -> Ty -> Ty 
 pairTy t1 t2 = TyCon "pair" [t1,t2]
 
@@ -130,7 +152,7 @@ parseError (Token (line, col) lexeme)
 lexer :: (Token -> Alex a) -> Alex a
 lexer = (=<< alexMonadScan)
 
-runParser :: String -> Either String ([Qual Pred], [Pred])
+runParser :: String -> Either String SolverState 
 runParser content = do
   runAlex content parser
 }
