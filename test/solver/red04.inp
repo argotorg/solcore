@@ -1,0 +1,4 @@
+class t : TypeRep(a);
+instance t:TypeRep(word);
+
+reduce : {a : TypeRep(b), c : TypeRep(word)} ~ {a : TypeRep(word)};
