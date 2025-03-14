@@ -18,10 +18,12 @@ import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options
 
 reduce :: [Pred] -> TcM [Pred]
-reduce ps 
+reduce ps0
   = do 
       n <- askMaxRecursionDepth
-      ps' <- reduceI n ps 
+      improve ps0
+      s <- getSubst
+      ps' <- reduceI n (apply s ps0) 
       simplify ps'
 
 reduceI :: Int -> [Pred] -> TcM [Pred]
@@ -42,6 +44,8 @@ reduceI n ps0
         unless (null preds) $ info ["< reduced context ", pretty (nub ps2)]
         pure (nub ps2)
 
+-- simplify by entailment 
+
 simplify :: [Pred] -> TcM [Pred]
 simplify = loop []
   where 
@@ -50,6 +54,25 @@ simplify = loop []
       c <- entails (rs ++ ps) p 
       if c then loop rs ps 
         else loop (p : rs) ps
+
+-- improvement
+
+improve :: [Pred] -> TcM ()
+improve [] = pure ()
+improve xs@((InCls n t ts0) : ps) 
+  = do 
+      let (tss1, ps2) = check n t ps
+      ss <- mapM (unifyTypes ts0) tss1
+      mapM_ extSubst ss 
+      improve ps 
+improve (_ : ps) = improve ps 
+
+check :: Name -> Ty -> [Pred] -> ([[Ty]], [Pred])
+check n t ps 
+  = let 
+      cs = [c | c@(InCls n' t' _) <- ps, n == n', t == t']
+      cs' = ps \\ cs 
+    in ([ts' | (InCls _ _ ts') <- cs], cs')
 
 -- reducing by using instance information
 

@@ -34,6 +34,7 @@ reduceTests = testGroup "Tests for reduce"
                         , testFile solverDir "red01.inp"
                         , testFile solverDir "red02.inp"
                         , testFile solverDir "red03.inp"
+                        , testFile solverDir "red04.inp"
                         ]
             where 
               solverDir = "./test/solver"
