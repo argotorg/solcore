@@ -31,7 +31,7 @@ runTcM m env = runExceptT (runStateT m env)
 
 freshVar :: TcM Tyvar 
 freshVar 
-  = (flip TVar False) <$> freshName
+  = TVar <$> freshName
 
 freshName :: TcM Name 
 freshName 
@@ -110,21 +110,7 @@ unify t t'
       s <- getSubst 
       s' <- tcmMgu (apply s t) (apply s t')
       s1 <- extSubst s'
-      checkSubst s1 
       pure s1
-    
--- check if a substitution is valid 
--- by checking if rigid variables are 
--- mapped into type constructors. 
-
-checkSubst :: Subst -> TcM () 
-checkSubst (Subst ss) 
-  = mapM_ go ss 
-    where 
-      go (v1, t@(TyCon _ _))
-        | rigid v1 = rigidVarError v1 t
-        | otherwise = pure ()
-      go _ = pure ()
 
 matchTy :: Ty -> Ty -> TcM Subst 
 matchTy t t' 

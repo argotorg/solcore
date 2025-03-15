@@ -258,7 +258,7 @@ tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds 
   = do
       funs <- mapM scanFun binds
-      (funs', schs, pss, ts) <- unzip4 <$> mapM (tcFunDef []) funs 
+      (funs', schs, pss, ts) <- unzip4 <$> mapM tcFunDef funs 
       ts' <- withCurrentSubst ts  
       schs <- mapM generalize (zip pss ts')
       let names = map (sigName . funSignature) funs 
@@ -284,12 +284,12 @@ scanFun :: FunDef Name -> TcM (FunDef Name)
 scanFun (FunDef sig bd)
   = flip FunDef bd <$> fillSignature sig 
     where 
-      f (Typed n t) = pure $ Typed n (skolemize t)
+      f (Typed n t) = pure $ Typed n t
       f (Untyped n) = Typed n <$> freshTyVar
       fillSignature (Signature vs ctx n ps t)
         = do 
             ps' <- mapM f ps 
-            pure (Signature vs ctx n ps' (skolemize <$> t))
+            pure (Signature vs ctx n ps' t)
 
 -- type checking contract constructors
 

@@ -476,4 +476,4 @@ unwrapId :: Id -> CoreName
 unwrapId = show . idName
 
 unwrapTyvar :: Tyvar -> CoreName
-unwrapTyvar (TVar n _) = show n
+unwrapTyvar (TVar n) = show n

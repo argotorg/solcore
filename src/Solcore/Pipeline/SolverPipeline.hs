@@ -49,7 +49,7 @@ instance Correct a => Correct [a] where
 
 instance Correct Ty where 
   correct t@(TyCon n ts) 
-    | isVar n = TyVar (TVar n False)
+    | isVar n = TyVar (TVar n)
     | otherwise = TyCon n (correct ts)  
 
 instance Correct Pred where 

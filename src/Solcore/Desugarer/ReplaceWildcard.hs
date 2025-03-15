@@ -121,7 +121,7 @@ freshName
 freshId :: CompilerM Id 
 freshId = Id <$> freshName <*> var 
   where 
-    var = (TyVar . flip TVar False) <$> freshName
+    var = (TyVar . TVar) <$> freshName
 
 freshExpVar :: CompilerM (Exp Id) 
 freshExpVar 

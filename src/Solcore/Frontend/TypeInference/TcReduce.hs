@@ -17,6 +17,15 @@ import Solcore.Frontend.TypeInference.TcUnify
 
 import Solcore.Pipeline.Options
 
+
+splitContext :: [Pred] -> [Tyvar] -> TcM ([Pred], [Pred])
+splitContext ps fs 
+  = do 
+      ps' <- reduce ps
+      pure $ partition (all (`elem` fs) . fv) ps'
+
+-- main context reduction function 
+
 reduce :: [Pred] -> TcM [Pred]
 reduce ps0
   = do 
@@ -55,20 +64,21 @@ simplify = loop []
       if c then loop rs ps 
         else loop (p : rs) ps
 
--- improvement
+-- improvement: force type specialization by 
+-- main class parameter.
 
 improve :: [Pred] -> TcM ()
 improve [] = pure ()
 improve xs@((InCls n t ts0) : ps) 
   = do 
-      let (tss1, ps2) = check n t ps
+      let (tss1, ps2) = toImprove n t ps
       ss <- mapM (unifyTypes ts0) tss1
       mapM_ extSubst ss 
       improve ps 
 improve (_ : ps) = improve ps 
 
-check :: Name -> Ty -> [Pred] -> ([[Ty]], [Pred])
-check n t ps 
+toImprove :: Name -> Ty -> [Pred] -> ([[Ty]], [Pred])
+toImprove n t ps 
   = let 
       cs = [c | c@(InCls n' t' _) <- ps, n == n', t == t']
       cs' = ps \\ cs 
@@ -97,6 +107,10 @@ reduceByInst' n p@(InCls c _ _)
             info ["Selected instance:", pretty instd]
             extSubst subst' 
             reduceByInst (n - 1) preds
+reduceByInst' n (t1 :~: t2) 
+  = do 
+      unify t1 t2
+      pure []
 
 -- reducing by super class info 
 

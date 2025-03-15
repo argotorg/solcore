@@ -55,6 +55,10 @@ instance HasType a => HasType (Maybe a) where
   apply s = fmap (apply s)
   fv = maybe [] fv
 
+instance HasType Name where 
+  apply _ n = n 
+  fv _ = []
+
 instance HasType Ty where
   apply (Subst s) t@(TyVar v)
     = maybe t id (lookup v s)
