@@ -390,7 +390,9 @@ tcSignature (Signature vs ps n args rt)
 
 tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
 tcFunDef d@(FunDef sig bd)
-  = withLocalEnv do 
+  = withLocalEnv do
+     -- r <- lookupUniqueTy (sigName sig)
+     -- unless (isNothing r) (duplicatedFunDef (sigName sig))
      ((n,sch), pschs, ts) <- tcSignature sig 
      let lctx = (n,sch) : pschs 
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
@@ -401,8 +403,8 @@ tcFunDef d@(FunDef sig bd)
      vs <- getEnvFreeVars 
      (ds, rs) <- splitContext ps3 (vs `union` fv pschs)
      sch' <- generalize (rs, ty)
-     liftIO $ putStrLn $ unwords [">>> Annotated type for ", pretty (sigName sig), " is ", pretty sch]
-     liftIO $ putStrLn $ unwords [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
+     info [">>> Annotated type for ", pretty (sigName sig), " is ", pretty sch]
+     info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
      s' <- getSubst
      let sig2 = elabSignature sig sch'
      pure (apply s' $ FunDef sig2 bd', sch', ds, ty)
@@ -474,9 +476,9 @@ correctName (Name s)
 extSignature :: Signature Name -> TcM ()
 extSignature sig@(Signature _ preds n ps t)
   = do
-      te <- Map.keys <$> gets uniqueTypes 
+      te <- gets directCalls 
       -- checking if the function is previously defined
-      when (elem n te) (duplicatedFunDef n) `wrapError` sig
+      when (n `elem` te) (duplicatedFunDef n) `wrapError` sig
       addFunctionName n 
 
 -- typing instances

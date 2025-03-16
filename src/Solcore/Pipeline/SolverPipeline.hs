@@ -96,6 +96,7 @@ runReduce cls insts ps qs
         Right (ps', _) -> do
           putStrLn $ "Reduced constraints:" ++ pretty ps'
           putStrLn $ "Desired:" ++ pretty qs
+          putStrLn $ "Final result:" ++ show (ps' == qs)
           pure (ps' == qs)
 
 buildEnv :: [Qual Pred] -> [Qual Pred] -> TcEnv 
@@ -111,7 +112,7 @@ insertClasses cls env = foldr step env cls
 
 insertInsts :: [Qual Pred] -> TcEnv 
 insertInsts
-  = foldr step (initTcEnv (emptyOption "") [])
+  = foldr step (initTcEnv (emptyOption ""))
     where 
       step i@(ps :=> h@(InCls c _ _)) senv 
         = senv{ instEnv = Map.insertWith (++) c [i] (instEnv senv) }

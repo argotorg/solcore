@@ -30,9 +30,7 @@ reduce :: [Pred] -> TcM [Pred]
 reduce ps0
   = do 
       n <- askMaxRecursionDepth
-      improve ps0
-      s <- getSubst
-      ps' <- reduceI n (apply s ps0) 
+      ps' <- reduceI n ps0
       simplify ps'
 
 reduceI :: Int -> [Pred] -> TcM [Pred]
@@ -45,13 +43,10 @@ reduceI n ps0
     = do
         ps <- withCurrentSubst ps0
         preds <- concat <$> mapM reduceBySuper ps
-        liftIO $ putStrLn $ "reduced by super:" ++ (pretty preds)
         unless (null preds) $ info ["> reduce context ", pretty preds]
-        ps1 <- reduceByInst n preds 
-        liftIO $ putStrLn $ "reduced by isntances:" ++ pretty ps1
-        ps2 <- withCurrentSubst ps1
-        unless (null preds) $ info ["< reduced context ", pretty (nub ps2)]
-        pure (nub ps2)
+        ps1 <- reduceByInst n preds
+        unless (null ps1) $ info ["< reduced context ", pretty (nub ps1)]
+        pure (nub ps1)
 
 -- simplify by entailment 
 
@@ -63,26 +58,6 @@ simplify = loop []
       c <- entails (rs ++ ps) p 
       if c then loop rs ps 
         else loop (p : rs) ps
-
--- improvement: force type specialization by 
--- main class parameter.
-
-improve :: [Pred] -> TcM ()
-improve [] = pure ()
-improve xs@((InCls n t ts0) : ps) 
-  = do 
-      let (tss1, ps2) = toImprove n t ps
-      ss <- mapM (unifyTypes ts0) tss1
-      mapM_ extSubst ss 
-      improve ps 
-improve (_ : ps) = improve ps 
-
-toImprove :: Name -> Ty -> [Pred] -> ([[Ty]], [Pred])
-toImprove n t ps 
-  = let 
-      cs = [c | c@(InCls n' t' _) <- ps, n == n', t == t']
-      cs' = ps \\ cs 
-    in ([ts' | (InCls _ _ ts') <- cs], cs')
 
 -- reducing by using instance information
 
@@ -100,17 +75,36 @@ reduceByInst' n p@(InCls c _ _)
   | otherwise 
     = do 
         ce <- getInstEnv
-        insts <- askInstEnv c 
-        case byInstM ce p of
-          Nothing -> pure [p]
+        insts <- askInstEnv c
+        case selectInst ce p of
+          Nothing -> do 
+            pure [p]
           Just (preds, subst', instd) -> do 
-            info ["Selected instance:", pretty instd]
             extSubst subst' 
-            reduceByInst (n - 1) preds
+            ps' <- reduceByInst (n - 1) preds
+            pure ps'
 reduceByInst' n (t1 :~: t2) 
   = do 
       unify t1 t2
       pure []
+
+selectInst :: InstTable -> Pred -> Maybe ([Pred], Subst, Inst)
+selectInst ce p@(InCls i t as) 
+  = msum [tryInst it | it <- insts ce i] 
+    where
+      insts m n = maybe [] id (Map.lookup n m)
+      tryInst :: Qual Pred -> Maybe ([Pred], Subst, Inst)
+      tryInst c@(ps :=> (InCls _ t' ts)) =
+          case match t' t of
+            Left _ -> Nothing
+            Right u -> case unifyTypes as ts of 
+                          Left _ -> Nothing 
+                          Right u' -> 
+                            let
+                                u1 = u' <> u
+                            in Just (map (apply u1) ps, u1, c)
+selectInst _ _ = Nothing
+
 
 -- reducing by super class info 
 
