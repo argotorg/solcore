@@ -15,6 +15,7 @@ import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Erase
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.InvokeGen
+import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcMonad hiding (entails)
 import Solcore.Frontend.TypeInference.TcReduce 
@@ -388,7 +389,7 @@ tcSignature (Signature vs ps n args rt)
       pure ((n, sch), pschs, ts)
 
 
-tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
+tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef d@(FunDef sig bd)
   = withLocalEnv do
      -- r <- lookupUniqueTy (sigName sig)
@@ -407,7 +408,17 @@ tcFunDef d@(FunDef sig bd)
      info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
      s' <- getSubst
      let sig2 = elabSignature sig sch'
-     pure (apply s' $ FunDef sig2 bd', sch', ds, ty)
+         fd = apply s' $ FunDef sig2 bd' 
+         vs = nub $ listify isTyVar fd
+         s1 = zipWith (\ v n -> (v, TVar n)) vs namePool 
+         fd' = everywhere (mkT (renVar s1)) fd 
+     pure (fd', sch', everywhere (mkT (renVar s1)) ds)
+
+renVar :: [(Tyvar, Tyvar)]-> Tyvar -> Tyvar 
+renVar s t@(TVar _) = maybe t id (lookup t s) 
+
+isTyVar :: Tyvar -> Bool
+isTyVar (TVar _) = True 
 
 -- tcFunDef :: [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
 -- tcFunDef rs d@(FunDef sig bd)
@@ -488,8 +499,9 @@ tcInstance idecl@(Instance ctx n ts t funs)
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs) 
       funs' <- buildSignatures n ts t funs `wrapError` idecl
-      (funs1, schss, pss', ts') <- unzip4 <$> mapM tcFunDef funs' `wrapError` idecl
-      withCurrentSubst (Instance ctx n ts t funs1)
+      (funs1, schss, pss') <- unzip3 <$> mapM tcFunDef funs' `wrapError` idecl 
+      let instd = Instance ctx n ts t funs1
+      pure instd
 
 checkCompleteInstDef :: Name -> [Name] -> TcM ()
 checkCompleteInstDef n ns 

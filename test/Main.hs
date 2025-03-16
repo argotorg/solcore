@@ -11,10 +11,10 @@ tests :: TestTree
 tests 
   = testGroup "Tests"
                [
-               --   cases
+                 cases
                -- , pragmas
                -- , spec
                -- , std 
-                 satTests
-               , reduceTests 
+               -- ,  satTests
+               -- , reduceTests 
                ]
