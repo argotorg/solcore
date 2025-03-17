@@ -500,7 +500,13 @@ tcInstance idecl@(Instance ctx n ts t funs)
       checkCompleteInstDef n (map (sigName . funSignature) funs) 
       funs' <- buildSignatures n ts t funs `wrapError` idecl
       (funs1, schss, pss') <- unzip3 <$> mapM tcFunDef funs' `wrapError` idecl 
-      let instd = Instance ctx n ts t funs1
+      let
+        vs = fv ctx `union` fv (t : ts)
+        s = zipWith (\ v n -> (v, TVar n)) vs namePool
+        ctx' = everywhere (mkT (renVar s)) ctx 
+        ts' = everywhere (mkT (renVar s)) ts 
+        t' = everywhere (mkT (renVar s)) t
+        instd = Instance ctx' n ts' t' funs1
       pure instd
 
 checkCompleteInstDef :: Name -> [Name] -> TcM ()
@@ -522,21 +528,22 @@ buildSignatures n ts t funs
       let qname m = QualName n (pretty m)
       schs <- mapM (askEnv . qname . sigName . funSignature) funs
       let  
-          app (Forall vs (_ :=> t1)) = apply sm t1
+          app sch' = apply sm sch'
           tinsts = map app schs
       zipWithM (buildSignature n) tinsts funs 
 
-buildSignature :: Name -> Ty -> FunDef Name -> TcM (FunDef Name)
-buildSignature n t (FunDef sig bd)
+buildSignature :: Name -> Scheme -> FunDef Name -> TcM (FunDef Name)
+buildSignature n (Forall _ (ps :=> t)) (FunDef sig bd)
   = do 
       let (args, ret) = splitTy t 
-          sig' = typeSignature n args ret sig
+          sig' = typeSignature n args ret ps sig
       pure (FunDef sig' bd)
 
-typeSignature :: Name -> [Ty] -> Ty -> Signature Name -> Signature Name 
-typeSignature nm args ret sig 
+typeSignature :: Name -> [Ty] -> Ty -> [Pred] -> Signature Name -> Signature Name 
+typeSignature nm args ret ps sig 
   = sig { 
           sigName = QualName nm (pretty $ sigName sig)
+        , sigContext = ps ++ sigContext sig  
         , sigParams = zipWith paramType args (sigParams sig)
         , sigReturn = Just ret
         }
