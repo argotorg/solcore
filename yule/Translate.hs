@@ -58,8 +58,8 @@ genExpr (ECall name args) = do
     funInfo <- lookupFun name
     (resultCode, resultLoc) <- coreAlloc (fun_result funInfo)
     let callExpr = YCall (yulFunName name) yulArgs
-    let callCode = case resultLoc of  -- handle void functions
-            LocUnit -> [YExp callExpr]
+    let callCode = case sizeOf(resultLoc) of  -- handle void functions
+            0 -> [YExp callExpr]
             _ -> [YAssign (flattenLhs resultLoc) callExpr]
     pure (argsCode++resultCode++callCode, resultLoc)
 genExpr e = error ("genExpr: not implemented for "++show e)
@@ -95,7 +95,7 @@ genStmtWithComment s = do
 
 genStmt :: Stmt -> TM [YulStmt]
 genStmt (SAssembly stmts) = do
-    debug ["assembly:", render$ ppr (Yul stmts)]
+    -- debug ["assembly:", render$ ppr (Yul stmts)]
     pure stmts
 
 genStmt (SAlloc name typ) = allocVar name typ
@@ -128,15 +128,19 @@ genStmt (SMatch sty e alts) = do
             pure [YSwitch (loadLoc tag) yulAlts yulDefault]
 
 genStmt (SFunction name args ret stmts) = withLocalEnv do
-    debug ["> SFunction: ", name, " ", show args, " -> ", show ret]
+    -- debug ["> SFunction: ", name, " ", show args, " -> ", show ret]
     yulArgs <- placeArgs args
     yreturns <- case stripTypeName ret of -- FIXME: temp hack for main
         TUnit | name == "main" -> YReturns <$> place "_result" TWord
               | otherwise-> pure YNoReturn
         TWord -> YReturns <$> placeResult
-        _  -> YReturns <$> place "_result" ret
+        _  -> do
+          res <- place "_result" ret
+          pure $ if zeroSizedType ret
+            then YNoReturn
+            else YReturns res
     yulBody <- genStmts stmts
-    debug ["< SFunction: ", name, " ", show yulArgs, " -> ", show yreturns]
+    -- debug ["< SFunction: ", name, " ", show yulArgs, " -> ", show yreturns]
     return [YFun (yulFunName name) yulArgs yreturns yulBody]
     where
         placeArgs :: [Arg] -> TM [Name]
@@ -183,7 +187,7 @@ genBinAlts payload [Alt lcon lname lstmt, Alt rcon rname rstmt] = do
         withName name loc stmt = withLocalEnv do
             insertVar name loc
             genStmt stmt
-genBinAlts _ alts = error("genAlts: invalid number of alternatives:\n" 
+genBinAlts _ alts = error("genAlts: invalid number of alternatives:\n"
                           ++ unlines(map (render . ppr) alts) )
 
 genNAlts :: Location -> [Alt] -> TM (YulCases, YulDefault)
@@ -193,7 +197,7 @@ genNAlts payload alts = do
     where
       gather = foldr combine ([], Nothing)
       combine (Left (tag, stmts)) (cases, def) = ((tag, stmts):cases, def)
-      combine (Right stmts) (cases, def) = (cases, Just stmts)      
+      combine (Right stmts) (cases, def) = (cases, Just stmts)
 
 
 genAlt :: Location -> Alt -> TM (Either YulCase YulBlock)
@@ -263,10 +267,10 @@ allocWord = do
 
 coreAssign :: Expr -> Expr -> TM [YulStmt]
 coreAssign lhs rhs = do
-    (stmts1, locLhs) <- genExpr lhs
-    (stmts2, locRhs) <- genExpr rhs
-    let stmts3 = copyLocs locLhs locRhs
-    pure (stmts1 ++ stmts2 ++ stmts3)
+    (stmtsLhs, locLhs) <- genExpr lhs
+    (stmtsRhs, locRhs) <- genExpr rhs
+    if sizeOf locLhs == 0 then pure stmtsRhs
+    else pure (stmtsLhs ++ stmtsRhs ++ copyLocs locLhs locRhs)
 
 loadLoc :: Location -> YulExp
 loadLoc (LocWord n) = YLit (YulNumber (fromIntegral n))
