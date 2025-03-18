@@ -357,6 +357,7 @@ tcArg a@(Typed n ty)
 tcSignature :: Signature Name -> TcM ( (Name, Scheme)
                                      , [(Name, Scheme)]
                                      , [Ty]
+                                     , [Tyvar]
                                      ) 
 tcSignature (Signature vs ps n args rt)
   = do 
@@ -370,15 +371,20 @@ tcSignature (Signature vs ps n args rt)
       let
         qt = ps0 :=> (funtype ts t')
         sch = Forall vs0 (ps0 :=> (funtype ts t'))
-      pure ((n, sch), pschs, ts)
+      pure ((n, sch), pschs, ts, vs)
 
+-- boolean flag indicates if the assumption for the 
+-- function should be included in the context. It 
+-- is necessary to not include the type of instance 
+-- functions which should have the type of its underlying 
+-- type class definition.
 
-tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
-tcFunDef d@(FunDef sig bd)
+tcFunDef :: Bool -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
+tcFunDef incl d@(FunDef sig bd)
   = withLocalEnv do
-     info [">>> Starting the typing of", pretty sig]
-     ((n,sch), pschs, ts) <- tcSignature sig 
-     let lctx = (n,sch) : pschs 
+     info [">>> Starting the typing of:", pretty sig]
+     ((n,sch), pschs, ts, vs0) <- tcSignature sig 
+     let lctx = if incl then (n,sch) : pschs else pschs 
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
      (ps2 :=> ann) <- freshInst sch 
      let ty = funtype ts t'
@@ -402,10 +408,6 @@ renVar s t@(TVar _) = maybe t id (lookup t s)
 
 isTyVar :: Tyvar -> Bool
 isTyVar (TVar _) = True 
-
-isPrimitivePred :: Pred -> Bool
-isPrimitivePred (InCls n _ _) 
-  = n `elem` [Name "invokable"]
 
 -- update types in signature 
 
@@ -459,7 +461,7 @@ tcInstance idecl@(Instance ctx n ts t funs)
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs) 
       funs' <- buildSignatures n ts t funs `wrapError` idecl
-      (funs1, schss, pss') <- unzip3 <$> mapM tcFunDef funs' `wrapError` idecl 
+      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False) funs' `wrapError` idecl 
       let
         vs = fv ctx `union` fv (t : ts)
         s = zipWith (\ v n -> (v, TVar n)) vs namePool
