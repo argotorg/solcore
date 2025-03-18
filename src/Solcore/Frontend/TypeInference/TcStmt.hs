@@ -201,7 +201,7 @@ tcExp ex@(Call me n args)
   = tcCall me n args `wrapError` ex
 tcExp e@(Lam args bd _)
    = do
-       (args', schs, ts') <- tcArgs args
+       (args', schs, ts', vs0) <- tcArgs args
        (bd', ps, t') <- withLocalCtx schs (tcBody bd)
        s <- getSubst
        let ps1 = apply s ps
@@ -333,42 +333,26 @@ createClosureFreeFun fn args bdy ps ty
 applyI :: Subst -> Ty -> Ty
 applyI s = apply s
 
-tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
+tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty], [Tyvar])
 tcArgs params
   = do
-      res <- mapM tcArg params
-      pure (unzip3 res)
+      (ps, schs, ts, vss) <- unzip4 <$> mapM tcArg params
+      pure (ps, schs, ts, concat vss)
 
-tcArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty)
+tcArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty, [Tyvar])
 tcArg (Untyped n)
   = do
       v <- freshTyVar
       let ty = monotype v
-      pure (Typed (Id n v) v, (n, ty), v)
+      pure (Typed (Id n v) v, (n, ty), v, [])
 tcArg a@(Typed n ty)
   = do
       ty1 <- kindCheck ty `wrapError` a
-      pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1)
+      pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1, fv ty1)
 
 -- type checking a single bind
 -- create tcSignature which should return the 
 -- function type together with its parameter types
-
--- tcSignature :: Signature Name -> TcM ( (Name, Scheme)
---                                      , [(Name, Scheme)]
---                                      , [Ty]
---                                      )
--- tcSignature sig@(Signature _ ctx n ps rt)
---   = do 
---       (ps', pschs, ts) <- tcArgs ps 
---       t <- maybe freshTyVar pure rt
---       msch <- maybeAskEnv n
---       let
---         qt = ctx :=> (funtype ts t) 
---         vs = fv qt 
---         sch = maybe (Forall vs qt) id msch
---       pure ((n, sch), pschs, ts)
---
 
 tcSignature :: Signature Name -> TcM ( (Name, Scheme)
                                      , [(Name, Scheme)]
@@ -381,7 +365,7 @@ tcSignature (Signature vs ps n args rt)
           args0 = apply s args 
           rt0 = apply s rt 
           ps0 = apply s ps
-      (args', pschs, ts) <- tcArgs args0
+      (args', pschs, ts, vs) <- tcArgs args0
       t' <- maybe freshTyVar pure rt0
       let
         qt = ps0 :=> (funtype ts t')
@@ -392,8 +376,7 @@ tcSignature (Signature vs ps n args rt)
 tcFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef d@(FunDef sig bd)
   = withLocalEnv do
-     -- r <- lookupUniqueTy (sigName sig)
-     -- unless (isNothing r) (duplicatedFunDef (sigName sig))
+     info [">>> Starting the typing of", pretty sig]
      ((n,sch), pschs, ts) <- tcSignature sig 
      let lctx = (n,sch) : pschs 
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
@@ -419,29 +402,6 @@ renVar s t@(TVar _) = maybe t id (lookup t s)
 
 isTyVar :: Tyvar -> Bool
 isTyVar (TVar _) = True 
-
--- tcFunDef :: [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred], Ty)
--- tcFunDef rs d@(FunDef sig bd)
---   = withLocalEnv do
---       -- checking if the function isn't defined
---       ((n,sch), pschs, ts) <- tcSignature sig
---       let lctx = (n,sch) : pschs
---       (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
---       (ps :=> ann) <- freshInst sch
---       s1 <- getSubst 
---       let inf = apply s1 (funtype ts t')
---       s' <- unify ann inf `wrapError` d
---       let ps' = apply s' (rs ++ ps ++ ps1)
---       ps2 <- reduceContext ps' `wrapError` d
---       -- nonentail <- filterM (\ p -> not <$> entails (rs ++ qs ++ ps) p) ps2 
---       -- let entailsOk = all isPrimitivePred nonentail
---       -- unless entailsOk $ entailmentError ps nonentail `wrapError` d  
---       extSubst s'
---       s <- getSubst 
---       sch'@(Forall svs (sps :=> st)) <- generalize (ps2, apply s inf) `wrapError` d
---       let sig2 = elabSignature sig sch'
---       liftIO $ putStrLn $ pretty sig2
---       pure (apply s $ FunDef sig2  bd', sch', apply s ps2, apply s ann)
 
 isPrimitivePred :: Pred -> Bool
 isPrimitivePred (InCls n _ _) 
@@ -651,6 +611,18 @@ checkMeasure ps c
     where smaller p = measure p < measure c
 
 
+-- type generalization 
+
+generalize :: ([Pred], Ty) -> TcM Scheme 
+generalize (ps,t) 
+  = do 
+      envVars <- getEnvFreeVars
+      (ps1,t1) <- withCurrentSubst (ps,t)
+      ps2 <- reduce ps1 
+      t2 <- withCurrentSubst t1 
+      let vs = fv (ps2,t2)
+          sch = Forall (vs \\ envVars) (ps2 :=> t2)
+      return sch
 
 -- Instances for elaboration
 
