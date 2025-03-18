@@ -42,7 +42,7 @@ pipeline = do
           when verbose $ do
             putStrLn "> SCC Analysis:"
             putStrLn $ pretty ast'
-          typeInfer opts [] ast'
+          typeInfer opts ast'
       else do
         r2 <- sccAnalysis ast
         withErr r2 $ \ ast' -> do
@@ -53,7 +53,7 @@ pipeline = do
           when verbose $ do
             putStrLn "> Indirect call desugaring:"
             putStrLn $ pretty ast3
-          typeInfer opts fnames ast3
+          typeInfer opts ast3
     withErr r5 $ \ (c', env) -> do
         let warns = warnings env
             logsInfo = logs env

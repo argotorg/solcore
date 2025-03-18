@@ -153,7 +153,7 @@ anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs
     q' = zipWith (:~:) bs as
     bs = map TyVar $ take (length as) freshNames
     tvs = fv inst
-    freshNames = filter (not . flip elem tvs) (flip TVar False <$> namePool)
+    freshNames = filter (not . flip elem tvs) (TVar <$> namePool)
 
 isQual :: Name -> Bool
 isQual (QualName _ _) = True 

@@ -226,7 +226,7 @@ instance Elab S.Ty where
         ts' <- elab ts 
         if isTy then pure $ TyCon n ts' 
           else if null ts then 
-            pure $ TyVar (TVar n False)
+            pure $ TyVar (TVar n)
           else if isArrow n then 
             pure $ TyCon n ts'
           else throwError $ 

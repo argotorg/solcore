@@ -1,0 +1,12 @@
+data List(a) = Nil | Cons(a, List(a));
+
+forall a . function id(x : a) -> a {
+  return x;    
+}
+
+function listid(xs) {
+  match xs {
+  | Nil => return Nil ; 
+  | Cons(x,xs) => return Cons(id(x), listid(xs));
+  };
+}

@@ -1,0 +1,4 @@
+class a : A(b);
+instance word : A (word);
+
+reduce : {word : A (x)} ~ {};

@@ -1,0 +1,1 @@
+reduce : {a : Eq } ~ {a : Eq};

@@ -49,7 +49,7 @@ data ClassInfo
     , methods :: [Method]
     , classpred :: Pred
     , supers :: [Pred] 
-    }
+    } deriving Show
 
 type Table a = Map Name a 
 
@@ -86,8 +86,8 @@ data TcEnv
     , tcOptions :: Option
     }
 
-initTcEnv :: Option -> [Name] -> TcEnv
-initTcEnv options fnames 
+initTcEnv :: Option -> TcEnv
+initTcEnv options 
   = TcEnv { ctx = primCtx
           , instEnv = primInstEnv
           , typeTable = primTypeEnv
@@ -96,9 +96,9 @@ initTcEnv options fnames
           , subst = mempty
           , nameSupply = namePool
           , uniqueTypes = primDataType
-          , directCalls = Name "primAddWord" : 
-                          Name "primEqWord" : 
-                          fnames 
+          , directCalls = [ Name "primAddWord" 
+                          , Name "primEqWord"
+                          ] 
           , generateDefs = True
           , generated = []
           , counter = 0

@@ -8,7 +8,7 @@ import Solcore.Frontend.Syntax
 -- basic substitution infrastructure
 
 newtype Subst 
-  = Subst { unSubst :: [(Tyvar, Ty)] }
+  = Subst { unSubst :: [(Tyvar, Ty)] } deriving (Eq, Show)
 
 restrict :: Subst -> [Tyvar] -> Subst
 restrict (Subst s) vs 
@@ -54,6 +54,10 @@ instance HasType a => HasType (Maybe a) where
   apply :: HasType a => Subst -> Maybe a -> Maybe a
   apply s = fmap (apply s)
   fv = maybe [] fv
+
+instance HasType Name where 
+  apply _ n = n 
+  fv _ = []
 
 instance HasType Ty where
   apply (Subst s) t@(TyVar v)

@@ -1,0 +1,4 @@
+instance word : Eq ;
+instance (a : Eq) => Foo(a) : Eq ;
+
+reduce : {Foo(Foo(a)) : Eq} ~ {a : Eq};

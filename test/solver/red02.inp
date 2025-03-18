@@ -1,0 +1,4 @@
+class (a : Eq) => a : Ord;
+instance (a : Ord) => Foo(a) : Ord ;
+
+reduce : {Foo(Foo(a)) : Ord, a : Eq} ~ {a : Ord};
