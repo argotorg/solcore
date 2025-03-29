@@ -106,6 +106,7 @@ cases
               , runTestForFile "reference.solc" caseFolder
               , runTestForFile "super-class.solc" caseFolder
               , runTestForFile "proxy.solc" caseFolder
+              , runTestForFile "another-subst.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"

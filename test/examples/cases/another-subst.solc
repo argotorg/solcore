@@ -1,0 +1,9 @@
+class a: Foo {function foo(x:a) -> (); }
+
+instance (a:Foo, b:Foo) => (a,b) : Foo {
+  function foo( p : (a,b) ) {
+    match p {
+      | (pa, pb) => Foo.foo(pa); Foo.foo(pb);
+    };
+  } 
+}

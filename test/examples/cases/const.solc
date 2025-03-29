@@ -1,0 +1,10 @@
+function const() {
+  return lam (x, y) { return y ;} ; 
+}
+
+contract Foo {
+  function main () {
+    let f = const();
+    return f(0,1);
+  }
+}

@@ -12,9 +12,9 @@ tests
   = testGroup "Tests"
                [
                  cases
-               -- , pragmas
-               -- , spec
-               -- , std 
-               -- ,  satTests
+               , pragmas
+               , spec
+               , std 
+               -- , satTests
                -- , reduceTests 
                ]
