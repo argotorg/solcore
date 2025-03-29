@@ -3,13 +3,14 @@ import System.Environment
 import System.Exit
 
 main :: IO ()
-main 
+main
   = do
-      args <- getArgs 
+      args <- getArgs
       case args of
         [path] -> do
           b <- runForFile path
           if b then pure () else exitFailure
         _ -> do 
           putStrLn "Usage: solver <path to solver input file>"
-          exitFailure 
+          exitFailure
+
