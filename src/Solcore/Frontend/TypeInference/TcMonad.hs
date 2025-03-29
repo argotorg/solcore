@@ -31,7 +31,7 @@ runTcM m env = runExceptT (runStateT m env)
 
 freshVar :: TcM Tyvar 
 freshVar 
-  = TVar <$> freshName
+  = TVar <$> freshName 
 
 freshName :: TcM Name 
 freshName 
@@ -107,7 +107,7 @@ getEnvFreeVars
 unify :: Ty -> Ty -> TcM Subst
 unify t t' 
   = do
-      s <- getSubst 
+      s <- getSubst
       s' <- tcmMgu (apply s t) (apply s t')
       s1 <- extSubst s'
       pure s1

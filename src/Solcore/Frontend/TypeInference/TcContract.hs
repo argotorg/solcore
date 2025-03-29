@@ -256,9 +256,8 @@ tcSig (sig, (Forall _ (_ :=> t)))
 tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds 
   = do
-      funs <- mapM scanFun binds
-      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True) funs 
-      let names = map (sigName . funSignature) funs 
+      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True) binds 
+      let names = map (sigName . funSignature) funs' 
       mapM_ (uncurry extEnv) (zip names schs)
       noDesugarCalls <- getNoDesugarCalls
       unless noDesugarCalls $ generateTopDeclsFor (zip funs' schs)
@@ -276,17 +275,6 @@ generateTopDeclsFor ps
         mapM_ writeTopDecl ((TDataDef <$> dts) ++ (TInstDef <$> insts'))
       else pure ()
 
-
-scanFun :: FunDef Name -> TcM (FunDef Name)
-scanFun (FunDef sig bd)
-  = flip FunDef bd <$> fillSignature sig 
-    where 
-      f (Typed n t) = pure $ Typed n t
-      f (Untyped n) = Typed n <$> freshTyVar
-      fillSignature (Signature vs ctx n ps t)
-        = do 
-            ps' <- mapM f ps 
-            pure (Signature vs ctx n ps' t)
 
 -- type checking contract constructors
 

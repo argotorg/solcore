@@ -473,44 +473,4 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) (returnType 
 typeOfTcFunDef :: TcFunDef -> Ty
 typeOfTcFunDef (FunDef sig _) = typeOfTcSignature sig
 
-instance HasType (Exp Id) where
-  apply s (Var i) = Var (apply s i)
-  apply s (Con i es) = Con (apply s i) (map (apply s) es)
-  apply s (FieldAccess e f) = FieldAccess (apply s e) f
-  apply s (Lit l) = Lit l
-  apply s (Call e i es) = Call (apply s <$> e) (apply s i) (map (apply s) es)
-  apply s (Lam ps b t) = Lam ps (apply s b) (apply s <$> t)
-  apply s (TyExp e t) = TyExp (apply s e) (apply s t)
 
-  fv (Var i) = fv i
-  fv (Con i es) = fv i ++ concatMap fv es
-  fv (FieldAccess e _) = fv e
-  fv (Lit _) = []
-  fv (Call e i es) = concatMap fv (Var i:es) ++ maybe [] fv e
-  fv (Lam ps b t) = fv b ++ maybe [] fv t
-
-instance HasType (Stmt Id) where
-  apply s (n := e) = apply s n := apply s e
-  apply s (Let n t e) = Let (apply s n) (apply s <$> t) (apply s <$> e)
-  apply s (StmtExp e) = StmtExp (apply s e)
-  apply s (Return e) = Return (apply s e)
-  apply s (Match es alts) = Match (map (apply s) es) (map (apply s) alts)
-  apply s (Asm y) = Asm y
-
-  fv (n := e) = fv n ++ fv e
-  fv (Let n t e) = fv n ++ maybe [] fv t ++ maybe [] fv e
-  fv (StmtExp e) = fv e
-  fv (Return e) = fv e
-  fv (Match es alts) = concatMap fv es ++ concatMap fv alts
-  fv (Asm y) = []
-
-instance HasType (Pat Id) where
-  apply s (PVar i) = PVar (apply s i)
-  apply s (PCon i ps) = PCon (apply s i) (map (apply s) ps)
-  apply s (PLit l) = PLit l
-  apply s PWildcard = PWildcard
-
-  fv (PVar i) = fv i
-  fv (PCon i ps) = fv i ++ concatMap fv ps
-  fv (PLit _) = []
-  fv PWildcard = []

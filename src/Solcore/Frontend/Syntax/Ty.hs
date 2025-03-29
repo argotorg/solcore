@@ -7,8 +7,7 @@ import Solcore.Frontend.Syntax.Name
 -- basic typing infrastructure 
 
 data Tyvar 
-  = TVar Name 
-   
+  = TVar { var :: Name }
   deriving (Eq, Ord, Show, Data, Typeable)
    
 data Ty 

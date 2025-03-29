@@ -36,10 +36,9 @@ class HasType a where
   apply :: Subst -> a -> a 
   fv :: a -> [Tyvar]
 
-instance (HasType b, HasType c) => HasType (a,b,c) where 
-  apply s (z,x,y) = let (x',y') = apply s (x,y)
-                    in (z,x',y')
-  fv (_,x,y) = fv (x,y)
+instance (HasType a, HasType b, HasType c) => HasType (a,b,c) where 
+  apply s (z,x,y) = (apply s z, apply s x, apply s y)
+  fv (z,x,y) = fv z `union` fv x `union` fv y
 
 instance (HasType a, HasType b) => HasType (a,b) where 
   apply s (x,y) = (apply s x, apply s y)
@@ -102,3 +101,79 @@ instance HasType a => HasType (Param a) where
   apply s (Untyped i) = Untyped (apply s i)
   fv (Typed i t) = fv (i,t)
   fv (Untyped i) = fv i
+
+instance HasType a => HasType (FunDef a) where 
+  apply s (FunDef sig bd)
+    = FunDef (apply s sig) (apply s bd)
+  fv (FunDef sig bd)
+    = fv sig `union` fv bd
+
+instance HasType a => HasType (Instance a) where 
+  apply s (Instance ctx n ts t funs)
+    = Instance (apply s ctx)
+               n 
+               (apply s ts)
+               (apply s t)
+               (apply s funs)
+  fv (Instance ctx n ts t funs)
+    = fv ctx `union` fv (t : ts)
+
+instance HasType a => HasType (Exp a) where
+  apply s (Var v) = Var (apply s v)
+  apply s (Con n es)
+    = Con (apply s n) (apply s es)
+  apply s (FieldAccess e v)
+    = FieldAccess (apply s e) (apply s v)
+  apply s (Call m v es)
+    = Call (apply s <$> m) (apply s v) (apply s es)
+  apply s (Lam ps bd mt)
+    = Lam (apply s ps) (apply s bd) (apply s <$> mt)
+  apply _ e = e
+
+  fv (Var v) = fv v
+  fv (Con n es)
+    = fv n `union` fv es
+  fv (FieldAccess e v)
+    = fv e `union` fv v
+  fv (Call m v es)
+    = maybe [] fv m `union` fv v `union` fv es
+  fv (Lam ps bd mt)
+    = fv ps `union` fv bd `union` maybe [] fv mt
+
+instance HasType a => HasType (Stmt a) where
+  apply s (e1 := e2)
+    = (apply s e1) := (apply s e2)
+  apply s (Let v mt me)
+    = Let (apply s v)
+          (apply s <$> mt)
+          (apply s <$> me)
+  apply s (StmtExp e)
+    = StmtExp (apply s e)
+  apply s (Return e)
+    = Return (apply s e)
+  apply s (Match es eqns)
+    = Match (apply s es) (apply s eqns)
+  apply _ s
+    = s
+
+  fv (e1 := e2)
+    = fv e1 `union` fv e2
+  fv (Let v mt me)
+    = fv v `union` (maybe [] fv mt)
+           `union` (maybe [] fv me)
+  fv (StmtExp e) = fv e
+  fv (Return e) = fv e
+  fv (Match es eqns)
+    = fv es `union` fv eqns
+  fv (Asm blk) = []
+
+instance HasType a => HasType (Pat a) where
+  apply s (PVar v) = PVar (apply s v)
+  apply s (PCon v ps)
+    = PCon (apply s v) (apply s ps)
+  apply _ p = p
+
+  fv (PVar v) = fv v
+  fv (PCon v ps) = fv v `union` fv ps
+
+

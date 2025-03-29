@@ -22,6 +22,24 @@ instance (Erase a, Erase b) => Erase (a,b) where
 
   erase (x, y) = (erase x, erase y)
 
+instance Erase (Instance Id) where 
+  type EraseRes (Instance Id) = Instance Name
+
+  erase (Instance ctx n ts t funs)
+    = Instance ctx n ts t (erase funs)
+
+instance Erase (FunDef Id) where 
+  type EraseRes (FunDef Id) = FunDef Name 
+
+  erase (FunDef sig bd)
+    = FunDef (erase sig) (erase bd)
+
+instance Erase (Signature Id) where 
+  type EraseRes (Signature Id) = Signature Name 
+
+  erase (Signature n ps t args rt)
+    = Signature n ps t (erase args) rt 
+
 instance Erase (Stmt Id) where
   type EraseRes (Stmt Id) = Stmt Name
 

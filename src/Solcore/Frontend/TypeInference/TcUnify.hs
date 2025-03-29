@@ -1,6 +1,8 @@
 module Solcore.Frontend.TypeInference.TcUnify where
 
+import Control.Monad 
 import Control.Monad.Except
+import Control.Monad.Reader 
 
 import Data.List
 
@@ -15,45 +17,48 @@ import Solcore.Frontend.Pretty.SolcorePretty  hiding((<>))
 varBind :: MonadError String m => Tyvar -> Ty -> m Subst 
 varBind v t
   | t == TyVar v = return mempty
-  | v `elem` fv t = infiniteTyErr v t
-  | otherwise = return (v +-> t)
+  | v `elem` fv t = infiniteTyErr v t 
+  | otherwise = do 
+      return (v +-> t)
 
-isVar :: Ty -> Bool 
-isVar (TyVar _) = True 
-isVar _ = False 
+isTyCon :: Ty -> Bool 
+isTyCon (TyCon _ _) = True 
+isTyCon _ = False
 
 -- type matching 
 
-match :: MonadError String m => Ty -> Ty -> m Subst 
-match (TyCon n ts) (TyCon n' ts') 
-  | n == n' = go ts ts' 
-    where 
-      go [] [] = pure mempty 
-      go (t : ts) (t' : ts') 
-        = do 
-            sl <- match t t' 
-            sr <- go ts ts' 
-            merge sl sr
-      go _ _ = typesMatchListErr ts ts'
-match t1@(TyVar v) t 
-  | t1 == t = pure mempty 
-  | otherwise = pure (v +-> t)
-match t1 t2 = typesNotMatch t1 t2
+class Match a where 
+  match :: MonadError String m => a -> a -> m Subst 
 
-matchTypes :: MonadError String m => [Ty] -> [Ty] -> m Subst 
-matchTypes [] [] = pure mempty 
-matchTypes (t : ts) (t' : ts') 
-  = do 
-      s1 <- match t t'
-      s2 <- matchTypes ts ts' 
-      merge s1 s2 
-matchTypes ts ts' = typesMatchListErr ts ts'
+instance Match Ty where 
+  match (TyCon n ts) (TyCon n' ts') 
+    | n == n' = match ts ts' 
+  match t1@(TyVar v) t 
+    | t1 == t = pure mempty 
+    | otherwise = do 
+        pure (v +-> t)
+  match t1 t2 = typesNotMatch t1 t2
 
-matchPred :: MonadError String m => Pred -> Pred -> m Subst 
-matchPred (InCls n t ts) (InCls n' t' ts') 
-  | n == n' = matchTypes (t : ts) (t' : ts')
-  | otherwise = throwError "Classes differ!"
+instance (Pretty a, Match a) => Match [a] where 
+  match [] [] = pure mempty 
+  match (t : ts) (t' : ts') 
+    = do 
+        s1 <- match t t'
+        s2 <- match ts ts' 
+        merge s1 s2 
+  match ts ts' = typesMatchListErr (map pretty ts) (map pretty ts')
 
+instance Match Pred where 
+  match (InCls n t ts) (InCls n' t' ts') 
+    | n == n' = match (t : ts) (t' : ts')
+    | otherwise = throwError "Classes differ!"
+
+instance (HasType a, Match a) => Match (Qual a) where 
+  match (ps :=> t) (ps' :=> t') 
+    = do 
+        s1 <- match t t'
+        s2 <- match (apply s1 t) (apply s1 t')
+        merge s1 s2 
 
 -- most general unifier 
 
@@ -122,13 +127,13 @@ typesNotMatch t1 t2
                          , pretty t2
                          ]
 
-typesMatchListErr :: MonadError String m => [Ty] -> [Ty] -> m a 
+typesMatchListErr :: MonadError String m => [String] -> [String] -> m a 
 typesMatchListErr ts ts' 
   = throwError (errMsg (zip ts ts'))
     where 
       errMsg ps = unwords  ["Types do not match:"] ++ 
                            concatMap tyList ps  
-      tyList (t1, t2) = pretty t1 <> " and " <> pretty t2
+      tyList (t1, t2) = t1 <> " and " <> t2
 
 typesDoNotUnify :: MonadError String m => Ty -> Ty -> m a 
 typesDoNotUnify t1 t2 
@@ -139,12 +144,4 @@ typesDoNotUnify t1 t2
                          , "do not unify"
                          ]
 
-rigidVarError :: MonadError String m => Tyvar -> Ty -> m a 
-rigidVarError v t 
-  = throwError $ unwords ["Cannot unify"
-                         , pretty v 
-                         , "with"
-                         , pretty t 
-                         , "since"
-                         , pretty v 
-                         , "is a rigid type variable."]
+
