@@ -1,0 +1,8 @@
+class self:Typedef(underlyingType) {
+    function rep(x:self) -> underlyingType;
+    function abs(x:underlyingType) -> self;
+}
+
+forall t:Typedef((word,(word,word))) . function tripleFun(x:t) {
+  return Typedef.rep(x);
+}
