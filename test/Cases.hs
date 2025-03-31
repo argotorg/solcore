@@ -108,7 +108,9 @@ cases
               , runTestForFile "proxy.solc" caseFolder
               , runTestForFile "another-subst.solc" caseFolder
               , runTestForFile "morefun.solc" caseFolder 
-              , runTestForFile "typedef.solc" caseFolder 
+              , runTestForFile "typedef.solc" caseFolder
+              , runTestForFile "mainproxy.solc" caseFolder
+              , runTestForFile "complexproxy.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"

@@ -128,7 +128,9 @@ instance HasType a => HasType (Exp a) where
     = Call (apply s <$> m) (apply s v) (apply s es)
   apply s (Lam ps bd mt)
     = Lam (apply s ps) (apply s bd) (apply s <$> mt)
-  apply _ e = e
+  apply s (TyExp e ty) 
+    = TyExp (apply s e) (apply s ty)
+  apply s (Lit l) = Lit l
 
   fv (Var v) = fv v
   fv (Con n es)
@@ -139,6 +141,8 @@ instance HasType a => HasType (Exp a) where
     = maybe [] fv m `union` fv v `union` fv es
   fv (Lam ps bd mt)
     = fv ps `union` fv bd `union` maybe [] fv mt
+  fv (TyExp e ty) 
+    = fv e `union` fv ty 
 
 instance HasType a => HasType (Stmt a) where
   apply s (e1 := e2)

@@ -224,10 +224,11 @@ tcExp e@(Lam args bd _)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
-      (e', ps, ty') <- tcExp e
-      s <- unify ty' ty  `wrapError` e1
-      extSubst s
-      withCurrentSubst (TyExp e' ty, apply s ps, ty)
+      (e', ps, ty') <- tcExp e 
+      s <- checkTyInst (fv ty) ty ty' `wrapError` e1
+      extSubst s 
+      s1 <- getSubst 
+      withCurrentSubst (TyExp e' ty, ps, ty)
 
 closureConversion :: [Tyvar] -> 
                      [Param Id] -> 
@@ -404,13 +405,16 @@ tcFunDef incl d@(FunDef sig bd)
      let ty = funtype ts t'
      s <- getSubst 
      ps3 <- filterM (\ p -> not <$> entails (apply s ps2) p) (apply s ps1)
-     vs <- getEnvFreeVars 
+     vs <- getEnvFreeVars
+     info [">> Reduce:", pretty ps3]
      (ds, rs) <- splitContext ps3 (vs `union` fv pschs)
+     info [">> Defered constraints:", pretty ds]
+     info [">> Retained constraints:", pretty rs]
      sch' <- generalize (rs, ty)
      info [">>> Annotated type for ", pretty (sigName sig), " is ", pretty sch]
      info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
      s' <- getSubst
-     sig2 <- elabSignature incl sig sch'
+     sig2 <- elabSignature incl sig sch' `wrapError` d
      let
          fd = FunDef sig2 bd' 
      withCurrentSubst (fd, sch', ds)
@@ -425,12 +429,14 @@ isTyVar (TVar _) = True
 
 elabSignature :: Bool -> Signature Name -> Scheme -> TcM (Signature Id)
 elabSignature incl sig (Forall vs (ps :=> t)) 
-  = do 
+  = do
+      s <- getSubst 
       let 
         params = sigParams sig 
         nparams = length params 
         (ts, t') = splitTy t
-        (ts', rs) = splitAt nparams ts 
+        (ts', rs) = splitAt nparams ts
+        ctx = sigContext sig
       params' <- zipWithM (elabParam incl) ts' params
       let 
         ret = Just $ if null params' then t else (funtype rs t') 
