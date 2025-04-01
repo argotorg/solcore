@@ -415,8 +415,8 @@ tcFunDef incl d@(FunDef sig bd)
      info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
      s' <- getSubst
      sig2 <- elabSignature incl sig sch' `wrapError` d
-     let
-         fd = FunDef sig2 bd' 
+     fd <- withCurrentSubst (FunDef sig2 bd')
+     s1 <- getSubst 
      withCurrentSubst (fd, sch', ds)
 
 renVar :: [(Tyvar, Tyvar)]-> Tyvar -> Tyvar 
@@ -428,7 +428,7 @@ isTyVar (TVar _) = True
 -- update types in signature 
 
 elabSignature :: Bool -> Signature Name -> Scheme -> TcM (Signature Id)
-elabSignature incl sig (Forall vs (ps :=> t)) 
+elabSignature incl sig sch@(Forall vs (ps :=> t)) 
   = do
       s <- getSubst 
       let 
@@ -436,11 +436,12 @@ elabSignature incl sig (Forall vs (ps :=> t))
         nparams = length params 
         (ts, t') = splitTy t
         (ts', rs) = splitAt nparams ts
-        ctx = sigContext sig
+        ctx = apply s $ sigContext sig
       params' <- zipWithM (elabParam incl) ts' params
       let 
-        ret = Just $ if null params' then t else (funtype rs t') 
-      pure $ Signature vs ps (sigName sig) params' ret 
+        ret = Just $ if null params' then t else (funtype rs t')
+        vs' = fv params' `union` fv ret `union` fv ctx 
+      withCurrentSubst $ Signature vs' ctx (sigName sig) params' ret 
 
 elabParam :: Bool -> Ty -> Param Name -> TcM (Param Id)
 elabParam False t (Typed n _) = pure $ Typed (Id n t) t 
@@ -449,7 +450,7 @@ elabParam _ t (Typed n t')
   = do 
       s <- match t t' 
       extSubst s 
-      pure $ Typed (Id n t) t
+      withCurrentSubst $ Typed (Id n t) t
 elabParam _ t (Untyped n)
   = pure $ Typed (Id n t) t
 

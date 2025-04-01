@@ -93,7 +93,12 @@ instance HasType Scheme where
 
 instance HasType a => HasType (Signature a) where
   apply s (Signature vs ctx n p r) 
-    = Signature vs (apply s ctx) n (apply s p) (apply s r)
+    = let 
+        ctx' = apply s ctx
+        p' = apply s p 
+        r' = apply s r
+        vs' = fv ctx' `union` fv p' `union` fv r'
+      in Signature vs' ctx' n p' r'
   fv (Signature vs c _ p r) = fv (c,p,r) \\ vs 
 
 instance HasType a => HasType (Param a) where
