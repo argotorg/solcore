@@ -520,12 +520,12 @@ buildSignatures n ts t funs
       let qname m = QualName n (pretty m)
       schs <- mapM (askEnv . qname . sigName . funSignature) funs
       let  
-          app sch' = apply sm sch'
+          app (Forall _ qt) = apply sm qt 
           tinsts = map app schs
       zipWithM (buildSignature n) tinsts funs 
 
-buildSignature :: Name -> Scheme -> FunDef Name -> TcM (FunDef Name)
-buildSignature n (Forall _ (ps :=> t)) (FunDef sig bd)
+buildSignature :: Name -> Qual Ty -> FunDef Name -> TcM (FunDef Name)
+buildSignature n (ps :=> t) (FunDef sig bd)
   = do 
       let (args, ret) = splitTy t 
           sig' = typeSignature n args ret ps sig
