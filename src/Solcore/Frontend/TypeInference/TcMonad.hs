@@ -74,6 +74,11 @@ lookupUniqueTy :: Name -> TcM (Maybe DataTy)
 lookupUniqueTy n 
   = (Map.lookup n) <$> gets uniqueTypes 
 
+isUniqueTyName :: Name -> TcM Bool 
+isUniqueTyName n = do 
+  uenv <- gets uniqueTypes
+  pure $ any (\ d -> dataName d == n) (Map.elems uenv)
+
 typeInfoFor :: DataTy -> TypeInfo 
 typeInfoFor (DataTy n vs cons)
   = TypeInfo (length vs) (map constrName cons) []
