@@ -38,7 +38,7 @@ freshName
   = do
       vs <- getEnvFreeVars
       ns <- gets nameSupply 
-      let (n, ns') = newName ns 
+      let (n, ns') = newName (ns \\ (map var vs)) 
       modify (\ ctx -> ctx {nameSupply = ns'})
       return n 
 
@@ -168,6 +168,9 @@ withCurrentSubst t = do
 
 getSubst :: TcM Subst 
 getSubst = gets subst
+
+putSubst :: Subst -> TcM ()
+putSubst s = modify (\env -> env{subst = s})
 
 extSubst :: Subst -> TcM Subst
 extSubst s = modify ext >> getSubst where

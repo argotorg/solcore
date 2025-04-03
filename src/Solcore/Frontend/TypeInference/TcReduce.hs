@@ -11,7 +11,7 @@ import Solcore.Frontend.Syntax
 import Solcore.Frontend.Parser.SolverInputParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.TypeInference.TcEnv
-import Solcore.Frontend.TypeInference.TcMonad hiding (entails)
+import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 
@@ -22,7 +22,11 @@ splitContext :: [Pred] -> [Tyvar] -> TcM ([Pred], [Pred])
 splitContext ps fs 
   = do 
       ps' <- reduce ps
-      pure $ partition (all (`elem` fs) . fv) ps'
+      let (ds, rs) = partition (all (`elem` fs) . fv) ps'
+      info [">> Defered constraints:", pretty ds]
+      info [">> Retained constraints:", pretty rs]
+      pure (ds, ps)
+ 
 
 -- main context reduction function 
 
@@ -132,9 +136,11 @@ reduceBySuper' n p@(InCls c _ _)
 
 entails :: [Pred] -> Pred -> TcM Bool 
 entails qs p 
-  = do  
-      qs' <- mapM reduceBySuper qs 
-      pure $ any (p `elem`) qs'
+  = do 
+      n <- askMaxRecursionDepth
+      qs' <- mapM reduceBySuper qs
+      qs'' <- mapM (reduceByInst n) qs'
+      pure $ any (p `elem`) qs''
 
 -- hnf for predicates 
 

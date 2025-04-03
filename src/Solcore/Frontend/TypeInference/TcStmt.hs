@@ -84,8 +84,8 @@ checkTyInst :: [Tyvar] -> -- Skolem constants
                Ty -> -- inferred type
                TcM Subst
 checkTyInst vs ann inf 
-  = do 
-      s@(Subst x) <- match inf ann
+  = do
+      s@(Subst x) <- match inf ann 
       let
           isTyCon (TyCon _ _) = True 
           isTyCon _ = False
@@ -208,7 +208,7 @@ tcExp ex@(Call me n args)
   = tcCall me n args `wrapError` ex
 tcExp e@(Lam args bd _)
    = do
-       (args', schs, ts', vs') <- tcArgs True args
+       (args', schs, ts', vs') <- tcArgs args
        (bd', ps, t') <- withLocalCtx schs (tcBody bd)
        s <- getSubst
        let ps1 = apply s ps
@@ -252,7 +252,7 @@ closureConversion vs args bdy ps ty
         let fun1 = erase fun
         st <- get 
         clearSubst 
-        (fun', _, _) <- tcFunDef False fun1 
+        (fun', _, qs) <- tcFunDef False fun1 
         sch <- generalize (ps, ty)
         put st 
         (udt@(DataTy dn vs _), instd) <- generateDecls (fun', sch)
@@ -274,9 +274,12 @@ closureConversion vs args bdy ps ty
         checkDataType cdt 
         instd <- createInstance cdt fun sch
         checkInstance instd
-        extEnv fn sch 
+        extEnv fn sch
+        s <- getSubst 
+        clearSubst
         instd' <- tcInstance instd
         writeInstance instd'
+        putSubst s 
         pure (e', t')
 
 createClosureType :: [Id] -> [Tyvar] -> Ty -> TcM (DataTy, Exp Id, Ty) 
@@ -347,20 +350,20 @@ createClosureFreeFun fn args bdy ps ty
 applyI :: Subst -> Id -> Id
 applyI s (Id n t) = Id n (apply s t)
 
-tcArgs :: Bool -> [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty], [Tyvar])
-tcArgs b params
+tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty], [Tyvar])
+tcArgs params
   = do
-      (ps, schs, ts, vss) <- unzip4 <$> mapM (tcArg b) params
+      (ps, schs, ts, vss) <- unzip4 <$> mapM tcArg params
       pure (ps, schs, ts, concat vss)
 
-tcArg :: Bool -> Param Name -> TcM (Param Id, (Name, Scheme), Ty, [Tyvar])
-tcArg _ (Untyped n)
+tcArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty, [Tyvar])
+tcArg (Untyped n)
   = do
       v <- freshTyVar
       let ty = monotype v
       -- no Skolem constants here!
       pure (Typed (Id n v) v, (n, ty), v, [])
-tcArg b a@(Typed n ty)
+tcArg a@(Typed n ty)
   = do
       ty1 <- kindCheck ty `wrapError` a
       pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1, fv ty1)
@@ -381,7 +384,7 @@ tcSignature b (Signature vs ps n args rt)
           args0 = apply s args 
           rt0 = apply s rt 
           ps0 = apply s ps
-      (args', pschs, ts, vs') <- tcArgs b args0
+      (args', pschs, ts, vs') <- tcArgs args0
       t' <- maybe freshTyVar pure rt0
       let
         qt = ps0 :=> (funtype ts t')
@@ -399,49 +402,38 @@ tcFunDef incl d@(FunDef sig bd)
   = withLocalEnv do
      info [">>> Starting the typing of:", pretty sig]
      ((n,sch), pschs, ts, vs') <- tcSignature incl sig 
-     let lctx = if incl then (n,sch) : pschs else pschs 
+     let lctx = if incl then (n,sch) : pschs else pschs
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
      (ps2 :=> ann) <- freshInst sch 
-     let ty = funtype ts t'
-     s <- getSubst 
+     let ty = funtype ts t' 
+     s <- getSubst
+     info [">>> Trying to entail:", pretty (apply s ps1), " using:", pretty (apply s ps2)]
      ps3 <- filterM (\ p -> not <$> entails (apply s ps2) p) (apply s ps1)
+     info [">>> Not entailed:", pretty ps3]
      vs <- getEnvFreeVars
-     info [">> Reduce:", pretty ps3]
      (ds, rs) <- splitContext ps3 (vs `union` fv pschs)
-     info [">> Defered constraints:", pretty ds]
-     info [">> Retained constraints:", pretty rs]
      sch' <- generalize (rs, ty)
-     info [">>> Annotated type for ", pretty (sigName sig), " is ", pretty sch]
-     info [">>> Infered type for ", pretty (sigName sig), " is ", pretty sch']
-     s' <- getSubst
      sig2 <- elabSignature incl sig sch' `wrapError` d
+     info [">>> Finished typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
-     s1 <- getSubst 
      withCurrentSubst (fd, sch', ds)
-
-renVar :: [(Tyvar, Tyvar)]-> Tyvar -> Tyvar 
-renVar s t@(TVar _ ) = maybe t id (lookup t s) 
-
-isTyVar :: Tyvar -> Bool
-isTyVar (TVar _) = True 
 
 -- update types in signature 
 
 elabSignature :: Bool -> Signature Name -> Scheme -> TcM (Signature Id)
 elabSignature incl sig sch@(Forall vs (ps :=> t)) 
   = do
-      s <- getSubst 
       let 
         params = sigParams sig 
         nparams = length params 
         (ts, t') = splitTy t
         (ts', rs) = splitAt nparams ts
-        ctx = apply s $ sigContext sig
+        ctx = sigContext sig
       params' <- zipWithM (elabParam incl) ts' params
       let 
         ret = Just $ if null params' then t else (funtype rs t')
-        vs' = fv params' `union` fv ret `union` fv ctx 
-      withCurrentSubst $ Signature vs' ctx (sigName sig) params' ret 
+        vs' = fv params' `union` fv ret `union` fv ps 
+      withCurrentSubst $ Signature vs' ps (sigName sig) params' ret 
 
 elabParam :: Bool -> Ty -> Param Name -> TcM (Param Id)
 elabParam False t (Typed n _) = pure $ Typed (Id n t) t 
@@ -495,11 +487,27 @@ tcInstance idecl@(Instance ctx n ts t funs)
       let 
         qts1 = map (schemeFromSignature . funSignature) funs'
         qts2 = map (schemeFromSignature . funSignature) funs1
-      s1 <- match qts1 qts2
-      extSubst s1
+      -- s1 <- match qts1 qts2
+      -- extSubst s1
       let
         instd = Instance ctx n ts t funs1
       withCurrentSubst instd
+
+checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
+checkDeferedConstraints = mapM_ checkDeferedConstraint
+  where 
+    checkDeferedConstraint (fd, ps)
+      = unless (null ps) $ tcmError $ unlines ["Cannot satisfy:"
+                                              , pretty ps 
+                                              , "from:"
+                                              , if null ctx then "<empty context>" else pretty ctx
+                                              , "in:"
+                                              , pretty sig
+                                              ]
+       where
+        sig = funSignature fd 
+        ctx = sigContext sig
+
 
 checkCompleteInstDef :: Name -> [Name] -> TcM ()
 checkCompleteInstDef n ns 

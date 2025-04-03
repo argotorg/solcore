@@ -256,12 +256,14 @@ tcSig (sig, (Forall _ (_ :=> t)))
 tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds 
   = do
-      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True) binds 
+      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True) binds
+      checkDeferedConstraints (zip funs' pss)
       let names = map (sigName . funSignature) funs' 
       mapM_ (uncurry extEnv) (zip names schs)
       noDesugarCalls <- getNoDesugarCalls
       unless noDesugarCalls $ generateTopDeclsFor (zip funs' schs)
       pure funs'
+
 
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
 generateTopDeclsFor ps
@@ -269,10 +271,13 @@ generateTopDeclsFor ps
       gen <- askGeneratingDefs 
       if gen then do 
         (dts, instds) <- unzip <$> mapM generateDecls ps
-        mapM_ checkDataType dts
+        mapM_ checkDataType dts 
+        s <- getSubst 
+        clearSubst
         disableBoundVariableCondition (mapM_ checkInstance instds)
         insts' <- withNoGeneratingDefs (mapM tcInstance instds)
         mapM_ writeTopDecl ((TDataDef <$> dts) ++ (TInstDef <$> insts'))
+        putSubst s
       else pure ()
 
 
