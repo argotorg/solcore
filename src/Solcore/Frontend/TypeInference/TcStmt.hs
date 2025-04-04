@@ -415,7 +415,7 @@ tcFunDef incl d@(FunDef sig bd)
      (ps2 :=> ann) <- freshInst sch 
      let ty = funtype ts t'
      s <- getSubst
-     -- checking if constraints are valid
+     -- checking if the constraints are valid
      ps3 <- filterM (\ p -> not <$> entails (apply s ps2) p) (apply s ps1)
      vs <- getEnvFreeVars
      (ds, rs) <- splitContext ps3 (vs `union` fv pschs)
@@ -424,11 +424,26 @@ tcFunDef incl d@(FunDef sig bd)
      when (hasAnn sig) $ do 
         s' <- checkTyInst (fv pschs `union` fv (sigReturn sig)) ann ty `wrapError` d 
         extSubst s' 
-        return () 
+        return ()
+     -- checking constraint provability for annotated types.
+     when (hasAnn sig && null (sigContext sig) && not (isValid rs) && incl) $ do 
+      tcmError $ unlines [ "Could not deduce:"
+                         ,  pretty rs 
+                         , "from:" 
+                         , pretty sig
+                         ]
      sig2 <- elabSignature incl sig sch' `wrapError` d
      info [">>> Finished typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
+
+-- only invokable constraints can be inserted freely 
+
+isValid :: [Pred] -> Bool
+isValid rs = null rs || all isInvoke rs 
+  where 
+    isInvoke (InCls n _ _) 
+      = n == invokableName
 
 -- update types in signature 
 

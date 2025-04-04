@@ -109,7 +109,7 @@ cases
               , runTestForFile "another-subst.solc" caseFolder
               , runTestForFile "morefun.solc" caseFolder 
               , runTestForFile "typedef.solc" caseFolder
-              , runTestForFile "mainproxy.solc" caseFolder
+              , expectFail $ runTestForFile "mainproxy.solc" caseFolder
               , expectFail $ runTestForFile "complexproxy.solc" caseFolder
               ]
     where 
