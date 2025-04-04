@@ -45,7 +45,7 @@ tcStmt e@(Let n mt me)
                       (Just t, Just e1) -> do
                         (e', ps1, t1) <- tcExp e1
                         kindCheck t1 `wrapError` e
-                        s <- checkTyInst (fv t) t t1 `wrapError` e  
+                        s <- checkTyInst (fv t) t t1 `wrapError` e
                         extSubst s
                         pure (Just e', ps1, t1)
                       (Just t, Nothing) -> do
@@ -85,7 +85,13 @@ checkTyInst :: [Tyvar] -> -- Skolem constants
                TcM Subst
 checkTyInst vs ann inf 
   = do
-      s@(Subst x) <- match inf ann 
+      s@(Subst x) <- match inf ann `catchError` 
+          (\ _ -> tcmError $ unlines ["The annotated type and inferred type do not match."
+                                     , "The annotated type is:"
+                                     , "   " ++ (pretty $ rename ann)
+                                     , "The inferred type is:"
+                                     , "   " ++ (pretty $ rename inf)
+                                     ])
       let
           isTyCon (TyCon _ _) = True 
           isTyCon _ = False
@@ -93,11 +99,7 @@ checkTyInst vs ann inf
       unless (null rigids) $ rigidVariableError rigids 
       pure s 
 
-rigidVariableError :: [(Tyvar, Ty)] -> TcM ()
-rigidVariableError vts 
-  = tcmError $ "Cannot unify the following rigid variables with types:" ++
-                (unlines $ map (\ (v,t) -> pretty v ++ " with " ++ pretty t) vts)
- 
+
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations ts eqns
   = do
@@ -412,23 +414,18 @@ tcFunDef incl d@(FunDef sig bd)
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
      (ps2 :=> ann) <- freshInst sch 
      let ty = funtype ts t'
-     -- checking if the annotated type is a valid instance of the infered type.
-     when (hasAnn sig) $ do 
-        s' <- checkTyInst (fv pschs `union` fv (sigReturn sig)) ann ty `wrapError` d 
-        extSubst s' 
-        return ()
      s <- getSubst
      -- checking if constraints are valid
      ps3 <- filterM (\ p -> not <$> entails (apply s ps2) p) (apply s ps1)
      vs <- getEnvFreeVars
      (ds, rs) <- splitContext ps3 (vs `union` fv pschs)
-     liftIO $ putStrLn $ "Sig:" ++ pretty sig
-     liftIO $ putStrLn $ unwords ["Defered:", pretty ds]
-     liftIO $ putStrLn $ unwords ["Retained:", pretty rs]
      sch' <- generalize (rs, ty)
-     liftIO $ putStrLn $ "Final sch:" ++ pretty sch'
+     -- checking if the annotated type is a valid instance of the infered type.
+     when (hasAnn sig) $ do 
+        s' <- checkTyInst (fv pschs `union` fv (sigReturn sig)) ann ty `wrapError` d 
+        extSubst s' 
+        return () 
      sig2 <- elabSignature incl sig sch' `wrapError` d
-     liftIO $ putStrLn $ "Final sig:" ++ pretty sig2
      info [">>> Finished typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
@@ -897,6 +894,13 @@ instance Vars a => Vars (Exp a) where
   vars (Lam ps bd _) = vars bd \\ vars ps
   vars _ = []
 
+-- rename type variables 
+
+rename :: Ty -> Ty 
+rename t = let vs = fv t 
+               s = Subst $ zip vs (map (TyVar . TVar) namePool)
+           in apply s t
+
 -- errors
 
 typeMatch :: Scheme -> Scheme -> TcM ()
@@ -938,3 +942,9 @@ entailmentError base nonentail
                          , "from" 
                          , if null base then "<empty context>" else pretty base 
                          ]
+
+rigidVariableError :: [(Tyvar, Ty)] -> TcM ()
+rigidVariableError vts 
+  = tcmError $ "Cannot unify the following rigid variables with types:" ++
+                (unlines $ map (\ (v,t) -> pretty v ++ " with " ++ pretty t) vts)
+ 

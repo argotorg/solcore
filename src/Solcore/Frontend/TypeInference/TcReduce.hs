@@ -119,6 +119,7 @@ reduceBySuper p
       reduceBySuper' n p 
 
 reduceBySuper' :: Int -> Pred -> TcM [Pred]
+reduceBySuper' _ (_ :~: _) = pure []
 reduceBySuper' n p@(InCls c _ _) 
   | n <= 0 = tcmError $ unwords [ "Cannot reduce:"
                                 , pretty p  
@@ -138,9 +139,21 @@ entails :: [Pred] -> Pred -> TcM Bool
 entails qs p 
   = do 
       n <- askMaxRecursionDepth
+      entails' n qs p 
+
+entails' :: Int -> [Pred] -> Pred -> TcM Bool 
+entails' n qs p  
+  | n <= 0 = tcmError $ unwords [ "Cannot reduce:"
+                                , pretty p  
+                                , "since the solver exceeded the max number of iterations."
+                                ]
+  | otherwise = do
+      ce <- getInstEnv
       qs' <- mapM reduceBySuper qs
-      qs'' <- mapM (reduceByInst n) qs'
-      pure $ any (p `elem`) qs''
+      r <- case selectInst ce p of 
+             Nothing -> pure False 
+             Just (ps, s, h) -> and <$> mapM (entails' (n - 1) ps) (apply s ps)
+      pure $ (any (p `elem`) qs') || r 
 
 -- hnf for predicates 
 

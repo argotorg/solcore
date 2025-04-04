@@ -147,7 +147,6 @@ checkDataType (DataTy n vs constrs)
       vals = map constrBind constrs        
       constrBind c = (constrName c, (funtype (constrTy c) tc))
 
-
 -- type instantiation 
 
 freshInst :: Scheme -> TcM (Qual Ty)
