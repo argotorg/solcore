@@ -389,6 +389,14 @@ tcSignature b (Signature vs ps n args rt)
       sch <- generalize (ps0, funtype ts t')
       pure ((n, sch), pschs, ts, vs')
 
+hasAnn :: Signature Name -> Bool 
+hasAnn (Signature vs ps n args rt) 
+  = any isAnn args && isJust rt 
+    where 
+      isAnn (Typed _ t) = True 
+      isAnn _ = False 
+
+
 -- boolean flag indicates if the assumption for the 
 -- function should be included in the context. It 
 -- is necessary to not include the type of instance 
@@ -404,18 +412,24 @@ tcFunDef incl d@(FunDef sig bd)
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
      (ps2 :=> ann) <- freshInst sch 
      let ty = funtype ts t'
-     liftIO $ putStrLn $ "Fun:" ++ pretty d
-     liftIO $ putStrLn $ "Inf:" ++ pretty ty
-     liftIO $ putStrLn $ "Ann:" ++ pretty ann
-     s <- getSubst 
-     info [">>> Trying to entail:", pretty (apply s ps1), " using:", pretty (apply s ps2)]
+     -- checking if the annotated type is a valid instance of the infered type.
+     when (hasAnn sig) $ do 
+        s' <- checkTyInst (fv pschs `union` fv (sigReturn sig)) ann ty `wrapError` d 
+        extSubst s' 
+        return ()
+     s <- getSubst
+     -- checking if constraints are valid
      ps3 <- filterM (\ p -> not <$> entails (apply s ps2) p) (apply s ps1)
-     info [">>> Not entailed:", pretty ps3]
      vs <- getEnvFreeVars
      (ds, rs) <- splitContext ps3 (vs `union` fv pschs)
+     liftIO $ putStrLn $ "Sig:" ++ pretty sig
+     liftIO $ putStrLn $ unwords ["Defered:", pretty ds]
+     liftIO $ putStrLn $ unwords ["Retained:", pretty rs]
      sch' <- generalize (rs, ty)
+     liftIO $ putStrLn $ "Final sch:" ++ pretty sch'
      sig2 <- elabSignature incl sig sch' `wrapError` d
-     liftIO $ putStrLn $ unwords [">>> Finished typing of:", pretty sig2]
+     liftIO $ putStrLn $ "Final sig:" ++ pretty sig2
+     info [">>> Finished typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
 
@@ -665,9 +679,13 @@ generalize (ps,t)
       envVars <- getEnvFreeVars
       (ps1,t1) <- withCurrentSubst (ps,t)
       ps2 <- reduce ps1 
-      t2 <- withCurrentSubst t1 
-      let vs = fv (ps2,t2)
-          sch = Forall (vs \\ envVars) (ps2 :=> t2)
+      t2 <- withCurrentSubst t1
+      s <- getSubst 
+      let 
+          ps3 = apply s ps2 
+          t3 = apply s t2 
+          vs = fv (ps3,t3)
+          sch = Forall (vs \\ envVars) (ps3 :=> t3)
       return sch
 
 -- kind check
