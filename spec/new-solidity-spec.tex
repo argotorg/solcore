@@ -490,11 +490,23 @@ Type inference proceeds by collecting constraints generated
 by the use of defined function symbols and variables which 
 are later solved. However, some constraints cannot be solved 
 using defined instances due to have have what we call 
-``unreachable type variables''. Given a qualified type 
+``unreachable type variables''. 
+
+\begin{Definition}[Unreachable type variables]
+Given a qualified type 
 $P \Rightarrow \tau$, we define the set of unreachable variables 
 as $\ftv(P) - \ftv(\tau)$, i.e. variables occuring in predicates 
-which do not appear in $\tau$. Such variables pose a problem 
-since they cannot be further instantiated during type inference.
+which do not appear in $\tau$. 
+\end{Definition}
+
+Using this notion, we can define the notion of ambiguity in 
+types. 
+
+\begin{Definition}[Ambiguity]
+A type $P\Rightarrow \tau$ is ambiguous if it contains 
+unreachable variables.
+\end{Definition}
+
 Haskell consider types containing unreachable variables as 
 ambiguous and this was one of the main reasons behind the 
 design of extensions like functional dependencies~\cite{Jones2000}
@@ -502,8 +514,7 @@ and type families~\cite{Chakravarty2005} which provides some additional
 constraint solving based on these additional specifications on 
 class / instance definitions.
 
-In this section, we review some concepts of the theory of 
-qualified types like entailment and satisfiability to use then 
+In this section, we review constraint entailment and reduction
 to define a type improvement strategy.
 
 \subsection{Constraint entailment} 
@@ -602,170 +613,169 @@ by the following derivation:
 				}
 		}
 \]
-
 \end{Example}
 
 
-\subsection{Constraint satisfiability}
-
-Using the entailment relation, we can define the concept of 
-\emph{constraint satisfiability}. We say that a given set 
-of constraints $P$ is satisfiable if there exists a substitution 
-$S$ such that $\Theta \Vdash S\,P$ holds. Figure~\ref{fig:sat-algorithm} 
-presents an algorithm which returns a set of substitutions 
-which satisfy a given set of constraints in context $\Theta$. 
-The algorithm is specified as a inductively defined judgement 
-to deduce $\sats{P}{\mathbb{S}}{n}$, which 
-depends on function $\mathtt{sat}$ which returns information 
-about instances that satisfies a constraint $\pi$:
-
-\[
-  \begin{array}{lcl}
-    \texttt{sat}(\Theta,\tau_1 : C(\overline{\tau})) & = & \left\{\begin{array}{l|l} 
-                                (S|_{ftv(\tau)}, S\,P, \pi_0) & 
-                                  \begin{array}{l}
-                                    \forall\overline{\alpha} . P_0 \Rightarrow \pi_0 \in \Theta^{ins}(C) \\ 
-                                    S_1 = [\overline{\alpha\mapsto\beta}],\:\:\overline{\beta}\:\mathtt{fresh}\\ 
-                                    P \Rightarrow \tau'_1 : C(\overline{\tau'}) = S_1(P_0\Rightarrow \pi_0)\\ 
-                                    S = \mgu(\tau_1, \tau'_1)\\
-                                  \end{array}
-                             \end{array}\right\}
-  \end{array}
-\]
-We use a step counter on $\mathtt{sats}$ to ensure termination and let 
-an empty set denote the failure of the satisfibility algorithm either 
-by the step counter reaches zero or by not having any instance to 
-satisfy the input constraints.
-
-\begin{figure}[H] 
-  \[
-    \begin{array}{c}
-      \infer[_{\{SFail\}}]
-            {\sats{P}{\emptyset}{0}} 
-            {}
-      \\ \\ 
-      \infer[_{\{SEmpty\}}]
-            {\sats{\emptyset}{\id}{n}}
-            {n > 0}
-      \\ \\ 
-      \infer[_{\{SConj\}}]
-            {\sats{\pi , P}{\mathbb{S}}{n}} 
-            {\begin{array}{l}
-              n > 0\\
-              \sats{\{\pi\}}{\mathbb{S}_0}{n - 1}\\
-              \mathbb{S} = \{S'\circ S\,|\,S \in \mathbb{S}_0, \sats{S\,P}{\mathbb{S}_1}{n - 1}, S' \in \mathbb{S}_1\}
-             \end{array}}
-      \\ \\ 
-      \infer[_{\{SInst\}}] 
-            {\sats{\{\pi\}}{\mathbb{S}}{n}}
-            {\begin{array}{l}
-              n > 0 \\ 
-              \Delta = \mathtt{sat}(\Theta,\pi)\\
-              \mathbb{S} = \{S'\circ S\,|\,(S,Q,\pi')\in\Delta, \sats{Q}{\mathbb{S}_0}{n - 1}, S' \in \mathbb{S}_0\}
-             \end{array}}
-    \end{array}
-  \]
-  \caption{Constraint satisfiability.}
-  \label{fig:sat-algorithm}
-\end{figure}
-
-\begin{Example}
-  Consider the constraint set $P =\{b : A(a), b : D\}$ and that 
-  the following instance constraints are available at the 
-  global environment $\Theta$:
-  \[
-    \Theta^{inst} = \left[
-      \begin{array}{lcl}
-        A & \mapsto & [Foo(\word):A(\word), \:\mathtt{Foo}(\bool):A(\word)], \\ 
-        C & \mapsto & [\word : C], \\
-        D & \mapsto&  [\forall \alpha. \alpha : C \Rightarrow \mathtt{Foo}(\alpha) : D]
-      \end{array}
-    \right]
-  \]
-We can show that $P$ is satisfiable by $\Theta$ by producing 
-a set of substitutions $\mathbb{S}$, using rule $\texttt{SConj}$,
-as follows:
-
-  \[ 
-    \infer[_{\{\texttt{SConj}\}}]
-          {\sats{b : A(a) : \{b : D\}}{\mathbb{S}}{n_0}}
-   	      { \begin{array}{l}
-              \sats{b : A(a)}{\mathbb{S}_0}{n_0}\\
-              \mathbb{S} = \{S'\circ S\,|\,S \in \mathbb{S}_0, \sats{\{b : D\}}{\mathbb{S}_1}{n_0 - 1}, S' \in \mathbb{S}_1\}
-            \end{array} }
-  \]
-  next, we build the set $\mathbb{S}_1$ using rule $\texttt{SInst}$ in the 
-  constraint $b : A (a)$ as follows:
-  \[
-    \infer[_{\{SInst\}}]
-          {\sats{b : A(a)}{\mathbb{S}_1}{n_0 - 1}}
-          {\begin{array}{l}
-              n_0 - 1 > 0\\
-              \Delta_0 = sat(\Theta, b : A(a)) = \{(S_1, \emptyset, \mathtt{Foo}(\word) : A (\word)), (S_2, \emptyset, \mathtt{Foo}(\bool) : A(\word))\}\\
-              \mathbb{S}_1 = \{S'\circ S\,|\,(S,Q,\pi') \in \Delta_0, \sats{Q}{\mathbb{S}}{n_0 - 2}, S' \in \mathbb{S}\}
-           \end{array}}
-  \]
-  where 
-  \[
-    \begin{array}{lcl}
-      S_1 & = & [a \mapsto \word, b\mapsto \mathtt{Foo}(\word)]\\ 
-      S_2 & = & [a \mapsto \word, b \mapsto \mathtt{Foo}(\bool)]
-    \end{array}
-  \] 
-  Continuing the rule $\mathtt{SConj}$, we need to test the satisfiability of the $b : D$ 
-  for each substitutions, $S_1$ and $S_2$. Now, applying $\mathtt{SInst}$ to 
-  $S_1(b : D) = \mathtt{Foo}(\word) : D$, we have: 
-  \[
-    \infer[_{\{SInst\}}]
-          {\sats{\mathtt{Foo}(\word) : D}{\mathbb{S}^1_1}{n_0 - 2}}
-          {\begin{array}{l}
-              n_0 - 2 > 0\\
-              \Delta_1 = sat(\Theta, \mathtt{Foo}(\word) : D) = \{(S'_1\,|_\emptyset, \{\word : C\}, \mathtt{Foo}(\word) : D)\}\\
-              \mathbb{S}^1_1 = \{S'\circ S\,|\,(S,Q,\pi') \in \Delta_1, \sats{Q}{\mathbb{S}}{n_0 - 2}, S' \in \mathbb{S}\} = \{id\}
-           \end{array}}
-  \]
-  where $S'_1 = [b\mapsto \word]$ and $S'_1\,|_\emptyset = id$. Now, considering 
-  $S_2(b : D) =\mathtt{Foo}(\bool) : D$, we have:
-  \[
-    \infer[_{\{SInst\}}]
-          {\sats{\mathtt{Foo}(\bool) : D}{\mathbb{S}^2_1}{n_0 - 2}}
-          {\begin{array}{l}
-              n_0 - 2 > 0\\
-              \Delta_2 = sat(\Theta, \mathtt{Foo}(\word) : D) = \{(S'_2\,|_\emptyset, \{\bool : C\}, \mathtt{Foo}(\bool) : D)\}\\
-              \mathbb{S}^2_1 = \{S'\circ S\,|\,(S,Q,\pi') \in \Delta_2, \sats{Q}{\mathbb{S}_2}{n_0 - 2}, S' \in \mathbb{S}_2\} = \emptyset 
-           \end{array}}
-  \]
-  we have that $\mathbb{S}_2 = \emptyset$ since there is no instance in $\Theta$ which 
-  unifies with $\bool : C$, which is the constraint produced by the call 
-  of $sat(\Theta,\mathtt{Foo}(\word) : D)$.
-\end{Example}
-
-The next examples shows a constraint which will make the algorithm 
-consume the whole step counter for recursive calls.
-
-\begin{Example}
-Let's consider the following instance context 
-\[
-  \Theta^{ins} = [C \mapsto \{\forall a,b.\,\{a : C(b)\} \Rightarrow (T(T(a)) : C(b)\}]
-\]
-and try to compute the set of satisfiable instances for 
-$\pi = T(a) : C(a)$. 
-We have that $\pi$ unifies with the 
-instance $\forall a,b.\,\{a : C(b)\} \Rightarrow (T(T(a)) : C(b)$ 
-producing the substitution 
-\[
-  S= [a \mapsto T(T(a_1)),\, b_1 \mapsto T(T(T(\:a_1)))]
-\] 
-Then, we need to recursively compute the satisfiability of 
-\[
-  S(a_1 : C(b_1)) = T(T(a_1)) : C(T(T(T(a_1))))
-\] 
-which unifies again with the same instance, leading the process into 
-an infinite loop. Since the satisfiability test uses a 
-fuel parameter to ensure termination, the loop will not happen 
-but the algorithm will return an error due to not having enough 
-gas to finish the computation. 
-\end{Example}
+% \subsection{Constraint satisfiability}
+%
+% Using the entailment relation, we can define the concept of 
+% \emph{constraint satisfiability}. We say that a given set 
+% of constraints $P$ is satisfiable if there exists a substitution 
+% $S$ such that $\Theta \Vdash S\,P$ holds. Figure~\ref{fig:sat-algorithm} 
+% presents an algorithm which returns a set of substitutions 
+% which satisfy a given set of constraints in context $\Theta$. 
+% The algorithm is specified as a inductively defined judgement 
+% to deduce $\sats{P}{\mathbb{S}}{n}$, which 
+% depends on function $\mathtt{sat}$ which returns information 
+% about instances that satisfies a constraint $\pi$:
+%
+% \[
+%   \begin{array}{lcl}
+%     \texttt{sat}(\Theta,\tau_1 : C(\overline{\tau})) & = & \left\{\begin{array}{l|l} 
+%                                 (S|_{ftv(\tau)}, S\,P, \pi_0) & 
+%                                   \begin{array}{l}
+%                                     \forall\overline{\alpha} . P_0 \Rightarrow \pi_0 \in \Theta^{ins}(C) \\ 
+%                                     S_1 = [\overline{\alpha\mapsto\beta}],\:\:\overline{\beta}\:\mathtt{fresh}\\ 
+%                                     P \Rightarrow \tau'_1 : C(\overline{\tau'}) = S_1(P_0\Rightarrow \pi_0)\\ 
+%                                     S = \mgu(\tau_1, \tau'_1)\\
+%                                   \end{array}
+%                              \end{array}\right\}
+%   \end{array}
+% \]
+% We use a step counter on $\mathtt{sats}$ to ensure termination and let 
+% an empty set denote the failure of the satisfibility algorithm either 
+% by the step counter reaches zero or by not having any instance to 
+% satisfy the input constraints.
+%
+% \begin{figure}[H] 
+%   \[
+%     \begin{array}{c}
+%       \infer[_{\{SFail\}}]
+%             {\sats{P}{\emptyset}{0}} 
+%             {}
+%       \\ \\ 
+%       \infer[_{\{SEmpty\}}]
+%             {\sats{\emptyset}{\id}{n}}
+%             {n > 0}
+%       \\ \\ 
+%       \infer[_{\{SConj\}}]
+%             {\sats{\pi , P}{\mathbb{S}}{n}} 
+%             {\begin{array}{l}
+%               n > 0\\
+%               \sats{\{\pi\}}{\mathbb{S}_0}{n - 1}\\
+%               \mathbb{S} = \{S'\circ S\,|\,S \in \mathbb{S}_0, \sats{S\,P}{\mathbb{S}_1}{n - 1}, S' \in \mathbb{S}_1\}
+%              \end{array}}
+%       \\ \\ 
+%       \infer[_{\{SInst\}}] 
+%             {\sats{\{\pi\}}{\mathbb{S}}{n}}
+%             {\begin{array}{l}
+%               n > 0 \\ 
+%               \Delta = \mathtt{sat}(\Theta,\pi)\\
+%               \mathbb{S} = \{S'\circ S\,|\,(S,Q,\pi')\in\Delta, \sats{Q}{\mathbb{S}_0}{n - 1}, S' \in \mathbb{S}_0\}
+%              \end{array}}
+%     \end{array}
+%   \]
+%   \caption{Constraint satisfiability.}
+%   \label{fig:sat-algorithm}
+% \end{figure}
+%
+% \begin{Example}
+%   Consider the constraint set $P =\{b : A(a), b : D\}$ and that 
+%   the following instance constraints are available at the 
+%   global environment $\Theta$:
+%   \[
+%     \Theta^{inst} = \left[
+%       \begin{array}{lcl}
+%         A & \mapsto & [Foo(\word):A(\word), \:\mathtt{Foo}(\bool):A(\word)], \\ 
+%         C & \mapsto & [\word : C], \\
+%         D & \mapsto&  [\forall \alpha. \alpha : C \Rightarrow \mathtt{Foo}(\alpha) : D]
+%       \end{array}
+%     \right]
+%   \]
+% We can show that $P$ is satisfiable by $\Theta$ by producing 
+% a set of substitutions $\mathbb{S}$, using rule $\texttt{SConj}$,
+% as follows:
+%
+%   \[ 
+%     \infer[_{\{\texttt{SConj}\}}]
+%           {\sats{b : A(a) : \{b : D\}}{\mathbb{S}}{n_0}}
+%    	      { \begin{array}{l}
+%               \sats{b : A(a)}{\mathbb{S}_0}{n_0}\\
+%               \mathbb{S} = \{S'\circ S\,|\,S \in \mathbb{S}_0, \sats{\{b : D\}}{\mathbb{S}_1}{n_0 - 1}, S' \in \mathbb{S}_1\}
+%             \end{array} }
+%   \]
+%   next, we build the set $\mathbb{S}_1$ using rule $\texttt{SInst}$ in the 
+%   constraint $b : A (a)$ as follows:
+%   \[
+%     \infer[_{\{SInst\}}]
+%           {\sats{b : A(a)}{\mathbb{S}_1}{n_0 - 1}}
+%           {\begin{array}{l}
+%               n_0 - 1 > 0\\
+%               \Delta_0 = sat(\Theta, b : A(a)) = \{(S_1, \emptyset, \mathtt{Foo}(\word) : A (\word)), (S_2, \emptyset, \mathtt{Foo}(\bool) : A(\word))\}\\
+%               \mathbb{S}_1 = \{S'\circ S\,|\,(S,Q,\pi') \in \Delta_0, \sats{Q}{\mathbb{S}}{n_0 - 2}, S' \in \mathbb{S}\}
+%            \end{array}}
+%   \]
+%   where 
+%   \[
+%     \begin{array}{lcl}
+%       S_1 & = & [a \mapsto \word, b\mapsto \mathtt{Foo}(\word)]\\ 
+%       S_2 & = & [a \mapsto \word, b \mapsto \mathtt{Foo}(\bool)]
+%     \end{array}
+%   \] 
+%   Continuing the rule $\mathtt{SConj}$, we need to test the satisfiability of the $b : D$ 
+%   for each substitutions, $S_1$ and $S_2$. Now, applying $\mathtt{SInst}$ to 
+%   $S_1(b : D) = \mathtt{Foo}(\word) : D$, we have: 
+%   \[
+%     \infer[_{\{SInst\}}]
+%           {\sats{\mathtt{Foo}(\word) : D}{\mathbb{S}^1_1}{n_0 - 2}}
+%           {\begin{array}{l}
+%               n_0 - 2 > 0\\
+%               \Delta_1 = sat(\Theta, \mathtt{Foo}(\word) : D) = \{(S'_1\,|_\emptyset, \{\word : C\}, \mathtt{Foo}(\word) : D)\}\\
+%               \mathbb{S}^1_1 = \{S'\circ S\,|\,(S,Q,\pi') \in \Delta_1, \sats{Q}{\mathbb{S}}{n_0 - 2}, S' \in \mathbb{S}\} = \{id\}
+%            \end{array}}
+%   \]
+%   where $S'_1 = [b\mapsto \word]$ and $S'_1\,|_\emptyset = id$. Now, considering 
+%   $S_2(b : D) =\mathtt{Foo}(\bool) : D$, we have:
+%   \[
+%     \infer[_{\{SInst\}}]
+%           {\sats{\mathtt{Foo}(\bool) : D}{\mathbb{S}^2_1}{n_0 - 2}}
+%           {\begin{array}{l}
+%               n_0 - 2 > 0\\
+%               \Delta_2 = sat(\Theta, \mathtt{Foo}(\word) : D) = \{(S'_2\,|_\emptyset, \{\bool : C\}, \mathtt{Foo}(\bool) : D)\}\\
+%               \mathbb{S}^2_1 = \{S'\circ S\,|\,(S,Q,\pi') \in \Delta_2, \sats{Q}{\mathbb{S}_2}{n_0 - 2}, S' \in \mathbb{S}_2\} = \emptyset 
+%            \end{array}}
+%   \]
+%   we have that $\mathbb{S}_2 = \emptyset$ since there is no instance in $\Theta$ which 
+%   unifies with $\bool : C$, which is the constraint produced by the call 
+%   of $sat(\Theta,\mathtt{Foo}(\word) : D)$.
+% \end{Example}
+%
+% The next examples shows a constraint which will make the algorithm 
+% consume the whole step counter for recursive calls.
+%
+% \begin{Example}
+% Let's consider the following instance context 
+% \[
+%   \Theta^{ins} = [C \mapsto \{\forall a,b.\,\{a : C(b)\} \Rightarrow (T(T(a)) : C(b)\}]
+% \]
+% and try to compute the set of satisfiable instances for 
+% $\pi = T(a) : C(a)$. 
+% We have that $\pi$ unifies with the 
+% instance $\forall a,b.\,\{a : C(b)\} \Rightarrow (T(T(a)) : C(b)$ 
+% producing the substitution 
+% \[
+%   S= [a \mapsto T(T(a_1)),\, b_1 \mapsto T(T(T(\:a_1)))]
+% \] 
+% Then, we need to recursively compute the satisfiability of 
+% \[
+%   S(a_1 : C(b_1)) = T(T(a_1)) : C(T(T(T(a_1))))
+% \] 
+% which unifies again with the same instance, leading the process into 
+% an infinite loop. Since the satisfiability test uses a 
+% fuel parameter to ensure termination, the loop will not happen 
+% but the algorithm will return an error due to not having enough 
+% gas to finish the computation. 
+% \end{Example}
 
 \subsection{Context reduction} 
 
@@ -786,6 +796,23 @@ input constraint.
                           &   &\:\:\:\:\overline{K}\:\:\mathtt{are}\:\:\mathtt{new}\:\:\mathtt{Skolem}\:\:\mathtt{constants}
   \end{array}
 \]
+Function \texttt{sat} returns the information about instances that satisfies 
+a constraint $\pi$:
+
+\[
+  \begin{array}{lcl}
+    \texttt{sat}(\Theta,\tau_1 : C(\overline{\tau})) & = & \left\{\begin{array}{l|l} 
+                                (S|_{ftv(\tau)}, S\,P, \pi_0) & 
+                                  \begin{array}{l}
+                                    \forall\overline{\alpha} . P_0 \Rightarrow \pi_0 \in \Theta^{ins}(C) \\ 
+                                    S_1 = [\overline{\alpha\mapsto\beta}],\:\:\overline{\beta}\:\mathtt{fresh}\\ 
+                                    P \Rightarrow \tau'_1 : C(\overline{\tau'}) = S_1(P_0\Rightarrow \pi_0)\\ 
+                                    S = \mgu(\tau_1, \tau'_1)\\
+                                  \end{array}
+                             \end{array}\right\}
+  \end{array}
+\]
+
 
 If we restrict ourselves to non-overlapping instances, 
 $\mathtt{matches}$ always return a singleton or empty set for 
