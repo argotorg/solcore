@@ -35,10 +35,11 @@ freshVar
 
 freshName :: TcM Name 
 freshName 
-  = do
+  = do 
+      ds <- Map.keys <$> gets ctx
       vs <- getEnvFreeVars
       ns <- gets nameSupply 
-      let (n, ns') = newName (ns \\ (map var vs)) 
+      let (n, ns') = newName (ns \\ ((map var vs) ++ ds)) 
       modify (\ ctx -> ctx {nameSupply = ns'})
       return n 
 
@@ -150,12 +151,15 @@ checkDataType (DataTy n vs constrs)
 -- type instantiation 
 
 freshInst :: Scheme -> TcM (Qual Ty)
-freshInst (Forall vs qt)
+freshInst sch@(Forall vs qt)
   = renameVars vs qt
 
 renameVars :: HasType a => [Tyvar] -> a -> TcM a 
 renameVars vs t 
   = do
+      let ns = map var vs 
+      ns' <- gets nameSupply 
+      modify (\env -> env{nameSupply = ns' \\ ns})
       s <- mapM (\ v -> (v,) <$> freshTyVar) vs
       pure $ apply (Subst s) t
 

@@ -385,10 +385,8 @@ tcSignature b (Signature vs ps n args rt)
           rt0 = apply s rt 
           ps0 = apply s ps
       (args', pschs, ts, vs') <- tcArgs args0
-      t' <- maybe freshTyVar pure rt0
-      let
-        qt = ps0 :=> (funtype ts t')
-        sch = Forall vs0 (ps0 :=> (funtype ts t'))
+      t' <- maybe freshTyVar pure rt0 
+      sch <- generalize (ps0, funtype ts t')
       pure ((n, sch), pschs, ts, vs')
 
 -- boolean flag indicates if the assumption for the 
@@ -405,8 +403,11 @@ tcFunDef incl d@(FunDef sig bd)
      let lctx = if incl then (n,sch) : pschs else pschs
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
      (ps2 :=> ann) <- freshInst sch 
-     let ty = funtype ts t' 
-     s <- getSubst
+     let ty = funtype ts t'
+     liftIO $ putStrLn $ "Fun:" ++ pretty d
+     liftIO $ putStrLn $ "Inf:" ++ pretty ty
+     liftIO $ putStrLn $ "Ann:" ++ pretty ann
+     s <- getSubst 
      info [">>> Trying to entail:", pretty (apply s ps1), " using:", pretty (apply s ps2)]
      ps3 <- filterM (\ p -> not <$> entails (apply s ps2) p) (apply s ps1)
      info [">>> Not entailed:", pretty ps3]
@@ -414,7 +415,7 @@ tcFunDef incl d@(FunDef sig bd)
      (ds, rs) <- splitContext ps3 (vs `union` fv pschs)
      sch' <- generalize (rs, ty)
      sig2 <- elabSignature incl sig sch' `wrapError` d
-     info [">>> Finished typing of:", pretty sig2]
+     liftIO $ putStrLn $ unwords [">>> Finished typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
 
@@ -439,7 +440,7 @@ elabParam :: Bool -> Ty -> Param Name -> TcM (Param Id)
 elabParam False t (Typed n _) = pure $ Typed (Id n t) t 
 elabParam False t (Untyped n) = pure $ Typed (Id n t) t
 elabParam _ t (Typed n t') 
-  = do 
+  = do
       s <- match t t' 
       extSubst s 
       withCurrentSubst $ Typed (Id n t) t
@@ -487,8 +488,9 @@ tcInstance idecl@(Instance ctx n ts t funs)
       let 
         qts1 = map (schemeFromSignature . funSignature) funs'
         qts2 = map (schemeFromSignature . funSignature) funs1
-      -- s1 <- match qts1 qts2
-      -- extSubst s1
+      -- check if types are proper instances of the most general type infered.
+      s1 <- match qts1 qts2
+      extSubst s1
       let
         instd = Instance ctx n ts t funs1
       withCurrentSubst instd
