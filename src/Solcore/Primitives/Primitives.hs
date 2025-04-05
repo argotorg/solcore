@@ -11,13 +11,13 @@ import Solcore.Frontend.TypeInference.Id
 -- basic type classes
 
 selfVar :: Tyvar
-selfVar = TVar selfName False
+selfVar = TVar selfName
 
 argsVar :: Tyvar
-argsVar = TVar argsName False
+argsVar = TVar argsName
 
 retVar :: Tyvar
-retVar = TVar retName False
+retVar = TVar retName
 
 invokeClass :: Class Name
 invokeClass
@@ -78,8 +78,8 @@ primInvoke = ( QualName invokableName "invoke"
 primPair :: (Name, Scheme)
 primPair = (Name "pair", Forall [aVar, bVar] ([] :=> (pairTy at bt)))
     where
-      aVar = TVar (Name "a") False
-      bVar = TVar (Name "b") False
+      aVar = TVar (Name "a")
+      bVar = TVar (Name "b")
       at = TyVar aVar
       bt = TyVar bVar
 
@@ -189,7 +189,7 @@ yulPrimOps = [ (Name "stop", monotype unit)
              ]
 
 aVar :: Tyvar 
-aVar = TVar (Name "a") False
+aVar = TVar (Name "a")
 
 words :: Int -> [Ty]
 words n = replicate n word

@@ -29,16 +29,24 @@ type TcM a = (StateT TcEnv (ExceptT String IO)) a
 runTcM :: TcM a -> TcEnv -> IO (Either String (a, TcEnv))
 runTcM m env = runExceptT (runStateT m env)
 
+defaultM :: TcM a -> TcM (Maybe a)
+defaultM m 
+  = do {
+      x <- m ;
+      pure (Just x)
+    } `catchError` (\ _ -> pure Nothing)
+
 freshVar :: TcM Tyvar 
 freshVar 
-  = (flip TVar False) <$> freshName
+  = TVar <$> freshName 
 
 freshName :: TcM Name 
 freshName 
-  = do
+  = do 
+      ds <- Map.keys <$> gets ctx
       vs <- getEnvFreeVars
       ns <- gets nameSupply 
-      let (n, ns') = newName ns 
+      let (n, ns') = newName (ns \\ ((map var vs) ++ ds)) 
       modify (\ ctx -> ctx {nameSupply = ns'})
       return n 
 
@@ -74,6 +82,11 @@ lookupUniqueTy :: Name -> TcM (Maybe DataTy)
 lookupUniqueTy n 
   = (Map.lookup n) <$> gets uniqueTypes 
 
+isUniqueTyName :: Name -> TcM Bool 
+isUniqueTyName n = do 
+  uenv <- gets uniqueTypes
+  pure $ any (\ d -> dataName d == n) (Map.elems uenv)
+
 typeInfoFor :: DataTy -> TypeInfo 
 typeInfoFor (DataTy n vs cons)
   = TypeInfo (length vs) (map constrName cons) []
@@ -107,24 +120,10 @@ getEnvFreeVars
 unify :: Ty -> Ty -> TcM Subst
 unify t t' 
   = do
-      s <- getSubst 
+      s <- getSubst
       s' <- tcmMgu (apply s t) (apply s t')
       s1 <- extSubst s'
-      checkSubst s1 
       pure s1
-    
--- check if a substitution is valid 
--- by checking if rigid variables are 
--- mapped into type constructors. 
-
-checkSubst :: Subst -> TcM () 
-checkSubst (Subst ss) 
-  = mapM_ go ss 
-    where 
-      go (v1, t@(TyCon _ _))
-        | rigid v1 = rigidVarError v1 t
-        | otherwise = pure ()
-      go _ = pure ()
 
 matchTy :: Ty -> Ty -> TcM Subst 
 matchTy t t' 
@@ -155,16 +154,18 @@ checkDataType (DataTy n vs constrs)
       vals = map constrBind constrs        
       constrBind c = (constrName c, (funtype (constrTy c) tc))
 
-
 -- type instantiation 
 
 freshInst :: Scheme -> TcM (Qual Ty)
-freshInst (Forall vs qt)
+freshInst sch@(Forall vs qt)
   = renameVars vs qt
 
 renameVars :: HasType a => [Tyvar] -> a -> TcM a 
 renameVars vs t 
   = do
+      let ns = map var vs 
+      ns' <- gets nameSupply 
+      modify (\env -> env{nameSupply = ns' \\ ns})
       s <- mapM (\ v -> (v,) <$> freshTyVar) vs
       pure $ apply (Subst s) t
 
@@ -177,6 +178,9 @@ withCurrentSubst t = do
 
 getSubst :: TcM Subst 
 getSubst = gets subst
+
+putSubst :: Subst -> TcM ()
+putSubst s = modify (\env -> env{subst = s})
 
 extSubst :: Subst -> TcM Subst
 extSubst s = modify ext >> getSubst where
@@ -352,133 +356,6 @@ addInstance n inst
 maybeToTcM :: String -> Maybe a -> TcM a 
 maybeToTcM s Nothing = throwError s 
 maybeToTcM _ (Just x) = pure x
-
--- type generalization 
-
-generalize :: ([Pred], Ty) -> TcM Scheme 
-generalize (ps,t) 
-  = do 
-      envVars <- getEnvFreeVars
-      (ps1,t1) <- withCurrentSubst (ps,t)
-      ps2 <- reduceContext ps1
-      t2 <- withCurrentSubst t1 
-      let vs = fv (ps2,t2)
-          sch = Forall (vs \\ envVars) (ps2 :=> t2)
-      return sch
-
--- context reduction 
-
-reduceContext :: [Pred] -> TcM [Pred]
-reduceContext preds0
-  = do
-      preds <- withCurrentSubst preds0
-      depth <- askMaxRecursionDepth 
-      unless (null preds) $ info ["> reduce context ", pretty preds]
-      ps1 <- toHnfs depth preds
-      ps2 <- withCurrentSubst ps1 
-      unless (null preds) $ info ["< reduced context ", pretty (nub ps2)]
-      pure (nub ps2)
-
-toHnfs :: Int -> [Pred] -> TcM [Pred]
-toHnfs depth ps 
-  = do
-      ps' <- simplifyEqualities ps
-      ps2 <- withCurrentSubst ps'
-      unless (null ps2) $ info ["! toHnfs > toHnfs' ", show depth, " ", pretty (nub ps2)]
-      toHnfs' depth ps2 
-
-simplifyEqualities :: [Pred] -> TcM [Pred]
-simplifyEqualities ps = go [] ps where
-    go rs [] = return rs
-    go rs ((t :~: u) : ps) = do
-      info ["> simplifyEqualities step ", pretty t, " ~ ", pretty u]
-      phi <- tcmMgu t u
-      extSubst phi
-      ps' <- withCurrentSubst ps
-      rs' <- withCurrentSubst rs
-      go rs' ps'
-    go rs (p:ps) = go (p:rs) ps
-
-toHnfs' :: Int -> [Pred] -> TcM [Pred]
-toHnfs' _ [] = return []
-toHnfs' 0 ps = throwError("Max context reduction depth exceeded")
-toHnfs' d preds@(p:ps) = do
-  let d' = d - 1
-  info ["! toHnfs' > toHnf ", show d, " ", pretty p]
-  rs1 <- toHnf d' p
-  ps' <- withCurrentSubst ps   -- important, toHnf may have extended the subst
-  rs2 <- toHnfs' d' ps'
-  return (rs1 ++ rs2)
-
-toHnf :: Int -> Pred -> TcM [Pred]
-toHnf _ (t :~: u) = do
-  subst1 <- tcmMgu t u
-  extSubst subst1
-  return []
-toHnf depth pred@(InCls n _ _)
-  | inHnf pred = return [pred]
-  | otherwise = do
-      ce <- getInstEnv
-      is <- askInstEnv n
-      case byInstM ce pred of
-        Nothing -> tcmError ("no instance of " ++ pretty pred
-                  ++"\nKnown instances:\n"++ (unlines $ map pretty is))
-        Just (preds, subst', instd) -> do
-            info ["> Solving ", pretty pred] 
-            info [">> using instance: ", pretty instd] 
-            info [">> substitution: ", pretty subst']
-            extSubst subst'
-            x <- getSubst
-            info [">> context next iteration: ", pretty $ apply x preds]
-            toHnfs (depth - 1) preds
-
-inHnf :: Pred -> Bool
-inHnf (InCls c t args) = hnf t where
-  hnf (TyVar _) = True
-  hnf (TyCon _ _) = False
-inHnf (_ :~: _) = False
-
-byInstM :: InstTable -> Pred -> Maybe ([Pred], Subst, Inst)
-byInstM ce p@(InCls i t as) 
-  = msum [tryInst it | it <- insts ce i] 
-    where
-      insts m n = maybe [] id (Map.lookup n m)
-      tryInst :: Qual Pred -> Maybe ([Pred], Subst, Inst)
-      tryInst c@(ps :=> h) =
-          case matchPred h p of
-            Left _ -> Nothing
-            Right u -> let tvs = fv h
-                       in Just (map (apply u) ps, restrict u tvs, c)
-byInstM _ _ = Nothing
-
-bySuperM :: Pred -> TcM [Pred] 
-bySuperM p@(InCls n t ts) 
-  = do 
-      ctbl <- getClassEnv 
-      case Map.lookup n ctbl of 
-        Nothing -> pure []
-        Just cinfo -> do 
-           ps' <- concat <$> mapM bySuperM (supers cinfo)
-           pure (p : ps')
-bySuperM _ = pure []
-
--- entailment 
-
-entails :: [Pred] -> Pred -> TcM Bool
-entails ps p 
-  = do 
-      qs <- mapM bySuperM ps
-      let
-        cond1 = any (p `alphaEq`) (concat qs)
-      itbl <- getInstEnv
-      cond2 <- case byInstM itbl p of 
-                 Nothing -> pure False 
-                 Just (qs', u, _) -> and <$> mapM (entails ps) qs'
-      pure (cond1 || cond2)
-
-isGenPred :: Pred -> Bool 
-isGenPred (InCls n _ _) 
-  = n `elem` [Name "invokable"]
 
 -- checking coverage pragma 
 

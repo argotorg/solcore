@@ -1,0 +1,33 @@
+data Proxy(a) = Proxy;
+
+function add(x:word, y: word) {return x;}
+
+class self:BaseMemoryType {
+    function memorySize(x:Proxy(self)) -> word;
+}
+
+
+instance word:BaseMemoryType {
+    function memorySize(x:Proxy(word)) -> word {
+      return 32;
+    }
+}
+
+instance (a:BaseMemoryType, b:BaseMemoryType) =>
+   (a,b):BaseMemoryType {
+   
+    function memorySize(x) -> word { // not correct semantically, just for debugging
+            return add(BaseMemoryType.memorySize(Proxy:Proxy(a)),
+            // BaseMemoryType.memorySize(Proxy:Proxy(b))
+	    morefun(Proxy:Proxy(b))
+	    );
+    }
+}
+// this should trigger a type error.
+forall t. function morefun(p:Proxy(t)) -> word { return BaseMemoryType.memorySize(Proxy:Proxy(t));}
+
+contract TestMemoryType {
+  function main() -> word {
+    return BaseMemoryType.memorySize(Proxy:Proxy( (word,word) ));
+  }
+}

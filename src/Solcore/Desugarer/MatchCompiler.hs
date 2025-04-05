@@ -254,7 +254,7 @@ generateFunction es d eqn
         vs = ids ss
       let fd = FunDef (Signature [] [] n (map toParam vs) (Just (blockType ss))) ss
       tell [fd]
-      v <- (TyVar . flip TVar False) <$> freshName 
+      v <- (TyVar . TVar) <$> freshName 
       return [StmtExp $ generateCall (Id n v) (Var <$> vs)] 
 
 newFunName :: CompilerM Name 
@@ -439,7 +439,7 @@ generateCall = Call Nothing
 matchError :: CompilerM Id   
 matchError 
   = do
-      v <- (TyVar . flip TVar False) <$> freshName
+      v <- (TyVar . TVar) <$> freshName
       pure (Id (Name "revert") v)
 
 errorLit :: Exp Id  

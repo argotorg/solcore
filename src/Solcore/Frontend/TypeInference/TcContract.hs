@@ -28,12 +28,11 @@ import Solcore.Primitives.Primitives
 -- used to determine if it will generate definitions.
 
 typeInfer :: Option ->
-             [Name] ->
              CompUnit Name ->
              IO (Either String (CompUnit Id, TcEnv))
-typeInfer options fnames (CompUnit imps decls)
+typeInfer options (CompUnit imps decls)
   = do
-      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options fnames)
+      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options)
       case r of
         Left err -> pure $ Left err 
         Right ((CompUnit imps ds), env) -> 
@@ -62,7 +61,7 @@ tcCompUnit (CompUnit imps cs)
         addGenDefs
         d' <- tcTopDecl d 
         s <- getSubst 
-        pure (everywhere (mkT (applyI s)) d')
+        pure (everywhere (mkT (apply @Id s)) d')
 
 addGenDefs :: TcM ()
 addGenDefs 
@@ -166,7 +165,7 @@ tcContract c@(Contract n vs decls)
           clearSubst 
           d' <- tcDecl d
           s <- getSubst
-          pure (everywhere (mkT (applyI s)) d')
+          pure (everywhere (mkT (apply @Id s)) d')
 
 -- initializing context for a contract
 
@@ -257,15 +256,14 @@ tcSig (sig, (Forall _ (_ :=> t)))
 tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds 
   = do
-      funs <- mapM scanFun binds
-      (funs', schs, pss, ts) <- unzip4 <$> mapM (tcFunDef []) funs 
-      ts' <- withCurrentSubst ts  
-      schs <- mapM generalize (zip pss ts')
-      let names = map (sigName . funSignature) funs 
+      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True) binds
+      checkDeferedConstraints (zip funs' pss)
+      let names = map (sigName . funSignature) funs' 
       mapM_ (uncurry extEnv) (zip names schs)
       noDesugarCalls <- getNoDesugarCalls
       unless noDesugarCalls $ generateTopDeclsFor (zip funs' schs)
       pure funs'
+
 
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
 generateTopDeclsFor ps
@@ -273,23 +271,15 @@ generateTopDeclsFor ps
       gen <- askGeneratingDefs 
       if gen then do 
         (dts, instds) <- unzip <$> mapM generateDecls ps
-        mapM_ checkDataType dts
+        mapM_ checkDataType dts 
+        s <- getSubst 
+        clearSubst
         disableBoundVariableCondition (mapM_ checkInstance instds)
         insts' <- withNoGeneratingDefs (mapM tcInstance instds)
         mapM_ writeTopDecl ((TDataDef <$> dts) ++ (TInstDef <$> insts'))
+        putSubst s
       else pure ()
 
-
-scanFun :: FunDef Name -> TcM (FunDef Name)
-scanFun (FunDef sig bd)
-  = flip FunDef bd <$> fillSignature sig 
-    where 
-      f (Typed n t) = pure $ Typed n (skolemize t)
-      f (Untyped n) = Typed n <$> freshTyVar
-      fillSignature (Signature vs ctx n ps t)
-        = do 
-            ps' <- mapM f ps 
-            pure (Signature vs ctx n ps' (skolemize <$> t))
 
 -- type checking contract constructors
 

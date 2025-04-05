@@ -1,0 +1,17 @@
+class a : Foo {
+  function foo (x : a) -> word;
+}
+
+// here the constraint a : Foo is 
+// defered to outer scope where the 
+// error should be detected.
+
+function bla (x : a) -> word {
+  return Foo.foo(x);
+}
+
+contract Test {
+  function main() {
+    return bla(1);
+  }
+}

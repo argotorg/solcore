@@ -86,7 +86,7 @@ createInstance udt fd sch
 freshPatData :: DataTy -> TcM (Pat Name, [Exp Name]) 
 freshPatData (DataTy dn vs ((Constr cn ts) : _))
   | null ts 
-    = do 
+    = do
         pure (PCon cn [], [])
   | otherwise
     = do 
@@ -100,9 +100,13 @@ freshPatArg (TyCon pn ts)
         case constrNames ti of 
            [cn] -> do 
                       (ps :=> ty) <- askEnv cn >>= freshInst 
-                      let (args, ret) = splitTy ty 
-                      (ps, es) <- unzip <$> mapM freshPatArg args 
-                      pure (PCon cn ps, Con cn es) 
+                      let (args, ret) = splitTy ty
+                      if null args then do 
+                        n <- freshName 
+                        pure (PVar n, Var n)
+                      else do 
+                        (ps, es) <- unzip <$> mapM freshPatArg args 
+                        pure (PCon cn ps, Con cn es) 
            _ -> do 
                   n <- freshName
                   pure (PVar n, Var n) 
@@ -153,7 +157,7 @@ anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs
     q' = zipWith (:~:) bs as
     bs = map TyVar $ take (length as) freshNames
     tvs = fv inst
-    freshNames = filter (not . flip elem tvs) (flip TVar False <$> namePool)
+    freshNames = filter (not . flip elem tvs) (TVar <$> namePool)
 
 isQual :: Name -> Bool
 isQual (QualName _ _) = True 

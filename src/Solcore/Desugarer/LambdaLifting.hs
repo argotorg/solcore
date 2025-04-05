@@ -159,7 +159,7 @@ createClosureType :: [Name] -> LiftM (DataTy, Name)
 createClosureType ns 
   = do 
       n <- freshName "t_closure"
-      let vs = (flip TVar False) <$> ns 
+      let vs = TVar <$> ns 
       pure (DataTy n vs [Constr n (TyVar <$> vs)], n)
 
 createUniqueTypeClosure :: Name -> DataTy -> LiftM DataTy

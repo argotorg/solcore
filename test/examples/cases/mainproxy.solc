@@ -1,0 +1,22 @@
+data Proxy(a) = Proxy;
+
+class self:BaseMemoryType {
+    function memorySize(x:Proxy(self)) -> word;
+}
+
+
+instance word:BaseMemoryType {
+    function memorySize(x:Proxy(self)) -> word {
+      return 32;
+    }
+}
+
+
+function morefun(p:Proxy(t)) -> word { return BaseMemoryType.memorySize(Proxy:Proxy(t));
+}
+
+contract TestMemoryType {
+  function main() -> word {
+    return morefun(Proxy:Proxy(word));
+  }
+}
