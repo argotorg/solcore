@@ -29,6 +29,13 @@ type TcM a = (StateT TcEnv (ExceptT String IO)) a
 runTcM :: TcM a -> TcEnv -> IO (Either String (a, TcEnv))
 runTcM m env = runExceptT (runStateT m env)
 
+defaultM :: TcM a -> TcM (Maybe a)
+defaultM m 
+  = do {
+      x <- m ;
+      pure (Just x)
+    } `catchError` (\ _ -> pure Nothing)
+
 freshVar :: TcM Tyvar 
 freshVar 
   = TVar <$> freshName 

@@ -73,13 +73,6 @@ gen t k@(ps :=> h@(InCls _ t' _))
         Nothing -> pure Nothing
 gen _ _ = pure Nothing 
 
-defaultM :: TcM a -> TcM (Maybe a)
-defaultM m 
-  = do {
-      x <- m ;
-      pure (Just x)
-    } `catchError` (\ _ -> pure Nothing)
-
 -- closure 
 
 reach :: [Pred] -> [Tyvar] -> [Pred] 

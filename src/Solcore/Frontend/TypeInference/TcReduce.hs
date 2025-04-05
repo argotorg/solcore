@@ -192,9 +192,3 @@ genM t k@(ps :=> h@(InCls _ t' _))
       case r of 
         Just s -> pure $ Just (s, apply s ps) 
         Nothing -> pure Nothing
-
-defaultM :: TcM a -> TcM (Maybe a)
-defaultM m 
-  = fmap Just m `catchError` (\ _ -> pure Nothing)
-
-

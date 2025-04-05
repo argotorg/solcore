@@ -61,7 +61,7 @@ tcCompUnit (CompUnit imps cs)
         addGenDefs
         d' <- tcTopDecl d 
         s <- getSubst 
-        pure (everywhere (mkT (applyI s)) d')
+        pure (everywhere (mkT (apply @Id s)) d')
 
 addGenDefs :: TcM ()
 addGenDefs 
@@ -165,7 +165,7 @@ tcContract c@(Contract n vs decls)
           clearSubst 
           d' <- tcDecl d
           s <- getSubst
-          pure (everywhere (mkT (applyI s)) d')
+          pure (everywhere (mkT (apply @Id s)) d')
 
 -- initializing context for a contract
 

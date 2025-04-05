@@ -345,9 +345,6 @@ createClosureFreeFun fn args bdy ps ty
         sig = Signature vs ps fn args (Just retTy)
       pure (FunDef sig bdy)
 
-applyI :: Subst -> Id -> Id
-applyI s (Id n t) = Id n (apply s t)
-
 tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty], [Tyvar])
 tcArgs params
   = do
