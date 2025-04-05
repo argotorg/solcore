@@ -92,10 +92,7 @@ checkTyInst vs ann inf
                                      , "The inferred type is:"
                                      , "   " ++ (pretty $ rename inf)
                                      ])
-      let
-          isTyCon (TyCon _ _) = True 
-          isTyCon _ = False
-          rigids = filter (\ (v, t) -> v `elem` vs && isTyCon t) x
+      let rigids = filter (\ (v, t) -> v `elem` vs && isTyCon t) x
       unless (null rigids) $ rigidVariableError rigids 
       pure s 
 
