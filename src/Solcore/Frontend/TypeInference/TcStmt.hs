@@ -226,7 +226,6 @@ tcExp e1@(TyExp e ty)
       (e', ps, ty') <- tcExp e 
       s <- checkTyInst (fv ty) ty ty' `wrapError` e1
       extSubst s 
-      s1 <- getSubst 
       withCurrentSubst (TyExp e' ty, ps, ty)
 
 closureConversion :: [Tyvar] -> 
