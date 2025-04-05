@@ -17,7 +17,7 @@ import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
-import Solcore.Frontend.TypeInference.TcMonad hiding (entails)
+import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcReduce 
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
