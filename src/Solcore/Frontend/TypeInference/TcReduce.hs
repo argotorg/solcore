@@ -195,9 +195,6 @@ genM t k@(ps :=> h@(InCls _ t' _))
 
 defaultM :: TcM a -> TcM (Maybe a)
 defaultM m 
-  = do {
-      x <- m ;
-      pure (Just x)
-    } `catchError` (\ _ -> pure Nothing)
+  = fmap Just m `catchError` (\ _ -> pure Nothing)
 
 
