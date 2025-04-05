@@ -41,6 +41,7 @@ common common-opts
                       DeriveDataTypeable
                       ImportQualifiedPost
                       ScopedTypeVariables
+                      TypeApplications
 
 library
   import: common-opts
