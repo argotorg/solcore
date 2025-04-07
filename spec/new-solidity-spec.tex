@@ -797,17 +797,22 @@ input constraint.
   \end{array}
 \]
 Function \texttt{sat} returns the information about instances that satisfies 
-a constraint $\pi$:
+a constraint $\pi$: it selects instances which match the constraint 
+main type argument. After determining a matching instance, the 
+\texttt{sat} function unifies the constraint weak type arguments with 
+the matching instance head corresponding arguments and then 
+return the substitution together with the instance head, and 
+remaining constraints to be satisfied.
 
 \[
   \begin{array}{lcl}
     \texttt{sat}(\Theta,\tau_1 : C(\overline{\tau})) & = & \left\{\begin{array}{l|l} 
-                                (S|_{ftv(\tau)}, S\,P, \pi_0) & 
+                                (S' \circ S, P, \pi_0) & 
                                   \begin{array}{l}
                                     \forall\overline{\alpha} . P_0 \Rightarrow \pi_0 \in \Theta^{ins}(C) \\ 
                                     S_1 = [\overline{\alpha\mapsto\beta}],\:\:\overline{\beta}\:\mathtt{fresh}\\ 
                                     P \Rightarrow \tau'_1 : C(\overline{\tau'}) = S_1(P_0\Rightarrow \pi_0)\\ 
-                                    S = \mgu(\tau_1, \tau'_1)\\
+                                    S = \mgu(\tau_1, \tau'_1)\:\:\:\:\:S' = \mgu(S\,\overline{\tau},S\,\overline{\tau'})\\
                                   \end{array}
                              \end{array}\right\}
   \end{array}
@@ -925,50 +930,52 @@ inclusion $\lfloor P \rfloor \subseteq \lfloor S\,P\rfloor$ does not
 always hold but when it is true, we can  specialize 
 $P$ to $S\,P$, which is a possibly simpler constraint set.
 
-A possible target for improvement are contraints which 
-have unreachable variables. If we can find a substitution 
-$S$ that can satisfy these constraints, ambiguity is solved 
-and we can produce a more acurate type. Rule $\impr$ formalizes 
-this idea.
+
+
+% A possible target for improvement are contraints which 
+% have unreachable variables. If we can find a substitution 
+% $S$ that can satisfy these constraints, ambiguity is solved 
+% and we can produce a more acurate type. Rule $\impr$ formalizes 
+% this idea.
 
 \begin{figure}[H]
   \[
     \infer[_{\{\mathtt{impr}\}}]
           {\Theta \impr \sigma \rhd \sigma'}
           {\begin{array}{cc}
-            \sigma = \forall\overline{\alpha} . P \Rightarrow \tau & P_u = P - P\,|_{\ftv(\tau)} \\ 
-            \Theta ; n_0 \vdash^{\mathtt{sats}} P_u \leadsto \{S\} & \overline{\alpha}_1 = \ftv(P\,|_{\ftv(\tau)} \Rightarrow \tau)\\
-            \Theta \reduce P\,|^*_{\ftv(\tau)} \leadsto Q & \sigma' = \forall \overline{\alpha}_1 . Q\Rightarrow\tau\\ 
+            \sigma = \forall\overline{\alpha} . P \Rightarrow \tau & \Theta \reduce P \leadsto Q \\
+            \overline{\alpha}_1 = \ftv(Q \Rightarrow \tau) & \sigma' = \forall \overline{\alpha}_1 . Q\Rightarrow\tau\\ 
            \end{array}}
   \]
   \centering 
   \caption{Type improvement.}
   \label{fig:impr}
 \end{figure}
- Notation $P\,|^*_{V}$ denotes the 
-set of type class constraints in $P$ that has reachable variables 
-from $V$. It is defined as: 
-\begin{figure}[H]
-  \[
-    \begin{array}{lcl} 
-      P\,|_{V} & = & \{\tau : C\overline{\tau'} \in P\,|\,\ftv(\tau) \cap V \neq \emptyset\}\\
-      P\,|^{*}_{V} & = & \left\{
-                  \begin{array}{ll}
-                    P\,|_{V} & \mathtt{if}\:\ftv(P\,|_{V}) \subseteq V \\ 
-                    P\,|^{*}_{\ftv(P\,|_{V})} & \mathtt{otherwise}\\
-                  \end{array}
-                   \right.
-    \end{array} 
-  \]
-  \caption{Constraints with reachable type variables.}
-  \label{fig:constrreach}
-\end{figure}
-Improvement starts by determining the set of constraints which 
-has only unreachable type variables and then runs the constraint 
-satisfiability algorithm on the set of constraints which has 
-unreachable variables aiming to find a unique solution to them. 
-The final type scheme is built from the reduced constraints with 
-reachable variables and the simple type $\tau$.
+%  Notation $P\,|^*_{V}$ denotes the 
+% set of type class constraints in $P$ that has reachable variables 
+% from $V$. It is defined as: 
+% \begin{figure}[H]
+%   \[
+%     \begin{array}{lcl} 
+%       P\,|_{V} & = & \{\tau : C\overline{\tau'} \in P\,|\,\ftv(\tau) \cap V \neq \emptyset\}\\
+%       P\,|^{*}_{V} & = & \left\{
+%                   \begin{array}{ll}
+%                     P\,|_{V} & \mathtt{if}\:\ftv(P\,|_{V}) \subseteq V \\ 
+%                     P\,|^{*}_{\ftv(P\,|_{V})} & \mathtt{otherwise}\\
+%                   \end{array}
+%                    \right.
+%     \end{array} 
+%   \]
+%   \caption{Constraints with reachable type variables.}
+%   \label{fig:constrreach}
+% \end{figure}
+%
+% % Improvement starts by determining the set of constraints which 
+% has only unreachable type variables and then runs the constraint 
+% satisfiability algorithm on the set of constraints which has 
+% unreachable variables aiming to find a unique solution to them. 
+% The final type scheme is built from the reduced constraints with 
+% reachable variables and the simple type $\tau$.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% Type system definition                                                %%%%
@@ -1337,6 +1344,87 @@ context to check the body of a pattern matching case.
   \caption{Typing patterns}
   \label{fig:patterns}
 \end{figure}
+
+\subsection{Typing Yul blocks}
+
+We start by defining typing rules for Yul statements.
+Assignments are typed as follows:
+We need to check if the variable $v$ has type $\word$ in context $\Gamma$ and 
+assignment right-hand side, $ye$, also has type $\word$. Typing variable definitions
+follow a similar strategy.
+
+\begin{figure}[H]
+  \[
+    \begin{array}{c}
+      \infer[_{\{YAssign\}}]
+            {\Theta\,|\,\Gamma \typing{ystmt} v = ye \leadsto \langle v = ye', \Gamma \rangle}
+            {\Gamma(v) = \word & 
+             \Theta\,|\,\Gamma \typing{yexp} ye \leadsto \langle ye', \emptyset, \word, \Theta, \Gamma \rangle}
+      \\ \\
+      \infer[_{\{YLet\}}]
+            {\Theta\,|\,\Gamma\typing{ystmt}\mathtt{let}\: v = ye 
+              \leadsto \langle \mathtt{let}\: v = ye'
+                       , \emptyset, \unit, \Theta, \Gamma'\rangle}
+              {\Theta\,|\,\Gamma \typing{yexp} ye \leadsto \langle ye', \emptyset, \word, \Theta, \Gamma\rangle & 
+               \Gamma' = \Gamma, v : \word}
+      \\ \\ 
+      \infer[_{\{YExp\}}]
+            {\Theta\,|\,\Gamma \typing{ystmt} ye \leadsto \langle ye', \emptyset, \unit, \Theta,\Gamma \rangle}
+            {\Theta\,|\,\Gamma \typing{yexp} ye \leadsto \langle ye', \emptyset, \tau, \Theta, \Gamma\rangle }
+    \end{array}
+  \]
+  \centering
+  \caption{Yul Statements, part 01.}
+  \label{fig:typingyul01}
+\end{figure}
+
+\begin{figure}[H]
+  \[
+    \begin{array}{c}
+      \infer[_{\{YIf\}}]
+            {\Theta\,|\,\Gamma \typing {ystmt} \mathbf{if}\:ye\:\overline{ys} \leadsto \langle \mathbf{if}\:ye'\:\overline{ys}', \emptyset, \unit, \Theta, \Gamma\rangle}
+            {\Theta\,|\,\Gamma \typing{yexp} ye \leadsto \langle ye', \emptyset, \word, \Theta, \Gamma\rangle & 
+             \Theta\,|\,\Gamma \typing{asm}\overline{ys} \leadsto\langle \overline{ys}', \emptyset, \Theta, \Gamma'\rangle} 
+    \end{array}
+  \]
+  \centering 
+  \caption{Yul Statements, part 02.}
+  \label{fig:typingyul02}
+\end{figure}
+
+Blocks of Yul statements are similar to usual statement typing, 
+as can be seen in the next figure.
+
+\begin{figure}[H]
+  \[
+    \begin{array}{cc}
+      \infer[_{\{YBNil\}}]
+            {\Theta\,|\,\Gamma \typing{asm} [] \leadsto \langle [], [], \Theta, \Gamma\rangle}
+            {}
+      & 
+      \infer[_{\{YBLet\}}]
+            {\Theta\,|\,\Gamma \typing{asm} \tau v = e : \overline{s} \leadsto \langle s' : \overline{s}', (P \cup P'), \Theta', \Gamma' - \{v : \tau\}\rangle}
+            {\begin{array}{c} 
+              \Theta\,|\,\Gamma\typing{ystmt} \tau\:v=e \leadsto\langle s', P, \tau, \Theta_1, \Gamma_1 \rangle \\
+              \Theta_1\,|\,\Gamma_1, v : \tau \typing{asm} \overline{s} \leadsto \langle \overline{s}', P', \tau', \Theta', \Gamma' \rangle 
+             \end{array}}
+      \\ \\
+      \multicolumn{2}{c}{
+        \infer[_{\{YBCons\}}]
+              {\Theta\,|\,\Gamma \typing{asm} s : \overline{s} \leadsto \langle s' : \overline{s}', (P \cup P'), \Theta', \Gamma'\rangle}
+              {\begin{array}{c} 
+                \Theta\,|\,\Gamma\typing{ystmt} s \leadsto\langle s', P, \tau, \Theta_1, \Gamma_1 \rangle \\
+                \Theta_1\,|\,\Gamma_1 \typing{asm} \overline{s} \leadsto \langle \overline{s}', P', \tau', \Theta', \Gamma' \rangle 
+               \end{array}}
+      }
+    \end{array}
+  \]
+  \centering 
+  \caption{Typing ASM blocks}
+  \label{fig:block}
+\end{figure}
+
+
 
 \subsection{Typing rules for declarations}
 
