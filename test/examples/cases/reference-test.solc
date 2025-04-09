@@ -1,0 +1,55 @@
+data memory(a) = memory(word);
+
+class abs:Typedef(rep) {
+    function abs(v:rep) -> abs;
+    function rep(v:abs) -> rep;
+}
+
+instance memory(a):Typedef(word) {
+    function abs(ptr:word) -> memory(a) {
+        return memory(ptr);
+    }
+    function rep(v:memory(a)) -> word {
+        match v {
+            | memory(ptr) => return ptr;
+        };
+    }
+}
+
+pragma no-patterson-condition Test;
+pragma no-bounded-variable-condition Test;
+class self:Test {
+    function test(x:self) -> word;
+}
+
+instance word:Test {
+    function test(x:word) -> word {
+        return x;
+    }
+}
+
+data test(a) = test(memory(a));
+
+instance test(a):Typedef(memory(a)) {
+    function rep(x:test(a)) -> memory(a) {
+        match x {
+            | test(m) => return m;
+        };
+    }
+    function abs(m:memory(a)) -> test(a) {
+        return test(m);
+    }
+}
+
+forall test(abs):Typedef(rep), rep:Test . instance test(abs):Test {
+    function test(x:test(abs)) -> word {
+        return Test.test(Typedef.rep(x));
+    }
+}
+
+contract C {
+    function main() {
+        let x:test(word) = test(memory(42));
+        let ptr:word = Test.test(x);
+    }
+}
