@@ -209,7 +209,11 @@ Param : Name ':' Type                              {Typed $1 $3}
 -- instance declarations 
 
 InstDef :: { Instance }
-InstDef : 'instance' ContextOpt Type ':' Name OptTypeParam InstBody { Instance $2 $5 $6 $3 $7 }
+InstDef : InstPrefix 'instance' Type ':' Name OptTypeParam InstBody { Instance $1 $5 $6 $3 $7 }
+
+InstPrefix :: { [Pred] }
+InstPrefix : {- empty -}                      {[]}
+           | 'forall' ConstraintList '.'      {$2}
 
 OptTypeParam :: { [Ty] }
 OptTypeParam : '(' TypeCommaList ')'          {$2}

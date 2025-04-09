@@ -27,7 +27,7 @@ function snd(p) {
 }
 
 
-instance (a:Neg,b:Neg) => (a,b):Neg {
+forall a : Neg, b : Neg . instance (a,b):Neg {
   function neg(p) {
     return (Neg.neg (fst(p)), Neg.neg(snd (p)));
   }

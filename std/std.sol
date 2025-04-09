@@ -147,7 +147,7 @@ forall t : Encode, t : EncodeInto . function encode(val:t) -> Memory(Bytes) {
     return ValueTy.abs(ptr) : Memory(Bytes);
 }
 
-instance (l:Encode, r:Encode) => (l,r):Encode {
+forall l : Encode, r : Encode . instance (l,r):Encode {
     function shouldEncodeDynamic(x : Proxy((l,r))) -> Bool {
         let l: Proxy(l) = Proxy;
         let r: Proxy(r) = Proxy;
@@ -172,7 +172,7 @@ instance (l:Encode, r:Encode) => (l,r):Encode {
     }
 }
 
-instance (l:EncodeInto, r:EncodeInto) => (l,r):EncodeInto {
+forall l : EncodeInto, r: EncodeInto . instance (l,r):EncodeInto {
     function encodeInto(val, hd, tl) -> (word,word) {
         let first = fst(val);
         let second = snd(val);

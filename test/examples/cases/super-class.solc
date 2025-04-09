@@ -22,7 +22,7 @@ instance Bool : Eq {
   }
 }
 
-instance (a : Eq) => (List(a)) : Eq {
+forall a : Eq . instance (List(a)) : Eq {
   function eq (xs : List(a), ys : List(a)) -> Bool {
     match xs, ys {
     | Nil, Nil => return True;

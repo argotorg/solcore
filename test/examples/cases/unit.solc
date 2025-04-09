@@ -21,3 +21,13 @@ function main() {
   return unitMatch(foo(one(unitVal())));
 }
 }
+
+class a : Def {
+  function def () -> a ;
+}
+
+instance () : Def {
+  function def() {
+    return ();
+  }
+}
