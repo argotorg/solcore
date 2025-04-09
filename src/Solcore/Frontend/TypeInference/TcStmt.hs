@@ -401,7 +401,7 @@ hasAnn (Signature vs ps n args rt)
 tcFunDef :: Bool -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl d@(FunDef sig bd)
   = withLocalEnv do
-     info [">>> Starting the typing of:", pretty sig]
+     info [">> Starting the typing of:", pretty sig]
      ((n,sch), pschs, ts, vs') <- tcSignature incl sig 
      let lctx = if incl then (n,sch) : pschs else pschs
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
@@ -409,10 +409,9 @@ tcFunDef incl d@(FunDef sig bd)
      let ty = funtype ts t'
      s <- getSubst
      -- checking if the constraints are valid
-     ps3 <- filterM (\ p -> not <$> entails (apply s ps2) p) (apply s ps1)
+     ps3 <- withCurrentSubst ps1 -- filterM (\ p -> not <$> entails (apply s ps2) p) (apply s ps1)
      vs <- getEnvFreeVars
      (ds, rs) <- splitContext ps3 (vs `union` fv pschs)
-     sch' <- generalize (rs, ty)
      -- checking if the annotated type is a valid instance of the infered type.
      when (hasAnn sig) $ do 
         s' <- checkTyInst (fv pschs `union` fv (sigReturn sig)) ann ty `wrapError` d 
@@ -425,8 +424,9 @@ tcFunDef incl d@(FunDef sig bd)
                          , "from:" 
                          , pretty sig
                          ]
+     sch' <- generalize (rs, ty)
      sig2 <- elabSignature incl sig sch' `wrapError` d
-     info [">>> Finished typing of:", pretty sig2]
+     info [">> Finished typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
 

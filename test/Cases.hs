@@ -112,6 +112,7 @@ cases
               , runTestForFile "typedef.solc" caseFolder
               , expectFail $ runTestForFile "mainproxy.solc" caseFolder
               , expectFail $ runTestForFile "complexproxy.solc" caseFolder
+              , expectFail $ runTestForFile "reference-test.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"

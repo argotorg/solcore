@@ -5,15 +5,6 @@ class abs:Typedef(rep) {
     function abs(x:rep) -> abs;
 }
 
-// isn't this builtin? What does () stand for?
-// I can't write instances for (),
-// and `unit` for instances seems to be taken as type variable,
-// unless I declare it.
-data unit = unit;
-// To be sure I'm not running into bugs,
-// I use a distinct xunit instead,
-// I'll try to reproduce issues with "unit" separately.
-data xunit = xunit;
 
 data uint = uint(word);
 
@@ -143,13 +134,8 @@ forall StructField(structType, fieldSelector):StructField(fieldType, offsetType)
     }
 }
 
-instance unit:MemorySize {
-    function size(x:Proxy(unit)) -> word {
-        return 0;
-    }
-}
-instance xunit:MemorySize {
-    function size(x:Proxy(xunit)) -> word {
+instance ():MemorySize {
+    function size(x:Proxy(())) -> word {
         return 0;
     }
 }
@@ -198,7 +184,7 @@ data x_sel = x_sel;
 data y_sel = y_sel;
 data z_sel = z_sel;
 
-instance StructField(S, x_sel):StructField(word, xunit) {}
+instance StructField(S, x_sel):StructField(word, ()) {}
 instance StructField(S, y_sel):StructField(uint, word) {}
 // BUG: This next one should really be the following, but that breaks weirdly:
 // (I get a patterson condition violation on an invoke instance for g)
