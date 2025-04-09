@@ -11,6 +11,9 @@ import Data.Map (Map)
 import Data.Maybe
 import qualified Data.Map as Map
 
+import qualified System.TimeIt as TimeIt
+import Text.Printf
+
 import Solcore.Frontend.Pretty.SolcorePretty hiding((<>))
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -499,3 +502,13 @@ undefinedFunction t n
 undefinedClass :: Name -> TcM a 
 undefinedClass n 
   = throwError $ unlines ["Undefined class:", pretty n]
+
+writeln :: String -> TcM ()
+writeln = liftIO . putStrLn
+
+timeItNamed :: String -> TcM a -> TcM a
+timeItNamed n m = do
+  (time, a) <- TimeIt.timeItT m
+  opts <- gets tcOptions
+  when (optTiming opts && time > 0.1) $ writeln (printf "%s: %.2f" n time)
+  return a
