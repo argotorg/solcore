@@ -15,8 +15,8 @@ data PairSnd = PairSnd;
 
 pragma no-bounded-variable-condition Ref;
 data XRef(st, field, fieldType) = XRef(st, field);
-instance (r:Ref( (a,b) ) )=>  XRef(r, PairFst, a) : Ref(a) {}
-instance (r:Ref( (a,b) ) )=>  XRef(r, PairSnd, b) : Ref(b) {}
+forall r : Ref (a,b) . instance XRef(r, PairFst, a) : Ref(a) {}
+forall r : Ref (a,b) . instance XRef(r, PairSnd, b) : Ref(b) {}
 
 contract AssignNested {
   function main() {
