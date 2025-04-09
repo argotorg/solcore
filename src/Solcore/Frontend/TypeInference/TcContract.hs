@@ -11,6 +11,7 @@ import qualified Data.Map as Map
 import Data.Maybe
 
 import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
+import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -56,7 +57,7 @@ tcCompUnit (CompUnit imps cs)
       (cls, cs') = partition isClass cs 
       isClass (TClassDef _) = True 
       isClass _ = False 
-      tcTopDecl' d = do 
+      tcTopDecl' d = timeItNamed (shortName d) $ do
         clearSubst
         addGenDefs
         d' <- tcTopDecl d 

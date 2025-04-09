@@ -3,7 +3,7 @@ module Solcore.Pipeline.SolcorePipeline where
 import Control.Monad
 
 import qualified Data.Map as Map
-
+import qualified Data.Time as Time
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.LambdaLifting (lambdaLifting)
 import Solcore.Desugarer.MatchCompiler
@@ -21,14 +21,18 @@ import Solcore.Desugarer.Specialise(specialiseCompUnit)
 import Solcore.Desugarer.EmitCore(emitCore)
 import Solcore.Pipeline.Options(Option(..), argumentsParser)
 import System.Exit
+import qualified System.TimeIt as TimeIt
 
 -- main compiler driver function
-
 pipeline :: IO ()
 pipeline = do
+
+  startTime <- Time.getCurrentTime
   opts <- argumentsParser
   let verbose = optVerbose opts
-  let noDesugarCalls = optNoDesugarCalls opts
+      noDesugarCalls = optNoDesugarCalls opts
+      timeItNamed :: String -> IO a -> IO a
+      timeItNamed = optTimeItNamed opts
   content <- readFile (fileName opts)
   t' <- runParser content
   withErr t' $ \ ast@(CompUnit imps ds) -> do
@@ -37,23 +41,23 @@ pipeline = do
       putStrLn $ pretty ast
     r5 <- if noDesugarCalls
       then do
-        r2 <- sccAnalysis ast
+        r2 <- timeItNamed "SCC           " $ sccAnalysis ast
         withErr r2 $ \ ast' -> do
           when verbose $ do
             putStrLn "> SCC Analysis:"
             putStrLn $ pretty ast'
-          typeInfer opts ast'
+          timeItNamed "Indirect Calls" $ typeInfer opts ast'
       else do
-        r2 <- sccAnalysis ast
+        r2 <- timeItNamed "SCC           " $ sccAnalysis ast
         withErr r2 $ \ ast' -> do
           when verbose $ do
             putStrLn "> SCC Analysis:"
             putStrLn $ pretty ast'
-          (ast3, fnames) <- indirectCall ast'
+          (ast3, fnames) <- timeItNamed "Indirect Calls" $ indirectCall ast'
           when verbose $ do
             putStrLn "> Indirect call desugaring:"
             putStrLn $ pretty ast3
-          typeInfer opts ast3
+          timeItNamed "Typecheck     " $ typeInfer opts ast3
     withErr r5 $ \ (c', env) -> do
         let warns = warnings env
             logsInfo = logs env
@@ -64,17 +68,17 @@ pipeline = do
           mapM_ putStrLn (reverse $ logsInfo)
           putStrLn "> Elaborated tree:"
           putStrLn $ pretty c'
-        r8 <- matchCompiler c'
+        r8 <- timeItNamed "Match compiler" $ matchCompiler c'
         withErr r8 $ \ res -> do
           when (verbose || optDumpDS opts) do
             putStrLn "> Match compilation result:"
             putStrLn (pretty res)
           unless (optNoSpec opts) do
-            r9 <- specialiseCompUnit res (optDebugSpec opts) env
+            r9 <- timeItNamed "Specialise    " $ specialiseCompUnit res (optDebugSpec opts) env
             when (optDumpSpec opts) do
               putStrLn "> Specialised contract:"
               putStrLn (pretty r9)
-            r10 <- emitCore (optDebugCore opts) env r9
+            r10 <- timeItNamed "Emit Core     " $ emitCore (optDebugCore opts) env r9
             when (optDumpCore opts) do
               putStrLn "> Core contract(s):"
               forM_ r10 (putStrLn . pretty)
@@ -122,3 +126,6 @@ addGenerated :: CompUnit Name ->
                 CompUnit Name
 addGenerated (CompUnit imps ds) ts
   = CompUnit imps (ds ++ ts)
+
+optTimeItNamed :: Option -> String -> IO a -> IO a
+optTimeItNamed opts s a = if (optTiming opts) then TimeIt.timeItNamed s a else a

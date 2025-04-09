@@ -16,20 +16,25 @@ data Option
     -- Options controlling diagnostic output
     , optDebugSpec :: !Bool
     , optDebugCore :: !Bool
+    , optTiming    :: !Bool
     } deriving (Eq, Show)
 
-emptyOption :: FilePath -> Option 
-emptyOption path = Option path 
-                          False 
-                          False 
-                          False 
-                          False 
-                          False 
-                          False 
-                          False 
-                          False 
-                          False 
-
+emptyOption :: FilePath -> Option
+emptyOption path = Option
+    { fileName          = path
+    , optNoSpec         = False
+    , optNoDesugarCalls = False
+    -- Options controlling printing
+    , optVerbose        = False
+    , optDumpDS         = False
+    , optDumpDF         = False
+    , optDumpSpec       = False
+    , optDumpCore       = False
+    -- Options controlling diagnostic output
+    , optDebugSpec      = False
+    , optDebugCore      = False
+    , optTiming         = False
+    }
 
 options :: Parser Option
 options
@@ -61,8 +66,11 @@ options
                <> help "Debug specialisation")
            <*> switch ( long "debug-core"
                <> help "Debug core emission")
+           <*> switch ( long "timing"
+               <> help "Measure time of some phases")
 
--- parsing command line arguments           
+
+-- parsing command line arguments
 argumentsParser :: IO Option
 argumentsParser = do
   let opts = info (options <**> helper)
