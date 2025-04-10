@@ -7,6 +7,7 @@ data Option
     { fileName :: FilePath
     , optNoSpec :: !Bool
     , optNoDesugarCalls :: !Bool
+    , optNoMatchCompiler :: !Bool
     -- Options controlling printing
     , optVerbose :: !Bool
     , optDumpDS :: !Bool
@@ -24,6 +25,7 @@ emptyOption path = Option
     { fileName          = path
     , optNoSpec         = False
     , optNoDesugarCalls = False
+    , optNoMatchCompiler = False 
     -- Options controlling printing
     , optVerbose        = False
     , optDumpDS         = False
@@ -49,6 +51,9 @@ options
            <*> switch ( long "no-desugar-calls"
                <> short 's'
                <> help "Skip indirect call desugaring")
+           <*> switch (long "no-match-compiler"
+               <> short 'm'
+               <> help "Skip match compilation")
            -- Options controlling printing
            <*> switch ( long "verbose"
                <> short 'v'

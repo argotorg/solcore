@@ -31,6 +31,7 @@ pipeline = do
   opts <- argumentsParser
   let verbose = optVerbose opts
       noDesugarCalls = optNoDesugarCalls opts
+      noMatchCompiler = optNoMatchCompiler opts
       timeItNamed :: String -> IO a -> IO a
       timeItNamed = optTimeItNamed opts
   content <- readFile (fileName opts)
@@ -68,20 +69,31 @@ pipeline = do
           mapM_ putStrLn (reverse $ logsInfo)
           putStrLn "> Elaborated tree:"
           putStrLn $ pretty c'
-        r8 <- timeItNamed "Match compiler" $ matchCompiler c'
-        withErr r8 $ \ res -> do
-          when (verbose || optDumpDS opts) do
-            putStrLn "> Match compilation result:"
-            putStrLn (pretty res)
-          unless (optNoSpec opts) do
-            r9 <- timeItNamed "Specialise    " $ specialiseCompUnit res (optDebugSpec opts) env
-            when (optDumpSpec opts) do
-              putStrLn "> Specialised contract:"
-              putStrLn (pretty r9)
-            r10 <- timeItNamed "Emit Core     " $ emitCore (optDebugCore opts) env r9
-            when (optDumpCore opts) do
-              putStrLn "> Core contract(s):"
-              forM_ r10 (putStrLn . pretty)
+        if noMatchCompiler then do
+            unless (optNoSpec opts) do
+              r9 <- timeItNamed "Specialise    " $ specialiseCompUnit c' (optDebugSpec opts) env
+              when (optDumpSpec opts) do
+                putStrLn "> Specialised contract:"
+                putStrLn (pretty r9)
+              r10 <- timeItNamed "Emit Core     " $ emitCore (optDebugCore opts) env r9
+              when (optDumpCore opts) do
+                putStrLn "> Core contract(s):"
+                forM_ r10 (putStrLn . pretty)
+        else do 
+          r8 <- timeItNamed "Match compiler" $ matchCompiler c'
+          withErr r8 $ \ res -> do
+            when (verbose || optDumpDS opts) do
+              putStrLn "> Match compilation result:"
+              putStrLn (pretty res)
+            unless (optNoSpec opts) do
+              r9 <- timeItNamed "Specialise    " $ specialiseCompUnit res (optDebugSpec opts) env
+              when (optDumpSpec opts) do
+                putStrLn "> Specialised contract:"
+                putStrLn (pretty r9)
+              r10 <- timeItNamed "Emit Core     " $ emitCore (optDebugCore opts) env r9
+              when (optDumpCore opts) do
+                putStrLn "> Core contract(s):"
+                forM_ r10 (putStrLn . pretty)
 
 runParser :: String -> IO (Either String (CompUnit Name))
 runParser content = do
