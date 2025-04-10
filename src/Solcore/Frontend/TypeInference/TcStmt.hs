@@ -47,7 +47,7 @@ tcStmt e@(Let n mt me)
                         kindCheck t1 `wrapError` e
                         s <- checkTyInst (fv t) t t1 `wrapError` e
                         extSubst s
-                        pure (Just e', ps1, t1)
+                        pure (Just e', ps1, t)
                       (Just t, Nothing) -> do
                         return (Nothing, [], t)
                       (Nothing, Just e) -> do
@@ -401,7 +401,7 @@ hasAnn (Signature vs ps n args rt)
 tcFunDef :: Bool -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl d@(FunDef sig bd)
   = withLocalEnv do
-     info [">>> Starting the typing of:", pretty sig]
+     info [">> Starting the typing of:", pretty sig]
      ((n,sch), pschs, ts, vs') <- tcSignature incl sig 
      let lctx = if incl then (n,sch) : pschs else pschs
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
@@ -409,10 +409,9 @@ tcFunDef incl d@(FunDef sig bd)
      let ty = funtype ts t'
      s <- getSubst
      -- checking if the constraints are valid
-     ps3 <- filterM (\ p -> not <$> entails (apply s ps2) p) (apply s ps1)
+     ps3 <- withCurrentSubst ps1 -- filterM (\ p -> not <$> entails (apply s ps2) p) (apply s ps1)
      vs <- getEnvFreeVars
      (ds, rs) <- splitContext ps3 (vs `union` fv pschs)
-     sch' <- generalize (rs, ty)
      -- checking if the annotated type is a valid instance of the infered type.
      when (hasAnn sig) $ do 
         s' <- checkTyInst (fv pschs `union` fv (sigReturn sig)) ann ty `wrapError` d 
@@ -425,8 +424,9 @@ tcFunDef incl d@(FunDef sig bd)
                          , "from:" 
                          , pretty sig
                          ]
+     sch' <- generalize (rs, ty)
      sig2 <- elabSignature incl sig sch' `wrapError` d
-     info [">>> Finished typing of:", pretty sig2]
+     info [">> Finished typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
 
@@ -825,8 +825,9 @@ tcYulExp (YLit l)
 tcYulExp (YIdent v)
   = do
       sch <- askEnv v
+      -- writeln $ unwords ["! tcYulExp/YIdent: ", pretty v, "::", pretty sch]
       (_ :=> t) <- freshInst sch
-      unless (t == word) (invalidYulType v)
+      unless (t == word) (invalidYulType v t)
       pure t
 tcYulExp (YCall n es)
   = do
@@ -834,7 +835,7 @@ tcYulExp (YCall n es)
       (_ :=> t) <- freshInst sch
       ts <- mapM tcYulExp es
       t' <- freshTyVar
-      unless (all (== word) ts) (invalidYulType n)
+      unless (all (== word) ts) (invalidYulType n t)
       unify t (foldr (:->) t' ts)
       withCurrentSubst t'
 
@@ -921,9 +922,9 @@ typeMatch t1 t2
                            , "do not match"
                            ]
 
-invalidYulType :: Name -> TcM a
-invalidYulType (Name n)
-  = throwError $ unlines ["Yul values can only be of word type:", n]
+invalidYulType :: Name -> Ty -> TcM a
+invalidYulType (Name n) ty
+  = throwError $ unlines ["Yul values can only be of word type:", unwords[n,":", pretty ty]]
 
 expectedFunction :: Ty -> TcM a
 expectedFunction t

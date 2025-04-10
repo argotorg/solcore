@@ -20,7 +20,8 @@ import Solcore.Pipeline.Options
 
 splitContext :: [Pred] -> [Tyvar] -> TcM ([Pred], [Pred])
 splitContext ps fs 
-  = do 
+  = do
+      info [">> Starting the reduction of:", pretty ps]
       ps' <- reduce ps
       let (ds, rs) = partition (all (`elem` fs) . fv) ps'
       info [">> Defered constraints:", pretty ds]
@@ -76,13 +77,14 @@ reduceByInst' n p@(InCls c _ _)
                          , pretty p
                          , "since the solver exceeded the max number of iterations."
                          ]
+  | inHnf p = pure [p]
   | otherwise 
     = do 
         ce <- getInstEnv
         insts <- askInstEnv c
         case selectInst ce p of
           Nothing -> do 
-            pure [p]
+            tcmError $ unwords [ "No instance found for:", pretty p]
           Just (preds, subst', instd) -> do 
             extSubst subst' 
             ps' <- reduceByInst (n - 1) preds
@@ -152,7 +154,8 @@ entails' n qs p
       qs' <- mapM reduceBySuper qs
       r <- case selectInst ce p of 
              Nothing -> pure False 
-             Just (ps, s, h) -> and <$> mapM (entails' (n - 1) ps) (apply s ps)
+             Just (ps, s, h) -> 
+                and <$> mapM (entails' (n - 1) ps) (apply s ps)
       pure $ (any (p `elem`) qs') || r 
 
 -- hnf for predicates 
