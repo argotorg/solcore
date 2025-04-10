@@ -298,8 +298,10 @@ instance Pretty Pred where
 instance Pretty Scheme where
   ppr (Forall vs ty) = ppr' (Forall vs ty) 
     where 
+      ppr' (Forall [] ([] :=> t)) = ppr t
       ppr' (Forall [] (ctx :=> t))
-        = pprContext ctx <+> ppr t
+        = text "forall"       <+>
+          pprContext ctx <+> ppr t
       ppr' (Forall vs (ctx :=> t)) 
         = text "forall"       <+> 
           hsep (map ppr vs)   <+>
