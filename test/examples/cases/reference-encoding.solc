@@ -136,9 +136,9 @@ forall StructField(structType, fieldSelector):StructField(fieldType, offsetType)
         let ptr:word = Typedef.rep(memberAccessD1(x));
         let size:word = MemorySize.size(Proxy:Proxy(offsetType));
         // BUG: Something wrong here? Complains about ptr not being word...
-        /*assembly {
+        assembly {
             ptr := add(ptr, size)
-        };*/
+        };
         return memoryRef(Typedef.abs(ptr));
     }
 }
