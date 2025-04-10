@@ -825,9 +825,8 @@ tcYulExp (YLit l)
 tcYulExp (YIdent v)
   = do
       sch <- askEnv v
-      writeln $ unwords ["! tcYulExp/YIdent: ", pretty v, "::", pretty sch]
+      -- writeln $ unwords ["! tcYulExp/YIdent: ", pretty v, "::", pretty sch]
       (_ :=> t) <- freshInst sch
-
       unless (t == word) (invalidYulType v t)
       pure t
 tcYulExp (YCall n es)
