@@ -16,6 +16,8 @@ class Pretty a => HasShortName a where
   shortName = pretty 
 
 instance HasShortName Name
+instance HasShortName Id
+
 instance HasShortName a => HasShortName (Contract a) where
     shortName (Contract n _ _) = shortName n
 
