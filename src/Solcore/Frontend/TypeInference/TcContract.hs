@@ -112,14 +112,16 @@ tcTopDecl (TContr c)
       pure (TContr c')
 tcTopDecl (TFunDef fd)
   = do
+      writeln $ unwords ["TC", shortName fd]
       fd' <- tcBindGroup [fd] 
       case fd' of 
         (fd1 : _) -> pure (TFunDef fd1)
         _ -> throwError "Impossible! Empty binding group!"
 tcTopDecl (TClassDef c)
   = TClassDef <$> tcClass c 
-tcTopDecl (TInstDef is)
-  = TInstDef <$> tcInstance is
+tcTopDecl (TInstDef is) = do
+  writeln $ unwords ["TC", shortName is]
+  TInstDef <$> tcInstance is
 tcTopDecl (TMutualDef ts)
   = do 
       let f (TFunDef fd) = fd 

@@ -57,6 +57,7 @@ tcStmt e@(Let n mt me)
                         (Nothing, [],) <$> freshTyVar
       (ds,rs) <- splitContext psf (fv mt)
       extEnv n (Forall [] (rs :=> tf))
+      writeln $ unwords [" -", pretty e, "~>", pretty n, "::", pretty (Forall [] (rs :=> tf))]
       let e' = Let (Id n tf) (Just tf) me'
       withCurrentSubst (e', ds, unit)
 tcStmt (StmtExp e)
@@ -826,7 +827,7 @@ tcYulExp (YLit l)
 tcYulExp (YIdent v)
   = do
       sch <- askEnv v
-      -- writeln $ unwords ["! tcYulExp/YIdent: ", pretty v, "::", pretty sch]
+      -- writeln $ unwords [" - tcYulExp/YIdent: ", pretty v, "::", pretty sch]
       (_ :=> t) <- freshInst sch
       unless (t == word) (invalidYulType v t)
       pure t

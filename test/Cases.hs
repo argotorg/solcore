@@ -113,6 +113,8 @@ cases
               , expectFail $ runTestForFile "mainproxy.solc" caseFolder
               , expectFail $ runTestForFile "complexproxy.solc" caseFolder
               , expectFail $ runTestForFile "reference-test.solc" caseFolder
+              , expectFail $ runTestForFile "reference-encoding-bad.solc" caseFolder
+              , runTestForFile "reference-encoding-good.solc" caseFolder                            
               ]
     where 
       caseFolder = "./test/examples/cases"
