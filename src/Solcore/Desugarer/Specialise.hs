@@ -17,6 +17,7 @@ import Solcore.Frontend.TypeInference.Id ( Id(..) )
 import Solcore.Frontend.TypeInference.TcEnv(TcEnv(..),TypeInfo(..))
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
+import Solcore.Frontend.Pretty.ShortName
 import Solcore.Primitives.Primitives
 import System.Exit
 import Common.Pretty
@@ -223,6 +224,7 @@ specExp e@(Con i@(Id n conty) es) ty = do
 
 specExp e@(Var (Id n t)) ty = pure (Var (Id n ty))
 specExp e@(FieldAccess me fld) ty = error("Specialise: FieldAccess not implemented for" ++ pretty e)
+specExp e@(TyExp e1 _) ty = specExp e1 ty
 specExp e ty = atCurrentSubst e -- FIXME
 
 specConApp :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
@@ -257,7 +259,7 @@ specCall i args ty = do
   mres <- lookupResolution name funType
   case mres of
     Just (fd, ty, phi) -> do
-      debug ["< resolution: ", show name, " : ", pretty ty, "@", pretty phi]
+      debug ["< resolution: ", show name, "~>", shortName fd, " : ", pretty ty, "@", pretty phi]
       extSpSubst phi
       -- ty' <- atCurrentSubst ty
       subst <- getSpSubst
