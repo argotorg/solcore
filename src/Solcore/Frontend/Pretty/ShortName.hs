@@ -27,16 +27,19 @@ instance HasShortName a => HasShortName (Signature a) where
 instance HasShortName a => HasShortName (FunDef a) where
     shortName fd = "function " ++shortName (funSignature fd)
 
-instance HasShortName a => HasShortName (TopDecl a) where
-  shortName (TContr c) = shortName c
-  shortName (TFunDef fd) = shortName fd
-  shortName (TClassDef c) = shortName (className c)
-  shortName (TInstDef is) = unwords 
-    [ pretty (mainTy is)
+instance HasShortName a => HasShortName (Instance a) where
+  shortName is = unwords
+    [ "instance"
+    , pretty (mainTy is)
     , ":"
     , pretty (instName is)
     , prettys (paramsTy is)
     ]
+instance HasShortName a => HasShortName (TopDecl a) where
+  shortName (TContr c) = shortName c
+  shortName (TFunDef fd) = shortName fd
+  shortName (TClassDef c) = shortName (className c)
+  shortName (TInstDef is) = shortName is
   shortName (TMutualDef ts) = concatMap shortName ts
   shortName (TDataDef d) = pretty (dataName d)
   shortName (TPragmaDecl p) = pretty p
