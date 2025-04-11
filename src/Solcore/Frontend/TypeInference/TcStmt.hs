@@ -10,6 +10,7 @@ import Data.List
 import qualified Data.Map as Map
 import Data.Maybe
 
+import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Erase
@@ -57,7 +58,7 @@ tcStmt e@(Let n mt me)
                         (Nothing, [],) <$> freshTyVar
       (ds,rs) <- splitContext psf (fv mt)
       extEnv n (Forall [] (rs :=> tf))
-      writeln $ unwords [" -", pretty e, "~>", pretty n, "::", pretty (Forall [] (rs :=> tf))]
+      writeln $ unwords ["  -", pretty e, "~>", pretty n, "::", pretty (Forall [] (rs :=> tf))]
       let e' = Let (Id n tf) (Just tf) me'
       withCurrentSubst (e', ds, unit)
 tcStmt (StmtExp e)
@@ -404,6 +405,8 @@ tcFunDef :: Bool -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl d@(FunDef sig bd)
   = withLocalEnv do
      info [">> Starting the typing of:", pretty sig]
+     writeln $ unwords [" +", shortName d]
+
      ((n,sch), pschs, ts, vs') <- tcSignature incl sig 
      let lctx = if incl then (n,sch) : pschs else pschs
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
@@ -827,7 +830,7 @@ tcYulExp (YLit l)
 tcYulExp (YIdent v)
   = do
       sch <- askEnv v
-      -- writeln $ unwords [" - tcYulExp/YIdent: ", pretty v, "::", pretty sch]
+      -- writeln $ unwords ["  - tcYulExp/YIdent: ", pretty v, "::", pretty sch]
       (_ :=> t) <- freshInst sch
       unless (t == word) (invalidYulType v t)
       pure t
