@@ -1,0 +1,27 @@
+class abs:Typedef(rep);
+instance uint:Typedef(word);
+instance memory(a):Typedef(word);
+instance memoryRef(a):Typedef(word);
+
+class lhs:Assign(rhs);
+instance ref(a) : Assign(a);
+
+class self : MemoryType ;
+class self : MemorySize ; 
+instance word : MemoryType;
+instance word : MemorySize;
+instance uint : MemoryType;
+forall a : MemoryType. instance memoryRef(a) : Assign(a);
+class self:LValueMemberAccess(memberRefType);
+class self:RValueMemberAccess(memberValueType);
+class self:StructField(fieldType, offsetType);
+instance ():MemorySize;
+instance word:MemorySize;
+instance uint:MemorySize;
+forall a : MemorySize, b:MemorySize . instance (a,b):MemorySize;
+forall StructField(structType, fieldSelector):StructField(fieldType, offsetType), fieldType:MemoryType, offsetType:MemorySize . instance MemberAccessProxy(memory(structType), fieldSelector):RValueMemberAccess(fieldType);
+instance StructField(S, x_sel):StructField(word, ());
+instance StructField(S, y_sel):StructField(uint, word);
+instance StructField(S, z_sel):StructField(word, word); 
+
+reduce : {memory(S) : Typedef (word)} ~ {}; 

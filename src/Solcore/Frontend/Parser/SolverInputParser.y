@@ -25,6 +25,7 @@ import Language.Yul
       'reduce'   {Token _ TReduce}
       'class'    {Token _ TClass}
       'instance' {Token _ TInstance}
+      'forall'   {Token _ TForall}
       ';'        {Token _ TSemi}
       ':'        {Token _ TColon}
       '~'        {Token _ TEquiv}
@@ -61,7 +62,13 @@ TopDecl : ClassDef                                 {Left $1}
 
 ClassDef :: { Qual Pred }
 ClassDef 
-  : 'class' ContextOpt Var ':' Name OptParam ';' {$2 :=> (InCls $5 $3 $6)}
+  : ClassPrefix 'class' Var ':' Name OptParam ';' {$1 :=> (InCls $5 $3 $6)}
+
+ClassPrefix :: { [Pred] }
+ClassPrefix : {- empty -}                      {[]}
+           | 'forall' ConstraintList '.'       {$2}
+
+
 
 OptParam :: { [Ty] }
 OptParam :  '(' VarCommaList ')'                   {$2}
@@ -89,7 +96,11 @@ Constraint : Type ':' Name OptTypeParam             {InCls $3 $1 $4}
 -- instance declarations 
 
 InstDef :: { Qual Pred }
-InstDef : 'instance' ContextOpt Type ':' Name OptTypeParam ';' { $2 :=> (InCls $5 $3 $6)}
+InstDef : InstPrefix 'instance' Type ':' Name OptTypeParam ';' { $1 :=> (InCls $5 $3 $6) }
+
+InstPrefix :: { [Pred] }
+InstPrefix : {- empty -}                      {[]}
+           | 'forall' ConstraintList '.'      {$2}
 
 OptTypeParam :: { [Ty] }
 OptTypeParam : '(' TypeCommaList ')'          {$2}

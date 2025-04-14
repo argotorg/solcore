@@ -1,4 +1,4 @@
-class (a : Eq) => a : Ord;
-instance (a : Ord) => Foo(a) : Ord ;
+forall a : Eq . class a : Ord;
+forall a : Ord . instance Foo(a) : Ord ;
 
 reduce : {Foo(Foo(a)) : Ord, a : Eq} ~ {a : Ord};

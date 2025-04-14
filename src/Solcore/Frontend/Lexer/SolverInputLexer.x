@@ -45,6 +45,7 @@ tokens :-
         <0>    "pragma"                          {simpleToken TPragma}
         <0>    "sat"                             {simpleToken TSat}
         <0>    "reduce"                          {simpleToken TReduce}
+        <0>    "forall"                          {simpleToken TForall}
         <0>    "=>"                              {simpleToken TDArrow}
         <0>    "~"                               {simpleToken TEquiv}
         <0>    ";"                               {simpleToken TSemi}
