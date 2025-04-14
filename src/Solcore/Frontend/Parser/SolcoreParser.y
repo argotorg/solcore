@@ -158,7 +158,11 @@ Constr : Name OptTypeParam                          { Constr $1 $2 }
 
 ClassDef :: { Class }
 ClassDef 
-  : 'class' ContextOpt Var ':' Name OptParam ClassBody {Class $2 $5 $6 $3 $7}
+  : ClassPrefix 'class' Var ':' Name OptParam ClassBody {Class $1 $5 $6 $3 $7}
+
+ClassPrefix :: { [Pred] }
+ClassPrefix : {- empty -}                      {[]}
+           | 'forall' ConstraintList '.'       {$2}
 
 ClassBody :: {[Signature]}
 ClassBody : '{' Signatures '}'                     {$2}
