@@ -5,7 +5,7 @@ function and (x,y) {
   match x,y {
   | False, _ => return False;
   | True, y => return y;
-  };
+  }
 }
 
 class a : Eq {
@@ -18,17 +18,17 @@ instance Bool : Eq {
     | False, False => return True;
     | True, True => return True;
     | _, _ => return False;
-    };
+    }
   }
 }
 
-forall a : Eq . instance (List(a)) : Eq {
+forall a . a : Eq => instance (List(a)) : Eq {
   function eq (xs : List(a), ys : List(a)) -> Bool {
     match xs, ys {
     | Nil, Nil => return True;
     | Cons(x,xs), Cons(y,ys) => 
         return and(Eq.eq(x,y),Eq.eq(xs,ys));
-    };
+    }
   }
 }
 

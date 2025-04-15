@@ -9,7 +9,7 @@ instance memory(t) : ValueTy {
     function rep(x: memory(t)) -> word {
         match x {
         | memory(w) => return w;
-       };
+       }
     }
 }
 
@@ -18,7 +18,7 @@ class ref:Ref(deref) {
 }
 
 instance memory(t) : Ref(t) {
-   forall t : ValueTy . function store(loc: memory(t), value: t) -> () {
+   forall t . t : ValueTy => function store(loc: memory(t), value: t) -> () {
         // We don't have a `ValueTy` bound on `t` anywhere, so this should raise a type error...
         let vw = ValueTy.rep(value);
     }

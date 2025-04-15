@@ -13,8 +13,8 @@ instance word:BaseMemoryType {
     }
 }
 
-instance (a:BaseMemoryType, b:BaseMemoryType) =>
-   (a,b):BaseMemoryType {
+forall a b . a:BaseMemoryType, b:BaseMemoryType =>
+   instance (a,b):BaseMemoryType {
    
     function memorySize(x) -> word { // not correct semantically, just for debugging
             return add(BaseMemoryType.memorySize(Proxy:Proxy(a)),

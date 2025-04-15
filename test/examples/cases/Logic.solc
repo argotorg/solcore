@@ -5,14 +5,14 @@ contract Logic {
     match x {
     | True => return False ; 
     | False => return True ; 
-    };
+    }
   }
 
   function and(x, y) {
     match x, y {
     | False, _ => return False ; 
     | True , _ => return y ; 
-    };
+    }
   }
 
   function and1 (x, y) {
@@ -21,13 +21,13 @@ contract Logic {
     | True , False => return False; 
     | False ,True => return False; 
     | True, True => return True;
-    };
+    }
   }
 
   function elim (f, g, x) {
     match x {
     | True => return f;
     | False => return g;
-    };
+    }
   }
 }
