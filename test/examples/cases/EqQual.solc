@@ -4,7 +4,7 @@ class a : Eq {
   function eq (x : a, y : a) -> Bool;
 }
 
-forall a : Eq . class a : Ord {
+forall a . a : Eq => class a : Ord {
   function lt (x : a, y : a) -> Bool ; 
 }
 
@@ -15,7 +15,7 @@ instance word : Eq {
       return False; 
     | _ => 
       return True ;
-    };
+    }
   }
 }
 

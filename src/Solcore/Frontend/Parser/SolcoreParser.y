@@ -158,11 +158,7 @@ Constr : Name OptTypeParam                          { Constr $1 $2 }
 
 ClassDef :: { Class }
 ClassDef 
-  : ClassPrefix 'class' Var ':' Name OptParam ClassBody {Class $1 $5 $6 $3 $7}
-
-ClassPrefix :: { [Pred] }
-ClassPrefix : {- empty -}                      {[]}
-           | 'forall' ConstraintList '.'       {$2}
+ : SigPrefix 'class' Var ':' Name OptParam ClassBody {Class (snd $1) $5 $6 $3 $7}
 
 ClassBody :: {[Signature]}
 ClassBody : '{' Signatures '}'                     {$2}
@@ -174,13 +170,6 @@ OptParam :  '(' VarCommaList ')'                   {$2}
 VarCommaList :: { [Ty] }
 VarCommaList : Var ',' VarCommaList                {$1 : $3} 
              | Var                                 {[$1]}
-
-ContextOpt :: {[Pred]}
-ContextOpt : {- empty -} %shift                    {[]}
-           | Context                               {$1}
-
-Context :: {[Pred]}
-Context : '(' ConstraintList ')' '=>'              { $2 }   
 
 ConstraintList :: { [Pred] }
 ConstraintList : Constraint ',' ConstraintList     {$1 : $3}
@@ -197,9 +186,9 @@ Signature :: { Signature }
 Signature : SigPrefix 'function' Name '(' ParamList ')' OptRetTy {Signature (fst $1) (snd $1) $3 $5 $7}
 
 SigPrefix :: {([Ty], [Pred])}
-SigPrefix : 'forall' ConstraintList '.'                {(tysFrom $2, $2)}
-          | 'forall' TypeCommaList '.'                 {($2, [])}
-          | {- empty -}                                {([], [])}
+SigPrefix : 'forall' Tyvars '.' ConstraintList '=>' {($2, $4)}
+          | 'forall' Tyvars '.'                     {($2, [])}
+          | {- empty -}                                    {([], [])}
 
 ParamList :: { [Param] }
 ParamList : Param                                  {[$1]}
@@ -213,11 +202,7 @@ Param : Name ':' Type                              {Typed $1 $3}
 -- instance declarations 
 
 InstDef :: { Instance }
-InstDef : InstPrefix 'instance' Type ':' Name OptTypeParam InstBody { Instance $1 $5 $6 $3 $7 }
-
-InstPrefix :: { [Pred] }
-InstPrefix : {- empty -}                      {[]}
-           | 'forall' ConstraintList '.'      {$2}
+InstDef : SigPrefix 'instance' Type ':' Name OptTypeParam InstBody { Instance (snd $1) $5 $6 $3 $7 }
 
 OptTypeParam :: { [Ty] }
 OptTypeParam : '(' TypeCommaList ')'          {$2}
@@ -227,6 +212,10 @@ TypeCommaList :: { [Ty] }
 TypeCommaList : Type ',' TypeCommaList             {$1 : $3}
               | Type                               {[$1]}
               | {- empty -}                        { [] }
+
+Tyvars :: {[Ty]}
+Tyvars : Name Tyvars { (TyCon $1 []) : $2}
+       | {-empty-}     {[]}
 
 Functions :: { [FunDef] }
 Functions : Function Functions                     {$1 : $2}
@@ -255,19 +244,19 @@ Body :: { [Stmt] }
 Body : '{' StmtList '}'                            {$2} 
 
 StmtList :: { [Stmt] }
-StmtList : Stmt ';' StmtList                       {$1 : $3}
+StmtList : Stmt StmtList                       {$1 : $2}
          | {- empty -}                             {[]}
 
 -- Statements 
 
 Stmt :: { Stmt }
-Stmt : Expr '=' Expr                               {Assign $1 $3}
-     | 'let' Name ':' Type InitOpt                 {Let $2 (Just $4) $5}
-     | 'let' Name InitOpt                          {Let $2 Nothing $3}
-     | Expr                                        {StmtExp $1}
-     | 'return' Expr                               {Return $2}
-     | 'match' MatchArgList '{' Equations  '}'     {Match $2 $4}
-     | AsmBlock                                    {Asm $1}
+Stmt : Expr '=' Expr ';'                              {Assign $1 $3}
+     | 'let' Name ':' Type InitOpt ';'                {Let $2 (Just $4) $5}
+     | 'let' Name InitOpt ';'                         {Let $2 Nothing $3}
+     | Expr ';'                                       {StmtExp $1}
+     | 'return' Expr ';'                              {Return $2}
+     | 'match' MatchArgList '{' Equations  '}'        {Match $2 $4}
+     | AsmBlock                                       {Asm $1}
 
 
 MatchArgList :: {[Exp]}

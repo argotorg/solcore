@@ -9,27 +9,27 @@ function and(x: Bool, y: Bool) -> Bool {
     match x, y {
     | True, y => return y;
     | False, _ => return False;
-    };
+    }
 }
 
 function or(x: Bool, y: Bool) -> Bool {
     match x, y {
     | True, _ => return True;
     | False, y => return y;
-    };
+    }
 }
 
 
 function fst(p: (a, b)) -> a {
     match p {
     | (a, _) => return a;
-    };
+    }
 }
 
 function snd(p: (a, b)) -> b {
     match p {
     | (_, b) => return b;
-    };
+    }
 }
 
 // Basics
@@ -60,7 +60,7 @@ instance Memory(t) : ValueTy {
     function rep(x: Memory(T)) -> word {
         match x {
         | Memory(w) => return w;
-       };
+        } 
     }
 }
 
@@ -71,21 +71,21 @@ class ref:Ref(deref) {
 
 
 instance Memory(t) : Ref(t) {
-    forall t : ValueTy . function load(loc: Memory(t)) -> t {
+    forall t . t : ValueTy => function load(loc: Memory(t)) -> t {
         let rw = ValueTy.rep(loc);
         let res = 0;
         assembly {
-            res := mload(rw)
-        };
+            res := mload(rw);
+        }
         return ValueTy.abs(res);
     }
 
-    forall t : ValueTy . function store(loc: Memory(t), value: t) -> () {
+    forall t . t : ValueTy => function store(loc: Memory(t), value: t) -> () {
         let rw = ValueTy.rep(loc);
         let vw = ValueTy.rep(value);
         assembly {
-          mstore(rw, vw)
-        };
+          mstore(rw, vw);
+        }
     }
 }
 
@@ -96,15 +96,15 @@ instance Memory(t) : Ref(t) {
 function get_free_memory() -> word {
     let res : word;
     assembly {
-        res := mload(0x40)
-    };
+        res := mload(0x40);
+    }
     return res;
 }
 
 function set_free_memory(loc : word) {
     assembly {
-        mstore(0x40, loc)
-    };
+        mstore(0x40, loc);
+    }
 }
 
 
@@ -130,7 +130,7 @@ class t:Encode {
     function headSize(x:Proxy(t)) -> word;
 }
 
-forall t : Encode, t : EncodeInto . function encode(val:t) -> Memory(Bytes) {
+forall t . t : Encode, t : EncodeInto => function encode(val:t) -> Memory(Bytes) {
     let hdSz = Encode.headSize(Proxy : Proxy(t));
     let ptr = get_free_memory();
     let head: word;
@@ -138,16 +138,16 @@ forall t : Encode, t : EncodeInto . function encode(val:t) -> Memory(Bytes) {
     assembly {
         head := add(ptr, 32);
         tail := add(head, hdSz);
-    };
+    }
     let tl = snd(EncodeInto.encodeInto(val,head,tail));
     set_free_memory(tl);
     assembly {
-        mstore(ptr, sub(tl, head))
-    };
+        mstore(ptr, sub(tl, head));
+    }
     return ValueTy.abs(ptr) : Memory(Bytes);
 }
 
-forall l : Encode, r : Encode . instance (l,r):Encode {
+forall l r . l : Encode, r : Encode => instance (l,r):Encode {
     function shouldEncodeDynamic(x : Proxy((l,r))) -> Bool {
         let l: Proxy(l) = Proxy;
         let r: Proxy(r) = Proxy;
@@ -158,7 +158,7 @@ forall l : Encode, r : Encode . instance (l,r):Encode {
         match Encode.shouldEncodeDynamic(x) {
         | True =>
             let res : word;
-            assembly { res := 32; };
+            assembly { res := 32; }
             return res;
         | False =>
             let l: Proxy(l) = Proxy;
@@ -166,13 +166,13 @@ forall l : Encode, r : Encode . instance (l,r):Encode {
             let lsize = Encode.headSize(l);
             let rsize = Encode.headSize(r);
             let res : word;
-            assembly { res := add(lsize,rsize) };
+            assembly { res := add(lsize,rsize); }
             return res;
-        };
+        }
     }
 }
 
-forall l : EncodeInto, r: EncodeInto . instance (l,r):EncodeInto {
+forall l r . l : EncodeInto, r: EncodeInto => instance (l,r):EncodeInto {
     function encodeInto(val, hd, tl) -> (word,word) {
         let first = fst(val);
         let second = snd(val);
@@ -191,7 +191,7 @@ instance Uint256 : ValueTy {
     function rep(x: Uint256) -> word {
         match x {
         | Uint256(val) => return val;
-        };
+        }
     }
 }
 
@@ -210,9 +210,9 @@ instance Uint256:EncodeInto {
         let vw = ValueTy.rep(v);
         let hd_ : word;
         assembly {
-            hd_ := add(hd, 32)
-            mstore(hd, vw)
-        };
+            hd_ := add(hd, 32);
+            mstore(hd, vw);
+        }
         return (hd_, tl);
     }
 }

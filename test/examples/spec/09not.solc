@@ -9,13 +9,13 @@ contract Not {
     match(b) {
       | False => return 0;
       | True  => return 1;
-    };
+    }
   }
 
   function bnot(b) {
     match b {
       | False => return True;
       | True => return False;
-    };
+    }
   }
 }

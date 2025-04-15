@@ -10,7 +10,7 @@ data CFood = Red(Food) | Green(Food) | Nocolor;
        | Curry => return 1;
        | Beans => return 42;
        | Other => return 3;
-     };
+     }
   }
 
 
@@ -20,7 +20,7 @@ contract Food {
        | Red(f) => return f;
        | Green(f) => return f;
        | _ => return Other;
-    };
+    }
   }
   
   function main() {

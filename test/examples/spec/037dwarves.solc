@@ -9,7 +9,7 @@ contract Dwarves {
       | Sleepy   => return 3;
       | Bashful  => return 4;
       | Happy    => return 5;
-    };
+    }
   }
 
   function main() { return fromEnum(Happy); }
