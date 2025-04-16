@@ -6,20 +6,20 @@ data Pair(a,b) = Pair(a,b);
 function fst (p) {
   match p {
     | Pair(x,y) => return x;
-  };
+  }
 }
 
 function snd(p) {
   match p {
     | Pair(x,y) => return y;
-  };
+  }
 }
 
 function add(x : word, y : word) {
   let res: word;
   assembly {
      res := add(x, y)
-  };
+  }
   return res;
 }
 

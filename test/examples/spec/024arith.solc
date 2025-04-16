@@ -4,7 +4,7 @@ function add(x : word, y : word) {
   let res: word;
   assembly {
      res := add(x, y)
-  };
+  }
   return res;
 }
 
@@ -12,7 +12,7 @@ function sub(x : word, y : word) {
   let res: word;
   assembly {
      res := sub(x, y)
-  };
+  }
   return res;
 }
 
@@ -20,7 +20,7 @@ function div(x : word, y: word) {
   let res: word;
   assembly {
      res := div(x, y)
-  };
+  }
   return res;
 }
 
@@ -28,7 +28,7 @@ function sdiv(x : word, y: word) {
   let res: word;
   assembly {
      res := sdiv(x, y)
-  };
+  }
   return res;
 }
 
@@ -36,7 +36,7 @@ function mod(x : word, y: word) {
   let res: word;
   assembly {
      res := mod(x, y)
-  };
+  }
   return res;
 }
 
@@ -44,7 +44,7 @@ function smod(x : word, y: word) {
   let res: word;
   assembly {
      res := smod(x, y)
-  };
+  }
   return res;
 }
 
@@ -52,7 +52,7 @@ function exp(x : word, y: word) {
   let res: word;
   assembly {
      res := exp(x, y)
-  };
+  }
   return res;
 }
 
