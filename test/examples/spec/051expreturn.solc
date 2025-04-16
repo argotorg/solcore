@@ -13,7 +13,7 @@ instance a:Top {}
 // forall a.(a:Top) => function ereturn(x:a) -> a
 // or
 
-forall a:Top . function ereturn(x:a) -> Unit { let res: Unit; return res; }
+forall a . function ereturn(x:a) -> Unit { let res: Unit; return res; }
 // and then cast it to any type using unsafeCast
 
 /* simulate match expression
@@ -33,26 +33,23 @@ function elimBool1(b:Bool) -> Word {
       // but this does not	 
       //   | False => x = unsafeCast(ereturn(unsafeCast(ereturn(77))));
       | True  => x = W(22);
-   };
+   }
 
    match x {
      | W(y) => return y;
-   };
+   }
    
 }
 
 // "semicolon"
-forall a:Top . function semi(x:a) -> U { return U;}
+forall a. function semi(x:a) -> U { return U;}
 
-forall a:Top, b:Top . function unsafeCast(x:a) -> b {
+forall a b. function unsafeCast(x:a) -> b {
   let res: b; return res;
 }
 
 
 contract ExpReturn {
-
-  
-
   function main() -> Word {
     return elimBool1(False);
     // return elimBool1(False);
