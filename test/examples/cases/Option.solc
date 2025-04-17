@@ -6,6 +6,6 @@ contract Option {
     | None => return None;
     | Some(Some(x)) => return Some(x);
     | Some(None) => return None;
-    };
+    }
   }
  }

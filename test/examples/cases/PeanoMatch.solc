@@ -5,5 +5,5 @@ function foo(n) {
   | Zero => return Succ(Zero) ; 
   | Succ(Succ(x)) => return x;
   | x => return Zero;
-  };
+  }
 }

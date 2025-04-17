@@ -5,5 +5,5 @@ function even (n) -> Bool {
   match n {
   | Zero => return 1; return True;
   | Succ(m) => return 0; return False;
-  };
+  }
 }

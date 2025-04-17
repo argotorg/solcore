@@ -9,7 +9,7 @@ instance Memory(a) : Ref(a) {
   function load (r) {
     match r {
     | new(x) => return x;
-    };
+    }
   }
 }
 
