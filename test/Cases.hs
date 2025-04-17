@@ -43,6 +43,16 @@ spec
     where 
       specFolder = "./test/examples/spec"
 
+imports :: TestTree 
+imports 
+  = testGroup "Files for imports cases"
+              [
+                runTestForFile "booldef.solc" importFolder 
+              , runTestForFile "boolmain.solc" importFolder
+              ]
+      where 
+        importFolder = "./test/examples/imports"
+
 pragmas :: TestTree 
 pragmas 
   = testGroup "Files for pragmas cases"

@@ -14,7 +14,8 @@ tests
                  cases
                , pragmas
                , spec
-               , std 
-             --  , satTests
+               , std
+               , imports 
+               -- , satTests
                , reduceTests 
                ]
