@@ -9,8 +9,8 @@ contract EitherModule {
       match y {
       | Left(z) => return Cons(z,lefts(ys)) ; 
       | Right(z) => return lefts(ys) ;
-      };
-    };
+      }
+    }
   }
 
 }

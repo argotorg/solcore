@@ -7,7 +7,7 @@ contract Option {
     match o {
       | None => return n;
       | Some(x) => return x;
-    };
+    }
   }
 
   function join(mmx) {
@@ -15,7 +15,7 @@ contract Option {
     match mmx {
       | Some(Some(x)) => result = Some(x);
       | None => result = None;
-    };
+    }
     return result;
   }
 

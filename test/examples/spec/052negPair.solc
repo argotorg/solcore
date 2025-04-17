@@ -11,20 +11,20 @@ instance B : Neg {
     match x {
     | F => return T;
     | T => return F;
-    };
+    }
   }
 }
 
 function fst (p) {
   match p {
     | Pair(x,y) => return x;
-  };
+  }
 }
 
 function snd(p) {
   match p {
     | Pair(x,y) => return y;
-  };
+  }
 }
 
 
@@ -39,7 +39,7 @@ instance (a:Neg,b:Neg) => Pair(a,b):Neg {
   function neg(p) {
     match p {
       | Pair(a,b) => return Pair(neg(a), neg(b));
-    };
+    }
   }
 }
 */
@@ -49,14 +49,14 @@ contract NegPair {
    match x {
      | T => return F;
      | F => return T;
-   };
+   }
 }
 
  function fromB(b) {
   match b  {
     | F => return 0;
     | T => return 1;
-  };
+  }
 }
 
  function main() { return  fromB(fst(Neg.neg(Pair(F,T)))); }

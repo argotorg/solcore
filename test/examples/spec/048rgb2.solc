@@ -6,7 +6,7 @@ contract RGB {
       | R => return 4;
       | G => return 2;
       | B => return 42;
-    };
+    }
   }
 
   function main() { return fromEnum(B); }

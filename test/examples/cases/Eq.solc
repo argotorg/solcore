@@ -4,7 +4,7 @@ class a : Eq {
   function eq (x : a, y : a) -> Bool;
 }
 
-class (a : Eq) => a : Ord {
+forall a . a : Eq => class a : Ord {
   function lt (x : a, y : a) -> Bool ; 
 }
 

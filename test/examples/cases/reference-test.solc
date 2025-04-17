@@ -12,7 +12,7 @@ instance memory(a):Typedef(word) {
     function rep(v:memory(a)) -> word {
         match v {
             | memory(ptr) => return ptr;
-        };
+        }
     }
 }
 
@@ -34,18 +34,19 @@ instance test(a):Typedef(memory(a)) {
     function rep(x:test(a)) -> memory(a) {
         match x {
             | test(m) => return m;
-        };
+        }
     }
     function abs(m:memory(a)) -> test(a) {
         return test(m);
     }
 }
 
-forall test(abs):Typedef(rep), rep:Test . instance test(abs):Test {
+forall abs rep . test(abs):Typedef(rep), rep:Test => 
+  instance test(abs):Test {
     function test(x:test(abs)) -> word {
         return Test.test(Typedef.rep(x));
     }
-}
+  }
 
 contract C {
     function main() {

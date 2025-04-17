@@ -13,5 +13,5 @@ function foo () {
   let size = Mem.size(0);
   assembly {
     ptr := add(32, size);
-  };
+  }
 }

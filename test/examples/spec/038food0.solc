@@ -8,7 +8,7 @@ data CFood = Red(Food) | Green(Food) | Nocolor;
        | Red(Curry) => return 1;
        | Green(Beans) => return 42;
        | _ => return 3;
-     };
+     }
   }
 
 

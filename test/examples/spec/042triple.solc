@@ -3,7 +3,7 @@ contract Triple {
   function asel(t) {
     match t {
       | (a,b,c) => return c;
-    };
+    }
   }
 
   function main() {
