@@ -10,24 +10,24 @@ instance B : Neg {
     match x {
     | F => return T;
     | T => return F;
-    };
+    }
   }
 }
 
 function fst (p) {
   match p {
   | (x,y) => return x;
-  };
+  }
 }
 
 function snd(p) {
   match p {
     | (x,y) => return y;
-  };
+  }
 }
 
 
-forall a : Neg, b : Neg . instance (a,b):Neg {
+forall a b . a : Neg, b : Neg => instance (a,b):Neg {
   function neg(p) {
     return (Neg.neg (fst(p)), Neg.neg(snd (p)));
   }
@@ -39,14 +39,14 @@ contract NegPair {
    match x {
      | T => return F;
      | F => return T;
-   };
+   }
 }
 
  function fromB(b) {
   match b  {
     | F => return 0;
     | T => return 1;
-  };
+  }
 }
 
  function main() { return  fromB(fst(Neg.neg((F,T)))); }

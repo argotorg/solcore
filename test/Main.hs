@@ -17,5 +17,5 @@ tests
                , std
                , imports 
                -- , satTests
-               -- , reduceTests 
+               , reduceTests 
                ]

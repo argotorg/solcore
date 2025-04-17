@@ -7,5 +7,6 @@ class ref:Storable (deref) {
 }
 
 // haskell style class constraints
-class ( ref : Loadable(deref)
-      , ref : Storable(ref)) => ref:Ref (deref) {}
+forall ref deref . 
+    ref : Loadable(deref)
+  , ref : Storable(ref) => class ref:Ref (deref) {}

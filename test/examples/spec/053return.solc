@@ -19,11 +19,11 @@ function elimBool1(b:Bool) -> word {
       // | False => x = ereturn(ereturn(77));
 
       | True  => x = W(22);
-   };
+   }
 
    match x {
      | W(y) => return y;
-   };
+   }
 
 }
 

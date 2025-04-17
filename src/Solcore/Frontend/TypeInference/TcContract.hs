@@ -44,7 +44,6 @@ typeInfer options (CompUnit imps decls)
 tcCompUnit :: CompUnit Name -> TcM (CompUnit Id)
 tcCompUnit (CompUnit imps cs)
   = do 
-      loadImports imps
       setupPragmas ps 
       mapM_ checkTopDecl cls 
       mapM_ checkTopDecl cs'
@@ -142,11 +141,6 @@ checkTopDecl (TDataDef dt)
 checkTopDecl (TFunDef (FunDef sig _)) 
   = extSignature sig 
 checkTopDecl _ = pure ()
-
--- TODO load import information
-
-loadImports :: [Import] -> TcM ()
-loadImports _ = return ()
 
 -- type inference for contracts 
 

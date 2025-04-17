@@ -8,6 +8,6 @@ contract MatchCall {
   function main() {
     match f() {
      | True => return 42;
-    };
+    }
   }
 }
