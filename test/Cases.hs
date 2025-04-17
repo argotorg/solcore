@@ -55,7 +55,7 @@ imports
               , runTestForFile "boolmain.solc" importFolder
               ]
       where 
-        importFolder = "./test/examples/imports"
+        importFolder = "./test/imports"
 
 pragmas :: TestTree 
 pragmas 
