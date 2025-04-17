@@ -1,0 +1,20 @@
+data Bool = True | False;
+
+function not (b : Bool) -> Bool {
+  match b {
+  | True => return False;
+  | False => return True;
+  }
+}
+
+class a : C {
+  function c (x : a, y : a) -> word ;
+}
+
+class a : D {
+  function d() -> a ;
+}
+
+forall a . a : C, a : D => function id (x : a) -> word {
+  return C.c(x, D.d());
+}
