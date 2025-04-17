@@ -1,6 +1,7 @@
 {
 module Solcore.Frontend.Parser.SolcoreParser where
 
+import Data.Either 
 import Data.List.NonEmpty (NonEmpty, cons, singleton)
 
 import Solcore.Frontend.Lexer.SolcoreLexer hiding (lexer)
@@ -8,6 +9,7 @@ import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 import Solcore.Primitives.Primitives hiding (pairTy)
 import Language.Yul
+import System.FilePath
 }
 
 
@@ -432,6 +434,40 @@ OptSemi : ';'                                      { () }
         | {- empty -}                              { () }
 
 {
+
+moduleParser :: String -> String -> IO (Either String CompUnit)
+moduleParser dir content 
+  = do 
+      let r = runAlex content parser
+      case r of 
+        Left err -> pure $ Left err 
+        Right (CompUnit imps ds) -> do 
+           ds' <- loadImports dir imps 
+           pure $ either Left (\ ds1 -> Right $ CompUnit imps (ds1 ++ ds)) ds'
+
+loadImports :: String -> [Import] -> IO (Either String [TopDecl])
+loadImports dir imps =
+  do
+    let paths = map (toFilePath dir . unImport) imps
+    contents <- mapM readFile paths
+    rs <- mapM (moduleParser dir) contents
+    let (errs, asts) = partitionEithers rs
+    case errs of
+      [] -> do
+        let ds' = concatMap topDeclsFrom asts
+        pure (Right ds')
+      (err : _) -> pure (Left err)
+
+toFilePath :: FilePath -> Name -> FilePath
+toFilePath base =
+  (base </>) . (<.> "solc") . foldr step "" . show
+ where
+  step c ac
+    | c == '.' = pathSeparator : ac
+    | otherwise = c : ac
+
+topDeclsFrom :: CompUnit -> [TopDecl]
+topDeclsFrom (CompUnit _ ds) = ds
 
 unitPCon :: Pat 
 unitPCon = Pat (Name "()") []

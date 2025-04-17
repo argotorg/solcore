@@ -21,6 +21,7 @@ common common-opts
     , mtl
     , containers
     , algebraic-graphs
+    , filepath
     , array
     , pretty
     , optparse-applicative
