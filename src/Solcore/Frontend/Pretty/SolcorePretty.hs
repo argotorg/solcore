@@ -123,8 +123,8 @@ pprConstrArgs ts = commaSep $ map ppr ts
 
 instance Pretty a => Pretty (Class a) where 
   ppr (Class ps n vs v sigs)
-    = text "class " <+> 
-      pprContext ps <+> 
+    = pprSigPrefix (fv ps) ps <+>
+      text "class " <+> 
       ppr v <+> 
       colon <+> 
       ppr n <+>
@@ -149,13 +149,13 @@ pprSigPrefix :: [Tyvar] -> [Pred] -> Doc
 pprSigPrefix [] [] = empty 
 pprSigPrefix vs [] 
   = text "forall" <+> hsep (map ppr vs) <+> text "." 
-pprSigPrefix _ ps 
-  = text "forall" <+> pprContext ps 
+pprSigPrefix vs ps 
+  = text "forall" <+> hsep (map ppr vs) <+> text "." <+> pprContext ps 
 
 instance Pretty a => Pretty (Instance a) where 
   ppr (Instance ctx n tys ty funs)
-    = text "instance" <+> 
-      pprContext ctx  <+> 
+    = pprSigPrefix (fv ctx `union` fv (ty : tys)) ctx <+>
+      text "instance" <+> 
       ppr ty          <+>
       colon           <+> 
       ppr n           <+> 
@@ -167,7 +167,7 @@ instance Pretty a => Pretty (Instance a) where
 pprContext :: [Pred] -> Doc 
 pprContext [] = empty 
 pprContext ps 
-  = (commaSep $ map ppr ps) <+> text "."
+  = (commaSep $ map ppr ps) <+> text "=>"
 
 instance Pretty [Pred] where 
   ppr = hsep . map ppr 
