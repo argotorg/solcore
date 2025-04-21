@@ -57,7 +57,17 @@ pragmas
               ] 
     where 
       pragmaFolder = "./test/examples/pragmas"
- 
+
+imports :: TestTree 
+imports 
+  = testGroup "Files for imports cases"
+              [
+                runTestForFile "booldef.solc" importsFolder 
+              , runTestForFile "boolmain.solc" importsFolder
+              ]
+      where 
+        importsFolder = "./test/imports"
+
 cases :: TestTree 
 cases 
   = testGroup "Files for folder cases"
