@@ -62,12 +62,7 @@ TopDecl : ClassDef                                 {Left $1}
 
 ClassDef :: { Qual Pred }
 ClassDef 
-  : ClassPrefix 'class' Var ':' Name OptParam ';' {$1 :=> (InCls $5 $3 $6)}
-
-ClassPrefix :: { [Pred] }
-ClassPrefix : {- empty -}                      {[]}
-           | 'forall' ConstraintList '.'       {$2}
-
+ : SigPrefix 'class' Var ':' Name OptParam ';'     { (snd $1) :=> (InCls $5 $3 $6) }
 
 
 OptParam :: { [Ty] }
@@ -89,6 +84,11 @@ ConstraintList :: { [Pred] }
 ConstraintList : Constraint ',' ConstraintList     {$1 : $3}
                | Constraint                        {[$1]}
                |                                   {[]}
+SigPrefix :: {([Ty], [Pred])}
+SigPrefix : 'forall' Tyvars '.' ConstraintList '=>' {($2, $4)}
+          | 'forall' Tyvars '.'                     {($2, [])}
+          | {- empty -}                                    {([], [])}
+
 
 Constraint :: { Pred }
 Constraint : Type ':' Name OptTypeParam             {InCls $3 $1 $4} 
@@ -96,11 +96,7 @@ Constraint : Type ':' Name OptTypeParam             {InCls $3 $1 $4}
 -- instance declarations 
 
 InstDef :: { Qual Pred }
-InstDef : InstPrefix 'instance' Type ':' Name OptTypeParam ';' { $1 :=> (InCls $5 $3 $6) }
-
-InstPrefix :: { [Pred] }
-InstPrefix : {- empty -}                      {[]}
-           | 'forall' ConstraintList '.'      {$2}
+InstDef : SigPrefix 'instance' Type ':' Name OptTypeParam ';' { (snd $1) :=> (InCls $5 $3 $6) }
 
 OptTypeParam :: { [Ty] }
 OptTypeParam : '(' TypeCommaList ')'          {$2}
@@ -110,6 +106,11 @@ TypeCommaList :: { [Ty] }
 TypeCommaList : Type ',' TypeCommaList             {$1 : $3}
               | Type                               {[$1]}
               | {- empty -}                        { [] }
+
+Tyvars :: {[Ty]}
+Tyvars : Name Tyvars { (TyCon $1 []) : $2}
+       | {-empty-}     {[]}
+
 
 -- basic type definitions 
 
