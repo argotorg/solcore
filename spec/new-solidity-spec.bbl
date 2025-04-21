@@ -1,0 +1,32 @@
+\begin{thebibliography}{1}
+
+\bibitem{Chakravarty2005}
+M.~M.~T. Chakravarty, G.~Keller, S.~P. Jones, and S.~Marlow.
+\newblock Associated types with class.
+\newblock In {\em Proceedings of the 32nd ACM SIGPLAN-SIGACT Symposium on
+  Principles of Programming Languages}, POPL '05, page 1–13, New York, NY,
+  USA, 2005. Association for Computing Machinery.
+
+\bibitem{Faxen2002}
+K.-F. Fax\'{e}n.
+\newblock A static semantics for haskell.
+\newblock {\em J. Funct. Program.}, 12(5):295–357, July 2002.
+
+\bibitem{Jones1995}
+M.~P. Jones.
+\newblock {\em Qualified types: theory and practice}.
+\newblock Cambridge University Press, USA, 1995.
+
+\bibitem{Jones2000}
+M.~P. Jones.
+\newblock Type classes with functional dependencies.
+\newblock In {\em Proceedings of the 9th European Symposium on Programming
+  Languages and Systems}, ESOP '00, page 230–244, Berlin, Heidelberg, 2000.
+  Springer-Verlag.
+
+\bibitem{PeytonJones2007}
+S.~Peyton~Jones, D.~Vytiniotis, S.~Weirich, and M.~Shields.
+\newblock Practical type inference for arbitrary-rank types.
+\newblock {\em J. Funct. Program.}, 17(1):1–82, Jan. 2007.
+
+\end{thebibliography}
