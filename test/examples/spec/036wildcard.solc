@@ -5,7 +5,7 @@ contract Option {
     match o {
       | Some(x) => return x;
       | _ => return n;
-    };
+    }
   }
 
   function main() {

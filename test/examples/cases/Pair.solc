@@ -1,19 +1,19 @@
   function fst (x) {
     match x {
     | (a,_) => return a;
-    };
+    }
   }
 
   function snd(x : (a,b)) -> b {
     match x {
     | (_,b) => return b;
-    };
+    }
   }
 
   function uncurry(f,x) {
     match x {
     | (a,b) => return f(a,b);
-    };
+    }
   }
 
   function curry(f,x,y) {

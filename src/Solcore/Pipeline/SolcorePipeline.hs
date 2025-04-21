@@ -21,12 +21,12 @@ import Solcore.Desugarer.Specialise(specialiseCompUnit)
 import Solcore.Desugarer.EmitCore(emitCore)
 import Solcore.Pipeline.Options(Option(..), argumentsParser)
 import System.Exit
+import System.FilePath
 import qualified System.TimeIt as TimeIt
 
 -- main compiler driver function
 pipeline :: IO ()
 pipeline = do
-
   startTime <- Time.getCurrentTime
   opts <- argumentsParser
   let verbose = optVerbose opts
@@ -34,8 +34,9 @@ pipeline = do
       noMatchCompiler = optNoMatchCompiler opts
       timeItNamed :: String -> IO a -> IO a
       timeItNamed = optTimeItNamed opts
-  content <- readFile (fileName opts)
-  t' <- runParser content
+      file = fileName opts 
+      dir = takeDirectory file
+  t' <- runParser dir file 
   withErr t' $ \ ast@(CompUnit imps ds) -> do
     when verbose $ do
       putStrLn "> AST after name resolution"
@@ -95,13 +96,13 @@ pipeline = do
                 putStrLn "> Core contract(s):"
                 forM_ r10 (putStrLn . pretty)
 
-runParser :: String -> IO (Either String (CompUnit Name))
-runParser content = do
-  let r1 = runAlex content parser
+runParser :: String -> String -> IO (Either String (CompUnit Name))
+runParser dir file = do
+  content <- readFile file
+  r1 <- moduleParser dir content 
   case r1 of
     Left err -> pure $ Left err
-    Right t -> do
-      buildAST t
+    Right t -> buildAST t 
 
 withErr :: Either String a -> (a -> IO b) -> IO b
 withErr r f

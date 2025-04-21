@@ -11,7 +11,7 @@ instance B : Neg {
     match x {
     | F => return T;
     | T => return F;
-    };
+    }
   }
 }
 
@@ -22,7 +22,7 @@ contract NegBool {
     match b  {
     | F => return 0;
     | T => return 1;
-    };
+    }
   }
 
   function main() { return  fromB(Neg.neg(F)); }

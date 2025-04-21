@@ -4,7 +4,7 @@ function natInd (step,v,n) {
   match n {
   | Zero => return v ;
   | Succ(m) => return step(m, natInd(step,v,m));
-  };
+  }
 }
 
 function add(n,m) {

@@ -15,6 +15,5 @@ tests
                , pragmas
                , spec
                , std 
-             --  , satTests
                , reduceTests 
                ]

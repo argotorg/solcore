@@ -11,7 +11,7 @@ data T(x) = T;
 data S(x) = T;
 
 // This works.
-forall U : A . instance T(U):D {}
+forall U . U : A => instance T(U):D {}
 
 // This should also work, but reports a violation of the Paterson condition.
-forall U : A, U : B, U : C . instance S(U):D {}
+forall U . U : A, U : B, U : C => instance S(U):D {}

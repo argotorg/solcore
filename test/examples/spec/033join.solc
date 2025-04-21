@@ -7,14 +7,14 @@ contract Option {
     match o {
       | None => return n;
       | Some(x) => return x;
-    };
+    }
   }
 
   function join(mmx) {
     match mmx {
       | Some(Some(x)) => return Some(x);
       | _ => return None;
-    };
+    }
   }
 
   function main() {

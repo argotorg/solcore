@@ -3,7 +3,7 @@ contract Pair {
   function fst(p) {
     match p {
       | (a,b) => return a;
-    };
+    }
   }
 
   function main() {
