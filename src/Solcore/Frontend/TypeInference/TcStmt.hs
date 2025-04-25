@@ -47,7 +47,7 @@ tcStmt e@(Let n mt me)
                         kindCheck t1 `wrapError` e
                         s <- checkTyInst (fv t) t t1 `wrapError` e
                         extSubst s
-                        pure (Just e', ps1, t)
+                        withCurrentSubst (Just e', ps1, t)
                       (Just t, Nothing) -> do
                         return (Nothing, [], t)
                       (Nothing, Just e) -> do
@@ -55,9 +55,10 @@ tcStmt e@(Let n mt me)
                         return (Just e', ps, t1)
                       (Nothing, Nothing) ->
                         (Nothing, [],) <$> freshTyVar
-      extEnv n (Forall [] (psf :=> tf))
+      (ds,rs) <- splitContext psf (fv mt)
+      extEnv n (Forall [] (rs :=> tf))
       let e' = Let (Id n tf) (Just tf) me'
-      withCurrentSubst (e', psf, unit)
+      withCurrentSubst (e', ds, unit)
 tcStmt (StmtExp e)
   = do
       (e', ps', t') <- tcExp e

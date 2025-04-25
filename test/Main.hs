@@ -16,6 +16,5 @@ tests
                , spec
                , std
                , imports 
-               -- , satTests
                , reduceTests 
                ]

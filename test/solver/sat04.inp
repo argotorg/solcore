@@ -1,2 +1,2 @@
-instance (a : C(b)) => T(T(a)) : C(b);
+forall a : C(b) . instance T(T(a)) : C(b);
 sat : {T(x) : C(x)};

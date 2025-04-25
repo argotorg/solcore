@@ -25,6 +25,7 @@ import Language.Yul
       'reduce'   {Token _ TReduce}
       'class'    {Token _ TClass}
       'instance' {Token _ TInstance}
+      'forall'   {Token _ TForall}
       ';'        {Token _ TSemi}
       ':'        {Token _ TColon}
       '~'        {Token _ TEquiv}
@@ -61,7 +62,8 @@ TopDecl : ClassDef                                 {Left $1}
 
 ClassDef :: { Qual Pred }
 ClassDef 
-  : 'class' ContextOpt Var ':' Name OptParam ';' {$2 :=> (InCls $5 $3 $6)}
+ : SigPrefix 'class' Var ':' Name OptParam ';'     { (snd $1) :=> (InCls $5 $3 $6) }
+
 
 OptParam :: { [Ty] }
 OptParam :  '(' VarCommaList ')'                   {$2}
@@ -82,6 +84,11 @@ ConstraintList :: { [Pred] }
 ConstraintList : Constraint ',' ConstraintList     {$1 : $3}
                | Constraint                        {[$1]}
                |                                   {[]}
+SigPrefix :: {([Ty], [Pred])}
+SigPrefix : 'forall' Tyvars '.' ConstraintList '=>' {($2, $4)}
+          | 'forall' Tyvars '.'                     {($2, [])}
+          | {- empty -}                                    {([], [])}
+
 
 Constraint :: { Pred }
 Constraint : Type ':' Name OptTypeParam             {InCls $3 $1 $4} 
@@ -89,7 +96,7 @@ Constraint : Type ':' Name OptTypeParam             {InCls $3 $1 $4}
 -- instance declarations 
 
 InstDef :: { Qual Pred }
-InstDef : 'instance' ContextOpt Type ':' Name OptTypeParam ';' { $2 :=> (InCls $5 $3 $6)}
+InstDef : SigPrefix 'instance' Type ':' Name OptTypeParam ';' { (snd $1) :=> (InCls $5 $3 $6) }
 
 OptTypeParam :: { [Ty] }
 OptTypeParam : '(' TypeCommaList ')'          {$2}
@@ -99,6 +106,11 @@ TypeCommaList :: { [Ty] }
 TypeCommaList : Type ',' TypeCommaList             {$1 : $3}
               | Type                               {[$1]}
               | {- empty -}                        { [] }
+
+Tyvars :: {[Ty]}
+Tyvars : Name Tyvars { (TyCon $1 []) : $2}
+       | {-empty-}     {[]}
+
 
 -- basic type definitions 
 

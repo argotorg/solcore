@@ -1,4 +1,4 @@
 instance word : Eq ;
-instance (a : Eq) => Foo(a) : Eq ;
+forall a : Eq . instance Foo(a) : Eq ;
 
 sat : {bool : Eq};
