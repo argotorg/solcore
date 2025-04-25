@@ -26,7 +26,7 @@ splitContext ps fs
       let (ds, rs) = partition (all (`elem` fs) . fv) ps'
       info [">> Defered constraints:", pretty ds]
       info [">> Retained constraints:", pretty rs]
-      pure (ds, ps)
+      pure (ds, rs)
  
 
 -- main context reduction function 

@@ -57,7 +57,17 @@ pragmas
               ] 
     where 
       pragmaFolder = "./test/examples/pragmas"
- 
+
+imports :: TestTree 
+imports 
+  = testGroup "Files for imports cases"
+              [
+                runTestForFile "booldef.solc" importsFolder 
+              , runTestForFile "boolmain.solc" importsFolder
+              ]
+      where 
+        importsFolder = "./test/imports"
+
 cases :: TestTree 
 cases 
   = testGroup "Files for folder cases"
@@ -117,6 +127,8 @@ cases
               , expectFail $ runTestForFile "mainproxy.solc" caseFolder
               , expectFail $ runTestForFile "complexproxy.solc" caseFolder
               , expectFail $ runTestForFile "reference-test.solc" caseFolder
+              , runTestForFile "reference-encoding-good.solc" caseFolder 
+              , expectFail $ runTestForFile "reference-encoding-bad.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"
