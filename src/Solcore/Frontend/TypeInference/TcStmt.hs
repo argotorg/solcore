@@ -500,7 +500,7 @@ extSignature sig@(Signature _ preds n ps t)
 -- typing instances
 
 tcInstance :: Instance Name -> TcM (Instance Id)
-tcInstance idecl@(Instance ctx n ts t funs) 
+tcInstance idecl@(Instance d ctx n ts t funs) 
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs) 
       funs' <- buildSignatures n ts t funs `wrapError` idecl
@@ -512,7 +512,7 @@ tcInstance idecl@(Instance ctx n ts t funs)
       s1 <- match qts1 qts2
       extSubst s1
       let
-        instd = Instance ctx n ts t funs1
+        instd = Instance d ctx n ts t funs1
       withCurrentSubst instd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
@@ -583,7 +583,7 @@ checkInstances :: [Instance Name] -> TcM ()
 checkInstances = mapM_ checkInstance 
 
 checkInstance :: Instance Name -> TcM ()
-checkInstance idef@(Instance ctx n ts t funs)
+checkInstance idef@(Instance d ctx n ts t funs)
   = do
       let ipred = InCls n t ts
       -- checking the coverage condition 

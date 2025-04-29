@@ -153,8 +153,9 @@ pprSigPrefix vs ps
   = text "forall" <+> hsep (map ppr vs) <+> text "." <+> pprContext ps 
 
 instance Pretty a => Pretty (Instance a) where 
-  ppr (Instance ctx n tys ty funs)
+  ppr (Instance d ctx n tys ty funs)
     = pprSigPrefix (fv ctx `union` fv (ty : tys)) ctx <+>
+      pprDefault d    <>
       text "instance" <+> 
       ppr ty          <+>
       colon           <+> 
@@ -163,6 +164,9 @@ instance Pretty a => Pretty (Instance a) where
       lbrace          $$ 
       nest 3 (pprFunBlock funs) $$ 
       rbrace 
+
+pprDefault :: Bool -> Doc 
+pprDefault b = if b then text "default" else empty
 
 pprContext :: [Pred] -> Doc 
 pprContext [] = empty 
