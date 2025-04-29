@@ -83,8 +83,13 @@ reduceByInst' n p@(InCls c _ _)
         ce <- getInstEnv
         insts <- askInstEnv c
         case selectInst ce p of
-          Nothing -> do 
-            tcmError $ unwords [ "No instance found for:", pretty p]
+          Nothing -> do
+            de <- getDefaultInstEnv 
+            case selectDefaultInst de p of
+              Nothing -> tcmError $ unwords [ "No instance found for:", pretty p]
+              Just (ps', s, _) -> do 
+                extSubst s 
+                withCurrentSubst ps'
           Just (preds, subst', instd) -> do 
             extSubst subst' 
             ps' <- reduceByInst (n - 1) preds
@@ -93,6 +98,21 @@ reduceByInst' n (t1 :~: t2)
   = do 
       unify t1 t2
       pure []
+
+selectDefaultInst :: Table Inst -> Pred -> Maybe ([Pred], Subst, Inst)
+selectDefaultInst de p@(InCls i t as)
+  = case Map.lookup i de of 
+      Nothing -> Nothing 
+      Just c@(ps :=> (InCls _ t' ts')) -> 
+        case match t' t of 
+          Left _ -> Nothing 
+          Right u -> 
+            case unifyTypes as ts' of
+              Left _ -> Nothing 
+              Right u' -> 
+                let u1 = u' <> u 
+                in Just (map (apply u1) ps, u1, c)
+selectDefaultInst _ _ = Nothing 
 
 selectInst :: InstTable -> Pred -> Maybe ([Pred], Subst, Inst)
 selectInst ce p@(InCls i t as) 

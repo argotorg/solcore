@@ -166,7 +166,7 @@ instance Pretty a => Pretty (Instance a) where
       rbrace 
 
 pprDefault :: Bool -> Doc 
-pprDefault b = if b then text "default" else empty
+pprDefault b = if b then text "default " else empty
 
 pprContext :: [Pred] -> Doc 
 pprContext [] = empty 

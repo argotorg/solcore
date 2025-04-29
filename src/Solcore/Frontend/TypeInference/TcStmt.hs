@@ -588,7 +588,10 @@ checkInstance idef@(Instance d ctx n ts t funs)
       let ipred = InCls n t ts
       -- checking the coverage condition 
       insts <- askInstEnv n `wrapError` ipred
-      checkOverlap ipred insts `wrapError` idef
+      -- check overlapping only for non-default instances 
+      unless d (checkOverlap ipred insts `wrapError` idef)
+      -- check if default instance has a type variable as main argument.
+      when d (checkDefaultInst (ctx :=> ipred) `wrapError` idef)
       coverage <- askCoverage n
       unless coverage (checkCoverage n ts t `wrapError` idef)
       -- checking Patterson condition
@@ -601,7 +604,18 @@ checkInstance idef@(Instance d ctx n ts t funs)
       mapM_ (checkMethod ipred) funs
       let ninst = anfInstance $ ctx :=> InCls n t ts 
       -- add to the environment
-      addInstance n ninst 
+      if d then addDefaultInstance n ninst 
+      else addInstance n ninst 
+
+-- checking a default instance 
+
+checkDefaultInst :: Qual Pred -> TcM ()
+checkDefaultInst p@(ps :=> InCls n t ts)
+  = unless (isTyVar t) (invalidDefaultInst p)
+
+isTyVar :: Ty -> Bool 
+isTyVar (TyVar _) = True 
+isTyVar _ = False 
 
 -- bound variable check 
 
@@ -957,4 +971,7 @@ rigidVariableError :: [(Tyvar, Ty)] -> TcM ()
 rigidVariableError vts 
   = tcmError $ "Cannot unify the following rigid variables with types:" ++
                 (unlines $ map (\ (v,t) -> pretty v ++ " with " ++ pretty t) vts)
- 
+
+invalidDefaultInst :: Inst -> TcM ()
+invalidDefaultInst p
+  = tcmError $ "Cannot have a default instance with a non-type variable as main argument:" ++ pretty p
