@@ -130,6 +130,7 @@ cases
               , runTestForFile "reference-encoding-good.solc" caseFolder 
               , expectFail $ runTestForFile "reference-encoding-bad.solc" caseFolder
               , runTestForFile "default-inst.solc" caseFolder
+              , expectFail $ runTestForFile "default-instance-missing.solc" caseFolder
               ]
     where 
       caseFolder = "./test/examples/cases"
