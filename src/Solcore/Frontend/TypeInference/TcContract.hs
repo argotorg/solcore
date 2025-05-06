@@ -307,7 +307,7 @@ checkClass icls@(Class ps n vs v sigs)
       checkSignature p sig@(Signature vs ctx f ps mt)
         = do
             pst <- mapM tyParam ps
-            t' <- maybe freshTyVar pure mt
+            t' <- maybe (pure unit) pure mt
             let ft = funtype pst t' 
             unless (v `elem` fv ft)
                    (signatureError n v sig ft)
@@ -326,7 +326,7 @@ addClassMethod :: Pred -> Signature Name -> TcM ()
 addClassMethod p@(InCls c _ _) sig@(Signature _ ctx f ps t) 
   = do
       tps <- mapM tyParam ps
-      t' <- maybe freshTyVar pure t
+      t' <- maybe (pure unit) pure t
       let ty = funtype tps t'
           vs = fv ty
           ctx' = [p] `union` ctx

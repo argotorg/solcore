@@ -59,11 +59,13 @@ type ClassTable = Table ClassInfo
 type TypeTable = Table TypeInfo
 type Inst = Qual Pred 
 type InstTable = Table [Inst] 
+type DefTable = Table Inst 
 
 data TcEnv
   = TcEnv {
       ctx :: Env               -- Variable environment
     , instEnv :: InstTable     -- Instance Environment
+    , defaultEnv :: DefTable   -- Default instance environment
     , typeTable :: TypeTable   -- Type information environment 
     , classTable :: ClassTable -- Class information table
     , contract :: Maybe Name   -- current contract name 
@@ -90,6 +92,7 @@ initTcEnv :: Option -> TcEnv
 initTcEnv options 
   = TcEnv { ctx = primCtx
           , instEnv = primInstEnv
+          , defaultEnv = Map.empty 
           , typeTable = primTypeEnv
           , classTable = primClassEnv
           , contract = Nothing

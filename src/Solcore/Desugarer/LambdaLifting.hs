@@ -83,8 +83,8 @@ instance LiftLambda (ContractDecl Name) where
   liftLambda d = pure d 
 
 instance LiftLambda (Instance Name) where 
-  liftLambda (Instance ctx n ts t fs) 
-    = Instance ctx n ts t <$> liftLambda fs 
+  liftLambda (Instance d ctx n ts t fs) 
+    = Instance d ctx n ts t <$> liftLambda fs 
 
 instance LiftLambda (Constructor Name) where 
   liftLambda (Constructor ps bd) 

@@ -340,6 +340,10 @@ getInstEnv :: TcM InstTable
 getInstEnv 
   = gets instEnv >>= renameInstEnv
 
+getDefaultInstEnv :: TcM (Table Inst)
+getDefaultInstEnv 
+  = gets defaultEnv
+
 renameInstEnv :: InstTable -> TcM InstTable 
 renameInstEnv 
   = Map.traverseWithKey go
@@ -354,7 +358,12 @@ addInstance n inst
   = do 
       modify (\ ctx -> 
         ctx{instEnv = Map.insertWith (++) n [inst] (instEnv ctx)})  
-      
+
+addDefaultInstance :: Name -> Inst -> TcM ()
+addDefaultInstance n inst 
+  = do 
+      modify (\ ctx -> 
+          ctx {defaultEnv = Map.insert n inst (defaultEnv ctx)})
 
 maybeToTcM :: String -> Maybe a -> TcM a 
 maybeToTcM s Nothing = throwError s 

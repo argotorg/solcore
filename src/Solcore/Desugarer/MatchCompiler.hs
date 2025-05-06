@@ -95,8 +95,8 @@ instance Compile (ContractDecl Id) where
 
 instance Compile (Instance Id) where 
   type Res (Instance Id) = Instance Id
-  compile (Instance ps n ts m funs)
-    = Instance ps n ts m <$> compile funs 
+  compile (Instance d ps n ts m funs)
+    = Instance d ps n ts m <$> compile funs 
 
 instance Compile (FunDef Id) where 
   type Res (FunDef Id) = FunDef Id

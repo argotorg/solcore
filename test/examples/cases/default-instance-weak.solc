@@ -1,0 +1,25 @@
+class self:Test(weak) { function f(x:self) -> weak; }
+
+data memory(a) = memory(word);
+data Proxy(a) = Proxy;
+
+default instance a:Test(word) { function f(x:self) -> word { return 42; }}
+
+instance memory(memory(word)):Test(bool) { function f(x:self) { return true; }}
+
+// If we choose the default instance to typecheck f,
+// this will pass type-checking, since ``r`` is word.
+// But: for a = memory(word), ``r`` will be ``bool`` and this is invalid!
+forall a.
+function f(p:Proxy(a)) {
+    let x:memory(a);
+    let r = Test.f(x);
+    assembly {
+        sstore(0, r)
+    }
+}
+
+function g() {
+    f(Proxy:Proxy(memory(memory(word)))); // valid, since default instance is used
+    f(Proxy:Proxy(memory(word))); // PROBLEM: now we have a bool cross the assembly barrier
+}
