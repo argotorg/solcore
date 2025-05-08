@@ -292,6 +292,7 @@ instance Pretty Literal where
 
 instance Pretty Tyvar where 
   ppr (TVar n) = ppr n
+  ppr (Skolem n) = text "@" <> ppr n 
 
 instance Pretty Pred where 
   ppr (InCls n t ts) =
@@ -313,8 +314,12 @@ instance Pretty Scheme where
           pprContext ctx      <+>
           ppr t 
 
+instance Pretty MetaTv where 
+  ppr (MetaTv v) = ppr v 
+
 instance Pretty Ty where 
   ppr (TyVar v) = ppr v
+  ppr (Meta v) = text "?" <> ppr v
   ppr (t1@(_ :-> _) :-> t2) 
     = parens (ppr t1) <+> text "->" <+> ppr t2
   ppr (t1 :-> t2) 

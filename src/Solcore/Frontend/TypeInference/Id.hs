@@ -16,5 +16,5 @@ data Id
 instance HasType Id where 
   apply s (Id n t) = Id n (apply s t)
   fv (Id _ t) = fv t
-
-
+  mv (Id _ t) = mv t
+  bv (Id _ t) = bv t

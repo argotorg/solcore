@@ -15,6 +15,7 @@ import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id ( Id(..) )
 import Solcore.Frontend.TypeInference.TcEnv(TcEnv(..),TypeInfo(..), TypeTable)
+import Solcore.Frontend.TypeInference.TcMonad (insts)
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Primitives.Primitives
@@ -152,7 +153,7 @@ translateTCon tycon tas = do
     mti <- gets (Map.lookup tycon . ecDT)
     case mti of
         Just (DataTy n tvs cs) -> do
-            let subst = Subst $ zip tvs tas
+            let subst = zip tvs tas
             Core.TNamed (show tycon) . buildSumType <$> mapM (translateDCon subst) cs
         Nothing -> errors ["translateTCon: unknown type ", pretty tycon, "\n", show tycon]
   where
@@ -161,8 +162,8 @@ translateTCon tycon tas = do
       buildSumType ts = foldr1 Core.TSum ts
 
 
-translateDCon :: Subst -> Constr -> EM Core.Type
-translateDCon subst  (Constr name tas) = translateProductType (apply subst tas)
+translateDCon :: [(Tyvar, Ty)] -> Constr -> EM Core.Type
+translateDCon subst  (Constr name tas) = translateProductType (insts subst tas)
 
 translateProductType :: [Ty] -> EM Core.Type
 translateProductType [] = pure Core.TUnit

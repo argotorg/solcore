@@ -45,7 +45,7 @@ tcStmt e@(Let n mt me)
                       (Just t, Just e1) -> do
                         (e', ps1, t1) <- tcExp e1
                         kindCheck t1 `wrapError` e
-                        s <- checkTyInst (fv t) t t1 `wrapError` e
+                        s <- checkTyInst t t1 `wrapError` e
                         extSubst s
                         withCurrentSubst (Just e', ps1, t)
                       (Just t, Nothing) -> do
@@ -80,11 +80,10 @@ tcStmt s@(Asm yblk)
       pure (Asm yblk, [], t)
 
 
-checkTyInst :: [Tyvar] -> -- Skolem constants 
-               Ty -> -- annotated type 
+checkTyInst :: Ty -> -- annotated type 
                Ty -> -- inferred type
                TcM Subst
-checkTyInst vs ann inf 
+checkTyInst ann inf 
   = do
       s@(Subst x) <- match inf ann `catchError` 
           (\ _ -> tcmError $ unlines ["The annotated type and inferred type do not match."
@@ -93,8 +92,6 @@ checkTyInst vs ann inf
                                      , "The inferred type is:"
                                      , "   " ++ (pretty $ rename inf)
                                      ])
-      let rigids = filter (\ (v, t) -> v `elem` vs && isTyCon t) x
-      unless (null rigids) $ rigidVariableError rigids 
       pure s 
 
 
@@ -225,7 +222,7 @@ tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
       (e', ps, ty') <- tcExp e 
-      s <- checkTyInst (fv ty) ty ty' `wrapError` e1
+      s <- checkTyInst ty ty' `wrapError` e1
       extSubst s 
       withCurrentSubst (TyExp e' ty, ps, ty)
 
@@ -368,18 +365,18 @@ tcArg a@(Typed n ty)
 -- create tcSignature which should return the 
 -- function type together with its parameter types
 
-tcSignature :: Bool -> Signature Name -> TcM ( (Name, Scheme)
-                                             , [(Name, Scheme)]
-                                             , [Ty]
-                                             , [Tyvar]
-                                             ) 
-tcSignature b (Signature vs ps n args rt)
+tcSignature :: Signature Name -> TcM ( (Name, Scheme)
+                                     , [(Name, Scheme)]
+                                     , [Ty]
+                                     , [Tyvar]
+                                     ) 
+tcSignature (Signature vs ps n args rt)
   = do 
-      vs0 <- mapM (const freshVar) vs 
-      let s = Subst (zip vs (map TyVar vs0)) 
-          args0 = apply s args 
-          rt0 = apply s rt 
-          ps0 = apply s ps
+      vs0 <- mapM (const freshTyVar) vs 
+      let env = zip vs vs0
+          args0 = everywhere (mkT (insts @Ty env)) args 
+          rt0 = everywhere (mkT (insts @Ty env)) rt 
+          ps0 = everywhere (mkT (insts @Ty env)) ps
       (args', pschs, ts, vs') <- tcArgs args0
       t' <- maybe freshTyVar pure rt0 
       sch <- generalize (ps0, funtype ts t')
@@ -403,7 +400,7 @@ tcFunDef :: Bool -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl d@(FunDef sig bd)
   = withLocalEnv do
      info [">> Starting the typing of:", pretty sig]
-     ((n,sch), pschs, ts, vs') <- tcSignature incl sig 
+     ((n,sch), pschs, ts, vs') <- tcSignature sig 
      let lctx = if incl then (n,sch) : pschs else pschs
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
      (ps2 :=> ann) <- freshInst sch 
@@ -415,7 +412,7 @@ tcFunDef incl d@(FunDef sig bd)
      (ds, rs) <- splitContext ps3 (vs `union` fv pschs)
      -- checking if the annotated type is a valid instance of the infered type.
      when (hasAnn sig) $ do 
-        s' <- checkTyInst (fv pschs `union` fv (sigReturn sig)) ann ty `wrapError` d 
+        s' <- checkTyInst ann ty `wrapError` d 
         extSubst s' 
         return ()
      -- checking constraint provability for annotated types.
@@ -497,7 +494,7 @@ extSignature sig@(Signature _ preds n ps t)
       when (n `elem` te) (duplicatedFunDef n) `wrapError` sig
       addFunctionName n 
 
--- typing instances
+-- typing instance
 
 tcInstance :: Instance Name -> TcM (Instance Id)
 tcInstance idecl@(Instance d ctx n ts t funs) 
@@ -629,7 +626,7 @@ checkOverlap :: Pred -> [Inst] -> TcM ()
 checkOverlap _ [] = pure ()
 checkOverlap p@(InCls _ t _) (i:is) 
   = do 
-        i' <- renameVars (fv t) i
+        i' <- freshInst i
         case i' of 
           (ps :=> (InCls _ t' _)) -> 
             case mgu t t' of
@@ -921,9 +918,9 @@ instance Vars a => Vars (Exp a) where
 -- rename type variables 
 
 rename :: Ty -> Ty 
-rename t = let vs = fv t 
-               s = Subst $ zip vs (map (TyVar . TVar) namePool)
-           in apply s t
+rename t = let vs = bv t 
+               s = zip vs (map (TyVar . TVar) namePool)
+           in insts s t
 
 -- errors
 

@@ -7,13 +7,27 @@ import Solcore.Frontend.Syntax.Name
 -- basic typing infrastructure 
 
 data Tyvar 
-  = TVar { var :: Name }
+  = TVar { var :: Name }  -- bound variable 
+  | Skolem Name           -- skolem constant 
   deriving (Eq, Ord, Show, Data, Typeable)
-   
+ 
+tyvarName :: Tyvar -> Name 
+tyvarName (TVar n) = n 
+tyvarName (Skolem n) = n
+
+isBound :: Tyvar -> Bool 
+isBound (TVar _) = True 
+isBound _ = False
+
 data Ty 
   = TyVar Tyvar      -- type variable 
   | TyCon Name [Ty]  -- type constructor 
+  | Meta MetaTv      -- meta type variable 
   deriving (Eq, Ord, Show, Data, Typeable)
+
+newtype MetaTv 
+  = MetaTv { metaName :: Name }
+    deriving (Eq, Ord, Show, Data, Typeable)
 
 infixr 4 :-> 
 
@@ -48,7 +62,9 @@ instance AlphaEq a => AlphaEq [a] where
   alphaEq ts ts' = and $ zipWith alphaEq ts ts'
 
 instance AlphaEq Ty where 
-  alphaEq (TyVar _) (TyVar _) 
+  alphaEq (TyVar n) (TyVar n') 
+    = n == n'
+  alphaEq (Meta _) (Meta _) 
     = True 
   alphaEq (TyCon n ts) (TyCon n' ts')
     = n == n' && (and (zipWith alphaEq ts ts'))
