@@ -315,11 +315,11 @@ instance Pretty Scheme where
           ppr t 
 
 instance Pretty MetaTv where 
-  ppr (MetaTv v) = ppr v 
+  ppr (MetaTv v) = text "?" <> ppr v 
 
 instance Pretty Ty where 
   ppr (TyVar v) = ppr v
-  ppr (Meta v) = text "?" <> ppr v
+  ppr (Meta v) = ppr v
   ppr (t1@(_ :-> _) :-> t2) 
     = parens (ppr t1) <+> text "->" <+> ppr t2
   ppr (t1 :-> t2) 

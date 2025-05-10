@@ -209,7 +209,9 @@ instance Fresh Inst where
   freshInst it@(ps :=> p) 
     = do 
         let vs = bv it 
-        mvs <- mapM (const freshTyVar) vs 
+        mvs <- mapM (const freshTyVar) vs
+        liftIO $ putStrLn $ "Input:" ++ pretty it 
+        liftIO $ putStrLn $ "Output:" ++ pretty (insts (zip vs mvs) it)
         pure (insts (zip vs mvs) it)
  
 type IEnv = [(Tyvar, Ty)]

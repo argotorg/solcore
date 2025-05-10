@@ -59,6 +59,7 @@ tcStmt e@(Let n mt me)
                       (Nothing, Nothing) ->
                         (Nothing, [],) <$> freshTyVar
       extEnv n (monotype tf)
+      s <- getSubst
       let e' = Let (Id n tf) (Just tf) me'
       withCurrentSubst (e', psf, unit)
 tcStmt (StmtExp e)
@@ -366,7 +367,6 @@ tcSignature sig@(Signature vs ps n args rt)
           ps0 = everywhere (mkT (insts @Ty env)) ps
       (args', pschs, ts, vs') <- tcArgs args0
       t' <- maybe freshTyVar pure rt0
-      liftIO $ putStrLn $ "PS0:" ++ pretty sig
       sch <- generalize (ps0, funtype ts t')
       pure ((n, sch), pschs, ts)
 
@@ -396,6 +396,7 @@ tcFunDef incl d@(FunDef sig bd)
      -- checking if the constraints are valid
      ps3 <- withCurrentSubst ps1
      vs <- getEnvMetaVars
+     sr <- getSubst 
      (ds, rs) <- splitContext ps3 vs
      -- checking constraint provability for annotated types.
      when (hasAnn sig && null (sigContext sig) && not (isValid rs) && incl) $ do 
@@ -405,13 +406,12 @@ tcFunDef incl d@(FunDef sig bd)
                          , pretty sig
                          ]
      sch' <- generalize (rs, ty)
-     -- checking subsumption
+    -- checking subsumption
      when (hasAnn sig) $ do
         liftIO $ putStrLn $ "Inf:" ++ pretty sch'
         liftIO $ putStrLn $ "Ann:" ++ pretty sch 
         subsCheck sch' sch
      sig2 <- elabSignature sig sch' `wrapError` d
-     liftIO $ putStrLn $ unwords [">> Finished typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
 
