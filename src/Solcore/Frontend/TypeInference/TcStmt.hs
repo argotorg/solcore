@@ -246,7 +246,8 @@ closureConversion vs args bdy ps ty
         sch <- generalize (ps, ty)
         put st 
         (udt@(DataTy dn vs _), instd) <- generateDecls (fun', sch)
-        let t = TyCon dn (TyVar <$> vs)
+        mvs <- mapM (const freshTyVar) vs
+        let t = TyCon dn mvs
         writeFunDef fun'
         writeDataTy udt
         checkDataType udt 
