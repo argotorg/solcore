@@ -150,7 +150,5 @@ basicOptions =
   [ "new-run"
   , "sol-core"
   , "--"
-  , "-s"
-  , "-n"
   , "-f"
   ]

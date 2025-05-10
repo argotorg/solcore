@@ -135,6 +135,14 @@ tcPat t' (PLit l)
 
 -- type inference for expressions
 
+mkCon :: DataTy -> TcM (Exp Id, Ty)
+mkCon (DataTy nt vs [(Constr n _)])
+  = do 
+      mvs <- mapM (const freshTyVar) vs 
+      let
+        t1 = TyCon nt mvs
+      pure (Con (Id n t1) [], t1)
+ 
 tcLit :: Literal -> TcM Ty
 tcLit (IntLit _) = return word
 tcLit (StrLit _) = return string
@@ -154,12 +162,7 @@ tcExp (Var n)
         -- checks if it is a function name, and return 
         -- its corresponding unique type
         r <- lookupUniqueTy n
-        let
-          mkCon (DataTy nt vs [(Constr n _)])
-            = let
-                t1 = TyCon nt (map TyVar vs)
-              in (Con (Id n t1) [], t1)
-          p = maybe (Var (Id n t), t) mkCon r
+        p <- maybe (pure $ (Var (Id n t), t)) mkCon r
         withCurrentSubst (fst p, ps, snd p)
 tcExp e@(Con n es)
   = do
@@ -199,7 +202,8 @@ tcExp e@(Lam args bd _)
        let ps1 = apply s ps
            ts1 = apply s ts'
            t1 = apply s t'
-           vs = fv ps1 `union` fv t1 `union` fv ts1
+           vs0 = mv ps1 `union` mv t1 `union` mv ts1
+           vs = map (TVar . metaName) vs0
            ty = funtype ts1 t1
        noDesugarCalls <- getNoDesugarCalls
        if noDesugarCalls then withCurrentSubst (Lam args' bd' (Just t1), ps1, ty)
@@ -278,7 +282,7 @@ createClosureType ids vs ty
           dn = Name $ "t_closure" ++ show i 
           ts = map idType ids
           ns = map Var ids
-          vs' = union (fv ts) vs 
+          vs' = union (bv ts) vs 
           ty' = TyCon dn (TyVar <$> vs')
           cid = Id dn (funtype ts ty')
       pure (DataTy dn vs' [Constr dn ts], Con cid ns, ty')
@@ -396,7 +400,6 @@ tcFunDef incl d@(FunDef sig bd)
      -- checking if the constraints are valid
      ps3 <- withCurrentSubst ps1
      vs <- getEnvMetaVars
-     sr <- getSubst 
      (ds, rs) <- splitContext ps3 vs
      -- checking constraint provability for annotated types.
      when (hasAnn sig && null (sigContext sig) && not (isValid rs) && incl) $ do 
@@ -406,12 +409,11 @@ tcFunDef incl d@(FunDef sig bd)
                          , pretty sig
                          ]
      sch' <- generalize (rs, ty)
-    -- checking subsumption
+     -- checking subsumption
      when (hasAnn sig) $ do
-        liftIO $ putStrLn $ "Inf:" ++ pretty sch'
-        liftIO $ putStrLn $ "Ann:" ++ pretty sch 
         subsCheck sch' sch
      sig2 <- elabSignature sig sch' `wrapError` d
+     liftIO $ putStrLn $ unwords [">> Finishing the typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
 

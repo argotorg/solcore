@@ -208,10 +208,8 @@ instance Fresh Inst where
   type Result Inst = Inst  
   freshInst it@(ps :=> p) 
     = do 
-        let vs = bv it 
+        let vs = bv it
         mvs <- mapM (const freshTyVar) vs
-        liftIO $ putStrLn $ "Input:" ++ pretty it 
-        liftIO $ putStrLn $ "Output:" ++ pretty (insts (zip vs mvs) it)
         pure (insts (zip vs mvs) it)
  
 type IEnv = [(Tyvar, Ty)]
@@ -385,7 +383,7 @@ askTypeInfo n
 
 modifyTypeInfo :: Name -> TypeInfo -> TcM ()
 modifyTypeInfo n ti 
-  = do 
+  = do
         tenv <- gets typeTable
         let tenv' = Map.insert n ti tenv
         modify (\env -> env{typeTable = tenv'})
