@@ -51,17 +51,17 @@ createInstance :: DataTy -> FunDef Id -> Scheme -> TcM (Instance Name)
 createInstance udt fd sch 
   = do
       -- instantiating function type signature 
-      qt@(qs :=> ty) <- freshInst sch 
+      qt@(qs :=> ty) <- fresh sch 
       -- getting invoke type from context 
-      (qs' :=> ty') <- askEnv invoke >>= freshInst 
+      (qs' :=> ty') <- askEnv invoke >>= fresh 
       -- getting arguments and return type from signature 
       let (args, retTy) = splitTy ty
           args' = if null args then [unit] else filter (not . isClosureTy) args
-          vunreach = fv qt \\ fv ty 
+          vunreach = bv qt \\ bv ty 
           argTy = tupleTyFromList args'
           argvars = fv qt 
           dn = dataName udt
-          selfTy = TyCon dn (TyVar <$> fv ty `union` fv qs)
+          selfTy = TyCon dn (TyVar <$> bv ty `union` bv qs)
       -- building the invoke function signature 
       (selfParam, sn) <- freshParam "self" selfTy
       (argParam, an) <- freshParam "arg" argTy
@@ -99,7 +99,7 @@ freshPatArg (TyCon pn ts)
         ti <- askTypeInfo pn
         case constrNames ti of 
            [cn] -> do 
-                      (ps :=> ty) <- askEnv cn >>= freshInst 
+                      (ps :=> ty) <- askEnv cn >>= fresh
                       let (args, ret) = splitTy ty
                       if null args then do 
                         n <- freshName 
@@ -114,6 +114,10 @@ freshPatArg (TyVar v)
   = do 
       n <- freshName 
       pure (PVar n, Var n)
+freshPatArg t = error $ show t
+
+fresh :: Scheme -> TcM (Qual Ty) 
+fresh (Forall _ qt) = pure qt
 
 freshParam :: String -> Ty -> TcM (Param Name, Name)  
 freshParam s t 

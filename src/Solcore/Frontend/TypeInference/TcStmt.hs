@@ -45,7 +45,10 @@ tcStmt e@(Let n mt me)
                       (Just t, Just e1) -> do
                         (e', ps1, t1) <- tcExp e1
                         kindCheck t1 `wrapError` e
-                        s <- checkTyInst t t1 `wrapError` e
+                        let bvs = bv t 
+                        sks <- mapM (const freshTyVar) bvs 
+                        let t' = insts (zip bvs sks) t 
+                        s <- match t1 t' `wrapError` e 
                         extSubst s
                         withCurrentSubst (Just e', ps1, t)
                       (Just t, Nothing) -> do
@@ -55,10 +58,9 @@ tcStmt e@(Let n mt me)
                         return (Just e', ps, t1)
                       (Nothing, Nothing) ->
                         (Nothing, [],) <$> freshTyVar
-      (ds,rs) <- splitContext psf (fv mt)
-      extEnv n (Forall [] (rs :=> tf))
+      extEnv n (monotype tf)
       let e' = Let (Id n tf) (Just tf) me'
-      withCurrentSubst (e', ds, unit)
+      withCurrentSubst (e', psf, unit)
 tcStmt (StmtExp e)
   = do
       (e', ps', t') <- tcExp e
@@ -78,21 +80,6 @@ tcStmt s@(Asm yblk)
       let word' = monotype word
       mapM_ (flip extEnv word') newBinds
       pure (Asm yblk, [], t)
-
-
-checkTyInst :: Ty -> -- annotated type 
-               Ty -> -- inferred type
-               TcM Subst
-checkTyInst ann inf 
-  = do
-      s@(Subst x) <- match inf ann `catchError` 
-          (\ _ -> tcmError $ unlines ["The annotated type and inferred type do not match."
-                                     , "The annotated type is:"
-                                     , "   " ++ (pretty $ rename ann)
-                                     , "The inferred type is:"
-                                     , "   " ++ (pretty $ rename inf)
-                                     ])
-      pure s 
 
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
@@ -221,10 +208,12 @@ tcExp e@(Lam args bd _)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
-      (e', ps, ty') <- tcExp e 
-      s <- checkTyInst ty ty' `wrapError` e1
-      extSubst s 
-      withCurrentSubst (TyExp e' ty, ps, ty)
+      (e', ps, ty') <- tcExp e
+      let bvs = bv ty 
+      sks <- mapM (const freshTyVar) bvs 
+      let ty1 = insts (zip bvs sks) ty
+      subsCheck (monotype ty') (monotype ty) 
+      withCurrentSubst (TyExp e' ty1, ps, ty1)
 
 closureConversion :: [Tyvar] -> 
                      [Param Id] -> 
@@ -354,7 +343,6 @@ tcArg (Untyped n)
   = do
       v <- freshTyVar
       let ty = monotype v
-      -- no Skolem constants here!
       pure (Typed (Id n v) v, (n, ty), v, [])
 tcArg a@(Typed n ty)
   = do
@@ -368,19 +356,19 @@ tcArg a@(Typed n ty)
 tcSignature :: Signature Name -> TcM ( (Name, Scheme)
                                      , [(Name, Scheme)]
                                      , [Ty]
-                                     , [Tyvar]
                                      ) 
-tcSignature (Signature vs ps n args rt)
+tcSignature sig@(Signature vs ps n args rt)
   = do 
-      vs0 <- mapM (const freshTyVar) vs 
-      let env = zip vs vs0
+      vs0 <- mapM (const freshTyVar) (bv sig)
+      let env = zip (bv sig) vs0
           args0 = everywhere (mkT (insts @Ty env)) args 
           rt0 = everywhere (mkT (insts @Ty env)) rt 
           ps0 = everywhere (mkT (insts @Ty env)) ps
       (args', pschs, ts, vs') <- tcArgs args0
-      t' <- maybe freshTyVar pure rt0 
+      t' <- maybe freshTyVar pure rt0
+      liftIO $ putStrLn $ "PS0:" ++ pretty sig
       sch <- generalize (ps0, funtype ts t')
-      pure ((n, sch), pschs, ts, vs')
+      pure ((n, sch), pschs, ts)
 
 hasAnn :: Signature Name -> Bool 
 hasAnn (Signature vs ps n args rt) 
@@ -399,22 +387,16 @@ hasAnn (Signature vs ps n args rt)
 tcFunDef :: Bool -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl d@(FunDef sig bd)
   = withLocalEnv do
-     info [">> Starting the typing of:", pretty sig]
-     ((n,sch), pschs, ts, vs') <- tcSignature sig 
+     liftIO $ putStrLn $ unwords [">> Starting the typing of:", pretty sig]
+     ((n,sch), pschs, ts) <- tcSignature sig
      let lctx = if incl then (n,sch) : pschs else pschs
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
      (ps2 :=> ann) <- freshInst sch 
-     let ty = funtype ts t'
-     s <- getSubst
+     ty <- withCurrentSubst (funtype ts t')
      -- checking if the constraints are valid
-     ps3 <- withCurrentSubst ps1 -- filterM (\ p -> not <$> entails (apply s ps2) p) (apply s ps1)
-     vs <- getEnvFreeVars
-     (ds, rs) <- splitContext ps3 (vs `union` fv pschs)
-     -- checking if the annotated type is a valid instance of the infered type.
-     when (hasAnn sig) $ do 
-        s' <- checkTyInst ann ty `wrapError` d 
-        extSubst s' 
-        return ()
+     ps3 <- withCurrentSubst ps1
+     vs <- getEnvMetaVars
+     (ds, rs) <- splitContext ps3 vs
      -- checking constraint provability for annotated types.
      when (hasAnn sig && null (sigContext sig) && not (isValid rs) && incl) $ do 
       tcmError $ unlines [ "Could not deduce:"
@@ -423,8 +405,13 @@ tcFunDef incl d@(FunDef sig bd)
                          , pretty sig
                          ]
      sch' <- generalize (rs, ty)
-     sig2 <- elabSignature incl sig sch' `wrapError` d
-     info [">> Finished typing of:", pretty sig2]
+     -- checking subsumption
+     when (hasAnn sig) $ do
+        liftIO $ putStrLn $ "Inf:" ++ pretty sch'
+        liftIO $ putStrLn $ "Ann:" ++ pretty sch 
+        subsCheck sch' sch
+     sig2 <- elabSignature sig sch' `wrapError` d
+     liftIO $ putStrLn $ unwords [">> Finished typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
 
@@ -438,8 +425,8 @@ isValid rs = null rs || all isInvoke rs
 
 -- update types in signature 
 
-elabSignature :: Bool -> Signature Name -> Scheme -> TcM (Signature Id)
-elabSignature incl sig sch@(Forall vs (ps :=> t)) 
+elabSignature :: Signature Name -> Scheme -> TcM (Signature Id)
+elabSignature sig sch@(Forall vs (ps :=> t)) 
   = do
       let 
         params = sigParams sig 
@@ -447,22 +434,15 @@ elabSignature incl sig sch@(Forall vs (ps :=> t))
         (ts, t') = splitTy t
         (ts', rs) = splitAt nparams ts
         ctx = sigContext sig
-      params' <- zipWithM (elabParam incl) ts' params
+      params' <- zipWithM elabParam ts' params
       let 
         ret = Just $ if null params' then t else (funtype rs t')
-        vs' = fv params' `union` fv ret `union` fv ps 
+        vs' = bv params' `union` bv ret `union` bv ps
       withCurrentSubst $ Signature vs' ps (sigName sig) params' ret 
 
-elabParam :: Bool -> Ty -> Param Name -> TcM (Param Id)
-elabParam False t (Typed n _) = pure $ Typed (Id n t) t 
-elabParam False t (Untyped n) = pure $ Typed (Id n t) t
-elabParam _ t (Typed n t') 
-  = do
-      s <- match t t' 
-      extSubst s 
-      withCurrentSubst $ Typed (Id n t) t
-elabParam _ t (Untyped n)
-  = pure $ Typed (Id n t) t
+elabParam :: Ty -> Param Name -> TcM (Param Id)
+elabParam t (Typed n _) = pure $ Typed (Id n t) t 
+elabParam t (Untyped n) = pure $ Typed (Id n t) t
 
 annotateSignature :: Scheme -> Signature Name -> TcM (Signature Name)
 annotateSignature (Forall vs (ps :=> t)) sig 
@@ -499,15 +479,9 @@ extSignature sig@(Signature _ preds n ps t)
 tcInstance :: Instance Name -> TcM (Instance Id)
 tcInstance idecl@(Instance d ctx n ts t funs) 
   = do
-      checkCompleteInstDef n (map (sigName . funSignature) funs) 
+      checkCompleteInstDef n (map (sigName . funSignature) funs)
       funs' <- buildSignatures n ts t funs `wrapError` idecl
       (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False) funs' `wrapError` idecl 
-      let 
-        qts1 = map (schemeFromSignature . funSignature) funs'
-        qts2 = map (schemeFromSignature . funSignature) funs1
-      -- check if types are proper instances of the most general type infered.
-      s1 <- match qts1 qts2
-      extSubst s1
       let
         instd = Instance d ctx n ts t funs1
       withCurrentSubst instd
@@ -542,18 +516,20 @@ checkCompleteInstDef n ns
 buildSignatures :: Name -> [Ty] -> Ty -> [FunDef Name] -> TcM [FunDef Name]
 buildSignatures n ts t funs 
   = do 
-      cpred <- classpred <$> askClassInfo n 
-      sm <- match cpred (InCls n t ts)
+      cpred <- classpred <$> askClassInfo n
+      let vs = bv cpred 
+      mvs <- mapM (const freshTyVar) vs 
+      sm <- match (insts (zip vs mvs) cpred) (InCls n t ts)
       let qname m = QualName n (pretty m)
       schs <- mapM (askEnv . qname . sigName . funSignature) funs
       let  
-          app (Forall _ qt) = apply sm qt 
+          app (Forall _ qt) = apply sm (insts (zip vs mvs) qt) 
           tinsts = map app schs
       zipWithM (buildSignature n) tinsts funs 
 
 buildSignature :: Name -> Qual Ty -> FunDef Name -> TcM (FunDef Name)
 buildSignature n (ps :=> t) (FunDef sig bd)
-  = do 
+  = do
       let (args, ret) = splitTy t 
           sig' = typeSignature n args ret ps sig
       pure (FunDef sig' bd)
@@ -661,14 +637,15 @@ checkMethod ih@(InCls n t ts) d@(FunDef sig _)
   = do
       -- getting current method signature in class
       let qn = QualName n (show (sigName sig))
-      st@(Forall _ (qs :=> ty)) <- askEnv qn `wrapError` d 
+      sch <- askEnv qn `wrapError` d 
+      (qs :=> ty) <- freshInst sch  
       p <- maybeToTcM (unwords [ "Constraint for"
                                , show n
                                , "not found in type of"
                                , show $ sigName sig])
                       (findPred n qs)
       -- matching substitution of instance head and class predicate
-      _ <- liftEither (match p ih) `wrapError` ih
+      _ <- liftEither (match p ih) `wrapError` d
       pure ()
 
 findPred :: Name -> [Pred] -> Maybe Pred 
@@ -693,7 +670,7 @@ checkMeasure ps c
 generalize :: ([Pred], Ty) -> TcM Scheme 
 generalize (ps,t) 
   = do 
-      envVars <- getEnvFreeVars
+      envVars <- getEnvMetaVars
       (ps1,t1) <- withCurrentSubst (ps,t)
       ps2 <- reduce ps1 
       t2 <- withCurrentSubst t1
@@ -701,8 +678,8 @@ generalize (ps,t)
       let 
           ps3 = apply s ps2 
           t3 = apply s t2 
-          vs = fv (ps3,t3)
-          sch = Forall (vs \\ envVars) (ps3 :=> t3)
+          vs = map gvar $ mv (ps3,t3) \\ envVars 
+          sch = Forall vs (everywhere (mkT gen) $ ps3 :=> t3)
       return sch
 
 -- kind check
@@ -746,11 +723,11 @@ tcCall Nothing n args
       (ps :=> t) <- freshInst s
       t' <- freshTyVar
       (es', pss', ts') <- unzip3 <$> mapM tcExp args
-      s' <- unify (funtype ts' t') t
+      s' <- unify t (funtype ts' t')
       extSubst s'
-      let ps' = apply s' $ foldr union [] (ps : pss')
-          t1 = apply s' (funtype ts' t')
-      withCurrentSubst (Call Nothing (Id n t1) es', ps', apply s' t')
+      let ps' = foldr union [] (ps : pss')
+          t1 = funtype ts' t'
+      withCurrentSubst (Call Nothing (Id n t1) es', ps', t')
 tcCall (Just e) n args
   = do
       (e', ps , ct) <- tcExp e

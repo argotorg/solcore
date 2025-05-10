@@ -29,6 +29,14 @@ newtype MetaTv
   = MetaTv { metaName :: Name }
     deriving (Eq, Ord, Show, Data, Typeable)
 
+gvar :: MetaTv -> Tyvar 
+gvar = TVar . metaName  
+
+gen :: Ty -> Ty 
+gen (Meta v) = TyVar (gvar v)
+gen (TyCon n ts) = TyCon n (map gen ts)
+gen t = t 
+
 infixr 4 :-> 
 
 pattern (:->) a b 

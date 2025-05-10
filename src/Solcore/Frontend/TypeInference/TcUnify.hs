@@ -65,33 +65,49 @@ instance (HasType a, Match a) => Match (Qual a) where
 
 -- most general unifier
 
-mgu :: (MonadError String m) => Ty -> Ty -> m Subst
-mgu (TyCon n ts) (TyCon n' ts')
-  | n == n' && length ts == length ts' =
-      solve (zip ts ts') mempty
-mgu (TyVar v) (TyVar v')
-  | isBound v || isBound v' 
-    = boundVariablesErr [v, v']
-  | v == v' = pure mempty 
-mgu (Meta v) t = varBind v t
-mgu t (Meta v) = varBind v t
-mgu t1 t2 = typesDoNotUnify t1 t2
+class MGU a where 
+  mgu :: MonadError String m => a -> a -> m Subst 
 
-mguPred :: (MonadError String m) => Pred -> Pred -> m Subst
-mguPred p@(InCls n t ts) p'@(InCls n' t' ts')
-  | n == n' = unifyTypes (t : ts) (t' : ts')
-  | otherwise =
-      throwError $
-        unlines
-          [ "Cannot unify predicates:"
-          , pretty p
-          , "with"
-          , pretty p'
-          ]
-mguPred (t1 :~: t2) (t1' :~: t2') =
-  unifyTypes [t1, t2] [t1', t2']
+instance (HasType a, MGU a) => MGU [a] where 
+  mgu ts1 ts2 = solve (zip ts1 ts2) mempty  
 
-solve :: (MonadError String m) => [(Ty, Ty)] -> Subst -> m Subst
+instance MGU Ty where 
+  mgu (TyCon n ts) (TyCon n' ts')
+    | n == n' && length ts == length ts' =
+        solve (zip ts ts') mempty
+  mgu (TyVar v) (TyVar v')
+    | isBound v || isBound v' 
+      = boundVariablesErr [v, v']
+    | v == v' = pure mempty 
+  mgu (Meta _) (TyVar v@(TVar _))
+    = boundVariablesErr [v]
+  mgu (TyVar v@(TVar _)) (Meta _)
+    = boundVariablesErr [v]
+  mgu (Meta v) t = varBind v t
+  mgu t (Meta v) = varBind v t
+  mgu t1 t2 = typesDoNotUnify t1 t2
+
+instance MGU Pred where 
+  mgu p1@(InCls n t ts) p2@(InCls n' t' ts')
+    | n == n' = mgu (t : ts) (t' : ts')
+    | otherwise =
+        throwError $
+          unlines
+            [ "Cannot unify predicates:"
+            , pretty p1
+            , "with"
+            , pretty p2
+            ]
+  mgu (t1 :~: t2) (t1' :~: t2') 
+    = mgu [t1, t2] [t1', t2']
+
+instance (HasType a, MGU a) => MGU (Qual a) where 
+  mgu (ps :=> t) (ps' :=> t') 
+    = do 
+        s <- mgu (sort ps) (sort ps') 
+        mgu (apply s t) (apply s t')
+
+solve :: (MonadError String m, MGU a, HasType a) => [(a, a)] -> Subst -> m Subst
 solve [] s = pure s
 solve ((t1, t2) : ts) s =
   do

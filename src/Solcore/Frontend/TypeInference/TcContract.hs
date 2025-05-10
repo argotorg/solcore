@@ -44,7 +44,7 @@ typeInfer options (CompUnit imps decls)
 tcCompUnit :: CompUnit Name -> TcM (CompUnit Id)
 tcCompUnit (CompUnit imps cs)
   = do 
-      setupPragmas ps 
+      setupPragmas ps
       mapM_ checkTopDecl cls 
       mapM_ checkTopDecl cs'
       cs' <- mapM tcTopDecl' cs 
@@ -257,7 +257,7 @@ tcBindGroup binds
       mapM_ (uncurry extEnv) (zip names schs)
       noDesugarCalls <- getNoDesugarCalls
       unless noDesugarCalls $ generateTopDeclsFor (zip funs' schs)
-      pure funs'
+      pure $ everywhere (mkT gen) funs'
 
 
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
@@ -309,7 +309,7 @@ checkClass icls@(Class ps n vs v sigs)
             pst <- mapM tyParam ps
             t' <- maybe (pure unit) pure mt
             let ft = funtype pst t' 
-            unless (v `elem` fv ft)
+            unless (v `elem` bv ft)
                    (signatureError n v sig ft)
             addClassMethod p sig `wrapError` icls 
 

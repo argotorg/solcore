@@ -122,7 +122,7 @@ instance HasType Scheme where
     = fv t \\ vs
 
   mv (Forall _ t) = mv t 
-  bv (Forall vs _) = vs
+  bv (Forall vs qt) = vs `union` bv qt
 
 instance HasType a => HasType (Signature a) where
   apply s (Signature vs ctx n p r) 
@@ -130,11 +130,11 @@ instance HasType a => HasType (Signature a) where
         ctx' = apply s ctx
         p' = apply s p 
         r' = apply s r
-        vs' = fv ctx' `union` fv p' `union` fv r'
+        vs' = bv ctx' `union` bv p' `union` bv r'
       in Signature vs' ctx' n p' r'
   fv (Signature vs c _ p r) = fv (c,p,r) \\ vs 
   mv (Signature _ c _ p r) = mv (c,p,r)
-  bv (Signature vs _ _ _ _) = vs 
+  bv (Signature vs c _ p r) = vs `union` bv (c,p,r) 
 
 instance HasType a => HasType (Param a) where
   apply s (Typed i t) = Typed (apply s i) (apply s t)

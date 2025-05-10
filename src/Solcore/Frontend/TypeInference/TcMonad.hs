@@ -49,7 +49,7 @@ freshName
       ds <- Map.keys <$> gets ctx
       vs <- getEnvFreeVars
       ns <- gets nameSupply 
-      let (n, ns') = newName (ns \\ ((map var vs) ++ ds)) 
+      let (n, ns') = newName (ns \\ ((map tyvarName vs) ++ ds)) 
       modify (\ ctx -> ctx {nameSupply = ns'})
       return n 
 
@@ -120,6 +120,10 @@ getEnvFreeVars :: TcM [Tyvar]
 getEnvFreeVars 
   = concat <$> gets (Map.map fv . ctx)
 
+getEnvMetaVars :: TcM [MetaTv]
+getEnvMetaVars 
+  = concat <$> gets (Map.map mv . ctx)
+
 unify :: Ty -> Ty -> TcM Subst
 unify t t' 
   = do
@@ -157,6 +161,30 @@ checkDataType (DataTy n vs constrs)
       vals = map constrBind constrs        
       constrBind c = (constrName c, (funtype (constrTy c) tc))
 
+-- Skolemization 
+
+skolemise :: Scheme -> TcM ([Tyvar], Qual Ty)
+skolemise sch@(Forall vs qt)
+  = do 
+      let bvs = bv sch 
+          sks = map (Skolem . tyvarName) bvs 
+          env = zip bvs (map TyVar sks) 
+      pure (sks, insts env qt)
+
+-- subsumption check 
+
+subsCheck :: Scheme -> Scheme -> TcM ()
+subsCheck sch1 sch2@(Forall _ _)
+  = do 
+      (skol_tvs, qt2) <- skolemise sch2
+      qt1 <- freshInst sch1 
+      s <- mgu qt1 qt2
+      extSubst s 
+      let esc_tvs = fv sch1 
+          bad_tvs = filter (`elem` esc_tvs) skol_tvs 
+      unless (null bad_tvs) $ 
+        typeNotPolymorphicEnough sch1 sch2 
+
 -- type instantiation 
 
 class Fresh a where 
@@ -165,13 +193,16 @@ class Fresh a where
 
 instance Fresh Scheme where 
   type Result Scheme = (Qual Ty)
-  freshInst sch@(Forall vs qt)
+  freshInst sch@(Forall _ qt)
     = do
-        let ns = map tyvarName vs 
+        let
+          vs = bv sch 
+          ns = map tyvarName vs  
         ns' <- gets nameSupply 
         modify (\env -> env{nameSupply = ns' \\ ns})
-        mvs <- mapM (const freshTyVar) ns 
-        pure (insts (zip vs mvs) qt)
+        mvs <- mapM (const freshTyVar) ns
+        let qt' = insts (zip vs mvs) qt
+        pure qt'
 
 instance Fresh Inst where 
   type Result Inst = Inst  
@@ -200,7 +231,6 @@ instance Insts Pred where
   insts env (t1 :~: t2)
     = (insts env t1) :~: (insts env t2)
 
-     
 instance Insts a => Insts (Qual a) where 
   insts env (ps :=> p) 
     = (insts env ps) :=> (insts env p)
@@ -537,6 +567,14 @@ undefinedFunction t n
                          , "does not define function:"
                          , pretty n
                          ]
+
+typeNotPolymorphicEnough :: Scheme -> Scheme -> TcM a 
+typeNotPolymorphicEnough sch1 sch2 
+  = tcmError $ unlines [ "Type not polymorphic enough! The annotated type is:"
+                       , pretty sch2 
+                       , "but the infered type is:"
+                       , pretty sch1
+                       ]
 
 undefinedClass :: Name -> TcM a 
 undefinedClass n 
