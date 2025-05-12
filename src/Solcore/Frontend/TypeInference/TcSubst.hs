@@ -196,6 +196,7 @@ instance HasType a => HasType (Exp a) where
     = fv ps `union` fv bd `union` maybe [] fv mt
   fv (TyExp e ty) 
     = fv e `union` fv ty 
+  fv _ = []
 
   mv (Var v) = mv v
   mv (Con n es)
@@ -208,6 +209,7 @@ instance HasType a => HasType (Exp a) where
     = mv ps `union` mv bd `union` maybe [] mv mt
   mv (TyExp e ty) 
     = mv e `union` mv ty 
+  mv _ = []
 
   bv (Var v) = bv v
   bv (Con n es)
@@ -220,7 +222,7 @@ instance HasType a => HasType (Exp a) where
     = bv ps `union` bv bd `union` maybe [] bv mt
   bv (TyExp e ty) 
     = bv e `union` bv ty 
-
+  bv _ = []
 
 
 instance HasType a => HasType (Stmt a) where
@@ -287,3 +289,82 @@ instance HasType a => HasType (Pat a) where
 
   bv (PVar v) = bv v
   bv (PCon v ps) = bv v `union` bv ps
+
+instance HasType a => HasType (TopDecl a) where 
+  apply s (TContr c) = TContr (apply s c)
+  apply s (TFunDef d) = TFunDef (apply s d)
+  apply s (TInstDef d) = TInstDef (apply s d)
+  apply s (TMutualDef ds) = TMutualDef (apply s ds)
+  apply _ d = d 
+
+  fv (TContr c) = fv c 
+  fv (TFunDef d) = fv d 
+  fv (TInstDef d) = fv d 
+  fv (TMutualDef d) = fv d 
+  fv _ = []
+
+  mv (TContr c) = mv c 
+  mv (TFunDef d) = mv d 
+  mv (TInstDef d) = mv d 
+  mv (TMutualDef d) = mv d 
+  mv _ = []
+
+  bv (TContr c) = bv c 
+  bv (TFunDef d) = bv d 
+  bv (TInstDef d) = bv d 
+  bv (TMutualDef d) = bv d 
+  bv _ = []
+
+instance HasType a => HasType (Contract a) where 
+  apply s (Contract n vs ds)
+    = Contract n vs (apply s ds)
+
+  fv (Contract _ _ ds) = fv ds 
+  mv (Contract _ _ ds) = mv ds 
+  bv (Contract _ _ ds) = bv ds 
+
+instance HasType a => HasType (ContractDecl a) where 
+  apply s (CFieldDecl fd) 
+    = CFieldDecl (apply s fd)
+  apply s (CFunDecl d)
+    = CFunDecl (apply s d)
+  apply s (CMutualDecl cs)
+    = CMutualDecl (apply s cs)
+  apply s (CConstrDecl c)
+    = CConstrDecl (apply s c)
+  apply _ d = d 
+
+  fv (CFieldDecl d) = fv d 
+  fv (CFunDecl d) = fv d
+  fv (CMutualDecl ds) = fv ds 
+  fv (CConstrDecl c) = fv c 
+  fv _ = []
+
+  mv (CFieldDecl d) = mv d 
+  mv (CFunDecl d) = mv d
+  mv (CMutualDecl ds) = mv ds 
+  mv (CConstrDecl c) = mv c 
+  mv _ = []
+
+  bv (CFieldDecl d) = bv d 
+  bv (CFunDecl d) = bv d
+  bv (CMutualDecl ds) = bv ds 
+  bv (CConstrDecl c) = bv c 
+  bv _ = []
+
+instance HasType a => HasType (Field a) where 
+  apply s (Field n t me)
+    = Field n (apply s t) (apply s me)
+  fv (Field _ t me) = fv t `union` fv me 
+  mv (Field _ t me) = mv t `union` mv me 
+  bv (Field _ t me) = bv t `union` bv me 
+
+instance HasType a => HasType (Constructor a) where 
+  apply s (Constructor ps bd)
+    = Constructor (apply s ps) (apply s bd)
+  fv (Constructor ps bd) 
+    = fv ps `union` fv bd 
+  mv (Constructor ps bd)
+    = mv ps `union` mv bd 
+  bv (Constructor ps bd)
+    = bv ps `union` bv bd

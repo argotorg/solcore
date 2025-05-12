@@ -392,7 +392,7 @@ hasAnn (Signature vs ps n args rt)
 tcFunDef :: Bool -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl d@(FunDef sig bd)
   = withLocalEnv do
-     liftIO $ putStrLn $ unwords [">> Starting the typing of:", pretty sig]
+     info [">> Starting the typing of:", pretty sig]
      ((n,sch), pschs, ts) <- tcSignature sig
      let lctx = if incl then (n,sch) : pschs else pschs
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
@@ -414,7 +414,7 @@ tcFunDef incl d@(FunDef sig bd)
      when (hasAnn sig) $ do
         subsCheck sch' sch
      sig2 <- elabSignature sig sch' `wrapError` d
-     liftIO $ putStrLn $ unwords [">> Finishing the typing of:", pretty sig2]
+     info [">> Finishing the typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
 
@@ -486,8 +486,22 @@ tcInstance idecl@(Instance d ctx n ts t funs)
       funs' <- buildSignatures n ts t funs `wrapError` idecl
       (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False) funs' `wrapError` idecl 
       let
-        instd = Instance d ctx n ts t funs1
+        funs2 = everywhere (mkT gen) funs1
+        vs0 = map (TyVar . TVar) namePool
+        env1 = zip (bv funs2) vs0 
+        env2 = zip (bv ctx `union` bv ts `union` bv t) vs0 
+        t' = insts env2 t 
+        ts' = insts env2  ts 
+        ctx' = insts env2 ctx
+        funs3 = everywhere (mkT (insts @Ty env1)) (map updateSig funs2)
+        instd = Instance d ctx' n ts' t' funs3
       withCurrentSubst instd
+
+updateSig :: FunDef Id -> FunDef Id 
+updateSig (FunDef (Signature _ ps n args rt) bd)
+  = FunDef (Signature vs ps n args rt) bd 
+    where 
+      vs = bv ps `union` bv args `union` bv rt `union` bv bd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
 checkDeferedConstraints = mapM_ checkDeferedConstraint
