@@ -131,7 +131,7 @@ instance Pretty YLiteral where
    assumes result is in a variable named "_result"
 -}
 wrapInSolFunction :: Pretty a => Name -> a -> Doc
-wrapInSolFunction name yul = text "function" <+> ppr name <+> prettyargs <+> text " public pure returns (uint256 _wrapresult)" <+> lbrace
+wrapInSolFunction name yul = text "function" <+> ppr name <+> prettyargs <+> text " public returns (uint256 _wrapresult)" <+> lbrace
   $$ nest 2 assembly
   $$ rbrace
   where
@@ -151,6 +151,6 @@ wrapInContract name entry body = empty
   $$ rbrace
 
   where
-    run = text "function run() public view" <+> lbrace
+    run = text "function run() public " <+> lbrace
       $$ nest 2 (text "console.log(\"RESULT --> \","<+> ppr entry >< text ");")
       $$ rbrace $$ text ""
