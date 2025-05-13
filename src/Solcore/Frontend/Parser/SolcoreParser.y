@@ -204,7 +204,11 @@ Param : Name ':' Type                              {Typed $1 $3}
 -- instance declarations 
 
 InstDef :: { Instance }
-InstDef : SigPrefix 'instance' Type ':' Name OptTypeParam InstBody { Instance (snd $1) $5 $6 $3 $7 }
+InstDef : SigPrefix DefaultOpt 'instance' Type ':' Name OptTypeParam InstBody { Instance $2 (snd $1) $6 $7 $4 $8 }
+
+DefaultOpt :: { Bool }
+DefaultOpt : 'default'                        {True}
+           | {- empty -}                      {False}
 
 OptTypeParam :: { [Ty] }
 OptTypeParam : '(' TypeCommaList ')'          {$2}

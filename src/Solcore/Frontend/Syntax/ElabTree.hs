@@ -320,13 +320,13 @@ instance Elab S.Signature where
 instance Elab S.Instance where 
   type Res S.Instance = Instance Name 
 
-  elab (S.Instance ctx n ts t funs) 
+  elab (S.Instance d ctx n ts t funs) 
     = do 
         ctx' <- elab ctx 
         ts' <- elab ts 
         t' <- elab t 
         funs' <- elab funs 
-        pure (Instance ctx' n ts' t' funs')
+        pure (Instance d ctx' n ts' t' funs')
 
 instance Elab S.Field where 
   type Res S.Field = Field Name 
