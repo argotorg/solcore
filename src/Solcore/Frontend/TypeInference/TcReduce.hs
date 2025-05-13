@@ -17,12 +17,12 @@ import Solcore.Frontend.TypeInference.TcUnify
 
 import Solcore.Pipeline.Options
 
-splitContext :: [Pred] -> [Tyvar] -> TcM ([Pred], [Pred])
+splitContext :: [Pred] -> [MetaTv] -> TcM ([Pred], [Pred])
 splitContext ps fs =
   do
     info [">> Starting the reduction of:", pretty ps]
     ps' <- reduce ps
-    let (ds, rs) = partition (all (`elem` fs) . fv) ps'
+    let (ds, rs) = partition (all (`elem` fs) . mv) ps'
     info [">> Defered constraints:", pretty ds]
     info [">> Retained constraints:", pretty rs]
     pure (ds, rs)
@@ -85,7 +85,6 @@ reduceByInst' n p@(InCls c _ _)
   | otherwise =
       do
         ce <- getInstEnv
-        insts <- askInstEnv c
         case selectInst ce p of
           Nothing -> do
             de <- getDefaultInstEnv
@@ -113,7 +112,7 @@ proveDefaulting ce p@(InCls i t as) =
   insts m n = maybe [] id (Map.lookup n m)
   tryInst :: Qual Pred -> Maybe Inst
   tryInst i@(_ :=> h) =
-    case mguPred h p of
+    case mgu h p of
       Left _ -> Nothing
       Right _ -> Just i
 
@@ -134,9 +133,9 @@ selectDefaultInst _ _ = Nothing
 
 selectInst :: InstTable -> Pred -> Maybe ([Pred], Subst, Inst)
 selectInst ce p@(InCls i t as) =
-  msum [tryInst it | it <- insts ce i]
+  msum [tryInst it | it <- searchInsts ce i]
  where
-  insts m n = maybe [] id (Map.lookup n m)
+  searchInsts m n = maybe [] id (Map.lookup n m)
   tryInst :: Qual Pred -> Maybe ([Pred], Subst, Inst)
   tryInst c@(ps :=> (InCls _ t' ts)) =
     case match t' t of
@@ -211,6 +210,7 @@ inHnf _ = False
 -- head normal form for types
 
 hnf :: Ty -> Bool
+hnf (Meta _) = True
 hnf (TyVar _) = True
 hnf _ = False
 

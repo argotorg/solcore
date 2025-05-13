@@ -125,9 +125,6 @@ getSpSubst = gets spSubst
 extSpSubst :: Subst -> SM ()
 extSpSubst subst = modify $ \s -> s { spSubst =  spSubst s <> subst }
 
-restrictSpSubst :: [Tyvar] -> SM ()
-restrictSpSubst ns = modify prune where
-    prune s = s { spSubst = restrict (spSubst s) ns   }
 atCurrentSubst :: HasType a => a -> SM a
 atCurrentSubst a = flip apply a <$> getSpSubst
 
