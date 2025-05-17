@@ -109,8 +109,8 @@ instance Desugar (Equation Name) where
   desugar (ps, ss) = (ps,) <$> desugar ss
 
 instance Desugar (Instance Name) where
-  desugar (Instance d ps n ts t fs) 
-    = Instance d ps n ts t <$> desugar fs
+  desugar (Instance d vs ps n ts t fs) 
+    = Instance d vs ps n ts t <$> desugar fs
 
 -- building indirect function call arguments 
 

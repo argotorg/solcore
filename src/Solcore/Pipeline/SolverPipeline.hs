@@ -88,7 +88,7 @@ runReduce cls insts ps qs
   = do 
       let 
         senv = buildEnv cls insts 
-      res <- runTcM (reduce ps) senv 
+      res <- runTcM (reduce ps []) senv 
       case res of 
         Left err -> do 
           putStrLn err

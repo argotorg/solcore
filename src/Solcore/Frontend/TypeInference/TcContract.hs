@@ -257,7 +257,7 @@ tcSig (sig, (Forall _ (_ :=> t)))
 tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds 
   = do
-      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True) binds
+      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True []) binds
       checkDeferedConstraints (zip funs' pss)
       let names = map (sigName . funSignature) funs' 
       mapM_ (uncurry extEnv) (zip names schs)

@@ -72,8 +72,9 @@ instance AlphaEq a => AlphaEq [a] where
 instance AlphaEq Ty where 
   alphaEq (TyVar n) (TyVar n') 
     = n == n'
-  alphaEq (Meta _) (Meta _) 
-    = True 
+  alphaEq (Meta _) _  
+    = True
+  alphaEq _  (Meta _) = True 
   alphaEq (TyCon n ts) (TyCon n' ts')
     = n == n' && (and (zipWith alphaEq ts ts'))
   alphaEq _ _ 

@@ -157,19 +157,20 @@ instance HasType a => HasType (FunDef a) where
     = bv sig `union` bv bd
 
 instance HasType a => HasType (Instance a) where 
-  apply s (Instance d ctx n ts t funs)
-    = Instance d 
+  apply s (Instance d vs ctx n ts t funs)
+    = Instance d
+               vs
                (apply s ctx)
                n 
                (apply s ts)
                (apply s t)
                (apply s funs)
-  fv (Instance _ ctx n ts t funs)
+  fv (Instance _ _ ctx n ts t funs)
     = fv ctx `union` fv (t : ts)
-  mv (Instance _ ctx n ts t funs)
+  mv (Instance _ _ ctx n ts t funs)
     = mv ctx `union` mv (t : ts)
-  bv (Instance _ ctx n ts t funs)
-    = bv ctx `union` bv (t : ts)
+  bv (Instance _ vs ctx n ts t funs)
+    = vs `union` bv ctx `union` bv (t : ts)
 
 instance HasType a => HasType (Exp a) where
   apply s (Var v) = Var (apply s v)

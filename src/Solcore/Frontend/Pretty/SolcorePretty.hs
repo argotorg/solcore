@@ -98,10 +98,11 @@ instance Pretty DataTy where
   ppr (DataTy n ps cs)
     = text "data" <+> 
       ppr n <+>
-      pprTyParams (map TyVar ps) <+> 
-      equals <+>  
-      hsep (punctuate bar (map ppr cs))
-    where 
+      pprTyParams (map TyVar ps) <+>
+      rs <+> text ";" 
+    where
+      rs = if null cs then empty else 
+             equals <+> hsep (punctuate bar (map ppr cs))
       bar = text " |"
 
 instance Pretty TySym where 
@@ -153,8 +154,8 @@ pprSigPrefix vs ps
   = text "forall" <+> hsep (map ppr vs) <+> text "." <+> pprContext ps 
 
 instance Pretty a => Pretty (Instance a) where 
-  ppr (Instance d ctx n tys ty funs)
-    = pprSigPrefix (fv ctx `union` fv (ty : tys)) ctx <+>
+  ppr (Instance d vs ctx n tys ty funs)
+    = pprSigPrefix vs ctx <+>
       pprDefault d    <>
       text "instance" <+> 
       ppr ty          <+>

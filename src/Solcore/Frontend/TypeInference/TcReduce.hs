@@ -3,11 +3,12 @@ module Solcore.Frontend.TypeInference.TcReduce where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Trans
+import Data.Either (isRight)
 import Data.List
 import Data.Map qualified as Map
 import Data.Maybe
 
-import Solcore.Frontend.Parser.SolverInputParser
+import Solcore.Frontend.Parser.SolverInputParser hiding (insts)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcEnv
@@ -17,11 +18,11 @@ import Solcore.Frontend.TypeInference.TcUnify
 
 import Solcore.Pipeline.Options
 
-splitContext :: [Pred] -> [MetaTv] -> TcM ([Pred], [Pred])
-splitContext ps fs =
+splitContext :: [Pred] -> [Pred] -> [MetaTv] -> TcM ([Pred], [Pred])
+splitContext ps qs fs =
   do
-    info [">> Starting the reduction of:", pretty ps]
-    ps' <- reduce ps
+    info [">> Starting the reduction of:", pretty ps, " using ", pretty qs]
+    ps' <- reduce ps qs 
     let (ds, rs) = partition (all (`elem` fs) . mv) ps'
     info [">> Defered constraints:", pretty ds]
     info [">> Retained constraints:", pretty rs]
@@ -29,15 +30,15 @@ splitContext ps fs =
 
 -- main context reduction function
 
-reduce :: [Pred] -> TcM [Pred]
-reduce ps0 =
+reduce :: [Pred] -> [Pred] -> TcM [Pred]
+reduce ps0 qs =
   do
     n <- askMaxRecursionDepth
-    ps' <- reduceI n ps0
+    ps' <- reduceI n ps0 qs 
     simplify ps'
 
-reduceI :: Int -> [Pred] -> TcM [Pred]
-reduceI n ps0
+reduceI :: Int -> [Pred] -> [Pred] -> TcM [Pred]
+reduceI n ps0 qs 
   | n <= 0 =
       tcmError $
         unwords
@@ -50,7 +51,7 @@ reduceI n ps0
         ps <- withCurrentSubst ps0
         preds <- concat <$> mapM reduceBySuper ps
         unless (null preds) $ info ["> reduce context ", pretty preds]
-        ps1 <- reduceByInst n preds
+        ps1 <- reduceByInst n preds qs 
         unless (null ps1) $ info ["< reduced context ", pretty (nub ps1)]
         pure (nub ps1)
 
@@ -68,12 +69,15 @@ simplify = loop []
 
 -- reducing by using instance information
 
-reduceByInst :: Int -> [Pred] -> TcM [Pred]
-reduceByInst n ps =
-  (nub . concat) <$> mapM (reduceByInst' n) ps
+reduceByInst :: Int -> [Pred] -> [Pred] -> TcM [Pred]
+reduceByInst n ps qs =
+  (nub . concat) <$> mapM (\ p -> do 
+      ps' <- reduceByInst' n qs p 
+      info [">> Solved:", pretty p]
+      pure ps') ps
 
-reduceByInst' :: Int -> Pred -> TcM [Pred]
-reduceByInst' n p@(InCls c _ _)
+reduceByInst' :: Int -> [Pred] -> Pred -> TcM [Pred]
+reduceByInst' n qs p@(InCls c _ _)
   | n <= 0 =
       tcmError $
         unwords
@@ -81,29 +85,41 @@ reduceByInst' n p@(InCls c _ _)
           , pretty p
           , "since the solver exceeded the max number of iterations."
           ]
-  | inHnf p = pure [p]
+  | inHnf p = do 
+    info [">> Solving (HNF):", pretty p]
+    pure [p]
   | otherwise =
       do
         ce <- getInstEnv
-        case selectInst ce p of
+        info [">> Trying to solve ", pretty p]
+        r <- findInst p
+        case r of
           Nothing -> do
             de <- getDefaultInstEnv
             if proveDefaulting ce p
               then do
                 case selectDefaultInst de p of
-                  Nothing -> tcmError $ unwords ["No instance found for:", pretty p]
-                  Just (ps', s, _) -> do
+                  Nothing -> -- pure [p]
+                    if checkEntails qs p then pure []
+                      else tcmError $ unwords ["No instance found for:", pretty p]
+                  Just (ps', s, h) -> do
                     extSubst s
                     withCurrentSubst ps'
-              else tcmError $ unwords ["No instance found for:", pretty p]
+              else do
+                if checkEntails qs p then pure []
+                  else tcmError $ unwords [">>> No instance found for:", pretty p]
           Just (preds, subst', instd) -> do
             extSubst subst'
-            ps' <- reduceByInst (n - 1) preds
+            info [">>> Selected instance:", pretty instd, "\n>>>> next iteration:", pretty preds]
+            ps' <- reduceByInst (n - 1) preds qs
             pure ps'
-reduceByInst' n (t1 :~: t2) =
+reduceByInst' n _ (t1 :~: t2) =
   do
     unify t1 t2
     pure []
+
+checkEntails :: [Pred] -> Pred -> Bool 
+checkEntails qs p = any (\ q -> isRight $ mgu q p) qs 
 
 proveDefaulting :: InstTable -> Pred -> Bool
 proveDefaulting ce p@(InCls i t as) =
@@ -148,6 +164,36 @@ selectInst ce p@(InCls i t as) =
            in
             Just (map (apply u1) ps, u1, c)
 selectInst _ _ = Nothing
+
+askInstancesFor :: Pred -> TcM [Inst]
+askInstancesFor (InCls n _ _) 
+  = Map.findWithDefault [] n <$> getInstEnv
+
+findInst :: Pred -> TcM (Maybe ([Pred], Subst, Inst))
+findInst p 
+  = do 
+      insts <- askInstancesFor p
+      msum <$> mapM (solvePred p) insts 
+
+solvePred :: Pred -> Qual Pred -> TcM (Maybe ([Pred], Subst, Inst))
+solvePred p@(InCls _ t ts) ins@(ps :=> h@(InCls _ t' ts'))
+  = do 
+      -- info ["> Trying to solve:", pretty p, " using ", pretty ins]
+      -- info [">> Trying to match:", pretty t', " with ", pretty t]
+      case match t' t of
+        Left _ -> do 
+          -- info ["!>> Predicate ", pretty p, " cannot be solved by ", pretty h ,", since main args do not match ", pretty t', " and ", pretty t]
+          pure Nothing 
+        Right u -> 
+          case mgu ts ts' of 
+            Left _ -> do 
+              -- info ["!>> Predicate ", pretty p, " cannot be solved by ", pretty h, ", since weak args do not unify"]
+              pure Nothing 
+            Right u' -> do 
+              let u1 = u' <> u 
+              -- info ["!>> Predicate ", pretty p, " matches instance ", pretty h]
+              pure $ Just (apply u1 ps, u1, ins)
+              
 
 -- reducing by super class info
 

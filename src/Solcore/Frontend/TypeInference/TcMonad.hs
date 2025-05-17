@@ -178,8 +178,7 @@ subsCheck sch1 sch2@(Forall _ _)
   = do 
       (skol_tvs, qt2) <- skolemise sch2
       qt1 <- freshInst sch1 
-      s <- mgu qt1 qt2
-      extSubst s 
+      s <- mgu qt1 qt2 
       let esc_tvs = fv sch1 
           bad_tvs = filter (`elem` esc_tvs) skol_tvs 
       unless (null bad_tvs) $ 

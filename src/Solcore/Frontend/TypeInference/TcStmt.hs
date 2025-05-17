@@ -217,7 +217,8 @@ tcExp e1@(TyExp e ty)
       let bvs = bv ty 
       sks <- mapM (const freshTyVar) bvs 
       let ty1 = insts (zip bvs sks) ty
-      subsCheck (monotype ty') (monotype ty) 
+      subsCheck (monotype ty') (monotype ty)
+      s <- unify ty' ty1
       withCurrentSubst (TyExp e' ty1, ps, ty1)
 
 closureConversion :: [Tyvar] -> 
@@ -229,7 +230,7 @@ closureConversion vs args bdy ps ty
   = do 
       i <- incCounter
       fs <- Map.keys <$> gets uniqueTypes 
-      sch <- generalize (ps, ty)
+      sch <- generalize (ps, [], ty)
       let
           fn = Name $ "lambda_impl" ++ show i
           argsn = map idName (vars args) 
@@ -242,8 +243,8 @@ closureConversion vs args bdy ps ty
         let fun1 = erase fun
         st <- get 
         clearSubst 
-        (fun', _, qs) <- tcFunDef False fun1 
-        sch <- generalize (ps, ty)
+        (fun', _, qs) <- tcFunDef False [] fun1 
+        sch <- generalize (ps, [], ty)
         put st 
         (udt@(DataTy dn vs _), instd) <- generateDecls (fun', sch)
         mvs <- mapM (const freshTyVar) vs
@@ -308,7 +309,7 @@ createClosureFun fn free cdt args bdy ps ty
           ty' = ct :-> ty 
           sig = Signature vs' ps fn args' (Just retTy)
       bdy' <- createClosureBody cName cdt free bdy
-      sch <- generalize (ps, ty')
+      sch <- generalize (ps, [], ty')
       pure (FunDef sig bdy', sch)
  
 
@@ -359,21 +360,23 @@ tcArg a@(Typed n ty)
 -- create tcSignature which should return the 
 -- function type together with its parameter types
 
-tcSignature :: Signature Name -> TcM ( (Name, Scheme)
-                                     , [(Name, Scheme)]
-                                     , [Ty]
-                                     ) 
-tcSignature sig@(Signature vs ps n args rt)
+tcSignature :: Signature Name -> [Pred] -> TcM ( (Name, Scheme)
+                                               , [(Name, Scheme)]
+                                               , [Ty]
+                                               , [Pred]
+                                               ) 
+tcSignature sig@(Signature vs ps n args rt) qs 
   = do 
-      vs0 <- mapM (const freshTyVar) (bv sig)
-      let env = zip (bv sig) vs0
+      vs0 <- mapM (const freshTyVar) (bv sig `union` bv qs)
+      let env = zip (bv sig `union` bv qs) vs0
           args0 = everywhere (mkT (insts @Ty env)) args 
           rt0 = everywhere (mkT (insts @Ty env)) rt 
           ps0 = everywhere (mkT (insts @Ty env)) ps
+          qs0 = everywhere (mkT (insts @Ty env)) qs 
       (args', pschs, ts, vs') <- tcArgs args0
       t' <- maybe freshTyVar pure rt0
-      sch <- generalize (ps0, funtype ts t')
-      pure ((n, sch), pschs, ts)
+      sch <- generalize (ps0, qs0, funtype ts t')
+      pure ((n, sch), pschs, ts, qs0)
 
 hasAnn :: Signature Name -> Bool 
 hasAnn (Signature vs ps n args rt) 
@@ -382,18 +385,17 @@ hasAnn (Signature vs ps n args rt)
       isAnn (Typed _ t) = True 
       isAnn _ = False 
 
-
 -- boolean flag indicates if the assumption for the 
 -- function should be included in the context. It 
 -- is necessary to not include the type of instance 
 -- functions which should have the type of its underlying 
 -- type class definition.
 
-tcFunDef :: Bool -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
-tcFunDef incl d@(FunDef sig bd)
+tcFunDef :: Bool -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
+tcFunDef incl qs d@(FunDef sig bd)
   = withLocalEnv do
      info [">> Starting the typing of:", pretty sig]
-     ((n,sch), pschs, ts) <- tcSignature sig
+     ((n,sch), pschs, ts, qs') <- tcSignature sig qs
      let lctx = if incl then (n,sch) : pschs else pschs
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
      (ps2 :=> ann) <- freshInst sch 
@@ -401,7 +403,7 @@ tcFunDef incl d@(FunDef sig bd)
      -- checking if the constraints are valid
      ps3 <- withCurrentSubst ps1
      vs <- getEnvMetaVars
-     (ds, rs) <- splitContext ps3 vs
+     (ds, rs) <- splitContext ps3 qs' vs `wrapError` d
      -- checking constraint provability for annotated types.
      when (hasAnn sig && null (sigContext sig) && not (isValid rs) && incl) $ do 
       tcmError $ unlines [ "Could not deduce:"
@@ -409,7 +411,7 @@ tcFunDef incl d@(FunDef sig bd)
                          , "from:" 
                          , pretty sig
                          ]
-     sch' <- generalize (rs, ty)
+     sch' <- generalize (rs, qs', ty)
      -- checking subsumption
      when (hasAnn sig) $ do
         subsCheck sch' sch
@@ -480,21 +482,22 @@ extSignature sig@(Signature _ preds n ps t)
 -- typing instance
 
 tcInstance :: Instance Name -> TcM (Instance Id)
-tcInstance idecl@(Instance d ctx n ts t funs) 
+tcInstance idecl@(Instance d vs ctx n ts t funs) 
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs)
       funs' <- buildSignatures n ts t funs `wrapError` idecl
-      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False) funs' `wrapError` idecl 
+      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False ctx) funs' `wrapError` idecl 
       let
         funs2 = everywhere (mkT gen) funs1
         vs0 = map (TyVar . TVar) namePool
+        vs1 = bv ctx `union` bv ts `union` bv t 
         env1 = zip (bv funs2) vs0 
-        env2 = zip (bv ctx `union` bv ts `union` bv t) vs0 
+        env2 = zip vs1 vs0 
         t' = insts env2 t 
         ts' = insts env2  ts 
         ctx' = insts env2 ctx
         funs3 = everywhere (mkT (insts @Ty env1)) (map updateSig funs2)
-        instd = Instance d ctx' n ts' t' funs3
+        instd = Instance d vs1 ctx' n ts' t' funs3
       withCurrentSubst instd
 
 updateSig :: FunDef Id -> FunDef Id 
@@ -573,7 +576,7 @@ checkInstances :: [Instance Name] -> TcM ()
 checkInstances = mapM_ checkInstance 
 
 checkInstance :: Instance Name -> TcM ()
-checkInstance idef@(Instance d ctx n ts t funs)
+checkInstance idef@(Instance d vs ctx n ts t funs)
   = do
       let ipred = InCls n t ts
       -- checking the coverage condition 
@@ -684,12 +687,12 @@ checkMeasure ps c
 
 -- type generalization 
 
-generalize :: ([Pred], Ty) -> TcM Scheme 
-generalize (ps,t) 
+generalize :: ([Pred], [Pred], Ty) -> TcM Scheme 
+generalize (ps,qs,t) 
   = do 
       envVars <- getEnvMetaVars
       (ps1,t1) <- withCurrentSubst (ps,t)
-      ps2 <- reduce ps1 
+      ps2 <- reduce ps1 qs 
       t2 <- withCurrentSubst t1
       s <- getSubst 
       let 
