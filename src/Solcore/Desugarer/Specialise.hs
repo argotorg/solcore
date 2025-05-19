@@ -101,7 +101,7 @@ flex (TyVar (TVar n)) = Meta (MetaTv n)
 flex (TyCon cn tys) = TyCon cn (map flex tys)
 flex t = t
 
--- make all type variables flexible in a syntactic construct         
+-- make all type variables flexible in a syntactic construct
 flexAll :: Data a => a -> a
 flexAll = everywhere (mkT flex)
 
@@ -153,11 +153,11 @@ specialiseCompUnit compUnit debugp env = runSM debugp env do
     return $ compUnit { contracts = contracts' }
 
 addGlobalResolutions :: CompUnit Id -> SM ()
-addGlobalResolutions compUnit = forM_ (contracts compUnit) (addDeclResolutions . flexAll)
+addGlobalResolutions compUnit = forM_ (contracts compUnit) addDeclResolutions
 
 addDeclResolutions :: TopDecl Id -> SM ()
-addDeclResolutions (TInstDef inst) = addInstResolutions inst
-addDeclResolutions (TFunDef fd) = addFunDefResolution fd
+addDeclResolutions (TInstDef inst) = addInstResolutions (flexAll inst)
+addDeclResolutions (TFunDef fd) = addFunDefResolution (flexAll fd)
 addDeclResolutions (TDataDef dt) = addData dt
 addDeclResolutions _ = return ()
 
@@ -167,7 +167,7 @@ addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (mainT
 
 specialiseContract :: TopDecl Id -> SM (TopDecl Id)
 specialiseContract (TContr (Contract name args decls)) = withLocalState do
-    addContractResolutions (Contract name args flexDecls)
+    addContractResolutions (Contract name args decls)
     forM_ entries (specEntry . flexAll)
     st <- gets specTable
     dt <- gets spDataTable
@@ -177,7 +177,7 @@ specialiseContract (TContr (Contract name args decls)) = withLocalState do
     return (TContr (Contract name args decls'))
     where
       entries = ["main"]    -- Eventually all public methods
-      flexDecls = flexAll decls
+      -- flexDecls = flexAll decls
 
 specialiseContract decl = pure decl
 
@@ -198,7 +198,7 @@ addContractResolutions (Contract name args decls) = do
   forM_ decls addCDeclResolution
 
 addCDeclResolution :: ContractDecl Id -> SM ()
-addCDeclResolution (CFunDecl fd) = addFunDefResolution fd
+addCDeclResolution (CFunDecl fd) = addFunDefResolution (flexAll fd)
 addCDeclResolution (CDataDecl dt) = addData dt
 addCDeclResolution _ = return ()
 
@@ -217,7 +217,7 @@ addMethodResolution ty fd = do
   let funType = typeOfTcFunDef fd
   let fd' = FunDef sig{sigName = name'} (funDefBody fd)
   addResolution name funType fd'
-  debug ["+ addMethodResolution: ", show name', " : ", pretty funType, "\n", show funType]
+  debug ["+ addMethodResolution: ", show name', " : ", pretty funType]
 
 -- | `specExp` specialises an expression to given type
 specExp :: TcExp -> Ty -> SM TcExp
@@ -304,8 +304,9 @@ specFunDef fd = withLocalState do
   let name = sigName sig
   let funType = typeOfTcFunDef fd
   let tvs = fv funType
-  -- debug ["> specFunDef ", pretty name, ": tvs=", show tvs]
-  let tvs' = apply subst (map TyVar tvs)
+  let mvs = mv funType
+  let tvs' = apply subst (map Meta mvs)
+  debug ["> specFunDef ", pretty name, " : ", pretty funType, " mvs=", prettys mvs, " tvs'=", prettys tvs']
   let name' = specName name tvs'
   let ty' = apply subst funType
   mspec <- lookupSpecialisation name'
@@ -341,6 +342,9 @@ ensureClosed :: Pretty a => Ty -> a -> Subst ->  SM ()
 ensureClosed ty ctxt subst = do
   let tvs = fv ty
   unless (null tvs) $ panics ["spec(", pretty ctxt,"): free type vars in ", pretty ty, ": ", show tvs
+                             , " @ subst=", pretty subst]
+  let mvs = mv ty
+  unless (null tvs) $ panics ["spec(", pretty ctxt,"): free meta vars in ", pretty ty, ": ", show mvs
                              , " @ subst=", pretty subst]
 
 specStmt :: Stmt Id -> SM(Stmt Id)
@@ -488,7 +492,7 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) (returnType 
     Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
 
 typeOfTcFunDef :: TcFunDef -> Ty
-typeOfTcFunDef (FunDef sig _) = typeOfTcSignature sig
+typeOfTcFunDef (FunDef sig _) = flexAll $ typeOfTcSignature sig
 
 pprRes :: Resolution -> Doc
 -- type Resolution = (Ty, FunDef Id)
