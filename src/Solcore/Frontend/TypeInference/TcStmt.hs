@@ -489,15 +489,14 @@ tcInstance idecl@(Instance d vs ctx n ts t funs)
       (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False ctx) funs' `wrapError` idecl 
       let
         funs2 = everywhere (mkT gen) funs1
-        vs0 = map (TyVar . TVar) namePool
-        vs1 = bv ctx `union` bv ts `union` bv t 
-        env1 = zip (bv funs2) vs0 
-        env2 = zip vs1 vs0 
-        t' = insts env2 t 
-        ts' = insts env2  ts 
-        ctx' = insts env2 ctx
-        funs3 = everywhere (mkT (insts @Ty env1)) (map updateSig funs2)
-        instd = Instance d vs1 ctx' n ts' t' funs3
+        vs0 = map TVar namePool
+        vs1 = bv ctx `union` bv ts `union` bv t `union` bv funs2 
+        env = zip vs1 (map TyVar vs0) 
+        t' = insts env t 
+        ts' = insts env  ts 
+        ctx' = insts env ctx
+        funs3 = everywhere (mkT (insts @Ty env)) (map updateSig funs2)
+        instd = Instance d (take (length env) vs0) ctx' n ts' t' funs3
       withCurrentSubst instd
 
 updateSig :: FunDef Id -> FunDef Id 
