@@ -217,8 +217,8 @@ tcExp e1@(TyExp e ty)
       let bvs = bv ty 
       sks <- mapM (const freshTyVar) bvs 
       let ty1 = insts (zip bvs sks) ty
-      subsCheck (monotype ty') (monotype ty)
-      s <- unify ty' ty1
+      s <- match ty' ty1 
+      extSubst s
       withCurrentSubst (TyExp e' ty1, ps, ty1)
 
 closureConversion :: [Tyvar] -> 
