@@ -284,12 +284,15 @@ instance HasType a => HasType (Pat a) where
 
   fv (PVar v) = fv v
   fv (PCon v ps) = fv v `union` fv ps
+  fv _ = []
 
   mv (PVar v) = mv v
   mv (PCon v ps) = mv v `union` mv ps
+  mv _ = []
 
   bv (PVar v) = bv v
   bv (PCon v ps) = bv v `union` bv ps
+  bv _ = []
 
 instance HasType a => HasType (TopDecl a) where 
   apply s (TContr c) = TContr (apply s c)
