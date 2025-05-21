@@ -277,17 +277,19 @@ closureConversion vs args bdy ps ty
 createClosureType :: [Id] -> [Tyvar] -> Ty -> TcM (DataTy, Exp Id, Ty) 
 createClosureType ids vs ty 
   = do 
-      i <- incCounter 
+      i <- incCounter
+      s <- getSubst
       let 
           (args,ret) = splitTy ty 
           argTy = tupleTyFromList args
-          dn = Name $ "t_closure" ++ show i 
-          ts = map idType ids
-          ns = map Var ids
-          vs' = union (bv ts) vs 
-          ty' = TyCon dn (TyVar <$> vs')
+          dn = Name $ "t_closure" ++ show i
+          ts = map idType (apply s ids)
+          ts' = everywhere (mkT gen) ts
+          ns = map Var $ (apply s ids)
+          vs' = nub $ (mv ts) ++ (map (MetaTv . var) vs) 
+          ty' = TyCon dn (Meta <$> vs')
           cid = Id dn (funtype ts ty')
-      pure (DataTy dn vs' [Constr dn ts], Con cid ns, ty')
+      pure (DataTy dn (map gvar vs') [Constr dn ts'], Con cid ns, ty')
 
 createClosureFun :: Name -> 
                     [Id] -> 
@@ -416,7 +418,7 @@ tcFunDef incl qs d@(FunDef sig bd)
      when (hasAnn sig) $ do
         subsCheck sch' sch
      sig2 <- elabSignature sig sch' `wrapError` d
-     info [">> Finishing the typing of:", pretty sig2]
+     liftIO $ putStrLn $ unwords [">> Finishing the typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
 
@@ -490,12 +492,13 @@ tcInstance idecl@(Instance d vs ctx n ts t funs)
       let
         funs2 = everywhere (mkT gen) funs1
         vs0 = map TVar namePool
-        vs1 = bv ctx `union` bv ts `union` bv t `union` bv funs2 
+        vs1 = bv ctx `union` bv ts `union` bv t 
         env = zip vs1 (map TyVar vs0) 
         t' = insts env t 
         ts' = insts env  ts 
         ctx' = insts env ctx
-        funs3 = everywhere (mkT (insts @Ty env)) (map updateSig funs2)
+        env2 = zip (bv funs2) (map TyVar vs0)
+        funs3 = map updateSig $ everywhere (mkT (insts @Ty env2)) funs2
         instd = Instance d (take (length env) vs0) ctx' n ts' t' funs3
       withCurrentSubst instd
 
