@@ -50,7 +50,7 @@ tcStmt e@(Let n mt me)
                         let t' = insts (zip bvs sks) t 
                         s <- match t1 t' `wrapError` e 
                         extSubst s
-                        withCurrentSubst (Just e', ps1, t)
+                        withCurrentSubst (Just e', ps1, t')
                       (Just t, Nothing) -> do
                         return (Nothing, [], t)
                       (Nothing, Just e) -> do
@@ -59,7 +59,6 @@ tcStmt e@(Let n mt me)
                       (Nothing, Nothing) ->
                         (Nothing, [],) <$> freshTyVar
       extEnv n (monotype tf)
-      s <- getSubst
       let e' = Let (Id n tf) (Just tf) me'
       withCurrentSubst (e', psf, unit)
 tcStmt (StmtExp e)
