@@ -49,7 +49,7 @@ instance Correct a => Correct [a] where
 
 instance Correct Ty where 
   correct t@(TyCon n ts) 
-    | isVar n = TyVar (TVar n)
+    | isVar n && null ts = Meta (MetaTv n)
     | otherwise = TyCon n (correct ts)  
 
 instance Correct Pred where 
@@ -88,7 +88,7 @@ runReduce cls insts ps qs
   = do 
       let 
         senv = buildEnv cls insts 
-      res <- runTcM (reduce ps) senv 
+      res <- runTcM (reduce ps []) senv 
       case res of 
         Left err -> do 
           putStrLn err

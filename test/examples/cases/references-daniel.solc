@@ -1,0 +1,238 @@
+/////// Construction
+class abs:Typedef(rep) {
+    function rep(x:abs) -> rep;
+    function abs(x:rep) -> abs;
+}
+
+data xunit = xunit;
+
+data uint = uint(word);
+
+instance uint:Typedef(word) {
+    function rep(x:uint) -> word {
+        match x {
+            | uint(y) => return y;
+        }
+    }
+    function abs(x:word) -> uint {
+        return uint(x);
+    }
+}
+
+data memory(a) = memory(word);
+data memoryRef(a) = memoryRef(word);
+data Proxy(a) = Proxy;
+
+instance memory(a):Typedef(word) {
+    function rep(x:memory(a)) -> word {
+        match x {
+            | memory(y) => return y;
+        }
+    }
+    function abs(x:word) -> memory(a) {
+        return memory(x);
+    }
+}
+instance memoryRef(a):Typedef(word) {
+    function rep(x:memoryRef(a)) -> word {
+        match x {
+            | memoryRef(y) => return y;
+        }
+    }
+    function abs(x:word) -> memoryRef(a) {
+        return memoryRef(x);
+    }
+}
+
+class lhs:Assign(rhs) {
+    function assign(l:lhs, r:rhs) -> ();
+}
+
+data ref(a) = ref(a);
+
+instance ref(a):Assign(a) {
+    function assign(l:ref(a), r:a) -> () {
+        // builtin "stack store"
+        return ();
+    }
+}
+
+class self:MemoryType {
+    function load(ptr:word) -> self;
+    function store(ptr:word, value:self) -> ();
+}
+
+class self:MemorySize {
+    function size(x:Proxy(self)) -> word;
+}
+
+instance word:MemoryType {
+    function load(ptr:word) -> word {
+        let r:word;
+        assembly {
+            r := mload(ptr);
+        }
+        return r;
+    }
+    function store(ptr:word, value:word) -> () {
+        assembly {
+            mstore(ptr, value)
+        }
+    }
+}
+
+instance uint:MemoryType {
+    function load(ptr:word) -> uint {
+        return Typedef.abs(MemoryType.load(ptr));
+    }
+    function store(ptr:word, value:uint) -> () {
+        return MemoryType.store(ptr, Typedef.rep(value));
+    }
+}
+
+forall a .  a:MemoryType =>
+instance memoryRef(a):Assign(a) {
+    function assign(l:memoryRef(a), y:a) {
+        MemoryType.store(Typedef.rep(l), y);
+    }
+}
+
+
+
+data MemberAccessProxy(a, field) = MemberAccessProxy(a, Proxy(field));
+
+forall a field .
+function memberAccessPtr(x:MemberAccessProxy(memory(a), field)) -> word {
+    match x {
+        | MemberAccessProxy(y,z) => match y {
+            | memory(ptr) => return ptr;
+        }
+    }
+}
+
+class self:LValueMemberAccess(memberRefType) {
+    function memberAccess(x:self) -> memberRefType;
+}
+
+class self:RValueMemberAccess(memberValueType) {
+    function memberAccess(x:self) -> memberValueType;
+}
+
+instance xunit:MemorySize {
+    function size(x:Proxy(xunit)) -> word {
+        return 0;
+    }
+}
+
+instance word:MemorySize {
+    function size(x:Proxy(word)) -> word {
+        return 32;
+    }
+}
+
+
+instance uint:MemorySize {
+    function size(x:Proxy(uint)) -> word {
+        return 32;
+    }
+}
+
+data zero = zero;
+data suc(a) = suc(a);
+
+forall a b . instance MemberAccessProxy(memory((a, b)), zero) : Typedef (word) {}
+instance MemberAccessProxy(memory(a), zero) : LValueMemberAccess (b) {}
+forall a b . instance MemberAccessProxy(memory((a,b)), zero):LValueMemberAccess(memoryRef(a)) {
+    function memberAccess(mptr:MemberAccessProxy(memory((a,b)), zero), f:Proxy(zero)) -> memoryRef(a) {
+        let ptr:word = Typedef.rep(mptr);
+        return memoryRef(ptr);
+    }
+}
+pragma no-coverage-condition LValueMemberAccess;
+pragma no-patterson-condition LValueMemberAccess;
+pragma no-bounded-variable-condition LValueMemberAccess;
+
+forall a b c n. MemberAccessProxy(memory(b), n):LValueMemberAccess(c), a:MemorySize =>
+instance MemberAccessProxy(memory((a,b)), suc(n)):LValueMemberAccess(c) {
+    function memberAccess(map:MemberAccessProxy(memory((a,b)), suc(n)), f:Proxy(suc(n))) -> c {
+        let ptr:word = memberAccessPtr(map);
+        let sz:word = MemorySize.size(Proxy:Proxy(a));
+        assembly { ptr := add(ptr, sz) }
+        let newPtr:memory(b) = memory(ptr);
+        return LValueMemberAccess.memberAccess(MemberAccessProxy(newPtr, Proxy:Proxy(n)));
+    }
+}
+
+instance MemberAccessProxy(memory(a), zero) : LValueMemberAccess (b) {}
+instance MemberAccessProxy(memory(a), suc(zero)) : LValueMemberAccess (b) {}
+instance MemberAccessProxy(memory(a), suc(suc(zero))) : LValueMemberAccess (b) {}
+
+////// Testing
+
+// struct S { x:word; y:uint; z:word; }
+data S = S(word, uint, word);
+data x_sel = x_sel;
+data y_sel = y_sel;
+data z_sel = z_sel;
+
+instance S:Typedef((word, uint, word)) {
+    function abs(x:(word, uint, word)) -> S {
+        match x {
+            | (a, b, c) => return S(a, b, c);
+        }
+    }
+    function rep(x:S) -> (word, uint, word) {
+        match x {
+            | S(a, b, c) => return (a, b, c);
+        }
+    }
+}
+
+
+// The idea here would be to generate these particularly on the definition of a struct with fields.
+forall c rep . S:Typedef(rep), MemberAccessProxy(memory(rep), zero):LValueMemberAccess(c) =>
+instance MemberAccessProxy(memory(S), x_sel):LValueMemberAccess(c) {
+    function memberAccess(map:MemberAccessProxy(memory(S), x_sel), f:Proxy(x_sel)) -> c {
+        return (LValueMemberAccess.memberAccess(MemberAccessProxy(memory(memberAccessPtr(map)):memory(rep), Proxy:Proxy(zero))):c);
+    }
+}
+
+forall c rep . S:Typedef(rep), MemberAccessProxy(memory(rep), suc(zero)):LValueMemberAccess(c) =>
+instance MemberAccessProxy(memory(S), y_sel):LValueMemberAccess(c) {
+    function memberAccess(map:MemberAccessProxy(memory(S), y_sel), f:Proxy(y_sel)) -> c {
+        return LValueMemberAccess.memberAccess(MemberAccessProxy(memory(memberAccessPtr(map)):memory(rep), Proxy:Proxy(suc(zero))));
+    }
+}
+
+forall c rep . S:Typedef(rep), MemberAccessProxy(memory(rep), suc(suc(zero))):LValueMemberAccess(c) =>
+instance MemberAccessProxy(memory(S), z_sel):LValueMemberAccess(c) {
+    function memberAccess(map:MemberAccessProxy(memory(S), z_sel), f:Proxy(z_sel)) -> c {
+        return LValueMemberAccess.memberAccess(MemberAccessProxy(memory(memberAccessPtr(map)):memory(rep), Proxy:Proxy(suc(suc(zero)))));
+    }
+}
+
+function f() {
+    let x:memory(word);
+    let y:memory(word);
+    x = y;
+}
+
+function g() {
+    let s:memory(S) = Typedef.abs(0x80);
+    let x:word = 42;
+    let y:uint = Typedef.abs(21);
+    let z:word = 7;
+    // s.x = x;
+    Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(s, Proxy:Proxy(x_sel))), x);
+    // s.y = y;
+    Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(s, Proxy:Proxy(y_sel))), y);
+    // s.z = z;
+    Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(s, Proxy:Proxy(z_sel))), z);
+}
+
+contract C {
+    function main() {
+        f();
+        g();
+    }
+}

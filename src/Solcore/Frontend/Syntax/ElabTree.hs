@@ -33,22 +33,25 @@ data Env
     , fields :: [Name]
     , constructors :: [Name]
     , classes :: [Name]
+    , variables :: [Name]
     } deriving Show
 
 instance Semigroup Env where 
-  (Env cs fs ts fd ctrs cls) <> (Env cs' fs' ts' fd' ctrs' cls')
+  (Env cs fs ts fd ctrs cls vs) <> (Env cs' fs' ts' fd' ctrs' cls' vs')
     = Env (cs `union` cs') 
           (fs `union` fs') 
           (ts `union` ts') 
           (fd `union` fd') 
           (ctrs `union` ctrs') 
           (cls `union` cls')
+          (vs `union` vs')
 
 instance Monoid Env where 
   mempty = Env [] 
                [] [Name "word", Name "pair", Name "()"] 
                [] 
                [Name "pair", Name "()"] 
+               []
                []
 
 -- definition of the monad 
@@ -60,12 +63,24 @@ runElabM t = do
   let ienv = initialEnv t 
   fst <$> (runStateT (runExceptT (elab t)) ienv)
 
+pushVarsInScope :: [Name] -> ElabM ()
+pushVarsInScope ns 
+  = modify (\ st -> st{variables = ns ++ variables st})
+
+popVarsInScope :: [Name] -> ElabM ()
+popVarsInScope ns 
+  = modify (\ st -> st {variables = filter (`notElem` ns) (variables st)})
+
+isDefinedVar :: Name -> ElabM Bool
+isDefinedVar n = (elem n) <$> gets variables
+
 isDefinedType :: Name -> ElabM Bool 
 isDefinedType n 
   = do 
       ts <- gets typeNames
       cs <- gets contracts
-      pure (n `elem` (ts ++ cs))
+      let xs = (ts ++ cs) 
+      pure (n `elem` xs)
 
 isDefinedConstr :: Name -> ElabM Bool 
 isDefinedConstr n 
@@ -221,19 +236,23 @@ instance Elab S.Ty where
   type Res S.Ty = Ty 
 
   elab t@(S.TyCon n ts) 
-    = do 
-        isTy <- isDefinedType n 
+    = do
+        isVar <- isDefinedVar n
+        isTy <- isDefinedType n
         ts' <- elab ts 
-        if isTy then pure $ TyCon n ts' 
-          else if null ts then 
-            pure $ TyVar (TVar n)
-          else if isArrow n then 
-            pure $ TyCon n ts'
-          else throwError $ 
-              unlines ["Undefined type:"
-                      , pretty n
-                      , "!!"
-                      ]
+        if isVar && null ts then do 
+          pure $ TyVar (TVar n)
+        else if isTy then do
+          pure $ TyCon n ts' 
+            else if null ts then 
+              pure $ TyVar (TVar n)
+            else if isArrow n then 
+              pure $ TyCon n ts'
+            else throwError $ 
+                unlines ["Undefined type:"
+                        , pretty n
+                        , "!!"
+                        ]
 
 isArrow :: Name -> Bool 
 isArrow (Name s) = s == "->"
@@ -304,29 +323,31 @@ instance Elab S.Signature where
 
   elab sig@(S.Signature vs ctx n ps mt) 
     = do 
-        vs' <- filter isTyVar <$> elab vs 
+        let vs' = map TVar (names vs)  
         ctx' <- elab ctx 
         ps' <- elab ps 
         mt' <- elab mt 
-        unless (all isTyVar vs') $ do 
-            throwError $ unlines ["Ill-formed function signature:"
-                                 , pretty n 
-                                 , "type constructor found where a variable is expected:"
-                                 , unwords (map pretty vs')
-                                 ]
-        vs''<- mapM mkTyVar vs'
-        pure (Signature vs'' ctx' n ps' mt')
+        pure (Signature vs' ctx' n ps' mt')
+
+names :: [S.Ty] -> [Name]
+names = nub . foldr step []
+  where 
+    step (S.TyCon n ts) ac 
+      = n : (names ts) ++ ac
 
 instance Elab S.Instance where 
   type Res S.Instance = Instance Name 
 
-  elab (S.Instance d ctx n ts t funs) 
-    = do 
+  elab (S.Instance d vs ctx n ts t funs) 
+    = do  
+        pushVarsInScope (names vs)
+        let vs' = map TVar (names vs)
         ctx' <- elab ctx 
         ts' <- elab ts 
         t' <- elab t 
         funs' <- elab funs 
-        pure (Instance d ctx' n ts' t' funs')
+        popVarsInScope (names vs)
+        pure (Instance d vs' ctx' n ts' t' funs')
 
 instance Elab S.Field where 
   type Res S.Field = Field Name 
@@ -338,7 +359,13 @@ instance Elab S.FunDef where
   type Res S.FunDef = FunDef Name 
 
   elab (S.FunDef sig bd) 
-    = FunDef <$> elab sig <*> elab bd
+    = do
+         let vs = names (S.sigVars sig)
+         pushVarsInScope vs 
+         sig' <- elab sig
+         bd' <- elab bd
+         popVarsInScope vs 
+         pure (FunDef sig' bd')
 
   initialEnv (S.FunDef sig _) = initialEnv sig 
 

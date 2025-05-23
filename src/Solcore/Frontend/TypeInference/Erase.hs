@@ -25,8 +25,8 @@ instance (Erase a, Erase b) => Erase (a,b) where
 instance Erase (Instance Id) where 
   type EraseRes (Instance Id) = Instance Name
 
-  erase (Instance d ctx n ts t funs)
-    = Instance d ctx n ts t (erase funs)
+  erase (Instance d vs ctx n ts t funs)
+    = Instance d vs ctx n ts t (erase funs)
 
 instance Erase (FunDef Id) where 
   type EraseRes (FunDef Id) = FunDef Name 
