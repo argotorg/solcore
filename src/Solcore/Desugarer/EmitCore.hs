@@ -1,4 +1,5 @@
 module Solcore.Desugarer.EmitCore(emitCore) where
+import Prelude hiding(catch)
 import Language.Core qualified as Core
 import Data.Map qualified as Map
 import Common.Monad
@@ -11,6 +12,7 @@ import qualified Data.Map as Map
 import Data.Maybe(fromMaybe)
 import GHC.Stack( HasCallStack )
 
+import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id ( Id(..) )
@@ -29,11 +31,21 @@ type EM a = StateT EcState IO a
 runEM :: Bool -> TcEnv -> EM a ->  IO a
 runEM debugp env m = evalStateT m (initEcState debugp env)
 
+errorsEM :: HasCallStack => [String] -> EM a
+errorsEM msgs = do
+  writes ("\nERROR: ":msgs)
+  context <- gets ecContext
+  let msg = concat msgs
+  let contextStr = unlines (map ("in: "++) context)
+  writeln contextStr
+  error "Emit core failed" -- this can be exitFailure eventually
+
 data EcState = EcState
     { ecSubst :: VSubst
     , ecDT :: DataTable
     , ecNest :: Int
     , ecDebug :: Bool
+    , ecContext :: [String] -- for error handling
     }
 
 initEcState :: Bool -> TcEnv -> EcState
@@ -42,6 +54,7 @@ initEcState debugp env = EcState
    , ecDT = Map.empty
    , ecNest = 0
    , ecDebug = debugp
+   , ecContext = []
    }
 
 withLocalState :: EM a -> EM a
@@ -64,6 +77,19 @@ emptyVSubst = Map.empty
 extendVSubst :: VSubst -> EM ()
 extendVSubst subst = modify extend where
     extend s = s { ecSubst = ecSubst s <> subst }
+
+pushContext :: String -> EM ()
+pushContext c = modify extend where
+    extend s = s { ecContext = c : ecContext s }
+
+dropContext :: EM ()
+dropContext = modify (\s -> s { ecContext = drop 1 $ ecContext s })
+
+withContext :: String -> EM a -> EM a
+withContext s m = pushContext s *> m <* dropContext
+
+inContext :: EM a -> String -> EM a
+inContext = flip withContext
 
 type Translation a = EM (a, [Core.Stmt])
 
@@ -107,15 +133,16 @@ emitCDecl cd = debug ["!! emitCDecl ", show cd] >> pure []
 -----------------------------------------------------------------------
 -- Translating function definitions
 -----------------------------------------------------------------------
-emitFunDef :: FunDef Id -> EM [Core.Stmt]
-emitFunDef (FunDef sig body) = do
-  (name, args, typ) <- translateSig sig
+emitFunDef :: HasCallStack => FunDef Id -> EM [Core.Stmt]
+emitFunDef fd@(FunDef sig body) = withContext (shortName fd) do
+  (name, args, typ) <- translateSig sig `inContext` ("function signature " ++ pretty sig)
   debug ["emitFunDef ", name, " :: ", show typ]
   coreBody <- emitStmts body
   let coreFun = Core.SFunction name args typ coreBody
+  dropContext
   return [coreFun]
 
-translateSig :: Signature Id -> EM (CoreName, [Core.Arg], Core.Type)
+translateSig :: HasCallStack => Signature Id -> EM (CoreName, [Core.Arg], Core.Type)
 translateSig sig@(Signature vs ctxt n args (Just ret)) = do
   dataTable <- gets ecDT
   -- debug ["translateSig ", show sig]
@@ -123,7 +150,7 @@ translateSig sig@(Signature vs ctxt n args (Just ret)) = do
   coreTyp <- translateType ret
   coreArgs <- mapM translateArg args
   return (name, coreArgs, coreTyp)
-translateSig sig = errors ["No return type in ", show sig]
+translateSig sig = errorsEM ["No return type in ", show sig]
 
 translateArg :: Param Id -> EM Core.Arg
 translateArg p =  Core.TArg (show n) <$> translateType t
@@ -142,9 +169,9 @@ translateType (TyCon "word" []) = pure Core.TWord
 -- translateType _ Fun.TBool = Core.TBool
 translateType (TyCon "unit" []) = pure Core.TUnit
 translateType (TyCon "()" []) = pure Core.TUnit
-translateType t@(u :-> v) = error ("Cannot translate function type " ++ show t)
+translateType t@(u :-> v) = errorsEM ["Cannot translate function type ", show t]
 translateType (TyCon name tas) = translateTCon name tas
-translateType t = error ("Cannot translate type " ++ show t)
+translateType t = errorsEM ["Cannot translate type ", show t]
 
 translateTCon :: Name -> [Ty] -> EM Core.Type
 -- NB "pair" is used for all tuples
@@ -154,12 +181,13 @@ translateTCon tycon tas = do
     case mti of
         Just (DataTy n tvs cs) -> do
             let subst = zip tvs tas
-            Core.TNamed (show tycon) . buildSumType <$> mapM (translateDCon subst) cs
-        Nothing -> errors ["translateTCon: unknown type ", pretty tycon, "\n", show tycon]
+            tys <- mapM (translateDCon subst) cs
+            Core.TNamed (show tycon) <$> buildSumType tys
+        Nothing -> errorsEM ["translateTCon: unknown type ", pretty tycon, "\n", show tycon]
   where
-      buildSumType :: [Core.Type] -> Core.Type
-      buildSumType [] = errors ["empty sum ", pretty tycon] -- Core.TUnit
-      buildSumType ts = foldr1 Core.TSum ts
+      buildSumType :: [Core.Type] -> EM Core.Type
+      buildSumType [] = errorsEM ["empty sum ", pretty tycon] -- Core.TUnit
+      buildSumType ts = pure(foldr1 Core.TSum ts)
 
 
 translateDCon :: [(Tyvar, Ty)] -> Constr -> EM Core.Type
@@ -176,7 +204,7 @@ emitLit (StrLit s) = error "String literals not supported yet"
 emitConApp :: Id -> [Exp Id] -> Translation Core.Expr
 emitConApp con@(Id n ty) as = do
   unless (null . fv $ argTypes ty)
-    (error $ "emitConApp: free variables in type " ++ pretty ty ++ " in " ++ pretty (Con con as))
+    (errors ["emitConApp: free variables in type ", pretty ty, " in ", pretty (Con con as)])
   -- check for free type vars only in args because of phantom types such as Proxy(a) = Proxy
   case targetType ty of
     (TyCon "unit" []) -> pure (Core.EUnit, [])
@@ -246,7 +274,7 @@ emitExp (Call Nothing f as) = do
     pure (call, concat codes)
 emitExp e@(Con i as) = emitConApp i as
 emitExp (TyExp e _) = emitExp e
-emitExp e = errors ["emitExp not implemented for: ", pretty e, "\n", show e]
+emitExp e = errorsEM ["emitExp not implemented for: ", pretty e, "\n", show e]
 
 emitStmt :: Stmt Id -> EM [Core.Stmt]
 emitStmt (StmtExp e) = do
@@ -276,10 +304,11 @@ emitStmt (Let (Id name ty) mty mexp ) = do
 
 emitStmt s@(Match [scrutinee] alts) = emitMatch scrutinee alts
 emitStmt (Asm ys) = pure [Core.SAssembly ys]
-emitStmt s = errors ["emitStmt not implemented for: ", pretty s, "\n", show s]
+emitStmt s = errorsEM ["emitStmt not implemented for: ", pretty s, "\n", show s]
 
 emitStmts :: [Stmt Id] -> EM [Core.Stmt]
-emitStmts = concatMapM emitStmt
+emitStmts = concatMapM emitStmt' where
+    emitStmt' stmt =  withContext (pretty stmt) (emitStmt stmt)
 
 -----------------------------------------------------------------------
 -- Pattern matching
@@ -320,10 +349,10 @@ emitDataMatch (Name "pair") scrutinee alts = emitProdMatch scrutinee alts
 emitDataMatch (Name "()" ) scrutinee alts = emitProdMatch scrutinee alts
 emitDataMatch scon scrutinee alts = do
     mti <- gets (Map.lookup scon . ecDT)
-    let ti = fromMaybe (error ("emitMatch: unknown type " ++ show scon)) mti
+    let ti = fromMaybe (errors ["emitMatch: unknown type " ++ show scon]) mti
     let allCons = dataConstrs ti
     case allCons of
-        [] -> errors ["emitMatch: no constructors for ", pretty scon]
+        [] -> errorsEM ["emitMatch: no constructors for ", pretty scon]
         [c] -> emitProdMatch scrutinee alts
         _ -> emitSumMatch allCons scrutinee alts
 
@@ -342,7 +371,7 @@ emitWordMatch scrutinee alts = do
             coreStmts <- emitStmts stmts
             let coreName = show n
             return (Core.Alt (Core.PVar coreName) "$_" (oneStmt coreStmts))
-        emitWordAlt (pat, _) = error ("emitWordAlt not implemented for" ++ show pat)
+        emitWordAlt (pat, _) = errorsEM ["emitWordAlt not implemented for", show pat]
         oneStmt [stmt] = stmt
         oneStmt stmts = Core.SBlock stmts
 type BranchMap = Map.Map Name [Core.Stmt]
@@ -403,8 +432,8 @@ emitSumMatch allCons scrutinee alts = do
                 }
             }
 
-          The names $left and $right are used for clarity, 
-          they can be reused in subsequent branches (no need for unique names 
+          The names $left and $right are used for clarity,
+          they can be reused in subsequent branches (no need for unique names
           as long as they do not clash with user variables)
       -}
       buildMatch :: Core.Expr -> Core.Type ->[[Core.Stmt]] -> [Core.Stmt]
