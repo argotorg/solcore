@@ -10,6 +10,7 @@ import Data.Maybe
 
 import Solcore.Frontend.Parser.SolverInputParser hiding (insts)
 import Solcore.Frontend.Pretty.SolcorePretty
+import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcMonad
@@ -72,8 +73,8 @@ simplify = loop []
 reduceByInst :: Int -> [Pred] -> [Pred] -> TcM [Pred]
 reduceByInst n ps qs =
   (nub . concat) <$> mapM (\ p -> do 
-      ps' <- reduceByInst' n qs p 
-      info [">> Solved:", pretty p]
+      ps' <- reduceByInst' n qs p
+      info [">> Solved: ", pretty p, ", remaining: ", prettys ps']
       pure ps') ps
 
 reduceByInst' :: Int -> [Pred] -> Pred -> TcM [Pred]
@@ -91,23 +92,24 @@ reduceByInst' n qs p@(InCls c _ _)
   | otherwise =
       do
         ce <- getInstEnv
-        info [">> Trying to solve ", pretty p]
-        r <- findInst p
+        pp <- withCurrentSubst p
+        info [">> Trying to solve ", pretty pp]
+        r <- findInst pp
         case r of
           Nothing -> do
             de <- getDefaultInstEnv
-            if proveDefaulting ce p
+            if proveDefaulting ce pp
               then do
-                case selectDefaultInst de p of
+                case selectDefaultInst de pp of
                   Nothing -> -- pure [p]
-                    if checkEntails qs p then pure []
-                      else tcmError $ unwords ["No instance found for:", pretty p]
+                    if checkEntails qs pp then pure []
+                      else tcmError $ unwords ["No instance found for:", pretty pp]
                   Just (ps', s, h) -> do
                     extSubst s
                     withCurrentSubst ps'
               else do
-                if checkEntails qs p then pure []
-                  else tcmError $ unwords [">>> No instance found for:", pretty p]
+                if checkEntails qs pp then pure []
+                  else tcmError $ unwords [">>> No instance found for:", pretty pp]
           Just (preds, subst', instd) -> do
             extSubst subst'
             info [">>> Selected instance:", pretty instd, "\n>>>> next iteration:", pretty preds]
