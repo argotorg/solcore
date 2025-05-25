@@ -417,7 +417,7 @@ tcFunDef incl qs d@(FunDef sig bd)
      when (hasAnn sig) $ do
         subsCheck sch' sch
      sig2 <- elabSignature sig sch' `wrapError` d
-     liftIO $ putStrLn $ unwords [">> Finishing the typing of:", pretty sig2]
+     info [">> Finishing the typing of:", pretty sig2]
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
 
