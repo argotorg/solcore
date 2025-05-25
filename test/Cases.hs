@@ -126,9 +126,9 @@ cases =
     , runTestForFile "typedef.solc" caseFolder
     , expectFail $ runTestForFile "mainproxy.solc" caseFolder
     , expectFail $ runTestForFile "complexproxy.solc" caseFolder
-    , expectFail $ runTestForFile "reference-test.solc" caseFolder
+    , runTestForFile "reference-test.solc" caseFolder
     , runTestForFile "reference-encoding-good.solc" caseFolder
-    , expectFail $ runTestForFile "reference-encoding-bad.solc" caseFolder
+    , runTestForFile "reference-encoding-good1.solc" caseFolder
     , expectFail $ runTestForFile "default-inst.solc" caseFolder
     , expectFail $ runTestForFile "default-instance-missing.solc" caseFolder
     , expectFail $ runTestForFile "default-instance-weak.solc" caseFolder
@@ -150,5 +150,8 @@ basicOptions =
   [ "new-run"
   , "sol-core"
   , "--"
+  , "-s"
+  , "-n"
+  , "-m"
   , "-f"
   ]

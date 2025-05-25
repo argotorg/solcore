@@ -141,7 +141,6 @@ data zero = zero;
 data suc(a) = suc(a);
 
 forall a b . instance MemberAccessProxy(memory((a, b)), zero) : Typedef (word) {}
-instance MemberAccessProxy(memory(a), zero) : LValueMemberAccess (b) {}
 forall a b . instance MemberAccessProxy(memory((a,b)), zero):LValueMemberAccess(memoryRef(a)) {
     function memberAccess(mptr:MemberAccessProxy(memory((a,b)), zero), f:Proxy(zero)) -> memoryRef(a) {
         let ptr:word = Typedef.rep(mptr);
@@ -163,9 +162,11 @@ instance MemberAccessProxy(memory((a,b)), suc(n)):LValueMemberAccess(c) {
     }
 }
 
-instance MemberAccessProxy(memory(a), zero) : LValueMemberAccess (b) {}
-instance MemberAccessProxy(memory(a), suc(zero)) : LValueMemberAccess (b) {}
-instance MemberAccessProxy(memory(a), suc(suc(zero))) : LValueMemberAccess (b) {}
+instance MemberAccessProxy(memory(a), zero) : LValueMemberAccess (word) {}
+instance MemberAccessProxy(memory(a), suc(zero)) : LValueMemberAccess (uint) {}
+instance MemberAccessProxy(memory(a), suc(suc(zero))) : LValueMemberAccess (word) {}
+instance word:Assign(word){}
+instance uint:Assign(uint){}
 
 ////// Testing
 
@@ -190,23 +191,23 @@ instance S:Typedef((word, uint, word)) {
 
 
 // The idea here would be to generate these particularly on the definition of a struct with fields.
-forall c rep . S:Typedef(rep), MemberAccessProxy(memory(rep), zero):LValueMemberAccess(c) =>
-instance MemberAccessProxy(memory(S), x_sel):LValueMemberAccess(c) {
-    function memberAccess(map:MemberAccessProxy(memory(S), x_sel), f:Proxy(x_sel)) -> c {
-        return (LValueMemberAccess.memberAccess(MemberAccessProxy(memory(memberAccessPtr(map)):memory(rep), Proxy:Proxy(zero))):c);
+forall c rep . S:Typedef(rep), MemberAccessProxy(memory(rep), zero):LValueMemberAccess(word) =>
+instance MemberAccessProxy(memory(S), x_sel):LValueMemberAccess(word) {
+    function memberAccess(map:MemberAccessProxy(memory(S), x_sel), f:Proxy(x_sel)) -> word {
+        return (LValueMemberAccess.memberAccess(MemberAccessProxy(memory(memberAccessPtr(map)):memory(rep), Proxy:Proxy(zero))) : word);
     }
 }
 
-forall c rep . S:Typedef(rep), MemberAccessProxy(memory(rep), suc(zero)):LValueMemberAccess(c) =>
-instance MemberAccessProxy(memory(S), y_sel):LValueMemberAccess(c) {
-    function memberAccess(map:MemberAccessProxy(memory(S), y_sel), f:Proxy(y_sel)) -> c {
+forall c rep . S:Typedef(rep), MemberAccessProxy(memory(rep), suc(zero)):LValueMemberAccess(uint) =>
+instance MemberAccessProxy(memory(S), y_sel):LValueMemberAccess(uint) {
+    function memberAccess(map:MemberAccessProxy(memory(S), y_sel), f:Proxy(y_sel)) -> uint {
         return LValueMemberAccess.memberAccess(MemberAccessProxy(memory(memberAccessPtr(map)):memory(rep), Proxy:Proxy(suc(zero))));
     }
 }
 
-forall c rep . S:Typedef(rep), MemberAccessProxy(memory(rep), suc(suc(zero))):LValueMemberAccess(c) =>
-instance MemberAccessProxy(memory(S), z_sel):LValueMemberAccess(c) {
-    function memberAccess(map:MemberAccessProxy(memory(S), z_sel), f:Proxy(z_sel)) -> c {
+forall c rep . S:Typedef(rep), MemberAccessProxy(memory(rep), suc(suc(zero))):LValueMemberAccess(word) =>
+instance MemberAccessProxy(memory(S), z_sel):LValueMemberAccess(word) {
+    function memberAccess(map:MemberAccessProxy(memory(S), z_sel), f:Proxy(z_sel)) -> word {
         return LValueMemberAccess.memberAccess(MemberAccessProxy(memory(memberAccessPtr(map)):memory(rep), Proxy:Proxy(suc(suc(zero)))));
     }
 }

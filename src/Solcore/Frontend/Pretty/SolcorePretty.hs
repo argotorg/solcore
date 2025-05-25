@@ -147,7 +147,8 @@ instance Pretty a => Pretty (Signature a) where
       pprRetTy ty 
 
 pprSigPrefix :: [Tyvar] -> [Pred] -> Doc 
-pprSigPrefix [] [] = empty 
+pprSigPrefix [] [] = empty
+pprSigPrefix [] ps = pprContext ps 
 pprSigPrefix vs [] 
   = text "forall" <+> hsep (map ppr vs) <+> text "." 
 pprSigPrefix vs ps 

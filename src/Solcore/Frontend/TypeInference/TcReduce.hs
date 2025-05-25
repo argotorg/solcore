@@ -86,9 +86,11 @@ reduceByInst' n qs p@(InCls c _ _)
           , pretty p
           , "since the solver exceeded the max number of iterations."
           ]
-  | inHnf p = do 
-    info [">> Solving (HNF):", pretty p]
-    pure [p]
+  | inHnf p = do
+    if checkEntails qs p then pure []
+    else do 
+      info [">> Solving (HNF):", pretty p]
+      pure [p]
   | otherwise =
       do
         ce <- getInstEnv
@@ -102,14 +104,18 @@ reduceByInst' n qs p@(InCls c _ _)
               then do
                 case selectDefaultInst de pp of
                   Nothing -> -- pure [p]
-                    if checkEntails qs pp then pure []
-                      else tcmError $ unwords ["No instance found for:", pretty pp]
+                    if checkEntails qs pp then do 
+                        info [">> Entailing ", pretty pp, " using ", pretty qs]
+                        pure []
+                      else pure [pp] --  tcmError $ unwords ["No instance found for:", pretty pp]
                   Just (ps', s, h) -> do
                     extSubst s
                     withCurrentSubst ps'
               else do
-                if checkEntails qs pp then pure []
-                  else tcmError $ unwords [">>> No instance found for:", pretty pp]
+                if checkEntails qs pp then do 
+                    info [">> Entailing ", pretty pp, " using ", pretty qs]
+                    pure []
+                  else pure [pp] -- tcmError $ unwords [">>> No instance found for:", pretty pp]
           Just (preds, subst', instd) -> do
             extSubst subst'
             info [">>> Selected instance:", pretty instd, "\n>>>> next iteration:", pretty preds]

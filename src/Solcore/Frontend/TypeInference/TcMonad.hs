@@ -175,14 +175,17 @@ skolemise sch@(Forall vs qt)
 
 subsCheck :: Scheme -> Scheme -> TcM ()
 subsCheck sch1 sch2@(Forall _ _)
-  = do 
-      (skol_tvs, qt2) <- skolemise sch2
-      qt1 <- freshInst sch1 
-      s <- mgu qt1 qt2 
-      let esc_tvs = fv sch1 
-          bad_tvs = filter (`elem` esc_tvs) skol_tvs 
-      unless (null bad_tvs) $ 
-        typeNotPolymorphicEnough sch1 sch2 
+    = do
+        info [">> Checking subsumption for:", pretty sch1, " and ", pretty sch2]
+        (skol_tvs, qt2) <- skolemise sch2
+        qt1 <- freshInst sch1 
+        s <- mgu qt1 qt2 `catchError` (\ _ -> typeNotPolymorphicEnough sch1 sch2) 
+        let esc_tvs = fv sch1 
+            bad_tvs = filter (`elem` esc_tvs) skol_tvs 
+        unless (null bad_tvs) $ 
+          typeNotPolymorphicEnough sch1 sch2 
+
+isInvoke n = pretty n == "invokable.invoke"
 
 -- type instantiation 
 
@@ -499,6 +502,7 @@ isVerbose = gets (optVerbose . tcOptions)
 info :: [String] -> TcM ()
 info ss = do
             let msg = concat ss
+            liftIO $ putStrLn $ msg 
             logging <- isLogging
             verbose <- isVerbose
             when logging $ modify (\ r -> r{ logs = msg : logs r })
