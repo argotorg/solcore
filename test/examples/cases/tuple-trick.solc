@@ -1,0 +1,38 @@
+data Zero;
+data Succ(a);
+
+data Proxy(a) = Proxy;
+
+class a : Nth(b,c) {
+  function nth (x : Proxy(a), y : b) -> c; 
+} 
+
+forall a . instance Zero : Nth((a,b), a) {
+   function nth (x : Proxy(Zero), y : (a,b)) -> a {
+      match y {
+      | (a, b) => return a ; 
+      }
+   } 
+}
+ 
+forall n a b c . n : Nth (b,c) => instance Succ(n) : Nth ((a,b), c) {
+   function nth (x : Proxy(Succ(n)), y : (a,b)) -> c {
+      match y {
+      | (a,b) => return Nth.nth(Proxy : Proxy(n), b);
+      }
+   }
+}
+
+contract C {
+  function id (x) {
+    return x;
+  }
+  function main () {
+    let p : (word, word, word, ());
+    let x : word = Nth.nth(Proxy : Proxy(Zero), p);
+    let y : word = Nth.nth(Proxy : Proxy(Succ(Zero)), p);
+    let z : word = Nth.nth(Proxy : Proxy(Succ(Succ(Zero))), p);
+    id(z);
+  }
+}
+
