@@ -376,7 +376,7 @@ tcSignature sig@(Signature vs ps n args rt) qs
           qs0 = everywhere (mkT (insts @Ty env)) qs 
       (args', pschs, ts, vs') <- tcArgs args0
       t' <- maybe freshTyVar pure rt0
-      sch <- generalize (ps0, qs0, funtype ts t')
+      sch <- generalize (ps0 ++ qs0, qs0, funtype ts t')
       pure ((n, sch), pschs, ts, qs0)
 
 hasAnn :: Signature Name -> Bool 
@@ -444,10 +444,11 @@ elabSignature sig sch@(Forall vs (ps :=> t))
       let 
         ret = Just $ if null params' then t else (funtype rs t')
         vs' = bv params' `union` bv ret `union` bv ps
-      withCurrentSubst $ Signature vs' ps (sigName sig) params' ret 
+      sig2 <- withCurrentSubst (Signature vs' ps (sigName sig) params' ret)
+      pure sig2
 
 elabParam :: Ty -> Param Name -> TcM (Param Id)
-elabParam t (Typed n _) = pure $ Typed (Id n t) t 
+elabParam t p@(Typed n _) = pure $ Typed (Id n t) t 
 elabParam t (Untyped n) = pure $ Typed (Id n t) t
 
 annotateSignature :: Scheme -> Signature Name -> TcM (Signature Name)

@@ -141,7 +141,6 @@ data zero = zero;
 data suc(a) = suc(a);
 
 forall a b . instance MemberAccessProxy(memory((a, b)), zero) : Typedef (word) {}
-instance MemberAccessProxy(memory(a), zero) : LValueMemberAccess (b) {}
 forall a b . instance MemberAccessProxy(memory((a,b)), zero):LValueMemberAccess(memoryRef(a)) {
     function memberAccess(mptr:MemberAccessProxy(memory((a,b)), zero), f:Proxy(zero)) -> memoryRef(a) {
         let ptr:word = Typedef.rep(mptr);
