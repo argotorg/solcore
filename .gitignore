@@ -26,4 +26,4 @@ cabal.project.local~
 Tasks.md
 *~
 output.core
-./src/Solcore/Frontend/Parser/SolcoreParser.hs
+/src/Solcore/Frontend/Parser/SolcoreParser.hs
