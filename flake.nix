@@ -4,12 +4,14 @@
   inputs = {
     # Nix Inputs
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    foundry.url = "github:shazow/foundry.nix/stable";
   };
 
   outputs = {
     self,
     nixpkgs,
-  }: 
+    foundry,
+  }:
     let
       forAllSystems = function:
         nixpkgs.lib.genAttrs [
@@ -20,7 +22,10 @@
         ] (system: function rec {
           inherit system;
           compilerVersion = "ghc982";
-          pkgs = nixpkgs.legacyPackages.${system};
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ foundry.overlay ];
+          };
           hsPkgs = pkgs.haskell.packages.${compilerVersion}.override {
             overrides = hfinal: hprev: {
               sol-core = hfinal.callCabal2nix "sol-core" ./. {};
@@ -49,6 +54,7 @@
               haskellPackages.ghcid
               haskellPackages.fourmolu
               haskellPackages.cabal-fmt
+              foundry-bin
             ]
             ++ (builtins.attrValues (import ./scripts.nix {s = pkgs.writeShellScriptBin;}));
         });
