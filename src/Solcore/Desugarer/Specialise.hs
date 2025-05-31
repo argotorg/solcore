@@ -6,18 +6,19 @@ This is meant to be run on typed and defunctionalised code, so no higher-order f
 
 import Common.Monad
 import Control.Monad
+import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Generics
-import Data.List(intercalate)
+import Data.List(intercalate, union, (\\))
 import qualified Data.Map as Map
 import GHC.Stack
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id ( Id(..) )
 import Solcore.Frontend.TypeInference.TcEnv(TcEnv(..),TypeInfo(..))
-import Solcore.Frontend.TypeInference.TcSubst
-import Solcore.Frontend.TypeInference.TcUnify
+import qualified Solcore.Frontend.TypeInference.TcSubst as TcSubst
+import Solcore.Frontend.TypeInference.TcUnify(typesDoNotUnify)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Primitives.Primitives
 import System.Exit
@@ -40,7 +41,7 @@ data SpecState = SpecState
   , spDataTable :: Table DataTy
   , spGlobalEnv :: TcEnv
   , splocalEnv :: Table Ty
-  , spSubst :: Subst
+  , spSubst :: TVSubst
   , spDebug :: Bool
   }
 
@@ -91,7 +92,7 @@ initSpecState debugp env = SpecState
     , spDataTable = Map.empty
     , spGlobalEnv = env
     , splocalEnv = emptyTable
-    , spSubst = emptySubst
+    , spSubst = emptyTVSubst
     , spDebug = debugp
     }
 
@@ -115,31 +116,31 @@ addResolution :: Name -> Ty -> TcFunDef -> SM ()
 addResolution name ty fun = do
     modify $ \s -> s { spResTable = Map.insertWith (++) name [(flex ty, fun)] (spResTable s) }
 
-lookupResolution :: Name -> Ty ->  SM (Maybe (TcFunDef, Ty, Subst))
+lookupResolution :: Name -> Ty ->  SM (Maybe (TcFunDef, Ty, TVSubst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty where
   str :: Pretty a => a -> String
   str = pretty
-  findMatch :: Ty -> Maybe [Resolution] -> SM (Maybe (TcFunDef, Ty, Subst))
+  findMatch :: Ty -> Maybe [Resolution] -> SM (Maybe (TcFunDef, Ty, TVSubst))
   findMatch etyp (Just res) = do
     debug ["|> findMatch ", pretty etyp, " in ", prettys res]
     firstMatch etyp res
   findMatch _ Nothing = return Nothing
-  firstMatch :: Ty -> [Resolution] -> SM (Maybe (TcFunDef, Ty, Subst))
+  firstMatch :: Ty -> [Resolution] -> SM (Maybe (TcFunDef, Ty, TVSubst))
   firstMatch etyp [] = return Nothing
   firstMatch etyp ((t,e):rest)
-    | Right subst <- mgu t etyp = do  -- TESTME: match is to weak for MPTC, but isn't mgu too strong?
+    | Right subst <- specmgu t etyp = do  -- TESTME: match is to weak for MPTC, but isn't mgu too strong?
         debug ["< lookupRes - match found for ", str name, ": ", str t, " ~ ", str etyp, " => ", str subst]
         return (Just (e, t, subst))
     | otherwise = firstMatch etyp rest
 
-getSpSubst :: SM Subst
+getSpSubst :: SM TVSubst
 getSpSubst = gets spSubst
 
-extSpSubst :: Subst -> SM ()
+extSpSubst :: TVSubst -> SM ()
 extSpSubst subst = modify $ \s -> s { spSubst =  spSubst s <> subst }
 
-atCurrentSubst :: HasType a => a -> SM a
-atCurrentSubst a = flip apply a <$> getSpSubst
+atCurrentSubst :: HasTV a => a -> SM a
+atCurrentSubst a = flip applytv a <$> getSpSubst
 
 addData :: DataTy -> SM ()
 addData dt = modify (\s -> s { spDataTable = Map.insert (dataName dt) dt (spDataTable s) })
@@ -156,8 +157,8 @@ addGlobalResolutions :: CompUnit Id -> SM ()
 addGlobalResolutions compUnit = forM_ (contracts compUnit) addDeclResolutions
 
 addDeclResolutions :: TopDecl Id -> SM ()
-addDeclResolutions (TInstDef inst) = addInstResolutions (flexAll inst)
-addDeclResolutions (TFunDef fd) = addFunDefResolution (flexAll fd)
+addDeclResolutions (TInstDef inst) = addInstResolutions inst
+addDeclResolutions (TFunDef fd) = addFunDefResolution fd
 addDeclResolutions (TDataDef dt) = addData dt
 addDeclResolutions _ = return ()
 
@@ -168,7 +169,7 @@ addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (mainT
 specialiseContract :: TopDecl Id -> SM (TopDecl Id)
 specialiseContract (TContr (Contract name args decls)) = withLocalState do
     addContractResolutions (Contract name args decls)
-    forM_ entries (specEntry . flexAll)
+    forM_ entries (specEntry)
     st <- gets specTable
     dt <- gets spDataTable
     let dataDecls = map (CDataDecl . snd) (Map.toList dt)
@@ -183,8 +184,8 @@ specialiseContract decl = pure decl
 
 specEntry :: Name -> SM ()
 specEntry name = withLocalState do
-    let any = MetaTv (Name "any")
-    let anytype = Meta any
+    let any = TVar (Name "any")
+    let anytype = TyVar any
     mres <- lookupResolution name anytype
     case mres of
       Just (fd, ty, subst) -> do
@@ -198,7 +199,7 @@ addContractResolutions (Contract name args decls) = do
   forM_ decls addCDeclResolution
 
 addCDeclResolution :: ContractDecl Id -> SM ()
-addCDeclResolution (CFunDecl fd) = addFunDefResolution (flexAll fd)
+addCDeclResolution (CFunDecl fd) = addFunDefResolution (fd)
 addCDeclResolution (CDataDecl dt) = addData dt
 addCDeclResolution _ = return ()
 
@@ -244,8 +245,8 @@ specConApp :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
 specConApp i@(Id n conTy) args ty = do
   subst <- getSpSubst
   let argTypes = map typeOfTcExp args
-  let argTypes' = apply subst argTypes
-  let i' = apply subst i
+  let argTypes' = applytv subst argTypes
+  let i' = applytv subst i
   let typedArgs = zip args argTypes'
   args' <- forM typedArgs (uncurry specExp)
   let conTy' = foldr (:->) ty argTypes'
@@ -275,7 +276,7 @@ specCall i args ty = do
       extSpSubst phi
       -- ty' <- atCurrentSubst ty
       subst <- getSpSubst
-      let ty' = apply subst ty
+      let ty' = applytv subst ty
       ensureClosed ty' (Call Nothing i args) subst
       name' <- specFunDef fd
       debug ["< specCall: ", pretty name']
@@ -303,17 +304,17 @@ specFunDef fd = withLocalState do
   let sig = funSignature fd
   let name = sigName sig
   let funType = typeOfTcFunDef fd
-  let tvs = fv funType
-  let mvs = mv funType
-  let tvs' = apply subst (map Meta mvs)
+  let tvs = freetv funType
+  let mvs = TcSubst.mv funType
+  let tvs' = applytv subst (map TyVar tvs)
   debug ["> specFunDef ", pretty name, " : ", pretty funType, " mvs=", prettys mvs, " tvs'=", prettys tvs']
   let name' = specName name tvs'
-  let ty' = apply subst funType
+  let ty' = applytv subst funType
   mspec <- lookupSpecialisation name'
   case mspec of
     Just fd' -> return name'
     Nothing -> do
-      let sig' = apply subst (funSignature fd)
+      let sig' = applytv subst (funSignature fd)
       -- add a placeholder first to break loops
       let placeholder = FunDef sig' []
       addSpecialisation name' placeholder
@@ -338,20 +339,22 @@ ensureSimple ty' stmt subst = case ty' of
 -}
 
 -- | `ensureClosed` checks that a type is closed, i.e. has no free type variables
-ensureClosed :: Pretty a => Ty -> a -> Subst ->  SM ()
+ensureClosed :: Pretty a => Ty -> a -> TVSubst ->  SM ()
 ensureClosed ty ctxt subst = do
-  let tvs = fv ty
+  let tvs = freetv ty
   unless (null tvs) $ panics ["spec(", pretty ctxt,"): free type vars in ", pretty ty, ": ", show tvs
                              , " @ subst=", pretty subst]
+{-
   let mvs = mv ty
   unless (null tvs) $ panics ["spec(", pretty ctxt,"): free meta vars in ", pretty ty, ": ", show mvs
                              , " @ subst=", pretty subst]
+-}
 
 specStmt :: Stmt Id -> SM(Stmt Id)
 specStmt stmt@(Return e) = do
   subst <- getSpSubst
   let ty = typeOfTcExp e
-  let ty' = apply subst ty
+  let ty' = applytv subst ty
   ensureClosed ty' stmt subst
   -- debug ["> specExp (Return): ", pretty e," : ", pretty ty, " ~> ", pretty ty']
   e' <- specExp e ty'
@@ -492,7 +495,7 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) (returnType 
     Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
 
 typeOfTcFunDef :: TcFunDef -> Ty
-typeOfTcFunDef (FunDef sig _) = flexAll $ typeOfTcSignature sig
+typeOfTcFunDef (FunDef sig _) = typeOfTcSignature sig
 
 pprRes :: Resolution -> Doc
 -- type Resolution = (Ty, FunDef Id)
@@ -500,3 +503,120 @@ pprRes(ty, fd) = ppr ty <+> text ":" <+> text(shortName fd)
 
 instance Pretty (Ty, FunDef Id) where
   ppr = pprRes
+
+specmgu :: Ty -> Ty -> Either String TVSubst
+specmgu (TyCon n ts) (TyCon n' ts')
+  | n == n' && length ts == length ts' =
+      specsolve (zip ts ts') mempty
+specmgu (TyVar v) t = varBind v t
+specmgu t (TyVar v) = varBind v t
+specmgu t1 t2 = typesDoNotUnify t1 t2
+
+varBind :: (MonadError String m) => Tyvar -> Ty -> m TVSubst
+varBind v t
+  | t == TyVar v = return mempty
+  | v `elem` freetv t = infiniteTyErr v t
+  | otherwise = do
+      return (v |-> t)
+  where
+    infiniteTyErr v t = throwError $
+      unwords
+        [ "Cannot construct the infinite type:"
+        , pretty v
+        , "~"
+        , pretty t
+        ]
+
+specsolve :: [(Ty, Ty)] -> TVSubst -> Either String TVSubst
+specsolve [] s = pure s
+specsolve ((t1, t2) : ts) s =
+  do
+    s1 <- specmgu (applytv s t1) (applytv s t2)
+    s2 <- specsolve ts s1
+    pure (s2 <> s1)
+
+newtype TVSubst
+  = TVSubst { unTVSubst :: [(Tyvar, Ty)] } deriving (Eq, Show)
+
+restrict :: TVSubst -> [Tyvar] -> TVSubst
+restrict (TVSubst s) vs
+  = TVSubst [(v,t) | (v,t) <- s, v `notElem` vs]
+
+emptyTVSubst :: TVSubst
+emptyTVSubst = TVSubst []
+
+-- composition operators
+
+instance Semigroup TVSubst where
+  s1 <> s2 = TVSubst (outer ++ inner)
+    where
+      outer = [(u, applytv s1 t) | (u, t) <- unTVSubst s2]
+      inner = [(v,t) | (v,t) <- unTVSubst s1, v `notElem` dom2]
+      dom2 = map fst (unTVSubst s2)
+
+instance Monoid TVSubst where
+  mempty = emptyTVSubst
+
+(|->) :: Tyvar -> Ty -> TVSubst
+u |-> t = TVSubst [(u, t)]
+
+instance Pretty TVSubst where
+  ppr = braces . commaSep . map go . unTVSubst
+    where
+      go (v,t) = ppr v <+> text "|->" <+> ppr t
+
+class HasTV a where
+  applytv :: TVSubst -> a -> a
+  freetv  :: a -> [Tyvar]    -- free variables
+
+instance HasTV Ty where
+  applytv (TVSubst s) t@(TyVar v)
+    = maybe t id (lookup v s)
+  applytv s (TyCon n ts)
+    = TyCon n (applytv s ts)
+  applytv _ t = t
+
+  freetv (TyVar v@(TVar _)) = [v]
+  freetv (TyCon _ ts) = freetv ts
+  freetv _ = []
+
+instance HasTV a => HasTV [a] where
+    applytv s = map (applytv s)
+    freetv = foldr (union . freetv) mempty
+
+instance HasTV a => HasTV (Maybe a) where
+  applytv s = fmap (applytv s)
+  freetv = maybe [] freetv
+
+instance (HasTV a, HasTV b, HasTV c) => HasTV (a,b,c) where
+  applytv s (z,x,y) = (applytv s z, applytv s x, applytv s y)
+  freetv (z,x,y) = freetv z `union` freetv x `union` freetv y
+
+instance (HasTV a, HasTV b) => HasTV (a,b) where
+  applytv s (x,y) = (applytv s x, applytv s y)
+  freetv (x,y) = freetv x `union` freetv y
+{-
+instance HasTV a => HasTV (Signature a) where
+  applytv s (Signature vs ctx n p r)
+    = let
+        ctx' = applytv s ctx
+        p' = applytv s p
+        r' = applytv s r
+        vs' = freetv ctx' `union` freetv p' `union` freetv r'
+      in Signature vs' ctx' n p' r'
+  freetv (Signature vs c _ p r) = [] -- freetv (c,p,r) \\ vs
+  -- freetv (Signature vs c _ p r) = vs `union` freetv (c,p,r)
+-}
+
+instance HasTV Id where
+  applytv s (Id n t) = Id n (applytv s t)
+  freetv (Id _ t) = freetv t
+
+instance HasTV (Exp Id) where
+    applytv s = everywhere (mkT (applytv @Ty s))
+
+instance HasTV (Pat Id) where
+    applytv s = everywhere (mkT (applytv @Ty s))
+
+instance HasTV (Signature Id) where
+    applytv s = everywhere (mkT (applytv @Ty s))
