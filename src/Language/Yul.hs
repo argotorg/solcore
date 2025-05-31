@@ -144,7 +144,7 @@ wrapInContract :: Name -> Name -> Doc -> Doc
 wrapInContract name entry body = empty
   $$ text "// SPDX-License-Identifier: UNLICENSED"
   $$ text "pragma solidity ^0.8.23;"
-  $$ text "import {console,Script} from \"lib/stdlib.sol\";"
+  $$ text "import {console,Script} from \"forge-std/Script.sol\";"
   $$ text "contract" <+> ppr name <+> text "is Script"<+> lbrace
   $$ nest 2 run
   $$ nest 2 body
