@@ -1,6 +1,7 @@
 pragma no-bounded-variable-condition ABIEncode;
 pragma no-patterson-condition ABIEncode;
 pragma no-coverage-condition ABIDecode, MemoryType;
+
 /*
 - features
     - primitive word eq
@@ -162,19 +163,7 @@ instance byte:Typedef(word) {
     }
 }
 
-// Generalized References
-
-class ref:Loadable (deref) {
-    function load (r : ref) -> deref;
-}
-
-class ref:Storable (deref) {
-    function store (r : ref, d : deref) -> Unit;
-}
-
-forall ref deref . ref:Loadable(deref), ref:Storable(deref) => class ref:Ref(deref) {}
-
-// Memory References
+// Memory Pointers
 
 data memory(t) = memory(word);
 
@@ -190,7 +179,7 @@ instance memory(t) : Typedef(word) {
     }
 }
 
-// Storage References
+// Storage Pointers
 
 data storage(t) = storage(word);
 
@@ -498,15 +487,8 @@ instance uint256:MemoryType(uint256) {
     }
 }
 
-forall a . a:MemoryType(a) => instance memory(a):Loadable(a) {
-    function load(x) {
-        let p:Proxy(a);
-        match x { | memory(off) => return MemoryType.loadFromMemory(p, off); }
-    }
-}
-
 // FAIL: bound variable
-forall ty . ty:MemoryType(ret) => instance DynArray(ty):MemoryType(slice(memory(ret))) {
+forall ty ret . ty:MemoryType(ret) => instance DynArray(ty):MemoryType(slice(memory(ret))) {
     function loadFromMemory(p, off:word) -> slice(memory(ret)) {
         let length;
         assembly {
@@ -648,11 +630,11 @@ function allocateDynamicArray(prx : Proxy(t), length : word) -> memory(DynArray(
 
 // ERROR: No instance found for: ABIDecoder(g111, f111) : ABIDecode (g111)
 // TODO: is this instance too strict?
-forall decodable reader ty . decodable:HasWordReader(reader), ABIDecoder(ty, reader):ABIDecode(ty) =>
-function abi_decode(decodable:decodable) -> ty {
-    let decoder : ABIDecoder(ty, reader) = ABIDecoder(HasWordReader.getWordReader(decodable));
-    return ABIDecode.decode(decoder, 0);
-}
+//forall decodable reader ty . decodable:HasWordReader(reader), ABIDecoder(ty, reader):ABIDecode(ty) =>
+//function abi_decode(decodable:decodable) -> ty {
+    //let decoder : ABIDecoder(ty, reader) = ABIDecoder(HasWordReader.getWordReader(decodable));
+    //return ABIDecode.decode(decoder, 0);
+//}
 
 // Contract Entrypoint
 
