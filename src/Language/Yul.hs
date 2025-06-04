@@ -163,8 +163,6 @@ instance Pretty HexOrString where
   ppr (DHex s) = text "hex" <> doubleQuotes (text s)
   ppr (DString s) = doubleQuotes (text s)
 
--- commaSepList :: Pretty a => [a] -> Doc
--- commaSepList = hsep . punctuate comma . map ppr
 
 {- | wrap a Yul chunk in a Solidity function with the given name
    assumes result is in a variable named "_result"
