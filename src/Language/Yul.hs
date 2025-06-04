@@ -18,13 +18,6 @@ newtype Yul = Yul { yulStmts :: [YulStmt] }
 newtype YulCode = YulCode YulBlock
 
 instance {-# OVERLAPPABLE #-} Pretty a => Show a where show = render . ppr
-{-
-instance Show Yul where show = render . ppr
-instance Show YulStmt where show = render . ppr
-instance Show YulExp where show = render . ppr
-instance Show YLiteral where show = render . ppr
-instance Show YulData where show = render . ppr
--}
 
 instance Semigroup Yul where
   Yul a <> Yul b = Yul (a <> b)
@@ -163,31 +156,3 @@ instance Pretty HexOrString where
   ppr (DHex s) = text "hex" <> doubleQuotes (text s)
   ppr (DString s) = doubleQuotes (text s)
 
-
--- sample code
-fnUsrAdd :: YulStmt
-fnUsrAdd = YFun "usr$add" ["x", "y"] (YReturns ["result"])
-        [ YAssign ["result"] (YCall "add" [YIdent "x", YIdent "y"])]
-
-fnUsrMain :: YulStmt
-fnUsrMain = YFun "usr$main" [] (YReturns ["result"])
-        [ YAssign1 "result" (YCall "usr$add" [yulInt 40, yulInt 2])]
-
-sampleCode :: YulCode
-sampleCode = YulCode
-            [ fnUsrAdd
-            , fnUsrMain
-            , YulAlloc "z"
-            , YAssign1 "z" (YCall "usr$main" [])
-            , YExp $ YCall "mstore" [yulInt 0, YIdent "z"]
-            , YExp $ YCall "return" [yulInt 0, yulInt 32]
-            ]
-
-sampleObject :: YulObject
-sampleObject = YulObject "Add" sampleCode []
-
-
-sampleNestedObject :: YulObject
-sampleNestedObject = YulObject "Nested" sampleCode
-                        [  InnerObject sampleObject
-                        , InnerData $ YulData "Table1" (DHex "4123")]
