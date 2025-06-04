@@ -1,13 +1,16 @@
 module Solver where
 
+import System.Environment (lookupEnv)
+import System.IO.Unsafe (unsafePerformIO)
+
 import Test.Tasty
 import Test.Tasty.Program
-import Test.Tasty.ExpectedFailure 
+import Test.Tasty.ExpectedFailure
 
 
--- constructing the test suit 
+-- constructing the test suit
 
-satTests :: TestTree 
+satTests :: TestTree
 satTests = testGroup "Tests for SAT"
                      [
                        testFile solverDir "sat00.inp"
@@ -17,17 +20,25 @@ satTests = testGroup "Tests for SAT"
                      , expectFail $ testFile solverDir "sat04.inp"
                      , expectFail $ testFile solverDir "sat05.inp"
                      ]
-            where 
+            where
               solverDir = "./test/solver"
 
-testFile :: String -> String -> TestTree 
-testFile folder file 
-  = testProgram file "cabal" (basicOptions ++ [folder ++ "/" ++ file]) Nothing 
-    where 
-      basicOptions = ["run", "solver", "--"]
-    
+testFile :: String -> String -> TestTree
+testFile folder file  =
+  localOption (CatchStderr True) $
+    testProgram file solverCmd args Nothing
+    where
+      args = case solverCmd of
+              "cabal" -> ["run", "solver", "--", folder ++ "/" ++ file]
+              _       -> [folder ++ "/" ++ file]
 
-reduceTests :: TestTree 
+      solverCmd =
+        case unsafePerformIO (lookupEnv "SOLVER_EXE") of
+          Just exe -> exe
+          Nothing  -> "cabal"
+
+
+reduceTests :: TestTree
 reduceTests = testGroup "Tests for reduce"
                         [
                           testFile solverDir "red00.inp"
@@ -38,7 +49,7 @@ reduceTests = testGroup "Tests for reduce"
                         , testFile solverDir "red05.inp"
                         , testFile solverDir "red06.inp"
                         ]
-            where 
+            where
               solverDir = "./test/solver"
 
 

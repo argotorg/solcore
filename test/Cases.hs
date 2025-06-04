@@ -1,5 +1,7 @@
 module Cases where
 
+import System.Environment (lookupEnv)
+import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.ExpectedFailure
 import Test.Tasty.Program
@@ -143,12 +145,16 @@ type BaseFolder = String
 
 runTestForFile :: FileName -> BaseFolder -> TestTree
 runTestForFile file folder =
-  testProgram file "cabal" (basicOptions ++ [folder ++ "/" ++ file]) Nothing
+  localOption (CatchStderr True) $
+    testProgram file solCoreCommand args Nothing
+  where
+    args = case solCoreCommand of
+            "cabal" -> basicOptions ++ [folder ++ "/" ++ file]
+            _       -> ["-f", folder ++ "/" ++ file]
 
-basicOptions :: [String]
-basicOptions =
-  [ "new-run"
-  , "sol-core"
-  , "--"
-  , "-f"
-  ]
+    solCoreCommand =
+      case unsafePerformIO (lookupEnv "SOL_CORE_EXE") of
+        Just exe -> exe
+        Nothing  -> "cabal"
+
+    basicOptions = ["new-run", "sol-core", "--", "-f"]
