@@ -114,11 +114,6 @@ emitContract c = do
     coreBody <- concatMapM emitCDecl (decls c)
     let result = Core.Contract cname coreBody
     -- writeln (show result)
-    -- let filename = cname ++ ".core"
-    -- use output.core for now to make testing easier
-    let filename = "output.core"
-    writeln ("Writing to " ++ filename)
-    liftIO $ writeFile filename (show result)
     pure result
 
 emitCDecl :: ContractDecl Id -> EM [Core.Stmt]

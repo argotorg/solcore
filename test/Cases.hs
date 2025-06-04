@@ -1,8 +1,10 @@
 module Cases where
 
+import Solcore.Pipeline.SolcorePipeline
+import Solcore.Pipeline.Options
 import Test.Tasty
-import Test.Tasty.ExpectedFailure
-import Test.Tasty.Program
+import Test.Tasty.HUnit
+import System.FilePath
 
 std :: TestTree
 std =
@@ -61,7 +63,7 @@ pragmas :: TestTree
 pragmas =
   testGroup
     "Files for pragmas cases"
-    [ expectFail $ runTestForFile "bound.solc" pragmaFolder
+    [ runTestExpectingFailure "bound.solc" pragmaFolder
     , runTestForFile "coverage.solc" pragmaFolder
     , runTestForFile "patterson.solc" pragmaFolder
     ]
@@ -74,17 +76,17 @@ cases =
     "Files for folder cases"
     [ runTestForFile "Ackermann.solc" caseFolder
     , runTestForFile "app.solc" caseFolder
-    , expectFail $ runTestForFile "BadInstance.solc" caseFolder
+    , runTestExpectingFailure "BadInstance.solc" caseFolder
     , runTestForFile "BoolNot.solc" caseFolder
     , runTestForFile "Compose.solc" caseFolder
     , runTestForFile "Compose2.solc" caseFolder
     , runTestForFile "Compose3.solc" caseFolder
-    , expectFail $ runTestForFile "DupFun.solc" caseFolder
+    , runTestExpectingFailure "DupFun.solc" caseFolder
     , runTestForFile "DuplicateFun.solc" caseFolder
     , runTestForFile "EitherModule.solc" caseFolder
     , runTestForFile "Id.solc" caseFolder
     , runTestForFile "IncompleteInstDef.solc" caseFolder
-    , expectFail $ runTestForFile "Invokable.solc" caseFolder
+    , runTestExpectingFailure "Invokable.solc" caseFolder
     , runTestForFile "ListModule.solc" caseFolder
     , runTestForFile "Logic.solc" caseFolder
     , runTestForFile "Memory1.solc" caseFolder
@@ -93,20 +95,20 @@ cases =
     , runTestForFile "NegPair.solc" caseFolder
     , runTestForFile "Option.solc" caseFolder
     , runTestForFile "Pair.solc" caseFolder
-    , expectFail $ runTestForFile "PairMatch1.solc" caseFolder
-    , expectFail $ runTestForFile "PairMatch2.solc" caseFolder
+    , runTestExpectingFailure "PairMatch1.solc" caseFolder
+    , runTestExpectingFailure "PairMatch2.solc" caseFolder
     , runTestForFile "Peano.solc" caseFolder
     , runTestForFile "PeanoMatch.solc" caseFolder
     , runTestForFile "RefDeref.solc" caseFolder
-    , expectFail $ runTestForFile "SillyReturn.solc" caseFolder
+    , runTestExpectingFailure "SillyReturn.solc" caseFolder
     , runTestForFile "SimpleField.solc" caseFolder
-    , expectFail $ runTestForFile "SimpleInvoke.solc" caseFolder
+    , runTestExpectingFailure "SimpleInvoke.solc" caseFolder
     , runTestForFile "SimpleLambda.solc" caseFolder
     , runTestForFile "SingleFun.solc" caseFolder
     , runTestForFile "assembly.solc" caseFolder
     , runTestForFile "join.solc" caseFolder
     , runTestForFile "EqQual.solc" caseFolder
-    , expectFail $ runTestForFile "joinErr.solc" caseFolder
+    , runTestExpectingFailure "joinErr.solc" caseFolder
     , runTestForFile "tyexp.solc" caseFolder
     , runTestForFile "Uncurry.solc" caseFolder
     , runTestForFile "unit.solc" caseFolder
@@ -114,23 +116,23 @@ cases =
     , runTestForFile "closure.solc" caseFolder
     , runTestForFile "noclosure.solc" caseFolder
     , runTestForFile "constructor-weak-args.solc" caseFolder
-    , expectFail $ runTestForFile "unconstrainted-instance.solc" caseFolder
+    , runTestExpectingFailure "unconstrained-instance.solc" caseFolder
     , runTestForFile "constrained-instance.solc" caseFolder
     , runTestForFile "constrained-instance-context.solc" caseFolder
-    , expectFail $ runTestForFile "reference.solc" caseFolder
+    , runTestExpectingFailure "reference.solc" caseFolder
     , runTestForFile "super-class.solc" caseFolder
     , runTestForFile "proxy.solc" caseFolder
     , runTestForFile "another-subst.solc" caseFolder
     , runTestForFile "morefun.solc" caseFolder
     , runTestForFile "typedef.solc" caseFolder
-    , expectFail $ runTestForFile "mainproxy.solc" caseFolder
-    , expectFail $ runTestForFile "complexproxy.solc" caseFolder
-    , expectFail $ runTestForFile "reference-test.solc" caseFolder
+    , runTestExpectingFailure "mainproxy.solc" caseFolder
+    , runTestExpectingFailure "complexproxy.solc" caseFolder
+    , runTestExpectingFailure "reference-test.solc" caseFolder
     , runTestForFile "reference-encoding-good.solc" caseFolder
     , runTestForFile "reference-encoding-good1.solc" caseFolder
-    , expectFail $ runTestForFile "default-inst.solc" caseFolder
-    , expectFail $ runTestForFile "default-instance-missing.solc" caseFolder
-    , expectFail $ runTestForFile "default-instance-weak.solc" caseFolder
+    , runTestExpectingFailure "default-inst.solc" caseFolder
+    , runTestExpectingFailure "default-instance-missing.solc" caseFolder
+    , runTestExpectingFailure "default-instance-weak.solc" caseFolder
     , runTestForFile "tuple-trick.solc" caseFolder
     , runTestForFile "const-array.solc" caseFolder
     , runTestForFile "array.solc" caseFolder
@@ -145,12 +147,20 @@ type BaseFolder = String
 
 runTestForFile :: FileName -> BaseFolder -> TestTree
 runTestForFile file folder =
-  testProgram file "cabal" (basicOptions ++ [folder ++ "/" ++ file]) Nothing
+  testCase file $ do
+    let filePath = folder </> file
+        opts = emptyOption filePath
+    result <- compile opts
+    case result of
+      Left err -> assertFailure err
+      Right _ -> return ()
 
-basicOptions :: [String]
-basicOptions =
-  [ "new-run"
-  , "sol-core"
-  , "--"
-  , "-f"
-  ]
+runTestExpectingFailure :: FileName -> BaseFolder -> TestTree
+runTestExpectingFailure file folder =
+  testCase file $ do
+    let filePath = folder </> file
+        opts = emptyOption filePath
+    result <- compile opts
+    case result of
+      Left _ -> return () -- Expected failure
+      Right _ -> assertFailure "Expected compilation to fail, but it succeeded"
