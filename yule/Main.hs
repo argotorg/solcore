@@ -37,9 +37,9 @@ main = do
     generatedYul <- runTM options (translateStmts source)
     let name = fromString (ccName coreContract)
 
-    let doc = if Options.wrap options
-        then wrapInSol name generatedYul
-        else wrapInObject name generatedYul
+    let doc = if Options.yof options
+        then wrapInObject name generatedYul
+        else wrapInSol name generatedYul
     putStrLn (render doc)
     putStrLn ("writing output to " ++ Options.output options)
     writeFile (Options.output options) (render doc)
