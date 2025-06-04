@@ -9,6 +9,7 @@ data Options = Options
     , verbose :: Bool
     , debug :: Bool
     , compress :: Bool
+    , yof :: Bool
     } deriving Show
 
 optionsParser :: Parser Options
@@ -46,6 +47,11 @@ optionsParser = Options
         ( long "compress"
         <> short 'O'
         <> help "Compress sums (experimental)"
+        )
+    <*> switch
+        ( long "yof"
+        <> short 'y'
+        <> help "Output a bare Yul object"
         )
 
 parseOptions :: IO Options
