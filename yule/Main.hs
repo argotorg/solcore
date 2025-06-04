@@ -40,7 +40,6 @@ main = do
     let doc = if Options.yof options
         then wrapInObject name generatedYul
         else wrapInSol name generatedYul
-    putStrLn (render doc)
     putStrLn ("writing output to " ++ Options.output options)
     writeFile (Options.output options) (render doc)
 
