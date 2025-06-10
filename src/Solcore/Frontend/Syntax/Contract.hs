@@ -115,6 +115,7 @@ data Signature a
 data Instance a 
   = Instance {
       instDefault :: Bool
+    , instVars :: [Tyvar]
     , instContext :: [Pred]
     , instName :: Name 
     , paramsTy :: [Ty]

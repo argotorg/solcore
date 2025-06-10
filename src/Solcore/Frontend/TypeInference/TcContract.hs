@@ -36,15 +36,17 @@ typeInfer options (CompUnit imps decls)
       r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options)
       case r of
         Left err -> pure $ Left err 
-        Right ((CompUnit imps ds), env) -> 
-          pure (Right (CompUnit imps (ds ++ generated env), env)) 
+        Right ((CompUnit imps ds), env) -> do 
+          let ds1 = everywhere (mkT renameTDecl) (ds ++ generated env)
+              ds2 = everywhere (mkT updateSig) ds1
+          pure (Right (CompUnit imps ds2, env)) 
 
 -- type inference for a compilation unit 
 
 tcCompUnit :: CompUnit Name -> TcM (CompUnit Id)
 tcCompUnit (CompUnit imps cs)
   = do 
-      setupPragmas ps 
+      setupPragmas ps
       mapM_ checkTopDecl cls 
       mapM_ checkTopDecl cs'
       cs' <- mapM tcTopDecl' cs 
@@ -59,9 +61,13 @@ tcCompUnit (CompUnit imps cs)
       tcTopDecl' d = timeItNamed (shortName d) $ do
         clearSubst
         addGenDefs
-        d' <- tcTopDecl d 
-        s <- getSubst 
-        pure (everywhere (mkT (apply @Id s)) d')
+        tcTopDecl d 
+
+renameTDecl :: TopDecl Id -> TopDecl Id
+renameTDecl d 
+  = let d' = everywhere (mkT gen) d 
+        env = zip (bv d') (map (TyVar . TVar) namePool)
+    in everywhere (mkT (insts @Ty env)) d'
 
 addGenDefs :: TcM ()
 addGenDefs 
@@ -251,13 +257,13 @@ tcSig (sig, (Forall _ (_ :=> t)))
 tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds 
   = do
-      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True) binds
+      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True []) binds
       checkDeferedConstraints (zip funs' pss)
       let names = map (sigName . funSignature) funs' 
       mapM_ (uncurry extEnv) (zip names schs)
       noDesugarCalls <- getNoDesugarCalls
       unless noDesugarCalls $ generateTopDeclsFor (zip funs' schs)
-      pure funs'
+      pure $ everywhere (mkT gen) funs'
 
 
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
@@ -309,7 +315,7 @@ checkClass icls@(Class ps n vs v sigs)
             pst <- mapM tyParam ps
             t' <- maybe (pure unit) pure mt
             let ft = funtype pst t' 
-            unless (v `elem` fv ft)
+            unless (v `elem` bv ft)
                    (signatureError n v sig ft)
             addClassMethod p sig `wrapError` icls 
 

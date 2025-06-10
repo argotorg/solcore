@@ -2,10 +2,10 @@ class self:Test(weak) { function f(x:self) -> weak; }
 
 data memory(a) = memory(word);
 data Proxy(a) = Proxy;
+data Bool = True | False;
+default instance a:Test(word) { function f(x:a) -> word { return 42; }}
 
-default instance a:Test(word) { function f(x:self) -> word { return 42; }}
-
-instance memory(memory(word)):Test(bool) { function f(x:self) { return true; }}
+instance memory(memory(word)):Test(Bool) { function f(x:self) { return True; }}
 
 // If we choose the default instance to typecheck f,
 // this will pass type-checking, since ``r`` is word.
@@ -13,7 +13,7 @@ instance memory(memory(word)):Test(bool) { function f(x:self) { return true; }}
 forall a.
 function f(p:Proxy(a)) {
     let x:memory(a);
-    let r = Test.f(x);
+    let r :word = Test.f(x);
     assembly {
         sstore(0, r)
     }

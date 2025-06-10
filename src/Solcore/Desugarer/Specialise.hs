@@ -1,4 +1,4 @@
-module Solcore.Desugarer.Specialise(specialiseCompUnit, typeOfTcExp) where
+module Solcore.Desugarer.Specialise where  --(specialiseCompUnit, typeOfTcExp) where
 {- * Specialisation
 Create specialised versions of polymorphic and overloaded (TODO) functions.
 This is meant to be run on typed and defunctionalised code, so no higher-order functions.
@@ -8,6 +8,7 @@ import Common.Monad
 import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
+import Data.Generics
 import Data.List(intercalate)
 import qualified Data.Map as Map
 import GHC.Stack
@@ -68,8 +69,8 @@ debug msg = do
 runSM :: Bool -> TcEnv -> SM a -> IO a
 runSM debugp env m = evalStateT m (initSpecState debugp env)
 
-prettys :: Pretty a => [a] -> String
-prettys = render . brackets . commaSep . map ppr
+-- prettys :: Pretty a => [a] -> String
+-- prettys = render . brackets . commaSep . map ppr
 
 -- | `withLocalState` runs a computation with a local state
 -- local changes are discarded, with the exception of the `specTable`
@@ -94,6 +95,16 @@ initSpecState debugp env = SpecState
     , spDebug = debugp
     }
 
+-- make type variables flexible by replacing them with metas
+flex :: Ty -> Ty
+flex (TyVar (TVar n)) = Meta (MetaTv n)
+flex (TyCon cn tys) = TyCon cn (map flex tys)
+flex t = t
+
+-- make all type variables flexible in a syntactic construct
+flexAll :: Data a => a -> a
+flexAll = everywhere (mkT flex)
+
 addSpecialisation :: Name -> TcFunDef -> SM ()
 addSpecialisation name fd = modify $ \s -> s { specTable = Map.insert name fd (specTable s) }
 
@@ -102,20 +113,22 @@ lookupSpecialisation name = gets (Map.lookup name . specTable)
 
 addResolution :: Name -> Ty -> TcFunDef -> SM ()
 addResolution name ty fun = do
-    modify $ \s -> s { spResTable = Map.insertWith (++) name [(ty, fun)] (spResTable s) }
+    modify $ \s -> s { spResTable = Map.insertWith (++) name [(flex ty, fun)] (spResTable s) }
 
 lookupResolution :: Name -> Ty ->  SM (Maybe (TcFunDef, Ty, Subst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty where
   str :: Pretty a => a -> String
   str = pretty
   findMatch :: Ty -> Maybe [Resolution] -> SM (Maybe (TcFunDef, Ty, Subst))
-  findMatch etyp (Just res) = firstMatch etyp res
+  findMatch etyp (Just res) = do
+    debug ["|> findMatch ", pretty etyp, " in ", prettys res]
+    firstMatch etyp res
   findMatch _ Nothing = return Nothing
   firstMatch :: Ty -> [Resolution] -> SM (Maybe (TcFunDef, Ty, Subst))
   firstMatch etyp [] = return Nothing
   firstMatch etyp ((t,e):rest)
     | Right subst <- mgu t etyp = do  -- TESTME: match is to weak for MPTC, but isn't mgu too strong?
-        debug ["! lookupRes - match found for ", str name, ": ", str t, " ~ ", str etyp, " => ", str subst]
+        debug ["< lookupRes - match found for ", str name, ": ", str t, " ~ ", str etyp, " => ", str subst]
         return (Just (e, t, subst))
     | otherwise = firstMatch etyp rest
 
@@ -125,9 +138,6 @@ getSpSubst = gets spSubst
 extSpSubst :: Subst -> SM ()
 extSpSubst subst = modify $ \s -> s { spSubst =  spSubst s <> subst }
 
-restrictSpSubst :: [Tyvar] -> SM ()
-restrictSpSubst ns = modify prune where
-    prune s = s { spSubst = restrict (spSubst s) ns   }
 atCurrentSubst :: HasType a => a -> SM a
 atCurrentSubst a = flip apply a <$> getSpSubst
 
@@ -146,8 +156,8 @@ addGlobalResolutions :: CompUnit Id -> SM ()
 addGlobalResolutions compUnit = forM_ (contracts compUnit) addDeclResolutions
 
 addDeclResolutions :: TopDecl Id -> SM ()
-addDeclResolutions (TInstDef inst) = addInstResolutions inst
-addDeclResolutions (TFunDef fd) = addFunDefResolution fd
+addDeclResolutions (TInstDef inst) = addInstResolutions (flexAll inst)
+addDeclResolutions (TFunDef fd) = addFunDefResolution (flexAll fd)
 addDeclResolutions (TDataDef dt) = addData dt
 addDeclResolutions _ = return ()
 
@@ -158,7 +168,7 @@ addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (mainT
 specialiseContract :: TopDecl Id -> SM (TopDecl Id)
 specialiseContract (TContr (Contract name args decls)) = withLocalState do
     addContractResolutions (Contract name args decls)
-    forM_ entries specEntry
+    forM_ entries (specEntry . flexAll)
     st <- gets specTable
     dt <- gets spDataTable
     let dataDecls = map (CDataDecl . snd) (Map.toList dt)
@@ -167,26 +177,28 @@ specialiseContract (TContr (Contract name args decls)) = withLocalState do
     return (TContr (Contract name args decls'))
     where
       entries = ["main"]    -- Eventually all public methods
+      -- flexDecls = flexAll decls
+
 specialiseContract decl = pure decl
 
 specEntry :: Name -> SM ()
 specEntry name = withLocalState do
-    let any = TVar (Name "any")
-    let anytype = TyVar any 
+    let any = MetaTv (Name "any")
+    let anytype = Meta any
     mres <- lookupResolution name anytype
     case mres of
       Just (fd, ty, subst) -> do
-        debug ["resolution: ", show name, " : ", pretty ty, "@", pretty subst]
+        debug ["< resolution: ", show name, " : ", pretty ty, "@", pretty subst]
         void(specFunDef fd)
       Nothing -> do
-        warns ["Warning: no resolution found for ", show name]
+        warns ["!! Warning: no resolution found for ", show name]
 
 addContractResolutions :: Contract Id -> SM ()
 addContractResolutions (Contract name args decls) = do
   forM_ decls addCDeclResolution
 
 addCDeclResolution :: ContractDecl Id -> SM ()
-addCDeclResolution (CFunDecl fd) = addFunDefResolution fd
+addCDeclResolution (CFunDecl fd) = addFunDefResolution (flexAll fd)
 addCDeclResolution (CDataDecl dt) = addData dt
 addCDeclResolution _ = return ()
 
@@ -195,7 +207,7 @@ addFunDefResolution fd = do
   let name = sigName sig
   let funType = typeOfTcFunDef fd
   addResolution name funType fd
-  debug ["! addDeclResolution: ", show name, " : ", pretty funType]
+  debug ["+ addDeclResolution: ", show name, " : ", pretty funType]
 
 addMethodResolution :: Ty -> TcFunDef -> SM ()
 addMethodResolution ty fd = do
@@ -205,7 +217,7 @@ addMethodResolution ty fd = do
   let funType = typeOfTcFunDef fd
   let fd' = FunDef sig{sigName = name'} (funDefBody fd)
   addResolution name funType fd'
-  -- debug ["! addMethodResolution: ", show name', " : ", pretty funType]
+  debug ["+ addMethodResolution: ", show name', " : ", pretty funType]
 
 -- | `specExp` specialises an expression to given type
 specExp :: TcExp -> Ty -> SM TcExp
@@ -237,7 +249,7 @@ specConApp i@(Id n conTy) args ty = do
   let typedArgs = zip args argTypes'
   args' <- forM typedArgs (uncurry specExp)
   let conTy' = foldr (:->) ty argTypes'
-  debug ["! specConApp: ", prettyId i, " : ", pretty conTy, " ~> ", prettyId i', " : ", pretty conTy']
+  debug ["> specConApp: ", prettyId i, " : ", pretty conTy, " ~> ", prettyId i', " : ", pretty conTy']
   debug ["< specConApp: ", prettyConApp i args,  " ~> ", prettyConApp i' args']
   return (i', args')
 
@@ -255,7 +267,7 @@ specCall i args ty = do
   let typedArgs = zip args argTypes'
   args' <- forM typedArgs (uncurry specExp)
   let funType = foldr (:->) ty' argTypes'
-  debug ["! specCall: ", show name, " : ", pretty funType]
+  debug ["> specCall: ", show name, " : ", pretty funType]
   mres <- lookupResolution name funType
   case mres of
     Just (fd, ty, phi) -> do
@@ -274,6 +286,7 @@ specCall i args ty = do
       return (i, args')
   where
     guardSimpleType :: Ty -> SM ()
+    guardSimpleType (Meta _) = panics ["specCall ", pretty i, ": polymorphic result type"]
     guardSimpleType (TyVar _) = panics ["specCall ", pretty i, ": polymorphic result type"]
     guardSimpleType (_ :-> _) = panics ["specCall ", pretty i, ": function result type"]
     guardSimpleType _ = pure ()
@@ -291,7 +304,9 @@ specFunDef fd = withLocalState do
   let name = sigName sig
   let funType = typeOfTcFunDef fd
   let tvs = fv funType
-  let tvs' = apply subst (map TyVar tvs)
+  let mvs = mv funType
+  let tvs' = apply subst (map Meta mvs)
+  debug ["> specFunDef ", pretty name, " : ", pretty funType, " mvs=", prettys mvs, " tvs'=", prettys tvs']
   let name' = specName name tvs'
   let ty' = apply subst funType
   mspec <- lookupSpecialisation name'
@@ -304,7 +319,7 @@ specFunDef fd = withLocalState do
       addSpecialisation name' placeholder
       body' <- specBody (funDefBody fd)
       let fd' = FunDef sig'{sigName = name'} body'
-      debug ["! specFunDef: adding specialisation ", show name', " : ", pretty ty']
+      debug ["+ specFunDef: adding specialisation ", show name', " : ", pretty ty']
       addSpecialisation name' fd'
       return name'
 
@@ -328,6 +343,9 @@ ensureClosed ty ctxt subst = do
   let tvs = fv ty
   unless (null tvs) $ panics ["spec(", pretty ctxt,"): free type vars in ", pretty ty, ": ", show tvs
                              , " @ subst=", pretty subst]
+  let mvs = mv ty
+  unless (null tvs) $ panics ["spec(", pretty ctxt,"): free meta vars in ", pretty ty, ": ", show mvs
+                             , " @ subst=", pretty subst]
 
 specStmt :: Stmt Id -> SM(Stmt Id)
 specStmt stmt@(Return e) = do
@@ -346,7 +364,7 @@ specStmt stmt@(Var i := e) = do
   subst <- getSpSubst
   i' <- atCurrentSubst i
   let ty' = idType i'
-  debug ["specStmt (:=): ", pretty i, " : ", pretty (idType i)
+  debug ["> specStmt (:=): ", pretty i, " : ", pretty (idType i)
         , " @ ", pretty subst, "~>'", pretty ty']
   ensureClosed ty' stmt subst
   e' <- specExp e ty'
@@ -355,7 +373,7 @@ specStmt stmt@(Var i := e) = do
 
 specStmt stmt@(Let i mty mexp) = do
   subst <- getSpSubst
-  -- debug ["specStmt (Let): ", pretty i, " : ", pretty (idType i), " @ ", pretty subst]
+  debug ["> specStmt (Let): ", pretty i, " : ", pretty (idType i), " @ ", pretty subst]
   i' <- atCurrentSubst i
   let ty' = idType i'
   ensureClosed ty' stmt subst
@@ -406,9 +424,10 @@ flattenQual (QualName n s) = flattenQual n ++ "_" ++ s
 
 mangleTy :: Ty -> String
 mangleTy (TyVar (TVar (Name n))) = n
+mangleTy (Meta (MetaTv (Name n))) = n
+mangleTy (TyCon (Name "()") []) = "unit"
 mangleTy (TyCon (Name n) []) = n
 mangleTy (TyCon (Name n) ts) = n ++ "L" ++ intercalate "_" (map mangleTy ts) ++"J"
-
 
 showId :: Id -> String
 showId i =  showsId i ""
@@ -447,7 +466,7 @@ typeOfTcExp exp@(Call Nothing i args) = applyTo args funTy where
                        ]
 typeOfTcExp (Lam args body (Just tb))       = funtype tas tb where
   tas = map typeOfTcParam args
-typeOfTcExp (TyExp _ ty) = ty   
+typeOfTcExp (TyExp _ ty) = ty
 typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
 
 typeOfTcStmt :: Stmt Id -> Ty
@@ -473,6 +492,11 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) (returnType 
     Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
 
 typeOfTcFunDef :: TcFunDef -> Ty
-typeOfTcFunDef (FunDef sig _) = typeOfTcSignature sig
+typeOfTcFunDef (FunDef sig _) = flexAll $ typeOfTcSignature sig
 
+pprRes :: Resolution -> Doc
+-- type Resolution = (Ty, FunDef Id)
+pprRes(ty, fd) = ppr ty <+> text ":" <+> text(shortName fd)
 
+instance Pretty (Ty, FunDef Id) where
+  ppr = pprRes
