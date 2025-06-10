@@ -35,8 +35,14 @@ reduce :: [Pred] -> [Pred] -> TcM [Pred]
 reduce ps0 qs =
   do
     n <- askMaxRecursionDepth
-    ps' <- reduceI n ps0 qs 
+    ps' <- reduce' n ps0 qs 
     simplify ps'
+
+reduce' :: Int -> [Pred] -> [Pred] -> TcM [Pred]
+reduce' n ps qs 
+  = do 
+      ps' <- reduceI n ps qs 
+      reduceI n ps' qs 
 
 reduceI :: Int -> [Pred] -> [Pred] -> TcM [Pred]
 reduceI n ps0 qs 

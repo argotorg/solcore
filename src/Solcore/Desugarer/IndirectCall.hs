@@ -1,10 +1,8 @@
 module Solcore.Desugarer.IndirectCall where
 
 
-import Control.Monad.Identity 
 import Control.Monad.State 
 import qualified Data.Map as Map
-import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcEnv (primCtx)
@@ -118,8 +116,6 @@ indirectArgs :: [Exp Name] -> Exp Name
 indirectArgs [] = Con (Name "()") []
 indirectArgs [e] = e 
 indirectArgs (e : es) = epair e (indirectArgs es)
-  where 
-    epair e1 e2 = Con (Name "pair") [e1, e2]
 
 -- building the initial environment 
 
@@ -150,7 +146,7 @@ instance Collect (Contract Name) where
   collect (Contract _ _ ds) = collect ds
 
 instance Collect (ContractDecl Name) where 
-  collect (CFieldDecl f) = [] 
+  collect (CFieldDecl _) = [] 
   collect (CFunDecl fd) 
     = [sigName (funSignature fd)] 
   collect (CMutualDecl ds) = concatMap collect ds 

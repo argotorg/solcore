@@ -374,6 +374,8 @@ instance Apply (Stmt Id) where
     = Return (apply s e)
   apply s (Match es eqns)
     = Match (apply s es) (apply s eqns) 
+  apply _ s 
+    = s
 
   ids (e1 := e2) = ids [e1, e2]
   ids (Let n _ me) = [x | x <- ids me, n /= x]
@@ -385,13 +387,14 @@ instance Apply (Stmt Id) where
         vs' = ids bs \\ ids ps 
         (pss, bss) = unzip eqns 
         bs = concat bss 
-        ps = concat pss 
+        ps = concat pss
+  ids _ = []
 
 instance Apply (Exp Id) where 
   apply s v@(Var (Id n t))
     = maybe v f (lookup n s)
       where 
-        f v = Var (Id v t)
+        f v1 = Var (Id v1 t)
   apply s (Con n es)
     = Con n (apply s es)
   apply s (FieldAccess e n)
@@ -409,7 +412,7 @@ instance Apply (Exp Id) where
   ids (Call me _ es) = ids me `union` ids es 
   ids (Lam args bd _) 
     = ids bd \\ ids args
-  ids (TyExp e t) = ids e
+  ids (TyExp e _) = ids e
   ids _ = []
 
 instance Apply (Param Id) where 
@@ -479,6 +482,7 @@ expType (Call _ (Id _ t) _)
 expType (Lam _ _ (Just t)) 
   = t 
 expType (Lit l) = litType l 
+expType _ = error "Panic! MatchCompiler.expType"
 
 litType :: Literal -> Ty 
 litType _ = word 
