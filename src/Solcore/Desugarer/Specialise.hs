@@ -96,6 +96,7 @@ initSpecState debugp env = SpecState
     , spDebug = debugp
     }
 
+{-
 -- make type variables flexible by replacing them with metas
 flex :: Ty -> Ty
 flex (TyVar (TVar n)) = Meta (MetaTv n)
@@ -105,6 +106,7 @@ flex t = t
 -- make all type variables flexible in a syntactic construct
 flexAll :: Data a => a -> a
 flexAll = everywhere (mkT flex)
+-}
 
 addSpecialisation :: Name -> TcFunDef -> SM ()
 addSpecialisation name fd = modify $ \s -> s { specTable = Map.insert name fd (specTable s) }
@@ -114,7 +116,8 @@ lookupSpecialisation name = gets (Map.lookup name . specTable)
 
 addResolution :: Name -> Ty -> TcFunDef -> SM ()
 addResolution name ty fun = do
-    modify $ \s -> s { spResTable = Map.insertWith (++) name [(flex ty, fun)] (spResTable s) }
+    -- debug ["+ addResolution ", pretty name, "@", pretty ty, " |-> ", shortName fun]
+    modify $ \s -> s { spResTable = Map.insertWith (++) name [(ty, fun)] (spResTable s) }
 
 lookupResolution :: Name -> Ty ->  SM (Maybe (TcFunDef, Ty, TVSubst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty where
@@ -199,7 +202,7 @@ addContractResolutions (Contract name args decls) = do
   forM_ decls addCDeclResolution
 
 addCDeclResolution :: ContractDecl Id -> SM ()
-addCDeclResolution (CFunDecl fd) = addFunDefResolution (fd)
+addCDeclResolution (CFunDecl fd) = addFunDefResolution fd
 addCDeclResolution (CDataDecl dt) = addData dt
 addCDeclResolution _ = return ()
 
@@ -284,6 +287,7 @@ specCall i args ty = do
       return (Id name' ty', args'')
     Nothing -> do
       debug ["! specCall: no resolution found for ", show name, " : ", pretty funType]
+      -- error "Specialisation failed"
       return (i, args')
   where
     guardSimpleType :: Ty -> SM ()
