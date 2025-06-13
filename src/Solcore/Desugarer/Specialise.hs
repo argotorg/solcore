@@ -21,6 +21,7 @@ import Solcore.Frontend.TypeInference.Id ( Id(..) )
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv(TcEnv(..),TypeInfo(..))
 import qualified Solcore.Frontend.TypeInference.TcSubst as TcSubst
+import Solcore.Frontend.TypeInference.TcStmt(schemeFromSignature)
 import Solcore.Frontend.TypeInference.TcUnify(typesDoNotUnify)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Primitives.Primitives
@@ -114,6 +115,14 @@ flexAll :: Data a => a -> a
 flexAll = everywhere (mkT flex)
 -}
 
+-- | A signature forall tvs . t is considered ambiguous if `tvs \\ FTV(t) /= mempty`
+-- this is an approximation for  `FTV(body) \\ FTV(t) /= {}`
+isAmbiguousSig :: HasTV a => Signature a -> Bool
+isAmbiguousSig sig = not . null $ sigVars sig \\ freetv (sigParams sig, sigReturn sig)
+
+isAmbiguousFunDef :: HasTV a => FunDef a -> Bool
+isAmbiguousFunDef = isAmbiguousSig . funSignature
+
 addSpecialisation :: Name -> TcFunDef -> SM ()
 addSpecialisation name fd = modify $ \s -> s { specTable = Map.insert name fd (specTable s) }
 
@@ -123,8 +132,13 @@ lookupSpecialisation name = gets (Map.lookup name . specTable)
 addResolution :: Name -> Ty -> TcFunDef -> SM ()
 addResolution name ty fun = do
     -- debug ["+ addResolution ", pretty name, "@", pretty ty, " |-> ", shortName fun]
+    when (isAmbiguousFunDef fun) report
     modify $ \s -> s { spResTable = Map.insertWith (++) name [(ty, fun)] (spResTable s) }
-
+    where
+      scheme = schemeFromSignature (funSignature fun)
+      report = nopanics [ "Error: function ", pretty name
+                        ," cannot be specialised because it has an ambiguous type:\n   ", pretty scheme
+                        ]
 lookupResolution :: Name -> Ty ->  SM (Maybe (TcFunDef, Ty, TVSubst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty where
   str :: Pretty a => a -> String
@@ -623,6 +637,8 @@ instance HasTV a => HasTV (Maybe a) where
   applytv s = fmap (applytv s)
   freetv = maybe [] freetv
 
+instance (HasTV a, HasTV b) => HasTV (a,b) where  -- defaults
+
 {-
 instance (HasTV a, HasTV b, HasTV c) => HasTV (a,b,c) where
   applytv s (z,x,y) = (applytv s z, applytv s x, applytv s y)
@@ -637,8 +653,9 @@ instance HasTV Id where
   applytv s (Id n t) = Id n (applytv s t)
   freetv (Id _ t) = freetv t
 
-instance HasTV a => HasTV (Exp a) where
-instance HasTV a => HasTV (Stmt a) where
+instance HasTV a => HasTV (Param a) where -- defaults
+instance HasTV a => HasTV (Exp a) where  -- defaults
+instance HasTV a => HasTV (Stmt a) where  -- defaults
 
 instance HasTV (Pat Id) where
 
