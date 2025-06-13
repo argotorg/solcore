@@ -3,7 +3,7 @@ class self:Typedef(underlyingType) {
     function abs(x:underlyingType) -> self;
 }
 
-forall a.class a : Add {
+forall a.class a : Xor {
   function add(x:a, y:a) -> a;
 }
 
@@ -66,7 +66,7 @@ instance B : Typedef(word) {
   }
 }
 
-instance B : Add {
+instance B : Xor {
   function add(x, y) {
     match x {
       | F =>
@@ -84,11 +84,11 @@ instance B : Add {
   }
 }
 
-forall lhs rhs . lhs:Add, rhs:Add => instance (lhs, rhs):Add {
+forall lhs rhs . lhs:Xor, rhs:Xor => instance (lhs, rhs):Xor {
 
   function add(a, b) {
     match a, b {
-      | (a1, a2), (b1, b2) => return (Add.add(a1, b1), Add.add(a2, b2));
+      | (a1, a2), (b1, b2) => return (Xor.add(a1, b1), Xor.add(a2, b2));
     }
 
   }
@@ -99,7 +99,7 @@ contract Compose {
 
   function main() {
     let cypher = (T, F, T, F, T, F, T);
-    let res = Add.add( Add.add ((T, T, F, F, T, T, T), cypher), cypher);
+    let res = Xor.add( Xor.add ((T, T, F, F, T, T, T), cypher), cypher);
     return IsBits.extract(res);
   }
 }
