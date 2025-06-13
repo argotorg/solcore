@@ -12,6 +12,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Data.Generics
 import Data.List(intercalate, union, (\\))
+import Data.Maybe(fromMaybe)
 import qualified Data.Map as Map
 import GHC.Stack
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -144,8 +145,11 @@ lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty 
 getSpSubst :: SM TVSubst
 getSpSubst = gets spSubst
 
+putSpSubst :: TVSubst -> SM ()
+putSpSubst subst = modify $ \s -> s { spSubst = subst }
 extSpSubst :: TVSubst -> SM ()
-extSpSubst subst = modify $ \s -> s { spSubst =  spSubst s <> subst }
+
+extSpSubst subst = modify $ \s -> s { spSubst = spSubst s <> subst }
 
 atCurrentSubst :: HasTV a => a -> SM a
 atCurrentSubst a = flip applytv a <$> getSpSubst
@@ -158,7 +162,12 @@ spNewName = do
     s <- get
     let (n, ns) = newName (spNS s)
     put s { spNS = ns }
-    pure n
+    pure (addPrefix "_" n)
+
+-- data Name = Name String | QualName Name String
+addPrefix :: String -> Name -> Name
+addPrefix p (Name s) = Name (p ++ s)
+addPrefix p (QualName q s) = QualName q (p ++ s)
 
 -------------------------------------------------------------------------------
 
@@ -317,13 +326,16 @@ specCall i args ty = do
 specFunDef :: TcFunDef -> SM Name
 specFunDef fd0 = withLocalState do
   -- first, rename bound variables
-  fd <- renametv fd0
+  (fd, renamingSubst) <- renametv fd0
+  let renaming = fromTVS renamingSubst
+  let sig0 = funSignature fd
   let sig = funSignature fd
   let name = sigName sig
   let funType = typeOfTcFunDef fd
   let tvs = freetv funType
-  subst <- getSpSubst
-  let tvs' = {- applytv subst -} (map TyVar tvs)
+  subst <- renameSubst renaming <$> getSpSubst
+  putSpSubst subst
+  let tvs' = applytv subst (map TyVar tvs)
   debug ["> specFunDef ", pretty name, " : ", pretty funType,  " tvs'=", prettys tvs', " subst=", pretty subst]
   let name' = specName name tvs'
   let ty' = applytv subst funType
@@ -589,8 +601,8 @@ class Data a => HasTV a where
   freetv  :: a -> [Tyvar]    -- free variables
   freetv = everything (<>) (mkQ mempty (freetv @Ty))
 
-  renametv :: a -> SM a
-  renametv = pure
+  renametv :: a -> SM (a, TVSubst)
+  renametv a = pure (a, mempty)
 
 instance HasTV Ty where
   applytv (TVSubst s) t@(TyVar v)
@@ -636,7 +648,7 @@ instance HasTV (Signature Id) where
     freetv sig = (everything (<>) (mkQ mempty (freetv @Ty))) sig \\ sigVars sig
     renametv sig = do
       subst <- foldM addRenaming mempty (sigVars sig)
-      pure (applytv subst sig)
+      pure (applytv subst sig, subst)
 
 {-
 data FunDef a
@@ -653,9 +665,37 @@ instance HasTV (FunDef Id) where
       subst <- foldM addRenaming mempty (sigVars sig)
       let sig' = applytv subst sig
       let body' = applytv subst (funDefBody fd)
-      pure(FunDef sig' body')
+      pure(FunDef sig' body', subst)
 
 addRenaming :: TVSubst -> Tyvar -> SM TVSubst
 addRenaming b a = do
            fresh <- spNewName
            pure ( (a |-> TyVar (TVar fresh)) <> b )
+
+-- TODO: refactor - make renametv return TVRenaming; turn rename* into class methods
+
+newtype TVRenaming
+  = TVR { unTVR :: [(Tyvar, Tyvar)] } deriving (Eq, Show)
+
+instance Pretty TVRenaming where
+  ppr = braces . commaSep . map go . unTVR
+    where
+      go (v,t) = ppr v <+> text "|->" <+> ppr t
+
+toTVS :: TVRenaming -> TVSubst
+toTVS = TVSubst . map (fmap TyVar) . unTVR
+
+fromTVS :: TVSubst -> TVRenaming
+fromTVS = TVR . map (fmap unTyVar) . unTVSubst where
+    unTyVar (TyVar x) = x
+    unTyVar t = error("fromTVS: " ++ pretty t ++ "is not a type variable")
+
+renameTV :: TVRenaming -> Tyvar -> Tyvar
+renameTV (TVR r) v = fromMaybe v (lookup v r)
+
+renameTy :: TVRenaming -> Ty -> Ty
+renameTy r = everywhere  (mkT (renameTV r))
+
+renameSubst :: TVRenaming -> TVSubst -> TVSubst
+renameSubst r = TVSubst . map rename . unTVSubst where
+    rename (v, t) = (renameTV r v, renameTy r t)
