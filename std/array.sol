@@ -1,105 +1,113 @@
-class self:Typedef(underlyingType) {
-    function rep(x:self) -> underlyingType;
-    function abs(x:underlyingType) -> self;
+pragma no-coverage-condition TAdd;
+
+data Zero;
+data Succ(a);
+
+class self:TAdd(res) {}
+instance (Zero, a):TAdd(a) {}
+forall a b c . (b, a):TAdd(c) => instance (Succ(b), a):TAdd(Succ(c)) {}
+
+class lhs:Eq(rhs) {}
+instance a:Eq(a) {}
+
+// this should work but doesnt: forall sizel sizer elem sizeout . (sizel, sizer):TAdd(sizeout)
+// TODO: this panics during specialization
+//forall sizel sizer elem sizeout pairSizelSizer . pairSizelSizer:Eq((sizel, sizer)), pairSizelSizer:TAdd(sizeout) => function concat(lhs:memory(array(sizel, elem)), rhs:memory(array(sizer, elem))) -> memory(array(sizeout, elem)) {
+    //return memory(0) : memory(array(sizeout, elem)); // :D
+//}
+
+data Itself(a) = ItselfRuntimeTag;
+
+data array(size, elem) = array;
+data memory(a) = memory(word);
+
+class self:IndexAccessible (indexType, elementType){
+    function set(self:self, ix:indexType, val:elementType);
+    function at(self:self, ix:indexType) -> elementType;
 }
 
-forall a.class a : Xor {
-  function add(x:a, y:a) -> a;
+class self:ToWord{
+    function toWord(self:Itself(self)) -> word;
 }
 
-forall a. class a : Reverse {
-  function reverse(x:a) -> a;
+instance Zero : ToWord {
+    function toWord(zero) { return 0; }
 }
 
-data B = F | T;
-
-instance B : IsBit {}
-instance B : IsBits {
-  function extract(x) {
-    match x {
-      | F => return 0;
-      | T => return 1;
+forall prev . prev:ToWord => instance Succ(prev) : ToWord {
+    function toWord(self: Itself(Succ(prev))) {
+        let returnVal : word = ToWord.toWord(ItselfRuntimeTag:Itself(prev));
+        assembly {
+            returnVal := add(1, returnVal)
+        }
+        return returnVal;
     }
-  }
 }
 
-class self:IsBits {
-  function extract(x:self) -> word;
+class self:MemoryType {
+    function load(ptr:word) -> self;
+    function store(ptr:word, value:self);
 }
 
-forall self . self:IsBits => class self:IsBit {}
-
-pragma no-patterson-condition Reverse, IsBits;
-forall a . a:IsBit => default instance a:IsBits {
-  function extract(x) {
-    return IsBits.extract(x);
-  }
-}
-forall lhs rhs . lhs:IsBit, rhs:IsBits => instance (lhs, rhs):IsBits {
-  function extract(x) {
-    match x {
-      | (l,r) =>
-          let ret : word;
-          let lbit : word = IsBits.extract(l);
-          let rbits : word = IsBits.extract(r);
-          assembly {
-            ret := add(lbit, mul(10, rbits));
-          }
-          return ret;
+instance word:MemoryType {
+    function load(ptr:word) -> word {
+        let val : word;
+        assembly { val := mload(ptr) }
+        return val;
     }
-  }
+    function store(ptr:word, value:word) {
+        assembly { mstore(ptr, value) }
+    }
 }
 
-instance B : Typedef(word) {
-  function rep(x) {
-    match x {
-      | F => return 0;
-      | T => return 1;
-    }
-  }
+forall size elem . elem:MemoryType => instance memory(array(size, elem)) : IndexAccessible(word, elem) {
+    function at(self, index) -> elem {
+        let sizeValue = ToWord.toWord(ItselfRuntimeTag:Itself(size));
 
-  function abs(x) {
-    match x {
-      | 0 => return F;
-      | 1 => return T;
-    }
-  }
-}
-
-instance B : Xor {
-  function add(x, y) {
-    match x {
-      | F =>
-        match y {
-          | F => return F;
-          | T => return T;
+        assembly {
+            if iszero(lt(index, sizeValue)) {
+                revert(0, 0)
+            }
         }
 
-      | T =>
-        match y {
-          | F => return T;
-          | T => return F;
+        match self {
+            | memory(offset) =>
+                let x = offset; // can't use this inside the assembly block :-(
+                assembly {
+                    index := add(x, mul(32, index))
+                }
+                return MemoryType.load(index);
         }
     }
-  }
-}
 
-forall lhs rhs . lhs:Xor, rhs:Xor => instance (lhs, rhs):Xor {
+    function set(self, index, val) {
+        let sizeValue = ToWord.toWord(ItselfRuntimeTag:Itself(size));
 
-  function add(a, b) {
-    match a, b {
-      | (a1, a2), (b1, b2) => return (Xor.add(a1, b1), Xor.add(a2, b2));
+        assembly {
+            if iszero(lt(index, sizeValue)) {
+                revert(0, 0)
+            }
+        }
+
+        match self {
+            | memory(offset) =>
+            let x = offset; // can't use this inside the assembly block :-(
+                assembly {
+                    index := add(x, mul(32, index))
+                }
+                MemoryType.store(index, val);
+        }
     }
-
-  }
-
 }
 
-contract Compose {
 
-  function main() {
-    let cypher = (T, F, T, F, T, F, T);
-    let res = Xor.add( Xor.add ((T, T, F, F, T, T, T), cypher), cypher);
-    return IsBits.extract(res);
-  }
+
+contract Array {
+
+    function main() {
+        let arr : memory(array(Succ(Succ(Succ(Succ(Zero)))), word)) = memory(42);  // = (1,2,3,4,5,6,7,8,9,10);
+        IndexAccessible.set(arr, 4, 33);
+
+        return IndexAccessible.at(arr, 4);
+    }
 }
