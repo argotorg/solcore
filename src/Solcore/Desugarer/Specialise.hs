@@ -116,12 +116,10 @@ flexAll = everywhere (mkT flex)
 -}
 
 -- | A signature forall tvs . t is considered ambiguous if `tvs \\ FTV(t) /= mempty`
--- this is an approximation for  `FTV(body) \\ FTV(t) /= {}`
-isAmbiguousSig :: HasTV a => Signature a -> Bool
-isAmbiguousSig sig = not . null $ sigVars sig \\ freetv (sigParams sig, sigReturn sig)
-
-isAmbiguousFunDef :: HasTV a => FunDef a -> Bool
-isAmbiguousFunDef = isAmbiguousSig . funSignature
+-- this is should be the same as `FTV(body) \\ FTV(t) /= {}`
+-- returns list of ambiguous variables
+ambiguousVarsInSig :: HasTV a => Signature a -> [Tyvar]
+ambiguousVarsInSig sig = sigVars sig \\ freetv (sigParams sig, sigReturn sig)
 
 addSpecialisation :: Name -> TcFunDef -> SM ()
 addSpecialisation name fd = modify $ \s -> s { specTable = Map.insert name fd (specTable s) }
@@ -132,12 +130,17 @@ lookupSpecialisation name = gets (Map.lookup name . specTable)
 addResolution :: Name -> Ty -> TcFunDef -> SM ()
 addResolution name ty fun = do
     -- debug ["+ addResolution ", pretty name, "@", pretty ty, " |-> ", shortName fun]
-    when (isAmbiguousFunDef fun) report
+    let sig = funSignature fun
+    reportAmbiguousVars sig
     modify $ \s -> s { spResTable = Map.insertWith (++) name [(ty, fun)] (spResTable s) }
     where
-      scheme = schemeFromSignature (funSignature fun)
-      report = nopanics [ "Error: function ", pretty name
-                        ," cannot be specialised because it has an ambiguous type:\n   ", pretty scheme
+      reportAmbiguousVars sig = do
+        let vars = ambiguousVarsInSig sig
+        unless (null vars) $ nopanics [ "Error: function ", pretty name
+                        ," cannot be specialised because it has an ambiguous type:\n   "
+                        , pretty $ schemeFromSignature sig
+                        ,"\n variables: ", prettys vars
+                        ,"\n do not occur in the function type."
                         ]
 lookupResolution :: Name -> Ty ->  SM (Maybe (TcFunDef, Ty, TVSubst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty where
