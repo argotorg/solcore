@@ -140,7 +140,7 @@ addResolution name ty fun = do
                         ," cannot be specialised because it has an ambiguous type:\n   "
                         , pretty $ schemeFromSignature sig
                         ,"\n variables: ", prettys vars
-                        ,"\n do not occur in the function type."
+                        ,"\n do not occur in the argument/result types."
                         ]
 lookupResolution :: Name -> Ty ->  SM (Maybe (TcFunDef, Ty, TVSubst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty where
