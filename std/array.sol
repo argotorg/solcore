@@ -106,6 +106,7 @@ contract Array {
 
     function main() {
         let arr : memory(array(Succ(Succ(Succ(Succ(Zero)))), word)) = memory(42);  // = (1,2,3,4,5,6,7,8,9,10);
+
         IndexAccessible.set(arr, 4, 33);
 
         return IndexAccessible.at(arr, 4);
