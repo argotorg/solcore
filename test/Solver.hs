@@ -1,44 +1,49 @@
 module Solver where
 
 import Test.Tasty
-import Test.Tasty.Program
-import Test.Tasty.ExpectedFailure 
+import Test.Tasty.HUnit
+import Solcore.Pipeline.SolverPipeline (runForFile)
 
 
--- constructing the test suit 
+-- tests
 
-satTests :: TestTree 
-satTests = testGroup "Tests for SAT"
-                     [
-                       testFile solverDir "sat00.inp"
-                     , testFile solverDir "sat01.inp"
-                     , testFile solverDir "sat02.inp"
-                     , testFile solverDir "sat03.inp"
-                     , expectFail $ testFile solverDir "sat04.inp"
-                     , expectFail $ testFile solverDir "sat05.inp"
-                     ]
-            where 
-              solverDir = "./test/solver"
+satTests :: TestTree
+satTests = testGroup "Tests for SAT" $
+  fmap shouldSolve
+    [ "sat00.inp"
+    , "sat01.inp"
+    , "sat02.inp"
+    , "sat03.inp"
+    ]
 
-testFile :: String -> String -> TestTree 
-testFile folder file 
-  = testProgram file "cabal" (basicOptions ++ [folder ++ "/" ++ file]) Nothing 
-    where 
-      basicOptions = ["run", "solver", "--"]
-    
+unsatTests :: TestTree
+unsatTests = testGroup "Tests for UNSAT" $
+  fmap shouldFail
+    [ "sat04.inp"
+    , "sat05.inp"
+    ]
 
-reduceTests :: TestTree 
-reduceTests = testGroup "Tests for reduce"
-                        [
-                          testFile solverDir "red00.inp"
-                        , testFile solverDir "red01.inp"
-                        , testFile solverDir "red02.inp"
-                        , testFile solverDir "red03.inp"
-                        , testFile solverDir "red04.inp"
-                        , testFile solverDir "red05.inp"
-                        , testFile solverDir "red06.inp"
-                        ]
-            where 
-              solverDir = "./test/solver"
+reduceTests :: TestTree
+reduceTests = testGroup "Tests for reduce" $
+  fmap shouldSolve
+    [ "red00.inp"
+    , "red01.inp"
+    , "red02.inp"
+    , "red03.inp"
+    , "red04.inp"
+    , "red05.inp"
+    , "red06.inp"
+    ]
 
+-- utils
 
+shouldSolve :: FilePath -> TestTree
+shouldSolve = testFile id
+
+shouldFail :: FilePath -> TestTree
+shouldFail = testFile not
+
+testFile :: (Bool -> Bool) -> FilePath -> TestTree
+testFile fn file = testCase file $ do
+  res <- runForFile ("./test/solver/" ++ file)
+  assertBool ("Solver test failed for " ++ file) (fn res)
