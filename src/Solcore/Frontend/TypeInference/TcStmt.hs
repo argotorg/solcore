@@ -3,7 +3,6 @@ module Solcore.Frontend.TypeInference.TcStmt where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
-import Control.Monad.Trans
 
 import Data.Generics hiding (Constr)
 import Data.List
@@ -12,7 +11,6 @@ import Data.Maybe
 
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
-import Solcore.Frontend.TypeInference.Erase
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.NameSupply
@@ -37,24 +35,24 @@ tcStmt e@(lhs := rhs)
       (lhs1, ps1, t1) <- tcExp lhs
       (rhs1, ps2, t2) <- tcExp rhs
       s <- match t2 t1 `wrapError` e
-      extSubst s
+      _ <- extSubst s
       pure (lhs1 := rhs1, apply s $ ps1 ++ ps2, unit)
 tcStmt e@(Let n mt me)
   = do
       (me', psf, tf) <- case (mt, me) of
                       (Just t, Just e1) -> do
                         (e', ps1, t1) <- tcExp e1
-                        kindCheck t1 `wrapError` e
+                        _ <- kindCheck t1 `wrapError` e
                         let bvs = bv t 
                         sks <- mapM (const freshTyVar) bvs 
                         let t' = insts (zip bvs sks) t 
                         s <- match t1 t' `wrapError` e 
-                        extSubst s
+                        _ <- extSubst s
                         withCurrentSubst (Just e', ps1, t')
                       (Just t, Nothing) -> do
                         return (Nothing, [], t)
-                      (Nothing, Just e) -> do
-                        (e', ps, t1) <- tcExp e
+                      (Nothing, Just e1) -> do
+                        (e', ps, t1) <- tcExp e1
                         return (Just e', ps, t1)
                       (Nothing, Nothing) ->
                         (Nothing, [],) <$> freshTyVar
@@ -63,9 +61,9 @@ tcStmt e@(Let n mt me)
       withCurrentSubst (e', psf, unit)
 tcStmt (StmtExp e)
   = do
-      (e', ps', t') <- tcExp e
+      (e', ps', _) <- tcExp e
       pure (StmtExp e', ps', unit)
-tcStmt m@(Return e)
+tcStmt (Return e)
   = do
       (e', ps, t) <- tcExp e
       pure (Return e', ps, t)
@@ -74,7 +72,7 @@ tcStmt (Match es eqns)
       (es', pss', ts') <- unzip3 <$> mapM tcExp es
       (eqns', pss1, resTy) <- tcEquations ts' eqns
       withCurrentSubst (Match es' eqns', concat (pss1 : pss'), resTy)
-tcStmt s@(Asm yblk)
+tcStmt (Asm yblk)
   = withLocalCtx yulPrimOps $ do
       (newBinds,t) <- tcYulBlock yblk
       let word' = monotype word
@@ -86,15 +84,15 @@ tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations ts eqns
   = do
       resTy <- freshTyVar
-      (eqns', ps, ts') <- unzip3 <$> mapM (tcEquation resTy ts) eqns
+      (eqns', ps, _) <- unzip3 <$> mapM (tcEquation resTy ts) eqns
       withCurrentSubst (eqns', concat ps, resTy)
 
 tcEquation :: Ty -> [Ty] -> Equation Name -> TcM (Equation Id, [Pred], Ty)
-tcEquation retTy ts eqn@(ps, ss)
+tcEquation ret ts eqn@(ps, ss)
   = withLocalEnv do
-      (ps', ts', res) <- tcPats ts ps
+      (ps', _, res) <- tcPats ts ps
       (ss', pss', t) <- withLocalCtx res (tcBody ss)
-      s <- unify t retTy `wrapError` eqn 
+      s <- unify t ret `wrapError` eqn 
       withCurrentSubst ((ps', ss'), pss', apply s t)
 
 tcPats :: [Ty] -> [Pat Name] -> TcM ([Pat Id], [Ty], [(Name,Scheme)])
@@ -117,12 +115,12 @@ tcPat t p@(PCon n ps)
       (ps1, ts, lctxs) <- unzip3 <$> zipWithM tcPat vs0 ps
       -- asking type from environment
       st <- askEnv n `wrapError` p
-      (ps' :=> tc) <- freshInst st
+      (_ :=> tc) <- freshInst st
       s <- unify tc (funtype ts t) `wrapError` p
       let t' = apply s t
       tn <- typeName t'
       checkConstr tn n
-      let lctx' = map (\(n',t') -> (n', apply s t')) (concat lctxs)
+      let lctx' = map (\(n',t1) -> (n', apply s t1)) (concat lctxs)
       pure (PCon (Id n tc) ps1, apply s t, apply s lctx')
 tcPat t PWildcard
   = pure (PWildcard, t, [])
@@ -135,12 +133,13 @@ tcPat t' (PLit l)
 -- type inference for expressions
 
 mkCon :: DataTy -> TcM (Exp Id, Ty)
-mkCon (DataTy nt vs [(Constr n _)])
+mkCon (DataTy nt vs ((Constr n _) : _))
   = do 
       mvs <- mapM (const freshTyVar) vs 
       let
         t1 = TyCon nt mvs
       pure (Con (Id n t1) [], t1)
+mkCon d = tcmError $ unlines ["Panic!!! This should not happen: mkCon", pretty d] 
  
 tcLit :: Literal -> TcM Ty
 tcLit (IntLit _) = return word
@@ -177,8 +176,8 @@ tcExp e@(Con n es)
       -- checking if the constructor belongs to type tn
       checkConstr tn n
       let ps' = concat (ps : pss)
-          e = Con (Id n t) es'
-      withCurrentSubst (e, ps', t')
+          e1 = Con (Id n t) es'
+      withCurrentSubst (e1, ps', t')
 tcExp (FieldAccess Nothing n)
   = throwError "Not Implemented yet!"
 tcExp (FieldAccess (Just e) n)
@@ -208,17 +207,17 @@ tcExp e@(Lam args bd _)
        if noDesugarCalls then withCurrentSubst (Lam args' bd' (Just t1), ps1, ty)
        else do
          (e, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty
-         withCurrentSubst (e, ps1, t)
+         -- here we do not need the constraints in ps1, since after closure conversion 
+         -- the lambda is replaced by a unique type constructor for it.
+         withCurrentSubst (e, [], t)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
       (e', ps, ty') <- tcExp e
-      let bvs = bv ty 
-      sks <- mapM (const freshTyVar) bvs 
-      let ty1 = insts (zip bvs sks) ty
-      s <- match ty' ty1 
+      s <- match ty' ty 
+      info ["Exp:", pretty e1, " - ", pretty (ps :=> ty')]
       extSubst s
-      withCurrentSubst (TyExp e' ty1, ps, ty1)
+      withCurrentSubst (TyExp e' ty, ps, ty)
 
 closureConversion :: [Tyvar] -> 
                      [Param Id] -> 
@@ -238,19 +237,20 @@ closureConversion vs args bdy ps ty
       if null free then do
         -- no closure needed for monomorphic 
         -- lambdas!
-        fun <- createClosureFreeFun fn args bdy ps ty 
-        let fun1 = erase fun
-        st <- get 
-        clearSubst 
-        (fun', _, qs) <- tcFunDef False [] fun1 
+        --
+        -- creating the lambda function by lifting it. 
+        fun1 <- createClosureFreeFun fn args bdy ps ty
+        info [">> Creating lambda lifted function(free):\n", pretty fun1]
         sch <- generalize (ps, [], ty)
-        put st 
-        (udt@(DataTy dn vs _), instd) <- generateDecls (fun', sch)
+        -- creating the invoke instance and unique type def.
+        (udt@(DataTy dn vs _), instd) <- generateDecls (fun1, sch)
         mvs <- mapM (const freshTyVar) vs
         let t = TyCon dn mvs
-        writeFunDef fun'
+        -- updating the type inference state
+        writeFunDef fun1
         writeDataTy udt
-        checkDataType udt 
+        checkDataType udt
+        -- type checking generated instance
         checkInstance instd
         extEnv fn sch 
         instd' <- tcInstance instd
@@ -260,6 +260,7 @@ closureConversion vs args bdy ps ty
         (cdt, e', t') <- createClosureType free vs ty
         addUniqueType fn cdt 
         (fun, sch) <- createClosureFun fn free cdt args bdy ps ty
+        info [">> Create lambda lifted function(closure):\n", pretty fun]
         writeFunDef fun 
         writeDataTy cdt
         checkDataType cdt 
@@ -302,16 +303,19 @@ createClosureFun fn free cdt args bdy ps ty
   = do 
       j <- incCounter
       ct <- closureTyCon cdt
-      let cName = Name $ "env" ++ show j
+      let 
+          args0 = everywhere (mkT gen) args 
+          ps0  = everywhere (mkT gen) ps 
+          cName = Name $ "env" ++ show j
           cParam = Typed (Id cName ct) ct 
-          args' = cParam : args 
+          args' = cParam : args0 
           (_,retTy) = splitTy ty
-          vs' = union (fv ct) (fv ps)
+          vs' = union (bv ct) (bv ps0)
           ty' = ct :-> ty 
-          sig = Signature vs' ps fn args' (Just retTy)
+          sig = Signature vs' ps0 fn args' (Just retTy)
       bdy' <- createClosureBody cName cdt free bdy
-      sch <- generalize (ps, [], ty')
-      pure (FunDef sig bdy', sch)
+      sch <- generalize (ps0, [], ty')
+      pure (FunDef sig (everywhere (mkT gen) bdy'), sch)
  
 
 closureTyCon :: DataTy -> TcM Ty 
@@ -336,9 +340,9 @@ createClosureFreeFun fn args bdy ps ty
   = do
       let
         (_, retTy) = splitTy ty
-        vs = fv ty `union` fv ps 
+        vs = bv ty `union` bv ps 
         sig = Signature vs ps fn args (Just retTy)
-      pure (FunDef sig bdy)
+      pure (everywhere (mkT gen) $ FunDef sig bdy)
 
 tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty], [Tyvar])
 tcArgs params
@@ -355,7 +359,7 @@ tcArg (Untyped n)
 tcArg a@(Typed n ty)
   = do
       ty1 <- kindCheck ty `wrapError` a
-      pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1, fv ty1)
+      pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1, bv ty1)
 
 -- type checking a single bind
 -- create tcSignature which should return the 
@@ -365,6 +369,7 @@ tcSignature :: Signature Name -> [Pred] -> TcM ( (Name, Scheme)
                                                , [(Name, Scheme)]
                                                , [Ty]
                                                , [Pred]
+                                               , IEnv 
                                                ) 
 tcSignature sig@(Signature vs ps n args rt) qs 
   = do 
@@ -373,18 +378,21 @@ tcSignature sig@(Signature vs ps n args rt) qs
           args0 = everywhere (mkT (insts @Ty env)) args 
           rt0 = everywhere (mkT (insts @Ty env)) rt 
           ps0 = everywhere (mkT (insts @Ty env)) ps
-          qs0 = everywhere (mkT (insts @Ty env)) qs 
+          qs0 = everywhere (mkT (insts @Ty env)) qs
       (args', pschs, ts, vs') <- tcArgs args0
       t' <- maybe freshTyVar pure rt0
-      sch <- generalize (ps0 ++ qs0, qs0, funtype ts t')
-      pure ((n, sch), pschs, ts, qs0)
+      sch <- generalize (ps0, qs0, funtype ts t')
+      pure ((n, sch), pschs, ts, qs0, env)
 
 hasAnn :: Signature Name -> Bool 
 hasAnn (Signature vs ps n args rt) 
-  = any isAnn args && isJust rt 
+  = any isAnn args && isJust rt && n /= qn 
     where 
       isAnn (Typed _ t) = True 
-      isAnn _ = False 
+      isAnn _ = False
+
+      qn = QualName invokableName "invoke"
+
 
 -- boolean flag indicates if the assumption for the 
 -- function should be included in the context. It 
@@ -395,10 +403,11 @@ hasAnn (Signature vs ps n args rt)
 tcFunDef :: Bool -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl qs d@(FunDef sig bd)
   = withLocalEnv do
-     info [">> Starting the typing of:", pretty sig]
-     ((n,sch), pschs, ts, qs') <- tcSignature sig qs
+     info [">> Starting the typing of:\n", pretty d]
+     ((n,sch), pschs, ts, qs', ienv) <- tcSignature sig qs
      let lctx = if incl then (n,sch) : pschs else pschs
-     (bd', ps1, t') <- withLocalCtx lctx (tcBody bd) `wrapError` d
+         bd0 = everywhere (mkT (insts @Ty ienv)) bd 
+     (bd', ps1, t') <- withLocalCtx lctx (tcBody bd0) `wrapError` d
      (ps2 :=> ann) <- freshInst sch 
      ty <- withCurrentSubst (funtype ts t')
      -- checking if the constraints are valid
@@ -416,10 +425,35 @@ tcFunDef incl qs d@(FunDef sig bd)
      -- checking subsumption
      when (hasAnn sig) $ do
         subsCheck sch' sch
+     -- checking ambiguity
+     when (ambiguous sch') $ do 
+        ambiguousTypeError sch' sig
      sig2 <- elabSignature sig sch' `wrapError` d
      info [">> Finishing the typing of:", pretty sig2]
+     info [">> Infered type:", pretty sch']
      fd <- withCurrentSubst (FunDef sig2 bd')
      withCurrentSubst (fd, sch', ds)
+
+-- testing ambiguity 
+
+ambiguous :: Scheme -> Bool
+ambiguous (Forall vs (ps :=> t))
+  = not $ null $ bv ps \\ bv (closure ps (bv t)) 
+
+reachable :: [Pred] -> [Tyvar] -> [Pred]
+reachable ps vs 
+  = [p | p <- ps, disjunct (bv p) vs]
+
+closure :: [Pred] -> [Tyvar] -> [Pred]
+closure ps vs 
+  | subset (bv $ reachable ps vs) vs = reachable ps vs 
+  | otherwise = closure ps (bv (reachable ps vs))
+
+subset :: Eq a => [a] -> [a] -> Bool 
+subset xs ys = all (\ x -> x `elem` ys) xs
+
+disjunct :: Eq a => [a] -> [a] -> Bool 
+disjunct xs ys = not $ null $ intersect xs ys
 
 -- only invokable constraints can be inserted freely 
 
@@ -428,6 +462,7 @@ isValid rs = null rs || all isInvoke rs
   where 
     isInvoke (InCls n _ _) 
       = n == invokableName
+    isInvoke _ = False 
 
 -- update types in signature 
 
@@ -488,7 +523,7 @@ tcInstance idecl@(Instance d vs ctx n ts t funs)
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs)
       funs' <- buildSignatures n ts t funs `wrapError` idecl
-      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False ctx) funs' `wrapError` idecl 
+      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False ctx) funs' `wrapError` idecl
       let
         funs2 = everywhere (mkT gen) funs1
         vs0 = map TVar namePool
@@ -694,14 +729,12 @@ generalize (ps,qs,t)
   = do 
       envVars <- getEnvMetaVars
       (ps1,t1) <- withCurrentSubst (ps,t)
-      ps2 <- reduce ps1 qs 
       t2 <- withCurrentSubst t1
       s <- getSubst 
       let 
-          ps3 = apply s ps2 
           t3 = apply s t2 
-          vs = map gvar $ mv (ps3,t3) \\ envVars 
-          sch = Forall vs (everywhere (mkT gen) $ ps3 :=> t3)
+          vs = map gvar $ mv (ps1,t3) \\ envVars 
+          sch = Forall vs (everywhere (mkT gen) $ ps1 :=> t3)
       return sch
 
 -- kind check
@@ -822,11 +855,11 @@ tcYulStmt (YSwitch e cs df)
 tcYulStmt (YFor init e bdy upd)
   = do
       ns <- fst <$> tcYulBlock init
-      withLocalEnv do
-        mapM_ (flip extEnv mword) ns
-        tcYulExp e
-        tcYulBlock bdy
-        tcYulBlock upd
+      _ <- withLocalEnv do
+              mapM_ (flip extEnv mword) ns
+              tcYulExp e
+              tcYulBlock bdy
+              tcYulBlock upd
       pure ([], unit)
 tcYulStmt _ = pure ([], unit)
 
@@ -971,3 +1004,7 @@ rigidVariableError vts
 invalidDefaultInst :: Inst -> TcM ()
 invalidDefaultInst p
   = tcmError $ "Cannot have a default instance with a non-type variable as main argument:" ++ pretty p
+
+ambiguousTypeError :: Scheme -> Signature Name -> TcM ()
+ambiguousTypeError sch sig 
+  = tcmError $ unlines ["Ambiguous infered type", pretty sch, "in", pretty sig] 

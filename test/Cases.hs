@@ -117,8 +117,7 @@ cases =
     , expectFail $ runTestForFile "unconstrainted-instance.solc" caseFolder
     , runTestForFile "constrained-instance.solc" caseFolder
     , runTestForFile "constrained-instance-context.solc" caseFolder
-    , -- XXX Check this later
-      expectFail $ runTestForFile "reference.solc" caseFolder
+    , expectFail $ runTestForFile "reference.solc" caseFolder
     , runTestForFile "super-class.solc" caseFolder
     , runTestForFile "proxy.solc" caseFolder
     , runTestForFile "another-subst.solc" caseFolder
@@ -128,10 +127,12 @@ cases =
     , expectFail $ runTestForFile "complexproxy.solc" caseFolder
     , expectFail $ runTestForFile "reference-test.solc" caseFolder
     , runTestForFile "reference-encoding-good.solc" caseFolder
-    , expectFail $ runTestForFile "reference-encoding-bad.solc" caseFolder
+    , runTestForFile "reference-encoding-good1.solc" caseFolder
     , expectFail $ runTestForFile "default-inst.solc" caseFolder
     , expectFail $ runTestForFile "default-instance-missing.solc" caseFolder
     , expectFail $ runTestForFile "default-instance-weak.solc" caseFolder
+    , runTestForFile "tuple-trick.solc" caseFolder
+    , runTestForFile "const-array.solc" caseFolder 
     ]
  where
   caseFolder = "./test/examples/cases"

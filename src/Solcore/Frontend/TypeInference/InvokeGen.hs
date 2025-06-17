@@ -51,7 +51,8 @@ createInstance :: DataTy -> FunDef Id -> Scheme -> TcM (Instance Name)
 createInstance udt fd sch 
   = do
       -- instantiating function type signature 
-      qt@(qs :=> ty) <- fresh sch 
+      qt@(qs :=> ty) <- fresh sch
+      info [">> Starting the creation of instance for ", pretty $ sigName (funSignature fd) , " :: ", pretty sch]
       -- getting invoke type from context 
       (qs' :=> ty') <- askEnv invoke >>= fresh 
       -- getting arguments and return type from signature 
@@ -59,9 +60,9 @@ createInstance udt fd sch
           args' = if null args then [unit] else filter (not . isClosureTy) args
           vunreach = bv qt \\ bv ty 
           argTy = tupleTyFromList args'
-          argvars = fv qt 
+          argvars = bv qt  
           dn = dataName udt
-          selfTy = TyCon dn (TyVar <$> bv ty `union` bv qs)
+          selfTy = TyCon dn (TyVar <$> argvars)
       -- building the invoke function signature 
       (selfParam, sn) <- freshParam "self" selfTy
       (argParam, an) <- freshParam "arg" argTy
@@ -70,8 +71,8 @@ createInstance udt fd sch
       -- pattern variables for arguments
       (sargs, sarg) <- unzip <$> mapM freshPatArg args'
       let
-        isig = Signature argvars qs invokeName [selfParam, argParam] (Just retTy)
-      -- building the match of function body
+        isig = Signature [] [] invokeName [selfParam, argParam] (Just retTy)
+        -- building the match of function body
         nargs = length args 
         discr = epair (Var sn) (Var an)
         fname = sigName (funSignature fd)
@@ -131,12 +132,6 @@ freshFromString s
   = do 
       n <- incCounter
       pure (Name (s ++ show n))
-
-removeClosureTy :: [Ty] -> [Ty] 
-removeClosureTy tys@(TyCon n _ : ts) 
-  | isClosureName n = ts 
-  | otherwise = tys 
-removeClosureTy tys = tys
 
 isClosureName :: Name -> Bool 
 isClosureName n = isPrefixOf "t_closure" (pretty n)

@@ -5,13 +5,10 @@ import Control.Monad.Identity
 import Control.Monad.State
 import Data.List 
 import qualified Data.Map as Map
-import Data.Maybe (isNothing)
 import Solcore.Desugarer.UniqueTypeGen (mkUniqueType, UniqueTyMap)
 import Solcore.Frontend.Pretty.SolcorePretty 
 import Solcore.Frontend.Syntax
-import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv (primCtx)
-import Solcore.Primitives.Primitives
 
 
 -- lambda lifting transformation top level function for capture free lambdas 
@@ -19,8 +16,8 @@ import Solcore.Primitives.Primitives
 lambdaLifting :: UniqueTyMap -> 
                  CompUnit Name -> 
                  Either String (CompUnit Name, UniqueTyMap, [String])
-lambdaLifting utm unit 
-  = case runLiftM (liftLambda unit) (Map.keys utm) utm of 
+lambdaLifting utm cunit 
+  = case runLiftM (liftLambda cunit) (Map.keys utm) utm of 
       Left err -> Left err 
       Right (CompUnit imps ds, env) ->
         let decls' = combine (generated env) ds 
@@ -125,7 +122,7 @@ instance LiftLambda (Exp Name) where
         me' <- liftLambda me 
         es' <- liftLambda es 
         pure (Call me' n es')
-  liftLambda e@(Lam ps bd mt) 
+  liftLambda (Lam ps bd _) 
     = do 
         fs <- gets functionNames 
         let
@@ -163,17 +160,18 @@ createClosureType ns
       pure (DataTy n vs [Constr n (TyVar <$> vs)], n)
 
 createUniqueTypeClosure :: Name -> DataTy -> LiftM DataTy
-createUniqueTypeClosure n (DataTy ct vs ((Constr c ts) : _))
+createUniqueTypeClosure n (DataTy _ vs ((Constr c ts) : _))
   = do 
       tn <- freshName ("t_" ++ pretty n)
       let 
           c' = Constr tn [TyCon c ts]
       pure (DataTy tn vs [c'])
+createUniqueTypeClosure _ _ = error "Panic! LambdaLifting.createUniqueTypeClosure!"
 
 mkMatchBody :: Name -> [Name] -> Param Name -> Body Name -> Stmt Name
 mkMatchBody dn ns (Untyped n) bd 
   = Match [Var n] [([PCon dn (PVar <$> ns)], bd)] 
-
+mkMatchBody _ _ _ _ = error "Panic! LambdaLifting.mkMatchBody!"
 
 createFunction :: [Param Name] -> 
                   Body Name -> 
@@ -251,7 +249,7 @@ instance Collect (TopDecl Name) where
   collect _ = []
 
 instance Collect (Contract Name) where 
-  collect (Contract n vs ds) 
+  collect (Contract _ _ ds) 
     = collect ds 
 
 instance Collect (ContractDecl Name) where 
@@ -294,7 +292,8 @@ instance Vars (Stmt Name) where
   vars (Let _ _ _) = []
   vars (StmtExp e) = vars e 
   vars (Return e) = vars e 
-  vars (Match e eqns) = vars e `union` vars eqns 
+  vars (Match e eqns) = vars e `union` vars eqns
+  vars _ = []
 
 instance Vars (Equation Name) where 
   vars (_, ss) = vars ss 

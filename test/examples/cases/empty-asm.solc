@@ -1,0 +1,8 @@
+function f(x : word) {
+  match x {
+    | 0 =>
+      let ret : word;
+      assembly {}
+      return ret;
+  }
+}
