@@ -30,3 +30,7 @@ output.core
 
 # nix
 /result
+
+# claude
+/CLAUDE.md
+/.claude/
