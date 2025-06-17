@@ -1,9 +1,9 @@
 contract Add1 {
   function main() {
-    let res: Word;
+    let res: word;
     assembly {
        res := add(40, 2)
-    };
+    }
     return res;
   }
 }

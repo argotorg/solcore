@@ -373,9 +373,8 @@ instance Apply (Stmt Id) where
   apply s (Return e)
     = Return (apply s e)
   apply s (Match es eqns)
-    = Match (apply s es) (apply s eqns) 
-  apply _ s 
-    = s
+    = Match (apply s es) (apply s eqns)
+  apply s stmt@Asm{} = stmt
 
   ids (e1 := e2) = ids [e1, e2]
   ids (Let n _ me) = [x | x <- ids me, n /= x]
