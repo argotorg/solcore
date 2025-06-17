@@ -80,8 +80,43 @@
       - https://graphics.stanford.edu/~seander/bithacks.html
   */
 
-data Zero;
-daat Succ(n);
+// --- type level numbers (binary rep) ---
+
+/*
+  note: this is kinda backwards
+
+  0 (0)  -> zero
+  1 (1)  -> one
+  2 (10) -> bit0(one)
+  3 (11) -> bit1(one)
+*/
+
+data zero;
+data one;
+data bit0(n);
+data bit1(n);
+
+class self:Number {}
+class (self:Number) => self:NonZeroNumber {}
+
+instance zero:Number {}
+instance one:Number {}
+instance one:NonZeroNumber {}
+instance (n:NonZeroNumber) => bit0(n):Number {}
+instance (n:NonZeroNumber) => bit0(n):NonZeroNumber {}
+instance (n:NonZeroNumber) => bit1(n):Number {}
+instance (n:NonZeroNumber) => bit1(n):NonZeroNumber {}
+
+// --- conversion from type level to runtime words ---
+
+// note: we
+class self:FromNumber(result) {
+    function get(_:Proxy(self)) -> result;
+}
+
+forall n:Number (n,t):FromNumber . function fromNum(x:n) -> t {
+    return FromNumber.get(TYPE((n,t)));
+}
 
 data Proxy(t) = Proxy
 
