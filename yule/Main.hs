@@ -33,14 +33,12 @@ main = do
     let source = if oCompress then compress core else core
     when oCompress $ do
         putStrLn "Compressing sums"
-        putStrLn (render (nest 2 (ppr source)))
     generatedYul <- runTM options (translateStmts source)
     let name = fromString (ccName coreContract)
 
     let doc = if Options.wrap options
         then wrapInSol name generatedYul
         else wrapInObject name generatedYul
-    putStrLn (render doc)
     putStrLn ("writing output to " ++ Options.output options)
     writeFile (Options.output options) (render doc)
 
