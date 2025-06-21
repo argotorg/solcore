@@ -289,7 +289,9 @@ createClosureType ids vs ty
           vs' = nub $ (mv ts) ++ (map (MetaTv . var) vs) 
           ty' = TyCon dn (Meta <$> vs')
           cid = Id dn (funtype ts ty')
-      pure (DataTy dn (map gvar vs') [Constr dn ts'], Con cid ns, ty')
+          d = DataTy dn (map gvar vs') [Constr dn ts']
+      info [">> Create closure type:", pretty d]
+      pure (d, Con cid ns, ty')
 
 createClosureFun :: Name -> 
                     [Id] -> 
@@ -315,7 +317,8 @@ createClosureFun fn free cdt args bdy ps ty
           sig = Signature vs' ps0 fn args' (Just retTy)
       bdy' <- createClosureBody cName cdt free bdy
       sch <- generalize (ps0, [], ty')
-      pure (FunDef sig (everywhere (mkT gen) bdy'), sch)
+      pure (everywhere (mkT gen) $ FunDef sig bdy', sch)
+
  
 
 closureTyCon :: DataTy -> TcM Ty 
@@ -386,12 +389,12 @@ tcSignature sig@(Signature vs ps n args rt) qs
 
 hasAnn :: Signature Name -> Bool 
 hasAnn (Signature vs ps n args rt) 
-  = any isAnn args && isJust rt && n /= qn 
+  = any isAnn args && isJust rt -- && n /= qn 
     where 
       isAnn (Typed _ t) = True 
       isAnn _ = False
 
-      qn = QualName invokableName "invoke"
+      -- qn = QualName invokableName "invoke"
 
 
 -- boolean flag indicates if the assumption for the 

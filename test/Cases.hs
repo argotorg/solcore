@@ -132,7 +132,8 @@ cases =
     , expectFail $ runTestForFile "default-instance-missing.solc" caseFolder
     , expectFail $ runTestForFile "default-instance-weak.solc" caseFolder
     , runTestForFile "tuple-trick.solc" caseFolder
-    , runTestForFile "const-array.solc" caseFolder 
+    , runTestForFile "const-array.solc" caseFolder
+    , runTestForFile "array.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
