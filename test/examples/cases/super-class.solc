@@ -33,5 +33,5 @@ forall a . a : Eq => instance (List(a)) : Eq {
 }
 
 function foo() {
-  let x = Eq.eq(Nil, Nil);
+  let x = Eq.eq(Cons(True,Nil), Nil);
 }

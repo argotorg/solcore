@@ -2,13 +2,9 @@ module Solcore.Pipeline.SolcorePipeline where
 
 import Control.Monad
 
-import qualified Data.Map as Map
 import qualified Data.Time as Time
 import Solcore.Desugarer.IndirectCall (indirectCall)
-import Solcore.Desugarer.LambdaLifting (lambdaLifting)
 import Solcore.Desugarer.MatchCompiler
-import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
-import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.ElabTree
@@ -27,7 +23,7 @@ import qualified System.TimeIt as TimeIt
 -- main compiler driver function
 pipeline :: IO ()
 pipeline = do
-  startTime <- Time.getCurrentTime
+  _startTime <- Time.getCurrentTime
   opts <- argumentsParser
   let verbose = optVerbose opts
       noDesugarCalls = optNoDesugarCalls opts
@@ -37,7 +33,7 @@ pipeline = do
       file = fileName opts 
       dir = takeDirectory file
   t' <- runParser dir file 
-  withErr t' $ \ ast@(CompUnit imps ds) -> do
+  withErr t' $ \ ast@(CompUnit _ _) -> do
     when verbose $ do
       putStrLn "> AST after name resolution"
       putStrLn $ pretty ast
@@ -55,16 +51,14 @@ pipeline = do
           when verbose $ do
             putStrLn "> SCC Analysis:"
             putStrLn $ pretty ast'
-          (ast3, fnames) <- timeItNamed "Indirect Calls" $ indirectCall ast'
+          (ast3, _) <- timeItNamed "Indirect Calls" $ indirectCall ast'
           when verbose $ do
             putStrLn "> Indirect call desugaring:"
             putStrLn $ pretty ast3
           timeItNamed "Typecheck     " $ typeInfer opts ast3
     withErr r5 $ \ (c', env) -> do
-        let warns = warnings env
+        let 
             logsInfo = logs env
-            tyctx = ctx env
-            ts = generated env
         when verbose $ do
           putStrLn "> Type inference logs:"
           mapM_ putStrLn (reverse $ logsInfo)
@@ -117,8 +111,8 @@ withErr r f
 -- global scope.
 
 moveData :: CompUnit Name -> CompUnit Name
-moveData (CompUnit imps decls)
-  = CompUnit imps (foldr step [] decls)
+moveData (CompUnit imps decls1)
+  = CompUnit imps (foldr step [] decls1)
     where
       step (TContr c) ac
         = let (dts, c') = extractData c

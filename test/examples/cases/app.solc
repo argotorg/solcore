@@ -6,7 +6,7 @@ function id (x) {
   return x;
 }
 
-function foo() {
+function foo() -> word {
   let f = app();
   return f(id,0);
 }

@@ -98,10 +98,11 @@ instance Pretty DataTy where
   ppr (DataTy n ps cs)
     = text "data" <+> 
       ppr n <+>
-      pprTyParams (map TyVar ps) <+> 
-      equals <+>  
-      hsep (punctuate bar (map ppr cs))
-    where 
+      pprTyParams (map TyVar ps) <+>
+      rs <+> text ";" 
+    where
+      rs = if null cs then empty else 
+             equals <+> hsep (punctuate bar (map ppr cs))
       bar = text " |"
 
 instance Pretty TySym where 
@@ -146,15 +147,16 @@ instance Pretty a => Pretty (Signature a) where
       pprRetTy ty 
 
 pprSigPrefix :: [Tyvar] -> [Pred] -> Doc 
-pprSigPrefix [] [] = empty 
+pprSigPrefix [] [] = empty
+pprSigPrefix [] ps = pprContext ps 
 pprSigPrefix vs [] 
   = text "forall" <+> hsep (map ppr vs) <+> text "." 
 pprSigPrefix vs ps 
   = text "forall" <+> hsep (map ppr vs) <+> text "." <+> pprContext ps 
 
 instance Pretty a => Pretty (Instance a) where 
-  ppr (Instance d ctx n tys ty funs)
-    = pprSigPrefix (fv ctx `union` fv (ty : tys)) ctx <+>
+  ppr (Instance d vs ctx n tys ty funs)
+    = pprSigPrefix vs ctx <+>
       pprDefault d    <>
       text "instance" <+> 
       ppr ty          <+>
@@ -292,6 +294,7 @@ instance Pretty Literal where
 
 instance Pretty Tyvar where 
   ppr (TVar n) = ppr n
+  ppr (Skolem n) = text "@" <> ppr n 
 
 instance Pretty Pred where 
   ppr (InCls n t ts) =
@@ -313,8 +316,12 @@ instance Pretty Scheme where
           pprContext ctx      <+>
           ppr t 
 
+instance Pretty MetaTv where 
+  ppr (MetaTv v) = text "?" <> ppr v 
+
 instance Pretty Ty where 
   ppr (TyVar v) = ppr v
+  ppr (Meta v) = ppr v
   ppr (t1@(_ :-> _) :-> t2) 
     = parens (ppr t1) <+> text "->" <+> ppr t2
   ppr (t1 :-> t2) 

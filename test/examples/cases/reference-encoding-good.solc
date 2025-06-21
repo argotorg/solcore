@@ -123,10 +123,10 @@ class self:RValueMemberAccess(memberValueType) {
 pragma no-coverage-condition StructField, LValueMemberAccess, RValueMemberAccess;
 pragma no-patterson-condition LValueMemberAccess, RValueMemberAccess;
 pragma no-bounded-variable-condition LValueMemberAccess, RValueMemberAccess;
-class self:StructField(fieldType, offsetType) {}
+class self:CStructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 
-forall structType fieldSelector fieldType offsetType . StructField(structType, fieldSelector):StructField(fieldType, offsetType), offsetType:MemorySize => instance MemberAccessProxy(memory(structType), fieldSelector):LValueMemberAccess(memoryRef(fieldType)) {
+forall structType fieldSelector fieldType offsetType . StructField(structType, fieldSelector):CStructField(fieldType, offsetType), offsetType:MemorySize => instance MemberAccessProxy(memory(structType), fieldSelector):LValueMemberAccess(memoryRef(fieldType)) {
     function memberAccess(x:MemberAccessProxy(memory(structType), fieldSelector)) -> memoryRef(fieldType) {
         let ptr:word = Typedef.rep(memberAccessD1(x));
         let size:word = MemorySize.size(Proxy:Proxy(offsetType));
@@ -167,7 +167,7 @@ forall a b . a:MemorySize, b:MemorySize => instance (a,b):MemorySize {
     }
 }
 
-forall structType fieldSelector fieldType offsetType . StructField(structType, fieldSelector):StructField(fieldType, offsetType), fieldType:MemoryType, offsetType:MemorySize => instance MemberAccessProxy(memory(structType), fieldSelector):RValueMemberAccess(fieldType) {
+forall structType fieldSelector fieldType offsetType . StructField(structType, fieldSelector):CStructField(fieldType, offsetType), fieldType:MemoryType, offsetType:MemorySize => instance MemberAccessProxy(memory(structType), fieldSelector):RValueMemberAccess(fieldType) {
     function memberAccess(x:MemberAccessProxy(memory(structType), fieldSelector)) -> fieldType {
         let ptr:word = Typedef.rep(memberAccessD1(x));
         let size:word = MemorySize.size(Proxy:Proxy(offsetType));
@@ -187,13 +187,13 @@ data x_sel = x_sel;
 data y_sel = y_sel;
 data z_sel = z_sel;
 
-instance StructField(S, x_sel):StructField(word, ()) {}
-instance StructField(S, y_sel):StructField(uint, word) {}
+instance StructField(S, x_sel):CStructField(word, ()) {}
+instance StructField(S, y_sel):CStructField(uint, word) {}
 // BUG: This next one should really be the following, but that breaks weirdly:
 // (I get a patterson condition violation on an invoke instance for g)
 // instance StructField(S, z_sel):StructField(word, (word,uint)) {}
 // So instead I use:
-instance StructField(S, z_sel):StructField(word, word) {}
+instance StructField(S, z_sel):CStructField(word, word) {}
 
 
 function f() {

@@ -1,0 +1,28 @@
+contract C {
+	function modifier(f) {
+		return lam (x, y) {
+			// before solidity placeholder
+			let result = f(x,y); // Solidity's placeholder: _;
+			// after solidity placeholder
+			return result;
+		};
+	}
+
+	function add(x: word, y:word) -> word {
+		let r : word;
+		assembly {
+			r := add(x, y)
+		}
+		return r;
+	}
+
+	function main() {
+		//function g(x, y) modifier(x,y) {
+		//	return add(x,y);
+		//}
+		let g = modifier(lam (x, y) {
+			return add(x, y);
+		});
+		return g(2,1);
+	}
+}

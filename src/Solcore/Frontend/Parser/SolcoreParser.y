@@ -190,7 +190,7 @@ Signature : SigPrefix 'function' Name '(' ParamList ')' OptRetTy {Signature (fst
 SigPrefix :: {([Ty], [Pred])}
 SigPrefix : 'forall' Tyvars '.' ConstraintList '=>' {($2, $4)}
           | 'forall' Tyvars '.'                     {($2, [])}
-          | {- empty -}                                    {([], [])}
+          | {- empty -}                             {([], [])}
 
 ParamList :: { [Param] }
 ParamList : Param                                  {[$1]}
@@ -204,7 +204,7 @@ Param : Name ':' Type                              {Typed $1 $3}
 -- instance declarations 
 
 InstDef :: { Instance }
-InstDef : SigPrefix DefaultOpt 'instance' Type ':' Name OptTypeParam InstBody { Instance $2 (snd $1) $6 $7 $4 $8 }
+InstDef : SigPrefix DefaultOpt 'instance' Type ':' Name OptTypeParam InstBody { Instance $2 (fst $1) (snd $1) $6 $7 $4 $8 }
 
 DefaultOpt :: { Bool }
 DefaultOpt : 'default'                        {True}

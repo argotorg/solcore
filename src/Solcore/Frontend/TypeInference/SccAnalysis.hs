@@ -202,8 +202,8 @@ instance Names (Class Name) where
     = names ctx `union` names sigs 
 
 instance Names (Instance Name) where 
-  names (Instance _ ctx _ ts t funs)
-    = names ctx `union` names (t : ts)  `union` names funs  
+  names (Instance _ _ ctx n ts t funs)
+    = [n] `union` names ctx `union` names (t : ts)  `union` names funs  
 
 instance Names Ty where 
   names (TyCon n ts) 
