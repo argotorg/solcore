@@ -374,28 +374,25 @@ tcSignature :: Signature Name -> [Pred] -> TcM ( (Name, Scheme)
                                                , [Pred]
                                                , IEnv 
                                                ) 
-tcSignature sig@(Signature vs ps n args rt) qs 
-  = do 
-      vs0 <- mapM (const freshTyVar) (bv sig `union` bv qs)
-      let env = zip (bv sig `union` bv qs) vs0
-          args0 = everywhere (mkT (insts @Ty env)) args 
-          rt0 = everywhere (mkT (insts @Ty env)) rt 
-          ps0 = everywhere (mkT (insts @Ty env)) ps
-          qs0 = everywhere (mkT (insts @Ty env)) qs
-      (args', pschs, ts, vs') <- tcArgs args0
-      t' <- maybe freshTyVar pure rt0
-      sch <- generalize (ps0, qs0, funtype ts t')
-      pure ((n, sch), pschs, ts, qs0, env)
+tcSignature sig@(Signature vs ps n args rt) qs
+    = do 
+        vs0 <- mapM (const freshTyVar) (bv sig `union` bv qs)
+        let env = zip (bv sig `union` bv qs) vs0
+            args0 = everywhere (mkT (insts @Ty env)) args 
+            rt0 = everywhere (mkT (insts @Ty env)) rt 
+            ps0 = everywhere (mkT (insts @Ty env)) ps
+            qs0 = everywhere (mkT (insts @Ty env)) qs
+        (args', pschs, ts, vs') <- tcArgs args0
+        t' <- maybe freshTyVar pure rt0
+        sch <- generalize (ps0, qs0, funtype ts t')
+        pure ((n, sch), pschs, ts, qs0, env)
 
 hasAnn :: Signature Name -> Bool 
 hasAnn (Signature vs ps n args rt) 
-  = any isAnn args && isJust rt -- && n /= qn 
+  = any isAnn args && isJust rt 
     where 
       isAnn (Typed _ t) = True 
       isAnn _ = False
-
-      -- qn = QualName invokableName "invoke"
-
 
 -- boolean flag indicates if the assumption for the 
 -- function should be included in the context. It 
@@ -424,6 +421,10 @@ tcFunDef incl qs d@(FunDef sig bd)
                          , "from:" 
                          , pretty sig
                          ]
+     when (hasAnn sig) $ do 
+        sm <- match ty ann 
+        _ <- extSubst sm 
+        return ()
      sch' <- generalize (rs, qs', ty)
      -- checking subsumption
      when (hasAnn sig) $ do
