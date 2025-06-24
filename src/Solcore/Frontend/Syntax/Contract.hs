@@ -1,13 +1,13 @@
 module Solcore.Frontend.Syntax.Contract where
 
 import Data.Generics (Data, Typeable)
-import Data.List.NonEmpty 
+import Data.List.NonEmpty
 
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt
-import Solcore.Frontend.Syntax.Ty 
+import Solcore.Frontend.Syntax.Ty
 
--- compilation unit 
+-- compilation unit
 
 data CompUnit a
   = CompUnit {
@@ -15,7 +15,7 @@ data CompUnit a
     , contracts :: [TopDecl a]
     } deriving (Eq, Ord, Show, Data, Typeable)
 
-data TopDecl a 
+data TopDecl a
   = TContr (Contract a)
   | TFunDef (FunDef a)
   | TClassDef (Class a)
@@ -23,34 +23,34 @@ data TopDecl a
   | TMutualDef [TopDecl a]
   | TDataDef DataTy
   | TSym TySym
-  | TPragmaDecl Pragma 
+  | TPragmaDecl Pragma
   deriving (Eq, Ord, Show, Data, Typeable)
 
--- empty list in pragma: restriction on all class / instances 
+-- empty list in pragma: restriction on all class / instances
 
-data PragmaType 
+data PragmaType
   = NoCoverageCondition
   | NoPattersonCondition
   | NoBoundVariableCondition
   deriving (Eq, Ord, Show, Data, Typeable)
 
-data PragmaStatus 
+data PragmaStatus
   = Enabled
-  | DisableAll 
+  | DisableAll
   | DisableFor (NonEmpty Name)
   deriving (Eq, Ord, Show, Data, Typeable)
 
-data Pragma 
+data Pragma
   = Pragma {
       pragmaType :: PragmaType
     , pragmaStatus :: PragmaStatus
     } deriving (Eq, Ord, Show, Data, Typeable)
 
-newtype Import 
+newtype Import
   = Import { unImport :: Name }
     deriving (Eq, Ord, Show, Data, Typeable)
-    
--- definition of the contract structure 
+
+-- definition of the contract structure
 
 data Contract a
   = Contract {
@@ -59,89 +59,89 @@ data Contract a
     , decls :: [ContractDecl a]
     } deriving (Eq, Ord, Show, Data, Typeable)
 
--- definition of a algebraic data type 
+-- definition of a algebraic data type
 
-data DataTy 
+data DataTy
   = DataTy {
-      dataName :: Name 
+      dataName :: Name
     , dataParams :: [Tyvar]
     , dataConstrs :: [Constr]
     } deriving (Eq, Ord, Show, Data, Typeable)
 
-data Constr 
+data Constr
   = Constr {
-      constrName :: Name 
+      constrName :: Name
     , constrTy :: [Ty]
     } deriving (Eq, Ord, Show, Data, Typeable)
 
--- definition of type synonym 
+-- definition of type synonym
 
-data TySym 
+data TySym
   = TySym {
-      symName :: Name 
+      symName :: Name
     , symVars :: [Tyvar]
-    , symType :: Ty 
+    , symType :: Ty
     } deriving (Eq, Ord, Show, Data, Typeable)
 
--- definition of contract constructor 
+-- definition of contract constructor
 
-data Constructor a 
+data Constructor a
   = Constructor {
       constrParams :: [Param a]
     , constrBody :: (Body a)
     } deriving (Eq, Ord, Show, Data, Typeable)
 
--- definition of classes and instances 
+-- definition of classes and instances
 
-data Class a 
+data Class a
   = Class {
       classContext :: [Pred]
-    , className :: Name 
+    , className :: Name
     , paramsVar :: [Tyvar]
-    , mainVar :: Tyvar 
+    , mainVar :: Tyvar
     , signatures :: [Signature a]
     } deriving (Eq, Ord, Show, Data, Typeable)
 
-data Signature a 
+data Signature a
   = Signature {
       sigVars :: [Tyvar]
     , sigContext :: [Pred]
     , sigName :: Name
     , sigParams :: [Param a]
-    , sigReturn :: Maybe Ty 
+    , sigReturn :: Maybe Ty
     } deriving (Eq, Ord, Show, Data, Typeable)
 
 
-data Instance a 
+data Instance a
   = Instance {
       instDefault :: Bool
     , instVars :: [Tyvar]
     , instContext :: [Pred]
-    , instName :: Name 
+    , instName :: Name
     , paramsTy :: [Ty]
     , mainTy :: Ty
     , instFunctions :: [FunDef a]
     } deriving (Eq, Ord, Show, Data, Typeable)
 
--- definition of contract field variables 
+-- definition of contract field variables
 
 data Field a
   = Field {
-      fieldName :: Name 
-    , fieldTy :: Ty 
+      fieldName :: Name
+    , fieldTy :: Ty
     , fieldInit :: Maybe (Exp a)
     } deriving (Eq, Ord, Show, Data, Typeable)
 
--- definition of functions 
+-- definition of functions
 
 data FunDef a
   = FunDef {
-      funSignature :: Signature a 
-    , funDefBody :: Body a 
+      funSignature :: Signature a
+    , funDefBody :: Body a
     } deriving (Eq, Ord, Show, Data, Typeable)
 
-data ContractDecl a 
-  = CDataDecl DataTy 
+data ContractDecl a
+  = CDataDecl DataTy
   | CFieldDecl (Field a)
   | CFunDecl (FunDef a)
   | CMutualDecl [ContractDecl a] -- used only after SCC analysis

@@ -86,7 +86,7 @@ primPair = (Name "pair", Forall [aVar, bVar] ([] :=> (pairTy at bt)))
 primUnit :: (Name, Scheme)
 primUnit = (Name "()", monotype unit)
 
-pairTy :: Ty -> Ty -> Ty 
+pairTy :: Ty -> Ty -> Ty
 pairTy t1 t2 = t1 :-> t2 :-> pair t1 t2
 
 string :: Ty
@@ -101,7 +101,7 @@ unit = TyCon "()" []
 pair :: Ty -> Ty -> Ty
 pair t1 t2 = TyCon "pair" [t1, t2]
 
-epair :: Exp Name -> Exp Name -> Exp Name 
+epair :: Exp Name -> Exp Name -> Exp Name
 epair e1 e2 = Con (Name "pair") [e1, e2]
 
 arr :: Name
@@ -188,7 +188,7 @@ yulPrimOps = [ (Name "stop", monotype unit)
              , (Name "gaslimit", monotype word)
              ]
 
-aVar :: Tyvar 
+aVar :: Tyvar
 aVar = TVar (Name "a")
 
 words :: Int -> [Ty]

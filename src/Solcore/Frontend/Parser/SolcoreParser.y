@@ -1,7 +1,7 @@
 {
 module Solcore.Frontend.Parser.SolcoreParser where
 
-import Data.Either 
+import Data.Either
 import Data.List.NonEmpty (NonEmpty, cons, singleton)
 
 import Solcore.Frontend.Lexer.SolcoreLexer hiding (lexer)
@@ -67,10 +67,10 @@ import System.FilePath
 %expect 0
 
 %%
--- compilation unit definition 
+-- compilation unit definition
 
 CompilationUnit :: { CompUnit }
-CompilationUnit : ImportList TopDeclList          { CompUnit $1 $2 } 
+CompilationUnit : ImportList TopDeclList          { CompUnit $1 $2 }
 
 ImportList :: { [Import] }
 ImportList : ImportList Import                     { $2 : $1 }
@@ -84,7 +84,7 @@ TopDeclList : TopDecl TopDeclList                  { $1 : $2 }
              | {- empty -}                         { [] }
 
 
--- top level declarations 
+-- top level declarations
 
 TopDecl :: { TopDecl }
 TopDecl : Contract                                 {TContr $1}
@@ -95,14 +95,14 @@ TopDecl : Contract                                 {TContr $1}
         | TypeSynonym                              {TSym $1}
         | Pragma                                   {TPragmaDecl $1}
 
--- pragmas 
+-- pragmas
 
 Pragma :: {Pragma}
-Pragma : 'pragma' 'no-coverage-condition' Status ';'  
+Pragma : 'pragma' 'no-coverage-condition' Status ';'
             {Pragma NoCoverageCondition $3 }
-       | 'pragma' 'no-patterson-condition' Status ';' 
+       | 'pragma' 'no-patterson-condition' Status ';'
            {Pragma NoPattersonCondition $3}
-       | 'pragma' 'no-bounded-variable-condition' Status ';' 
+       | 'pragma' 'no-bounded-variable-condition' Status ';'
           { Pragma NoBoundVariableCondition $3}
 
 Status :: {PragmaStatus}
@@ -113,7 +113,7 @@ NameList :: {NonEmpty Name}
 NameList : Name ',' NameList { cons $1 $3 }
          | Name              { singleton $1 }
 
--- contracts 
+-- contracts
 
 Contract :: { Contract }
 Contract : 'contract' Name OptParam '{' DeclList '}' { Contract $2 $3 $5 }
@@ -122,7 +122,7 @@ DeclList :: { [ContractDecl] }
 DeclList : Decl DeclList                           { $1 : $2 }
          | {- empty -}                             { [] }
 
--- declarations 
+-- declarations
 
 Decl :: { ContractDecl }
 Decl : FieldDef                                    {CFieldDecl $1}
@@ -130,20 +130,20 @@ Decl : FieldDef                                    {CFieldDecl $1}
      | Function                                    {CFunDecl $1}
      | Constructor                                 {CConstrDecl $1}
 
--- type synonym 
+-- type synonym
 
 TypeSynonym :: {TySym}
 TypeSynonym : 'type' Name OptParam '=' Type ';'    {TySym $2 $3 $5}
 
--- fields 
+-- fields
 
 FieldDef :: { Field }
 FieldDef : Name ':' Type InitOpt ';'               {Field $1 $3 $4}
 
--- algebraic data types 
+-- algebraic data types
 
 DataDef :: { DataTy }
-DataDef : 'data' Name OptParam DataCons ';'        {DataTy $2 $3 $4}     
+DataDef : 'data' Name OptParam DataCons ';'        {DataTy $2 $3 $4}
 
 DataCons :: {[Constr]}
 DataCons : '=' Constrs                             {$2}
@@ -156,10 +156,10 @@ Constrs : Constr '|' Constrs                       {$1 : $3}
 Constr :: { Constr }
 Constr : Name OptTypeParam                          { Constr $1 $2 }
 
--- class definitions 
+-- class definitions
 
 ClassDef :: { Class }
-ClassDef 
+ClassDef
  : SigPrefix 'class' Var ':' Name OptParam ClassBody {Class (snd $1) $5 $6 $3 $7}
 
 ClassBody :: {[Signature]}
@@ -170,7 +170,7 @@ OptParam :  '(' VarCommaList ')'                   {$2}
          | {- empty -}                             {[]}
 
 VarCommaList :: { [Ty] }
-VarCommaList : Var ',' VarCommaList                {$1 : $3} 
+VarCommaList : Var ',' VarCommaList                {$1 : $3}
              | Var                                 {[$1]}
 
 ConstraintList :: { [Pred] }
@@ -178,7 +178,7 @@ ConstraintList : Constraint ',' ConstraintList     {$1 : $3}
                | Constraint                        {[$1]}
 
 Constraint :: { Pred }
-Constraint : Type ':' Name OptTypeParam             {InCls $3 $1 $4} 
+Constraint : Type ':' Name OptTypeParam             {InCls $3 $1 $4}
 
 Signatures :: { [Signature ] }
 Signatures : Signature ';' Signatures              {$1 : $3}
@@ -201,7 +201,7 @@ Param :: { Param }
 Param : Name ':' Type                              {Typed $1 $3}
       | Name                                       {Untyped $1}
 
--- instance declarations 
+-- instance declarations
 
 InstDef :: { Instance }
 InstDef : SigPrefix DefaultOpt 'instance' Type ':' Name OptTypeParam InstBody { Instance $2 (fst $1) (snd $1) $6 $7 $4 $8 }
@@ -230,7 +230,7 @@ Functions : Function Functions                     {$1 : $2}
 InstBody :: {[FunDef]}
 InstBody : '{' Functions '}'                       {$2}
 
--- Function declaration 
+-- Function declaration
 
 Function :: { FunDef }
 Function : Signature Body {FunDef $1 $2}
@@ -239,21 +239,21 @@ OptRetTy :: { Maybe Ty }
 OptRetTy : '->' Type                               {Just $2}
          | {- empty -}                             {Nothing}
 
--- Contract constructor 
+-- Contract constructor
 
 Constructor :: { Constructor }
 Constructor : 'constructor' '(' ParamList ')' Body {Constructor $3 $5}
 
--- Function body 
+-- Function body
 
 Body :: { [Stmt] }
-Body : '{' StmtList '}'                            {$2} 
+Body : '{' StmtList '}'                            {$2}
 
 StmtList :: { [Stmt] }
 StmtList : Stmt StmtList                       {$1 : $2}
          | {- empty -}                             {[]}
 
--- Statements 
+-- Statements
 
 Stmt :: { Stmt }
 Stmt : Expr '=' Expr ';'                              {Assign $1 $3}
@@ -273,7 +273,7 @@ InitOpt :: {Maybe Exp}
 InitOpt : {- empty -}                              {Nothing}
         | '=' Expr                                 {Just $2}
 
--- Expressions 
+-- Expressions
 
 Expr :: { Exp }
 Expr : Name FunArgs                                {ExpName Nothing $1 $2}
@@ -281,7 +281,7 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | '(' Expr ')'                                {$2}
      | Expr '.' Name FunArgs                       {ExpName (Just $1) $3 $4}
      | Name                                        {ExpVar Nothing $1}
-     | Expr '.' Name                               {ExpVar (Just $1) $3} 
+     | Expr '.' Name                               {ExpVar (Just $1) $3}
      | 'lam' '(' ParamList ')' OptRetTy Body       {Lam $3 $6 $5}
      | Expr ':' Type                               {TyExp $1 $3}
      | '(' TupleArgs ')'                           {tupleExp $2}
@@ -299,7 +299,7 @@ ExprCommaList : Expr                               {[$1]}
               | {- empty -}                        {[]}
               | Expr ',' ExprCommaList             {$1 : $3}
 
--- Pattern matching equations 
+-- Pattern matching equations
 
 Equations :: { [([Pat], [Stmt])]}
 Equations : Equation Equations                     {$1 : $2}
@@ -327,13 +327,13 @@ PatList :: { [Pat] }
 PatList : Pattern %shift                           {[$1]}
         | Pattern ',' PatList                      {$1 : $3}
 
--- literals 
+-- literals
 
 Literal :: { Literal }
 Literal : number                                   {IntLit $ toInteger $1}
         | stringlit                                {StrLit $1}
 
--- basic type definitions 
+-- basic type definitions
 
 Type :: { Ty }
 Type : Name OptTypeParam                            {TyCon $1 $2}
@@ -347,9 +347,9 @@ LamType :: {([Ty], Ty)}
 LamType : '(' TypeCommaList ')' '->' Type          {($2, $5)}
 
 Var :: { Ty }
-Var : Name                                         {TyCon $1 []}  
+Var : Name                                         {TyCon $1 []}
 
-Name :: { Name }  
+Name :: { Name }
 Name : identifier                               { Name $1 }
      | QualName %shift                          { QualName (fst $1) (snd $1) }
 
@@ -400,7 +400,7 @@ YulDefault : 'default' YulBlock                    {Just $2}
 YulIf :: {YulStmt}
 YulIf : 'if' YulExp YulBlock                       {YIf $2 $3}
 
-YulVarDecl :: {YulStmt}    
+YulVarDecl :: {YulStmt}
 YulVarDecl : 'let' IdentifierList YulOptAss     {YLet $2 $3}
 
 YulOptAss :: {Maybe YulExp}
@@ -419,9 +419,9 @@ IdentifierList : Name                              {[$1]}
 YulExp :: {YulExp}
 YulExp : YulLiteral                                   {YLit $1}
        | Name                                      {YIdent $1}
-       | Name YulFunArgs                           {YCall $1 $2}  
+       | Name YulFunArgs                           {YCall $1 $2}
 
-YulFunArgs :: {[YulExp]} 
+YulFunArgs :: {[YulExp]}
 YulFunArgs : '(' YulExpCommaList ')'               {$2}
 
 YulExpCommaList :: { [YulExp] }
@@ -440,13 +440,13 @@ OptSemi : ';'                                      { () }
 {
 
 moduleParser :: String -> String -> IO (Either String CompUnit)
-moduleParser dir content 
-  = do 
+moduleParser dir content
+  = do
       let r = runAlex content parser
-      case r of 
-        Left err -> pure $ Left err 
-        Right (CompUnit imps ds) -> do 
-           ds' <- loadImports dir imps 
+      case r of
+        Left err -> pure $ Left err
+        Right (CompUnit imps ds) -> do
+           ds' <- loadImports dir imps
            pure $ either Left (\ ds1 -> Right $ CompUnit imps (ds1 ++ ds)) ds'
 
 loadImports :: String -> [Import] -> IO (Either String [TopDecl])
@@ -473,20 +473,20 @@ toFilePath base =
 topDeclsFrom :: CompUnit -> [TopDecl]
 topDeclsFrom (CompUnit _ ds) = ds
 
-unitPCon :: Pat 
+unitPCon :: Pat
 unitPCon = Pat (Name "()") []
 
-mkTupleTy :: [Ty] -> Ty 
+mkTupleTy :: [Ty] -> Ty
 mkTupleTy [] = TyCon (Name "()") []
-mkTupleTy ts = foldr1 pairTy ts 
+mkTupleTy ts = foldr1 pairTy ts
 
-pairExp :: Exp -> Exp -> Exp 
+pairExp :: Exp -> Exp -> Exp
 pairExp e1 e2 = ExpName Nothing (Name "pair") [e1, e2]
 
 tupleExp :: [Exp] -> Exp
 tupleExp [] = ExpName Nothing (Name "()") []
 tupleExp [t1] = t1
-tupleExp [t1, t2] = pairExp t1 t2 
+tupleExp [t1, t2] = pairExp t1 t2
 tupleExp (t1 : ts) = pairExp t1 (tupleExp ts)
 
 parseError (Token (line, col) lexeme)

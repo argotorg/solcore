@@ -25,15 +25,15 @@ $hexdig = [0-9A-Fa-f]
 -- tokens declarations
 
 tokens :-
-        -- whitespace and comments 
-        
+        -- whitespace and comments
+
         <0>    $white+                           ;
         <0>    "//" .*                           ;
         <0>   "/*"                               {nestComment `andBegin` state_comment}
         <0>   "*/"                               {\ _ _ -> alexError "Error: unexpected close comment!"}
         <state_comment> "/*"                     {nestComment}
         <state_comment> "*/"                     {unnestComment}
-        <state_comment> .                        ;  
+        <state_comment> .                        ;
         <state_comment> \n                       ;
 
         -- keywords, and operators
@@ -84,7 +84,7 @@ tokens :-
         <0>    @number                           {mkNumber}
         <0>    @hexlit                           {mkHexlit}
 
-        -- string literals 
+        -- string literals
 
         <0> \"                                   {enterString `andBegin` state_string}
         <state_string> \\n                       {emit '\n'}
@@ -94,17 +94,17 @@ tokens :-
         <state_string>  .                        {emitCurrent}
 
 {
--- user state 
+-- user state
 
-data AlexUserState 
+data AlexUserState
   = AlexUserState {
-      nestLevel :: Int 
+      nestLevel :: Int
     , strStart :: AlexPosn
-    , strBuffer :: String 
+    , strBuffer :: String
     }
 
-alexInitUserState :: AlexUserState 
-alexInitUserState 
+alexInitUserState :: AlexUserState
+alexInitUserState
   = AlexUserState 0 (AlexPn 0 0 0) []
 
 get :: Alex AlexUserState
@@ -114,7 +114,7 @@ put :: AlexUserState -> Alex ()
 put s' = Alex $ \s -> Right (s{alex_ust = s'}, ())
 
 modify :: (AlexUserState -> AlexUserState) -> Alex ()
-modify f 
+modify f
   = Alex $ \s -> Right (s{alex_ust = f (alex_ust s)}, ())
 
 alexEOF :: Alex Token
@@ -137,37 +137,37 @@ position (AlexPn _ x y) = (x,y)
 data Token
   = Token {
       pos :: (Int, Int)
-    , lexeme :: Lexeme 
+    , lexeme :: Lexeme
     } deriving (Eq, Ord, Show)
 
-data Lexeme    
+data Lexeme
   = TIdent { unIdent :: String }
   | TNumber { unNum :: Integer }
   | TString { unStr :: String }
-  | TContract 
-  | TImport 
+  | TContract
+  | TImport
   | TLet
-  | TEq 
+  | TEq
   | TDot
   | TColon
   | TComma
-  | TForall 
-  | TClass 
-  | TInstance 
-  | TData 
+  | TForall
+  | TClass
+  | TInstance
+  | TData
   | TMatch
-  | TIf 
-  | TFor 
-  | TSwitch 
+  | TIf
+  | TFor
+  | TSwitch
   | TType
-  | TCase 
+  | TCase
   | TDefault
-  | TContinue 
-  | TLeave 
-  | TBreak 
+  | TContinue
+  | TLeave
+  | TBreak
   | TFunction
   | TConstructor
-  | TReturn 
+  | TReturn
   | TLam
   | TYAssign
   | TAssembly
@@ -175,7 +175,7 @@ data Lexeme
   | TWildCard
   | TArrow
   | TDArrow
-  | TLParen 
+  | TLParen
   | TRParen
   | TLBrace
   | TRBrace
@@ -185,50 +185,50 @@ data Lexeme
   | TNoCoverageCondition
   | TNoPattersonCondition
   | TNoBoundVariableCondition
-  | TBar 
-  | TEOF 
+  | TBar
+  | TEOF
   deriving (Eq, Ord, Show)
 
--- Functions to create tokens 
+-- Functions to create tokens
 
-mkIdent :: AlexAction Token 
-mkIdent (st, _, _, str) len 
-  = case take len str of 
+mkIdent :: AlexAction Token
+mkIdent (st, _, _, str) len
+  = case take len str of
       "match" -> return $ Token (position st) TMatch
-      "data" -> return $ Token (position st) TData 
-      "import" -> return $ Token (position st) TImport 
+      "data" -> return $ Token (position st) TData
+      "import" -> return $ Token (position st) TImport
       "contract" -> return $ Token (position st) TContract
       "function" -> return $ Token (position st) TFunction
       "constructor" -> return $ Token (position st) TConstructor
       "return" -> return $ Token (position st) TReturn
-      "continue" -> return $ Token (position st) TContinue 
-      "break" -> return $ Token (position st) TBreak 
+      "continue" -> return $ Token (position st) TContinue
+      "break" -> return $ Token (position st) TBreak
       "let" -> return $ Token (position st) TLet
       "assembly" -> return $ Token (position st) TAssembly
-      "if" -> return $ Token (position st) TIf 
-      "switch" -> return $ Token (position st) TSwitch 
-      "for" -> return $ Token (position st) TFor 
+      "if" -> return $ Token (position st) TIf
+      "switch" -> return $ Token (position st) TSwitch
+      "for" -> return $ Token (position st) TFor
       "default" -> return $ Token (position st) TDefault
       "type" -> return $ Token (position st) TType
       "forall" -> return $ Token (position st) TForall
       "pragma" -> return $ Token (position st) TPragma
-      "no-coverage-condition" -> 
+      "no-coverage-condition" ->
         return $ Token (position st) TNoCoverageCondition
-      "no-patterson-condition" -> 
+      "no-patterson-condition" ->
         return $ Token (position st) TNoPattersonCondition
-      "no-bounded-variable-condition" -> 
+      "no-bounded-variable-condition" ->
         return $ Token (position st) TNoBoundVariableCondition
       _ -> return $ Token (position st) (TIdent $ take len str)
 
 mkNumber :: AlexAction Token
-mkNumber (st, _, _, str) len 
+mkNumber (st, _, _, str) len
   = pure $ Token (position st) (TNumber $ read $ take len str)
 
 mkHexlit :: AlexAction Token
 mkHexlit (st, _, _, str) len
   = pure $ Token (position st) (TNumber $ parseHex $ take len str)
 
-parseHex :: String -> Integer 
+parseHex :: String -> Integer
 parseHex str = case readHex (drop 2 str) of
     [(n, "")] -> n
     _         -> error "impossible :)"
@@ -237,18 +237,18 @@ simpleToken :: Lexeme -> AlexAction Token
 simpleToken lx (st, _, _, _) len
   = return $ Token (position st) lx
 
--- string literals 
+-- string literals
 
 enterString :: AlexAction Token
-enterString inp@(pos, _, _, _) len 
+enterString inp@(pos, _, _, _) len
   = do
       modify $ \s -> s{ strStart = pos
                       , strBuffer = '"' : strBuffer s
                       }
       skip inp len
 
-exitString :: AlexAction Token 
-exitString inp@(pos, _, _, _) len 
+exitString :: AlexAction Token
+exitString inp@(pos, _, _, _) len
   = do
       s <- get
       put s{strStart = AlexPn 0 0 0, strBuffer = []}
@@ -273,8 +273,8 @@ nestComment input len = do
   modify $ \s -> s{nestLevel = nestLevel s + 1}
   skip input len
 
-unnestComment :: AlexAction Token 
-unnestComment input len 
+unnestComment :: AlexAction Token
+unnestComment input len
   = do
       s <- get
       let level = (nestLevel s) - 1
@@ -285,11 +285,11 @@ unnestComment input len
 
 
 lexer :: String -> Either String [Token]
-lexer s = runAlex s go 
-  where 
-    go = do 
-      output <- alexMonadScan 
-      if lexeme output == TEOF then 
+lexer s = runAlex s go
+  where
+    go = do
+      output <- alexMonadScan
+      if lexeme output == TEOF then
         pure [output]
       else (output :) <$> go
 }

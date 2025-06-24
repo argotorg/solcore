@@ -1,4 +1,4 @@
-pragma no-coverage-condition ; 
+pragma no-coverage-condition ;
 
 data List(a) = Nil | Cons(a,List(a));
 data Bool = True | False ;

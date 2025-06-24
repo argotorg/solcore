@@ -5,7 +5,7 @@ class self:BaseMemoryType {
 }
 
 
-forall t . t : BaseMemoryType => 
-function morefun(p:Proxy(t)) -> word { 
-  return BaseMemoryType.memorySize(Proxy:Proxy(t)); 
+forall t . t : BaseMemoryType =>
+function morefun(p:Proxy(t)) -> word {
+  return BaseMemoryType.memorySize(Proxy:Proxy(t));
 }

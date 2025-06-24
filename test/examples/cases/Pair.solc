@@ -17,5 +17,5 @@
   }
 
   function curry(f,x,y) {
-    return f((x,y)) ; 
+    return f((x,y)) ;
   }

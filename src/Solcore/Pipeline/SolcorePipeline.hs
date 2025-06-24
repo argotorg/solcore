@@ -30,9 +30,9 @@ pipeline = do
       noMatchCompiler = optNoMatchCompiler opts
       timeItNamed :: String -> IO a -> IO a
       timeItNamed = optTimeItNamed opts
-      file = fileName opts 
+      file = fileName opts
       dir = takeDirectory file
-  t' <- runParser dir file 
+  t' <- runParser dir file
   withErr t' $ \ ast@(CompUnit _ _) -> do
     when verbose $ do
       putStrLn "> AST after name resolution"
@@ -57,7 +57,7 @@ pipeline = do
             putStrLn $ pretty ast3
           timeItNamed "Typecheck     " $ typeInfer opts ast3
     withErr r5 $ \ (c', env) -> do
-        let 
+        let
             logsInfo = logs env
         when verbose $ do
           putStrLn "> Type inference logs:"
@@ -74,7 +74,7 @@ pipeline = do
               when (optDumpCore opts) do
                 putStrLn "> Core contract(s):"
                 forM_ r10 (putStrLn . pretty)
-        else do 
+        else do
           r8 <- timeItNamed "Match compiler" $ matchCompiler c'
           withErr r8 $ \ res -> do
             when (verbose || optDumpDS opts) do
@@ -93,10 +93,10 @@ pipeline = do
 runParser :: String -> String -> IO (Either String (CompUnit Name))
 runParser dir file = do
   content <- readFile file
-  r1 <- moduleParser dir content 
+  r1 <- moduleParser dir content
   case r1 of
     Left err -> pure $ Left err
-    Right t -> buildAST t 
+    Right t -> buildAST t
 
 withErr :: Either String a -> (a -> IO b) -> IO b
 withErr r f

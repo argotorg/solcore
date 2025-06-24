@@ -5,5 +5,5 @@ forall a  b . a : Foo, b : Foo => instance (a,b) : Foo {
     match p {
       | (pa, pb) => Foo.foo(pa); Foo.foo(pb);
     }
-  } 
+  }
 }

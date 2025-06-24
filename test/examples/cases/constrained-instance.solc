@@ -1,4 +1,3 @@
-
 data memory(t) = memory(word);
 
 class t:ValueTy {

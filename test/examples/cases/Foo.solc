@@ -1,9 +1,9 @@
   function one() {
-    return primAddWord(1, zero()) ; 
+    return primAddWord(1, zero()) ;
   }
 
   function zero () {
-    return 0; 
+    return 0;
   }
 
 
