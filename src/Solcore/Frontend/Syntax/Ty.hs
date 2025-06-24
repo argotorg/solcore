@@ -72,6 +72,7 @@ instance AlphaEq a => AlphaEq [a] where
 instance AlphaEq Ty where 
   alphaEq (TyVar n) (TyVar n') 
     = n == n'
+  -- meta variables can unify with anything.
   alphaEq (Meta _) _  
     = True
   alphaEq _  (Meta _) = True 
