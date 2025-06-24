@@ -10,7 +10,7 @@ import Builtins(yulBuiltins)
 import Compress
 import TM
 import Translate
-import Language.Yul hiding (wrapInSol, wrapInContract, wrapInSolFunction)
+import Language.Yul
 import qualified Options
 import Options(parseOptions)
 import Control.Monad(when)
