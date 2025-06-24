@@ -120,7 +120,7 @@ instance Pretty YulStmt where
     text "let" <+> commaSepList vars
                <+> maybe empty (\e -> text ":=" <+> ppr e) expr
   ppr (YAssign vars expr) = commaSepList vars <+> text ":=" <+> ppr expr
-  ppr (YIf cond stmts) = text "if" <+> parens (ppr cond) <+> pprBlock stmts
+  ppr (YIf cond stmts) = text "if" <+> (ppr cond) <+> pprBlock stmts
   ppr (YSwitch expr cases def) =
     text "switch"
       <+> ppr expr

@@ -55,6 +55,7 @@ yulExpression = choice
     [ YLit <$> yulLiteral
     , try (YCall <$> pName<*> parens (commaSep yulExpression))
     , YIdent <$> pName
+    , parens yulExpression
     ]
 
 yulLiteral :: Parser YLiteral
