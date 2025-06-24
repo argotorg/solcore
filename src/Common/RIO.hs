@@ -27,5 +27,5 @@ store r v = liftIO $ writeIORef r v
 update :: IORef a -> (a->a) -> RIO env ()
 update f = liftIO . modifyIORef f
 
-runRIO :: RIO env a -> env -> IO a         
+runRIO :: RIO env a -> env -> IO a
 runRIO m env = runReaderT m env

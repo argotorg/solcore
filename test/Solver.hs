@@ -2,12 +2,12 @@ module Solver where
 
 import Test.Tasty
 import Test.Tasty.Program
-import Test.Tasty.ExpectedFailure 
+import Test.Tasty.ExpectedFailure
 
 
--- constructing the test suit 
+-- constructing the test suit
 
-satTests :: TestTree 
+satTests :: TestTree
 satTests = testGroup "Tests for SAT"
                      [
                        testFile solverDir "sat00.inp"
@@ -17,17 +17,17 @@ satTests = testGroup "Tests for SAT"
                      , expectFail $ testFile solverDir "sat04.inp"
                      , expectFail $ testFile solverDir "sat05.inp"
                      ]
-            where 
+            where
               solverDir = "./test/solver"
 
-testFile :: String -> String -> TestTree 
-testFile folder file 
-  = testProgram file "cabal" (basicOptions ++ [folder ++ "/" ++ file]) Nothing 
-    where 
+testFile :: String -> String -> TestTree
+testFile folder file
+  = testProgram file "cabal" (basicOptions ++ [folder ++ "/" ++ file]) Nothing
+    where
       basicOptions = ["run", "solver", "--"]
-    
 
-reduceTests :: TestTree 
+
+reduceTests :: TestTree
 reduceTests = testGroup "Tests for reduce"
                         [
                           testFile solverDir "red00.inp"
@@ -38,7 +38,7 @@ reduceTests = testGroup "Tests for reduce"
                         , testFile solverDir "red05.inp"
                         , testFile solverDir "red06.inp"
                         ]
-            where 
+            where
               solverDir = "./test/solver"
 
 

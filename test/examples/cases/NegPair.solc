@@ -1,4 +1,3 @@
-
 class  a : Neg {
    function neg(x:a) -> a;
 }

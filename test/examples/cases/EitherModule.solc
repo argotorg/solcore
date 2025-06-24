@@ -5,9 +5,9 @@ contract EitherModule {
   function lefts(xs) {
     match xs {
     | Nil => return Nil ;
-    | Cons(y,ys) => 
+    | Cons(y,ys) =>
       match y {
-      | Left(z) => return Cons(z,lefts(ys)) ; 
+      | Left(z) => return Cons(z,lefts(ys)) ;
       | Right(z) => return lefts(ys) ;
       }
     }

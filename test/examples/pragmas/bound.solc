@@ -1,4 +1,4 @@
-pragma no-bounded-variable-condition F; 
+pragma no-bounded-variable-condition F;
 
 class a:D { function f(x:a); }
 class a:F(b) {}

@@ -2,8 +2,8 @@ data Nat = Zero | Succ(Nat) ;
 
 function foo (x, y) {
   match y, x {
-  | y1, Zero => return 1 ; 
-  | Zero, Succ(x2) => return 2; 
+  | y1, Zero => return 1 ;
+  | Zero, Succ(x2) => return 2;
   | Succ(y3), Succ(x3) => return 3;
   }
 }

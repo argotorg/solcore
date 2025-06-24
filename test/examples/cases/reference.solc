@@ -24,7 +24,7 @@ contract AssignNested {
     let z : stack( (word, (word, word)) );
 
     // either of the next lines is fine on their own, but not together
-    Ref.store( XRef(z,PairFst), 21); 
+    Ref.store( XRef(z,PairFst), 21);
     Ref.store( XRef(XRef(x, PairSnd), PairFst), 20 );
 
     return 77;

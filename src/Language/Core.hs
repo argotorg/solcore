@@ -1,4 +1,3 @@
-
 {-# OPTIONS_GHC -Wincomplete-patterns #-}
 {-# LANGUAGE InstanceSigs #-}
 module Language.Core
