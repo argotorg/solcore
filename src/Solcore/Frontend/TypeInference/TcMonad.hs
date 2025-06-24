@@ -39,9 +39,9 @@ defaultM m
       pure (Just x)
     } `catchError` (\ _ -> pure Nothing)
 
-freshVar :: TcM Tyvar 
+freshVar :: TcM MetaTv  
 freshVar 
-  = TVar <$> freshName 
+  = MetaTv <$> freshName 
 
 freshName :: TcM Name 
 freshName 
@@ -49,7 +49,7 @@ freshName
       ds <- Map.keys <$> gets ctx
       vs <- getEnvFreeVars
       ns <- gets nameSupply 
-      let (n, ns') = newName (ns \\ ((map var vs) ++ ds)) 
+      let (n, ns') = newName (ns \\ ((map tyvarName vs) ++ ds)) 
       modify (\ ctx -> ctx {nameSupply = ns'})
       return n 
 
@@ -95,7 +95,7 @@ typeInfoFor (DataTy n vs cons)
   = TypeInfo (length vs) (map constrName cons) []
 
 freshTyVar :: TcM Ty 
-freshTyVar = TyVar <$> freshVar
+freshTyVar = Meta <$> freshVar
 
 writeFunDef :: FunDef Id -> TcM ()
 writeFunDef fd = writeTopDecl (TFunDef fd)
@@ -119,6 +119,10 @@ writeTopDecl d
 getEnvFreeVars :: TcM [Tyvar]
 getEnvFreeVars 
   = concat <$> gets (Map.map fv . ctx)
+
+getEnvMetaVars :: TcM [MetaTv]
+getEnvMetaVars 
+  = concat <$> gets (Map.map mv . ctx)
 
 unify :: Ty -> Ty -> TcM Subst
 unify t t' 
@@ -157,20 +161,79 @@ checkDataType (DataTy n vs constrs)
       vals = map constrBind constrs        
       constrBind c = (constrName c, (funtype (constrTy c) tc))
 
+-- Skolemization 
+
+skolemise :: Scheme -> TcM ([Tyvar], Qual Ty)
+skolemise sch@(Forall vs qt)
+  = do 
+      let bvs = bv sch 
+          sks = map (Skolem . tyvarName) bvs 
+          env = zip bvs (map TyVar sks) 
+      pure (sks, insts env qt)
+
+-- subsumption check 
+
+subsCheck :: Scheme -> Scheme -> TcM ()
+subsCheck sch1 sch2@(Forall _ _)
+    = do
+        info [">> Checking subsumption for:\n", pretty sch1, "\nand\n", pretty sch2]
+        (skol_tvs, qt2) <- skolemise sch2
+        qt1 <- freshInst sch1 
+        s <- mgu qt1 qt2 `catchError` (\ _ -> typeNotPolymorphicEnough sch1 sch2) 
+        let esc_tvs = fv sch1 
+            bad_tvs = filter (`elem` esc_tvs) skol_tvs 
+        unless (null bad_tvs) $ 
+          typeNotPolymorphicEnough sch1 sch2 
+
 -- type instantiation 
 
-freshInst :: Scheme -> TcM (Qual Ty)
-freshInst sch@(Forall vs qt)
-  = renameVars vs qt
+class Fresh a where 
+  type Result a 
+  freshInst :: a -> TcM (Result a)
 
-renameVars :: HasType a => [Tyvar] -> a -> TcM a 
-renameVars vs t 
-  = do
-      let ns = map var vs 
-      ns' <- gets nameSupply 
-      modify (\env -> env{nameSupply = ns' \\ ns})
-      s <- mapM (\ v -> (v,) <$> freshTyVar) vs
-      pure $ apply (Subst s) t
+instance Fresh Scheme where 
+  type Result Scheme = (Qual Ty)
+  freshInst sch@(Forall _ qt)
+    = do
+        let
+          vs = bv sch 
+          ns = map tyvarName vs  
+        ns' <- gets nameSupply 
+        modify (\env -> env{nameSupply = ns' \\ ns})
+        mvs <- mapM (const freshTyVar) ns
+        let qt' = insts (zip vs mvs) qt
+        pure qt'
+
+instance Fresh Inst where 
+  type Result Inst = Inst  
+  freshInst it@(ps :=> p) 
+    = do 
+        let vs = bv it
+        mvs <- mapM (const freshTyVar) vs
+        pure (insts (zip vs mvs) it)
+ 
+type IEnv = [(Tyvar, Ty)]
+
+class Insts a where 
+  insts :: IEnv -> a -> a 
+
+instance Insts a => Insts [a] where 
+  insts env = map (insts env)
+
+instance Insts Ty where  
+  insts env (TyCon n ts) = TyCon n (insts env ts)
+  insts env (TyVar v) = fromMaybe (TyVar v) (lookup v env)
+  insts _   (Meta v) = Meta v 
+
+instance Insts Pred where  
+  insts env (InCls n t ts) 
+    = InCls n (insts env t) (insts env ts)
+  insts env (t1 :~: t2)
+    = (insts env t1) :~: (insts env t2)
+
+instance Insts a => Insts (Qual a) where 
+  insts env (ps :=> p) 
+    = (insts env ps) :=> (insts env p)
 
 -- substitution 
 
@@ -320,7 +383,7 @@ askTypeInfo n
 
 modifyTypeInfo :: Name -> TypeInfo -> TcM ()
 modifyTypeInfo n ti 
-  = do 
+  = do
         tenv <- gets typeTable
         let tenv' = Map.insert n ti tenv
         modify (\env -> env{typeTable = tenv'})
@@ -348,10 +411,7 @@ renameInstEnv :: InstTable -> TcM InstTable
 renameInstEnv 
   = Map.traverseWithKey go
   where 
-    go k v = do 
-      let vs = fv v 
-      v' <- renameVars vs v 
-      pure v' 
+    go k v = mapM freshInst v
 
 addInstance :: Name -> Inst -> TcM ()
 addInstance n inst 
@@ -507,6 +567,14 @@ undefinedFunction t n
                          , "does not define function:"
                          , pretty n
                          ]
+
+typeNotPolymorphicEnough :: Scheme -> Scheme -> TcM a 
+typeNotPolymorphicEnough sch1 sch2 
+  = tcmError $ unlines [ "Type not polymorphic enough! The annotated type is:"
+                       , pretty sch2 
+                       , "but the infered type is:"
+                       , pretty sch1
+                       ]
 
 undefinedClass :: Name -> TcM a 
 undefinedClass n 

@@ -155,4 +155,3 @@ instance Pretty YulData where
 instance Pretty HexOrString where
   ppr (DHex s) = text "hex" <> doubleQuotes (text s)
   ppr (DString s) = doubleQuotes (text s)
-

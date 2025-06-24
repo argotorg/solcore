@@ -74,8 +74,8 @@ instance ReplaceWildcard (Constructor Id) where
     = Constructor ps <$> replace bd
 
 instance ReplaceWildcard (Instance Id) where 
-  replace (Instance d ps n ts m funs)
-    = Instance d ps n ts m <$> replace funs
+  replace (Instance d vs ps n ts m funs)
+    = Instance d vs ps n ts m <$> replace funs
 
 instance ReplaceWildcard (TopDecl Id) where 
   replace (TFunDef fd) 

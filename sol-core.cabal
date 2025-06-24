@@ -45,6 +45,7 @@ common common-opts
                       ImportQualifiedPost
                       ScopedTypeVariables
                       TypeApplications
+  ghc-options: -Wall 
 
 library
   import: common-opts

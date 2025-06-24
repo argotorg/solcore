@@ -1,0 +1,70 @@
+function add(x : word, y : word) {
+  let res: word;
+  assembly {
+      res := add(x, y)
+  }
+  return res;
+}
+
+class self:Typedef(underlyingType) {
+    function rep(x:self) -> underlyingType;
+    function abs(x:underlyingType) -> self;
+}
+
+forall a.class a : Add {
+  function add(x:a, y:a) -> a;
+}
+
+data B = F | T;
+
+
+instance B : Typedef(word) {
+  function rep(x) {
+    match x {
+      | F => return 0;
+      | T => return 1;
+    }
+  }
+
+  function abs(x) {
+    match x {
+      | 0 => return F;
+      | 1 => return T;
+    }
+  }
+}
+
+instance B : Add {
+  function add(x, y) {
+    match x {
+      | F =>
+        match y {
+          | F => return F;
+          | T => return T;
+        }
+
+      | T =>
+        match y {
+          | F => return T;
+          | T => return F;
+        }
+    }
+  }
+}
+
+function fun(a, b) { //  -> c
+  match a, b {
+    | (a1, a2), (b1, b2) => return (Add.add(a1, b1), fun(a2, b2));
+  }
+
+}
+
+contract Compose {
+
+  function main() {
+    let res = fun ((T, T, F), (F, F, T));
+    match res {
+      | (r1, r2, r3) => return Typedef.rep(r1);
+    }
+  }
+}

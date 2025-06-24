@@ -51,17 +51,18 @@ createInstance :: DataTy -> FunDef Id -> Scheme -> TcM (Instance Name)
 createInstance udt fd sch 
   = do
       -- instantiating function type signature 
-      qt@(qs :=> ty) <- freshInst sch 
+      qt@(qs :=> ty) <- fresh sch
+      info [">> Starting the creation of instance for ", pretty $ sigName (funSignature fd) , " :: ", pretty sch]
       -- getting invoke type from context 
-      (qs' :=> ty') <- askEnv invoke >>= freshInst 
+      (qs' :=> ty') <- askEnv invoke >>= fresh 
       -- getting arguments and return type from signature 
       let (args, retTy) = splitTy ty
           args' = if null args then [unit] else filter (not . isClosureTy) args
-          vunreach = fv qt \\ fv ty 
+          vunreach = bv qt \\ bv ty 
           argTy = tupleTyFromList args'
-          argvars = fv qt 
+          argvars = bv qt  
           dn = dataName udt
-          selfTy = TyCon dn (TyVar <$> fv ty `union` fv qs)
+          selfTy = TyCon dn (TyVar <$> dataParams udt)
       -- building the invoke function signature 
       (selfParam, sn) <- freshParam "self" selfTy
       (argParam, an) <- freshParam "arg" argTy
@@ -70,8 +71,8 @@ createInstance udt fd sch
       -- pattern variables for arguments
       (sargs, sarg) <- unzip <$> mapM freshPatArg args'
       let
-        isig = Signature argvars qs invokeName [selfParam, argParam] (Just retTy)
-      -- building the match of function body
+        isig = Signature [] [] invokeName [selfParam, argParam] (Just retTy)
+        -- building the match of function body
         nargs = length args 
         discr = epair (Var sn) (Var an)
         fname = sigName (funSignature fd)
@@ -79,7 +80,8 @@ createInstance udt fd sch
         scall = Return (Call Nothing fname ssargs)
         bdy = Match [discr] [([foldr1 ppair (spvs : sargs)], [scall])] 
         ifd = FunDef isig [bdy]
-        instd = Instance False qs invokableName [argTy, retTy] selfTy [ifd]
+        vs' = bv qs `union` bv [argTy, retTy, selfTy] `union` bv ifd 
+        instd = Instance False vs' qs invokableName [argTy, retTy] selfTy [ifd]
       info [">> Generated invokable instance:\n", pretty instd]
       pure instd 
 
@@ -99,7 +101,7 @@ freshPatArg (TyCon pn ts)
         ti <- askTypeInfo pn
         case constrNames ti of 
            [cn] -> do 
-                      (ps :=> ty) <- askEnv cn >>= freshInst 
+                      (ps :=> ty) <- askEnv cn >>= fresh
                       let (args, ret) = splitTy ty
                       if null args then do 
                         n <- freshName 
@@ -114,6 +116,10 @@ freshPatArg (TyVar v)
   = do 
       n <- freshName 
       pure (PVar n, Var n)
+freshPatArg t = error $ show t
+
+fresh :: Scheme -> TcM (Qual Ty) 
+fresh (Forall _ qt) = pure qt
 
 freshParam :: String -> Ty -> TcM (Param Name, Name)  
 freshParam s t 
@@ -126,12 +132,6 @@ freshFromString s
   = do 
       n <- incCounter
       pure (Name (s ++ show n))
-
-removeClosureTy :: [Ty] -> [Ty] 
-removeClosureTy tys@(TyCon n _ : ts) 
-  | isClosureName n = ts 
-  | otherwise = tys 
-removeClosureTy tys = tys
 
 isClosureName :: Name -> Bool 
 isClosureName n = isPrefixOf "t_closure" (pretty n)
@@ -156,7 +156,7 @@ anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs
   where
     q' = zipWith (:~:) bs as
     bs = map TyVar $ take (length as) freshNames
-    tvs = fv inst
+    tvs = bv inst
     freshNames = filter (not . flip elem tvs) (TVar <$> namePool)
 
 isQual :: Name -> Bool
