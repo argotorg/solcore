@@ -1,10 +1,18 @@
 module Solcore.Pipeline.SolcorePipeline where
 
 import Control.Monad
+import Control.Monad.Except
+import Control.Monad.IO.Class (liftIO)
+import Control.Exception (try, SomeException)
+import Data.IORef
+import System.Exit (ExitCode(..))
 
 import qualified Data.Time as Time
 import Solcore.Desugarer.IndirectCall (indirectCall)
-import Solcore.Desugarer.MatchCompiler
+import Solcore.Desugarer.LambdaLifting (lambdaLifting)
+import Solcore.Desugarer.MatchCompiler (matchCompiler)
+import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
+import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.ElabTree
@@ -17,6 +25,7 @@ import Solcore.Desugarer.Specialise(specialiseCompUnit)
 import Solcore.Desugarer.EmitCore(emitCore)
 import Solcore.Pipeline.Options(Option(..), argumentsParser)
 import System.Exit
+import qualified Language.Core as Core
 import System.FilePath
 import qualified System.TimeIt as TimeIt
 
@@ -25,91 +34,100 @@ pipeline :: IO ()
 pipeline = do
   _startTime <- Time.getCurrentTime
   opts <- argumentsParser
+  result <- compile opts
+  case result of
+    Left err -> do
+      putStrLn err
+      exitWith (ExitFailure 1)
+    Right contracts -> do
+      forM_ (zip [1..] contracts) $ \(i, c) -> do
+        let filename = "output" <> show i <> ".core"
+        putStrLn ("Writing to " ++ filename)
+        writeFile filename (show c)
+
+-- Version that returns Either for testing
+compile :: Option -> IO (Either String [Core.Contract])
+compile opts = runExceptT $ do
   let verbose = optVerbose opts
       noDesugarCalls = optNoDesugarCalls opts
       noMatchCompiler = optNoMatchCompiler opts
       timeItNamed :: String -> IO a -> IO a
       timeItNamed = optTimeItNamed opts
-      file = fileName opts 
+      file = fileName opts
       dir = takeDirectory file
-  t' <- runParser dir file 
-  withErr t' $ \ ast@(CompUnit _ _) -> do
-    when verbose $ do
-      putStrLn "> AST after name resolution"
-      putStrLn $ pretty ast
-    r5 <- if noDesugarCalls
-      then do
-        r2 <- timeItNamed "SCC           " $ sccAnalysis ast
-        withErr r2 $ \ ast' -> do
-          when verbose $ do
-            putStrLn "> SCC Analysis:"
-            putStrLn $ pretty ast'
-          timeItNamed "Indirect Calls" $ typeInfer opts ast'
-      else do
-        r2 <- timeItNamed "SCC           " $ sccAnalysis ast
-        withErr r2 $ \ ast' -> do
-          when verbose $ do
-            putStrLn "> SCC Analysis:"
-            putStrLn $ pretty ast'
-          (ast3, _) <- timeItNamed "Indirect Calls" $ indirectCall ast'
-          when verbose $ do
-            putStrLn "> Indirect call desugaring:"
-            putStrLn $ pretty ast3
-          timeItNamed "Typecheck     " $ typeInfer opts ast3
-    withErr r5 $ \ (c', env) -> do
-        let 
-            logsInfo = logs env
-        when verbose $ do
-          putStrLn "> Type inference logs:"
-          mapM_ putStrLn (reverse $ logsInfo)
-          putStrLn "> Elaborated tree:"
-          putStrLn $ pretty c'
-        if noMatchCompiler then do
-            unless (optNoSpec opts) do
-              r9 <- timeItNamed "Specialise    " $ specialiseCompUnit c' (optDebugSpec opts) env
-              when (optDumpSpec opts) do
-                putStrLn "> Specialised contract:"
-                putStrLn (pretty r9)
-              r10 <- timeItNamed "Emit Core     " $ emitCore (optDebugCore opts) env r9
-              when (optDumpCore opts) do
-                putStrLn "> Core contract(s):"
-                forM_ r10 (putStrLn . pretty)
-        else do 
-          r8 <- timeItNamed "Match compiler" $ matchCompiler c'
-          withErr r8 $ \ res -> do
-            when (verbose || optDumpDS opts) do
-              putStrLn "> Match compilation result:"
-              putStrLn (pretty res)
-            unless (optNoSpec opts) do
-              r9 <- timeItNamed "Specialise    " $ specialiseCompUnit res (optDebugSpec opts) env
-              when (optDumpSpec opts) do
-                putStrLn "> Specialised contract:"
-                putStrLn (pretty r9)
-              r10 <- timeItNamed "Emit Core     " $ emitCore (optDebugCore opts) env r9
-              when (optDumpCore opts) do
-                putStrLn "> Core contract(s):"
-                forM_ r10 (putStrLn . pretty)
 
-runParser :: String -> String -> IO (Either String (CompUnit Name))
-runParser dir file = do
-  content <- readFile file
-  r1 <- moduleParser dir content 
-  case r1 of
-    Left err -> pure $ Left err
-    Right t -> buildAST t 
+  -- Parsing
+  content <- liftIO $ readFile file
 
-withErr :: Either String a -> (a -> IO b) -> IO b
-withErr r f
-  = either err f r
-    where
-      err s = do
-                putStrLn s
-                exitWith (ExitFailure 1)
+  parsed <- ExceptT $ moduleParser dir content
+  resolved <- ExceptT $ buildAST parsed
+
+  liftIO $ when verbose $ do
+    putStrLn "> AST after name resolution"
+    putStrLn $ pretty resolved
+
+  -- SCC analysis
+  connected <- ExceptT $ timeItNamed "SCC           " $
+    sccAnalysis resolved
+
+  liftIO $ when verbose $ do
+    putStrLn "> SCC Analysis:"
+    putStrLn $ pretty connected
+
+  -- Indirect call handling
+  direct <- liftIO $
+    if noDesugarCalls
+    then pure connected
+    else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
+
+  liftIO $ when verbose $ do
+    putStrLn "> Indirect call desugaring:"
+    putStrLn $ pretty direct
+
+  -- Type inference
+  (typed, env) <- ExceptT $ timeItNamed
+    (if noDesugarCalls then "Indirect Calls" else "Typecheck     ")
+    (typeInfer opts direct)
+
+  liftIO $ when verbose $ do
+    putStrLn "> Type inference logs:"
+    mapM_ putStrLn (reverse $ logs env)
+    putStrLn "> Elaborated tree:"
+    putStrLn $ pretty typed
+
+  -- Match compilation
+  matchless <-
+    if noMatchCompiler
+    then pure typed
+    else ExceptT $ timeItNamed "Match compiler" $ matchCompiler typed
+
+  liftIO $ when (verbose || optDumpDS opts) $ do
+    putStrLn "> Match compilation result:"
+    putStrLn (pretty matchless)
+
+  -- Specialization & Core Generation
+  if optNoSpec opts
+  then pure []
+  else do
+    specialized <- liftIO $ timeItNamed "Specialise    " $
+      specialiseCompUnit matchless (optDebugSpec opts) env
+
+    liftIO $ when (optDumpSpec opts) $ do
+      putStrLn "> Specialised contract:"
+      putStrLn (pretty specialized)
+
+    core <- liftIO $ timeItNamed "Emit Core     " $
+      emitCore (optDebugCore opts) env specialized
+
+    liftIO $ when (optDumpCore opts) $ do
+      putStrLn "> Core contract(s):"
+      forM_ core (putStrLn . pretty)
+
+    pure core
 
 -- add declarations generated in the previous step
 -- and moving data types inside contracts to the
 -- global scope.
-
 moveData :: CompUnit Name -> CompUnit Name
 moveData (CompUnit imps decls1)
   = CompUnit imps (foldr step [] decls1)

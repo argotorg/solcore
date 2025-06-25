@@ -2,79 +2,49 @@
   description = "sol-core";
 
   inputs = {
-    # Nix Inputs
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-    foundry.url = "github:shazow/foundry.nix/stable";
+    flake-utils.url = "github:numtide/flake-utils";
+    foundry = {
+      url = "github:shazow/foundry.nix/stable";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    hevm = {
+      url = "github:ethereum/hevm";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = {
-    self,
-    nixpkgs,
-    foundry,
-  }:
-    let
-      forAllSystems = function:
-        nixpkgs.lib.genAttrs [
-          "x86_64-linux"
-          "aarch64-linux"
-          "x86_64-darwin"
-          "aarch64-darwin"
-        ] (system: function rec {
+  outputs =
+    inputs:
+    inputs.flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = import inputs.nixpkgs {
           inherit system;
-          compilerVersion = "ghc982";
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ foundry.overlay ];
-          };
-          hsPkgs = pkgs.haskell.packages.${compilerVersion}.override {
-            overrides = hfinal: hprev: {
-              sol-core = hfinal.callCabal2nix "sol-core" ./. {};
-            };
-          };
-        });
-    in
-    {
-      # nix fmt
-      formatter = forAllSystems ({pkgs, ...}: pkgs.alejandra);
-
-      # nix develop
-      devShell = forAllSystems ({hsPkgs, pkgs, ...}:
-        hsPkgs.shellFor {
-          # withHoogle = true;
-          packages = p: [
-            p.sol-core
-          ];
-          buildInputs = with pkgs;
-            [
-              hsPkgs.haskell-language-server
-              haskellPackages.cabal-install
-              haskellPackages.alex 
-              haskellPackages.happy
-              cabal2nix
-              haskellPackages.ghcid
-              haskellPackages.fourmolu
-              haskellPackages.cabal-fmt
-              foundry-bin
-            ]
-            ++ (builtins.attrValues (import ./scripts.nix {s = pkgs.writeShellScriptBin;}));
-        });
-
-      # nix build
-      packages = forAllSystems ({hsPkgs, ...}: {
-          sol-core = hsPkgs.sol-core;
-          default = hsPkgs.sol-core;
-      });
-
-      # You can't build the sol-core package as a check because of IFD in cabal2nix
-      checks = {};
-
-      # nix run
-      apps = forAllSystems ({system, ...}: {
-        sol-core = { 
-          type = "app"; 
-          program = "${self.packages.${system}.sol-core}/bin/sol-core"; 
+          overlays = [ inputs.foundry.overlay ];
         };
-        default = self.apps.${system}.sol-core;
-      });
-    };
+        hspkgs = pkgs.haskell.packages.ghc982;
+
+        gitignore = pkgs.nix-gitignore.gitignoreSourcePure [ ./.gitignore ];
+        sol-core = (hspkgs.callCabal2nix "sol-core" (gitignore ./.) { });
+      in
+      rec {
+        packages.sol-core = sol-core;
+        packages.default = packages.sol-core;
+
+        apps.sol-core = inputs.flake-utils.lib.mkApp { drv = packages.sol-core; };
+        apps.default = apps.sol-core;
+
+        devShells.default = hspkgs.shellFor {
+          packages = _: [ sol-core ];
+          buildInputs = [
+            inputs.hevm.packages.${system}.default
+            hspkgs.cabal-install
+            hspkgs.haskell-language-server
+            pkgs.foundry-bin
+            pkgs.solc
+          ];
+        };
+      }
+    );
 }
