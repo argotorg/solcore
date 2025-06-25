@@ -103,6 +103,7 @@ cases =
     , runTestExpectingFailure "SillyReturn.solc" caseFolder
     , runTestForFile "SimpleField.solc" caseFolder
     , runTestExpectingFailure "SimpleInvoke.solc" caseFolder
+    , runTestForFile "closure-capture-only.solc" caseFolder
     , runTestForFile "SimpleLambda.solc" caseFolder
     , runTestForFile "SingleFun.solc" caseFolder
     , runTestForFile "assembly.solc" caseFolder
