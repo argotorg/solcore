@@ -34,3 +34,11 @@ output.core
 # claude
 /CLAUDE.md
 /.claude/
+
+# latex
+/spec/*.bbl
+/spec/*.blg
+/spec/*.log
+/spec/*.out
+/spec/*.pdfsync
+/spec/*.pdf
