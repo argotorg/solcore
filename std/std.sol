@@ -630,14 +630,20 @@ forall reader . reader:WordReader => instance ABIDecoder(uint256, reader):ABIDec
 
 // ABI decoding for a pait of decodable values
 // FAIL: Coverage
-// ERROR: no instance of ABIDecoder(b, reader) : ABIDecode (b_decoded)
-//forall a b a_decoded b_decoded reader . reader:WordReader, ABIDecoder(b,reader):ABIDecode(b_decoded), ABIDecoder(a,reader):ABIDecode(a_decoded), a:ABIAttribs => instance ABIDecoder((a,b), reader):ABIDecode((a_decoded,b_decoded))
-//{
-    //function decode(ptr:ABIDecoder((a,b), reader), currentHeadOffset:word) -> (a_decoded, b_decoded) {
-        //let prx : Proxy(a);
-        //return (ABIDecode.decode(ptr, currentHeadOffset), ABIDecode.decode(ptr, Add.add(currentHeadOffset, ABIAttribs.headSize(prx))));
-    //}
-//}
+forall a b a_decoded b_decoded reader . reader:WordReader, ABIDecoder(b,reader):ABIDecode(b_decoded), ABIDecoder(a,reader):ABIDecode(a_decoded), a:ABIAttribs => instance ABIDecoder((a,b), reader):ABIDecode((a_decoded,b_decoded))
+{
+    function decode(ptr:ABIDecoder((a,b), reader), currentHeadOffset:word) -> (a_decoded, b_decoded) {
+        match ptr {
+        | ABIDecoder(rdr) =>
+            let prx : Proxy(a);
+            let decoder_a : ABIDecoder(a, reader) = ABIDecoder(rdr);
+            let decoder_b : ABIDecoder(b, reader) = ABIDecoder(rdr);
+            let a_val : a_decoded = ABIDecode.decode(decoder_a, currentHeadOffset);
+            let b_val : b_decoded = ABIDecode.decode(decoder_b, Add.add(currentHeadOffset, ABIAttribs.headSize(prx)));
+            return (a_val, b_val);
+        }
+    }
+}
 
 forall reader tuple tuple_decoded . reader:WordReader, tuple:ABIDecode(tuple_decoded), tuple:ABIAttribs =>
     instance ABIDecoder(ABITuple(tuple), reader):ABIDecode(tuple_decoded)
