@@ -648,7 +648,7 @@ forall a b a_decoded b_decoded reader . reader:WordReader, ABIDecoder(b,reader):
 forall reader tuple tuple_decoded . reader:WordReader, tuple:ABIDecode(tuple_decoded), tuple:ABIAttribs =>
     instance ABIDecoder(ABITuple(tuple), reader):ABIDecode(tuple_decoded)
 {
-    function decode(ptr:ABIDecoder(ABITuple(tuple), reader), currentHeadOffset:word) -> tuple {
+    function decode(ptr:ABIDecoder(ABITuple(tuple), reader), currentHeadOffset:word) -> tuple_decoded {
         let prx : Proxy(tuple);
         match ABIAttribs.isStatic(prx) {
         | true => return ABIDecode.decode(WordReader.advance(ptr, currentHeadOffset), 0);
@@ -662,7 +662,7 @@ forall reader tuple tuple_decoded . reader:WordReader, tuple:ABIDecode(tuple_dec
 forall reader tuple tuple_decoded . reader:WordReader, tuple:ABIDecode(tuple_decoded), tuple:ABIAttribs =>
     instance ABIDecoder(memory(ABITuple(tuple)), reader):ABIDecode(memory(tuple_decoded))
 {
-    function decode(ptr:ABIDecoder(memory(ABITuple(tuple)), reader), currentHeadOffset:word) -> tuple {
+    function decode(ptr:ABIDecoder(memory(ABITuple(tuple)), reader), currentHeadOffset:word) -> memory(tuple_decoded) {
         let prx : Proxy(tuple);
         match ABIAttribs.isStatic(prx) {
         | true => return ABIDecode.decode(WordReader.advance(ptr, currentHeadOffset), 0);
