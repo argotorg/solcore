@@ -9,7 +9,6 @@ import System.Exit (ExitCode(..))
 
 import qualified Data.Time as Time
 import Solcore.Desugarer.IndirectCall (indirectCall)
-import Solcore.Desugarer.LambdaLifting (lambdaLifting)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
 import Solcore.Frontend.Lexer.SolcoreLexer
