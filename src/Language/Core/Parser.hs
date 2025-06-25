@@ -93,6 +93,7 @@ pPrimaryExpr = choice
     , pTuple
     , try (ECall <$> identifier <*> parens (commaSep coreExpr))
     , EVar <$> (identifier  <* notFollowedBy (symbol "("))
+    , parens coreExpr
     ]
 
 pTuple :: Parser Expr
