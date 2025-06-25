@@ -671,40 +671,38 @@ forall reader tuple tuple_decoded . reader:WordReader, tuple:ABIDecode(tuple_dec
     }
 }
 
-// ERROR: No instance found for: ABIDecoder(baseType, reader) : Typedef (ABIDecoder(memory(DynArray(baseType)), reader))
-//forall reader baseType reader baseType_decoded . reader:WordReader, ABIDecoder(baseType, reader):ABIDecode(baseType_decoded) =>
-    //instance ABIDecoder(memory(DynArray(baseType)), reader):ABIDecode(memory(DynArray(baseType_decoded)))
-//{
-    //function decode(ptr:ABIDecoder(memory(DynArray(baseType)), reader), currentHeadOffset:word) -> memory(DynArray(baseType)) {
-        //let arrayPtr = WordReader.advance(ptr, currentHeadOffset);
-        //let length = WordReader.read(arrayPtr);
-        //let elementPtr:ABIDecoder(baseType, reader) = Typedef.abs(WordReader.advance(arrayPtr, 32));
-        //arrayPtr = WordReader.advance(arrayPtr, 32);
-        //let prx : Proxy(baseType_decoded);
-        //let result : memory(DynArray(baseType_decoded)) = allocateDynamicArray(prx, length);
-        //let offset = 0;
-        //let prx : Proxy(baseType);
-        //let elementHeadSize = ABIAttribs.headSize(prx);
+forall reader baseType reader baseType_decoded . reader:WordReader, ABIDecoder(baseType, reader):ABIDecode(baseType_decoded) =>
+    instance ABIDecoder(memory(DynArray(baseType)), reader):ABIDecode(memory(DynArray(baseType_decoded)))
+{
+    function decode(ptr:ABIDecoder(memory(DynArray(baseType)), reader), currentHeadOffset:word) -> memory(DynArray(baseType)) {
+        let arrayPtr = WordReader.advance(ptr, currentHeadOffset);
+        let length = WordReader.read(arrayPtr);
+        let elementPtr:ABIDecoder(baseType, reader) = Typedef.abs(WordReader.advance(arrayPtr, 32));
+        arrayPtr = WordReader.advance(arrayPtr, 32);
+        let prx : Proxy(baseType_decoded);
+        let result : memory(DynArray(baseType_decoded)) = allocateDynamicArray(prx, length);
+        let offset = 0;
+        let prx : Proxy(baseType);
+        let elementHeadSize = ABIAttribs.headSize(prx);
 
-        //// TODO: surface level loops
-        //// TODO: sugar for assigning to indexAccess types (result[i])
-        ////for(let i = 0; i < length; i++) {
-            ////result[i] = ABIDecode.decode(elementPtr, offset);
-            ////assembly { offset := add(offset, elementHeadSize) }
-        ////}
+        // TODO: surface level loops
+        // TODO: sugar for assigning to indexAccess types (result[i])
+        //for(let i = 0; i < length; i++) {
+            //result[i] = ABIDecode.decode(elementPtr, offset);
+            //assembly { offset := add(offset, elementHeadSize) }
+        //}
 
-        //return result;
-    //}
-//}
+        return result;
+    }
+}
 
-// ERROR: No instance found for: ABIDecoder(calldata(DynArray(baseType)), reader) : Typedef (u69)
-//forall baseType baseType_decoded . ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded) =>
-    //instance ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
-//{
-    //function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType)) {
-        //return Typedef.abs(Typedef.rep(Typedef.rep(WordReader.advance(ptr, currentHeadOffset))));
-    //}
-//}
+forall baseType baseType_decoded . ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded) =>
+    instance ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
+{
+    function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType)) {
+        return Typedef.abs(Typedef.rep(Typedef.rep(WordReader.advance(ptr, currentHeadOffset))));
+    }
+}
 
 // --- Contract Entrypoint ---
 
