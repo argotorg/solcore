@@ -590,13 +590,11 @@ forall tuple . tuple:ABIEncode, tuple:ABIAttribs => instance ABITuple(tuple):ABI
 
 // Top level decoding function.
 // abi decodes an instance of `decodable` into a `ty`
-// ERROR: No instance found for: ABIDecoder(g111, f111) : ABIDecode (g111)
-// TODO: is this instance too strict?
-//forall decodable reader ty . decodable:HasWordReader(reader), ABIDecoder(ty, reader):ABIDecode(ty) =>
-//function abi_decode(decodable:decodable) -> ty {
-    //let decoder : ABIDecoder(ty, reader) = ABIDecoder(HasWordReader.getWordReader(decodable));
-    //return ABIDecode.decode(decoder, 0);
-//}
+forall decodable reader ty . decodable:HasWordReader(reader), ABIDecoder(ty, reader):ABIDecode(decoded) =>
+function abi_decode(decodable:decodable) -> decoded {
+    let decoder : ABIDecoder(ty, reader) = ABIDecoder(HasWordReader.getWordReader(decodable));
+    return ABIDecode.decode(decoder, 0);
+}
 
 
 class decoder:ABIDecode(decoded) {
