@@ -4,7 +4,14 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    foundry.url = "github:shazow/foundry.nix/stable";
+    foundry = {
+      url = "github:shazow/foundry.nix/stable";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    hevm = {
+      url = "github:ethereum/hevm";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -31,8 +38,9 @@
         devShells.default = hspkgs.shellFor {
           packages = _: [ sol-core ];
           buildInputs = [
-            hspkgs.haskell-language-server
+            inputs.hevm.packages.${system}.default
             hspkgs.cabal-install
+            hspkgs.haskell-language-server
             pkgs.foundry-bin
             pkgs.solc
           ];
