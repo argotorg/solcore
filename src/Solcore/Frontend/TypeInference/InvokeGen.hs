@@ -57,8 +57,10 @@ createInstance udt fd sch
       (qs' :=> ty') <- askEnv invoke >>= fresh 
       -- getting arguments and return type from signature 
       let (args, retTy) = splitTy ty
-          args' = if null args then [unit] else filter (not . isClosureTy) args
-          vunreach = bv qt \\ bv ty 
+          args' = case filter (not . isClosureTy) args of
+            [] -> [unit]  -- no args / all args are closures
+            xs -> xs
+          vunreach = bv qt \\ bv ty
           argTy = tupleTyFromList args'
           argvars = bv qt  
           dn = dataName udt
@@ -78,7 +80,7 @@ createInstance udt fd sch
         fname = sigName (funSignature fd)
         ssargs = take (length args) (svs ++ sarg) 
         scall = Return (Call Nothing fname ssargs)
-        bdy = Match [discr] [([foldr1 ppair (spvs : sargs)], [scall])] 
+        bdy = Match [discr] [([foldr1 ppair (spvs : sargs)], [scall])]
         ifd = FunDef isig [bdy]
         vs' = bv qs `union` bv [argTy, retTy, selfTy] `union` bv ifd 
         instd = Instance False vs' qs invokableName [argTy, retTy] selfTy [ifd]
