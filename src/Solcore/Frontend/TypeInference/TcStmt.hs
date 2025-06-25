@@ -289,7 +289,9 @@ createClosureType ids vs ty
           vs' = nub $ (mv ts) ++ (map (MetaTv . var) vs) 
           ty' = TyCon dn (Meta <$> vs')
           cid = Id dn (funtype ts ty')
-      pure (DataTy dn (map gvar vs') [Constr dn ts'], Con cid ns, ty')
+          d = DataTy dn (map gvar vs') [Constr dn ts']
+      info [">> Create closure type:", pretty d]
+      pure (d, Con cid ns, ty')
 
 createClosureFun :: Name -> 
                     [Id] -> 
@@ -315,7 +317,8 @@ createClosureFun fn free cdt args bdy ps ty
           sig = Signature vs' ps0 fn args' (Just retTy)
       bdy' <- createClosureBody cName cdt free bdy
       sch <- generalize (ps0, [], ty')
-      pure (FunDef sig (everywhere (mkT gen) bdy'), sch)
+      pure (everywhere (mkT gen) $ FunDef sig bdy', sch)
+
  
 
 closureTyCon :: DataTy -> TcM Ty 
@@ -371,28 +374,25 @@ tcSignature :: Signature Name -> [Pred] -> TcM ( (Name, Scheme)
                                                , [Pred]
                                                , IEnv 
                                                ) 
-tcSignature sig@(Signature vs ps n args rt) qs 
-  = do 
-      vs0 <- mapM (const freshTyVar) (bv sig `union` bv qs)
-      let env = zip (bv sig `union` bv qs) vs0
-          args0 = everywhere (mkT (insts @Ty env)) args 
-          rt0 = everywhere (mkT (insts @Ty env)) rt 
-          ps0 = everywhere (mkT (insts @Ty env)) ps
-          qs0 = everywhere (mkT (insts @Ty env)) qs
-      (args', pschs, ts, vs') <- tcArgs args0
-      t' <- maybe freshTyVar pure rt0
-      sch <- generalize (ps0, qs0, funtype ts t')
-      pure ((n, sch), pschs, ts, qs0, env)
+tcSignature sig@(Signature vs ps n args rt) qs
+    = do 
+        vs0 <- mapM (const freshTyVar) (bv sig `union` bv qs)
+        let env = zip (bv sig `union` bv qs) vs0
+            args0 = everywhere (mkT (insts @Ty env)) args 
+            rt0 = everywhere (mkT (insts @Ty env)) rt 
+            ps0 = everywhere (mkT (insts @Ty env)) ps
+            qs0 = everywhere (mkT (insts @Ty env)) qs
+        (args', pschs, ts, vs') <- tcArgs args0
+        t' <- maybe freshTyVar pure rt0
+        sch <- generalize (ps0, qs0, funtype ts t')
+        pure ((n, sch), pschs, ts, qs0, env)
 
 hasAnn :: Signature Name -> Bool 
 hasAnn (Signature vs ps n args rt) 
-  = any isAnn args && isJust rt && n /= qn 
+  = any isAnn args && isJust rt 
     where 
       isAnn (Typed _ t) = True 
       isAnn _ = False
-
-      qn = QualName invokableName "invoke"
-
 
 -- boolean flag indicates if the assumption for the 
 -- function should be included in the context. It 
@@ -421,6 +421,10 @@ tcFunDef incl qs d@(FunDef sig bd)
                          , "from:" 
                          , pretty sig
                          ]
+     when (hasAnn sig) $ do 
+        sm <- match ty ann 
+        _ <- extSubst sm 
+        return ()
      sch' <- generalize (rs, qs', ty)
      -- checking subsumption
      when (hasAnn sig) $ do

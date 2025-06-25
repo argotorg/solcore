@@ -62,7 +62,7 @@ createInstance udt fd sch
           argTy = tupleTyFromList args'
           argvars = bv qt  
           dn = dataName udt
-          selfTy = TyCon dn (TyVar <$> argvars)
+          selfTy = TyCon dn (TyVar <$> dataParams udt)
       -- building the invoke function signature 
       (selfParam, sn) <- freshParam "self" selfTy
       (argParam, an) <- freshParam "arg" argTy
