@@ -248,10 +248,16 @@ tcSig (sig, (Forall _ (_ :=> t)))
 
 -- type checking binding groups
 
+extractSignatures :: [FunDef Name] -> TcM [(Name, Scheme)]
+extractSignatures fds = forM fds $ \(FunDef sig _) -> do
+    ((name, scheme), _, _, _, _) <- tcSignature sig []
+    return (name, scheme)
+
 tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds
   = do
-      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True [] []) binds
+      nmschs <- extractSignatures binds
+      (funs', schs, pss) <- unzip3 <$> (withLocalCtx nmschs $  mapM (tcFunDef True [] []) binds)
       checkDeferedConstraints (zip funs' pss)
       let names = map (sigName . funSignature) funs'
       mapM_ (uncurry extEnv) (zip names schs)
