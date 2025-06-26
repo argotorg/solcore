@@ -79,8 +79,6 @@ analysis fn ds
 
 -- building the dependency graph
 
--- building the dependency graph
-
 mkGraph :: (Ord a, Names a, Decl a) => [a] -> AdjacencyMap a
 mkGraph ds = stars $ mkEdges (mkNameEnv ds) ds
 
