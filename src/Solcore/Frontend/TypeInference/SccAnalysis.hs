@@ -38,18 +38,34 @@ sccAnalysis' :: CompUnit Name -> SCC (CompUnit Name)
 sccAnalysis' (CompUnit imps ds) 
   = do 
       cs' <- mapM sccContract cs
-      CompUnit imps <$> analysis (\ds -> singleton (TMutualDef ds)) (cs' ++ ds')
+      CompUnit imps <$> analysis group (cs' ++ ds')
     where
       isContract (TContr _) = True
       isContract _ = False
 
-      (cs, ds') = partition isContract ds 
+      isFunDef (TFunDef _) = True
+      isFunDef _ = False
 
--- sort inner contract definitions 
+      group xs =
+        if (all isFunDef xs && length xs > 1)
+        then singleton (TMutualDef xs)
+        else xs
+
+      (cs, ds') = partition isContract ds
+
+-- sort inner contract definitions
 
 sccContract :: TopDecl Name -> SCC (TopDecl Name)
 sccContract (TContr (Contract n vs ds))
-  = (TContr . Contract n vs) <$> analysis (\ds -> singleton (CMutualDecl ds)) ds
+  = (TContr . Contract n vs) <$> analysis group ds
+    where
+      group xs =
+        if (all isFunDef xs && length xs > 1)
+        then singleton (CMutualDecl xs)
+        else xs
+
+      isFunDef (CFunDecl _) = True
+      isFunDef _ = False
 sccContract d = pure d
 
 analysis :: (Ord a, Names a, Decl a, Show a) => ([a] -> [a]) -> [a] -> SCC [a]
