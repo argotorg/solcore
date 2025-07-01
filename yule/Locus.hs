@@ -6,7 +6,7 @@ Location tree with addresses a:
 - location for pair is a pair of locations for components
 - location for sum is a location for tag and locations for payload
 -}
-data LocTree a 
+data LocTree a
     = LocWord Integer -- int literal
     | LocBool Bool    -- bool literal
     | LocStack a      -- stack location

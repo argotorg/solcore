@@ -4,17 +4,17 @@ data Succ(a);
 data Proxy(a) = Proxy;
 
 class a : Nth(b,c) {
-  function nth (x : Proxy(a), y : b) -> c; 
-} 
+  function nth (x : Proxy(a), y : b) -> c;
+}
 
 forall a . instance Zero : Nth((a,b), a) {
    function nth (x : Proxy(Zero), y : (a,b)) -> a {
       match y {
-      | (a, b) => return a ; 
+      | (a, b) => return a ;
       }
-   } 
+   }
 }
- 
+
 forall n a b c . n : Nth (b,c) => instance Succ(n) : Nth ((a,b), c) {
    function nth (x : Proxy(Succ(n)), y : (a,b)) -> c {
       match y {

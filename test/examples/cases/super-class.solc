@@ -1,4 +1,4 @@
-data List(a) = Nil | Cons(a,List(a)); 
+data List(a) = Nil | Cons(a,List(a));
 data Bool = False | True;
 
 function and (x,y) {
@@ -26,7 +26,7 @@ forall a . a : Eq => instance (List(a)) : Eq {
   function eq (xs : List(a), ys : List(a)) -> Bool {
     match xs, ys {
     | Nil, Nil => return True;
-    | Cons(x,xs), Cons(y,ys) => 
+    | Cons(x,xs), Cons(y,ys) =>
         return and(Eq.eq(x,y),Eq.eq(xs,ys));
     }
   }

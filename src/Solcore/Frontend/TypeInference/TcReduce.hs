@@ -23,7 +23,7 @@ splitContext :: [Pred] -> [Pred] -> [MetaTv] -> TcM ([Pred], [Pred])
 splitContext ps qs fs =
   do
     info [">> Starting the reduction of:", pretty ps, " using ", pretty qs]
-    ps' <- reduce ps qs 
+    ps' <- reduce ps qs
     let (ds, rs) = partition (all (`elem` fs) . mv) ps'
     info [">> Defered constraints:", pretty ds]
     info [">> Retained constraints:", pretty rs]
@@ -35,17 +35,17 @@ reduce :: [Pred] -> [Pred] -> TcM [Pred]
 reduce ps0 qs =
   do
     n <- askMaxRecursionDepth
-    ps' <- reduce' n ps0 qs 
+    ps' <- reduce' n ps0 qs
     simplify ps'
 
 reduce' :: Int -> [Pred] -> [Pred] -> TcM [Pred]
-reduce' n ps qs 
-  = do 
-      ps' <- reduceI n ps qs 
-      reduceI n ps' qs 
+reduce' n ps qs
+  = do
+      ps' <- reduceI n ps qs
+      reduceI n ps' qs
 
 reduceI :: Int -> [Pred] -> [Pred] -> TcM [Pred]
-reduceI n ps0 qs 
+reduceI n ps0 qs
   | n <= 0 =
       tcmError $
         unwords
@@ -58,7 +58,7 @@ reduceI n ps0 qs
         ps <- withCurrentSubst ps0
         preds <- concat <$> mapM reduceBySuper ps
         unless (null preds) $ info ["> reduce context ", pretty preds]
-        ps1 <- reduceByInst n preds qs 
+        ps1 <- reduceByInst n preds qs
         unless (null ps1) $ info ["< reduced context ", pretty (nub ps1)]
         pure (nub ps1)
 
@@ -78,7 +78,7 @@ simplify = loop []
 
 reduceByInst :: Int -> [Pred] -> [Pred] -> TcM [Pred]
 reduceByInst n ps qs =
-  (nub . concat) <$> mapM (\ p -> do 
+  (nub . concat) <$> mapM (\ p -> do
       ps' <- reduceByInst' n qs p
       info [">> Solved: ", pretty p, ", remaining: ", prettys ps']
       pure ps') ps
@@ -94,7 +94,7 @@ reduceByInst' n qs p@(InCls c _ _)
           ]
   | inHnf p = do
     if checkEntails qs p then pure []
-    else do 
+    else do
       info [">> Solving (HNF):", pretty p]
       pure [p]
   | otherwise =
@@ -110,7 +110,7 @@ reduceByInst' n qs p@(InCls c _ _)
               then do
                 case selectDefaultInst de pp of
                   Nothing -> -- pure [p]
-                    if checkEntails qs pp then do 
+                    if checkEntails qs pp then do
                         info [">> Entailing ", pretty pp, " using ", pretty qs]
                         pure []
                       else pure [pp] --  tcmError $ unwords ["No instance found for:", pretty pp]
@@ -118,7 +118,7 @@ reduceByInst' n qs p@(InCls c _ _)
                     extSubst s
                     withCurrentSubst ps'
               else do
-                if checkEntails qs pp then do 
+                if checkEntails qs pp then do
                     info [">> Entailing ", pretty pp, " using ", pretty qs]
                     pure []
                   else pure [pp] -- tcmError $ unwords [">>> No instance found for:", pretty pp]
@@ -132,8 +132,8 @@ reduceByInst' n _ (t1 :~: t2) =
     unify t1 t2
     pure []
 
-checkEntails :: [Pred] -> Pred -> Bool 
-checkEntails qs p = any (\ q -> isRight $ mgu q p) qs 
+checkEntails :: [Pred] -> Pred -> Bool
+checkEntails qs p = any (\ q -> isRight $ mgu q p) qs
 
 proveDefaulting :: InstTable -> Pred -> Bool
 proveDefaulting ce p@(InCls i t as) =
@@ -180,34 +180,34 @@ selectInst ce p@(InCls i t as) =
 selectInst _ _ = Nothing
 
 askInstancesFor :: Pred -> TcM [Inst]
-askInstancesFor (InCls n _ _) 
+askInstancesFor (InCls n _ _)
   = Map.findWithDefault [] n <$> getInstEnv
 
 findInst :: Pred -> TcM (Maybe ([Pred], Subst, Inst))
-findInst p 
-  = do 
+findInst p
+  = do
       insts <- askInstancesFor p
-      msum <$> mapM (solvePred p) insts 
+      msum <$> mapM (solvePred p) insts
 
 solvePred :: Pred -> Qual Pred -> TcM (Maybe ([Pred], Subst, Inst))
 solvePred p@(InCls _ t ts) ins@(ps :=> h@(InCls _ t' ts'))
-  = do 
+  = do
       -- info ["> Trying to solve:", pretty p, " using ", pretty ins]
       -- info [">> Trying to match:", pretty t', " with ", pretty t]
       case match t' t of
-        Left _ -> do 
+        Left _ -> do
           -- info ["!>> Predicate ", pretty p, " cannot be solved by ", pretty h ,", since main args do not match ", pretty t', " and ", pretty t]
-          pure Nothing 
-        Right u -> 
-          case mgu ts ts' of 
-            Left _ -> do 
+          pure Nothing
+        Right u ->
+          case mgu ts ts' of
+            Left _ -> do
               -- info ["!>> Predicate ", pretty p, " cannot be solved by ", pretty h, ", since weak args do not unify"]
-              pure Nothing 
-            Right u' -> do 
-              let u1 = u' <> u 
+              pure Nothing
+            Right u' -> do
+              let u1 = u' <> u
               -- info ["!>> Predicate ", pretty p, " matches instance ", pretty h]
               pure $ Just (apply u1 ps, u1, ins)
-              
+
 
 -- reducing by super class info
 

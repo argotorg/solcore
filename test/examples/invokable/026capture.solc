@@ -41,7 +41,7 @@ contract InvokeCapLam {
 function main() {
   let y = 42;
   let clos = Lam1Closure(y);
-  
+
   return invoke(clos, 17);
 }
 }

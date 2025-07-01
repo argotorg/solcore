@@ -1,20 +1,20 @@
 module Main where
 
 import Cases
--- import Solver 
-import Test.Tasty 
+-- import Solver
+import Test.Tasty
 
 main :: IO ()
-main = defaultMain tests  
+main = defaultMain tests
 
-tests :: TestTree 
-tests 
+tests :: TestTree
+tests
   = testGroup "Tests"
                [
                  cases
                , pragmas
                , spec
                , std
-               , imports 
---             , reduceTests 
+               , imports
+--             , reduceTests
                ]
