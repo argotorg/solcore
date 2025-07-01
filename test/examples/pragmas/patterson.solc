@@ -1,4 +1,4 @@
-pragma no-patterson-condition ; 
+pragma no-patterson-condition ;
 
 class self:A {}
 class self:B {}

@@ -10,7 +10,7 @@ main
         [path] -> do
           b <- runForFile path
           if b then pure () else exitFailure
-        _ -> do 
+        _ -> do
           putStrLn "Usage: solver <path to solver input file>"
           exitFailure
 

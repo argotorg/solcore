@@ -45,7 +45,7 @@ common common-opts
                       ImportQualifiedPost
                       ScopedTypeVariables
                       TypeApplications
-  ghc-options: -Wall 
+  ghc-options: -Wall
 
 library
   import: common-opts
@@ -75,7 +75,7 @@ library
       Solcore.Frontend.Syntax.SyntaxTree
       Solcore.Frontend.TypeInference.Erase
       Solcore.Frontend.TypeInference.Id
-      Solcore.Frontend.TypeInference.InvokeGen 
+      Solcore.Frontend.TypeInference.InvokeGen
       Solcore.Frontend.TypeInference.NameSupply
       Solcore.Frontend.TypeInference.SccAnalysis
       Solcore.Frontend.TypeInference.TcContract
@@ -88,7 +88,7 @@ library
       Solcore.Frontend.TypeInference.TcUnify
       Solcore.Pipeline.Options
       Solcore.Pipeline.SolcorePipeline
-      Solcore.Pipeline.SolverPipeline 
+      Solcore.Pipeline.SolverPipeline
       Solcore.Primitives.Primitives
       Language.Core
       Language.Core.Parser
@@ -156,7 +156,7 @@ test-suite sol-core-tests
   -- cabal-fmt: expand test -Main
   other-modules:
     Cases
-    Solver 
+    Solver
 
   build-depends:
     , sol-core
@@ -164,6 +164,6 @@ test-suite sol-core-tests
     , tasty-program
     , tasty-expected-failure
     , tasty-hunit
-    , HUnit 
+    , HUnit
 
   build-tool-depends: sol-core:sol-core, sol-core:yule

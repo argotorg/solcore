@@ -39,10 +39,10 @@ import Language.Yul
 %expect 0
 
 %%
--- input definition 
+-- input definition
 
 Input :: { SolverState }
-Input :  TopDeclList ToSolve { SolverState (uncurry Theta (partitionEithers $1)) $2 } 
+Input :  TopDeclList ToSolve { SolverState (uncurry Theta (partitionEithers $1)) $2 }
 
 TopDeclList :: { [Either (Qual Pred) (Qual Pred)] }
 TopDeclList : TopDecl TopDeclList                  { $1 : $2 }
@@ -52,16 +52,16 @@ ToSolve :: { SolverProblem }
 ToSolve : 'sat' ':' '{' ConstraintList '}' ';'     {Sat $4}
         | 'reduce' ':' '{' ConstraintList '}' '~' '{' ConstraintList '}' ';'  {Reduce $4 $8}
 
--- top level declarations 
+-- top level declarations
 
 TopDecl :: { Either (Qual Pred) (Qual Pred) }
 TopDecl : ClassDef                                 {Left $1}
         | InstDef                                  {Right $1}
 
--- class definitions 
+-- class definitions
 
 ClassDef :: { Qual Pred }
-ClassDef 
+ClassDef
  : SigPrefix 'class' Var ':' Name OptParam ';'     { (snd $1) :=> (InCls $5 $3 $6) }
 
 
@@ -70,7 +70,7 @@ OptParam :  '(' VarCommaList ')'                   {$2}
          | {- empty -}                             {[]}
 
 VarCommaList :: { [Ty] }
-VarCommaList : Var ',' VarCommaList                {$1 : $3} 
+VarCommaList : Var ',' VarCommaList                {$1 : $3}
              | Var                                 {[$1]}
 
 ContextOpt :: {[Pred]}
@@ -78,7 +78,7 @@ ContextOpt : {- empty -} %shift                    {[]}
            | Context                               {$1}
 
 Context :: {[Pred]}
-Context : '(' ConstraintList ')' '=>'              { $2 }   
+Context : '(' ConstraintList ')' '=>'              { $2 }
 
 ConstraintList :: { [Pred] }
 ConstraintList : Constraint ',' ConstraintList     {$1 : $3}
@@ -91,9 +91,9 @@ SigPrefix : 'forall' Tyvars '.' ConstraintList '=>' {($2, $4)}
 
 
 Constraint :: { Pred }
-Constraint : Type ':' Name OptTypeParam             {InCls $3 $1 $4} 
+Constraint : Type ':' Name OptTypeParam             {InCls $3 $1 $4}
 
--- instance declarations 
+-- instance declarations
 
 InstDef :: { Qual Pred }
 InstDef : SigPrefix 'instance' Type ':' Name OptTypeParam ';' { (snd $1) :=> (InCls $5 $3 $6) }
@@ -112,7 +112,7 @@ Tyvars : Name Tyvars { (TyCon $1 []) : $2}
        | {-empty-}     {[]}
 
 
--- basic type definitions 
+-- basic type definitions
 
 Type :: { Ty }
 Type : Name OptTypeParam                            {TyCon $1 $2}
@@ -122,9 +122,9 @@ TupleTy :: { Ty }
 TupleTy : '(' TypeCommaList ')'                     {mkTupleTy $2}
 
 Var :: { Ty }
-Var : Name                                         {TyCon $1 []}  
+Var : Name                                         {TyCon $1 []}
 
-Name :: { Name }  
+Name :: { Name }
 Name : identifier                               { Name $1 }
      | QualName %shift                          { QualName (fst $1) (snd $1) }
 
@@ -132,30 +132,30 @@ QualName :: { (Name, String) }
 QualName : QualName '.' identifier              { (QualName (fst $1) (snd $1), $3)}
 
 {
-data Theta 
+data Theta
   = Theta {
       classes :: [Qual Pred]
     , insts :: [Qual Pred]
     } deriving Show
 
-data SolverState 
+data SolverState
   = SolverState {
       theta :: Theta
-    , problem :: SolverProblem 
-    } deriving Show 
+    , problem :: SolverProblem
+    } deriving Show
 
-data SolverProblem 
-  = Sat [Pred] 
+data SolverProblem
+  = Sat [Pred]
   | Reduce [Pred] [Pred]
-  | Improvement Scheme 
-  deriving Show 
+  | Improvement Scheme
+  deriving Show
 
-pairTy :: Ty -> Ty -> Ty 
+pairTy :: Ty -> Ty -> Ty
 pairTy t1 t2 = TyCon "pair" [t1,t2]
 
-mkTupleTy :: [Ty] -> Ty 
+mkTupleTy :: [Ty] -> Ty
 mkTupleTy [] = TyCon (Name "()") []
-mkTupleTy ts = foldr1 pairTy ts 
+mkTupleTy ts = foldr1 pairTy ts
 
 parseError (Token (line, col) lexeme)
   = alexError $ "Parse error while processing lexeme: " ++ show lexeme
@@ -164,7 +164,7 @@ parseError (Token (line, col) lexeme)
 lexer :: (Token -> Alex a) -> Alex a
 lexer = (=<< alexMonadScan)
 
-runParser :: String -> Either String SolverState 
+runParser :: String -> Either String SolverState
 runParser content = do
   runAlex content parser
 }

@@ -45,7 +45,7 @@ instance uint256:Typedef(word) {
 function foo(x:word) -> uint16 {
   let result : uint16 = Typedef.abs(x);
   return result;
-}  
+}
 
 
 class self:Convertible(r)

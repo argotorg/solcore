@@ -1,6 +1,6 @@
 Generic representation of data types
 ------------------------------------
 
-Following the paper 
+Following the paper
 
-<http://dreixel.net/research/pdf/gdmh.pdf> 
+<http://dreixel.net/research/pdf/gdmh.pdf>

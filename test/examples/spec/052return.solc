@@ -1,4 +1,4 @@
-data Bool = False | True; 
+data Bool = False | True;
 data W = W(word);
 data U = U;
 
@@ -31,14 +31,14 @@ function elimBool1(b:Bool) -> word {
       //  | False => x = unsafeCast(ereturn(ereturn(77)));
       // this does not work (monomorphisation fails):
       //  | False => x = unsafeCast(ereturn(unsafeCast(ereturn(77))));
-      
+
       | True  => x = W(22);
    }
 
    match x {
      | W(y) => return y;
    }
-   
+
 }
 
 // "semicolon"

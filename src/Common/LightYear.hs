@@ -18,7 +18,7 @@ runMyParser :: String -> Parser a -> String -> a
 runMyParser name p = runMyParser' p name
 
 runMyParser' :: Parser a -> String -> String -> a
-runMyParser' p filename input = 
+runMyParser' p filename input =
   case parse p filename input of
     Left e -> error (errorBundlePretty e)
     Right x -> x
@@ -27,7 +27,7 @@ runParserE :: Parser a -> String -> String -> Either String a
 runParserE = runParserM
 
 runParserM :: MonadError String m => Parser a -> String -> String -> m a
-runParserM p filename input = 
+runParserM p filename input =
   case parse p filename input of
     Left e -> throwError (errorBundlePretty e)
     Right x -> return x

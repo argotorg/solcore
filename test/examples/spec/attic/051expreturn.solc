@@ -1,4 +1,4 @@
-data Bool = False | True; 
+data Bool = False | True;
 data W = W(Word);
 data U = U;
 
@@ -30,7 +30,7 @@ function elimBool1(b:Bool) -> Word {
       // what about "return(return 77)"?
       // this works
          | False => x = unsafeCast(ereturn(ereturn(77)));
-      // but this does not	 
+      // but this does not
       //   | False => x = unsafeCast(ereturn(unsafeCast(ereturn(77))));
       | True  => x = W(22);
    };
@@ -38,7 +38,7 @@ function elimBool1(b:Bool) -> Word {
    match x {
      | W(y) => return y;
    };
-   
+
 }
 
 // "semicolon"
@@ -51,7 +51,7 @@ forall a:Top, b:Top . function unsafeCast(x:a) -> b {
 
 contract ExpReturn {
 
-  
+
 
   function main() -> Word {
     return elimBool1(False);

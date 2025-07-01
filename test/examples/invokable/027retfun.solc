@@ -5,7 +5,7 @@ contract Id1 {
     let y = 42;
     let nid = lam(x) {return y;};
     return nid;
-  }    
+  }
   function main() {
     return nid(17);
   }
@@ -38,7 +38,7 @@ function foo() {
 }
 
 function main() {
-  
+
   return invoke(foo(), 17);
 }
 }

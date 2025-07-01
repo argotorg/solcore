@@ -7,7 +7,7 @@ class self : Invokable(args, ret) {
     return x ;
   }
 
-  data IdToken(a) = IdToken 
+  data IdToken(a) = IdToken
 
 instance IdToken(a) : Invokable(a,a) {
   function invoke(token: IdToken(a), arg:a) -> a {

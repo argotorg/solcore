@@ -1,12 +1,12 @@
-  data Unit = Unit 
+  data Unit = Unit
   type Memory[a] = Word
 
   class ref : Ref[deref] {
-    function load (r : ref) -> deref ; 
+    function load (r : ref) -> deref ;
     function store (r : ref, v : deref) ;
   }
 
-  type Stack [a] = a 
+  type Stack [a] = a
 
   instance Stack[a] : Ref [Memory[a]] {
     function load (r : Stack[a]) -> Memory[a] {}

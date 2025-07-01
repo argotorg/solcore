@@ -49,7 +49,7 @@ contract RGB {
   let x = fromEnum(B);
   let y = fromEnum(True);
   */
-  
+
   let fetC = FromEnumToken;
   let fetB = FromEnumToken;
   let x = invoke(fetC, B);

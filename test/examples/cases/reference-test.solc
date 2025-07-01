@@ -41,7 +41,7 @@ instance test(a):Typedef(memory(a)) {
     }
 }
 
-forall abs rep . test(abs):Typedef(rep), rep:Test => 
+forall abs rep . test(abs):Typedef(rep), rep:Test =>
   instance test(abs):Test {
     function test(x:test(abs)) -> word {
         return Test.test(Typedef.rep(x));

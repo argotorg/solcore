@@ -13,6 +13,6 @@ revertStmt s =  [ YExp $ YCall "mstore" [yulInt 0, YLit (YulString s)]
 
 {-
 poisonBuiltin :: [YulStmt]
-poisonBuiltin = 
+poisonBuiltin =
     [ YFun "$poison" [] (YReturns ["_dummy"]) (revertStmt "Dying from poison!") ]
 -}
