@@ -37,9 +37,9 @@ instance Match Ty where
     | otherwise = do
         pure (v +-> t)
   match (TyVar v1) (TyVar v2)
-    | isBound v1 || isBound v2 
+    | isBound v1 || isBound v2
       = boundVariablesErr [v1, v2]
-    | v1 == v2 = pure mempty 
+    | v1 == v2 = pure mempty
   match t1 t2 = typesNotMatch t1 t2
 
 instance (Pretty a, Match a) => Match [a] where
@@ -65,20 +65,20 @@ instance (HasType a, Match a) => Match (Qual a) where
 
 -- most general unifier
 
-class MGU a where 
-  mgu :: MonadError String m => a -> a -> m Subst 
+class MGU a where
+  mgu :: MonadError String m => a -> a -> m Subst
 
-instance (HasType a, MGU a) => MGU [a] where 
-  mgu ts1 ts2 = solve (zip ts1 ts2) mempty  
+instance (HasType a, MGU a) => MGU [a] where
+  mgu ts1 ts2 = solve (zip ts1 ts2) mempty
 
-instance MGU Ty where 
+instance MGU Ty where
   mgu (TyCon n ts) (TyCon n' ts')
     | n == n' && length ts == length ts' =
         solve (zip ts ts') mempty
   mgu (TyVar v) (TyVar v')
-    | isBound v || isBound v' 
+    | isBound v || isBound v'
       = boundVariablesErr [v, v']
-    | v == v' = pure mempty 
+    | v == v' = pure mempty
   mgu (Meta _) (TyVar v@(TVar _))
     = boundVariablesErr [v]
   mgu (TyVar v@(TVar _)) (Meta _)
@@ -87,7 +87,7 @@ instance MGU Ty where
   mgu t (Meta v) = varBind v t
   mgu t1 t2 = typesDoNotUnify t1 t2
 
-instance MGU Pred where 
+instance MGU Pred where
   mgu p1@(InCls n t ts) p2@(InCls n' t' ts')
     | n == n' = mgu (t : ts) (t' : ts')
     | otherwise =
@@ -98,13 +98,13 @@ instance MGU Pred where
             , "with"
             , pretty p2
             ]
-  mgu (t1 :~: t2) (t1' :~: t2') 
+  mgu (t1 :~: t2) (t1' :~: t2')
     = mgu [t1, t2] [t1', t2']
 
-instance (HasType a, MGU a) => MGU (Qual a) where 
-  mgu (ps :=> t) (ps' :=> t') 
-    = do 
-        s <- mgu (sort ps) (sort ps') 
+instance (HasType a, MGU a) => MGU (Qual a) where
+  mgu (ps :=> t) (ps' :=> t')
+    = do
+        s <- mgu (sort ps) (sort ps')
         mgu (apply s t) (apply s t')
 
 solve :: (MonadError String m, MGU a, HasType a) => [(a, a)] -> Subst -> m Subst
@@ -192,10 +192,10 @@ typesDoNotUnify t1 t2 =
       , "do not unify"
       ]
 
-boundVariablesErr :: MonadError String m => [Tyvar] -> m a 
-boundVariablesErr ts 
+boundVariablesErr :: MonadError String m => [Tyvar] -> m a
+boundVariablesErr ts
   = throwError $ unwords $ ["Panic!"
-                           , "The following bound variables where" 
-                           , "found in unification / matching:"] ++ 
-                           map pretty ts 
+                           , "The following bound variables where"
+                           , "found in unification / matching:"] ++
+                           map pretty ts
 

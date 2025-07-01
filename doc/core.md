@@ -88,7 +88,7 @@ Although Core is not meant to be written manually, it has concrete syntax, mostl
 
 ```
 Block = "{" coreStmt* "}"
-Contract = "contract" identifier 
+Contract = "contract" identifier
 Stmt = "let" identifier ":" Type
      | "return" Expr
      | match "<" Type ">" Expr "with" "{" Alt* "}"
@@ -106,7 +106,7 @@ Expr = Con "<" Type ">" PrimaryExpr
      | Project PrimaryExpr
      | PrimaryExpr
 
-PrimaryExpr 
+PrimaryExpr
      = integer
      | "true"
      | "false"
@@ -114,7 +114,7 @@ PrimaryExpr
      | identifier "(" ExprList ")"
      | identifier
 Tuple = "(" ExprList ")"
-ExprList = (Expr (, Expr)*)?  
+ExprList = (Expr (, Expr)*)?
 ```
 
 ### Examples
@@ -192,7 +192,7 @@ contract Food {
        | _ => Other;
     };
   }
-  
+
   function main() {
   return fromEnum(eat(Green[Beans]));
   }

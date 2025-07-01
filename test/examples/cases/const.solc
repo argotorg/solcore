@@ -1,5 +1,5 @@
 function const() {
-  return lam (x, y) { return y ;} ; 
+  return lam (x, y) { return y ;} ;
 }
 
 contract Foo {

@@ -22,7 +22,7 @@ contract Food {
        | _ => return Other;
     }
   }
-  
+
   function main() {
   return fromEnum(eat(Green(Beans)));
   }

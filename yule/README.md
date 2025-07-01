@@ -10,7 +10,7 @@ Missing: FILE
 Usage: yule FILE [-c|--contract NAME] [-o|--output FILE] [-v|--verbose]
 
   Compile a Core program to Yul
-  
+
 $ cabal run -- yule examples/core/02sum.core --contract Sum -o Sum.sol
 writing output to Sum.sol
 

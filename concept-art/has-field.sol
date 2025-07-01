@@ -8,7 +8,7 @@ type bool = word
 data Memory(t) = Memory(Word)
 
 // this lets us link a given field in a struct to its position in it's
-// underlying generic representation as a tuple. 
+// underlying generic representation as a tuple.
 class self:Field(prevTypes, ty) {}
 
 // this struct should desugar into the following

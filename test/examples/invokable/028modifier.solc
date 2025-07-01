@@ -21,11 +21,11 @@ contract Id1 {
   function add1mod(f) {
     return lam(a) { return add1(f(a)); }
   }
-  
+
   function foo(x) {
      return addW(x,2);
   }
-  
+
   function main() {
     let bar = add1mod(foo);
     return bar(39);

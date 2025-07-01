@@ -1,4 +1,4 @@
-module Solcore.Frontend.TypeInference.NameSupply where 
+module Solcore.Frontend.TypeInference.NameSupply where
 
 import Solcore.Frontend.Syntax.Name
 
@@ -12,10 +12,10 @@ namePool = Name <$> (names ++ addNumbers names [1..])
 
 
 addNumbers :: [String] -> [Int] -> [String]
-addNumbers xs ys 
+addNumbers xs ys
   = do
-      y <- ys 
-      x <- xs 
+      y <- ys
+      x <- xs
       return (x ++ show y)
 
 newName :: NameSupply -> (Name, NameSupply)

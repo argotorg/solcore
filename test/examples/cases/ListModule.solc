@@ -4,18 +4,18 @@ contract ListModule {
 
 
   function zipWith (f,xs,ys) {
-    match xs, ys { 
-    | Nil, Nil => return Nil ; 
-    | Cons(x1,xs1), Cons(y1,ys1) => 
+    match xs, ys {
+    | Nil, Nil => return Nil ;
+    | Cons(x1,xs1), Cons(y1,ys1) =>
       return Cons(f(x1,y1), zipWith(f,xs1,ys1)) ;
     }
   }
 
   function foldr(f, v, xs) {
     match xs {
-    | Nil => return v; 
-    | Cons(y,ys) => 
-      return f(y, foldr(f,v,ys)) ; 
+    | Nil => return v;
+    | Cons(y,ys) =>
+      return f(y, foldr(f,v,ys)) ;
     }
   }
 }
