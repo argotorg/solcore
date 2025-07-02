@@ -2,7 +2,7 @@ contract Compose {
   function compose(f,g) {
     return lam (x) {
       return f(g(x));
-    } ;   
+    } ;
   }
 
   function id(x) { return x; }

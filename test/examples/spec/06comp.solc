@@ -2,7 +2,7 @@ contract Compose {
   function compose(f,g) {
     return lam (x) {
       return f(g(x));
-    } ;   
+    } ;
   }
 
   function id(x) { return x; }
@@ -11,7 +11,7 @@ contract Compose {
 
   function foo() {
     let f = idid();
-    return f(42); 
+    return f(42);
   }
 
   function main() {

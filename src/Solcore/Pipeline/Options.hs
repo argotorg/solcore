@@ -25,7 +25,7 @@ emptyOption path = Option
     { fileName          = path
     , optNoSpec         = False
     , optNoDesugarCalls = False
-    , optNoMatchCompiler = False 
+    , optNoMatchCompiler = False
     -- Options controlling printing
     , optVerbose        = False
     , optDumpDS         = False

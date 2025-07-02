@@ -1,4 +1,4 @@
-import booldef ; 
+import booldef ;
 
 function and (b1 : Bool, b2 : Bool) -> Bool {
   return False ;

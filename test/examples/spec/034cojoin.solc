@@ -23,11 +23,11 @@ contract Option {
    match mx {
      | Some(x) => return x;
    }
- }   
+ }
 
   function cojoin(x) { // Test that sum types can grow
     let result = None;
-    result = Some(x); 
+    result = Some(x);
     return result;
    }
 

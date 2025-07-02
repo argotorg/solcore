@@ -72,9 +72,9 @@ instance Compress a => Compress [a] where
     compress = map compress
 
 instance Compress Stmt where
-    compress (SFunction n args t stmts) = SFunction n 
+    compress (SFunction n args t stmts) = SFunction n
                                             (compress args)
-                                            (compress t) 
+                                            (compress t)
                                             (map compress stmts)
     compress (SReturn e) = SReturn (compress e)
     compress (SMatch t e alts) = compressMatch (compress t) (SMatch t e alts)
