@@ -1,0 +1,25 @@
+name: Spec PDF
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v31
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+    - run: nix build .#spec
+    - name: Upload spec PDF
+      uses: actions/upload-artifact@v4
+      with:
+        name: spec-pdf
+        path: result/spec.pdf

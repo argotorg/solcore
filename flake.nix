@@ -14,8 +14,7 @@
     };
   };
 
-  outputs =
-    inputs:
+  outputs = inputs:
     inputs.flake-utils.lib.eachDefaultSystem (
       system:
       let
@@ -27,9 +26,11 @@
 
         gitignore = pkgs.nix-gitignore.gitignoreSourcePure [ ./.gitignore ];
         sol-core = (hspkgs.callCabal2nix "sol-core" (gitignore ./.) { });
+        texlive = pkgs.texlive.combine { inherit (pkgs.texlive) scheme-small thmtools pdfsync lkproof cm-super; };
       in
       rec {
         packages.sol-core = sol-core;
+        packages.spec = pkgs.callPackage ./spec { solcoreTexlive = texlive; };
         packages.default = packages.sol-core;
 
         apps.sol-core = inputs.flake-utils.lib.mkApp { drv = packages.sol-core; };
@@ -43,6 +44,7 @@
             hspkgs.haskell-language-server
             pkgs.foundry-bin
             pkgs.solc
+            texlive
           ];
         };
       }
