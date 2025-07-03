@@ -1,0 +1,254 @@
+
+/////// Construction
+class abs:Typedef(rep) {
+    function rep(x:abs) -> rep;
+    function abs(x:rep) -> abs;
+}
+
+
+data uint = uint(word);
+
+instance word:Typedef(word) {
+    function rep(x:word) -> word { return x; }
+    function abs(x:word) -> word { return x;}
+}
+
+instance uint:Typedef(word) {
+    function rep(x:uint) -> word {
+        match x {
+            | uint(y) => return y;
+        }
+    }
+    function abs(x:word) -> uint {
+        return uint(x);
+    }
+}
+
+data memory(a) = memory(word);
+data memoryRef(a) = memoryRef(word);
+data Proxy(a) = Proxy;
+
+instance memory(a):Typedef(word) {
+    function rep(x:memory(a)) -> word {
+        match x {
+            | memory(y) => return y;
+        }
+    }
+    function abs(x:word) -> memory(a) {
+        return memory(x);
+    }
+}
+instance memoryRef(a):Typedef(word) {
+    function rep(x:memoryRef(a)) -> word {
+        match x {
+            | memoryRef(y) => return y;
+        }
+    }
+    function abs(x:word) -> memoryRef(a) {
+        return memoryRef(x);
+    }
+}
+
+class lhs:Assign(rhs) {
+    function assign(l:lhs, r:rhs) -> ();
+}
+
+data ref(a) = ref(a);
+
+instance ref(a):Assign(a) {
+    function assign(l:ref(a), r:a) -> () {
+        // builtin "stack store"
+        return ();
+    }
+}
+
+class self:MemoryType {
+    function load(ptr:word) -> self;
+    function store(ptr:word, value:self) -> ();
+}
+
+class self:MemorySize {
+    function size(x:Proxy(self)) -> word;
+}
+
+
+function mload_(x:word) -> word {
+    let res: word;
+    assembly {
+       res := mload(x)
+    }
+    return res;
+  }
+
+function mstore_(a:word, v:word) {
+    assembly { mstore(a,v) }
+}
+
+instance word:MemoryType {
+    function load(ptr:word) -> word {
+        let r:word;
+        assembly {
+            r := mload(ptr);
+        }
+        return r;
+    }
+    function store(ptr:word, value:word) -> () {
+        assembly {
+            mstore(ptr, value)
+        }
+    }
+}
+
+instance uint:MemoryType {
+    function load(ptr:word) -> uint {
+        return Typedef.abs(mload_(ptr));
+    }
+    function store(ptr:word, value:uint) -> () {
+        return mstore_(ptr, Typedef.rep(value));
+    }
+}
+
+forall a . a : MemoryType => instance memoryRef(a):Assign(a) {
+    function assign(l:memoryRef(a), y:a) {
+        MemoryType.store(Typedef.rep(l), y);
+    }
+}
+
+
+
+data MemberAccessProxy(a, field, offset) = MemberAccessProxy(a, field, Proxy(offset));
+
+forall a field offset .
+function memberAccessD1(x:MemberAccessProxy(a, field, offset)) -> a {
+    match x {
+        | MemberAccessProxy(y,z,p) => return y;
+    }
+}
+
+class self:LValueMemberAccess(memberRefType) {
+    function memberAccess(x:self) -> memberRefType;
+}
+
+forall self memberValueType .
+class self:RValueMemberAccess(memberValueType) {
+    function memberAccess(x:self) -> memberValueType;
+}
+
+// This is *a lot* of pragmas...
+// pragma no-coverage-condition StructField, LValueMemberAccess, RValueMemberAccess;
+// pragma no-patterson-condition LValueMemberAccess, RValueMemberAccess;
+// pragma no-bounded-variable-condition LValueMemberAccess, RValueMemberAccess;
+class self:StructField(fieldType, offsetType) {}
+data StructField(structType, fieldSelector) = StructField(structType);
+
+forall structType fieldSelector fieldType offsetType
+  . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
+  , offsetType:MemorySize
+  => instance MemberAccessProxy(memory(structType), fieldSelector, offsetType):LValueMemberAccess(memoryRef(fieldType)) {
+    function memberAccess(x:MemberAccessProxy(memory(structType), fieldSelector, offsetType)) -> memoryRef(fieldType) {
+        let ptr:word = Typedef.rep(memberAccessD1(x));
+        let size:word = MemorySize.size(Proxy:Proxy(offsetType));
+        assembly {
+            ptr := add(ptr, size)
+        }
+        return memoryRef(ptr);
+    }
+}
+
+instance ():MemorySize {
+    function size(x:Proxy(())) -> word {
+        return 0;
+    }
+}
+
+instance word:MemorySize {
+    function size(x:Proxy(word)) -> word {
+        return 32;
+    }
+}
+
+
+instance uint:MemorySize {
+    function size(x:Proxy(uint)) -> word {
+        return 32;
+    }
+}
+
+forall a b . a:MemorySize, b:MemorySize => instance (a,b):MemorySize {
+    function size(x:Proxy((a,b))) -> word {
+        let a_sz:word = MemorySize.size(Proxy:Proxy(a));
+        let b_sz:word = MemorySize.size(Proxy:Proxy(b));
+        assembly {
+            a_sz := add(a_sz, b_sz)
+        }
+        return a_sz;
+    }
+}
+
+forall structType fieldSelector fieldType offsetType
+  . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
+  , fieldType:MemoryType
+  , offsetType:MemorySize
+  => instance MemberAccessProxy(memory(structType), fieldSelector, offsetType):RValueMemberAccess(fieldType) {
+    function memberAccess(x:MemberAccessProxy(memory(structType), fieldSelector, offsetType)) -> fieldType {
+        let ptr:word = Typedef.rep(memberAccessD1(x));
+        let size:word = MemorySize.size(Proxy:Proxy(offsetType));
+        assembly {
+            ptr := add(ptr, size)
+        }
+        return MemoryType.load(ptr);
+    }
+}
+
+////// Testing
+
+// struct S { fld1:word; }
+data S = S(word);
+data fld1_sel = fld1_sel;
+// data y_sel = y_sel;
+// data z_sel = z_sel;
+
+instance StructField(S, x_sel):StructField(word, ()) {}
+// instance StructField(S, y_sel):StructField(uint, word) {}
+// BUG: This next one should really be the following, but that breaks weirdly:
+// (I get a patterson condition violation on an invoke instance for g)
+instance StructField(S, z_sel):StructField(word, (word,uint)) {}
+// So instead I use:
+// instance StructField(S, z_sel):StructField(word, word) {}
+
+
+function f() {
+    let x:memory(word);
+    let y:memory(word);
+    // x = y
+    Assign.assign(ref(x), y);
+    /*
+     * Idea in the above: to avoid overlapping instances,
+     * we can desugar a simple identifier referring to a local variable on the lhs of an assignment to ref(x),
+     * to be able to choose a disjoint assign instance.
+     * Of course this needs special treatment during code generation,
+     * on the other hand, stack assignments generally do...
+     * Actually, even simpler might be just *not* to desugar assignments at all, if the lhs is just an identifier referring to a local variable and just directly take care of it when translating to core.
+     */
+}
+
+function g() -> word {
+    let s:memory(S) = Typedef.abs(0x80);
+
+    let offset0 : Proxy( () ) = Proxy;
+    // s.fld1 = y
+    let fld1_lval : memoryRef(word)
+                  = LValueMemberAccess.memberAccess(MemberAccessProxy(s, fld1_sel, offset0));
+    Assign.assign(fld1_lval, y);
+    // return s.fld1
+    let r : word = 17;
+    r = RValueMemberAccess.memberAccess(MemberAccessProxy(s, fld1_sel, offset0) );
+    return r;
+}
+
+contract C {
+    function main() {
+        f();
+        return g();
+    }
+}
