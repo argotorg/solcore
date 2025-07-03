@@ -20,6 +20,9 @@ infixl 6 ><
 class Pretty a where
   ppr :: a -> Doc
 
+instance Pretty String where
+  ppr = text
+
 dotSep :: [Doc] -> Doc
 dotSep = hcat . punctuate dot
          where
