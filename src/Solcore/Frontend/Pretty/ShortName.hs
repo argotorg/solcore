@@ -28,13 +28,12 @@ instance HasShortName a => HasShortName (FunDef a) where
     shortName fd = "function " ++shortName (funSignature fd)
 
 instance HasShortName a => HasShortName (Instance a) where
-  shortName is = unwords
-    [ "instance"
-    , pretty (mainTy is)
-    , ":"
-    , pretty (instName is)
-    , prettys (paramsTy is)
-    ]
+  shortName idef@(Instance _d _vs _ctx n ts t _funs) = do
+      unwords [ "instance", pretty (InCls n t ts) ]
+
+instance HasShortName Pred where
+    shortName p = unwords ["constraint", pretty p]
+
 instance HasShortName a => HasShortName (TopDecl a) where
   shortName (TContr c) = shortName c
   shortName (TFunDef fd) = shortName fd
