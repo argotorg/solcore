@@ -116,7 +116,8 @@ data Constructor
 
 data Class
   = Class {
-      classContext :: [Pred]
+      classboundvars :: [Ty]
+    , classContext :: [Pred]
     , className :: Name
     , paramsVar :: [Ty]
     , mainVar :: Ty

@@ -160,7 +160,7 @@ Constr : Name OptTypeParam                          { Constr $1 $2 }
 
 ClassDef :: { Class }
 ClassDef
- : SigPrefix 'class' Var ':' Name OptParam ClassBody {Class (snd $1) $5 $6 $3 $7}
+ : SigPrefix 'class' Var ':' Name OptParam ClassBody {Class (fst $1) (snd $1) $5 $6 $3 $7}
 
 ClassBody :: {[Signature]}
 ClassBody : '{' Signatures '}'                     {$2}

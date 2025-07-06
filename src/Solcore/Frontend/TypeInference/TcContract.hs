@@ -230,13 +230,13 @@ tcField d@(Field n t _)
       pure (Field n t Nothing)
 
 tcClass :: Class Name -> TcM (Class Id)
-tcClass iclass@(Class ctx n vs v sigs)
+tcClass iclass@(Class bvs ctx n vs v sigs)
   = do
       let ns = map sigName sigs
           qs = map (QualName n . pretty) ns
       schs <- mapM askEnv qs `wrapError` iclass
       sigs' <- mapM tcSig (zip sigs schs) `wrapError` iclass
-      pure (Class ctx n vs v sigs')
+      pure (Class bvs ctx n vs v sigs')
 
 tcSig :: (Signature Name, Scheme) -> TcM (Signature Id)
 tcSig (sig, (Forall _ (_ :=> t)))
@@ -301,7 +301,7 @@ checkClasses :: [Class Name] -> TcM ()
 checkClasses = mapM_ checkClass
 
 checkClass :: Class Name -> TcM ()
-checkClass icls@(Class ps n vs v sigs)
+checkClass icls@(Class bvs ps n vs v sigs)
   = do
       let p = InCls n (TyVar v) (TyVar <$> vs)
           ms' = map sigName sigs
@@ -315,7 +315,7 @@ checkClass icls@(Class ps n vs v sigs)
             pst <- mapM tyParam ps
             t' <- maybe (pure unit) pure mt
             let ft = funtype pst t'
-            unless (v `elem` bv ft)
+            unless (null bvs || v `elem` bvs)
                    (signatureError n v sig ft)
             addClassMethod p sig `wrapError` icls
 
