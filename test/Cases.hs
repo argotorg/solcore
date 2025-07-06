@@ -137,7 +137,7 @@ cases =
     , runTestForFile "tuple-trick.solc" caseFolder
     , runTestForFile "const-array.solc" caseFolder
     , runTestForFile "array.solc" caseFolder
-    , runTestForFile "class-context.solc"
+    , runTestForFile "class-context.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
