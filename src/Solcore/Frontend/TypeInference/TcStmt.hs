@@ -421,10 +421,6 @@ tcFunDef incl qs d@(FunDef sig bd)
                          , "from:"
                          , pretty sig
                          ]
-     when (hasAnn sig) $ do
-        sm <- match ty ann
-        _ <- extSubst sm
-        return ()
      sch' <- generalize (rs, qs', ty)
      -- checking subsumption
      when (hasAnn sig) $ do
