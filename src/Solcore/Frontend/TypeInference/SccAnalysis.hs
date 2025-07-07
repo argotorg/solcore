@@ -198,7 +198,7 @@ instance Names (Constructor Name) where
     = names ps `union` names bdy
 
 instance Names (Class Name) where
-  names (Class ctx _ _ _ sigs)
+  names (Class _ ctx _ _ _ sigs)
     = names ctx `union` names sigs
 
 instance Names (Instance Name) where
