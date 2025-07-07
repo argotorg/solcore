@@ -100,8 +100,8 @@ compile opts = runExceptT $ do
     if noMatchCompiler
     then pure typed
     else ExceptT $ timeItNamed "Match compiler" $ matchCompiler typed
-
-  liftIO $ when (verbose || optDumpDS opts) $ do
+  let printMatch = (not $ noMatchCompiler) && (verbose || optDumpDS opts)
+  liftIO $ when printMatch $ do
     putStrLn "> Match compilation result:"
     putStrLn (pretty matchless)
 

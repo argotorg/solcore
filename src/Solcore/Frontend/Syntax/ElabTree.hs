@@ -288,11 +288,11 @@ instance Elab S.Constructor where
 instance Elab S.Class where
   type Res S.Class = Class Name
 
-  initialEnv (S.Class ctx n _ _ sigs)
+  initialEnv (S.Class _ ctx n _ _ sigs)
     = env {classes = [n] `union` classes env}
       where
         env = initialEnv sigs
-  elab (S.Class ctx n vs v sigs)
+  elab (S.Class bvs ctx n vs v sigs)
     = do
         ctx' <- elab ctx
         vs' <- elab vs
@@ -307,7 +307,8 @@ instance Elab S.Class where
         vs1 <- mapM mkTyVar vs'
         v1 <- mkTyVar v'
         sigs' <- elab sigs
-        pure (Class ctx' n vs1 v1 sigs')
+        let bvs' = map TVar (names bvs)
+        pure (Class bvs' ctx' n vs1 v1 sigs')
 
 mkTyVar :: Ty -> ElabM Tyvar
 mkTyVar (TyVar v) = pure v

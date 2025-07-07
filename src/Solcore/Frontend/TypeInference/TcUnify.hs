@@ -7,6 +7,7 @@ import Control.Monad.Reader
 import Data.List
 
 import Common.Pretty
+import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty hiding ((<>))
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcSubst
@@ -174,12 +175,13 @@ typesNotMatch t1 t2 =
 
 typesMatchListErr :: (MonadError String m) => [String] -> [String] -> m a
 typesMatchListErr ts ts' =
-  throwError (errMsg (zip ts ts'))
+  throwError (errMsg ts ts')
  where
-  errMsg ps =
-    unwords ["Types do not match:"]
-      ++ concatMap tyList ps
-  tyList (t1, t2) = t1 <> " and " <> t2
+  errMsg ts ts' =
+    unwords ["Type lists do not match: (typesMatchListErr)\n"
+            , prettys ts, "and", prettys ts'
+            ]
+
 
 typesDoNotUnify :: (MonadError String m) => Ty -> Ty -> m a
 typesDoNotUnify t1 t2 =

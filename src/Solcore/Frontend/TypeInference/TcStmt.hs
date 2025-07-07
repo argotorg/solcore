@@ -9,6 +9,7 @@ import Data.List
 import qualified Data.Map as Map
 import Data.Maybe
 
+import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -631,7 +632,7 @@ checkInstance idef@(Instance d vs ctx n ts t funs)
       bound <- askBoundVariableCondition n
       unless bound (checkBoundVariable ctx (fv (t : ts)) `wrapError` idef)
       -- checking instance methods
-      mapM_ (checkMethod ipred) funs
+      mapM_ (checkMethod ipred) funs `wrapError` idef
       let ninst = anfInstance $ ctx :=> InCls n t ts
       -- add to the environment
       if d then addDefaultInstance n ninst

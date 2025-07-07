@@ -123,8 +123,8 @@ pprConstrArgs [] = empty
 pprConstrArgs ts = commaSep $ map ppr ts
 
 instance Pretty a => Pretty (Class a) where
-  ppr (Class ps n vs v sigs)
-    = pprSigPrefix (fv ps) ps <+>
+  ppr (Class bvs ps n vs v sigs)
+    = pprSigPrefix bvs ps <+>
       text "class " <+>
       ppr v <+>
       colon <+>
