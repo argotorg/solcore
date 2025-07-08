@@ -59,7 +59,7 @@ instance word:MemoryType {
     }
 }
 
-forall size elem . elem:MemoryType => instance memory(array(size, elem)) : IndexAccessible(word, elem) {
+forall size elem . size : ToWord, elem:MemoryType => instance memory(array(size, elem)) : IndexAccessible(word, elem) {
     function at(self, index) -> elem {
         let sizeValue = ToWord.toWord(ItselfRuntimeTag:Itself(size));
        // this should work but doesn't

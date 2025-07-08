@@ -1,11 +1,11 @@
-data List(a) = Nil | Cons(a,List(a))
-data Bool = False | True
+data List(a) = Nil | Cons(a,List(a));
+data Bool = False | True;
 
 function and(x,y) {
   match x, y {
   | False, _ => return False;
   | True, z => return z;
-  };
+  }
 }
 
 class a : Eq {
@@ -17,7 +17,7 @@ instance Word : Eq {
     match primEqWord(x,y) {
     | 0 => return False ;
     | _ => return True ;
-    };
+    }
   }
 }
 
@@ -29,8 +29,8 @@ function filter (f, xs) {
     match f(y) {
     | False => return filter(f,ys);
     | True => return Cons(y,filter(f,ys));
-    };
-  };
+    }
+  }
 }
 
 function list1 () {

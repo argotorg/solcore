@@ -416,12 +416,12 @@ tcFunDef incl qs d@(FunDef sig bd)
      vs <- getEnvMetaVars
      (ds, rs) <- splitContext ps3 qs' vs `wrapError` d
      -- checking constraint provability for annotated types.
-     when (hasAnn sig && null (sigContext sig) && not (isValid rs) && incl) $ do
-      tcmError $ unlines [ "Could not deduce:"
-                         ,  pretty rs
-                         , "from:"
-                         , pretty sig
-                         ]
+     when (hasAnn sig && null (sigContext sig) && not (isValid rs)) $ do
+        tcmError $ unlines [ "Could not deduce:"
+                           ,  pretty rs
+                           , "from:"
+                           , pretty sig
+                           ]
      sch' <- generalize (rs, qs', ty)
      -- checking subsumption
      when (hasAnn sig) $ do
@@ -531,7 +531,7 @@ tcInstance idecl@(Instance d vs ctx n ts t funs)
         vs1 = bv ctx `union` bv ts `union` bv t
         env = zip vs1 (map TyVar vs0)
         t' = insts env t
-        ts' = insts env  ts
+        ts' = insts env ts
         ctx' = insts env ctx
         env2 = zip (bv funs2) (map TyVar vs0)
         funs3 = map updateSig $ everywhere (mkT (insts @Ty env2)) funs2
