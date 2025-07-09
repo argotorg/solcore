@@ -8,5 +8,5 @@ function listid(xs) {
   match xs {
   | Nil => return Nil ;
   | Cons(x,xs) => return Cons(id(x), listid(xs));
-  };
+  }
 }
