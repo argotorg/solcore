@@ -18,9 +18,13 @@ import Solcore.Primitives.Primitives
 
 -- top level elaboration / name resolution function
 
-buildAST :: S.CompUnit -> IO (Either String (CompUnit Name))
+buildAST :: S.CompUnit -> IO (Either String (CompUnit Name), Env)
 buildAST t
   = runElabM t
+
+buildAST' :: S.CompUnit -> IO (Either String (CompUnit Name, Env))
+buildAST' t
+  = runElabM' t
 
 -- definition of an environment to hold
 -- module declarations
@@ -58,10 +62,17 @@ instance Monoid Env where
 
 type ElabM a = (ExceptT String (StateT Env IO)) a
 
-runElabM :: (Show a, Elab a) => a -> IO (Either String (Res a))
+runElabM' :: (Show a, Elab a) => a -> IO (Either String (Res a, Env))
+runElabM' t = do
+  (eres, env) <- runElabM t
+  case eres of
+    Left msg -> pure (Left msg)
+    Right res -> pure (Right (res, env))
+
+runElabM :: (Show a, Elab a) => a -> IO (Either String (Res a), Env)
 runElabM t = do
   let ienv = initialEnv t
-  fst <$> (runStateT (runExceptT (elab t)) ienv)
+  runStateT (runExceptT (elab t)) ienv
 
 pushVarsInScope :: [Name] -> ElabM ()
 pushVarsInScope ns

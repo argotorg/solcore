@@ -60,7 +60,7 @@ compile opts = runExceptT $ do
   content <- liftIO $ readFile file
 
   parsed <- ExceptT $ moduleParser dir content
-  resolved <- ExceptT $ buildAST parsed
+  (resolved, env) <- ExceptT $ buildAST' parsed
 
   liftIO $ when (verbose || optDumpAST opts) $ do
     putStrLn "> AST after name resolution"
