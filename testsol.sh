@@ -11,7 +11,7 @@ function testsol() {
     shift
     cabal run sol-core -- -f $file $* && \
 	cabal exec yule -- output.core -w -O > /dev/null && \
-    forge script Output.sol | grep RESULT
+    forge script Output.sol --via-ir | egrep '(Gas|RESULT)'
 }
 
 function testspec() {
@@ -26,7 +26,7 @@ function testspec() {
 
 function testcore() {
     echo $1
-    cabal exec yule -- $1 -w -O && forge script Output.sol | grep RESULT
+    cabal exec yule -- $1 -w -O && forge script  --via-ir Output.sol | egrep '(Gas|RESULT)'
 }
 
 function hevmcore() {
