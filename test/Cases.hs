@@ -140,6 +140,7 @@ cases =
     , runTestForFile "class-context.solc" caseFolder
     , runTestExpectingFailure "missing-instance.solc" caseFolder
     , runTestForFile "rec.solc" caseFolder
+    , runTestForFile "undefined.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
