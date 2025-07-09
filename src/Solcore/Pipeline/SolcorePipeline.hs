@@ -5,9 +5,13 @@ import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception (try, SomeException)
 import Data.IORef
-import System.Exit (ExitCode(..))
-
 import qualified Data.Time as Time
+import System.Exit (ExitCode(..), exitWith)
+import System.FilePath
+import qualified System.TimeIt as TimeIt
+import Text.Pretty.Simple
+
+import qualified Language.Core as Core
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.LambdaLifting (lambdaLifting)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
@@ -24,10 +28,6 @@ import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Desugarer.Specialise(specialiseCompUnit)
 import Solcore.Desugarer.EmitCore(emitCore)
 import Solcore.Pipeline.Options(Option(..), argumentsParser)
-import System.Exit
-import qualified Language.Core as Core
-import System.FilePath
-import qualified System.TimeIt as TimeIt
 
 -- main compiler driver function
 pipeline :: IO ()
@@ -66,6 +66,8 @@ compile opts = runExceptT $ do
     putStrLn "> AST after name resolution"
     putStrLn $ pretty resolved
 
+  liftIO $ when (optDumpEnv opts) $ pPrint env
+    
   -- SCC analysis
   connected <- ExceptT $ timeItNamed "SCC           " $
     sccAnalysis resolved
