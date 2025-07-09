@@ -1,5 +1,6 @@
 module Solcore.Frontend.Syntax.ElabTree where
 
+import Common.Monad
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Identity
@@ -7,6 +8,8 @@ import Control.Monad.State
 
 import Data.List
 import Data.Maybe
+
+import Text.Pretty.Simple
 
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts)
@@ -366,6 +369,11 @@ instance Elab S.Field where
 
   elab (S.Field n t me)
     = Field n <$> elab t <*> elab me
+
+  initialEnv (S.Field n _t _i)
+    = env {fields = [n] `union` fields env }
+      where
+        env = mempty
 
 instance Elab S.FunDef where
   type Res S.FunDef = FunDef Name
