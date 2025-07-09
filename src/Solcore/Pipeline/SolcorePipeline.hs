@@ -62,7 +62,7 @@ compile opts = runExceptT $ do
   parsed <- ExceptT $ moduleParser dir content
   resolved <- ExceptT $ buildAST parsed
 
-  liftIO $ when verbose $ do
+  liftIO $ when (verbose || optDumpAST opts) $ do
     putStrLn "> AST after name resolution"
     putStrLn $ pretty resolved
 

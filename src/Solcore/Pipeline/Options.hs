@@ -9,11 +9,12 @@ data Option
     , optNoDesugarCalls :: !Bool
     , optNoMatchCompiler :: !Bool
     -- Options controlling printing
-    , optVerbose :: !Bool
-    , optDumpDS :: !Bool
-    , optDumpDF :: !Bool
-    , optDumpSpec :: !Bool
-    , optDumpCore :: !Bool
+    , optVerbose   :: !Bool
+    , optDumpAST   :: !Bool
+    , optDumpDS    :: !Bool
+    , optDumpDF    :: !Bool
+    , optDumpSpec  :: !Bool
+    , optDumpCore  :: !Bool
     -- Options controlling diagnostic output
     , optDebugSpec :: !Bool
     , optDebugCore :: !Bool
@@ -28,6 +29,7 @@ emptyOption path = Option
     , optNoMatchCompiler = False
     -- Options controlling printing
     , optVerbose        = False
+    , optDumpAST         = False
     , optDumpDS         = False
     , optDumpDF         = False
     , optDumpSpec       = False
@@ -58,6 +60,8 @@ options
            <*> switch ( long "verbose"
                <> short 'v'
                <> help "Verbose output")
+           <*> switch ( long "dump-ast"
+               <> help "Dump AST after name resolution")
            <*> switch ( long "dump-ds"
                <> help "Dump desugared contract")
            <*> switch ( long "dump-df"
