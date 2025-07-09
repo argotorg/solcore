@@ -117,12 +117,15 @@ tcPat t p@(PCon n ps)
       -- asking type from environment
       st <- askEnv n `wrapError` p
       (_ :=> tc) <- freshInst st
+      -- unifying the infered pattern type with constructor type
       s <- unify tc (funtype ts t) `wrapError` p
       let t' = apply s t
       tn <- typeName t'
+      -- checking if it is a defined constructor
       checkConstr tn n
+      -- building typing assumptions for introduced names
       let lctx' = map (\(n',t1) -> (n', apply s t1)) (concat lctxs)
-      pure (PCon (Id n tc) ps1, apply s t, apply s lctx')
+      pure (PCon (Id n tc) ps1, t', apply s lctx')
 tcPat t PWildcard
   = pure (PWildcard, t, [])
 tcPat t' (PLit l)
@@ -216,7 +219,6 @@ tcExp e1@(TyExp e ty)
       kindCheck ty `wrapError` e1
       (e', ps, ty') <- tcExp e
       s <- match ty' ty
-      info ["Exp:", pretty e1, " - ", pretty (ps :=> ty')]
       extSubst s
       withCurrentSubst (TyExp e' ty, ps, ty)
 
@@ -372,24 +374,19 @@ tcArg a@(Typed n ty)
 tcSignature :: Signature Name -> [Pred] -> TcM ( (Name, Scheme)
                                                , [(Name, Scheme)]
                                                , [Ty]
-                                               , [Pred]
                                                , IEnv
                                                )
 tcSignature sig@(Signature vs ps n args rt) qs
     = do
         vs0 <- mapM (const freshTyVar) (bv sig `union` bv qs)
         let env = zip (bv sig `union` bv qs) vs0
-            args0 = everywhere (mkT (insts @Ty env)) args
-            rt0 = everywhere (mkT (insts @Ty env)) rt
-            ps0 = everywhere (mkT (insts @Ty env)) ps
-            qs0 = everywhere (mkT (insts @Ty env)) qs
-        (args', pschs, ts, vs') <- tcArgs args0
-        t' <- maybe freshTyVar pure rt0
-        sch <- generalize (ps0, qs0, funtype ts t')
-        pure ((n, sch), pschs, ts, qs0, env)
+        (args', pschs, ts, vs') <- tcArgs args
+        t' <- maybe freshTyVar pure rt
+        let sch = Forall (bv sig) (ps :=> funtype ts t')
+        pure ((n, sch), pschs, ts, env)
 
 hasAnn :: Signature Name -> Bool
-hasAnn (Signature vs ps n args rt)
+hasAnn (Signature _ _ _ args rt)
   = any isAnn args && isJust rt
     where
       isAnn (Typed _ t) = True
@@ -403,29 +400,40 @@ hasAnn (Signature vs ps n args rt)
 
 tcFunDef :: Bool -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl qs d@(FunDef sig bd)
-  = withLocalEnv do
+  = do
      info [">> Starting the typing of:\n", pretty d]
-     ((n,sch), pschs, ts, qs', ienv) <- tcSignature sig qs
-     let lctx = if incl then (n,sch) : pschs else pschs
+     ((n,sch), pschs, ts, ienv) <- tcSignature sig qs
+     -- instantiating anotations in the whole function definition
+     let pschs' = everywhere (mkT (insts @Ty ienv)) pschs
+         lctx = if incl then (n,sch) : pschs' else pschs'
          bd0 = everywhere (mkT (insts @Ty ienv)) bd
+         qs1 = everywhere (mkT (insts @Ty ienv)) qs
+         ts' = everywhere (mkT (insts @Ty ienv)) ts
      (bd', ps1, t') <- withLocalCtx lctx (tcBody bd0) `wrapError` d
-     (ps2 :=> ann) <- freshInst sch
-     ty <- withCurrentSubst (funtype ts t')
+     let Forall _ (ps2 :=> ann) = everywhere (mkT (insts @Ty ienv)) sch
+     ty <- withCurrentSubst (funtype ts' t')
+     -- matching infered and annotated type.
+     when (hasAnn sig) $ do
+        sm <- match (funtype ts' t') ann
+        extSubst sm
+        return ()
      -- checking if the constraints are valid
+     -- entailing constraints infered by annotated ones.
      ps3 <- withCurrentSubst ps1
+     ps4 <- withCurrentSubst (qs1 ++ ps2)
      vs <- getEnvMetaVars
-     (ds, rs) <- splitContext ps3 qs' vs `wrapError` d
-     -- checking constraint provability for annotated types.
-     when (hasAnn sig && null (sigContext sig) && not (isValid rs)) $ do
-        tcmError $ unlines [ "Could not deduce:"
-                           ,  pretty rs
-                           , "from:"
-                           , pretty sig
-                           ]
-     sch' <- generalize (rs, qs', ty)
+     (ds, rs) <- splitContext ps3 ps4 vs `wrapError` d
+     -- at this point, we should not have defered constraints, since ps4
+     -- has all annotated constraints of the current definition
+     sch' <- generalize (rs, qs1, ty)
      -- checking subsumption
      when (hasAnn sig) $ do
         subsCheck sch' sch
+     when (not (null ds)) $ do
+        tcmError $ unlines ["Cannot entail:", pretty ds, "using", pretty ps4]
+     -- we have type annotations, but not all constraints are annotated
+     when (hasAnn sig && not (null rs) && null ps4) $ do
+        (tcmError $ unlines ["Cannot deduce:", pretty rs, "from empty context"]) `wrapError` d
      -- checking ambiguity
      when (ambiguous sch') $ do
         ambiguousTypeError sch' sig
