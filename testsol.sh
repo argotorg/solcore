@@ -11,8 +11,8 @@ function testsol() {
     shift
     rm -f -v output1.core Output.sol
     cabal run sol-core -- -f $file $* && \
-	cabal exec yule -- output.core -w -O > /dev/null && \
-        forge script --via-ir Output.sol --via-ir | egrep '(Gas|RESULT)'
+	cabal exec yule -- output1.core -w -O > /dev/null && \
+        forge script --via-ir Output.sol | egrep '(Gas|RESULT)'
 }
 
 function testspec() {
@@ -21,7 +21,7 @@ function testspec() {
     shift
     rm -f -v output1.core
     cabal exec sol-core -- -f $file --debug-spec --dump-spec $*
-#    cabal run yule -- output.core -O && \
+#    cabal run yule -- output1.core -O && \
 #    forge script Output.sol
 }
 
