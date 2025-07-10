@@ -60,12 +60,6 @@ tcCompUnit (CompUnit imps cs)
         addGenDefs
         tcTopDecl d
 
-renameTDecl :: TopDecl Id -> TopDecl Id
-renameTDecl d
-  = let d' = everywhere (mkT gen) d
-        env = zip (bv d') (map (TyVar . TVar) namePool)
-    in everywhere (mkT (insts @Ty env)) d'
-
 addGenDefs :: TcM ()
 addGenDefs
   = do
