@@ -25,9 +25,6 @@ import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options
 import Solcore.Primitives.Primitives
 
--- top level type inference function: Boolean parameter
--- used to determine if it will generate definitions.
-
 typeInfer :: Option ->
              CompUnit Name ->
              IO (Either String (CompUnit Id, TcEnv))
@@ -37,7 +34,7 @@ typeInfer options (CompUnit imps decls)
       case r of
         Left err -> pure $ Left err
         Right ((CompUnit imps ds), env) -> do
-          let ds1 = everywhere (mkT renameTDecl) (ds ++ generated env)
+          let ds1 = (ds ++ generated env)
               ds2 = everywhere (mkT updateSig) ds1
           pure (Right (CompUnit imps ds2, env))
 
@@ -62,12 +59,6 @@ tcCompUnit (CompUnit imps cs)
         clearSubst
         addGenDefs
         tcTopDecl d
-
-renameTDecl :: TopDecl Id -> TopDecl Id
-renameTDecl d
-  = let d' = everywhere (mkT gen) d
-        env = zip (bv d') (map (TyVar . TVar) namePool)
-    in everywhere (mkT (insts @Ty env)) d'
 
 addGenDefs :: TcM ()
 addGenDefs

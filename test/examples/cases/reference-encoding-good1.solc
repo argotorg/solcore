@@ -83,7 +83,7 @@ instance word:MemoryType {
 
 instance uint:MemoryType {
     function load(ptr:word) -> uint {
-        return Typedef.abs(MemoryType.load(ptr)) : uint;
+        return Typedef.abs(MemoryType.load(ptr));
     }
     function store(ptr:word, value:uint) -> () {
         return MemoryType.store(ptr, Typedef.rep(value));
@@ -94,6 +94,11 @@ forall a . a : MemoryType => instance memoryRef(a):Assign(a) {
     function assign(l:memoryRef(a), y:a) {
         MemoryType.store(Typedef.rep(l), y);
     }
+}
+
+instance word:Typedef(word) {
+    function rep(x:word) -> word { return x; }
+    function abs(x:word) -> word { return x; }
 }
 
 

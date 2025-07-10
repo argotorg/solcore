@@ -180,6 +180,7 @@ subsCheck sch1 sch2@(Forall _ _)
         (skol_tvs, qt2) <- skolemise sch2
         qt1 <- freshInst sch1
         s <- mgu qt1 qt2 `catchError` (\ _ -> typeNotPolymorphicEnough sch1 sch2)
+        extSubst s
         let esc_tvs = fv sch1
             bad_tvs = filter (`elem` esc_tvs) skol_tvs
         unless (null bad_tvs) $

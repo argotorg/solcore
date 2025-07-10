@@ -1,0 +1,35 @@
+contract Option {
+  data Option(a) = None | Some(a);
+
+  function just(x) { return Some(x); }
+
+  function maybe(n, o) {
+    match o {
+      | None => return n;
+      | Some(x) => return x;
+    }
+  }
+
+  function join(mmx) {
+    match mmx {
+      | None => return None;
+      | Some(None) => return None;
+      | Some(Some(x)) => return Some(x);
+    }
+  }
+
+  function join2(mmx) {
+    match mmx {
+      | Some(m) => match m {
+          | None => return None;
+          | Some(x) => return Some(x);
+      }
+      | _ => return None;
+    }
+  }
+
+  function main() {
+   //  return maybe(0, join(Some(Some(42))));
+   return 42;
+  }
+}
