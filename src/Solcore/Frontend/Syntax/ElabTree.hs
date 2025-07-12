@@ -156,7 +156,7 @@ instance Elab S.CompUnit where
   elab (S.CompUnit imps ds)
     = do
         imps' <- elab imps
-        ds' <- elab ds
+        ds' <- concat <$> elab ds
         pure (CompUnit imps' ((TClassDef invokeClass) : ds'))
 
 instance Elab S.Import where
@@ -166,7 +166,7 @@ instance Elab S.Import where
 
 
 instance Elab S.TopDecl where
-  type Res S.TopDecl = TopDecl Name
+  type Res S.TopDecl = [TopDecl Name]
 
   initialEnv (S.TContr c) = initialEnv c
   initialEnv (S.TFunDef fd) = initialEnv fd
@@ -176,13 +176,13 @@ instance Elab S.TopDecl where
   initialEnv (S.TSym s) = initialEnv s
   initialEnv (S.TPragmaDecl _) = mempty
 
-  elab (S.TContr c) = TContr <$> elab c
-  elab (S.TFunDef fd) = TFunDef <$> elab fd
-  elab (S.TClassDef c) = TClassDef <$> elab c
-  elab (S.TInstDef d) = TInstDef <$> elab d
-  elab (S.TDataDef d) = TDataDef <$> elab d
-  elab (S.TSym s) = TSym <$> elab s
-  elab (S.TPragmaDecl p) = TPragmaDecl <$> elab p
+  elab (S.TContr c) = singleton . TContr <$> elab c
+  elab (S.TFunDef fd) = singleton . TFunDef <$> elab fd
+  elab (S.TClassDef c) = singleton . TClassDef <$> elab c
+  elab (S.TInstDef d) = singleton . TInstDef <$> elab d
+  elab (S.TDataDef d) = singleton . TDataDef <$> elab d
+  elab (S.TSym s) = singleton . TSym <$> elab s
+  elab (S.TPragmaDecl p) = singleton . TPragmaDecl <$> elab p
 
 instance Elab S.Pragma where
   type Res S.Pragma = Pragma
