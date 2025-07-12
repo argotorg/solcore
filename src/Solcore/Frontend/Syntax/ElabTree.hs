@@ -9,6 +9,8 @@ import Control.Monad.State
 import Data.List
 import Data.Maybe
 
+import GHC.Stack
+
 import Text.Pretty.Simple
 
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -216,7 +218,7 @@ instance Elab S.Contract where
   elab (S.Contract n ts decls)
     = do
         ts' <- elab ts
-        decls' <- elab decls
+        decls' <- concat <$> elab decls
         vs <- mapM mkTyVar ts'
         pure (Contract n vs decls')
 
@@ -364,6 +366,55 @@ instance Elab S.Instance where
         popVarsInScope (names vs)
         pure (Instance d vs' ctx' n ts' t' funs')
 
+
+elabContractField :: S.Field -> ElabM [ContractDecl Name]
+elabContractField fd@(S.Field fname ft Nothing) = do
+  -- data b_sel = n_sel
+  let selName = selectorNameForField fname
+  let selDecl = CDataDecl $ DataTy selName [] [Constr selName []]
+  -- instance StructField(S, fld1_sel):StructField(uint, ()) {}
+
+  pure [selDecl] -- FIXME
+elabContractField fd = notImplementedS "elabContractField" fd
+
+selectorNameForField :: Name -> Name
+selectorNameForField (Name s) = Name (s <> "_sel")
+selectorNameForField n = notImplementedS "selectorNameForField" n
+
+contractContext :: ElabM (Exp Name)
+contractContext = do
+  let contractSingTy = TyCon "()" [] -- FIXME: separate singletons for each contract
+  let contractSing = Con "()" [] -- FIXME: separate singletons for each contract
+  let cxtTy = TyCon "ContractStorage" [contractSingTy]
+  let cxt = Con "ContractStorage" [contractSing]
+  pure cxt
+
+elabAssignment :: S.Exp -> S.Exp -> ElabM (Stmt Name)
+elabAssignment (S.ExpVar Nothing field) rhs = do
+{- Desugaring scheme:
+       // this.counter = rhs
+       let cxt = ContractStorage(CounterCxt);
+       let counter_map : MemberAccessProxy(cxt, counter_sel, ())
+       = MemberAccessProxy(cxt, counter_sel);
+       let counter_lval : storageRef(word)
+                        = LValueMemberAccess.memberAccess(counter_map);
+       let counter_rval : word
+                        = RValueMemberAccess.memberAccess(counter_map);
+       Assign.assign(counter_lval, counter_rval);
+-}
+  cxt <- contractContext
+  let call = Call Nothing
+  let selName = selectorNameForField field
+  let selector = Con selName []
+  let fieldMap = Con "MemberAccessProxy" [cxt, selector]
+  let lhs' = call (QualName "LValueMemberAccess" "memberAccess") [fieldMap]
+  rhs' <- elab rhs
+  let assignName = QualName (Name "Assign") "assign"
+  pure $ StmtExp $ call assignName [lhs', rhs']
+
+elabAssignment lhs rhs =
+    (:=) <$> elab lhs <*> elab rhs
+
 instance Elab S.Field where
   type Res S.Field = Field Name
 
@@ -390,7 +441,7 @@ instance Elab S.FunDef where
   initialEnv (S.FunDef sig _) = initialEnv sig
 
 instance Elab S.ContractDecl where
-  type Res S.ContractDecl = ContractDecl Name
+  type Res S.ContractDecl = [ContractDecl Name]
 
   initialEnv (S.CDataDecl dt) = initialEnv dt
   initialEnv (S.CFieldDecl fd) = initialEnv fd
@@ -398,19 +449,20 @@ instance Elab S.ContractDecl where
   initialEnv (S.CConstrDecl c) = initialEnv c
 
   elab (S.CDataDecl dt)
-    = CDataDecl <$> elab dt
+    = singleton . CDataDecl <$> elab dt
   elab (S.CFieldDecl fd)
-    = CFieldDecl <$> elab fd
+    = elabContractField fd -- contract fields are desugared away
   elab (S.CFunDecl fd)
-    = CFunDecl <$> elab fd
+    = singleton . CFunDecl <$> elab fd
   elab (S.CConstrDecl c)
-    = CConstrDecl <$> elab c
+    = singleton . CConstrDecl <$> elab c
+
 
 instance Elab S.Stmt where
   type Res S.Stmt = Stmt Name
 
   elab (S.Assign lhs rhs)
-    = (:=) <$> elab lhs <*> elab rhs
+    = elabAssignment lhs rhs
   elab (S.Let n mt me)
     = Let n <$> elab mt <*> elab me
   elab (S.StmtExp e)
@@ -450,7 +502,14 @@ instance Elab S.Exp where
         isF <- isField n
         isCon <- isDefinedConstr n
         if isF then
-          pure $ FieldAccess me' n
+          case me' of
+            Nothing -> do -- this is a contract field
+              cxt <- contractContext
+              let rvalFun = Name "rval"
+              let fieldSel = Con (selectorNameForField n) []
+              let fieldMap = Con "MemberAccessProxy" [cxt, fieldSel]
+              pure (Call Nothing rvalFun [fieldMap])
+            _ -> pure $ FieldAccess me' n -- TODO: structures other than contract context
         else if isCon && isNothing me then pure (Con n [])
              else pure $ Var n
   elab (S.ExpName me n es)
@@ -508,3 +567,10 @@ instance Elab S.Literal where
 
   elab (S.IntLit i) = pure (IntLit i)
   elab (S.StrLit s) = pure (StrLit s)
+
+
+notImplemented :: (HasCallStack, Pretty a) => String -> a -> b
+notImplemented funName a = error $ concat [funName, " not implemented yet for ", pretty a]
+
+notImplementedS :: (HasCallStack, Show a) => String -> a -> b
+notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]
