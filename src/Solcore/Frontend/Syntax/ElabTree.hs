@@ -43,10 +43,12 @@ data Env
     , constructors :: [Name]
     , classes :: [Name]
     , variables :: [Name]
+    , currentContract :: Maybe Name
+    , fieldTypes :: [Ty]
     } deriving Show
 
 instance Semigroup Env where
-  (Env cs fs ts fd ctrs cls vs) <> (Env cs' fs' ts' fd' ctrs' cls' vs')
+  (Env cs fs ts fd ctrs cls vs cc ftys) <> (Env cs' fs' ts' fd' ctrs' cls' vs' cc' ftys')
     = Env (cs `union` cs')
           (fs `union` fs')
           (ts `union` ts')
@@ -54,7 +56,8 @@ instance Semigroup Env where
           (ctrs `union` ctrs')
           (cls `union` cls')
           (vs `union` vs')
-
+          (cc')
+          (ftys <> ftys')
 instance Monoid Env where
   mempty = Env []
                [] [Name "word", Name "pair", Name "()"]
@@ -62,7 +65,8 @@ instance Monoid Env where
                [Name "pair", Name "()"]
                []
                []
-
+               Nothing
+               []
 -- definition of the monad
 
 type ElabM a = (ExceptT String (StateT Env IO)) a
@@ -78,6 +82,9 @@ runElabM :: (Show a, Elab a) => a -> IO (Either String (Res a), Env)
 runElabM t = do
   let ienv = initialEnv t
   runStateT (runExceptT (elab t)) ienv
+
+setCurrentContract :: Maybe Name -> ElabM ()
+setCurrentContract x = modify (\s -> s { currentContract = x })
 
 pushVarsInScope :: [Name] -> ElabM ()
 pushVarsInScope ns
@@ -120,6 +127,11 @@ isClassName (Just (S.ExpName _ n _))
   = (n `elem`) <$> gets classes
 isClassName (Just (S.ExpVar _ n))
   = (n `elem`) <$> gets classes
+
+contractFields :: S.Contract -> [S.Field]
+contractFields c = concatMap extract (S.decls c) where
+    extract (S.CFieldDecl f) = [f]
+    extract _ = []
 
 class Elab a where
   type Res a
@@ -176,7 +188,10 @@ instance Elab S.TopDecl where
   initialEnv (S.TSym s) = initialEnv s
   initialEnv (S.TPragmaDecl _) = mempty
 
-  elab (S.TContr c) = singleton . TContr <$> elab c
+  elab (S.TContr c) = do
+      c' <- elab c
+      extra <- extraTopDeclsForContract c
+      pure $ extra ++ [TContr c']
   elab (S.TFunDef fd) = singleton . TFunDef <$> elab fd
   elab (S.TClassDef c) = singleton . TClassDef <$> elab c
   elab (S.TInstDef d) = singleton . TInstDef <$> elab d
@@ -215,13 +230,45 @@ instance Elab S.Contract where
       where
         env = initialEnv decls
 
-  elab (S.Contract n ts decls)
+  elab c@(S.Contract n ts decls)
     = do
+        setCurrentContract (Just n)
         ts' <- elab ts
         decls' <- concat <$> elab decls
         vs <- mapM mkTyVar ts'
+        setCurrentContract Nothing
         pure (Contract n vs decls')
 
+extraTopDeclsForContract :: S.Contract -> ElabM [TopDecl Name]
+extraTopDeclsForContract c@(S.Contract n ts decls) = do
+    let singName = singletonNameForContract n
+    let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []]
+    -- field elaboration is hypothetical only, but we need the elaborated type (and maybe init)
+    hypotheticalFields <- mapM hypotheticalElabField (contractFields c)
+    let extraFieldDecls = concat [extraTopDeclsForContractField n f | f <- hypotheticalFields]
+    pure (contractSingDecl:extraFieldDecls)
+
+hypotheticalElabField :: S.Field -> ElabM (Field Name)
+hypotheticalElabField  (S.Field n t me)
+    = Field n <$> elab t <*> elab me
+
+extraTopDeclsForContractField :: Name -> (Field Name) -> [TopDecl Name]
+extraTopDeclsForContractField cname field@(Field fname fty _minit) = [selDecl, TInstDef sfInstance] where
+  -- data b_sel = n_sel
+  selName = selectorNameForField fname
+  selDecl = TDataDef $ DataTy selName [] [Constr selName []]
+  selType = TyCon selName []
+  -- instance StructField(ContractStorage(CCtx), fld1_sel):StructField(uint, ()) {}
+  ctxTy = TyCon "ContractStorage" [singletonTypeForContract cname]
+  sfInstance = Instance
+               { instDefault = False
+               , instVars = []
+               , instContext = []
+               , instName = "StructField"
+               , paramsTy = [fty, unit] -- FIXME: add previous types
+               , mainTy = TyCon "StructField" [ctxTy, selType]
+               , instFunctions = []
+               }
 instance Elab S.DataTy where
   type Res S.DataTy = DataTy
 
@@ -368,29 +415,43 @@ instance Elab S.Instance where
 
 
 elabContractField :: S.Field -> ElabM [ContractDecl Name]
-elabContractField fd@(S.Field fname ft Nothing) = do
-  -- data b_sel = n_sel
-  let selName = selectorNameForField fname
-  let selDecl = CDataDecl $ DataTy selName [] [Constr selName []]
-  -- instance StructField(S, fld1_sel):StructField(uint, ()) {}
-
-  pure [selDecl] -- FIXME
+elabContractField fd@(S.Field fname ft Nothing) = pure [] -- contract fields are desugared elsewhere
 elabContractField fd = notImplementedS "elabContractField" fd
 
-selectorNameForField :: Name -> Name
+selectorNameForField :: Name -> Name  -- FIXME: include contract name
 selectorNameForField (Name s) = Name (s <> "_sel")
 selectorNameForField n = notImplementedS "selectorNameForField" n
 
+singletonNameForContract :: Name -> Name
+singletonNameForContract (Name s) = Name (s <>  "Cxt")
+
+singletonTypeForContract :: Name -> Ty
+singletonTypeForContract cname = TyCon (singletonNameForContract cname) []
+
+singletonValForContract :: Name -> Exp Name
+singletonValForContract cname = Con (singletonNameForContract cname) []
+
 contractContext :: ElabM (Exp Name)
 contractContext = do
-  let contractSingTy = TyCon "()" [] -- FIXME: separate singletons for each contract
-  let contractSing = Con "()" [] -- FIXME: separate singletons for each contract
+  cname <- fromMaybe (error "ElabTree - impossible: assignment outside of contract") <$> gets currentContract
+  let singName = singletonNameForContract cname
+  let contractSingTy = TyCon singName [] -- FIXME: separate singletons for each contract
+  let contractSing = Con singName [] -- FIXME: separate singletons for each contract
   let cxtTy = TyCon "ContractStorage" [contractSingTy]
   let cxt = Con "ContractStorage" [contractSing]
   pure cxt
 
+
 elabAssignment :: S.Exp -> S.Exp -> ElabM (Stmt Name)
-elabAssignment (S.ExpVar Nothing field) rhs = do
+elabAssignment lhs@(S.ExpVar Nothing name) rhs = do
+  isF <- isField name
+  if isF then elabContractFieldAssignment name rhs
+         else (:=) <$> elab lhs <*> elab rhs
+
+elabAssignment lhs rhs =
+    (:=) <$> elab lhs <*> elab rhs
+
+elabContractFieldAssignment field rhs = do
 {- Desugaring scheme:
        // this.counter = rhs
        let cxt = ContractStorage(CounterCxt);
@@ -411,9 +472,6 @@ elabAssignment (S.ExpVar Nothing field) rhs = do
   rhs' <- elab rhs
   let assignName = QualName (Name "Assign") "assign"
   pure $ StmtExp $ call assignName [lhs', rhs']
-
-elabAssignment lhs rhs =
-    (:=) <$> elab lhs <*> elab rhs
 
 instance Elab S.Field where
   type Res S.Field = Field Name
