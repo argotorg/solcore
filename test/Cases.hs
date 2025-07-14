@@ -45,6 +45,8 @@ spec =
     , runTestForFile "11negPair.solc" specFolder
     , runTestForFile "903badassign.solc" specFolder
     , runTestForFile "939badfood.solc" specFolder
+    , runTestForFile "SimpleField.solc" specFolder
+    , runTestForFile "121counter.solc" specFolder
     ]
  where
   specFolder = "./test/examples/spec"
@@ -101,7 +103,6 @@ cases =
     , runTestForFile "PeanoMatch.solc" caseFolder
     , runTestForFile "RefDeref.solc" caseFolder
     , runTestExpectingFailure "SillyReturn.solc" caseFolder
-    , runTestForFile "SimpleField.solc" caseFolder
     , runTestExpectingFailure "SimpleInvoke.solc" caseFolder
     , runTestForFile "closure-capture-only.solc" caseFolder
     , runTestForFile "SimpleLambda.solc" caseFolder
