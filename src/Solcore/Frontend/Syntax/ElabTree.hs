@@ -13,6 +13,7 @@ import GHC.Stack
 
 import Text.Pretty.Simple
 
+import Solcore.Frontend.Parser.SolcoreParser(mkTupleTy)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts)
 import Solcore.Frontend.Syntax.Name
@@ -83,7 +84,9 @@ runElabM t = do
   let ienv = initialEnv t
   runStateT (runExceptT (elab t)) ienv
 
-setCurrentContract :: Maybe Name -> ElabM ()
+type ContractName = Name
+
+setCurrentContract :: Maybe ContractName -> ElabM ()
 setCurrentContract x = modify (\s -> s { currentContract = x })
 
 pushVarsInScope :: [Name] -> ElabM ()
@@ -240,20 +243,31 @@ instance Elab S.Contract where
         pure (Contract n vs decls')
 
 extraTopDeclsForContract :: S.Contract -> ElabM [TopDecl Name]
-extraTopDeclsForContract c@(S.Contract n ts decls) = do
-    let singName = singletonNameForContract n
+extraTopDeclsForContract c@(S.Contract cname ts decls) = do
+    let singName = singletonNameForContract cname
     let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []]
-    -- field elaboration is hypothetical only, but we need the elaborated type (and maybe init)
-    hypotheticalFields <- mapM hypotheticalElabField (contractFields c)
-    let extraFieldDecls = concat [extraTopDeclsForContractField n f | f <- hypotheticalFields]
+    -- simulate field elaboration to get the elaborated type (and maybe init)
+    hypotheticalFields <- mapM elab (contractFields c)
+
+    -- let extraFieldDecls = concat [extraTopDeclsForContractField cname f unit | f <- hypotheticalFields]
+    let (fieldTypes, extraFieldDecls) = foldl' (flip contractFieldStep) ([], []) hypotheticalFields
     pure (contractSingDecl:extraFieldDecls)
+    where
+      hypotheticalElabField :: S.Field -> ElabM (Field Name)
+      hypotheticalElabField  (S.Field n t me)
+          = Field n <$> elab t <*> elab me
 
-hypotheticalElabField :: S.Field -> ElabM (Field Name)
-hypotheticalElabField  (S.Field n t me)
-    = Field n <$> elab t <*> elab me
+      -- given a list of contract field types so far and topdecls for them, amends them with data for another field
+      -- the types of previous fields are needed to construct field offset
+      contractFieldStep :: Field Name -> ([Ty], [TopDecl Name]) -> ([Ty], [TopDecl Name])
+      contractFieldStep field (tys, decls) = (tys', decls') where
+          tys' = tys ++ [fieldTy field]
+          decls' = decls ++ extraTopDeclsForContractField cname field offset
+          offset = foldr pair unit tys
 
-extraTopDeclsForContractField :: Name -> (Field Name) -> [TopDecl Name]
-extraTopDeclsForContractField cname field@(Field fname fty _minit) = [selDecl, TInstDef sfInstance] where
+
+extraTopDeclsForContractField :: ContractName -> Field Name -> Ty -> [TopDecl Name]
+extraTopDeclsForContractField cname field@(Field fname fty _minit) offset = [selDecl, TInstDef sfInstance] where
   -- data b_sel = n_sel
   selName = selectorNameForField fname
   selDecl = TDataDef $ DataTy selName [] [Constr selName []]
@@ -265,7 +279,7 @@ extraTopDeclsForContractField cname field@(Field fname fty _minit) = [selDecl, T
                , instVars = []
                , instContext = []
                , instName = "StructField"
-               , paramsTy = [fty, unit] -- FIXME: add previous types
+               , paramsTy = [fty, offset]
                , mainTy = TyCon "StructField" [ctxTy, selType]
                , instFunctions = []
                }
