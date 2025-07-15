@@ -1,0 +1,241 @@
+// v4: Simplified Member AccessProxy (no Proxy(offset))
+// variables holding field MAPs
+
+function add(x : word, y : word) {
+  let res: word;
+  assembly {
+     res := add(x, y)
+  }
+  return res;
+}
+
+/////// Construction
+class abs:Typedef(rep) {
+    function rep(x:abs) -> rep;
+    function abs(x:rep) -> abs;
+}
+
+
+data uint = uint(word);
+
+// this does not work :(
+/*
+forall a
+. default instance a:Typedef(a) {
+    function rep(x:a) -> word { return a; }
+    function abs(x:a) -> word { return a;}
+}
+*/
+
+instance uint:Typedef(word) {
+    function rep(x:uint) -> word {
+        match x {
+            | uint(y) => return y;
+        }
+    }
+    function abs(x:word) -> uint {
+        return uint(x);
+    }
+}
+
+data storage(a) = storage(word);
+data ContractStorage(cxt) = ContractStorage(cxt);
+
+data storageRef(a) = storageRef(word);
+data Proxy(a) = Proxy;
+
+instance storage(a):Typedef(word) {
+    function rep(x:storage(a)) -> word {
+        match x {
+            | storage(y) => return y;
+        }
+    }
+    function abs(x:word) -> storage(a) {
+        return storage(x);
+    }
+}
+instance storageRef(a):Typedef(word) {
+    function rep(x:storageRef(a)) -> word {
+        match x {
+            | storageRef(y) => return y;
+        }
+    }
+    function abs(x:word) -> storageRef(a) {
+        return storageRef(x);
+    }
+}
+
+class lhs:Assign(rhs) {
+    function assign(l:lhs, r:rhs) -> ();
+}
+
+data ref(a) = ref(a);
+
+instance ref(a):Assign(a) {
+    function assign(l:ref(a), r:a) -> () {
+        // builtin "stack store"
+        return ();
+    }
+}
+
+class self:StorageType {
+    function sload(ptr:word) -> self;
+    function store(ptr:word, value:self) -> ();
+}
+
+class self:StorageSize {
+    function size(x:Proxy(self)) -> word;
+}
+
+
+function sload_(x:word) -> word {
+    let res: word;
+    assembly {
+       res := sload(x)
+    }
+    return res;
+  }
+
+function sstore_(a:word, v:word) {
+    assembly { sstore(a,v) }
+}
+
+instance word:StorageType {
+    function sload(ptr:word) -> word {
+        let r:word;
+        assembly {
+            r := sload(ptr);
+        }
+        return r;
+    }
+    function store(ptr:word, value:word) -> () {
+        assembly {
+            sstore(ptr, value)
+        }
+    }
+}
+
+instance uint:StorageType {
+    function sload(ptr:word) -> uint {
+        return Typedef.abs(sload_(ptr)):uint; // type annotation needed due to a typechecker bug
+    }
+    function store(ptr:word, value:uint) -> () {
+        return sstore_(ptr, Typedef.rep(value));
+    }
+}
+
+forall a . a : StorageType => instance storageRef(a):Assign(a) {
+    function assign(l:storageRef(a), y:a) {
+        StorageType.store(Typedef.rep(l), y);
+    }
+}
+
+
+
+data MemberAccessProxy(a, field, offset) = MemberAccessProxy(a, field);
+forall a field offset .
+function memberAccessD1(x:MemberAccessProxy(a, field, offset)) -> a {
+    match x {
+        | MemberAccessProxy(y,z) => return y;
+    }
+}
+
+class self:LValueMemberAccess(memberRefType) {
+    function memberAccess(x:self) -> memberRefType;
+}
+
+forall self memberValueType .
+class self:RValueMemberAccess(memberValueType) {
+    function memberAccess(x:self) -> memberValueType;
+}
+
+class self:StructField(fieldType, offsetType) {}
+data StructField(structType, fieldSelector) = StructField(structType);
+
+forall structType fieldSelector fieldType offsetType
+  . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
+  , offsetType:StorageSize
+  => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType):LValueMemberAccess(storageRef(fieldType)) {
+    function memberAccess(x:MemberAccessProxy(storage(structType), fieldSelector, offsetType)) -> storageRef(fieldType) {
+        let ptr:word = Typedef.rep(memberAccessD1(x));
+        let size:word = StorageSize.size(Proxy:Proxy(offsetType));
+        assembly {
+            ptr := add(ptr, size)
+        }
+        return storageRef(ptr);
+    }
+}
+
+instance ():StorageSize {
+    function size(x:Proxy(())) -> word {
+        return 0;
+    }
+}
+
+instance word:StorageSize {
+    function size(x:Proxy(word)) -> word {
+        return 1;
+    }
+}
+
+instance uint:StorageSize {
+    function size(x:Proxy(uint)) -> word {
+        return 1;
+    }
+}
+
+
+/*
+// fails Patterson cond
+forall a b . a:Typedef(b), b:StorageSize
+=> instance a:StorageSize {
+    function size(x:Proxy(a)) -> word {
+        return StorageSize.size(Proxy(b));
+    }
+}
+*/
+
+forall a b . a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
+    function size(x:Proxy((a,b))) -> word {
+        let a_sz:word = StorageSize.size(Proxy:Proxy(a));
+        let b_sz:word = StorageSize.size(Proxy:Proxy(b));
+        assembly {
+            a_sz := add(a_sz, b_sz)
+        }
+        return a_sz;
+    }
+}
+
+pragma no-patterson-condition RValueMemberAccess; // this is due to ContractStorage(cxt); probably not needed once we have local instances
+
+forall cxt fieldSelector fieldType offsetType
+  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  , offsetType:StorageSize
+  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):LValueMemberAccess(storageRef(fieldType)) {
+    function memberAccess(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> storageRef(fieldType) {
+        let ptr:word = 0x100; // forge uses at least 1 storage slot
+        let offsetSize:word = StorageSize.size(Proxy:Proxy(offsetType));
+	
+        assembly {
+            ptr := add(ptr, offsetSize)
+        }
+        return storageRef(ptr); // contract storage starts at 0
+    }
+}
+
+forall cxt fieldSelector fieldType offsetType
+  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  , fieldType:StorageType
+  , offsetType:StorageSize
+  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):RValueMemberAccess(fieldType) {
+    function memberAccess(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> fieldType {
+        let ptr:word = 0x100;
+        let offsetSize:word = StorageSize.size(Proxy:Proxy(offsetType));
+        return StorageType.sload(add(ptr, offsetSize)):fieldType;
+    }
+}
+
+forall a . a:RValueMemberAccess(b) =>
+function rval(x:a) -> b {
+  return RValueMemberAccess.memberAccess(x);
+}
