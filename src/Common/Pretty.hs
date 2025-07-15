@@ -5,9 +5,12 @@ module Common.Pretty
 , dotSep
 , commaSep, commaSepList
 , angles
+, pPrint
+, pShow
 ) where
 import Text.PrettyPrint hiding((<>))
 import Text.PrettyPrint qualified as PP
+import Text.Pretty.Simple(pPrint, pShow)
 
 -- in Prelude (<>) is defined as infixr 6
 -- in pretty, it is defined as infixl 6

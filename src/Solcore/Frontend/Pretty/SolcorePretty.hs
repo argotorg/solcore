@@ -271,6 +271,8 @@ instance Pretty a => Pretty (Exp a) where
       rbrace
   ppr (TyExp e ty)
     = ppr e <+> text ":" <+> ppr ty
+  ppr (FieldAccess me n) = maybe (text "this") ppr me <> char '.' <> ppr n
+  ppr e = text $ "Pretty.ppr not implemented for\n" ++ show(pShow e)
 
 pprE :: Pretty a => Maybe (Exp a) -> Doc
 pprE Nothing = ""
