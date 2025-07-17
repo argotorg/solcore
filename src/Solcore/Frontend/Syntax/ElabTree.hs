@@ -430,7 +430,7 @@ instance Elab S.Instance where
 
 elabContractField :: S.Field -> ElabM [ContractDecl Name]
 elabContractField fd@(S.Field fname ft Nothing) = pure [] -- contract fields are desugared elsewhere
-elabContractField fd = notImplementedS "elabContractField" fd
+elabContractField fd = notImplementedM "elabContractField" fd
 
 selectorNameForField :: Name -> Name  -- FIXME: include contract name
 selectorNameForField (Name s) = Name (s <> "_sel")
@@ -462,8 +462,37 @@ elabAssignment lhs@(S.ExpVar Nothing name) rhs = do
   if isF then elabContractFieldAssignment name rhs
          else (:=) <$> elab lhs <*> elab rhs
 
+elabAssignment lhs@(S.ExpIndexed arr idx) rhs = do
+    writes [ "> elabAssignment ", show lhs, " <~ ", show rhs]
+    idx' <- elab idx
+    iap <- indexedProxyFor arr idx'
+    let lhs' = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [iap]
+    rhs' <- elab rhs
+    let assignName = QualName (Name "Assign") "assign"
+    writes [ "< elabAssignment ", pretty lhs', " <~ ", pretty rhs']
+
+    pure $ StmtExp $ Call Nothing assignName [lhs', rhs']
+
 elabAssignment lhs rhs =
     (:=) <$> elab lhs <*> elab rhs
+
+indexedProxyFor :: S.Exp -> Exp Name -> ElabM (Exp Name)
+indexedProxyFor exp@(S.ExpVar Nothing name) idx = do
+  isF <- isField name
+  if isF then do
+                arrProxy <- memberProxyFor name
+                let arrRef = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [arrProxy]
+                pure $ Con "IndexAccessProxy" [arrRef, idx]
+
+         else notImplementedM "indexedProxyFor" exp
+
+memberProxyFor :: Name -> ElabM(Exp Name)
+memberProxyFor field = do
+  cxt <- contractContext
+  let selName = selectorNameForField field
+  let selector = Con selName []
+  let fieldMap = Con "MemberAccessProxy" [cxt, selector]
+  pure fieldMap
 
 elabContractFieldAssignment field rhs = do
 {- Desugaring scheme:
@@ -477,15 +506,17 @@ elabContractFieldAssignment field rhs = do
                         = RValueMemberAccess.memberAccess(counter_map);
        Assign.assign(counter_lval, counter_rval);
 -}
+{-
   cxt <- contractContext
-  let call = Call Nothing
   let selName = selectorNameForField field
   let selector = Con selName []
   let fieldMap = Con "MemberAccessProxy" [cxt, selector]
-  let lhs' = call (QualName "LValueMemberAccess" "memberAccess") [fieldMap]
+-}
+  fieldMap <- memberProxyFor field
+  let lhs' = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [fieldMap]
   rhs' <- elab rhs
   let assignName = QualName (Name "Assign") "assign"
-  pure $ StmtExp $ call assignName [lhs', rhs']
+  pure $ StmtExp $ Call Nothing assignName [lhs', rhs']
 
 instance Elab S.Field where
   type Res S.Field = Field Name
@@ -598,6 +629,14 @@ instance Elab S.Exp where
         -- condition for function call
         else pure (Call me' n es')
 
+  elab (S.ExpIndexed arr idx) = do
+    idx' <- elab idx
+    arr_proxy <- indexedProxyFor arr idx'
+    let rvalFun = Name "rval"
+    pure $ Call Nothing rvalFun [arr_proxy]
+
+  elab exp = notImplementedM "elab @Exp" exp
+
 instance Elab S.Pat where
   type Res S.Pat = Pat Name
 
@@ -646,3 +685,9 @@ notImplemented funName a = error $ concat [funName, " not implemented yet for ",
 
 notImplementedS :: (HasCallStack, Show a) => String -> a -> b
 notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]
+
+notImplementedM :: (HasCallStack, Show a, MonadIO m, MonadError String m) => String -> a -> m b
+notImplementedM funName a = do
+  writes ["Internal error: ", funName, " not implemented yet for:"]
+  liftIO (pPrint a)
+  throwError "Stop."

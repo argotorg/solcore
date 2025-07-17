@@ -301,7 +301,7 @@ forall cxt fieldSelector fieldType offsetType
     }
 }
 
-
+/*
 forall cxt fieldSelector fieldType offsetType
   . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
   , fieldType:StorageType
@@ -313,7 +313,7 @@ forall cxt fieldSelector fieldType offsetType
         return StorageType.sload(add(ptr, offsetSize)):fieldType;
     }
 }
-
+*/
 // ------------------------------------------------------------------
 // Indexed access
 // ------------------------------------------------------------------
