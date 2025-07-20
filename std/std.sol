@@ -365,7 +365,7 @@ instance CalldataWordReader:WordReader {
 
 // The HasWordReader class defines the types for which a WordReader can be produced
 // We define instances for memory(bytes) and calldata(bytes)
-class self:HasWordReader(reader) {
+forall self reader . class self:HasWordReader(reader) {
     function getWordReader(x:self) -> reader;
 }
 
@@ -533,7 +533,7 @@ forall ty . ty:ABIAttribs, ty:ABIEncode => function abi_encode(val : ty) -> memo
 }
 
 // types that can be abi encoded
-class self:ABIEncode {
+forall self . class self:ABIEncode {
     // abi encodes an instance of self into a memory region starting at basePtr
     // offset gives the offset in memory from basePtr to the first empty byte of the head
     // tail gives the index in memory of the first empty byte of the tail
@@ -597,7 +597,7 @@ function abi_decode(decodable:decodable) -> decoded {
 }
 
 
-class decoder:ABIDecode(decoded) {
+forall decoder decoded . class decoder:ABIDecode(decoded) {
     function decode(ptr:decoder, currentHeadOffset:word) -> decoded;
 }
 
@@ -709,10 +709,10 @@ forall reader baseType reader baseType_decoded .baseType : ABIAttribs, reader:Wo
 //
 // --- Contract Entrypoint ---
 
-class nm:Selector {}
+forall nm . class nm:Selector {}
 
-class ty:GenerateDispatch {
-    forall f . f:Invokable((),()) => function dispatch_if_selector_match(x: ty) -> f;
+forall ty f . f : Invokable((),()) => class ty:GenerateDispatch {
+    function dispatch_if_selector_match(x: ty) -> f;
 }
 
 data Dispatch(name, args, retvals, f) = Dispatch(name, args, rets, f);

@@ -2,7 +2,7 @@
 
 data memory(t) = memory(word);
 
-class t:ValueTy {
+forall t . class t:ValueTy {
     function rep(x:t) -> word;
 }
 

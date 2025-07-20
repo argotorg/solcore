@@ -6,7 +6,7 @@ data Succ(a);
 
 data Proxy(a) = Proxy;
 
-class a : Nth(b,c) {
+forall a b c . class a : Nth(b,c) {
   function nth (x : Proxy(a), y : b) -> c;
 }
 

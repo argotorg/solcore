@@ -7,11 +7,11 @@ function not (b : Bool) -> Bool {
   }
 }
 
-class a : C {
+forall a . class a : C {
   function c (x : a, y : a) -> word ;
 }
 
-class a : D {
+forall a . class a : D {
   function d() -> a ;
 }
 

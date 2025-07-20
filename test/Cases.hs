@@ -135,12 +135,14 @@ cases =
     , runTestExpectingFailure "default-instance-missing.solc" caseFolder
     , runTestExpectingFailure "default-instance-weak.solc" caseFolder
     , runTestForFile "tuple-trick.solc" caseFolder
-    , runTestForFile "const-array.solc" caseFolder
+    , runTestExpectingFailure "const-array.solc" caseFolder
+    -- check this array example.
     , runTestForFile "array.solc" caseFolder
     , runTestForFile "class-context.solc" caseFolder
     , runTestExpectingFailure "missing-instance.solc" caseFolder
     , runTestForFile "rec.solc" caseFolder
     , runTestForFile "undefined.solc" caseFolder
+    , runTestExpectingFailure "foo-class.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

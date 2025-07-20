@@ -22,7 +22,7 @@ function main() {
 }
 }
 
-class a : Def {
+forall a . class a : Def {
   function def () -> a ;
 }
 

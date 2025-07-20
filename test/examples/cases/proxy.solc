@@ -1,6 +1,6 @@
 data Proxy(a) = Proxy;
 
-class self:BaseMemoryType {
+forall self . class self:BaseMemoryType {
     function memorySize(x:Proxy(self)) -> word;
 }
 

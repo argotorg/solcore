@@ -1,4 +1,4 @@
-class self:Typedef(underlyingType) {
+forall self underlyingType . class self:Typedef(underlyingType) {
     function rep(x:self) -> underlyingType;
     function abs(x:underlyingType) -> self;
 }

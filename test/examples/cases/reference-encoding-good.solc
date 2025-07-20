@@ -123,7 +123,7 @@ forall self memberValueType . class self:RValueMemberAccess(memberValueType) {
 pragma no-coverage-condition StructField, LValueMemberAccess, RValueMemberAccess;
 pragma no-patterson-condition LValueMemberAccess, RValueMemberAccess;
 pragma no-bounded-variable-condition LValueMemberAccess, RValueMemberAccess;
-class self:CStructField(fieldType, offsetType) {}
+forall self fieldType offsetType . class self:CStructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 
 forall structType fieldSelector fieldType offsetType . StructField(structType, fieldSelector):CStructField(fieldType, offsetType), offsetType:MemorySize => instance MemberAccessProxy(memory(structType), fieldSelector):LValueMemberAccess(memoryRef(fieldType)) {

@@ -1,4 +1,4 @@
-class a : Mem {
+forall a . class a : Mem {
   function size(x : a) -> word;
 }
 

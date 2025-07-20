@@ -1,7 +1,7 @@
 
 data memory(t) = memory(word);
 
-class t:ValueTy {
+forall t . class t:ValueTy {
     function rep(x:t) -> word;
 }
 
@@ -13,7 +13,7 @@ forall t . instance memory(t) : ValueTy {
     }
 }
 
-class ref:Ref(deref) {
+forall ref deref . class ref:Ref(deref) {
     function store(loc: ref, value: deref) -> ();
 }
 
