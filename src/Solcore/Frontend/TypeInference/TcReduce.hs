@@ -113,7 +113,8 @@ reduceByInst' n qs p@(InCls c _ _)
                     if checkEntails qs pp then do
                         info [">> Entailing ", pretty pp, " using ", pretty qs]
                         pure []
-                      else pure [pp] --  tcmError $ unwords ["No instance found for:", pretty pp]
+                      else if groundPred pp then tcmError $ unwords ["No instance found for:", pretty pp]
+                             else pure [pp] --  tcmError $ unwords ["No instance found for:", pretty pp]
                   Just (ps', s, h) -> do
                     extSubst s
                     withCurrentSubst ps'
@@ -121,7 +122,8 @@ reduceByInst' n qs p@(InCls c _ _)
                 if checkEntails qs pp then do
                     info [">> Entailing ", pretty pp, " using ", pretty qs]
                     pure []
-                  else pure [pp] -- tcmError $ unwords [">>> No instance found for:", pretty pp]
+                  else if groundPred pp then tcmError $ unwords [">>> No instance found for:", pretty pp]
+                          else pure [pp] -- tcmError $ unwords [">>> No instance found for:", pretty pp]
           Just (preds, subst', instd) -> do
             extSubst subst'
             info [">>> Selected instance:", pretty instd, "\n>>>> next iteration:", pretty preds]
@@ -131,6 +133,9 @@ reduceByInst' n _ (t1 :~: t2) =
   do
     unify t1 t2
     pure []
+
+groundPred :: Pred -> Bool
+groundPred p = null (mv p) || null (bv p)
 
 checkEntails :: [Pred] -> Pred -> Bool
 checkEntails qs p = any (\ q -> isRight $ mgu q p) qs

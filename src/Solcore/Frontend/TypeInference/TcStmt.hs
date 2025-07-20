@@ -198,7 +198,7 @@ tcExp ex@(Call me n args)
   = tcCall me n args `wrapError` ex
 tcExp e@(Lam args bd _)
    = do
-       (args', schs, ts', vs') <- tcArgs args
+       (args', schs, ts') <- tcArgs args
        (bd', ps, t') <- withLocalCtx schs (tcBody bd)
        s <- getSubst
        let ps1 = apply s ps
@@ -231,7 +231,7 @@ closureConversion vs args bdy ps ty
   = do
       i <- incCounter
       fs <- Map.keys <$> gets uniqueTypes
-      sch <- generalize (ps, [], ty)
+      sch <- generalize (ps, ty)
       let
           fn = Name $ "lambda_impl" ++ show i
           argsn = map idName (vars args)
@@ -244,7 +244,7 @@ closureConversion vs args bdy ps ty
         -- creating the lambda function by lifting it.
         fun1 <- createClosureFreeFun fn args bdy ps ty
         info [">> Creating lambda lifted function(free):\n", pretty fun1]
-        sch <- generalize (ps, [], ty)
+        sch <- generalize (ps, ty)
         -- creating the invoke instance and unique type def.
         (udt@(DataTy dn vs _), instd) <- generateDecls (fun1, sch)
         mvs <- mapM (const freshTyVar) vs
@@ -319,7 +319,7 @@ createClosureFun fn free cdt args bdy ps ty
           ty' = ct :-> ty
           sig = Signature vs' ps0 fn args' (Just retTy)
       bdy' <- createClosureBody cName cdt free bdy
-      sch <- generalize (ps0, [], ty')
+      sch <- generalize (ps0, ty')
       pure (everywhere (mkT gen) $ FunDef sig bdy', sch)
 
 
@@ -350,44 +350,44 @@ createClosureFreeFun fn args bdy ps ty
         sig = Signature vs ps fn args (Just retTy)
       pure (everywhere (mkT gen) $ FunDef sig bdy)
 
-tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty], [Tyvar])
+tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
 tcArgs params
   = do
-      (ps, schs, ts, vss) <- unzip4 <$> mapM tcArg params
-      pure (ps, schs, ts, concat vss)
+      (ps, schs, ts) <- unzip3 <$> mapM tcArg params
+      pure (ps, schs, ts)
 
-tcArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty, [Tyvar])
+tcArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty)
 tcArg (Untyped n)
   = do
       v <- freshTyVar
       let ty = monotype v
-      pure (Typed (Id n v) v, (n, ty), v, [])
+      pure (Typed (Id n v) v, (n, ty), v)
 tcArg a@(Typed n ty)
   = do
       ty1 <- kindCheck ty `wrapError` a
-      pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1, bv ty1)
+      pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1)
 
 -- type checking a single bind
 -- create tcSignature which should return the
 -- function type together with its parameter types
 
-tcSignature :: Signature Name -> [Pred] -> TcM ( (Name, Scheme)
-                                               , [(Name, Scheme)]
-                                               , [Ty]
-                                               , IEnv
-                                               )
-tcSignature sig@(Signature vs ps n args rt) qs
-    = do
-        vs0 <- mapM (const freshTyVar) (bv sig `union` bv qs)
-        let env = zip (bv sig `union` bv qs) vs0
-        (args', pschs, ts, vs') <- tcArgs args
-        t' <- maybe freshTyVar pure rt
-        let sch = Forall (bv sig) (ps :=> funtype ts t')
-        pure ((n, sch), pschs, ts, env)
+-- tcSignature :: Signature Name -> [Pred] -> TcM ( (Name, Scheme)
+--                                                , [(Name, Scheme)]
+--                                                , [Ty]
+--                                                , IEnv
+--                                                )
+-- tcSignature sig@(Signature vs ps n args rt) qs
+--     = do
+--         vs0 <- mapM (const freshTyVar) (bv sig `union` bv qs)
+--         let env = zip (bv sig `union` bv qs) vs0
+--         (args', pschs, ts, vs') <- tcArgs args
+--         t' <- maybe freshTyVar pure rt
+--         let sch = Forall (bv sig) (ps :=> funtype ts t')
+--         pure ((n, sch), pschs, ts, env)
 
 hasAnn :: Signature Name -> Bool
 hasAnn (Signature _ _ _ args rt)
-  = any isAnn args && isJust rt
+  = any isAnn args || isJust rt
     where
       isAnn (Typed _ t) = True
       isAnn _ = False
@@ -398,50 +398,110 @@ hasAnn (Signature _ _ _ args rt)
 -- functions which should have the type of its underlying
 -- type class definition.
 
-tcFunDef :: Bool -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
-tcFunDef incl qs d@(FunDef sig bd)
+tiArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty)
+tiArg (Untyped n)
   = do
-     info [">> Starting the typing of:\n", pretty d]
-     ((n,sch), pschs, ts, ienv) <- tcSignature sig qs
-     -- instantiating anotations in the whole function definition
-     let pschs' = everywhere (mkT (insts @Ty ienv)) pschs
-         lctx = if incl then (n,sch) : pschs' else pschs'
-         bd0 = everywhere (mkT (insts @Ty ienv)) bd
-         qs1 = everywhere (mkT (insts @Ty ienv)) qs
-         ts' = everywhere (mkT (insts @Ty ienv)) ts
-     (bd', ps1, t') <- withLocalCtx lctx (tcBody bd0) `wrapError` d
-     let Forall _ (ps2 :=> ann) = everywhere (mkT (insts @Ty ienv)) sch
-     ty <- withCurrentSubst (funtype ts' t')
-     -- matching infered and annotated type.
-     when (hasAnn sig) $ do
-        sm <- match (funtype ts' t') ann
-        extSubst sm
-        return ()
-     -- checking if the constraints are valid
-     -- entailing constraints infered by annotated ones.
-     ps3 <- withCurrentSubst ps1
-     ps4 <- withCurrentSubst (qs1 ++ ps2)
-     vs <- getEnvMetaVars
-     (ds, rs) <- splitContext ps3 ps4 vs `wrapError` d
-     -- at this point, we should not have defered constraints, since ps4
-     -- has all annotated constraints of the current definition
-     sch' <- generalize (rs, qs1, ty)
+      t <- freshTyVar
+      pure (Typed (Id n t) t, (n, monotype t), t)
+tiArg (Typed n _)
+  = do
+      t <- freshTyVar
+      pure (Typed (Id n t) t, (n, monotype t), t)
+
+tiArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
+tiArgs args = unzip3 <$> mapM tiArg args
+
+tiFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
+tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
+  = do
+      -- getting fresh type variables for arguments
+      (args', lctx, ts') <- tiArgs args
+      -- fresh type for the function
+      nt <- freshTyVar
+      -- extended typing context for typing function body
+      let lctx' = (n, monotype nt) : lctx
+      -- typing function body
+      (bd1, ps1, t1) <- withLocalCtx lctx' (tcBody bd) `wrapError` d
+      -- unifying context introduced type with infered function type
+      s <- unify nt (funtype ts' t1)
+      -- building the function type scheme
+      vs <- getEnvMetaVars
+      (ds, rs) <- splitContext ps1 [] vs `wrapError` d
+      ty <- withCurrentSubst nt
+      sch <- generalize (rs, ty)
+      -- checking ambiguity
+      info [">>> Infered type for ", pretty n, " :: ", pretty sch]
+      when (ambiguous sch) $ do
+        ambiguousTypeError sch sig
+      -- elaborating the type signature
+      sig' <- elabSignature sig sch
+      withCurrentSubst (FunDef sig' bd1, sch, ds)
+
+
+argumentAnnotation :: Param Name -> TcM Ty
+argumentAnnotation (Untyped _)
+  = freshTyVar
+argumentAnnotation (Typed _ t)
+  = pure t
+
+annotatedScheme :: [Tyvar] -> Signature Name -> TcM Scheme
+annotatedScheme vs' sig@(Signature vs ps n args rt)
+  = do
+      ts <- mapM argumentAnnotation args
+      t <- maybe freshTyVar pure rt
+      -- check if all variables are bound in signature.
+      when (any (\ v -> v `notElem` (vs ++ vs')) (bv sig)) $ do
+         let unbound_vars = bv sig \\ (vs ++ vs')
+         unboundTypeVars sig unbound_vars
+      pure (Forall vs (ps :=> (funtype ts t)))
+
+
+tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
+tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
+  | hasAnn sig = do
+      -- check if all variables are bound in signature.
+      when (any (\ v -> v `notElem` (vs ++ vs')) (bv sig)) $ do
+         let unbound_vars = bv sig \\ (vs ++ vs')
+         unboundTypeVars sig unbound_vars
+      -- instantiate signatures in function definition
+      sks <- mapM (const freshTyVar) (vs ++ vs')
+      let
+          env = zip (vs' ++ vs) sks
+          d1@(FunDef sig1@(Signature vs1 ps1 _ args1 rt1) bd1) = everywhere (mkT (insts @Ty env)) d
+          qs1 = everywhere (mkT (insts @Ty env)) qs
+      -- getting argument / return types in annotations
+      (args', lctx, ts') <- tcArgs args1
+      rt1' <- maybe freshTyVar pure rt1
+      nt <- freshTyVar
+      -- building the typing context with new assumptions
+      let lctx' = if incl then (n, monotype nt) : lctx else lctx
+      -- typing function body
+      (bd1', ps1', t1') <- withLocalCtx lctx' (tcBody bd1) `wrapError` d
+      unify rt1' t1'
+      unify nt (funtype ts' rt1')
+      -- building the function type scheme
+      free <- getEnvMetaVars
+      (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free
+      ty <- withCurrentSubst nt
+      inf <- generalize (rs, ty)
+      ann <- generalize (ps, (funtype ts' rt1'))
      -- checking subsumption
-     when (hasAnn sig) $ do
-        subsCheck sch' sch
-     when (not (null ds)) $ do
-        tcmError $ unlines ["Cannot entail:", pretty ds, "using", pretty ps4]
-     -- we have type annotations, but not all constraints are annotated
-     when (hasAnn sig && not (null rs) && null ps4) $ do
-        (tcmError $ unlines ["Cannot deduce:", pretty rs, "from empty context"]) `wrapError` d
-     -- checking ambiguity
-     when (ambiguous sch') $ do
-        ambiguousTypeError sch' sig
-     sig2 <- elabSignature sig sch' `wrapError` d
-     info [">> Finishing the typing of:", pretty sig2]
-     info [">> Infered type:", pretty sch']
-     fd <- withCurrentSubst (FunDef sig2 bd')
-     withCurrentSubst (fd, sch', ds)
+      subsCheck inf ann
+      sig2 <- elabSignature sig1 ann
+      -- elaborating function body
+      let fd2 = everywhere (mkT elabTyvar) (FunDef sig2 bd1')
+      unless (null rs) $ do
+        throwError $ unlines ["Cannot satisfy:", pretty rs, "in:", pretty sig]
+      withCurrentSubst (fd2, ann, [])
+  | otherwise = do
+        (fd2, sch, ds) <- tiFunDef d
+        -- infered constraints cannot be defered.
+        unless (null ds) $ do
+            (tcmError $ unlines [ "Cannot entail:"
+                                , pretty ds
+                                , "from"
+                                , pretty sig]) `wrapError` d
+        pure (fd2, sch, [])
 
 -- testing ambiguity
 
@@ -532,7 +592,7 @@ tcInstance idecl@(Instance d vs ctx n ts t funs)
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs)
       funs' <- buildSignatures n ts t funs `wrapError` idecl
-      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False ctx) funs' `wrapError` idecl
+      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False vs ctx) funs' `wrapError` idecl
       let
         funs2 = everywhere (mkT gen) funs1
         vs0 = map TVar namePool
@@ -685,8 +745,8 @@ checkOverlap p@(InCls _ t _) (i:is)
 checkCoverage :: Name -> [Ty] -> Ty -> TcM ()
 checkCoverage cn ts t
   = do
-      let strongTvs = fv t
-          weakTvs = fv ts
+      let strongTvs = bv t
+          weakTvs = bv ts
           undetermined = weakTvs \\ strongTvs
       unless (null undetermined) $
           throwError (unlines [
@@ -733,8 +793,8 @@ checkMeasure ps c
 
 -- type generalization
 
-generalize :: ([Pred], [Pred], Ty) -> TcM Scheme
-generalize (ps,qs,t)
+generalize :: ([Pred], Ty) -> TcM Scheme
+generalize (ps,t)
   = do
       envVars <- getEnvMetaVars
       (ps1,t1) <- withCurrentSubst (ps,t)
@@ -964,6 +1024,12 @@ rename t = let vs = bv t
            in insts s t
 
 -- errors
+
+unboundTypeVars :: Signature Name -> [Tyvar] -> TcM a
+unboundTypeVars sig vs
+  = throwError $ unlines ["Type variables:", vs', "are unbound in:", pretty sig]
+  where
+    vs' = unwords $ map pretty vs
 
 typeMatch :: Scheme -> Scheme -> TcM ()
 typeMatch t1 t2

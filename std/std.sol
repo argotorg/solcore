@@ -58,13 +58,13 @@ function or(x: bool, y: bool) -> bool {
 
 // --- Tuple projections ---
 
-function fst(p: (a, b)) -> a {
+forall a b . function fst(p: (a, b)) -> a {
     match p {
     | (a, _) => return a;
     }
 }
 
-function snd(p: (a, b)) -> b {
+forall a b . function snd(p: (a, b)) -> b {
     match p {
     | (_, b) => return b;
     }
@@ -77,26 +77,26 @@ data Proxy(t) = Proxy;
 
 // --- Type Abstraction ---
 
-class abs:Typedef(rep) {
+forall abs rep . class abs:Typedef(rep) {
     function abs(x:rep) -> abs;
     function rep(x:abs) -> rep;
 }
 
 // --- Arithmetic ---
 
-class t:Add {
+forall t . class t:Add {
     function add(l: t, r: t) -> t;
 }
 
-class t:Sub {
+forall t . class t:Sub {
     function sub(l: t, r: t) -> t;
 }
 
-class t:Mul {
+forall t . class t:Mul {
     function mul(l: t, r: t) -> t;
 }
 
-class t:Div {
+forall t . class t:Div {
     function div(l: t, r: t) -> t;
 }
 
@@ -174,7 +174,7 @@ instance byte:Typedef(word) {
 // --- Pointers ---
 
 data memory(t) = memory(word);
-instance memory(t) : Typedef(word) {
+forall t . instance memory(t) : Typedef(word) {
     function abs(x: word) -> memory(t) {
         return memory(x);
     }
@@ -187,7 +187,7 @@ instance memory(t) : Typedef(word) {
 }
 
 data storage(t) = storage(word);
-instance storage(t) : Typedef(word) {
+forall t . instance storage(t) : Typedef(word) {
     function abs(x: word) -> storage(t) {
         return storage(x);
     }
@@ -200,7 +200,7 @@ instance storage(t) : Typedef(word) {
 }
 
 data calldata(t) = calldata(word);
-instance calldata(t) : Typedef(word) {
+forall t . instance calldata(t) : Typedef(word) {
     function abs(x: word) -> calldata(t) {
         return calldata(x);
     }
@@ -213,7 +213,7 @@ instance calldata(t) : Typedef(word) {
 }
 
 data returndata(t) = returndata(word);
-instance returndata(t) : Typedef(word) {
+forall t . instance returndata(t) : Typedef(word) {
     function abs(x: word) -> calldata(t) {
         return returndata(x);
     }
@@ -246,7 +246,7 @@ function set_free_memory(loc : word) {
 
 // types that can be written to and read from at a uint256 index
 // TODO: this needs to be split into LValue / RValue variants for `=` desugaring
-class t:IndexAccess(val) {
+forall t val . class t:IndexAccess(val) {
     function get(c: t, i: uint256) -> val;
     function set(c: t, i: uint256, v: val);
 }
@@ -286,7 +286,7 @@ forall t . t:Typedef(word) => instance memory(DynArray(t)):IndexAccess(t) {
     }
 }
 
-function allocateDynamicArray(prx : Proxy(t), length : word) -> memory(DynArray(t)) {
+forall t . function allocateDynamicArray(prx : Proxy(t), length : word) -> memory(DynArray(t)) {
     // size of allocation in bytes
     let sz : word = Mul.mul(Add.add(length, 1), 32);
 
@@ -320,7 +320,7 @@ data slice(ptr) = slice(ptr, word);
 
 // A WordReader is an abstraction over byte indexed structure that can be read in word sized chunks (e.g. calldata / memory)
 // These let us use the same abi decoding routines for calldata / memory
-class ty:WordReader {
+forall ty . class ty:WordReader {
     // returns the word currently pointed to by the WordReader
     function read(reader:ty) -> word;
     // returns a new WordReader that points to a location `offset` bytes further into the array
@@ -385,7 +385,7 @@ instance calldata(bytes):HasWordReader(CalldataWordReader) {
 
 // A MemoryType instance abstracts over type specific logic related to memory
 // layout, allowing us to write code that is generic over which type is held in memory
-class self:MemoryType(loadedType) {
+forall self loadedType. class self:MemoryType(loadedType) {
     // Proxy needed becaused class methods must mention strong type params
     // loads an instance of `loadedType` from an instance of `self` located at `loc` in memory
     function loadFromMemory(p:Proxy(self), loc:word) -> loadedType;
@@ -435,7 +435,7 @@ forall ty deref . ty:MemoryType(deref), deref:ABIEncode => instance memory(ty):A
 // encoding / decoding.
 data ABITuple(tuple) = ABITuple(tuple);
 
-instance ABITuple(t):Typedef(t) {
+forall t . instance ABITuple(t):Typedef(t) {
     function abs(t: t) -> ABITuple(t) {
         return ABITuple(t);
     }
@@ -450,7 +450,7 @@ instance ABITuple(t):Typedef(t) {
 // --- ABI Metadata ---
 
 // Statically knowable ABI related metadata about `self`
-class self:ABIAttribs {
+forall self . class self:ABIAttribs {
     // how many bytes should be used for the head portion of the abi encoding of `self`
     function headSize(ty:Proxy(self)) -> word;
     // whether or not `self` is a fully static type
@@ -461,7 +461,7 @@ instance uint256:ABIAttribs {
     function headSize(ty) { return 32; }
     function isStatic(ty) { return true; }
 }
-instance DynArray(t):ABIAttribs {
+forall t . instance DynArray(t):ABIAttribs {
     function headSize(ty) { return 32; }
     function isStatic(ty) { return false; }
 }
@@ -590,7 +590,7 @@ forall tuple . tuple:ABIEncode, tuple:ABIAttribs => instance ABITuple(tuple):ABI
 
 // Top level decoding function.
 // abi decodes an instance of `decodable` into a `ty`
-forall decodable reader ty . decodable:HasWordReader(reader), ABIDecoder(ty, reader):ABIDecode(decoded) =>
+forall decodable reader ty decoded . decodable:HasWordReader(reader), ABIDecoder(ty, reader):ABIDecode(decoded) =>
 function abi_decode(decodable:decodable) -> decoded {
     let decoder : ABIDecoder(ty, reader) = ABIDecoder(HasWordReader.getWordReader(decodable));
     return ABIDecode.decode(decoder, 0);

@@ -4,6 +4,6 @@ class self:Typedef(underlyingType) {
 }
 
 forall t . t : Typedef((word,(word,word))) =>
-  function tripleFun(x:t) {
+  function tripleFun(x:t) -> (word, (word, word)) {
     return Typedef.rep(x);
   }
