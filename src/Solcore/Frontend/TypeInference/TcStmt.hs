@@ -1025,7 +1025,7 @@ rename t = let vs = bv t
 
 -- errors
 
-unboundTypeVars :: Signature Name -> [Tyvar] -> TcM a
+unboundTypeVars :: Pretty a => a -> [Tyvar] -> TcM b
 unboundTypeVars sig vs
   = throwError $ unlines ["Type variables:", vs', "are unbound in:", pretty sig]
   where

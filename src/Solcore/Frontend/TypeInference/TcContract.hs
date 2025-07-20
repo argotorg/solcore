@@ -223,8 +223,12 @@ tcField d@(Field n t _)
 tcClass :: Class Name -> TcM (Class Id)
 tcClass iclass@(Class bvs ctx n vs v sigs)
   = do
-      let ns = map sigName sigs
+      let bvs' = bv ctx `union` bv (map TyVar (v : vs)) `union` bv sigs
+          ns = map sigName sigs
           qs = map (QualName n . pretty) ns
+      when (any (\ v -> v `notElem` bvs) bvs') $ do
+         let unbound_vars = bvs' \\ bvs
+         unboundTypeVars iclass unbound_vars
       schs <- mapM askEnv qs `wrapError` iclass
       sigs' <- mapM tcSig (zip sigs schs) `wrapError` iclass
       pure (Class bvs ctx n vs v sigs')
@@ -306,8 +310,8 @@ checkClass icls@(Class bvs ps n vs v sigs)
             pst <- mapM tyParam ps
             t' <- maybe (pure unit) pure mt
             let ft = funtype pst t'
-            unless (null bvs || v `elem` bvs)
-                   (signatureError n v sig ft)
+            unless (all (`elem` bvs) (v : vs))
+                   (unboundTypeVars sig ((v : vs) \\ bvs))
             addClassMethod p sig `wrapError` icls
 
 addClassInfo :: Name -> Arity -> [Method] -> [Pred] -> Pred -> TcM ()
