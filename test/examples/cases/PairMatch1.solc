@@ -1,6 +1,6 @@
 data Pair(a, b) = Pair(a, b);
 
-function foo(p: a) -> word {
+forall a . function foo(p: a) -> word {
     let x: word = p;
     return x;
 }

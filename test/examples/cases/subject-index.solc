@@ -70,10 +70,8 @@ instance StructField(MintCtx, balances_sel):StructField(mapping(word,word), ()) 
      ) ;
 
    }
-/*
 contract Map {
    function main () {
       mint(1000);
    }
 }
-*/
