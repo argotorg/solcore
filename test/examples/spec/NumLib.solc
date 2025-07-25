@@ -1,0 +1,82 @@
+function addW(x : word, y : word) {
+  let res: word;
+  assembly {
+     res := add(x, y)
+  }
+  return res;
+}
+
+function subW(x : word, y : word) {
+  let res: word;
+  assembly {
+     res := sub(x, y)
+  }
+  return res;
+}
+
+function addU(x : uint, y : uint) -> uint {
+  let res: word;
+  let xw : word = Num.toWord(x);
+  let yw : word = Num.toWord(y);
+  assembly {
+     res := add(xw, yw)
+  }
+  return uint(res);
+}
+
+function hash1(x: word) -> word {
+  let result: word = 0;
+  assembly {
+    mstore(0, x)
+    result := keccak256(0,32)
+  }
+  return result;
+}
+
+function hash2(x: word, y: word) -> word {
+  let result: word = 0;
+  assembly {
+    mstore(0, x)
+    mstore(32, y)
+    result := keccak256(0,64)
+  }
+  return result;
+}
+
+forall a.
+class a:Num {
+  function toWord(x:a) -> word;
+  function fromWord(x:word) -> a;
+  function add(x:a, y:a) -> a;
+  function sub(x:a, y:a) -> a;
+}
+
+instance word:Num {
+  function toWord(x:word) -> word { return x; }
+  function fromWord(x:word) -> word { return x; }
+  function add(x:word, y:word) -> word { return addW(x, y); }
+  function sub(x:word, y:word) -> word { return addW(x, y); }
+}
+
+data uint = uint(word);
+
+instance uint:Num {
+  function toWord(x:uint) -> word
+  {
+          match x {
+            | uint(y) => return y;
+        }
+  }
+  function fromWord(x:word) -> word { return uint(x); }
+  function add(x:uint, y:uint) -> uint { return uint(addW(Num.toWord(x), Num.toWord(y))); }
+  function sub(x:uint, y:uint) -> uint { return uint(subW(Num.toWord(x), Num.toWord(y))); }
+}
+
+/* // this breaks the Paterson condition
+forall a. a:Typedef(word) =>
+instance a:Num {
+  function toWord(x:a) -> word { return Typedef.rep(x); }
+  function fromWord(x:word) { return Typedef.abs(x); }
+  function add(x:a, y:a) -> a { return Typedef.abs(addW(Typedef.rep(x), Typedef.rep(y))); }
+}
+*/

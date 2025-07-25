@@ -1,40 +1,14 @@
 // Storage slots and mapping access
+import NumLib;
 
-function add(x : word, y : word) {
-  let res: word;
-  assembly {
-     res := add(x, y)
-  }
-  return res;
-}
-
-function hash1(x: word) -> word {
-  let result: word = 0;
-  assembly {
-    mstore(0, x)
-    result := keccak256(0,32)
-  }
-  return result;
-}
-
-function hash2(x: word, y: word) -> word {
-  let result: word = 0;
-  assembly {
-    mstore(0, x)
-    mstore(32, y)
-    result := keccak256(0,64)
-  }
-  return result;
-}
 
 /////// Construction
+
 class abs:Typedef(rep) {
     function rep(x:abs) -> rep;
     function abs(x:rep) -> abs;
 }
 
-
-data uint = uint(word);
 
 // this does not work :(
 /*
@@ -44,6 +18,11 @@ forall a
     function abs(x:a) -> word { return a;}
 }
 */
+
+instance word:Typedef(word) {
+    function rep(x:word) -> word { return x; }
+    function abs(x:word) -> word { return x; }
+}
 
 instance uint:Typedef(word) {
     function rep(x:uint) -> word {
@@ -297,7 +276,7 @@ forall cxt fieldSelector fieldType offsetType
     function memberAccess(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> fieldType {
         let ptr:word = 0x100;
         let offsetSize:word = StorageSize.size(Proxy:Proxy(offsetType));
-        return StorageType.sload(add(ptr, offsetSize)):fieldType;
+        return StorageType.sload(addW(ptr, offsetSize)):fieldType;
     }
 }
 
@@ -310,7 +289,7 @@ forall cxt fieldSelector fieldType offsetType
     function memberAccess(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> fieldType {
         let ptr:word = 0x100;
         let offsetSize:word = StorageSize.size(Proxy:Proxy(offsetType));
-        return StorageType.sload(add(ptr, offsetSize)):fieldType;
+        return StorageType.sload(addW(ptr, offsetSize)):fieldType;
     }
 }
 */
@@ -341,15 +320,15 @@ instance mapping(index, member):StorageSize {
 
 data IndexAccessProxy(map, index, member) = IndexAccessProxy(map, index);
 
-forall map index member. map:Typedef(word), index:Typedef(word)
-=> instance IndexAccessProxy(storageRef(map), index, member):LValueMemberAccess(storageRef(member)) {
+forall index member. index:Typedef(word)
+=> instance IndexAccessProxy(storageRef(mapping(index,member)), index, member):LValueMemberAccess(storageRef(member)) {
     function memberAccess(x:IndexAccessProxy(storageRef(map), index, member)) -> storageRef(member) {
 	    return storageRef(indexStorageSlot(x));
     }
 }
 
-forall map index member . map:Typedef(word), index:Typedef(word), member:StorageType
-=> instance IndexAccessProxy(storageRef(map), index, member):RValueMemberAccess(member) {
+forall index member . index:Typedef(word), member:StorageType
+=> instance IndexAccessProxy(storageRef(mapping(index,member)), index, member):RValueMemberAccess(member) {
     function memberAccess(x:IndexAccessProxy(map, index, member)) -> member {
             let slot:word = indexStorageSlot(x);
 	    return StorageType.sload(slot);
