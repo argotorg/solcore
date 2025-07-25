@@ -82,13 +82,12 @@ compile opts = runExceptT $ do
     then pure connected
     else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
 
-  liftIO $ when verbose $ do
+  liftIO $ when (verbose || optDumpDF opts) $ do
     putStrLn "> Indirect call desugaring:"
     putStrLn $ pretty direct
 
   -- Type inference
-  (typed, env) <- ExceptT $ timeItNamed
-    (if noDesugarCalls then "Indirect Calls" else "Typecheck     ")
+  (typed, env) <- ExceptT $ timeItNamed "Typecheck     "
     (typeInfer opts direct)
 
   liftIO $ when verbose $ do
