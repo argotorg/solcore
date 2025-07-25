@@ -10,6 +10,7 @@ import qualified Data.List.NonEmpty as N
 import Data.Map (Map)
 import Data.Maybe
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 import qualified System.TimeIt as TimeIt
 import Text.Printf
@@ -47,11 +48,16 @@ freshName :: TcM Name
 freshName
   = do
       ds <- Map.keys <$> gets ctx
-      vs <- getEnvFreeVars
+      vs <- map tyvarName <$> getEnvFreeVars
+      let taken = Set.union (Set.fromList ds) (Set.fromList vs)
       ns <- gets nameSupply
-      let (n, ns') = newName (ns \\ ((map tyvarName vs) ++ ds))
+      let (n, ns') = findFresh taken ns
       modify (\ ctx -> ctx {nameSupply = ns'})
-      return n
+      pure n
+      where
+        findFresh taken remaining = loop remaining where
+          loop remaining = let result@(n1, rem1) = newName remaining
+            in if n1 `Set.member` taken then loop rem1 else result
 
 incCounter :: TcM Int
 incCounter = do
