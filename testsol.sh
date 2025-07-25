@@ -10,7 +10,7 @@ function testsol() {
     echo $file
     shift
     rm -f -v output1.core Output.sol
-    cabal run sol-core -- -f $file $* && \
+    /usr/bin/time -f "Compilation time: %E" cabal run sol-core -- -f $file $* && \
 	cabal exec yule -- output1.core -w -O > /dev/null && \
         forge script --via-ir Output.sol | egrep '(Gas|RESULT)'
 }
