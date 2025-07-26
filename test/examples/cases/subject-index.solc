@@ -1,0 +1,77 @@
+data storage(a) = storage(word);
+data storageRef(a) = storageRef(word);
+data Proxy(a) = Proxy;
+
+data mapping(member, index) = mapping(word, Proxy(member), Proxy(index));
+
+forall lhs rhs . class lhs:Assign(rhs) {
+    function assign(l:lhs, r:rhs) -> ();
+}
+
+forall a . instance storageRef(a):Assign(a) {
+    function assign(l:storageRef(a), y:a) {
+    }
+}
+
+forall self fieldType offsetType . class self:StructField(fieldType, offsetType) {}
+data StructField(structType, fieldSelector) = StructField(structType);
+
+
+data MemberAccessProxy(a, field, offset) = MemberAccessProxy(a, field);
+
+
+forall self memberRefType . class self:LValueMemberAccess(memberRefType) {
+    function memberAccess(x:self) -> memberRefType;
+}
+
+// ------------------------------------------------------------------
+// Contract field access
+// ------------------------------------------------------------------
+
+forall cxt fieldSelector fieldType offsetType
+  . StructField(cxt, fieldSelector):StructField(fieldType, offsetType)
+  => instance MemberAccessProxy(cxt, fieldSelector, offsetType):LValueMemberAccess(storageRef(fieldType)) {
+    function memberAccess(x:MemberAccessProxy(cxt, fieldSelector, offsetType)) -> storageRef(fieldType) {
+        return storageRef(0x100);
+    }
+}
+
+// ------------------------------------------------------------------
+// Indexed access
+// ------------------------------------------------------------------
+
+data mapping(index, member) = mapping(word);
+data IndexAccessProxy(map, index, member) = IndexAccessProxy(map, index);
+
+forall map index member.
+ instance IndexAccessProxy(storageRef(map), index, member):LValueMemberAccess(storageRef(member)) {
+    function memberAccess(x:IndexAccessProxy(storageRef(map), index, member)) -> storageRef(member) {
+	    return storageRef(0);
+    }
+}
+
+data MintCtx = MintCtx;
+data balances_sel = balances_sel;
+instance StructField(MintCtx, balances_sel):StructField(mapping(word,word), ()) {}
+
+   function mint(amount:word) {
+     let bal_prx = MemberAccessProxy(MintCtx, balances_sel);
+     let bal_ref = LValueMemberAccess.memberAccess(bal_prx);
+
+     Assign.assign(
+       LValueMemberAccess.memberAccess(
+         IndexAccessProxy(
+	 // bal_ref // this works, but inlining bal_ref leads to error
+	 LValueMemberAccess.memberAccess(bal_prx)
+	 , 0
+	 )
+       )
+     , amount
+     ) ;
+
+   }
+contract Map {
+   function main () {
+      mint(1000);
+   }
+}

@@ -1,13 +1,16 @@
+pragma no-coverage-condition Nth;
+
+
 data Zero;
 data Succ(a);
 
 data Proxy(a) = Proxy;
 
-class a : Nth(b,c) {
+forall a b c . class a : Nth(b,c) {
   function nth (x : Proxy(a), y : b) -> c;
 }
 
-forall a . instance Zero : Nth((a,b), a) {
+forall a b . instance Zero : Nth((a,b), a) {
    function nth (x : Proxy(Zero), y : (a,b)) -> a {
       match y {
       | (a, b) => return a ;

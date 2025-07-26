@@ -1,9 +1,9 @@
 
-class self:A {
+forall self . class self:A {
   function foo(p : self) -> word;
 }
 
-class self:B {
+forall self . class self:B {
   function foo(p : self) -> word;
 }
 

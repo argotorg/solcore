@@ -1,4 +1,4 @@
-class ref:Loadable (deref) {
+forall ref deref . class ref:Loadable (deref) {
     function load (r : ref) -> deref;
 }
 
