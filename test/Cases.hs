@@ -142,7 +142,7 @@ cases =
     , runTestExpectingFailure "missing-instance.solc" caseFolder
     , runTestForFile "rec.solc" caseFolder
     , runTestForFile "undefined.solc" caseFolder
-    , runTestExpectingFailure "foo-class.solc" caseFolder
+    , runTestForFile "foo-class.solc" caseFolder
     , runTestExpectingFailure "subsumption-test.solc" caseFolder
     , runTestExpectingFailure "patterson-bug.solc" caseFolder
     ]

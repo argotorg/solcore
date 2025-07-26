@@ -329,7 +329,7 @@ addClassMethod p@(InCls c _ _) sig@(Signature _ ctx f ps t)
       tps <- mapM tyParam ps
       t' <- maybe (pure unit) pure t
       let ty = funtype tps t'
-          vs = fv ty
+          vs = bv ty
           ctx' = [p] `union` ctx
           qn = if isQual f then f else QualName c (pretty f)
           sch = Forall vs (ctx' :=> ty)
