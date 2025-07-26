@@ -51,13 +51,9 @@ freshName
       vs <- map tyvarName <$> getEnvFreeVars
       let taken = Set.union (Set.fromList ds) (Set.fromList vs)
       ns <- gets nameSupply
-      let (n, ns') = findFresh taken ns
+      let (n, ns') = newName $ dropWhile (flip Set.member taken) ns
       modify (\ ctx -> ctx {nameSupply = ns'})
       pure n
-      where
-        findFresh taken remaining = loop remaining where
-          loop remaining = let result@(n1, rem1) = newName remaining
-            in if n1 `Set.member` taken then loop rem1 else result
 
 incCounter :: TcM Int
 incCounter = do
