@@ -367,24 +367,6 @@ tcArg a@(Typed n ty)
       ty1 <- kindCheck ty `wrapError` a
       pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1)
 
--- type checking a single bind
--- create tcSignature which should return the
--- function type together with its parameter types
-
--- tcSignature :: Signature Name -> [Pred] -> TcM ( (Name, Scheme)
---                                                , [(Name, Scheme)]
---                                                , [Ty]
---                                                , IEnv
---                                                )
--- tcSignature sig@(Signature vs ps n args rt) qs
---     = do
---         vs0 <- mapM (const freshTyVar) (bv sig `union` bv qs)
---         let env = zip (bv sig `union` bv qs) vs0
---         (args', pschs, ts, vs') <- tcArgs args
---         t' <- maybe freshTyVar pure rt
---         let sch = Forall (bv sig) (ps :=> funtype ts t')
---         pure ((n, sch), pschs, ts, env)
-
 hasAnn :: Signature Name -> Bool
 hasAnn (Signature _ _ _ args rt)
   = any isAnn args || isJust rt
@@ -434,7 +416,7 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       when (ambiguous sch) $ do
         ambiguousTypeError sch sig
       -- elaborating the type signature
-      sig' <- elabSignature sig sch
+      sig' <- elabSignature [] sig sch
       withCurrentSubst (FunDef sig' bd1, sch, ds)
 
 
@@ -484,15 +466,14 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free
       ty <- withCurrentSubst nt
       inf <- generalize (rs, ty)
-      ann <- generalize (ps, (funtype ts' rt1'))
+      ann <- annotatedScheme vs' sig
      -- checking subsumption
-      subsCheck inf ann
-      sig2 <- elabSignature sig1 ann
-      -- elaborating function body
-      let fd2 = everywhere (mkT elabTyvar) (FunDef sig2 bd1')
+      subsCheck inf ann `wrapError` d
       unless (null rs) $ do
         throwError $ unlines ["Cannot satisfy:", pretty rs, "in:", pretty sig]
-      withCurrentSubst (fd2, ann, [])
+      -- elaborating function body
+      fdt <- elabFunDef vs' sig1 bd1' inf ann
+      withCurrentSubst (fdt, ann, [])
   | otherwise = do
         (fd2, sch, ds) <- tiFunDef d
         -- infered constraints cannot be defered.
@@ -502,6 +483,28 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
                                 , "from"
                                 , pretty sig]) `wrapError` d
         pure (fd2, sch, [])
+-- elaborating function definition
+
+elabFunDef :: [Tyvar] -> -- additional variables which came from outer scope
+              Signature Name -> -- original function signature
+              Body Id ->  -- elaborated function body (with fresh variables)
+              Scheme -> -- function infered type
+              Scheme -> -- function annotated type
+              TcM (FunDef Id)
+elabFunDef vs sig bdy inf@(Forall _ (_ :=> tinf)) ann@(Forall _ (_ :=> tann))
+  = do
+      let
+        tinf' = everywhere (mkT toMeta) tinf
+        tann' = everywhere (mkT toMeta) tann
+      s <- unify tinf' tann'
+      sig2 <- elabSignature vs sig ann
+      let fd2 = everywhere (mkT (apply @Ty s)) (FunDef sig2 bdy)
+      pure (everywhere (mkT gen) fd2)
+
+toMeta :: Ty -> Ty
+toMeta (TyVar (TVar n)) = Meta (MetaTv n)
+toMeta (TyCon n ts) = TyCon n (map toMeta ts)
+toMeta t = t
 
 -- testing ambiguity
 
@@ -535,8 +538,8 @@ isValid rs = null rs || all isInvoke rs
 
 -- update types in signature
 
-elabSignature :: Signature Name -> Scheme -> TcM (Signature Id)
-elabSignature sig sch@(Forall vs (ps :=> t))
+elabSignature :: [Tyvar] -> Signature Name -> Scheme -> TcM (Signature Id)
+elabSignature vs1 sig sch@(Forall vs (ps :=> t))
   = do
       let
         params = sigParams sig
@@ -546,9 +549,12 @@ elabSignature sig sch@(Forall vs (ps :=> t))
         ctx = sigContext sig
       params' <- zipWithM elabParam ts' params
       let
+        -- here we build the return type.
+        -- Note that, since we can return functions, we need to check if the
+        -- formal parameters are present in the signature.
         ret = Just $ if null params' then t else (funtype rs t')
         vs' = bv params' `union` bv ret `union` bv ps
-      sig2 <- withCurrentSubst (Signature vs' ps (sigName sig) params' ret)
+      sig2 <- withCurrentSubst (Signature (vs' \\ vs1) ps (sigName sig) params' ret)
       pure sig2
 
 elabParam :: Ty -> Param Name -> TcM (Param Id)
@@ -590,27 +596,28 @@ extSignature sig@(Signature _ preds n ps t)
 tcInstance :: Instance Name -> TcM (Instance Id)
 tcInstance idecl@(Instance d vs ctx n ts t funs)
   = do
+      vs' <- mapM (const freshVar) vs
+      let env = zip vs (map Meta vs')
+          idecl'@(Instance _ _ ctx' _ ts' t' funs')
+            = everywhere (mkT (insts @Ty env)) idecl
+      tcInstance' (Instance d [] ctx' n ts' t' funs')
+
+tcInstance' :: Instance Name -> TcM (Instance Id)
+tcInstance' idecl@(Instance d vs ctx n ts t funs)
+  = do
       checkCompleteInstDef n (map (sigName . funSignature) funs)
       funs' <- buildSignatures n ts t funs `wrapError` idecl
       (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False vs ctx) funs' `wrapError` idecl
+      instd <- withCurrentSubst (Instance d vs ctx n ts t funs1)
       let
-        funs2 = everywhere (mkT gen) funs1
-        vs0 = map TVar namePool
-        vs1 = bv ctx `union` bv ts `union` bv t
-        env = zip vs1 (map TyVar vs0)
-        t' = insts env t
-        ts' = insts env ts
-        ctx' = insts env ctx
-        env2 = zip (bv funs2) (map TyVar vs0)
-        funs3 = map updateSig $ everywhere (mkT (insts @Ty env2)) funs2
-        instd = Instance d (take (length env) vs0) ctx' n ts' t' funs3
-      withCurrentSubst instd
+        ind@(Instance _ _ ctx' _ ts' t' funs2) = everywhere (mkT gen) instd
+        vs1 = bv ind
+        funs3 = map (remVars vs1) funs2
+      pure (Instance d vs1 ctx' n ts' t' funs3)
 
-updateSig :: FunDef Id -> FunDef Id
-updateSig (FunDef (Signature _ ps n args rt) bd)
-  = FunDef (Signature vs ps n args rt) bd
-    where
-      vs = bv ps `union` bv args `union` bv rt `union` bv bd
+remVars :: [Tyvar] -> FunDef Id -> FunDef Id
+remVars vs' (FunDef (Signature vs ps n args rt) bd)
+  = FunDef (Signature (vs \\ vs') ps n args rt) bd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
 checkDeferedConstraints = mapM_ checkDeferedConstraint

@@ -143,6 +143,8 @@ cases =
     , runTestForFile "rec.solc" caseFolder
     , runTestForFile "undefined.solc" caseFolder
     , runTestExpectingFailure "foo-class.solc" caseFolder
+    , runTestExpectingFailure "subsumption-test.solc" caseFolder
+    , runTestExpectingFailure "patterson-bug.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

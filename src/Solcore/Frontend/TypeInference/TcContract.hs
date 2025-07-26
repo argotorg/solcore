@@ -35,8 +35,7 @@ typeInfer options (CompUnit imps decls)
         Left err -> pure $ Left err
         Right ((CompUnit imps ds), env) -> do
           let ds1 = (ds ++ generated env)
-              ds2 = everywhere (mkT updateSig) ds1
-          pure (Right (CompUnit imps ds2, env))
+          pure (Right (CompUnit imps ds1, env))
 
 -- type inference for a compilation unit
 
@@ -257,8 +256,9 @@ tcBindGroup binds
       let names = map (sigName . funSignature) funs'
       mapM_ (uncurry extEnv) (zip names schs)
       noDesugarCalls <- getNoDesugarCalls
-      unless noDesugarCalls $ generateTopDeclsFor (zip funs' schs)
-      pure $ everywhere (mkT gen) funs'
+      let funs1 = everywhere (mkT gen) funs'
+      unless noDesugarCalls $ generateTopDeclsFor (zip funs1 schs)
+      pure funs1
 
 
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
