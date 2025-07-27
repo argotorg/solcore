@@ -47,17 +47,13 @@ freshVar
 freshName :: TcM Name
 freshName
   = do
-      ds <- Map.keys <$> gets ctx
-      vs <- map tyvarName <$> getEnvFreeVars
-      let taken = Set.union (Set.fromList ds) (Set.fromList vs)
+      ds <- Map.keysSet <$> gets ctx
+      vs <- Set.map tyvarName <$> getEnvFreeVarSet
+      let taken = Set.union ds vs
       ns <- gets nameSupply
-      let (n, ns') = findFresh taken ns
+      let (n, ns') = newName $ dropWhile (flip Set.member taken) ns
       modify (\ ctx -> ctx {nameSupply = ns'})
       pure n
-      where
-        findFresh taken remaining = loop remaining where
-          loop remaining = let result@(n1, rem1) = newName remaining
-            in if n1 `Set.member` taken then loop rem1 else result
 
 incCounter :: TcM Int
 incCounter = do
@@ -125,6 +121,17 @@ writeTopDecl d
 getEnvFreeVars :: TcM [Tyvar]
 getEnvFreeVars
   = concat <$> gets (Map.map fv . ctx)
+
+getEnvFreeVarSet :: TcM(Set.Set Tyvar)
+getEnvFreeVarSet = do
+  tvMaps <- gets (Map.map fv . ctx)
+  pure $ elemsSet tvMaps
+  where
+    elemsSet :: Map.Map Name [Tyvar] -> Set.Set Tyvar
+    elemsSet = Map.foldr addElems (Set.empty :: Set.Set Tyvar)
+    addElems :: [Tyvar] -> Set.Set Tyvar -> Set.Set Tyvar
+    addElems vars set = foldr Set.insert set vars
+    -- addElems = Set.union . Set.fromList
 
 getEnvMetaVars :: TcM [MetaTv]
 getEnvMetaVars
