@@ -335,8 +335,8 @@ forall index member . index:Typedef(word), member:StorageType
     }
 }
 
-forall index map member. map:Typedef(word), index:Typedef(word) => function indexStorageSlot(x:IndexAccessProxy(map, index, member)) -> word
-//function indexStorageSlot(x)
+// forall index map member. map:Typedef(word), index:Typedef(word) => function indexStorageSlot(x:IndexAccessProxy(map, index, member)) -> word
+function indexStorageSlot(x)
 {
 	match x {
 	    | IndexAccessProxy(map, i) =>

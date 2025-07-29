@@ -1,0 +1,78 @@
+import IndexLib;
+
+function caller() -> address {
+  let res: word;
+  assembly {
+     res := caller()
+  }
+  return address(res);
+}
+
+function require1fail() {
+  let res: word;
+  assembly {
+    mstore(0x0, 0x72657175697265313a204641494c) // "require1: FAIL"
+    revert(0,32)
+  }
+  return (); // for the typechecker
+}
+
+function require1(cond: Bool) {
+    match cond {
+    | False => return require1fail();
+    | True => return ();
+  }
+}
+
+function nop() -> () { return ();}
+
+contract Uint {
+  reserved : word;
+  msg_sender : address; // mock msg.sender
+  owner : address;
+  decimals : uint;
+  totalSupply : uint;
+  balances : mapping(address,uint);
+
+  function mint(amount:uint) {
+    balances[owner] = Num.add(balances[owner], amount);
+    totalSupply = Num.add(totalSupply, amount);
+  }
+
+  //     function transferFrom(address src, address dst, uint amt) public returns (bool) 
+  function transferFrom(src:address, dst:address, amt:uint) -> Bool {
+     require1(ge(balances[src], amt));
+     // balances[src] = Num.sub(balances[src], amt):uint;
+     withdraw(src, amt); //workaround typechecker quirk
+     deposit(dst, amt);
+     return True;
+  }
+
+
+  function withdraw(src:address, amt:uint) {
+    balances[src] = Num.sub(balances[src], amt):uint;
+  }
+  
+  function deposit(dst:address, amt:uint) {
+    balances[dst] = Num.add(balances[dst], amt):uint;
+  }
+
+  function init() {
+    owner = address(0x123456789abcdef);
+    msg_sender = caller();
+    decimals = Num.fromWord(18);
+  }
+  
+  function main() -> uint {
+    init();
+    mint(uint(1000));
+    mint(uint(1000));
+    let amt = uint(1);
+    let src : address = owner;
+    transferFrom(owner, msg_sender, uint(42));
+    require1(True) : (); // typechecker quirk
+    // return balances[owner] : uint;
+    return balances[msg_sender];
+  }
+}
+

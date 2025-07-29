@@ -43,12 +43,44 @@ function hash2(x: word, y: word) -> word {
   return result;
 }
 
+data Bool = False | True;
+
+function not(b:Bool) -> Bool {
+  match b {
+    | False => return True;
+    | True => return False;
+  }
+}
+
+function or(x:Bool, y:Bool) -> Bool {
+  match x {
+    | False => return y;
+    | True => return True;
+  }
+}
+
+function fromBool(b) {
+ match b {
+   | False => return 0;
+   | True => return 1;
+ }
+}
+
+function toBool(x: word) {
+  match x {
+    | 0 => return False;
+    | _ => return True;
+  }
+}
+
 forall a.
 class a:Num {
   function toWord(x:a) -> word;
   function fromWord(x:word) -> a;
   function add(x:a, y:a) -> a;
   function sub(x:a, y:a) -> a;
+  function eq(x:a, y:a) -> Bool;
+  function gt(x:a, y:a) -> Bool;
 }
 
 instance word:Num {
@@ -56,6 +88,25 @@ instance word:Num {
   function fromWord(x:word) -> word { return x; }
   function add(x:word, y:word) -> word { return addW(x, y); }
   function sub(x:word, y:word) -> word { return addW(x, y); }
+  function eq(x:word, y:word) -> Bool {
+    let res : word;
+    assembly {
+       res := eq(x, y)
+    }
+    return toBool(res);
+  }
+  function gt(x:word, y:word) -> Bool {
+    let res : word;
+    assembly {
+       res := gt(x, y)
+    }
+    return toBool(res);
+  }
+}
+
+forall a. a:Num =>
+function ge(x:a, y:a) -> Bool {
+  return or(Num.gt(x,y), Num.eq(x,y));
 }
 
 data uint = uint(word);
@@ -70,6 +121,8 @@ instance uint:Num {
   function fromWord(x:word) -> word { return uint(x); }
   function add(x:uint, y:uint) -> uint { return uint(addW(Num.toWord(x), Num.toWord(y))); }
   function sub(x:uint, y:uint) -> uint { return uint(subW(Num.toWord(x), Num.toWord(y))); }
+  function eq(x:uint, y:uint) -> Bool { return Num.eq(Num.toWord(x), Num.toWord(y)); }
+  function gt(x:uint, y:uint) -> Bool { return Num.gt(Num.toWord(x), Num.toWord(y)); }
 }
 
 /* // this breaks the Paterson condition
