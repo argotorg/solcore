@@ -101,8 +101,9 @@ reduceByInst' n qs p@(InCls c _ _)
       do
         ce <- getInstEnv
         pp <- withCurrentSubst p
-        info [">> Trying to solve ", pretty pp]
+        -- info [">> Trying to solve ", pretty pp]
         r <- findInst pp
+        info [show r, " ", pretty pp]
         case r of
           Nothing -> do
             de <- getDefaultInstEnv
@@ -111,7 +112,7 @@ reduceByInst' n qs p@(InCls c _ _)
                 case selectDefaultInst de pp of
                   Nothing -> -- pure [p]
                     if checkEntails qs pp then do
-                        info [">> Entailing ", pretty pp, " using ", pretty qs]
+                        -- info [">> Entailing ", pretty pp, " using ", pretty qs]
                         pure []
                       else if groundPred pp then tcmError $ unwords ["No instance found for:", pretty pp]
                              else pure [pp] --  tcmError $ unwords ["No instance found for:", pretty pp]
@@ -120,13 +121,13 @@ reduceByInst' n qs p@(InCls c _ _)
                     withCurrentSubst ps'
               else do
                 if checkEntails qs pp then do
-                    info [">> Entailing ", pretty pp, " using ", pretty qs]
+                    -- info [">> Entailing ", pretty pp, " using ", pretty qs]
                     pure []
-                  else if groundPred pp then tcmError $ unwords [">>> No instance found for:", pretty pp]
+                  else if groundPred pp then tcmError $ unwords ["!>> No instance found for:", pretty pp]
                           else pure [pp] -- tcmError $ unwords [">>> No instance found for:", pretty pp]
           Just (preds, subst', instd) -> do
             extSubst subst'
-            info [">>> Selected instance:", pretty instd, "\n>>>> next iteration:", pretty preds]
+            -- info [">>> Selected instance:", pretty instd, "\n>>>> next iteration:", pretty preds]
             ps' <- reduceByInst (n - 1) preds qs
             pure ps'
 reduceByInst' n _ (t1 :~: t2) =
@@ -197,14 +198,14 @@ findInst p
 solvePred :: Pred -> Qual Pred -> TcM (Maybe ([Pred], Subst, Inst))
 solvePred p@(InCls _ t ts) ins@(ps :=> h@(InCls _ t' ts'))
   = do
-      -- info ["> Trying to solve:", pretty p, " using ", pretty ins]
-      -- info [">> Trying to match:", pretty t', " with ", pretty t]
+      info ["> Trying to solve:", pretty p, " using ", pretty ins]
+      info [">> Trying to match:", pretty t', " with ", pretty t]
       case match t' t of
         Left _ -> do
           -- info ["!>> Predicate ", pretty p, " cannot be solved by ", pretty h ,", since main args do not match ", pretty t', " and ", pretty t]
           pure Nothing
         Right u ->
-          case mgu ts ts' of
+          case mgu (apply u ts) (apply u ts') of
             Left _ -> do
               -- info ["!>> Predicate ", pretty p, " cannot be solved by ", pretty h, ", since weak args do not unify"]
               pure Nothing
