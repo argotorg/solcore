@@ -27,6 +27,8 @@ splitContext ps qs fs =
     let (ds, rs) = partition (all (`elem` fs) . mv) ps'
     info [">> Defered constraints:", pretty ds]
     info [">> Retained constraints:", pretty rs]
+    when (groundPred ds) $
+      tcmError $ unwords ["No instance found for:", unlines $ map pretty ds]
     pure (ds, rs)
 
 -- main context reduction function
@@ -114,8 +116,8 @@ reduceByInst' n qs p@(InCls c _ _)
                     if checkEntails qs pp then do
                         -- info [">> Entailing ", pretty pp, " using ", pretty qs]
                         pure []
-                      else if groundPred pp then tcmError $ unwords ["No instance found for:", pretty pp]
-                             else pure [pp] --  tcmError $ unwords ["No instance found for:", pretty pp]
+                      else pure [pp] -- if groundPred pp then tcmError $ unwords ["No instance found for:", pretty pp]
+                            -- else pure [pp] --  tcmError $ unwords ["No instance found for:", pretty pp]
                   Just (ps', s, h) -> do
                     extSubst s
                     withCurrentSubst ps'
@@ -123,8 +125,8 @@ reduceByInst' n qs p@(InCls c _ _)
                 if checkEntails qs pp then do
                     -- info [">> Entailing ", pretty pp, " using ", pretty qs]
                     pure []
-                  else if groundPred pp then tcmError $ unwords ["!>> No instance found for:", pretty pp]
-                          else pure [pp] -- tcmError $ unwords [">>> No instance found for:", pretty pp]
+                  else pure [pp] -- if groundPred pp then tcmError $ unwords ["!>> No instance found for:", pretty pp]
+                          -- else pure [pp] -- tcmError $ unwords [">>> No instance found for:", pretty pp]
           Just (preds, subst', instd) -> do
             extSubst subst'
             -- info [">>> Selected instance:", pretty instd, "\n>>>> next iteration:", pretty preds]
@@ -135,8 +137,8 @@ reduceByInst' n _ (t1 :~: t2) =
     unify t1 t2
     pure []
 
-groundPred :: Pred -> Bool
-groundPred p = null (mv p) || null (bv p)
+groundPred :: [Pred] -> Bool
+groundPred p = (not $ null p) && null (mv p)
 
 checkEntails :: [Pred] -> Pred -> Bool
 checkEntails qs p = any (\ q -> isRight $ mgu q p) qs

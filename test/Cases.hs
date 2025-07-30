@@ -136,7 +136,6 @@ cases =
     , runTestExpectingFailure "default-instance-weak.solc" caseFolder
     , runTestForFile "tuple-trick.solc" caseFolder
     , runTestExpectingFailure "const-array.solc" caseFolder
-    -- check this array example.
     , runTestForFile "array.solc" caseFolder
     , runTestForFile "class-context.solc" caseFolder
     , runTestExpectingFailure "missing-instance.solc" caseFolder
@@ -144,7 +143,8 @@ cases =
     , runTestForFile "undefined.solc" caseFolder
     , runTestForFile "foo-class.solc" caseFolder
     , runTestExpectingFailure "subsumption-test.solc" caseFolder
-    , runTestExpectingFailure "patterson-bug.solc" caseFolder
+    , runTestForFile "patterson-bug.solc" caseFolder
+    , runTestExpectingFailure "listeq.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

@@ -10,6 +10,7 @@ import qualified Data.List.NonEmpty as N
 import Data.Map (Map)
 import Data.Maybe
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 import qualified System.TimeIt as TimeIt
 import Text.Printf
@@ -43,15 +44,17 @@ freshVar :: TcM MetaTv
 freshVar
   = MetaTv <$> freshName
 
+
 freshName :: TcM Name
 freshName
   = do
-      ds <- Map.keys <$> gets ctx
-      vs <- getEnvFreeVars
+      ds <- Map.keysSet <$> gets ctx
+      vs <- Set.map tyvarName <$> getEnvFreeVarSet
+      let taken = Set.union ds vs
       ns <- gets nameSupply
-      let (n, ns') = newName (ns \\ ((map tyvarName vs) ++ ds))
+      let (n, ns') = newName $ dropWhile (flip Set.member taken) ns
       modify (\ ctx -> ctx {nameSupply = ns'})
-      return n
+      pure n
 
 incCounter :: TcM Int
 incCounter = do
@@ -122,6 +125,16 @@ writeTopDecl d
 getEnvFreeVars :: TcM [Tyvar]
 getEnvFreeVars
   = concat <$> gets (Map.map fv . ctx)
+
+getEnvFreeVarSet :: TcM(Set.Set Tyvar)
+getEnvFreeVarSet = do
+  tvMaps <- gets (Map.map fv . ctx)
+  pure $ elemsSet tvMaps
+  where
+    elemsSet :: Map.Map Name [Tyvar] -> Set.Set Tyvar
+    elemsSet = Map.foldr addElems (Set.empty :: Set.Set Tyvar)
+    addElems :: [Tyvar] -> Set.Set Tyvar -> Set.Set Tyvar
+    addElems vars set = foldr Set.insert set vars
 
 getEnvMetaVars :: TcM [MetaTv]
 getEnvMetaVars

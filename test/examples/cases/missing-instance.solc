@@ -1,10 +1,10 @@
 // Note: this class has no instances!
-class abs:Typedef(rep) {
+forall abs rep . class abs:Typedef(rep) {
     function rep(x:abs) -> rep;
     function abs(x:rep) -> abs;
 }
 
-class self:MemoryType {
+forall self . class self:MemoryType {
     function load(ptr:word) -> self;
 }
 
