@@ -136,6 +136,7 @@ getEnvFreeVarSet = do
     addElems :: [Tyvar] -> Set.Set Tyvar -> Set.Set Tyvar
     addElems vars set = foldr Set.insert set vars
 
+
 getEnvMetaVars :: TcM [MetaTv]
 getEnvMetaVars
   = concat <$> gets (Map.map mv . ctx)

@@ -1,0 +1,18 @@
+{
+  "semanticTests/viaYul/copy_struct_invalid_ir_bug.sol": [
+    {
+      "actual": "",
+      "desired": "",
+      "gasUsed": "228927",
+      "gasUsedForDeposit": "160400",
+      "message": "Creation succeeded."
+    },
+    {
+      "actual": "",
+      "desired": "",
+      "gasUsed": "113117",
+      "gasUsedForDeposit": "0",
+      "message": "Passed."
+    }
+  ]
+}
