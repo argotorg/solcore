@@ -1,0 +1,11 @@
+
+forall a . class a:IsWord { function toWord(x : a) -> word; }
+
+function kw(a:word, b:word) {return a;}
+
+forall a b . a:IsWord, b:IsWord
+=> function bar(x:(a,b)) -> word {
+  match x {
+  | (t,u) => return kw(IsWord.toWord(t), IsWord.toWord(u));
+  }
+}

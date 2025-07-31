@@ -4,7 +4,7 @@
     }
   }
 
-  function snd(x : (a,b)) -> b {
+  forall a b . function snd(x : (a,b)) -> b {
     match x {
     | (_,b) => return b;
     }

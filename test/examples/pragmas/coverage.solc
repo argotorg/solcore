@@ -3,6 +3,6 @@ pragma no-coverage-condition ;
 data List(a) = Nil | Cons(a,List(a));
 data Bool = True | False ;
 
-class a : C(b,c) {}
+forall a b c . class a : C(b,c) {}
 
-instance List(b) : C (a, List(a)) {}
+forall a b . instance List(b) : C (a, List(a)) {}
