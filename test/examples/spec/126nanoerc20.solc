@@ -42,7 +42,11 @@ contract Uint {
   //     function transferFrom(address src, address dst, uint amt) public returns (bool) 
   function transferFrom(src:address, dst:address, amt:uint) -> Bool {
      require1(ge(balances[src], amt));
-     // balances[src] = Num.sub(balances[src], amt):uint;
+
+     /*
+     balances[src] = Num.sub(balances[src], amt);
+     balances[dst] = Num.add(balances[dst], amt):uint;
+     */
      withdraw(src, amt); //workaround typechecker quirk
      deposit(dst, amt);
      return True;
@@ -66,13 +70,10 @@ contract Uint {
   function main() -> uint {
     init();
     mint(uint(1000));
-    mint(uint(1000));
-    let amt = uint(1);
     let src : address = owner;
     transferFrom(owner, msg_sender, uint(42));
-    require1(True) : (); // typechecker quirk
-    // return balances[owner] : uint;
-    return balances[msg_sender];
+
+    return balances[msg_sender] : uint;
   }
 }
 

@@ -41,6 +41,9 @@ emptyOption path = Option
     , optTiming         = False
     }
 
+stdOpt :: Option
+stdOpt = emptyOption mempty
+
 options :: Parser Option
 options
   = Option <$> strOption (

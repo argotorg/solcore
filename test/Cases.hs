@@ -47,6 +47,7 @@ spec =
     , runTestForFile "939badfood.solc" specFolder
     , runTestForFile "SimpleField.solc" specFolder
     , runTestForFile "121counter.solc" specFolder
+    , runTestForFileWith stdOpt { optNoDesugarCalls = True } "126nanoerc20.solc" specFolder      
     ]
  where
   specFolder = "./test/examples/spec"
@@ -149,11 +150,13 @@ type FileName = String
 type BaseFolder = String
 
 runTestForFile :: FileName -> BaseFolder -> TestTree
-runTestForFile file folder =
+runTestForFile file folder = runTestForFileWith (emptyOption mempty) file folder
+
+runTestForFileWith :: Option -> FileName -> BaseFolder -> TestTree
+runTestForFileWith opts file folder =
   testCase file $ do
     let filePath = folder </> file
-        opts = emptyOption filePath
-    result <- compile opts
+    result <- compile (opts { fileName = filePath })
     case result of
       Left err -> assertFailure err
       Right _ -> return ()
