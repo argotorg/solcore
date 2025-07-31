@@ -25,7 +25,7 @@ cabal.project.local~
 *.info
 Tasks.md
 *~
-output.core
+output*.core
 /src/Solcore/Frontend/Parser/SolcoreParser.hs
 
 # nix
