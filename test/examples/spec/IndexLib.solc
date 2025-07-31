@@ -1,9 +1,7 @@
-// Storage slots and mapping access
 import NumLib;
 
-
 /////// Construction
-
+forall abs rep.
 class abs:Typedef(rep) {
     function rep(x:abs) -> rep;
     function abs(x:rep) -> abs;
@@ -59,6 +57,7 @@ data mapRef(a) = mapRef(word); //ref to a map elem
 
 // data memoryRef(a) = memoryRef(word);
 
+forall a.
 instance storage(a):Typedef(word) {
     function rep(x:storage(a)) -> word {
         match x {
@@ -69,6 +68,8 @@ instance storage(a):Typedef(word) {
         return storage(x);
     }
 }
+
+forall a.
 instance storageRef(a):Typedef(word) {
     function rep(x:storageRef(a)) -> word {
         match x {
@@ -80,23 +81,14 @@ instance storageRef(a):Typedef(word) {
     }
 }
 
-instance mapRef(a):Typedef(word) {
-    function rep(x:mapRef(a)) -> word {
-        match x {
-            | mapRef(y) => return y;
-        }
-    }
-    function abs(x:word) -> mapRef(a) {
-        return mapRef(x);
-    }
-}
-
+forall lhs rhs.
 class lhs:Assign(rhs) {
     function assign(l:lhs, r:rhs) -> ();
 }
 
 data ref(a) = ref(a);
 
+forall a.
 instance ref(a):Assign(a) {
     function assign(l:ref(a), r:a) -> () {
         // builtin "stack store"
@@ -104,11 +96,13 @@ instance ref(a):Assign(a) {
     }
 }
 
+forall self.
 class self:StorageType {
     function sload(ptr:word) -> self;
     function store(ptr:word, value:self) -> ();
 }
 
+forall self.
 class self:StorageSize {
     function size(x:Proxy(self)) -> word;
 }
@@ -165,6 +159,7 @@ forall a . a : StorageType => instance storageRef(a):Assign(a) {
     }
 }
 
+forall self fieldType offsetType.
 class self:StructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 
@@ -178,6 +173,7 @@ function memberAccessD1(x:MemberAccessProxy(a, field, offset)) -> a {
     }
 }
 
+forall self memberRefType.
 class self:LValueMemberAccess(memberRefType) {
     function memberAccess(x:self) -> memberRefType;
 }
@@ -248,6 +244,7 @@ forall a b . a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
 }
 
 pragma no-patterson-condition RValueMemberAccess; // this is due to ContractStorage(cxt); probably not needed once we have local instances
+pragma no-coverage-condition MemberAccessProxy, LValueMemberAccess, RValueMemberAccess;
 
 // ------------------------------------------------------------------
 // Contract field access
@@ -300,15 +297,16 @@ forall cxt fieldSelector fieldType offsetType
 data mapping(index, member) = mapping(word);
 
 forall member index . instance mapping(index, member):Typedef(word) {
-    function rep(x:mapping(a,b)) -> word {
+    function rep(x:mapping(index, member)) -> word {
         match x {
             | mapping(y) => return y;
         }
     }
-    function abs(x:word) -> storage(a) {
+    function abs(x:word) -> mapping(index,member) {
         return mapping(x);
     }
 }
+
 
 // cf https://docs.soliditylang.org/en/latest/internals/layout_in_storage.html#mappings-and-dynamic-arrays
 forall index member .
@@ -322,21 +320,21 @@ data IndexAccessProxy(map, index, member) = IndexAccessProxy(map, index);
 
 forall index member. index:Typedef(word)
 => instance IndexAccessProxy(storageRef(mapping(index,member)), index, member):LValueMemberAccess(storageRef(member)) {
-    function memberAccess(x:IndexAccessProxy(storageRef(map), index, member)) -> storageRef(member) {
+    function memberAccess(x:IndexAccessProxy(storageRef(mapping(index,member)), index, member)) -> storageRef(member) {
 	    return storageRef(indexStorageSlot(x));
     }
 }
 
-forall index member . index:Typedef(word), member:StorageType
-=> instance IndexAccessProxy(storageRef(mapping(index,member)), index, member):RValueMemberAccess(member) {
+forall map index member . index:Typedef(word), member:StorageType, map:Typedef(word)
+=> instance IndexAccessProxy(map, index, member):RValueMemberAccess(member) {
     function memberAccess(x:IndexAccessProxy(map, index, member)) -> member {
             let slot:word = indexStorageSlot(x);
 	    return StorageType.sload(slot);
     }
 }
 
-// forall index map member. map:Typedef(word), index:Typedef(word) => function indexStorageSlot(x:IndexAccessProxy(map, index, member)) -> word
-function indexStorageSlot(x)
+forall index map member. map:Typedef(word), index:Typedef(word) => function indexStorageSlot(x:IndexAccessProxy(map, index, member)) -> word
+//function indexStorageSlot(x)
 {
 	match x {
 	    | IndexAccessProxy(map, i) =>
@@ -360,7 +358,7 @@ forall index map member. map:Typedef(word), index:Typedef(word)
 }
 */
 
-forall a . a:RValueMemberAccess(b) =>
+forall a b. a:RValueMemberAccess(b) =>
 function rval(x:a) -> b {
   return RValueMemberAccess.memberAccess(x);
 }
