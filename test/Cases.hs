@@ -145,6 +145,8 @@ cases =
     , runTestExpectingFailure "subsumption-test.solc" caseFolder
     , runTestForFile "patterson-bug.solc" caseFolder
     , runTestExpectingFailure "listeq.solc" caseFolder
+    , runTestForFile "nano-desugared.solc" caseFolder
+    , runTestForFile "uintdesugared.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
