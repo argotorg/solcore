@@ -463,13 +463,13 @@ elabAssignment lhs@(S.ExpVar Nothing name) rhs = do
          else (:=) <$> elab lhs <*> elab rhs
 
 elabAssignment lhs@(S.ExpIndexed arr idx) rhs = do
-    writes [ "> elabAssignment ", show lhs, " <~ ", show rhs]
+    -- writes [ "> elabAssignment ", show lhs, " <~ ", show rhs]
     idx' <- elab idx
     iap <- indexedProxyFor arr idx'
     let lhs' = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [iap]
     rhs' <- elab rhs
     let assignName = QualName (Name "Assign") "assign"
-    writes [ "< elabAssignment ", pretty lhs', " <~ ", pretty rhs']
+    -- writes [ "< elabAssignment ", pretty lhs', " <~ ", pretty rhs']
 
     pure $ StmtExp $ Call Nothing assignName [lhs', rhs']
 
