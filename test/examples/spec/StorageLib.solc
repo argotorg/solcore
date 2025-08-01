@@ -10,6 +10,7 @@ function add(x : word, y : word) {
 }
 
 /////// Construction
+forall abs rep.
 class abs:Typedef(rep) {
     function rep(x:abs) -> rep;
     function abs(x:rep) -> abs;
@@ -44,6 +45,7 @@ data ContractStorage(cxt) = ContractStorage(cxt);
 data storageRef(a) = storageRef(word);
 data Proxy(a) = Proxy;
 
+forall a.
 instance storage(a):Typedef(word) {
     function rep(x:storage(a)) -> word {
         match x {
@@ -54,6 +56,8 @@ instance storage(a):Typedef(word) {
         return storage(x);
     }
 }
+
+forall a.
 instance storageRef(a):Typedef(word) {
     function rep(x:storageRef(a)) -> word {
         match x {
@@ -65,12 +69,14 @@ instance storageRef(a):Typedef(word) {
     }
 }
 
+forall lhs rhs.
 class lhs:Assign(rhs) {
     function assign(l:lhs, r:rhs) -> ();
 }
 
 data ref(a) = ref(a);
 
+forall a.
 instance ref(a):Assign(a) {
     function assign(l:ref(a), r:a) -> () {
         // builtin "stack store"
@@ -78,11 +84,13 @@ instance ref(a):Assign(a) {
     }
 }
 
+forall self.
 class self:StorageType {
     function sload(ptr:word) -> self;
     function store(ptr:word, value:self) -> ();
 }
 
+forall self.
 class self:StorageSize {
     function size(x:Proxy(self)) -> word;
 }
@@ -140,6 +148,7 @@ function memberAccessD1(x:MemberAccessProxy(a, field, offset)) -> a {
     }
 }
 
+forall self memberRefType .
 class self:LValueMemberAccess(memberRefType) {
     function memberAccess(x:self) -> memberRefType;
 }
@@ -149,7 +158,9 @@ class self:RValueMemberAccess(memberValueType) {
     function memberAccess(x:self) -> memberValueType;
 }
 
+forall self fieldType offsetType .
 class self:StructField(fieldType, offsetType) {}
+
 data StructField(structType, fieldSelector) = StructField(structType);
 
 forall structType fieldSelector fieldType offsetType
@@ -207,6 +218,7 @@ forall a b . a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
 }
 
 pragma no-patterson-condition RValueMemberAccess; // this is due to ContractStorage(cxt); probably not needed once we have local instances
+pragma no-coverage-condition LValueMemberAccess, RValueMemberAccess;
 
 forall cxt fieldSelector fieldType offsetType
   . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
@@ -235,7 +247,7 @@ forall cxt fieldSelector fieldType offsetType
     }
 }
 
-forall a . a:RValueMemberAccess(b) =>
+forall a b. a:RValueMemberAccess(b) =>
 function rval(x:a) -> b {
   return RValueMemberAccess.memberAccess(x);
 }
