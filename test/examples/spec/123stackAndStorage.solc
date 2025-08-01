@@ -1,0 +1,17 @@
+// test multiple contract fields
+import StorageLib;
+
+
+contract Counter {
+  counter1 : word;
+  counter2 : uint;
+  counter3 : word;
+  
+  function main() -> word {
+    let x: word;
+    x = add(counter1, 1);
+    counter1 = x;
+    counter3 = add(counter3, 2);
+    return add(counter1, counter3);
+  }
+}
