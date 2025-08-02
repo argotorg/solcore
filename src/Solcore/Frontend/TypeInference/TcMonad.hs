@@ -189,18 +189,18 @@ skolemise sch@(Forall vs qt)
 
 -- subsumption check
 
-subsCheck :: Scheme -> Scheme -> TcM ()
-subsCheck sch1@(Forall _ (_ :=> t1)) sch2@(Forall _ (_ :=> t2))
+subsCheck :: Signature Name -> Scheme -> Scheme -> TcM ()
+subsCheck sig sch1@(Forall _ (_ :=> t1)) sch2@(Forall _ (_ :=> t2))
     = do
         info [">> Checking subsumption for:\n", pretty t1, "\nand\n", pretty t2]
         (skol_tvs, (_ :=> t2)) <- skolemise sch2
         (_ :=> t1) <- freshInst sch1
-        s <- mgu t1 t2 `catchError` (\ _ -> typeNotPolymorphicEnough sch1 sch2)
+        s <- mgu t1 t2 `catchError` (\ _ -> typeNotPolymorphicEnough sig sch1 sch2)
         extSubst s
         let esc_tvs = fv sch1
             bad_tvs = filter (`elem` esc_tvs) skol_tvs
         unless (null bad_tvs) $
-          typeNotPolymorphicEnough sch1 sch2
+          typeNotPolymorphicEnough sig sch1 sch2
 
 -- type instantiation
 
@@ -585,12 +585,14 @@ undefinedFunction t n
                          , pretty n
                          ]
 
-typeNotPolymorphicEnough :: Scheme -> Scheme -> TcM a
-typeNotPolymorphicEnough sch1 sch2
+typeNotPolymorphicEnough :: Signature Name -> Scheme -> Scheme -> TcM a
+typeNotPolymorphicEnough sig sch1 sch2
   = tcmError $ unlines [ "Type not polymorphic enough! The annotated type is:"
                        , pretty sch2
                        , "but the infered type is:"
                        , pretty sch1
+                       , "in:"
+                       , pretty sig
                        ]
 
 undefinedClass :: Name -> TcM a

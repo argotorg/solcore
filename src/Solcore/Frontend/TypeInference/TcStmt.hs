@@ -468,7 +468,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       inf <- generalize (rs, ty)
       ann <- annotatedScheme vs' sig
      -- checking subsumption
-      subsCheck inf ann `wrapError` d
+      subsCheck sig inf ann `wrapError` d
       -- elaborating function body
       fdt <- elabFunDef vs' sig1 bd1' inf ann
       withCurrentSubst (fdt, ann, [])

@@ -147,6 +147,7 @@ cases =
     , runTestExpectingFailure "listeq.solc" caseFolder
     , runTestForFile "nano-desugared.solc" caseFolder
     , runTestForFile "uintdesugared.solc" caseFolder
+    , runTestForFile "word-match.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
