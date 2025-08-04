@@ -28,7 +28,6 @@ Tasks.md
 *.core
 *.log
 test/examples/spec/attic/
-
 /src/Solcore/Frontend/Parser/SolcoreParser.hs
 
 # nix

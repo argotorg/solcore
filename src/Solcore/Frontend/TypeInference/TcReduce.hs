@@ -27,6 +27,8 @@ splitContext ps qs fs =
     let (ds, rs) = partition (all (`elem` fs) . mv) ps'
     info [">> Defered constraints:", pretty ds]
     info [">> Retained constraints:", pretty rs]
+    when (groundPred ds) $
+      tcmError $ unwords ["No instance found for:", unlines $ map pretty ds]
     pure (ds, rs)
 
 -- main context reduction function
@@ -105,32 +107,34 @@ reduceByInst' n qs p@(InCls c _ _)
         r <- findInst pp
         case r of
           Nothing -> do
+            info ["   instance for ", pretty pp, " not found!"]
             de <- getDefaultInstEnv
             if proveDefaulting ce pp
               then do
                 case selectDefaultInst de pp of
-                  Nothing -> -- pure [p]
+                  Nothing ->
                     if checkEntails qs pp then do
-                        info [">> Entailing ", pretty pp, " using ", pretty qs]
                         pure []
-                      else pure [pp] --  tcmError $ unwords ["No instance found for:", pretty pp]
+                      else pure [pp]
                   Just (ps', s, h) -> do
                     extSubst s
                     withCurrentSubst ps'
               else do
                 if checkEntails qs pp then do
-                    info [">> Entailing ", pretty pp, " using ", pretty qs]
                     pure []
-                  else pure [pp] -- tcmError $ unwords [">>> No instance found for:", pretty pp]
+                  else pure [pp]
           Just (preds, subst', instd) -> do
+            info ["   instance for ", pretty pp, " found: ", pretty instd, "@", pretty subst']
             extSubst subst'
-            info [">>> Selected instance:", pretty instd, "\n>>>> next iteration:", pretty preds]
             ps' <- reduceByInst (n - 1) preds qs
             pure ps'
 reduceByInst' n _ (t1 :~: t2) =
   do
     unify t1 t2
     pure []
+
+groundPred :: [Pred] -> Bool
+groundPred p = (not $ null p) && null (mv p)
 
 checkEntails :: [Pred] -> Pred -> Bool
 checkEntails qs p = any (\ q -> isRight $ mgu q p) qs
@@ -192,14 +196,14 @@ findInst p
 solvePred :: Pred -> Qual Pred -> TcM (Maybe ([Pred], Subst, Inst))
 solvePred p@(InCls _ t ts) ins@(ps :=> h@(InCls _ t' ts'))
   = do
-      -- info ["> Trying to solve:", pretty p, " using ", pretty ins]
-      -- info [">> Trying to match:", pretty t', " with ", pretty t]
+      info ["> Trying to solve:", pretty p, " using ", pretty ins]
+      info [">> Trying to match:", pretty t', " with ", pretty t]
       case match t' t of
         Left _ -> do
           -- info ["!>> Predicate ", pretty p, " cannot be solved by ", pretty h ,", since main args do not match ", pretty t', " and ", pretty t]
           pure Nothing
         Right u ->
-          case mgu ts ts' of
+          case mgu (apply u ts) (apply u ts') of
             Left _ -> do
               -- info ["!>> Predicate ", pretty p, " cannot be solved by ", pretty h, ", since weak args do not unify"]
               pure Nothing

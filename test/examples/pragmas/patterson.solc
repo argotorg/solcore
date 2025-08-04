@@ -1,9 +1,9 @@
 pragma no-patterson-condition ;
 
-class self:A {}
-class self:B {}
-class self:C {}
-class self:D {}
+forall self . class self:A {}
+forall self . class self:B {}
+forall self . class self:C {}
+forall self . class self:D {}
 
 
 data Uint256 = U;

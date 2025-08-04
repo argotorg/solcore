@@ -1,0 +1,1037 @@
+Build profile: -w ghc-9.8.2 -O1
+In order, the following will be built (use -v for more details):
+ - sol-core-0.0.0.0 (test:sol-core-tests) (first run)
+Preprocessing test suite 'sol-core-tests' for sol-core-0.0.0.0..
+Building test suite 'sol-core-tests' for sol-core-0.0.0.0..
+Running 1 test suites...
+Test suite sol-core-tests: RUNNING...
+Tests
+  Files for folder cases
+    Ackermann.solc:                    !! Warning: no resolution found for main
+Emitting core for contract Option
+!! Warning: no resolution found for main
+Emitting core for contract EitherModule
+OK
+    app.solc:                          FAIL (0.01s)
+      test/Cases.hs:156:
+      Types: t_lambda_impl34(?x3, ?y3, ?z3) and ?a4 -> ?b4 do not unify
+       - in:app()
+       - in:function invokable.invoke (self8 : t_app7(g1, h1, i1), arg9 : ()) -> t_lambda_impl34(g1, h1, i1) {
+         match ((self8, arg9)) {
+         | (t_app7, u2) =>
+            return app();
+         }
+!! Warning: no resolution found for main
+      }
+       - in:forall g1 h1 i1 . instance t_app7(g1, h1, i1) : invokable ((), t_lambda_impl34(g1, h1, i1)) {
+         function invoke (self8 : t_app7(g1, h1, i1), arg9 : ()) -> t_lambda_impl34(g1, h1, i1) {
+Emitting core for contract Logic
+!! Warning: no resolution found for main
+            match ((self8, arg9)) {
+            | (t_app7, u2) =>
+               return app();
+Emitting core for contract ListModule
+            }
+         }
+      }
+      Use -p '/app.solc/' to rerun this test only.
+    BadInstance.solc:                  OK
+    BoolNot.solc:                      OK
+    Compose.solc:                      FAIL (0.08s)
+      test/Cases.hs:156:
+      Types: word and ?s10 -> ?t10 do not unify
+       - in:main()
+       - in:function invokable.invoke (self13 : t_main12, arg14 : ()) -> word {
+         match ((self13, arg14)) {
+         | (t_main12, m9) =>
+            return main();
+         }
+      }
+       - in:instance t_main12 : invokable ((), word) {
+         function invoke (self13 : t_main12, arg14 : ()) -> word {
+            match ((self13, arg14)) {
+            | (t_main12, m9) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/Compose.solc/' to rerun this test only.
+    Compose2.solc:                     FAIL (0.08s)
+      test/Cases.hs:156:
+      Types: word and ?s10 -> ?t10 do not unify
+       - in:main()
+       - in:function invokable.invoke (self13 : t_main12, arg14 : ()) -> word {
+         match ((self13, arg14)) {
+         | (t_main12, m9) =>
+            return main();
+         }
+      }
+       - in:instance t_main12 : invokable ((), word) {
+         function invoke (self13 : t_main12, arg14 : ()) -> word {
+            match ((self13, arg14)) {
+            | (t_main12, m9) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/Compose2.solc/' to rerun this test only.
+    Compose3.solc:                     FAIL (0.14s)
+      test/Cases.hs:156:
+      Types: word and ?b15 -> ?c15 do not unify
+       - in:main()
+       - in:function invokable.invoke (self16 : t_main15, arg17 : ()) -> word {
+         match ((self16, arg17)) {
+         | (t_main15, q13) =>
+            return main();
+         }
+      }
+       - in:instance t_main15 : invokable ((), word) {
+         function invoke (self16 : t_main15, arg17 : ()) -> word {
+            match ((self16, arg17)) {
+            | (t_main15, q13) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/Compose3.solc/' to rerun this test only.
+    DupFun.solc:                       OK
+    DuplicateFun.solc:                 OK
+    EitherModule.solc:                 OK
+    Id.solc:                           FAIL
+      test/Cases.hs:156:
+      Types: t_lambda_impl01(?s1) and ?t1 -> ?u1 do not unify
+       - in:id()
+       - in:function invokable.invoke (self5 : t_id4(d), arg6 : ()) -> t_lambda_impl01(d) {
+         match ((self5, arg6)) {
+         | (t_id4, y) =>
+            return id();
+         }
+      }
+       - in:forall d . instance t_id4(d) : invokable ((), t_lambda_impl01(d)) {
+         function invoke (self5 : t_id4(d), arg6 : ()) -> t_lambda_impl01(d) {
+            match ((self5, arg6)) {
+            | (t_id4, y) =>
+               return id();
+            }
+         }
+      }
+      Use -p '/Id.solc/' to rerun this test only.
+    IncompleteInstDef.solc:            OK
+    Invokable.solc:                    OK
+    ListModule.solc:                   OK (0.04s)
+    Logic.solc:                        OK (0.04s)
+    Memory1.solc:                      FAIL
+      test/Cases.hs:156:
+      Types: () and ?w -> ?z do not unify
+       - in:g()
+       - in:function invokable.invoke (self1 : t_g0, arg2 : ()) -> () {
+         match ((self1, arg2)) {
+         | (t_g0, h) =>
+            return g();
+         }
+      }
+       - in:instance t_g0 : invokable ((), ()) {
+         function invoke (self1 : t_g0, arg2 : ()) -> () {
+            match ((self1, arg2)) {
+            | (t_g0, h) =>
+               return g();
+            }
+         }
+      }
+      Use -p '/Memory1.solc/' to rerun this test only.
+    Memory2.solc:                      FAIL
+      test/Cases.hs:156:
+      Types: () and ?u -> ?v do not unify
+       - in:g()
+       - in:function invokable.invoke (self1 : t_g0, arg2 : ()) -> () {
+         match ((self1, arg2)) {
+         | (t_g0, e) =>
+            return g();
+         }
+      }
+       - in:instance t_g0 : invokable ((), ()) {
+         function invoke (self1 : t_g0, arg2 : ()) -> () {
+            match ((self1, arg2)) {
+            | (t_g0, e) =>
+               return g();
+            }
+         }
+      }
+      Use -p '/Memory2.solc/' to rerun this test only.
+    Mutuals.solc:                      FAIL
+      test/Cases.hs:156:
+      Types: word and ?s -> ?t do not unify
+       - in:f()
+       - in:function invokable.invoke (self1 : t_f0, arg2 : ()) -> word {
+         match ((self1, arg2)) {
+         | (t_f0, c) =>
+            return f();
+         }
+      }
+       - in:instance t_f0 : invokable ((), word) {
+         function invoke (self1 : t_f0, arg2 : ()) -> word {
+            match ((self1, arg2)) {
+            | (t_f0, c) =>
+               return f();
+            }
+         }
+      }
+      Use -p '/Mutuals.solc/' to rerun this test only.
+    NegPair.solc:                      FAIL (0.08s)
+      test/Cases.hs:156:
+      Types: word and ?p9 -> ?q9 do not unify
+       - in:main()
+       - in:function invokable.invoke (self10 : t_main9, arg11 : ()) -> word {
+         match ((self10, arg11)) {
+         | (t_main9, q8) =>
+            return main();
+         }
+      }
+       - in:instance t_main9 : invokable ((), word) {
+         function invoke (self10 : t_main9, arg11 : ()) -> word {
+            match ((self10, arg11)) {
+            | (t_main9, q8) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/NegPair.solc/' to rerun this test only.
+    Option.solc:                       OK
+    Pair.solc:                         OK (0.07s)
+    PairMatch1.solc:                   OK
+    PairMatch2.solc:                   OK
+    Peano.solc:                        OK (0.03s)
+    PeanoMatch.solc:                   OK
+    RefDeref.solc:                     OK
+    SillyReturn.solc:                  OK
+    SimpleField.solc:                  FAIL
+      test/Cases.hs:156:
+      Types: word and ?r -> ?s do not unify
+       - in:getVal()
+       - in:function invokable.invoke (self1 : t_getVal0, arg2 : ()) -> word {
+         match ((self1, arg2)) {
+         | (t_getVal0, c) =>
+            return getVal();
+         }
+      }
+       - in:instance t_getVal0 : invokable ((), word) {
+         function invoke (self1 : t_getVal0, arg2 : ()) -> word {
+            match ((self1, arg2)) {
+            | (t_getVal0, c) =>
+               return getVal();
+            }
+         }
+      }
+      Use -p '/SimpleField.solc/' to rerun this test only.
+    SimpleInvoke.solc:                 OK
+    closure-capture-only.solc:         FAIL
+      test/Cases.hs:156:
+      Types: word and ?o2 -> ?p2 do not unify
+       - in:main()
+       - in:function invokable.invoke (self10 : t_main9, arg11 : ()) -> word {
+         match ((self10, arg11)) {
+         | (t_main9, v1) =>
+            return main();
+         }
+      }
+       - in:instance t_main9 : invokable ((), word) {
+         function invoke (self10 : t_main9, arg11 : ()) -> word {
+            match ((self10, arg11)) {
+            | (t_main9, v1) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/closure-capture-only.solc/' to rerun this test only.
+    SimpleLambda.solc:                 FAIL
+      test/Cases.hs:156:
+      Types: word and ?j4 -> ?k4 do not unify
+       - in:main()
+       - in:function invokable.invoke (self14 : t_main13, arg15 : ()) -> word {
+         match ((self14, arg15)) {
+         | (t_main13, o3) =>
+            return main();
+         }
+      }
+       - in:instance t_main13 : invokable ((), word) {
+         function invoke (self14 : t_main13, arg15 : ()) -> word {
+            match ((self14, arg15)) {
+            | (t_main13, o3) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/SimpleLambda.solc/' to rerun this test only.
+    SingleFun.solc:                    OK
+    assembly.solc:                     FAIL
+      test/Cases.hs:156:
+      Types: () and ?w -> ?x do not unify
+       - in:foo()
+       - in:function invokable.invoke (self1 : t_foo0, arg2 : ()) -> () {
+         match ((self1, arg2)) {
+         | (t_foo0, h) =>
+            return foo();
+         }
+      }
+       - in:instance t_foo0 : invokable ((), ()) {
+         function invoke (self1 : t_foo0, arg2 : ()) -> () {
+            match ((self1, arg2)) {
+            | (t_foo0, h) =>
+               return foo();
+            }
+         }
+      }
+      Use -p '/assembly.solc/' to rerun this test only.
+    join.solc:                         FAIL
+      test/Cases.hs:156:
+      Types: word and ?b4 -> ?c4 do not unify
+       - in:main()
+       - in:function invokable.invoke (self7 : t_main6, arg8 : ()) -> word {
+         match ((self7, arg8)) {
+         | (t_main6, g3) =>
+            return main();
+         }
+      }
+       - in:instance t_main6 : invokable ((), word) {
+         function invoke (self7 : t_main6, arg8 : ()) -> word {
+            match ((self7, arg8)) {
+            | (t_main6, g3) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/Files for folder cases.join.solc/' to rerun this test only.
+    EqQual.solc:                       OK
+    joinErr.solc:                      OK
+    tyexp.solc:                        FAIL
+      test/Cases.hs:156:
+      Types: word and ?r -> ?s do not unify
+       - in:main()
+       - in:function invokable.invoke (self1 : t_main0, arg2 : ()) -> word {
+         match ((self1, arg2)) {
+         | (t_main0, c) =>
+            return main();
+         }
+      }
+       - in:instance t_main0 : invokable ((), word) {
+         function invoke (self1 : t_main0, arg2 : ()) -> word {
+            match ((self1, arg2)) {
+            | (t_main0, c) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/tyexp.solc/' to rerun this test only.
+    Uncurry.solc:                      OK
+    unit.solc:                         FAIL
+      test/Cases.hs:156:
+      Types: () and ?w -> ?x do not unify
+       - in:unitVal()
+       - in:function invokable.invoke (self1 : t_unitVal0, arg2 : ()) -> () {
+         match ((self1, arg2)) {
+         | (t_unitVal0, h) =>
+            return unitVal();
+         }
+      }
+       - in:instance t_unitVal0 : invokable ((), ()) {
+         function invoke (self1 : t_unitVal0, arg2 : ()) -> () {
+            match ((self1, arg2)) {
+            | (t_unitVal0, h) =>
+               return unitVal();
+            }
+         }
+      }
+      Use -p '/unit.solc/' to rerun this test only.
+    memory.solc:                       FAIL
+      test/Cases.hs:156:
+      Types: Memory(?v) and ?w -> ?x do not unify
+       - in:get_bytes()
+       - in:function invokable.invoke (self1 : t_get_bytes0(b), arg2 : ()) -> Memory(b) {
+         match ((self1, arg2)) {
+         | (t_get_bytes0, d) =>
+            return get_bytes();
+         }
+      }
+       - in:forall b . instance t_get_bytes0(b) : invokable ((), Memory(b)) {
+         function invoke (self1 : t_get_bytes0(b), arg2 : ()) -> Memory(b) {
+            match ((self1, arg2)) {
+            | (t_get_bytes0, d) =>
+               return get_bytes();
+            }
+         }
+      }
+      Use -p '/memory.solc/' to rerun this test only.
+    closure.solc:                      OK
+    noclosure.solc:                    OK
+    constructor-weak-args.solc:        OK
+    unconstrained-instance.solc:       OK
+    constrained-instance.solc:         OK
+    constrained-instance-context.solc: OK
+    reference.solc:                    OK
+    super-class.solc:                  FAIL
+      test/Cases.hs:156:
+      Types: () and ?w3 -> ?x3 do not unify
+       - in:foo()
+       - in:function invokable.invoke (self4 : t_foo3, arg5 : ()) -> () {
+         match ((self4, arg5)) {
+         | (t_foo3, f3) =>
+            return foo();
+         }
+      }
+       - in:instance t_foo3 : invokable ((), ()) {
+         function invoke (self4 : t_foo3, arg5 : ()) -> () {
+            match ((self4, arg5)) {
+            | (t_foo3, f3) =>
+               return foo();
+            }
+         }
+      }
+      Use -p '/super-class.solc/' to rerun this test only.
+    proxy.solc:                        OK
+    another-subst.solc:                OK
+    morefun.solc:                      OK
+    typedef.solc:                      OK
+    mainproxy.solc:                    OK
+    complexproxy.solc:                 OK
+    reference-test.solc:               OK
+    reference-encoding-good.solc:      FAIL (14.79s)
+      test/Cases.hs:156:
+      Types: () and ?h106 -> ?i106 do not unify
+       - in:g()
+       - in:function invokable.invoke (self4 : t_g3, arg5 : ()) -> () {
+         match ((self4, arg5)) {
+         | (t_g3, o105) =>
+            return g();
+         }
+      }
+       - in:instance t_g3 : invokable ((), ()) {
+         function invoke (self4 : t_g3, arg5 : ()) -> () {
+            match ((self4, arg5)) {
+            | (t_g3, o105) =>
+               return g();
+            }
+         }
+      }
+      Use -p '/reference-encoding-good.solc/' to rerun this test only.
+    reference-encoding-good1.solc:     FAIL (15.26s)
+      test/Cases.hs:156:
+      Types: () and ?d110 -> ?e110 do not unify
+       - in:g()
+       - in:function invokable.invoke (self4 : t_g3, arg5 : ()) -> () {
+         match ((self4, arg5)) {
+         | (t_g3, k109) =>
+            return g();
+         }
+      }
+       - in:instance t_g3 : invokable ((), ()) {
+         function invoke (self4 : t_g3, arg5 : ()) -> () {
+            match ((self4, arg5)) {
+            | (t_g3, k109) =>
+               return g();
+            }
+         }
+      }
+      Use -p '/reference-encoding-good1.solc/' to rerun this test only.
+    default-inst.solc:                 OK
+    default-instance-missing.solc:     OK
+    default-instance-weak.solc:        OK
+    tuple-trick.solc:                  FAIL (0.06s)
+      test/Cases.hs:156:
+      Types: () and ?m10 -> ?n10 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> () {
+         match ((self4, arg5)) {
+         | (t_main3, u9) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), ()) {
+         function invoke (self4 : t_main3, arg5 : ()) -> () {
+            match ((self4, arg5)) {
+            | (t_main3, u9) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/tuple-trick.solc/' to rerun this test only.
+    const-array.solc:                  FAIL (0.14s)
+      test/Cases.hs:156:
+      Types: word and ?f13 -> ?g13 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_main3, k12) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), word) {
+         function invoke (self4 : t_main3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_main3, k12) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/const-array.solc/' to rerun this test only.
+    array.solc:                        FAIL (0.16s)
+      test/Cases.hs:156:
+      Types: word and ?j13 -> ?k13 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_main3, o12) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), word) {
+         function invoke (self4 : t_main3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_main3, o12) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/Files for folder cases.array.solc/' to rerun this test only.
+  Files for pragmas cases
+    bound.solc:                        OK
+    coverage.solc:                     OK
+    patterson.solc:                    OK
+  Files for spec cases
+    00answer.solc:                     FAIL
+      test/Cases.hs:156:
+      Types: word and ?r -> ?s do not unify
+       - in:main()
+       - in:function invokable.invoke (self1 : t_main0, arg2 : ()) -> word {
+         match ((self1, arg2)) {
+         | (t_main0, c) =>
+            return main();
+         }
+      }
+       - in:instance t_main0 : invokable ((), word) {
+         function invoke (self1 : t_main0, arg2 : ()) -> word {
+            match ((self1, arg2)) {
+            | (t_main0, c) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/00answer.solc/' to rerun this test only.
+    01id.solc:                         FAIL
+      test/Cases.hs:156:
+      Types: word and ?n3 -> ?o3 do not unify
+       - in:main()
+       - in:function invokable.invoke (self7 : t_main6, arg8 : ()) -> word {
+         match ((self7, arg8)) {
+         | (t_main6, r2) =>
+            return main();
+         }
+      }
+       - in:instance t_main6 : invokable ((), word) {
+         function invoke (self7 : t_main6, arg8 : ()) -> word {
+            match ((self7, arg8)) {
+            | (t_main6, r2) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/01id.solc/' to rerun this test only.
+    02nid.solc:                        FAIL
+      test/Cases.hs:156:
+      Types: t_id0(?w1) and ?x1 -> ?y1 do not unify
+       - in:nid()
+       - in:function invokable.invoke (self4 : t_nid3(a1), arg5 : ()) -> t_id0(a1) {
+         match ((self4, arg5)) {
+         | (t_nid3, c1) =>
+            return nid();
+         }
+      }
+       - in:forall a1 . instance t_nid3(a1) : invokable ((), t_id0(a1)) {
+         function invoke (self4 : t_nid3(a1), arg5 : ()) -> t_id0(a1) {
+            match ((self4, arg5)) {
+            | (t_nid3, c1) =>
+               return nid();
+            }
+         }
+      }
+      Use -p '/02nid.solc/' to rerun this test only.
+    021not.solc:                       FAIL
+      test/Cases.hs:156:
+      Types: word and ?o2 -> ?p2 do not unify
+       - in:main()
+       - in:function invokable.invoke (self7 : t_main6, arg8 : ()) -> word {
+         match ((self7, arg8)) {
+         | (t_main6, v1) =>
+            return main();
+         }
+      }
+       - in:instance t_main6 : invokable ((), word) {
+         function invoke (self7 : t_main6, arg8 : ()) -> word {
+            match ((self7, arg8)) {
+            | (t_main6, v1) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/021not.solc/' to rerun this test only.
+    022add.solc:                       FAIL
+      test/Cases.hs:156:
+      Types: word and ?s1 -> ?t1 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_main3, b1) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), word) {
+         function invoke (self4 : t_main3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_main3, b1) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/022add.solc/' to rerun this test only.
+    024arith.solc:                     FAIL (0.09s)
+      test/Cases.hs:156:
+      Types: word and ?c9 -> ?d9 do not unify
+       - in:main()
+       - in:function invokable.invoke (self22 : t_main21, arg23 : ()) -> word {
+         match ((self22, arg23)) {
+         | (t_main21, z7) =>
+            return main();
+         }
+      }
+       - in:instance t_main21 : invokable ((), word) {
+         function invoke (self22 : t_main21, arg23 : ()) -> word {
+            match ((self22, arg23)) {
+            | (t_main21, z7) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/024arith.solc/' to rerun this test only.
+    031maybe.solc:                     FAIL (0.02s)
+      test/Cases.hs:156:
+      Types: word and ?i2 -> ?j2 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_main3, q1) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), word) {
+         function invoke (self4 : t_main3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_main3, q1) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/031maybe.solc/' to rerun this test only.
+    032simplejoin.solc:                FAIL (0.02s)
+      test/Cases.hs:156:
+      Types: word and ?e4 -> ?f4 do not unify
+       - in:main()
+       - in:function invokable.invoke (self7 : t_main6, arg8 : ()) -> word {
+         match ((self7, arg8)) {
+         | (t_main6, j3) =>
+            return main();
+         }
+      }
+       - in:instance t_main6 : invokable ((), word) {
+         function invoke (self7 : t_main6, arg8 : ()) -> word {
+            match ((self7, arg8)) {
+            | (t_main6, j3) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/032simplejoin.solc/' to rerun this test only.
+    033join.solc:                      FAIL (0.01s)
+      test/Cases.hs:156:
+      Types: word and ?y3 -> ?z3 do not unify
+       - in:main()
+       - in:function invokable.invoke (self7 : t_main6, arg8 : ()) -> word {
+         match ((self7, arg8)) {
+         | (t_main6, d3) =>
+            return main();
+         }
+      }
+       - in:instance t_main6 : invokable ((), word) {
+         function invoke (self7 : t_main6, arg8 : ()) -> word {
+            match ((self7, arg8)) {
+            | (t_main6, d3) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/033join.solc/' to rerun this test only.
+    034cojoin.solc:                    FAIL (0.02s)
+      test/Cases.hs:156:
+      Types: word and ?l5 -> ?m5 do not unify
+       - in:main()
+       - in:function invokable.invoke (self10 : t_main9, arg11 : ()) -> word {
+         match ((self10, arg11)) {
+         | (t_main9, n4) =>
+            return main();
+         }
+      }
+       - in:instance t_main9 : invokable ((), word) {
+         function invoke (self10 : t_main9, arg11 : ()) -> word {
+            match ((self10, arg11)) {
+            | (t_main9, n4) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/034cojoin.solc/' to rerun this test only.
+    035padding.solc:                   FAIL
+      test/Cases.hs:156:
+      Types: word and ?i2 -> ?j2 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_main3, q1) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), word) {
+         function invoke (self4 : t_main3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_main3, q1) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/035padding.solc/' to rerun this test only.
+    036wildcard.solc:                  FAIL
+      test/Cases.hs:156:
+      Types: word and ?h2 -> ?i2 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_main3, p1) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), word) {
+         function invoke (self4 : t_main3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_main3, p1) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/036wildcard.solc/' to rerun this test only.
+    037dwarves.solc:                   FAIL
+      test/Cases.hs:156:
+      Types: word and ?p1 -> ?q1 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_main3, y) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), word) {
+         function invoke (self4 : t_main3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_main3, y) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/037dwarves.solc/' to rerun this test only.
+    038food0.solc:                     FAIL (0.01s)
+      test/Cases.hs:156:
+      Types: word and ?u2 -> ?v2 do not unify
+       - in:main()
+       - in:function invokable.invoke (self7 : t_main6, arg8 : ()) -> word {
+         match ((self7, arg8)) {
+         | (t_main6, a2) =>
+            return main();
+         }
+      }
+       - in:instance t_main6 : invokable ((), word) {
+         function invoke (self7 : t_main6, arg8 : ()) -> word {
+            match ((self7, arg8)) {
+            | (t_main6, a2) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/038food0.solc/' to rerun this test only.
+    039food.solc:                      FAIL
+      test/Cases.hs:156:
+      Types: word and ?p2 -> ?q2 do not unify
+       - in:main()
+       - in:function invokable.invoke (self7 : t_main6, arg8 : ()) -> word {
+         match ((self7, arg8)) {
+         | (t_main6, w1) =>
+            return main();
+         }
+      }
+       - in:instance t_main6 : invokable ((), word) {
+         function invoke (self7 : t_main6, arg8 : ()) -> word {
+            match ((self7, arg8)) {
+            | (t_main6, w1) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/039food.solc/' to rerun this test only.
+    041pair.solc:                      FAIL
+      test/Cases.hs:156:
+      Types: word and ?r2 -> ?s2 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_main3, y1) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), word) {
+         function invoke (self4 : t_main3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_main3, y1) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/041pair.solc/' to rerun this test only.
+    042triple.solc:                    FAIL
+      test/Cases.hs:156:
+      Types: word and ?f3 -> ?g3 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_main3, l2) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), word) {
+         function invoke (self4 : t_main3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_main3, l2) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/042triple.solc/' to rerun this test only.
+    043fstsnd.solc:                    FAIL (0.07s)
+      test/Cases.hs:156:
+      Types: word and ?s7 -> ?t7 do not unify
+       - in:main()
+       - in:function invokable.invoke (self13 : t_main12, arg14 : ()) -> word {
+         match ((self13, arg14)) {
+         | (t_main12, q6) =>
+            return main();
+         }
+      }
+       - in:instance t_main12 : invokable ((), word) {
+         function invoke (self13 : t_main12, arg14 : ()) -> word {
+            match ((self13, arg14)) {
+            | (t_main12, q6) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/043fstsnd.solc/' to rerun this test only.
+    047rgb.solc:                       FAIL
+      test/Cases.hs:156:
+      Types: word and ?t -> ?u do not unify
+       - in:main()
+       - in:function invokable.invoke (self1 : t_main0, arg2 : ()) -> word {
+         match ((self1, arg2)) {
+         | (t_main0, e) =>
+            return main();
+         }
+      }
+       - in:instance t_main0 : invokable ((), word) {
+         function invoke (self1 : t_main0, arg2 : ()) -> word {
+            match ((self1, arg2)) {
+            | (t_main0, e) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/047rgb.solc/' to rerun this test only.
+    048rgb2.solc:                      FAIL
+      test/Cases.hs:156:
+      Types: word and ?p1 -> ?q1 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_main3, y) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), word) {
+         function invoke (self4 : t_main3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_main3, y) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/048rgb2.solc/' to rerun this test only.
+    06comp.solc:                       FAIL (0.08s)
+      test/Cases.hs:156:
+      Types: word and ?s10 -> ?t10 do not unify
+       - in:main()
+       - in:function invokable.invoke (self13 : t_main12, arg14 : ()) -> word {
+         match ((self13, arg14)) {
+         | (t_main12, m9) =>
+            return main();
+         }
+      }
+       - in:instance t_main12 : invokable ((), word) {
+         function invoke (self13 : t_main12, arg14 : ()) -> word {
+            match ((self13, arg14)) {
+            | (t_main12, m9) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/06comp.solc/' to rerun this test only.
+    09not.solc:                        FAIL
+      test/Cases.hs:156:
+      Types: word and ?o2 -> ?p2 do not unify
+       - in:main()
+       - in:function invokable.invoke (self7 : t_main6, arg8 : ()) -> word {
+         match ((self7, arg8)) {
+         | (t_main6, v1) =>
+            return main();
+         }
+      }
+       - in:instance t_main6 : invokable ((), word) {
+         function invoke (self7 : t_main6, arg8 : ()) -> word {
+            match ((self7, arg8)) {
+            | (t_main6, v1) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/09not.solc/' to rerun this test only.
+    10negBool.solc:                    FAIL
+      test/Cases.hs:156:
+      Types: word and ?a2 -> ?b2 do not unify
+       - in:main()
+       - in:function invokable.invoke (self4 : t_main3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_main3, j1) =>
+            return main();
+         }
+      }
+       - in:instance t_main3 : invokable ((), word) {
+         function invoke (self4 : t_main3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_main3, j1) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/10negBool.solc/' to rerun this test only.
+    11negPair.solc:                    FAIL (0.08s)
+      test/Cases.hs:156:
+      Types: word and ?p9 -> ?q9 do not unify
+       - in:main()
+       - in:function invokable.invoke (self10 : t_main9, arg11 : ()) -> word {
+         match ((self10, arg11)) {
+         | (t_main9, q8) =>
+            return main();
+         }
+      }
+       - in:instance t_main9 : invokable ((), word) {
+         function invoke (self10 : t_main9, arg11 : ()) -> word {
+            match ((self10, arg11)) {
+            | (t_main9, q8) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/11negPair.solc/' to rerun this test only.
+    903badassign.solc:                 FAIL (0.02s)
+      test/Cases.hs:156:
+      Types: word and ?b4 -> ?c4 do not unify
+       - in:main()
+       - in:function invokable.invoke (self7 : t_main6, arg8 : ()) -> word {
+         match ((self7, arg8)) {
+         | (t_main6, g3) =>
+            return main();
+         }
+      }
+       - in:instance t_main6 : invokable ((), word) {
+         function invoke (self7 : t_main6, arg8 : ()) -> word {
+            match ((self7, arg8)) {
+            | (t_main6, g3) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/903badassign.solc/' to rerun this test only.
+    939badfood.solc:                   FAIL
+      test/Cases.hs:156:
+      Types: word and ?v -> ?w do not unify
+       - in:main()
+       - in:function invokable.invoke (self1 : t_main0, arg2 : ()) -> word {
+         match ((self1, arg2)) {
+         | (t_main0, g) =>
+            return main();
+         }
+      }
+       - in:instance t_main0 : invokable ((), word) {
+         function invoke (self1 : t_main0, arg2 : ()) -> word {
+            match ((self1, arg2)) {
+            | (t_main0, g) =>
+               return main();
+            }
+         }
+      }
+      Use -p '/939badfood.solc/' to rerun this test only.
+  Standard library
+    std.sol:                           FAIL (14.24s)
+      test/Cases.hs:156:
+      Types: word and ?h91 -> ?i91 do not unify
+       - in:get_free_memory()
+       - in:function invokable.invoke (self4 : t_get_free_memory3, arg5 : ()) -> word {
+         match ((self4, arg5)) {
+         | (t_get_free_memory3, q90) =>
+            return get_free_memory();
+         }
+      }
+       - in:instance t_get_free_memory3 : invokable ((), word) {
+         function invoke (self4 : t_get_free_memory3, arg5 : ()) -> word {
+            match ((self4, arg5)) {
+            | (t_get_free_memory3, q90) =>
+               return get_free_memory();
+            }
+         }
+      }
+      Use -p '/std.sol/' to rerun this test only.
+  Files for imports cases
+    booldef.solc:                      FAIL
+      test/Cases.hs:156:
+      Type not polymorphic enough! The annotated type is:
+      forall a . a : C, a : D => a -> word
+      but the infered type is:
+      forall d f . d -> f : D, f : C => f -> word
+      
+      Use -p '/booldef.solc/' to rerun this test only.
+    boolmain.solc:                     FAIL
+      test/Cases.hs:156:
+      Type not polymorphic enough! The annotated type is:
+      forall a . a : C, a : D => a -> word
+      but the infered type is:
+      forall d f . d -> f : D, f : C => f -> word
+      
+      Use -p '/boolmain.solc/' to rerun this test only.
+
+52 out of 95 tests failed (15.28s)
+
+Test suite sol-core-tests: FAIL
+Test suite logged to:
+/home/rodrigo/Documents/ethereum/solcore/dist-newstyle/build/x86_64-linux/ghc-9.8.2/sol-core-0.0.0.0/t/sol-core-tests/test/sol-core-0.0.0.0-sol-core-tests.log
+0 of 1 test suites (0 of 1 test cases) passed.
