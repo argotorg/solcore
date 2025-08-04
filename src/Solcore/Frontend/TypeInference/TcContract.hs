@@ -225,7 +225,7 @@ tcClass iclass@(Class bvs ctx n vs v sigs)
       let bvs' = bv ctx `union` bv (map TyVar (v : vs)) `union` bv sigs
           ns = map sigName sigs
           qs = map (QualName n . pretty) ns
-      when (any (\ v -> v `notElem` bvs) bvs') $ do
+      when (any (`notElem` bvs) bvs') $ do
          let unbound_vars = bvs' \\ bvs
          unboundTypeVars iclass unbound_vars
       schs <- mapM askEnv qs `wrapError` iclass
