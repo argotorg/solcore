@@ -44,7 +44,6 @@ freshVar :: TcM MetaTv
 freshVar
   = MetaTv <$> freshName
 
-
 freshName :: TcM Name
 freshName
   = do
