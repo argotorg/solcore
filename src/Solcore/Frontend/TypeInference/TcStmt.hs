@@ -803,12 +803,9 @@ generalize (ps,t)
   = do
       envVars <- getEnvMetaVars
       (ps1,t1) <- withCurrentSubst (ps,t)
-      t2 <- withCurrentSubst t1
-      s <- getSubst
       let
-          t3 = apply s t2
-          vs = map gvar $ mv (ps1,t3) \\ envVars
-          sch = Forall vs (everywhere (mkT gen) $ ps1 :=> t3)
+          vs = map gvar $ mv (ps1,t1) \\ envVars
+          sch = Forall vs (everywhere (mkT gen) $ ps1 :=> t1)
       return sch
 
 -- kind check
