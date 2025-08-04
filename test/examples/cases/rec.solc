@@ -1,0 +1,6 @@
+function rec (n, b, f) {
+  match n {
+  | 0 => return b;
+  | m => return f(primAddWord(m,1), rec(m, b, f));
+  }
+}

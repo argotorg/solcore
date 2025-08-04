@@ -1,4 +1,4 @@
-class a : Foo(b) {
+forall a b . class a : Foo(b) {
   function foo (x : a, y : b) -> b ;
   function faa (y : a) -> a ;
 }

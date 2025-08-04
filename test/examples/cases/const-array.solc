@@ -3,12 +3,12 @@ pragma no-coverage-condition TAdd;
 data Zero;
 data Succ(a);
 
-class self:TAdd(res) {}
-instance (Zero, a):TAdd(a) {}
+forall self res . class self:TAdd(res) {}
+forall a . instance (Zero, a):TAdd(a) {}
 forall a b c . (b, a):TAdd(c) => instance (Succ(b), a):TAdd(Succ(c)) {}
 
-class lhs:Eq(rhs) {}
-instance a:Eq(a) {}
+forall lhs rhs . class lhs:Eq(rhs) {}
+forall a . instance a:Eq(a) {}
 
 // this should work but doesnt: forall sizel sizer elem sizeout . (sizel, sizer):TAdd(sizeout)
 forall sizel sizer elem sizeout pairSizelSizer . pairSizelSizer:Eq((sizel, sizer)), pairSizelSizer:TAdd(sizeout) => function concat(lhs:memory(array(sizel, elem)), rhs:memory(array(sizer, elem))) -> memory(array(sizeout, elem)) {
@@ -20,12 +20,12 @@ data Itself(a) = ItselfRuntimeTag;
 data array(size, elem) = array;
 data memory(a) = memory(word);
 
-class self:IndexAccessible (indexType, elementType){
+forall self indexType elementType . class self:IndexAccessible (indexType, elementType){
     function set(self:self, ix:indexType, val:elementType);
     function at(self:self, ix:indexType) -> elementType;
 }
 
-class self:ToWord{
+forall self . class self:ToWord{
     function toWord(self:Itself(self)) -> word;
 }
 
@@ -43,7 +43,7 @@ forall prev . prev:ToWord => instance Succ(prev) : ToWord {
     }
 }
 
-class self:MemoryType {
+forall self . class self:MemoryType {
     function load(ptr:word) -> self;
     function store(ptr:word, value:self);
 }
@@ -63,7 +63,7 @@ forall size elem . size : ToWord, elem:MemoryType => instance memory(array(size,
     function at(self, index) -> elem {
         let sizeValue = ToWord.toWord(ItselfRuntimeTag:Itself(size));
        // this should work but doesn't
-        //assembly {
+        // assembly {
         //    if iszero(lt(index, sizeValue)) {
         //        revert(0, 0)
         //    }

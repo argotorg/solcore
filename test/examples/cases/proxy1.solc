@@ -1,6 +1,6 @@
 data Proxy(a) = Proxy;
 
-class a:C {
+forall a. class a:C {
   function fun(p:Proxy(a)) -> word;
 }
 
