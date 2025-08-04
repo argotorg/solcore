@@ -132,7 +132,7 @@ unifyAllTypes (t : ts) =
 merge :: (MonadError String m) => Subst -> Subst -> m Subst
 merge s1@(Subst p1) s2@(Subst p2) =
   if agree
-    then pure (Subst (p1 ++ p2))
+    then pure (Subst $ nub (p1 ++ p2))
     else mergeError disagree
  where
   disagree = foldr step [] (dom p1 `intersect` dom p2)

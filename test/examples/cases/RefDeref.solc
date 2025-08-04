@@ -1,9 +1,9 @@
-class ref:Loadable (deref) {
+forall ref deref . class ref:Loadable (deref) {
     function load (r : ref) -> deref;
 }
 
-class ref:Storable (deref) {
-    function store (r : ref, d : deref) -> Unit;
+forall ref deref . class ref:Storable (deref) {
+    function store (r : ref, d : deref) -> ();
 }
 
 // haskell style class constraints

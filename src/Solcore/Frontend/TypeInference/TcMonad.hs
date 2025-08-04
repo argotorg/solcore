@@ -99,6 +99,9 @@ typeInfoFor (DataTy n vs cons)
 freshTyVar :: TcM Ty
 freshTyVar = Meta <$> freshVar
 
+freshSkolem :: TcM Tyvar
+freshSkolem = Skolem <$> freshName
+
 writeFunDef :: FunDef Id -> TcM ()
 writeFunDef fd = writeTopDecl (TFunDef fd)
 
@@ -131,7 +134,7 @@ getEnvFreeVarSet = do
     elemsSet = Map.foldr addElems (Set.empty :: Set.Set Tyvar)
     addElems :: [Tyvar] -> Set.Set Tyvar -> Set.Set Tyvar
     addElems vars set = foldr Set.insert set vars
-    -- addElems = Set.union . Set.fromList
+
 
 getEnvMetaVars :: TcM [MetaTv]
 getEnvMetaVars
@@ -180,23 +183,23 @@ skolemise :: Scheme -> TcM ([Tyvar], Qual Ty)
 skolemise sch@(Forall vs qt)
   = do
       let bvs = bv sch
-          sks = map (Skolem . tyvarName) bvs
-          env = zip bvs (map TyVar sks)
-      pure (sks, insts env qt)
+      sks <- mapM (const freshSkolem) bvs
+      pure (sks, insts (zip bvs (map TyVar sks)) qt)
 
 -- subsumption check
 
-subsCheck :: Scheme -> Scheme -> TcM ()
-subsCheck sch1 sch2@(Forall _ _)
+subsCheck :: Signature Name -> Scheme -> Scheme -> TcM ()
+subsCheck sig sch1@(Forall _ (_ :=> t1)) sch2@(Forall _ (_ :=> t2))
     = do
-        info [">> Checking subsumption for:\n", pretty sch1, "\nand\n", pretty sch2]
-        (skol_tvs, qt2) <- skolemise sch2
-        qt1 <- freshInst sch1
-        s <- mgu qt1 qt2 `catchError` (\ _ -> typeNotPolymorphicEnough sch1 sch2)
+        info [">> Checking subsumption for:\n", pretty t1, "\nand\n", pretty t2]
+        (skol_tvs, (_ :=> t2)) <- skolemise sch2
+        (_ :=> t1) <- freshInst sch1
+        s <- mgu t1 t2 `catchError` (\ _ -> typeNotPolymorphicEnough sig sch1 sch2)
+        extSubst s
         let esc_tvs = fv sch1
             bad_tvs = filter (`elem` esc_tvs) skol_tvs
         unless (null bad_tvs) $
-          typeNotPolymorphicEnough sch1 sch2
+          typeNotPolymorphicEnough sig sch1 sch2
 
 -- type instantiation
 
@@ -581,12 +584,14 @@ undefinedFunction t n
                          , pretty n
                          ]
 
-typeNotPolymorphicEnough :: Scheme -> Scheme -> TcM a
-typeNotPolymorphicEnough sch1 sch2
+typeNotPolymorphicEnough :: Signature Name -> Scheme -> Scheme -> TcM a
+typeNotPolymorphicEnough sig sch1 sch2
   = tcmError $ unlines [ "Type not polymorphic enough! The annotated type is:"
                        , pretty sch2
                        , "but the infered type is:"
                        , pretty sch1
+                       , "in:"
+                       , pretty sig
                        ]
 
 undefinedClass :: Name -> TcM a

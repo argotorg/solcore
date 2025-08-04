@@ -225,8 +225,9 @@ instance Pretty a => Pretty (Stmt a) where
       vcat (map ppr eqns) $$
       rbrace
   ppr (Asm yblk)
-    = text "assembly" <+>
-        ppr (YBlock yblk)
+    = text "assembly" <+> lbrace $$
+        nest 3 (vcat (map ppr yblk)) $$
+        rbrace
 
 instance Pretty a => Pretty (Equation a) where
   ppr (p,ss)

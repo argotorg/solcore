@@ -1,4 +1,4 @@
-class a: Enum {
+forall a . class a: Enum {
   function fromEnum(x : a) -> word;
 }
 

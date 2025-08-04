@@ -1,5 +1,5 @@
 
-class  a : Neg {
+forall a . class  a : Neg {
    function neg(x:a) -> a;
 }
 

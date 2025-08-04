@@ -8,7 +8,7 @@ function and (x,y) {
   }
 }
 
-class a : Eq {
+forall a . class a : Eq {
   function eq(x : a, y : a) -> Bool;
 }
 

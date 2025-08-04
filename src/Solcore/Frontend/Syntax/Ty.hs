@@ -32,6 +32,10 @@ newtype MetaTv
 gvar :: MetaTv -> Tyvar
 gvar = TVar . metaName
 
+elabTyvar :: Tyvar -> Tyvar
+elabTyvar (Skolem v) = TVar v
+elabTyvar v = v
+
 gen :: Ty -> Ty
 gen (Meta v) = TyVar (gvar v)
 gen (TyCon n ts) = TyCon n (map gen ts)
