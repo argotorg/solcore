@@ -103,33 +103,29 @@ reduceByInst' n qs p@(InCls c _ _)
       do
         ce <- getInstEnv
         pp <- withCurrentSubst p
-        -- info [">> Trying to solve ", pretty pp]
+        info [">> Trying to solve ", pretty pp]
         r <- findInst pp
-        info [show r, " ", pretty pp]
         case r of
           Nothing -> do
+            info ["   instance for ", pretty pp, " not found!"]
             de <- getDefaultInstEnv
             if proveDefaulting ce pp
               then do
                 case selectDefaultInst de pp of
-                  Nothing -> -- pure [p]
+                  Nothing ->
                     if checkEntails qs pp then do
-                        -- info [">> Entailing ", pretty pp, " using ", pretty qs]
                         pure []
-                      else pure [pp] -- if groundPred pp then tcmError $ unwords ["No instance found for:", pretty pp]
-                            -- else pure [pp] --  tcmError $ unwords ["No instance found for:", pretty pp]
+                      else pure [pp]
                   Just (ps', s, h) -> do
                     extSubst s
                     withCurrentSubst ps'
               else do
                 if checkEntails qs pp then do
-                    -- info [">> Entailing ", pretty pp, " using ", pretty qs]
                     pure []
-                  else pure [pp] -- if groundPred pp then tcmError $ unwords ["!>> No instance found for:", pretty pp]
-                          -- else pure [pp] -- tcmError $ unwords [">>> No instance found for:", pretty pp]
+                  else pure [pp]
           Just (preds, subst', instd) -> do
+            info ["   instance for ", pretty pp, " found: ", pretty instd, "@", pretty subst']
             extSubst subst'
-            -- info [">>> Selected instance:", pretty instd, "\n>>>> next iteration:", pretty preds]
             ps' <- reduceByInst (n - 1) preds qs
             pure ps'
 reduceByInst' n _ (t1 :~: t2) =
