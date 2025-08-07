@@ -485,6 +485,7 @@ indexedProxyFor exp@(S.ExpVar Nothing name) idx = do
                 pure $ Con "IndexAccessProxy" [arrRef, idx]
 
          else notImplementedM "indexedProxyFor" exp
+indexedProxyFor exp idx = notImplementedM "indexedProxyFor" exp
 
 memberProxyFor :: Name -> ElabM(Exp Name)
 memberProxyFor field = do
