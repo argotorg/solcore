@@ -46,6 +46,10 @@ instance address:Typedef(word) {
     }
 }
 
+instance address:Eq {
+  function eq(x, y) -> Bool { return Eq.eq(Typedef.rep(x), Typedef.rep(y)); }
+}
+
 data storage(a) = storage(word);
 data ContractStorage(cxt) = ContractStorage(cxt);
 
