@@ -26,14 +26,14 @@ function require1(cond: Bool) {
 
 function nop() -> () { return ();}
 
-contract Mini {
+contract Micro {
   reserved : word;
   msg_sender : address; // mock msg.sender
   owner : address;
   decimals : uint;
   totalSupply : uint;
   balances : mapping(address,uint);
-  allowance : mapping(address, storage(mapping, uint));
+  allowance : mapping(address, mapping(address, uint));
 
   function mint(amount:uint) -> () {
     balances[owner] = Num.add(balances[owner], amount);
@@ -55,8 +55,8 @@ contract Mini {
     }
 */
 
-//  function transferFrom(src:address, dst:address, amt:uint) -> Bool {
-  function transferFrom(src, dst, amt) -> Bool  {
+  function transferFrom(src:address, dst:address, amt:uint) -> Bool {
+//  function transferFrom(src, dst, amt) -> Bool  {
      require1(ge(balances[src], amt));
 /*
      match (eq(src, msg_sender)) {
@@ -90,7 +90,7 @@ contract Mini {
   function main() -> uint {
     init();
     mint(uint(1000));
-    allowance[owner][msg_sender] = 10000;
+    allowance[owner][msg_sender] = uint(10000);
     transferFrom(owner, msg_sender, uint(42));
 
     return balances[msg_sender] : uint;
