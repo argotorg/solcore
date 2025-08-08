@@ -445,7 +445,7 @@ annotatedScheme vs' sig@(Signature vs ps n args rt)
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
   | hasAnn sig = do
-      info ["# tcFunDef ", pretty sig]
+      info ["\n# tcFunDef ", pretty sig]
       -- check if all variables are bound in signature.
       when (any (\ v -> v `notElem` (vs ++ vs')) (bv sig)) $ do
          let unbound_vars = bv sig \\ (vs ++ vs')

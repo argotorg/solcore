@@ -32,10 +32,10 @@ dotSep = hcat . punctuate dot
           dot = text "."
 
 commaSep :: [Doc] -> Doc
-commaSep = hsep . punctuate comma
+commaSep = sep . punctuate comma
 
 commaSepList :: Pretty a => [a] -> Doc
-commaSepList = hsep . punctuate comma . map ppr
+commaSepList = sep . punctuate comma . map ppr
 
 angles :: Doc -> Doc
 angles d = char '<' >< d ><  char '>'
