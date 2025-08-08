@@ -445,6 +445,7 @@ annotatedScheme vs' sig@(Signature vs ps n args rt)
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
   | hasAnn sig = do
+      info ["# tcFunDef ", pretty sig]
       -- check if all variables are bound in signature.
       when (any (\ v -> v `notElem` (vs ++ vs')) (bv sig)) $ do
          let unbound_vars = bv sig \\ (vs ++ vs')
@@ -468,8 +469,10 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       -- building the function type scheme
       free <- getEnvMetaVars
       (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free
+      info [" - splitContext retained: ", prettys rs]
       ty <- withCurrentSubst nt
       inf <- generalize (rs, ty)
+      info [" - generalized inferred type: ", pretty inf]
       ann <- annotatedScheme vs' sig
      -- checking subsumption
       subsCheck sig inf ann `wrapError` d
