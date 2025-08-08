@@ -485,6 +485,16 @@ indexedProxyFor exp@(S.ExpVar Nothing name) idx = do
                 pure $ Con "IndexAccessProxy" [arrRef, idx]
 
          else notImplementedM "indexedProxyFor" exp
+indexedProxyFor exp@(S.ExpIndexed arr idx1) idx'' = do
+   idx' <- elab idx1
+   arrProxy <- indexedProxyFor arr idx'
+   let arrRef = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [arrProxy]
+   let result = Con "IndexAccessProxy" [arrRef, idx'']
+   -- writes ["indexedProxyFor: "]
+   -- writes ["  ", show exp]
+   -- writes ["   [", pretty idx'', "]\n", "  = ", pretty result]
+   pure result
+
 indexedProxyFor exp idx = notImplementedM "indexedProxyFor" exp
 
 memberProxyFor :: Name -> ElabM(Exp Name)
