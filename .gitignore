@@ -25,7 +25,9 @@ cabal.project.local~
 *.info
 Tasks.md
 *~
-output*.core
+*.core
+*.log
+test/examples/spec/attic/
 /src/Solcore/Frontend/Parser/SolcoreParser.hs
 
 # nix
@@ -42,3 +44,6 @@ output*.core
 /spec/*.out
 /spec/*.pdfsync
 /spec/*.pdf
+
+# config dirs
+.vscode/

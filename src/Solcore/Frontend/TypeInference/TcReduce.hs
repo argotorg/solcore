@@ -22,10 +22,10 @@ import Solcore.Pipeline.Options
 splitContext :: [Pred] -> [Pred] -> [MetaTv] -> TcM ([Pred], [Pred])
 splitContext ps qs fs =
   do
-    info [">> Starting the reduction of:", pretty ps, " using ", pretty qs]
+    unless (null ps) $ infoDocs[text ">> Starting the reduction of:", ppr ps, text "using", ppr qs]
     ps' <- reduce ps qs
     let (ds, rs) = partition (all (`elem` fs) . mv) ps'
-    info [">> Defered constraints:", pretty ds]
+    info [">> Deferred constraints:", pretty ds]
     info [">> Retained constraints:", pretty rs]
     when (groundPred ds) $
       tcmError $ unwords ["No instance found for:", unlines $ map pretty ds]
@@ -196,8 +196,8 @@ findInst p
 solvePred :: Pred -> Qual Pred -> TcM (Maybe ([Pred], Subst, Inst))
 solvePred p@(InCls _ t ts) ins@(ps :=> h@(InCls _ t' ts'))
   = do
-      info ["> Trying to solve:", pretty p, " using ", pretty ins]
-      info [">> Trying to match:", pretty t', " with ", pretty t]
+      infoDocs [text "> Trying to solve:", ppr p, text "using", ppr ins]
+      infoDocs [text ">> Trying to match:", ppr t', "with", ppr t]
       case match t' t of
         Left _ -> do
           -- info ["!>> Predicate ", pretty p, " cannot be solved by ", pretty h ,", since main args do not match ", pretty t', " and ", pretty t]

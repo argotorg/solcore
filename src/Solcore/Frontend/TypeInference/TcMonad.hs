@@ -191,7 +191,7 @@ skolemise sch@(Forall vs qt)
 subsCheck :: Signature Name -> Scheme -> Scheme -> TcM ()
 subsCheck sig sch1@(Forall _ (_ :=> t1)) sch2@(Forall _ (_ :=> t2))
     = do
-        info [">> Checking subsumption for:\n", pretty t1, "\nand\n", pretty t2]
+        info [">> Checking subsumption for:\n", pretty sch1, "\nand\n", pretty sch2]
         (skol_tvs, (_ :=> t2)) <- skolemise sch2
         (_ :=> t1) <- freshInst sch1
         s <- mgu t1 t2 `catchError` (\ _ -> typeNotPolymorphicEnough sig sch1 sch2)
@@ -519,6 +519,12 @@ info ss = do
             logging <- isLogging
             verbose <- isVerbose
             when logging $ modify (\ r -> r{ logs = msg : logs r })
+
+infoDoc :: Doc -> TcM ()
+infoDoc d = info[render d]
+
+infoDocs :: [Doc] -> TcM()
+infoDocs = infoDoc . sep
 
 warning :: String -> TcM ()
 warning s = do

@@ -5,9 +5,13 @@ import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception (try, SomeException)
 import Data.IORef
-import System.Exit (ExitCode(..))
-
 import qualified Data.Time as Time
+import System.Exit (ExitCode(..), exitWith)
+import System.FilePath
+import qualified System.TimeIt as TimeIt
+import Text.Pretty.Simple
+
+import qualified Language.Core as Core
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
@@ -23,10 +27,6 @@ import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Desugarer.Specialise(specialiseCompUnit)
 import Solcore.Desugarer.EmitCore(emitCore)
 import Solcore.Pipeline.Options(Option(..), argumentsParser)
-import System.Exit
-import qualified Language.Core as Core
-import System.FilePath
-import qualified System.TimeIt as TimeIt
 
 -- main compiler driver function
 pipeline :: IO ()
@@ -59,12 +59,14 @@ compile opts = runExceptT $ do
   content <- liftIO $ readFile file
 
   parsed <- ExceptT $ moduleParser dir content
-  resolved <- ExceptT $ buildAST parsed
+  (resolved, env) <- ExceptT $ buildAST' parsed
 
-  liftIO $ when verbose $ do
+  liftIO $ when (verbose || optDumpAST opts) $ do
     putStrLn "> AST after name resolution"
     putStrLn $ pretty resolved
 
+  liftIO $ when (optDumpEnv opts) $ pPrint env
+    
   -- SCC analysis
   connected <- ExceptT $ timeItNamed "SCC           " $
     sccAnalysis resolved
@@ -79,13 +81,12 @@ compile opts = runExceptT $ do
     then pure connected
     else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
 
-  liftIO $ when verbose $ do
+  liftIO $ when (verbose || optDumpDF opts) $ do
     putStrLn "> Indirect call desugaring:"
     putStrLn $ pretty direct
 
   -- Type inference
-  (typed, env) <- ExceptT $ timeItNamed
-    (if noDesugarCalls then "Indirect Calls" else "Typecheck     ")
+  (typed, env) <- ExceptT $ timeItNamed "Typecheck     "
     (typeInfer opts direct)
 
   liftIO $ when verbose $ do
