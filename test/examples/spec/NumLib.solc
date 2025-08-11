@@ -93,7 +93,7 @@ function ne(x:a, y:a) {
   return not(Eq.eq(x,y));
 }
 
-forall a. // a:Eq =>
+forall a. a:Eq =>
 class a:Num {
   function toWord(x:a) -> word;
   function fromWord(x:word) -> a;
@@ -134,7 +134,7 @@ instance uint:Num {
             | uint(y) => return y;
         }
   }
-  function fromWord(x:word) -> word { return uint(x); }
+  function fromWord(x:word) -> uint { return uint(x); }
   function add(x:uint, y:uint) -> uint { return uint(addW(Num.toWord(x), Num.toWord(y))); }
   function sub(x:uint, y:uint) -> uint { return uint(subW(Num.toWord(x), Num.toWord(y))); }
   function gt(x:uint, y:uint) -> Bool { return Num.gt(Num.toWord(x), Num.toWord(y)); }

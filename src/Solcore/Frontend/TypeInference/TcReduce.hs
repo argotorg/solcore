@@ -232,12 +232,13 @@ reduceBySuper' n p@(InCls c _ _)
           , "since the solver exceeded the max number of iterations."
           ]
   | otherwise = do
-      ctbl <- getClassEnv
-      case Map.lookup c ctbl of
-        Nothing -> pure [p]
-        Just cinfo -> do
-          ps' <- concat <$> mapM (reduceBySuper' (n - 1)) (supers cinfo)
-          pure (p : ps')
+      cinfo <- askClassInfo c
+      info ["> Reducing by super class:", pretty p]
+      sm <- match (classpred cinfo) p
+      info [">> Reduced by super class:", pretty (apply sm (supers cinfo))]
+      extSubst sm
+      ps' <- concat <$> mapM (reduceBySuper' (n - 1)) (apply sm (supers cinfo))
+      pure (p : ps')
 
 -- entailment
 

@@ -111,7 +111,7 @@ instance uint : Num {
          return y;
       }
    }
-   function fromWord (x : word) -> word {
+   function fromWord (x : word) -> uint {
       return uint(x);
    }
    function add (x : uint, y : uint) -> uint {

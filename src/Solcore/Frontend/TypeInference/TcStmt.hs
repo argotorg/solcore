@@ -611,8 +611,7 @@ tcInstance' :: Instance Name -> TcM (Instance Id)
 tcInstance' idecl@(Instance d vs ctx n ts t funs)
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs)
-      funs' <- buildSignatures n ts t funs `wrapError` idecl
-      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False vs ctx) funs' `wrapError` idecl
+      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False vs ctx) funs `wrapError` idecl
       instd <- withCurrentSubst (Instance d vs ctx n ts t funs1)
       let
         ind@(Instance _ _ ctx' _ ts' t' funs2) = everywhere (mkT gen) instd
@@ -650,39 +649,6 @@ checkCompleteInstDef n ns
                             , pretty n
                             , "missing definitions for:"
                             ] ++ map pretty remaining
-
-buildSignatures :: Name -> [Ty] -> Ty -> [FunDef Name] -> TcM [FunDef Name]
-buildSignatures n ts t funs
-  = do
-      cpred <- classpred <$> askClassInfo n
-      let vs = bv cpred
-      mvs <- mapM (const freshTyVar) vs
-      sm <- match (insts (zip vs mvs) cpred) (InCls n t ts)
-      let qname m = QualName n (pretty m)
-      schs <- mapM (askEnv . qname . sigName . funSignature) funs
-      let
-          app (Forall _ qt) = apply sm (insts (zip vs mvs) qt)
-          tinsts = map app schs
-      zipWithM (buildSignature n) tinsts funs
-
-buildSignature :: Name -> Qual Ty -> FunDef Name -> TcM (FunDef Name)
-buildSignature n (ps :=> t) (FunDef sig bd)
-  = do
-      let (args, ret) = splitTy t
-          sig' = typeSignature n args ret ps sig
-      pure (FunDef sig' bd)
-
-typeSignature :: Name -> [Ty] -> Ty -> [Pred] -> Signature Name -> Signature Name
-typeSignature nm args ret ps sig
-  = sig {
-          sigName = QualName nm (pretty $ sigName sig)
-        , sigContext = sigContext sig
-        , sigParams = zipWith paramType args (sigParams sig)
-        , sigReturn = Just ret
-        }
-    where
-      paramType _ (Typed n t) = Typed n t
-      paramType t (Untyped n) = Typed n t
 
 schemeFromSignature :: Pretty a => Signature a -> Qual Ty
 schemeFromSignature (Signature vs ps n args ret)
@@ -774,6 +740,8 @@ checkCoverage cn ts t
 checkMethod :: Pred -> FunDef Name -> TcM ()
 checkMethod ih@(InCls n t ts) d@(FunDef sig _)
   = do
+      -- checking if the signature is fully annotated
+      fullSignature sig
       -- getting current method signature in class
       let qn = QualName n (show (sigName sig))
       sch <- askEnv qn `wrapError` d
@@ -786,6 +754,14 @@ checkMethod ih@(InCls n t ts) d@(FunDef sig _)
       -- matching substitution of instance head and class predicate
       _ <- liftEither (match p ih) `wrapError` d
       pure ()
+
+fullSignature :: Signature Name -> TcM ()
+fullSignature sig@(Signature _ _ _ ps t)
+  = unless (all isTyped ps && maybe False (const True) t)
+           (throwError $ unlines ["Instance methods must have complete type signatures:", pretty sig])
+    where
+      isTyped (Typed _ _) = True
+      isTyped _ = False
 
 findPred :: Name -> [Pred] -> Maybe Pred
 findPred _ [] = Nothing
@@ -803,6 +779,20 @@ checkMeasure ps c
                               , "does not satisfy the Patterson conditions."]
     where smaller p = measure p < measure c
 
+-- subsumption check
+
+subsCheck :: Signature Name -> Scheme -> Scheme -> TcM ()
+subsCheck sig sch1 sch2
+    = do
+        info [">> Checking subsumption for:\n", pretty sch1, "\nand\n", pretty sch2]
+        (skol_tvs, (_ :=> t2)) <- skolemise sch2
+        (_ :=> t1) <- freshInst sch1
+        s <- mgu t1 t2 `catchError` (\ _ -> typeNotPolymorphicEnough sig sch1 sch2)
+        extSubst s
+        let esc_tvs = fv sch1
+            bad_tvs = filter (`elem` esc_tvs) skol_tvs
+        unless (null bad_tvs) $
+          typeNotPolymorphicEnough sig sch1 sch2
 
 -- type generalization
 
