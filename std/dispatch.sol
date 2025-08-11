@@ -3,11 +3,11 @@ pragma no-patterson-condition RunDispatch;
 data bool = true | false;
 data Proxy(a) = Proxy;
 
-class nm:Selector {
+forall nm . class nm:Selector {
   function hash(prx: Proxy(nm)) -> word;
 }
 
-class ty:ExecMethod {
+forall ty . class ty:ExecMethod {
   function exec(x: ty);
 }
 
@@ -31,7 +31,7 @@ forall args rets fn . instance Fallback(args,rets,fn):ExecMethod {
 
 data Contract(methods, fallback) = Contract(methods,fallback);
 
-class c:RunContract {
+forall c . class c:RunContract {
   function exec(v : c);
 }
 forall methods fallback . instance Contract(methods, fallback):RunContract {
@@ -79,7 +79,7 @@ forall name . name:Selector => function selector_matches(nm : name) -> bool {
   }
 }
 
-class ty:RunDispatch {
+forall ty . class ty:RunDispatch {
   function go(prx : Proxy(ty)) -> ();
 }
 
