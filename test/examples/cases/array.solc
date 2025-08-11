@@ -31,11 +31,11 @@ forall self . class self:ToWord{
 }
 
 instance Zero : ToWord {
-    function toWord(zero) { return 0; }
+    function toWord(zero : Zero) -> word { return 0; }
 }
 
 forall prev . prev:ToWord => instance Succ(prev) : ToWord {
-    function toWord(self: Itself(Succ(prev))) {
+    function toWord(self: Itself(Succ(prev))) -> word {
         let returnVal : word = ToWord.toWord(ItselfRuntimeTag:Itself(prev));
         assembly {
             returnVal := add(1, returnVal)
@@ -55,13 +55,13 @@ instance word:MemoryType {
         assembly { val := mload(ptr) }
         return val;
     }
-    function store(ptr:word, value:word) {
+    function store(ptr:word, value:word) -> () {
         assembly { mstore(ptr, value) }
     }
 }
 
 forall size elem . size : ToWord, elem:MemoryType => instance memory(array(size, elem)) : IndexAccessible(word, elem) {
-    function at(self, index) -> elem {
+    function at(self : memory(array(size,elem)), index : word) -> elem {
         let sizeValue = ToWord.toWord(ItselfRuntimeTag:Itself(size));
 
         assembly {
@@ -80,7 +80,7 @@ forall size elem . size : ToWord, elem:MemoryType => instance memory(array(size,
         }
     }
 
-    function set(self, index, val) {
+    function set(self : memory(array(size,elem)), index : word, val : elem) -> () {
         let sizeValue = ToWord.toWord(ItselfRuntimeTag:Itself(size));
 
         assembly {

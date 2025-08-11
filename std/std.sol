@@ -214,7 +214,7 @@ forall t . instance calldata(t) : Typedef(word) {
 
 data returndata(t) = returndata(word);
 forall t . instance returndata(t) : Typedef(word) {
-    function abs(x: word) -> calldata(t) {
+    function abs(x: word) -> returndata(t) {
         return returndata(x);
     }
 
@@ -259,7 +259,7 @@ forall t val . class t:IndexAccess(val) {
 data DynArray(t);
 
 forall t . t:Typedef(word) => instance memory(DynArray(t)):IndexAccess(t) {
-    function get(ptr, i) {
+    function get(ptr : memory(DynArray(t)), i : uint256) -> t {
         let sz : word;
         let oob : word;
         let iw : word = Typedef.rep(i);
@@ -272,7 +272,7 @@ forall t . t:Typedef(word) => instance memory(DynArray(t)):IndexAccess(t) {
         }
         return Typedef.abs(res);
     }
-    function set(arr, i, val) {
+    function set(arr : memory(DynArray(t)), i : uint256, val : t) -> () {
         let sz : word;
         let oob : word;
         let iw : word = Typedef.rep(i);
@@ -402,7 +402,7 @@ instance uint256:MemoryType(uint256) {
 
 // We load a DynArray into a sized pointer to the first element
 forall ty ret . ty:MemoryType(ret) => instance DynArray(ty):MemoryType(slice(memory(ret))) {
-    function loadFromMemory(p, loc:word) -> slice(memory(ret)) {
+    function loadFromMemory(p : Proxy (DynArray(ty)), loc:word) -> slice(memory(ret)) {
         let length;
         assembly {
             length := mload(loc)
@@ -458,24 +458,24 @@ forall self . class self:ABIAttribs {
 }
 
 instance uint256:ABIAttribs {
-    function headSize(ty) { return 32; }
-    function isStatic(ty) { return true; }
+    function headSize(ty : Proxy(uint256)) -> word { return 32; }
+    function isStatic(ty : Proxy(uint256)) -> bool { return true; }
 }
 forall t . instance DynArray(t):ABIAttribs {
-    function headSize(ty) { return 32; }
-    function isStatic(ty) { return false; }
+    function headSize(ty : DynArray(t)) -> word { return 32; }
+    function isStatic(ty : DynArray(t)) -> bool { return false; }
 }
 
 // computes the attribs for a pair of two types that implement attribs
 forall a b . a:ABIAttribs, b:ABIAttribs => instance (a,b):ABIAttribs {
-    function headSize(ty) {
+    function headSize(ty : Proxy((a,b))) -> word {
         let pa : Proxy(a);
         let pb : Proxy(b);
         let sza = ABIAttribs.headSize(pa);
         let szb = ABIAttribs.headSize(pb);
         return Add.add(sza, szb);
     }
-    function isStatic(ty) {
+    function isStatic(ty : Proxy((a,b))) -> bool {
         let pa : Proxy(a);
         let pb : Proxy(b);
         return and(ABIAttribs.isStatic(pa), ABIAttribs.isStatic(pb));
@@ -485,14 +485,14 @@ forall a b . a:ABIAttribs, b:ABIAttribs => instance (a,b):ABIAttribs {
 // if an abi tuple contains dynamic elems we store it in the tail, otherwise we
 // treat it the same as a series of nested pairs
 forall tuple . tuple:ABIAttribs => instance ABITuple(tuple):ABIAttribs {
-    function headSize(ty) {
+    function headSize(ty : Proxy(tuple)) -> word {
         let px : Proxy(tuple);
         match ABIAttribs.isStatic(px) {
         | true => return ABIAttribs.headSize(px);
         | false => return 32;
         }
     }
-    function isStatic(ty) {
+    function isStatic(ty : Proxy(tuple)) -> bool {
         let px : Proxy(tuple);
         return ABIAttribs.isStatic(px);
     }
@@ -500,21 +500,21 @@ forall tuple . tuple:ABIAttribs => instance ABITuple(tuple):ABIAttribs {
 
 // for pointer types we fetch the attribs of the pointed to type, not the pointer itself
 forall ty . ty:ABIAttribs => instance memory(ty):ABIAttribs {
-    function headSize(ty) {
+    function headSize(ty : Proxy(ty)) -> word {
         let px : Proxy(ty);
         return ABIAttribs.headSize(px);
     }
-    function isStatic(ty) {
+    function isStatic(ty : Proxy(ty)) -> bool {
         let px : Proxy(ty);
         return ABIAttribs.isStatic(px);
     }
 }
 forall ty . ty:ABIAttribs => instance calldata(ty):ABIAttribs {
-    function headSize(ty) {
+    function headSize(ty : Proxy(ty)) -> word {
         let px : Proxy(ty);
         return ABIAttribs.headSize(px);
     }
-    function isStatic(ty) {
+    function isStatic(ty : Proxy(ty)) -> bool {
         let px : Proxy(ty);
         return ABIAttribs.isStatic(px);
     }

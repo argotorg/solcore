@@ -245,7 +245,7 @@ instance address : StorageType {
    }
 }
 forall a . a : StorageType => instance storageRef(a) : Assign (a) {
-   function assign (l : storageRef(a), y : a) {
+   function assign (l : storageRef(a), y : a) -> () {
       StorageType.store(Typedef.rep(l), y);
    }
 }

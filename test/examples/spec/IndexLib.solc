@@ -47,7 +47,9 @@ instance address:Typedef(word) {
 }
 
 instance address:Eq {
-  function eq(x, y) -> Bool { return Eq.eq(Typedef.rep(x), Typedef.rep(y)); }
+  function eq(x : address , y : address) -> Bool {
+    return Eq.eq(Typedef.rep(x), Typedef.rep(y));
+  }
 }
 
 data storage(a) = storage(word);
@@ -158,7 +160,7 @@ instance address:StorageType {
 }
 
 forall a . a : StorageType => instance storageRef(a):Assign(a) {
-    function assign(l:storageRef(a), y:a) {
+    function assign(l:storageRef(a), y:a) -> () {
         StorageType.store(Typedef.rep(l), y);
     }
 }
