@@ -11,6 +11,7 @@ std =
   testGroup
     "Standard library"
     [ runTestForFile "std.solc" stdFolder
+    , runTestForFile "dispatch.solc" stdFolder
     ]
  where
   stdFolder = "./std"
