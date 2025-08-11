@@ -249,9 +249,15 @@ tcSig (sig, (Forall _ (_ :=> t)))
 -- type checking binding groups
 
 extractSignatures :: [FunDef Name] -> TcM [(Name, Scheme)]
-extractSignatures fds = forM fds $ \(FunDef sig _) -> do
-    ((name, scheme), _, _, _, _) <- tcSignature sig []
-    return (name, scheme)
+extractSignatures fds = forM fds extractSig
+  where
+    extractSig (FunDef sig _)
+      | hasAnn sig = do
+        scheme <- annotatedScheme [] sig
+        return (sigName sig, scheme)
+      | otherwise = do
+        tvar <- freshTyVar
+        return (sigName sig, monotype tvar)
 
 tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds
@@ -265,7 +271,6 @@ tcBindGroup binds
       let funs1 = everywhere (mkT gen) funs'
       unless noDesugarCalls $ generateTopDeclsFor (zip funs1 schs)
       pure funs1
-
 
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
 generateTopDeclsFor ps
@@ -281,7 +286,6 @@ generateTopDeclsFor ps
         mapM_ writeTopDecl ((TDataDef <$> dts) ++ (TInstDef <$> insts'))
         putSubst s
       else pure ()
-
 
 -- type checking contract constructors
 
