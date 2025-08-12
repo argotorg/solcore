@@ -259,7 +259,9 @@ entails' n qs p
           ]
   | otherwise = do
       ce <- getInstEnv
+      info [">>> Testing entailment of:", pretty p, "using:", if null qs then "<empty>" else pretty qs]
       qs' <- mapM reduceBySuper qs
+      info [">>> Reduced by superclass:", if null qs' then "<empty>" else pretty (concat qs')]
       r <- case selectInst ce p of
         Nothing -> pure False
         Just (ps, s, h) ->
