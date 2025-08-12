@@ -55,7 +55,7 @@ forall name args rets fn . fn:Invokable(args,ret) => instance Method(name,args,r
 }
 
 // If fn matches the provided args/ret types, then we can execute any fallback
-forall args rets fn . fn:Invokable(args,ret) instance Fallback(args,rets,fn):ExecMethod {
+forall args rets fn . fn:Invokable(args,ret) => instance Fallback(args,rets,fn):ExecMethod {
   function exec(fb) {
     match fb {
       | Fallback(args, rets, fn) =>
@@ -149,11 +149,25 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
   function exec(c : Contract(methods, fallback)) {
     match c {
       | Contract(ms, fb) =>
-        // set free memory pointer to the output of memoryguard (TODO: what is memoryguard again)
-        // check that we have at least 4 bytes
-        // check callvalue (TODO: we need some typeclass magic here)
-        RunDispatch.go(ms);
-        ExecMethod.exec(fb);
+        // set free memory pointer to the output of memoryguard
+        // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
+        // TODO: is this safe?
+        assembly {
+          mstore(0x40, memoryguard(128));
+        }
+
+        // check that we have at least 4 bytes of calldata
+        let haveSelector : word;
+        assembly {
+          haveSelector := lt(3, calldatasize());
+        }
+        match haveSelector {
+          | 0 => assembly { revert(0,0); }
+          | _ =>
+            // check callvalue (TODO: we need some typeclass magic here)
+            RunDispatch.go(ms);
+            ExecMethod.exec(fb);
+        }
     }
   }
 }
@@ -172,7 +186,7 @@ instance C_Add2_Selector:Selector {
   function hash(prx: Proxy(C_Add2_Selector)) -> word {
     // This would be keccak256("add2(uint256,uint256)") >> 224
     // Compiler computes this at compile time
-    return 0x771602f7;  // placeholder value
+    return 0x29fcda33;  // placeholder value
   }
 }
 
