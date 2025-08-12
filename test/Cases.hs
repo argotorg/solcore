@@ -114,6 +114,7 @@ cases =
     , runTestForFile "Uncurry.solc" caseFolder
     , runTestForFile "unit.solc" caseFolder
     , runTestForFile "memory.solc" caseFolder
+    , runTestForFile "cyclical-defs.solc" caseFolder
     , runTestForFile "closure.solc" caseFolder
     , runTestForFile "noclosure.solc" caseFolder
     , runTestForFile "constructor-weak-args.solc" caseFolder
