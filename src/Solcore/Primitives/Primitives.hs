@@ -60,9 +60,6 @@ invokeSignature
               (Just (TyVar retVar))
 -- basic types
 
-word :: Ty
-word = TyCon "word" []
-
 primAddWord :: (Name, Scheme)
 primAddWord = ("primAddWord", monotype (word :-> word :-> word))
 
@@ -77,13 +74,18 @@ primInvoke = ( QualName invokableName "invoke"
                                    TyVar retVar))
              )
 
+-- pairs, strings, unit and word types.
+
+word :: Ty
+word = TyCon "word" []
+
 primPair :: (Name, Scheme)
 primPair = (Name "pair", Forall [aVar, bVar] ([] :=> (pairTy at bt)))
-    where
-      aVar = TVar (Name "a")
-      bVar = TVar (Name "b")
-      at = TyVar aVar
-      bt = TyVar bVar
+
+aVar = TVar (Name "a")
+bVar = TVar (Name "b")
+at = TyVar aVar
+bt = TyVar bVar
 
 primUnit :: (Name, Scheme)
 primUnit = (Name "()", monotype unit)
@@ -108,6 +110,46 @@ epair e1 e2 = Con (Name "pair") [e1, e2]
 
 arr :: Name
 arr = "->"
+
+-- sum type
+
+sumTy :: Ty -> Ty -> Ty
+sumTy t1 t2 = TyCon "sum" [t1, t2]
+
+inlTy :: Ty -> Ty -> Ty
+inlTy t1 t2 = t1 :-> sumTy t1 t2
+
+inrTy :: Ty -> Ty -> Ty
+inrTy t1 t2 = t2 :-> sumTy t1 t2
+
+inlName :: Name
+inlName = Name "inl"
+
+inrName :: Name
+inrName = Name "inr"
+
+primInl :: (Name, Scheme)
+primInl = (inlName, Forall [aVar, bVar] ([]:=> inlTy at bt))
+
+primInr :: (Name, Scheme)
+primInr = (inrName, Forall [aVar, bVar] ([] :=> inrTy at bt))
+
+-- boolean type constructor
+
+boolTy :: Ty
+boolTy = TyCon (Name "bool") []
+
+trueName :: Name
+trueName = Name "true"
+
+falseName :: Name
+falseName = Name "false"
+
+primTrue :: (Name, Scheme)
+primTrue = (trueName, monotype boolTy)
+
+primFalse :: (Name, Scheme)
+primFalse = (falseName, monotype boolTy)
 
 -- definition of yul primops
 
@@ -189,9 +231,6 @@ yulPrimOps = [ (Name "stop", monotype unit)
              , (Name "prevrandao", monotype word)
              , (Name "gaslimit", monotype word)
              ]
-
-aVar :: Tyvar
-aVar = TVar (Name "a")
 
 words :: Int -> [Ty]
 words n = replicate n word

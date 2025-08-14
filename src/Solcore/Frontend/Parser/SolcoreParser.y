@@ -32,6 +32,7 @@ import System.FilePath
       'class'    {Token _ TClass}
       'instance' {Token _ TInstance}
       'if'       {Token _ TIf}
+      'else'     {Token _ TElse}
       'for'      {Token _ TFor}
       'switch'   {Token _ TSwitch}
       'case'     {Token _ TCase}
@@ -263,6 +264,8 @@ Stmt : Expr '=' Expr ';'                              {Assign $1 $3}
      | 'return' Expr ';'                              {Return $2}
      | 'match' MatchArgList '{' Equations  '}'        {Match $2 $4}
      | AsmBlock                                       {Asm $1}
+     | 'if' '(' Expr ')' Body %shift                  {If $3 $5 []}
+     | 'if' '(' Expr ')' Body 'else' Body             {If $3 $5 $7}
 
 
 MatchArgList :: {[Exp]}

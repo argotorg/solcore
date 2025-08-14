@@ -180,6 +180,7 @@ data Stmt
   | Return Exp                          -- return statements
   | Match [Exp] Equations               -- pattern matching
   | Asm YulBlock                        -- Yul block
+  | If Exp Body Body                    -- If statement
   deriving (Eq, Ord, Show, Data, Typeable)
 
 type Body = [Stmt]

@@ -79,6 +79,20 @@ tcStmt (Asm yblk)
       let word' = monotype word
       mapM_ (flip extEnv word') newBinds
       pure (Asm yblk, [], t)
+tcStmt (If e blk1 blk2)
+  = do
+      (e', ps, t) <- tcExp e
+      unless (t == boolTy) $
+        throwError $ unlines ["Expression:", pretty e
+                             , "has type:", pretty t
+                             , "while it is expected to have type:"
+                             , pretty boolTy
+                             ]
+      (blk1', ps1, _) <- tcBody blk1
+      (blk2', ps2, _) <- tcBody blk2
+      let ps3 = ps ++ ps1 ++ ps2
+      withCurrentSubst (If e' blk1' blk2', ps3, unit)
+
 
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
@@ -464,6 +478,11 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       -- building the function type scheme
       free <- getEnvMetaVars
       (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free
+      unless (null ds) $ do
+            (tcmError $ unlines [ "Cannot entail:"
+                                , pretty ds
+                                , "from"
+                                , pretty sig]) `wrapError` d
       ty <- withCurrentSubst nt
       inf <- generalize (rs, ty)
       ann <- annotatedScheme vs' sig
