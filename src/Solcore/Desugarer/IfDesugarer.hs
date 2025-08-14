@@ -82,3 +82,4 @@ desugarTyBool t@(TyCon n [])
 desugarTyBool (TyCon n ts)
   = TyCon n (map desugarTyBool ts)
 desugarTyBool t = t
+
