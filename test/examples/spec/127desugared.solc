@@ -439,7 +439,9 @@ data balances_sel = balances_sel  ;
 instance StructField(ContractStorage(MiniCxt), balances_sel) : StructField (mapping(address, uint), (word, (address, (address, (uint, (uint, ())))))) {
 }
 data allowance_sel = allowance_sel  ;
+
 instance StructField(ContractStorage(MiniCxt), allowance_sel) : StructField (mapping(address, storage(mapping, uint)), (word, (address, (address, (uint, (uint, (mapping(address, uint), ()))))))) {
+
 }
 contract Mini {
    function mint (amount : uint) -> () {

@@ -155,7 +155,7 @@ pprSigPrefix [] ps = pprContext ps
 pprSigPrefix vs []
   = text "forall" <+> hsep (map ppr vs) <+> text "."
 pprSigPrefix vs ps
-  = text "forall" <+> hsep (map ppr vs) <+> text "." <+> pprContext ps
+  = text "forall" <+> hsep (map ppr vs) <+> text "." $$ pprContext ps
 
 instance Pretty a => Pretty (Instance a) where
   ppr (Instance d vs ctx n tys ty funs)
@@ -179,7 +179,7 @@ pprContext ps
   = (commaSep $ map ppr ps) <+> text "=>"
 
 instance Pretty [Pred] where
-  ppr = hsep . map ppr
+  ppr = parens . commaSepList
 
 pprFunBlock :: Pretty a => [FunDef a] -> Doc
 pprFunBlock
@@ -264,10 +264,10 @@ instance Pretty a => Pretty (Exp a) where
     | isTuple n = parens $ commaSep (map ppr es)
     | otherwise
       = ppr n <> if null es then empty
-                 else (parens $ commaSep $ map ppr es)
+                 else (parens (nest 1 $ commaSep $ map ppr es) )
   ppr (Lit l) = ppr l
   ppr (Call e n es)
-    = pprE e <> ppr n <> (parens $ commaSep $ map ppr es)
+    = pprE e <> ppr n <> (parens (nest 1 $ commaSep $ map ppr es))
   ppr (Lam args bd _)
     = text "lam" <+>
       pprParams args <+>

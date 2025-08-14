@@ -512,6 +512,12 @@ info ss = do
             verbose <- isVerbose
             when logging $ modify (\ r -> r{ logs = msg : logs r })
 
+infoDoc :: Doc -> TcM ()
+infoDoc d = info[render d]
+
+infoDocs :: [Doc] -> TcM()
+infoDocs = infoDoc . sep
+
 warning :: String -> TcM ()
 warning s = do
   modify (\ r -> r{ warnings = s : "Warning:" : warnings r })

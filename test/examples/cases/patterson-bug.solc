@@ -11,6 +11,7 @@ forall lhs rhs . class lhs:Assign(rhs) {
 
 forall a . instance storageRef(a):Assign(a) {
     function assign(l:storageRef(a), y:a) -> () {
+
     }
 }
 
