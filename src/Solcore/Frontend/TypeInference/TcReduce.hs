@@ -126,9 +126,9 @@ reduceByInst' n qs p@(InCls c _ _)
           Just (preds, subst', instd) -> do
             info ["   instance for ", pretty pp, " found: ", pretty instd, "@", pretty subst']
             extSubst subst'
-            ps' <- reduceByInst (n - 1) preds qs
+            ps' <- reduceByInst (n - 1) preds qs `wrapError` pp
             pure ps'
-reduceByInst' n _ (t1 :~: t2) =
+reduceByInst' n _ q@(t1 :~: t2) =
   do
     unify t1 t2
     pure []

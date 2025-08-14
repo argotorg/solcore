@@ -468,7 +468,8 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       unify nt (funtype ts' rt1')
       -- building the function type scheme
       free <- getEnvMetaVars
-      (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free
+      info ["Staring reduction for:", pretty ps1']
+      (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free `wrapError` d
       info [" - splitContext retained: ", prettys rs]
       ty <- withCurrentSubst nt
       inf <- generalize (rs, ty)
