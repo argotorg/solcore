@@ -106,7 +106,7 @@ elif [[ -n "$raw_calldata" ]]; then
 fi
 
 echo "Executing..."
-output=$(eval "$hevm_cmd")
+output=$(eval "$hevm_cmd" 2>&1) || true
 echo "$output"
 
 # Check if output is a Return value and attempt to decode it
