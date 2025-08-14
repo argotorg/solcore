@@ -1,4 +1,4 @@
-pragma no-patterson-condition RunDispatch;
+pragma no-patterson-condition RunDispatch, MethodLevelCallvalueCheck, TopLevelCallvalueCheck;
 
 // --- Preliminaries ---
 
@@ -8,6 +8,7 @@ data Proxy(a) = Proxy;
 // --- Core Data Types ---
 
 // A contract contains a tuple of methods and a single fallback
+// TODO: implement receive()
 data Contract(methods, fallback) = Contract(methods,fallback);
 
 // A method contains an implementation (fn) as well as it's name and type signature
@@ -34,15 +35,18 @@ forall name args rets fn . name:Selector => instance Method(name,args,rets,fn):S
 // --- Method Execution ---
 
 // Describes how to execute a given method / fallback
-forall ty . class ty:ExecMethod {
-  function exec(x: ty);
+forall ty callvalueCheckStatus . class ty:ExecMethod {
+  function exec(x: ty, pstatus : Proxy(callvalueCheckStatus));
 }
 
 // If fn matches the provided args/ret types, then we can execute any method
-forall name args rets fn . fn:Invokable(args,ret) => instance Method(name,args,rets,fn):ExecMethod {
-  function exec(m) {
+forall name args rets fn callvalueCheckStatus . fn:Invokable(args,ret) => instance Method(name,args,rets,fn):ExecMethod {
+  function exec(m : Method(name,args,rets,fn), pstatus : Proxy(callvalueCheckStatus)) {
     match m {
       | Method(nm,args,rets,fn) =>
+        // check callvalue
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Method(name,args,rets,fn)), pstatus);
+
         // check we have enough calldata for the head of args
         // abi decode args from calldata
         // call fn with args
@@ -55,10 +59,13 @@ forall name args rets fn . fn:Invokable(args,ret) => instance Method(name,args,r
 }
 
 // If fn matches the provided args/ret types, then we can execute any fallback
-forall args rets fn . fn:Invokable(args,ret) => instance Fallback(args,rets,fn):ExecMethod {
-  function exec(fb) {
+forall args rets fn callvalueCheckStatus . fn:Invokable(args,ret) => instance Fallback(args,rets,fn):ExecMethod {
+  function exec(fb : Fallback(args,rets,fn), pstatus : Proxy (callvalueCheckStatus)) {
     match fb {
       | Fallback(args, rets, fn) =>
+        // check callvalue
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Fallback(args,rets,fn)), pstatus);
+
         // check we have enough calldata for the head of args
         // abi decode args from calldata
         // call fn with args
@@ -73,36 +80,30 @@ forall args rets fn . fn:Invokable(args,ret) => instance Fallback(args,rets,fn):
 // --- Method Dispatch ---
 
 // For a given tuple of methods this executes the method specified by the first four bytes of calldata
-forall ty . class ty:RunDispatch {
-  function go(methods : ty) -> ();
+forall ty callvalueCheckStatus . class ty:RunDispatch {
+  function go(methods : ty, pstatus : Proxy(callvalueCheckStatus)) -> ();
 }
-
-// TODO: We need this to lift the non payable check to the top level if everything is non payable
-forall ty . class ty:NonPayable {}
-forall ty . class ty:AllNonPayable {}
-forall n m . n:NonPayable, m:AllNonPayable => instance (n,m):AllNonPayable {}
-
 
 // We can dispatch to a single executable method with a known selector
 // TODO: do we need this instance?
-forall m . m:ExecMethod, m:Selector => instance m:RunDispatch {
-  function go(method : m) {
+forall m callvalueCheckStatus . m:ExecMethod, m:Selector => instance m:RunDispatch {
+  function go(method : m, pstatus : Proxy(callvalueCheckStatus)) {
     match selector_matches(Proxy : Proxy(m)) {
-      | True => ExecMethod.exec(method);
+      | True => ExecMethod.exec(method, pstatus);
       | False => return ();
     }
   }
 }
 
 // We can dispatch to a tuple of executable methods with a known selector
-forall n m . n:ExecMethod, n:Selector, m:ExecMethod, m:Selector => instance (n,m):RunDispatch {
-  function go(methods : (n,m)) {
+forall n m callvalueCheckStatus . n:ExecMethod, n:Selector, m:ExecMethod, m:Selector => instance (n,m):RunDispatch {
+  function go(methods : (n,m), pstatus : Proxy(callvalueCheckStatus)) {
     match methods {
       | (method_n, method_m) =>
         match selector_matches(Proxy : Proxy(n)) {
           | True => ExecMethod.exec(method_n);
           | False => match selector_matches(Proxy : Proxy(m)) {
-            | True => ExecMethod.exec(method_m);
+            | True => ExecMethod.exec(method_m, pstatus);
             | False => return ();
           }
         }
@@ -111,13 +112,13 @@ forall n m . n:ExecMethod, n:Selector, m:ExecMethod, m:Selector => instance (n,m
 }
 
 // Recursive instance
-forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispatch {
-  function go(methods : (n,m)) {
+forall n m callvalueCheckStatus . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispatch {
+  function go(methods : (n,m), pstatus : Proxy(callvalueCheckStatus)) {
     match methods {
       | (method_n, rest) =>
         match selector_matches(Proxy : Proxy(n)) {
-          | True => ExecMethod.exec(method_n);
-          | False => RunDispatch.go(rest);
+          | True => ExecMethod.exec(method_n, pstatus);
+          | False => RunDispatch.go(rest, pstatus);
         }
     }
   }
@@ -138,6 +139,62 @@ forall name . name:Selector => function selector_matches(prx : Proxy(name)) -> B
   }
 }
 
+// --- Callvalue Checks ---
+
+// If every method on a contract is non payable, we lift the callvalue check to run before method dispatch
+// NonPayable instances should be generated by the compiler as part of desugaring
+forall ty . class ty:NonPayable {}
+forall ty . class ty:AllNonPayable {}
+forall n m . n:NonPayable, m:AllNonPayable => instance (n,m):AllNonPayable {}
+
+
+data CallvalueChecked;
+
+data CallvalueUnchecked;
+forall ty . class ty:MethodsMustCheckCalldata {}
+instance CallvalueUnchecked:MethodsMustCheckCalldata {}
+
+// If every method is non payable we run the callvalue check before method dispatch
+forall ty ret . class ty:TopLevelCallvalueCheck(ret) {
+  function checkCallvalue(prx : Proxy(ty)) -> Proxy(ret);
+}
+
+forall methods . default instance methods:TopLevelCallvalueCheck(CallvalueUnchecked) {
+  function checkCallvalue(prx) { return Proxy : Proxy(CallvalueUnchecked); }
+}
+
+forall methods . methods:AllNonPayable => instance methods:TopLevelCallvalueCheck(CallvalueChecked) {
+  function checkCallvalue(prx) {
+    assembly {
+      if gt(callvalue(), 0) {
+        mstore(0,0x2)
+        revert(0,32);
+      }
+    }
+    return Proxy : Proxy(CallvalueChecked);
+  }
+}
+
+// If only some methods are non payable, then we run the check during method execution
+forall ty status . class ty:MethodLevelCallvalueCheck {
+  function checkCallvalue(pty : Proxy(ty), pstatus : Proxy(status));
+}
+
+forall method status . default instance method:MethodLevelCallvalueCheck {
+  function checkCallvalue(pty : Proxy(method), pstatus : Proxy(status)) { }
+}
+
+forall method status . method:NonPayable, status:MethodsMustCheckCalldata => instance method:MethodLevelCallvalueCheck {
+  function checkCallvalue(pty : Proxy(method), pstatus : Proxy(status)) {
+    assembly {
+      if gt(callvalue(), 0) {
+        mstore(0, 0x1);
+        revert(0, 32);
+      }
+    }
+  }
+}
+
 // --- Contract Execution ---
 
 // Describes how to execute a given contract
@@ -145,27 +202,31 @@ forall c . class c:RunContract {
   function exec(v : c);
 }
 
+// If we have a dispatch for the contracts methods, and we know how to execute it's fallback, then we can define an entrypoint
 forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance Contract(methods, fallback):RunContract {
   function exec(c : Contract(methods, fallback)) {
     match c {
       | Contract(ms, fb) =>
         // set free memory pointer to the output of memoryguard
         // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
-        // TODO: is this safe?
-        assembly {
-          mstore(0x40, memoryguard(128));
-        }
+        // TODO: we will need to consider immutables here at some point...
+        assembly { mstore(0x40, memoryguard(128)); }
+
+        // if all methods are non payable then check callvalue
+        let callvalueChecked = TopLevelCallvalueCheck.checkCallvalue(Proxy : Proxy((fallback, methods)));
 
         // check that we have at least 4 bytes of calldata
         let haveSelector : word;
         assembly {
           haveSelector := lt(3, calldatasize());
         }
+
         match haveSelector {
           | 0 => assembly { revert(0,0); }
           | _ =>
-            // check callvalue (TODO: we need some typeclass magic here)
-            RunDispatch.go(ms);
+            // dispatch to method based on selector
+            RunDispatch.go(ms, callvalueChecked);
+            // run fallback if no methods matched
             ExecMethod.exec(fb);
         }
     }
@@ -200,7 +261,11 @@ contract C {
   }
 
   function main() -> word {
-    let c = Contract(Method(C_Add2_Selector, Proxy : Proxy((word,word)), Proxy : Proxy(word), add2), Fallback(Proxy : Proxy(()),Proxy : Proxy(()),revert_handler));
+    let c = Contract(
+      Method(C_Add2_Selector, Proxy : Proxy((word,word)), Proxy : Proxy(word), add2),
+      Fallback(Proxy : Proxy(()),Proxy : Proxy(()),revert_handler)
+    );
+
     RunContract.exec(c);
     return 0;
   }
