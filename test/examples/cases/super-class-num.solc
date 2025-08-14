@@ -1,0 +1,70 @@
+data Bool = False | True;
+
+function fromBool(b:Bool) -> word {
+ match b {
+   | False => return 0;
+   | True => return 1;
+ }
+}
+
+function toBool(x: word) -> Bool {
+  match x {
+    | 0 => return False;
+    | _ => return True;
+  }
+}
+
+forall a.
+class a:Eq {
+  function eq(x:a, y:a) -> Bool;
+}
+
+instance word:Eq {
+  function eq(x:word, y:word) -> Bool {
+    let res : word;
+    assembly {
+       res := eq(x, y)
+    }
+    return toBool(res);
+  }
+}
+
+function not (b) {
+  match b {
+  | True => return False ;
+  | False => return True ;
+  }
+}
+
+function ne(x, y) {
+  return not(Eq.eq(x,y));
+}
+
+forall a. a:Eq =>
+class a:Num {
+  function toWord(x:a) -> word;
+  function fromWord(x:word) -> a;
+}
+
+instance word:Num {
+  function toWord(x:word) -> word { return x; }
+  function fromWord(x:word) -> word { return x; }
+}
+
+
+data uint = uint(word);
+
+instance uint:Eq {
+  function eq(x:uint, y:uint) -> Bool { return Eq.eq(Num.toWord(x), Num.toWord(y)); }
+}
+
+
+instance uint:Num {
+  function toWord(x:uint) -> word
+  {
+          match x {
+            | uint(y) => return y;
+        }
+  }
+  function fromWord(x:word) -> uint { return uint(x); }
+}

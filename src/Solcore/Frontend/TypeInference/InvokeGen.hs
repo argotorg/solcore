@@ -118,7 +118,10 @@ freshPatArg (TyVar v)
   = do
       n <- freshName
       pure (PVar n, Var n)
-freshPatArg t = error $ show t
+freshPatArg t
+  = do
+      n <- freshName
+      pure (PVar n, Var n)
 
 fresh :: Scheme -> TcM (Qual Ty)
 fresh (Forall _ qt) = pure qt

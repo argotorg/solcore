@@ -1,0 +1,14 @@
+import StorageLib;
+// import std;
+
+contract Simple {
+  val : word ;
+
+  function getVal () -> word {
+    return val ;
+  }
+
+  function main () -> word {
+    return getVal();
+  }
+}

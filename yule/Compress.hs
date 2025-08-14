@@ -64,6 +64,8 @@ compressMatch cty@(TSumN ts) top@(SMatch ty e alts) = SMatch ty' e' (go 0 top) w
         rest = go (k+1) right
     go k (SBlock [s]) = go k s
     go k s = error $ concat["compressMatch unimplemented for k=",show k," stmt: ", show s]
+compressMatch TWord top = top
+compressMatch cty top = error $ concat["compressMatch unimplemented for cty=",show cty," stmt: ", show top]
 
 instance Compress Contract where
     compress c = c { ccStmts = map compress (ccStmts c) }

@@ -1,0 +1,61 @@
+import IndexLib;
+
+/*
+contract Map {
+  reserved : word;
+  owner : address = address(0x123456789abcdef);
+  balances : mapping(address,word) // FIXME: address type
+
+  function mint(amount:word) {
+    balances[owner] = word; // simplified
+  }
+
+  function main() -> word {
+    mint(1000);
+    return balances[owner];
+  }
+}
+*/
+
+
+data MapCtx = MapCtx;
+data owner_sel = owner_sel;
+data balances_sel = balances_sel;
+// field reserved:word
+instance StructField(ContractStorage(MapCtx), owner_sel):StructField(address, (word)) {}
+instance StructField(ContractStorage(MapCtx), balances_sel):StructField(mapping(address,word), (word, address)) {}
+
+contract Map {
+
+   forall sel ftype offset. StructField(ContractStorage(MapCtx), sel):StructField(ftype, offset)
+   => function proxy_for(s:sel) -> MemberAccessProxy(ContractStorage(MapCtx), sel, offset) {
+      return MemberAccessProxy(ContractStorage(MapCtx), s);
+   }
+
+   function mint(amount:word) {
+     let owner_prx = proxy_for(owner_sel);
+     let bal_prx = proxy_for(balances_sel);
+     let bal_ref : storageRef(mapping(address,word)) = LValueMemberAccess.memberAccess(bal_prx);
+     let owner_bal_prx = IndexAccessProxy(bal_ref, rval(owner_prx));
+     let ref : storageRef(word)= LValueMemberAccess.memberAccess(owner_bal_prx);
+
+     Assign.assign(LValueMemberAccess.memberAccess(owner_bal_prx), amount) ;
+   }
+
+   function main () -> word {
+      let ctx = ContractStorage(MapCtx);
+      let owner_prx /*: MemberAccessProxy(ctx, owner_sel, ()) */ = MemberAccessProxy(ctx, owner_sel);
+      // owner =  address(0x123456789abcdef);
+      Assign.assign(LValueMemberAccess.memberAccess(owner_prx), address(0x123456789abcdef));
+
+      mint(1000);
+
+      // return balances[owner];
+
+      let bal_prx = proxy_for(balances_sel);
+      let bal_ref : storageRef(mapping(address,word)) = LValueMemberAccess.memberAccess(bal_prx);
+      let owner_bal_prx = IndexAccessProxy(bal_ref, rval(owner_prx));
+      return RValueMemberAccess.memberAccess(owner_bal_prx) : word;
+
+   }
+}

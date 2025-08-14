@@ -126,9 +126,9 @@ reduceByInst' n qs p@(InCls c _ _)
           Just (preds, subst', instd) -> do
             info ["   instance for ", pretty pp, " found: ", pretty instd, "@", pretty subst']
             extSubst subst'
-            ps' <- reduceByInst (n - 1) preds qs
+            ps' <- reduceByInst (n - 1) preds qs `wrapError` pp
             pure ps'
-reduceByInst' n _ (t1 :~: t2) =
+reduceByInst' n _ q@(t1 :~: t2) =
   do
     unify t1 t2
     pure []
@@ -232,12 +232,13 @@ reduceBySuper' n p@(InCls c _ _)
           , "since the solver exceeded the max number of iterations."
           ]
   | otherwise = do
-      ctbl <- getClassEnv
-      case Map.lookup c ctbl of
-        Nothing -> pure [p]
-        Just cinfo -> do
-          ps' <- concat <$> mapM (reduceBySuper' (n - 1)) (supers cinfo)
-          pure (p : ps')
+      cinfo <- askClassInfo c
+      info ["> Reducing by super class:", pretty p]
+      sm <- match (classpred cinfo) p
+      info [">> Reduced by super class:", pretty (apply sm (supers cinfo))]
+      extSubst sm
+      ps' <- concat <$> mapM (reduceBySuper' (n - 1)) (apply sm (supers cinfo))
+      pure (p : ps')
 
 -- entailment
 
@@ -258,7 +259,9 @@ entails' n qs p
           ]
   | otherwise = do
       ce <- getInstEnv
+      info [">>> Testing entailment of:", pretty p, "using:", if null qs then "<empty>" else pretty qs]
       qs' <- mapM reduceBySuper qs
+      info [">>> Reduced by superclass:", if null qs' then "<empty>" else pretty (concat qs')]
       r <- case selectInst ce p of
         Nothing -> pure False
         Just (ps, s, h) ->

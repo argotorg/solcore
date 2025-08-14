@@ -27,7 +27,7 @@ forall a . class a : Def {
 }
 
 instance () : Def {
-  function def() {
+  function def() -> () {
     return ();
   }
 }

@@ -1,5 +1,6 @@
 module Solcore.Frontend.TypeInference.TcStmt where
 
+import Common.Pretty
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
@@ -8,6 +9,7 @@ import Data.Generics hiding (Constr)
 import Data.List
 import qualified Data.Map as Map
 import Data.Maybe
+import GHC.Stack
 
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -149,7 +151,7 @@ tcLit :: Literal -> TcM Ty
 tcLit (IntLit _) = return word
 tcLit (StrLit _) = return string
 
-tcExp :: Infer Exp
+tcExp :: HasCallStack => Infer Exp
 tcExp (Lit l)
   = do
       t <- tcLit l
@@ -182,8 +184,9 @@ tcExp e@(Con n es)
       let ps' = concat (ps : pss)
           e1 = Con (Id n t) es'
       withCurrentSubst (e1, ps', t')
-tcExp (FieldAccess Nothing n)
-  = throwError "Not Implemented yet!"
+tcExp e@(FieldAccess Nothing n)
+  = notImplementedS "tcExp" e
+
 tcExp (FieldAccess (Just e) n)
   = do
       -- inferring expression type
@@ -335,6 +338,7 @@ createClosureBody n cdt@(DataTy dn vs [Constr cn ts]) ids bdy
       let ps = map PVar ids
           tc = funtype ts ct
       pure [Match [Var (Id n ct)] [([PCon (Id cn tc) ps], bdy)]]
+createClosureBody _ cdt _ _ = "createClosureBody" `notImplemented` cdt
 
 createClosureFreeFun :: Name ->
                         [Param Id] ->
@@ -441,6 +445,7 @@ annotatedScheme vs' sig@(Signature vs ps n args rt)
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
   | hasAnn sig = do
+      info ["# tcFunDef ", pretty sig]
       -- check if all variables are bound in signature.
       when (any (\ v -> v `notElem` (vs ++ vs')) (bv sig)) $ do
          let unbound_vars = bv sig \\ (vs ++ vs')
@@ -463,9 +468,12 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       unify nt (funtype ts' rt1')
       -- building the function type scheme
       free <- getEnvMetaVars
-      (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free
+      info ["Staring reduction for:", pretty ps1']
+      (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free `wrapError` d
+      info [" - splitContext retained: ", prettys rs]
       ty <- withCurrentSubst nt
       inf <- generalize (rs, ty)
+      info [" - generalized inferred type: ", pretty inf]
       ann <- annotatedScheme vs' sig
      -- checking subsumption
       subsCheck sig inf ann `wrapError` d
@@ -604,8 +612,7 @@ tcInstance' :: Instance Name -> TcM (Instance Id)
 tcInstance' idecl@(Instance d vs ctx n ts t funs)
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs)
-      funs' <- buildSignatures n ts t funs `wrapError` idecl
-      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False vs ctx) funs' `wrapError` idecl
+      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False vs ctx) funs `wrapError` idecl
       instd <- withCurrentSubst (Instance d vs ctx n ts t funs1)
       let
         ind@(Instance _ _ ctx' _ ts' t' funs2) = everywhere (mkT gen) instd
@@ -644,42 +651,10 @@ checkCompleteInstDef n ns
                             , "missing definitions for:"
                             ] ++ map pretty remaining
 
-buildSignatures :: Name -> [Ty] -> Ty -> [FunDef Name] -> TcM [FunDef Name]
-buildSignatures n ts t funs
-  = do
-      cpred <- classpred <$> askClassInfo n
-      let vs = bv cpred
-      mvs <- mapM (const freshTyVar) vs
-      sm <- match (insts (zip vs mvs) cpred) (InCls n t ts)
-      let qname m = QualName n (pretty m)
-      schs <- mapM (askEnv . qname . sigName . funSignature) funs
-      let
-          app (Forall _ qt) = apply sm (insts (zip vs mvs) qt)
-          tinsts = map app schs
-      zipWithM (buildSignature n) tinsts funs
-
-buildSignature :: Name -> Qual Ty -> FunDef Name -> TcM (FunDef Name)
-buildSignature n (ps :=> t) (FunDef sig bd)
-  = do
-      let (args, ret) = splitTy t
-          sig' = typeSignature n args ret ps sig
-      pure (FunDef sig' bd)
-
-typeSignature :: Name -> [Ty] -> Ty -> [Pred] -> Signature Name -> Signature Name
-typeSignature nm args ret ps sig
-  = sig {
-          sigName = QualName nm (pretty $ sigName sig)
-        , sigContext = sigContext sig
-        , sigParams = zipWith paramType args (sigParams sig)
-        , sigReturn = Just ret
-        }
-    where
-      paramType _ (Typed n t) = Typed n t
-      paramType t (Untyped n) = Typed n t
-
-schemeFromSignature :: Signature a -> Qual Ty
+schemeFromSignature :: Pretty a => Signature a -> Qual Ty
 schemeFromSignature (Signature vs ps n args ret)
   = ps :=> (funtype (map (\ (Typed _ t) -> t) args) (fromJust ret))
+schemeFromSignature sig = notImplemented "schemeFromSignature" sig
 
 -- checking instances and adding them in the environment
 
@@ -766,6 +741,8 @@ checkCoverage cn ts t
 checkMethod :: Pred -> FunDef Name -> TcM ()
 checkMethod ih@(InCls n t ts) d@(FunDef sig _)
   = do
+      -- checking if the signature is fully annotated
+      fullSignature sig
       -- getting current method signature in class
       let qn = QualName n (show (sigName sig))
       sch <- askEnv qn `wrapError` d
@@ -778,6 +755,14 @@ checkMethod ih@(InCls n t ts) d@(FunDef sig _)
       -- matching substitution of instance head and class predicate
       _ <- liftEither (match p ih) `wrapError` d
       pure ()
+
+fullSignature :: Signature Name -> TcM ()
+fullSignature sig@(Signature _ _ _ ps t)
+  = unless (all isTyped ps && maybe False (const True) t)
+           (throwError $ unlines ["Instance methods must have complete type signatures:", pretty sig])
+    where
+      isTyped (Typed _ _) = True
+      isTyped _ = False
 
 findPred :: Name -> [Pred] -> Maybe Pred
 findPred _ [] = Nothing
@@ -795,6 +780,20 @@ checkMeasure ps c
                               , "does not satisfy the Patterson conditions."]
     where smaller p = measure p < measure c
 
+-- subsumption check
+
+subsCheck :: Signature Name -> Scheme -> Scheme -> TcM ()
+subsCheck sig sch1 sch2
+    = do
+        info [">> Checking subsumption for:\n", pretty sch1, "\nand\n", pretty sch2]
+        (skol_tvs, (ps2 :=> t2)) <- skolemise sch2
+        (ps1 :=> t1) <- freshInst sch1
+        s <- mgu t1 t2 `catchError` (\ _ -> typeNotPolymorphicEnough sig sch1 sch2)
+        extSubst s
+        let esc_tvs = fv sch1
+            bad_tvs = filter (`elem` esc_tvs) skol_tvs
+        unless (null bad_tvs) $
+          typeNotPolymorphicEnough sig sch1 sch2
 
 -- type generalization
 
@@ -957,6 +956,7 @@ tcYulExp (YCall n es)
 tcYLit :: YLiteral -> TcM Ty
 tcYLit (YulString _) = return string
 tcYLit (YulNumber _) = return word
+tcYLit lit = notImplemented "tcYLit" lit
 
 tcYulCases :: YulCases -> TcM ()
 tcYulCases = mapM_ tcYulCase
@@ -1085,3 +1085,9 @@ invalidDefaultInst p
 ambiguousTypeError :: Scheme -> Signature Name -> TcM ()
 ambiguousTypeError sch sig
   = tcmError $ unlines ["Ambiguous infered type", pretty sch, "in", pretty sig]
+
+notImplemented :: (HasCallStack, Pretty a) => String -> a -> b
+notImplemented funName a = error $ concat [funName, " not implemented yet for ", pretty a]
+
+notImplementedS :: (HasCallStack, Show a) => String -> a -> b
+notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]

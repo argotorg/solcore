@@ -1,0 +1,10 @@
+import IndexLib;
+
+contract Counter {
+  counter : word;
+
+  function main() -> word {
+    counter = Num.add(counter, 42);
+    return counter;
+  }
+}
