@@ -8,6 +8,7 @@ if [[ $# -lt 1 ]]; then
     echo "Options:"
     echo "  --calldata <sig> [args...]  Generate calldata using cast calldata"
     echo "  --raw-calldata <hex>         Pass raw calldata directly to hevm"
+    echo "  --callvalue <value>         Pass callvalue to hevm (in wei)"
     exit 1
 fi
 
@@ -30,6 +31,7 @@ yulfile=$base.yul
 calldata_sig=""
 calldata_args=()
 raw_calldata=""
+callvalue=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -54,6 +56,15 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             raw_calldata=$1
+            shift
+            ;;
+        --callvalue)
+            shift
+            if [[ $# -eq 0 ]]; then
+                echo "Error: --callvalue requires a value"
+                exit 1
+            fi
+            callvalue=$1
             shift
             ;;
         *)
@@ -94,15 +105,17 @@ echo "Hex output: $hexfile"
 hevm_cmd="hevm exec --code-file $hexfile"
 
 if [[ -n "$calldata_sig" ]]; then
-    echo "Generating calldata: $calldata_sig ${calldata_args[*]}"
     if ! calldata=$(cast calldata "$calldata_sig" "${calldata_args[@]}"); then
         echo "Error: Failed to generate calldata"
         exit 1
     fi
     hevm_cmd="$hevm_cmd --calldata $calldata"
 elif [[ -n "$raw_calldata" ]]; then
-    echo "Using raw calldata: $raw_calldata"
     hevm_cmd="$hevm_cmd --calldata $raw_calldata"
+fi
+
+if [[ -n "$callvalue" ]]; then
+    hevm_cmd="$hevm_cmd --value $callvalue"
 fi
 
 echo "Executing..."
