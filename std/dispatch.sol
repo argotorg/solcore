@@ -40,7 +40,7 @@ forall ty callvalueCheckStatus . class ty:ExecMethod {
 }
 
 // If fn matches the provided args/ret types, then we can execute any method
-forall name args rets fn callvalueCheckStatus . fn:invokable(args,ret) => instance Method(name,args,rets,fn):ExecMethod {
+forall name args rets fn callvalueCheckStatus . fn:invokable(args,ret) => instance Method(name,Proxy(args),Proxy(rets),fn):ExecMethod {
   function exec(m : Method(name,args,rets,fn), pstatus : Proxy(callvalueCheckStatus)) -> () {
     match m {
       | Method(nm,args,rets,fn) =>
@@ -59,7 +59,7 @@ forall name args rets fn callvalueCheckStatus . fn:invokable(args,ret) => instan
 }
 
 // If fn matches the provided args/ret types, then we can execute any fallback
-forall args rets fn callvalueCheckStatus . fn:invokable(args,ret) => instance Fallback(args,rets,fn):ExecMethod {
+forall args rets fn callvalueCheckStatus . fn:invokable(args,ret) => instance Fallback(Proxy(args),Proxy(rets),fn):ExecMethod {
   function exec(fb : Fallback(args,rets,fn), pstatus : Proxy (callvalueCheckStatus)) -> () {
     match fb {
       | Fallback(args, rets, fn) =>
