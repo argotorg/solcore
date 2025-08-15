@@ -650,11 +650,6 @@ checkCompleteInstDef n ns
                             , "missing definitions for:"
                             ] ++ map pretty remaining
 
-schemeFromSignature :: Pretty a => Signature a -> Qual Ty
-schemeFromSignature (Signature vs ps n args ret)
-  = ps :=> (funtype (map (\ (Typed _ t) -> t) args) (fromJust ret))
-schemeFromSignature sig = notImplemented "schemeFromSignature" sig
-
 -- checking instances and adding them in the environment
 
 checkInstances :: [Instance Name] -> TcM ()
