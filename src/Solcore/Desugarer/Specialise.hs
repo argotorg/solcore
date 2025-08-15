@@ -286,6 +286,7 @@ specCall i args ty = do
       return (Id name' ty', args'')
     Nothing -> do
       debug ["! specCall: no resolution found for ", show name, " : ", pretty funType]
+      panics ["! specCall: no resolution found for ", show name, " : ", pretty funType]
       return (i, args')
   where
     guardSimpleType :: Ty -> SM ()
