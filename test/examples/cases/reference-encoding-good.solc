@@ -95,7 +95,7 @@ instance uint:MemoryType {
 }
 
 forall a . a : MemoryType => instance memoryRef(a):Assign(a) {
-    function assign(l:memoryRef(a), y:a) {
+    function assign(l:memoryRef(a), y:a) -> () {
         MemoryType.store(Typedef.rep(l), y);
     }
 }

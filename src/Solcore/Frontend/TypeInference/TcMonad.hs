@@ -186,21 +186,6 @@ skolemise sch@(Forall vs qt)
       sks <- mapM (const freshSkolem) bvs
       pure (sks, insts (zip bvs (map TyVar sks)) qt)
 
--- subsumption check
-
-subsCheck :: Signature Name -> Scheme -> Scheme -> TcM ()
-subsCheck sig sch1@(Forall _ (_ :=> t1)) sch2@(Forall _ (_ :=> t2))
-    = do
-        info [">> Checking subsumption for:\n", pretty sch1, "\nand\n", pretty sch2]
-        (skol_tvs, (_ :=> t2)) <- skolemise sch2
-        (_ :=> t1) <- freshInst sch1
-        s <- mgu t1 t2 `catchError` (\ _ -> typeNotPolymorphicEnough sig sch1 sch2)
-        extSubst s
-        let esc_tvs = fv sch1
-            bad_tvs = filter (`elem` esc_tvs) skol_tvs
-        unless (null bad_tvs) $
-          typeNotPolymorphicEnough sig sch1 sch2
-
 -- type instantiation
 
 class Fresh a where
@@ -372,7 +357,14 @@ askClassInfo :: Name -> TcM ClassInfo
 askClassInfo n
   = do
       r <- Map.lookup n <$> gets classTable
-      maybe (undefinedClass n) pure r
+      case r of
+        Nothing -> undefinedClass n
+        Just cinfo -> do
+          let vs = bv (classpred cinfo : supers cinfo)
+          fs <- mapM (const freshTyVar) vs
+          let env = zip vs fs
+          pure (cinfo {classpred = insts env (classpred cinfo)
+                      , supers = insts env (supers cinfo)})
 
 -- environment operations: variables
 

@@ -25,7 +25,7 @@
         hspkgs = pkgs.haskell.packages.ghc982;
 
         gitignore = pkgs.nix-gitignore.gitignoreSourcePure [ ./.gitignore ];
-        sol-core = (hspkgs.callCabal2nix "sol-core" (gitignore ./.) { });
+        sol-core = hspkgs.callCabal2nix "sol-core" (gitignore ./.) { };
         texlive = pkgs.texlive.combine { inherit (pkgs.texlive) scheme-small thmtools pdfsync lkproof cm-super; };
       in
       rec {

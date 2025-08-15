@@ -439,7 +439,9 @@ data balances_sel = balances_sel  ;
 instance StructField(ContractStorage(MiniCxt), balances_sel) : StructField (mapping(address, uint), (word, (address, (address, (uint, (uint, ())))))) {
 }
 data allowance_sel = allowance_sel  ;
-instance StructField(ContractStorage(MiniCxt), allowance_sel) : StructField (mapping(address, mapping(address, uint)), (word, (address, (address, (uint, (uint, (mapping(address, uint), ()))))))) {
+
+instance StructField(ContractStorage(MiniCxt), allowance_sel) : StructField (mapping(address, storage(mapping, uint)), (word, (address, (address, (uint, (uint, (mapping(address, uint), ()))))))) {
+
 }
 contract Mini {
    function mint (amount : uint) -> () {
@@ -461,7 +463,7 @@ contract Mini {
    function main () -> uint {
       init();
       mint(uint(1000));
-      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), allowance_sel)), rval(MemberAccessProxy(ContractStorage(MiniCxt), owner_sel)))), rval(MemberAccessProxy(ContractStorage(MiniCxt), msg_sender_sel)))), uint(10000));
+      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), allowance_sel)), rval(MemberAccessProxy(ContractStorage(MiniCxt), owner_sel)))), rval(MemberAccessProxy(ContractStorage(MiniCxt), msg_sender_sel)))), 10000);
       transferFrom(rval(MemberAccessProxy(ContractStorage(MiniCxt), owner_sel)), rval(MemberAccessProxy(ContractStorage(MiniCxt), msg_sender_sel)), uint(42));
       return rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(MiniCxt), msg_sender_sel)))) : uint;
    }

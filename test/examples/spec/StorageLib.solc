@@ -133,7 +133,7 @@ instance uint:StorageType {
 }
 
 forall a . a : StorageType => instance storageRef(a):Assign(a) {
-    function assign(l:storageRef(a), y:a) {
+    function assign(l:storageRef(a), y:a) -> () {
         StorageType.store(Typedef.rep(l), y);
     }
 }
@@ -227,7 +227,7 @@ forall cxt fieldSelector fieldType offsetType
     function memberAccess(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> storageRef(fieldType) {
         let ptr:word = 0x100; // forge uses at least 1 storage slot
         let offsetSize:word = StorageSize.size(Proxy:Proxy(offsetType));
-	
+
         assembly {
             ptr := add(ptr, offsetSize)
         }

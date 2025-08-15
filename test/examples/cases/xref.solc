@@ -1,0 +1,131 @@
+function add_(x:word, y:word) { // _add is not a legal identifier :(
+    let res: word;
+    assembly {
+       res := add(x, y)
+    }
+    return res;
+  }
+
+function mload_(x:word) -> word {
+    let res: word;
+    assembly {
+       res := mload(x)
+    }
+    return res;
+  }
+
+function mstore_(a:word, v:word) {
+    assembly { mstore(a,v) }
+}
+
+forall r d . class r:Ref(d) { function load(x:r) -> d; function store(x:r, v:d) -> ();}
+
+forall self underlyingType . class self:Typedef(underlyingType) {
+    function rep(x:self) -> underlyingType;   // abbr: x.rep = Typedef.rep(x)
+    function abs(x:underlyingType) -> self;   // abbr: x.abs
+}
+data Proxy(a) = Proxy;
+
+data M(a) = M(word);
+
+forall a . instance M(a) : Typedef(word) {
+  function rep(m) { match m { | M(w) => return w; }}
+  function abs(w) { return M(w); }
+}
+
+forall Self . class Self:MemoryType {
+    function memorySize(p:Proxy(Self)) -> word;
+    /* inline function sizeof(Self) -> word { // an abbreviation to avoid writing Proxy; wasteful unless inlined
+      return memorySize(Proxy:Proxy(self));
+    } */
+    function memoryStep(word, self:Self) -> word;
+    function mload(r:word) -> Self;
+    function mstore(r:word, v:Self) -> ();
+}
+
+forall Self . Self:MemoryType => function sizeof(self:Self) -> word {
+      return MemoryType.memorySize(Proxy:Proxy(Self));
+}
+
+forall a d . class a:MemoryRef(d) { function addr(r:a) -> word; }
+forall a . instance M(a):MemoryRef(a) { function addr(r:M(a)) -> word {return Typedef.rep(r);} }
+
+forall a . function xaddr(r:M(a)) -> word { return MemoryRef.addr(r); }
+forall a b . function asMemRefTo(r:M(a), p:Proxy(b)) -> M(b) { return Typedef.abs(xaddr(r)); }
+
+forall a . a:MemoryType => function stepStore(aa: word, va: a) -> word {
+  MemoryType.mstore(aa, va);
+  return add_(aa, MemoryType.memorySize(Proxy:Proxy(a)));
+}
+
+forall Self r . Self:MemoryType, r:MemoryRef(Self) => instance r : Ref(Self) {
+  function load(r:M(Self)) { return MemoryType.mload(xaddr(r)); }
+  function store(r:M(Self), v:Self) { MemoryType.mstore(xaddr(r), v); }
+}
+
+instance word:MemoryType {
+  function memorySize(p:Proxy(word)) -> word { return 32; }
+  function memoryStep(a:word, self:word) -> word { return add_(a,32); }
+  function mload(a: word) -> word { return mload_(a); }
+  function mstore(a: word, v:word) -> () { mstore_(a, v); }
+}
+
+forall a b . a:MemoryType, b:MemoryType => instance (a,b) : MemoryType {
+  function memorySize(p:Proxy((a,b))) -> word {
+    return add_(MemoryType.memorySize(Proxy:Proxy(a)), MemoryType.memorySize(Proxy:Proxy(a)) );
+  }
+
+  function mload(aa:word) -> (a,b)  {
+    let va = MemoryType.mload(aa);
+    let ab = add_(aa, sizeof(va));
+    let vb = MemoryType.mload(ab);
+    return (va,vb);
+  }
+
+  function mstore(aa:word, v: (a,b)) {
+    match v { | pair(va, vb) => mstore2(aa, va, vb); } // match-compiler cannot compile mopre than 1 stmt in a branch :(
+  }
+}
+
+forall a b . a: MemoryType, b: MemoryType => function mstore2(aa:word, va:a, vb: b) { //needed because of bug in match-compiler
+  let ab = stepStore(aa, va);
+  MemoryType.mstore(ab, vb);
+}
+
+pragma no-bounded-variable-condition MemoryRef;
+pragma no-coverage-condition Ref;
+pragma no-patterson-condition Ref;
+data XRef(st, field, fieldType) = XRef(st, field);
+data PairFst = PairFst;
+data PairSnd = PairSnd;
+
+
+forall a b r . r:MemoryRef ( (a,b)), a:MemoryType, b:MemoryType => instance XRef(r, PairFst, a) : MemoryRef(a) {
+  function addr(xr) { match xr { | XRef(r, _) => return MemoryRef.addr(r); } }
+}
+
+forall a b r . r:MemoryRef ( (a,b)), a:MemoryType, b:MemoryType => instance XRef(r, PairSnd, b) : MemoryRef(b) {
+  function addr(xr) {
+    match xr {
+      | XRef(r, _) => return add_(MemoryRef.addr(r), MemoryType.memorySize(Proxy:Proxy(b)));
+    }
+  }
+}
+
+contract Ref219 {
+  function main() {
+    let mp:M((word, word, word)) = M(96); // no alloc yet
+    let p = (1,16,25);
+    Ref.store(mp, p);
+
+    let ra = XRef(mp, PairFst);
+    let a = Ref.load(ra);
+    let r2 = XRef(mp, PairSnd);
+    let rb = XRef(r2, PairFst);
+    let a = Ref.load(ra);
+    let b = Ref.load(rb);
+    let rc = XRef(r2, PairSnd);
+    let c = Ref.load(rc);
+    return add_(a, add_(b, c));
+  }
+}
