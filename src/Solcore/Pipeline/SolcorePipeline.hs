@@ -8,6 +8,7 @@ import Data.IORef
 import System.Exit (ExitCode(..))
 
 import qualified Data.Time as Time
+import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
@@ -50,6 +51,7 @@ compile opts = runExceptT $ do
   let verbose = optVerbose opts
       noDesugarCalls = optNoDesugarCalls opts
       noMatchCompiler = optNoMatchCompiler opts
+      noIfDesugar = optNoIfDesugar opts
       timeItNamed :: String -> IO a -> IO a
       timeItNamed = optTimeItNamed opts
       file = fileName opts
@@ -94,11 +96,20 @@ compile opts = runExceptT $ do
     putStrLn "> Elaborated tree:"
     putStrLn $ pretty typed
 
+  -- If / boolean desugaring
+
+  typed' <- liftIO $ if noIfDesugar then pure typed
+              else timeItNamed "If/Bool desugaring" (pure (ifDesugarer typed))
+
+  liftIO $ when verbose $ do
+    putStrLn "> If / Bool desugaring:"
+    putStrLn $ pretty typed'
+
   -- Match compilation
   matchless <-
     if noMatchCompiler
-    then pure typed
-    else ExceptT $ timeItNamed "Match compiler" $ matchCompiler typed
+    then pure typed'
+    else ExceptT $ timeItNamed "Match compiler" $ matchCompiler typed'
   let printMatch = (not $ noMatchCompiler) && (verbose || optDumpDS opts)
   liftIO $ when printMatch $ do
     putStrLn "> Match compilation result:"
