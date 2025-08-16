@@ -462,8 +462,8 @@ instance uint256:ABIAttribs {
     function isStatic(ty : Proxy(uint256)) -> bool { return true; }
 }
 forall t . instance DynArray(t):ABIAttribs {
-    function headSize(ty : DynArray(t)) -> word { return 32; }
-    function isStatic(ty : DynArray(t)) -> bool { return false; }
+    function headSize(ty : Proxy(DynArray(t))) -> word { return 32; }
+    function isStatic(ty : Proxy(DynArray(t))) -> bool { return false; }
 }
 
 // computes the attribs for a pair of two types that implement attribs
