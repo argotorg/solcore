@@ -22,7 +22,7 @@ data array(size, elem) = array;
 data memory(a) = memory(word);
 
 forall self indexType elementType . class self:IndexAccessible (indexType, elementType){
-    function set(self:self, ix:indexType, val:elementType);
+    function set(self:self, ix:indexType, val:elementType) -> ();
     function at(self:self, ix:indexType) -> elementType;
 }
 
@@ -31,7 +31,7 @@ forall self . class self:ToWord{
 }
 
 instance Zero : ToWord {
-    function toWord(zero : Zero) -> word { return 0; }
+    function toWord(zero : Itself(Zero)) -> word { return 0; }
 }
 
 forall prev . prev:ToWord => instance Succ(prev) : ToWord {
