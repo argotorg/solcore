@@ -166,16 +166,37 @@ isDirectCall n
 -- including contructors on environment
 
 checkDataType :: DataTy -> TcM ()
-checkDataType (DataTy n vs constrs)
+checkDataType d@(DataTy n vs constrs)
   = do
-      let vals' = map (\ (n, ty) -> (n, Forall (fv ty) ([] :=> ty))) vals
+      let vals' = map (\ (n, ty) -> (n, Forall (bv ty) ([] :=> ty))) vals
       mapM_ (uncurry extEnv) vals'
       modifyTypeInfo n ti
+     -- checking kinds
+      mapM_ kindCheck (concatMap constrTy constrs) `wrapError` d
     where
       ti = TypeInfo (length vs) (map fst vals) []
       tc = TyCon n (TyVar <$> vs)
       vals = map constrBind constrs
       constrBind c = (constrName c, (funtype (constrTy c) tc))
+
+-- kind check
+
+kindCheck :: Ty -> TcM Ty
+kindCheck (t1 :-> t2)
+  = (:->) <$> kindCheck t1 <*> kindCheck t2
+kindCheck t@(TyCon n ts)
+  = do
+      ti <- askTypeInfo n `wrapError` t
+      unless (n == Name "pair" || arity ti == length ts) $
+        throwError $ unlines [ "Invalid number of type arguments!"
+                             , "Type " ++ pretty n ++ " is expected to have " ++
+                               show (arity ti) ++ " type arguments"
+                             , "but, type " ++ pretty t ++
+                               " has " ++ (show $ length ts) ++ " arguments"]
+      mapM_ kindCheck ts
+      pure t
+kindCheck t = pure t
+
 
 -- Skolemization
 

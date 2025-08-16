@@ -606,11 +606,20 @@ extSignature sig@(Signature _ preds n ps t)
 tcInstance :: Instance Name -> TcM (Instance Id)
 tcInstance idecl@(Instance d vs ctx n ts t funs)
   = do
+      -- checking instance type parameters
+      mapM_ kindCheck (t : ts) `wrapError` idecl
+      -- checking constraints
+      mapM_ checkConstraint ctx `wrapError` idecl
       vs' <- mapM (const freshVar) vs
       let env = zip vs (map Meta vs')
           idecl'@(Instance _ _ ctx' _ ts' t' funs')
             = everywhere (mkT (insts @Ty env)) idecl
       tcInstance' (Instance d [] ctx' n ts' t' funs')
+
+checkConstraint :: Pred -> TcM ()
+checkConstraint p@(InCls _ t ts)
+  = mapM_ kindCheck (t : ts) `wrapError` p
+checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
 
 tcInstance' :: Instance Name -> TcM (Instance Id)
 tcInstance' idecl@(Instance d vs ctx n ts t funs)
@@ -854,26 +863,6 @@ generalize (ps,t)
           vs = map gvar $ mv (ps1,t1) \\ envVars
           sch = Forall vs (everywhere (mkT gen) $ ps1 :=> t1)
       return sch
-
--- kind check
-
-kindCheck :: Ty -> TcM Ty
-kindCheck (t1 :-> t2)
-  = (:->) <$> kindCheck t1 <*> kindCheck t2
-kindCheck t@(TyCon n ts)
-  = do
-      ti <- askTypeInfo n `wrapError` t
-      unless (n == Name "pair" || arity ti == length ts) $
-        throwError $ unlines [ "Invalid number of type arguments!"
-                             , "Type " ++ pretty n ++ " is expected to have " ++
-                               show (arity ti) ++ " type arguments"
-                             , "but, type " ++ pretty t ++
-                               " has " ++ (show $ length ts) ++ " arguments"]
-      mapM_ kindCheck ts
-      pure t
-kindCheck t = pure t
-
-
 
 tcBody :: Body Name -> TcM (Body Id, [Pred], Ty)
 tcBody [] = pure ([], [], unit)
