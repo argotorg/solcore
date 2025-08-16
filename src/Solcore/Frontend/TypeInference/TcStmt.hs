@@ -474,7 +474,12 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       inf <- generalize (rs, ty)
       info [" - generalized inferred type: ", pretty inf]
       ann <- annotatedScheme vs' sig
-     -- checking subsumption
+      -- checking ambiguity
+      when (ambiguous inf) $
+        ambiguousTypeError inf sig
+      when (ambiguous ann) $
+        ambiguousTypeError ann sig
+      -- checking subsumption
       subsCheck sig inf ann `wrapError` d
       -- elaborating function body
       fdt <- elabFunDef vs' sig1 bd1' inf ann
