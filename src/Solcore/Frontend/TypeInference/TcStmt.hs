@@ -616,12 +616,12 @@ tcInstance' idecl@(Instance d vs ctx n ts t funs)
       let
         ind@(Instance _ _ ctx' _ ts' t' funs2) = everywhere (mkT gen) instd
         vs1 = bv ind
-        funs3 = map (remVars vs1) funs2
+        funs3 = map (updateSignature vs1 n) funs2
       pure (Instance d vs1 ctx' n ts' t' funs3)
 
-remVars :: [Tyvar] -> FunDef Id -> FunDef Id
-remVars vs' (FunDef (Signature vs ps n args rt) bd)
-  = FunDef (Signature (vs \\ vs') ps n args rt) bd
+updateSignature :: [Tyvar] -> Name -> FunDef Id -> FunDef Id
+updateSignature vs' c (FunDef (Signature vs ps n args rt) bd)
+  = FunDef (Signature (vs \\ vs') ps (QualName c (pretty n)) args rt) bd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
 checkDeferedConstraints = mapM_ checkDeferedConstraint
