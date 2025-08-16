@@ -616,8 +616,57 @@ tcInstance' idecl@(Instance d vs ctx n ts t funs)
       let
         ind@(Instance _ _ ctx' _ ts' t' funs2) = everywhere (mkT gen) instd
         vs1 = bv ind
-        funs3 = map (updateSignature vs1 n) funs2
-      pure (Instance d vs1 ctx' n ts' t' funs3)
+        funs3 = sortBy (\ f f' -> compare (sigName (funSignature f))
+                                          (sigName (funSignature f')))
+                       (map (updateSignature vs1 n) funs2)
+      verifySignatures (Instance d vs1 ctx' n ts' t' funs3)
+
+verifySignatures :: Instance Id -> TcM (Instance Id)
+verifySignatures instd@(Instance d vs ctx n ts t funs)
+  = do
+      -- get the list of class method names from class info
+      names <- methods <$> askClassInfo n
+      let qnames = map (QualName n . pretty) names
+      schs <- mapM (\ q -> (q,) <$> askEnv q) qnames
+      -- instantiate most general type
+      qts <- mapM (\ (q, s) -> (q,) <$> freshInst s) schs
+      -- build instance member function type scheme
+      fschs <- mapM (\ f -> do
+                  let sig = funSignature f
+                  (sigName sig,) <$> schemeFromSignature sig) funs `wrapError` instd
+      -- instantiate function type scheme
+      fqts <- mapM (\ (q,s) -> (q,) <$> freshInst s) fschs
+      -- combine triples
+      let m = [(q, ct, it) | (q, ct) <- qts, (q', it) <- fqts, q == q']
+      mapM_ checkMemberType m `wrapError` instd
+      pure instd
+
+checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
+checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
+  = do
+      _ <- match t t' `catchError` (\ _ -> invalidMemberType qn t t')
+      pure ()
+
+invalidMemberType :: Name -> Ty -> Ty -> TcM a
+invalidMemberType n cls ins
+  = throwError $ unlines ["The instance method:"
+                         , pretty n
+                         , "has the following infered type:"
+                         , pretty ins
+                         , "which is not an valid instance for:"
+                         , pretty cls]
+
+schemeFromSignature :: Signature Id -> TcM Scheme
+schemeFromSignature sig@(Signature vs ps n args (Just rt))
+  = do
+      unless (all isTyped args) $
+        throwError $ unwords ["Invalid instance member signature:", pretty sig]
+      pure $ Forall vs (ps :=> (funtype ts rt))
+    where
+      isTyped (Typed _ _) = True
+      isTyped _ = False
+
+      ts = map (\ (Typed _ t) -> t) args
 
 updateSignature :: [Tyvar] -> Name -> FunDef Id -> FunDef Id
 updateSignature vs' c (FunDef (Signature vs ps n args rt) bd)
