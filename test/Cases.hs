@@ -47,7 +47,8 @@ spec =
     , runTestForFile "939badfood.solc" specFolder
     , runTestForFile "SimpleField.solc" specFolder
     , runTestForFile "121counter.solc" specFolder
-    , runTestForFileWith stdOpt { optNoDesugarCalls = True } "126nanoerc20.solc" specFolder
+    , runTestForFile "126nanoerc20.solc" specFolder
+    , runTestForFile "127microerc20.solc" specFolder
     ]
  where
   specFolder = "./test/examples/spec"
