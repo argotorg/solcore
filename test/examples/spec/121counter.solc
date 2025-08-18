@@ -1,0 +1,12 @@
+// test single contract field
+import StorageLib;
+
+
+contract Counter {
+  counter : word;
+
+  function main() -> word {
+    counter = add(counter, 1);
+    return counter;
+  }
+}

@@ -1,5 +1,6 @@
 module Solcore.Frontend.TypeInference.TcStmt where
 
+import Common.Pretty
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
@@ -8,6 +9,7 @@ import Data.Generics hiding (Constr)
 import Data.List
 import qualified Data.Map as Map
 import Data.Maybe
+import GHC.Stack
 
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -149,7 +151,7 @@ tcLit :: Literal -> TcM Ty
 tcLit (IntLit _) = return word
 tcLit (StrLit _) = return string
 
-tcExp :: Infer Exp
+tcExp :: HasCallStack => Infer Exp
 tcExp (Lit l)
   = do
       t <- tcLit l
@@ -182,8 +184,9 @@ tcExp e@(Con n es)
       let ps' = concat (ps : pss)
           e1 = Con (Id n t) es'
       withCurrentSubst (e1, ps', t')
-tcExp (FieldAccess Nothing n)
-  = throwError "Not Implemented yet!"
+tcExp e@(FieldAccess Nothing n)
+  = notImplementedS "tcExp" e
+
 tcExp (FieldAccess (Just e) n)
   = do
       -- inferring expression type
@@ -335,6 +338,7 @@ createClosureBody n cdt@(DataTy dn vs [Constr cn ts]) ids bdy
       let ps = map PVar ids
           tc = funtype ts ct
       pure [Match [Var (Id n ct)] [([PCon (Id cn tc) ps], bdy)]]
+createClosureBody _ cdt _ _ = "createClosureBody" `notImplemented` cdt
 
 createClosureFreeFun :: Name ->
                         [Param Id] ->
@@ -441,6 +445,7 @@ annotatedScheme vs' sig@(Signature vs ps n args rt)
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
   | hasAnn sig = do
+      info ["\n# tcFunDef ", pretty sig]
       -- check if all variables are bound in signature.
       when (any (\ v -> v `notElem` (vs ++ vs')) (bv sig)) $ do
          let unbound_vars = bv sig \\ (vs ++ vs')
@@ -464,8 +469,10 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       -- building the function type scheme
       free <- getEnvMetaVars
       (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free
+      info [" - splitContext retained: ", prettys rs]
       ty <- withCurrentSubst nt
       inf <- generalize (rs, ty)
+      info [" - generalized inferred type: ", pretty inf]
       ann <- annotatedScheme vs' sig
      -- checking subsumption
       subsCheck sig inf ann `wrapError` d
@@ -677,9 +684,10 @@ typeSignature nm args ret ps sig
       paramType _ (Typed n t) = Typed n t
       paramType t (Untyped n) = Typed n t
 
-schemeFromSignature :: Signature a -> Qual Ty
+schemeFromSignature :: Pretty a => Signature a -> Qual Ty
 schemeFromSignature (Signature vs ps n args ret)
   = ps :=> (funtype (map (\ (Typed _ t) -> t) args) (fromJust ret))
+schemeFromSignature sig = notImplemented "schemeFromSignature" sig
 
 -- checking instances and adding them in the environment
 
@@ -957,6 +965,7 @@ tcYulExp (YCall n es)
 tcYLit :: YLiteral -> TcM Ty
 tcYLit (YulString _) = return string
 tcYLit (YulNumber _) = return word
+tcYLit lit = notImplemented "tcYLit" lit
 
 tcYulCases :: YulCases -> TcM ()
 tcYulCases = mapM_ tcYulCase
@@ -1085,3 +1094,9 @@ invalidDefaultInst p
 ambiguousTypeError :: Scheme -> Signature Name -> TcM ()
 ambiguousTypeError sch sig
   = tcmError $ unlines ["Ambiguous infered type", pretty sch, "in", pretty sig]
+
+notImplemented :: (HasCallStack, Pretty a) => String -> a -> b
+notImplemented funName a = error $ concat [funName, " not implemented yet for ", pretty a]
+
+notImplementedS :: (HasCallStack, Show a) => String -> a -> b
+notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]

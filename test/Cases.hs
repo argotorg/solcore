@@ -45,6 +45,10 @@ spec =
     , runTestForFile "11negPair.solc" specFolder
     , runTestForFile "903badassign.solc" specFolder
     , runTestForFile "939badfood.solc" specFolder
+    , runTestForFile "SimpleField.solc" specFolder
+    , runTestForFile "121counter.solc" specFolder
+    , runTestForFile "126nanoerc20.solc" specFolder
+    , runTestForFile "127microerc20.solc" specFolder
     ]
  where
   specFolder = "./test/examples/spec"
@@ -101,7 +105,6 @@ cases =
     , runTestForFile "PeanoMatch.solc" caseFolder
     , runTestForFile "RefDeref.solc" caseFolder
     , runTestExpectingFailure "SillyReturn.solc" caseFolder
-    , runTestForFile "SimpleField.solc" caseFolder
     , runTestExpectingFailure "SimpleInvoke.solc" caseFolder
     , runTestForFile "closure-capture-only.solc" caseFolder
     , runTestForFile "SimpleLambda.solc" caseFolder
@@ -158,11 +161,13 @@ type FileName = String
 type BaseFolder = String
 
 runTestForFile :: FileName -> BaseFolder -> TestTree
-runTestForFile file folder =
+runTestForFile file folder = runTestForFileWith (emptyOption mempty) file folder
+
+runTestForFileWith :: Option -> FileName -> BaseFolder -> TestTree
+runTestForFileWith opts file folder =
   testCase file $ do
     let filePath = folder </> file
-        opts = emptyOption filePath
-    result <- compile opts
+    result <- compile (opts { fileName = filePath })
     case result of
       Left err -> assertFailure err
       Right _ -> return ()

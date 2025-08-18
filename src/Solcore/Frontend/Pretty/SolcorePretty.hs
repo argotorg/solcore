@@ -1,4 +1,6 @@
 {-# LANGUAGE InstanceSigs #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module Solcore.Frontend.Pretty.SolcorePretty(module Common.Pretty, pretty) where
 
 import qualified Data.List.NonEmpty as N
@@ -8,7 +10,7 @@ import Prelude hiding ((<>))
 
 import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name
-import Solcore.Frontend.Pretty.Name
+import Solcore.Frontend.Pretty.Name()
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.TypeInference.Id
@@ -48,6 +50,7 @@ instance Pretty a => Pretty (TopDecl a) where
   ppr (TMutualDef ts)
     = vcat (map ppr ts)
   ppr (TDataDef d) = ppr d
+  ppr (TSym s) = ppr s
   ppr (TPragmaDecl p) = ppr p
 
 instance Pretty Pragma where
@@ -136,7 +139,7 @@ instance Pretty a => Pretty (Class a) where
 
 pprSignatures :: Pretty a => [Signature a] -> Doc
 pprSignatures
-  = vcat . map ppr
+  = vcat . map ((<>semi) . ppr)
 
 instance Pretty a => Pretty (Signature a) where
    ppr (Signature vs ctx n ps ty)
@@ -152,7 +155,7 @@ pprSigPrefix [] ps = pprContext ps
 pprSigPrefix vs []
   = text "forall" <+> hsep (map ppr vs) <+> text "."
 pprSigPrefix vs ps
-  = text "forall" <+> hsep (map ppr vs) <+> text "." <+> pprContext ps
+  = text "forall" <+> hsep (map ppr vs) <+> text "." $$ pprContext ps
 
 instance Pretty a => Pretty (Instance a) where
   ppr (Instance d vs ctx n tys ty funs)
@@ -176,7 +179,7 @@ pprContext ps
   = (commaSep $ map ppr ps) <+> text "=>"
 
 instance Pretty [Pred] where
-  ppr = hsep . map ppr
+  ppr = parens . commaSepList
 
 pprFunBlock :: Pretty a => [FunDef a] -> Doc
 pprFunBlock
@@ -247,6 +250,7 @@ pprOptTy (Just t)
                     text ":" <+> parens (commaSep (map ppr ts')) <+>
                     text "->" <+> ppr t'
 
+isVar :: Ty -> Bool
 isVar (TyVar _) = True
 isVar _ = False
 
@@ -260,10 +264,10 @@ instance Pretty a => Pretty (Exp a) where
     | isTuple n = parens $ commaSep (map ppr es)
     | otherwise
       = ppr n <> if null es then empty
-                 else (parens $ commaSep $ map ppr es)
+                 else (parens (nest 1 $ commaSep $ map ppr es) )
   ppr (Lit l) = ppr l
   ppr (Call e n es)
-    = pprE e <> ppr n <> (parens $ commaSep $ map ppr es)
+    = pprE e <> ppr n <> (parens (nest 1 $ commaSep $ map ppr es))
   ppr (Lam args bd _)
     = text "lam" <+>
       pprParams args <+>
@@ -272,6 +276,8 @@ instance Pretty a => Pretty (Exp a) where
       rbrace
   ppr (TyExp e ty)
     = ppr e <+> text ":" <+> ppr ty
+  ppr (FieldAccess me n) = maybe (text "this") ppr me <> char '.' <> ppr n
+  -- ppr e = text $ "Pretty.ppr not implemented for\n" ++ show(pShow e)
 
 pprE :: Pretty a => Maybe (Exp a) -> Doc
 pprE Nothing = ""
@@ -310,9 +316,9 @@ instance Pretty Scheme where
       ppr' (Forall [] (ctx :=> t))
         = text "forall"       <+>
           pprContext ctx <+> ppr t
-      ppr' (Forall vs (ctx :=> t))
+      ppr' (Forall vars (ctx :=> t))
         = text "forall"       <+>
-          hsep (map ppr vs)   <+>
+          hsep (map ppr vars)   <+>
           text "."            <+>
           pprContext ctx      <+>
           ppr t
@@ -352,4 +358,3 @@ instance Pretty Subst where
 
 instance Pretty Id  where
   ppr (Id n t) = ppr n  <> text "<" <> ppr t <> text ">"
-
