@@ -441,7 +441,7 @@ annotatedScheme vs' sig@(Signature vs ps n args rt)
          unboundTypeVars sig unbound_vars
       pure (Forall vs (ps :=> (funtype ts t)))
 
-
+-- FIXME fix type instantiation here.
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
   | hasAnn sig = do
@@ -468,7 +468,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       unify nt (funtype ts' rt1')
       -- building the function type scheme
       free <- getEnvMetaVars
-      (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free
+      (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free `wrapError` d
       info [" - splitContext retained: ", prettys rs]
       ty <- withCurrentSubst nt
       inf <- generalize (rs, ty)
@@ -477,8 +477,6 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       -- checking ambiguity
       when (ambiguous inf) $
         ambiguousTypeError inf sig
-      when (ambiguous ann) $
-        ambiguousTypeError ann sig
       -- checking subsumption
       subsCheck sig inf ann `wrapError` d
       -- elaborating function body

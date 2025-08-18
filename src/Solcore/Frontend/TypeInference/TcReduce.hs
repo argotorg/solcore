@@ -29,6 +29,10 @@ splitContext ps qs fs =
     info [">> Retained constraints:", pretty rs]
     when (groundPred ds) $
       tcmError $ unwords ["No instance found for:", unlines $ map pretty ds]
+    qs' <- concat <$> mapM reduceBySuper qs
+    let unproved = rs \\ qs'
+    unless (null unproved) $
+      tcmError $ unlines ["Cannot entail:", pretty unproved, "using", pretty qs]
     pure (ds, rs)
 
 -- main context reduction function
@@ -38,7 +42,7 @@ reduce ps0 qs =
   do
     n <- askMaxRecursionDepth
     ps' <- reduce' n ps0 qs
-    simplify ps'
+    simplify qs ps'
 
 reduce' :: Int -> [Pred] -> [Pred] -> TcM [Pred]
 reduce' n ps qs
@@ -66,8 +70,8 @@ reduceI n ps0 qs
 
 -- simplify by entailment
 
-simplify :: [Pred] -> TcM [Pred]
-simplify = loop []
+simplify :: [Pred] -> [Pred]-> TcM [Pred]
+simplify ps qs = loop qs ps
  where
   loop rs [] = pure rs
   loop rs (p : ps) = do
@@ -126,7 +130,8 @@ reduceByInst' n qs p@(InCls c _ _)
           Just (preds, subst', instd) -> do
             info ["   instance for ", pretty pp, " found: ", pretty instd, "@", pretty subst']
             extSubst subst'
-            ps' <- reduceByInst (n - 1) preds qs
+            preds' <- withCurrentSubst preds
+            ps' <- reduceByInst (n - 1) preds' qs
             pure ps'
 reduceByInst' n _ (t1 :~: t2) =
   do
@@ -196,8 +201,8 @@ findInst p
 solvePred :: Pred -> Qual Pred -> TcM (Maybe ([Pred], Subst, Inst))
 solvePred p@(InCls _ t ts) ins@(ps :=> h@(InCls _ t' ts'))
   = do
-      infoDocs [text "> Trying to solve:", ppr p, text "using", ppr ins]
-      infoDocs [text ">> Trying to match:", ppr t', "with", ppr t]
+      infoDocs [text "> Trying to solve:", ppr p, text " using ", ppr ins]
+      infoDocs [text ">> Trying to match:", ppr t', " with ", ppr t]
       case match t' t of
         Left _ -> do
           -- info ["!>> Predicate ", pretty p, " cannot be solved by ", pretty h ,", since main args do not match ", pretty t', " and ", pretty t]
@@ -259,7 +264,7 @@ entails' n qs p
           ]
   | otherwise = do
       ce <- getInstEnv
-      info [">>> Testing entailment of:", pretty p, "using:", if null qs then "<empty>" else pretty qs]
+      info [">>> Testing entailment of:", pretty p, " using:", if null qs then "<empty>" else pretty qs]
       qs' <- mapM reduceBySuper qs
       info [">>> Reduced by superclass:", if null qs' then "<empty>" else pretty (concat qs')]
       r <- case selectInst ce p of
