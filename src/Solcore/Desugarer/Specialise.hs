@@ -1,6 +1,6 @@
 module Solcore.Desugarer.Specialise where  --(specialiseCompUnit, typeOfTcExp) where
 {- * Specialisation
-Create specialised versions of polymorphic and overloaded (TODO) functions.
+Create specialised versions of polymorphic and overloaded functions.
 This is meant to be run on typed and defunctionalised code, so no higher-order functions.
 -}
 
@@ -163,7 +163,7 @@ addDeclResolutions _ = return ()
 
 
 addInstResolutions :: Instance Id -> SM ()
-addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (mainTy inst))
+addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instName inst) (mainTy inst))
 
 specialiseContract :: TopDecl Id -> SM (TopDecl Id)
 specialiseContract (TContr (Contract name args decls)) = withLocalState do
@@ -209,15 +209,18 @@ addFunDefResolution fd = do
   addResolution name funType fd
   debug ["+ addDeclResolution: ", show name, " : ", pretty funType]
 
-addMethodResolution :: Ty -> TcFunDef -> SM ()
-addMethodResolution ty fd = do
+addMethodResolution :: Name -> Ty -> TcFunDef -> SM ()
+addMethodResolution cname ty fd = do
   let sig = funSignature fd
   let name = sigName sig
-  let name' = specName name [ty]
+  let qname = case name of
+        QualName{} -> name
+        Name s -> QualName cname s
+  let name' = specName qname [ty]
   let funType = typeOfTcFunDef fd
   let fd' = FunDef sig{sigName = name'} (funDefBody fd)
-  addResolution name funType fd'
-  debug ["+ addMethodResolution: ", show name', " : ", pretty funType]
+  addResolution qname funType fd'
+  debug ["+ addMethodResolution: ", show qname, " / ", show name', " : ", pretty funType]
 
 -- | `specExp` specialises an expression to given type
 specExp :: TcExp -> Ty -> SM TcExp
@@ -283,6 +286,7 @@ specCall i args ty = do
       return (Id name' ty', args'')
     Nothing -> do
       debug ["! specCall: no resolution found for ", show name, " : ", pretty funType]
+      panics ["! specCall: no resolution found for ", show name, " : ", pretty funType]
       return (i, args')
   where
     guardSimpleType :: Ty -> SM ()

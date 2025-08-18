@@ -56,7 +56,7 @@ contract Mini {
 */
 
 //  function transferFrom(src:address, dst:address, amt:uint) -> Bool {
-  function transferFrom(src, dst, amt) -> Bool  {
+  function transferFrom(src, dst, amt) {
      require1(ge(balances[src], amt));
 /*
      match (eq(src, msg_sender)) {

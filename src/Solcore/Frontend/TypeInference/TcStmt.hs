@@ -441,7 +441,7 @@ annotatedScheme vs' sig@(Signature vs ps n args rt)
          unboundTypeVars sig unbound_vars
       pure (Forall vs (ps :=> (funtype ts t)))
 
-
+-- FIXME fix type instantiation here.
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
   | hasAnn sig = do
@@ -468,13 +468,16 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       unify nt (funtype ts' rt1')
       -- building the function type scheme
       free <- getEnvMetaVars
-      (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free
+      (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free `wrapError` d
       info [" - splitContext retained: ", prettys rs]
       ty <- withCurrentSubst nt
       inf <- generalize (rs, ty)
       info [" - generalized inferred type: ", pretty inf]
       ann <- annotatedScheme vs' sig
-     -- checking subsumption
+      -- checking ambiguity
+      when (ambiguous inf) $
+        ambiguousTypeError inf sig
+      -- checking subsumption
       subsCheck sig inf ann `wrapError` d
       -- elaborating function body
       fdt <- elabFunDef vs' sig1 bd1' inf ann
@@ -601,28 +604,85 @@ extSignature sig@(Signature _ preds n ps t)
 tcInstance :: Instance Name -> TcM (Instance Id)
 tcInstance idecl@(Instance d vs ctx n ts t funs)
   = do
+      -- checking instance type parameters
+      mapM_ kindCheck (t : ts) `wrapError` idecl
+      -- checking constraints
+      mapM_ checkConstraint ctx `wrapError` idecl
       vs' <- mapM (const freshVar) vs
       let env = zip vs (map Meta vs')
           idecl'@(Instance _ _ ctx' _ ts' t' funs')
             = everywhere (mkT (insts @Ty env)) idecl
       tcInstance' (Instance d [] ctx' n ts' t' funs')
 
+checkConstraint :: Pred -> TcM ()
+checkConstraint p@(InCls _ t ts)
+  = mapM_ kindCheck (t : ts) `wrapError` p
+checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
+
 tcInstance' :: Instance Name -> TcM (Instance Id)
 tcInstance' idecl@(Instance d vs ctx n ts t funs)
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs)
-      funs' <- buildSignatures n ts t funs `wrapError` idecl
-      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False vs ctx) funs' `wrapError` idecl
+      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False vs ctx) funs `wrapError` idecl
       instd <- withCurrentSubst (Instance d vs ctx n ts t funs1)
       let
         ind@(Instance _ _ ctx' _ ts' t' funs2) = everywhere (mkT gen) instd
         vs1 = bv ind
-        funs3 = map (remVars vs1) funs2
-      pure (Instance d vs1 ctx' n ts' t' funs3)
+        funs3 = sortBy (\ f f' -> compare (sigName (funSignature f))
+                                          (sigName (funSignature f')))
+                       (map (updateSignature vs1 n) funs2)
+      verifySignatures (Instance d vs1 ctx' n ts' t' funs3)
 
-remVars :: [Tyvar] -> FunDef Id -> FunDef Id
-remVars vs' (FunDef (Signature vs ps n args rt) bd)
-  = FunDef (Signature (vs \\ vs') ps n args rt) bd
+verifySignatures :: Instance Id -> TcM (Instance Id)
+verifySignatures instd@(Instance d vs ctx n ts t funs)
+  = do
+      -- get the list of class method names from class info
+      names <- methods <$> askClassInfo n
+      let qnames = map (QualName n . pretty) names
+      schs <- mapM (\ q -> (q,) <$> askEnv q) qnames
+      -- instantiate most general type
+      qts <- mapM (\ (q, s) -> (q,) <$> freshInst s) schs
+      -- build instance member function type scheme
+      fschs <- mapM (\ f -> do
+                  let sig = funSignature f
+                  (sigName sig,) <$> schemeFromSignature sig) funs `wrapError` instd
+      -- instantiate function type scheme
+      fqts <- mapM (\ (q,s) -> (q,) <$> freshInst s) fschs
+      -- combine triples
+      let m = [(q, ct, it) | (q, ct) <- qts, (q', it) <- fqts, q == q']
+      mapM_ checkMemberType m `wrapError` instd
+      pure instd
+
+checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
+checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
+  = do
+      _ <- match t t' `catchError` (\ _ -> invalidMemberType qn t t')
+      pure ()
+
+invalidMemberType :: Name -> Ty -> Ty -> TcM a
+invalidMemberType n cls ins
+  = throwError $ unlines ["The instance method:"
+                         , pretty n
+                         , "has the following infered type:"
+                         , pretty ins
+                         , "which is not an valid instance for:"
+                         , pretty cls]
+
+schemeFromSignature :: Signature Id -> TcM Scheme
+schemeFromSignature sig@(Signature vs ps n args (Just rt))
+  = do
+      unless (all isTyped args) $
+        throwError $ unwords ["Invalid instance member signature:", pretty sig]
+      pure $ Forall vs (ps :=> (funtype ts rt))
+    where
+      isTyped (Typed _ _) = True
+      isTyped _ = False
+
+      ts = map (\ (Typed _ t) -> t) args
+
+updateSignature :: [Tyvar] -> Name -> FunDef Id -> FunDef Id
+updateSignature vs' c (FunDef (Signature vs ps n args rt) bd)
+  = FunDef (Signature (vs \\ vs') ps (QualName c (pretty n)) args rt) bd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
 checkDeferedConstraints = mapM_ checkDeferedConstraint
@@ -650,44 +710,6 @@ checkCompleteInstDef n ns
                             , pretty n
                             , "missing definitions for:"
                             ] ++ map pretty remaining
-
-buildSignatures :: Name -> [Ty] -> Ty -> [FunDef Name] -> TcM [FunDef Name]
-buildSignatures n ts t funs
-  = do
-      cpred <- classpred <$> askClassInfo n
-      let vs = bv cpred
-      mvs <- mapM (const freshTyVar) vs
-      sm <- match (insts (zip vs mvs) cpred) (InCls n t ts)
-      let qname m = QualName n (pretty m)
-      schs <- mapM (askEnv . qname . sigName . funSignature) funs
-      let
-          app (Forall _ qt) = apply sm (insts (zip vs mvs) qt)
-          tinsts = map app schs
-      zipWithM (buildSignature n) tinsts funs
-
-buildSignature :: Name -> Qual Ty -> FunDef Name -> TcM (FunDef Name)
-buildSignature n (ps :=> t) (FunDef sig bd)
-  = do
-      let (args, ret) = splitTy t
-          sig' = typeSignature n args ret ps sig
-      pure (FunDef sig' bd)
-
-typeSignature :: Name -> [Ty] -> Ty -> [Pred] -> Signature Name -> Signature Name
-typeSignature nm args ret ps sig
-  = sig {
-          sigName = QualName nm (pretty $ sigName sig)
-        , sigContext = sigContext sig
-        , sigParams = zipWith paramType args (sigParams sig)
-        , sigReturn = Just ret
-        }
-    where
-      paramType _ (Typed n t) = Typed n t
-      paramType t (Untyped n) = Typed n t
-
-schemeFromSignature :: Pretty a => Signature a -> Qual Ty
-schemeFromSignature (Signature vs ps n args ret)
-  = ps :=> (funtype (map (\ (Typed _ t) -> t) args) (fromJust ret))
-schemeFromSignature sig = notImplemented "schemeFromSignature" sig
 
 -- checking instances and adding them in the environment
 
@@ -774,6 +796,8 @@ checkCoverage cn ts t
 checkMethod :: Pred -> FunDef Name -> TcM ()
 checkMethod ih@(InCls n t ts) d@(FunDef sig _)
   = do
+      -- checking if the signature is fully annotated
+      fullSignature sig
       -- getting current method signature in class
       let qn = QualName n (show (sigName sig))
       sch <- askEnv qn `wrapError` d
@@ -786,6 +810,14 @@ checkMethod ih@(InCls n t ts) d@(FunDef sig _)
       -- matching substitution of instance head and class predicate
       _ <- liftEither (match p ih) `wrapError` d
       pure ()
+
+fullSignature :: Signature Name -> TcM ()
+fullSignature sig@(Signature _ _ _ ps t)
+  = unless (all isTyped ps && maybe False (const True) t)
+           (throwError $ unlines ["Instance methods must have complete type signatures:", pretty sig])
+    where
+      isTyped (Typed _ _) = True
+      isTyped _ = False
 
 findPred :: Name -> [Pred] -> Maybe Pred
 findPred _ [] = Nothing
@@ -803,6 +835,20 @@ checkMeasure ps c
                               , "does not satisfy the Patterson conditions."]
     where smaller p = measure p < measure c
 
+-- subsumption check
+
+subsCheck :: Signature Name -> Scheme -> Scheme -> TcM ()
+subsCheck sig sch1 sch2
+    = do
+        info [">> Checking subsumption for:\n", pretty sch1, "\nand\n", pretty sch2]
+        (skol_tvs, (ps2 :=> t2)) <- skolemise sch2
+        (ps1 :=> t1) <- freshInst sch1
+        s <- mgu t1 t2 `catchError` (\ _ -> typeNotPolymorphicEnough sig sch1 sch2)
+        extSubst s
+        let esc_tvs = fv sch1
+            bad_tvs = filter (`elem` esc_tvs) skol_tvs
+        unless (null bad_tvs) $
+          typeNotPolymorphicEnough sig sch1 sch2
 
 -- type generalization
 
@@ -815,26 +861,6 @@ generalize (ps,t)
           vs = map gvar $ mv (ps1,t1) \\ envVars
           sch = Forall vs (everywhere (mkT gen) $ ps1 :=> t1)
       return sch
-
--- kind check
-
-kindCheck :: Ty -> TcM Ty
-kindCheck (t1 :-> t2)
-  = (:->) <$> kindCheck t1 <*> kindCheck t2
-kindCheck t@(TyCon n ts)
-  = do
-      ti <- askTypeInfo n `wrapError` t
-      unless (n == Name "pair" || arity ti == length ts) $
-        throwError $ unlines [ "Invalid number of type arguments!"
-                             , "Type " ++ pretty n ++ " is expected to have " ++
-                               show (arity ti) ++ " type arguments"
-                             , "but, type " ++ pretty t ++
-                               " has " ++ (show $ length ts) ++ " arguments"]
-      mapM_ kindCheck ts
-      pure t
-kindCheck t = pure t
-
-
 
 tcBody :: Body Name -> TcM (Body Id, [Pred], Ty)
 tcBody [] = pure ([], [], unit)

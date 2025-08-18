@@ -166,16 +166,37 @@ isDirectCall n
 -- including contructors on environment
 
 checkDataType :: DataTy -> TcM ()
-checkDataType (DataTy n vs constrs)
+checkDataType d@(DataTy n vs constrs)
   = do
-      let vals' = map (\ (n, ty) -> (n, Forall (fv ty) ([] :=> ty))) vals
+      let vals' = map (\ (n, ty) -> (n, Forall (bv ty) ([] :=> ty))) vals
       mapM_ (uncurry extEnv) vals'
       modifyTypeInfo n ti
+     -- checking kinds
+      mapM_ kindCheck (concatMap constrTy constrs) `wrapError` d
     where
       ti = TypeInfo (length vs) (map fst vals) []
       tc = TyCon n (TyVar <$> vs)
       vals = map constrBind constrs
       constrBind c = (constrName c, (funtype (constrTy c) tc))
+
+-- kind check
+
+kindCheck :: Ty -> TcM Ty
+kindCheck (t1 :-> t2)
+  = (:->) <$> kindCheck t1 <*> kindCheck t2
+kindCheck t@(TyCon n ts)
+  = do
+      ti <- askTypeInfo n `wrapError` t
+      unless (n == Name "pair" || arity ti == length ts) $
+        throwError $ unlines [ "Invalid number of type arguments!"
+                             , "Type " ++ pretty n ++ " is expected to have " ++
+                               show (arity ti) ++ " type arguments"
+                             , "but, type " ++ pretty t ++
+                               " has " ++ (show $ length ts) ++ " arguments"]
+      mapM_ kindCheck ts
+      pure t
+kindCheck t = pure t
+
 
 -- Skolemization
 
@@ -185,21 +206,6 @@ skolemise sch@(Forall vs qt)
       let bvs = bv sch
       sks <- mapM (const freshSkolem) bvs
       pure (sks, insts (zip bvs (map TyVar sks)) qt)
-
--- subsumption check
-
-subsCheck :: Signature Name -> Scheme -> Scheme -> TcM ()
-subsCheck sig sch1@(Forall _ (_ :=> t1)) sch2@(Forall _ (_ :=> t2))
-    = do
-        info [">> Checking subsumption for:\n", pretty sch1, "\nand\n", pretty sch2]
-        (skol_tvs, (_ :=> t2)) <- skolemise sch2
-        (_ :=> t1) <- freshInst sch1
-        s <- mgu t1 t2 `catchError` (\ _ -> typeNotPolymorphicEnough sig sch1 sch2)
-        extSubst s
-        let esc_tvs = fv sch1
-            bad_tvs = filter (`elem` esc_tvs) skol_tvs
-        unless (null bad_tvs) $
-          typeNotPolymorphicEnough sig sch1 sch2
 
 -- type instantiation
 
@@ -372,7 +378,14 @@ askClassInfo :: Name -> TcM ClassInfo
 askClassInfo n
   = do
       r <- Map.lookup n <$> gets classTable
-      maybe (undefinedClass n) pure r
+      case r of
+        Nothing -> undefinedClass n
+        Just cinfo -> do
+          let vs = bv (classpred cinfo : supers cinfo)
+          fs <- mapM (const freshTyVar) vs
+          let env = zip vs fs
+          pure (cinfo {classpred = insts env (classpred cinfo)
+                      , supers = insts env (supers cinfo)})
 
 -- environment operations: variables
 

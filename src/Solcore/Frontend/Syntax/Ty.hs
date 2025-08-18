@@ -138,3 +138,5 @@ instance HasMeasure Pred where
 
 instance HasMeasure [Pred] where
   measure = sum . map measure
+
+
