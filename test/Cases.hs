@@ -49,6 +49,7 @@ spec =
     , runTestForFile "121counter.solc" specFolder
     -- Failing due to missing assign constraint
     , runTestExpectingFailureWith stdOpt { optNoDesugarCalls = True } "126nanoerc20.solc" specFolder
+    , -- runTestForFile "127microerc20.solc" specFolder
     ]
  where
   specFolder = "./test/examples/spec"
