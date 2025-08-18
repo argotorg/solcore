@@ -121,6 +121,11 @@ instance Compile (Stmt Id) where
         v <- matchError
         let def = [StmtExp $ generateCall v [errorLit]]
         matchCompilerM es def eqns
+  compile (If e blk1 blk2)
+    = do
+        blk1' <- compile blk1
+        blk2' <- compile blk2
+        pure [If e (concat blk1') (concat blk2')]
   compile s = return [s]
 
 -- Algorithm main function
@@ -374,12 +379,16 @@ instance Apply (Stmt Id) where
     = Return (apply s e)
   apply s (Match es eqns)
     = Match (apply s es) (apply s eqns)
+  apply s (If e blk1 blk2)
+    = If (apply s e) (apply s blk1) (apply s blk2)
   apply s stmt@Asm{} = stmt
 
   ids (e1 := e2) = ids [e1, e2]
   ids (Let n _ me) = [x | x <- ids me, n /= x]
   ids (StmtExp e) = ids e
   ids (Return e) = ids e
+  ids (If e blk1 blk2)
+    = ids e `union` ids blk1 `union` ids blk2
   ids (Match es eqns)
     = ids es `union` vs'
       where
