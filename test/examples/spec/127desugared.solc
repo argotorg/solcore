@@ -133,7 +133,7 @@ instance uint : Num {
          return y;
       }
    }
-   function fromWord (x : word) -> word {
+   function fromWord (x : word) -> uint {
       return uint(x);
    }
    function add (x : uint, y : uint) -> uint {
@@ -182,7 +182,7 @@ instance address : Typedef (word) {
    }
 }
 instance address : Eq {
-   function eq (x, y) -> Bool {
+   function eq (x : address, y : address) -> Bool {
       return Eq.eq(Typedef.rep(x), Typedef.rep(y));
    }
 }
@@ -273,7 +273,7 @@ instance address : StorageType {
    }
 }
 forall a . a : StorageType => instance storageRef(a) : Assign (a) {
-   function assign (l : storageRef(a), y : a) {
+   function assign (l : storageRef(a), y : a) -> () {
       StorageType.store(Typedef.rep(l), y);
    }
 }
