@@ -117,7 +117,7 @@ instance word : Num {
       return toBool(res);
    }
 }
-forall a . a : Num => function ge (x : a, y : a) -> Bool {
+forall a . a : Eq, a : Num => function ge (x : a, y : a) -> Bool {
    return or(Num.gt(x, y), Eq.eq(x, y));
 }
 data uint = uint(word) ;
@@ -440,25 +440,26 @@ instance StructField(ContractStorage(MiniCxt), balances_sel) : StructField (mapp
 }
 data allowance_sel = allowance_sel  ;
 
-instance StructField(ContractStorage(MiniCxt), allowance_sel) : StructField (mapping(address, storage(mapping, uint)), (word, (address, (address, (uint, (uint, (mapping(address, uint), ()))))))) {
+instance StructField(ContractStorage(MiniCxt), allowance_sel) : StructField (mapping(address, storage(mapping(address, uint))), (word, (address, (address, (uint, (uint, (mapping(address, uint), ()))))))) {
 
 }
 contract Mini {
    function mint (amount : uint) -> () {
-      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(MiniCxt), owner_sel)))), Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(MiniCxt), owner_sel)))), amount));
+      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(MiniCxt), owner_sel)))), Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(MiniCxt), owner_sel)))) : storageRef(uint), amount));
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), totalSupply_sel)), Num.add(rval(MemberAccessProxy(ContractStorage(MiniCxt), totalSupply_sel)), amount));
    }
    function transferFrom (src : address, dst : address, amt : uint) -> Bool {
-   // function transferFrom(src, dst, amt) -> Bool {
       require1(ge(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), src)), amt));
-      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), src)), Num.sub(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), src)), amt));
-      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), dst)), Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), dst)), amt) : uint);
+      Assign.assign(LValueMemberAccess.memberAccess(
+        IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), src)),
+	Num.sub(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), src)), amt));
+      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), dst)) : storageRef(uint), Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), balances_sel)), dst)), amt));
       return True;
    }
    function init () -> () {
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), owner_sel)), address(81985529216486895));
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), msg_sender_sel)), caller());
-      Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), decimals_sel)), Num.fromWord(18));
+      Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(MiniCxt), decimals_sel)), uint(18));
    }
    function main () -> uint {
       init();

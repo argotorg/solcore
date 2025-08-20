@@ -33,7 +33,7 @@ contract Mini {
   decimals : uint;
   totalSupply : uint;
   balances : mapping(address,uint);
-  allowance : mapping(address, storage(mapping, uint));
+  allowance : mapping(address, storage(mapping(address, uint)));
 
   function mint(amount:uint) -> () {
     balances[owner] = Num.add(balances[owner], amount);
