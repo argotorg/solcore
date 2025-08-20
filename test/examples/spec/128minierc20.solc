@@ -1,0 +1,100 @@
+import IndexLib;
+
+function caller() -> address {
+  let res: word;
+  assembly {
+     res := caller()
+  }
+  return address(res);
+}
+
+function require1fail() {
+  let res: word;
+  assembly {
+    mstore(0x0, 0x72657175697265313a204641494c) // "require1: FAIL"
+    revert(0,32)
+  }
+  return (); // for the typechecker
+}
+
+function require1(cond: Bool) {
+    match cond {
+    | False => return require1fail();
+    | True => return ();
+  }
+}
+
+function nop() -> () { return ();}
+
+contract MiniERC20 {
+  reserved : word;
+  msg_sender : address; // mock msg.sender
+  owner : address;
+  decimals : uint;
+  totalSupply : uint;
+  balances : mapping(address,uint);
+  allowance : mapping(address, mapping(address, uint));
+
+  function mint(amount:uint) -> () {
+    balances[owner] = Num.add(balances[owner], amount);
+    totalSupply = Num.add(totalSupply, amount);
+  }
+
+/*  // original:
+    function transferFrom(address src, address dst, uint amt) public returns (bool) {
+        require(balanceOf[src] >= amt, "token/insufficient-balance");
+        if (src != msg.sender && allowance[src][msg.sender] != type(uint).max) {
+            require(allowance[src][msg.sender] >= amt, "token/insufficient-allowance");
+            allowance[src][msg.sender] -= amt;
+        }
+
+        balanceOf[src] -= amt;
+        balanceOf[dst] += amt;
+        emit Transfer(src, dst, amt);
+        return true;
+    }
+*/
+
+  function transferFrom(src:address, dst:address, amt:uint) -> Bool {
+     require1(balances[src] >= amt);
+
+     match (src == msg_sender && allowance[src][msg_sender] != Num.maxVal(Proxy:Proxy(uint))) {
+           | True => require1(False);
+	   | False => ();
+     }
+
+     balances[src] = balances[src] - amt;
+     balances[dst] = balances[dst] + amt;
+     return True;
+  }
+
+/*
+    function approve(address usr, uint amt) public returns (bool) {
+        allowance[msg.sender][usr] = amt;
+        emit Approval(msg.sender, usr, amt);
+        return true;
+    }
+*/
+
+  function approve(usr: address, amt: uint) -> Bool {
+      allowance[msg_sender][usr] = amt;
+      // emit Approval(msg.sender, usr, amt);
+      return True;
+    
+  }
+
+  function init() -> () {
+    owner = address(0x123456789abcdef);
+    msg_sender = caller();
+    decimals = Num.fromWord(18);
+  }
+
+  function main() -> uint {
+    init();
+    mint(uint(1000));
+    allowance[owner][msg_sender] = uint(10000);
+    transferFrom(owner, msg_sender, uint(42));
+
+    return balances[msg_sender] : uint;
+  }
+}

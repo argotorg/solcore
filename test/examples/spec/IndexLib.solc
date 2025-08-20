@@ -54,7 +54,6 @@ data storage(a) = storage(word);
 data ContractStorage(cxt) = ContractStorage(cxt);
 
 data storageRef(a) = storageRef(word);
-data Proxy(a) = Proxy;
 
 data mapping(member, index) = mapping(word, Proxy(member), Proxy(index)); // storage by default
 data mapRef(a) = mapRef(word); //ref to a map elem

@@ -1,3 +1,5 @@
+data Proxy(a) = Proxy;
+
 function addW(x : word, y : word) {
   let res: word;
   assembly {
@@ -59,6 +61,13 @@ function or(x:Bool, y:Bool) -> Bool {
   }
 }
 
+function and(x:Bool, y:Bool) -> Bool {
+  match x {
+    | False => return False;
+    | True => return y;
+  }
+}
+
 function fromBool(b) {
  match b {
    | False => return 0;
@@ -95,6 +104,7 @@ function ne(x:a, y:a) {
 
 forall a. // a:Eq =>
 class a:Num {
+  function maxVal(p:Proxy(a)) -> a;
   function toWord(x:a) -> word;
   function fromWord(x:word) -> a;
   function add(x:a, y:a) -> a;
@@ -103,8 +113,12 @@ class a:Num {
 }
 
 instance word:Num {
+  function maxVal(p) {
+    return 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+  }
   function toWord(x:word) -> word { return x; }
   function fromWord(x:word) -> word { return x; }
+
   function add(x:word, y:word) -> word { return addW(x, y); }
   function sub(x:word, y:word) -> word { return addW(x, y); }
   function gt(x:word, y:word) -> Bool {
@@ -128,6 +142,9 @@ instance uint:Eq {
 }
 
 instance uint:Num {
+  function maxVal(p) {
+    return uint(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+  }
   function toWord(x:uint) -> word
   {
           match x {

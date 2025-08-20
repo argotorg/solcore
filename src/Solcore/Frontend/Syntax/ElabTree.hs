@@ -646,7 +646,40 @@ instance Elab S.Exp where
     let rvalFun = Name "rval"
     pure $ Call Nothing rvalFun [arr_proxy]
 
+  elab (S.ExpGE e1 e2) = do
+     (e1', e2') <- elab (e1, e2)
+     pure $ Call Nothing (Name "ge") [e1', e2']
+
+  elab (S.ExpGT e1 e2) = do
+     (e1', e2') <- elab (e1, e2)
+     let fun = QualName (Name "Num") "gt"
+     pure $ Call Nothing fun [e1', e2']
+
+  elab (S.ExpEE e1 e2) = do
+     (e1', e2') <- elab (e1, e2)
+     let fun = QualName (Name "Eq") "eq"
+     pure $ Call Nothing fun [e1', e2']
+
+  elab (S.ExpNE e1 e2) = do
+     (e1', e2') <- elab (e1, e2)
+     pure $ Call Nothing (Name "ne") [e1', e2']
+
+  elab (S.ExpLAnd e1 e2) = do
+     (e1', e2') <- elab (e1, e2)
+     pure $ Call Nothing (Name "and") [e1', e2']
+
+  elab (S.ExpPlus e1 e2) = do
+     (e1', e2') <- elab (e1, e2)
+     let fun = QualName (Name "Num") "add"
+     pure $ Call Nothing fun [e1', e2']
+
+  elab (S.ExpMinus e1 e2) = do
+     (e1', e2') <- elab (e1, e2)
+     let fun = QualName (Name "Num") "sub"
+     pure $ Call Nothing fun [e1', e2']
+
   elab exp = notImplementedM "elab @Exp" exp
+
 
 instance Elab S.Pat where
   type Res S.Pat = Pat Name
