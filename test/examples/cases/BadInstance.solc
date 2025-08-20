@@ -11,7 +11,7 @@ instance Bool : Enum {
       match b {
       | R => return 0;
       | G => return 1;
-      };
+      }
   }
 }
 

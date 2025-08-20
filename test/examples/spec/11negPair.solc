@@ -1,12 +1,12 @@
 
-class  a : Neg {
+forall a . class  a : Neg {
    function neg(x:a) -> a;
 }
 
 data B = F | T;
 
 instance B : Neg {
-  function neg (x : B) {
+  function neg (x : B) -> B {
     match x {
     | F => return T;
     | T => return F;
@@ -28,7 +28,7 @@ function snd(p) {
 
 
 forall a b . a : Neg, b : Neg => instance (a,b):Neg {
-  function neg(p) {
+  function neg(p : (a,b)) -> (a,b) {
     return (Neg.neg (fst(p)), Neg.neg(snd (p)));
   }
 }

@@ -10,6 +10,7 @@ import qualified Data.List.NonEmpty as N
 import Data.Map (Map)
 import Data.Maybe
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 import qualified System.TimeIt as TimeIt
 import Text.Printf
@@ -46,12 +47,13 @@ freshVar
 freshName :: TcM Name
 freshName
   = do
-      ds <- Map.keys <$> gets ctx
-      vs <- getEnvFreeVars
+      ds <- Map.keysSet <$> gets ctx
+      vs <- Set.map tyvarName <$> getEnvFreeVarSet
+      let taken = Set.union ds vs
       ns <- gets nameSupply
-      let (n, ns') = newName (ns \\ ((map tyvarName vs) ++ ds))
+      let (n, ns') = newName $ dropWhile (flip Set.member taken) ns
       modify (\ ctx -> ctx {nameSupply = ns'})
-      return n
+      pure n
 
 incCounter :: TcM Int
 incCounter = do
@@ -97,6 +99,9 @@ typeInfoFor (DataTy n vs cons)
 freshTyVar :: TcM Ty
 freshTyVar = Meta <$> freshVar
 
+freshSkolem :: TcM Tyvar
+freshSkolem = Skolem <$> freshName
+
 writeFunDef :: FunDef Id -> TcM ()
 writeFunDef fd = writeTopDecl (TFunDef fd)
 
@@ -119,6 +124,17 @@ writeTopDecl d
 getEnvFreeVars :: TcM [Tyvar]
 getEnvFreeVars
   = concat <$> gets (Map.map fv . ctx)
+
+getEnvFreeVarSet :: TcM(Set.Set Tyvar)
+getEnvFreeVarSet = do
+  tvMaps <- gets (Map.map fv . ctx)
+  pure $ elemsSet tvMaps
+  where
+    elemsSet :: Map.Map Name [Tyvar] -> Set.Set Tyvar
+    elemsSet = Map.foldr addElems (Set.empty :: Set.Set Tyvar)
+    addElems :: [Tyvar] -> Set.Set Tyvar -> Set.Set Tyvar
+    addElems vars set = foldr Set.insert set vars
+
 
 getEnvMetaVars :: TcM [MetaTv]
 getEnvMetaVars
@@ -150,16 +166,37 @@ isDirectCall n
 -- including contructors on environment
 
 checkDataType :: DataTy -> TcM ()
-checkDataType (DataTy n vs constrs)
+checkDataType d@(DataTy n vs constrs)
   = do
-      let vals' = map (\ (n, ty) -> (n, Forall (fv ty) ([] :=> ty))) vals
+      let vals' = map (\ (n, ty) -> (n, Forall (bv ty) ([] :=> ty))) vals
       mapM_ (uncurry extEnv) vals'
       modifyTypeInfo n ti
+     -- checking kinds
+      mapM_ kindCheck (concatMap constrTy constrs) `wrapError` d
     where
       ti = TypeInfo (length vs) (map fst vals) []
       tc = TyCon n (TyVar <$> vs)
       vals = map constrBind constrs
       constrBind c = (constrName c, (funtype (constrTy c) tc))
+
+-- kind check
+
+kindCheck :: Ty -> TcM Ty
+kindCheck (t1 :-> t2)
+  = (:->) <$> kindCheck t1 <*> kindCheck t2
+kindCheck t@(TyCon n ts)
+  = do
+      ti <- askTypeInfo n `wrapError` t
+      unless (n == Name "pair" || arity ti == length ts) $
+        throwError $ unlines [ "Invalid number of type arguments!"
+                             , "Type " ++ pretty n ++ " is expected to have " ++
+                               show (arity ti) ++ " type arguments"
+                             , "but, type " ++ pretty t ++
+                               " has " ++ (show $ length ts) ++ " arguments"]
+      mapM_ kindCheck ts
+      pure t
+kindCheck t = pure t
+
 
 -- Skolemization
 
@@ -167,23 +204,8 @@ skolemise :: Scheme -> TcM ([Tyvar], Qual Ty)
 skolemise sch@(Forall vs qt)
   = do
       let bvs = bv sch
-          sks = map (Skolem . tyvarName) bvs
-          env = zip bvs (map TyVar sks)
-      pure (sks, insts env qt)
-
--- subsumption check
-
-subsCheck :: Scheme -> Scheme -> TcM ()
-subsCheck sch1 sch2@(Forall _ _)
-    = do
-        info [">> Checking subsumption for:\n", pretty sch1, "\nand\n", pretty sch2]
-        (skol_tvs, qt2) <- skolemise sch2
-        qt1 <- freshInst sch1
-        s <- mgu qt1 qt2 `catchError` (\ _ -> typeNotPolymorphicEnough sch1 sch2)
-        let esc_tvs = fv sch1
-            bad_tvs = filter (`elem` esc_tvs) skol_tvs
-        unless (null bad_tvs) $
-          typeNotPolymorphicEnough sch1 sch2
+      sks <- mapM (const freshSkolem) bvs
+      pure (sks, insts (zip bvs (map TyVar sks)) qt)
 
 -- type instantiation
 
@@ -356,7 +378,14 @@ askClassInfo :: Name -> TcM ClassInfo
 askClassInfo n
   = do
       r <- Map.lookup n <$> gets classTable
-      maybe (undefinedClass n) pure r
+      case r of
+        Nothing -> undefinedClass n
+        Just cinfo -> do
+          let vs = bv (classpred cinfo : supers cinfo)
+          fs <- mapM (const freshTyVar) vs
+          let env = zip vs fs
+          pure (cinfo {classpred = insts env (classpred cinfo)
+                      , supers = insts env (supers cinfo)})
 
 -- environment operations: variables
 
@@ -504,6 +533,12 @@ info ss = do
             verbose <- isVerbose
             when logging $ modify (\ r -> r{ logs = msg : logs r })
 
+infoDoc :: Doc -> TcM ()
+infoDoc d = info[render d]
+
+infoDocs :: [Doc] -> TcM()
+infoDocs = infoDoc . sep
+
 warning :: String -> TcM ()
 warning s = do
   modify (\ r -> r{ warnings = s : "Warning:" : warnings r })
@@ -568,12 +603,14 @@ undefinedFunction t n
                          , pretty n
                          ]
 
-typeNotPolymorphicEnough :: Scheme -> Scheme -> TcM a
-typeNotPolymorphicEnough sch1 sch2
+typeNotPolymorphicEnough :: Signature Name -> Scheme -> Scheme -> TcM a
+typeNotPolymorphicEnough sig sch1 sch2
   = tcmError $ unlines [ "Type not polymorphic enough! The annotated type is:"
                        , pretty sch2
                        , "but the infered type is:"
                        , pretty sch1
+                       , "in:"
+                       , pretty sig
                        ]
 
 undefinedClass :: Name -> TcM a

@@ -1,0 +1,4 @@
+forall self fieldType offsetType
+. class self:StructField(fieldType, offsetType) {
+  function offsetSize(self) -> word;
+}

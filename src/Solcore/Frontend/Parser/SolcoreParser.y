@@ -63,6 +63,8 @@ import System.FilePath
       '{'        {Token _ TLBrace}
       '}'        {Token _ TRBrace}
       '|'        {Token _ TBar}
+      '['        {Token _ TLBrack}
+      ']'        {Token _ TRBrack}
 
 %expect 0
 
@@ -160,7 +162,7 @@ Constr : Name OptTypeParam                          { Constr $1 $2 }
 
 ClassDef :: { Class }
 ClassDef
- : SigPrefix 'class' Var ':' Name OptParam ClassBody {Class (snd $1) $5 $6 $3 $7}
+ : SigPrefix 'class' Var ':' Name OptParam ClassBody {Class (fst $1) (snd $1) $5 $6 $3 $7}
 
 ClassBody :: {[Signature]}
 ClassBody : '{' Signatures '}'                     {$2}
@@ -285,6 +287,7 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | 'lam' '(' ParamList ')' OptRetTy Body       {Lam $3 $6 $5}
      | Expr ':' Type                               {TyExp $1 $3}
      | '(' TupleArgs ')'                           {tupleExp $2}
+     | Expr '[' Expr ']'                           {ExpIndexed $1 $3 }
 
 TupleArgs :: { [Exp] }
 TupleArgs : Expr ',' Expr                          {[$1, $3]}

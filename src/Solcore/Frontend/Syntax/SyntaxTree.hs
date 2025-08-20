@@ -116,7 +116,8 @@ data Constructor
 
 data Class
   = Class {
-      classContext :: [Pred]
+      classboundvars :: [Ty]
+    , classContext :: [Pred]
     , className :: Name
     , paramsVar :: [Ty]
     , mainVar :: Ty
@@ -196,6 +197,7 @@ data Exp
   | ExpVar (Maybe Exp) Name                -- variables or field access
   | Lam [Param] Body (Maybe Ty)            -- lambda-abstraction
   | TyExp Exp Ty                           -- type annotation expression
+  | ExpIndexed Exp Exp                     -- e1[e2]
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- pattern matching equations

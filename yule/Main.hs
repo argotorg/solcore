@@ -3,9 +3,7 @@ module Main where
 import Language.Core(Contract(..))
 import Language.Core.Parser(parseContract)
 import Solcore.Frontend.Syntax.Name  -- FIXME: move Name to Common
-import Solcore.Frontend.Pretty.Name
 import Common.Pretty -- (Doc, Pretty(..), nest, render)
-import qualified Common.Pretty as Pretty
 import Builtins(yulBuiltins)
 import Compress
 import TM
@@ -48,22 +46,22 @@ wrapInObject name yul = ppr object where
     object = YulObject (show name) (YulCode stmts) []
     stmts = yulStmts yul ++ retcode
     retcode =
-      [ call "mstore" [yulInt 0, YIdent "_mainresult"]
-      , call "return" [yulInt 0, yulInt 32]
+      [ call "mstore" [yulInt (0::Integer), YIdent "_mainresult"]
+      , call "return" [yulInt (0::Integer), yulInt (32::Integer)]
       ]
     call f args = YExp (YCall f args)
 
 {- | wrap a Yul chunk in a Solidity function with the given name
    assumes result is in a variable named "_result"
 -}
-
+wrapInSol :: Name -> Yul -> Doc
 wrapInSol name yul = wrapInContract name "wrapper()" wrapper
     where
         wrapper = wrapInSolFunction "wrapper" (yulBuiltins <> yul)
 
 wrapInSolFunction :: Name -> Yul -> Doc
 wrapInSolFunction name yul =
-  text "function" <+> ppr name <+> prettyargs <+> text " public pure returns (uint256 _wrapresult)" <+> lbrace
+  text "function" <+> ppr name <+> prettyargs <+> text " public returns (uint256 _wrapresult)" <+> lbrace
   $$ nest 2 assembly
   $$ rbrace
   where
@@ -83,6 +81,6 @@ wrapInContract name entry body = empty
   $$ nest 2 body
   $$ rbrace
   where
-    run = text "function run() public view" <+> lbrace
+    run = text "function run() public" <+> lbrace
       $$ nest 2 (text "console.log(\"RESULT --> \","<+> ppr entry >< text ");")
       $$ rbrace $$ text ""

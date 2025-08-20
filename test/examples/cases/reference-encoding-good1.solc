@@ -1,6 +1,6 @@
 
 /////// Construction
-class abs:Typedef(rep) {
+forall abs rep . class abs:Typedef(rep) {
     function rep(x:abs) -> rep;
     function abs(x:rep) -> abs;
 }
@@ -23,7 +23,7 @@ data memory(a) = memory(word);
 data memoryRef(a) = memoryRef(word);
 data Proxy(a) = Proxy;
 
-instance memory(a):Typedef(word) {
+forall a . instance memory(a):Typedef(word) {
     function rep(x:memory(a)) -> word {
         match x {
             | memory(y) => return y;
@@ -33,7 +33,7 @@ instance memory(a):Typedef(word) {
         return memory(x);
     }
 }
-instance memoryRef(a):Typedef(word) {
+forall a . instance memoryRef(a):Typedef(word) {
     function rep(x:memoryRef(a)) -> word {
         match x {
             | memoryRef(y) => return y;
@@ -44,25 +44,25 @@ instance memoryRef(a):Typedef(word) {
     }
 }
 
-class lhs:Assign(rhs) {
+forall lhs rhs . class lhs:Assign(rhs) {
     function assign(l:lhs, r:rhs) -> ();
 }
 
 data ref(a) = ref(a);
 
-instance ref(a):Assign(a) {
+forall a . instance ref(a):Assign(a) {
     function assign(l:ref(a), r:a) -> () {
         // builtin "stack store"
         return ();
     }
 }
 
-class self:MemoryType {
+forall self . class self:MemoryType {
     function load(ptr:word) -> self;
     function store(ptr:word, value:self) -> ();
 }
 
-class self:MemorySize {
+forall self . class self:MemorySize {
     function size(x:Proxy(self)) -> word;
 }
 
@@ -83,7 +83,7 @@ instance word:MemoryType {
 
 instance uint:MemoryType {
     function load(ptr:word) -> uint {
-        return Typedef.abs(MemoryType.load(ptr) : uint);
+        return Typedef.abs(MemoryType.load(ptr));
     }
     function store(ptr:word, value:uint) -> () {
         return MemoryType.store(ptr, Typedef.rep(value));
@@ -91,9 +91,14 @@ instance uint:MemoryType {
 }
 
 forall a . a : MemoryType => instance memoryRef(a):Assign(a) {
-    function assign(l:memoryRef(a), y:a) {
+    function assign(l:memoryRef(a), y:a) -> () {
         MemoryType.store(Typedef.rep(l), y);
     }
+}
+
+instance word:Typedef(word) {
+    function rep(x:word) -> word { return x; }
+    function abs(x:word) -> word { return x; }
 }
 
 
@@ -107,11 +112,11 @@ function memberAccessD1(x:MemberAccessProxy(a, field)) -> a {
     }
 }
 
-class self:LValueMemberAccess(memberRefType) {
+forall self memberRefType . class self:LValueMemberAccess(memberRefType) {
     function memberAccess(x:self) -> memberRefType;
 }
 
-class self:RValueMemberAccess(memberValueType) {
+forall self memberValueType . class self:RValueMemberAccess(memberValueType) {
     function memberAccess(x:self) -> memberValueType;
 }
 
@@ -119,7 +124,7 @@ class self:RValueMemberAccess(memberValueType) {
 pragma no-coverage-condition StructField, LValueMemberAccess, RValueMemberAccess;
 pragma no-patterson-condition LValueMemberAccess, RValueMemberAccess;
 pragma no-bounded-variable-condition LValueMemberAccess, RValueMemberAccess;
-class self:StructField(fieldType, offsetType) {}
+forall self fieldType offsetType .  class self:StructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 
 forall structType fieldSelector fieldType offsetType . StructField(structType, fieldSelector):StructField(fieldType, offsetType), offsetType:MemorySize => instance MemberAccessProxy(memory(structType), fieldSelector):LValueMemberAccess(memoryRef(fieldType)) {

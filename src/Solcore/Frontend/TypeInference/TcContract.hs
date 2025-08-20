@@ -25,9 +25,6 @@ import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options
 import Solcore.Primitives.Primitives
 
--- top level type inference function: Boolean parameter
--- used to determine if it will generate definitions.
-
 typeInfer :: Option ->
              CompUnit Name ->
              IO (Either String (CompUnit Id, TcEnv))
@@ -37,9 +34,8 @@ typeInfer options (CompUnit imps decls)
       case r of
         Left err -> pure $ Left err
         Right ((CompUnit imps ds), env) -> do
-          let ds1 = everywhere (mkT renameTDecl) (ds ++ generated env)
-              ds2 = everywhere (mkT updateSig) ds1
-          pure (Right (CompUnit imps ds2, env))
+          let ds1 = (ds ++ generated env)
+          pure (Right (CompUnit imps ds1, env))
 
 -- type inference for a compilation unit
 
@@ -62,12 +58,6 @@ tcCompUnit (CompUnit imps cs)
         clearSubst
         addGenDefs
         tcTopDecl d
-
-renameTDecl :: TopDecl Id -> TopDecl Id
-renameTDecl d
-  = let d' = everywhere (mkT gen) d
-        env = zip (bv d') (map (TyVar . TVar) namePool)
-    in everywhere (mkT (insts @Ty env)) d'
 
 addGenDefs :: TcM ()
 addGenDefs
@@ -230,13 +220,17 @@ tcField d@(Field n t _)
       pure (Field n t Nothing)
 
 tcClass :: Class Name -> TcM (Class Id)
-tcClass iclass@(Class ctx n vs v sigs)
+tcClass iclass@(Class bvs ctx n vs v sigs)
   = do
-      let ns = map sigName sigs
+      let bvs' = bv ctx `union` bv (map TyVar (v : vs)) `union` bv sigs
+          ns = map sigName sigs
           qs = map (QualName n . pretty) ns
+      when (any (`notElem` bvs) bvs') $ do
+         let unbound_vars = bvs' \\ bvs
+         unboundTypeVars iclass unbound_vars
       schs <- mapM askEnv qs `wrapError` iclass
       sigs' <- mapM tcSig (zip sigs schs) `wrapError` iclass
-      pure (Class ctx n vs v sigs')
+      pure (Class bvs ctx n vs v sigs')
 
 tcSig :: (Signature Name, Scheme) -> TcM (Signature Id)
 tcSig (sig, (Forall _ (_ :=> t)))
@@ -257,13 +251,14 @@ tcSig (sig, (Forall _ (_ :=> t)))
 tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds
   = do
-      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True []) binds
+      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True [] []) binds
       checkDeferedConstraints (zip funs' pss)
       let names = map (sigName . funSignature) funs'
       mapM_ (uncurry extEnv) (zip names schs)
       noDesugarCalls <- getNoDesugarCalls
-      unless noDesugarCalls $ generateTopDeclsFor (zip funs' schs)
-      pure $ everywhere (mkT gen) funs'
+      let funs1 = everywhere (mkT gen) funs'
+      unless noDesugarCalls $ generateTopDeclsFor (zip funs1 schs)
+      pure funs1
 
 
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
@@ -301,7 +296,7 @@ checkClasses :: [Class Name] -> TcM ()
 checkClasses = mapM_ checkClass
 
 checkClass :: Class Name -> TcM ()
-checkClass icls@(Class ps n vs v sigs)
+checkClass icls@(Class bvs ps n vs v sigs)
   = do
       let p = InCls n (TyVar v) (TyVar <$> vs)
           ms' = map sigName sigs
@@ -315,8 +310,8 @@ checkClass icls@(Class ps n vs v sigs)
             pst <- mapM tyParam ps
             t' <- maybe (pure unit) pure mt
             let ft = funtype pst t'
-            unless (v `elem` bv ft)
-                   (signatureError n v sig ft)
+            unless (all (`elem` bvs) (v : vs))
+                   (unboundTypeVars sig ((v : vs) \\ bvs))
             addClassMethod p sig `wrapError` icls
 
 addClassInfo :: Name -> Arity -> [Method] -> [Pred] -> Pred -> TcM ()
@@ -334,7 +329,7 @@ addClassMethod p@(InCls c _ _) sig@(Signature _ ctx f ps t)
       tps <- mapM tyParam ps
       t' <- maybe (pure unit) pure t
       let ty = funtype tps t'
-          vs = fv ty
+          vs = bv ty
           ctx' = [p] `union` ctx
           qn = if isQual f then f else QualName c (pretty f)
           sch = Forall vs (ctx' :=> ty)

@@ -57,7 +57,9 @@ createInstance udt fd sch
       (qs' :=> ty') <- askEnv invoke >>= fresh
       -- getting arguments and return type from signature
       let (args, retTy) = splitTy ty
-          args' = if null args then [unit] else filter (not . isClosureTy) args
+          args' = case filter (not . isClosureTy) args of
+            [] -> [unit]  -- no args / all args are closures
+            xs -> xs
           vunreach = bv qt \\ bv ty
           argTy = tupleTyFromList args'
           argvars = bv qt
@@ -116,7 +118,10 @@ freshPatArg (TyVar v)
   = do
       n <- freshName
       pure (PVar n, Var n)
-freshPatArg t = error $ show t
+freshPatArg t
+  = do
+      n <- freshName
+      pure (PVar n, Var n)
 
 fresh :: Scheme -> TcM (Qual Ty)
 fresh (Forall _ qt) = pure qt

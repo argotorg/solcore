@@ -1,0 +1,10 @@
+data List(a) = Nil | Cons(a,List(a));
+data Bool = False | True;
+
+forall a . class a : Eq {
+  function eq (x : a, y : a) -> Bool ;
+}
+
+function foo () {
+  return Eq.eq(Nil, Nil);
+}

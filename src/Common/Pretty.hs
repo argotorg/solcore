@@ -5,9 +5,12 @@ module Common.Pretty
 , dotSep
 , commaSep, commaSepList
 , angles
+, pPrint
+, pShow
 ) where
 import Text.PrettyPrint hiding((<>))
 import Text.PrettyPrint qualified as PP
+import Text.Pretty.Simple(pPrint, pShow)
 
 -- in Prelude (<>) is defined as infixr 6
 -- in pretty, it is defined as infixl 6
@@ -19,6 +22,9 @@ infixl 6 ><
 
 class Pretty a where
   ppr :: a -> Doc
+
+instance Pretty String where
+  ppr = text
 
 dotSep :: [Doc] -> Doc
 dotSep = hcat . punctuate dot

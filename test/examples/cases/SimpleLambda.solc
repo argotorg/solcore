@@ -1,4 +1,4 @@
-function add_(x : word, y : word) {
+function addWord(x : word, y : word) -> word {
   let res: word;
   assembly {
      res := add(x, y)
@@ -9,10 +9,10 @@ function add_(x : word, y : word) {
 contract SimpleLambda{
   function f (z) {
     let n = lam (x,y) {
-      return add_(x, add_(y,1));
+      return addWord(x,addWord(y,1));
     } ;
     let m = lam (x) {
-      return add_(z,x) ;
+      return addWord (z,x) ;
     } ;
     return m(n(1,0));
   }
