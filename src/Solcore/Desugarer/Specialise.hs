@@ -21,7 +21,6 @@ import Solcore.Frontend.TypeInference.Id ( Id(..) )
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv(TcEnv(..),TypeInfo(..))
 import qualified Solcore.Frontend.TypeInference.TcSubst as TcSubst
-import Solcore.Frontend.TypeInference.TcStmt(schemeFromSignature)
 import Solcore.Frontend.TypeInference.TcUnify(typesDoNotUnify)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Primitives.Primitives
@@ -136,9 +135,10 @@ addResolution name ty fun = do
     where
       reportAmbiguousVars sig = do
         let vars = ambiguousVarsInSig sig
+        let scheme = schemeOfTcSignature sig
         unless (null vars) $ nopanics [ "Error: function ", pretty name
                         ," cannot be specialised because it has an ambiguous type:\n   "
-                        , pretty $ schemeFromSignature sig
+                        , pretty scheme
                         ,"\n variables: ", prettys vars
                         ,"\n do not occur in the argument/result types."
                         ]
@@ -541,6 +541,16 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) (returnType 
   returnType sig = case sigReturn sig of
     Just t -> t
     Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
+
+schemeOfTcSignature :: Signature Id -> Scheme
+schemeOfTcSignature sig@(Signature vs ps n args (Just rt))
+  = if all isTyped args
+      then Forall vs (ps :=> (funtype ts rt))
+      else error $ unwords ["Invalid instance member signature:", pretty sig]
+    where
+      isTyped (Typed _ _) = True
+      isTyped _ = False
+      ts = map (\ (Typed _ t) -> t) args
 
 typeOfTcFunDef :: TcFunDef -> Ty
 typeOfTcFunDef (FunDef sig _) = typeOfTcSignature sig
