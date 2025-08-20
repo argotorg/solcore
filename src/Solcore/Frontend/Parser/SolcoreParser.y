@@ -65,6 +65,23 @@ import System.FilePath
       '|'        {Token _ TBar}
       '['        {Token _ TLBrack}
       ']'        {Token _ TRBrack}
+      '<'        {Token _ TLT}
+      '>'        {Token _ TGT}
+      '>='       {Token _ TGE}
+      '<='       {Token _ TLE}
+      '!='       {Token _ TNE}
+      '=='       {Token _ TEE}
+      '&&'       {Token _ TLAnd}
+      '||'       {Token _ TLOr}
+      '!'        {Token _ TLNot}
+      '+'        {Token _ TPlus}
+      '-'        {Token _ TMinus}
+      '*'        {Token _ TTimes}
+      '/'        {Token _ TDivide}
+      '%'        {Token _ TModulo}
+      '+='       {Token _ TPlusEq}
+      '-='       {Token _ TMinusEq}
+
 
 %expect 0
 
