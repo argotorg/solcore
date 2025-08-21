@@ -65,6 +65,35 @@ import System.FilePath
       '|'        {Token _ TBar}
       '['        {Token _ TLBrack}
       ']'        {Token _ TRBrack}
+      '<'        {Token _ TLT}
+      '>'        {Token _ TGT}
+      '>='       {Token _ TGE}
+      '<='       {Token _ TLE}
+      '!='       {Token _ TNE}
+      '=='       {Token _ TEE}
+      '&&'       {Token _ TLAnd}
+      '||'       {Token _ TLOr}
+      '!'        {Token _ TLNot}
+      '+'        {Token _ TPlus}
+      '-'        {Token _ TMinus}
+      '*'        {Token _ TTimes}
+      '/'        {Token _ TDivide}
+      '%'        {Token _ TModulo}
+      '+='       {Token _ TPlusEq}
+      '-='       {Token _ TMinusEq}
+
+-- %nonassoc '+=' '-='
+%left     ':'
+%left     '||'
+%left     '&&'
+%nonassoc '==' '!='
+%nonassoc '<' '>' '<=' '>='
+%left     '+' '-'
+%left     '*' '/' '%'
+%left     '['
+%left     '.'
+
+
 
 %expect 0
 
@@ -288,6 +317,19 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | Expr ':' Type                               {TyExp $1 $3}
      | '(' TupleArgs ')'                           {tupleExp $2}
      | Expr '[' Expr ']'                           {ExpIndexed $1 $3 }
+     | Expr '+' Expr                               {ExpPlus $1 $3 }
+     | Expr '-' Expr                               {ExpMinus $1 $3 }
+     | Expr '*' Expr                               {ExpTimes $1 $3 }
+     | Expr '/' Expr                               {ExpDivide $1 $3 }
+     | Expr '%' Expr                               {ExpModulo $1 $3 }
+     | Expr '<' Expr                               {ExpLT $1 $3 }
+     | Expr '>' Expr                               {ExpGT $1 $3 }
+     | Expr '<=' Expr                              {ExpLE $1 $3 }
+     | Expr '>=' Expr                              {ExpGE $1 $3 }
+     | Expr '==' Expr                              {ExpEE $1 $3 }
+     | Expr '!=' Expr                              {ExpNE $1 $3 }
+     | Expr '&&' Expr                              {ExpLAnd $1 $3 }
+     | Expr '||' Expr                              {ExpLOr $1 $3 }
 
 TupleArgs :: { [Exp] }
 TupleArgs : Expr ',' Expr                          {[$1, $3]}

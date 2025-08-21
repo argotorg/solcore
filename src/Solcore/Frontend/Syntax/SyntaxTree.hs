@@ -175,6 +175,8 @@ type Equations = [Equation]
 
 data Stmt
   = Assign Exp Exp                      -- assignment
+  | StmtPlusEq Exp Exp                  -- e1 += e2
+  | StmtMinusEq Exp Exp                 -- e1 -= e2
   | Let Name (Maybe Ty) (Maybe Exp)     -- local variable
   | StmtExp Exp                         -- expression level statements
   | Return Exp                          -- return statements
@@ -198,6 +200,19 @@ data Exp
   | Lam [Param] Body (Maybe Ty)            -- lambda-abstraction
   | TyExp Exp Ty                           -- type annotation expression
   | ExpIndexed Exp Exp                     -- e1[e2]
+  | ExpPlus Exp Exp                        -- e1 + e2
+  | ExpMinus Exp Exp                       -- e1 - e2
+  | ExpTimes Exp Exp                       -- e1 * e2
+  | ExpDivide Exp Exp                      -- e1 / e2
+  | ExpModulo Exp Exp                      -- e1 % e2
+  | ExpLT Exp Exp                         -- e1 || e2
+  | ExpGT Exp Exp                         -- e1 || e2
+  | ExpLE Exp Exp                         -- e1 || e2
+  | ExpGE Exp Exp                         -- e1 || e2
+  | ExpEE Exp Exp                         -- e1 || e2
+  | ExpNE Exp Exp                         -- e1 || e2
+  | ExpLAnd Exp Exp                        -- e1 && e2
+  | ExpLOr Exp Exp                         -- e1 || e2
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- pattern matching equations
