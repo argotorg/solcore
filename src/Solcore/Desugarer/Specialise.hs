@@ -1,3 +1,4 @@
+-- {-# LANGUAGE DefaultSignatures #-}
 module Solcore.Desugarer.Specialise where  --(specialiseCompUnit, typeOfTcExp) where
 {- * Specialisation
 Create specialised versions of polymorphic and overloaded functions.
@@ -6,18 +7,21 @@ This is meant to be run on typed and defunctionalised code, so no higher-order f
 
 import Common.Monad
 import Control.Monad
+import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Generics
-import Data.List(intercalate)
+import Data.List(intercalate, union, (\\))
+import Data.Maybe(fromMaybe)
 import qualified Data.Map as Map
 import GHC.Stack
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id ( Id(..) )
+import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv(TcEnv(..),TypeInfo(..))
-import Solcore.Frontend.TypeInference.TcSubst
-import Solcore.Frontend.TypeInference.TcUnify
+import qualified Solcore.Frontend.TypeInference.TcSubst as TcSubst
+import Solcore.Frontend.TypeInference.TcUnify(typesDoNotUnify)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Primitives.Primitives
 import System.Exit
@@ -40,8 +44,9 @@ data SpecState = SpecState
   , spDataTable :: Table DataTy
   , spGlobalEnv :: TcEnv
   , splocalEnv :: Table Ty
-  , spSubst :: Subst
+  , spSubst :: TVSubst
   , spDebug :: Bool
+  , spNS :: NameSupply
   }
 
 
@@ -73,14 +78,15 @@ runSM debugp env m = evalStateT m (initSpecState debugp env)
 -- prettys = render . brackets . commaSep . map ppr
 
 -- | `withLocalState` runs a computation with a local state
--- local changes are discarded, with the exception of the `specTable`
+-- local changes are discarded, with the exception of the `specTable` and name supply
 withLocalState :: SM a -> SM a
 withLocalState m = do
     s <- get
     a <- m
     spTable <- gets specTable
+    ns <- gets spNS
     put s
-    modify $ \s -> s { specTable = spTable }
+    modify $ \s -> s { specTable = spTable, spNS = ns }
     return a
 
 initSpecState :: Bool ->TcEnv -> SpecState
@@ -91,10 +97,12 @@ initSpecState debugp env = SpecState
     , spDataTable = Map.empty
     , spGlobalEnv = env
     , splocalEnv = emptyTable
-    , spSubst = emptySubst
+    , spSubst = emptyTVSubst
     , spDebug = debugp
+    , spNS = namePool
     }
 
+{-
 -- make type variables flexible by replacing them with metas
 flex :: Ty -> Ty
 flex (TyVar (TVar n)) = Meta (MetaTv n)
@@ -104,6 +112,13 @@ flex t = t
 -- make all type variables flexible in a syntactic construct
 flexAll :: Data a => a -> a
 flexAll = everywhere (mkT flex)
+-}
+
+-- | A signature forall tvs . t is considered ambiguous if `tvs \\ FTV(t) /= mempty`
+-- this is should be the same as `FTV(body) \\ FTV(t) /= {}`
+-- returns list of ambiguous variables
+ambiguousVarsInSig :: HasTV a => Signature a -> [Tyvar]
+ambiguousVarsInSig sig = sigVars sig \\ freetv (sigParams sig, sigReturn sig)
 
 addSpecialisation :: Name -> TcFunDef -> SM ()
 addSpecialisation name fd = modify $ \s -> s { specTable = Map.insert name fd (specTable s) }
@@ -113,36 +128,63 @@ lookupSpecialisation name = gets (Map.lookup name . specTable)
 
 addResolution :: Name -> Ty -> TcFunDef -> SM ()
 addResolution name ty fun = do
-    modify $ \s -> s { spResTable = Map.insertWith (++) name [(flex ty, fun)] (spResTable s) }
-
-lookupResolution :: Name -> Ty ->  SM (Maybe (TcFunDef, Ty, Subst))
+    -- debug ["+ addResolution ", pretty name, "@", pretty ty, " |-> ", shortName fun]
+    let sig = funSignature fun
+    reportAmbiguousVars sig
+    modify $ \s -> s { spResTable = Map.insertWith (++) name [(ty, fun)] (spResTable s) }
+    where
+      reportAmbiguousVars sig = do
+        let vars = ambiguousVarsInSig sig
+        let scheme = schemeOfTcSignature sig
+        unless (null vars) $ nopanics [ "Error: function ", pretty name
+                        ," cannot be specialised because it has an ambiguous type:\n   "
+                        , pretty scheme
+                        ,"\n variables: ", prettys vars
+                        ,"\n do not occur in the argument/result types."
+                        ]
+lookupResolution :: Name -> Ty ->  SM (Maybe (TcFunDef, Ty, TVSubst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty where
   str :: Pretty a => a -> String
   str = pretty
-  findMatch :: Ty -> Maybe [Resolution] -> SM (Maybe (TcFunDef, Ty, Subst))
+  findMatch :: Ty -> Maybe [Resolution] -> SM (Maybe (TcFunDef, Ty, TVSubst))
   findMatch etyp (Just res) = do
     debug ["|> findMatch ", pretty etyp, " in ", prettys res]
     firstMatch etyp res
   findMatch _ Nothing = return Nothing
-  firstMatch :: Ty -> [Resolution] -> SM (Maybe (TcFunDef, Ty, Subst))
+  firstMatch :: Ty -> [Resolution] -> SM (Maybe (TcFunDef, Ty, TVSubst))
   firstMatch etyp [] = return Nothing
   firstMatch etyp ((t,e):rest)
-    | Right subst <- mgu t etyp = do  -- TESTME: match is to weak for MPTC, but isn't mgu too strong?
+    | Right subst <- specmgu t etyp = do  -- TESTME: match is to weak for MPTC, but isn't mgu too strong?
         debug ["< lookupRes - match found for ", str name, ": ", str t, " ~ ", str etyp, " => ", str subst]
         return (Just (e, t, subst))
     | otherwise = firstMatch etyp rest
 
-getSpSubst :: SM Subst
+getSpSubst :: SM TVSubst
 getSpSubst = gets spSubst
 
-extSpSubst :: Subst -> SM ()
-extSpSubst subst = modify $ \s -> s { spSubst =  spSubst s <> subst }
+putSpSubst :: TVSubst -> SM ()
+putSpSubst subst = modify $ \s -> s { spSubst = subst }
+extSpSubst :: TVSubst -> SM ()
 
-atCurrentSubst :: HasType a => a -> SM a
-atCurrentSubst a = flip apply a <$> getSpSubst
+extSpSubst subst = modify $ \s -> s { spSubst = spSubst s <> subst }
+
+atCurrentSubst :: HasTV a => a -> SM a
+atCurrentSubst a = flip applytv a <$> getSpSubst
 
 addData :: DataTy -> SM ()
 addData dt = modify (\s -> s { spDataTable = Map.insert (dataName dt) dt (spDataTable s) })
+
+spNewName :: SM Name
+spNewName = do
+    s <- get
+    let (n, ns) = newName (spNS s)
+    put s { spNS = ns }
+    pure (addPrefix "_" n)
+
+-- data Name = Name String | QualName Name String
+addPrefix :: String -> Name -> Name
+addPrefix p (Name s) = Name (p ++ s)
+addPrefix p (QualName q s) = QualName q (p ++ s)
 
 -------------------------------------------------------------------------------
 
@@ -156,8 +198,8 @@ addGlobalResolutions :: CompUnit Id -> SM ()
 addGlobalResolutions compUnit = forM_ (contracts compUnit) addDeclResolutions
 
 addDeclResolutions :: TopDecl Id -> SM ()
-addDeclResolutions (TInstDef inst) = addInstResolutions (flexAll inst)
-addDeclResolutions (TFunDef fd) = addFunDefResolution (flexAll fd)
+addDeclResolutions (TInstDef inst) = addInstResolutions inst
+addDeclResolutions (TFunDef fd) = addFunDefResolution fd
 addDeclResolutions (TDataDef dt) = addData dt
 addDeclResolutions _ = return ()
 
@@ -168,7 +210,7 @@ addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instN
 specialiseContract :: TopDecl Id -> SM (TopDecl Id)
 specialiseContract (TContr (Contract name args decls)) = withLocalState do
     addContractResolutions (Contract name args decls)
-    forM_ entries (specEntry . flexAll)
+    forM_ entries (specEntry)
     st <- gets specTable
     dt <- gets spDataTable
     let dataDecls = map (CDataDecl . snd) (Map.toList dt)
@@ -183,8 +225,8 @@ specialiseContract decl = pure decl
 
 specEntry :: Name -> SM ()
 specEntry name = withLocalState do
-    let any = MetaTv (Name "any")
-    let anytype = Meta any
+    let any = TVar (Name "any")
+    let anytype = TyVar any
     mres <- lookupResolution name anytype
     case mres of
       Just (fd, ty, subst) -> do
@@ -198,7 +240,7 @@ addContractResolutions (Contract name args decls) = do
   forM_ decls addCDeclResolution
 
 addCDeclResolution :: ContractDecl Id -> SM ()
-addCDeclResolution (CFunDecl fd) = addFunDefResolution (flexAll fd)
+addCDeclResolution (CFunDecl fd) = addFunDefResolution fd
 addCDeclResolution (CDataDecl dt) = addData dt
 addCDeclResolution _ = return ()
 
@@ -247,8 +289,8 @@ specConApp :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
 specConApp i@(Id n conTy) args ty = do
   subst <- getSpSubst
   let argTypes = map typeOfTcExp args
-  let argTypes' = apply subst argTypes
-  let i' = apply subst i
+  let argTypes' = applytv subst argTypes
+  let i' = applytv subst i
   let typedArgs = zip args argTypes'
   args' <- forM typedArgs (uncurry specExp)
   let conTy' = foldr (:->) ty argTypes'
@@ -278,14 +320,13 @@ specCall i args ty = do
       extSpSubst phi
       -- ty' <- atCurrentSubst ty
       subst <- getSpSubst
-      let ty' = apply subst ty
+      let ty' = applytv subst ty
       ensureClosed ty' (Call Nothing i args) subst
       name' <- specFunDef fd
       debug ["< specCall: ", pretty name']
       args'' <- atCurrentSubst args'
       return (Id name' ty', args'')
     Nothing -> do
-      debug ["! specCall: no resolution found for ", show name, " : ", pretty funType]
       panics ["! specCall: no resolution found for ", show name, " : ", pretty funType]
       return (i, args')
   where
@@ -302,22 +343,26 @@ specCall i args ty = do
 -- create a new specialisation of it and record it in `specTable`
 -- returns name of the specialised function
 specFunDef :: TcFunDef -> SM Name
-specFunDef fd = withLocalState do
-  subst <- getSpSubst
+specFunDef fd0 = withLocalState do
+  -- first, rename bound variables
+  (fd, renamingSubst) <- renametv fd0
+  let renaming = fromTVS renamingSubst
+  let sig0 = funSignature fd
   let sig = funSignature fd
   let name = sigName sig
   let funType = typeOfTcFunDef fd
-  let tvs = fv funType
-  let mvs = mv funType
-  let tvs' = apply subst (map Meta mvs)
-  debug ["> specFunDef ", pretty name, " : ", pretty funType, " mvs=", prettys mvs, " tvs'=", prettys tvs']
+  let tvs = freetv funType
+  subst <- renameSubst renaming <$> getSpSubst
+  putSpSubst subst
+  let tvs' = applytv subst (map TyVar tvs)
+  debug ["> specFunDef ", pretty name, " : ", pretty funType,  " tvs'=", prettys tvs', " subst=", pretty subst]
   let name' = specName name tvs'
-  let ty' = apply subst funType
+  let ty' = applytv subst funType
   mspec <- lookupSpecialisation name'
   case mspec of
     Just fd' -> return name'
     Nothing -> do
-      let sig' = apply subst (funSignature fd)
+      let sig' = applytv subst (funSignature fd)
       -- add a placeholder first to break loops
       let placeholder = FunDef sig' []
       addSpecialisation name' placeholder
@@ -342,20 +387,22 @@ ensureSimple ty' stmt subst = case ty' of
 -}
 
 -- | `ensureClosed` checks that a type is closed, i.e. has no free type variables
-ensureClosed :: Pretty a => Ty -> a -> Subst ->  SM ()
+ensureClosed :: Pretty a => Ty -> a -> TVSubst ->  SM ()
 ensureClosed ty ctxt subst = do
-  let tvs = fv ty
+  let tvs = freetv ty
   unless (null tvs) $ panics ["spec(", pretty ctxt,"): free type vars in ", pretty ty, ": ", show tvs
                              , " @ subst=", pretty subst]
+{-
   let mvs = mv ty
   unless (null tvs) $ panics ["spec(", pretty ctxt,"): free meta vars in ", pretty ty, ": ", show mvs
                              , " @ subst=", pretty subst]
+-}
 
 specStmt :: Stmt Id -> SM(Stmt Id)
 specStmt stmt@(Return e) = do
   subst <- getSpSubst
   let ty = typeOfTcExp e
-  let ty' = apply subst ty
+  let ty' = applytv subst ty
   ensureClosed ty' stmt subst
   -- debug ["> specExp (Return): ", pretty e," : ", pretty ty, " ~> ", pretty ty']
   e' <- specExp e ty'
@@ -495,8 +542,18 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) (returnType 
     Just t -> t
     Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
 
+schemeOfTcSignature :: Signature Id -> Scheme
+schemeOfTcSignature sig@(Signature vs ps n args (Just rt))
+  = if all isTyped args
+      then Forall vs (ps :=> (funtype ts rt))
+      else error $ unwords ["Invalid instance member signature:", pretty sig]
+    where
+      isTyped (Typed _ _) = True
+      isTyped _ = False
+      ts = map (\ (Typed _ t) -> t) args
+
 typeOfTcFunDef :: TcFunDef -> Ty
-typeOfTcFunDef (FunDef sig _) = flexAll $ typeOfTcSignature sig
+typeOfTcFunDef (FunDef sig _) = typeOfTcSignature sig
 
 pprRes :: Resolution -> Doc
 -- type Resolution = (Ty, FunDef Id)
@@ -504,3 +561,173 @@ pprRes(ty, fd) = ppr ty <+> text ":" <+> text(shortName fd)
 
 instance Pretty (Ty, FunDef Id) where
   ppr = pprRes
+
+specmgu :: Ty -> Ty -> Either String TVSubst
+specmgu (TyCon n ts) (TyCon n' ts')
+  | n == n' && length ts == length ts' =
+      specsolve (zip ts ts') mempty
+specmgu (TyVar v) t = varBind v t
+specmgu t (TyVar v) = varBind v t
+specmgu t1 t2 = typesDoNotUnify t1 t2
+
+varBind :: (MonadError String m) => Tyvar -> Ty -> m TVSubst
+varBind v t
+  | t == TyVar v = return mempty
+  | v `elem` freetv t = infiniteTyErr v t
+  | otherwise = do
+      return (v |-> t)
+  where
+    infiniteTyErr v t = throwError $
+      unwords
+        [ "Cannot construct the infinite type:"
+        , pretty v
+        , "~"
+        , pretty t
+        ]
+
+specsolve :: [(Ty, Ty)] -> TVSubst -> Either String TVSubst
+specsolve [] s = pure s
+specsolve ((t1, t2) : ts) s =
+  do
+    s1 <- specmgu (applytv s t1) (applytv s t2)
+    s2 <- specsolve ts s1
+    pure (s2 <> s1)
+
+newtype TVSubst
+  = TVSubst { unTVSubst :: [(Tyvar, Ty)] } deriving (Eq, Show)
+
+restrict :: TVSubst -> [Tyvar] -> TVSubst
+restrict (TVSubst s) vs
+  = TVSubst [(v,t) | (v,t) <- s, v `notElem` vs]
+
+emptyTVSubst :: TVSubst
+emptyTVSubst = TVSubst []
+
+-- composition operators
+
+instance Semigroup TVSubst where
+  s1 <> s2 = TVSubst (outer ++ inner)
+    where
+      outer = [(u, applytv s1 t) | (u, t) <- unTVSubst s2]
+      inner = [(v,t) | (v,t) <- unTVSubst s1, v `notElem` dom2]
+      dom2 = map fst (unTVSubst s2)
+
+instance Monoid TVSubst where
+  mempty = emptyTVSubst
+
+(|->) :: Tyvar -> Ty -> TVSubst
+u |-> t = TVSubst [(u, t)]
+
+instance Pretty TVSubst where
+  ppr = braces . commaSep . map go . unTVSubst
+    where
+      go (v,t) = ppr v <+> text "|->" <+> ppr t
+
+class Data a => HasTV a where
+  applytv :: TVSubst -> a -> a
+  applytv s = everywhere (mkT (applytv @Ty s))
+
+  freetv  :: a -> [Tyvar]    -- free variables
+  freetv = everything (<>) (mkQ mempty (freetv @Ty))
+
+  renametv :: a -> SM (a, TVSubst)
+  renametv a = pure (a, mempty)
+
+instance HasTV Ty where
+  applytv (TVSubst s) t@(TyVar v)
+    = maybe t id (lookup v s)
+  applytv s (TyCon n ts)
+    = TyCon n (applytv s ts)
+  applytv _ t = t
+
+  freetv (TyVar v@(TVar _)) = [v]
+  freetv (TyCon _ ts) = freetv ts
+  freetv _ = []
+
+instance HasTV a => HasTV [a] where
+    applytv s = map (applytv s)
+    freetv = foldr (union . freetv) mempty
+
+instance HasTV a => HasTV (Maybe a) where
+  applytv s = fmap (applytv s)
+  freetv = maybe [] freetv
+
+instance (HasTV a, HasTV b) => HasTV (a,b) where  -- defaults
+
+{-
+instance (HasTV a, HasTV b, HasTV c) => HasTV (a,b,c) where
+  applytv s (z,x,y) = (applytv s z, applytv s x, applytv s y)
+  freetv (z,x,y) = freetv z `union` freetv x `union` freetv y
+
+instance (HasTV a, HasTV b) => HasTV (a,b) where
+  applytv s (x,y) = (applytv s x, applytv s y)
+  freetv (x,y) = freetv x `union` freetv y
+-}
+
+instance HasTV Id where
+  applytv s (Id n t) = Id n (applytv s t)
+  freetv (Id _ t) = freetv t
+
+instance HasTV a => HasTV (Param a) where -- defaults
+instance HasTV a => HasTV (Exp a) where  -- defaults
+instance HasTV a => HasTV (Stmt a) where  -- defaults
+
+instance HasTV (Pat Id) where
+
+
+instance HasTV (Signature Id) where
+    applytv s = everywhere (mkT (applytv @Ty s))
+    freetv sig = (everything (<>) (mkQ mempty (freetv @Ty))) sig \\ sigVars sig
+    renametv sig = do
+      subst <- foldM addRenaming mempty (sigVars sig)
+      pure (applytv subst sig, subst)
+
+{-
+data FunDef a
+  = FunDef {
+      funSignature :: Signature a
+    , funDefBody :: [Stmt a]
+    } deriving (Eq, Ord, Show, Data, Typeable)
+-}
+
+instance HasTV (FunDef Id) where
+    freetv fd = (everything (<>) (mkQ mempty (freetv @Ty))) fd \\ sigVars (funSignature fd)
+    renametv fd = do
+      let sig = funSignature fd
+      subst <- foldM addRenaming mempty (sigVars sig)
+      let sig' = applytv subst sig
+      let body' = applytv subst (funDefBody fd)
+      pure(FunDef sig' body', subst)
+
+addRenaming :: TVSubst -> Tyvar -> SM TVSubst
+addRenaming b a = do
+           fresh <- spNewName
+           pure ( (a |-> TyVar (TVar fresh)) <> b )
+
+-- TODO: refactor - make renametv return TVRenaming; turn rename* into class methods
+
+newtype TVRenaming
+  = TVR { unTVR :: [(Tyvar, Tyvar)] } deriving (Eq, Show)
+
+instance Pretty TVRenaming where
+  ppr = braces . commaSep . map go . unTVR
+    where
+      go (v,t) = ppr v <+> text "|->" <+> ppr t
+
+toTVS :: TVRenaming -> TVSubst
+toTVS = TVSubst . map (fmap TyVar) . unTVR
+
+fromTVS :: TVSubst -> TVRenaming
+fromTVS = TVR . map (fmap unTyVar) . unTVSubst where
+    unTyVar (TyVar x) = x
+    unTyVar t = error("fromTVS: " ++ pretty t ++ "is not a type variable")
+
+renameTV :: TVRenaming -> Tyvar -> Tyvar
+renameTV (TVR r) v = fromMaybe v (lookup v r)
+
+renameTy :: TVRenaming -> Ty -> Ty
+renameTy r = everywhere  (mkT (renameTV r))
+
+renameSubst :: TVRenaming -> TVSubst -> TVSubst
+renameSubst r = TVSubst . map rename . unTVSubst where
+    rename (v, t) = (renameTV r v, renameTy r t)

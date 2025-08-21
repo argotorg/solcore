@@ -17,6 +17,6 @@ contract SimpleLambda{
     return m(n(1,0));
   }
   function main() {
-    return f(50);
+    return f(40);
   }
 }

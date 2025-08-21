@@ -591,7 +591,7 @@ forall tuple . tuple:ABIEncode, tuple:ABIAttribs => instance ABITuple(tuple):ABI
 // Top level decoding function.
 // abi decodes an instance of `decodable` into a `ty`
 forall decodable reader ty decoded . decodable:HasWordReader(reader), ABIDecoder(ty, reader):ABIDecode(decoded) =>
-function abi_decode(decodable:decodable) -> decoded {
+function abi_decode(decodable:decodable, pty:Proxy(ty), prdr:Proxy(reader)) -> decoded {
     let decoder : ABIDecoder(ty, reader) = ABIDecoder(HasWordReader.getWordReader(decodable));
     return ABIDecode.decode(decoder, 0);
 }

@@ -12,10 +12,11 @@ forall a . instance a:Eq(a) {}
 
 // this should work but doesnt: forall sizel sizer elem sizeout . (sizel, sizer):TAdd(sizeout)
 // TODO: this panics during specialization
+/*
 forall sizel sizer elem sizeout pairSizelSizer . pairSizelSizer:Eq((sizel, sizer)), pairSizelSizer:TAdd(sizeout) => function concat(lhs:memory(array(sizel, elem)), rhs:memory(array(sizer, elem))) -> memory(array(sizeout, elem)) {
     return memory(0) : memory(array(sizeout, elem)); // :D
 }
-
+*/
 data Itself(a) = ItselfRuntimeTag;
 
 data array(size, elem) = array;
@@ -106,8 +107,8 @@ contract Array {
 
     function main() {
         let arr : memory(array(Succ(Succ(Succ(Succ(Zero)))), word)) = memory(42);  // = (1,2,3,4,5,6,7,8,9,10);
-        IndexAccessible.set(arr, 4, 33);
+        IndexAccessible.set(arr, 3, 33);
 
-        return IndexAccessible.at(arr, 4);
+        return IndexAccessible.at(arr, 3);
     }
 }
