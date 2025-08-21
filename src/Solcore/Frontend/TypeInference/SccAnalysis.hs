@@ -38,10 +38,18 @@ sccAnalysis' :: CompUnit Name -> SCC (CompUnit Name)
 sccAnalysis' (CompUnit imps ds)
   = do
       cs' <- mapM sccContract cs
-      CompUnit imps <$> analysis (cs' ++ ds')
+      CompUnit imps <$> analysis group (cs' ++ ds')
     where
       isContract (TContr _) = True
       isContract _ = False
+
+      isFunDef (TFunDef _) = True
+      isFunDef _ = False
+
+      group xs =
+        if (all isFunDef xs && length xs > 1)
+        then singleton (TMutualDef xs)
+        else xs
 
       (cs, ds') = partition isContract ds
 
@@ -49,17 +57,25 @@ sccAnalysis' (CompUnit imps ds)
 
 sccContract :: TopDecl Name -> SCC (TopDecl Name)
 sccContract (TContr (Contract n vs ds))
-  = (TContr . Contract n vs) <$> analysis ds
+  = (TContr . Contract n vs) <$> analysis group ds
+    where
+      group xs =
+        if (all isFunDef xs && length xs > 1)
+        then singleton (CMutualDecl xs)
+        else xs
+
+      isFunDef (CFunDecl _) = True
+      isFunDef _ = False
 sccContract d = pure d
 
-analysis :: (Ord a, Names a, Decl a) => [a] -> SCC [a]
-analysis ds
+analysis :: (Ord a, Names a, Decl a, Show a) => ([a] -> [a]) -> [a] -> SCC [a]
+analysis fn ds
   = do
       let grph = mkGraph ds
           cmps = scc grph
       case topSort cmps of
         Left _ -> pure []
-        Right ds' -> pure $ reverse $ concatMap (toList . N.vertexList1) ds'
+        Right ds' -> pure $ reverse $ concatMap (fn . toList . N.vertexList1) ds'
 
 -- building the dependency graph
 
