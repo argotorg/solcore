@@ -3,8 +3,9 @@ import Options.Applicative
 
 data Option
   = Option
-    { fileName :: FilePath
-    , optNoSpec :: !Bool
+    { fileName      :: !FilePath
+    , optImportDirs :: !String
+    , optNoSpec     :: !Bool
     , optNoDesugarCalls :: !Bool
     , optNoMatchCompiler :: !Bool
     -- Options controlling printing
@@ -24,6 +25,7 @@ data Option
 emptyOption :: FilePath -> Option
 emptyOption path = Option
     { fileName          = path
+    , optImportDirs     = []
     , optNoSpec         = False
     , optNoDesugarCalls = False
     , optNoMatchCompiler = False
@@ -51,7 +53,11 @@ options
                <> short 'f'
                <> metavar "FILE"
                <> help "Input file name")
-          <*> switch ( long "no-specialise"
+           <*> strOption ( long "include"
+               <> short 'i'
+               <> metavar "dirs"
+               <> help "This flag appends a colon-separated list of dirs to the search path.")
+           <*> switch ( long "no-specialise"
                <> short 'n'
                <> help "Skip specialisation and core emission phases")
            <*> switch ( long "no-desugar-calls"
