@@ -9,6 +9,8 @@ import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 import Solcore.Primitives.Primitives hiding (pairTy)
 import Language.Yul
+
+import System.Directory
 import System.FilePath
 }
 
@@ -442,28 +444,44 @@ OptSemi : ';'                                      { () }
 
 {
 
-moduleParser :: String -> String -> IO (Either String CompUnit)
-moduleParser dir content
+moduleParser :: [String] -> String -> IO (Either String CompUnit)
+moduleParser dirs content
   = do
       let r = runAlex content parser
       case r of
         Left err -> pure $ Left err
         Right (CompUnit imps ds) -> do
-           ds' <- loadImports dir imps
+           ds' <- loadImports dirs imps
            pure $ either Left (\ ds1 -> Right $ CompUnit imps (ds1 ++ ds)) ds'
 
-loadImports :: String -> [Import] -> IO (Either String [TopDecl])
-loadImports dir imps =
+loadImports :: [String] -> [Import] -> IO (Either String [TopDecl])
+loadImports dirs imps =
   do
-    let paths = map (toFilePath dir . unImport) imps
+    -- let paths = map (toFilePath dir . unImport) imps
+    paths <- mapM (findImport dirs) imps
     contents <- mapM readFile paths
-    rs <- mapM (moduleParser dir) contents
+    rs <- mapM (moduleParser dirs) contents
     let (errs, asts) = partitionEithers rs
     case errs of
       [] -> do
         let ds' = concatMap topDeclsFrom asts
         pure (Right ds')
       (err : _) -> pure (Left err)
+
+
+findImport :: [FilePath] -> Import -> IO FilePath
+findImport [] imp  = error("import " ++ (show $ unImport imp) ++ ": file not found")
+findImport(dir:rest) i = do
+  found <- checkImport dir i
+  case found of
+    Just path -> return path
+    Nothing -> findImport rest i
+
+checkImport :: FilePath -> Import -> IO (Maybe FilePath)
+checkImport dir imp = do
+  let path = toFilePath dir (unImport imp)
+  exists <- doesFileExist path
+  return if exists then Just path else Nothing
 
 toFilePath :: FilePath -> Name -> FilePath
 toFilePath base =
