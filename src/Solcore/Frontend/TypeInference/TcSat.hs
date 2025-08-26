@@ -7,7 +7,6 @@ import Data.List
 import Data.Maybe
 
 import Solcore.Frontend.Syntax hiding (gen)
-import Solcore.Frontend.Parser.SolverInputParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcMonad

@@ -8,7 +8,6 @@ import Data.List
 import Data.Map qualified as Map
 import Data.Maybe
 
-import Solcore.Frontend.Parser.SolverInputParser hiding (insts)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Syntax

@@ -1,7 +1,6 @@
 module Main where
 
 import Cases
--- import Solver
 import Test.Tasty
 
 main :: IO ()
