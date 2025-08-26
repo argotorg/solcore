@@ -31,11 +31,17 @@ reduce qs0 ps0
       qs <- withCurrentSubst qs0
       -- reduce wanted constraints
       info ["> Reducing wanted constraints:", pretty ps, " using ", pretty qs]
-      ps1 <- toHnfs depth ps
+      ctable <- getClassEnv
+      itable <- getInstEnv
+      let
+        qs' = concatMap (bySuperM ctable) qs
+        ps' = filter (not . entail ctable itable qs') ps
+      info ["> After entailment:", pretty ps', " - ", pretty qs']
+      ps1 <- toHnfs depth ps'
       ps2 <- withCurrentSubst ps1
       info ["< Reduced wanted constraints:", pretty ps2]
       -- simplify constraints using given constraints
-      qs2 <- withCurrentSubst qs
+      qs2 <- withCurrentSubst qs'
       info [">!! Simplifying ", pretty ps2, " using ", pretty qs2]
       rs <- simplify qs2 ps2
       info ["<!! Final simplified constraints:", pretty rs]
@@ -54,11 +60,14 @@ checkEntails qs rs
       ctable <- getClassEnv
       itable <- getInstEnv
       info [">>! Trying to check the entailment of:", pretty rs, " from:", pretty qs]
-      let unsolved q = not (isInvoke q) && not (entail ctable itable qs q)
+      let
+          qs' = nub $ concatMap (bySuperM ctable) qs
+          unsolved q = not (isInvoke q) && not (entail ctable itable qs' q)
           -- compiler generated instances can introduce invokable constraints
           -- no present in the called function. Since type inference can produce
           -- such constraints, we do not consider them here.
           isInvoke (InCls n _ _) = n == (Name "invokable")
+      info [">>! Simplified given constraints:", pretty qs']
       pure $ filter unsolved rs
 
 simplify :: [Pred] -> [Pred] -> TcM [Pred]
@@ -66,7 +75,8 @@ simplify qs ps
   = do
       ctable <- getClassEnv
       itable <- getInstEnv
-      simplify' ctable itable qs ps
+      let qs' = concatMap (bySuperM ctable) qs
+      simplify' ctable itable qs' ps
   where
     simplify' ct it rs [] = pure rs
     simplify' ct it rs (p' : ps')
@@ -188,7 +198,10 @@ bySuperM :: ClassTable -> Pred -> [Pred]
 bySuperM ctable p@(InCls c t ts)
   = case Map.lookup c ctable of
       Nothing -> [p]
-      Just cinfo -> p : concatMap (bySuperM ctable) (supers cinfo)
+      Just cinfo ->
+        case match (classpred cinfo) p of
+          Left _ -> [p]
+          Right u -> p : concatMap (bySuperM ctable) (apply u $ supers cinfo)
 bySuperM _ _ = []
 
 isHnf :: Pred -> Bool

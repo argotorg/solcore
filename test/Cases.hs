@@ -47,9 +47,8 @@ spec =
     , runTestForFile "939badfood.solc" specFolder
     , runTestForFile "SimpleField.solc" specFolder
     , runTestForFile "121counter.solc" specFolder
-    -- Failing due to missing assign constraint
     , runTestForFileWith stdOpt { optNoDesugarCalls = True } "126nanoerc20.solc" specFolder
-  --, runTestForFile "127microerc20.solc" specFolder
+    , runTestExpectingFailure "127microerc20.solc" specFolder
     ]
  where
   specFolder = "./test/examples/spec"
@@ -147,12 +146,12 @@ cases =
     , runTestForFile "undefined.solc" caseFolder
     , runTestForFile "foo-class.solc" caseFolder
     , runTestExpectingFailure "subsumption-test.solc" caseFolder
-    -- failing due to missing assign constraint
     , runTestForFile "patterson-bug.solc" caseFolder
     , runTestExpectingFailure "listeq.solc" caseFolder
     , runTestForFile "nano-desugared.solc" caseFolder
     , runTestForFile "uintdesugared.solc" caseFolder
     , runTestForFile "word-match.solc" caseFolder
+    , runTestForFile "withdraw.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

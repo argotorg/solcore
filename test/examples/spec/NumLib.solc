@@ -116,7 +116,7 @@ instance word:Num {
   }
 }
 
-forall a. a:Eq, a:Num =>
+forall a. a:Num =>
 function ge(x:a, y:a) -> Bool {
   return or(Num.gt(x,y), Eq.eq(x,y));
 }
