@@ -251,8 +251,7 @@ tcSig (sig, (Forall _ (_ :=> t)))
 tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds
   = do
-      (funs', schs, pss) <- unzip3 <$> mapM (tcFunDef True [] []) binds
-      checkDeferedConstraints (zip funs' pss)
+      (funs', schs) <- unzip <$> mapM (tcFunDef True [] []) binds
       let names = map (sigName . funSignature) funs'
       mapM_ (uncurry extEnv) (zip names schs)
       noDesugarCalls <- getNoDesugarCalls

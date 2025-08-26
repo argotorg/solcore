@@ -419,8 +419,8 @@ forall ty ret . ty:MemoryType(ret) => instance DynArray(ty):MemoryType(slice(mem
 // by loading it and then running the ABI encoding for the loaded value
 forall ty deref . ty:MemoryType(deref), deref:ABIEncode => instance memory(ty):ABIEncode {
     function encodeInto(x:memory(ty), basePtr:word, offset:word, tail:word) -> word {
-        let prx : Proxy(deref);
-        return ABIEncode.encodeInto(MemoryType.loadFromMemory(prx, Typedef.rep(x)), basePtr, offset, tail);
+        let prx : Proxy(ty); // FIXED: before was Proxy(deref)
+        return ABIEncode.encodeInto(MemoryType.loadFromMemory(prx, Typedef.rep(x)) : deref, basePtr, offset, tail);
     }
 }
 
