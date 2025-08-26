@@ -1,4 +1,3 @@
-
 import IndexLib;
 
 contract Uint {
@@ -19,4 +18,3 @@ contract Uint {
     return balances[msg_sender] : uint;
   }
 }
-
