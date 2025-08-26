@@ -63,9 +63,7 @@ library
       Solcore.Desugarer.EmitCore
       Solcore.Desugarer.UniqueTypeGen
       Solcore.Frontend.Lexer.SolcoreLexer
-      Solcore.Frontend.Lexer.SolverInputLexer
       Solcore.Frontend.Parser.SolcoreParser
-      Solcore.Frontend.Parser.SolverInputParser
       Solcore.Frontend.Pretty.SolcorePretty
       Solcore.Frontend.Pretty.Name
       Solcore.Frontend.Pretty.ShortName
@@ -91,7 +89,6 @@ library
       Solcore.Frontend.TypeInference.TcUnify
       Solcore.Pipeline.Options
       Solcore.Pipeline.SolcorePipeline
-      Solcore.Pipeline.SolverPipeline
       Solcore.Primitives.Primitives
       Language.Core
       Language.Core.Parser
@@ -116,16 +113,6 @@ executable sol-core
   build-tool-depends: alex:alex, happy:happy
   ghc-options:
     -O1
---  program-default-options
---    happy-options: --debug -gcai
-
-executable solver
-  import: common-opts
-  main-is: Solver.hs
-  hs-source-dirs:
-      app
-  build-depends: sol-core
-  build-tool-depends: alex:alex, happy:happy
 
 executable yule
     import: common-opts
@@ -159,7 +146,6 @@ test-suite sol-core-tests
   -- cabal-fmt: expand test -Main
   other-modules:
     Cases
-    Solver
 
   build-depends:
     , sol-core
