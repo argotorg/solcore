@@ -426,15 +426,17 @@ getClassEnv
 
 askInstEnv :: Name -> TcM [Inst]
 askInstEnv n
-  = maybe [] id . Map.lookup n <$> gets instEnv
+  = maybe [] id . Map.lookup n <$> getInstEnv
 
 getInstEnv :: TcM InstTable
 getInstEnv
   = gets instEnv >>= renameInstEnv
 
-getDefaultInstEnv :: TcM (Table Inst)
+getDefaultInstEnv :: TcM InstTable
 getDefaultInstEnv
-  = gets defaultEnv
+  = do
+       denv <- Map.map (\ i -> [i]) <$> gets defaultEnv
+       renameInstEnv denv
 
 renameInstEnv :: InstTable -> TcM InstTable
 renameInstEnv

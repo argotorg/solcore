@@ -19,7 +19,7 @@ import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcMonad
-import Solcore.Frontend.TypeInference.TcReduce
+import Solcore.Frontend.TypeInference.TcSimplify
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Primitives.Primitives
@@ -411,7 +411,7 @@ tiArg (Typed n _)
 tiArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
 tiArgs args = unzip3 <$> mapM tiArg args
 
-tiFunDef :: FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
+tiFunDef :: FunDef Name -> TcM (FunDef Id, Scheme)
 tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
   = do
       -- getting fresh type variables for arguments
@@ -426,7 +426,7 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       s <- unify nt (funtype ts' t1)
       -- building the function type scheme
       vs <- getEnvMetaVars
-      (ds, rs) <- splitContext ps1 [] vs `wrapError` d
+      rs <- reduce [] ps1
       ty <- withCurrentSubst nt
       sch <- generalize (rs, ty)
       -- checking ambiguity
@@ -435,7 +435,7 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
         ambiguousTypeError sch sig
       -- elaborating the type signature
       sig' <- elabSignature [] sig sch
-      withCurrentSubst (FunDef sig' bd1, sch, ds)
+      withCurrentSubst (FunDef sig' bd1, sch)
 
 
 argumentAnnotation :: Param Name -> TcM Ty
@@ -455,21 +455,22 @@ annotatedScheme vs' sig@(Signature vs ps n args rt)
          unboundTypeVars sig unbound_vars
       pure (Forall vs (ps :=> (funtype ts t)))
 
--- FIXME fix type instantiation here.
-tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme, [Pred])
+tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
   | hasAnn sig = do
       info ["\n# tcFunDef ", pretty sig]
+      let vars = vs `union` vs'
       -- check if all variables are bound in signature.
-      when (any (\ v -> v `notElem` (vs ++ vs')) (bv sig)) $ do
-         let unbound_vars = bv sig \\ (vs ++ vs')
+      when (any (\ v -> v `notElem` vars) (bv sig)) $ do
+         let unbound_vars = bv sig \\ vars
          unboundTypeVars sig unbound_vars
       -- instantiate signatures in function definition
-      sks <- mapM (const freshTyVar) (vs ++ vs')
+      sks <- mapM (const freshTyVar) vars
       let
-          env = zip (vs' ++ vs) sks
+          env = zip vars sks
           d1@(FunDef sig1@(Signature vs1 ps1 _ args1 rt1) bd1) = everywhere (mkT (insts @Ty env)) d
           qs1 = everywhere (mkT (insts @Ty env)) qs
+      info ["## predicates in signature:", pretty (ps1 ++ qs1)]
       -- getting argument / return types in annotations
       (args', lctx, ts') <- tcArgs args1
       rt1' <- maybe freshTyVar pure rt1
@@ -482,8 +483,8 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       unify nt (funtype ts' rt1')
       -- building the function type scheme
       free <- getEnvMetaVars
-      (ds, rs) <- splitContext ps1' (ps1 ++ qs1) free `wrapError` d
-      info [" - splitContext retained: ", prettys rs]
+      rs <- reduce (qs1 `union` ps1) ps1' `wrapError` d
+      info [" - Reduced context: ", prettys rs]
       ty <- withCurrentSubst nt
       inf <- generalize (rs, ty)
       info [" - generalized inferred type: ", pretty inf]
@@ -495,16 +496,9 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       subsCheck sig inf ann `wrapError` d
       -- elaborating function body
       fdt <- elabFunDef vs' sig1 bd1' inf ann
-      withCurrentSubst (fdt, ann, [])
-  | otherwise = do
-        (fd2, sch, ds) <- tiFunDef d
-        -- infered constraints cannot be defered.
-        unless (null ds) $ do
-            (tcmError $ unlines [ "Cannot entail:"
-                                , pretty ds
-                                , "from"
-                                , pretty sig]) `wrapError` d
-        pure (fd2, sch, [])
+      withCurrentSubst (fdt, ann)
+  | otherwise = tiFunDef d
+
 -- elaborating function definition
 
 elabFunDef :: [Tyvar] -> -- additional variables which came from outer scope
@@ -637,7 +631,7 @@ tcInstance' :: Instance Name -> TcM (Instance Id)
 tcInstance' idecl@(Instance d vs ctx n ts t funs)
   = do
       checkCompleteInstDef n (map (sigName . funSignature) funs)
-      (funs1, schss, pss') <- unzip3 <$> mapM (tcFunDef False vs ctx) funs `wrapError` idecl
+      (funs1, schss) <- unzip <$> mapM (tcFunDef False vs ctx) funs `wrapError` idecl
       instd <- withCurrentSubst (Instance d vs ctx n ts t funs1)
       let
         ind@(Instance _ _ ctx' _ ts' t' funs2) = everywhere (mkT gen) instd
