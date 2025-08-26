@@ -234,6 +234,17 @@ instance Fresh Inst where
         mvs <- mapM (const freshTyVar) vs
         pure (insts (zip vs mvs) it)
 
+instance Fresh ClassInfo where
+  type Result ClassInfo = ClassInfo
+
+  freshInst cls
+    = do
+        let vs = bv (classpred cls) `union` bv (supers cls)
+        mvs <- mapM (const freshTyVar) vs
+        let env = zip vs mvs
+        pure $ cls { classpred = insts env (classpred cls)
+                   , supers = insts env (supers cls)}
+
 type IEnv = [(Tyvar, Ty)]
 
 class Insts a where
@@ -422,7 +433,7 @@ modifyTypeInfo n ti
 
 getClassEnv :: TcM ClassTable
 getClassEnv
-  = gets classTable
+  = gets classTable >>= renameClassEnv
 
 askInstEnv :: Name -> TcM [Inst]
 askInstEnv n
@@ -438,11 +449,17 @@ getDefaultInstEnv
        denv <- Map.map (\ i -> [i]) <$> gets defaultEnv
        renameInstEnv denv
 
+renameClassEnv :: ClassTable -> TcM ClassTable
+renameClassEnv
+  = traverse go
+    where
+      go v = freshInst v
+
 renameInstEnv :: InstTable -> TcM InstTable
 renameInstEnv
   = Map.traverseWithKey go
   where
-    go k v = mapM freshInst v
+    go _ v = mapM freshInst v
 
 addInstance :: Name -> Inst -> TcM ()
 addInstance n inst
