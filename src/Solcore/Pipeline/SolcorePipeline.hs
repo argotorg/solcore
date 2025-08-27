@@ -98,18 +98,18 @@ compile opts = runExceptT $ do
 
   -- If / boolean desugaring
 
-  typed' <- liftIO $ if noIfDesugar then pure typed
+  desugared <- liftIO $ if noIfDesugar then pure typed
               else timeItNamed "If/Bool desugaring" (pure (ifDesugarer typed))
 
   liftIO $ when verbose $ do
     putStrLn "> If / Bool desugaring:"
-    putStrLn $ pretty typed'
+    putStrLn $ pretty desugared
 
   -- Match compilation
   matchless <-
     if noMatchCompiler
-    then pure typed'
-    else ExceptT $ timeItNamed "Match compiler" $ matchCompiler typed'
+    then pure desugared
+    else ExceptT $ timeItNamed "Match compiler" $ matchCompiler desugared
   let printMatch = (not $ noMatchCompiler) && (verbose || optDumpDS opts)
   liftIO $ when printMatch $ do
     putStrLn "> Match compilation result:"
