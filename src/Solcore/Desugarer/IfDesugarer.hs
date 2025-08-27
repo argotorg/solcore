@@ -44,7 +44,8 @@ desugarBoolCons (Lam ps bdy ty)
   = Lam ps (everywhere (mkT desugarBoolCons) bdy) ty
 desugarBoolCons (TyExp e t)
   = TyExp (desugarBoolCons e) t
-desugarBoolCons v = v
+desugarBoolCons (Var a) = Var a
+desugarBoolCons (Lit l) = Lit l
 
 sumConsFor :: Id -> Exp Id
 sumConsFor (Id n _)
