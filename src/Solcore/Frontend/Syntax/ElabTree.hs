@@ -577,6 +577,10 @@ instance Elab S.Stmt where
 
   elab (S.Assign lhs rhs)
     = elabAssignment lhs rhs
+  elab (S.StmtPlusEq lhs rhs)
+    = elabAssignment lhs (S.ExpPlus lhs rhs)
+  elab (S.StmtMinusEq lhs rhs)
+    = elabAssignment lhs (S.ExpMinus lhs rhs)
   elab (S.Let n mt me)
     = Let n <$> elab mt <*> elab me
   elab (S.StmtExp e)

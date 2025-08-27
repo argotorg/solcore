@@ -288,6 +288,8 @@ StmtList : Stmt StmtList                       {$1 : $2}
 
 Stmt :: { Stmt }
 Stmt : Expr '=' Expr ';'                              {Assign $1 $3}
+     | Expr '+=' Expr ';'                             {StmtPlusEq $1 $3}
+     | Expr '-=' Expr ';'                             {StmtMinusEq $1 $3}
      | 'let' Name ':' Type InitOpt ';'                {Let $2 (Just $4) $5}
      | 'let' Name InitOpt ';'                         {Let $2 Nothing $3}
      | Expr ';'                                       {StmtExp $1}
