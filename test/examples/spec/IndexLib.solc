@@ -1,119 +1,4 @@
-// Before desugaring:
-/*
-import IndexLib;
-
-contract Uint {
-  reserved : word;
-  owner : address;
-  decimals : uint;
-  totalSupply : uint;
-  balances : mapping(address,uint);
-
-  function mint(amount:uint) {
-    balances[owner] = Num.add(balances[owner], amount);
-    totalSupply = Num.add(totalSupply, amount);
-  }
-
-  function init() {
-    owner = address(0x123456789abcdef);
-    decimals = Num.fromWord(18);
-  }
-  function main() -> uint {
-    init();
-    mint(uint(1000));
-    mint(uint(1000));
-    return balances[owner] : uint;
-  }
-}
-*/
-
-
-function addW(x : word, y : word) {
-  let res: word;
-  assembly {
-     res := add(x, y)
-  }
-  return res;
-}
-
-function subW(x : word, y : word) {
-  let res: word;
-  assembly {
-     res := sub(x, y)
-  }
-  return res;
-}
-
-function addU(x : uint, y : uint) -> uint {
-  let res: word;
-  let xw : word = Num.toWord(x);
-  let yw : word = Num.toWord(y);
-  assembly {
-     res := add(xw, yw)
-  }
-  return uint(res);
-}
-
-function hash1(x: word) -> word {
-  let result: word = 0;
-  assembly {
-    mstore(0, x)
-    result := keccak256(0,32)
-  }
-  return result;
-}
-
-function hash2(x: word, y: word) -> word {
-  let result: word = 0;
-  assembly {
-    mstore(0, x)
-    mstore(32, y)
-    result := keccak256(0,64)
-  }
-  return result;
-}
-
-forall a.
-class a:Num {
-  function toWord(x:a) -> word;
-  function fromWord(x:word) -> a;
-  function add(x:a, y:a) -> a;
-  function sub(x:a, y:a) -> a;
-}
-
-instance word:Num {
-  function toWord(x:word) -> word { return x; }
-  function fromWord(x:word) -> word { return x; }
-  function add(x:word, y:word) -> word { return addW(x, y); }
-  function sub(x:word, y:word) -> word { return addW(x, y); }
-}
-
-data uint = uint(word);
-
-instance uint:Num {
-  function toWord(x:uint) -> word
-  {
-          match x {
-            | uint(y) => return y;
-        }
-  }
-
-  function fromWord(x:word) -> uint { return uint(x); }
-  function add(x:uint, y:uint) -> uint { return uint(addW(Num.toWord(x), Num.toWord(y))); }
-  function sub(x:uint, y:uint) -> uint { return uint(subW(Num.toWord(x), Num.toWord(y))); }
-}
-
-/* // this breaks the Paterson condition
-forall a. a:Typedef(word) =>
-instance a:Num {
-  function toWord(x:a) -> word { return Typedef.rep(x); }
-  function fromWord(x:word) { return Typedef.abs(x); }
-  function add(x:a, y:a) -> a { return Typedef.abs(addW(Typedef.rep(x), Typedef.rep(y))); }
-}
-*/
-
-// Storage slots and mapping access
-
+import NumLib;
 
 /////// Construction
 forall abs rep.
@@ -159,6 +44,12 @@ instance address:Typedef(word) {
     function abs(x:word) -> address {
         return address(x);
     }
+}
+
+instance address:Eq {
+  function eq(x : address , y : address) -> Bool {
+    return Eq.eq(Typedef.rep(x), Typedef.rep(y));
+  }
 }
 
 data storage(a) = storage(word);
@@ -433,9 +324,9 @@ instance mapping(index, member):StorageSize {
 
 data IndexAccessProxy(map, index, member) = IndexAccessProxy(map, index);
 
-forall map index member. index:Typedef(word), map:Typedef(word)
-=> instance IndexAccessProxy(map, index, member):LValueMemberAccess(storageRef(member)) {
-    function memberAccess(x:IndexAccessProxy(map, index, member)) -> storageRef(member) {
+forall index member. index:Typedef(word)
+=> instance IndexAccessProxy(storageRef(mapping(index,member)), index, member):LValueMemberAccess(storageRef(member)) {
+    function memberAccess(x:IndexAccessProxy(storageRef(mapping(index,member)), index, member)) -> storageRef(member) {
 	    return storageRef(indexStorageSlot(x));
     }
 }
@@ -477,37 +368,3 @@ forall a b. a:RValueMemberAccess(b) =>
 function rval(x:a) -> b {
   return RValueMemberAccess.memberAccess(x);
 }
-
-data UintCxt = UintCxt  ;
-data reserved_sel = reserved_sel  ;
-instance StructField(ContractStorage(UintCxt), reserved_sel) : StructField (word, ()) {
-}
-data owner_sel = owner_sel  ;
-instance StructField(ContractStorage(UintCxt), owner_sel) : StructField (address, (word, ())) {
-}
-data decimals_sel = decimals_sel  ;
-instance StructField(ContractStorage(UintCxt), decimals_sel) : StructField (uint, (word, (address, ()))) {
-}
-data totalSupply_sel = totalSupply_sel  ;
-instance StructField(ContractStorage(UintCxt), totalSupply_sel) : StructField (uint, (word, (address, (uint, ())))) {
-}
-data balances_sel = balances_sel  ;
-instance StructField(ContractStorage(UintCxt), balances_sel) : StructField (mapping(address, uint), (word, (address, (uint, (uint, ()))))) {
-}
-contract Uint {
-   function mint (amount : uint) {
-      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)))), Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)))), amount));
-      Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), totalSupply_sel)), Num.add(rval(MemberAccessProxy(ContractStorage(UintCxt), totalSupply_sel)), amount));
-   }
-   function init () {
-      Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)), address(81985529216486895));
-      Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), decimals_sel)), Num.fromWord(18));
-   }
-   function main () -> uint {
-      init();
-      mint(uint(1000));
-      mint(uint(1000));
-      return rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)))) : uint;
-   }
-}
-

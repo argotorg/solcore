@@ -1,5 +1,6 @@
 module Solcore.Frontend.Syntax.ElabTree where
 
+import Common.Monad
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Identity
@@ -8,6 +9,11 @@ import Control.Monad.State
 import Data.List
 import Data.Maybe
 
+import GHC.Stack
+
+import Text.Pretty.Simple
+
+import Solcore.Frontend.Parser.SolcoreParser(mkTupleTy)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts)
 import Solcore.Frontend.Syntax.Name
@@ -18,9 +24,13 @@ import Solcore.Primitives.Primitives
 
 -- top level elaboration / name resolution function
 
-buildAST :: S.CompUnit -> IO (Either String (CompUnit Name))
+buildAST :: S.CompUnit -> IO (Either String (CompUnit Name), Env)
 buildAST t
   = runElabM t
+
+buildAST' :: S.CompUnit -> IO (Either String (CompUnit Name, Env))
+buildAST' t
+  = runElabM' t
 
 -- definition of an environment to hold
 -- module declarations
@@ -34,10 +44,12 @@ data Env
     , constructors :: [Name]
     , classes :: [Name]
     , variables :: [Name]
+    , currentContract :: Maybe Name
+    , fieldTypes :: [Ty]
     } deriving Show
 
 instance Semigroup Env where
-  (Env cs fs ts fd ctrs cls vs) <> (Env cs' fs' ts' fd' ctrs' cls' vs')
+  (Env cs fs ts fd ctrs cls vs cc ftys) <> (Env cs' fs' ts' fd' ctrs' cls' vs' cc' ftys')
     = Env (cs `union` cs')
           (fs `union` fs')
           (ts `union` ts')
@@ -45,7 +57,8 @@ instance Semigroup Env where
           (ctrs `union` ctrs')
           (cls `union` cls')
           (vs `union` vs')
-
+          (cc')
+          (ftys <> ftys')
 instance Monoid Env where
   mempty = Env []
                []
@@ -54,15 +67,28 @@ instance Monoid Env where
                [Name "pair", Name "()", Name "true", Name "false"]
                []
                []
-
+               Nothing
+               []
 -- definition of the monad
 
 type ElabM a = (ExceptT String (StateT Env IO)) a
 
-runElabM :: (Show a, Elab a) => a -> IO (Either String (Res a))
+runElabM' :: (Show a, Elab a) => a -> IO (Either String (Res a, Env))
+runElabM' t = do
+  (eres, env) <- runElabM t
+  case eres of
+    Left msg -> pure (Left msg)
+    Right res -> pure (Right (res, env))
+
+runElabM :: (Show a, Elab a) => a -> IO (Either String (Res a), Env)
 runElabM t = do
   let ienv = initialEnv t
-  fst <$> (runStateT (runExceptT (elab t)) ienv)
+  runStateT (runExceptT (elab t)) ienv
+
+type ContractName = Name
+
+setCurrentContract :: Maybe ContractName -> ElabM ()
+setCurrentContract x = modify (\s -> s { currentContract = x })
 
 pushVarsInScope :: [Name] -> ElabM ()
 pushVarsInScope ns
@@ -106,6 +132,11 @@ isClassName (Just (S.ExpName _ n _))
 isClassName (Just (S.ExpVar _ n))
   = (n `elem`) <$> gets classes
 
+contractFields :: S.Contract -> [S.Field]
+contractFields c = concatMap extract (S.decls c) where
+    extract (S.CFieldDecl f) = [f]
+    extract _ = []
+
 class Elab a where
   type Res a
   initialEnv :: a -> Env
@@ -141,7 +172,7 @@ instance Elab S.CompUnit where
   elab (S.CompUnit imps ds)
     = do
         imps' <- elab imps
-        ds' <- elab ds
+        ds' <- concat <$> elab ds
         pure (CompUnit imps' ((TClassDef invokeClass) : ds'))
 
 instance Elab S.Import where
@@ -151,7 +182,7 @@ instance Elab S.Import where
 
 
 instance Elab S.TopDecl where
-  type Res S.TopDecl = TopDecl Name
+  type Res S.TopDecl = [TopDecl Name]
 
   initialEnv (S.TContr c) = initialEnv c
   initialEnv (S.TFunDef fd) = initialEnv fd
@@ -161,13 +192,16 @@ instance Elab S.TopDecl where
   initialEnv (S.TSym s) = initialEnv s
   initialEnv (S.TPragmaDecl _) = mempty
 
-  elab (S.TContr c) = TContr <$> elab c
-  elab (S.TFunDef fd) = TFunDef <$> elab fd
-  elab (S.TClassDef c) = TClassDef <$> elab c
-  elab (S.TInstDef d) = TInstDef <$> elab d
-  elab (S.TDataDef d) = TDataDef <$> elab d
-  elab (S.TSym s) = TSym <$> elab s
-  elab (S.TPragmaDecl p) = TPragmaDecl <$> elab p
+  elab (S.TContr c) = do
+      c' <- elab c
+      extra <- extraTopDeclsForContract c
+      pure $ extra ++ [TContr c']
+  elab (S.TFunDef fd) = singleton . TFunDef <$> elab fd
+  elab (S.TClassDef c) = singleton . TClassDef <$> elab c
+  elab (S.TInstDef d) = singleton . TInstDef <$> elab d
+  elab (S.TDataDef d) = singleton . TDataDef <$> elab d
+  elab (S.TSym s) = singleton . TSym <$> elab s
+  elab (S.TPragmaDecl p) = singleton . TPragmaDecl <$> elab p
 
 instance Elab S.Pragma where
   type Res S.Pragma = Pragma
@@ -200,13 +234,56 @@ instance Elab S.Contract where
       where
         env = initialEnv decls
 
-  elab (S.Contract n ts decls)
+  elab c@(S.Contract n ts decls)
     = do
+        setCurrentContract (Just n)
         ts' <- elab ts
-        decls' <- elab decls
+        decls' <- concat <$> elab decls
         vs <- mapM mkTyVar ts'
+        setCurrentContract Nothing
         pure (Contract n vs decls')
 
+extraTopDeclsForContract :: S.Contract -> ElabM [TopDecl Name]
+extraTopDeclsForContract c@(S.Contract cname ts decls) = do
+    let singName = singletonNameForContract cname
+    let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []]
+    -- simulate field elaboration to get the elaborated type (and maybe init)
+    hypotheticalFields <- mapM elab (contractFields c)
+
+    -- let extraFieldDecls = concat [extraTopDeclsForContractField cname f unit | f <- hypotheticalFields]
+    let (fieldTypes, extraFieldDecls) = foldl' (flip contractFieldStep) ([], []) hypotheticalFields
+    pure (contractSingDecl:extraFieldDecls)
+    where
+      hypotheticalElabField :: S.Field -> ElabM (Field Name)
+      hypotheticalElabField  (S.Field n t me)
+          = Field n <$> elab t <*> elab me
+
+      -- given a list of contract field types so far and topdecls for them, amends them with data for another field
+      -- the types of previous fields are needed to construct field offset
+      contractFieldStep :: Field Name -> ([Ty], [TopDecl Name]) -> ([Ty], [TopDecl Name])
+      contractFieldStep field (tys, decls) = (tys', decls') where
+          tys' = tys ++ [fieldTy field]
+          decls' = decls ++ extraTopDeclsForContractField cname field offset
+          offset = foldr pair unit tys
+
+
+extraTopDeclsForContractField :: ContractName -> Field Name -> Ty -> [TopDecl Name]
+extraTopDeclsForContractField cname field@(Field fname fty _minit) offset = [selDecl, TInstDef sfInstance] where
+  -- data b_sel = n_sel
+  selName = selectorNameForField fname
+  selDecl = TDataDef $ DataTy selName [] [Constr selName []]
+  selType = TyCon selName []
+  -- instance StructField(ContractStorage(CCtx), fld1_sel):StructField(uint, ()) {}
+  ctxTy = TyCon "ContractStorage" [singletonTypeForContract cname]
+  sfInstance = Instance
+               { instDefault = False
+               , instVars = []
+               , instContext = []
+               , instName = "StructField"
+               , paramsTy = [fty, offset]
+               , mainTy = TyCon "StructField" [ctxTy, selType]
+               , instFunctions = []
+               }
 instance Elab S.DataTy where
   type Res S.DataTy = DataTy
 
@@ -351,11 +428,118 @@ instance Elab S.Instance where
         popVarsInScope (names vs)
         pure (Instance d vs' ctx' n ts' t' funs')
 
+
+elabContractField :: S.Field -> ElabM [ContractDecl Name]
+elabContractField fd@(S.Field fname ft Nothing) = pure [] -- contract fields are desugared elsewhere
+elabContractField fd = notImplementedM "elabContractField" fd
+
+selectorNameForField :: Name -> Name  -- FIXME: include contract name
+selectorNameForField (Name s) = Name (s <> "_sel")
+selectorNameForField n = notImplementedS "selectorNameForField" n
+
+singletonNameForContract :: Name -> Name
+singletonNameForContract (Name s) = Name (s <>  "Cxt")
+
+singletonTypeForContract :: Name -> Ty
+singletonTypeForContract cname = TyCon (singletonNameForContract cname) []
+
+singletonValForContract :: Name -> Exp Name
+singletonValForContract cname = Con (singletonNameForContract cname) []
+
+contractContext :: ElabM (Exp Name)
+contractContext = do
+  cname <- fromMaybe (error "ElabTree - impossible: assignment outside of contract") <$> gets currentContract
+  let singName = singletonNameForContract cname
+  let contractSingTy = TyCon singName [] -- FIXME: separate singletons for each contract
+  let contractSing = Con singName [] -- FIXME: separate singletons for each contract
+  let cxtTy = TyCon "ContractStorage" [contractSingTy]
+  let cxt = Con "ContractStorage" [contractSing]
+  pure cxt
+
+
+elabAssignment :: S.Exp -> S.Exp -> ElabM (Stmt Name)
+elabAssignment lhs@(S.ExpVar Nothing name) rhs = do
+  isF <- isField name
+  if isF then elabContractFieldAssignment name rhs
+         else (:=) <$> elab lhs <*> elab rhs
+
+elabAssignment lhs@(S.ExpIndexed arr idx) rhs = do
+    -- writes [ "> elabAssignment ", show lhs, " <~ ", show rhs]
+    idx' <- elab idx
+    iap <- indexedProxyFor arr idx'
+    let lhs' = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [iap]
+    rhs' <- elab rhs
+    let assignName = QualName (Name "Assign") "assign"
+    -- writes [ "< elabAssignment ", pretty lhs', " <~ ", pretty rhs']
+
+    pure $ StmtExp $ Call Nothing assignName [lhs', rhs']
+
+elabAssignment lhs rhs =
+    (:=) <$> elab lhs <*> elab rhs
+
+indexedProxyFor :: S.Exp -> Exp Name -> ElabM (Exp Name)
+indexedProxyFor exp@(S.ExpVar Nothing name) idx = do
+  isF <- isField name
+  if isF then do
+                arrProxy <- memberProxyFor name
+                let arrRef = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [arrProxy]
+                pure $ Con "IndexAccessProxy" [arrRef, idx]
+
+         else notImplementedM "indexedProxyFor" exp
+indexedProxyFor exp@(S.ExpIndexed arr idx1) idx'' = do
+   idx' <- elab idx1
+   arrProxy <- indexedProxyFor arr idx'
+   let arrRef = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [arrProxy]
+   let result = Con "IndexAccessProxy" [arrRef, idx'']
+   -- writes ["indexedProxyFor: "]
+   -- writes ["  ", show exp]
+   -- writes ["   [", pretty idx'', "]\n", "  = ", pretty result]
+   pure result
+
+indexedProxyFor exp idx = notImplementedM "indexedProxyFor" exp
+
+memberProxyFor :: Name -> ElabM(Exp Name)
+memberProxyFor field = do
+  cxt <- contractContext
+  let selName = selectorNameForField field
+  let selector = Con selName []
+  let fieldMap = Con "MemberAccessProxy" [cxt, selector]
+  pure fieldMap
+
+elabContractFieldAssignment field rhs = do
+{- Desugaring scheme:
+       // this.counter = rhs
+       let cxt = ContractStorage(CounterCxt);
+       let counter_map : MemberAccessProxy(cxt, counter_sel, ())
+       = MemberAccessProxy(cxt, counter_sel);
+       let counter_lval : storageRef(word)
+                        = LValueMemberAccess.memberAccess(counter_map);
+       let counter_rval : word
+                        = RValueMemberAccess.memberAccess(counter_map);
+       Assign.assign(counter_lval, counter_rval);
+-}
+{-
+  cxt <- contractContext
+  let selName = selectorNameForField field
+  let selector = Con selName []
+  let fieldMap = Con "MemberAccessProxy" [cxt, selector]
+-}
+  fieldMap <- memberProxyFor field
+  let lhs' = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [fieldMap]
+  rhs' <- elab rhs
+  let assignName = QualName (Name "Assign") "assign"
+  pure $ StmtExp $ Call Nothing assignName [lhs', rhs']
+
 instance Elab S.Field where
   type Res S.Field = Field Name
 
   elab (S.Field n t me)
     = Field n <$> elab t <*> elab me
+
+  initialEnv (S.Field n _t _i)
+    = env {fields = [n] `union` fields env }
+      where
+        env = mempty
 
 instance Elab S.FunDef where
   type Res S.FunDef = FunDef Name
@@ -372,7 +556,7 @@ instance Elab S.FunDef where
   initialEnv (S.FunDef sig _) = initialEnv sig
 
 instance Elab S.ContractDecl where
-  type Res S.ContractDecl = ContractDecl Name
+  type Res S.ContractDecl = [ContractDecl Name]
 
   initialEnv (S.CDataDecl dt) = initialEnv dt
   initialEnv (S.CFieldDecl fd) = initialEnv fd
@@ -380,19 +564,20 @@ instance Elab S.ContractDecl where
   initialEnv (S.CConstrDecl c) = initialEnv c
 
   elab (S.CDataDecl dt)
-    = CDataDecl <$> elab dt
+    = singleton . CDataDecl <$> elab dt
   elab (S.CFieldDecl fd)
-    = CFieldDecl <$> elab fd
+    = elabContractField fd -- contract fields are desugared away
   elab (S.CFunDecl fd)
-    = CFunDecl <$> elab fd
+    = singleton . CFunDecl <$> elab fd
   elab (S.CConstrDecl c)
-    = CConstrDecl <$> elab c
+    = singleton . CConstrDecl <$> elab c
+
 
 instance Elab S.Stmt where
   type Res S.Stmt = Stmt Name
 
   elab (S.Assign lhs rhs)
-    = (:=) <$> elab lhs <*> elab rhs
+    = elabAssignment lhs rhs
   elab (S.Let n mt me)
     = Let n <$> elab mt <*> elab me
   elab (S.StmtExp e)
@@ -434,7 +619,14 @@ instance Elab S.Exp where
         isF <- isField n
         isCon <- isDefinedConstr n
         if isF then
-          pure $ FieldAccess me' n
+          case me' of
+            Nothing -> do -- this is a contract field
+              cxt <- contractContext
+              let rvalFun = Name "rval"
+              let fieldSel = Con (selectorNameForField n) []
+              let fieldMap = Con "MemberAccessProxy" [cxt, fieldSel]
+              pure (Call Nothing rvalFun [fieldMap])
+            _ -> pure $ FieldAccess me' n -- TODO: structures other than contract context
         else if isCon && isNothing me then pure (Con n [])
              else pure $ Var n
   elab (S.ExpName me n es)
@@ -450,6 +642,14 @@ instance Elab S.Exp where
           pure (Call Nothing (mkClassName me' n) es')
         -- condition for function call
         else pure (Call me' n es')
+
+  elab (S.ExpIndexed arr idx) = do
+    idx' <- elab idx
+    arr_proxy <- indexedProxyFor arr idx'
+    let rvalFun = Name "rval"
+    pure $ Call Nothing rvalFun [arr_proxy]
+
+  elab exp = notImplementedM "elab @Exp" exp
 
 instance Elab S.Pat where
   type Res S.Pat = Pat Name
@@ -492,3 +692,16 @@ instance Elab S.Literal where
 
   elab (S.IntLit i) = pure (IntLit i)
   elab (S.StrLit s) = pure (StrLit s)
+
+
+notImplemented :: (HasCallStack, Pretty a) => String -> a -> b
+notImplemented funName a = error $ concat [funName, " not implemented yet for ", pretty a]
+
+notImplementedS :: (HasCallStack, Show a) => String -> a -> b
+notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]
+
+notImplementedM :: (HasCallStack, Show a, MonadIO m, MonadError String m) => String -> a -> m b
+notImplementedM funName a = do
+  writes ["Internal error: ", funName, " not implemented yet for:"]
+  liftIO (pPrint a)
+  throwError "Stop."

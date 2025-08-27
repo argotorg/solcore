@@ -64,6 +64,8 @@ import System.FilePath
       '{'        {Token _ TLBrace}
       '}'        {Token _ TRBrace}
       '|'        {Token _ TBar}
+      '['        {Token _ TLBrack}
+      ']'        {Token _ TRBrack}
 
 %expect 0
 
@@ -288,6 +290,7 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | 'lam' '(' ParamList ')' OptRetTy Body       {Lam $3 $6 $5}
      | Expr ':' Type                               {TyExp $1 $3}
      | '(' TupleArgs ')'                           {tupleExp $2}
+     | Expr '[' Expr ']'                           {ExpIndexed $1 $3 }
 
 TupleArgs :: { [Exp] }
 TupleArgs : Expr ',' Expr                          {[$1, $3]}
