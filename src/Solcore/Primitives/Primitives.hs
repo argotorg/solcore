@@ -136,8 +136,11 @@ primInr = (inrName, Forall [aVar, bVar] ([] :=> inrTy at bt))
 
 -- boolean type constructor
 
+boolName :: Name
+boolName = Name "bool"
+
 boolTy :: Ty
-boolTy = TyCon (Name "bool") []
+boolTy = TyCon boolName []
 
 trueName :: Name
 trueName = Name "true"

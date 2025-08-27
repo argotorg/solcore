@@ -959,9 +959,8 @@ tcYulExp (YLit l)
 tcYulExp (YIdent v)
   = do
       sch <- askEnv v
-      -- writeln $ unwords ["! tcYulExp/YIdent: ", pretty v, "::", pretty sch]
       (_ :=> t) <- freshInst sch
-      unless (t == word) (invalidYulType v t)
+      unify t word
       pure t
 tcYulExp (YCall n es)
   = do
@@ -969,7 +968,7 @@ tcYulExp (YCall n es)
       (_ :=> t) <- freshInst sch
       ts <- mapM tcYulExp es
       t' <- freshTyVar
-      unless (all (== word) ts) (invalidYulType n t)
+      mapM_ (unify word) ts
       unify t (foldr (:->) t' ts)
       withCurrentSubst t'
 

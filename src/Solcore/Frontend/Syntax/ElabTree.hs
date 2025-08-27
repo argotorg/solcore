@@ -48,9 +48,10 @@ instance Semigroup Env where
 
 instance Monoid Env where
   mempty = Env []
-               [] [Name "word", Name "pair", Name "()"]
                []
-               [Name "pair", Name "()"]
+               [Name "word", Name "pair", Name "()", Name "bool"]
+               []
+               [Name "pair", Name "()", Name "true", Name "false"]
                []
                []
 

@@ -58,7 +58,10 @@ isBoolCon (Id n _) = n `elem` [trueName, falseName]
 
 -- desugaring the boolean type constructor
 
-desugarTyBool :: Id -> Id
-desugarTyBool (Id n t)
-  | t == boolTy = Id n (sumTy unit unit)
-  | otherwise = Id n t
+desugarTyBool :: Ty -> Ty
+desugarTyBool t@(TyCon n [])
+  | n == boolName = sumTy unit unit
+  | otherwise = t
+desugarTyBool (TyCon n ts)
+  = TyCon n (map desugarTyBool ts)
+desugarTyBool t = t
