@@ -22,3 +22,13 @@ function max(x,y) {
   }
   return res;
 }
+
+function foo () {
+  return lam (x) {
+            if (gt(x,0)) {
+                return true;
+            } else {
+                return false;
+            }
+         };
+}

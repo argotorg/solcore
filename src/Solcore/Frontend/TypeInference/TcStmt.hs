@@ -1022,6 +1022,7 @@ instance Vars a => Vars (Stmt a) where
   vars (StmtExp e) = vars e
   vars (Return e) = vars e
   vars (Match e eqns) = vars e `union` vars eqns
+  vars (If e blk1 blk2) = vars e `union` vars blk1 `union` vars blk2
 
 instance Vars a => Vars (Equation a) where
   vars (_, ss) = vars ss
