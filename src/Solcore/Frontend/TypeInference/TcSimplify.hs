@@ -257,16 +257,8 @@ undefinedInstance p@(InCls n _ _)
       f s = "   " ++ s
 undefinedInstance p = tcmError $ unwords ["Cannot entail: ", pretty p]
 
-fromANF :: Inst -> TcM Inst
 fromANF (ps :=> p)
   = do
-      let (eqs, ps') = partition isEquality ps
-          eqs' = map (\ (t :~: t') -> (t,t')) eqs
-      s <- solve eqs' mempty
+      let eqs = [ (t,t') | (t :~: t') <- ps]
+      s <- solve eqs mempty
       pure $ apply s ([] :=> p)
-
-isEquality :: Pred -> Bool
-isEquality (_ :~: _) = True
-isEquality _ = False
-
-
