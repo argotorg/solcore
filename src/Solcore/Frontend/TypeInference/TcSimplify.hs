@@ -1,7 +1,6 @@
 module Solcore.Frontend.TypeInference.TcSimplify where
 
 import Control.Monad
-import Control.Monad.Except
 import Control.Monad.Trans
 import Data.Either (isRight)
 import Data.List
