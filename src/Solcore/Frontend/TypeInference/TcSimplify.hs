@@ -210,7 +210,7 @@ hnf (TyCon _ _) = False
 hnf _ = True
 
 elimEqualities :: [Pred] -> TcM [Pred]
-elimEqualities ps = go [] ps where
+elimEqualities ps0 = go [] ps0 where
     go rs [] = return rs
     go rs ((t :~: u) : ps) = do
       phi <- mgu t u
