@@ -31,6 +31,8 @@ common common-opts
     , syb
     , time
     , timeit
+    , directory
+    , split
 
   build-tool-depends: happy:happy, alex:alex
 
