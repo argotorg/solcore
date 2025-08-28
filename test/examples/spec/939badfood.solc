@@ -5,7 +5,7 @@ forall a . class a: Enum {
 data Food = Curry | Beans | Other;
 
 instance Food : Enum {
-  function fromEnum(x : Food) {
+  function fromEnum(x : Food) -> word {
      match x {
        | Curry => return 1;
        | Beans => return 2;

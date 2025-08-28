@@ -1,14 +1,22 @@
+function addWord(x : word, y : word) -> word {
+  let res: word;
+  assembly {
+     res := add(x, y)
+  }
+  return res;
+}
+
 contract SimpleLambda{
   function f (z) {
     let n = lam (x,y) {
-      return primAddWord(x,primAddWord(y,1));
+      return addWord(x,addWord(y,1));
     } ;
     let m = lam (x) {
-      return primAddWord (z,x) ;
+      return addWord (z,x) ;
     } ;
     return m(n(1,0));
   }
   function main() {
-    return f(50);
+    return f(40);
   }
 }

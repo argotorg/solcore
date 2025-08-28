@@ -21,13 +21,14 @@ common common-opts
     , mtl
     , containers
     , algebraic-graphs
-    , filepath
     , array
-    , pretty
-    , optparse-applicative
-    , syb
+    , filepath
     , megaparsec >= 9.6
+    , optparse-applicative
     , parser-combinators >= 1.3
+    , pretty
+    , pretty-simple
+    , syb
     , time
     , timeit
 
@@ -53,7 +54,6 @@ library
   -- cabal-fmt: expand src
   exposed-modules:
       Solcore.Desugarer.IndirectCall
-      Solcore.Desugarer.LambdaLifting
       Solcore.Desugarer.MatchCompiler
       Solcore.Desugarer.ReplaceWildcard
       Solcore.Desugarer.Specialise

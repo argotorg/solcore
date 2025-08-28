@@ -1,0 +1,23 @@
+import StorageLib;
+
+/*
+contract Counter {
+  counter : word;
+
+  function main() -> word {
+    counter = add(counter, 1);
+    return counter;
+  }
+}
+*/
+
+data counter_sel = counter_sel;
+instance StructField(ContractStorage(()), counter_sel):StructField(word, ()) {}
+
+contract Counter {
+   function main () -> word {
+      let counter_map /*: MemberAccessProxy(ContractStorage(()), counter_sel, ()) */ = MemberAccessProxy(ContractStorage(()), counter_sel);
+      Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(()), counter_sel)), add(rval(counter_map), 1));
+      return rval(counter_map);
+   }
+}

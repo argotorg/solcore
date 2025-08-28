@@ -1,7 +1,0 @@
-contract Simple {
-  val : word ;
-
-  function getVal () {
-    return val ;
-  }
-}
