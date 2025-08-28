@@ -81,6 +81,20 @@ tcStmt (Asm yblk)
       let word' = monotype word
       mapM_ (flip extEnv word') newBinds
       pure (Asm yblk, [], t)
+tcStmt (If e blk1 blk2)
+  = do
+      (e', ps, t) <- tcExp e
+      unless (t == boolTy) $
+        throwError $ unlines ["Expression:", pretty e
+                             , "has type:", pretty t
+                             , "while it is expected to have type:"
+                             , pretty boolTy
+                             ]
+      (blk1', ps1, _) <- tcBody blk1
+      (blk2', ps2, _) <- tcBody blk2
+      let ps3 = ps ++ ps1 ++ ps2
+      withCurrentSubst (If e' blk1' blk2', ps3, unit)
+
 
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
@@ -974,9 +988,8 @@ tcYulExp (YLit l)
 tcYulExp (YIdent v)
   = do
       sch <- askEnv v
-      -- writeln $ unwords ["! tcYulExp/YIdent: ", pretty v, "::", pretty sch]
       (_ :=> t) <- freshInst sch
-      unless (t == word) (invalidYulType v t)
+      unify t word
       pure t
 tcYulExp (YCall n es)
   = do
@@ -984,7 +997,7 @@ tcYulExp (YCall n es)
       (_ :=> t) <- freshInst sch
       ts <- mapM tcYulExp es
       t' <- freshTyVar
-      unless (all (== word) ts) (invalidYulType n t)
+      mapM_ (unify word) ts
       unify t (foldr (:->) t' ts)
       withCurrentSubst t'
 
@@ -1039,6 +1052,7 @@ instance Vars a => Vars (Stmt a) where
   vars (StmtExp e) = vars e
   vars (Return e) = vars e
   vars (Match e eqns) = vars e `union` vars eqns
+  vars (If e blk1 blk2) = vars e `union` vars blk1 `union` vars blk2
 
 instance Vars a => Vars (Equation a) where
   vars (_, ss) = vars ss

@@ -231,6 +231,10 @@ instance Pretty a => Pretty (Stmt a) where
     = text "assembly" <+> lbrace $$
         nest 3 (vcat (map ppr yblk)) $$
         rbrace
+  ppr (If e blk1 blk2)
+    = text "if" <+> parens (ppr e) <+>
+      lbrace $$ nest 3 (ppr blk1) $$ rbrace <+>
+      text "else" <+> lbrace $$ nest 3 (ppr blk2) $$ rbrace
 
 instance Pretty a => Pretty (Equation a) where
   ppr (p,ss)

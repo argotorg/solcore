@@ -63,6 +63,8 @@ instance ReplaceWildcard (Stmt Id) where
     = Return <$> replace e
   replace (Match es eqns)
     = Match <$> replace es <*> replace eqns
+  replace (If e blk1 blk2)
+    = If <$> replace e <*> replace blk1 <*> replace blk2
   replace s = pure s
 
 instance ReplaceWildcard (FunDef Id) where

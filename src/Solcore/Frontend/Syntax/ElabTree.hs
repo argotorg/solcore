@@ -61,9 +61,10 @@ instance Semigroup Env where
           (ftys <> ftys')
 instance Monoid Env where
   mempty = Env []
-               [] [Name "word", Name "pair", Name "()"]
                []
-               [Name "pair", Name "()"]
+               [Name "word", Name "pair", Name "()", Name "bool"]
+               []
+               [Name "pair", Name "()", Name "true", Name "false"]
                []
                []
                Nothing
@@ -591,6 +592,8 @@ instance Elab S.Stmt where
     = Match <$> elab es <*> elab eqns
   elab (S.Asm blk)
     = pure (Asm blk)
+  elab (S.If e blk1 blk2)
+    = If <$> elab e <*> elab blk1 <*> elab blk2
 
 instance Elab S.Param where
   type Res S.Param = Param Name

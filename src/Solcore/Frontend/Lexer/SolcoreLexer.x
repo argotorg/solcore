@@ -50,6 +50,7 @@ tokens :-
         <0>    "forall"                          {simpleToken TForall}
         <0>    "instance"                        {simpleToken TInstance}
         <0>    "if"                              {simpleToken TIf}
+        <0>    "else"                            {simpleToken TElse}
         <0>    "for"                             {simpleToken TFor}
         <0>    "switch"                          {simpleToken TSwitch}
         <0>    "type"                            {simpleToken TType}
@@ -173,6 +174,7 @@ data Lexeme
   | TData
   | TMatch
   | TIf
+  | TElse
   | TFor
   | TSwitch
   | TType
@@ -241,6 +243,7 @@ mkIdent (st, _, _, str) len
       "let" -> return $ Token (position st) TLet
       "assembly" -> return $ Token (position st) TAssembly
       "if" -> return $ Token (position st) TIf
+      "else" -> return $ Token (position st) TElse
       "switch" -> return $ Token (position st) TSwitch
       "for" -> return $ Token (position st) TFor
       "default" -> return $ Token (position st) TDefault

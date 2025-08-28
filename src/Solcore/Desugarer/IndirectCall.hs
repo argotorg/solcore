@@ -80,6 +80,8 @@ instance Desugar (Stmt Name) where
   desugar (Match es eqn)
     = Match <$> desugar es <*> desugar eqn
   desugar e@(Asm _) = pure e
+  desugar (If e blk1 blk2)
+    = If <$> desugar e <*> desugar blk1 <*> desugar blk2
 
 instance Desugar (Exp Name) where
   desugar (Con a es)

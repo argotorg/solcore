@@ -181,6 +181,8 @@ instance Names (Stmt Name) where
   names (Match es eqns)
     = names es `union` names eqns
   names (Asm _) = []
+  names (If e blk1 blk2)
+    = names e `union` names blk1 `union` names blk2
 
 instance Names (Equation Name) where
   names (_, bdy) = names bdy
