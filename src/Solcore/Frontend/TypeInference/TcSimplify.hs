@@ -1,22 +1,22 @@
 module Solcore.Frontend.TypeInference.TcSimplify where
 
 import Control.Monad
-import Control.Monad.Except
-import Control.Monad.Trans
-import Data.Either (isRight)
+-- import Control.Monad.Except
+-- import Control.Monad.Trans
+-- import Data.Either (isRight)
 import Data.List
 import Data.Map qualified as Map
 import Data.Maybe
 
 import Solcore.Frontend.Pretty.SolcorePretty
-import Solcore.Frontend.Pretty.ShortName
+-- import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcEnv
-import Solcore.Frontend.TypeInference.TcMonad
+import Solcore.Frontend.TypeInference.TcMonad hiding(insts)
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 
-import Solcore.Pipeline.Options
+-- import Solcore.Pipeline.Options
 
 
 -- context reduction
@@ -67,6 +67,7 @@ checkEntails qs rs
           -- no present in the called function. Since type inference can produce
           -- such constraints, we do not consider them here.
           isInvoke (InCls n _ _) = n == (Name "invokable")
+          isInvoke _ = False
       info [">>! Simplified given constraints:", pretty qs']
       pure $ filter unsolved rs
 
@@ -78,7 +79,8 @@ simplify qs ps
       let qs' = concatMap (bySuperM ctable) qs
       simplify' ctable itable qs' ps
   where
-    simplify' ct it rs [] = pure rs
+    simplify' :: ClassTable -> InstTable -> [Pred] -> [Pred] -> TcM [Pred]
+    simplify' _ _ rs [] = pure rs
     simplify' ct it rs (p' : ps')
       | entail ct it (rs `union` ps') p'
         = do
@@ -134,35 +136,34 @@ toHnf depth p@(InCls c _ _)
               Just (_, s) -> do
                 info [">>>> Default instance for:", pretty p, "found! (Solved)"]
                 -- default instances should not have any additional contraints.
-                extSubst s
+                _ <- extSubst s
                 pure []
           Just (ps' , s, i) -> do
             info [">>> Found instance for:", pretty p, "\n>>>Instance:", pretty i,"\n>>>Subst:", pretty s]
-            extSubst s
+            _ <- extSubst s
             toHnfs (depth - 1) ps'
 toHnf _ (t1 :~: t2)
   = do
-      info [">>> Unify ", pretty t1, " with ", pretty t2, " (Solved)"]
-      unify t1 t2
+      s <- unify t1 t2
+      info [">>> Unify ", pretty t1, " with ", pretty t2, " (Solved: ", pretty s, ")"]
       pure []
 
 -- checking for default instance
 
 proveDefaulting :: InstTable -> [Inst] -> Pred -> Maybe ([Pred], Subst)
-proveDefaulting denv ienv p@(InCls i t ts)
+proveDefaulting denv ienv (InCls cname t ts)
   -- no instance head unify with current predicate
   | all isNothing [tryInst it | it <- ienv]
     = do
-        case Map.lookup i denv of
-          Just [(ps :=> h@(InCls _ t' ts'))] ->
+        case Map.lookup cname denv of
+          Just [ps :=> InCls _ t' ts'] ->
             case match t' t of
               Left _ -> Nothing
               Right u ->
                 case mgu ts ts' of
                   Left _ -> Nothing
                   Right u' ->
-                    let vs = mv h
-                        s = u' <> u
+                    let s = u' <> u
                     in pure (apply s ps, s)
           _ -> Nothing
   -- some instance can unify with current predicate
@@ -171,17 +172,19 @@ proveDefaulting denv ienv p@(InCls i t ts)
   -- checking if a predicate can unify with an instance head.
   -- we just consider the instance head.
   tryInst :: Qual Pred -> Maybe Inst
-  tryInst i@(_ :=> h@(InCls _ t' ts')) =
+  tryInst i@(_ :=> InCls _ t' ts') =
     case mgu (t' : ts') (t : ts) of
       Left _ -> Nothing
       Right _ -> Just i
+  tryInst i = error ("Internal error: tryInst used on an unsupported constraint" ++ pretty i)
+proveDefaulting _ _ p  = error ("Internal error: proveDefaulting used on an unsupported constraint" ++ pretty p)
 
 byInstM :: [Inst] -> Pred -> Maybe ([Pred], Subst, Inst)
-byInstM ienv p@(InCls i t ts)
+byInstM ienv (InCls _ t ts)
   = msum [tryInst it | it <- ienv]
     where
       tryInst :: Qual Pred -> Maybe ([Pred], Subst, Inst)
-      tryInst c@(ps :=> h@(InCls _ t' ts')) =
+      tryInst c@(ps :=> InCls _ t' ts') =
         -- matching using instance main type
         case match t' t of
           Left _ -> Nothing
@@ -190,12 +193,13 @@ byInstM ienv p@(InCls i t ts)
             case mgu ts ts' of
               Left _ -> Nothing
               Right u' ->
-                let tvs = mv h
-                    s = u' <> u
+                let s = u' <> u
                 in  Just (apply s ps, s, c)
+      tryInst c = error ("Internal error: tryInst used on an unsupported constraint: " ++ pretty c)
+byInstM _ p  = error ("Internal error: byInstM used on an unsupported constraint" ++ pretty p)
 
 bySuperM :: ClassTable -> Pred -> [Pred]
-bySuperM ctable p@(InCls c t ts)
+bySuperM ctable p@(InCls c _ _)
   = case Map.lookup c ctable of
       Nothing -> [p]
       Just cinfo ->
@@ -213,11 +217,11 @@ hnf (TyCon _ _) = False
 hnf _ = True
 
 elimEqualities :: [Pred] -> TcM [Pred]
-elimEqualities ps = go [] ps where
+elimEqualities ps0 = go [] ps0 where
     go rs [] = return rs
     go rs ((t :~: u) : ps) = do
       phi <- mgu t u
-      extSubst phi
+      _ <- extSubst phi
       ps' <- withCurrentSubst ps
       rs' <- withCurrentSubst rs
       go rs' ps'
@@ -258,17 +262,11 @@ undefinedInstance p@(InCls n _ _)
                            ] ++ map (f . pretty) insts'
     where
       f s = "   " ++ s
+undefinedInstance p = tcmError $ unwords ["Cannot entail: ", pretty p]
 
 fromANF :: Inst -> TcM Inst
 fromANF (ps :=> p)
   = do
-      let (eqs, ps') = partition isEquality ps
-          eqs' = map (\ (t :~: t') -> (t,t')) eqs
-      s <- solve eqs' mempty
+      let eqs = [ (t,t') | (t :~: t') <- ps]
+      s <- solve eqs mempty
       pure $ apply s ([] :=> p)
-
-isEquality :: Pred -> Bool
-isEquality (_ :~: _) = True
-isEquality _ = False
-
-
