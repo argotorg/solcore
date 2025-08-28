@@ -1,7 +1,6 @@
 module Solcore.Frontend.TypeInference.TcSimplify where
 
 import Control.Monad
-import Control.Monad.Trans
 import Data.Either (isRight)
 import Data.List
 import Data.Map qualified as Map
