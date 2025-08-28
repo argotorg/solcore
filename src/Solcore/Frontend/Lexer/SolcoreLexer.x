@@ -80,6 +80,22 @@ tokens :-
         <0>    "["                               {simpleToken TLBrack}
         <0>    "]"                               {simpleToken TRBrack}
         <0>    "|"                               {simpleToken TBar}
+        <0>    "<"                               {simpleToken TLT}
+        <0>    ">"                               {simpleToken TGT}
+        <0>    ">="                              {simpleToken TGE}
+        <0>    "<="                              {simpleToken TLE}
+        <0>    "!="                              {simpleToken TNE}
+        <0>    "=="                              {simpleToken TEE}
+        <0>    "&&"                              {simpleToken TLAnd}
+        <0>    "||"                              {simpleToken TLOr}
+        <0>    "!"                               {simpleToken TLNot}
+        <0>    "+"                               {simpleToken TPlus}
+        <0>    "-"                               {simpleToken TMinus}
+        <0>    "*"                               {simpleToken TTimes}
+        <0>    "/"                               {simpleToken TDivide}
+        <0>    "%"                               {simpleToken TModulo}
+        <0>    "+="                              {simpleToken TPlusEq}
+        <0>    "-="                              {simpleToken TMinusEq}
         <0>    @identifier                       {mkIdent}
         <0>    @number                           {mkNumber}
         <0>    @hexlit                           {mkHexlit}
@@ -182,6 +198,25 @@ data Lexeme
   | TPragma
   | TLBrack
   | TRBrack
+  | TLT
+  | TGT
+  | TGE
+  | TLE
+  | TNE
+  | TEE
+  | TLAnd
+  | TLOr
+  | TLNot
+  | TPlus
+  | TMinus
+  | TTimes
+  | TDivide
+  | TModulo
+  | TPlusEq
+  | TMinusEq
+  | TTimesEq
+  | TDivideEq
+  | TModuloEq
   | TNoCoverageCondition
   | TNoPattersonCondition
   | TNoBoundVariableCondition
