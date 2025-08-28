@@ -7,7 +7,6 @@ import Data.Map qualified as Map
 import Data.Maybe
 
 import Solcore.Frontend.Pretty.SolcorePretty
-import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcMonad
