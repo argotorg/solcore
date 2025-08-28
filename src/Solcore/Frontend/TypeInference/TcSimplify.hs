@@ -13,7 +13,6 @@ import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 
-import Solcore.Pipeline.Options
 
 
 -- context reduction
