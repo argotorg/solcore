@@ -63,6 +63,7 @@ checkEntails qs rs
           -- no present in the called function. Since type inference can produce
           -- such constraints, we do not consider them here.
           isInvoke (InCls n _ _) = n == (Name "invokable")
+          isInvoke _ = False
       info [">>! Simplified given constraints:", pretty qs']
       pure $ filter unsolved rs
 
