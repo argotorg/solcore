@@ -214,7 +214,7 @@ elimEqualities ps0 = go [] ps0 where
     go rs [] = return rs
     go rs ((t :~: u) : ps) = do
       phi <- mgu t u
-      extSubst phi
+      _ <- extSubst phi
       ps' <- withCurrentSubst ps
       rs' <- withCurrentSubst rs
       go rs' ps'
