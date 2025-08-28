@@ -255,6 +255,7 @@ undefinedInstance p@(InCls n _ _)
                            ] ++ map (f . pretty) insts'
     where
       f s = "   " ++ s
+undefinedInstance p = tcmError $ unwords ["Cannot entail: ", pretty p]
 
 fromANF :: Inst -> TcM Inst
 fromANF (ps :=> p)
