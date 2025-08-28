@@ -192,7 +192,7 @@ byInstM ienv p@(InCls i t ts)
                 in  Just (apply s ps, s, c)
 
 bySuperM :: ClassTable -> Pred -> [Pred]
-bySuperM ctable p@(InCls c t ts)
+bySuperM ctable p@(InCls c _ _)
   = case Map.lookup c ctable of
       Nothing -> [p]
       Just cinfo ->
