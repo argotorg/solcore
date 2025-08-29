@@ -714,7 +714,6 @@ function getReader(d:ABIDecoder(ty, reader)) -> reader {
     }
 }
 
-// missing constraints.
  forall baseType baseType_decoded reader . ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded),
      baseType : WordReader =>
      instance ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
