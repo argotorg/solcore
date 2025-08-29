@@ -227,7 +227,7 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
         match haveSelector {
           | 0 => assembly {
 	           mstore(0,0xff)
-                   revert(0,1)
+               revert(0,1)
 		 }
           | _ =>
             // dispatch to method based on selector
