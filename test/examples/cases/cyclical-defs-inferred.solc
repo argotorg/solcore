@@ -1,0 +1,12 @@
+function foo(x) {
+  return bar(x);
+}
+function bar(x) {
+  return foo(x);
+}
+
+contract C {
+  function main() -> word {
+    return foo(1);
+  }
+}
