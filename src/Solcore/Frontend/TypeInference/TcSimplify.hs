@@ -190,9 +190,10 @@ byInstM ienv p@(InCls i t ts)
             case mgu ts ts' of
               Left _ -> Nothing
               Right u' ->
-                let tvs = mv h
-                    s = u' <> u
+                let s = u' <> u
                 in  Just (apply s ps, s, c)
+      tryInst c = error ("Internal error: tryInst used on an unsupported constraint: " ++ pretty p)
+byInstM _ p  = error ("Internal error: byInstM used on an unsupported constraint" ++ pretty p)
 
 bySuperM :: ClassTable -> Pred -> [Pred]
 bySuperM ctable p@(InCls c _ _)
