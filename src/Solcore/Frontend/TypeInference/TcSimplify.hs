@@ -181,7 +181,7 @@ byInstM ienv (InCls _ t ts)
   = msum [tryInst it | it <- ienv]
     where
       tryInst :: Qual Pred -> Maybe ([Pred], Subst, Inst)
-  tryInst i@(_ :=> InCls _ t' ts') =
+      tryInst i@(ps :=> InCls _ t' ts') =
         -- matching using instance main type
         case match t' t of
           Left _ -> Nothing
@@ -191,8 +191,8 @@ byInstM ienv (InCls _ t ts)
               Left _ -> Nothing
               Right u' ->
                 let s = u' <> u
-                in  Just (apply s ps, s, c)
-      tryInst c = error ("Internal error: tryInst used on an unsupported constraint: " ++ pretty p)
+                in  Just (apply s ps, s, i)
+      tryInst c = error ("Internal error: tryInst used on an unsupported constraint: " ++ pretty c)
 byInstM _ p  = error ("Internal error: byInstM used on an unsupported constraint" ++ pretty p)
 
 bySuperM :: ClassTable -> Pred -> [Pred]
