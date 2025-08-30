@@ -1,0 +1,48 @@
+
+import IndexLib;
+
+function caller() -> address {
+  let res: word;
+  assembly {
+     res := caller()
+  }
+  return address(res);
+}
+
+function require1fail() {
+  let res: word;
+  assembly {
+    mstore(0x0, 0x72657175697265313a204641494c) // "require1: FAIL"
+    revert(0,32)
+  }
+  return (); // for the typechecker
+}
+
+function require1(cond: Bool) {
+    match cond {
+    | False => return require1fail();
+    | True => return ();
+  }
+}
+
+function nop() -> () { return ();}
+
+contract Uint {
+  reserved : word;
+  msg_sender : address; // mock msg.sender
+  owner : address;
+  decimals : uint;
+  totalSupply : uint;
+  balances : mapping(address,uint);
+
+  function withdraw(src:address, amt:uint) {
+    balances[src] = Num.sub(balances[src], amt):uint;
+  }
+
+
+  function main() {
+    withdraw(msg_sender, totalSupply);
+    return balances[msg_sender] : uint;
+  }
+}
+
