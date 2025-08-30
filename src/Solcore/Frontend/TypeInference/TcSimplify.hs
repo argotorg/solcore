@@ -35,7 +35,7 @@ reduce qs0 ps0
       info ["> After entailment:", pretty ps', " - ", pretty qs']
       ps1 <- toHnfs depth ps'
       ps2 <- withCurrentSubst ps1
-      info ["< Reduced wanted constraints:", pretty ps2]
+      info ["< Reduced by instances constraints:", pretty ps2]
       -- simplify constraints using given constraints
       qs2 <- withCurrentSubst qs'
       info [">!! Simplifying ", pretty ps2, " using ", pretty qs2]
@@ -92,7 +92,7 @@ simplify qs ps
 toHnfs :: Int -> [Pred] -> TcM [Pred]
 toHnfs depth ps
   = do
-      info [">> Reducing ", pretty ps, " using instances"]
+      info [">> Before eliminating equalities ", pretty ps]
       ps' <- elimEqualities ps
       info [">> After eliminating equalities:", pretty ps']
       ps'' <- withCurrentSubst ps'

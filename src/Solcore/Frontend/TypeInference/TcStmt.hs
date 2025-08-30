@@ -414,6 +414,7 @@ tiArgs args = unzip3 <$> mapM tiArg args
 tiFunDef :: FunDef Name -> TcM (FunDef Id, Scheme)
 tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
   = do
+      info ["# tiFunDef:", pretty sig]
       -- getting fresh type variables for arguments
       (args', lctx, ts') <- tiArgs args
       -- fresh type for the function
@@ -425,8 +426,7 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       -- unifying context introduced type with infered function type
       s <- unify nt (funtype ts' t1)
       -- building the function type scheme
-      vs <- getEnvMetaVars
-      rs <- reduce [] ps1
+      rs <- reduce [] ps1 `wrapError` d
       ty <- withCurrentSubst nt
       sch <- generalize (rs, ty)
       -- checking ambiguity
