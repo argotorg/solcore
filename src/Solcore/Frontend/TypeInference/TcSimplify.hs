@@ -181,7 +181,7 @@ byInstM ienv p@(InCls i t ts)
   = msum [tryInst it | it <- ienv]
     where
       tryInst :: Qual Pred -> Maybe ([Pred], Subst, Inst)
-      tryInst c@(ps :=> h@(InCls _ t' ts')) =
+  tryInst i@(_ :=> InCls _ t' ts') =
         -- matching using instance main type
         case match t' t of
           Left _ -> Nothing
