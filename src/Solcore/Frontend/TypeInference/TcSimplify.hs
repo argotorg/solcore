@@ -160,8 +160,7 @@ proveDefaulting denv ienv p@(InCls i t ts)
                 case mgu ts ts' of
                   Left _ -> Nothing
                   Right u' ->
-                    let vs = mv h
-                        s = u' <> u
+                    let s = u' <> u
                     in pure (apply s ps, s)
           _ -> Nothing
   -- some instance can unify with current predicate
