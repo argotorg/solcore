@@ -177,7 +177,7 @@ proveDefaulting denv ienv p@(InCls cname t ts)
 proveDefaulting _ _ p  = error ("Internal error: proveDefaulting used on an unsupported constraint: " ++ pretty p)
 
 byInstM :: [Inst] -> Pred -> Maybe ([Pred], Subst, Inst)
-byInstM ienv p@(InCls i t ts)
+byInstM ienv (InCls _ t ts)
   = msum [tryInst it | it <- ienv]
     where
       tryInst :: Qual Pred -> Maybe ([Pred], Subst, Inst)
