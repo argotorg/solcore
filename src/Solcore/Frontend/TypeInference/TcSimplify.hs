@@ -153,7 +153,7 @@ proveDefaulting denv ienv p@(InCls cname t ts)
   | all isNothing [tryInst it | it <- ienv]
     = do
         case Map.lookup cname denv of
-          Just [(ps :=> h@(InCls _ t' ts'))] ->
+          Just [ps :=> InCls _ t' ts'] ->
             case match t' t of
               Left _ -> Nothing
               Right u ->
