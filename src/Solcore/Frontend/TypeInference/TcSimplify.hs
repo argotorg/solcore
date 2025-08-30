@@ -132,7 +132,7 @@ toHnf depth p@(InCls c _ _)
               Just (_, s) -> do
                 info [">>>> Default instance for:", pretty p, "found! (Solved)"]
                 -- default instances should not have any additional contraints.
-                extSubst s
+                _ <- extSubst s
                 pure []
           Just (ps' , s, i) -> do
             info [">>> Found instance for:", pretty p, "\n>>>Instance:", pretty i,"\n>>>Subst:", pretty s]
