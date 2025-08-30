@@ -148,11 +148,11 @@ toHnf _ (t1 :~: t2)
 -- checking for default instance
 
 proveDefaulting :: InstTable -> [Inst] -> Pred -> Maybe ([Pred], Subst)
-proveDefaulting denv ienv p@(InCls i t ts)
+proveDefaulting denv ienv p@(InCls cname t ts)
   -- no instance head unify with current predicate
   | all isNothing [tryInst it | it <- ienv]
     = do
-        case Map.lookup i denv of
+        case Map.lookup cname denv of
           Just [(ps :=> h@(InCls _ t' ts'))] ->
             case match t' t of
               Left _ -> Nothing
