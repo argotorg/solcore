@@ -174,6 +174,8 @@ proveDefaulting denv ienv p@(InCls i t ts)
     case mgu (t' : ts') (t : ts) of
       Left _ -> Nothing
       Right _ -> Just i
+  tryInst i = error ("Internal error: tryInst used on an unsupported constraint: " ++ pretty i)
+proveDefaulting _ _ p  = error ("Internal error: proveDefaulting used on an unsupported constraint: " ++ pretty p)
 
 byInstM :: [Inst] -> Pred -> Maybe ([Pred], Subst, Inst)
 byInstM ienv p@(InCls i t ts)
