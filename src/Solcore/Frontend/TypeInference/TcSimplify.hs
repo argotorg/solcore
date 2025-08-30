@@ -75,7 +75,8 @@ simplify qs ps
       let qs' = concatMap (bySuperM ctable) qs
       simplify' ctable itable qs' ps
   where
-    simplify' ct it rs [] = pure rs
+    simplify' :: ClassTable -> InstTable -> [Pred] -> [Pred] -> TcM [Pred]
+    simplify' _ _ rs [] = pure rs
     simplify' ct it rs (p' : ps')
       | entail ct it (rs `union` ps') p'
         = do
