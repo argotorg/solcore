@@ -9,7 +9,7 @@ import Data.Maybe
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcEnv
-import Solcore.Frontend.TypeInference.TcMonad
+import Solcore.Frontend.TypeInference.TcMonad hiding(insts)
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 
