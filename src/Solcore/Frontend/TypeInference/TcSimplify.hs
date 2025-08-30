@@ -141,7 +141,8 @@ toHnf depth p@(InCls c _ _)
 toHnf _ (t1 :~: t2)
   = do
       info [">>> Unify ", pretty t1, " with ", pretty t2, " (Solved)"]
-      unify t1 t2
+      s <- unify t1 t2
+      info [">>> Unify ", pretty t1, " with ", pretty t2, " (Solved: ", pretty s, ")"]
       pure []
 
 -- checking for default instance
