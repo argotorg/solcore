@@ -136,7 +136,7 @@ toHnf depth p@(InCls c _ _)
                 pure []
           Just (ps' , s, i) -> do
             info [">>> Found instance for:", pretty p, "\n>>>Instance:", pretty i,"\n>>>Subst:", pretty s]
-            extSubst s
+            _ <- extSubst s
             toHnfs (depth - 1) ps'
 toHnf _ (t1 :~: t2)
   = do
