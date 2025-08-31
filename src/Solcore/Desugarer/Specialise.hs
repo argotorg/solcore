@@ -159,6 +159,7 @@ addDeclResolutions :: TopDecl Id -> SM ()
 addDeclResolutions (TInstDef inst) = addInstResolutions (flexAll inst)
 addDeclResolutions (TFunDef fd) = addFunDefResolution (flexAll fd)
 addDeclResolutions (TDataDef dt) = addData dt
+addDeclResolutions (TMutualDef decls) = forM_ decls addDeclResolutions
 addDeclResolutions _ = return ()
 
 
