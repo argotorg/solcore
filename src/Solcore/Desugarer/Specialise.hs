@@ -200,6 +200,7 @@ addContractResolutions (Contract name args decls) = do
 addCDeclResolution :: ContractDecl Id -> SM ()
 addCDeclResolution (CFunDecl fd) = addFunDefResolution (flexAll fd)
 addCDeclResolution (CDataDecl dt) = addData dt
+addCDeclResolution (CMutualDecl decls) = forM_ decls addCDeclResolution
 addCDeclResolution _ = return ()
 
 addFunDefResolution fd = do
