@@ -52,14 +52,14 @@ sccContract (TContr (Contract n vs ds))
   = (TContr . Contract n vs) <$> analysis ds
 sccContract d = pure d
 
-analysis :: (Ord a, Names a, Decl a) => [a] -> SCC [a]
+analysis :: (Ord a, Names a, Decl a, Show a, Groupable a) => [a] -> SCC [a]
 analysis ds
   = do
       let grph = mkGraph ds
           cmps = scc grph
       case topSort cmps of
         Left _ -> pure []
-        Right ds' -> pure $ reverse $ concatMap (toList . N.vertexList1) ds'
+        Right ds' -> pure $ reverse $ concatMap (groupMutualDefs . toList . N.vertexList1) ds'
 
 -- building the dependency graph
 
@@ -255,6 +255,28 @@ instance Names (TopDecl Name) where
 
 instance Names (CompUnit Name) where
   names (CompUnit _ decls) = names decls
+
+-- Groupable class for handling mutual definitions
+
+class Groupable a where
+  isFunctionDef :: a -> Bool
+  wrapMutualDefs :: [a] -> [a]
+
+instance Groupable (TopDecl Name) where
+  isFunctionDef (TFunDef _) = True
+  isFunctionDef _ = False
+  wrapMutualDefs xs = [TMutualDef xs]
+
+instance Groupable (ContractDecl Name) where
+  isFunctionDef (CFunDecl _) = True
+  isFunctionDef _ = False
+  wrapMutualDefs xs = [CMutualDecl xs]
+
+groupMutualDefs :: Groupable a => [a] -> [a]
+groupMutualDefs xs =
+  if (all isFunctionDef xs && length xs > 1)
+  then wrapMutualDefs xs
+  else xs
 
 -- monad definition
 

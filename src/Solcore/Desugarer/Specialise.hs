@@ -201,6 +201,7 @@ addDeclResolutions :: TopDecl Id -> SM ()
 addDeclResolutions (TInstDef inst) = addInstResolutions inst
 addDeclResolutions (TFunDef fd) = addFunDefResolution fd
 addDeclResolutions (TDataDef dt) = addData dt
+addDeclResolutions (TMutualDef decls) = forM_ decls addDeclResolutions
 addDeclResolutions _ = return ()
 
 
@@ -242,6 +243,7 @@ addContractResolutions (Contract name args decls) = do
 addCDeclResolution :: ContractDecl Id -> SM ()
 addCDeclResolution (CFunDecl fd) = addFunDefResolution fd
 addCDeclResolution (CDataDecl dt) = addData dt
+addCDeclResolution (CMutualDecl decls) = forM_ decls addCDeclResolution
 addCDeclResolution _ = return ()
 
 addFunDefResolution fd = do
