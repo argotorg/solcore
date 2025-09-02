@@ -4,7 +4,7 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception (try, SomeException)
-import Data.IORef
+import Data.List.Split(splitOn)
 import qualified Data.Time as Time
 import System.Exit (ExitCode(..), exitWith)
 import System.FilePath
@@ -39,7 +39,7 @@ pipeline = do
       putStrLn err
       exitWith (ExitFailure 1)
     Right contracts -> do
-      forM_ (zip [1..] contracts) $ \(i, c) -> do
+      forM_ (zip [(1::Int)..] contracts) $ \(i, c) -> do
         let filename = "output" <> show i <> ".core"
         putStrLn ("Writing to " ++ filename)
         writeFile filename (show c)
@@ -54,11 +54,13 @@ compile opts = runExceptT $ do
       timeItNamed = optTimeItNamed opts
       file = fileName opts
       dir = takeDirectory file
+      otherDirs = splitOn ":" (optImportDirs opts)
+      dirs = dir:otherDirs
 
   -- Parsing
   content <- liftIO $ readFile file
 
-  parsed <- ExceptT $ moduleParser dir content
+  parsed <- ExceptT $ moduleParser dirs content
   (resolved, env) <- ExceptT $ buildAST' parsed
 
   liftIO $ when (verbose || optDumpAST opts) $ do
@@ -66,7 +68,7 @@ compile opts = runExceptT $ do
     putStrLn $ pretty resolved
 
   liftIO $ when (optDumpEnv opts) $ pPrint env
-    
+
   -- SCC analysis
   connected <- ExceptT $ timeItNamed "SCC           " $
     sccAnalysis resolved
