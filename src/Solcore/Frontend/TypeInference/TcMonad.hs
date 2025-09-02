@@ -234,6 +234,14 @@ instance Fresh Inst where
         mvs <- mapM (const freshTyVar) vs
         pure (insts (zip vs mvs) it)
 
+fromANF :: Inst -> TcM Inst
+fromANF (ps :=> p)
+  = do
+      let eqs = [ (t,t') | (t :~: t') <- ps]
+          ps' = [c | c@(InCls _ _ _) <- ps]
+      s <- solve eqs mempty
+      pure $ apply s (ps' :=> p)
+
 instance Fresh ClassInfo where
   type Result ClassInfo = ClassInfo
 

@@ -137,11 +137,11 @@ merge s1@(Subst p1) s2@(Subst p2) =
  where
   disagree = foldr step [] (dom p1 `intersect` dom p2)
   step v ac
-    | alphaEq (apply s1 (Meta v)) (apply s2 (Meta v)) = ac
+    | (apply s1 (Meta v)) == (apply s2 (Meta v)) = ac
     | otherwise = (apply s1 (Meta v), apply s2 (Meta v)) : ac
   agree =
     all
-      (\ v -> alphaEq (apply s1 (Meta v)) (apply s2 (Meta v)))
+      (\ v -> (apply s1 (Meta v)) == (apply s2 (Meta v)))
       (dom p1 `intersect` dom p2)
   dom s = map fst s
 
