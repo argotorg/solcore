@@ -156,6 +156,7 @@ cases =
     , runTestForFile "if-examples.solc" caseFolder
     , runTestForFile "import-std.solc" caseFolder
     , runTestForFile "withdraw.solc" caseFolder
+    , runTestForFile "bal.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
