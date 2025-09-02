@@ -38,6 +38,12 @@ pairTypeInfo = TypeInfo 2 [Name "pair"] []
 arrowTypeInfo :: TypeInfo
 arrowTypeInfo = TypeInfo 2 [] []
 
+boolTypeInfo :: TypeInfo
+boolTypeInfo = TypeInfo 0 [trueName, falseName] []
+
+sumTypeInfo :: TypeInfo
+sumTypeInfo = TypeInfo 2 [inlName, inrName] []
+
 -- name of constructor and its scheme
 type ConInfo = (Name, Scheme)
 
@@ -122,6 +128,8 @@ primCtx
                  , primInvoke
                  , primPair
                  , primUnit
+                 , primTrue
+                 , primFalse
                  ]
 
 primTypeEnv :: TypeTable
@@ -129,6 +137,8 @@ primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
                            , (Name "pair", pairTypeInfo)
                            , (Name "->", arrowTypeInfo)
                            , (Name "()", unitTypeInfo)
+                           , (Name "bool", boolTypeInfo)
+                           , (Name "sum", sumTypeInfo)
                            ]
 
 primInstEnv :: InstTable

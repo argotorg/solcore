@@ -6,6 +6,7 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Exception (try, SomeException)
 import Data.List.Split(splitOn)
 import qualified Data.Time as Time
+import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import System.Exit (ExitCode(..), exitWith)
 import System.FilePath
 import qualified System.TimeIt as TimeIt
@@ -50,6 +51,7 @@ compile opts = runExceptT $ do
   let verbose = optVerbose opts
       noDesugarCalls = optNoDesugarCalls opts
       noMatchCompiler = optNoMatchCompiler opts
+      noIfDesugar = optNoIfDesugar opts
       timeItNamed :: String -> IO a -> IO a
       timeItNamed = optTimeItNamed opts
       file = fileName opts
@@ -97,11 +99,20 @@ compile opts = runExceptT $ do
     putStrLn "> Elaborated tree:"
     putStrLn $ pretty typed
 
+  -- If / boolean desugaring
+
+  desugared <- liftIO $ if noIfDesugar then pure typed
+              else timeItNamed "If/Bool desugaring" (pure (ifDesugarer typed))
+
+  liftIO $ when verbose $ do
+    putStrLn "> If / Bool desugaring:"
+    putStrLn $ pretty desugared
+
   -- Match compilation
   matchless <-
     if noMatchCompiler
-    then pure typed
-    else ExceptT $ timeItNamed "Match compiler" $ matchCompiler typed
+    then pure desugared
+    else ExceptT $ timeItNamed "Match compiler" $ matchCompiler desugared
   let printMatch = (not $ noMatchCompiler) && (verbose || optDumpDS opts)
   liftIO $ when printMatch $ do
     putStrLn "> Match compilation result:"

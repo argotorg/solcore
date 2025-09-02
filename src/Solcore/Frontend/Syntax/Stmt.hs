@@ -18,6 +18,7 @@ data Stmt a
   | Return (Exp a)                      -- return statements
   | Match [Exp a] (Equations a)         -- pattern matching
   | Asm YulBlock                        -- Yul block
+  | If (Exp a) (Body a) (Body a)        -- If statement
   deriving (Eq, Ord, Show, Data, Typeable)
 
 type Body a = [Stmt a]
