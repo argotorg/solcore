@@ -43,11 +43,7 @@ reduce qs0 ps0
       info ["<!! Final simplified constraints:", pretty rs]
       unsolved <- checkEntails qs2 rs
       info ["<<!! Unsolved:", pretty unsolved]
-      unless (null unsolved) $ do
-        tcmError $ unlines $ [ "Cannot satisfy:"
-                             , pretty unsolved
-                             , "using currently defined instances"
-                             ]
+      unless (null unsolved) (unsolvedError unsolved)
       pure rs
 
 checkEntails :: [Pred] -> [Pred] -> TcM [Pred]
@@ -181,18 +177,18 @@ byInstM ienv (InCls _ t ts)
   = msum [tryInst it | it <- ienv]
     where
       tryInst :: Qual Pred -> Maybe ([Pred], Subst, Inst)
-  tryInst i@(_ :=> InCls _ t' ts') =
+      tryInst i@(ps :=> InCls _ t' ts') =
         -- matching using instance main type
         case match t' t of
           Left _ -> Nothing
           Right u ->
             -- unifying weak type arguments
-            case mgu ts ts' of
+            case mgu (apply u ts) (apply u ts') of
               Left _ -> Nothing
               Right u' ->
                 let s = u' <> u
-                in  Just (apply s ps, s, c)
-      tryInst c = error ("Internal error: tryInst used on an unsupported constraint: " ++ pretty p)
+                in  Just (apply s ps, s, i)
+      tryInst c = error ("Internal error: tryInst used on an unsupported constraint: " ++ pretty c)
 byInstM _ p  = error ("Internal error: byInstM used on an unsupported constraint" ++ pretty p)
 
 bySuperM :: ClassTable -> Pred -> [Pred]
@@ -261,8 +257,15 @@ undefinedInstance p@(InCls n _ _)
       f s = "   " ++ s
 undefinedInstance p = tcmError $ unwords ["Cannot entail: ", pretty p]
 
-fromANF (ps :=> p)
+unsolvedError :: [Pred] -> TcM ()
+unsolvedError = mapM_ unsolvedPredError
+
+unsolvedPredError :: Pred -> TcM ()
+unsolvedPredError p@(InCls n _ _)
   = do
-      let eqs = [ (t,t') | (t :~: t') <- ps]
-      s <- solve eqs mempty
-      pure $ apply s ([] :=> p)
+      insts <- askInstEnv n
+      insts' <- mapM fromANF insts
+      let s = unlines (map pretty insts')
+      tcmError $ unlines [ "Cannot entail:"
+                         , pretty p
+                         , "using defined instances:", s]

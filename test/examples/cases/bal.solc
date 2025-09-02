@@ -1,0 +1,60 @@
+data Proxy (a) = Proxy  ;
+data dict(member, index) = dict(word, Proxy(member), Proxy(index)) ;
+data address = address(word) ;
+data storage(a) = storage(word) ;
+
+data IndexAP (m, idx, member) = IndexAP(m, idx) ;
+
+function wal(ref: storage(dict(address, word)) , src : address, amt: word) {
+  let ip = IndexAP(ref, src);
+  Assign.assign(LVA.acc(ip), amt);
+}
+
+
+/* Expected:
+
+ip : IndexAP(storage(dict(address, word)) , address, ?1)
+
+LVA.acc : forall self memberRefType. self:LVA(memberRefType) => self -> memberRefType
+
+instance IndexAP(storage(dict(index,member)), index, member):LVA(storage(member))
+
+ |- instance IndexAP(storage(map(address, word)), address, ?1) : LVA(storage(word))) where ?1 ~ word
+
+*/
+
+/* Actual
+
+> Enter reduce() |- (?l4 : Assign (word), IndexAP(storage(dict(address, word)), address, ?e4) : LVA (?l4))
+> Reducing wanted constraints:(?l4 : Assign (word), IndexAP(storage(dict(address, word)), address, ?e4) : LVA (?l4)) using ()
+> After entailment:(?l4 : Assign (word), IndexAP(storage(dict(address, word)), address, ?e4) : LVA (?l4)) - ()
+>> Before eliminating equalities (?l4 : Assign (word), IndexAP(storage(dict(address, word)), address, ?e4) : LVA (?l4))
+>> After eliminating equalities:(IndexAP(storage(dict(address, word)), address, ?e4) : LVA (?l4), ?l4 : Assign (word))
+>>> Found instance for:IndexAP(storage(dict(address, word)), address, ?e4) : LVA (?l4)
+
+>>>Instance:?a5 ~ storage(?b5) => IndexAP(storage(dict(?c5, ?b5)), ?c5, ?b5) : LVA (?a5) !!!
+>>>Subst:{?c5 +-> address, ?b5 +-> word, ?b5 +-> ?e4, ?l4 +-> ?a5}  ???
+
+b5 +-> e4 should really be b5 ~ e4
+
+*/
+forall self memberRefType.
+class self:LVA(memberRefType) {
+    function acc(x:self) -> memberRefType;
+}
+
+forall index member.
+  instance IndexAP(storage(dict(index,member)), index, member):LVA(storage(member)) {
+    function acc(x:IndexAP(storage(dict(index,member)), index, member)) -> storage(member) {
+	    return storage(42);
+    }
+}
+
+forall lhs rhs.
+class lhs:Assign(rhs) {
+    function assign(l:lhs, r:rhs) -> ();
+}
+
+forall a . instance storage(a):Assign(a) {
+    function assign(l:storage(a), y:a) -> () {}
+}
