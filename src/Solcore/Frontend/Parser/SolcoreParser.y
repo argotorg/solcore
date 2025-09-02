@@ -457,7 +457,6 @@ moduleParser dirs content
 loadImports :: [String] -> [Import] -> IO (Either String [TopDecl])
 loadImports dirs imps =
   do
-    -- let paths = map (toFilePath dir . unImport) imps
     paths <- mapM (findImport dirs) imps
     contents <- mapM readFile paths
     rs <- mapM (moduleParser dirs) contents
