@@ -152,6 +152,7 @@ cases =
     , runTestForFile "uintdesugared.solc" caseFolder
     , runTestForFile "word-match.solc" caseFolder
     , runTestForFile "withdraw.solc" caseFolder
+    , runTestForFile "bal.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
