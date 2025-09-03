@@ -390,7 +390,7 @@ PatList : Pattern %shift                           {[$1]}
 
 Literal :: { Literal }
 Literal : number                                   {IntLit $ toInteger $1}
-        | stringlit                                {StrLit $1}
+        | stringlit                                {StrLit $ rmquotes $1}
 
 -- basic type definitions
 
@@ -491,7 +491,7 @@ YulExpCommaList : YulExp                           {[$1]}
 
 YulLiteral :: { YLiteral }
 YulLiteral : number                                {YulNumber $ toInteger $1}
-        | stringlit                                {YulString $1}
+        | stringlit                                {YulString (rmquotes $1)}
 
 OptSemi :: { () }
 OptSemi : ';'                                      { () }
@@ -563,6 +563,9 @@ tupleExp [] = ExpName Nothing (Name "()") []
 tupleExp [t1] = t1
 tupleExp [t1, t2] = pairExp t1 t2
 tupleExp (t1 : ts) = pairExp t1 (tupleExp ts)
+
+rmquotes :: String -> String
+rmquotes = read
 
 parseError (Token (line, col) lexeme)
   = alexError $ "Parse error while processing lexeme: " ++ show lexeme
