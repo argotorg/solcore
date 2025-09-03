@@ -42,6 +42,7 @@ spec =
     , runTestForFile "06comp.solc" specFolder
     , runTestForFile "09not.solc" specFolder
     , runTestForFile "092revert.solc" specFolder
+    , runTestForFile "093longString.solc" specFolder
     , runTestForFile "10negBool.solc" specFolder
     , runTestForFile "11negPair.solc" specFolder
     , runTestForFile "903badassign.solc" specFolder
