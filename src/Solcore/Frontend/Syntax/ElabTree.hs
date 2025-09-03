@@ -9,6 +9,12 @@ import Control.Monad.State
 import Data.List
 import Data.Maybe
 
+import qualified Data.ByteString as B
+import Data.ByteString(ByteString)
+import Data.String
+import Data.Word(Word8)
+import Numeric
+
 import GHC.Stack
 
 import Text.Pretty.Simple
@@ -728,7 +734,27 @@ instance Elab S.Literal where
   type Res S.Literal = Literal
 
   elab (S.IntLit i) = pure (IntLit i)
-  elab (S.StrLit s) = pure (StrLit s)
+  elab (S.StrLit s) = IntLit <$> pure(encodeString s)
+
+debugString :: String -> ElabM Integer
+debugString s = do
+  let bs = fromString s
+      n  = encodeBS bs
+      hs = showHex n ""
+  writes [ "Desugaring string literal:"]
+  writes [ "- Input: ", show s]
+  writes [ "- ByteS: ", show bs]
+  writes [ "- Numer: ", show n]
+  writes [ "- Hexer: ", hs]
+  return n
+
+encodeString :: String -> Integer
+encodeString = encodeBS . fromString
+
+encodeBS :: ByteString -> Integer
+encodeBS = B.foldl' step 0 where
+  step :: Integer -> Word8 -> Integer
+  step a b = 256 * a + toInteger b
 
 
 notImplemented :: (HasCallStack, Pretty a) => String -> a -> b
