@@ -743,8 +743,8 @@ instance Elab S.Literal where
          writes ["Warning: long string literal truncated to:\n  ", show s']
          elabStr s'
      where
-       -- elabStr = pure . IntLit . encodeString
-       elabStr = fmap IntLit . debugString
+       elabStr = pure . IntLit . encodeString
+       -- elabStr = fmap IntLit . debugString
 
 
 debugString :: String -> ElabM Integer
