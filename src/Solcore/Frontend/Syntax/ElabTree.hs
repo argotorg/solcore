@@ -12,6 +12,8 @@ import Data.Maybe
 import qualified Data.ByteString as B
 import Data.ByteString(ByteString)
 import Data.String
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import Data.Word(Word8)
 import Numeric
 
@@ -741,13 +743,13 @@ instance Elab S.Literal where
          writes ["Warning: long string literal truncated to:\n  ", show s']
          elabStr s'
      where
-       elabStr = pure . IntLit . encodeString
-
+       -- elabStr = pure . IntLit . encodeString
+       elabStr = fmap IntLit . debugString
 
 
 debugString :: String -> ElabM Integer
 debugString s = do
-  let bs = fromString s
+  let bs = T.encodeUtf8 $ T.pack s
       n  = encodeBS bs
       hs = showHex n ""
   writes [ "Desugaring string literal:"]
@@ -758,7 +760,7 @@ debugString s = do
   return n
 
 encodeString :: String -> Integer
-encodeString = encodeBS . fromString
+encodeString = encodeBS . T.encodeUtf8 . T.pack 
 
 encodeBS :: ByteString -> Integer
 encodeBS = B.foldl' step 0 where

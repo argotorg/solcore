@@ -10,7 +10,7 @@ function revert(reason) -> word {
 
 contract Revert {
   function main() {
-    revert("for reasons");
+    revert("Não sei, o meu coração");
     return 7;
   }
 }

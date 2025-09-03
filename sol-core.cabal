@@ -19,6 +19,7 @@ common common-opts
   build-depends:
       base >= 4.19.0.0
     , bytestring >= 0.12
+    , text
     , mtl
     , containers
     , algebraic-graphs
