@@ -734,7 +734,16 @@ instance Elab S.Literal where
   type Res S.Literal = Literal
 
   elab (S.IntLit i) = pure (IntLit i)
-  elab (S.StrLit s) = IntLit <$> pure(encodeString s)
+  elab (S.StrLit s)
+     | length s <= 32 = elabStr s
+     | otherwise = do
+         let s' = take 32 s
+         writes ["Warning: long string literal truncated to:\n  ", show s']
+         elabStr s'
+     where
+       elabStr = pure . IntLit . encodeString
+
+
 
 debugString :: String -> ElabM Integer
 debugString s = do
