@@ -291,7 +291,7 @@ emitExp (Var x) = do
         Just e -> pure (e, [])
         Nothing -> pure (Hull.EVar (unwrapId x), [])
 -- special handling of revert
-emitExp (Call _ (Id "revert" _) [Lit(StrLit s)]) = pure(Hull.EUnit, [Hull.SRevert s])
+emitExp (Call _ (Id "__revert__" _) [Lit(StrLit s)]) = pure(Hull.EUnit, [Hull.SRevert s])
 emitExp (Call Nothing f as) = do
     (hullArgs, codes) <- unzip <$> mapM emitExp as
     let call =  Hull.ECall (unwrapId f) hullArgs
