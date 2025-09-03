@@ -114,7 +114,7 @@ instance Pretty Stmt where
         <+> parens (hsep (punctuate comma (map ppr args)))
         <+> text "->" <+> ppr ret
         <+> lbrace $$ nest 2 (vcat (map ppr stmts))  $$ rbrace
-    ppr (SRevert s) = text "revert" <+> text (show s)
+    ppr (SRevert s) = text "__revert__" <+> text (show s)
 
 instance Pretty Pat where
     ppr (PVar x) = text x

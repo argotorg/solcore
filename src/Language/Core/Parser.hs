@@ -124,7 +124,7 @@ coreStmt = choice
     , SFunction <$> (pKeyword "function" *> identifier) <*> (parens (commaSep coreArg)) <*> (symbol "->" *> coreType)
                 <*> (symbol "{" *> many coreStmt <* symbol "}")
     , SAssembly <$> (pKeyword "assembly" *> yulBlock)
-    , SRevert <$> (pKeyword "revert" *> stringLiteral)
+    , SRevert <$> (pKeyword "__revert__" *> stringLiteral)
     , try (SAssign <$> (coreExpr <* symbol ":=") <*> coreExpr)
     , SExpr <$> coreExpr
     ]
