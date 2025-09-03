@@ -537,7 +537,7 @@ matchError :: CompilerM Id
 matchError
   = do
       v <- (TyVar . TVar) <$> freshName
-      pure (Id (Name "revert") v)
+      pure (Id (Name "__revert__") v)
 
 errorLit :: Exp Id
 errorLit = Lit $ StrLit "Incomplete matching"
