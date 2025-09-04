@@ -10,7 +10,7 @@ std :: TestTree
 std =
   testGroup
     "Standard library"
-    [ runTestForFile "std.sol" stdFolder
+    [ runTestForFile "std.solc" stdFolder
     ]
  where
   stdFolder = "./std"
@@ -160,6 +160,7 @@ cases =
     , runTestExpectingFailure "uintdesugared.solc" caseFolder
     , runTestForFile "word-match.solc" caseFolder
     , runTestForFile "if-examples.solc" caseFolder
+    , runTestForFile "import-std.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
