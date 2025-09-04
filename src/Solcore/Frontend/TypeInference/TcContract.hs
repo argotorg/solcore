@@ -1,5 +1,6 @@
 module Solcore.Frontend.TypeInference.TcContract where
 
+import Debug.Trace
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Trans
@@ -7,6 +8,7 @@ import Control.Monad.State
 
 import Data.Generics hiding (Constr)
 import Data.List
+import qualified Data.List.NonEmpty as N
 import qualified Data.Map as Map
 import Data.Maybe
 
@@ -71,33 +73,34 @@ addGenDefs
 -- setting up pragmas for type checking
 
 setupPragmas :: [Pragma] -> TcM ()
-setupPragmas ps
-  = do
-      unless validPragmas (invalidPragmaDecl ps)
-      mapM_ setupPragma ps
-    where
-      setupPragma (Pragma NoBoundVariableCondition ns)
-        = setBoundVariableCondition ns
-      setupPragma (Pragma NoPattersonCondition ns)
-        = setPattersonCondition ns
-      setupPragma (Pragma NoCoverageCondition ns)
-        = setCoverage ns
-      single [] = True
-      single [ _ ] = True
-      single _ = False
-      isBound NoBoundVariableCondition = True
-      isBound _ = False
-      isPatterson NoPattersonCondition = True
-      isPatterson _ = False
-      isCoverage NoCoverageCondition = True
-      isCoverage _ = False
+setupPragmas ps = do
+  traceShowM ps
 
-      unique p xs = single (filter (p . pragmaType) xs)
+  let sbv = getStatus NoBoundVariableCondition
+  traceShowM sbv
+  setBoundVariableCondition sbv
 
-      validPragmas = and [ unique isBound ps
-                         , unique isPatterson ps
-                         , unique isCoverage ps
-                         ]
+  let spc = getStatus NoPattersonCondition
+  traceShowM spc
+  setPattersonCondition spc
+
+  let scc = getStatus NoCoverageCondition
+  traceShowM scc
+  setCoverage scc
+  where
+    getStatus :: PragmaType -> PragmaStatus
+    getStatus ptype =
+      case [s | Pragma t s <- ps, t == ptype] of
+        [] -> Enabled
+        statuses -> mergeStatuses statuses
+
+    mergeStatuses :: [PragmaStatus] -> PragmaStatus
+    mergeStatuses ss
+      | DisableAll `elem` ss = DisableAll
+      | otherwise =
+          case [n | DisableFor ns <- ss, n <- N.toList ns] of
+            [] -> Enabled
+            (x:xs) -> DisableFor (x N.:| xs)
 
 tcTopDecl :: TopDecl Name -> TcM (TopDecl Id)
 tcTopDecl (TContr c)

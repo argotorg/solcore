@@ -167,6 +167,12 @@ cases =
     , runTestForFile "bal.solc" caseFolder
     , runTestForFile "ixa.solc" caseFolder
     , runTestForFile "tuva.solc" caseFolder
+    -- Pragma merging tests
+    , runTestForFile "pragma_merge_base.solc" caseFolder
+    , runTestForFile "pragma_merge_import.solc" caseFolder
+    , runTestForFile "pragma_merge_verify.solc" caseFolder
+    , runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder
+    , runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
