@@ -10,8 +10,8 @@ std :: TestTree
 std =
   testGroup
     "Standard library"
-    [ runTestForFile "std.sol" stdFolder
-    , runTestForFile "dispatch.sol" stdFolder
+    [ runTestForFile "std.solc" stdFolder
+    , runTestForFile "dispatch.solc" stdFolder
     ]
  where
   stdFolder = "./std"
