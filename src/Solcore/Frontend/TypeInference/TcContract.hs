@@ -7,6 +7,7 @@ import Control.Monad.State
 
 import Data.Generics hiding (Constr)
 import Data.List
+import qualified Data.List.NonEmpty as N
 import qualified Data.Map as Map
 import Data.Maybe
 
@@ -71,33 +72,24 @@ addGenDefs
 -- setting up pragmas for type checking
 
 setupPragmas :: [Pragma] -> TcM ()
-setupPragmas ps
-  = do
-      unless validPragmas (invalidPragmaDecl ps)
-      mapM_ setupPragma ps
-    where
-      setupPragma (Pragma NoBoundVariableCondition ns)
-        = setBoundVariableCondition ns
-      setupPragma (Pragma NoPattersonCondition ns)
-        = setPattersonCondition ns
-      setupPragma (Pragma NoCoverageCondition ns)
-        = setCoverage ns
-      single [] = True
-      single [ _ ] = True
-      single _ = False
-      isBound NoBoundVariableCondition = True
-      isBound _ = False
-      isPatterson NoPattersonCondition = True
-      isPatterson _ = False
-      isCoverage NoCoverageCondition = True
-      isCoverage _ = False
+setupPragmas ps = do
+  setBoundVariableCondition (getStatus NoBoundVariableCondition)
+  setPattersonCondition (getStatus NoPattersonCondition)
+  setCoverage (getStatus NoCoverageCondition)
+  where
+    getStatus :: PragmaType -> PragmaStatus
+    getStatus ptype =
+      case [s | Pragma t s <- ps, t == ptype] of
+        [] -> Enabled
+        statuses -> mergeStatuses statuses
 
-      unique p xs = single (filter (p . pragmaType) xs)
-
-      validPragmas = and [ unique isBound ps
-                         , unique isPatterson ps
-                         , unique isCoverage ps
-                         ]
+    mergeStatuses :: [PragmaStatus] -> PragmaStatus
+    mergeStatuses ss
+      | DisableAll `elem` ss = DisableAll
+      | otherwise =
+          case [n | DisableFor ns <- ss, n <- N.toList ns] of
+            [] -> Enabled
+            (x:xs) -> DisableFor (x N.:| xs)
 
 tcTopDecl :: TopDecl Name -> TcM (TopDecl Id)
 tcTopDecl (TContr c)

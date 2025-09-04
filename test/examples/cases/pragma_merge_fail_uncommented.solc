@@ -1,0 +1,14 @@
+// Negative test for pragma merging - SHOULD FAIL
+// This file demonstrates that checks are working by failing compilation
+
+import pragma_merge_base;
+
+// === NO PRAGMA FOR TestFailClass ===
+forall a . class a:TestFailClass {}
+
+data FailType(x) = FailType;
+
+// === Coverage Violation WITHOUT pragma ===
+// This WILL fail because TestFailCoverage doesn't have no-coverage-condition
+forall a b . class a:TestFailCoverage(b) {}
+forall x y . instance FailType(x):TestFailCoverage(y) {}
