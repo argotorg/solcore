@@ -1,0 +1,54 @@
+// Test import file for pragma merging functionality
+// This file imports pragma_merge_base and adds its own violations with pragmas
+// Testing that pragmas from both files are properly merged
+
+import pragma_merge_base;
+
+// Add more pragmas - these should merge with imported ones
+// After merging:
+// - Patterson: TestClassP1 (from base) + TestClassP4 (from here)
+// - Coverage: TestClassC1 (from base) + TestClassC3 (from here)  
+// - Bound: TestClassB1 (from base) + TestClassB3 (from here)
+pragma no-patterson-condition TestClassP4, TestClassB3, TestClassB1;
+pragma no-coverage-condition TestClassC3;
+pragma no-bounded-variable-condition TestClassB3, TestClassB1;
+
+// === Additional Classes ===
+forall a . class a:TestClassP4 {}
+forall a b . class a:TestClassC3(b) {}
+forall a . class a:TestClassB3 {}
+
+// === Additional Data Types ===
+data ImportType1(x) = ImportType1;
+data ImportType2 = ImportType2;
+
+// === New Patterson Violations ===
+
+// VIOLATION: Needs pragma for TestClassP4 (provided above)
+forall W . W:TestClassP1, W:TestClassP2, W:TestClassP3 => instance ImportType1(W):TestClassP4 {}
+
+// Using base class that already has pragma from import
+forall X . X:TestClassP2, X:TestClassP3, X:TestClassP4 => instance ImportType2:TestClassP1 {}
+
+// === New Coverage Violations ===
+
+// VIOLATION: Needs pragma for TestClassC3 (provided above)
+forall x y . instance ImportType1(x):TestClassC3(y) {}
+
+// Using base class that already has pragma from import
+forall m n . instance ImportType2:TestClassC1(n) {}
+
+// === New Bound Variable Violations ===
+
+// VIOLATION: Needs pragma for TestClassB3 (provided above)
+forall d . e:TestClassB2(d) => instance ImportType1(d):TestClassB3 {}
+
+// Using base class that already has pragma from import
+forall f . g:TestClassB3 => instance ImportType2:TestClassB1 {}
+
+// === Cross-file Tests ===
+
+// Mix types from both files - tests that all pragmas are active
+instance ImportType1(ImportType2):TestClassP2 {}
+instance ImportType1(TestType2):TestClassC1(TestType2) {}
+forall h . instance ImportType2:TestClassB3 {}

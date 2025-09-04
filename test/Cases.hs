@@ -161,6 +161,13 @@ cases =
     , runTestExpectingFailure "uintdesugared.solc" caseFolder
     , runTestForFile "word-match.solc" caseFolder
     , runTestForFile "if-examples.solc" caseFolder
+    -- Pragma merging tests
+    , runTestForFile "pragma_merge_base.solc" caseFolder
+    , runTestForFile "pragma_merge_import.solc" caseFolder
+    -- pragma_merge_verify has overlapping instance issues from base file's unbound variable
+    , runTestExpectingFailure "pragma_merge_verify.solc" caseFolder
+    , runTestForFile "pragma_merge_fail.solc" caseFolder
+    , runTestExpectingFailure "pragma_merge_fail_uncommented.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

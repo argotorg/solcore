@@ -1,0 +1,39 @@
+// Verification file for pragma merging
+// This file imports pragma_merge_base but has NO pragmas of its own
+// Tests that pragmas from imported files are properly inherited
+
+import pragma_merge_base;
+
+// === NO PRAGMAS DEFINED HERE ===
+// All the instances below rely on pragmas from pragma_merge_base.solc
+
+data VerifyType(x) = VerifyType;
+
+// === Patterson Condition Tests ===
+// These use TestClassP1 which has pragma from base file
+
+// Would fail without imported pragma no-patterson-condition TestClassP1
+forall A . A:TestClassP1, A:TestClassP2, A:TestClassP3 => instance VerifyType(A):TestClassP1 {}
+
+// Another instance using the base pragma
+instance TestType1(VerifyType(TestType2)):TestClassP1 {}
+
+// === Coverage Condition Tests ===
+// These use TestClassC1 which has pragma from base file
+
+// Would fail without imported pragma no-coverage-condition TestClassC1  
+forall p q . instance VerifyType(p):TestClassC1(q) {}
+
+// Another instance using the base pragma
+forall r s . instance TestType1(r):TestClassC1(s) {}
+
+// === Bound Variable Tests ===
+// Test that imported bound variable pragma works
+
+// Using a different class to avoid overlap
+instance VerifyType(TestType1(TestType2)):TestClassB2(TestType2) {}
+
+// === Good instances that don't need pragmas ===
+instance VerifyType(TestType2):TestClassP2 {}
+instance VerifyType(TestType1(TestType2)):TestClassC2(TestType2, TestType2) {}
+forall z . z:TestClassB2(TestType2) => instance z:TestClassB1 {}
