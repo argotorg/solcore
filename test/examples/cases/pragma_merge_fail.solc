@@ -1,0 +1,33 @@
+// Negative test for pragma merging
+// This file should FAIL compilation to demonstrate that checks are working
+// It has violations WITHOUT the necessary pragmas
+
+import pragma_merge_base;
+
+// === NO PRAGMAS FOR NEW CLASSES ===
+// TestFailClass needs pragmas but we intentionally don't provide them
+
+forall a . class a:TestFailClass {}
+
+data FailType(x) = FailType;
+
+// === Patterson Violation WITHOUT pragma ===
+// This should fail because TestFailClass doesn't have no-patterson-condition
+// Uncomment to test failure:
+// forall U . U:TestClassP1, U:TestClassP2, U:TestClassP3 => instance FailType(U):TestFailClass {}
+
+// === Coverage Violation WITHOUT pragma ===
+// If we had a class TestFailCoverage without pragma, this would fail:
+// forall a b . class a:TestFailCoverage(b) {}
+// forall x y . instance FailType(x):TestFailCoverage(y) {}
+
+// === Bound Variable Violation WITHOUT pragma ===
+// If we had a class TestFailBound without pragma, this would fail:
+// forall a . class a:TestFailBound {}
+// forall m . n:TestClassP1 => instance FailType(m):TestFailBound {}
+
+// === Currently compiles because violations are commented ===
+// Uncomment any violation above to see compilation fail
+
+// This instance is fine - uses existing pragma from base
+instance FailType(TestType2):TestClassP1 {}
