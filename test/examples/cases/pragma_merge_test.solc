@@ -1,0 +1,15 @@
+// Test that multiple pragmas of same type are merged
+pragma no-patterson-condition TestClass1, TestClass2;
+pragma no-patterson-condition TestClass3;
+pragma no-bounded-variable-condition TestClass1, TestClass2, TestClass3;
+
+forall a . class a:TestClass1 {}
+forall a . class a:TestClass2 {}  
+forall a . class a:TestClass3 {}
+
+data TestType = TestType;
+
+// All three should pass due to merged pragmas
+forall U . U:TestClass1, U:TestClass2 => instance TestType:TestClass1 {}
+forall U . U:TestClass2, U:TestClass3 => instance TestType:TestClass2 {}
+forall U . U:TestClass1, U:TestClass3 => instance TestType:TestClass3 {}
