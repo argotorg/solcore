@@ -4,7 +4,7 @@
 // Pragmas to disable checks for specific classes
 pragma no-patterson-condition TestClassP1, TestClassB1;
 pragma no-coverage-condition TestClassC1;
-//pragma no-bounded-variable-condition TestClassB1;
+pragma no-bounded-variable-condition TestClassB1;
 
 // === Test Classes ===
 forall a . class a:TestClassP1 {}

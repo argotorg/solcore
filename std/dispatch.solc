@@ -44,13 +44,13 @@ forall ty . class ty:ExecMethod {
 // If fn matches the provided args/ret types, then we can execute any method
 forall name payability args rets fn
   // TODO: should get a type error here...
-  . fn:invokable(args,ret), Method(name,payability,Proxy(args),rets,fn):MethodLevelCallvalueCheck
-  => instance Method(name,payability,Proxy(args),rets,fn):ExecMethod {
-  function exec(m : Method(name,payability,Proxy(args),rets,fn)) -> () {
+  . fn:invokable(args,rets), Method(name,payability,Proxy(args),Proxy(rets),fn):MethodLevelCallvalueCheck
+  => instance Method(name,payability,Proxy(args),Proxy(rets),fn):ExecMethod {
+  function exec(m : Method(name,payability,Proxy(args),Proxy(rets),fn)) -> () {
     match m {
       | Method(nm,payability,pargs,rets,fn) =>
         // check callvalue
-        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Method(name,payability,Proxy(args),rets,fn)));
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Method(name,payability,Proxy(args),Proxy(rets),fn)));
 
         // check we have enough calldata for the head of args
         // abi decode args from calldata

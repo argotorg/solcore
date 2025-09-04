@@ -1,0 +1,11 @@
+// Minimal test for bound variable condition
+// This SHOULD FAIL - variable 'bad' in context but not in instance head
+
+forall a . class a:TestBound {}
+forall a b . class a:TestHelper(b) {}
+
+data TestType(x) = TestType;
+
+// Variable 'bad' appears in context but not in instance head
+// Should fail bound variable check
+forall x . bad:TestHelper(x) => instance TestType(x):TestBound {}

@@ -1,0 +1,11 @@
+// Test only bound variable check, disable Patterson
+pragma no-patterson-condition TestBound;
+
+forall a . class a:TestBound {}
+forall a b . class a:TestHelper(b) {}
+
+data TestType(x) = TestType;
+
+// Variable 'bad' appears in context but not in instance head
+// Should fail bound variable check
+forall x . bad:TestHelper(x) => instance TestType(x):TestBound {}
