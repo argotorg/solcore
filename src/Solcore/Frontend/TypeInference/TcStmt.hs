@@ -81,19 +81,33 @@ tcStmt (Asm yblk)
       let word' = monotype word
       mapM_ (flip extEnv word') newBinds
       pure (Asm yblk, [], t)
-tcStmt (If e blk1 blk2)
+tcStmt s@(If e blk1 blk2)
   = do
       (e', ps, t) <- tcExp e
-      unless (t == boolTy) $
-        throwError $ unlines ["Expression:", pretty e
-                             , "has type:", pretty t
-                             , "while it is expected to have type:"
-                             , pretty boolTy
-                             ]
-      (blk1', ps1, _) <- tcBody blk1
-      (blk2', ps2, _) <- tcBody blk2
-      let ps3 = ps ++ ps1 ++ ps2
-      withCurrentSubst (If e' blk1' blk2', ps3, unit)
+      -- condition should have the boolean type
+      unify t boolTy `catchError` (\ _ ->
+        tcmError $ unlines ["Expression:", pretty e
+                           , "has type:", pretty t
+                           , "while it is expected to have type:"
+                           , pretty boolTy
+                           ]) `wrapError` s
+      (blk1', ps1, t1) <- tcBody blk1
+      (blk2', ps2, t2) <- tcBody blk2
+      -- here we check if "else" branch is present.
+      let t2' = if null blk2 then t1 else t2
+          ps3 = ps ++ ps1 ++ ps2
+      -- we force that both blocks should return the same type.
+      unify t1 t2' `catchError` (\ _ ->
+        tcmError $ unlines ["If blocks should produce the same return type but, block:"
+                           , pretty blk1
+                           , "has return type:"
+                           , pretty t1
+                           , "while block:"
+                           , pretty blk2
+                           , "has return type:"
+                           , pretty t2'
+                           ]) `wrapError` s
+      withCurrentSubst (If e' blk1' blk2', ps3, t1)
 
 
 
