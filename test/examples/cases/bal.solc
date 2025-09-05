@@ -3,10 +3,10 @@ data dict(member, index) = dict(word, Proxy(member), Proxy(index)) ;
 data address = address(word) ;
 data storage(a) = storage(word) ;
 
-data IndexAP (m, idx, member) = IndexAP(m, idx) ;
+data IndexAP (m, idx, member) = IndexAP(m, idx, Proxy(member)) ;
 
 function wal(ref: storage(dict(address, word)) , src : address, amt: word) {
-  let ip = IndexAP(ref, src);
+  let ip = IndexAP(ref, src, Proxy : Proxy(word));
   Assign.assign(LVA.acc(ip), amt);
 }
 
@@ -46,7 +46,7 @@ class self:LVA(memberRefType) {
 forall index member.
   instance IndexAP(storage(dict(index,member)), index, member):LVA(storage(member)) {
     function acc(x:IndexAP(storage(dict(index,member)), index, member)) -> storage(member) {
-	    return storage(42);
+	    return storage(30);
     }
 }
 
