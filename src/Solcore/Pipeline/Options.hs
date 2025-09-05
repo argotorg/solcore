@@ -26,7 +26,7 @@ data Option
 emptyOption :: FilePath -> Option
 emptyOption path = Option
     { fileName          = path
-    , optImportDirs     = []
+    , optImportDirs     = "std"
     , optNoSpec         = False
     , optNoDesugarCalls = False
     , optNoMatchCompiler = False
@@ -58,6 +58,7 @@ options
            <*> strOption ( long "include"
                <> short 'i'
                <> metavar "dirs"
+               <> value (optImportDirs stdOpt)
                <> help "This flag appends a colon-separated list of dirs to the search path.")
            <*> switch ( long "no-specialise"
                <> short 'n'
