@@ -23,6 +23,13 @@ function max(x,y) {
   return res;
 }
 
+/* Uncomment this after fixing #181
+function not(x:bool) -> () {
+  // let y: bool = x;
+  if (x) { return false; }  else { return true; }
+}
+*/
+
 function foo () {
   return lam (x) {
             if (gt(x,0)) {
@@ -31,4 +38,17 @@ function foo () {
                 return false;
             }
          };
+}
+
+contract IfExamples {
+/* Uncomment this after fixing #181
+	 function main() -> bool {
+	    let f = foo();
+	   return not(f(42));
+	   return not(true);
+	 }
+*/
+	 function main() -> bool {
+	   return false;
+         }
 }
