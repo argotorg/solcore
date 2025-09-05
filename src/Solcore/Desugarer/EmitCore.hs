@@ -1,14 +1,12 @@
 module Solcore.Desugarer.EmitCore(emitCore) where
-import Prelude hiding(catch)
+import Prelude hiding(catch, product)
 import Language.Core qualified as Core
 import Data.Map qualified as Map
 import Common.Monad
-import Control.Monad(forM, when, unless)
-import Control.Monad.IO.Class
+import Control.Monad(when, unless)
+-- import Control.Monad.IO.Class
 import Control.Monad.Reader.Class ()
 import Control.Monad.State
-import Data.List(intercalate)
-import qualified Data.Map as Map
 import Data.Maybe(fromMaybe)
 import GHC.Stack( HasCallStack )
 
@@ -51,7 +49,7 @@ data EcState = EcState
 initEcState :: Bool -> TcEnv -> EcState
 initEcState debugp env = EcState
    { ecSubst = emptyVSubst
-   , ecDT = Map.empty
+   , ecDT = Map.fromList builtinDataInfo
    , ecNest = 0
    , ecDebug = debugp
    , ecContext = []
@@ -69,6 +67,17 @@ type DataTable = Map.Map Name DataTy
 type TConInfo = ([Tyvar], [DConInfo]) -- type con: type vars and data cons
 type DConInfo = (Name, [Ty])          -- data con: name and argument types
 
+sumDataTy :: DataTy
+sumDataTy = DataTy
+  { dataName = "sum"
+  , dataParams = [TVar "a", TVar "b"]
+  , dataConstrs = [ Constr "inl" [tyvar "a"]
+                  , Constr "inr" [tyvar "b"]
+                  ]
+  } where
+    tyvar = TyVar . TVar
+
+builtinDataInfo = [ ("sum", sumDataTy) ]
 
 type VSubst = Map.Map Name Core.Expr
 emptyVSubst :: VSubst
@@ -103,10 +112,11 @@ emitTopDecl _ = pure []
 addData :: DataTy -> EM ()
 addData dt = modify (\s -> s { ecDT = Map.insert (dataName dt) dt (ecDT s) })
 
+{-
 buildTConInfo :: DataTy -> TConInfo
 buildTConInfo (DataTy n tvs dcs) = (tvs, map conInfo dcs) where
   conInfo (Constr n ts) = (n, ts)
-
+-}
 emitContract :: Contract Id -> EM Core.Contract
 emitContract c = do
     let cname = show (name c)
@@ -131,7 +141,7 @@ emitCDecl cd = debug ["!! emitCDecl ", show cd] >> pure []
 emitFunDef :: HasCallStack => FunDef Id -> EM [Core.Stmt]
 emitFunDef fd@(FunDef sig body) = withContext (shortName fd) do
   (name, args, typ) <- translateSig sig `inContext` ("function signature " ++ pretty sig)
-  debug ["emitFunDef ", name, " :: ", show typ]
+  debug ["\n# emitFunDef ", name, " :: ", show typ]
   coreBody <- emitStmts body
   let coreFun = Core.SFunction name args typ coreBody
   dropContext
@@ -385,7 +395,7 @@ emitSumMatch allCons scrutinee alts = do
     branches <- emitEqns alts
     let branchMap = foldr insertBranch defaultBranchMap branches
     let branches = [branchMap Map.! c | c <- allConNames]
-    -- debug ["emitMatch: branches ", show branches]
+    debug ["emitMatch: branches ", show branches]
     let matchCode = buildMatch sVal sCoreType branches
     return(sCode ++ matchCode)
     where
@@ -432,9 +442,9 @@ emitSumMatch allCons scrutinee alts = do
           as long as they do not clash with user variables)
       -}
       buildMatch :: Core.Expr -> Core.Type ->[[Core.Stmt]] -> [Core.Stmt]
-      buildMatch sval sty [] = error "buildMatch: empty branch list"
-      buildMatch sval sty branches = go sval sty branches where
-        go sval sty  [b] = b -- last branch needs no match
+      buildMatch _sval sty [] = error "buildMatch: empty branch list"
+      buildMatch sval0 sty branches = go sval0 sty branches where
+        go _sval sty  [b] = b -- last branch needs no match
         go sval sty (b:bs) =  [Core.SMatch sty sval [ alt Core.CInl left b
                           , alt Core.CInr right (go (Core.EVar right) (rightBranch sty) bs)]]
         rightBranch (Core.TSum _ r) = r
@@ -462,22 +472,24 @@ emitProdMatch scrutinee (eqn:_) = do
 -- there is only one match branch, just transform to projections
 -- takes a translated scrutinee and a single equation
 translateSingleEquation :: Core.Expr -> Equation Id -> EM [Core.Stmt]
-translateSingleEquation expr ([PCon con patargs], stmts) = withLocalState do
+translateSingleEquation expr ([PCon _con patargs], stmts) = withLocalState do
     let pvars = translatePatArgs expr patargs
     extendVSubst pvars
     emitStmts stmts
+translateSingleEquation _ eqn  = error $
+  "translateSingleEquation: there should be exactly one pattern\n" ++ pretty eqn
 
 -- translate pattern arguments to a substitution, e.g.
 -- p@(Just x) ~> [x -> p]
 -- p@(Pair x y) ~> [x -> fst p, y -> snd p]
 -- p@(Triple x y z) ~> [x -> fst p, y -> fst (snd p), z -> snd (snd p)]
 translatePatArgs :: Core.Expr -> [Pat Id] -> VSubst
-translatePatArgs s = Map.fromList . go s where
+translatePatArgs e = Map.fromList . go e where
     go _ [] = []
     go s [PVar i] = [(idName i, s)]
     go s (PVar i:as) = let (s1, s2) = (Core.EFst s, Core.ESnd s) in
         (idName i, s1) : go s2 as
-
+    go _ (pat:_) = error ("Unimplemented: translatePatArgs _ " ++ pretty pat)
 
 -----------------------------------------------------------------------
 -- Utility functions
@@ -488,17 +500,16 @@ debug msg = do
     enabled <- gets ecDebug
     when enabled $ writes msg
 
+{-
 dumpDT :: EM ()
 dumpDT = do
     tis <- gets (Map.toList . ecDT)
-    -- debug ["Data: ", unlines (map show tis)]
-    debug ["Data: ", show tis]
+    debug ["Data: ", unlines (map show tis)]
+    -- debug ["Data: ", show tis]
+-}
 
 concatMapM :: (Monad f) => (a -> f [b]) -> [a] -> f [b]
 concatMapM f xs = concat <$> mapM f xs
 
 unwrapId :: Id -> CoreName
 unwrapId = show . idName
-
-unwrapTyvar :: Tyvar -> CoreName
-unwrapTyvar (TVar n) = show n

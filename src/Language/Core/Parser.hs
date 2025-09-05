@@ -70,12 +70,12 @@ pKeyword w = try $ lexeme (string w <* notFollowedBy identChar)
 
 pPrimaryType :: Parser Type
 pPrimaryType = choice
-    [ TWord <$ pKeyword "word"
+    [ try $ TNamed <$> identifier <*> braces coreType
+    , TWord <$ pKeyword "word"
     , TBool <$ pKeyword "bool"
     , TUnit <$ pKeyword "unit"
     , TSumN <$> ( pKeyword "sum" *> parens (commaSep coreType))
     , parens coreType
-    , TNamed <$> identifier <*> braces coreType
     ]
 
 coreType :: Parser Type
