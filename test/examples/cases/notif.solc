@@ -1,0 +1,7 @@
+function not(x){
+  if (x) {
+    return false ;
+  } else {
+    return true ;
+  }
+}
