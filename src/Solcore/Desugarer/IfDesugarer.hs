@@ -16,7 +16,8 @@ ifDesugarer cunit
   = let
        c1 = everywhere (mkT desugarTyBool) cunit
        c2 = everywhere (mkT desugarBoolCons) c1
-    in everywhere (mkT desugarStmt) c2
+       c3 = everywhere (mkT desugarBoolPat) c2
+    in everywhere (mkT desugarStmt) c3
 
 -- desugaring if stmts
 
@@ -47,12 +48,27 @@ desugarBoolCons (TyExp e t)
 desugarBoolCons (Var a) = Var a
 desugarBoolCons (Lit l) = Lit l
 
+desugarBoolPat :: Pat Id -> Pat Id
+desugarBoolPat (PCon c ps)
+  | isBoolCon c = sumPatFor c
+  | otherwise = PCon c (map desugarBoolPat ps)
+desugarBoolPat (PVar a) = PVar a
+desugarBoolPat PWildcard = PWildcard
+desugarBoolPat (PLit l) = PLit l
+
 sumConsFor :: Id -> Exp Id
 sumConsFor (Id n _)
   | n == trueName
     = Con (Id inlName (inlTy unit unit)) [Con (Id "()" unit) []]
   | n == falseName
     = Con (Id inrName (inrTy unit unit)) [Con (Id "()" unit) []]
+
+sumPatFor :: Id -> Pat Id
+sumPatFor (Id n _)
+  | n == trueName
+    = PCon (Id inlName (inlTy unit unit)) [PCon (Id "()" unit) []]
+  | n == falseName
+    = PCon (Id inrName (inrTy unit unit)) [PCon (Id "()" unit) []]
 
 isBoolCon :: Id -> Bool
 isBoolCon (Id n _) = n `elem` [trueName, falseName]
