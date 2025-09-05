@@ -5,3 +5,10 @@ function not(x){
     return true ;
   }
 }
+
+function not2(x) {
+  if (x) {
+    return false ;
+  }
+  return true;
+}

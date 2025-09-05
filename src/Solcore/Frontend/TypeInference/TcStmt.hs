@@ -93,18 +93,19 @@ tcStmt s@(If e blk1 blk2)
                            ]) `wrapError` s
       (blk1', ps1, t1) <- tcBody blk1
       (blk2', ps2, t2) <- tcBody blk2
-      let ps3 = ps ++ ps1 ++ ps2
+      -- here we check if "else" branch is present.
+      let t2' = if null blk2 then t1 else t2
+          ps3 = ps ++ ps1 ++ ps2
       -- we force that both blocks should return the same type.
-      unify t1 t2 `catchError` (\ _ ->
-        tcmError $ unlines ["If blocks should produce the same return type"
-                           , "but, block:"
+      unify t1 t2' `catchError` (\ _ ->
+        tcmError $ unlines ["If blocks should produce the same return type but, block:"
                            , pretty blk1
                            , "has return type:"
                            , pretty t1
                            , "while block:"
                            , pretty blk2
                            , "has return type:"
-                           , pretty t2
+                           , pretty t2'
                            ]) `wrapError` s
       withCurrentSubst (If e' blk1' blk2', ps3, t1)
 
