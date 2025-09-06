@@ -29,8 +29,8 @@ data Proxy(a) = Proxy;
 data M(a) = M(word);
 
 forall a . instance M(a) : Typedef(word) {
-  function rep(m) { match m { | M(w) => return w; }}
-  function abs(w) { return M(w); }
+  function rep(m : M(a)) -> word  { match m { | M(w) => return w; }}
+  function abs(w : word) -> M(a) { return M(w); }
 }
 
 forall Self . class Self:MemoryType {
@@ -59,8 +59,8 @@ forall a . a:MemoryType => function stepStore(aa: word, va: a) -> word {
 }
 
 forall Self r . Self:MemoryType, r:MemoryRef(Self) => instance r : Ref(Self) {
-  function load(r:M(Self)) { return MemoryType.mload(xaddr(r)); }
-  function store(r:M(Self), v:Self) { MemoryType.mstore(xaddr(r), v); }
+  function load(r:M(Self)) -> Self { return MemoryType.mload(xaddr(r)); }
+  function store(r:M(Self), v:Self) -> () { MemoryType.mstore(xaddr(r), v); }
 }
 
 instance word:MemoryType {
@@ -82,7 +82,7 @@ forall a b . a:MemoryType, b:MemoryType => instance (a,b) : MemoryType {
     return (va,vb);
   }
 
-  function mstore(aa:word, v: (a,b)) {
+  function mstore(aa:word, v: (a,b)) -> () {
     match v { | pair(va, vb) => mstore2(aa, va, vb); } // match-compiler cannot compile mopre than 1 stmt in a branch :(
   }
 }
@@ -95,19 +95,21 @@ forall a b . a: MemoryType, b: MemoryType => function mstore2(aa:word, va:a, vb:
 pragma no-bounded-variable-condition MemoryRef;
 pragma no-coverage-condition Ref;
 pragma no-patterson-condition Ref;
-data XRef(st, field, fieldType) = XRef(st, field);
+data XRef(st, field, fieldType) = XRef(st, field, Proxy(fieldType));
 data PairFst = PairFst;
 data PairSnd = PairSnd;
 
 
 forall a b r . r:MemoryRef ( (a,b)), a:MemoryType, b:MemoryType => instance XRef(r, PairFst, a) : MemoryRef(a) {
-  function addr(xr) { match xr { | XRef(r, _) => return MemoryRef.addr(r); } }
+  function addr(xr : XRef(r, PairFst, a)) -> word {
+    match xr { | XRef(r, _, _) => return MemoryRef.addr(r); }
+  }
 }
 
-forall a b r . r:MemoryRef ( (a,b)), a:MemoryType, b:MemoryType => instance XRef(r, PairSnd, b) : MemoryRef(b) {
-  function addr(xr) {
+forall a b r . r:MemoryRef ((a,b)), a:MemoryType, b:MemoryType => instance XRef(r, PairSnd, b) : MemoryRef(b) {
+  function addr(xr : XRef (r, PairSnd, b)) -> word {
     match xr {
-      | XRef(r, _) => return add_(MemoryRef.addr(r), MemoryType.memorySize(Proxy:Proxy(b)));
+      | XRef(r, _, pb) => return add_(MemoryRef.addr(r), MemoryType.memorySize(pb));
     }
   }
 }

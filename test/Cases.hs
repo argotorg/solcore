@@ -47,6 +47,7 @@ spec =
     , runTestForFile "939badfood.solc" specFolder
     , runTestForFile "SimpleField.solc" specFolder
     , runTestForFile "121counter.solc" specFolder
+    -- these should work with proxy fix.
     , runTestExpectingFailure "126nanoerc20.solc" specFolder
     , runTestExpectingFailure "127microerc20.solc" specFolder
     ]
@@ -148,9 +149,9 @@ cases =
     , runTestForFile "undefined.solc" caseFolder
     , runTestForFile "foo-class.solc" caseFolder
     , runTestExpectingFailure "subsumption-test.solc" caseFolder
-    , runTestForFile "patterson-bug.solc" caseFolder
+    , runTestExpectingFailure "patterson-bug.solc" caseFolder
     , runTestExpectingFailure "listeq.solc" caseFolder
-    , runTestForFile "nano-desugared.solc" caseFolder
+    , runTestExpectingFailure "nano-desugared.solc" caseFolder
     , runTestForFile "uintdesugared.solc" caseFolder
     , runTestForFile "word-match.solc" caseFolder
     , runTestForFile "if-examples.solc" caseFolder

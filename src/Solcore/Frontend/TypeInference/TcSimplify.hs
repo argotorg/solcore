@@ -88,9 +88,8 @@ simplify qs ps
 toHnfs :: Int -> [Pred] -> TcM [Pred]
 toHnfs depth ps
   = do
-      info [">> Before eliminating equalities ", pretty ps]
+      info [">> Solving:", pretty ps]
       ps' <- elimEqualities ps
-      info [">> After eliminating equalities:", pretty ps']
       ps'' <- withCurrentSubst ps'
       toHnfs' depth ps''
 
@@ -115,10 +114,12 @@ toHnf depth p@(InCls c _ _)
   | depth <= 0 = notEnoughFuel [p]
   | otherwise
     = do
+        info [">> Trying to solve:", pretty p]
         insts <- askInstEnv c
         case byInstM insts p of
           Nothing -> do
-            info [">>> No matching instance for:", pretty p, " trying a default instance."]
+            insts' <- mapM fromANF insts
+            info [">>> No matching instance for:", pretty p, " trying a default instance.Defined instances:\n", unlines (map pretty insts')]
             denv <- getDefaultInstEnv
             -- does c have a default instance?
             case proveDefaulting denv insts p of
@@ -130,10 +131,11 @@ toHnf depth p@(InCls c _ _)
                 -- default instances should not have any additional contraints.
                 _ <- extSubst s
                 pure []
-          Just (ps' , s, i) -> do
-            info [">>> Found instance for:", pretty p, "\n>>>Instance:", pretty i,"\n>>>Subst:", pretty s]
+          Just (ps', s, i) -> do
+            info [">>> Found instance for:", pretty p, "\n>>> Instance:", pretty i,"\n>>> Subst:", pretty s]
             _ <- extSubst s
-            toHnfs (depth - 1) ps'
+            ps0 <- withCurrentSubst ps'
+            toHnfs (depth - 1) ps0
 toHnf _ (t1 :~: t2)
   = do
       info [">>> Unify ", pretty t1, " with ", pretty t2, " (Solved)"]
@@ -183,7 +185,7 @@ byInstM ienv (InCls _ t ts)
           Left _ -> Nothing
           Right u ->
             -- unifying weak type arguments
-            case mgu (apply u ts) (apply u ts') of
+            case mgu ts ts' of
               Left _ -> Nothing
               Right u' ->
                 let s = u' <> u

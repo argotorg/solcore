@@ -10,3 +10,9 @@ function foo() -> word {
   let f = app();
   return f(id,0);
 }
+
+contract C {
+  function main () {
+    return foo();
+  }
+}
