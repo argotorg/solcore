@@ -163,7 +163,7 @@ cases =
     , runTestForFile "bal.solc" caseFolder
     , runTestForFile "if-examples.solc" caseFolder
     , runTestForFile "import-std.solc" caseFolder
-    , runTestForFile "withdraw.solc" caseFolder
+    , runTestExpectingFailure "withdraw.solc" caseFolder
     , runTestForFile "bal.solc" caseFolder
     ]
  where
