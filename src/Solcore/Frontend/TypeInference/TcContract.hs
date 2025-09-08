@@ -249,9 +249,15 @@ tcSig (sig, (Forall _ (_ :=> t)))
 -- type checking binding groups
 
 extractSignatures :: [FunDef Name] -> TcM [(Name, Scheme)]
-extractSignatures fds = forM fds $ \(FunDef sig _) -> do
-    ((name, scheme), _, _, _, _) <- tcSignature sig []
-    return (name, scheme)
+extractSignatures fds = forM fds extractSig
+  where
+    extractSig (FunDef sig _)
+      | hasAnn sig = do
+        scheme <- annotatedScheme [] sig
+        return (sigName sig, scheme)
+      | otherwise = do
+        tvar <- freshTyVar
+        return (sigName sig, monotype tvar)
 
 tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds
