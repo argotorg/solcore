@@ -43,29 +43,62 @@ forall ty . class ty:ExecMethod {
 
 // If fn matches the provided args/ret types, then we can execute any method
 forall name payability args rets fn
-  // TODO: should get a type error here...
-  . fn:invokable(args,rets), Method(name,payability,Proxy(args),Proxy(rets),fn):MethodLevelCallvalueCheck
+  . fn:invokable(args,rets)
+  , args:ABIAttribs
+  , rets:ABIAttribs
+  , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
+  , rets:ABIEncode
+  , Method(name,payability,Proxy(args),Proxy(rets),fn):MethodLevelCallvalueCheck
   => instance Method(name,payability,Proxy(args),Proxy(rets),fn):ExecMethod {
   function exec(m : Method(name,payability,Proxy(args),Proxy(rets),fn)) -> () {
     match m {
-      | Method(nm,payability,pargs,rets,fn) =>
+      | Method(nm,payability,pargs,prets,fn) =>
         // check callvalue
         MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Method(name,payability,Proxy(args),Proxy(rets),fn)));
 
         // check we have enough calldata for the head of args
+        let hdsz = ABIAttribs.headSize(pargs);
+        assembly {
+          if lt(sub(calldatasize(), 4), hdsz) {
+            revert(0,0);
+          };
+        }
+
+        // TODO: calldatasize checks for dynamic types
+
         // abi decode args from calldata
+        let ptr : calldata(bytes) = calldata(4);
+
+        // TODO: this needs entirely too many type annotations
+        let args : args = abi_decode(ptr, pargs, Proxy : Proxy(CalldataWordReader));
+
         // call fn with args
+        // TODO: why are type annotations needed here?
+        let rets : rets = fn(args);
+
         // abi encode rets to memory
-        // returndata copy encoded returns
-        // evm return
-        return ();
+        let ptr = abi_encode(rets);
+
+        match ABIAttribs.isStatic(prets) {
+        // TODO: handle dynamic types
+        | false => assembly { revert(0,0) }
+        | true =>
+          let retSz = ABIAttribs.headSize(prets);
+          let start = Typedef.rep(ptr);
+          assembly {
+            return(start,retSz)
+          }
+        }
     }
   }
 }
 
 // If fn matches the provided args/ret types, then we can execute any fallback
 forall payability args rets fn
-  . fn:invokable(args,rets), Fallback(payability,Proxy(args),Proxy(rets),fn):MethodLevelCallvalueCheck
+  . fn:invokable(args,rets)
+  , args:ABIAttribs
+  , rets:ABIAttribs
+  , Fallback(payability,Proxy(args),Proxy(rets),fn):MethodLevelCallvalueCheck
   => instance Fallback(payability,Proxy(args),Proxy(rets),fn):ExecMethod {
   function exec(fb : Fallback(payability, Proxy(args),Proxy(rets),fn)) -> () {
     match fb {
@@ -247,15 +280,13 @@ instance C_Add2_Selector:Selector {
 // transform
 
 contract C {
-  function add2(x : word, y : word) -> word {
-    let ret : word;
-    assembly { ret := add(x,y) }
-    return ret;
+  function add2(x : uint256, y : uint256) -> uint256 {
+    return Add.add(x,y);
   }
 
   function main() -> word {
     let c = Contract(
-      Method(C_Add2_Selector, Proxy : Proxy(NonPayable), Proxy : Proxy((word,word)), Proxy : Proxy(word), add2),
+      Method(C_Add2_Selector, Proxy : Proxy(NonPayable), Proxy : Proxy((uint256,uint256)), Proxy : Proxy(uint256), add2),
       Fallback(Proxy : Proxy(NonPayable), Proxy : Proxy(()), Proxy : Proxy(()),revert_handler)
     );
 
