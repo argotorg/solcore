@@ -166,7 +166,7 @@ cases =
     , runTestForFile "bal.solc" caseFolder
     , runTestForFile "ixa.solc" caseFolder
     , runTestForFile "tuva.solc" caseFolder
-    -- Pragma merging tests
+    , runTestForFile "yul-return.solc" caseFolder
     , runTestForFile "pragma_merge_base.solc" caseFolder
     , runTestForFile "pragma_merge_import.solc" caseFolder
     , runTestForFile "pragma_merge_verify.solc" caseFolder
