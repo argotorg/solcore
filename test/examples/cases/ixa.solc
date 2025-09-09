@@ -1,0 +1,142 @@
+// --- preamble / duplicated std defs ---
+
+data Proxy(a) = Proxy;
+
+// dynamic arrays with a runtime size. cannot exist on stack so no data constructor (i.e. should be used in combination with memory / storage pointers).
+data array(a);
+
+// a typed pointer to a location in memory
+data memory(a) = memory(word);
+
+// word arithmetc
+forall t . class t:Add { function add(l: t, r: t) -> t; }
+forall t . class t:Mul { function mul(l: t, r: t) -> t; }
+instance word:Add {
+    function add(l: word, r: word) -> word {
+        let rw : word;
+        assembly {
+            rw := add(l,r);
+        }
+        return rw;
+    }
+}
+instance word:Mul {
+    function mul(l: word, r: word) -> word {
+        let rw : word;
+        assembly {
+            rw := mul(l,r);
+        }
+        return rw;
+    }
+}
+
+// --- MemoryType ---
+
+forall a . class a:MemoryType {
+  function load(loc : word) -> a;
+  function store(loc: word, val : a) -> ();
+  function size(prx : Proxy(a)) -> word;
+}
+
+instance word:MemoryType {
+  function load(loc : word) -> word {
+    let ret : word;
+    assembly { ret := mload(loc) }
+    return ret;
+  }
+
+  function store(loc : word, val : word) -> () {
+    assembly { mstore(loc,val) }
+  }
+
+  function size(prx : Proxy(word)) -> word {
+    return 32;
+  }
+}
+
+forall a . instance memory(array(a)):MemoryType {
+  function load(loc: word) -> memory(array(a)) {
+    let ret : word;
+    assembly { ret := mload(loc) }
+    return memory(ret);
+  }
+
+  function store(loc : word, val : memory(array(a))) -> () {
+    match val {
+      | memory(ptr) => assembly { mstore(loc,ptr) }
+    }
+  }
+
+  function size(prx : Proxy(word)) -> word {
+    return 32;
+  }
+}
+
+// --- Assignment ---
+
+forall lhs rhs . class lhs:Assign(rhs) {
+  function assign(l : lhs, r : rhs) -> ();
+}
+
+instance memory(word):Assign(word) {
+  function assign(ptr : memory(word), val : word) -> () {
+    match ptr {
+      | memory(loc) => assembly {
+          mstore(loc, val)
+      }
+    }
+  }
+}
+
+// --- Index Access ---
+
+forall col_idx val . class col_idx:RValueIdxAccess(val) {
+  function lookup(ci : col_idx) -> val;
+}
+
+forall col_idx val . class col_idx:LValueIdxAccess(val) {
+  function lookup(ci : col_idx) -> val;
+}
+
+forall a . a:MemoryType => instance (memory(array(a)), word):RValueIdxAccess(a) {
+  function lookup(col_idx : (memory(array(a)), word)) -> a {
+    let sz = MemoryType.size(Proxy : Proxy(a));
+    match col_idx {
+      | (col, idx) => match col {
+        | memory(loc) => MemoryType.load(Add.add(loc, Mul.mul(idx, sz)));
+      }
+    }
+  }
+}
+
+forall a . a:MemoryType => instance (memory(array(a)), word):LValueIdxAccess(memory(a)) {
+  function lookup(col_idx : (memory(array(a)), word)) -> a {
+    let sz = MemoryType.size(Proxy : Proxy(a));
+    match col_idx {
+      | (col, idx) => match col {
+        | memory(loc) => memory(Add.add(loc, Mul.mul(idx, sz)));
+      }
+    }
+  }
+}
+
+// --- Examples ---
+
+function main() -> () {
+  let x : memory(array(memory(array(word)))) = memory(0);
+  let y : word = 0;
+  let z : memory(array(word)) = memory(0);
+
+  // y = z[0]
+  y = RValueIdxAccess.lookup((z, 0));
+
+  //y = x[0][1]
+  y = RValueIdxAccess.lookup((RValueIdxAccess.lookup((x, 0)), 1));
+
+  //x[2][3] = x[5][4]
+  Assign.assign(
+    // TODO: R or L for the x[2] lookup?
+    LValueIdxAccess.lookup((RValueIdxAccess.lookup((x, 2)), 3)),
+    RValueIdxAccess.lookup((RValueIdxAccess.lookup((x, 5)), 4))
+  );
+}
