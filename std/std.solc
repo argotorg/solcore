@@ -464,8 +464,8 @@ forall self . class self:ABIAttribs {
 }
 
 instance ():ABIAttribs {
-    function headSize(ty : Proxy(uint256)) -> word { return 0; }
-    function isStatic(ty : Proxy(uint256)) -> bool { return true; }
+    function headSize(ty : Proxy(())) -> word { return 0; }
+    function isStatic(ty : Proxy(())) -> bool { return true; }
 }
 instance uint256:ABIAttribs {
     function headSize(ty : Proxy(uint256)) -> word { return 32; }
