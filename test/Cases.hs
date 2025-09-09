@@ -161,6 +161,9 @@ cases =
     , runTestForFile "word-match.solc" caseFolder
     , runTestForFile "if-examples.solc" caseFolder
     , runTestForFile "import-std.solc" caseFolder
+    , runTestExpectingFailure "bound-minimal.solc" caseFolder
+    , runTestExpectingFailure "bound-only-test.solc" caseFolder
+    , runTestForFile "bound-with-pragma.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

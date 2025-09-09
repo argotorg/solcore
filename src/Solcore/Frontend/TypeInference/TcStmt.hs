@@ -747,7 +747,7 @@ checkInstance idef@(Instance d vs ctx n ts t funs)
       unless patterson (checkMeasure ctx ipred `wrapError` idef)
       -- checking bound variable condition
       bound <- askBoundVariableCondition n
-      unless bound (checkBoundVariable ctx (fv (t : ts)) `wrapError` idef)
+      unless bound (checkBoundVariable ctx (bv (t : ts)) `wrapError` idef)
       -- checking instance methods
       mapM_ (checkMethod ipred) funs `wrapError` idef
       let ninst = anfInstance $ ctx :=> InCls n t ts
@@ -769,7 +769,7 @@ isTyVar _ = False
 
 checkBoundVariable :: [Pred] -> [Tyvar] -> TcM ()
 checkBoundVariable ps vs
-  = unless (all (\ v -> v `elem` vs) (fv ps)) $ do
+  = unless (all (\ v -> v `elem` vs) (bv ps)) $ do
       throwError "Bounded variable condition fails!"
 
 
