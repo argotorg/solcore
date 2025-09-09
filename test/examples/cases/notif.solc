@@ -1,0 +1,14 @@
+function not(x){
+  if (x) {
+    return false ;
+  } else {
+    return true ;
+  }
+}
+
+function not2(x) {
+  if (x) {
+    return false ;
+  }
+  return true;
+}
