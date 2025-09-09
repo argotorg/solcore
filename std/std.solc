@@ -354,7 +354,9 @@ instance CalldataWordReader:WordReader {
     function read(reader:CalldataWordReader) -> word {
         let result : word;
         match reader {
-        | CalldataWordReader(ptr) => assembly { result := calldataload(ptr) }
+        | CalldataWordReader(ptr) =>
+          let ptr2 : word = ptr;
+          assembly { result := calldataload(ptr2) }
         }
         return result;
     }

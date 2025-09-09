@@ -82,6 +82,7 @@ forall name payability args rets fn
         // TODO: this is broken for dynamically sized types...
         let retSz : word = ABIAttribs.headSize(prets);
         let start : word = Typedef.rep(ptr);
+
         assembly {
           return(start,retSz)
         }
