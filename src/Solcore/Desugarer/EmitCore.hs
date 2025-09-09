@@ -111,6 +111,7 @@ emitTopDecl _ = pure []
 addData :: DataTy -> EM ()
 addData dt = modify (\s -> s { ecDT = Map.insert (dataName dt) dt (ecDT s) })
 
+{-
 buildTConInfo :: DataTy -> TConInfo
 buildTConInfo (DataTy n tvs dcs) = (tvs, map conInfo dcs) where
   conInfo (Constr n ts) = (n, ts)
