@@ -79,15 +79,11 @@ forall name payability args rets fn
         // abi encode rets to memory
         let ptr = abi_encode(rets);
 
-        match ABIAttribs.isStatic(prets) {
-        // TODO: handle dynamic types
-        | false => assembly { revert(0,0) }
-        | true =>
-          let retSz = ABIAttribs.headSize(prets);
-          let start = Typedef.rep(ptr);
-          assembly {
-            return(start,retSz)
-          }
+        // TODO: this is broken for dynamically sized types...
+        let retSz : word = ABIAttribs.headSize(prets);
+        let start : word = Typedef.rep(ptr);
+        assembly {
+          return(start,retSz)
         }
     }
   }
