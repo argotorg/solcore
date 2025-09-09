@@ -44,6 +44,9 @@ boolTypeInfo = TypeInfo 0 [trueName, falseName] []
 sumTypeInfo :: TypeInfo
 sumTypeInfo = TypeInfo 2 [inlName, inrName] []
 
+stringTypeInfo :: TypeInfo
+stringTypeInfo = TypeInfo 0 [] []
+
 -- name of constructor and its scheme
 type ConInfo = (Name, Scheme)
 
@@ -139,6 +142,7 @@ primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
                            , (Name "()", unitTypeInfo)
                            , (Name "bool", boolTypeInfo)
                            , (Name "sum", sumTypeInfo)
+                           , (Name "string", stringTypeInfo)
                            ]
 
 primInstEnv :: InstTable
