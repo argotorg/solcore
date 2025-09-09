@@ -4,7 +4,6 @@ import Language.Core qualified as Core
 import Data.Map qualified as Map
 import Common.Monad
 import Control.Monad(when, unless)
--- import Control.Monad.IO.Class
 import Control.Monad.Reader.Class ()
 import Control.Monad.State
 import Data.Maybe(fromMaybe)
