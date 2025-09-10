@@ -273,7 +273,10 @@ closureConversion vs args bdy ps ty
         -- type checking generated instance
         checkInstance instd
         extEnv fn sch
+        s <- getSubst
+        clearSubst
         instd' <- tcInstance instd
+        putSubst s
         writeInstance instd'
         pure (Con (Id dn t) [], t)
       else do

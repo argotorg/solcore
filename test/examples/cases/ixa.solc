@@ -103,7 +103,8 @@ forall a . a:MemoryType => instance (memory(array(a)), word):RValueIdxAccess(a) 
     let sz = MemoryType.size(Proxy : Proxy(a));
     match col_idx {
       | (col, idx) => match col {
-        | memory(loc) => MemoryType.load(Add.add(loc, Mul.mul(idx, sz)));
+        | memory(loc) =>
+          return MemoryType.load(Add.add(loc, Mul.mul(idx, sz)));
       }
     }
   }

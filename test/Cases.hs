@@ -165,6 +165,8 @@ cases =
     , runTestForFile "import-std.solc" caseFolder
     , runTestExpectingFailure "withdraw.solc" caseFolder
     , runTestForFile "bal.solc" caseFolder
+    , runTestForFile "ixa.solc" caseFolder
+    , runTestForFile "tuva.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

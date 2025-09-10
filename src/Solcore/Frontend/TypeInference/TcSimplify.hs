@@ -56,7 +56,7 @@ checkEntails qs rs
           qs' = nub $ concatMap (bySuperM ctable) qs
           unsolved q = not (isInvoke q) && not (entail ctable itable qs' q)
           -- compiler generated instances can introduce invokable constraints
-          -- no present in the called function. Since type inference can produce
+          -- not present in the called function. Since type inference can produce
           -- such constraints, we do not consider them here.
           isInvoke (InCls n _ _) = n == (Name "invokable")
           isInvoke _ = False
@@ -91,7 +91,11 @@ toHnfs depth ps
       info [">> Solving:", pretty ps]
       ps' <- elimEqualities ps
       ps'' <- withCurrentSubst ps'
-      toHnfs' depth ps''
+      -- here we reduce using instances until we
+      -- reach a fixpoint or exaust the maximum depth
+      ps0 <- toHnfs' depth ps''
+      if ps0 == ps'' then pure ps0
+        else toHnfs (depth - 1) ps0
 
 toHnfs' :: Int -> [Pred] -> TcM [Pred]
 toHnfs' _ [] = pure []
