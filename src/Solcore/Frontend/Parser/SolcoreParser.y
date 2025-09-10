@@ -16,7 +16,7 @@ import System.FilePath
 
 
 %name parser CompilationUnit
-%monad {Alex}{(>>=)}{return}
+%monad {Alex}{(>>=)}{pure}
 %tokentype { Token }
 %error     { parseError }
 %lexer {lexer}{Token _ TEOF}
@@ -469,9 +469,10 @@ IdentifierList : Name                              {[$1]}
 
 
 YulExp :: {YulExp}
-YulExp : YulLiteral                                   {YLit $1}
+YulExp : YulLiteral                                {YLit $1}
        | Name                                      {YIdent $1}
        | Name YulFunArgs                           {YCall $1 $2}
+       | 'return' YulFunArgs                       {YCall (Name "return") $2}
 
 YulFunArgs :: {[YulExp]}
 YulFunArgs : '(' YulExpCommaList ')'               {$2}

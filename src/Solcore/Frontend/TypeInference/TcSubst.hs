@@ -78,6 +78,7 @@ instance HasType Ty where
   apply _ t = t
 
   fv (TyVar v@(Skolem _)) = [v]
+  fv (TyVar v@(TVar _)) = [v]  -- Include regular type variables in free vars
   fv (TyCon _ ts) = fv ts
   fv _ = []
 
