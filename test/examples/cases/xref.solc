@@ -95,21 +95,21 @@ forall a b . a: MemoryType, b: MemoryType => function mstore2(aa:word, va:a, vb:
 pragma no-bounded-variable-condition MemoryRef;
 pragma no-coverage-condition Ref;
 pragma no-patterson-condition Ref;
-data XRef(st, field, fieldType) = XRef(st, field, Proxy(fieldType));
+data XRef(st, field, fieldType) = XRef(st, field);
 data PairFst = PairFst;
 data PairSnd = PairSnd;
 
 
 forall a b r . r:MemoryRef ( (a,b)), a:MemoryType, b:MemoryType => instance XRef(r, PairFst, a) : MemoryRef(a) {
   function addr(xr : XRef(r, PairFst, a)) -> word {
-    match xr { | XRef(r, _, _) => return MemoryRef.addr(r); }
+    match xr { | XRef(r, _) => return MemoryRef.addr(r); }
   }
 }
 
 forall a b r . r:MemoryRef ((a,b)), a:MemoryType, b:MemoryType => instance XRef(r, PairSnd, b) : MemoryRef(b) {
   function addr(xr : XRef (r, PairSnd, b)) -> word {
     match xr {
-      | XRef(r, _, pb) => return add_(MemoryRef.addr(r), MemoryType.memorySize(pb));
+      | XRef(r, _) => return add_(MemoryRef.addr(r), MemoryType.memorySize(Proxy : Proxy(b)));
     }
   }
 }
