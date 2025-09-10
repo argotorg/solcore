@@ -263,8 +263,7 @@ tcBindGroup :: [FunDef Name] -> TcM [FunDef Id]
 tcBindGroup binds
   = do
       nmschs <- extractSignatures binds
-      (funs', schs, pss) <- unzip3 <$> (withLocalCtx nmschs $  mapM (tcFunDef True [] []) binds)
-      checkDeferedConstraints (zip funs' pss)
+      (funs', schs) <- unzip <$> (withLocalCtx nmschs $  mapM (tcFunDef True [] []) binds)
       let names = map (sigName . funSignature) funs'
       mapM_ (uncurry extEnv) (zip names schs)
       noDesugarCalls <- getNoDesugarCalls

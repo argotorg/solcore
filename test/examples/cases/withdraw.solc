@@ -1,0 +1,20 @@
+import IndexLib;
+
+contract Uint {
+  reserved : word;
+  msg_sender : address; // mock msg.sender
+  owner : address;
+  decimals : uint;
+  totalSupply : uint;
+  balances : mapping(address,uint);
+
+  function withdraw(src, amt) {
+    balances[src] = Num.sub(balances[src], amt);
+  }
+
+
+  function main() {
+    withdraw(msg_sender, totalSupply);
+    return balances[msg_sender] : uint;
+  }
+}

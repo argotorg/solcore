@@ -234,6 +234,25 @@ instance Fresh Inst where
         mvs <- mapM (const freshTyVar) vs
         pure (insts (zip vs mvs) it)
 
+fromANF :: Inst -> TcM Inst
+fromANF (ps :=> p)
+  = do
+      let eqs = [ (t,t') | (t :~: t') <- ps]
+          ps' = [c | c@(InCls _ _ _) <- ps]
+      s <- solve eqs mempty
+      pure $ apply s (ps' :=> p)
+
+instance Fresh ClassInfo where
+  type Result ClassInfo = ClassInfo
+
+  freshInst cls
+    = do
+        let vs = bv (classpred cls) `union` bv (supers cls)
+        mvs <- mapM (const freshTyVar) vs
+        let env = zip vs mvs
+        pure $ cls { classpred = insts env (classpred cls)
+                   , supers = insts env (supers cls)}
+
 type IEnv = [(Tyvar, Ty)]
 
 class Insts a where
@@ -422,25 +441,33 @@ modifyTypeInfo n ti
 
 getClassEnv :: TcM ClassTable
 getClassEnv
-  = gets classTable
+  = gets classTable >>= renameClassEnv
 
 askInstEnv :: Name -> TcM [Inst]
 askInstEnv n
-  = maybe [] id . Map.lookup n <$> gets instEnv
+  = maybe [] id . Map.lookup n <$> getInstEnv
 
 getInstEnv :: TcM InstTable
 getInstEnv
   = gets instEnv >>= renameInstEnv
 
-getDefaultInstEnv :: TcM (Table Inst)
+getDefaultInstEnv :: TcM InstTable
 getDefaultInstEnv
-  = gets defaultEnv
+  = do
+       denv <- Map.map (\ i -> [i]) <$> gets defaultEnv
+       renameInstEnv denv
+
+renameClassEnv :: ClassTable -> TcM ClassTable
+renameClassEnv
+  = traverse go
+    where
+      go v = freshInst v
 
 renameInstEnv :: InstTable -> TcM InstTable
 renameInstEnv
   = Map.traverseWithKey go
   where
-    go k v = mapM freshInst v
+    go _ v = mapM freshInst v
 
 addInstance :: Name -> Inst -> TcM ()
 addInstance n inst
