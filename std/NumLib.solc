@@ -1,5 +1,4 @@
-data Proxy(a) = Proxy;
-
+import types;
 function addW(x : word, y : word) {
   let res: word;
   assembly {
@@ -135,10 +134,15 @@ function ge(x:a, y:a) -> Bool {
   return or(Num.gt(x,y), Eq.eq(x,y));
 }
 
-data uint = uint(word);
 
 instance uint:Eq {
   function eq(x:uint, y:uint) -> Bool { return Eq.eq(Num.toWord(x), Num.toWord(y)); }
+}
+
+instance address:Eq {
+  function eq(x : address , y : address) -> Bool {
+    return Eq.eq(Typedef.rep(x), Typedef.rep(y));
+  }
 }
 
 instance uint:Num {

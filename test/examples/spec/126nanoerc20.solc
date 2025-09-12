@@ -1,4 +1,5 @@
-import IndexLib;
+// import IndexLib;
+import assign;
 
 function caller() -> address {
   let res: word;

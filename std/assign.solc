@@ -10,64 +10,8 @@
 // import std;
 
 // -- relevant fragments of std
-
+import types;
 import NumLib;
-
-// --- Proxy ---
-
-// Proxy is a unit type that can be used to pass Types as paramaters at runtime
-data Proxy(t) = Proxy;
-
-// --- Type Abstraction ---
-
-forall abs rep . class abs:Typedef(rep) {
-    function abs(x:rep) -> abs;
-    function rep(x:abs) -> rep;
-}
-
-// -- value types
-
-data address = address(word);
-
-instance address:Typedef(word) {
-    function rep(x:address) -> word {
-        match x {
-            | address(y) => return y;
-        }
-    }
-    function abs(x:word) -> address {
-        return address(x);
-    }
-}
-
-
-// type uint = uint256;
-data uint = uint(word);
-instance uint:Typedef(word) {
-    function abs(w: word) -> uint {
-        return uint(w);
-    }
-
-    function rep(x: uint) -> word {
-        match x {
-        | uint(w) => return w;
-        }
-    }
-}
-
-data storage(t) = storage(word);
-forall t . instance storage(t) : Typedef(word) {
-    function abs(x: word) -> storage(t) {
-        return storage(x);
-    }
-
-    function rep(x: storage(t)) -> word {
-        match x {
-        | storage(w) => return w;
-       }
-    }
-}
-
 
 // -- std ends
 
@@ -76,6 +20,19 @@ pragma no-patterson-condition RVA;
 pragma no-coverage-condition MemberAccessProxy, LVA, RVA, StructField;
 
 // -- storage
+
+function sload_(x:word) -> word {
+    let res: word;
+    assembly {
+       res := sload(x)
+    }
+    return res;
+  }
+
+function sstore_(a:word, v:word) {
+    assembly { sstore(a,v) }
+}
+
 
 forall self.
 class self:StorageSize {
@@ -139,6 +96,16 @@ instance word:StorageType {
     }
 }
 
+instance address:StorageType {
+    function sload(ptr:word) -> address {
+        return Typedef.abs(sload_(ptr)):address; // type annotation needed due to a typechecker bug
+    }
+    function store(ptr:word, value:address) -> () {
+        return sstore_(ptr, Typedef.rep(value));
+    }
+}
+
+
 forall a. a:Typedef(word) =>
 function sloadViaWord(ptr:word) -> a {
     let r:word;
@@ -178,6 +145,39 @@ function memberAccessBase(x:MemberAccessProxy(a, field, offset)) -> a {
     }
 }
 
+
+// ------------------------------------------------------------------
+// Contract field access
+// ------------------------------------------------------------------
+
+forall cxt fieldSelector fieldType offsetType
+  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  , offsetType:StorageSize
+  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):LVA(storage(fieldType)) {
+    function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> storage(fieldType) {
+        let ptr:word = 0x100; // forge uses at least 1 storage slot
+        let offsetSize:word = StorageSize.size(Proxy:Proxy(offsetType));
+
+        assembly {
+            ptr := add(ptr, offsetSize)
+        }
+        return storage(ptr); 
+    }
+}
+
+forall cxt fieldSelector fieldType offsetType
+  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  , fieldType:StorageType
+  , offsetType:StorageSize
+  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):RVA(fieldType) {
+    function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> fieldType {
+        let ptr:word = 0x100;
+        let offsetSize:word = StorageSize.size(Proxy:Proxy(offsetType));
+        return StorageType.sload(addW(ptr, offsetSize)):fieldType;
+    }
+}
+
+
 forall structType fieldSelector fieldType offsetType
   . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
   , offsetType:StorageSize
@@ -193,14 +193,26 @@ forall structType fieldSelector fieldType offsetType
 }
 
 
+forall structType fieldSelector fieldType offsetType
+  . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
+  , offsetType:StorageSize
+  , fieldType:StorageType
+  => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType):RVA(fieldType) {
+    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, offsetType)) -> fieldType {
+        let ptr:word = Typedef.rep(memberAccessBase(x));
+        let size:word = StorageSize.size(Proxy:Proxy(offsetType));
+        assembly {
+            ptr := add(ptr, size)
+        }
+        return StorageType.sload(ptr);
+    }
+}
+
+
 
 
 data ContractStorage(cxt) = ContractStorage(cxt);
 
-// --- mappings - to be moved to std once stabilised
-
-// data mapping(member, index) = mapping(word, Proxy(member), Proxy(index)) ;
-data mapping(member, index) = mapping(word) ;
 
 forall member index . instance mapping(index, member):Typedef(word) {
     function rep(x:mapping(index, member)) -> word {

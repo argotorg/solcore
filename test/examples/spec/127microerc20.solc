@@ -1,5 +1,6 @@
-import IndexLib;
-
+// import IndexLib;
+import assign;
+ 
 function caller() -> address {
   let res: word;
   assembly {
@@ -33,7 +34,7 @@ contract Mini {
   decimals : uint;
   totalSupply : uint;
   balances : mapping(address,uint);
-  allowance : mapping(address, storage(mapping(address, uint)));
+  allowance : mapping(address, mapping(address, uint));
 
   function mint(amount:uint) -> () {
     balances[owner] = Num.add(balances[owner], amount);
@@ -58,15 +59,20 @@ contract Mini {
 //  function transferFrom(src:address, dst:address, amt:uint) -> Bool {
   function transferFrom(src, dst, amt) -> Bool  {
      require1(ge(balances[src], amt));
-/*
-     match (eq(src, msg_sender)) {
-       | True => match ne(allowance[src][msg_sender], 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff) {
+
+     match (Eq.eq(src, msg_sender)) {
+       | True => match ne(allowance[src][msg_sender], Num.maxVal():uint) {
            | True => require1(False);
 	   | False => ();
 	   }
        | False => ();
      }
-     */
+
+/*
+     if ((src != msg_sender) && (allowance [src][msg_sender] != (Num.maxVal():uint)) ) {
+       require1(allowance[src][msg.sender] >= amt);
+     }
+*/   
      balances[src] = Num.sub(balances[src], amt);
      balances[dst] = Num.add(balances[dst], amt):uint;
      return True;
@@ -90,7 +96,7 @@ contract Mini {
   function main() -> uint {
     init();
     mint(uint(1000));
-    allowance[owner][msg_sender] = 10000;
+    allowance[owner][msg_sender] = uint(10000);
     transferFrom(owner, msg_sender, uint(42));
 
     return balances[msg_sender] : uint;

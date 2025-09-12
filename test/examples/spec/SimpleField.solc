@@ -1,5 +1,4 @@
-import StorageLib;
-// import std;
+import assign;
 
 contract Simple {
   val : word ;
