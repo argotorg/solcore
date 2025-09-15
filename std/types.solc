@@ -1,0 +1,63 @@
+// --- Proxy ---
+
+// Proxy is a unit type that can be used to pass Types as paramaters at runtime
+data Proxy(t) = Proxy;
+
+// -- value types
+
+data address = address(word);
+
+// type uint = uint256;
+data uint = uint(word);
+
+data storage(t) = storage(word);
+
+// --- Type Abstraction ---
+
+forall abs rep . class abs:Typedef(rep) {
+    function abs(x:rep) -> abs;
+    function rep(x:abs) -> rep;
+}
+
+instance address:Typedef(word) {
+    function rep(x:address) -> word {
+        match x {
+            | address(y) => return y;
+        }
+    }
+    function abs(x:word) -> address {
+        return address(x);
+    }
+}
+
+
+instance uint:Typedef(word) {
+    function abs(w: word) -> uint {
+        return uint(w);
+    }
+
+    function rep(x: uint) -> word {
+        match x {
+        | uint(w) => return w;
+        }
+    }
+}
+
+forall t . instance storage(t) : Typedef(word) {
+    function abs(x: word) -> storage(t) {
+        return storage(x);
+    }
+
+    function rep(x: storage(t)) -> word {
+        match x {
+        | storage(w) => return w;
+       }
+    }
+}
+
+
+// --- mappings - to be moved to std once stabilised
+
+// data mapping(member, index) = mapping(word, Proxy(member), Proxy(index)) ;
+data mapping(member, index) = mapping(word) ;
+
