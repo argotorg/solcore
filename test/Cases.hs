@@ -47,10 +47,8 @@ spec =
     , runTestForFile "939badfood.solc" specFolder
     , runTestForFile "SimpleField.solc" specFolder
     , runTestForFile "121counter.solc" specFolder
-    -- these should work with proxy fix.
     , runTestForFile "126nanoerc20.solc" specFolder
     , runTestForFile "127microerc20.solc" specFolder
-    -- failing due to missing signature in instance definition
     , runTestForFile "128minierc20.solc" specFolder
     ]
  where
