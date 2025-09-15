@@ -303,7 +303,6 @@ specConApp i@(Id n conTy) args ty = do
 -- | Specialise a function call
 -- given actual arguments and the expected result type
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revert") e) args ty = pure (i, args)  -- FIXME
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
@@ -508,7 +507,8 @@ typeOfTcExp e@(Con i args)          = go (idType i) args where
   go ty [] = ty
   go (_ :-> u) (a:as) = go u as
   go _ _ = error $ "typeOfTcExp: " ++ show e
-typeOfTcExp (Lit (IntLit _))      = word --TyCon "Word" []
+typeOfTcExp (Lit (IntLit _))      = word
+typeOfTcExp (Lit (StrLit _))      = string
 typeOfTcExp exp@(Call Nothing i args) = applyTo args funTy where
   funTy = idType i
   applyTo [] ty = ty
