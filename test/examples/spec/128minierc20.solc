@@ -1,4 +1,4 @@
-import IndexLib;
+mport IndexLib;
 
 function caller() -> address {
   let res: word;
@@ -59,20 +59,28 @@ contract MiniERC20 {
      require1(balances[src] >= amt);
 
      match (src == msg_sender && allowance[src][msg_sender] != Num.maxVal(Proxy:Proxy(uint))) {
-           | True =>
-	       require1(allowance[src][msg_sender] >= amt);
+           | True => require1(False);
 	   | False => ();
      }
 
-     balances[src] -= amt;
-     balances[dst] += amt;
+     balances[src] = balances[src] - amt;
+     balances[dst] = balances[dst] + amt;
      return True;
   }
+
+/*
+    function approve(address usr, uint amt) public returns (bool) {
+        allowance[msg.sender][usr] = amt;
+        emit Approval(msg.sender, usr, amt);
+        return true;
+    }
+*/
 
   function approve(usr: address, amt: uint) -> Bool {
       allowance[msg_sender][usr] = amt;
       // emit Approval(msg.sender, usr, amt);
       return True;
+
   }
 
   function init() -> () {
@@ -86,7 +94,7 @@ contract MiniERC20 {
     mint(uint(1000));
     allowance[owner][msg_sender] = uint(10000);
     transferFrom(owner, msg_sender, uint(42));
-    // return allowance[owner][msg_sender];
+
     return balances[msg_sender] : uint;
   }
 }

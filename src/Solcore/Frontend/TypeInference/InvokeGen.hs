@@ -73,7 +73,7 @@ createInstance udt fd sch
       -- pattern variables for arguments
       (sargs, sarg) <- unzip <$> mapM freshPatArg args'
       let
-        isig = Signature [] [] invokeName [selfParam, argParam] (Just retTy)
+        isig = Signature [] qs invokeName [selfParam, argParam] (Just retTy)
         -- building the match of function body
         nargs = length args
         discr = epair (Var sn) (Var an)

@@ -346,6 +346,16 @@ instance MemoryWordReader:WordReader {
 
 // WordReader for calldata
 data CalldataWordReader = CalldataWordReader(word);
+
+instance CalldataWordReader : Typedef(word) {
+  function abs(a:word) -> CalldataWordReader { return CalldataWordReader(a); }
+  function rep(r:CalldataWordReader) -> word {
+    match r {
+      | CalldataWordReader(a) => return a;
+    }
+  }
+}
+
 instance CalldataWordReader:WordReader {
     function read(reader:CalldataWordReader) -> word {
         let result : word;
@@ -419,8 +429,8 @@ forall ty ret . ty:MemoryType(ret) => instance DynArray(ty):MemoryType(slice(mem
 // by loading it and then running the ABI encoding for the loaded value
 forall ty deref . ty:MemoryType(deref), deref:ABIEncode => instance memory(ty):ABIEncode {
     function encodeInto(x:memory(ty), basePtr:word, offset:word, tail:word) -> word {
-        let prx : Proxy(deref);
-        return ABIEncode.encodeInto(MemoryType.loadFromMemory(prx, Typedef.rep(x)), basePtr, offset, tail);
+        let prx : Proxy(ty); // FIXED: before was Proxy(deref)
+        return ABIEncode.encodeInto(MemoryType.loadFromMemory(prx, Typedef.rep(x)) : deref, basePtr, offset, tail);
     }
 }
 
@@ -697,15 +707,25 @@ forall reader baseType reader baseType_decoded .baseType : ABIAttribs, reader:Wo
     }
 }
 
-// missing constraints.
-// forall baseType baseType_decoded . ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded),
-//     baseType : WordReader =>
-//     instance ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
-// {
-//     function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType)) {
-//         return Typedef.abs(Typedef.rep(WordReader.advance(ptr, currentHeadOffset)));
-//     }
-// }
+forall ty reader.
+function getReader(d:ABIDecoder(ty, reader)) -> reader {
+    match d {
+      | ABIDecoder(rdr) => return rdr;
+    }
+}
+
+ forall baseType baseType_decoded reader . ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded),
+     baseType : WordReader =>
+     instance ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
+ {
+     function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType)) {
+          let newptr = WordReader.advance(ptr, currentHeadOffset);
+	  let reader: CalldataWordReader = getReader(newptr);
+          let addr: word = Typedef.rep(reader);
+          return Typedef.abs(addr);
+     }
+ }
+
 //
 // --- Contract Entrypoint ---
 
@@ -721,18 +741,17 @@ forall name . name:Selector => function selector_matches(nm : name) -> bool {
     return true;
 }
 
-// ERROR: Types: (t_closure4(o55, p55, q55, r55), ()) and t_closure4(w55, a, r, f) do not unify
-//forall nm args rets f g . nm:Selector, args:ABIDecode, rets:ABIEncode, f:Invokable(args, rets) => instance Dispatch(nm,args,rets,f):GenerateDispatch {
-    //function dispatch_if_selector_match(d:Dispatch(n,a,r,f)) -> g {
-        //return lam() {
-            //match d {
-            //| Dispatch(name, args, rets, fn) => match selector_matches(name) {
-                //| false => return ();
-                //| true => return ();
-            //}}
-        //};
-    //}
-//}
+forall nm args rets f g . nm:Selector, args:ABIDecode, rets:ABIEncode, f:Invokable(args, rets) => instance Dispatch(nm,args,rets,f):GenerateDispatch {
+    function dispatch_if_selector_match(d:Dispatch(nm,args,rets,f)) -> g {
+        return lam() {
+            match d {
+            | Dispatch(name, args, rets, fn) => match selector_matches(name) {
+                | false => return ();
+                | true => return ();
+            }}
+        };
+    }
+}
 
 //// /// Translation of the above contract
 //// struct StorageContext {

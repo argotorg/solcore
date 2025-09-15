@@ -13,6 +13,7 @@ import qualified System.TimeIt as TimeIt
 import Text.Pretty.Simple
 
 import qualified Language.Core as Core
+import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
@@ -113,6 +114,7 @@ compile opts = runExceptT $ do
     if noMatchCompiler
     then pure desugared
     else ExceptT $ timeItNamed "Match compiler" $ matchCompiler desugared
+
   let printMatch = (not $ noMatchCompiler) && (verbose || optDumpDS opts)
   liftIO $ when printMatch $ do
     putStrLn "> Match compilation result:"

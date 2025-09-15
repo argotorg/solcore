@@ -47,8 +47,11 @@ spec =
     , runTestForFile "939badfood.solc" specFolder
     , runTestForFile "SimpleField.solc" specFolder
     , runTestForFile "121counter.solc" specFolder
-    , runTestExpectingFailureWith stdOpt { optNoDesugarCalls = True } "126nanoerc20.solc" specFolder
+    -- these should work with proxy fix.
+    , runTestExpectingFailure "126nanoerc20.solc" specFolder
     , runTestExpectingFailure "127microerc20.solc" specFolder
+    -- failing due to missing signature in instance definition
+    , runTestExpectingFailure "128minierc20.solc" specFolder
     ]
  where
   specFolder = "./test/examples/spec"
@@ -84,28 +87,24 @@ cases =
     , runTestForFile "BoolNot.solc" caseFolder
     , runTestForFile "Compose.solc" caseFolder
     , runTestForFile "Compose2.solc" caseFolder
-    -- Failing due to missing invokable constraint
-    , runTestExpectingFailure "Compose3.solc" caseFolder
+    , runTestForFile "Compose3.solc" caseFolder
     , runTestExpectingFailure "DupFun.solc" caseFolder
     , runTestForFile "DuplicateFun.solc" caseFolder
     , runTestForFile "EitherModule.solc" caseFolder
     , runTestForFile "Id.solc" caseFolder
     , runTestForFile "IncompleteInstDef.solc" caseFolder
     , runTestExpectingFailure "Invokable.solc" caseFolder
-    -- missing invokable constraint
-    , runTestExpectingFailure "ListModule.solc" caseFolder
+    , runTestForFile "ListModule.solc" caseFolder
     , runTestForFile "Logic.solc" caseFolder
     , runTestForFile "Memory1.solc" caseFolder
     , runTestForFile "Memory2.solc" caseFolder
     , runTestForFile "Mutuals.solc" caseFolder
     , runTestForFile "NegPair.solc" caseFolder
     , runTestForFile "Option.solc" caseFolder
-    -- missing invokable constraint
-    , runTestExpectingFailure "Pair.solc" caseFolder
+    , runTestForFile "Pair.solc" caseFolder
     , runTestExpectingFailure "PairMatch1.solc" caseFolder
     , runTestExpectingFailure "PairMatch2.solc" caseFolder
-    -- missing invokable constraint
-    , runTestExpectingFailure "Peano.solc" caseFolder
+    , runTestForFile "Peano.solc" caseFolder
     , runTestForFile "PeanoMatch.solc" caseFolder
     , runTestForFile "RefDeref.solc" caseFolder
     , runTestExpectingFailure "SillyReturn.solc" caseFolder
@@ -118,7 +117,7 @@ cases =
     , runTestForFile "EqQual.solc" caseFolder
     , runTestExpectingFailure "joinErr.solc" caseFolder
     , runTestForFile "tyexp.solc" caseFolder
-    , runTestExpectingFailure "Uncurry.solc" caseFolder
+    , runTestForFile "Uncurry.solc" caseFolder
     , runTestForFile "unit.solc" caseFolder
     , runTestForFile "memory.solc" caseFolder
     , runTestForFile "cyclical-defs.solc" caseFolder
@@ -148,8 +147,7 @@ cases =
     , runTestForFile "array.solc" caseFolder
     , runTestForFile "class-context.solc" caseFolder
     , runTestExpectingFailure "missing-instance.solc" caseFolder
-    -- failing due to missing invokable constraint
-    , runTestExpectingFailure "rec.solc" caseFolder
+    , runTestForFile "rec.solc" caseFolder
     , runTestForFile "undefined.solc" caseFolder
     , runTestForFile "foo-class.solc" caseFolder
     , runTestExpectingFailure "subsumption-test.solc" caseFolder
@@ -157,7 +155,7 @@ cases =
     , runTestExpectingFailure "patterson-bug.solc" caseFolder
     , runTestExpectingFailure "listeq.solc" caseFolder
     , runTestExpectingFailure "nano-desugared.solc" caseFolder
-    , runTestExpectingFailure "uintdesugared.solc" caseFolder
+    , runTestForFile "uintdesugared.solc" caseFolder
     , runTestForFile "word-match.solc" caseFolder
     , runTestForFile "if-examples.solc" caseFolder
     , runTestForFile "import-std.solc" caseFolder
@@ -166,6 +164,10 @@ cases =
     , runTestForFile "bound-with-pragma.solc" caseFolder
     , runTestExpectingFailure "pragma-merge-import.solc" caseFolder
     , runTestExpectingFailure "pragma-merge-test.solc" caseFolder
+    , runTestExpectingFailure "withdraw.solc" caseFolder
+    , runTestForFile "bal.solc" caseFolder
+    -- , runTestForFile "ixa.solc" caseFolder
+    -- , runTestForFile "tuva.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
