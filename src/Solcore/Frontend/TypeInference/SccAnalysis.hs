@@ -61,8 +61,6 @@ analysis ds
         Left _ -> pure []
         Right ds' -> pure $ reverse $ concatMap (groupMutualDefs . toList . N.vertexList1) ds'
 
--- building the dependency graph
-
 mkGraph :: (Ord a, Names a, Decl a) => [a] -> AdjacencyMap a
 mkGraph ds = stars $ mkEdges (mkNameEnv ds) ds
 

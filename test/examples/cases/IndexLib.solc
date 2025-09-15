@@ -143,7 +143,7 @@ instance word:StorageType {
 
 instance uint:StorageType {
     function sload(ptr:word) -> uint {
-        return Typedef.abs(sload_(ptr)):uint; // type annotation needed due to a typechecker bug
+        return Typedef.abs(sload_(ptr));
     }
     function store(ptr:word, value:uint) -> () {
         return sstore_(ptr, Typedef.rep(value));
