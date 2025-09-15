@@ -641,15 +641,17 @@ tcInstance idecl@(Instance d vs ctx n ts t funs)
 
 checkConstraint :: Pred -> TcM ()
 checkConstraint p@(InCls n t ts)
-  = do
-      _ <- askClassInfo n
-      mapM_ kindCheck (t : ts) `wrapError` p
+  | n == invokableName = pure ()
+  | otherwise
+    = do
+        _ <- askClassInfo n `wrapError` p
+        mapM_ kindCheck (t : ts) `wrapError` p
 checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
 
 tcInstance' :: Instance Name -> TcM (Instance Id)
 tcInstance' idecl@(Instance d vs ctx n ts t funs)
   = do
-      checkCompleteInstDef n (map (sigName . funSignature) funs)
+      checkCompleteInstDef n (map (sigName . funSignature) funs) `wrapError` idecl
       (funs1, schss) <- unzip <$> mapM (tcFunDef False vs ctx) funs `wrapError` idecl
       instd <- withCurrentSubst (Instance d vs ctx n ts t funs1)
       let
@@ -664,7 +666,7 @@ verifySignatures :: Instance Id -> TcM (Instance Id)
 verifySignatures instd@(Instance d vs ctx n ts t funs)
   = do
       -- get the list of class method names from class info
-      names <- methods <$> askClassInfo n
+      names <- methods <$> askClassInfo n `wrapError` instd
       let qnames = map (QualName n . pretty) names
       schs <- mapM (\ q -> (q,) <$> askEnv q) qnames
       -- instantiate most general type
