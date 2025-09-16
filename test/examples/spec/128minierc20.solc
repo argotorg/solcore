@@ -17,7 +17,7 @@ function myrevert( msg: (word, word) ) -> () {
 }
 
 function require(cond: bool, msg: (word, word) ) {
-      if( not(cond) ) { myrevert(msg); }
+      if( !cond ) { myrevert(msg); }
 }
 
 function require1(cond: bool) {

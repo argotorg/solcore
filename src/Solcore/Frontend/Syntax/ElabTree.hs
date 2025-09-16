@@ -676,6 +676,10 @@ instance Elab S.Exp where
      (e1', e2') <- elab (e1, e2)
      pure $ Call Nothing (Name "and") [e1', e2']
 
+  elab (S.ExpLNot e) = do
+     e' <- elab e
+     pure $ Call Nothing (Name "not") [e']
+
   elab (S.ExpPlus e1 e2) = do
      (e1', e2') <- elab (e1, e2)
      let fun = QualName (Name "Num") "add"
