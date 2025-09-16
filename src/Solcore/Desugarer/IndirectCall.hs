@@ -103,6 +103,8 @@ instance Desugar (Exp Name) where
           pure $ Call m' n es'
         else
           pure $ Call Nothing qn args'
+  desugar (Cond e1 e2 e3)
+    = Cond <$> desugar e1 <*> desugar e2 <*> desugar e3
   desugar x = pure x
 
 instance Desugar (Equation Name) where
