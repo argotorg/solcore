@@ -490,7 +490,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       info ["## predicates in signature:", pretty (ps1 ++ qs1)]
       -- getting argument / return types in annotations
       (args', lctx, ts') <- tcArgs args1
-      rt1' <- maybe freshTyVar pure rt1
+      rt1' <- maybe freshTyVar kindCheck rt1
       nt <- freshTyVar
       -- building the typing context with new assumptions
       let lctx' = if incl then (n, monotype nt) : lctx else lctx
