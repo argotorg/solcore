@@ -38,8 +38,6 @@ pragma no-coverage-condition ABIDecode, MemoryType;
 
 // --- booleans ---
 
-data bool = true | false;
-
 // TODO: this should short circuit. probably needs some compiler magic to do so.
 function and(x: bool, y: bool) -> bool {
     match x, y {
@@ -156,6 +154,11 @@ instance uint256:Typedef(word) {
         | uint256(w) => return w;
         }
     }
+}
+instance uint256:Add {
+  function add(x : uint256, y : uint256) -> uint256 {
+    return Typedef.abs(Add.add(Typedef.rep(x), Typedef.rep(y)));
+  }
 }
 
 data byte = byte(word);
@@ -360,7 +363,10 @@ instance CalldataWordReader:WordReader {
     function read(reader:CalldataWordReader) -> word {
         let result : word;
         match reader {
-        | CalldataWordReader(ptr) => assembly { result := calldataload(ptr) }
+          | CalldataWordReader(ptr) =>
+            // https://github.com/argotorg/solcore/issues/188
+            let ptr2 = ptr;
+            assembly { result := calldataload(ptr2) }
         }
         return result;
     }
@@ -467,6 +473,10 @@ forall self . class self:ABIAttribs {
     function isStatic(ty:Proxy(self)) -> bool;
 }
 
+instance ():ABIAttribs {
+    function headSize(ty : Proxy(())) -> word { return 0; }
+    function isStatic(ty : Proxy(())) -> bool { return true; }
+}
 instance uint256:ABIAttribs {
     function headSize(ty : Proxy(uint256)) -> word { return 32; }
     function isStatic(ty : Proxy(uint256)) -> bool { return true; }
@@ -714,69 +724,14 @@ function getReader(d:ABIDecoder(ty, reader)) -> reader {
     }
 }
 
- forall baseType baseType_decoded reader . ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded),
-     baseType : WordReader =>
-     instance ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
- {
-     function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType)) {
-          let newptr = WordReader.advance(ptr, currentHeadOffset);
-	  let reader: CalldataWordReader = getReader(newptr);
-          let addr: word = Typedef.rep(reader);
-          return Typedef.abs(addr);
-     }
- }
-
-//
-// --- Contract Entrypoint ---
-
-forall nm . class nm:Selector {}
-
-forall ty f . f : invokable((),()) => class ty:GenerateDispatch {
-    function dispatch_if_selector_match(x: ty) -> f;
-}
-
-data Dispatch(name, args, retvals, f) = Dispatch(name, args, rets, f);
-
-forall name . name:Selector => function selector_matches(nm : name) -> bool {
-    return true;
-}
-
-forall nm args rets f g . nm:Selector, args:ABIDecode, rets:ABIEncode, f:invokable(args, rets) => instance Dispatch(nm,args,rets,f):GenerateDispatch {
-    function dispatch_if_selector_match(d:Dispatch(nm,args,rets,f)) -> g {
-        return lam() {
-            match d {
-            | Dispatch(name, args, rets, fn) => match selector_matches(name) {
-                | false => return ();
-                | true => return ();
-            }}
-        };
+forall baseType baseType_decoded reader . ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded),
+    baseType : WordReader =>
+    instance ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
+{
+    function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType)) {
+        let newptr = WordReader.advance(ptr, currentHeadOffset);
+        let reader: CalldataWordReader = getReader(newptr);
+        let addr: word = Typedef.rep(reader);
+        return Typedef.abs(addr);
     }
 }
-
-//// /// Translation of the above contract
-//// struct StorageContext {
-////     x:uint;
-////     y:bool;
-//// }
-////
-//// function C_f(ctxt:StorageContext) public {
-////     ctxt.x = 42;
-//// }
-////
-////
-//// function entry_C() {
-////     GenerateDispatch.dispatch_if_selector_match(DispatchFunction("f()", C_f)); // could also be (nested) pairs of dispatch functions, if the contract had more functions
-////     revert("unknown selector");
-//// }
-////
-//// // init code for contract creation
-//// function init_C() {
-////     // constructor code
-////     let code_start := allocate_unbounded() // fetch some free memory
-////     let code_length := __builtin_fetch_code(entry_C, code_start) // sounds weirder than it is - this will just add the code for entry_C to a Yul subobject and use some Yul builtins for fetching the code to be deployed
-////     assembly {
-////         return(code_start, code_length)
-////     }
-//// }
-////
-////
