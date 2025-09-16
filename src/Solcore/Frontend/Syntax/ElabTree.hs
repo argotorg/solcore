@@ -684,7 +684,8 @@ instance Elab S.Exp where
      (e1', e2') <- elab (e1, e2)
      let fun = QualName (Name "Num") "sub"
      pure $ Call Nothing fun [e1', e2']
-
+  elab (S.ExpCond e1 e2 e3)
+    = Cond <$> elab e1 <*> elab e2 <*> elab e3
   elab exp = notImplementedM "elab @Exp" exp
 
 

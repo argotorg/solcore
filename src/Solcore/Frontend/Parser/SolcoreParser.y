@@ -84,8 +84,9 @@ import System.FilePath
       '%'        {Token _ TModulo}
       '+='       {Token _ TPlusEq}
       '-='       {Token _ TMinusEq}
+      'then'     {Token _ TThen}
 
--- %nonassoc '+=' '-='
+%nonassoc '+=' '-='
 %left     ':'
 %left     '||'
 %left     '&&'
@@ -95,8 +96,8 @@ import System.FilePath
 %left     '*' '/' '%'
 %left     '['
 %left     '.'
-
-
+%right    'if'
+%right    'else'
 
 %expect 0
 
@@ -337,6 +338,10 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | Expr '!=' Expr                              {ExpNE $1 $3 }
      | Expr '&&' Expr                              {ExpLAnd $1 $3 }
      | Expr '||' Expr                              {ExpLOr $1 $3 }
+     | Conditional                                 {$1}
+
+Conditional :: { Exp }
+Conditional : 'if' Expr 'then' Expr 'else' Expr    {Cond $2 $4 $6}
 
 TupleArgs :: { [Exp] }
 TupleArgs : Expr ',' Expr                          {[$1, $3]}

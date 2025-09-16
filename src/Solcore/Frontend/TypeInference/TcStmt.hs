@@ -252,6 +252,31 @@ tcExp e1@(TyExp e ty)
       s <- match ty' ty
       extSubst s
       withCurrentSubst (TyExp e' ty, ps, ty)
+tcExp e@(Cond e1 e2 e3)
+  = do
+      (e1', ps1, t1) <- tcExp e1 `wrapError` e
+      (e2', ps2, t2) <- tcExp e2 `wrapError` e
+      (e3', ps3, t3) <- tcExp e3 `wrapError` e
+      -- condition should have the boolean type
+      unify t boolTy `catchError` (\ _ ->
+        tcmError $ unlines ["Expression:", pretty e1
+                           , "has type:", pretty t1
+                           , "while it is expected to have type:"
+                           , pretty boolTy
+                           ]) `wrapError` e
+      -- we force that both blocks should return the same type.
+      unify t1 t2' `catchError` (\ _ ->
+        tcmError $ unlines ["Conditional expressions should produce the same return type, but:"
+                           , pretty e2
+                           , "has return type:"
+                           , pretty t2
+                           , "while:"
+                           , pretty e3
+                           , "has return type:"
+                           , pretty t3
+                           ]) `wrapError` e
+      withCurrentSubst (Cond e1' e2' e3', ps1 ++ ps2 ++ ps3, t2)
+
 
 closureConversion :: [Tyvar] ->
                      [Param Id] ->
