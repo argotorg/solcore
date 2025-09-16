@@ -690,20 +690,45 @@ tcInstance' idecl@(Instance d vs ctx n ts t funs)
 verifySignatures :: Instance Id -> TcM (Instance Id)
 verifySignatures instd@(Instance d vs ctx n ts t funs)
   = do
-      -- get the list of class method names from class info
-      names <- methods <$> askClassInfo n `wrapError` instd
-      let qnames = map (QualName n . pretty) names
-      schs <- mapM (\ q -> (q,) <$> askEnv q) qnames
-      -- instantiate most general type
-      qts <- mapM (\ (q, s) -> (q,) <$> freshInst s) schs
-      -- build instance member function type scheme
-      fschs <- mapM (\ f -> do
-                  let sig = funSignature f
-                  (sigName sig,) <$> schemeFromSignature sig) funs `wrapError` instd
-      -- instantiate function type scheme
-      fqts <- mapM (\ (q,s) -> (q,) <$> freshInst s) fschs
+     -- get class info
+      mcinfo <- Map.lookup n <$> gets classTable
+      when (isNothing mcinfo) (undefinedClass n)
+      -- building instance constraint
+      let
+          -- this use of fromJust is safe, because is
+          -- guarded by the isNothing test.
+          cinfo = fromJust mcinfo
+          instc = ctx :=> (InCls n t ts)
+          classc = classpred cinfo
+          bvarsc = bv classc
+          bvarsi = bv instc
+      -- building the instantiation environments
+      freshc <- mapM (const freshTyVar) bvarsc
+      freshi <- mapM (const freshTyVar) bvarsi
+      let envc = zip bvarsc freshc
+          envi = zip bvarsi freshi
+          instc'@(_ :=> ih) = insts envi instc
+          classc' = insts envc classc
+      -- getting matching substitution
+      s <- match classc' ih `wrapError` instd
+      -- getting method types
+      let qnames = map (QualName n . pretty) (methods cinfo)
+      -- getting most general types and instantiate them
+      qts <- mapM (\ q -> do
+                            (Forall _ qt) <- askEnv q
+                            let qt' = insts envc qt
+                                vs' = bv qt'
+                            ts <- mapM (const freshTyVar) vs'
+                            pure (q, insts (zip vs' ts) qt')) qnames
+      -- building instance member types
+      let aqts = map (\ (q, qt) -> (q, apply s qt)) qts
+      -- getting infered types
+      iqts <- mapM (\ f -> do
+                              let sig = funSignature f
+                              schf <- schemeFromSignature sig
+                              (sigName sig,) <$> freshInst schf) funs
       -- combine triples
-      let m = [(q, ct, it) | (q, ct) <- qts, (q', it) <- fqts, q == q']
+      let m = [(q, it, at) | (q, it) <- iqts, (q', at) <- aqts, q == q']
       mapM_ checkMemberType m `wrapError` instd
       pure instd
 
