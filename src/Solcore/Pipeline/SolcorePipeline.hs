@@ -105,7 +105,7 @@ compile opts = runExceptT $ do
   desugared <- liftIO $ if noIfDesugar then pure typed
               else timeItNamed "If/Bool desugaring" (pure (ifDesugarer typed))
 
-  liftIO $ when verbose $ do
+  liftIO $ when (verbose && not noIfDesugar) $ do
     putStrLn "> If / Bool desugaring:"
     putStrLn $ pretty desugared
 
