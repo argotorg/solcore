@@ -7,11 +7,11 @@ import pragma_merge_base;
 // Add more pragmas - these should merge with imported ones
 // After merging:
 // - Patterson: TestClassP1 (from base) + TestClassP4 (from here)
-// - Coverage: TestClassC1 (from base) + TestClassC3 (from here)  
+// - Coverage: TestClassC1 (from base) + TestClassC3 (from here)
 // - Bound: TestClassB1 (from base) + TestClassB3 (from here)
 pragma no-patterson-condition TestClassP4, TestClassB3, TestClassB1;
 pragma no-coverage-condition TestClassC3;
-pragma no-bounded-variable-condition TestClassB3, TestClassB1;
+pragma no-bounded-variable-condition TestClassB3, TestClassB1, TestClassP1;
 
 // === Additional Classes ===
 forall a . class a:TestClassP4 {}
