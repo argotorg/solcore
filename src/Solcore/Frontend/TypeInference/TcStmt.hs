@@ -258,14 +258,14 @@ tcExp e@(Cond e1 e2 e3)
       (e2', ps2, t2) <- tcExp e2 `wrapError` e
       (e3', ps3, t3) <- tcExp e3 `wrapError` e
       -- condition should have the boolean type
-      unify t boolTy `catchError` (\ _ ->
+      unify t1 boolTy `catchError` (\ _ ->
         tcmError $ unlines ["Expression:", pretty e1
                            , "has type:", pretty t1
                            , "while it is expected to have type:"
                            , pretty boolTy
                            ]) `wrapError` e
       -- we force that both blocks should return the same type.
-      unify t1 t2' `catchError` (\ _ ->
+      unify t2 t3 `catchError` (\ _ ->
         tcmError $ unlines ["Conditional expressions should produce the same return type, but:"
                            , pretty e2
                            , "has return type:"

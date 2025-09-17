@@ -341,7 +341,7 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | Conditional                                 {$1}
 
 Conditional :: { Exp }
-Conditional : 'if' Expr 'then' Expr 'else' Expr    {Cond $2 $4 $6}
+Conditional : 'if' Expr 'then' Expr 'else' Expr    {ExpCond $2 $4 $6}
 
 TupleArgs :: { [Exp] }
 TupleArgs : Expr ',' Expr                          {[$1, $3]}
