@@ -1,5 +1,4 @@
-data Proxy(a) = Proxy;
-
+import types;
 function addW(x : word, y : word) {
   let res: word;
   assembly {
@@ -104,7 +103,7 @@ function ne(x:a, y:a) {
 
 forall a. a:Eq =>
 class a:Num {
-  function maxVal(p:Proxy(a)) -> a;
+  function maxVal() -> a;
   function toWord(x:a) -> word;
   function fromWord(x:word) -> a;
   function add(x:a, y:a) -> a;
@@ -113,7 +112,7 @@ class a:Num {
 }
 
 instance word:Num {
-  function maxVal(p) {
+  function maxVal() -> word {
     return 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
   }
   function toWord(x:word) -> word { return x; }
@@ -135,14 +134,19 @@ function ge(x:a, y:a) -> Bool {
   return or(Num.gt(x,y), Eq.eq(x,y));
 }
 
-data uint = uint(word);
 
 instance uint:Eq {
   function eq(x:uint, y:uint) -> Bool { return Eq.eq(Num.toWord(x), Num.toWord(y)); }
 }
 
+instance address:Eq {
+  function eq(x : address , y : address) -> Bool {
+    return Eq.eq(Typedef.rep(x), Typedef.rep(y));
+  }
+}
+
 instance uint:Num {
-  function maxVal(p) {
+  function maxVal() -> uint {
     return uint(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
   }
   function toWord(x:uint) -> word
