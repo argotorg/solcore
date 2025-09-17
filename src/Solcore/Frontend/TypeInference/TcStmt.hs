@@ -793,7 +793,7 @@ isTyVar _ = False
 
 checkBoundVariable :: [Pred] -> [Tyvar] -> TcM ()
 checkBoundVariable ps vs
-  = unless (all (\ v -> v `elem` vs) (bv ps)) $ do
+  = unless (all (`elem` vs) (bv ps)) $ do
       throwError "Bounded variable condition fails!"
 
 
