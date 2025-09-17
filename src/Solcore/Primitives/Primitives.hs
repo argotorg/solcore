@@ -233,6 +233,7 @@ yulPrimOps = [ (Name "stop", monotype unit)
              , (Name "difficulty", monotype word)
              , (Name "prevrandao", monotype word)
              , (Name "gaslimit", monotype word)
+             , (Name "memoryguard", monotype (word :-> word))
              ]
 
 words :: Int -> [Ty]
