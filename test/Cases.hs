@@ -157,10 +157,11 @@ cases =
     , runTestForFile "word-match.solc" caseFolder
     , runTestForFile "if-examples.solc" caseFolder
     , runTestForFile "import-std.solc" caseFolder
-    , runTestExpectingFailure "withdraw.solc" caseFolder
-    , runTestForFile "bal.solc" caseFolder
-    , runTestForFile "if-examples.solc" caseFolder
-    , runTestForFile "import-std.solc" caseFolder
+    , runTestExpectingFailure "bound-minimal.solc" caseFolder
+    , runTestExpectingFailure "bound-only-test.solc" caseFolder
+    , runTestForFile "bound-with-pragma.solc" caseFolder
+    , runTestExpectingFailure "pragma-merge-import.solc" caseFolder
+    , runTestExpectingFailure "pragma-merge-test.solc" caseFolder
     , runTestExpectingFailure "withdraw.solc" caseFolder
     , runTestForFile "bal.solc" caseFolder
     , runTestForFile "ixa.solc" caseFolder
