@@ -755,7 +755,7 @@ checkInstance idef@(Instance d vs ctx n ts t funs)
       mapM_ kindCheck (t : ts) `wrapError` idef
       -- check if the class is defined
       _ <- askClassInfo n `wrapError` idef
-      -- check if the context has types valid with classes
+      -- check if all the types and classes in the context are valid
       checkConstraints ctx
       let ipred = InCls n t ts
       -- checking the coverage condition
