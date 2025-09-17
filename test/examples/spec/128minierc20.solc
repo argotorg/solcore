@@ -8,32 +8,16 @@ function caller() -> address {
   return address(res);
 }
 
-function myrevert( msg: (word, word) ) -> () {
-  match msg {
-    | (str, len) =>
-       let str1 = str; let len1 = len;
-       assembly { mstore(0, str1) revert(0, len1) }
-  }
+function myrevert(msg: word) -> () {
+       assembly { mstore(0, msg) revert(0, 32) }
 }
 
-function require(cond: bool, msg: (word, word) ) {
+function require(cond: bool, msg: word ) {
       if( !cond ) { myrevert(msg); }
 }
 
-function require1(cond: bool) {
-    require (cond, (0x72657175697265313a204641494c, 14) /* "require1: FAIL" */ );
-}
-
-function require2(cond: bool) {
-    require(cond, (0x72657175697265323a204641494c, 14) /* "require2: FAIL" */ ); 
-}
-
-
-function nop() -> () { return ();}
-
 contract MiniERC20 {
-  reserved : word;
-  msg_sender : address; // mock msg.sender
+  reserved : word; // forge idiosyncrasies
   owner : address;
   decimals : uint;
   totalSupply : uint;
@@ -61,18 +45,15 @@ contract MiniERC20 {
 */
 
   function transferFrom(src:address, dst:address, amt:uint) -> bool {
-     require (balances[src] >= amt, (0x72657175697265313a204641494c, 14) /* "require1: FAIL" */ ); 
+     let msg_sender = caller();
+     require( balances[src] >= amt /* "token/insufficient-balance" */
+            , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
+	    );
 
-/*
-     match (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint)) {
-           | true =>
-	       require(allowance[src][msg_sender] >= amt, (0x72657175697265323a204641494c, 14) /* "require2: FAIL" */ );
-               allowance[src][msg_sender] -= amt;
-	   | false => ();
-     }
-*/
      if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint)) {
-        require(allowance[src][msg_sender] >= amt, (0x72657175697265323a204641494c, 14) /* "require2: FAIL" */ );
+        require( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
+	       , 0x746f6b656e2f696e73756666696369656e742d616c6c6f77616e6365
+	       );
         allowance[src][msg_sender] -= amt;
      }
      balances[src] = balances[src] - amt;
@@ -89,6 +70,7 @@ contract MiniERC20 {
 */
 
   function approve(usr: address, amt: uint) -> bool {
+      let msg_sender = caller();
       allowance[msg_sender][usr] = amt;
       // emit Approval(msg.sender, usr, amt);
       return true;
@@ -97,17 +79,16 @@ contract MiniERC20 {
 
   function init() -> () {
     owner = address(0x123456789abcdef);
-    msg_sender = caller();
     decimals = Num.fromWord(18);
   }
 
   function main() -> uint {
+    let msg_sender = caller();
     init();
     mint(uint(1000));
     allowance[owner][msg_sender] = uint(1000);
     transferFrom(owner, msg_sender, uint(42));
 
-    // return balances[msg_sender] : uint;
     return allowance[owner][msg_sender];
   }
 }
