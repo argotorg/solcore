@@ -62,8 +62,23 @@ genExpr (ECall name args) = do
             0 -> [YExp callExpr]
             _ -> [YAssign (flattenLhs resultLoc) callExpr]
     pure (argsCode++resultCode++callCode, resultLoc)
-genExpr e = error ("genExpr: not implemented for "++show e)
 
+genExpr e@(ECond ty cond e1 e2) = do
+    debug ["genExpr: ", show e]
+    (resultCode, resultLoc) <- coreAlloc ty
+    (condCode, condLoc) <- genExpr cond
+    -- Bools are complex(False ~ inr ()) to get something we can switch on
+    let tag = normalizeLoc condLoc
+    debug ["tag = ", show tag]
+    (code1, loc1) <- genExpr e1
+    (code2, loc2) <- genExpr e2
+    let preCode = resultCode <> condCode <> code1 <> code2
+    let yulDefault = Just(copyLocs resultLoc loc2)
+    let zeroCode = copyLocs resultLoc loc1
+    let switch = [YSwitch (loadLoc tag) [(YulNumber 0, zeroCode)] yulDefault]
+    pure (preCode <> switch, resultLoc)
+
+genExpr e = error ("genExpr: not implemented for "++show e)
 
 yulFunName :: Core.Name -> Name
 yulFunName = fromString . ("usr$" ++)
@@ -102,6 +117,7 @@ genStmt (SAlloc name typ) = allocVar name typ
 genStmt (SAssign name expr) = coreAssign name expr
 
 genStmt (SReturn expr) = do
+    debug [">SReturn: ", show expr]
     (stmts, loc) <- genExpr expr
     case loc of
         LocUnit -> pure (stmts ++ [YLeave])
@@ -272,7 +288,7 @@ coreAssign lhs rhs = do
     if sizeOf locLhs == 0 then pure stmtsRhs
     else pure (stmtsLhs ++ stmtsRhs ++ copyLocs locLhs locRhs)
 
-loadLoc :: Location -> YulExp
+loadLoc :: HasCallStack => Location -> YulExp
 loadLoc (LocWord n) = YLit (YulNumber (fromIntegral n))
 loadLoc (LocBool b) = YLit (if b then YulTrue else YulFalse)
 loadLoc (LocStack i) = YIdent (stkLoc i)
