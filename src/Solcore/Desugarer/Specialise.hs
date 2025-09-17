@@ -280,7 +280,10 @@ specExp e@(Con i@(Id n conty) es) ty = do
   (i' , es') <- specConApp i es ty
   let e' = Con i' es'
   return e'
-
+specExp e@(Cond e1 e2 e3) ty = do
+  e2' <- specExp e2 ty
+  e3' <- specExp e3 ty
+  pure (Cond e1 e2' e3')
 specExp e@(Var (Id n t)) ty = pure (Var (Id n ty))
 specExp e@(FieldAccess me fld) ty = error("Specialise: FieldAccess not implemented for" ++ pretty e)
 specExp e@(TyExp e1 _) ty = specExp e1 ty
@@ -519,6 +522,7 @@ typeOfTcExp exp@(Call Nothing i args) = applyTo args funTy where
                        ]
 typeOfTcExp (Lam args body (Just tb))       = funtype tas tb where
   tas = map typeOfTcParam args
+typeOfTcExp (Cond _ _ e) = typeOfTcExp e
 typeOfTcExp (TyExp _ ty) = ty
 typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
 
