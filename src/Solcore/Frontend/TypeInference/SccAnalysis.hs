@@ -151,14 +151,19 @@ instance Names a => Names (Maybe a) where
   names Nothing = []
   names (Just x) = names x
 
+-- An instance for pairs would overlap (badly) with instance for Equation
+-- but triples are another thing
+instance (Names a, Names b, Names c) => Names (a, b, c) where
+  names (a, b, c) = names a `union` names b `union` names c
+
 instance Names (Exp Name) where
   names (Con n es) = n : names es
   names (FieldAccess me n) = n : names me
   names (Call me n es)
     = n : names me `union` names es
-  names (Lam ps bdy mt) =
-    names ps `union` names bdy `union` names mt
+  names (Lam ps bdy mt) = names (ps, bdy, mt)
   names (TyExp e t) = names e `union` names t
+  names (Cond e1 e2 e3) = names (e1, e2, e3)
   names (Var n) = [n]
   names (Lit _) = []
 

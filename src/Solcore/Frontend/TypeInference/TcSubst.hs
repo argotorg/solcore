@@ -182,6 +182,7 @@ instance HasType a => HasType (Exp a) where
     = Call (apply s <$> m) (apply s v) (apply s es)
   apply s (Lam ps bd mt)
     = Lam (apply s ps) (apply s bd) (apply s <$> mt)
+  apply s (Cond e1 e2 e3) = Cond (apply s e1) (apply s e2) (apply s e3)
   apply s (TyExp e ty)
     = TyExp (apply s e) (apply s ty)
   apply s (Lit l) = Lit l
@@ -195,6 +196,7 @@ instance HasType a => HasType (Exp a) where
     = maybe [] fv m `union` fv v `union` fv es
   fv (Lam ps bd mt)
     = fv ps `union` fv bd `union` maybe [] fv mt
+  fv (Cond e1 e2 e3) = fv (e1, (e2, e3))
   fv (TyExp e ty)
     = fv e `union` fv ty
   fv _ = []
@@ -208,6 +210,7 @@ instance HasType a => HasType (Exp a) where
     = maybe [] mv m `union` mv v `union` mv es
   mv (Lam ps bd mt)
     = mv ps `union` mv bd `union` maybe [] mv mt
+  mv (Cond e1 e2 e3) = mv (e1, (e2, e3))
   mv (TyExp e ty)
     = mv e `union` mv ty
   mv _ = []
@@ -221,6 +224,7 @@ instance HasType a => HasType (Exp a) where
     = maybe [] bv m `union` bv v `union` bv es
   bv (Lam ps bd mt)
     = bv ps `union` bv bd `union` maybe [] bv mt
+  bv (Cond e1 e2 e3) = bv (e1, (e2, e3))
   bv (TyExp e ty)
     = bv e `union` bv ty
   bv _ = []

@@ -43,6 +43,7 @@ desugarBoolCons (Call me v es)
   = Call (desugarBoolCons <$> me) v (map desugarBoolCons es)
 desugarBoolCons (Lam ps bdy ty)
   = Lam ps (everywhere (mkT desugarBoolCons) bdy) ty
+desugarBoolCons (Cond e1 e2 e3) = Cond (d e1) (d e2) (d e3) where d = desugarBoolCons
 desugarBoolCons (TyExp e t)
   = TyExp (desugarBoolCons e) t
 desugarBoolCons (Var a) = Var a
