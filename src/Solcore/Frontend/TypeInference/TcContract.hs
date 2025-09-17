@@ -1,6 +1,5 @@
 module Solcore.Frontend.TypeInference.TcContract where
 
-import Debug.Trace
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Trans
@@ -74,19 +73,9 @@ addGenDefs
 
 setupPragmas :: [Pragma] -> TcM ()
 setupPragmas ps = do
-  traceShowM ps
-
-  let sbv = getStatus NoBoundVariableCondition
-  traceShowM sbv
-  setBoundVariableCondition sbv
-
-  let spc = getStatus NoPattersonCondition
-  traceShowM spc
-  setPattersonCondition spc
-
-  let scc = getStatus NoCoverageCondition
-  traceShowM scc
-  setCoverage scc
+  setBoundVariableCondition (getStatus NoBoundVariableCondition)
+  setPattersonCondition (getStatus NoPattersonCondition)
+  setCoverage (getStatus NoCoverageCondition)
   where
     getStatus :: PragmaType -> PragmaStatus
     getStatus ptype =
