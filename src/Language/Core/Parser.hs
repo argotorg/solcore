@@ -3,7 +3,6 @@ import Language.Core
     ( Core(..), Contract(..), Body,
       Alt(..),
       Pat(..),
---      pattern ConAlt,
       Arg(..),
       Con(..),
       Stmt(SExpr, SAlloc, SReturn, SBlock, SMatch,
