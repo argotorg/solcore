@@ -178,15 +178,18 @@ scanStmt (SFunction name args ret stmts) = do
     insertFun name info
 scanStmt _ = pure ()
 
+genBody :: Body -> TM [YulStmt]
+genBody stmts = concat <$> mapM genStmt stmts
+
 genBinAlts :: Location -> [Alt] -> TM [(YLiteral, [YulStmt])]
-genBinAlts payload [Alt lcon lname lstmt, Alt rcon rname rstmt] = do
-    yulLStmts <- withName lname payload lstmt
-    yulRStmts <- withName rname payload rstmt
+genBinAlts payload [Alt lcon lname lbody, Alt rcon rname rbody] = do
+    yulLStmts <- withName lname payload lbody
+    yulRStmts <- withName rname payload rbody
     pure [(YulFalse, yulLStmts), (YulTrue, yulRStmts)]
     where
-        withName name loc stmt = withLocalEnv do
+        withName name loc body = withLocalEnv do
             insertVar name loc
-            genStmt stmt
+            genBody body
 genBinAlts _ alts = error("genAlts: invalid number of alternatives:\n"
                           ++ unlines(map (render . ppr) alts) )
 
@@ -201,20 +204,20 @@ genNAlts payload alts = do
 
 
 genAlt :: Location -> Alt -> TM (Either YulCase YulBlock)
-genAlt payload (Alt (PCon con) name stmt) = withLocalEnv do
+genAlt payload (Alt (PCon con) name body) = withLocalEnv do
     insertVar name payload
-    yulStmts <- genStmt stmt
+    yulStmts <- genBody body
     pure (Left(yulCon con, yulStmts))
     where
         yulCon CInl = YulFalse
         yulCon CInr = YulTrue
         yulCon (CInK k) = YulNumber (fromIntegral k)
-genAlt payload (Alt (PIntLit k) _ stmt) = withLocalEnv do
-    yulStmts <- genStmt stmt
+genAlt payload (Alt (PIntLit k) _ body) = withLocalEnv do
+    yulStmts <- genBody body
     pure (Left(YulNumber (fromIntegral k), yulStmts))
-genAlt payload (Alt (PVar name) _ stmt) = do
+genAlt payload (Alt (PVar name) _ body) = do
     insertVar name payload
-    yulStmts <- genStmt stmt
+    yulStmts <- genBody body
     pure (Right yulStmts)
 genAlt _ alt = error ("genAlt unimplemented for: " ++ show alt)
 

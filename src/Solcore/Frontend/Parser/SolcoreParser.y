@@ -89,6 +89,7 @@ import System.FilePath
 %left     ':'
 %left     '||'
 %left     '&&'
+%nonassoc '!'
 %nonassoc '==' '!='
 %nonassoc '<' '>' '<=' '>='
 %left     '+' '-'
@@ -337,6 +338,7 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | Expr '!=' Expr                              {ExpNE $1 $3 }
      | Expr '&&' Expr                              {ExpLAnd $1 $3 }
      | Expr '||' Expr                              {ExpLOr $1 $3 }
+     | '!' Expr                                    {ExpLNot $2 }
 
 TupleArgs :: { [Exp] }
 TupleArgs : Expr ',' Expr                          {[$1, $3]}

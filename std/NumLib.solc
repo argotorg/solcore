@@ -44,55 +44,55 @@ function hash2(x: word, y: word) -> word {
   return result;
 }
 
-data Bool = False | True;
+// data Bool = False | True;
 
-function not(b:Bool) -> Bool {
+function not(b:bool) -> bool {
   match b {
-    | False => return True;
-    | True => return False;
+    | false => return true;
+    | true => return false;
   }
 }
 
-function or(x:Bool, y:Bool) -> Bool {
+function or(x:bool, y:bool) -> bool {
   match x {
-    | False => return y;
-    | True => return True;
+    | false => return y;
+    | true => return true;
   }
 }
 
-function and(x:Bool, y:Bool) -> Bool {
+function and(x:bool, y:bool) -> bool {
   match x {
-    | False => return False;
-    | True => return y;
+    | false => return false;
+    | true => return y;
   }
 }
 
-function fromBool(b) {
+function frombool(b) {
  match b {
-   | False => return 0;
-   | True => return 1;
+   | false => return 0;
+   | true => return 1;
  }
 }
 
-function toBool(x: word) {
+function tobool(x: word) {
   match x {
-    | 0 => return False;
-    | _ => return True;
+    | 0 => return false;
+    | _ => return true;
   }
 }
 
 forall a.
 class a:Eq {
-  function eq(x:a, y:a) -> Bool;
+  function eq(x:a, y:a) -> bool;
 }
 
 instance word:Eq {
-  function eq(x:word, y:word) -> Bool {
+  function eq(x:word, y:word) -> bool {
     let res : word;
     assembly {
        res := eq(x, y)
     }
-    return toBool(res);
+    return tobool(res);
   }
 }
 
@@ -108,7 +108,7 @@ class a:Num {
   function fromWord(x:word) -> a;
   function add(x:a, y:a) -> a;
   function sub(x:a, y:a) -> a;
-  function gt(x:a, y:a) -> Bool;
+  function gt(x:a, y:a) -> bool;
 }
 
 instance word:Num {
@@ -120,27 +120,27 @@ instance word:Num {
 
   function add(x:word, y:word) -> word { return addW(x, y); }
   function sub(x:word, y:word) -> word { return addW(x, y); }
-  function gt(x:word, y:word) -> Bool {
+  function gt(x:word, y:word) -> bool {
     let res : word;
     assembly {
        res := gt(x, y)
     }
-    return toBool(res);
+    return tobool(res);
   }
 }
 
 forall a. a:Num =>
-function ge(x:a, y:a) -> Bool {
+function ge(x:a, y:a) -> bool {
   return or(Num.gt(x,y), Eq.eq(x,y));
 }
 
 
 instance uint:Eq {
-  function eq(x:uint, y:uint) -> Bool { return Eq.eq(Num.toWord(x), Num.toWord(y)); }
+  function eq(x:uint, y:uint) -> bool { return Eq.eq(Num.toWord(x), Num.toWord(y)); }
 }
 
 instance address:Eq {
-  function eq(x : address , y : address) -> Bool {
+  function eq(x : address , y : address) -> bool {
     return Eq.eq(Typedef.rep(x), Typedef.rep(y));
   }
 }
@@ -158,5 +158,5 @@ instance uint:Num {
   function fromWord(x:word) -> uint { return uint(x); }
   function add(x:uint, y:uint) -> uint { return uint(addW(Num.toWord(x), Num.toWord(y))); }
   function sub(x:uint, y:uint) -> uint { return uint(subW(Num.toWord(x), Num.toWord(y))); }
-  function gt(x:uint, y:uint) -> Bool { return Num.gt(Num.toWord(x), Num.toWord(y)); }
+  function gt(x:uint, y:uint) -> bool { return Num.gt(Num.toWord(x), Num.toWord(y)); }
 }

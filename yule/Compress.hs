@@ -46,13 +46,14 @@ compressInjections ty@(TSumN ts) e = go 0 e where
 
     To do this we need to know the scrutinee type
 -}
-compressMatch cty@(TSumN ts) top@(SMatch ty e alts) = SMatch ty' e' (go 0 top) where
+compressMatch :: Type -> Stmt -> Stmt
+compressMatch (TSumN ts) top@(SMatch ty e0 _alts) = SMatch ty' e' (go 0 top) where
     ty' = compress ty
-    e' = compress e
+    e' = compress e0
     arity = length ts
     alt = ConAlt
-    go k s@(SMatch t@(TNamed n ty) e alts) = go k (SMatch ty e alts)
-    go k s@(SMatch t@(TSum lty rty) e [ConAlt CInl ln left, ConAlt CInr rn right])
+    go k (SMatch (TNamed _n nty) e alts) = go k (SMatch nty e alts)
+    go k (SMatch TSum{} _e [ConAlt CInl ln left, ConAlt CInr rn right])
        -- last two alternatives in the chain
        | k == arity-2 = [alt (CInK k )ln left', alt (CInK (k+1)) rn right']
        -- not reached the end of the chain yet
@@ -61,7 +62,7 @@ compressMatch cty@(TSumN ts) top@(SMatch ty e alts) = SMatch ty' e' (go 0 top) w
         left' = compress left
         right' = compress right
         firstAlt = alt (CInK k) ln left'
-        rest = go (k+1) right
+        rest = go (k+1) (SBlock right)
     go k (SBlock [s]) = go k s
     go k s = error $ concat["compressMatch unimplemented for k=",show k," stmt: ", show s]
 compressMatch TWord top = top

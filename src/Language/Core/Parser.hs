@@ -1,9 +1,8 @@
 module Language.Core.Parser where
 import Language.Core
-    ( Core(..), Contract(..),
+    ( Core(..), Contract(..), Body,
       Alt(..),
       Pat(..),
-      pattern ConAlt,
       Arg(..),
       Con(..),
       Stmt(SExpr, SAlloc, SReturn, SBlock, SMatch,
@@ -13,7 +12,7 @@ import Language.Core
 import Common.LightYear
 import Text.Megaparsec.Char.Lexer qualified as L
 import Control.Monad.Combinators.Expr
-import Language.Yul.Parser(parseYul, yulBlock)
+import Language.Yul.Parser(yulBlock)
 
 parseCore :: String -> Core
 parseCore = runMyParser "core" coreProgram
@@ -122,18 +121,21 @@ coreStmt = choice
     , SMatch <$> (pKeyword "match" *> angles coreType) <*> (coreExpr <* pKeyword "with") <*> braces(many coreAlt)
     -- , SMatch <$> (pKeyword "match" *> coreExpr <* pKeyword "with") <*> (symbol "{" *> many coreAlt <* symbol "}")
     , SFunction <$> (pKeyword "function" *> identifier) <*> (parens (commaSep coreArg)) <*> (symbol "->" *> coreType)
-                <*> (symbol "{" *> many coreStmt <* symbol "}")
+                <*> coreBody
     , SAssembly <$> (pKeyword "assembly" *> yulBlock)
     , SRevert <$> (pKeyword "revert" *> stringLiteral)
     , try (SAssign <$> (coreExpr <* symbol ":=") <*> coreExpr)
     , SExpr <$> coreExpr
     ]
 
+coreBody :: Parser Body
+coreBody = braces(many coreStmt)
+
 coreArg :: Parser Arg
 coreArg = TArg <$> identifier <*> (symbol ":" *> coreType)
 
 coreAlt :: Parser Alt
-coreAlt = Alt <$> corePat <*> identifier <* symbol "=>" <*> coreStmt
+coreAlt = Alt <$> corePat <*> identifier <* symbol "=>" <*> coreBody
 
 corePat :: Parser Pat
 corePat = choice

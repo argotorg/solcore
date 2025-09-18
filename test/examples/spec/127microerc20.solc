@@ -1,4 +1,3 @@
-// import IndexLib;
 import assign;
  
 function caller() -> address {
@@ -18,10 +17,10 @@ function require1fail() {
   return (); // for the typechecker
 }
 
-function require1(cond: Bool) {
+function require1(cond: bool) {
     match cond {
-    | False => return require1fail();
-    | True => return ();
+    | false => return require1fail();
+    | true => return ();
   }
 }
 
@@ -56,16 +55,16 @@ contract Mini {
     }
 */
 
-//  function transferFrom(src:address, dst:address, amt:uint) -> Bool {
-  function transferFrom(src, dst, amt) -> Bool  {
+//  function transferFrom(src:address, dst:address, amt:uint) -> bool {
+  function transferFrom(src, dst, amt) -> bool  {
      require1(ge(balances[src], amt));
 
      match (Eq.eq(src, msg_sender)) {
-       | True => match ne(allowance[src][msg_sender], Num.maxVal():uint) {
-           | True => require1(False);
-	   | False => ();
+       | true => match ne(allowance[src][msg_sender], Num.maxVal():uint) {
+           | true => require1(false);
+	   | false => ();
 	   }
-       | False => ();
+       | false => ();
      }
 
 /*
@@ -75,7 +74,7 @@ contract Mini {
 */   
      balances[src] = Num.sub(balances[src], amt);
      balances[dst] = Num.add(balances[dst], amt):uint;
-     return True;
+     return true;
   }
 
 /*
