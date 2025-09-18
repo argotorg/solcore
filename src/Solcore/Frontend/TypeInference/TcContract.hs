@@ -2,7 +2,6 @@ module Solcore.Frontend.TypeInference.TcContract where
 
 import Control.Monad
 import Control.Monad.Except
-import Control.Monad.Trans
 import Control.Monad.State
 
 import Data.Generics hiding (Constr)
@@ -11,13 +10,12 @@ import qualified Data.List.NonEmpty as N
 import qualified Data.Map as Map
 import Data.Maybe
 
-import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
+import Solcore.Frontend.TypeInference.DispatchGen
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.InvokeGen
-import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcStmt
@@ -94,7 +92,9 @@ setupPragmas ps = do
 tcTopDecl :: TopDecl Name -> TcM (TopDecl Id)
 tcTopDecl (TContr c)
   = do
-      (c', assumps) <- tcContract c
+      generateSelectorInstances c
+      withMain <- addGeneratedMainDecl c
+      (c', assumps) <- tcContract withMain
       mapM_ (uncurry extEnv) assumps
       pure (TContr c')
 tcTopDecl (TFunDef fd)
@@ -110,6 +110,7 @@ tcTopDecl (TInstDef is)
 tcTopDecl (TMutualDef ts)
   = do
       let f (TFunDef fd) = fd
+          f _ = error "TODO: non function mutual def groups"
       ts' <- tcBindGroup (map f ts)
       pure (TMutualDef $ map TFunDef ts')
 tcTopDecl (TDataDef d)
@@ -118,6 +119,8 @@ tcTopDecl (TDataDef d)
     pure (TDataDef d)
 tcTopDecl (TPragmaDecl d)
   = pure (TPragmaDecl d)
+tcTopDecl (TSym d)
+  = pure (TSym d)
 
 checkTopDecl :: TopDecl Name -> TcM ()
 checkTopDecl (TClassDef c)
