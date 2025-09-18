@@ -646,6 +646,12 @@ forall reader . reader:WordReader => instance ABIDecoder(uint256, reader):ABIDec
     }
 }
 
+forall reader . reader:WordReader => instance ABIDecoder((), reader):ABIDecode(()) {
+    function decode(ptr:ABIDecoder((), reader), currentHeadOffset:word) -> () {
+        return ();
+    }
+}
+
 // ABI decoding for a pait of decodable values
 // FAIL: Coverage
 forall a b a_decoded b_decoded reader . reader:WordReader, ABIDecoder(b,reader):ABIDecode(b_decoded), ABIDecoder(a,reader):ABIDecode(a_decoded), a:ABIAttribs => instance ABIDecoder((a,b), reader):ABIDecode((a_decoded,b_decoded))

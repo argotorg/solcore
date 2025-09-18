@@ -1,6 +1,7 @@
 import std;
 
 pragma no-patterson-condition RunDispatch, ExecMethod;
+pragma no-bounded-variable-condition ExecMethod;
 
 // --- Preliminaries ---
 
@@ -14,10 +15,10 @@ data Proxy(a) = Proxy;
 data Contract(methods, fallback) = Contract(methods,fallback);
 
 // A method contains an implementation (fn) as well as it's name and type signature
-data Method(name, payability, args, rets, fn) = Method(name, payability, args, rets, fn);
+data Method(name, payability, fn) = Method(name, payability, fn);
 
 // Contains the implementation for the fallback (fn) as well as it's type signature
-data Fallback(payability, args, rets, fn) = Fallback(payability, args, rets, fn);
+data Fallback(payability, fn) = Fallback(payability, fn);
 
 // --- Method Selectors ---
 
@@ -28,8 +29,8 @@ forall nm . class nm:Selector {
 }
 
 // Method has a Selector if its name has a Selector
-forall name payability args rets fn . name:Selector => instance Method(name,payability,args,rets,fn):Selector {
-  function hash(prx: Proxy(Method(name,payability,args,rets,fn))) -> word {
+forall name payability fn . name:Selector => instance Method(name,payability,fn):Selector {
+  function hash(prx: Proxy(Method(name,payability,fn))) -> word {
     return Selector.hash(Proxy : Proxy(name));
   }
 }
@@ -48,16 +49,16 @@ forall name payability args rets fn
   , rets:ABIAttribs
   , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
   , rets:ABIEncode
-  , Method(name,payability,Proxy(args),Proxy(rets),fn):MethodLevelCallvalueCheck
-  => instance Method(name,payability,Proxy(args),Proxy(rets),fn):ExecMethod {
-  function exec(m : Method(name,payability,Proxy(args),Proxy(rets),fn)) -> () {
+  , Method(name,payability,fn):MethodLevelCallvalueCheck
+  => instance Method(name,payability,fn):ExecMethod {
+  function exec(m : Method(name,payability,fn)) -> () {
     match m {
-      | Method(nm,payability,pargs,prets,fn) =>
+      | Method(nm,payability,fn) =>
         // check callvalue
-        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Method(name,payability,Proxy(args),Proxy(rets),fn)));
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Method(name,payability,fn)));
 
         // check we have enough calldata for the head of args
-        let hdsz = ABIAttribs.headSize(pargs);
+        let hdsz = ABIAttribs.headSize(Proxy : Proxy(args));
         assembly {
           if lt(sub(calldatasize(), 4), hdsz) {
             revert(0,0);
@@ -70,7 +71,7 @@ forall name payability args rets fn
         let ptr : calldata(bytes) = calldata(4);
 
         // TODO: this needs entirely too many type annotations
-        let args : args = abi_decode(ptr, pargs, Proxy : Proxy(CalldataWordReader));
+        let args : args = abi_decode(ptr, Proxy : Proxy(args), Proxy : Proxy(CalldataWordReader));
 
         // call fn with args
         // TODO: why are type annotations needed here?
@@ -80,7 +81,7 @@ forall name payability args rets fn
         let ptr = abi_encode(rets);
 
         // TODO: this is broken for dynamically sized types...
-        let retSz : word = ABIAttribs.headSize(prets);
+        let retSz : word = ABIAttribs.headSize(Proxy : Proxy(rets));
         let start : word = Typedef.rep(ptr);
 
         assembly {
@@ -95,13 +96,13 @@ forall payability args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
   , rets:ABIAttribs
-  , Fallback(payability,Proxy(args),Proxy(rets),fn):MethodLevelCallvalueCheck
-  => instance Fallback(payability,Proxy(args),Proxy(rets),fn):ExecMethod {
-  function exec(fb : Fallback(payability, Proxy(args),Proxy(rets),fn)) -> () {
+  , Fallback(payability,fn):MethodLevelCallvalueCheck
+  => instance Fallback(payability,fn):ExecMethod {
+  function exec(fb : Fallback(payability, fn)) -> () {
     match fb {
-      | Fallback(payability, args, rets, fn) =>
+      | Fallback(payability, fn) =>
         // check callvalue
-        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Fallback(payability, Proxy(args),Proxy(rets),fn)));
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Fallback(payability, fn)));
 
         // check we have enough calldata for the head of args
         // abi decode args from calldata
@@ -186,22 +187,22 @@ forall ty . class ty:MethodLevelCallvalueCheck {
 }
 
 // no callvalue check for Payable methods
-forall name args ret fn . instance Method(name,Proxy(Payable),args,ret,fn):MethodLevelCallvalueCheck {
-  function checkCallvalue(prx : Proxy(Method(name,Proxy(Payable),args,ret,fn))) -> () { }
+forall name fn . instance Method(name,Proxy(Payable),fn):MethodLevelCallvalueCheck {
+  function checkCallvalue(prx : Proxy(Method(name,Proxy(Payable),fn))) -> () { }
 }
-forall args ret fn . instance Fallback(Proxy(Payable),args,ret,fn):MethodLevelCallvalueCheck {
-  function checkCallvalue(prx : Proxy(Fallback(Proxy(Payable),args,ret,fn))) -> () { }
+forall args fn . instance Fallback(Proxy(Payable),fn):MethodLevelCallvalueCheck {
+  function checkCallvalue(prx : Proxy(Fallback(Proxy(Payable),fn))) -> () { }
 }
 
 // NonPayable methods revert if passed value
-forall name args ret fn . instance Method(name,Proxy(NonPayable),args,ret,fn):MethodLevelCallvalueCheck {
-  function checkCallvalue(prx : Proxy(Method(name,Proxy(NonPayable),args,ret,fn))) -> () {
+forall name fn . instance Method(name,Proxy(NonPayable),fn):MethodLevelCallvalueCheck {
+  function checkCallvalue(prx : Proxy(Method(name,Proxy(NonPayable),fn))) -> () {
     ensureNoCallvalue();
   }
 }
 
-forall name args ret fn . instance Fallback(Proxy(NonPayable),args,ret,fn):MethodLevelCallvalueCheck {
-  function checkCallvalue(prx : Proxy(Fallback(Proxy(NonPayable),args,ret,fn))) -> () {
+forall name fn . instance Fallback(Proxy(NonPayable),fn):MethodLevelCallvalueCheck {
+  function checkCallvalue(prx : Proxy(Fallback(Proxy(NonPayable),fn))) -> () {
     ensureNoCallvalue();
   }
 }
@@ -283,8 +284,8 @@ contract C {
 
   function main() -> word {
     let c = Contract(
-      Method(C_Add2_Selector, Proxy : Proxy(NonPayable), Proxy : Proxy((uint256,uint256)), Proxy : Proxy(uint256), add2),
-      Fallback(Proxy : Proxy(NonPayable), Proxy : Proxy(()), Proxy : Proxy(()),revert_handler)
+      Method(C_Add2_Selector, Proxy : Proxy(NonPayable), add2),
+      Fallback(Proxy : Proxy(NonPayable), revert_handler)
     );
 
     RunContract.exec(c);
