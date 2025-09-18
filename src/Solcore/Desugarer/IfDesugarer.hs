@@ -78,8 +78,10 @@ isBoolCon (Id n _) = n `elem` [trueName, falseName]
 
 desugarTyBool :: Ty -> Ty
 desugarTyBool t@(TyCon n [])
-  | n == boolName = sumTy unit unit
+  | n == boolName = desugaredBoolTy
   | otherwise = t
 desugarTyBool (TyCon n ts)
   = TyCon n (map desugarTyBool ts)
 desugarTyBool t = t
+
+desugaredBoolTy = sumTy unit unit
