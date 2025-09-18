@@ -278,6 +278,15 @@ emitExp (Call Nothing f as) = do
     pure (call, concat codes)
 emitExp e@(Con i as) = emitConApp i as
 emitExp (TyExp e _) = emitExp e
+
+emitExp (Cond e1 e2 e3) = do
+  let ty = typeOfTcExp e3
+  coreTy <- translateType ty
+  (ce1, code1) <- emitExp e1
+  (ce2, code2) <- emitExp e2
+  (ce3, code3) <- emitExp e3
+  pure (Core.ECond coreTy ce1 ce2 ce3, code1 <> code2 <> code3)
+
 emitExp e = errorsEM ["emitExp not implemented for: ", pretty e, "\n", show e]
 
 emitStmt :: Stmt Id -> EM [Core.Stmt]

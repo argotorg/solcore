@@ -111,8 +111,19 @@ coreExpr = choice
     , pKeyword "in" *> (EInK <$> parens int <*> coreType <*> pPrimaryExpr)
     , pKeyword "fst" *> (EFst <$> pPrimaryExpr)
     , pKeyword "snd" *> (ESnd <$> pPrimaryExpr)
+    , condExpr
     , pPrimaryExpr
     ]
+
+condExpr = do
+  pKeyword "if"
+  t <- angles coreType
+  e1 <- coreExpr
+  pKeyword "then"
+  e2 <- coreExpr
+  pKeyword "else"
+  e3 <- coreExpr
+  pure (ECond t e1 e2 e3)
 
 coreStmt :: Parser Stmt
 coreStmt = choice

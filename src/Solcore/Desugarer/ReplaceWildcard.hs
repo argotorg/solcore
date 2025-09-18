@@ -51,6 +51,8 @@ instance ReplaceWildcard (Exp Id) where
     = Lam args <$> replace bd <*> pure mt
   replace (TyExp e ty)
     = flip TyExp ty <$> replace e
+  replace (Cond e1 e2 e3)
+    = Cond <$> replace e1 <*> replace e2 <*> replace e3
 
 instance ReplaceWildcard (Stmt Id) where
   replace (e1 := e2)

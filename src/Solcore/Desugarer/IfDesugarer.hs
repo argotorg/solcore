@@ -43,6 +43,7 @@ desugarBoolCons (Call me v es)
   = Call (desugarBoolCons <$> me) v (map desugarBoolCons es)
 desugarBoolCons (Lam ps bdy ty)
   = Lam ps (everywhere (mkT desugarBoolCons) bdy) ty
+desugarBoolCons (Cond e1 e2 e3) = Cond (d e1) (d e2) (d e3) where d = desugarBoolCons
 desugarBoolCons (TyExp e t)
   = TyExp (desugarBoolCons e) t
 desugarBoolCons (Var a) = Var a
@@ -77,8 +78,10 @@ isBoolCon (Id n _) = n `elem` [trueName, falseName]
 
 desugarTyBool :: Ty -> Ty
 desugarTyBool t@(TyCon n [])
-  | n == boolName = sumTy unit unit
+  | n == boolName = desugaredBoolTy
   | otherwise = t
 desugarTyBool (TyCon n ts)
   = TyCon n (map desugarTyBool ts)
 desugarTyBool t = t
+
+desugaredBoolTy = sumTy unit unit
