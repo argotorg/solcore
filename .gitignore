@@ -36,7 +36,9 @@ output*.core
 # nix
 /result
 
-# claude
+# llms
+/AGENTS.md
+opencode.jsonc
 /CLAUDE.md
 /.claude/
 
