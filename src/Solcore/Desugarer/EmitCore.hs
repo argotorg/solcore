@@ -368,14 +368,13 @@ emitWordMatch scrutinee alts = do
     return [Core.SMatch coreType sVal coreAlts]
     where
         emitWordAlt :: Equation Id -> EM Core.Alt
-        emitWordAlt ([PLit(IntLit i)], stmts) = do -- !!!
-            coreStmts <- emitStmts stmts
-            Core.Alt (Core.PIntLit i) "$_" <$> emitStmts stmts
+        emitWordAlt ([PLit(IntLit i)], stmts) = Core.Alt (Core.PIntLit i) "$_" <$> emitStmts stmts
         emitWordAlt ([PVar (Id n _)], stmts) = do
             coreStmts <- emitStmts stmts
             let coreName = show n
             return (Core.Alt (Core.PVar coreName) "$_" coreStmts)
         emitWordAlt (pat, _) = errorsEM ["emitWordAlt not implemented for", show pat]
+
 type BranchMap = Map.Map Name [Core.Stmt]
 
 emitSumMatch :: [Constr] -> Exp Id -> Equations Id -> EM [Core.Stmt]
