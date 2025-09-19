@@ -496,8 +496,15 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       let lctx' = if incl then (n, monotype nt) : lctx else lctx
       -- typing function body
       (bd1', ps1', t1') <- withLocalCtx lctx' (tcBody bd1) `wrapError` d
-      unify rt1' t1'
-      unify nt (funtype ts' rt1')
+      -- checking if the type checking have changed the type 
+      -- due to unique type creation.
+      let tynames = tyconNames t1'
+      changeTy <- or <$> mapM isUniqueTyName tynames 
+      let rt2 = if changeTy then t1' else rt1'
+      info ["Trying to unify: ", pretty rt2, " with ", pretty t1']
+      unify rt2 t1' `wrapError` d
+      info ["Trying to unify: ", pretty nt, " with ", pretty (funtype ts' rt2)]
+      unify nt (funtype ts' rt2) `wrapError` d  
       -- building the function type scheme
       free <- getEnvMetaVars
       rs <- reduce (qs1 `union` ps1) ps1' `wrapError` d
@@ -510,10 +517,12 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       when (ambiguous inf) $
         ambiguousTypeError inf sig
       -- checking subsumption
-      subsCheck sig inf ann `wrapError` d
+      unless changeTy $ do 
+        subsCheck sig inf ann `wrapError` d
       -- elaborating function body
-      fdt <- elabFunDef vs' sig1 bd1' inf ann
-      withCurrentSubst (fdt, ann)
+      let ann' = if changeTy then inf else ann
+      fdt <- elabFunDef vs' sig1 bd1' inf ann' `wrapError` d 
+      withCurrentSubst (fdt, ann')
   | otherwise = tiFunDef d
 
 -- elaborating function definition
