@@ -92,8 +92,6 @@ setupPragmas ps = do
 tcTopDecl :: TopDecl Name -> TcM (TopDecl Id)
 tcTopDecl (TContr c)
   = do
-      generateSelectorInstances c
-      withMain <- addGeneratedMainDecl c
       (c', assumps) <- tcContract withMain
       mapM_ (uncurry extEnv) assumps
       pure (TContr c')
@@ -141,10 +139,13 @@ tcContract c@(Contract n vs decls)
       ctx' <- gets ctx
       initializeEnv c
       decls' <- mapM tcDecl' decls
+      let methods = mapMaybe getFn decls'
+      generateSelectorInstances methods
+      main <- fmap tcDecl' (generateMainDecl methods)
       ctx1 <- gets ctx
       let
         ctx2 = Map.toList $ Map.difference ctx1 ctx'
-      pure (Contract n vs decls', ctx2)
+      pure (Contract n vs (main :: decls'), ctx2)
     where
       tcDecl' d
         = do
@@ -152,6 +153,9 @@ tcContract c@(Contract n vs decls)
           d' <- tcDecl d
           s <- getSubst
           pure (everywhere (mkT (apply @Id s)) d')
+
+      getFn (CFunDecl fn) = Just fn
+      getFn _ = Nothing
 
 -- initializing context for a contract
 

@@ -20,6 +20,7 @@ common common-opts
       base >= 4.19.0.0
     , mtl
     , containers
+    , crypton
     , algebraic-graphs
     , array
     , filepath
