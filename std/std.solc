@@ -1,4 +1,4 @@
-pragma no-bounded-variable-condition ABIEncode;
+pragma no-bounded-variable-condition ABIEncode, GenerateDispatch;
 pragma no-patterson-condition ABIEncode;
 pragma no-coverage-condition ABIDecode, MemoryType;
 
@@ -731,7 +731,7 @@ function getReader(d:ABIDecoder(ty, reader)) -> reader {
 
 forall nm . class nm:Selector {}
 
-forall ty f . f : Invokable((),()) => class ty:GenerateDispatch {
+forall ty f . f : invokable((),()) => class ty:GenerateDispatch {
     function dispatch_if_selector_match(x: ty) -> f;
 }
 
@@ -741,7 +741,7 @@ forall name . name:Selector => function selector_matches(nm : name) -> bool {
     return true;
 }
 
-forall nm args rets f g . nm:Selector, args:ABIDecode, rets:ABIEncode, f:Invokable(args, rets) => instance Dispatch(nm,args,rets,f):GenerateDispatch {
+forall nm args rets f g . nm:Selector, args:ABIDecode, rets:ABIEncode, f:invokable(args, rets) => instance Dispatch(nm,args,rets,f):GenerateDispatch {
     function dispatch_if_selector_match(d:Dispatch(nm,args,rets,f)) -> g {
         return lam() {
             match d {

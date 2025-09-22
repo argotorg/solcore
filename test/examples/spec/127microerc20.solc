@@ -1,5 +1,5 @@
-import IndexLib;
-
+import assign;
+ 
 function caller() -> address {
   let res: word;
   assembly {
@@ -17,10 +17,10 @@ function require1fail() {
   return (); // for the typechecker
 }
 
-function require1(cond: Bool) {
+function require1(cond: bool) {
     match cond {
-    | False => return require1fail();
-    | True => return ();
+    | false => return require1fail();
+    | true => return ();
   }
 }
 
@@ -33,7 +33,7 @@ contract Mini {
   decimals : uint;
   totalSupply : uint;
   balances : mapping(address,uint);
-  allowance : mapping(address, storage(mapping(address, uint)));
+  allowance : mapping(address, mapping(address, uint));
 
   function mint(amount:uint) -> () {
     balances[owner] = Num.add(balances[owner], amount);
@@ -55,21 +55,26 @@ contract Mini {
     }
 */
 
-//  function transferFrom(src:address, dst:address, amt:uint) -> Bool {
-  function transferFrom(src, dst, amt) -> Bool  {
+//  function transferFrom(src:address, dst:address, amt:uint) -> bool {
+  function transferFrom(src, dst, amt) -> bool  {
      require1(ge(balances[src], amt));
-/*
-     match (eq(src, msg_sender)) {
-       | True => match ne(allowance[src][msg_sender], 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff) {
-           | True => require1(False);
-	   | False => ();
+
+     match (Eq.eq(src, msg_sender)) {
+       | true => match ne(allowance[src][msg_sender], Num.maxVal():uint) {
+           | true => require1(false);
+	   | false => ();
 	   }
-       | False => ();
+       | false => ();
      }
-     */
+
+/*
+     if ((src != msg_sender) && (allowance [src][msg_sender] != (Num.maxVal():uint)) ) {
+       require1(allowance[src][msg.sender] >= amt);
+     }
+*/   
      balances[src] = Num.sub(balances[src], amt);
      balances[dst] = Num.add(balances[dst], amt):uint;
-     return True;
+     return true;
   }
 
 /*
@@ -90,7 +95,7 @@ contract Mini {
   function main() -> uint {
     init();
     mint(uint(1000));
-    allowance[owner][msg_sender] = 10000;
+    allowance[owner][msg_sender] = uint(10000);
     transferFrom(owner, msg_sender, uint(42));
 
     return balances[msg_sender] : uint;

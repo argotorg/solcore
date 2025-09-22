@@ -1,4 +1,5 @@
 module Solcore.Frontend.Syntax.ElabTree where
+import Prelude hiding(exp)
 
 import Common.Monad
 import Control.Monad
@@ -466,8 +467,7 @@ elabAssignment lhs@(S.ExpVar Nothing name) rhs = do
 elabAssignment lhs@(S.ExpIndexed arr idx) rhs = do
     -- writes [ "> elabAssignment ", show lhs, " <~ ", show rhs]
     idx' <- elab idx
-    iap <- indexedProxyFor arr idx'
-    let lhs' = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [iap]
+    lhs' <- lhsIndex arr idx'
     rhs' <- elab rhs
     let assignName = QualName (Name "Assign") "assign"
     -- writes [ "< elabAssignment ", pretty lhs', " <~ ", pretty rhs']
@@ -477,26 +477,34 @@ elabAssignment lhs@(S.ExpIndexed arr idx) rhs = do
 elabAssignment lhs rhs =
     (:=) <$> elab lhs <*> elab rhs
 
-indexedProxyFor :: S.Exp -> Exp Name -> ElabM (Exp Name)
-indexedProxyFor exp@(S.ExpVar Nothing name) idx = do
+lhsAccess :: Exp Name -> Exp Name
+lhsAccess e = Call Nothing (QualName "LVA" "acc") [e]
+
+rhsAccess :: Exp Name -> Exp Name
+rhsAccess e = Call Nothing (QualName "RVA" "acc") [e]
+
+indexFun :: Either () () -> Name
+indexFun Left{}  = (Name "lidx")
+indexFun Right{} = (Name "ridx")
+
+indexAccess :: Either () () -> S.Exp -> Exp Name -> ElabM (Exp Name)
+indexAccess dir exp@(S.ExpVar Nothing name) idx = do
   isF <- isField name
   if isF then do
-                arrProxy <- memberProxyFor name
-                let arrRef = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [arrProxy]
-                pure $ Con "IndexAccessProxy" [arrRef, idx]
+    arrProxy <- memberProxyFor name
+    let arrRef = lhsAccess arrProxy
+    pure $ Call Nothing (indexFun dir) [arrRef, idx]
+  else notImplementedM "indexAccess" exp
 
-         else notImplementedM "indexedProxyFor" exp
-indexedProxyFor exp@(S.ExpIndexed arr idx1) idx'' = do
+indexAccess dir exp@(S.ExpIndexed arr1 idx1) idx2 = do
    idx' <- elab idx1
-   arrProxy <- indexedProxyFor arr idx'
-   let arrRef = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [arrProxy]
-   let result = Con "IndexAccessProxy" [arrRef, idx'']
-   -- writes ["indexedProxyFor: "]
-   -- writes ["  ", show exp]
-   -- writes ["   [", pretty idx'', "]\n", "  = ", pretty result]
-   pure result
+   arr2 <- lhsIndex arr1 idx'
+   pure $ Call Nothing (indexFun dir) [arr2, idx2]
 
-indexedProxyFor exp idx = notImplementedM "indexedProxyFor" exp
+indexAccess _dir exp _idx = notImplementedM "indexAccess" exp
+
+lhsIndex = indexAccess $ Left ()
+rhsIndex = indexAccess $ Right ()
 
 memberProxyFor :: Name -> ElabM(Exp Name)
 memberProxyFor field = do
@@ -506,6 +514,7 @@ memberProxyFor field = do
   let fieldMap = Con "MemberAccessProxy" [cxt, selector]
   pure fieldMap
 
+elabContractFieldAssignment :: Name -> S.Exp -> ElabM(Stmt Name)
 elabContractFieldAssignment field rhs = do
 {- Desugaring scheme:
        // this.counter = rhs
@@ -513,19 +522,13 @@ elabContractFieldAssignment field rhs = do
        let counter_map : MemberAccessProxy(cxt, counter_sel, ())
        = MemberAccessProxy(cxt, counter_sel);
        let counter_lval : storageRef(word)
-                        = LValueMemberAccess.memberAccess(counter_map);
+                        = LVA.acc(counter_map);
        let counter_rval : word
-                        = RValueMemberAccess.memberAccess(counter_map);
+                        = RVA.acc(counter_map);
        Assign.assign(counter_lval, counter_rval);
 -}
-{-
-  cxt <- contractContext
-  let selName = selectorNameForField field
-  let selector = Con selName []
-  let fieldMap = Con "MemberAccessProxy" [cxt, selector]
--}
   fieldMap <- memberProxyFor field
-  let lhs' = Call Nothing (QualName "LValueMemberAccess" "memberAccess") [fieldMap]
+  let lhs' = lhsAccess fieldMap
   rhs' <- elab rhs
   let assignName = QualName (Name "Assign") "assign"
   pure $ StmtExp $ Call Nothing assignName [lhs', rhs']
@@ -629,7 +632,7 @@ instance Elab S.Exp where
               let rvalFun = Name "rval"
               let fieldSel = Con (selectorNameForField n) []
               let fieldMap = Con "MemberAccessProxy" [cxt, fieldSel]
-              pure (Call Nothing rvalFun [fieldMap])
+              pure (rhsAccess fieldMap)
             _ -> pure $ FieldAccess me' n -- TODO: structures other than contract context
         else if isCon && isNothing me then pure (Con n [])
              else pure $ Var n
@@ -649,9 +652,7 @@ instance Elab S.Exp where
 
   elab (S.ExpIndexed arr idx) = do
     idx' <- elab idx
-    arr_proxy <- indexedProxyFor arr idx'
-    let rvalFun = Name "rval"
-    pure $ Call Nothing rvalFun [arr_proxy]
+    rhsIndex arr idx'
 
   elab (S.ExpGE e1 e2) = do
      (e1', e2') <- elab (e1, e2)
@@ -674,6 +675,10 @@ instance Elab S.Exp where
   elab (S.ExpLAnd e1 e2) = do
      (e1', e2') <- elab (e1, e2)
      pure $ Call Nothing (Name "and") [e1', e2']
+
+  elab (S.ExpLNot e) = do
+     e' <- elab e
+     pure $ Call Nothing (Name "not") [e']
 
   elab (S.ExpPlus e1 e2) = do
      (e1', e2') <- elab (e1, e2)
@@ -722,7 +727,7 @@ isTuple (S.Pat n ps)
   | n == Name "pair" && length ps /= 1 = pure True
   | n == Name "pair"
     = throwError "Invalid tuple pattern"
-  | otherwise = pure False
+isTuple _ = pure False
 
 
 instance Elab S.Literal where

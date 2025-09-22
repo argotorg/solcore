@@ -206,14 +206,15 @@ data Exp
   | ExpTimes Exp Exp                       -- e1 * e2
   | ExpDivide Exp Exp                      -- e1 / e2
   | ExpModulo Exp Exp                      -- e1 % e2
-  | ExpLT Exp Exp                         -- e1 || e2
-  | ExpGT Exp Exp                         -- e1 || e2
-  | ExpLE Exp Exp                         -- e1 || e2
-  | ExpGE Exp Exp                         -- e1 || e2
-  | ExpEE Exp Exp                         -- e1 || e2
-  | ExpNE Exp Exp                         -- e1 || e2
+  | ExpLT Exp Exp                          -- e1 < e2
+  | ExpGT Exp Exp                          -- e1 > e2
+  | ExpLE Exp Exp                          -- e1 <= e2
+  | ExpGE Exp Exp                          -- e1 >= e2
+  | ExpEE Exp Exp                          -- e1 == e2
+  | ExpNE Exp Exp                          -- e1 != e2
   | ExpLAnd Exp Exp                        -- e1 && e2
   | ExpLOr Exp Exp                         -- e1 || e2
+  | ExpLNot Exp                            -- ! e
   | ExpCond Exp Exp Exp                    -- if e1 then e2 else e3
   deriving (Eq, Ord, Show, Data, Typeable)
 

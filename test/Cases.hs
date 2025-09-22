@@ -47,11 +47,9 @@ spec =
     , runTestForFile "939badfood.solc" specFolder
     , runTestForFile "SimpleField.solc" specFolder
     , runTestForFile "121counter.solc" specFolder
-    -- these should work with proxy fix.
-    , runTestExpectingFailure "126nanoerc20.solc" specFolder
-    , runTestExpectingFailure "127microerc20.solc" specFolder
-    -- failing due to missing signature in instance definition
-    , runTestExpectingFailure "128minierc20.solc" specFolder
+    , runTestForFile "126nanoerc20.solc" specFolder
+    , runTestForFile "127microerc20.solc" specFolder
+    , runTestForFile "128minierc20.solc" specFolder
     ]
  where
   specFolder = "./test/examples/spec"
@@ -160,14 +158,19 @@ cases =
     , runTestForFile "word-match.solc" caseFolder
     , runTestForFile "if-examples.solc" caseFolder
     , runTestForFile "import-std.solc" caseFolder
-    , runTestExpectingFailure "withdraw.solc" caseFolder
-    , runTestForFile "bal.solc" caseFolder
-    , runTestForFile "if-examples.solc" caseFolder
-    , runTestForFile "import-std.solc" caseFolder
+    , runTestExpectingFailure "bound-minimal.solc" caseFolder
+    , runTestExpectingFailure "bound-only-test.solc" caseFolder
+    , runTestForFile "bound-with-pragma.solc" caseFolder
     , runTestExpectingFailure "withdraw.solc" caseFolder
     , runTestForFile "bal.solc" caseFolder
     , runTestForFile "ixa.solc" caseFolder
     , runTestForFile "tuva.solc" caseFolder
+    , runTestForFile "yul-return.solc" caseFolder
+    , runTestForFile "pragma_merge_base.solc" caseFolder
+    , runTestForFile "pragma_merge_import.solc" caseFolder
+    , runTestForFile "pragma_merge_verify.solc" caseFolder
+    , runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder
+    , runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

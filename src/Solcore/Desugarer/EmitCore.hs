@@ -377,16 +377,13 @@ emitWordMatch scrutinee alts = do
     return [Core.SMatch coreType sVal coreAlts]
     where
         emitWordAlt :: Equation Id -> EM Core.Alt
-        emitWordAlt ([PLit(IntLit i)], stmts) = do
-            coreStmts <- emitStmts stmts
-            return (Core.Alt (Core.PIntLit i) "$_" (oneStmt coreStmts))
+        emitWordAlt ([PLit(IntLit i)], stmts) = Core.Alt (Core.PIntLit i) "$_" <$> emitStmts stmts
         emitWordAlt ([PVar (Id n _)], stmts) = do
             coreStmts <- emitStmts stmts
             let coreName = show n
-            return (Core.Alt (Core.PVar coreName) "$_" (oneStmt coreStmts))
+            return (Core.Alt (Core.PVar coreName) "$_" coreStmts)
         emitWordAlt (pat, _) = errorsEM ["emitWordAlt not implemented for", show pat]
-        oneStmt [stmt] = stmt
-        oneStmt stmts = Core.SBlock stmts
+
 type BranchMap = Map.Map Name [Core.Stmt]
 
 emitSumMatch :: [Constr] -> Exp Id -> Equations Id -> EM [Core.Stmt]
@@ -460,11 +457,8 @@ emitSumMatch allCons scrutinee alts = do
         rightBranch t = error ("rightBranch: not a sum type: " ++ show t)
         left = altName False
         right = altName True
-        alt con n [stmt] = Core.ConAlt con n stmt
-        alt con n stmts = Core.ConAlt con n (Core.SBlock stmts)
+        alt con n stmts = Core.ConAlt con n stmts
 
-        body [stmt] = stmt
-        body stmts = Core.SBlock stmts
       -- Would be clearer with $left/$right, but simpler with $alt for now
       altName False = "$alt"
       altName True = "$alt"

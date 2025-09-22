@@ -1,0 +1,48 @@
+// Test base file for pragma merging functionality
+// This file contains violations of all three condition types with pragmas to disable checks
+
+// Pragmas to disable checks for specific classes
+pragma no-patterson-condition TestClassP1, TestClassB1;
+pragma no-coverage-condition TestClassC1;
+pragma no-bounded-variable-condition TestClassB1;
+
+// --- Test Classes ---
+
+forall a . class a:TestClassP1 {}
+forall a . class a:TestClassP2 {}
+forall a . class a:TestClassP3 {}
+
+forall a b . class a:TestClassC1(b) {}
+forall a b c . class a:TestClassC2(b,c) {}
+
+forall a . class a:TestClassB1 {}
+forall a b . class a:TestClassB2(b) {}
+
+// --- Data Types ---
+
+data TestType1(x) = TestType1;
+data TestType2 = TestType2;
+
+// --- Patterson Condition ---
+
+// Fails Patterson: Context measure (3 predicates) > conclusion measure (TestType1(U):TestClassP1)
+forall U . U:TestClassP1, U:TestClassP2, U:TestClassP3 => instance U:TestClassP1 {}
+
+// Patterson OK: No context predicates
+instance TestType2:TestClassP2 {}
+
+// --- Coverage Condition ---
+
+// Fails Coverage: Variable 'a' only appears in weak position (parameter to TestClassC1)
+forall a b . instance TestType1(b):TestClassC1(a) {}
+
+// Coverage OK: All variables in strong positions
+instance TestType2:TestClassC2(TestType2, TestType2) {}
+
+// === Bound Variable Violations ===
+
+// Fails Bound Variable & Patterson: Variable 'c' appears in context but not in instance head
+forall a . c:TestClassB2(a) => instance TestType1(a):TestClassB1 {}
+
+// Bound Variable OK: Simple instance without context
+instance TestType1(TestType2):TestClassB2(TestType2) {}

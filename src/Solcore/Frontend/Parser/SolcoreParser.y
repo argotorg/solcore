@@ -16,7 +16,7 @@ import System.FilePath
 
 
 %name parser CompilationUnit
-%monad {Alex}{(>>=)}{return}
+%monad {Alex}{(>>=)}{pure}
 %tokentype { Token }
 %error     { parseError }
 %lexer {lexer}{Token _ TEOF}
@@ -90,6 +90,7 @@ import System.FilePath
 %left     ':'
 %left     '||'
 %left     '&&'
+%nonassoc '!'
 %nonassoc '==' '!='
 %nonassoc '<' '>' '<=' '>='
 %left     '+' '-'
@@ -338,6 +339,7 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | Expr '!=' Expr                              {ExpNE $1 $3 }
      | Expr '&&' Expr                              {ExpLAnd $1 $3 }
      | Expr '||' Expr                              {ExpLOr $1 $3 }
+     | '!' Expr                                    {ExpLNot $2 }
      | Conditional                                 {$1}
 
 Conditional :: { Exp }
@@ -474,9 +476,10 @@ IdentifierList : Name                              {[$1]}
 
 
 YulExp :: {YulExp}
-YulExp : YulLiteral                                   {YLit $1}
+YulExp : YulLiteral                                {YLit $1}
        | Name                                      {YIdent $1}
        | Name YulFunArgs                           {YCall $1 $2}
+       | 'return' YulFunArgs                       {YCall (Name "return") $2}
 
 YulFunArgs :: {[YulExp]}
 YulFunArgs : '(' YulExpCommaList ')'               {$2}

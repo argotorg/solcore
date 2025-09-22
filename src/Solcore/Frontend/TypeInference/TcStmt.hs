@@ -665,14 +665,18 @@ tcInstance idecl@(Instance d vs ctx n ts t funs)
       tcInstance' (Instance d [] ctx' n ts' t' funs')
 
 checkConstraint :: Pred -> TcM ()
-checkConstraint p@(InCls _ t ts)
-  = mapM_ kindCheck (t : ts) `wrapError` p
+checkConstraint p@(InCls n t ts)
+  | n == invokableName = pure ()
+  | otherwise
+    = do
+        _ <- askClassInfo n `wrapError` p
+        mapM_ kindCheck (t : ts) `wrapError` p
 checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
 
 tcInstance' :: Instance Name -> TcM (Instance Id)
 tcInstance' idecl@(Instance d vs ctx n ts t funs)
   = do
-      checkCompleteInstDef n (map (sigName . funSignature) funs)
+      checkCompleteInstDef n (map (sigName . funSignature) funs) `wrapError` idecl
       (funs1, schss) <- unzip <$> mapM (tcFunDef False vs ctx) funs `wrapError` idecl
       instd <- withCurrentSubst (Instance d vs ctx n ts t funs1)
       let
@@ -687,7 +691,7 @@ verifySignatures :: Instance Id -> TcM (Instance Id)
 verifySignatures instd@(Instance d vs ctx n ts t funs)
   = do
       -- get the list of class method names from class info
-      names <- methods <$> askClassInfo n
+      names <- methods <$> askClassInfo n `wrapError` instd
       let qnames = map (QualName n . pretty) names
       schs <- mapM (\ q -> (q,) <$> askEnv q) qnames
       -- instantiate most general type
@@ -766,9 +770,18 @@ checkCompleteInstDef n ns
 checkInstances :: [Instance Name] -> TcM ()
 checkInstances = mapM_ checkInstance
 
+checkConstraints :: [Pred] -> TcM ()
+checkConstraints = mapM_ checkConstraint
+
 checkInstance :: Instance Name -> TcM ()
 checkInstance idef@(Instance d vs ctx n ts t funs)
   = do
+      -- kind check all types in instance head
+      mapM_ kindCheck (t : ts) `wrapError` idef
+      -- check if the class is defined
+      _ <- askClassInfo n `wrapError` idef
+      -- check if all the types and classes in the context are valid
+      checkConstraints ctx
       let ipred = InCls n t ts
       -- checking the coverage condition
       insts <- askInstEnv n `wrapError` ipred
@@ -783,7 +796,7 @@ checkInstance idef@(Instance d vs ctx n ts t funs)
       unless patterson (checkMeasure ctx ipred `wrapError` idef)
       -- checking bound variable condition
       bound <- askBoundVariableCondition n
-      unless bound (checkBoundVariable ctx (fv (t : ts)) `wrapError` idef)
+      unless bound (checkBoundVariable ctx (bv (t : ts)) `wrapError` idef)
       -- checking instance methods
       mapM_ (checkMethod ipred) funs `wrapError` idef
       let ninst = anfInstance $ ctx :=> InCls n t ts
@@ -805,7 +818,7 @@ isTyVar _ = False
 
 checkBoundVariable :: [Pred] -> [Tyvar] -> TcM ()
 checkBoundVariable ps vs
-  = unless (all (\ v -> v `elem` vs) (fv ps)) $ do
+  = unless (all (`elem` vs) (bv ps)) $ do
       throwError "Bounded variable condition fails!"
 
 
