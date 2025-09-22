@@ -214,7 +214,7 @@ data Exp
   | ExpNE Exp Exp                         -- e1 || e2
   | ExpLAnd Exp Exp                        -- e1 && e2
   | ExpLOr Exp Exp                         -- e1 || e2
-  | ExpCond Exp Exp Exp                    -- e1 ? e2 : e3
+  | ExpCond Exp Exp Exp                    -- if e1 then e2 else e3
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- pattern matching equations
