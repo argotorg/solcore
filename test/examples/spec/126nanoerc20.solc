@@ -9,21 +9,22 @@ function caller() -> address {
   return address(res);
 }
 
-function require1fail() {
-  let res: word;
-  assembly {
-    mstore(0x0, 0x72657175697265313a204641494c) // "require1: FAIL"
-    revert(0,32)
+function myrevert( msg: (word, word) ) -> () {
+  match msg {
+    | (str, len) =>
+       let str1 = str; let len1 = len;
+       assembly { mstore(0, str1) revert(0, len1) }
   }
-  return (); // for the typechecker
 }
 
-function require1(cond: Bool) {
-    match cond {
-    | False => return require1fail();
-    | True => return ();
-  }
+function require(cond: bool, msg: (word, word) ) {
+      if( not(cond) ) { myrevert(msg); }
 }
+
+function require1(cond: bool) {
+    require (cond, (0x72657175697265313a204641494c, 14) /* "require1: FAIL" */ );
+}
+
 
 function nop() -> () { return ();}
 
@@ -41,7 +42,7 @@ contract Uint {
   }
 
   //     function transferFrom(address src, address dst, uint amt) public returns (bool) 
-  function transferFrom(src:address, dst:address, amt:uint) -> Bool {
+  function transferFrom(src:address, dst:address, amt:uint) -> bool {
      require1(ge(balances[src], amt));
 
      /*
@@ -50,7 +51,7 @@ contract Uint {
      */
      withdraw(src, amt); //workaround typechecker quirk
      deposit(dst, amt);
-     return True;
+     return true;
   }
 
 

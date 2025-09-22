@@ -8,27 +8,16 @@ function caller() -> address {
   return address(res);
 }
 
-function require1fail() {
-  let res: word;
-  assembly {
-    mstore(0x0, 0x72657175697265313a204641494c) // "require1: FAIL"
-    revert(0,32)
-  }
-  return (); // for the typechecker
+function myrevert(msg: word) -> () {
+       assembly { mstore(0, msg) revert(0, 32) }
 }
 
-function require1(cond: Bool) {
-    match cond {
-    | False => return require1fail();
-    | True => return ();
-  }
+function require(cond: bool, msg: word ) {
+      if( !cond ) { myrevert(msg); }
 }
-
-function nop() -> () { return ();}
 
 contract MiniERC20 {
-  reserved : word;
-  msg_sender : address; // mock msg.sender
+  reserved : word; // forge idiosyncrasies
   owner : address;
   decimals : uint;
   totalSupply : uint;
@@ -55,19 +44,21 @@ contract MiniERC20 {
     }
 */
 
-  function transferFrom(src:address, dst:address, amt:uint) -> Bool {
-     require1(balances[src] >= amt);
+  function transferFrom(src:address, dst:address, amt:uint) -> bool {
+     let msg_sender = caller();
+     require( balances[src] >= amt /* "token/insufficient-balance" */
+            , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
+	    );
 
-     match (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint)) {
-           | True =>
-	       require1(allowance[src][msg_sender] >= amt);
-               allowance[src][msg_sender] -= amt;
-	   | False => ();
+     if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint)) {
+        require( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
+	       , 0x746f6b656e2f696e73756666696369656e742d616c6c6f77616e6365
+	       );
+        allowance[src][msg_sender] -= amt;
      }
-
      balances[src] = balances[src] - amt;
      balances[dst] = balances[dst] + amt;
-     return True;
+     return true;
   }
 
 /*
@@ -78,26 +69,26 @@ contract MiniERC20 {
     }
 */
 
-  function approve(usr: address, amt: uint) -> Bool {
+  function approve(usr: address, amt: uint) -> bool {
+      let msg_sender = caller();
       allowance[msg_sender][usr] = amt;
       // emit Approval(msg.sender, usr, amt);
-      return True;
+      return true;
 
   }
 
   function init() -> () {
     owner = address(0x123456789abcdef);
-    msg_sender = caller();
     decimals = Num.fromWord(18);
   }
 
   function main() -> uint {
+    let msg_sender = caller();
     init();
     mint(uint(1000));
     allowance[owner][msg_sender] = uint(1000);
     transferFrom(owner, msg_sender, uint(42));
 
-    // return balances[msg_sender] : uint;
     return allowance[owner][msg_sender];
   }
 }

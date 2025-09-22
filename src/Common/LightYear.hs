@@ -7,6 +7,7 @@ module Common.LightYear
   , runParserM
   ) where
 import Control.Monad.Error.Class
+import GHC.Stack
 import Text.Megaparsec
 import Text.Megaparsec.Char
 -- import Text.Megaparsec.Char.Lexer qualified as Lexer
@@ -14,10 +15,10 @@ import Data.Void
 
 type Parser = Parsec Void String
 
-runMyParser :: String -> Parser a -> String -> a
+runMyParser :: HasCallStack => String -> Parser a -> String -> a
 runMyParser name p = runMyParser' p name
 
-runMyParser' :: Parser a -> String -> String -> a
+runMyParser' :: HasCallStack => Parser a -> String -> String -> a
 runMyParser' p filename input =
   case parse p filename input of
     Left e -> error (errorBundlePretty e)

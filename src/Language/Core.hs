@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -Wincomplete-patterns #-}
 {-# LANGUAGE InstanceSigs #-}
 module Language.Core
-  ( Expr(..), Stmt(..), Arg(..), Alt(..), pattern ConAlt, Pat(..), Con(..), Contract(..), Core(..)
+  ( Expr(..), Stmt(..), Arg(..), Alt(..), pattern ConAlt, Pat(..), Con(..), Contract(..), Core(..), Body
   , module Language.Core.Types
   ,  pattern SAV
   , Name
@@ -39,20 +39,21 @@ data Stmt
     | SAssembly [YulStmt]
     | SReturn Expr
     | SComment String
-    | SBlock [Stmt]
+    | SBlock Body
     -- | SMatch Expr [Alt]
     | SMatch Type Expr [Alt]
     | SFunction Name [Arg] Type [Stmt]
     | SRevert String
     -- deriving Show
 
+type Body = [Stmt]
 data Arg = TArg Name Type
 instance Show Arg where show = render . ppr
 instance Show Stmt where show :: Stmt -> String
                          show = render . ppr
 
-data Alt = Alt Pat Name Stmt deriving Show
-pattern ConAlt :: Con -> Name -> Stmt -> Alt
+data Alt = Alt Pat Name Body deriving Show
+pattern ConAlt :: Con -> Name -> Body -> Alt
 pattern ConAlt c n s = Alt (PCon c) n s
 
 data Pat = PVar Name | PCon Con | PWildcard | PIntLit Integer
@@ -99,7 +100,7 @@ instance Pretty Stmt where
                             $$ nest 2 (vcat (map ppr yul))
                             $$ rbrace
     ppr (SReturn e) = text "return" <+> ppr e
-    ppr (SComment c) = text "//" <+> text c
+    ppr (SComment c) = text "/*" <+> text c <+> "*/"
     ppr (SBlock stmts) = lbrace $$ nest 2 (vcat (map ppr stmts)) $$ rbrace
     {-
     ppr (SMatch e alts) =
@@ -123,7 +124,7 @@ instance Pretty Pat where
     ppr (PIntLit i) = integer i
 
 instance Pretty Alt where
-    ppr (Alt c n s) = ppr c <+> text n <+> text "=>" <+> ppr s
+    ppr (Alt c n s) = ppr c <+> text n <+> text "=>" <+> braces(ppr s)
 
 instance Pretty Con where
     ppr CInl = text "inl"
