@@ -86,6 +86,7 @@ cases =
     , runTestForFile "Compose.solc" caseFolder
     , runTestForFile "Compose2.solc" caseFolder
     , runTestForFile "Compose3.solc" caseFolder
+    , runTestForFile "CondExp.solc" caseFolder
     , runTestExpectingFailure "DupFun.solc" caseFolder
     , runTestForFile "DuplicateFun.solc" caseFolder
     , runTestForFile "EitherModule.solc" caseFolder

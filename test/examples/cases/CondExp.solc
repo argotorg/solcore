@@ -1,0 +1,8 @@
+contract CondExp {
+   function main() {
+     return
+       if if true then false else true
+       then if false then 1 else 2
+       else if true then 42 else 56;
+   }
+}

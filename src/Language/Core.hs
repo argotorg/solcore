@@ -26,6 +26,7 @@ data Expr
     | EInr Type Expr
     | EInK Int Type Expr
     | ECall Name [Expr]
+    | ECond Type Expr Expr Expr
     | EUnit
 instance Show Expr where
     show = render . ppr
@@ -91,6 +92,7 @@ instance Pretty Expr where
     ppr (EInr t e) = text "inr" >< angles (ppr t) >< parens (ppr e)
     ppr (EInK k t e) = text "in" >< parens(int k) >< angles (ppr t) >< parens (ppr e)
     ppr (ECall f es) = text f >< parens(commaSepList es)
+    ppr (ECond t e1 e2 e3) = hsep [text "if"><angles (ppr t), ppr e1, text "then", parens(ppr e2), text "else", parens(ppr e3)]
 
 instance Pretty Stmt where
     ppr (SAssign lhs rhs) = ppr lhs <+> text ":=" <+> ppr rhs
