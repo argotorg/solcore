@@ -1,16 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Translate where
+
+
 import Data.List(nub, union)
 import GHC.Stack
 import Language.Core hiding(Name)
 import qualified Language.Core as Core
-import TM
 import Language.Yul
 import Solcore.Frontend.Syntax.Name
 import Data.String
 
 import Common.Monad
 import Common.Pretty
+
+import Builtins
+import TM
+
 
 genExpr :: Expr -> TM ([YulStmt], Location)
 genExpr (EWord n) = pure ([], LocWord n)
@@ -179,10 +184,7 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
             return (flattenLhs loc)
 
 genStmt (SExpr e) = fst <$> genExpr e
-genStmt (SRevert s) = pure
-  [ YExp $ YCall "mstore" [yulInt 0, YLit (YulString s)]
-  , YExp $ YCall "revert" [yulInt 0, yulInt (length s)]
-  ]
+genStmt (SRevert s) = pure (revertStmt s)
 
 genStmt e = error $ "genStmt unimplemented for: " ++ show e
 

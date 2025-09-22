@@ -33,23 +33,34 @@ main = do
         putStrLn "Compressing sums"
     generatedYul <- runTM options (translateStmts source)
     let name = fromString (ccName coreContract)
-
+    let withDeployment = not (Options.runOnce options)
     let doc = if Options.wrap options
         then wrapInSol name generatedYul
-        else wrapInObject name generatedYul
+        else wrapInObject name withDeployment generatedYul
     putStrLn ("writing output to " ++ Options.output options)
     writeFile (Options.output options) (render doc)
 
 -- wrap in a Yul object with the given name
-wrapInObject :: Name -> Yul -> Doc
-wrapInObject name yul = ppr object where
-    object = YulObject (show name) (YulCode stmts) []
+wrapInObject :: Name -> Bool -> Yul -> Doc
+wrapInObject name deploy yul
+  | deploy    = ppr nested
+  | otherwise = ppr runtime
+  where
+    nested = YulObject "Deployable" deploycode [InnerObject runtime]
+    runtime = YulObject (show name) (YulCode stmts) []
+    cname = yulString (show name)
     stmts = yulStmts yul ++ retcode
     retcode =
-      [ call "mstore" [yulInt (0::Integer), YIdent "_mainresult"]
-      , call "return" [yulInt (0::Integer), yulInt (32::Integer)]
+      [ calls "mstore" [yulInt 0, YIdent "_mainresult"]
+      , calls "return" [yulInt 0, yulInt 32]
       ]
-    call f args = YExp (YCall f args)
+    deploycode = YulCode
+      [ calls "datacopy" [yulInt 0, dataoffset, datasize]
+      , calls "return" [yulInt 0, datasize]
+      ]
+    calls f args = YExp (YCall f args)
+    datasize = YCall "datasize"[cname]
+    dataoffset = YCall "dataoffset"[cname]
 
 {- | wrap a Yul chunk in a Solidity function with the given name
    assumes result is in a variable named "_result"
