@@ -174,6 +174,21 @@ instance byte:Typedef(word) {
     }
 }
 
+// --- Bytes4 ---
+
+data bytes4 = bytes4(word);
+
+instance bytes4:Typedef(word) {
+    function rep(b : bytes4) -> word {
+        match b {
+            | bytes4(w) => return w;
+        }
+    }
+    function abs(w : word) -> bytes4 {
+        return bytes4(w);
+    }
+}
+
 // --- Pointers ---
 
 data memory(t) = memory(word);
@@ -245,6 +260,12 @@ function set_free_memory(loc : word) {
     assembly { mstore(0x40, loc) }
 }
 
+function allocate_memory(size : word) -> word {
+    let ptr = get_free_memory();
+    set_free_memory(Add.add(ptr,size));
+    return ptr;
+}
+
 // --- Indexable Types ---
 
 // types that can be written to and read from at a uint256 index
@@ -312,6 +333,11 @@ forall t . function allocateDynamicArray(prx : Proxy(t), length : word) -> memor
 // TODO: IndexAccess for calldata(bytes)
 // TODO: IndexAccess for storage(bytes)
 data bytes;
+
+// --- strings ---
+
+// TODO: should this be a typedef over `bytes`?
+data string;
 
 // --- slices (sized pointers) ---
 
