@@ -21,17 +21,85 @@ data Fallback(payability, args, rets, fn) = Fallback(payability, args, rets, fn)
 
 // --- Method Selectors ---
 
-// For each method in a contract the compiler generates a unique type and
-// produces a `Selector` instance for that type that returns the selector hash
-forall nm . class nm:Selector {
-  function hash(prx: Proxy(nm)) -> word;
+// The string representation of abi types used during selector computation
+forall ty . class ty:ABIString {
+    function append(head : word, tail : word, prx : Proxy(ty)) -> word;
 }
 
-// Method has a Selector if its name has a Selector
-forall name payability args rets fn . name:Selector => instance Method(name,payability,args,rets,fn):Selector {
-  function hash(prx: Proxy(Method(name,payability,args,rets,fn))) -> word {
-    return Selector.hash(Proxy : Proxy(name));
-  }
+instance uint256:ABIString {
+    function append(head : word, tail : word, prx : Proxy(uint256)) -> word {
+        let size : word = 7;
+        assembly {
+            mstore(head, add(mload(head), size))
+            mstore(tail, 0x75696e7432353600000000000000000000000000000000000000000000000000)
+        }
+        return Add.add(tail, size);
+    }
+}
+
+instance ():ABIString {
+    function append(head : word, tail : word, prx : Proxy(())) -> word {
+        return(tail);
+    }
+}
+
+function append_left_bracket(head : word, tail : word) -> word {
+    let size = 1;
+    assembly {
+        mstore(head, add(mload(head), size));
+        mstore(tail, 0x2800000000000000000000000000000000000000000000000000000000000000);
+    }
+    return Add.add(tail, size);
+}
+
+function append_right_bracket(head : word, tail : word) -> word {
+    let size = 1;
+    assembly {
+        mstore(head, add(mload(head), size));
+        mstore(tail, 0x2900000000000000000000000000000000000000000000000000000000000000);
+    }
+    return Add.add(tail, size);
+}
+
+function append_comma(head : word, tail : word) -> word {
+    let size = 1;
+    assembly {
+        mstore(head, add(mload(head), size));
+        mstore(tail, 0x2c00000000000000000000000000000000000000000000000000000000000000);
+    }
+    return Add.add(tail, size);
+}
+
+forall l r . l:ABIString, r:ABIString => instance (l,r):ABIString {
+    function append(head : word, tail : word, prx : Proxy((l,r))) -> word {
+        let with_l = ABIString.append(head, tail, Proxy : Proxy(l));
+        let with_comma = append_comma(head, with_l);
+        return ABIString.append(head, with_comma, Proxy : Proxy(r));
+    }
+}
+
+forall ty . class ty:Selector {
+    function compute(prx : Proxy(ty)) -> bytes4;
+}
+
+// Computes the selector hash for a given method
+// this is a class with a single instance since it made some of the downstream definitions a bit cleaner to define
+forall name payability args rets fn
+    . name:ABIString
+    , args:ABIString
+=> instance Method(name,payability,Proxy(args),Proxy(rets),fn):Selector {
+    function compute(prx : Proxy(Method(name,payability,Proxy(args),Proxy(rets),fn))) -> bytes4 {
+        let head = get_free_memory();
+        let tail = Add.add(head, 32);
+        tail = ABIString.append(head, tail, Proxy : Proxy(name));
+        tail = append_left_bracket(head, tail);
+        tail = ABIString.append(head, tail, Proxy : Proxy(args));
+        tail = append_right_bracket(head, tail);
+
+        let res : word;
+        assembly { res := shr(224, keccak256(add(head, 32), mload(head))) }
+        return bytes4(res);
+    }
 }
 
 // --- Method Execution ---
@@ -145,13 +213,13 @@ forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispat
 }
 
 // TODO: we only wanna do the calldataload once
-// Given evidence of a name with a known selector, we can check if it matches the selector in the first four bytes of calldata
-forall name . name:Selector => function selector_matches(prx : Proxy(name)) -> Bool {
-  let hash = Selector.hash(prx);
+// Given evidence of a type with a known selector, we can check if it matches the selector in the first four bytes of calldata
+forall ty . ty:Selector => function selector_matches(prx : Proxy(ty)) -> Bool {
+  let candidate = Typedef.rep(Selector.compute(prx));
   let res : word;
   assembly {
     let sel := shr(224, calldataload(0));
-    res := eq(sel, hash);
+    res := eq(sel, candidate);
   }
   match res {
     | 0 => return False;
@@ -248,14 +316,17 @@ function revert_handler() -> () {
   assembly { revert(0,0) }
 }
 
-data C_Add2_Selector = C_Add2_Selector;
+data C_Add2_Name = C_Add2_Name;
 
-instance C_Add2_Selector:Selector {
-  function hash(prx: Proxy(C_Add2_Selector)) -> word {
-    // This would be keccak256("add2(uint256,uint256)") >> 224
-    // Compiler computes this at compile time
-    return 0x29fcda33;  // placeholder value
-  }
+instance C_Add2_Name:ABIString {
+    function append(head : word, tail : word, prx : Proxy(C_Add2_Name)) -> word {
+        let size = 4;
+        assembly {
+            mstore(head, add(mload(head), size));
+            mstore(tail, 0x6164643200000000000000000000000000000000000000000000000000000000);
+        }
+        return Add.add(tail, size);
+    }
 }
 
 // transform
@@ -265,13 +336,12 @@ contract C {
     return Add.add(x,y);
   }
 
-  function main() -> word {
+  function main() -> () {
     let c = Contract(
-      Method(C_Add2_Selector, Proxy : Proxy(NonPayable), Proxy : Proxy((uint256,uint256)), Proxy : Proxy(uint256), add2),
+      Method(C_Add2_Name, Proxy : Proxy(NonPayable), Proxy : Proxy((uint256,uint256)), Proxy : Proxy(uint256), add2),
       Fallback(Proxy : Proxy(NonPayable), Proxy : Proxy(()), Proxy : Proxy(()),revert_handler)
     );
 
     RunContract.exec(c);
-    return 0;
   }
 }
