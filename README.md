@@ -33,35 +33,34 @@ Alternatively, the [determinate nix installer](https://determinate.systems/nix-i
 nix with flakes enabled automatically.
 
 # Usage
-## Compiling
 
-    $ cabal exec -- sol-core -f test/examples/spec/022add.solc
+## Compilation
 
-(writes to output.core)
+The compiler is currented implemented as two binaries:
 
-## Running
+1. `sol-core`: typechecks, specializes, and lowers to the `core` IR
+2. `yule`: lowers `core` files to `yul`
 
-### Using HEVM
+```
+# produces `output1.core`
+$ cabal run -- sol-core -f <input>
 
-    $ cabal run yule -- output.core -o Input.yul
-    $ solc --strict-assembly --bin --optimize Input.yul | tail -1 > Output.hex
-    $ hevm exec --code $(cat Output.hex) | awk -f parse_hevm_output.awk
-    Return: 42
-    hex: 0x000000000000000000000000000000000000000000000000000000000000002a
+# produces an output.yul
+$ cabal run -- yule output1.core -o output.yul
+```
 
-The file `testsol.sh` defines bash functions `hevmcore` and `hevmsol` that perform these steps from core and solc source respectively.
+## Running Code
 
-### Using Foundry
+The `runsol.sh` script implements a small pipeline that executes a core solidity contract by
+compiling via `sol-core` -> `yule` -> `solc`, and then using `hevm` to execute the resulting EVM
+code.
 
-    $ cabal run yule -- output.core -w -o Output.sol
-      found main
-      writing output to Output.sol
-    $ forge script Output.sol
-    Script ran successfully.
-    Gas used: 24910
+It takes the following arguments:
 
-    == Logs ==
-    RESULT -->  42
-
-
-The file `testsol.sh` defines bash functions `testcore` and `testsol` that perform these steps from core and solc source respectively.
+```
+Usage: ./runsol.sh <file.solc> [options]
+Options:
+  --calldata <sig> [args...]  Generate calldata using cast calldata
+  --raw-calldata <hex>        Pass raw calldata directly to hevm
+  --callvalue <value>         Pass callvalue to hevm (in wei)
+```
