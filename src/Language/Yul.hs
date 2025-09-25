@@ -85,7 +85,7 @@ yulString = YLit . YulString
 
 -- auxilliary functions
 
-hlist, vlist, nvlist :: Pretty a => [a] -> Doc
+hlist, vlist, nvlist, pprBlock :: Pretty a => [a] -> Doc
 hlist = hsep . map ppr
 vlist = vcat . map ppr
 nvlist = nest 2 . vlist
