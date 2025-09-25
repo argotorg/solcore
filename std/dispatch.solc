@@ -2,11 +2,6 @@ import std;
 
 pragma no-patterson-condition RunDispatch, ExecMethod;
 
-// --- Preliminaries ---
-
-data Bool = True | False;
-data Proxy(a) = Proxy;
-
 // --- Core Data Types ---
 
 // A contract contains a tuple of methods and a single fallback
@@ -193,8 +188,8 @@ forall ty callvalueCheckStatus . class ty:RunDispatch {
 forall m . m:ExecMethod, m:Selector => instance m:RunDispatch {
   function go(method : m) -> () {
     match selector_matches(Proxy : Proxy(m)) {
-      | True => ExecMethod.exec(method);
-      | False => return ();
+      | true => ExecMethod.exec(method);
+      | false => return ();
     }
   }
 }
@@ -205,8 +200,8 @@ forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispat
     match methods {
       | (method_n, rest) =>
         match selector_matches(Proxy : Proxy(n)) {
-          | True => ExecMethod.exec(method_n);
-          | False => RunDispatch.go(rest);
+          | true => ExecMethod.exec(method_n);
+          | false => RunDispatch.go(rest);
         }
     }
   }
@@ -214,7 +209,7 @@ forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispat
 
 // TODO: we only wanna do the calldataload once
 // Given evidence of a type with a known selector, we can check if it matches the selector in the first four bytes of calldata
-forall ty . ty:Selector => function selector_matches(prx : Proxy(ty)) -> Bool {
+forall ty . ty:Selector => function selector_matches(prx : Proxy(ty)) -> bool {
   let candidate = Typedef.rep(Selector.compute(prx));
   let res : word;
   assembly {
@@ -222,8 +217,8 @@ forall ty . ty:Selector => function selector_matches(prx : Proxy(ty)) -> Bool {
     res := eq(sel, candidate);
   }
   match res {
-    | 0 => return False;
-    | _ => return True;
+    | 0 => return false;
+    | _ => return true;
   }
 }
 
