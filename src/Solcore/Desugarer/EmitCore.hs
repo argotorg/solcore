@@ -22,7 +22,9 @@ import Solcore.Desugarer.Specialise(typeOfTcExp)
 import System.Exit
 
 emitCore :: Bool -> TcEnv ->  CompUnit Id -> IO [Core.Contract]
-emitCore debugp env cu = fmap concat $ runEM debugp env $ mapM emitTopDecl (contracts cu)
+emitCore debugp env cu = do
+  let coress = runEM debugp env $ mapM emitTopDecl (contracts cu)
+  fmap concat $ coress
 
 type EM a = StateT EcState IO a
 runEM :: Bool -> TcEnv -> EM a ->  IO a
@@ -43,6 +45,7 @@ data EcState = EcState
     , ecNest :: Int
     , ecDebug :: Bool
     , ecContext :: [String] -- for error handling
+    , ecDeployer :: Maybe Core.Body
     }
 
 initEcState :: Bool -> TcEnv -> EcState
@@ -52,6 +55,7 @@ initEcState debugp env = EcState
    , ecNest = 0
    , ecDebug = debugp
    , ecContext = []
+   , ecDeployer = Nothing
    }
 
 withLocalState :: EM a -> EM a
@@ -129,6 +133,9 @@ emitCDecl :: ContractDecl Id -> EM [Core.Stmt]
 emitCDecl cd@(CFunDecl f) = do
     -- debug ["!! emitCDecl ", show cd]
     emitFunDef f
+emitCDecl (CMutualDecl ds) = do
+  body <- concatMapM emitCDecl ds
+  pure [Core.SBlock body]
 emitCDecl cd@(CDataDecl dt) = do
     -- debug ["!! emitCDecl ", show cd]
     addData dt >> pure []
