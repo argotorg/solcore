@@ -9,10 +9,10 @@ pragma no-patterson-condition RunDispatch, ExecMethod;
 data Contract(methods, fallback) = Contract(methods,fallback);
 
 // A method contains an implementation (fn) as well as it's name and type signature
-data Method(name, payability, args, rets, fn) = Method(name, payability, args, rets, fn);
+data Method(name, payability, args, rets, fn) = Method(Proxy(name), Proxy(payability), Proxy(args), Proxy(rets), fn);
 
 // Contains the implementation for the fallback (fn) as well as it's type signature
-data Fallback(payability, args, rets, fn) = Fallback(payability, args, rets, fn);
+data Fallback(payability, args, rets, fn) = Fallback(Proxy(payability), Proxy(args), Proxy(rets), fn);
 
 // --- Method Selectors ---
 
@@ -82,8 +82,8 @@ forall ty . class ty:Selector {
 forall name payability args rets fn
     . name:ABIString
     , args:ABIString
-=> instance Method(name,payability,Proxy(args),Proxy(rets),fn):Selector {
-    function compute(prx : Proxy(Method(name,payability,Proxy(args),Proxy(rets),fn))) -> bytes4 {
+=> instance Method(name,payability,args,rets,fn):Selector {
+    function compute(prx : Proxy(Method(name,payability,args,rets,fn))) -> bytes4 {
         let head = get_free_memory();
         let tail = Add.add(head, 32);
         tail = ABIString.append(head, tail, Proxy : Proxy(name));
@@ -111,13 +111,13 @@ forall name payability args rets fn
   , rets:ABIAttribs
   , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
   , rets:ABIEncode
-  , Method(name,payability,Proxy(args),Proxy(rets),fn):MethodLevelCallvalueCheck
-  => instance Method(name,payability,Proxy(args),Proxy(rets),fn):ExecMethod {
-  function exec(m : Method(name,payability,Proxy(args),Proxy(rets),fn)) -> () {
+  , Method(name,payability,args,rets,fn):MethodLevelCallvalueCheck
+  => instance Method(name,payability,args,rets,fn):ExecMethod {
+  function exec(m : Method(name,payability,args,rets,fn)) -> () {
     match m {
-      | Method(nm,payability,pargs,prets,fn) =>
+      | Method(pnm,ppayability,pargs,prets,fn) =>
         // check callvalue
-        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Method(name,payability,Proxy(args),Proxy(rets),fn)));
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Method(name,payability,args,rets,fn)));
 
         // check we have enough calldata for the head of args
         let hdsz = ABIAttribs.headSize(pargs);
@@ -158,13 +158,13 @@ forall payability args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
   , rets:ABIAttribs
-  , Fallback(payability,Proxy(args),Proxy(rets),fn):MethodLevelCallvalueCheck
-  => instance Fallback(payability,Proxy(args),Proxy(rets),fn):ExecMethod {
-  function exec(fb : Fallback(payability, Proxy(args),Proxy(rets),fn)) -> () {
+  , Fallback(payability,args,rets,fn):MethodLevelCallvalueCheck
+  => instance Fallback(payability,args,rets,fn):ExecMethod {
+  function exec(fb : Fallback(payability,args,rets,fn)) -> () {
     match fb {
-      | Fallback(payability, args, rets, fn) =>
+      | Fallback(ppayability, pargs, prets, fn) =>
         // check callvalue
-        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Fallback(payability, Proxy(args),Proxy(rets),fn)));
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(Fallback(payability,args,rets,fn)));
 
         // check we have enough calldata for the head of args
         // abi decode args from calldata
@@ -232,22 +232,22 @@ forall ty . class ty:MethodLevelCallvalueCheck {
 }
 
 // no callvalue check for Payable methods
-forall name args ret fn . instance Method(name,Proxy(Payable),args,ret,fn):MethodLevelCallvalueCheck {
-  function checkCallvalue(prx : Proxy(Method(name,Proxy(Payable),args,ret,fn))) -> () { }
+forall name args ret fn . instance Method(name,Payable,args,ret,fn):MethodLevelCallvalueCheck {
+  function checkCallvalue(prx : Proxy(Method(name,Payable,args,ret,fn))) -> () { }
 }
-forall args ret fn . instance Fallback(Proxy(Payable),args,ret,fn):MethodLevelCallvalueCheck {
-  function checkCallvalue(prx : Proxy(Fallback(Proxy(Payable),args,ret,fn))) -> () { }
+forall args ret fn . instance Fallback(Payable,args,ret,fn):MethodLevelCallvalueCheck {
+  function checkCallvalue(prx : Proxy(Fallback(Payable,args,ret,fn))) -> () { }
 }
 
 // NonPayable methods revert if passed value
-forall name args ret fn . instance Method(name,Proxy(NonPayable),args,ret,fn):MethodLevelCallvalueCheck {
-  function checkCallvalue(prx : Proxy(Method(name,Proxy(NonPayable),args,ret,fn))) -> () {
+forall name args ret fn . instance Method(name,NonPayable,args,ret,fn):MethodLevelCallvalueCheck {
+  function checkCallvalue(prx : Proxy(Method(name,NonPayable,args,ret,fn))) -> () {
     ensureNoCallvalue();
   }
 }
 
-forall name args ret fn . instance Fallback(Proxy(NonPayable),args,ret,fn):MethodLevelCallvalueCheck {
-  function checkCallvalue(prx : Proxy(Fallback(Proxy(NonPayable),args,ret,fn))) -> () {
+forall name args ret fn . instance Fallback(NonPayable,args,ret,fn):MethodLevelCallvalueCheck {
+  function checkCallvalue(prx : Proxy(Fallback(NonPayable,args,ret,fn))) -> () {
     ensureNoCallvalue();
   }
 }
@@ -311,7 +311,7 @@ function revert_handler() -> () {
   assembly { revert(0,0) }
 }
 
-data C_Add2_Name = C_Add2_Name;
+data C_Add2_Name;
 
 instance C_Add2_Name:ABIString {
     function append(head : word, tail : word, prx : Proxy(C_Add2_Name)) -> word {
@@ -333,8 +333,8 @@ contract C {
 
   function main() -> () {
     let c = Contract(
-      Method(C_Add2_Name, Proxy : Proxy(NonPayable), Proxy : Proxy((uint256,uint256)), Proxy : Proxy(uint256), add2),
-      Fallback(Proxy : Proxy(NonPayable), Proxy : Proxy(()), Proxy : Proxy(()),revert_handler)
+      Method(Proxy: Proxy(C_Add2_Name), Proxy : Proxy(NonPayable), Proxy : Proxy((uint256,uint256)), Proxy : Proxy(uint256), add2),
+      Fallback(Proxy : Proxy(NonPayable), Proxy : Proxy(()), Proxy : Proxy(()), revert_handler)
     );
 
     RunContract.exec(c);
