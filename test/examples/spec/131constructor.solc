@@ -1,0 +1,27 @@
+// test constructor
+
+contract Counter {
+
+  function setCounter(v: word) {
+    assembly {
+      sstore(0x00, v)
+    }
+  }
+
+  function getCounter() -> word {
+    let res;
+    assembly {
+      res := sload(0x00)
+    }
+    return res;
+  }
+
+
+  constructor() {
+   setCounter(42);
+  }
+
+  function main() -> word {
+    return getCounter();
+  }
+}

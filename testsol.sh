@@ -35,6 +35,8 @@ function hevmcore() {
 }
 
 function hevmsol() {
+
+    echo $*
     file=$1
     echo $file
     local base=$(basename $1 .solc)
@@ -51,17 +53,17 @@ function hevmsol() {
 }
 
 function deploysol() {
-    file=$1
+    local file=$1
     shift
     echo "Solc: $file"
-    local base=$(basename $1 .solc)
+    local base=$(basename $file .solc)
     local core=output1.core
     echo "Sail: $core"
     local yulfile=$base.yul
     echo "Yul:  $yulfile"
     rm -f -v $yulfile
     cabal exec sol-core -- -f $file $* && \
-    cabal exec yule -- $core -o $yulfile  
+    cabal exec yule -- $core -o $yulfile
     hex=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
     rawtx=$(cast mktx --private-key=$PRIVATE_KEY --create $hex)
     addr=$(cast publish $rawtx | jq .contractAddress)
