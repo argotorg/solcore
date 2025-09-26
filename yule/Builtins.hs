@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Builtins(yulBuiltins) where
+module Builtins(yulBuiltins, revertStmt) where
 import Data.String
 import Language.Yul
 
@@ -8,7 +8,7 @@ yulBuiltins = Yul []
 
 revertStmt :: String -> [YulStmt]
 revertStmt s =  [ YExp $ YCall "mstore" [yulInt 0, YLit (YulString s)]
-                , YExp $ YCall "revert" [yulInt 0, yulInt (length s)]
+                , YExp $ YCall "revert" [yulInt 0, yulIntegral (length s)]
                 ]
 
 {-

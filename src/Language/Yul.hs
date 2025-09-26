@@ -70,13 +70,18 @@ data YLiteral
   | YulFalse
   deriving (Eq, Ord, Data, Typeable)
 
-yulInt :: Integral i => i -> YulExp
-yulInt = YLit . YulNumber . fromIntegral
+yulIntegral :: Integral i => i -> YulExp
+yulIntegral = YLit . YulNumber . fromIntegral
+
+yulInt :: Integer -> YulExp
+yulInt = YLit . YulNumber
 
 yulBool :: Bool -> YulExp
 yulBool True = YLit YulTrue
 yulBool False = YLit YulFalse
 
+yulString :: String -> YulExp
+yulString = YLit . YulString
 
 -- auxilliary functions
 
