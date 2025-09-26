@@ -1,6 +1,7 @@
 module Language.Core.Parser where
 import Language.Core
-    ( Core(..), Contract(..), Body,
+    ( Object(..),
+      Body,
       Alt(..),
       Pat(..),
       Arg(..),
@@ -14,11 +15,9 @@ import Text.Megaparsec.Char.Lexer qualified as L
 import Control.Monad.Combinators.Expr
 import Language.Yul.Parser(yulBlock)
 
-parseCore :: String -> Core
-parseCore = runMyParser "core" coreProgram
 
-parseContract :: String -> String -> Contract
-parseContract filename = runMyParser filename coreContract
+parseObject :: String -> String -> Object
+parseObject filename = runMyParser filename coreObject
 
 -- Note: this module repeats some definitions from YulParser.Name
 -- This is intentional as we may want to make different syntax choices
@@ -158,9 +157,9 @@ corePat = choice
     , PWildcard <$ pKeyword "_"
     ]
 
-coreProgram :: Parser Core
-coreProgram = sc *> (Core <$> many coreStmt) <* eof
+coreObject :: Parser Object
+coreObject = sc *> (Object <$> (pKeyword "object" *> identifier  <* symbol "{")
+               <*> coreCode <*> many coreObject) <* symbol "}"
 
-coreContract :: Parser Contract
-coreContract = sc *> (Contract <$> (pKeyword "contract" *> identifier )
-                  <*> braces (many coreStmt)) <* eof
+coreCode :: Parser Body
+coreCode = sc *> (Object <$> pKeyword "code" *> coreBody)
