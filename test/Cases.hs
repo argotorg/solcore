@@ -171,6 +171,7 @@ cases =
     , runTestForFile "pragma_merge_verify.solc" caseFolder
     , runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder
     , runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder
+    , runTestForFile "single-lambda.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
