@@ -193,8 +193,8 @@ addPrefix p (QualName q s) = QualName q (p ++ s)
 specialiseCompUnit :: CompUnit Id -> Bool -> TcEnv -> IO (CompUnit Id)
 specialiseCompUnit compUnit debugp env = runSM debugp env do
     addGlobalResolutions compUnit
-    contracts' <- concat <$> forM (contracts compUnit) specialiseContract
-    return $ compUnit { contracts = contracts' }
+    topDecls <- concat <$> forM (contracts compUnit) specialiseTopDecl
+    return $ compUnit { contracts = topDecls }
 
 addGlobalResolutions :: CompUnit Id -> SM ()
 addGlobalResolutions compUnit = forM_ (contracts compUnit) addDeclResolutions
@@ -210,8 +210,8 @@ addDeclResolutions _ = return ()
 addInstResolutions :: Instance Id -> SM ()
 addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instName inst) (mainTy inst))
 
-specialiseContract :: TopDecl Id -> SM [TopDecl Id]
-specialiseContract (TContr (Contract name args decls)) = withLocalState do
+specialiseTopDecl :: TopDecl Id -> SM [TopDecl Id]
+specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
     addContractResolutions (Contract name args decls)
     -- Runtime code
     runtimeDecls <- withLocalState do
@@ -223,14 +223,13 @@ specialiseContract (TContr (Contract name args decls)) = withLocalState do
     let mconstructor = findConstructor decls
     deployDecls <- case mconstructor of
       Just c -> withLocalState do
-        writes ["Found constructor ", show c]
         cname' <- specConstructor c
         st <- gets specTable
         let cdecl = st Map.! cname'
-        otherDecls <- getSpecialisedDecls
+        depDecls <- getSpecialisedDecls
         -- use mutual to group constructor with its dependencies
-        pure [CMutualDecl (CFunDecl cdecl:otherDecls)]
-      Nothing -> writeln "No constructor" >> pure []
+        pure [CMutualDecl depDecls]
+      Nothing -> pure []
     return [TContr (Contract name args (deployDecls ++ runtimeDecls))]
     where
       entries = ["main"]    -- Eventually all public methods
@@ -242,7 +241,10 @@ specialiseContract (TContr (Contract name args decls)) = withLocalState do
         let funDecls = map (CFunDecl . snd) (Map.toList st)
         pure (dataDecls ++ funDecls)
 
-specialiseContract decl = pure [decl]
+-- keep datatype defs intact
+specialiseTopDecl d@TDataDef{} = pure [d]
+-- Drop all toplevel decls that are not contracts - we do not need them anymore
+specialiseTopDecl decl = pure []
 
 findConstructor :: [ContractDecl Id] -> Maybe (Constructor Id)
 findConstructor = foldr (\d -> (getConstructor d <|>)) Nothing
