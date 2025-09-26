@@ -1,16 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Translate where
+
+
 import Data.List(nub, union)
 import GHC.Stack
 import Language.Core hiding(Name)
 import qualified Language.Core as Core
-import TM
 import Language.Yul
 import Solcore.Frontend.Syntax.Name
 import Data.String
 
 import Common.Monad
 import Common.Pretty
+
+import Builtins
+import TM
+
 
 genExpr :: Expr -> TM ([YulStmt], Location)
 genExpr (EWord n) = pure ([], LocWord n)
@@ -179,10 +184,7 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
             return (flattenLhs loc)
 
 genStmt (SExpr e) = fst <$> genExpr e
-genStmt (SRevert s) = pure
-  [ YExp $ YCall "mstore" [yulInt 0, YLit (YulString s)]
-  , YExp $ YCall "revert" [yulInt 0, yulInt (length s)]
-  ]
+genStmt (SRevert s) = pure (revertStmt s)
 
 genStmt e = error $ "genStmt unimplemented for: " ++ show e
 
@@ -326,10 +328,13 @@ genStmts stmts = do
     mapM_ scanStmt stmts   -- scan for functions and record their types
     concat <$> mapM genStmt stmts
 
-translateCore :: Core -> TM Yul
-translateCore (Core stmts) = translateStmts stmts
+translateObject :: Object -> TM YulObject
+translateObject (Object name code inners) = do
+  yulCode <- translateStmts code
+  yulInners <- mapM (fmap InnerObject . translateObject) inners
+  pure (YulObject name (YulCode yulCode) yulInners)
 
-translateStmts :: [Stmt] -> TM Yul
+translateStmts :: [Stmt] -> TM [YulStmt]
 translateStmts stmts = do
     -- assuming the result goes into `_mainresult`
     let hasMain = any isMain stmts
@@ -341,7 +346,7 @@ translateStmts stmts = do
     let resultExp = YCall (yulFunName "main") []
     let epilog = [ YLet ["_mainresult"] (Just resultExp)
                  ]
-    return $ Yul ( payload ++ epilog )
+    return (payload ++ epilog)
 
 
 isMain :: Stmt -> Bool

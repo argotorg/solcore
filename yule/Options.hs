@@ -10,6 +10,7 @@ data Options = Options
     , debug :: Bool
     , compress :: Bool
     , wrap :: Bool
+    , runOnce :: Bool
     } deriving Show
 
 optionsParser :: Parser Options
@@ -52,6 +53,10 @@ optionsParser = Options
         ( long "wrap"
         <> short 'w'
         <> help "Wrap Yul in a Solidity contract"
+        )
+    <*> switch
+        ( long "nodeploy"
+        <> help "Output code to be run once, without the deployment code"
         )
 
 parseOptions :: IO Options

@@ -47,7 +47,7 @@ pipeline = do
         writeFile filename (show c)
 
 -- Version that returns Either for testing
-compile :: Option -> IO (Either String [Core.Contract])
+compile :: Option -> IO (Either String [Core.Object])
 compile opts = runExceptT $ do
   let verbose = optVerbose opts
       noDesugarCalls = optNoDesugarCalls opts
