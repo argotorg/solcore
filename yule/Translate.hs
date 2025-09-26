@@ -328,22 +328,20 @@ genStmts stmts = do
     mapM_ scanStmt stmts   -- scan for functions and record their types
     concat <$> mapM genStmt stmts
 
-translateCore :: Core -> TM Yul
-translateCore (Core stmts) = translateStmts stmts
+translateObject :: Object -> TM YulObject
+translateObject (Object name code inners) = do
+  yulCode <- translateStmts code
+  yulInners <- mapM (fmap InnerObject . translateObject) inners
+  pure (YulObject name (YulCode yulCode) yulInners)
 
-translateStmts :: [Stmt] -> TM Yul
+translateStmts :: [Stmt] -> TM [YulStmt]
 translateStmts stmts = do
     -- assuming the result goes into `_mainresult`
     let hasMain = any isMain stmts
-    if hasMain
-      then writeln "found main"
-      else writeln "no main found, adding one"
-    let stmts' = if hasMain then stmts else addMain stmts
-    payload <- genStmts stmts'
+    payload <- genStmts stmts
     let resultExp = YCall (yulFunName "main") []
-    let epilog = [ YLet ["_mainresult"] (Just resultExp)
-                 ]
-    return $ Yul ( payload ++ epilog )
+    let epilog = if hasMain then [ YLet ["_mainresult"] (Just resultExp)] else []
+    return (payload ++ epilog)
 
 
 isMain :: Stmt -> Bool

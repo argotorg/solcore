@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
-import Language.Core(Contract(..))
-import Language.Core.Parser(parseContract)
+import Language.Core.Parser(parseObject)
 import Solcore.Frontend.Syntax.Name  -- FIXME: move Name to Common
 import Common.Pretty -- (Doc, Pretty(..), nest, render)
 import Builtins(yulBuiltins)
@@ -12,7 +11,6 @@ import Language.Yul
 import qualified Options
 import Options(parseOptions)
 import Control.Monad(when)
-import Data.String(fromString)
 
 
 main :: IO ()
@@ -21,65 +19,83 @@ main = do
     -- print options
     let filename = Options.input options
     src <- readFile filename
-    let coreContract = parseContract filename src
-    let core = ccStmts coreContract
-    when (Options.verbose options) $ do
-        putStrLn "/* Core:"
-        putStrLn (render (nest 2 (ppr coreContract)))
-        putStrLn "*/"
+    let inputObject = parseObject filename src
     let oCompress = Options.compress options
-    let source = if oCompress then compress core else core
     when oCompress $ do
         putStrLn "Compressing sums"
-    generatedYul <- runTM options (translateStmts source)
-    let name = fromString (ccName coreContract)
+    let compObject = if oCompress then compress inputObject
+                                  else inputObject
+    -- Yul "preobject" - lacking deployment code
+    yulPreobject@(YulObject yulName yulCode _) <- runTM options (translateObject compObject)
     let withDeployment = not (Options.runOnce options)
     let doc = if Options.wrap options
-        then wrapInSol name generatedYul
-        else wrapInObject name withDeployment generatedYul
+        then wrapInSol (Name yulName) (ycStmts yulCode)
+        else wrapInObject withDeployment yulPreobject
+
     putStrLn ("writing output to " ++ Options.output options)
     writeFile (Options.output options) (render doc)
 
 -- wrap in a Yul object with the given name
-wrapInObject :: Name -> Bool -> Yul -> Doc
-wrapInObject name deploy yul
-  | deploy    = ppr nested
-  | otherwise = ppr runtime
-  where
-    nested = YulObject "Deployable" deploycode [InnerObject runtime]
-    runtime = YulObject (show name) (YulCode stmts) []
-    cname = yulString (show name)
-    stmts = yulStmts yul ++ retcode
-    retcode =
+wrapInObject :: Bool -> YulObject -> Doc
+wrapInObject deploy yulo@(YulObject name code inners)
+  | deploy    = ppr (createDeployment yulo)
+  | otherwise = ppr (YulObject name (addRetCode code) inners)
+
+addRetCode :: YulCode -> YulCode
+addRetCode c = c <> retCode where
+    retCode = YulCode
       [ calls "mstore" [yulInt 0, YIdent "_mainresult"]
       , calls "return" [yulInt 0, yulInt 32]
       ]
-    deploycode = YulCode
-      [ calls "datacopy" [yulInt 0, dataoffset, datasize]
-      , calls "return" [yulInt 0, datasize]
-      ]
     calls f args = YExp (YCall f args)
+
+deployCode :: String -> Bool -> YulCode
+deployCode name withConstructor = YulCode $
+  [ calls "mstore" [yulInt 64, YCall "memoryguard" [yulInt 128]]
+  , ylva  "memPtr" (YCall "mload" [yulInt 64])
+  ]
+  <> callConstructor withConstructor <>
+  [ calls "datacopy" [yulInt 0, dataoffset, datasize]
+  , calls "return" [yulInt 0, datasize]
+  ] where
+    cname = yulString name
+    callConstructor True = [calls "usr$constructor" []]
+    callConstructor False = []
+    calls f args = YExp (YCall f args)
+    ylva x e = YLet [Name x] (Just e)
     datasize = YCall "datasize"[cname]
     dataoffset = YCall "dataoffset"[cname]
+
+createDeployment :: YulObject -> YulObject
+createDeployment (YulObject yulName yulCode [InnerObject(YulObject innerName innerCode [])])
+  = YulObject yulName yulCode' [yulInner']
+  where
+    yulCode' = yulCode <> deployCode innerName True
+    yulInner' = InnerObject (YulObject innerName (addRetCode innerCode) [])
+createDeployment (YulObject yulName yulCode [])
+  = YulObject yulName' yulCode' [yulInner'] where
+    yulName' = yulName <> "Deploy"
+    yulCode' = deployCode yulName False
+    yulInner' = InnerObject (YulObject yulName (addRetCode yulCode) [])
+createDeployment _ = error("createDeployment not implemented for this type of object")
 
 {- | wrap a Yul chunk in a Solidity function with the given name
    assumes result is in a variable named "_result"
 -}
-wrapInSol :: Name -> Yul -> Doc
+wrapInSol :: Name -> [YulStmt] -> Doc
 wrapInSol name yul = wrapInContract name "wrapper()" wrapper
     where
         wrapper = wrapInSolFunction "wrapper" (yulBuiltins <> yul)
 
-wrapInSolFunction :: Name -> Yul -> Doc
+wrapInSolFunction :: Name -> [YulStmt] -> Doc
 wrapInSolFunction name yul =
   text "function" <+> ppr name <+> prettyargs <+> text " public returns (uint256 _wrapresult)" <+> lbrace
   $$ nest 2 assembly
   $$ rbrace
   where
-    yul' = yul <> Yul [YAssign1 "_wrapresult" (YIdent "_mainresult")]
-    assembly = text "assembly" <+> lbrace
-      $$ nest 2 (ppr yul')
-      $$ rbrace
+    yul' = yul <> [YAssign1 "_wrapresult" (YIdent "_mainresult")]
+    assembly = text "assembly" <+> braces (nest 2 prettybody)
+    prettybody = vcat (map ppr yul')
     prettyargs = parens empty
 
 wrapInContract ::  Name -> Name -> Doc -> Doc

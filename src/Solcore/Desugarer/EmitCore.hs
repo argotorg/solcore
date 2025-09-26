@@ -21,7 +21,7 @@ import Solcore.Primitives.Primitives
 import Solcore.Desugarer.Specialise(typeOfTcExp)
 import System.Exit
 
-emitCore :: Bool -> TcEnv ->  CompUnit Id -> IO [Core.Contract]
+emitCore :: Bool -> TcEnv ->  CompUnit Id -> IO [Core.Object]
 emitCore debugp env cu = fmap concat $ runEM debugp env $ mapM emitTopDecl (contracts cu)
 
 type EM a = StateT EcState IO a
@@ -43,6 +43,7 @@ data EcState = EcState
     , ecNest :: Int
     , ecDebug :: Bool
     , ecContext :: [String] -- for error handling
+    , ecDeployer :: Maybe Core.Body
     }
 
 initEcState :: Bool -> TcEnv -> EcState
@@ -52,6 +53,7 @@ initEcState debugp env = EcState
    , ecNest = 0
    , ecDebug = debugp
    , ecContext = []
+   , ecDeployer = Nothing
    }
 
 withLocalState :: EM a -> EM a
@@ -103,8 +105,10 @@ type Translation a = EM (a, [Core.Stmt])
 
 type CoreName = String
 
-emitTopDecl :: TopDecl Id -> EM [Core.Contract]
-emitTopDecl (TContr c) = fmap pure (emitContract c)
+emitTopDecl :: TopDecl Id -> EM [Core.Object]
+emitTopDecl (TContr c) = withLocalState do
+    runtimeObj <- emitContract c
+    pure [runtimeObj]
 emitTopDecl (TDataDef dt) = addData dt >> pure []
 emitTopDecl _ = pure []
 
@@ -116,23 +120,41 @@ buildTConInfo :: DataTy -> TConInfo
 buildTConInfo (DataTy n tvs dcs) = (tvs, map conInfo dcs) where
   conInfo (Constr n ts) = (n, ts)
 -}
-emitContract :: Contract Id -> EM Core.Contract
+emitContract :: Contract Id -> EM Core.Object
 emitContract c = do
     let cname = show (name c)
     writes ["Emitting core for contract ", cname]
-    coreBody <- concatMapM emitCDecl (decls c)
-    let result = Core.Contract cname coreBody
-    -- writeln (show result)
-    pure result
-
+    runtimeBody <- concatMapM emitCDecl (decls c)
+    deployer <- gets ecDeployer
+    case deployer of
+      Nothing -> pure(Core.Object cname runtimeBody [])
+      Just code -> let runtimeObject = Core.Object cname runtimeBody []
+        in pure(Core.Object (cname++"Deploy") code [runtimeObject] )
 emitCDecl :: ContractDecl Id -> EM [Core.Stmt]
 emitCDecl cd@(CFunDecl f) = do
     -- debug ["!! emitCDecl ", show cd]
     emitFunDef f
+emitCDecl (CMutualDecl ds) = case findConstructor ds of
+  Nothing -> do
+    body <- concatMapM emitCDecl ds
+    pure [Core.SBlock body]
+  Just _ -> do -- this is the deployer block
+    depDecls <- concatMapM emitCDecl ds
+    modify (\s -> s { ecDeployer = Just depDecls})
+    pure [] -- deployer code gets emitted later
 emitCDecl cd@(CDataDecl dt) = do
     -- debug ["!! emitCDecl ", show cd]
     addData dt >> pure []
 emitCDecl cd = debug ["!! emitCDecl ", show cd] >> pure []
+
+-- By now, constructor should be converted to a function "constructor"
+
+findConstructor :: [ContractDecl Id] -> Maybe (FunDef Id)
+findConstructor = go where
+  go [] = Nothing
+  go (CFunDecl d:ds)| isConstructor d = Just d
+  go (_:ds) = go ds
+  isConstructor (FunDef sig _) = sigName sig == Name "constructor"
 
 -----------------------------------------------------------------------
 -- Translating function definitions
