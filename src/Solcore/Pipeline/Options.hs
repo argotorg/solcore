@@ -9,6 +9,7 @@ data Option
     , optNoDesugarCalls :: !Bool
     , optNoMatchCompiler :: !Bool
     , optNoIfDesugar :: !Bool
+    , optNoGenDispatch :: !Bool
     -- Options controlling printing
     , optVerbose   :: !Bool
     , optDumpAST   :: !Bool
@@ -30,7 +31,8 @@ emptyOption path = Option
     , optNoSpec         = False
     , optNoDesugarCalls = False
     , optNoMatchCompiler = False
-    , optNoIfDesugar = False
+    , optNoIfDesugar    = False
+    , optNoGenDispatch  = False
     -- Options controlling printing
     , optVerbose        = False
     , optDumpAST        = False
@@ -72,6 +74,9 @@ options
            <*> switch ( long "no-if-desugar"
                <> short 'd'
                <> help "Skip if / bool desugaring")
+           <*> switch ( long "no-gen-dispatch"
+               <> short 'g'
+               <> help "Skip contract dispatch generation")
            -- Options controlling printing
            <*> switch ( long "verbose"
                <> short 'v'
