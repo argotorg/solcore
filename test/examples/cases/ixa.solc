@@ -67,7 +67,7 @@ forall a . instance memory(array(a)):MemoryType {
     }
   }
 
-  function size(prx : Proxy(word)) -> word {
+  function size(prx : Proxy(memory(a))) -> word {
     return 32;
   }
 }
@@ -111,11 +111,11 @@ forall a . a:MemoryType => instance (memory(array(a)), word):RValueIdxAccess(a) 
 }
 
 forall a . a:MemoryType => instance (memory(array(a)), word):LValueIdxAccess(memory(a)) {
-  function lookup(col_idx : (memory(array(a)), word)) -> a {
+  function lookup(col_idx : (memory(array(a)), word)) -> memory(a) {
     let sz = MemoryType.size(Proxy : Proxy(a));
     match col_idx {
       | (col, idx) => match col {
-        | memory(loc) => memory(Add.add(loc, Mul.mul(idx, sz)));
+        | memory(loc) => return memory(Add.add(loc, Mul.mul(idx, sz)));
       }
     }
   }

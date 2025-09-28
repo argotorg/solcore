@@ -681,10 +681,10 @@ forall reader tuple tuple_decoded . reader:WordReader, tuple:ABIDecode(tuple_dec
     }
 }
 
-forall reader baseType reader baseType_decoded .baseType : ABIAttribs, reader:WordReader, ABIDecoder(baseType, reader):ABIDecode(baseType_decoded) =>
+forall reader baseType baseType_decoded .baseType : ABIAttribs, reader:WordReader, ABIDecoder(baseType, reader):ABIDecode(baseType_decoded) =>
     instance ABIDecoder(memory(DynArray(baseType)), reader):ABIDecode(memory(DynArray(baseType_decoded)))
 {
-    function decode(ptr:ABIDecoder(memory(DynArray(baseType)), reader), currentHeadOffset:word) -> memory(DynArray(baseType)) {
+    function decode(ptr:ABIDecoder(memory(DynArray(baseType)), reader), currentHeadOffset:word) -> memory(DynArray(baseType_decoded)) {
         let arrayPtr = WordReader.advance(ptr, currentHeadOffset);
         let length = WordReader.read(arrayPtr);
         // this trigger a missing typedef constraint
@@ -693,8 +693,8 @@ forall reader baseType reader baseType_decoded .baseType : ABIAttribs, reader:Wo
         let prx : Proxy(baseType_decoded);
         let result : memory(DynArray(baseType_decoded)) = allocateDynamicArray(prx, length);
         let offset = 0;
-        let prx : Proxy(baseType);
-        let elementHeadSize : word = ABIAttribs.headSize(prx);
+        // let prx : Proxy(baseType);
+        // let elementHeadSize : word = ABIAttribs.headSize(prx);
 
         // TODO: surface level loops
         // TODO: sugar for assigning to indexAccess types (result[i])
@@ -718,7 +718,7 @@ function getReader(d:ABIDecoder(ty, reader)) -> reader {
      baseType : WordReader =>
      instance ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
  {
-     function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType)) {
+     function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType_decoded)) {
           let newptr = WordReader.advance(ptr, currentHeadOffset);
 	  let reader: CalldataWordReader = getReader(newptr);
           let addr: word = Typedef.rep(reader);
@@ -741,17 +741,17 @@ forall name . name:Selector => function selector_matches(nm : name) -> bool {
     return true;
 }
 
-forall nm args rets f g . nm:Selector, args:ABIDecode, rets:ABIEncode, f:invokable(args, rets) => instance Dispatch(nm,args,rets,f):GenerateDispatch {
-    function dispatch_if_selector_match(d:Dispatch(nm,args,rets,f)) -> g {
-        return lam() {
-            match d {
-            | Dispatch(name, args, rets, fn) => match selector_matches(name) {
-                | false => return ();
-                | true => return ();
-            }}
-        };
-    }
-}
+// forall nm args rets f g . nm:Selector, args:ABIDecode, rets:ABIEncode, f:invokable(args, rets) => instance Dispatch(nm,args,rets,f):GenerateDispatch {
+//    function dispatch_if_selector_match(d:Dispatch(nm,args,rets,f)) -> g {
+//        return lam() {
+//            match d {
+//            | Dispatch(name, args, rets, fn) => match selector_matches(name) {
+//                | false => return ();
+//                | true => return ();
+//            }}
+//        };
+//    }
+// }
 
 //// /// Translation of the above contract
 //// struct StorageContext {
