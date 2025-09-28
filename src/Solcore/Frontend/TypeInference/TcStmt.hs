@@ -816,9 +816,13 @@ checkInstance idef@(Instance d vs ctx n ts t funs)
       checkConstraints ctx
       let ipred = InCls n t ts
       -- checking the coverage condition
-      insts <- askInstEnv n `wrapError` ipred
+      insts' <- askInstEnv n `wrapError` ipred
       -- check overlapping only for non-default instances
-      unless d (checkOverlap ipred insts `wrapError` idef)
+      let vs1 = bv ipred 
+      ts1 <- mapM (const freshTyVar) vs1 
+      let env = zip vs1 ts1
+          ipred' = insts env ipred 
+      unless d (checkOverlap ipred' insts' `wrapError` idef)
       -- check if default instance has a type variable as main argument.
       when d (checkDefaultInst (ctx :=> ipred) `wrapError` idef)
       coverage <- askCoverage n
@@ -859,6 +863,7 @@ checkOverlap _ [] = pure ()
 checkOverlap p@(InCls _ t _) (i:is)
   = do
         i' <- freshInst i
+        liftIO $ putStrLn $ unwords ["Checking:", pretty p, " using ", pretty i]
         case i' of
           (ps :=> (InCls _ t' _)) ->
             case mgu t t' of
