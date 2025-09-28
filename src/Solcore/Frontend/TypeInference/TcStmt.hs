@@ -863,7 +863,6 @@ checkOverlap _ [] = pure ()
 checkOverlap p@(InCls _ t _) (i:is)
   = do
         i' <- freshInst i
-        liftIO $ putStrLn $ unwords ["Checking:", pretty p, " using ", pretty i]
         case i' of
           (ps :=> (InCls _ t' _)) ->
             case mgu t t' of
