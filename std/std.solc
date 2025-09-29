@@ -693,8 +693,8 @@ forall reader baseType baseType_decoded .baseType : ABIAttribs, reader:WordReade
         let prx : Proxy(baseType_decoded);
         let result : memory(DynArray(baseType_decoded)) = allocateDynamicArray(prx, length);
         let offset = 0;
-        // let prx : Proxy(baseType);
-        // let elementHeadSize : word = ABIAttribs.headSize(prx);
+        let prx : Proxy(baseType);
+        let elementHeadSize : word = ABIAttribs.headSize(prx);
 
         // TODO: surface level loops
         // TODO: sugar for assigning to indexAccess types (result[i])
