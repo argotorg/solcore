@@ -38,8 +38,7 @@ pragma no-coverage-condition ABIDecode, MemoryType;
 
 // --- booleans ---
 
-
-// TODO: this should short circuit. probably needs some compiler magic to do so.
+/ TODO: this should short circuit. probably needs some compiler magic to do so.
 function and(x: bool, y: bool) -> bool {
     match x, y {
     | true, y => return y;
@@ -156,6 +155,11 @@ instance uint256:Typedef(word) {
         }
     }
 }
+instance uint256:Add {
+  function add(x : uint256, y : uint256) -> uint256 {
+    return Typedef.abs(Add.add(Typedef.rep(x), Typedef.rep(y)));
+  }
+}
 
 data byte = byte(word);
 instance byte:Typedef(word) {
@@ -167,6 +171,21 @@ instance byte:Typedef(word) {
         match x {
         | byte(w) => return w;
         }
+    }
+}
+
+// --- Bytes4 ---
+
+data bytes4 = bytes4(word);
+
+instance bytes4:Typedef(word) {
+    function rep(b : bytes4) -> word {
+        match b {
+            | bytes4(w) => return w;
+        }
+    }
+    function abs(w : word) -> bytes4 {
+        return bytes4(w);
     }
 }
 
@@ -241,6 +260,12 @@ function set_free_memory(loc : word) {
     assembly { mstore(0x40, loc) }
 }
 
+function allocate_memory(size : word) -> word {
+    let ptr = get_free_memory();
+    set_free_memory(Add.add(ptr,size));
+    return ptr;
+}
+
 // --- Indexable Types ---
 
 // types that can be written to and read from at a uint256 index
@@ -309,6 +334,11 @@ forall t . function allocateDynamicArray(prx : Proxy(t), length : word) -> memor
 // TODO: IndexAccess for storage(bytes)
 data bytes;
 
+// --- strings ---
+
+// TODO: should this be a typedef over `bytes`?
+data string;
+
 // --- slices (sized pointers) ---
 
 // A slice is a wrapper around an existing pointer type that extends the
@@ -359,7 +389,10 @@ instance CalldataWordReader:WordReader {
     function read(reader:CalldataWordReader) -> word {
         let result : word;
         match reader {
-        | CalldataWordReader(ptr) => assembly { result := calldataload(ptr) }
+          | CalldataWordReader(ptr) =>
+            // https://github.com/argotorg/solcore/issues/188
+            let ptr2 = ptr;
+            assembly { result := calldataload(ptr2) }
         }
         return result;
     }
@@ -466,6 +499,10 @@ forall self . class self:ABIAttribs {
     function isStatic(ty:Proxy(self)) -> bool;
 }
 
+instance ():ABIAttribs {
+    function headSize(ty : Proxy(())) -> word { return 0; }
+    function isStatic(ty : Proxy(())) -> bool { return true; }
+}
 instance uint256:ABIAttribs {
     function headSize(ty : Proxy(uint256)) -> word { return 32; }
     function isStatic(ty : Proxy(uint256)) -> bool { return true; }
@@ -558,6 +595,13 @@ instance uint256:ABIEncode {
     }
 }
 
+instance ():ABIEncode {
+    // a unit256 is written directly into the head
+    function encodeInto(x:(), basePtr:word, offset:word, tail:word) -> word {
+        return tail;
+    }
+}
+
 // abi encoding for a pair of two encodable types
 forall a b . a:ABIAttribs, a:ABIEncode, b:ABIEncode => instance (a,b):ABIEncode {
     function encodeInto(x: (a,b), basePtr: word, offset: word, tail: word) -> word {
@@ -635,6 +679,12 @@ forall reader . reader:WordReader => instance ABIDecoder(uint256, reader):ABIDec
     }
 }
 
+forall reader . reader:WordReader => instance ABIDecoder((), reader):ABIDecode(()) {
+    function decode(ptr:ABIDecoder((), reader), currentHeadOffset:word) -> () {
+        return ();
+    }
+}
+
 // ABI decoding for a pait of decodable values
 // FAIL: Coverage
 forall a b a_decoded b_decoded reader . reader:WordReader, ABIDecoder(b,reader):ABIDecode(b_decoded), ABIDecoder(a,reader):ABIDecode(a_decoded), a:ABIAttribs => instance ABIDecoder((a,b), reader):ABIDecode((a_decoded,b_decoded))
@@ -680,10 +730,10 @@ forall reader tuple tuple_decoded . reader:WordReader, tuple:ABIDecode(tuple_dec
     }
 }
 
-forall reader baseType reader baseType_decoded .baseType : ABIAttribs, reader:WordReader, ABIDecoder(baseType, reader):ABIDecode(baseType_decoded) =>
+forall reader baseType baseType_decoded .baseType : ABIAttribs, reader:WordReader, ABIDecoder(baseType, reader):ABIDecode(baseType_decoded) =>
     instance ABIDecoder(memory(DynArray(baseType)), reader):ABIDecode(memory(DynArray(baseType_decoded)))
 {
-    function decode(ptr:ABIDecoder(memory(DynArray(baseType)), reader), currentHeadOffset:word) -> memory(DynArray(baseType)) {
+    function decode(ptr:ABIDecoder(memory(DynArray(baseType)), reader), currentHeadOffset:word) -> memory(DynArray(baseType_decoded)) {
         let arrayPtr = WordReader.advance(ptr, currentHeadOffset);
         let length = WordReader.read(arrayPtr);
         // this trigger a missing typedef constraint
@@ -713,11 +763,11 @@ function getReader(d:ABIDecoder(ty, reader)) -> reader {
     }
 }
 
- forall baseType baseType_decoded reader . ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded),
+forall baseType baseType_decoded reader . ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded),
      baseType : WordReader =>
      instance ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
  {
-     function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType)) {
+     function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType_decoded)) {
           let newptr = WordReader.advance(ptr, currentHeadOffset);
 	  let reader: CalldataWordReader = getReader(newptr);
           let addr: word = Typedef.rep(reader);
@@ -725,32 +775,17 @@ function getReader(d:ABIDecoder(ty, reader)) -> reader {
      }
  }
 
-//
-// --- Contract Entrypoint ---
-
-forall nm . class nm:Selector {}
-
-forall ty f . f : invokable((),()) => class ty:GenerateDispatch {
-    function dispatch_if_selector_match(x: ty) -> f;
-}
-
-data Dispatch(name, args, retvals, f) = Dispatch(name, args, rets, f);
-
-forall name . name:Selector => function selector_matches(nm : name) -> bool {
-    return true;
-}
-
-forall nm args rets f g . nm:Selector, args:ABIDecode, rets:ABIEncode, f:invokable(args, rets) => instance Dispatch(nm,args,rets,f):GenerateDispatch {
-    function dispatch_if_selector_match(d:Dispatch(nm,args,rets,f)) -> g {
-        return lam() {
-            match d {
-            | Dispatch(name, args, rets, fn) => match selector_matches(name) {
-                | false => return ();
-                | true => return ();
-            }}
-        };
-    }
-}
+// forall nm args rets f g . nm:Selector, args:ABIDecode, rets:ABIEncode, f:invokable(args, rets) => instance Dispatch(nm,args,rets,f):GenerateDispatch {
+//    function dispatch_if_selector_match(d:Dispatch(nm,args,rets,f)) -> g {
+//        return lam() {
+//            match d {
+//            | Dispatch(name, args, rets, fn) => match selector_matches(name) {
+//                | false => return ();
+//                | true => return ();
+//            }}
+//        };
+//    }
+// }
 
 //// /// Translation of the above contract
 //// struct StorageContext {

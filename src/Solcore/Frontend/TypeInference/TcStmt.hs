@@ -674,12 +674,8 @@ tcInstance idecl@(Instance d vs ctx n ts t funs)
       tcInstance' (Instance d [] ctx' n ts' t' funs')
 
 checkConstraint :: Pred -> TcM ()
-checkConstraint p@(InCls n t ts)
-  | n == invokableName = pure ()
-  | otherwise
-    = do
-        _ <- askClassInfo n `wrapError` p
-        mapM_ kindCheck (t : ts) `wrapError` p
+checkConstraint p@(InCls _ t ts) =
+  mapM_ kindCheck (t : ts) `wrapError` p
 checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
 
 tcInstance' :: Instance Name -> TcM (Instance Id)
@@ -697,30 +693,57 @@ tcInstance' idecl@(Instance d vs ctx n ts t funs)
       verifySignatures (Instance d vs1 ctx' n ts' t' funs3)
 
 verifySignatures :: Instance Id -> TcM (Instance Id)
-verifySignatures instd@(Instance d vs ctx n ts t funs)
-  = do
-      -- get the list of class method names from class info
-      names <- methods <$> askClassInfo n `wrapError` instd
-      let qnames = map (QualName n . pretty) names
-      schs <- mapM (\ q -> (q,) <$> askEnv q) qnames `wrapError` instd
-      -- instantiate most general type
-      qts <- mapM (\ (q, s) -> (q,) <$> freshInst s) schs
-      -- build instance member function type scheme
-      fschs <- mapM (\ f -> do
-                  let sig = funSignature f
-                  (sigName sig,) <$> schemeFromSignature sig) funs `wrapError` instd
-      -- instantiate function type scheme
-      fqts <- mapM (\ (q,s) -> (q,) <$> freshInst s) fschs
-      -- combine triples
-      let m = [(q, ct, it) | (q, ct) <- qts, (q', it) <- fqts, q == q']
-      mapM_ checkMemberType m `wrapError` instd
-      pure instd
+verifySignatures instd@(Instance _ _ ps n ts t funs) =
+  do
+    -- get class info
+    mcinfo <- Map.lookup n <$> gets classTable
+    when (isNothing mcinfo) (undefinedClass n) `wrapError` instd 
+    -- building instance constraint
+    let
+      -- this use of fromJust is safe, because is
+      -- guarded by the isNothing test.
+      cinfo = fromJust mcinfo
+      instc = ps :=> (InCls n t ts)
+      classc = classpred cinfo
+      bvarsc = bv classc
+      bvarsi = bv instc
+    -- building the instantiation environments
+    freshc <- mapM (const freshTyVar) bvarsc
+    freshi <- mapM (const freshTyVar) bvarsi
+    let envc = zip bvarsc freshc
+        envi = zip bvarsi freshi
+        (_ :=> ih) = insts envi instc
+        classc' = insts envc classc
+    -- getting matching substitution
+    s <- match classc' ih `wrapError` instd
+    -- getting method types
+    let qnames = map (QualName n . pretty) (methods cinfo)
+    -- getting most general types and instantiate them
+    aqts <- mapM (\q -> do
+                          (Forall _ qt) <- askEnv q
+                          let qt' = insts envc qt
+                              vs' = bv qt'
+                          ts' <- mapM (const freshTyVar) vs'
+                          let env = zip vs' ts'
+                              tyr = insts env qt'
+                          pure (q, apply s tyr)) qnames
+    -- getting infered types
+    iqts <- mapM (\f -> do
+                           let sig = funSignature f
+                           schf <- schemeFromSignature sig
+                           (sigName sig,) <$> freshInst schf) funs
+    -- combine triples
+    sc <- getSubst
+    let m = [(q, it, at') | (q, it) <- iqts, (q', at') <- aqts, q == q']
+    mapM_ checkMemberType m `wrapError` instd
+    pure instd
 
 checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
 checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
   = do
       _ <- match t t' `catchError` (\ _ -> invalidMemberType qn t t')
       pure ()
+
 
 invalidMemberType :: Name -> Ty -> Ty -> TcM a
 invalidMemberType n cls ins
@@ -793,9 +816,13 @@ checkInstance idef@(Instance d vs ctx n ts t funs)
       checkConstraints ctx
       let ipred = InCls n t ts
       -- checking the coverage condition
-      insts <- askInstEnv n `wrapError` ipred
+      insts' <- askInstEnv n `wrapError` ipred
       -- check overlapping only for non-default instances
-      unless d (checkOverlap ipred insts `wrapError` idef)
+      let vs1 = bv ipred 
+      ts1 <- mapM (const freshTyVar) vs1 
+      let env = zip vs1 ts1
+          ipred' = insts env ipred 
+      unless d (checkOverlap ipred' insts' `wrapError` idef)
       -- check if default instance has a type variable as main argument.
       when d (checkDefaultInst (ctx :=> ipred) `wrapError` idef)
       coverage <- askCoverage n

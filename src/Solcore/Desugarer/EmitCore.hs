@@ -21,7 +21,7 @@ import Solcore.Primitives.Primitives
 import Solcore.Desugarer.Specialise(typeOfTcExp)
 import System.Exit
 
-emitCore :: Bool -> TcEnv ->  CompUnit Id -> IO [Core.Contract]
+emitCore :: Bool -> TcEnv ->  CompUnit Id -> IO [Core.Object]
 emitCore debugp env cu = fmap concat $ runEM debugp env $ mapM emitTopDecl (contracts cu)
 
 type EM a = StateT EcState IO a
@@ -103,7 +103,7 @@ type Translation a = EM (a, [Core.Stmt])
 
 type CoreName = String
 
-emitTopDecl :: TopDecl Id -> EM [Core.Contract]
+emitTopDecl :: TopDecl Id -> EM [Core.Object]
 emitTopDecl (TContr c) = fmap pure (emitContract c)
 emitTopDecl (TDataDef dt) = addData dt >> pure []
 emitTopDecl _ = pure []
@@ -116,14 +116,12 @@ buildTConInfo :: DataTy -> TConInfo
 buildTConInfo (DataTy n tvs dcs) = (tvs, map conInfo dcs) where
   conInfo (Constr n ts) = (n, ts)
 -}
-emitContract :: Contract Id -> EM Core.Contract
+emitContract :: Contract Id -> EM Core.Object
 emitContract c = do
     let cname = show (name c)
     writes ["Emitting core for contract ", cname]
     coreBody <- concatMapM emitCDecl (decls c)
-    let result = Core.Contract cname coreBody
-    -- writeln (show result)
-    pure result
+    pure(Core.Object cname coreBody [])
 
 emitCDecl :: ContractDecl Id -> EM [Core.Stmt]
 emitCDecl cd@(CFunDecl f) = do
@@ -491,6 +489,7 @@ translatePatArgs e = Map.fromList . go e where
     go s [PVar i] = [(idName i, s)]
     go s (PVar i:as) = let (s1, s2) = (Core.EFst s, Core.ESnd s) in
         (idName i, s1) : go s2 as
+    go s (PCon _ []:as) = go s as
     go _ (pat:_) = error ("Unimplemented: translatePatArgs _ " ++ pretty pat)
 
 -----------------------------------------------------------------------

@@ -47,13 +47,8 @@ freshVar
 freshName :: TcM Name
 freshName
   = do
-      ds <- Map.keysSet <$> gets ctx
-      vs <- Set.map tyvarName <$> getEnvFreeVarSet
-      let taken = Set.union ds vs
-      ns <- gets nameSupply
-      let (n, ns') = newName $ dropWhile (flip Set.member taken) ns
-      modify (\ ctx -> ctx {nameSupply = ns'})
-      pure n
+      v <- incCounter
+      pure (Name ("$" ++ show v))
 
 incCounter :: TcM Int
 incCounter = do

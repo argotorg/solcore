@@ -11,6 +11,7 @@ std =
   testGroup
     "Standard library"
     [ runTestForFile "std.solc" stdFolder
+    , runTestForFile "dispatch.solc" stdFolder
     ]
  where
   stdFolder = "./std"
@@ -173,6 +174,9 @@ cases =
     , runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder
     , runTestForFile "single-lambda.solc" caseFolder
     , runTestExpectingFailure "duplicated-type-name.solc" caseFolder
+    , runTestExpectingFailure "overlapping-heads.solc" caseFolder
+    , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
+    , runTestForFile "match-yul.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

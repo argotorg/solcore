@@ -6,8 +6,8 @@ import pragma_merge_base;
 
 data VerifyType(x) = VerifyType;
 
-// Would fail without imported pragma no-patterson-condition TestClassP1
-forall A . A:TestClassP1, A:TestClassP2, A:TestClassP3 => instance A:TestClassP1 {}
+// Would fail without imported pragma no-patterson-condition TestClassP3
+forall a . (a,word):TestClassP3 => instance a:TestClassP3(word) {}
 
 // Would fail without imported pragma no-coverage-condition TestClassC1
 forall p q . instance VerifyType(p):TestClassC1(q) {}

@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -Wincomplete-patterns #-}
 {-# LANGUAGE InstanceSigs #-}
 module Language.Core
-  ( Expr(..), Stmt(..), Arg(..), Alt(..), pattern ConAlt, Pat(..), Con(..), Contract(..), Core(..), Body
+  ( Expr(..), Stmt(..), Arg(..), Alt(..), pattern ConAlt, Pat(..), Con(..), Contract(..), Object(..), Body
   , module Language.Core.Types
   ,  pattern SAV
   , Name
@@ -13,6 +13,8 @@ import Language.Core.Types
 import Language.Yul
 
 
+data Object = Object { objName :: Name, objCode :: Body, objInners :: [Object] }
+type Body = [Stmt]
 type Name = String
 
 data Expr
@@ -47,7 +49,6 @@ data Stmt
     | SRevert String
     -- deriving Show
 
-type Body = [Stmt]
 data Arg = TArg Name Type
 instance Show Arg where show = render . ppr
 instance Show Stmt where show :: Stmt -> String
@@ -66,6 +67,19 @@ data Contract = Contract { ccName :: Name, ccStmts ::  [Stmt] }
 newtype Core = Core [Stmt]
 instance Show Core where show = render . ppr
 instance Show Contract where show = render . ppr
+
+
+instance Pretty Object where
+  ppr (Object name code inners) = vcat
+    [ text "object" <+> ppr name <+> lbrace
+    , nest 2 $ vcat
+      [ text "code" <+> lbrace
+      , nest 2 $ ppr code
+      , rbrace
+      ]
+    , nvlist inners
+    , rbrace
+    ]
 
 instance Pretty Contract where
     ppr (Contract n stmts) = text "contract" <+> text n <+> lbrace $$ nest 4 (vcat (map ppr stmts)) $$ rbrace
@@ -139,6 +153,8 @@ instance Pretty Arg where
 instance Pretty Core where
     ppr (Core stmts) = vcat (map ppr stmts)
 
+pprBody :: Body -> Doc
+pprBody stmts = braces $ nest 2 (vcat (map ppr stmts))
 
 instance Pretty [Stmt] where
     ppr stmts = vcat (map ppr stmts)
