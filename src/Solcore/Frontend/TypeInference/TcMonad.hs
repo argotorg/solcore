@@ -168,6 +168,10 @@ isDirectCall n
 checkDataType :: DataTy -> TcM ()
 checkDataType d@(DataTy n vs constrs)
   = do
+      -- check if the type is already defined. 
+      r <- maybeAskTypeInfo n 
+      unless (isNothing r) $ 
+        typeAlreadyDefinedError n `wrapError` d 
       let vals' = map (\ (n, ty) -> (n, Forall (bv ty) ([] :=> ty))) vals
       mapM_ (uncurry extEnv) vals'
       modifyTypeInfo n ti
@@ -643,6 +647,10 @@ typeNotPolymorphicEnough sig sch1 sch2
 undefinedClass :: Name -> TcM a
 undefinedClass n
   = throwError $ unlines ["Undefined class:", pretty n]
+
+typeAlreadyDefinedError :: Name -> TcM a 
+typeAlreadyDefinedError n 
+  = throwError $ unwords ["Duplicated type definition for", pretty n, "!"]
 
 writeln :: String -> TcM ()
 writeln = liftIO . putStrLn
