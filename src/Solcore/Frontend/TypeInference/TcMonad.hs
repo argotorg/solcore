@@ -171,7 +171,7 @@ checkDataType d@(DataTy n vs constrs)
       -- check if the type is already defined. 
       r <- maybeAskTypeInfo n 
       unless (isNothing r) $ 
-        typeAlreadyDefinedError n `wrapError` d 
+        typeAlreadyDefinedError d n 
       let vals' = map (\ (n, ty) -> (n, Forall (bv ty) ([] :=> ty))) vals
       mapM_ (uncurry extEnv) vals'
       modifyTypeInfo n ti
@@ -648,9 +648,30 @@ undefinedClass :: Name -> TcM a
 undefinedClass n
   = throwError $ unlines ["Undefined class:", pretty n]
 
-typeAlreadyDefinedError :: Name -> TcM a 
-typeAlreadyDefinedError n 
-  = throwError $ unwords ["Duplicated type definition for", pretty n, "!"]
+typeAlreadyDefinedError :: DataTy -> Name -> TcM a 
+typeAlreadyDefinedError d n 
+  = do 
+      -- get type info 
+      di <- askTypeInfo n
+      d' <- dataTyFromInfo n di 
+      throwError $ unlines ["Duplicated type definition for " ++ pretty n ++ ":"
+                           , pretty d
+                           , "and"
+                           , pretty d']
+
+dataTyFromInfo :: Name -> TypeInfo -> TcM DataTy 
+dataTyFromInfo n (TypeInfo ar cs _) 
+  = do 
+      -- getting data constructor types 
+      (constrs, vs) <- unzip <$> mapM constrsFromEnv cs
+      pure (DataTy n (concat vs) constrs)
+
+constrsFromEnv :: Name -> TcM (Constr, [Tyvar])
+constrsFromEnv n 
+  = do 
+      (Forall vs (_ :=> ty)) <- askEnv n 
+      let (ts, _) = splitTy ty
+      pure (Constr n ts, vs)
 
 writeln :: String -> TcM ()
 writeln = liftIO . putStrLn
