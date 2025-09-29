@@ -38,7 +38,6 @@ pragma no-coverage-condition ABIDecode, MemoryType;
 
 // --- booleans ---
 
-data bool = true | false;
 
 // TODO: this should short circuit. probably needs some compiler magic to do so.
 function and(x: bool, y: bool) -> bool {

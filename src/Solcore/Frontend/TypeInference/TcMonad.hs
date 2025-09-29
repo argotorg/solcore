@@ -81,7 +81,8 @@ addUniqueType :: Name -> DataTy -> TcM ()
 addUniqueType n dt
   = do
       modify (\ ctx -> ctx{ uniqueTypes = Map.insert n dt (uniqueTypes ctx)})
-      modifyTypeInfo (dataName dt) (typeInfoFor dt)
+      checkDataType dt 
+      -- modifyTypeInfo (dataName dt) (typeInfoFor dt)
 
 lookupUniqueTy :: Name -> TcM (Maybe DataTy)
 lookupUniqueTy n
@@ -653,7 +654,7 @@ typeAlreadyDefinedError d n
   = do 
       -- get type info 
       di <- askTypeInfo n
-      d' <- dataTyFromInfo n di 
+      d' <- dataTyFromInfo n di `wrapError` d 
       throwError $ unlines ["Duplicated type definition for " ++ pretty n ++ ":"
                            , pretty d
                            , "and"

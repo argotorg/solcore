@@ -186,7 +186,7 @@ tcExp (Lit l)
       pure (Lit l, [], t)
 tcExp (Var n)
   = do
-      s <- askEnv n
+      s <- askEnv n `wrapError` (Var n)
       (ps :=> t) <- freshInst s
       noDesugarCalls <- getNoDesugarCalls
       if noDesugarCalls then pure (Var (Id n t), ps , t)
@@ -308,7 +308,7 @@ closureConversion vs args bdy ps ty
         -- updating the type inference state
         writeFunDef fun1
         writeDataTy udt
-        checkDataType udt
+        -- checkDataType udt
         -- type checking generated instance
         checkInstance instd
         extEnv fn sch
@@ -325,7 +325,7 @@ closureConversion vs args bdy ps ty
         info [">> Create lambda lifted function(closure):\n", pretty fun]
         writeFunDef fun
         writeDataTy cdt
-        checkDataType cdt
+        -- checkDataType cdt
         instd <- createInstance cdt fun sch
         checkInstance instd
         extEnv fn sch
@@ -702,7 +702,7 @@ verifySignatures instd@(Instance d vs ctx n ts t funs)
       -- get the list of class method names from class info
       names <- methods <$> askClassInfo n `wrapError` instd
       let qnames = map (QualName n . pretty) names
-      schs <- mapM (\ q -> (q,) <$> askEnv q) qnames
+      schs <- mapM (\ q -> (q,) <$> askEnv q) qnames `wrapError` instd
       -- instantiate most general type
       qts <- mapM (\ (q, s) -> (q,) <$> freshInst s) schs
       -- build instance member function type scheme
@@ -951,7 +951,7 @@ tcBody (s : ss)
 tcCall :: Maybe (Exp Name) -> Name -> [Exp Name] -> TcM (Exp Id, [Pred], Ty)
 tcCall Nothing n args
   = do
-      s <- askEnv n
+      s <- askEnv n `wrapError` (Call Nothing n args)
       (ps :=> t) <- freshInst s
       t' <- freshTyVar
       (es', pss', ts') <- unzip3 <$> mapM tcExp args
@@ -963,7 +963,7 @@ tcCall Nothing n args
 tcCall (Just e) n args
   = do
       (e', ps , ct) <- tcExp e
-      s <- askEnv n
+      s <- askEnv n `wrapError` (Call (Just e) n args)
       (ps1 :=> t) <- freshInst s
       t' <- freshTyVar
       (es', pss', ts') <- unzip3 <$> mapM tcExp args
@@ -1045,13 +1045,13 @@ tcYulExp (YLit l)
   = tcYLit l
 tcYulExp (YIdent v)
   = do
-      sch <- askEnv v
+      sch <- askEnv v `wrapError` (YIdent v)
       (_ :=> t) <- freshInst sch
       unify t word
       pure t
 tcYulExp (YCall n es)
   = do
-      sch <- askEnv n
+      sch <- askEnv n `wrapError` (YCall n es)
       (_ :=> t) <- freshInst sch
       ts <- mapM tcYulExp es
       t' <- freshTyVar

@@ -57,17 +57,7 @@ tcCompUnit (CompUnit imps cs)
       isClass _ = False
       tcTopDecl' d = timeItNamed (shortName d) $ do
         clearSubst
-        addGenDefs
         tcTopDecl d
-
-addGenDefs :: TcM ()
-addGenDefs
-  = do
-      ds <- gets generated
-      mapM_ addGen ds
-    where
-      addGen (TDataDef d) = checkDataType d
-      addGen _ = pure ()
 
 -- setting up pragmas for type checking
 
@@ -114,7 +104,7 @@ tcTopDecl (TMutualDef ts)
       pure (TMutualDef $ map TFunDef ts')
 tcTopDecl (TDataDef d)
   = do
-    checkDataType d
+    -- checkDataType d
     pure (TDataDef d)
 tcTopDecl (TPragmaDecl d)
   = pure (TPragmaDecl d)
@@ -269,7 +259,7 @@ generateTopDeclsFor ps
       gen <- askGeneratingDefs
       if gen then do
         (dts, instds) <- unzip <$> mapM generateDecls ps
-        mapM_ checkDataType dts
+        -- mapM_ checkDataType dts
         s <- getSubst
         clearSubst
         disableBoundVariableCondition (mapM_ checkInstance instds)

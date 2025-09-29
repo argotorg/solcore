@@ -154,7 +154,7 @@ cases =
     , runTestExpectingFailure "patterson-bug.solc" caseFolder
     , runTestExpectingFailure "listeq.solc" caseFolder
     , runTestExpectingFailure "nano-desugared.solc" caseFolder
-    , runTestForFile "uintdesugared.solc" caseFolder
+    , runTestExpectingFailure "uintdesugared.solc" caseFolder
     , runTestForFile "word-match.solc" caseFolder
     , runTestForFile "if-examples.solc" caseFolder
     , runTestForFile "import-std.solc" caseFolder
@@ -172,7 +172,7 @@ cases =
     , runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder
     , runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder
     , runTestForFile "single-lambda.solc" caseFolder
-    , runTestForFile "duplicated-type-name.solc" caseFolder
+    , runTestExpectingFailure "duplicated-type-name.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
