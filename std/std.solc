@@ -595,6 +595,13 @@ instance uint256:ABIEncode {
     }
 }
 
+instance ():ABIEncode {
+    // a unit256 is written directly into the head
+    function encodeInto(x:(), basePtr:word, offset:word, tail:word) -> word {
+        return tail;
+    }
+}
+
 // abi encoding for a pair of two encodable types
 forall a b . a:ABIAttribs, a:ABIEncode, b:ABIEncode => instance (a,b):ABIEncode {
     function encodeInto(x: (a,b), basePtr: word, offset: word, tail: word) -> word {
@@ -669,6 +676,12 @@ forall ty reader . reader:WordReader => instance ABIDecoder(ty, reader):WordRead
 forall reader . reader:WordReader => instance ABIDecoder(uint256, reader):ABIDecode(uint256) {
     function decode(ptr:ABIDecoder(uint256, reader), currentHeadOffset:word) -> uint256 {
         return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : uint256;
+    }
+}
+
+forall reader . reader:WordReader => instance ABIDecoder((), reader):ABIDecode(()) {
+    function decode(ptr:ABIDecoder((), reader), currentHeadOffset:word) -> () {
+        return ();
     }
 }
 
