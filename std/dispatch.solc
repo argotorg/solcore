@@ -189,9 +189,12 @@ forall ty . class ty:RunDispatch {
 }
 
 // We can dispatch to a single executable method with a known selector
-forall m . m:ExecMethod, m:Selector => instance m:RunDispatch {
-  function go(method : m) -> () {
-    match selector_matches(Proxy : Proxy(m)) {
+forall name payability args rets fn
+  . Method(name,payability,args,rets,fn):ExecMethod
+  , Method(name,payability,args,rets,fn):Selector
+=> instance Method(name,payability,args,rets,fn):RunDispatch {
+  function go(method : Method(name,payability,args,rets,fn)) -> () {
+    match selector_matches(Proxy : Proxy(Method(name,payability,args,rets,fn))) {
       | true => ExecMethod.exec(method);
       | false => return ();
     }
