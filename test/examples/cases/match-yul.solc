@@ -1,0 +1,15 @@
+data Wrapper = Wrapper(word);
+contract C {
+    function main() -> word {
+        return foo(Wrapper(1));
+    }
+    function foo(w:Wrapper) -> word {
+        let result : word;
+        match w {
+            | Wrapper(ptr) =>
+                //let ptr2 : word = ptr;
+                assembly { result := calldataload(ptr) }
+        }
+        return result;
+    }
+}

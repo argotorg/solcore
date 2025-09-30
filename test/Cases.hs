@@ -173,6 +173,7 @@ cases =
     , runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder
     , runTestForFile "single-lambda.solc" caseFolder
     , runTestExpectingFailure "overlapping-heads.solc" caseFolder
+    , runTestForFile "match-yul.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
