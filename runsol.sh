@@ -82,7 +82,7 @@ fi
 
 # Execute compilation pipeline
 echo "Compiling to core..."
-if ! cabal exec sol-core -- -f "$file"; then
+if ! cabal run sol-core -- -f "$file"; then
     echo "Error: sol-core compilation failed"
     exit 1
 fi
@@ -93,7 +93,7 @@ if ls ./output*.core 1> /dev/null 2>&1; then
 fi
 
 echo "Generating Yul..."
-if ! cabal exec yule -- "$core" -o "$yulfile"; then
+if ! cabal run yule -- "$core" -o "$yulfile"; then
     echo "Error: yule generation failed"
     exit 1
 fi
