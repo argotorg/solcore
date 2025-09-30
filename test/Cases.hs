@@ -6,6 +6,9 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import System.FilePath
 
+stdFolder :: FilePath
+stdFolder = "./std"
+
 std :: TestTree
 std =
   testGroup
@@ -13,8 +16,6 @@ std =
     [ runTestForFile "std.solc" stdFolder
     , runTestForFile "dispatch.solc" stdFolder
     ]
- where
-  stdFolder = "./std"
 
 spec :: TestTree
 spec =
@@ -177,6 +178,7 @@ cases =
     , runTestExpectingFailure "overlapping-heads.solc" caseFolder
     , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
     , runTestForFile "match-yul.solc" caseFolder
+    , runTestForFile "dispatch.solc" stdFolder
     ]
  where
   caseFolder = "./test/examples/cases"
