@@ -307,18 +307,6 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
   }
 }
 
-// --- Manually Desugared Example ---
-
-// compiler generated
-
 function revert_handler() -> () {
   assembly { revert(0,0) }
-}
-
-// transform
-
-contract C {
-  function add2(x : uint256, y : uint256) -> uint256 {
-    return Add.add(x,y);
-  }
 }
