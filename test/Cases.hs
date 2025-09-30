@@ -167,11 +167,12 @@ cases =
     , runTestForFile "tuva.solc" caseFolder
     , runTestForFile "yul-return.solc" caseFolder
     , runTestForFile "pragma_merge_base.solc" caseFolder
-    , runTestExpectingFailure "pragma_merge_import.solc" caseFolder
-    , runTestExpectingFailure "pragma_merge_verify.solc" caseFolder
+    , runTestForFile "pragma_merge_import.solc" caseFolder
+    , runTestForFile "pragma_merge_verify.solc" caseFolder
     , runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder
     , runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder
     , runTestForFile "single-lambda.solc" caseFolder
+    , runTestExpectingFailure "overlapping-heads.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
