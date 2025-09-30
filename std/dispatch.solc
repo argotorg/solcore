@@ -79,20 +79,31 @@ forall ty . class ty:Selector {
 
 // Computes the selector hash for a given method
 // this is a class with a single instance since it made some of the downstream definitions a bit cleaner to define
+// NOTE: for efficiency purposes this leaves dirty data past the end of the free memory pointer
 forall name payability args rets fn
     . name:ABIString
     , args:ABIString
 => instance Method(name,payability,args,rets,fn):Selector {
     function compute(prx : Proxy(Method(name,payability,args,rets,fn))) -> bytes4 {
+        // setup memory pointers for the selector string
         let head = get_free_memory();
         let tail = Add.add(head, 32);
+
+        // ensure the size is zero
+        assembly { mstore(head, 0) }
+
+        // write the selector string
         tail = ABIString.append(head, tail, Proxy : Proxy(name));
         tail = append_left_bracket(head, tail);
         tail = ABIString.append(head, tail, Proxy : Proxy(args));
         tail = append_right_bracket(head, tail);
 
+        // hash it & get the first four bytes
         let res : word;
-        assembly { res := shr(224, keccak256(add(head, 32), mload(head))) }
+        assembly {
+            let hash := keccak256(add(head, 32), mload(head))
+            res := shr(224, hash)
+        }
         return bytes4(res);
     }
 }
