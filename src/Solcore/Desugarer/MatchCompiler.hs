@@ -13,7 +13,6 @@ import qualified Data.List.NonEmpty as L
 
 import Language.Yul
 
-import Solcore.Desugarer.ReplaceWildcard
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -104,10 +103,9 @@ instance Compile (FunDef Id) where
   type Res (FunDef Id) = FunDef Id
   compile (FunDef sig bd)
     = do
-        bd1 <- replace bd
         let n = sigName sig
         bd' <- local (\ ns -> ns ++ "_" ++ show n)
-                     (compile bd1)
+                     (compile bd)
         return (FunDef sig (concat bd'))
 
 instance Compile (Constructor Id) where
@@ -436,7 +434,6 @@ instance Apply (Stmt Id) where
         bs = concat bss
         ps = concat pss
   ids (Asm yblk) = ids yblk 
-  ids _ = []
 
 instance Apply YulStmt where 
   apply s (YBlock yblk)
@@ -588,4 +585,42 @@ eqnsType :: Equations Id -> Ty
 eqnsType [] = unit
 eqnsType ((_ , ss) : _) = blockType ss
 
+-- Compiler monad infra
 
+type CompilerM a
+  = ReaderT String (ExceptT String
+                   (WriterT [FunDef Id]
+                   (StateT Int IO))) a
+
+mkPrefix :: [Name] -> String
+mkPrefix = intercalate "_" . map show
+
+inc :: CompilerM Int
+inc = do
+  i <- get
+  put (i + 1)
+  return i
+
+freshName :: CompilerM Name
+freshName
+  = do
+        n <- inc
+        -- pre <- ask
+        return (Name ("var_" ++ show n))
+
+freshId :: CompilerM Id
+freshId = Id <$> freshName <*> var
+  where
+    var = (TyVar . TVar) <$> freshName
+
+freshExpVar :: CompilerM (Exp Id)
+freshExpVar
+  = Var <$> freshId
+
+freshPVar :: CompilerM (Pat Id)
+freshPVar
+  = PVar <$> freshId
+
+runCompilerM :: [Name] -> CompilerM a -> IO (Either String a, [FunDef Id])
+runCompilerM ns m
+  = evalStateT (runWriterT (runExceptT (runReaderT m (mkPrefix ns)))) 0

@@ -16,6 +16,7 @@ import qualified Language.Core as Core
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
+import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
 import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.SolcoreParser
@@ -90,9 +91,13 @@ compile opts = runExceptT $ do
     putStrLn "> Indirect call desugaring:"
     putStrLn $ pretty direct
 
+  -- Pattern wildcard desugaring 
+
+  let noWild = replaceWildcard direct 
+
   -- Type inference
   (typed, env) <- ExceptT $ timeItNamed "Typecheck     "
-    (typeInfer opts direct)
+    (typeInfer opts noWild)
 
   liftIO $ when verbose $ do
     putStrLn "> Type inference logs:"
