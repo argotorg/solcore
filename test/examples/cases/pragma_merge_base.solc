@@ -2,7 +2,7 @@
 // This file contains violations of all three condition types with pragmas to disable checks
 
 // Pragmas to disable checks for specific classes
-pragma no-patterson-condition TestClassP1, TestClassB1;
+pragma no-patterson-condition TestClassP1, TestClassB1, TestClassP3;
 pragma no-coverage-condition TestClassC1;
 pragma no-bounded-variable-condition TestClassB1;
 
