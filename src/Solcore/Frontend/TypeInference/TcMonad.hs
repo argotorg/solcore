@@ -77,7 +77,6 @@ addUniqueType n dt
   = do
       modify (\ ctx -> ctx{ uniqueTypes = Map.insert n dt (uniqueTypes ctx)})
       checkDataType dt 
-      -- modifyTypeInfo (dataName dt) (typeInfoFor dt)
 
 lookupUniqueTy :: Name -> TcM (Maybe DataTy)
 lookupUniqueTy n
