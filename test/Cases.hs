@@ -13,45 +13,45 @@ std :: TestTree
 std =
   testGroup
     "Standard library"
-    [ runTestForFile "std.solc" stdFolder
-    , runTestForFile "dispatch.solc" stdFolder
+    [ runSimpleTestForFile "std.solc" stdFolder
+    , runSimpleTestForFile "dispatch.solc" stdFolder
     ]
 
 spec :: TestTree
 spec =
   testGroup
     "Files for spec cases"
-    [ runTestForFile "00answer.solc" specFolder
-    , runTestForFile "01id.solc" specFolder
-    , runTestForFile "02nid.solc" specFolder
-    , runTestForFile "021not.solc" specFolder
-    , runTestForFile "022add.solc" specFolder
-    , runTestForFile "024arith.solc" specFolder
-    , runTestForFile "031maybe.solc" specFolder
-    , runTestForFile "032simplejoin.solc" specFolder
-    , runTestForFile "033join.solc" specFolder
-    , runTestForFile "034cojoin.solc" specFolder
-    , runTestForFile "035padding.solc" specFolder
-    , runTestForFile "036wildcard.solc" specFolder
-    , runTestForFile "037dwarves.solc" specFolder
-    , runTestForFile "038food0.solc" specFolder
-    , runTestForFile "039food.solc" specFolder
-    , runTestForFile "041pair.solc" specFolder
-    , runTestForFile "042triple.solc" specFolder
-    , runTestForFile "043fstsnd.solc" specFolder
-    , runTestForFile "047rgb.solc" specFolder
-    , runTestForFile "048rgb2.solc" specFolder
-    , runTestForFile "06comp.solc" specFolder
-    , runTestForFile "09not.solc" specFolder
-    , runTestForFile "10negBool.solc" specFolder
-    , runTestForFile "11negPair.solc" specFolder
-    , runTestForFile "903badassign.solc" specFolder
-    , runTestForFile "939badfood.solc" specFolder
-    , runTestForFile "SimpleField.solc" specFolder
-    , runTestForFile "121counter.solc" specFolder
-    , runTestForFile "126nanoerc20.solc" specFolder
-    , runTestForFile "127microerc20.solc" specFolder
-    , runTestForFile "128minierc20.solc" specFolder
+    [ runSimpleTestForFile "00answer.solc" specFolder
+    , runSimpleTestForFile "01id.solc" specFolder
+    , runSimpleTestForFile "02nid.solc" specFolder
+    , runSimpleTestForFile "021not.solc" specFolder
+    , runSimpleTestForFile "022add.solc" specFolder
+    , runSimpleTestForFile "024arith.solc" specFolder
+    , runSimpleTestForFile "031maybe.solc" specFolder
+    , runSimpleTestForFile "032simplejoin.solc" specFolder
+    , runSimpleTestForFile "033join.solc" specFolder
+    , runSimpleTestForFile "034cojoin.solc" specFolder
+    , runSimpleTestForFile "035padding.solc" specFolder
+    , runSimpleTestForFile "036wildcard.solc" specFolder
+    , runSimpleTestForFile "037dwarves.solc" specFolder
+    , runSimpleTestForFile "038food0.solc" specFolder
+    , runSimpleTestForFile "039food.solc" specFolder
+    , runSimpleTestForFile "041pair.solc" specFolder
+    , runSimpleTestForFile "042triple.solc" specFolder
+    , runSimpleTestForFile "043fstsnd.solc" specFolder
+    , runSimpleTestForFile "047rgb.solc" specFolder
+    , runSimpleTestForFile "048rgb2.solc" specFolder
+    , runSimpleTestForFile "06comp.solc" specFolder
+    , runSimpleTestForFile "09not.solc" specFolder
+    , runSimpleTestForFile "10negBool.solc" specFolder
+    , runSimpleTestForFile "11negPair.solc" specFolder
+    , runSimpleTestForFile "903badassign.solc" specFolder
+    , runSimpleTestForFile "939badfood.solc" specFolder
+    , runSimpleTestForFile "SimpleField.solc" specFolder
+    , runSimpleTestForFile "121counter.solc" specFolder
+    , runSimpleTestForFile "126nanoerc20.solc" specFolder
+    , runSimpleTestForFile "127microerc20.solc" specFolder
+    , runSimpleTestForFile "128minierc20.solc" specFolder
     ]
  where
   specFolder = "./test/examples/spec"
@@ -60,8 +60,8 @@ imports :: TestTree
 imports =
   testGroup
     "Files for imports cases"
-    [ runTestForFile "booldef.solc" importFolder
-    , runTestForFile "boolmain.solc" importFolder
+    [ runSimpleTestForFile "booldef.solc" importFolder
+    , runSimpleTestForFile "boolmain.solc" importFolder
     ]
  where
   importFolder = "./test/imports"
@@ -71,8 +71,8 @@ pragmas =
   testGroup
     "Files for pragmas cases"
     [ runTestExpectingFailure "bound.solc" pragmaFolder
-    , runTestForFile "coverage.solc" pragmaFolder
-    , runTestForFile "patterson.solc" pragmaFolder
+    , runSimpleTestForFile "coverage.solc" pragmaFolder
+    , runSimpleTestForFile "patterson.solc" pragmaFolder
     ]
  where
   pragmaFolder = "./test/examples/pragmas"
@@ -81,101 +81,101 @@ cases :: TestTree
 cases =
   testGroup
     "Files for folder cases"
-    [ runTestForFile "Ackermann.solc" caseFolder
-    , runTestForFile "app.solc" caseFolder
+    [ runSimpleTestForFile "Ackermann.solc" caseFolder
+    , runSimpleTestForFile "app.solc" caseFolder
     , runTestExpectingFailure "BadInstance.solc" caseFolder
-    , runTestForFile "BoolNot.solc" caseFolder
-    , runTestForFile "Compose.solc" caseFolder
-    , runTestForFile "Compose2.solc" caseFolder
-    , runTestForFile "Compose3.solc" caseFolder
-    , runTestForFile "CondExp.solc" caseFolder
+    , runSimpleTestForFile "BoolNot.solc" caseFolder
+    , runSimpleTestForFile "Compose.solc" caseFolder
+    , runSimpleTestForFile "Compose2.solc" caseFolder
+    , runSimpleTestForFile "Compose3.solc" caseFolder
+    , runSimpleTestForFile "CondExp.solc" caseFolder
     , runTestExpectingFailure "DupFun.solc" caseFolder
-    , runTestForFile "DuplicateFun.solc" caseFolder
-    , runTestForFile "EitherModule.solc" caseFolder
-    , runTestForFile "Id.solc" caseFolder
-    , runTestForFile "IncompleteInstDef.solc" caseFolder
+    , runSimpleTestForFile "DuplicateFun.solc" caseFolder
+    , runSimpleTestForFile "EitherModule.solc" caseFolder
+    , runSimpleTestForFile "Id.solc" caseFolder
+    , runSimpleTestForFile "IncompleteInstDef.solc" caseFolder
     , runTestExpectingFailure "Invokable.solc" caseFolder
-    , runTestForFile "ListModule.solc" caseFolder
-    , runTestForFile "Logic.solc" caseFolder
-    , runTestForFile "Memory1.solc" caseFolder
-    , runTestForFile "Memory2.solc" caseFolder
-    , runTestForFile "Mutuals.solc" caseFolder
-    , runTestForFile "NegPair.solc" caseFolder
-    , runTestForFile "Option.solc" caseFolder
-    , runTestForFile "Pair.solc" caseFolder
+    , runSimpleTestForFile "ListModule.solc" caseFolder
+    , runSimpleTestForFile "Logic.solc" caseFolder
+    , runSimpleTestForFile "Memory1.solc" caseFolder
+    , runSimpleTestForFile "Memory2.solc" caseFolder
+    , runSimpleTestForFile "Mutuals.solc" caseFolder
+    , runSimpleTestForFile "NegPair.solc" caseFolder
+    , runSimpleTestForFile "Option.solc" caseFolder
+    , runSimpleTestForFile "Pair.solc" caseFolder
     , runTestExpectingFailure "PairMatch1.solc" caseFolder
     , runTestExpectingFailure "PairMatch2.solc" caseFolder
-    , runTestForFile "Peano.solc" caseFolder
-    , runTestForFile "PeanoMatch.solc" caseFolder
-    , runTestForFile "RefDeref.solc" caseFolder
+    , runSimpleTestForFile "Peano.solc" caseFolder
+    , runSimpleTestForFile "PeanoMatch.solc" caseFolder
+    , runSimpleTestForFile "RefDeref.solc" caseFolder
     , runTestExpectingFailure "SillyReturn.solc" caseFolder
     , runTestExpectingFailure "SimpleInvoke.solc" caseFolder
-    , runTestForFile "closure-capture-only.solc" caseFolder
-    , runTestForFile "SimpleLambda.solc" caseFolder
-    , runTestForFile "SingleFun.solc" caseFolder
-    , runTestForFile "assembly.solc" caseFolder
-    , runTestForFile "join.solc" caseFolder
-    , runTestForFile "EqQual.solc" caseFolder
+    , runSimpleTestForFile "closure-capture-only.solc" caseFolder
+    , runSimpleTestForFile "SimpleLambda.solc" caseFolder
+    , runSimpleTestForFile "SingleFun.solc" caseFolder
+    , runSimpleTestForFile "assembly.solc" caseFolder
+    , runSimpleTestForFile "join.solc" caseFolder
+    , runSimpleTestForFile "EqQual.solc" caseFolder
     , runTestExpectingFailure "joinErr.solc" caseFolder
-    , runTestForFile "tyexp.solc" caseFolder
-    , runTestForFile "Uncurry.solc" caseFolder
-    , runTestForFile "unit.solc" caseFolder
-    , runTestForFile "memory.solc" caseFolder
-    , runTestForFile "cyclical-defs.solc" caseFolder
-    , runTestForFile "cyclical-defs-inferred.solc" caseFolder
-    , runTestForFile "closure.solc" caseFolder
-    , runTestForFile "noclosure.solc" caseFolder
-    , runTestForFile "constructor-weak-args.solc" caseFolder
+    , runSimpleTestForFile "tyexp.solc" caseFolder
+    , runSimpleTestForFile "Uncurry.solc" caseFolder
+    , runSimpleTestForFile "unit.solc" caseFolder
+    , runSimpleTestForFile "memory.solc" caseFolder
+    , runSimpleTestForFile "cyclical-defs.solc" caseFolder
+    , runSimpleTestForFile "cyclical-defs-inferred.solc" caseFolder
+    , runSimpleTestForFile "closure.solc" caseFolder
+    , runSimpleTestForFile "noclosure.solc" caseFolder
+    , runSimpleTestForFile "constructor-weak-args.solc" caseFolder
     , runTestExpectingFailure "unconstrained-instance.solc" caseFolder
-    , runTestForFile "constrained-instance.solc" caseFolder
-    , runTestForFile "constrained-instance-context.solc" caseFolder
+    , runSimpleTestForFile "constrained-instance.solc" caseFolder
+    , runSimpleTestForFile "constrained-instance-context.solc" caseFolder
     , runTestExpectingFailure "reference.solc" caseFolder
-    , runTestForFile "super-class.solc" caseFolder
-    , runTestForFile "proxy.solc" caseFolder
-    , runTestForFile "another-subst.solc" caseFolder
-    , runTestForFile "morefun.solc" caseFolder
-    , runTestForFile "typedef.solc" caseFolder
+    , runSimpleTestForFile "super-class.solc" caseFolder
+    , runSimpleTestForFile "proxy.solc" caseFolder
+    , runSimpleTestForFile "another-subst.solc" caseFolder
+    , runSimpleTestForFile "morefun.solc" caseFolder
+    , runSimpleTestForFile "typedef.solc" caseFolder
     , runTestExpectingFailure "mainproxy.solc" caseFolder
     , runTestExpectingFailure "complexproxy.solc" caseFolder
     , runTestExpectingFailure "reference-test.solc" caseFolder
-    , runTestForFile "reference-encoding-good.solc" caseFolder
-    , runTestForFile "reference-encoding-good1.solc" caseFolder
+    , runSimpleTestForFile "reference-encoding-good.solc" caseFolder
+    , runSimpleTestForFile "reference-encoding-good1.solc" caseFolder
     , runTestExpectingFailure "default-inst.solc" caseFolder
     , runTestExpectingFailure "default-instance-missing.solc" caseFolder
     , runTestExpectingFailure "default-instance-weak.solc" caseFolder
-    , runTestForFile "tuple-trick.solc" caseFolder
+    , runSimpleTestForFile "tuple-trick.solc" caseFolder
     , runTestExpectingFailure "const-array.solc" caseFolder
-    , runTestForFile "array.solc" caseFolder
-    , runTestForFile "class-context.solc" caseFolder
+    , runSimpleTestForFile "array.solc" caseFolder
+    , runSimpleTestForFile "class-context.solc" caseFolder
     , runTestExpectingFailure "missing-instance.solc" caseFolder
-    , runTestForFile "rec.solc" caseFolder
-    , runTestForFile "undefined.solc" caseFolder
-    , runTestForFile "foo-class.solc" caseFolder
+    , runSimpleTestForFile "rec.solc" caseFolder
+    , runSimpleTestForFile "undefined.solc" caseFolder
+    , runSimpleTestForFile "foo-class.solc" caseFolder
     , runTestExpectingFailure "subsumption-test.solc" caseFolder
     -- failing due to missing assign constraint
     , runTestExpectingFailure "patterson-bug.solc" caseFolder
     , runTestExpectingFailure "listeq.solc" caseFolder
     , runTestExpectingFailure "nano-desugared.solc" caseFolder
-    , runTestForFile "uintdesugared.solc" caseFolder
-    , runTestForFile "word-match.solc" caseFolder
-    , runTestForFile "if-examples.solc" caseFolder
-    , runTestForFile "import-std.solc" caseFolder
+    , runSimpleTestForFile "uintdesugared.solc" caseFolder
+    , runSimpleTestForFile "word-match.solc" caseFolder
+    , runSimpleTestForFile "if-examples.solc" caseFolder
+    , runSimpleTestForFile "import-std.solc" caseFolder
     , runTestExpectingFailure "bound-minimal.solc" caseFolder
     , runTestExpectingFailure "bound-only-test.solc" caseFolder
-    , runTestForFile "bound-with-pragma.solc" caseFolder
+    , runSimpleTestForFile "bound-with-pragma.solc" caseFolder
     , runTestExpectingFailure "withdraw.solc" caseFolder
-    , runTestForFile "bal.solc" caseFolder
-    , runTestForFile "ixa.solc" caseFolder
-    , runTestForFile "tuva.solc" caseFolder
-    , runTestForFile "yul-return.solc" caseFolder
-    , runTestForFile "pragma_merge_base.solc" caseFolder
-    , runTestForFile "pragma_merge_import.solc" caseFolder
-    , runTestForFile "pragma_merge_verify.solc" caseFolder
+    , runSimpleTestForFile "bal.solc" caseFolder
+    , runSimpleTestForFile "ixa.solc" caseFolder
+    , runSimpleTestForFile "tuva.solc" caseFolder
+    , runSimpleTestForFile "yul-return.solc" caseFolder
+    , runSimpleTestForFile "pragma_merge_base.solc" caseFolder
+    , runSimpleTestForFile "pragma_merge_import.solc" caseFolder
+    , runSimpleTestForFile "pragma_merge_verify.solc" caseFolder
     , runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder
     , runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder
-    , runTestForFile "single-lambda.solc" caseFolder
-    , runTestForFile "match-yul.solc" caseFolder
-    , runTestForFile "dispatch.solc" stdFolder
+    , runSimpleTestForFile "single-lambda.solc" caseFolder
+    , runSimpleTestForFile "match-yul.solc" caseFolder
+    , runSimpleTestForFile "dispatch.solc" stdFolder
     ]
  where
   caseFolder = "./test/examples/cases"
@@ -184,6 +184,10 @@ cases =
 
 type FileName = String
 type BaseFolder = String
+
+runSimpleTestForFile :: FileName -> BaseFolder -> TestTree
+runSimpleTestForFile file folder = runTestForFileWith option file folder where
+  option = stdOpt { optNoGenDispatch = True }
 
 runTestForFile :: FileName -> BaseFolder -> TestTree
 runTestForFile file folder = runTestForFileWith (emptyOption mempty) file folder
