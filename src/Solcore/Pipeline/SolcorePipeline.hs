@@ -93,7 +93,10 @@ compile opts = runExceptT $ do
 
   -- Pattern wildcard desugaring 
 
-  let noWild = replaceWildcard direct 
+  let noWild = replaceWildcard direct
+  liftIO $ when verbose $ do 
+    putStrLn "> Pattern wildcard desugaring:"
+    putStrLn $ pretty noWild
 
   -- Type inference
   (typed, env) <- ExceptT $ timeItNamed "Typecheck     "
