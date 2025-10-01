@@ -23,9 +23,8 @@ forall a b . class a:TestClassB2(b) {}
 data TestType1(x) = TestType1;
 data TestType2 = TestType2;
 
-// --- Patterson Condition ---
-
-forall U . U:TestClassP1, U:TestClassP2, U:TestClassP3 => instance (U,word):TestClassP1 {}
+// Fails Patterson: context constraint not smaller then head
+forall U . (U,word):TestClassP1 => instance U:TestClassP1 {}
 
 // Patterson OK: No context predicates
 instance TestType2:TestClassP2 {}
