@@ -4,11 +4,12 @@ set -euo pipefail
 
 # Check for input file
 if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 <file.solc> [options]"
+    echo "Usage: $0 file.solc [options]"
     echo "Options:"
-    echo "  --calldata <sig> [args...]  Generate calldata using cast calldata"
-    echo "  --raw-calldata <hex>         Pass raw calldata directly to hevm"
-    echo "  --callvalue <value>         Pass callvalue to hevm (in wei)"
+    echo "  --calldata sig [args...]  Generate calldata using cast calldata"
+    echo "  --raw-calldata hex        Pass raw calldata directly to geth"
+    echo "  --callvalue value         Pass callvalue to geth (in wei)"
+    echo "  --debug                   Explore the evm execution in the interactive debugger"
     exit 1
 fi
 
@@ -22,16 +23,20 @@ if [[ ! -f "$file" ]]; then
 fi
 
 echo "Processing: $file"
+root_dir="$(cd "$(dirname "$(readlink --canonicalize "${BASH_SOURCE[0]}")")" && pwd)"
+build_dir="$root_dir/build"
 base=$(basename "$file" .solc)
-core=build/output1.core
-hexfile=build/$base.hex
-yulfile=build/$base.yul
+core="$build_dir/output1.core"
+hexfile="$build_dir/$base.hex"
+yulfile="$build_dir/$base.yul"
+tracefile="$build_dir/trace.jsonl"
 
 # Parse arguments
 calldata_sig=""
 calldata_args=()
 raw_calldata=""
 callvalue=""
+debug=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -66,6 +71,10 @@ while [[ $# -gt 0 ]]; do
             fi
             callvalue=$1
             shift
+            ;;
+        --debug)
+            shift
+            debug=true
             ;;
         *)
             echo "Error: Unknown option: $1"
@@ -106,31 +115,49 @@ fi
 
 echo "Hex output: $hexfile"
 
-# Build and execute hevm command
-hevm_cmd="hevm exec --code-file $hexfile"
+# Build and execute evm command
+evm_cmd="evm run --trace --trace.nomemory=false --trace.noreturndata=false --codefile $hexfile"
 
 if [[ -n "$calldata_sig" ]]; then
     if ! calldata=$(cast calldata "$calldata_sig" "${calldata_args[@]}"); then
         echo "Error: Failed to generate calldata"
         exit 1
     fi
-    hevm_cmd="$hevm_cmd --calldata $calldata"
+    evm_cmd="$evm_cmd --input $calldata"
 elif [[ -n "$raw_calldata" ]]; then
-    hevm_cmd="$hevm_cmd --calldata $raw_calldata"
+    evm_cmd="$evm_cmd --input $raw_calldata"
 fi
 
 if [[ -n "$callvalue" ]]; then
-    hevm_cmd="$hevm_cmd --value $callvalue"
+    evm_cmd="$evm_cmd --value $callvalue"
 fi
 
 echo "Executing..."
-output=$(eval "$hevm_cmd" 2>&1) || true
-echo "$output"
+output=$(eval "$evm_cmd" 2>&1) || true
+echo "$output" > "$tracefile"
 
-# Check if output is a Return value and attempt to decode it
-if [[ "$output" =~ ^\"?Return:\ (0x[0-9a-fA-F]+)\"?$ ]]; then
-    return_data="${BASH_REMATCH[1]}"
-    if [[ ${#return_data} -eq 66 ]]; then  # 0x + 64 hex chars = 32 bytes
-        echo "Decoded: $(cast --to-dec "$return_data")"
+result=$(jq -sr 'last | .output' "$tracefile")
+error=$(jq -sr 'last | .error' "$tracefile")
+
+if [[ "$debug" == "true" ]]; then
+    traceview "$tracefile"
+fi
+
+if [[ "$error" == "null" ]]; then
+    if [[ -n "$calldata_sig" ]]; then
+        echo "Execution successful"
+        # Remove quotes from result and decode
+        if [[ -n "$result" ]]; then
+            decoded=$(cast abi-decode "$calldata_sig" "0x$result")
+            echo "Decoded output: $decoded"
+        else
+            echo "No return data to decode"
+        fi
+    else
+      echo "Execution successful"
+      echo "returndata: 0x${result}"
     fi
+else
+    echo "Execution failed: $error"
+    echo "returndata: 0x$result"
 fi
