@@ -48,7 +48,7 @@ freshName :: TcM Name
 freshName
   = do
       v <- incCounter
-      pure (Name ("v" ++ show v))
+      pure (Name ("$" ++ show v))
 
 incCounter :: TcM Int
 incCounter = do
