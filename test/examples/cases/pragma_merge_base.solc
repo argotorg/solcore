@@ -25,7 +25,6 @@ data TestType2 = TestType2;
 
 // --- Patterson Condition ---
 
-// Fails Patterson: Context measure (3 predicates) > conclusion measure (TestType1(U):TestClassP1)
 forall U . U:TestClassP1, U:TestClassP2, U:TestClassP3 => instance (U,word):TestClassP1 {}
 
 // Patterson OK: No context predicates
