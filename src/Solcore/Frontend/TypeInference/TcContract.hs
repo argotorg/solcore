@@ -104,7 +104,6 @@ tcTopDecl (TMutualDef ts)
       pure (TMutualDef $ map TFunDef ts')
 tcTopDecl (TDataDef d)
   = do
-    -- checkDataType d
     pure (TDataDef d)
 tcTopDecl (TPragmaDecl d)
   = pure (TPragmaDecl d)
