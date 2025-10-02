@@ -324,7 +324,6 @@ closureConversion vs args bdy ps ty
         info [">> Create lambda lifted function(closure):\n", pretty fun]
         writeFunDef fun
         writeDataTy cdt
-        -- checkDataType cdt
         instd <- createInstance cdt fun sch
         checkInstance instd
         extEnv fn sch
