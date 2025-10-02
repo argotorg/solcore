@@ -775,21 +775,6 @@ forall baseType baseType_decoded reader . ABIDecoder(baseType, CalldataWordReade
      }
  }
 
-//
-// --- Contract Entrypoint ---
-
-forall nm . class nm:Selector {}
-
-forall ty f . f : invokable((),()) => class ty:GenerateDispatch {
-    function dispatch_if_selector_match(x: ty) -> f;
-}
-
-data Dispatch(name, args, retvals, f) = Dispatch(name, args, rets, f);
-
-forall name . name:Selector => function selector_matches(nm : name) -> bool {
-    return true;
-}
-
 // forall nm args rets f g . nm:Selector, args:ABIDecode, rets:ABIEncode, f:invokable(args, rets) => instance Dispatch(nm,args,rets,f):GenerateDispatch {
 //    function dispatch_if_selector_match(d:Dispatch(nm,args,rets,f)) -> g {
 //        return lam() {
