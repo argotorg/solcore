@@ -2,21 +2,22 @@
 // This file contains violations of all three condition types with pragmas to disable checks
 
 // Pragmas to disable checks for specific classes
-pragma no-patterson-condition TestClassP1, TestClassB1, TestClassP3;
-pragma no-coverage-condition TestClassC1;
-pragma no-bounded-variable-condition TestClassB1;
+pragma no-patterson-condition TestClassP1, TestClassB1, TestClassP3, TestClassB3;
+pragma no-coverage-condition TestClassC1, TestClassP3;
+pragma no-bounded-variable-condition TestClassB1, TestClassB3;
 
 // --- Test Classes ---
 
 forall a . class a:TestClassP1 {}
 forall a . class a:TestClassP2 {}
-forall a . class a:TestClassP3 {}
+forall a b . class a:TestClassP3(b) {}
 
 forall a b . class a:TestClassC1(b) {}
 forall a b c . class a:TestClassC2(b,c) {}
 
 forall a . class a:TestClassB1 {}
 forall a b . class a:TestClassB2(b) {}
+forall a . class a:TestClassB3 {}
 
 // --- Data Types ---
 
