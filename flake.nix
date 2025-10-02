@@ -8,9 +8,9 @@
       url = "github:shazow/foundry.nix/stable";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    hevm = {
-      url = "github:ethereum/hevm";
-      inputs.nixpkgs.follows = "nixpkgs";
+    goevmlab = {
+      url = "github:holiman/goevmlab";
+      flake = false;
     };
   };
 
@@ -22,7 +22,7 @@
           inherit system;
           overlays = [ inputs.foundry.overlay ];
         };
-        hspkgs = pkgs.haskell.packages.ghc982;
+        hspkgs = pkgs.haskell.packages.ghc98;
 
         gitignore = pkgs.nix-gitignore.gitignoreSourcePure [ ./.gitignore ];
         sol-core = hspkgs.callCabal2nix "sol-core" (gitignore ./.) { };
@@ -36,17 +36,19 @@
         apps.sol-core = inputs.flake-utils.lib.mkApp { drv = packages.sol-core; };
         apps.default = apps.sol-core;
 
-        devShells.default = hspkgs.shellFor {
-          packages = _: [ sol-core ];
-          buildInputs = [
-            inputs.hevm.packages.${system}.default
-            hspkgs.cabal-install
-            hspkgs.haskell-language-server
-            pkgs.foundry-bin
-            pkgs.solc
-            texlive
-          ];
-        };
+         devShells.default = hspkgs.shellFor {
+           packages = _: [ sol-core ];
+           buildInputs = [
+             hspkgs.cabal-install
+             hspkgs.haskell-language-server
+             pkgs.foundry-bin
+             pkgs.go-ethereum
+             pkgs.jq
+             pkgs.solc
+             texlive
+             (pkgs.callPackage ./nix/goevmlab.nix { src = inputs.goevmlab; })
+           ];
+         };
       }
     );
 }
