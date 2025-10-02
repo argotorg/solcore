@@ -30,13 +30,70 @@ the established conventions and practical utility of Classic Solidity where appr
 
 The language's theoretical foundation comprises several formally-specified features that 
 provide enhanced type safety and expressivity. In what follows, we provide an overview 
-of such features:
+of such features. However, we warn the reader that the current Core Solidity prototype 
+uses a syntax which is similar, but not identical, to Classic Solidity. Since our initial 
+concern is to develop the new language type system and its semantics. The surface syntax 
+would probably change in the near future. All presented examples work in the current 
+prototype.
 
 ### Generics and Type Classes: Formal Abstraction Mechanisms
 
-Generics enable parametric polymorphism through type parameters, which eases the task of 
-implementing algorithms and data structures that operate uniformly across over all types. 
+Core Solidity will introduce two new exciting abstraction mechanisms: generics and 
+type classes.
+
+Generics enable parametric polymorphism through type parameters, which allows the  
+implementation of algorithms and data structures that operate uniformly across 
+over all types. As an example, we could define a polymorphic `identity` function:
+
+``` 
+forall a . function identity(x : a) -> a {
+   return x;
+}
+```
+
+While generic functions are interesting, most interesting operations are not defined 
+at all types. Overloading allows the definition of code which can operate in distinct 
+ways at different types. Type classes are the standard way of combining overloading and 
+parametric polymorphism (generics) in a systematic manner. A type class definition 
+declares the class name, its arguments and member functions type signature. As an 
+example, let's consider the task of defining addition over different types:
+
+```
+function a . class a : Sum {
+  function sum (x : a, y : a) -> a;
+}
+```
+Implementations for member functions for different types are provided by instance 
+definitions. As an example, let's consider the implementation of `Sum` for 
+`word` type. 
+```
+instance word : Sum {
+  function sum (x : word, y : word) -> word {
+    let res : word ;
+    assembly {
+      res := add(x,y);
+    }
+    return res;
+  }
+}
+```
+
 Type Classes allows the constrain these type parameters by specifying required interfaces, establishing compile-time guarantees about type capabilities. This approach provides a more mathematically sound alternative to inheritance-based polymorphism.
+
+### Type inference
+
+Core Solidity uses type inference algorithm to reduce syntactic verbosity while 
+maintaining the strong static typing guarantees essential for secure smart contract 
+development. The type inference occurs during compilation and provides complete 
+type safety without explicit annotations.
+
+```
+let constant_value = 42; // Inferred as uint256
+let heterogeneous_tuple = (address(0), true, 42); // Inferred as (address, bool, word)
+```
+
+
+
 
 Code Example:
 solidity
