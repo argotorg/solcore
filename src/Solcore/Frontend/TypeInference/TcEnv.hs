@@ -142,7 +142,6 @@ primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
                            , (Name "()", unitTypeInfo)
                            , (Name "bool", boolTypeInfo)
                            , (Name "sum", sumTypeInfo)
-                           , (Name "string", stringTypeInfo)
                            ]
 
 primInstEnv :: InstTable

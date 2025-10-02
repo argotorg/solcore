@@ -76,7 +76,7 @@ addUniqueType :: Name -> DataTy -> TcM ()
 addUniqueType n dt
   = do
       modify (\ ctx -> ctx{ uniqueTypes = Map.insert n dt (uniqueTypes ctx)})
-      modifyTypeInfo (dataName dt) (typeInfoFor dt)
+      checkDataType dt 
 
 lookupUniqueTy :: Name -> TcM (Maybe DataTy)
 lookupUniqueTy n
@@ -163,6 +163,10 @@ isDirectCall n
 checkDataType :: DataTy -> TcM ()
 checkDataType d@(DataTy n vs constrs)
   = do
+      -- check if the type is already defined. 
+      r <- maybeAskTypeInfo n 
+      unless (isNothing r) $ 
+        typeAlreadyDefinedError d n 
       let vals' = map (\ (n, ty) -> (n, Forall (bv ty) ([] :=> ty))) vals
       mapM_ (uncurry extEnv) vals'
       modifyTypeInfo n ti
@@ -638,6 +642,31 @@ typeNotPolymorphicEnough sig sch1 sch2
 undefinedClass :: Name -> TcM a
 undefinedClass n
   = throwError $ unlines ["Undefined class:", pretty n]
+
+typeAlreadyDefinedError :: DataTy -> Name -> TcM a 
+typeAlreadyDefinedError d n 
+  = do 
+      -- get type info 
+      di <- askTypeInfo n
+      d' <- dataTyFromInfo n di `wrapError` d 
+      throwError $ unlines ["Duplicated type definition for " ++ pretty n ++ ":"
+                           , pretty d
+                           , "and"
+                           , pretty d']
+
+dataTyFromInfo :: Name -> TypeInfo -> TcM DataTy 
+dataTyFromInfo n (TypeInfo ar cs _) 
+  = do 
+      -- getting data constructor types 
+      (constrs, vs) <- unzip <$> mapM constrsFromEnv cs
+      pure (DataTy n (concat vs) constrs)
+
+constrsFromEnv :: Name -> TcM (Constr, [Tyvar])
+constrsFromEnv n 
+  = do 
+      (Forall vs (_ :=> ty)) <- askEnv n 
+      let (ts, _) = splitTy ty
+      pure (Constr n ts, vs)
 
 writeln :: String -> TcM ()
 writeln = liftIO . putStrLn
