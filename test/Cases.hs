@@ -155,7 +155,7 @@ cases =
     , runTestExpectingFailure "patterson-bug.solc" caseFolder
     , runTestExpectingFailure "listeq.solc" caseFolder
     , runTestExpectingFailure "nano-desugared.solc" caseFolder
-    , runTestExpectingFailure "uintdesugared.solc" caseFolder
+    , runTestForFile "uintdesugared.solc" caseFolder
     , runTestForFile "word-match.solc" caseFolder
     , runTestForFile "if-examples.solc" caseFolder
     , runTestForFile "import-std.solc" caseFolder
