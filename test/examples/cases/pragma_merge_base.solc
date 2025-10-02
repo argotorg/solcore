@@ -2,31 +2,30 @@
 // This file contains violations of all three condition types with pragmas to disable checks
 
 // Pragmas to disable checks for specific classes
-pragma no-patterson-condition TestClassP1, TestClassB1;
-pragma no-coverage-condition TestClassC1;
-pragma no-bounded-variable-condition TestClassB1;
+pragma no-patterson-condition TestClassP1, TestClassB1, TestClassP3, TestClassB3;
+pragma no-coverage-condition TestClassC1, TestClassP3;
+pragma no-bounded-variable-condition TestClassB1, TestClassB3;
 
 // --- Test Classes ---
 
 forall a . class a:TestClassP1 {}
 forall a . class a:TestClassP2 {}
-forall a . class a:TestClassP3 {}
+forall a b . class a:TestClassP3(b) {}
 
 forall a b . class a:TestClassC1(b) {}
 forall a b c . class a:TestClassC2(b,c) {}
 
 forall a . class a:TestClassB1 {}
 forall a b . class a:TestClassB2(b) {}
+forall a . class a:TestClassB3 {}
 
 // --- Data Types ---
 
 data TestType1(x) = TestType1;
 data TestType2 = TestType2;
 
-// --- Patterson Condition ---
-
-// Fails Patterson: Context measure (3 predicates) > conclusion measure (TestType1(U):TestClassP1)
-forall U . U:TestClassP1, U:TestClassP2, U:TestClassP3 => instance U:TestClassP1 {}
+// Fails Patterson: context constraint not smaller then head
+forall U . (U,word):TestClassP1 => instance U:TestClassP1 {}
 
 // Patterson OK: No context predicates
 instance TestType2:TestClassP2 {}
