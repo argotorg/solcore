@@ -38,7 +38,7 @@ pragma no-coverage-condition ABIDecode, MemoryType;
 
 // --- booleans ---
 
-/ TODO: this should short circuit. probably needs some compiler magic to do so.
+// TODO: this should short circuit. probably needs some compiler magic to do so.
 function and(x: bool, y: bool) -> bool {
     match x, y {
     | true, y => return y;
@@ -337,7 +337,7 @@ data bytes;
 // --- strings ---
 
 // TODO: should this be a typedef over `bytes`?
-data string;
+// data string;
 
 // --- slices (sized pointers) ---
 
