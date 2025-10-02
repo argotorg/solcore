@@ -308,7 +308,6 @@ closureConversion vs args bdy ps ty
         -- updating the type inference state
         writeFunDef fun1
         writeDataTy udt
-        -- checkDataType udt
         -- type checking generated instance
         checkInstance instd
         extEnv fn sch
