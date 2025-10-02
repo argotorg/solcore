@@ -56,6 +56,15 @@ spec =
  where
   specFolder = "./test/examples/spec"
 
+dispatches :: TestTree
+dispatches =
+  testGroup
+    "Files for dispatch cases"
+    [ runDispatchTest "basic.solc"
+    ]
+ where
+  runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
+
 imports :: TestTree
 imports =
   testGroup
@@ -178,7 +187,6 @@ cases =
     , runTestExpectingFailure "overlapping-heads.solc" caseFolder
     , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
     , runTestForFile "match-yul.solc" caseFolder
-    , runTestForFile "dispatch.solc" stdFolder
     ]
  where
   caseFolder = "./test/examples/cases"
@@ -189,7 +197,9 @@ type FileName = String
 type BaseFolder = String
 
 runTestForFile :: FileName -> BaseFolder -> TestTree
-runTestForFile file folder = runTestForFileWith (emptyOption mempty) file folder
+runTestForFile file folder = runTestForFileWith option file folder
+  where
+    option = stdOpt { optNoGenDispatch = True }
 
 runTestForFileWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestForFileWith opts file folder =
@@ -201,8 +211,9 @@ runTestForFileWith opts file folder =
       Right _ -> return ()
 
 runTestExpectingFailure :: FileName -> BaseFolder -> TestTree
-runTestExpectingFailure file folder
-  = runTestExpectingFailureWith (emptyOption mempty) file folder
+runTestExpectingFailure file folder = runTestExpectingFailureWith option file folder
+  where
+    option = stdOpt { optNoGenDispatch = True }
 
 runTestExpectingFailureWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestExpectingFailureWith opts file folder =
