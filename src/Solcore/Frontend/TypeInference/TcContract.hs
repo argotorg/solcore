@@ -258,7 +258,6 @@ generateTopDeclsFor ps
       gen <- askGeneratingDefs
       if gen then do
         (dts, instds) <- unzip <$> mapM generateDecls ps
-        -- mapM_ checkDataType dts
         s <- getSubst
         clearSubst
         disableBoundVariableCondition (mapM_ checkInstance instds)
