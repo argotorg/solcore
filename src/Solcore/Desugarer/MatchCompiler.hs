@@ -605,7 +605,6 @@ freshName :: CompilerM Name
 freshName
   = do
         n <- inc
-        -- pre <- ask
         return (Name ("var_" ++ show n))
 
 freshId :: CompilerM Id
