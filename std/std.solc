@@ -337,7 +337,7 @@ data bytes;
 // --- strings ---
 
 // TODO: should this be a typedef over `bytes`?
-// data string;
+data string;
 
 // --- slices (sized pointers) ---
 
