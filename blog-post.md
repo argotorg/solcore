@@ -3,26 +3,25 @@
 Solidity earned its place as the de facto language for smart contracts by 
 prioritizing developer accessibility. Its early design leveraged familiar 
 high-level abstractions to onboard programmers.
-
 While safety was always a goal, it was the history of contract exploits that 
-forged it into the language's highest priority. This relentless focus on 
-security transformed Solidity, making it stricter over time.
-This necessary transformation, however, came with consequences. The language 
-now exhibits the scars of its journey-accumulated complexity and a type system 
+forged it into the language's highest priority. This focus on security 
+transformed Solidity, making it stricter over time.
+This necessary changes, however, came with consequences. The language 
+now exhibits the scars of its accumulated complexity and a type system 
 that has become a barrier to its own evolution. Foundational features like 
 generics (aka parametric polymorphism) remain out of reach, as integrating them 
 into the current architecture is both difficult and dangerously prone to 
 introduce critical flaws.
 
-Tinkering at the edges is no longer a viable path. To break this impasse, 
-the Argot collective decided to embark on a fundamental rebuild. This is Core 
-Solidity: a project to define a new, foundational version of the language designed 
-for security, clarity, and future growth from the ground up.
+Aiming to break this impasse, the Argot collective decided to embark on a 
+fundamental rebuild, which is named Core Solidity: a project to define a new, 
+foundational version of the language designed for security, clarity, and 
+future growth from the ground up.
 
 
 ## What is Core Solidity?
 
-Core Solidity design took inspiration from well established concepts from functional 
+The design of Core Solidity took inspiration from well established concepts from functional 
 programming, with Haskell serving as a primary influence, while incorporating rigorous 
 safety guarantees inspired by modern systems programming languages such as Rust. 
 Although this architectural direction represents a significant evolution, it keeps 
@@ -30,15 +29,34 @@ the domain-specific requirements of smart contract development, preserving
 the established conventions and practical utility of Classic Solidity where appropriate.
 
 The language's theoretical foundation comprises several formally-specified features that 
-provide enhanced type safety and expressivity.
+provide enhanced type safety and expressivity. In what follows, we provide an overview 
+of such features:
 
+### Generics and Type Classes: Formal Abstraction Mechanisms
 
+Generics enable parametric polymorphism through type parameters, which eases the task of 
+implementing algorithms and data structures that operate uniformly across over all types. 
+Type Classes allows the constrain these type parameters by specifying required interfaces, establishing compile-time guarantees about type capabilities. This approach provides a more mathematically sound alternative to inheritance-based polymorphism.
 
-Core Solidity draws inspiration from functional languages, primarily Haskell, and
-is strongly influenced by modern, safety-oriented languages like Rust. Of course, 
-the undeniable influence of "Classic" Solidity is also present.
+Code Example:
+solidity
 
-The core of the language is built around powerful, expressive features:
+// Type class definition specifying algebraic structure
+trait Monoid<T> {
+    function empty() external pure returns (T);
+    function combine(T a, T b) external pure returns (T);
+}
+
+// Generic implementation constrained by type class
+impl Monoid<uint256> for uint256 {
+    function empty() public pure returns (uint256) {
+        return 0;
+    }
+    
+    function combine(uint256 a, uint256 b) public pure returns (uint256) {
+        return a + b;
+    }
+}
 
 - Generics and Type Classes
 
