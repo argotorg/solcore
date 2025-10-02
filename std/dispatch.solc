@@ -307,40 +307,6 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
   }
 }
 
-// --- Manually Desugared Example ---
-
-// compiler generated
-
 function revert_handler() -> () {
   assembly { revert(0,0) }
-}
-
-data C_Add2_Name;
-
-instance C_Add2_Name:ABIString {
-    function append(head : word, tail : word, prx : Proxy(C_Add2_Name)) -> word {
-        let size = 4;
-        assembly {
-            mstore(head, add(mload(head), size));
-            mstore(tail, 0x6164643200000000000000000000000000000000000000000000000000000000);
-        }
-        return Add.add(tail, size);
-    }
-}
-
-// transform
-
-contract C {
-  function add2(x : uint256, y : uint256) -> uint256 {
-    return Add.add(x,y);
-  }
-
-  function main() -> () {
-    let c = Contract(
-      Method(Proxy: Proxy(C_Add2_Name), Proxy : Proxy(NonPayable), Proxy : Proxy((uint256,uint256)), Proxy : Proxy(uint256), add2),
-      Fallback(Proxy : Proxy(NonPayable), Proxy : Proxy(()), Proxy : Proxy(()), revert_handler)
-    );
-
-    RunContract.exec(c);
-  }
 }
