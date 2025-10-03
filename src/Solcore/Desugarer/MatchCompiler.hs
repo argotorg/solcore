@@ -11,7 +11,8 @@ import Data.Either
 import Data.List
 import qualified Data.List.NonEmpty as L
 
-import Solcore.Desugarer.ReplaceWildcard
+import Language.Yul
+
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -102,10 +103,9 @@ instance Compile (FunDef Id) where
   type Res (FunDef Id) = FunDef Id
   compile (FunDef sig bd)
     = do
-        bd1 <- replace bd
         let n = sigName sig
         bd' <- local (\ ns -> ns ++ "_" ++ show n)
-                     (compile bd1)
+                     (compile bd)
         return (FunDef sig (concat bd'))
 
 instance Compile (Constructor Id) where
@@ -116,6 +116,23 @@ instance Compile (Constructor Id) where
 instance Compile (Stmt Id) where
   type Res (Stmt Id) = [Stmt Id]
 
+  compile (lhs := rhs) 
+    = do 
+        lhs' <- compile lhs 
+        rhs' <- compile rhs 
+        pure [lhs' := rhs']
+  compile (Let v mt me)
+    = do 
+        me' <- compile me 
+        pure [Let v mt me']
+  compile (StmtExp e) 
+    = do 
+        e' <- compile e 
+        pure [StmtExp e']
+  compile (Return e)
+    = do 
+        e' <- compile e 
+        pure [Return e']
   compile (Match es eqns)
     = do
         v <- matchError
@@ -127,6 +144,26 @@ instance Compile (Stmt Id) where
         blk2' <- compile blk2
         pure [If e (concat blk1') (concat blk2')]
   compile s = return [s]
+
+instance Compile (Exp Id) where 
+  type Res (Exp Id) = Exp Id 
+
+  compile (Var v) 
+    = pure (Var v)
+  compile (Con v es)
+    = Con v <$> compile es 
+  compile (FieldAccess me v)
+    = flip FieldAccess v <$> compile me 
+  compile (Call me v es)
+    = do 
+        me' <- compile me 
+        es' <- compile es 
+        pure (Call me' v es')
+  compile (TyExp e ty)
+    = flip TyExp ty <$> compile e 
+  compile (Cond e1 e2 e3)
+    = Cond <$> compile e1 <*> compile e2 <*> compile e3 
+  compile e = pure e 
 
 -- Algorithm main function
 
@@ -381,7 +418,7 @@ instance Apply (Stmt Id) where
     = Match (apply s es) (apply s eqns)
   apply s (If e blk1 blk2)
     = If (apply s e) (apply s blk1) (apply s blk2)
-  apply s stmt@Asm{} = stmt
+  apply s (Asm yblk) = Asm (apply s yblk)
 
   ids (e1 := e2) = ids [e1, e2]
   ids (Let n _ me) = [x | x <- ids me, n /= x]
@@ -396,6 +433,55 @@ instance Apply (Stmt Id) where
         (pss, bss) = unzip eqns
         bs = concat bss
         ps = concat pss
+  ids (Asm yblk) = ids yblk 
+
+instance Apply YulStmt where 
+  apply s (YBlock yblk)
+    = YBlock (apply s yblk)
+  apply s (YFun n yargs yret yblk)
+    = YFun n yargs yret (apply s yblk)
+  apply s (YLet ns me)
+    = YLet ns (apply s me)
+  apply s (YAssign ns e)
+    = YAssign ns (apply s e)
+  apply s (YIf e yblk)
+    = YIf (apply s e) (apply s yblk)
+  apply s (YSwitch e ycs ydf)
+    = YSwitch (apply s e) (apply s ycs) (apply s ydf)
+  apply s (YFor yblk1 e yblk2 yblk3)
+    = YFor (apply s yblk1) 
+           (apply s e)
+           (apply s yblk2)
+           (apply s yblk3)
+  apply s (YExp e)
+    = YExp (apply s e)
+  apply _ y = y 
+
+  ids (YBlock yblk) = ids yblk 
+  ids (YFun _ _ _ yblk) = ids yblk 
+  ids (YLet _ me) = ids me 
+  ids (YAssign _ e) = ids e 
+  ids (YIf e yblk) = ids e `union` ids yblk 
+  ids (YSwitch e ycs ydf)
+    = ids e `union` ids ycs `union` ids ydf
+  ids (YFor yblk1 e yblk2 yblk3)
+    = ids yblk1 `union` ids e `union` ids yblk2 `union` ids yblk3
+  ids (YExp e) = ids e 
+  ids _ = []
+
+instance Apply YulExp where 
+  apply s (YCall n es)
+    = YCall n (apply s es)
+  apply s (YIdent n)
+    = YIdent (maybe n id (lookup n s))
+  apply _ e = e 
+
+  ids (YCall _ es) = ids es 
+  ids (YIdent n) = [Id n word]
+  ids _ = []
+
+instance Apply YLiteral where 
+  apply _ e = e 
   ids _ = []
 
 instance Apply (Exp Id) where
@@ -499,4 +585,41 @@ eqnsType :: Equations Id -> Ty
 eqnsType [] = unit
 eqnsType ((_ , ss) : _) = blockType ss
 
+-- Compiler monad infra
 
+type CompilerM a
+  = ReaderT String (ExceptT String
+                   (WriterT [FunDef Id]
+                   (StateT Int IO))) a
+
+mkPrefix :: [Name] -> String
+mkPrefix = intercalate "_" . map show
+
+inc :: CompilerM Int
+inc = do
+  i <- get
+  put (i + 1)
+  return i
+
+freshName :: CompilerM Name
+freshName
+  = do
+        n <- inc
+        return (Name ("var_" ++ show n))
+
+freshId :: CompilerM Id
+freshId = Id <$> freshName <*> var
+  where
+    var = (TyVar . TVar) <$> freshName
+
+freshExpVar :: CompilerM (Exp Id)
+freshExpVar
+  = Var <$> freshId
+
+freshPVar :: CompilerM (Pat Id)
+freshPVar
+  = PVar <$> freshId
+
+runCompilerM :: [Name] -> CompilerM a -> IO (Either String a, [FunDef Id])
+runCompilerM ns m
+  = evalStateT (runWriterT (runExceptT (runReaderT m (mkPrefix ns)))) 0

@@ -1,22 +1,5 @@
 {
   "nodes": {
-    "ethereum-tests": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1698656397,
-        "narHash": "sha256-1zhBaJ3X5kQ94qv9Yz12/3d83w3jNP6OtzjH+ykK8sg=",
-        "owner": "ethereum",
-        "repo": "tests",
-        "rev": "428f218d7d6f4a52544e12684afbfe6e2882ffbf",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ethereum",
-        "ref": "v13",
-        "repo": "tests",
-        "type": "github"
-      }
-    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -50,73 +33,6 @@
         "type": "github"
       }
     },
-    "flake-utils_3": {
-      "inputs": {
-        "systems": "systems_2"
-      },
-      "locked": {
-        "lastModified": 1710146030,
-        "narHash": "sha256-SZ5L6eA7HJ/nmkzGG7/ISclqe6oZdOZTNoesiInkXPQ=",
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "rev": "b1d9ab70662946ef0850d488da1c9019f3a9752a",
-        "type": "github"
-      },
-      "original": {
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "type": "github"
-      }
-    },
-    "flake-utils_4": {
-      "locked": {
-        "lastModified": 1644229661,
-        "narHash": "sha256-1YdnJAsNy69bpcjuoKdOYQX0YxZBiCYZo4Twxerqv7k=",
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "rev": "3cecb5b042f7f209c56ffd8371b2711a290ec797",
-        "type": "github"
-      },
-      "original": {
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "type": "github"
-      }
-    },
-    "flake-utils_5": {
-      "inputs": {
-        "systems": "systems_3"
-      },
-      "locked": {
-        "lastModified": 1710146030,
-        "narHash": "sha256-SZ5L6eA7HJ/nmkzGG7/ISclqe6oZdOZTNoesiInkXPQ=",
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "rev": "b1d9ab70662946ef0850d488da1c9019f3a9752a",
-        "type": "github"
-      },
-      "original": {
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "type": "github"
-      }
-    },
-    "forge-std": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1715903882,
-        "narHash": "sha256-Uqr0ZwCnQL9ShWxIgG/ci/5ukGyuqt2n+C0GFKlJiho=",
-        "owner": "foundry-rs",
-        "repo": "forge-std",
-        "rev": "52715a217dc51d0de15877878ab8213f6cbbbab5",
-        "type": "github"
-      },
-      "original": {
-        "owner": "foundry-rs",
-        "repo": "forge-std",
-        "type": "github"
-      }
-    },
     "foundry": {
       "inputs": {
         "flake-utils": "flake-utils_2",
@@ -125,11 +41,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1749460237,
-        "narHash": "sha256-q0rIZeivgIxHDFRcTEtkRxhprnVYcI9i5YcfBHE8ZHU=",
+        "lastModified": 1758100230,
+        "narHash": "sha256-sARl8NpG4ifzhd7j5D04A5keJIf0zkP1XYIuDEkzXb4=",
         "owner": "shazow",
         "repo": "foundry.nix",
-        "rev": "5af12b6f2b708858ef3120041546ed6b038474a5",
+        "rev": "e632b06dc759e381ef04f15ff9541f889eda6013",
         "type": "github"
       },
       "original": {
@@ -139,73 +55,29 @@
         "type": "github"
       }
     },
-    "foundry_2": {
-      "inputs": {
-        "flake-utils": "flake-utils_4",
-        "nixpkgs": "nixpkgs"
-      },
+    "goevmlab": {
+      "flake": false,
       "locked": {
-        "lastModified": 1724145005,
-        "narHash": "sha256-fTvalF9fSKWJj/HJWtHQ8DrMR1nBH1NV1w/x+O4M/Zw=",
-        "owner": "shazow",
-        "repo": "foundry.nix",
-        "rev": "47f8ae49275eeff9bf0526d45e3c1f76723bb5d3",
+        "lastModified": 1750187505,
+        "narHash": "sha256-qWY66BzIGiTg5FIv4dfiCgEjhG1T3+ZhOhXUlbSM+cg=",
+        "owner": "holiman",
+        "repo": "goevmlab",
+        "rev": "9659bcf1c2e7f5159877dc6bd54777d4637e7970",
         "type": "github"
       },
       "original": {
-        "owner": "shazow",
-        "repo": "foundry.nix",
-        "rev": "47f8ae49275eeff9bf0526d45e3c1f76723bb5d3",
-        "type": "github"
-      }
-    },
-    "hevm": {
-      "inputs": {
-        "ethereum-tests": "ethereum-tests",
-        "flake-utils": "flake-utils_3",
-        "forge-std": "forge-std",
-        "foundry": "foundry_2",
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "solc-pkgs": "solc-pkgs",
-        "solidity": "solidity"
-      },
-      "locked": {
-        "lastModified": 1750765580,
-        "narHash": "sha256-6uLDCWEZ3IHWt8zi5JRl807i5W835rG59+X+Ikuclzg=",
-        "owner": "ethereum",
-        "repo": "hevm",
-        "rev": "33faaba7f9b4c2eb13c99304b25012429b4cdd9e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ethereum",
-        "repo": "hevm",
+        "owner": "holiman",
+        "repo": "goevmlab",
         "type": "github"
       }
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1666753130,
-        "narHash": "sha256-Wff1dGPFSneXJLI2c0kkdWTgxnQ416KE6X4KnFkgPYQ=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "f540aeda6f677354f1e7144ab04352f61aaa0118",
-        "type": "github"
-      },
-      "original": {
-        "id": "nixpkgs",
-        "type": "indirect"
-      }
-    },
-    "nixpkgs_2": {
-      "locked": {
-        "lastModified": 1715774670,
-        "narHash": "sha256-iJYnKMtLi5u6hZhJm94cRNSDG5Rz6ZzIkGbhPFtDRm0=",
+        "lastModified": 1758446476,
+        "narHash": "sha256-5rdAi7CTvM/kSs6fHe1bREIva5W3TbImsto+dxG4mBo=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "b3fcfcfabd01b947a1e4f36622bbffa3985bdac6",
+        "rev": "a1f79a1770d05af18111fbbe2a3ab2c42c0f6cd0",
         "type": "github"
       },
       "original": {
@@ -219,93 +91,11 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "foundry": "foundry",
-        "hevm": "hevm",
-        "nixpkgs": "nixpkgs_2"
-      }
-    },
-    "solc-macos-amd64-list-json": {
-      "flake": false,
-      "locked": {
-        "narHash": "sha256-Prwz95BgMHcWd72VwVbcH17LsV9f24K2QMcUiWUQZzI=",
-        "type": "file",
-        "url": "https://github.com/ethereum/solc-bin/raw/f743ca7/macosx-amd64/list.json"
-      },
-      "original": {
-        "type": "file",
-        "url": "https://github.com/ethereum/solc-bin/raw/f743ca7/macosx-amd64/list.json"
-      }
-    },
-    "solc-pkgs": {
-      "inputs": {
-        "flake-utils": "flake-utils_5",
-        "nixpkgs": [
-          "hevm",
-          "nixpkgs"
-        ],
-        "solc-macos-amd64-list-json": "solc-macos-amd64-list-json"
-      },
-      "locked": {
-        "lastModified": 1724145339,
-        "narHash": "sha256-z8pLkpdsAA0At1ofQd6KNmrxpBuUT9OKTlCDqJDW1GI=",
-        "owner": "hellwolf",
-        "repo": "solc.nix",
-        "rev": "9630767051bfefd552c6858c5df141368338b077",
-        "type": "github"
-      },
-      "original": {
-        "owner": "hellwolf",
-        "repo": "solc.nix",
-        "type": "github"
-      }
-    },
-    "solidity": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1716280767,
-        "narHash": "sha256-cvRFeJkiaYPA+SoboEZhvH5sHDmmcMNR62OoKuEOWRg=",
-        "owner": "ethereum",
-        "repo": "solidity",
-        "rev": "8a97fa7a1db1ec509221ead6fea6802c684ee887",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ethereum",
-        "repo": "solidity",
-        "rev": "8a97fa7a1db1ec509221ead6fea6802c684ee887",
-        "type": "github"
+        "goevmlab": "goevmlab",
+        "nixpkgs": "nixpkgs"
       }
     },
     "systems": {
-      "locked": {
-        "lastModified": 1681028828,
-        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
-        "owner": "nix-systems",
-        "repo": "default",
-        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-systems",
-        "repo": "default",
-        "type": "github"
-      }
-    },
-    "systems_2": {
-      "locked": {
-        "lastModified": 1681028828,
-        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
-        "owner": "nix-systems",
-        "repo": "default",
-        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-systems",
-        "repo": "default",
-        "type": "github"
-      }
-    },
-    "systems_3": {
       "locked": {
         "lastModified": 1681028828,
         "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",

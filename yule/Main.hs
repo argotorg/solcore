@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
+-- import Language.Core(Object(..))
 import Language.Core.Parser(parseObject)
 import Solcore.Frontend.Syntax.Name  -- FIXME: move Name to Common
 import Common.Pretty -- (Doc, Pretty(..), nest, render)
@@ -31,7 +32,6 @@ main = do
     let doc = if Options.wrap options
         then wrapInSol (Name yulName) (ycStmts yulCode)
         else wrapInObject withDeployment yulPreobject
-
     putStrLn ("writing output to " ++ Options.output options)
     writeFile (Options.output options) (render doc)
 

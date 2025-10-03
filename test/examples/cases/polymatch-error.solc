@@ -1,0 +1,12 @@
+forall a b . function fst(p: (a, b)) -> a {
+    match p {
+    | (a, _) => return a;
+    }
+}
+contract TestUnitMatch {
+  function main() -> () {
+    match ((), ()) {
+     | x => return fst(x);
+    }
+  }  
+}

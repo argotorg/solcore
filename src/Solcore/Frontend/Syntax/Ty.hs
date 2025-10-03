@@ -1,6 +1,6 @@
 module Solcore.Frontend.Syntax.Ty where
 
-
+import Data.List
 import Data.Generics (Data, Typeable)
 import Solcore.Frontend.Syntax.Name
 
@@ -28,6 +28,11 @@ data Ty
 newtype MetaTv
   = MetaTv { metaName :: Name }
     deriving (Eq, Ord, Show, Data, Typeable)
+
+tyconNames :: Ty -> [Name]
+tyconNames (TyCon n ts) 
+  = nub (n : concatMap tyconNames ts)
+tyconNames _ = []
 
 gvar :: MetaTv -> Tyvar
 gvar = TVar . metaName

@@ -186,7 +186,7 @@ tcExp (Lit l)
       pure (Lit l, [], t)
 tcExp (Var n)
   = do
-      s <- askEnv n
+      s <- askEnv n `wrapError` (Var n)
       (ps :=> t) <- freshInst s
       noDesugarCalls <- getNoDesugarCalls
       if noDesugarCalls then pure (Var (Id n t), ps , t)
@@ -308,7 +308,6 @@ closureConversion vs args bdy ps ty
         -- updating the type inference state
         writeFunDef fun1
         writeDataTy udt
-        checkDataType udt
         -- type checking generated instance
         checkInstance instd
         extEnv fn sch
@@ -325,7 +324,6 @@ closureConversion vs args bdy ps ty
         info [">> Create lambda lifted function(closure):\n", pretty fun]
         writeFunDef fun
         writeDataTy cdt
-        checkDataType cdt
         instd <- createInstance cdt fun sch
         checkInstance instd
         extEnv fn sch
@@ -521,8 +519,15 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       let lctx' = if incl then (n, monotype nt) : lctx else lctx
       -- typing function body
       (bd1', ps1', t1') <- withLocalCtx lctx' (tcBody bd1) `wrapError` d
-      unify rt1' t1'
-      unify nt (funtype ts' rt1')
+      -- checking if the type checking have changed the type 
+      -- due to unique type creation.
+      let tynames = tyconNames t1'
+      changeTy <- or <$> mapM isUniqueTyName tynames 
+      let rt2 = if changeTy then t1' else rt1'
+      info ["Trying to unify: ", pretty rt2, " with ", pretty t1']
+      unify rt2 t1' `wrapError` d
+      info ["Trying to unify: ", pretty nt, " with ", pretty (funtype ts' rt2)]
+      unify nt (funtype ts' rt2) `wrapError` d  
       -- building the function type scheme
       free <- getEnvMetaVars
       rs <- reduce (qs1 `union` ps1) ps1' `wrapError` d
@@ -535,10 +540,12 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       when (ambiguous inf) $
         ambiguousTypeError inf sig
       -- checking subsumption
-      subsCheck sig inf ann `wrapError` d
+      unless changeTy $ do 
+        subsCheck sig inf ann `wrapError` d
       -- elaborating function body
-      fdt <- elabFunDef vs' sig1 bd1' inf ann
-      withCurrentSubst (fdt, ann)
+      let ann' = if changeTy then inf else ann
+      fdt <- elabFunDef vs' sig1 bd1' inf ann' `wrapError` d 
+      withCurrentSubst (fdt, ann')
   | otherwise = tiFunDef d
 
 -- elaborating function definition
@@ -665,12 +672,8 @@ tcInstance idecl@(Instance d vs ctx n ts t funs)
       tcInstance' (Instance d [] ctx' n ts' t' funs')
 
 checkConstraint :: Pred -> TcM ()
-checkConstraint p@(InCls n t ts)
-  | n == invokableName = pure ()
-  | otherwise
-    = do
-        _ <- askClassInfo n `wrapError` p
-        mapM_ kindCheck (t : ts) `wrapError` p
+checkConstraint p@(InCls _ t ts) =
+  mapM_ kindCheck (t : ts) `wrapError` p
 checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
 
 tcInstance' :: Instance Name -> TcM (Instance Id)
@@ -688,30 +691,57 @@ tcInstance' idecl@(Instance d vs ctx n ts t funs)
       verifySignatures (Instance d vs1 ctx' n ts' t' funs3)
 
 verifySignatures :: Instance Id -> TcM (Instance Id)
-verifySignatures instd@(Instance d vs ctx n ts t funs)
-  = do
-      -- get the list of class method names from class info
-      names <- methods <$> askClassInfo n `wrapError` instd
-      let qnames = map (QualName n . pretty) names
-      schs <- mapM (\ q -> (q,) <$> askEnv q) qnames
-      -- instantiate most general type
-      qts <- mapM (\ (q, s) -> (q,) <$> freshInst s) schs
-      -- build instance member function type scheme
-      fschs <- mapM (\ f -> do
-                  let sig = funSignature f
-                  (sigName sig,) <$> schemeFromSignature sig) funs `wrapError` instd
-      -- instantiate function type scheme
-      fqts <- mapM (\ (q,s) -> (q,) <$> freshInst s) fschs
-      -- combine triples
-      let m = [(q, ct, it) | (q, ct) <- qts, (q', it) <- fqts, q == q']
-      mapM_ checkMemberType m `wrapError` instd
-      pure instd
+verifySignatures instd@(Instance _ _ ps n ts t funs) =
+  do
+    -- get class info
+    mcinfo <- Map.lookup n <$> gets classTable
+    when (isNothing mcinfo) (undefinedClass n) `wrapError` instd 
+    -- building instance constraint
+    let
+      -- this use of fromJust is safe, because is
+      -- guarded by the isNothing test.
+      cinfo = fromJust mcinfo
+      instc = ps :=> (InCls n t ts)
+      classc = classpred cinfo
+      bvarsc = bv classc
+      bvarsi = bv instc
+    -- building the instantiation environments
+    freshc <- mapM (const freshTyVar) bvarsc
+    freshi <- mapM (const freshTyVar) bvarsi
+    let envc = zip bvarsc freshc
+        envi = zip bvarsi freshi
+        (_ :=> ih) = insts envi instc
+        classc' = insts envc classc
+    -- getting matching substitution
+    s <- match classc' ih `wrapError` instd
+    -- getting method types
+    let qnames = map (QualName n . pretty) (methods cinfo)
+    -- getting most general types and instantiate them
+    aqts <- mapM (\q -> do
+                          (Forall _ qt) <- askEnv q
+                          let qt' = insts envc qt
+                              vs' = bv qt'
+                          ts' <- mapM (const freshTyVar) vs'
+                          let env = zip vs' ts'
+                              tyr = insts env qt'
+                          pure (q, apply s tyr)) qnames
+    -- getting infered types
+    iqts <- mapM (\f -> do
+                           let sig = funSignature f
+                           schf <- schemeFromSignature sig
+                           (sigName sig,) <$> freshInst schf) funs
+    -- combine triples
+    sc <- getSubst
+    let m = [(q, it, at') | (q, it) <- iqts, (q', at') <- aqts, q == q']
+    mapM_ checkMemberType m `wrapError` instd
+    pure instd
 
 checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
 checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
   = do
       _ <- match t t' `catchError` (\ _ -> invalidMemberType qn t t')
       pure ()
+
 
 invalidMemberType :: Name -> Ty -> Ty -> TcM a
 invalidMemberType n cls ins
@@ -784,9 +814,13 @@ checkInstance idef@(Instance d vs ctx n ts t funs)
       checkConstraints ctx
       let ipred = InCls n t ts
       -- checking the coverage condition
-      insts <- askInstEnv n `wrapError` ipred
+      insts' <- askInstEnv n `wrapError` ipred
       -- check overlapping only for non-default instances
-      unless d (checkOverlap ipred insts `wrapError` idef)
+      let vs1 = bv ipred 
+      ts1 <- mapM (const freshTyVar) vs1 
+      let env = zip vs1 ts1
+          ipred' = insts env ipred 
+      unless d (checkOverlap ipred' insts' `wrapError` idef)
       -- check if default instance has a type variable as main argument.
       when d (checkDefaultInst (ctx :=> ipred) `wrapError` idef)
       coverage <- askCoverage n
@@ -942,7 +976,7 @@ tcBody (s : ss)
 tcCall :: Maybe (Exp Name) -> Name -> [Exp Name] -> TcM (Exp Id, [Pred], Ty)
 tcCall Nothing n args
   = do
-      s <- askEnv n
+      s <- askEnv n `wrapError` (Call Nothing n args)
       (ps :=> t) <- freshInst s
       t' <- freshTyVar
       (es', pss', ts') <- unzip3 <$> mapM tcExp args
@@ -954,7 +988,7 @@ tcCall Nothing n args
 tcCall (Just e) n args
   = do
       (e', ps , ct) <- tcExp e
-      s <- askEnv n
+      s <- askEnv n `wrapError` (Call (Just e) n args)
       (ps1 :=> t) <- freshInst s
       t' <- freshTyVar
       (es', pss', ts') <- unzip3 <$> mapM tcExp args
@@ -1036,13 +1070,13 @@ tcYulExp (YLit l)
   = tcYLit l
 tcYulExp (YIdent v)
   = do
-      sch <- askEnv v
+      sch <- askEnv v `wrapError` (YIdent v)
       (_ :=> t) <- freshInst sch
       unify t word
       pure t
 tcYulExp (YCall n es)
   = do
-      sch <- askEnv n
+      sch <- askEnv n `wrapError` (YCall n es)
       (_ :=> t) <- freshInst sch
       ts <- mapM tcYulExp es
       t' <- freshTyVar

@@ -143,7 +143,6 @@ emitCDecl (CMutualDecl ds) = case findConstructor ds of
     modify (\s -> s { ecDeployer = Just depDecls})
     pure [] -- deployer code gets emitted later
 emitCDecl cd@(CDataDecl dt) = do
-    -- debug ["!! emitCDecl ", show cd]
     addData dt >> pure []
 emitCDecl cd = debug ["!! emitCDecl ", show cd] >> pure []
 
@@ -513,6 +512,7 @@ translatePatArgs e = Map.fromList . go e where
     go s [PVar i] = [(idName i, s)]
     go s (PVar i:as) = let (s1, s2) = (Core.EFst s, Core.ESnd s) in
         (idName i, s1) : go s2 as
+    go s (PCon _ []:as) = go s as
     go _ (pat:_) = error ("Unimplemented: translatePatArgs _ " ++ pretty pat)
 
 -----------------------------------------------------------------------
