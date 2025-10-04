@@ -57,7 +57,6 @@ ways at different types. Type classes are the standard way of combining overload
 parametric polymorphism (generics) in a systematic manner. A type class definition 
 declares the class name, its arguments and member functions type signature. As an 
 example, let's consider the task of defining addition over different types:
-
 ```
 function a . class a : Sum {
   function sum (x : a, y : a) -> a;
@@ -77,8 +76,10 @@ instance word : Sum {
   }
 }
 ```
-
-Type Classes allows the constrain these type parameters by specifying required interfaces, establishing compile-time guarantees about type capabilities. This approach provides a more mathematically sound alternative to inheritance-based polymorphism.
+Type Classes allows the constrain these type parameters by specifying required 
+interfaces, establishing compile-time guarantees about type capabilities. This 
+approach provides a more mathematically sound alternative to inheritance-based 
+polymorphism.
 
 ### Type inference
 
@@ -90,6 +91,7 @@ type safety without explicit annotations.
 ```
 let constant_value = 42; // Inferred as uint256
 let heterogeneous_tuple = (address(0), true, 42); // Inferred as (address, bool, word)
+constant_value = heterogeneous_tuple ; // this is a type error!
 ```
 
 
