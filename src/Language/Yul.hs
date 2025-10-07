@@ -69,6 +69,7 @@ data YulExp
   = YCall Name [YulExp]
   | YIdent Name
   | YLit YLiteral
+  | YMeta String
    deriving (Eq, Ord, Data, Typeable)
 
 data YLiteral
