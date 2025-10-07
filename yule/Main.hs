@@ -46,7 +46,7 @@ wrapInObject deploy yulo@(YulObject name code inners)
 addRetCode :: YulCode -> YulCode
 addRetCode c = c <> retCode where
     retCode = YulCode [yulBlock|
-    {  
+    {
       mstore(0, _mainresult)
       return(0, 32)
     }
@@ -59,16 +59,17 @@ deployCode name withConstructor = YulCode $ [yulBlock|
     let memPtr := mload(64)
   }
   |]
-  <> callConstructor withConstructor <>
-  [ calls "datacopy" [yulInt 0, dataoffset, datasize]
-  , calls "return" [yulInt 0, datasize]
-  ] where
+  <> callConstructor withConstructor
+  <> [yulBlock|
+     { datacopy(0, `dataoffset`, `datasize`)
+       return(0, `datasize`)
+     } |]
+  where
     cname = yulString name
-    callConstructor True = [calls "usr$constructor" []]
+    callConstructor True = pure [yulStmt| usr$constructor() |]
     callConstructor False = []
-    calls f args = YExp (YCall f args)
-    datasize = YCall "datasize"[cname]
-    dataoffset = YCall "dataoffset"[cname]
+    datasize = [yulExp| datasize(${cname}) |] -- YCall "datasize"[cname]
+    dataoffset = [yulExp| dataoffset(`cname`) |]
 
 createDeployment :: YulObject -> YulObject
 createDeployment (YulObject yulName yulCode [InnerObject(YulObject innerName innerCode [])])
@@ -97,7 +98,7 @@ wrapInSolFunction name yul =
   $$ nest 2 assembly
   $$ rbrace
   where
-    yul' = yul <> pure [yulStmt| _wrapresult := _mainresult" |]
+    yul' = yul <> pure [yulStmt| _wrapresult := _mainresult |]
     assembly = text "assembly" <+> braces (nest 2 prettybody)
     prettybody = vcat (map ppr yul')
     prettyargs = parens empty
