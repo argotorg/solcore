@@ -1,4 +1,4 @@
-module Language.Yul.Parser(parseYul, yulBlock) where
+module Language.Yul.Parser(parseYul, yulBlock, yulStmt, yulExpr) where
 {-
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -50,15 +50,15 @@ commaSep p = p `sepBy` symbol ","
 pKeyword :: String -> Parser String
 pKeyword w = lexeme (string w <* notFollowedBy identChar)
 
-yulExpression :: Parser YulExp
-yulExpression = choice
+yulExpr :: Parser YulExp
+yulExpr = sc *> choice
     [ YLit <$> yulLiteral
-    , try (YCall <$> pName<*> parens (commaSep yulExpression))
+    , try (YCall <$> pName<*> parens (commaSep yulExpr))
     , YIdent <$> pName
     ]
 
 yulLiteral :: Parser YLiteral
-yulLiteral = choice
+yulLiteral = sc *> choice
     [ YulNumber <$> integer
     , YulString <$> stringLiteral
     , YulTrue <$ pKeyword "true"
@@ -66,21 +66,21 @@ yulLiteral = choice
     ]
 
 yulStmt :: Parser YulStmt
-yulStmt = choice
+yulStmt = sc *> choice
     [ YBlock <$> yulBlock
     , yulFun
-    , YLet <$> (pKeyword "let" *> commaSep pName) <*> optional (symbol ":=" *> yulExpression)
-    , YIf <$> (pKeyword "if" *> yulExpression) <*> yulBlock
+    , YLet <$> (pKeyword "let" *> commaSep pName) <*> optional (symbol ":=" *> yulExpr)
+    , YIf <$> (pKeyword "if" *> yulExpr) <*> yulBlock
     , YSwitch <$>
-        (pKeyword "switch" *> yulExpression) <*>
+        (pKeyword "switch" *> yulExpr) <*>
         many yulCase <*>
         optional (pKeyword "default" *> yulBlock)
-    , try (YAssign <$> commaSep pName <*> (symbol ":=" *> yulExpression))
-    , YExp <$> yulExpression
+    , try (YAssign <$> commaSep pName <*> (symbol ":=" *> yulExpr))
+    , YExp <$> yulExpr
     ]
 
 yulBlock :: Parser [YulStmt]
-yulBlock = between (symbol "{") (symbol "}") (many yulStmt)
+yulBlock = sc*> between (symbol "{") (symbol "}") (many yulStmt)
 
 yulCase :: Parser (YLiteral, [YulStmt])
 yulCase = do
