@@ -1,13 +1,12 @@
 # Introducing Core Solidity
 
 Solidity earned its place as the de facto language for smart contracts by 
-prioritizing developer accessibility. Its early design leveraged familiar 
-high-level abstractions to onboard programmers.
+prioritizing developer experience. Since its initial design, it favored 
+high-level abstractions which are well-known by programmers.
 While safety was always a goal, it was the history of contract exploits that 
-forged it into the language's highest priority. This focus on security 
-transformed Solidity, making it stricter over time.
-This necessary changes, however, came with consequences. The language 
-now exhibits the scars of its accumulated complexity and a type system 
+forged it over the years. This focus on security transformed Solidity, making 
+it stricter over time. These necessary changes, however, came with consequences. 
+The language now exhibits the scars of its accumulated complexity and a type system 
 that has become a barrier to its own evolution. Foundational features like 
 generics (aka parametric polymorphism) remain out of reach, as integrating them 
 into the current architecture is both difficult and dangerously prone to 
@@ -21,22 +20,23 @@ future growth from the ground up.
 
 ## What is Core Solidity?
 
-The design of Core Solidity took inspiration from well established concepts from functional 
-programming, with Haskell serving as a primary influence, while incorporating rigorous 
-safety guarantees inspired by modern systems programming languages such as Rust. 
-Although this architectural direction represents a significant evolution, it keeps 
-the domain-specific requirements of smart contract development, preserving 
-the established conventions and practical utility of Classic Solidity where appropriate.
+The design of Core Solidity took inspiration from well established concepts from 
+functional programming, with Haskell serving as a primary influence, while 
+incorporating rigorous safety guarantees inspired by modern systems programming 
+languages such as Rust. Although this architectural direction represents a 
+significant evolution, it keeps the domain-specific requirements of smart 
+contract development, preserving the established conventions and practical 
+utility of Classic Solidity where appropriate.
 
-The language's theoretical foundation comprises several formally-specified features that 
-provide enhanced type safety and expressivity. In what follows, we provide an overview 
-of such features. However, we warn the reader that the current Core Solidity prototype 
-uses a syntax which is similar, but not identical, to Classic Solidity. Since our initial 
-concern is to develop the new language type system and its semantics. The surface syntax 
-would probably change in the near future. All presented examples work in the current 
-prototype.
+The language's theoretical foundation comprises several formally-specified 
+features that provide enhanced type safety and expressivity. In what follows, we 
+provide an overview of such features. However, we warn the reader that the current 
+Core Solidity prototype uses a syntax which is similar, but not identical, to 
+Classic Solidity. Since our initial concern is to develop the new language type 
+system and its semantics, its surface syntax would probably change in the near 
+future. All presented examples work in the current prototype.
 
-### Generics and Type Classes: Formal Abstraction Mechanisms
+### Generics and Type Classes
 
 Core Solidity will introduce two new exciting abstraction mechanisms: generics and 
 type classes.
@@ -81,6 +81,23 @@ interfaces, establishing compile-time guarantees about type capabilities. This
 approach provides a more mathematically sound alternative to inheritance-based 
 polymorphism.
 
+### High-order functions
+
+Functions possess first-class status within the type system, enabling their use
+as parameters, return values, and assignable entities. This facilitates the
+implementation of higher-order functions and functional composition patterns,
+enhancing expressive capability while maintaining referential transparency.
+
+```
+forall T U . function map (memory(array(T)) input, transform : (T) -> U) : memory(array(U)) {
+    let result memory(array(U)) = new(memory(array(U)),input.length);
+    for (uint i = 0; i < input.length; i++) {
+        result[i] = transform(input[i]);
+    }
+    return result;
+}
+```
+
 ### Type inference
 
 Core Solidity uses type inference algorithm to reduce syntactic verbosity while 
@@ -94,147 +111,147 @@ let heterogeneous_tuple = (address(0), true, 42); // Inferred as (address, bool,
 constant_value = heterogeneous_tuple ; // this is a type error!
 ```
 
+### Algebraic data types and pattern matching 
 
+Algebraic Data Types provide a way of modeling data modeling using sum types 
+(disjoint unions) and product types (structural records). This enables the construction of 
+precise types where invalid states are unrepresentable by design, thereby enhancing program 
+correctness through the type system itself. As an example, consider the following type 
+definition for an auction state. 
 
+```
+data AuctionState =
+    NotStarted { 
+        reservePrice: word  
+    } |
+    Active { 
+        highestBid: word,
+        leadingBidder: address 
+    } |
+    Ended { 
+        winningBid: word,
+        winner: address 
+    } |
+    Cancelled;
+```
+The type has three constructors: `NotStarted` specifies that the action have not started yet and 
+stores its reserved price, `Active` denotes that the auction has began and it stores the 
+current highest bid and the address that made such bid, `Ended` represents that the auction has 
+finished with success and it holds the highest bid and the winner address and constructor 
+`Cancelled` is used when the auction has been cancelled.
 
-Code Example:
-solidity
+Using algebraic data types, we can define function by pattern matching. As an example, 
+consider function `processAuction` which 
+Pattern matching provides structural decomposition of data types through case analysis. This 
+ensures all possible variants are handled explicitly, eliminating partial function hazards and 
+providing formal guarantees of match completeness.
 
-// Type class definition specifying algebraic structure
-trait Monoid<T> {
-    function empty() external pure returns (T);
-    function combine(T a, T b) external pure returns (T);
-}
-
-// Generic implementation constrained by type class
-impl Monoid<uint256> for uint256 {
-    function empty() public pure returns (uint256) {
-        return 0;
+```
+function processAuction(state) {
+    match state {
+    |   NotStarted(reserve) => {
+            require(msg.value >= reserve, "Bid below reserve");
+            return Active(msg.value, msg.sender);
+        }
+    |   Active(currentBid, bidder) => {
+            require(msg.value > currentBid, "Bid too low");
+            transferFunds(bidder, currentBid); // refund 
+            return Active(msg.value, msg.sender);
+        }
+    |   Cancelled => {
+            revert("Auction cancelled");
+        }
+]   |   _ => {
+            return state;
+        }
     }
-    
-    function combine(uint256 a, uint256 b) public pure returns (uint256) {
-        return a + b;
-    }
 }
+```
 
-- Generics and Type Classes
+```
+```
 
-- Hindley-Milner Type Inference
+### Core Solidity and SAIL
 
-- First-Class Functions
+The combination of all these features do form a complete programming language, 
+which we call SAIL (Solidity Abstract Intermediate Language). Core Solidity is 
+built on top of SAIL by providing more specialized syntactic constructs that 
+replicate familiar features from Classic Solidity, alongside a mechanism for 
+"desugaring" them into SAIL equivalent code. But what Core Solidity features 
+will be translated into SAIL?
 
-- Algebraic Data Types
+- Data Locations represented as types: Data locations (e.g., storage, memory) 
+are now a part of a type. This enables the creation of composite types with 
+mixed locations, such as a struct that holds references to storage 
+arrays and memory data, as presented in the next code piece:
 
-- Pattern Matching and Destructuring
+```
+struct Broker {
+  total : memory(word) 
+, accounts : storage(array(address, word))
+}
+```
 
-This core is, in fact, a complete language in itself, provisionally called SAIL 
-(Solidity Abstract Intermediate Language). Core Solidity is built on top of SAIL by 
-providing more specialized syntactic constructs that replicate familiar features from 
-Classic Solidity, alongside a mechanism for "desugaring" them back into the pure core 
-syntax. What Does Core Solidity brings to the Table?
+- Static/dynamic array - literals: Classic Solidity limits array literals to static 
+arrays. Core Solidity type system allows literals to adopt the correct type (static 
+or dynamic) from their usage context from the start.
 
-The new foundation allows us to introduce several elements we have always wanted in 
-Solidity:
+The current Core Solidity prototype support all previous features. In the near 
+future, we plan to develop: 
 
-- New Copy/Reference Semantics: In Classic Solidity, an assignment can sometimes copy 
-a value and sometimes just a reference, depending on context --- a behavior that can be 
-unintuitive. Core Solidity distinguishes between the two at the syntax level, making the 
-behavior explicit and predictable.
+- Compile time evaluation: Inspired by Zig, we plan to include compile-time code 
+in Core Solidity. FINISH HERE! 
 
-- Data Locations Tied to Types: Data location (e.g., storage, memory) is now an integral 
-part of a type. This enables the creation of composite types with mixed locations, such 
-as a memory struct that holds references to storage arrays.
+- Redesigned Module System: WRITE MORE HERE 
 
-- Control Flow as Expressions: Most control-flow elements—including loops, conditions, 
-and blocks—become expressions rather than statements. They return values and can be 
-seamlessly used within more complex expressions.
-
-- Operator Overloading with Heterogeneous Arguments: We consciously limited operator 
-overloading in Classic Solidity to homogeneous types. With the new type system nearing 
-completion, we can confidently support operators with parameters and return values of 
-different types.
-
-- Universal Static/Dynamic Array Literals: Classic Solidity limits array literals to static 
-arrays. The new type system, powered by robust type inference, allows literals to adopt the 
-correct type (static or dynamic) from their usage context from the start.
-
-- Full Compile-Time Constant Evaluation: While technically possible in Classic Solidity, 
-full compile-time evaluation is complex. Core Solidity will support it comprehensively, 
-including for arbitrary reference types.
-
-- Redesigned Module System: (TODO: Briefly outline plans for the module system here.)
-
-- Macros: One of the key design principles behind Core Solidity design to make it extensible
-in order to avoid 
+- Macros: NEED TO FINISH.
 
 
-## What is Changing or Being Removed?
+## What's next?
 
-With new power comes simplification. Some features are being rethought or replaced:
+The evolution of Solidity has reached a pivotal moment. While the language's 
+established features have successfully powered the ecosystem, certain patterns have 
+revealed limitations in scalability, security, and clarity. The following outlines 
+Argot's Collective vision for Core Solidity, a deliberate re-design of the language's 
+foundation. This initiative aims to replace legacy mechanisms with more robust, 
+composable, and community-driven primitives, ensuring the language remains a secure 
+and efficient foundation for the next generation of smart contracts. 
+The next steps of Core Solidity design will involve: 
+
 
 - Inheritance replacement: While a basic building block of Classic Solidity, inheritance has 
 often failed as a clean code reuse mechanism. Type classes are our intended, more robust and 
 composable replacement in the new language.
 
-- No more `try`/ `catch`: The try/catch construct has always been a leaky abstraction in Solidity. 
-Instead of patching its deficiencies, Core Solidity will rely on pattern matching against error 
-objects and fundamental control flow to provide explicit, granular error handling that addresses 
-all the corner cases try/catch misses.
+- No more `try`/ `catch`: The `try`/`catch` construct has always been problematic in Solidity. 
+Instead of fixing its deficiencies, Core Solidity will rely on pattern matching against error 
+objects to provide explicit error handling that address all the corner cases `try`/`catch` 
+misses.
 
-- A Better high-level `delegatecall` mechanism: While not final, traditional libraries are likely 
+- A better high-level `delegatecall` mechanism: While not final, traditional libraries are likely 
 to be replaced. Free functions and modules can adequately replace internal library functions. We 
 are designing a new, first-class mechanism for splitting contracts and connecting pieces via 
 `delegatecall` to replace the role of external libraries.
 
-## A Community-Driven Standard Library
+- A community-driven standard library: An overarching goal of Core Solidity is to have a
+simple, flexible language core, with much of the current built-in functionality defined 
+in-language as a standard library. Currently, extending the compiler is a complex task that 
+doesn't fully leverage the wealth of  knowledge within our application developer community. 
+We aim to establish a community-driven, EIP-style process for the standard library, 
+encouraging extensions to be developed this way. Whether this library remains a minimal set 
+of utilities or grows into a full-featured toolkit will be decided by the community through 
+this process.
 
-An overarching goal of Core Solidity is to have a simple, flexible language core, with much of 
-the current built-in functionality defined in-language as a standard library.
-
-Currently, extending the compiler is a complex task that doesn't fully leverage the wealth of 
-knowledge within our application developer community. We aim to establish a community-driven, 
-EIP-style process for the stewardship of this standard library, encouraging extensions to be 
-developed this way. Whether this library remains a minimal set of utilities or grows into a 
-full-featured toolkit will be decided by the community through this process.
-
-We also want to prevent language fragmentation. With more compiler implementations emerging, we 
-believe users are best served by a unified language specification. Compilers can then compete on 
-optimization quality and alternative standard library implementations. Core Solidity is designed 
-to provide both a clear specification and a reference foundation.
-
-Standard Library Content will, at a minimum, include:
-
-- ABI encoding/decoding helpers.
-
-- Error handling helpers.
-
-- Support for standards (e.g., typehash from EIP-712).
-
-- Built-ins like bytes.concat(), type(T).max, and type(I).interfaceId.
-
-- Denominations (wei, ether, week, etc.).
-
-- Mathematical utilities.
+- A formal specification of the language: Having a unified language specification will 
+avoid language fragmentation by diverging implementations. Using a unified specification, 
+compilers can then compete on optimization quality and alternative standard library 
+implementations.
 
 ## Conclusion
 
-(TODO: Add a concluding paragraph that invites readers to comment on the forum, specifically asking them to prioritize the features on the wishlist discussed above.)
-Roadmap
-
-### Phase 1 (Stabilization)
-
-- Finalize the approach to compile-time evaluation (comptime).
-
-- Implement the module system.
-
-- Achieve feature compatibility with solc.
-
-### Phase 2 (Production Readiness)
-
-- Foster community collaboration on the standard library.
-
-- Develop a production-ready implementation.
-
-- Formalize the specification and create a reference interpreter.
-
-This version maintains your technical precision while making the narrative more fluid and engaging. It clearly frames Core Solidity as an ambitious and necessary evolution. Let me know if you'd like to refine any specific section further
+Core Solidity represents a foundational reimagining of the language, 
+designed to equip developers with a more secure, expressive, and mathematically 
+sound toolkit for the next generation of smart contracts. The path forward, 
+however, will be designed by the community that uses it. We invite you to join 
+the discussions and share your perspective. Your input is crucial in helping us 
+prioritize this exciting roadmap.
