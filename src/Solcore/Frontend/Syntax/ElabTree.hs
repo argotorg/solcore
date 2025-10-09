@@ -10,6 +10,14 @@ import Control.Monad.State
 import Data.List
 import Data.Maybe
 
+import qualified Data.ByteString as B
+import Data.ByteString(ByteString)
+import Data.String
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import Data.Word(Word8)
+import Numeric
+
 import GHC.Stack
 
 import Text.Pretty.Simple
@@ -734,7 +742,36 @@ instance Elab S.Literal where
   type Res S.Literal = Literal
 
   elab (S.IntLit i) = pure (IntLit i)
-  elab (S.StrLit s) = pure (StrLit s)
+  elab (S.StrLit s)
+     | length s <= 32 = elabStr s
+     | otherwise = do
+         let s' = take 32 s
+         writes ["Warning: long string literal truncated to:\n  ", show s']
+         elabStr s'
+     where
+       elabStr = pure . IntLit . encodeString
+       -- elabStr = fmap IntLit . debugString
+
+
+debugString :: String -> ElabM Integer
+debugString s = do
+  let bs = T.encodeUtf8 $ T.pack s
+      n  = encodeBS bs
+      hs = showHex n ""
+  writes [ "Desugaring string literal:"]
+  writes [ "- Input: ", show s]
+  writes [ "- ByteS: ", show bs]
+  writes [ "- Numer: ", show n]
+  writes [ "- Hexer: ", hs]
+  return n
+
+encodeString :: String -> Integer
+encodeString = encodeBS . T.encodeUtf8 . T.pack 
+
+encodeBS :: ByteString -> Integer
+encodeBS = B.foldl' step 0 where
+  step :: Integer -> Word8 -> Integer
+  step a b = 256 * a + toInteger b
 
 
 notImplemented :: (HasCallStack, Pretty a) => String -> a -> b
