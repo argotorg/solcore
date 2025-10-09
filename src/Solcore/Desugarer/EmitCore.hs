@@ -146,14 +146,13 @@ emitCDecl cd@(CDataDecl dt) = do
     addData dt >> pure []
 emitCDecl cd = debug ["!! emitCDecl ", show cd] >> pure []
 
--- By now, constructor should be converted to a function "constructor"
-
+-- look up the deployer start routine
 findConstructor :: [ContractDecl Id] -> Maybe (FunDef Id)
 findConstructor = go where
   go [] = Nothing
   go (CFunDecl d:ds)| isConstructor d = Just d
   go (_:ds) = go ds
-  isConstructor (FunDef sig _) = sigName sig == Name "constructor"
+  isConstructor (FunDef sig _) = sigName sig == "start"
 
 -----------------------------------------------------------------------
 -- Translating function definitions
