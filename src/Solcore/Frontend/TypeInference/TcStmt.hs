@@ -1080,7 +1080,6 @@ tcYulExp (YCall n es)
       (_ :=> t) <- freshInst sch
       ts <- mapM tcYulExp es
       t' <- freshTyVar
-      mapM_ (unify word) ts
       unify t (foldr (:->) t' ts)
       withCurrentSubst t'
 
