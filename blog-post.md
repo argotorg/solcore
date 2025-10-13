@@ -64,7 +64,7 @@ function a . class a : Sum {
 ```
 Implementations for member functions for different types are provided by instance 
 definitions. As an example, let's consider the implementation of `Sum` for 
-`word` type. 
+`word` type which, internally, uses Yul assembly to perform addition. 
 ```
 instance word : Sum {
   function sum (x : word, y : word) -> word {
@@ -76,40 +76,22 @@ instance word : Sum {
   }
 }
 ```
-Type Classes allows the constrain these type parameters by specifying required 
-interfaces, establishing compile-time guarantees about type capabilities. This 
-approach provides a more mathematically sound alternative to inheritance-based 
-polymorphism.
-
-### High-order functions
-
-Functions possess first-class status within the type system, enabling their use
-as parameters, return values, and assignable entities. This facilitates the
-implementation of higher-order functions and functional composition patterns,
-enhancing expressive capability while maintaining referential transparency.
-
+As another example, consider an instance for polymorphic pairs.
 ```
-forall T U . function map (memory(array(T)) input, transform : (T) -> U) : memory(array(U)) {
-    let result memory(array(U)) = new(memory(array(U)),input.length);
-    for (uint i = 0; i < input.length; i++) {
-        result[i] = transform(input[i]);
+forall a b . a : Sum, b : Sum => instance (a,b) : Sum {
+  function sum (p1 : (a,b), p2 : (a,b)) -> (a, b) {
+    match p1, p2 {
+      (x1,y1), (x2, y2) => 
+        return (Sum.sum(x1,x2), Sum.sum(y1,y2));
     }
-    return result;
+  }
 }
 ```
-
-### Type inference
-
-Core Solidity uses type inference algorithm to reduce syntactic verbosity while 
-maintaining the strong static typing guarantees essential for secure smart contract 
-development. The type inference occurs during compilation and provides complete 
-type safety without explicit annotations.
-
-```
-let constant_value = 42; // Inferred as uint256
-let heterogeneous_tuple = (address(0), true, 42); // Inferred as (address, bool, word)
-constant_value = heterogeneous_tuple ; // this is a type error!
-```
+The previous definition shows that, whenever we have instances of 
+class `Sum` for types `a` and `b`, then we can also use function 
+`Sum.sum` on pairs of such types. The reader must noticed that
+in order to access the pair components we use **pattern matching**, 
+another feature which will be part of the Core Solidity.
 
 ### Algebraic data types and pattern matching 
 
@@ -168,8 +150,47 @@ function processAuction(state) {
 }
 ```
 
+### High-order functions
+
+Functions possess first-class status within the type system, enabling their use
+as parameters, return values, and assignable entities. This facilitates the
+implementation of higher-order functions and functional composition patterns,
+enhancing expressive capability while maintaining referential transparency.
+As an example of a high-order function, let's consider `map`, which applies a 
+given function to all elements of an memory array.
+
 ```
+forall T U . function map (memory(array(T)) input, transform : (T) -> U) : memory(array(U)) {
+    let result memory(array(U)) = new(memory(array(U)),input.length);
+    for (uint i = 0; i < input.length; i++) {
+        result[i] = transform(input[i]);
+    }
+    return result;
+}
 ```
+
+Function `map` receives a memory array formed by elements of type `T` and a function which 
+takes a value of type `T` and returns a `U` value. Notation `(T) -> U` represents the 
+type of functions which has a `T` argument and a `U` result. The function `map` 
+traverses the array by applying its function argument in each element of the input array.
+Such patterns of data structure manipulation can be elegantly coded as 
+polymorphic high-order functions, thus enabling more code reuse and less 
+testing effort.
+
+### Type inference
+
+Core Solidity uses type inference algorithm to reduce syntactic verbosity while 
+maintaining the strong static typing guarantees. In our view, static typing is essential 
+for secure smart contract development. The type inference occurs during compilation and 
+provides complete type safety without explicit annotations.
+
+```
+let constant_value = 42; // Inferred as word
+let heterogeneous_tuple = (address(0), true, 42); // Inferred as (address, bool, word)
+constant_value = heterogeneous_tuple ; // this is a type error!
+```
+
+
 
 ### Core Solidity and SAIL
 
@@ -200,11 +221,23 @@ The current Core Solidity prototype support all previous features. In the near
 future, we plan to develop: 
 
 - Compile time evaluation: Inspired by Zig, we plan to include compile-time code 
-in Core Solidity. FINISH HERE! 
+in Core Solidity. Details on how such feature will work are being discussed by 
+Argot Collective Programming Languages research team.
 
-- Redesigned Module System: WRITE MORE HERE 
+- Redesigned Module System: Currently, the Core Solidity prototype does not have 
+a proper module system. In our tests, we implemented a import directive which 
+behaves like C's `#include`. The design of a proper module system for Core Solidity 
+are being discussed by Argot Collective Programming Languages research team.
 
-- Macros: NEED TO FINISH.
+- Macros: One of the main design goals of Core Solidity is to reduce the burden 
+of extending and maintaining the Solidity Compiler. Currently, the Core Solidity 
+prototype has a internal implementation of all desugaring steps into SAIL into the 
+compiler itself, which conflicts with our design goal of having the most of language 
+features being part of the standard library itself. One way to achieve such goal 
+is by having a powerful **macro** system, like Lean 4 or modern Lisp dialects such 
+as Racket. Having macros, most of the desugaring steps would be implemented by 
+macros, allowing such steps to be part of libraries or to give users the power 
+to replace standard library implementations to code that better suit their needs.
 
 
 ## What's next?
@@ -249,7 +282,7 @@ implementations.
 
 ## Conclusion
 
-Core Solidity represents a foundational reimagining of the language, 
+Core Solidity represents a foundational re-imagining of the language, 
 designed to equip developers with a more secure, expressive, and mathematically 
 sound toolkit for the next generation of smart contracts. The path forward, 
 however, will be designed by the community that uses it. We invite you to join 
