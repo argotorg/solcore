@@ -236,8 +236,10 @@ compiler itself, which conflicts with our design goal of having the most of lang
 features being part of the standard library itself. One way to achieve such goal 
 is by having a powerful **macro** system, like Lean 4 or modern Lisp dialects such 
 as Racket. Having macros, most of the desugaring steps would be implemented by 
-macros, allowing such steps to be part of libraries or to give users the power 
+macros, allowing such steps to be part of libraries, giving users the power 
 to replace standard library implementations to code that better suit their needs.
+The exact details of how such macro system will be discussed in the near future 
+by Argot Collective Programming Languages research team.
 
 
 ## What's next?
