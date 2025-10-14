@@ -6,3 +6,5 @@ cradle:
       component: "test:sol-core-tests"
     - path: "./app"
       component: "exe:sol-core"
+    - path: "./yule"
+      component: "exe:yule"
