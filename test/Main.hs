@@ -15,5 +15,6 @@ tests
                , spec
                , std
                , imports
+               , dispatches
 --             , reduceTests
                ]
