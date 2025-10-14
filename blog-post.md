@@ -221,8 +221,8 @@ The current Core Solidity prototype support all previous features. In the near
 future, we plan to develop: 
 
 - Compile time evaluation: Inspired by Zig, we plan to include compile-time code 
-in Core Solidity. Details on how such feature will work are being discussed by 
-Argot Collective Programming Languages research team.
+evaluation in Core Solidity. Details on how such feature will work are being 
+discussed by Argot Collective Programming Languages research team.
 
 - Redesigned Module System: Currently, the Core Solidity prototype does not have 
 a proper module system. In our tests, we implemented a import directive which 
@@ -244,13 +244,13 @@ by Argot Collective Programming Languages research team.
 
 ## What's next?
 
-The evolution of Solidity has reached a pivotal moment. While the language's 
+The evolution of Solidity has reached a crucial moment. While the language's 
 established features have successfully powered the ecosystem, certain patterns have 
 revealed limitations in scalability, security, and clarity. The following outlines 
 Argot's Collective vision for Core Solidity, a deliberate re-design of the language's 
 foundation. This initiative aims to replace legacy mechanisms with more robust, 
 composable, and community-driven primitives, ensuring the language remains a secure 
-and efficient foundation for the next generation of smart contracts. 
+and efficient basis for the next generation of smart contracts. 
 The next steps of Core Solidity design will involve: 
 
 
