@@ -41,22 +41,22 @@ genNameDecls (Contract cname _ cdecls) = foldl go Set.empty cdecls
     go acc _ = acc
 
 genMainFn :: Contract Name -> Contract Name
-genMainFn (Contract cname tys cdecls) = Contract cname tys ((CFunDecl mainfn) : cdecls)
+genMainFn (Contract cname tys cdecls) = Contract cname tys (CFunDecl mainfn : cdecls)
   where
-    mainfn = FunDef (Signature [] [] (Name "main") [] Nothing) body
+    mainfn = FunDef (Signature [] [] "main" [] Nothing) body
     body = [ StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
-    cdata = Con (Name "Contract") [methods, fallback]
+    cdata = Con "Contract" [methods, fallback]
     methods = tupleExpFromList (fmap mkMethod (mapMaybe unwrapSigs cdecls))
-    fallback = Con (Name "Fallback")
-      [ proxyExp (TyCon (Name "NonPayable") [])
+    fallback = Con "Fallback"
+      [ proxyExp (TyCon "NonPayable" [])
       , proxyExp unit
       , proxyExp unit
-      , Var (Name "revert_handler")
+      , Var "revert_handler"
       ]
 
-    mkMethod (Signature _ _ fname fargs (Just ret)) | all isTyped fargs = Con (Name "Method")
+    mkMethod (Signature _ _ fname fargs (Just ret)) | all isTyped fargs = Con "Method"
       [ proxyExp (TyCon (nameTypeName cname fname) [])
-      , proxyExp (TyCon (Name "NonPayable") [])
+      , proxyExp (TyCon "NonPayable" [])
       , proxyExp (tupleTyFromList (mapMaybe getTy fargs))
       , proxyExp ret
       , Var fname
@@ -82,29 +82,27 @@ mkNameInst (DataTy dname [] []) fname = let
     nameTy = TyCon dname []
 
     -- sig
-    nhead = Name "head"
-    ntail = Name "tail"
-    args = [Typed nhead word, Typed ntail word, Typed (Name "prx") (proxyTy nameTy)]
-    sig = Signature [] [] (Name "append") args (Just word)
+    args = [Typed "head" word, Typed "tail" word, Typed "prx" (proxyTy nameTy)]
+    sig = Signature [] [] "append" args (Just word)
 
     -- body
     nameBytes = encodeUtf8 . T.pack . show $ fname
     nameSize = toInteger (BS.length nameBytes)
 
-    storeSize = mstore (YIdent nhead) (add (mload (YIdent nhead)) (YLit (YulNumber nameSize)))
-    storeBytes = generateStoreBytes nameBytes ntail
-    ret = Return (Call Nothing (QualName "Add" "add") [Var ntail, Lit (IntLit nameSize)])
+    storeSize = mstore (YIdent "head") (add (mload (YIdent "head")) (YLit (YulNumber nameSize)))
+    storeBytes = generateStoreBytes nameBytes "tail"
+    ret = Return (Call Nothing (QualName "Add" "add") [Var "tail", Lit (IntLit nameSize)])
     body = [ Asm (YExp storeSize : storeBytes), ret ]
 
     -- yul helpers
-    mstore loc val = YCall (Name "mstore") [loc, val]
-    mload loc = YCall (Name "mload") [loc]
-    add l r = YCall (Name "add") [l, r]
+    mstore loc val = YCall "mstore" [loc, val]
+    mload loc = YCall "mload" [loc]
+    add l r = YCall "add" [l, r]
   in Instance
     { instDefault = False
     , instVars = []
     , instContext = []
-    , instName = Name "ABIString"
+    , instName = "ABIString"
     , paramsTy = []
     , mainTy = TyCon dname []
     , instFunctions = [FunDef sig body]
@@ -114,10 +112,10 @@ mkNameInst dt _ = error ("Internal Error: unexpect name type structure: " <> sho
 --- Util ---
 
 proxyTy :: Ty -> Ty
-proxyTy t = TyCon (Name "Proxy") [t]
+proxyTy t = TyCon "Proxy" [t]
 
 proxyExp :: Ty -> Exp Name
-proxyExp t = TyExp (Con (Name "Proxy") []) (proxyTy t)
+proxyExp t = TyExp (Con "Proxy" []) (proxyTy t)
 
 -- | Generate the name for the name type from the contract and method names
 nameTypeName :: Name -> Name -> Name
@@ -137,9 +135,9 @@ generateStoreBytes bs offsetName =
 storeChunk :: Name -> Int -> ByteString -> YulStmt
 storeChunk offsetName index chunk =
   let paddedChunk = BS.append chunk (BS.replicate (32 - BS.length chunk) 0)
-      loc = YCall (Name "add") [YIdent offsetName, YLit (YulNumber (toInteger index))]
+      loc = YCall "add" [YIdent offsetName, YLit (YulNumber (toInteger index))]
       val = YLit (YulNumber (bsToInteger paddedChunk))
-  in YExp (YCall (Name "mstore") [loc, val])
+  in YExp (YCall "mstore" [loc, val])
 
 -- | Split a ByteString into 32-byte chunks
 chunk32 :: ByteString -> [ByteString]
