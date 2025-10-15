@@ -1270,8 +1270,6 @@ instance (storage(mapping(i,a)), i): LValueIdxAccess(storage(a)) {
     match(xi) {
       | (x, i) => return storage(hash2(Typedef.rep(x), Typedef.rep(i)));
     }
-
-    // return storage(42); // FIXME: hash2(x,i);
   }
 }
 
