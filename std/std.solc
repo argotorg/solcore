@@ -1,4 +1,4 @@
-pragma no-bounded-variable-condition ABIEncode, GenerateDispatch;
+pragma no-bounded-variable-condition ABIEncode, GenerateDispatch, Storable;
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
 
@@ -36,6 +36,12 @@ pragma no-coverage-condition ABIDecode, MemoryType;
     - memory vectors
 */
 
+function unimplemented() {
+  assembly {
+    mstore(0, 0xaddc0de1)
+    revert(0, 4)
+  }
+}
 // --- booleans ---
 
 // TODO: this should short circuit. probably needs some compiler magic to do so.
@@ -277,6 +283,9 @@ instance word:Ord {
   }
 }
 // --- Value Types ---
+
+forall t. t:Typedef(word) =>
+function toWord(x:t) -> word { return Typedef.rep(x); }
 
 data uint256 = uint256(word);
 instance uint256:Typedef(word) {
@@ -525,7 +534,7 @@ data string;
 // underlying type with information about the size of the data pointed to by `t`
 data slice(ptr) = slice(ptr, word);
 
-// --- Word Readers ---
+// --- Word Reader ---
 
 // A WordReader is an abstraction over byte indexed structure that can be read in word sized chunks (e.g. calldata / memory)
 // These let us use the same abi decoding routines for calldata / memory
@@ -1246,13 +1255,90 @@ class lhs:Assign(rhs) {
     function assign(l:lhs, r:rhs) -> ();
 }
 
+// a can be stored in storage(b); e.g. memory(string) : Storable(string)
+pragma no-coverage-condition Storable, Assign;
+forall a b.
+class a:Storable(b) {
+  function store(r:storage(b), v:a);
+}
+
+
+forall a b. a:Storable(b) =>
+instance storage(b):Assign(a) {
+    function assign(l:storage(b), r:a) -> () {
+      Storable.store(l, r);
+    }
+}
 
 forall a. a:StorageType =>
-instance storage(a):Assign(a) {
-    function assign(l:storage(a), r:a) -> () {
+default instance a:Storable(a) {
+    function store(l:storage(a), r:a) -> () {
       StorageType.store(Typedef.rep(l), r);
     }
 }
+
+instance memory(string):Storable(string) {
+  function store(dst:storage(string), src:memory(string)) -> () {
+    let srcPtr : word = Typedef.rep(src);
+    let slot = Typedef.rep(dst);
+    storeBytesFromMemory(slot, srcPtr);
+  }
+}
+
+// Shamelessly stolen from  function copy_byte_array_to_storage_from_t_bytes_memory_ptr_to_t_bytes_storage
+// TODO: check https://notes.argot.org/@solidity-storage-wrap-behavior-audit#Iteration-over-array-items
+function storeBytesFromMemory(slot: word, src: word) -> () {
+  assembly {
+    let newLen := mload(src)
+    // TODO: check old len, cleanup etc
+
+    switch gt(newLen, 31)
+      case 1 {
+	  let srcOffset := 32
+	  let dstPtr := keccak256(slot)
+	  let loopEnd := and(newLen, not(0x1f))
+	  let lastLen := and(newLen, 0x1f)
+	  let i := 0
+	  for { } lt(i, loopEnd) { i := add(i, 0x20) } {
+	      sstore(dstPtr, mload(add(src, srcOffset)))
+	      dstPtr := add(dstPtr, 1)
+	      srcOffset := add(srcOffset, 32)
+	  }
+	  if lt(loopEnd, newLen) {
+	      let lastValue := mload(add(src, srcOffset))
+	      let mask := not(shr(mul(8, lastLen), not(0)))
+	      let nudata := and(lastValue, mask)  // a Yul variable cannot be called "data". Go figure.
+	      sstore(dstPtr, nudata)
+	  }
+	  sstore(slot, add(mul(newLen, 2), 1))
+      }
+      default {
+	  let value := 0
+	  if newLen {
+	      value := mload(add(src, srcOffset))
+	  }
+	  /*
+	    function mask_bytes_dynamic(data, bytes) -> result {
+		let mask := not(shift_right_unsigned_dynamic(mul(8, bytes), not(0)))
+		result := and(data, mask)
+	    }
+
+	    function extract_used_part_and_set_length_of_short_byte_array(data, len) -> used {
+		// we want to save only elements that are part of the array after resizing
+		// others should be set to zero
+		data := mask_bytes_dynamic(data, len)
+		used := or(data, mul(2, len))
+	    }
+	    sstore(slot, extract_used_part_and_set_length_of_short_byte_array(value, newLen))
+	  */
+	  let mask := not(shr(mul(8, lastLen), not(0)))
+	  let nudata := and(lastValue, mask)
+	  let used := or(nudata, mul(2, newLen))
+	  sstore(slot,used)
+      }
+  }
+}
+
 
 // -- Tuple-based indexed access:
 
