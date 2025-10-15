@@ -57,6 +57,12 @@ instance uint:StorageSize {
     }
 }
 
+instance uint256:StorageSize {
+    function size(x:Proxy(uint256)) -> word {
+        return 1;
+    }
+}
+
 instance address:StorageSize {
     function size(x:Proxy(address)) -> word {
         return 1;
@@ -128,6 +134,11 @@ instance uint:StorageType {
   function store(ptr:word, value:uint) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
 }
 
+instance uint256:StorageType {
+  function sload(ptr:word) -> uint256 { return uint256(StorageType.sload(ptr):word); }
+  function store(ptr:word, value:uint256) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
+}
+
 
 // -- structure fields (including contract fields)
 
@@ -155,13 +166,8 @@ forall cxt fieldSelector fieldType offsetType
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):LVA(storage(fieldType)) {
     function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> storage(fieldType) {
-        let ptr:word = 0x100; // forge uses at least 1 storage slot
-        let offsetSize:word = StorageSize.size(Proxy:Proxy(offsetType));
-
-        assembly {
-            ptr := add(ptr, offsetSize)
-        }
-        return storage(ptr); 
+        let offset:word = StorageSize.size(Proxy:Proxy(offsetType));
+        return storage(offset);
     }
 }
 
@@ -171,9 +177,8 @@ forall cxt fieldSelector fieldType offsetType
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):RVA(fieldType) {
     function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> fieldType {
-        let ptr:word = 0x100;
-        let offsetSize:word = StorageSize.size(Proxy:Proxy(offsetType));
-        return StorageType.sload(addW(ptr, offsetSize)):fieldType;
+        let offset:word = StorageSize.size(Proxy:Proxy(offsetType));
+        return StorageType.sload(offset):fieldType;
     }
 }
 
@@ -280,7 +285,7 @@ instance (storage(mapping(i,a)), i): LValueIdxAccess(storage(a)) {
     match(xi) {
       | (x, i) => return storage(hash2(Typedef.rep(x), Typedef.rep(i)));
     }
-   
+
     // return storage(42); // FIXME: hash2(x,i);
   }
 }
@@ -322,4 +327,3 @@ forall i a . i:Typedef(word), a:StorageType  =>
 function ridx( m: storage(mapping(i,a)), x:i) -> a {
   return StorageType.sload(hash2(Typedef.rep(m), Typedef.rep(x)));
 }
-

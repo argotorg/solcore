@@ -1,4 +1,4 @@
-import assign;
+import std;
  
 function caller() -> address {
   let res: word;
@@ -30,20 +30,20 @@ contract Mini {
   reserved : word;
   msg_sender : address; // mock msg.sender
   owner : address;
-  decimals : uint;
-  totalSupply : uint;
-  balances : mapping(address,uint);
-  allowance : mapping(address, mapping(address, uint));
+  decimals : uint256;
+  totalSupply : uint256;
+  balances : mapping(address,uint256);
+  allowance : mapping(address, mapping(address, uint256));
 
-  function mint(amount:uint) -> () {
+  function mint(amount:uint256) -> () {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
 
 /*  // original:
-    function transferFrom(address src, address dst, uint amt) public returns (bool) {
+    function transferFrom(address src, address dst, uint256 amt) public returns (bool) {
         require(balanceOf[src] >= amt, "token/insufficient-balance");
-        if (src != msg.sender && allowance[src][msg.sender] != type(uint).max) {
+        if (src != msg.sender && allowance[src][msg.sender] != type(uint256).max) {
             require(allowance[src][msg.sender] >= amt, "token/insufficient-allowance");
             allowance[src][msg.sender] -= amt;
         }
@@ -55,12 +55,12 @@ contract Mini {
     }
 */
 
-//  function transferFrom(src:address, dst:address, amt:uint) -> bool {
+//  function transferFrom(src:address, dst:address, amt:uint256) -> bool {
   function transferFrom(src, dst, amt) -> bool  {
      require1(ge(balances[src], amt));
 
      match (Eq.eq(src, msg_sender)) {
-       | true => match ne(allowance[src][msg_sender], Num.maxVal():uint) {
+       | true => match ne(allowance[src][msg_sender], Num.maxVal():uint256) {
            | true => require1(false);
 	   | false => ();
 	   }
@@ -68,17 +68,17 @@ contract Mini {
      }
 
 /*
-     if ((src != msg_sender) && (allowance [src][msg_sender] != (Num.maxVal():uint)) ) {
+     if ((src != msg_sender) && (allowance [src][msg_sender] != (Num.maxVal():uint256)) ) {
        require1(allowance[src][msg.sender] >= amt);
      }
 */   
      balances[src] = Num.sub(balances[src], amt);
-     balances[dst] = Num.add(balances[dst], amt):uint;
+     balances[dst] = Num.add(balances[dst], amt):uint256;
      return true;
   }
 
 /*
-    function approve(address usr, uint amt) public returns (bool) {
+    function approve(address usr, uint256 amt) public returns (bool) {
         allowance[msg.sender][usr] = amt;
         emit Approval(msg.sender, usr, amt);
         return true;
@@ -92,12 +92,12 @@ contract Mini {
     decimals = Num.fromWord(18);
   }
 
-  function main() -> uint {
+  function main() -> uint256 {
     init();
-    mint(uint(1000));
-    allowance[owner][msg_sender] = uint(10000);
-    transferFrom(owner, msg_sender, uint(42));
+    mint(uint256(1000));
+    allowance[owner][msg_sender] = uint256(10000);
+    transferFrom(owner, msg_sender, uint256(42));
 
-    return balances[msg_sender] : uint;
+    return balances[msg_sender] : uint256;
   }
 }
