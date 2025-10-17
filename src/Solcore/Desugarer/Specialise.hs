@@ -249,8 +249,6 @@ specialiseTopDecl decl = pure []
 findConstructor :: [ContractDecl Id] -> Maybe (Constructor Id)
 findConstructor = foldr (\d -> (getConstructor d <|>)) Nothing
 
--- findConstructor (c:cs) = getConstructor c <|> findConstructor cs
-
 getConstructor :: ContractDecl Id -> Maybe (Constructor Id)
 getConstructor (CConstrDecl c) = Just c
 getConstructor _ = Nothing
