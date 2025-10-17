@@ -263,6 +263,7 @@ specEntry name = withLocalState do
       Nothing -> do
         warns ["!! Warning: no resolution found for ", show name]
 
+specConstructor :: Constructor Id -> SM Name
 specConstructor (Constructor [] body) = do
   let sig = Signature [] [] (Name "constructor") [] (Just unit)
   let fd = FunDef sig body
