@@ -219,13 +219,10 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
        getSpecialisedDecls
     -- Deployer code
     modify (\st -> st { specTable = emptyTable })
-    let deployerName = Name (pretty name <> "$Deployer")
-    let mconstructor = findConstructor decls
-    deployDecls <- case mconstructor of
+    deployDecls <- case findConstructor decls of
       Just c -> withLocalState do
         cname' <- specConstructor c
         st <- gets specTable
-        let cdecl = st Map.! cname'
         depDecls <- getSpecialisedDecls
         -- use mutual to group constructor with its dependencies
         pure [CMutualDecl depDecls]
