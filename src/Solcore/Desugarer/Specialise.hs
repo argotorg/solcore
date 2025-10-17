@@ -215,7 +215,7 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
     addContractResolutions (Contract name args decls)
     -- Runtime code
     runtimeDecls <- withLocalState do
-       forM_ entries (specEntry)
+       forM_ entries specEntry
        getSpecialisedDecls
     -- Deployer code
     modify (\st -> st { specTable = emptyTable })
