@@ -91,3 +91,8 @@ instance Compress Expr where
     compress e@(EInr ty _) = compressInjections (compress ty) e
     compress (ECall n es) = ECall n (compress es)
     compress e = e
+
+instance Compress Object where
+    compress (Object name code inners) = Object name code' inners' where
+      code' = compress code
+      inners' = compress inners
