@@ -65,7 +65,7 @@ contract Uint {
   function init() {
     owner = address(0x123456789abcdef);
     msg_sender = caller();
-    decimals = Num.fromWord(18);
+    decimals = uint256(18);
   }
   
   function main() -> uint256 {
