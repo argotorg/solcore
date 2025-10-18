@@ -7,12 +7,11 @@
 */
 
 
-// Would import std if it weren't for pragmas :(
-// import std;
+import std;
 
 // -- relevant fragments of std
 
-// import NumLib;
+/*
 function hash2(x: word, y: word) -> word {
   let result: word = 0;
   assembly {
@@ -83,11 +82,12 @@ forall t . instance storage(t) : Typedef(word) {
     }
 }
 
-
+*/
 // -- std ends
 
 
 // -- storage
+
 
 forall self.
 class self:StorageSize {
@@ -106,12 +106,11 @@ instance word:StorageSize {
     }
 }
 
-instance uint:StorageSize {
-    function size(x:Proxy(uint)) -> word {
+instance uint256:StorageSize {
+    function size(x:Proxy(uint256)) -> word {
         return 1;
     }
 }
-
 instance address:StorageSize {
     function size(x:Proxy(address)) -> word {
         return 1;
@@ -128,6 +127,7 @@ forall a b . a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
         return a_sz;
     }
 }
+
 
 
 forall self.
@@ -168,9 +168,9 @@ function storeViaWord(ptr:word, value:a) -> () {
     }
 }
 
-instance uint:StorageType {
-  function sload(ptr:word) -> uint { return uint(StorageType.sload(ptr):word); }
-  function store(ptr:word, value:uint) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
+instance uint256:StorageType {
+  function sload(ptr:word) -> uint256 { return uint256(StorageType.sload(ptr):word); }
+  function store(ptr:word, value:uint256) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
 }
 
 
@@ -250,12 +250,12 @@ function readStorage(x:storage(a)) -> a {
 }
 
 forall r a. r: RValueIdxAccess(a) =>
-function rval(x:r) -> a {
+function idx_rval(x:r) -> a {
   return RValueIdxAccess.lookup(x);
 }
 
 forall r a. r: LValueIdxAccess(a) =>
-function lval(x:r) -> a {
+function idx_lval(x:r) -> a {
   return LValueIdxAccess.lookup(x);
 }
 
@@ -263,18 +263,18 @@ contract TestTuva {
   function main() -> word {
     let balances : storage(mapping(address, word));
     let allowances : storage(mapping(address, mapping(address, word) ));
-    let ref1 : storage(word) = lval( (balances, address(17)) );
-    Assign.assign(lval( (balances, address(1)) ), 1337);
+    let ref1 : storage(word) = idx_lval( (balances, address(17)) );
+    Assign.assign(idx_lval( (balances, address(1)) ), 1337);
 
     let ref2a // : storage( mapping(address, word) ) // omitting this type makes instance resolution fail
-              = lval ( (allowances, address(1)) );
+              = idx_lval ( (allowances, address(1)) );
 
     let ref2b // : storage( word )
-              = lval ( (ref2a, address(2)) );
+              = idx_lval ( (ref2a, address(2)) );
 
     Assign.assign( ref2b, 777 );
 
-//    return rval( (balances, address(1)) );
-    return rval ( (ref2a, address(2)) );
+//    return idx_rval( (balances, address(1)) );
+    return idx_rval ( (ref2a, address(2)) );
   }
 }

@@ -1,5 +1,4 @@
-import IndexLib;
-
+import std;
 contract Counter {
   counter : word;
 
