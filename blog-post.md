@@ -241,6 +241,22 @@ to replace standard library implementations to code that better suit their needs
 The exact details of how such macro system will be discussed in the near future 
 by Argot Collective Programming Languages research team.
 
+## Extended example: desugaring a simple contract into SAIL 
+
+
+```
+contract SimpleStorage {
+    storedData : word;
+
+    function set(x : word) -> () {
+        storedData = x;
+    }
+
+    function get() -> word {
+        return storedData;
+    }
+}
+```
 
 ## What's next?
 
