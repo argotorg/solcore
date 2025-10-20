@@ -215,7 +215,7 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
     addContractResolutions (Contract name args decls)
     -- Runtime code
     runtimeDecls <- withLocalState do
-       forM_ entries (specEntry)
+       forM_ entries specEntry
        getSpecialisedDecls
     -- Deployer code
     modify (\st -> st { specTable = emptyTable })
@@ -246,8 +246,6 @@ specialiseTopDecl decl = pure []
 findConstructor :: [ContractDecl Id] -> Maybe (Constructor Id)
 findConstructor = foldr (\d -> (getConstructor d <|>)) Nothing
 
--- findConstructor (c:cs) = getConstructor c <|> findConstructor cs
-
 getConstructor :: ContractDecl Id -> Maybe (Constructor Id)
 getConstructor (CConstrDecl c) = Just c
 getConstructor _ = Nothing
@@ -265,6 +263,7 @@ specEntry name = withLocalState do
         warns ["!! Warning: no resolution found for ", show name]
         pure Nothing
 
+specConstructor :: Constructor Id -> SM Name
 specConstructor (Constructor [] body) = do
   let sig = Signature [] [] (Name "constructor") [] (Just unit)
   let fd = FunDef sig body
