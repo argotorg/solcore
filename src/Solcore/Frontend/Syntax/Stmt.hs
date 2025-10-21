@@ -2,6 +2,7 @@ module Solcore.Frontend.Syntax.Stmt where
 
 import Data.Generics (Data, Typeable)
 
+import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Ty
 import Language.Yul
 

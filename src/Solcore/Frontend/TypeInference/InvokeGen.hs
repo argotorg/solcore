@@ -149,6 +149,12 @@ isClosureTy _ = False
 ppair :: Pat Name -> Pat Name -> Pat Name
 ppair p1 p2 = PCon (Name "pair") [p1, p2]
 
+tupleTyFromList :: [Ty] -> Ty
+tupleTyFromList [] = unit
+tupleTyFromList [t] = t
+tupleTyFromList [t1,t2] = pair t1 t2
+tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
+
 anfInstance :: Inst -> Inst
 anfInstance inst@(q :=> p@(InCls c t [])) = inst
 anfInstance inst@(q :=> p@(InCls c t as)) = q ++ q' :=> InCls c t bs

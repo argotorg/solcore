@@ -3,6 +3,7 @@ module Solcore.Pipeline.SolcorePipeline where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
+import Control.Exception (try, SomeException)
 import Data.List.Split(splitOn)
 import qualified Data.Time as Time
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
@@ -12,10 +13,12 @@ import qualified System.TimeIt as TimeIt
 import Text.Pretty.Simple
 
 import qualified Language.Core as Core
-import Solcore.Desugarer.ContractDispatch (contractDispatchDesugarer)
+import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
+import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
+import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.ElabTree
@@ -49,7 +52,6 @@ compile :: Option -> IO (Either String [Core.Object])
 compile opts = runExceptT $ do
   let verbose = optVerbose opts
       noDesugarCalls = optNoDesugarCalls opts
-      noGenDispatch = optNoGenDispatch opts
       noMatchCompiler = optNoMatchCompiler opts
       noIfDesugar = optNoIfDesugar opts
       timeItNamed :: String -> IO a -> IO a
@@ -63,8 +65,6 @@ compile opts = runExceptT $ do
   content <- liftIO $ readFile file
 
   parsed <- ExceptT $ moduleParser dirs content
-
-  -- Name resolution
   (resolved, env) <- ExceptT $ buildAST' parsed
 
   liftIO $ when (verbose || optDumpAST opts) $ do
@@ -73,15 +73,9 @@ compile opts = runExceptT $ do
 
   liftIO $ when (optDumpEnv opts) $ pPrint env
 
-  -- contrct dispatch generation
-  dispatched <- liftIO $
-    if noGenDispatch
-    then pure resolved
-    else timeItNamed "Contract dispatch generation" $ pure (contractDispatchDesugarer resolved)
-
   -- SCC analysis
   connected <- ExceptT $ timeItNamed "SCC           " $
-    sccAnalysis dispatched
+    sccAnalysis resolved
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"
@@ -97,10 +91,10 @@ compile opts = runExceptT $ do
     putStrLn "> Indirect call desugaring:"
     putStrLn $ pretty direct
 
-  -- Pattern wildcard desugaring
+  -- Pattern wildcard desugaring 
 
   let noWild = replaceWildcard direct
-  liftIO $ when verbose $ do
+  liftIO $ when verbose $ do 
     putStrLn "> Pattern wildcard desugaring:"
     putStrLn $ pretty noWild
 
@@ -115,10 +109,9 @@ compile opts = runExceptT $ do
     putStrLn $ pretty typed
 
   -- If / boolean desugaring
-  desugared <- liftIO $
-    if noIfDesugar
-    then pure typed
-    else timeItNamed "If/Bool desugaring" (pure (ifDesugarer typed))
+
+  desugared <- liftIO $ if noIfDesugar then pure typed
+              else timeItNamed "If/Bool desugaring" (pure (ifDesugarer typed))
 
   liftIO $ when verbose $ do
     putStrLn "> If / Bool desugaring:"
