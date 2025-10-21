@@ -1303,13 +1303,12 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
   assembly {
     let newLen := mload(src)
     // TODO: check old len, cleanup etc
-
+    let srcOffset := 32
     switch gt(newLen, 31)
       case 1 {
-	  let srcOffset := 32
-	  let dstPtr := keccak256(slot)
+	  mstore(0,slot)
+	  let dstPtr := keccak256(0,32)
 	  let loopEnd := and(newLen, not(0x1f))
-	  let lastLen := and(newLen, 0x1f)
 	  let i := 0
 	  for { } lt(i, loopEnd) { i := add(i, 0x20) } {
 	      sstore(dstPtr, mload(add(src, srcOffset)))
@@ -1318,6 +1317,7 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
 	  }
 	  if lt(loopEnd, newLen) {
 	      let lastValue := mload(add(src, srcOffset))
+	      let lastLen := and(newLen, 0x1f)
 	      let mask := not(shr(mul(8, lastLen), not(0)))
 	      let nudata := and(lastValue, mask)  // a Yul variable cannot be called "data". Go figure.
 	      sstore(dstPtr, nudata)
@@ -1329,8 +1329,8 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
 	  if newLen {
 	      value := mload(add(src, srcOffset))
 	  }
-	  let mask := not(shr(mul(8, lastLen), not(0)))
-	  let nudata := and(lastValue, mask)
+	  let mask := not(shr(mul(8, newLen), not(0)))
+	  let nudata := and(value, mask)
 	  let used := or(nudata, mul(2, newLen))
 	  sstore(slot,used)
       }
@@ -1365,8 +1365,8 @@ function loadBytesFromStorage(slot:word, memPtr:word) -> word {
     }
     case 1 {
 	// long byte array
-        let dataPos := keccak256(slot)
-
+	mstore(0, slot)
+        let dataPos := keccak256(0, 32)
 	let i := 0
 	for { } lt(i, length) { i := add(i, 0x20) } {
 	    mstore(add(pos, i), sload(dataPos))
