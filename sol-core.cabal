@@ -19,6 +19,7 @@ common common-opts
   build-depends:
       base >= 4.19.0.0
     , mtl
+    , bytestring
     , containers
     , algebraic-graphs
     , array
@@ -33,6 +34,7 @@ common common-opts
     , timeit
     , directory
     , split
+    , text
 
   build-tool-depends: happy:happy, alex:alex
 
@@ -61,6 +63,7 @@ library
       Solcore.Desugarer.ReplaceWildcard
       Solcore.Desugarer.Specialise
       Solcore.Desugarer.EmitCore
+      Solcore.Desugarer.ContractDispatch
       Solcore.Desugarer.UniqueTypeGen
       Solcore.Frontend.Lexer.SolcoreLexer
       Solcore.Frontend.Parser.SolcoreParser
