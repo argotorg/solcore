@@ -154,6 +154,20 @@ primTrue = (trueName, monotype boolTy)
 primFalse :: (Name, Scheme)
 primFalse = (falseName, monotype boolTy)
 
+-- tuple utils
+
+tupleExpFromList :: [Exp Name] -> Exp Name
+tupleExpFromList [] = Con (Name "()") []
+tupleExpFromList [e] = e
+tupleExpFromList [e1,e2] = epair e1 e2
+tupleExpFromList (e1 : es) = epair e1 (tupleExpFromList es)
+
+tupleTyFromList :: [Ty] -> Ty
+tupleTyFromList [] = unit
+tupleTyFromList [t] = t
+tupleTyFromList [t1,t2] = pair t1 t2
+tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
+
 -- definition of yul primops
 
 yulPrimOps :: [(Name, Scheme)]
