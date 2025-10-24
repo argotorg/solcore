@@ -154,6 +154,20 @@ primTrue = (trueName, monotype boolTy)
 primFalse :: (Name, Scheme)
 primFalse = (falseName, monotype boolTy)
 
+-- tuple utils
+
+tupleExpFromList :: [Exp Name] -> Exp Name
+tupleExpFromList [] = Con (Name "()") []
+tupleExpFromList [e] = e
+tupleExpFromList [e1,e2] = epair e1 e2
+tupleExpFromList (e1 : es) = epair e1 (tupleExpFromList es)
+
+tupleTyFromList :: [Ty] -> Ty
+tupleTyFromList [] = unit
+tupleTyFromList [t] = t
+tupleTyFromList [t1,t2] = pair t1 t2
+tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
+
 -- definition of yul primops
 
 yulPrimOps :: [(Name, Scheme)]
@@ -202,10 +216,13 @@ yulPrimOps = [ (Name "stop", monotype unit)
              , (Name "calldatacopy", monotype (word :-> word :-> word :-> word))
              , (Name "codesize", monotype word)
              , (Name "codecopy", monotype (word :-> word :-> word :-> unit))
+             , (Name "datasize", monotype (string :-> word))
+             , (Name "dataoffset", monotype (string :-> word))
              , (Name "extcodesize", monotype (word :-> word))
              , (Name "extcodecopy", monotype (word :-> word :-> word :-> unit))
              , (Name "returndatasize", monotype word)
              , (Name "returndatacopy", monotype (word :-> word :-> word :-> unit))
+             , (Name "mcopy", monotype (word :-> word :-> word :-> unit))
              , (Name "extcodehash", monotype (word :-> word))
              , (Name "create", monotype (word :-> word :-> word :-> unit))
              , (Name "create2", monotype (word :-> word :-> word :-> unit))
