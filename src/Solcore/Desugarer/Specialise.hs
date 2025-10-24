@@ -215,17 +215,14 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
     addContractResolutions (Contract name args decls)
     -- Runtime code
     runtimeDecls <- withLocalState do
-       forM_ entries (specEntry)
+       forM_ entries specEntry
        getSpecialisedDecls
     -- Deployer code
     modify (\st -> st { specTable = emptyTable })
-    let deployerName = Name (pretty name <> "$Deployer")
-    let mconstructor = findConstructor decls
-    deployDecls <- case mconstructor of
+    deployDecls <- case findConstructor decls of
       Just c -> withLocalState do
         cname' <- specConstructor c
         st <- gets specTable
-        let cdecl = st Map.! cname'
         depDecls <- getSpecialisedDecls
         -- use mutual to group constructor with its dependencies
         pure [CMutualDecl depDecls]
@@ -249,8 +246,6 @@ specialiseTopDecl decl = pure []
 findConstructor :: [ContractDecl Id] -> Maybe (Constructor Id)
 findConstructor = foldr (\d -> (getConstructor d <|>)) Nothing
 
--- findConstructor (c:cs) = getConstructor c <|> findConstructor cs
-
 getConstructor :: ContractDecl Id -> Maybe (Constructor Id)
 getConstructor (CConstrDecl c) = Just c
 getConstructor _ = Nothing
@@ -268,6 +263,7 @@ specEntry name = withLocalState do
       Nothing -> do
         warns ["!! Warning: no resolution found for ", show name]
 
+specConstructor :: Constructor Id -> SM Name
 specConstructor (Constructor [] body) = do
   let sig = Signature [] [] (Name "constructor") [] (Just unit)
   let fd = FunDef sig body

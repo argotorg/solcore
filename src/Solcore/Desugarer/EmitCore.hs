@@ -151,7 +151,7 @@ emitCDecl cd = debug ["!! emitCDecl ", show cd] >> pure []
 findConstructor :: [ContractDecl Id] -> Maybe (FunDef Id)
 findConstructor = go where
   go [] = Nothing
-  go (CFunDecl d:ds)| isConstructor d = Just d
+  go (CFunDecl d:_)| isConstructor d = Just d
   go (_:ds) = go ds
   isConstructor (FunDef sig _) = sigName sig == Name "constructor"
 
