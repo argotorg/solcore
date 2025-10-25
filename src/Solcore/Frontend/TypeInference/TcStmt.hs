@@ -464,7 +464,7 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       -- typing function body
       (bd1, ps1, t1) <- withLocalCtx lctx' (tcBody bd) `wrapError` d
       -- unifying context introduced type with infered function type
-      s <- unify nt (funtype ts' t1)
+      s <- unify nt (funtype ts' t1) `wrapError` d 
       -- building the function type scheme
       rs <- reduce [] ps1 `wrapError` d
       ty <- withCurrentSubst nt
@@ -498,7 +498,7 @@ annotatedScheme vs' sig@(Signature vs ps n args rt)
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
   | hasAnn sig = do
-      info ["\n# tcFunDef ", pretty sig]
+      info ["\n# tcFunDef ", pretty d]
       let vars = vs `union` vs'
       -- check if all variables are bound in signature.
       when (any (\ v -> v `notElem` vars) (bv sig)) $ do
@@ -715,10 +715,11 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
     -- getting matching substitution
     s <- match classc' ih `wrapError` instd
     -- getting method types
-    let qnames = map (QualName n . pretty) (methods cinfo)
+    let qnames = map qual (methods cinfo)
+        qual v = if v == invoke then v else QualName n (pretty v)
     -- getting most general types and instantiate them
     aqts <- mapM (\q -> do
-                          (Forall _ qt) <- askEnv q
+                          (Forall _ qt) <- askEnv q `wrapError` instd
                           let qt' = insts envc qt
                               vs' = bv qt'
                           ts' <- mapM (const freshTyVar) vs'

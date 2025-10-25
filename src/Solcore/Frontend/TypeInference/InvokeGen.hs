@@ -54,7 +54,7 @@ createInstance udt fd sch
       qt@(qs :=> ty) <- fresh sch
       info [">> Starting the creation of instance for ", pretty $ sigName (funSignature fd) , " :: ", pretty sch]
       -- getting invoke type from context
-      (qs' :=> ty') <- askEnv invoke >>= fresh
+      (qs' :=> ty') <- (askEnv invoke >>= fresh) `wrapError` fd 
       -- getting arguments and return type from signature
       let (args, retTy) = splitTy ty
           args' = case filter (not . isClosureTy) args of
