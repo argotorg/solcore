@@ -16,6 +16,9 @@ import Solcore.Desugarer.ContractDispatch (contractDispatchDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
+import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
+import Solcore.Desugarer.ReplaceFunTypeArgs
+import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.ElabTree
@@ -104,9 +107,16 @@ compile opts = runExceptT $ do
     putStrLn "> Pattern wildcard desugaring:"
     putStrLn $ pretty noWild
 
+  -- Eliminate function type arguments 
+
+  let noFun = replaceFunParam noWild 
+  liftIO $ when verbose $ do 
+    putStrLn "> Eliminating argments with function types"
+    putStrLn $ pretty noFun 
+
   -- Type inference
   (typed, env) <- ExceptT $ timeItNamed "Typecheck     "
-    (typeInfer opts noWild)
+    (typeInfer opts noFun)
 
   liftIO $ when verbose $ do
     putStrLn "> Type inference logs:"

@@ -64,6 +64,7 @@ library
       Solcore.Desugarer.Specialise
       Solcore.Desugarer.EmitCore
       Solcore.Desugarer.ContractDispatch
+      Solcore.Desugarer.ReplaceFunTypeArgs
       Solcore.Desugarer.UniqueTypeGen
       Solcore.Frontend.Lexer.SolcoreLexer
       Solcore.Frontend.Parser.SolcoreParser

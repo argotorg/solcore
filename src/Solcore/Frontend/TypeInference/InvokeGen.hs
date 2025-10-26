@@ -26,6 +26,7 @@ generateDecls :: (FunDef Id, Scheme) -> TcM (DataTy, Instance Name)
 generateDecls (fd, sch)
   = do
       let funname = sigName (funSignature fd)
+      info ["!> Generating extra definitions for:", pretty (funSignature fd)]
       udt <- mkUniqueType funname sch
       instd <- createInstance udt fd sch
       pure (udt, instd)

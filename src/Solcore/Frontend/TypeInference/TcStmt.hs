@@ -339,18 +339,16 @@ createClosureType ids vs ty
   = do
       i <- incCounter
       s <- getSubst
+      ts <- mapM (const freshTyVar) ids
       let
-          (args,ret) = splitTy ty
-          argTy = tupleTyFromList args
           dn = Name $ "t_closure" ++ show i
-          ts = map idType (apply s ids)
           ts' = everywhere (mkT gen) ts
           ns = map Var $ (apply s ids)
-          vs' = nub $ (mv ts) ++ (map (MetaTv . var) vs)
+          vs' = nub $ (mv ts) `union` (map (MetaTv . var) vs)
           ty' = TyCon dn (Meta <$> vs')
           cid = Id dn (funtype ts ty')
           d = DataTy dn (map gvar vs') [Constr dn ts']
-      info [">> Create closure type:", pretty d]
+      info [">> Create closure type:", pretty d, " for type :", pretty ty]
       pure (d, Con cid ns, ty')
 
 createClosureFun :: Name ->

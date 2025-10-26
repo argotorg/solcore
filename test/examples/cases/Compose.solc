@@ -1,13 +1,38 @@
-  function compose(f,g) {
+/*
+forall a b c . function compose1(f : (b) -> c, g : (a) -> b) -> ((a) -> c) {
+  return lam (x) {
+    return f(g(x));
+  } ;
+}
+
+forall a b c d e . d : invokable(b,c), e : invokable(a,b) => 
+  function compose2 (f : d, g : e) -> ((a) -> c) {
     return lam (x) {
-      return f(g(x));
-    } ;
+      return invokable.invoke(f, invokable.invoke(g,x));
+    };
   }
+*/
+function compose0(f,g) {
+  return lam(x) {
+    return invokable.invoke(f, invokable.invoke(g,x));
+  };
+} 
 
-  function id(x) { return x; }
+function compose3(f,g) {
+  return lam(x){return f(g(x));};
+}
 
-  function main() {
-    let f = compose(id,id);
-    return f(42);
+forall a b c . c : invokable(a,b) => function apply (f : c, x : a) -> b {
+  return invokable.invoke(f,x);
+}
+
+function id(x) {
+  return x;
+}
+
+contract Foo {
+  function main () -> word {
+    let f = compose3(id,id);
+    return f(0);
   }
-
+}
