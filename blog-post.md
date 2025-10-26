@@ -46,8 +46,8 @@ implementation of algorithms and data structures that operate uniformly across
 all types. As an example, we could define a polymorphic `identity` function:
 
 ``` 
-forall a . function identity(x : a) -> a {
-   return x;
+forall T . function identity(x : T) -> T {
+    return x;
 }
 ```
 
