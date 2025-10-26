@@ -58,7 +58,7 @@ parametric polymorphism (generics) in a systematic manner. A type class definiti
 declares the class name, its arguments and member functions type signature. As an 
 example, let's consider the task of defining addition over different types:
 ```
-function a . class a : Sum {
+forall a . class a : Sum {
   function sum (x : a, y : a) -> a;
 }
 ```
