@@ -161,7 +161,7 @@ given function to all elements of an memory array.
 
 ```
 forall T U . function map (memory(array(T)) input, transform : (T) -> U) : memory(array(U)) {
-    let result memory(array(U)) = new(memory(array(U)),input.length);
+    let result : memory(array(U)) = new(memory(array(U)), input.length);
     for (uint i = 0; i < input.length; i++) {
         result[i] = transform(input[i]);
     }
