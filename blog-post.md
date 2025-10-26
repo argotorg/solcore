@@ -43,7 +43,7 @@ type classes.
 
 Generics enable parametric polymorphism through type parameters, which allows the  
 implementation of algorithms and data structures that operate uniformly across 
-over all types. As an example, we could define a polymorphic `identity` function:
+all types. As an example, we could define a polymorphic `identity` function:
 
 ``` 
 forall a . function identity(x : a) -> a {
