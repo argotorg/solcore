@@ -143,7 +143,7 @@ function processAuction(state) {
     |   Cancelled => {
             revert("Auction cancelled");
         }
-]   |   _ => {
+    |   _ => {
             return state;
         }
     }
