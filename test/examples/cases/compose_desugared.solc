@@ -1,0 +1,45 @@
+forall a b c d e . d : invokable(b,c)
+                 , e : invokable(a,b) 
+                 => function compose(f : d, g : e) -> t_closure1(a,b,c,d,e) {
+  return t_closure1(f,g);
+}
+
+data t_closure1(a,b,c,d,e) = t_closure1(d,e);
+
+forall a b c d e . d : invokable(b,c), e : invokable(a,b) => 
+  function lambda2(c : t_closure1(a,b,c,d,e), x : a) -> c {
+    match c {
+    | t_closure1(f, g) =>  
+        return invokable.invoke(f, invokable.invoke(g,x));
+    }
+  }
+
+forall a b c d e . d : invokable(b,c) 
+                 , e : invokable(a,b) 
+                 => instance t_closure1(a,b,c,d,e) : invokable(a,c) {
+  function invoke(self : t_closure1(a,b,c,d,e), args : a) -> c {
+    return lambda2(self, args);
+  }
+}
+
+data t_id3(a) = t_id3 ;
+
+forall a . function id (x : a) -> a {
+  return x;
+}
+
+forall a . instance t_id3(a) : invokable(a,a) {
+  function invoke(self : t_id3(a), args : a) -> a {
+    match self {
+    | t_id3 => return id(args) ;
+    }
+  }
+}
+
+contract Foo {
+  function main() -> word {
+    let f = compose(t_id3, t_id3);
+    return invokable.invoke(f, 0);
+  }
+}
+

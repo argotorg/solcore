@@ -244,7 +244,7 @@ tcExp e@(Lam args bd _)
          (e, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty
          -- here we do not need the constraints in ps1, since after closure conversion
          -- the lambda is replaced by a unique type constructor for it.
-         withCurrentSubst (e, [], t)
+         withCurrentSubst (e, ps1, t)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
@@ -318,9 +318,11 @@ closureConversion vs args bdy ps ty
         writeInstance instd'
         pure (Con (Id dn t) [], t)
       else do
+        liftIO $ putStrLn $ "!!>> " ++ pretty ps 
         (cdt, e', t') <- createClosureType free vs ty
         addUniqueType fn cdt
         (fun, sch) <- createClosureFun fn free cdt args bdy ps ty
+        liftIO $ putStrLn $ pretty (funSignature fun)
         info [">> Create lambda lifted function(closure):\n", pretty fun]
         writeFunDef fun
         writeDataTy cdt
@@ -339,8 +341,8 @@ createClosureType ids vs ty
   = do
       i <- incCounter
       s <- getSubst
-      ts <- mapM (const freshTyVar) ids
       let
+          ts = map idType ids 
           dn = Name $ "t_closure" ++ show i
           ts' = everywhere (mkT gen) ts
           ns = map Var $ (apply s ids)
@@ -1134,6 +1136,7 @@ instance Vars a => Vars (Stmt a) where
   vars (Return e) = vars e
   vars (Match e eqns) = vars e `union` vars eqns
   vars (If e blk1 blk2) = vars e `union` vars blk1 `union` vars blk2
+  vars (Asm _) = []
 
 instance Vars a => Vars (Equation a) where
   vars (_, ss) = vars ss
