@@ -7,9 +7,8 @@ data Proxy(t) = Proxy;
 
 data address = address(word);
 
-// type uint = uint256;
-data uint = uint(word);
-
+data uint = uint(word); // deprecated
+data uint256 = uint256(word);
 data storage(t) = storage(word);
 
 // --- Type Abstraction ---
@@ -39,6 +38,18 @@ instance uint:Typedef(word) {
     function rep(x: uint) -> word {
         match x {
         | uint(w) => return w;
+        }
+    }
+}
+
+instance uint256:Typedef(word) {
+    function abs(w: word) -> uint256 {
+        return uint256(w);
+    }
+
+    function rep(x: uint256) -> word {
+        match x {
+        | uint256(w) => return w;
         }
     }
 }
