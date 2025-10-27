@@ -73,11 +73,15 @@ compile opts = runExceptT $ do
 
   liftIO $ when (optDumpEnv opts) $ pPrint env
 
-  -- contrct dispatch generation
+  -- contract dispatch generation
   dispatched <- liftIO $
     if noGenDispatch
     then pure resolved
     else timeItNamed "Contract dispatch generation" $ pure (contractDispatchDesugarer resolved)
+
+  liftIO $ when (optDumpDispatch opts) $ do
+    putStrLn "> Dispatch:"
+    putStrLn $ pretty dispatched
 
   -- SCC analysis
   connected <- ExceptT $ timeItNamed "SCC           " $

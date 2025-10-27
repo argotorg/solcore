@@ -92,17 +92,17 @@ function deploycore() {
 #     echo $addr
 # }
 
-function deploysail() {
-    local sail=$1
+function deployhull() {
+    local hull=$1
     local base=$(basename $1 .core)
     shift
     local yulfile=$base.yul
     echo $yulfile
     local hexfile=$base.hex
     rm -f -v $yulfile #$hexfile
-    echo cabal exec yule -- $sail -o $yulfile
-    cabal exec yule -- $sail -o $yulfile
-    #deployyul $1 $*
+    echo cabal exec yule -- $hull -o $yulfile
+    cabal exec yule -- $hull -o $yulfile
+    deployyul $yulfile $*
 }
 
 function deployyul() {
@@ -115,7 +115,7 @@ function deployyul() {
     prog=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
     hex="$prog$data"
     echo Hex: $hex
-    rawtx=$(cast mktx --private-key=$DEPLOYER_KEY --create $hex)
+    rawtx=$(cast mktx --private-key=$DEPLOYER_KEY --create $hex $*)
     txoutput=$(cast publish $rawtx)
     echo $txoutput | jq .
     export contractAddress=$(echo $txoutput | jq .contractAddress | tr -d '"')
@@ -137,7 +137,7 @@ function deployyul1() {
     echo $contractAddress
 }
 
-function sail() {
+function hull() {
      local base=$(basename $1 .core)
      local yulfile=$base.yul
      rm -f -v $yulfile
