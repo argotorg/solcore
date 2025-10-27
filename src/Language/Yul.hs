@@ -98,7 +98,7 @@ hlist, vlist, nvlist, pprBlock :: Pretty a => [a] -> Doc
 hlist = hsep . map ppr
 vlist = vcat . map ppr
 nvlist = nest 2 . vlist
-pprBlock stmts = lbrace $$ nvlist stmts $$ rbrace
+pprBlock stmts = braces(nvlist stmts)
 
 
 instance Pretty YulObject where
@@ -142,9 +142,8 @@ instance Pretty YulStmt where
       $$ maybe empty (\stmts -> text "default" <+> pprBlock stmts) def
     where pprCase (lit, stmts) = text "case" <+> ppr lit <+> pprBlock stmts
   ppr (YFor pre cond post stmts) =
-    text "for" <+> braces (hlist pre)
-               <+> ppr cond
-               <+> hlist post <+> pprBlock stmts
+    text "for" <+> braces (hlist pre) <+> ppr cond <+> braces (hlist post)
+               $$ pprBlock stmts
   ppr YBreak = text "break"
   ppr YContinue = text "continue"
   ppr YLeave = text "leave"
