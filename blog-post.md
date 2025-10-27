@@ -34,7 +34,7 @@ provide an overview of such features. However, we warn the reader that the curre
 Core Solidity prototype uses a syntax which is similar, but not identical, to 
 Classic Solidity. Since our initial concern is to develop the new language type 
 system and its semantics, its surface syntax would probably change in the near 
-future. All presented examples work in the current prototype.
+future.
 
 ### Generics and Type Classes
 
@@ -47,7 +47,7 @@ all types. As an example, we could define a polymorphic `identity` function:
 
 ``` 
 forall T . function identity(x : T) -> T {
-    return x;
+  return x;
 }
 ```
 
@@ -57,14 +57,16 @@ ways at different types. Type classes are the standard way of combining overload
 parametric polymorphism (generics) in a systematic manner. A type class definition 
 declares the class name, its arguments and member functions type signature. As an 
 example, let's consider the task of defining addition over different types:
+
 ```
-forall a . class a : Sum {
-  function sum (x : a, y : a) -> a;
-}
+forall T . class T : Sum {
+  function sum (x : T, y : T) -> T;
 ```
+
 Implementations for member functions for different types are provided by instance 
 definitions. As an example, let's consider the implementation of `Sum` for 
 `word` type which, internally, uses Yul assembly to perform addition. 
+
 ```
 instance word : Sum {
   function sum (x : word, y : word) -> word {
@@ -76,10 +78,12 @@ instance word : Sum {
   }
 }
 ```
+
 As another example, consider an instance for polymorphic pairs.
+
 ```
-forall a b . a : Sum, b : Sum => instance (a,b) : Sum {
-  function sum (p1 : (a,b), p2 : (a,b)) -> (a, b) {
+forall T1 T2 . T1 : Sum, T2 : Sum => instance (T1,T2) : Sum {
+  function sum (p1 : (T1,T2), p2 : (T1,T2)) -> (T1, T2) {
     match p1, p2 {
       (x1,y1), (x2, y2) => 
         return (Sum.sum(x1,x2), Sum.sum(y1,y2));
@@ -103,18 +107,11 @@ definition for an auction state.
 
 ```
 data AuctionState =
-    NotStarted { 
-        reservePrice: word  
-    } |
-    Active { 
-        highestBid: word,
-        leadingBidder: address 
-    } |
-    Ended { 
-        winningBid: word,
-        winner: address 
-    } |
-    Cancelled;
+    NotStarted (word) 
+  | Active (word, address) 
+  | Ended (word, address) 
+  | Cancelled;
+
 ```
 The type has three constructors: `NotStarted` specifies that the action have not started yet and 
 stores its reserved price, `Active` denotes that the auction has began and it stores the 
@@ -122,11 +119,11 @@ current highest bid and the address that made such bid, `Ended` represents that 
 finished with success and it holds the highest bid and the winner address and constructor 
 `Cancelled` is used when the auction has been cancelled.
 
-Using algebraic data types, we can define function by pattern matching. As an example, 
-consider function `processAuction` which 
-Pattern matching provides structural decomposition of data types through case analysis. This 
-ensures all possible variants are handled explicitly, eliminating partial function hazards and 
-providing formal guarantees of match completeness.
+Using algebraic data types, we can define functions by pattern matching. As an example, 
+consider function `processAuction` which tries updates the action state based on current 
+state and `msg.value`.  Pattern matching provides structural decomposition of data types through 
+case analysis. This ensures all possible variants are handled explicitly, eliminating 
+partial function hazards and providing formal guarantees of match completeness.
 
 ```
 function processAuction(state) {
@@ -160,19 +157,20 @@ As an example of a high-order function, let's consider `map`, which applies a
 given function to all elements of an memory array.
 
 ```
-forall T U . function map (memory(array(T)) input, transform : (T) -> U) : memory(array(U)) {
-    let result : memory(array(U)) = new(memory(array(U)), input.length);
-    for (uint i = 0; i < input.length; i++) {
-        result[i] = transform(input[i]);
-    }
-    return result;
+forall T U . function map (input : memory(array(T)), transform : (T) -> U) -> memory(array(U)) {
+  let result : memory(array(U)) = new(@memory(array(U)),input.length);
+  for (uint i = 0; i < input.length; i++) {
+    result[i] = transform(input[i]);
+  }
+  return result;
 }
 ```
 
 Function `map` receives a memory array formed by elements of type `T` and a function which 
 takes a value of type `T` and returns a `U` value. Notation `(T) -> U` represents the 
 type of functions which has a `T` argument and a `U` result. The function `map` 
-traverses the array by applying its function argument in each element of the input array.
+traverses the array by applying its function argument in each element of the input array
+and storing the resulting value into the `result` array.
 Such patterns of data structure manipulation can be elegantly coded as 
 polymorphic high-order functions, thus enabling more code reuse and less 
 testing effort.
@@ -180,17 +178,53 @@ testing effort.
 ### Type inference
 
 Core Solidity uses type inference algorithm to reduce syntactic verbosity while 
-maintaining the strong static typing guarantees. In our view, static typing is essential 
-for secure smart contract development. The type inference occurs during compilation and 
-provides complete type safety without explicit annotations.
+maintaining the strong static typing guarantees. The type inference occurs 
+during compilation and provides complete type safety without explicit annotations.
+As an example, consider the following code snippet that implements a transfer 
+function in Classic Solidity:
 
 ```
-let constant_value = 42; // Inferred as word
-let heterogeneous_tuple = (address(0), true, 42); // Inferred as (address, bool, word)
-constant_value = heterogeneous_tuple ; // this is a type error!
+function transferTokens(
+    address from,
+    address to,
+    uint256 amount
+) public returns (bool) {
+    uint256 fromBalance = balances[from];
+    require(fromBalance >= amount, "Insufficient balance");
+    
+    balances[from] = fromBalance - amount;
+    balances[to] = balances[to] + amount;
+    
+    uint256 newFromBalance = balances[from];
+    uint256 newToBalance = balances[to];
+    
+    bool transferSuccess = (newFromBalance == fromBalance - amount) && 
+                          (newToBalance == balances[to] + amount);
+    
+    return transferSuccess;
+}
 ```
 
+All local variables and function arguments and result needs to specify 
+its type. In Core Solidity, thanks to type inference, we could have
+completely omit type annotations, while keeping the guarantees about 
+type safety.
 
+```
+function transferTokens(from, to, amount) {
+    fromBalance = balances[from];
+    require(fromBalance >= amount, "Insufficient balance");
+    
+    balances[from] = fromBalance - amount;
+    balances[to] = balances[to] + amount;
+    
+    newFromBalance = balances[from];
+    newToBalance = balances[to];
+    
+    transferSuccess = (newFromBalance == fromBalance - amount) && 
+                      (newToBalance == balances[to] + amount);
+}
+```
 
 ### Core Solidity and SAIL
 
@@ -203,14 +237,11 @@ will be translated into SAIL?
 
 - Data Locations represented as types: Data locations (e.g., storage, memory) 
 are now a part of a type. This enables the creation of composite types with 
-mixed locations, such as a struct that holds references to storage 
+mixed locations, such as `Broker` type which holds references to storage 
 arrays and memory data, as presented in the next code piece:
 
 ```
-struct Broker {
-  total : memory(word) 
-, accounts : storage(array(address, word))
-}
+data Broker = Broker (memory(word), storage(array(address, word)))
 ```
 
 - Static/dynamic array - literals: Classic Solidity limits array literals to static 
@@ -224,39 +255,164 @@ future, we plan to develop:
 evaluation in Core Solidity. Details on how such feature will work are being 
 discussed by Argot Collective Programming Languages research team.
 
-- Redesigned Module System: Currently, the Core Solidity prototype does not have 
-a proper module system. In our tests, we implemented a import directive which 
-behaves like C's `#include`. The design of a proper module system for Core Solidity 
-are being discussed by Argot Collective Programming Languages research team.
+ - Redesigned Module System: Currently, the Core Solidity prototype does not have a 
+ proper module system. In our tests, we implemented a import directive which behaves 
+ like C's #include. The design of a proper module system for Core Solidity are being 
+ discussed by Argot Collective Programming Languages research team.
 
-- Macros: One of the main design goals of Core Solidity is to reduce the burden 
-of extending and maintaining the Solidity Compiler. Currently, the Core Solidity 
-prototype has a internal implementation of all desugaring steps into SAIL into the 
-compiler itself, which conflicts with our design goal of having the most of language 
-features being part of the standard library itself. One way to achieve such goal 
-is by having a powerful **macro** system, like Lean 4 or modern Lisp dialects such 
-as Racket. Having macros, most of the desugaring steps would be implemented by 
-macros, allowing such steps to be part of libraries, giving users the power 
-to replace standard library implementations to code that better suit their needs.
-The exact details of how such macro system will be discussed in the near future 
-by Argot Collective Programming Languages research team.
+## Extended example: Classic Solidity vs Core Solidity 
 
-## Extended example: desugaring a simple contract into SAIL 
-
+Now, let's consider an extended example: a contract which perform transfers considering 
+three different token standards. The Classic Solidity implementation of this contract 
+is as follows:
 
 ```
-contract SimpleStorage {
-    storedData : word;
-
-    function set(x : word) -> () {
-        storedData = x;
+contract TokenHandler {
+    enum TokenType { ERC20, ERC721, ERC1155 }
+    
+    struct TokenTransfer {
+        TokenType tokenType;
+        address tokenAddress;
+        address from;
+        address to;
+        uint256 amount; 
+        uint256 tokenId;
+        bytes data;
     }
-
-    function get() -> word {
-        return storedData;
+    
+    function executeTransfer(TokenTransfer calldata transfer) external returns (bool) {
+        if (transfer.tokenType == TokenType.ERC20) {
+            return _transferERC20(transfer);
+        } else if (transfer.tokenType == TokenType.ERC721) {
+            return _transferERC721(transfer);
+        } else if (transfer.tokenType == TokenType.ERC1155) {
+            return _transferERC1155(transfer);
+        } else {
+            revert("Unknown token type");
+        }
+    }
+    
+    function _transferERC20(TokenTransfer calldata transfer) private returns (bool) {
+        require(transfer.amount > 0, "ERC20: amount must be positive");
+        require(transfer.tokenId == 0, "ERC20: tokenId should be 0");
+        return true;
+    }
+    
+    function _transferERC721(TokenTransfer calldata transfer) private returns (bool) {
+        require(transfer.amount == 1, "ERC721: amount must be 1");
+        require(transfer.tokenId > 0, "ERC721: tokenId required");
+        return true;
+    }
+    
+    function _transferERC1155(TokenTransfer calldata transfer) private returns (bool) {
+        // ERC1155 specific validation
+        require(transfer.amount > 0, "ERC1155: amount must be positive");
+        require(transfer.tokenId > 0, "ERC1155: tokenId required");
+        return true;
+    }
+    
+    // Overloading simulation - we have to use different function names
+    function calculateFeeERC20(uint256 amount) public pure returns (uint256) {
+        return amount / 100; // 1% fee
+    }
+    
+    function calculateFeeERC721() public pure returns (uint256) {
+        return 0.01 ether; // Fixed fee
+    }
+    
+    function calculateFeeERC1155(uint256 amount, uint256 tokenId) public pure returns (uint256) {
+        return (amount * tokenId) / 1000; // Complex fee logic
     }
 }
 ```
+
+The essence of the previous code piece rely on using a single struct, `TokenTransfer`, to represent 
+three conceptually different tokens. The use of such strategy forces the developer to define 
+private functions for each of the token transfer and dispatch them in function `executeTransfer`
+that calls the appropriate transfer code for the tokens.
+
+Next, we consider a possible implementation of previous Classic Solidity code in Core Solidity:
+
+```
+data ERC20 
+  = ERC20 { 
+      token :: address
+    , from :: address
+    , to :: address
+    , amount :: word
+    };
+
+forall T . class T : Token {
+  function transfer (tk : T) -> bool;
+  function calculateFee (tk : T) -> word;
+}
+
+instance ERC20 : Token {
+  function transfer (tk : ERC20) -> bool {
+    require(transfer.amount > 0, "ERC20: amount must be positive");
+    require(transfer.tokenId == 0, "ERC20: tokenId should be 0");
+    return true;
+  }
+
+  function calculateFee (tk : ERC20) -> word {
+    return tk.amount / 100; 
+  }
+}
+
+data ERC721 
+  = ERC721 { 
+      token :: address
+    , from :: address
+    , to :: address
+    , tokenId :: word
+    };
+
+instance ERC721 : Token {
+  function transfer(tk : ERC721) -> bool {
+    require(transfer.amount == 1, "ERC721: amount must be 1");
+    require(transfer.tokenId > 0, "ERC721: tokenId required");
+    return true;
+  }
+
+  function calculateFee (tk : ERC721) -> word {
+    return 0.01 ether 
+  }
+}
+
+data ERC1155 
+  = ERC1155 {
+      token :: address
+    , from :: address
+    , to :: address
+    , tokenId :: word
+    , amount :: word
+    , payload :: bytes
+    };
+
+instance ERC1155 : Token {
+  function transfer(tk : ERC1155) -> bool {
+    require(transfer.amount > 0, "ERC1155: amount must be positive");
+    require(transfer.tokenId > 0, "ERC1155: tokenId required");
+    return true; 
+  }
+  function calculateFee (tk : ERC1155) -> word {
+    return (tx.amount * tk.tokenId) / 100;
+  }
+}
+
+contract TokenTransfer {
+  forall T . T : Token => function executeTransfer (token : T) -> bool {
+    return Token.transfer(token);
+  } 
+}
+```
+
+The Core Solidity version defines a type for each token and use type classes and 
+instances for implement the transfer and fee calculation for each token. Note that 
+the function `executeTransfer` does not need to implement the logic for dispatching 
+the token value to its correspondent transfer function since such dispatch logic is 
+made by the compiler.
+
 
 ## What's next?
 
