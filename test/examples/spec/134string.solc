@@ -2,23 +2,20 @@ import dispatch;
 
 // PoC of start/init combo
 
-//missing word instance
-/*
-forall reader . reader:WordReader => instance ABIDecoder(word, reader):ABIDecode(word) {
-    function decode(ptr:ABIDecoder(word, reader), currentHeadOffset:word) -> word {
-        return WordReader.read(WordReader.advance(ptr, currentHeadOffset)) : word;
-    }
-}
-*/
 // --------------------------------------------------------------------------------
 contract StoreString {
 
   function setName(v: memory(string)) -> () {
     Storable.store(storage(0), v);
+    let x : memory(string) = Storable.sload(storage(0));
   }
 
   function getName() -> memory(string) {
     return Storable.sload(storage(0));
+  }
+
+  function getAnswer() -> uint256 {
+    return uint256(42);
   }
 
   constructor(name: memory(string)) {
@@ -31,13 +28,14 @@ contract StoreString {
      }
      log1(len, 0xc001);
      log1(n1, 0xc002);
-     Storable.store(storage(0), name);
+     // Storable.store(storage(0), name);
+     setName(name);
   }
-
 // Desugars to
 /*
+
   function copy_arguments_for_constructor() -> (memory(string))  {
-    let res : (memory(string), ());
+    let res : memory(string);
     let programSize : word;
     let argSize : word;
     let memoryDataOffset : word;
@@ -51,7 +49,7 @@ contract StoreString {
     }
 
     let source : memory(bytes) = memory(memoryDataOffset);
-    res = abi_decode(source, Proxy:Proxy( (memory(string)) ), Proxy:Proxy(MemoryWordReader));
+    res = abi_decode(source, Proxy:Proxy( memory(string) ), Proxy:Proxy(MemoryWordReader));
     return res;
 
   }

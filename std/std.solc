@@ -739,18 +739,11 @@ instance word:ABIAttribs {
     function isStatic(ty : Proxy(word)) -> bool { return true; }
 }
 
-
 instance string:ABIAttribs {
     function headSize(ty : Proxy(string)) -> word { return 32; }
     function isStatic(ty : Proxy(string)) -> bool { return false; }
 }
 
-/*
-instance memory(string):ABIAttribs {
-    function headSize(ty : Proxy(memory(string))) -> word { return 32; }
-    function isStatic(ty : Proxy(memory(string))) -> bool { return false; }
-}
-*/
 instance uint256:ABIAttribs {
     function headSize(ty : Proxy(uint256)) -> word { return 32; }
     function isStatic(ty : Proxy(uint256)) -> bool { return true; }
@@ -851,9 +844,10 @@ instance memory(string):ABIEncode {
       let length : word;
       assembly {
         length := mload(srcPtr)
-	mstore(add(basePtr, offset), length)
-        mcopy(tail, srcPtr, length)
-	tail := add(tail, length)
+	let total := add(length, 32)
+	mstore(add(basePtr, offset), tail)
+        mcopy(tail, srcPtr, total)
+	tail := add(tail, total)
       }
       return tail;
     }
@@ -968,20 +962,25 @@ function mload(a:word) -> word {
   return res;
 }
 
+function mstore(a:word, v:word) -> () {
+  assembly { mstore(a,v) }
+}
+
 function strlen(s:memory(string)) -> word {
   match s { | memory(a) => return mload(a); }
 }
 
 // ABI decoding for strings (only in memory) $$$
 // MB %
-/* when we have generic copyToMemory
+// when we have generic copyToMemory
+/*
 forall reader. reader:Typedef(word), reader:WordReader =>
 instance ABIDecoder(memory(string), reader):ABIDecode(memory(string))
 {
     function decode(ptr:ABIDecoder(memory(string), reader), currentHeadOffset:word) -> memory(string) {
     }
-}    
-* /
+}
+*/
 instance ABIDecoder(memory(string), CalldataWordReader):ABIDecode(memory(string))
 {
     function decode(ptr:ABIDecoder(memory(string), CalldataWordReader), currentHeadOffset:word) -> memory(string) {
@@ -1025,23 +1024,21 @@ instance ABIDecoder(memory(string), MemoryWordReader):ABIDecode(memory(string))
         let tmp:word;
         let headRdr = WordReader.advance(ptr, currentHeadOffset);
 	let tailPtr : word = WordReader.read(headRdr); // tail ptr in bytes
-	let tailOffset : word = tailPtr;
-	// assembly { tailOffset := div(tailPtr, 32) } // how many words to advance, is this correct?
 	// log1(tailPtr, 0xdec0de0001);
-	// log1(tailOffset, 0xdec0de0011);
         let src = WordReader.advance(ptr, tailPtr);
 	match src {
 	| ABIDecoder(srcRdr) =>
 	    let length = WordReader.read(srcRdr);
 	    log1(length, 0xdec0de0002);
 	    match srcRdr { | MemoryWordReader(srcPtr) =>
+	        let srcPtr2 : word = srcPtr; // issue #188, again
 		// log1(srcPtr, 0xdec0de0003);
 		let total = Add.add(length, 32);
 		// log1(total, 0xdec0de0005);
 		let resultPtr : word = allocate_memory(total);
 		let result : memory(string) = memory(resultPtr);
 		assembly {
-		  mcopy(resultPtr, srcPtr, total)
+		  mcopy(resultPtr, srcPtr2, total)
 		}
 	    log1(strlen(result), 0xdec0de000e);
 	    return result;
@@ -1225,13 +1222,6 @@ instance word:StorageSize {
         return 1;
     }
 }
-/*
-instance uint:StorageSize {
-    function size(x:Proxy(uint)) -> word {
-        return 1;
-    }
-}
-*/
 instance uint256:StorageSize {
     function size(x:Proxy(uint256)) -> word {
         return 1;
@@ -1469,7 +1459,7 @@ instance memory(string):Storable(string) {
   function sload(src:storage(string)) -> memory(string) {
     let srcPtr : word = Typedef.rep(src);
     let dstPtr : word = get_free_memory();
-    let endPtr = loadBytesFromStorage(srcPtr, srcPtr);
+    let endPtr = loadBytesFromStorage(srcPtr, dstPtr);
     set_free_memory(endPtr);
     return memory(dstPtr);
   }
@@ -1487,6 +1477,7 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
 	  mstore(0,slot)
 	  let dstPtr := keccak256(0,32)
 	  let loopEnd := and(newLen, not(0x1f))
+
 	  let i := 0
 	  for { } lt(i, loopEnd) { i := add(i, 0x20) } {
 	      sstore(dstPtr, mload(add(src, srcOffset)))
@@ -1519,14 +1510,24 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
 // shamelessly stolen from abi_encode_t_string_storage_to_t_string_memory_ptr
 function loadBytesFromStorage(slot:word, memPtr:word) -> word {
   let ret : word;
+  log1(slot, 0x10ad01);
+  log1(memPtr, 0x10ad02);
   assembly {
     let pos := memPtr
     let slotValue := sload(slot)
+    mstore(0,slotValue)
+    log1(0,32, 0x10ad13)
     let length := div(slotValue, 2)
+    mstore(0,length)
+    log1(0,32, 0x10ad14)
+
     let outOfPlaceEncoding := and(slotValue, 1)
     if iszero(outOfPlaceEncoding) {
 	length := and(length, 0x7f)
     }
+    mstore(0,length)
+    log1(0,32, 0x10ad16)
+
     mstore(pos, length)
     pos := add(pos, 0x20)
     switch and(slotValue, 1)
@@ -1553,6 +1554,11 @@ function loadBytesFromStorage(slot:word, memPtr:word) -> word {
 	ret := add(pos, i)
     }
   }
+  let check = mload(memPtr);
+  log1(check, 0x10adcec1);
+  let check2 = mload(Add.add(memPtr, 32));
+  log1(check2, 0x10adcec2);
+  log1(ret, 0x10adee);
   return ret;
 }
 
@@ -1614,4 +1620,3 @@ forall i a . i:Typedef(word), a:StorageType  =>
 function ridx( m: storage(mapping(i,a)), x:i) -> a {
   return StorageType.sload(hash2(Typedef.rep(m), Typedef.rep(x)));
 }
-
