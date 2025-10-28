@@ -101,7 +101,7 @@ another feature which will be part of the Core Solidity.
 
 Algebraic Data Types provide a way of modeling data modeling using sum types 
 (disjoint unions) and product types (structural records). This enables the construction of 
-precise types where invalid states are unrepresentable by design, thereby enhancing program 
+precise types where invalid states are **unrepresentable** by design, thereby enhancing program 
 correctness through the type system itself. As an example, consider the following type 
 definition for an auction state. 
 
@@ -208,7 +208,7 @@ function transferTokens(
 All local variables and function arguments and result needs to specify 
 its type. In Core Solidity, thanks to type inference, we could have
 completely omit type annotations, while keeping the guarantees about 
-type safety.
+the code type safety.
 
 ```
 function transferTokens(from, to, amount) {
@@ -226,14 +226,114 @@ function transferTokens(from, to, amount) {
 }
 ```
 
-### Core Solidity and SAIL
+## Extended example: Classic Solidity vs Core Solidity 
 
-The combination of all these features do form a complete programming language, 
-which we call SAIL (Solidity Abstract Intermediate Language). Core Solidity is 
-built on top of SAIL by providing more specialized syntactic constructs that 
-replicate familiar features from Classic Solidity, alongside a mechanism for 
-"desugaring" them into SAIL equivalent code. But what Core Solidity features 
-will be translated into SAIL?
+Now, let's consider an extended example: a contract which implements a unified payment 
+processor that handles three different token standards. The complete Classic Solidity 
+implementation for this simple contract can be found [here.](https://gist.github.com/rodrigogribeiro/7cee270702987fe123921fdbbc2f12ff)
+The code starts by defining a `Payment` struct attempts to represent all three token standards, 
+using the `paymentType` field as a runtime discriminator to determine which fields are relevant 
+for each case.
+
+```
+enum PaymentType { NATIVE, ERC20, ERC721 }
+
+struct Payment {
+    PaymentType paymentType;  // Runtime type tag
+    address token;           // Used for ERC20/ERC721, must be zero for Native 
+    address from;            // Sender address  
+    address to;              // Receiver address
+    uint256 amount;          // Used for Native/ERC20, must be 1 for ERC721
+    uint256 tokenId;         // Used for ERC721, must be zero for others
+}
+```
+
+Next, functions `processPayment` and `calculateFee` uses explicit if/else chains 
+to manually check the `paymentType` and route to the appropriate handling logic.
+Also, in order to avoid invalid states, the code use `require` to ensure that 
+each case is dealing with a proper payment state value.
+
+```
+function processPayment(Payment calldata payment) external {
+  if (payment.paymentType == PaymentType.NATIVE) {
+    require(payment.token == address(0), "Native: no token");
+    require(payment.amount > 0, "Native: amount required");
+    require(payment.tokenId == 0, "Native: no tokenId");
+    payable(payment.to).transfer(payment.amount);
+  } else if (payment.paymentType == PaymentType.ERC20) {
+    require(payment.token != address(0), "ERC20: token required");
+    require(payment.amount > 0, "ERC20: amount required");
+    require(payment.tokenId == 0, "ERC20: no tokenId");
+    IERC20(payment.token).transferFrom(payment.from, payment.to, payment.amount);
+  } else if (payment.paymentType == PaymentType.ERC721) {
+    require(payment.token != address(0), "ERC721: token required");
+    require(payment.amount == 1, "ERC721: amount must be 1");
+    require(payment.tokenId > 0, "ERC721: tokenId required");
+    IERC721(payment.token).transferFrom(payment.from, payment.to, payment.tokenId);
+  }
+}
+```
+
+Now, let's turn our attention to the encoding of this example in Core Solidity.
+The complete encoding of this example can be found [here](). 
+
+First, we start by defining an algebraic data type which represents each payment 
+type by a separate data constructor with precisely the fields required for that 
+specific standard. This makes invalid states **unrepresentable** by design. As an
+example, you cannot create a `Native` payment with a token field or an `ERC721` 
+payment with an amount field.
+
+```
+data Payment =
+    Native (address,word)
+  | ERC20 (address,address,address,word)  
+  | ERC721(address, address,address,word)
+```
+
+The implementation of functions `processPayment` and `calculateFee` can be made 
+much simpler by using pattern matching:
+
+```
+function processPayment(payment : Payment) {
+    match payment {
+    | Native(to,amount) => 
+      transfer(to,amount);
+    | ERC20(token,from,to,amount) =>
+      transferFromERC20(from, to, amount);
+    | ERC721(token,from,to,tokenId) =>
+      transferFromERC721(from, to, tokenId);
+    }
+}
+```
+
+Another effect of the use of pattern matching / algebraic data types is that, 
+since it is not possible to represent invalid states, no runtime validation 
+using `require` is necessary, since they are enforced by Core Solidity type system.
+
+In this short example, we can see how Core Solidity gives the developer the tools 
+to write shorter and safer code. By using algebraic data types and pattern matching, 
+we can avoid the manipulation of invalid states and the need of runtime validations 
+using `require`. Also, parametric polymorphism (a.k.a. generics) and type classes 
+opens up new possibilities for the development of safer libraries for the modular 
+development of smart-contracts.
+
+## What's next?
+
+The evolution of Solidity has reached a crucial moment. While the language's 
+established features have successfully powered the ecosystem, certain patterns have 
+revealed limitations in scalability, security, and clarity. This blog post outlines 
+Argot's Collective vision for Core Solidity, a deliberate re-design of the language's 
+foundation. This initiative aims to replace legacy mechanisms with more robust, 
+composable, and community-driven primitives, ensuring the language remains a secure 
+and efficient basis for the next generation of smart contracts. 
+
+Give a short paragraph about the current features implemented by the prototype. 
+Prototype standard library being designed.
+
+Core Solidity prototype is being actively developed by Argot's Programming Languages 
+Research team and 
+
+- Mappings, arrays and contracts.
 
 - Data Locations represented as types: Data locations (e.g., storage, memory) 
 are now a part of a type. This enables the creation of composite types with 
@@ -244,187 +344,12 @@ arrays and memory data, as presented in the next code piece:
 data Broker = Broker (memory(word), storage(array(address, word)))
 ```
 
-- Static/dynamic array - literals: Classic Solidity limits array literals to static 
-arrays. Core Solidity type system allows literals to adopt the correct type (static 
-or dynamic) from their usage context from the start.
-
 The current Core Solidity prototype support all previous features. In the near 
 future, we plan to develop: 
 
 - Compile time evaluation: Inspired by Zig, we plan to include compile-time code 
 evaluation in Core Solidity. Details on how such feature will work are being 
 discussed by Argot Collective Programming Languages research team.
-
- - Redesigned Module System: Currently, the Core Solidity prototype does not have a 
- proper module system. In our tests, we implemented a import directive which behaves 
- like C's #include. The design of a proper module system for Core Solidity are being 
- discussed by Argot Collective Programming Languages research team.
-
-## Extended example: Classic Solidity vs Core Solidity 
-
-Now, let's consider an extended example: a contract which perform transfers considering 
-three different token standards. The Classic Solidity implementation of this contract 
-is as follows:
-
-```
-contract TokenHandler {
-    enum TokenType { ERC20, ERC721, ERC1155 }
-    
-    struct TokenTransfer {
-        TokenType tokenType;
-        address tokenAddress;
-        address from;
-        address to;
-        uint256 amount; 
-        uint256 tokenId;
-        bytes data;
-    }
-    
-    function executeTransfer(TokenTransfer calldata transfer) external returns (bool) {
-        if (transfer.tokenType == TokenType.ERC20) {
-            return _transferERC20(transfer);
-        } else if (transfer.tokenType == TokenType.ERC721) {
-            return _transferERC721(transfer);
-        } else if (transfer.tokenType == TokenType.ERC1155) {
-            return _transferERC1155(transfer);
-        } else {
-            revert("Unknown token type");
-        }
-    }
-    
-    function _transferERC20(TokenTransfer calldata transfer) private returns (bool) {
-        require(transfer.amount > 0, "ERC20: amount must be positive");
-        require(transfer.tokenId == 0, "ERC20: tokenId should be 0");
-        return true;
-    }
-    
-    function _transferERC721(TokenTransfer calldata transfer) private returns (bool) {
-        require(transfer.amount == 1, "ERC721: amount must be 1");
-        require(transfer.tokenId > 0, "ERC721: tokenId required");
-        return true;
-    }
-    
-    function _transferERC1155(TokenTransfer calldata transfer) private returns (bool) {
-        // ERC1155 specific validation
-        require(transfer.amount > 0, "ERC1155: amount must be positive");
-        require(transfer.tokenId > 0, "ERC1155: tokenId required");
-        return true;
-    }
-    
-    // Overloading simulation - we have to use different function names
-    function calculateFeeERC20(uint256 amount) public pure returns (uint256) {
-        return amount / 100; // 1% fee
-    }
-    
-    function calculateFeeERC721() public pure returns (uint256) {
-        return 0.01 ether; // Fixed fee
-    }
-    
-    function calculateFeeERC1155(uint256 amount, uint256 tokenId) public pure returns (uint256) {
-        return (amount * tokenId) / 1000; // Complex fee logic
-    }
-}
-```
-
-The essence of the previous code piece rely on using a single struct, `TokenTransfer`, to represent 
-three conceptually different tokens. The use of such strategy forces the developer to define 
-private functions for each of the token transfer and dispatch them in function `executeTransfer`
-that calls the appropriate transfer code for the tokens.
-
-Next, we consider a possible implementation of previous Classic Solidity code in Core Solidity:
-
-```
-data ERC20 
-  = ERC20 { 
-      token :: address
-    , from :: address
-    , to :: address
-    , amount :: word
-    };
-
-forall T . class T : Token {
-  function transfer (tk : T) -> bool;
-  function calculateFee (tk : T) -> word;
-}
-
-instance ERC20 : Token {
-  function transfer (tk : ERC20) -> bool {
-    require(transfer.amount > 0, "ERC20: amount must be positive");
-    require(transfer.tokenId == 0, "ERC20: tokenId should be 0");
-    return true;
-  }
-
-  function calculateFee (tk : ERC20) -> word {
-    return tk.amount / 100; 
-  }
-}
-
-data ERC721 
-  = ERC721 { 
-      token :: address
-    , from :: address
-    , to :: address
-    , tokenId :: word
-    };
-
-instance ERC721 : Token {
-  function transfer(tk : ERC721) -> bool {
-    require(transfer.amount == 1, "ERC721: amount must be 1");
-    require(transfer.tokenId > 0, "ERC721: tokenId required");
-    return true;
-  }
-
-  function calculateFee (tk : ERC721) -> word {
-    return 0.01 ether 
-  }
-}
-
-data ERC1155 
-  = ERC1155 {
-      token :: address
-    , from :: address
-    , to :: address
-    , tokenId :: word
-    , amount :: word
-    , payload :: bytes
-    };
-
-instance ERC1155 : Token {
-  function transfer(tk : ERC1155) -> bool {
-    require(transfer.amount > 0, "ERC1155: amount must be positive");
-    require(transfer.tokenId > 0, "ERC1155: tokenId required");
-    return true; 
-  }
-  function calculateFee (tk : ERC1155) -> word {
-    return (tx.amount * tk.tokenId) / 100;
-  }
-}
-
-contract TokenTransfer {
-  forall T . T : Token => function executeTransfer (token : T) -> bool {
-    return Token.transfer(token);
-  } 
-}
-```
-
-The Core Solidity version defines a type for each token and use type classes and 
-instances for implement the transfer and fee calculation for each token. Note that 
-the function `executeTransfer` does not need to implement the logic for dispatching 
-the token value to its correspondent transfer function since such dispatch logic is 
-made by the compiler.
-
-
-## What's next?
-
-The evolution of Solidity has reached a crucial moment. While the language's 
-established features have successfully powered the ecosystem, certain patterns have 
-revealed limitations in scalability, security, and clarity. The following outlines 
-Argot's Collective vision for Core Solidity, a deliberate re-design of the language's 
-foundation. This initiative aims to replace legacy mechanisms with more robust, 
-composable, and community-driven primitives, ensuring the language remains a secure 
-and efficient basis for the next generation of smart contracts. 
-The next steps of Core Solidity design will involve: 
-
 
 - Inheritance replacement: While a basic building block of Classic Solidity, inheritance has 
 often failed as a clean code reuse mechanism. Type classes are our intended, more robust and 
@@ -443,7 +368,7 @@ are designing a new, first-class mechanism for splitting contracts and connectin
 - A community-driven standard library: An overarching goal of Core Solidity is to have a
 simple, flexible language core, with much of the current built-in functionality defined 
 in-language as a standard library. Currently, extending the compiler is a complex task that 
-doesn't fully leverage the wealth of  knowledge within our application developer community. 
+doesn't fully leverage the wealth of knowledge within our application developer community. 
 We aim to establish a community-driven, EIP-style process for the standard library, 
 encouraging extensions to be developed this way. Whether this library remains a minimal set 
 of utilities or grows into a full-featured toolkit will be decided by the community through 
