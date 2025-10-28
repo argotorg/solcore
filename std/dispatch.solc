@@ -38,6 +38,17 @@ instance ():ABIString {
     }
 }
 
+instance memory(string):ABIString {
+    function append(head : word, tail : word, prx : Proxy(memory(string))) -> word {
+        let size : word = 6;
+        assembly {
+            mstore(head, add(mload(head), size))
+            mstore(tail, 0x737472696e670000000000000000000000000000000000000000000000000000)
+        }
+        return Add.add(tail, size);
+    }
+}
+
 function append_left_bracket(head : word, tail : word) -> word {
     let size = 1;
     assembly {

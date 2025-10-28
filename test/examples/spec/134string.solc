@@ -1,0 +1,90 @@
+import dispatch;
+
+// PoC of start/init combo
+
+//missing word instance
+/*
+forall reader . reader:WordReader => instance ABIDecoder(word, reader):ABIDecode(word) {
+    function decode(ptr:ABIDecoder(word, reader), currentHeadOffset:word) -> word {
+        return WordReader.read(WordReader.advance(ptr, currentHeadOffset)) : word;
+    }
+}
+*/
+// --------------------------------------------------------------------------------
+contract StoreString {
+
+  function setName(v: memory(string)) -> () {
+    Storable.store(storage(0), v);
+  }
+
+  function getName() -> memory(string) {
+    return Storable.sload(storage(0));
+  }
+
+  constructor(name: memory(string)) {
+     let ptr : word = Typedef.rep(name);
+     let len : word;
+     let n1 : word;
+     assembly {
+       len := mload(ptr)
+       n1 := mload(add(ptr,32))
+     }
+     log1(len, 0xc001);
+     log1(n1, 0xc002);
+     Storable.store(storage(0), name);
+  }
+
+// Desugars to
+/*
+  function copy_arguments_for_constructor() -> (memory(string))  {
+    let res : (memory(string), ());
+    let programSize : word;
+    let argSize : word;
+    let memoryDataOffset : word;
+
+    assembly {
+      programSize := datasize("StoreStringDeploy")
+      argSize := sub(codesize(), programSize)
+      memoryDataOffset := mload(64)
+      mstore(64, add(memoryDataOffset, argSize))
+      codecopy(memoryDataOffset, programSize, argSize)
+    }
+
+    let source : memory(bytes) = memory(memoryDataOffset);
+    res = abi_decode(source, Proxy:Proxy( (memory(string)) ), Proxy:Proxy(MemoryWordReader));
+    return res;
+
+  }
+
+  function init(name: memory(string)) -> () {
+     let ptr : word = Typedef.rep(name);
+     let len : word;
+     let n1 : word;
+     assembly {
+       len := mload(ptr)
+       n1 := mload(add(ptr,32))
+     }
+     log1(len, 0xc001);
+     log1(n1, 0xc002);
+     Storable.store(storage(0), name);
+  }
+
+  function start() -> () {
+    assembly { mstore(64, memoryguard(128)) }
+
+    let t = copy_arguments_for_constructor();
+    let fn = init;
+    fn(t);
+
+    assembly {
+      let size := datasize("StoreString")
+      codecopy(0, dataoffset("StoreString"), datasize("StoreString"))
+      return(0, size)
+    }
+    return ();
+  }
+  function main() -> memory(string) {
+    return getName();
+  }
+*/
+}
