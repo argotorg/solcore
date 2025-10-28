@@ -4,7 +4,6 @@ import Control.Monad.State
 import Data.Generics
 import Solcore.Frontend.Syntax
 import Solcore.Primitives.Primitives
-import Solcore.Frontend.TypeInference.InvokeGen (tupleTyFromList)
 
 
 replaceFunParam :: Data a => a -> a 
