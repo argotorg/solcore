@@ -4,14 +4,14 @@ forall a b c . function compose1(f : (b) -> c, g : (a) -> b) -> ((a) -> c) {
   } ;
 }
 
-/*
+
 forall a b c d e . d : invokable(b,c), e : invokable(a,b) => 
   function compose2 (f : d, g : e) -> ((a) -> c) {
     return lam (x) {
       return invokable.invoke(f, invokable.invoke(g,x));
     };
   }
-*/
+
 function compose0(f,g) {
   return lam(x) {
     return invokable.invoke(f, invokable.invoke(g,x));

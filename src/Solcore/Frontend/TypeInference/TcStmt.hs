@@ -287,7 +287,8 @@ closureConversion vs args bdy ps ty
   = do
       i <- incCounter
       fs <- Map.keys <$> gets uniqueTypes
-      sch <- generalize (ps, ty)
+      ps' <- reduce [] ps
+      sch <- generalize (ps', ty)
       let
           fn = Name $ "lambda_impl" ++ show i
           argsn = map idName (vars args)
@@ -298,13 +299,12 @@ closureConversion vs args bdy ps ty
         -- lambdas!
         --
         -- creating the lambda function by lifting it.
-        fun1 <- createClosureFreeFun fn args bdy ps ty
-        info [">> Creating lambda lifted function(free):\n", pretty fun1]
-        sch <- generalize (ps, ty)
+        fun1 <- createClosureFreeFun fn args bdy ps' ty
+        info [">> Creating lambda lifted function(free):\n", pretty fun1, show ty]
+        sch <- generalize (ps', ty)
         -- creating the invoke instance and unique type def.
         (udt@(DataTy dn vs _), instd) <- generateDecls (fun1, sch)
-        mvs <- mapM (const freshTyVar) vs
-        let t = TyCon dn mvs
+        let t = TyCon dn (map (Meta . MetaTv . tyvarName) vs)
         -- updating the type inference state
         writeFunDef fun1
         writeDataTy udt
@@ -318,11 +318,9 @@ closureConversion vs args bdy ps ty
         writeInstance instd'
         pure (Con (Id dn t) [], t)
       else do
-        liftIO $ putStrLn $ "!!>> " ++ pretty ps 
         (cdt, e', t') <- createClosureType free vs ty
         addUniqueType fn cdt
-        (fun, sch) <- createClosureFun fn free cdt args bdy ps ty
-        liftIO $ putStrLn $ pretty (funSignature fun)
+        (fun, sch) <- createClosureFun fn free cdt args bdy ps' ty
         info [">> Create lambda lifted function(closure):\n", pretty fun]
         writeFunDef fun
         writeDataTy cdt
@@ -470,7 +468,7 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       ty <- withCurrentSubst nt
       sch <- generalize (rs, ty)
       -- checking ambiguity
-      info [">>> Infered type for ", pretty n, " :: ", pretty sch]
+      info [">>> Infered type for ", pretty n, " :: ", pretty sch, show ty]
       when (ambiguous sch) $ do
         ambiguousTypeError sch sig
       -- elaborating the type signature
