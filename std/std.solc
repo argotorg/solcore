@@ -1,6 +1,6 @@
 pragma no-bounded-variable-condition ABIEncode, GenerateDispatch, Storable;
 pragma no-patterson-condition ABIEncode, Num;
-pragma no-coverage-condition ABIDecode, MemoryType;
+pragma no-coverage-condition ABIDecode;
 
 /*
 - features
@@ -651,51 +651,6 @@ instance calldata(string):HasWordReader(CalldataWordReader) {
     }
 }
 
-// --- MemoryType ---
-
-// A MemoryType instance abstracts over type specific logic related to memory
-// layout, allowing us to write code that is generic over which type is held in memory
-forall self loadedType. class self:MemoryType(loadedType) {
-    // Proxy needed becaused class methods must mention strong type params
-    // loads an instance of `loadedType` from an instance of `self` located at `loc` in memory
-    function loadFromMemory(p:Proxy(self), loc:word) -> loadedType;
-}
-
-// A uint256 can be loaded from memory and pushed straight onto the stack
-instance uint256:MemoryType(uint256) {
-    function loadFromMemory(p:Proxy(uint256), loc:word) -> uint256 {
-        let v;
-        assembly { v := mload(loc) }
-        return uint256(v);
-    }
-}
-
-// We load a DynArray into a sized pointer to the first element
-forall ty ret . ty:MemoryType(ret) => instance DynArray(ty):MemoryType(slice(memory(ret))) {
-    function loadFromMemory(p : Proxy (DynArray(ty)), loc:word) -> slice(memory(ret)) {
-        let length;
-        assembly {
-            length := mload(loc)
-            off := add(loc, 32)
-        }
-        return slice(Typedef.abs(loc) : memory(ret), length);
-    }
-}
-
-
-// FAIL: patterson
-// FAIL: bound variable
-// if we ty is a MemoryType that returns deref and deref is ABIEncode, then we can encode a memory(ty)
-// by loading it and then running the ABI encoding for the loaded value
-// FIXME!!!: strings
-/*
-forall ty deref . ty:MemoryType(deref), deref:ABIEncode => instance memory(ty):ABIEncode {
-    function encodeInto(x:memory(ty), basePtr:word, offset:word, tail:word) -> word {
-        let prx : Proxy(ty); // FIXED: before was Proxy(deref)
-        return ABIEncode.encodeInto(MemoryType.loadFromMemory(prx, Typedef.rep(x)) : deref, basePtr, offset, tail);
-    }
-}
-*/
 // --- ABI Tuples ---
 
 // Tuples in Solidity are always desugared to nested pairs (to allow for
@@ -844,10 +799,10 @@ instance memory(string):ABIEncode {
       let length : word;
       assembly {
         length := mload(srcPtr)
-	let total := add(length, 32)
-	mstore(add(basePtr, offset), tail)
+        let total := add(length, 32)
+        mstore(add(basePtr, offset), tail)
         mcopy(tail, srcPtr, total)
-	tail := add(tail, total)
+        tail := add(tail, total)
       }
       return tail;
     }
