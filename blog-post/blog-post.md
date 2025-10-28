@@ -128,17 +128,15 @@ partial function hazards and providing formal guarantees of match completeness.
 ```
 function processAuction(state) {
     match state {
-    |   NotStarted(reserve) => {
-            require(msg.value >= reserve, "Bid below reserve");
+    |   NotStarted(reserve) => 
+            require(msg.value >= reserve);
             return Active(msg.value, msg.sender);
-        }
-    |   Active(currentBid, bidder) => {
-            require(msg.value > currentBid, "Bid too low");
-            transferFunds(bidder, currentBid); // refund 
+    |   Active(currentBid, bidder) => 
+            require(msg.value > currentBid);
+            transferFunds(bidder, currentBid); 
             return Active(msg.value, msg.sender);
-        }
     |   Cancelled => {
-            revert("Auction cancelled");
+            revert();
         }
     |   _ => {
             return state;
@@ -152,27 +150,19 @@ function processAuction(state) {
 Functions possess first-class status within the type system, enabling their use
 as parameters, return values, and assignable entities. This facilitates the
 implementation of higher-order functions and functional composition patterns,
-enhancing expressive capability while maintaining referential transparency.
-As an example of a high-order function, let's consider `map`, which applies a 
-given function to all elements of an memory array.
+enhancing language expressivity.
+As an example of a high-order function signature, let's consider `map` 
+which applies a given function to all elements of an memory array
 
 ```
-forall T U . function map (input : memory(array(T)), transform : (T) -> U) -> memory(array(U)) {
-  let result : memory(array(U)) = new(@memory(array(U)),input.length);
-  for (uint i = 0; i < input.length; i++) {
-    result[i] = transform(input[i]);
-  }
-  return result;
-}
+forall T U . function map (input : memory(array(T)), transform : (T) -> U) -> memory(array(U))
 ```
 
 Function `map` receives a memory array formed by elements of type `T` and a function which 
 takes a value of type `T` and returns a `U` value. Notation `(T) -> U` represents the 
-type of functions which has a `T` argument and a `U` result. The function `map` 
-traverses the array by applying its function argument in each element of the input array
-and storing the resulting value into the `result` array.
-Such patterns of data structure manipulation can be elegantly coded as 
-polymorphic high-order functions, thus enabling more code reuse and less 
+type of functions which has a `T` argument and a `U` result. 
+High-order functions allow the elegant encoding of data structure manipulation as 
+polymorphic high-order functions, which enables more code reuse and less 
 testing effort.
 
 ### Type inference
@@ -213,7 +203,7 @@ the code type safety.
 ```
 function transferTokens(from, to, amount) {
     fromBalance = balances[from];
-    require(fromBalance >= amount, "Insufficient balance");
+    require(fromBalance >= amount);
     
     balances[from] = fromBalance - amount;
     balances[to] = balances[to] + amount;
@@ -317,6 +307,27 @@ using `require`. Also, parametric polymorphism (a.k.a. generics) and type classe
 opens up new possibilities for the development of safer libraries for the modular 
 development of smart-contracts.
 
+## Current status 
+
+Core Solidity prototype is being actively developed by Argot's Programming Languages 
+Research team and it currently supports the following features: 
+
+- Definition of algebraic data types, pattern matching, type classes and polymorphic functions. 
+
+- Data Locations represented as types: Data locations (e.g., storage, memory) 
+are now just standard library types. This enables the creation of composite 
+types with  mixed locations, such as `Broker` type which holds references to storage 
+arrays and memory data, as presented in the next code piece:
+
+```
+data Broker = Broker (memory(word), storage(array(address, word)))
+```
+
+- Classic Solidity compatible ABI encoding / decoding, mappings and contract constructors.
+
+Using these features, we can implement a [ERC20 contract in Core Solidity]() which is similar 
+to the Classic Solidity version.
+
 ## What's next?
 
 The evolution of Solidity has reached a crucial moment. While the language's 
@@ -327,29 +338,7 @@ foundation. This initiative aims to replace legacy mechanisms with more robust,
 composable, and community-driven primitives, ensuring the language remains a secure 
 and efficient basis for the next generation of smart contracts. 
 
-Give a short paragraph about the current features implemented by the prototype. 
-Prototype standard library being designed.
-
-Core Solidity prototype is being actively developed by Argot's Programming Languages 
-Research team and 
-
-- Mappings, arrays and contracts.
-
-- Data Locations represented as types: Data locations (e.g., storage, memory) 
-are now a part of a type. This enables the creation of composite types with 
-mixed locations, such as `Broker` type which holds references to storage 
-arrays and memory data, as presented in the next code piece:
-
-```
-data Broker = Broker (memory(word), storage(array(address, word)))
-```
-
-The current Core Solidity prototype support all previous features. In the near 
-future, we plan to develop: 
-
-- Compile time evaluation: Inspired by Zig, we plan to include compile-time code 
-evaluation in Core Solidity. Details on how such feature will work are being 
-discussed by Argot Collective Programming Languages research team.
+Our next steps will involve: 
 
 - Inheritance replacement: While a basic building block of Classic Solidity, inheritance has 
 often failed as a clean code reuse mechanism. Type classes are our intended, more robust and 
@@ -373,6 +362,10 @@ We aim to establish a community-driven, EIP-style process for the standard libra
 encouraging extensions to be developed this way. Whether this library remains a minimal set 
 of utilities or grows into a full-featured toolkit will be decided by the community through 
 this process.
+
+- Compile time evaluation: Inspired by Zig, we plan to include compile-time code 
+evaluation in Core Solidity. Details on how such feature will work are being 
+discussed by Argot Collective Programming Languages research team.
 
 - A formal specification of the language: Having a unified language specification will 
 avoid language fragmentation by diverging implementations. Using a unified specification, 
