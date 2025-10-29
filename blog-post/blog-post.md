@@ -382,37 +382,38 @@ and efficient basis for the next generation of smart contracts.
 
 Our next steps will involve: 
 
+- Type aliases and definitions: Currently the Core Solidity prototype do not support 
+  the definition of type aliases and structs.
+
 - Inheritance replacement: While a basic building block of Classic Solidity, inheritance has 
-often failed as a clean code reuse mechanism. Type classes are our intended, more robust and 
-composable replacement in the new language.
+  often failed as a clean code reuse mechanism. Type classes are our intended, more robust and 
+  composable replacement in the new language.
 
 - No more `try`/ `catch`: The `try`/`catch` construct has always been problematic in Solidity. 
-Instead of fixing its deficiencies, Core Solidity will rely on pattern matching against error 
-objects to provide explicit error handling that address all the corner cases `try`/`catch` 
-misses.
+  Instead of fixing its deficiencies, Core Solidity will rely on pattern matching against error 
+  objects to provide explicit error handling that address all the corner cases `try`/`catch` 
+  misses.
 
 - A better high-level `delegatecall` mechanism: While not final, traditional libraries are likely 
-to be replaced. Free functions and modules can adequately replace internal library functions. We 
-are designing a new, first-class mechanism for splitting contracts and connecting pieces via 
-`delegatecall` to replace the role of external libraries.
+  to be replaced. Free functions and modules can adequately replace internal library functions. We 
+  are designing a new, first-class mechanism for splitting contracts and connecting pieces via 
+  `delegatecall` to replace the role of external libraries.
 
 - A community-driven standard library: An overarching goal of Core Solidity is to have a
-simple, flexible language core, with much of the current built-in functionality defined 
-in-language as a standard library. Currently, extending the compiler is a complex task that 
-doesn't fully leverage the wealth of knowledge within our application developer community. 
-We aim to establish a community-driven, EIP-style process for the standard library, 
-encouraging extensions to be developed this way. Whether this library remains a minimal set 
-of utilities or grows into a full-featured toolkit will be decided by the community through 
-this process.
+  simple, flexible language core, with much of the current built-in functionality defined 
+  in-language as a standard library. Currently, we have a prototype standard library which 
+  has type class-based constructions for the representation of mappings, ABI encoding/decoding 
+  and dispatch. Features like arbitrary arrays and slices over them will be implemented as 
+  part of this prototype library.
 
 - Compile time evaluation: Inspired by Zig, we plan to include compile-time code 
-evaluation in Core Solidity. Details on how such feature will work are being 
-discussed by Argot Collective Programming Languages research team.
+  evaluation in Core Solidity. Details on how such feature will work are being 
+  discussed by Argot Collective Programming Languages research team.
 
 - A formal specification of the language: Having a unified language specification will 
-avoid language fragmentation by diverging implementations. Using a unified specification, 
-compilers can then compete on optimization quality and alternative standard library 
-implementations.
+  avoid language fragmentation by diverging implementations. Using a unified specification, 
+  compilers can then compete on optimization quality and alternative standard library 
+  implementations.
 
 ## Conclusion
 
