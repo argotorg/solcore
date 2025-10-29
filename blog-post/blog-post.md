@@ -54,9 +54,13 @@ forall T . function identity(x : T) -> T {
 While generic functions are interesting, most interesting operations are not defined 
 at all types. Overloading allows the definition of code which can operate in distinct 
 ways at different types. Type classes are the standard way of combining overloading and 
-parametric polymorphism (generics) in a systematic manner. A type class definition 
-declares the class name, its arguments and member functions type signature. As an 
-example, let's consider the task of defining addition over different types:
+parametric polymorphism (generics) in a systematic manner. Type classes are similar to 
+Rust traits: they provide signatures for the functions which will be implemented, for 
+distinct types, in instance definitions. In this sense, instance declarations are similar 
+to `impl` in Rust.
+
+A type class definition declares the class name, its arguments and member functions type 
+signature. As an example, let's consider the task of defining addition over different types:
 
 ```
 forall T . class T : Sum {
@@ -65,7 +69,7 @@ forall T . class T : Sum {
 
 Implementations for member functions for different types are provided by instance 
 definitions. As an example, let's consider the implementation of `Sum` for 
-`word` type which, internally, uses Yul assembly to perform addition. 
+`word` type which, internally, uses Yul assembly to perform addition.
 
 ```
 instance word : Sum {
@@ -78,8 +82,41 @@ instance word : Sum {
   }
 }
 ```
+The type `word` correspond to `uint256` in Classic Solidity. Another 
+more interesting example is the instance for `uint128`, which is 
+defined as follows:
 
-As another example, consider an instance for polymorphic pairs.
+```
+data uint128 = uint128(word);
+
+instance uint128 : Sum {
+  function sum(x : uint128, y : uint128) -> uint128 {
+    let res : word;
+    match x, y {
+    | uint128(n), uint128(m) => 
+      assembly {
+        res := add(n,m);
+        if lt(res, n) {
+          revert(0,0);
+        }
+        if gt(res, 0xffffffffffffffffffffffffffffffff) {
+          revert(0,0);
+        }
+      }
+    }
+    return uint128(res);
+  }
+}
+```
+
+We start by defining a new type for `uint128` which will, internally, 
+hold a `word` value. The implementation of `sum` for `uint128` 
+uses pattern matching to extract the internal `word` values and 
+performs the addition in a Yul block, which reverts if the result 
+is not a valid unsigned 128 bits integer.
+
+Instances can be defined over polymorphic types. As an example, consider 
+the following implementation of `sum` for polymorphic pairs.
 
 ```
 forall T1 T2 . T1 : Sum, T2 : Sum => instance (T1,T2) : Sum {
@@ -92,10 +129,11 @@ forall T1 T2 . T1 : Sum, T2 : Sum => instance (T1,T2) : Sum {
 }
 ```
 The previous definition shows that, whenever we have instances of 
-class `Sum` for types `a` and `b`, then we can also use function 
+class `Sum` for types `T1` and `T2`, then we can also use function 
 `Sum.sum` on pairs of such types. The reader must noticed that
-in order to access the pair components we use **pattern matching**, 
-another feature which will be part of the Core Solidity.
+the last two examples use **pattern matching** to extract 
+components of user defined algebraic types, which are  
+another feature that will be part of the Core Solidity.
 
 ### Algebraic data types and pattern matching 
 
