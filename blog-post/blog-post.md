@@ -36,7 +36,7 @@ Classic Solidity. Since our initial concern is to develop the new language type
 system and its semantics, its surface syntax would probably change in the near 
 future.
 
-### Generics and Type Classes
+### Generics and type classes
 
 Core Solidity will introduce two new exciting abstraction mechanisms: generics and 
 type classes.
@@ -115,24 +115,24 @@ uses pattern matching to extract the internal `word` values and
 performs the addition in a Yul block, which reverts if the result 
 is not a valid unsigned 128 bits integer.
 
-Instances can be defined over polymorphic types. As an example, consider 
-the following implementation of `sum` for polymorphic pairs.
+Instances can also be defined over polymorphic types. As an example, 
+consider the following implementation of `sum` for polymorphic pairs.
 
 ```
 forall T1 T2 . T1 : Sum, T2 : Sum => instance (T1,T2) : Sum {
   function sum (p1 : (T1,T2), p2 : (T1,T2)) -> (T1, T2) {
-    match p1, p2 {
-      (x1,y1), (x2, y2) => 
-        return (Sum.sum(x1,x2), Sum.sum(y1,y2));
+      match p1, p2 {
+      | (x1,y1), (x2, y2) => 
+          return (Sum.sum(x1,x2), Sum.sum(y1,y2));
     }
   }
 }
 ```
 The previous definition shows that, whenever we have instances of 
 class `Sum` for types `T1` and `T2`, then we can also use function 
-`Sum.sum` on pairs of such types. The reader must noticed that
-the last two examples use **pattern matching** to extract 
-components of user defined algebraic types, which are  
+`Sum.sum` on pairs of such types. 
+The reader must noticed that the last two examples use **pattern matching** 
+to extract components of user defined algebraic types, which are  
 another feature that will be part of the Core Solidity.
 
 ### Algebraic data types and pattern matching 
@@ -166,19 +166,17 @@ partial function hazards and providing formal guarantees of match completeness.
 ```
 function processAuction(state) {
     match state {
-    |   NotStarted(reserve) => 
-            require(msg.value >= reserve);
-            return Active(msg.value, msg.sender);
-    |   Active(currentBid, bidder) => 
-            require(msg.value > currentBid);
-            transferFunds(bidder, currentBid); 
-            return Active(msg.value, msg.sender);
-    |   Cancelled => {
-            revert();
-        }
-    |   _ => {
-            return state;
-        }
+    | NotStarted(reserve) => 
+        require(msg.value >= reserve);
+        return Active(msg.value, msg.sender);
+    | Active(currentBid, bidder) => 
+        require(msg.value > currentBid);
+        transferFunds(bidder, currentBid); 
+        return Active(msg.value, msg.sender);
+    | Cancelled =>
+        revert();
+    |   _ =>
+        return state;
     }
 }
 ```
@@ -190,20 +188,19 @@ as parameters, return values, and assignable entities. This facilitates the
 implementation of higher-order functions and functional composition patterns,
 enhancing language expressivity. 
 
-As an example of a high-order function signature, let's consider `map` 
-which applies a given function to all elements of a memory array
+As an example of a high-order function, let's consider `map_pair` 
+that takes two functions and applies them to the corresponding 
+components of a pair:
 
 ```
-forall T U . function map (input : memory(array(T)), transform : (T) -> U) -> memory(array(U))
+forall T1 T2 U1 U2 . function map_pair (pair : (T1, T2), first : (T1) -> U1, second: (T2) -> U2) -> (T2,U2) {
+   match pair {
+   | (t1,t2) => 
+      return (first(t1), second(t2));
+   }
+}
 ```
 
-Function `map` receives a memory array formed by elements of type `T` and a function which 
-takes a value of type `T` and returns a `U` value. Notation `(T) -> U` represents the 
-type of functions which has a `T` argument and a `U` result.
-
-High-order functions allow the elegant encoding of data structure manipulation algorithms 
-by encapsulating its traversal logic, making it reusable in different contexts. As an 
-example, function `map` could 
 
 ### Type inference
 
@@ -262,7 +259,7 @@ function transferTokens(from, to, amount) {
 
 Now, let's consider an extended example: a contract which implements a unified payment 
 processor that handles three different token standards. The complete Classic Solidity 
-implementation for this simple contract can be found [here.](https://gist.github.com/rodrigogribeiro/7cee270702987fe123921fdbbc2f12ff)
+implementation for this simple contract can be found [here.](PaymentHandler.sol)
 The code starts by defining a `Payment` struct attempts to represent all three token standards, 
 using the `paymentType` field as a runtime discriminator to determine which fields are relevant 
 for each case.
@@ -307,7 +304,7 @@ function processPayment(Payment calldata payment) external {
 ```
 
 Now, let's turn our attention to the encoding of this example in Core Solidity.
-The complete encoding of this example can be found [here](). 
+The complete encoding of this example can be found [here](payment.sol). 
 
 First, we start by defining an algebraic data type which represents each payment 
 type by a separate data constructor with precisely the fields required for that 
@@ -367,8 +364,7 @@ data Broker = Broker (memory(word), storage(array(address, word)))
 
 - Classic Solidity compatible ABI encoding / decoding, mappings and contract constructors.
 
-Using these features, we can implement a [ERC20 contract in Core Solidity]() which is similar 
-to the Classic Solidity version.
+Using these features, we can implement a simple [ERC20 contract in Core Solidity](erc20.sol).
 
 ## What's next?
 
