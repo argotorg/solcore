@@ -2,17 +2,6 @@
 import std;
 // import prelude;
 
-function addU(x : uint256, y : uint256) -> uint256 {
-  let res: word;
-  match x { | uint256(xw) =>
-    match y { | uint256(yw) =>
-      assembly {
-	 res := add(xw, yw)
-      }
-    }
-  }
-  return uint256(res);
-}
 
 forall t.t:Typedef(word) =>
 function log1(v:t, topic:word) -> () {
@@ -48,7 +37,7 @@ contract Counter {
    log1(x, 0xc1);
    log1(y, 0xc2);
    log1(z, 0xc3);
-   setCounter(addU(addU(x,y),z));
+   setCounter(Add.add(Add.add(x,y),z));
   }
 
 /* This should desugar to: (check with --dump-dispatch */
