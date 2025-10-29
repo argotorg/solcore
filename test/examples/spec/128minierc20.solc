@@ -1,4 +1,4 @@
-import assign;
+import std;
 
 function caller() -> address {
   let res: word;
@@ -19,20 +19,20 @@ function require(cond: bool, msg: word ) {
 contract MiniERC20 {
   reserved : word; // forge idiosyncrasies
   owner : address;
-  decimals : uint;
-  totalSupply : uint;
-  balances : mapping(address,uint);
-  allowance : mapping(address, mapping(address, uint));
+  decimals : uint256;
+  totalSupply : uint256;
+  balances : mapping(address,uint256);
+  allowance : mapping(address, mapping(address, uint256));
 
-  function mint(amount:uint) -> () {
+  function mint(amount:uint256) -> () {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
 
 /*  // original:
-    function transferFrom(address src, address dst, uint amt) public returns (bool) {
+    function transferFrom(address src, address dst, uint256 amt) public returns (bool) {
         require(balanceOf[src] >= amt, "token/insufficient-balance");
-        if (src != msg.sender && allowance[src][msg.sender] != type(uint).max) {
+        if (src != msg.sender && allowance[src][msg.sender] != type(uint256).max) {
             require(allowance[src][msg.sender] >= amt, "token/insufficient-allowance");
             allowance[src][msg.sender] -= amt;
         }
@@ -44,13 +44,13 @@ contract MiniERC20 {
     }
 */
 
-  function transferFrom(src:address, dst:address, amt:uint) -> bool {
+  function transferFrom(src:address, dst:address, amt:uint256) -> bool {
      let msg_sender = caller();
      require( balances[src] >= amt /* "token/insufficient-balance" */
             , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
 	    );
 
-     if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint)) {
+     if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint256)) {
         require( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
 	       , 0x746f6b656e2f696e73756666696369656e742d616c6c6f77616e6365
 	       );
@@ -62,14 +62,14 @@ contract MiniERC20 {
   }
 
 /*
-    function approve(address usr, uint amt) public returns (bool) {
+    function approve(address usr, uint256 amt) public returns (bool) {
         allowance[msg.sender][usr] = amt;
         emit Approval(msg.sender, usr, amt);
         return true;
     }
 */
 
-  function approve(usr: address, amt: uint) -> bool {
+  function approve(usr: address, amt: uint256) -> bool {
       let msg_sender = caller();
       allowance[msg_sender][usr] = amt;
       // emit Approval(msg.sender, usr, amt);
@@ -82,12 +82,12 @@ contract MiniERC20 {
     decimals = Num.fromWord(18);
   }
 
-  function main() -> uint {
+  function main() -> uint256 {
     let msg_sender = caller();
     init();
-    mint(uint(1000));
-    allowance[owner][msg_sender] = uint(1000);
-    transferFrom(owner, msg_sender, uint(42));
+    mint(uint256(1000));
+    allowance[owner][msg_sender] = uint256(1000);
+    transferFrom(owner, msg_sender, uint256(42));
 
     return allowance[owner][msg_sender];
   }
