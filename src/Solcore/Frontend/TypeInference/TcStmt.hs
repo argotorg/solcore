@@ -242,8 +242,6 @@ tcExp e@(Lam args bd _)
        if noDesugarCalls then withCurrentSubst (Lam args' bd' (Just t1), ps1, ty)
        else do
          (e, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty
-         -- here we do not need the constraints in ps1, since after closure conversion
-         -- the lambda is replaced by a unique type constructor for it.
          withCurrentSubst (e, ps1, t)
 tcExp e1@(TyExp e ty)
   = do

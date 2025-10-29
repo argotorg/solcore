@@ -51,7 +51,8 @@ enforceDependencies :: [Pred] -> TcM [Pred]
 enforceDependencies ps 
   = do
       let 
-        eqMainTy p p' = predMain p == predMain p' 
+        eqMainTy p p' = predName p == predName p' && 
+                        predMain p == predMain p' 
         pss = splits eqMainTy ps 
       s <- foldr (<>) mempty <$> mapM unifyWeakArgs pss 
       extSubst s 

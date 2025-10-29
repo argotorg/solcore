@@ -26,7 +26,7 @@ freshTy :: ReplaceM (Ty, Tyvar)
 freshTy = do 
   i <- get 
   let
-    v = TVar $ Name ("v_" ++ show i)
+    v = TVar $ Name ("$v_" ++ show i)
     n = TyVar v   
   put (i + 1)
   pure (n, v) 
