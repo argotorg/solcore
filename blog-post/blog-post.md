@@ -64,6 +64,7 @@ signatures. As an example, let's consider the task of defining addition over dif
 ```
 forall T . class T : Sum {
     function sum (x : T, y : T) -> T;
+}
 ```
 
 Implementations of member functions for different types are provided by instance 
