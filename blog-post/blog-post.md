@@ -254,6 +254,7 @@ function transferTokens(from, to, amount) {
     
     transferSuccess = (newFromBalance == fromBalance - amount) && 
                       (newToBalance == toBalance + amount);
+    return transferSuccess;
 }
 ```
 
