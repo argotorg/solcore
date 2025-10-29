@@ -188,9 +188,10 @@ function processAuction(state) {
 Functions possess first-class status within the type system, enabling their use
 as parameters, return values, and assignable entities. This facilitates the
 implementation of higher-order functions and functional composition patterns,
-enhancing language expressivity.
+enhancing language expressivity. 
+
 As an example of a high-order function signature, let's consider `map` 
-which applies a given function to all elements of an memory array
+which applies a given function to all elements of a memory array
 
 ```
 forall T U . function map (input : memory(array(T)), transform : (T) -> U) -> memory(array(U))
@@ -198,10 +199,11 @@ forall T U . function map (input : memory(array(T)), transform : (T) -> U) -> me
 
 Function `map` receives a memory array formed by elements of type `T` and a function which 
 takes a value of type `T` and returns a `U` value. Notation `(T) -> U` represents the 
-type of functions which has a `T` argument and a `U` result. 
-High-order functions allow the elegant encoding of data structure manipulation as 
-polymorphic high-order functions, which enables more code reuse and less 
-testing effort.
+type of functions which has a `T` argument and a `U` result.
+
+High-order functions allow the elegant encoding of data structure manipulation algorithms 
+by encapsulating its traversal logic, making it reusable in different contexts. As an 
+example, function `map` could 
 
 ### Type inference
 
@@ -227,7 +229,7 @@ function transferTokens(
     uint256 newToBalance = balances[to];
     
     bool transferSuccess = (newFromBalance == fromBalance - amount) && 
-                          (newToBalance == balances[to] + amount);
+                           (newToBalance == balances[to] + amount);
     
     return transferSuccess;
 }
@@ -241,6 +243,7 @@ the code type safety.
 ```
 function transferTokens(from, to, amount) {
     fromBalance = balances[from];
+    toBalance = balances[to]
     require(fromBalance >= amount);
     
     balances[from] = fromBalance - amount;
@@ -250,7 +253,7 @@ function transferTokens(from, to, amount) {
     newToBalance = balances[to];
     
     transferSuccess = (newFromBalance == fromBalance - amount) && 
-                      (newToBalance == balances[to] + amount);
+                      (newToBalance == toBalance + amount);
 }
 ```
 
