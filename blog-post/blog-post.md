@@ -132,12 +132,7 @@ instance uint128 : Sum {
         | uint128(n), uint128(m) =>
             assembly {
                 res := add(n,m);
-                if lt(res, n) {
-                    revert(0,0);
-                }
-                if gt(res, 0xffffffffffffffffffffffffffffffff) {
-                    revert(0,0);
-                }
+                // checks for overflow here
             }
         }
         return uint128(res);
@@ -156,20 +151,68 @@ consider the following implementation of `sum` for polymorphic pairs.
 
 ```
 forall T1 T2 . T1 : Sum, T2 : Sum => instance (T1,T2) : Sum {
-  function sum (p1 : (T1,T2), p2 : (T1,T2)) -> (T1, T2) {
-      match p1, p2 {
-      | (x1,y1), (x2, y2) =>
-          return (Sum.sum(x1,x2), Sum.sum(y1,y2));
+    function sum (p1 : (T1,T2), p2 : (T1,T2)) -> (T1, T2) {
+        match p1, p2 {
+        | (x1, y1), (x2, y2) =>
+            return (Sum.sum(x1,x2), Sum.sum(y1,y2));
+        }
     }
-  }
 }
 ```
 The previous definition shows that, whenever we have instances of
 class `Sum` for types `T1` and `T2`, then we can also use function
-`Sum.sum` on pairs of such types.
-The reader should note that the last two examples use **pattern matching**
-to extract components of user defined algebraic types, which are
+`Sum.sum` on pairs of such types. The reader should note that the
+last two examples use **pattern matching** to extract components
+of user defined algebraic types, which are
 another feature that will be part of Core Solidity.
+
+Type classes and instances can be used to avoid repetitive definitions.
+As an example, consider the [console](https://github.com/foundry-rs/forge-std/blob/master/src/console.sol) library
+present in the foundry framework. Looking the code, we can see
+that there are several one argument functions which only call the ABI
+encoding for the value being logged and then perform a static call to
+the console address. All these definitions can be reduced to following
+single function, which uses the standard library machinery for ABI
+encoding of values.
+
+```
+forall ty . ty : ABIAttribs, ty : ABIEncode => function log(val : ty) {
+    let CONSOLE_ADDRESS : word = 0x000000000000000000636F6e736F6c652e6c6f67;
+    let payload = abi_encode(val);
+
+    // extract the underlying word representation of the payload
+    let ptr = Typedef.rep(payload);
+
+    assembly {
+        pop(
+            staticcall(
+                gas(),
+                CONSOLE_ADDRESS,
+                add(ptr, 32),
+                mload(ptr),
+                0,
+                0
+            )
+        )
+    }
+}
+```
+
+Another short possible implementation which relies on EVM `log1` instruction,
+instead of Foundry console address, would be:
+
+```
+forall t . t : Typedef(word) => function log1(v : t, topic : word) -> () {
+  let w : word = Typedef.rep(v);
+  assembly {
+    mstore(0,w)
+    log1(0,32,topic)
+  }
+}
+```
+
+This version uses standard library class `Typedef`, which provides functions for
+the conversion between `word` and types which are instance of this class.
 
 ### Algebraic data types and pattern matching
 
