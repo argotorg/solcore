@@ -37,7 +37,7 @@ new language.
 
 ### Generics and type classes
 
-Core Solidity will introduce two new exciting abstraction mechanisms: generics and 
+Core Solidity introduces two new exciting abstraction mechanisms: generics and 
 type classes.
 
 Generics enable parametric polymorphism through type parameters, which allows the  
@@ -193,10 +193,10 @@ that takes two functions and applies them to the corresponding
 components of a pair:
 
 ```
-forall T1 T2 U1 U2 . function map_pair (pair : (T1, T2), first : (T1) -> U1, second: (T2) -> U2) -> (T2,U2) {
+forall T1 T2 U1 U2 . function map_pair (pair : (T1, T2), f1 : (T1) -> U1, f2: (T2) -> U2) -> (T2,U2) {
     match pair {
     | (t1,t2) => 
-        return (first(t1), second(t2));
+        return (f1(t1), f2(t2));
     }
 }
 ```
@@ -300,10 +300,12 @@ example, you cannot create a `Native` payment with a token field or an `ERC721`
 payment with an amount field.
 
 ```
+data tokenid = tokenid(word);
+
 data Payment =
-    Native (address,word)
-  | ERC20 (address,address,address,word)  
-  | ERC721(address, address,address,word)
+    Native(address, word)
+  | ERC20(address, address, address, word)  
+  | ERC721(address, address, address, tokenid);
 ```
 
 The implementation of functions `processPayment` and `calculateFee` can be made 

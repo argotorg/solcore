@@ -1,17 +1,19 @@
-data address;
+data address = address(word);
+
+data tokenid = tokenid(word);
 
 data Payment =
-    Native (address,word)
-  | ERC20 (address,address,address,word)  
-  | ERC721(address, address,address,word);
+    Native(address, word)
+  | ERC20 (address, address, address, word)  
+  | ERC721(address, address, address, tokenid);
 
 function processPayment(payment : Payment) {
     match payment {
-    | Native(to,amount) => 
-      transfer(to,amount);
-    | ERC20(token,from,to,amount) =>
+    | Native(to, amount) => 
+      transfer(to, amount);
+    | ERC20(token, from, to, amount) =>
       transferFromERC20(from, to, amount);
-    | ERC721(token,from,to,tokenId) =>
+    | ERC721(token, from, to, tokenId) =>
       transferFromERC721(from, to, tokenId);
     }
 }
