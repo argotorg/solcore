@@ -206,27 +206,22 @@ forall T1 T2 U1 U2 . function map_pair (pair : (T1, T2), first : (T1) -> U1, sec
 
 Core Solidity uses type inference algorithm to reduce syntactic verbosity while 
 maintaining the strong static typing guarantees. The type inference occurs 
-during compilation and provides complete type safety without explicit annotations.
-As an example, consider the following code snippet in Classic Solidity:
+during compilation and provides complete type safety without explicit annotations. As an example, consider the following code snippet in Classic Solidity:
 
 ```
-function calculateFinalPrice(
-    uint256 basePrice,
-    uint256 discountPercent,
-    uint256 taxPercent
-) public pure returns (uint256 finalPrice) {
-    uint256 discountAmount = (basePrice * discountPercent) / 100;
-    uint256 priceAfterDiscount = basePrice - discountAmount;
-    uint256 taxAmount = (priceAfterDiscount * taxPercent) / 100;
-    uint256 totalPrice = priceAfterDiscount + taxAmount;
-    uint256 minimumPrice = 1;
-    if (totalPrice < minimumPrice) {
-        finalPrice = minimumPrice;
-    } else {
-        finalPrice = totalPrice;
-    }
-        
-    return finalPrice;
+function adjustBalance(
+    uint256 initialBalance,
+    uint256 depositAmount,
+    uint256 withdrawalAmount,
+    uint256 feeAmount
+) public pure returns (uint256 finalBalance, uint256 totalChanges) {
+    uint256 totalDeposits = depositAmount;
+    uint256 totalWithdrawals = withdrawalAmount + feeAmount;
+    uint256 balanceAfterDeposit = initialBalance + totalDeposits;
+    uint256 netChange = totalDeposits - totalWithdrawals;
+    finalBalance = balanceAfterDeposit - totalWithdrawals;
+    totalChanges = totalDeposits + totalWithdrawals;
+    return (finalBalance, totalChanges);
 }
 ```
 
@@ -236,20 +231,14 @@ completely omit type annotations, while keeping the guarantees about
 the code type safety.
 
 ```
-function transferTokens(from, to, amount) {
-    let fromBalance = balances[from];
-    let toBalance = balances[to]
-    require(fromBalance >= amount);
-    
-    balances[from] = fromBalance - amount;
-    balances[to] = balances[to] + amount;
-    
-    newFromBalance = balances[from];
-    newToBalance = balances[to];
-    
-    transferSuccess = (newFromBalance == fromBalance - amount) && 
-                      (newToBalance == toBalance + amount);
-    return transferSuccess;
+function adjustBalance(initialBalance, depositAmount, withdrawalAmount,feeAmount) {
+    let totalDeposits = depositAmount;
+    let totalWithdrawals = withdrawalAmount + feeAmount;
+    let balanceAfterDeposit = initialBalance + totalDeposits;
+    let netChange = totalDeposits - totalWithdrawals;
+    let finalBalance = balanceAfterDeposit - totalWithdrawals;
+    let totalChanges = totalDeposits + totalWithdrawals;
+    return (finalBalance, totalChanges);
 }
 ```
 
