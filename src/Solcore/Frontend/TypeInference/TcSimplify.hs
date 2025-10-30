@@ -82,7 +82,7 @@ checkEntails qs rs
       info [">>! Trying to check the entailment of:", pretty rs, " from:", pretty qs]
       let
           qs' = nub $ concatMap (bySuperM ctable) qs
-          unsolved q = not (isInvoke q) && not (entail ctable itable qs' q)
+          unsolved q = not (isHnf q) && not (isInvoke q) && not (entail ctable itable qs' q)
           -- compiler generated instances can introduce invokable constraints
           -- not present in the called function. Since type inference can produce
           -- such constraints, we do not consider them here.
