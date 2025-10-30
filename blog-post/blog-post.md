@@ -276,8 +276,6 @@ forall T1 T2 U1 U2 . function map_pair (pair : (T1, T2), f1 : (T1) -> U1, f2: (T
     match pair {
     | (t1,t2) =>
         return (f1(t1), f2(t2));
-    | (t1,t2) =>
-        return (first(t1), second(t2));
     }
 }
 ```
