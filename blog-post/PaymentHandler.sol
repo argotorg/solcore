@@ -18,7 +18,7 @@ contract PaymentHandler {
             require(payment.token == address(0), "Native: no token");
             require(payment.amount > 0, "Native: amount required");
             require(payment.tokenId == 0, "Native: no tokenId");
-            payable(payment.to).transfer(payment.amount);
+            payable(payment.to).call.value(payment.amount)("");
         } else if (payment.paymentType == PaymentType.ERC20) {
             require(payment.token != address(0), "ERC20: token required");
             require(payment.amount > 0, "ERC20: amount required");
