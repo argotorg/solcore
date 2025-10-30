@@ -230,10 +230,10 @@ data AuctionState =
   | Cancelled;
 
 ```
-The type has three constructors: `NotStarted` specifies that the action have not started yet and
-stores its reserved price, `Active` denotes that the auction has began and it stores the
+The type has three constructors: `NotStarted` specifies that the auction has not started yet and
+stores its reserved price, `Active` denotes that the auction has begun and it stores the
 current highest bid and the address that made such bid, `Ended` represents that the auction has
-finished with success and it holds the highest bid and the winner address and constructor
+finished with success and it holds the highest bid and the winner address and constructor,
 `Cancelled` is used when the auction has been cancelled.
 
 Using algebraic data types, we can define functions by pattern matching. As an example,
