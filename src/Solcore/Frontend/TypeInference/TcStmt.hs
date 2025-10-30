@@ -992,10 +992,6 @@ tcCall Nothing n args
       extSubst s'
       let ps' = foldr union [] (ps : pss')
           t1 = funtype ts' t'
-      info $ [pretty s]
-      info $ [pretty (ps :=> t)]
-      info $ map pretty ts'
-      info ["Contraints:", pretty ps']
       withCurrentSubst (Call Nothing (Id n t1) es', ps', t')
 tcCall (Just e) n args
   = do
