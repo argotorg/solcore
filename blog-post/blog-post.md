@@ -386,8 +386,8 @@ Our next steps will involve:
 
 - A community-driven standard library: An overarching goal of Core Solidity is to have a
   simple, flexible language core, with much of the current built-in functionality defined 
-  in-language as a standard library. Currently, we have a prototype standard library which 
-  has type class-based constructions for the representation of mappings, ABI encoding/decoding 
+  in-language as part of the standard library. Currently, we have a prototype standard library 
+  which has type class-based constructions for the representation of mappings, ABI encoding/decoding 
   and dispatch. Features like arbitrary arrays and slices over them will be implemented as 
   part of this prototype library.
 
