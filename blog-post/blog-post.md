@@ -254,13 +254,13 @@ function adjustBalance(
     uint256 depositAmount,
     uint256 withdrawalAmount,
     uint256 feeAmount
-) public pure returns (uint256 finalBalance, uint256 totalChanges) {
+) public pure returns (uint256, uint256) {
     uint256 totalDeposits = depositAmount;
     uint256 totalWithdrawals = withdrawalAmount + feeAmount;
     uint256 balanceAfterDeposit = initialBalance + totalDeposits;
     uint256 netChange = totalDeposits - totalWithdrawals;
-    finalBalance = balanceAfterDeposit - totalWithdrawals;
-    totalChanges = totalDeposits + totalWithdrawals;
+    uint256 finalBalance = balanceAfterDeposit - totalWithdrawals;
+    uint256 totalChanges = totalDeposits + totalWithdrawals;
     return (finalBalance, totalChanges);
 }
 ```
