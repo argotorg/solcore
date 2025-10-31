@@ -242,9 +242,7 @@ tcExp e@(Lam args bd _)
        if noDesugarCalls then withCurrentSubst (Lam args' bd' (Just t1), ps1, ty)
        else do
          (e, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty
-         -- here we do not need the constraints in ps1, since after closure conversion
-         -- the lambda is replaced by a unique type constructor for it.
-         withCurrentSubst (e, [], t)
+         withCurrentSubst (e, ps1, t)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
@@ -287,7 +285,8 @@ closureConversion vs args bdy ps ty
   = do
       i <- incCounter
       fs <- Map.keys <$> gets uniqueTypes
-      sch <- generalize (ps, ty)
+      ps' <- reduce [] ps
+      sch <- generalize (ps', ty)
       let
           fn = Name $ "lambda_impl" ++ show i
           argsn = map idName (vars args)
@@ -298,13 +297,12 @@ closureConversion vs args bdy ps ty
         -- lambdas!
         --
         -- creating the lambda function by lifting it.
-        fun1 <- createClosureFreeFun fn args bdy ps ty
-        info [">> Creating lambda lifted function(free):\n", pretty fun1]
-        sch <- generalize (ps, ty)
+        fun1 <- createClosureFreeFun fn args bdy ps' ty
+        info [">> Creating lambda lifted function(free):\n", pretty fun1, show ty]
+        sch <- generalize (ps', ty)
         -- creating the invoke instance and unique type def.
         (udt@(DataTy dn vs _), instd) <- generateDecls (fun1, sch)
-        mvs <- mapM (const freshTyVar) vs
-        let t = TyCon dn mvs
+        let t = TyCon dn (map (Meta . MetaTv . tyvarName) vs)
         -- updating the type inference state
         writeFunDef fun1
         writeDataTy udt
@@ -320,7 +318,7 @@ closureConversion vs args bdy ps ty
       else do
         (cdt, e', t') <- createClosureType free vs ty
         addUniqueType fn cdt
-        (fun, sch) <- createClosureFun fn free cdt args bdy ps ty
+        (fun, sch) <- createClosureFun fn free cdt args bdy ps' ty
         info [">> Create lambda lifted function(closure):\n", pretty fun]
         writeFunDef fun
         writeDataTy cdt
@@ -340,17 +338,15 @@ createClosureType ids vs ty
       i <- incCounter
       s <- getSubst
       let
-          (args,ret) = splitTy ty
-          argTy = tupleTyFromList args
+          ts = map idType ids 
           dn = Name $ "t_closure" ++ show i
-          ts = map idType (apply s ids)
           ts' = everywhere (mkT gen) ts
           ns = map Var $ (apply s ids)
-          vs' = nub $ (mv ts) ++ (map (MetaTv . var) vs)
+          vs' = nub $ (mv ts) `union` (map (MetaTv . var) vs)
           ty' = TyCon dn (Meta <$> vs')
           cid = Id dn (funtype ts ty')
           d = DataTy dn (map gvar vs') [Constr dn ts']
-      info [">> Create closure type:", pretty d]
+      info [">> Create closure type:", pretty d, " for type :", pretty ty]
       pure (d, Con cid ns, ty')
 
 createClosureFun :: Name ->
@@ -464,13 +460,13 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       -- typing function body
       (bd1, ps1, t1) <- withLocalCtx lctx' (tcBody bd) `wrapError` d
       -- unifying context introduced type with infered function type
-      s <- unify nt (funtype ts' t1)
+      s <- unify nt (funtype ts' t1) `wrapError` d 
       -- building the function type scheme
       rs <- reduce [] ps1 `wrapError` d
       ty <- withCurrentSubst nt
       sch <- generalize (rs, ty)
       -- checking ambiguity
-      info [">>> Infered type for ", pretty n, " :: ", pretty sch]
+      info [">>> Infered type for ", pretty n, " :: ", pretty sch, show ty]
       when (ambiguous sch) $ do
         ambiguousTypeError sch sig
       -- elaborating the type signature
@@ -498,7 +494,7 @@ annotatedScheme vs' sig@(Signature vs ps n args rt)
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
   | hasAnn sig = do
-      info ["\n# tcFunDef ", pretty sig]
+      info ["\n# tcFunDef ", pretty d]
       let vars = vs `union` vs'
       -- check if all variables are bound in signature.
       when (any (\ v -> v `notElem` vars) (bv sig)) $ do
@@ -715,10 +711,11 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
     -- getting matching substitution
     s <- match classc' ih `wrapError` instd
     -- getting method types
-    let qnames = map (QualName n . pretty) (methods cinfo)
+    let qnames = map qual (methods cinfo)
+        qual v = if v == invoke then v else QualName n (pretty v)
     -- getting most general types and instantiate them
     aqts <- mapM (\q -> do
-                          (Forall _ qt) <- askEnv q
+                          (Forall _ qt) <- askEnv q `wrapError` instd
                           let qt' = insts envc qt
                               vs' = bv qt'
                           ts' <- mapM (const freshTyVar) vs'
@@ -1135,6 +1132,7 @@ instance Vars a => Vars (Stmt a) where
   vars (Return e) = vars e
   vars (Match e eqns) = vars e `union` vars eqns
   vars (If e blk1 blk2) = vars e `union` vars blk1 `union` vars blk2
+  vars (Asm _) = []
 
 instance Vars a => Vars (Equation a) where
   vars (_, ss) = vars ss

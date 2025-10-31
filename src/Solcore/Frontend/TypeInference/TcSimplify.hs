@@ -39,12 +39,40 @@ reduce qs0 ps0
       -- simplify constraints using given constraints
       qs2 <- withCurrentSubst qs'
       info [">!! Simplifying ", pretty ps2, " using ", pretty qs2]
-      rs <- simplify qs2 ps2
+      ps3 <- simplify qs2 ps2
+      rs <- enforceDependencies ps3 
       info ["<!! Final simplified constraints:", pretty rs]
       unsolved <- checkEntails qs2 rs
       info ["<<!! Unsolved:", pretty unsolved]
       unless (null unsolved) (unsolvedError unsolved)
       pure rs
+
+enforceDependencies :: [Pred] -> TcM [Pred]
+enforceDependencies ps 
+  = do
+      let 
+        eqMainTy p p' = predName p == predName p' && 
+                        predMain p == predMain p' 
+        pss = splits eqMainTy ps 
+      s <- foldr (<>) mempty <$> mapM unifyWeakArgs pss 
+      extSubst s 
+      pure (nub $ apply s ps)
+
+unifyWeakArgs :: [Pred] -> TcM Subst
+unifyWeakArgs [] 
+  = pure mempty
+unifyWeakArgs [_]
+  = pure mempty
+unifyWeakArgs (p1 : p2 : ps)
+  = do 
+      s1 <- unifyWeakArgs (p2 : ps) 
+      s2 <- unifyTypes (apply s1 $ predParams p1)
+                       (apply s1 $ predParams p2)
+      pure (s2 <> s1)
+       
+splits :: (a -> a -> Bool) -> [a] -> [[a]]
+splits _ [] = []
+splits eq (x:xs) = (x : filter (eq x) xs) : splits eq (filter (not . eq x) xs)
 
 checkEntails :: [Pred] -> [Pred] -> TcM [Pred]
 checkEntails qs rs
@@ -54,7 +82,7 @@ checkEntails qs rs
       info [">>! Trying to check the entailment of:", pretty rs, " from:", pretty qs]
       let
           qs' = nub $ concatMap (bySuperM ctable) qs
-          unsolved q = not (isInvoke q) && not (entail ctable itable qs' q)
+          unsolved q = not (isHnf q) && not (isInvoke q) && not (entail ctable itable qs' q)
           -- compiler generated instances can introduce invokable constraints
           -- not present in the called function. Since type inference can produce
           -- such constraints, we do not consider them here.

@@ -110,6 +110,7 @@ initTcEnv options
           , uniqueTypes = primDataType
           , directCalls = [ Name "primAddWord"
                           , Name "primEqWord"
+                          , QualName invokableName "invoke"
                           ]
           , generateDefs = True
           , generated = []
@@ -133,6 +134,7 @@ primCtx
                  , primUnit
                  , primTrue
                  , primFalse
+                 , primInvoke
                  ]
 
 primTypeEnv :: TypeTable
@@ -148,15 +150,15 @@ primInstEnv :: InstTable
 primInstEnv = Map.empty
 
 primClassEnv :: ClassTable
-primClassEnv = Map.empty
-{-  = Map.fromList [(Name "invokable", invokableInfo)]
+primClassEnv
+  = Map.fromList [(Name "invokable", invokableInfo)]
     where
       invokableInfo
         = ClassInfo 2 [QualName (Name "invokable") "invoke"]
                       (InCls (Name "invokable") self args)
-      self = TyVar (TVar (Name "self") False)
-      args = map TyVar [TVar (Name "args") False, TVar (Name "ret") False]
--}
+                      []
+      self = TyVar (TVar (Name "self"))
+      args = map TyVar [TVar (Name "args"), TVar (Name "ret")]
 
 primDataType :: Map Name DataTy
 primDataType = Map.fromList [ (Name "primAddWord", dt1 )

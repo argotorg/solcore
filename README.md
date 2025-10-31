@@ -52,15 +52,21 @@ $ cabal run -- yule output1.core -o output.yul
 ## Running Code
 
 The `runsol.sh` script implements a small pipeline that executes a core solidity contract by
-compiling via `sol-core` -> `yule` -> `solc`, and then using `hevm` to execute the resulting EVM
+compiling via `sol-core` -> `yule` -> `solc`, and then using `geth` to execute the resulting EVM
 code.
 
 It takes the following arguments:
 
 ```
-Usage: ./runsol.sh <file.solc> [options]
+> ./runsol.sh
 Options:
-  --calldata <sig> [args...]  Generate calldata using cast calldata
-  --raw-calldata <hex>        Pass raw calldata directly to hevm
-  --callvalue <value>         Pass callvalue to hevm (in wei)
+  --runtime-calldata sig [args...]  Generate calldata using cast calldata
+  --runtime-raw-calldata hex        Pass raw calldata directly to geth
+  --runtime-callvalue value         Pass callvalue to geth (in wei)
+  --debug-runtime                   Explore the evm execution in the interactive debugger
+  --create true|false               Run the initcode to deploy the contract (default: true)
+  --create-arguments sig [args...]  Generate calldata using cast calldata
+  --create-raw-arguments hex        Pass raw calldata directly to geth
+  --create-callvalue value          Pass callvalue to geth (in wei)
+  --debug-create                    Explore the evm execution in the interactive debugger
 ```
