@@ -66,7 +66,7 @@ We will continue to support the kind of low level access to the EVM that is ofte
 production implementations: assembly will remain a core primitive, and we will support calling
 functions from the high level language in assembly directly. Users will be able to disable the built
 in abstractions (e.g. contract dispatch generation, ABI decoding, default storage layout generation)
-following the "pay for what you use" philosophy of languages like Rust and C++).
+following the "pay for what you use" philosophy of languages like Rust and C++.
 
 We will be removing inheritance, aside from that we expect to be able to support the majority of
 existing language features without breakage.
