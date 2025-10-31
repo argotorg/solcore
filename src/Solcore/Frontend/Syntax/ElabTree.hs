@@ -66,7 +66,7 @@ instance Monoid Env where
                [Name "word", Name "pair", Name "()", Name "bool"]
                []
                [Name "pair", Name "()", Name "true", Name "false"]
-               []
+               [Name "invokable"]
                []
                Nothing
                []
@@ -174,7 +174,7 @@ instance Elab S.CompUnit where
     = do
         imps' <- elab imps
         ds' <- concat <$> elab ds
-        pure (CompUnit imps' ((TClassDef invokeClass) : ds'))
+        pure (CompUnit imps' ds')
 
 instance Elab S.Import where
   type Res S.Import = Import
@@ -645,7 +645,7 @@ instance Elab S.Exp where
         -- condition for valid constructor use
         if isCon && isNothing me' then
           pure (Con n es')
-        else if isClass then
+        else if isClass then do 
           pure (Call Nothing (mkClassName me' n) es')
         -- condition for function call
         else pure (Call me' n es')

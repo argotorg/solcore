@@ -19,21 +19,27 @@ yulExp :: QuasiQuoter
 yulExp = simpleQuoterUsing Parser.yulExp
 
 simpleQuoterUsing :: Data a => Parser a -> QuasiQuoter
-simpleQuoterUsing = simpleQuoter . quoteUsingParser
+simpleQuoterUsing p = simpleQuoter (quoteUsingLift liftYulExp p) (quoteUsingLift liftYulPat p)
 
-simpleQuoter :: (String -> Q Exp) -> QuasiQuoter
-simpleQuoter q = QuasiQuoter
-  { quoteExp = q
-  , quotePat = undefined
-  , quoteDec = undefined
-  , quoteType = undefined
+simpleQuoter :: (String -> Q Exp) -> (String -> Q Pat) -> QuasiQuoter
+simpleQuoter qExp qPat = QuasiQuoter
+  { quoteExp = qExp
+  , quotePat = qPat
+  , quoteDec = error "Cannot generate Haskell declarations from Yul code"
+  , quoteType = error "Cannot generate Haskell types from Yul code"
   }
 
-quoteUsingParser :: Data a => Parser a -> String -> Q Exp
-quoteUsingParser p s = do
+quoteUsingLift :: (a -> Q b) -> Parser a -> String -> Q b
+quoteUsingLift lift p s = do
   (file, _l, _c) <- getPosition
   let ast = runMyParser file (p <* eof) s
-  dataToExpQ (const Nothing `extQ` antiYulExp) ast
+  lift ast
+
+liftYulExp :: Data a => a -> Q Exp
+liftYulExp = dataToExpQ (const Nothing `extQ` antiYulExp)
+
+liftYulPat :: Data a => a -> Q Pat
+liftYulPat = dataToPatQ (const Nothing `extQ` antiYulPat)
 
 getPosition = fmap transPos location where
   transPos loc = (loc_filename loc,
@@ -43,3 +49,7 @@ getPosition = fmap transPos location where
 antiYulExp :: YulExp -> Maybe (Q Exp)
 antiYulExp (YMeta v) = Just $ varE (mkName v)
 antiYulExp _ = Nothing
+
+antiYulPat :: YulExp -> Maybe (Q Pat)
+antiYulPat (YMeta v) = Just $ varP (mkName v)
+antiYulPat _ = Nothing
