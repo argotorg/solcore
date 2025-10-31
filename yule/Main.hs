@@ -1,15 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 module Main where
 import Language.Core.Parser(parseObject)
 import Solcore.Frontend.Syntax.Name  -- FIXME: move Name to Common
 import Common.Pretty -- (Doc, Pretty(..), nest, render)
 import Builtins(yulBuiltins)
 import Compress
-import TM
-import Translate
 import Language.Yul
+import Language.Yul.QuasiQuote
 import qualified Options
 import Options(parseOptions)
+import TM
+import Translate
 import Control.Monad(when)
 
 
@@ -42,28 +44,31 @@ wrapInObject deploy yulo@(YulObject name code inners)
 
 addRetCode :: YulCode -> YulCode
 addRetCode c = c <> retCode where
-    retCode = YulCode
-      [ calls "mstore" [yulInt 0, YIdent "_mainresult"]
-      , calls "return" [yulInt 0, yulInt 32]
-      ]
-    calls f args = YExp (YCall f args)
+    retCode = YulCode [yulBlock|
+    {
+      mstore(0, _mainresult)
+      return(0, 32)
+    }
+    |]
 
 deployCode :: String -> Bool -> YulCode
-deployCode name withConstructor = YulCode $
-  [ calls "mstore" [yulInt 64, YCall "memoryguard" [yulInt 128]]
-  , ylva  "memPtr" (YCall "mload" [yulInt 64])
-  ]
-  <> callConstructor withConstructor <>
-  [ calls "datacopy" [yulInt 0, dataoffset, datasize]
-  , calls "return" [yulInt 0, datasize]
-  ] where
+deployCode name withConstructor = YulCode $ [yulBlock|
+  {
+    mstore(64, memoryguard(128))
+    let memPtr := mload(64)
+  }
+  |]
+  <> callConstructor withConstructor
+  <> [yulBlock|
+     { datacopy(0, `dataoffset`, `datasize`)
+       return(0, `datasize`)
+     } |]
+  where
     cname = yulString name
-    callConstructor True = [calls "usr$constructor" []]
+    callConstructor True = pure [yulStmt| usr$constructor() |]
     callConstructor False = []
-    calls f args = YExp (YCall f args)
-    ylva x e = YLet [Name x] (Just e)
-    datasize = YCall "datasize"[cname]
-    dataoffset = YCall "dataoffset"[cname]
+    datasize = [yulExp| datasize(${cname}) |] -- YCall "datasize"[cname]
+    dataoffset = [yulExp| dataoffset(`cname`) |]
 
 createDeployment :: YulObject -> YulObject
 createDeployment (YulObject yulName yulCode [InnerObject(YulObject innerName innerCode [])])
@@ -92,7 +97,7 @@ wrapInSolFunction name yul =
   $$ nest 2 assembly
   $$ rbrace
   where
-    yul' = yul <> [YAssign1 "_wrapresult" (YIdent "_mainresult")]
+    yul' = yul <> pure [yulStmt| _wrapresult := _mainresult |]
     assembly = text "assembly" <+> braces (nest 2 prettybody)
     prettybody = vcat (map ppr yul')
     prettyargs = parens empty

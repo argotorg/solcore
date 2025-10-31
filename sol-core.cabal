@@ -23,13 +23,16 @@ common common-opts
     , containers
     , algebraic-graphs
     , array
+    , directory
     , filepath
     , megaparsec >= 9.6
     , optparse-applicative
     , parser-combinators >= 1.3
     , pretty
     , pretty-simple
+    , split
     , syb
+    , template-haskell
     , time
     , timeit
     , directory
@@ -98,6 +101,7 @@ library
       Language.Core.Types
       Language.Yul
       Language.Yul.Parser
+      Language.Yul.QuasiQuote
       Common.LightYear
       Common.Monad
       Common.Pretty
