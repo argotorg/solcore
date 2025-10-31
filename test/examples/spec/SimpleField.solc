@@ -1,10 +1,10 @@
-import assign;
+import std;
 
 contract Simple {
-  val : word ;
+  myval : word ;
 
   function getVal () -> word {
-    return val ;
+    return myval ;
   }
 
   function main () -> word {
