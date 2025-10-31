@@ -94,7 +94,7 @@ forall T . function identity(x : T) -> T {
 
 While generic functions are interesting, most interesting operations are not defined
 for all types. Overloading allows the definition of code which can operate in distinct
-ways at different types. Type classes are the standard way of combining overloading and
+ways for different types. Type classes are the standard way of combining overloading and
 parametric polymorphism (generics) in a systematic manner. Type classes are similar to
 Rust traits: they provide signatures for the functions which will be implemented, for
 distinct types, in instance definitions. In this sense, instance declarations are similar
@@ -164,11 +164,11 @@ instead of Foundry console address, would be:
 
 ```
 forall t . t : Typedef(word) => function log1(v : t, topic : word) -> () {
-  let w : word = Typedef.rep(v);
-  assembly {
-    mstore(0,w)
-    log1(0,32,topic)
-  }
+    let w : word = Typedef.rep(v);
+    assembly {
+        mstore(0,w)
+        log1(0,32,topic)
+    }
 }
 ```
 
@@ -301,9 +301,11 @@ the type of the first expression on the list and it tries to implicit convert al
 to this type. The compiler emits a type error when such coercion is not possible. In order to
 the previous definition be accepted, we need to add a type coercion to the array first element
 as follows:
+
 ```
 uint[3] memory a = [uint(1), 2, 3];
 ```
+
 More about array literals in Classic Solidity can be found in the [language documentation.](https://docs.soliditylang.org/en/latest/types.html#array-literals)
 Core Solidity will solve this problem by allowing **overloaded literals**, a feature present in
 Lean and Haskell, which allow numeric literals to be interpreted as values of any type that
@@ -349,7 +351,7 @@ function processPayment(Payment calldata payment) external {
         require(payment.token == address(0), "Native: no token");
         require(payment.amount > 0, "Native: amount required");
         require(payment.tokenId == 0, "Native: no tokenId");
-        payable(payment.to).transfer(payment.amount);
+        payable(payment.to).call{value: payment.amount}("");
   } else if (payment.paymentType == PaymentType.ERC20) {
         require(payment.token != address(0), "ERC20: token required");
         require(payment.amount > 0, "ERC20: amount required");
