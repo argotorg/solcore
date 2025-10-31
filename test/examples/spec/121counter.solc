@@ -1,7 +1,5 @@
 // test single contract field
-// import StorageLib;
-import NumLib;
-import assign;
+import std;
 
 contract Counter {
   counter : word;
