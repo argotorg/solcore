@@ -327,7 +327,46 @@ function adjustBalance(initialBalance, depositAmount, withdrawalAmount,feeAmount
 }
 ```
 
-A more practical example of how type inference can help
+Type inference can avoid the need of coercions on array literal expressions,
+which are necessary in Classic Solidity. As an example, consider the following
+definition in Classic:
+
+```
+uint[3] memory a = [1, 2, 3];
+```
+
+The declaration is rejected by the compiler, which returns the following error message:
+
+```
+Error: Type uint8[3] memory is not implicitly convertible to expected type uint256[3] memory.
+```
+
+The reason of this error is the fact that Classic Solidity uses as the base type of the array
+the type of the first expression on the list and it tries to implicit convert all other elements
+to this type. The compiler emits a type error when such coercion is not possible. In order to
+the previous definition be accepted, we need to add a type coercion to the array first element
+as follows:
+
+```
+uint[3] memory a = [uint(1), 2, 3];
+```
+
+
+More about array literals in Classic Solidity can be found in the [language documentation.](https://docs.soliditylang.org/en/latest/types.html#array-literals)
+Core Solidity will solve this problem by allowing **overloaded literals**, a feature present in
+Lean and Haskell, which allow numeric literals to be interpreted as values of any type that
+implements the appropriate typeclass, rather than being fixed to a single concrete type.
+Using this feature, the expression
+
+
+```
+uint[3] memory a = [1, 2, 3];
+```
+
+
+would be accepted directly, without the need of an explicit type coercion on the array
+first element.
+
 
 ## Extended example: Classic Solidity vs Core Solidity
 
@@ -553,34 +592,34 @@ following list is tentative, non exhaustive, and subject to significant change, 
 the features that we currently consider interesting for future post-core iterations of the language:
 
 - Linear types: We consider linearity as a primitive interesting for both high level protocol
-design and for enhancing the type safety of low level memory management.
+  design and for enhancing the type safety of low level memory management.
 
 - Typesafe Memory Management: Solidity's current allocation strategy is simple, makes use
-after free impossible, and makes allocation cheap at runtime. It does however allow for type
-confusion and makes very inefficient usage of available memory. Since memory expansion is one of the
-more expensive EVM operations, there is clearly significant room for improvement. We are very
-interested in exploring approaches to allocation and memory management that improve on the situation
-here. One possibility we consider attractive is to extend Yul / inline assembly with a fully typed
-memory model. Linearity may also have a role to play. There is a large design space to explore.
+  after free impossible, and makes allocation cheap at runtime. It does however allow for type
+  confusion and makes very inefficient usage of available memory. Since memory expansion is one of the
+  more expensive EVM operations, there is clearly significant room for improvement. We are very
+  interested in exploring approaches to allocation and memory management that improve on the situation
+  here. One possibility we consider attractive is to extend Yul / inline assembly with a fully typed
+  memory model. Linearity may also have a role to play. There is a large design space to explore.
 
 - Macros: Since a great deal of the core compilation stack is already designed around simple
-macro like syntax -> syntax transformations, a natural extension to the language would be to
-implement a user facing macro system, and reimplement these desugaring passes as in language macro
-transformations. This would give a similar level of expressive power and flexibility as languages
-with cutting edge macro systems like Lean or Racket. While attractive in many ways, we are also
-cautious about the potential for misuse such a feature would have, and would want to take great care
-to implement sufficient safeguards against obfuscation of malicious code.
+  macro like syntax -> syntax transformations, a natural extension to the language would be to
+  implement a user facing macro system, and reimplement these desugaring passes as in language macro
+  transformations. This would give a similar level of expressive power and flexibility as languages
+  with cutting edge macro systems like Lean or Racket. While attractive in many ways, we are also
+  cautious about the potential for misuse such a feature would have, and would want to take great care
+  to implement sufficient safeguards against obfuscation of malicious code.
 
 - Refinement Types: Refinement types are an intuitive and user friendly way to document and enforce
-complex program level invariants. We are particularly interested in schemes that implement decidable
-logics (as opposed to full SMT based approaches), which we consider more likely to be usable at
-scale by non experts (although of course with an associated tradeoff in the complexity of properties
-that can be expressed).
+  complex program level invariants. We are particularly interested in schemes that implement decidable
+  logics (as opposed to full SMT based approaches), which we consider more likely to be usable at
+  scale by non experts (although of course with an associated tradeoff in the complexity of properties
+  that can be expressed).
 
 - Theorem Proving: Code written in Solidity often manages large amounts of money in a highly
-adversarial environment. Correctness is of the utmost importance. Languages like ATS and Bedrock
-have also show shown how advanced type systems can be used to support the production of code that is
-both correct and maximally resource efficient.
+  adversarial environment. Correctness is of the utmost importance. Languages like ATS and Idris
+  have also show shown how advanced type systems can be used to support the production of code that is
+  both correct and maximally resource efficient.
 
 ## Conclusion
 
