@@ -26,6 +26,7 @@ generateDecls :: (FunDef Id, Scheme) -> TcM (DataTy, Instance Name)
 generateDecls (fd, sch)
   = do
       let funname = sigName (funSignature fd)
+      info ["!> Generating extra definitions for:", pretty (funSignature fd)]
       udt <- mkUniqueType funname sch
       instd <- createInstance udt fd sch
       pure (udt, instd)
@@ -54,7 +55,7 @@ createInstance udt fd sch
       qt@(qs :=> ty) <- fresh sch
       info [">> Starting the creation of instance for ", pretty $ sigName (funSignature fd) , " :: ", pretty sch]
       -- getting invoke type from context
-      (qs' :=> ty') <- askEnv invoke >>= fresh
+      (qs' :=> ty') <- (askEnv invoke >>= fresh) `wrapError` fd 
       -- getting arguments and return type from signature
       let (args, retTy) = splitTy ty
           args' = case filter (not . isClosureTy) args of
