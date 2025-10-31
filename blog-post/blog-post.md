@@ -327,6 +327,8 @@ function adjustBalance(initialBalance, depositAmount, withdrawalAmount,feeAmount
 }
 ```
 
+A more practical example of how type inference can help
+
 ## Extended example: Classic Solidity vs Core Solidity
 
 Now, let's consider an extended example: a contract which implements a unified payment
