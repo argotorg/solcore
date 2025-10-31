@@ -101,85 +101,40 @@ distinct types, in instance definitions. In this sense, instance declarations ar
 to `impl` in Rust.
 
 A type class definition declares the class name, its arguments and member functions type
-signatures. As an example, let's consider the task of defining addition over different types:
+signatures. As example, let's consider the following definition of a class for the ABI
+encoding of types:
 
 ```
-forall T . class T : Sum {
-    function sum (x : T, y : T) -> T;
+forall self . class self:ABIEncode {
+    function encodeInto(x:self, basePtr:word, offset:word, tail:word) -> word;
 }
 ```
 
-Implementations of member functions for different types are provided by instance
-definitions. As an example, let's consider the implementation of `Sum` for
-`word` type which, internally, uses Yul assembly to perform addition.
+Function `encodeInto` encodes a value of type `self` into a memory region starting at
+`basePtr`. Argument `offset` denotes the position of the first empty byte of the head
+and `tail` which gives the position of the first empty byte of the tail. The
+implementation of encoding for a specific type is done in an instance declaration.
+As an example, the following instance definition implements the ABI encoding for
+`uint256` type, which is represented as an algebraic type that holds a `word` value.
 
 ```
-instance word : Sum {
-    function sum (x : word, y : word) -> word {
-        let res : word ;
-        assembly {
-            res := add(x,y);
-        }
-        return res;
+data uint256 = uint256(word);
+instance uint256:ABIEncode {
+    function encodeInto(x:uint256, basePtr:word, offset:word, tail:word) -> word {
+        let repx : word = Typedef.rep(x);
+        assembly { mstore(add(basePtr, offset), repx) }
+        return tail;
     }
 }
 ```
-The type `word` correspond to `uint256` in Classic Solidity. Another
-more interesting example is the instance for `uint128`, which is
-defined as follows:
-
-```
-data uint128 = uint128(word);
-
-instance uint128 : Sum {
-    function sum(x : uint128, y : uint128) -> uint128 {
-        let res : word;
-        match x, y {
-        | uint128(n), uint128(m) =>
-            assembly {
-                res := add(n,m);
-                // checks for overflow here
-            }
-        }
-        return uint128(res);
-    }
-}
-```
-
-We start by defining a new type for `uint128` which will, internally,
-hold a `word` value. The implementation of `sum` for `uint128`
-uses pattern matching to extract the internal `word` values and
-performs the addition in a Yul block, which reverts if the result
-is not a valid unsigned 128 bits integer.
-
-Instances can also be defined over polymorphic types. As an example,
-consider the following implementation of `sum` for polymorphic pairs.
-
-```
-forall T1 T2 . T1 : Sum, T2 : Sum => instance (T1,T2) : Sum {
-    function sum (p1 : (T1,T2), p2 : (T1,T2)) -> (T1, T2) {
-        match p1, p2 {
-        | (x1, y1), (x2, y2) =>
-            return (Sum.sum(x1,x2), Sum.sum(y1,y2));
-        }
-    }
-}
-```
-The previous definition shows that, whenever we have instances of
-class `Sum` for types `T1` and `T2`, then we can also use function
-`Sum.sum` on pairs of such types. The reader should note that the
-last two examples use **pattern matching** to extract components
-of user defined algebraic types, which are
-another feature that will be part of Core Solidity.
-
 Type classes and instances can be used to avoid repetitive definitions.
 As an example, consider the [console](https://github.com/foundry-rs/forge-std/blob/master/src/console.sol) library
 present in the foundry framework. Looking the code, we can see
 that there are several one argument functions which only call the ABI
 encoding for the value being logged and then perform a static call to
-the console address. All these definitions can be reduced to following
-single function, which uses the standard library machinery for ABI
-encoding of values.
+the console address. All these one argument functions definitions can
+be reduced to following single function, which uses the standard library
+machinery for ABI encoding of values.
 
 ```
 forall ty . ty : ABIAttribs, ty : ABIEncode => function log(val : ty) {
@@ -346,24 +301,17 @@ the type of the first expression on the list and it tries to implicit convert al
 to this type. The compiler emits a type error when such coercion is not possible. In order to
 the previous definition be accepted, we need to add a type coercion to the array first element
 as follows:
-
 ```
 uint[3] memory a = [uint(1), 2, 3];
 ```
-
-
 More about array literals in Classic Solidity can be found in the [language documentation.](https://docs.soliditylang.org/en/latest/types.html#array-literals)
 Core Solidity will solve this problem by allowing **overloaded literals**, a feature present in
 Lean and Haskell, which allow numeric literals to be interpreted as values of any type that
 implements the appropriate typeclass, rather than being fixed to a single concrete type.
-Using this feature, the expression
-
-
+Using this feature, the expression:
 ```
 uint[3] memory a = [1, 2, 3];
 ```
-
-
 would be accepted directly, without the need of an explicit type coercion on the array
 first element.
 
