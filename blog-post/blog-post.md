@@ -23,15 +23,21 @@ end that will:
 - empower library authors and support a community-driven process for language evolution
 - expand the capabilities of verification and analysis tooling
 
+In addition to growing and expanding the language, we will also be removing or reworking some
+existing features. We are already certain that we will be removing inheritance entirely. Additional
+changes are less certain, but we are considering potentially replacing or reworking problematic features
+like try/catch, libraries, or function pointers.
+
+We currently have a working prototype for Core Solidity. All examples in the post typecheck and
+produce executable code. The syntax is far from final, and extensive changes should be expected
+before release. Much of the core type theory is stable, but we want to add at least compile time
+evaluation and modules before we will consider the type system finalized. Extensive work remains to
+build out the standard library and reach feature parity with Classic Solidity.
+
 In this post we will present our current progress and give you some idea of our vision for the
 future of the language. It is important to understand that the version presented here is not final,
 changes can and will be made before release. We are presenting our current progress now in order to
 receive feedback and to allow for course correction if necessary.
-
-As a summary of the current state of things: We have a working prototype for the new language
-version. All examples in the post typecheck and produce executable code. The syntax is far
-from final, and extensive changes should be expected before release. Much of the core type theory is
-stable, but we want to add at least compile time evaluation and modules.
 
 ## A Note on Syntax
 
@@ -39,12 +45,12 @@ Most of the work to date has been focused on the design and implementation of th
 associated code generation pipeline down to Yul. In order to avoid getting bogged down in
 bikeshedding around syntax, and with the desire to validate our core ideas with a working
 implementation as soon as possible, we moved ahead with a provisional syntax. You can expect
-extensive syntax changes before release. Our current intention is to match the syntax of Classic
+extensive changes before release. Our current intention is to eventually match the syntax of Classic
 Solidity as much as possible. For any new syntax, you should expect that the final version will feel
-closer to more familiar languages like TypeScript or Rust than it does right now.
+closer to languages like TypeScript or Rust than it does right now.
 
-We made the decision to share before we have a finalized syntax because we are both excited to
-share our progress, and wish to gather feedback sooner rather than later.
+We made the decision to share before we have a finalized syntax because we are both excited to share
+our progress, and wish to gather feedback sooner rather than later.
 
 ## New Language Features
 
@@ -65,11 +71,11 @@ safety properties.
 We will continue to support the kind of low level access to the EVM that is often required by
 production implementations: assembly will remain a core primitive, and we will support calling
 functions from the high level language in assembly directly. Users will be able to disable the built
-in abstractions (e.g. contract dispatch generation, ABI decoding, default storage layout generation)
-following the "pay for what you use" philosophy of languages like Rust and C++.
+in abstractions (e.g. contract dispatch generation, ABI decoding, default storage layout
+generation), following the "pay for what you use" philosophy of languages like Rust and C++.
 
-We will be removing inheritance, aside from that we expect to be able to support the majority of
-existing language features without breakage.
+Aside from the removal of inheritance, we expect to be able to support the majority of existing
+language features without breakage.
 
 ### Generics and type classes
 
@@ -428,25 +434,9 @@ this feature.
 
 We will publish more once we have a concrete design / prototype implementation.
 
-## Current status
+## SAIL, Desugaring and the Standard Library
 
-Core Solidity prototype is being actively developed by Argot's Programming Languages
-Research team and it currently supports the following features:
-
-- Definition of algebraic data types, pattern matching, type classes and polymorphic functions.
-
-- Data Locations represented as types: Data locations (e.g., storage, memory)
-  are now just standard library types. This enables the creation of composite
-  types with mixed locations, such as `Broker` type which holds references to storage
-  arrays and memory data, as presented in the next code piece:
-
-```
-data Broker = Broker (memory(word), storage(array(address, word)))
-```
-
-- Classic Solidity compatible ABI encoding / decoding, mappings and contract constructors.
-
-Using these features, we can implement a simple [ERC20 contract in Core Solidity](erc20.sol).
+TODO
 
 ## Compatibility and Interoperability
 
@@ -503,55 +493,92 @@ ease of audit are critical. Keeping the language as simple and focused as possib
 term benefits for ecosystem security.
 
 In addition we are considering changes to some core language features that we currently consider
-problematic or unsatisfying, in particular: Libraries, Try/Catch, and Function Pointers. Input or
+problematic or unsatisfying, in particular: libraries, try/catch, and function pointers. Input or
 feedback on the ways in which these features do or do not work for you is interesting and very
 welcome. We will publish more on this area once we have concrete plans and implementations to share.
 
+## The Road to Production
 
-## What's next?
+This section outlines our current thinking on achieving production readiness and our strategy for
+making such extensive and sweeping changes to the language in a safe way. Please note that this is a
+tentative plan, and may be subject to extensive change. We are not in a position where we feel
+confident about committing to concrete timelines at this stage. We will provide more detailed
+roadmaps and concrete timelines as we get closer to a production implementation.
 
-The evolution of Solidity has reached a crucial moment. While the language's
-established features have successfully powered the ecosystem, certain patterns have
-revealed limitations in scalability, security, and clarity. This blog post outlines
-Argot Collective's vision for Core Solidity, a deliberate re-design of the language's
-foundation. This initiative aims to replace legacy mechanisms with more robust,
-composable, and community-driven primitives, ensuring the language remains a secure
-and efficient basis for the next generation of smart contracts.
+We have a working prototype implemented in a [separate
+repository](https://github.com/argotorg/solcore). All of the features shown in this post work, and
+all examples typecheck and produce executable code. We consider the type system to be relatively
+stable at this point, and do not expect to be making deep changes to what currently exists. We do
+anticipate at least two major additions before we can begin to consider it final: compile time
+evaluation and a module system. As discussed already, we will be making extensive changes to the
+syntax to bring it more in line with Classic Solidity.
 
-Our next steps will involve:
+We have a rudimentary standard library implemented, and enough desugaring stages built out to
+implement the most fundamental features of Classic Solidity. We can produce ABI compatible
+contracts, with dispatch, abi encoding / decoding, and storage access.
 
-- Type aliases and definitions: Currently the Core Solidity prototype do not support
-  the definition of type aliases and structs.
+There is still significant work remaining at the prototype stage before we can begin to consider a
+full production implementation. We want to finalize the type system, flesh out the standard library,
+and write enough code to be confident that what we have is sufficient to support the full range of
+features that we think are necessary. We need to thoroughly document the typesystem and compiler
+internals. We also expect to spend time working with existing power users and library authors to
+gather feedback and make any necessary changes.
 
-- Inheritance replacement: While a basic building block of Classic Solidity, inheritance has
-  often failed as a clean code reuse mechanism. Type classes are our intended, more robust and
-  composable replacement in the new language.
+Once we are feeling confident that the prototype is stable, work will split into two parallel
+phases:
 
-- No more `try`/`catch`: The `try`/`catch` construct has always been problematic in Solidity.
-  Instead of fixing its deficiencies, Core Solidity will rely on pattern matching against error
-  objects to provide explicit error handling that address all the corner cases `try`/`catch`
-  misses.
+1. Production implementation: we will reimplement the typechecker, desugaring and code generation
+   passes in a systems language (e.g. Rust, C++, Zig), and integrate it into solc proper. This
+   implementation will focus on correctness, performance, and providing the best possible
+   diagnostics and error messages.
+2. Executable Formal Semantics: we will work to mechanize our existing latex specification in a
+   theorem proving environment (likely Lean). We intend to use this definition to prove key
+   invariants about the typesystem itself, as well as the standard library. It will also be used
+   to build confidence in the production implementation as a differential fuzzing target.
 
-- A better high-level `delegatecall` mechanism: While not final, traditional libraries are likely
-  to be replaced. Free functions and modules can adequately replace internal library functions. We
-  are designing a new, first-class mechanism for splitting contracts and connecting pieces via
-  `delegatecall` to replace the role of external libraries.
+Once the production implementation is relatively stable. There will be a period of time in which
+Core Solidity is available as an experimental feature, but not yet marked as production ready. We
+will use this period to gain real world feedback from our users, continue fuzzing, and put the
+standard library out for external review. When we are confident that the new pipeline is free of
+major faults, we will release a breaking version of solc with Core as the default language version.
 
-- A community-driven standard library: An overarching goal of Core Solidity is to have a
-  simple, flexible language core, with much of the current built-in functionality defined
-  in-language as part of the standard library. Currently, we have a prototype standard library
-  which has type class-based constructions for the representation of mappings, ABI encoding/decoding
-  and dispatch. Features like arbitrary arrays and slices over them will be implemented as
-  part of this prototype library.
+## Beyond 1.0
 
-- Compile time evaluation: Inspired by Zig, we plan to include compile-time code
-  evaluation in Core Solidity. Details on how such feature will work are being
-  discussed by Argot Collective Programming Languages research team.
+Our focus right now is to deliver the language as described in this post. This is a significant
+undertaking, and not one that we expect to be finished in the near term. We do not however consider
+it the end of road for Solidity, but rather as a foundation for future expansion. While the
+following list is tentative, non exhaustive, and subject to significant change, these are some of
+the features that we currently consider interesting for future post-core iterations of the language:
 
-- A formal specification of the language: Having a unified language specification will
-  avoid language fragmentation by diverging implementations. Using a unified specification,
-  compilers can then compete on optimization quality and alternative standard library
-  implementations.
+- Linear types: We consider linearity as a primitive interesting for both high level protocol
+design and for enhancing the type safety of low level memory management.
+
+- Typesafe Memory Management: Solidity's current allocation strategy is simple, makes use
+after free impossible, and makes allocation cheap at runtime. It does however allow for type
+confusion and makes very inefficient usage of available memory. Since memory expansion is one of the
+more expensive EVM operations, there is clearly significant room for improvement. We are very
+interested in exploring approaches to allocation and memory management that improve on the situation
+here. One possibility we consider attractive is to extend Yul / inline assembly with a fully typed
+memory model. Linearity may also have a role to play. There is a large design space to explore.
+
+- Macros: Since a great deal of the core compilation stack is already designed around simple
+macro like syntax -> syntax transformations, a natural extension to the language would be to
+implement a user facing macro system, and reimplement these desugaring passes as in language macro
+transformations. This would give a similar level of expressive power and flexibility as languages
+with cutting edge macro systems like Lean or Racket. While attractive in many ways, we are also
+cautious about the potential for misuse such a feature would have, and would want to take great care
+to implement sufficient safeguards against obfuscation of malicious code.
+
+- Refinement Types: Refinement types are an intuitive and user friendly way to document and enforce
+complex program level invariants. We are particularly interested in schemes that implement decidable
+logics (as opposed to full SMT based approaches), which we consider more likely to be usable at
+scale by non experts (although of course with an associated tradeoff in the complexity of properties
+that can be expressed).
+
+- Theorem Proving: Code written in Solidity often manages large amounts of money in a highly
+adversarial environment. Correctness is of the utmost importance. Languages like ATS and Bedrock
+have also show shown how advanced type systems can be used to support the production of code that is
+both correct and maximally resource efficient.
 
 ## Conclusion
 
