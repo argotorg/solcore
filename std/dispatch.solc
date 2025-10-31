@@ -38,6 +38,17 @@ instance ():ABIString {
     }
 }
 
+instance memory(string):ABIString {
+    function append(head : word, tail : word, prx : Proxy(memory(string))) -> word {
+        let size : word = 6;
+        assembly {
+            mstore(head, add(mload(head), size))
+            mstore(tail, 0x737472696e670000000000000000000000000000000000000000000000000000)
+        }
+        return Add.add(tail, size);
+    }
+}
+
 function append_left_bracket(head : word, tail : word) -> word {
     let size = 1;
     assembly {
@@ -183,12 +194,14 @@ forall payability args rets fn
     // abi encode rets to memory
     let ptr = abi_encode(rets);
 
-    // TODO: this is broken for dynamically sized types...
-    let retSz : word = ABIAttribs.headSize(prets);
+    // let retSz : word = ABIAttribs.headSize(prets);
+    // the approach above does not work for dynamically sized types...
+    // ...instead we take the size of memory allocated by the encoding
     let start : word = Typedef.rep(ptr);
-
+    let end : word = get_free_memory();
+    let retSz : word = Sub.sub(end, start);
     assembly {
-        return(start,retSz)
+        return(start, retSz)
     }
 }
 
