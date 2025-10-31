@@ -1,4 +1,4 @@
-pragma no-bounded-variable-condition ABIEncode, GenerateDispatch;
+pragma no-bounded-variable-condition ABIEncode, GenerateDispatch, Storable;
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
 
@@ -36,6 +36,12 @@ pragma no-coverage-condition ABIDecode, MemoryType;
     - memory vectors
 */
 
+function unimplemented() {
+  assembly {
+    mstore(0, 0xaddc0de1)
+    revert(0, 4)
+  }
+}
 // --- booleans ---
 
 // TODO: this should short circuit. probably needs some compiler magic to do so.
@@ -277,6 +283,9 @@ instance word:Ord {
   }
 }
 // --- Value Types ---
+
+forall t. t:Typedef(word) =>
+function toWord(x:t) -> word { return Typedef.rep(x); }
 
 data uint256 = uint256(word);
 instance uint256:Typedef(word) {
@@ -525,7 +534,7 @@ data string;
 // underlying type with information about the size of the data pointed to by `t`
 data slice(ptr) = slice(ptr, word);
 
-// --- Word Readers ---
+// --- Word Reader ---
 
 // A WordReader is an abstraction over byte indexed structure that can be read in word sized chunks (e.g. calldata / memory)
 // These let us use the same abi decoding routines for calldata / memory
@@ -1246,13 +1255,126 @@ class lhs:Assign(rhs) {
     function assign(l:lhs, r:rhs) -> ();
 }
 
+// a can be stored in storage(b); e.g. memory(string) : Storable(string)
+pragma no-coverage-condition Storable, Assign;
+forall a b.
+class a:Storable(b) {
+  function store(r:storage(b), v:a);
+  function sload(r:storage(b)) -> a;
+}
 
-forall a. a:StorageType =>
-instance storage(a):Assign(a) {
-    function assign(l:storage(a), r:a) -> () {
-      StorageType.store(Typedef.rep(l), r);
+
+forall a b. a:Storable(b) =>
+instance storage(b):Assign(a) {
+    function assign(l:storage(b), r:a) -> () {
+      Storable.store(l, r);
     }
 }
+
+forall a. a:StorageType =>
+default instance a:Storable(a) {
+    function store(l:storage(a), r:a) -> () {
+      StorageType.store(Typedef.rep(l), r);
+    }
+    function sload(l:storage(a)) -> a {
+      return StorageType.sload(Typedef.rep(l));
+    }
+}
+
+instance memory(string):Storable(string) {
+  function store(dst:storage(string), src:memory(string)) -> () {
+    let srcPtr : word = Typedef.rep(src);
+    let slot = Typedef.rep(dst);
+    storeBytesFromMemory(slot, srcPtr);
+  }
+
+  function sload(src:storage(string)) -> memory(string) {
+    let srcPtr : word = Typedef.rep(src);
+    let dstPtr : word = get_free_memory();
+    let endPtr = loadBytesFromStorage(srcPtr, srcPtr);
+    set_free_memory(endPtr);
+    return memory(dstPtr);
+  }
+}
+
+// Shamelessly stolen from  function copy_byte_array_to_storage_from_t_bytes_memory_ptr_to_t_bytes_storage
+// TODO: consider wrapping behaviour at end of storage
+function storeBytesFromMemory(slot: word, src: word) -> () {
+  assembly {
+    let newLen := mload(src)
+    // TODO: check old len, cleanup etc
+    let srcOffset := 32
+    switch gt(newLen, 31)
+      case 1 {
+        mstore(0,slot)
+        let dstPtr := keccak256(0,32)
+	let loopEnd := and(newLen, not(0x1f))
+	let i := 0
+	for { } lt(i, loopEnd) { i := add(i, 0x20) } {
+	    sstore(dstPtr, mload(add(src, srcOffset)))
+	    dstPtr := add(dstPtr, 1)
+	    srcOffset := add(srcOffset, 32)
+	}
+	if lt(loopEnd, newLen) {
+	    let lastValue := mload(add(src, srcOffset))
+	    let lastLen := and(newLen, 0x1f)
+	    let mask := not(shr(mul(8, lastLen), not(0)))
+	    let nudata := and(lastValue, mask)  // a Yul variable cannot be called "data". Go figure.
+	    sstore(dstPtr, nudata)
+	}
+	sstore(slot, add(mul(newLen, 2), 1))
+      }
+      default {
+	  let value := 0
+	  if newLen {
+	      value := mload(add(src, srcOffset))
+	  }
+	  let mask := not(shr(mul(8, newLen), not(0)))
+	  let nudata := and(value, mask)
+	  let used := or(nudata, mul(2, newLen))
+	  sstore(slot,used)
+      }
+  }
+}
+
+
+// shamelessly stolen from abi_encode_t_string_storage_to_t_string_memory_ptr
+function loadBytesFromStorage(slot:word, memPtr:word) -> word {
+  let ret : word;
+  assembly {
+    let pos := memPtr
+    let slotValue := sload(slot)
+    let length := div(slotValue, 2)
+    let outOfPlaceEncoding := and(slotValue, 1)
+    if iszero(outOfPlaceEncoding) {
+	length := and(length, 0x7f)
+    }
+    mstore(pos, length)
+    pos := add(pos, 0x20)
+
+    switch outOfPlaceEncoding
+    case 0 {
+        // short byte array
+        mstore(pos, and(slotValue, not(0xff)))
+        let empty := iszero(length)
+        let notzero := iszero(empty)
+        ret := add(pos, mul(0x20, notzero))
+    }
+    case 1 {
+        // long byte array
+        mstore(0, slot)
+        let dataPos := keccak256(0, 32)
+        let i := 0
+        for { } lt(i, length) { i := add(i, 0x20) } {
+            mstore(add(pos, i), sload(dataPos))
+            dataPos := add(dataPos, 1)
+        }
+        ret := add(pos, i)
+    }
+  }
+  return ret;
+}
+
 
 // -- Tuple-based indexed access:
 
