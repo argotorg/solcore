@@ -1356,9 +1356,6 @@ function loadBytesFromStorage(slot:word, memPtr:word) -> word {
     case 0 {
         // short byte array
         mstore(pos, and(slotValue, not(0xff)))
-        //
-        // ret := add(pos, mul(0x20, iszero(iszero(length))))
-        // let notzero := iszero(iszero(length))
         let empty := iszero(length)
         let notzero := iszero(empty)
         ret := add(pos, mul(0x20, notzero))
