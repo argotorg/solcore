@@ -1009,7 +1009,7 @@ forall reader tuple tuple_decoded . reader:WordReader, tuple:ABIDecode(tuple_dec
     }
 }
 
-/*
+
 forall reader tuple tuple_decoded . reader:WordReader, tuple:ABIDecode(tuple_decoded), tuple:ABIAttribs =>
     instance ABIDecoder(memory(ABITuple(tuple)), reader):ABIDecode(memory(tuple_decoded))
 {
@@ -1023,8 +1023,7 @@ forall reader tuple tuple_decoded . reader:WordReader, tuple:ABIDecode(tuple_dec
         }
     }
 }
-*/
-/*
+
 forall reader baseType baseType_decoded .baseType : ABIAttribs, reader:WordReader, ABIDecoder(baseType, reader):ABIDecode(baseType_decoded) =>
     instance ABIDecoder(memory(DynArray(baseType)), reader):ABIDecode(memory(DynArray(baseType_decoded)))
 {
@@ -1050,7 +1049,7 @@ forall reader baseType baseType_decoded .baseType : ABIAttribs, reader:WordReade
         return result;
     }
 }
-*/
+
 forall ty reader.
 function getReader(d:ABIDecoder(ty, reader)) -> reader {
     match d {
