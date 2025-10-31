@@ -307,13 +307,13 @@ uint[3] memory a = [uint(1), 2, 3];
 More about array literals in Classic Solidity can be found in the [language documentation.](https://docs.soliditylang.org/en/latest/types.html#array-literals)
 Core Solidity will solve this problem by allowing **overloaded literals**, a feature present in
 Lean and Haskell, which allow numeric literals to be interpreted as values of any type that
-implements the appropriate typeclass, rather than being fixed to a single concrete type.
-Using this feature, the expression:
+implements the `Num` typeclass, rather than being fixed to a single concrete type.
+Thanks to overloaded numeric literals, the expression:
 ```
 uint[3] memory a = [1, 2, 3];
 ```
 would be accepted directly, without the need of an explicit type coercion on the array
-first element.
+first element, if the type `uint` is an instance of the `Num`.
 
 
 ## Extended example: Classic Solidity vs Core Solidity
