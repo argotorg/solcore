@@ -69,10 +69,11 @@ abstractions, write more modular and reusable code, leverage the type system to 
 safety properties.
 
 We will continue to support the kind of low level access to the EVM that is often required by
-production implementations: assembly will remain a core primitive, and we will support calling
-functions from the high level language in assembly directly. Users will be able to disable the built
-in abstractions (e.g. contract dispatch generation, ABI decoding, default storage layout
-generation), following the "pay for what you use" philosophy of languages like Rust and C++.
+production implementations: assembly will remain a core primitive with an important new feature:
+we will support calling functions from the high level language in assembly directly. Users will
+be able to disable the built in abstractions (e.g. contract dispatch generation, ABI decoding,
+default storage layout generation), following the "pay for what you use" philosophy of languages
+like Rust and C++.
 
 Aside from the removal of inheritance, we expect to be able to support the majority of existing
 language features without breakage.
@@ -465,14 +466,14 @@ With that said, some degree of breakage may still be required. Right now we are 
 following changes:
 
 - Postfix types: Supporting the kind of rich types that Core enables with a prefix syntax is quite
-challenging from a parser implementation point of view. Certain use cases may not be possible at
-all, and those that are may require complex lookahead or backtracking logic. A final decision here
-will not be made until we have completed a deeper analysis of the tradeoffs.
+  challenging from a parser implementation point of view. Certain use cases may not be possible at
+  all, and those that are may require complex lookahead or backtracking logic. A final decision here
+  will not be made until we have completed a deeper analysis of the tradeoffs.
 - Ternary operator: Changes may be required here to resolve ambiguities in the language grammar.
 - Function type / parameter syntax: The introduction of higher order functions and the more
-functional flavour of Core lends itself much more to the usage of function parameters. While likely not
-strictly necessary for parsing / grammar reasons, we suspect that a simpler syntax here will likely
-be worth the change given the benefits to readability and usability.
+  functional flavour of Core lends itself much more to the usage of function parameters. While likely not
+  strictly necessary for parsing / grammar reasons, we suspect that a simpler syntax here will likely
+  be worth the change given the benefits to readability and usability.
 
 ### Semantic Breakage and Feature Removal
 
