@@ -59,6 +59,13 @@ tcStmt e@(Let n mt me)
                         return (Just e', ps, t1)
                       (Nothing, Nothing) ->
                         (Nothing, [],) <$> freshTyVar
+      -- here, we could remove the unique type when
+      -- the variable has the same name as a function
+      -- that has been type checked before.
+      r <- lookupUniqueTy n
+      when (isJust r) $ do
+        modify (\ sig -> sig {uniqueTypes = Map.delete n (uniqueTypes sig) })
+      ----
       extEnv n (monotype tf)
       let e' = Let (Id n tf) (Just tf) me'
       withCurrentSubst (e', psf, unit)
@@ -338,7 +345,7 @@ createClosureType ids vs ty
       i <- incCounter
       s <- getSubst
       let
-          ts = map idType ids 
+          ts = map idType ids
           dn = Name $ "t_closure" ++ show i
           ts' = everywhere (mkT gen) ts
           ns = map Var $ (apply s ids)
@@ -460,7 +467,7 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       -- typing function body
       (bd1, ps1, t1) <- withLocalCtx lctx' (tcBody bd) `wrapError` d
       -- unifying context introduced type with infered function type
-      s <- unify nt (funtype ts' t1) `wrapError` d 
+      s <- unify nt (funtype ts' t1) `wrapError` d
       -- building the function type scheme
       rs <- reduce [] ps1 `wrapError` d
       ty <- withCurrentSubst nt
@@ -494,7 +501,7 @@ annotatedScheme vs' sig@(Signature vs ps n args rt)
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
   | hasAnn sig = do
-      info ["\n# tcFunDef ", pretty d]
+      info ["\n# tcFunDef ", pretty sig]
       let vars = vs `union` vs'
       -- check if all variables are bound in signature.
       when (any (\ v -> v `notElem` vars) (bv sig)) $ do
@@ -515,15 +522,15 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       let lctx' = if incl then (n, monotype nt) : lctx else lctx
       -- typing function body
       (bd1', ps1', t1') <- withLocalCtx lctx' (tcBody bd1) `wrapError` d
-      -- checking if the type checking have changed the type 
+      -- checking if the type checking have changed the type
       -- due to unique type creation.
       let tynames = tyconNames t1'
-      changeTy <- or <$> mapM isUniqueTyName tynames 
+      changeTy <- or <$> mapM isUniqueTyName tynames
       let rt2 = if changeTy then t1' else rt1'
       info ["Trying to unify: ", pretty rt2, " with ", pretty t1']
       unify rt2 t1' `wrapError` d
       info ["Trying to unify: ", pretty nt, " with ", pretty (funtype ts' rt2)]
-      unify nt (funtype ts' rt2) `wrapError` d  
+      unify nt (funtype ts' rt2) `wrapError` d
       -- building the function type scheme
       free <- getEnvMetaVars
       rs <- reduce (qs1 `union` ps1) ps1' `wrapError` d
@@ -536,11 +543,11 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       when (ambiguous inf) $
         ambiguousTypeError inf sig
       -- checking subsumption
-      unless changeTy $ do 
+      unless changeTy $ do
         subsCheck sig inf ann `wrapError` d
       -- elaborating function body
       let ann' = if changeTy then inf else ann
-      fdt <- elabFunDef vs' sig1 bd1' inf ann' `wrapError` d 
+      fdt <- elabFunDef vs' sig1 bd1' inf ann' `wrapError` d
       withCurrentSubst (fdt, ann')
   | otherwise = tiFunDef d
 
@@ -691,7 +698,7 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
   do
     -- get class info
     mcinfo <- Map.lookup n <$> gets classTable
-    when (isNothing mcinfo) (undefinedClass n) `wrapError` instd 
+    when (isNothing mcinfo) (undefinedClass n) `wrapError` instd
     -- building instance constraint
     let
       -- this use of fromJust is safe, because is
@@ -813,10 +820,10 @@ checkInstance idef@(Instance d vs ctx n ts t funs)
       -- checking the coverage condition
       insts' <- askInstEnv n `wrapError` ipred
       -- check overlapping only for non-default instances
-      let vs1 = bv ipred 
-      ts1 <- mapM (const freshTyVar) vs1 
+      let vs1 = bv ipred
+      ts1 <- mapM (const freshTyVar) vs1
       let env = zip vs1 ts1
-          ipred' = insts env ipred 
+          ipred' = insts env ipred
       unless d (checkOverlap ipred' insts' `wrapError` idef)
       -- check if default instance has a type variable as main argument.
       when d (checkDefaultInst (ctx :=> ipred) `wrapError` idef)
