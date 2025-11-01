@@ -1356,7 +1356,7 @@ instance memory(string):Storable(string) {
   function sload(src:storage(string)) -> memory(string) {
     let srcPtr : word = Typedef.rep(src);
     let dstPtr : word = get_free_memory();
-    let endPtr = loadBytesFromStorage(srcPtr, srcPtr);
+    let endPtr = loadBytesFromStorage(srcPtr, dstPtr);
     set_free_memory(endPtr);
     return memory(dstPtr);
   }
