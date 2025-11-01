@@ -720,14 +720,14 @@ forall a b . a:ABIAttribs, b:ABIAttribs => instance (a,b):ABIAttribs {
 // if an abi tuple contains dynamic elems we store it in the tail, otherwise we
 // treat it the same as a series of nested pairs
 forall tuple . tuple:ABIAttribs => instance ABITuple(tuple):ABIAttribs {
-    function headSize(ty : Proxy(tuple)) -> word {
+    function headSize(ty : Proxy(ABITuple(tuple))) -> word {
         let px : Proxy(tuple);
         match ABIAttribs.isStatic(px) {
         | true => return ABIAttribs.headSize(px);
         | false => return 32;
         }
     }
-    function isStatic(ty : Proxy(tuple)) -> bool {
+    function isStatic(ty : Proxy(ABITuple(tuple))) -> bool {
         let px : Proxy(tuple);
         return ABIAttribs.isStatic(px);
     }
@@ -735,21 +735,21 @@ forall tuple . tuple:ABIAttribs => instance ABITuple(tuple):ABIAttribs {
 
 // for pointer types we fetch the attribs of the pointed to type, not the pointer itself
 forall ty . ty:ABIAttribs => instance memory(ty):ABIAttribs {
-    function headSize(ty : Proxy(ty)) -> word {
+    function headSize(ty : Proxy(memory(ty))) -> word {
         let px : Proxy(ty);
         return ABIAttribs.headSize(px);
     }
-    function isStatic(ty : Proxy(ty)) -> bool {
+    function isStatic(ty : Proxy(memory(ty))) -> bool {
         let px : Proxy(ty);
         return ABIAttribs.isStatic(px);
     }
 }
 forall ty . ty:ABIAttribs => instance calldata(ty):ABIAttribs {
-    function headSize(ty : Proxy(ty)) -> word {
+    function headSize(ty : Proxy(calldata(ty))) -> word {
         let px : Proxy(ty);
         return ABIAttribs.headSize(px);
     }
-    function isStatic(ty : Proxy(ty)) -> bool {
+    function isStatic(ty : Proxy(calldata(ty))) -> bool {
         let px : Proxy(ty);
         return ABIAttribs.isStatic(px);
     }
