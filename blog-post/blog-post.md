@@ -432,8 +432,54 @@ Desugaring is the process of translating high-level language constructs into
 a semantically equivalent form using language's more primitive features.
 Some of the Core Solidity new high-level constructs will be translated
 into a intermediate language called SAIL - Solidity Algebraic Intermediate
-Language.
+Language. Anonymous functions, assignments, contracts, indexed and storage
+access are examples of high-level Core Solidity features with are translated
+into SAIL. The SAIL language is a typed programming language featuring
+generics, typeclasses, algebraic data types and pattern matchings and it
+serves as a high-level intermediate step between Core Solidity and Yul.
 
+As an example of one translation steps, let's see how assignments to
+contract state variables are translated into SAIL constructs. Consider the
+following simple contract which updates the value of state variable
+named `counter`:
+
+```
+contract Counter {
+  counter : word;
+
+  function main() -> word {
+    counter += 42;
+    return counter;
+  }
+}
+```
+
+During the compilation of the previous code piece, the assignment `counter += 42`
+is desugared into:
+
+```
+Assign.assign(Lvalue(counter_sel), Num.add(Rvalue(counter_sel), 42))
+```
+
+The addition infix operator is translated into function `add`, defined by a
+type class `Num`. Access of the state variable `counter` is done by functions
+`Lvalue` and `Rvalue`, which retrieve the storage pointer and the current
+value for the `counter` variable; and function `Assign.assign` updates
+the storage using the pointer and the value returned by the addition
+operation. The complete code for this desugaring step is as follows:
+
+```
+contract Counter {
+   function main () -> word {
+      Assign.assign(Lvalue(counter_sel), Num.add(Rvalue(counter_sel), 42));
+      return Rvalue(counter_sel);
+   }
+}
+```
+
+Other constructions like the dispatch, indexed access and anonymous functions
+involve more elaborated translation steps which we intend to describe in
+future posts.
 
 ## Compatibility and Interoperability
 
