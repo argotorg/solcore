@@ -71,6 +71,7 @@ yulStmt = sc *> choice
     , yulFun
     , YLet <$> (pKeyword "let" *> commaSep pName) <*> optional (symbol ":=" *> yulExp)
     , YIf <$> (pKeyword "if" *> yulExp) <*> yulBlock
+    , YFor <$> (pKeyword "for" *> yulBlock) <*> yulExp <*> yulBlock <*> yulBlock
     , YSwitch <$>
         (pKeyword "switch" *> yulExp) <*>
         many yulCase <*>
