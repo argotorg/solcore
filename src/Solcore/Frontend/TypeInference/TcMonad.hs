@@ -76,7 +76,7 @@ addUniqueType :: Name -> DataTy -> TcM ()
 addUniqueType n dt
   = do
       modify (\ ctx -> ctx{ uniqueTypes = Map.insert n dt (uniqueTypes ctx)})
-      checkDataType dt 
+      checkDataType dt
 
 lookupUniqueTy :: Name -> TcM (Maybe DataTy)
 lookupUniqueTy n
@@ -163,15 +163,15 @@ isDirectCall n
 checkDataType :: DataTy -> TcM ()
 checkDataType d@(DataTy n vs constrs)
   = do
-      -- check if the type is already defined. 
-      r <- maybeAskTypeInfo n 
-      unless (isNothing r) $ 
-        typeAlreadyDefinedError d n 
+      -- check if the type is already defined.
+      r <- maybeAskTypeInfo n
+      unless (isNothing r) $
+        typeAlreadyDefinedError d n
       let vals' = map (\ (n, ty) -> (n, Forall (bv ty) ([] :=> ty))) vals
       mapM_ (uncurry extEnv) vals'
       modifyTypeInfo n ti
      -- checking kinds
-      mapM_ kindCheck (concatMap constrTy constrs) `wrapError` d
+      mapM_ (kindCheck vs) (concatMap constrTy constrs) `wrapError` d
     where
       ti = TypeInfo (length vs) (map fst vals) []
       tc = TyCon n (TyVar <$> vs)
@@ -180,10 +180,10 @@ checkDataType d@(DataTy n vs constrs)
 
 -- kind check
 
-kindCheck :: Ty -> TcM Ty
-kindCheck (t1 :-> t2)
-  = (:->) <$> kindCheck t1 <*> kindCheck t2
-kindCheck t@(TyCon n ts)
+kindCheck :: [Tyvar] -> Ty -> TcM Ty
+kindCheck vs (t1 :-> t2)
+  = (:->) <$> kindCheck vs t1 <*> kindCheck vs t2
+kindCheck vs t@(TyCon n ts)
   = do
       ti <- askTypeInfo n `wrapError` t
       unless (n == Name "pair" || arity ti == length ts) $
@@ -192,9 +192,17 @@ kindCheck t@(TyCon n ts)
                                show (arity ti) ++ " type arguments"
                              , "but, type " ++ pretty t ++
                                " has " ++ (show $ length ts) ++ " arguments"]
-      mapM_ kindCheck ts
+      mapM_ (kindCheck vs) ts
       pure t
-kindCheck t = pure t
+kindCheck vs t@(TyVar v)
+  = do
+      unless (v `elem` vs) $ do
+          throwError $ unwords [ "Type variable:", pretty v, "is not defined."
+                               , "Declared variables:"
+                               , unwords (map pretty vs)
+                               ]
+      return t
+kindCheck _ t = pure t
 
 
 -- Skolemization
@@ -644,28 +652,28 @@ undefinedClass :: Name -> TcM a
 undefinedClass n
   = throwError $ unlines ["Undefined class:", pretty n]
 
-typeAlreadyDefinedError :: DataTy -> Name -> TcM a 
-typeAlreadyDefinedError d n 
-  = do 
-      -- get type info 
+typeAlreadyDefinedError :: DataTy -> Name -> TcM a
+typeAlreadyDefinedError d n
+  = do
+      -- get type info
       di <- askTypeInfo n
-      d' <- dataTyFromInfo n di `wrapError` d 
+      d' <- dataTyFromInfo n di `wrapError` d
       throwError $ unlines ["Duplicated type definition for " ++ pretty n ++ ":"
                            , pretty d
                            , "and"
                            , pretty d']
 
-dataTyFromInfo :: Name -> TypeInfo -> TcM DataTy 
-dataTyFromInfo n (TypeInfo ar cs _) 
-  = do 
-      -- getting data constructor types 
+dataTyFromInfo :: Name -> TypeInfo -> TcM DataTy
+dataTyFromInfo n (TypeInfo ar cs _)
+  = do
+      -- getting data constructor types
       (constrs, vs) <- unzip <$> mapM constrsFromEnv cs
       pure (DataTy n (concat vs) constrs)
 
 constrsFromEnv :: Name -> TcM (Constr, [Tyvar])
-constrsFromEnv n 
-  = do 
-      (Forall vs (_ :=> ty)) <- askEnv n 
+constrsFromEnv n
+  = do
+      (Forall vs (_ :=> ty)) <- askEnv n
       let (ts, _) = splitTy ty
       pure (Constr n ts, vs)
 
