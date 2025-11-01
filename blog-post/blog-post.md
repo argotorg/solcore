@@ -445,12 +445,12 @@ named `counter`:
 
 ```
 contract Counter {
-  counter : word;
+    counter : word;
 
-  function main() -> word {
-    counter += 42;
-    return counter;
-  }
+    function main() -> word {
+        counter += 42;
+        return counter;
+    }
 }
 ```
 
@@ -470,10 +470,10 @@ operation. The complete code for this desugaring step is as follows:
 
 ```
 contract Counter {
-   function main () -> word {
-      Assign.assign(Lvalue(counter_sel), Num.add(Rvalue(counter_sel), 42));
-      return Rvalue(counter_sel);
-   }
+    function main () -> word {
+        Assign.assign(Lvalue(counter_sel), Num.add(Rvalue(counter_sel), 42));
+        return Rvalue(counter_sel);
+    }
 }
 ```
 
