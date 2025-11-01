@@ -187,6 +187,7 @@ cases =
     , runTestExpectingFailure "overlapping-heads.solc" caseFolder
     , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
     , runTestForFile "match-yul.solc" caseFolder
+    , runTestForFile "local-variable-mess.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
