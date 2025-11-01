@@ -420,15 +420,20 @@ access to memory. Some key design questions that remain open relate to the degre
 support access to memory at compile time, the need for compile time specific primitives (e.g. string
 concatenation / hashing), as well as the need for reflection.
 
-We want to make sure the needs of the community are met here. Please feel free to reach out to use
-on Github / The Solidity Forum, or our Matrix channel if you have concrete use cases in mind for
+We want to make sure the needs of the community are met here. Please feel free to reach out
+The Solidity Forum, or our Matrix channel if you have concrete use cases in mind for
 this feature.
 
 We will publish more once we have a concrete design / prototype implementation.
 
 ## SAIL, Desugaring and the Standard Library
 
-TODO
+Desugaring is the process of translating high-level language constructs into
+a semantically equivalent form using language's more primitive features.
+Some of the Core Solidity new high-level constructs will be translated
+into a intermediate language called SAIL - Solidity Algebraic Intermediate
+Language.
+
 
 ## Compatibility and Interoperability
 
