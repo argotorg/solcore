@@ -1,0 +1,41 @@
+import dispatch;
+
+contract C {
+    constructor() {}
+    function id(x:mstring) -> (mstring) {
+     let ptr : word = Typedef.rep(x);
+     let len : word;
+     let n1 : word;
+     assembly {
+       len := mload(ptr)
+       n1 := mload(add(ptr,32))
+     }
+     log1(len, 0xc001);
+     log1(n1, 0xc002);
+
+     return x;
+    }
+
+    function const_a() -> (mstring) {
+      let resPtr = allocate_memory(64);
+      let payload = 0x7777777777777777777777777777777777777777777777777777777777777777;
+      mstore(resPtr, 3);
+      mstore(resPtr+32, payload);
+      return strptr(resPtr);
+    }
+    function mylen(x:mstring) -> uint256 {
+     let ptr : word = Typedef.rep(x);
+     let l : word;
+     let n1 : word;
+     assembly {
+       l := mload(ptr)
+       n1 := mload(add(ptr,32))
+     }
+     // log1(l, 0xc001);
+     // log1(n1, 0xc002);
+
+     return uint256(l);
+    }
+
+  //  function answer() -> uint256 { return uint256(17); }
+}
