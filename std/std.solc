@@ -1082,7 +1082,7 @@ forall baseType baseType_decoded reader . ABIDecoder(baseType, CalldataWordReade
 
 pragma no-patterson-condition RVA;
 pragma no-coverage-condition MemberAccessProxy, LVA, RVA, StructField;
-
+pragma no-bounded-variable-condition LVA, RVA;
 // -- storage
 
 function sload_(x:word) -> word {
@@ -1098,9 +1098,18 @@ function sstore_(a:word, v:word) {
 }
 
 
+
 forall self.
 class self:StorageSize {
     function size(x:Proxy(self)) -> word;
+}
+
+
+forall self.
+default instance self:StorageSize {
+    function size(x:Proxy(self)) -> word {
+        return 1;
+    }
 }
 
 instance ():StorageSize {
@@ -1133,7 +1142,19 @@ instance address:StorageSize {
     }
 }
 
-forall a b . a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
+instance string:StorageSize {
+    function size(x:Proxy(string)) -> word {
+        return 1;
+    }
+}
+
+instance memory(string):StorageSize {
+    function size(x:Proxy(memory(string))) -> word {
+        return 1;
+    }
+}
+
+forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
     function size(x:Proxy((a,b))) -> word {
         let a_sz:word = StorageSize.size(Proxy:Proxy(a));
         let b_sz:word = StorageSize.size(Proxy:Proxy(b));
@@ -1206,10 +1227,10 @@ class self:StructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 
 
-data MemberAccessProxy(a, field, offset) = MemberAccessProxy(a, field);
+data MemberAccessProxy(a, field, fieldtype, storageType, offset) = MemberAccessProxy(a, field);
 
-forall a field offset .
-function memberAccessBase(x:MemberAccessProxy(a, field, offset)) -> a {
+forall a field fieldType storageType offset .
+function memberAccessBase(x:MemberAccessProxy(a, field, fieldType, storageType, offset)) -> a {
     match x {
         | MemberAccessProxy(y,z) => return y;
     }
@@ -1219,7 +1240,8 @@ function memberAccessBase(x:MemberAccessProxy(a, field, offset)) -> a {
 // ------------------------------------------------------------------
 // Contract field access
 // ------------------------------------------------------------------
-
+// FIXME: strings / Storable
+/*
 forall cxt fieldSelector fieldType offsetType
   . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
   , offsetType:StorageSize
@@ -1229,9 +1251,20 @@ forall cxt fieldSelector fieldType offsetType
         return storage(offset);
     }
 }
-
+*/
+forall cxt fieldSelector fieldType offsetType storageType
+. StructField(ContractStorage(cxt), fieldSelector) : StructField (fieldType, offsetType)
+, offsetType : StorageSize
+, fieldType : Storable(storageType)
+=> instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType, storageType, offsetType) : LVA (storage(storageType)) {
+   function acc (x : MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType, storageType, offsetType)) -> storage(storageType) {
+      let offset : word = StorageSize.size(Proxy : Proxy(offsetType)) ;
+      return storage(offset):storage(storageType);
+   }
+}
+/*
 forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, storageType, offsetType)
   , fieldType:StorageType
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):RVA(fieldType) {
@@ -1240,13 +1273,25 @@ forall cxt fieldSelector fieldType offsetType
         return StorageType.sload(offset):fieldType;
     }
 }
+*/
 
-
-forall structType fieldSelector fieldType offsetType
-  . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
+forall cxt fieldSelector fieldType offsetType storageType
+  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, storageType, offsetType)
+  , fieldType:Storable(storageType)
+//   , fieldType:StorageType
   , offsetType:StorageSize
-  => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType):LVA(storage(fieldType)) {
-    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, offsetType)) -> storage(fieldType) {
+  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType, storageType, offsetType):RVA(fieldType) {
+    function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType, storageType, offsetType)) -> fieldType {
+        let offset:word = StorageSize.size(Proxy:Proxy(offsetType));
+        return Storable.sload(storage(offset):storage(storageType)):fieldType;
+    }
+}
+
+forall structType fieldSelector fieldType storageType offsetType
+  . StructField(structType, fieldSelector):StructField(fieldType, storageType, offsetType)
+  , offsetType:StorageSize
+  => instance MemberAccessProxy(storage(structType), fieldSelector, fieldType, storageType, offsetType):LVA(storage(fieldType)) {
+    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, fieldType, storageType, offsetType)) -> storage(fieldType) {
         let ptr:word = Typedef.rep(memberAccessBase(x));
         let size:word = StorageSize.size(Proxy:Proxy(offsetType));
         assembly {
@@ -1257,12 +1302,12 @@ forall structType fieldSelector fieldType offsetType
 }
 
 
-forall structType fieldSelector fieldType offsetType
+forall structType fieldSelector fieldType storageType offsetType
   . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
   , offsetType:StorageSize
   , fieldType:StorageType
-  => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType):RVA(fieldType) {
-    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, offsetType)) -> fieldType {
+  => instance MemberAccessProxy(storage(structType), fieldSelector, fieldType, storageType, offsetType):RVA(fieldType) {
+    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, fieldType, storageType, offsetType)) -> fieldType {
         let ptr:word = Typedef.rep(memberAccessBase(x));
         let size:word = StorageSize.size(Proxy:Proxy(offsetType));
         assembly {
