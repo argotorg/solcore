@@ -1,4 +1,4 @@
-pragma no-bounded-variable-condition ABIEncode, GenerateDispatch, Storable;
+pragma no-bounded-variable-condition ABIEncode, GenerateDispatch;
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
 
@@ -462,8 +462,8 @@ function mstore(a:word, v:word) -> () {
   assembly { mstore(a,v) }
 }
 
-function strlen(s:memory(string)) -> word {
-  match s { | memory(a) => return mload(a); }
+function strlen(s:mstring) -> word {
+  match s { | strptr(a) => return mload(a); }
 }
 
 
@@ -561,7 +561,21 @@ data bytes;
 // --- strings ---
 
 // TODO: should this be a typedef over `bytes`?
-data string;
+// data string;
+data mstring = strptr(word); // or: strptr(memory(string))
+
+forall t . instance mstring : Typedef(word) {
+    function abs(x: word) -> mstring {
+        return strptr(x);
+    }
+
+    function rep(x: mstring) -> word {
+        match x {
+        | strptr(w) => return w;
+        }
+    }
+}
+
 
 // --- slices (sized pointers) ---
 
@@ -745,13 +759,17 @@ instance uint256:ABIAttribs {
     function headSize(ty : Proxy(uint256)) -> word { return 32; }
     function isStatic(ty : Proxy(uint256)) -> bool { return true; }
 }
+instance address:ABIAttribs {
+    function headSize(ty : Proxy(address)) -> word { return 32; }
+    function isStatic(ty : Proxy(address)) -> bool { return true; }
+}
 forall t . instance DynArray(t):ABIAttribs {
     function headSize(ty : Proxy(DynArray(t))) -> word { return 32; }
     function isStatic(ty : Proxy(DynArray(t))) -> bool { return false; }
 }
-instance string:ABIAttribs {
-    function headSize(ty: Proxy(string)) -> word { return 32; }
-    function isStatic(ty : Proxy(string)) -> bool { return false; }
+instance mstring:ABIAttribs {
+    function headSize(ty: Proxy(mstring)) -> word { return 32; }
+    function isStatic(ty : Proxy(mstring)) -> bool { return false; }
 }
 
 // computes the attribs for a pair of two types that implement attribs
@@ -837,14 +855,23 @@ instance uint256:ABIEncode {
     }
 }
 
+instance address:ABIEncode {
+    // a unit256 is written directly into the head
+    function encodeInto(x:address, basePtr:word, offset:word, tail:word) -> word {
+        let repx : word = Typedef.rep(x);
+        assembly { mstore(add(basePtr, offset), repx) }
+        return tail;
+    }
+}
+
 function round_up_to_mul_of_32(value:word) -> word {
   let result : word;
   assembly { result := and(add(value, 31), not(31)) }
   return result;
 }
 
-instance memory(string):ABIEncode {
-    function encodeInto(x:memory(string), basePtr:word, offset:word, tail:word) -> word {
+instance mstring:ABIEncode {
+    function encodeInto(x:mstring, basePtr:word, offset:word, tail:word) -> word {
       let tailOffset = Sub.sub(tail,basePtr);
       let srcPtr = Typedef.rep(x);
 
@@ -951,6 +978,13 @@ forall reader . reader:WordReader => instance ABIDecoder(uint256, reader):ABIDec
     }
 }
 
+// ABI decoding address - TODO: check range?
+forall reader . reader:WordReader => instance ABIDecoder(address, reader):ABIDecode(address) {
+    function decode(ptr:ABIDecoder(address, reader), currentHeadOffset:word) -> address {
+        return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : address;
+    }
+}
+
 forall reader . reader:WordReader => instance ABIDecoder((), reader):ABIDecode(()) {
     function decode(ptr:ABIDecoder((), reader), currentHeadOffset:word) -> () {
         return ();
@@ -958,6 +992,7 @@ forall reader . reader:WordReader => instance ABIDecoder((), reader):ABIDecode((
 }
 
 // ABI decoding for strings (only in memory)
+/*
 forall reader. reader : WordReader =>
 instance ABIDecoder(memory(string), reader):ABIDecode(memory(string))
 {
@@ -974,6 +1009,26 @@ instance ABIDecoder(memory(string), reader):ABIDecode(memory(string))
         let resultPtr : word = allocate_memory(rounded)	;
         WordReader.copyToMem(srcRdr, resultPtr, total);
         return memory(resultPtr);
+    } // decode ends
+}
+*/
+
+forall reader. reader : WordReader =>
+instance ABIDecoder(mstring, reader):ABIDecode(mstring)
+{
+    function decode(ptr:ABIDecoder(mstring, reader), currentHeadOffset:word) -> mstring {
+        let tmp:word;
+        let headRdr = WordReader.advance(ptr, currentHeadOffset);
+        let tailPtr : word = WordReader.read(headRdr);
+
+        let src = WordReader.advance(ptr, tailPtr);
+        let srcRdr = getReader(src);
+        let length = WordReader.read(src);
+        let total = Add.add(length, 32);
+	let rounded = round_up_to_mul_of_32(total);
+        let resultPtr : word = allocate_memory(rounded)	;
+        WordReader.copyToMem(srcRdr, resultPtr, total);
+        return strptr(resultPtr);
     } // decode ends
 }
 
@@ -1109,8 +1164,9 @@ instance ():StorageSize {
     }
 }
 
-instance word:StorageSize {
-    function size(x:Proxy(word)) -> word {
+forall self.
+default instance self:StorageSize {
+    function size(x:Proxy(self)) -> word {
         return 1;
     }
 }
@@ -1321,6 +1377,7 @@ class lhs:Assign(rhs) {
 }
 
 // a can be stored in storage(b); e.g. memory(string) : Storable(string)
+/*
 pragma no-coverage-condition Storable, Assign;
 forall a b.
 class a:Storable(b) {
@@ -1328,9 +1385,8 @@ class a:Storable(b) {
   function sload(r:storage(b)) -> a;
 }
 
-
-forall a b. a:Storable(b) =>
-instance storage(b):Assign(a) {
+forall a . a:Storable(a) =>
+instance storage(a):Assign(a) {
     function assign(l:storage(b), r:a) -> () {
       Storable.store(l, r);
     }
@@ -1345,7 +1401,8 @@ default instance a:Storable(a) {
       return StorageType.sload(Typedef.rep(l));
     }
 }
-
+*/
+/*
 instance memory(string):Storable(string) {
   function store(dst:storage(string), src:memory(string)) -> () {
     let srcPtr : word = Typedef.rep(src);
@@ -1359,6 +1416,29 @@ instance memory(string):Storable(string) {
     let endPtr = loadBytesFromStorage(srcPtr, dstPtr);
     set_free_memory(endPtr);
     return memory(dstPtr);
+  }
+}
+*/
+
+forall a . a:StorageType =>
+instance storage(a):Assign(a) {
+    function assign(l:storage(a), r:a) -> () {
+      let slot = Typedef.rep(l);
+      StorageType.store(slot, r);
+    }
+}
+
+instance mstring:StorageType {
+  function store(slot:word, src:mstring) -> () {
+    let srcPtr : word = Typedef.rep(src);
+    storeBytesFromMemory(slot, srcPtr);
+  }
+
+  function sload(slot:word) -> mstring {
+    let dstPtr : word = get_free_memory();
+    let endPtr = loadBytesFromStorage(slot, dstPtr);
+    set_free_memory(endPtr);
+    return strptr(dstPtr);
   }
 }
 
