@@ -477,9 +477,9 @@ contract Counter {
 }
 ```
 
-Other constructions like the dispatch, indexed access and anonymous functions
-involve more elaborated translation steps which we intend to describe in
-future posts.
+Other constructions like the dispatch, indexed access, range-based loops and
+anonymous functions involve more elaborated translation steps which we intend
+to describe in future posts.
 
 ## Compatibility and Interoperability
 
@@ -495,8 +495,6 @@ versions, allowing individual contracts written in incompatible versions to inte
 side by side in the same project (this strategy is also used by Rust with their "Editions" feature).
 Thanks to our history of releasing breaking changes, much of the ecosystem tooling already supports
 multiple incompatible language versions in the same project.
-
-(TODO: check and confirm the state of things in foundry / hardhat).
 
 We are also investigating the feasibility of deeper interoperability beyond just the contract ABI.
 We expect that it will be possible to share at least free functions and interface definitions
