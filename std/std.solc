@@ -737,6 +737,12 @@ forall self . class self:ABIAttribs {
     function isStatic(ty:Proxy(self)) -> bool;
 }
 
+forall t.
+default instance t:ABIAttribs {
+    function headSize(ty : Proxy(t)) -> word { return 32; }
+    function isStatic(ty : Proxy(t)) -> bool { return true; }
+}
+
 instance ():ABIAttribs {
     function headSize(ty : Proxy(())) -> word { return 0; }
     function isStatic(ty : Proxy(())) -> bool { return true; }
@@ -744,6 +750,10 @@ instance ():ABIAttribs {
 instance uint256:ABIAttribs {
     function headSize(ty : Proxy(uint256)) -> word { return 32; }
     function isStatic(ty : Proxy(uint256)) -> bool { return true; }
+}
+instance address:ABIAttribs {
+    function headSize(ty : Proxy(address)) -> word { return 32; }
+    function isStatic(ty : Proxy(address)) -> bool { return true; }
 }
 forall t . instance DynArray(t):ABIAttribs {
     function headSize(ty : Proxy(DynArray(t))) -> word { return 32; }
@@ -832,6 +842,16 @@ instance uint256:ABIEncode {
     // a unit256 is written directly into the head
     function encodeInto(x:uint256, basePtr:word, offset:word, tail:word) -> word {
         let repx : word = Typedef.rep(x);
+        assembly { mstore(add(basePtr, offset), repx) }
+        return tail;
+    }
+}
+
+instance bool:ABIEncode {
+
+    function encodeInto(x:bool, basePtr:word, offset:word, tail:word) -> word {
+        
+        let repx : word = frombool(x);
         assembly { mstore(add(basePtr, offset), repx) }
         return tail;
     }
@@ -948,6 +968,13 @@ forall ty reader . reader:WordReader => instance ABIDecoder(ty, reader):WordRead
 forall reader . reader:WordReader => instance ABIDecoder(uint256, reader):ABIDecode(uint256) {
     function decode(ptr:ABIDecoder(uint256, reader), currentHeadOffset:word) -> uint256 {
         return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : uint256;
+    }
+}
+
+// ABI Decoding for address
+forall reader . reader:WordReader => instance ABIDecoder(address, reader):ABIDecode(address) {
+    function decode(ptr:ABIDecoder(address, reader), currentHeadOffset:word) -> address {
+        return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : address;
     }
 }
 
@@ -1380,7 +1407,7 @@ instance storage(b):Assign(a) {
       Storable.store(l, r);
     }
 }
-
+/*
 forall a. a:StorageType =>
 default instance a:Storable(a) {
     function store(l:storage(a), r:a) -> () {
@@ -1390,6 +1417,47 @@ default instance a:Storable(a) {
       return StorageType.sload(Typedef.rep(l));
     }
 }
+*/
+
+ instance word:Storable(word) {
+    function store(l:storage(word), r:word) -> () {
+      StorageType.store(Typedef.rep(l), r);
+    }
+    function sload(l:storage(word)) -> word {
+      return StorageType.sload(Typedef.rep(l));
+    }
+}
+
+ instance uint256:Storable(uint256) {
+    function store(l:storage(uint256), r:uint256) -> () {
+      StorageType.store(Typedef.rep(l), r);
+    }
+    function sload(l:storage(uint256)) -> uint256 {
+      return StorageType.sload(Typedef.rep(l));
+    }
+}
+
+ instance address:Storable(address) {
+    function store(l:storage(address), r:address) -> () {
+      StorageType.store(Typedef.rep(l), r);
+    }
+    function sload(l:storage(address)) -> address {
+      return StorageType.sload(Typedef.rep(l));
+    }
+}
+
+forall k v.
+ instance mapping(k,v):Storable(mapping(k,v)) {
+    function store(l:storage(mapping(k,v)), r:mapping(k,v)) -> () {
+      // StorageType.store(Typedef.rep(l), r);
+      unimplemented();
+    }
+    function sload(l:storage(mapping(k,v))) -> mapping(k,v) {
+      // return StorageType.sload(Typedef.rep(l));
+      return unimplemented();
+    }
+}
+
 
 instance memory(string):Storable(string) {
   function store(dst:storage(string), src:memory(string)) -> () {
