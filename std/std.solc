@@ -1227,10 +1227,10 @@ class self:StructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 
 
-data MemberAccessProxy(a, field, fieldtype, storageType, offset) = MemberAccessProxy(a, field);
+data MemberAccessProxy(a, field, fieldtype, offset) = MemberAccessProxy(a, field);
 
 forall a field fieldType storageType offset .
-function memberAccessBase(x:MemberAccessProxy(a, field, fieldType, storageType, offset)) -> a {
+function memberAccessBase(x:MemberAccessProxy(a, field, fieldType,  offset)) -> a {
     match x {
         | MemberAccessProxy(y,z) => return y;
     }
@@ -1256,8 +1256,8 @@ forall cxt fieldSelector fieldType offsetType storageType
 . StructField(ContractStorage(cxt), fieldSelector) : StructField (fieldType, offsetType)
 , offsetType : StorageSize
 , fieldType : Storable(storageType)
-=> instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType, storageType, offsetType) : LVA (storage(storageType)) {
-   function acc (x : MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType, storageType, offsetType)) -> storage(storageType) {
+=> instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType,  offsetType) : LVA (storage(storageType)) {
+   function acc (x : MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType,  offsetType)) -> storage(storageType) {
       let offset : word = StorageSize.size(Proxy : Proxy(offsetType)) ;
       return storage(offset):storage(storageType);
    }
@@ -1276,22 +1276,22 @@ forall cxt fieldSelector fieldType offsetType
 */
 
 forall cxt fieldSelector fieldType offsetType storageType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, storageType, offsetType)
+  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
   , fieldType:Storable(storageType)
 //   , fieldType:StorageType
   , offsetType:StorageSize
-  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType, storageType, offsetType):RVA(fieldType) {
-    function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType, storageType, offsetType)) -> fieldType {
+  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType,  offsetType):RVA(fieldType) {
+    function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, fieldType,  offsetType)) -> fieldType {
         let offset:word = StorageSize.size(Proxy:Proxy(offsetType));
         return Storable.sload(storage(offset):storage(storageType)):fieldType;
     }
 }
 
 forall structType fieldSelector fieldType storageType offsetType
-  . StructField(structType, fieldSelector):StructField(fieldType, storageType, offsetType)
+  . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
   , offsetType:StorageSize
-  => instance MemberAccessProxy(storage(structType), fieldSelector, fieldType, storageType, offsetType):LVA(storage(fieldType)) {
-    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, fieldType, storageType, offsetType)) -> storage(fieldType) {
+  => instance MemberAccessProxy(storage(structType), fieldSelector, fieldType,  offsetType):LVA(storage(fieldType)) {
+    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, fieldType,  offsetType)) -> storage(fieldType) {
         let ptr:word = Typedef.rep(memberAccessBase(x));
         let size:word = StorageSize.size(Proxy:Proxy(offsetType));
         assembly {
@@ -1306,8 +1306,8 @@ forall structType fieldSelector fieldType storageType offsetType
   . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
   , offsetType:StorageSize
   , fieldType:StorageType
-  => instance MemberAccessProxy(storage(structType), fieldSelector, fieldType, storageType, offsetType):RVA(fieldType) {
-    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, fieldType, storageType, offsetType)) -> fieldType {
+  => instance MemberAccessProxy(storage(structType), fieldSelector, fieldType,  offsetType):RVA(fieldType) {
+    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, fieldType,  offsetType)) -> fieldType {
         let ptr:word = Typedef.rep(memberAccessBase(x));
         let size:word = StorageSize.size(Proxy:Proxy(offsetType));
         assembly {
