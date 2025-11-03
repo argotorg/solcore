@@ -203,6 +203,8 @@ tcField d@(Field n t _)
 tcClass :: Class Name -> TcM (Class Id)
 tcClass iclass@(Class bvs ctx n vs v sigs)
   = do
+      -- checking constraint arity
+      checkConstraints ctx
       let bvs' = bv ctx `union` bv (map TyVar (v : vs)) `union` bv sigs
           ns = map sigName sigs
           qs = map (QualName n . pretty) ns
@@ -214,13 +216,14 @@ tcClass iclass@(Class bvs ctx n vs v sigs)
       pure (Class bvs ctx n vs v sigs')
 
 tcSig :: (Signature Name, Scheme) -> TcM (Signature Id)
-tcSig (sig, (Forall _ (_ :=> t)))
+tcSig (sig, (Forall _ (ps :=> t)))
   = do
       let (ts,r) = splitTy t
           param (Typed n t) t1 = Typed (Id n t1) t1
           param (Untyped n) t1 = Typed (Id n t1) t1
           params' = zipWith param (sigParams sig) ts
       kindCheck t `wrapError` sig
+      checkConstraints ps
       pure (Signature (sigVars sig)
                       (sigContext sig)
                       (sigName sig)

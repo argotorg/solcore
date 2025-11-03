@@ -19,8 +19,8 @@ forall i j . (i,j):TestClassP1 => instance i:TestClassC3(j) {}
 forall i j . (i,j):TestClassP1 => instance i:TestClassP3(j) {}
 
 // fails bound var & patterson (pragma set here)
-forall a . c:TestClassB1(a) => instance TestType1(a):TestClassB4 {}
+forall a . c:TestClassB1 => instance TestType1(a):TestClassB4 {}
 
 // fails bound var & patterson (pragma set in base)
-forall a . c:TestClassB1(a) => instance TestType1(a):TestClassB3 {}
+forall a . c:TestClassB1 => instance TestType1(a):TestClassB3 {}
 
