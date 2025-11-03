@@ -1,0 +1,3 @@
+forall self a . class self : Foo (a) {}
+
+instance word : Foo (word, word) {}
