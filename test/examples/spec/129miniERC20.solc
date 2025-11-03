@@ -20,7 +20,7 @@ function require(cond: bool, msg: word ) {
 contract MiniERC20 {
   reserved : word; // forge idiosyncrasies
   name : string;
-  symbol : memory(string);
+  symbol : string;
   owner : address;
   decimals : uint256;
   totalSupply : uint256;
