@@ -268,8 +268,9 @@ extraTopDeclsForContract c@(S.Contract cname ts decls) = do
           offset = foldr pair unit tys
 
 translateFieldType :: Ty -> Ty
-translateFieldType string@(TyCon (Name "string") []) = TyCon "memory" [string]
-translateFieldType t = t
+-- translateFieldType string@(TyCon (Name "string") []) = TyCon "memory" [string]
+translateFieldType t = TyCon "storage" [t]
+--translateFieldType t = t
 
 extraTopDeclsForContractField :: ContractName -> Field Name -> Ty -> [TopDecl Name]
 extraTopDeclsForContractField cname field@(Field fname fty _minit) offset = [selDecl, TInstDef sfInstance] where
