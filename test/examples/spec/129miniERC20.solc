@@ -33,13 +33,27 @@ contract MiniERC20 {
     symbol = symbol_;
     owner = caller();
     decimals = uint256(18);
-    owner = caller();
     mint(totalSupply_);
   }
 
 
+  function test() -> uint256 {
+      approve(address(0), uint256(10));
+      transferFrom(caller(), address(0), uint256(958));
+      return getMyBalance();
+  }
   function getName() -> memory(string) {
     return name;
+  }
+
+
+  function getMyBalance() -> uint256 {
+    return balances[caller()];
+  }
+
+
+  function getMyAllowance() -> uint256 {
+    return allowance[owner][address(0)];
   }
 
   function mint(amount:uint256) -> () {
@@ -47,20 +61,9 @@ contract MiniERC20 {
     totalSupply = Num.add(totalSupply, amount);
   }
 
-/*  // original:
-    function transferFrom(address src, address dst, uint256 amt) public returns (bool) {
-        require(balanceOf[src] >= amt, "token/insufficient-balance");
-        if (src != msg.sender && allowance[src][msg.sender] != type(uint256).max) {
-            require(allowance[src][msg.sender] >= amt, "token/insufficient-allowance");
-            allowance[src][msg.sender] -= amt;
-        }
-
-        balanceOf[src] -= amt;
-        balanceOf[dst] += amt;
-        emit Transfer(src, dst, amt);
-        return true;
-    }
-*/
+  function transfer(dst : address, amt : uint256) -> bool {
+      return transferFrom(caller(), dst, amt);
+  }
 
   function transferFrom(src:address, dst:address, amt:uint256) -> bool {
      let msg_sender = caller();
@@ -76,16 +79,9 @@ contract MiniERC20 {
      }
      balances[src] = balances[src] - amt;
      balances[dst] = balances[dst] + amt;
+     // emit Transfer(src, dst, amt);
      return true;
   }
-
-/*
-    function approve(address usr, uint256 amt) public returns (bool) {
-        allowance[msg.sender][usr] = amt;
-        emit Approval(msg.sender, usr, amt);
-        return true;
-    }
-*/
 
   function approve(usr: address, amt: uint256) -> bool {
       let msg_sender = caller();
@@ -94,22 +90,3 @@ contract MiniERC20 {
       return true;
 
   }
-
-/*
-  function init() -> () {
-    owner = address(0x123456789abcdef);
-    decimals = Num.fromWord(18) : uint256;
-  }
-*/
-/*
-  function main() -> uint256 {
-    let msg_sender = caller();
-    init();
-    mint(uint256(1000));
-    allowance[owner][msg_sender] = uint256(1000);
-    transferFrom(owner, msg_sender, uint256(42));
-
-    return allowance[owner][msg_sender];
-  }
-*/
-}
