@@ -481,7 +481,7 @@ have the power to build abstractions that feel built-in to the language itself (
 language"). It will be possible to define and use alternative standard library implementations, or
 disable the standard library completely. With the standard library disabled, it will be possible to
 write Core Solidity code with almost the same level of control as low level assembly languages like
-Huff, but with a modern, expressive typesystem, based on a strong mathematically rigorous foundation.
+Huff, but with a modern, expressive type system, based on a strong mathematically rigorous foundation.
 
 We also expect that the introduction of SAIL will make it much easier for Solidity users to extend
 and improve the language. In many cases it will be possible to make deep improvements via a pull
