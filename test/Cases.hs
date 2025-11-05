@@ -62,6 +62,7 @@ dispatches =
     "Files for dispatch cases"
     [ runDispatchTest "basic.solc"
     , runDispatchTest "stringid.solc"
+    , runDispatchTest "miniERC20.solc"
     ]
  where
   runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"

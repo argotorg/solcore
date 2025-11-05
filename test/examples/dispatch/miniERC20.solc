@@ -18,15 +18,13 @@ function require(cond: bool, msg: word ) {
 }
 
 contract MiniERC20 {
-  reserved : word; // forge idiosyncrasies
   name : string;
   symbol : string;
   owner : address;
-  decimals : uint256;
+  decimals : uint256; // should be uint8 when we get to it
   totalSupply : uint256;
   balances : mapping(address,uint256);
   allowance : mapping(address, mapping(address, uint256));
-
 
   constructor(name_ : memory(string), symbol_ : memory(string), totalSupply_:uint256) {
     name = name_;
@@ -36,24 +34,28 @@ contract MiniERC20 {
     mint(totalSupply_);
   }
 
-
-  function test() -> uint256 {
-      approve(address(0), uint256(10));
-      transferFrom(caller(), address(0), uint256(958));
-      return getMyBalance();
-  }
-  function getName() -> memory(string) {
+  function name() -> memory(string) {
     return name;
   }
 
-
-  function getMyBalance() -> uint256 {
-    return balances[caller()];
+  function symbol() -> memory(string) {
+    return symbol;
   }
 
+  function decimals() -> uint256 {
+    return decimals;
+  }
 
-  function getMyAllowance() -> uint256 {
-    return allowance[owner][address(0)];
+  function allowance(owner_ : address, spender: address) -> uint256 {
+    return allowance[owner_][spender]; // don't use "owner" here
+  }
+
+  function balanceOf(account : address) -> uint256 {
+    return balances[account];
+  }
+
+  function totalSupply() -> uint256 {
+    return totalSupply;
   }
 
   function mint(amount:uint256) -> () {
@@ -88,5 +90,18 @@ contract MiniERC20 {
       allowance[msg_sender][usr] = amt;
       // emit Approval(msg.sender, usr, amt);
       return true;
-
   }
+
+
+  // testing
+  function getMyBalance() -> uint256 {
+    return balances[caller()];
+  }
+
+  function test() -> uint256 {
+      approve(address(0), uint256(10));
+      transferFrom(caller(), address(0), uint256(958));
+      return getMyBalance();
+  }
+
+}
