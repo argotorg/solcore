@@ -267,6 +267,8 @@ extraTopDeclsForContract c@(S.Contract cname ts decls) = do
           decls' = decls ++ extraTopDeclsForContractField cname field offset
           offset = foldr pair unit tys
 
+translateFieldType :: Ty -> Ty
+translateFieldType t = TyCon "storage" [t]
 
 extraTopDeclsForContractField :: ContractName -> Field Name -> Ty -> [TopDecl Name]
 extraTopDeclsForContractField cname field@(Field fname fty _minit) offset = [selDecl, TInstDef sfInstance] where
@@ -281,7 +283,7 @@ extraTopDeclsForContractField cname field@(Field fname fty _minit) offset = [sel
                , instVars = []
                , instContext = []
                , instName = "StructField"
-               , paramsTy = [fty, offset]
+               , paramsTy = [translateFieldType fty, offset]
                , mainTy = TyCon "StructField" [ctxTy, selType]
                , instFunctions = []
                }
@@ -645,7 +647,7 @@ instance Elab S.Exp where
         -- condition for valid constructor use
         if isCon && isNothing me' then
           pure (Con n es')
-        else if isClass then do 
+        else if isClass then do
           pure (Call Nothing (mkClassName me' n) es')
         -- condition for function call
         else pure (Call me' n es')

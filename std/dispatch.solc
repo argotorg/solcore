@@ -32,6 +32,17 @@ instance uint256:ABIString {
     }
 }
 
+instance address:ABIString {
+    function append(head : word, tail : word, prx : Proxy(address)) -> word {
+        let size : word = 7;
+        assembly {
+            mstore(head, add(mload(head), size))
+            mstore(tail, 0x6164647265737300000000000000000000000000000000000000000000000000)
+        }
+        return Add.add(tail, size);
+    }
+}
+
 instance ():ABIString {
     function append(head : word, tail : word, prx : Proxy(())) -> word {
         return(tail);
