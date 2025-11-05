@@ -8,6 +8,7 @@ enforce core safety properties. The language has very limited capabilities aroun
 evaluation. Many features are implemented in an inconsistent manner, or do not always work as
 expected.
 
+
 Fixing these limitations within the current implementation has proven difficult. Upgrades must be
 made in a somewhat ad-hoc manner, and each new feature addition makes reasoning about the
 correctness of subsequent features more difficult. We did not feel confident that we would be able
@@ -15,18 +16,18 @@ to safely extend the language in this way to add the kind of features that our u
 for, and that we feel are required to keep up with the ever increasing scale of systems that are
 being developed in Solidity.
 
-Core Solidity is our solution. It is a rebuild of the Solidity type system and compiler front/middle
-end that will:
+Core Solidity is our solution. It is a rebuild of the Solidity type system and compiler front/middle end that will:
 
 - introduce powerful new features (generics, traits, algebraic datatypes, pattern matching, comptime)
 - provide a strong foundation for compiler correctness as we continue to extend the language in the future
 - empower library authors and support a community-driven process for language evolution
 - expand the capabilities of verification and analysis tooling
 
+
 In addition to growing and expanding the language, we will also be removing or reworking some
 existing features. We are already certain that we will be removing inheritance entirely. Additional
 changes are less certain, but we are considering potentially replacing or reworking problematic features
-like try/catch, libraries, or function pointers.
+like try/catch, libraries, and function pointers.
 
 We currently have a working prototype for Core Solidity. All examples in the post typecheck and
 produce executable code. The syntax is far from final, and extensive changes should be expected
@@ -69,29 +70,88 @@ abstractions, write more modular and reusable code, leverage the type system to 
 safety properties.
 
 We will continue to support the kind of low level access to the EVM that is often required by
-production implementations: assembly will remain a core primitive with an important new feature:
-we will support calling functions from the high level language in assembly directly. Users will
-be able to disable the built in abstractions (e.g. contract dispatch generation, ABI decoding,
-default storage layout generation), following the "pay for what you use" philosophy of languages
-like Rust and C++.
+production implementations: assembly will remain a core primitive, and we will extend it with the
+ability to directly call functions from the high level language in assembly blocks. Users will be
+able to disable the languages built in abstractions (e.g. contract dispatch generation, ABI
+decoding, default storage layout generation), following the "pay for what you use" philosophy of
+languages like Rust and C++.
 
-Aside from the removal of inheritance, we expect to be able to support the majority of existing
-language features without breakage.
+### Algebraic data types and pattern matching
+
+Algebraic Data Types provide a way of data modeling using sum types (disjoint unions) and product
+types (structs / tuples). This enables the construction of precise types where invalid states are
+**unrepresentable** by design, allowing program invariants to be enforced by the type system
+entirely at compile time. As an example, consider the following type definition for an auction
+state.
+
+```solidity
+data AuctionState =
+    NotStarted(word)
+  | Active(word, address)
+  | Ended(word, address)
+  | Cancelled;
+```
+
+The type has three constructors: `NotStarted` specifies that the auction has not started yet and
+stores its reserved price, `Active` denotes that the auction has begun and it stores the
+current highest bid and the address that made such bid, `Ended` represents that the auction has
+finished with success and it holds the highest bid and the winner address and constructor,
+`Cancelled` is used when the auction has been cancelled.
+
+Using algebraic data types, we can define functions by pattern matching. As an example, consider
+function `processAuction` which tries to update the action state based on current state and
+`msg.value`. The `match` statement lets us perform an exhaustive case analysis over each possible
+alternative state. Exhaustiveness can be enforced by the compiler, ensuring that we do not
+accidentally miss or fail to consider a critical state:
+
+```solidity
+function processAuction(state) {
+    match state {
+    | NotStarted(reserve) =>
+        require(msg.value >= reserve);
+        return Active(msg.value, msg.sender);
+    | Active(currentBid, bidder) =>
+        require(msg.value > currentBid);
+        transferFunds(bidder, currentBid);
+        return Active(msg.value, msg.sender);
+    | Ended(_, _) =>
+        return state;
+    | Cancelled =>
+        revert();
+    }
+}
+```
+
+Sometimes we want to take the same action for many states, or handle certain subcases of a state in
+special ways. Pattern matching is expressive enough to let us do exactly that:
+
+```
+TODO: one more example
+```
 
 ### Generics and type classes
 
-Core Solidity introduces two new exciting abstraction mechanisms: generics and
+Core Solidity introduces two new mechanisms for code sharing and polymorphism: generics and
 type classes.
 
-Generics enable parametric polymorphism through type parameters, which allows the
-implementation of algorithms and data structures that operate uniformly across
-all types. As an example, we could define a polymorphic `identity` function:
+Generics enable us to write functions and data structures that can operate in a uniform way across
+all types. As an example, we can define a polymorphic `identity` function:
 
-```
+```solidity
 forall T . function identity(x : T) -> T {
     return x;
 }
 ```
+
+We can also define generic data structures like the classic functional linked list (as in Rust we do
+not support fully recursive types, and the `memory` pointer must be introduced as a cycle breaker).
+
+```solidity
+data List(T)
+  = Nil
+  | Cons T (memory(List(T)))
+```
+
 
 While generic functions are interesting, most interesting operations are not defined
 for all types. Overloading allows the definition of code which can operate in distinct
@@ -105,7 +165,7 @@ A type class definition declares the class name, its arguments and member functi
 signatures. As example, let's consider the following definition of a class for the ABI
 encoding of types:
 
-```
+```solidity
 forall self . class self:ABIEncode {
     function encodeInto(x:self, basePtr:word, offset:word, tail:word) -> word;
 }
@@ -118,7 +178,7 @@ implementation of encoding for a specific type is done in an instance declaratio
 As an example, the following instance definition implements the ABI encoding for
 `uint256` type, which is represented as an algebraic type that holds a `word` value.
 
-```
+```solidity
 data uint256 = uint256(word);
 instance uint256:ABIEncode {
     function encodeInto(x:uint256, basePtr:word, offset:word, tail:word) -> word {
@@ -137,7 +197,7 @@ the console address. All these one argument functions definitions can
 be reduced to following single function, which uses the standard library
 machinery for ABI encoding of values.
 
-```
+```solidity
 forall ty . ty : ABIAttribs, ty : ABIEncode => function log(val : ty) {
     let CONSOLE_ADDRESS : word = 0x000000000000000000636F6e736F6c652e6c6f67;
     let payload = abi_encode(val);
@@ -176,53 +236,7 @@ forall t . t : Typedef(word) => function log1(v : t, topic : word) -> () {
 This version uses standard library class `Typedef`, which provides functions for
 the conversion between `word` and types which are instance of this class.
 
-### Algebraic data types and pattern matching
-
-Algebraic Data Types provide a way of data modeling using sum types
-(disjoint unions) and product types (structural records). This enables the construction of
-precise types where invalid states are **unrepresentable** by design, thereby enhancing program
-correctness through the type system itself. As an example, consider the following type
-definition for an auction state.
-
-```
-data AuctionState =
-    NotStarted (word)
-  | Active (word, address)
-  | Ended (word, address)
-  | Cancelled;
-
-```
-The type has three constructors: `NotStarted` specifies that the auction has not started yet and
-stores its reserved price, `Active` denotes that the auction has begun and it stores the
-current highest bid and the address that made such bid, `Ended` represents that the auction has
-finished with success and it holds the highest bid and the winner address and constructor,
-`Cancelled` is used when the auction has been cancelled.
-
-Using algebraic data types, we can define functions by pattern matching. As an example,
-consider function `processAuction` which tries to update the action state based on current
-state and `msg.value`.  Pattern matching provides structural decomposition of data types through
-case analysis. This ensures all possible variants are handled explicitly, eliminating
-partial function hazards and providing formal guarantees of match completeness.
-
-```
-function processAuction(state) {
-    match state {
-    | NotStarted(reserve) =>
-        require(msg.value >= reserve);
-        return Active(msg.value, msg.sender);
-    | Active(currentBid, bidder) =>
-        require(msg.value > currentBid);
-        transferFunds(bidder, currentBid);
-        return Active(msg.value, msg.sender);
-    | Cancelled =>
-        revert();
-    |   _ =>
-        return state;
-    }
-}
-```
-
-### High-order functions
+### Higher-order functions
 
 Functions possess first-class status within the type system, enabling their use
 as parameters, return values, and assignable entities. This facilitates the
@@ -428,58 +442,234 @@ We will publish more once we have a concrete design / prototype implementation.
 
 ## SAIL, Desugaring and the Standard Library
 
-Desugaring is the process of translating high-level language constructs into
-a semantically equivalent form using language's more primitive features.
-Some of the Core Solidity new high-level constructs will be translated
-into a intermediate language called SAIL - Solidity Algebraic Intermediate
-Language. Anonymous functions, assignments, contracts, indexed and storage
-access are examples of high-level Core Solidity features with are translated
-into SAIL. The SAIL language is a typed programming language featuring
-generics, typeclasses, algebraic data types and pattern matchings and it
-serves as a high-level intermediate step between Core Solidity and Yul.
+In addition to expanding the surface language, the transition to Core Solidity will also introduce a
+new mid level IR to the compiler: SAIL (Solidity Algebraic Intermediate Language). This is the
+"Core" in Core Solidity. It's the most minimal language we could conceive of that would let us
+express the full range of high-level language constructs found in Classic Solidity. It consists of
+the following primitive constructs:
 
-As an example of one translation steps, let's see how assignments to
-contract state variables are translated into SAIL constructs. Consider the
-following simple contract which updates the value of state variable
-named `counter`:
+- Functions
+- Contracts
+- Assembly blocks
+- Simple variable introduction and assignment
+- A short circuiting if-then-else expression
+- Algebraic datatypes & pattern matching
+- Typeclasses
+- Generics
 
+It has a single builtin type (`word`) that has the same range of values as a Classic Solidity
+`bytes32` or `uint256`, and can semantically can be viewed as "an item on stack" or "a yul
+variable". Contracts in SAIL are very low level (essentially just a runtime entrypoint and initcode
+entrypoint).
+
+All other high level language features and datatypes will be constructed as a combination of
+standard library definitions and desugaring passes (compile time syntactic transformations into SAIL
+primitives). This style of language construction is often used in other high assurance domains (e.g.
+theorem provers), and we believe it has important benefits for both users of the language and the
+safety and security of it's implementation.
+
+SAIL is simple enough that we expect to be able to construct an executable formal semantics for it.
+This will be useful in a lot of directions: We will be able to mathematically guarantee certain core
+properties of the Core Solidity type system itself. We will have a reference implementation that we
+can use for differential fuzzing of the eventual production Core Solidity implementation. We will be
+able to formally verify the standard library and implementation of higher level language constructs.
+We believe that this will be an essential part of our correctness story as both the language and
+the scale of the systems it is used to construct continue to grow.
+
+Library authors will have (almost) the same expressive power as the language designers, and will
+have the power to build abstractions that feel built-in to the language itself (a "library-based
+language"). It will be possible to define and use alternative standard library implementations, or
+disable the standard library completely. With the standard library disabled, it will be possible to
+write Core Solidity code with almost the same level of control as low level assembly languages like
+Huff, but with a modern, expressive typesystem, based on a strong mathematically rigorous foundation.
+
+We also expect that the introduction of SAIL will make it much easier for Solidity users to extend
+and improve the language. In many cases it will be possible to make deep improvements via a pull
+request to the standard library alone. When new syntax or desugaring passes are required, we expect
+them to be much easier to prototype and specify in SAIL without requiring knowledge and
+understanding of compiler internals. We hope that SAIL and Core Solidity will allow us transition to
+a community driven RFC style process for changes to the high level language and standard library.
+
+### A Userspace `abi.encode`
+
+One instructive example is the Core Solidity implementation of `abi.encode`. This is a complicated
+and highly generic function that is currently provided as a compiler builtin. A full in language
+implementation would not be possible in Classic Solidity due to the recursive nature of the ABI
+specification (and the resulting infinite number of expressible types). The implementation presented
+here is relatively concise, but does make use of some more advanced patterns and features. We
+want to emphasise that existing users of Solidity will be able to be productive and make use of
+their existing knowledge without having to concern themselves with these kind of low level internal
+details. We hope that expert level users and library authors will however be excited by the new
+potentials these features enable.
+
+#### `uint256` and addition
+
+To begin we will construct the type `uint256`. In Classic Solidity the definition of this
+type and it's associated operations are all built in language constructs. In Core, it can be
+entirely defined in language. The following snippet defines a new type (`uint256`), and a single
+value constructor (also called `uint256`) that can be used to produce a value of type `uint256` from
+a `word`. Note that simple wrapper types like this are zero overhead (i.e. the runtime
+representation of a `uint256` is just a `word`).
+
+```solidity
+data uint256 = uint256(word);
 ```
-contract Counter {
-    counter : word;
 
-    function main() -> word {
-        counter += 42;
-        return counter;
+Operations like addition and subtraction can also similarly be defined as typeclasses and instances
+of them:
+
+```solidity
+forall T . class T:Add {
+    function add(lhs : T, rhs : T) -> T;
+}
+
+instance uint256:Add {
+    function add(lhs : uint256, rhs : uint256) -> uint256 {
+        // unwrap the two arguments and extract their underlying words
+        match (lhs, rhs) {
+            | (uint256(l), uint256(r)
+                // dispatch to the Add instance for word, and wrap the result in the `uint256` value constructor
+                => return uint256(Add.add(l, r))
+        }
     }
 }
 ```
 
-During the compilation of the previous code piece, the assignment `counter += 42`
-is desugared into:
+To implement the `+` operator, we can then define a simple desugaring pass that replaces the `+`
+operator with calls to `Add.add`.
 
-```
-Assign.assign(Lvalue(counter_sel), Num.add(Rvalue(counter_sel), 42))
+#### `memory` and `bytes`
+
+Similarly we can build types that represent pointers into the various evm data regions by wrapping a
+`word`. Notice that in the following snippet the type parameter on the memory pointer is *phantom*
+(i.e. it appears only in the type, but is not mentioned in any of the value constructors). This is a
+common idiom in ML family languages like Haskell or Rust that lets us enforce compile-time
+constraints without runtime overhead.
+
+```solidity
+data memory(T) = memory(word)
 ```
 
-The addition infix operator is translated into function `add`, defined by a
-type class `Num`. Access of the state variable `counter` is done by functions
-`Lvalue` and `Rvalue`, which retrieve the storage pointer and the current
-value for the `counter` variable; and function `Assign.assign` updates
-the storage using the pointer and the value returned by the addition
-operation. The complete code for this desugaring step is as follows:
+The `bytes` type in Classic Solidity represents a tightly packed byte array with a size only known
+at runtime. It doesn't really make sense to have a `bytes` on stack, so we define it as an empty
+type (effectively just a compile time tag with no runtime reference) with no value constructors.
+This ensures that we can only ever represent a reference to `bytes` on stack (e.g. `memory(bytes)`).
 
+```solidity
+data bytes;
 ```
-contract Counter {
-    function main () -> word {
-        Assign.assign(Lvalue(counter_sel), Num.add(Rvalue(counter_sel), 42));
-        return Rvalue(counter_sel);
+
+#### `Typedef` and weak types
+
+These kind of simple wrapper types are very common, and it is helpful to be able to easily unwrap
+them and extract their underlying value without having to pattern match. For this reason we define
+the following class:
+
+```solidity
+forall T U . class T:Typedef(U) {
+    function abs(x:T) -> U;
+    function rep(x:U) -> T;
+}
+
+instance uint256:Typedef(word) {
+    function abs(w: word) -> uint256 {
+        return uint256(w);
+    }
+
+    function rep(x: uint256) -> word {
+        match x {
+        | uint256(w) => return w;
+        }
     }
 }
 ```
 
-Other constructions like the dispatch, indexed access, range-based loops and
-anonymous functions involve more elaborated translation steps which we intend
-to describe in future posts.
+Note that `U` parameter in the above `Typedef` definition is "weak": its value is uniquely
+determined by the value of the `T` parameter. If you are familiar with Haskell or Rust, this is
+effectively an associated type (although for any type system nerds reading, we implement it using a
+restricted form of functional dependencies). To put it more plainly, we can only implement a single
+instance of `Typedef` for `uint256`: the compiler would not allow us to implement both
+`uint256:Typedef(word)` and `uint256:Typedef(uint128)`. This restriction makes type inference much
+more predictable by sidestepping many of the potential ambiguities inherent to full multi-parameter
+typeclasses.
+
+#### The `Proxy` type
+
+The last piece of machinery required for `abi.encode` is the `Proxy` type:
+
+```solidity
+data Proxy(T) = Proxy;
+```
+
+As with the `memory` definition, the type parameter here is phantom, but unlike memory `Proxy`
+carries no additional information at runtime. It exists only as a marker type that lets us pass
+information around at compile time. Types like this are completely zero cost (i.e. they are
+completely erased at runtime and do appear in the final compiled program at all).
+
+Although somewhat esoteric, `Proxy` is very useful and gives us a lot of control over type inference
+and instance selection without needing to pass data at runtime where it is not needed. It is often
+used in both Haskell (where it is also called `Proxy`) and Rust (`std::marker::PhantomData`).
+
+#### `abi.encode`
+
+Now we are ready to implement Classic Solidity's `abi.encode` in SAIL. We start by defining a
+typeclass for ABI related metadata, note that since this class does not need to care about the
+actual value of the type being passed to it, we use a `Proxy` to keep our implementation as lean as
+possible.
+
+```solidity
+forall T . class T:ABIAttribs {
+    // how many bytes should be used for the head portion of the abi encoding of `T`
+    function headSize(ty:Proxy(T)) -> word;
+    // whether or not `T` is a fully static type
+    function isStatic(ty:Proxy(T)) -> bool;
+}
+
+instance uint256:ABIAttribs {
+    function headSize(ty : Proxy(uint256)) -> word { return 32; }
+    function isStatic(ty : Proxy(uint256)) -> bool { return true; }
+}
+```
+
+Now another that handles the low level encoding into memory. The class presented here contains some
+extraneous details needed for encoding compound and dynamic types that are not be necessary for the
+simple `uint256` encoding we are implementing now. We present the full complexity to demonstrate
+that we have the machinery required for this harder cases.
+
+```solidity
+// types that can be abi encoded
+forall T . class T:ABIEncode {
+    // abi encodes an instance of T into a memory region starting at basePtr
+    // offset gives the offset in memory from basePtr to the first empty byte of the head
+    // tail gives the index in memory of the first empty byte of the tail
+    function encodeInto(x:T, basePtr:word, offset:word, tail:word) -> word /* newTail */;
+}
+
+instance uint256:ABIEncode {
+    // a unit256 is written directly into the head
+    function encodeInto(x:uint256, basePtr:word, offset:word, tail:word) -> word {
+        let repx : word = Typedef.rep(x);
+        assembly { mstore(add(basePtr, offset), repx) }
+        return tail;
+    }
+}
+```
+
+Finally we can define a top_level `abi_encode` function that handles the initial memory allocation
+and free memory pointer updates (we have omitted the implementation of the low level
+`get_free_memory` and `set_free_memory` helpers for the sake of brevity):
+
+```solidity
+// top level encoding function.
+// abi encodes an instance of `ty` and returns a pointer to the result
+forall T . T:ABIAttribs, T:ABIEncode => function abi_encode(val : T) -> memory(bytes) {
+    let free = get_free_memory();
+    let headSize = ABIAttribs.headSize(Proxy : Proxy(ty));
+    let tail = ABIEncode.encodeInto(val, free, 0, Add.add(free, headSize));
+    set_free_memory(tail);
+    return memory(free);
+}
+```
 
 ## Compatibility and Interoperability
 
