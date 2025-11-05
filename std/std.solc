@@ -1249,7 +1249,7 @@ instance uint256:StorageType {
 
 // -- structure fields (including contract fields)
 
- forall self fieldType offsetType.
+forall self fieldType offsetType.
 class self:StructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 
@@ -1267,18 +1267,7 @@ function memberAccessBase(x:MemberAccessProxy(a, field, fieldType,  offset)) -> 
 // ------------------------------------------------------------------
 // Contract field access
 // ------------------------------------------------------------------
-// FIXME: strings / Storable
-/*
-forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
-  , offsetType:StorageSize
-  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):LVA(storage(fieldType)) {
-    function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> storage(fieldType) {
-        let offset:word = StorageSize.size(Proxy:Proxy(offsetType));
-        return storage(offset);
-    }
-}
-*/
+
 forall cxt fieldSelector loadType offsetType storageType
 . StructField(ContractStorage(cxt), fieldSelector) : StructField (storage(storageType), offsetType)
 , offsetType : StorageSize
@@ -1289,23 +1278,10 @@ forall cxt fieldSelector loadType offsetType storageType
       return storage(offset):storage(storageType);
    }
 }
-/*
-forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, storageType, offsetType)
-  , fieldType:StorageType
-  , offsetType:StorageSize
-  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):RVA(fieldType) {
-    function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> fieldType {
-        let offset:word = StorageSize.size(Proxy:Proxy(offsetType));
-        return StorageType.sload(offset):fieldType;
-    }
-}
-*/
 
 forall cxt fieldSelector loadType offsetType storageType
   . StructField(ContractStorage(cxt), fieldSelector):StructField(storage(storageType), offsetType)
   , storage(storageType):CanStore(loadType)
-//   , fieldType:StorageType
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType):RVA(loadType) {
     function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType)) -> loadType {
@@ -1314,6 +1290,7 @@ forall cxt fieldSelector loadType offsetType storageType
     }
 }
 
+// TODO: structures other than contract context
 /*
 forall structType fieldSelector fieldType storageType offsetType
   . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
@@ -1328,8 +1305,7 @@ forall structType fieldSelector fieldType storageType offsetType
         return storage(ptr);
     }
 }
-*/
-/*
+
 forall structType fieldSelector fieldType storageType offsetType
   . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
   , offsetType:StorageSize
@@ -1388,14 +1364,14 @@ function rval(x:a) -> b {
 }
 
 
+// TODO: consider merging CanStore and Assign
 forall lhs rhs.
 class lhs:Assign(rhs) {
     function assign(l:lhs, r:rhs) -> ();
 }
 
 
-// a can store b; e.g. storage(string) : memory(string) 
-// pragma no-coverage-condition CanStore, Assign;
+// a can store b; e.g. storage(string) : memory(string)
 forall a b.
 class a:CanStore(b) {
   function store(r:a, v:b);
