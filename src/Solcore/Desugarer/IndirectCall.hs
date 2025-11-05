@@ -15,7 +15,7 @@ indirectCall cunit
   = (, fnames) <$> runIndirectM (desugar cunit)
                                 (Env (Map.keys primCtx ++ fnames))
     where
-      fnames = collect cunit
+      fnames = QualName invokableName "invoke" : collect cunit
 
 -- type class for desugar indirect calls
 

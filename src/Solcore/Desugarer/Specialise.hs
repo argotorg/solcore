@@ -6,6 +6,7 @@ This is meant to be run on typed and defunctionalised code, so no higher-order f
 -}
 
 import Common.Monad
+import Control.Applicative
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -192,8 +193,8 @@ addPrefix p (QualName q s) = QualName q (p ++ s)
 specialiseCompUnit :: CompUnit Id -> Bool -> TcEnv -> IO (CompUnit Id)
 specialiseCompUnit compUnit debugp env = runSM debugp env do
     addGlobalResolutions compUnit
-    contracts' <- forM (contracts compUnit) specialiseContract
-    return $ compUnit { contracts = contracts' }
+    topDecls <- concat <$> forM (contracts compUnit) specialiseTopDecl
+    return $ compUnit { contracts = topDecls }
 
 addGlobalResolutions :: CompUnit Id -> SM ()
 addGlobalResolutions compUnit = forM_ (contracts compUnit) addDeclResolutions
@@ -209,21 +210,46 @@ addDeclResolutions _ = return ()
 addInstResolutions :: Instance Id -> SM ()
 addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instName inst) (mainTy inst))
 
-specialiseContract :: TopDecl Id -> SM (TopDecl Id)
-specialiseContract (TContr (Contract name args decls)) = withLocalState do
+specialiseTopDecl :: TopDecl Id -> SM [TopDecl Id]
+specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
     addContractResolutions (Contract name args decls)
-    forM_ entries (specEntry)
-    st <- gets specTable
-    dt <- gets spDataTable
-    let dataDecls = map (CDataDecl . snd) (Map.toList dt)
-    let funDecls = map (CFunDecl . snd) (Map.toList st)
-    let decls' = dataDecls ++ funDecls
-    return (TContr (Contract name args decls'))
+    -- Runtime code
+    runtimeDecls <- withLocalState do
+       forM_ entries specEntry
+       getSpecialisedDecls
+    -- Deployer code
+    modify (\st -> st { specTable = emptyTable })
+    deployDecls <- case findConstructor decls of
+      Just c -> withLocalState do
+        cname' <- specConstructor c
+        st <- gets specTable
+        depDecls <- getSpecialisedDecls
+        -- use mutual to group constructor with its dependencies
+        pure [CMutualDecl depDecls]
+      Nothing -> pure []
+    return [TContr (Contract name args (deployDecls ++ runtimeDecls))]
     where
       entries = ["main"]    -- Eventually all public methods
-      -- flexDecls = flexAll decls
+      getSpecialisedDecls :: SM [ContractDecl Id]
+      getSpecialisedDecls = do
+        st <- gets specTable
+        dt <- gets spDataTable
+        let dataDecls = map (CDataDecl . snd) (Map.toList dt)
+        let funDecls = map (CFunDecl . snd) (Map.toList st)
+        pure (dataDecls ++ funDecls)
 
-specialiseContract decl = pure decl
+-- keep datatype defs intact
+specialiseTopDecl d@TDataDef{} = pure [d]
+-- Drop all toplevel decls that are not contracts - we do not need them anymore
+specialiseTopDecl decl = pure []
+
+findConstructor :: [ContractDecl Id] -> Maybe (Constructor Id)
+findConstructor = foldr (\d -> (getConstructor d <|>)) Nothing
+
+getConstructor :: ContractDecl Id -> Maybe (Constructor Id)
+getConstructor (CConstrDecl c) = Just c
+getConstructor _ = Nothing
+
 
 specEntry :: Name -> SM ()
 specEntry name = withLocalState do
@@ -236,6 +262,13 @@ specEntry name = withLocalState do
         void(specFunDef fd)
       Nothing -> do
         warns ["!! Warning: no resolution found for ", show name]
+
+specConstructor :: Constructor Id -> SM Name
+specConstructor (Constructor [] body) = do
+  let sig = Signature [] [] (Name "constructor") [] (Just unit)
+  let fd = FunDef sig body
+  specFunDef fd
+specConstructor (Constructor params body) = error "Unsupported constructor"
 
 addContractResolutions :: Contract Id -> SM ()
 addContractResolutions (Contract name args decls) = do

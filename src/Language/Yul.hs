@@ -14,8 +14,10 @@ data YulInner = InnerObject YulObject | InnerData YulData
 data YulData =  YulData String HexOrString
 data HexOrString = DHex String | DString String
 
+
+-- we need these two decls because they are printed differently
 newtype Yul = Yul { yulStmts :: [YulStmt] }
-newtype YulCode = YulCode YulBlock
+newtype YulCode = YulCode { ycStmts :: [YulStmt] }
 
 instance {-# OVERLAPPABLE #-} Pretty a => Show a where show = render . ppr
 
@@ -23,7 +25,13 @@ instance Semigroup Yul where
   Yul a <> Yul b = Yul (a <> b)
 
 instance Monoid Yul where
-  mempty = Yul []
+  mempty = Yul mempty
+
+instance Semigroup YulCode where
+  YulCode a <> YulCode b = YulCode (a <> b)
+
+instance Monoid YulCode where
+  mempty = YulCode mempty
 
 type YArg = Name
 type YReturns = Maybe [Name]
@@ -61,6 +69,7 @@ data YulExp
   = YCall Name [YulExp]
   | YIdent Name
   | YLit YLiteral
+  | YMeta String
    deriving (Eq, Ord, Data, Typeable)
 
 data YLiteral
