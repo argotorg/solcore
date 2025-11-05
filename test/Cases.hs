@@ -188,6 +188,50 @@ cases =
     , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
     , runTestForFile "match-yul.solc" caseFolder
     , runTestForFile "yul-function-typing.solc" caseFolder
+    , runTestForFile "Add1.solc" caseFolder
+    , runTestExpectingFailure "Enum.solc" caseFolder
+    , runTestExpectingFailure "Eq.solc" caseFolder
+    , runTestForFile "EvenOdd.solc" caseFolder
+    , runTestForFile "Foo.solc" caseFolder
+    , runTestExpectingFailure "GetSet.solc" caseFolder
+    , runTestExpectingFailure "GoodInstance.solc" caseFolder
+    , runTestExpectingFailure "IndexLib.solc" caseFolder
+    , runTestExpectingFailure "KindTest.solc" caseFolder
+    , runTestForFile "MatchCall.solc" caseFolder
+    , runTestExpectingFailure "Ref.solc" caseFolder
+    , runTestExpectingFailure "StructMembers.sol" caseFolder
+    , runTestExpectingFailure "add-moritz.solc" caseFolder
+    , runTestForFile "bound-merge-case.solc" caseFolder
+    -- The following test is causing the test runner to throw an exception
+    --, runTestExpectingFailure "comp.solc" caseFolder
+    , runTestExpectingFailure "Filter.solc" caseFolder
+    , runTestForFile "compose0.solc" caseFolder
+    , runTestForFile "compose_desugared.solc" caseFolder
+    , runTestForFile "const.solc" caseFolder
+    , runTestForFile "empty-asm.solc" caseFolder
+    , runTestForFile "inc-closure.solc" caseFolder
+    , runTestExpectingFailure "index-example.solc" caseFolder
+    , runTestForFile "listid.solc" caseFolder
+    , runTestForFile "modifier.solc" caseFolder
+    , runTestForFile "nid.solc" caseFolder
+    , runTestExpectingFailure "noconstr.solc" caseFolder
+    , runTestForFile "notif.solc" caseFolder
+    , runTestForFile "option2.solc" caseFolder
+    , runTestForFile "polymatch-error.solc" caseFolder
+    , runTestForFile "pragma_test_patterson.solc" caseFolder
+    , runTestForFile "proxy1.solc" caseFolder
+    , runTestExpectingFailure "reference-encoding.solc" caseFolder
+    , runTestExpectingFailure "references-daniel.solc" caseFolder
+    , runTestExpectingFailure "signature.solc" caseFolder
+    , runTestForFile "simpleid.solc" caseFolder
+    , runTestExpectingFailure "string-const.solc" caseFolder
+    , runTestExpectingFailure "subject-index.solc" caseFolder
+    , runTestExpectingFailure "subject-reduction.solc" caseFolder
+    , runTestForFile "super-class-num.solc" caseFolder
+    , runTestForFile "tiamat.solc" caseFolder
+    , runTestExpectingFailure "vartyped.solc" caseFolder
+    , runTestExpectingFailure "weirdfoo.solc" caseFolder
+    , runTestExpectingFailure "xref.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
