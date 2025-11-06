@@ -18,7 +18,7 @@ being developed in Solidity.
 
 Core Solidity is our solution. It is a rebuild of the Solidity type system and compiler front/middle end that will:
 
-- introduce powerful new features (generics, traits, algebraic datatypes, pattern matching, comptime)
+- introduce powerful new features (generics, traits, algebraic datatypes, pattern matching, compile-time constant evaluation)
 - provide a strong foundation for compiler correctness as we continue to extend the language in the future
 - empower library authors and support a community-driven process for language evolution
 - expand the capabilities of verification and analysis tooling
