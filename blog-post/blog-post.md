@@ -292,46 +292,51 @@ allocated output array.
 
 Core Solidity uses type inference algorithm to reduce syntactic verbosity while
 maintaining the strong static typing guarantees. The type inference occurs
-during compilation and provides complete type safety without explicit annotations.
-As an example, consider the following code snippet in Classic Solidity:
-
-```
-function adjustBalance(
-    uint256 initialBalance,
-    uint256 depositAmount,
-    uint256 withdrawalAmount,
-    uint256 feeAmount
-) public pure returns (uint256, uint256) {
-    uint256 totalDeposits = depositAmount;
-    uint256 totalWithdrawals = withdrawalAmount + feeAmount;
-    uint256 balanceAfterDeposit = initialBalance + totalDeposits;
-    uint256 netChange = totalDeposits - totalWithdrawals;
-    uint256 finalBalance = balanceAfterDeposit - totalWithdrawals;
-    uint256 totalChanges = totalDeposits + totalWithdrawals;
-    return (finalBalance, totalChanges);
-}
-```
-
-All local variables and function arguments and result needs to specify
-their type. In Core Solidity, thanks to type inference, we could
-completely omit type annotations, while keeping the guarantees about
-the code type safety.
-
-```
-function adjustBalance(initialBalance, depositAmount, withdrawalAmount,feeAmount) {
-    let totalDeposits = depositAmount;
-    let totalWithdrawals = withdrawalAmount + feeAmount;
-    let balanceAfterDeposit = initialBalance + totalDeposits;
-    let netChange = totalDeposits - totalWithdrawals;
-    let finalBalance = balanceAfterDeposit - totalWithdrawals;
-    let totalChanges = totalDeposits + totalWithdrawals;
-    return (finalBalance, totalChanges);
-}
-```
-
-Type inference can avoid the need of coercions on array literal expressions,
-which are necessary in Classic Solidity. As an example, consider the following
+during compilation and provides complete type safety without explicit annotations,
+which are required in Classic Solidity. As an example, consider the following
 definition in Classic:
+
+```
+bytes32 y; uint x = uint(y);
+```
+```
+```
+
+That demands a type annotation on `x`'s definition even when it has an explicit
+cast to `uint` type. In Core Solidity we could simply define `x` without its type:
+
+```
+bytes32 y; let x = uint(y);
+```
+
+Another situation which have unnecessary annotation involves `struct` value
+constructors. Consider the following `struct` definition which could be
+part of some lending protocol:
+
+```
+struct LendingPosition {
+    uint256 collateralDeposited;
+    uint256 debtIssued;
+    uint256 lastUpdated;
+}
+```
+
+Creating a variable to represent an initial position would be as follows in
+Classic:
+
+```
+LendingPosition memory emptyPosition = LendingPosition(0, 0, block.timestamp);
+```
+
+Since we are using the `LendingPosition` constructor, the compiler can infer
+the correct type. The same definition for `emptyPosition` in Core Solidity would be:
+
+```
+let emptyPosition = LendingPosition(0, 0, block.timestamp);
+```
+
+A similar situation happens with array literals. Consider the following simple
+array definition in Classic Solidity:
 
 ```
 uint[3] memory a = [1, 2, 3];
