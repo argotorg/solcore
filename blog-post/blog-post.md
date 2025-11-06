@@ -267,19 +267,26 @@ as parameters, return values, and assignable entities. This facilitates the
 implementation of higher-order functions and functional composition patterns,
 enhancing language expressivity.
 
-As an example of a high-order function, let's consider `map_pair`
-that takes two functions and applies them to the corresponding
-components of a pair:
+As an example of a high-order function, let's consider `map`
+which call an argument function on each element of an input array:
 
 ```
-forall T1 T2 U1 U2 . function map_pair (pair : (T1, T2), f1 : (T1) -> U1, f2: (T2) -> U2) -> (T2,U2) {
-    match pair {
-    | (t1,t2) =>
-        return (f1(t1), f2(t2));
+forall T1 T2 . function map (arrayPtr  : DynArray(T1), f : (T1) -> T2) -> DynArray(T2) {
+    let length = WordReader.read(array);
+    let output : DynArray(T2) = allocateDynamicArray(Proxy : Proxy(T2), length);
+    for (let i = 0; i < length ; i++ ){
+      output[i] = f(arrayPtr[i]);
     }
+    return output;
 }
 ```
 
+The `map` function transforms a dynamically-sized array of type `T1` into a new array of
+type `T2` by calling a given function `f` to each element of the input array. It operates
+by first reading the length of the array from its header, allocating a new output
+array of the same length for the target type. Next, we iterate over each index, calling
+`f` to the corresponding element from the input array and storing the result into the
+allocated output array.
 
 ### Type inference
 
