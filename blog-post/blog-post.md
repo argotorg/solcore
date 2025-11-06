@@ -267,6 +267,46 @@ as parameters, return values, and assignable entities. This facilitates the
 implementation of higher-order functions and functional composition patterns,
 enhancing language expressivity.
 
+```
+contract SimpleDEX {
+    liquidity : mapping(address, mapping(address,uint256));
+
+    // Higher-order function that applies a custom fee calculation
+    function executeTrade(
+        tokenIn       : address,
+        tokenOut      : address,
+        amountIn      : uint256,
+        feeCalculator : (uint256) -> uint256
+    ) -> uint256 {
+        let amountAfterFee = feeCalculator(amountIn);
+        amountOut = calculateOutput(amountAfterFee, tokenIn, tokenOut);
+
+        // Execute the swap
+        transferFrom(msg.sender, tokenIn, amountIn);
+        transfer(msg.sender, tokenOut, amountOut);
+
+        emit TradeExecuted(msg.sender, tokenIn, tokenOut, amountIn, amountOut);
+    }
+
+    // Different fee strategies using anonymous functions
+    function swapWithFlatFee(address tokenIn, address tokenOut, uint256 amountIn) external {
+        // Anonymous function for flat 0.3% fee (like Uniswap)
+        executeTrade(tokenIn, tokenOut, amountIn, function(uint256 amt) pure returns (uint256) {
+            return amt * 997 / 1000; // 0.3% fee
+        });
+    }
+
+    function swapWithTieredFee(address tokenIn, address tokenOut, uint256 amountIn) external {
+        // Anonymous function for tiered fees based on trade size
+        executeTrade(tokenIn, tokenOut, amountIn, function(uint256 amt) pure returns (uint256) {
+            if (amt < 1 ether) return amt * 995 / 1000; // 0.5% for small trades
+            if (amt < 10 ether) return amt * 998 / 1000; // 0.2% for medium trades
+            return amt * 999 / 1000; // 0.1% for large trades
+        });
+    }
+```
+
+
 As an example of a high-order function, let's consider `map`
 which call an argument function on each element of an input array:
 
