@@ -111,7 +111,7 @@ function processAuction(state) {
         require(msg.value >= reserve);
         return Active(msg.value, msg.sender);
     | Active(currentBid, bidder) =>
-        require(msg.value > currentBid);
+        require(msg.value > currcompelingentBid);
         transferFunds(bidder, currentBid);
         return Active(msg.value, msg.sender);
     | Ended(_, _) =>
@@ -123,11 +123,35 @@ function processAuction(state) {
 ```
 
 Sometimes we want to take the same action for many states, or handle certain subcases of a state in
-special ways. Pattern matching is expressive enough to let us do exactly that:
+special ways. Pattern matching is expressive enough to let us do exactly that. Let's continue on the
+auction example by defining a function that checks refund eligibility based on auction state.
+```
+data Refund =
+  RefundAvailable
+| NoRefund(string);
 
+function canRefund(state) {
+    match (state) {
+    | Ended(winner, 0) =>
+            return NoRefund("Auction ended with no bids. No winner.");
+    | Ended(winner, finalBid):
+            return NoRefund("Auction was successful. No refunds.");
+    | Active(highestBid, highestBidder):
+            return NoRefund("Auction is still active. No refunds available.");
+    | _ =>
+            return RefundAvailable;
+    }
+}
 ```
-TODO: one more example
-```
+
+The `Refund` type explicitly models the two possible outcomes: either a refund is available,
+or it's not (with a reason). The `canRefund` function uses pattern matching to inspect the
+auction state, handling specific cases first: if the auction ended with a zero bid, it
+provides a tailored message; for other successful or active states, it returns appropriate
+refusal reasons. The wildcard pattern, `_`, acts as a default option, granting refunds for
+all remaining states (like `NotStarted` or `Failed`), ensuring that every possible
+state is handled exactly once.
+
 
 ### Generics and type classes
 
@@ -261,7 +285,8 @@ forall T1 T2 U1 U2 . function map_pair (pair : (T1, T2), f1 : (T1) -> U1, f2: (T
 
 Core Solidity uses type inference algorithm to reduce syntactic verbosity while
 maintaining the strong static typing guarantees. The type inference occurs
-during compilation and provides complete type safety without explicit annotations. As an example, consider the following code snippet in Classic Solidity:
+during compilation and provides complete type safety without explicit annotations.
+As an example, consider the following code snippet in Classic Solidity:
 
 ```
 function adjustBalance(
