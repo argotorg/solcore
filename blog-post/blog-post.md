@@ -365,7 +365,7 @@ Creating a variable to represent an initial position would be as follows in
 Classic:
 
 ```
-LendingPosition memory emptyPosition = LendingPosition(0, 0, block.timestamp);
+LendingPosition emptyPosition = LendingPosition(0, 0, block.timestamp);
 ```
 
 Since we are using the `LendingPosition` constructor, the compiler can infer
