@@ -4,17 +4,15 @@ Solidity is the most widely used smart contract language. It is robust, trustwor
 secures hundreds of billions of dollars of value. We are proud of this success, and its track
 record of secure code generation. Users of Solidity will however be keenly aware of some of its
 limitations. The type system often lacks the expressiveness to produce reusable library code or
-enforce core safety properties. The language has very limited capabilities around compile time
-evaluation. Many features are implemented in an inconsistent manner, or do not always work as
-expected.
-
+enforce core safety properties. The language has very limited support for compile time evaluation.
+Many features are implemented in an inconsistent manner, or do not always work as expected.
 
 Fixing these limitations within the current implementation has proven difficult. Upgrades must be
-made in a somewhat ad-hoc manner, and each new feature addition makes reasoning about the
-correctness of subsequent features more difficult. We did not feel confident that we would be able
-to safely extend the language in this way to add the kind of features that our users were asking
-for, and that we feel are required to keep up with the ever increasing scale of systems that are
-being developed in Solidity.
+made in a somewhat ad-hoc manner, and each new addition makes reasoning about the correctness of
+subsequent changes more difficult. We did not feel confident that we would be able to safely extend
+the language in this way to add the kind of features that our users were asking for, and that we
+feel are required to keep up with the ever increasing scale of systems that are being developed in
+Solidity.
 
 Core Solidity is our solution. It is a rebuild of the Solidity type system and compiler front/middle end that will:
 
@@ -22,7 +20,6 @@ Core Solidity is our solution. It is a rebuild of the Solidity type system and c
 - provide a strong foundation for compiler correctness as we continue to extend the language in the future
 - empower library authors and support a community-driven process for language evolution
 - expand the capabilities of verification and analysis tooling
-
 
 In addition to growing and expanding the language, we will also be removing or reworking some
 existing features. We are already certain that we will be removing inheritance entirely. Additional
@@ -78,30 +75,74 @@ languages like Rust and C++.
 
 ### Algebraic data types and pattern matching
 
-Algebraic Data Types provide a way of data modeling using sum types (disjoint unions) and product
-types (structs / tuples). This enables the construction of precise types where invalid states are
-**unrepresentable** by design, allowing program invariants to be enforced by the type system
-entirely at compile time. As an example, consider the following type definition for an auction
-state.
+Algebraic Data Types provide a principled foundation for data modeling through the composition of
+sum and product types. Sum types represent exclusive alternatives: a value inhabits exactly one
+variant. Product types combine multiple values into structured tuples. The combination of these two
+primitives allows for the construction of precise types that make invalid states completely
+**unrepresentable**, allowing the type system to guarantee core program invariants entirely at
+compile time.
+
+Lets start with a very simple type:
+
+```solidity
+data Bool = True | False
+```
+
+Types are sets of values. The left hand side of the above statement defines the name of a new type
+(`Bool`), and the right hand side defines the set of allowed values of the `Bool` type (`True` or
+`False`). We use `|` to introduce new alternatives in a sum type.
+
+Alternatives can also hold values. This lets us implement the same kind of patterns as [User Defined
+Value Types](https://docs.soliditylang.org/en/latest/types.html#user-defined-value-types) would in
+Classic Solidity. We can consider a simple 18 decimal fixed point (a `wad`):
+
+```solidity
+data wad = wad(uint256)
+```
+
+The `wad` type has a single value constructor: `wad` (type names and value constructors live in
+separate namespaces and so can be duplicated) that holds a `uint256` as it's underlying
+representation. Simple wrapper types like this will be erased by the compiler during the translation
+into yul, meaning that `wad` has the exact same runtime representation as a `uint256`.
+
+Now we can define a type safe fixed point multiplication routine. we will need to extract the
+underlying `uint256`, manipulate it, and then wrap it up again in a new `wad` constructor. To unwrap
+we will use pattern matching. Pattern matching is a control flow mechanism that lets you destructure
+and inspect data by shape. Instead of nested nested if-else chains, we can write declarative
+expressions that exhaustively consider all possible values in an algebraic type.
+
+For our simple `wad` examplle, we won't have any branches, but we can still use pattern matching to
+destructure our inputs and extract their underlying representation:
+
+```solidity
+let WAD = 10 ** 18;
+
+funtion wmul(lhs : wad, rhs : wad) -> wad {
+    match (lhs, rhs) {
+    | (wad(l), wad(r) => return wad((l * r) / WAD);
+    }
+}
+```
+
+Lets look at a more complete example. Consider the following type definition for an auction state:
 
 ```solidity
 data AuctionState =
-    NotStarted(word)
-  | Active(word, address)
-  | Ended(word, address)
+    NotStarted(uint256)
+  | Active(uint256, address)
+  | Ended(uint256, address)
   | Cancelled;
 ```
 
-The type has three constructors: `NotStarted` specifies that the auction has not started yet and
-stores its reserved price, `Active` denotes that the auction has begun and it stores the
-current highest bid and the address that made such bid, `Ended` represents that the auction has
+`AuctionState` has four alternative value constructors: `NotStarted` specifies that the auction has not
+started yet and stores its reserved price, `Active` denotes that the auction has begun and it stores
+the current highest bid and the address that made such bid, `Ended` represents that the auction has
 finished with success and it holds the highest bid and the winner address and constructor,
 `Cancelled` is used when the auction has been cancelled.
 
-Using algebraic data types, we can define functions by pattern matching. As an example, consider
-function `processAuction` which tries to update the action state based on current state and
-`msg.value`. The `match` statement lets us perform an exhaustive case analysis over each possible
-alternative state. Exhaustiveness can be enforced by the compiler, ensuring that we do not
+Now we can define a `processAuction` function that transitions the state based on the current state
+and `msg.value`. The `match` statement lets us perform an exhaustive case analysis over each
+possible alternative state. Exhaustiveness can be enforced by the compiler, ensuring that we do not
 accidentally miss or fail to consider a critical state:
 
 ```solidity
@@ -123,12 +164,13 @@ function processAuction(state) {
 ```
 
 Sometimes we want to take the same action for many states, or handle certain subcases of a state in
-special ways. Pattern matching is expressive enough to let us do exactly that. Let's continue on the
+special ways. Pattern matching is expressive enough to let us do exactly that. Let's continue the
 auction example by defining a function that checks refund eligibility based on auction state.
-```
-data Refund =
-  RefundAvailable
-| NoRefund(string);
+
+```solidity
+data Refund
+  = RefundAvailable
+  | NoRefund(memory(string));
 
 function canRefund(state) {
     match (state) {
@@ -152,7 +194,6 @@ refusal reasons. The wildcard pattern, `_`, acts as a default option, granting r
 all remaining states (like `NotStarted` or `Failed`), ensuring that every possible
 state is handled exactly once.
 
-
 ### Generics and type classes
 
 Core Solidity introduces two new mechanisms for code sharing and polymorphism: generics and
@@ -167,15 +208,13 @@ forall T . function identity(x : T) -> T {
 }
 ```
 
-We can also define generic data structures like the classic functional linked list (as in Rust we do
-not support fully recursive types, and the `memory` pointer must be introduced as a cycle breaker).
+We can also define generic types:
 
 ```solidity
-data List(T)
-  = Nil
-  | Cons T (memory(List(T)))
+data Result(T)
+  = Ok
+  | Err(memory(string))
 ```
-
 
 While generic functions are interesting, most interesting operations are not defined
 for all types. Overloading allows the definition of code which can operate in distinct
@@ -260,7 +299,7 @@ forall t . t : Typedef(word) => function log1(v : t, topic : word) -> () {
 This version uses standard library class `Typedef`, which provides functions for
 the conversion between `word` and types which are instance of this class.
 
-### Higher-order functions
+### Higher-order and anonymous functions
 
 Functions possess first-class status within the type system, enabling their use
 as parameters, return values, and assignable entities. This facilitates the
@@ -297,16 +336,16 @@ which are required in Classic Solidity. As an example, consider the following
 definition in Classic:
 
 ```
-bytes32 y; uint x = uint(y);
-```
-```
+bytes32 y;
+uint x = uint(y);
 ```
 
 That demands a type annotation on `x`'s definition even when it has an explicit
 cast to `uint` type. In Core Solidity we could simply define `x` without its type:
 
 ```
-bytes32 y; let x = uint(y);
+bytes32 y;
+let x = uint(y);
 ```
 
 Another situation which have unnecessary annotation involves `struct` value
