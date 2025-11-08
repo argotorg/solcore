@@ -47,6 +47,11 @@ sumTypeInfo = TypeInfo 2 [inlName, inrName] []
 stringTypeInfo :: TypeInfo
 stringTypeInfo = TypeInfo 0 [] []
 
+comptimeTypeInfo :: TypeInfo
+comptimeTypeInfo = TypeInfo 1 [Name "comptime"] []
+
+
+
 -- name of constructor and its scheme
 type ConInfo = (Name, Scheme)
 
@@ -135,6 +140,7 @@ primCtx
                  , primTrue
                  , primFalse
                  , primInvoke
+                 , (Name "comptime", (Forall [aVar] ([]:=> at :-> (compTimeTy at))))
                  ]
 
 primTypeEnv :: TypeTable
@@ -144,6 +150,7 @@ primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
                            , (Name "()", unitTypeInfo)
                            , (Name "bool", boolTypeInfo)
                            , (Name "sum", sumTypeInfo)
+                           , (Name "comptime", comptimeTypeInfo)
                            ]
 
 primInstEnv :: InstTable

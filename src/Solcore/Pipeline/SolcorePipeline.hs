@@ -17,6 +17,7 @@ import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
 import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
+import Solcore.Desugarer.Interpreter
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.SolcoreParser
@@ -107,12 +108,12 @@ compile opts = runExceptT $ do
     putStrLn "> Pattern wildcard desugaring:"
     putStrLn $ pretty noWild
 
-  -- Eliminate function type arguments 
+  -- Eliminate function type arguments
 
-  let noFun = if noDesugarCalls then noWild else replaceFunParam noWild 
-  liftIO $ when verbose $ do 
+  let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
+  liftIO $ when verbose $ do
     putStrLn "> Eliminating argments with function types"
-    putStrLn $ pretty noFun 
+    putStrLn $ pretty noFun
 
   -- Type inference
   (typed, env) <- ExceptT $ timeItNamed "Typecheck     "
@@ -124,11 +125,19 @@ compile opts = runExceptT $ do
     putStrLn "> Elaborated tree:"
     putStrLn $ pretty typed
 
+  -- compile time evaluation
+
+  let compval = interpret typed
+
+  liftIO $ do
+    putStrLn "> Comptime result"
+    putStrLn $ pretty compval
+
   -- If / boolean desugaring
   desugared <- liftIO $
     if noIfDesugar
-    then pure typed
-    else timeItNamed "If/Bool desugaring" (pure (ifDesugarer typed))
+    then pure compval
+    else timeItNamed "If/Bool desugaring" (pure (ifDesugarer compval))
 
   liftIO $ when verbose $ do
     putStrLn "> If / Bool desugaring:"

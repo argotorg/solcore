@@ -63,9 +63,9 @@ instance Semigroup Env where
 instance Monoid Env where
   mempty = Env []
                []
-               [Name "word", Name "pair", Name "()", Name "bool"]
+               [Name "word", Name "pair", Name "()", Name "bool", Name "comptime"]
                []
-               [Name "pair", Name "()", Name "true", Name "false"]
+               [Name "pair", Name "()", Name "true", Name "false", Name "comptime"]
                [Name "invokable"]
                []
                Nothing
@@ -645,7 +645,7 @@ instance Elab S.Exp where
         -- condition for valid constructor use
         if isCon && isNothing me' then
           pure (Con n es')
-        else if isClass then do 
+        else if isClass then do
           pure (Call Nothing (mkClassName me' n) es')
         -- condition for function call
         else pure (Call me' n es')

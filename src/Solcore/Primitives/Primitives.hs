@@ -111,6 +111,9 @@ epair e1 e2 = Con (Name "pair") [e1, e2]
 arr :: Name
 arr = "->"
 
+compTimeTy :: Ty -> Ty
+compTimeTy t = TyCon "comptime" [t]
+
 -- sum type
 
 sumTy :: Ty -> Ty -> Ty
