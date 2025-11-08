@@ -11,6 +11,15 @@ import Data.Generics
 
 
 data IResult a = Value a | Thunk TcExp
+{- alt:
+data  IResult = Value Value | Thunk TcExp
+data Value = VInt Integer
+           | VString String
+           | VFun1 FunId
+           | VFun2 ([Value] -> Value)
+data Term = Const Value  | TApply Term [Term]
+          | TAdd Term Term | TConcat Term Term | THash Term
+-}
 
 interpret :: CompUnit Id -> CompUnit Id
 interpret = everywhere (mkT interp)
@@ -37,4 +46,3 @@ eval e@(Call Nothing n es)
         [Value v1, Value v2] ->  Value (v1 + v2)
         _ -> Thunk e
   | otherwise = Thunk e
-
