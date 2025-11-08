@@ -105,10 +105,10 @@ separate namespaces and so can be duplicated) that holds a `uint256` as it's und
 representation. Simple wrapper types like this will be erased by the compiler during the translation
 into yul, meaning that `wad` has the exact same runtime representation as a `uint256`.
 
-Now we can define a type safe fixed point multiplication routine. we will need to extract the
+Now we can define a type safe fixed point multiplication routine. We will need to extract the
 underlying `uint256`, manipulate it, and then wrap it up again in a new `wad` constructor. To unwrap
 we will use pattern matching. Pattern matching is a control flow mechanism that lets you destructure
-and inspect data by shape. Instead of nested nested if-else chains, we can write declarative
+and inspect data by shape. Instead of nested if-else chains, we can write declarative
 expressions that exhaustively consider all possible values in an algebraic type.
 
 For our simple `wad` examplle, we won't have any branches, but we can still use pattern matching to
@@ -305,6 +305,16 @@ Functions possess first-class status within the type system, enabling their use
 as parameters, return values, and assignable entities. This facilitates the
 implementation of higher-order functions and functional composition patterns,
 enhancing language expressivity.
+
+```
+forall ret . function unpack_bools(bools : word, fn : (bool, bool, bool) -> ret) -> ret {
+    let b0 : bool = toBool(and(bools, 0x1));
+    let b1 : bool = toBool(and(shr(1, bools), 0x1));
+    let b2 : bool = toBool(and(shr(2, bools), 0x1));
+    return fn(b0, b1, b2);
+}
+```
+
 
 ```
 contract SimpleDEX {
@@ -597,7 +607,7 @@ have the power to build abstractions that feel built-in to the language itself (
 language"). It will be possible to define and use alternative standard library implementations, or
 disable the standard library completely. With the standard library disabled, it will be possible to
 write Core Solidity code with almost the same level of control as low level assembly languages like
-Huff, but with a modern, expressive type system, based on a strong mathematically rigorous foundation.
+Huff, but with a modern, expressive type system, based on a mathematically rigorous foundation.
 
 We also expect that the introduction of SAIL will make it much easier for Solidity users to extend
 and improve the language. In many cases it will be possible to make deep improvements via a pull
