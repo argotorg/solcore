@@ -18,6 +18,11 @@ interpret = everywhere (mkT interp)
 interp :: TcExp -> TcExp
 interp e@(Con n [arg])
   | idName n == Name "comptime" = runResult (eval arg)
+interp e@(Call Nothing n [e1, e2])
+  | idName n == Name "compplus"
+    = case (interp e1, interp e2) of
+        (Lit (IntLit n1), Lit (IntLit n2)) -> Con (Id (Name "comptime") (word :-> (compTimeTy word))) [Lit (IntLit (n1 + n2))]
+        _ -> e
 interp e = e
 
 runResult :: IResult Integer -> TcExp

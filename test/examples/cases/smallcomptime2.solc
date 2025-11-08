@@ -1,0 +1,3 @@
+function foo (){
+  return compplus(comptime(1),comptime(2));
+}

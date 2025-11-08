@@ -141,6 +141,7 @@ primCtx
                  , primFalse
                  , primInvoke
                  , (Name "comptime", (Forall [aVar] ([]:=> at :-> (compTimeTy at))))
+                 , (Name "compplus", (monotype ((compTimeTy word) :-> (compTimeTy word) :-> (compTimeTy word))))
                  ]
 
 primTypeEnv :: TypeTable
