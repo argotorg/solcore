@@ -18,6 +18,7 @@ common common-opts
 
   build-depends:
       base >= 4.19.0.0
+    , ghc-prim
     , mtl
     , bytestring
     , containers
