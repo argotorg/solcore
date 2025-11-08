@@ -306,6 +306,9 @@ as parameters, return values, and assignable entities. This facilitates the
 implementation of higher-order functions and functional composition patterns,
 enhancing language expressivity.
 
+As an example, consider the following which implements a custom ABI encoding
+of a triple of booleans into a single `word` value:
+
 ```
 forall ret . function unpack_bools(bools : word, fn : (bool, bool, bool) -> ret) -> ret {
     let b0 : bool = toBool(and(bools, 0x1));
@@ -315,6 +318,7 @@ forall ret . function unpack_bools(bools : word, fn : (bool, bool, bool) -> ret)
 }
 ```
 
+Function `unpack_bools` retrieve the
 
 ```
 contract SimpleDEX {
