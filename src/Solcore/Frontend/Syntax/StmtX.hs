@@ -51,19 +51,31 @@ data StmtX x
   | XStmtX (XXStmt x)                             -- extensions
 
 type ForallStmtX (p:: Type -> Constraint) x =
-  ( p(XAss x)
-  , p(XLet x)
-  , p(XStmtExp x)
-  , p(XReturn x)
-  , p(XMatch x)
-  , p(XIf x)
-  , p(XXStmt x)
+    ( p(XAss x)
+    , p(XLet x)
+    , p(XStmtExp x)
+    , p(XReturn x)
+    , p(XMatch x)
+    , p(XAsm x)
+    , p(XIf x)
+    , p(XXStmt x)
+    , p(XVar   x)
+    , p(XCon   x)   
+    , p(XFA    x)
+    , p(XLit   x)
+    , p(XCall  x)
+    , p(XLam   x)
+    , p(XTyExp x)
+    , p(XCond  x)
+    , p(XTyped x)
+    , p(XUntyped x)
   )
 -- deriving instance (Eq, Ord, Show, Data, Typeable)
--- deriving instance Eq (StmtX x)
--- deriving instance Ord (StmtX x)
--- deriving instance Show (StmtX x)
 
+deriving instance ForallStmtX Eq x => Eq (StmtX x)
+deriving instance ForallStmtX Ord x => Ord (StmtX x)
+deriving instance ForallStmtX Show x => Show (StmtX x)
+         
 type family XAss x
 type family XLet x
 type family XStmtExp x
@@ -96,6 +108,12 @@ type family XUntyped x
 type instance XTyped ComNm = NoExtField
 type instance XUntyped ComNm = NoExtField
 
+type ForallParamX (p:: Type -> Constraint) x =
+    ( p(XTyped x), p(XUntyped x) )
+
+deriving instance ForallStmtX Eq x => Eq (ParamX x)
+deriving instance ForallStmtX Ord x => Ord (ParamX x)
+deriving instance ForallStmtX Show x => Show (ParamX x)
 
 paramName :: ParamX x -> Name
 paramName (TypedX _ n _) = n
@@ -123,7 +141,9 @@ type family XLam x
 type family XTyExp x
 type family XCond x
 
-
+deriving instance ForallStmtX Eq x => Eq (ExpX x)
+deriving instance ForallStmtX Ord x => Ord (ExpX x)
+deriving instance ForallStmtX Show x => Show (ExpX x)
 
 -- pattern matching equations
 
