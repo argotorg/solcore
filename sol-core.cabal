@@ -64,6 +64,7 @@ library
       Solcore.Desugarer.IndirectCall
       Solcore.Desugarer.MatchCompiler
       Solcore.Desugarer.ReplaceWildcard
+      Solcore.Desugarer.Retype
       Solcore.Desugarer.Specialise
       Solcore.Desugarer.EmitCore
       Solcore.Desugarer.ContractDispatch

@@ -16,6 +16,7 @@ import Data.List(intercalate, union, (\\))
 import Data.Maybe(fromMaybe)
 import qualified Data.Map as Map
 import GHC.Stack
+import Solcore.Desugarer.Retype
 import Solcore.Desugarer.IfDesugarer(desugaredBoolTy)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
@@ -34,9 +35,6 @@ import Common.Pretty
 type Table a = Map.Map Name a
 emptyTable :: Table a
 emptyTable = Map.empty
-
-type TcFunDef = FunDef Id
-type TcExp = Exp Id
 
 type Resolution = (Ty, TcFunDef)
 data SpecState = SpecState
@@ -539,62 +537,6 @@ prettyConApp :: Id -> [TcExp] -> String
 prettyConApp i args = render (pprConApp i args)
 
 
-typeOfTcExp :: TcExp -> Ty
-typeOfTcExp (Var i)               = idType i
-typeOfTcExp (Con i [])            = idType i
-typeOfTcExp e@(Con i args)          = go (idType i) args where
-  go ty [] = ty
-  go (_ :-> u) (a:as) = go u as
-  go _ _ = error $ "typeOfTcExp: " ++ show e
-typeOfTcExp (Lit (IntLit _))      = word --TyCon "Word" []
-typeOfTcExp exp@(Call Nothing i args) = applyTo args funTy where
-  funTy = idType i
-  applyTo [] ty = ty
-  applyTo (_:as) (_ :-> u) = applyTo as u
-  applyTo _ _ = error $ concat [ "apply ", pretty i, " : ", pretty funTy
-                       , "to", show $ map pretty args
-                       , "\nIn:\n", show exp
-                       ]
-typeOfTcExp (Lam args body (Just tb))       = funtype tas tb where
-  tas = map typeOfTcParam args
-typeOfTcExp (Cond _ _ e) = typeOfTcExp e
-typeOfTcExp (TyExp _ ty) = ty
-typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
-
-typeOfTcStmt :: Stmt Id -> Ty
-typeOfTcStmt (n := e) = unit
-typeOfTcStmt (Let n _ _) = idType n
-typeOfTcStmt (StmtExp e) = typeOfTcExp e
-typeOfTcStmt (Return e) = typeOfTcExp e
-typeOfTcStmt (Match _ ((pat, body):_)) = typeOfTcBody body
-
-typeOfTcBody :: [Stmt Id] -> Ty
-typeOfTcBody []    = unit
-typeOfTcBody [s]   = typeOfTcStmt s
-typeOfTcBody (_:b) = typeOfTcBody b
-
-typeOfTcParam :: Param Id -> Ty
-typeOfTcParam (Typed i t)  = idType i  -- seems better than t - see issue #6
-typeOfTcParam (Untyped i) = idType i
-
-typeOfTcSignature :: Signature Id -> Ty
-typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) (returnType sig) where
-  returnType sig = case sigReturn sig of
-    Just t -> t
-    Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
-
-schemeOfTcSignature :: Signature Id -> Scheme
-schemeOfTcSignature sig@(Signature vs ps n args (Just rt))
-  = if all isTyped args
-      then Forall vs (ps :=> (funtype ts rt))
-      else error $ unwords ["Invalid instance member signature:", pretty sig]
-    where
-      isTyped (Typed _ _) = True
-      isTyped _ = False
-      ts = map (\ (Typed _ t) -> t) args
-
-typeOfTcFunDef :: TcFunDef -> Ty
-typeOfTcFunDef (FunDef sig _) = typeOfTcSignature sig
 
 pprRes :: Resolution -> Doc
 -- type Resolution = (Ty, FunDef Id)
