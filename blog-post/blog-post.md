@@ -318,68 +318,14 @@ forall ret . function unpack_bools(bools : word, fn : (bool, bool, bool) -> ret)
 }
 ```
 
-Function `unpack_bools` retrieve the
-
-```
-contract SimpleDEX {
-    liquidity : mapping(address, mapping(address,uint256));
-
-    // Higher-order function that applies a custom fee calculation
-    function executeTrade(
-        tokenIn       : address,
-        tokenOut      : address,
-        amountIn      : uint256,
-        feeCalculator : (uint256) -> uint256
-    ) -> uint256 {
-        let amountAfterFee = feeCalculator(amountIn);
-        amountOut = calculateOutput(amountAfterFee, tokenIn, tokenOut);
-
-        // Execute the swap
-        transferFrom(msg.sender, tokenIn, amountIn);
-        transfer(msg.sender, tokenOut, amountOut);
-
-        emit TradeExecuted(msg.sender, tokenIn, tokenOut, amountIn, amountOut);
-    }
-
-    // Different fee strategies using anonymous functions
-    function swapWithFlatFee(address tokenIn, address tokenOut, uint256 amountIn) external {
-        // Anonymous function for flat 0.3% fee (like Uniswap)
-        executeTrade(tokenIn, tokenOut, amountIn, function(uint256 amt) pure returns (uint256) {
-            return amt * 997 / 1000; // 0.3% fee
-        });
-    }
-
-    function swapWithTieredFee(address tokenIn, address tokenOut, uint256 amountIn) external {
-        // Anonymous function for tiered fees based on trade size
-        executeTrade(tokenIn, tokenOut, amountIn, function(uint256 amt) pure returns (uint256) {
-            if (amt < 1 ether) return amt * 995 / 1000; // 0.5% for small trades
-            if (amt < 10 ether) return amt * 998 / 1000; // 0.2% for medium trades
-            return amt * 999 / 1000; // 0.1% for large trades
-        });
-    }
-```
+Function `unpack_bools` extracts three individual boolean values from the lowest three bits
+of a packed `word` (`bools`). It treats it as a bitmask where the least significant bit
+(position 0) represents `b0`, the next bit (position 1) represents `b1`, and the third bit
+(position 2) represents `b2`. After extracting these bits and converting them to booleans,
+it passes them as arguments to a callback function `fn` and returns whatever result
+that function produces.
 
 
-As an example of a high-order function, let's consider `map`
-which call an argument function on each element of an input array:
-
-```
-forall T1 T2 . function map (arrayPtr  : DynArray(T1), f : (T1) -> T2) -> DynArray(T2) {
-    let length = WordReader.read(array);
-    let output : DynArray(T2) = allocateDynamicArray(Proxy : Proxy(T2), length);
-    for (let i = 0; i < length ; i++ ){
-      output[i] = f(arrayPtr[i]);
-    }
-    return output;
-}
-```
-
-The `map` function transforms a dynamically-sized array of type `T1` into a new array of
-type `T2` by calling a given function `f` to each element of the input array. It operates
-by first reading the length of the array from its header, allocating a new output
-array of the same length for the target type. Next, we iterate over each index, calling
-`f` to the corresponding element from the input array and storing the result into the
-allocated output array.
 
 ### Type inference
 
