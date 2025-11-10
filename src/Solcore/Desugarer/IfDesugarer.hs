@@ -34,8 +34,11 @@ desugarStmt v = v
 -- desugaring boolean data constructors
 
 desugarBoolCons :: Exp Id -> Exp Id
-desugarBoolCons (Con c es)
-  | isBoolCon c = sumConsFor c
+desugarBoolCons (Con c@(Id n _) es)
+  | n == trueName
+    = Con (Id inrName (inrTy unit unit)) [Con (Id "()" unit) []]
+  | n == falseName
+    = Con (Id inlName (inlTy unit unit)) [Con (Id "()" unit) []]
   | otherwise = Con c (map desugarBoolCons es)
 desugarBoolCons (FieldAccess me v)
   = FieldAccess (desugarBoolCons <$> me) v
@@ -50,29 +53,15 @@ desugarBoolCons (Var a) = Var a
 desugarBoolCons (Lit l) = Lit l
 
 desugarBoolPat :: Pat Id -> Pat Id
-desugarBoolPat (PCon c ps)
-  | isBoolCon c = sumPatFor c
+desugarBoolPat (PCon c@(Id n _) ps)
+  | n == trueName
+    = PCon (Id inrName (inrTy unit unit)) [PCon (Id "()" unit) []]
+  | n == falseName
+    = PCon (Id inlName (inlTy unit unit)) [PCon (Id "()" unit) []]
   | otherwise = PCon c (map desugarBoolPat ps)
 desugarBoolPat (PVar a) = PVar a
 desugarBoolPat PWildcard = PWildcard
 desugarBoolPat (PLit l) = PLit l
-
-sumConsFor :: Id -> Exp Id
-sumConsFor (Id n _)
-  | n == trueName
-    = Con (Id inlName (inlTy unit unit)) [Con (Id "()" unit) []]
-  | n == falseName
-    = Con (Id inrName (inrTy unit unit)) [Con (Id "()" unit) []]
-
-sumPatFor :: Id -> Pat Id
-sumPatFor (Id n _)
-  | n == trueName
-    = PCon (Id inlName (inlTy unit unit)) [PCon (Id "()" unit) []]
-  | n == falseName
-    = PCon (Id inrName (inrTy unit unit)) [PCon (Id "()" unit) []]
-
-isBoolCon :: Id -> Bool
-isBoolCon (Id n _) = n `elem` [trueName, falseName]
 
 -- desugaring the boolean type constructor
 
