@@ -426,7 +426,7 @@ be very interested to hear them.
 ## SAIL, Desugaring and the Standard Library
 
 In addition to expanding the surface language, the transition to Core Solidity will also introduce a
-new user accessible mid level IR to the compiler: SAIL (Solidity Algebraic Intermediate Language). This is the
+new user accessible mid level IR: SAIL (Solidity Algebraic Intermediate Language). This is the
 "Core" in Core Solidity. It's the most minimal language we could conceive of that would let us
 express the full range of high-level language constructs found in Classic Solidity. It can usefully
 be thought of as Yul with generics and type classes. It consists of the following primitive constructs:
@@ -452,8 +452,8 @@ assembly language instead.
 We believe that SAIL is expressive enough that we can implement all other high level language
 features and type as a combination of standard library definitions and desugaring passes (compile
 time syntactic transformations into SAIL primitives). Core Solidity is then simply SAIL extended
-with additional syntax sugar and libraries. It is similar to Yul in it's dual function as a compiler
-IR and a user facing assembly style language and the full range of SAIL primitives will be directly
+with additional syntax sugar and libraries. It is similar to Yul in its dual function as both a compiler
+IR and a user facing low level language, and the full range of SAIL primitives will be directly
 available when writing Core Solidity. This style of language construction is often used in other
 high assurance domains (e.g. theorem provers), and we believe it has important benefits for both
 users of the language and the safety and security of it's implementation.
@@ -493,10 +493,9 @@ potentials these features enable.
 
 #### `uint256`
 
-To begin we will construct the type `uint256`. In Classic Solidity the definition of this
-type and it's associated operations are all built in language constructs. In Core, it can be
-entirely defined in language. A `uint256` is a simple wrapper around a `word`. We also define a
-`Typedef` instance for it:
+To begin we will construct the type `uint256`. In Classic Solidity the definition of this type and
+it's associated operations are all built in language constructs. In Core, it is defined entirely in
+language as a simple wrapper around a `word`. We also define a `Typedef` instance for it:
 
 ```solidity
 data uint256 = uint256(word);
@@ -516,7 +515,7 @@ instance uint256:Typedef(word) {
 
 #### `memory` and `bytes`
 
-Similarly we can build types that represent pointers into the various evm data regions by wrapping a
+Similarly we can build types that represent pointers into the various evm data regions by again wrapping a
 `word`. Notice that in the following snippet the type parameter on the memory pointer is *phantom*
 (i.e. it appears only in the type, but is not mentioned in any of the value constructors). This is a
 common idiom in ML family languages like Haskell or Rust that lets us enforce compile-time
@@ -537,6 +536,10 @@ only SAIL primitives.
 ```solidity
 data bytes;
 ```
+
+Notice that in this construction of pointers and data locations, the data location is attached to
+the type (instead of the variable binding as it is in Classic), allowing for the defintion of e.g.
+memory structures containing references to storage.
 
 #### The `Proxy` type
 
@@ -565,9 +568,9 @@ possible.
 ```solidity
 forall T . class T:ABIAttribs {
     // how many bytes should be used for the head portion of the abi encoding of `T`
-    function headSize(ty:Proxy(T)) -> word;
+    function headSize(ty : Proxy(T)) -> word;
     // whether or not `T` is a fully static type
-    function isStatic(ty:Proxy(T)) -> bool;
+    function isStatic(ty : Proxy(T)) -> bool;
 }
 
 instance uint256:ABIAttribs {
@@ -576,14 +579,14 @@ instance uint256:ABIAttribs {
 }
 ```
 
-Now another that handles the low level encoding into memory. The class presented here contains some
-extraneous details needed for encoding compound and dynamic types that are not be necessary for the
-simple `uint256` encoding we are implementing now. We present the full complexity to demonstrate
-that we have the machinery required for this harder cases.
+Now we define another class that handles the low level encoding into memory. The class presented
+here contains some extraneous details needed for encoding compound and dynamic types that are not be
+necessary for the simple `uint256` encoding we are implementing now. We present the full complexity
+to demonstrate that we have the machinery required for this harder cases.
 
 ```solidity
 // types that can be abi encoded
-forall T . class T:ABIEncode {
+forall T . T:ABIAttribs => class T:ABIEncode {
     // abi encodes an instance of T into a memory region starting at basePtr
     // offset gives the offset in memory from basePtr to the first empty byte of the head
     // tail gives the index in memory of the first empty byte of the tail
@@ -607,7 +610,7 @@ and free memory pointer updates (we have omitted the implementation of the low l
 ```solidity
 // top level encoding function.
 // abi encodes an instance of `ty` and returns a pointer to the result
-forall T . T:ABIAttribs, T:ABIEncode => function abi_encode(val : T) -> memory(bytes) {
+forall T . T:ABIEncode => function abi_encode(val : T) -> memory(bytes) {
     let free = get_free_memory();
     let headSize = ABIAttribs.headSize(Proxy : Proxy(ty));
     let tail = ABIEncode.encodeInto(val, free, 0, Add.add(free, headSize));
@@ -629,43 +632,21 @@ We are also investigating the feasibility of deeper interoperability beyond just
 We expect that it will be possible to share at least free functions and interface definitions
 between language versions.
 
+While there will be breakage of both syntax and semantics, our intention is to minimize it to cases
+where it is either strictly nescessary or brings significant benefits that justify the transition
+cost. We expect that simple code that does not use inheritance will look and feel very similar in
+both language versions, with only minor syntactic differences (largely just the switch from prefix
+to postfix types). We are also considering reworking or replacing some features that have proven to
+be problematic or limiting in practice (e.g. try/catch, libraries, function pointers, data
+locations). Users can expect that some moderate changes may be required to adapt their code that
+makes use of these features. Code that makes heavy use of inheritance will of course require the
+largest changes.
+
+We will be investigating the potential for automated upgrades, and if reliable and robust
+implementations are possible expect to ship such tools at release.
+
 Avoiding a Python 2 -> Python 3 style split is top of mind, and we believe that upgrades should be
 manageable and that it will be possible to carry them out in an incremental manner.
-
-### Syntax Breakage
-
-The syntax you see in the examples here contains quite some differences from Classic Solidity. As
-already mentioned, we expect to bring most of the Core syntax inline with the existing Classic
-syntax. After quite some internal discussion and considering user feedback, the current feeling
-within the team is that we would prefer to prioritize smoothing the transition over introducing
-(subjectively) cleaner syntax.
-
-With that said, some degree of breakage may still be required. Right now we are considering the
-following changes:
-
-- Postfix types: Supporting the kind of rich types that Core enables with a prefix syntax is quite
-  challenging from a parser implementation point of view. Certain use cases may not be possible at
-  all, and those that are may require complex lookahead or backtracking logic. A final decision here
-  will not be made until we have completed a deeper analysis of the tradeoffs.
-- Ternary operator: Changes may be required here to resolve ambiguities in the language grammar.
-- Function type / parameter syntax: The introduction of higher order functions and the more
-  functional flavour of Core lends itself much more to the usage of function parameters. While likely not
-  strictly necessary for parsing / grammar reasons, we suspect that a simpler syntax here will likely
-  be worth the change given the benefits to readability and usability.
-
-### Semantic Breakage and Feature Removal
-
-By far the largest breakage will be the removal of inheritance. Our strong belief is that type classes and
-generics are a more flexible and powerful system for polymorphism and code sharing, and that
-supporting both approaches will not be in the best interests of either the users or developers of
-Solidity over the long term. We operate in a high assurance domain where simplicity of semantics and
-ease of audit are critical. Keeping the language as simple and focused as possible has deep long
-term benefits for ecosystem security.
-
-In addition we are considering changes to some core language features that we currently consider
-problematic or unsatisfying, in particular: libraries, try/catch, and function pointers. Input or
-feedback on the ways in which these features do or do not work for you is interesting and very
-welcome.
 
 ## The Road to Production
 
@@ -689,16 +670,15 @@ features that we think are necessary. We need to thoroughly document the typesys
 internals. We also expect to spend time working with existing power users and library authors to
 gather feedback and make any necessary changes.
 
-Once we are confident that the prototype is stable, work will split into two parallel phases:
+Once we are confident that the prototype is stable, work will split into two parallel streams:
 
 1. Production implementation: we will reimplement the typechecker, desugaring and yul generation
    passes in a systems language (e.g. Rust, C++, Zig), and integrate it into solc proper. This
    implementation will focus on correctness, performance, and providing the best possible
    diagnostics and error messages.
 2. Executable Formal Semantics: we will work to mechanize our existing latex specification in a
-   theorem proving environment (likely Lean). We intend to use this definition to prove key
-   invariants about the typesystem itself, as well as the standard library. It will also be used
-   to build confidence in the production implementation as a differential fuzzing target.
+   theorem proving environment (likely Lean). This will be used to build confidence in our
+   production implementation, as well as the standard library and typesystem itself.
 
 Once the production implementation is relatively stable. There will be a period of time in which
 Core Solidity is available as an experimental feature, but not yet marked as production ready. We
