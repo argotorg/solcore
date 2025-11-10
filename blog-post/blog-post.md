@@ -11,12 +11,11 @@ Fixing these limitations within the current implementation has proven difficult.
 made in a somewhat ad-hoc manner, and each new addition makes reasoning about the correctness of
 subsequent changes more difficult. We did not feel confident that we would be able to safely extend
 the language in this way to add the kind of features that our users were asking for, and that we
-feel are required to keep up with the ever increasing scale of systems that are being developed in
-Solidity.
+feel are required to keep up with the ever increasing scale of systems being developed in Solidity.
 
 Core Solidity is our solution. It is a rebuild of the Solidity type system and compiler front/middle end that will:
 
-- introduce powerful new features (generics, traits, algebraic datatypes, pattern matching, compile-time constant evaluation)
+- introduce powerful new features (generics, traits, algebraic datatypes, pattern matching, compile-time evaluation)
 - provide a strong foundation for compiler correctness as we continue to extend the language in the future
 - empower library authors and support a community-driven process for language evolution
 - expand the capabilities of verification and analysis tooling
@@ -45,17 +44,18 @@ closer to languages like TypeScript or Rust than it does right now.
 ## New Language Features
 
 Core Solidity takes ideas from pure functional programming languages (e.g. Haskell, Lean), as well
-as modern systems languages (e.g. Rust, Zig). The core new features that we plan to add are:
+as modern systems languages (e.g. Rust, Zig). We are extending Solidity with the following new
+features:
 
+- Algebraic datatypes (a.k.a sum / product types) and pattern matching
 - Generics / parametric polymorphism
 - Traits / typeclasses
-- Algebraic datatypes (a.k.a sum / product types) and pattern matching
-- Higher order functions
 - Type inference
+- Higher order and anonymous functions
 - Compile time evaluation
 
 We think that taken together these core primitives will enable developers to produce stronger
-abstractions, write more modular and reusable code, leverage the type system to enforce core
+abstractions, write more modular and reusable code, and leverage the type system to enforce core
 safety properties.
 
 We will continue to support the kind of low level access to the EVM that is often required by
@@ -71,7 +71,7 @@ Algebraic Data Types provide a principled foundation for data modeling through t
 sum and product types. Sum types represent exclusive alternatives: a value inhabits exactly one
 variant. Product types combine multiple values into structured tuples. The combination of these two
 primitives allows for the construction of precise types that can make invalid states completely
-**unrepresentable**, allowing the type system to guarantee core program invariants entirely at
+unrepresentable, allowing the type system to guarantee core program invariants entirely at
 compile time.
 
 Lets start with a very simple type:
@@ -103,7 +103,7 @@ we will use pattern matching. Pattern matching is a control flow mechanism that 
 and inspect data by shape. Instead of nested nested if-else chains, we can write declarative
 expressions that exhaustively consider all possible values of the matched type.
 
-For our simple `wad` examplle, we won't have any branches, but we can still use pattern matching to
+For our simple `wad` example, we won't have any branches, but we can still use pattern matching to
 destructure our inputs and extract their underlying representation:
 
 ```solidity
@@ -123,76 +123,45 @@ data AuctionState =
     NotStarted(uint256)
   | Active(uint256, address)
   | Ended(uint256, address)
-  | Cancelled;
+  | Cancelled(uint256, address);
 ```
 
-`AuctionState` has four alternative value constructors: `NotStarted` specifies that the auction has not
-started yet and stores its reserved price, `Active` denotes that the auction has begun and it stores
-the current highest bid and the address that made such bid, `Ended` represents that the auction has
-finished with success and it holds the highest bid and the winner address and constructor,
-`Cancelled` is used when the auction has been cancelled.
+`AuctionState` has four alternative value constructors: `NotStarted` specifies that the auction has
+not yet started and stores its reserve price, `Active` denotes that the auction has begun and it
+stores the current highest bid and the address that made that bid, `Ended` represents an auction
+that has finished successfuly and holds the highest bid and the address of the winner, and
+`Cancelled` represents a cancelled auction, holding the highest bid and winning address at the time
+of cancellation.
 
 Now we can define a `processAuction` function that transitions the state based on the current state
 and `msg.value`. The `match` statement lets us perform an exhaustive case analysis over each
-possible alternative state. Exhaustiveness can be enforced by the compiler, ensuring that we do not
-accidentally miss or fail to consider a critical state:
+possible alternative state. The `_` case at the end of the match is a default that handles any
+remaining states that have not yet been explicitly matched. Exhaustiveness can be enforced by the
+compiler, ensuring that every possible state is handled exactly once.
 
 ```solidity
-function processAuction(state) {
+function processAuction(state: State) -> State {
     match state {
     | NotStarted(reserve) =>
         require(msg.value >= reserve);
         return Active(msg.value, msg.sender);
     | Active(currentBid, bidder) =>
-        require(msg.value > currcompelingentBid);
+        require(msg.value > currentBid);
         transferFunds(bidder, currentBid);
         return Active(msg.value, msg.sender);
-    | Ended(_, _) =>
-        return state;
-    | Cancelled =>
-        revert();
+    | _ => return state;
     }
 }
 ```
-
-Sometimes we want to take the same action for many states, or handle certain subcases of a state in
-special ways. Pattern matching is expressive enough to let us do exactly that. Let's continue the
-auction example by defining a function that checks refund eligibility based on auction state.
-
-```solidity
-data Refund
-  = RefundAvailable
-  | NoRefund(memory(string));
-
-function canRefund(state) {
-    match (state) {
-    | Ended(winner, 0) =>
-            return NoRefund("Auction ended with no bids. No winner.");
-    | Ended(winner, finalBid):
-            return NoRefund("Auction was successful. No refunds.");
-    | Active(highestBid, highestBidder):
-            return NoRefund("Auction is still active. No refunds available.");
-    | _ =>
-            return RefundAvailable;
-    }
-}
-```
-
-The `Refund` type explicitly models the two possible outcomes: either a refund is available,
-or it's not (with a reason). The `canRefund` function uses pattern matching to inspect the
-auction state, handling specific cases first: if the auction ended with a zero bid, it
-provides a tailored message; for other successful or active states, it returns appropriate
-refusal reasons. The wildcard pattern, `_`, acts as a default option, granting refunds for
-all remaining states (like `NotStarted` or `Failed`), ensuring that every possible
-state is handled exactly once.
 
 ### Generics and type classes
 
 Core Solidity introduces two new mechanisms for code sharing and polymorphism: generics and
 type classes.
 
-Generics enable us to write functions and data structures that can operate in a uniform way across
-all types. As an example, we can define a polymorphic `identity` function:
+Generics implement parametric polymorphism: they enable us to write functions and data structures
+that behave in a uniform way for all types. As an example, we can define a polymorphic `identity`
+function:
 
 ```solidity
 forall T . function identity(x : T) -> T {
@@ -207,11 +176,12 @@ the payload in the error case:
 data Result(T) = Ok | Err(T)
 ```
 
-Generics are powerful, but by themselves quite limited: most interesting operations are not defined
-for all types. Type classes (a.k.a Traits if you are a rust programmer) are the solution: they give
-us the tools we need to write functions that are polymorphic over a restricted subset of types.
+Generics are powerful, but by themselves quite limited. Most interesting operations are not defined
+for all types. Type classes (a.k.a Traits) are the solution: they let us define an overloaded type
+specific implementation for the same function name, and when combined with class constraints let us
+define generic functions that are polymorphic over a restricted subset of types.
 
-A type class is simply an interface specification. Consider the following defition of a class of
+A type class is simply an interface specification. Consider the following definition of a class of
 types that can be multiplied:
 
 ```solidity
@@ -220,7 +190,7 @@ forall T . class T:Mul {
 }
 ```
 
-Instead of the concrete `wmul` function that we dfined above for our `wad` fixed point type, it
+Instead of the concrete `wmul` function that we defined above for our `wad` fixed point type, it
 would be more idiomatic to defined an instance (a.k.a `impl`) of the `Mul` type class for `wad`
 (giving us a uniform syntax for multiplication across all types, and allowing us to use our `wad`
 type in functions that are generic over any instance of the `wad` type class):
@@ -254,7 +224,7 @@ forall T U . class T:Typedef(U) {
 
 The `abs` (abstraction) and `rep` (representation) functions let us move between wrapper types and
 their underlying types in a generic way and without the syntactic noise of having to introduce
-pattern matching everytime we want to unwrap a type. The instance for `wad` would look like this:
+pattern matching every time we want to unwrap a type. The instance for `wad` would look like this:
 
 ```solidity
 instance wad:Typedef(uint256) {
@@ -277,7 +247,7 @@ restricted form of functional dependencies). To put it more plainly, we can only
 instance of `Typedef` for `wad`: the compiler would not allow us to implement both
 `wad:Typedef(uint256)` and `wad:Typedef(uint128)`. This restriction makes type inference much more
 predictable and reliable by sidestepping many of the potential ambiguities inherent to full
-multi-parameter typeclasses.
+multi-parameter type classes.
 
 For a real world example of how generics and type class constraints can be used to eliminate
 boilerplate or repetitive code, compare the combinatorial explosion of overloads required for the
@@ -309,13 +279,12 @@ forall T . T:ABIEncode => function log(val : T) {
 ```
 
 Similarly to Rust and Lean, all invocations of type classes and generic functions are fully
-monomorphized at compile time, meaning polymorphism has zero runtime overhead. While this does
-mean that the compiled EVM code will potentially contain multiple specialized versions of the same
-generic function, this does not entail a binary size overhead compared to Classic Solidity which
-would anyway require multiple function definitions for equivalent functionality. We consider this to
-be the correct tradeoff for our domain, and do not anyway see a clear implementation path in the EVM
-for the kind of dynamic heap based dictionary passing that would be required to share function
-implemenations at runtime.
+monomorphized at compile time, meaning polymorphic functions do not incur a runtime overhead when
+compared to fully concrete functions. While this does mean that the compiled EVM code will
+potentially contain multiple specialized versions of the same generic function, this does not entail
+a binary size overhead compared to Classic Solidity which would anyway require multiple function
+definitions for equivalent functionality. We consider this to be the correct tradeoff for our
+domain.
 
 ### Higher-order and anonymous functions
 
@@ -361,11 +330,12 @@ Our implementation here is similar to systems languages like Rust and C++: the c
 unique type for each anonymous function that contains the captured state, and these unique types are
 made callable by making them instances of the built in `invokable` type class (similar to the `Fn`
 trait in Rust). This approach avoids the kind of dynamic heap based environment management used in
-higher level languages like Haskell or Python, and results in maximally efficient code generation.
+higher level languages like Haskell or Python.
 
 ### Type inference
 
-Core Solidity supports the inference of types in almost any position. Type inference is decidable,
+Core Solidity supports the inference of types in almost any position. Annotations are usually optional and
+need be added only where considered desirable for readability or understanding. Inference is decidable,
 and the situations in which ambiguities requiring annotation can occur are very limited. This lets
 us solve a lot of the syntactic clutter required when writing Solidity today. As an example,
 consider the following Classic Solidity definition:
@@ -409,7 +379,7 @@ Another common frustration with Classic Solidity is the syntactic noise required
 literals. Consider the following snippet:
 
 ```Solidity
-uint[3] memory a = [1, 2, 3];
+uint256[3] memory a = [1, 2, 3];
 ```
 
 This declaration is rejected by the compiler with the following error message:
@@ -426,14 +396,14 @@ value to a variable with a different type.
 In order for the previous definition be accepted, we can add a type coercion to the first array element:
 
 ```solidity
-uint[3] memory a = [uint(1), 2, 3];
+uint256[3] memory a = [uint256(1), 2, 3];
 ```
 
 The constraint based inference algorithm in Core Solidity is a lot more general, and will allow us
 to omit this coercion:
 
 ```solidity
-uint[3] memory a = [1, 2, 3];
+uint256[3] memory a = [1, 2, 3];
 ```
 ### Compile Time Evaluation
 
@@ -441,7 +411,7 @@ We do not yet have a prototype implementation of compile time implementation, so
 examples to share here yet. We are however very convinced that this will be a particularly valuable
 extension to the language and consider it a critical feature that needs to be in place before
 release. A strong goal is to minimize the differences between the runtime and compile time variants
-of the language, allowing for a familiar syntax and code sharing between the two context.
+of the language, allowing for a familiar syntax and code sharing between the two contexts.
 
 Non-trivial design and implementation work remains here. We are exploring the degree to which access
 to memory at compile time is required, and if it is, what kind of analysis passes we would want to
@@ -456,14 +426,14 @@ be very interested to hear them.
 ## SAIL, Desugaring and the Standard Library
 
 In addition to expanding the surface language, the transition to Core Solidity will also introduce a
-new mid level IR to the compiler: SAIL (Solidity Algebraic Intermediate Language). This is the
+new user accessible mid level IR to the compiler: SAIL (Solidity Algebraic Intermediate Language). This is the
 "Core" in Core Solidity. It's the most minimal language we could conceive of that would let us
-express the full range of high-level language constructs found in Classic Solidity. It consists of
-the following primitive constructs:
+express the full range of high-level language constructs found in Classic Solidity. It can usefully
+be thought of as Yul with generics and type classes. It consists of the following primitive constructs:
 
 - Functions
 - Contracts
-- Assembly blocks
+- Assembly (Yul) blocks
 - Simple variable introduction and assignment
 - A short circuiting if-then-else expression
 - Algebraic datatypes & pattern matching
@@ -475,11 +445,18 @@ It has a single builtin type (`word`) that has the same range of values as a Cla
 variable". Contracts in SAIL are very low level (essentially just a runtime entrypoint and initcode
 entrypoint).
 
-All other high level language features and datatypes will be constructed as a combination of
-standard library definitions and desugaring passes (compile time syntactic transformations into SAIL
-primitives). This style of language construction is often used in other high assurance domains (e.g.
-theorem provers), and we believe it has important benefits for both users of the language and the
-safety and security of it's implementation.
+Although our current implementation uses Yul as an assembly language, this choice is largely
+arbitrary from a theoretical standpoint, and it could also be instantiated over e.g. a RISCV based
+assembly language instead.
+
+We believe that SAIL is expressive enough that we can implement all other high level language
+features and type as a combination of standard library definitions and desugaring passes (compile
+time syntactic transformations into SAIL primitives). Core Solidity is then simply SAIL extended
+with additional syntax sugar and libraries. It is similar to Yul in it's dual function as a compiler
+IR and a user facing assembly style language and the full range of SAIL primitives will be directly
+available when writing Core Solidity. This style of language construction is often used in other
+high assurance domains (e.g. theorem provers), and we believe it has important benefits for both
+users of the language and the safety and security of it's implementation.
 
 SAIL is simple enough that we expect to be able to construct an executable formal semantics for it.
 This will allow us to mathematically guarantee core properties of the Solidity type system, provide
