@@ -334,7 +334,7 @@ boolean which is then stored in the `res` variable.
 let res : bool
   = unpack_bools (bools, lam (p){
         match p {
-            (x,y,z) => return x && y && z;
+        |   (x,y,z) => return x && y && z;
         }});
 ```
 
