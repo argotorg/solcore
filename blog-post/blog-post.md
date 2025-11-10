@@ -325,7 +325,21 @@ of a packed `word` (`bools`). It treats it as a bitmask where the least signific
 it passes them as arguments to a callback function `fn` and returns whatever result
 that function produces.
 
+In order to call `unpack_bools`, we must provide a function that handles the triple of
+boolean values to produce some result. In following piece, we use `unpack_bools` and
+a anonymous function that takes a triple of booleans and conjunct them to produce a
+boolean which is then stored in the `res` variable.
 
+```
+let res : bool
+  = unpack_bools (bools, lam (p){
+        match p {
+            (x,y,z) => return x && y && z;
+        }});
+```
+
+Anonymous functions enable writing concise, focused logic directly at the call site,
+improving code readability and reducing boilerplate.
 
 ### Type inference
 
