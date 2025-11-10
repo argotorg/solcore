@@ -253,7 +253,9 @@ For a real world example of how generics and type class constraints can be used 
 boilerplate or repetitive code, compare the combinatorial explosion of overloads required for the
 [`console.log` implementation](https://github.com/foundry-rs/forge-std/blob/master/src/console.sol)
 in `forge-std` to the following generic Core Solidity function that covers the functionality of all
-the single argument overloads from the original library:
+the single argument overloads from the original library. The `word` type used in this implementation
+is a low level type that represents a yul variable, and is the only type that can be passed into or
+out of assembly blocks.
 
 ```solidity
 forall T . T:ABIEncode => function log(val : T) {
@@ -722,7 +724,7 @@ the features that we currently consider interesting for future post-core iterati
 - Theorem Proving: Code written in Solidity often manages large amounts of money in a highly
   adversarial environment. Correctness is of the utmost importance. Languages like
   [ATS](https://ats-lang.sourceforge.net/) and [Bedrock 2](https://github.com/mit-plv/bedrock2) have
-  also show shown how the integration of theorem proving with low level systems orientated languages
+  shown how the integration of theorem proving with low level systems orientated languages
   can be used to support the production of code that is both correct and maximally resource efficient.
   We are interested in investigating the degree to which the kind of semi-automated reasoning
   available in theorem provers could be integrated directly into the language (likely via an Isabelle
