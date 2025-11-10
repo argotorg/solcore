@@ -23,14 +23,14 @@ Core Solidity is our solution. It is a rebuild of the Solidity type system and c
 
 In addition to growing and expanding the language, we will also be removing or reworking some
 existing features. We are already certain that we will be removing inheritance entirely. Additional
-changes are less certain, but we are considering potentially replacing or reworking problematic features
-like try/catch, libraries, and function pointers.
+changes are less certain, but we are considering potentially replacing or reworking features
+like try/catch, libraries, function pointers, type conversion, and reference semantics.
 
-We currently have a working prototype for Core Solidity. All examples in the post typecheck and
-produce executable code. The syntax is far from final, and extensive changes should be expected
-before release. Much of the core type theory is stable, but we want to add at least compile time
-evaluation and modules before we will consider the type system finalized. Extensive work remains to
-build out the standard library and reach feature parity with Classic Solidity.
+We currently have a working prototype for Core Solidity. Most of the examples in this post typecheck
+and can produce executable code (although some make use of speculative syntax or unimplemented
+language constructs). Much of the core type theory is stable, but we want to add at least compile
+time evaluation and modules before we will consider the type system finalized. Extensive work
+remains to build out the standard library and reach feature parity with Classic Solidity.
 
 ## A Note on Syntax
 
@@ -308,6 +308,15 @@ forall T . T:ABIEncode => function log(val : T) {
 }
 ```
 
+Similarly to Rust and Lean, all invocations of type classes and generic functions are fully
+monomorphized at compile time, meaning polymorphism has zero runtime overhead. While this does
+mean that the compiled EVM code will potentially contain multiple specialized versions of the same
+generic function, this does not entail a binary size overhead compared to Classic Solidity which
+would anyway require multiple function definitions for equivalent functionality. We consider this to
+be the correct tradeoff for our domain, and do not anyway see a clear implementation path in the EVM
+for the kind of dynamic heap based dictionary passing that would be required to share function
+implemenations at runtime.
+
 ### Higher-order and anonymous functions
 
 Functions possess first-class status within the type system, enabling their use
@@ -318,8 +327,8 @@ enhancing language expressivity.
 As an example, consider the following which implements a custom ABI encoding
 of a triple of booleans into a single `word` value:
 
-```
-forall ret . function unpack_bools(bools : word, fn : (bool, bool, bool) -> ret) -> ret {
+```solidity
+forall T . function unpack_bools(bools : word, fn : (bool, bool, bool) -> T) -> T {
     let b0 : bool = toBool(and(bools, 0x1));
     let b1 : bool = toBool(and(shr(1, bools), 0x1));
     let b2 : bool = toBool(and(shr(2, bools), 0x1));
@@ -334,48 +343,34 @@ of a packed `word` (`bools`). It treats it as a bitmask where the least signific
 it passes them as arguments to a callback function `fn` and returns whatever result
 that function produces.
 
-In order to call `unpack_bools`, we must provide a function that handles the triple of
-boolean values to produce some result. In following piece, we use `unpack_bools` and
-a anonymous function that takes a triple of booleans and conjunct them to produce a
-boolean which is then stored in the `res` variable.
+We also support the definition of (non-recursive) anonymous functions using the `lam` keyword.
+Functions defined in this way can capture values available in the defining scope. As an example
+consider this testing utility that counts the number of times an arbitrary function is called:
 
-```
-let res : bool
-  = unpack_bools (bools, lam (p){
-        match p {
-        |   (x,y,z) => return x && y && z;
-        }});
+```solidity
+forall function count_calls(fn : (T) -> U) -> (memory(word), (T) -> U) {
+    let counter : memory(word) = allocate(32);
+    return (counter, lam (a : T) -> {
+        counter += 1;
+        return fn(a);
+    };
+}
 ```
 
-Anonymous functions enable writing concise, focused logic directly at the call site,
-improving code readability and reducing boilerplate.
+Our implementation here is similar to systems languages like Rust and C++: the compiler produces a
+unique type for each anonymous function that contains the captured state, and these unique types are
+made callable by making them instances of the built in `invokable` type class (similar to the `Fn`
+trait in Rust). This approach avoids the kind of dynamic heap based environment management used in
+higher level languages like Haskell or Python, and results in maximally efficient code generation.
 
 ### Type inference
 
-Core Solidity uses type inference algorithm to reduce syntactic verbosity while
-maintaining the strong static typing guarantees. The type inference occurs
-during compilation and provides complete type safety without explicit annotations,
-which are required in Classic Solidity. As an example, consider the following
-definition in Classic:
+Core Solidity supports the inference of types in almost any position. Type inference is decidable,
+and the situations in which ambiguities requiring annotation can occur are very limited. This lets
+us solve a lot of the syntactic clutter required when writing Solidity today. As an example,
+consider the following Classic Solidity definition:
 
-```
-bytes32 y;
-uint x = uint(y);
-```
-
-That demands a type annotation on `x`'s definition even when it has an explicit
-cast to `uint` type. In Core Solidity we could simply define `x` without its type:
-
-```
-bytes32 y;
-let x = uint(y);
-```
-
-Another situation which have unnecessary annotation involves `struct` value
-constructors. Consider the following `struct` definition which could be
-part of some lending protocol:
-
-```
+```solidity
 struct LendingPosition {
     uint256 collateralDeposited;
     uint256 debtIssued;
@@ -383,161 +378,80 @@ struct LendingPosition {
 }
 ```
 
-Creating a variable to represent an initial position would be as follows in
-Classic:
+Instantiating `LendingPosition` in Classic Solidity is syntactically clunky, requiring us
+to both annotate the type and invoke the `LendingPosition` constructor:
 
-```
+```solidity
 LendingPosition emptyPosition = LendingPosition(0, 0, block.timestamp);
 ```
 
 Since we are using the `LendingPosition` constructor, the compiler can infer
-the correct type. The same definition for `emptyPosition` in Core Solidity would be:
+the type of `emptyPosition`. Core Solidity allows us to omit the redundant annotation:
 
-```
+```solidity
 let emptyPosition = LendingPosition(0, 0, block.timestamp);
 ```
 
-A similar situation happens with array literals. Consider the following simple
-array definition in Classic Solidity:
+Assigning an expression to a variable in Classic can often result in redundant annotation if those
+types are already present in the expression being assigned:
 
+```solidity
+(uint256 a, uint256 b) = abi.decode(input, (uint256, uint256))
 ```
+
+The same definition is much cleaner in Core:
+
+```solidity
+let (a, b) = abi.decode(input, (uint256, uint256))
+```
+
+Another common frustration with Classic Solidity is the syntactic noise required when defining array
+literals. Consider the following snippet:
+
+```Solidity
 uint[3] memory a = [1, 2, 3];
 ```
 
-The declaration is rejected by the compiler, which returns the following error message:
+This declaration is rejected by the compiler with the following error message:
 
 ```
 Error: Type uint8[3] memory is not implicitly convertible to expected type uint256[3] memory.
 ```
 
-The reason of this error is the fact that Classic Solidity uses as the base type of the array
-the type of the first expression on the list and it tries to implicit convert all other elements
-to this type. The compiler emits a type error when such coercion is not possible. In order to
-the previous definition be accepted, we need to add a type coercion to the array first element
-as follows:
+Classic Solidity implements a limited and special cased form of type inference for numeric array
+literals: it selects the smallest possible element type that can represent every element of the
+array (in this case `uint8`). The compiler then throws a type error when attempting to assign this
+value to a variable with a different type.
 
-```
+In order for the previous definition be accepted, we can add a type coercion to the first array element:
+
+```solidity
 uint[3] memory a = [uint(1), 2, 3];
 ```
 
-More about array literals in Classic Solidity can be found in the [language documentation.](https://docs.soliditylang.org/en/latest/types.html#array-literals)
-Core Solidity will solve this problem by allowing **overloaded literals**, a feature present in
-Lean and Haskell, which allow numeric literals to be interpreted as values of any type that
-implements the `Num` typeclass, rather than being fixed to a single concrete type.
-Thanks to overloaded numeric literals, the expression:
-```
+The constraint based inference algorithm in Core Solidity is a lot more general, and will allow us
+to omit this coercion:
+
+```solidity
 uint[3] memory a = [1, 2, 3];
 ```
-would be accepted directly, without the need of an explicit type coercion on the array
-first element, if the type `uint` is an instance of the `Num`.
-
-
-## Extended example: Classic Solidity vs Core Solidity
-
-Now, let's consider an extended example: a contract which implements a unified payment
-processor that handles three different token standards. The complete Classic Solidity
-implementation for this simple contract can be found [here.](PaymentHandler.sol)
-The code starts by defining a `Payment` struct that attempts to represent all three token standards,
-using the `paymentType` field as a runtime discriminator to determine which fields are relevant
-for each case.
-
-```
-enum PaymentType { NATIVE, ERC20, ERC721 }
-
-struct Payment {
-    PaymentType paymentType;  // Runtime type tag
-    address token;           // Used for ERC20/ERC721, must be zero for Native
-    address from;            // Sender address
-    address to;              // Receiver address
-    uint256 amount;          // Used for Native/ERC20, must be 1 for ERC721
-    uint256 tokenId;         // Used for ERC721, must be zero for others
-}
-```
-
-Next, functions `processPayment` and `calculateFee` uses explicit `if`/`else` chains
-to manually check the `paymentType` and route to the appropriate handling logic.
-Also, in order to avoid invalid states, the code uses `require` to ensure that
-each case is dealing with a proper payment state value.
-
-```
-function processPayment(Payment calldata payment) external {
-    if (payment.paymentType == PaymentType.NATIVE) {
-        require(payment.token == address(0), "Native: no token");
-        require(payment.amount > 0, "Native: amount required");
-        require(payment.tokenId == 0, "Native: no tokenId");
-        payable(payment.to).call{value: payment.amount}("");
-  } else if (payment.paymentType == PaymentType.ERC20) {
-        require(payment.token != address(0), "ERC20: token required");
-        require(payment.amount > 0, "ERC20: amount required");
-        require(payment.tokenId == 0, "ERC20: no tokenId");
-        IERC20(payment.token).transferFrom(payment.from, payment.to, payment.amount);
-  } else if (payment.paymentType == PaymentType.ERC721) {
-        require(payment.token != address(0), "ERC721: token required");
-        require(payment.amount == 1, "ERC721: amount must be 1");
-        require(payment.tokenId > 0, "ERC721: tokenId required");
-        IERC721(payment.token).transferFrom(payment.from, payment.to, payment.tokenId);
-  }
-}
-```
-
-Now, let's turn our attention to the encoding of this example in Core Solidity.
-The complete encoding of this example can be found [here](payment.sol).
-
-First, we start by defining an algebraic data type which represents each payment
-type by a separate data constructor with precisely the fields required for that
-specific standard. This makes invalid states **unrepresentable** by design. As an
-example, you cannot create a `Native` payment with a token field or an `ERC721`
-payment with an amount field.
-
-```
-data tokenid = tokenid(word);
-
-data Payment =
-    Native(address, word)
-  | ERC20(address, address, address, word)
-  | ERC721(address, address, address, tokenid);
-```
-
-The implementation of functions `processPayment` and `calculateFee` can be made
-much simpler by using pattern matching:
-
-```
-function processPayment(payment : Payment) {
-    match payment {
-    | Native(to,amount) =>
-        transfer(to,amount);
-    | ERC20(token,from,to,amount) =>
-        transferFromERC20(from, to, amount);
-    | ERC721(token,from,to,tokenId) =>
-        transferFromERC721(from, to, tokenId);
-    }
-}
-```
-
-Another effect of the use of pattern matching / algebraic data types is that,
-since it is not possible to represent invalid states, no runtime validations
-using `require` is necessary, since they are enforced by Core Solidity type system.
-
-In this short example, we can see how Core Solidity gives the developer the tools
-to write shorter and safer code. By using algebraic data types and pattern matching,
-we can avoid the manipulation of invalid states and the need of runtime validations
-using `require`. Also, parametric polymorphism (a.k.a. generics) and type classes
-open up new possibilities for the development of safer libraries for the modular
-development of smart-contracts.
-
 ### Compile Time Evaluation
 
-While not yet implemented, we are planning to add a robust system for compile time evaluation. We
-expect to support at least the compile time evaluation of pure expressions that do not require
-access to memory. Some key design questions that remain open relate to the degree to which we will
-support access to memory at compile time, the need for compile time specific primitives (e.g. string
-concatenation / hashing), as well as the need for reflection.
+We do not yet have a prototype implementation of compile time implementation, so don't have concrete
+examples to share here yet. We are however very convinced that this will be a particularly valuable
+extension to the language and consider it a critical feature that needs to be in place before
+release. A strong goal is to minimize the differences between the runtime and compile time variants
+of the language, allowing for a familiar syntax and code sharing between the two context.
 
-We want to make sure the needs of the community are met here. Please feel free to reach out
-The Solidity Forum, or our Matrix channel if you have concrete use cases in mind for
-this feature.
+Non-trivial design and implementation work remains here. We are exploring the degree to which access
+to memory at compile time is required, and if it is, what kind of analysis passes we would want to
+implement to guard against accidental leakage of references to compile time memory. We are also
+investigating what kind of compile time specific primitives we might want to add, and whether we
+want to expand the languages capabilities around reflection.
 
-We will publish more once we have a concrete design / prototype implementation.
+We will publish more on our designs once they stabilise. We want to make sure the needs of the
+community are met here: if you have concrete real world use cases in mind for this feature, we would
+be very interested to hear them.
 
 ## SAIL, Desugaring and the Standard Library
 
@@ -568,19 +482,18 @@ theorem provers), and we believe it has important benefits for both users of the
 safety and security of it's implementation.
 
 SAIL is simple enough that we expect to be able to construct an executable formal semantics for it.
-This will be useful in a lot of directions: We will be able to mathematically guarantee certain core
-properties of the Core Solidity type system itself. We will have a reference implementation that we
-can use for differential fuzzing of the eventual production Core Solidity implementation. We will be
-able to formally verify the standard library and implementation of higher level language constructs.
-We believe that this will be an essential part of our correctness story as both the language and
-the scale of the systems it is used to construct continue to grow.
+This will allow us to mathematically guarantee core properties of the Solidity type system, provide
+a reference implementation for differential fuzzing of the production implementation, and formally
+verify both the standard library and higher-level language constructs. We believe that this will be
+an essential part of our correctness story as both the language and the scale of the systems it is
+used to construct continue to grow.
 
 Library authors will have (almost) the same expressive power as the language designers, and will
-have the power to build abstractions that feel built-in to the language itself (a "library-based
+be able to create abstractions that feel built-in to the language itself (a "library-based
 language"). It will be possible to define and use alternative standard library implementations, or
 disable the standard library completely. With the standard library disabled, it will be possible to
 write Core Solidity code with almost the same level of control as low level assembly languages like
-Huff, but with a modern, expressive type system, based on a mathematically rigorous foundation.
+Yul or Huff, but with a modern, expressive type system, based on a mathematically rigorous foundation.
 
 We also expect that the introduction of SAIL will make it much easier for Solidity users to extend
 and improve the language. In many cases it will be possible to make deep improvements via a pull
@@ -601,74 +514,15 @@ their existing knowledge without having to concern themselves with these kind of
 details. We hope that expert level users and library authors will however be excited by the new
 potentials these features enable.
 
-#### `uint256` and addition
+#### `uint256`
 
 To begin we will construct the type `uint256`. In Classic Solidity the definition of this
 type and it's associated operations are all built in language constructs. In Core, it can be
-entirely defined in language. The following snippet defines a new type (`uint256`), and a single
-value constructor (also called `uint256`) that can be used to produce a value of type `uint256` from
-a `word`. Note that simple wrapper types like this are zero overhead (i.e. the runtime
-representation of a `uint256` is just a `word`).
+entirely defined in language. A `uint256` is a simple wrapper around a `word`. We also define a
+`Typedef` instance for it:
 
 ```solidity
 data uint256 = uint256(word);
-```
-
-Operations like addition and subtraction can also similarly be defined as typeclasses and instances
-of them:
-
-```solidity
-forall T . class T:Add {
-    function add(lhs : T, rhs : T) -> T;
-}
-
-instance uint256:Add {
-    function add(lhs : uint256, rhs : uint256) -> uint256 {
-        // unwrap the two arguments and extract their underlying words
-        match (lhs, rhs) {
-            | (uint256(l), uint256(r)
-                // dispatch to the Add instance for word, and wrap the result in the `uint256` value constructor
-                => return uint256(Add.add(l, r))
-        }
-    }
-}
-```
-
-To implement the `+` operator, we can then define a simple desugaring pass that replaces the `+`
-operator with calls to `Add.add`.
-
-#### `memory` and `bytes`
-
-Similarly we can build types that represent pointers into the various evm data regions by wrapping a
-`word`. Notice that in the following snippet the type parameter on the memory pointer is *phantom*
-(i.e. it appears only in the type, but is not mentioned in any of the value constructors). This is a
-common idiom in ML family languages like Haskell or Rust that lets us enforce compile-time
-constraints without runtime overhead.
-
-```solidity
-data memory(T) = memory(word)
-```
-
-The `bytes` type in Classic Solidity represents a tightly packed byte array with a size only known
-at runtime. It doesn't really make sense to have a `bytes` on stack, so we define it as an empty
-type (effectively just a compile time tag with no runtime reference) with no value constructors.
-This ensures that we can only ever represent a reference to `bytes` on stack (e.g. `memory(bytes)`).
-
-```solidity
-data bytes;
-```
-
-#### `Typedef` and weak types
-
-These kind of simple wrapper types are very common, and it is helpful to be able to easily unwrap
-them and extract their underlying value without having to pattern match. For this reason we define
-the following class:
-
-```solidity
-forall T U . class T:Typedef(U) {
-    function abs(x:T) -> U;
-    function rep(x:U) -> T;
-}
 
 instance uint256:Typedef(word) {
     function abs(w: word) -> uint256 {
@@ -683,14 +537,29 @@ instance uint256:Typedef(word) {
 }
 ```
 
-Note that `U` parameter in the above `Typedef` definition is "weak": its value is uniquely
-determined by the value of the `T` parameter. If you are familiar with Haskell or Rust, this is
-effectively an associated type (although for any type system nerds reading, we implement it using a
-restricted form of functional dependencies). To put it more plainly, we can only implement a single
-instance of `Typedef` for `uint256`: the compiler would not allow us to implement both
-`uint256:Typedef(word)` and `uint256:Typedef(uint128)`. This restriction makes type inference much
-more predictable by sidestepping many of the potential ambiguities inherent to full multi-parameter
-typeclasses.
+#### `memory` and `bytes`
+
+Similarly we can build types that represent pointers into the various evm data regions by wrapping a
+`word`. Notice that in the following snippet the type parameter on the memory pointer is *phantom*
+(i.e. it appears only in the type, but is not mentioned in any of the value constructors). This is a
+common idiom in ML family languages like Haskell or Rust that lets us enforce compile-time
+constraints without runtime overhead.
+
+```solidity
+data memory(T) = memory(word)
+```
+
+The `bytes` type in Classic Solidity represents a tightly packed byte array with a size only known
+at runtime. It doesn't really make sense to have a `bytes` on stack (and Classic Solidity always
+requires that a data location be specified for a value of type `bytes`), so in Core we define it as
+an empty type with no value constructors. Since `bytes` has no value constructors, we cannot produce
+a value of `bytes` at runtime, and must always work with references to `bytes` (e.g. `memory(bytes)`).
+This results in the same behaviour as Classic (users must always specify a data location), using
+only SAIL primitives.
+
+```solidity
+data bytes;
+```
 
 #### The `Proxy` type
 
@@ -776,24 +645,15 @@ Introducing such a major revision to any programming language is challenging. Wh
 of breakage is inevitable (and even desired), we want to make the transition as smooth as possible
 and avoid a split in the language.
 
-We intend to keep the syntax breakage as small as possible, and expect to make significant
-alterations to the current prototype to bring syntax much more in line with Classic Solidity.
-
 As with previous breaking upgrades to Solidity, ABI compatibility will be maintained between
 versions, allowing individual contracts written in incompatible versions to interoperate and live
 side by side in the same project (this strategy is also used by Rust with their "Editions" feature).
-Thanks to our history of releasing breaking changes, much of the ecosystem tooling already supports
-multiple incompatible language versions in the same project.
-
-(TODO: check and confirm the state of things in foundry / hardhat).
-
 We are also investigating the feasibility of deeper interoperability beyond just the contract ABI.
 We expect that it will be possible to share at least free functions and interface definitions
-between language versions. We will write more concretely on this topic when we have detailed designs
-or working prototypes to share.
+between language versions.
 
-Avoiding a python2 -> python3 style split is top of mind, and we believe that upgrades should be
-manageable and that it will be possible to carry them out in an incremental manner
+Avoiding a Python 2 -> Python 3 style split is top of mind, and we believe that upgrades should be
+manageable and that it will be possible to carry them out in an incremental manner.
 
 ### Syntax Breakage
 
@@ -818,7 +678,7 @@ following changes:
 
 ### Semantic Breakage and Feature Removal
 
-By far the largest breakage will be the removal of inheritance. Our strong belief is that traits and
+By far the largest breakage will be the removal of inheritance. Our strong belief is that type classes and
 generics are a more flexible and powerful system for polymorphism and code sharing, and that
 supporting both approaches will not be in the best interests of either the users or developers of
 Solidity over the long term. We operate in a high assurance domain where simplicity of semantics and
@@ -828,27 +688,22 @@ term benefits for ecosystem security.
 In addition we are considering changes to some core language features that we currently consider
 problematic or unsatisfying, in particular: libraries, try/catch, and function pointers. Input or
 feedback on the ways in which these features do or do not work for you is interesting and very
-welcome. We will publish more on this area once we have concrete plans and implementations to share.
+welcome.
 
 ## The Road to Production
 
 This section outlines our current thinking on achieving production readiness and our strategy for
-making such extensive and sweeping changes to the language in a safe way. Please note that this is a
-tentative plan, and may be subject to extensive change. We are not in a position where we feel
-confident about committing to concrete timelines at this stage. We will provide more detailed
-roadmaps and concrete timelines as we get closer to a production implementation.
+making such deep changes to the language in a safe way. Please note that this is a tentative plan,
+and may be subject to extensive change. We are not yet in a position where we feel confident about
+committing to concrete timelines. We will provide more detailed roadmaps and concrete timelines as
+we get closer to a production implementation.
 
-We have a working prototype implemented in a [separate
-repository](https://github.com/argotorg/solcore). All of the features shown in this post work, and
-all examples typecheck and produce executable code. We consider the type system to be relatively
-stable at this point, and do not expect to be making deep changes to what currently exists. We do
-anticipate at least two major additions before we can begin to consider it final: compile time
-evaluation and a module system. As discussed already, we will be making extensive changes to the
-syntax to bring it more in line with Classic Solidity.
-
-We have a rudimentary standard library implemented, and enough desugaring stages built out to
-implement the most fundamental features of Classic Solidity. We can produce ABI compatible
-contracts, with dispatch, abi encoding / decoding, and storage access.
+We have a prototype implemented in a [separate repository](https://github.com/argotorg/solcore). We
+can typecheck SAIL programs, and have a code generation pipeline down to Yul implemented. We still
+want to implement at least compile time evaluation and a module system before we will consider the
+type system to be finalized. We have a rudimentary standard library implemented, and enough
+desugaring stages built out to implement the most fundamental features of Classic Solidity. We can
+produce ABI compatible contracts, with dispatch, abi encoding / decoding, and storage access.
 
 There is still significant work remaining at the prototype stage before we can begin to consider a
 full production implementation. We want to finalize the type system, flesh out the standard library,
@@ -857,10 +712,9 @@ features that we think are necessary. We need to thoroughly document the typesys
 internals. We also expect to spend time working with existing power users and library authors to
 gather feedback and make any necessary changes.
 
-Once we are feeling confident that the prototype is stable, work will split into two parallel
-phases:
+Once we are confident that the prototype is stable, work will split into two parallel phases:
 
-1. Production implementation: we will reimplement the typechecker, desugaring and code generation
+1. Production implementation: we will reimplement the typechecker, desugaring and yul generation
    passes in a systems language (e.g. Rust, C++, Zig), and integrate it into solc proper. This
    implementation will focus on correctness, performance, and providing the best possible
    diagnostics and error messages.
@@ -883,41 +737,44 @@ it the end of road for Solidity, but rather as a foundation for future expansion
 following list is tentative, non exhaustive, and subject to significant change, these are some of
 the features that we currently consider interesting for future post-core iterations of the language:
 
-- Linear types: We consider linearity as a primitive interesting for both high level protocol
-  design and for enhancing the type safety of low level memory management.
+- Linear types: Linearity is a deeply powerful primitive. We consider its resource semantics to be
+  particularly well suited to enforce the kind of accounting invariants that are often of interest
+  for systems written in Solidity. Linearity is powerful enough to be able construct object
+  capabilities, effect systems, and even session types without additional primitives. This would
+  significantly expand the scope and complexity of invariants that can be guaranteed by the type
+  system. Linearity can be used to help guarantee the safe usage of memory, allowing users to
+  optimize without fear, and giving the compiler itself the context it needs to be able to safely
+  eliminate unnecessary allocations and make more optimal usage of memory.
 
-- Typesafe Memory Management: Solidity's current allocation strategy is simple, makes use
-  after free impossible, and makes allocation cheap at runtime. It does however allow for type
-  confusion and makes very inefficient usage of available memory. Since memory expansion is one of the
-  more expensive EVM operations, there is clearly significant room for improvement. We are very
-  interested in exploring approaches to allocation and memory management that improve on the situation
-  here. One possibility we consider attractive is to extend Yul / inline assembly with a fully typed
-  memory model. Linearity may also have a role to play. There is a large design space to explore.
-
-- Macros: Since a great deal of the core compilation stack is already designed around simple
-  macro like syntax -> syntax transformations, a natural extension to the language would be to
+- Macros: Since a great deal of the compilation stack for Core Solidity is already designed around simple
+  macro like syntactic transformation passes, a natural extension to the language would be to
   implement a user facing macro system, and reimplement these desugaring passes as in language macro
   transformations. This would give a similar level of expressive power and flexibility as languages
-  with cutting edge macro systems like Lean or Racket. While attractive in many ways, we are also
-  cautious about the potential for misuse such a feature would have, and would want to take great care
-  to implement sufficient safeguards against obfuscation of malicious code.
+  with cutting edge macro systems like Lean or Racket, allowing library authors to introduce
+  arbitrary new syntax and even supporting the construction of entirely new languages on top of SAIL.
+  While attractive in many ways, we are also cautious about the potential for misuse such a feature
+  would have, and would want to take great care to implement sufficient safeguards against obfuscation
+  of malicious code.
 
 - Refinement Types: Refinement types are an intuitive and user friendly way to document and enforce
-  complex program level invariants. We are particularly interested in schemes that implement decidable
+  program level invariants. We are particularly interested in schemes that implement decidable
   logics (as opposed to full SMT based approaches), which we consider more likely to be usable at
   scale by non experts (although of course with an associated tradeoff in the complexity of properties
   that can be expressed).
 
 - Theorem Proving: Code written in Solidity often manages large amounts of money in a highly
-  adversarial environment. Correctness is of the utmost importance. Languages like ATS and Idris
-  have also show shown how advanced type systems can be used to support the production of code that is
-  both correct and maximally resource efficient.
+  adversarial environment. Correctness is of the utmost importance. Languages like
+  [ATS](https://ats-lang.sourceforge.net/) and [Bedrock 2](https://github.com/mit-plv/bedrock2) have
+  also show shown how the integration of theorem proving with low level systems orientated languages
+  can be used to support the production of code that is both correct and maximally resource efficient.
+  We are interested in investigating the degree to which the kind of semi-automated reasoning
+  available in theorem provers could be integrated directly into the language (likely via an Isabelle
+  style embedding of an appropriate logic via the module system).
 
 ## Conclusion
 
-Core Solidity represents a foundational re-imagining of the language,
-designed to equip developers with a more secure, expressive, and mathematically
-sound toolkit for the next generation of smart contracts. The path forward,
-however, will be designed by the community that uses it. We invite you to join
-the discussions and share your perspective. Your input is crucial in helping us
-prioritize this exciting roadmap.
+Core Solidity represents a foundational re-imagining of the language, designed to equip developers
+with a more secure, expressive, and mathematically sound toolkit for the next generation of smart
+contracts. We invite you to join the discussions and share your perspective. Your input is crucial
+in helping us prioritize development and shape the future of the language, and comments are very
+welcome in the [feedback thread](TODO: LINK TO THREAD) for this post on our forum.
