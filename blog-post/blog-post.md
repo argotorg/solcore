@@ -32,11 +32,6 @@ before release. Much of the core type theory is stable, but we want to add at le
 evaluation and modules before we will consider the type system finalized. Extensive work remains to
 build out the standard library and reach feature parity with Classic Solidity.
 
-In this post we will present our current progress and give you some idea of our vision for the
-future of the language. It is important to understand that the version presented here is not final,
-changes can and will be made before release. We are presenting our current progress now in order to
-receive feedback and to allow for course correction if necessary.
-
 ## A Note on Syntax
 
 Most of the work to date has been focused on the design and implementation of the type system, and
@@ -46,9 +41,6 @@ implementation as soon as possible, we moved ahead with a provisional syntax. Yo
 extensive changes before release. Our current intention is to eventually match the syntax of Classic
 Solidity as much as possible. For any new syntax, you should expect that the final version will feel
 closer to languages like TypeScript or Rust than it does right now.
-
-We made the decision to share before we have a finalized syntax because we are both excited to share
-our progress, and wish to gather feedback sooner rather than later.
 
 ## New Language Features
 
@@ -78,7 +70,7 @@ languages like Rust and C++.
 Algebraic Data Types provide a principled foundation for data modeling through the composition of
 sum and product types. Sum types represent exclusive alternatives: a value inhabits exactly one
 variant. Product types combine multiple values into structured tuples. The combination of these two
-primitives allows for the construction of precise types that make invalid states completely
+primitives allows for the construction of precise types that can make invalid states completely
 **unrepresentable**, allowing the type system to guarantee core program invariants entirely at
 compile time.
 
@@ -90,7 +82,7 @@ data Bool = True | False
 
 Types are sets of values. The left hand side of the above statement defines the name of a new type
 (`Bool`), and the right hand side defines the set of allowed values of the `Bool` type (`True` or
-`False`). We use `|` to introduce new alternatives in a sum type.
+`False`). The `|` lets us introduce new alternative value constructors.
 
 Alternatives can also hold values. This lets us implement the same kind of patterns as [User Defined
 Value Types](https://docs.soliditylang.org/en/latest/types.html#user-defined-value-types) would in
@@ -101,15 +93,15 @@ data wad = wad(uint256)
 ```
 
 The `wad` type has a single value constructor: `wad` (type names and value constructors live in
-separate namespaces and so can be duplicated) that holds a `uint256` as it's underlying
+separate namespaces and so can share names) that holds a `uint256` as it's underlying
 representation. Simple wrapper types like this will be erased by the compiler during the translation
 into yul, meaning that `wad` has the exact same runtime representation as a `uint256`.
 
 Now we can define a type safe fixed point multiplication routine. We will need to extract the
 underlying `uint256`, manipulate it, and then wrap it up again in a new `wad` constructor. To unwrap
 we will use pattern matching. Pattern matching is a control flow mechanism that lets you destructure
-and inspect data by shape. Instead of nested if-else chains, we can write declarative
-expressions that exhaustively consider all possible values in an algebraic type.
+and inspect data by shape. Instead of nested nested if-else chains, we can write declarative
+expressions that exhaustively consider all possible values of the matched type.
 
 For our simple `wad` examplle, we won't have any branches, but we can still use pattern matching to
 destructure our inputs and extract their underlying representation:
@@ -208,60 +200,93 @@ forall T . function identity(x : T) -> T {
 }
 ```
 
-We can also define generic types:
+We can also define generic types, like this this `Result` type that is parameterised by the type of
+the payload in the error case:
 
 ```solidity
-data Result(T)
-  = Ok
-  | Err(memory(string))
+data Result(T) = Ok | Err(T)
 ```
 
-While generic functions are interesting, most interesting operations are not defined
-for all types. Overloading allows the definition of code which can operate in distinct
-ways for different types. Type classes are the standard way of combining overloading and
-parametric polymorphism (generics) in a systematic manner. Type classes are similar to
-Rust traits: they provide signatures for the functions which will be implemented, for
-distinct types, in instance definitions. In this sense, instance declarations are similar
-to `impl` in Rust.
+Generics are powerful, but by themselves quite limited: most interesting operations are not defined
+for all types. Type classes (a.k.a Traits if you are a rust programmer) are the solution: they give
+us the tools we need to write functions that are polymorphic over a restricted subset of types.
 
-A type class definition declares the class name, its arguments and member functions type
-signatures. As example, let's consider the following definition of a class for the ABI
-encoding of types:
+A type class is simply an interface specification. Consider the following defition of a class of
+types that can be multiplied:
 
 ```solidity
-forall self . class self:ABIEncode {
-    function encodeInto(x:self, basePtr:word, offset:word, tail:word) -> word;
+forall T . class T:Mul {
+    function mul(lhs : T, rhs : T);
 }
 ```
 
-Function `encodeInto` encodes a value of type `self` into a memory region starting at
-`basePtr`. Argument `offset` denotes the position of the first empty byte of the head
-and `tail` which gives the position of the first empty byte of the tail. The
-implementation of encoding for a specific type is done in an instance declaration.
-As an example, the following instance definition implements the ABI encoding for
-`uint256` type, which is represented as an algebraic type that holds a `word` value.
+Instead of the concrete `wmul` function that we dfined above for our `wad` fixed point type, it
+would be more idiomatic to defined an instance (a.k.a `impl`) of the `Mul` type class for `wad`
+(giving us a uniform syntax for multiplication across all types, and allowing us to use our `wad`
+type in functions that are generic over any instance of the `wad` type class):
 
 ```solidity
-data uint256 = uint256(word);
-instance uint256:ABIEncode {
-    function encodeInto(x:uint256, basePtr:word, offset:word, tail:word) -> word {
-        let repx : word = Typedef.rep(x);
-        assembly { mstore(add(basePtr, offset), repx) }
-        return tail;
+instance wad:Mul {
+    function mul(lhs : wad, rhs : wad) {
+        return wmul(lhs, rhs);
     }
 }
 ```
-Type classes and instances can be used to avoid repetitive definitions.
-As an example, consider the [console](https://github.com/foundry-rs/forge-std/blob/master/src/console.sol) library
-present in the foundry framework. Looking the code, we can see
-that there are several one argument functions which only call the ABI
-encoding for the value being logged and then perform a static call to
-the console address. All these one argument functions definitions can
-be reduced to following single function, which uses the standard library
-machinery for ABI encoding of values.
+
+If we want to write a function that can accept any type that is an instance of `Mul` we need to add
+a constraint to the signature:
 
 ```solidity
-forall ty . ty : ABIAttribs, ty : ABIEncode => function log(val : ty) {
+forall T . T:Mul => function square(val : T) -> T {
+    return Mul.mul(val, val);
+}
+```
+
+Simple wrapper types like `wad` are very common, and one type class that can be particularly helpful
+when working with them is `Typedef`:
+
+```solidity
+forall T U . class T:Typedef(U) {
+    function abs(x:T) -> U;
+    function rep(x:U) -> T;
+}
+```
+
+The `abs` (abstraction) and `rep` (representation) functions let us move between wrapper types and
+their underlying types in a generic way and without the syntactic noise of having to introduce
+pattern matching everytime we want to unwrap a type. The instance for `wad` would look like this:
+
+```solidity
+instance wad:Typedef(uint256) {
+    function abs(u: uint256) -> wad {
+        return wad(u);
+    }
+
+    function rep(x: wad) -> uint256 {
+        match x {
+        | wad(u) => return u;
+        }
+    }
+}
+```
+
+Note that `U` parameter in the above `Typedef` definition is "weak": its value is uniquely
+determined by the value of the `T` parameter. If you are familiar with Haskell or Rust, this is
+effectively an associated type (although for any type system nerds reading, we implement it using a
+restricted form of functional dependencies). To put it more plainly, we can only implement a single
+instance of `Typedef` for `wad`: the compiler would not allow us to implement both
+`wad:Typedef(uint256)` and `wad:Typedef(uint128)`. This restriction makes type inference much more
+predictable and reliable by sidestepping many of the potential ambiguities inherent to full
+multi-parameter typeclasses.
+
+For a real world example of how generics and type class constraints can be used to eliminate
+boilerplate or repetitive code, compare the combinatorial explosion of overloads required for the
+[`console.log` implementation](https://github.com/foundry-rs/forge-std/blob/master/src/console.sol)
+in `forge-std` to the following generic Core Solidity function that covers the functionality of all
+the single argument overloads from the original library:
+
+```solidity
+forall T . T:ABIEncode => function log(val : T) {
     let CONSOLE_ADDRESS : word = 0x000000000000000000636F6e736F6c652e6c6f67;
     let payload = abi_encode(val);
 
@@ -282,22 +307,6 @@ forall ty . ty : ABIAttribs, ty : ABIEncode => function log(val : ty) {
     }
 }
 ```
-
-Another short possible implementation which relies on EVM `log1` instruction,
-instead of Foundry console address, would be:
-
-```
-forall t . t : Typedef(word) => function log1(v : t, topic : word) -> () {
-    let w : word = Typedef.rep(v);
-    assembly {
-        mstore(0,w)
-        log1(0,32,topic)
-    }
-}
-```
-
-This version uses standard library class `Typedef`, which provides functions for
-the conversion between `word` and types which are instance of this class.
 
 ### Higher-order and anonymous functions
 
