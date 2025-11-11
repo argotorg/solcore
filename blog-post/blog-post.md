@@ -291,9 +291,7 @@ domain.
 ### Higher-order and anonymous functions
 
 Functions possess first-class status within the type system, enabling their use
-as parameters, return values, and assignable entities. This facilitates the
-implementation of higher-order functions and functional composition patterns,
-enhancing language expressivity.
+as parameters, return values, and assignable entities.
 
 As an example, consider the following which implements a custom ABI decoding
 of a triple of booleans from a single `word` value:
