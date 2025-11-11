@@ -111,7 +111,7 @@ let WAD = 10 ** 18;
 
 funtion wmul(lhs : wad, rhs : wad) -> wad {
     match (lhs, rhs) {
-    | (wad(l), wad(r) => return wad((l * r) / WAD);
+    | (wad(l), wad(r)) => return wad((l * r) / WAD);
     }
 }
 ```
