@@ -1,4 +1,4 @@
-{-# LANGUAGE GHC2021, DataKinds, GADTs, StandaloneDeriving, ConstraintKinds, UndecidableInstances #-}
+{-# LANGUAGE GHC2021, DataKinds, GADTs, StandaloneDeriving, ConstraintKinds, UndecidableInstances, DeriveDataTypeable #-}
 module Solcore.Frontend.Syntax.StmtX where
 import GHC.Types
 import Data.Generics (Data, Typeable)
@@ -60,7 +60,7 @@ type ForallStmtX (p:: Type -> Constraint) x =
     , p(XIf x)
     , p(XXStmt x)
     , p(XVar   x)
-    , p(XCon   x)   
+    , p(XCon   x)
     , p(XFA    x)
     , p(XLit   x)
     , p(XCall  x)
@@ -70,12 +70,13 @@ type ForallStmtX (p:: Type -> Constraint) x =
     , p(XTyped x)
     , p(XUntyped x)
   )
--- deriving instance (Eq, Ord, Show, Data, Typeable)
 
 deriving instance ForallStmtX Eq x => Eq (StmtX x)
 deriving instance ForallStmtX Ord x => Ord (StmtX x)
 deriving instance ForallStmtX Show x => Show (StmtX x)
-         
+deriving instance (ForallStmtX Data x, Typeable x, Data x) => Data (StmtX x)
+deriving instance ForallStmtX Typeable x => Typeable (StmtX x)
+
 type family XAss x
 type family XLet x
 type family XStmtExp x
@@ -94,13 +95,11 @@ type instance XAsm ComNm = NoExtField
 type instance XIf ComNm = NoExtField
 type instance XXStmt ComNm = NoExtField
 
-
 type BodyX x = [StmtX x]
 
 data ParamX x
   = TypedX (XTyped x) Name Ty
   | UntypedX (XUntyped x)  Name
---  deriving (Eq, Ord, Show, Data, Typeable)
 
 type family XTyped x
 type family XUntyped x
@@ -114,6 +113,7 @@ type ForallParamX (p:: Type -> Constraint) x =
 deriving instance ForallStmtX Eq x => Eq (ParamX x)
 deriving instance ForallStmtX Ord x => Ord (ParamX x)
 deriving instance ForallStmtX Show x => Show (ParamX x)
+deriving instance (ForallStmtX Data x, Typeable x, Data x) => Data (ParamX x)
 
 paramName :: ParamX x -> Name
 paramName (TypedX _ n _) = n
@@ -144,6 +144,7 @@ type family XCond x
 deriving instance ForallStmtX Eq x => Eq (ExpX x)
 deriving instance ForallStmtX Ord x => Ord (ExpX x)
 deriving instance ForallStmtX Show x => Show (ExpX x)
+deriving instance (ForallStmtX Data x, Typeable x, Data x) => Data (ExpX  x)
 
 -- pattern matching equations
 
