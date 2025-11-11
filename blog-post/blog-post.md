@@ -69,9 +69,8 @@ languages like Rust and C++.
 
 Algebraic Data Types provide a principled foundation for data modeling through the composition of
 sum and product types. Sum types represent exclusive alternatives: a value inhabits exactly one
-variant. Product types combine multiple values into structured tuples. The combination of these two
-primitives allows for the construction of precise types that can make invalid states completely
-unrepresentable, allowing the type system to guarantee core program invariants entirely at
+variant. Product types combine multiple values into structured tuples. These two primitives can be combined to define precise types that make invalid states completely
+unrepresentable, allowing the type system to enforce core program invariants entirely at
 compile time.
 
 Lets start with a very simple type:
