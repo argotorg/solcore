@@ -698,10 +698,10 @@ the features that we currently consider interesting for future post-core iterati
 
 - Linear types: Linearity is a deeply powerful primitive. We consider its resource semantics to be
   particularly well suited to enforce the kind of accounting invariants that are often of interest
-  for systems written in Solidity. Linearity is powerful enough to be able construct object
-  capabilities, effect systems, and even session types without additional primitives. This would
-  significantly expand the scope and complexity of invariants that can be guaranteed by the type
-  system. Linearity can be used to help guarantee the safe usage of memory, allowing users to
+  for systems written in Solidity. Linearity alone is powerful enough to be able construct advanced
+  features like object capabilities, effect systems, and session types,
+  significantly expanding the scope and complexity of invariants that can be guaranteed by the type system. 
+  Linearity can be used to help guarantee the safe usage of memory, allowing users to
   optimize without fear, and giving the compiler itself the context it needs to be able to safely
   eliminate unnecessary allocations and make more optimal usage of memory.
 
