@@ -655,7 +655,7 @@ manageable and that it will be possible to carry them out in an incremental mann
 This section outlines our current thinking on achieving production readiness and our strategy for
 making such deep changes to the language in a safe way. Please note that this is a tentative plan,
 and may be subject to extensive change. We are not yet in a position where we feel confident about
-committing to concrete timelines. We will provide more detailed roadmaps and concrete timelines as
+committing to concrete timelines. We will provide more details as
 we get closer to a production implementation.
 
 We have a prototype implemented in a [separate repository](https://github.com/argotorg/solcore). We
