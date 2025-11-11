@@ -1,0 +1,16 @@
+
+function revert(reason) -> word {
+  let res: word;
+  assembly {
+    mstore(0x0,reason)
+    revert(0,32)
+  }
+}
+
+
+contract Revert {
+  function main() {
+    revert("For reasons which require a very long description.");
+    return 7;
+  }
+}
