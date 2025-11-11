@@ -99,7 +99,7 @@ into yul, meaning that `wad` has the exact same runtime representation as a `uin
 
 Now we can define a type safe fixed point multiplication routine. We will need to extract the
 underlying `uint256`, manipulate it, and then wrap it up again in a new `wad` constructor. To unwrap
-we will use pattern matching. Pattern matching is a control flow mechanism that lets you destructure
+we will use pattern matching. Pattern matching is a control flow mechanism that lets us destructure
 and inspect data by shape. Instead of nested nested if-else chains, we can write declarative
 expressions that exhaustively consider all possible values of the matched type.
 
