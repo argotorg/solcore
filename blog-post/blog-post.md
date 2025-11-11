@@ -295,8 +295,8 @@ as parameters, return values, and assignable entities. This facilitates the
 implementation of higher-order functions and functional composition patterns,
 enhancing language expressivity.
 
-As an example, consider the following which implements a custom ABI encoding
-of a triple of booleans into a single `word` value:
+As an example, consider the following which implements a custom ABI decoding
+of a triple of booleans from a single `word` value:
 
 ```solidity
 forall T . function unpack_bools(bools : word, fn : (bool, bool, bool) -> T) -> T {
