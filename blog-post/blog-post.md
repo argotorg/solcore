@@ -69,7 +69,8 @@ languages like Rust and C++.
 
 Algebraic Data Types provide a principled foundation for data modeling through the composition of
 sum and product types. Sum types represent exclusive alternatives: a value inhabits exactly one
-variant. Product types combine multiple values into structured tuples. These two primitives can be combined to define precise types that make invalid states completely
+variant. Product types combine multiple values into structured tuples. These two primitives can
+be combined to define precise types that make invalid states completely
 unrepresentable, allowing the type system to enforce core program invariants entirely at
 compile time.
 
@@ -94,12 +95,12 @@ data wad = wad(uint256)
 The `wad` type has a single value constructor: `wad` (type names and value constructors live in
 separate namespaces and so can share names) that holds a `uint256` as it's underlying
 representation. Simple wrapper types like this will be erased by the compiler during the translation
-into yul, meaning that `wad` has the exact same runtime representation as a `uint256`.
+into Yul, meaning that `wad` has the exact same runtime representation as a `uint256`.
 
 Now we can define a type safe fixed point multiplication routine. We will need to extract the
 underlying `uint256`, manipulate it, and then wrap it up again in a new `wad` constructor. To unwrap
 we will use pattern matching. Pattern matching is a control flow mechanism that lets us destructure
-and inspect data by shape. Instead of nested nested if-else chains, we can write declarative
+and inspect data by shape. Instead of nested if-else chains, we can write declarative
 expressions that exhaustively consider all possible values of the matched type.
 
 For our simple `wad` example, we won't have any branches, but we can still use pattern matching to
@@ -128,7 +129,7 @@ data AuctionState =
 `AuctionState` has four alternative value constructors: `NotStarted` specifies that the auction has
 not yet started and stores its reserve price, `Active` denotes that the auction has begun and it
 stores the current highest bid and the address that made that bid, `Ended` represents an auction
-that has finished successfuly and holds the highest bid and the address of the winner, and
+that has finished successfully and holds the highest bid and the address of the winner, and
 `Cancelled` represents a cancelled auction, holding the highest bid and winning address at the time
 of cancellation.
 
@@ -185,7 +186,7 @@ types that can be multiplied:
 
 ```solidity
 forall T . class T:Mul {
-    function mul(lhs : T, rhs : T);
+    function mul(lhs : T, rhs : T) -> T;
 }
 ```
 
@@ -196,7 +197,7 @@ type in functions that are generic over any instance of the `wad` type class):
 
 ```solidity
 instance wad:Mul {
-    function mul(lhs : wad, rhs : wad) {
+    function mul(lhs : wad, rhs : wad) -> wad {
         return wmul(lhs, rhs);
     }
 }
@@ -253,7 +254,7 @@ boilerplate or repetitive code, compare the combinatorial explosion of overloads
 [`console.log` implementation](https://github.com/foundry-rs/forge-std/blob/master/src/console.sol)
 in `forge-std` to the following generic Core Solidity function that covers the functionality of all
 the single argument overloads from the original library. The `word` type used in this implementation
-is a low level type that represents a yul variable, and is the only type that can be passed into or
+is a low level type that represents a Yul variable, and is the only type that can be passed into or
 out of assembly blocks.
 
 ```solidity
@@ -404,9 +405,10 @@ to omit this coercion:
 ```solidity
 uint256[3] memory a = [1, 2, 3];
 ```
+
 ### Compile Time Evaluation
 
-We do not yet have a prototype implementation of compile time implementation, so don't have concrete
+We do not yet have a prototype implementation of compile time evaluation, so don't have concrete
 examples to share here yet. We are however very convinced that this will be a particularly valuable
 extension to the language and consider it a critical feature that needs to be in place before
 release. A strong goal is to minimize the differences between the runtime and compile time variants
@@ -514,7 +516,7 @@ instance uint256:Typedef(word) {
 
 #### `memory` and `bytes`
 
-Similarly we can build types that represent pointers into the various evm data regions by again wrapping a
+Similarly we can build types that represent pointers into the various EVM data regions by again wrapping a
 `word`. Notice that in the following snippet the type parameter on the memory pointer is *phantom*
 (i.e. it appears only in the type, but is not mentioned in any of the value constructors). This is a
 common idiom in ML family languages like Haskell or Rust that lets us enforce compile-time
@@ -537,7 +539,7 @@ data bytes;
 ```
 
 Notice that in this construction of pointers and data locations, the data location is attached to
-the type (instead of the variable binding as it is in Classic), allowing for the defintion of e.g.
+the type (instead of the variable binding as it is in Classic), allowing for the definition of e.g.
 memory structures containing references to storage.
 
 #### The `Proxy` type
@@ -632,7 +634,7 @@ We expect that it will be possible to share at least free functions and interfac
 between language versions.
 
 While there will be breakage of both syntax and semantics, our intention is to minimize it to cases
-where it is either strictly nescessary or brings significant benefits that justify the transition
+where it is either strictly necessary or brings significant benefits that justify the transition
 cost. We expect that simple code that does not use inheritance will look and feel very similar in
 both language versions, with only minor syntactic differences (largely just the switch from prefix
 to postfix types). We are also considering reworking or replacing some features that have proven to
@@ -697,7 +699,7 @@ the features that we currently consider interesting for future post-core iterati
   particularly well suited to enforce the kind of accounting invariants that are often of interest
   for systems written in Solidity. Linearity alone is powerful enough to be able construct advanced
   features like object capabilities, effect systems, and session types,
-  significantly expanding the scope and complexity of invariants that can be guaranteed by the type system. 
+  significantly expanding the scope and complexity of invariants that can be guaranteed by the type system.
   Linearity can be used to help guarantee the safe usage of memory, allowing users to
   optimize without fear, and giving the compiler itself the context it needs to be able to safely
   eliminate unnecessary allocations and make more optimal usage of memory.
