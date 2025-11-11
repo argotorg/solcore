@@ -82,7 +82,7 @@ data Bool = True | False
 
 Types are sets of values. The left hand side of the above statement defines the name of a new type
 (`Bool`), and the right hand side defines the set of allowed values of the `Bool` type (`True` or
-`False`). The `|` lets us introduce new alternative value constructors.
+`False`). The `|` operator lets us introduce new alternative value constructors.
 
 Alternatives can also hold values. This lets us implement the same kind of patterns as [User Defined
 Value Types](https://docs.soliditylang.org/en/latest/types.html#user-defined-value-types) would in
