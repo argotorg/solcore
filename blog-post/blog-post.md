@@ -366,7 +366,7 @@ Assigning an expression to a variable in Classic can often result in redundant a
 types are already present in the expression being assigned:
 
 ```solidity
-(uint256 a, uint256 b) = abi.decode(input, (uint256, uint256))
+(bytes memory a, bytes memory b) = abi.decode(input, (bytes, bytes))
 ```
 
 The same definition is much cleaner in Core:
