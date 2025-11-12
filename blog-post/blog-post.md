@@ -516,7 +516,7 @@ instance uint256:Typedef(word) {
 Similarly we can build types that represent pointers into the various EVM data regions by again wrapping a
 `word`. Notice that in the following snippet the type parameter on the memory pointer is *phantom*
 (i.e. it appears only in the type, but is not mentioned in any of the value constructors). This is a
-common idiom in ML family languages like Haskell or Rust that lets us enforce compile-time
+common idiom in [ML family languages](https://en.wikipedia.org/wiki/Category:ML_programming_language_family) like Haskell or Rust that lets us enforce compile-time
 constraints without runtime overhead.
 
 ```solidity
