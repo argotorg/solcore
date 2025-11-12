@@ -36,8 +36,7 @@ Most of the work to date has been focused on the design and implementation of th
 associated code generation pipeline down to Yul. In order to avoid getting bogged down in
 bikeshedding around syntax, and with the desire to validate our core ideas with a working
 implementation as soon as possible, we moved ahead with a provisional syntax. You can expect
-extensive changes before release. Our current intention is to eventually match the syntax of Classic
-Solidity as much as possible. For any new syntax, you should expect that the final version will feel
+extensive changes before release. Our current intention is to eventually closely match the syntax of Classic Solidity. For any new syntax, you should expect that the final version will feel
 closer to languages like TypeScript or Rust than it does right now.
 
 ## New Language Features
