@@ -32,7 +32,7 @@ remains to build out the standard library and reach feature parity with Classic 
 
 ## A Note on Syntax
 
-Most of the work to date has been focused on the design and implementation of the type system, and
+Most of the work to date has been focused on the design and implementation of the type system, and the
 associated code generation pipeline down to Yul. In order to avoid getting bogged down in
 bikeshedding around syntax, and with the desire to validate our core ideas with a working
 implementation as soon as possible, we moved ahead with a provisional syntax. You can expect
