@@ -352,7 +352,7 @@ Instantiating `LendingPosition` in Classic Solidity is syntactically clunky, req
 to both annotate the type and invoke the `LendingPosition` constructor:
 
 ```solidity
-LendingPosition emptyPosition = LendingPosition(0, 0, block.timestamp);
+LendingPosition memory emptyPosition = LendingPosition(0, 0, block.timestamp);
 ```
 
 Since we are using the `LendingPosition` constructor, the compiler can infer
