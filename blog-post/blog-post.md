@@ -101,8 +101,6 @@ we will use pattern matching. Pattern matching is a control flow mechanism that 
 and inspect data by shape. Instead of nested if-else chains, we can write declarative
 expressions that exhaustively consider all possible values of the matched type.
 
-For our simple `wad` example, we won't have any branches, but we can still use pattern matching to
-destructure our inputs and extract their underlying representation:
 
 ```solidity
 let WAD = 10 ** 18;
