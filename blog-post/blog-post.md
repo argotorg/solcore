@@ -165,6 +165,8 @@ forall T . function identity(x : T) -> T {
 }
 ```
 
+Here, the `forall` introduces a new type variable `T` that is scoped to the function definition.
+
 We can also define generic types, like this this `Result` type that is parameterised by the type of
 the payload in the error case:
 
