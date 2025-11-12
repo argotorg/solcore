@@ -331,8 +331,8 @@ trait in Rust). This approach is runtime gas efficient.```
 
 ### Type inference
 
-Core Solidity supports the inference of types in almost any position. Annotations are usually optional and
-need be added only where considered desirable for readability or understanding. Inference is decidable,
+Core Solidity supports the inference of types in almost any position. Annotations are usually only
+needed when considered desirable for readability or understanding. Inference is decidable,
 and the situations in which ambiguities requiring annotation can occur are very limited. This lets
 us solve a lot of the syntactic clutter required when writing Solidity today. As an example,
 consider the following Classic Solidity definition:
