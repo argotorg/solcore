@@ -15,10 +15,10 @@ feel are required to keep up with the ever increasing scale of systems being dev
 
 Core Solidity is our solution. It is a rebuild of the Solidity type system and compiler front/middle end that will:
 
-- introduce powerful new features (generics, traits, algebraic datatypes, pattern matching, compile-time evaluation)
-- provide a strong foundation for compiler correctness as we continue to extend the language in the future
-- empower library authors and support a community-driven process for language evolution
-- expand the capabilities of verification and analysis tooling
+- introduce powerful new features,
+- provide a strong foundation for compiler correctness as we continue to extend the language in the future,
+- empower library authors and support a community-driven process for language evolution,
+- expand the capabilities of verification and analysis tooling.
 
 In addition to growing and expanding the language, we will also be removing or reworking some
 existing features. We are already certain that we will be removing inheritance entirely. Additional
