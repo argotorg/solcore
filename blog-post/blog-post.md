@@ -328,7 +328,6 @@ Our implementation here is similar to systems languages like Rust and C++: the c
 unique type for each anonymous function that contains the capture, and these unique types are
 made callable by making them instances of the `invokable` type class (similar to the [`Fn`](https://doc.rust-lang.org/std/ops/trait.Fn.html)
 trait in Rust). This approach is runtime gas efficient.```
-higher level languages like Haskell or Python.
 
 ### Type inference
 
