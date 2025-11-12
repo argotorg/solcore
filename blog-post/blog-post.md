@@ -339,27 +339,6 @@ and the situations in which ambiguities requiring annotation can occur are very 
 us solve a lot of the syntactic clutter required when writing Solidity today. As an example,
 consider the following Classic Solidity definition:
 
-```solidity
-struct LendingPosition {
-    uint256 collateralDeposited;
-    uint256 debtIssued;
-    uint256 lastUpdated;
-}
-```
-
-Instantiating `LendingPosition` in Classic Solidity is syntactically clunky, requiring us
-to both annotate the type and invoke the `LendingPosition` constructor:
-
-```solidity
-LendingPosition memory emptyPosition = LendingPosition(0, 0, block.timestamp);
-```
-
-Since we are using the `LendingPosition` constructor, the compiler can infer
-the type of `emptyPosition`. Core Solidity allows us to omit the redundant annotation:
-
-```solidity
-let emptyPosition = LendingPosition(0, 0, block.timestamp);
-```
 
 Assigning an expression to a variable in Classic can often result in redundant annotation if those
 types are already present in the expression being assigned:
