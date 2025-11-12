@@ -513,7 +513,7 @@ instance uint256:Typedef(word) {
 
 #### `memory` and `bytes`
 
-Similarly we can build types that represent pointers into the various EVM data regions by again wrapping a
+We can build types that represent pointers into the various EVM data regions by wrapping a
 `word`. Notice that in the following snippet the type parameter on the memory pointer is *phantom*
 (i.e. it appears only in the type, but is not mentioned in any of the value constructors). This is a
 common idiom in [ML family languages](https://en.wikipedia.org/wiki/Category:ML_programming_language_family) like Haskell or Rust that lets us enforce compile-time
