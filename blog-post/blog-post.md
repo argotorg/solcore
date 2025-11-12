@@ -340,7 +340,7 @@ us solve a lot of the syntactic clutter required when writing Solidity today. As
 consider the following Classic Solidity definition:
 
 
-Assigning an expression to a variable in Classic can often result in redundant annotation if those
+For example, assigning an expression to a variable in Classic Solidity can often result in redundant annotation if those
 types are already present in the expression being assigned:
 
 ```solidity
