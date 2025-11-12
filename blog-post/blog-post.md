@@ -326,7 +326,7 @@ forall T U . function count_calls(fn : (T) -> U) -> (memory(word), (T) -> U) {
 
 Our implementation here is similar to systems languages like Rust and C++: the compiler produces a
 unique type for each anonymous function that contains the capture, and these unique types are
-made callable by making them instances of the built in `invokable` type class (similar to the `Fn`
+made callable by making them instances of the `invokable` type class (similar to the [`Fn`](https://doc.rust-lang.org/std/ops/trait.Fn.html)
 trait in Rust). This approach avoids the kind of dynamic heap based environment management used in
 higher level languages like Haskell or Python.
 
