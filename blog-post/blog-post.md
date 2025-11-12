@@ -492,8 +492,7 @@ potentials these features enable.
 #### `uint256`
 
 To begin we will construct the type `uint256`. In Classic Solidity the definition of this type and
-it's associated operations are all built in language constructs. In Core, it is defined entirely in
-language as a simple wrapper around a `word`. We also define a `Typedef` instance for it:
+it's associated operations are all built-in language constructs. In SAIL, it is defined entirely in-language as a simple wrapper around a `word`. We also define a `Typedef` instance for it:
 
 ```solidity
 data uint256 = uint256(word);
