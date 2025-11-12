@@ -23,7 +23,7 @@ Core Solidity is our solution. It is a rebuild of the Solidity type system and c
 In addition to growing and expanding the language, we will also be removing or reworking some
 existing features. We are already certain that we will be removing inheritance entirely. Additional
 changes are less certain, but we are considering potentially replacing or reworking features
-like try/catch, libraries, function pointers, type conversion, and reference semantics.
+like try/catch, libraries, function pointers, type conversion, and data locations.
 
 We currently have a working prototype for Core Solidity. Most of the examples in this post typecheck
 and can produce executable code (although some make use of speculative syntax or unimplemented
