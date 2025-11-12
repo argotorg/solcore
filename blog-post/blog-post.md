@@ -317,7 +317,7 @@ Functions defined in this way can capture values available in the defining scope
 consider this testing utility that counts the number of times an arbitrary function is called:
 
 ```solidity
-forall function count_calls(fn : (T) -> U) -> (memory(word), (T) -> U) {
+forall T U . function count_calls(fn : (T) -> U) -> (memory(word), (T) -> U) {
     let counter : memory(word) = allocate(32);
     return (counter, lam (a : T) -> {
         counter += 1;
@@ -610,10 +610,10 @@ and free memory pointer updates (we have omitted the implementation of the low l
 
 ```solidity
 // top level encoding function.
-// abi encodes an instance of `ty` and returns a pointer to the result
+// abi encodes an instance of `T` and returns a pointer to the result
 forall T . T:ABIEncode => function abi_encode(val : T) -> memory(bytes) {
     let free = get_free_memory();
-    let headSize = ABIAttribs.headSize(Proxy : Proxy(ty));
+    let headSize = ABIAttribs.headSize(Proxy : Proxy(T));
     let tail = ABIEncode.encodeInto(val, free, 0, Add.add(free, headSize));
     set_free_memory(tail);
     return memory(free);
