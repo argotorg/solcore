@@ -26,8 +26,7 @@ changes are less certain, but we are considering potentially replacing or rework
 like try/catch, libraries, function pointers, type conversion, and data locations.
 
 We currently have a working prototype for Core Solidity. Most of the examples in this post typecheck
-and can produce executable code (although some make use of speculative syntax or unimplemented
-language constructs). Much of the core type theory is stable, but we want to add at least compile
+and can produce executable code. Some examples make use of yet to be implemented syntax and will compile in the future. Much of the core type theory is stable, but we want to add at least compile
 time evaluation and modules before we will consider the type system finalized. Extensive work
 remains to build out the standard library and reach feature parity with Classic Solidity.
 
