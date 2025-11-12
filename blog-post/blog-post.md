@@ -95,7 +95,7 @@ separate namespaces and so can share names) that holds a `uint256` as it's under
 representation. Simple wrapper types like this will be erased by the compiler during the translation
 into Yul, meaning that `wad` has the exact same runtime representation as a `uint256`.
 
-Now we can define a type safe fixed point multiplication routine. We will need to extract the
+Now we can define a type-safe fixed-point multiplication routine. We will need to extract the
 underlying `uint256`, manipulate it, and then wrap it up again in a new `wad` constructor. To unwrap
 we will use pattern matching. Pattern matching is a control flow mechanism that lets us destructure
 and inspect data by shape. Instead of nested if-else chains, we can write declarative
