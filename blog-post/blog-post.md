@@ -153,7 +153,7 @@ function processAuction(state: State) -> State {
 ### Generics and type classes
 
 Core Solidity introduces two new mechanisms for code sharing and polymorphism: generics and
-type classes.
+type classes (sometimes also referred to as traits).
 
 Generics implement parametric polymorphism: they enable us to write functions and data structures
 that behave in a uniform way for all types. As an example, we can define a polymorphic `identity`
