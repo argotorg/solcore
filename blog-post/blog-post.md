@@ -175,7 +175,7 @@ data Result(T) = Ok | Err(T)
 ```
 
 Generics are powerful, but by themselves quite limited. Most interesting operations are not defined
-for all types. Type classes (a.k.a Traits) are the solution: they let us define an overloaded type
+for all types. Type classes are the solution: they let us define an overloaded type
 specific implementation for the same function name, and when combined with class constraints let us
 define generic functions that are polymorphic over a restricted subset of types.
 
