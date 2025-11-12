@@ -25,6 +25,8 @@ existing features. We are already certain that we will be removing inheritance e
 changes are less certain, but we are considering potentially replacing or reworking features
 like try/catch, libraries, function pointers, type conversion, and data locations.
 
+That being said, Core Solidity in comparison to Classic Solidity is not a new language, but for the most part an extension. It will retain a familiar look and feel, and most of the existing Classic Solidity concepts will carry over.
+
 We currently have a working prototype for Core Solidity. Most of the examples in this post typecheck
 and can produce executable code. Some examples make use of yet to be implemented syntax and will compile in the future. Much of the core type theory is stable, but we want to add at least compile
 time evaluation and modules before we will consider the type system finalized. Extensive work
