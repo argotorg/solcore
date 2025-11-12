@@ -322,7 +322,7 @@ forall function count_calls(fn : (T) -> U) -> (memory(word), (T) -> U) {
     return (counter, lam (a : T) -> {
         counter += 1;
         return fn(a);
-    };
+    });
 }
 ```
 
