@@ -87,7 +87,7 @@ The left-hand side of the above statement defines the name of a new type
 
 We can also use ADTs to implement the same kind of patterns as [User Defined
 Value Types](https://docs.soliditylang.org/en/latest/types.html#user-defined-value-types) in
-Classic Solidity. For example, an 18 decimal fixed point (a wad) can be represented as
+Classic Solidity. For example, an 18 decimal fixed point (a [wad](https://dappsys.readthedocs.io/en/latest/ds_math.html)) can be represented as
 
 ```solidity
 data wad = wad(uint256)
