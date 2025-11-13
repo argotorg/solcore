@@ -472,6 +472,8 @@ their existing knowledge without having to concern themselves with these kind of
 details. At the same time, we hope that advanced users and library authors will be excited by the new
 potentials these features enable.
 
+For presentation purposes we restrict ourselves to the fragment required to encode `uint256`.
+
 #### `uint256`
 
 To begin we will construct the type `uint256`. In Classic Solidity the definition of this type and
