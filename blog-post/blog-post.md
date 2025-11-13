@@ -410,18 +410,18 @@ be very interested to hear them.
 In addition to expanding the surface language, the transition to Core Solidity will also introduce a
 new user accessible mid level IR: SAIL (Solidity Algebraic Intermediate Language). This is the
 "Core" in Core Solidity. It's the most minimal language that lets us
-express the full range of high-level language constructs found in Classic Solidity. It can usefully
-be thought of as Yul with generics and type classes. It consists of the following primitive constructs:
+express the full range of high-level language constructs found in Classic Solidity. It consists of the following primitive constructs:
 
 - Functions
 - Contracts
 - Assembly (Yul) blocks
-- Simple variable introduction and assignment
+- SAIL variable introduction and assignment
 - A short circuiting if-then-else expression
 - Algebraic datatypes & pattern matching
-- Typeclasses
+- Type classes
 - Generics
 
+A SAIL variable is conceptually the same as a [Yul variable](https://docs.soliditylang.org/en/latest/yul.html#variable-declarations). The compiler will associate an EVM stack slot to it.
 It has a single builtin type (`word`) that has the same range of values as a Classic Solidity
 `bytes32` or `uint256`, and can semantically can be viewed as "an item on stack" or "a yul
 variable". Contracts in SAIL are very low level (essentially just a runtime entrypoint and initcode
