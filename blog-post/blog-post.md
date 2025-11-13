@@ -72,21 +72,21 @@ Algebraic data types (ADTs) provide a principled foundation for data modeling th
 sum and product types. Sum types are an extension of enums from Classic Solidity. They represent exclusive alternatives, i.e. a value inhabits exactly one
 variant. Product types combine multiple values into structured tuples. These two primitives can
 be combined to define precise types that make invalid states completely
-unrepresentable, allowing the type system to enforce core program invariants entirely at
+unrepresentable, allowing the type system to enforce invariants entirely at
 compile time.
 
-Lets start with a very simple type:
+Let's start with a very simple type:
 
 ```solidity
 data Bool = True | False
 ```
 
-Types are sets of values. The left hand side of the above statement defines the name of a new type
-(`Bool`), and the right hand side defines the set of allowed values of the `Bool` type (`True` or
-`False`). The `|` operator lets us introduce new alternative value constructors.
+The left-hand side of the above statement defines the name of a new type
+(`Bool`), and the right-hand side defines the set of values that comprise the `Bool` type (`True` or
+`False`).
 
-Alternatives can also hold values. This lets us implement the same kind of patterns as [User Defined
-Value Types](https://docs.soliditylang.org/en/latest/types.html#user-defined-value-types) would in
+We can also use ADTs to implement the same kind of patterns as [User Defined
+Value Types](https://docs.soliditylang.org/en/latest/types.html#user-defined-value-types) in
 Classic Solidity. We can consider a simple 18 decimal fixed point (a `wad`):
 
 ```solidity
@@ -178,7 +178,7 @@ data Result(T) = Ok | Err(T)
 
 Generics are powerful, but by themselves quite limited. Most interesting operations are not defined
 for all types. Type classes are the solution: they let us define an overloaded type
-specific implementation for the same function name, and when combined with class constraints let us
+specific implementation for the same function signature, and when combined with class constraints let us
 define generic functions that are polymorphic over a restricted subset of types.
 
 A type class is simply an interface specification. Consider the following definition of a class of
@@ -281,7 +281,7 @@ forall T . T:ABIEncode => function log(val : T) {
 ```
 
 Similarly to Rust and Lean, all invocations of type classes and generic functions are fully
-monomorphized at compile time, meaning polymorphic functions do not incur a runtime overhead when
+[monomorphized](https://en.wikipedia.org/wiki/Monomorphization) at compile time, meaning polymorphic functions do not incur a runtime overhead when
 compared to fully concrete functions. While this does mean that the compiled EVM code will
 potentially contain multiple specialized versions of the same generic function, this does not entail
 a binary size overhead compared to Classic Solidity which would anyway require multiple function
