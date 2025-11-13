@@ -217,8 +217,8 @@ when working with them is `Typedef`:
 
 ```solidity
 forall T U . class T:Typedef(U) {
-    function abs(x:T) -> U;
-    function rep(x:U) -> T;
+    function abs(x:U) -> T;
+    function rep(x:T) -> U;
 }
 ```
 
