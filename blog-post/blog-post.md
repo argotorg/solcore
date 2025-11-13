@@ -662,7 +662,7 @@ Once we are confident that the prototype is stable, work will split into two par
 Once the production implementation is relatively stable. There will be a period of time in which
 Core Solidity is available as an experimental feature, but not yet marked as production ready. We
 will use this period to gain real world feedback from our users, continue fuzzing, and put the
-standard library out for external review. When we are confident that the new pipeline is free of
+standard library out for external review. When we are confident that the new frontend is free of
 major faults, we will release a breaking version of solc with Core as the default language version.
 
 ## Beyond 1.0
