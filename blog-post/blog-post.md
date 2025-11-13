@@ -62,7 +62,7 @@ safety properties.
 
 We will continue to support the kind of low level access to the EVM that is often required by
 production implementations: assembly will remain a core primitive, and we will extend assembly blocks with the ability to directly call functions defined in the high level language. Users will be
-able to disable the languages built in abstractions (e.g. contract dispatch generation, ABI
+able to disable the built in abstractions (e.g. contract dispatch generation, ABI
 decoding, default storage layout generation), following the "pay for what you use" philosophy of
 languages like Rust and C++.
 
