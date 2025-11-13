@@ -192,8 +192,8 @@ forall T . class T:Mul {
 
 Instead of the concrete `wmul` function that we defined above for our `wad` fixed point type, it
 is more idiomatic to define an instance (known in Rust as `impl`) of the `Mul` type class for `wad`.
-(giving us a uniform syntax for multiplication across all types, and allowing us to use our `wad`
-type in functions that are generic over any instance of the `wad` type class):
+This gives us a uniform syntax for multiplication across all types, and allows us to use our `wad`
+type in functions that are generic over any instance of the `Mul` type class:
 
 ```solidity
 instance wad:Mul {
@@ -240,7 +240,7 @@ instance wad:Typedef(uint256) {
 }
 ```
 
-Note that `U` parameter in the above `Typedef` definition is "weak": its value is uniquely
+Note that parameters that appear after the class name like `U` in the above `Typedef` definition are "weak": their value is uniquely
 determined by the value of the `T` parameter. If you are familiar with Haskell or Rust, this is
 effectively an associated type (although for any type system nerds reading, we implement it using a
 restricted form of functional dependencies). To put it more plainly, we can only implement a single
@@ -297,11 +297,21 @@ As an example, consider the following which implements a custom ABI decoding
 of a triple of booleans from a single `word` value:
 
 ```solidity
-forall T . function unpack_bools(bools : word, fn : (bool, bool, bool) -> T) -> T {
-    let b0 : bool = toBool(and(bools, 0x1));
-    let b1 : bool = toBool(and(shr(1, bools), 0x1));
-    let b2 : bool = toBool(and(shr(2, bools), 0x1));
-    return fn(b0, b1, b2);
+forall T . function unpack_bools(fn : (bool, bool, bool) -> T) -> ((word) -> T) {
+    return lam (bools : word) -> {
+        let wordToBool = lam (w : word) { return w > 0; };
+        
+        // extract the right-most bit from `bools`
+        let b0 = wordToBool(and(bools, 0x1));
+        
+        // shift `bools` by one and extract the right-most bit
+        let b1 = wordToBool(and(shr(1, bools), 0x1));
+        
+        // shift `bools` by two and extract the right-most bit
+        let b2 = wordToBool(and(shr(2, bools), 0x1));
+        
+        return fn(b0, b1, b2);
+    };
 }
 ```
 
