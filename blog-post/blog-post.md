@@ -87,15 +87,15 @@ The left-hand side of the above statement defines the name of a new type
 
 We can also use ADTs to implement the same kind of patterns as [User Defined
 Value Types](https://docs.soliditylang.org/en/latest/types.html#user-defined-value-types) in
-Classic Solidity. We can consider a simple 18 decimal fixed point (a `wad`):
+Classic Solidity. For example, an 18 decimal fixed point (a `wad`) can be represented as
 
 ```solidity
 data wad = wad(uint256)
 ```
 
-The `wad` type has a single value constructor: `wad` (type names and value constructors live in
-separate namespaces and so can share names) that holds a `uint256` as it's underlying
-representation. Simple wrapper types like this will be erased by the compiler during the translation
+The `wad` type (left-hand side) has a single value constructor `wad` (right-hand side) that holds a `uint256` as it's underlying
+representation. Type names and value constructors live in
+separate namespaces and so can share names. Simple wrapper types like this will be erased by the compiler during the translation
 into Yul, meaning that `wad` has the exact same runtime representation as a `uint256`.
 
 Now we can define a type-safe fixed-point multiplication routine. We will need to extract the
@@ -134,7 +134,7 @@ of cancellation.
 Now we can define a `processAuction` function that transitions the state based on the current state
 and `msg.value`. The `match` statement lets us perform an exhaustive case analysis over each
 possible alternative state. The `_` case at the end of the match is a default that handles any
-remaining states that have not yet been explicitly matched. Exhaustiveness can be enforced by the
+remaining states that have not yet been explicitly matched. Exhaustiveness is enforced by the
 compiler, ensuring that every possible state is handled exactly once.
 
 ```solidity
