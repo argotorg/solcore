@@ -32,6 +32,8 @@ and can produce executable code. Some examples make use of yet to be implemented
 time evaluation and modules before we will consider the type system finalized. Extensive work
 remains to build out the standard library and reach feature parity with Classic Solidity.
 
+While the prototype is in a working state, it is not optimized for user experience. We are actively working on the prototype and new features will be incrementally made available on [the project's repository](https://github.com/argotorg/solcore) for feedback and experimentation. We are looking forward to your feedback.
+
 ## A Note on Syntax
 
 Most of the work to date has been focused on the design and implementation of the type system, and the
@@ -39,7 +41,7 @@ associated code generation pipeline down to Yul. In order to avoid getting bogge
 bikeshedding around syntax, and with the desire to validate our core ideas with a working
 implementation as soon as possible, we moved ahead with a provisional syntax. You can expect
 extensive changes before release. Our current intention is to eventually closely match the syntax of Classic Solidity. For any new syntax, you should expect that the final version will feel
-closer to languages like TypeScript or Rust than it does right now.
+closer to languages like TypeScript or Rust.
 
 ## New Language Features
 
@@ -47,14 +49,14 @@ Core Solidity takes ideas from pure functional programming languages (e.g. Haske
 as modern systems languages (e.g. Rust, Zig). We are extending Solidity with the following new
 features:
 
-- Algebraic datatypes (a.k.a sum / product types) and pattern matching
+- Algebraic datatypes (also known as sum / product types) and pattern matching
 - Generics / parametric polymorphism
 - Traits / typeclasses
 - Type inference
 - Higher order and anonymous functions
 - Compile time evaluation
 
-We think that taken together these core primitives will enable developers to produce stronger
+We think that these core primitives will enable developers to produce stronger
 abstractions, write more modular and reusable code, and leverage the type system to enforce core
 safety properties.
 
