@@ -437,39 +437,39 @@ with additional syntax sugar and libraries. It is similar to Yul in its dual fun
 IR and a user facing low level language, and the full range of SAIL primitives will be directly
 available when writing Core Solidity. This style of language construction is often used in other
 high assurance domains (e.g. theorem provers), and we believe it has important benefits for both
-users of the language and the safety and security of it's implementation.
+users of the language and the safety and security of its implementation.
 
-SAIL is simple enough that we expect to be able to construct an executable formal semantics for it.
+We expect to be able to construct an executable formal semantics for SAIL.
 This will allow us to mathematically guarantee core properties of the Solidity type system, provide
-a reference implementation for differential fuzzing of the production implementation, and formally
+a reference implementation for differential fuzzing, and formally
 verify both the standard library and higher-level language constructs. We believe that this will be
 an essential part of our correctness story as both the language and the scale of the systems it is
 used to construct continue to grow.
 
-Library authors will have (almost) the same expressive power as the language designers, and will
+Library authors will have almost the same expressive power as the language designers, and will
 be able to create abstractions that feel built-in to the language itself (a "library-based
-language"). It will be possible to define and use alternative standard library implementations, or
+language"). It will be possible to define and use alternative standard library implementations, or to
 disable the standard library completely. With the standard library disabled, it will be possible to
 write Core Solidity code with almost the same level of control as low level assembly languages like
 Yul or Huff, but with a modern, expressive type system, based on a mathematically rigorous foundation.
 
-We also expect that the introduction of SAIL will make it much easier for Solidity users to extend
+We also expect that the introduction of SAIL will make it much easier to extend
 and improve the language. In many cases it will be possible to make deep improvements via a pull
 request to the standard library alone. When new syntax or desugaring passes are required, we expect
 them to be much easier to prototype and specify in SAIL without requiring knowledge and
-understanding of compiler internals. We hope that SAIL and Core Solidity will allow us transition to
-a community driven RFC style process for changes to the high level language and standard library.
+understanding of compiler internals. We hope that SAIL and Core Solidity will allow us to transition to
+a community driven RFC-style process for changes to the high-level language and standard library.
 
 ### A Userspace `abi.encode`
 
-One instructive example is the Core Solidity implementation of `abi.encode`. This is a complicated
-and highly generic function that is currently provided as a compiler builtin. A full in language
+Let's look at how SAIL can be used to implement high-level Core Solidity features. `abi.encode` is a complicated
+and highly generic function that Classic Solidity provides as a compiler builtin. A full in-language
 implementation would not be possible in Classic Solidity due to the recursive nature of the ABI
-specification (and the resulting infinite number of expressible types). The implementation presented
+specification and the resulting infinite number of expressible types. The implementation presented
 here is relatively concise, but does make use of some more advanced patterns and features. We
 want to emphasise that existing users of Solidity will be able to be productive and make use of
 their existing knowledge without having to concern themselves with these kind of low level internal
-details. We hope that expert level users and library authors will however be excited by the new
+details. At the same time, we hope that advanced users and library authors will be excited by the new
 potentials these features enable.
 
 #### `uint256`
