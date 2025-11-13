@@ -422,18 +422,17 @@ express the full range of high-level language constructs found in Classic Solidi
 - Generics
 
 A SAIL variable is conceptually the same as a [Yul variable](https://docs.soliditylang.org/en/latest/yul.html#variable-declarations). The compiler will associate an EVM stack slot to it.
-It has a single builtin type (`word`) that has the same range of values as a Classic Solidity
-`bytes32` or `uint256`, and can semantically can be viewed as "an item on stack" or "a yul
-variable". Contracts in SAIL are very low level (essentially just a runtime entrypoint and initcode
+SAIL has a single builtin type (`word`) that has the same range of values as a Classic Solidity
+`bytes32` or `uint256`, and can semantically can be viewed as the type of an EVM stack slot. Contracts in SAIL are very low level (essentially just a runtime entrypoint and initcode
 entrypoint).
 
-Although our current implementation uses Yul as an assembly language, this choice is largely
-arbitrary from a theoretical standpoint, and it could also be instantiated over e.g. a RISCV based
+Although our current implementation of SAIL uses Yul as an assembly language, this choice is largely
+arbitrary from a theoretical standpoint, and it could also be instantiated over, e.g. a RISC-V based
 assembly language instead.
 
-We believe that SAIL is expressive enough that we can implement all other high level language
-features and type as a combination of standard library definitions and desugaring passes (compile
-time syntactic transformations into SAIL primitives). Core Solidity is then simply SAIL extended
+We are confident that SAIL is expressive enough that we can implement all high level language
+features and types as a combination of standard library definitions and desugaring passes, i.e. compile
+time syntactic transformations into SAIL primitives. Core Solidity is then SAIL extended
 with additional syntax sugar and libraries. It is similar to Yul in its dual function as both a compiler
 IR and a user facing low level language, and the full range of SAIL primitives will be directly
 available when writing Core Solidity. This style of language construction is often used in other
