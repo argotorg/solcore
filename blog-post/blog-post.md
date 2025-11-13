@@ -57,20 +57,19 @@ features:
 - Compile time evaluation
 
 We think that these core primitives will enable developers to produce stronger
-abstractions, write more modular and reusable code, and leverage the type system to enforce core
+abstractions, write more modular and reusable code, and leverage the type system to enforce
 safety properties.
 
 We will continue to support the kind of low level access to the EVM that is often required by
-production implementations: assembly will remain a core primitive, and we will extend it with the
-ability to directly call functions from the high level language in assembly blocks. Users will be
+production implementations: assembly will remain a core primitive, and we will extend assembly blocks with the ability to directly call functions defined in the high level language. Users will be
 able to disable the languages built in abstractions (e.g. contract dispatch generation, ABI
 decoding, default storage layout generation), following the "pay for what you use" philosophy of
 languages like Rust and C++.
 
 ### Algebraic data types and pattern matching
 
-Algebraic Data Types provide a principled foundation for data modeling through the composition of
-sum and product types. Sum types represent exclusive alternatives: a value inhabits exactly one
+Algebraic data types (ADTs) provide a principled foundation for data modeling through the composition of
+sum and product types. Sum types are an extension of enums from Classic Solidity. They represent exclusive alternatives, i.e. a value inhabits exactly one
 variant. Product types combine multiple values into structured tuples. These two primitives can
 be combined to define precise types that make invalid states completely
 unrepresentable, allowing the type system to enforce core program invariants entirely at
