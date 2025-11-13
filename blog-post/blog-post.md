@@ -390,27 +390,26 @@ uint256[3] memory a = [1, 2, 3];
 
 ### Compile Time Evaluation
 
-We do not yet have a prototype implementation of compile time evaluation, so don't have concrete
+We do not yet have a prototype implementation of compile time evaluation, so there are no concrete
 examples to share here yet. We are however very convinced that this will be a particularly valuable
-extension to the language and consider it a critical feature that needs to be in place before
-release. A strong goal is to minimize the differences between the runtime and compile time variants
+extension to the language and have its implementation as one of our top priorities. We want to ship a general-purpose feature, therefore a strong goal is to minimize the differences between the runtime and compile time variants
 of the language, allowing for a familiar syntax and code sharing between the two contexts.
 
 Non-trivial design and implementation work remains here. We are exploring the degree to which access
 to memory at compile time is required, and if it is, what kind of analysis passes we would want to
 implement to guard against accidental leakage of references to compile time memory. We are also
 investigating what kind of compile time specific primitives we might want to add, and whether we
-want to expand the languages capabilities around reflection.
+want to expand the language capabilities around reflection.
 
 We will publish more on our designs once they stabilise. We want to make sure the needs of the
 community are met here: if you have concrete real world use cases in mind for this feature, we would
 be very interested to hear them.
 
-## SAIL, Desugaring and the Standard Library
+## SAIL, Desugaring, and the Standard Library
 
 In addition to expanding the surface language, the transition to Core Solidity will also introduce a
 new user accessible mid level IR: SAIL (Solidity Algebraic Intermediate Language). This is the
-"Core" in Core Solidity. It's the most minimal language we could conceive of that would let us
+"Core" in Core Solidity. It's the most minimal language that lets us
 express the full range of high-level language constructs found in Classic Solidity. It can usefully
 be thought of as Yul with generics and type classes. It consists of the following primitive constructs:
 
