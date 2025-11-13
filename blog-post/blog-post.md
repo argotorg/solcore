@@ -315,12 +315,7 @@ forall T . function unpack_bools(fn : (bool, bool, bool) -> T) -> ((word) -> T) 
 }
 ```
 
-Function `unpack_bools` extracts three individual boolean values from the lowest three bits
-of a packed `word` (`bools`). It treats it as a bitmask where the least significant bit
-(position 0) represents `b0`, the next bit (position 1) represents `b1`, and the third bit
-(position 2) represents `b2`. After extracting these bits and converting them to booleans,
-it passes them as arguments to a callback function `fn` and returns whatever result
-that function produces.
+The function `unpack_bools` implements a custom ABI decoding. It is a higher-order function which decorates an input function that takes three individual `bool`s and returns any type by extracting the arguments from the right-most three bits. This is an example which is impossible to implement in Classic Solidity, even with [modifiers](https://docs.soliditylang.org/en/latest/contracts.html#function-modifiers), since they cannot change the arguments passed to the wrapped function.
 
 We also support the definition of (non-recursive) anonymous functions using the `lam` keyword.
 Functions defined in this way can capture values available in the defining scope. As an example
@@ -357,7 +352,7 @@ types are already present in the expression being assigned:
 (bytes memory a, bytes memory b) = abi.decode(input, (bytes, bytes))
 ```
 
-The same definition is much cleaner in Core:
+The same definition is much cleaner in Core Solidity:
 
 ```solidity
 let (a, b) = abi.decode(input, (uint256, uint256))
@@ -370,18 +365,17 @@ literals. Consider the following snippet:
 uint256[3] memory a = [1, 2, 3];
 ```
 
-This declaration is rejected by the compiler with the following error message:
+This declaration is rejected by the Classic Solidity compiler with the following error message:
 
 ```
 Error: Type uint8[3] memory is not implicitly convertible to expected type uint256[3] memory.
 ```
 
-Classic Solidity implements a limited and special cased form of type inference for numeric array
-literals: it selects the smallest possible element type that can represent every element of the
-array (in this case `uint8`). The compiler then throws a type error when attempting to assign this
-value to a variable with a different type.
+The underlying reason for this error is that Classic Solidity implements a [limited and special cased form of type inference](https://docs.soliditylang.org/en/latest/types.html#array-literals) for array
+literals: the assigned element type is the type of the first expression on the list such that all other expressions can be implicitly converted to it (in this case `uint8`). The compiler then throws a type error when attempting to assign this
+value to a variable with an incompatible type.
 
-In order for the previous definition be accepted, we can add a type coercion to the first array element:
+In order for the previous definition be accepted, we can add an unintuitive type coercion to the first array element:
 
 ```solidity
 uint256[3] memory a = [uint256(1), 2, 3];
