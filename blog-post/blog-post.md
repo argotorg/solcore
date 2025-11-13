@@ -505,13 +505,10 @@ constraints without runtime overhead.
 data memory(T) = memory(word)
 ```
 
-The `bytes` type in Classic Solidity represents a tightly packed byte array with a size only known
-at runtime. It doesn't really make sense to have a `bytes` on stack (and Classic Solidity always
-requires that a data location be specified for a value of type `bytes`), so in Core we define it as
-an empty type with no value constructors. Since `bytes` has no value constructors, we cannot produce
-a value of `bytes` at runtime, and must always work with references to `bytes` (e.g. `memory(bytes)`).
-This results in the same behaviour as Classic (users must always specify a data location), using
-only SAIL primitives.
+The [`bytes` type](https://docs.soliditylang.org/en/latest/types.html#bytes-and-string-as-arrays) in Classic Solidity represents a tightly packed byte array with a size only known
+at runtime. Classic Solidity always
+requires that a data location is specified for a value of type `bytes`, so in Core Solidity we define it as
+an empty type with no value constructors. Empty types can only be used to instantiate phantom type parameters. This means that, as in Classic Solidity, instances of `bytes` cannot live on stack.
 
 ```solidity
 data bytes;
