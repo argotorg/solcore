@@ -191,7 +191,7 @@ forall T . class T:Mul {
 ```
 
 Instead of the concrete `wmul` function that we defined above for our `wad` fixed point type, it
-would be more idiomatic to defined an instance (a.k.a `impl`) of the `Mul` type class for `wad`
+is more idiomatic to define an instance (known in Rust as `impl`) of the `Mul` type class for `wad`.
 (giving us a uniform syntax for multiplication across all types, and allowing us to use our `wad`
 type in functions that are generic over any instance of the `wad` type class):
 
