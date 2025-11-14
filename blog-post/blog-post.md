@@ -138,7 +138,7 @@ remaining states that have not yet been explicitly matched. Exhaustiveness is en
 compiler, ensuring that every possible state is handled exactly once.
 
 ```solidity
-function processAuction(state: State) -> State {
+function processAuction(state: AuctionState) -> AuctionState {
     match state {
     | NotStarted(reserve) =>
         require(msg.value >= reserve);
@@ -300,16 +300,16 @@ of a triple of booleans from a single `word` value:
 forall T . function unpack_bools(fn : (bool, bool, bool) -> T) -> ((word) -> T) {
     return lam (bools : word) -> {
         let wordToBool = lam (w : word) { return w > 0; };
-        
+
         // extract the right-most bit from `bools`
         let b0 = wordToBool(and(bools, 0x1));
-        
+
         // shift `bools` by one and extract the right-most bit
         let b1 = wordToBool(and(shr(1, bools), 0x1));
-        
+
         // shift `bools` by two and extract the right-most bit
         let b2 = wordToBool(and(shr(2, bools), 0x1));
-        
+
         return fn(b0, b1, b2);
     };
 }
