@@ -13,6 +13,7 @@ import Text.Pretty.Simple
 
 import qualified Language.Core as Core
 import Solcore.Desugarer.ContractDispatch (contractDispatchDesugarer)
+import Solcore.Desugarer.FieldAccess(fieldDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
@@ -86,9 +87,12 @@ compile opts = runExceptT $ do
     putStrLn "> Dispatch:"
     putStrLn $ pretty dispatched
 
+  -- contract field access desugaring
+  let accessed = fieldDesugarer dispatched
+
   -- SCC analysis
   connected <- ExceptT $ timeItNamed "SCC           " $
-    sccAnalysis dispatched
+    sccAnalysis accessed
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"
