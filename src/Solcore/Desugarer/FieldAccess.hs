@@ -1,10 +1,13 @@
 {-# LANGUAGE OverloadedRecordDot #-}
-module Solcore.Desugarer.FieldAccess where
+module Solcore.Desugarer.FieldAccess(fieldDesugarer) where
 
+import Control.Monad.Reader()
 import Data.List (mapAccumL, foldl')
+import Data.Map qualified as Map
+import Data.Map(Map)
 -- import Data.Maybe (mapMaybe)
--- import Data.Set qualified as Set
--- import Data.Set (Set)
+import Data.Set qualified as Set
+import Data.Set (Set)
 
 import GHC.Stack
 
@@ -21,6 +24,7 @@ type NmTopDecl = TopDecl Name
 type NmContractDecl = ContractDecl Name
 type NmBody = Body Name
 type NmStmt = Stmt Name
+type NmExp = Exp Name
 
 fieldDesugarer :: CompUnit Name -> CompUnit Name
 fieldDesugarer (CompUnit ims topdecls) = CompUnit ims (extras <> topdecls')
@@ -73,19 +77,35 @@ extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, 
 -- # Contract Desugaring
 --------------------------------
 
+data ContractEnv = CEnv { ceName :: Name, ceFields :: Map Name NmField, ceLocals :: Set Name }
+
+askFieldTy :: Name -> ContractEnv -> Maybe Ty
+askFieldTy x env = fieldTy <$> Map.lookup x env.ceFields
+
 transContract :: NmContract -> NmContract
-transContract c = c { decls = map (transCDecl fields) c.decls } where
-    fields = getFields c.decls
+transContract c = c { decls = concatMap (flip transCDecl cenv) c.decls } where
+    cenv = CEnv { ceName= c.name
+                , ceFields = Map.fromList [ (fieldName f, f) | f <- getFields c.decls]
+                , ceLocals = mempty
+                }
 
-transCDecl :: [NmField] -> NmContractDecl -> NmContractDecl
-transCDecl fields (CFunDecl fd) = CFunDecl $ fd { funDefBody = transBody fields fd.funDefBody }
-transCDecl _ d = d
+transCDecl :: NmContractDecl -> ContractEnv -> [NmContractDecl]
+transCDecl (CFunDecl fd) = do
+  body' <- transBody fd.funDefBody
+  pure [CFunDecl fd { funDefBody = body' }]
+transCDecl CFieldDecl{} = pure []
+transCDecl d = pure [d]
 
-transBody :: [NmField] -> NmBody -> NmBody
-transBody fields = snd . mapAccumL (transStmt fields) mempty
+transBody :: NmBody -> ContractEnv -> NmBody
+transBody body cenv = snd $  mapAccumL transStmt cenv body
 
-transStmt :: [NmField] -> [Name] -> NmStmt -> ([Name], NmStmt)
-transStmt _fields locals stmt = (locals, stmt)
+transStmt :: ContractEnv -> NmStmt -> (ContractEnv, NmStmt)
+transStmt cenv stmt@(Let x _ _) = (cenv{ceLocals = Set.insert x cenv.ceLocals}, stmt)
+transStmt cenv (lhs := rhs) = (cenv, transAssignment lhs rhs cenv)
+transStmt cenv stmt = (cenv, stmt)
+
+transAssignment :: NmExp -> NmExp -> ContractEnv -> NmStmt
+transAssignment lhs rhs = pure(lhs := rhs)
 
 --------------------------------
 -- # Helpers
@@ -113,8 +133,8 @@ singletonTypeForContract cname = TyCon (singletonNameForContract cname) []
 singletonValForContract :: Name -> Exp Name
 singletonValForContract cname = Con (singletonNameForContract cname) []
 
-notImplemented :: (HasCallStack, Pretty a) => String -> a -> b
-notImplemented funName a = error $ concat [funName, " not implemented yet for ", pretty a]
+-- notImplemented :: (HasCallStack, Pretty a) => String -> a -> b
+-- notImplemented funName a = error $ concat [funName, " not implemented yet for ", pretty a]
 
 notImplementedS :: (HasCallStack, Show a) => String -> a -> b
 notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]
