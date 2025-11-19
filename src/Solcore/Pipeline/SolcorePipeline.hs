@@ -17,14 +17,12 @@ import Solcore.Desugarer.FieldAccess(fieldDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
-import Solcore.Desugarer.UniqueTypeGen (uniqueTypeGen)
 import Solcore.Desugarer.ReplaceFunTypeArgs
-import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.ElabTree
-import Solcore.Frontend.Syntax.Contract
-import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax.Contract hiding(contracts)
+import Solcore.Frontend.Syntax hiding(contracts)
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
@@ -69,13 +67,13 @@ compile opts = runExceptT $ do
   parsed <- ExceptT $ moduleParser dirs content
 
   -- Name resolution
-  (resolved, env) <- ExceptT $ buildAST' parsed
+  (resolved, nameEnv) <- ExceptT $ buildAST' parsed
 
   liftIO $ when (verbose || optDumpAST opts) $ do
     putStrLn "> AST after name resolution"
     putStrLn $ pretty resolved
 
-  liftIO $ when (optDumpEnv opts) $ pPrint env
+  liftIO $ when (optDumpEnv opts) $ pPrint nameEnv
 
   -- contract dispatch generation
   dispatched <- liftIO $
@@ -123,12 +121,12 @@ compile opts = runExceptT $ do
     putStrLn $ pretty noFun 
 
   -- Type inference
-  (typed, env) <- ExceptT $ timeItNamed "Typecheck     "
+  (typed, typeEnv) <- ExceptT $ timeItNamed "Typecheck     "
     (typeInfer opts noFun)
 
   liftIO $ when verbose $ do
     putStrLn "> Type inference logs:"
-    mapM_ putStrLn (reverse $ logs env)
+    mapM_ putStrLn (reverse $ logs typeEnv)
     putStrLn "> Elaborated tree:"
     putStrLn $ pretty typed
 
@@ -158,14 +156,14 @@ compile opts = runExceptT $ do
   then pure []
   else do
     specialized <- liftIO $ timeItNamed "Specialise    " $
-      specialiseCompUnit matchless (optDebugSpec opts) env
+      specialiseCompUnit matchless (optDebugSpec opts) typeEnv
 
     liftIO $ when (optDumpSpec opts) $ do
       putStrLn "> Specialised contract:"
       putStrLn (pretty specialized)
 
     core <- liftIO $ timeItNamed "Emit Core     " $
-      emitCore (optDebugCore opts) env specialized
+      emitCore (optDebugCore opts) typeEnv specialized
 
     liftIO $ when (optDumpCore opts) $ do
       putStrLn "> Core contract(s):"

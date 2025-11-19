@@ -1,4 +1,4 @@
-module Solcore.Frontend.Syntax.ElabTree where
+module Solcore.Frontend.Syntax.ElabTree(buildAST, buildAST') where
 import Prelude hiding(exp)
 
 import Common.Monad
@@ -738,9 +738,6 @@ instance Elab S.Literal where
   elab (S.IntLit i) = pure (IntLit i)
   elab (S.StrLit s) = pure (StrLit s)
 
-
-notImplemented :: (HasCallStack, Pretty a) => String -> a -> b
-notImplemented funName a = error $ concat [funName, " not implemented yet for ", pretty a]
 
 notImplementedS :: (HasCallStack, Show a) => String -> a -> b
 notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]
