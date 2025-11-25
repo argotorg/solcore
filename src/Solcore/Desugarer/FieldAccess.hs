@@ -189,7 +189,7 @@ transRhs expr@(FieldAccess Nothing x) cenv
       fieldMap = Con "MemberAccessProxy" [cxt, fieldSel]
       result = rhsAccess fieldMap
       in traces ["< transRhs", pretty expr, "~>", pretty result] result
-        
+
 transRhs expr@FieldAccess{} _ = notImplemented "transRhs" expr
 transRhs expr cenv = go expr cenv where
     go e@(Indexed arr idx) = \env -> let e' = rhsIndex arr idx env in traces ["transRhs", pretty e,  "- rhsIndex ->", pretty e'] e' -- FIXME
@@ -217,9 +217,10 @@ indexAccess dir exp@(FieldAccess Nothing name) idx = traces ["iA FA: " ++ pretty
   else notImplemented "indexAccess" exp
 
 indexAccess dir _exp@(Indexed arr1 idx1) idx2 = traces ["iA II:", pretty arr1,pretty idx1, pretty idx2] $ do
-   idx' <- traces ["transRhs", pretty idx1 ] $ transRhs idx1
-   arr2 <- traces ["lhsIndex", pretty arr1, pretty idx'] $ lhsIndex arr1 idx'
-   pure $ Call Nothing (indexFun dir) [arr2, idx2]
+   idx2' <- traces ["transRhs", pretty idx2 ] $ transRhs idx2
+   idx1' <- traces ["transRhs", pretty idx1 ] $ transRhs idx1
+   arr' <- traces ["lhsIndex", pretty arr1, pretty idx1'] $ lhsIndex arr1 idx1'
+   pure $ Call Nothing (indexFun dir) [arr', idx2']
 
 indexAccess _dir exp idx = notImplemented "indexAccess" (Indexed exp idx)
 
@@ -295,5 +296,5 @@ notImplementedS :: (HasCallStack, Show a) => String -> a -> b
 notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]
 
 traces :: [String] -> a -> a
-traces = trace . unwords
--- traces _ a = a
+-- traces = trace . unwords
+traces _ a = a
