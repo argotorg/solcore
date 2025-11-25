@@ -87,6 +87,9 @@ compile opts = runExceptT $ do
 
   -- contract field access desugaring
   let accessed = fieldDesugarer dispatched
+  liftIO $ when verbose $ do
+    putStrLn "Contract field access desugaring:"
+    putStrLn $ pretty accessed
 
   -- SCC analysis
   connected <- ExceptT $ timeItNamed "SCC           " $

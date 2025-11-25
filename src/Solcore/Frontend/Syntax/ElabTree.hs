@@ -195,8 +195,9 @@ instance Elab S.TopDecl where
 
   elab (S.TContr c) = do
       c' <- elab c
-      extra <- extraTopDeclsForContract c
-      pure $ extra ++ [TContr c']
+      -- extra <- extraTopDeclsForContract c
+      -- pure $ extra ++ [TContr c']
+      pure [TContr c']
   elab (S.TFunDef fd) = singleton . TFunDef <$> elab fd
   elab (S.TClassDef c) = singleton . TClassDef <$> elab c
   elab (S.TInstDef d) = singleton . TInstDef <$> elab d
@@ -273,7 +274,7 @@ translateFieldType t = TyCon "storage" [t]
 extraTopDeclsForContractField :: ContractName -> Field Name -> Ty -> [TopDecl Name]
 extraTopDeclsForContractField cname field@(Field fname fty _minit) offset = [selDecl, TInstDef sfInstance] where
   -- data b_sel = n_sel
-  selName = selectorNameForField fname
+  selName = selectorNameForField cname fname
   selDecl = TDataDef $ DataTy selName [] [Constr selName []]
   selType = TyCon selName []
   -- instance StructField(ContractStorage(CCtx), fld1_sel):StructField(uint, ()) {}
@@ -433,12 +434,17 @@ instance Elab S.Instance where
 
 
 elabContractField :: S.Field -> ElabM [ContractDecl Name]
+-- elabContractField fd@(S.Field fname ft Nothing) = pure [] -- contract fields are desugared elsewhere
 elabContractField fd@(S.Field fname ft Nothing) = pure [] -- contract fields are desugared elsewhere
 elabContractField fd = notImplementedM "elabContractField" fd
 
-selectorNameForField :: Name -> Name  -- FIXME: include contract name
-selectorNameForField (Name s) = Name (s <> "_sel")
-selectorNameForField n = notImplementedS "selectorNameForField" n
+appendToName :: Name -> String -> Name
+appendToName (Name s) t = Name (s <> t)
+appendToName (QualName n s) t = QualName n (s <> t)
+
+selectorNameForField :: Name -> Name -> Name
+selectorNameForField cname (Name fld) = Name(show cname <> "_" <> fld <> "_sel")
+selectorNameForField _ n = notImplementedS "selectorNameForField" n
 
 singletonNameForContract :: Name -> Name
 singletonNameForContract (Name s) = Name (s <>  "Cxt")
@@ -459,7 +465,7 @@ contractContext = do
   let cxt = Con "ContractStorage" [contractSing]
   pure cxt
 
-
+{-
 elabAssignment :: S.Exp -> S.Exp -> ElabM (Stmt Name)
 elabAssignment lhs@(S.ExpVar Nothing name) rhs = do
   isF <- isField name
@@ -478,7 +484,7 @@ elabAssignment lhs@(S.ExpIndexed arr idx) rhs = do
 
 elabAssignment lhs rhs =
     (:=) <$> elab lhs <*> elab rhs
-
+-}
 lhsAccess :: Exp Name -> Exp Name
 lhsAccess e = Call Nothing (QualName "LVA" "acc") [e]
 
@@ -510,8 +516,9 @@ rhsIndex = indexAccess $ Right ()
 
 memberProxyFor :: Name -> ElabM(Exp Name)
 memberProxyFor field = do
+  cname <- fromMaybe (error "ElabTree - impossible: assignment outside of contract") <$> gets currentContract
   cxt <- contractContext
-  let selName = selectorNameForField field
+  let selName = selectorNameForField cname field
   let selector = Con selName []
   let fieldMap = Con "MemberAccessProxy" [cxt, selector]
   pure fieldMap
@@ -571,7 +578,10 @@ instance Elab S.ContractDecl where
   elab (S.CDataDecl dt)
     = singleton . CDataDecl <$> elab dt
   elab (S.CFieldDecl fd)
-    = elabContractField fd -- contract fields are desugared away
+--    = elabContractField fd -- contract fields are desugared away
+    = do
+        fd' <- elab fd
+        pure [CFieldDecl fd']
   elab (S.CFunDecl fd)
     = singleton . CFunDecl <$> elab fd
   elab (S.CConstrDecl c)
@@ -582,11 +592,14 @@ instance Elab S.Stmt where
   type Res S.Stmt = Stmt Name
 
   elab (S.Assign lhs rhs)
-    = elabAssignment lhs rhs
+--     = elabAssignment lhs rhs
+    = (:=) <$> elab lhs <*> elab rhs
   elab (S.StmtPlusEq lhs rhs)
-    = elabAssignment lhs (S.ExpPlus lhs rhs)
+--     = elabAssignment lhs (S.ExpPlus lhs rhs)
+    = (:=) <$> elab lhs <*> elab (S.ExpPlus lhs rhs)
   elab (S.StmtMinusEq lhs rhs)
-    = elabAssignment lhs (S.ExpMinus lhs rhs)
+--    = elabAssignment lhs (S.ExpMinus lhs rhs)
+    = (:=) <$> elab lhs <*> elab (S.ExpMinus lhs rhs)
   elab (S.Let n mt me)
     = Let n <$> elab mt <*> elab me
   elab (S.StmtExp e)
@@ -623,7 +636,7 @@ instance Elab S.Exp where
   elab (S.TyExp e t)
     = TyExp <$> elab e <*> elab t
   elab (S.ExpVar me n)
-    = do
+  {- =  do
         me' <- elab me
         isF <- isField n
         isCon <- isDefinedConstr n
@@ -636,8 +649,16 @@ instance Elab S.Exp where
               let fieldMap = Con "MemberAccessProxy" [cxt, fieldSel]
               pure (rhsAccess fieldMap)
             _ -> pure $ FieldAccess me' n -- TODO: structures other than contract context
-        else if isCon && isNothing me then pure (Con n [])
-             else pure $ Var n
+        else  if isCon && isNothing me then pure (Con n [])
+             else pure $ Var n -}
+    = do
+        me' <- elab me
+        isF <- isField n
+        isCon <- isDefinedConstr n
+        if isF then
+          pure $ FieldAccess me' n
+        else  if isCon && isNothing me then pure (Con n [])
+              else pure $ Var n
   elab (S.ExpName me n es)
     = do
         me' <- elab me
@@ -653,8 +674,10 @@ instance Elab S.Exp where
         else pure (Call me' n es')
 
   elab (S.ExpIndexed arr idx) = do
+    arr' <- elab arr
     idx' <- elab idx
-    rhsIndex arr idx'
+    -- rhsIndex arr idx'
+    pure $ Indexed arr' idx'
 
   elab (S.ExpGE e1 e2) = do
      (e1', e2') <- elab (e1, e2)
