@@ -213,8 +213,8 @@ tcExp e@(Con n es)
           e1 = Con (Id n t) es'
       withCurrentSubst (e1, ps', t')
 tcExp e@(FieldAccess Nothing n)
-  = notImplementedS "tcExp" e
-
+  -- = notImplementedS "tcExp" e
+  = throwError ("tcExp not implemented for: " ++ pretty e ++ "\n"++show e)
 tcExp (FieldAccess (Just e) n)
   = do
       -- inferring expression type
