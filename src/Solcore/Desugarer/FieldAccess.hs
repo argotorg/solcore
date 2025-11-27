@@ -105,6 +105,9 @@ transCDecl :: NmContractDecl -> CEM [NmContractDecl]
 transCDecl (CFunDecl fd) = do
   body' <- transBody fd.funDefBody
   pure [CFunDecl fd { funDefBody = body' }]
+transCDecl (CConstrDecl cd) = do
+  body' <- transBody cd.constrBody
+  pure [CConstrDecl cd { constrBody = body' }]
 transCDecl CFieldDecl{} = pure []
 transCDecl d = pure [d]
 
