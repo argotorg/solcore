@@ -75,25 +75,25 @@ compile opts = runExceptT $ do
 
   liftIO $ when (optDumpEnv opts) $ pPrint nameEnv
 
+  -- contract field access desugaring
+  let accessed = fieldDesugarer resolved
+  liftIO $ when verbose $ do
+    putStrLn "Contract field access desugaring:"
+    putStrLn $ pretty accessed
+
   -- contract dispatch generation
   dispatched <- liftIO $
     if noGenDispatch
-    then pure resolved
-    else timeItNamed "Contract dispatch generation" $ pure (contractDispatchDesugarer resolved)
+    then pure accessed
+    else timeItNamed "Contract dispatch generation" $ pure (contractDispatchDesugarer accessed)
 
   liftIO $ when (optDumpDispatch opts) $ do
     putStrLn "> Dispatch:"
     putStrLn $ pretty dispatched
 
-  -- contract field access desugaring
-  let accessed = fieldDesugarer dispatched
-  liftIO $ when verbose $ do
-    putStrLn "Contract field access desugaring:"
-    putStrLn $ pretty accessed
-
   -- SCC analysis
   connected <- ExceptT $ timeItNamed "SCC           " $
-    sccAnalysis accessed
+    sccAnalysis dispatched
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"
