@@ -190,6 +190,7 @@ cases =
     , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
     , runTestForFile "match-yul.solc" caseFolder
     , runTestForFile "yul-for.solc" caseFolder
+    , runTestForFile "yul-function-typing.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

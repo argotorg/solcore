@@ -17,7 +17,7 @@ import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.TcSubst
 
 import Common.Pretty
-import Language.Yul
+import Language.Yul()
 
 -- For compatibility
 (<>) :: Doc -> Doc -> Doc
@@ -282,6 +282,7 @@ instance Pretty a => Pretty (Exp a) where
     = ppr e <+> text ":" <+> ppr ty
   ppr (FieldAccess me n) = maybe (text "this") ppr me <> char '.' <> ppr n
   ppr (Cond e1 e2 e3) = hsep [text "if", ppr e1, text "then", ppr e2, text "else", ppr e3]
+  ppr (Indexed e1 e2) = ppr e1 <> brackets (ppr e2)
   -- ppr e = text $ "Pretty.ppr not implemented for\n" ++ show(pShow e)
 
 pprE :: Pretty a => Maybe (Exp a) -> Doc
