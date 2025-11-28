@@ -65,7 +65,7 @@ library
       Solcore.Desugarer.MatchCompiler
       Solcore.Desugarer.ReplaceWildcard
       Solcore.Desugarer.Specialise
-      Solcore.Desugarer.EmitCore
+      Solcore.Backend.EmitHull
       Solcore.Desugarer.ContractDispatch
       Solcore.Desugarer.ReplaceFunTypeArgs
       Solcore.Desugarer.UniqueTypeGen
@@ -97,9 +97,9 @@ library
       Solcore.Pipeline.Options
       Solcore.Pipeline.SolcorePipeline
       Solcore.Primitives.Primitives
-      Language.Core
-      Language.Core.Parser
-      Language.Core.Types
+      Language.Hull
+      Language.Hull.Parser
+      Language.Hull.Types
       Language.Yul
       Language.Yul.Parser
       Language.Yul.QuasiQuote

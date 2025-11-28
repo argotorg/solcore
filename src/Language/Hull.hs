@@ -1,15 +1,14 @@
-
 {-# OPTIONS_GHC -Wincomplete-patterns #-}
 {-# LANGUAGE InstanceSigs #-}
-module Language.Core
+module Language.Hull
   ( Expr(..), Stmt(..), Arg(..), Alt(..), pattern ConAlt, Pat(..), Con(..), Contract(..), Object(..), Body
-  , module Language.Core.Types
+  , module Language.Hull.Types
   ,  pattern SAV
   , Name
   ) where
 
 import Common.Pretty
-import Language.Core.Types
+import Language.Hull.Types
 import Language.Yul
 
 
@@ -64,8 +63,8 @@ data Con = CInl | CInr | CInK Int deriving Show
 
 data Contract = Contract { ccName :: Name, ccStmts ::  [Stmt] }
 
-newtype Core = Core [Stmt]
-instance Show Core where show = render . ppr
+newtype Hull = Hull [Stmt]
+instance Show Hull where show = render . ppr
 instance Show Contract where show = render . ppr
 
 
@@ -150,8 +149,8 @@ instance Pretty Con where
 instance Pretty Arg where
     ppr (TArg n t) = text n <+> text ":" <+> ppr t
 
-instance Pretty Core where
-    ppr (Core stmts) = vcat (map ppr stmts)
+instance Pretty Hull where
+    ppr (Hull stmts) = vcat (map ppr stmts)
 
 pprBody :: Body -> Doc
 pprBody stmts = braces $ nest 2 (vcat (map ppr stmts))
