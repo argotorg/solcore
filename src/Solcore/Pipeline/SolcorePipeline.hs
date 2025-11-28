@@ -27,7 +27,7 @@ import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
-import Solcore.Desugarer.Specialise(specialiseCompUnit)
+import Solcore.Backend.Specialise(specialiseCompUnit)
 import Solcore.Backend.EmitHull(emitHull)
 import Solcore.Pipeline.Options(Option(..), argumentsParser)
 

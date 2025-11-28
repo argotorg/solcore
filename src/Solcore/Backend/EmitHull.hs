@@ -18,7 +18,7 @@ import Solcore.Frontend.TypeInference.TcMonad (insts)
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Primitives.Primitives
-import Solcore.Desugarer.Specialise(typeOfTcExp)
+import Solcore.Backend.Specialise(typeOfTcExp)
 import System.Exit
 
 emitHull :: Bool -> TcEnv ->  CompUnit Id -> IO [Hull.Object]
