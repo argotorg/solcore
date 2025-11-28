@@ -4,8 +4,8 @@ module Translate where
 
 import Data.List(nub, union)
 import GHC.Stack
-import Language.Core hiding(Name)
-import qualified Language.Core as Core
+import Language.Hull hiding(Name)
+import qualified Language.Hull as Hull
 import Language.Yul
 import Solcore.Frontend.Syntax.Name
 import Data.String
@@ -61,7 +61,7 @@ genExpr (ECall name args) = do
     let argsCode = concat argCodes
     let yulArgs = concatMap flattenRhs argLocs
     funInfo <- lookupFun name
-    (resultCode, resultLoc) <- coreAlloc (fun_result funInfo)
+    (resultCode, resultLoc) <- hullAlloc (fun_result funInfo)
     let callExpr = YCall (yulFunName name) yulArgs
     let callCode = case sizeOf(resultLoc) of  -- handle void functions
             0 -> [YExp callExpr]
@@ -70,7 +70,7 @@ genExpr (ECall name args) = do
 
 genExpr e@(ECond ty cond e1 e2) = do
     debug ["genExpr: ", show e]
-    (resultCode, resultLoc) <- coreAlloc ty
+    (resultCode, resultLoc) <- hullAlloc ty
     (condCode, condLoc) <- genExpr cond
     -- Bools are complex(False ~ inr ()) to get something we can switch on
     let tag = normalizeLoc condLoc
@@ -85,10 +85,10 @@ genExpr e@(ECond ty cond e1 e2) = do
 
 genExpr e = error ("genExpr: not implemented for "++show e)
 
-yulFunName :: Core.Name -> Name
+yulFunName :: Hull.Name -> Name
 yulFunName = fromString . ("usr$" ++)
 
-yulVarName :: Core.Name -> Name
+yulVarName :: Hull.Name -> Name
 yulVarName = fromString
 
 flattenRhs :: Location -> [YulExp]
@@ -119,7 +119,7 @@ genStmt (SAssembly stmts) = do
     pure stmts
 
 genStmt (SAlloc name typ) = allocVar name typ
-genStmt (SAssign name expr) = coreAssign name expr
+genStmt (SAssign name expr) = hullAssign name expr
 
 genStmt (SReturn expr) = do
     debug [">SReturn: ", show expr]
@@ -177,7 +177,7 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
             let resultLoc =  LocNamed "_result"
             insertVar "_result" resultLoc
             return ["_result"]
-        place :: Core.Name -> Type -> TM [Name]
+        place :: Hull.Name -> Type -> TM [Name]
         place name typ = do
             loc <- buildLoc typ
             insertVar name loc
@@ -240,12 +240,12 @@ genAlt payload (Alt (PVar name) _ body) = do
 genAlt _ alt = error ("genAlt unimplemented for: " ++ show alt)
 
 
-allocVar :: Core.Name -> Type -> TM [YulStmt]
+allocVar :: Hull.Name -> Type -> TM [YulStmt]
 allocVar name TWord = do
     insertVar name (LocNamed name)
     pure [YulAlloc (yulVarName name)]
 allocVar name typ = do
-    (stmts, loc) <- coreAlloc typ
+    (stmts, loc) <- hullAlloc typ
     insertVar name loc
     return stmts
 
@@ -265,8 +265,8 @@ buildLoc (TNamed n ty) = buildLoc ty
 
 buildLoc t = error ("cannot build location for "++show t)
 
-coreAlloc :: Type -> TM ([YulStmt], Location)
-coreAlloc t = do
+hullAlloc :: Type -> TM ([YulStmt], Location)
+hullAlloc t = do
     loc <- buildLoc t
     let stmts = allocLoc loc
     pure (stmts, loc)
@@ -286,8 +286,8 @@ allocWord = do
     pure ([YulAlloc (stkLoc n)], loc)
 
 
-coreAssign :: Expr -> Expr -> TM [YulStmt]
-coreAssign lhs rhs = do
+hullAssign :: Expr -> Expr -> TM [YulStmt]
+hullAssign lhs rhs = do
     (stmtsLhs, locLhs) <- genExpr lhs
     (stmtsRhs, locRhs) <- genExpr rhs
     if sizeOf locLhs == 0 then pure stmtsRhs
