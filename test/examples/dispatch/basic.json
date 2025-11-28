@@ -1,0 +1,52 @@
+{
+  "basic": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+	    "text-calldata": "nothing()",
+          "calldata": "448f30a3",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+	    "text-calldata": "something()(uint256)",
+          "calldata": "a7a0d537",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+	    "text-calldata": "add2(uint256,uint256)(uint256) 2 3",
+          "calldata": "0x29fcda3300000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000005",
+          "status": "success"
+        }
+      }
+	
+    ]
+  }
+}
