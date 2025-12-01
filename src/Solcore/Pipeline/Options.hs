@@ -14,6 +14,7 @@ data Option
     , optVerbose   :: !Bool
     , optDumpAST   :: !Bool
     , optDumpEnv   :: !Bool
+    , optDumpDispatch :: !Bool
     , optDumpDS    :: !Bool
     , optDumpDF    :: !Bool
     , optDumpSpec  :: !Bool
@@ -37,6 +38,7 @@ emptyOption path = Option
     , optVerbose        = False
     , optDumpAST        = False
     , optDumpEnv        = False
+    , optDumpDispatch   = False
     , optDumpDS         = False
     , optDumpDF         = False
     , optDumpSpec       = False
@@ -85,6 +87,8 @@ options
                <> help "Dump AST after name resolution")
            <*> switch ( long "dump-env"
                <> help "Dump env after name resolution")
+           <*> switch ( long "dump-dispatch"
+               <> help "Dump dispatched contract")
            <*> switch ( long "dump-ds"
                <> help "Dump desugared contract")
            <*> switch ( long "dump-df"
