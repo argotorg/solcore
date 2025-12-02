@@ -162,19 +162,19 @@ if [[ -n "$create_arguments_sig" ]] && [[ -n "$create_raw_args" ]]; then
 fi
 
 # Execute compilation pipeline
-echo "Compiling to core..."
+echo "Compiling to hull..."
 if ! cabal run sol-core -- -f "$file"; then
     echo "Error: sol-core compilation failed"
     exit 1
 fi
 
 mkdir -p build
-if ls ./output*.core 1> /dev/null 2>&1; then
-    mv ./output*.core build/
+if ls ./output*.hull 1> /dev/null 2>&1; then
+    mv ./output*.hull build/
 fi
 
 echo "Generating Yul..."
-yule_args=("$core" -o "$yulfile")
+yule_args=("$hull" -o "$yulfile")
 if [[ "$create" == "false" ]]; then
     yule_args+=(--nodeploy)
 fi

@@ -1,5 +1,5 @@
 -- {-# LANGUAGE DefaultSignatures #-}
-module Solcore.Desugarer.Specialise where  --(specialiseCompUnit, typeOfTcExp) where
+module Solcore.Backend.Specialise where  --(specialiseCompUnit, typeOfTcExp) where
 {- * Specialisation
 Create specialised versions of polymorphic and overloaded functions.
 This is meant to be run on typed and defunctionalised code, so no higher-order functions.

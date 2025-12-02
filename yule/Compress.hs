@@ -1,5 +1,5 @@
 module Compress where
-import Language.Core
+import Language.Hull
 
 class Compress a where
     compress :: a -> a
