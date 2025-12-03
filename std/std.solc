@@ -1015,7 +1015,7 @@ forall baseType baseType_decoded reader . ABIDecoder(baseType, CalldataWordReade
 */
 
 
-pragma no-patterson-condition RVA;
+pragma no-patterson-condition LVA, RVA;
 pragma no-coverage-condition MemberAccessProxy, LVA, RVA, StructField;
 
 // -- storage
@@ -1156,7 +1156,7 @@ function memberAccessBase(x:MemberAccessProxy(a, field, offset)) -> a {
 // ------------------------------------------------------------------
 
 forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  . StructField(ContractStorage(cxt), fieldSelector):StructField(storage(fieldType), offsetType)
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):LVA(storage(fieldType)) {
     function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> storage(fieldType) {
@@ -1166,7 +1166,7 @@ forall cxt fieldSelector fieldType offsetType
 }
 
 forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  . StructField(ContractStorage(cxt), fieldSelector):StructField(storage(fieldType), offsetType)
   , fieldType:StorageType
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):RVA(fieldType) {
