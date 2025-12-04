@@ -9,25 +9,20 @@ import Common.Monad
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Except
-import Control.Monad.Reader
 import Control.Monad.State
 import Data.Generics
 import Data.List(intercalate, union, (\\))
 import Data.Maybe(fromMaybe)
 import qualified Data.Map as Map
-import GHC.Stack
 import Solcore.Desugarer.IfDesugarer(desugaredBoolTy)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id ( Id(..) )
 import Solcore.Frontend.TypeInference.NameSupply
-import Solcore.Frontend.TypeInference.TcEnv(TcEnv(..),TypeInfo(..))
-import qualified Solcore.Frontend.TypeInference.TcSubst as TcSubst
+import Solcore.Frontend.TypeInference.TcEnv(TcEnv(typeTable),TypeInfo(..))
 import Solcore.Frontend.TypeInference.TcUnify(typesDoNotUnify)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Primitives.Primitives
-import System.Exit
-import Common.Pretty
 
 -- ** Specialisation state and monad
 -- SpecState and SM are meant to be local to this module.
@@ -579,19 +574,18 @@ typeOfTcParam (Untyped i) = idType i
 
 typeOfTcSignature :: Signature Id -> Ty
 typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) (returnType sig) where
-  returnType sig = case sigReturn sig of
+  returnType s = case sigReturn s of
     Just t -> t
-    Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
+    Nothing -> error ("no return type in signature of: " ++ show (sigName s))
 
 schemeOfTcSignature :: Signature Id -> Scheme
 schemeOfTcSignature sig@(Signature vs ps n args (Just rt))
-  = if all isTyped args
-      then Forall vs (ps :=> (funtype ts rt))
-      else error $ unwords ["Invalid instance member signature:", pretty sig]
+  = case mapM getType args of
+      Just ts -> Forall vs (ps :=> (funtype ts rt))
+      Nothing -> error $ unwords ["Invalid instance member signature:", pretty sig]
     where
-      isTyped (Typed _ _) = True
-      isTyped _ = False
-      ts = map (\ (Typed _ t) -> t) args
+      getType (Typed _ t) = Just t
+      getType _ = Nothing
 
 typeOfTcFunDef :: TcFunDef -> Ty
 typeOfTcFunDef (FunDef sig _) = typeOfTcSignature sig
@@ -618,12 +612,12 @@ varBind v t
   | otherwise = do
       return (v |-> t)
   where
-    infiniteTyErr v t = throwError $
+    infiniteTyErr w u = throwError $
       unwords
         [ "Cannot construct the infinite type:"
-        , pretty v
+        , pretty w
         , "~"
-        , pretty t
+        , pretty u
         ]
 
 specsolve :: [(Ty, Ty)] -> TVSubst -> Either String TVSubst
