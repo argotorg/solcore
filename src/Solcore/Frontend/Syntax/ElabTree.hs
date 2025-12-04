@@ -16,7 +16,7 @@ import Text.Pretty.Simple
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts, decls)
 import Solcore.Frontend.Syntax.Name
-import Solcore.Frontend.Syntax.Stmt
+import Solcore.Frontend.Syntax.Stmt hiding (paramName)
 import qualified Solcore.Frontend.Syntax.SyntaxTree as S
 import Solcore.Frontend.Syntax.Ty
 
@@ -375,12 +375,16 @@ instance Elab S.Field where
       where
         env = mempty
 
+paramName :: S.Param -> Name
+paramName (S.Typed n _) = n
+paramName (S.Untyped n) = n
+
 instance Elab S.FunDef where
   type Res S.FunDef = FunDef Name
 
   elab (S.FunDef sig bd)
     = do
-         let vs = names (S.sigVars sig)
+         let vs = map paramName (S.sigParams sig)
          pushVarsInScope vs
          sig' <- elab sig
          bd' <- elab bd
@@ -459,7 +463,8 @@ instance Elab S.Exp where
         me' <- elab me
         isF <- isField n
         isCon <- isDefinedConstr n
-        if isF then  -- TODO: check if not shadowed
+        isVar <- isDefinedVar n
+        if isF && not isVar then do
           pure $ FieldAccess me' n
         else  if isCon && isNothing me then pure (Con n [])
               else pure $ Var n
