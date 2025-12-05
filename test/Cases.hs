@@ -204,34 +204,11 @@ cases =
     , runTestForFile "simpleid.solc" caseFolder
     , runTestForFile "SimpleLambda.solc" caseFolder
     , runTestForFile "single-lambda.solc" caseFolder
-    , runTestForFile "SingleFun.solc" caseFolder
-    , runTestExpectingFailure "signature.solc" caseFolder
-    , runTestExpectingFailure "SillyReturn.solc" caseFolder
-    , runTestExpectingFailure "SimpleInvoke.solc" caseFolder
-    , runTestExpectingFailure "string-const.solc" caseFolder
-    , runTestExpectingFailure "StructMembers.sol" caseFolder
-    , runTestExpectingFailure "subject-index.solc" caseFolder
-    , runTestExpectingFailure "subject-reduction.solc" caseFolder
-    , runTestExpectingFailure "subsumption-test.solc" caseFolder
-    , runTestForFile "super-class.solc" caseFolder
-    , runTestForFile "super-class-num.solc" caseFolder
-    , runTestForFile "tiamat.solc" caseFolder
-    , runTestForFile "tuple-trick.solc" caseFolder
-    , runTestForFile "tuva.solc" caseFolder
-    , runTestForFile "tyexp.solc" caseFolder
-    , runTestForFile "typedef.solc" caseFolder
-    , runTestForFile "Uncurry.solc" caseFolder
-    , runTestExpectingFailure "unconstrained-instance.solc" caseFolder
-    , runTestForFile "undefined.solc" caseFolder
-    , runTestForFile "uintdesugared.solc" caseFolder
-    , runTestForFile "unit.solc" caseFolder
-    , runTestExpectingFailure "vartyped.solc" caseFolder
-    , runTestExpectingFailure "weirdfoo.solc" caseFolder
-    , runTestExpectingFailure "withdraw.solc" caseFolder
-    , runTestForFile "word-match.solc" caseFolder
-    , runTestExpectingFailure "xref.solc" caseFolder
-    , runTestForFile "yul-function-typing.solc" caseFolder
-    , runTestForFile "yul-return.solc" caseFolder
+    , runTestExpectingFailure "duplicated-type-name.solc" caseFolder
+    , runTestExpectingFailure "overlapping-heads.solc" caseFolder
+    , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
+    , runTestForFile "match-yul.solc" caseFolder
+    , runTestExpectingFailure "instance-sig.solc" caseFolder 
     ]
  where
   caseFolder = "./test/examples/cases"

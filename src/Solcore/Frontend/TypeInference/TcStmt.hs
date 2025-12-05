@@ -518,8 +518,16 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       -- checking if the type checking have changed the type
       -- due to unique type creation.
       let tynames = tyconNames t1'
-      changeTy <- or <$> mapM isUniqueTyName tynames
-      let rt2 = if changeTy then t1' else rt1'
+      changeTy <- or <$> mapM isUniqueTyName tynames 
+      -- Here, we need to only consider as rt2 = t1' when, 
+      -- the function mention unique type as arguments. 
+      -- In this situation, its type changed, since some 
+      -- arguments are replaced by unique types. However, 
+      -- when checking instances this is not necessary. 
+      -- Because of that, we conjunct with `incl` argument 
+      -- which is False for type checking instance member 
+      -- functions.
+      let rt2 = if changeTy && incl then t1' else rt1'
       info ["Trying to unify: ", pretty rt2, " with ", pretty t1']
       unify rt2 t1' `wrapError` d
       info ["Trying to unify: ", pretty nt, " with ", pretty (funtype ts' rt2)]
@@ -532,6 +540,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       inf <- generalize (rs, ty)
       info [" - generalized inferred type: ", pretty inf]
       ann <- annotatedScheme vs' sig
+      info [" - annotated type: ", pretty ann]
       -- checking ambiguity
       when (ambiguous inf) $
         ambiguousTypeError inf sig
@@ -684,7 +693,8 @@ tcInstance' idecl@(Instance d vs ctx n ts t funs)
         funs3 = sortBy (\ f f' -> compare (sigName (funSignature f))
                                           (sigName (funSignature f')))
                        (map (updateSignature vs1 n) funs2)
-      verifySignatures (Instance d vs1 ctx' n ts' t' funs3)
+        idecl' = Instance d vs1 ctx' n ts' t' funs3
+      verifySignatures idecl'
 
 verifySignatures :: Instance Id -> TcM (Instance Id)
 verifySignatures instd@(Instance _ _ ps n ts t funs) =
@@ -736,7 +746,8 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
 checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
 checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
   = do
-      _ <- match t t' `catchError` (\ _ -> invalidMemberType qn t t')
+      info ["Checking ", pretty qn, " - infered:", pretty qt, " - annotated:", pretty qt']
+      _ <- match t' t `catchError` (\ _ -> invalidMemberType qn t' t)
       pure ()
 
 
@@ -981,6 +992,10 @@ tcCall Nothing n args
       extSubst s'
       let ps' = foldr union [] (ps : pss')
           t1 = funtype ts' t'
+      info $ [pretty s]
+      info $ [pretty (ps :=> t)]
+      info $ map pretty ts'
+      info ["Contraints:", pretty ps']
       withCurrentSubst (Call Nothing (Id n t1) es', ps', t')
 tcCall (Just e) n args
   = do

@@ -1,0 +1,14 @@
+data Proxy(a) = Proxy;
+data calldata(a) = calldata(word);
+
+forall a . class a : ABIAttribs {
+  function headSize(ty : Proxy(a)) -> word;
+}
+
+
+forall ty . ty:ABIAttribs => instance calldata(ty):ABIAttribs {
+  function headSize(p : Proxy(ty)) -> word {
+     let px : Proxy(ty);
+     return ABIAttribs.headSize(px);
+  }
+}
