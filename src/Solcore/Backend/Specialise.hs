@@ -380,24 +380,24 @@ specCall i args ty = do
 specFunDef :: TcFunDef -> SM Name
 specFunDef fd0 = withLocalState do
   -- first, rename bound variables
-  (fd, renamingSubst) <- renametv fd0
-  let renaming = fromTVS renamingSubst
-  let sig0 = funSignature fd
-  let sig = funSignature fd
-  let name = sigName sig
-  let funType = typeOfTcFunDef fd
-  let tvs = freetv funType
+  (fd, renaming) <- renametv fd0
+  let sig0 = funSignature fd0
+  let sig1 = funSignature fd
   subst <- renameSubst renaming <$> getSpSubst
   putSpSubst subst
+  debug ["> specFunDef raw input: ", pretty sig0, " renaming", pretty renaming, " subst=", pretty subst]
+  let sig' = applytv subst sig1 { sigVars = [], sigContext = [] }
+  let name = sigName sig1
+  let funType = typeOfTcFunDef fd
+  let tvs = freetv funType
   let tvs' = applytv subst (map TyVar tvs)
-  debug ["> specFunDef ", pretty name, " : ", pretty funType,  " tvs'=", prettys tvs', " subst=", pretty subst]
+  debug ["> specFunDef ", pretty name, " : ", pretty sig1,  " tvs'=", prettys tvs', " subst=", pretty subst]
   let name' = specName name tvs'
   let ty' = applytv subst funType
   mspec <- lookupSpecialisation name'
   case mspec of
     Just fd' -> return name'
     Nothing -> do
-      let sig' = applytv subst (funSignature fd)
       -- add a placeholder first to break loops
       let placeholder = FunDef sig' []
       addSpecialisation name' placeholder
@@ -684,8 +684,11 @@ class Data a => HasTV a where
   freetv  :: a -> [Tyvar]    -- free variables
   freetv = everything (<>) (mkQ mempty (freetv @Ty))
 
-  renametv :: a -> SM (a, TVSubst)
+  renametv :: a -> SM (a, TVRenaming)
   renametv a = pure (a, mempty)
+
+  applyRenaming :: TVRenaming -> a -> a
+  applyRenaming r = everywhere (mkT (renameTV r))
 
 instance HasTV Ty where
   applytv (TVSubst s) t@(TyVar v)
@@ -733,8 +736,9 @@ instance HasTV (Signature Id) where
     applytv s = everywhere (mkT (applytv @Ty s))
     freetv sig = (everything (<>) (mkQ mempty (freetv @Ty))) sig \\ sigVars sig
     renametv sig = do
-      subst <- foldM addRenaming mempty (sigVars sig)
-      pure (applytv subst sig, subst)
+      renaming <- foldM addRenaming mempty (sigVars sig)
+      pure (applyRenaming renaming sig, renaming)
+
 
 {-
 data FunDef a
@@ -748,15 +752,16 @@ instance HasTV (FunDef Id) where
     freetv fd = (everything (<>) (mkQ mempty (freetv @Ty))) fd \\ sigVars (funSignature fd)
     renametv fd = do
       let sig = funSignature fd
-      subst <- foldM addRenaming mempty (sigVars sig)
+      renaming <- foldM addRenaming mempty (sigVars sig)
+      let subst = toTVS renaming
       let sig' = applytv subst sig
       let body' = applytv subst (funDefBody fd)
-      pure(FunDef sig' body', subst)
+      pure(FunDef sig' body', renaming)
 
-addRenaming :: TVSubst -> Tyvar -> SM TVSubst
+addRenaming :: TVRenaming -> Tyvar -> SM TVRenaming
 addRenaming b a = do
            fresh <- spNewName
-           pure ( (a |-> TyVar (TVar fresh)) <> b )
+           pure (TVR [(a, TVar fresh)] <> b)
 
 -- TODO: refactor - make renametv return TVRenaming; turn rename* into class methods
 
@@ -807,7 +812,7 @@ renameTV :: TVRenaming -> Tyvar -> Tyvar
 renameTV (TVR r) v = fromMaybe v (lookup v r)
 
 renameTy :: TVRenaming -> Ty -> Ty
-renameTy r = everywhere  (mkT (renameTV r))
+renameTy  = applyRenaming
 
 renameSubst :: TVRenaming -> TVSubst -> TVSubst
 renameSubst r = TVSubst . map rename . unTVSubst where
