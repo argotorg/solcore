@@ -639,7 +639,26 @@ emptyTVSubst :: TVSubst
 emptyTVSubst = TVSubst []
 
 -- composition operators
+-- apply (s1 <> s2) t = apply s1 (apply s2 t)
+{-
+-- >>> let [a,b,c,x,y] = map (TVar . Name) (Prelude.words "a b c x y")
+-- >>> [a,b,c,x,y]
+-- [TVar {var = a},TVar {var = b},TVar {var = c},TVar {var = x},TVar {var = y}]
+ghci> let [ta,tb,tc,tx,ty] = map TyVar [a,b,c,x,y]
+ghci> [ta, tb, tc, tx, ty]
+[TyVar (TVar {var = a}),TyVar (TVar {var = b}),TyVar (TVar {var = c}),TyVar (TVar {var = x}),TyVar (TVar {var = y})]
 
+ghci> let s1 = TVSubst [(a,tx), (b,ty)]
+ghci> let s2 = TVSubst [(a,tb), (b,tc), (c,ta)]
+ghci> s1 <> s1
+TVSubst {unTVSubst = [(TVar {var = a},TyVar (TVar {var = x})),(TVar {var = b},TyVar (TVar {var = y}))]}
+ghci> s1 <> s2
+TVSubst {unTVSubst = [(TVar {var = a},TyVar (TVar {var = y})),(TVar {var = b},TyVar (TVar {var = c})),(TVar {var = c},TyVar (TVar {var = x}))]}
+ghci> s2 <> s2
+TVSubst {unTVSubst = [(TVar {var = a},TyVar (TVar {var = c})),(TVar {var = b},TyVar (TVar {var = a})),(TVar {var = c},TyVar (TVar {var = b}))]}
+ghci> s2 <> s2 <> s2
+TVSubst {unTVSubst = [(TVar {var = a},TyVar (TVar {var = a})),(TVar {var = b},TyVar (TVar {var = b})),(TVar {var = c},TyVar (TVar {var = c}))]}
+-}
 instance Semigroup TVSubst where
   s1 <> s2 = TVSubst (outer ++ inner)
     where
@@ -748,6 +767,33 @@ instance Pretty TVRenaming where
   ppr = braces . commaSep . map go . unTVR
     where
       go (v,t) = ppr v <+> text "|->" <+> ppr t
+
+-- composition operators
+-- apply (s1 <> s2) t = apply s1 (apply s2 t)
+--  renameTy ([(a,x) (b,y)] <> [(a,b),  (b,c), (c,a)]) (a :-> b :-> c)
+--  = renameTy ([(a,x) (b,y)] (b :-> c :-> a)
+--  = y :-> c :-> x
+-- Hence ([(a,x) (b,y)] <> [(a,b), (b,c), (c,a)]) = [(a,y), (b,c), (c,x)]
+--
+-- >>> let [a,b,c,x,y] = map (TVar . Name) (Prelude.words "a b c x y")
+-- >>> [a,b,c,x,y]
+-- [TVar {var = a},TVar {var = b},TVar {var = c},TVar {var = x},TVar {var = y}]
+-- >>> let r1 = TVR [(a,x), (b,y)]
+-- >>> let r2 = TVR [(a,b), (b,c), (c,a)]
+-- >>> r1 <> r1
+-- TVR {unTVR = [(TVar {var = a},TVar {var = x}),(TVar {var = b},TVar {var = y})]}
+-- >>> r1 <> r2
+-- TVR {unTVR = [(TVar {var = a},TVar {var = y}),(TVar {var = b},TVar {var = c}),(TVar {var = c},TVar {var = x})]}
+-- >>> r2 <> r2
+-- TVR {unTVR = [(TVar {var = a},TVar {var = c}),(TVar {var = b},TVar {var = a}),(TVar {var = c},TVar {var = b})]}
+-- >>> r2 <> r2 <> r2
+-- TVR {unTVR = []}
+
+instance Semigroup TVRenaming where
+  r1 <> r2 = TVR (filter (uncurry (/=)) [ (u, renameTV r1 v) | (u, v) <- unTVR r2])
+
+instance Monoid TVRenaming where
+  mempty = TVR mempty
 
 toTVS :: TVRenaming -> TVSubst
 toTVS = TVSubst . map (fmap TyVar) . unTVR
