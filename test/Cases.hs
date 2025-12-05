@@ -210,6 +210,7 @@ cases =
     , runTestForFile "match-yul.solc" caseFolder
     , runTestExpectingFailure "instance-sig.solc" caseFolder
     , runTestExpectingFailure "wrong-instance.solc" caseFolder
+    , runTestExpectingFailure "instance-context-wrong-kind.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

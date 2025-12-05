@@ -683,8 +683,13 @@ tcInstance idecl@(Instance d vs ctx n ts t funs)
       tcInstance' (Instance d [] ctx' n ts' t' funs')
 
 checkConstraint :: [Tyvar] -> Pred -> TcM ()
-checkConstraint vs p@(InCls _ t ts) =
+checkConstraint vs p@(InCls n t ts) = do
+  -- checking kinds for all types
   mapM_ (kindCheck vs) (t : ts) `wrapError` p
+  -- checking arity of the type class
+  cinfo <- askClassInfo n
+  unless ((classArity cinfo) == length ts) $
+    constraintArityError p cinfo
 checkConstraint vs (t :~: t') = mapM_ (kindCheck vs) [t, t']
 
 tcInstance' :: Instance Name -> TcM (Instance Id)
@@ -1238,3 +1243,12 @@ notImplemented funName a = error $ concat [funName, " not implemented yet for ",
 
 notImplementedS :: (HasCallStack, Show a) => String -> a -> b
 notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]
+
+constraintArityError :: Pred -> ClassInfo -> TcM ()
+constraintArityError p@(InCls n _ ts) cinfo
+  = throwError $ unlines [ "Contraint:"
+                         , pretty n
+                         , "has a wrong number of weak type arguments."
+                         , unwords ["It is expected to have:", show (classArity cinfo), "weak arguments."]
+                         , unwords ["but it has:", show (length ts), "weak arguments!"]
+                         ]
