@@ -11,4 +11,4 @@ data TestType(x) = TestType;
 
 // Variable 'bad' appears in context but not in instance head
 // But pragma disables the check, so should pass
-forall x . bad:TestHelper(x) => instance TestType(x):TestBound {}
+forall x bad . bad:TestHelper(x) => instance TestType(x):TestBound {}

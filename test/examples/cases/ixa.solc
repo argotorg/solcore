@@ -67,7 +67,7 @@ forall a . instance memory(array(a)):MemoryType {
     }
   }
 
-  function size(prx : Proxy(memory(a))) -> word {
+  function size(prx : Proxy(memory(array(a)))) -> word {
     return 32;
   }
 }
