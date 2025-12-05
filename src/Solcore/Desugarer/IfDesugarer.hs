@@ -27,8 +27,8 @@ desugarStmt (Match es eqns)
 desugarStmt (If e bdy1 bdy2)
   = Match [e] [eqntrue, eqnfalse]
     where
-      eqntrue = ([PCon (Id inlName (inlTy unit unit)) [PCon (Id "()" unit) []]], bdy1)
-      eqnfalse = ([PCon (Id inrName (inrTy unit unit)) [PCon (Id "()" unit) []]], bdy2)
+      eqntrue = ([PCon (Id inrName (inrTy unit unit)) [PCon (Id "()" unit) []]], bdy1)
+      eqnfalse = ([PCon (Id inlName (inlTy unit unit)) [PCon (Id "()" unit) []]], bdy2)
 desugarStmt v = v
 
 -- desugaring boolean data constructors
