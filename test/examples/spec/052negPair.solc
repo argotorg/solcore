@@ -1,4 +1,4 @@
-
+forall a.
 class  a : Neg {
    function neg(x:a) -> a;
 }
@@ -7,7 +7,7 @@ data B = F | T;
 data Pair(a,b) = Pair(a,b);
 
 instance B : Neg {
-  function neg (x : B) {
+  function neg (x : B) -> B {
     match x {
     | F => return T;
     | T => return F;
@@ -28,8 +28,9 @@ function snd(p) {
 }
 
 
-instance (a:Neg,b:Neg) => Pair(a,b):Neg {
-  function neg(p) {
+forall a b.
+a:Neg,b:Neg => instance Pair(a,b):Neg {
+  function neg(p:Pair(a,b)) -> Pair(a,b) {
     return Pair(Neg.neg (fst(p)), Neg.neg(snd (p)));
   }
 }
