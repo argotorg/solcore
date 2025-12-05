@@ -128,8 +128,8 @@ instance Decl (TopDecl Name) where
   decl (TMutualDef ds) = decl ds
   decl (TDataDef d) = decl d
   decl (TSym t) = decl t
+  decl (TClassDef c) = decl c
   decl _ = []
-
 
 instance Decl (ContractDecl Name) where
   decl (CDataDecl dt) = decl dt
@@ -138,6 +138,10 @@ instance Decl (ContractDecl Name) where
   decl (CMutualDecl ds)
     = concatMap decl ds
   decl (CConstrDecl cd) = []
+
+instance Decl (Class Name) where
+  decl (Class _ _ n _ _ sigs)
+    = n : decl sigs
 
 -- getting the mentioned names in a declaration
 
