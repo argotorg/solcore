@@ -99,15 +99,16 @@ compile opts = runExceptT $ do
     putStrLn "> SCC Analysis:"
     putStrLn $ pretty connected
 
-  -- Indirect call handling
-  direct <- liftIO $
-    if noDesugarCalls
-    then pure connected
-    else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
-
-  liftIO $ when (verbose || optDumpDF opts) $ do
-    putStrLn "> Indirect call desugaring:"
-    putStrLn $ pretty direct
+  let direct = connected
+  -- -- Indirect call handling
+  -- direct <- liftIO $
+  --   if noDesugarCalls
+  --   then pure connected
+  --   else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
+  --
+  -- liftIO $ when (verbose || optDumpDF opts) $ do
+  --   putStrLn "> Indirect call desugaring:"
+  --   putStrLn $ pretty direct
 
   -- Pattern wildcard desugaring
 
@@ -116,12 +117,14 @@ compile opts = runExceptT $ do
     putStrLn "> Pattern wildcard desugaring:"
     putStrLn $ pretty noWild
 
-  -- Eliminate function type arguments
+  let noFun = noWild
 
-  let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
-  liftIO $ when verbose $ do
-    putStrLn "> Eliminating argments with function types"
-    putStrLn $ pretty noFun
+  -- -- Eliminate function type arguments
+  --
+  -- let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
+  -- liftIO $ when verbose $ do
+  --   putStrLn "> Eliminating argments with function types"
+  --   putStrLn $ pretty noFun
 
   -- Type inference
   (typed, typeEnv) <- ExceptT $ timeItNamed "Typecheck     "
@@ -132,7 +135,8 @@ compile opts = runExceptT $ do
     mapM_ putStrLn (reverse $ logs typeEnv)
     putStrLn "> Elaborated tree:"
     putStrLn $ pretty typed
-
+  pure []
+{-
   -- If / boolean desugaring
   desugared <- liftIO $
     if noIfDesugar
@@ -173,6 +177,7 @@ compile opts = runExceptT $ do
       forM_ core (putStrLn . pretty)
 
     pure core
+-}
 
 -- add declarations generated in the previous step
 -- and moving data types inside contracts to the

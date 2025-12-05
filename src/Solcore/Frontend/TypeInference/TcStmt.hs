@@ -188,14 +188,7 @@ tcExp (Var n)
   = do
       s <- askEnv n `wrapError` (Var n)
       (ps :=> t) <- freshInst s
-      noDesugarCalls <- getNoDesugarCalls
-      if noDesugarCalls then pure (Var (Id n t), ps , t)
-      else do
-        -- checks if it is a function name, and return
-        -- its corresponding unique type
-        r <- lookupUniqueTy n
-        p <- maybe (pure $ (Var (Id n t), t)) mkCon r
-        withCurrentSubst (fst p, ps, snd p)
+      pure (Var (Id n t), ps , t)
 tcExp e@(Con n es)
   = do
       -- typing parameters
@@ -238,11 +231,7 @@ tcExp e@(Lam args bd _)
            vs0 = mv ps1 `union` mv t1 `union` mv ts1
            vs = map (TVar . metaName) vs0
            ty = funtype ts1 t1
-       noDesugarCalls <- getNoDesugarCalls
-       if noDesugarCalls then withCurrentSubst (Lam args' bd' (Just t1), ps1, ty)
-       else do
-         (e, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty
-         withCurrentSubst (e, ps1, t)
+       withCurrentSubst (Lam args' bd' (Just t1), ps1, ty)
 tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1

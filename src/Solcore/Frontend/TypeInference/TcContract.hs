@@ -249,7 +249,7 @@ tcBindGroup binds
       mapM_ (uncurry extEnv) (zip names schs)
       noDesugarCalls <- getNoDesugarCalls
       let funs1 = everywhere (mkT gen) funs'
-      unless noDesugarCalls $ generateTopDeclsFor (zip funs1 schs)
+      -- unless noDesugarCalls $ generateTopDeclsFor (zip funs1 schs)
       pure funs1
 
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
