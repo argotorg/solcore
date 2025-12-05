@@ -1,4 +1,4 @@
-import std;
+import dispatch;
 
 function caller() -> address {
   let res: word;

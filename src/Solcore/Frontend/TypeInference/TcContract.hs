@@ -290,7 +290,7 @@ checkClass icls@(Class bvs ps n vs v sigs)
       let p = InCls n (TyVar v) (TyVar <$> vs)
           ms' = map sigName sigs
       bound <- askBoundVariableCondition n
-      unless bound (checkBoundVariable ps (v:vs) `wrapError` icls)
+      unless bound (checkBoundVariable ps (map TyVar (v:vs)) `wrapError` icls)
       addClassInfo n (length vs) ms' ps p
       mapM_ (checkSignature p) sigs
     where

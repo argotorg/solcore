@@ -116,12 +116,12 @@ compile opts = runExceptT $ do
     putStrLn "> Pattern wildcard desugaring:"
     putStrLn $ pretty noWild
 
-  -- Eliminate function type arguments 
+  -- Eliminate function type arguments
 
-  let noFun = if noDesugarCalls then noWild else replaceFunParam noWild 
-  liftIO $ when verbose $ do 
+  let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
+  liftIO $ when verbose $ do
     putStrLn "> Eliminating argments with function types"
-    putStrLn $ pretty noFun 
+    putStrLn $ pretty noFun
 
   -- Type inference
   (typed, typeEnv) <- ExceptT $ timeItNamed "Typecheck     "

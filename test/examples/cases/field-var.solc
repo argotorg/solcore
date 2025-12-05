@@ -1,0 +1,18 @@
+import dispatch;
+contract Foo {
+  start : word;
+
+  function g(start:word) -> word {
+    // let start : word = 0;
+    return Sub.sub(9, start);
+  }
+
+  function f() -> word {
+    return start;
+  }
+
+  function h(start:word) -> word {
+    let start : word = 0;
+    return Sub.sub(9, start);
+  }
+}
