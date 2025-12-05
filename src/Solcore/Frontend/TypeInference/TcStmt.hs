@@ -213,8 +213,8 @@ tcExp e@(Con n es)
           e1 = Con (Id n t) es'
       withCurrentSubst (e1, ps', t')
 tcExp e@(FieldAccess Nothing n)
-  = notImplementedS "tcExp" e
-
+  -- = notImplementedS "tcExp" e
+  = throwError ("tcExp not implemented for: " ++ pretty e ++ "\n"++show e)
 tcExp (FieldAccess (Just e) n)
   = do
       -- inferring expression type
@@ -1080,13 +1080,14 @@ tcYulExp (YIdent v)
       (_ :=> t) <- freshInst sch
       unify t word
       pure t
-tcYulExp (YCall n es)
+tcYulExp e@(YCall n es)
   = do
-      sch <- askEnv n `wrapError` (YCall n es)
+      sch <- askEnv n `wrapError` e
       (_ :=> t) <- freshInst sch
       ts <- mapM tcYulExp es
       t' <- freshTyVar
-      unify t (foldr (:->) t' ts)
+      s <- unify t (funtype ts t') `wrapError` e
+      extSubst s
       withCurrentSubst t'
 
 tcYLit :: YLiteral -> TcM Ty
