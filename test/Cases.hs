@@ -225,7 +225,7 @@ cases =
     , runTestForFile "undefined.solc" caseFolder
     , runTestForFile "uintdesugared.solc" caseFolder
     , runTestForFile "unit.solc" caseFolder
-    , runTestExpectingFailure "vartyped.solc" caseFolder
+    , runTestForFile "vartyped.solc" caseFolder
     , runTestExpectingFailure "weirdfoo.solc" caseFolder
     , runTestExpectingFailure "withdraw.solc" caseFolder
     , runTestForFile "word-match.solc" caseFolder

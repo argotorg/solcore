@@ -99,16 +99,16 @@ compile opts = runExceptT $ do
     putStrLn "> SCC Analysis:"
     putStrLn $ pretty connected
 
-  let direct = connected
-  -- -- Indirect call handling
-  -- direct <- liftIO $
-  --   if noDesugarCalls
-  --   then pure connected
-  --   else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
-  --
-  -- liftIO $ when (verbose || optDumpDF opts) $ do
-  --   putStrLn "> Indirect call desugaring:"
-  --   putStrLn $ pretty direct
+  -- let direct = connected
+  -- Indirect call handling
+  direct <- liftIO $
+    if noDesugarCalls
+       then pure connected
+       else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
+
+  liftIO $ when (verbose || optDumpDF opts) $ do
+     putStrLn "> Indirect call desugaring:"
+     putStrLn $ pretty direct
 
   -- Pattern wildcard desugaring
 
@@ -119,12 +119,12 @@ compile opts = runExceptT $ do
 
   let noFun = noWild
 
-  -- -- Eliminate function type arguments
-  --
-  -- let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
-  -- liftIO $ when verbose $ do
-  --   putStrLn "> Eliminating argments with function types"
-  --   putStrLn $ pretty noFun
+  -- Eliminate function type arguments
+
+  let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
+  liftIO $ when verbose $ do
+    putStrLn "> Eliminating argments with function types"
+    putStrLn $ pretty noFun
 
   -- Type inference
   (typed, typeEnv) <- ExceptT $ timeItNamed "Typecheck     "

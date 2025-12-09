@@ -1,5 +1,5 @@
 contract Answer {
-  function main() {
+  function main() -> string {
     return "42";
   }
 }
