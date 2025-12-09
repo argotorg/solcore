@@ -8,8 +8,6 @@ import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.Pretty.SolcorePretty(pretty)
 
 import Common.Pretty
-prettys :: Pretty a => [a] -> String
-prettys = render . brackets . commaSep . map ppr
 
 class Pretty a => HasShortName a where
   shortName :: a -> String

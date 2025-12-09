@@ -61,7 +61,9 @@ library
   -- cabal-fmt: expand src
   exposed-modules:
       Solcore.Backend.EmitHull
+      Solcore.Backend.Retype
       Solcore.Backend.Specialise
+      Solcore.Backend.SpecMonad
       Solcore.Desugarer.IfDesugarer
       Solcore.Desugarer.IndirectCall
       Solcore.Desugarer.MatchCompiler
