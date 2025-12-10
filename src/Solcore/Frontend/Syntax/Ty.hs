@@ -30,7 +30,7 @@ newtype MetaTv
     deriving (Eq, Ord, Show, Data, Typeable)
 
 tyconNames :: Ty -> [Name]
-tyconNames (TyCon n ts) 
+tyconNames (TyCon n ts)
   = nub (n : concatMap tyconNames ts)
 tyconNames _ = []
 
@@ -135,6 +135,7 @@ class HasMeasure a where
 
 instance HasMeasure Ty where
   measure (TyVar _) = 1
+  measure (Meta _) = 1
   measure (TyCon _ ts) = 1 + sum (map measure ts)
 
 instance HasMeasure Pred where

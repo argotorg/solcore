@@ -494,7 +494,7 @@ annotatedScheme vs' sig@(Signature vs ps n args rt)
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
   | hasAnn sig = do
-      info ["\n# tcFunDef ", pretty d]
+      info ["\n# tcFunDef ", pretty sig]
       let vars = vs `union` vs'
       -- check if all variables are bound in signature.
       when (any (\ v -> v `notElem` vars) (bv sig)) $ do
@@ -541,6 +541,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       -- elaborating function body
       let ann' = if changeTy then inf else ann
       fdt <- elabFunDef vs' sig1 bd1' inf ann' `wrapError` d
+      info ["Finishing typing for:", pretty (funSignature fdt)]
       withCurrentSubst (fdt, ann')
   | otherwise = tiFunDef d
 
@@ -559,6 +560,7 @@ elabFunDef vs sig bdy inf@(Forall _ (_ :=> tinf)) ann@(Forall _ (_ :=> tann))
         tann' = everywhere (mkT toMeta) tann
       s <- unify tinf' tann'
       sig2 <- elabSignature vs sig ann
+      info ["Elaborated signature:", pretty sig2]
       let fd2 = everywhere (mkT (apply @Ty s)) (FunDef sig2 bdy)
       pure (everywhere (mkT gen) fd2)
 

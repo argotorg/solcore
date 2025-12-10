@@ -166,10 +166,10 @@ tcDecl (CFunDecl d)
       case d' of
         [] -> throwError "Impossible! Empty function binding!"
         (x : _) -> pure (CFunDecl x)
-tcDecl (CMutualDecl ds)
+tcDecl d@(CMutualDecl ds)
   = do
       let f (CFunDecl fd) = fd
-      ds' <- tcBindGroup (map f ds)
+      ds' <- tcBindGroup (map f ds) `wrapError` d
       pure (CMutualDecl (map CFunDecl ds'))
 tcDecl (CConstrDecl cd) = CConstrDecl <$> tcConstructor cd
 tcDecl (CDataDecl d) = CDataDecl <$> tcDataDecl d
