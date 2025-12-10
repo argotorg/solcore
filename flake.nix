@@ -41,6 +41,8 @@
            buildInputs = [
              hspkgs.cabal-install
              hspkgs.haskell-language-server
+	     pkgs.boost
+	     pkgs.cmake
              pkgs.foundry-bin
              pkgs.go-ethereum
              pkgs.jq
