@@ -5,18 +5,17 @@ import Solcore.Frontend.Syntax.Name
 type NameSupply = [Name]
 
 namePool :: NameSupply
-namePool = Name <$> (names ++ addNumbers names [1..])
+namePool = Name <$> (names ++ addNumbers names [1 ..])
   where
     names = map wrap ['a' .. 'z']
     wrap x = [x]
 
-
 addNumbers :: [String] -> [Int] -> [String]
-addNumbers xs ys
-  = do
-      y <- ys
-      x <- xs
-      return (x ++ show y)
+addNumbers xs ys =
+  do
+    y <- ys
+    x <- xs
+    return (x ++ show y)
 
 newName :: NameSupply -> (Name, NameSupply)
 newName (x : xs) = (x, xs)
