@@ -488,7 +488,7 @@ instance Elab S.Exp where
 
   elab (S.ExpGT e1 e2) = do
      (e1', e2') <- elab (e1, e2)
-     let fun = QualName (Name "Num") "gt"
+     let fun = QualName (Name "Ord") "gt"
      pure $ Call Nothing fun [e1', e2']
 
   elab (S.ExpLE e1 e2) = do
@@ -522,12 +522,12 @@ instance Elab S.Exp where
 
   elab (S.ExpPlus e1 e2) = do
      (e1', e2') <- elab (e1, e2)
-     let fun = QualName (Name "Num") "add"
+     let fun = QualName (Name "Add") "add"
      pure $ Call Nothing fun [e1', e2']
 
   elab (S.ExpMinus e1 e2) = do
      (e1', e2') <- elab (e1, e2)
-     let fun = QualName (Name "Num") "sub"
+     let fun = QualName (Name "Sub") "sub"
      pure $ Call Nothing fun [e1', e2']
 
   elab (S.ExpCond e1 e2 e3)
