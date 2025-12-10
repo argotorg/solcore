@@ -482,14 +482,22 @@ instance Elab S.Exp where
     idx' <- elab idx
     pure $ Indexed arr' idx'
 
-  elab (S.ExpGE e1 e2) = do
-     (e1', e2') <- elab (e1, e2)
-     pure $ Call Nothing (Name "ge") [e1', e2']
+  elab (S.ExpLT e1 e2) = do
+    (e1', e2') <- elab (e1, e2)
+    pure $ Call Nothing (Name "lt") [e1', e2']
 
   elab (S.ExpGT e1 e2) = do
      (e1', e2') <- elab (e1, e2)
      let fun = QualName (Name "Num") "gt"
      pure $ Call Nothing fun [e1', e2']
+
+  elab (S.ExpLE e1 e2) = do
+    (e1', e2') <- elab (e1, e2)
+    pure $ Call Nothing (Name "le") [e1', e2']
+
+  elab (S.ExpGE e1 e2) = do
+     (e1', e2') <- elab (e1, e2)
+     pure $ Call Nothing (Name "ge") [e1', e2']
 
   elab (S.ExpEE e1 e2) = do
      (e1', e2') <- elab (e1, e2)
