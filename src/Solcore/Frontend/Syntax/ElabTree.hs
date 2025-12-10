@@ -512,6 +512,10 @@ instance Elab S.Exp where
      (e1', e2') <- elab (e1, e2)
      pure $ Call Nothing (Name "and") [e1', e2']
 
+  elab (S.ExpLOr e1 e2) = do
+     (e1', e2') <- elab (e1, e2)
+     pure $ Call Nothing (Name "or") [e1', e2']
+
   elab (S.ExpLNot e) = do
      e' <- elab e
      pure $ Call Nothing (Name "not") [e']
@@ -528,8 +532,15 @@ instance Elab S.Exp where
 
   elab (S.ExpCond e1 e2 e3)
     = Cond <$> elab e1 <*> elab e2 <*> elab e3
-  elab exp = notImplementedM "elab @Exp" exp
 
+  elab exp@(S.ExpTimes _ _)
+    = notImplementedM "elab @Exp" exp
+
+  elab exp@(S.ExpDivide _ _)
+    = notImplementedM "elab @Exp" exp
+
+  elab exp@(S.ExpModulo _ _)
+    = notImplementedM "elab @Exp" exp
 
 instance Elab S.Pat where
   type Res S.Pat = Pat Name
