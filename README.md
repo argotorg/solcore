@@ -29,6 +29,12 @@ cabal test
 
 # run the CI pipeline locally
 nix build
+
+# run all checks (including ormolu format check)
+nix flake check
+
+# format all Haskell files with ormolu.
+ormolu --mode inplace $(find app src yule test -name '*.hs')
 ```
 
 ## Using nix and flakes
