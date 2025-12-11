@@ -114,6 +114,7 @@ cases =
     --, runTestForFile "comp.solc" caseFolder
     , runTestForFile "compose0.solc" caseFolder
     , runTestForFile "compose_desugared.solc" caseFolder
+    , runTestForFile "comparisons.solc" caseFolder
     , runTestForFile "CondExp.solc" caseFolder
     , runTestForFile "constrained-instance.solc" caseFolder
     , runTestForFile "constrained-instance-context.solc" caseFolder
