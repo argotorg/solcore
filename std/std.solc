@@ -152,7 +152,7 @@ function ge(x:a, y:a) -> bool {
 
 forall a. a:Ord =>
 function lt(x:a, y:a) -> bool {
-  return Ord.gt(y,x);
+  return gt(y,x);
 }
 
 // --- Arithmetic ---
