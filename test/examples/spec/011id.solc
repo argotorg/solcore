@@ -2,13 +2,13 @@ contract Id1 {
 
   data Bool = False | True;
 
-  function id(x) {
+  forall a . function id(x : a) -> a {
     return x ;
   }
 
-  function const(x, y) { return x; }
+  forall a b . function const(x : a, y : b) -> a { return x; }
 
-  function main() {
+  function main() -> word {
     return const(id(42), False);
   }
 }

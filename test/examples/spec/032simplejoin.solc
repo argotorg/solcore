@@ -1,9 +1,9 @@
 contract Option {
   data Option(a) = None | Some(a);
 
-  function just(x) { return Some(x); }
+  forall a . function just(x : a) -> Option(a) { return Some(x); }
 
-  function maybe(n, o) {
+  forall a . function maybe(n : a, o : Option(a)) -> a {
     match o {
       | None => return n;
       | Some(x) => return x;
@@ -11,7 +11,7 @@ contract Option {
   }
 
 
-  function join(mmx) {
+  forall a . function join(mmx : Option(Option(a))) -> Option(a) {
     match mmx {
       | None => return None;
       | Some(None) => return None;
@@ -19,7 +19,7 @@ contract Option {
     }
   }
 
-  function join2(mmx) {
+  forall a . function join2(mmx : Option(Option(a))) -> Option(a) {
     match mmx {
       | Some(m) => match m {
           | None => return None;
@@ -29,7 +29,7 @@ contract Option {
     }
   }
 
-  function main() {
+  function main() -> word {
     return maybe(0, join(Some(Some(42))));
   }
 }

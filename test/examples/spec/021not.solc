@@ -1,18 +1,18 @@
 contract Not {
   data Bool = False | True;
 
-  function main() {
+  function main() -> word {
     return fromBool(bnot(False));
   }
 
-  function fromBool(b) {
+  function fromBool(b : Bool) -> word {
     match(b) {
       | False => return 0;
       | True  => return 1;
     }
   }
 
-  function bnot(b) {
+  function bnot(b : Bool) -> Bool {
     match b {
       | False => return True;
       | True => return False;

@@ -1,5 +1,5 @@
 import std;
- 
+
 function caller() -> address {
   let res: word;
   assembly {
@@ -56,7 +56,7 @@ contract Mini {
 */
 
 //  function transferFrom(src:address, dst:address, amt:uint256) -> bool {
-  function transferFrom(src, dst, amt) -> bool  {
+  function transferFrom(src : address, dst : address, amt : uint256) -> bool  {
      require1(ge(balances[src], amt));
 
      match (Eq.eq(src, msg_sender)) {
@@ -71,7 +71,7 @@ contract Mini {
      if ((src != msg_sender) && (allowance [src][msg_sender] != (Num.maxVal():uint256)) ) {
        require1(allowance[src][msg.sender] >= amt);
      }
-*/   
+*/
      balances[src] = Num.sub(balances[src], amt);
      balances[dst] = Num.add(balances[dst], amt):uint256;
      return true;

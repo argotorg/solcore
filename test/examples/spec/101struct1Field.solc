@@ -247,7 +247,7 @@ function g() -> word {
 }
 
 contract C {
-    function main() {
+    function main() -> word {
         f();
         return g();
     }

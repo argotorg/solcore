@@ -1,7 +1,7 @@
 contract RGB {
   data Color = R | G | B;
 
-  function fromEnum(c) {
+  function fromEnum(c : Color) -> word {
     match c {
       | R => return 4;
       | G => return 2;
@@ -9,5 +9,5 @@ contract RGB {
     }
   }
 
-  function main() { return fromEnum(B); }
+  function main() -> word { return fromEnum(B); }
 }

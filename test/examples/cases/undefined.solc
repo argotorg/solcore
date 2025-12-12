@@ -7,7 +7,7 @@ forall any.function undefined() -> any {
 function useWord(w:word) {}
 
 contract Magic {
-  function main() {
+  function main() -> () {
     useWord(undefined());
   }
 }

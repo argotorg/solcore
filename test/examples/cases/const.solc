@@ -3,7 +3,7 @@ function const() {
 }
 
 contract Foo {
-  function main () {
+  function main () -> word {
     let f = const();
     return f(0,1);
   }

@@ -1,7 +1,7 @@
 contract Option {
   data Option(a) = None | Some(a);
 
-  function join(mmx) {
+  forall a . function join(mmx : Option(Option(a))) -> Option(a) {
     match mmx {
     | None => return None;
     | Some(Some(x)) => return Some(x);

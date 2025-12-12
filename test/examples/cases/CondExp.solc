@@ -1,5 +1,5 @@
 contract CondExp {
-   function main() {
+   function main() -> word {
      return
        if if true then false else true
        then if false then 1 else 2

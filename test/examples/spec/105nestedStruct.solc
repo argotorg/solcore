@@ -334,7 +334,7 @@ function readW(w:memory(W)) -> memory(S) {
 }
 
 contract C {
-    function main() {
+    function main() -> word {
         let s:memory(S) = makeS();
 	let w:memory(W) = makeW(s);
 	let s2:memory(S) = readW(w);

@@ -1,5 +1,5 @@
 contract C {
-	function modifier(f) {
+	forall a b c. function modifier(f : (a,b) -> c) -> ((a,b) -> c){
 		return lam (x, y) {
 			// before solidity placeholder
 			let result = f(x,y); // Solidity's placeholder: _;
@@ -16,7 +16,7 @@ contract C {
 		return r;
 	}
 
-	function main() {
+	function main() -> word {
 		//function g(x, y) modifier(x,y) {
 		//	return add(x,y);
 		//}

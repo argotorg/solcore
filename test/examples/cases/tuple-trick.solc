@@ -27,10 +27,10 @@ forall n a b c . n : Nth (b,c) => instance Succ(n) : Nth ((a,b), c) {
 }
 
 contract C {
-  function id (x) {
+  forall a . function id (x : a) -> a {
     return x;
   }
-  function main () {
+  function main () -> () {
     let p : (word, word, word, ());
     let x : word = Nth.nth(Proxy : Proxy(Zero), p);
     let y : word = Nth.nth(Proxy : Proxy(Succ(Zero)), p);

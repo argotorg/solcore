@@ -1,21 +1,21 @@
 contract Logic {
   data Bool = True | False;
 
-  function not (x) {
+  function not (x : Bool) -> Bool {
     match x {
     | True => return False ;
     | False => return True ;
     }
   }
 
-  function and(x, y) {
+  function and(x : Bool, y : Bool) -> Bool {
     match x, y {
     | False, _ => return False ;
     | True , _ => return y ;
     }
   }
 
-  function and1 (x, y) {
+  function and1 (x : Bool, y : Bool) -> Bool{
     match x, y {
     | False, False => return False ;
     | True , False => return False;
@@ -24,7 +24,7 @@ contract Logic {
     }
   }
 
-  function elim (f, g, x) {
+  forall a . function elim (f : a, g : a, x : Bool) -> a {
     match x {
     | True => return f;
     | False => return g;

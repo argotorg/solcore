@@ -227,7 +227,7 @@ function g() {
     Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(s, z_sel)), RValueMemberAccess.memberAccess(MemberAccessProxy(s, x_sel)));
 }
 contract C {
-    function main() {
+    function main() -> () {
         f();
         g();
     }
