@@ -18,3 +18,8 @@ function g(start : word) -> word {
     // let start : word = 0;
     return Sub.sub(9, start);
 }
+
+function g1(start : word) -> word {
+    let start : word = 0;
+    return Sub.sub(9, start);
+}
