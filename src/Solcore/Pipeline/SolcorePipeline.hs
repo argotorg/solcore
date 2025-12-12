@@ -120,7 +120,7 @@ compile opts = runExceptT $ do
 
   let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
   liftIO $ when verbose $ do
-    putStrLn "> Eliminating argments with function types"
+    putStrLn "> Eliminating arguments with function types"
     putStrLn $ pretty noFun
 
   -- Type inference
