@@ -803,6 +803,10 @@ checkConstraints = mapM_ checkConstraint
 checkInstance :: Instance Name -> TcM ()
 checkInstance idef@(Instance d vs ctx n ts t funs)
   = do
+      -- checking if all variables are declared
+      let unbound_vars = (bv idef) \\ vs
+      unless (null unbound_vars) $ do
+        unboundTypeVars idef unbound_vars
       -- kind check all types in instance head
       mapM_ kindCheck (t : ts) `wrapError` idef
       -- check if the class is defined

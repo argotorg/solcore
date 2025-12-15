@@ -289,6 +289,9 @@ checkClass icls@(Class bvs ps n vs v sigs)
   = do
       let p = InCls n (TyVar v) (TyVar <$> vs)
           ms' = map sigName sigs
+          unbound_vars = (v : vs) \\ bvs
+      unless (null unbound_vars) $ do
+        unboundTypeVars icls unbound_vars
       bound <- askBoundVariableCondition n
       unless bound (checkBoundVariable ps (v:vs) `wrapError` icls)
       addClassInfo n (length vs) ms' ps p
