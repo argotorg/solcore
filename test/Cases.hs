@@ -232,6 +232,7 @@ cases =
     , runTestExpectingFailure "xref.solc" caseFolder
     , runTestForFile "yul-function-typing.solc" caseFolder
     , runTestForFile "yul-return.solc" caseFolder
+    , runTestForFile "wrong-overlapping.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
