@@ -62,6 +62,7 @@ library
   exposed-modules:
       Solcore.Backend.EmitHull
       Solcore.Backend.Specialise
+      Solcore.Desugarer.FieldAccess
       Solcore.Desugarer.IfDesugarer
       Solcore.Desugarer.IndirectCall
       Solcore.Desugarer.MatchCompiler
