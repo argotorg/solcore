@@ -500,6 +500,8 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       when (any (\ v -> v `notElem` vars) (bv sig)) $ do
          let unbound_vars = bv sig \\ vars
          unboundTypeVars sig unbound_vars
+      -- checking constraints
+      checkConstraints ps
       -- instantiate signatures in function definition
       sks <- mapM (const freshTyVar) vars
       let
@@ -657,6 +659,10 @@ extSignature sig@(Signature _ preds n ps t)
 tcInstance :: Instance Name -> TcM (Instance Id)
 tcInstance idecl@(Instance d vs ctx n ts t funs)
   = do
+      -- checking instance arity argument
+      arity <- classArity <$> askClassInfo n
+      unless (arity == length ts) $
+        invalidInstanceArity idecl
       -- checking instance type parameters
       mapM_ kindCheck (t : ts) `wrapError` idecl
       -- checking constraints
@@ -668,7 +674,10 @@ tcInstance idecl@(Instance d vs ctx n ts t funs)
       tcInstance' (Instance d [] ctx' n ts' t' funs')
 
 checkConstraint :: Pred -> TcM ()
-checkConstraint p@(InCls _ t ts) =
+checkConstraint p@(InCls n t ts) = do
+  arity <- classArity <$> askClassInfo n
+  unless (arity == length ts) $
+    invalidConstraintArity p
   mapM_ kindCheck (t : ts) `wrapError` p
 checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
 
@@ -1221,3 +1230,24 @@ notImplemented funName a = error $ concat [funName, " not implemented yet for ",
 
 notImplementedS :: (HasCallStack, Show a) => String -> a -> b
 notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]
+
+invalidInstanceArity :: Instance Name -> TcM ()
+invalidInstanceArity decl@(Instance d vs ctx n ts t funs)
+  = do
+      arity <- classArity <$> askClassInfo n
+      tcmError $ unlines ["Instance declaration:"
+                         , pretty $ ((Instance d vs ctx n ts t []) :: Instance Name)
+                         , "does not match the class arity:"
+                         , unwords [pretty n, " has arity of ", show arity]
+                         ]
+
+invalidConstraintArity :: Pred -> TcM ()
+invalidConstraintArity p@(InCls n t ts)
+  = do
+      arity <- classArity <$> askClassInfo n
+      tcmError $ unlines ["Constraint:"
+                         , pretty p
+                         , "does not match the class arity:"
+                         , unwords [pretty n, " has arity of ", show arity]
+                         ]
+invalidConstraintArity _ = return ()

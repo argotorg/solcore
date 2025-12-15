@@ -1,0 +1,6 @@
+forall a b . class a : Foo(b) {}
+
+forall a . a : Foo(word, word) =>
+function foo () -> () {
+  return ();
+}
