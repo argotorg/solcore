@@ -166,10 +166,10 @@ tcDecl (CFunDecl d)
       case d' of
         [] -> throwError "Impossible! Empty function binding!"
         (x : _) -> pure (CFunDecl x)
-tcDecl (CMutualDecl ds)
+tcDecl d@(CMutualDecl ds)
   = do
       let f (CFunDecl fd) = fd
-      ds' <- tcBindGroup (map f ds)
+      ds' <- tcBindGroup (map f ds) `wrapError` d
       pure (CMutualDecl (map CFunDecl ds'))
 tcDecl (CConstrDecl cd) = CConstrDecl <$> tcConstructor cd
 tcDecl (CDataDecl d) = CDataDecl <$> tcDataDecl d
@@ -290,7 +290,7 @@ checkClass icls@(Class bvs ps n vs v sigs)
       let p = InCls n (TyVar v) (TyVar <$> vs)
           ms' = map sigName sigs
       bound <- askBoundVariableCondition n
-      unless bound (checkBoundVariable ps (v:vs) `wrapError` icls)
+      unless bound (checkBoundVariable ps (map TyVar (v:vs)) `wrapError` icls)
       addClassInfo n (length vs) ms' ps p
       mapM_ (checkSignature p) sigs
     where

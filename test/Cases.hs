@@ -232,6 +232,8 @@ cases =
     , runTestExpectingFailure "xref.solc" caseFolder
     , runTestForFile "yul-function-typing.solc" caseFolder
     , runTestForFile "yul-return.solc" caseFolder
+    , runTestForFile "field-var.solc" caseFolder
+    , runTestForFile "local-variable-mess.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

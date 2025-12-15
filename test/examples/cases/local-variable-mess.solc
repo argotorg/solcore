@@ -1,0 +1,25 @@
+forall t . class t:Sub {
+    function sub(l: t, r: t) -> t;
+}
+
+instance word:Sub {
+    function sub(l: word, r: word) -> word {
+        let rw : word;
+        assembly {
+            rw := sub(l,r);
+        }
+        return rw;
+    }
+}
+
+function start() -> () {}
+
+function g(start : word) -> word {
+    // let start : word = 0;
+    return Sub.sub(9, start);
+}
+
+function g1(start : word) -> word {
+    let start : word = 0;
+    return Sub.sub(9, start);
+}
