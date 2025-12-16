@@ -265,6 +265,8 @@ cases =
     , runTestExpectingFailure "instance-context-wrong-kind.solc" caseFolder
     , runTestForFile "instance-closure-error.solc" caseFolder
     , runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder
+    , runTestForFile "revert-msg.solc" caseFolder
+    , runTestForFile "assert-mem-eq.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
