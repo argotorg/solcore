@@ -18,6 +18,7 @@ import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
 import Solcore.Desugarer.ReplaceFunTypeArgs
+import Solcore.Desugarer.StringLiteral
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.ElabTree
@@ -91,9 +92,15 @@ compile opts = runExceptT $ do
     putStrLn "> Dispatch:"
     putStrLn $ pretty dispatched
 
+  -- Eliminate string literals
+  let noStrLit = desugarStrLit dispatched
+  liftIO $ when verbose $ do
+    putStrLn "> String literal elimination:"
+    putStrLn $ pretty noStrLit
+
   -- SCC analysis
   connected <- ExceptT $ timeItNamed "SCC           " $
-    sccAnalysis dispatched
+    sccAnalysis noStrLit
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"
