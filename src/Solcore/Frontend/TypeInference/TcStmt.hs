@@ -45,7 +45,10 @@ tcStmt e@(Let n mt me)
       (me', psf, tf) <- case (mt, me) of
                       (Just t, Just e1) -> do
                         (e', ps1, t1) <- tcExp e1
-                        _ <- kindCheck t1 `wrapError` e
+                        -- here we should not have bound
+                        -- variables! Since, they should
+                        -- have been instantiated before.
+                        _ <- kindCheck [] t1 `wrapError` e
                         let bvs = bv t
                         sks <- mapM (const freshTyVar) bvs
                         let t' = insts (zip bvs sks) t
@@ -245,7 +248,9 @@ tcExp e@(Lam args bd _)
          withCurrentSubst (e, ps1, t)
 tcExp e1@(TyExp e ty)
   = do
-      kindCheck ty `wrapError` e1
+      -- again, no bound variables here!
+      -- Variables should have been instantiated.
+      kindCheck [] ty `wrapError` e1
       (e', ps, ty') <- tcExp e
       s <- match ty' ty
       extSubst s
@@ -418,7 +423,8 @@ tcArg (Untyped n)
       pure (Typed (Id n v) v, (n, ty), v)
 tcArg a@(Typed n ty)
   = do
-      ty1 <- kindCheck ty `wrapError` a
+      -- no bound variables here
+      ty1 <- kindCheck [] ty `wrapError` a
       pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1)
 
 hasAnn :: Signature Name -> Bool
@@ -509,7 +515,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       info ["## predicates in signature:", pretty (ps1 ++ qs1)]
       -- getting argument / return types in annotations
       (args', lctx, ts') <- tcArgs args1
-      rt1' <- maybe freshTyVar kindCheck rt1
+      rt1' <- maybe freshTyVar (kindCheck []) rt1
       nt <- freshTyVar
       -- building the typing context with new assumptions
       let lctx' = if incl then (n, monotype nt) : lctx else lctx
@@ -519,7 +525,15 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       -- due to unique type creation.
       let tynames = tyconNames t1'
       changeTy <- or <$> mapM isUniqueTyName tynames
-      let rt2 = if changeTy then t1' else rt1'
+      -- Here, we need to only consider as rt2 = t1' when,
+      -- the function mention unique type as arguments.
+      -- In this situation, its type changed, since some
+      -- arguments are replaced by unique types. However,
+      -- when checking instances this is not necessary.
+      -- Because of that, we conjunct with `incl` argument
+      -- which is False for type checking instance member
+      -- functions.
+      let rt2 = if changeTy && incl then t1' else rt1'
       info ["Trying to unify: ", pretty rt2, " with ", pretty t1']
       unify rt2 t1' `wrapError` d
       info ["Trying to unify: ", pretty nt, " with ", pretty (funtype ts' rt2)]
@@ -532,6 +546,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       inf <- generalize (rs, ty)
       info [" - generalized inferred type: ", pretty inf]
       ann <- annotatedScheme vs' sig
+      info [" - annotated type: ", pretty ann]
       -- checking ambiguity
       when (ambiguous inf) $
         ambiguousTypeError inf sig
@@ -658,19 +673,24 @@ tcInstance :: Instance Name -> TcM (Instance Id)
 tcInstance idecl@(Instance d vs ctx n ts t funs)
   = do
       -- checking instance type parameters
-      mapM_ kindCheck (t : ts) `wrapError` idecl
+      mapM_ (kindCheck vs) (t : ts) `wrapError` idecl
       -- checking constraints
-      mapM_ checkConstraint ctx `wrapError` idecl
+      mapM_ (checkConstraint vs) ctx `wrapError` idecl
       vs' <- mapM (const freshVar) vs
       let env = zip vs (map Meta vs')
           idecl'@(Instance _ _ ctx' _ ts' t' funs')
             = everywhere (mkT (insts @Ty env)) idecl
       tcInstance' (Instance d [] ctx' n ts' t' funs')
 
-checkConstraint :: Pred -> TcM ()
-checkConstraint p@(InCls _ t ts) =
-  mapM_ kindCheck (t : ts) `wrapError` p
-checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
+checkConstraint :: [Tyvar] -> Pred -> TcM ()
+checkConstraint vs p@(InCls n t ts) = do
+  -- checking kinds for all types
+  mapM_ (kindCheck vs) (t : ts) `wrapError` p
+  -- checking arity of the type class
+  cinfo <- askClassInfo n
+  unless ((classArity cinfo) == length ts) $
+    constraintArityError p cinfo
+checkConstraint vs (t :~: t') = mapM_ (kindCheck vs) [t, t']
 
 tcInstance' :: Instance Name -> TcM (Instance Id)
 tcInstance' idecl@(Instance d vs ctx n ts t funs)
@@ -684,7 +704,8 @@ tcInstance' idecl@(Instance d vs ctx n ts t funs)
         funs3 = sortBy (\ f f' -> compare (sigName (funSignature f))
                                           (sigName (funSignature f')))
                        (map (updateSignature vs1 n) funs2)
-      verifySignatures (Instance d vs1 ctx' n ts' t' funs3)
+        idecl' = Instance d vs1 ctx' n ts' t' funs3
+      verifySignatures idecl'
 
 verifySignatures :: Instance Id -> TcM (Instance Id)
 verifySignatures instd@(Instance _ _ ps n ts t funs) =
@@ -736,7 +757,8 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
 checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
 checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
   = do
-      _ <- match t t' `catchError` (\ _ -> invalidMemberType qn t t')
+      info ["Checking ", pretty qn, " - infered:", pretty qt, " - annotated:", pretty qt']
+      _ <- match t' t `catchError` (\ _ -> invalidMemberType qn t' t)
       pure ()
 
 
@@ -797,18 +819,18 @@ checkCompleteInstDef n ns
 checkInstances :: [Instance Name] -> TcM ()
 checkInstances = mapM_ checkInstance
 
-checkConstraints :: [Pred] -> TcM ()
-checkConstraints = mapM_ checkConstraint
+checkConstraints :: [Tyvar] -> [Pred] -> TcM ()
+checkConstraints vs = mapM_ (checkConstraint vs)
 
 checkInstance :: Instance Name -> TcM ()
 checkInstance idef@(Instance d vs ctx n ts t funs)
   = do
       -- kind check all types in instance head
-      mapM_ kindCheck (t : ts) `wrapError` idef
+      mapM_ (kindCheck vs) (t : ts) `wrapError` idef
       -- check if the class is defined
       _ <- askClassInfo n `wrapError` idef
       -- check if all the types and classes in the context are valid
-      checkConstraints ctx
+      checkConstraints vs ctx
       let ipred = InCls n t ts
       -- checking the coverage condition
       insts' <- askInstEnv n `wrapError` ipred
@@ -1221,3 +1243,12 @@ notImplemented funName a = error $ concat [funName, " not implemented yet for ",
 
 notImplementedS :: (HasCallStack, Show a) => String -> a -> b
 notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]
+
+constraintArityError :: Pred -> ClassInfo -> TcM ()
+constraintArityError p@(InCls n _ ts) cinfo
+  = throwError $ unlines [ "Contraint:"
+                         , pretty n
+                         , "has a wrong number of weak type arguments."
+                         , unwords ["It is expected to have:", show (classArity cinfo), "weak arguments."]
+                         , unwords ["but it has:", show (length ts), "weak arguments!"]
+                         ]

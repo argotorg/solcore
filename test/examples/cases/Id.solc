@@ -3,7 +3,7 @@ function id() {
 }
 
 contract Id {
-  function main () {
+  function main () -> word {
     let f = id();
     return f(0);
   }

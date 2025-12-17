@@ -178,11 +178,11 @@ tcDecl (CDataDecl d) = CDataDecl <$> tcDataDecl d
 
 tcDataDecl :: DataTy -> TcM DataTy
 tcDataDecl (DataTy n vs cs)
-  = DataTy n vs <$> mapM tcConstr cs
+  = DataTy n vs <$> mapM (tcConstr vs) cs
 
-tcConstr :: Constr -> TcM Constr
-tcConstr (Constr n ts)
-  = Constr n <$> mapM kindCheck ts
+tcConstr :: [Tyvar] -> Constr -> TcM Constr
+tcConstr vs (Constr n ts)
+  = Constr n <$> mapM (kindCheck vs) ts
 
 -- type checking fields
 
@@ -190,13 +190,13 @@ tcField :: Field Name -> TcM (Field Id)
 tcField d@(Field n t (Just e))
   = do
       (e', ps', t') <- tcExp e
-      kindCheck t `wrapError` d
+      kindCheck [] t `wrapError` d
       s <- mgu t t' `wrapError` d
       extEnv n (monotype t)
       return (Field n t (Just e'))
 tcField d@(Field n t _)
   = do
-      kindCheck t `wrapError` d
+      kindCheck [] t `wrapError` d
       extEnv n (monotype t)
       pure (Field n t Nothing)
 
@@ -214,13 +214,13 @@ tcClass iclass@(Class bvs ctx n vs v sigs)
       pure (Class bvs ctx n vs v sigs')
 
 tcSig :: (Signature Name, Scheme) -> TcM (Signature Id)
-tcSig (sig, (Forall _ (_ :=> t)))
+tcSig (sig, (Forall vs (_ :=> t)))
   = do
       let (ts,r) = splitTy t
           param (Typed n t) t1 = Typed (Id n t1) t1
           param (Untyped n) t1 = Typed (Id n t1) t1
           params' = zipWith param (sigParams sig) ts
-      kindCheck t `wrapError` sig
+      kindCheck vs t `wrapError` sig
       pure (Signature (sigVars sig)
                       (sigContext sig)
                       (sigName sig)
