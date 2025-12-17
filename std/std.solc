@@ -199,6 +199,7 @@ default instance a:Num {
   function fromWord(x:word) -> a { return Typedef.abs(x); }
   function add(x:a, y:a) -> a { return Add.add(x,y); }
   function sub(x:a, y:a) -> a { return Sub.sub(x,y); }
+  function gt(x: a, y: a) -> bool { return Ord.gt(x, y); }
 }
 
 // --- Word Arithmetic ---

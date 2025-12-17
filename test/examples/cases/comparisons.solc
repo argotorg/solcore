@@ -1,0 +1,14 @@
+import std;
+function f(x: word, y:word) -> bool {
+  return (!((x == y)
+          && (x != y)
+          && (x >= y)
+          && (x <= y)
+          || (x >  y)
+          && (x <  y)
+         ));
+}
+
+contract Comparisons {
+  function main() -> bool { return f(0,1); }
+}
