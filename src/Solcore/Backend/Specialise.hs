@@ -322,13 +322,13 @@ flattenQual (Name n) = n
 flattenQual (QualName n s) = flattenQual n ++ "_" ++ s
 
 mangleTy :: Ty -> String
-mangleTy (TyVar (TVar (Name n))) = n
-mangleTy (Meta (MetaTv (Name n))) = n
+mangleTy (TyVar _) = ""
 mangleTy (TyCon (Name "()") []) = "unit"
 mangleTy (TyCon (Name n) []) = n
-mangleTy (TyCon n ts) = flattenQual n ++ suffix ts where
-    suffix [] = ""
-    suffix tys = "L" ++ intercalate "_" (map mangleTy tys) ++"J"
+mangleTy (TyCon n ts) = flattenQual n ++ embrace mantys where
+    mantys = filter (not . null) (map mangleTy ts)
+    embrace [] = ""
+    embrace xs = "L" ++ intercalate "_" xs ++ "J"
 mangleTy t = error "Specialise: mangleTy not implemented for " ++ show t
 
 prettyId :: Id -> String
