@@ -480,15 +480,18 @@ argumentAnnotation (Untyped _)
 argumentAnnotation (Typed _ t)
   = pure t
 
+checkAllTypeVarsBound :: Pretty a => a -> [Tyvar] -> [Tyvar] -> TcM ()
+checkAllTypeVarsBound context used declared =
+    let unbound = used \\ declared
+    in unless (null unbound) $ unboundTypeVars context unbound
+
 annotatedScheme :: [Tyvar] -> Signature Name -> TcM Scheme
 annotatedScheme vs' sig@(Signature vs ps n args rt)
   = do
       ts <- mapM argumentAnnotation args
       t <- maybe freshTyVar pure rt
       -- check if all variables are bound in signature.
-      when (any (\ v -> v `notElem` (vs ++ vs')) (bv sig)) $ do
-         let unbound_vars = bv sig \\ (vs ++ vs')
-         unboundTypeVars sig unbound_vars
+      checkAllTypeVarsBound sig (vs ++ vs') (bv sig)
       pure (Forall vs (ps :=> (funtype ts t)))
 
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
@@ -497,9 +500,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       info ["\n# tcFunDef ", pretty d]
       let vars = vs `union` vs'
       -- check if all variables are bound in signature.
-      when (any (\ v -> v `notElem` vars) (bv sig)) $ do
-         let unbound_vars = bv sig \\ vars
-         unboundTypeVars sig unbound_vars
+      checkAllTypeVarsBound sig (bv sig) vars
       -- instantiate signatures in function definition
       sks <- mapM (const freshTyVar) vars
       let
@@ -803,6 +804,8 @@ checkConstraints = mapM_ checkConstraint
 checkInstance :: Instance Name -> TcM ()
 checkInstance idef@(Instance d vs ctx n ts t funs)
   = do
+      -- checking if all variables are declared
+      checkAllTypeVarsBound idef (bv idef) vs
       -- kind check all types in instance head
       mapM_ kindCheck (t : ts) `wrapError` idef
       -- check if the class is defined
