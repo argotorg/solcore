@@ -289,9 +289,7 @@ checkClass icls@(Class bvs ps n vs v sigs)
   = do
       let p = InCls n (TyVar v) (TyVar <$> vs)
           ms' = map sigName sigs
-          unbound_vars = (v : vs) \\ bvs
-      unless (null unbound_vars) $ do
-        unboundTypeVars icls unbound_vars
+      checkAllTypeVarsBound icls (v : vs) bvs
       bound <- askBoundVariableCondition n
       unless bound (checkBoundVariable ps (v:vs) `wrapError` icls)
       addClassInfo n (length vs) ms' ps p
@@ -302,8 +300,7 @@ checkClass icls@(Class bvs ps n vs v sigs)
             pst <- mapM tyParam ps
             t' <- maybe (pure unit) pure mt
             let ft = funtype pst t'
-            unless (all (`elem` bvs) (v : vs))
-                   (unboundTypeVars sig ((v : vs) \\ bvs))
+            checkAllTypeVarsBound sig (v : vs) bvs
             addClassMethod p sig `wrapError` icls
 
 addClassInfo :: Name -> Arity -> [Method] -> [Pred] -> Pred -> TcM ()
