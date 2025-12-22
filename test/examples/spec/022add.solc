@@ -7,7 +7,7 @@ function add(x : word, y : word) {
 }
 
 contract Add1 {
-  function main() {
+  function main() -> word {
     return add(40, 2);
   }
 }

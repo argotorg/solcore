@@ -1,15 +1,15 @@
 contract Id1 {
-  function id(x) {
+  forall a . function id(x : a) -> a {
     return x ;
   }
 
-  function nid() {
+  forall a . function nid() -> ((a) -> a) {
     return id;
   }
 
-  function const(x, y) { return x; }
+  forall a b . function const(x : a, y : b) -> a { return x; }
 
-  function main() {
+  function main() -> word {
     return const(nid(42), id(1));
   }
 }

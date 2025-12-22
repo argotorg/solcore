@@ -1,17 +1,17 @@
 contract Compose {
-  function compose(f,g) {
+  forall a b c. function compose(f :(b) -> c, g :((a) -> b)) -> ((a) -> c) {
     return lam (x) {
       return f(g(x));
     } ;
   }
 
-  function id(x) { return x; }
+  forall a . function id(x : a) -> a { return x; }
 
-  function idid() { return compose(id,id); }
+  forall a . function idid() -> ((a) -> a) { return compose(id,id); }
 
   // function main() { return idid(42); }
 
-   function main() {
+   function main() -> word {
      let f = compose(id,id);
      return f(42);
    }

@@ -1,25 +1,25 @@
 contract Unit {
-function one (x : ()) {
-  return 1;
-}
-
-function unitVal() {
-  return ();
-}
-
-function unitMatch (x) {
-  match x {
-  | () => return 1;
+  function one (x : ()) -> word {
+    return 1;
   }
-}
 
-function foo (x : word) {
-  return ();
-}
+  function unitVal() -> () {
+    return ();
+  }
 
-function main() {
-  return unitMatch(foo(one(unitVal())));
-}
+  function unitMatch (x : ()) -> word {
+    match x {
+    | () => return 1;
+    }
+  }
+
+  function foo (x : word) -> () {
+    return ();
+  }
+
+  function main() -> word {
+    return unitMatch(foo(one(unitVal())));
+  }
 }
 
 forall a . class a : Def {

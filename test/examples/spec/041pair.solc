@@ -1,12 +1,12 @@
 contract Pair {
 
-  function fst(p) {
+  forall a b . function fst(p : (a,b)) -> a {
     match p {
       | (a,b) => return a;
     }
   }
 
-  function main() {
+  function main() -> word {
     return fst((1,0));
   }
 }

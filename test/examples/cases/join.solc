@@ -2,14 +2,14 @@ contract Option {
   data Option(a) = None | Some(a);
   data Bool = False | True;
 
-  function maybe(n, o) {
-    match o {
-      | None => return n;
+  forall a . function maybe(n : Option(a), o : a) -> a {
+    match n  {
+      | None => return o;
       | Some(x) => return x;
     }
   }
 
-  function join(mmx) {
+  forall a . function join(mmx : Option(Option(a))) -> Option(a) {
     let result = None;
     match mmx {
       | Some(Some(x)) => result = Some(x);
@@ -18,7 +18,7 @@ contract Option {
     return result;
   }
 
-  function main() {
-    return maybe(0, join(Some(Some(0))));
+  function main() -> word {
+    return maybe(join(Some(Some(0))), 0);
   }
 }

@@ -1,11 +1,11 @@
 data Bool = False | True;
 
 contract MatchCall {
-  function f() {
+  function f() -> Bool {
     return True;
   }
 
-  function main() {
+  function main() -> word {
     match f() {
      | True => return 42;
     }

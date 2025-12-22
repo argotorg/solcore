@@ -13,11 +13,11 @@ data CFood = Red(Food) | Green(Food) | Nocolor;
 
 
 contract Food {
-  function id(x) {
+  forall a . function id(x : a) -> a {
     return(x);
   }
 
-  function main() {
+  function main() -> word {
   return fromEnum(id(Green(Beans)));
   }
 }

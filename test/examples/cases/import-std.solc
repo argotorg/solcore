@@ -1,7 +1,7 @@
 import std;
 
 contract Test {
-  function main() {
+  function main() -> word {
     return Add.add(21, 21);
   }
 }

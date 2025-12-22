@@ -2,7 +2,7 @@ contract EitherModule {
   data Either(a,b) = Left(a) | Right(b);
   data List(a) = Nil | Cons(a,List(a));
 
-  function lefts(xs) {
+  forall a b . function lefts(xs : List(Either(a,b))) -> List(a) {
     match xs {
     | Nil => return Nil ;
     | Cons(y,ys) =>

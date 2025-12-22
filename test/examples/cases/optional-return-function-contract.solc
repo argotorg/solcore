@@ -1,0 +1,6 @@
+contract Foo {
+
+  function foo (x : word) {
+
+  }
+}

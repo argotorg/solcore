@@ -58,7 +58,7 @@ function exp(x : word, y: word) {
 
 
 contract Arith {
-  function main() {
+  function main() -> word {
     return add(mod(sub(div(exp(2,18),4), 1), 16), 27);
   }
 }

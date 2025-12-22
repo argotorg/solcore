@@ -163,7 +163,7 @@ DeclList : Decl DeclList                           { $1 : $2 }
 Decl :: { ContractDecl }
 Decl : FieldDef                                    {CFieldDecl $1}
      | DataDef                                     {CDataDecl $1}
-     | Function                                    {CFunDecl $1}
+     | AnnFunction                                    {CFunDecl $1}
      | Constructor                                 {CConstrDecl $1}
 
 -- type synonym
@@ -223,6 +223,9 @@ Signatures : Signature ';' Signatures              {$1 : $3}
 Signature :: { Signature }
 Signature : SigPrefix 'function' Name '(' ParamList ')' OptRetTy {Signature (fst $1) (snd $1) $3 $5 $7}
 
+AnnSignature :: { Signature }
+AnnSignature : SigPrefix 'function' Name '(' AnnParamList ')' OptRetTy {Signature (fst $1) (snd $1) $3 $5 (maybe unitTy Just $7)}
+
 SigPrefix :: {([Ty], [Pred])}
 SigPrefix : 'forall' Tyvars '.' ConstraintList '=>' {($2, $4)}
           | 'forall' Tyvars '.'                     {($2, [])}
@@ -233,9 +236,17 @@ ParamList : Param                                  {[$1]}
           | Param  ',' ParamList                   {$1 : $3}
           | {- empty -}                            {[]}
 
+AnnParamList :: { [Param] }
+AnnParamList : AnnParam                            {[$1]}
+             | AnnParam ',' AnnParamList           {$1 : $3}
+             | {- empty -}                         {[]}
+
 Param :: { Param }
 Param : Name ':' Type                              {Typed $1 $3}
       | Name                                       {Untyped $1}
+
+AnnParam :: { Param }
+AnnParam : Name ':' Type                           {Typed $1 $3}
 
 -- instance declarations
 
@@ -259,17 +270,21 @@ Tyvars :: {[Ty]}
 Tyvars : Name Tyvars { (TyCon $1 []) : $2}
        | {-empty-}     {[]}
 
-Functions :: { [FunDef] }
-Functions : Function Functions                     {$1 : $2}
-          | {- empty -}                            {[]}
+AnnFunctions :: { [FunDef] }
+AnnFunctions : AnnFunction AnnFunctions            {$1 : $2}
+             | {- empty -}                         {[]}
+
 
 InstBody :: {[FunDef]}
-InstBody : '{' Functions '}'                       {$2}
+InstBody : '{' AnnFunctions '}'                       {$2}
 
 -- Function declaration
 
 Function :: { FunDef }
 Function : Signature Body {FunDef $1 $2}
+
+AnnFunction :: { FunDef }
+AnnFunction : AnnSignature Body {FunDef $1 $2}
 
 OptRetTy :: { Maybe Ty }
 OptRetTy : '->' Type                               {Just $2}
@@ -566,6 +581,9 @@ tupleExp (t1 : ts) = pairExp t1 (tupleExp ts)
 
 rmquotes :: String -> String
 rmquotes = read
+
+unitTy :: Maybe Ty
+unitTy = Just (TyCon (Name "()") [])
 
 parseError (Token (line, col) lexeme)
   = alexError $ "Parse error while processing lexeme: " ++ show lexeme

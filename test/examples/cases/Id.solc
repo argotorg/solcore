@@ -1,9 +1,9 @@
-function id() {
+forall a . function id() -> ((a) -> a) {
     return lam (x) { return x; } ;
 }
 
 contract Id {
-  function main () {
+  function main () -> word {
     let f = id();
     return f(0);
   }

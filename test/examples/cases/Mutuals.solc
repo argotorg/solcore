@@ -1,8 +1,8 @@
 contract Mutual {
-   function main () {
+   function main () -> word {
       return f();
    }
-   function f () {
+   function f() -> word {
       return 42;
    }
 }

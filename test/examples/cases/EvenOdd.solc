@@ -2,14 +2,14 @@ contract EvenOdd {
   data Nat = Zero | Succ(Nat);
   data Bool = False | True;
 
-  function even (n) {
+  function even (n : Nat) -> Bool {
     match n {
     | Zero => return True;
     | Succ(m) => return odd(m);
     }
   }
 
-  function odd(n) {
+  function odd(n : Nat) -> Bool {
     match n {
     | Zero => return False;
     | Succ(m) => return even(m);

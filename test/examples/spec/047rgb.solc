@@ -1,6 +1,6 @@
 contract RGB {
   data Color = R | G | B;
-  function main() {
+  function main() -> word {
     match B {
       | R => return 4;
       | G => return 2;

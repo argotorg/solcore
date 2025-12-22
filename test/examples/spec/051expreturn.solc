@@ -1,5 +1,5 @@
 data Bool = False | True;
-data W = W(Word);
+data W = W(word);
 data U = U;
 
 // empty class needed since forall expects a nonempty context
@@ -19,7 +19,7 @@ forall a . function ereturn(x:a) -> Unit { let res: Unit; return res; }
 /* simulate match expression
   x = match { | False => return 77; | True => W(22) }
 */
-function elimBool1(b:Bool) -> Word {
+function elimBool1(b:Bool) -> word {
    let x : W;
    x = W(1);
    match b {
@@ -50,7 +50,7 @@ forall a b. function unsafeCast(x:a) -> b {
 
 
 contract ExpReturn {
-  function main() -> Word {
+  function main() -> word {
     return elimBool1(False);
     // return elimBool1(False);
   }

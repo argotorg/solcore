@@ -127,7 +127,7 @@ instance storage(a):Assign(a) {
 }
 
 contract Tiamat {
-  function main() {
+  function main() -> word {
     let allowances : storage(dict(address, dict(address, word)));
     let src = address(17);
     setAllowance(allowances, address(1),address(2), 666);
