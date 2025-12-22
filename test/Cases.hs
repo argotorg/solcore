@@ -234,6 +234,7 @@ cases =
     , runTestForFile "yul-function-typing.solc" caseFolder
     , runTestForFile "yul-return.solc" caseFolder
     , runTestExpectingFailure "unbound-instance-var.solc" caseFolder
+    , runTestForFile "optional-return-function-contract.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"

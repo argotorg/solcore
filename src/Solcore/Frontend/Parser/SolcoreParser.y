@@ -224,7 +224,7 @@ Signature :: { Signature }
 Signature : SigPrefix 'function' Name '(' ParamList ')' OptRetTy {Signature (fst $1) (snd $1) $3 $5 $7}
 
 AnnSignature :: { Signature }
-AnnSignature : SigPrefix 'function' Name '(' AnnParamList ')' RetTy {Signature (fst $1) (snd $1) $3 $5 $7}
+AnnSignature : SigPrefix 'function' Name '(' AnnParamList ')' OptRetTy {Signature (fst $1) (snd $1) $3 $5 (maybe unitTy Just $7)}
 
 SigPrefix :: {([Ty], [Pred])}
 SigPrefix : 'forall' Tyvars '.' ConstraintList '=>' {($2, $4)}
@@ -289,9 +289,6 @@ AnnFunction : AnnSignature Body {FunDef $1 $2}
 OptRetTy :: { Maybe Ty }
 OptRetTy : '->' Type                               {Just $2}
          | {- empty -}                             {Nothing}
-
-RetTy :: { Maybe Ty }
-RetTy : '->' Type                                  {Just $2}
 
 -- Contract constructor
 
@@ -584,6 +581,9 @@ tupleExp (t1 : ts) = pairExp t1 (tupleExp ts)
 
 rmquotes :: String -> String
 rmquotes = read
+
+unitTy :: Maybe Ty
+unitTy = Just (TyCon (Name "()") [])
 
 parseError (Token (line, col) lexeme)
   = alexError $ "Parse error while processing lexeme: " ++ show lexeme
