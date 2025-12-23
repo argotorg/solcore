@@ -1,4 +1,4 @@
-module Language.Core.Types where
+module Language.Hull.Types where
 
 data Type
     = TWord

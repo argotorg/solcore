@@ -1,5 +1,5 @@
-module Language.Core.Parser where
-import Language.Core
+module Language.Hull.Parser where
+import Language.Hull
     ( Object(..),
       Body,
       Alt(..),
@@ -17,7 +17,7 @@ import Language.Yul.Parser(yulBlock)
 
 
 parseObject :: String -> String -> Object
-parseObject filename = runMyParser filename coreObject
+parseObject filename = runMyParser filename hullObject
 
 -- Note: this module repeats some definitions from YulParser.Name
 -- This is intentional as we may want to make different syntax choices
@@ -68,19 +68,19 @@ pKeyword w = try $ lexeme (string w <* notFollowedBy identChar)
 
 pPrimaryType :: Parser Type
 pPrimaryType = choice
-    [ try $ TNamed <$> identifier <*> braces coreType
+    [ try $ TNamed <$> identifier <*> braces hullType
     , TWord <$ pKeyword "word"
     , TBool <$ pKeyword "bool"
     , TUnit <$ pKeyword "unit"
-    , TSumN <$> ( pKeyword "sum" *> parens (commaSep coreType))
-    , parens coreType
+    , TSumN <$> ( pKeyword "sum" *> parens (commaSep hullType))
+    , parens hullType
     ]
 
-coreType :: Parser Type
-coreType = makeExprParser pPrimaryType coreTypeTable
+hullType :: Parser Type
+hullType = makeExprParser pPrimaryType hullTypeTable
 
-coreTypeTable :: [[Operator Parser Type]]
-coreTypeTable = [[InfixR (TPair <$ symbol "*")]
+hullTypeTable :: [[Operator Parser Type]]
+hullTypeTable = [[InfixR (TPair <$ symbol "*")]
                 ,[InfixR (TSum <$ symbol "+")]]
 
 pPrimaryExpr :: Parser Expr
@@ -89,24 +89,24 @@ pPrimaryExpr = choice
     , EBool True <$ pKeyword "true"
     , EBool False <$ pKeyword "false"
     , pTuple
-    , try (ECall <$> identifier <*> parens (commaSep coreExpr))
+    , try (ECall <$> identifier <*> parens (commaSep hullExpr))
     , EVar <$> (identifier  <* notFollowedBy (symbol "("))
-    , parens coreExpr
+    , parens hullExpr
     ]
 
 pTuple :: Parser Expr
-pTuple = go <$> parens (commaSep coreExpr) where
+pTuple = go <$> parens (commaSep hullExpr) where
     go [] = EUnit
     go [e] = e
     go [e1, e2] = EPair e1 e2
     go (e:es) = EPair e (go es)
 
 
-coreExpr :: Parser Expr
-coreExpr = choice
-    [ pKeyword "inl" *> (EInl <$> angles coreType <*> pPrimaryExpr)
-    , pKeyword "inr" *> (EInr <$> angles coreType <*> pPrimaryExpr)
-    , pKeyword "in" *> (EInK <$> parens int <*> coreType <*> pPrimaryExpr)
+hullExpr :: Parser Expr
+hullExpr = choice
+    [ pKeyword "inl" *> (EInl <$> angles hullType <*> pPrimaryExpr)
+    , pKeyword "inr" *> (EInr <$> angles hullType <*> pPrimaryExpr)
+    , pKeyword "in" *> (EInK <$> parens int <*> hullType <*> pPrimaryExpr)
     , pKeyword "fst" *> (EFst <$> pPrimaryExpr)
     , pKeyword "snd" *> (ESnd <$> pPrimaryExpr)
     , condExpr
@@ -115,40 +115,40 @@ coreExpr = choice
 
 condExpr = do
   pKeyword "if"
-  t <- angles coreType
-  e1 <- coreExpr
+  t <- angles hullType
+  e1 <- hullExpr
   pKeyword "then"
-  e2 <- coreExpr
+  e2 <- hullExpr
   pKeyword "else"
-  e3 <- coreExpr
+  e3 <- hullExpr
   pure (ECond t e1 e2 e3)
 
-coreStmt :: Parser Stmt
-coreStmt = choice
-    [ SAlloc <$> (pKeyword "let" *> identifier) <*> (symbol ":" *> coreType)
-    , SReturn <$> (pKeyword "return" *> coreExpr)
-    , SBlock <$> braces(many coreStmt)
-    , SMatch <$> (pKeyword "match" *> angles coreType) <*> (coreExpr <* pKeyword "with") <*> braces(many coreAlt)
-    -- , SMatch <$> (pKeyword "match" *> coreExpr <* pKeyword "with") <*> (symbol "{" *> many coreAlt <* symbol "}")
-    , SFunction <$> (pKeyword "function" *> identifier) <*> (parens (commaSep coreArg)) <*> (symbol "->" *> coreType)
-                <*> coreBody
+hullStmt :: Parser Stmt
+hullStmt = choice
+    [ SAlloc <$> (pKeyword "let" *> identifier) <*> (symbol ":" *> hullType)
+    , SReturn <$> (pKeyword "return" *> hullExpr)
+    , SBlock <$> braces(many hullStmt)
+    , SMatch <$> (pKeyword "match" *> angles hullType) <*> (hullExpr <* pKeyword "with") <*> braces(many hullAlt)
+    -- , SMatch <$> (pKeyword "match" *> hullExpr <* pKeyword "with") <*> (symbol "{" *> many hullAlt <* symbol "}")
+    , SFunction <$> (pKeyword "function" *> identifier) <*> (parens (commaSep hullArg)) <*> (symbol "->" *> hullType)
+                <*> hullBody
     , SAssembly <$> (pKeyword "assembly" *> yulBlock)
     , SRevert <$> (pKeyword "revert" *> stringLiteral)
-    , try (SAssign <$> (coreExpr <* symbol ":=") <*> coreExpr)
-    , SExpr <$> coreExpr
+    , try (SAssign <$> (hullExpr <* symbol ":=") <*> hullExpr)
+    , SExpr <$> hullExpr
     ]
 
-coreBody :: Parser Body
-coreBody = braces(many coreStmt)
+hullBody :: Parser Body
+hullBody = braces(many hullStmt)
 
-coreArg :: Parser Arg
-coreArg = TArg <$> identifier <*> (symbol ":" *> coreType)
+hullArg :: Parser Arg
+hullArg = TArg <$> identifier <*> (symbol ":" *> hullType)
 
-coreAlt :: Parser Alt
-coreAlt = Alt <$> corePat <*> identifier <* symbol "=>" <*> coreBody
+hullAlt :: Parser Alt
+hullAlt = Alt <$> hullPat <*> identifier <* symbol "=>" <*> hullBody
 
-corePat :: Parser Pat
-corePat = choice
+hullPat :: Parser Pat
+hullPat = choice
     [ PIntLit <$> integer
     , PCon CInl <$ pKeyword "inl"
     , PCon CInr <$ pKeyword "inr"
@@ -157,9 +157,9 @@ corePat = choice
     , PWildcard <$ pKeyword "_"
     ]
 
-coreObject :: Parser Object
-coreObject = sc *> (Object <$> (pKeyword "object" *> identifier  <* symbol "{")
-               <*> coreCode <*> many coreObject) <* symbol "}"
+hullObject :: Parser Object
+hullObject = sc *> (Object <$> (pKeyword "object" *> identifier  <* symbol "{")
+               <*> hullCode <*> many hullObject) <* symbol "}"
 
-coreCode :: Parser Body
-coreCode = sc *> (Object <$> pKeyword "code" *> coreBody)
+hullCode :: Parser Body
+hullCode = sc *> (Object <$> pKeyword "code" *> hullBody)
