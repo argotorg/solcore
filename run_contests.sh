@@ -1,3 +1,3 @@
-./contest.sh test/examples/dispatch/basic.json
-./contest.sh test/examples/dispatch/neg.json
-# ./contest.sh test/examples/dispatch/miniERC20.json
+bash ./contest.sh test/examples/dispatch/basic.json
+bash ./contest.sh test/examples/dispatch/neg.json
+# bash ./contest.sh test/examples/dispatch/miniERC20.json
