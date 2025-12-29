@@ -30,8 +30,10 @@ hexfile="$build_dir/$base.hex"
 yulfile="$build_dir/$base.yul"
 
 create=true
-evmone=~/.local/lib/libevmone.so
-testrunner_exe=test/testrunner/testrunner
+# Allow overriding evmone location (useful for Nix builds)
+: ${evmone:=~/.local/lib/libevmone.so}
+# Allow overriding testrunner location (useful for Nix builds)
+: ${testrunner_exe:="test/testrunner/testrunner"}
 
 presuite=$(jq keys[0] $file)
 suite=$(echo $presuite | tr -d '"')
@@ -43,7 +45,9 @@ suite=$(echo $presuite | tr -d '"')
 
 # Execute compilation pipeline
 echo "Compiling to Hull..."
-if ! cabal exec sol-core -- -f "$src"; then
+# Allow overriding sol-core command (useful for Nix builds)
+: ${SOLCORE_CMD:="cabal exec sol-core --"}
+if ! $SOLCORE_CMD -f "$src"; then
     echo "Error: sol-core compilation failed"
     exit 1
 fi
@@ -54,11 +58,13 @@ if ls ./output*.core 1> /dev/null 2>&1; then
 fi
 
 echo "Generating Yul..."
+# Allow overriding yule command (useful for Nix builds)
+: ${YULE_CMD:="cabal run yule --"}
 yule_args=("$hull" -o "$yulfile")
 if [[ "$create" == "false" ]]; then
     yule_args+=(--nodeploy)
 fi
-if ! cabal run yule -- "${yule_args[@]}"; then
+if ! $YULE_CMD "${yule_args[@]}"; then
     echo "Error: yule generation failed"
     exit 1
 fi
