@@ -35,9 +35,6 @@ create=true
 # Allow overriding testrunner location (useful for Nix builds)
 : ${testrunner_exe:="test/testrunner/testrunner"}
 
-echo "DEBUG: testrunner_exe=$testrunner_exe"
-echo "DEBUG: evmone=$evmone"
-
 presuite=$(jq keys[0] $file)
 suite=$(echo $presuite | tr -d '"')
 
