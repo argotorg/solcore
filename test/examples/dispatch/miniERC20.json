@@ -24,7 +24,7 @@
           "status": "success"
         }
       },
-	
+
       {
         "input": {
         "comment": "getMyBalance()",
@@ -36,8 +36,8 @@
           "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
           "status": "success"
         }
-      }	
+      }
     ]
-      
+
   }
 }
