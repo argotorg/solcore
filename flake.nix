@@ -122,7 +122,7 @@
              pkgs.go-ethereum
              pkgs.jq
              pkgs.solc
-             hspkgs.hevm
+             (hspkgs.hevm.overrideAttrs (old: { patches = []; }))
              texlive
              (pkgs.callPackage ./nix/goevmlab.nix { src = inputs.goevmlab; })
            ];
