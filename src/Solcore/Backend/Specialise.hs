@@ -1,9 +1,31 @@
 -- {-# LANGUAGE DefaultSignatures #-}
-module Solcore.Backend.Specialise(specialiseCompUnit) where
-{- * Specialisation
-Create specialised versions of polymorphic and overloaded functions.
-This is meant to be run on typed and defunctionalised code, so no higher-order functions.
+{-|
+Module: Solcore.Backend.Specialise
+Description: Monomorphization pass - eliminates polymorphism via specialization
+
+This module implements whole-program specialization (monomorphization) that transforms
+polymorphic and type class-overloaded code into concrete, monomorphic definitions.
+
+= Algorithm Overview
+
+The specialization process:
+
+  1. Builds a resolution table mapping (name, type) → definition
+  2. Analyzes call sites to discover needed type instantiations
+  3. Creates specialized versions with mangled names (e.g., map$word, map$bool)
+  4. Resolves type class instances to concrete implementations
+  5. Recursively specializes all called functions
+
+= Pipeline Position
+
+Runs after type checking and defunctionalization, but before Core emission.
+Requires whole-program analysis (must see all code at once).
+
+Input: Typed AST with polymorphic functions and type class constraints
+Output: Monomorphic AST with all type variables eliminated
+
 -}
+module Solcore.Backend.Specialise(specialiseCompUnit) where
 
 import Control.Applicative
 import Control.Monad
@@ -23,6 +45,28 @@ import Solcore.Frontend.TypeInference.TcEnv(TcEnv)
 import Solcore.Primitives.Primitives
 
 -------------------------------------------------------------------------------
+-- Constants
+-------------------------------------------------------------------------------
+
+-- | The entry point name for contract runtime code
+entryPointName :: Name
+entryPointName = Name "main"
+
+-- | The constructor function name
+constructorName :: Name
+constructorName = Name "constructor"
+
+-- | Built-in revert primitive name
+revertBuiltin :: Name
+revertBuiltin = Name "revert"
+
+-- | Placeholder type variable used for initial resolution lookups
+anyTypePlaceholder :: Ty
+anyTypePlaceholder = TyVar (TVar (Name "any"))
+
+-------------------------------------------------------------------------------
+-- Main Entry Point
+-------------------------------------------------------------------------------
 
 specialiseCompUnit :: CompUnit Id -> Bool -> TcEnv -> IO (CompUnit Id)
 specialiseCompUnit compUnit debugp env = runSM debugp env do
@@ -30,87 +74,34 @@ specialiseCompUnit compUnit debugp env = runSM debugp env do
     topDecls <- concat <$> forM (contracts compUnit) specialiseTopDecl
     return $ compUnit { contracts = topDecls }
 
+-------------------------------------------------------------------------------
+-- Resolution Table Building
+-------------------------------------------------------------------------------
+-- Build a table mapping (name, type) to function definitions
+-- This enables looking up which definition to use when specializing a call
+
+-- | Type class for declarations that can contribute to the resolution table
+class HasResolutions decl where
+    addResolutions :: decl -> SM ()
+
 addGlobalResolutions :: CompUnit Id -> SM ()
-addGlobalResolutions compUnit = forM_ (contracts compUnit) addDeclResolutions
+addGlobalResolutions compUnit = forM_ (contracts compUnit) addResolutions
 
-addDeclResolutions :: TopDecl Id -> SM ()
-addDeclResolutions (TInstDef inst) = addInstResolutions inst
-addDeclResolutions (TFunDef fd) = addFunDefResolution fd
-addDeclResolutions (TDataDef dt) = addData dt
-addDeclResolutions (TMutualDef decls) = forM_ decls addDeclResolutions
-addDeclResolutions _ = return ()
+instance HasResolutions (TopDecl Id) where
+    addResolutions (TInstDef inst) = addInstResolutions inst
+    addResolutions (TFunDef fd) = addFunDefResolution fd
+    addResolutions (TDataDef dt) = addData dt
+    addResolutions (TMutualDef decls) = mapM_ addResolutions decls
+    addResolutions _ = return ()
 
+instance HasResolutions (ContractDecl Id) where
+    addResolutions (CFunDecl fd) = addFunDefResolution fd
+    addResolutions (CDataDecl dt) = addData dt
+    addResolutions (CMutualDecl decls) = mapM_ addResolutions decls
+    addResolutions _ = return ()
 
 addInstResolutions :: Instance Id -> SM ()
 addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instName inst) (mainTy inst))
-
-specialiseTopDecl :: TopDecl Id -> SM [TopDecl Id]
-specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
-    addContractResolutions (Contract name args decls)
-    -- Runtime code
-    runtimeDecls <- withLocalState do
-       forM_ entries specEntry
-       getSpecialisedDecls
-    -- Deployer code
-    modify (\st -> st { specTable = emptyTable })
-    deployDecls <- case findConstructor decls of
-      Just c -> withLocalState do
-        _cname' <- specConstructor c
-        depDecls <- getSpecialisedDecls
-        -- use mutual to group constructor with its dependencies
-        pure [CMutualDecl depDecls]
-      Nothing -> pure []
-    return [TContr (Contract name args (deployDecls ++ runtimeDecls))]
-    where
-      entries = ["main"]    -- Eventually all public methods
-      getSpecialisedDecls :: SM [ContractDecl Id]
-      getSpecialisedDecls = do
-        st <- gets specTable
-        dt <- gets spDataTable
-        let dataDecls = map (CDataDecl . snd) (Map.toList dt)
-        let funDecls = map (CFunDecl . snd) (Map.toList st)
-        pure (dataDecls ++ funDecls)
-
--- keep datatype defs intact
-specialiseTopDecl d@TDataDef{} = pure [d]
--- Drop all toplevel decls that are not contracts - we do not need them anymore
-specialiseTopDecl _ = pure []
-
-findConstructor :: [ContractDecl Id] -> Maybe (Constructor Id)
-findConstructor = foldr (\d -> (getConstructor d <|>)) Nothing
-
-getConstructor :: ContractDecl Id -> Maybe (Constructor Id)
-getConstructor (CConstrDecl c) = Just c
-getConstructor _ = Nothing
-
-
-specEntry :: Name -> SM ()
-specEntry name = withLocalState do
-    let anytype = TyVar (TVar (Name "any"))
-    mres <- lookupResolution name anytype
-    case mres of
-      Just (fd, ty, subst) -> do
-        debug ["< resolution: ", show name, " : ", pretty ty, "@", pretty subst]
-        void(specFunDef fd)
-      Nothing -> do
-        warns ["!! Warning: no resolution found for ", show name]
-
-specConstructor :: Constructor Id -> SM Name
-specConstructor (Constructor [] body) = do
-  let sig = Signature [] [] (Name "constructor") [] (Just unit)
-  let fd = FunDef sig body
-  specFunDef fd
-specConstructor _ = error "Unsupported constructor"
-
-addContractResolutions :: Contract Id -> SM ()
-addContractResolutions (Contract _name _args cdecls) =
-  forM_ cdecls addCDeclResolution
-
-addCDeclResolution :: ContractDecl Id -> SM ()
-addCDeclResolution (CFunDecl fd) = addFunDefResolution fd
-addCDeclResolution (CDataDecl dt) = addData dt
-addCDeclResolution (CMutualDecl decls) = forM_ decls addCDeclResolution
-addCDeclResolution _ = return ()
 
 addFunDefResolution :: FunDef Id -> SM ()
 addFunDefResolution fd = do
@@ -133,6 +124,87 @@ addMethodResolution cname ty fd = do
   addResolution qname funType fd'
   debug ["+ addMethodResolution: ", show qname, " / ", show name', " : ", pretty funType]
 
+addContractResolutions :: Contract Id -> SM ()
+addContractResolutions (Contract _name _args cdecls) =
+  forM_ cdecls addResolutions
+
+-------------------------------------------------------------------------------
+-- Top-Level Specialization
+-------------------------------------------------------------------------------
+
+specialiseTopDecl :: TopDecl Id -> SM [TopDecl Id]
+specialiseTopDecl (TContr contract@(Contract name args decls)) = withLocalState $ do
+    addContractResolutions contract
+    runtimeDecls <- specialiseRuntimeDecls
+    deployDecls <- specialiseDeployerCode decls
+    return [TContr (Contract name args (deployDecls ++ runtimeDecls))]
+  where
+    -- | Specializes all runtime entry points (public methods)
+    specialiseRuntimeDecls :: SM [ContractDecl Id]
+    specialiseRuntimeDecls = withLocalState $ do
+        forM_ [entryPointName] specEntry  -- Eventually all public methods
+        collectSpecialisedDecls
+
+    -- | Specializes the constructor (deployer code) if present
+    specialiseDeployerCode :: [ContractDecl Id] -> SM [ContractDecl Id]
+    specialiseDeployerCode contractDecls = do
+        -- Clear the specialization table for deployer code
+        modify (\st -> st { specTable = emptyTable })
+        case findConstructor contractDecls of
+            Just c -> specialiseConstructorDecls c
+            Nothing -> pure []
+
+    -- | Specializes a constructor and its dependencies
+    specialiseConstructorDecls :: Constructor Id -> SM [ContractDecl Id]
+    specialiseConstructorDecls c = withLocalState $ do
+        _cname' <- specConstructor c
+        depDecls <- collectSpecialisedDecls
+        -- Use mutual to group constructor with its dependencies
+        pure [CMutualDecl depDecls]
+
+    -- | Collects all specialized functions and data types from the current state
+    collectSpecialisedDecls :: SM [ContractDecl Id]
+    collectSpecialisedDecls = do
+        st <- gets specTable
+        dt <- gets spDataTable
+        let dataDecls = map (CDataDecl . snd) (Map.toList dt)
+        let funDecls = map (CFunDecl . snd) (Map.toList st)
+        pure (dataDecls ++ funDecls)
+
+-- Keep datatype defs intact
+specialiseTopDecl d@TDataDef{} = pure [d]
+-- Drop all toplevel decls that are not contracts - we don't need them after specialization
+specialiseTopDecl _ = pure []
+
+findConstructor :: [ContractDecl Id] -> Maybe (Constructor Id)
+findConstructor = foldr (\d -> (getConstructor d <|>)) Nothing
+
+getConstructor :: ContractDecl Id -> Maybe (Constructor Id)
+getConstructor (CConstrDecl c) = Just c
+getConstructor _ = Nothing
+
+
+specEntry :: Name -> SM ()
+specEntry name = withLocalState do
+    mres <- lookupResolution name anyTypePlaceholder
+    case mres of
+      Just (fd, ty, subst) -> do
+        debug ["< resolution: ", show name, " : ", pretty ty, "@", pretty subst]
+        void(specFunDef fd)
+      Nothing -> do
+        warns ["!! Warning: no resolution found for ", show name]
+
+specConstructor :: Constructor Id -> SM Name
+specConstructor (Constructor [] body) = do
+  let sig = Signature [] [] constructorName [] (Just unit)
+  let fd = FunDef sig body
+  specFunDef fd
+specConstructor _ = error "Unsupported constructor"
+
+-------------------------------------------------------------------------------
+-- Expression Specialization
+-------------------------------------------------------------------------------
+
 -- | `specExp` specialises an expression to given type
 specExp :: TcExp -> Ty -> SM TcExp
 specExp (Call Nothing i args) ty = do
@@ -153,7 +225,14 @@ specExp (Cond e1 e2 e3) ty = do
   e3' <- specExp e3 ty
   pure (Cond e1' e2' e3')
 specExp (Var (Id n _t)) ty = pure (Var (Id n ty))
-specExp e@FieldAccess{} _ty = error("Specialise: FieldAccess not implemented for" ++ pretty e)
+specExp e@FieldAccess{} _ty =
+    error $ unlines
+        [ "Specialization failed: FieldAccess should have been desugared"
+        , "Expression: " ++ pretty e
+        , ""
+        , "This is a compiler bug - FieldAccess expressions should not reach specialization."
+        , "Check that field access desugaring ran before specialization in the pipeline."
+        ]
 specExp (TyExp e1 _) ty = specExp e1 ty
 specExp e _ty = atCurrentSubst e -- FIXME
 
@@ -171,86 +250,166 @@ specConApp i@(Id _n conTy) args ty = do
   debug ["< specConApp: ", prettyConApp i args,  " ~> ", prettyConApp i' args']
   return (i', args')
 
--- | Specialise a function call
--- given actual arguments and the expected result type
+-- | Specializes a function call to concrete types
+-- Given actual arguments and the expected result type
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revert") _e) args _ty = pure (i, args)  -- FIXME
-specCall i args ty = do
-  i' <- atCurrentSubst i
-  ty' <- atCurrentSubst ty
-  -- debug ["> specCall: ", pretty i', show args, " : ", pretty ty']
-  let name = idName i'
-  let argTypes = map typeOfTcExp args
-  argTypes' <- atCurrentSubst argTypes
-  let typedArgs = zip args argTypes'
-  args' <- forM typedArgs (uncurry specExp)
-  let funType = foldr (:->) ty' argTypes'
-  debug ["> specCall: ", show name, " : ", pretty funType]
-  mres <- lookupResolution name funType
-  case mres of
-    Just (fd, fty, phi) -> do
-      debug ["< resolution: ", show name, "~>", shortName fd, " : ", pretty ty, "@", pretty phi]
-      extSpSubst phi
-      subst <- getSpSubst
-      let ty'' = applytv subst fty
-      ensureClosed ty'' (Call Nothing i args) subst
-      name' <- specFunDef fd
-      debug ["< specCall: ", pretty name']
-      args'' <- atCurrentSubst args'
-      return (Id name' ty'', args'')
-    Nothing -> do
-      void(panics ["! specCall: no resolution found for ", show name, " : ", pretty funType])
-      return (i, args')
+specCall i@(Id name _e) args ty
+  | isBuiltin name = pure (i, args)  -- Built-ins don't need specialization
+  | otherwise = do
+      -- Apply current substitution
+      i' <- atCurrentSubst i
+      expectedResultTy <- atCurrentSubst ty
 
--- | `specFunDef` specialises a function definition
--- to the given type of the form `arg1Ty -> arg2Ty -> ... -> resultTy`
--- first lookup if a specialisation to the given type exists
--- if not, look for a resolution (definition matching the expected type)
--- create a new specialisation of it and record it in `specTable`
--- returns name of the specialised function
+      -- Specialize arguments
+      let argTypes = map typeOfTcExp args
+      argTypes' <- atCurrentSubst argTypes
+      specializedArgs <- zipWithM specExp args argTypes'
+
+      -- Compute expected function type
+      let funType = foldr (:->) expectedResultTy argTypes'
+      debug ["> specCall: ", show (idName i'), " : ", pretty funType]
+
+      -- Look up and apply resolution
+      resolveAndSpecialize (idName i') funType specializedArgs i args
+  where
+    _ty = _ty  -- Suppress unused variable warning
+
+-- | Check if a name is a built-in primitive that doesn't need specialization
+isBuiltin :: Name -> Bool
+isBuiltin name = name == revertBuiltin
+
+-- | Resolves a function name to its definition and specializes it
+resolveAndSpecialize :: Name -> Ty -> [TcExp] -> Id -> [TcExp] -> SM (Id, [TcExp])
+resolveAndSpecialize name funType specializedArgs originalId originalArgs = do
+    mres <- lookupResolution name funType
+    case mres of
+        Just (fd, fty, substitution) -> applyResolution fd fty substitution
+        Nothing -> handleMissingResolution name funType originalId specializedArgs
+  where
+    -- Apply a found resolution to specialize the function
+    applyResolution :: TcFunDef -> Ty -> TVSubst -> SM (Id, [TcExp])
+    applyResolution fd fty phi = do
+        debug ["< resolution: ", show name, "~>", shortName fd, " : ", pretty funType, "@", pretty phi]
+        extSpSubst phi
+        subst <- getSpSubst
+        let instantiatedType = applytv subst fty
+        ensureClosed instantiatedType (Call Nothing originalId originalArgs) subst
+        specializedName <- specFunDef fd
+        debug ["< specCall: ", pretty specializedName]
+        finalArgs <- atCurrentSubst specializedArgs
+        return (Id specializedName instantiatedType, finalArgs)
+
+    -- Handle the case where no resolution is found
+    handleMissingResolution :: Name -> Ty -> Id -> [TcExp] -> SM (Id, [TcExp])
+    handleMissingResolution n ft i args = do
+        void $ panics
+          [ "Specialization failed: No resolution found for function call"
+          , "Function: " ++ show n
+          , "Required type: " ++ pretty ft
+          , ""
+          , "Possible causes:"
+          , "  - Function is not defined or not in scope"
+          , "  - Type mismatch between call site and definition"
+          , "  - Missing instance for type class constraint"
+          , ""
+          , "Check that the function is defined and that type inference is correct."
+          ]
+        return (i, args)
+
+-------------------------------------------------------------------------------
+-- Function Specialization
+-------------------------------------------------------------------------------
+
+-- | Specializes a function definition to concrete types
+--
+-- Algorithm:
+--   1. Rename bound type variables to avoid capture
+--   2. Apply current substitution to eliminate type variables
+--   3. Generate mangled name based on concrete types (e.g., map$word)
+--   4. Check if specialization already exists (memoization)
+--   5. If not, create placeholder (breaks recursive loops), specialize body, record result
+--
+-- Returns the mangled name of the specialized function
 specFunDef :: TcFunDef -> SM Name
-specFunDef fd0 = withLocalState do
-  -- first, rename bound variables
-  (fd, renaming) <- renametv fd0
-  let sig0 = funSignature fd0
-  let sig1 = funSignature fd
-  subst <- renameSubst renaming <$> getSpSubst
-  putSpSubst subst
-  debug ["> specFunDef raw input: ", pretty sig0, " renaming", pretty renaming, " subst=", pretty subst]
-  let sig' = applytv subst sig1 { sigVars = [], sigContext = [] }
-  let name = sigName sig1
-  let funType = typeOfTcFunDef fd
-  let tvs = freetv funType
-  let tvs' = applytv subst (map TyVar tvs)
-  debug ["> specFunDef ", pretty name, " : ", pretty sig1,  " tvs'=", prettys tvs', " subst=", pretty subst]
-  let name' = specName name tvs'
-  let ty' = applytv subst funType
-  mspec <- lookupSpecialisation name'
-  case mspec of
-    Just _ -> return name'
-    Nothing -> do
-      -- add a placeholder first to break loops
-      let placeholder = FunDef sig' []
-      addSpecialisation name' placeholder
-      body' <- specBody (funDefBody fd)
-      let fd' = FunDef sig'{sigName = name'} body'
-      debug ["+ specFunDef: adding specialisation ", show name', " : ", pretty ty']
-      addSpecialisation name' fd'
-      return name'
+specFunDef originalDef = withLocalState $ do
+    -- Step 1: Rename bound type variables to avoid capture
+    (renamedDef, renaming) <- renametv originalDef
+    let originalSig = funSignature originalDef
+    let renamedSig = funSignature renamedDef
+
+    -- Step 2: Apply renaming to current substitution
+    subst <- renameSubst renaming <$> getSpSubst
+    putSpSubst subst
+    debug ["> specFunDef raw input: ", pretty originalSig,
+           " renaming=", pretty renaming, " subst=", pretty subst]
+
+    -- Step 3: Eliminate type variables and type class context
+    let monomorphicSig = applytv subst renamedSig { sigVars = [], sigContext = [] }
+    let name = sigName renamedSig
+    let funType = typeOfTcFunDef renamedDef
+
+    -- Step 4: Compute concrete type instantiation
+    let freeTypeVars = freetv funType
+    let concreteTypes = applytv subst (map TyVar freeTypeVars)
+    debug ["> specFunDef ", pretty name, " : ", pretty renamedSig,
+           " concreteTypes=", prettys concreteTypes, " subst=", pretty subst]
+
+    -- Step 5: Generate mangled name (e.g., map$word$bool)
+    let specializedName = specName name concreteTypes
+    let specializedType = applytv subst funType
+
+    -- Step 6: Check memoization table
+    memoizedSpec <- lookupSpecialisation specializedName
+    case memoizedSpec of
+        Just _ -> return specializedName  -- Already specialized
+        Nothing -> createNewSpecialization specializedName monomorphicSig renamedDef specializedType
+  where
+    -- Create and record a new specialization
+    createNewSpecialization :: Name -> Signature Id -> TcFunDef -> Ty -> SM Name
+    createNewSpecialization name sig def ty = do
+        -- Add placeholder first to break infinite recursion in mutually recursive functions
+        let placeholder = FunDef sig { sigName = name } []
+        addSpecialisation name placeholder
+
+        -- Recursively specialize the function body
+        specializedBody <- specBody (funDefBody def)
+        let specializedDef = FunDef sig { sigName = name } specializedBody
+
+        debug ["+ specFunDef: adding specialisation ", show name, " : ", pretty ty]
+        addSpecialisation name specializedDef
+        return name
+
+-------------------------------------------------------------------------------
+-- Statement Specialization
+-------------------------------------------------------------------------------
 
 specBody :: [Stmt Id] -> SM [Stmt Id]
 specBody = mapM specStmt
 
--- | `ensureClosed` checks that a type is closed, i.e. has no free type variables
+-- | Ensures that a type is closed (has no free type variables)
+-- All types must be fully concrete after specialization for Yul code generation
 ensureClosed :: Pretty a => Ty -> a -> TVSubst ->  SM ()
 ensureClosed ty ctxt subst = do
   let tvs = freetv ty
-  unless (null tvs) $ panics ["spec(", pretty ctxt,"): free type vars in ", pretty ty, ": ", show tvs
-                             , " @ subst=", pretty subst]
+  unless (null tvs) $ panics
+    [ "Specialization failed: Type still contains free type variables"
+    , "Context: " ++ pretty ctxt
+    , "Type: " ++ pretty ty
+    , "Free type variables: " ++ show tvs
+    , "Current substitution: " ++ pretty subst
+    , ""
+    , "This indicates incomplete specialization - all types must be concrete."
+    , "Check that all polymorphic functions have been properly instantiated."
+    ]
 {-
   let mvs = mv ty
-  unless (null tvs) $ panics ["spec(", pretty ctxt,"): free meta vars in ", pretty ty, ": ", show mvs
-                             , " @ subst=", pretty subst]
+  unless (null mvs) $ panics
+    [ "Specialization failed: Type still contains meta variables"
+    , "Context: " ++ pretty ctxt
+    , "Type: " ++ pretty ty
+    , "Meta variables: " ++ show mvs
+    , "Current substitution: " ++ pretty subst
+    ]
 -}
 
 specStmt :: Stmt Id -> SM(Stmt Id)
@@ -294,7 +453,12 @@ specStmt (StmtExp e) = do
   return $ StmtExp e'
 
 specStmt (Asm ys) = pure (Asm ys)
-specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
+specStmt stmt = errors
+  [ "Specialization failed: Unsupported statement type"
+  , "Statement: " ++ show stmt
+  , ""
+  , "This statement type has not been implemented in the specializer."
+  ]
 
 specMatch :: [Exp Id] -> [([Pat Id], [Stmt Id])] -> SM (Stmt Id)
 specMatch exps alts = do
@@ -312,24 +476,63 @@ specMatch exps alts = do
       e' <- specExp e ty
       return e'
 
+-------------------------------------------------------------------------------
+-- Name Mangling
+-------------------------------------------------------------------------------
+-- Generate unique names for specialized functions by encoding type arguments
+-- in the function name. This allows multiple specialized versions to coexist.
 
+-- | Generate a unique mangled name for a specialized function
+--
+-- Examples:
+--   @map + [] → "map"@           (no type arguments, no mangling)
+--   @map + [word] → "map$word"@
+--   @foo + [word, bool] → "foo$word_bool"@
+--   @Bar.baz + [unit] → "Bar_baz$unit"@
+--   @Pair + [word, bool] → "Pair$word_bool"@
 specName :: Name -> [Ty] -> Name
 specName n [] = Name $ flattenQual n
 specName n ts = Name $ flattenQual n ++ "$" ++ intercalate "_" (map mangleTy ts)
 
+-- | Flatten a qualified name into a string, replacing dots with underscores
+--
+-- Examples:
+--   @Name "foo" → "foo"@
+--   @QualName (Name "Bar") "baz" → "Bar_baz"@
+--   @QualName (QualName (Name "A") "B") "C" → "A_B_C"@
 flattenQual :: Name -> String
 flattenQual (Name n) = n
 flattenQual (QualName n s) = flattenQual n ++ "_" ++ s
 
+-- | Mangle a type into a string suitable for name mangling
+--
+-- Type variables are omitted (should not appear after substitution).
+-- Capitalization is preserved from the original type names.
+--
+-- Examples:
+--   @word → "word"@
+--   @bool → "bool"@
+--   @() → "unit"@
+--   @List<word> → "ListLwordJ"@
+--   @Pair<word, bool> → "PairLword_boolJ"@
+--   @Map<word, List<bool>> → "MapLword_ListLboolJJ"@
+--
+-- The delimiters L and J mark the beginning and end of type argument lists,
+-- allowing nested generic types to be unambiguously encoded.
 mangleTy :: Ty -> String
-mangleTy (TyVar _) = ""
+mangleTy (TyVar _) = ""  -- Type vars should be eliminated by substitution
 mangleTy (TyCon (Name "()") []) = "unit"
 mangleTy (TyCon (Name n) []) = n
-mangleTy (TyCon n ts) = flattenQual n ++ embrace mantys where
+mangleTy (TyCon n ts) = flattenQual n ++ embrace mantys
+  where
     mantys = filter (not . null) (map mangleTy ts)
     embrace [] = ""
-    embrace xs = "L" ++ intercalate "_" xs ++ "J"
-mangleTy t = error "Specialise: mangleTy not implemented for " ++ show t
+    embrace xs = "L" ++ intercalate "_" xs ++ "J"  -- L...J delimiters
+mangleTy t = error $ "Specialise: mangleTy not implemented for " ++ show t
+
+-------------------------------------------------------------------------------
+-- Pretty Printing Utilities
+-------------------------------------------------------------------------------
 
 prettyId :: Id -> String
 prettyId = render . pprId
