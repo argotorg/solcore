@@ -1,0 +1,68 @@
+import dispatch;
+
+forall a.
+class  a : Neg {
+   function neg(x:a) -> a;
+}
+
+data B = F | T;
+data Pair(a,b) = Pair(a,b);
+
+instance B : Neg {
+  function neg (x : B) -> B {
+    match x {
+    | F => return T;
+    | T => return F;
+    }
+  }
+}
+
+
+function pairfst (p) {
+  match p {
+    | Pair(x,y) => return x;
+  }
+}
+
+function pairsnd(p) {
+  match p {
+    | Pair(x,y) => return y;
+  }
+}
+
+
+forall a b.
+a:Neg,b:Neg => instance Pair(a,b):Neg {
+  function neg(p:Pair(a,b)) -> Pair(a,b) {
+    return Pair(Neg.neg (pairfst(p)), Neg.neg(pairsnd(p)));
+  }
+}
+
+/*
+instance (a:Neg,b:Neg) => Pair(a,b):Neg {
+  function neg(p) {
+    match p {
+      | Pair(a,b) => return Pair(neg(a), neg(b));
+    }
+  }
+}
+*/
+
+ function bnot(x:B) -> B {
+   match x {
+     | T => return F;
+     | F => return T;
+   }
+}
+
+ function fromB(b:B) -> word {
+  match b  {
+    | F => return 0;
+    | T => return 1;
+  }
+}
+
+contract NegPair {
+ constructor() {}
+ function negPair() -> uint256 { return uint256(fromB(pairfst(Neg.neg(Pair(F,T))))); }
+}

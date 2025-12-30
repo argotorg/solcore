@@ -12,10 +12,21 @@ cabal repl
 # build the project
 cabal build
 
-# run the tests
+# run Haskell unit tests
 cabal test
 
-# run the CI pipeline locally
+# build the C++ testrunner (for integration tests)
+cmake -S . -B build
+cmake --build build --target testrunner
+
+# run integration tests (requires testrunner built above)
+export testrunner_exe=build/test/testrunner/testrunner
+bash run_contests.sh
+
+# run integration tests via Nix (builds everything automatically)
+nix flake check
+
+# run the CI pipeline locally (builds sol-core)
 nix build
 ```
 
@@ -69,4 +80,53 @@ Options:
   --create-raw-arguments hex        Pass raw calldata directly to geth
   --create-callvalue value          Pass callvalue to geth (in wei)
   --debug-create                    Explore the evm execution in the interactive debugger
+```
+
+## Integration Tests
+
+The project includes a C++ testrunner that executes end-to-end integration tests by running compiled bytecode on the evmone EVM implementation. These tests verify the full compilation pipeline:
+
+```
+.solc → sol-core → .core → yule → .yul → solc → .hex → testrunner → results
+```
+
+### Building the Testrunner
+
+The testrunner requires cmake and boost, which are available in the `nix develop` shell:
+
+```bash
+# Build the testrunner binary
+cmake -S . -B build
+cmake --build build --target testrunner
+# Creates: build/test/testrunner/testrunner
+```
+
+### Running Integration Tests
+
+**Option 1: Manual execution (requires testrunner built above)**
+```bash
+export testrunner_exe=build/test/testrunner/testrunner
+bash run_contests.sh
+```
+
+**Option 2: Via Nix (recommended - builds everything automatically)**
+```bash
+nix flake check
+```
+
+The Nix approach automatically:
+- Builds the testrunner with all dependencies (evmone, intx, blst)
+- Compiles test contracts through the full pipeline
+- Executes tests and verifies results
+
+### Test Cases
+
+Integration test cases are located in `test/examples/dispatch/` as JSON files that specify:
+- Input contract (`.solc` file)
+- Test scenarios with input/output expectations
+- Expected EVM execution results
+
+The `contest.sh` script can also be used to run individual test cases:
+```bash
+bash contest.sh test/examples/dispatch/basic.json
 ```
