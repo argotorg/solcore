@@ -1,0 +1,29 @@
+function addW (l: word, r: word) -> word {
+     let rw : word;
+     assembly {
+	 rw := add(l,r);
+     }
+     return rw;
+}
+
+forall t . class t:Add {
+    function add(l: t, r: t) -> t;
+}
+
+instance word:Add {
+    function add(l: word, r: word) -> word { return addW(l,r); }
+}
+
+contract Bug {
+    function main() -> word {
+        return makeClosure(42);
+    }
+
+    function makeClosure(e : word) -> word {
+        let f = lam (x : word) {
+            return Add.add(x,e);  // this crashes
+	    // return addW(e,x);  // this works
+        };
+        return f(1);
+    }
+}

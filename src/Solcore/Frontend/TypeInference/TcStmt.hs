@@ -1117,7 +1117,9 @@ instance Vars a => Vars [a] where
   vars = foldr (union . vars) []
 
 instance Vars Id where
-  vars n = [n]
+  vars i@(Id n _)
+    | isQual n = []
+    | otherwise = [i]
 
 instance Vars a => Vars (Pat a) where
   vars (PVar v) = vars v
