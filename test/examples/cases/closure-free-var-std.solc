@@ -1,0 +1,14 @@
+import std;
+
+contract Bug {
+    function main() -> word {
+        return makeClosure(42);
+    }
+
+    function makeClosure(e : word) -> word {
+        let f = lam (x : word) {
+            return e + x;  // Uses Add.add typeclass method
+        };
+        return f(1);
+    }
+}
