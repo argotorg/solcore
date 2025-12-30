@@ -6,7 +6,7 @@ buildGoModule {
 
   inherit src;
 
-  vendorHash = "sha256-9+oisSe7AmGz+iwMQMzWSZFsAXbub11b1iVCqVnJX54=";
+  vendorHash = "sha256-qSMcoQeDZNcxBKLkPbaGF69CtrJBAbm3VRHg7h23I5Y=";
 
   subPackages = [
     "cmd/traceview"
