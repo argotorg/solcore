@@ -4,6 +4,7 @@
 module Main where
 
 import Control.Monad (when, unless)
+import Control.Applicative ((<|>))
 import Data.List (isPrefixOf)
 import Data.Maybe (isJust, fromMaybe, mapMaybe)
 import System.Exit (exitFailure, ExitCode(..))
@@ -109,13 +110,24 @@ getOutput obj =
     Just (String s) -> T.unpack s
     _ -> ""
 
--- Extract error field from JSON object
+-- Extract error field from JSON object as a string
+-- Returns Nothing if error is null, otherwise returns the error string
 getError :: Object -> Maybe String
 getError obj =
   case KM.lookup (fromString "error") obj of
     Just Null -> Nothing
-    Just v -> Just (show v)
+    Just (String s) -> Just (T.unpack s)
+    Just v -> Just (T.unpack $ renderJSON v)
     Nothing -> Nothing
+
+-- Simple JSON rendering for non-string values
+renderJSON :: Value -> T.Text
+renderJSON Null = "null"
+renderJSON (Bool b) = if b then "true" else "false"
+renderJSON (Number n) = T.pack (show n)
+renderJSON (Array _) = "array"
+renderJSON (Object _) = "object"
+renderJSON (String s) = s
 
 -- ============================================================================
 -- Yul Wrapping Helpers
@@ -406,9 +418,10 @@ executeCreate opts bytecode buildDir = do
 
   -- Extract actual return data from JSONL output
   let (returnData, evmError) = extractEVMResult output
-  let errorMsg = case exitCode of
-                   ExitSuccess -> evmError
-                   ExitFailure code -> Just $ "EVM process failed with exit code " ++ show code
+  -- Check if there was an error in EVM execution (evmError will be Nothing if error field was null)
+  let errorMsg = evmError <|> (case exitCode of
+                                 ExitFailure code -> Just $ "EVM process failed with exit code " ++ show code
+                                 ExitSuccess -> Nothing)
 
   return (returnData, errorMsg)
 
@@ -464,9 +477,10 @@ executeRuntime opts bytecode buildDir = do
     putStrLn $ "DEBUG: Extracted error: " ++ show evmError
     putStrLn $ "DEBUG: First 500 chars: " ++ take 500 output
 
-  let errorMsg = case exitCode of
-                   ExitSuccess -> evmError
-                   ExitFailure code -> Just $ "EVM process failed with exit code " ++ show code
+  -- For runtime, preserve execution errors from EVM
+  let errorMsg = evmError <|> (case exitCode of
+                                 ExitFailure code -> Just $ "EVM process failed with exit code " ++ show code
+                                 ExitSuccess -> Nothing)
 
   return (returnData, errorMsg)
 
