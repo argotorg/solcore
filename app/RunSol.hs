@@ -4,22 +4,18 @@ module Main where
 
 import Control.Monad (when, unless)
 import Data.List (isPrefixOf)
-import Data.Maybe (fromMaybe, isJust)
-import System.Exit (exitFailure, exitSuccess, ExitCode(..))
-import System.FilePath (takeDirectory, takeBaseName, dropExtension, (</>), (<.>))
-import System.Process (readProcessWithExitCode, callProcess)
-import System.Directory (createDirectoryIfMissing, listDirectory, removeFile)
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.Aeson as A
+import Data.Maybe (isJust, fromMaybe)
+import System.Exit (exitFailure, ExitCode(..))
+import System.FilePath (takeBaseName, dropExtension, (<.>), (</>))
+import System.Process (readProcessWithExitCode)
+import System.Directory (createDirectoryIfMissing)
 import Options.Applicative
-import Text.Read (readMaybe)
 
 import Solcore.Pipeline.SolcorePipeline (compile)
 import Solcore.Pipeline.Options (Option(..))
 import qualified Language.Core as Core
 import Yule.Translate (translateObject)
-import Yule.TM (runTM, CEnv)
-import Yule.Compress (compress)
+import Yule.TM (runTM)
 import qualified Yule.Options as YuleOpts
 import Common.Pretty (render, ppr)
 import Language.Yul (YulObject(..))
@@ -29,8 +25,29 @@ import Language.Yul (YulObject(..))
 -- ============================================================================
 
 data RunSolOptions = RunSolOptions
-  { inputFile :: FilePath
+  { -- Input file
+    inputFile :: FilePath
   , buildDir :: FilePath
+  -- Sol-core compilation options
+  , importDirs :: String
+  , noSpecialise :: Bool
+  , noDesugarCalls :: Bool
+  , noMatchCompiler :: Bool
+  , noIfDesugar :: Bool
+  , noGenDispatch :: Bool
+  -- Output/debugging options
+  , verbose :: Bool
+  , dumpAST :: Bool
+  , dumpEnv :: Bool
+  , dumpDispatch :: Bool
+  , dumpDS :: Bool
+  , dumpDF :: Bool
+  , dumpSpec :: Bool
+  , dumpCore :: Bool
+  , debugSpec :: Bool
+  , debugCore :: Bool
+  , timing :: Bool
+  -- Execution options
   , runtimeCalldataSig :: Maybe String
   , runtimeCalldataArgs :: [String]
   , runtimeRawCalldata :: Maybe String
@@ -63,6 +80,70 @@ optionsParser = RunSolOptions
       <> value "build"
       <> showDefault
       <> help "Build directory")
+  -- Sol-core compilation options
+  <*> strOption
+      (long "include"
+      <> short 'i'
+      <> metavar "DIRS"
+      <> value "std"
+      <> showDefault
+      <> help "Colon-separated list of import directories")
+  <*> switch
+      (long "no-specialise"
+      <> short 'n'
+      <> help "Skip specialisation and core emission phases")
+  <*> switch
+      (long "no-desugar-calls"
+      <> short 's'
+      <> help "Skip indirect call desugaring")
+  <*> switch
+      (long "no-match-compiler"
+      <> short 'm'
+      <> help "Skip match compilation")
+  <*> switch
+      (long "no-if-desugar"
+      <> short 'd'
+      <> help "Skip if / bool desugaring")
+  <*> switch
+      (long "no-gen-dispatch"
+      <> short 'g'
+      <> help "Skip contract dispatch generation")
+  -- Output/debugging options
+  <*> switch
+      (long "verbose"
+      <> short 'v'
+      <> help "Verbose output")
+  <*> switch
+      (long "dump-ast"
+      <> help "Dump AST after name resolution")
+  <*> switch
+      (long "dump-env"
+      <> help "Dump env after name resolution")
+  <*> switch
+      (long "dump-dispatch"
+      <> help "Dump dispatched contract")
+  <*> switch
+      (long "dump-ds"
+      <> help "Dump desugared contract")
+  <*> switch
+      (long "dump-df"
+      <> help "Dump defunctionalised contract")
+  <*> switch
+      (long "dump-spec"
+      <> help "Dump specialised contract")
+  <*> switch
+      (long "dump-core"
+      <> help "Dump low-level core")
+  <*> switch
+      (long "debug-spec"
+      <> help "Debug specialisation")
+  <*> switch
+      (long "debug-core"
+      <> help "Debug core emission")
+  <*> switch
+      (long "timing"
+      <> help "Measure time of some phases")
+  -- Execution options
   <*> optional (strOption
       (long "runtime-calldata"
       <> metavar "SIG"
@@ -112,27 +193,27 @@ parseOptions = execParser opts
 -- ============================================================================
 
 -- Compile .solc to Core using the pipeline
-compileSolcoreToCore :: FilePath -> IO [Core.Object]
-compileSolcoreToCore file = do
+compileSolcoreToCore :: RunSolOptions -> IO [Core.Object]
+compileSolcoreToCore runOpts = do
   let opts = Option
-        { fileName = file
-        , optImportDirs = "std"
-        , optNoSpec = False
-        , optNoDesugarCalls = False
-        , optNoMatchCompiler = False
-        , optNoIfDesugar = False
-        , optNoGenDispatch = False
-        , optVerbose = False
-        , optDumpAST = False
-        , optDumpEnv = False
-        , optDumpDispatch = False
-        , optDumpDS = False
-        , optDumpDF = False
-        , optDumpSpec = False
-        , optDumpCore = False
-        , optDebugSpec = False
-        , optDebugCore = False
-        , optTiming = False
+        { fileName = inputFile runOpts
+        , optImportDirs = importDirs runOpts
+        , optNoSpec = noSpecialise runOpts
+        , optNoDesugarCalls = noDesugarCalls runOpts
+        , optNoMatchCompiler = noMatchCompiler runOpts
+        , optNoIfDesugar = noIfDesugar runOpts
+        , optNoGenDispatch = noGenDispatch runOpts
+        , optVerbose = verbose runOpts
+        , optDumpAST = dumpAST runOpts
+        , optDumpEnv = dumpEnv runOpts
+        , optDumpDispatch = dumpDispatch runOpts
+        , optDumpDS = dumpDS runOpts
+        , optDumpDF = dumpDF runOpts
+        , optDumpSpec = dumpSpec runOpts
+        , optDumpCore = dumpCore runOpts
+        , optDebugSpec = debugSpec runOpts
+        , optDebugCore = debugCore runOpts
+        , optTiming = timing runOpts
         }
   result <- compile opts
   case result of
@@ -255,12 +336,12 @@ executeCreate opts bytecode buildDir = do
     putStrLn $ "Create output: " ++ output
 
   let result = if null stateLines then "" else unlines stateLines
-  let error = if exitCode == ExitSuccess then Nothing else Just result
+  let errorMsg = if exitCode == ExitSuccess then Nothing else Just result
 
   -- Save trace and post-state
   writeFile traceFile output
 
-  return (result, error)
+  return (result, errorMsg)
 
 -- Build EVM command and execute runtime phase
 executeRuntime :: RunSolOptions -> String -> FilePath -> IO (String, Maybe String)
@@ -302,10 +383,9 @@ executeRuntime opts bytecode buildDir = do
   -- Save trace
   writeFile traceFile output
 
-  let result = if exitCode == ExitSuccess then stdout else stderr
-  let error = if exitCode == ExitSuccess then Nothing else Just result
+  let errorMsg = if exitCode == ExitSuccess then Nothing else Just output
 
-  return (result, error)
+  return (output, errorMsg)
 
 -- ============================================================================
 -- Main Function
@@ -322,7 +402,7 @@ main = do
 
   -- Step 1: Compile .solc to Core
   putStrLn "Compiling to core..."
-  coreObjs <- compileSolcoreToCore (inputFile opts)
+  coreObjs <- compileSolcoreToCore opts
 
   when (null coreObjs) $ do
     putStrLn "Error: No core objects generated"
