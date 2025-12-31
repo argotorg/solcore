@@ -1,15 +1,24 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE QuasiQuotes #-}
 module Main where
 
 import Control.Monad (when, unless)
 import Data.List (isPrefixOf)
-import Data.Maybe (isJust, fromMaybe)
+import Data.Maybe (isJust, fromMaybe, mapMaybe)
 import System.Exit (exitFailure, ExitCode(..))
 import System.FilePath (takeBaseName, dropExtension, (<.>), (</>))
 import System.Process (readProcessWithExitCode)
 import System.Directory (createDirectoryIfMissing)
 import Options.Applicative
+import qualified Data.Aeson as JSON
+import Data.Aeson (Object, Value(..), (.:), decode, fromJSON, Result(..))
+import qualified Data.ByteString.Lazy as BL
+import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as B8
+import qualified Data.Text as T
+import qualified Data.Aeson.KeyMap as KM
+import Data.Aeson.Key (fromString)
 
 import Solcore.Pipeline.SolcorePipeline (compile)
 import Solcore.Pipeline.Options (Option(..))
@@ -18,7 +27,8 @@ import Yule.Translate (translateObject)
 import Yule.TM (runTM)
 import qualified Yule.Options as YuleOpts
 import Common.Pretty (render, ppr)
-import Language.Yul (YulObject(..))
+import Language.Yul (YulObject(..), YulCode(..))
+import Language.Yul.QuasiQuote
 
 -- ============================================================================
 -- Data Types
@@ -66,6 +76,60 @@ data EVMResult = EVMResult
   , evmError :: Maybe String
   , evmExitCode :: ExitCode
   } deriving (Show)
+
+-- ============================================================================
+-- JSONL Parsing Helpers
+-- ============================================================================
+
+-- Parse JSONL output from evm and extract output/error from last object
+extractEVMResult :: String -> (String, Maybe String)
+extractEVMResult output =
+  case lastJsonLine (lines output) of
+    Nothing -> ("", Nothing)
+    Just (outputVal, errorVal) -> (outputVal, errorVal)
+
+-- Get the last valid JSON object and extract output/error fields
+lastJsonLine :: [String] -> Maybe (String, Maybe String)
+lastJsonLine lns =
+  case mapMaybe parseJsonLine (reverse lns) of
+    [] -> Nothing
+    (result:_) -> Just result
+
+-- Parse a single line as JSON object and extract output/error
+parseJsonLine :: String -> Maybe (String, Maybe String)
+parseJsonLine line =
+  case decode (BL.fromStrict (B8.pack line)) :: Maybe Value of
+    Just (Object obj) -> Just (getOutput obj, getError obj)
+    _ -> Nothing
+
+-- Extract output field from JSON object
+getOutput :: Object -> String
+getOutput obj =
+  case KM.lookup (fromString "output") obj of
+    Just (String s) -> T.unpack s
+    _ -> ""
+
+-- Extract error field from JSON object
+getError :: Object -> Maybe String
+getError obj =
+  case KM.lookup (fromString "error") obj of
+    Just Null -> Nothing
+    Just v -> Just (show v)
+    Nothing -> Nothing
+
+-- ============================================================================
+-- Yul Wrapping Helpers
+-- ============================================================================
+
+-- Add return code to Yul object to ensure result is returned
+addRetCode :: YulCode -> YulCode
+addRetCode c = c <> retCode where
+    retCode = YulCode [yulBlock|
+    {
+      mstore(0, _mainresult)
+      return(0, 32)
+    }
+    |]
 
 -- ============================================================================
 -- Command-Line Argument Parser
@@ -241,7 +305,10 @@ translateCoreToYul coreObj = do
 -- Compile Yul to bytecode using solc
 compileToBytecode :: FilePath -> YulObject -> IO String
 compileToBytecode outputFile yulObj = do
-  let yulSource = render (ppr yulObj)
+  -- Wrap Yul object with return code to ensure result is returned
+  let (YulObject name code inners) = yulObj
+  let wrappedYul = YulObject name (addRetCode code) inners
+  let yulSource = render (ppr wrappedYul)
   -- Write Yul to temporary file
   let yulFile = dropExtension outputFile <.> "yul"
   writeFile yulFile yulSource
@@ -327,21 +394,23 @@ executeCreate opts bytecode buildDir = do
     (tail evmCmd)  -- drop "evm" command
     bytecodeWithArgs
 
-  let output = if exitCode == ExitSuccess then stdout else stderr
-
-  -- Extract post-state JSON from output
-  let stateLines = dropWhile (not . ("{" `isPrefixOf`)) (lines output)
+  -- evm writes to stderr by default, so we need to use that
+  -- Combine both stdout and stderr to handle both cases
+  let output = if null stderr then stdout else stderr
 
   when (debugCreate opts) $
     putStrLn $ "Create output: " ++ output
 
-  let result = if null stateLines then "" else unlines stateLines
-  let errorMsg = if exitCode == ExitSuccess then Nothing else Just result
-
-  -- Save trace and post-state
+  -- Save trace
   writeFile traceFile output
 
-  return (result, errorMsg)
+  -- Extract actual return data from JSONL output
+  let (returnData, evmError) = extractEVMResult output
+  let errorMsg = case exitCode of
+                   ExitSuccess -> evmError
+                   ExitFailure code -> Just $ "EVM process failed with exit code " ++ show code
+
+  return (returnData, errorMsg)
 
 -- Build EVM command and execute runtime phase
 executeRuntime :: RunSolOptions -> String -> FilePath -> IO (String, Maybe String)
@@ -375,7 +444,9 @@ executeRuntime opts bytecode buildDir = do
     (tail evmCmd)  -- drop "evm" command
     bytecode
 
-  let output = if exitCode == ExitSuccess then stdout else stderr
+  -- evm writes to stderr by default, so we need to use that
+  -- Combine both stdout and stderr to handle both cases
+  let output = if null stderr then stdout else stderr
 
   when (debugRuntime opts) $
     putStrLn $ "Runtime output: " ++ output
@@ -383,9 +454,21 @@ executeRuntime opts bytecode buildDir = do
   -- Save trace
   writeFile traceFile output
 
-  let errorMsg = if exitCode == ExitSuccess then Nothing else Just output
+  -- Extract actual return data from JSONL output
+  let (returnData, evmError) = extractEVMResult output
 
-  return (output, errorMsg)
+  -- Debug output
+  when (debugRuntime opts) $ do
+    putStrLn $ "DEBUG: Raw output length: " ++ show (length output)
+    putStrLn $ "DEBUG: Extracted returnData: " ++ show returnData
+    putStrLn $ "DEBUG: Extracted error: " ++ show evmError
+    putStrLn $ "DEBUG: First 500 chars: " ++ take 500 output
+
+  let errorMsg = case exitCode of
+                   ExitSuccess -> evmError
+                   ExitFailure code -> Just $ "EVM process failed with exit code " ++ show code
+
+  return (returnData, errorMsg)
 
 -- ============================================================================
 -- Main Function
@@ -443,13 +526,16 @@ main = do
       case runtimeCalldataSig opts of
         Just sig -> do
           when (not (null runtimeResult)) $ do
-            decoded <- castAbiDecode sig ("0x" ++ runtimeResult)
+            let hexData = if "0x" `isPrefixOf` runtimeResult then runtimeResult else "0x" ++ runtimeResult
+            decoded <- castAbiDecode sig hexData
             putStrLn $ "Decoded output: " ++ decoded
         Nothing -> do
-          unless (null runtimeResult) $
-            putStrLn $ "returndata: 0x" ++ runtimeResult
+          unless (null runtimeResult) $ do
+            let hexData = if "0x" `isPrefixOf` runtimeResult then runtimeResult else "0x" ++ runtimeResult
+            putStrLn $ "returndata: " ++ hexData
     Just err -> do
       putStrLn $ "Execution failed: " ++ err
-      unless (null runtimeResult) $
-        putStrLn $ "returndata: 0x" ++ runtimeResult
+      unless (null runtimeResult) $ do
+        let hexData = if "0x" `isPrefixOf` runtimeResult then runtimeResult else "0x" ++ runtimeResult
+        putStrLn $ "returndata: " ++ hexData
       exitFailure
