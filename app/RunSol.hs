@@ -28,8 +28,9 @@ import Yule.Translate (translateObject)
 import Yule.TM (runTM)
 import qualified Yule.Options as YuleOpts
 import Common.Pretty (render, ppr)
-import Language.Yul (YulObject(..), YulCode(..))
+import Language.Yul (YulObject(..), YulCode(..), YulExp, YulStmt, YulInner(InnerObject))
 import Language.Yul.QuasiQuote
+import Language.Yul (yulString)
 
 -- ============================================================================
 -- Data Types
@@ -142,6 +143,46 @@ addRetCode c = c <> retCode where
       return(0, 32)
     }
     |]
+
+-- Wrap in a Yul object with deployment code
+wrapInObject :: Bool -> YulObject -> YulObject
+wrapInObject deploy yulo@(YulObject name code inners)
+  | deploy    = createDeployment yulo
+  | otherwise = YulObject name (addRetCode code) inners
+
+-- Create deployment wrapper for contract
+createDeployment :: YulObject -> YulObject
+createDeployment (YulObject yulName yulCode [InnerObject(YulObject innerName innerCode [])])
+  = YulObject yulName yulCode' [yulInner']
+  where
+    yulCode' = yulCode <> deployCode innerName True
+    yulInner' = InnerObject (YulObject innerName (addRetCode innerCode) [])
+createDeployment (YulObject yulName yulCode [])
+  = YulObject yulName' yulCode' [yulInner'] where
+    yulName' = yulName <> "Deploy"
+    yulCode' = deployCode yulName False
+    yulInner' = InnerObject (YulObject yulName (addRetCode yulCode) [])
+createDeployment obj = obj  -- fallback: return as-is if structure is unexpected
+
+-- Generate deployment code for contract
+deployCode :: String -> Bool -> YulCode
+deployCode name withConstructor = YulCode $ [yulBlock|
+  {
+    mstore(64, memoryguard(128))
+    let memPtr := mload(64)
+  }
+  |]
+  <> callConstructor withConstructor
+  <> [yulBlock|
+     { datacopy(0, `dataoffset`, `datasize`)
+       return(0, `datasize`)
+     } |]
+  where
+    cname = yulString name
+    callConstructor True = pure [yulStmt| usr$constructor() |]
+    callConstructor False = []
+    datasize = [yulExp| datasize(${cname}) |]
+    dataoffset = [yulExp| dataoffset(`cname`) |]
 
 -- ============================================================================
 -- Command-Line Argument Parser
@@ -315,30 +356,51 @@ translateCoreToYul coreObj = do
   return result
 
 -- Compile Yul to bytecode using solc
-compileToBytecode :: FilePath -> YulObject -> IO String
+-- Returns: (deployment bytecode, runtime bytecode)
+compileToBytecode :: FilePath -> YulObject -> IO (String, String)
 compileToBytecode outputFile yulObj = do
-  -- Wrap Yul object with return code to ensure result is returned
-  let (YulObject name code inners) = yulObj
-  let wrappedYul = YulObject name (addRetCode code) inners
+  -- Wrap Yul object with deployment code to create deployable contract
+  let wrappedYul = wrapInObject True yulObj
+
+  -- Compile deployment bytecode
   let yulSource = render (ppr wrappedYul)
-  -- Write Yul to temporary file
   let yulFile = dropExtension outputFile <.> "yul"
   writeFile yulFile yulSource
-  -- Call solc
   (exitCode, stdout, stderr) <- readProcessWithExitCode
     "solc"
     ["--strict-assembly", "--bin", "--optimize", yulFile]
     ""
   case exitCode of
     ExitSuccess -> do
-      let bytecode = last (lines stdout)
+      let deploymentBytecode = last (lines stdout)
       putStrLn $ "Hex output: " ++ outputFile
-      writeFile outputFile bytecode
-      return bytecode
+      writeFile outputFile deploymentBytecode
+
+      -- For runtime execution, compile the unwrapped object without deployment code
+      let runtimeYulObj = YulObject (name yulObj) (addRetCode (code yulObj)) (inners yulObj)
+      let runtimeYulSource = render (ppr runtimeYulObj)
+      let runtimeYulFile = dropExtension outputFile <.> "runtime.yul"
+      writeFile runtimeYulFile runtimeYulSource
+      (rtExitCode, rtStdout, rtStderr) <- readProcessWithExitCode
+        "solc"
+        ["--strict-assembly", "--bin", "--optimize", runtimeYulFile]
+        ""
+      case rtExitCode of
+        ExitSuccess -> do
+          let runtimeBytecode = last (lines rtStdout)
+          return (deploymentBytecode, runtimeBytecode)
+        ExitFailure code -> do
+          putStrLn $ "Error: solc compilation of runtime bytecode failed with code " ++ show code
+          putStrLn $ "stderr: " ++ rtStderr
+          exitFailure
     ExitFailure code -> do
       putStrLn $ "Error: solc compilation failed with code " ++ show code
       putStrLn $ "stderr: " ++ stderr
       exitFailure
+  where
+    name (YulObject n _ _) = n
+    code (YulObject _ c _) = c
+    inners (YulObject _ _ i) = i
 
 -- ============================================================================
 -- Process Execution Helpers
@@ -372,8 +434,24 @@ castAbiDecode sig hexOutput = do
       putStrLn $ "stderr: " ++ stderr
       exitFailure
 
+-- Extract post-state from evm output and create genesis JSON
+extractPostState :: String -> IO (Maybe String)
+extractPostState output = do
+  let lines' = lines output
+  case lastMaybe (filter (\l -> not (null l) && head l == '{') lines') of
+    Nothing -> return Nothing
+    Just lastJson -> do
+      case decode (BL.fromStrict (B8.pack lastJson)) :: Maybe Value of
+        Just val -> do
+          -- Return the post-state JSON as a string (we'll use jq in the script)
+          return $ Just lastJson
+        Nothing -> return Nothing
+  where
+    lastMaybe [] = Nothing
+    lastMaybe xs = Just (last xs)
+
 -- Build EVM command and execute create phase
-executeCreate :: RunSolOptions -> String -> FilePath -> IO (String, Maybe String)
+executeCreate :: RunSolOptions -> String -> FilePath -> IO (String, Maybe String, Maybe FilePath)
 executeCreate opts bytecode buildDir = do
   putStrLn "Executing create phase..."
   let traceFile = buildDir </> "trace.create.jsonl"
@@ -413,23 +491,35 @@ executeCreate opts bytecode buildDir = do
   when (debugCreate opts) $
     putStrLn $ "Create output: " ++ output
 
-  -- Save trace
-  writeFile traceFile output
+  -- Save trace (filter to only JSON lines)
+  let jsonLines = unlines $ filter (\l -> not (null l) && head l == '{') (lines output)
+  writeFile traceFile jsonLines
+
+  -- Extract and save post-state for runtime execution
+  postState <- extractPostState output
+  let poststateExists = case postState of
+                          Just _ -> True
+                          Nothing -> False
+  case postState of
+    Just ps -> writeFile poststateFile ps
+    Nothing -> return ()
 
   -- Extract actual return data from JSONL output
-  let (returnData, evmError) = extractEVMResult output
-  -- Check if there was an error in EVM execution (evmError will be Nothing if error field was null)
-  let errorMsg = evmError <|> (case exitCode of
-                                 ExitFailure code -> Just $ "EVM process failed with exit code " ++ show code
-                                 ExitSuccess -> Nothing)
+  let (returnData, evmError) = extractEVMResult jsonLines
+  -- Only report errors from JSON output (contract execution), not from exit codes
+  -- evm returns exit code 1 on contract execution revert
+  let errorMsg = evmError
 
-  return (returnData, errorMsg)
+  -- Return: (bytecode, error, post-state file path)
+  let postStateFile = if poststateExists then Just poststateFile else Nothing
+  return (returnData, errorMsg, postStateFile)
 
 -- Build EVM command and execute runtime phase
-executeRuntime :: RunSolOptions -> String -> FilePath -> IO (String, Maybe String)
-executeRuntime opts bytecode buildDir = do
+executeRuntime :: RunSolOptions -> String -> FilePath -> Maybe FilePath -> IO (String, Maybe String)
+executeRuntime opts bytecode buildDir poststateFile = do
   putStrLn "Executing runtime phase..."
   let traceFile = buildDir </> "trace.runtime.jsonl"
+  let receiverAddr = "0x1f2a98889594024BFfdA3311CbE69728d392C06D"
 
   -- Prepare runtime calldata if provided
   let inputOpt = case runtimeCalldataSig opts of
@@ -442,10 +532,13 @@ executeRuntime opts bytecode buildDir = do
 
   inputArgs <- inputOpt
 
-  -- Build evm command
+  -- Build evm command - use returned bytecode from creation for runtime
+  let stdinData = bytecode
+  let codeArgs = ["--codefile", "-"]
+
   let evmCmd = ["evm", "run"]
               ++ ["--trace", "--trace.nomemory=false", "--trace.noreturndata=false"]
-              ++ ["--codefile", "-"]
+              ++ codeArgs
               ++ inputArgs
               ++ (case runtimeCallvalue opts of
                     Just v -> ["--value", v]
@@ -455,7 +548,7 @@ executeRuntime opts bytecode buildDir = do
   (exitCode, stdout, stderr) <- readProcessWithExitCode
     "evm"
     (tail evmCmd)  -- drop "evm" command
-    bytecode
+    stdinData
 
   -- evm writes to stderr by default, so we need to use that
   -- Combine both stdout and stderr to handle both cases
@@ -464,11 +557,12 @@ executeRuntime opts bytecode buildDir = do
   when (debugRuntime opts) $
     putStrLn $ "Runtime output: " ++ output
 
-  -- Save trace
-  writeFile traceFile output
+  -- Save trace (filter to only JSON lines)
+  let jsonLines = unlines $ filter (\l -> not (null l) && head l == '{') (lines output)
+  writeFile traceFile jsonLines
 
   -- Extract actual return data from JSONL output
-  let (returnData, evmError) = extractEVMResult output
+  let (returnData, evmError) = extractEVMResult jsonLines
 
   -- Debug output
   when (debugRuntime opts) $ do
@@ -477,10 +571,9 @@ executeRuntime opts bytecode buildDir = do
     putStrLn $ "DEBUG: Extracted error: " ++ show evmError
     putStrLn $ "DEBUG: First 500 chars: " ++ take 500 output
 
-  -- For runtime, preserve execution errors from EVM
-  let errorMsg = evmError <|> (case exitCode of
-                                 ExitFailure code -> Just $ "EVM process failed with exit code " ++ show code
-                                 ExitSuccess -> Nothing)
+  -- For runtime: evm returns exit code 1 on contract execution revert, which is not a failure
+  -- Only report errors from the JSON output (contract execution), not from exit codes
+  let errorMsg = evmError
 
   return (returnData, errorMsg)
 
@@ -515,24 +608,29 @@ main = do
   putStrLn "Compiling to bytecode..."
   let base = dropExtension (takeBaseName (inputFile opts))
   let hexFile = buildDir opts </> base <.> "hex"
-  bytecode <- compileToBytecode hexFile yulObj
+  (deploymentBytecode, runtimeBytecode) <- compileToBytecode hexFile yulObj
 
   -- Step 4: Execute create phase (if enabled)
-  when (shouldCreate opts) $ do
-    (createResult, createError) <- executeCreate opts bytecode (buildDir opts)
+  poststateFile <- if shouldCreate opts
+    then do
+      (createResult, createError, psFile) <- executeCreate opts deploymentBytecode (buildDir opts)
 
-    case createError of
-      Nothing -> do
-        putStrLn "Creation successful"
-        unless (null createResult) $
-          putStrLn $ "returndata: 0x" ++ createResult
-      Just err -> do
-        putStrLn $ "Creation failed: " ++ err
-        unless (null createResult) $
-          putStrLn $ "returndata: 0x" ++ createResult
+      case createError of
+        Nothing -> do
+          putStrLn "Creation successful"
+          unless (null createResult) $
+            putStrLn $ "returndata: 0x" ++ createResult
+        Just err -> do
+          putStrLn $ "Creation failed: " ++ err
+          unless (null createResult) $
+            putStrLn $ "returndata: 0x" ++ createResult
+
+      return psFile
+    else
+      return Nothing
 
   -- Step 5: Execute runtime phase
-  (runtimeResult, runtimeError) <- executeRuntime opts bytecode (buildDir opts)
+  (runtimeResult, runtimeError) <- executeRuntime opts runtimeBytecode (buildDir opts) poststateFile
 
   case runtimeError of
     Nothing -> do
