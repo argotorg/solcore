@@ -7,6 +7,8 @@ module Common.Pretty
 , angles
 , pPrint
 , pShow
+, prettys
+, prettysWith
 ) where
 import Text.PrettyPrint hiding((<>))
 import Text.PrettyPrint qualified as PP
@@ -39,3 +41,9 @@ commaSepList = hsep . punctuate comma . map ppr
 
 angles :: Doc -> Doc
 angles d = char '<' >< d ><  char '>'
+
+prettys :: Pretty a => [a] -> String
+prettys = prettysWith ppr
+
+prettysWith :: (a -> Doc) -> [a] -> String
+prettysWith pr = render . brackets . commaSep . map pr
