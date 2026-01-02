@@ -4,14 +4,14 @@ module Main where
 import Language.Core.Parser(parseObject)
 import Solcore.Frontend.Syntax.Name  -- FIXME: move Name to Common
 import Common.Pretty -- (Doc, Pretty(..), nest, render)
-import Builtins(yulBuiltins)
-import Compress
+import Yule.Builtins(yulBuiltins)
+import Yule.Compress
 import Language.Yul
 import Language.Yul.QuasiQuote
-import qualified Options
-import Options(parseOptions)
-import TM
-import Translate
+import qualified Yule.Options
+import Yule.Options(parseOptions)
+import Yule.TM
+import Yule.Translate
 import Control.Monad(when)
 
 
@@ -19,22 +19,22 @@ main :: IO ()
 main = do
     options <- parseOptions
     -- print options
-    let filename = Options.input options
+    let filename = Yule.Options.input options
     src <- readFile filename
     let inputObject = parseObject filename src
-    let oCompress = Options.compress options
+    let oCompress = Yule.Options.compress options
     when oCompress $ do
         putStrLn "Compressing sums"
     let compObject = if oCompress then compress inputObject
                                   else inputObject
     -- Yul "preobject" - lacking deployment code
     yulPreobject@(YulObject yulName yulCode _) <- runTM options (translateObject compObject)
-    let withDeployment = not (Options.runOnce options)
-    let doc = if Options.wrap options
+    let withDeployment = not (Yule.Options.runOnce options)
+    let doc = if Yule.Options.wrap options
         then wrapInSol (Name yulName) (ycStmts yulCode)
         else wrapInObject withDeployment yulPreobject
-    putStrLn ("writing output to " ++ Options.output options)
-    writeFile (Options.output options) (render doc)
+    putStrLn ("writing output to " ++ Yule.Options.output options)
+    writeFile (Yule.Options.output options) (render doc)
 
 -- wrap in a Yul object with the given name
 wrapInObject :: Bool -> YulObject -> Doc
