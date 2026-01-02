@@ -156,7 +156,8 @@ executable runsol
     process,
     aeson,
     temporary,
-    bytestring
+    bytestring,
+    text
   build-tool-depends: alex:alex, happy:happy
   ghc-options: -O1
   default-extensions:
