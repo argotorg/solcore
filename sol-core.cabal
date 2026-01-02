@@ -64,6 +64,7 @@ library
       Solcore.Backend.Retype
       Solcore.Backend.Specialise
       Solcore.Backend.SpecMonad
+      Solcore.Desugarer.FieldAccess
       Solcore.Desugarer.IfDesugarer
       Solcore.Desugarer.IndirectCall
       Solcore.Desugarer.MatchCompiler
