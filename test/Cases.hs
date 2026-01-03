@@ -236,6 +236,7 @@ cases =
     , runTestExpectingFailure "unbound-instance-var.solc" caseFolder
     , runTestForFile "closure-free-var.solc" caseFolder
     , runTestForFile "closure-free-var-std.solc" caseFolder
+    , runTestForFile "closure-free-var-local.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
