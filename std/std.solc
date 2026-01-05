@@ -953,13 +953,13 @@ function getReader(d:ABIDecoder(ty, reader)) -> reader {
     }
 }
 
-forall baseType baseType_decoded reader . ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded),
+forall baseType baseType_decoded . ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded),
      baseType : WordReader =>
      instance ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader):ABIDecode(calldata(DynArray(baseType_decoded)))
  {
-     function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), reader), currentHeadOffset:word) -> calldata(DynArray(baseType_decoded)) {
+     function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader), currentHeadOffset:word) -> calldata(DynArray(baseType_decoded)) {
           let newptr = WordReader.advance(ptr, currentHeadOffset);
-	  let reader: CalldataWordReader = getReader(newptr);
+	        let reader: CalldataWordReader = getReader(newptr);
           let addr: word = Typedef.rep(reader);
           return Typedef.abs(addr);
      }
