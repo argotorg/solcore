@@ -289,10 +289,10 @@ closureConversion vs args bdy ps ty
       sch <- generalize (ps', ty)
       let
           fn = Name $ "lambda_impl" ++ show i
-          argsn = map idName (vars args)
+          argsn = map idName $ (bound args) ++ (bound bdy)
           defs = fs ++ argsn ++ Map.keys primCtx
-          free = filter (\ x -> notElem (idName x) defs) (vars bdy)
-      if null free then do
+          freevs = filter (\ x -> notElem (idName x) defs) (free bdy)
+      if null freevs then do
         -- no closure needed for monomorphic
         -- lambdas!
         --
@@ -316,9 +316,9 @@ closureConversion vs args bdy ps ty
         writeInstance instd'
         pure (Con (Id dn t) [], t)
       else do
-        (cdt, e', t') <- createClosureType free vs ty
+        (cdt, e', t') <- createClosureType freevs vs ty
         addUniqueType fn cdt
-        (fun, sch) <- createClosureFun fn free cdt args bdy ps' ty
+        (fun, sch) <- createClosureFun fn freevs cdt args bdy ps' ty
         info [">> Create lambda lifted function(closure):\n", pretty fun]
         writeFunDef fun
         writeDataTy cdt
@@ -1111,47 +1111,60 @@ mword = monotype word
 -- determining free variables
 
 class Vars a where
-  vars :: a -> [Id]
+  free :: a -> [Id]
+  bound :: a -> [Id]
 
 instance Vars a => Vars [a] where
-  vars = foldr (union . vars) []
+  free = foldr (union . free) []
+  bound = foldr (union . bound) []
 
 instance Vars Id where
-  vars i@(Id n _)
+  free i@(Id n _)
     | isQual n = []
     | otherwise = [i]
+  bound _ = []
 
-instance Vars a => Vars (Pat a) where
-  vars (PVar v) = vars v
-  vars (PCon _ ps) = vars ps
-  vars _ = []
+instance Vars (Pat Id) where
+  free _ = []
 
-instance Vars a => Vars (Param a) where
-  vars (Typed n _) = vars n
-  vars (Untyped n) = vars n
+  bound (PVar v) = [v]
+  bound (PCon _ ps) = bound ps
+  bound _ = []
 
-instance Vars a => Vars (Stmt a) where
-  vars (e1 := e2) = vars [e1,e2]
-  vars (Let _ _ (Just e)) = vars e
-  vars (Let _ _ _) = []
-  vars (StmtExp e) = vars e
-  vars (Return e) = vars e
-  vars (Match e eqns) = vars e `union` vars eqns
-  vars (If e blk1 blk2) = vars e `union` vars blk1 `union` vars blk2
-  vars (Asm _) = []
+instance Vars (Param Id) where
+  free _ = []
 
-instance Vars a => Vars (Equation a) where
-  vars (_, ss) = vars ss
+  bound (Typed n _) = [n]
+  bound (Untyped n) = [n]
 
-instance Vars a => Vars (Exp a) where
-  vars (Var n) = vars n
-  vars (Con _ es) = vars es
-  vars (FieldAccess Nothing _) = []
-  vars (FieldAccess (Just e) _) = vars e
-  vars (Call (Just e) n es) = vars n `union` vars (e : es)
-  vars (Call Nothing n es) = vars n `union` vars es
-  vars (Lam ps bd _) = vars bd \\ vars ps
-  vars _ = []
+instance Vars (Stmt Id) where
+  free (e1 := e2) = free [e1,e2]
+  free (Let _ _ (Just e)) = free e
+  free (Let _ _ _) = []
+  free (StmtExp e) = free e
+  free (Return e) = free e
+  free (Match e eqns) = free e `union` free eqns
+  free (If e blk1 blk2) = free e `union` free blk1 `union` free blk2
+  free (Asm _) = []
+
+  bound (Let n _ _) = [n]
+  bound _ = []
+
+instance Vars (Equation Id) where
+  free (ps, ss) = free ss \\ bound ps
+  bound _ = []
+
+instance Vars (Exp Id) where
+  free (Var n) = free n
+  free (Con _ es) = free es
+  free (FieldAccess Nothing _) = []
+  free (FieldAccess (Just e) _) = free e
+  free (Call (Just e) n es) = free e `union` free n `union` free (e : es)
+  free (Call Nothing n es) = free n `union` free es
+  free (Lam ps bd _) = free bd \\ bound ps
+  free _ = []
+
+  bound _ = []
 
 -- rename type variables
 
