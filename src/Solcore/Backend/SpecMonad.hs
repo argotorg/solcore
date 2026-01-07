@@ -375,9 +375,16 @@ instance Pretty TVRenaming where
 -- TVR {unTVR = [(TVar {var = a},TVar {var = c}),(TVar {var = b},TVar {var = a}),(TVar {var = c},TVar {var = b})]}
 -- >>> r2 <> r2 <> r2
 -- TVR {unTVR = []}
+-- >>> r1 <> mempty
+-- TVR {unTVR = [(TVar {var = a},TVar {var = x}),(TVar {var = b},TVar {var = y})]}
+
 
 instance Semigroup TVRenaming where
-  r1 <> r2 = TVR (filter (uncurry (/=)) [ (u, renameTV r1 v) | (u, v) <- unTVR r2])
+  r1 <> r2 = TVR (filter (uncurry (/=)) (outer ++ inner))
+    where
+      outer = [(u, renameTV r1 v) | (u, v) <- unTVR r2]
+      inner = [(v, t) | (v, t) <- unTVR r1, v `notElem` domR2]
+      domR2 = map fst (unTVR r2)
 
 instance Monoid TVRenaming where
   mempty = TVR mempty
