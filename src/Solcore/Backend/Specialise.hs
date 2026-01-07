@@ -304,15 +304,15 @@ resolveAndSpecialize name funType specializedArgs originalId originalArgs = do
     handleMissingResolution n ft i args = do
         void $ panics
           [ "Specialization failed: No resolution found for function call"
-          , "Function: " ++ show n
-          , "Required type: " ++ pretty ft
-          , ""
-          , "Possible causes:"
-          , "  - Function is not defined or not in scope"
-          , "  - Type mismatch between call site and definition"
-          , "  - Missing instance for type class constraint"
-          , ""
-          , "Check that the function is defined and that type inference is correct."
+          , "\nFunction: " ++ pretty n
+          , "\nRequired type: " ++ pretty ft
+          , "\n"
+          , "\nPossible causes:"
+          , "\n  - Function is not defined or not in scope"
+          , "\n  - Type mismatch between call site and definition"
+          , "\n  - Missing instance for type class constraint"
+          , "\n"
+          , "\nCheck that the function is defined and that type inference is correct."
           ]
         return (i, args)
 
@@ -393,22 +393,22 @@ ensureClosed ty ctxt subst = do
   let tvs = freetv ty
   unless (null tvs) $ panics
     [ "Specialization failed: Type still contains free type variables"
-    , "Context: " ++ pretty ctxt
-    , "Type: " ++ pretty ty
-    , "Free type variables: " ++ show tvs
-    , "Current substitution: " ++ pretty subst
-    , ""
-    , "This indicates incomplete specialization - all types must be concrete."
-    , "Check that all polymorphic functions have been properly instantiated."
+    , "\nContext: " ++ pretty ctxt
+    , "\nType: " ++ pretty ty
+    , "\nFree type variables: " ++ show tvs
+    , "\nCurrent substitution: " ++ pretty subst
+    , "\n"
+    , "\nThis indicates incomplete specialization - all types must be concrete."
+    , "\nCheck that all polymorphic functions have been properly instantiated."
     ]
 {-
   let mvs = mv ty
   unless (null mvs) $ panics
     [ "Specialization failed: Type still contains meta variables"
-    , "Context: " ++ pretty ctxt
-    , "Type: " ++ pretty ty
-    , "Meta variables: " ++ show mvs
-    , "Current substitution: " ++ pretty subst
+    , "\nContext: " ++ pretty ctxt
+    , "\nType: " ++ pretty ty
+    , "\nMeta variables: " ++ show mvs
+    , "\nCurrent substitution: " ++ pretty subst
     ]
 -}
 
