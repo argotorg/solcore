@@ -42,6 +42,7 @@ data Exp a
   | Lam [Param a] (Body a) (Maybe Ty)  -- lambda-abstraction
   | TyExp (Exp a) Ty                   -- type annotated expression
   | Cond (Exp a) (Exp a) (Exp a)       -- conditional expression
+  | Indexed (Exp a) (Exp a)            -- e1[e2]
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- pattern matching equations
