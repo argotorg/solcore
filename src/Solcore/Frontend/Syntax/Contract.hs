@@ -14,6 +14,7 @@ data CompUnit a
       imports :: [Import]
     , contracts :: [TopDecl a]
     } deriving (Eq, Ord, Show, Data, Typeable)
+type NamedCompUnit = CompUnit Name
 
 data TopDecl a
   = TContr (Contract a)
@@ -25,6 +26,7 @@ data TopDecl a
   | TSym TySym
   | TPragmaDecl Pragma
   deriving (Eq, Ord, Show, Data, Typeable)
+type NamedTopDecl = TopDecl Name
 
 -- empty list in pragma: restriction on all class / instances
 
@@ -58,6 +60,7 @@ data Contract a
     , tyParams :: [Tyvar]
     , decls :: [ContractDecl a]
     } deriving (Eq, Ord, Show, Data, Typeable)
+type NamedContract = Contract Name
 
 -- definition of a algebraic data type
 
@@ -90,6 +93,7 @@ data Constructor a
       constrParams :: [Param a]
     , constrBody :: (Body a)
     } deriving (Eq, Ord, Show, Data, Typeable)
+type NamedConstructor = Constructor Name
 
 -- definition of classes and instances
 
@@ -102,6 +106,7 @@ data Class a
     , mainVar :: Tyvar
     , signatures :: [Signature a]
     } deriving (Eq, Ord, Show, Data, Typeable)
+type NamedClass = Class Name
 
 data Signature a
   = Signature {
@@ -111,6 +116,7 @@ data Signature a
     , sigParams :: [Param a]
     , sigReturn :: Maybe Ty
     } deriving (Eq, Ord, Show, Data, Typeable)
+type NamedSignature = Signature Name
 
 
 data Instance a
@@ -123,6 +129,7 @@ data Instance a
     , mainTy :: Ty
     , instFunctions :: [FunDef a]
     } deriving (Eq, Ord, Show, Data, Typeable)
+type NamedInstance = Instance Name
 
 -- definition of contract field variables
 
@@ -132,6 +139,7 @@ data Field a
     , fieldTy :: Ty
     , fieldInit :: Maybe (Exp a)
     } deriving (Eq, Ord, Show, Data, Typeable)
+type NamedField = Field Name
 
 -- definition of functions
 
@@ -140,6 +148,7 @@ data FunDef a
       funSignature :: Signature a
     , funDefBody :: Body a
     } deriving (Eq, Ord, Show, Data, Typeable)
+type NamedFunDef = FunDef Name
 
 data ContractDecl a
   = CDataDecl DataTy
@@ -148,3 +157,4 @@ data ContractDecl a
   | CMutualDecl [ContractDecl a] -- used only after SCC analysis
   | CConstrDecl (Constructor a)
     deriving (Eq, Ord,Show, Data, Typeable)
+type NamedContractDecl = ContractDecl Name

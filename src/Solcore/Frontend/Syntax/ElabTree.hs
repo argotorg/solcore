@@ -14,19 +14,20 @@ import GHC.Stack
 import Text.Pretty.Simple
 
 import Solcore.Frontend.Pretty.SolcorePretty
-import Solcore.Frontend.Syntax.Contract hiding (contracts, decls)
-import Solcore.Frontend.Syntax.Name
+import Solcore.Frontend.Syntax.Contract hiding(contracts, decls)
+-- import Solcore.Frontend.Syntax.ContractX
 import Solcore.Frontend.Syntax.Stmt
+import Solcore.Frontend.Syntax.Name
 import qualified Solcore.Frontend.Syntax.SyntaxTree as S
 import Solcore.Frontend.Syntax.Ty
 
 -- top level elaboration / name resolution function
 
-buildAST :: S.CompUnit -> IO (Either String (CompUnit Name), Env)
+buildAST :: S.CompUnit -> IO (Either String (NamedCompUnit), Env)
 buildAST t
   = runElabM t
 
-buildAST' :: S.CompUnit -> IO (Either String (CompUnit Name, Env))
+buildAST' :: S.CompUnit -> IO (Either String (NamedCompUnit, Env))
 buildAST' t
   = runElabM' t
 
@@ -143,7 +144,7 @@ instance (Elab a, Elab b) => Elab (a,b) where
   elab (x,y) = (,) <$> elab x <*> elab y
 
 instance Elab S.CompUnit where
-  type Res S.CompUnit = CompUnit Name
+  type Res S.CompUnit = NamedCompUnit
   initialEnv (S.CompUnit _ ds)
     = initialEnv ds
   elab (S.CompUnit imps ds)
@@ -159,7 +160,7 @@ instance Elab S.Import where
 
 
 instance Elab S.TopDecl where
-  type Res S.TopDecl = [TopDecl Name]
+  type Res S.TopDecl = [NamedTopDecl]
 
   initialEnv (S.TContr c) = initialEnv c
   initialEnv (S.TFunDef fd) = initialEnv fd
@@ -205,7 +206,7 @@ instance Elab S.PragmaStatus where
   elab (S.DisableFor ns) = pure (DisableFor ns)
 
 instance Elab S.Contract where
-  type Res S.Contract = Contract Name
+  type Res S.Contract = NamedContract
 
   initialEnv (S.Contract n _ decls)
     = env {contracts = [n] `union` contracts env}
@@ -293,13 +294,13 @@ instance Elab S.TySym where
         pure (TySym n vs1 t')
 
 instance Elab S.Constructor where
-  type Res S.Constructor = Constructor Name
+  type Res S.Constructor = NamedConstructor
 
   elab (S.Constructor ps bds)
     = Constructor <$> elab ps <*> elab bds
 
 instance Elab S.Class where
-  type Res S.Class = Class Name
+  type Res S.Class = NamedClass
 
   initialEnv (S.Class _ _ n _ _ sigs)
     = env {classes = [n] `union` classes env}
@@ -328,7 +329,7 @@ mkTyVar (TyVar v) = pure v
 mkTyVar t = throwError $ "Ill-formed type:" ++ pretty t
 
 instance Elab S.Signature where
-  type Res S.Signature = Signature Name
+  type Res S.Signature = NamedSignature
 
   initialEnv (S.Signature _ _ n _ _)
     = env {functions = [n] `union` functions env }
@@ -350,7 +351,7 @@ names = nub . foldr step []
       = n : (names ts) ++ ac
 
 instance Elab S.Instance where
-  type Res S.Instance = Instance Name
+  type Res S.Instance = NamedInstance
 
   elab (S.Instance d vs ctx n ts t funs)
     = do
@@ -365,7 +366,7 @@ instance Elab S.Instance where
 
 
 instance Elab S.Field where
-  type Res S.Field = Field Name
+  type Res S.Field = NamedField
 
   elab (S.Field n t me)
     = Field n <$> elab t <*> elab me
@@ -376,7 +377,7 @@ instance Elab S.Field where
         env = mempty
 
 instance Elab S.FunDef where
-  type Res S.FunDef = FunDef Name
+  type Res S.FunDef = NamedFunDef
 
   elab (S.FunDef sig bd)
     = do
@@ -390,7 +391,7 @@ instance Elab S.FunDef where
   initialEnv (S.FunDef sig _) = initialEnv sig
 
 instance Elab S.ContractDecl where
-  type Res S.ContractDecl = [ContractDecl Name]
+  type Res S.ContractDecl = [NamedContractDecl]
 
   initialEnv (S.CDataDecl dt) = initialEnv dt
   initialEnv (S.CFieldDecl fd) = initialEnv fd
@@ -411,7 +412,7 @@ instance Elab S.ContractDecl where
 
 
 instance Elab S.Stmt where
-  type Res S.Stmt = Stmt Name
+  type Res S.Stmt = NamedStmt
 
   elab (S.Assign lhs rhs)
     = (:=) <$> elab lhs <*> elab rhs
@@ -433,20 +434,20 @@ instance Elab S.Stmt where
     = If <$> elab e <*> elab blk1 <*> elab blk2
 
 instance Elab S.Param where
-  type Res S.Param = Param Name
+  type Res S.Param = NamedParam
 
   elab (S.Typed n t)
     = Typed n <$> elab t
   elab (S.Untyped n)
     = pure (Untyped n)
 
-mkClassName :: Maybe (Exp Name) -> Name -> Name
+mkClassName :: Maybe (NamedExp) -> Name -> Name
 mkClassName Nothing n = n
 mkClassName (Just (Var x)) n
   = QualName x (pretty n)
 mkClassName (Just e) n = notImplementedS "mkClassName" (e, n)
 instance Elab S.Exp where
-  type Res S.Exp = Exp Name
+  type Res S.Exp = NamedExp
 
   elab (S.Lit l)
     = Lit <$> elab l
@@ -543,7 +544,7 @@ instance Elab S.Exp where
     = notImplementedM "elab @Exp" exp
 
 instance Elab S.Pat where
-  type Res S.Pat = Pat Name
+  type Res S.Pat = NamedPat
 
   elab S.PWildcard = pure PWildcard
   elab (S.PLit l) = PLit <$> elab l
@@ -563,11 +564,11 @@ instance Elab S.Pat where
         else throwError $ unlines ["Invalid pattern:"
                                   , pretty (PCon n ps')
                                   ]
-mkTuplePat :: [Pat Name] -> Pat Name
+mkTuplePat :: [NamedPat] -> NamedPat
 mkTuplePat [] = PCon (Name "()") []
 mkTuplePat ps = foldr1 pairPat ps
 
-pairPat :: Pat Name -> Pat Name -> Pat Name
+pairPat :: NamedPat -> NamedPat -> NamedPat
 pairPat p1 p2 = PCon (Name "pair") [p1, p2]
 
 isTuple :: S.Pat -> ElabM Bool
