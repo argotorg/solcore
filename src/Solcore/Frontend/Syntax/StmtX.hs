@@ -3,6 +3,7 @@ module Solcore.Frontend.Syntax.StmtX where
 import GHC.Types
 import Data.Generics (Data, Typeable)
 
+import Common.Pretty
 import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.TypeInference.Id -- todo: move to Syntax
@@ -43,6 +44,9 @@ type EquationsX x = [EquationX x]
 
 type NamedExp = ExpX ComNm
 type NamedStmt = StmtX ComNm
+type NamedBody = BodyX ComNm
+type NamedPat = PatX ComNm
+type NamedParam = ParamX ComNm
 
 pattern (:=) :: NamedExp -> NamedExp -> NamedStmt
 pattern (:=) e1 e2 <- AssX _ e1 e2
@@ -51,7 +55,7 @@ pattern (:=) e1 e2 <- AssX _ e1 e2
 data StmtX x
   = AssX (XAss x) (ExpX x) (ExpX x)                        -- assignment
   | LetX (XLet x) (XName x) (Maybe Ty) (Maybe (ExpX x))    -- local variable
-  | StmtExp (XStmtExp x) (ExpX x)                          -- expression level statements
+  | StmtExpX (XStmtExp x) (ExpX x)                         -- expression level statements
   | ReturnX (XReturn x) (ExpX x)                           -- return statements
   | MatchX (XMatch x) [ExpX x] (EquationsX x)              -- pattern matching
   | AsmX (XAsm x) YulBlock                                 -- Yul block (no type annotations)
@@ -75,6 +79,7 @@ type ForallStmtX (p:: Type -> Constraint) x =
     , p(XLam   x)
     , p(XTyExp x)
     , p(XCond  x)
+    , p(XIndexed x)
     , p(XTyped x)
     , p(XUntyped x)
     , p(XName x)
@@ -103,6 +108,16 @@ type instance XMatch ComNm = NoExtField
 type instance XAsm ComNm = NoExtField
 type instance XIf ComNm = NoExtField
 type instance XXStmt ComNm = NoExtField
+
+type instance XVar ComNm = NoExtField
+type instance XCon ComNm = NoExtField
+type instance XFA ComNm = NoExtField
+type instance XLit ComNm = NoExtField
+type instance XCall ComNm = NoExtField
+type instance XLam ComNm = NoExtField
+type instance XTyExp ComNm = NoExtField
+type instance XCond ComNm = NoExtField
+type instance XIndexed ComNm = NoExtField
 
 type BodyX x = [StmtX x]
 
@@ -139,6 +154,7 @@ data ExpX x
   | LamX (XLam x)[ParamX x] (BodyX x) (Maybe Ty)         -- lambda-abstraction
   | TyExpX (XTyExp x)(ExpX x) Ty                         -- type annotated expression
   | CondX (XCond x) (ExpX x) (ExpX x) (ExpX x)           -- conditional expression
+  | IndexedX (XIndexed x) (ExpX x) (ExpX x)              -- e1[e2]
 --   deriving (Eq, Ord, Show, Data, Typeable)
 
 type family XVar x
@@ -149,10 +165,11 @@ type family XCall x
 type family XLam x
 type family XTyExp x
 type family XCond x
+type family XIndexed x
 
 deriving instance (ForallStmtX Eq x) => Eq (ExpX x)
 deriving instance (ForallStmtX Ord x) => Ord (ExpX x)
-deriving instance ForallStmtX Show x => Show (ExpX x)
+deriving instance (ForallStmtX Show x) => Show (ExpX x)
 deriving instance (ForallStmtX Data x, Typeable x, Data x) => Data (ExpX  x)
 
 -- pattern matching equations
@@ -169,9 +186,93 @@ deriving instance Ord (XName x) => Ord (PatX x)
 deriving instance Show (XName x) => Show (PatX x)
 deriving instance (Data (XName x), Typeable x, Data x) => Data (PatX x)
 
+-- ============================================================================
+-- Pattern synonyms for migration ease
+-- ============================================================================
+
+-- StmtX patterns
+pattern Ass :: ExpX ComNm -> ExpX ComNm -> StmtX ComNm
+pattern Ass e1 e2 = AssX NoExtField e1 e2
+
+pattern Let :: XName ComNm -> Maybe Ty -> Maybe (ExpX ComNm) -> StmtX ComNm
+pattern Let n t e = LetX NoExtField n t e
+
+pattern StmtExp :: ExpX ComNm -> StmtX ComNm
+pattern StmtExp e = StmtExpX NoExtField e
+
+pattern Return :: ExpX ComNm -> StmtX ComNm
+pattern Return e = ReturnX NoExtField e
+
+pattern Match :: [ExpX ComNm] -> EquationsX ComNm -> StmtX ComNm
+pattern Match es eqs = MatchX NoExtField es eqs
+
+pattern Asm :: YulBlock -> StmtX ComNm
+pattern Asm blk = AsmX NoExtField blk
+
+pattern If :: ExpX ComNm -> BodyX ComNm -> BodyX ComNm -> StmtX ComNm
+pattern If c t e = IfX NoExtField c t e
+
+{-# COMPLETE Ass, Let, StmtExp, Return, Match, Asm, If, XStmtX #-}
+
+-- ExpX patterns
+pattern Var :: XName ComNm -> ExpX ComNm
+pattern Var n = VarX NoExtField n
+
+pattern Con :: XName ComNm -> [ExpX ComNm] -> ExpX ComNm
+pattern Con n es = ConX NoExtField n es
+
+pattern FieldAccess :: Maybe (ExpX ComNm) -> XName ComNm -> ExpX ComNm
+pattern FieldAccess e n = FieldAccessX NoExtField e n
+
+pattern Lit :: Literal -> ExpX ComNm
+pattern Lit l = LitX NoExtField l
+
+pattern Call :: Maybe (ExpX ComNm) -> XName ComNm -> [ExpX ComNm] -> ExpX ComNm
+pattern Call e n as = CallX NoExtField e n as
+
+pattern Lam :: [ParamX ComNm] -> BodyX ComNm -> Maybe Ty -> ExpX ComNm
+pattern Lam ps body ty = LamX NoExtField ps body ty
+
+pattern TyExp :: ExpX ComNm -> Ty -> ExpX ComNm
+pattern TyExp e ty = TyExpX NoExtField e ty
+
+pattern Cond :: ExpX ComNm -> ExpX ComNm -> ExpX ComNm -> ExpX ComNm
+pattern Cond c t e = CondX NoExtField c t e
+
+pattern Indexed :: ExpX ComNm -> ExpX ComNm -> ExpX ComNm
+pattern Indexed e1 e2 <- IndexedX NoExtField e1 e2
+  where Indexed e1 e2 =  IndexedX NoExtField e1 e2
+
+{-# COMPLETE Var, Con, FieldAccess, Lit, Call, Lam, TyExp, Cond #-}
+
+-- ParamX patterns
+pattern Typed :: XName ComNm -> Ty -> ParamX ComNm
+pattern Typed n t = TypedX NoExtField n t
+
+pattern Untyped :: XName ComNm -> ParamX ComNm
+pattern Untyped n = UntypedX NoExtField n
+
+{-# COMPLETE Typed, Untyped #-}
+
 -- definition of literals
 
 data Literal
   = IntLit Integer
   | StrLit String
   deriving (Eq, Ord, Show, Data, Typeable)
+
+instance Pretty (PatX ComNm) where
+  ppr (PVar n)
+    = ppr n
+  ppr (PCon n []) = ppr n
+  ppr (PCon n ps@(_ : _))
+    | n == "pair" = parens (commaSep $ map ppr ps)
+    | otherwise = ppr n <> (parens $ commaSep $ map ppr ps )
+  ppr PWildcard
+    = text "_"
+  ppr (PLit l)
+    = ppr l
+
+instance Pretty Literal where
+  ppr (IntLit l) = integer (toInteger l)
+  ppr (StrLit l) = quotes (text l)
