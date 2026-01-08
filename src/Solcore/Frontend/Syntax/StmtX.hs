@@ -7,14 +7,15 @@ import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.Syntax.Name
 import Language.Yul
 
-data Pass = Parsed | Named | Typechecked deriving (Eq, Ord, Show, Data, Typeable)
+data Pass = Parsed | Named | Typechecked | Specialised deriving (Eq, Ord, Show, Data, Typeable)
 data ComPass (c::Pass) where
     ComNm :: ComNm
     ComPs :: ComPs
     ComTc :: ComTc
 
-type ComNm = ComPass 'Named
 type ComPs = ComPass 'Parsed
+type ComNm = ComPass 'Named
+type ComSp = ComPass 'Specialised
 type ComTc = ComPass 'Typechecked
 
 data NoExtField = NoExtField deriving (Eq, Ord, Show, Data, Typeable)
