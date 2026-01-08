@@ -345,8 +345,6 @@ addRenaming b a = do
            fresh <- spNewName
            pure (TVR [(a, TVar fresh)] <> b)
 
--- TODO: refactor - make renametv return TVRenaming; turn rename* into class methods
-
 newtype TVRenaming
   = TVR { unTVR :: [(Tyvar, Tyvar)] } deriving (Eq, Show)
 
