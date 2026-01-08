@@ -4,7 +4,7 @@ module Solcore.Frontend.TypeInference.TcSubst where
 import Data.List
 
 import Solcore.Frontend.Syntax
-
+import Solcore.Frontend.TypeInference.Id
 -- basic substitution infrastructure
 
 newtype Subst
@@ -88,6 +88,12 @@ instance HasType Ty where
   bv (TyVar v@(TVar _)) = [v]
   bv (TyCon _ ts) = bv ts
   bv _ = []
+
+instance HasType Id where
+  apply s (Id n t) = Id n (apply s t)
+  fv (Id _ t) = fv t
+  mv (Id _ t) = mv t
+  bv (Id _ t) = bv t
 
 instance HasType Constr where
   apply s (Constr dn ts)

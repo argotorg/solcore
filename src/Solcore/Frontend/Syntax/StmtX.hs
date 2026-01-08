@@ -5,6 +5,7 @@ import Data.Generics (Data, Typeable)
 
 import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.Syntax.Name
+import Solcore.Frontend.TypeInference.Id -- todo: move to Syntax
 import Language.Yul
 
 data Pass = Parsed | Named | Typechecked | Specialised deriving (Eq, Ord, Show, Data, Typeable)
@@ -29,9 +30,15 @@ data DataConCantHappen -- empty data type
 absurd :: DataConCantHappen -> a
 absurd v = case v of {}
 
+-- names in differeent passes: Name/Id etc
+type family XName x
+type instance XName ComNm = Name
+type instance XName ComTc = Id
+type instance XName ComSp = Id
+
 -- definition of statements
 
-type EquationX x = ([Pat x], [StmtX x])
+type EquationX x = ([PatX x], [StmtX x])
 type EquationsX x = [EquationX x]
 
 type NamedExp = ExpX ComNm
@@ -42,14 +49,14 @@ pattern (:=) e1 e2 <- AssX _ e1 e2
   where e1 := e2 = AssX mempty e1 e2
 
 data StmtX x
-  = AssX (XAss x) (ExpX x) (ExpX x)                  -- assignment
-  | LetX (XLet x) Name (Maybe Ty) (Maybe (ExpX x))    -- local variable
-  | StmtExp (XStmtExp x) (ExpX x)                     -- expression level statements
-  | ReturnX (XReturn x) (ExpX x)                      -- return statements
-  | MatchX (XMatch x) [ExpX x] (EquationsX x)         -- pattern matching
-  | AsmX (XAsm x) YulBlock                        -- Yul block (type annotations ???)
-  | IfX (XIf x)(ExpX x) (BodyX x) (BodyX x)        -- If statement
-  | XStmtX (XXStmt x)                             -- extensions
+  = AssX (XAss x) (ExpX x) (ExpX x)                        -- assignment
+  | LetX (XLet x) (XName x) (Maybe Ty) (Maybe (ExpX x))    -- local variable
+  | StmtExp (XStmtExp x) (ExpX x)                          -- expression level statements
+  | ReturnX (XReturn x) (ExpX x)                           -- return statements
+  | MatchX (XMatch x) [ExpX x] (EquationsX x)              -- pattern matching
+  | AsmX (XAsm x) YulBlock                                 -- Yul block (no type annotations)
+  | IfX (XIf x)(ExpX x) (BodyX x) (BodyX x)                -- If statement
+  | XStmtX (XXStmt x)                                      -- extensions
 
 type ForallStmtX (p:: Type -> Constraint) x =
     ( p(XAss x)
@@ -70,9 +77,10 @@ type ForallStmtX (p:: Type -> Constraint) x =
     , p(XCond  x)
     , p(XTyped x)
     , p(XUntyped x)
+    , p(XName x)
   )
 
-deriving instance ForallStmtX Eq x => Eq (StmtX x)
+deriving instance (ForallStmtX Eq x, Eq (XName x)) => Eq (StmtX x)
 deriving instance ForallStmtX Ord x => Ord (StmtX x)
 deriving instance ForallStmtX Show x => Show (StmtX x)
 deriving instance (ForallStmtX Data x, Typeable x, Data x) => Data (StmtX x)
@@ -99,8 +107,8 @@ type instance XXStmt ComNm = NoExtField
 type BodyX x = [StmtX x]
 
 data ParamX x
-  = TypedX (XTyped x) Name Ty
-  | UntypedX (XUntyped x)  Name
+  = TypedX (XTyped x) (XName x) Ty
+  | UntypedX (XUntyped x) (XName x)
 
 type family XTyped x
 type family XUntyped x
@@ -116,21 +124,21 @@ deriving instance ForallStmtX Ord x => Ord (ParamX x)
 deriving instance ForallStmtX Show x => Show (ParamX x)
 deriving instance (ForallStmtX Data x, Typeable x, Data x) => Data (ParamX x)
 
-paramName :: ParamX x -> Name
+paramName :: ParamX x -> XName x
 paramName (TypedX _ n _) = n
 paramName (UntypedX _ n) = n
 
 -- definition of the expression syntax
 
 data ExpX x
-  = VarX (XVar x) Name                 -- variable
-  | ConX (XCon x) Name  [ExpX x]       -- data type constructor
-  | FieldAccessX (XFA x) (Maybe (ExpX x)) Name      -- field access
-  | LitX (XLit x) Literal                        -- literal
-  | CallX (XCall x) (Maybe (ExpX x)) Name [ExpX x]     -- function calal
-  | LamX (XLam x)[ParamX x] (BodyX x) (Maybe Ty)  -- lambda-abstraction
-  | TyExpX (XTyExp x)(ExpX x) Ty                   -- type annotated expression
-  | CondX (XCond x) (ExpX x) (ExpX x) (ExpX x)       -- conditional expression
+  = VarX (XVar x) (XName x)                              -- variable
+  | ConX (XCon x) (XName x)  [ExpX x]                    -- data type constructor
+  | FieldAccessX (XFA x) (Maybe (ExpX x)) (XName x)      -- field access
+  | LitX (XLit x) Literal                                -- literal
+  | CallX (XCall x) (Maybe (ExpX x)) (XName x) [ExpX x]  -- function call
+  | LamX (XLam x)[ParamX x] (BodyX x) (Maybe Ty)         -- lambda-abstraction
+  | TyExpX (XTyExp x)(ExpX x) Ty                         -- type annotated expression
+  | CondX (XCond x) (ExpX x) (ExpX x) (ExpX x)           -- conditional expression
 --   deriving (Eq, Ord, Show, Data, Typeable)
 
 type family XVar x
@@ -142,19 +150,24 @@ type family XLam x
 type family XTyExp x
 type family XCond x
 
-deriving instance ForallStmtX Eq x => Eq (ExpX x)
-deriving instance ForallStmtX Ord x => Ord (ExpX x)
+deriving instance (ForallStmtX Eq x) => Eq (ExpX x)
+deriving instance (ForallStmtX Ord x) => Ord (ExpX x)
 deriving instance ForallStmtX Show x => Show (ExpX x)
 deriving instance (ForallStmtX Data x, Typeable x, Data x) => Data (ExpX  x)
 
 -- pattern matching equations
 
-data Pat x
-  = PVar Name
-  | PCon Name [Pat Name]
+data PatX x
+  = PVar (XName x)
+  | PCon (XName x) [PatX x]
   | PWildcard
   | PLit Literal
-  deriving (Eq, Ord, Show, Data, Typeable)
+--  deriving (Eq, Ord, Show, Data, Typeable)
+
+deriving instance Eq (XName x) => Eq (PatX x)
+deriving instance Ord (XName x) => Ord (PatX x)
+deriving instance Show (XName x) => Show (PatX x)
+deriving instance (Data (XName x), Typeable x, Data x) => Data (PatX x)
 
 -- definition of literals
 
