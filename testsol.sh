@@ -70,6 +70,28 @@ function deploysol() {
     echo $addr
 }
 
+function deploysol2() {
+    local file=$1
+    shift
+    local data=$(cast ae $* | cut -c 3-)
+    echo "Args: $*"
+    echo "ABI-enc: $data"
+    echo "Solc: $file"
+    local base=$(basename $file .solc)
+    local hull=output1.hull
+    echo "Hull: $hull"
+    local yulfile=$base.yul
+    echo "Yul:  $yulfile"
+    rm -f -v $yulfile
+    cabal exec sol-core -- -f $file && \
+    cabal exec yule -- $hull -o $yulfile
+    prog=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
+    hex="$prog$data"
+    rawtx=$(cast mktx --private-key=$DEPLOYER_KEY --create $hex)
+    addr=$(cast publish $rawtx | jq .contractAddress | tr -d '"')
+    echo $addr
+}
+
 function deployhull() {
     local base=$(basename $1 .hull)
     local yulfile=$base.yul
