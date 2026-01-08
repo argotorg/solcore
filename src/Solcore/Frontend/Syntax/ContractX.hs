@@ -13,6 +13,9 @@ import Solcore.Frontend.Syntax.Name
 -- Extension families for TopDeclX
 -- ============================================================================
 
+type family XCompUnit x
+type family XConstructor x
+type family XContract x
 type family XTContr x
 type family XTFunDef x
 type family XTClassDef x
@@ -22,6 +25,21 @@ type family XTDataDef x
 type family XTSym x
 type family XTPragmaDecl x
 type family XXTopDecl x
+
+type instance XCompUnit ComPs = NoExtField
+type instance XCompUnit ComNm = NoExtField
+type instance XCompUnit ComTc = NoExtField
+type instance XCompUnit ComSp = NoExtField
+
+type instance XConstructor ComPs = NoExtField
+type instance XConstructor ComNm = NoExtField
+type instance XConstructor ComTc = NoExtField
+type instance XConstructor ComSp = NoExtField
+
+type instance XContract ComPs = NoExtField
+type instance XContract ComNm = NoExtField
+type instance XContract ComTc = NoExtField
+type instance XContract ComSp = NoExtField
 
 type instance XTContr ComPs = NoExtField
 type instance XTContr ComNm = NoExtField
@@ -110,12 +128,45 @@ type instance XXContractDecl ComTc = DataConCantHappen
 type instance XXContractDecl ComSp = DataConCantHappen
 
 -- ============================================================================
+-- Extension families for record types
+-- ============================================================================
+
+type family XField x
+type family XClass x
+type family XSignature x
+type family XInstance x
+
+type instance XField ComPs = NoExtField
+type instance XField ComNm = NoExtField
+type instance XField ComTc = NoExtField
+type instance XField ComSp = NoExtField
+
+type instance XClass ComPs = NoExtField
+type instance XClass ComNm = NoExtField
+type instance XClass ComTc = NoExtField
+type instance XClass ComSp = NoExtField
+
+type instance XSignature ComPs = NoExtField
+type instance XSignature ComNm = NoExtField
+type instance XSignature ComTc = NoExtField
+type instance XSignature ComSp = NoExtField
+
+type instance XInstance ComPs = NoExtField
+type instance XInstance ComNm = NoExtField
+type instance XInstance ComTc = NoExtField
+type instance XInstance ComSp = NoExtField
+
+-- ============================================================================
 -- Constraint helper type
 -- ============================================================================
 
 type ForallContractX (p :: Type -> Constraint) x =
-    ( -- TopDeclX extensions
-      p(XTContr x), p(XTFunDef x), p(XTClassDef x), p(XTInstDef x)
+    ( p(XField x), p(XClass x), p(XSignature x), p(XInstance x)
+    , p(XConstructor x)
+    , p(XContract x)
+    , p(XCompUnit x)
+      -- TopDeclX extensions
+    , p(XTContr x), p(XTFunDef x), p(XTClassDef x), p(XTInstDef x)
     , p(XTMutualDef x), p(XTDataDef x), p(XTSym x), p(XTPragmaDecl x)
     , p(XXTopDecl x)
       -- ContractDeclX extensions
@@ -130,7 +181,8 @@ type ForallContractX (p :: Type -> Constraint) x =
 -- ============================================================================
 
 data CompUnitX x = CompUnitX {
-    importsX :: [Import]
+    cuExtension :: XCompUnit x
+  , importsX :: [Import]
   , contractsX :: [TopDeclX x]
   }
 
@@ -164,7 +216,8 @@ deriving instance (ForallContractX Data x, Typeable x, Data x) => Data (TopDeclX
 -- ============================================================================
 
 data ContractX x = ContractX {
-    contractName :: Name
+    contractExtension :: XContract x
+  , contractName :: Name
   , contractTyParams :: [Tyvar]
   , contractDecls :: [ContractDeclX x]
   }
@@ -179,7 +232,8 @@ deriving instance (ForallContractX Data x, Typeable x, Data x) => Data (Contract
 -- ============================================================================
 
 data FieldX x = FieldX {
-    fieldNameX :: Name
+    fieldExtension :: XField x
+  , fieldNameX :: Name
   , fieldTyX :: Ty
   , fieldInitX :: Maybe (ExpX x)
   }
@@ -194,7 +248,8 @@ deriving instance (ForallContractX Data x, Typeable x, Data x) => Data (FieldX x
 -- ============================================================================
 
 data ConstructorX x = ConstructorX {
-    constrParamsX :: [ParamX x]
+    constrExtension :: XConstructor x
+  , constrParamsX :: [ParamX x]
   , constrBodyX :: BodyX x
   }
 
@@ -222,7 +277,8 @@ deriving instance (ForallContractX Data x, Typeable x, Data x) => Data (FunDefX 
 -- ============================================================================
 
 data SignatureX x = SignatureX {
-    sigVarsX :: [Tyvar]
+    sigExtension :: XSignature x
+  , sigVarsX :: [Tyvar]
   , sigContextX :: [Pred]
   , sigNameX :: Name
   , sigParamsX :: [ParamX x]
@@ -239,7 +295,8 @@ deriving instance (ForallContractX Data x, Typeable x, Data x) => Data (Signatur
 -- ============================================================================
 
 data ClassX x = ClassX {
-    classBoundVarsX :: [Tyvar]
+    classExtension :: XClass x
+  , classBoundVarsX :: [Tyvar]
   , classContextX :: [Pred]
   , classNameX :: Name
   , classParamsVarX :: [Tyvar]
@@ -257,7 +314,8 @@ deriving instance (ForallContractX Data x, Typeable x, Data x) => Data (ClassX x
 -- ============================================================================
 
 data InstanceX x = InstanceX {
-    instDefaultX :: Bool
+    instExtension :: XInstance x
+  , instDefaultX :: Bool
   , instVarsX :: [Tyvar]
   , instContextX :: [Pred]
   , instNameX :: Name
@@ -359,47 +417,98 @@ type NamedContractDecl = ContractDeclX ComNm
 -- Pattern synonyms for migration ease
 -- ============================================================================
 
+
+pattern CompUnit :: [Import] -> [TopDeclX ComNm] -> CompUnitX ComNm
+pattern CompUnit is ds <- CompUnitX _ is ds
+    where CompUnit is ds = CompUnitX mempty is ds
+
+pattern Contract :: Name -> [Tyvar] -> [NamedContractDecl] -> NamedContract
+pattern Contract n vs ds <- ContractX _  n vs ds
+    where Contract n vs ds = ContractX mempty n vs ds
+
 -- TopDecl patterns
 pattern TContr :: ContractX ComNm -> TopDeclX ComNm
-pattern TContr c = TContrX NoExtField c
+pattern TContr c <- TContrX _ c
+    where TContr c = TContrX NoExtField c
 
 pattern TFunDef :: FunDefX ComNm -> TopDeclX ComNm
-pattern TFunDef f = TFunDefX NoExtField f
+pattern TFunDef f <- TFunDefX _ f
+    where TFunDef f = TFunDefX NoExtField f
 
 pattern TClassDef :: ClassX ComNm -> TopDeclX ComNm
-pattern TClassDef cls = TClassDefX NoExtField cls
+pattern TClassDef cls <- TClassDefX _ cls
+    where TClassDef cls = TClassDefX NoExtField cls
 
 pattern TInstDef :: InstanceX ComNm -> TopDeclX ComNm
-pattern TInstDef inst = TInstDefX NoExtField inst
+pattern TInstDef inst <- TInstDefX _ inst
+    where TInstDef inst = TInstDefX NoExtField inst
 
 pattern TMutualDef :: [TopDeclX ComNm] -> TopDeclX ComNm
-pattern TMutualDef decls = TMutualDefX NoExtField decls
+pattern TMutualDef decls <- TMutualDefX _ decls
+    where TMutualDef decls = TMutualDefX NoExtField decls
 
 pattern TDataDef :: DataTy -> TopDeclX ComNm
-pattern TDataDef dt = TDataDefX NoExtField dt
+pattern TDataDef dt <- TDataDefX _ dt
+    where TDataDef dt = TDataDefX NoExtField dt
 
 pattern TSym :: TySym -> TopDeclX ComNm
-pattern TSym ts = TSymX NoExtField ts
+pattern TSym ts <- TSymX _ ts
+    where TSym ts = TSymX NoExtField ts
 
 pattern TPragmaDecl :: Pragma -> TopDeclX ComNm
-pattern TPragmaDecl p = TPragmaDeclX NoExtField p
+pattern TPragmaDecl p <- TPragmaDeclX _ p
+    where TPragmaDecl p = TPragmaDeclX NoExtField p
 
-{-# COMPLETE TContr, TFunDef, TClassDef, TInstDef, TMutualDef, TDataDef, TSym, TPragmaDecl, XTopDeclX #-}
+{-# COMPLETE TContr, TFunDef, TClassDef, TInstDef, TMutualDef, TDataDef, TSym, TPragmaDecl #-}
 
 -- ContractDecl patterns
 pattern CDataDecl :: DataTy -> ContractDeclX ComNm
-pattern CDataDecl dt = CDataDeclX NoExtField dt
+pattern CDataDecl dt <- CDataDeclX _ dt
+    where CDataDecl dt = CDataDeclX NoExtField dt
 
 pattern CFieldDecl :: FieldX ComNm -> ContractDeclX ComNm
-pattern CFieldDecl f = CFieldDeclX NoExtField f
+pattern CFieldDecl f <- CFieldDeclX _ f
+    where CFieldDecl f = CFieldDeclX NoExtField f
 
 pattern CFunDecl :: FunDefX ComNm -> ContractDeclX ComNm
-pattern CFunDecl fd = CFunDeclX NoExtField fd
+pattern CFunDecl fd <- CFunDeclX _ fd
+    where CFunDecl fd = CFunDeclX NoExtField fd
 
 pattern CMutualDecl :: [ContractDeclX ComNm] -> ContractDeclX ComNm
-pattern CMutualDecl decls = CMutualDeclX NoExtField decls
+pattern CMutualDecl decls <- CMutualDeclX _ decls
+    where CMutualDecl decls = CMutualDeclX NoExtField decls
 
 pattern CConstrDecl :: ConstructorX ComNm -> ContractDeclX ComNm
-pattern CConstrDecl c = CConstrDeclX NoExtField c
+pattern CConstrDecl c <- CConstrDeclX _ c
+    where CConstrDecl c = CConstrDeclX NoExtField c
 
-{-# COMPLETE CDataDecl, CFieldDecl, CFunDecl, CMutualDecl, CConstrDecl, XContractDeclX #-}
+{-# COMPLETE CDataDecl, CFieldDecl, CFunDecl, CMutualDecl, CConstrDecl #-}
+
+pattern Constructor :: [NamedParam] -> NamedBody -> NamedConstructor
+pattern Constructor ps b <- ConstructorX _ ps b where
+    Constructor ps b = ConstructorX mempty ps b
+
+-- Field patterns
+pattern Field :: Name -> Ty -> Maybe NamedExp -> NamedField
+pattern Field fn fty fin <- FieldX _ fn fty fin
+    where Field fn fty fin = FieldX mempty fn fty fin
+
+-- Class patterns
+pattern Class :: [Tyvar] -> [Pred] -> Name -> [Tyvar] -> Tyvar -> [NamedSignature] -> NamedClass
+pattern Class bvs ctx cn pvs mv sigs <- ClassX _ bvs ctx cn pvs mv sigs
+    where Class bvs ctx cn pvs mv sigs = ClassX mempty bvs ctx cn pvs mv sigs
+
+-- Signature patterns
+pattern Signature :: [Tyvar] -> [Pred] -> Name -> [NamedParam] -> Maybe Ty -> NamedSignature
+pattern Signature svs sctx sn sps sret <- SignatureX _ svs sctx sn sps sret
+    where Signature svs sctx sn sps sret = SignatureX mempty svs sctx sn sps sret
+
+-- Instance patterns
+pattern Instance :: Bool -> [Tyvar] -> [Pred] -> Name -> [Ty] -> Ty -> [NamedFunDef] -> NamedInstance
+pattern Instance def ivs ictx inn ipts imt ifuns <- InstanceX _ def ivs ictx inn ipts imt ifuns
+    where Instance def ivs ictx inn ipts imt ifuns = InstanceX mempty def ivs ictx inn ipts imt ifuns
+
+-- FunDef patterns
+pattern FunDef :: NamedSignature -> NamedBody -> NamedFunDef
+pattern FunDef sig body <- FunDefX sig body
+    where FunDef sig body = FunDefX sig body
