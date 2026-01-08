@@ -48,6 +48,8 @@
              hspkgs.hevm
              texlive
              (pkgs.callPackage ./nix/goevmlab.nix { src = inputs.goevmlab; })
+             pkgs.cmake
+             pkgs.boost
            ];
          };
       }
