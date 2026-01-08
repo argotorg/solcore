@@ -80,6 +80,7 @@ library
       Solcore.Frontend.Syntax.ElabTree
       Solcore.Frontend.Syntax.Ty
       Solcore.Frontend.Syntax.Contract
+      Solcore.Frontend.Syntax.ContractX
       Solcore.Frontend.Syntax.Name
       Solcore.Frontend.Syntax.Stmt
       Solcore.Frontend.Syntax.StmtX
