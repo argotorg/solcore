@@ -558,6 +558,7 @@ info ss = do
             logging <- isLogging
             verbose <- isVerbose
             when logging $ modify (\ r -> r{ logs = msg : logs r })
+            when verbose $ liftIO $ putStrLn msg
 
 infoDoc :: Doc -> TcM ()
 infoDoc d = info[render d]
