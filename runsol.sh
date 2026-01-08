@@ -280,7 +280,7 @@ if [[ "$create" == "true" ]]; then
 
   if [[ "$error" == "null" ]]; then
       echo "Creation successful"
-      echo "returndata: 0x${result}"
+      # echo "returndata: 0x${result}"
   else
       echo "Creation failed: $error"
       echo "returndata: 0x$result"
