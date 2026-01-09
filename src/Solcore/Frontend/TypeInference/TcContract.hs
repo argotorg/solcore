@@ -105,6 +105,8 @@ tcTopDecl (TMutualDef ts)
 tcTopDecl (TDataDef d)
   = do
     pure (TDataDef d)
+tcTopDecl (TSym s)
+  = pure (TSym s)
 tcTopDecl (TPragmaDecl d)
   = pure (TPragmaDecl d)
 
