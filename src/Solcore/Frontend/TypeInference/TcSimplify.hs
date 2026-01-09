@@ -40,7 +40,7 @@ reduce qs0 ps0
       qs2 <- withCurrentSubst qs'
       info [">!! Simplifying ", pretty ps2, " using ", pretty qs2]
       ps3 <- simplify qs2 ps2
-      rs <- enforceDependencies ps3 
+      rs <- enforceDependencies ps3
       info ["<!! Final simplified constraints:", pretty rs]
       unsolved <- checkEntails qs2 rs
       info ["<<!! Unsolved:", pretty unsolved]
@@ -48,28 +48,28 @@ reduce qs0 ps0
       pure rs
 
 enforceDependencies :: [Pred] -> TcM [Pred]
-enforceDependencies ps 
+enforceDependencies ps
   = do
-      let 
-        eqMainTy p p' = predName p == predName p' && 
-                        predMain p == predMain p' 
-        pss = splits eqMainTy ps 
-      s <- foldr (<>) mempty <$> mapM unifyWeakArgs pss 
-      extSubst s 
+      let
+        eqMainTy p p' = predName p == predName p' &&
+                        predMain p == predMain p'
+        pss = splits eqMainTy ps
+      s <- foldr (<>) mempty <$> mapM unifyWeakArgs pss
+      extSubst s
       pure (nub $ apply s ps)
 
 unifyWeakArgs :: [Pred] -> TcM Subst
-unifyWeakArgs [] 
+unifyWeakArgs []
   = pure mempty
 unifyWeakArgs [_]
   = pure mempty
 unifyWeakArgs (p1 : p2 : ps)
-  = do 
-      s1 <- unifyWeakArgs (p2 : ps) 
+  = do
+      s1 <- unifyWeakArgs (p2 : ps)
       s2 <- unifyTypes (apply s1 $ predParams p1)
                        (apply s1 $ predParams p2)
       pure (s2 <> s1)
-       
+
 splits :: (a -> a -> Bool) -> [a] -> [[a]]
 splits _ [] = []
 splits eq (x:xs) = (x : filter (eq x) xs) : splits eq (filter (not . eq x) xs)
@@ -86,10 +86,12 @@ checkEntails qs rs
           -- compiler generated instances can introduce invokable constraints
           -- not present in the called function. Since type inference can produce
           -- such constraints, we do not consider them here.
-          isInvoke (InCls n _ _) = n == (Name "invokable")
-          isInvoke _ = False
       info [">>! Simplified given constraints:", pretty qs']
       pure $ filter unsolved rs
+
+isInvoke :: Pred -> Bool
+isInvoke (InCls n _ _) = n == (Name "invokable")
+isInvoke _ = False
 
 simplify :: [Pred] -> [Pred] -> TcM [Pred]
 simplify qs ps

@@ -1,0 +1,22 @@
+// This code should FAIL, but PASSES!
+data Bool = True | False;
+
+forall a . class a : MyCls {
+  function f(x : a, y : a) -> Bool;
+}
+
+forall a . function the_bug(x : a, y : a) -> Bool {
+    return MyCls.f(x, y);
+}
+
+contract Foo {
+    function x() {
+        let b1 = True;
+        let b2 = False;
+        the_bug(b1, b2);
+    }
+
+    function main() {
+        x();
+    }
+}
