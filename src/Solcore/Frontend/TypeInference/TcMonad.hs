@@ -435,6 +435,24 @@ modifyTypeInfo n ti
         let tenv' = Map.insert n ti tenv
         modify (\env -> env{typeTable = tenv'})
 
+-- type synonym information
+
+maybeAskSynInfo :: Name -> TcM (Maybe SynInfo)
+maybeAskSynInfo n
+  = gets (Map.lookup n . synTable)
+
+askSynInfo :: Name -> TcM SynInfo
+askSynInfo n
+  = do
+      si <- maybeAskSynInfo n
+      maybe (undefinedSynonym n) pure si
+
+addSynInfo :: Name -> SynInfo -> TcM ()
+addSynInfo n si
+  = modify (\env -> env{synTable = Map.insert n si (synTable env)})
+
+isSynonym :: Name -> TcM Bool
+isSynonym n = isJust <$> maybeAskSynInfo n
 
 -- manipulating the instance environment
 
@@ -643,6 +661,10 @@ typeNotPolymorphicEnough sig sch1 sch2
 undefinedClass :: Name -> TcM a
 undefinedClass n
   = throwError $ unlines ["Undefined class:", pretty n]
+
+undefinedSynonym :: Name -> TcM a
+undefinedSynonym n
+  = throwError $ unwords ["Undefined type synonym:", pretty n]
 
 typeAlreadyDefinedError :: DataTy -> Name -> TcM a 
 typeAlreadyDefinedError d n 
