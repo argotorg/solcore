@@ -185,15 +185,27 @@ kindCheck (t1 :-> t2)
   = (:->) <$> kindCheck t1 <*> kindCheck t2
 kindCheck t@(TyCon n ts)
   = do
-      ti <- askTypeInfo n `wrapError` t
-      unless (n == Name "pair" || arity ti == length ts) $
-        throwError $ unlines [ "Invalid number of type arguments!"
-                             , "Type " ++ pretty n ++ " is expected to have " ++
-                               show (arity ti) ++ " type arguments"
-                             , "but, type " ++ pretty t ++
-                               " has " ++ (show $ length ts) ++ " arguments"]
-      mapM_ kindCheck ts
-      pure t
+      mSyn <- maybeAskSynInfo n
+      case mSyn of
+        Just (SynInfo ar _ _) -> do
+          unless (ar == length ts) $
+            throwError $ unlines [ "Invalid number of type arguments!"
+                                 , "Type synonym " ++ pretty n ++ " expects " ++
+                                   show ar ++ " type arguments"
+                                 , "but, type " ++ pretty t ++
+                                   " has " ++ (show $ length ts) ++ " arguments"]
+          mapM_ kindCheck ts
+          pure t
+        Nothing -> do
+          ti <- askTypeInfo n `wrapError` t
+          unless (n == Name "pair" || arity ti == length ts) $
+            throwError $ unlines [ "Invalid number of type arguments!"
+                                 , "Type " ++ pretty n ++ " is expected to have " ++
+                                   show (arity ti) ++ " type arguments"
+                                 , "but, type " ++ pretty t ++
+                                   " has " ++ (show $ length ts) ++ " arguments"]
+          mapM_ kindCheck ts
+          pure t
 kindCheck t = pure t
 
 
