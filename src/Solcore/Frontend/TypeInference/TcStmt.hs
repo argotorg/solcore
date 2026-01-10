@@ -1159,7 +1159,7 @@ instance Vars (Exp Id) where
   free (Con _ es) = free es
   free (FieldAccess Nothing _) = []
   free (FieldAccess (Just e) _) = free e
-  free (Call (Just e) n es) = free e `union` free n `union` free (e : es)
+  free (Call (Just e) n es) = free e `union` free n `union` free es
   free (Call Nothing n es) = free n `union` free es
   free (Lam ps bd _) = free bd \\ bound ps
   free _ = []
