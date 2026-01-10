@@ -52,94 +52,48 @@ function hevmsol() {
 
 }
 
-function deploysol() {
-    local file=$1
-    shift
-    echo "Solc: $file"
-    local base=$(basename $file .solc)
-    local hull=output1.hull
-    echo "Hull: $hull"
-    local yulfile=$base.yul
-    echo "Yul:  $yulfile"
-    rm -f -v $yulfile
-    cabal exec sol-core -- -f $file $* && \
-    cabal exec yule -- $hull -o $yulfile
-    hex=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
-    rawtx=$(cast mktx --private-key=$DEPLOYER_KEY --create $hex)
-    addr=$(cast publish $rawtx | jq .contractAddress | tr -d '"')
-    echo $addr
-}
 
-function deploysol2() {
-    local file=$1
-    shift
-    local data=$(cast ae $* | cut -c 3-)
-    echo "Args: $*"
-    echo "ABI-enc: $data"
-    echo "Solc: $file"
-    local base=$(basename $file .solc)
-    local hull=output1.hull
-    echo "Hull: $hull"
-    local yulfile=$base.yul
-    echo "Yul:  $yulfile"
-    rm -f -v $yulfile
-    cabal exec sol-core -- -f $file && \
-    cabal exec yule -- $hull -o $yulfile
-    prog=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
-    hex="$prog$data"
-    rawtx=$(cast mktx --private-key=$DEPLOYER_KEY --create $hex)
-    addr=$(cast publish $rawtx | jq .contractAddress | tr -d '"')
-    echo $addr
-}
-
-function deployhull() {
-    local base=$(basename $1 .hull)
-    local yulfile=$base.yul
-    echo $yulfile
-    local hexfile=$base.hex
-    rm -f -v $yulfile $hexfile
-    cabal exec yule -- $1 -o $yulfile
-    hex=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
-    rawtx=$(cast mktx --private-key=$DEPLOYER_KEY --create $hex)
-    addr=$(cast publish $rawtx | jq .contractAddress | tr -d '"')
-    echo $addr
-}
-
-function deployyul() {
-    local yulfile=$1
-    shift
-    local data=$(cast ae $* | cut -c 3-)
-    local base=$(basename $yulfile .yul)
-    echo "Args: $*"
-    echo "ABI-enc: $data"
-    prog=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
-    hex="$prog$data"
-    echo Hex: $hex
-    rawtx=$(cast mktx --private-key=$DEPLOYER_KEY --create $hex $*)
-    txoutput=$(cast publish $rawtx)
-    echo $txoutput | jq .
-    export contractAddress=$(echo $txoutput | jq .contractAddress | tr -d '"')
-    echo $contractAddress
-}
-
-# deploy contract with 1 uint arg
-function deployyul1() {
-    local yulfile=$1
-    local data=$(cast ae "constructor(uint256)" $2 | cut -c 3-)
-    local base=$(basename $1 .yul)
-    prog=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
-    hex="$prog$data"
-    echo Hex: $hex
-    rawtx=$(cast mktx --private-key=$DEPLOYER_KEY --create $hex)
-    txoutput=$(cast publish $rawtx)
-    echo $txoutput | jq .
-    export contractAddress=$(echo $txoutput | jq .contractAddress | tr -d '"')
-    echo $contractAddress
-}
-
-function hull() {
+function hull2yul() {
      local base=$(basename $1 .hull)
      local yulfile=$base.yul
      rm -f -v $yulfile
      cabal exec yule -- $1 -o $yulfile
+}
+
+callContract() {
+    local signature="$1"
+    shift
+    local args="$@"
+
+    # First, simulate the call to get the return value
+    echo "Function result:"
+    local result=$(cast call $contractAddress "$signature" $args 2>&1)
+
+    if echo "$result" | grep -qi "error"; then
+	echo "Error calling function: $signature"
+	echo "$result"
+	return 1
+    fi
+
+    echo "$result"
+
+    # Now execute the actual transaction to get logs
+    echo -e "\nExecuting transaction..."
+    local output=$(cast send $contractAddress "$signature" $args --private-key $DEPLOYER_KEY 2>&1)
+    if echo "$output" | grep -qi "error"; then
+	echo "Error executing function: $signature"
+	echo "$output"
+	return 1
+     fi
+
+    #local logs=$(echo "$output" | grep -w logs | awk '{print $2}')
+    local TX_HASH=$(echo "$output" | grep transactionHash | grep -v logs | awk '{print $2}')
+
+    if [ -z "$TX_HASH" ]; then
+	echo "Failed to get transaction hash"
+	return 1
+    fi
+    echo "Contract $contractAddress"
+    echo -e "\nLogs:"
+    cast receipt $TX_HASH --json | jq '.logs[] | "\(.address) | topics: \(.topics | map(gsub("0x0+"; "0x") | gsub("^0x$"; "0x0")) | join(",")) | data: \(.data | gsub("0x0+"; "0x") | gsub("^0x$"; "0x0"))"' -r
 }
