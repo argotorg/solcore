@@ -37,7 +37,7 @@ tcStmt e@(lhs := rhs)
   = do
       (lhs1, ps1, t1) <- tcExp lhs
       (rhs1, ps2, t2) <- tcExp rhs
-      s <- match t2 t1 `wrapError` e
+      s <- unify t1 t2 `wrapError` e
       _ <- extSubst s
       pure (lhs1 := rhs1, apply s $ ps1 ++ ps2, unit)
 tcStmt e@(Let n mt me)
@@ -466,7 +466,7 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       ty <- withCurrentSubst nt
       sch <- generalize (rs, ty)
       -- checking ambiguity
-      info [">>> Infered type for ", pretty n, " :: ", pretty sch, show ty]
+      info [">>> Infered type for ", pretty n, " :: ", pretty sch]
       when (ambiguous sch) $ do
         ambiguousTypeError sch sig
       -- elaborating the type signature
@@ -1115,7 +1115,7 @@ class Vars a where
   bound :: a -> [Id]
 
 instance Vars a => Vars [a] where
-  free = foldr (union . free) []
+  free es = foldr (union . free) [] es \\ bound es
   bound = foldr (union . bound) []
 
 instance Vars Id where

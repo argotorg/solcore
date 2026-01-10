@@ -237,6 +237,7 @@ cases =
     , runTestForFile "closure-free-var.solc" caseFolder
     , runTestForFile "closure-free-var-std.solc" caseFolder
     , runTestForFile "closure-free-var-local.solc" caseFolder
+    , runTestForFile "closure-free-bound-test.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
