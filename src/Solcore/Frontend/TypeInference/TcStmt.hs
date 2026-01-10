@@ -291,7 +291,7 @@ closureConversion vs args bdy ps ty
           fn = Name $ "lambda_impl" ++ show i
           argsn = map idName $ bound args ++ bound bdy
           defs = fs ++ argsn ++ Map.keys primCtx
-          freevs = filter (\ x -> notElem (idName x) defs) (free bdy)
+          freevs = [x | x <- free bdy, idName x `notElem` defs]
       if null freevs then do
         -- no closure needed for monomorphic
         -- lambdas!
