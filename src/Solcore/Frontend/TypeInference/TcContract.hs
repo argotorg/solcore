@@ -117,6 +117,8 @@ checkTopDecl (TInstDef is)
   = checkInstance is
 checkTopDecl (TDataDef dt)
   = checkDataType dt
+checkTopDecl (TSym s)
+  = checkSynonym s
 checkTopDecl (TFunDef (FunDef sig _))
   = extSignature sig
 checkTopDecl _ = pure ()

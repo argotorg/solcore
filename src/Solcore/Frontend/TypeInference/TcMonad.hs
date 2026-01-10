@@ -454,6 +454,19 @@ addSynInfo n si
 isSynonym :: Name -> TcM Bool
 isSynonym n = isJust <$> maybeAskSynInfo n
 
+checkSynonym :: TySym -> TcM ()
+checkSynonym (TySym n vs t)
+  = do
+      r <- maybeAskSynInfo n
+      unless (isNothing r) $
+        duplicatedSynonymDecl n
+      let si = SynInfo (length vs) vs t
+      addSynInfo n si
+
+duplicatedSynonymDecl :: Name -> TcM a
+duplicatedSynonymDecl n
+  = throwError $ unwords ["Duplicated type synonym definition:", pretty n]
+
 -- manipulating the instance environment
 
 getClassEnv :: TcM ClassTable
