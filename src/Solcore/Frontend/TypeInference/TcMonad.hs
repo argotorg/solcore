@@ -479,6 +479,29 @@ duplicatedSynonymDecl :: Name -> TcM a
 duplicatedSynonymDecl n
   = throwError $ unwords ["Duplicated type synonym definition:", pretty n]
 
+-- type synonym expansion
+
+expandSynonym :: Name -> [Ty] -> TcM Ty
+expandSynonym n ts
+  = do
+      SynInfo ar params body <- askSynInfo n
+      unless (ar == length ts) $
+        throwError $ unlines
+          [ "Type synonym " ++ pretty n ++ " expects " ++ show ar ++ " arguments"
+          , "but was given " ++ show (length ts)
+          ]
+      let env = zip params ts
+      pure (insts env body)
+
+maybeExpandSynonym :: Ty -> TcM Ty
+maybeExpandSynonym t@(TyCon n ts)
+  = do
+      isSyn <- isSynonym n
+      if isSyn
+        then expandSynonym n ts
+        else pure t
+maybeExpandSynonym t = pure t
+
 -- manipulating the instance environment
 
 getClassEnv :: TcM ClassTable
