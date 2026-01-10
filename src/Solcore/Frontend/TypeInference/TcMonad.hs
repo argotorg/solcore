@@ -653,7 +653,19 @@ wrapError m e
       decorate msg = msg ++ "\n - in:" ++ pretty e
 
 tcmMgu :: Ty -> Ty -> TcM Subst
-tcmMgu t u = mgu t u `catchError` tcmError
+tcmMgu t u = do
+    result <- tryMgu t u
+    case result of
+      Right s -> pure s
+      Left err -> do
+        t' <- maybeExpandSynonym t
+        u' <- maybeExpandSynonym u
+        if t' == t && u' == u
+          then tcmError err
+          else tcmMgu t' u'
+  where
+    tryMgu :: Ty -> Ty -> TcM (Either String Subst)
+    tryMgu t1 t2 = catchError (Right <$> mgu t1 t2) (pure . Left)
 
 -- error messages
 
