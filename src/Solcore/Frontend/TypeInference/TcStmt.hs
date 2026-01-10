@@ -289,7 +289,7 @@ closureConversion vs args bdy ps ty
       sch <- generalize (ps', ty)
       let
           fn = Name $ "lambda_impl" ++ show i
-          argsn = map idName $ (bound args) ++ (bound bdy)
+          argsn = map idName $ bound args ++ bound bdy
           defs = fs ++ argsn ++ Map.keys primCtx
           freevs = filter (\ x -> notElem (idName x) defs) (free bdy)
       if null freevs then do
