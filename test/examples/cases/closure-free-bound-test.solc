@@ -1,0 +1,7 @@
+function foo (b) {
+  let y:word;
+  let f = lam(x) {
+    if (b) { let z = 7; y = z; } else {x = 1;}
+  };
+  return f(44);
+}

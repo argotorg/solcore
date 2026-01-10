@@ -1,0 +1,13 @@
+function test() -> word {
+    let f = lam (x: word) -> word {
+        let y = 42;
+        return y;
+    };
+    return f(1);
+}
+
+contract C {
+    function main() -> word {
+        return test();
+    }
+}
