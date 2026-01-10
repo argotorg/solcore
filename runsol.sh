@@ -31,7 +31,7 @@ echo "Processing: $file"
 root_dir="$(cd "$(dirname "$(readlink --canonicalize "${BASH_SOURCE[0]}")")" && pwd)"
 build_dir="$root_dir/build"
 base=$(basename "$file" .solc)
-core="$build_dir/output1.core"
+hull="$build_dir/output1.hull"
 hexfile="$build_dir/$base.hex"
 yulfile="$build_dir/$base.yul"
 runtime_tracefile="$build_dir/trace.runtime.jsonl"
@@ -280,7 +280,7 @@ if [[ "$create" == "true" ]]; then
 
   if [[ "$error" == "null" ]]; then
       echo "Creation successful"
-      echo "returndata: 0x${result}"
+      # echo "returndata: 0x${result}"
   else
       echo "Creation failed: $error"
       echo "returndata: 0x$result"

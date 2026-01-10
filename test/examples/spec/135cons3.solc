@@ -1,0 +1,97 @@
+// test constructor with multiple args
+import std;
+// import prelude;
+
+
+forall t.t:Typedef(word) =>
+function log1(v:t, topic:word) -> () {
+  let w : word = Typedef.rep(v);
+  assembly {
+    mstore(0,w)
+    log1(0,32,topic)
+  }
+}
+
+contract Counter {
+
+  // setCounter & getCounter are intentionally low-level to avoid clutter
+  function setCounter(v: uint256) -> () {
+    match v { | uint256(w) =>
+      assembly {
+	sstore(0x00, w)
+      }
+    }
+  }
+
+  function getCounter() -> uint256 {
+    let res;
+    assembly {
+      res := sload(0x00)
+    }
+    return uint256(res);
+  }
+
+  constructor(x:uint256, y:uint256, z:uint256)
+  // function  myconstructor(x:uint256, y:uint256, z:uint256) -> ()
+  {
+   log1(x, 0xc1);
+   log1(y, 0xc2);
+   log1(z, 0xc3);
+   setCounter(Add.add(Add.add(x,y),z));
+  }
+
+/* This should desugar to: (check with --dump-dispatch */
+
+/*
+  init_(x:uint256, y:uint256, z:uint256)
+  // function  myconstructor(x:uint256, y:uint256, z:uint256) -> ()
+  {
+   setCounter(x+y+z);
+  }
+  function copy_arguments_for_constructor() -> (uint256, uint256, uint256)  { // result type CHANGES
+    let res : (uint256, uint256, uint256); // type(res) CHANGES
+    let memoryDataOffset : word;
+
+    assembly {
+      let programSize := datasize("CounterDeploy")   // ${deployerName} where deployerName = contractName <> "Deploy"
+      let argSize := sub(codesize(), programSize)
+      memoryDataOffset := mload(64)
+      mstore(64, add(memoryDataOffset, argSize))
+      codecopy(memoryDataOffset, programSize, argSize)
+    }
+
+    let source : memory(bytes) = memory(memoryDataOffset);
+    res = abi_decode(source, Proxy:Proxy( (uint256, uint256, uint256) ), Proxy:Proxy(MemoryWordReader));
+    return res;
+  }
+
+  function start() -> () {
+    assembly { mstore(64, memoryguard(128)) }
+
+    let conargs = copy_arguments_for_constructor();
+    // Possible hack: let fn = init; fn(conargs);
+    // match conargs { | (a1, a2, a3) => myconstructor(a1,a2,a3) ; }
+    match conargs { | (a1, a2, a3) => init_(a1,a2,a3) ; }
+
+    assembly {
+      let size := datasize("Counter")
+      codecopy(0, dataoffset("Counter"), datasize("Counter"))
+      return(0, size)
+    }
+    /* Haskell with Yul QQ (#231)
+    let cname = "Counter" in Asm [yulBlock|
+      let size := datasize(`cname`)
+      codecopy(0, dataoffset(`cname`), datasize(`cname`))
+      return(0, size)
+      |]
+    */
+    return ();
+  }
+ */
+
+ // TODO: remove main, use dispatch instead
+  function main() -> uint256 {
+    return getCounter();
+  }
+
+}

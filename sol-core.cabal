@@ -33,11 +33,9 @@ common common-opts
     , split
     , syb
     , template-haskell
+    , text
     , time
     , timeit
-    , directory
-    , split
-    , text
 
   build-tool-depends: happy:happy, alex:alex
 

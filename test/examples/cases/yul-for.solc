@@ -1,0 +1,14 @@
+contract YulFor {
+  function main() {
+    let loopStart = 128;
+    let loopEnd = 256;
+    let res : word;
+    assembly {
+      let i := loopStart
+      for {} lt(i, loopEnd) { i := add(i, 32) }
+      { mstore(i, 42) }
+      res := mload(192)
+    }
+    return res;
+  }
+}
