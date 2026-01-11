@@ -60,6 +60,64 @@ function hull2yul() {
      cabal exec yule -- $1 -o $yulfile
 }
 
+function deployhex() {
+    # Use cast send instead of mktx + publish
+    txoutput=$(cast send --private-key=$DEPLOYER_KEY --create $hex --json 2>&1)
+
+    if echo "$txoutput" | grep -qi "error"; then
+        echo "Error deploying contract"
+        echo "$txoutput"
+        return 1
+    fi
+    echo "Contract deployed"
+    # Display transaction hash
+    local TX_HASH=$(echo "$txoutput" | jq -r '.transactionHash')
+    echo "Transaction Hash: $TX_HASH"
+
+    # Display logs in "topics | value" format, without leading zeroes and quotes
+    echo "Logs:"
+    echo "$txoutput" | jq -r '.logs[] | "topics: \(.topics | map(gsub("0x0+"; "0x") | gsub("^0x$"; "0x0")) | join(",")) | data: \(.data | gsub("0x0+"; "0x") | gsub("^0x$"; "0x0"))"'
+
+    export contractAddress=$(echo "$txoutput" | jq -r '.contractAddress')
+    echo "Contract Address: $contractAddress"
+}
+
+function deploysolc() {
+    local file=$1
+    shift
+    local data=$(cast ae $* | cut -c 3-)
+    echo "Args: $*"
+    #echo "ABI-enc: $data"
+    echo "Solc: $file"
+    local base=$(basename $file .solc)
+    local hull=output1.hull
+    echo "Hull: $hull"
+    local yulfile=$base.yul
+    echo "Yul:  $yulfile"
+    rm -f $yulfile
+    cabal exec sol-core -- -f $file && \
+    cabal exec yule -- $hull -o $yulfile
+    prog=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
+    hex="$prog$data"
+
+    deployhex $hex
+}
+
+
+function deployyul() {
+    local yulfile=$1
+    shift
+    local data=$(cast ae $* | cut -c 3-)
+    echo "Args: $*"
+    #echo "ABI-enc: $data"
+    local base=$(basename $file .yul)
+    echo "Yul:  $yulfile"
+
+    prog=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
+    hex="$prog$data"
+    deployhex hex
+}
+
 callContract() {
     local signature="$1"
     shift
