@@ -206,6 +206,9 @@ cases =
     , runTestForFile "SimpleLambda.solc" caseFolder
     , runTestForFile "single-lambda.solc" caseFolder
     , runTestForFile "SingleFun.solc" caseFolder
+    , runTestForFile "synonym-basic.solc" caseFolder
+    , runTestForFile "synonym-param.solc" caseFolder
+    , runTestExpectingFailure "synonym-recursive.solc" caseFolder
     , runTestExpectingFailure "signature.solc" caseFolder
     , runTestExpectingFailure "SillyReturn.solc" caseFolder
     , runTestExpectingFailure "SimpleInvoke.solc" caseFolder

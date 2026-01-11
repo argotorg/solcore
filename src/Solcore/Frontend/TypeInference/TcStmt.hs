@@ -37,7 +37,7 @@ tcStmt e@(lhs := rhs)
   = do
       (lhs1, ps1, t1) <- tcExp lhs
       (rhs1, ps2, t2) <- tcExp rhs
-      s <- match t2 t1 `wrapError` e
+      s <- tcmMatch t2 t1 `wrapError` e
       _ <- extSubst s
       pure (lhs1 := rhs1, apply s $ ps1 ++ ps2, unit)
 tcStmt e@(Let n mt me)
@@ -49,7 +49,7 @@ tcStmt e@(Let n mt me)
                         let bvs = bv t
                         sks <- mapM (const freshTyVar) bvs
                         let t' = insts (zip bvs sks) t
-                        s <- match t1 t' `wrapError` e
+                        s <- tcmMatch t1 t' `wrapError` e
                         _ <- extSubst s
                         withCurrentSubst (Just e', ps1, t')
                       (Just t, Nothing) -> do
@@ -150,7 +150,9 @@ tcPat t p@(PCon n ps)
       -- unifying the infered pattern type with constructor type
       s <- unify tc (funtype ts t) `wrapError` p
       let t' = apply s t
-      tn <- typeName t'
+      -- expand synonyms before extracting type name
+      t'' <- maybeExpandSynonym t'
+      tn <- typeName t''
       -- checking if it is a defined constructor
       checkConstr tn n
       -- building typing assumptions for introduced names
@@ -206,7 +208,9 @@ tcExp e@(Con n es)
       -- unifying inferred parameter types
       t' <- freshTyVar
       s <- unify (funtype ts t') t `wrapError` e
-      tn <- typeName (apply s t')
+      -- expand synonyms before extracting type name
+      t'' <- maybeExpandSynonym (apply s t')
+      tn <- typeName t''
       -- checking if the constructor belongs to type tn
       checkConstr tn n
       let ps' = concat (ps : pss)
@@ -219,8 +223,9 @@ tcExp (FieldAccess (Just e) n)
   = do
       -- inferring expression type
       (e', ps,t) <- tcExp e
-      -- getting type name
-      tn <- typeName t
+      -- expand synonyms before extracting type name
+      tExp <- maybeExpandSynonym t
+      tn <- typeName tExp
       -- getting field type
       s <- askField tn n
       (ps' :=> t') <- freshInst s
@@ -247,7 +252,7 @@ tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
       (e', ps, ty') <- tcExp e
-      s <- match ty' ty
+      s <- tcmMatch ty' ty
       extSubst s
       withCurrentSubst (TyExp e' ty, ps, ty)
 tcExp e@(Cond e1 e2 e3)
@@ -737,7 +742,7 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
 checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
 checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
   = do
-      _ <- match t t' `catchError` (\ _ -> invalidMemberType qn t t')
+      _ <- tcmMatch t t' `catchError` (\ _ -> invalidMemberType qn t t')
       pure ()
 
 

@@ -146,8 +146,23 @@ unify t t'
 matchTy :: Ty -> Ty -> TcM Subst
 matchTy t t'
   = do
-      s <- match t t'
+      s <- tcmMatch t t'
       extSubst s
+
+tcmMatch :: Ty -> Ty -> TcM Subst
+tcmMatch t u = do
+    result <- tryMatch t u
+    case result of
+      Right s -> pure s
+      Left err -> do
+        t' <- maybeExpandSynonym t
+        u' <- maybeExpandSynonym u
+        if t' == t && u' == u
+          then throwError err
+          else tcmMatch t' u'
+  where
+    tryMatch :: Ty -> Ty -> TcM (Either String Subst)
+    tryMatch t1 t2 = catchError (Right <$> match t1 t2) (pure . Left)
 
 addFunctionName :: Name -> TcM ()
 addFunctionName n
@@ -498,8 +513,16 @@ maybeExpandSynonym t@(TyCon n ts)
   = do
       isSyn <- isSynonym n
       if isSyn
-        then expandSynonym n ts
-        else pure t
+        then expandSynonym n ts >>= maybeExpandSynonym  -- recursively expand nested synonyms
+        else do
+          -- Recursively expand synonyms in type arguments
+          ts' <- mapM maybeExpandSynonym ts
+          pure (TyCon n ts')
+maybeExpandSynonym (t1 :-> t2)
+  = do
+      t1' <- maybeExpandSynonym t1
+      t2' <- maybeExpandSynonym t2
+      pure (t1' :-> t2')
 maybeExpandSynonym t = pure t
 
 -- manipulating the instance environment
