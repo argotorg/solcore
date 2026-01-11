@@ -1,0 +1,8 @@
+type A = B;
+type B = A;
+
+contract RecursiveTest {
+    function main() -> word {
+        return 0;
+    }
+}

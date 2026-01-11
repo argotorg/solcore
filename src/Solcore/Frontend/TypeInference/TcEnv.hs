@@ -26,6 +26,14 @@ data TypeInfo
     , fieldNames :: [Name]   -- list of field names
     } deriving (Eq, Ord, Show)
 
+-- type synonym information
+data SynInfo
+  = SynInfo {
+      synArity :: Arity      -- number of type parameters
+    , synParams :: [Tyvar]   -- type variable parameters
+    , synExpansion :: Ty     -- the expanded type body
+    } deriving (Eq, Ord, Show)
+
 wordTypeInfo :: TypeInfo
 wordTypeInfo = TypeInfo 0 [] []
 
@@ -66,6 +74,7 @@ type Table a = Map Name a
 type Env = Table Scheme
 type ClassTable = Table ClassInfo
 type TypeTable = Table TypeInfo
+type SynTable = Table SynInfo
 type Inst = Qual Pred
 type InstTable = Table [Inst]
 type DefTable = Table Inst
@@ -76,6 +85,7 @@ data TcEnv
     , instEnv :: InstTable     -- Instance Environment
     , defaultEnv :: DefTable   -- Default instance environment
     , typeTable :: TypeTable   -- Type information environment
+    , synTable :: SynTable     -- Type synonym environment
     , classTable :: ClassTable -- Class information table
     , contract :: Maybe Name   -- current contract name
                                -- used to type check calls.
@@ -103,6 +113,7 @@ initTcEnv options
           , instEnv = primInstEnv
           , defaultEnv = Map.empty
           , typeTable = primTypeEnv
+          , synTable = Map.empty
           , classTable = primClassEnv
           , contract = Nothing
           , subst = mempty
