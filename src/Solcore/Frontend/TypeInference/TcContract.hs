@@ -86,7 +86,11 @@ findCycle deps = go [] (map fst deps)
 
     go _ [] = Nothing
     go visited (n:ns)
-      | n `elem` visited = Just (dropWhile (/= n) visited ++ [n])
+      | n `elem` visited =
+          -- visited is in reverse order (newest first), extract the cycle path
+          -- e.g., if visited = [B, A] and we found n = A, the cycle is A -> B -> A
+          let revPath = takeWhile (/= n) visited ++ [n]
+          in Just (reverse revPath ++ [n])
       | otherwise = case Map.lookup n depMap of
           Nothing -> go visited ns
           Just ds -> case go (n:visited) ds of
