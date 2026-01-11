@@ -208,7 +208,11 @@ cases =
     , runTestForFile "SingleFun.solc" caseFolder
     , runTestForFile "synonym-basic.solc" caseFolder
     , runTestForFile "synonym-param.solc" caseFolder
+    , runTestForFile "synonym-nested.solc" caseFolder
+    , runTestForFile "synonym-in-function.solc" caseFolder
     , runTestExpectingFailure "synonym-recursive.solc" caseFolder
+    , runTestExpectingFailure "synonym-self-recursive.solc" caseFolder
+    , runTestExpectingFailure "synonym-long-cycle.solc" caseFolder
     , runTestExpectingFailure "signature.solc" caseFolder
     , runTestExpectingFailure "SillyReturn.solc" caseFolder
     , runTestExpectingFailure "SimpleInvoke.solc" caseFolder
