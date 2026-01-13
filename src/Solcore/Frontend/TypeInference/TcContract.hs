@@ -44,6 +44,7 @@ tcCompUnit :: CompUnit Name -> TcM (CompUnit Id)
 tcCompUnit (CompUnit imps cs)
   = do
       setupPragmas ps
+      checkSynonymCycles syns
       mapM_ checkTopDecl cls
       mapM_ checkTopDecl cs'
       cs' <- mapM tcTopDecl' cs
@@ -55,9 +56,53 @@ tcCompUnit (CompUnit imps cs)
       (cls, cs') = partition isClass cs
       isClass (TClassDef _) = True
       isClass _ = False
+      syns = [s | TSym s <- cs]
       tcTopDecl' d = timeItNamed (shortName d) $ do
         clearSubst
         tcTopDecl d
+
+-- check for recursive type synonyms
+
+checkSynonymCycles :: [TySym] -> TcM ()
+checkSynonymCycles syns
+  = do
+      let synNames = map symName syns
+          deps = [(symName s, synDeps synNames s) | s <- syns]
+      case findCycle deps of
+        Nothing -> pure ()
+        Just cycle -> recursiveSynonymError cycle
+
+synDeps :: [Name] -> TySym -> [Name]
+synDeps synNames (TySym _ _ t) = filter (`elem` synNames) (tyNames t)
+
+tyNames :: Ty -> [Name]
+tyNames (TyCon n ts) = n : concatMap tyNames ts
+tyNames _ = []
+
+findCycle :: [(Name, [Name])] -> Maybe [Name]
+findCycle deps = go [] (map fst deps)
+  where
+    depMap = Map.fromList deps
+
+    go _ [] = Nothing
+    go visited (n:ns)
+      | n `elem` visited =
+          -- visited is in reverse order (newest first), extract the cycle path
+          -- e.g., if visited = [B, A] and we found n = A, the cycle is A -> B -> A
+          let revPath = takeWhile (/= n) visited ++ [n]
+          in Just (reverse revPath ++ [n])
+      | otherwise = case Map.lookup n depMap of
+          Nothing -> go visited ns
+          Just ds -> case go (n:visited) ds of
+            Just cycle -> Just cycle
+            Nothing -> go visited ns
+
+recursiveSynonymError :: [Name] -> TcM a
+recursiveSynonymError cycle
+  = throwError $ unlines
+      [ "Recursive type synonym detected:"
+      , "  " ++ intercalate " -> " (map pretty cycle)
+      ]
 
 -- setting up pragmas for type checking
 
@@ -105,6 +150,8 @@ tcTopDecl (TMutualDef ts)
 tcTopDecl (TDataDef d)
   = do
     pure (TDataDef d)
+tcTopDecl (TSym s)
+  = pure (TSym s)
 tcTopDecl (TPragmaDecl d)
   = pure (TPragmaDecl d)
 
@@ -115,6 +162,8 @@ checkTopDecl (TInstDef is)
   = checkInstance is
 checkTopDecl (TDataDef dt)
   = checkDataType dt
+checkTopDecl (TSym s)
+  = checkSynonym s
 checkTopDecl (TFunDef (FunDef sig _))
   = extSignature sig
 checkTopDecl _ = pure ()
@@ -289,6 +338,7 @@ checkClass icls@(Class bvs ps n vs v sigs)
   = do
       let p = InCls n (TyVar v) (TyVar <$> vs)
           ms' = map sigName sigs
+      checkAllTypeVarsBound icls (v : vs) bvs
       bound <- askBoundVariableCondition n
       unless bound (checkBoundVariable ps (v:vs) `wrapError` icls)
       addClassInfo n (length vs) ms' ps p
@@ -299,8 +349,7 @@ checkClass icls@(Class bvs ps n vs v sigs)
             pst <- mapM tyParam ps
             t' <- maybe (pure unit) pure mt
             let ft = funtype pst t'
-            unless (all (`elem` bvs) (v : vs))
-                   (unboundTypeVars sig ((v : vs) \\ bvs))
+            checkAllTypeVarsBound sig (v : vs) bvs
             addClassMethod p sig `wrapError` icls
 
 addClassInfo :: Name -> Arity -> [Method] -> [Pred] -> Pred -> TcM ()
