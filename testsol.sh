@@ -154,4 +154,9 @@ callContract() {
     echo "Contract $contractAddress"
     echo -e "\nLogs:"
     cast receipt $TX_HASH --json | jq '.logs[] | "\(.address) | topics: \(.topics | map(gsub("0x0+"; "0x") | gsub("^0x$"; "0x0")) | join(",")) | data: \(.data | gsub("0x0+"; "0x") | gsub("^0x$"; "0x0"))"' -r
+function hull() {
+     local base=$(basename $1 .hull)
+     local yulfile=$base.yul
+     rm -f -v $yulfile
+     cabal exec yule -- $1 -o $yulfile
 }

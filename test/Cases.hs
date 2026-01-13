@@ -213,11 +213,18 @@ cases =
     , runTestForFile "match-yul.solc" caseFolder
     , runTestForFile "yul-for.solc" caseFolder
     , runTestForFile "SingleFun.solc" caseFolder
+    , runTestForFile "synonym-basic.solc" caseFolder
+    , runTestForFile "synonym-param.solc" caseFolder
+    , runTestForFile "synonym-nested.solc" caseFolder
+    , runTestForFile "synonym-in-function.solc" caseFolder
+    , runTestExpectingFailure "synonym-recursive.solc" caseFolder
+    , runTestExpectingFailure "synonym-self-recursive.solc" caseFolder
+    , runTestExpectingFailure "synonym-long-cycle.solc" caseFolder
     , runTestExpectingFailure "signature.solc" caseFolder
     , runTestExpectingFailure "SillyReturn.solc" caseFolder
     , runTestExpectingFailure "SimpleInvoke.solc" caseFolder
     , runTestExpectingFailure "string-const.solc" caseFolder
-    , runTestExpectingFailure "StructMembers.sol" caseFolder
+    , runTestExpectingFailure "StructMembers.solc" caseFolder
     , runTestExpectingFailure "subject-index.solc" caseFolder
     , runTestExpectingFailure "subject-reduction.solc" caseFolder
     , runTestExpectingFailure "subsumption-test.solc" caseFolder
@@ -240,6 +247,18 @@ cases =
     , runTestExpectingFailure "xref.solc" caseFolder
     , runTestForFile "yul-function-typing.solc" caseFolder
     , runTestForFile "yul-return.solc" caseFolder
+    , runTestForFile "pragma_merge_base.solc" caseFolder
+    , runTestForFile "pragma_merge_import.solc" caseFolder
+    , runTestForFile "pragma_merge_verify.solc" caseFolder
+    , runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder
+    , runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder
+    , runTestForFile "single-lambda.solc" caseFolder
+    , runTestExpectingFailure "duplicated-type-name.solc" caseFolder
+    , runTestExpectingFailure "overlapping-heads.solc" caseFolder
+    , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
+    , runTestForFile "match-yul.solc" caseFolder
+    , runTestForFile "yul-for.solc" caseFolder
+    , runTestForFile "yul-function-typing.solc" caseFolder
     , runTestExpectingFailure "unbound-instance-var.solc" caseFolder
     ]
  where
