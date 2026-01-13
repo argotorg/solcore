@@ -37,7 +37,7 @@ tcStmt e@(lhs := rhs)
   = do
       (lhs1, ps1, t1) <- tcExp lhs
       (rhs1, ps2, t2) <- tcExp rhs
-      s <- match t2 t1 `wrapError` e
+      s <- tcmMatch t2 t1 `wrapError` e
       _ <- extSubst s
       pure (lhs1 := rhs1, apply s $ ps1 ++ ps2, unit)
 tcStmt e@(Let n mt me)
@@ -49,7 +49,7 @@ tcStmt e@(Let n mt me)
                         let bvs = bv t
                         sks <- mapM (const freshTyVar) bvs
                         let t' = insts (zip bvs sks) t
-                        s <- match t1 t' `wrapError` e
+                        s <- tcmMatch t1 t' `wrapError` e
                         _ <- extSubst s
                         withCurrentSubst (Just e', ps1, t')
                       (Just t, Nothing) -> do
@@ -150,7 +150,9 @@ tcPat t p@(PCon n ps)
       -- unifying the infered pattern type with constructor type
       s <- unify tc (funtype ts t) `wrapError` p
       let t' = apply s t
-      tn <- typeName t'
+      -- expand synonyms before extracting type name
+      t'' <- maybeExpandSynonym t'
+      tn <- typeName t''
       -- checking if it is a defined constructor
       checkConstr tn n
       -- building typing assumptions for introduced names
@@ -206,21 +208,24 @@ tcExp e@(Con n es)
       -- unifying inferred parameter types
       t' <- freshTyVar
       s <- unify (funtype ts t') t `wrapError` e
-      tn <- typeName (apply s t')
+      -- expand synonyms before extracting type name
+      t'' <- maybeExpandSynonym (apply s t')
+      tn <- typeName t''
       -- checking if the constructor belongs to type tn
       checkConstr tn n
       let ps' = concat (ps : pss)
           e1 = Con (Id n t) es'
       withCurrentSubst (e1, ps', t')
 tcExp e@(FieldAccess Nothing n)
-  = notImplementedS "tcExp" e
-
+  -- = notImplementedS "tcExp" e
+  = throwError ("tcExp not implemented for: " ++ pretty e ++ "\n"++show e)
 tcExp (FieldAccess (Just e) n)
   = do
       -- inferring expression type
       (e', ps,t) <- tcExp e
-      -- getting type name
-      tn <- typeName t
+      -- expand synonyms before extracting type name
+      tExp <- maybeExpandSynonym t
+      tn <- typeName tExp
       -- getting field type
       s <- askField tn n
       (ps' :=> t') <- freshInst s
@@ -247,7 +252,7 @@ tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
       (e', ps, ty') <- tcExp e
-      s <- match ty' ty
+      s <- tcmMatch ty' ty
       extSubst s
       withCurrentSubst (TyExp e' ty, ps, ty)
 tcExp e@(Cond e1 e2 e3)
@@ -338,7 +343,7 @@ createClosureType ids vs ty
       i <- incCounter
       s <- getSubst
       let
-          ts = map idType ids 
+          ts = map idType ids
           dn = Name $ "t_closure" ++ show i
           ts' = everywhere (mkT gen) ts
           ns = map Var $ (apply s ids)
@@ -460,7 +465,7 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       -- typing function body
       (bd1, ps1, t1) <- withLocalCtx lctx' (tcBody bd) `wrapError` d
       -- unifying context introduced type with infered function type
-      s <- unify nt (funtype ts' t1) `wrapError` d 
+      s <- unify nt (funtype ts' t1) `wrapError` d
       -- building the function type scheme
       rs <- reduce [] ps1 `wrapError` d
       ty <- withCurrentSubst nt
@@ -480,15 +485,18 @@ argumentAnnotation (Untyped _)
 argumentAnnotation (Typed _ t)
   = pure t
 
+checkAllTypeVarsBound :: Pretty a => a -> [Tyvar] -> [Tyvar] -> TcM ()
+checkAllTypeVarsBound context used declared =
+    let unbound = used \\ declared
+    in unless (null unbound) $ unboundTypeVars context unbound
+
 annotatedScheme :: [Tyvar] -> Signature Name -> TcM Scheme
 annotatedScheme vs' sig@(Signature vs ps n args rt)
   = do
       ts <- mapM argumentAnnotation args
       t <- maybe freshTyVar pure rt
       -- check if all variables are bound in signature.
-      when (any (\ v -> v `notElem` (vs ++ vs')) (bv sig)) $ do
-         let unbound_vars = bv sig \\ (vs ++ vs')
-         unboundTypeVars sig unbound_vars
+      checkAllTypeVarsBound sig (vs ++ vs') (bv sig)
       pure (Forall vs (ps :=> (funtype ts t)))
 
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
@@ -497,9 +505,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       info ["\n# tcFunDef ", pretty d]
       let vars = vs `union` vs'
       -- check if all variables are bound in signature.
-      when (any (\ v -> v `notElem` vars) (bv sig)) $ do
-         let unbound_vars = bv sig \\ vars
-         unboundTypeVars sig unbound_vars
+      checkAllTypeVarsBound sig (bv sig) vars
       -- instantiate signatures in function definition
       sks <- mapM (const freshTyVar) vars
       let
@@ -515,15 +521,15 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       let lctx' = if incl then (n, monotype nt) : lctx else lctx
       -- typing function body
       (bd1', ps1', t1') <- withLocalCtx lctx' (tcBody bd1) `wrapError` d
-      -- checking if the type checking have changed the type 
+      -- checking if the type checking have changed the type
       -- due to unique type creation.
       let tynames = tyconNames t1'
-      changeTy <- or <$> mapM isUniqueTyName tynames 
+      changeTy <- or <$> mapM isUniqueTyName tynames
       let rt2 = if changeTy then t1' else rt1'
       info ["Trying to unify: ", pretty rt2, " with ", pretty t1']
       unify rt2 t1' `wrapError` d
       info ["Trying to unify: ", pretty nt, " with ", pretty (funtype ts' rt2)]
-      unify nt (funtype ts' rt2) `wrapError` d  
+      unify nt (funtype ts' rt2) `wrapError` d
       -- building the function type scheme
       free <- getEnvMetaVars
       rs <- reduce (qs1 `union` ps1) ps1' `wrapError` d
@@ -536,11 +542,11 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       when (ambiguous inf) $
         ambiguousTypeError inf sig
       -- checking subsumption
-      unless changeTy $ do 
+      unless changeTy $ do
         subsCheck sig inf ann `wrapError` d
       -- elaborating function body
       let ann' = if changeTy then inf else ann
-      fdt <- elabFunDef vs' sig1 bd1' inf ann' `wrapError` d 
+      fdt <- elabFunDef vs' sig1 bd1' inf ann' `wrapError` d
       withCurrentSubst (fdt, ann')
   | otherwise = tiFunDef d
 
@@ -691,7 +697,7 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
   do
     -- get class info
     mcinfo <- Map.lookup n <$> gets classTable
-    when (isNothing mcinfo) (undefinedClass n) `wrapError` instd 
+    when (isNothing mcinfo) (undefinedClass n) `wrapError` instd
     -- building instance constraint
     let
       -- this use of fromJust is safe, because is
@@ -736,7 +742,7 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
 checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
 checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
   = do
-      _ <- match t t' `catchError` (\ _ -> invalidMemberType qn t t')
+      _ <- tcmMatch t t' `catchError` (\ _ -> invalidMemberType qn t t')
       pure ()
 
 
@@ -803,6 +809,8 @@ checkConstraints = mapM_ checkConstraint
 checkInstance :: Instance Name -> TcM ()
 checkInstance idef@(Instance d vs ctx n ts t funs)
   = do
+      -- checking if all variables are declared
+      checkAllTypeVarsBound idef (bv idef) vs
       -- kind check all types in instance head
       mapM_ kindCheck (t : ts) `wrapError` idef
       -- check if the class is defined
@@ -813,10 +821,10 @@ checkInstance idef@(Instance d vs ctx n ts t funs)
       -- checking the coverage condition
       insts' <- askInstEnv n `wrapError` ipred
       -- check overlapping only for non-default instances
-      let vs1 = bv ipred 
-      ts1 <- mapM (const freshTyVar) vs1 
+      let vs1 = bv ipred
+      ts1 <- mapM (const freshTyVar) vs1
       let env = zip vs1 ts1
-          ipred' = insts env ipred 
+          ipred' = insts env ipred
       unless d (checkOverlap ipred' insts' `wrapError` idef)
       -- check if default instance has a type variable as main argument.
       when d (checkDefaultInst (ctx :=> ipred) `wrapError` idef)
@@ -1071,13 +1079,14 @@ tcYulExp (YIdent v)
       (_ :=> t) <- freshInst sch
       unify t word
       pure t
-tcYulExp (YCall n es)
+tcYulExp e@(YCall n es)
   = do
-      sch <- askEnv n `wrapError` (YCall n es)
+      sch <- askEnv n `wrapError` e
       (_ :=> t) <- freshInst sch
       ts <- mapM tcYulExp es
       t' <- freshTyVar
-      unify t (foldr (:->) t' ts)
+      s <- unify t (funtype ts t') `wrapError` e
+      extSubst s
       withCurrentSubst t'
 
 tcYLit :: YLiteral -> TcM Ty

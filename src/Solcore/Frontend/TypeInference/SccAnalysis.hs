@@ -55,14 +55,16 @@ sccContract d = pure d
 analysis :: (Ord a, Names a, Decl a, Show a, Groupable a) => [a] -> SCC [a]
 analysis ds
   = do
-      let grph = mkGraph ds
-          cmps = scc grph
+      grph <- mkGraph ds
+      let cmps = scc grph
       case topSort cmps of
         Left _ -> pure []
         Right ds' -> pure $ reverse $ concatMap (groupMutualDefs . toList . N.vertexList1) ds'
 
-mkGraph :: (Ord a, Names a, Decl a) => [a] -> AdjacencyMap a
-mkGraph ds = stars $ mkEdges (mkNameEnv ds) ds
+mkGraph :: (Ord a, Names a, Decl a, Show a) => [a] -> SCC (AdjacencyMap a)
+mkGraph ds = do
+      let es = mkEdges (mkNameEnv ds) ds
+      pure (stars es)
 
 -- definition of enviroment of definition names
 
@@ -128,8 +130,8 @@ instance Decl (TopDecl Name) where
   decl (TMutualDef ds) = decl ds
   decl (TDataDef d) = decl d
   decl (TSym t) = decl t
+  decl (TClassDef c) = decl c
   decl _ = []
-
 
 instance Decl (ContractDecl Name) where
   decl (CDataDecl dt) = decl dt
@@ -138,6 +140,12 @@ instance Decl (ContractDecl Name) where
   decl (CMutualDecl ds)
     = concatMap decl ds
   decl (CConstrDecl cd) = []
+
+instance Decl (Class Name) where
+  decl (Class _ _ n _ _ sigs)
+    = n : map (qual n) (decl sigs)
+    where
+      qual n m = QualName n (pretty m)
 
 -- getting the mentioned names in a declaration
 
