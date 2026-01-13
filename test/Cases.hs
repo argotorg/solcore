@@ -61,6 +61,7 @@ dispatches =
   testGroup
     "Files for dispatch cases"
     [ runDispatchTest "basic.solc"
+    , runDispatchTest "stringid.solc"
     ]
  where
   runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -240,6 +241,17 @@ cases =
     , runTestExpectingFailure "xref.solc" caseFolder
     , runTestForFile "yul-function-typing.solc" caseFolder
     , runTestForFile "yul-return.solc" caseFolder
+    , runTestForFile "pragma_merge_base.solc" caseFolder
+    , runTestForFile "pragma_merge_import.solc" caseFolder
+    , runTestForFile "pragma_merge_verify.solc" caseFolder
+    , runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder
+    , runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder
+    , runTestForFile "single-lambda.solc" caseFolder
+    , runTestExpectingFailure "duplicated-type-name.solc" caseFolder
+    , runTestExpectingFailure "overlapping-heads.solc" caseFolder
+    , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
+    , runTestForFile "match-yul.solc" caseFolder
+    , runTestForFile "yul-for.solc" caseFolder
     , runTestExpectingFailure "unbound-instance-var.solc" caseFolder
     ]
  where
