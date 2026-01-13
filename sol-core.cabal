@@ -33,11 +33,9 @@ common common-opts
     , split
     , syb
     , template-haskell
+    , text
     , time
     , timeit
-    , directory
-    , split
-    , text
 
   build-tool-depends: happy:happy, alex:alex
 
@@ -60,13 +58,13 @@ library
 
   -- cabal-fmt: expand src
   exposed-modules:
+      Solcore.Backend.EmitHull
+      Solcore.Backend.Specialise
       Solcore.Desugarer.FieldAccess
       Solcore.Desugarer.IfDesugarer
       Solcore.Desugarer.IndirectCall
       Solcore.Desugarer.MatchCompiler
       Solcore.Desugarer.ReplaceWildcard
-      Solcore.Desugarer.Specialise
-      Solcore.Desugarer.EmitCore
       Solcore.Desugarer.ContractDispatch
       Solcore.Desugarer.ReplaceFunTypeArgs
       Solcore.Desugarer.UniqueTypeGen
@@ -98,9 +96,9 @@ library
       Solcore.Pipeline.Options
       Solcore.Pipeline.SolcorePipeline
       Solcore.Primitives.Primitives
-      Language.Core
-      Language.Core.Parser
-      Language.Core.Types
+      Language.Hull
+      Language.Hull.Parser
+      Language.Hull.Types
       Language.Yul
       Language.Yul.Parser
       Language.Yul.QuasiQuote

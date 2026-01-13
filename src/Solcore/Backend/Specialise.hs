@@ -1,5 +1,5 @@
 -- {-# LANGUAGE DefaultSignatures #-}
-module Solcore.Desugarer.Specialise where  --(specialiseCompUnit, typeOfTcExp) where
+module Solcore.Backend.Specialise where  --(specialiseCompUnit, typeOfTcExp) where
 {- * Specialisation
 Create specialised versions of polymorphic and overloaded functions.
 This is meant to be run on typed and defunctionalised code, so no higher-order functions.
@@ -219,10 +219,10 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
        getSpecialisedDecls
     -- Deployer code
     modify (\st -> st { specTable = emptyTable })
-    deployDecls <- case findConstructor decls of
-      Just c -> withLocalState do
-        cname' <- specConstructor c
-        st <- gets specTable
+    let deployerName = Name (pretty name <> "$Deployer")
+    mStart <- specEntry "start"
+    deployDecls <- case mStart of
+      Just s -> do
         depDecls <- getSpecialisedDecls
         -- use mutual to group constructor with its dependencies
         pure [CMutualDecl depDecls]
@@ -250,8 +250,7 @@ getConstructor :: ContractDecl Id -> Maybe (Constructor Id)
 getConstructor (CConstrDecl c) = Just c
 getConstructor _ = Nothing
 
-
-specEntry :: Name -> SM ()
+specEntry :: Name -> SM (Maybe Name)
 specEntry name = withLocalState do
     let any = TVar (Name "any")
     let anytype = TyVar any
@@ -259,9 +258,10 @@ specEntry name = withLocalState do
     case mres of
       Just (fd, ty, subst) -> do
         debug ["< resolution: ", show name, " : ", pretty ty, "@", pretty subst]
-        void(specFunDef fd)
+        Just <$> specFunDef fd
       Nothing -> do
         warns ["!! Warning: no resolution found for ", show name]
+        pure Nothing
 
 specConstructor :: Constructor Id -> SM Name
 specConstructor (Constructor [] body) = do

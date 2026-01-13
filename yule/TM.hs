@@ -24,13 +24,13 @@ import qualified Data.Map as Map
 import Data.Map(Map)
 
 import Locus
-import Language.Core qualified as Core
+import Language.Hull qualified as Hull
 import qualified Options
 import Options(Options)
 
 type VarEnv = Map String Location
 type FunEnv = Map String FunInfo
-data FunInfo = FunInfo { fun_args :: [Core.Type], fun_result :: Core.Type}
+data FunInfo = FunInfo { fun_args :: [Hull.Type], fun_result :: Hull.Type}
 data CEnv = CEnv
     { env_counter :: IORef Int
     , env_vars :: IORef VarEnv
@@ -121,15 +121,15 @@ withLocalEnv m = do
 
 builtinFuns :: [(String, FunInfo)]
 builtinFuns =
-    [ ("stop", FunInfo [] Core.TUnit)
-    , ("add", FunInfo [Core.TWord, Core.TWord] Core.TWord)
-    , ("mul", FunInfo [Core.TWord, Core.TWord] Core.TWord)
-    , ("sub", FunInfo [Core.TWord, Core.TWord] Core.TWord)
-    , ("div", FunInfo [Core.TWord, Core.TWord] Core.TWord)
-    , ("sdiv", FunInfo [Core.TWord, Core.TWord] Core.TWord)
-    , ("mod", FunInfo [Core.TWord, Core.TWord] Core.TWord)
-    , ("smod", FunInfo [Core.TWord, Core.TWord] Core.TWord)
-    , ("addmod", FunInfo [Core.TWord, Core.TWord, Core.TWord] Core.TWord)
-    , ("mulmod", FunInfo [Core.TWord, Core.TWord, Core.TWord] Core.TWord)
-    , ("exp", FunInfo [Core.TWord, Core.TWord] Core.TWord)
+    [ ("stop", FunInfo [] Hull.TUnit)
+    , ("add", FunInfo [Hull.TWord, Hull.TWord] Hull.TWord)
+    , ("mul", FunInfo [Hull.TWord, Hull.TWord] Hull.TWord)
+    , ("sub", FunInfo [Hull.TWord, Hull.TWord] Hull.TWord)
+    , ("div", FunInfo [Hull.TWord, Hull.TWord] Hull.TWord)
+    , ("sdiv", FunInfo [Hull.TWord, Hull.TWord] Hull.TWord)
+    , ("mod", FunInfo [Hull.TWord, Hull.TWord] Hull.TWord)
+    , ("smod", FunInfo [Hull.TWord, Hull.TWord] Hull.TWord)
+    , ("addmod", FunInfo [Hull.TWord, Hull.TWord, Hull.TWord] Hull.TWord)
+    , ("mulmod", FunInfo [Hull.TWord, Hull.TWord, Hull.TWord] Hull.TWord)
+    , ("exp", FunInfo [Hull.TWord, Hull.TWord] Hull.TWord)
     ]

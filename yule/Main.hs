@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 module Main where
-import Language.Core.Parser(parseObject)
+import Language.Hull.Parser(parseObject)
 import Solcore.Frontend.Syntax.Name  -- FIXME: move Name to Common
 import Common.Pretty -- (Doc, Pretty(..), nest, render)
 import Builtins(yulBuiltins)
@@ -52,23 +52,9 @@ addRetCode c = c <> retCode where
     |]
 
 deployCode :: String -> Bool -> YulCode
-deployCode name withConstructor = YulCode $ [yulBlock|
-  {
-    mstore(64, memoryguard(128))
-    let memPtr := mload(64)
-  }
-  |]
-  <> callConstructor withConstructor
-  <> [yulBlock|
-     { datacopy(0, `dataoffset`, `datasize`)
-       return(0, `datasize`)
-     } |]
-  where
-    cname = yulString name
-    callConstructor True = pure [yulStmt| usr$constructor() |]
-    callConstructor False = []
-    datasize = [yulExp| datasize(${cname}) |] -- YCall "datasize"[cname]
-    dataoffset = [yulExp| dataoffset(`cname`) |]
+deployCode _name withStart = YulCode $ go withStart where
+  go True = [ [yulStmt| usr$start() |] ]
+  go False = []
 
 createDeployment :: YulObject -> YulObject
 createDeployment (YulObject yulName yulCode [InnerObject(YulObject innerName innerCode [])])
