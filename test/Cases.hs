@@ -62,6 +62,7 @@ dispatches =
     "Files for dispatch cases"
     [ runDispatchTest "basic.solc"
     , runDispatchTest "stringid.solc"
+    , runDispatchTest "miniERC20.solc"
     ]
  where
   runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -206,6 +207,11 @@ cases =
     , runTestForFile "simpleid.solc" caseFolder
     , runTestForFile "SimpleLambda.solc" caseFolder
     , runTestForFile "single-lambda.solc" caseFolder
+    , runTestExpectingFailure "duplicated-type-name.solc" caseFolder
+    , runTestExpectingFailure "overlapping-heads.solc" caseFolder
+    , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
+    , runTestForFile "match-yul.solc" caseFolder
+    , runTestForFile "yul-for.solc" caseFolder
     , runTestForFile "SingleFun.solc" caseFolder
     , runTestForFile "synonym-basic.solc" caseFolder
     , runTestForFile "synonym-param.solc" caseFolder
@@ -218,7 +224,7 @@ cases =
     , runTestExpectingFailure "SillyReturn.solc" caseFolder
     , runTestExpectingFailure "SimpleInvoke.solc" caseFolder
     , runTestExpectingFailure "string-const.solc" caseFolder
-    , runTestExpectingFailure "StructMembers.sol" caseFolder
+    , runTestExpectingFailure "StructMembers.solc" caseFolder
     , runTestExpectingFailure "subject-index.solc" caseFolder
     , runTestExpectingFailure "subject-reduction.solc" caseFolder
     , runTestExpectingFailure "subsumption-test.solc" caseFolder
@@ -252,6 +258,7 @@ cases =
     , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
     , runTestForFile "match-yul.solc" caseFolder
     , runTestForFile "yul-for.solc" caseFolder
+    , runTestForFile "yul-function-typing.solc" caseFolder
     , runTestExpectingFailure "unbound-instance-var.solc" caseFolder
     ]
  where

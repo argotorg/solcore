@@ -738,6 +738,12 @@ forall self . class self:ABIAttribs {
     function isStatic(ty:Proxy(self)) -> bool;
 }
 
+forall t.
+default instance t:ABIAttribs {
+    function headSize(ty : Proxy(t)) -> word { return 32; }
+    function isStatic(ty : Proxy(t)) -> bool { return true; }
+}
+
 instance ():ABIAttribs {
     function headSize(ty : Proxy(())) -> word { return 0; }
     function isStatic(ty : Proxy(())) -> bool { return true; }
@@ -745,6 +751,10 @@ instance ():ABIAttribs {
 instance uint256:ABIAttribs {
     function headSize(ty : Proxy(uint256)) -> word { return 32; }
     function isStatic(ty : Proxy(uint256)) -> bool { return true; }
+}
+instance address:ABIAttribs {
+    function headSize(ty : Proxy(address)) -> word { return 32; }
+    function isStatic(ty : Proxy(address)) -> bool { return true; }
 }
 forall t . instance DynArray(t):ABIAttribs {
     function headSize(ty : Proxy(DynArray(t))) -> word { return 32; }
@@ -833,6 +843,16 @@ instance uint256:ABIEncode {
     // a unit256 is written directly into the head
     function encodeInto(x:uint256, basePtr:word, offset:word, tail:word) -> word {
         let repx : word = Typedef.rep(x);
+        assembly { mstore(add(basePtr, offset), repx) }
+        return tail;
+    }
+}
+
+instance bool:ABIEncode {
+
+    function encodeInto(x:bool, basePtr:word, offset:word, tail:word) -> word {
+        
+        let repx : word = frombool(x);
         assembly { mstore(add(basePtr, offset), repx) }
         return tail;
     }
@@ -949,6 +969,13 @@ forall ty reader . reader:WordReader => instance ABIDecoder(ty, reader):WordRead
 forall reader . reader:WordReader => instance ABIDecoder(uint256, reader):ABIDecode(uint256) {
     function decode(ptr:ABIDecoder(uint256, reader), currentHeadOffset:word) -> uint256 {
         return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : uint256;
+    }
+}
+
+// ABI Decoding for address
+forall reader . reader:WordReader => instance ABIDecoder(address, reader):ABIDecode(address) {
+    function decode(ptr:ABIDecoder(address, reader), currentHeadOffset:word) -> address {
+        return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : address;
     }
 }
 
@@ -1081,9 +1108,9 @@ forall baseType baseType_decoded reader . ABIDecoder(baseType, CalldataWordReade
 */
 
 
-pragma no-patterson-condition LVA, RVA;
-pragma no-coverage-condition MemberAccessProxy, LVA, RVA, StructField;
-
+pragma no-patterson-condition RVA, Assign;
+pragma no-coverage-condition MemberAccessProxy, LVA, RVA, StructField, Assign;
+pragma no-bounded-variable-condition LVA, RVA;
 // -- storage
 
 function sload_(x:word) -> word {
@@ -1099,9 +1126,18 @@ function sstore_(a:word, v:word) {
 }
 
 
+
 forall self.
 class self:StorageSize {
     function size(x:Proxy(self)) -> word;
+}
+
+
+forall self.
+default instance self:StorageSize {
+    function size(x:Proxy(self)) -> word {
+        return 1;
+    }
 }
 
 instance ():StorageSize {
@@ -1134,7 +1170,19 @@ instance address:StorageSize {
     }
 }
 
-forall a b . a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
+instance string:StorageSize {
+    function size(x:Proxy(string)) -> word {
+        return 1;
+    }
+}
+
+instance memory(string):StorageSize {
+    function size(x:Proxy(memory(string))) -> word {
+        return 1;
+    }
+}
+
+forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
     function size(x:Proxy((a,b))) -> word {
         let a_sz:word = StorageSize.size(Proxy:Proxy(a));
         let b_sz:word = StorageSize.size(Proxy:Proxy(b));
@@ -1202,15 +1250,15 @@ instance uint256:StorageType {
 
 // -- structure fields (including contract fields)
 
- forall self fieldType offsetType.
+forall self fieldType offsetType.
 class self:StructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 
 
-data MemberAccessProxy(a, field, offset) = MemberAccessProxy(a, field);
+data MemberAccessProxy(a, field, fieldtype, offset) = MemberAccessProxy(a, field);
 
-forall a field offset .
-function memberAccessBase(x:MemberAccessProxy(a, field, offset)) -> a {
+forall a field fieldType storageType offset .
+function memberAccessBase(x:MemberAccessProxy(a, field, fieldType,  offset)) -> a {
     match x {
         | MemberAccessProxy(y,z) => return y;
     }
@@ -1221,33 +1269,35 @@ function memberAccessBase(x:MemberAccessProxy(a, field, offset)) -> a {
 // Contract field access
 // ------------------------------------------------------------------
 
-forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(storage(fieldType), offsetType)
+forall cxt fieldSelector loadType offsetType storageType
+. StructField(ContractStorage(cxt), fieldSelector) : StructField (storage(storageType), offsetType)
+, offsetType : StorageSize
+, storage(storageType): CanStore(loadType)
+=> instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType) : LVA (storage(storageType)) {
+   function acc (x : MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType)) -> storage(storageType) {
+      let offset : word = StorageSize.size(Proxy : Proxy(offsetType)) ;
+      return storage(offset):storage(storageType);
+   }
+}
+
+forall cxt fieldSelector loadType offsetType storageType
+  . StructField(ContractStorage(cxt), fieldSelector):StructField(storage(storageType), offsetType)
+  , storage(storageType):CanStore(loadType)
   , offsetType:StorageSize
-  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):LVA(storage(fieldType)) {
-    function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> storage(fieldType) {
+  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType):RVA(loadType) {
+    function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType)) -> loadType {
         let offset:word = StorageSize.size(Proxy:Proxy(offsetType));
-        return storage(offset);
+        return CanStore.sload(storage(offset):storage(storageType)):loadType;
     }
 }
 
-forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(storage(fieldType), offsetType)
-  , fieldType:StorageType
-  , offsetType:StorageSize
-  => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):RVA(fieldType) {
-    function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> fieldType {
-        let offset:word = StorageSize.size(Proxy:Proxy(offsetType));
-        return StorageType.sload(offset):fieldType;
-    }
-}
-
-
-forall structType fieldSelector fieldType offsetType
+// TODO: structures other than contract context
+/*
+forall structType fieldSelector fieldType storageType offsetType
   . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
   , offsetType:StorageSize
-  => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType):LVA(storage(fieldType)) {
-    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, offsetType)) -> storage(fieldType) {
+  => instance MemberAccessProxy(storage(structType), fieldSelector, fieldType,  offsetType):LVA(storage(fieldType)) {
+    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, fieldType,  offsetType)) -> storage(fieldType) {
         let ptr:word = Typedef.rep(memberAccessBase(x));
         let size:word = StorageSize.size(Proxy:Proxy(offsetType));
         assembly {
@@ -1257,22 +1307,21 @@ forall structType fieldSelector fieldType offsetType
     }
 }
 
-
-forall structType fieldSelector fieldType offsetType
+forall structType fieldSelector fieldType storageType offsetType
   . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
   , offsetType:StorageSize
   , fieldType:StorageType
-  => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType):RVA(fieldType) {
-    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, offsetType)) -> fieldType {
+  => instance MemberAccessProxy(storage(structType), fieldSelector, fieldType,  offsetType):RVA(fieldType) {
+    function acc(x:MemberAccessProxy(storage(structType), fieldSelector, fieldType,  offsetType)) -> fieldType {
         let ptr:word = Typedef.rep(memberAccessBase(x));
         let size:word = StorageSize.size(Proxy:Proxy(offsetType));
         assembly {
             ptr := add(ptr, size)
         }
-        return StorageType.sload(ptr);
+        return CanStore.sload(ptr);
     }
 }
-
+*/
 
 
 
@@ -1316,29 +1365,31 @@ function rval(x:a) -> b {
 }
 
 
+// TODO: consider merging CanStore and Assign
 forall lhs rhs.
 class lhs:Assign(rhs) {
     function assign(l:lhs, r:rhs) -> ();
 }
 
-// a can be stored in storage(b); e.g. memory(string) : Storable(string)
-pragma no-coverage-condition Storable, Assign;
+
+// a can store b; e.g. storage(string) : memory(string)
 forall a b.
-class a:Storable(b) {
-  function store(r:storage(b), v:a);
-  function sload(r:storage(b)) -> a;
+class a:CanStore(b) {
+  function store(r:a, v:b);
+  function sload(r:a) -> b;
 }
 
 
-forall a b. a:Storable(b) =>
-instance storage(b):Assign(a) {
-    function assign(l:storage(b), r:a) -> () {
-      Storable.store(l, r);
+forall a b. a:CanStore(b) =>
+instance a:Assign(b) {
+    function assign(l:a, r:b) -> () {
+      CanStore.store(l, r);
     }
 }
 
+/*
 forall a. a:StorageType =>
-default instance a:Storable(a) {
+default instance a:CanStore(a) {
     function store(l:storage(a), r:a) -> () {
       StorageType.store(Typedef.rep(l), r);
     }
@@ -1346,8 +1397,49 @@ default instance a:Storable(a) {
       return StorageType.sload(Typedef.rep(l));
     }
 }
+*/
 
-instance memory(string):Storable(string) {
+ instance storage(word):CanStore(word) {
+    function store(l:storage(word), r:word) -> () {
+      StorageType.store(Typedef.rep(l), r);
+    }
+    function sload(l:storage(word)) -> word {
+      return StorageType.sload(Typedef.rep(l));
+    }
+}
+
+ instance storage(uint256):CanStore(uint256) {
+    function store(l:storage(uint256), r:uint256) -> () {
+      StorageType.store(Typedef.rep(l), r);
+    }
+    function sload(l:storage(uint256)) -> uint256 {
+      return StorageType.sload(Typedef.rep(l));
+    }
+}
+
+ instance storage(address):CanStore(address) {
+    function store(l:storage(address), r:address) -> () {
+      StorageType.store(Typedef.rep(l), r);
+    }
+    function sload(l:storage(address)) -> address {
+      return StorageType.sload(Typedef.rep(l));
+    }
+}
+
+forall k v.
+ instance storage(mapping(k,v)):CanStore(storage(mapping(k,v))) {
+    function store(l:storage(mapping(k,v)), r:storage(mapping(k,v))) -> () {
+      // StorageType.store(Typedef.rep(l), r);
+      unimplemented();
+    }
+    function sload(l:storage(mapping(k,v))) -> storage(mapping(k,v)) {
+      // return StorageType.sload(Typedef.rep(l));
+      return unimplemented();
+    }
+}
+
+
+instance storage(string):CanStore(memory(string)) {
   function store(dst:storage(string), src:memory(string)) -> () {
     let srcPtr : word = Typedef.rep(src);
     let slot = Typedef.rep(dst);
