@@ -1,0 +1,5 @@
+function ct(x : word) -> ((word) -> word) {
+    return lam(y : word) {
+        return x;
+    };
+}

@@ -741,10 +741,20 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
 
 checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
 checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
-  = do
-      _ <- tcmMatch t t' `catchError` (\ _ -> invalidMemberType qn t t')
-      pure ()
+  -- when we have a closure in the instance type,
+  -- it will not be an instance of the most general
+  -- type present in the type class.
+  | hasClosureType t = pure ()
+  -- no closure, we can check if the infered type is
+  -- an instance of the class annotated most general
+  -- type.
+  | otherwise
+    = do
+        _ <- tcmMatch t t' `catchError` (\ _ -> invalidMemberType qn t t')
+        pure ()
 
+hasClosureType :: Ty -> Bool
+hasClosureType = any isClosureName . tyconNames
 
 invalidMemberType :: Name -> Ty -> Ty -> TcM a
 invalidMemberType n cls ins
