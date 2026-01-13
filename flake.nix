@@ -96,7 +96,7 @@
               export SOLCORE_CMD="sol-core"
               export YULE_CMD="yule"
               export testrunner_exe=build/test/testrunner/testrunner
-              export evmone=${evmone-lib}/lib/libevmone.so
+              export evmone=${evmone-lib}/lib/libevmone${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}
 
               # Run contest tests
               bash run_contests.sh
