@@ -55,7 +55,10 @@ evmc::VM& EVMHost::getVM(std::string const& _path)
 		if (vm && errorCode == EVMC_LOADER_SUCCESS)
 		{
 			if (vm.get_capabilities() & (EVMC_CAPABILITY_EVM1))
+			{
 				vms[_path] = std::make_unique<evmc::VM>(evmc::VM(std::move(vm)));
+				vms[_path]->set_option("validate_eof", "1");
+			}
 			else
 				std::cerr << "VM loaded does not support EVM1" << std::endl;
 		}
@@ -66,7 +69,6 @@ evmc::VM& EVMHost::getVM(std::string const& _path)
 				std::cerr << ":" << std::endl << errorMsg;
 			std::cerr << std::endl;
 		}
-		vms[_path]->set_option("validate_eof", "1");
 	}
 
 	if (vms.count(_path) > 0)
