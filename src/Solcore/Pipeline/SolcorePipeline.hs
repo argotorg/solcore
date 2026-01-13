@@ -91,6 +91,10 @@ compile opts = runExceptT $ do
     putStrLn "> Dispatch:"
     putStrLn $ pretty dispatched
 
+  liftIO $ when (optDumpDispatch opts) $ do
+    putStrLn "> Dispatch:"
+    putStrLn $ pretty dispatched
+
   -- SCC analysis
   connected <- ExceptT $ timeItNamed "SCC           " $
     sccAnalysis dispatched
