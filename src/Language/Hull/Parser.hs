@@ -133,7 +133,7 @@ hullStmt = choice
     , SFunction <$> (pKeyword "function" *> identifier) <*> (parens (commaSep hullArg)) <*> (symbol "->" *> hullType)
                 <*> hullBody
     , SAssembly <$> (pKeyword "assembly" *> yulBlock)
-    , SRevert <$> (pKeyword "revert" *> stringLiteral)
+    , SRevert <$> (pKeyword "__revert__" *> stringLiteral)
     , try (SAssign <$> (hullExpr <* symbol ":=") <*> hullExpr)
     , SExpr <$> hullExpr
     ]

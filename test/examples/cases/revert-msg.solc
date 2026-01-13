@@ -1,0 +1,14 @@
+import std;
+
+function revert(reasonPtr : memory(string)) -> () {
+  let ptr = Typedef.rep(reasonPtr);
+  assembly {
+    revert(add(ptr, 32), mload(ptr))
+  }
+}
+
+contract Revert {
+  function revertFun() -> () {
+    revert("Loreɱ ipsum dolor sit 📜 amet, ✍️ consectetʊr adipiscing elit. Ưt dolor tellus, interdum id cursus ut, rhoncus sed velit. Quisque nec nisi nunc. Ut venenatis, erat sit amet vulputate ultricies, lacus ipsum pretium lorem, at ultrices lorem sem a tellus. Mauris sed pellentesque magna. Integer in libero sapien. Maecenas blandit aliquet nibh, vitae imperdiet nunc sodales eu. Nam vel tortor id felis vestibulum accumsan ac eget odio. Nam sem lorem, auctor non nisl accumsan, suscipit venenatis libero. Nam a egestas nisi. Sed malesuada ligula non ex aliquam porttitor sit amet eu lorem. Donec sed blandit justo. Integer bibendum feugiat sapien vitae auctor. Vivamus non enim vel mi malesuada bibendum non viverra lorem. Sed interdum vehicula mi, in blandit risus dapibus nec. Maecenas blandit tortor mi, non pulvinar odio molestie ut. Nullam a urna pulvinar, pellentesque leo in, iaculis massa. Sed eleifend in diam vel porttitor. Integer mollis suscipit ullamcorper. Vivamus vestibulum, eros at sagittis congue, enim mauris euismod ipsum, in gravida risus augue sed odio. Etiam tortor nunc, tempor quis orci ac, rutrum iaculis orci. Nunc efficitur velit nec tellus ultrices pellentesque. Proin et fringilla tortor, sit amet congue odio. Aliquam id justo lacus. Suspendisse non odio felis. Suspendisse volutpat velit dui, sit amet egestas nisl consequat et. Nulla facilisi. Integer nec nulla ac lectus imperdiet convallis sed ut tellus. Proin interdum efficitur velit, id sollicitudin lorem sodales fringilla. Vestibulum ornare, nisl et scelerisque scelerisque, risus elit faucibus massa, at commodo eros arcu sit amet eros. Praesent ultricies eu magna eu gravida. Nulla ultrices id augue sit amet congue. Orci varius natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Vivamus condimentum, nisi ut sollicitudin mollis, nunc ante imperdiet elit, sed eleifend purus enim vitae elit. Proin diam augue, tempor a vestibulum sit amet, euismod a ex. Integer auctor eget quam vitae pellentesque. Quisque luctus massa ut ante lobortis scelerisque. Interdum et malesuada fames ac ante ipsum primis in faucibus. Donec a imperdiet ante.");
+  }
+}

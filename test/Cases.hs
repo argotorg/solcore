@@ -260,6 +260,8 @@ cases =
     , runTestForFile "yul-for.solc" caseFolder
     , runTestForFile "yul-function-typing.solc" caseFolder
     , runTestExpectingFailure "unbound-instance-var.solc" caseFolder
+    , runTestForFile "revert-msg.solc" caseFolder
+    , runTestForFile "assert-mem-eq.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
