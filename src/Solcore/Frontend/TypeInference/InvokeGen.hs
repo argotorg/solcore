@@ -99,22 +99,27 @@ freshPatData (DataTy dn vs ((Constr cn ts) : _))
         pure (PVar pn, [Var pn])
 
 freshPatArg :: Ty -> TcM (Pat Name, Exp Name)
-freshPatArg (TyCon pn ts)
+freshPatArg ty@(TyCon pn ts)
    = do
-        ti <- askTypeInfo pn
-        case constrNames ti of
-           [cn] -> do
-                      (ps :=> ty) <- askEnv cn >>= fresh
-                      let (args, ret) = splitTy ty
-                      if null args then do
-                        n <- freshName
-                        pure (PVar n, Var n)
-                      else do
-                        (ps, es) <- unzip <$> mapM freshPatArg args
-                        pure (PCon cn ps, Con cn es)
-           _ -> do
-                  n <- freshName
-                  pure (PVar n, Var n)
+        -- First try to expand if it's a synonym
+        ty' <- maybeExpandSynonym ty
+        case ty' of
+          TyCon pn' _ | pn' /= pn -> freshPatArg ty'  -- synonym was expanded, recurse
+          _ -> do
+            ti <- askTypeInfo pn
+            case constrNames ti of
+               [cn] -> do
+                          (ps :=> ty1) <- askEnv cn >>= fresh
+                          let (args, _ret) = splitTy ty1
+                          if null args then do
+                            n <- freshName
+                            pure (PVar n, Var n)
+                          else do
+                            (ps', es) <- unzip <$> mapM freshPatArg args
+                            pure (PCon cn ps', Con cn es)
+               _ -> do
+                      n <- freshName
+                      pure (PVar n, Var n)
 freshPatArg (TyVar v)
   = do
       n <- freshName

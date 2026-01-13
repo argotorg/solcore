@@ -270,6 +270,8 @@ InstBody : '{' Functions '}'                       {$2}
 
 Function :: { FunDef }
 Function : Signature Body {FunDef $1 $2}
+-- Proposed Rust-style short return, e.g `function d(x) { 2*x }`
+         | Signature '{' Expr '}' {FunDef $1 [Return $3]}
 
 OptRetTy :: { Maybe Ty }
 OptRetTy : '->' Type                               {Just $2}

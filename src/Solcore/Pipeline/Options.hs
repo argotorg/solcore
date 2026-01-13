@@ -18,10 +18,10 @@ data Option
     , optDumpDS    :: !Bool
     , optDumpDF    :: !Bool
     , optDumpSpec  :: !Bool
-    , optDumpCore  :: !Bool
+    , optDumpHull  :: !Bool
     -- Options controlling diagnostic output
     , optDebugSpec :: !Bool
-    , optDebugCore :: !Bool
+    , optDebugHull :: !Bool
     , optTiming    :: !Bool
     } deriving (Eq, Show)
 
@@ -42,10 +42,10 @@ emptyOption path = Option
     , optDumpDS         = False
     , optDumpDF         = False
     , optDumpSpec       = False
-    , optDumpCore       = False
+    , optDumpHull       = False
     -- Options controlling diagnostic output
     , optDebugSpec      = False
-    , optDebugCore      = False
+    , optDebugHull      = False
     , optTiming         = False
     }
 
@@ -66,7 +66,7 @@ options
                <> help "This flag appends a colon-separated list of dirs to the search path.")
            <*> switch ( long "no-specialise"
                <> short 'n'
-               <> help "Skip specialisation and core emission phases")
+               <> help "Skip specialisation and hull emission phases")
            <*> switch ( long "no-desugar-calls"
                <> short 's'
                <> help "Skip indirect call desugaring")
@@ -95,13 +95,13 @@ options
                <> help "Dump defunctionalised contract")
            <*> switch ( long "dump-spec"
                <> help "Dump specialised contract")
-           <*> switch ( long "dump-core"
-               <> help "Dump low-level core")
+           <*> switch ( long "dump-hull"
+               <> help "Dump low-level hull")
            -- Options controlling diagnostic output
            <*> switch ( long "debug-spec"
                <> help "Debug specialisation")
-           <*> switch ( long "debug-core"
-               <> help "Debug core emission")
+           <*> switch ( long "debug-hull"
+               <> help "Debug hull emission")
            <*> switch ( long "timing"
                <> help "Measure time of some phases")
 
