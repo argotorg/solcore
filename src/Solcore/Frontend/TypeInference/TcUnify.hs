@@ -184,7 +184,7 @@ typesMatchListErr ts ts' =
             , prettys ts, "and", prettys ts'
             ]
 
-typesMguListErr :: (MonadError String m) => [String] -> [String] -> m a
+typesMguListErr :: (MonadError String m, Pretty t) => [t] -> [t] -> m a
 typesMguListErr ts ts' =
   throwError (errMsg ts ts')
  where
