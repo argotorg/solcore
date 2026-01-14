@@ -1,12 +1,17 @@
-# Core language (low level)
+# Hull language (low level)
 
 ## Introduction
-The Core language is an intermediate step before Yul generation.
+The Hull language is an intermediate step before Yul generation.
 It is basically Yul with algebraic types (sums/products)
+
+### Naming
+
+Hull was initially named Core, but once it was decided that the whole language should be called "Core Solidity",
+it was renamed to Hull.
 
 ## Abstract syntax
 
-See `src/Language/Core.hs`
+See `src/Language/Hull.hs`
 
 ### Types
 
@@ -82,12 +87,12 @@ data Contract = Contract { ccName :: Name, ccStmts ::  [Stmt] }
 
 ## Concrete Syntax
 
-See `src/Language/Core/Parser.hs`
+See `src/Language/Hull/Parser.hs`
 
-Although Core is not meant to be written manually, it has concrete syntax, mostly for diagnostic purposes.
+Although Hull is not meant to be written manually, it has concrete syntax, mostly for diagnostic purposes.
 
 ```
-Block = "{" coreStmt* "}"
+Block = "{" hullStmt* "}"
 Contract = "contract" identifier
 Stmt = "let" identifier ":" Type
      | "return" Expr
@@ -199,7 +204,7 @@ contract Food {
 }
 ```
 
-yields the following  Core:
+yields the following Hull:
 
 ```
 contract Food {

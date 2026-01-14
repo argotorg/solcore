@@ -482,14 +482,22 @@ instance Elab S.Exp where
     idx' <- elab idx
     pure $ Indexed arr' idx'
 
-  elab (S.ExpGE e1 e2) = do
-     (e1', e2') <- elab (e1, e2)
-     pure $ Call Nothing (Name "ge") [e1', e2']
+  elab (S.ExpLT e1 e2) = do
+    (e1', e2') <- elab (e1, e2)
+    pure $ Call Nothing (Name "lt") [e1', e2']
 
   elab (S.ExpGT e1 e2) = do
      (e1', e2') <- elab (e1, e2)
-     let fun = QualName (Name "Num") "gt"
+     let fun = QualName (Name "Ord") "gt"
      pure $ Call Nothing fun [e1', e2']
+
+  elab (S.ExpLE e1 e2) = do
+    (e1', e2') <- elab (e1, e2)
+    pure $ Call Nothing (Name "le") [e1', e2']
+
+  elab (S.ExpGE e1 e2) = do
+     (e1', e2') <- elab (e1, e2)
+     pure $ Call Nothing (Name "ge") [e1', e2']
 
   elab (S.ExpEE e1 e2) = do
      (e1', e2') <- elab (e1, e2)
@@ -504,24 +512,35 @@ instance Elab S.Exp where
      (e1', e2') <- elab (e1, e2)
      pure $ Call Nothing (Name "and") [e1', e2']
 
+  elab (S.ExpLOr e1 e2) = do
+     (e1', e2') <- elab (e1, e2)
+     pure $ Call Nothing (Name "or") [e1', e2']
+
   elab (S.ExpLNot e) = do
      e' <- elab e
      pure $ Call Nothing (Name "not") [e']
 
   elab (S.ExpPlus e1 e2) = do
      (e1', e2') <- elab (e1, e2)
-     let fun = QualName (Name "Num") "add"
+     let fun = QualName (Name "Add") "add"
      pure $ Call Nothing fun [e1', e2']
 
   elab (S.ExpMinus e1 e2) = do
      (e1', e2') <- elab (e1, e2)
-     let fun = QualName (Name "Num") "sub"
+     let fun = QualName (Name "Sub") "sub"
      pure $ Call Nothing fun [e1', e2']
 
   elab (S.ExpCond e1 e2 e3)
     = Cond <$> elab e1 <*> elab e2 <*> elab e3
-  elab exp = notImplementedM "elab @Exp" exp
 
+  elab exp@(S.ExpTimes _ _)
+    = notImplementedM "elab @Exp" exp
+
+  elab exp@(S.ExpDivide _ _)
+    = notImplementedM "elab @Exp" exp
+
+  elab exp@(S.ExpModulo _ _)
+    = notImplementedM "elab @Exp" exp
 
 instance Elab S.Pat where
   type Res S.Pat = Pat Name

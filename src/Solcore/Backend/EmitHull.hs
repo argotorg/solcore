@@ -1,6 +1,6 @@
-module Solcore.Desugarer.EmitCore(emitCore) where
+module Solcore.Backend.EmitHull(emitHull) where
 import Prelude hiding(catch, product)
-import Language.Core qualified as Core
+import Language.Hull qualified as Hull
 import Data.Map qualified as Map
 import Common.Monad
 import Control.Monad(when, unless)
@@ -18,11 +18,11 @@ import Solcore.Frontend.TypeInference.TcMonad (insts)
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Primitives.Primitives
-import Solcore.Desugarer.Specialise(typeOfTcExp)
+import Solcore.Backend.Specialise(typeOfTcExp)
 import System.Exit
 
-emitCore :: Bool -> TcEnv ->  CompUnit Id -> IO [Core.Object]
-emitCore debugp env cu = fmap concat $ runEM debugp env $ mapM emitTopDecl (contracts cu)
+emitHull :: Bool -> TcEnv ->  CompUnit Id -> IO [Hull.Object]
+emitHull debugp env cu = fmap concat $ runEM debugp env $ mapM emitTopDecl (contracts cu)
 
 type EM a = StateT EcState IO a
 runEM :: Bool -> TcEnv -> EM a ->  IO a
@@ -35,7 +35,7 @@ errorsEM msgs = do
   let msg = concat msgs
   let contextStr = unlines (map ("in: "++) context)
   writeln contextStr
-  error "Emit core failed" -- this can be exitFailure eventually
+  error "Emit hull failed" -- this can be exitFailure eventually
 
 data EcState = EcState
     { ecSubst :: VSubst
@@ -43,7 +43,7 @@ data EcState = EcState
     , ecNest :: Int
     , ecDebug :: Bool
     , ecContext :: [String] -- for error handling
-    , ecDeployer :: Maybe Core.Body
+    , ecDeployer :: Maybe Hull.Body
     }
 
 initEcState :: Bool -> TcEnv -> EcState
@@ -80,7 +80,7 @@ sumDataTy = DataTy
 
 builtinDataInfo = [ ("sum", sumDataTy) ]
 
-type VSubst = Map.Map Name Core.Expr
+type VSubst = Map.Map Name Hull.Expr
 emptyVSubst :: VSubst
 emptyVSubst = Map.empty
 
@@ -101,11 +101,11 @@ withContext s m = pushContext s *> m <* dropContext
 inContext :: EM a -> String -> EM a
 inContext = flip withContext
 
-type Translation a = EM (a, [Core.Stmt])
+type Translation a = EM (a, [Hull.Stmt])
 
-type CoreName = String
+type HullName = String
 
-emitTopDecl :: TopDecl Id -> EM [Core.Object]
+emitTopDecl :: TopDecl Id -> EM [Hull.Object]
 emitTopDecl (TContr c) = withLocalState do
     runtimeObj <- emitContract c
     pure [runtimeObj]
@@ -120,24 +120,24 @@ buildTConInfo :: DataTy -> TConInfo
 buildTConInfo (DataTy n tvs dcs) = (tvs, map conInfo dcs) where
   conInfo (Constr n ts) = (n, ts)
 -}
-emitContract :: Contract Id -> EM Core.Object
+emitContract :: Contract Id -> EM Hull.Object
 emitContract c = do
     let cname = show (name c)
-    writes ["Emitting core for contract ", cname]
+    writes ["Emitting hull for contract ", cname]
     runtimeBody <- concatMapM emitCDecl (decls c)
     deployer <- gets ecDeployer
     case deployer of
-      Nothing -> pure(Core.Object cname runtimeBody [])
-      Just code -> let runtimeObject = Core.Object cname runtimeBody []
-        in pure(Core.Object (cname++"Deploy") code [runtimeObject] )
-emitCDecl :: ContractDecl Id -> EM [Core.Stmt]
+      Nothing -> pure(Hull.Object cname runtimeBody [])
+      Just code -> let runtimeObject = Hull.Object cname runtimeBody []
+        in pure(Hull.Object (cname++"Deploy") code [runtimeObject] )
+emitCDecl :: ContractDecl Id -> EM [Hull.Stmt]
 emitCDecl cd@(CFunDecl f) = do
     -- debug ["!! emitCDecl ", show cd]
     emitFunDef f
 emitCDecl (CMutualDecl ds) = case findConstructor ds of
   Nothing -> do
     body <- concatMapM emitCDecl ds
-    pure [Core.SBlock body]
+    pure [Hull.SBlock body]
   Just _ -> do -- this is the deployer block
     depDecls <- concatMapM emitCDecl ds
     modify (\s -> s { ecDeployer = Just depDecls})
@@ -157,27 +157,27 @@ findConstructor = go where
 -----------------------------------------------------------------------
 -- Translating function definitions
 -----------------------------------------------------------------------
-emitFunDef :: HasCallStack => FunDef Id -> EM [Core.Stmt]
+emitFunDef :: HasCallStack => FunDef Id -> EM [Hull.Stmt]
 emitFunDef fd@(FunDef sig body) = withContext (shortName fd) do
   (name, args, typ) <- translateSig sig `inContext` ("function signature " ++ pretty sig)
   debug ["\n# emitFunDef ", name, " :: ", show typ]
-  coreBody <- emitStmts body
-  let coreFun = Core.SFunction name args typ coreBody
+  hullBody <- emitStmts body
+  let hullFun = Hull.SFunction name args typ hullBody
   dropContext
-  return [coreFun]
+  return [hullFun]
 
-translateSig :: HasCallStack => Signature Id -> EM (CoreName, [Core.Arg], Core.Type)
+translateSig :: HasCallStack => Signature Id -> EM (HullName, [Hull.Arg], Hull.Type)
 translateSig sig@(Signature vs ctxt n args (Just ret)) = do
   dataTable <- gets ecDT
   -- debug ["translateSig ", show sig]
   let name = show n
-  coreTyp <- translateType ret
-  coreArgs <- mapM translateArg args
-  return (name, coreArgs, coreTyp)
+  hullTyp <- translateType ret
+  hullArgs <- mapM translateArg args
+  return (name, hullArgs, hullTyp)
 translateSig sig = errorsEM ["No return type in ", show sig]
 
-translateArg :: Param Id -> EM Core.Arg
-translateArg p =  Core.TArg (show n) <$> translateType t
+translateArg :: Param Id -> EM Hull.Arg
+translateArg p =  Hull.TArg (show n) <$> translateType t
     where Id n t = getParamId p
 
 getParamId :: Param Id -> Id
@@ -188,16 +188,16 @@ getParamId (Untyped i) = i
 -- Translating types and value constructors
 -----------------------------------------------------------------------
 
-translateType :: HasCallStack => Ty -> EM Core.Type
-translateType (TyCon "word" []) = pure Core.TWord
--- translateType _ Fun.TBool = Core.TBool
-translateType (TyCon "unit" []) = pure Core.TUnit
-translateType (TyCon "()" []) = pure Core.TUnit
+translateType :: HasCallStack => Ty -> EM Hull.Type
+translateType (TyCon "word" []) = pure Hull.TWord
+-- translateType _ Fun.TBool = Hull.TBool
+translateType (TyCon "unit" []) = pure Hull.TUnit
+translateType (TyCon "()" []) = pure Hull.TUnit
 translateType t@(u :-> v) = errorsEM ["Cannot translate function type ", show t]
 translateType (TyCon name tas) = translateTCon name tas
 translateType t = errorsEM ["Cannot translate type ", show t]
 
-translateTCon :: Name -> [Ty] -> EM Core.Type
+translateTCon :: Name -> [Ty] -> EM Hull.Type
 -- NB "pair" is used for all tuples
 translateTCon (Name "pair") tas = translateProductType tas
 translateTCon tycon tas = do
@@ -206,41 +206,41 @@ translateTCon tycon tas = do
         Just (DataTy n tvs cs) -> do
             let subst = zip tvs tas
             tys <- mapM (translateDCon subst) cs
-            Core.TNamed (show tycon) <$> buildSumType tys
+            Hull.TNamed (show tycon) <$> buildSumType tys
         Nothing -> errorsEM ["translateTCon: unknown type ", pretty tycon, "\n", show tycon]
   where
-      buildSumType :: [Core.Type] -> EM Core.Type
-      buildSumType [] = errorsEM ["empty sum ", pretty tycon] -- Core.TUnit
-      buildSumType ts = pure(foldr1 Core.TSum ts)
+      buildSumType :: [Hull.Type] -> EM Hull.Type
+      buildSumType [] = errorsEM ["empty sum ", pretty tycon] -- Hull.TUnit
+      buildSumType ts = pure(foldr1 Hull.TSum ts)
 
 
-translateDCon :: [(Tyvar, Ty)] -> Constr -> EM Core.Type
+translateDCon :: [(Tyvar, Ty)] -> Constr -> EM Hull.Type
 translateDCon subst  (Constr name tas) = translateProductType (insts subst tas)
 
-translateProductType :: [Ty] -> EM Core.Type
-translateProductType [] = pure Core.TUnit
-translateProductType ts = foldr1 Core.TPair <$> mapM translateType ts
+translateProductType :: [Ty] -> EM Hull.Type
+translateProductType [] = pure Hull.TUnit
+translateProductType ts = foldr1 Hull.TPair <$> mapM translateType ts
 
-emitLit :: Literal -> Core.Expr
-emitLit (IntLit i) = Core.EWord i
+emitLit :: Literal -> Hull.Expr
+emitLit (IntLit i) = Hull.EWord i
 emitLit (StrLit s) = error "String literals not supported yet"
 
-emitConApp :: Id -> [Exp Id] -> Translation Core.Expr
+emitConApp :: Id -> [Exp Id] -> Translation Hull.Expr
 emitConApp con@(Id n ty) as = do
   unless (null . fv $ argTypes ty)
     (errors ["emitConApp: free variables in type ", pretty ty, " in ", pretty (Con con as)])
   -- check for free type vars only in args because of phantom types such as Proxy(a) = Proxy
   case targetType ty of
-    (TyCon "unit" []) -> pure (Core.EUnit, [])
-    (TyCon "()" []) -> pure (Core.EUnit, [])
+    (TyCon "unit" []) -> pure (Hull.EUnit, [])
+    (TyCon "()" []) -> pure (Hull.EUnit, [])
     (TyCon "pair" _) -> translateProduct as
     (TyCon tcname tas) -> do
         mti <- gets (Map.lookup tcname . ecDT)
         case mti of
             Just (DataTy _ tvs allCons) -> do
                 (prod, code) <- translateProduct as
-                coreTargetType <- translateTCon tcname tas
-                let result = encodeCon n allCons coreTargetType prod
+                hullTargetType <- translateTCon tcname tas
+                let result = encodeCon n allCons hullTargetType prod
                 pure (result, code)
             Nothing -> errors
                 [ "emitConApp: unknown type ", pretty tcname
@@ -259,22 +259,22 @@ emitConApp con@(Id n ty) as = do
     argTypes (u :-> v) = u : argTypes v
     argTypes t = []
 
-translateProduct :: [Exp Id] -> Translation Core.Expr
-translateProduct [] = pure (Core.EUnit, [])
+translateProduct :: [Exp Id] -> Translation Hull.Expr
+translateProduct [] = pure (Hull.EUnit, [])
 translateProduct es = do
-    (coreExps, codes) <- unzip <$> mapM emitExp es
-    let product = foldr1 (Core.EPair) coreExps
+    (hullExps, codes) <- unzip <$> mapM emitExp es
+    let product = foldr1 (Hull.EPair) hullExps
     pure (product, concat codes)
 
-encodeCon :: Name ->[Constr] -> Core.Type -> Core.Expr -> Core.Expr
+encodeCon :: Name ->[Constr] -> Hull.Type -> Hull.Expr -> Hull.Expr
 encodeCon n [c] _ e | constrName c == n = e
-encodeCon n cs (Core.TNamed l t) e = label l (encodeCon n cs t e)  -- this will change when we compress tags
-  where label l (Core.EInl t e) = Core.EInl (Core.TNamed l t) e
-        label l (Core.EInr t e) = Core.EInr (Core.TNamed l t) e
+encodeCon n cs (Hull.TNamed l t) e = label l (encodeCon n cs t e)  -- this will change when we compress tags
+  where label l (Hull.EInl t e) = Hull.EInl (Hull.TNamed l t) e
+        label l (Hull.EInr t e) = Hull.EInr (Hull.TNamed l t) e
         label l e = e
-encodeCon n (con:cons) t@(Core.TSum t1 t2) e
-    | constrName con == n = Core.EInl t e
-    | otherwise = Core.EInr t (encodeCon n cons t2 e)
+encodeCon n (con:cons) t@(Hull.TSum t1 t2) e
+    | constrName con == n = Hull.EInl t e
+    | otherwise = Hull.EInr t (encodeCon n cons t2 e)
 encodeCon n cons t e = errors
     [ "encodeCon: no match for ", pretty t
     , "\n", show  t
@@ -283,63 +283,63 @@ encodeCon n cons t e = errors
 -- Translating expressions and statements
 -----------------------------------------------------------------------
 
-emitExp :: Exp Id -> Translation Core.Expr
+emitExp :: Exp Id -> Translation Hull.Expr
 emitExp (Lit l) = pure (emitLit l, [])
 emitExp (Var x) = do
     subst <- gets ecSubst
     case Map.lookup (idName x) subst of
         Just e -> pure (e, [])
-        Nothing -> pure (Core.EVar (unwrapId x), [])
+        Nothing -> pure (Hull.EVar (unwrapId x), [])
 -- special handling of revert
-emitExp (Call _ (Id "revert" _) [Lit(StrLit s)]) = pure(Core.EUnit, [Core.SRevert s])
+emitExp (Call _ (Id "revert" _) [Lit(StrLit s)]) = pure(Hull.EUnit, [Hull.SRevert s])
 emitExp (Call Nothing f as) = do
-    (coreArgs, codes) <- unzip <$> mapM emitExp as
-    let call =  Core.ECall (unwrapId f) coreArgs
+    (hullArgs, codes) <- unzip <$> mapM emitExp as
+    let call =  Hull.ECall (unwrapId f) hullArgs
     pure (call, concat codes)
 emitExp e@(Con i as) = emitConApp i as
 emitExp (TyExp e _) = emitExp e
 
 emitExp (Cond e1 e2 e3) = do
   let ty = typeOfTcExp e3
-  coreTy <- translateType ty
+  hullTy <- translateType ty
   (ce1, code1) <- emitExp e1
   (ce2, code2) <- emitExp e2
   (ce3, code3) <- emitExp e3
-  pure (Core.ECond coreTy ce1 ce2 ce3, code1 <> code2 <> code3)
+  pure (Hull.ECond hullTy ce1 ce2 ce3, code1 <> code2 <> code3)
 
 emitExp e = errorsEM ["emitExp not implemented for: ", pretty e, "\n", show e]
 
-emitStmt :: Stmt Id -> EM [Core.Stmt]
+emitStmt :: Stmt Id -> EM [Hull.Stmt]
 emitStmt (StmtExp e) = do
     (e', stmts) <- emitExp e
-    pure (stmts ++ [Core.SExpr e'])
+    pure (stmts ++ [Hull.SExpr e'])
 emitStmt s@(Return e) = do
     (e', stmts) <- emitExp e
-    let result = stmts ++ [Core.SReturn e']
-    --- debug ["<  emitStmt ", show (Core.Core result)]
+    let result = stmts ++ [Hull.SReturn e']
+    --- debug ["<  emitStmt ", show (Hull.Hull result)]
     return result
 
 emitStmt (Var i := e) = do
     (e', stmts) <- emitExp e
-    let assign = [Core.SAssign (Core.EVar (unwrapId i)) e']
+    let assign = [Hull.SAssign (Hull.EVar (unwrapId i)) e']
     return (stmts ++ assign)
 
 emitStmt (Let (Id name ty) mty mexp ) = do
-    let coreName = show name
-    coreTy <- translateType ty
-    let alloc = [Core.SAlloc coreName coreTy]
+    let hullName = show name
+    hullTy <- translateType ty
+    let alloc = [Hull.SAlloc hullName hullTy]
     case mexp of
         Just e -> do
             (v, estmts) <- emitExp e
-            let assign = [Core.SAssign (Core.EVar coreName) v]
+            let assign = [Hull.SAssign (Hull.EVar hullName) v]
             return (estmts ++ alloc ++ assign)
         Nothing -> return alloc
 
 emitStmt s@(Match [scrutinee] alts) = emitMatch scrutinee alts
-emitStmt (Asm ys) = pure [Core.SAssembly ys]
+emitStmt (Asm ys) = pure [Hull.SAssembly ys]
 emitStmt s = errorsEM ["emitStmt not implemented for: ", pretty s, "\n", show s]
 
-emitStmts :: [Stmt Id] -> EM [Core.Stmt]
+emitStmts :: [Stmt Id] -> EM [Hull.Stmt]
 emitStmts = concatMapM emitStmt' where
     emitStmt' stmt =  withContext (pretty stmt) (emitStmt stmt)
 
@@ -364,7 +364,7 @@ General approach to match statement translation:
 
 
 
-emitMatch :: Exp Id -> Equations Id -> EM [Core.Stmt]
+emitMatch :: Exp Id -> Equations Id -> EM [Hull.Stmt]
 emitMatch scrutinee alts = do
     let sty =  typeOfTcExp scrutinee
 
@@ -377,7 +377,7 @@ emitMatch scrutinee alts = do
         "word" -> emitWordMatch scrutinee alts
         _ -> emitDataMatch scon scrutinee alts
 
-emitDataMatch :: Name -> Exp Id -> Equations Id -> StateT EcState IO [Core.Stmt]
+emitDataMatch :: Name -> Exp Id -> Equations Id -> StateT EcState IO [Hull.Stmt]
 emitDataMatch (Name "pair") scrutinee alts = emitProdMatch scrutinee alts
 emitDataMatch (Name "()" ) scrutinee alts = emitProdMatch scrutinee alts
 emitDataMatch scon scrutinee alts = do
@@ -389,55 +389,55 @@ emitDataMatch scon scrutinee alts = do
         [c] -> emitProdMatch scrutinee alts
         _ -> emitSumMatch allCons scrutinee alts
 
-emitWordMatch :: Exp Id -> Equations Id -> EM [Core.Stmt]
+emitWordMatch :: Exp Id -> Equations Id -> EM [Hull.Stmt]
 emitWordMatch scrutinee alts = do
     (sVal, sCode) <- emitExp scrutinee
-    let coreType = Core.TWord
-    coreAlts <- mapM emitWordAlt alts
-    return [Core.SMatch coreType sVal coreAlts]
+    let hullType = Hull.TWord
+    hullAlts <- mapM emitWordAlt alts
+    return [Hull.SMatch hullType sVal hullAlts]
     where
-        emitWordAlt :: Equation Id -> EM Core.Alt
-        emitWordAlt ([PLit(IntLit i)], stmts) = Core.Alt (Core.PIntLit i) "$_" <$> emitStmts stmts
+        emitWordAlt :: Equation Id -> EM Hull.Alt
+        emitWordAlt ([PLit(IntLit i)], stmts) = Hull.Alt (Hull.PIntLit i) "$_" <$> emitStmts stmts
         emitWordAlt ([PVar (Id n _)], stmts) = do
-            coreStmts <- emitStmts stmts
-            let coreName = show n
-            return (Core.Alt (Core.PVar coreName) "$_" coreStmts)
+            hullStmts <- emitStmts stmts
+            let hullName = show n
+            return (Hull.Alt (Hull.PVar hullName) "$_" hullStmts)
         emitWordAlt (pat, _) = errorsEM ["emitWordAlt not implemented for", show pat]
 
-type BranchMap = Map.Map Name [Core.Stmt]
+type BranchMap = Map.Map Name [Hull.Stmt]
 
-emitSumMatch :: [Constr] -> Exp Id -> Equations Id -> EM [Core.Stmt]
+emitSumMatch :: [Constr] -> Exp Id -> Equations Id -> EM [Hull.Stmt]
 emitSumMatch allCons scrutinee alts = do
     (sVal, sCode) <- emitExp scrutinee
     let sType = typeOfTcExp scrutinee
-    sCoreType <- translateType sType
+    sHullType <- translateType sType
     -- TODO: build branch list in order matching allCons
     -- by inserting them into a map and then outputting in order
     -- take default branch from last equation into account
-    let noMatch c = [Core.SRevert ("no match for: "++ show c)]
+    let noMatch c = [Hull.SRevert ("no match for: "++ show c)]
     debug ["emitMatch: allCons ", show allConNames]
     let defaultBranchMap = Map.fromList [(c, noMatch c) | c <- allConNames]
     branches <- emitEqns alts
     let branchMap = foldr insertBranch defaultBranchMap branches
     let branches = [branchMap Map.! c | c <- allConNames]
     debug ["emitMatch: branches ", show branches]
-    let matchCode = buildMatch sVal sCoreType branches
+    let matchCode = buildMatch sVal sHullType branches
     return(sCode ++ matchCode)
     where
       allConNames = map constrName allCons
-      insertBranch :: (Pat Id, [Core.Stmt]) -> BranchMap -> BranchMap
+      insertBranch :: (Pat Id, [Hull.Stmt]) -> BranchMap -> BranchMap
       insertBranch (PVar (Id n _), stmts) m = Map.fromList [(c, stmts) | c <- allConNames]
       insertBranch (PCon (Id n _) _, stmts) m = Map.insert n stmts m
-      emitEqn :: Core.Expr -> Equation Id -> EM (Pat Id, [Core.Stmt])
+      emitEqn :: Hull.Expr -> Equation Id -> EM (Pat Id, [Hull.Stmt])
       emitEqn expr ([pat], stmts) = withLocalState do
         let patargs = getPatArgs pat
         let pvars = translatePatArgs expr patargs
         extendVSubst pvars
-        let comment = Core.SComment (pretty pat)
-        coreStmts <- emitStmts stmts
-        let coreStmts' = comment : coreStmts
-        debug ["emitEqn: ", show pat, " / ", show expr, " -> ", show coreStmts']
-        return (pat, coreStmts')
+        let comment = Hull.SComment (pretty pat)
+        hullStmts <- emitStmts stmts
+        let hullStmts' = comment : hullStmts
+        debug ["emitEqn: ", show pat, " / ", show expr, " -> ", show hullStmts']
+        return (pat, hullStmts')
       emitEqn _ _ = error ("emitEqn: multiple patterns should have been desugared by now")
       getPatArgs(PCon _ patargs) = patargs
       getPatArgs _ = []
@@ -445,10 +445,10 @@ emitSumMatch allCons scrutinee alts = do
       -- TODO: emitEqns should process the eqns in constructor declaration order
       -- e.g. if we have data B = F | T and then match b | T => ... | F => ...
       -- we should still process the F case first to avoid mixing up inl/inr
-      emitEqns :: [Equation Id] -> EM [(Pat Id, [Core.Stmt])]
-      emitEqns [eqn] = (:[]) <$> emitEqn (Core.EVar (altName True)) eqn
+      emitEqns :: [Equation Id] -> EM [(Pat Id, [Hull.Stmt])]
+      emitEqns [eqn] = (:[]) <$> emitEqn (Hull.EVar (altName True)) eqn
       emitEqns (eqn:eqns) = do
-        b <- emitEqn (Core.EVar (altName False)) eqn
+        b <- emitEqn (Hull.EVar (altName False)) eqn
         bs <- emitEqns eqns
         return (b:bs)
 
@@ -466,24 +466,24 @@ emitSumMatch allCons scrutinee alts = do
           they can be reused in subsequent branches (no need for unique names
           as long as they do not clash with user variables)
       -}
-      buildMatch :: Core.Expr -> Core.Type ->[[Core.Stmt]] -> [Core.Stmt]
+      buildMatch :: Hull.Expr -> Hull.Type ->[[Hull.Stmt]] -> [Hull.Stmt]
       buildMatch _sval sty [] = error "buildMatch: empty branch list"
       buildMatch sval0 sty branches = go sval0 sty branches where
         go _sval sty  [b] = b -- last branch needs no match
-        go sval sty (b:bs) =  [Core.SMatch sty sval [ alt Core.CInl left b
-                          , alt Core.CInr right (go (Core.EVar right) (rightBranch sty) bs)]]
-        rightBranch (Core.TSum _ r) = r
-        rightBranch (Core.TNamed _ t) = rightBranch t
+        go sval sty (b:bs) =  [Hull.SMatch sty sval [ alt Hull.CInl left b
+                          , alt Hull.CInr right (go (Hull.EVar right) (rightBranch sty) bs)]]
+        rightBranch (Hull.TSum _ r) = r
+        rightBranch (Hull.TNamed _ t) = rightBranch t
         rightBranch t = error ("rightBranch: not a sum type: " ++ show t)
         left = altName False
         right = altName True
-        alt con n stmts = Core.ConAlt con n stmts
+        alt con n stmts = Hull.ConAlt con n stmts
 
       -- Would be clearer with $left/$right, but simpler with $alt for now
       altName False = "$alt"
       altName True = "$alt"
 
-emitProdMatch :: Exp Id -> Equations Id -> EM [Core.Stmt]
+emitProdMatch :: Exp Id -> Equations Id -> EM [Hull.Stmt]
 emitProdMatch scrutinee (eqn:_) = do
     (sexpr, scode) <- emitExp scrutinee
     mcode <- translateSingleEquation sexpr eqn
@@ -493,7 +493,7 @@ emitProdMatch scrutinee (eqn:_) = do
 -- | translateSingleEquation handles the special case for product types
 -- there is only one match branch, just transform to projections
 -- takes a translated scrutinee and a single equation
-translateSingleEquation :: Core.Expr -> Equation Id -> EM [Core.Stmt]
+translateSingleEquation :: Hull.Expr -> Equation Id -> EM [Hull.Stmt]
 translateSingleEquation expr ([PCon _con patargs], stmts) = withLocalState do
     let pvars = translatePatArgs expr patargs
     extendVSubst pvars
@@ -505,11 +505,11 @@ translateSingleEquation _ eqn  = error $
 -- p@(Just x) ~> [x -> p]
 -- p@(Pair x y) ~> [x -> fst p, y -> snd p]
 -- p@(Triple x y z) ~> [x -> fst p, y -> fst (snd p), z -> snd (snd p)]
-translatePatArgs :: Core.Expr -> [Pat Id] -> VSubst
+translatePatArgs :: Hull.Expr -> [Pat Id] -> VSubst
 translatePatArgs e = Map.fromList . go e where
     go _ [] = []
     go s [PVar i] = [(idName i, s)]
-    go s (PVar i:as) = let (s1, s2) = (Core.EFst s, Core.ESnd s) in
+    go s (PVar i:as) = let (s1, s2) = (Hull.EFst s, Hull.ESnd s) in
         (idName i, s1) : go s2 as
     go s (PCon _ []:as) = go s as
     go _ (pat:_) = error ("Unimplemented: translatePatArgs _ " ++ pretty pat)
@@ -534,5 +534,5 @@ dumpDT = do
 concatMapM :: (Monad f) => (a -> f [b]) -> [a] -> f [b]
 concatMapM f xs = concat <$> mapM f xs
 
-unwrapId :: Id -> CoreName
+unwrapId :: Id -> HullName
 unwrapId = show . idName

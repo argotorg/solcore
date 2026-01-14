@@ -1,0 +1,69 @@
+import assign;
+
+function caller() -> address {
+  let res: word;
+  assembly {
+     res := caller()
+  }
+  return address(res);
+}
+
+function myrevert(msg: word) -> () {
+  assembly { mstore(0, msg) revert(0, 32) }
+}
+
+function require(cond: bool, msg: word ) {
+  if( !cond ) { myrevert(msg); }
+}
+
+contract MiniERC20 {
+  reserved : word; // forge idiosyncrasies
+  owner : address;
+  decimals : uint;
+  totalSupply : uint;
+  balances : mapping(address,uint);
+  allowance : mapping(address, mapping(address, uint));
+
+  function mint(amount:uint) -> () {
+    balances[owner] = Num.add(balances[owner], amount);
+    totalSupply = Num.add(totalSupply, amount);
+  }
+
+  function transferFrom(src:address, dst:address, amt:uint) -> bool {
+    let msg_sender = caller();
+    require( balances[src] >= amt /* "token/insufficient-balance" */
+           , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
+	         );
+
+    if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint)) {
+       require( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
+	            , 0x746f6b656e2f696e73756666696369656e742d616c6c6f77616e6365
+	            );
+       allowance[src][msg_sender] -= amt;
+    }
+    balances[src] = balances[src] - amt;
+    balances[dst] = balances[dst] + amt;
+    return true;
+  }
+
+  function approve(usr: address, amt: uint) -> bool {
+    let msg_sender = caller();
+    allowance[msg_sender][usr] = amt;
+    return true;
+  }
+
+  function init() -> () {
+    owner = address(0x123456789abcdef);
+    decimals = Num.fromWord(18);
+  }
+
+  function main() -> uint {
+    let msg_sender = caller();
+    init();
+    mint(uint(1000));
+    allowance[owner][msg_sender] = uint(1000);
+    transferFrom(owner, msg_sender, uint(42));
+
+    return allowance[owner][msg_sender];
+  }
+}

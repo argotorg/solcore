@@ -25,7 +25,7 @@ test_dir=$(dirname $file)
 build_dir="$root_dir/build"
 base=$(basename "$file" .json)
 src="$test_dir/$base.solc"
-hull="$build_dir/output1.core"
+hull="$build_dir/output1.hull"
 hexfile="$build_dir/$base.hex"
 yulfile="$build_dir/$base.yul"
 
@@ -53,8 +53,8 @@ if ! $SOLCORE_CMD -f "$src"; then
 fi
 
 mkdir -p build
-if ls ./output*.core 1> /dev/null 2>&1; then
-    mv ./output*.core build/
+if ls ./output*.hull 1> /dev/null 2>&1; then
+    mv ./output*.hull build/
 fi
 
 echo "Generating Yul..."
