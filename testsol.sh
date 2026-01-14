@@ -52,7 +52,24 @@ function hevmsol() {
 
 }
 
-function deploysol() {
+function hevmsol() {
+    echo $*
+    file=$1
+    echo $file
+    local base=$(basename $1 .solc)
+    local hull=output1.hull
+    local hexfile=$base.hex
+    local yulfile=$base.yul
+    echo Hex: $hexfile
+    shift
+    cabal exec sol-core -- -f $file $* && \
+	cabal exec yule -- $hull --nodeploy -O -o $yulfile && \
+        solc --strict-assembly --bin --optimize $yulfile | tail -1 > $hexfile && \
+        hevm exec --code $(cat $hexfile) | awk -f parse_hevm_output.awk
+
+}
+
+function solchex() {
     local file=$1
     shift
     echo "Solc: $file"
@@ -65,9 +82,9 @@ function deploysol() {
     cabal exec sol-core -- -f $file $* && \
     cabal exec yule -- $hull -o $yulfile
     hex=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
-    rawtx=$(cast mktx --private-key=$DEPLOYER_KEY --create $hex)
-    addr=$(cast publish $rawtx | jq .contractAddress | tr -d '"')
-    echo $addr
+    local hexfile=$base.hex
+    echo "Writing hex:  $hexfile"
+    echo $hex > $hexfile
 }
 
 function deployhull() {
@@ -91,6 +108,22 @@ function deployyul() {
     echo "Args: $*"
     echo "ABI-enc: $data"
     prog=$(solc --strict-assembly --bin --optimize --optimize-yul $yulfile | tail -1)
+    hex="$prog$data"
+    echo Hex: $hex
+    rawtx=$(cast mktx --private-key=$DEPLOYER_KEY --create $hex $*)
+    txoutput=$(cast publish $rawtx)
+    echo $txoutput | jq .
+    export contractAddress=$(echo $txoutput | jq .contractAddress | tr -d '"')
+    echo $contractAddress
+}
+
+function deployhex() {
+    local hexfile=$1
+    shift
+    local data=$(cast ae $* | cut -c 3-)
+    echo "Args: $*"
+    echo "ABI-enc: $data"
+    prog=$(cat $hexfile)
     hex="$prog$data"
     echo Hex: $hex
     rawtx=$(cast mktx --private-key=$DEPLOYER_KEY --create $hex $*)
