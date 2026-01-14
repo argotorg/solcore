@@ -72,7 +72,7 @@ class MGU a where
 instance (HasType a, MGU a, Pretty a) => MGU [a] where
   mgu ts1 ts2
     | length ts1 == length ts2 = solve (zip ts1 ts2) mempty
-    | otherwise = typesMguListErr (map pretty ts1) (map pretty ts2)
+    | otherwise = typesMguListErr ts1 ts2
 
 instance MGU Ty where
   mgu (TyCon n ts) (TyCon n' ts')
