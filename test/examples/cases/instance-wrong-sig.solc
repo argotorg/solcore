@@ -1,5 +1,6 @@
 data uint256 = uint256(word);
-forall self . class self:ABIAttribs {`
+data Proxy(a) = Proxy;
+forall self . class self:ABIAttribs {
     function headSize(ty:Proxy(self)) -> word;
     function isStatic(ty:Proxy(self)) -> bool;
 }

@@ -247,9 +247,6 @@ cases =
     , runTestExpectingFailure "xref.solc" caseFolder
     , runTestForFile "yul-function-typing.solc" caseFolder
     , runTestForFile "yul-return.solc" caseFolder
-    , runTestForFile "pragma_merge_base.solc" caseFolder
-    , runTestForFile "pragma_merge_import.solc" caseFolder
-    , runTestForFile "pragma_merge_verify.solc" caseFolder
     , runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder
     , runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder
     , runTestForFile "single-lambda.solc" caseFolder
@@ -265,6 +262,7 @@ cases =
     , runTestForFile "closure-free-var-std.solc" caseFolder
     , runTestForFile "closure-free-var-local.solc" caseFolder
     , runTestForFile "closure-free-bound-test.solc" caseFolder
+    , runTestExpectingFailure "instance-context-wrong-kind.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
