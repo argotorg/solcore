@@ -263,6 +263,8 @@ cases =
     , runTestForFile "closure-free-var-local.solc" caseFolder
     , runTestForFile "closure-free-bound-test.solc" caseFolder
     , runTestExpectingFailure "instance-context-wrong-kind.solc" caseFolder
+    , runTestForFile "instance-closure-error.solc" caseFolder
+    , runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
