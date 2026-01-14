@@ -189,7 +189,7 @@ typesMguListErr ts ts' =
   throwError (errMsg ts ts')
  where
   errMsg ts ts' =
-    unwords ["Type lists do not unify: (typesMatchListErr)\n"
+    unwords ["Type lists do not unify: (typesMguListErr)\n"
             , prettys ts, "and", prettys ts'
             ]
 
