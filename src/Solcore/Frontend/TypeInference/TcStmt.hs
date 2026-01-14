@@ -37,7 +37,7 @@ tcStmt e@(lhs := rhs)
   = do
       (lhs1, ps1, t1) <- tcExp lhs
       (rhs1, ps2, t2) <- tcExp rhs
-      s <- match t2 t1 `wrapError` e
+      s <- unify t1 t2 `wrapError` e
       _ <- extSubst s
       pure (lhs1 := rhs1, apply s $ ps1 ++ ps2, unit)
 tcStmt e@(Let n mt me)
@@ -49,7 +49,7 @@ tcStmt e@(Let n mt me)
                         let bvs = bv t
                         sks <- mapM (const freshTyVar) bvs
                         let t' = insts (zip bvs sks) t
-                        s <- match t1 t' `wrapError` e
+                        s <- tcmMatch t1 t' `wrapError` e
                         _ <- extSubst s
                         withCurrentSubst (Just e', ps1, t')
                       (Just t, Nothing) -> do
@@ -150,7 +150,9 @@ tcPat t p@(PCon n ps)
       -- unifying the infered pattern type with constructor type
       s <- unify tc (funtype ts t) `wrapError` p
       let t' = apply s t
-      tn <- typeName t'
+      -- expand synonyms before extracting type name
+      t'' <- maybeExpandSynonym t'
+      tn <- typeName t''
       -- checking if it is a defined constructor
       checkConstr tn n
       -- building typing assumptions for introduced names
@@ -206,7 +208,9 @@ tcExp e@(Con n es)
       -- unifying inferred parameter types
       t' <- freshTyVar
       s <- unify (funtype ts t') t `wrapError` e
-      tn <- typeName (apply s t')
+      -- expand synonyms before extracting type name
+      t'' <- maybeExpandSynonym (apply s t')
+      tn <- typeName t''
       -- checking if the constructor belongs to type tn
       checkConstr tn n
       let ps' = concat (ps : pss)
@@ -219,8 +223,9 @@ tcExp (FieldAccess (Just e) n)
   = do
       -- inferring expression type
       (e', ps,t) <- tcExp e
-      -- getting type name
-      tn <- typeName t
+      -- expand synonyms before extracting type name
+      tExp <- maybeExpandSynonym t
+      tn <- typeName tExp
       -- getting field type
       s <- askField tn n
       (ps' :=> t') <- freshInst s
@@ -247,7 +252,7 @@ tcExp e1@(TyExp e ty)
   = do
       kindCheck ty `wrapError` e1
       (e', ps, ty') <- tcExp e
-      s <- match ty' ty
+      s <- tcmMatch ty' ty
       extSubst s
       withCurrentSubst (TyExp e' ty, ps, ty)
 tcExp e@(Cond e1 e2 e3)
@@ -289,10 +294,10 @@ closureConversion vs args bdy ps ty
       sch <- generalize (ps', ty)
       let
           fn = Name $ "lambda_impl" ++ show i
-          argsn = map idName (vars args)
+          argsn = map idName $ bound args ++ bound bdy
           defs = fs ++ argsn ++ Map.keys primCtx
-          free = filter (\ x -> notElem (idName x) defs) (vars bdy)
-      if null free then do
+          freevs = [x | x <- free bdy, idName x `notElem` defs]
+      if null freevs then do
         -- no closure needed for monomorphic
         -- lambdas!
         --
@@ -316,9 +321,9 @@ closureConversion vs args bdy ps ty
         writeInstance instd'
         pure (Con (Id dn t) [], t)
       else do
-        (cdt, e', t') <- createClosureType free vs ty
+        (cdt, e', t') <- createClosureType freevs vs ty
         addUniqueType fn cdt
-        (fun, sch) <- createClosureFun fn free cdt args bdy ps' ty
+        (fun, sch) <- createClosureFun fn freevs cdt args bdy ps' ty
         info [">> Create lambda lifted function(closure):\n", pretty fun]
         writeFunDef fun
         writeDataTy cdt
@@ -466,7 +471,7 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       ty <- withCurrentSubst nt
       sch <- generalize (rs, ty)
       -- checking ambiguity
-      info [">>> Infered type for ", pretty n, " :: ", pretty sch, show ty]
+      info [">>> Infered type for ", pretty n, " :: ", pretty sch]
       when (ambiguous sch) $ do
         ambiguousTypeError sch sig
       -- elaborating the type signature
@@ -733,7 +738,7 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
 checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
 checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
   = do
-      _ <- match t t' `catchError` (\ _ -> invalidMemberType qn t t')
+      _ <- tcmMatch t t' `catchError` (\ _ -> invalidMemberType qn t t')
       pure ()
 
 
@@ -1125,45 +1130,60 @@ mword = monotype word
 -- determining free variables
 
 class Vars a where
-  vars :: a -> [Id]
+  free :: a -> [Id]
+  bound :: a -> [Id]
 
 instance Vars a => Vars [a] where
-  vars = foldr (union . vars) []
+  free es = foldr (union . free) [] es \\ bound es
+  bound = foldr (union . bound) []
 
 instance Vars Id where
-  vars n = [n]
+  free i@(Id n _)
+    | isQual n = []
+    | otherwise = [i]
+  bound _ = []
 
-instance Vars a => Vars (Pat a) where
-  vars (PVar v) = vars v
-  vars (PCon _ ps) = vars ps
-  vars _ = []
+instance Vars (Pat Id) where
+  free _ = []
 
-instance Vars a => Vars (Param a) where
-  vars (Typed n _) = vars n
-  vars (Untyped n) = vars n
+  bound (PVar v) = [v]
+  bound (PCon _ ps) = bound ps
+  bound _ = []
 
-instance Vars a => Vars (Stmt a) where
-  vars (e1 := e2) = vars [e1,e2]
-  vars (Let _ _ (Just e)) = vars e
-  vars (Let _ _ _) = []
-  vars (StmtExp e) = vars e
-  vars (Return e) = vars e
-  vars (Match e eqns) = vars e `union` vars eqns
-  vars (If e blk1 blk2) = vars e `union` vars blk1 `union` vars blk2
-  vars (Asm _) = []
+instance Vars (Param Id) where
+  free _ = []
 
-instance Vars a => Vars (Equation a) where
-  vars (_, ss) = vars ss
+  bound (Typed n _) = [n]
+  bound (Untyped n) = [n]
 
-instance Vars a => Vars (Exp a) where
-  vars (Var n) = vars n
-  vars (Con _ es) = vars es
-  vars (FieldAccess Nothing _) = []
-  vars (FieldAccess (Just e) _) = vars e
-  vars (Call (Just e) n es) = vars n `union` vars (e : es)
-  vars (Call Nothing n es) = vars n `union` vars es
-  vars (Lam ps bd _) = vars bd \\ vars ps
-  vars _ = []
+instance Vars (Stmt Id) where
+  free (e1 := e2) = free [e1,e2]
+  free (Let _ _ (Just e)) = free e
+  free (Let _ _ _) = []
+  free (StmtExp e) = free e
+  free (Return e) = free e
+  free (Match e eqns) = free e `union` free eqns
+  free (If e blk1 blk2) = free e `union` free blk1 `union` free blk2
+  free (Asm _) = []
+
+  bound (Let n _ _) = [n]
+  bound _ = []
+
+instance Vars (Equation Id) where
+  free (ps, ss) = free ss \\ bound ps
+  bound _ = []
+
+instance Vars (Exp Id) where
+  free (Var n) = free n
+  free (Con _ es) = free es
+  free (FieldAccess Nothing _) = []
+  free (FieldAccess (Just e) _) = free e
+  free (Call (Just e) n es) = free e `union` free n `union` free es
+  free (Call Nothing n es) = free n `union` free es
+  free (Lam ps bd _) = free bd \\ bound ps
+  free _ = []
+
+  bound _ = []
 
 -- rename type variables
 
