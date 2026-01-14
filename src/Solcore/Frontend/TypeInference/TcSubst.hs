@@ -3,6 +3,7 @@ module Solcore.Frontend.TypeInference.TcSubst where
 
 import Data.List
 
+import Common.Pretty
 import Solcore.Frontend.Syntax
 
 -- basic substitution infrastructure
@@ -32,7 +33,7 @@ instance Monoid Subst where
 (+->) :: MetaTv -> Ty -> Subst
 u +-> t = Subst [(u, t)]
 
-class HasType a where
+class Show a => HasType a where
   apply :: Subst -> a -> a
   fv :: a -> [Tyvar]    -- free variables
   mv :: a -> [MetaTv]   -- meta variables
@@ -229,7 +230,6 @@ instance HasType a => HasType (Exp a) where
     = bv e `union` bv ty
   bv _ = []
 
-
 instance HasType a => HasType (Stmt a) where
   apply s (e1 := e2)
     = (apply s e1) := (apply s e2)
@@ -243,8 +243,14 @@ instance HasType a => HasType (Stmt a) where
     = Return (apply s e)
   apply s (Match es eqns)
     = Match (apply s es) (apply s eqns)
+  apply s (If e blk1 blk2)
+    = If (apply s e)
+         (apply s blk1)
+         (apply s blk2)
+  apply _ (Asm yblk)
+    = Asm yblk
   apply _ s
-    = s
+    = error $ "Cannot apply substitution to:" ++ show s
 
   fv (e1 := e2)
     = fv e1 `union` fv e2
