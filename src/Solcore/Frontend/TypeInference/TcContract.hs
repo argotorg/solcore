@@ -29,14 +29,18 @@ import Solcore.Primitives.Primitives
 typeInfer :: Option ->
              CompUnit Name ->
              IO (Either String (CompUnit Id, TcEnv))
-typeInfer options (CompUnit imps decls)
+typeInfer options c@(CompUnit imps decls)
   = do
-      r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options)
+      r <- runTcM (tcCompUnit c) (initTcEnv noDesugarOpt)
       case r of
         Left err -> pure $ Left err
-        Right ((CompUnit imps ds), env) -> do
-          let ds1 = (ds ++ generated env)
-          pure (Right (CompUnit imps ds1, env))
+        Right _ -> do
+          r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options)
+          case r of
+            Left err1 -> pure $ Left err1
+            Right (CompUnit _ ds, env) -> do
+              let ds1 = (ds ++ generated env)
+              pure (Right (CompUnit imps ds1, env))
 
 -- type inference for a compilation unit
 

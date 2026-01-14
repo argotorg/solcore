@@ -744,10 +744,14 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
 
 checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
 checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
-  = do
-      _ <- tcmMatch t t' `catchError` (\ _ -> invalidMemberType qn t t')
-      pure ()
+  | hasClosureType t = pure ()
+  | otherwise
+    = do
+        _ <- tcmMatch t t' `catchError` (\ _ -> invalidMemberType qn t t')
+        pure ()
 
+hasClosureType :: Ty -> Bool
+hasClosureType = any isClosureName . tyconNames
 
 invalidMemberType :: Name -> Ty -> Ty -> TcM a
 invalidMemberType n cls ins
