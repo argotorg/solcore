@@ -1,4 +1,4 @@
-
+forall a.
 class  a : Neg {
    function neg(x:a) -> a;
 }
@@ -7,7 +7,7 @@ data B = F | T;
 
 
 instance B : Neg {
-  function neg (x : B) {
+  function neg (x : B) -> B {
     match x {
     | F => return T;
     | T => return F;
@@ -18,12 +18,12 @@ instance B : Neg {
 
 contract NegBool {
 
-  function fromB(b) {
+  function fromB(b:B) -> word {
     match b  {
     | F => return 0;
     | T => return 1;
     }
   }
 
-  function main() { return  fromB(Neg.neg(F)); }
+  function main() -> word { return  fromB(Neg.neg(F)); }
 }
