@@ -472,12 +472,26 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       sch <- generalize (rs, ty)
       -- checking ambiguity
       info [">>> Infered type for ", pretty n, " :: ", pretty sch]
-      when (ambiguous sch) $ do
+      ambSch <- ambiguityCheck sch
+      when ambSch $ do
         ambiguousTypeError sch sig
       -- elaborating the type signature
       sig' <- elabSignature [] sig sch
       withCurrentSubst (FunDef sig' bd1, sch)
 
+ambiguityCheck :: Scheme -> TcM Bool
+ambiguityCheck sch@(Forall vs (ps :=> ty))
+  = do
+      noDesugarCalls <- getNoDesugarCalls
+      -- here we do not consider invokable constraints
+      -- if the option of no desugar indirect calls is enabled,
+      -- since they will not be satisfied, since no instance will
+      -- be generated.
+      let ps' = if noDesugarCalls then [p | p <- ps, not (isInvoke p)]
+                  else ps
+          vs' = bv (ps' :=> ty)
+          sch' = Forall vs' (ps' :=> ty)
+      pure (ambiguous sch')
 
 argumentAnnotation :: Param Name -> TcM Ty
 argumentAnnotation (Untyped _)
@@ -542,7 +556,8 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       ann <- annotatedScheme vs' qs sig
       info [" - annotated type:", pretty ann]
       -- checking ambiguity
-      when (ambiguous inf) $
+      ambSch <- ambiguityCheck inf
+      when ambSch $ do
         ambiguousTypeError inf sig
       -- checking subsumption
       unless changeTy $ do
