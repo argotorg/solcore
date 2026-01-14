@@ -69,8 +69,10 @@ instance (HasType a, Match a) => Match (Qual a) where
 class MGU a where
   mgu :: MonadError String m => a -> a -> m Subst
 
-instance (HasType a, MGU a) => MGU [a] where
-  mgu ts1 ts2 = solve (zip ts1 ts2) mempty
+instance (HasType a, MGU a, Pretty a) => MGU [a] where
+  mgu ts1 ts2
+    | length ts1 == length ts2 = solve (zip ts1 ts2) mempty
+    | otherwise = typesMguListErr ts1 ts2
 
 instance MGU Ty where
   mgu (TyCon n ts) (TyCon n' ts')
@@ -179,6 +181,15 @@ typesMatchListErr ts ts' =
  where
   errMsg ts ts' =
     unwords ["Type lists do not match: (typesMatchListErr)\n"
+            , prettys ts, "and", prettys ts'
+            ]
+
+typesMguListErr :: (MonadError String m, Pretty t) => [t] -> [t] -> m a
+typesMguListErr ts ts' =
+  throwError (errMsg ts ts')
+ where
+  errMsg ts ts' =
+    unwords ["Type lists do not unify: (typesMguListErr)\n"
             , prettys ts, "and", prettys ts'
             ]
 

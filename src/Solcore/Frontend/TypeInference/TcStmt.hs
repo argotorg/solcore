@@ -490,14 +490,13 @@ checkAllTypeVarsBound context used declared =
     let unbound = used \\ declared
     in unless (null unbound) $ unboundTypeVars context unbound
 
-annotatedScheme :: [Tyvar] -> Signature Name -> TcM Scheme
-annotatedScheme vs' sig@(Signature vs ps n args rt)
+annotatedScheme :: [Tyvar] -> [Pred] -> Signature Name -> TcM Scheme
+annotatedScheme vs' qs sig@(Signature vs ps n args rt)
   = do
       ts <- mapM argumentAnnotation args
       t <- maybe freshTyVar pure rt
-      -- check if all variables are bound in signature.
-      checkAllTypeVarsBound sig (vs ++ vs') (bv sig)
-      pure (Forall vs (ps :=> (funtype ts t)))
+      let vs1 = vs ++ vs' ++ fv qs
+      pure (Forall vs1 ((qs ++ ps) :=> (funtype ts t)))
 
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
 tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
@@ -529,7 +528,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       info ["Trying to unify: ", pretty rt2, " with ", pretty t1']
       unify rt2 t1' `wrapError` d
       info ["Trying to unify: ", pretty nt, " with ", pretty (funtype ts' rt2)]
-      unify nt (funtype ts' rt2) `wrapError` d
+      _ <- unify nt (funtype ts' rt2) `wrapError` d
       -- building the function type scheme
       free <- getEnvMetaVars
       rs <- reduce (qs1 `union` ps1) ps1' `wrapError` d
@@ -537,7 +536,8 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       ty <- withCurrentSubst nt
       inf <- generalize (rs, ty)
       info [" - generalized inferred type: ", pretty inf]
-      ann <- annotatedScheme vs' sig
+      ann <- annotatedScheme vs' qs sig
+      info [" - annotated type:", pretty ann]
       -- checking ambiguity
       when (ambiguous inf) $
         ambiguousTypeError inf sig
@@ -661,17 +661,13 @@ extSignature sig@(Signature _ preds n ps t)
 -- typing instance
 
 tcInstance :: Instance Name -> TcM (Instance Id)
-tcInstance idecl@(Instance d vs ctx n ts t funs)
+tcInstance idecl@(Instance _ _ ctx _ ts t _)
   = do
       -- checking instance type parameters
       mapM_ kindCheck (t : ts) `wrapError` idecl
       -- checking constraints
       mapM_ checkConstraint ctx `wrapError` idecl
-      vs' <- mapM (const freshVar) vs
-      let env = zip vs (map Meta vs')
-          idecl'@(Instance _ _ ctx' _ ts' t' funs')
-            = everywhere (mkT (insts @Ty env)) idecl
-      tcInstance' (Instance d [] ctx' n ts' t' funs')
+      tcInstance' idecl
 
 checkConstraint :: Pred -> TcM ()
 checkConstraint p@(InCls _ t ts) =
@@ -940,17 +936,35 @@ checkMeasure ps c
 -- subsumption check
 
 subsCheck :: Signature Name -> Scheme -> Scheme -> TcM ()
-subsCheck sig sch1 sch2
+subsCheck sig inf ann
     = do
-        info [">> Checking subsumption for:\n", pretty sch1, "\nand\n", pretty sch2]
-        (skol_tvs, (ps2 :=> t2)) <- skolemise sch2
-        (ps1 :=> t1) <- freshInst sch1
-        s <- mgu t1 t2 `catchError` (\ _ -> typeNotPolymorphicEnough sig sch1 sch2)
-        extSubst s
-        let esc_tvs = fv sch1
+        info [">> Checking subsumption for:\n", pretty inf, "\nand\n", pretty ann]
+        (skol_tvs, (ps2 :=> t2)) <- skolemise ann
+        info [">>> Skolemization result:", pretty (ps2 :=> t2), " - Skolem constants:", unwords (map pretty skol_tvs)]
+        (ps1 :=> t1) <- freshInst inf
+        info [">>> Instantiation result:", pretty (ps1 :=> t1)]
+        s <- mgu t1 t2 `catchError` (\ _ -> typeNotPolymorphicEnough sig inf ann)
+        _ <- extSubst s
+        let esc_tvs = fv inf
             bad_tvs = filter (`elem` esc_tvs) skol_tvs
         unless (null bad_tvs) $
-          typeNotPolymorphicEnough sig sch1 sch2
+          typeNotPolymorphicEnough sig inf ann
+        -- checking constraints
+        _ <- enforceDependencies (apply s (ps1 ++ ps2))
+        s1 <- getSubst
+        unsolved <- hnfEntails (apply s1 ps2) (apply s1 ps1)
+        unless (null unsolved) (unsolvedError unsolved)
+        pure ()
+
+hnfEntails :: [Pred] -> [Pred] -> TcM [Pred]
+hnfEntails qs ps
+  = do
+      info ["Trying to entail:", pretty ps, " using:", pretty qs]
+      ctable <- getClassEnv
+      itable <- getInstEnv
+      let qs' = nub $ concatMap (bySuperM ctable) qs
+          unsolved p = not (isInvoke p) && not (entail ctable itable qs' p)
+      pure (filter unsolved ps)
 
 -- type generalization
 

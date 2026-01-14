@@ -283,7 +283,7 @@ extractSignatures fds = forM fds extractSig
   where
     extractSig (FunDef sig _)
       | hasAnn sig = do
-        scheme <- annotatedScheme [] sig
+        scheme <- annotatedScheme [] [] sig
         return (sigName sig, scheme)
       | otherwise = do
         tvar <- freshTyVar

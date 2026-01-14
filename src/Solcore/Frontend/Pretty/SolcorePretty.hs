@@ -320,8 +320,7 @@ instance Pretty Scheme where
     where
       ppr' (Forall [] ([] :=> t)) = ppr t
       ppr' (Forall [] (ctx :=> t))
-        = text "forall"       <+>
-          pprContext ctx <+> ppr t
+        = pprContext ctx <+> ppr t
       ppr' (Forall vars (ctx :=> t))
         = text "forall"       <+>
           hsep (map ppr vars)   <+>

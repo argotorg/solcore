@@ -115,7 +115,7 @@ cases =
     -- The following test makes the test runner throw an exception
     --, runTestForFile "comp.solc" caseFolder
     , runTestForFile "compose0.solc" caseFolder
-    , runTestForFile "compose_desugared.solc" caseFolder
+    , runTestForFileWith noDesugarOpt "compose_desugared.solc" caseFolder
     , runTestForFile "comparisons.solc" caseFolder
     , runTestForFile "CondExp.solc" caseFolder
     , runTestForFile "constrained-instance.solc" caseFolder
@@ -194,7 +194,7 @@ cases =
     , runTestForFile "pragma_merge_verify.solc" caseFolder
     , runTestForFile "pragma_test_patterson.solc" caseFolder
     , runTestForFile "proxy.solc" caseFolder
-    , runTestForFile "proxy1.solc" caseFolder
+    , runTestExpectingFailure "proxy1.solc" caseFolder
     , runTestForFile "rec.solc" caseFolder
     , runTestExpectingFailure "Ref.solc" caseFolder
     , runTestForFile "RefDeref.solc" caseFolder
@@ -260,6 +260,7 @@ cases =
     , runTestForFile "yul-for.solc" caseFolder
     , runTestForFile "yul-function-typing.solc" caseFolder
     , runTestExpectingFailure "unbound-instance-var.solc" caseFolder
+    , runTestExpectingFailure "subsumption-constraint.solc" caseFolder
     , runTestForFile "closure-free-var.solc" caseFolder
     , runTestForFile "closure-free-var-std.solc" caseFolder
     , runTestForFile "closure-free-var-local.solc" caseFolder
@@ -300,3 +301,12 @@ runTestExpectingFailureWith opts file folder =
     case result of
       Left _ -> return () -- Expected failure
       Right _ -> assertFailure "Expected compilation to fail, but it succeeded"
+
+noDesugarOpt :: Option
+noDesugarOpt
+  = stdOpt { optNoGenDispatch = True
+           , optNoDesugarCalls = True
+           , optNoSpec = True
+           , optNoMatchCompiler = True
+           , optNoIfDesugar = True
+           }
