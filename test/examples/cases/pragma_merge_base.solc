@@ -15,7 +15,7 @@ forall a b . class a:TestClassP3(b) {}
 forall a b . class a:TestClassC1(b) {}
 forall a b c . class a:TestClassC2(b,c) {}
 
-forall a . class a:TestClassB1 {}
+forall a b . class a:TestClassB1(b) {}
 forall a b . class a:TestClassB2(b) {}
 forall a . class a:TestClassB3 {}
 
@@ -41,7 +41,7 @@ instance TestType2:TestClassC2(TestType2, TestType2) {}
 // === Bound Variable Violations ===
 
 // Fails Bound Variable & Patterson: Variable 'c' appears in context but not in instance head
-forall a c . c:TestClassB2(a) => instance TestType1(a):TestClassB1 {}
+forall a c . c:TestClassB2(a) => instance TestType1(a):TestClassB1(a) {}
 
 // Bound Variable OK: Simple instance without context
 instance TestType1(TestType2):TestClassB2(TestType2) {}

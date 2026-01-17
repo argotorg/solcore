@@ -472,12 +472,26 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd)
       sch <- generalize (rs, ty)
       -- checking ambiguity
       info [">>> Infered type for ", pretty n, " :: ", pretty sch]
-      when (ambiguous sch) $ do
+      ambSch <- ambiguityCheck sch
+      when ambSch $ do
         ambiguousTypeError sch sig
       -- elaborating the type signature
       sig' <- elabSignature [] sig sch
       withCurrentSubst (FunDef sig' bd1, sch)
 
+ambiguityCheck :: Scheme -> TcM Bool
+ambiguityCheck sch@(Forall vs (ps :=> ty))
+  = do
+      noDesugarCalls <- getNoDesugarCalls
+      -- here we do not consider invokable constraints
+      -- if the option of no desugar indirect calls is enabled,
+      -- since they will not be satisfied, since no instance will
+      -- be generated.
+      let ps' = if noDesugarCalls then [p | p <- ps, not (isInvoke p)]
+                  else ps
+          vs' = bv (ps' :=> ty)
+          sch' = Forall vs' (ps' :=> ty)
+      pure (ambiguous sch')
 
 argumentAnnotation :: Param Name -> TcM Ty
 argumentAnnotation (Untyped _)
@@ -511,6 +525,8 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
           env = zip vars sks
           d1@(FunDef sig1@(Signature vs1 ps1 _ args1 rt1) bd1) = everywhere (mkT (insts @Ty env)) d
           qs1 = everywhere (mkT (insts @Ty env)) qs
+      -- checking if all constraints have a respective class and are well kinded
+      checkConstraints ps `wrapError` d
       info ["## predicates in signature:", pretty (ps1 ++ qs1)]
       -- getting argument / return types in annotations
       (args', lctx, ts') <- tcArgs args1
@@ -534,12 +550,14 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       rs <- reduce (qs1 `union` ps1) ps1' `wrapError` d
       info [" - Reduced context: ", prettys rs]
       ty <- withCurrentSubst nt
+      checkConstraints rs
       inf <- generalize (rs, ty)
       info [" - generalized inferred type: ", pretty inf]
       ann <- annotatedScheme vs' qs sig
       info [" - annotated type:", pretty ann]
       -- checking ambiguity
-      when (ambiguous inf) $
+      ambSch <- ambiguityCheck inf
+      when ambSch $ do
         ambiguousTypeError inf sig
       -- checking subsumption
       unless changeTy $ do
@@ -670,8 +688,12 @@ tcInstance idecl@(Instance _ _ ctx _ ts t _)
       tcInstance' idecl
 
 checkConstraint :: Pred -> TcM ()
-checkConstraint p@(InCls _ t ts) =
-  mapM_ kindCheck (t : ts) `wrapError` p
+checkConstraint p@(InCls n t ts)
+  = do
+      cinfo <- askClassInfo n
+      unless (length ts == classArity cinfo) $
+         classArityError n cinfo p
+      mapM_ kindCheck (t : ts) `wrapError` p
 checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
 
 tcInstance' :: Instance Name -> TcM (Instance Id)
@@ -737,10 +759,14 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
 
 checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
 checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
-  = do
-      _ <- tcmMatch t t' `catchError` (\ _ -> invalidMemberType qn t t')
-      pure ()
+  | hasClosureType t = pure ()
+  | otherwise
+    = do
+        _ <- tcmMatch t t' `catchError` (\ _ -> invalidMemberType qn t t')
+        pure ()
 
+hasClosureType :: Ty -> Bool
+hasClosureType = any isClosureName . tyconNames
 
 invalidMemberType :: Name -> Ty -> Ty -> TcM a
 invalidMemberType n cls ins
@@ -810,7 +836,10 @@ checkInstance idef@(Instance d vs ctx n ts t funs)
       -- kind check all types in instance head
       mapM_ kindCheck (t : ts) `wrapError` idef
       -- check if the class is defined
-      _ <- askClassInfo n `wrapError` idef
+      cinfo <- askClassInfo n `wrapError` idef
+      -- check if the instance arity is correct
+      unless (length ts == classArity cinfo) $
+        classArityError n cinfo idef
       -- check if all the types and classes in the context are valid
       checkConstraints ctx
       let ipred = InCls n t ts
@@ -1193,6 +1222,14 @@ rename t = let vs = bv t
            in insts s t
 
 -- errors
+
+classArityError :: Pretty a => Name -> ClassInfo -> a -> TcM ()
+classArityError n cinfo v
+  = throwError $ unlines [ "Type class:" ++ pretty n
+                         , "has arity of:" ++ show (classArity cinfo)
+                         , "which does not match:"
+                         , pretty v
+                         ]
 
 unboundTypeVars :: Pretty a => a -> [Tyvar] -> TcM b
 unboundTypeVars sig vs
