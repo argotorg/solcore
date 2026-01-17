@@ -345,6 +345,9 @@ instance uint256:Bounded {
   function maxVal() -> uint256 {
     return uint256(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
   }
+  function minVal () -> uint256 {
+    return uint256(0);
+  }
 }
 
 data byte = byte(word);
@@ -851,7 +854,7 @@ instance uint256:ABIEncode {
 instance bool:ABIEncode {
 
     function encodeInto(x:bool, basePtr:word, offset:word, tail:word) -> word {
-        
+
         let repx : word = frombool(x);
         assembly { mstore(add(basePtr, offset), repx) }
         return tail;

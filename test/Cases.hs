@@ -149,7 +149,7 @@ cases =
     , runTestExpectingFailure "IndexLib.solc" caseFolder
     , runTestForFile "import-std.solc" caseFolder
     , runTestForFile "inc-closure.solc" caseFolder
-    , runTestForFile "IncompleteInstDef.solc" caseFolder
+    , runTestExpectingFailure "IncompleteInstDef.solc" caseFolder
     , runTestExpectingFailure "instance-wrong-sig.solc" caseFolder
     , runTestExpectingFailure "Invokable.solc" caseFolder
     , runTestForFile "ixa.solc" caseFolder

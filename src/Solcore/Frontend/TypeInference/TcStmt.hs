@@ -787,9 +787,13 @@ checkCompleteInstDef :: Name -> [Name] -> TcM ()
 checkCompleteInstDef n ns
   = do
       mths <- methods <$> askClassInfo n
-      let remaining = mths \\ ns
+      let
+        unqual (QualName _ m) = Name m
+        unqual m = m
+        mths' = map unqual mths
+        remaining = mths' \\ ns
       when (not $ null remaining) do
-        warning $ unlines $ ["Incomplete definition for class:"
+        throwError $ unlines $ ["Incomplete definition for class:"
                             , pretty n
                             , "missing definitions for:"
                             ] ++ map pretty remaining
