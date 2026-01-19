@@ -78,6 +78,7 @@ library
       Solcore.Frontend.Syntax.Ty
       Solcore.Frontend.Syntax.Contract
       Solcore.Frontend.Syntax.Name
+      Solcore.Frontend.Syntax.NameResolution
       Solcore.Frontend.Syntax.Stmt
       Solcore.Frontend.Syntax.SyntaxTree
       Solcore.Frontend.TypeInference.Erase

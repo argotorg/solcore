@@ -1,0 +1,5 @@
+import std;
+
+contract PoC {
+    x : word;
+}
