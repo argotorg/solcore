@@ -1206,8 +1206,8 @@ rename t = let vs = bv t
 
 classArityError :: Pretty a => Name -> ClassInfo -> a -> TcM ()
 classArityError n cinfo v
-  = throwError $ unlines [ "Type class:" ++ pretty n
-                         , "has arity of:" ++ show (classArity cinfo)
+  = throwError $ unlines [ "Type class " ++ pretty n
+                         , "requires " ++ show (classArity cinfo) ++ " weak parameter(s)"
                          , "which does not match:"
                          , pretty v
                          ]
