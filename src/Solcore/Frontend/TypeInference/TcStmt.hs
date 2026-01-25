@@ -759,6 +759,10 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
 
 checkMemberType :: (Name, Qual Ty, Qual Ty) -> TcM ()
 checkMemberType (qn, qt@(ps :=> t), qt'@(ps' :=> t'))
+  -- whenever we have a closure, the infered type
+  -- will change. This fact causes an error when
+  -- the function has a signature, since the infered
+  -- type will not match the annotated type.
   | hasClosureType t = pure ()
   | otherwise
     = do
