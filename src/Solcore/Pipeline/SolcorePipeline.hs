@@ -3,6 +3,7 @@ module Solcore.Pipeline.SolcorePipeline where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
+import Data.Generics
 import Data.List.Split(splitOn)
 import qualified Data.Time as Time
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
@@ -23,6 +24,7 @@ import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.ElabTree
 import Solcore.Frontend.Syntax.Contract hiding(contracts)
 import Solcore.Frontend.Syntax hiding(contracts)
+import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
@@ -80,30 +82,24 @@ compile opts = runExceptT $ do
   liftIO $ when verbose $ do
     putStrLn "Contract field access desugaring:"
     putStrLn $ pretty accessed
+  let lastResult = accessed
 
-  -- contract dispatch generation
-  dispatched <- liftIO $
-    if noGenDispatch
-    then pure accessed
-    else timeItNamed "Contract dispatch generation" $ pure (contractDispatchDesugarer accessed)
-
-  liftIO $ when (optDumpDispatch opts) $ do
-    putStrLn "> Dispatch:"
-    putStrLn $ pretty dispatched
+  -- !!
 
   -- SCC analysis
   connected <- ExceptT $ timeItNamed "SCC           " $
-    sccAnalysis dispatched
+    sccAnalysis lastResult
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"
     putStrLn $ pretty connected
+  let lastResult = connected
 
   -- Indirect call handling
   direct <- liftIO $
     if noDesugarCalls
-    then pure connected
-    else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
+    then pure lastResult
+    else timeItNamed "Indirect Calls" $ (fst <$> indirectCall lastResult)
 
   liftIO $ when (verbose || optDumpDF opts) $ do
     putStrLn "> Indirect call desugaring:"
@@ -116,6 +112,7 @@ compile opts = runExceptT $ do
     putStrLn "> Pattern wildcard desugaring:"
     putStrLn $ pretty noWild
 
+  let lastResult = noWild
   -- Eliminate function type arguments
 
   let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
@@ -123,15 +120,46 @@ compile opts = runExceptT $ do
     putStrLn "> Eliminating argments with function types"
     putStrLn $ pretty noFun
 
+  let lastResult = noFun
   -- Type inference, first round without any desugaring
-  (_typed, _typedEnv) <- ExceptT $ timeItNamed "Typecheck (no desugaring)  "
-    (typeInfer noDesugarOpt noFun)
+  (typed1, typedEnv1) <- ExceptT $ timeItNamed "Typecheck (no desugaring)  "
+    (typeInfer noDesugarOpt lastResult)
 
   liftIO $ when verbose $ do
     putStrLn "No type errors found!"
 
+  let lastResult = typed1
+  -- contract dispatch generation
+  dispatched <- liftIO $
+    if noGenDispatch
+    then pure lastResult
+    else timeItNamed "Contract dispatch generation" $ pure (contractDispatchDesugarer lastResult)
+
+  liftIO $ when (optDumpDispatch opts) $ do
+    putStrLn "> Dispatch:"
+    putStrLn $ pretty dispatched
+
+  let printDS = (not $ noGenDispatch) && (verbose || optDumpDS opts)
+  liftIO $ when printDS $ do
+    putStrLn "> Dispatch generation result:"
+    putStrLn (pretty dispatched)
+
+  let lastResult = forgetTypes dispatched
+
+  -- SCC analysis again
+  connected <- ExceptT $ timeItNamed "SCC           " $
+    sccAnalysis lastResult
+  let lastResult = connected
+
+  -- Indirect call handling
+  direct <- liftIO $
+    if noDesugarCalls
+    then pure lastResult
+    else timeItNamed "Indirect Calls" $ (fst <$> indirectCall lastResult)
+  let lastResult = direct
+
   (typed, typeEnv) <- ExceptT $ timeItNamed "Typecheck (desugaring)  "
-    (typeInfer opts noFun)
+    (typeInfer opts lastResult)
 
   liftIO $ when verbose $ do
     putStrLn "> Type inference logs:"
@@ -209,3 +237,10 @@ addGenerated (CompUnit imps ds) ts
 
 optTimeItNamed :: Option -> String -> IO a -> IO a
 optTimeItNamed opts s a = if (optTiming opts) then TimeIt.timeItNamed s a else a
+
+
+forgetTypes :: CompUnit Id -> CompUnit Name
+-- forgetTypes = everywhere (mkT stripTy) where
+forgetTypes = fmap stripTy where
+  stripTy :: Id -> Name
+  stripTy (Id n _) = n

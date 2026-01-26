@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 module Solcore.Frontend.Syntax.Stmt where
 
 import Data.Generics (Data, Typeable)
@@ -18,14 +19,14 @@ data Stmt a
   | Match [Exp a] (Equations a)         -- pattern matching
   | Asm YulBlock                        -- Yul block
   | If (Exp a) (Body a) (Body a)        -- If statement
-  deriving (Eq, Ord, Show, Data, Typeable)
+  deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 type Body a = [Stmt a]
 
 data Param a
   = Typed a Ty
   | Untyped a
-  deriving (Eq, Ord, Show, Data, Typeable)
+  deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 paramName :: Param a -> a
 paramName (Typed n _) = n
@@ -43,7 +44,7 @@ data Exp a
   | TyExp (Exp a) Ty                   -- type annotated expression
   | Cond (Exp a) (Exp a) (Exp a)       -- conditional expression
   | Indexed (Exp a) (Exp a)            -- e1[e2]
-  deriving (Eq, Ord, Show, Data, Typeable)
+  deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 -- pattern matching equations
 
@@ -52,7 +53,7 @@ data Pat a
   | PCon a [Pat a]
   | PWildcard
   | PLit Literal
-  deriving (Eq, Ord, Show, Data, Typeable)
+  deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 -- definition of literals
 

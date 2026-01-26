@@ -20,12 +20,13 @@ import Data.Set (Set)
 import Data.Text qualified as T
 
 import Solcore.Frontend.Syntax
-import Solcore.Primitives.Primitives (word, unit, tupleExpFromList, tupleTyFromList)
+import Solcore.Frontend.TypeInference.Id
+import Solcore.Primitives.Primitives (word, unit, tupleTyFromList)
 import Data.Text.Encoding (encodeUtf8)
 import Language.Yul
 import Language.Yul.QuasiQuote
 
-contractDispatchDesugarer :: CompUnit Name -> CompUnit Name
+contractDispatchDesugarer :: CompUnit Id -> CompUnit Id
 contractDispatchDesugarer (CompUnit ims topdecls) = CompUnit ims (Set.toList extras <> topdecls')
   where
     (extras, topdecls') = mapAccumL go Set.empty topdecls
@@ -39,7 +40,7 @@ functionNames = foldr go [] . decls where
   go (CFunDecl fd) = (sigName (funSignature fd) :)
   go _ = id
 
-genNameDecls :: Contract Name -> Set (TopDecl Name)
+genNameDecls :: Contract Id -> Set (TopDecl Id)
 genNameDecls (Contract cname _ cdecls) = foldl go Set.empty cdecls
   where
     go acc (CFunDecl (FunDef sig _)) = let
@@ -48,29 +49,31 @@ genNameDecls (Contract cname _ cdecls) = foldl go Set.empty cdecls
       in Set.union (Set.fromList [TDataDef dataTy, TInstDef instDef]) acc
     go acc _ = acc
 
-genMainFn :: Bool -> Contract Name -> Contract Name
+genMainFn :: Bool -> Contract Id -> Contract Id
 genMainFn addMain (Contract cname tys cdecls)
   | addMain = Contract cname tys (CFunDecl mainfn : Set.toList cdecls')
   | otherwise = Contract cname tys (Set.toList cdecls')
   where
     cdecls' = Set.unions (map (transformCDecl cname) cdecls)
+    mainfn :: FunDef Id
     mainfn = FunDef (Signature [] [] "main" [] Nothing) body
-    body = [ StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
-    cdata = Con "Contract" [methods, fallback]
+    body = [ StmtExp (Call Nothing (Id (QualName "RunContract" "exec") someType) [cdata])]
+    cdata = Con (Id "Contract" someType) [methods, fallback]
     methods = tupleExpFromList (fmap mkMethod (mapMaybe unwrapSigs cdecls))
-    fallback = Con "Fallback"
+    fallback = Con (Id "Fallback" someType)
       [ proxyExp (TyCon "NonPayable" [])
       , proxyExp unit
       , proxyExp unit
-      , Var "revert_handler"
+      , Var (Id "revert_handler" someType)
       ]
 
-    mkMethod (Signature _ _ fname fargs (Just ret)) | all isTyped fargs = Con "Method"
+    mkMethod :: Signature Id -> Exp Id
+    mkMethod (Signature _ _ fname fargs (Just ret)) | all isTyped fargs = Con (Id "Method" someType)
       [ proxyExp (TyCon (nameTypeName cname fname) [])
       , proxyExp (TyCon "NonPayable" [])
       , proxyExp (tupleTyFromList (mapMaybe getTy fargs))
       , proxyExp ret
-      , Var fname
+      , (Var (Id fname  someType))
       ]
     mkMethod s = error $ "Internal Error: contract methods must be fully typed: " <> show s
 
@@ -83,11 +86,11 @@ genMainFn addMain (Contract cname tys cdecls)
     getTy (Typed _ t) = Just t
     getTy (Untyped {}) = Nothing
 
-transformCDecl :: Name -> ContractDecl Name -> Set (ContractDecl Name)
+transformCDecl :: Name -> ContractDecl Id -> Set (ContractDecl Id)
 transformCDecl contractName (CConstrDecl c) = transformConstructor contractName c
 transformCDecl _ d = Set.singleton d
 
-transformConstructor :: Name -> Constructor Name -> Set (ContractDecl Name)
+transformConstructor :: Name -> Constructor Id -> Set (ContractDecl Id)
 transformConstructor contractName cons
   | all isTyped params = Set.fromList[initFun, copyArgsFun, startFun]
   | otherwise = error $ "Internal Error: contract constructor must be fully typed"
@@ -114,8 +117,8 @@ transformConstructor contractName cons
   yulContractName = YLit $ YulString contractString
   deployer = YLit $ YulString $ contractString <> "Deploy"
   copyBody =
-    [ Let "res" (Just argsTuple) Nothing
-    , Let "memoryDataOffset" (Just word) Nothing
+    [ Let (Id "res" word) (Just argsTuple) Nothing
+    , Let (Id "memoryDataOffset" word) (Just word) Nothing
     , Asm [yulBlock|{
              let programSize := datasize(`deployer`)
              let argSize := sub(codesize(), programSize)
@@ -123,19 +126,20 @@ transformConstructor contractName cons
              mstore(64, add(memoryDataOffset, argSize))
              codecopy(memoryDataOffset, programSize, argSize)
           }|]
-    , Let "source" (Just (memoryT bytesT)) (Just (memoryE(Var "memoryDataOffset")))
-    , Var "res" := Call Nothing "abi_decode"
-      [ Var "source"
+    , Let (Id "source" someType) (Just (memoryT bytesT)) (Just (memoryE(Var (Id "memoryDataOffset" word))))
+    , Var (Id "res" word) := Call Nothing (Id "abi_decode" someType)
+      [ Var (Id "source" someType)
       , proxyExp argsTuple
       , proxyExp (TyCon "MemoryWordReader" [])
       ]
-    , Return (Var "res")
+    , Return (Var (Id "res" word))
     ]
   memoryT t = TyCon "memory" [t]
-  memoryE e = Con "memory" [e]
+  memoryE e = Con (Id "memory" someType) [e]
   bytesT = TyCon "bytes" []
   copyArgsFun = CFunDecl (FunDef copySig copyBody)
 
+  startSig :: Signature Id
   startSig = Signature
     { sigVars = mempty
     , sigContext = mempty
@@ -145,10 +149,10 @@ transformConstructor contractName cons
     }
   startBody =
     [ Asm [yulBlock|{ mstore(64, memoryguard(128)) }|]
-    , Let "conargs" (Just argsTuple)  (Just (Call Nothing "copy_arguments_for_constructor"[]))
+    , Let (Id "conargs" someType) (Just argsTuple)  (Just (Call Nothing (Id "copy_arguments_for_constructor" someType) []))
     -- , Match [Var "conargs"] ...
-    , Let "fun" Nothing (Just (Var initFunName))
-    , StmtExp $ Call Nothing "fun" [Var "conargs"]
+    , Let (Id "fun" someType) Nothing (Just (Var (Id initFunName someType)))
+    , StmtExp $ Call Nothing (Id "fun" someType) [Var (Id "conargs" someType)]
     , Asm [yulBlock|{
             let size := datasize(`yulContractName`)
             codecopy(0, dataoffset(`yulContractName`), datasize(`yulContractName`))
@@ -169,13 +173,14 @@ initFunName = "init_"
 mkNameTy :: Name -> Name -> DataTy
 mkNameTy cname fname = DataTy (nameTypeName cname fname) [] []
 
-mkNameInst :: DataTy -> Name -> Instance Name
+mkNameInst :: DataTy -> Name -> Instance Id
 mkNameInst (DataTy dname [] []) fname = let
     -- types
     nameTy = TyCon dname []
 
     -- sig
-    args = [Typed "head" word, Typed "tail" word, Typed "prx" (proxyTy nameTy)]
+    typed n t = Typed (Id n t) t
+    args = [typed "head" word, typed "tail" word, typed "prx" (proxyTy nameTy)]
     sig = Signature [] [] "append" args (Just word)
 
     -- body
@@ -184,7 +189,8 @@ mkNameInst (DataTy dname [] []) fname = let
 
     storeSize = mstore (YIdent "head") (add (mload (YIdent "head")) (YLit (YulNumber nameSize)))
     storeBytes = generateStoreBytes nameBytes "tail"
-    ret = Return (Call Nothing (QualName "Add" "add") [Var "tail", Lit (IntLit nameSize)])
+    ret = Return (Call Nothing (Id (QualName "Add" "add") someType) [Var (Id "tail" word), Lit (IntLit nameSize)])
+    body :: Body Id
     body = [ Asm (YExp storeSize : storeBytes), ret ]
 
     -- yul helpers
@@ -203,12 +209,14 @@ mkNameInst (DataTy dname [] []) fname = let
 mkNameInst dt _ = error ("Internal Error: unexpect name type structure: " <> show dt)
 
 --- Util ---
+someType :: Ty
+someType = TyVar (Skolem "unknownType")
 
 proxyTy :: Ty -> Ty
 proxyTy t = TyCon "Proxy" [t]
 
-proxyExp :: Ty -> Exp Name
-proxyExp t = TyExp (Con "Proxy" []) (proxyTy t)
+proxyExp :: Ty -> Exp Id
+proxyExp t = TyExp (Con (Id "Proxy" (proxyTy t)) []) (proxyTy t)
 
 -- | Generate the name for the name type from the contract and method names
 nameTypeName :: Name -> Name -> Name
@@ -245,3 +253,13 @@ bsToInteger :: ByteString -> Integer
 bsToInteger = BS.foldr f 0 . BS.reverse
   where
     f w n = toInteger w .|. shiftL n 8
+
+-- Analoguous to identically named function in Primitives, but on Ids
+tupleExpFromList :: [Exp Id] -> Exp Id
+tupleExpFromList [] = Con (Id "()" unit) []
+tupleExpFromList [e] = e
+tupleExpFromList [e1,e2] = epair e1 e2
+tupleExpFromList (e1 : es) = epair e1 (tupleExpFromList es)
+
+epair :: Exp Id -> Exp Id -> Exp Id
+epair e1 e2 = Con (Id "pair" someType) [e1, e2]

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 module Solcore.Frontend.Syntax.Contract where
 
 import Data.Generics (Data, Typeable)
@@ -13,7 +14,7 @@ data CompUnit a
   = CompUnit {
       imports :: [Import]
     , contracts :: [TopDecl a]
-    } deriving (Eq, Ord, Show, Data, Typeable)
+    } deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 data TopDecl a
   = TContr (Contract a)
@@ -24,7 +25,7 @@ data TopDecl a
   | TDataDef DataTy
   | TSym TySym
   | TPragmaDecl Pragma
-  deriving (Eq, Ord, Show, Data, Typeable)
+  deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 -- empty list in pragma: restriction on all class / instances
 
@@ -57,7 +58,7 @@ data Contract a
       name :: Name
     , tyParams :: [Tyvar]
     , decls :: [ContractDecl a]
-    } deriving (Eq, Ord, Show, Data, Typeable)
+    } deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 -- definition of a algebraic data type
 
@@ -89,7 +90,7 @@ data Constructor a
   = Constructor {
       constrParams :: [Param a]
     , constrBody :: (Body a)
-    } deriving (Eq, Ord, Show, Data, Typeable)
+    } deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 -- definition of classes and instances
 
@@ -101,7 +102,7 @@ data Class a
     , paramsVar :: [Tyvar]
     , mainVar :: Tyvar
     , signatures :: [Signature a]
-    } deriving (Eq, Ord, Show, Data, Typeable)
+    } deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 data Signature a
   = Signature {
@@ -110,7 +111,7 @@ data Signature a
     , sigName :: Name
     , sigParams :: [Param a]
     , sigReturn :: Maybe Ty
-    } deriving (Eq, Ord, Show, Data, Typeable)
+    } deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 
 data Instance a
@@ -122,7 +123,7 @@ data Instance a
     , paramsTy :: [Ty]
     , mainTy :: Ty
     , instFunctions :: [FunDef a]
-    } deriving (Eq, Ord, Show, Data, Typeable)
+    } deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 -- definition of contract field variables
 
@@ -131,7 +132,7 @@ data Field a
       fieldName :: Name
     , fieldTy :: Ty
     , fieldInit :: Maybe (Exp a)
-    } deriving (Eq, Ord, Show, Data, Typeable)
+    } deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 -- definition of functions
 
@@ -139,7 +140,7 @@ data FunDef a
   = FunDef {
       funSignature :: Signature a
     , funDefBody :: Body a
-    } deriving (Eq, Ord, Show, Data, Typeable)
+    } deriving (Eq, Ord, Show, Data, Typeable, Functor)
 
 data ContractDecl a
   = CDataDecl DataTy
@@ -147,4 +148,4 @@ data ContractDecl a
   | CFunDecl (FunDef a)
   | CMutualDecl [ContractDecl a] -- used only after SCC analysis
   | CConstrDecl (Constructor a)
-    deriving (Eq, Ord,Show, Data, Typeable)
+    deriving (Eq, Ord,Show, Data, Typeable, Functor)
