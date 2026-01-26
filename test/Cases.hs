@@ -96,7 +96,7 @@ cases =
     , runTestForFile "Add1.solc" caseFolder
     , runTestExpectingFailure "add-moritz.solc" caseFolder
     , runTestForFile "another-subst.solc" caseFolder
-    , runTestForFile "app.solc" caseFolder
+    , runTestForFileWith noDesugarOpt "app.solc" caseFolder
     , runTestForFile "array.solc" caseFolder
     , runTestForFile "assembly.solc" caseFolder
     , runTestForFile "bal.solc" caseFolder
@@ -109,7 +109,7 @@ cases =
     , runTestForFile "class-context.solc" caseFolder
     , runTestForFile "closure.solc" caseFolder
     , runTestForFile "closure-capture-only.solc" caseFolder
-    , runTestForFile "Compose.solc" caseFolder
+    , runTestForFileWith noDesugarOpt "Compose.solc" caseFolder
     , runTestForFile "Compose2.solc" caseFolder
     , runTestForFile "Compose3.solc" caseFolder
     -- The following test makes the test runner throw an exception
@@ -263,6 +263,8 @@ cases =
     , runTestForFile "closure-free-var-local.solc" caseFolder
     , runTestForFile "closure-free-bound-test.solc" caseFolder
     , runTestExpectingFailure "instance-context-wrong-kind.solc" caseFolder
+    , runTestForFile "instance-closure-error.solc" caseFolder
+    , runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder
     ]
  where
   caseFolder = "./test/examples/cases"
@@ -300,11 +302,4 @@ runTestExpectingFailureWith opts file folder =
       Left _ -> return () -- Expected failure
       Right _ -> assertFailure "Expected compilation to fail, but it succeeded"
 
-noDesugarOpt :: Option
-noDesugarOpt
-  = stdOpt { optNoGenDispatch = True
-           , optNoDesugarCalls = True
-           , optNoSpec = True
-           , optNoMatchCompiler = True
-           , optNoIfDesugar = True
-           }
+

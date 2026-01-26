@@ -28,7 +28,7 @@ import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Backend.Specialise(specialiseCompUnit)
 import Solcore.Backend.EmitHull(emitHull)
-import Solcore.Pipeline.Options(Option(..), argumentsParser)
+import Solcore.Pipeline.Options(Option(..), argumentsParser, noDesugarOpt)
 
 -- main compiler driver function
 pipeline :: IO ()
@@ -116,15 +116,21 @@ compile opts = runExceptT $ do
     putStrLn "> Pattern wildcard desugaring:"
     putStrLn $ pretty noWild
 
-  -- Eliminate function type arguments 
+  -- Eliminate function type arguments
 
-  let noFun = if noDesugarCalls then noWild else replaceFunParam noWild 
-  liftIO $ when verbose $ do 
+  let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
+  liftIO $ when verbose $ do
     putStrLn "> Eliminating argments with function types"
-    putStrLn $ pretty noFun 
+    putStrLn $ pretty noFun
 
-  -- Type inference
-  (typed, typeEnv) <- ExceptT $ timeItNamed "Typecheck     "
+  -- Type inference, first round without any desugaring
+  (_typed, _typedEnv) <- ExceptT $ timeItNamed "Typecheck (no desugaring)  "
+    (typeInfer noDesugarOpt noFun)
+
+  liftIO $ when verbose $ do
+    putStrLn "No type errors found!"
+
+  (typed, typeEnv) <- ExceptT $ timeItNamed "Typecheck (desugaring)  "
     (typeInfer opts noFun)
 
   liftIO $ when verbose $ do
