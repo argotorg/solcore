@@ -172,7 +172,7 @@ compile opts = runExceptT $ do
       putStrLn (pretty specialized)
 
     hull <- liftIO $ timeItNamed "Emit Hull     " $
-      emitHull (optDebugHull opts) typeEnv specialized
+      emitHull (optDebugHull opts) specialized
 
     liftIO $ when (optDumpHull opts) $ do
       putStrLn "> Hull contract(s):"

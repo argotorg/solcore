@@ -1,5 +1,5 @@
 -- {-# LANGUAGE DefaultSignatures #-}
-module Solcore.Backend.Specialise where  --(specialiseCompUnit, typeOfTcExp) where
+module Solcore.Backend.Specialise(specialiseCompUnit, typeOfTcExp) where
 {- * Specialisation
 Create specialised versions of polymorphic and overloaded functions.
 This is meant to be run on typed and defunctionalised code, so no higher-order functions.
@@ -22,6 +22,7 @@ import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv(TcEnv(typeTable), TypeInfo(..))
 import Solcore.Frontend.TypeInference.TcUnify(typesDoNotUnify)
 import Solcore.Frontend.Pretty.ShortName
+import Solcore.Backend.Mast
 import Solcore.Primitives.Primitives
 
 -- ** Specialisation state and monad
@@ -185,11 +186,12 @@ addPrefix p (QualName q s) = QualName q (p ++ s)
 
 -------------------------------------------------------------------------------
 
-specialiseCompUnit :: CompUnit Id -> Bool -> TcEnv -> IO (CompUnit Id)
+specialiseCompUnit :: CompUnit Id -> Bool -> TcEnv -> IO MastCompUnit
 specialiseCompUnit compUnit debugp env = runSM debugp env do
     addGlobalResolutions compUnit
     topDecls <- concat <$> forM (contracts compUnit) specialiseTopDecl
-    return $ compUnit { contracts = topDecls }
+    let specResult = compUnit { contracts = topDecls }
+    return (toMastCompUnit specResult)
 
 addGlobalResolutions :: CompUnit Id -> SM ()
 addGlobalResolutions compUnit = forM_ (contracts compUnit) addDeclResolutions
@@ -747,3 +749,77 @@ renameTy r = everywhere  (mkT (renameTV r))
 renameSubst :: TVRenaming -> TVSubst -> TVSubst
 renameSubst r = TVSubst . map rename . unTVSubst where
     rename (v, t) = (renameTV r v, renameTy r t)
+
+-----------------------------------------------------------------------
+-- Conversion from internal CompUnit Id to MastCompUnit
+-----------------------------------------------------------------------
+
+toMastCompUnit :: CompUnit Id -> MastCompUnit
+toMastCompUnit (CompUnit imps ds) = MastCompUnit imps (map toMastTopDecl ds)
+
+toMastTopDecl :: TopDecl Id -> MastTopDecl
+toMastTopDecl (TContr c) = MastTContr (toMastContract c)
+toMastTopDecl (TDataDef dt) = MastTDataDef dt
+toMastTopDecl d = error $ "toMastTopDecl: unexpected " ++ show d
+
+toMastContract :: Contract Id -> MastContract
+toMastContract (Contract n _tyParams ds) = MastContract n (map toMastContractDecl ds)
+
+toMastContractDecl :: ContractDecl Id -> MastContractDecl
+toMastContractDecl (CDataDecl dt) = MastCDataDecl dt
+toMastContractDecl (CFunDecl fd) = MastCFunDecl (toMastFunDef fd)
+toMastContractDecl (CMutualDecl ds) = MastCMutualDecl (map toMastContractDecl ds)
+toMastContractDecl d = error $ "toMastContractDecl: unexpected " ++ show d
+
+toMastFunDef :: FunDef Id -> MastFunDef
+toMastFunDef (FunDef sig body) = MastFunDef
+  { mastFunName = sigName sig
+  , mastFunParams = map toMastParam (sigParams sig)
+  , mastFunReturn = case sigReturn sig of
+      Just t -> toMastTy t
+      Nothing -> error $ "toMastFunDef: no return type for " ++ show (sigName sig)
+  , mastFunBody = map toMastStmt body
+  }
+
+toMastParam :: Param Id -> MastParam
+toMastParam p = MastParam (idName i) (toMastTy (idType i))
+  where i = getParamId p
+
+getParamId :: Param Id -> Id
+getParamId (Typed i _) = i
+getParamId (Untyped i) = i
+
+toMastTy :: Ty -> MastTy
+toMastTy = tyToMast
+
+toMastId :: Id -> MastId
+toMastId (Id n t) = MastId n (toMastTy t)
+
+toMastStmt :: Stmt Id -> MastStmt
+toMastStmt (Var i := e) = MastAssign (toMastId i) (toMastExp e)
+toMastStmt (Let i mty me) = MastLet (toMastId i) (fmap toMastTy mty) (fmap toMastExp me)
+toMastStmt (StmtExp e) = MastStmtExp (toMastExp e)
+toMastStmt (Return e) = MastReturn (toMastExp e)
+toMastStmt (Match [scrutinee] alts) = MastMatch (toMastExp scrutinee) (map toMastAlt alts)
+toMastStmt (Match es _) = error $ "toMastStmt: multi-scrutinee match should have been desugared: " ++ show es
+toMastStmt (Asm ys) = MastAsm ys
+toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
+
+toMastAlt :: ([Pat Id], [Stmt Id]) -> MastAlt
+toMastAlt ([p], body) = (toMastPat p, map toMastStmt body)
+toMastAlt (ps, _) = error $ "toMastAlt: multi-pattern alt should have been desugared: " ++ show ps
+
+toMastExp :: Exp Id -> MastExp
+toMastExp (Var i) = MastVar (toMastId i)
+toMastExp (Con i es) = MastCon (toMastId i) (map toMastExp es)
+toMastExp (Lit l) = MastLit l
+toMastExp (Call Nothing i es) = MastCall (toMastId i) (map toMastExp es)
+toMastExp (TyExp e _) = toMastExp e
+toMastExp (Cond e1 e2 e3) = MastCond (toMastExp e1) (toMastExp e2) (toMastExp e3)
+toMastExp e = error $ "toMastExp: unexpected " ++ show e
+
+toMastPat :: Pat Id -> MastPat
+toMastPat (PVar i) = MastPVar (toMastId i)
+toMastPat (PCon i ps) = MastPCon (toMastId i) (map toMastPat ps)
+toMastPat PWildcard = MastPWildcard
+toMastPat (PLit l) = MastPLit l
