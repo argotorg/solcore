@@ -223,13 +223,17 @@ default instance a:Num {
 // --- Word Arithmetic ---
 // TODO: make these checked
 
+function addWord(l: word, r: word) -> word {
+  let rw : word;
+  assembly {
+      rw := add(l,r);
+  }
+  return rw;
+}
+
 instance word:Add {
     function add(l: word, r: word) -> word {
-        let rw : word;
-        assembly {
-            rw := add(l,r);
-        }
-        return rw;
+        return addWord(l, r);
     }
 }
 
@@ -1189,10 +1193,7 @@ forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
     function size(x:Proxy((a,b))) -> word {
         let a_sz:word = StorageSize.size(Proxy:Proxy(a));
         let b_sz:word = StorageSize.size(Proxy:Proxy(b));
-        assembly {
-            a_sz := add(a_sz, b_sz)
-        }
-        return a_sz;
+        return addWord(a_sz, b_sz);
     }
 }
 

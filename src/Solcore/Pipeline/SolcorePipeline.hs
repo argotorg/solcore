@@ -26,6 +26,8 @@ import Solcore.Frontend.Syntax hiding(contracts)
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
+import Solcore.Backend.Mast()  -- Pretty instances for MastCompUnit
+import Solcore.Backend.MastEval(evalCompUnit)
 import Solcore.Backend.Specialise(specialiseCompUnit)
 import Solcore.Backend.EmitHull(emitHull)
 import Solcore.Pipeline.Options(Option(..), argumentsParser, noDesugarOpt)
@@ -171,8 +173,14 @@ compile opts = runExceptT $ do
       putStrLn "> Specialised contract:"
       putStrLn (pretty specialized)
 
+    let evaluated = evalCompUnit specialized
+
+    liftIO $ when (optDumpSpec opts) $ do
+      putStrLn "> After partial evaluation:"
+      putStrLn (pretty evaluated)
+
     hull <- liftIO $ timeItNamed "Emit Hull     " $
-      emitHull (optDebugHull opts) specialized
+      emitHull (optDebugHull opts) evaluated
 
     liftIO $ when (optDumpHull opts) $ do
       putStrLn "> Hull contract(s):"
