@@ -1,0 +1,82 @@
+import std;
+
+function revert(reasonPtr: memory(string)) -> () {
+  let ptr = Typedef.rep(reasonPtr);
+  assembly {
+      revert(add(ptr, 32), mload(ptr))
+  }
+}
+
+function assert(condition: bool, elseMsg: memory(string)) -> () {
+  match condition {
+      | false => revert(elseMsg);
+      | _     => return ();
+  }
+}
+
+/*
+  Compare dynamically sized memory regions based on their contents.
+  Assumes first word in each region holds content size in bytes.
+*/
+forall t . instance memory(t) : Eq {
+  function eq(x: memory(t), y: memory(t)) -> bool {
+      let xptr = Typedef.rep(x);
+      let yptr = Typedef.rep(y);
+      let xsize: word;
+      let ysize: word;
+      assembly {
+          xsize := mload(xptr)
+          ysize := mload(yptr)
+      }
+      if (xsize != ysize) {
+          return false;
+      }
+      let isEq = 1;
+      assembly {
+          xptr := add(xptr, 32)
+          yptr := add(yptr, 32)
+          for { } gt(xsize, 31) { { xsize := sub(xsize, 32) } } {
+              if iszero(eq(mload(xptr), mload(yptr))) {
+                  isEq := 0
+                  break
+              }
+              xptr := add(xptr, 32)
+              yptr := add(yptr, 32)
+          }
+          if and(isEq, gt(xsize, 0)) {
+              let shiftSize := mul(sub(32, xsize), 8)
+              if iszero(eq(shr(shiftSize, mload(xptr)), shr(shiftSize, mload(yptr)))) {
+                  isEq := 0
+              }
+          }
+      }
+      match isEq {
+        | 1 => return true;
+        | _ => return false;
+      }
+  }
+}
+contract EqTest {
+  function equalityRevert() -> () {
+      assert("" == "", "Should be equal: ''");
+
+      assert("some string" == "some string", "Should be equal: 'some string'");
+
+      assert("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "Should be equal: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'");
+
+      assert("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabcd" == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabcd",
+          "Should be equal (2 word size): 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabcd'");
+
+      assert("some string" != "some string!", "Should not be equal (different sizes)");
+
+      assert("some string" != "some strin!", "Should not be equal (different content)");
+
+      assert("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabcda" != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabeda",
+          "Should not be equal (2 word size)");
+
+      assert("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabcda" !=
+             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabeda",
+          "Should not be equal (4 word size)");
+  }
+}

@@ -341,7 +341,7 @@ specConApp i@(Id n conTy) args ty = do
 -- | Specialise a function call
 -- given actual arguments and the expected result type
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revert") e) args ty = pure (i, args)  -- FIXME
+specCall i@(Id (Name "__revert__") e) args ty = pure (i, args)  -- FIXME
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
