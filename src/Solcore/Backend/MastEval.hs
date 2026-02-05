@@ -1,6 +1,7 @@
 module Solcore.Backend.MastEval
   ( evalCompUnit
   , defaultFuel
+  , eliminateDeadCode
   ) where
 
 {- Partial Evaluator for Mast
@@ -13,6 +14,7 @@ module Solcore.Backend.MastEval
 import Control.Monad.Reader
 import Control.Monad.State
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt(Literal(..))
@@ -384,3 +386,88 @@ isKnownValue :: MastExp -> Bool
 isKnownValue (MastLit _) = True
 isKnownValue (MastCon _ args) = all isKnownValue args
 isKnownValue _ = False
+
+-----------------------------------------------------------------------
+-- Dead code elimination
+-----------------------------------------------------------------------
+
+-- | Remove unused functions from a compilation unit.
+-- 'start' and 'main' are always considered roots (entry points).
+eliminateDeadCode :: MastCompUnit -> MastCompUnit
+eliminateDeadCode cu = cu { mastTopDecls = map elimTopDecl (mastTopDecls cu) }
+  where
+    elimTopDecl (MastTContr c) = MastTContr (elimContract c)
+    elimTopDecl d@(MastTDataDef _) = d
+
+    elimContract c = c { mastContrDecls = filter keepDecl (mastContrDecls c) }
+      where
+        usedNames = findUsedFunctions c
+        keepDecl (MastCFunDecl fd) = mastFunName fd `Set.member` usedNames
+        keepDecl (MastCMutualDecl ds) =
+          -- Keep mutual block if any function in it is used
+          any isUsedDecl ds
+        keepDecl (MastCDataDecl _) = True
+
+        isUsedDecl (MastCFunDecl fd) = mastFunName fd `Set.member` usedNames
+        isUsedDecl (MastCMutualDecl ds) = any isUsedDecl ds
+        isUsedDecl (MastCDataDecl _) = True
+
+-- | Find all functions reachable from root functions ('start', 'main')
+findUsedFunctions :: MastContract -> Set.Set Name
+findUsedFunctions c = go initialRoots initialRoots
+  where
+    -- Root functions that are always considered used
+    rootNames = Set.fromList [Name "start", Name "main"]
+
+    -- Start with roots that actually exist in the contract
+    initialRoots = Set.intersection rootNames allFunNames
+
+    -- All function names in the contract
+    allFunNames = Set.fromList $ concatMap getFunNames (mastContrDecls c)
+
+    getFunNames (MastCFunDecl fd) = [mastFunName fd]
+    getFunNames (MastCMutualDecl ds) = concatMap getFunNames ds
+    getFunNames (MastCDataDecl _) = []
+
+    -- Map from function name to its definition
+    funTable = Map.fromList $ concatMap getFunDef (mastContrDecls c)
+
+    getFunDef (MastCFunDecl fd) = [(mastFunName fd, fd)]
+    getFunDef (MastCMutualDecl ds) = concatMap getFunDef ds
+    getFunDef (MastCDataDecl _) = []
+
+    -- Transitive closure: find all reachable functions
+    go :: Set.Set Name -> Set.Set Name -> Set.Set Name
+    go used worklist
+      | Set.null worklist = used
+      | otherwise =
+          let -- Get calls from all functions in worklist
+              newCalls = Set.unions [callsInFun fd | n <- Set.toList worklist
+                                                   , Just fd <- [Map.lookup n funTable]]
+              -- Find newly discovered functions (not yet in used set)
+              newFuns = Set.difference newCalls used
+              -- Add new functions to used set
+              used' = Set.union used newFuns
+          in go used' newFuns
+
+-- | Collect all function names called in a function body
+callsInFun :: MastFunDef -> Set.Set Name
+callsInFun fd = Set.unions (map callsInStmt (mastFunBody fd))
+
+callsInStmt :: MastStmt -> Set.Set Name
+callsInStmt (MastLet _ _ mInit) = maybe Set.empty callsInExp mInit
+callsInStmt (MastAssign _ e) = callsInExp e
+callsInStmt (MastStmtExp e) = callsInExp e
+callsInStmt (MastReturn e) = callsInExp e
+callsInStmt (MastMatch e alts) =
+  Set.union (callsInExp e) (Set.unions [Set.unions (map callsInStmt body) | (_, body) <- alts])
+callsInStmt (MastAsm _) = Set.empty
+
+callsInExp :: MastExp -> Set.Set Name
+callsInExp (MastLit _) = Set.empty
+callsInExp (MastVar _) = Set.empty
+callsInExp (MastCall i args) =
+  Set.insert (mastIdName i) (Set.unions (map callsInExp args))
+callsInExp (MastCon _ args) = Set.unions (map callsInExp args)
+callsInExp (MastCond e1 e2 e3) =
+  Set.unions [callsInExp e1, callsInExp e2, callsInExp e3]

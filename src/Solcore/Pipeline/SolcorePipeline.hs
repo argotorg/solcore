@@ -27,7 +27,7 @@ import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Backend.Mast()  -- Pretty instances for MastCompUnit
-import Solcore.Backend.MastEval(evalCompUnit, defaultFuel)
+import Solcore.Backend.MastEval(evalCompUnit, defaultFuel, eliminateDeadCode)
 import Solcore.Backend.Specialise(specialiseCompUnit)
 import Solcore.Backend.EmitHull(emitHull)
 import Solcore.Pipeline.Options(Option(..), argumentsParser, noDesugarOpt)
@@ -183,8 +183,15 @@ compile opts = runExceptT $ do
       putStrLn "> After partial evaluation:"
       putStrLn (pretty evaluated)
 
+    -- Dead code elimination: remove functions unreachable from 'start'/'main'
+    let optimized = eliminateDeadCode evaluated
+
+    liftIO $ when (optDumpSpec opts) $ do
+      putStrLn "> After dead code elimination:"
+      putStrLn (pretty optimized)
+
     hull <- liftIO $ timeItNamed "Emit Hull     " $
-      emitHull (optDebugHull opts) evaluated
+      emitHull (optDebugHull opts) optimized
 
     liftIO $ when (optDumpHull opts) $ do
       putStrLn "> Hull contract(s):"
