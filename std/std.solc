@@ -53,6 +53,15 @@ function unimplemented() {
   }
 }
 
+// ------------------------------------------------------------------
+// High-level revert helper
+// ------------------------------------------------------------------
+// EmitHull has special handling for `revert("...")` after MastEval has
+// constant-folded the argument to a string literal.
+function revert(s:string) -> () {
+  return ();
+}
+
 // --- booleans ---
 
 // TODO: this should short circuit. probably needs some compiler magic to do so.
@@ -572,6 +581,24 @@ data bytes;
 
 // TODO: should this be a typedef over `bytes`?
 data string;
+
+// ------------------------------------------------------------------
+// Compile-time string literal builtins
+// ------------------------------------------------------------------
+// These are intended to be folded by MastEval when their arguments are
+// statically known string literals.
+
+function concatLit(a:string, b:string) -> string {
+  return "";
+}
+
+function strlenLit(a:string) -> word {
+  return 0;
+}
+
+function keccakLit(a:string) -> word {
+  return 0;
+}
 
 // --- slices (sized pointers) ---
 

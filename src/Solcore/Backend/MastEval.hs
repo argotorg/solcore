@@ -1,8 +1,9 @@
 module Solcore.Backend.MastEval
-  ( evalCompUnit
-  , defaultFuel
-  , eliminateDeadCode
-  ) where
+  ( evalCompUnit,
+    defaultFuel,
+    eliminateDeadCode,
+  )
+where
 
 {- Partial Evaluator for Mast
    Performs compile-time evaluation where possible:
@@ -13,11 +14,18 @@ module Solcore.Backend.MastEval
 
 import Control.Monad.Reader
 import Control.Monad.State
-import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
+import Crypto.Hash (Digest, hash)
+import Crypto.Hash.Algorithms (Keccak_256)
+import Data.ByteArray qualified as BA
+import Data.ByteString qualified as BS
+import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
+import Data.Word (Word8)
 import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax.Name
-import Solcore.Frontend.Syntax.Stmt(Literal(..))
+import Solcore.Frontend.Syntax.Stmt (Literal (..))
 
 -----------------------------------------------------------------------
 -- Data structures
@@ -64,7 +72,7 @@ useFuel = do
 
 -- Restore one unit of fuel (called after successful inlining)
 restoreFuel :: EvalM ()
-restoreFuel = lift $ modify (+1)
+restoreFuel = lift $ modify (+ 1)
 
 -----------------------------------------------------------------------
 -- Main entry point
@@ -72,7 +80,7 @@ restoreFuel = lift $ modify (+1)
 
 -- Returns the evaluated compilation unit and remaining fuel
 evalCompUnit :: Fuel -> MastCompUnit -> (MastCompUnit, Fuel)
-evalCompUnit fuel cu = (cu { mastTopDecls = decls' }, remainingFuel)
+evalCompUnit fuel cu = (cu {mastTopDecls = decls'}, remainingFuel)
   where
     funTable = buildFunTable cu
     (decls', remainingFuel) = runEvalM funTable fuel (mapM evalTopDecl (mastTopDecls cu))
@@ -107,7 +115,7 @@ evalTopDecl d@(MastTDataDef _) = pure d
 evalContract :: MastContract -> EvalM MastContract
 evalContract c = do
   decls' <- mapM evalContractDecl (mastContrDecls c)
-  pure $ c { mastContrDecls = decls' }
+  pure $ c {mastContrDecls = decls'}
 
 evalContractDecl :: MastContractDecl -> EvalM MastContractDecl
 evalContractDecl (MastCFunDecl fd) = MastCFunDecl <$> evalFunDef fd
@@ -121,7 +129,7 @@ evalContractDecl d@(MastCDataDecl _) = pure d
 evalFunDef :: MastFunDef -> EvalM MastFunDef
 evalFunDef fd = do
   (_, body') <- evalStmts Map.empty (mastFunBody fd)
-  pure $ fd { mastFunBody = body' }
+  pure $ fd {mastFunBody = body'}
 
 -----------------------------------------------------------------------
 -- Evaluate statements (AST transformation)
@@ -135,44 +143,46 @@ evalFunDef fd = do
 -- Process statements left-to-right, threading environment through
 evalStmts :: VEnv -> [MastStmt] -> EvalM (VEnv, [MastStmt])
 evalStmts env [] = pure (env, [])
-evalStmts env (s:ss) = do
+evalStmts env (s : ss) = do
   (env', s') <- evalStmt env s
   (env'', ss') <- evalStmts env' ss
-  pure (env'', s' : ss')
+  pure (env'', s' <> ss')
 
-evalStmt :: VEnv -> MastStmt -> EvalM (VEnv, MastStmt)
+evalStmt :: VEnv -> MastStmt -> EvalM (VEnv, [MastStmt])
 evalStmt env stmt = case stmt of
   MastLet i ty mInit -> do
     mInit' <- traverse (evalExp env) mInit
     let env' = case mInit' of
           Just e | isKnownValue e -> Map.insert i e env
-          _ -> Map.delete i env  -- Shadow/remove any existing binding
-    pure (env', MastLet i ty mInit')
-
+          _ -> Map.delete i env -- Shadow/remove any existing binding
+    case mInit' of
+      Just e | isKnownValue e -> pure (env', [])
+      _ -> pure (env', [MastLet i ty mInit'])
   MastAssign i e -> do
     e' <- evalExp env e
-    let env' = if isKnownValue e'
-               then Map.insert i e' env
-               else Map.delete i env  -- Value no longer known
-    pure (env', MastAssign i e')
-
+    let env' =
+          if isKnownValue e'
+            then Map.insert i e' env
+            else Map.delete i env -- Value no longer known
+    if isKnownValue e'
+      then pure (env', [])
+      else pure (env', [MastAssign i e'])
   MastStmtExp e -> do
     e' <- evalExp env e
-    pure (env, MastStmtExp e')
-
+    if isKnownValue e'
+      then pure (env, [])
+      else pure (env, [MastStmtExp e'])
   MastReturn e -> do
     e' <- evalExp env e
-    pure (env, MastReturn e')
-
+    pure (env, [MastReturn e'])
   MastMatch e alts -> do
     e' <- evalExp env e
     alts' <- mapM (evalAlt env) alts
-    pure (env, MastMatch e' alts')
-
+    pure (env, [MastMatch e' alts'])
   MastAsm yul ->
     -- Assembly blocks are opaque; we don't know what they modify
     -- Conservative: clear all variable bindings
-    pure (Map.empty, MastAsm yul)
+    pure (Map.empty, [MastAsm yul])
 
 evalAlt :: VEnv -> MastAlt -> EvalM MastAlt
 evalAlt env (pat, body) = do
@@ -187,12 +197,10 @@ evalAlt env (pat, body) = do
 
 evalExp :: VEnv -> MastExp -> EvalM MastExp
 evalExp _ expr@(MastLit _) = pure expr
-
 evalExp env expr@(MastVar i) =
   pure $ case Map.lookup i env of
     Just lit -> lit
     Nothing -> expr
-
 evalExp env (MastCall i args) = do
   args' <- mapM (evalExp env) args
   let fname = mastIdName i
@@ -204,16 +212,14 @@ evalExp env (MastCall i args) = do
       if hasFuel
         then do
           result <- tryInline fname args'
-          restoreFuel  -- Restore fuel: it acts purely as recursion depth limit
+          restoreFuel -- Restore fuel: it acts purely as recursion depth limit
           pure $ case result of
             Just r -> r
             Nothing -> MastCall i args'
         else pure $ MastCall i args'
-
 evalExp env (MastCon i es) = do
   es' <- mapM (evalExp env) es
   pure $ MastCon i es'
-
 evalExp env (MastCond e1 e2 e3) = do
   -- Evaluate all branches (conservative approach)
   -- Could potentially simplify if condition is known literal
@@ -235,7 +241,29 @@ evalPrimitive (Name "gtWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just $ mkBool (a > b)
 evalPrimitive (Name "eqWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just $ mkBool (a == b)
+-- String literal primitives (Solidity/Yul semantics):
+-- - treat literals as UTF-8 byte sequences
+-- - strlen returns byte length
+-- - keccak returns the 256-bit big-endian word of keccak256(bytes)
+evalPrimitive (Name "concatLit") [MastLit (StrLit a), MastLit (StrLit b)] =
+  Just (MastLit (StrLit (a <> b)))
+evalPrimitive (Name "strlenLit") [MastLit (StrLit s)] =
+  let bs = TE.encodeUtf8 (T.pack s)
+   in Just (MastLit (IntLit (toInteger (BS.length bs))))
+evalPrimitive (Name "keccakLit") [MastLit (StrLit s)] =
+  let bs = TE.encodeUtf8 (T.pack s)
+      digest :: Digest Keccak_256
+      digest = hash bs
+      digestBytes :: BS.ByteString
+      digestBytes = BA.convert digest
+   in Just (MastLit (IntLit (bsToIntegerBE digestBytes)))
 evalPrimitive _ _ = Nothing
+
+bsToIntegerBE :: BS.ByteString -> Integer
+bsToIntegerBE = BS.foldl' step 0
+  where
+    step :: Integer -> Word8 -> Integer
+    step acc w = acc * 256 + fromIntegral w
 
 -- Construct a boolean value as sum((), ())
 -- true = inr(()), false = inl(())
@@ -283,35 +311,31 @@ isInlinable fd = all isInlinableStmt (mastFunBody fd)
 
 -- Evaluate a function body and extract the return value
 evalFunBody :: VEnv -> [MastStmt] -> EvalM (Maybe MastExp)
-evalFunBody _ [] = pure Nothing  -- No return statement found
-evalFunBody env (stmt:rest) = case stmt of
+evalFunBody _ [] = pure Nothing -- No return statement found
+evalFunBody env (stmt : rest) = case stmt of
   MastLet i _ mInit -> do
     mInit' <- traverse (evalExp env) mInit
     let env' = case mInit' of
           Just e | isKnownValue e -> Map.insert i e env
           _ -> Map.delete i env
     evalFunBody env' rest
-
   MastAssign i e -> do
     e' <- evalExp env e
-    let env' = if isKnownValue e'
-               then Map.insert i e' env
-               else Map.delete i env
+    let env' =
+          if isKnownValue e'
+            then Map.insert i e' env
+            else Map.delete i env
     evalFunBody env' rest
-
   MastStmtExp _ -> evalFunBody env rest
-
   MastReturn e -> do
     e' <- evalExp env e
     pure $ if isKnownValue e' then Just e' else Nothing
-
   MastMatch scrut alts -> do
     scrut' <- evalExp env scrut
     case matchAlts env scrut' alts of
       Just (env', body) -> evalFunBody env' body
-      Nothing -> pure Nothing  -- Scrutinee not known, can't select branch
-
-  MastAsm _ -> pure Nothing  -- Should not happen due to isInlinable check
+      Nothing -> pure Nothing -- Scrutinee not known, can't select branch
+  MastAsm _ -> pure Nothing -- Should not happen due to isInlinable check
 
 -- Try to match a known scrutinee against alternatives.
 -- Returns the extended environment and the body of the matching alternative.
@@ -320,12 +344,12 @@ matchAlts env scrut alts =
   case scrut of
     MastCon conId args -> findConMatch env (mastIdName conId) args alts
     MastLit lit -> findLitMatch env lit alts
-    _ -> Nothing  -- Scrutinee not a known value
+    _ -> Nothing -- Scrutinee not a known value
 
 -- Find a matching constructor alternative
 findConMatch :: VEnv -> Name -> [MastExp] -> [MastAlt] -> Maybe (VEnv, [MastStmt])
 findConMatch _ _ _ [] = Nothing
-findConMatch env conName args ((pat, body):rest) =
+findConMatch env conName args ((pat, body) : rest) =
   case pat of
     MastPCon patId pats
       | mastIdName patId == conName ->
@@ -334,34 +358,35 @@ findConMatch env conName args ((pat, body):rest) =
             Nothing -> findConMatch env conName args rest
     MastPVar varId ->
       let env' = Map.insert varId (MastCon (MastId conName (mastIdType varId)) args) env
-      in Just (env', body)
+       in Just (env', body)
     MastPWildcard -> Just (env, body)
     _ -> findConMatch env conName args rest
 
 -- Find a matching literal alternative
 findLitMatch :: VEnv -> Literal -> [MastAlt] -> Maybe (VEnv, [MastStmt])
 findLitMatch _ _ [] = Nothing
-findLitMatch env lit ((pat, body):rest) =
+findLitMatch env lit ((pat, body) : rest) =
   case pat of
     MastPLit patLit | patLit == lit -> Just (env, body)
     MastPVar varId ->
       let env' = Map.insert varId (MastLit lit) env
-      in Just (env', body)
+       in Just (env', body)
     MastPWildcard -> Just (env, body)
     _ -> findLitMatch env lit rest
 
 -- Bind pattern variables to argument expressions
 bindPatterns :: VEnv -> [MastPat] -> [MastExp] -> Maybe VEnv
 bindPatterns env [] [] = Just env
-bindPatterns _ [] _ = Nothing  -- Arity mismatch
-bindPatterns _ _ [] = Nothing  -- Arity mismatch
-bindPatterns env (pat:pats) (arg:args) =
+bindPatterns _ [] _ = Nothing -- Arity mismatch
+bindPatterns _ _ [] = Nothing -- Arity mismatch
+bindPatterns env (pat : pats) (arg : args) =
   case pat of
     MastPVar varId ->
-      let env' = if isKnownValue arg
-                 then Map.insert varId arg env
-                 else Map.delete varId env
-      in bindPatterns env' pats args
+      let env' =
+            if isKnownValue arg
+              then Map.insert varId arg env
+              else Map.delete varId env
+       in bindPatterns env' pats args
     MastPWildcard -> bindPatterns env pats args
     MastPCon patId subPats ->
       case arg of
@@ -394,12 +419,12 @@ isKnownValue _ = False
 -- | Remove unused functions from a compilation unit.
 -- 'start' and 'main' are always considered roots (entry points).
 eliminateDeadCode :: MastCompUnit -> MastCompUnit
-eliminateDeadCode cu = cu { mastTopDecls = map elimTopDecl (mastTopDecls cu) }
+eliminateDeadCode cu = cu {mastTopDecls = map elimTopDecl (mastTopDecls cu)}
   where
     elimTopDecl (MastTContr c) = MastTContr (elimContract c)
     elimTopDecl d@(MastTDataDef _) = d
 
-    elimContract c = c { mastContrDecls = filter keepDecl (mastContrDecls c) }
+    elimContract c = c {mastContrDecls = filter keepDecl (mastContrDecls c)}
       where
         usedNames = findUsedFunctions c
         keepDecl (MastCFunDecl fd) = mastFunName fd `Set.member` usedNames
@@ -442,13 +467,15 @@ findUsedFunctions c = go initialRoots initialRoots
       | Set.null worklist = used
       | otherwise =
           let -- Get calls from all functions in worklist
-              newCalls = Set.unions [callsInFun fd | n <- Set.toList worklist
-                                                   , Just fd <- [Map.lookup n funTable]]
+              newCalls =
+                Set.unions
+                  [ callsInFun fd | n <- Set.toList worklist, Just fd <- [Map.lookup n funTable]
+                  ]
               -- Find newly discovered functions (not yet in used set)
               newFuns = Set.difference newCalls used
               -- Add new functions to used set
               used' = Set.union used newFuns
-          in go used' newFuns
+           in go used' newFuns
 
 -- | Collect all function names called in a function body
 callsInFun :: MastFunDef -> Set.Set Name

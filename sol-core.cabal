@@ -21,6 +21,8 @@ common common-opts
     , mtl
     , bytestring
     , containers
+    , cryptonite
+    , memory
     , algebraic-graphs
     , array
     , directory
