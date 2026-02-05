@@ -32,7 +32,7 @@ type FunTable = Map.Map Name MastFunDef
 type Fuel = Int
 
 defaultFuel :: Fuel
-defaultFuel = 10000
+defaultFuel = 100
 
 -----------------------------------------------------------------------
 -- Evaluation monad
@@ -50,6 +50,7 @@ askFunTable = ask
 getFuel :: EvalM Fuel
 getFuel = lift get
 
+-- Consume one unit of fuel, returns True if fuel was available
 useFuel :: EvalM Bool
 useFuel = do
   f <- getFuel
@@ -58,6 +59,10 @@ useFuel = do
       lift $ put (f - 1)
       pure True
     else pure False
+
+-- Restore one unit of fuel (called after successful inlining)
+restoreFuel :: EvalM ()
+restoreFuel = lift $ modify (+1)
 
 -----------------------------------------------------------------------
 -- Main entry point
@@ -197,6 +202,7 @@ evalExp env (MastCall i args) = do
       if hasFuel
         then do
           result <- tryInline fname args'
+          restoreFuel  -- Restore fuel: it acts purely as recursion depth limit
           pure $ case result of
             Just r -> r
             Nothing -> MastCall i args'

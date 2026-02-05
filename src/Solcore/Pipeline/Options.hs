@@ -120,7 +120,7 @@ options
            -- Partial evaluation options
            <*> optional (option auto ( long "pe-fuel"
                <> metavar "N"
-               <> help "Fuel for partial evaluation inlining (default: 10000)"))
+               <> help "Fuel for partial evaluation inlining depth limit (default: 100)"))
 
 
 -- parsing command line arguments
