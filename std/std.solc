@@ -154,7 +154,7 @@ class a:Ord {
 
 forall a. a:Ord =>
 function gt(x:a, y:a) -> bool {
-  return not(Ord.gt(x,y));
+  return Ord.gt(x,y);
 }
 
 forall a. a:Ord =>
