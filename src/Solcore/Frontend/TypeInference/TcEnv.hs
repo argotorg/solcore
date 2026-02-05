@@ -2,8 +2,7 @@ module Solcore.Frontend.TypeInference.TcEnv where
 
 import Data.List
 import Data.Map (Map)
-import qualified Data.Map as Map
-
+import Data.Map qualified as Map
 import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
@@ -14,25 +13,26 @@ import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options
 import Solcore.Primitives.Primitives
 
-
 -- definition of type environment
 type Arity = Int
 
 -- type constructor arity and names of constructors
 data TypeInfo
-  = TypeInfo {
-      arity :: Arity         -- number of type parameters
-    , constrNames :: [Name]  -- list of data constructor names
-    , fieldNames :: [Name]   -- list of field names
-    } deriving (Eq, Ord, Show)
+  = TypeInfo
+  { arity :: Arity, -- number of type parameters
+    constrNames :: [Name], -- list of data constructor names
+    fieldNames :: [Name] -- list of field names
+  }
+  deriving (Eq, Ord, Show)
 
 -- type synonym information
 data SynInfo
-  = SynInfo {
-      synArity :: Arity      -- number of type parameters
-    , synParams :: [Tyvar]   -- type variable parameters
-    , synExpansion :: Ty     -- the expanded type body
-    } deriving (Eq, Ord, Show)
+  = SynInfo
+  { synArity :: Arity, -- number of type parameters
+    synParams :: [Tyvar], -- type variable parameters
+    synExpansion :: Ty -- the expanded type body
+  }
+  deriving (Eq, Ord, Show)
 
 wordTypeInfo :: TypeInfo
 wordTypeInfo = TypeInfo 0 [] []
@@ -60,131 +60,152 @@ type ConInfo = (Name, Scheme)
 
 -- number of weak parameters and method names
 type Method = Name
+
 data ClassInfo
-  = ClassInfo {
-      classArity :: Arity
-    , methods :: [Method]
-    , classpred :: Pred
-    , supers :: [Pred]
-    } deriving Show
+  = ClassInfo
+  { classArity :: Arity,
+    methods :: [Method],
+    classpred :: Pred,
+    supers :: [Pred]
+  }
+  deriving (Show)
 
 type Table a = Map Name a
 
 -- typing environment
 type Env = Table Scheme
+
 type ClassTable = Table ClassInfo
+
 type TypeTable = Table TypeInfo
+
 type SynTable = Table SynInfo
+
 type Inst = Qual Pred
+
 type InstTable = Table [Inst]
+
 type DefTable = Table Inst
 
 data TcEnv
-  = TcEnv {
-      ctx :: Env               -- Variable environment
-    , instEnv :: InstTable     -- Instance Environment
-    , defaultEnv :: DefTable   -- Default instance environment
-    , typeTable :: TypeTable   -- Type information environment
-    , synTable :: SynTable     -- Type synonym environment
-    , classTable :: ClassTable -- Class information table
-    , contract :: Maybe Name   -- current contract name
-                               -- used to type check calls.
-    , subst :: Subst           -- Current substitution
-    , nameSupply :: NameSupply -- Fresh name supply
-    , uniqueTypes :: UniqueTyMap -- unique type map
-    , directCalls :: [Name] -- defined function names
-    , generateDefs :: Bool     -- should generate new defs?
-    , generated :: [TopDecl Id]
-    , counter :: Int           -- used to generate new names
-    , logs :: [String]         -- Logging
-    , warnings :: [String]     -- warnings collected to user
-    , enableLog :: Bool        -- Enable logging?
-    , coverage :: PragmaStatus   -- Disable coverage checking for names.
-    , patterson :: PragmaStatus  -- Disable Patterson condition for names.
-    , boundVariable :: PragmaStatus -- Disable bound variable condition for names.
-    , maxRecursionDepth :: Int -- max recursion depth in
-                               -- context reduction
-    , tcOptions :: Option
-    }
+  = TcEnv
+  { ctx :: Env, -- Variable environment
+    instEnv :: InstTable, -- Instance Environment
+    defaultEnv :: DefTable, -- Default instance environment
+    typeTable :: TypeTable, -- Type information environment
+    synTable :: SynTable, -- Type synonym environment
+    classTable :: ClassTable, -- Class information table
+    contract :: Maybe Name, -- current contract name
+    -- used to type check calls.
+    subst :: Subst, -- Current substitution
+    nameSupply :: NameSupply, -- Fresh name supply
+    uniqueTypes :: UniqueTyMap, -- unique type map
+    directCalls :: [Name], -- defined function names
+    generateDefs :: Bool, -- should generate new defs?
+    generated :: [TopDecl Id],
+    counter :: Int, -- used to generate new names
+    logs :: [String], -- Logging
+    warnings :: [String], -- warnings collected to user
+    enableLog :: Bool, -- Enable logging?
+    coverage :: PragmaStatus, -- Disable coverage checking for names.
+    patterson :: PragmaStatus, -- Disable Patterson condition for names.
+    boundVariable :: PragmaStatus, -- Disable bound variable condition for names.
+    maxRecursionDepth :: Int, -- max recursion depth in
+    -- context reduction
+    tcOptions :: Option
+  }
 
 initTcEnv :: Option -> TcEnv
-initTcEnv options
-  = TcEnv { ctx = primCtx
-          , instEnv = primInstEnv
-          , defaultEnv = Map.empty
-          , typeTable = primTypeEnv
-          , synTable = Map.empty
-          , classTable = primClassEnv
-          , contract = Nothing
-          , subst = mempty
-          , nameSupply = namePool
-          , uniqueTypes = primDataType
-          , directCalls = [ Name "primAddWord"
-                          , Name "primEqWord"
-                          , QualName invokableName "invoke"
-                          ]
-          , generateDefs = True
-          , generated = []
-          , counter = 0
-          , logs = []
-          , warnings = []
-          , enableLog = True
-          , coverage = Enabled
-          , patterson = Enabled
-          , boundVariable = Enabled
-          , maxRecursionDepth = 100
-          , tcOptions = options
-          }
+initTcEnv options =
+  TcEnv
+    { ctx = primCtx,
+      instEnv = primInstEnv,
+      defaultEnv = Map.empty,
+      typeTable = primTypeEnv,
+      synTable = Map.empty,
+      classTable = primClassEnv,
+      contract = Nothing,
+      subst = mempty,
+      nameSupply = namePool,
+      uniqueTypes = primDataType,
+      directCalls =
+        [ Name "primAddWord",
+          Name "primEqWord",
+          QualName invokableName "invoke"
+        ],
+      generateDefs = True,
+      generated = [],
+      counter = 0,
+      logs = [],
+      warnings = [],
+      enableLog = True,
+      coverage = Enabled,
+      patterson = Enabled,
+      boundVariable = Enabled,
+      maxRecursionDepth = 100,
+      tcOptions = options
+    }
 
 primCtx :: Env
-primCtx
-  = Map.fromList [ primAddWord
-                 , primEqWord
-                 , primInvoke
-                 , primPair
-                 , primUnit
-                 , primTrue
-                 , primFalse
-                 , primInvoke
-                 ]
+primCtx =
+  Map.fromList
+    [ primAddWord,
+      primEqWord,
+      primInvoke,
+      primPair,
+      primUnit,
+      primTrue,
+      primFalse,
+      primInvoke
+    ]
 
 primTypeEnv :: TypeTable
-primTypeEnv = Map.fromList [ (Name "word", wordTypeInfo)
-                           , (Name "pair", pairTypeInfo)
-                           , (Name "->", arrowTypeInfo)
-                           , (Name "()", unitTypeInfo)
-                           , (Name "bool", boolTypeInfo)
-                           , (Name "sum", sumTypeInfo)
-                           ]
+primTypeEnv =
+  Map.fromList
+    [ (Name "word", wordTypeInfo),
+      (Name "pair", pairTypeInfo),
+      (Name "->", arrowTypeInfo),
+      (Name "()", unitTypeInfo),
+      (Name "bool", boolTypeInfo),
+      (Name "sum", sumTypeInfo)
+    ]
 
 primInstEnv :: InstTable
 primInstEnv = Map.empty
 
 primClassEnv :: ClassTable
-primClassEnv
-  = Map.fromList [(Name "invokable", invokableInfo)]
-    where
-      invokableInfo
-        = ClassInfo 2 [QualName (Name "invokable") "invoke"]
-                      (InCls (Name "invokable") self args)
-                      []
-      self = TyVar (TVar (Name "self"))
-      args = map TyVar [TVar (Name "args"), TVar (Name "ret")]
+primClassEnv =
+  Map.fromList [(Name "invokable", invokableInfo)]
+  where
+    invokableInfo =
+      ClassInfo
+        2
+        [QualName (Name "invokable") "invoke"]
+        (InCls (Name "invokable") self args)
+        []
+    self = TyVar (TVar (Name "self"))
+    args = map TyVar [TVar (Name "args"), TVar (Name "ret")]
 
 primDataType :: Map Name DataTy
-primDataType = Map.fromList [ (Name "primAddWord", dt1 )
-                            , (Name "primEqWord", dt2)
-                            , (QualName (Name "invokable") "invoke", dt3)
-                            ]
-    where
-      dt1 = DataTy (Name "t_primAddWord")
-                   []
-                   [Constr (Name "t_primAddWord") []]
-      dt2 = DataTy (Name "t_primEqWord")
-                   []
-                   [Constr (Name "t_primEqWord") []]
-      dt3 = DataTy (Name "t_invokable.invoke")
-                   []
-                   [Constr (Name "t_invokable.invoke") []]
-
-
+primDataType =
+  Map.fromList
+    [ (Name "primAddWord", dt1),
+      (Name "primEqWord", dt2),
+      (QualName (Name "invokable") "invoke", dt3)
+    ]
+  where
+    dt1 =
+      DataTy
+        (Name "t_primAddWord")
+        []
+        [Constr (Name "t_primAddWord") []]
+    dt2 =
+      DataTy
+        (Name "t_primEqWord")
+        []
+        [Constr (Name "t_primEqWord") []]
+    dt3 =
+      DataTy
+        (Name "t_invokable.invoke")
+        []
+        [Constr (Name "t_invokable.invoke") []]
