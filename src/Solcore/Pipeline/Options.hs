@@ -23,6 +23,8 @@ data Option
     , optDebugSpec :: !Bool
     , optDebugHull :: !Bool
     , optTiming    :: !Bool
+    -- Partial evaluation options
+    , optPEFuel    :: !(Maybe Int)
     } deriving (Eq, Show)
 
 emptyOption :: FilePath -> Option
@@ -47,6 +49,8 @@ emptyOption path = Option
     , optDebugSpec      = False
     , optDebugHull      = False
     , optTiming         = False
+    -- Partial evaluation options
+    , optPEFuel         = Nothing
     }
 
 stdOpt :: Option
@@ -113,6 +117,10 @@ options
                <> help "Debug hull emission")
            <*> switch ( long "timing"
                <> help "Measure time of some phases")
+           -- Partial evaluation options
+           <*> optional (option auto ( long "pe-fuel"
+               <> metavar "N"
+               <> help "Fuel for partial evaluation inlining (default: 10000)"))
 
 
 -- parsing command line arguments
