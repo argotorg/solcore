@@ -315,6 +315,7 @@ echo "$output" | jq -R -c 'fromjson? | select(type == "object")' > "$runtime_tra
 
 result=$(jq -sr 'last | .output' "$runtime_tracefile")
 error=$(jq -sr 'last | .error' "$runtime_tracefile")
+gasUsed=$(jq -sr 'last | .gasUsed' "$runtime_tracefile")
 
 if [[ "$runtime_debug" == "true" ]]; then
     traceview "$runtime_tracefile"
@@ -327,6 +328,8 @@ if [[ "$error" == "null" ]]; then
         if [[ -n "$result" ]]; then
             decoded=$(cast abi-decode "$runtime_calldata_sig" "0x$result")
             echo "Decoded output: $decoded"
+	    gasDecoded=$(printf "%d" $gasUsed)
+	    echo "Gas used: $gasDecoded"
         else
             echo "No return data to decode"
         fi
