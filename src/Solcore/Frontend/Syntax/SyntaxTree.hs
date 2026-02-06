@@ -1,6 +1,6 @@
 module Solcore.Frontend.Syntax.SyntaxTree where
 
-import Data.Generics (Data,Typeable)
+import Data.Generics (Data, Typeable)
 import Data.List (union)
 import Data.List.NonEmpty
 import Language.Yul
@@ -9,10 +9,11 @@ import Solcore.Frontend.Syntax.Name
 -- compilation unit
 
 data CompUnit
-  = CompUnit {
-      imports :: [Import]
-    , contracts :: [TopDecl]
-    } deriving (Eq, Ord, Show, Data, Typeable)
+  = CompUnit
+  { imports :: [Import],
+    contracts :: [TopDecl]
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 data TopDecl
   = TContr Contract
@@ -39,43 +40,47 @@ data PragmaStatus
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data Pragma
-  = Pragma {
-      pragmaType :: PragmaType
-    , pragmaStatus :: PragmaStatus
-    } deriving (Eq, Ord, Show, Data, Typeable)
+  = Pragma
+  { pragmaType :: PragmaType,
+    pragmaStatus :: PragmaStatus
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 newtype Import
-  = Import { unImport :: Name }
-    deriving (Eq, Ord, Show, Data, Typeable)
+  = Import {unImport :: Name}
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of the contract structure
 
 data Contract
-  = Contract {
-      name :: Name
-    , tyParams :: [Ty]
-    , decls :: [ContractDecl]
-    } deriving (Eq, Ord, Show, Data, Typeable)
+  = Contract
+  { name :: Name,
+    tyParams :: [Ty],
+    decls :: [ContractDecl]
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of a algebraic data type
 
 data DataTy
-  = DataTy {
-      dataName :: Name
-    , dataParams :: [Ty]
-    , dataConstrs :: [Constr]
-    } deriving (Eq, Ord, Show, Data, Typeable)
+  = DataTy
+  { dataName :: Name,
+    dataParams :: [Ty],
+    dataConstrs :: [Constr]
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 data Constr
-  = Constr {
-      constrName :: Name
-    , constrTy :: [Ty]
-    } deriving (Eq, Ord, Show, Data, Typeable)
+  = Constr
+  { constrName :: Name,
+    constrTy :: [Ty]
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 -- type definition
 
 data Ty
-  = TyCon Name [Ty]  -- type constructor
+  = TyCon Name [Ty] -- type constructor
   deriving (Eq, Ord, Show, Data, Typeable)
 
 pattern (:->) t1 t2 = TyCon (Name "->") [t1, t2]
@@ -83,106 +88,114 @@ pattern (:->) t1 t2 = TyCon (Name "->") [t1, t2]
 tyName :: Ty -> Name
 tyName (TyCon n _) = n
 
-data Pred = InCls {
-              predName :: Name
-            , predMain :: Ty
-            , predParams :: [Ty]
-            } deriving (Eq, Ord, Show, Data, Typeable)
+data Pred = InCls
+  { predName :: Name,
+    predMain :: Ty,
+    predParams :: [Ty]
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 tysFrom :: [Pred] -> [Ty]
 tysFrom = foldr go []
-    where
-      go p ac = (predMain p) : predParams p `union` ac
-
+  where
+    go p ac = (predMain p) : predParams p `union` ac
 
 -- definition of type synonym
 
 data TySym
-  = TySym {
-      symName :: Name
-    , symVars :: [Ty]
-    , symType :: Ty
-    } deriving (Eq, Ord, Show, Data, Typeable)
+  = TySym
+  { symName :: Name,
+    symVars :: [Ty],
+    symType :: Ty
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of contract constructor
 
 data Constructor
-  = Constructor {
-      constrParams :: [Param]
-    , constrBody :: Body
-    } deriving (Eq, Ord, Show, Data, Typeable)
+  = Constructor
+  { constrParams :: [Param],
+    constrBody :: Body
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of classes and instances
 
 data Class
-  = Class {
-      classboundvars :: [Ty]
-    , classContext :: [Pred]
-    , className :: Name
-    , paramsVar :: [Ty]
-    , mainVar :: Ty
-    , signatures :: [Signature]
-    } deriving (Eq, Ord, Show, Data, Typeable)
+  = Class
+  { classboundvars :: [Ty],
+    classContext :: [Pred],
+    className :: Name,
+    paramsVar :: [Ty],
+    mainVar :: Ty,
+    signatures :: [Signature]
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 data Signature
-  = Signature {
-      sigVars :: [Ty]
-    , sigContext :: [Pred]
-    , sigName :: Name
-    , sigParams :: [Param]
-    , sigReturn :: Maybe Ty
-    } deriving (Eq, Ord, Show, Data, Typeable)
-
+  = Signature
+  { sigVars :: [Ty],
+    sigContext :: [Pred],
+    sigName :: Name,
+    sigParams :: [Param],
+    sigReturn :: Maybe Ty
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 data Instance
-  = Instance {
-      instDefault :: Bool
-    , instVars :: [Ty]
-    , instContext :: [Pred]
-    , instName :: Name
-    , paramsTy :: [Ty]
-    , mainTy :: Ty
-    , instFunctions :: [FunDef]
-    } deriving (Eq, Ord, Show, Data, Typeable)
+  = Instance
+  { instDefault :: Bool,
+    instVars :: [Ty],
+    instContext :: [Pred],
+    instName :: Name,
+    paramsTy :: [Ty],
+    mainTy :: Ty,
+    instFunctions :: [FunDef]
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of contract field variables
 
 data Field
-  = Field {
-      fieldName :: Name
-    , fieldTy :: Ty
-    , fieldInit :: Maybe Exp
-    } deriving (Eq, Ord, Show, Data, Typeable)
+  = Field
+  { fieldName :: Name,
+    fieldTy :: Ty,
+    fieldInit :: Maybe Exp
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of functions
 
 data FunDef
-  = FunDef {
-      funSignature :: Signature
-    , funDefBody :: Body
-    } deriving (Eq, Ord, Show, Data, Typeable)
+  = FunDef
+  { funSignature :: Signature,
+    funDefBody :: Body
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
 
 data ContractDecl
   = CDataDecl DataTy
   | CFieldDecl Field
   | CFunDecl FunDef
   | CConstrDecl Constructor
-    deriving (Eq, Ord,Show, Data, Typeable)
+  deriving (Eq, Ord, Show, Data, Typeable)
+
 -- definition of statements
 
 type Equation = ([Pat], [Stmt])
+
 type Equations = [Equation]
 
 data Stmt
-  = Assign Exp Exp                      -- assignment
-  | StmtPlusEq Exp Exp                  -- e1 += e2
-  | StmtMinusEq Exp Exp                 -- e1 -= e2
-  | Let Name (Maybe Ty) (Maybe Exp)     -- local variable
-  | StmtExp Exp                         -- expression level statements
-  | Return Exp                          -- return statements
-  | Match [Exp] Equations               -- pattern matching
-  | Asm YulBlock                        -- Yul block
-  | If Exp Body Body                    -- If statement
+  = Assign Exp Exp -- assignment
+  | StmtPlusEq Exp Exp -- e1 += e2
+  | StmtMinusEq Exp Exp -- e1 -= e2
+  | Let Name (Maybe Ty) (Maybe Exp) -- local variable
+  | StmtExp Exp -- expression level statements
+  | Return Exp -- return statements
+  | Match [Exp] Equations -- pattern matching
+  | Asm YulBlock -- Yul block
+  | If Exp Body Body -- If statement
   deriving (Eq, Ord, Show, Data, Typeable)
 
 type Body = [Stmt]
@@ -195,27 +208,27 @@ data Param
 -- expression syntax
 
 data Exp
-  = Lit Literal                            -- literal
-  | ExpName (Maybe Exp) Name [Exp]         -- function call or constructor
-  | ExpVar (Maybe Exp) Name                -- variables or field access
-  | Lam [Param] Body (Maybe Ty)            -- lambda-abstraction
-  | TyExp Exp Ty                           -- type annotation expression
-  | ExpIndexed Exp Exp                     -- e1[e2]
-  | ExpPlus Exp Exp                        -- e1 + e2
-  | ExpMinus Exp Exp                       -- e1 - e2
-  | ExpTimes Exp Exp                       -- e1 * e2
-  | ExpDivide Exp Exp                      -- e1 / e2
-  | ExpModulo Exp Exp                      -- e1 % e2
-  | ExpLT Exp Exp                          -- e1 < e2
-  | ExpGT Exp Exp                          -- e1 > e2
-  | ExpLE Exp Exp                          -- e1 <= e2
-  | ExpGE Exp Exp                          -- e1 >= e2
-  | ExpEE Exp Exp                          -- e1 == e2
-  | ExpNE Exp Exp                          -- e1 != e2
-  | ExpLAnd Exp Exp                        -- e1 && e2
-  | ExpLOr Exp Exp                         -- e1 || e2
-  | ExpLNot Exp                            -- ! e
-  | ExpCond Exp Exp Exp                    -- if e1 then e2 else e3
+  = Lit Literal -- literal
+  | ExpName (Maybe Exp) Name [Exp] -- function call or constructor
+  | ExpVar (Maybe Exp) Name -- variables or field access
+  | Lam [Param] Body (Maybe Ty) -- lambda-abstraction
+  | TyExp Exp Ty -- type annotation expression
+  | ExpIndexed Exp Exp -- e1[e2]
+  | ExpPlus Exp Exp -- e1 + e2
+  | ExpMinus Exp Exp -- e1 - e2
+  | ExpTimes Exp Exp -- e1 * e2
+  | ExpDivide Exp Exp -- e1 / e2
+  | ExpModulo Exp Exp -- e1 % e2
+  | ExpLT Exp Exp -- e1 < e2
+  | ExpGT Exp Exp -- e1 > e2
+  | ExpLE Exp Exp -- e1 <= e2
+  | ExpGE Exp Exp -- e1 >= e2
+  | ExpEE Exp Exp -- e1 == e2
+  | ExpNE Exp Exp -- e1 != e2
+  | ExpLAnd Exp Exp -- e1 && e2
+  | ExpLOr Exp Exp -- e1 || e2
+  | ExpLNot Exp -- ! e
+  | ExpCond Exp Exp Exp -- if e1 then e2 else e3
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- pattern matching equations
@@ -234,8 +247,7 @@ data Literal
   deriving (Eq, Ord, Show, Data, Typeable)
 
 pairTy :: Ty -> Ty -> Ty
-pairTy t1 t2 = TyCon "pair" [t1,t2]
+pairTy t1 t2 = TyCon "pair" [t1, t2]
 
 funtype :: [Ty] -> Ty -> Ty
 funtype ts t = foldr (:->) t ts
-

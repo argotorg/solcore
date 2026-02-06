@@ -1,25 +1,28 @@
 {-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE UndecidableInstances #-} -- for generic Pretty a => Show a
-
+-- for generic Pretty a => Show a
+{-# LANGUAGE UndecidableInstances #-}
 
 module Language.Yul where
-import Data.Generics (Data, Typeable)
 
 import Common.Pretty
+import Data.Generics (Data, Typeable)
+import Solcore.Frontend.Pretty.Name
 import Solcore.Frontend.Syntax.Name
 
-import Solcore.Frontend.Pretty.Name
 data YulObject = YulObject String YulCode [YulInner]
+
 data YulInner = InnerObject YulObject | InnerData YulData
-data YulData =  YulData String HexOrString
+
+data YulData = YulData String HexOrString
+
 data HexOrString = DHex String | DString String
 
-
 -- we need these two decls because they are printed differently
-newtype Yul = Yul { yulStmts :: [YulStmt] }
-newtype YulCode = YulCode { ycStmts :: [YulStmt] }
+newtype Yul = Yul {yulStmts :: [YulStmt]}
 
-instance {-# OVERLAPPABLE #-} Pretty a => Show a where show = render . ppr
+newtype YulCode = YulCode {ycStmts :: [YulStmt]}
+
+instance {-# OVERLAPPABLE #-} (Pretty a) => Show a where show = render . ppr
 
 instance Semigroup Yul where
   Yul a <> Yul b = Yul (a <> b)
@@ -34,21 +37,28 @@ instance Monoid YulCode where
   mempty = YulCode mempty
 
 type YArg = Name
+
 type YReturns = Maybe [Name]
+
 pattern YNoReturn :: Maybe a
 pattern YNoReturn = Nothing
+
 pattern YReturns :: a -> Maybe a
 pattern YReturns a = Just a
+
 pattern YulAlloc :: Name -> YulStmt
 pattern YulAlloc name = YLet [name] Nothing
+
 pattern YAssign1 :: Name -> YulExp -> YulStmt
 pattern YAssign1 name expr = YAssign [name] expr
 
 type YulCases = [YulCase]
-type YulCase = (YLiteral, YulBlock)
-type YulDefault = Maybe YulBlock
-type YulBlock = [YulStmt]
 
+type YulCase = (YLiteral, YulBlock)
+
+type YulDefault = Maybe YulBlock
+
+type YulBlock = [YulStmt]
 
 data YulStmt
   = YBlock YulBlock
@@ -70,7 +80,7 @@ data YulExp
   | YIdent Name
   | YLit YLiteral
   | YMeta String
-   deriving (Eq, Ord, Data, Typeable)
+  deriving (Eq, Ord, Data, Typeable)
 
 data YLiteral
   = YulNumber Integer
@@ -79,7 +89,7 @@ data YLiteral
   | YulFalse
   deriving (Eq, Ord, Data, Typeable)
 
-yulIntegral :: Integral i => i -> YulExp
+yulIntegral :: (Integral i) => i -> YulExp
 yulIntegral = YLit . YulNumber . fromIntegral
 
 yulInt :: Integer -> YulExp
@@ -94,20 +104,20 @@ yulString = YLit . YulString
 
 -- auxilliary functions
 
-hlist, vlist, nvlist, pprBlock :: Pretty a => [a] -> Doc
+hlist, vlist, nvlist, pprBlock :: (Pretty a) => [a] -> Doc
 hlist = hsep . map ppr
 vlist = vcat . map ppr
 nvlist = nest 2 . vlist
-pprBlock stmts = braces(nvlist stmts)
-
+pprBlock stmts = braces (nvlist stmts)
 
 instance Pretty YulObject where
-  ppr (YulObject name code inners) = vcat
-    [ text "object" <+> doubleQuotes(text name) <+> lbrace
-    , nest 2 $ ppr code
-    , nvlist inners
-    , rbrace
-    ]
+  ppr (YulObject name code inners) =
+    vcat
+      [ text "object" <+> doubleQuotes (text name) <+> lbrace,
+        nest 2 $ ppr code,
+        nvlist inners,
+        rbrace
+      ]
 
 instance Pretty YulInner where
   ppr (InnerObject obj) = ppr obj
@@ -121,18 +131,20 @@ instance Pretty YulCode where
 
 instance Pretty YulStmt where
   ppr (YBlock stmts) = pprBlock stmts
-  ppr (YFun name args rets stmts) = sep
-    [ hsep [text "function", ppr name, pprArgs, pprRets rets, lbrace]
-    , nest 2 (vlist stmts)
-    , rbrace
-    ]
+  ppr (YFun name args rets stmts) =
+    sep
+      [ hsep [text "function", ppr name, pprArgs, pprRets rets, lbrace],
+        nest 2 (vlist stmts),
+        rbrace
+      ]
     where
-        pprArgs = parens (commaSepList args)
-        pprRets Nothing = empty
-        pprRets (Just rs) = text "->" <+> commaSepList rs
+      pprArgs = parens (commaSepList args)
+      pprRets Nothing = empty
+      pprRets (Just rs) = text "->" <+> commaSepList rs
   ppr (YLet vars expr) =
-    text "let" <+> commaSepList vars
-               <+> maybe empty (\e -> text ":=" <+> ppr e) expr
+    text "let"
+      <+> commaSepList vars
+      <+> maybe empty (\e -> text ":=" <+> ppr e) expr
   ppr (YAssign vars expr) = commaSepList vars <+> text ":=" <+> ppr expr
   ppr (YIf cond stmts) = text "if" <+> (ppr cond) <+> pprBlock stmts
   ppr (YSwitch expr cases def) =
@@ -140,10 +152,14 @@ instance Pretty YulStmt where
       <+> ppr expr
       $$ nest 2 (vcat (map pprCase cases))
       $$ maybe empty (\stmts -> text "default" <+> pprBlock stmts) def
-    where pprCase (lit, stmts) = text "case" <+> ppr lit <+> pprBlock stmts
+    where
+      pprCase (lit, stmts) = text "case" <+> ppr lit <+> pprBlock stmts
   ppr (YFor pre cond post stmts) =
-    text "for" <+> braces (hlist pre) <+> ppr cond <+> braces (hlist post)
-               $$ pprBlock stmts
+    text "for"
+      <+> braces (hlist pre)
+      <+> ppr cond
+      <+> braces (hlist post)
+      $$ pprBlock stmts
   ppr YBreak = text "break"
   ppr YContinue = text "continue"
   ppr YLeave = text "leave"
@@ -163,7 +179,7 @@ instance Pretty YLiteral where
   ppr YulFalse = text "false"
 
 instance Pretty YulData where
-  ppr (YulData name val) = hsep [text "data", doubleQuotes $ text name , ppr val]
+  ppr (YulData name val) = hsep [text "data", doubleQuotes $ text name, ppr val]
 
 instance Pretty HexOrString where
   ppr (DHex s) = text "hex" <> doubleQuotes (text s)

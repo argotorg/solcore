@@ -4,7 +4,3 @@ import Solcore.Pipeline.SolcorePipeline
 
 main :: IO ()
 main = pipeline
-
-
-
-

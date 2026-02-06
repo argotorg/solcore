@@ -6,6 +6,7 @@ module Solcore.Backend.Specialise (specialiseCompUnit, typeOfTcExp) where
 -- This is meant to be run on typed and defunctionalised code, so no higher-order functions.
 
 import Common.Monad
+import Common.Pretty
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Except
