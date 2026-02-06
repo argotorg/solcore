@@ -11,6 +11,7 @@ tests =
   testGroup
     "Tests"
     [ cases,
+      comptime,
       pragmas,
       spec,
       std,

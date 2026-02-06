@@ -1,0 +1,49 @@
+data Proxy(t) = Proxy;
+
+function addWord(l: word, r: word) -> word {
+  let rw : word;
+  assembly {
+      rw := add(l,r);
+  }
+  return rw;
+}
+
+forall self.
+class self:StorageSize {
+    function size(x:Proxy(self)) -> word;
+}
+
+
+forall self.
+default instance self:StorageSize {
+    function size(x:Proxy(self)) -> word {
+        return 1;
+    }
+}
+
+instance ():StorageSize {
+    function size(x:Proxy(())) -> word {
+        return 0;
+    }
+}
+
+instance word:StorageSize {
+    function size(x:Proxy(word)) -> word {
+        return 1;
+    }
+}
+
+forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
+    function size(x:Proxy((a,b))) -> word {
+        let a_sz:word = StorageSize.size(Proxy:Proxy(a));
+        let b_sz:word = StorageSize.size(Proxy:Proxy(b));
+        return addWord(a_sz, b_sz);
+    }
+}
+
+
+contract Size {
+  function main() -> word {
+  return
+    StorageSize.size(Proxy:Proxy( (word, (word, ())))); }
+}

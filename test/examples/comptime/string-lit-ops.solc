@@ -1,0 +1,11 @@
+import std;
+
+// These functions are intended to be folded by MastEval at compile time.
+
+contract StringLitOps {
+  function main() {
+    // concat folds to a string literal, enabling revert("...") lowering
+    let s = concatLit("ab", "cd");
+    revert(s);
+  }
+}

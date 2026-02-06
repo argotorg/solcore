@@ -1,0 +1,7 @@
+import std;
+
+contract Size {
+  function main() -> word {
+  return
+    StorageSize.size(Proxy:Proxy( (word, (word, ())))); }
+}

@@ -1,0 +1,9 @@
+import std;
+
+function notAnswer(n : word) -> word { if(n == 42) then 0 else 42 }
+
+function answer(n:word) -> word { notAnswer(notAnswer(42)) }
+
+contract Fib {
+  function main() -> word { answer(42) }
+}
