@@ -1,68 +1,69 @@
-module Solcore.Frontend.Syntax.ElabTree(buildAST, buildAST') where
-import Prelude hiding(exp)
+module Solcore.Frontend.Syntax.ElabTree (buildAST, buildAST') where
 
 import Common.Monad
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
-
 import Data.List
 import Data.Maybe
-
 import GHC.Stack
-
-import Text.Pretty.Simple
-
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts, decls)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt
-import qualified Solcore.Frontend.Syntax.SyntaxTree as S
+import Solcore.Frontend.Syntax.SyntaxTree qualified as S
 import Solcore.Frontend.Syntax.Ty
+import Text.Pretty.Simple
+import Prelude hiding (exp)
 
 -- top level elaboration / name resolution function
 
 buildAST :: S.CompUnit -> IO (Either String (CompUnit Name), Env)
-buildAST t
-  = runElabM t
+buildAST t =
+  runElabM t
 
 buildAST' :: S.CompUnit -> IO (Either String (CompUnit Name, Env))
-buildAST' t
-  = runElabM' t
+buildAST' t =
+  runElabM' t
 
 -- definition of an environment to hold
 -- module declarations
 
 data Env
-  = Env {
-      contracts :: [Name]
-    , functions :: [Name]
-    , typeNames :: [Name]
-    , fields :: [Name]
-    , constructors :: [Name]
-    , classes :: [Name]
-    , variables :: [Name]
-    } deriving Show
+  = Env
+  { contracts :: [Name],
+    functions :: [Name],
+    typeNames :: [Name],
+    fields :: [Name],
+    constructors :: [Name],
+    classes :: [Name],
+    variables :: [Name]
+  }
+  deriving (Show)
 
 instance Semigroup Env where
-  (Env cs fs ts fd ctrs cls vs) <> (Env cs' fs' ts' fd' ctrs' cls' vs')
-    = Env (cs `union` cs')
-          (fs `union` fs')
-          (ts `union` ts')
-          (fd `union` fd')
-          (ctrs `union` ctrs')
-          (cls `union` cls')
-          (vs `union` vs')
+  (Env cs fs ts fd ctrs cls vs) <> (Env cs' fs' ts' fd' ctrs' cls' vs') =
+    Env
+      (cs `union` cs')
+      (fs `union` fs')
+      (ts `union` ts')
+      (fd `union` fd')
+      (ctrs `union` ctrs')
+      (cls `union` cls')
+      (vs `union` vs')
 
 instance Monoid Env where
-  mempty = Env { contracts = []
-               , functions =  []
-               , typeNames = [Name "word", Name "pair", Name "()", Name "bool"]
-               , fields = []
-               , constructors = [Name "pair", Name "()", Name "true", Name "false"]
-               , classes = [Name "invokable"]
-               , variables = []
-               }
+  mempty =
+    Env
+      { contracts = [],
+        functions = [],
+        typeNames = [Name "word", Name "pair", Name "()", Name "bool"],
+        fields = [],
+        constructors = [Name "pair", Name "()", Name "true", Name "false"],
+        classes = [Name "invokable"],
+        variables = []
+      }
+
 -- definition of the monad
 
 type ElabM a = (ExceptT String (StateT Env IO)) a
@@ -80,38 +81,38 @@ runElabM t = do
   runStateT (runExceptT (elab t)) ienv
 
 pushVarsInScope :: [Name] -> ElabM ()
-pushVarsInScope ns
-  = modify (\ st -> st{variables = ns ++ variables st})
+pushVarsInScope ns =
+  modify (\st -> st {variables = ns ++ variables st})
 
 popVarsInScope :: [Name] -> ElabM ()
-popVarsInScope ns
-  = modify (\ st -> st {variables = filter (`notElem` ns) (variables st)})
+popVarsInScope ns =
+  modify (\st -> st {variables = filter (`notElem` ns) (variables st)})
 
 isDefinedVar :: Name -> ElabM Bool
 isDefinedVar n = (elem n) <$> gets variables
 
 isDefinedType :: Name -> ElabM Bool
-isDefinedType n
-  = do
-      ts <- gets typeNames
-      cs <- gets contracts
-      let xs = (ts ++ cs)
-      pure (n `elem` xs)
+isDefinedType n =
+  do
+    ts <- gets typeNames
+    cs <- gets contracts
+    let xs = (ts ++ cs)
+    pure (n `elem` xs)
 
 isDefinedConstr :: Name -> ElabM Bool
-isDefinedConstr n
-  = (n `elem`) <$> gets constructors
+isDefinedConstr n =
+  (n `elem`) <$> gets constructors
 
 isField :: Name -> ElabM Bool
-isField n
-  = (n `elem`) <$> gets fields
+isField n =
+  (n `elem`) <$> gets fields
 
 isClassName :: Maybe S.Exp -> ElabM Bool
 isClassName Nothing = pure False
-isClassName (Just (S.ExpName _ n _))
-  = (n `elem`) <$> gets classes
-isClassName (Just (S.ExpVar _ n))
-  = (n `elem`) <$> gets classes
+isClassName (Just (S.ExpName _ n _)) =
+  (n `elem`) <$> gets classes
+isClassName (Just (S.ExpVar _ n)) =
+  (n `elem`) <$> gets classes
 isClassName (Just sexp) = notImplementedS "isClassName" sexp
 
 class Elab a where
@@ -121,14 +122,13 @@ class Elab a where
 
   initialEnv _ = mempty
 
-
-instance Elab a => Elab [a] where
+instance (Elab a) => Elab [a] where
   type Res [a] = [Res a]
   initialEnv [] = mempty
   initialEnv (d : ds) = initialEnv d <> initialEnv ds
   elab = mapM elab
 
-instance Elab a => Elab (Maybe a) where
+instance (Elab a) => Elab (Maybe a) where
   type Res (Maybe a) = Maybe (Res a)
 
   initialEnv (Just x) = initialEnv x
@@ -137,26 +137,25 @@ instance Elab a => Elab (Maybe a) where
   elab Nothing = pure Nothing
   elab (Just x) = Just <$> (elab x)
 
-instance (Elab a, Elab b) => Elab (a,b) where
-  type Res (a,b) = (Res a, Res b)
+instance (Elab a, Elab b) => Elab (a, b) where
+  type Res (a, b) = (Res a, Res b)
 
-  elab (x,y) = (,) <$> elab x <*> elab y
+  elab (x, y) = (,) <$> elab x <*> elab y
 
 instance Elab S.CompUnit where
   type Res S.CompUnit = CompUnit Name
-  initialEnv (S.CompUnit _ ds)
-    = initialEnv ds
-  elab (S.CompUnit imps ds)
-    = do
-        imps' <- elab imps
-        ds' <- concat <$> elab ds
-        pure (CompUnit imps' ds')
+  initialEnv (S.CompUnit _ ds) =
+    initialEnv ds
+  elab (S.CompUnit imps ds) =
+    do
+      imps' <- elab imps
+      ds' <- concat <$> elab ds
+      pure (CompUnit imps' ds')
 
 instance Elab S.Import where
   type Res S.Import = Import
 
   elab (S.Import qn) = pure (Import qn)
-
 
 instance Elab S.TopDecl where
   type Res S.TopDecl = [TopDecl Name]
@@ -170,10 +169,10 @@ instance Elab S.TopDecl where
   initialEnv (S.TPragmaDecl _) = mempty
 
   elab (S.TContr c) = do
-      c' <- elab c
-      -- extra <- extraTopDeclsForContract c
-      -- pure $ extra ++ [TContr c']
-      pure [TContr c']
+    c' <- elab c
+    -- extra <- extraTopDeclsForContract c
+    -- pure $ extra ++ [TContr c']
+    pure [TContr c']
   elab (S.TFunDef fd) = singleton . TFunDef <$> elab fd
   elab (S.TClassDef c) = singleton . TClassDef <$> elab c
   elab (S.TInstDef d) = singleton . TInstDef <$> elab d
@@ -184,18 +183,18 @@ instance Elab S.TopDecl where
 instance Elab S.Pragma where
   type Res S.Pragma = Pragma
 
-  elab (S.Pragma t s)
-    = Pragma <$> elab t <*> elab s
+  elab (S.Pragma t s) =
+    Pragma <$> elab t <*> elab s
 
 instance Elab S.PragmaType where
   type Res S.PragmaType = PragmaType
 
-  elab S.NoCoverageCondition
-    = pure NoCoverageCondition
-  elab S.NoPattersonCondition
-    = pure NoPattersonCondition
-  elab S.NoBoundVariableCondition
-    = pure NoBoundVariableCondition
+  elab S.NoCoverageCondition =
+    pure NoCoverageCondition
+  elab S.NoPattersonCondition =
+    pure NoPattersonCondition
+  elab S.NoBoundVariableCondition =
+    pure NoBoundVariableCondition
 
 instance Elab S.PragmaStatus where
   type Res S.PragmaStatus = PragmaStatus
@@ -207,65 +206,74 @@ instance Elab S.PragmaStatus where
 instance Elab S.Contract where
   type Res S.Contract = Contract Name
 
-  initialEnv (S.Contract n _ decls)
-    = env {contracts = [n] `union` contracts env}
-      where
-        env = initialEnv decls
+  initialEnv (S.Contract n _ decls) =
+    env {contracts = [n] `union` contracts env}
+    where
+      env = initialEnv decls
 
-  elab (S.Contract n ts decls)
-    = do
-        ts' <- elab ts
-        decls' <- concat <$> elab decls
-        vs <- mapM mkTyVar ts'
-        pure (Contract n vs decls')
+  elab (S.Contract n ts decls) =
+    do
+      ts' <- elab ts
+      decls' <- concat <$> elab decls
+      vs <- mapM mkTyVar ts'
+      pure (Contract n vs decls')
 
 instance Elab S.DataTy where
   type Res S.DataTy = DataTy
 
-  initialEnv (S.DataTy n _ cons)
-    = env {typeNames = [n] `union` typeNames env} <> (initialEnv cons)
-      where
-        env = mempty
+  initialEnv (S.DataTy n _ cons) =
+    env {typeNames = [n] `union` typeNames env} <> (initialEnv cons)
+    where
+      env = mempty
 
-  elab (S.DataTy n ts cs)
-    = do
-        ts' <- elab ts
-        cs' <- elab cs
-        vs <- mapM mkTyVar ts'
-        pure (DataTy n vs cs')
+  elab (S.DataTy n ts cs) =
+    do
+      ts' <- elab ts
+      cs' <- elab cs
+      vs <- mapM mkTyVar ts'
+      pure (DataTy n vs cs')
 
 instance Elab S.Constr where
   type Res S.Constr = Constr
 
-  initialEnv (S.Constr n _)
-    = env {constructors = [n] `union` constructors env}
-      where
-        env = mempty
+  initialEnv (S.Constr n _) =
+    env {constructors = [n] `union` constructors env}
+    where
+      env = mempty
 
-  elab (S.Constr n ts)
-    = Constr n <$> elab ts
+  elab (S.Constr n ts) =
+    Constr n <$> elab ts
 
 instance Elab S.Ty where
   type Res S.Ty = Ty
 
-  elab (S.TyCon n ts)
-    = do
-        isVar <- isDefinedVar n
-        isTy <- isDefinedType n
-        ts' <- elab ts
-        if isVar && null ts then do
+  elab (S.TyCon n ts) =
+    do
+      isVar <- isDefinedVar n
+      isTy <- isDefinedType n
+      ts' <- elab ts
+      if isVar && null ts
+        then do
           pure $ TyVar (TVar n)
-        else if isTy then do
-          pure $ TyCon n ts'
-            else if null ts then
-              pure $ TyVar (TVar n)
-            else if isArrow n then
+        else
+          if isTy
+            then do
               pure $ TyCon n ts'
-            else throwError $
-                unlines ["Undefined type:"
-                        , pretty n
-                        , "!!"
-                        ]
+            else
+              if null ts
+                then
+                  pure $ TyVar (TVar n)
+                else
+                  if isArrow n
+                    then
+                      pure $ TyCon n ts'
+                    else
+                      throwError $
+                        unlines
+                          [ "Undefined type:",
+                            pretty n,
+                            "!!"
+                          ]
 
 isArrow :: Name -> Bool
 isArrow (Name s) = s == "->"
@@ -274,54 +282,56 @@ isArrow _ = False
 instance Elab S.Pred where
   type Res S.Pred = Pred
 
-  elab (S.InCls n t ts)
-    = InCls n <$> elab t <*> elab ts
+  elab (S.InCls n t ts) =
+    InCls n <$> elab t <*> elab ts
 
 instance Elab S.TySym where
   type Res S.TySym = TySym
 
-  initialEnv (S.TySym n _ _)
-    = env {typeNames = [n] `union` typeNames env}
-      where
-        env = mempty
+  initialEnv (S.TySym n _ _) =
+    env {typeNames = [n] `union` typeNames env}
+    where
+      env = mempty
 
-  elab (S.TySym n vs t)
-    = do
-        vs' <- elab vs
-        t' <- elab t
-        vs1 <- mapM mkTyVar vs'
-        pure (TySym n vs1 t')
+  elab (S.TySym n vs t) =
+    do
+      vs' <- elab vs
+      t' <- elab t
+      vs1 <- mapM mkTyVar vs'
+      pure (TySym n vs1 t')
 
 instance Elab S.Constructor where
   type Res S.Constructor = Constructor Name
 
-  elab (S.Constructor ps bds)
-    = Constructor <$> elab ps <*> elab bds
+  elab (S.Constructor ps bds) =
+    Constructor <$> elab ps <*> elab bds
 
 instance Elab S.Class where
   type Res S.Class = Class Name
 
-  initialEnv (S.Class _ _ n _ _ sigs)
-    = env {classes = [n] `union` classes env}
-      where
-        env = initialEnv sigs
-  elab (S.Class bvs ctx n vs v sigs)
-    = do
-        ctx' <- elab ctx
-        vs' <- elab vs
-        v' <- elab v
-        allVars <- mapM (liftM not . isDefinedType . S.tyName) (v : vs)
-        unless (and allVars) $
-          throwError $ unlines ["Ill-formed class definition:"
-                               , pretty n
-                               , "all parameters must be type variables. Found:"
-                               , unwords (map pretty (v' : vs'))
-                               ]
-        vs1 <- mapM mkTyVar vs'
-        v1 <- mkTyVar v'
-        sigs' <- elab sigs
-        let bvs' = map TVar (names bvs)
-        pure (Class bvs' ctx' n vs1 v1 sigs')
+  initialEnv (S.Class _ _ n _ _ sigs) =
+    env {classes = [n] `union` classes env}
+    where
+      env = initialEnv sigs
+  elab (S.Class bvs ctx n vs v sigs) =
+    do
+      ctx' <- elab ctx
+      vs' <- elab vs
+      v' <- elab v
+      allVars <- mapM (liftM not . isDefinedType . S.tyName) (v : vs)
+      unless (and allVars) $
+        throwError $
+          unlines
+            [ "Ill-formed class definition:",
+              pretty n,
+              "all parameters must be type variables. Found:",
+              unwords (map pretty (v' : vs'))
+            ]
+      vs1 <- mapM mkTyVar vs'
+      v1 <- mkTyVar v'
+      sigs' <- elab sigs
+      let bvs' = map TVar (names bvs)
+      pure (Class bvs' ctx' n vs1 v1 sigs')
 
 mkTyVar :: Ty -> ElabM Tyvar
 mkTyVar (TyVar v) = pure v
@@ -330,62 +340,61 @@ mkTyVar t = throwError $ "Ill-formed type:" ++ pretty t
 instance Elab S.Signature where
   type Res S.Signature = Signature Name
 
-  initialEnv (S.Signature _ _ n _ _)
-    = env {functions = [n] `union` functions env }
-      where
-        env = mempty
+  initialEnv (S.Signature _ _ n _ _) =
+    env {functions = [n] `union` functions env}
+    where
+      env = mempty
 
-  elab (S.Signature vs ctx n ps mt)
-    = do
-        let vs' = map TVar (names vs)
-        ctx' <- elab ctx
-        ps' <- elab ps
-        mt' <- elab mt
-        pure (Signature vs' ctx' n ps' mt')
+  elab (S.Signature vs ctx n ps mt) =
+    do
+      let vs' = map TVar (names vs)
+      ctx' <- elab ctx
+      ps' <- elab ps
+      mt' <- elab mt
+      pure (Signature vs' ctx' n ps' mt')
 
 names :: [S.Ty] -> [Name]
 names = nub . foldr step []
   where
-    step (S.TyCon n ts) ac
-      = n : (names ts) ++ ac
+    step (S.TyCon n ts) ac =
+      n : (names ts) ++ ac
 
 instance Elab S.Instance where
   type Res S.Instance = Instance Name
 
-  elab (S.Instance d vs ctx n ts t funs)
-    = do
-        pushVarsInScope (names vs)
-        let vs' = map TVar (names vs)
-        ctx' <- elab ctx
-        ts' <- elab ts
-        t' <- elab t
-        funs' <- elab funs
-        popVarsInScope (names vs)
-        pure (Instance d vs' ctx' n ts' t' funs')
-
+  elab (S.Instance d vs ctx n ts t funs) =
+    do
+      pushVarsInScope (names vs)
+      let vs' = map TVar (names vs)
+      ctx' <- elab ctx
+      ts' <- elab ts
+      t' <- elab t
+      funs' <- elab funs
+      popVarsInScope (names vs)
+      pure (Instance d vs' ctx' n ts' t' funs')
 
 instance Elab S.Field where
   type Res S.Field = Field Name
 
-  elab (S.Field n t me)
-    = Field n <$> elab t <*> elab me
+  elab (S.Field n t me) =
+    Field n <$> elab t <*> elab me
 
-  initialEnv (S.Field n _t _i)
-    = env {fields = [n] `union` fields env }
-      where
-        env = mempty
+  initialEnv (S.Field n _t _i) =
+    env {fields = [n] `union` fields env}
+    where
+      env = mempty
 
 instance Elab S.FunDef where
   type Res S.FunDef = FunDef Name
 
-  elab (S.FunDef sig bd)
-    = do
-         let vs = names (S.sigVars sig)
-         pushVarsInScope vs
-         sig' <- elab sig
-         bd' <- elab bd
-         popVarsInScope vs
-         pure (FunDef sig' bd')
+  elab (S.FunDef sig bd) =
+    do
+      let vs = names (S.sigVars sig)
+      pushVarsInScope vs
+      sig' <- elab sig
+      bd' <- elab bd
+      popVarsInScope vs
+      pure (FunDef sig' bd')
 
   initialEnv (S.FunDef sig _) = initialEnv sig
 
@@ -397,172 +406,171 @@ instance Elab S.ContractDecl where
   initialEnv (S.CFunDecl fd) = initialEnv fd
   initialEnv (S.CConstrDecl c) = initialEnv c
 
-  elab (S.CDataDecl dt)
-    = singleton . CDataDecl <$> elab dt
-  elab (S.CFieldDecl fd)
---    = elabContractField fd -- contract fields are desugared away
-    = do
-        fd' <- elab fd
-        pure [CFieldDecl fd']
-  elab (S.CFunDecl fd)
-    = singleton . CFunDecl <$> elab fd
-  elab (S.CConstrDecl c)
-    = singleton . CConstrDecl <$> elab c
-
+  elab (S.CDataDecl dt) =
+    singleton . CDataDecl <$> elab dt
+  elab (S.CFieldDecl fd) =
+    --    = elabContractField fd -- contract fields are desugared away
+    do
+      fd' <- elab fd
+      pure [CFieldDecl fd']
+  elab (S.CFunDecl fd) =
+    singleton . CFunDecl <$> elab fd
+  elab (S.CConstrDecl c) =
+    singleton . CConstrDecl <$> elab c
 
 instance Elab S.Stmt where
   type Res S.Stmt = Stmt Name
 
-  elab (S.Assign lhs rhs)
-    = (:=) <$> elab lhs <*> elab rhs
-  elab (S.StmtPlusEq lhs rhs)
-    = (:=) <$> elab lhs <*> elab (S.ExpPlus lhs rhs)
-  elab (S.StmtMinusEq lhs rhs)
-    = (:=) <$> elab lhs <*> elab (S.ExpMinus lhs rhs)
-  elab (S.Let n mt me)
-    = Let n <$> elab mt <*> elab me
-  elab (S.StmtExp e)
-    = StmtExp <$> elab e
-  elab (S.Return e)
-    = Return <$> elab e
-  elab (S.Match es eqns)
-    = Match <$> elab es <*> elab eqns
-  elab (S.Asm blk)
-    = pure (Asm blk)
-  elab (S.If e blk1 blk2)
-    = If <$> elab e <*> elab blk1 <*> elab blk2
+  elab (S.Assign lhs rhs) =
+    (:=) <$> elab lhs <*> elab rhs
+  elab (S.StmtPlusEq lhs rhs) =
+    (:=) <$> elab lhs <*> elab (S.ExpPlus lhs rhs)
+  elab (S.StmtMinusEq lhs rhs) =
+    (:=) <$> elab lhs <*> elab (S.ExpMinus lhs rhs)
+  elab (S.Let n mt me) =
+    Let n <$> elab mt <*> elab me
+  elab (S.StmtExp e) =
+    StmtExp <$> elab e
+  elab (S.Return e) =
+    Return <$> elab e
+  elab (S.Match es eqns) =
+    Match <$> elab es <*> elab eqns
+  elab (S.Asm blk) =
+    pure (Asm blk)
+  elab (S.If e blk1 blk2) =
+    If <$> elab e <*> elab blk1 <*> elab blk2
 
 instance Elab S.Param where
   type Res S.Param = Param Name
 
-  elab (S.Typed n t)
-    = Typed n <$> elab t
-  elab (S.Untyped n)
-    = pure (Untyped n)
+  elab (S.Typed n t) =
+    Typed n <$> elab t
+  elab (S.Untyped n) =
+    pure (Untyped n)
 
 mkClassName :: Maybe (Exp Name) -> Name -> Name
 mkClassName Nothing n = n
-mkClassName (Just (Var x)) n
-  = QualName x (pretty n)
+mkClassName (Just (Var x)) n =
+  QualName x (pretty n)
 mkClassName (Just e) n = notImplementedS "mkClassName" (e, n)
+
 instance Elab S.Exp where
   type Res S.Exp = Exp Name
 
-  elab (S.Lit l)
-    = Lit <$> elab l
-  elab (S.Lam ps bd mt)
-    = Lam <$> elab ps <*> elab bd <*> elab mt
-  elab (S.TyExp e t)
-    = TyExp <$> elab e <*> elab t
-  elab (S.ExpVar me n)
-    = do
-        me' <- elab me
-        isF <- isField n
-        isCon <- isDefinedConstr n
-        if isF then  -- TODO: check if not shadowed
+  elab (S.Lit l) =
+    Lit <$> elab l
+  elab (S.Lam ps bd mt) =
+    Lam <$> elab ps <*> elab bd <*> elab mt
+  elab (S.TyExp e t) =
+    TyExp <$> elab e <*> elab t
+  elab (S.ExpVar me n) =
+    do
+      me' <- elab me
+      isF <- isField n
+      isCon <- isDefinedConstr n
+      if isF -- TODO: check if not shadowed
+        then
           pure $ FieldAccess me' n
-        else  if isCon && isNothing me then pure (Con n [])
-              else pure $ Var n
-  elab (S.ExpName me n es)
-    = do
-        me' <- elab me
-        es' <- elab es
-        isCon <- isDefinedConstr n
-        isClass <- isClassName me
-        -- condition for valid constructor use
-        if isCon && isNothing me' then
+        else
+          if isCon && isNothing me
+            then pure (Con n [])
+            else pure $ Var n
+  elab (S.ExpName me n es) =
+    do
+      me' <- elab me
+      es' <- elab es
+      isCon <- isDefinedConstr n
+      isClass <- isClassName me
+      -- condition for valid constructor use
+      if isCon && isNothing me'
+        then
           pure (Con n es')
-        else if isClass then do
-          pure (Call Nothing (mkClassName me' n) es')
-        -- condition for function call
-        else pure (Call me' n es')
-
+        else
+          if isClass
+            then do
+              pure (Call Nothing (mkClassName me' n) es')
+            -- condition for function call
+            else pure (Call me' n es')
   elab (S.ExpIndexed array idx) = do
     arr' <- elab array
     idx' <- elab idx
     pure $ Indexed arr' idx'
-
   elab (S.ExpLT e1 e2) = do
     (e1', e2') <- elab (e1, e2)
     pure $ Call Nothing (Name "lt") [e1', e2']
-
   elab (S.ExpGT e1 e2) = do
-     (e1', e2') <- elab (e1, e2)
-     let fun = QualName (Name "Ord") "gt"
-     pure $ Call Nothing fun [e1', e2']
-
+    (e1', e2') <- elab (e1, e2)
+    let fun = QualName (Name "Ord") "gt"
+    pure $ Call Nothing fun [e1', e2']
   elab (S.ExpLE e1 e2) = do
     (e1', e2') <- elab (e1, e2)
     pure $ Call Nothing (Name "le") [e1', e2']
-
   elab (S.ExpGE e1 e2) = do
-     (e1', e2') <- elab (e1, e2)
-     pure $ Call Nothing (Name "ge") [e1', e2']
-
+    (e1', e2') <- elab (e1, e2)
+    pure $ Call Nothing (Name "ge") [e1', e2']
   elab (S.ExpEE e1 e2) = do
-     (e1', e2') <- elab (e1, e2)
-     let fun = QualName (Name "Eq") "eq"
-     pure $ Call Nothing fun [e1', e2']
-
+    (e1', e2') <- elab (e1, e2)
+    let fun = QualName (Name "Eq") "eq"
+    pure $ Call Nothing fun [e1', e2']
   elab (S.ExpNE e1 e2) = do
-     (e1', e2') <- elab (e1, e2)
-     pure $ Call Nothing (Name "ne") [e1', e2']
-
+    (e1', e2') <- elab (e1, e2)
+    pure $ Call Nothing (Name "ne") [e1', e2']
   elab (S.ExpLAnd e1 e2) = do
-     (e1', e2') <- elab (e1, e2)
-     pure $ Call Nothing (Name "and") [e1', e2']
-
+    (e1', e2') <- elab (e1, e2)
+    pure $ Call Nothing (Name "and") [e1', e2']
   elab (S.ExpLOr e1 e2) = do
-     (e1', e2') <- elab (e1, e2)
-     pure $ Call Nothing (Name "or") [e1', e2']
-
+    (e1', e2') <- elab (e1, e2)
+    pure $ Call Nothing (Name "or") [e1', e2']
   elab (S.ExpLNot e) = do
-     e' <- elab e
-     pure $ Call Nothing (Name "not") [e']
-
+    e' <- elab e
+    pure $ Call Nothing (Name "not") [e']
   elab (S.ExpPlus e1 e2) = do
-     (e1', e2') <- elab (e1, e2)
-     let fun = QualName (Name "Add") "add"
-     pure $ Call Nothing fun [e1', e2']
-
+    (e1', e2') <- elab (e1, e2)
+    let fun = QualName (Name "Add") "add"
+    pure $ Call Nothing fun [e1', e2']
   elab (S.ExpMinus e1 e2) = do
-     (e1', e2') <- elab (e1, e2)
-     let fun = QualName (Name "Sub") "sub"
-     pure $ Call Nothing fun [e1', e2']
-
-  elab (S.ExpCond e1 e2 e3)
-    = Cond <$> elab e1 <*> elab e2 <*> elab e3
-
-  elab exp@(S.ExpTimes _ _)
-    = notImplementedM "elab @Exp" exp
-
-  elab exp@(S.ExpDivide _ _)
-    = notImplementedM "elab @Exp" exp
-
-  elab exp@(S.ExpModulo _ _)
-    = notImplementedM "elab @Exp" exp
+    (e1', e2') <- elab (e1, e2)
+    let fun = QualName (Name "Sub") "sub"
+    pure $ Call Nothing fun [e1', e2']
+  elab (S.ExpCond e1 e2 e3) =
+    Cond <$> elab e1 <*> elab e2 <*> elab e3
+  elab exp@(S.ExpTimes _ _) =
+    notImplementedM "elab @Exp" exp
+  elab exp@(S.ExpDivide _ _) =
+    notImplementedM "elab @Exp" exp
+  elab exp@(S.ExpModulo _ _) =
+    notImplementedM "elab @Exp" exp
 
 instance Elab S.Pat where
   type Res S.Pat = Pat Name
 
   elab S.PWildcard = pure PWildcard
   elab (S.PLit l) = PLit <$> elab l
-  elab p@(S.Pat n ps)
-    = do
-        ps' <- elab ps
-        isCon <- isDefinedConstr n
-        isT <- isTuple p
-        -- condition for tuples
-        if isT then
+  elab p@(S.Pat n ps) =
+    do
+      ps' <- elab ps
+      isCon <- isDefinedConstr n
+      isT <- isTuple p
+      -- condition for tuples
+      if isT
+        then
           pure $ mkTuplePat ps'
-        else if isCon then
-          pure (PCon n ps')
-        -- condition for variables
-        else if null ps then
-          pure (PVar n)
-        else throwError $ unlines ["Invalid pattern:"
-                                  , pretty (PCon n ps')
-                                  ]
+        else
+          if isCon
+            then
+              pure (PCon n ps')
+            -- condition for variables
+            else
+              if null ps
+                then
+                  pure (PVar n)
+                else
+                  throwError $
+                    unlines
+                      [ "Invalid pattern:",
+                        pretty (PCon n ps')
+                      ]
+
 mkTuplePat :: [Pat Name] -> Pat Name
 mkTuplePat [] = PCon (Name "()") []
 mkTuplePat ps = foldr1 pairPat ps
@@ -573,10 +581,9 @@ pairPat p1 p2 = PCon (Name "pair") [p1, p2]
 isTuple :: S.Pat -> ElabM Bool
 isTuple (S.Pat n ps)
   | n == Name "pair" && length ps /= 1 = pure True
-  | n == Name "pair"
-    = throwError "Invalid tuple pattern"
+  | n == Name "pair" =
+      throwError "Invalid tuple pattern"
 isTuple _ = pure False
-
 
 instance Elab S.Literal where
   type Res S.Literal = Literal
@@ -585,7 +592,7 @@ instance Elab S.Literal where
   elab (S.StrLit s) = pure (StrLit s)
 
 notImplementedS :: (HasCallStack, Show a) => String -> a -> b
-notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show(pShow a)]
+notImplementedS funName a = error $ concat [funName, " not implemented yet for ", show (pShow a)]
 
 notImplementedM :: (HasCallStack, Show a, MonadIO m, MonadError String m) => String -> a -> m b
 notImplementedM funName a = do

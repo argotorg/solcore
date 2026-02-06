@@ -36,20 +36,30 @@
         apps.sol-core = inputs.flake-utils.lib.mkApp { drv = packages.sol-core; };
         apps.default = apps.sol-core;
 
-         devShells.default = hspkgs.shellFor {
-           packages = _: [ sol-core ];
-           buildInputs = [
-             hspkgs.cabal-install
-             hspkgs.haskell-language-server
-             pkgs.foundry-bin
-             pkgs.go-ethereum
-             pkgs.jq
-             pkgs.solc
-             hspkgs.hevm
-             texlive
-             (pkgs.callPackage ./nix/goevmlab.nix { src = inputs.goevmlab; })
-           ];
-         };
+        checks.ormolu = pkgs.runCommand "ormolu-check" {
+          buildInputs = [ hspkgs.ormolu ];
+          src = gitignore ./.;
+        } ''
+          cd $src
+          ormolu --mode check $(find . -name '*.hs')
+          touch $out
+        '';
+
+        devShells.default = hspkgs.shellFor {
+          packages = _: [ sol-core ];
+          buildInputs = [
+            hspkgs.cabal-install
+            hspkgs.haskell-language-server
+            hspkgs.ormolu
+            pkgs.foundry-bin
+            pkgs.go-ethereum
+            pkgs.jq
+            pkgs.solc
+            hspkgs.hevm
+            texlive
+            (pkgs.callPackage ./nix/goevmlab.nix { src = inputs.goevmlab; })
+          ];
+        };
       }
     );
 }

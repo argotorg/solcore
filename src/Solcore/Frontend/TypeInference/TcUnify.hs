@@ -1,12 +1,10 @@
 module Solcore.Frontend.TypeInference.TcUnify where
 
+import Common.Pretty
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Reader
-
 import Data.List
-
-import Common.Pretty
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty hiding ((<>))
 import Solcore.Frontend.Syntax
@@ -38,8 +36,8 @@ instance Match Ty where
     | otherwise = do
         pure (v +-> t)
   match (TyVar v1) (TyVar v2)
-    | isBound v1 || isBound v2
-      = boundVariablesErr [v1, v2]
+    | isBound v1 || isBound v2 =
+        boundVariablesErr [v1, v2]
     | v1 == v2 = pure mempty
   match t1 t2 = typesNotMatch t1 t2
 
@@ -67,7 +65,7 @@ instance (HasType a, Match a) => Match (Qual a) where
 -- most general unifier
 
 class MGU a where
-  mgu :: MonadError String m => a -> a -> m Subst
+  mgu :: (MonadError String m) => a -> a -> m Subst
 
 instance (HasType a, MGU a, Pretty a) => MGU [a] where
   mgu ts1 ts2
@@ -79,13 +77,13 @@ instance MGU Ty where
     | n == n' && length ts == length ts' =
         solve (zip ts ts') mempty
   mgu (TyVar v) (TyVar v')
-    | isBound v || isBound v'
-      = boundVariablesErr [v, v']
+    | isBound v || isBound v' =
+        boundVariablesErr [v, v']
     | v == v' = pure mempty
-  mgu (Meta _) (TyVar v@(TVar _))
-    = boundVariablesErr [v]
-  mgu (TyVar v@(TVar _)) (Meta _)
-    = boundVariablesErr [v]
+  mgu (Meta _) (TyVar v@(TVar _)) =
+    boundVariablesErr [v]
+  mgu (TyVar v@(TVar _)) (Meta _) =
+    boundVariablesErr [v]
   mgu (Meta v) t = varBind v t
   mgu t (Meta v) = varBind v t
   mgu t1 t2 = typesDoNotUnify t1 t2
@@ -96,19 +94,19 @@ instance MGU Pred where
     | otherwise =
         throwError $
           unlines
-            [ "Cannot unify predicates:"
-            , pretty p1
-            , "with"
-            , pretty p2
+            [ "Cannot unify predicates:",
+              pretty p1,
+              "with",
+              pretty p2
             ]
-  mgu (t1 :~: t2) (t1' :~: t2')
-    = mgu [t1, t2] [t1', t2']
+  mgu (t1 :~: t2) (t1' :~: t2') =
+    mgu [t1, t2] [t1', t2']
 
 instance (HasType a, MGU a) => MGU (Qual a) where
-  mgu (ps :=> t) (ps' :=> t')
-    = do
-        s <- mgu (sort ps) (sort ps')
-        mgu (apply s t) (apply s t')
+  mgu (ps :=> t) (ps' :=> t') =
+    do
+      s <- mgu (sort ps) (sort ps')
+      mgu (apply s t) (apply s t')
 
 solve :: (MonadError String m, MGU a, HasType a) => [(a, a)] -> Subst -> m Subst
 solve [] s = pure s
@@ -136,22 +134,22 @@ merge s1@(Subst p1) s2@(Subst p2) =
   if agree
     then pure (Subst $ nub (p1 ++ p2))
     else mergeError disagree
- where
-  disagree = foldr step [] (dom p1 `intersect` dom p2)
-  step v ac
-    | (apply s1 (Meta v)) == (apply s2 (Meta v)) = ac
-    | otherwise = (apply s1 (Meta v), apply s2 (Meta v)) : ac
-  agree =
-    all
-      (\ v -> (apply s1 (Meta v)) == (apply s2 (Meta v)))
-      (dom p1 `intersect` dom p2)
-  dom s = map fst s
+  where
+    disagree = foldr step [] (dom p1 `intersect` dom p2)
+    step v ac
+      | (apply s1 (Meta v)) == (apply s2 (Meta v)) = ac
+      | otherwise = (apply s1 (Meta v), apply s2 (Meta v)) : ac
+    agree =
+      all
+        (\v -> (apply s1 (Meta v)) == (apply s2 (Meta v)))
+        (dom p1 `intersect` dom p2)
+    dom s = map fst s
 
 mergeError :: (MonadError String m) => [(Ty, Ty)] -> m a
 mergeError ts = throwError $ unlines $ "Cannot match types:" : ss
- where
-  ss = map go ts
-  go (x, y) = pretty x ++ " with " ++ pretty y
+  where
+    ss = map go ts
+    go (x, y) = pretty x ++ " with " ++ pretty y
 
 -- basic error messages
 
@@ -159,56 +157,63 @@ infiniteTyErr :: (MonadError String m) => MetaTv -> Ty -> m a
 infiniteTyErr v t =
   throwError $
     unwords
-      [ "Cannot construct the infinite type:"
-      , pretty (metaName v)
-      , "~"
-      , pretty t
+      [ "Cannot construct the infinite type:",
+        pretty (metaName v),
+        "~",
+        pretty t
       ]
 
 typesNotMatch :: (MonadError String m) => Ty -> Ty -> m a
 typesNotMatch t1 t2 =
   throwError $
     unwords
-      [ "Types do not match:"
-      , pretty t1
-      , "and"
-      , pretty t2
+      [ "Types do not match:",
+        pretty t1,
+        "and",
+        pretty t2
       ]
 
 typesMatchListErr :: (MonadError String m) => [String] -> [String] -> m a
 typesMatchListErr ts ts' =
   throwError (errMsg ts ts')
- where
-  errMsg ts ts' =
-    unwords ["Type lists do not match: (typesMatchListErr)\n"
-            , prettys ts, "and", prettys ts'
-            ]
+  where
+    errMsg ts ts' =
+      unwords
+        [ "Type lists do not match: (typesMatchListErr)\n",
+          prettys ts,
+          "and",
+          prettys ts'
+        ]
 
 typesMguListErr :: (MonadError String m, Pretty t) => [t] -> [t] -> m a
 typesMguListErr ts ts' =
   throwError (errMsg ts ts')
- where
-  errMsg ts ts' =
-    unwords ["Type lists do not unify: (typesMguListErr)\n"
-            , prettys ts, "and", prettys ts'
-            ]
-
+  where
+    errMsg ts ts' =
+      unwords
+        [ "Type lists do not unify: (typesMguListErr)\n",
+          prettys ts,
+          "and",
+          prettys ts'
+        ]
 
 typesDoNotUnify :: (MonadError String m) => Ty -> Ty -> m a
 typesDoNotUnify t1 t2 =
   throwError $
     unwords
-      [ "Types:"
-      , pretty t1
-      , "and"
-      , pretty t2
-      , "do not unify"
+      [ "Types:",
+        pretty t1,
+        "and",
+        pretty t2,
+        "do not unify"
       ]
 
-boundVariablesErr :: MonadError String m => [Tyvar] -> m a
-boundVariablesErr ts
-  = throwError $ unwords $ ["Panic!"
-                           , "The following bound variables where"
-                           , "found in unification / matching:"] ++
-                           map pretty ts
-
+boundVariablesErr :: (MonadError String m) => [Tyvar] -> m a
+boundVariablesErr ts =
+  throwError $
+    unwords $
+      [ "Panic!",
+        "The following bound variables where",
+        "found in unification / matching:"
+      ]
+        ++ map pretty ts
