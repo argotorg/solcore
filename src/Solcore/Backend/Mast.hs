@@ -1,20 +1,21 @@
 {-# LANGUAGE PatternSynonyms #-}
+
 module Solcore.Backend.Mast where
+
 {- Monomorphic Abstract Syntax Tree
    Represents specialised code with no type variables or meta variables.
    Produced by the specialiser, consumed by EmitHull.
 -}
 
-import Prelude hiding((<>))
-import Solcore.Frontend.Syntax.Contract(Import(..), DataTy(..))
-import Solcore.Frontend.Syntax.Name
-import Solcore.Frontend.Syntax.Stmt(Literal(..))
-import Solcore.Frontend.Syntax.Ty(Ty(..), Tyvar(..))
-import Solcore.Frontend.Pretty.SolcorePretty()  -- Pretty instances for Import, DataTy, Literal
-import Solcore.Frontend.Pretty.Name()  -- Pretty instance for Name
-import Solcore.Primitives.Primitives(word)
 import Common.Pretty
-import Language.Yul(YulBlock)
+import Language.Yul (YulBlock)
+import Solcore.Frontend.Pretty.Name ()
+import Solcore.Frontend.Pretty.SolcorePretty ()
+import Solcore.Frontend.Syntax.Contract (DataTy (..), Import (..))
+import Solcore.Frontend.Syntax.Name
+import Solcore.Frontend.Syntax.Stmt (Literal (..))
+import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..))
+import Solcore.Primitives.Primitives (word)
 
 -----------------------------------------------------------------------
 -- Types: no TyVar, no Meta — only type constructors
@@ -30,7 +31,7 @@ pattern MastArrow a b = MastTyCon (Name "->") [a, b]
 -- Identifiers: name + monomorphic type
 -----------------------------------------------------------------------
 
-data MastId = MastId { mastIdName :: Name, mastIdType :: MastTy }
+data MastId = MastId {mastIdName :: Name, mastIdType :: MastTy}
   deriving (Eq, Ord, Show)
 
 -----------------------------------------------------------------------
@@ -38,9 +39,10 @@ data MastId = MastId { mastIdName :: Name, mastIdType :: MastTy }
 -----------------------------------------------------------------------
 
 data MastCompUnit = MastCompUnit
-  { mastImports :: [Import]
-  , mastTopDecls :: [MastTopDecl]
-  } deriving (Eq, Ord, Show)
+  { mastImports :: [Import],
+    mastTopDecls :: [MastTopDecl]
+  }
+  deriving (Eq, Ord, Show)
 
 data MastTopDecl
   = MastTContr MastContract
@@ -52,9 +54,10 @@ data MastTopDecl
 -----------------------------------------------------------------------
 
 data MastContract = MastContract
-  { mastContrName :: Name
-  , mastContrDecls :: [MastContractDecl]
-  } deriving (Eq, Ord, Show)
+  { mastContrName :: Name,
+    mastContrDecls :: [MastContractDecl]
+  }
+  deriving (Eq, Ord, Show)
 
 data MastContractDecl
   = MastCDataDecl DataTy
@@ -67,16 +70,18 @@ data MastContractDecl
 -----------------------------------------------------------------------
 
 data MastFunDef = MastFunDef
-  { mastFunName :: Name
-  , mastFunParams :: [MastParam]
-  , mastFunReturn :: MastTy
-  , mastFunBody :: [MastStmt]
-  } deriving (Eq, Ord, Show)
+  { mastFunName :: Name,
+    mastFunParams :: [MastParam],
+    mastFunReturn :: MastTy,
+    mastFunBody :: [MastStmt]
+  }
+  deriving (Eq, Ord, Show)
 
 data MastParam = MastParam
-  { mastParamName :: Name
-  , mastParamType :: MastTy
-  } deriving (Eq, Ord, Show)
+  { mastParamName :: Name,
+    mastParamType :: MastTy
+  }
+  deriving (Eq, Ord, Show)
 
 -----------------------------------------------------------------------
 -- Statements
@@ -123,16 +128,18 @@ data MastPat
 typeOfMastExp :: MastExp -> MastTy
 typeOfMastExp (MastVar i) = mastIdType i
 typeOfMastExp (MastCon i []) = mastIdType i
-typeOfMastExp (MastCon i args) = go (mastIdType i) args where
-  go ty [] = ty
-  go (MastArrow _ u) (_:as) = go u as
-  go _ _ = error $ "typeOfMastExp(Con): " ++ show (MastCon i args)
+typeOfMastExp (MastCon i args) = go (mastIdType i) args
+  where
+    go ty [] = ty
+    go (MastArrow _ u) (_ : as) = go u as
+    go _ _ = error $ "typeOfMastExp(Con): " ++ show (MastCon i args)
 typeOfMastExp (MastLit (IntLit _)) = tyToMast word
 typeOfMastExp (MastLit (StrLit _)) = error "typeOfMastExp: string literal"
-typeOfMastExp (MastCall i args) = applyTo args (mastIdType i) where
-  applyTo [] ty = ty
-  applyTo (_:as) (MastArrow _ u) = applyTo as u
-  applyTo _ _ = error $ "typeOfMastExp(Call): " ++ show (MastCall i args)
+typeOfMastExp (MastCall i args) = applyTo args (mastIdType i)
+  where
+    applyTo [] ty = ty
+    applyTo (_ : as) (MastArrow _ u) = applyTo as u
+    applyTo _ _ = error $ "typeOfMastExp(Call): " ++ show (MastCall i args)
 typeOfMastExp (MastCond _ _ e) = typeOfMastExp e
 
 -----------------------------------------------------------------------
@@ -177,9 +184,11 @@ instance Pretty MastTopDecl where
 
 instance Pretty MastContract where
   ppr (MastContract n ds) =
-    text "contract" <+> ppr n <+> lbrace $$
-    nest 3 (vcat (map ppr ds)) $$
-    rbrace
+    text "contract"
+      <+> ppr n
+      <+> lbrace
+      $$ nest 3 (vcat (map ppr ds))
+      $$ rbrace
 
 instance Pretty MastContractDecl where
   ppr (MastCDataDecl dt) = ppr dt
@@ -188,12 +197,14 @@ instance Pretty MastContractDecl where
 
 instance Pretty MastFunDef where
   ppr (MastFunDef n ps ret bd) =
-    text "function" <+> ppr n <+>
-    parens (commaSep (map ppr ps)) <+>
-    text "->" <+> ppr ret <+>
-    lbrace $$
-    nest 3 (vcat (map ppr bd)) $$
-    rbrace
+    text "function"
+      <+> ppr n
+      <+> parens (commaSep (map ppr ps))
+      <+> text "->"
+      <+> ppr ret
+      <+> lbrace
+      $$ nest 3 (vcat (map ppr bd))
+      $$ rbrace
 
 instance Pretty MastParam where
   ppr (MastParam n t) = ppr n <+> colon <+> ppr t
@@ -205,18 +216,23 @@ instance Pretty MastStmt where
   ppr (MastStmtExp e) = ppr e >< semi
   ppr (MastReturn e) = text "return" <+> ppr e >< semi
   ppr (MastMatch e alts) =
-    text "match" <+> parens (ppr e) <+> lbrace $$
-    vcat (map pprMastAlt alts) $$
-    rbrace
+    text "match"
+      <+> parens (ppr e)
+      <+> lbrace
+      $$ vcat (map pprMastAlt alts)
+      $$ rbrace
   ppr (MastAsm yblk) =
-    text "assembly" <+> lbrace $$
-    nest 3 (vcat (map ppr yblk)) $$
-    rbrace
+    text "assembly"
+      <+> lbrace
+      $$ nest 3 (vcat (map ppr yblk))
+      $$ rbrace
 
 pprMastAlt :: MastAlt -> Doc
 pprMastAlt (p, ss) =
-  text "|" <+> ppr p <+> text "=>" $$
-  nest 3 (vcat (map ppr ss))
+  text "|"
+    <+> ppr p
+    <+> text "=>"
+    $$ nest 3 (vcat (map ppr ss))
 
 pprOptMastTy :: Maybe MastTy -> Doc
 pprOptMastTy Nothing = empty
@@ -230,8 +246,11 @@ instance Pretty MastExp where
   ppr (MastVar v) = ppr v
   ppr (MastCon n es)
     | isTuple n = parens $ commaSep (map ppr es)
-    | otherwise = ppr n >< if null es then empty
-                            else parens (nest 1 $ commaSep $ map ppr es)
+    | otherwise =
+        ppr n
+          >< if null es
+            then empty
+            else parens (nest 1 $ commaSep $ map ppr es)
   ppr (MastLit l) = ppr l
   ppr (MastCall f as) = ppr f >< parens (nest 1 $ commaSep $ map ppr as)
   ppr (MastCond e1 e2 e3) = hsep [text "if", ppr e1, text "then", ppr e2, text "else", ppr e3]
@@ -252,7 +271,7 @@ instance Pretty MastPat where
 isUnit :: Name -> Bool
 isUnit n = show n == "unit"
 
-isTuple :: Pretty a => a -> Bool
+isTuple :: (Pretty a) => a -> Bool
 isTuple s = render (ppr s) == "pair"
 
 pprTyParams :: [MastTy] -> Doc
