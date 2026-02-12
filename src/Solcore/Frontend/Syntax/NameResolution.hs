@@ -216,7 +216,10 @@ instance Resolve S.Stmt where
   type Result S.Stmt = Stmt Name
 
   resolve (S.Assign lhs rhs)
-    = (:=) <$> resolve lhs <*> resolve rhs
+    = do
+        lhs' <- resolve lhs
+        rhs' <- resolve rhs
+        pure (lhs' := rhs')
   resolve (S.StmtPlusEq lhs rhs)
     = (:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs)
   resolve (S.StmtMinusEq lhs rhs)
@@ -590,7 +593,8 @@ withLocalCtx m
   = do
       env <- get
       r <- m
-      modify (\env1 -> env1{scopeEnv = scopeEnv env})
+      modify (\env1 -> env1{scopeEnv = scopeEnv env,
+                            typeEnv = typeEnv env})
       pure r
 
 lookupType :: Name -> ResolveM (Maybe DeclType)
