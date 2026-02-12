@@ -156,7 +156,6 @@ forall a. a:Ord =>
 function gt(x:a, y:a) -> bool {
   return Ord.gt(x,y);
 }
-
 forall a. a:Ord =>
 function le(x:a, y:a) -> bool {
   return not(Ord.gt(x,y));
@@ -169,7 +168,7 @@ function ge(x:a, y:a) -> bool {
 
 forall a. a:Ord =>
 function lt(x:a, y:a) -> bool {
-  return gt(y,x);
+    return Ord.gt(y,x);
 }
 
 
@@ -189,6 +188,10 @@ forall t . class t:Mul {
 
 forall t . class t:Div {
     function div(l: t, r: t) -> t;
+}
+
+forall t . class t:Mod {
+    function mod(l: t, r: t) -> t;
 }
 
 forall t . class t:Bounded {
