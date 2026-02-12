@@ -17,9 +17,9 @@ import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
+import Solcore.Frontend.Syntax hiding (contracts)
+import Solcore.Frontend.Syntax.Contract hiding (contracts)
 import Solcore.Frontend.Syntax.NameResolution
-import Solcore.Frontend.Syntax.Contract hiding(contracts)
-import Solcore.Frontend.Syntax hiding(contracts)
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
@@ -71,7 +71,6 @@ compile opts = runExceptT $ do
   liftIO $ when (verbose || optDumpAST opts) $ do
     putStrLn "> AST after name resolution"
     putStrLn $ pretty resolved
-
 
   -- contract field access desugaring
   let accessed = fieldDesugarer resolved
