@@ -207,4 +207,3 @@ nameTypeName cname fname = Name ("DispatchNameTy_" <> nm cname <> "_" <> nm fnam
   where
     nm (Name s) = s
     nm (QualName _ s) = s
-
