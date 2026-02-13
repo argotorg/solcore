@@ -250,6 +250,12 @@ instance word:Add {
     }
 }
 
+instance string:Add {
+    function add(l: string, r: string) -> string {
+        return concatLit(l, r);
+    }
+}
+
 function subWord(l: word, r: word) -> word {
     let rw : word;
     assembly {
