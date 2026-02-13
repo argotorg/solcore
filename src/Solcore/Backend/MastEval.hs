@@ -155,7 +155,7 @@ evalStmt env stmt = case stmt of
     let env' = case mInit' of
           Just e | isKnownValue e -> Map.insert i e env
           _ -> Map.delete i env -- Shadow/remove any existing binding
-    -- Always emit the let: the variable may be referenced by opaque asm blocks
+          -- Always emit the let: the variable may be referenced by opaque asm blocks
     pure (env', [MastLet i ty mInit'])
   MastAssign i e -> do
     e' <- evalExp env e
@@ -163,7 +163,7 @@ evalStmt env stmt = case stmt of
           if isKnownValue e'
             then Map.insert i e' env
             else Map.delete i env -- Value no longer known
-    -- Always emit the assignment: the variable may be referenced by opaque asm blocks
+            -- Always emit the assignment: the variable may be referenced by opaque asm blocks
     pure (env', [MastAssign i e'])
   MastStmtExp e -> do
     e' <- evalExp env e
