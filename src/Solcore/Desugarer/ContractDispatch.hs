@@ -10,19 +10,14 @@
 -- used to implement this dispatch can be found in std/dispatch.solc.
 module Solcore.Desugarer.ContractDispatch where
 
-import Data.Bits (shiftL, (.|.))
-import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
 import Data.List (mapAccumL)
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text qualified as T
-import Data.Text.Encoding (encodeUtf8)
 import Language.Yul
 import Language.Yul.QuasiQuote
 import Solcore.Frontend.Syntax
-import Solcore.Primitives.Primitives (tupleExpFromList, tupleTyFromList, unit, word)
+import Solcore.Primitives.Primitives (string, tupleExpFromList, tupleTyFromList, unit, word)
 
 contractDispatchDesugarer :: CompUnit Name -> CompUnit Name
 contractDispatchDesugarer (CompUnit ims topdecls) = CompUnit ims (Set.toList extras <> topdecls')
@@ -184,36 +179,19 @@ mkNameTy cname fname = DataTy (nameTypeName cname fname) [] []
 
 mkNameInst :: DataTy -> Name -> Instance Name
 mkNameInst (DataTy dname [] []) fname =
-  let -- types
-      nameTy = TyCon dname []
-
-      -- sig
-      args = [Typed "head" word, Typed "tail" word, Typed "prx" (proxyTy nameTy)]
-      sig = Signature [] [] "append" args (Just word)
-
-      -- body
-      nameBytes = encodeUtf8 . T.pack . show $ fname
-      nameSize = toInteger (BS.length nameBytes)
-
-      storeSize = mstore (YIdent "head") (add (mload (YIdent "head")) (YLit (YulNumber nameSize)))
-      storeBytes = generateStoreBytes nameBytes "tail"
-      ret = Return (Call Nothing (QualName "Add" "add") [Var "tail", Lit (IntLit nameSize)])
-      body = [Asm (YExp storeSize : storeBytes), ret]
-
-      -- yul helpers
-      mstore loc val = YCall "mstore" [loc, val]
-      mload loc = YCall "mload" [loc]
-      add l r = YCall "add" [l, r]
+  let nameTy = TyCon dname []
+      sig = Signature [] [] "sigStr" [Typed "p" (proxyTy nameTy)] (Just string)
+      body = [Return (Lit (StrLit (show fname)))]
    in Instance
         { instDefault = False,
           instVars = [],
           instContext = [],
-          instName = "ABIString",
+          instName = "SigString",
           paramsTy = [],
-          mainTy = TyCon dname [],
+          mainTy = nameTy,
           instFunctions = [FunDef sig body]
         }
-mkNameInst dt _ = error ("Internal Error: unexpect name type structure: " <> show dt)
+mkNameInst dt _ = error ("Internal Error: unexpected name type structure: " <> show dt)
 
 --- Util ---
 
@@ -229,32 +207,3 @@ nameTypeName cname fname = Name ("DispatchNameTy_" <> nm cname <> "_" <> nm fnam
   where
     nm (Name s) = s
     nm (QualName _ s) = s
-
--- | Generate Yul statements to store bytes in memory
-generateStoreBytes :: ByteString -> Name -> [YulStmt]
-generateStoreBytes bs offsetName =
-  let chunks = chunk32 bs
-      indices = [0, 32 .. (length chunks - 1) * 32]
-   in zipWith (storeChunk offsetName) indices chunks
-
--- | Store a 32-byte chunk at a specific offset
-storeChunk :: Name -> Int -> ByteString -> YulStmt
-storeChunk offsetName index chunk =
-  let paddedChunk = BS.append chunk (BS.replicate (32 - BS.length chunk) 0)
-      loc = YCall "add" [YIdent offsetName, YLit (YulNumber (toInteger index))]
-      val = YLit (YulNumber (bsToInteger paddedChunk))
-   in YExp (YCall "mstore" [loc, val])
-
--- | Split a ByteString into 32-byte chunks
-chunk32 :: ByteString -> [ByteString]
-chunk32 bs
-  | BS.null bs = []
-  | otherwise =
-      let (chunk, rest) = BS.splitAt 32 bs
-       in chunk : chunk32 rest
-
--- | Convert a bytestring to an integer (little endian)
-bsToInteger :: ByteString -> Integer
-bsToInteger = BS.foldr f 0 . BS.reverse
-  where
-    f w n = toInteger w .|. shiftL n 8

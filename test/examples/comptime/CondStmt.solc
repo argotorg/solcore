@@ -1,0 +1,14 @@
+import std;
+
+function notAnswer(n : word) -> word {
+   if(n == 42) { return 0; } else {return 42; }
+}
+
+function answer(n:word) -> word {
+  return notAnswer(notAnswer(42));
+}
+contract Fib {
+function main() -> word {
+   return answer(42);
+}
+}

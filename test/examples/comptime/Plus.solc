@@ -1,0 +1,20 @@
+import std;
+  function zero () {
+    return 0;
+  }
+
+function one() {
+    return 1 + zero() ;
+  }
+
+function two () {
+  let x = zero();
+  x = x + one();
+  x =  x + x ;
+  return x;
+}
+
+contract Plus {
+  function main() -> word { return two() + two(); }
+}
+

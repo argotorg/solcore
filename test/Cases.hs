@@ -17,6 +17,25 @@ std =
       runTestForFile "dispatch.solc" stdFolder
     ]
 
+comptime :: TestTree
+comptime =
+  testGroup
+    "Compile-time evaluation"
+    [ runTestForFile "CondExpr.solc" comptimeFolder,
+      runTestForFile "CondStmt.solc" comptimeFolder,
+      runTestForFile "Plus.solc" comptimeFolder,
+      runTestForFile "OneTwo.solc" comptimeFolder,
+      runTestForFile "Size.solc" comptimeFolder,
+      runTestForFile "StdSize.solc" comptimeFolder,
+      runTestForFile "counter.solc" comptimeFolder,
+      runTestForFile "fib.solc" comptimeFolder,
+      runTestForFile "string-lit-ops.solc" comptimeFolder,
+      runTestForFile "string-lit-len.solc" comptimeFolder,
+      runTestForFile "string-lit-keccak.solc" comptimeFolder
+    ]
+  where
+    comptimeFolder = "./test/examples/comptime"
+
 spec :: TestTree
 spec =
   testGroup

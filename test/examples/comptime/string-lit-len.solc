@@ -1,0 +1,8 @@
+import std;
+
+contract StringLitLen {
+  function main() {
+    // strlenLit folds to a word
+    return strlenLit("hello");
+  }
+}
