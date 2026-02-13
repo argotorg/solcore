@@ -1,0 +1,27 @@
+{
+  "NegPair": {
+    "bytecode": "_CODE",
+    "contract": "NegPair",
+    "tests": [
+      {
+        "input": {
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+	    "text-calldata": "negPair()",
+            "calldata": "ce61a134",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

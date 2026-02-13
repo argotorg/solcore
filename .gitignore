@@ -56,3 +56,4 @@ opencode.jsonc
 
 # config dirs
 .vscode/
+.private-journal/

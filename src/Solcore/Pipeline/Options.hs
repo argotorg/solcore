@@ -23,7 +23,9 @@ data Option
     -- Options controlling diagnostic output
     optDebugSpec :: !Bool,
     optDebugHull :: !Bool,
-    optTiming :: !Bool
+    optTiming :: !Bool,
+    -- Partial evaluation options
+    optPEFuel :: !(Maybe Int)
   }
   deriving (Eq, Show)
 
@@ -49,7 +51,9 @@ emptyOption path =
       -- Options controlling diagnostic output
       optDebugSpec = False,
       optDebugHull = False,
-      optTiming = False
+      optTiming = False,
+      -- Partial evaluation options
+      optPEFuel = Nothing
     }
 
 stdOpt :: Option
@@ -152,6 +156,15 @@ options =
     <*> switch
       ( long "timing"
           <> help "Measure time of some phases"
+      )
+    -- Partial evaluation options
+    <*> optional
+      ( option
+          auto
+          ( long "pe-fuel"
+              <> metavar "N"
+              <> help "Fuel for partial evaluation inlining depth limit (default: 100)"
+          )
       )
 
 -- parsing command line arguments
