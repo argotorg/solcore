@@ -48,14 +48,22 @@ defaultFuel = 100
 -- Evaluation monad
 -----------------------------------------------------------------------
 
--- Reader for constant function table, State for fuel budget
-type EvalM = ReaderT FunTable (State Fuel)
+data EvalEnv = EvalEnv
+  { envFunTable :: FunTable,
+    envPureFuns :: Set.Set Name
+  }
 
-runEvalM :: FunTable -> Fuel -> EvalM a -> (a, Fuel)
-runEvalM ft fuel m = runState (runReaderT m ft) fuel
+-- Reader for constant environment, State for fuel budget
+type EvalM = ReaderT EvalEnv (State Fuel)
+
+runEvalM :: EvalEnv -> Fuel -> EvalM a -> (a, Fuel)
+runEvalM env fuel m = runState (runReaderT m env) fuel
 
 askFunTable :: EvalM FunTable
-askFunTable = ask
+askFunTable = asks envFunTable
+
+askPureFuns :: EvalM (Set.Set Name)
+askPureFuns = asks envPureFuns
 
 getFuel :: EvalM Fuel
 getFuel = lift get
@@ -83,7 +91,9 @@ evalCompUnit :: Fuel -> MastCompUnit -> (MastCompUnit, Fuel)
 evalCompUnit fuel cu = (cu {mastTopDecls = decls'}, remainingFuel)
   where
     funTable = buildFunTable cu
-    (decls', remainingFuel) = runEvalM funTable fuel (mapM evalTopDecl (mastTopDecls cu))
+    pureFuns = computePureFuns funTable
+    env = EvalEnv {envFunTable = funTable, envPureFuns = pureFuns}
+    (decls', remainingFuel) = runEvalM env fuel (mapM evalTopDecl (mastTopDecls cu))
 
 -----------------------------------------------------------------------
 -- Build function table from compilation unit
@@ -282,30 +292,23 @@ mkBool b = MastCon conId [unitVal]
 -- Try to inline a function call.
 -- Works when: (1) all arguments are known values, or
 --             (2) function is "constant" (ignores its arguments)
+-- Only pure functions (no asm, no impure calls) are eligible for inlining.
 tryInline :: Name -> [MastExp] -> EvalM (Maybe MastExp)
 tryInline fname args = do
-  ft <- askFunTable
-  case Map.lookup fname ft of
-    Nothing -> pure Nothing
-    Just fd
-      | not (isInlinable fd) -> pure Nothing
-      | length (mastFunParams fd) /= length args -> pure Nothing
-      | otherwise -> do
-          let params = mastFunParams fd
-              paramToId p = MastId (mastParamName p) (mastParamType p)
-              env = Map.fromList $ zip (map paramToId params) args
-          evalFunBody env (mastFunBody fd)
-
--- Check if a function can be inlined
-isInlinable :: MastFunDef -> Bool
-isInlinable fd = all isInlinableStmt (mastFunBody fd)
-  where
-    isInlinableStmt (MastAsm _) = False
-    isInlinableStmt (MastLet _ _ _) = True
-    isInlinableStmt (MastAssign _ _) = True
-    isInlinableStmt (MastStmtExp _) = True
-    isInlinableStmt (MastReturn _) = True
-    isInlinableStmt (MastMatch _ alts) = all (all isInlinableStmt . snd) alts
+  pureFuns <- askPureFuns
+  if fname `Set.notMember` pureFuns
+    then pure Nothing
+    else do
+      ft <- askFunTable
+      case Map.lookup fname ft of
+        Nothing -> pure Nothing
+        Just fd
+          | length (mastFunParams fd) /= length args -> pure Nothing
+          | otherwise -> do
+              let params = mastFunParams fd
+                  paramToId p = MastId (mastParamName p) (mastParamType p)
+                  env = Map.fromList $ zip (map paramToId params) args
+              evalFunBody env (mastFunBody fd)
 
 -- Evaluate a function body and extract the return value
 evalFunBody :: VEnv -> [MastStmt] -> EvalM (Maybe MastExp)
@@ -333,7 +336,7 @@ evalFunBody env (stmt : rest) = case stmt of
     case matchAlts env scrut' alts of
       Just (env', body) -> evalFunBody env' body
       Nothing -> pure Nothing -- Scrutinee not known, can't select branch
-  MastAsm _ -> pure Nothing -- Should not happen due to isInlinable check
+  MastAsm _ -> pure Nothing -- Should not happen: purity analysis excludes asm functions
 
 -- Try to match a known scrutinee against alternatives.
 -- Returns the extended environment and the body of the matching alternative.
@@ -409,6 +412,72 @@ isKnownValue :: MastExp -> Bool
 isKnownValue (MastLit _) = True
 isKnownValue (MastCon _ args) = all isKnownValue args
 isKnownValue _ = False
+
+-----------------------------------------------------------------------
+-- Purity analysis
+-----------------------------------------------------------------------
+
+-- Primitives the PE evaluates directly; their std asm bodies are irrelevant
+builtinPureFuns :: Set.Set Name
+builtinPureFuns =
+  Set.fromList
+    [ Name "addWord",
+      Name "subWord",
+      Name "gtWord",
+      Name "eqWord",
+      Name "concatLit",
+      Name "strlenLit",
+      Name "keccakLit"
+    ]
+
+-- Functions with dummy pure bodies that are intercepted by EmitHull
+builtinImpureFuns :: Set.Set Name
+builtinImpureFuns = Set.fromList [Name "revert"]
+
+-- | Compute the set of pure functions via fixed-point iteration.
+-- Start from builtinPureFuns; each iteration adds functions whose bodies
+-- contain no asm and whose every call target is already known-pure.
+computePureFuns :: FunTable -> Set.Set Name
+computePureFuns ft = go builtinPureFuns
+  where
+    go pureFuns =
+      let pureFuns' =
+            Map.foldlWithKey'
+              ( \acc fname fd ->
+                  if fname `Set.member` acc
+                    || fname `Set.member` builtinImpureFuns
+                    then acc
+                    else
+                      if bodyIsPure acc (mastFunBody fd)
+                        then Set.insert fname acc
+                        else acc
+              )
+              pureFuns
+              ft
+       in if Set.size pureFuns' == Set.size pureFuns
+            then pureFuns
+            else go pureFuns'
+
+bodyIsPure :: Set.Set Name -> [MastStmt] -> Bool
+bodyIsPure pureFuns = all (stmtIsPure pureFuns)
+
+stmtIsPure :: Set.Set Name -> MastStmt -> Bool
+stmtIsPure _ (MastAsm _) = False
+stmtIsPure pureFuns (MastLet _ _ mInit) = maybe True (expIsPure pureFuns) mInit
+stmtIsPure pureFuns (MastAssign _ e) = expIsPure pureFuns e
+stmtIsPure pureFuns (MastStmtExp e) = expIsPure pureFuns e
+stmtIsPure pureFuns (MastReturn e) = expIsPure pureFuns e
+stmtIsPure pureFuns (MastMatch e alts) =
+  expIsPure pureFuns e && all (bodyIsPure pureFuns . snd) alts
+
+expIsPure :: Set.Set Name -> MastExp -> Bool
+expIsPure _ (MastLit _) = True
+expIsPure _ (MastVar _) = True
+expIsPure pureFuns (MastCall i args) =
+  mastIdName i `Set.member` pureFuns && all (expIsPure pureFuns) args
+expIsPure pureFuns (MastCon _ args) = all (expIsPure pureFuns) args
+expIsPure pureFuns (MastCond e1 e2 e3) =
+  expIsPure pureFuns e1 && expIsPure pureFuns e2 && expIsPure pureFuns e3
 
 -----------------------------------------------------------------------
 -- Dead code elimination
