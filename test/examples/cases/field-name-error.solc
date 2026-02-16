@@ -1,0 +1,9 @@
+import std;
+
+contract PoC {
+    x : word;
+
+    function main () -> word {
+      return 0;
+    }
+}

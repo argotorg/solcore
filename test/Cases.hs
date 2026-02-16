@@ -264,7 +264,10 @@ cases =
       runTestForFile "closure-free-bound-test.solc" caseFolder,
       runTestExpectingFailure "instance-context-wrong-kind.solc" caseFolder,
       runTestForFile "instance-closure-error.solc" caseFolder,
-      runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder
+      runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder,
+      runTestForFile "field-name-error.solc" caseFolder,
+      runTestExpectingFailure "field-access.solc" caseFolder,
+      runTestForFile "mod-example.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

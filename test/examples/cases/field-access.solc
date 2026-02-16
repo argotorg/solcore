@@ -1,0 +1,18 @@
+import std;
+
+contract PoC {
+    field : word;
+
+    function set_x(b: bool) -> bool {
+        field = b;   // BUG: `word` shouldn't be unified with `bool`.
+        return b;
+    }
+
+    function init(foo: bool) -> () {
+       field = 2;
+    }
+
+    function main () -> () {
+
+    }
+}

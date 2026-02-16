@@ -169,7 +169,7 @@ function ge(x:a, y:a) -> bool {
 
 forall a. a:Ord =>
 function lt(x:a, y:a) -> bool {
-  return gt(y,x);
+    return Ord.gt(y,x);
 }
 
 
@@ -189,6 +189,20 @@ forall t . class t:Mul {
 
 forall t . class t:Div {
     function div(l: t, r: t) -> t;
+}
+
+forall t . class t:Mod {
+    function mod(l: t, r: t) -> t;
+}
+
+instance word : Mod {
+  function mod (l : word, r : word) -> word {
+    let res : word;
+    assembly {
+      res := mod(l,r);
+    }
+    return res;
+  }
 }
 
 forall t . class t:Bounded {
