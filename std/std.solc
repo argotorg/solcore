@@ -156,6 +156,7 @@ forall a. a:Ord =>
 function gt(x:a, y:a) -> bool {
   return Ord.gt(x,y);
 }
+
 forall a. a:Ord =>
 function le(x:a, y:a) -> bool {
   return not(Ord.gt(x,y));
@@ -192,6 +193,16 @@ forall t . class t:Div {
 
 forall t . class t:Mod {
     function mod(l: t, r: t) -> t;
+}
+
+instance word : Mod {
+  function mod (l : word, r : word) -> word {
+    let res : word;
+    assembly {
+      res := mod(l,r);
+    }
+    return res;
+  }
 }
 
 forall t . class t:Bounded {

@@ -1,0 +1,4 @@
+import std;
+function foo(x: word, y: word) -> word {
+    return x % y;
+}
