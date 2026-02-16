@@ -74,7 +74,6 @@ library
       Solcore.Frontend.Pretty.Name
       Solcore.Frontend.Pretty.ShortName
       Solcore.Frontend.Syntax
-      Solcore.Frontend.Syntax.ElabTree
       Solcore.Frontend.Syntax.Ty
       Solcore.Frontend.Syntax.Contract
       Solcore.Frontend.Syntax.Name
