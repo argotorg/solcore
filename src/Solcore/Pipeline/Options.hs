@@ -14,7 +14,6 @@ data Option
     -- Options controlling printing
     optVerbose :: !Bool,
     optDumpAST :: !Bool,
-    optDumpEnv :: !Bool,
     optDumpDispatch :: !Bool,
     optDumpDS :: !Bool,
     optDumpDF :: !Bool,
@@ -40,7 +39,6 @@ emptyOption path =
       -- Options controlling printing
       optVerbose = False,
       optDumpAST = False,
-      optDumpEnv = False,
       optDumpDispatch = False,
       optDumpDS = False,
       optDumpDF = False,
@@ -115,10 +113,6 @@ options =
     <*> switch
       ( long "dump-ast"
           <> help "Dump AST after name resolution"
-      )
-    <*> switch
-      ( long "dump-env"
-          <> help "Dump env after name resolution"
       )
     <*> switch
       ( long "dump-dispatch"
