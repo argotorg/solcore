@@ -73,6 +73,7 @@ library
       Solcore.Frontend.Pretty.SolcorePretty
       Solcore.Frontend.Pretty.Name
       Solcore.Frontend.Pretty.ShortName
+      Solcore.Frontend.Pretty.TreePretty
       Solcore.Frontend.Syntax
       Solcore.Frontend.Syntax.Ty
       Solcore.Frontend.Syntax.Contract

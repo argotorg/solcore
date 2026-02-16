@@ -1,5 +1,6 @@
 module Solcore.Frontend.Syntax.NameResolution where
 
+import Common.Pretty
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Except
@@ -7,7 +8,7 @@ import Control.Monad.State
 import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Solcore.Frontend.Pretty.SolcorePretty
+import Solcore.Frontend.Pretty.TreePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts, decls)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt
@@ -48,29 +49,29 @@ instance (Resolve a) => Resolve (Maybe a) where
 instance Resolve S.TopDecl where
   type Result S.TopDecl = TopDecl Name
 
-  resolve (S.TContr c) =
-    TContr <$> withLocalCtx (resolve c)
-  resolve (S.TFunDef fd) =
-    TFunDef <$> withLocalCtx (resolve fd)
-  resolve (S.TClassDef c) =
-    TClassDef <$> withLocalCtx (resolve c)
-  resolve (S.TInstDef d) =
-    TInstDef <$> withLocalCtx (resolve d)
-  resolve (S.TDataDef dt) =
-    TDataDef <$> withLocalCtx (resolve dt)
-  resolve (S.TSym ts) =
-    TSym <$> withLocalCtx (resolve ts)
-  resolve (S.TPragmaDecl p) = TPragmaDecl <$> resolve p
+  resolve t@(S.TContr c) =
+    TContr <$> withLocalCtx (resolve c) `wrapError` t
+  resolve t@(S.TFunDef fd) =
+    TFunDef <$> withLocalCtx (resolve fd) `wrapError` t
+  resolve t@(S.TClassDef c) =
+    TClassDef <$> withLocalCtx (resolve c) `wrapError` t
+  resolve t@(S.TInstDef d) =
+    TInstDef <$> withLocalCtx (resolve d) `wrapError` t
+  resolve t@(S.TDataDef dt) =
+    TDataDef <$> withLocalCtx (resolve dt) `wrapError` t
+  resolve t@(S.TSym ts) =
+    TSym <$> withLocalCtx (resolve ts) `wrapError` t
+  resolve t@(S.TPragmaDecl p) = TPragmaDecl <$> resolve p `wrapError` t
 
 instance Resolve S.Contract where
   type Result S.Contract = Contract Name
 
-  resolve (S.Contract n vs decls) =
+  resolve c@(S.Contract n vs decls) =
     do
       let ns = map tyconName vs
       mapM_ addTyVar ns
       mapM_ addContractDecl decls
-      Contract n (map TVar ns) <$> resolve decls
+      Contract n (map TVar ns) <$> resolve decls `wrapError` c
 
 addContractDecl :: S.ContractDecl -> ResolveM ()
 addContractDecl (S.CDataDecl (S.DataTy n _ cons)) =
@@ -86,36 +87,39 @@ addContractDecl _ = pure ()
 instance Resolve S.ContractDecl where
   type Result S.ContractDecl = ContractDecl Name
 
-  resolve (S.CDataDecl dt) =
-    CDataDecl <$> resolve dt
-  resolve (S.CFieldDecl fd) =
-    CFieldDecl <$> resolve fd
-  resolve (S.CFunDecl f) =
-    CFunDecl <$> resolve f
-  resolve (S.CConstrDecl cd) =
-    CConstrDecl <$> resolve cd
+  resolve d@(S.CDataDecl dt) =
+    CDataDecl <$> resolve dt `wrapError` d
+  resolve d@(S.CFieldDecl fd) =
+    CFieldDecl <$> resolve fd `wrapError` d
+  resolve d@(S.CFunDecl f) =
+    CFunDecl <$> resolve f `wrapError` d
+  resolve d@(S.CConstrDecl cd) =
+    CConstrDecl <$> resolve cd `wrapError` d
 
 instance Resolve S.Constructor where
   type Result S.Constructor = Constructor Name
 
-  resolve (S.Constructor ps bdy) =
+  resolve c@(S.Constructor ps bdy) =
     withLocalCtx $ do
-      ps' <- resolve ps
+      ps' <- resolve ps `wrapError` c
       let args = map paramName ps'
       mapM_ addParameter args
-      bdy' <- resolve bdy
+      bdy' <- resolve bdy `wrapError` c
       pure (Constructor ps' bdy')
 
 instance Resolve S.Field where
   type Result S.Field = Field Name
 
-  resolve (S.Field n t me) =
-    Field n <$> resolve t <*> resolve me
+  resolve f@(S.Field n t me) =
+    do
+      t' <- resolve t `wrapError` f
+      me' <- resolve me `wrapError` f
+      pure (Field n t' me')
 
 instance Resolve S.Class where
   type Result S.Class = Class Name
 
-  resolve (S.Class vs ps n ts t sigs) =
+  resolve d@(S.Class vs ps n ts t sigs) =
     withLocalCtx $ do
       let ns = map tyconName vs
           nt = tyconName t
@@ -125,8 +129,8 @@ instance Resolve S.Class where
       unless (all (flip elem ns) nts) $ do
         undefinedTypeVariables (nts \\ ns)
       mapM_ addTyVar ns
-      ps' <- resolve ps
-      sigs' <- resolve sigs
+      ps' <- resolve ps `wrapError` d
+      sigs' <- resolve sigs `wrapError` d
       let vs' = map TVar ns
           t' = TVar nt
           ts' = map TVar nts
@@ -135,30 +139,30 @@ instance Resolve S.Class where
 instance Resolve S.Signature where
   type Result S.Signature = Signature Name
 
-  resolve (S.Signature vs ctx n ps mt) =
+  resolve s@(S.Signature vs ctx n ps mt) =
     withLocalCtx $ do
       let ns = map tyconName vs
       mapM_ addTyVar ns
-      ctx' <- resolve ctx
-      ps' <- resolve ps
-      mt' <- resolve mt
+      ctx' <- resolve ctx `wrapError` s
+      ps' <- resolve ps `wrapError` s
+      mt' <- resolve mt `wrapError` s
       let vs' = map TVar ns
       pure (Signature vs' ctx' n ps' mt')
 
 instance Resolve S.Instance where
   type Result S.Instance = Instance Name
 
-  resolve (S.Instance d vs ps n ts t funs) =
+  resolve i@(S.Instance d vs ps n ts t funs) =
     withLocalCtx $ do
       let ns = map tyconName vs
       ndt <- lookupClass n
       case ndt of
         Just TClass -> do
           mapM_ addTyVar ns
-          ps' <- resolve ps
-          ts' <- resolve ts
-          t' <- resolve t
-          funs' <- resolve funs
+          ps' <- resolve ps `wrapError` i
+          ts' <- resolve ts `wrapError` i
+          t' <- resolve t `wrapError` i
+          funs' <- resolve funs `wrapError` i
           let vs' = map TVar ns
           pure (Instance d vs' ps' n ts' t' funs')
         _ -> undefinedClassError n
@@ -195,17 +199,17 @@ instance Resolve S.PragmaStatus where
 instance Resolve S.FunDef where
   type Result S.FunDef = FunDef Name
 
-  resolve (S.FunDef (S.Signature vs ctx n ps mt) bds) =
+  resolve f@(S.FunDef (S.Signature vs ctx n ps mt) bds) =
     do
       let ns = map tyconName vs
       withLocalCtx $ do
         mapM_ addTyVar ns
-        ctx' <- resolve ctx
-        ps' <- resolve ps
-        mt' <- resolve mt
+        ctx' <- resolve ctx `wrapError` f
+        ps' <- resolve ps `wrapError` f
+        mt' <- resolve mt `wrapError` f
         let args = map paramName ps'
         mapM_ addParameter args
-        bds' <- resolve bds
+        bds' <- resolve bds `wrapError` f
         let vs' = map TVar ns
             sig = Signature vs' ctx' n ps' mt'
         pure (FunDef sig bds')
@@ -213,25 +217,25 @@ instance Resolve S.FunDef where
 instance Resolve S.Stmt where
   type Result S.Stmt = Stmt Name
 
-  resolve (S.Assign lhs rhs) =
+  resolve s@(S.Assign lhs rhs) =
     do
-      lhs' <- resolve lhs
-      rhs' <- resolve rhs
+      lhs' <- resolve lhs `wrapError` s
+      rhs' <- resolve rhs `wrapError` s
       pure (lhs' := rhs')
   resolve (S.StmtPlusEq lhs rhs) =
     (:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs)
   resolve (S.StmtMinusEq lhs rhs) =
     (:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs)
-  resolve (S.Let n mt me) =
+  resolve s@(S.Let n mt me) =
     do
-      mt' <- resolve mt
-      me' <- resolve me
+      mt' <- resolve mt `wrapError` s
+      me' <- resolve me `wrapError` s
       addLocalVar n
       pure (Let n mt' me')
-  resolve (S.StmtExp e) =
-    StmtExp <$> resolve e
-  resolve (S.Return e) =
-    Return <$> resolve e
+  resolve s@(S.StmtExp e) =
+    StmtExp <$> resolve e `wrapError` s
+  resolve s@(S.Return e) =
+    Return <$> resolve e `wrapError` s
   resolve (S.Match es eqns) =
     Match <$> resolve es <*> resolve eqns
   resolve (S.Asm blk) =
@@ -253,13 +257,13 @@ instance Resolve S.Pat where
   resolve (S.PLit l) = PLit <$> resolve l
   resolve p@(S.Pat n ps) =
     do
-      ps' <- resolve ps
+      ps' <- resolve ps `wrapError` p
       mdt <- lookupName n
       case mdt of
         Just TDataCon -> do
           -- here we desugar tuple patterns into
           -- nested pairs.
-          isT <- isTuple p
+          let isT = isTuple n
           pure $
             if isT
               then mkTuplePat ps'
@@ -267,7 +271,7 @@ instance Resolve S.Pat where
         _ -> do
           addParameter n
           unless (null ps') $ do
-            invalidPatternSyntax (PCon n ps')
+            invalidPatternSyntax p
           pure (PVar n)
 
 mkTuplePat :: [Pat Name] -> Pat Name
@@ -277,30 +281,23 @@ mkTuplePat ps = foldr1 pairPat ps
 pairPat :: Pat Name -> Pat Name -> Pat Name
 pairPat p1 p2 = PCon (Name "pair") [p1, p2]
 
-isTuple :: S.Pat -> ResolveM Bool
-isTuple (S.Pat n ps)
-  | n == Name "pair" && length ps /= 1 = pure True
-  | n == Name "pair" =
-      throwError "Invalid tuple pattern"
-isTuple _ = pure False
-
 instance Resolve S.Exp where
   type Result S.Exp = Exp Name
 
   resolve (S.Lit l) = Lit <$> resolve l
-  resolve (S.Lam ps bd mt) =
+  resolve e@(S.Lam ps bd mt) =
     withLocalCtx $ do
-      ps' <- resolve ps
-      mt' <- resolve mt
+      ps' <- resolve ps `wrapError` e
+      mt' <- resolve mt `wrapError` e
       let args = map paramName ps'
       mapM_ addParameter args
-      bd' <- resolve bd
+      bd' <- resolve bd `wrapError` e
       pure (Lam ps' bd' mt')
   resolve (S.TyExp e t) =
     TyExp <$> resolve e <*> resolve t
-  resolve (S.ExpVar me n) =
+  resolve c@(S.ExpVar me n) =
     do
-      me' <- resolve me
+      me' <- resolve me `wrapError` c
       dt <- lookupName n
       case (me', dt) of
         -- local variables
@@ -321,10 +318,10 @@ instance Resolve S.Exp where
         -- class name
         (_, Just TClass) -> pure (Var n)
         _ -> undefinedName n
-  resolve (S.ExpName me n es) =
+  resolve x@(S.ExpName me n es) =
     do
-      me' <- resolve me
-      es' <- resolve es
+      me' <- resolve me `wrapError` x
+      es' <- resolve es `wrapError` x
       dt <- lookupName n
       case (me', dt) of
         -- normal function call
@@ -364,76 +361,76 @@ instance Resolve S.Exp where
           pure (Call Nothing n es')
         -- error
         _ -> undefinedName n
-  resolve (S.ExpPlus e1 e2) =
+  resolve c@(S.ExpPlus e1 e2) =
     do
-      e1' <- resolve e1
-      e2' <- resolve e2
+      e1' <- resolve e1 `wrapError` c
+      e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Add") "add"
       pure $ Call Nothing fun [e1', e2']
-  resolve (S.ExpMinus e1 e2) =
+  resolve c@(S.ExpMinus e1 e2) =
     do
-      e1' <- resolve e1
-      e2' <- resolve e2
+      e1' <- resolve e1 `wrapError` c
+      e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Sub") "sub"
       pure $ Call Nothing fun [e1', e2']
-  resolve (S.ExpTimes e1 e2) =
+  resolve c@(S.ExpTimes e1 e2) =
     do
-      e1' <- resolve e1
-      e2' <- resolve e2
+      e1' <- resolve e1 `wrapError` c
+      e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Mul") "mul"
       pure $ Call Nothing fun [e1', e2']
-  resolve (S.ExpDivide e1 e2) =
+  resolve c@(S.ExpDivide e1 e2) =
     do
-      e1' <- resolve e1
-      e2' <- resolve e2
+      e1' <- resolve e1 `wrapError` c
+      e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Div") "div"
       pure $ Call Nothing fun [e1', e2']
-  resolve (S.ExpModulo e1 e2) =
+  resolve c@(S.ExpModulo e1 e2) =
     do
-      e1' <- resolve e1
-      e2' <- resolve e2
+      e1' <- resolve e1 `wrapError` c
+      e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Mod") "mod"
       pure $ Call Nothing fun [e1', e2']
-  resolve (S.ExpIndexed array idx) = do
-    arr' <- resolve array
-    idx' <- resolve idx
+  resolve c@(S.ExpIndexed array idx) = do
+    arr' <- resolve array `wrapError` c
+    idx' <- resolve idx `wrapError` c
     pure $ Indexed arr' idx'
-  resolve (S.ExpLT e1 e2) = do
-    e1' <- resolve e1
-    e2' <- resolve e2
+  resolve c@(S.ExpLT e1 e2) = do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "lt") [e1', e2']
-  resolve (S.ExpGT e1 e2) = do
-    e1' <- resolve e1
-    e2' <- resolve e2
+  resolve c@(S.ExpGT e1 e2) = do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
     let fun = QualName (Name "Ord") "gt"
     pure $ Call Nothing fun [e1', e2']
-  resolve (S.ExpLE e1 e2) = do
-    e1' <- resolve e1
-    e2' <- resolve e2
+  resolve c@(S.ExpLE e1 e2) = do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "le") [e1', e2']
-  resolve (S.ExpGE e1 e2) = do
-    e1' <- resolve e1
-    e2' <- resolve e2
+  resolve c@(S.ExpGE e1 e2) = do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "ge") [e1', e2']
-  resolve (S.ExpEE e1 e2) = do
-    e1' <- resolve e1
-    e2' <- resolve e2
+  resolve c@(S.ExpEE e1 e2) = do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
     let fun = QualName (Name "Eq") "eq"
     pure $ Call Nothing fun [e1', e2']
-  resolve (S.ExpNE e1 e2) = do
-    e1' <- resolve e1
-    e2' <- resolve e2
+  resolve c@(S.ExpNE e1 e2) = do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "ne") [e1', e2']
-  resolve (S.ExpLAnd e1 e2) = do
-    e1' <- resolve e1
-    e2' <- resolve e2
+  resolve c@(S.ExpLAnd e1 e2) = do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "and") [e1', e2']
-  resolve (S.ExpLOr e1 e2) = do
-    e1' <- resolve e1
-    e2' <- resolve e2
+  resolve c@(S.ExpLOr e1 e2) = do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "or") [e1', e2']
-  resolve (S.ExpLNot e) = do
-    e' <- resolve e
+  resolve c@(S.ExpLNot e) = do
+    e' <- resolve e `wrapError` c
     pure $ Call Nothing (Name "not") [e']
   resolve (S.ExpCond e1 e2 e3) =
     Cond <$> resolve e1 <*> resolve e2 <*> resolve e3
@@ -447,23 +444,23 @@ instance Resolve S.Literal where
 instance Resolve S.Pred where
   type Result S.Pred = Pred
 
-  resolve (S.InCls n t ts) =
+  resolve p@(S.InCls n t ts) =
     do
       dt <- lookupClass n
       case dt of
         Just TClass -> do
-          t' <- resolve t
-          ts' <- resolve ts
+          t' <- resolve t `wrapError` p
+          ts' <- resolve ts `wrapError` p
           pure (InCls n t' ts')
         _ -> undefinedClassError n
 
 instance Resolve S.DataTy where
   type Result S.DataTy = DataTy
 
-  resolve (S.DataTy n vs cons) =
+  resolve d@(S.DataTy n vs cons) =
     withLocalCtx $ do
       mapM_ addTyVar vs'
-      cons' <- resolve cons
+      cons' <- resolve cons `wrapError` d
       pure (DataTy n (map TVar vs') cons')
     where
       vs' = map tyconName vs
@@ -476,12 +473,12 @@ instance Resolve S.Constr where
 instance Resolve S.TySym where
   type Result S.TySym = TySym
 
-  resolve (S.TySym n ts t) =
+  resolve d@(S.TySym n ts t) =
     do
       let ts1 = map tyconName ts
       t' <- withLocalCtx $ do
         mapM_ addTyVar ts1
-        resolve t
+        resolve t `wrapError` d
       pure (TySym n (map TVar ts1) t')
 
 tyconName :: S.Ty -> Name
@@ -490,13 +487,13 @@ tyconName (S.TyCon n _) = n
 instance Resolve S.Ty where
   type Result S.Ty = Ty
 
-  resolve (S.TyCon n ts) =
+  resolve tc@(S.TyCon n ts) =
     do
       ndt <- lookupType n
       case ndt of
-        Just TTyCon -> TyCon n <$> resolve ts
+        Just TTyCon -> TyCon n <$> resolve ts `wrapError` tc
         Just TTyVar -> pure (TyVar (TVar n))
-        _ -> undefinedTypeConstructor (TyCon n [])
+        _ -> undefinedTypeConstructor tc
 
 -- definition of an environment
 
@@ -681,11 +678,11 @@ undefinedTypeVariables :: [Name] -> ResolveM a
 undefinedTypeVariables ns =
   throwError $ unlines ["Undefined type variables:", unwords (map pretty ns)]
 
-undefinedTypeConstructor :: Ty -> ResolveM a
+undefinedTypeConstructor :: S.Ty -> ResolveM a
 undefinedTypeConstructor t =
   throwError $ unlines ["Undefined type constructor:", pretty t]
 
-invalidTypeSynonymError :: TySym -> ResolveM a
+invalidTypeSynonymError :: S.TySym -> ResolveM a
 invalidTypeSynonymError t =
   throwError $ unlines ["Invalid type synonym:", pretty t]
 
@@ -697,6 +694,6 @@ undefinedName :: Name -> ResolveM a
 undefinedName n =
   throwError $ unwords ["Undefined name:", pretty n]
 
-invalidPatternSyntax :: Pat Name -> ResolveM a
+invalidPatternSyntax :: S.Pat -> ResolveM a
 invalidPatternSyntax p =
   throwError $ unwords ["Invalid pattern syntax:", pretty p]
