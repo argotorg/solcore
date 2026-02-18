@@ -108,6 +108,7 @@ imports =
       runTestExpectingFailure "select_dup_item.solc" importFolder,
       runTestExpectingFailure "alias_dup.solc" importFolder,
       runTestExpectingFailure "amb_main.solc" importFolder,
+      runTestExpectingFailure "selfcycle.solc" importFolder,
       runTestExpectingFailure "cycleA.solc" importFolder,
       runTestExpectingFailure "leak_main.solc" importFolder
     ]

@@ -108,7 +108,7 @@ CompilationUnit :: { CompUnit }
 CompilationUnit : ImportList TopDeclList          { CompUnit $1 $2 }
 
 ImportList :: { [Import] }
-ImportList : ImportList Import                     { $2 : $1 }
+ImportList : ImportList Import                     { $1 ++ [$2] }
            | {- empty -}                           { [] }
 
 Import :: { Import }
