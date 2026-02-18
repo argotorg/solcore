@@ -132,11 +132,48 @@ flattenModuleValidationCompUnit graph modulePath = do
       (Map.lookup modulePath (modules graph))
   ensureNoAmbiguousSelectedImports unit
   ensureNoDuplicateModuleQualifiers unit
+  ensureNoDuplicateSelectedItems unit
   let directDeps = Map.findWithDefault [] modulePath (dependencies graph)
       importPairs = zip (imports unit) directDeps
-      importedDecls = concatMap (importedDeclsFor graph) importPairs
+  ensureImportItemsExist graph importPairs
+  let importedDecls = concatMap (importedDeclsFor graph) importPairs
       qualifiedDecls = concatMap (qualifiedImportDecls graph) importPairs
   pure (CompUnit (imports unit) (qualifiedDecls ++ importedDecls ++ topDeclsFrom unit))
+
+ensureImportItemsExist :: ModuleGraph -> [(Import, FilePath)] -> Either String ()
+ensureImportItemsExist graph importPairs =
+  case concatMap unknowns importPairs of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Unknown selected imports:",
+            unlines xs
+          ]
+  where
+    unknowns (ImportOnly moduleName names, modulePath) =
+      let available =
+            maybe [] importableNamesFromCompUnit (Map.lookup modulePath (modules graph))
+          missing = filter (`notElem` available) names
+       in [formatMissing moduleName n | n <- missing]
+    unknowns _ = []
+
+formatMissing :: Name -> Name -> String
+formatMissing moduleName itemName =
+  "  " ++ show moduleName ++ "." ++ show itemName
+
+importableNamesFromCompUnit :: CompUnit -> [Name]
+importableNamesFromCompUnit (CompUnit _ ds) =
+  concatMap topDeclNames ds
+
+topDeclNames :: TopDecl -> [Name]
+topDeclNames (TFunDef (FunDef sig _)) = [sigName sig]
+topDeclNames (TSym (TySym n _ _)) = [n]
+topDeclNames (TClassDef (Class _ _ n _ _ _)) = [n]
+topDeclNames (TContr (Contract n _ _)) = [n]
+topDeclNames (TDataDef (DataTy n _ cs)) = n : map constrName cs
+topDeclNames (TInstDef _) = []
+topDeclNames (TPragmaDecl _) = []
 
 qualifiedImportDecls :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
 qualifiedImportDecls graph (imp, modulePath) =
@@ -282,3 +319,21 @@ moduleQualifier :: Import -> Maybe Name
 moduleQualifier (ImportModule n) = Just n
 moduleQualifier (ImportAlias _ n) = Just n
 moduleQualifier (ImportOnly _ _) = Nothing
+
+ensureNoDuplicateSelectedItems :: CompUnit -> Either String ()
+ensureNoDuplicateSelectedItems (CompUnit imps _) =
+  case concatMap duplicateItems imps of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Duplicate names in selective import:",
+            unlines xs
+          ]
+  where
+    duplicateItems (ImportOnly moduleName items) =
+      [ "  " ++ show moduleName ++ "." ++ show item
+        | (item, count) <- Map.toList (Map.fromListWith (+) [(n, 1 :: Int) | n <- items]),
+          count > 1
+      ]
+    duplicateItems _ = []

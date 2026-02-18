@@ -104,6 +104,8 @@ imports =
       runTestForFile "nested_select.solc" importFolder,
       runTestForFile "select_ok.solc" importFolder,
       runTestExpectingFailure "select_fail.solc" importFolder,
+      runTestExpectingFailure "select_unknown.solc" importFolder,
+      runTestExpectingFailure "select_dup_item.solc" importFolder,
       runTestExpectingFailure "alias_dup.solc" importFolder,
       runTestExpectingFailure "amb_main.solc" importFolder,
       runTestExpectingFailure "cycleA.solc" importFolder,
