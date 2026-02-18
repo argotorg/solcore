@@ -36,8 +36,16 @@ instance (Pretty a) => Pretty (CompUnit a) where
     vcat (map ppr imps ++ map ppr cs)
 
 instance Pretty Import where
-  ppr (Import qn) =
+  ppr (ImportModule qn) =
     text "import" <+> ppr qn <+> semi
+  ppr (ImportAlias qn asName) =
+    hsep [text "import", ppr qn, text "as", ppr asName, semi]
+  ppr (ImportOnly qn names) =
+    hsep
+      [ text "import",
+        ppr qn <> text ".",
+        lbrace <> commaSep (map ppr names) <> rbrace <> semi
+      ]
 
 instance (Pretty a) => Pretty (TopDecl a) where
   ppr (TContr c) = ppr c

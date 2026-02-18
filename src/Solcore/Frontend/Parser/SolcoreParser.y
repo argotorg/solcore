@@ -1,7 +1,6 @@
 {
 module Solcore.Frontend.Parser.SolcoreParser where
 
-import Data.Either
 import Data.List.NonEmpty (NonEmpty, cons, singleton)
 
 import Solcore.Frontend.Lexer.SolcoreLexer hiding (lexer)
@@ -10,8 +9,6 @@ import Solcore.Frontend.Syntax.SyntaxTree
 import Solcore.Primitives.Primitives hiding (pairTy)
 import Language.Yul
 
-import System.Directory
-import System.FilePath
 }
 
 
@@ -27,6 +24,7 @@ import System.FilePath
       stringlit  {Token _ (TString $$)}
       'contract' {Token _ TContract}
       'import'   {Token _ TImport}
+      'as'       {Token _ TAs}
       'let'      {Token _ TLet}
       '='        {Token _ TEq}
       '.'        {Token _ TDot}
@@ -114,7 +112,13 @@ ImportList : ImportList Import                     { $2 : $1 }
            | {- empty -}                           { [] }
 
 Import :: { Import }
-Import : 'import' Name ';'                         { Import $2 }
+Import : 'import' Name ';'                         { ImportModule $2 }
+       | 'import' Name 'as' Name ';'               { ImportAlias $2 $4 }
+       | 'import' Name '.' '{' ImportItems '}' ';' { ImportOnly $2 $5 }
+
+ImportItems :: { [Name] }
+ImportItems : Name ',' ImportItems                 { $1 : $3 }
+            | Name                                 { [$1] }
 
 TopDeclList :: { [TopDecl] }
 TopDeclList : TopDecl TopDeclList                  { $1 : $2 }
@@ -505,53 +509,15 @@ OptSemi : ';'                                      { () }
 {
 
 moduleParser :: [String] -> String -> IO (Either String CompUnit)
-moduleParser dirs content
+moduleParser _dirs content
   = do
       let r = runAlex content parser
       case r of
         Left err -> pure $ Left err
-        Right (CompUnit imps ds) -> do
-           ds' <- loadImports dirs imps
-           pure $ either Left (\ ds1 -> Right $ CompUnit imps (ds1 ++ ds)) ds'
+        Right cunit -> pure (Right cunit)
 
-loadImports :: [String] -> [Import] -> IO (Either String [TopDecl])
-loadImports dirs imps =
-  do
-    paths <- mapM (findImport dirs) imps
-    contents <- mapM readFile paths
-    rs <- mapM (moduleParser dirs) contents
-    let (errs, asts) = partitionEithers rs
-    case errs of
-      [] -> do
-        let ds' = concatMap topDeclsFrom asts
-        pure (Right ds')
-      (err : _) -> pure (Left err)
-
-
-findImport :: [FilePath] -> Import -> IO FilePath
-findImport [] imp  = error("import " ++ (show $ unImport imp) ++ ": file not found")
-findImport(dir:rest) i = do
-  found <- checkImport dir i
-  case found of
-    Just path -> return path
-    Nothing -> findImport rest i
-
-checkImport :: FilePath -> Import -> IO (Maybe FilePath)
-checkImport dir imp = do
-  let path = toFilePath dir (unImport imp)
-  exists <- doesFileExist path
-  return if exists then Just path else Nothing
-
-toFilePath :: FilePath -> Name -> FilePath
-toFilePath base =
-  (base </>) . (<.> "solc") . foldr step "" . show
- where
-  step c ac
-    | c == '.' = pathSeparator : ac
-    | otherwise = c : ac
-
-topDeclsFrom :: CompUnit -> [TopDecl]
-topDeclsFrom (CompUnit _ ds) = ds
+parseCompUnit :: String -> IO (Either String CompUnit)
+parseCompUnit = moduleParser []
 
 unitPCon :: Pat
 unitPCon = Pat (Name "()") []

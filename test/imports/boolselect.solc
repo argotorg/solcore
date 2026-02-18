@@ -1,0 +1,5 @@
+import booldef.{not};
+
+function fromSelect(b: Bool) -> Bool {
+  return not(b);
+}

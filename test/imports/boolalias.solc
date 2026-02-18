@@ -1,0 +1,5 @@
+import booldef as B;
+
+function fromAlias(b: Bool) -> Bool {
+  return B.not(b);
+}

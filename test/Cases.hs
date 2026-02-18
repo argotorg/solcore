@@ -92,7 +92,15 @@ imports =
   testGroup
     "Files for imports cases"
     [ runTestForFile "booldef.solc" importFolder,
-      runTestForFile "boolmain.solc" importFolder
+      runTestForFile "boolmain.solc" importFolder,
+      runTestForFile "boolalias.solc" importFolder,
+      runTestForFile "boolqualified.solc" importFolder,
+      runTestForFile "boolselect.solc" importFolder,
+      runTestForFile "select_ok.solc" importFolder,
+      runTestExpectingFailure "select_fail.solc" importFolder,
+      runTestExpectingFailure "amb_main.solc" importFolder,
+      runTestExpectingFailure "cycleA.solc" importFolder,
+      runTestExpectingFailure "leak_main.solc" importFolder
     ]
   where
     importFolder = "./test/imports"

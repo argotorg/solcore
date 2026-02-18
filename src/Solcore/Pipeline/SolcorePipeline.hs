@@ -3,6 +3,7 @@ module Solcore.Pipeline.SolcorePipeline where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
+import Data.Bifunctor (first)
 import Data.List.Split (splitOn)
 import Data.Time qualified as Time
 import Language.Hull qualified as Hull
@@ -19,7 +20,7 @@ import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
-import Solcore.Frontend.Parser.SolcoreParser
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleCompUnit, loadModuleGraph)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.Contract hiding (contracts)
@@ -64,10 +65,19 @@ compile opts = runExceptT $ do
       otherDirs = splitOn ":" (optImportDirs opts)
       dirs = dir : otherDirs
 
-  -- Parsing
-  content <- liftIO $ readFile file
+  -- Parsing and import loading
+  graph <- ExceptT $ loadModuleGraph dirs file
 
-  parsed <- ExceptT $ moduleParser dirs content
+  -- Validate each module in isolation against its own dependency closure.
+  forM_ (moduleOrder graph) $ \modulePath -> do
+    cunit <- ExceptT $ pure (flattenModuleCompUnit graph modulePath)
+    _ <-
+      ExceptT $
+        first (\e -> "Module validation failed for " ++ modulePath ++ ":\n" ++ e)
+          <$> nameResolution cunit
+    pure ()
+
+  parsed <- ExceptT $ pure (flattenModuleCompUnit graph (entryModule graph))
 
   -- Name resolution
   resolved <- ExceptT $ nameResolution parsed

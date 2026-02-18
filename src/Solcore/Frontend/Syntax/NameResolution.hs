@@ -20,14 +20,16 @@ import Solcore.Frontend.Syntax.Ty
 nameResolution :: S.CompUnit -> IO (Either String (CompUnit Name))
 nameResolution (S.CompUnit imps ds) =
   do
-    let genv = globalEnv ds
+    let genv = addImportsToEnv imps (globalEnv ds)
     r <- runResolveM (resolve ds) genv
     case r of
       Left err -> pure (Left err)
       Right ast -> pure (Right (CompUnit (map resolveImport imps) ast))
 
 resolveImport :: S.Import -> Import
-resolveImport (S.Import qn) = Import qn
+resolveImport (S.ImportModule qn) = ImportModule qn
+resolveImport (S.ImportAlias qn asName) = ImportAlias qn asName
+resolveImport (S.ImportOnly qn names) = ImportOnly qn names
 
 -- type class for name resolution
 
@@ -317,6 +319,16 @@ instance Resolve S.Exp where
         (_, Just TDataCon) -> pure (Con n [])
         -- class name
         (_, Just TClass) -> pure (Var n)
+        -- imported module qualifier name
+        (_, Just TModule) -> pure (Var n)
+        -- module-qualified function or constructor reference
+        (Just (Var d), Nothing) -> do
+          let qn = QualName d (pretty n)
+          qdt <- lookupName qn
+          case qdt of
+            Just TFunction -> pure (Var qn)
+            Just TDataCon -> pure (Con qn [])
+            _ -> undefinedName n
         _ -> undefinedName n
   resolve x@(S.ExpName me n es) =
     do
@@ -335,10 +347,16 @@ instance Resolve S.Exp where
         -- class functions
         (Just (Var c), Just TFunction) -> do
           ct <- lookupName c
+          let qn = QualName c (pretty n)
           case ct of
             Just TClass ->
-              let qn = QualName c (pretty n)
-               in pure (Call Nothing qn es')
+              pure (Call Nothing qn es')
+            Just TModule -> do
+              cf <- lookupName qn
+              case cf of
+                Just TFunction -> pure (Call Nothing qn es')
+                Just TDataCon -> pure (Con qn es')
+                _ -> undefinedName n
             _ -> undefinedName c
         (Just (Var c), Nothing) -> do
           ct <- lookupName c
@@ -347,6 +365,10 @@ instance Resolve S.Exp where
           case (ct, cf) of
             (Just TClass, Just TFunction) ->
               pure (Call Nothing qn es')
+            (_, Just TFunction) ->
+              pure (Call Nothing qn es')
+            (_, Just TDataCon) ->
+              pure (Con qn es')
             _ -> undefinedName n
         (Just (Var c), Just TTyVar) -> do
           let qn = QualName c (pretty n)
@@ -515,6 +537,7 @@ data DeclType
   | TClass
   | TTyCon
   | TTyVar
+  | TModule
   deriving (Show)
 
 data Env
@@ -561,6 +584,17 @@ emptyEnv =
 globalEnv :: [S.TopDecl] -> Env
 globalEnv = foldr addTopDecl emptyEnv
 
+addImportsToEnv :: [S.Import] -> Env -> Env
+addImportsToEnv imps env = foldr addImport env imps
+
+addImport :: S.Import -> Env -> Env
+addImport (S.ImportModule n) env =
+  addModuleName n env
+addImport (S.ImportAlias _ n) env =
+  addModuleName n env
+addImport (S.ImportOnly _ _) env =
+  env
+
 addTopDecl :: S.TopDecl -> Env -> Env
 addTopDecl (S.TContr (S.Contract n _ _)) env =
   env {typeEnv = Map.insert n TContract (typeEnv env)}
@@ -591,6 +625,10 @@ addTopDecl (S.TDataDef (S.DataTy n _ cons)) env =
 addTopDecl (S.TSym (S.TySym n _ _)) env =
   env {typeEnv = Map.insert n TTyCon (typeEnv env)}
 addTopDecl _ env = env
+
+addModuleName :: Name -> Env -> Env
+addModuleName n env =
+  env {scopeEnv = Map.insert n TModule (scopeEnv env)}
 
 -- definition of a monad for name resolution
 
