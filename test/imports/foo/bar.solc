@@ -1,0 +1,3 @@
+function value() -> word {
+  return 7;
+}

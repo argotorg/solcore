@@ -1,0 +1,5 @@
+import booldef.{False};
+
+function mkTrue() -> Bool {
+  return True;
+}

@@ -1,6 +1,7 @@
 module Solcore.Frontend.Module.Loader
   ( ModuleGraph (..),
     loadModuleGraph,
+    flattenModuleValidationCompUnit,
     flattenModuleCompUnit,
     loadCompUnit,
   )
@@ -12,8 +13,7 @@ import Control.Monad.State.Strict
 import Data.List (intercalate)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Set (Set)
-import Data.Set qualified as Set
+import Data.Maybe (mapMaybe)
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnit)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
@@ -120,49 +120,37 @@ cycleError path stack =
         ]
 
 flattenModuleCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
-flattenModuleCompUnit graph modulePath = do
+flattenModuleCompUnit graph modulePath =
+  flattenModuleValidationCompUnit graph modulePath
+
+flattenModuleValidationCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
+flattenModuleValidationCompUnit graph modulePath = do
   unit <-
     maybe
       (Left ("Internal error: module not loaded: " ++ modulePath))
       Right
       (Map.lookup modulePath (modules graph))
   ensureNoAmbiguousSelectedImports unit
-  let depSet = dependencyClosure graph modulePath
-      depOrder = filter (`Set.member` depSet) (moduleOrder graph)
-      directDeps = Map.findWithDefault [] modulePath (dependencies graph)
-      directImportMap = Map.fromList (zip directDeps (imports unit))
-      importedDecls =
-        concatMap
-          (importedDeclsFor graph directImportMap)
-          depOrder
-      qualifiedDecls = concatMap (qualifiedImportDecls graph) (zip (imports unit) directDeps)
+  ensureNoDuplicateModuleQualifiers unit
+  let directDeps = Map.findWithDefault [] modulePath (dependencies graph)
+      importPairs = zip (imports unit) directDeps
+      importedDecls = concatMap (importedDeclsFor graph) importPairs
+      qualifiedDecls = concatMap (qualifiedImportDecls graph) importPairs
   pure (CompUnit (imports unit) (qualifiedDecls ++ importedDecls ++ topDeclsFrom unit))
-
-dependencyClosure :: ModuleGraph -> FilePath -> Set FilePath
-dependencyClosure graph start = go Set.empty (Map.findWithDefault [] start (dependencies graph))
-  where
-    go :: Set FilePath -> [FilePath] -> Set FilePath
-    go seen [] = seen
-    go seen (p : ps)
-      | p `Set.member` seen = go seen ps
-      | otherwise =
-          let next = Map.findWithDefault [] p (dependencies graph)
-           in go (Set.insert p seen) (next ++ ps)
 
 qualifiedImportDecls :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
 qualifiedImportDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ _ -> []
-    ImportModule n -> qualifyFunctions n
-    ImportAlias _ n -> qualifyFunctions n
+    ImportModule n -> qualifyDecls n
+    ImportAlias _ n -> qualifyDecls n
   where
-    qualifyFunctions qualifier =
+    qualifyDecls qualifier =
       case Map.lookup modulePath (modules graph) of
         Nothing -> []
         Just cunit ->
-          [ TFunDef (qualifyFunction qualifier fd)
-            | TFunDef fd <- topDeclsFrom cunit
-          ]
+          qualifiedFunctionDecls qualifier cunit
+            ++ qualifiedTypeDecls qualifier cunit
 
 qualifyFunction :: Name -> FunDef -> FunDef
 qualifyFunction qualifier (FunDef sig body) =
@@ -170,21 +158,71 @@ qualifyFunction qualifier (FunDef sig body) =
     (sig {sigName = QualName qualifier (show (sigName sig))})
     body
 
-importedDeclsFor :: ModuleGraph -> Map FilePath Import -> FilePath -> [TopDecl]
-importedDeclsFor graph directImportMap modulePath =
-  case Map.lookup modulePath directImportMap of
-    Just imp ->
-      filter (isVisibleFromImport imp) topDecls
-    Nothing ->
-      topDecls
+qualifiedFunctionDecls :: Name -> CompUnit -> [TopDecl]
+qualifiedFunctionDecls qualifier cunit =
+  [ TFunDef (qualifyFunction qualifier fd)
+    | TFunDef fd <- topDeclsFrom cunit
+  ]
+
+qualifiedTypeDecls :: Name -> CompUnit -> [TopDecl]
+qualifiedTypeDecls qualifier cunit =
+  dataAliases ++ symAliases
+  where
+    dataAliases =
+      [ TSym (qualifyTyCon qualifier n vs)
+        | TDataDef (DataTy n vs _) <- topDeclsFrom cunit
+      ]
+    symAliases =
+      [ TSym (qualifyTyCon qualifier n vs)
+        | TSym (TySym n vs _) <- topDeclsFrom cunit
+      ]
+
+qualifyTyCon :: Name -> Name -> [Ty] -> TySym
+qualifyTyCon qualifier unqualName tyVars =
+  TySym
+    { symName = QualName qualifier (show unqualName),
+      symVars = tyVars,
+      symType = TyCon unqualName tyVars
+    }
+
+importedDeclsFor :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
+importedDeclsFor graph (imp, modulePath) =
+  applyImportVisibility imp topDecls
   where
     topDecls =
       topDeclsFrom (modules graph Map.! modulePath)
 
-isVisibleFromImport :: Import -> TopDecl -> Bool
-isVisibleFromImport (ImportOnly _ names) (TFunDef (FunDef sig _)) =
-  sigName sig `elem` names
-isVisibleFromImport _ _ = True
+applyImportVisibility :: Import -> [TopDecl] -> [TopDecl]
+applyImportVisibility (ImportOnly _ names) =
+  mapMaybe (selectTopDecl names)
+applyImportVisibility (ImportModule _) =
+  id
+applyImportVisibility (ImportAlias _ _) =
+  id
+
+selectTopDecl :: [Name] -> TopDecl -> Maybe TopDecl
+selectTopDecl names d@(TFunDef (FunDef sig _))
+  | sigName sig `elem` names = Just d
+  | otherwise = Nothing
+selectTopDecl names d@(TSym (TySym n _ _))
+  | n `elem` names = Just d
+  | otherwise = Nothing
+selectTopDecl names d@(TClassDef (Class _ _ n _ _ _))
+  | n `elem` names = Just d
+  | otherwise = Nothing
+selectTopDecl names d@(TContr (Contract n _ _))
+  | n `elem` names = Just d
+  | otherwise = Nothing
+selectTopDecl names (TDataDef (DataTy n ts cs))
+  | n `elem` names = Just (TDataDef (DataTy n ts cs))
+  | otherwise =
+      case filter (\c -> constrName c `elem` names) cs of
+        [] -> Nothing
+        cs' -> Just (TDataDef (DataTy n ts cs'))
+selectTopDecl _ d@(TInstDef _) =
+  Just d
+selectTopDecl _ (TPragmaDecl _) =
+  Nothing
 
 ensureNoAmbiguousSelectedImports :: CompUnit -> Either String ()
 ensureNoAmbiguousSelectedImports (CompUnit imps _) =
@@ -217,3 +255,30 @@ formatAmbiguous (item, mods) =
     ++ show item
     ++ " imported from "
     ++ intercalate ", " (map show mods)
+
+ensureNoDuplicateModuleQualifiers :: CompUnit -> Either String ()
+ensureNoDuplicateModuleQualifiers (CompUnit imps _) =
+  case duplicates of
+    [] -> Right ()
+    qs ->
+      Left $
+        unlines
+          [ "Duplicate import qualifiers:",
+            unlines (map (\q -> "  " ++ show q) qs)
+          ]
+  where
+    qualifiers =
+      mapMaybe moduleQualifier imps
+    dupMap :: Map Name Int
+    dupMap =
+      Map.fromListWith (+) [(q, 1) | q <- qualifiers]
+    duplicates =
+      [ q
+        | (q, count) <- Map.toList dupMap,
+          count > 1
+      ]
+
+moduleQualifier :: Import -> Maybe Name
+moduleQualifier (ImportModule n) = Just n
+moduleQualifier (ImportAlias _ n) = Just n
+moduleQualifier (ImportOnly _ _) = Nothing

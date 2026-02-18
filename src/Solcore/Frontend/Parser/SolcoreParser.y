@@ -99,7 +99,7 @@ import Language.Yul
 %right    'if'
 %right    'else'
 
-%expect 0
+%expect 1
 
 %%
 -- compilation unit definition
@@ -112,13 +112,17 @@ ImportList : ImportList Import                     { $2 : $1 }
            | {- empty -}                           { [] }
 
 Import :: { Import }
-Import : 'import' Name ';'                         { ImportModule $2 }
-       | 'import' Name 'as' Name ';'               { ImportAlias $2 $4 }
-       | 'import' Name '.' '{' ImportItems '}' ';' { ImportOnly $2 $5 }
+Import : 'import' ModName ';'                      { ImportModule $2 }
+       | 'import' ModName 'as' Name ';'            { ImportAlias $2 $4 }
+       | 'import' ModName '.' '{' ImportItems '}' ';' { ImportOnly $2 $5 }
 
 ImportItems :: { [Name] }
 ImportItems : Name ',' ImportItems                 { $1 : $3 }
             | Name                                 { [$1] }
+
+ModName :: { Name }
+ModName : identifier                               { Name $1 }
+        | ModName '.' identifier                   { QualName $1 $3 }
 
 TopDeclList :: { [TopDecl] }
 TopDeclList : TopDecl TopDeclList                  { $1 : $2 }
@@ -403,7 +407,7 @@ Literal : number                                   {IntLit $ toInteger $1}
 -- basic type definitions
 
 Type :: { Ty }
-Type : Name OptTypeParam                            {TyCon $1 $2}
+Type : TypeName OptTypeParam                        {TyCon $1 $2}
      | LamType                                      {uncurry funtype $1}
      | TupleTy                                      {$1}
      | '@' Type                                     {TyCon (Name "Proxy") [$2]}
@@ -418,11 +422,11 @@ Var :: { Ty }
 Var : Name                                         {TyCon $1 []}
 
 Name :: { Name }
-Name : identifier                               { Name $1 }
-     | QualName %shift                          { QualName (fst $1) (snd $1) }
+Name : identifier                                 { Name $1 }
 
-QualName :: { (Name, String) }
-QualName : QualName '.' identifier              { (QualName (fst $1) (snd $1), $3)}
+TypeName :: { Name }
+TypeName : identifier                             { Name $1 }
+         | TypeName '.' identifier               { QualName $1 $3 }
 
 -- Yul statments and blocks
 
