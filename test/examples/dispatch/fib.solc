@@ -1,0 +1,12 @@
+import dispatch;
+
+function fib(n : word) -> word {
+   if(n < 2) { return n; } else {return fib(n-1) + fib(n-2); }
+}
+
+contract Fib {
+  constructor() {}
+  function test() -> uint256 {
+    return uint256(fib(10));
+  }
+}

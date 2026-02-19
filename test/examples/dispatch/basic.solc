@@ -1,6 +1,8 @@
 import dispatch;
 
 contract C {
+    constructor() {}
+
     function nothing() -> () {}
 
     function something() -> (uint256) {

@@ -1,0 +1,39 @@
+{
+  "Foo": {
+    "bytecode": "",
+    "contract": "Foo",
+    "tests": [
+      {
+        "input": {
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "text-calldata": "noAnswer()",
+          "calldata": "08ad856f",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "72656772657373696f6e",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "answer()(uint256)",
+          "calldata": "85bb7d69",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

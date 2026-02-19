@@ -6,7 +6,11 @@ import Control.Monad.IO.Class (liftIO)
 import Data.List.Split (splitOn)
 import Data.Time qualified as Time
 import Language.Hull qualified as Hull
+-- Pretty instances for MastCompUnit
+
 import Solcore.Backend.EmitHull (emitHull)
+import Solcore.Backend.Mast ()
+import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ContractDispatch (contractDispatchDesugarer)
 import Solcore.Desugarer.FieldAccess (fieldDesugarer)
@@ -181,10 +185,28 @@ compile opts = runExceptT $ do
         putStrLn "> Specialised contract:"
         putStrLn (pretty specialized)
 
+      let peFuel = maybe defaultFuel id (optPEFuel opts)
+          (evaluated, remainingFuel) = evalCompUnit peFuel specialized
+
+      liftIO $
+        when (remainingFuel <= 0) $
+          putStrLn "!! Warning: partial evaluation ran out of fuel (use --pe-fuel N to increase)"
+
+      liftIO $ when (optDumpSpec opts) $ do
+        putStrLn "> After partial evaluation:"
+        putStrLn (pretty evaluated)
+
+      -- Dead code elimination: remove functions unreachable from 'start'/'main'
+      let optimized = eliminateDeadCode evaluated
+
+      liftIO $ when (optDumpSpec opts) $ do
+        putStrLn "> After dead code elimination:"
+        putStrLn (pretty optimized)
+
       hull <-
         liftIO $
           timeItNamed "Emit Hull     " $
-            emitHull (optDebugHull opts) typeEnv specialized
+            emitHull (optDebugHull opts) optimized
 
       liftIO $ when (optDumpHull opts) $ do
         putStrLn "> Hull contract(s):"

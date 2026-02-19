@@ -1,0 +1,11 @@
+import std;
+
+function fib(n : word) -> word {
+   if(n < 2) { return n; } else {return fib(n-1) + fib(n-2); }
+}
+
+contract Fib {
+function main() -> word {
+  return fib(10);
+}
+}

@@ -1,0 +1,28 @@
+// This function should be in stdlib
+function addWord(l: word, r: word) -> word {
+  let rw : word;
+  assembly {
+      rw := add(l,r);
+  }
+  return rw;
+}
+
+  function zero () {
+    return 0;
+  }
+
+function one() {
+    return addWord(1, zero()) ;
+  }
+
+function two () {
+  let x = zero();
+  x = addWord(x, one());
+  x = addWord(x,x);
+  return x;
+}
+
+contract OneTwo {
+  function main() -> word { return two(); }
+}
+

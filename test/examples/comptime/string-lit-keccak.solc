@@ -1,0 +1,8 @@
+import std;
+
+contract StringLitKeccak {
+  function main() {
+    // keccakLit folds to a 256-bit word (EVM/Yul semantics)
+    return keccakLit("abc");
+  }
+}

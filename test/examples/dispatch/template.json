@@ -1,0 +1,26 @@
+{
+  "_TESTNAME": {
+    "bytecode": "_CODE",
+    "contract": ":C",
+    "tests": [
+      {
+        "input": {
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "calldata": "26121ff0",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

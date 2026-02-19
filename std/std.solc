@@ -53,6 +53,15 @@ function unimplemented() {
   }
 }
 
+// ------------------------------------------------------------------
+// High-level revert helper
+// ------------------------------------------------------------------
+// EmitHull has special handling for `revert("...")` after MastEval has
+// constant-folded the argument to a string literal.
+function revert(s:string) -> () {
+  return ();
+}
+
 // --- booleans ---
 
 // TODO: this should short circuit. probably needs some compiler magic to do so.
@@ -130,13 +139,17 @@ class a:Eq {
   function eq(x:a, y:a) -> bool;
 }
 
+function eqWord(x:word, y:word) -> bool {
+  let res : word;
+  assembly {
+     res := eq(x, y)
+  }
+  return tobool(res);
+}
+
 instance word:Eq {
   function eq(x:word, y:word) -> bool {
-    let res : word;
-    assembly {
-       res := eq(x, y)
-    }
-    return tobool(res);
+    return eqWord(x, y);
   }
 }
 
@@ -237,23 +250,31 @@ default instance a:Num {
 // --- Word Arithmetic ---
 // TODO: make these checked
 
+function addWord(l: word, r: word) -> word {
+  let rw : word;
+  assembly {
+      rw := add(l,r);
+  }
+  return rw;
+}
+
 instance word:Add {
     function add(l: word, r: word) -> word {
-        let rw : word;
-        assembly {
-            rw := add(l,r);
-        }
-        return rw;
+        return addWord(l, r);
     }
+}
+
+function subWord(l: word, r: word) -> word {
+    let rw : word;
+    assembly {
+        rw := sub(l,r);
+    }
+    return rw;
 }
 
 instance word:Sub {
     function sub(l: word, r: word) -> word {
-        let rw : word;
-        assembly {
-            rw := sub(l,r);
-        }
-        return rw;
+        return subWord(l, r);
     }
 }
 
@@ -296,23 +317,17 @@ function hash2(x: word, y: word) -> word {
   return result;
 }
 
-instance word:Eq {
-  function eq(x:word, y:word) -> bool {
-    let res : word;
-    assembly {
-       res := eq(x, y)
-    }
-    return tobool(res);
+function gtWord(x:word, y:word) -> bool {
+  let res : word;
+  assembly {
+     res := gt(x, y)
   }
+  return tobool(res);
 }
 
 instance word:Ord {
   function gt(x:word, y:word) -> bool {
-    let res : word;
-    assembly {
-       res := gt(x, y)
-    }
-    return tobool(res);
+    return gtWord(x, y);
   }
 }
 // --- Value Types ---
@@ -580,6 +595,24 @@ data bytes;
 
 // TODO: should this be a typedef over `bytes`?
 data string;
+
+// ------------------------------------------------------------------
+// Compile-time string literal builtins
+// ------------------------------------------------------------------
+// These are intended to be folded by MastEval when their arguments are
+// statically known string literals.
+
+function concatLit(a:string, b:string) -> string {
+  return "";
+}
+
+function strlenLit(a:string) -> word {
+  return 0;
+}
+
+function keccakLit(a:string) -> word {
+  return 0;
+}
 
 // --- slices (sized pointers) ---
 
@@ -1203,10 +1236,7 @@ forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
     function size(x:Proxy((a,b))) -> word {
         let a_sz:word = StorageSize.size(Proxy:Proxy(a));
         let b_sz:word = StorageSize.size(Proxy:Proxy(b));
-        assembly {
-            a_sz := add(a_sz, b_sz)
-        }
-        return a_sz;
+        return addWord(a_sz, b_sz);
     }
 }
 
