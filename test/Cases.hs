@@ -94,6 +94,7 @@ imports =
     [ runImportSuccess "booldef.solc",
       runImportSuccess "boolmain.solc",
       runImportSuccess "boolalias.solc",
+      runImportFailure "boolalias_open_fail.solc",
       runImportSuccess "boolqualified.solc",
       runImportSuccess "boolqualifiedtype.solc",
       runImportSuccess "boolaliastype.solc",

@@ -20,7 +20,7 @@ import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
-import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleCompUnit, flattenModuleStrictValidationCompUnit, flattenModuleValidationCompUnit, loadModuleGraph)
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleCompUnit, flattenModuleStrictCompileCompUnit, flattenModuleStrictValidationCompUnit, flattenModuleValidationCompUnit, loadModuleGraph)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.Contract hiding (contracts)
@@ -83,7 +83,13 @@ compile opts = runExceptT $ do
           <$> nameResolution cunit
     pure ()
 
-  parsed <- ExceptT $ pure (flattenModuleCompUnit graph (entryModule graph))
+  parsed <-
+    ExceptT $
+      pure
+        ( if optStrictImports opts
+            then flattenModuleStrictCompileCompUnit graph (entryModule graph)
+            else flattenModuleCompUnit graph (entryModule graph)
+        )
 
   -- Name resolution
   resolved <- ExceptT $ nameResolution parsed

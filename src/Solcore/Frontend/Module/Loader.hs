@@ -2,6 +2,7 @@ module Solcore.Frontend.Module.Loader
   ( ModuleGraph (..),
     loadModuleGraph,
     flattenModuleValidationCompUnit,
+    flattenModuleStrictCompileCompUnit,
     flattenModuleStrictValidationCompUnit,
     flattenModuleCompUnit,
     loadCompUnit,
@@ -131,7 +132,23 @@ flattenModuleValidationCompUnit graph modulePath = do
       (Left ("Internal error: module not loaded: " ++ modulePath))
       Right
       (Map.lookup modulePath (modules graph))
-  ensureNoDuplicateNamespaceNames unit
+  ensureNoAmbiguousSelectedImports unit
+  ensureNoDuplicateModuleQualifiers unit
+  ensureNoDuplicateSelectedItems unit
+  let directDeps = Map.findWithDefault [] modulePath (dependencies graph)
+      importPairs = zip (imports unit) directDeps
+  ensureImportItemsExist graph importPairs
+  let importedDecls = concatMap (importedDeclsFor graph) importPairs
+      qualifiedDecls = concatMap (qualifiedImportDecls graph) importPairs
+  pure (CompUnit (imports unit) (qualifiedDecls ++ importedDecls ++ topDeclsFrom unit))
+
+flattenModuleStrictCompileCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
+flattenModuleStrictCompileCompUnit graph modulePath = do
+  unit <-
+    maybe
+      (Left ("Internal error: module not loaded: " ++ modulePath))
+      Right
+      (Map.lookup modulePath (modules graph))
   ensureNoAmbiguousSelectedImports unit
   ensureNoDuplicateModuleQualifiers unit
   ensureNoDuplicateSelectedItems unit
