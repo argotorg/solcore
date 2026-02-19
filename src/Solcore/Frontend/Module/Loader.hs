@@ -2,6 +2,7 @@ module Solcore.Frontend.Module.Loader
   ( ModuleGraph (..),
     loadModuleGraph,
     flattenModuleValidationCompUnit,
+    flattenModuleStrictValidationCompUnit,
     flattenModuleCompUnit,
     loadCompUnit,
   )
@@ -138,7 +139,28 @@ flattenModuleValidationCompUnit graph modulePath = do
   ensureImportItemsExist graph importPairs
   let importedDecls = concatMap (importedDeclsFor graph) importPairs
       qualifiedDecls = concatMap (qualifiedImportDecls graph) importPairs
-  pure (CompUnit (imports unit) (qualifiedDecls ++ importedDecls ++ topDeclsFrom unit))
+      localDecls = topDeclsFrom unit
+      visibleImportedDecls = shadowImportedDecls localDecls importedDecls
+  pure (CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls))
+
+flattenModuleStrictValidationCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
+flattenModuleStrictValidationCompUnit graph modulePath = do
+  unit <-
+    maybe
+      (Left ("Internal error: module not loaded: " ++ modulePath))
+      Right
+      (Map.lookup modulePath (modules graph))
+  ensureNoAmbiguousSelectedImports unit
+  ensureNoDuplicateModuleQualifiers unit
+  ensureNoDuplicateSelectedItems unit
+  let directDeps = Map.findWithDefault [] modulePath (dependencies graph)
+      importPairs = zip (imports unit) directDeps
+  ensureImportItemsExist graph importPairs
+  let importedDecls = concatMap (strictValidationImportedDecls graph) importPairs
+      qualifiedDecls = concatMap (qualifiedImportStubDecls graph) importPairs
+      localDecls = topDeclsFrom unit
+      visibleImportedDecls = shadowImportedDecls localDecls importedDecls
+  pure (CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls))
 
 ensureImportItemsExist :: ModuleGraph -> [(Import, FilePath)] -> Either String ()
 ensureImportItemsExist graph importPairs =
@@ -189,6 +211,20 @@ qualifiedImportDecls graph (imp, modulePath) =
           qualifiedFunctionDecls qualifier cunit
             ++ qualifiedTypeDecls qualifier cunit
 
+qualifiedImportStubDecls :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
+qualifiedImportStubDecls graph (imp, modulePath) =
+  case imp of
+    ImportOnly _ _ -> []
+    ImportModule n -> stubDecls n
+    ImportAlias _ n -> stubDecls n
+  where
+    stubDecls qualifier =
+      case Map.lookup modulePath (modules graph) of
+        Nothing -> []
+        Just cunit ->
+          qualifiedFunctionStubDecls qualifier cunit
+            ++ qualifiedTypeStubDecls qualifier cunit
+
 qualifyFunction :: Name -> FunDef -> FunDef
 qualifyFunction qualifier (FunDef sig body) =
   FunDef
@@ -198,6 +234,12 @@ qualifyFunction qualifier (FunDef sig body) =
 qualifiedFunctionDecls :: Name -> CompUnit -> [TopDecl]
 qualifiedFunctionDecls qualifier cunit =
   [ TFunDef (qualifyFunction qualifier fd)
+    | TFunDef fd <- topDeclsFrom cunit
+  ]
+
+qualifiedFunctionStubDecls :: Name -> CompUnit -> [TopDecl]
+qualifiedFunctionStubDecls qualifier cunit =
+  [ TFunDef (stubFunction (QualName qualifier (show (sigName (funSignature fd)))))
     | TFunDef fd <- topDeclsFrom cunit
   ]
 
@@ -214,6 +256,19 @@ qualifiedTypeDecls qualifier cunit =
         | TSym (TySym n vs _) <- topDeclsFrom cunit
       ]
 
+qualifiedTypeStubDecls :: Name -> CompUnit -> [TopDecl]
+qualifiedTypeStubDecls qualifier cunit =
+  dataAliases ++ symAliases
+  where
+    dataAliases =
+      [ TSym (stubType (QualName qualifier (show n)))
+        | TDataDef (DataTy n _ _) <- topDeclsFrom cunit
+      ]
+    symAliases =
+      [ TSym (stubType (QualName qualifier (show n)))
+        | TSym (TySym n _ _) <- topDeclsFrom cunit
+      ]
+
 qualifyTyCon :: Name -> Name -> [Ty] -> TySym
 qualifyTyCon qualifier unqualName tyVars =
   TySym
@@ -222,12 +277,81 @@ qualifyTyCon qualifier unqualName tyVars =
       symType = TyCon unqualName tyVars
     }
 
+stubType :: Name -> TySym
+stubType n =
+  TySym
+    { symName = n,
+      symVars = [],
+      symType = TyCon (Name "word") []
+    }
+
+stubFunction :: Name -> FunDef
+stubFunction n =
+  FunDef
+    (Signature [] [] n [] Nothing)
+    []
+
 importedDeclsFor :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
 importedDeclsFor graph (imp, modulePath) =
   applyImportVisibility imp topDecls
   where
     topDecls =
       topDeclsFrom (modules graph Map.! modulePath)
+
+strictValidationImportedDecls :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
+strictValidationImportedDecls graph (imp, modulePath) =
+  case imp of
+    ImportOnly _ names -> mapMaybe (selectTopDecl names) topDecls
+    ImportModule _ -> []
+    ImportAlias _ _ -> []
+  where
+    topDecls =
+      topDeclsFrom (modules graph Map.! modulePath)
+
+shadowImportedDecls :: [TopDecl] -> [TopDecl] -> [TopDecl]
+shadowImportedDecls localDecls =
+  mapMaybe filterDecl
+  where
+    localTermNames = concatMap topDeclTermNames localDecls
+    localTypeNames = concatMap topDeclTypeNames localDecls
+    localClassNames = concatMap topDeclClassNames localDecls
+
+    filterDecl d@(TFunDef (FunDef sig _))
+      | sigName sig `elem` localTermNames = Nothing
+      | otherwise = Just d
+    filterDecl d@(TSym (TySym n _ _))
+      | n `elem` localTypeNames = Nothing
+      | otherwise = Just d
+    filterDecl d@(TClassDef (Class _ _ n _ _ _))
+      | n `elem` localClassNames = Nothing
+      | otherwise = Just d
+    filterDecl d@(TContr (Contract n _ _))
+      | n `elem` localTypeNames = Nothing
+      | otherwise = Just d
+    filterDecl (TDataDef (DataTy n ts cs))
+      | n `elem` localTypeNames = Nothing
+      | otherwise =
+          let cs' = filter (\c -> constrName c `notElem` localTermNames) cs
+           in if null cs' && not (null cs)
+                then Nothing
+                else Just (TDataDef (DataTy n ts cs'))
+    filterDecl d@(TInstDef _) = Just d
+    filterDecl (TPragmaDecl _) = Nothing
+
+topDeclTermNames :: TopDecl -> [Name]
+topDeclTermNames (TFunDef (FunDef sig _)) = [sigName sig]
+topDeclTermNames (TDataDef (DataTy _ _ cs)) = map constrName cs
+topDeclTermNames _ = []
+
+topDeclTypeNames :: TopDecl -> [Name]
+topDeclTypeNames (TSym (TySym n _ _)) = [n]
+topDeclTypeNames (TContr (Contract n _ _)) = [n]
+topDeclTypeNames (TDataDef (DataTy n _ _)) = [n]
+topDeclTypeNames _ = []
+
+topDeclClassNames :: TopDecl -> [Name]
+topDeclClassNames (TClassDef (Class _ _ n _ _ _)) = [n]
+topDeclClassNames _ = []
 
 applyImportVisibility :: Import -> [TopDecl] -> [TopDecl]
 applyImportVisibility (ImportOnly _ names) =

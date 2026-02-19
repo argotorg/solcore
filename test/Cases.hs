@@ -91,29 +91,34 @@ imports :: TestTree
 imports =
   testGroup
     "Files for imports cases"
-    [ runTestForFile "booldef.solc" importFolder,
-      runTestForFile "boolmain.solc" importFolder,
-      runTestForFile "boolalias.solc" importFolder,
-      runTestForFile "boolqualified.solc" importFolder,
-      runTestForFile "boolqualifiedtype.solc" importFolder,
-      runTestForFile "boolaliastype.solc" importFolder,
-      runTestForFile "boolselect.solc" importFolder,
-      runTestForFile "boolconselect_ok.solc" importFolder,
-      runTestExpectingFailure "boolconselect_fail.solc" importFolder,
-      runTestForFile "nested_alias.solc" importFolder,
-      runTestForFile "nested_select.solc" importFolder,
-      runTestForFile "select_ok.solc" importFolder,
-      runTestExpectingFailure "select_fail.solc" importFolder,
-      runTestExpectingFailure "select_unknown.solc" importFolder,
-      runTestExpectingFailure "select_dup_item.solc" importFolder,
-      runTestExpectingFailure "alias_dup.solc" importFolder,
-      runTestExpectingFailure "amb_main.solc" importFolder,
-      runTestExpectingFailure "selfcycle.solc" importFolder,
-      runTestExpectingFailure "cycleA.solc" importFolder,
-      runTestExpectingFailure "leak_main.solc" importFolder
+    [ runImportSuccess "booldef.solc",
+      runImportSuccess "boolmain.solc",
+      runImportSuccess "boolalias.solc",
+      runImportSuccess "boolqualified.solc",
+      runImportSuccess "boolqualifiedtype.solc",
+      runImportSuccess "boolaliastype.solc",
+      runImportFailure "strict_open_fail.solc",
+      runImportSuccess "boolselect.solc",
+      runImportSuccess "boolconselect_ok.solc",
+      runImportFailure "boolconselect_fail.solc",
+      runImportSuccess "nested_alias.solc",
+      runImportSuccess "nested_select.solc",
+      runImportSuccess "select_ok.solc",
+      runImportSuccess "select_shadow_local.solc",
+      runImportFailure "select_fail.solc",
+      runImportFailure "select_unknown.solc",
+      runImportFailure "select_dup_item.solc",
+      runImportFailure "alias_dup.solc",
+      runImportFailure "amb_main.solc",
+      runImportFailure "selfcycle.solc",
+      runImportFailure "cycleA.solc",
+      runImportFailure "leak_main.solc"
     ]
   where
     importFolder = "./test/imports"
+    importOpt = stdOpt {optNoGenDispatch = True, optStrictImports = True}
+    runImportSuccess file = runTestForFileWith importOpt file importFolder
+    runImportFailure file = runTestExpectingFailureWith importOpt file importFolder
 
 pragmas :: TestTree
 pragmas =

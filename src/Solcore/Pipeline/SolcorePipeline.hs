@@ -20,7 +20,7 @@ import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
-import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleCompUnit, flattenModuleValidationCompUnit, loadModuleGraph)
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleCompUnit, flattenModuleStrictValidationCompUnit, flattenModuleValidationCompUnit, loadModuleGraph)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.Contract hiding (contracts)
@@ -70,7 +70,13 @@ compile opts = runExceptT $ do
 
   -- Validate each module against only its own direct imports.
   forM_ (moduleOrder graph) $ \modulePath -> do
-    cunit <- ExceptT $ pure (flattenModuleValidationCompUnit graph modulePath)
+    cunit <-
+      ExceptT $
+        pure
+          ( if optStrictImports opts
+              then flattenModuleStrictValidationCompUnit graph modulePath
+              else flattenModuleValidationCompUnit graph modulePath
+          )
     _ <-
       ExceptT $
         first (\e -> "Module validation failed for " ++ modulePath ++ ":\n" ++ e)
