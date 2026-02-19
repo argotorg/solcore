@@ -97,6 +97,8 @@ imports =
       runImportSuccess "boolqualified.solc",
       runImportSuccess "boolqualifiedtype.solc",
       runImportSuccess "boolaliastype.solc",
+      runImportSuccess "ns_cross_ok.solc",
+      runImportFailure "ns_constr_dup.solc",
       runImportFailure "strict_open_fail.solc",
       runImportSuccess "boolselect.solc",
       runImportSuccess "boolconselect_ok.solc",
@@ -110,6 +112,7 @@ imports =
       runImportFailure "select_dup_item.solc",
       runImportFailure "alias_dup.solc",
       runImportFailure "amb_main.solc",
+      runImportFailure "pragma_scope_main.solc",
       runImportFailure "selfcycle.solc",
       runImportFailure "cycleA.solc",
       runImportFailure "leak_main.solc"
