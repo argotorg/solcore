@@ -64,6 +64,7 @@ library
       Solcore.Backend.Mast
       Solcore.Backend.MastEval
       Solcore.Backend.Specialise
+      Solcore.Desugarer.DecisionTreeCompiler
       Solcore.Desugarer.FieldAccess
       Solcore.Desugarer.IfDesugarer
       Solcore.Desugarer.IndirectCall
