@@ -16,35 +16,84 @@ data Fallback(payability, args, rets, fn) = Fallback(Proxy(payability), Proxy(ar
 
 // --- Method Selectors ---
 
-forall ty . class ty:ABIString { // deprecated
+// The string representation of abi types used during selector computation
+forall ty . class ty:ABIString {
     function append(head : word, tail : word, prx : Proxy(ty)) -> word;
 }
 
-forall t.class t:SigString { function sigStr(x:Proxy(t)) -> string; }
-
-forall t. t: SigString =>
-function sigStr(p:Proxy(t)) -> string { SigString.sigStr(p) }
-
-instance uint256 : SigString { function sigStr(x:Proxy(uint256)) -> string { "uint256" }}
-instance address : SigString { function sigStr(x:Proxy(address)) -> string { "address" }}
-instance memory(string) : SigString { function sigStr(x:Proxy(memory(string))) -> string { "string" }}
-instance ():SigString { function sigStr(x:Proxy(())) -> string { "" } }
-
-forall a b. a:SigString, b: SigString =>
-instance (a,b):SigString {
-  function sigStr(x:Proxy((a,b))) -> string {
-    SigString.sigStr( Proxy:Proxy(a) ) +  "," + SigString.sigStr( Proxy:Proxy(b) )
-  }
+instance uint256:ABIString {
+    function append(head : word, tail : word, prx : Proxy(uint256)) -> word {
+        let size : word = 7;
+        assembly {
+            mstore(head, add(mload(head), size))
+            mstore(tail, 0x75696e7432353600000000000000000000000000000000000000000000000000)
+        }
+        return Add.add(tail, size);
+    }
 }
 
-forall name f args rets payability. 
-  f: invokable(args,rets), name:SigString, args:SigString, rets:SigString =>
-instance Method(name,payability,args,rets,f):SigString {
-  function sigStr(x:Proxy(Method(name,payability,args,rets,f))) -> string {
-    sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")" 
-  }
+instance address:ABIString {
+    function append(head : word, tail : word, prx : Proxy(address)) -> word {
+        let size : word = 7;
+        assembly {
+            mstore(head, add(mload(head), size))
+            mstore(tail, 0x6164647265737300000000000000000000000000000000000000000000000000)
+        }
+        return Add.add(tail, size);
+    }
 }
 
+instance ():ABIString {
+    function append(head : word, tail : word, prx : Proxy(())) -> word {
+        return(tail);
+    }
+}
+
+instance memory(string):ABIString {
+    function append(head : word, tail : word, prx : Proxy(memory(string))) -> word {
+        let size : word = 6;
+        assembly {
+            mstore(head, add(mload(head), size))
+            mstore(tail, 0x737472696e670000000000000000000000000000000000000000000000000000)
+        }
+        return Add.add(tail, size);
+    }
+}
+
+function append_left_bracket(head : word, tail : word) -> word {
+    let size = 1;
+    assembly {
+        mstore(head, add(mload(head), size));
+        mstore(tail, 0x2800000000000000000000000000000000000000000000000000000000000000);
+    }
+    return Add.add(tail, size);
+}
+
+function append_right_bracket(head : word, tail : word) -> word {
+    let size = 1;
+    assembly {
+        mstore(head, add(mload(head), size));
+        mstore(tail, 0x2900000000000000000000000000000000000000000000000000000000000000);
+    }
+    return Add.add(tail, size);
+}
+
+function append_comma(head : word, tail : word) -> word {
+    let size = 1;
+    assembly {
+        mstore(head, add(mload(head), size));
+        mstore(tail, 0x2c00000000000000000000000000000000000000000000000000000000000000);
+    }
+    return Add.add(tail, size);
+}
+
+forall l r . l:ABIString, r:ABIString => instance (l,r):ABIString {
+    function append(head : word, tail : word, prx : Proxy((l,r))) -> word {
+        let with_l = ABIString.append(head, tail, Proxy : Proxy(l));
+        let with_comma = append_comma(head, with_l);
+        return ABIString.append(head, with_comma, Proxy : Proxy(r));
+    }
+}
 
 forall ty . class ty:Selector {
     function compute(prx : Proxy(ty)) -> bytes4;
@@ -54,15 +103,29 @@ forall ty . class ty:Selector {
 // this is a class with a single instance since it made some of the downstream definitions a bit cleaner to define
 // NOTE: for efficiency purposes this leaves dirty data past the end of the free memory pointer
 forall name payability args rets fn
-    . name:SigString
-    , args:SigString
+    . name:ABIString
+    , args:ABIString
 => instance Method(name,payability,args,rets,fn):Selector {
     function compute(prx : Proxy(Method(name,payability,args,rets,fn))) -> bytes4 {
-        // let hash : word = keccakLit(sigStr(prx));
-	let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
-	let res : word;
-        assembly { res := shr(224, hash) }
- 	
+        // setup memory pointers for the selector string
+        let head = get_free_memory();
+        let tail = Add.add(head, 32);
+
+        // ensure the size is zero
+        assembly { mstore(head, 0) }
+
+        // write the selector string
+        tail = ABIString.append(head, tail, Proxy : Proxy(name));
+        tail = append_left_bracket(head, tail);
+        tail = ABIString.append(head, tail, Proxy : Proxy(args));
+        tail = append_right_bracket(head, tail);
+
+        // hash it & get the first four bytes
+        let res : word;
+        assembly {
+            let hash := keccak256(add(head, 32), mload(head))
+            res := shr(224, hash)
+        }
         return bytes4(res);
     }
 }
