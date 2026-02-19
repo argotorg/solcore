@@ -1,0 +1,3 @@
+function base() -> word {
+  return 3;
+}

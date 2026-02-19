@@ -328,6 +328,7 @@ instance Resolve S.Exp where
           case qdt of
             Just TFunction -> pure (Var qn)
             Just TDataCon -> pure (Con qn [])
+            Just TModule -> pure (Var qn)
             _ -> undefinedName n
         _ -> undefinedName n
   resolve x@(S.ExpName me n es) =
@@ -589,11 +590,18 @@ addImportsToEnv imps env = foldr addImport env imps
 
 addImport :: S.Import -> Env -> Env
 addImport (S.ImportModule n) env =
-  addModuleName n env
+  foldr addModuleName env (modulePrefixes n)
 addImport (S.ImportAlias _ n) env =
   addModuleName n env
 addImport (S.ImportOnly _ _) env =
   env
+
+modulePrefixes :: Name -> [Name]
+modulePrefixes n =
+  reverse (go n)
+  where
+    go q@(QualName p _) = q : go p
+    go x = [x]
 
 addTopDecl :: S.TopDecl -> Env -> Env
 addTopDecl (S.TContr (S.Contract n _ _)) env =
@@ -628,7 +636,7 @@ addTopDecl _ env = env
 
 addModuleName :: Name -> Env -> Env
 addModuleName n env =
-  env {scopeEnv = Map.insert n TModule (scopeEnv env)}
+  env {scopeEnv = Map.insertWith (\_ old -> old) n TModule (scopeEnv env)}
 
 -- definition of a monad for name resolution
 
