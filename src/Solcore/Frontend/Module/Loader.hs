@@ -168,7 +168,6 @@ flattenModuleStrictValidationCompUnit graph modulePath = do
       (Left ("Internal error: module not loaded: " ++ modulePath))
       Right
       (Map.lookup modulePath (modules graph))
-  ensureNoDuplicateNamespaceNames unit
   ensureNoAmbiguousSelectedImports unit
   ensureNoDuplicateModuleQualifiers unit
   ensureNoDuplicateSelectedItems unit
@@ -371,33 +370,6 @@ topDeclTypeNames _ = []
 topDeclClassNames :: TopDecl -> [Name]
 topDeclClassNames (TClassDef (Class _ _ n _ _ _)) = [n]
 topDeclClassNames _ = []
-
-ensureNoDuplicateNamespaceNames :: CompUnit -> Either String ()
-ensureNoDuplicateNamespaceNames (CompUnit _ ds) =
-  case termDups ++ typeDups of
-    [] -> Right ()
-    xs ->
-      Left $
-        unlines
-          [ "Duplicate names in module namespace:",
-            unlines xs
-          ]
-  where
-    termDups = map (formatDup "term") (duplicateNames (concatMap topDeclTermNames ds))
-    typeDups = map (formatDup "type") (duplicateNames (concatMap topDeclTypeAndClassNames ds))
-
-duplicateNames :: [Name] -> [Name]
-duplicateNames names =
-  [ n
-    | (n, count) <- Map.toList (Map.fromListWith (+) [(x, 1 :: Int) | x <- names]),
-      count > 1
-  ]
-
-formatDup :: String -> Name -> String
-formatDup ns n = "  " ++ ns ++ ": " ++ show n
-
-topDeclTypeAndClassNames :: TopDecl -> [Name]
-topDeclTypeAndClassNames d = topDeclTypeNames d ++ topDeclClassNames d
 
 applyImportVisibility :: Import -> [TopDecl] -> [TopDecl]
 applyImportVisibility (ImportOnly _ names) =

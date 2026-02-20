@@ -6,7 +6,6 @@ data Option
   = Option
   { fileName :: !FilePath,
     optImportDirs :: !String,
-    optStrictImports :: !Bool,
     optNoSpec :: !Bool,
     optNoDesugarCalls :: !Bool,
     optNoMatchCompiler :: !Bool,
@@ -34,7 +33,6 @@ emptyOption path =
   Option
     { fileName = path,
       optImportDirs = "std",
-      optStrictImports = False,
       optNoSpec = False,
       optNoDesugarCalls = False,
       optNoMatchCompiler = False,
@@ -84,10 +82,6 @@ options =
           <> metavar "dirs"
           <> value (optImportDirs stdOpt)
           <> help "This flag appends a colon-separated list of dirs to the search path."
-      )
-    <*> switch
-      ( long "strict-imports"
-          <> help "Validate modules with strict explicit-import visibility rules"
       )
     <*> switch
       ( long "no-specialise"

@@ -1,0 +1,3 @@
+function deep() -> word {
+  return 9;
+}

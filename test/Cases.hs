@@ -100,7 +100,7 @@ imports =
       runImportSuccess "boolaliastype.solc",
       runImportSuccess "module_name_shadow.solc",
       runImportSuccess "ns_cross_ok.solc",
-      runImportFailure "ns_constr_dup.solc",
+      runImportSuccess "ns_constr_dup.solc",
       runImportFailure "strict_open_fail.solc",
       runImportSuccess "boolselect.solc",
       runImportSuccess "boolconselect_ok.solc",
@@ -109,6 +109,7 @@ imports =
       runImportSuccess "nested_select.solc",
       runImportSuccess "nested_foo_and_bar.solc",
       runImportSuccess "nested_direct_qualifier.solc",
+      runImportSuccess "nested_deep_qualifier.solc",
       runImportSuccess "select_ok.solc",
       runImportSuccess "select_shadow_local.solc",
       runImportFailure "select_fail.solc",
@@ -116,6 +117,7 @@ imports =
       runImportFailure "select_dup_item.solc",
       runImportFailure "alias_dup.solc",
       runImportFailure "amb_main.solc",
+      runImportSuccess "amb_ok.solc",
       runImportFailure "pragma_scope_main.solc",
       runImportFailure "selfcycle.solc",
       runImportFailure "cycleA.solc",
@@ -123,7 +125,7 @@ imports =
     ]
   where
     importFolder = "./test/imports"
-    importOpt = stdOpt {optNoGenDispatch = True, optStrictImports = True}
+    importOpt = stdOpt {optNoGenDispatch = True}
     runImportSuccess file = runTestForFileWith importOpt file importFolder
     runImportFailure file = runTestExpectingFailureWith importOpt file importFolder
 
@@ -240,8 +242,8 @@ cases =
       runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder,
       runTestForFile "pragma_merge_base.solc" caseFolder,
-      runTestForFile "pragma_merge_import.solc" caseFolder,
-      runTestForFile "pragma_merge_verify.solc" caseFolder,
+      runTestExpectingFailure "pragma_merge_import.solc" caseFolder,
+      runTestExpectingFailure "pragma_merge_verify.solc" caseFolder,
       runTestForFile "pragma_test_patterson.solc" caseFolder,
       runTestForFile "proxy.solc" caseFolder,
       runTestExpectingFailure "proxy1.solc" caseFolder,

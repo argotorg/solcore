@@ -20,7 +20,7 @@ import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
-import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleCompUnit, flattenModuleStrictCompileCompUnit, flattenModuleStrictValidationCompUnit, flattenModuleValidationCompUnit, loadModuleGraph)
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictCompileCompUnit, flattenModuleStrictValidationCompUnit, loadModuleGraph)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.Contract hiding (contracts)
@@ -72,11 +72,7 @@ compile opts = runExceptT $ do
   forM_ (moduleOrder graph) $ \modulePath -> do
     cunit <-
       ExceptT $
-        pure
-          ( if optStrictImports opts
-              then flattenModuleStrictValidationCompUnit graph modulePath
-              else flattenModuleValidationCompUnit graph modulePath
-          )
+        pure (flattenModuleStrictValidationCompUnit graph modulePath)
     _ <-
       ExceptT $
         first (\e -> "Module validation failed for " ++ modulePath ++ ":\n" ++ e)
@@ -85,11 +81,7 @@ compile opts = runExceptT $ do
 
   parsed <-
     ExceptT $
-      pure
-        ( if optStrictImports opts
-            then flattenModuleStrictCompileCompUnit graph (entryModule graph)
-            else flattenModuleCompUnit graph (entryModule graph)
-        )
+      pure (flattenModuleStrictCompileCompUnit graph (entryModule graph))
 
   -- Name resolution
   resolved <- ExceptT $ nameResolution parsed
