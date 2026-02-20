@@ -1,5 +1,8 @@
 import std;
 import dispatch;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 function caller() -> address {
   let res: word;

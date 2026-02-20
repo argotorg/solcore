@@ -1,6 +1,9 @@
 import std;
 
 pragma no-patterson-condition RunDispatch, ExecMethod;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 // --- Core Data Types ---
 

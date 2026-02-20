@@ -320,11 +320,18 @@ strictValidationImportedDecls :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
 strictValidationImportedDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ names -> mapMaybe (selectTopDecl names) topDecls
-    ImportModule _ -> []
-    ImportAlias _ _ -> []
+    ImportModule moduleName
+      | isStdModuleName moduleName -> topDecls
+      | otherwise -> []
+    ImportAlias moduleName _
+      | isStdModuleName moduleName -> topDecls
+      | otherwise -> []
   where
     topDecls =
       topDeclsFrom (modules graph Map.! modulePath)
+
+isStdModuleName :: Name -> Bool
+isStdModuleName n = show n == "std"
 
 shadowImportedDecls :: [TopDecl] -> [TopDecl] -> [TopDecl]
 shadowImportedDecls localDecls =
