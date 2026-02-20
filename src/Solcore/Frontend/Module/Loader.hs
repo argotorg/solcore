@@ -155,7 +155,7 @@ flattenModuleStrictCompileCompUnit graph modulePath = do
   let directDeps = Map.findWithDefault [] modulePath (dependencies graph)
       importPairs = zip (imports unit) directDeps
   ensureImportItemsExist graph importPairs
-  let importedDecls = concatMap (importedDeclsFor graph) importPairs
+  let importedDecls = concatMap (strictCompileImportedDecls graph) importPairs
       qualifiedDecls = concatMap (qualifiedImportDecls graph) importPairs
       localDecls = topDeclsFrom unit
       visibleImportedDecls = shadowImportedDecls localDecls importedDecls
@@ -319,19 +319,36 @@ importedDeclsFor graph (imp, modulePath) =
 strictValidationImportedDecls :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
 strictValidationImportedDecls graph (imp, modulePath) =
   case imp of
-    ImportOnly _ names -> mapMaybe (selectTopDecl names) topDecls
-    ImportModule moduleName
-      | isStdModuleName moduleName -> topDecls
-      | otherwise -> []
-    ImportAlias moduleName _
-      | isStdModuleName moduleName -> topDecls
-      | otherwise -> []
+    ImportOnly _ names -> mapMaybe toValidationImportStub (mapMaybe (selectTopDecl names) topDecls)
+    ImportModule _ -> []
+    ImportAlias _ _ -> []
   where
     topDecls =
       topDeclsFrom (modules graph Map.! modulePath)
 
-isStdModuleName :: Name -> Bool
-isStdModuleName n = show n == "std"
+toValidationImportStub :: TopDecl -> Maybe TopDecl
+toValidationImportStub (TFunDef (FunDef sig _)) =
+  Just (TFunDef (stubFunction (sigName sig)))
+toValidationImportStub (TSym (TySym n _ _)) =
+  Just (TSym (stubType n))
+toValidationImportStub d@(TClassDef _) =
+  Just d
+toValidationImportStub (TContr (Contract n _ _)) =
+  Just (TContr (Contract n [] []))
+toValidationImportStub (TDataDef (DataTy n _ cs)) =
+  Just (TDataDef (DataTy n [] [Constr (constrName c) [] | c <- cs]))
+toValidationImportStub (TInstDef _) = Nothing
+toValidationImportStub (TPragmaDecl _) = Nothing
+
+strictCompileImportedDecls :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
+strictCompileImportedDecls graph (imp, modulePath) =
+  case imp of
+    ImportOnly _ names -> mapMaybe (selectTopDecl names) topDecls
+    ImportModule _ -> topDecls
+    ImportAlias _ _ -> topDecls
+  where
+    topDecls =
+      topDeclsFrom (modules graph Map.! modulePath)
 
 shadowImportedDecls :: [TopDecl] -> [TopDecl] -> [TopDecl]
 shadowImportedDecls localDecls =
@@ -382,9 +399,9 @@ applyImportVisibility :: Import -> [TopDecl] -> [TopDecl]
 applyImportVisibility (ImportOnly _ names) =
   mapMaybe (selectTopDecl names)
 applyImportVisibility (ImportModule _) =
-  id
+  const []
 applyImportVisibility (ImportAlias _ _) =
-  id
+  const []
 
 selectTopDecl :: [Name] -> TopDecl -> Maybe TopDecl
 selectTopDecl names d@(TFunDef (FunDef sig _))

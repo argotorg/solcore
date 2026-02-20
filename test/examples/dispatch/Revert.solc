@@ -1,4 +1,5 @@
 import std;
+import std.{revert, uint256};
 import dispatch;
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;

@@ -1,4 +1,5 @@
 import std;
+import std.{memory, string, Typedef, log1, allocate_memory, mstore, uint256};
 import dispatch;
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
