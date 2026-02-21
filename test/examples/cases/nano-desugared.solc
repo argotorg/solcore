@@ -36,34 +36,34 @@ function hash2 (x : word, y : word) -> word {
 data Bool = False  | True  ;
 function not (b : Bool) -> Bool {
    match (b) {
-   | False =>
-      return True;
-   | True =>
-      return False;
+   | Bool.False =>
+      return Bool.True;
+   | Bool.True =>
+      return Bool.False;
    }
 }
 function or (x : Bool, y : Bool) -> Bool {
    match (x) {
-   | False =>
+   | Bool.False =>
       return y;
-   | True =>
-      return True;
+   | Bool.True =>
+      return Bool.True;
    }
 }
 function fromBool (b) {
    match (b) {
-   | False =>
+   | Bool.False =>
       return 0;
-   | True =>
+   | Bool.True =>
       return 1;
    }
 }
 function toBool (x : word) {
    match (x) {
    | 0 =>
-      return False;
+      return Bool.False;
    | _ =>
-      return True;
+      return Bool.True;
    }
 }
 forall a . class  a : Num {
@@ -378,9 +378,9 @@ function require1fail () {
 }
 function require1 (cond : Bool) {
    match (cond) {
-   | False =>
+   | Bool.False =>
       return require1fail();
-   | True =>
+   | Bool.True =>
       return ();
    }
 }
@@ -415,7 +415,7 @@ contract Uint {
       require1(ge(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), amt));
       withdraw(src, amt);
       deposit(dst, amt);
-      return True;
+      return Bool.True;
    }
    function withdraw (src : address, amt : uint) {
       Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), Num.sub(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), amt) : uint);
@@ -435,7 +435,7 @@ contract Uint {
       let amt = uint(1) ;
       let src : address = rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)) ;
       transferFrom(rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), msg_sender_sel)), uint(42));
-      require1(True) : ();
+      require1(Bool.True) : ();
       return rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), msg_sender_sel)))):uint;
    }
 }

@@ -7,15 +7,15 @@ data Food = Curry | Beans | Other;
 instance Food : Enum {
   function fromEnum(x : Food) -> word {
      match x {
-       | Curry => return 1;
-       | Beans => return 2;
-       | Other => return 3;
+       | Food.Curry => return 1;
+       | Food.Beans => return 2;
+       | Food.Other => return 3;
      }
   }
 }
 
 contract Food {
   function main() {
-        return Enum.fromEnum(Beans);
+        return Enum.fromEnum(Food.Beans);
   }
 }

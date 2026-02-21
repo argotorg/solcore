@@ -3,9 +3,9 @@ contract Option {
 
   function join(mmx) {
     match mmx {
-    | None => return None;
-    | Some(Some(x)) => return Some(x);
-    | Some(None) => return None;
+    | Option.None => return Option.None;
+    | Option.Some(Option.Some(x)) => return Option.Some(x);
+    | Option.Some(Option.None) => return Option.None;
     }
   }
  }

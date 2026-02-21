@@ -14,25 +14,25 @@ function ereturn(x:a) -> unit { let res: unit; return res; }
 // and then cast it to any type using unsafeCast
 
 /* simulate match expression
-  x = match { | False => return 77; | True => W(22) }
+  x = match { | Bool.False => return 77; | Bool.True => W(22) }
 */
 function elimBool1(b:Bool) -> word {
    let x : W;
    x = W(1);
    match b {
       // this works
-      | False => x = unsafeCast(ereturn(77));
+      | Bool.False => x = unsafeCast(ereturn(77));
       // but this does not - unknown intermediate type
-      // | False => x = unsafeCast(unsafeCast(ereturn(77)));
+      // | Bool.False => x = unsafeCast(unsafeCast(ereturn(77)));
       // what about "return(return 77)"?
       // this does not work
-      // | False => x = ereturn(ereturn(77));
+      // | Bool.False => x = ereturn(ereturn(77));
       // this works
-      //  | False => x = unsafeCast(ereturn(ereturn(77)));
+      //  | Bool.False => x = unsafeCast(ereturn(ereturn(77)));
       // this does not work (monomorphisation fails):
-      //  | False => x = unsafeCast(ereturn(unsafeCast(ereturn(77))));
+      //  | Bool.False => x = unsafeCast(ereturn(unsafeCast(ereturn(77))));
 
-      | True  => x = W(22);
+      | Bool.True  => x = W(22);
    };
 
    match x {
@@ -51,7 +51,7 @@ let res: b; return res;
 
 contract ExpReturn {
   function main() -> word {
-    return elimBool1(False);
-    // return elimBool1(True);
+    return elimBool1(Bool.False);
+    // return elimBool1(Bool.True);
   }
 }

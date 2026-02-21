@@ -11,8 +11,8 @@ data Pair(a,b) = Pair(a,b);
 instance B : Neg {
   function neg (x : B) -> B {
     match x {
-    | F => return T;
-    | T => return F;
+    | B.F => return B.T;
+    | B.T => return B.F;
     }
   }
 }
@@ -50,19 +50,19 @@ instance (a:Neg,b:Neg) => Pair(a,b):Neg {
 
  function bnot(x:B) -> B {
    match x {
-     | T => return F;
-     | F => return T;
+     | B.T => return B.F;
+     | B.F => return B.T;
    }
 }
 
  function fromB(b:B) -> word {
   match b  {
-    | F => return 0;
-    | T => return 1;
+    | B.F => return 0;
+    | B.T => return 1;
   }
 }
 
 contract NegPair {
  constructor() {}
- function negPair() -> uint256 { return uint256(fromB(pairfst(Neg.neg(Pair(F,T))))); }
+ function negPair() -> uint256 { return uint256(fromB(pairfst(Neg.neg(Pair(B.F,B.T))))); }
 }

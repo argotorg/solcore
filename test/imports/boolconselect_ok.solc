@@ -1,5 +1,5 @@
 import booldef.{True};
 
 function mkTrue() -> Bool {
-  return True;
+  return Bool.True;
 }

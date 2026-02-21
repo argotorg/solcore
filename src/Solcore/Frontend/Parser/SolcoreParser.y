@@ -394,7 +394,7 @@ PatCommaList : Pattern                             {[$1]}
              | Pattern ',' PatCommaList            {$1 : $3}
 
 Pattern :: { Pat }
-Pattern : Name PatternList                         {Pat $1 $2}
+Pattern : TypeName PatternList                     {Pat $1 $2}
         | '_'                                      {PWildcard}
         | Literal                                  {PLit $1}
         | '(' Pattern ')'                          {$2}

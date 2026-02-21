@@ -6,7 +6,7 @@ forall a . function id(x : a) -> a {
 
 function listid(xs) {
   match xs {
-  | Nil => return Nil ;
-  | Cons(x,xs) => return Cons(id(x), listid(xs));
+  | List.Nil => return List.Nil ;
+  | List.Cons(x,xs) => return List.Cons(id(x), listid(xs));
   }
 }

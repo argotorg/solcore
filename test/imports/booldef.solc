@@ -2,8 +2,8 @@ data Bool = True | False;
 
 function not (b : Bool) -> Bool {
   match b {
-  | True => return False;
-  | False => return True;
+  | Bool.True => return Bool.False;
+  | Bool.False => return Bool.True;
   }
 }
 

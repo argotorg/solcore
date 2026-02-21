@@ -1,38 +1,38 @@
 contract Option {
   data Option(a) = None | Some(a);
 
-  function just(x) { return Some(x); }
+  function just(x) { return Option.Some(x); }
 
   function maybe(n, o) {
     match o {
-      | None => return n;
-      | Some(x) => return x;
+      | Option.None => return n;
+      | Option.Some(x) => return x;
     }
   }
 
   function join(mmx) {
-    let result = None;
+    let result = Option.None;
     match mmx {
-      | Some(Some(x)) => result = Some(x);
-      | None => result = None;
+      | Option.Some(Option.Some(x)) => result = Option.Some(x);
+      | Option.None => result = Option.None;
     }
     return result;
   }
 
  function extract(mx) {
    match mx {
-     | Some(x) => return x;
+     | Option.Some(x) => return x;
    }
  }
 
   function cojoin(x) { // Test that sum types can grow
-    let result = None;
-    result = Some(x);
+    let result = Option.None;
+    result = Option.Some(x);
     return result;
    }
 
 
   function main() {
-    return maybe(0, join(cojoin(Some(42))));
+    return maybe(0, join(cojoin(Option.Some(42))));
   }
 }

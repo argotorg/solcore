@@ -7,9 +7,9 @@ class a:Enum {
 instance Color : Enum {
   function fromEnum(c) {
     match c {
-      | R => return 1;
-      | G => return 2;
-      | B => return 3;
+      | Color.R => return 1;
+      | Color.G => return 2;
+      | Color.B => return 3;
     }
   }
 }
@@ -20,12 +20,12 @@ data Bool = False | True;
 instance Bool : Enum {
   function fromEnum(b) {
       match b {
-      | False => return 0;
-      | True => return 1;
+      | Bool.False => return 0;
+      | Bool.True => return 1;
       }
   }
 }
 
 contract GoodInstance {
-  function main() { return fromEnum(True);}
+  function main() { return fromEnum(Bool.True);}
 }
