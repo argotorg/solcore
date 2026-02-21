@@ -219,14 +219,22 @@ publicTopDeclsForModule graph modulePath = do
       (Map.lookup modulePath (modules graph))
   publicTopDeclsFromCompUnit modulePath unit
 
+allImportableTopDeclsForModule :: ModuleGraph -> FilePath -> Either String [TopDecl]
+allImportableTopDeclsForModule graph modulePath = do
+  unit <-
+    maybe
+      (Left ("Internal error: module not loaded: " ++ modulePath))
+      Right
+      (Map.lookup modulePath (modules graph))
+  let CompUnit _ ds = unit
+  pure (filter isImportableTopDecl ds)
+
 publicTopDeclsFromCompUnit :: FilePath -> CompUnit -> Either String [TopDecl]
 publicTopDeclsFromCompUnit modulePath unit@(CompUnit _ ds) = do
-  exports <- moduleExportItems modulePath unit
+  exports <- requiredExportItems modulePath unit
   let importableDecls = filter isImportableTopDecl ds
   pure $
-    case exports of
-      Nothing -> importableDecls
-      Just names -> mapMaybe (selectTopDecl names) importableDecls
+    mapMaybe (selectTopDecl exports) importableDecls
 
 moduleExportItems :: FilePath -> CompUnit -> Either String (Maybe [Name])
 moduleExportItems modulePath (CompUnit _ ds) =
@@ -242,6 +250,19 @@ moduleExportItems modulePath (CompUnit _ ds) =
           [ "Invalid export declaration:",
             "  " ++ modulePath,
             "  multiple export declarations are not allowed"
+          ]
+
+requiredExportItems :: FilePath -> CompUnit -> Either String [Name]
+requiredExportItems modulePath unit = do
+  exports <- moduleExportItems modulePath unit
+  case exports of
+    Just items -> Right items
+    Nothing ->
+      Left $
+        unlines
+          [ "Missing export declaration:",
+            "  " ++ modulePath,
+            "  imported modules must declare export { ... };"
           ]
 
 ensureNoDuplicateExports :: FilePath -> [Name] -> Either String ()
@@ -323,10 +344,24 @@ qualifiedImportStubDecls graph (imp, modulePath) =
           ++ qualifiedTypeStubDecls qualifier cunit
 
 qualifyFunction :: Name -> FunDef -> FunDef
-qualifyFunction qualifier (FunDef sig body) =
-  FunDef
-    (sig {sigName = QualName qualifier (show (sigName sig))})
-    body
+qualifyFunction qualifier (FunDef sig body)
+  | originalName == Name "revert" =
+      FunDef
+        (sig {sigName = qualifiedName})
+        body
+  | otherwise =
+      FunDef
+        (sig {sigName = qualifiedName})
+        wrapperBody
+  where
+    originalName = sigName sig
+    qualifiedName = QualName qualifier (show originalName)
+    argNames = map sigParamName (sigParams sig)
+    wrapperBody = [Return (ExpName Nothing originalName (map (ExpVar Nothing) argNames))]
+
+sigParamName :: Param -> Name
+sigParamName (Typed n _) = n
+sigParamName (Untyped n) = n
 
 qualifiedFunctionDecls :: Name -> CompUnit -> [TopDecl]
 qualifiedFunctionDecls qualifier cunit =
@@ -421,8 +456,8 @@ strictCompileImportedDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ names ->
       mapMaybe (selectTopDecl names) <$> publicTopDeclsForModule graph modulePath
-    ImportModule _ -> publicTopDeclsForModule graph modulePath
-    ImportAlias _ _ -> publicTopDeclsForModule graph modulePath
+    ImportModule _ -> allImportableTopDeclsForModule graph modulePath
+    ImportAlias _ _ -> allImportableTopDeclsForModule graph modulePath
 
 shadowImportedDecls :: [TopDecl] -> [TopDecl] -> [TopDecl]
 shadowImportedDecls localDecls =

@@ -1,3 +1,5 @@
+export { fromCycleB };
+
 import cycleA;
 
 function fromCycleB() -> word {

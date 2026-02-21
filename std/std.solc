@@ -2,6 +2,16 @@ pragma no-bounded-variable-condition ABIEncode, GenerateDispatch, Storable;
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
 
+export {
+  ABIAttribs, ABIDecode, ABIDecoder, ABIEncode,
+  Add, Assign, Bounded, CalldataWordReader, Eq, Num, Ord,
+  Proxy, StorageType, Sub, Typedef,
+  abi_decode, abi_encode, addWord, address, allocate_memory,
+  bytes, bytes4, calldata, concatLit, ge, get_free_memory,
+  hash2, keccakLit, log1, mapping, memory, mstore, ne, not,
+  revert, storage, string, strlenLit, uint256
+};
+
 /*
 - features
     - primitive word eq

@@ -75,6 +75,11 @@ compile opts = runExceptT $ do
         pure (flattenModuleStrictValidationCompUnit graph modulePath)
     _ <-
       ExceptT $
+        pure $
+          first (\e -> "Module validation failed for " ++ modulePath ++ ":\n" ++ e) $
+            validateDuplicateNamespacesInCompUnit cunit
+    _ <-
+      ExceptT $
         first (\e -> "Module validation failed for " ++ modulePath ++ ":\n" ++ e)
           <$> nameResolution cunit
     pure ()

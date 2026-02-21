@@ -1,3 +1,5 @@
+export { Bool, True, False, not, C, D, id };
+
 data Bool = True | False;
 
 function not (b : Bool) -> Bool {

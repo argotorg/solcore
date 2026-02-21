@@ -1,3 +1,5 @@
+export { keep, drop };
+
 function keep(x: word) -> word {
   return x;
 }

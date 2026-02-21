@@ -8,7 +8,7 @@ forall self . class self:D {}
 
 data Uint256 = U;
 data T(x) = T;
-data S(x) = T;
+data S(x) = SCons;
 
 // This works.
 forall U . U : A => instance T(U):D {}

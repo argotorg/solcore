@@ -31,6 +31,75 @@ resolveImport (S.ImportModule qn) = ImportModule qn
 resolveImport (S.ImportAlias qn asName) = ImportAlias qn asName
 resolveImport (S.ImportOnly qn names) = ImportOnly qn names
 
+validateDuplicateNamespacesInCompUnit :: S.CompUnit -> Either String ()
+validateDuplicateNamespacesInCompUnit (S.CompUnit _ ds) =
+  validateDuplicateNamespaces ds
+
+validateDuplicateNamespaces :: [S.TopDecl] -> Either String ()
+validateDuplicateNamespaces ds = do
+  ensureNoDuplicateNames "type namespace" (topLevelTypeNames ds)
+  ensureNoDuplicateNames "class namespace" (topLevelClassNames ds)
+  ensureNoDuplicateNames "term namespace" (topLevelTermNames ds)
+  mapM_ validateContractDuplicates [c | S.TContr c <- ds]
+
+validateContractDuplicates :: S.Contract -> Either String ()
+validateContractDuplicates (S.Contract cname _ decls) = do
+  let typeNames = [n | S.CDataDecl (S.DataTy n _ _) <- decls]
+      termNames = contractTermNames decls
+      context = "contract " ++ pretty cname
+  ensureNoDuplicateNamesIn context "type namespace" typeNames
+  ensureNoDuplicateNamesIn context "term namespace" termNames
+
+topLevelTypeNames :: [S.TopDecl] -> [Name]
+topLevelTypeNames = concatMap collect
+  where
+    collect (S.TDataDef (S.DataTy n _ _)) = [n]
+    collect (S.TSym (S.TySym n _ _)) = [n]
+    collect _ = []
+
+topLevelClassNames :: [S.TopDecl] -> [Name]
+topLevelClassNames = concatMap collect
+  where
+    collect (S.TClassDef (S.Class _ _ n _ _ _)) = [n]
+    collect _ = []
+
+topLevelTermNames :: [S.TopDecl] -> [Name]
+topLevelTermNames = concatMap collect
+  where
+    collect (S.TFunDef (S.FunDef sig _)) = [S.sigName sig]
+    collect (S.TDataDef (S.DataTy _ _ cons)) = map S.constrName cons
+    collect _ = []
+
+contractTermNames :: [S.ContractDecl] -> [Name]
+contractTermNames = concatMap collect
+  where
+    collect (S.CFunDecl (S.FunDef sig _)) = [S.sigName sig]
+    collect (S.CDataDecl (S.DataTy _ _ cons)) = map S.constrName cons
+    collect _ = []
+
+ensureNoDuplicateNames :: String -> [Name] -> Either String ()
+ensureNoDuplicateNames ns = ensureNoDuplicateNamesIn "module" ns
+
+ensureNoDuplicateNamesIn :: String -> String -> [Name] -> Either String ()
+ensureNoDuplicateNamesIn ctx ns names =
+  case duplicates of
+    [] -> pure ()
+    xs ->
+      Left $
+        unlines
+          [ "Duplicate declarations in " ++ ns ++ ":",
+            "  " ++ ctx,
+            unlines (map (\n -> "  " ++ pretty n) xs)
+          ]
+  where
+    counts :: Map Name Int
+    counts = Map.fromListWith (+) [(n, 1) | n <- names]
+    duplicates =
+      [ n
+        | (n, c) <- Map.toList counts,
+          c > 1
+      ]
+
 -- type class for name resolution
 
 class Resolve a where
@@ -325,6 +394,8 @@ isPrimitiveConstructor n =
 isSameNameConstructor :: Name -> ResolveM Bool
 isSameNameConstructor n = do
   dt <- lookupType (constructorLeafName n)
+  -- We intentionally keep T(...) shorthand for data T = T(...).
+  -- Full Candidate A still applies to non-same-name constructors.
   pure (dt == Just TTyCon)
 
 instance Resolve S.Exp where
