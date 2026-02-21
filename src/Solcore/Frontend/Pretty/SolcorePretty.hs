@@ -56,7 +56,15 @@ instance (Pretty a) => Pretty (TopDecl a) where
     vcat (map ppr ts)
   ppr (TDataDef d) = ppr d
   ppr (TSym s) = ppr s
+  ppr (TExportDecl e) = ppr e
   ppr (TPragmaDecl p) = ppr p
+
+instance Pretty Export where
+  ppr (Export names) =
+    hsep
+      [ text "export",
+        lbrace <> commaSep (map ppr names) <> rbrace <> semi
+      ]
 
 instance Pretty Pragma where
   ppr (Pragma _ Enabled) = empty

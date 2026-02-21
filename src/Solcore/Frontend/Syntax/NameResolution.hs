@@ -63,6 +63,8 @@ instance Resolve S.TopDecl where
     TDataDef <$> withLocalCtx (resolve dt) `wrapError` t
   resolve t@(S.TSym ts) =
     TSym <$> withLocalCtx (resolve ts) `wrapError` t
+  resolve (S.TExportDecl (S.Export items)) =
+    pure (TExportDecl (Export items))
   resolve t@(S.TPragmaDecl p) = TPragmaDecl <$> resolve p `wrapError` t
 
 instance Resolve S.Contract where
@@ -632,6 +634,7 @@ addTopDecl (S.TDataDef (S.DataTy n _ cons)) env =
     }
 addTopDecl (S.TSym (S.TySym n _ _)) env =
   env {typeEnv = Map.insert n TTyCon (typeEnv env)}
+addTopDecl (S.TExportDecl _) env = env
 addTopDecl _ env = env
 
 addModuleName :: Name -> Env -> Env

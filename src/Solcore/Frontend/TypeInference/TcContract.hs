@@ -152,6 +152,8 @@ tcTopDecl (TDataDef d) =
     pure (TDataDef d)
 tcTopDecl (TSym s) =
   pure (TSym s)
+tcTopDecl (TExportDecl d) =
+  pure (TExportDecl d)
 tcTopDecl (TPragmaDecl d) =
   pure (TPragmaDecl d)
 
@@ -166,6 +168,7 @@ checkTopDecl (TSym s) =
   checkSynonym s
 checkTopDecl (TFunDef (FunDef sig _)) =
   extSignature sig
+checkTopDecl (TExportDecl _) = pure ()
 checkTopDecl _ = pure ()
 
 -- type inference for contracts

@@ -132,14 +132,15 @@ flattenModuleValidationCompUnit graph modulePath = do
       (Left ("Internal error: module not loaded: " ++ modulePath))
       Right
       (Map.lookup modulePath (modules graph))
+  _ <- moduleExportItems modulePath unit
   ensureNoAmbiguousSelectedImports unit
   ensureNoDuplicateModuleQualifiers unit
   ensureNoDuplicateSelectedItems unit
   let directDeps = Map.findWithDefault [] modulePath (dependencies graph)
       importPairs = zip (imports unit) directDeps
   ensureImportItemsExist graph importPairs
-  let importedDecls = concatMap (importedDeclsFor graph) importPairs
-      qualifiedDecls = concatMap (qualifiedImportDecls graph) importPairs
+  importedDecls <- concat <$> mapM (importedDeclsFor graph) importPairs
+  qualifiedDecls <- concat <$> mapM (qualifiedImportDecls graph) importPairs
   pure (CompUnit (imports unit) (qualifiedDecls ++ importedDecls ++ topDeclsFrom unit))
 
 flattenModuleStrictCompileCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
@@ -149,15 +150,16 @@ flattenModuleStrictCompileCompUnit graph modulePath = do
       (Left ("Internal error: module not loaded: " ++ modulePath))
       Right
       (Map.lookup modulePath (modules graph))
+  _ <- moduleExportItems modulePath unit
   ensureNoAmbiguousSelectedImports unit
   ensureNoDuplicateModuleQualifiers unit
   ensureNoDuplicateSelectedItems unit
   let directDeps = Map.findWithDefault [] modulePath (dependencies graph)
       importPairs = zip (imports unit) directDeps
   ensureImportItemsExist graph importPairs
-  let importedDecls = concatMap (strictCompileImportedDecls graph) importPairs
-      qualifiedDecls = concatMap (qualifiedImportDecls graph) importPairs
-      localDecls = topDeclsFrom unit
+  importedDecls <- concat <$> mapM (strictCompileImportedDecls graph) importPairs
+  qualifiedDecls <- concat <$> mapM (qualifiedImportDecls graph) importPairs
+  let localDecls = topDeclsFrom unit
       visibleImportedDecls = shadowImportedDecls localDecls importedDecls
   pure (CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls))
 
@@ -168,21 +170,23 @@ flattenModuleStrictValidationCompUnit graph modulePath = do
       (Left ("Internal error: module not loaded: " ++ modulePath))
       Right
       (Map.lookup modulePath (modules graph))
+  _ <- moduleExportItems modulePath unit
   ensureNoAmbiguousSelectedImports unit
   ensureNoDuplicateModuleQualifiers unit
   ensureNoDuplicateSelectedItems unit
   let directDeps = Map.findWithDefault [] modulePath (dependencies graph)
       importPairs = zip (imports unit) directDeps
   ensureImportItemsExist graph importPairs
-  let importedDecls = concatMap (strictValidationImportedDecls graph) importPairs
-      qualifiedDecls = concatMap (qualifiedImportStubDecls graph) importPairs
-      localDecls = topDeclsFrom unit
+  importedDecls <- concat <$> mapM (strictValidationImportedDecls graph) importPairs
+  qualifiedDecls <- concat <$> mapM (qualifiedImportStubDecls graph) importPairs
+  let localDecls = topDeclsFrom unit
       visibleImportedDecls = shadowImportedDecls localDecls importedDecls
   pure (CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls))
 
 ensureImportItemsExist :: ModuleGraph -> [(Import, FilePath)] -> Either String ()
-ensureImportItemsExist graph importPairs =
-  case concatMap unknowns importPairs of
+ensureImportItemsExist graph importPairs = do
+  unknownGroups <- mapM unknowns importPairs
+  case concat unknownGroups of
     [] -> Right ()
     xs ->
       Left $
@@ -191,20 +195,94 @@ ensureImportItemsExist graph importPairs =
             unlines xs
           ]
   where
-    unknowns (ImportOnly moduleName names, modulePath) =
-      let available =
-            maybe [] importableNamesFromCompUnit (Map.lookup modulePath (modules graph))
-          missing = filter (`notElem` available) names
-       in [formatMissing moduleName n | n <- missing]
-    unknowns _ = []
+    unknowns (ImportOnly moduleName names, modulePath) = do
+      available <- importableNamesForModule graph modulePath
+      let missing = filter (`notElem` available) names
+      pure [formatMissing moduleName n | n <- missing]
+    unknowns _ = pure []
 
 formatMissing :: Name -> Name -> String
 formatMissing moduleName itemName =
   "  " ++ show moduleName ++ "." ++ show itemName
 
-importableNamesFromCompUnit :: CompUnit -> [Name]
-importableNamesFromCompUnit (CompUnit _ ds) =
-  concatMap topDeclNames ds
+importableNamesForModule :: ModuleGraph -> FilePath -> Either String [Name]
+importableNamesForModule graph modulePath = do
+  publicDecls <- publicTopDeclsForModule graph modulePath
+  pure (concatMap topDeclNames publicDecls)
+
+publicTopDeclsForModule :: ModuleGraph -> FilePath -> Either String [TopDecl]
+publicTopDeclsForModule graph modulePath = do
+  unit <-
+    maybe
+      (Left ("Internal error: module not loaded: " ++ modulePath))
+      Right
+      (Map.lookup modulePath (modules graph))
+  publicTopDeclsFromCompUnit modulePath unit
+
+publicTopDeclsFromCompUnit :: FilePath -> CompUnit -> Either String [TopDecl]
+publicTopDeclsFromCompUnit modulePath unit@(CompUnit _ ds) = do
+  exports <- moduleExportItems modulePath unit
+  let importableDecls = filter isImportableTopDecl ds
+  pure $
+    case exports of
+      Nothing -> importableDecls
+      Just names -> mapMaybe (selectTopDecl names) importableDecls
+
+moduleExportItems :: FilePath -> CompUnit -> Either String (Maybe [Name])
+moduleExportItems modulePath (CompUnit _ ds) =
+  case [items | TExportDecl (Export items) <- ds] of
+    [] -> Right Nothing
+    [items] -> do
+      ensureNoDuplicateExports modulePath items
+      ensureExportsExist modulePath ds items
+      Right (Just items)
+    _ ->
+      Left $
+        unlines
+          [ "Invalid export declaration:",
+            "  " ++ modulePath,
+            "  multiple export declarations are not allowed"
+          ]
+
+ensureNoDuplicateExports :: FilePath -> [Name] -> Either String ()
+ensureNoDuplicateExports modulePath names =
+  case duplicates of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Duplicate names in export declaration:",
+            "  " ++ modulePath,
+            unlines (map (\n -> "  " ++ show n) xs)
+          ]
+  where
+    dupMap :: Map Name Int
+    dupMap = Map.fromListWith (+) [(n, 1) | n <- names]
+    duplicates =
+      [ n
+        | (n, count) <- Map.toList dupMap,
+          count > 1
+      ]
+
+ensureExportsExist :: FilePath -> [TopDecl] -> [Name] -> Either String ()
+ensureExportsExist modulePath ds items =
+  case missing of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Unknown exports:",
+            "  " ++ modulePath,
+            unlines (map (\n -> "  " ++ show n) xs)
+          ]
+  where
+    available = concatMap topDeclNames (filter isImportableTopDecl ds)
+    missing = filter (`notElem` available) items
+
+isImportableTopDecl :: TopDecl -> Bool
+isImportableTopDecl (TPragmaDecl _) = False
+isImportableTopDecl (TExportDecl _) = False
+isImportableTopDecl _ = True
 
 topDeclNames :: TopDecl -> [Name]
 topDeclNames (TFunDef (FunDef sig _)) = [sigName sig]
@@ -213,35 +291,36 @@ topDeclNames (TClassDef (Class _ _ n _ _ _)) = [n]
 topDeclNames (TContr (Contract n _ _)) = [n]
 topDeclNames (TDataDef (DataTy n _ cs)) = n : map constrName cs
 topDeclNames (TInstDef _) = []
+topDeclNames (TExportDecl _) = []
 topDeclNames (TPragmaDecl _) = []
 
-qualifiedImportDecls :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
+qualifiedImportDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
 qualifiedImportDecls graph (imp, modulePath) =
   case imp of
-    ImportOnly _ _ -> []
+    ImportOnly _ _ -> Right []
     ImportModule n -> qualifyDecls n
     ImportAlias _ n -> qualifyDecls n
   where
-    qualifyDecls qualifier =
-      case Map.lookup modulePath (modules graph) of
-        Nothing -> []
-        Just cunit ->
-          qualifiedFunctionDecls qualifier cunit
-            ++ qualifiedTypeDecls qualifier cunit
+    qualifyDecls qualifier = do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      let cunit = CompUnit [] publicDecls
+      pure $
+        qualifiedFunctionDecls qualifier cunit
+          ++ qualifiedTypeDecls qualifier cunit
 
-qualifiedImportStubDecls :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
+qualifiedImportStubDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
 qualifiedImportStubDecls graph (imp, modulePath) =
   case imp of
-    ImportOnly _ _ -> []
+    ImportOnly _ _ -> Right []
     ImportModule n -> stubDecls n
     ImportAlias _ n -> stubDecls n
   where
-    stubDecls qualifier =
-      case Map.lookup modulePath (modules graph) of
-        Nothing -> []
-        Just cunit ->
-          qualifiedFunctionStubDecls qualifier cunit
-            ++ qualifiedTypeStubDecls qualifier cunit
+    stubDecls qualifier = do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      let cunit = CompUnit [] publicDecls
+      pure $
+        qualifiedFunctionStubDecls qualifier cunit
+          ++ qualifiedTypeStubDecls qualifier cunit
 
 qualifyFunction :: Name -> FunDef -> FunDef
 qualifyFunction qualifier (FunDef sig body) =
@@ -309,22 +388,18 @@ stubFunction n =
     (Signature [] [] n [] Nothing)
     []
 
-importedDeclsFor :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
+importedDeclsFor :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
 importedDeclsFor graph (imp, modulePath) =
-  applyImportVisibility imp topDecls
-  where
-    topDecls =
-      topDeclsFrom (modules graph Map.! modulePath)
+  applyImportVisibility imp <$> publicTopDeclsForModule graph modulePath
 
-strictValidationImportedDecls :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
+strictValidationImportedDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
 strictValidationImportedDecls graph (imp, modulePath) =
   case imp of
-    ImportOnly _ names -> mapMaybe toValidationImportStub (mapMaybe (selectTopDecl names) topDecls)
-    ImportModule _ -> []
-    ImportAlias _ _ -> []
-  where
-    topDecls =
-      topDeclsFrom (modules graph Map.! modulePath)
+    ImportOnly _ names ->
+      mapMaybe toValidationImportStub . mapMaybe (selectTopDecl names)
+        <$> publicTopDeclsForModule graph modulePath
+    ImportModule _ -> Right []
+    ImportAlias _ _ -> Right []
 
 toValidationImportStub :: TopDecl -> Maybe TopDecl
 toValidationImportStub (TFunDef (FunDef sig _)) =
@@ -338,17 +413,16 @@ toValidationImportStub (TContr (Contract n _ _)) =
 toValidationImportStub (TDataDef (DataTy n _ cs)) =
   Just (TDataDef (DataTy n [] [Constr (constrName c) [] | c <- cs]))
 toValidationImportStub (TInstDef _) = Nothing
+toValidationImportStub (TExportDecl _) = Nothing
 toValidationImportStub (TPragmaDecl _) = Nothing
 
-strictCompileImportedDecls :: ModuleGraph -> (Import, FilePath) -> [TopDecl]
+strictCompileImportedDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
 strictCompileImportedDecls graph (imp, modulePath) =
   case imp of
-    ImportOnly _ names -> mapMaybe (selectTopDecl names) topDecls
-    ImportModule _ -> topDecls
-    ImportAlias _ _ -> topDecls
-  where
-    topDecls =
-      topDeclsFrom (modules graph Map.! modulePath)
+    ImportOnly _ names ->
+      mapMaybe (selectTopDecl names) <$> publicTopDeclsForModule graph modulePath
+    ImportModule _ -> publicTopDeclsForModule graph modulePath
+    ImportAlias _ _ -> publicTopDeclsForModule graph modulePath
 
 shadowImportedDecls :: [TopDecl] -> [TopDecl] -> [TopDecl]
 shadowImportedDecls localDecls =
@@ -378,6 +452,7 @@ shadowImportedDecls localDecls =
                 then Nothing
                 else Just (TDataDef (DataTy n ts cs'))
     filterDecl d@(TInstDef _) = Just d
+    filterDecl (TExportDecl _) = Nothing
     filterDecl (TPragmaDecl _) = Nothing
 
 topDeclTermNames :: TopDecl -> [Name]
@@ -424,6 +499,8 @@ selectTopDecl names (TDataDef (DataTy n ts cs))
         cs' -> Just (TDataDef (DataTy n ts cs'))
 selectTopDecl _ d@(TInstDef _) =
   Just d
+selectTopDecl _ (TExportDecl _) =
+  Nothing
 selectTopDecl _ (TPragmaDecl _) =
   Nothing
 

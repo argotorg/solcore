@@ -40,6 +40,7 @@ tokens :-
 
         <0>    "contract"                        {simpleToken TContract}
         <0>    "import"                          {simpleToken TImport}
+        <0>    "export"                          {simpleToken TExport}
         <0>    "as"                              {simpleToken TAs}
         <0>    "let"                             {simpleToken TLet}
         <0>    "data"                            {simpleToken TData}
@@ -166,6 +167,7 @@ data Lexeme
   | TString { unStr :: String }
   | TContract
   | TImport
+  | TExport
   | TAs
   | TLet
   | TEq
@@ -240,6 +242,7 @@ mkIdent (st, _, _, str) len
       "match" -> return $ Token (position st) TMatch
       "data" -> return $ Token (position st) TData
       "import" -> return $ Token (position st) TImport
+      "export" -> return $ Token (position st) TExport
       "as" -> return $ Token (position st) TAs
       "contract" -> return $ Token (position st) TContract
       "function" -> return $ Token (position st) TFunction

@@ -23,6 +23,7 @@ data TopDecl a
   | TMutualDef [TopDecl a]
   | TDataDef DataTy
   | TSym TySym
+  | TExportDecl Export
   | TPragmaDecl Pragma
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -44,6 +45,12 @@ data Pragma
   = Pragma
   { pragmaType :: PragmaType,
     pragmaStatus :: PragmaStatus
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data Export
+  = Export
+  { exportItems :: [Name]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 

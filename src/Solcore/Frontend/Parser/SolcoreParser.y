@@ -24,6 +24,7 @@ import Language.Yul
       stringlit  {Token _ (TString $$)}
       'contract' {Token _ TContract}
       'import'   {Token _ TImport}
+      'export'   {Token _ TExport}
       'as'       {Token _ TAs}
       'let'      {Token _ TLet}
       '='        {Token _ TEq}
@@ -138,7 +139,16 @@ TopDecl : Contract                                 {TContr $1}
         | InstDef                                  {TInstDef $1}
         | DataDef                                  {TDataDef $1}
         | TypeSynonym                              {TSym $1}
+        | ExportDecl                               {TExportDecl $1}
         | Pragma                                   {TPragmaDecl $1}
+
+ExportDecl :: { Export }
+ExportDecl : 'export' '{' ExportItems '}' ';'      { Export $3 }
+
+ExportItems :: { [Name] }
+ExportItems : Name ',' ExportItems                 { $1 : $3 }
+            | Name                                 { [$1] }
+            | {- empty -}                          { [] }
 
 -- pragmas
 
