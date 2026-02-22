@@ -2,10 +2,22 @@ import std;
 import std.{Proxy, Typedef, Sub, uint256, address, bytes4, memory, calldata, string, bytes, ABIAttribs, ABIDecoder, ABIDecode, ABIEncode, CalldataWordReader, keccakLit, abi_decode, abi_encode, get_free_memory};
 
 export {
-  Contract, Method, Fallback, Payable, NonPayable,
-  ABIString, SigString, Selector, ExecMethod, RunDispatch,
-  MethodLevelCallvalueCheck, RunContract,
-  sigStr, do_exec, selector_matches, revert_handler
+  ABIString,
+  Contract,
+  ExecMethod,
+  Fallback,
+  Method,
+  MethodLevelCallvalueCheck,
+  NonPayable,
+  Payable,
+  RunContract,
+  RunDispatch,
+  Selector,
+  SigString,
+  do_exec,
+  revert_handler,
+  selector_matches,
+  sigStr
 };
 
 pragma no-patterson-condition RunDispatch, ExecMethod;

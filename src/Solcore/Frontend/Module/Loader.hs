@@ -219,16 +219,6 @@ publicTopDeclsForModule graph modulePath = do
       (Map.lookup modulePath (modules graph))
   publicTopDeclsFromCompUnit modulePath unit
 
-allImportableTopDeclsForModule :: ModuleGraph -> FilePath -> Either String [TopDecl]
-allImportableTopDeclsForModule graph modulePath = do
-  unit <-
-    maybe
-      (Left ("Internal error: module not loaded: " ++ modulePath))
-      Right
-      (Map.lookup modulePath (modules graph))
-  let CompUnit _ ds = unit
-  pure (filter isImportableTopDecl ds)
-
 publicTopDeclsFromCompUnit :: FilePath -> CompUnit -> Either String [TopDecl]
 publicTopDeclsFromCompUnit modulePath unit@(CompUnit _ ds) = do
   exports <- requiredExportItems modulePath unit
@@ -456,8 +446,8 @@ strictCompileImportedDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ names ->
       mapMaybe (selectTopDecl names) <$> publicTopDeclsForModule graph modulePath
-    ImportModule _ -> allImportableTopDeclsForModule graph modulePath
-    ImportAlias _ _ -> allImportableTopDeclsForModule graph modulePath
+    ImportModule _ -> publicTopDeclsForModule graph modulePath
+    ImportAlias _ _ -> publicTopDeclsForModule graph modulePath
 
 shadowImportedDecls :: [TopDecl] -> [TopDecl] -> [TopDecl]
 shadowImportedDecls localDecls =
