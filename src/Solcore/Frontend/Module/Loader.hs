@@ -133,11 +133,11 @@ flattenModuleValidationCompUnit graph modulePath = do
       Right
       (Map.lookup modulePath (modules graph))
   _ <- moduleExportItems modulePath unit
-  ensureNoAmbiguousSelectedImports unit
-  ensureNoDuplicateModuleQualifiers unit
-  ensureNoDuplicateSelectedItems unit
   let directDeps = Map.findWithDefault [] modulePath (dependencies graph)
       importPairs = zip (imports unit) directDeps
+  ensureNoAmbiguousSelectedImports graph importPairs
+  ensureNoDuplicateModuleQualifiers unit
+  ensureNoDuplicateSelectedItems unit
   ensureImportItemsExist graph importPairs
   importedDecls <- concat <$> mapM (importedDeclsFor graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls graph) importPairs
@@ -151,11 +151,11 @@ flattenModuleStrictCompileCompUnit graph modulePath = do
       Right
       (Map.lookup modulePath (modules graph))
   _ <- moduleExportItems modulePath unit
-  ensureNoAmbiguousSelectedImports unit
-  ensureNoDuplicateModuleQualifiers unit
-  ensureNoDuplicateSelectedItems unit
   let directDeps = Map.findWithDefault [] modulePath (dependencies graph)
       importPairs = zip (imports unit) directDeps
+  ensureNoAmbiguousSelectedImports graph importPairs
+  ensureNoDuplicateModuleQualifiers unit
+  ensureNoDuplicateSelectedItems unit
   ensureImportItemsExist graph importPairs
   importedDecls <- concat <$> mapM (strictCompileImportedDecls graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls graph) importPairs
@@ -171,11 +171,11 @@ flattenModuleStrictValidationCompUnit graph modulePath = do
       Right
       (Map.lookup modulePath (modules graph))
   _ <- moduleExportItems modulePath unit
-  ensureNoAmbiguousSelectedImports unit
-  ensureNoDuplicateModuleQualifiers unit
-  ensureNoDuplicateSelectedItems unit
   let directDeps = Map.findWithDefault [] modulePath (dependencies graph)
       importPairs = zip (imports unit) directDeps
+  ensureNoAmbiguousSelectedImports graph importPairs
+  ensureNoDuplicateModuleQualifiers unit
+  ensureNoDuplicateSelectedItems unit
   ensureImportItemsExist graph importPairs
   importedDecls <- concat <$> mapM (strictValidationImportedDecls graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportStubDecls graph) importPairs
@@ -195,9 +195,10 @@ ensureImportItemsExist graph importPairs = do
             unlines xs
           ]
   where
-    unknowns (ImportOnly moduleName names, modulePath) = do
+    unknowns (ImportOnly moduleName items, modulePath) = do
+      selected <- resolveSelectedImportItems graph moduleName modulePath items
       available <- importableNamesForModule graph modulePath
-      let missing = filter (`notElem` available) names
+      let missing = filter (`notElem` available) selected
       pure [formatMissing moduleName n | n <- missing]
     unknowns _ = pure []
 
@@ -205,10 +206,16 @@ formatMissing :: Name -> Name -> String
 formatMissing moduleName itemName =
   "  " ++ show moduleName ++ "." ++ show itemName
 
+resolveSelectedImportItems :: ModuleGraph -> Name -> FilePath -> ItemSelector -> Either String [Name]
+resolveSelectedImportItems graph _moduleName modulePath SelectAll =
+  importableNamesForModule graph modulePath
+resolveSelectedImportItems _graph _moduleName _modulePath (SelectOnly items) =
+  Right items
+
 importableNamesForModule :: ModuleGraph -> FilePath -> Either String [Name]
 importableNamesForModule graph modulePath = do
   publicDecls <- publicTopDeclsForModule graph modulePath
-  pure (concatMap topDeclNames publicDecls)
+  pure (uniqueNames (concatMap topDeclNames publicDecls))
 
 publicTopDeclsForModule :: ModuleGraph -> FilePath -> Either String [TopDecl]
 publicTopDeclsForModule graph modulePath = do
@@ -231,9 +238,10 @@ moduleExportItems modulePath (CompUnit _ ds) =
   case [items | TExportDecl (Export items) <- ds] of
     [] -> Right Nothing
     [items] -> do
-      ensureNoDuplicateExports modulePath items
-      ensureExportsExist modulePath ds items
-      Right (Just items)
+      exports <- resolveExportItems modulePath ds items
+      ensureNoDuplicateExports modulePath exports
+      ensureExportsExist modulePath ds exports
+      Right (Just exports)
     _ ->
       Left $
         unlines
@@ -241,6 +249,16 @@ moduleExportItems modulePath (CompUnit _ ds) =
             "  " ++ modulePath,
             "  multiple export declarations are not allowed"
           ]
+
+resolveExportItems :: FilePath -> [TopDecl] -> ItemSelector -> Either String [Name]
+resolveExportItems _modulePath ds SelectAll =
+  Right (availableExportNames ds)
+resolveExportItems _modulePath _ds (SelectOnly items) =
+  Right items
+
+availableExportNames :: [TopDecl] -> [Name]
+availableExportNames ds =
+  uniqueNames (concatMap topDeclNames (filter isImportableTopDecl ds))
 
 requiredExportItems :: FilePath -> CompUnit -> Either String [Name]
 requiredExportItems modulePath unit = do
@@ -287,7 +305,7 @@ ensureExportsExist modulePath ds items =
             unlines (map (\n -> "  " ++ show n) xs)
           ]
   where
-    available = concatMap topDeclNames (filter isImportableTopDecl ds)
+    available = availableExportNames ds
     missing = filter (`notElem` available) items
 
 isImportableTopDecl :: TopDecl -> Bool
@@ -420,7 +438,9 @@ importedDeclsFor graph (imp, modulePath) =
 strictValidationImportedDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
 strictValidationImportedDecls graph (imp, modulePath) =
   case imp of
-    ImportOnly _ names ->
+    ImportOnly _ SelectAll ->
+      mapMaybe toValidationImportStub <$> publicTopDeclsForModule graph modulePath
+    ImportOnly _ (SelectOnly names) ->
       mapMaybe toValidationImportStub . mapMaybe (selectTopDecl names)
         <$> publicTopDeclsForModule graph modulePath
     ImportModule _ -> Right []
@@ -444,7 +464,9 @@ toValidationImportStub (TPragmaDecl _) = Nothing
 strictCompileImportedDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
 strictCompileImportedDecls graph (imp, modulePath) =
   case imp of
-    ImportOnly _ names ->
+    ImportOnly _ SelectAll ->
+      publicTopDeclsForModule graph modulePath
+    ImportOnly _ (SelectOnly names) ->
       mapMaybe (selectTopDecl names) <$> publicTopDeclsForModule graph modulePath
     ImportModule _ -> publicTopDeclsForModule graph modulePath
     ImportAlias _ _ -> publicTopDeclsForModule graph modulePath
@@ -496,7 +518,9 @@ topDeclClassNames (TClassDef (Class _ _ n _ _ _)) = [n]
 topDeclClassNames _ = []
 
 applyImportVisibility :: Import -> [TopDecl] -> [TopDecl]
-applyImportVisibility (ImportOnly _ names) =
+applyImportVisibility (ImportOnly _ SelectAll) =
+  id
+applyImportVisibility (ImportOnly _ (SelectOnly names)) =
   mapMaybe (selectTopDecl names)
 applyImportVisibility (ImportModule _) =
   const []
@@ -529,9 +553,10 @@ selectTopDecl _ (TExportDecl _) =
 selectTopDecl _ (TPragmaDecl _) =
   Nothing
 
-ensureNoAmbiguousSelectedImports :: CompUnit -> Either String ()
-ensureNoAmbiguousSelectedImports (CompUnit imps _) =
-  case ambiguous of
+ensureNoAmbiguousSelectedImports :: ModuleGraph -> [(Import, FilePath)] -> Either String ()
+ensureNoAmbiguousSelectedImports graph importPairs = do
+  selectedPairs <- concat <$> mapM selectedFromImport importPairs
+  case ambiguous selectedPairs of
     [] -> Right ()
     xs ->
       Left $
@@ -540,19 +565,19 @@ ensureNoAmbiguousSelectedImports (CompUnit imps _) =
             unlines (map formatAmbiguous xs)
           ]
   where
-    selections :: Map Name [Name]
-    selections =
-      Map.fromListWith (++)
-        [ (item, [modName])
-          | ImportOnly modName items <- imps,
-            item <- items
-        ]
-    ambiguous :: [(Name, [Name])]
-    ambiguous =
-      [ (item, mods)
+    selectedFromImport (ImportOnly modName selector, modulePath) = do
+      names <- resolveSelectedImportItems graph modName modulePath selector
+      pure [(item, modName) | item <- uniqueNames names]
+    selectedFromImport _ = pure []
+
+    ambiguous selectedPairs =
+      [ (item, uniqueNames mods)
         | (item, mods) <- Map.toList selections,
-          length mods > 1
+          length (uniqueNames mods) > 1
       ]
+      where
+        selections :: Map Name [Name]
+        selections = Map.fromListWith (++) [(item, [modName]) | (item, modName) <- selectedPairs]
 
 formatAmbiguous :: (Name, [Name]) -> String
 formatAmbiguous (item, mods) =
@@ -560,6 +585,13 @@ formatAmbiguous (item, mods) =
     ++ show item
     ++ " imported from "
     ++ intercalate ", " (map show mods)
+
+uniqueNames :: [Name] -> [Name]
+uniqueNames = reverse . fst . foldl step ([], Map.empty)
+  where
+    step (acc, seen) n
+      | Map.member n seen = (acc, seen)
+      | otherwise = (n : acc, Map.insert n () seen)
 
 ensureNoDuplicateModuleQualifiers :: CompUnit -> Either String ()
 ensureNoDuplicateModuleQualifiers (CompUnit imps _) =
@@ -599,9 +631,10 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
             unlines xs
           ]
   where
-    duplicateItems (ImportOnly moduleName items) =
+    duplicateItems (ImportOnly moduleName (SelectOnly items)) =
       [ "  " ++ show moduleName ++ "." ++ show item
         | (item, count) <- Map.toList (Map.fromListWith (+) [(n, 1 :: Int) | n <- items]),
           count > 1
       ]
+    duplicateItems (ImportOnly _ SelectAll) = []
     duplicateItems _ = []

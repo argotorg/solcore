@@ -29,7 +29,11 @@ nameResolution (S.CompUnit imps ds) =
 resolveImport :: S.Import -> Import
 resolveImport (S.ImportModule qn) = ImportModule qn
 resolveImport (S.ImportAlias qn asName) = ImportAlias qn asName
-resolveImport (S.ImportOnly qn names) = ImportOnly qn names
+resolveImport (S.ImportOnly qn items) = ImportOnly qn (resolveItemSelector items)
+
+resolveItemSelector :: S.ItemSelector -> ItemSelector
+resolveItemSelector S.SelectAll = SelectAll
+resolveItemSelector (S.SelectOnly names) = SelectOnly names
 
 validateDuplicateNamespacesInCompUnit :: S.CompUnit -> Either String ()
 validateDuplicateNamespacesInCompUnit (S.CompUnit _ ds) =
@@ -133,7 +137,7 @@ instance Resolve S.TopDecl where
   resolve t@(S.TSym ts) =
     TSym <$> withLocalCtx (resolve ts) `wrapError` t
   resolve (S.TExportDecl (S.Export items)) =
-    pure (TExportDecl (Export items))
+    pure (TExportDecl (Export (resolveItemSelector items)))
   resolve t@(S.TPragmaDecl p) = TPragmaDecl <$> resolve p `wrapError` t
 
 instance Resolve S.Contract where

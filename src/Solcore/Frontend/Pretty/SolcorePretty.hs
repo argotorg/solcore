@@ -40,11 +40,11 @@ instance Pretty Import where
     text "import" <+> ppr qn <+> semi
   ppr (ImportAlias qn asName) =
     hsep [text "import", ppr qn, text "as", ppr asName, semi]
-  ppr (ImportOnly qn names) =
+  ppr (ImportOnly qn items) =
     hsep
       [ text "import",
         ppr qn <> text ".",
-        lbrace <> commaSep (map ppr names) <> rbrace <> semi
+        pprItemSelector items <> semi
       ]
 
 instance (Pretty a) => Pretty (TopDecl a) where
@@ -60,11 +60,15 @@ instance (Pretty a) => Pretty (TopDecl a) where
   ppr (TPragmaDecl p) = ppr p
 
 instance Pretty Export where
-  ppr (Export names) =
+  ppr (Export items) =
     hsep
       [ text "export",
-        lbrace <> commaSep (map ppr names) <> rbrace <> semi
+        pprItemSelector items <> semi
       ]
+
+pprItemSelector :: ItemSelector -> Doc
+pprItemSelector SelectAll = lbrace <> text "*" <> rbrace
+pprItemSelector (SelectOnly names) = lbrace <> commaSep (map ppr names) <> rbrace
 
 instance Pretty Pragma where
   ppr (Pragma _ Enabled) = empty

@@ -117,9 +117,13 @@ Import : 'import' ModName ';'                      { ImportModule $2 }
        | 'import' ModName 'as' Name ';'            { ImportAlias $2 $4 }
        | 'import' ModName '.' '{' ImportItems '}' ';' { ImportOnly $2 $5 }
 
-ImportItems :: { [Name] }
-ImportItems : Name ',' ImportItems                 { $1 : $3 }
-            | Name                                 { [$1] }
+ImportItems :: { ItemSelector }
+ImportItems : '*'                                  { SelectAll }
+            | ImportNameItems                      { SelectOnly $1 }
+
+ImportNameItems :: { [Name] }
+ImportNameItems : Name ',' ImportNameItems         { $1 : $3 }
+                | Name                             { [$1] }
 
 ModName :: { Name }
 ModName : identifier                               { Name $1 }
@@ -145,10 +149,14 @@ TopDecl : Contract                                 {TContr $1}
 ExportDecl :: { Export }
 ExportDecl : 'export' '{' ExportItems '}' ';'      { Export $3 }
 
-ExportItems :: { [Name] }
-ExportItems : Name ',' ExportItems                 { $1 : $3 }
-            | Name                                 { [$1] }
-            | {- empty -}                          { [] }
+ExportItems :: { ItemSelector }
+ExportItems : '*'                                  { SelectAll }
+            | ExportNameItems                      { SelectOnly $1 }
+            | {- empty -}                          { SelectOnly [] }
+
+ExportNameItems :: { [Name] }
+ExportNameItems : Name ',' ExportNameItems         { $1 : $3 }
+                | Name                             { [$1] }
 
 -- pragmas
 
