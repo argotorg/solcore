@@ -340,8 +340,10 @@ Expr :: { Exp }
 Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | Literal                                     {Lit $1}
      | '(' Expr ')'                                {$2}
+     | '.' Name FunArgs                            {ExpDotName $2 $3}
      | Expr '.' Name FunArgs                       {ExpName (Just $1) $3 $4}
      | Name                                        {ExpVar Nothing $1}
+     | '.' Name                                    {ExpDotVar $2}
      | Expr '.' Name                               {ExpVar (Just $1) $3}
      | 'lam' '(' ParamList ')' OptRetTy Body       {Lam $3 $6 $5}
      | Expr ':' Type                               {TyExp $1 $3}
@@ -395,6 +397,7 @@ PatCommaList : Pattern                             {[$1]}
 
 Pattern :: { Pat }
 Pattern : TypeName PatternList                     {Pat $1 $2}
+        | '.' Name PatternList                     {PatDot $2 $3}
         | '_'                                      {PWildcard}
         | Literal                                  {PLit $1}
         | '(' Pattern ')'                          {$2}

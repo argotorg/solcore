@@ -328,6 +328,9 @@ instance Resolve S.Pat where
 
   resolve S.PWildcard = pure PWildcard
   resolve (S.PLit l) = PLit <$> resolve l
+  resolve p@(S.PatDot n ps) = do
+    ps' <- resolve ps `wrapError` p
+    pure (PCon (dotConstructorMarker n) ps')
   resolve p@(S.Pat n ps) =
     do
       ps' <- resolve ps `wrapError` p
@@ -378,6 +381,9 @@ constructorLeafName :: Name -> Name
 constructorLeafName (QualName _ n) = Name n
 constructorLeafName n = n
 
+dotConstructorMarker :: Name -> Name
+dotConstructorMarker n = Name ('.' : pretty (constructorLeafName n))
+
 isPrimitiveConstructor :: Name -> Bool
 isPrimitiveConstructor n =
   constructorLeafName n `elem` primitiveConstructors
@@ -402,6 +408,9 @@ instance Resolve S.Exp where
   type Result S.Exp = Exp Name
 
   resolve (S.Lit l) = Lit <$> resolve l
+  resolve (S.ExpDotVar n) = pure (Con (dotConstructorMarker n) [])
+  resolve e@(S.ExpDotName n es) =
+    Con (dotConstructorMarker n) <$> resolve es `wrapError` e
   resolve e@(S.Lam ps bd mt) =
     withLocalCtx $ do
       ps' <- resolve ps `wrapError` e

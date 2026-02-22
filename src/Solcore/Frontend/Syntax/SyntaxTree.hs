@@ -220,6 +220,8 @@ data Exp
   = Lit Literal -- literal
   | ExpName (Maybe Exp) Name [Exp] -- function call or constructor
   | ExpVar (Maybe Exp) Name -- variables or field access
+  | ExpDotName Name [Exp] -- contextual constructor shorthand, e.g. .Some(1)
+  | ExpDotVar Name -- contextual constructor shorthand, e.g. .None
   | Lam [Param] Body (Maybe Ty) -- lambda-abstraction
   | TyExp Exp Ty -- type annotation expression
   | ExpIndexed Exp Exp -- e1[e2]
@@ -245,6 +247,7 @@ data Exp
 
 data Pat
   = Pat Name [Pat]
+  | PatDot Name [Pat]
   | PWildcard
   | PLit Literal
   deriving (Eq, Ord, Show, Data, Typeable)

@@ -39,11 +39,11 @@ tcStmt e@(Let n mt me) =
   do
     (me', psf, tf) <- case (mt, me) of
       (Just t, Just e1) -> do
-        (e', ps1, t1) <- tcExp e1
-        _ <- kindCheck t1 `wrapError` e
         let bvs = bv t
         sks <- mapM (const freshTyVar) bvs
         let t' = insts (zip bvs sks) t
+        (e', ps1, t1) <- tcExpWithExpected (Just t') e1
+        _ <- kindCheck t1 `wrapError` e
         s <- tcmMatch t1 t' `wrapError` e
         _ <- extSubst s
         withCurrentSubst (Just e', ps1, t')
@@ -149,12 +149,22 @@ tcPat t (PVar n) =
     pure (v, t, [(n, monotype t)])
 tcPat t p@(PCon n ps) =
   do
-    vs0 <- mapM (const freshTyVar) ps
-    -- typing parameters
-    (ps1, ts, lctxs) <- unzip3 <$> zipWithM tcPat vs0 ps
+    n' <- resolvePatternConstructor n t `wrapError` p
     -- asking type from environment
-    st <- askEnv n `wrapError` p
+    st <- askEnv n' `wrapError` p
     (_ :=> tc) <- freshInst st
+    let (argTys, _) = splitTy tc
+    when (length argTys /= length ps) $
+      throwError $
+        unlines
+          [ "Wrong number of pattern arguments for constructor:",
+            pretty n',
+            "expected:",
+            show (length argTys),
+            "arguments"
+          ]
+    -- typing parameters
+    (ps1, ts, lctxs) <- unzip3 <$> zipWithM tcPat argTys ps
     -- unifying the infered pattern type with constructor type
     s <- unify tc (funtype ts t) `wrapError` p
     let t' = apply s t
@@ -162,10 +172,10 @@ tcPat t p@(PCon n ps) =
     t'' <- maybeExpandSynonym t'
     tn <- typeName t''
     -- checking if it is a defined constructor
-    checkConstr tn n
+    checkConstr tn n'
     -- building typing assumptions for introduced names
     let lctx' = map (\(n', t1) -> (n', apply s t1)) (concat lctxs)
-    pure (PCon (Id n tc) ps1, t', apply s lctx')
+    pure (PCon (Id n' tc) ps1, t', apply s lctx')
 tcPat t PWildcard =
   pure (PWildcard, t, [])
 tcPat t' (PLit l) =
@@ -189,11 +199,14 @@ tcLit (IntLit _) = return word
 tcLit (StrLit _) = return string
 
 tcExp :: (HasCallStack) => Infer Exp
-tcExp (Lit l) =
+tcExp = tcExpWithExpected Nothing
+
+tcExpWithExpected :: (HasCallStack) => Maybe Ty -> Exp Name -> TcM (Exp Id, [Pred], Ty)
+tcExpWithExpected _ (Lit l) =
   do
     t <- tcLit l
     pure (Lit l, [], t)
-tcExp (Var n) =
+tcExpWithExpected _ (Var n) =
   do
     s <- askEnv n `wrapError` (Var n)
     (ps :=> t) <- freshInst s
@@ -206,12 +219,13 @@ tcExp (Var n) =
         r <- lookupUniqueTy n
         p <- maybe (pure $ (Var (Id n t), t)) mkCon r
         withCurrentSubst (fst p, ps, snd p)
-tcExp e@(Con n es) =
+tcExpWithExpected mExpected e@(Con n es) =
   do
     -- typing parameters
-    (es', pss, ts) <- unzip3 <$> mapM tcExp es
+    (es', pss, ts) <- unzip3 <$> mapM (tcExpWithExpected Nothing) es
+    n' <- resolveExpressionConstructor n ts mExpected `wrapError` e
     -- getting the type from the environment
-    sch <- askEnv n `wrapError` e
+    sch <- askEnv n' `wrapError` e
     (ps :=> t) <- freshInst sch
     -- unifying inferred parameter types
     t' <- freshTyVar
@@ -220,17 +234,17 @@ tcExp e@(Con n es) =
     t'' <- maybeExpandSynonym (apply s t')
     tn <- typeName t''
     -- checking if the constructor belongs to type tn
-    checkConstr tn n
+    checkConstr tn n'
     let ps' = concat (ps : pss)
-        e1 = Con (Id n t) es'
+        e1 = Con (Id n' t) es'
     withCurrentSubst (e1, ps', t')
-tcExp e@(FieldAccess Nothing n) =
+tcExpWithExpected _ e@(FieldAccess Nothing n) =
   -- = notImplementedS "tcExp" e
   throwError ("tcExp not implemented for: " ++ pretty e ++ "\n" ++ show e)
-tcExp (FieldAccess (Just e) n) =
+tcExpWithExpected _ (FieldAccess (Just e) n) =
   do
     -- inferring expression type
-    (e', ps, t) <- tcExp e
+    (e', ps, t) <- tcExpWithExpected Nothing e
     -- expand synonyms before extracting type name
     tExp <- maybeExpandSynonym t
     tn <- typeName tExp
@@ -238,9 +252,9 @@ tcExp (FieldAccess (Just e) n) =
     s <- askField tn n
     (ps' :=> t') <- freshInst s
     withCurrentSubst (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
-tcExp ex@(Call me n args) =
+tcExpWithExpected _ ex@(Call me n args) =
   tcCall me n args `wrapError` ex
-tcExp e@(Lam args bd _) =
+tcExpWithExpected _ e@(Lam args bd _) =
   do
     (args', schs, ts') <- tcArgs args
     (bd', ps, t') <- withLocalCtx schs (tcBody bd)
@@ -257,18 +271,18 @@ tcExp e@(Lam args bd _) =
       else do
         (e, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty
         withCurrentSubst (e, ps1, t)
-tcExp e1@(TyExp e ty) =
+tcExpWithExpected _ e1@(TyExp e ty) =
   do
     kindCheck ty `wrapError` e1
-    (e', ps, ty') <- tcExp e
+    (e', ps, ty') <- tcExpWithExpected (Just ty) e
     s <- tcmMatch ty' ty
     extSubst s
     withCurrentSubst (TyExp e' ty, ps, ty)
-tcExp e@(Cond e1 e2 e3) =
+tcExpWithExpected _ e@(Cond e1 e2 e3) =
   do
-    (e1', ps1, t1) <- tcExp e1 `wrapError` e
-    (e2', ps2, t2) <- tcExp e2 `wrapError` e
-    (e3', ps3, t3) <- tcExp e3 `wrapError` e
+    (e1', ps1, t1) <- tcExpWithExpected Nothing e1 `wrapError` e
+    (e2', ps2, t2) <- tcExpWithExpected Nothing e2 `wrapError` e
+    (e3', ps3, t3) <- tcExpWithExpected Nothing e3 `wrapError` e
     -- condition should have the boolean type
     unify t1 boolTy
       `catchError` ( \_ ->
@@ -1115,6 +1129,120 @@ tcParam (Untyped n) =
   do
     t <- freshTyVar
     pure (Typed (Id n t) t)
+
+resolvePatternConstructor :: Name -> Ty -> TcM Name
+resolvePatternConstructor n expectedTy
+  | isDotConstructorMarker n = resolveDotPatternConstructor n expectedTy
+  | otherwise = pure n
+
+resolveExpressionConstructor :: Name -> [Ty] -> Maybe Ty -> TcM Name
+resolveExpressionConstructor n argTys mExpected
+  | isDotConstructorMarker n = resolveDotExpressionConstructor n argTys mExpected
+  | otherwise = pure n
+
+resolveDotExpressionConstructor :: Name -> [Ty] -> Maybe Ty -> TcM Name
+resolveDotExpressionConstructor dotName argTys mExpected = do
+  candidates <- candidatesForDotExpression dotName mExpected
+  valid <- filterM (\n -> constructorAcceptsArguments n argTys mExpected) (nub candidates)
+  case valid of
+    [] ->
+      throwError $
+        unlines
+          [ "No matching constructor for shorthand expression:",
+            pretty dotName
+          ]
+    [n] -> pure n
+    xs ->
+      throwError $
+        unlines
+          [ "Ambiguous shorthand constructor expression:",
+            pretty dotName,
+            "Candidates:",
+            unwords (map pretty xs)
+          ]
+
+constructorAcceptsArguments :: Name -> [Ty] -> Maybe Ty -> TcM Bool
+constructorAcceptsArguments n argTys mExpected = do
+  s0 <- getSubst
+  r <-
+    ( do
+        sch <- askEnv n
+        (_ :=> conTy) <- freshInst sch
+        retTy <- freshTyVar
+        _ <- unify conTy (funtype argTys retTy)
+        case mExpected of
+          Just expectedTy -> do
+            expectedTy' <- maybeExpandSynonym expectedTy
+            _ <- unify retTy expectedTy'
+            pure ()
+          Nothing -> pure ()
+        pure True
+    )
+      `catchError` const (pure False)
+  putSubst s0
+  pure r
+
+candidatesForDotExpression :: Name -> Maybe Ty -> TcM [Name]
+candidatesForDotExpression dotName mExpected = do
+  let leaf = dotMarkerLeafName dotName
+  mExpected' <- traverse maybeExpandSynonym mExpected
+  case mExpected' of
+    Just (TyCon tyName _) -> do
+      ti <- askTypeInfo tyName
+      pure (matchingConstructors leaf (constrNames ti))
+    _ -> do
+      tt <- gets typeTable
+      let allConstructors = concatMap constrNames (Map.elems tt)
+      pure (matchingConstructors leaf allConstructors)
+
+resolveDotPatternConstructor :: Name -> Ty -> TcM Name
+resolveDotPatternConstructor dotName expectedTy = do
+  candidates <- candidatesForDotPattern dotName expectedTy
+  case nub candidates of
+    [] ->
+      throwError $
+        unlines
+          [ "No matching constructor for shorthand pattern:",
+            pretty dotName
+          ]
+    [n] -> pure n
+    xs ->
+      throwError $
+        unlines
+          [ "Ambiguous shorthand constructor pattern:",
+            pretty dotName,
+            "Candidates:",
+            unwords (map pretty xs)
+          ]
+
+candidatesForDotPattern :: Name -> Ty -> TcM [Name]
+candidatesForDotPattern dotName expectedTy = do
+  expectedTy' <- maybeExpandSynonym expectedTy
+  let leaf = dotMarkerLeafName dotName
+  case expectedTy' of
+    TyCon tyName _ -> do
+      ti <- askTypeInfo tyName
+      pure (matchingConstructors leaf (constrNames ti))
+    _ -> do
+      tt <- gets typeTable
+      let allConstructors = concatMap constrNames (Map.elems tt)
+      pure (matchingConstructors leaf allConstructors)
+
+matchingConstructors :: Name -> [Name] -> [Name]
+matchingConstructors leaf =
+  filter (\n -> constructorLeafName n == leaf)
+
+isDotConstructorMarker :: Name -> Bool
+isDotConstructorMarker (Name ('.' : _)) = True
+isDotConstructorMarker _ = False
+
+dotMarkerLeafName :: Name -> Name
+dotMarkerLeafName (Name ('.' : xs)) = Name xs
+dotMarkerLeafName n = constructorLeafName n
+
+constructorLeafName :: Name -> Name
+constructorLeafName (QualName _ n) = Name n
+constructorLeafName n = n
 
 typeName :: Ty -> TcM Name
 typeName (TyCon n _) = pure n

@@ -281,6 +281,14 @@ instance Pretty Exp where
     maybe (text "this") ppr me
       <> char '.'
       <> ppr v
+  ppr (ExpDotName n es) =
+    char '.'
+      <> ppr n
+      <> parensWhen
+        (not $ null es)
+        (commaSep (map ppr es))
+  ppr (ExpDotVar v) =
+    char '.' <> ppr v
   ppr (Lam args bd _) =
     text "lam"
       <+> pprParams args
@@ -340,6 +348,10 @@ instance Pretty Pat where
   ppr (Pat n ps@(_ : _))
     | isTuple n = parens (commaSep $ map ppr ps)
     | otherwise = ppr n <> (parens $ commaSep $ map ppr ps)
+  ppr (PatDot n []) =
+    char '.' <> ppr n
+  ppr (PatDot n ps@(_ : _)) =
+    char '.' <> ppr n <> (parens $ commaSep $ map ppr ps)
   ppr PWildcard =
     text "_"
   ppr (PLit l) =
