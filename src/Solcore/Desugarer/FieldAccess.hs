@@ -46,25 +46,24 @@ fieldDesugarer (CompUnit ims topdecls) = CompUnit ims (extras <> topdecls')
           | TDataDef dt <- topdecls
         ]
     (extras, topdecls') = mapAccumL go mempty topdecls
-    go acc (TContr c)
-      | singletonNameForContract (Contract.name c) `Set.member` existingDataTypes =
-          (acc, TContr (transContract c))
-      | otherwise =
-          (acc <> extraTopDeclsForContract c, TContr (transContract c))
+    go acc (TContr c) =
+      let hasSingletonCollision =
+            singletonNameForContract (Contract.name c) `Set.member` existingDataTypes
+       in (acc <> extraTopDeclsForContract (not hasSingletonCollision) c, TContr (transContract c))
     go acc v = (acc, v)
 
 --------------------------------
 -- # Extra Top Decls
 --------------------------------
 
-extraTopDeclsForContract :: NmContract -> [NmTopDecl]
-extraTopDeclsForContract (Contract cname _ts cdecls) = do
+extraTopDeclsForContract :: Bool -> NmContract -> [NmTopDecl]
+extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
   let singName = singletonNameForContract cname
   let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []]
 
   let fields = getFields cdecls
   let (_fieldTypes, extraFieldDecls) = foldl' (flip contractFieldStep) ([], []) fields
-  (contractSingDecl : extraFieldDecls)
+  (if includeSingleton then contractSingDecl : extraFieldDecls else extraFieldDecls)
   where
     -- given a list of contract field types so far and topdecls for them, amends them with data for another field
     -- the types of previous fields are needed to construct field offset

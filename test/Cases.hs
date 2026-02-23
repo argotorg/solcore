@@ -337,6 +337,7 @@ cases =
       runTestForFile "instance-closure-error.solc" caseFolder,
       runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder,
       runTestForFile "field-name-error.solc" caseFolder,
+      runTestForFile "field-helper-cxt-collision.solc" caseFolder,
       runTestExpectingFailure "field-access.solc" caseFolder,
       runTestForFile "mod-example.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder
