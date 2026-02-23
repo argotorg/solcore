@@ -129,6 +129,8 @@ imports =
       runImportFailure "alias_dup.solc",
       runImportFailure "amb_main.solc",
       runImportSuccess "amb_ok.solc",
+      runImportSuccess "dupqual_main.solc",
+      runImportSuccess "private_helper_main.solc",
       runImportSuccess "dot_context_expr.solc",
       runImportFailure "pragma_scope_main.solc",
       runImportFailure "selfcycle.solc",

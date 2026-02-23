@@ -332,10 +332,21 @@ qualifiedImportDecls graph (imp, modulePath) =
   where
     qualifyDecls qualifier = do
       publicDecls <- publicTopDeclsForModule graph modulePath
-      let cunit = CompUnit [] publicDecls
+      allDecls <- importableTopDeclsForModule graph modulePath
+      let publicUnit = CompUnit [] publicDecls
+          allUnit = CompUnit [] allDecls
       pure $
-        qualifiedFunctionDecls qualifier cunit
-          ++ qualifiedTypeDecls qualifier cunit
+        qualifiedFunctionDecls qualifier publicUnit allUnit
+          ++ qualifiedTypeDecls qualifier publicUnit
+
+importableTopDeclsForModule :: ModuleGraph -> FilePath -> Either String [TopDecl]
+importableTopDeclsForModule graph modulePath = do
+  unit <-
+    maybe
+      (Left ("Internal error: module not loaded: " ++ modulePath))
+      Right
+      (Map.lookup modulePath (modules graph))
+  pure (filter isImportableTopDecl (topDeclsFrom unit))
 
 qualifiedImportStubDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
 qualifiedImportStubDecls graph (imp, modulePath) =
@@ -383,24 +394,35 @@ sigParamName :: Param -> Name
 sigParamName (Typed n _) = n
 sigParamName (Untyped n) = n
 
-qualifiedFunctionDecls :: Name -> CompUnit -> [TopDecl]
-qualifiedFunctionDecls qualifier cunit =
-  concatMap qualify fds
+qualifiedFunctionDecls :: Name -> CompUnit -> CompUnit -> [TopDecl]
+qualifiedFunctionDecls qualifier publicUnit allUnit =
+  concatMap qualifyImpl allFds ++ concatMap qualifyWrapper exportedFds
   where
-    fds = [fd | TFunDef fd <- topDeclsFrom cunit]
+    allFds = [fd | TFunDef fd <- topDeclsFrom allUnit]
+    exportedNames = [sigName (funSignature fd) | TFunDef fd <- topDeclsFrom publicUnit]
+    exportedFds =
+      [ fd
+        | fd <- allFds,
+          sigName (funSignature fd) `elem` exportedNames
+      ]
     renameMap =
       Map.fromList
-        [ (sigName (funSignature fd), hiddenFunctionName qualifier (sigName (funSignature fd)))
-          | fd <- fds,
+        [ ( sigName (funSignature fd),
+            hiddenFunctionName qualifier (sigName (funSignature fd))
+          )
+          | fd <- allFds,
             sigName (funSignature fd) /= Name "revert"
         ]
-    qualify fd
+    qualifyImpl fd
       | sigName (funSignature fd) == Name "revert" =
           [TFunDef (qualifyRevertFunction qualifier fd)]
       | otherwise =
-          [ TFunDef (qualifyFunctionImpl renameMap qualifier fd),
-            TFunDef (qualifyFunctionWrapper qualifier fd)
-          ]
+          [TFunDef (qualifyFunctionImpl renameMap qualifier fd)]
+    qualifyWrapper fd
+      | sigName (funSignature fd) == Name "revert" =
+          []
+      | otherwise =
+          [TFunDef (qualifyFunctionWrapper qualifier fd)]
 
 qualifiedFunctionStubDecls :: Name -> CompUnit -> [TopDecl]
 qualifiedFunctionStubDecls qualifier cunit =
@@ -581,8 +603,12 @@ strictCompileImportedDecls graph (imp, modulePath) =
       publicTopDeclsForModule graph modulePath
     ImportOnly _ (SelectOnly names) ->
       mapMaybe (selectTopDecl names) <$> publicTopDeclsForModule graph modulePath
-    ImportModule _ -> publicTopDeclsForModule graph modulePath
-    ImportAlias _ _ -> publicTopDeclsForModule graph modulePath
+    ImportModule _ -> filter (not . isFunctionTopDecl) <$> publicTopDeclsForModule graph modulePath
+    ImportAlias _ _ -> filter (not . isFunctionTopDecl) <$> publicTopDeclsForModule graph modulePath
+
+isFunctionTopDecl :: TopDecl -> Bool
+isFunctionTopDecl (TFunDef _) = True
+isFunctionTopDecl _ = False
 
 shadowImportedDecls :: [TopDecl] -> [TopDecl] -> [TopDecl]
 shadowImportedDecls localDecls =
