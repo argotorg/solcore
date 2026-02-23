@@ -57,6 +57,7 @@ validateContractDuplicates (S.Contract cname _ decls) = do
 topLevelTypeNames :: [S.TopDecl] -> [Name]
 topLevelTypeNames = concatMap collect
   where
+    collect (S.TContr (S.Contract n _ _)) = [n]
     collect (S.TDataDef (S.DataTy n _ _)) = [n]
     collect (S.TSym (S.TySym n _ _)) = [n]
     collect _ = []

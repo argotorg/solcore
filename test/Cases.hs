@@ -199,6 +199,7 @@ cases =
       runTestExpectingFailure "dot-expression-unknown-fail.solc" caseFolder,
       runTestForFile "dot-pattern-constructor.solc" caseFolder,
       runTestForFile "dot-primitive-constructor.solc" caseFolder,
+      runTestExpectingFailure "duplicated-contract-name.solc" caseFolder,
       runTestExpectingFailure "duplicated-type-name.solc" caseFolder,
       runTestForFile "DuplicateFun.solc" caseFolder,
       runTestExpectingFailure "DupFun.solc" caseFolder,

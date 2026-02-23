@@ -12,7 +12,7 @@ data CFood = Red(Food) | Green(Food) | Nocolor;
   }
 
 
-contract Food {
+contract FoodContract {
   function id(x) {
     return(x);
   }

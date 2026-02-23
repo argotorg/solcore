@@ -14,7 +14,7 @@ instance Food : Enum {
   }
 }
 
-contract Food {
+contract FoodContract {
   function main() {
         return Enum.fromEnum(Food.Beans);
   }

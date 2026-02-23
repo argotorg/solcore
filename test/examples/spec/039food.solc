@@ -14,7 +14,7 @@ data CFood = Red(Food) | Green(Food) | Nocolor;
   }
 
 
-contract Food {
+contract FoodContract {
   function eat(x) {
     match x {
        | CFood.Red(f) => return f;
