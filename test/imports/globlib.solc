@@ -7,5 +7,5 @@ function idWord(x: word) -> word {
 }
 
 function mkT(x: word) -> T {
-  return T(x);
+  return T.T(x);
 }

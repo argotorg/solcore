@@ -71,15 +71,21 @@ topLevelTermNames :: [S.TopDecl] -> [Name]
 topLevelTermNames = concatMap collect
   where
     collect (S.TFunDef (S.FunDef sig _)) = [S.sigName sig]
-    collect (S.TDataDef (S.DataTy _ _ cons)) = map S.constrName cons
+    collect (S.TDataDef (S.DataTy tyCon _ cons)) =
+      map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
 
 contractTermNames :: [S.ContractDecl] -> [Name]
 contractTermNames = concatMap collect
   where
     collect (S.CFunDecl (S.FunDef sig _)) = [S.sigName sig]
-    collect (S.CDataDecl (S.DataTy _ _ cons)) = map S.constrName cons
+    collect (S.CDataDecl (S.DataTy tyCon _ cons)) =
+      map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
+
+qualifiedConstructorName :: Name -> Name -> Name
+qualifiedConstructorName tyCon conName =
+  QualName tyCon (pretty (constructorLeafName conName))
 
 ensureNoDuplicateNames :: String -> [Name] -> Either String ()
 ensureNoDuplicateNames ns = ensureNoDuplicateNamesIn "module" ns
@@ -341,8 +347,7 @@ instance Resolve S.Pat where
       mdt <- lookupName n
       case mdt of
         Just TDataCon -> do
-          sameName <- isSameNameConstructor n
-          if isPrimitiveConstructor n || sameName
+          if isPrimitiveConstructor n
             then do
               -- here we desugar tuple patterns into
               -- nested pairs.
@@ -350,29 +355,36 @@ instance Resolve S.Pat where
                   isT = isTuple n'
               pure $
                 if isT
-                  then mkTuplePat ps'
-                  else PCon n' ps'
-            else
-              case n of
-                QualName _ _ ->
-                  pure (PCon (constructorLeafName n) ps')
-                Name _ ->
-                  if sameName
-                    then pure (PCon n ps')
-                    else
-                      if null ps'
-                        then do
-                          addParameter n
-                          pure (PVar n)
-                        else unqualifiedConstructorError n
+                    then mkTuplePat ps'
+                    else PCon n' ps'
+            else case splitQualifiedName n of
+              Just (qualifier, conName) ->
+                PCon <$> resolveQualifiedConstructorName qualifier conName <*> pure ps'
+              Nothing -> do
+                sameName <- isSameNameConstructor n
+                if sameName
+                  then PCon <$> resolveSameNameConstructorName n <*> pure ps'
+                  else
+                    if null ps'
+                      then do
+                        addParameter n
+                        pure (PVar n)
+                      else unqualifiedConstructorError n
         _ -> do
           case n of
             QualName _ _ -> undefinedName n
             Name _ -> do
-              addParameter n
-              unless (null ps') $ do
-                invalidPatternSyntax p
-              pure (PVar n)
+              sameName <- isSameNameConstructor n
+              if sameName
+                then PCon <$> resolveSameNameConstructorName n <*> pure ps'
+                else do
+                  hasQualified <- hasQualifiedConstructorLeaf n
+                  when hasQualified $
+                    unqualifiedConstructorError n
+                  addParameter n
+                  unless (null ps') $ do
+                    invalidPatternSyntax p
+                  pure (PVar n)
 
 mkTuplePat :: [Pat Name] -> Pat Name
 mkTuplePat [] = PCon (Name "()") []
@@ -401,12 +413,41 @@ isPrimitiveConstructor n =
         Name "inr"
       ]
 
+splitQualifiedName :: Name -> Maybe (Name, Name)
+splitQualifiedName (QualName qualifier conName) =
+  Just (qualifier, Name conName)
+splitQualifiedName _ = Nothing
+
+hasQualifiedConstructorLeaf :: Name -> ResolveM Bool
+hasQualifiedConstructorLeaf (Name n) = do
+  senv <- gets scopeEnv
+  pure $
+    any
+      ( \(k, v) ->
+          case (k, v) of
+            (QualName _ conName, TDataCon) -> conName == n
+            _ -> False
+      )
+      (Map.toList senv)
+hasQualifiedConstructorLeaf _ =
+  pure False
+
 isSameNameConstructor :: Name -> ResolveM Bool
 isSameNameConstructor n = do
-  dt <- lookupType (constructorLeafName n)
-  -- We intentionally keep T(...) shorthand for data T = T(...).
-  -- Full Candidate A still applies to non-same-name constructors.
-  pure (dt == Just TTyCon)
+  let leaf = constructorLeafName n
+  dt <- lookupType leaf
+  case dt of
+    Just TTyCon -> do
+      cdt <- lookupName (qualifiedConstructorName leaf leaf)
+      pure (cdt == Just TDataCon)
+    _ ->
+      pure False
+
+resolveSameNameConstructorName :: Name -> ResolveM Name
+resolveSameNameConstructorName n =
+  resolveQualifiedConstructorName leaf leaf
+  where
+    leaf = constructorLeafName n
 
 instance Resolve S.Exp where
   type Result S.Exp = Exp Name
@@ -445,16 +486,30 @@ instance Resolve S.Exp where
             _ -> pure (Var n)
         -- data constructor
         (Nothing, Just TDataCon) -> do
-          sameName <- isSameNameConstructor n
-          if isPrimitiveConstructor n || sameName
+          if isPrimitiveConstructor n
             then pure (Con n [])
-            else unqualifiedConstructorError n
+            else case splitQualifiedName n of
+              Just (qualifier, conName) ->
+                Con <$> resolveQualifiedConstructorName qualifier conName <*> pure []
+              Nothing -> unqualifiedConstructorError n
         (Just (Var d), Just TDataCon) ->
           Con <$> resolveQualifiedConstructorName d n <*> pure []
+        (Just (Var d), Just TTyCon) -> do
+          let qn = QualName d (pretty n)
+          qdt <- lookupName qn
+          case qdt of
+            Just TFunction -> pure (Var qn)
+            Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+            Just TModule -> pure (Var qn)
+            _ -> undefinedName n
         -- class name
         (_, Just TClass) -> pure (Var n)
         -- type constructor used as a constructor qualifier
-        (_, Just TTyCon) -> pure (Var n)
+        (Nothing, Just TTyCon) -> do
+          sameName <- isSameNameConstructor n
+          if sameName
+            then Con <$> resolveSameNameConstructorName n <*> pure []
+            else pure (Var n)
         -- imported module qualifier name
         (_, Just TModule) -> pure (Var n)
         -- module-qualified function or constructor reference
@@ -466,7 +521,15 @@ instance Resolve S.Exp where
             Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
             Just TModule -> pure (Var qn)
             _ -> undefinedName n
-        _ -> undefinedName n
+        _ -> do
+          sameName <- isSameNameConstructor n
+          if sameName
+            then Con <$> resolveSameNameConstructorName n <*> pure []
+            else do
+              hasQualified <- hasQualifiedConstructorLeaf n
+              if hasQualified
+                then unqualifiedConstructorError n
+                else undefinedName n
   resolve x@(S.ExpName me n es) =
     do
       me' <- resolve me `wrapError` x
@@ -476,14 +539,28 @@ instance Resolve S.Exp where
         -- normal function call
         (Nothing, Just TFunction) ->
           pure (Call Nothing n es')
+        (Nothing, Just TTyCon) -> do
+          sameName <- isSameNameConstructor n
+          if sameName
+            then Con <$> resolveSameNameConstructorName n <*> pure es'
+            else undefinedName n
         -- data constructors
         (Nothing, Just TDataCon) -> do
-          sameName <- isSameNameConstructor n
-          if isPrimitiveConstructor n || sameName
+          if isPrimitiveConstructor n
             then pure (Con n es')
-            else unqualifiedConstructorError n
+            else case splitQualifiedName n of
+              Just (qualifier, conName) ->
+                Con <$> resolveQualifiedConstructorName qualifier conName <*> pure es'
+              Nothing -> unqualifiedConstructorError n
         (Just (Var d), Just TDataCon) ->
           Con <$> resolveQualifiedConstructorName d n <*> pure es'
+        (Just (Var c), Just TTyCon) -> do
+          let qn = QualName c (pretty n)
+          qdt <- lookupName qn
+          case qdt of
+            Just TFunction -> pure (Call Nothing qn es')
+            Just TDataCon -> Con <$> resolveQualifiedConstructorName c n <*> pure es'
+            _ -> undefinedName n
         -- class functions
         (Just (Var c), Just TFunction) -> do
           ct <- lookupName c
@@ -522,7 +599,15 @@ instance Resolve S.Exp where
         (_, Just TParameter) ->
           pure (Call Nothing n es')
         -- error
-        _ -> undefinedName n
+        _ -> do
+          sameName <- isSameNameConstructor n
+          if sameName
+            then Con <$> resolveSameNameConstructorName n <*> pure es'
+            else do
+              hasQualified <- hasQualifiedConstructorLeaf n
+              if hasQualified
+                then unqualifiedConstructorError n
+                else undefinedName n
   resolve c@(S.ExpPlus e1 e2) =
     do
       e1' <- resolve e1 `wrapError` c
@@ -630,9 +715,13 @@ instance Resolve S.DataTy where
     withLocalCtx $ do
       mapM_ addTyVar vs'
       cons' <- resolve cons `wrapError` d
-      pure (DataTy n (map TVar vs') cons')
+      pure (DataTy n (map TVar vs') (map (qualifyConstrName n) cons'))
     where
       vs' = map tyconName vs
+
+qualifyConstrName :: Name -> Constr -> Constr
+qualifyConstrName tyCon (Constr conName tys) =
+  Constr (qualifiedConstructorName tyCon conName) tys
 
 instance Resolve S.Constr where
   type Result S.Constr = Constr
@@ -766,8 +855,7 @@ addTopDecl (S.TDataDef (S.DataTy n _ cons)) env =
       scopeEnv =
         foldr
           ( \d ac ->
-              Map.insert (QualName n (pretty (S.constrName d))) TDataCon $
-                Map.insert (S.constrName d) TDataCon ac
+              Map.insert (qualifiedConstructorName n (S.constrName d)) TDataCon ac
           )
           (scopeEnv env)
           cons
@@ -866,8 +954,7 @@ addDataCon tyconName conName =
     ( \env ->
         env
           { scopeEnv =
-              Map.insert (QualName tyconName (pretty conName)) TDataCon $
-                Map.insert conName TDataCon (scopeEnv env)
+              Map.insert (qualifiedConstructorName tyconName conName) TDataCon (scopeEnv env)
           }
     )
 
@@ -881,7 +968,7 @@ resolveQualifiedConstructorName qualifier conName =
     let qn = QualName qualifier (pretty conName)
     dt <- lookupName qn
     case dt of
-      Just TDataCon -> pure (constructorLeafName qn)
+      Just TDataCon -> pure qn
       _ -> undefinedName qn
 
 -- error messages

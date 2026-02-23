@@ -3,6 +3,6 @@ import globlib.{*};
 function main(x: word) -> word {
   let y: T = mkT(x);
   match y {
-  | T(v) => return idWord(v);
+  | T.T(v) => return idWord(v);
   }
 }

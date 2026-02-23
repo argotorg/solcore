@@ -1139,12 +1139,25 @@ tcParam (Untyped n) =
 resolvePatternConstructor :: Name -> Ty -> TcM Name
 resolvePatternConstructor n expectedTy
   | isDotConstructorMarker n = resolveDotPatternConstructor n expectedTy
-  | otherwise = pure n
+  | otherwise = canonicalizeConstructorName n
 
 resolveExpressionConstructor :: Name -> [Ty] -> Maybe Ty -> TcM Name
 resolveExpressionConstructor n argTys mExpected
   | isDotConstructorMarker n = resolveDotExpressionConstructor n argTys mExpected
-  | otherwise = pure n
+  | otherwise = canonicalizeConstructorName n
+
+canonicalizeConstructorName :: Name -> TcM Name
+canonicalizeConstructorName n@(QualName _ _) =
+  pure n
+canonicalizeConstructorName n =
+  do
+    mUnqual <- maybeAskEnv n
+    case mUnqual of
+      Just _ -> pure n
+      Nothing -> do
+        let qn = QualName n (pretty n)
+        mQual <- maybeAskEnv qn
+        pure (if isJust mQual then qn else n)
 
 resolveDotExpressionConstructor :: Name -> [Ty] -> Maybe Ty -> TcM Name
 resolveDotExpressionConstructor dotName argTys mExpected = do

@@ -40,8 +40,17 @@ type NmEquation = Equation Name
 fieldDesugarer :: CompUnit Name -> CompUnit Name
 fieldDesugarer (CompUnit ims topdecls) = CompUnit ims (extras <> topdecls')
   where
+    existingDataTypes =
+      Set.fromList
+        [ dataName dt
+          | TDataDef dt <- topdecls
+        ]
     (extras, topdecls') = mapAccumL go mempty topdecls
-    go acc (TContr c) = (acc <> extraTopDeclsForContract c, TContr (transContract c))
+    go acc (TContr c)
+      | singletonNameForContract (Contract.name c) `Set.member` existingDataTypes =
+          (acc, TContr (transContract c))
+      | otherwise =
+          (acc <> extraTopDeclsForContract c, TContr (transContract c))
     go acc v = (acc, v)
 
 --------------------------------

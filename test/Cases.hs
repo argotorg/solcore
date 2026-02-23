@@ -105,7 +105,7 @@ imports =
       runImportSuccess "selective_unqualified_fun_ok.solc",
       runImportSuccess "module_name_shadow.solc",
       runImportSuccess "ns_cross_ok.solc",
-      runImportFailure "ns_constr_dup.solc",
+      runImportSuccess "ns_constr_dup.solc",
       runImportFailure "strict_open_fail.solc",
       runImportSuccess "boolselect.solc",
       runImportSuccess "boolconselect_ok.solc",
