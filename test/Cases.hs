@@ -193,6 +193,7 @@ cases =
       runTestExpectingFailure "default-instance-missing.solc" caseFolder,
       runTestExpectingFailure "default-instance-weak.solc" caseFolder,
       runTestForFile "dot-expression-constructor.solc" caseFolder,
+      runTestExpectingFailure "dot-expression-no-context-fail.solc" caseFolder,
       runTestExpectingFailure "dot-expression-unknown-fail.solc" caseFolder,
       runTestForFile "dot-pattern-constructor.solc" caseFolder,
       runTestForFile "dot-primitive-constructor.solc" caseFolder,

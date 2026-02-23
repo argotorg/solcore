@@ -28,14 +28,17 @@ import Solcore.Primitives.Primitives
 type Infer f = f Name -> TcM (f Id, [Pred], Ty)
 
 tcStmt :: Infer Stmt
-tcStmt e@(lhs := rhs) =
+tcStmt = tcStmtWithExpectedReturn Nothing
+
+tcStmtWithExpectedReturn :: Maybe Ty -> Infer Stmt
+tcStmtWithExpectedReturn _ e@(lhs := rhs) =
   do
     (lhs1, ps1, t1) <- tcExp lhs
     (rhs1, ps2, t2) <- tcExp rhs
     s <- unify t1 t2 `wrapError` e
     _ <- extSubst s
     pure (lhs1 := rhs1, apply s $ ps1 ++ ps2, unit)
-tcStmt e@(Let n mt me) =
+tcStmtWithExpectedReturn _ e@(Let n mt me) =
   do
     (me', psf, tf) <- case (mt, me) of
       (Just t, Just e1) -> do
@@ -57,26 +60,26 @@ tcStmt e@(Let n mt me) =
     extEnv n (monotype tf)
     let e' = Let (Id n tf) (Just tf) me'
     withCurrentSubst (e', psf, unit)
-tcStmt (StmtExp e) =
+tcStmtWithExpectedReturn _ (StmtExp e) =
   do
     (e', ps', _) <- tcExp e
     pure (StmtExp e', ps', unit)
-tcStmt (Return e) =
+tcStmtWithExpectedReturn mExpectedReturn (Return e) =
   do
-    (e', ps, t) <- tcExp e
+    (e', ps, t) <- tcExpWithExpected mExpectedReturn e
     pure (Return e', ps, t)
-tcStmt (Match es eqns) =
+tcStmtWithExpectedReturn _ (Match es eqns) =
   do
     (es', pss', ts') <- unzip3 <$> mapM tcExp es
     (eqns', pss1, resTy) <- tcEquations ts' eqns
     withCurrentSubst (Match es' eqns', concat (pss1 : pss'), resTy)
-tcStmt (Asm yblk) =
+tcStmtWithExpectedReturn _ (Asm yblk) =
   withLocalCtx yulPrimOps $ do
     (newBinds, t) <- tcYulBlock yblk
     let word' = monotype word
     mapM_ (flip extEnv word') newBinds
     pure (Asm yblk, [], t)
-tcStmt s@(If e blk1 blk2) =
+tcStmtWithExpectedReturn mExpectedReturn s@(If e blk1 blk2) =
   do
     (e', ps, t) <- tcExp e
     -- condition should have the boolean type
@@ -93,8 +96,8 @@ tcStmt s@(If e blk1 blk2) =
                            ]
                    )
       `wrapError` s
-    (blk1', ps1, t1) <- tcBody blk1
-    (blk2', ps2, t2) <- tcBody blk2
+    (blk1', ps1, t1) <- tcBodyWithExpectedReturn mExpectedReturn blk1
+    (blk2', ps2, t2) <- tcBodyWithExpectedReturn mExpectedReturn blk2
     -- here we check if "else" branch is present.
     let t2' = if null blk2 then t1 else t2
         ps3 = ps ++ ps1 ++ ps2
@@ -569,7 +572,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n args rt) bd)
       -- building the typing context with new assumptions
       let lctx' = if incl then (n, monotype nt) : lctx else lctx
       -- typing function body
-      (bd1', ps1', t1') <- withLocalCtx lctx' (tcBody bd1) `wrapError` d
+      (bd1', ps1', t1') <- withLocalCtx lctx' (tcBodyWithExpectedReturn (Just rt1') bd1) `wrapError` d
       -- checking if the type checking have changed the type
       -- due to unique type creation.
       let tynames = tyconNames t1'
@@ -1086,17 +1089,20 @@ generalize (ps, t) =
     return sch
 
 tcBody :: Body Name -> TcM (Body Id, [Pred], Ty)
-tcBody [] = pure ([], [], unit)
-tcBody [s] =
+tcBody = tcBodyWithExpectedReturn Nothing
+
+tcBodyWithExpectedReturn :: Maybe Ty -> Body Name -> TcM (Body Id, [Pred], Ty)
+tcBodyWithExpectedReturn _ [] = pure ([], [], unit)
+tcBodyWithExpectedReturn mExpectedReturn [s] =
   do
-    (s', ps', t') <- tcStmt s
+    (s', ps', t') <- tcStmtWithExpectedReturn mExpectedReturn s
     pure ([s'], ps', t')
-tcBody (Return _ : _) =
+tcBodyWithExpectedReturn _ (Return _ : _) =
   throwError "Illegal return statement"
-tcBody (s : ss) =
+tcBodyWithExpectedReturn mExpectedReturn (s : ss) =
   do
-    (s', ps', t') <- tcStmt s
-    (bd', ps1, t1) <- tcBody ss
+    (s', ps', t') <- tcStmtWithExpectedReturn mExpectedReturn s
+    (bd', ps1, t1) <- tcBodyWithExpectedReturn mExpectedReturn ss
     pure (s' : bd', ps' ++ ps1, t1)
 
 tcCall :: Maybe (Exp Name) -> Name -> [Exp Name] -> TcM (Exp Id, [Pred], Ty)
@@ -1142,7 +1148,15 @@ resolveExpressionConstructor n argTys mExpected
 
 resolveDotExpressionConstructor :: Name -> [Ty] -> Maybe Ty -> TcM Name
 resolveDotExpressionConstructor dotName argTys mExpected = do
-  candidates <- candidatesForDotExpression dotName mExpected
+  mcandidates <- candidatesForDotExpression dotName mExpected
+  candidates <- case mcandidates of
+    Just xs -> pure xs
+    Nothing ->
+      throwError $
+        unlines
+          [ "Cannot resolve shorthand constructor expression without expected constructor type:",
+            pretty dotName
+          ]
   valid <- filterM (\n -> constructorAcceptsArguments n argTys mExpected) (nub candidates)
   case valid of
     [] ->
@@ -1182,22 +1196,28 @@ constructorAcceptsArguments n argTys mExpected = do
   putSubst s0
   pure r
 
-candidatesForDotExpression :: Name -> Maybe Ty -> TcM [Name]
+candidatesForDotExpression :: Name -> Maybe Ty -> TcM (Maybe [Name])
 candidatesForDotExpression dotName mExpected = do
   let leaf = dotMarkerLeafName dotName
   mExpected' <- traverse maybeExpandSynonym mExpected
   case mExpected' of
     Just (TyCon tyName _) -> do
       ti <- askTypeInfo tyName
-      pure (matchingConstructors leaf (constrNames ti))
-    _ -> do
-      tt <- gets typeTable
-      let allConstructors = concatMap constrNames (Map.elems tt)
-      pure (matchingConstructors leaf allConstructors)
+      pure (Just (matchingConstructors leaf (constrNames ti)))
+    _ ->
+      pure Nothing
 
 resolveDotPatternConstructor :: Name -> Ty -> TcM Name
 resolveDotPatternConstructor dotName expectedTy = do
-  candidates <- candidatesForDotPattern dotName expectedTy
+  mcandidates <- candidatesForDotPattern dotName expectedTy
+  candidates <- case mcandidates of
+    Just xs -> pure xs
+    Nothing ->
+      throwError $
+        unlines
+          [ "Cannot resolve shorthand constructor pattern without expected constructor type:",
+            pretty dotName
+          ]
   case nub candidates of
     [] ->
       throwError $
@@ -1215,18 +1235,16 @@ resolveDotPatternConstructor dotName expectedTy = do
             unwords (map pretty xs)
           ]
 
-candidatesForDotPattern :: Name -> Ty -> TcM [Name]
+candidatesForDotPattern :: Name -> Ty -> TcM (Maybe [Name])
 candidatesForDotPattern dotName expectedTy = do
   expectedTy' <- maybeExpandSynonym expectedTy
   let leaf = dotMarkerLeafName dotName
   case expectedTy' of
     TyCon tyName _ -> do
       ti <- askTypeInfo tyName
-      pure (matchingConstructors leaf (constrNames ti))
-    _ -> do
-      tt <- gets typeTable
-      let allConstructors = concatMap constrNames (Map.elems tt)
-      pure (matchingConstructors leaf allConstructors)
+      pure (Just (matchingConstructors leaf (constrNames ti)))
+    _ ->
+      pure Nothing
 
 matchingConstructors :: Name -> [Name] -> [Name]
 matchingConstructors leaf =
