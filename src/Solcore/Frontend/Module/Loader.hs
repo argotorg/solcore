@@ -351,21 +351,33 @@ qualifiedImportStubDecls graph (imp, modulePath) =
         qualifiedFunctionStubDecls qualifier cunit
           ++ qualifiedTypeStubDecls qualifier cunit
 
-qualifyFunction :: Name -> FunDef -> FunDef
-qualifyFunction qualifier (FunDef sig body)
-  | originalName == Name "revert" =
-      FunDef
-        (sig {sigName = qualifiedName})
-        body
-  | otherwise =
-      FunDef
-        (sig {sigName = qualifiedName})
-        wrapperBody
+qualifyFunctionWrapper :: Name -> FunDef -> FunDef
+qualifyFunctionWrapper qualifier (FunDef sig _body) =
+  FunDef
+    (sig {sigName = qualifiedName})
+    wrapperBody
   where
     originalName = sigName sig
     qualifiedName = QualName qualifier (show originalName)
+    implName = hiddenFunctionName qualifier originalName
     argNames = map sigParamName (sigParams sig)
-    wrapperBody = [Return (ExpName Nothing originalName (map (ExpVar Nothing) argNames))]
+    wrapperBody = [Return (ExpName Nothing implName (map (ExpVar Nothing) argNames))]
+
+qualifyRevertFunction :: Name -> FunDef -> FunDef
+qualifyRevertFunction qualifier (FunDef sig body) =
+  FunDef
+    (sig {sigName = QualName qualifier (show (sigName sig))})
+    body
+
+qualifyFunctionImpl :: Map Name Name -> Name -> FunDef -> FunDef
+qualifyFunctionImpl renameMap qualifier (FunDef sig body) =
+  FunDef
+    (sig {sigName = hiddenFunctionName qualifier (sigName sig)})
+    (renameBodyFunctionCalls renameMap body)
+
+hiddenFunctionName :: Name -> Name -> Name
+hiddenFunctionName qualifier originalName =
+  QualName qualifier ("$impl$" ++ show originalName)
 
 sigParamName :: Param -> Name
 sigParamName (Typed n _) = n
@@ -373,15 +385,116 @@ sigParamName (Untyped n) = n
 
 qualifiedFunctionDecls :: Name -> CompUnit -> [TopDecl]
 qualifiedFunctionDecls qualifier cunit =
-  [ TFunDef (qualifyFunction qualifier fd)
-    | TFunDef fd <- topDeclsFrom cunit
-  ]
+  concatMap qualify fds
+  where
+    fds = [fd | TFunDef fd <- topDeclsFrom cunit]
+    renameMap =
+      Map.fromList
+        [ (sigName (funSignature fd), hiddenFunctionName qualifier (sigName (funSignature fd)))
+          | fd <- fds,
+            sigName (funSignature fd) /= Name "revert"
+        ]
+    qualify fd
+      | sigName (funSignature fd) == Name "revert" =
+          [TFunDef (qualifyRevertFunction qualifier fd)]
+      | otherwise =
+          [ TFunDef (qualifyFunctionImpl renameMap qualifier fd),
+            TFunDef (qualifyFunctionWrapper qualifier fd)
+          ]
 
 qualifiedFunctionStubDecls :: Name -> CompUnit -> [TopDecl]
 qualifiedFunctionStubDecls qualifier cunit =
   [ TFunDef (stubFunction (QualName qualifier (show (sigName (funSignature fd)))))
     | TFunDef fd <- topDeclsFrom cunit
   ]
+
+renameBodyFunctionCalls :: Map Name Name -> Body -> Body
+renameBodyFunctionCalls renameMap =
+  map (renameStmtFunctionCalls renameMap)
+
+renameStmtFunctionCalls :: Map Name Name -> Stmt -> Stmt
+renameStmtFunctionCalls renameMap (Assign lhs rhs) =
+  Assign (renameExpFunctionCalls renameMap lhs) (renameExpFunctionCalls renameMap rhs)
+renameStmtFunctionCalls renameMap (StmtPlusEq e1 e2) =
+  StmtPlusEq (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameStmtFunctionCalls renameMap (StmtMinusEq e1 e2) =
+  StmtMinusEq (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameStmtFunctionCalls renameMap (Let n mt me) =
+  Let n mt (renameExpFunctionCalls renameMap <$> me)
+renameStmtFunctionCalls renameMap (StmtExp e) =
+  StmtExp (renameExpFunctionCalls renameMap e)
+renameStmtFunctionCalls renameMap (Return e) =
+  Return (renameExpFunctionCalls renameMap e)
+renameStmtFunctionCalls renameMap (Match es eqns) =
+  Match
+    (map (renameExpFunctionCalls renameMap) es)
+    (map (renameEquationFunctionCalls renameMap) eqns)
+renameStmtFunctionCalls _ stmt@(Asm _) = stmt
+renameStmtFunctionCalls renameMap (If e blk1 blk2) =
+  If
+    (renameExpFunctionCalls renameMap e)
+    (renameBodyFunctionCalls renameMap blk1)
+    (renameBodyFunctionCalls renameMap blk2)
+
+renameEquationFunctionCalls :: Map Name Name -> Equation -> Equation
+renameEquationFunctionCalls renameMap (ps, body) =
+  (ps, renameBodyFunctionCalls renameMap body)
+
+renameExpFunctionCalls :: Map Name Name -> Exp -> Exp
+renameExpFunctionCalls _ litExp@(Lit _) = litExp
+renameExpFunctionCalls renameMap (ExpName me n es) =
+  ExpName me' n' es'
+  where
+    me' = fmap (renameExpFunctionCalls renameMap) me
+    n'
+      | me == Nothing = Map.findWithDefault n n renameMap
+      | otherwise = n
+    es' = map (renameExpFunctionCalls renameMap) es
+renameExpFunctionCalls renameMap (ExpVar me n) =
+  ExpVar (fmap (renameExpFunctionCalls renameMap) me) n
+renameExpFunctionCalls renameMap (ExpDotName n es) =
+  ExpDotName n (map (renameExpFunctionCalls renameMap) es)
+renameExpFunctionCalls _ (ExpDotVar n) =
+  ExpDotVar n
+renameExpFunctionCalls renameMap (Lam ps bd mt) =
+  Lam ps (renameBodyFunctionCalls renameMap bd) mt
+renameExpFunctionCalls renameMap (TyExp e ty) =
+  TyExp (renameExpFunctionCalls renameMap e) ty
+renameExpFunctionCalls renameMap (ExpIndexed e1 e2) =
+  ExpIndexed (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpPlus e1 e2) =
+  ExpPlus (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpMinus e1 e2) =
+  ExpMinus (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpTimes e1 e2) =
+  ExpTimes (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpDivide e1 e2) =
+  ExpDivide (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpModulo e1 e2) =
+  ExpModulo (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpLT e1 e2) =
+  ExpLT (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpGT e1 e2) =
+  ExpGT (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpLE e1 e2) =
+  ExpLE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpGE e1 e2) =
+  ExpGE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpEE e1 e2) =
+  ExpEE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpNE e1 e2) =
+  ExpNE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpLAnd e1 e2) =
+  ExpLAnd (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpLOr e1 e2) =
+  ExpLOr (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpLNot e) =
+  ExpLNot (renameExpFunctionCalls renameMap e)
+renameExpFunctionCalls renameMap (ExpCond e1 e2 e3) =
+  ExpCond
+    (renameExpFunctionCalls renameMap e1)
+    (renameExpFunctionCalls renameMap e2)
+    (renameExpFunctionCalls renameMap e3)
 
 qualifiedTypeDecls :: Name -> CompUnit -> [TopDecl]
 qualifiedTypeDecls qualifier cunit =

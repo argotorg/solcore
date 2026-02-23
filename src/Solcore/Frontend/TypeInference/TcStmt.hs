@@ -68,10 +68,10 @@ tcStmtWithExpectedReturn mExpectedReturn (Return e) =
   do
     (e', ps, t) <- tcExpWithExpected mExpectedReturn e
     pure (Return e', ps, t)
-tcStmtWithExpectedReturn _ (Match es eqns) =
+tcStmtWithExpectedReturn mExpectedReturn (Match es eqns) =
   do
     (es', pss', ts') <- unzip3 <$> mapM tcExp es
-    (eqns', pss1, resTy) <- tcEquations ts' eqns
+    (eqns', pss1, resTy) <- tcEquationsWithExpectedReturn mExpectedReturn ts' eqns
     withCurrentSubst (Match es' eqns', concat (pss1 : pss'), resTy)
 tcStmtWithExpectedReturn _ (Asm yblk) =
   withLocalCtx yulPrimOps $ do
@@ -120,17 +120,23 @@ tcStmtWithExpectedReturn mExpectedReturn s@(If e blk1 blk2) =
     withCurrentSubst (If e' blk1' blk2', ps3, t1)
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
-tcEquations ts eqns =
+tcEquations = tcEquationsWithExpectedReturn Nothing
+
+tcEquationsWithExpectedReturn :: Maybe Ty -> [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
+tcEquationsWithExpectedReturn mExpectedReturn ts eqns =
   do
     resTy <- freshTyVar
-    (eqns', ps, _) <- unzip3 <$> mapM (tcEquation resTy ts) eqns
+    (eqns', ps, _) <- unzip3 <$> mapM (tcEquationWithExpectedReturn mExpectedReturn resTy ts) eqns
     withCurrentSubst (eqns', concat ps, resTy)
 
 tcEquation :: Ty -> [Ty] -> Equation Name -> TcM (Equation Id, [Pred], Ty)
-tcEquation ret ts eqn@(ps, ss) =
+tcEquation = tcEquationWithExpectedReturn Nothing
+
+tcEquationWithExpectedReturn :: Maybe Ty -> Ty -> [Ty] -> Equation Name -> TcM (Equation Id, [Pred], Ty)
+tcEquationWithExpectedReturn mExpectedReturn ret ts eqn@(ps, ss) =
   withLocalEnv do
     (ps', _, res) <- tcPats ts ps
-    (ss', pss', t) <- withLocalCtx res (tcBody ss)
+    (ss', pss', t) <- withLocalCtx res (tcBodyWithExpectedReturn mExpectedReturn ss)
     s <- unify t ret `wrapError` eqn
     withCurrentSubst ((ps', ss'), pss', apply s t)
 
