@@ -1117,9 +1117,13 @@ tcCall Nothing n args =
     s <- askEnv n `wrapError` (Call Nothing n args)
     (ps :=> t) <- freshInst s
     t' <- freshTyVar
-    (es', pss', ts') <- unzip3 <$> mapM tcExp args
-    s' <- unify t (funtype ts' t')
-    extSubst s'
+    expectedArgTys <- mapM (const freshTyVar) args
+    s0 <- unify t (funtype expectedArgTys t')
+    extSubst s0
+    (es', pss', ts') <-
+      unzip3 <$> zipWithM (\e expectedTy -> tcExpWithExpected (Just expectedTy) e) args (apply s0 expectedArgTys)
+    s1 <- unify t (funtype ts' t')
+    extSubst s1
     let ps' = foldr union [] (ps : pss')
         t1 = funtype ts' t'
     withCurrentSubst (Call Nothing (Id n t1) es', ps', t')
@@ -1129,8 +1133,13 @@ tcCall (Just e) n args =
     s <- askEnv n `wrapError` (Call (Just e) n args)
     (ps1 :=> t) <- freshInst s
     t' <- freshTyVar
-    (es', pss', ts') <- unzip3 <$> mapM tcExp args
+    expectedArgTys <- mapM (const freshTyVar) args
+    s0 <- unify (foldr (:->) t' expectedArgTys) t
+    extSubst s0
+    (es', pss', ts') <-
+      unzip3 <$> zipWithM (\arg expectedTy -> tcExpWithExpected (Just expectedTy) arg) args (apply s0 expectedArgTys)
     s' <- unify (foldr (:->) t' ts') t
+    extSubst s'
     let ps' = foldr union [] ((ps ++ ps1) : pss')
     withCurrentSubst (Call (Just e') (Id n t') es', ps', t')
 
