@@ -578,8 +578,12 @@ strictValidationImportedDecls graph (imp, modulePath) =
     ImportOnly _ (SelectOnly names) ->
       mapMaybe toValidationImportStub . mapMaybe (selectTopDecl names)
         <$> publicTopDeclsForModule graph modulePath
-    ImportModule _ -> Right []
-    ImportAlias _ _ -> Right []
+    ImportModule _ ->
+      mapMaybe toValidationImportStub . filter (not . isFunctionTopDecl)
+        <$> publicTopDeclsForModule graph modulePath
+    ImportAlias _ _ ->
+      mapMaybe toValidationImportStub . filter (not . isFunctionTopDecl)
+        <$> publicTopDeclsForModule graph modulePath
 
 toValidationImportStub :: TopDecl -> Maybe TopDecl
 toValidationImportStub (TFunDef (FunDef sig _)) =

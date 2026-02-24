@@ -131,6 +131,7 @@ imports =
       runImportSuccess "amb_ok.solc",
       runImportSuccess "dupqual_main.solc",
       runImportSuccess "private_helper_main.solc",
+      runImportSuccess "module_qualified_constructor.solc",
       runImportSuccess "dot_context_expr.solc",
       runImportFailure "pragma_scope_main.solc",
       runImportFailure "selfcycle.solc",

@@ -501,6 +501,7 @@ instance Resolve S.Exp where
           case qdt of
             Just TFunction -> pure (Var qn)
             Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+            Just TTyCon -> pure (Var qn)
             Just TModule -> pure (Var qn)
             _ -> undefinedName n
         -- class name
@@ -520,8 +521,14 @@ instance Resolve S.Exp where
           case qdt of
             Just TFunction -> pure (Var qn)
             Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+            Just TTyCon -> pure (Var qn)
             Just TModule -> pure (Var qn)
-            _ -> undefinedName n
+            _ -> do
+              let fallback = QualName (constructorLeafName d) (pretty n)
+              fdt <- lookupName fallback
+              case fdt of
+                Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+                _ -> undefinedName n
         _ -> do
           sameName <- isSameNameConstructor n
           if sameName
@@ -587,7 +594,13 @@ instance Resolve S.Exp where
               pure (Call Nothing qn es')
             (_, Just TDataCon) ->
               Con <$> resolveQualifiedConstructorName c n <*> pure es'
-            _ -> undefinedName n
+            _ -> do
+              let fallback = QualName (constructorLeafName c) (pretty n)
+              fdt <- lookupName fallback
+              case fdt of
+                Just TDataCon ->
+                  Con <$> resolveQualifiedConstructorName c n <*> pure es'
+                _ -> undefinedName n
         (Just (Var c), Just TTyVar) -> do
           let qn = QualName c (pretty n)
           cf <- gets (Map.lookup qn . scopeEnv)
@@ -970,7 +983,13 @@ resolveQualifiedConstructorName qualifier conName =
     dt <- lookupName qn
     case dt of
       Just TDataCon -> pure qn
-      _ -> undefinedName qn
+      _ ->
+        let fallback = QualName (constructorLeafName qualifier) (pretty conName)
+         in do
+              fdt <- lookupName fallback
+              case fdt of
+                Just TDataCon -> pure fallback
+                _ -> undefinedName qn
 
 -- error messages
 
