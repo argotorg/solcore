@@ -312,6 +312,8 @@ instance Pretty Exp where
         text "else",
         ppr e3
       ]
+  ppr (ExpAt t) =
+    text "@" <> ppr t
 
 pprE :: Maybe Exp -> Doc
 pprE Nothing = ""

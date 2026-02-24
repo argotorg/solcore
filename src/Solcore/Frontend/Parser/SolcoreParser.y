@@ -85,6 +85,7 @@ import System.FilePath
       '+='       {Token _ TPlusEq}
       '-='       {Token _ TMinusEq}
       'then'     {Token _ TThen}
+      '@'        {Token _ TAt}
 
 %nonassoc '+=' '-='
 %left     ':'
@@ -343,6 +344,7 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | Expr '||' Expr                              {ExpLOr $1 $3 }
      | '!' Expr                                    {ExpLNot $2 }
      | Conditional                                 {$1}
+     | '@' Type                                    {ExpAt $2}
 
 Conditional :: { Exp }
 Conditional : 'if' Expr 'then' Expr 'else' Expr    {ExpCond $2 $4 $6}
@@ -400,6 +402,7 @@ Type :: { Ty }
 Type : Name OptTypeParam                            {TyCon $1 $2}
      | LamType                                      {uncurry funtype $1}
      | TupleTy                                      {$1}
+     | '@' Type                                     {TyCon (Name "Proxy") [$2]}
 
 TupleTy :: { Ty }
 TupleTy : '(' TypeCommaList ')'                     {mkTupleTy $2}
