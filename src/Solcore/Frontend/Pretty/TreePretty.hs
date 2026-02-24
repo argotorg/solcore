@@ -275,16 +275,13 @@ parensWhen _ d = d
 instance Pretty Exp where
   ppr (Lit l) = ppr l
   ppr (ExpName me n es) =
-    maybe (text "this") ppr me
-      <> char 'n'
-      <> ppr n
-      <> parensWhen
-        (not $ null es)
-        (commaSep (map ppr es))
+    case me of
+      Nothing -> ppr n <> parens (commaSep (map ppr es))
+      Just e -> ppr e <> char '.' <> ppr n <> parens (commaSep (map ppr es))
   ppr (ExpVar me v) =
-    maybe (text "this") ppr me
-      <> char '.'
-      <> ppr v
+    case me of
+      Nothing -> ppr v
+      Just e -> ppr e <> char '.' <> ppr v
   ppr (ExpDotName n es) =
     char '.'
       <> ppr n
