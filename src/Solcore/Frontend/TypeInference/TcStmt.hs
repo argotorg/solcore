@@ -34,7 +34,9 @@ tcStmtWithExpectedReturn :: Maybe Ty -> Infer Stmt
 tcStmtWithExpectedReturn _ e@(lhs := rhs) =
   do
     (lhs1, ps1, t1) <- tcExp lhs
-    (rhs1, ps2, t2) <- tcExp rhs
+    s0 <- getSubst
+    let expectedRhsTy = apply s0 t1
+    (rhs1, ps2, t2) <- tcExpWithExpected (Just expectedRhsTy) rhs
     s <- unify t1 t2 `wrapError` e
     _ <- extSubst s
     pure (lhs1 := rhs1, apply s $ ps1 ++ ps2, unit)
@@ -230,15 +232,33 @@ tcExpWithExpected _ (Var n) =
         withCurrentSubst (fst p, ps, snd p)
 tcExpWithExpected mExpected e@(Con n es) =
   do
-    -- typing parameters
-    (es', pss, ts) <- unzip3 <$> mapM (tcExpWithExpected Nothing) es
-    n' <- resolveExpressionConstructor n ts mExpected `wrapError` e
+    expectedArgTys <- mapM (const freshTyVar) es
+    n' <- resolveExpressionConstructor n expectedArgTys mExpected `wrapError` e
     -- getting the type from the environment
     sch <- askEnv n' `wrapError` e
     (ps :=> t) <- freshInst sch
-    -- unifying inferred parameter types
     t' <- freshTyVar
+    s0 <- unify t (funtype expectedArgTys t') `wrapError` e
+    _ <- extSubst s0
+    case mExpected of
+      Just expectedTy -> do
+        expectedTy' <- maybeExpandSynonym expectedTy
+        sExpected <- unify t' expectedTy' `wrapError` e
+        _ <- extSubst sExpected
+        pure ()
+      Nothing ->
+        pure ()
+    expectedArgTys' <- withCurrentSubst expectedArgTys
+    -- typing parameters with expected constructor argument types
+    (es', pss, ts) <-
+      unzip3
+        <$> zipWithM
+          (\arg expectedTy -> tcExpWithExpected (Just expectedTy) arg)
+          es
+          expectedArgTys'
+    -- unifying inferred parameter types
     s <- unify (funtype ts t') t `wrapError` e
+    _ <- extSubst s
     -- expand synonyms before extracting type name
     t'' <- maybeExpandSynonym (apply s t')
     tn <- typeName t''
@@ -1219,7 +1239,7 @@ constructorAcceptsArguments n argTys mExpected = do
             pure ()
           Nothing -> pure ()
         pure True
-    )
+      )
       `catchError` const (pure False)
   putSubst s0
   pure r

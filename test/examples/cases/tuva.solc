@@ -12,9 +12,6 @@ import std.{Typedef, storage, mapping, address, hash2, StorageType, Assign};
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
 
 
 forall col_idx val . class col_idx:RValueIdxAccess(val) {

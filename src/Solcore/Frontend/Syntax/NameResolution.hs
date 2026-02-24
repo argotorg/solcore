@@ -356,8 +356,8 @@ instance Resolve S.Pat where
                   isT = isTuple n'
               pure $
                 if isT
-                    then mkTuplePat ps'
-                    else PCon n' ps'
+                  then mkTuplePat ps'
+                  else PCon n' ps'
             else case splitQualifiedName n of
               Just (qualifier, conName) ->
                 PCon <$> resolveQualifiedConstructorName qualifier conName <*> pure ps'
