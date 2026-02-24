@@ -1,0 +1,9 @@
+import std;
+
+function foo(x : @word) -> word {
+  return 0;
+}
+
+function fuz(y) -> word {
+  return y + foo(@word);
+}

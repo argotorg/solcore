@@ -98,6 +98,7 @@ tokens :-
         <0>    "+="                              {simpleToken TPlusEq}
         <0>    "-="                              {simpleToken TMinusEq}
         <0>    "then"                            {simpleToken TThen}
+        <0>    "@"                               {simpleToken TAt}
         <0>    @identifier                       {mkIdent}
         <0>    @number                           {mkNumber}
         <0>    @hexlit                           {mkHexlit}
@@ -225,6 +226,7 @@ data Lexeme
   | TNoBoundVariableCondition
   | TBar
   | TThen
+  | TAt
   | TEOF
   deriving (Eq, Ord, Show)
 
