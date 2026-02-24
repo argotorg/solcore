@@ -229,7 +229,7 @@ data Exp
   | ExpLOr Exp Exp -- e1 || e2
   | ExpLNot Exp -- ! e
   | ExpCond Exp Exp Exp -- if e1 then e2 else e3
-  | ExpAt Ty  -- proxy sugar
+  | ExpAt Ty -- proxy sugar
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- pattern matching equations

@@ -436,8 +436,11 @@ instance Resolve S.Exp where
     Cond <$> resolve e1 <*> resolve e2 <*> resolve e3
   resolve (S.ExpAt t) = do
     t' <- resolve t
-    pure (TyExp (Con (Name "Proxy") [])
-                (TyCon (Name "Proxy") [t']))
+    pure
+      ( TyExp
+          (Con (Name "Proxy") [])
+          (TyCon (Name "Proxy") [t'])
+      )
 
 instance Resolve S.Literal where
   type Result S.Literal = Literal

@@ -287,7 +287,8 @@ cases =
       runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder,
       runTestForFile "field-name-error.solc" caseFolder,
       runTestExpectingFailure "field-access.solc" caseFolder,
-      runTestForFile "mod-example.solc" caseFolder
+      runTestForFile "mod-example.solc" caseFolder,
+      runTestForFile "proxy-desugar.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
