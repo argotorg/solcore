@@ -1,35 +1,54 @@
 # Module and Namespace System
 
-This document describes the module behavior currently implemented in solcore.
+This document describes what the current Solcore implementation does today.
 
-## Module Identity and File Mapping
+## 1. Entry File and Import Roots
+
+- The entry file is the path passed to `-f` / `--file`.
+- Import search roots are built in this order:
+  1. `takeDirectory(entryFile)`
+  2. directories from `--include` (colon-separated, default: `std`)
+- Imports are resolved by searching roots in order and picking the first existing file.
+
+## 2. Module Identity and File Mapping
 
 - Module names are file-system driven.
 - `import foo;` resolves to `foo.solc`.
 - `import foo.bar;` resolves to `foo/bar.solc`.
-- The compiler searches import roots in order:
-  1. directory of the entry file
-  2. directories passed via `--include` (default: `std`)
-- Canonicalized file paths are used as module identities.
+- Loaded module identity is the canonicalized file path.
+- A canonical file is loaded once, even if reached through multiple imports.
 
-## Imports
+## 3. Import Syntax and Semantics
 
 Supported forms:
 
 ```solidity
 import M;
-import M as N;
+import M as A;
 import M.{X, Y};
 import M.{*};
 ```
 
-- `import M;` and `import M as N;` add only a qualifier.
-- `import M.{...};` brings selected exported names into unqualified scope.
-- `import M.{*};` brings all exported names into unqualified scope.
-- Open-import behavior is not supported.
-- Duplicate names inside a selective import are rejected.
+Behavior:
 
-## Exports
+- `import M;` and `import M as A;` add qualifier-based access only.
+- `import M.{X, Y};` imports selected exported names into unqualified scope.
+- `import M.{*};` imports all exported names into unqualified scope.
+- There is no open-import semantics.
+
+Validation rules:
+
+- Duplicate qualifier names are rejected (`import A as M; import B as M;`).
+- Duplicate names inside one selective import are rejected.
+- Unknown selected names are rejected.
+- Ambiguous selected imports across modules are rejected.
+- Import cycles are rejected, with the cycle chain in the error.
+
+Data constructor selection detail:
+
+- Selective import of a constructor (for example `{True}`) brings its parent data type declaration too, but only with selected constructors.
+
+## 4. Export Syntax and Visibility
 
 Supported forms:
 
@@ -38,46 +57,63 @@ export {X, Y};
 export {*};
 ```
 
-- Imported modules must declare exactly one `export { ... };`.
-- `export {*};` exports all importable top-level declarations.
-- Duplicate names in exports are rejected.
-- Exporting unknown names is rejected.
+Current enforcement:
 
-## Name Resolution
+- Imported modules must declare exactly one export declaration.
+- Entry module does not need an export declaration.
+- Multiple export declarations are rejected.
+- Duplicate names in an export list are rejected.
+- Unknown names in an export list are rejected.
+- `export {*};` exports all importable top-level declarations (except pragma/export declarations).
+
+Instance behavior:
+
+- Instances are import-visible whenever a module is imported (permissive behavior).
+- Instances are not individually name-addressable in export lists.
+
+## 5. Namespaces and Name Resolution
+
+Duplicate checking is enforced separately for:
+
+- type namespace (contracts, data types, type synonyms)
+- class namespace
+- term namespace (functions, constructors, values)
 
 Unqualified lookup order:
 
-1. Local lexical scope.
-2. Current module top-level declarations.
-3. Names imported by `import M.{...};` (including glob selectors).
-4. Otherwise unresolved.
+1. Local lexical scope
+2. Current module top-level declarations
+3. Names introduced by `import M.{...}` / `import M.{*}`
+4. Otherwise unresolved
 
-Ambiguity across selected imports is a compile error.
+Module qualification:
 
-Namespaces are split:
+- Imported qualifiers are added to the resolver environment.
+- For nested module paths (for example `import foo.bar;`), prefix qualifiers are also registered for qualified access paths.
 
-- Type namespace: data/type constructors, type synonyms, classes, contracts.
-- Term namespace: functions, methods, constructors, values/variables.
+## 6. Constructor Model
 
-The same spelling can appear once in each namespace. Duplicates in the same namespace are errors.
+Current constructor model is type-qualified constructors, with dot shorthand support.
 
-## Dot Constructor Shorthand
+- Canonical constructor names are type-qualified (`Bool.True`, `Option.Some`).
+- Module-qualified constructor access is supported (`mod.Bool.True`, `alias.Bool.True`).
+- Unqualified constructors are generally rejected when only qualified constructors exist.
+- `data Foo = Foo` same-name constructors are still accepted.
 
-The parser supports contextual constructor shorthand:
+Dot shorthand:
 
 ```solidity
 .Some(1)
 .None
 ```
 
-Behavior:
+- Expression shorthand requires expected constructor type context.
+- Pattern shorthand requires expected scrutinee type context.
+- Missing expected type, no match, or ambiguous match is an error.
 
-- Expression shorthand requires an expected constructor result type from context.
-- Pattern shorthand requires an expected scrutinee type from context.
-- If context does not provide a constructor-bearing expected type, compilation fails.
-- If no constructor matches, or multiple constructors match, compilation fails.
+## 7. Pragma Scope
 
-## Pragmas and Cycles
+- Pragmas are module-local.
+- Pragmas do not propagate to importing modules.
+- Pragmas are not transitive through imports.
 
-- Import cycles are rejected during module graph construction with a concrete cycle chain.
-- Pragmas are module-local and do not propagate through imports.
