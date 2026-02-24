@@ -7,7 +7,7 @@
 - Assign class
 */
 
-import std;
+import std.{*};
 import std.{Typedef, storage, mapping, address, hash2, StorageType, Assign};
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;

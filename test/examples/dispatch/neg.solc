@@ -1,4 +1,4 @@
-import dispatch;
+import dispatch.{*};
 
 forall a.
 class  a : Neg {

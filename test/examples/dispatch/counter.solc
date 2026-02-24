@@ -1,4 +1,4 @@
-import dispatch;
+import dispatch.{*};
 contract Counter {
   // some dummy fields to test offset calculation
   fld0 : word;

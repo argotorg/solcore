@@ -607,8 +607,55 @@ strictCompileImportedDecls graph (imp, modulePath) =
       publicTopDeclsForModule graph modulePath
     ImportOnly _ (SelectOnly names) ->
       mapMaybe (selectTopDecl names) <$> publicTopDeclsForModule graph modulePath
-    ImportModule _ -> filter (not . isFunctionTopDecl) <$> publicTopDeclsForModule graph modulePath
-    ImportAlias _ _ -> filter (not . isFunctionTopDecl) <$> publicTopDeclsForModule graph modulePath
+    ImportModule moduleName ->
+      moduleImportCompileDecls moduleName
+    ImportAlias _ qualifier ->
+      moduleImportCompileDecls qualifier
+  where
+    moduleImportCompileDecls qualifier = do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      allDecls <- importableTopDeclsForModule graph modulePath
+      let renameMap = importedFunctionRenameMap qualifier allDecls
+      pure $
+        map (renameTopDeclFunctionCalls renameMap) $
+          filter (not . isFunctionTopDecl) publicDecls
+
+importedFunctionRenameMap :: Name -> [TopDecl] -> Map Name Name
+importedFunctionRenameMap qualifier ds =
+  Map.fromList
+    [ (sigName (funSignature fd), hiddenFunctionName qualifier (sigName (funSignature fd)))
+      | TFunDef fd <- ds,
+        sigName (funSignature fd) /= Name "revert"
+    ]
+
+renameTopDeclFunctionCalls :: Map Name Name -> TopDecl -> TopDecl
+renameTopDeclFunctionCalls renameMap (TInstDef inst) =
+  TInstDef
+    ( inst
+        { instFunctions =
+            map (renameFunDefFunctionCalls renameMap) (instFunctions inst)
+        }
+    )
+renameTopDeclFunctionCalls renameMap (TContr c) =
+  TContr (renameContractFunctionCalls renameMap c)
+renameTopDeclFunctionCalls _ d = d
+
+renameFunDefFunctionCalls :: Map Name Name -> FunDef -> FunDef
+renameFunDefFunctionCalls renameMap (FunDef sig body) =
+  FunDef sig (renameBodyFunctionCalls renameMap body)
+
+renameContractFunctionCalls :: Map Name Name -> Contract -> Contract
+renameContractFunctionCalls renameMap (Contract n ts ds) =
+  Contract n ts (map (renameContractDeclFunctionCalls renameMap) ds)
+
+renameContractDeclFunctionCalls :: Map Name Name -> ContractDecl -> ContractDecl
+renameContractDeclFunctionCalls renameMap (CFunDecl fd) =
+  CFunDecl (renameFunDefFunctionCalls renameMap fd)
+renameContractDeclFunctionCalls renameMap (CFieldDecl (Field n ty me)) =
+  CFieldDecl (Field n ty (renameExpFunctionCalls renameMap <$> me))
+renameContractDeclFunctionCalls renameMap (CConstrDecl (Constructor ps body)) =
+  CConstrDecl (Constructor ps (renameBodyFunctionCalls renameMap body))
+renameContractDeclFunctionCalls _ d = d
 
 isFunctionTopDecl :: TopDecl -> Bool
 isFunctionTopDecl (TFunDef _) = True
@@ -616,34 +663,52 @@ isFunctionTopDecl _ = False
 
 shadowImportedDecls :: [TopDecl] -> [TopDecl] -> [TopDecl]
 shadowImportedDecls localDecls =
-  mapMaybe filterDecl
+  reverse . snd . foldl step (initialSeen, [])
   where
-    localTermNames = concatMap topDeclTermNames localDecls
-    localTypeNames = concatMap topDeclTypeNames localDecls
-    localClassNames = concatMap topDeclClassNames localDecls
+    initialSeen =
+      ( concatMap topDeclTermNames localDecls,
+        concatMap topDeclTypeNames localDecls,
+        concatMap topDeclClassNames localDecls
+      )
 
-    filterDecl d@(TFunDef (FunDef sig _))
-      | sigName sig `elem` localTermNames = Nothing
-      | otherwise = Just d
-    filterDecl d@(TSym (TySym n _ _))
-      | n `elem` localTypeNames = Nothing
-      | otherwise = Just d
-    filterDecl d@(TClassDef (Class _ _ n _ _ _))
-      | n `elem` localClassNames = Nothing
-      | otherwise = Just d
-    filterDecl d@(TContr (Contract n _ _))
-      | n `elem` localTypeNames = Nothing
-      | otherwise = Just d
-    filterDecl (TDataDef (DataTy n ts cs))
-      | n `elem` localTypeNames = Nothing
+    step (seen, acc) decl =
+      case filterDecl seen decl of
+        (seen', Just decl') -> (seen', decl' : acc)
+        (seen', Nothing) -> (seen', acc)
+
+    filterDecl (termNames, typeNames, classNames) d@(TFunDef (FunDef sig _))
+      | sigName sig `elem` termNames = ((termNames, typeNames, classNames), Nothing)
       | otherwise =
-          let cs' = filter (\c -> constrName c `notElem` localTermNames) cs
-           in if null cs' && not (null cs)
-                then Nothing
-                else Just (TDataDef (DataTy n ts cs'))
-    filterDecl d@(TInstDef _) = Just d
-    filterDecl (TExportDecl _) = Nothing
-    filterDecl (TPragmaDecl _) = Nothing
+          ( (sigName sig : termNames, typeNames, classNames),
+            Just d
+          )
+    filterDecl (termNames, typeNames, classNames) d@(TSym (TySym n _ _))
+      | n `elem` typeNames = ((termNames, typeNames, classNames), Nothing)
+      | otherwise =
+          ( (termNames, n : typeNames, classNames),
+            Just d
+          )
+    filterDecl (termNames, typeNames, classNames) d@(TClassDef (Class _ _ n _ _ _))
+      | n `elem` classNames = ((termNames, typeNames, classNames), Nothing)
+      | otherwise =
+          ( (termNames, typeNames, n : classNames),
+            Just d
+          )
+    filterDecl (termNames, typeNames, classNames) d@(TContr (Contract n _ _))
+      | n `elem` typeNames = ((termNames, typeNames, classNames), Nothing)
+      | otherwise =
+          ( (termNames, n : typeNames, classNames),
+            Just d
+          )
+    filterDecl (termNames, typeNames, classNames) (TDataDef (DataTy n ts cs))
+      | n `elem` typeNames = ((termNames, typeNames, classNames), Nothing)
+      | otherwise =
+          ( (termNames, n : typeNames, classNames),
+            Just (TDataDef (DataTy n ts cs))
+          )
+    filterDecl seen d@(TInstDef _) = (seen, Just d)
+    filterDecl seen (TExportDecl _) = (seen, Nothing)
+    filterDecl seen (TPragmaDecl _) = (seen, Nothing)
 
 topDeclTermNames :: TopDecl -> [Name]
 topDeclTermNames (TFunDef (FunDef sig _)) = [sigName sig]
