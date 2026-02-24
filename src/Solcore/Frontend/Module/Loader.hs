@@ -16,6 +16,8 @@ import Data.List (intercalate)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnit)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
@@ -332,21 +334,17 @@ qualifiedImportDecls graph (imp, modulePath) =
   where
     qualifyDecls qualifier = do
       publicDecls <- publicTopDeclsForModule graph modulePath
-      allDecls <- importableTopDeclsForModule graph modulePath
+      allDecls <- importableTopDeclsForCompiledModule graph modulePath
       let publicUnit = CompUnit [] publicDecls
           allUnit = CompUnit [] allDecls
       pure $
         qualifiedFunctionDecls qualifier publicUnit allUnit
           ++ qualifiedTypeDecls qualifier publicUnit
 
-importableTopDeclsForModule :: ModuleGraph -> FilePath -> Either String [TopDecl]
-importableTopDeclsForModule graph modulePath = do
-  unit <-
-    maybe
-      (Left ("Internal error: module not loaded: " ++ modulePath))
-      Right
-      (Map.lookup modulePath (modules graph))
-  pure (filter isImportableTopDecl (topDeclsFrom unit))
+importableTopDeclsForCompiledModule :: ModuleGraph -> FilePath -> Either String [TopDecl]
+importableTopDeclsForCompiledModule graph modulePath = do
+  cunit <- flattenModuleStrictCompileCompUnit graph modulePath
+  pure (filter isImportableTopDecl (topDeclsFrom cunit))
 
 qualifiedImportStubDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
 qualifiedImportStubDecls graph (imp, modulePath) =
@@ -465,7 +463,13 @@ renameEquationFunctionCalls renameMap (ps, body) =
 renameExpFunctionCalls :: Map Name Name -> Exp -> Exp
 renameExpFunctionCalls _ litExp@(Lit _) = litExp
 renameExpFunctionCalls renameMap (ExpName me n es) =
-  ExpName me' n' es'
+  case qualifiedMemberName me n of
+    Just qn ->
+      case Map.lookup qn renameMap of
+        Just renamedName -> ExpName Nothing renamedName es'
+        Nothing -> ExpName me' n es'
+    Nothing ->
+      ExpName me' n' es'
   where
     me' = fmap (renameExpFunctionCalls renameMap) me
     n'
@@ -473,7 +477,15 @@ renameExpFunctionCalls renameMap (ExpName me n es) =
       | otherwise = n
     es' = map (renameExpFunctionCalls renameMap) es
 renameExpFunctionCalls renameMap (ExpVar me n) =
-  ExpVar (fmap (renameExpFunctionCalls renameMap) me) n
+  case qualifiedMemberName me n of
+    Just qn ->
+      case Map.lookup qn renameMap of
+        Just renamedName -> ExpVar Nothing renamedName
+        Nothing -> ExpVar me' n
+    Nothing ->
+      ExpVar me' n
+  where
+    me' = fmap (renameExpFunctionCalls renameMap) me
 renameExpFunctionCalls renameMap (ExpDotName n es) =
   ExpDotName n (map (renameExpFunctionCalls renameMap) es)
 renameExpFunctionCalls _ (ExpDotVar n) =
@@ -518,6 +530,19 @@ renameExpFunctionCalls renameMap (ExpCond e1 e2 e3) =
     (renameExpFunctionCalls renameMap e2)
     (renameExpFunctionCalls renameMap e3)
 
+qualifiedMemberName :: Maybe Exp -> Name -> Maybe Name
+qualifiedMemberName me n =
+  QualName <$> (me >>= qualifierFromExpVarChain) <*> pure (show n)
+
+qualifierFromExpVarChain :: Exp -> Maybe Name
+qualifierFromExpVarChain (ExpVar Nothing n) =
+  Just n
+qualifierFromExpVarChain (ExpVar (Just e) n) = do
+  q <- qualifierFromExpVarChain e
+  pure (QualName q (show n))
+qualifierFromExpVarChain _ =
+  Nothing
+
 qualifiedTypeDecls :: Name -> CompUnit -> [TopDecl]
 qualifiedTypeDecls qualifier cunit =
   dataAliases ++ symAliases
@@ -536,13 +561,22 @@ qualifiedTypeStubDecls qualifier cunit =
   dataAliases ++ symAliases
   where
     dataAliases =
-      [ TSym (stubType (QualName qualifier (show n)))
-        | TDataDef (DataTy n _ _) <- topDeclsFrom cunit
+      [ TDataDef
+          ( DataTy
+              (QualName qualifier (show n))
+              []
+              [Constr (constructorLeafName (constrName c)) [] | c <- cs]
+          )
+        | TDataDef (DataTy n _ cs) <- topDeclsFrom cunit
       ]
     symAliases =
       [ TSym (stubType (QualName qualifier (show n)))
         | TSym (TySym n _ _) <- topDeclsFrom cunit
       ]
+
+constructorLeafName :: Name -> Name
+constructorLeafName (QualName _ n) = Name n
+constructorLeafName n = n
 
 qualifyTyCon :: Name -> Name -> [Ty] -> TySym
 qualifyTyCon qualifier unqualName tyVars =
@@ -579,11 +613,9 @@ strictValidationImportedDecls graph (imp, modulePath) =
       mapMaybe toValidationImportStub . mapMaybe (selectTopDecl names)
         <$> publicTopDeclsForModule graph modulePath
     ImportModule _ ->
-      mapMaybe toValidationImportStub . filter (not . isFunctionTopDecl)
-        <$> publicTopDeclsForModule graph modulePath
+      Right []
     ImportAlias _ _ ->
-      mapMaybe toValidationImportStub . filter (not . isFunctionTopDecl)
-        <$> publicTopDeclsForModule graph modulePath
+      Right []
 
 toValidationImportStub :: TopDecl -> Maybe TopDecl
 toValidationImportStub (TFunDef (FunDef sig _)) =
@@ -603,18 +635,48 @@ toValidationImportStub (TPragmaDecl _) = Nothing
 strictCompileImportedDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
 strictCompileImportedDecls graph (imp, modulePath) =
   case imp of
-    ImportOnly _ SelectAll ->
-      publicTopDeclsForModule graph modulePath
-    ImportOnly _ (SelectOnly names) ->
-      mapMaybe (selectTopDecl names) <$> publicTopDeclsForModule graph modulePath
+    ImportOnly moduleName selector ->
+      importOnlyCompileDecls moduleName selector
     ImportModule moduleName ->
       moduleImportCompileDecls moduleName
     ImportAlias _ qualifier ->
       moduleImportCompileDecls qualifier
   where
+    importOnlyCompileDecls moduleName selector = do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      allDecls <- importableTopDeclsForCompiledModule graph modulePath
+      let allFunctionDecls = [fd | TFunDef fd <- allDecls]
+          allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFunctionDecls]
+          depMap =
+            Map.fromList
+              [ ( sigName (funSignature fd),
+                  filter (`Set.member` allFunctionNames) (funDefFunctionRefs fd)
+                )
+                | fd <- allFunctionDecls
+              ]
+      let selectedPublicDecls =
+            case selector of
+              SelectAll -> publicDecls
+              SelectOnly names -> mapMaybe (selectTopDecl names) publicDecls
+          selectedNonFunctionDecls = filter (not . isFunctionTopDecl) selectedPublicDecls
+          selectedFunctionNames =
+            [ sigName (funSignature fd)
+              | TFunDef fd <- selectedPublicDecls
+            ]
+          seedFunctionNames = selectedFunctionNames
+          requiredFunctionNames = Set.fromList (functionDependencyClosure depMap seedFunctionNames)
+          requiredFunctionDecls =
+            [ TFunDef fd
+              | fd <- allFunctionDecls,
+                sigName (funSignature fd) `Set.member` requiredFunctionNames
+            ]
+          functionDecls =
+            importOnlyFunctionDecls moduleName selectedFunctionNames requiredFunctionDecls
+      pure (functionDecls ++ selectedNonFunctionDecls)
+
     moduleImportCompileDecls qualifier = do
       publicDecls <- publicTopDeclsForModule graph modulePath
-      allDecls <- importableTopDeclsForModule graph modulePath
+      allDecls <- importableTopDeclsForCompiledModule graph modulePath
       let renameMap = importedFunctionRenameMap qualifier allDecls
       pure $
         map (renameTopDeclFunctionCalls renameMap) $
@@ -627,6 +689,138 @@ importedFunctionRenameMap qualifier ds =
       | TFunDef fd <- ds,
         sigName (funSignature fd) /= Name "revert"
     ]
+
+importOnlyFunctionDecls :: Name -> [Name] -> [TopDecl] -> [TopDecl]
+importOnlyFunctionDecls qualifier selectedNames allDecls =
+  concatMap qualifyImpl allFds ++ concatMap wrapSelected selectedFds
+  where
+    allFds = [fd | TFunDef fd <- allDecls]
+    selectedFds =
+      [ fd
+        | fd <- allFds,
+          sigName (funSignature fd) `elem` selectedNames
+      ]
+    renameMap = importedFunctionRenameMap qualifier allDecls
+    qualifyImpl fd
+      | sigName (funSignature fd) == Name "revert" =
+          [TFunDef fd]
+      | otherwise =
+          [TFunDef (qualifyFunctionImpl renameMap qualifier fd)]
+    wrapSelected fd
+      | sigName (funSignature fd) == Name "revert" =
+          []
+      | otherwise =
+          [TFunDef (importOnlyFunctionWrapper qualifier fd)]
+
+importOnlyFunctionWrapper :: Name -> FunDef -> FunDef
+importOnlyFunctionWrapper qualifier (FunDef sig _body) =
+  FunDef
+    sig
+    wrapperBody
+  where
+    originalName = sigName sig
+    implName = hiddenFunctionName qualifier originalName
+    argNames = map sigParamName (sigParams sig)
+    wrapperBody = [Return (ExpName Nothing implName (map (ExpVar Nothing) argNames))]
+
+functionDependencyClosure :: Map Name [Name] -> [Name] -> [Name]
+functionDependencyClosure depMap seeds = reverse (go Set.empty seeds [])
+  where
+    go :: Set Name -> [Name] -> [Name] -> [Name]
+    go _ [] acc = acc
+    go seen (n : pending) acc
+      | n `Set.member` seen = go seen pending acc
+      | otherwise =
+          let deps = Map.findWithDefault [] n depMap
+           in go (Set.insert n seen) (deps ++ pending) (n : acc)
+
+funDefFunctionRefs :: FunDef -> [Name]
+funDefFunctionRefs (FunDef _ body) =
+  bodyFunctionRefs body
+
+bodyFunctionRefs :: Body -> [Name]
+bodyFunctionRefs =
+  concatMap stmtFunctionRefs
+
+stmtFunctionRefs :: Stmt -> [Name]
+stmtFunctionRefs (Assign lhs rhs) =
+  expFunctionRefs lhs ++ expFunctionRefs rhs
+stmtFunctionRefs (StmtPlusEq e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+stmtFunctionRefs (StmtMinusEq e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+stmtFunctionRefs (Let _ _ me) =
+  maybe [] expFunctionRefs me
+stmtFunctionRefs (StmtExp e) =
+  expFunctionRefs e
+stmtFunctionRefs (Return e) =
+  expFunctionRefs e
+stmtFunctionRefs (Match es eqns) =
+  concatMap expFunctionRefs es ++ concatMap equationFunctionRefs eqns
+stmtFunctionRefs (Asm _) =
+  []
+stmtFunctionRefs (If e blk1 blk2) =
+  expFunctionRefs e ++ bodyFunctionRefs blk1 ++ bodyFunctionRefs blk2
+
+equationFunctionRefs :: Equation -> [Name]
+equationFunctionRefs (_pats, body) =
+  bodyFunctionRefs body
+
+expFunctionRefs :: Exp -> [Name]
+expFunctionRefs (Lit _) = []
+expFunctionRefs (ExpName me n es) =
+  directRef ++ maybe [] expFunctionRefs me ++ concatMap expFunctionRefs es
+  where
+    directRef =
+      case me of
+        Nothing -> [n]
+        _ -> maybe [] pure (qualifiedMemberName me n)
+expFunctionRefs (ExpVar me n) =
+  directRef ++ maybe [] expFunctionRefs me
+  where
+    directRef =
+      case me of
+        Nothing -> [n]
+        _ -> maybe [] pure (qualifiedMemberName me n)
+expFunctionRefs (ExpDotName _ es) =
+  concatMap expFunctionRefs es
+expFunctionRefs (ExpDotVar _) = []
+expFunctionRefs (Lam _ body _mt) =
+  bodyFunctionRefs body
+expFunctionRefs (TyExp e _ty) =
+  expFunctionRefs e
+expFunctionRefs (ExpIndexed e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpPlus e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpMinus e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpTimes e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpDivide e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpModulo e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpLT e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpGT e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpLE e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpGE e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpEE e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpNE e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpLAnd e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpLOr e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpLNot e) =
+  expFunctionRefs e
+expFunctionRefs (ExpCond e1 e2 e3) =
+  expFunctionRefs e1 ++ expFunctionRefs e2 ++ expFunctionRefs e3
 
 renameTopDeclFunctionCalls :: Map Name Name -> TopDecl -> TopDecl
 renameTopDeclFunctionCalls renameMap (TInstDef inst) =
@@ -668,7 +862,8 @@ shadowImportedDecls localDecls =
     initialSeen =
       ( concatMap topDeclTermNames localDecls,
         concatMap topDeclTypeNames localDecls,
-        concatMap topDeclClassNames localDecls
+        concatMap topDeclClassNames localDecls,
+        [inst | TInstDef inst <- localDecls]
       )
 
     step (seen, acc) decl =
@@ -676,37 +871,42 @@ shadowImportedDecls localDecls =
         (seen', Just decl') -> (seen', decl' : acc)
         (seen', Nothing) -> (seen', acc)
 
-    filterDecl (termNames, typeNames, classNames) d@(TFunDef (FunDef sig _))
-      | sigName sig `elem` termNames = ((termNames, typeNames, classNames), Nothing)
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TFunDef (FunDef sig _))
+      | sigName sig `elem` termNames = ((termNames, typeNames, classNames, instDecls), Nothing)
       | otherwise =
-          ( (sigName sig : termNames, typeNames, classNames),
+          ( (sigName sig : termNames, typeNames, classNames, instDecls),
             Just d
           )
-    filterDecl (termNames, typeNames, classNames) d@(TSym (TySym n _ _))
-      | n `elem` typeNames = ((termNames, typeNames, classNames), Nothing)
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TSym (TySym n _ _))
+      | n `elem` typeNames = ((termNames, typeNames, classNames, instDecls), Nothing)
       | otherwise =
-          ( (termNames, n : typeNames, classNames),
+          ( (termNames, n : typeNames, classNames, instDecls),
             Just d
           )
-    filterDecl (termNames, typeNames, classNames) d@(TClassDef (Class _ _ n _ _ _))
-      | n `elem` classNames = ((termNames, typeNames, classNames), Nothing)
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TClassDef (Class _ _ n _ _ _))
+      | n `elem` classNames = ((termNames, typeNames, classNames, instDecls), Nothing)
       | otherwise =
-          ( (termNames, typeNames, n : classNames),
+          ( (termNames, typeNames, n : classNames, instDecls),
             Just d
           )
-    filterDecl (termNames, typeNames, classNames) d@(TContr (Contract n _ _))
-      | n `elem` typeNames = ((termNames, typeNames, classNames), Nothing)
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TContr (Contract n _ _))
+      | n `elem` typeNames = ((termNames, typeNames, classNames, instDecls), Nothing)
       | otherwise =
-          ( (termNames, n : typeNames, classNames),
+          ( (termNames, n : typeNames, classNames, instDecls),
             Just d
           )
-    filterDecl (termNames, typeNames, classNames) (TDataDef (DataTy n ts cs))
-      | n `elem` typeNames = ((termNames, typeNames, classNames), Nothing)
+    filterDecl (termNames, typeNames, classNames, instDecls) (TDataDef (DataTy n ts cs))
+      | n `elem` typeNames = ((termNames, typeNames, classNames, instDecls), Nothing)
       | otherwise =
-          ( (termNames, n : typeNames, classNames),
+          ( (termNames, n : typeNames, classNames, instDecls),
             Just (TDataDef (DataTy n ts cs))
           )
-    filterDecl seen d@(TInstDef _) = (seen, Just d)
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TInstDef inst)
+      | inst `elem` instDecls = ((termNames, typeNames, classNames, instDecls), Nothing)
+      | otherwise =
+          ( (termNames, typeNames, classNames, inst : instDecls),
+            Just d
+          )
     filterDecl seen (TExportDecl _) = (seen, Nothing)
     filterDecl seen (TPragmaDecl _) = (seen, Nothing)
 

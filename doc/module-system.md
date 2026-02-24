@@ -61,7 +61,7 @@ Namespaces are split:
 
 The same spelling can appear once in each namespace. Duplicates in the same namespace are errors.
 
-## Dot Constructor Shorthand (Candidate C)
+## Dot Constructor Shorthand
 
 The parser supports contextual constructor shorthand:
 
