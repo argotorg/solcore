@@ -367,7 +367,11 @@ qualifyFunctionImpl renameMap qualifier (FunDef sig body) =
 
 hiddenFunctionName :: Name -> Name -> Name
 hiddenFunctionName qualifier originalName =
-  QualName qualifier ("$impl$" ++ show originalName)
+  QualName qualifier ("$impl$" ++ flattenName originalName)
+
+flattenName :: Name -> String
+flattenName (Name n) = n
+flattenName (QualName q n) = flattenName q ++ "_" ++ n
 
 sigParamName :: Param -> Name
 sigParamName (Typed n _) = n
