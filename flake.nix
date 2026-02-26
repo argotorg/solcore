@@ -25,16 +25,20 @@
         hspkgs = pkgs.haskell.packages.ghc98;
 
         gitignore = pkgs.nix-gitignore.gitignoreSourcePure [ ./.gitignore ];
-        sol-core = hspkgs.callCabal2nix "sol-core" (gitignore ./.) { };
+        sol-core = pkgs.haskell.lib.overrideCabal
+          (hspkgs.callCabal2nix "sol-core" (gitignore ./.) { })
+          (_: {
+            # Keep package-level checks focused on unit tests.
+            # Contract tests run in checks.contests where evmone/testrunner are provisioned.
+            testTargets = [ "sol-core-tests" ];
+          });
         texlive = pkgs.texlive.combine { inherit (pkgs.texlive) scheme-small thmtools pdfsync lkproof cm-super; };
-        intx = pkgs.callPackage ./nix/intx.nix { };
-        blst = pkgs.callPackage ./nix/blst.nix { };
-        evmone-lib = pkgs.callPackage ./nix/evmone.nix { inherit intx blst; };
+        evmone-lib = pkgs.callPackage ./nix/evmone.nix { };
 
         testrunner = pkgs.stdenv.mkDerivation {
           pname = "testrunner";
           version = "0.0";
-          src = ./.;
+          src = gitignore ./.;
 
           nativeBuildInputs = [ pkgs.cmake ];
           buildInputs = [ pkgs.boost pkgs.nlohmann_json ];
@@ -53,8 +57,6 @@
         packages.sol-core = sol-core;
         packages.spec = pkgs.callPackage ./spec { solcoreTexlive = texlive; };
         packages.testrunner = testrunner;
-        packages.intx = intx;
-        packages.blst = blst;
         packages.evmone = evmone-lib;
         packages.default = packages.sol-core;
 
@@ -74,7 +76,7 @@
           contests = pkgs.stdenv.mkDerivation {
             pname = "solcore-contests";
             version = "0.0";
-            src = ./.;
+            src = gitignore ./.;
 
             nativeBuildInputs = [ pkgs.cmake ];
             buildInputs = [
@@ -105,7 +107,14 @@
               export SOLCORE_CMD="sol-core"
               export YULE_CMD="yule"
               export testrunner_exe=build/test/testrunner/testrunner
-              export evmone=${evmone-lib}/lib/libevmone.so
+              if [[ -f "${evmone-lib}/lib/libevmone.so" ]]; then
+                export evmone=${evmone-lib}/lib/libevmone.so
+              elif [[ -f "${evmone-lib}/lib/libevmone.dylib" ]]; then
+                export evmone=${evmone-lib}/lib/libevmone.dylib
+              else
+                echo "libevmone shared library not found in ${evmone-lib}/lib" >&2
+                exit 1
+              fi
 
               # Run contest tests
               bash run_contests.sh

@@ -1,6 +1,15 @@
-{ lib, stdenv, cmake, fetchFromGitHub, intx, blst }:
+{ lib, stdenv, cmake, fetchFromGitHub, callPackage }:
 
 let
+  # Keep these in sync with evmone's own CMake pins:
+  # - cmake/Hunter/config.cmake (intx)
+  # - cmake/blst.cmake (blst)
+  intx = callPackage ./intx.nix { };
+  blst = callPackage ./blst.nix { };
+
+  intxVersion = "0.14.0";
+  blstVersion = "0.3.15";
+
   src = fetchFromGitHub {
     owner = "ipsilon";
     repo = "evmone";
@@ -22,6 +31,16 @@ stdenv.mkDerivation {
   # Create dummy .git directory to satisfy CMakeLists.txt check
   # Disable Hunter package manager and use Nix-provided dependencies
   preConfigure = ''
+    if ! grep -q "VERSION ${intxVersion}" cmake/Hunter/config.cmake; then
+      echo "evmone pinned intx version changed; update nix/intx.nix and nix/evmone.nix" >&2
+      exit 1
+    fi
+
+    if ! grep -q "archive/refs/tags/v${blstVersion}.tar.gz" cmake/blst.cmake; then
+      echo "evmone pinned blst version changed; update nix/blst.nix and nix/evmone.nix" >&2
+      exit 1
+    fi
+
     mkdir -p evmc/.git
 
     # Stub out Hunter to prevent network access
@@ -44,9 +63,15 @@ EOF
   '';
 
   cmakeFlags = [
+    # Keep tests off in this package; this avoids pulling Hunter-only test deps
+    # (including nlohmann_json) into evmone runtime builds.
     "-DEVMONE_TESTING=OFF"
     "-DBUILD_SHARED_LIBS=ON"
   ];
+
+  passthru = {
+    inherit intx blst intxVersion blstVersion;
+  };
 
   # CMake handles installation automatically
 }
