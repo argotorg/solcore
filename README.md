@@ -24,15 +24,21 @@ cabal repl
 # build the project
 cabal build
 
-# run Haskell unit tests
+# run unit tests only
+cabal test sol-core-tests
+
+# run contract integration tests through cabal
+# (auto-builds testrunner, auto-detects evmone; fails if deps are missing)
+cabal test sol-core-contract-test
+
+# run every test suite
 cabal test
 
 # build the C++ testrunner (for integration tests)
 cmake -S . -B build
 cmake --build build --target testrunner
 
-# run integration tests (requires testrunner built above)
-export testrunner_exe=build/test/testrunner/testrunner
+# run integration tests directly (requires evmone)
 bash run_contests.sh
 
 # run integration tests via Nix (builds everything automatically)
@@ -113,6 +119,9 @@ The project includes a C++ testrunner that executes end-to-end integration tests
 The testrunner requires cmake and boost, which are available in the `nix develop` shell:
 
 ```bash
+# If the repo was cloned without submodules, initialize JSON dependency:
+git submodule update --init deps/nlohmann_json
+
 # Build the testrunner binary
 cmake -S . -B build
 cmake --build build --target testrunner
@@ -121,19 +130,33 @@ cmake --build build --target testrunner
 
 ### Running Integration Tests
 
-**Option 1: Manual execution (requires testrunner built above)**
+**Option 1: Via cabal (recommended for local development)**
 ```bash
-export testrunner_exe=build/test/testrunner/testrunner
+cabal test sol-core-contract-test
+```
+
+The cabal suite:
+- Reuses `run_contests.sh`
+- Builds `testrunner` automatically if missing
+- Auto-detects `libevmone` from common locations
+- Fails by default if dependencies are unavailable
+
+Set `SOLCORE_CONTRACT_TESTS_ALLOW_SKIP=1` only if you explicitly want dependency-related skips.
+
+**Option 2: Manual execution**
+```bash
 bash run_contests.sh
 ```
 
-**Option 2: Via Nix (recommended - builds everything automatically)**
+Manual mode is strict: if `testrunner` or `evmone` is missing, the script fails.
+
+**Option 3: Via Nix (builds everything automatically)**
 ```bash
 nix flake check
 ```
 
 The Nix approach automatically:
-- Builds the testrunner with all dependencies (evmone, intx, blst)
+- Builds the testrunner with all dependencies (including evmone with pinned intx/blst)
 - Compiles test contracts through the full pipeline
 - Executes tests and verifies results
 
