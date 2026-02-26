@@ -20,7 +20,7 @@ if [[ ! -f "$file" ]]; then
 fi
 
 echo "Processing: $file"
-root_dir="$(cd "$(dirname "$(readlink --canonicalize "${BASH_SOURCE[0]}")")" && pwd)"
+root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 test_dir=$(dirname $file)
 build_dir="$root_dir/build"
 base=$(basename "$file" .json)
@@ -30,10 +30,50 @@ hexfile="$build_dir/$base.hex"
 yulfile="$build_dir/$base.yul"
 
 create=true
-# Allow overriding evmone location (useful for Nix builds)
-: ${evmone:=~/.local/lib/libevmone.so}
 # Allow overriding testrunner location (useful for Nix builds)
-: ${testrunner_exe:="test/testrunner/testrunner"}
+if [[ -z "${testrunner_exe:-}" ]]; then
+    if [[ -x "$root_dir/build/test/testrunner/testrunner" ]]; then
+        testrunner_exe="$root_dir/build/test/testrunner/testrunner"
+    else
+        testrunner_exe="$root_dir/test/testrunner/testrunner"
+    fi
+fi
+
+# Allow overriding evmone location (useful for Nix builds)
+if [[ -z "${evmone:-}" ]]; then
+    evmone_candidates=(
+        "$root_dir/result/lib/libevmone.so"
+        "$HOME/.local/lib/libevmone.so"
+        "$HOME/.local/lib/libevmone.dylib"
+        "/opt/homebrew/lib/libevmone.dylib"
+        "/usr/local/lib/libevmone.dylib"
+        "/usr/local/lib/libevmone.so"
+        "/lib/x86_64-linux-gnu/libevmone.so"
+        "/usr/lib/x86_64-linux-gnu/libevmone.so"
+        "/usr/lib/libevmone.so"
+    )
+    for candidate in "${evmone_candidates[@]}"; do
+        if [[ -f "$candidate" ]]; then
+            evmone="$candidate"
+            break
+        fi
+    done
+fi
+
+if [[ -z "${evmone:-}" ]]; then
+    echo "Error: libevmone not found. Set evmone=/path/to/libevmone.{so,dylib}"
+    exit 1
+fi
+
+if [[ ! -f "$evmone" ]]; then
+    echo "Error: evmone library not found at '$evmone'"
+    exit 1
+fi
+
+if [[ ! -x "$testrunner_exe" ]]; then
+    echo "Error: testrunner not found or not executable at '$testrunner_exe'"
+    exit 1
+fi
 
 presuite=$(jq keys[0] $file)
 suite=$(echo $presuite | tr -d '"')
@@ -77,6 +117,6 @@ fi
 
 echo "Hex output: $hexfile"
 
-jq ".$suite.bytecode |= \"$(cat $hexfile)\" " $file  > $build_dir/$suite.json
+jq ".$suite.bytecode |= \"$(cat $hexfile)\" " $file > $build_dir/$suite.json
 
-$testrunner_exe $evmone $build_dir/$suite.json $build_dir/$suite-output.json
+"$testrunner_exe" "$evmone" "$build_dir/$suite.json" "$build_dir/$suite-output.json"
