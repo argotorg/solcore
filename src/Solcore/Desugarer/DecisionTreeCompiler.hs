@@ -178,24 +178,24 @@ buildConSwitch testOcc restOccs restTys matrix acts headCons = do
       (k,) <$> compileMatrix newTys newOccs specMat specActs
 
     buildDefault =
-      let defMat  = defaultMatrix matrix
+      let defMat = defaultMatrix matrix
           defActs = defaultActions matrix acts
-      in if null defMat
-           then do
-             witPats <- case headCons of
-               [] -> mapM freshPat restTys
-               (first : _) -> do
-                 siblings <- siblingConstructors first
-                 let missing = siblings \\ headCons
-                 case missing of
-                   (k : _) -> do
-                     info <- lookupConInfo (idName k)
-                     fieldPats <- mapM freshPat (conFieldTypes info)
-                     pure [PCon k fieldPats]
-                   [] -> mapM freshPat restTys
-             tell [NonExhaustive witPats]
-             pure (Just Fail)
-           else Just <$> compileMatrix restTys restOccs defMat defActs
+       in if null defMat
+            then do
+              witPats <- case headCons of
+                [] -> mapM freshPat restTys
+                (first : _) -> do
+                  siblings <- siblingConstructors first
+                  let missing = siblings \\ headCons
+                  case missing of
+                    (k : _) -> do
+                      info <- lookupConInfo (idName k)
+                      fieldPats <- mapM freshPat (conFieldTypes info)
+                      pure [PCon k fieldPats]
+                    [] -> mapM freshPat restTys
+              tell [NonExhaustive witPats]
+              pure (Just Fail)
+            else Just <$> compileMatrix restTys restOccs defMat defActs
 
 buildLitSwitch ::
   Occurrence ->
@@ -343,7 +343,7 @@ inhabitsConCol :: PatternMatrix -> [Ty] -> [Id] -> CompilerM (Maybe [Pattern])
 inhabitsConCol matrix restTys (firstCon : otherCons) = do
   siblings <- siblingConstructors firstCon
   let headCons = firstCon : otherCons
-      missing   = filter (\s -> idName s `notElem` map idName headCons) siblings
+      missing = filter (\s -> idName s `notElem` map idName headCons) siblings
   case missing of
     (k : _) -> do
       info <- lookupConInfo (idName k)
@@ -403,8 +403,13 @@ siblingConstructors k = do
   pure [idFromInfo kid ci | (kid, ci) <- Map.toList env, conReturnType ci == rt]
 
 idFromInfo :: Name -> ConInfo -> Id
-idFromInfo n info = Id n (funtype (conFieldTypes info)
-                                  (conReturnType info))
+idFromInfo n info =
+  Id
+    n
+    ( funtype
+        (conFieldTypes info)
+        (conReturnType info)
+    )
 
 inc :: CompilerM Int
 inc = do
@@ -465,14 +470,15 @@ initialTypeEnv (CompUnit _ ds) =
     step _ ac = ac
 
 primEnv :: TypeEnv
-primEnv
-  = Map.fromList [ (unitName, unitConInfo)
-                 , (pairName, pairConInfo)
-                 , (inlName, inlConInfo)
-                 , (inrName, inrConInfo)
-                 , (trueName, trueConInfo)
-                 , (falseName, falseConInfo)
-                 ]
+primEnv =
+  Map.fromList
+    [ (unitName, unitConInfo),
+      (pairName, pairConInfo),
+      (inlName, inlConInfo),
+      (inrName, inrConInfo),
+      (trueName, trueConInfo),
+      (falseName, falseConInfo)
+    ]
 
 unitName :: Name
 unitName = Name "()"

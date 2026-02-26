@@ -13,10 +13,10 @@ import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ContractDispatch (contractDispatchDesugarer)
+import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
 import Solcore.Desugarer.FieldAccess (fieldDesugarer)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
-import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
 import Solcore.Frontend.Parser.SolcoreParser
@@ -26,8 +26,8 @@ import Solcore.Frontend.Syntax.NameResolution
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
-import Solcore.Primitives.Primitives
 import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
+import Solcore.Primitives.Primitives
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath
 import System.TimeIt qualified as TimeIt
