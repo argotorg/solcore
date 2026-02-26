@@ -16,7 +16,7 @@ import Solcore.Desugarer.ContractDispatch (contractDispatchDesugarer)
 import Solcore.Desugarer.FieldAccess (fieldDesugarer)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
-import Solcore.Desugarer.MatchCompiler (matchCompiler)
+import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
 import Solcore.Frontend.Parser.SolcoreParser
@@ -26,6 +26,7 @@ import Solcore.Frontend.Syntax.NameResolution
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
+import Solcore.Primitives.Primitives
 import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath
@@ -163,7 +164,10 @@ compile opts = runExceptT $ do
   matchless <-
     if noMatchCompiler
       then pure desugared
-      else ExceptT $ timeItNamed "Match compiler" $ matchCompiler desugared
+      else do
+        (ast, warns) <- ExceptT $ timeItNamed "Match compiler" $ matchCompiler desugared
+        unless (null warns) $ (liftIO $ mapM_ (putStrLn . showWarning) warns)
+        pure ast
 
   let printMatch = (not $ noMatchCompiler) && (verbose || optDumpDS opts)
   liftIO $ when printMatch $ do
