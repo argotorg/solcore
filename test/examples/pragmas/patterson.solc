@@ -1,4 +1,3 @@
-pragma no-patterson-condition ;
 
 forall self . class self:A {}
 forall self . class self:B {}

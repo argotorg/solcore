@@ -50,7 +50,6 @@ forall map index member.
     }
 }
 
-pragma no-coverage-condition LValueMemberAccess;
 
 data MintCtx = MintCtx;
 data balances_sel = balances_sel;

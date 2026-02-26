@@ -20,10 +20,6 @@ export {
   sigStr
 };
 
-pragma no-patterson-condition RunDispatch, ExecMethod;
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;

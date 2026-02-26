@@ -304,8 +304,6 @@ forall a b . a : StorageSize, b : StorageSize => instance (a, b) : StorageSize {
       return a_sz;
    }
 }
-pragma no-patterson-condition RValueMemberAccess ;
-pragma no-coverage-condition MemberAccessProxy, LValueMemberAccess, RValueMemberAccess ;
 forall cxt fieldSelector fieldType offsetType . StructField(ContractStorage(cxt), fieldSelector) : StructField (fieldType, offsetType), offsetType : StorageSize => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType) : LValueMemberAccess (storageRef(fieldType)) {
    function memberAccess (x : MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> storageRef(fieldType) {
       let ptr : word = 256 ;
@@ -439,5 +437,3 @@ contract Uint {
       return rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), msg_sender_sel)))):uint;
    }
 }
-
-

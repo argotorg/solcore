@@ -1,4 +1,3 @@
-pragma no-bounded-variable-condition ABIEncode, GenerateDispatch, Storable;
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
 

@@ -16,8 +16,6 @@ import NumLib;
 // -- std ends
 
 
-pragma no-patterson-condition RVA;
-pragma no-coverage-condition MemberAccessProxy, LVA, RVA, StructField;
 
 // -- storage
 

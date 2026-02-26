@@ -1,6 +1,5 @@
 export { helper };
 
-pragma no-coverage-condition ;
 
 function helper() -> word {
   return 1;
