@@ -1,5 +1,6 @@
 module Solcore.Desugarer.DecisionTreeCompiler where
 
+import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
@@ -22,7 +23,7 @@ matchCompiler cunit =
     case result of
       Left err -> pure $ Left err
       Right (unit', warns) -> do
-        let (nonExaustive, redundant) = partition isNonExautive warns
+        let (nonExaustive, redundant) = partition isNonExaustive warns
         if null nonExaustive
           then
             pure $ Right (unit', redundant)
@@ -114,7 +115,7 @@ compileMatrix ::
   CompilerM DecisionTree
 compileMatrix tys _ [] _ = do
   pats <- mapM freshPat tys
-  tell [NonExhaustive pats]
+  unless (null pats) $ tell [NonExhaustive pats]
   pure Fail
 -- First row is all wildcards/variables: unconditional match
 compileMatrix tys _ (firstRow : restRows) (firstAct : _)
@@ -168,7 +169,7 @@ buildConSwitch testOcc restOccs restTys matrix acts headCons = do
   pure (Switch testOcc branches mDefault)
   where
     buildBranch k = do
-      info <- lookupConInfo k
+      info <- lookupConInfo (idName k)
       let fieldTys = conFieldTypes info
           newOccs = childOccs testOcc (length fieldTys) ++ restOccs
           newTys = fieldTys ++ restTys
@@ -177,14 +178,24 @@ buildConSwitch testOcc restOccs restTys matrix acts headCons = do
       (k,) <$> compileMatrix newTys newOccs specMat specActs
 
     buildDefault =
-      let defMat = defaultMatrix matrix
+      let defMat  = defaultMatrix matrix
           defActs = defaultActions matrix acts
-       in if null defMat
-            then do
-              pats <- mapM freshPat restTys
-              tell [NonExhaustive pats]
-              pure (Just Fail)
-            else Just <$> compileMatrix restTys restOccs defMat defActs
+      in if null defMat
+           then do
+             witPats <- case headCons of
+               [] -> mapM freshPat restTys
+               (first : _) -> do
+                 siblings <- siblingConstructors first
+                 let missing = siblings \\ headCons
+                 case missing of
+                   (k : _) -> do
+                     info <- lookupConInfo (idName k)
+                     fieldPats <- mapM freshPat (conFieldTypes info)
+                     pure [PCon k fieldPats]
+                   [] -> mapM freshPat restTys
+             tell [NonExhaustive witPats]
+             pure (Just Fail)
+           else Just <$> compileMatrix restTys restOccs defMat defActs
 
 buildLitSwitch ::
   Occurrence ->
@@ -298,7 +309,7 @@ occToExp es occ = case occ of
 
 conBranchToEqn :: [Exp Id] -> (Id, DecisionTree) -> CompilerM (PatternRow, Action)
 conBranchToEqn es (k, tree) = do
-  info <- lookupConInfo k
+  info <- lookupConInfo (idName k)
   -- Generate one fresh variable pattern per field so the sub-expressions
   -- introduced by childOccs can be referred to in the nested tree.
   fieldPats <- mapM freshPat (conFieldTypes info)
@@ -332,10 +343,10 @@ inhabitsConCol :: PatternMatrix -> [Ty] -> [Id] -> CompilerM (Maybe [Pattern])
 inhabitsConCol matrix restTys (firstCon : otherCons) = do
   siblings <- siblingConstructors firstCon
   let headCons = firstCon : otherCons
-      missing = siblings \\ headCons
+      missing   = filter (\s -> idName s `notElem` map idName headCons) siblings
   case missing of
     (k : _) -> do
-      info <- lookupConInfo k
+      info <- lookupConInfo (idName k)
       let fieldTys = conFieldTypes info
       mw <- inhabitsM (defaultMatrix matrix) (fieldTys ++ restTys)
       case mw of
@@ -348,7 +359,7 @@ inhabitsConCol matrix restTys (firstCon : otherCons) = do
       pure (listToMaybe (catMaybes results))
   where
     searchBranch k = do
-      info <- lookupConInfo k
+      info <- lookupConInfo (idName k)
       let fieldTys = conFieldTypes info
       specMat <- specialize k fieldTys matrix
       mw <- inhabitsM specMat (fieldTys ++ restTys)
@@ -377,7 +388,7 @@ runCompilerM env m =
       Left err -> pure $ Left err
       Right t -> pure $ Right (t, ws)
 
-lookupConInfo :: Id -> CompilerM ConInfo
+lookupConInfo :: Name -> CompilerM ConInfo
 lookupConInfo k = do
   env <- ask
   case Map.lookup k env of
@@ -387,9 +398,13 @@ lookupConInfo k = do
 siblingConstructors :: Id -> CompilerM [Id]
 siblingConstructors k = do
   env <- ask
-  info <- lookupConInfo k
+  info <- lookupConInfo (idName k)
   let rt = conReturnType info
-  pure [kid | (kid, ci) <- Map.toList env, conReturnType ci == rt]
+  pure [idFromInfo kid ci | (kid, ci) <- Map.toList env, conReturnType ci == rt]
+
+idFromInfo :: Name -> ConInfo -> Id
+idFromInfo n info = Id n (funtype (conFieldTypes info)
+                                  (conReturnType info))
 
 inc :: CompilerM Int
 inc = do
@@ -407,7 +422,9 @@ isComplete :: [Id] -> CompilerM Bool
 isComplete [] = pure False
 isComplete ks@(first : _) = do
   siblings <- siblingConstructors first
-  pure (null (siblings \\ ks))
+  let siblingNames = map idName siblings
+      ksNames = map idName ks
+  pure (null (siblingNames \\ ksNames))
 
 -- some types used by the algorithm
 
@@ -430,7 +447,7 @@ data DecisionTree
 
 -- data constructor information and environment
 
-type TypeEnv = Map Id ConInfo
+type TypeEnv = Map Name ConInfo
 
 data ConInfo
   = ConInfo
@@ -441,11 +458,45 @@ data ConInfo
 
 initialTypeEnv :: CompUnit Id -> TypeEnv
 initialTypeEnv (CompUnit _ ds) =
-  foldr step Map.empty ds
+  foldr step primEnv ds
   where
     step (TDataDef dt) ac = addDataTyInfo dt ac
     step (TMutualDef ds1) ac = foldr step ac ds1
     step _ ac = ac
+
+primEnv :: TypeEnv
+primEnv
+  = Map.fromList [ (unitName, unitConInfo)
+                 , (pairName, pairConInfo)
+                 , (inlName, inlConInfo)
+                 , (inrName, inrConInfo)
+                 , (trueName, trueConInfo)
+                 , (falseName, falseConInfo)
+                 ]
+
+unitName :: Name
+unitName = Name "()"
+
+unitConInfo :: ConInfo
+unitConInfo = ConInfo [] unit
+
+pairName :: Name
+pairName = Name "pair"
+
+pairConInfo :: ConInfo
+pairConInfo = ConInfo [at, bt] (pairTy at bt)
+
+inlConInfo :: ConInfo
+inlConInfo = ConInfo [at] (inlTy at bt)
+
+inrConInfo :: ConInfo
+inrConInfo = ConInfo [bt] (inlTy at bt)
+
+trueConInfo :: ConInfo
+trueConInfo = ConInfo [] boolTy
+
+falseConInfo :: ConInfo
+falseConInfo = ConInfo [] boolTy
 
 addDataTyInfo :: DataTy -> TypeEnv -> TypeEnv
 addDataTyInfo (DataTy n vs cons) env =
@@ -455,9 +506,7 @@ addDataTyInfo (DataTy n vs cons) env =
 
 addConstructor :: Ty -> Constr -> TypeEnv -> TypeEnv
 addConstructor ty (Constr n ts) env =
-  Map.insert c (ConInfo ts ty) env
-  where
-    c = Id n (funtype ts ty)
+  Map.insert n (ConInfo ts ty) env
 
 -- matrix specialization
 
@@ -583,11 +632,11 @@ patHeadLit _ = Nothing
 data Warning
   = RedundantClause PatternRow Action
   | NonExhaustive [Pattern]
-  deriving (Show)
+  deriving (Eq, Show)
 
-isNonExautive :: Warning -> Bool
-isNonExautive (NonExhaustive _) = True
-isNonExautive _ = False
+isNonExaustive :: Warning -> Bool
+isNonExaustive (NonExhaustive _) = True
+isNonExaustive _ = False
 
 -- Pretty-print a warning
 
@@ -595,15 +644,15 @@ showWarning :: Warning -> String
 showWarning (RedundantClause row blk) =
   unwords ["Warning: Clause ", "(", pretty (row, blk), ") is redundant."]
 showWarning (NonExhaustive pats) =
-  unwords ["Non-exhaustive pattern match. Missing case:", showRow pats]
+  unwords ["Non-exhaustive pattern match. Missing case:", showRow $ nub pats]
 
 showRow :: [Pattern] -> String
 showRow = intercalate ", " . map pretty
 
 -- error messages
 
-undefinedConstructorError :: Id -> CompilerM a
-undefinedConstructorError (Id n _) =
+undefinedConstructorError :: Name -> CompilerM a
+undefinedConstructorError n =
   throwError $
     unlines
       [ "PANIC!",

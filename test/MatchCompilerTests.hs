@@ -101,15 +101,15 @@ idCons = Id (Name "Cons") (funtype [tyBool, tyList] tyList)
 boolEnv :: TypeEnv
 boolEnv =
   Map.fromList
-    [ (idTrue, ConInfo {conFieldTypes = [], conReturnType = tyBool}),
-      (idFalse, ConInfo {conFieldTypes = [], conReturnType = tyBool})
+    [ (idName idTrue, ConInfo {conFieldTypes = [], conReturnType = tyBool}),
+      (idName idFalse, ConInfo {conFieldTypes = [], conReturnType = tyBool})
     ]
 
 listEnv :: TypeEnv
 listEnv =
   Map.fromList
-    [ (idNil, ConInfo {conFieldTypes = [], conReturnType = tyList}),
-      (idCons, ConInfo {conFieldTypes = [tyBool, tyList], conReturnType = tyList})
+    [ (idName idNil, ConInfo {conFieldTypes = [], conReturnType = tyList}),
+      (idName idCons, ConInfo {conFieldTypes = [tyBool, tyList], conReturnType = tyList})
     ]
 
 patTrue :: Pattern
