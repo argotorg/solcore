@@ -3,6 +3,7 @@ module Solcore.Frontend.Module.Loader
     loadModuleGraph,
     flattenModuleValidationCompUnit,
     flattenModuleStrictCompileCompUnit,
+    flattenModuleStrictCompileCompUnitWithImportedStart,
     flattenModuleStrictValidationCompUnit,
     flattenModuleCompUnit,
     loadCompUnit,
@@ -158,14 +159,25 @@ flattenModuleValidationCompUnit graph modulePath = do
   pure (CompUnit (imports unit) (qualifiedDecls ++ importedDecls ++ topDeclsFrom unit))
 
 flattenModuleStrictCompileCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
-flattenModuleStrictCompileCompUnit graph modulePath = do
+flattenModuleStrictCompileCompUnit graph modulePath =
+  fst <$> flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath
+
+flattenModuleStrictCompileCompUnitWithImportedStart ::
+  ModuleGraph ->
+  FilePath ->
+  Either String (CompUnit, Int)
+flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath = do
   (unit, importPairs) <- prepareFlattenContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <- concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = shadowImportedDecls localDecls importedDecls
-  pure (CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls))
+      importedStart = length qualifiedDecls + length localDecls
+  pure
+    ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
+      importedStart
+    )
 
 flattenModuleStrictValidationCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
 flattenModuleStrictValidationCompUnit graph modulePath = do
@@ -933,8 +945,9 @@ strictCompileImportedDecls collidingTypeNames graph (imp, modulePath) =
       let renameMap = importedFunctionRenameMap qualifier allDecls
           typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
       pure $
-        map (renameTopDeclTypeRefs typeRenameMap . renameTopDeclFunctionCalls renameMap) $
-          filter (not . isFunctionTopDecl) publicDecls
+        map
+          (renameTopDeclTypeRefs typeRenameMap . renameTopDeclFunctionCalls renameMap)
+          (filter (not . isFunctionTopDecl) publicDecls)
 
 importedFunctionRenameMap :: Name -> [TopDecl] -> Map Name Name
 importedFunctionRenameMap qualifier ds =

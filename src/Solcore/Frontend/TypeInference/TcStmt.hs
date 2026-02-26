@@ -920,6 +920,7 @@ checkConstraints = mapM_ checkConstraint
 checkInstance :: Instance Name -> TcM ()
 checkInstance idef@(Instance d vs ctx n ts t funs) =
   do
+    trustedImported <- isTrustedImportedInstance idef
     -- checking if all variables are declared
     checkAllTypeVarsBound idef (bv idef) vs
     -- kind check all types in instance head
@@ -943,13 +944,13 @@ checkInstance idef@(Instance d vs ctx n ts t funs) =
     -- check if default instance has a type variable as main argument.
     when d (checkDefaultInst (ctx :=> ipred) `wrapError` idef)
     coverage <- askCoverage n
-    unless coverage (checkCoverage n ts t `wrapError` idef)
+    unless (trustedImported || coverage) (checkCoverage n ts t `wrapError` idef)
     -- checking Patterson condition
     patterson <- askPattersonCondition n
-    unless patterson (checkMeasure ctx ipred `wrapError` idef)
+    unless (trustedImported || patterson) (checkMeasure ctx ipred `wrapError` idef)
     -- checking bound variable condition
     bound <- askBoundVariableCondition n
-    unless bound (checkBoundVariable ctx (bv (t : ts)) `wrapError` idef)
+    unless (trustedImported || bound) (checkBoundVariable ctx (bv (t : ts)) `wrapError` idef)
     -- checking instance methods
     mapM_ (checkMethod ipred) funs `wrapError` idef
     let ninst = anfInstance $ ctx :=> InCls n t ts

@@ -146,6 +146,10 @@ data Instance a
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
+instanceHeadKey :: Instance a -> (Bool, Name, [Ty], Ty)
+instanceHeadKey inst =
+  (instDefault inst, instName inst, paramsTy inst, mainTy inst)
+
 -- definition of contract field variables
 
 data Field a

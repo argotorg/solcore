@@ -87,6 +87,8 @@ type InstTable = Table [Inst]
 
 type DefTable = Table Inst
 
+type InstanceHead = (Bool, Name, [Ty], Ty)
+
 data TcEnv
   = TcEnv
   { ctx :: Env, -- Variable environment
@@ -110,6 +112,7 @@ data TcEnv
     coverage :: PragmaStatus, -- Disable coverage checking for names.
     patterson :: PragmaStatus, -- Disable Patterson condition for names.
     boundVariable :: PragmaStatus, -- Disable bound variable condition for names.
+    trustedInstanceHeads :: [InstanceHead], -- Imported instances trusted by module boundary.
     maxRecursionDepth :: Int, -- max recursion depth in
     -- context reduction
     tcOptions :: Option
@@ -142,6 +145,7 @@ initTcEnv options =
       coverage = Enabled,
       patterson = Enabled,
       boundVariable = Enabled,
+      trustedInstanceHeads = [],
       maxRecursionDepth = 100,
       tcOptions = options
     }

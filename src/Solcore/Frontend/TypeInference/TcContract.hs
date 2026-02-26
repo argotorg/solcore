@@ -28,9 +28,20 @@ typeInfer ::
   Option ->
   CompUnit Name ->
   IO (Either String (CompUnit Id, TcEnv))
-typeInfer options (CompUnit imps decls) =
+typeInfer options =
+  typeInferWithTrustedInstanceHeads options []
+
+typeInferWithTrustedInstanceHeads ::
+  Option ->
+  [InstanceHead] ->
+  CompUnit Name ->
+  IO (Either String (CompUnit Id, TcEnv))
+typeInferWithTrustedInstanceHeads options trustedInstances (CompUnit imps decls) =
   do
-    r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options)
+    r <-
+      runTcM
+        (tcCompUnit (CompUnit imps decls))
+        ((initTcEnv options) {trustedInstanceHeads = trustedInstances})
     case r of
       Left err1 -> pure $ Left err1
       Right (CompUnit _ ds, env) -> do
