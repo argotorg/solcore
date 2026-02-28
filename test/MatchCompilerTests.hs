@@ -68,8 +68,8 @@ isRedundant :: Warning -> Bool
 isRedundant (RedundantClause _ _) = True
 isRedundant _ = False
 
-branchNames :: [(Id, DecisionTree)] -> [String]
-branchNames bs = sort [nameOf (idName k) | (k, _) <- bs]
+branchNames :: [(Id, [Pattern], DecisionTree)] -> [String]
+branchNames bs = sort [nameOf (idName k) | (k, _, _) <- bs]
   where
     nameOf n = pretty n
 
@@ -283,7 +283,7 @@ test_twoColumn_completeCover_noWarnings =
     $ \tree warns -> do
       case tree of
         Switch _ outerBranches Nothing -> do
-          mapM_ (assertInnerHasNoDefault . snd) outerBranches
+          mapM_ (\(_, _, t) -> assertInnerHasNoDefault t) outerBranches
           assertBool "should have no warnings" (null warns)
         _ ->
           assertFailure
