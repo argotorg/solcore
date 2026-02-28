@@ -68,7 +68,6 @@ library
       Solcore.Desugarer.FieldAccess
       Solcore.Desugarer.IfDesugarer
       Solcore.Desugarer.IndirectCall
-      Solcore.Desugarer.MatchCompiler
       Solcore.Desugarer.ReplaceWildcard
       Solcore.Desugarer.ContractDispatch
       Solcore.Desugarer.ReplaceFunTypeArgs
@@ -161,6 +160,7 @@ test-suite sol-core-tests
   -- cabal-fmt: expand test -Main
   other-modules:
     Cases
+    MatchCompilerTests
 
   build-depends:
     , sol-core
