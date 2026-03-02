@@ -454,7 +454,6 @@ instance Resolve S.Exp where
   type Result S.Exp = Exp Name
 
   resolve (S.Lit l) = Lit <$> resolve l
-  resolve (S.ExpDotVar n) = pure (Con (dotConstructorMarker n) [])
   resolve e@(S.ExpDotName n es) =
     Con (dotConstructorMarker n) <$> resolve es `wrapError` e
   resolve e@(S.Lam ps bd mt) =

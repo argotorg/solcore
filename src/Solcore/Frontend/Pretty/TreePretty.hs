@@ -288,8 +288,6 @@ instance Pretty Exp where
       <> parensWhen
         (not $ null es)
         (commaSep (map ppr es))
-  ppr (ExpDotVar v) =
-    char '.' <> ppr v
   ppr (Lam args bd _) =
     text "lam"
       <+> pprParams args

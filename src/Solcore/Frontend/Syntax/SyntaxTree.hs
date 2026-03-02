@@ -225,8 +225,7 @@ data Exp
   = Lit Literal -- literal
   | ExpName (Maybe Exp) Name [Exp] -- function call or constructor
   | ExpVar (Maybe Exp) Name -- variables or field access
-  | ExpDotName Name [Exp] -- contextual constructor shorthand, e.g. .Some(1)
-  | ExpDotVar Name -- contextual constructor shorthand, e.g. .None
+  | ExpDotName Name [Exp] -- contextual constructor shorthand, e.g. .Some(1), .None
   | Lam [Param] Body (Maybe Ty) -- lambda-abstraction
   | TyExp Exp Ty -- type annotation expression
   | ExpIndexed Exp Exp -- e1[e2]

@@ -495,8 +495,6 @@ renameExpFunctionCalls renameMap (ExpVar me n) =
     me' = fmap (renameExpFunctionCalls renameMap) me
 renameExpFunctionCalls renameMap (ExpDotName n es) =
   ExpDotName n (map (renameExpFunctionCalls renameMap) es)
-renameExpFunctionCalls _ (ExpDotVar n) =
-  ExpDotVar n
 renameExpFunctionCalls renameMap (Lam ps bd mt) =
   Lam ps (renameBodyFunctionCalls renameMap bd) mt
 renameExpFunctionCalls renameMap (TyExp e ty) =
@@ -655,7 +653,6 @@ renameExpTypeRefs renameMap (ExpVar me n) =
     n
 renameExpTypeRefs renameMap (ExpDotName n es) =
   ExpDotName n (map (renameExpTypeRefs renameMap) es)
-renameExpTypeRefs _ (ExpDotVar n) = ExpDotVar n
 renameExpTypeRefs renameMap (Lam ps bd mt) =
   Lam
     (map (renameParamTypeRefs renameMap) ps)
@@ -1086,7 +1083,6 @@ expFunctionRefs (ExpVar me n) =
         _ -> maybe [] pure (qualifiedMemberName me n)
 expFunctionRefs (ExpDotName _ es) =
   concatMap expFunctionRefs es
-expFunctionRefs (ExpDotVar _) = []
 expFunctionRefs (Lam _ body _mt) =
   bodyFunctionRefs body
 expFunctionRefs (TyExp e _ty) =

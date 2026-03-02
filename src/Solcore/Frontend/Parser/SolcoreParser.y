@@ -351,7 +351,7 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | '.' Name FunArgs                            {ExpDotName $2 $3}
      | Expr '.' Name FunArgs                       {ExpName (Just $1) $3 $4}
      | Name                                        {ExpVar Nothing $1}
-     | '.' Name                                    {ExpDotVar $2}
+     | '.' Name                                    {ExpDotName $2 []}
      | Expr '.' Name                               {ExpVar (Just $1) $3}
      | 'lam' '(' ParamList ')' OptRetTy Body       {Lam $3 $6 $5}
      | Expr ':' Type                               {TyExp $1 $3}
