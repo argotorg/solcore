@@ -164,7 +164,7 @@ tcPat t p@(PCon n ps) =
     -- asking type from environment
     st <- askEnv n' `wrapError` p
     (_ :=> tc) <- freshInst st
-    let (argTys, _) = splitTy tc
+    let (argTys, retTy) = splitTy tc
     when (length argTys /= length ps) $
       throwError $
         unlines
@@ -174,8 +174,12 @@ tcPat t p@(PCon n ps) =
             show (length argTys),
             "arguments"
           ]
+    -- Refine argument expectations first so nested dot-shorthand patterns
+    -- can resolve against the constructor result type context.
+    _ <- unify retTy t `wrapError` p
+    argTys' <- withCurrentSubst argTys
     -- typing parameters
-    (ps1, ts, lctxs) <- unzip3 <$> zipWithM tcPat argTys ps
+    (ps1, ts, lctxs) <- unzip3 <$> zipWithM tcPat argTys' ps
     -- unifying the infered pattern type with constructor type
     s <- unify tc (funtype ts t) `wrapError` p
     let t' = apply s t
