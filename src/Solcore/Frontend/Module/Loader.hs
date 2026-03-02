@@ -5,7 +5,6 @@ module Solcore.Frontend.Module.Loader
     flattenModuleStrictCompileCompUnit,
     flattenModuleStrictCompileCompUnitWithImportedStart,
     flattenModuleStrictValidationCompUnit,
-    flattenModuleCompUnit,
     loadCompUnit,
   )
 where
@@ -62,7 +61,7 @@ loadModuleGraph roots entryFile = runExceptT do
 loadCompUnit :: [FilePath] -> FilePath -> IO (Either String CompUnit)
 loadCompUnit roots entryFile = runExceptT do
   graph <- ExceptT $ loadModuleGraph roots entryFile
-  ExceptT $ pure (flattenModuleCompUnit graph (entryModule graph))
+  ExceptT $ pure (flattenModuleValidationCompUnit graph (entryModule graph))
 
 visit :: [FilePath] -> [FilePath] -> FilePath -> StateT LoadState (ExceptT String IO) ()
 visit roots stack canonicalPath = do
@@ -123,10 +122,6 @@ cycleError path stack =
         [ "Import cycle detected:",
           "  " ++ foldr1 (\a b -> a ++ " -> " ++ b) cycleChain
         ]
-
-flattenModuleCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
-flattenModuleCompUnit graph modulePath =
-  flattenModuleValidationCompUnit graph modulePath
 
 lookupLoadedModule :: ModuleGraph -> FilePath -> Either String CompUnit
 lookupLoadedModule graph modulePath =
