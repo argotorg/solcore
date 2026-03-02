@@ -1,4 +1,9 @@
-import dispatch;
+import std.{*};
+import std.{uint256, Add};
+import dispatch.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 contract C {
     constructor() {}

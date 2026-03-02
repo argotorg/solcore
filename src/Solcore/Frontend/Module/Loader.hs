@@ -1,0 +1,1340 @@
+module Solcore.Frontend.Module.Loader
+  ( ModuleGraph (..),
+    loadModuleGraph,
+    flattenModuleValidationCompUnit,
+    flattenModuleStrictCompileCompUnit,
+    flattenModuleStrictCompileCompUnitWithImportedStart,
+    flattenModuleStrictValidationCompUnit,
+    loadCompUnit,
+  )
+where
+
+import Control.Monad
+import Control.Monad.Except
+import Control.Monad.State.Strict
+import Data.List (intercalate)
+import Data.Map (Map)
+import Data.Map qualified as Map
+import Data.Maybe (mapMaybe)
+import Data.Set (Set)
+import Data.Set qualified as Set
+import Solcore.Frontend.Parser.SolcoreParser (parseCompUnit)
+import Solcore.Frontend.Syntax.Name
+import Solcore.Frontend.Syntax.SyntaxTree
+import System.Directory (canonicalizePath, doesFileExist)
+import System.FilePath
+
+data LoadState
+  = LoadState
+  { loadedModules :: Map FilePath CompUnit,
+    moduleDeps :: Map FilePath [FilePath],
+    loadOrder :: [FilePath]
+  }
+
+emptyLoadState :: LoadState
+emptyLoadState = LoadState Map.empty Map.empty []
+
+data ModuleGraph
+  = ModuleGraph
+  { entryModule :: FilePath,
+    modules :: Map FilePath CompUnit,
+    dependencies :: Map FilePath [FilePath],
+    moduleOrder :: [FilePath]
+  }
+  deriving (Eq, Show)
+
+loadModuleGraph :: [FilePath] -> FilePath -> IO (Either String ModuleGraph)
+loadModuleGraph roots entryFile = runExceptT do
+  entryCanonical <- liftIO $ canonicalizePath entryFile
+  st <- execStateT (visit roots [] entryCanonical) emptyLoadState
+  pure
+    ( ModuleGraph
+        { entryModule = entryCanonical,
+          modules = loadedModules st,
+          dependencies = moduleDeps st,
+          moduleOrder = reverse (loadOrder st)
+        }
+    )
+
+-- Loads the entry file and all recursive imports, and keeps the old
+-- flattened-declaration behavior for compatibility.
+loadCompUnit :: [FilePath] -> FilePath -> IO (Either String CompUnit)
+loadCompUnit roots entryFile = runExceptT do
+  graph <- ExceptT $ loadModuleGraph roots entryFile
+  ExceptT $ pure (flattenModuleValidationCompUnit graph (entryModule graph))
+
+visit :: [FilePath] -> [FilePath] -> FilePath -> StateT LoadState (ExceptT String IO) ()
+visit roots stack canonicalPath = do
+  alreadyLoaded <- gets (Map.member canonicalPath . loadedModules)
+  unless alreadyLoaded do
+    when (canonicalPath `elem` stack) $
+      throwError (cycleError canonicalPath stack)
+    content <- liftIO (readFile canonicalPath)
+    parsed <- liftIO (parseCompUnit content)
+    cunit <- either throwError pure parsed
+    importPaths <- mapM (resolveImportPath roots) (imports cunit)
+    canonicalImports <- liftIO (mapM canonicalizePath importPaths)
+    mapM_ (visit roots (canonicalPath : stack)) canonicalImports
+    modify
+      ( \st ->
+          st
+            { loadedModules = Map.insert canonicalPath cunit (loadedModules st),
+              moduleDeps = Map.insert canonicalPath canonicalImports (moduleDeps st),
+              loadOrder = canonicalPath : loadOrder st
+            }
+      )
+
+resolveImportPath :: [FilePath] -> Import -> StateT LoadState (ExceptT String IO) FilePath
+resolveImportPath roots imp =
+  go roots
+  where
+    go [] =
+      throwError $
+        "import "
+          ++ show (importModuleName imp)
+          ++ ": file not found"
+    go (dir : rest) = do
+      let path = toFilePath dir (importModuleName imp)
+      exists <- liftIO $ doesFileExist path
+      if exists then pure path else go rest
+
+importModuleName :: Import -> Name
+importModuleName (ImportModule n) = n
+importModuleName (ImportAlias n _) = n
+importModuleName (ImportOnly n _) = n
+
+toFilePath :: FilePath -> Name -> FilePath
+toFilePath base =
+  (base </>) . (<.> "solc") . foldr step "" . show
+  where
+    step c ac
+      | c == '.' = pathSeparator : ac
+      | otherwise = c : ac
+
+topDeclsFrom :: CompUnit -> [TopDecl]
+topDeclsFrom (CompUnit _ ds) = ds
+
+cycleError :: FilePath -> [FilePath] -> String
+cycleError path stack =
+  let prefix = takeWhile (/= path) stack
+      cycleChain = path : reverse prefix ++ [path]
+   in unlines
+        [ "Import cycle detected:",
+          "  " ++ foldr1 (\a b -> a ++ " -> " ++ b) cycleChain
+        ]
+
+lookupLoadedModule :: ModuleGraph -> FilePath -> Either String CompUnit
+lookupLoadedModule graph modulePath =
+  maybe
+    (Left ("Internal error: module not loaded: " ++ modulePath))
+    Right
+    (Map.lookup modulePath (modules graph))
+
+moduleImportPairsFor :: ModuleGraph -> FilePath -> CompUnit -> [(Import, FilePath)]
+moduleImportPairsFor graph modulePath unit =
+  zip (imports unit) (Map.findWithDefault [] modulePath (dependencies graph))
+
+prepareFlattenContext :: ModuleGraph -> FilePath -> Either String (CompUnit, [(Import, FilePath)])
+prepareFlattenContext graph modulePath = do
+  unit <- lookupLoadedModule graph modulePath
+  _ <- moduleExportItems modulePath unit
+  let importPairs = moduleImportPairsFor graph modulePath unit
+  ensureNoAmbiguousSelectedImports graph importPairs
+  ensureNoDuplicateModuleQualifiers unit
+  ensureNoDuplicateSelectedItems unit
+  ensureImportItemsExist graph importPairs
+  pure (unit, importPairs)
+
+flattenModuleValidationCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
+flattenModuleValidationCompUnit graph modulePath = do
+  (unit, importPairs) <- prepareFlattenContext graph modulePath
+  collidingTypeNames <- collidingImportedTypeNames graph importPairs
+  importedDecls <- concat <$> mapM (importedDeclsFor graph) importPairs
+  qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
+  pure (CompUnit (imports unit) (qualifiedDecls ++ importedDecls ++ topDeclsFrom unit))
+
+flattenModuleStrictCompileCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
+flattenModuleStrictCompileCompUnit graph modulePath =
+  fst <$> flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath
+
+flattenModuleStrictCompileCompUnitWithImportedStart ::
+  ModuleGraph ->
+  FilePath ->
+  Either String (CompUnit, Int)
+flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath = do
+  (unit, importPairs) <- prepareFlattenContext graph modulePath
+  collidingTypeNames <- collidingImportedTypeNames graph importPairs
+  importedDecls <- concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
+  qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
+  let localDecls = topDeclsFrom unit
+      visibleImportedDecls = shadowImportedDecls localDecls importedDecls
+      importedStart = length qualifiedDecls + length localDecls
+  pure
+    ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
+      importedStart
+    )
+
+flattenModuleStrictValidationCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
+flattenModuleStrictValidationCompUnit graph modulePath = do
+  (unit, importPairs) <- prepareFlattenContext graph modulePath
+  importedDecls <- concat <$> mapM (strictValidationImportedDecls graph) importPairs
+  qualifiedDecls <- concat <$> mapM (qualifiedImportStubDecls graph) importPairs
+  let localDecls = topDeclsFrom unit
+      visibleImportedDecls = shadowImportedDecls localDecls importedDecls
+  pure (CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls))
+
+ensureImportItemsExist :: ModuleGraph -> [(Import, FilePath)] -> Either String ()
+ensureImportItemsExist graph importPairs = do
+  unknownGroups <- mapM unknowns importPairs
+  case concat unknownGroups of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Unknown selected imports:",
+            unlines xs
+          ]
+  where
+    unknowns (ImportOnly moduleName items, modulePath) = do
+      selected <- resolveSelectedImportItems graph moduleName modulePath items
+      available <- importableNamesForModule graph modulePath
+      let missing = filter (`notElem` available) selected
+      pure [formatMissing moduleName n | n <- missing]
+    unknowns _ = pure []
+
+formatMissing :: Name -> Name -> String
+formatMissing moduleName itemName =
+  "  " ++ show moduleName ++ "." ++ show itemName
+
+resolveSelectedImportItems :: ModuleGraph -> Name -> FilePath -> ItemSelector -> Either String [Name]
+resolveSelectedImportItems graph _moduleName modulePath SelectAll =
+  importableNamesForModule graph modulePath
+resolveSelectedImportItems _graph _moduleName _modulePath (SelectOnly items) =
+  Right items
+
+importableNamesForModule :: ModuleGraph -> FilePath -> Either String [Name]
+importableNamesForModule graph modulePath = do
+  publicDecls <- publicTopDeclsForModule graph modulePath
+  pure (uniqueNames (concatMap topDeclNames publicDecls))
+
+publicTopDeclsForModule :: ModuleGraph -> FilePath -> Either String [TopDecl]
+publicTopDeclsForModule graph modulePath = do
+  unit <- lookupLoadedModule graph modulePath
+  publicTopDeclsFromCompUnit modulePath unit
+
+publicTopDeclsFromCompUnit :: FilePath -> CompUnit -> Either String [TopDecl]
+publicTopDeclsFromCompUnit modulePath unit@(CompUnit _ ds) = do
+  exports <- requiredExportItems modulePath unit
+  let importableDecls = filter isImportableTopDecl ds
+  pure $
+    mapMaybe (selectTopDecl exports) importableDecls
+
+moduleExportItems :: FilePath -> CompUnit -> Either String (Maybe [Name])
+moduleExportItems modulePath (CompUnit _ ds) =
+  case [items | TExportDecl (Export items) <- ds] of
+    [] -> Right Nothing
+    [items] -> do
+      exports <- resolveExportItems modulePath ds items
+      ensureNoDuplicateExports modulePath exports
+      ensureExportsExist modulePath ds exports
+      Right (Just exports)
+    _ ->
+      Left $
+        unlines
+          [ "Invalid export declaration:",
+            "  " ++ modulePath,
+            "  multiple export declarations are not allowed"
+          ]
+
+resolveExportItems :: FilePath -> [TopDecl] -> ItemSelector -> Either String [Name]
+resolveExportItems _modulePath ds SelectAll =
+  Right (availableExportNames ds)
+resolveExportItems _modulePath _ds (SelectOnly items) =
+  Right items
+
+availableExportNames :: [TopDecl] -> [Name]
+availableExportNames ds =
+  uniqueNames (concatMap topDeclNames (filter isImportableTopDecl ds))
+
+requiredExportItems :: FilePath -> CompUnit -> Either String [Name]
+requiredExportItems modulePath unit = do
+  exports <- moduleExportItems modulePath unit
+  case exports of
+    Just items -> Right items
+    Nothing ->
+      Left $
+        unlines
+          [ "Missing export declaration:",
+            "  " ++ modulePath,
+            "  imported modules must declare export { ... };"
+          ]
+
+ensureNoDuplicateExports :: FilePath -> [Name] -> Either String ()
+ensureNoDuplicateExports modulePath names =
+  case duplicates of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Duplicate names in export declaration:",
+            "  " ++ modulePath,
+            unlines (map (\n -> "  " ++ show n) xs)
+          ]
+  where
+    duplicates = duplicateNames names
+
+ensureExportsExist :: FilePath -> [TopDecl] -> [Name] -> Either String ()
+ensureExportsExist modulePath ds items =
+  case missing of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Unknown exports:",
+            "  " ++ modulePath,
+            unlines (map (\n -> "  " ++ show n) xs)
+          ]
+  where
+    available = availableExportNames ds
+    missing = filter (`notElem` available) items
+
+isImportableTopDecl :: TopDecl -> Bool
+isImportableTopDecl (TPragmaDecl _) = False
+isImportableTopDecl (TExportDecl _) = False
+isImportableTopDecl _ = True
+
+topDeclNames :: TopDecl -> [Name]
+topDeclNames (TFunDef (FunDef sig _)) = [sigName sig]
+topDeclNames (TSym (TySym n _ _)) = [n]
+topDeclNames (TClassDef (Class _ _ n _ _ _)) = [n]
+topDeclNames (TContr (Contract n _ _)) = [n]
+topDeclNames (TDataDef (DataTy n _ cs)) = n : map constrName cs
+topDeclNames (TInstDef _) = []
+topDeclNames (TExportDecl _) = []
+topDeclNames (TPragmaDecl _) = []
+
+qualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
+qualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
+  case imp of
+    ImportOnly _ _ -> Right []
+    ImportModule n -> qualifyDecls n
+    ImportAlias _ n -> qualifyDecls n
+  where
+    qualifyDecls qualifier = do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      allDecls <- importableTopDeclsForCompiledModule graph modulePath
+      let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
+          publicUnit = CompUnit [] publicDecls
+          allUnit = CompUnit [] allDecls
+      pure $
+        qualifiedFunctionDecls typeRenameMap qualifier publicUnit allUnit
+          ++ qualifiedTypeAliasDecls typeRenameMap qualifier publicUnit
+
+importableTopDeclsForCompiledModule :: ModuleGraph -> FilePath -> Either String [TopDecl]
+importableTopDeclsForCompiledModule graph modulePath = do
+  cunit <- flattenModuleStrictCompileCompUnit graph modulePath
+  pure (filter isImportableTopDecl (topDeclsFrom cunit))
+
+qualifiedImportStubDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
+qualifiedImportStubDecls graph (imp, modulePath) =
+  case imp of
+    ImportOnly _ _ -> Right []
+    ImportModule n -> stubDecls n
+    ImportAlias _ n -> stubDecls n
+  where
+    stubDecls qualifier = do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      let cunit = CompUnit [] publicDecls
+      pure $
+        qualifiedFunctionStubDecls qualifier cunit
+          ++ qualifiedTypeStubDecls qualifier cunit
+
+qualifyFunctionWrapper :: Name -> FunDef -> FunDef
+qualifyFunctionWrapper qualifier (FunDef sig _body) =
+  FunDef
+    (sig {sigName = qualifiedName})
+    wrapperBody
+  where
+    originalName = sigName sig
+    qualifiedName = QualName qualifier (show originalName)
+    implName = hiddenFunctionName qualifier originalName
+    wrapperBody = forwardingWrapperBody sig implName
+
+qualifyRevertFunction :: Name -> FunDef -> FunDef
+qualifyRevertFunction qualifier (FunDef sig body) =
+  FunDef
+    (sig {sigName = QualName qualifier (show (sigName sig))})
+    body
+
+qualifyFunctionImpl :: Map Name Name -> Name -> FunDef -> FunDef
+qualifyFunctionImpl renameMap qualifier (FunDef sig body) =
+  FunDef
+    (sig {sigName = hiddenFunctionName qualifier (sigName sig)})
+    (renameBodyFunctionCalls renameMap body)
+
+hiddenFunctionName :: Name -> Name -> Name
+hiddenFunctionName qualifier originalName =
+  QualName qualifier ("$impl$" ++ flattenName originalName)
+
+flattenName :: Name -> String
+flattenName (Name n) = n
+flattenName (QualName q n) = flattenName q ++ "_" ++ n
+
+sigParamName :: Param -> Name
+sigParamName (Typed n _) = n
+sigParamName (Untyped n) = n
+
+forwardingWrapperBody :: Signature -> Name -> Body
+forwardingWrapperBody sig targetName =
+  [Return (ExpName Nothing targetName (map (ExpVar Nothing) argNames))]
+  where
+    argNames = map sigParamName (sigParams sig)
+
+qualifiedFunctionDecls :: Map Name Name -> Name -> CompUnit -> CompUnit -> [TopDecl]
+qualifiedFunctionDecls typeRenameMap qualifier publicUnit allUnit =
+  concatMap qualifyImpl allFds ++ concatMap qualifyWrapper exportedFds
+  where
+    allFds = [fd | TFunDef fd <- topDeclsFrom allUnit]
+    exportedNames = [sigName (funSignature fd) | TFunDef fd <- topDeclsFrom publicUnit]
+    exportedFds =
+      [ fd
+        | fd <- allFds,
+          sigName (funSignature fd) `elem` exportedNames
+      ]
+    renameMap =
+      Map.fromList
+        [ ( sigName (funSignature fd),
+            hiddenFunctionName qualifier (sigName (funSignature fd))
+          )
+          | fd <- allFds,
+            sigName (funSignature fd) /= Name "revert"
+        ]
+    qualifyImpl fd
+      | sigName (funSignature fd') == Name "revert" =
+          [TFunDef (qualifyRevertFunction qualifier fd')]
+      | otherwise =
+          [TFunDef (qualifyFunctionImpl renameMap qualifier fd')]
+      where
+        fd' = renameFunDefTypeRefs typeRenameMap fd
+    qualifyWrapper fd
+      | sigName (funSignature fd') == Name "revert" =
+          []
+      | otherwise =
+          [TFunDef (qualifyFunctionWrapper qualifier fd')]
+      where
+        fd' = renameFunDefTypeRefs typeRenameMap fd
+
+qualifiedFunctionStubDecls :: Name -> CompUnit -> [TopDecl]
+qualifiedFunctionStubDecls qualifier cunit =
+  [ TFunDef (stubFunction (QualName qualifier (show (sigName (funSignature fd)))))
+    | TFunDef fd <- topDeclsFrom cunit
+  ]
+
+renameBodyFunctionCalls :: Map Name Name -> Body -> Body
+renameBodyFunctionCalls renameMap =
+  map (renameStmtFunctionCalls renameMap)
+
+renameStmtFunctionCalls :: Map Name Name -> Stmt -> Stmt
+renameStmtFunctionCalls renameMap (Assign lhs rhs) =
+  Assign (renameExpFunctionCalls renameMap lhs) (renameExpFunctionCalls renameMap rhs)
+renameStmtFunctionCalls renameMap (StmtPlusEq e1 e2) =
+  StmtPlusEq (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameStmtFunctionCalls renameMap (StmtMinusEq e1 e2) =
+  StmtMinusEq (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameStmtFunctionCalls renameMap (Let n mt me) =
+  Let n mt (renameExpFunctionCalls renameMap <$> me)
+renameStmtFunctionCalls renameMap (StmtExp e) =
+  StmtExp (renameExpFunctionCalls renameMap e)
+renameStmtFunctionCalls renameMap (Return e) =
+  Return (renameExpFunctionCalls renameMap e)
+renameStmtFunctionCalls renameMap (Match es eqns) =
+  Match
+    (map (renameExpFunctionCalls renameMap) es)
+    (map (renameEquationFunctionCalls renameMap) eqns)
+renameStmtFunctionCalls _ stmt@(Asm _) = stmt
+renameStmtFunctionCalls renameMap (If e blk1 blk2) =
+  If
+    (renameExpFunctionCalls renameMap e)
+    (renameBodyFunctionCalls renameMap blk1)
+    (renameBodyFunctionCalls renameMap blk2)
+
+renameEquationFunctionCalls :: Map Name Name -> Equation -> Equation
+renameEquationFunctionCalls renameMap (ps, body) =
+  (ps, renameBodyFunctionCalls renameMap body)
+
+renameExpFunctionCalls :: Map Name Name -> Exp -> Exp
+renameExpFunctionCalls _ litExp@(Lit _) = litExp
+renameExpFunctionCalls renameMap (ExpName me n es) =
+  case qualifiedMemberName me n of
+    Just qn ->
+      case Map.lookup qn renameMap of
+        Just renamedName -> ExpName Nothing renamedName es'
+        Nothing -> ExpName me' n es'
+    Nothing ->
+      ExpName me' n' es'
+  where
+    me' = fmap (renameExpFunctionCalls renameMap) me
+    n'
+      | me == Nothing = Map.findWithDefault n n renameMap
+      | otherwise = n
+    es' = map (renameExpFunctionCalls renameMap) es
+renameExpFunctionCalls renameMap (ExpVar me n) =
+  case qualifiedMemberName me n of
+    Just qn ->
+      case Map.lookup qn renameMap of
+        Just renamedName -> ExpVar Nothing renamedName
+        Nothing -> ExpVar me' n
+    Nothing ->
+      ExpVar me' n
+  where
+    me' = fmap (renameExpFunctionCalls renameMap) me
+renameExpFunctionCalls renameMap (ExpDotName n es) =
+  ExpDotName n (map (renameExpFunctionCalls renameMap) es)
+renameExpFunctionCalls renameMap (Lam ps bd mt) =
+  Lam ps (renameBodyFunctionCalls renameMap bd) mt
+renameExpFunctionCalls renameMap (TyExp e ty) =
+  TyExp (renameExpFunctionCalls renameMap e) ty
+renameExpFunctionCalls renameMap (ExpIndexed e1 e2) =
+  ExpIndexed (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpPlus e1 e2) =
+  ExpPlus (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpMinus e1 e2) =
+  ExpMinus (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpTimes e1 e2) =
+  ExpTimes (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpDivide e1 e2) =
+  ExpDivide (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpModulo e1 e2) =
+  ExpModulo (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpLT e1 e2) =
+  ExpLT (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpGT e1 e2) =
+  ExpGT (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpLE e1 e2) =
+  ExpLE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpGE e1 e2) =
+  ExpGE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpEE e1 e2) =
+  ExpEE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpNE e1 e2) =
+  ExpNE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpLAnd e1 e2) =
+  ExpLAnd (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpLOr e1 e2) =
+  ExpLOr (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+renameExpFunctionCalls renameMap (ExpLNot e) =
+  ExpLNot (renameExpFunctionCalls renameMap e)
+renameExpFunctionCalls renameMap (ExpCond e1 e2 e3) =
+  ExpCond
+    (renameExpFunctionCalls renameMap e1)
+    (renameExpFunctionCalls renameMap e2)
+    (renameExpFunctionCalls renameMap e3)
+
+qualifiedMemberName :: Maybe Exp -> Name -> Maybe Name
+qualifiedMemberName me n =
+  QualName <$> (me >>= qualifierFromExpVarChain) <*> pure (show n)
+
+qualifierFromExpVarChain :: Exp -> Maybe Name
+qualifierFromExpVarChain (ExpVar Nothing n) =
+  Just n
+qualifierFromExpVarChain (ExpVar (Just e) n) = do
+  q <- qualifierFromExpVarChain e
+  pure (QualName q (show n))
+qualifierFromExpVarChain _ =
+  Nothing
+
+renameTopDeclTypeRefs :: Map Name Name -> TopDecl -> TopDecl
+renameTopDeclTypeRefs renameMap (TFunDef fd) =
+  TFunDef (renameFunDefTypeRefs renameMap fd)
+renameTopDeclTypeRefs renameMap (TClassDef c) =
+  TClassDef (renameClassTypeRefs renameMap c)
+renameTopDeclTypeRefs renameMap (TInstDef i) =
+  TInstDef (renameInstanceTypeRefs renameMap i)
+renameTopDeclTypeRefs renameMap (TContr c) =
+  TContr (renameContractTypeRefs renameMap c)
+renameTopDeclTypeRefs renameMap (TDataDef d) =
+  TDataDef (renameDataTyTypeRefs renameMap d)
+renameTopDeclTypeRefs renameMap (TSym s) =
+  TSym (renameTySymTypeRefs renameMap s)
+renameTopDeclTypeRefs _ d = d
+
+renameFunDefTypeRefs :: Map Name Name -> FunDef -> FunDef
+renameFunDefTypeRefs renameMap (FunDef sig body) =
+  FunDef
+    (renameSignatureTypeRefs renameMap sig)
+    (renameBodyTypeRefs renameMap body)
+
+renameSignatureTypeRefs :: Map Name Name -> Signature -> Signature
+renameSignatureTypeRefs renameMap sig =
+  sig
+    { sigVars = map (renameTyTypeRefs renameMap) (sigVars sig),
+      sigContext = map (renamePredTypeRefs renameMap) (sigContext sig),
+      sigParams = map (renameParamTypeRefs renameMap) (sigParams sig),
+      sigReturn = renameTyTypeRefs renameMap <$> sigReturn sig
+    }
+
+renameParamTypeRefs :: Map Name Name -> Param -> Param
+renameParamTypeRefs renameMap (Typed n ty) =
+  Typed n (renameTyTypeRefs renameMap ty)
+renameParamTypeRefs _ p@(Untyped _) = p
+
+renameBodyTypeRefs :: Map Name Name -> Body -> Body
+renameBodyTypeRefs renameMap =
+  map (renameStmtTypeRefs renameMap)
+
+renameStmtTypeRefs :: Map Name Name -> Stmt -> Stmt
+renameStmtTypeRefs renameMap (Assign lhs rhs) =
+  Assign (renameExpTypeRefs renameMap lhs) (renameExpTypeRefs renameMap rhs)
+renameStmtTypeRefs renameMap (StmtPlusEq e1 e2) =
+  StmtPlusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameStmtTypeRefs renameMap (StmtMinusEq e1 e2) =
+  StmtMinusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameStmtTypeRefs renameMap (Let n mt me) =
+  Let n (renameTyTypeRefs renameMap <$> mt) (renameExpTypeRefs renameMap <$> me)
+renameStmtTypeRefs renameMap (StmtExp e) =
+  StmtExp (renameExpTypeRefs renameMap e)
+renameStmtTypeRefs renameMap (Return e) =
+  Return (renameExpTypeRefs renameMap e)
+renameStmtTypeRefs renameMap (Match es eqns) =
+  Match
+    (map (renameExpTypeRefs renameMap) es)
+    (map (renameEquationTypeRefs renameMap) eqns)
+renameStmtTypeRefs _ stmt@(Asm _) = stmt
+renameStmtTypeRefs renameMap (If e blk1 blk2) =
+  If
+    (renameExpTypeRefs renameMap e)
+    (renameBodyTypeRefs renameMap blk1)
+    (renameBodyTypeRefs renameMap blk2)
+
+renameEquationTypeRefs :: Map Name Name -> Equation -> Equation
+renameEquationTypeRefs renameMap (ps, body) =
+  (map (renamePatTypeRefs renameMap) ps, renameBodyTypeRefs renameMap body)
+
+renamePatTypeRefs :: Map Name Name -> Pat -> Pat
+renamePatTypeRefs renameMap (Pat n ps) =
+  Pat (renamePatNameTypeRefs renameMap n) (map (renamePatTypeRefs renameMap) ps)
+renamePatTypeRefs renameMap (PatDot n ps) =
+  PatDot n (map (renamePatTypeRefs renameMap) ps)
+renamePatTypeRefs _ p@(PWildcard) = p
+renamePatTypeRefs _ p@(PLit _) = p
+
+renamePatNameTypeRefs :: Map Name Name -> Name -> Name
+renamePatNameTypeRefs renameMap (QualName q n) =
+  QualName (renameTypeName renameMap q) n
+renamePatNameTypeRefs renameMap n =
+  case Map.lookup n renameMap of
+    Just qn -> QualName qn (show n)
+    Nothing -> n
+
+renameExpTypeRefs :: Map Name Name -> Exp -> Exp
+renameExpTypeRefs _ litExp@(Lit _) = litExp
+renameExpTypeRefs renameMap (ExpName Nothing n es) =
+  ExpName
+    (sameNameConstructorQualifier renameMap n)
+    n
+    (map (renameExpTypeRefs renameMap) es)
+renameExpTypeRefs renameMap (ExpName me n es) =
+  ExpName
+    (renameMemberQualifierTypeRefs renameMap <$> me)
+    n
+    (map (renameExpTypeRefs renameMap) es)
+renameExpTypeRefs renameMap (ExpVar Nothing n) =
+  ExpVar
+    (sameNameConstructorQualifier renameMap n)
+    n
+renameExpTypeRefs renameMap (ExpVar me n) =
+  ExpVar
+    (renameMemberQualifierTypeRefs renameMap <$> me)
+    n
+renameExpTypeRefs renameMap (ExpDotName n es) =
+  ExpDotName n (map (renameExpTypeRefs renameMap) es)
+renameExpTypeRefs renameMap (Lam ps bd mt) =
+  Lam
+    (map (renameParamTypeRefs renameMap) ps)
+    (renameBodyTypeRefs renameMap bd)
+    (renameTyTypeRefs renameMap <$> mt)
+renameExpTypeRefs renameMap (TyExp e ty) =
+  TyExp (renameExpTypeRefs renameMap e) (renameTyTypeRefs renameMap ty)
+renameExpTypeRefs renameMap (ExpIndexed e1 e2) =
+  ExpIndexed (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpPlus e1 e2) =
+  ExpPlus (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpMinus e1 e2) =
+  ExpMinus (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpTimes e1 e2) =
+  ExpTimes (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpDivide e1 e2) =
+  ExpDivide (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpModulo e1 e2) =
+  ExpModulo (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpLT e1 e2) =
+  ExpLT (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpGT e1 e2) =
+  ExpGT (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpLE e1 e2) =
+  ExpLE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpGE e1 e2) =
+  ExpGE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpEE e1 e2) =
+  ExpEE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpNE e1 e2) =
+  ExpNE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpLAnd e1 e2) =
+  ExpLAnd (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpLOr e1 e2) =
+  ExpLOr (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpLNot e) =
+  ExpLNot (renameExpTypeRefs renameMap e)
+renameExpTypeRefs renameMap (ExpCond e1 e2 e3) =
+  ExpCond
+    (renameExpTypeRefs renameMap e1)
+    (renameExpTypeRefs renameMap e2)
+    (renameExpTypeRefs renameMap e3)
+
+renameMemberQualifierTypeRefs :: Map Name Name -> Exp -> Exp
+renameMemberQualifierTypeRefs renameMap e =
+  case qualifierFromExpVarChain e of
+    Just q ->
+      let q' = renameTypeName renameMap q
+       in if q' == q
+            then renameExpTypeRefs renameMap e
+            else qualifierNameToExp q'
+    Nothing ->
+      renameExpTypeRefs renameMap e
+
+sameNameConstructorQualifier :: Map Name Name -> Name -> Maybe Exp
+sameNameConstructorQualifier renameMap n =
+  qualifierNameToExp <$> Map.lookup n renameMap
+
+qualifierNameToExp :: Name -> Exp
+qualifierNameToExp (Name n) =
+  ExpVar Nothing (Name n)
+qualifierNameToExp (QualName q n) =
+  ExpVar (Just (qualifierNameToExp q)) (Name n)
+
+renameContractTypeRefs :: Map Name Name -> Contract -> Contract
+renameContractTypeRefs renameMap (Contract n ts ds) =
+  Contract
+    n
+    (map (renameTyTypeRefs renameMap) ts)
+    (map (renameContractDeclTypeRefs renameMap) ds)
+
+renameContractDeclTypeRefs :: Map Name Name -> ContractDecl -> ContractDecl
+renameContractDeclTypeRefs renameMap (CDataDecl d) =
+  CDataDecl (renameDataTyTypeRefs renameMap d)
+renameContractDeclTypeRefs renameMap (CFieldDecl (Field n ty me)) =
+  CFieldDecl
+    (Field n (renameTyTypeRefs renameMap ty) (renameExpTypeRefs renameMap <$> me))
+renameContractDeclTypeRefs renameMap (CFunDecl fd) =
+  CFunDecl (renameFunDefTypeRefs renameMap fd)
+renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body)) =
+  CConstrDecl
+    ( Constructor
+        (map (renameParamTypeRefs renameMap) ps)
+        (renameBodyTypeRefs renameMap body)
+    )
+
+renameClassTypeRefs :: Map Name Name -> Class -> Class
+renameClassTypeRefs renameMap (Class bvs ctx n pvs mv sigs) =
+  Class
+    (map (renameTyTypeRefs renameMap) bvs)
+    (map (renamePredTypeRefs renameMap) ctx)
+    n
+    (map (renameTyTypeRefs renameMap) pvs)
+    (renameTyTypeRefs renameMap mv)
+    (map (renameSignatureTypeRefs renameMap) sigs)
+
+renameInstanceTypeRefs :: Map Name Name -> Instance -> Instance
+renameInstanceTypeRefs renameMap (Instance d vs ctx n pts mt fns) =
+  Instance
+    d
+    (map (renameTyTypeRefs renameMap) vs)
+    (map (renamePredTypeRefs renameMap) ctx)
+    n
+    (map (renameTyTypeRefs renameMap) pts)
+    (renameTyTypeRefs renameMap mt)
+    (map (renameFunDefTypeRefs renameMap) fns)
+
+renameDataTyTypeRefs :: Map Name Name -> DataTy -> DataTy
+renameDataTyTypeRefs renameMap (DataTy n vs cs) =
+  DataTy
+    (renameTypeName renameMap n)
+    (map (renameTyTypeRefs renameMap) vs)
+    (map (renameConstrTypeRefs renameMap) cs)
+
+renameConstrTypeRefs :: Map Name Name -> Constr -> Constr
+renameConstrTypeRefs renameMap (Constr n tys) =
+  Constr (renameConstrNameTypeRefs renameMap n) (map (renameTyTypeRefs renameMap) tys)
+
+renameConstrNameTypeRefs :: Map Name Name -> Name -> Name
+renameConstrNameTypeRefs renameMap (QualName q n) =
+  QualName (renameTypeName renameMap q) n
+renameConstrNameTypeRefs _ n = n
+
+renameTySymTypeRefs :: Map Name Name -> TySym -> TySym
+renameTySymTypeRefs renameMap (TySym n vs ty) =
+  TySym
+    (renameTypeName renameMap n)
+    (map (renameTyTypeRefs renameMap) vs)
+    (renameTyTypeRefs renameMap ty)
+
+renamePredTypeRefs :: Map Name Name -> Pred -> Pred
+renamePredTypeRefs renameMap (InCls n mt pts) =
+  InCls
+    n
+    (renameTyTypeRefs renameMap mt)
+    (map (renameTyTypeRefs renameMap) pts)
+
+renameTyTypeRefs :: Map Name Name -> Ty -> Ty
+renameTyTypeRefs renameMap (TyCon n tys) =
+  TyCon (renameTypeName renameMap n) (map (renameTyTypeRefs renameMap) tys)
+
+renameTypeName :: Map Name Name -> Name -> Name
+renameTypeName renameMap n =
+  case Map.lookup n renameMap of
+    Just n' -> n'
+    Nothing ->
+      case n of
+        QualName q x -> QualName (renameTypeName renameMap q) x
+        _ -> n
+
+qualifiedTypeAliasDecls :: Map Name Name -> Name -> CompUnit -> [TopDecl]
+qualifiedTypeAliasDecls typeRenameMap qualifier cunit =
+  dataAliases ++ symAliases
+  where
+    dataAliases =
+      [ TSym (qualifyTyCon qualifier n vs)
+        | TDataDef (DataTy n vs _) <- topDeclsFrom cunit,
+          not (Map.member n typeRenameMap)
+      ]
+    symAliases =
+      [ TSym (qualifyTyCon qualifier n vs)
+        | TSym (TySym n vs _) <- topDeclsFrom cunit,
+          not (Map.member n typeRenameMap)
+      ]
+
+qualifiedTypeStubDecls :: Name -> CompUnit -> [TopDecl]
+qualifiedTypeStubDecls qualifier cunit =
+  dataAliases ++ symAliases
+  where
+    dataAliases =
+      [ TDataDef
+          ( DataTy
+              (QualName qualifier (show n))
+              []
+              [Constr (constructorLeafName (constrName c)) [] | c <- cs]
+          )
+        | TDataDef (DataTy n _ cs) <- topDeclsFrom cunit
+      ]
+    symAliases =
+      [ TSym (stubType (QualName qualifier (show n)))
+        | TSym (TySym n _ _) <- topDeclsFrom cunit
+      ]
+
+constructorLeafName :: Name -> Name
+constructorLeafName (QualName _ n) = Name n
+constructorLeafName n = n
+
+qualifyTyCon :: Name -> Name -> [Ty] -> TySym
+qualifyTyCon qualifier unqualName tyVars =
+  TySym
+    { symName = QualName qualifier (show unqualName),
+      symVars = tyVars,
+      symType = TyCon unqualName tyVars
+    }
+
+stubType :: Name -> TySym
+stubType n =
+  TySym
+    { symName = n,
+      symVars = [],
+      symType = TyCon (Name "word") []
+    }
+
+stubFunction :: Name -> FunDef
+stubFunction n =
+  FunDef
+    (Signature [] [] n [] Nothing)
+    []
+
+importedDeclsFor :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
+importedDeclsFor graph (imp, modulePath) =
+  applyImportVisibility imp <$> publicTopDeclsForModule graph modulePath
+
+strictValidationImportedDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
+strictValidationImportedDecls graph (imp, modulePath) =
+  case imp of
+    ImportOnly _ SelectAll ->
+      mapMaybe toValidationImportStub <$> publicTopDeclsForModule graph modulePath
+    ImportOnly _ (SelectOnly names) ->
+      mapMaybe toValidationImportStub . mapMaybe (selectTopDecl names)
+        <$> publicTopDeclsForModule graph modulePath
+    ImportModule _ ->
+      Right []
+    ImportAlias _ _ ->
+      Right []
+
+toValidationImportStub :: TopDecl -> Maybe TopDecl
+toValidationImportStub (TFunDef (FunDef sig _)) =
+  Just (TFunDef (stubFunction (sigName sig)))
+toValidationImportStub (TSym (TySym n _ _)) =
+  Just (TSym (stubType n))
+toValidationImportStub d@(TClassDef _) =
+  Just d
+toValidationImportStub (TContr (Contract n _ _)) =
+  Just (TContr (Contract n [] []))
+toValidationImportStub (TDataDef (DataTy n _ cs)) =
+  Just (TDataDef (DataTy n [] [Constr (constrName c) [] | c <- cs]))
+toValidationImportStub (TInstDef _) = Nothing
+toValidationImportStub (TExportDecl _) = Nothing
+toValidationImportStub (TPragmaDecl _) = Nothing
+
+strictCompileImportedDecls :: Set Name -> ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
+strictCompileImportedDecls collidingTypeNames graph (imp, modulePath) =
+  case imp of
+    ImportOnly moduleName selector ->
+      importOnlyCompileDecls moduleName selector
+    ImportModule moduleName ->
+      moduleImportCompileDecls moduleName
+    ImportAlias _ qualifier ->
+      moduleImportCompileDecls qualifier
+  where
+    importOnlyCompileDecls moduleName selector = do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      allDecls <- importableTopDeclsForCompiledModule graph modulePath
+      let allFunctionDecls = [fd | TFunDef fd <- allDecls]
+          allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFunctionDecls]
+          depMap =
+            Map.fromList
+              [ ( sigName (funSignature fd),
+                  filter (`Set.member` allFunctionNames) (funDefFunctionRefs fd)
+                )
+                | fd <- allFunctionDecls
+              ]
+      let selectedPublicDecls =
+            case selector of
+              SelectAll -> publicDecls
+              SelectOnly names -> mapMaybe (selectTopDecl names) publicDecls
+          selectedNonFunctionDecls = filter (not . isFunctionTopDecl) selectedPublicDecls
+          selectedFunctionNames =
+            [ sigName (funSignature fd)
+              | TFunDef fd <- selectedPublicDecls
+            ]
+          seedFunctionNames = selectedFunctionNames
+          requiredFunctionNames = Set.fromList (functionDependencyClosure depMap seedFunctionNames)
+          requiredFunctionDecls =
+            [ TFunDef fd
+              | fd <- allFunctionDecls,
+                sigName (funSignature fd) `Set.member` requiredFunctionNames
+            ]
+          functionDecls =
+            importOnlyFunctionDecls moduleName selectedFunctionNames requiredFunctionDecls
+      pure (functionDecls ++ selectedNonFunctionDecls)
+
+    moduleImportCompileDecls qualifier = do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      allDecls <- importableTopDeclsForCompiledModule graph modulePath
+      let renameMap = importedFunctionRenameMap qualifier allDecls
+          typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
+      pure $
+        map
+          (renameTopDeclTypeRefs typeRenameMap . renameTopDeclFunctionCalls renameMap)
+          (filter (not . isFunctionTopDecl) publicDecls)
+
+importedFunctionRenameMap :: Name -> [TopDecl] -> Map Name Name
+importedFunctionRenameMap qualifier ds =
+  Map.fromList
+    [ (sigName (funSignature fd), hiddenFunctionName qualifier (sigName (funSignature fd)))
+      | TFunDef fd <- ds,
+        sigName (funSignature fd) /= Name "revert"
+    ]
+
+importedTypeRenameMap :: Set Name -> Name -> [TopDecl] -> Map Name Name
+importedTypeRenameMap collidingTypeNames qualifier ds =
+  Map.fromList
+    [ (n, QualName qualifier (show n))
+      | d <- ds,
+        n <- topDeclImportedTypeNames d,
+        n `Set.member` collidingTypeNames
+    ]
+
+topDeclImportedTypeNames :: TopDecl -> [Name]
+topDeclImportedTypeNames (TDataDef (DataTy n _ _)) = [n]
+topDeclImportedTypeNames (TSym (TySym n _ _)) = [n]
+topDeclImportedTypeNames _ = []
+
+collidingImportedTypeNames :: ModuleGraph -> [(Import, FilePath)] -> Either String (Set Name)
+collidingImportedTypeNames graph importPairs = do
+  importedTypeNames <- concat <$> mapM namesFromImport importPairs
+  let counts =
+        Map.fromListWith (+) [(n, 1 :: Int) | n <- importedTypeNames]
+  pure $
+    Set.fromList
+      [ n
+        | (n, count) <- Map.toList counts,
+          count > 1
+      ]
+  where
+    namesFromImport (ImportModule _, modulePath) =
+      topDeclTypeNamesForModule modulePath
+    namesFromImport (ImportAlias _ _, modulePath) =
+      topDeclTypeNamesForModule modulePath
+    namesFromImport (ImportOnly _ _, _) =
+      Right []
+
+    topDeclTypeNamesForModule modulePath = do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      pure (concatMap topDeclImportedTypeNames publicDecls)
+
+importOnlyFunctionDecls :: Name -> [Name] -> [TopDecl] -> [TopDecl]
+importOnlyFunctionDecls qualifier selectedNames allDecls =
+  concatMap qualifyImpl allFds ++ concatMap wrapSelected selectedFds
+  where
+    allFds = [fd | TFunDef fd <- allDecls]
+    selectedFds =
+      [ fd
+        | fd <- allFds,
+          sigName (funSignature fd) `elem` selectedNames
+      ]
+    renameMap = importedFunctionRenameMap qualifier allDecls
+    qualifyImpl fd
+      | sigName (funSignature fd) == Name "revert" =
+          [TFunDef fd]
+      | otherwise =
+          [TFunDef (qualifyFunctionImpl renameMap qualifier fd)]
+    wrapSelected fd
+      | sigName (funSignature fd) == Name "revert" =
+          []
+      | otherwise =
+          [TFunDef (importOnlyFunctionWrapper qualifier fd)]
+
+importOnlyFunctionWrapper :: Name -> FunDef -> FunDef
+importOnlyFunctionWrapper qualifier (FunDef sig _body) =
+  FunDef
+    sig
+    (forwardingWrapperBody sig implName)
+  where
+    originalName = sigName sig
+    implName = hiddenFunctionName qualifier originalName
+
+functionDependencyClosure :: Map Name [Name] -> [Name] -> [Name]
+functionDependencyClosure depMap seeds = reverse (go Set.empty seeds [])
+  where
+    go :: Set Name -> [Name] -> [Name] -> [Name]
+    go _ [] acc = acc
+    go seen (n : pending) acc
+      | n `Set.member` seen = go seen pending acc
+      | otherwise =
+          let deps = Map.findWithDefault [] n depMap
+           in go (Set.insert n seen) (deps ++ pending) (n : acc)
+
+funDefFunctionRefs :: FunDef -> [Name]
+funDefFunctionRefs (FunDef _ body) =
+  bodyFunctionRefs body
+
+bodyFunctionRefs :: Body -> [Name]
+bodyFunctionRefs =
+  concatMap stmtFunctionRefs
+
+stmtFunctionRefs :: Stmt -> [Name]
+stmtFunctionRefs (Assign lhs rhs) =
+  expFunctionRefs lhs ++ expFunctionRefs rhs
+stmtFunctionRefs (StmtPlusEq e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+stmtFunctionRefs (StmtMinusEq e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+stmtFunctionRefs (Let _ _ me) =
+  maybe [] expFunctionRefs me
+stmtFunctionRefs (StmtExp e) =
+  expFunctionRefs e
+stmtFunctionRefs (Return e) =
+  expFunctionRefs e
+stmtFunctionRefs (Match es eqns) =
+  concatMap expFunctionRefs es ++ concatMap equationFunctionRefs eqns
+stmtFunctionRefs (Asm _) =
+  []
+stmtFunctionRefs (If e blk1 blk2) =
+  expFunctionRefs e ++ bodyFunctionRefs blk1 ++ bodyFunctionRefs blk2
+
+equationFunctionRefs :: Equation -> [Name]
+equationFunctionRefs (_pats, body) =
+  bodyFunctionRefs body
+
+expFunctionRefs :: Exp -> [Name]
+expFunctionRefs (Lit _) = []
+expFunctionRefs (ExpName me n es) =
+  directRef ++ maybe [] expFunctionRefs me ++ concatMap expFunctionRefs es
+  where
+    directRef =
+      case me of
+        Nothing -> [n]
+        _ -> maybe [] pure (qualifiedMemberName me n)
+expFunctionRefs (ExpVar me n) =
+  directRef ++ maybe [] expFunctionRefs me
+  where
+    directRef =
+      case me of
+        Nothing -> [n]
+        _ -> maybe [] pure (qualifiedMemberName me n)
+expFunctionRefs (ExpDotName _ es) =
+  concatMap expFunctionRefs es
+expFunctionRefs (Lam _ body _mt) =
+  bodyFunctionRefs body
+expFunctionRefs (TyExp e _ty) =
+  expFunctionRefs e
+expFunctionRefs (ExpIndexed e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpPlus e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpMinus e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpTimes e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpDivide e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpModulo e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpLT e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpGT e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpLE e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpGE e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpEE e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpNE e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpLAnd e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpLOr e1 e2) =
+  expFunctionRefs e1 ++ expFunctionRefs e2
+expFunctionRefs (ExpLNot e) =
+  expFunctionRefs e
+expFunctionRefs (ExpCond e1 e2 e3) =
+  expFunctionRefs e1 ++ expFunctionRefs e2 ++ expFunctionRefs e3
+
+renameTopDeclFunctionCalls :: Map Name Name -> TopDecl -> TopDecl
+renameTopDeclFunctionCalls renameMap (TInstDef inst) =
+  TInstDef
+    ( inst
+        { instFunctions =
+            map (renameFunDefFunctionCalls renameMap) (instFunctions inst)
+        }
+    )
+renameTopDeclFunctionCalls renameMap (TContr c) =
+  TContr (renameContractFunctionCalls renameMap c)
+renameTopDeclFunctionCalls _ d = d
+
+renameFunDefFunctionCalls :: Map Name Name -> FunDef -> FunDef
+renameFunDefFunctionCalls renameMap (FunDef sig body) =
+  FunDef sig (renameBodyFunctionCalls renameMap body)
+
+renameContractFunctionCalls :: Map Name Name -> Contract -> Contract
+renameContractFunctionCalls renameMap (Contract n ts ds) =
+  Contract n ts (map (renameContractDeclFunctionCalls renameMap) ds)
+
+renameContractDeclFunctionCalls :: Map Name Name -> ContractDecl -> ContractDecl
+renameContractDeclFunctionCalls renameMap (CFunDecl fd) =
+  CFunDecl (renameFunDefFunctionCalls renameMap fd)
+renameContractDeclFunctionCalls renameMap (CFieldDecl (Field n ty me)) =
+  CFieldDecl (Field n ty (renameExpFunctionCalls renameMap <$> me))
+renameContractDeclFunctionCalls renameMap (CConstrDecl (Constructor ps body)) =
+  CConstrDecl (Constructor ps (renameBodyFunctionCalls renameMap body))
+renameContractDeclFunctionCalls _ d = d
+
+isFunctionTopDecl :: TopDecl -> Bool
+isFunctionTopDecl (TFunDef _) = True
+isFunctionTopDecl _ = False
+
+shadowImportedDecls :: [TopDecl] -> [TopDecl] -> [TopDecl]
+shadowImportedDecls localDecls =
+  reverse . snd . foldl step (initialSeen, [])
+  where
+    initialSeen =
+      ( concatMap topDeclTermNames localDecls,
+        concatMap topDeclTypeNames localDecls,
+        concatMap topDeclClassNames localDecls,
+        [inst | TInstDef inst <- localDecls]
+      )
+
+    step (seen, acc) decl =
+      case filterDecl seen decl of
+        (seen', Just decl') -> (seen', decl' : acc)
+        (seen', Nothing) -> (seen', acc)
+
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TFunDef (FunDef sig _))
+      | sigName sig `elem` termNames = ((termNames, typeNames, classNames, instDecls), Nothing)
+      | otherwise =
+          ( (sigName sig : termNames, typeNames, classNames, instDecls),
+            Just d
+          )
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TSym (TySym n _ _))
+      | n `elem` typeNames = ((termNames, typeNames, classNames, instDecls), Nothing)
+      | otherwise =
+          ( (termNames, n : typeNames, classNames, instDecls),
+            Just d
+          )
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TClassDef (Class _ _ n _ _ _))
+      | n `elem` classNames = ((termNames, typeNames, classNames, instDecls), Nothing)
+      | otherwise =
+          ( (termNames, typeNames, n : classNames, instDecls),
+            Just d
+          )
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TContr (Contract n _ _))
+      | n `elem` typeNames = ((termNames, typeNames, classNames, instDecls), Nothing)
+      | otherwise =
+          ( (termNames, n : typeNames, classNames, instDecls),
+            Just d
+          )
+    filterDecl (termNames, typeNames, classNames, instDecls) (TDataDef (DataTy n ts cs))
+      | n `elem` typeNames = ((termNames, typeNames, classNames, instDecls), Nothing)
+      | otherwise =
+          ( (termNames, n : typeNames, classNames, instDecls),
+            Just (TDataDef (DataTy n ts cs))
+          )
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TInstDef inst)
+      | inst `elem` instDecls = ((termNames, typeNames, classNames, instDecls), Nothing)
+      | otherwise =
+          ( (termNames, typeNames, classNames, inst : instDecls),
+            Just d
+          )
+    filterDecl seen (TExportDecl _) = (seen, Nothing)
+    filterDecl seen (TPragmaDecl _) = (seen, Nothing)
+
+topDeclTermNames :: TopDecl -> [Name]
+topDeclTermNames (TFunDef (FunDef sig _)) = [sigName sig]
+topDeclTermNames (TDataDef (DataTy _ _ cs)) = map constrName cs
+topDeclTermNames _ = []
+
+topDeclTypeNames :: TopDecl -> [Name]
+topDeclTypeNames (TSym (TySym n _ _)) = [n]
+topDeclTypeNames (TContr (Contract n _ _)) = [n]
+topDeclTypeNames (TDataDef (DataTy n _ _)) = [n]
+topDeclTypeNames _ = []
+
+topDeclClassNames :: TopDecl -> [Name]
+topDeclClassNames (TClassDef (Class _ _ n _ _ _)) = [n]
+topDeclClassNames _ = []
+
+applyImportVisibility :: Import -> [TopDecl] -> [TopDecl]
+applyImportVisibility (ImportOnly _ SelectAll) =
+  id
+applyImportVisibility (ImportOnly _ (SelectOnly names)) =
+  mapMaybe (selectTopDecl names)
+applyImportVisibility (ImportModule _) =
+  const []
+applyImportVisibility (ImportAlias _ _) =
+  const []
+
+selectTopDecl :: [Name] -> TopDecl -> Maybe TopDecl
+selectTopDecl names d@(TFunDef (FunDef sig _))
+  | sigName sig `elem` names = Just d
+  | otherwise = Nothing
+selectTopDecl names d@(TSym (TySym n _ _))
+  | n `elem` names = Just d
+  | otherwise = Nothing
+selectTopDecl names d@(TClassDef (Class _ _ n _ _ _))
+  | n `elem` names = Just d
+  | otherwise = Nothing
+selectTopDecl names d@(TContr (Contract n _ _))
+  | n `elem` names = Just d
+  | otherwise = Nothing
+selectTopDecl names (TDataDef (DataTy n ts cs))
+  | n `elem` names = Just (TDataDef (DataTy n ts cs))
+  | otherwise =
+      case filter (\c -> constrName c `elem` names) cs of
+        [] -> Nothing
+        cs' -> Just (TDataDef (DataTy n ts cs'))
+selectTopDecl _ d@(TInstDef _) =
+  Just d
+selectTopDecl _ (TExportDecl _) =
+  Nothing
+selectTopDecl _ (TPragmaDecl _) =
+  Nothing
+
+ensureNoAmbiguousSelectedImports :: ModuleGraph -> [(Import, FilePath)] -> Either String ()
+ensureNoAmbiguousSelectedImports graph importPairs = do
+  selectedPairs <- concat <$> mapM selectedFromImport importPairs
+  case ambiguous selectedPairs of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Ambiguous selected imports:",
+            unlines (map formatAmbiguous xs)
+          ]
+  where
+    selectedFromImport (ImportOnly modName selector, modulePath) = do
+      names <- resolveSelectedImportItems graph modName modulePath selector
+      pure [(item, modName) | item <- uniqueNames names]
+    selectedFromImport _ = pure []
+
+    ambiguous selectedPairs =
+      [ (item, uniqueNames mods)
+        | (item, mods) <- Map.toList selections,
+          length (uniqueNames mods) > 1
+      ]
+      where
+        selections :: Map Name [Name]
+        selections = Map.fromListWith (++) [(item, [modName]) | (item, modName) <- selectedPairs]
+
+formatAmbiguous :: (Name, [Name]) -> String
+formatAmbiguous (item, mods) =
+  "  "
+    ++ show item
+    ++ " imported from "
+    ++ intercalate ", " (map show mods)
+
+uniqueNames :: [Name] -> [Name]
+uniqueNames = reverse . fst . foldl step ([], Map.empty)
+  where
+    step (acc, seen) n
+      | Map.member n seen = (acc, seen)
+      | otherwise = (n : acc, Map.insert n () seen)
+
+duplicateNames :: [Name] -> [Name]
+duplicateNames names =
+  [ n
+    | (n, count) <- Map.toList counts,
+      count > 1
+  ]
+  where
+    counts = Map.fromListWith (+) [(n, 1 :: Int) | n <- names]
+
+ensureNoDuplicateModuleQualifiers :: CompUnit -> Either String ()
+ensureNoDuplicateModuleQualifiers (CompUnit imps _) =
+  case duplicates of
+    [] -> Right ()
+    qs ->
+      Left $
+        unlines
+          [ "Duplicate import qualifiers:",
+            unlines (map (\q -> "  " ++ show q) qs)
+          ]
+  where
+    duplicates = duplicateNames (mapMaybe moduleQualifier imps)
+
+moduleQualifier :: Import -> Maybe Name
+moduleQualifier (ImportModule n) = Just n
+moduleQualifier (ImportAlias _ n) = Just n
+moduleQualifier (ImportOnly _ _) = Nothing
+
+ensureNoDuplicateSelectedItems :: CompUnit -> Either String ()
+ensureNoDuplicateSelectedItems (CompUnit imps _) =
+  case concatMap duplicateItems imps of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Duplicate names in selective import:",
+            unlines xs
+          ]
+  where
+    duplicateItems (ImportOnly moduleName (SelectOnly items)) =
+      [ "  " ++ show moduleName ++ "." ++ show item
+        | item <- duplicateNames items
+      ]
+    duplicateItems (ImportOnly _ SelectAll) = []
+    duplicateItems _ = []

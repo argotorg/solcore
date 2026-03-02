@@ -635,6 +635,10 @@ setBoundVariableCondition :: PragmaStatus -> TcM ()
 setBoundVariableCondition st =
   modify (\env -> env {boundVariable = st})
 
+isTrustedImportedInstance :: Instance Name -> TcM Bool
+isTrustedImportedInstance inst =
+  (instanceHeadKey inst `elem`) <$> gets trustedInstanceHeads
+
 disableBoundVariableCondition :: TcM a -> TcM a
 disableBoundVariableCondition m =
   do

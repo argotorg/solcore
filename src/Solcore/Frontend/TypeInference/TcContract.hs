@@ -28,9 +28,20 @@ typeInfer ::
   Option ->
   CompUnit Name ->
   IO (Either String (CompUnit Id, TcEnv))
-typeInfer options (CompUnit imps decls) =
+typeInfer options =
+  typeInferWithTrustedInstanceHeads options []
+
+typeInferWithTrustedInstanceHeads ::
+  Option ->
+  [InstanceHead] ->
+  CompUnit Name ->
+  IO (Either String (CompUnit Id, TcEnv))
+typeInferWithTrustedInstanceHeads options trustedInstances (CompUnit imps decls) =
   do
-    r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options)
+    r <-
+      runTcM
+        (tcCompUnit (CompUnit imps decls))
+        ((initTcEnv options) {trustedInstanceHeads = trustedInstances})
     case r of
       Left err1 -> pure $ Left err1
       Right (CompUnit _ ds, env) -> do
@@ -152,6 +163,8 @@ tcTopDecl (TDataDef d) =
     pure (TDataDef d)
 tcTopDecl (TSym s) =
   pure (TSym s)
+tcTopDecl (TExportDecl d) =
+  pure (TExportDecl d)
 tcTopDecl (TPragmaDecl d) =
   pure (TPragmaDecl d)
 
@@ -166,6 +179,7 @@ checkTopDecl (TSym s) =
   checkSynonym s
 checkTopDecl (TFunDef (FunDef sig _)) =
   extSignature sig
+checkTopDecl (TExportDecl _) = pure ()
 checkTopDecl _ = pure ()
 
 -- type inference for contracts

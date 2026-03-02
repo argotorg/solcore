@@ -1,7 +1,10 @@
 import std;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 contract Test {
   function main() {
-    return Add.add(21, 21);
+    return std.addWord(21, 21);
   }
 }

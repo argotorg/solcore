@@ -36,8 +36,16 @@ instance (Pretty a) => Pretty (CompUnit a) where
     vcat (map ppr imps ++ map ppr cs)
 
 instance Pretty Import where
-  ppr (Import qn) =
+  ppr (ImportModule qn) =
     text "import" <+> ppr qn <+> semi
+  ppr (ImportAlias qn asName) =
+    hsep [text "import", ppr qn, text "as", ppr asName, semi]
+  ppr (ImportOnly qn items) =
+    hsep
+      [ text "import",
+        ppr qn <> text ".",
+        pprItemSelector items <> semi
+      ]
 
 instance (Pretty a) => Pretty (TopDecl a) where
   ppr (TContr c) = ppr c
@@ -48,7 +56,19 @@ instance (Pretty a) => Pretty (TopDecl a) where
     vcat (map ppr ts)
   ppr (TDataDef d) = ppr d
   ppr (TSym s) = ppr s
+  ppr (TExportDecl e) = ppr e
   ppr (TPragmaDecl p) = ppr p
+
+instance Pretty Export where
+  ppr (Export items) =
+    hsep
+      [ text "export",
+        pprItemSelector items <> semi
+      ]
+
+pprItemSelector :: ItemSelector -> Doc
+pprItemSelector SelectAll = lbrace <> text "*" <> rbrace
+pprItemSelector (SelectOnly names) = lbrace <> commaSep (map ppr names) <> rbrace
 
 instance Pretty Pragma where
   ppr (Pragma _ Enabled) = empty

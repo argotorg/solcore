@@ -30,7 +30,6 @@ forall self memberRefType . class self:LValueMemberAccess(memberRefType) {
 // Contract field access
 // ------------------------------------------------------------------
 
-pragma no-coverage-condition LValueMemberAccess;
 
 forall cxt fieldSelector fieldType offsetType
   . StructField(cxt, fieldSelector):StructField(fieldType, offsetType)
@@ -75,4 +74,3 @@ instance StructField(MintCtx, balances_sel):StructField(mapping(word,word), ()) 
      ) ;
 
    }
-

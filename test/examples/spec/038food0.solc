@@ -5,19 +5,19 @@ data CFood = Red(Food) | Green(Food) | Nocolor;
 
   function fromEnum(x : CFood) {
      match x {
-       | Red(Curry) => return 1;
-       | Green(Beans) => return 42;
+       | CFood.Red(Food.Curry) => return 1;
+       | CFood.Green(Food.Beans) => return 42;
        | _ => return 3;
      }
   }
 
 
-contract Food {
+contract FoodContract {
   function id(x) {
     return(x);
   }
 
   function main() {
-  return fromEnum(id(Green(Beans)));
+  return fromEnum(id(CFood.Green(Food.Beans)));
   }
 }

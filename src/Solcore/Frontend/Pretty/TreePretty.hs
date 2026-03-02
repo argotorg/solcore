@@ -15,8 +15,16 @@ instance Pretty CompUnit where
     vcat (map ppr imps ++ map ppr cs)
 
 instance Pretty Import where
-  ppr (Import qn) =
+  ppr (ImportModule qn) =
     text "import" <+> ppr qn <+> semi
+  ppr (ImportAlias qn asName) =
+    hsep [text "import", ppr qn, text "as", ppr asName, semi]
+  ppr (ImportOnly qn items) =
+    hsep
+      [ text "import",
+        ppr qn <> text ".",
+        pprItemSelector items <> semi
+      ]
 
 instance Pretty TopDecl where
   ppr (TContr c) = ppr c
@@ -25,7 +33,19 @@ instance Pretty TopDecl where
   ppr (TInstDef is) = ppr is
   ppr (TDataDef d) = ppr d
   ppr (TSym s) = ppr s
+  ppr (TExportDecl e) = ppr e
   ppr (TPragmaDecl p) = ppr p
+
+instance Pretty Export where
+  ppr (Export items) =
+    hsep
+      [ text "export",
+        pprItemSelector items <> semi
+      ]
+
+pprItemSelector :: ItemSelector -> Doc
+pprItemSelector SelectAll = lbrace <> text "*" <> rbrace
+pprItemSelector (SelectOnly names) = lbrace <> commaSep (map ppr names) <> rbrace
 
 instance Pretty Pragma where
   ppr (Pragma _ Enabled) = empty
@@ -255,16 +275,19 @@ parensWhen _ d = d
 instance Pretty Exp where
   ppr (Lit l) = ppr l
   ppr (ExpName me n es) =
-    maybe (text "this") ppr me
-      <> char 'n'
+    case me of
+      Nothing -> ppr n <> parens (commaSep (map ppr es))
+      Just e -> ppr e <> char '.' <> ppr n <> parens (commaSep (map ppr es))
+  ppr (ExpVar me v) =
+    case me of
+      Nothing -> ppr v
+      Just e -> ppr e <> char '.' <> ppr v
+  ppr (ExpDotName n es) =
+    char '.'
       <> ppr n
       <> parensWhen
         (not $ null es)
         (commaSep (map ppr es))
-  ppr (ExpVar me v) =
-    maybe (text "this") ppr me
-      <> char '.'
-      <> ppr v
   ppr (Lam args bd _) =
     text "lam"
       <+> pprParams args
@@ -324,6 +347,10 @@ instance Pretty Pat where
   ppr (Pat n ps@(_ : _))
     | isTuple n = parens (commaSep $ map ppr ps)
     | otherwise = ppr n <> (parens $ commaSep $ map ppr ps)
+  ppr (PatDot n []) =
+    char '.' <> ppr n
+  ppr (PatDot n ps@(_ : _)) =
+    char '.' <> ppr n <> (parens $ commaSep $ map ppr ps)
   ppr PWildcard =
     text "_"
   ppr (PLit l) =

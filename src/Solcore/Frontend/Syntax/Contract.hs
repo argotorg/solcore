@@ -23,6 +23,7 @@ data TopDecl a
   | TMutualDef [TopDecl a]
   | TDataDef DataTy
   | TSym TySym
+  | TExportDecl Export
   | TPragmaDecl Pragma
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -47,8 +48,21 @@ data Pragma
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
-newtype Import
-  = Import {unImport :: Name}
+data Export
+  = Export
+  { exportItems :: ItemSelector
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data Import
+  = ImportModule {importModule :: Name}
+  | ImportAlias {importModule :: Name, importAlias :: Name}
+  | ImportOnly {importModule :: Name, importItems :: ItemSelector}
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ItemSelector
+  = SelectAll
+  | SelectOnly [Name]
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of the contract structure
@@ -131,6 +145,10 @@ data Instance a
     instFunctions :: [FunDef a]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
+
+instanceHeadKey :: Instance a -> (Bool, Name, [Ty], Ty)
+instanceHeadKey inst =
+  (instDefault inst, instName inst, paramsTy inst, mainTy inst)
 
 -- definition of contract field variables
 

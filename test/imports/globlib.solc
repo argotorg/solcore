@@ -1,0 +1,11 @@
+export {*};
+
+data T = T(word);
+
+function idWord(x: word) -> word {
+  return x;
+}
+
+function mkT(x: word) -> T {
+  return T.T(x);
+}

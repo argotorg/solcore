@@ -22,6 +22,7 @@ data TopDecl
   | TInstDef Instance
   | TDataDef DataTy
   | TSym TySym
+  | TExportDecl Export
   | TPragmaDecl Pragma
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -46,8 +47,21 @@ data Pragma
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
-newtype Import
-  = Import {unImport :: Name}
+data Export
+  = Export
+  { exportItems :: ItemSelector
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data Import
+  = ImportModule {importModule :: Name}
+  | ImportAlias {importModule :: Name, importAlias :: Name}
+  | ImportOnly {importModule :: Name, importItems :: ItemSelector}
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ItemSelector
+  = SelectAll
+  | SelectOnly [Name]
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of the contract structure
@@ -211,6 +225,7 @@ data Exp
   = Lit Literal -- literal
   | ExpName (Maybe Exp) Name [Exp] -- function call or constructor
   | ExpVar (Maybe Exp) Name -- variables or field access
+  | ExpDotName Name [Exp] -- contextual constructor shorthand, e.g. .Some(1), .None
   | Lam [Param] Body (Maybe Ty) -- lambda-abstraction
   | TyExp Exp Ty -- type annotation expression
   | ExpIndexed Exp Exp -- e1[e2]
@@ -236,6 +251,7 @@ data Exp
 
 data Pat
   = Pat Name [Pat]
+  | PatDot Name [Pat]
   | PWildcard
   | PLit Literal
   deriving (Eq, Ord, Show, Data, Typeable)

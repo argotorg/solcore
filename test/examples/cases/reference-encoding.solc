@@ -116,9 +116,6 @@ class self:RValueMemberAccess(memberValueType) {
 }
 
 // This is *a lot* of pragmas...
-pragma no-coverage-condition StructField, LValueMemberAccess, RValueMemberAccess;
-pragma no-patterson-condition LValueMemberAccess, RValueMemberAccess;
-pragma no-bounded-variable-condition LValueMemberAccess, RValueMemberAccess;
 class self:StructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 

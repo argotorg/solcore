@@ -248,8 +248,6 @@ forall a b . a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
     }
 }
 
-pragma no-patterson-condition RValueMemberAccess; // this is due to ContractStorage(cxt); probably not needed once we have local instances
-pragma no-coverage-condition MemberAccessProxy, LValueMemberAccess, RValueMemberAccess;
 
 // ------------------------------------------------------------------
 // Contract field access

@@ -1,5 +1,9 @@
-import std;
-import dispatch;
+import std.{*};
+import std.{revert, uint256};
+import dispatch.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 function my_revert() -> word {
   revert("regression");

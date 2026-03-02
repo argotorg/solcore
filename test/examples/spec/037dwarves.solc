@@ -4,13 +4,13 @@ contract Dwarves {
 
   function fromEnum(c) {
     match c {
-      | Doc      => return 1;
-      | Grumpy   => return 2;
-      | Sleepy   => return 3;
-      | Bashful  => return 4;
-      | Happy    => return 5;
+      | Dwarf.Doc      => return 1;
+      | Dwarf.Grumpy   => return 2;
+      | Dwarf.Sleepy   => return 3;
+      | Dwarf.Bashful  => return 4;
+      | Dwarf.Happy    => return 5;
     }
   }
 
-  function main() { return fromEnum(Happy); }
+  function main() { return fromEnum(Dwarf.Happy); }
 }

@@ -43,4 +43,5 @@ instance (HasShortName a) => HasShortName (TopDecl a) where
   shortName (TInstDef is) = shortName is
   shortName (TMutualDef ts) = concatMap shortName ts
   shortName (TDataDef d) = pretty (dataName d)
+  shortName (TExportDecl e) = pretty e
   shortName (TPragmaDecl p) = pretty p
