@@ -100,6 +100,8 @@ import Language.Yul
 %right    'if'
 %right    'else'
 
+-- One intentional shift/reduce conflict: dangling `else` in `if ...` statements.
+-- Shifting `else` is correct (it binds to the nearest unmatched `if`).
 %expect 1
 
 %%
