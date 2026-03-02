@@ -95,9 +95,11 @@ Module qualification:
 
 Current constructor model is type-qualified constructors, with dot shorthand support.
 
-- Canonical constructor names are type-qualified (`Bool.True`, `Option.Some`).
-- Module-qualified constructor access is supported (`mod.Bool.True`, `alias.Bool.True`).
-- Unqualified constructors are generally rejected when only qualified constructors exist.
+- After name resolution, constructor names are canonicalized to `Type.Constructor` form (for example `Bool.True`, `Option.Some`).
+- In source, write constructors as `Type.Constructor`; module/alias prefixes are also supported (for example `mod.Option.Some`, `alias.Option.Some`).
+- Bare constructor names (for example `Some`) are not resolved by default in this model.
+  Use `Type.Constructor` / `mod.Type.Constructor`, or dot shorthand (`.Some`) when expected type context is available.
+- If a constructor is explicitly imported unqualified via selective import, it can be used unqualified.
 - `data Foo = Foo` same-name constructors are still accepted.
 
 Dot shorthand:
@@ -116,4 +118,3 @@ Dot shorthand:
 - Pragmas are module-local.
 - Pragmas do not propagate to importing modules.
 - Pragmas are not transitive through imports.
-
