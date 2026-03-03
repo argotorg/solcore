@@ -17,8 +17,10 @@ data LocTree a
   | LocEmpty Int -- empty location of given size
   deriving (Eq, Show)
 
+pattern LocPair :: LocTree a -> LocTree a -> LocTree a
 pattern LocPair a b = LocSeq [a, b]
 
+pattern LocUnit :: LocTree a
 pattern LocUnit = LocSeq []
 
 type Location = LocTree Int
