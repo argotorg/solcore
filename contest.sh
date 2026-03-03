@@ -86,7 +86,7 @@ suite=$(echo $presuite | tr -d '"')
 # Execute compilation pipeline
 echo "Compiling to Hull..."
 # Allow overriding sol-core command (useful for Nix builds)
-: ${SOLCORE_CMD:="cabal exec sol-core --"}
+: ${SOLCORE_CMD:="cabal run exe:sol-core --"}
 if ! $SOLCORE_CMD -f "$src"; then
     echo "Error: sol-core compilation failed"
     exit 1
@@ -104,7 +104,7 @@ fi
 
 echo "Generating Yul..."
 # Allow overriding yule command (useful for Nix builds)
-: ${YULE_CMD:="cabal run yule --"}
+: ${YULE_CMD:="cabal run exe:yule --"}
 yule_args=("$hull" -o "$yulfile")
 if [[ "$create" == "false" ]]; then
     yule_args+=(--nodeploy)
