@@ -61,11 +61,11 @@ assertLeft label act = do
       assertFailure (label ++ ": expected error but got tree: " ++ show tree)
 
 isNonExh :: Warning -> Bool
-isNonExh (NonExhaustive _) = True
+isNonExh (NonExhaustive _ _) = True
 isNonExh _ = False
 
 isRedundant :: Warning -> Bool
-isRedundant (RedundantClause _ _) = True
+isRedundant (RedundantClause _ _ _) = True
 isRedundant _ = False
 
 branchNames :: [(Id, [Pattern], DecisionTree)] -> [String]
