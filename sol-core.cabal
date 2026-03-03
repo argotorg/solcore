@@ -124,7 +124,7 @@ executable sol-core
   build-depends: sol-core
   build-tool-depends: alex:alex, happy:happy
   ghc-options:
-    -O1
+    -O1 -rtsopts
 
 executable yule
     import: common-opts
@@ -144,6 +144,8 @@ executable yule
                       parser-combinators >= 1.3,
                       optparse-applicative >= 0.18,
                       sol-core
+    ghc-options:
+      -rtsopts
 
 test-suite sol-core-tests
   import: common-opts
