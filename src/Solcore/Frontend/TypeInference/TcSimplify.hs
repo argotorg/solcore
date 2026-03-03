@@ -1,7 +1,6 @@
 module Solcore.Frontend.TypeInference.TcSimplify where
 
 import Control.Monad
-import Data.Either (isRight)
 import Data.List
 import Data.Map qualified as Map
 import Data.Maybe
@@ -52,7 +51,7 @@ enforceDependencies ps =
             && predMain p == predMain p'
         pss = splits eqMainTy ps
     s <- foldr (<>) mempty <$> mapM unifyWeakArgs pss
-    extSubst s
+    _ <- extSubst s
     pure (nub $ apply s ps)
 
 unifyWeakArgs :: [Pred] -> TcM Subst
@@ -179,7 +178,7 @@ toHnf _ (t1 :~: t2) =
 -- checking for default instance
 
 proveDefaulting :: InstTable -> [Inst] -> Pred -> Maybe ([Pred], Subst)
-proveDefaulting denv ienv p@(InCls cname t ts)
+proveDefaulting denv ienv (InCls cname t ts)
   -- no instance head unify with current predicate
   | all isNothing [tryInst it | it <- ienv] =
       do
@@ -200,7 +199,7 @@ proveDefaulting denv ienv p@(InCls cname t ts)
     -- checking if a predicate can unify with an instance head.
     -- we just consider the instance head.
     tryInst :: Qual Pred -> Maybe Inst
-    tryInst i@(_ :=> h@(InCls _ t' ts')) =
+    tryInst i@(_ :=> InCls _ t' ts') =
       case mgu (t' : ts') (t : ts) of
         Left _ -> Nothing
         Right _ -> Just i
@@ -316,3 +315,4 @@ unsolvedPredError p@(InCls n _ _) =
           "using defined instances:",
           s
         ]
+unsolvedPredError p = tcmError $ unwords ["Cannot entail:", pretty p]

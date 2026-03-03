@@ -3,22 +3,18 @@ module Solcore.Frontend.TypeInference.TcMonad where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
-import Control.Monad.Writer
 import Data.List
 import Data.List.NonEmpty qualified as N
-import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe
 import Data.Set qualified as Set
-import Solcore.Frontend.Pretty.SolcorePretty hiding ((<>))
+import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
-import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options (Option (..))
-import Solcore.Primitives.Primitives
 import System.TimeIt qualified as TimeIt
 import Text.Printf
 
@@ -49,7 +45,7 @@ freshName =
 incCounter :: TcM Int
 incCounter = do
   c <- gets counter
-  modify (\ctx -> ctx {counter = c + 1})
+  modify (\st -> st {counter = c + 1})
   pure c
 
 askGeneratingDefs :: TcM Bool
@@ -71,7 +67,7 @@ withNoGeneratingDefs m =
 addUniqueType :: Name -> DataTy -> TcM ()
 addUniqueType n dt =
   do
-    modify (\ctx -> ctx {uniqueTypes = Map.insert n dt (uniqueTypes ctx)})
+    modify (\st -> st {uniqueTypes = Map.insert n dt (uniqueTypes st)})
     checkDataType dt
 
 lookupUniqueTy :: Name -> TcM (Maybe DataTy)
@@ -84,7 +80,7 @@ isUniqueTyName n = do
   pure $ any (\d -> dataName d == n) (Map.elems uenv)
 
 typeInfoFor :: DataTy -> TypeInfo
-typeInfoFor (DataTy n vs cons) =
+typeInfoFor (DataTy _ vs cons) =
   TypeInfo (length vs) (map constrName cons) []
 
 freshTyVar :: TcM Ty
@@ -164,7 +160,7 @@ addFunctionName n =
   modify (\env -> env {directCalls = n : directCalls env})
 
 isDirectCall :: Name -> TcM Bool
-isDirectCall (QualName n _) = pure True
+isDirectCall (QualName _ _) = pure True
 isDirectCall n =
   (elem n) <$> gets directCalls
 
@@ -177,7 +173,7 @@ checkDataType d@(DataTy n vs constrs) =
     r <- maybeAskTypeInfo n
     unless (isNothing r) $
       typeAlreadyDefinedError d n
-    let vals' = map (\(n, ty) -> (n, Forall (bv ty) ([] :=> ty))) vals
+    let vals' = map (\(name', ty) -> (name', Forall (bv ty) ([] :=> ty))) vals
     mapM_ (uncurry extEnv) vals'
     modifyTypeInfo n ti
     -- checking kinds
@@ -239,7 +235,7 @@ kindCheck t = pure t
 -- Skolemization
 
 skolemise :: Scheme -> TcM ([Tyvar], Qual Ty)
-skolemise sch@(Forall vs qt) =
+skolemise sch@(Forall _ qt) =
   do
     let bvs = bv sch
     sks <- mapM (const freshSkolem) bvs
@@ -265,7 +261,7 @@ instance Fresh Scheme where
 
 instance Fresh Inst where
   type Result Inst = Inst
-  freshInst it@(ps :=> p) =
+  freshInst it@(_ :=> _) =
     do
       let vs = bv it
       mvs <- mapM (const freshTyVar) vs
@@ -357,11 +353,11 @@ withContractName n m =
 
 setCurrentContract :: Name -> TcM ()
 setCurrentContract n =
-  modify (\ctx -> ctx {contract = Just n})
+  modify (\st -> st {contract = Just n})
 
 clearCurrentContract :: TcM ()
 clearCurrentContract =
-  modify (\ctx -> ctx {contract = Nothing})
+  modify (\st -> st {contract = Nothing})
 
 askCurrentContract :: TcM Name
 askCurrentContract =
@@ -396,7 +392,7 @@ checkConstr tn cn =
 validConstr :: Name -> TypeInfo -> Bool
 validConstr n ti = n `elem` constrNames ti || isPair n
   where
-    isPair (Name n) = n == "pair"
+    isPair (Name pairName) = pairName == "pair"
     isPair _ = False
 
 -- extending the environment with a new variable
@@ -410,26 +406,26 @@ withExtEnv n s m =
   withLocalEnv (extEnv n s >> m)
 
 withLocalCtx :: [(Name, Scheme)] -> TcM a -> TcM a
-withLocalCtx ctx m =
+withLocalCtx envPairs m =
   withLocalEnv do
-    mapM_ (\(n, s) -> extEnv n s) ctx
+    mapM_ (\(n, s) -> extEnv n s) envPairs
     a <- m
     pure a
 
 -- Updating the environment
 
 putEnv :: Env -> TcM ()
-putEnv ctx =
-  modify (\sig -> sig {ctx = ctx})
+putEnv envCtx =
+  modify (\sig -> sig {ctx = envCtx})
 
 -- Extending the environment
 
 withLocalEnv :: TcM a -> TcM a
 withLocalEnv ta =
   do
-    ctx <- gets ctx
+    savedCtx <- gets ctx
     a <- ta
-    putEnv ctx
+    putEnv savedCtx
     pure a
 
 envList :: TcM [(Name, Scheme)]
@@ -532,7 +528,7 @@ expandSynonym n ts =
     pure (insts env body)
 
 maybeExpandSynonym :: Ty -> TcM Ty
-maybeExpandSynonym t@(TyCon n ts) =
+maybeExpandSynonym (TyCon n ts) =
   do
     isSyn <- isSynonym n
     if isSyn
@@ -584,16 +580,16 @@ addInstance :: Name -> Inst -> TcM ()
 addInstance n inst =
   do
     modify
-      ( \ctx ->
-          ctx {instEnv = Map.insertWith (++) n [inst] (instEnv ctx)}
+      ( \st ->
+          st {instEnv = Map.insertWith (++) n [inst] (instEnv st)}
       )
 
 addDefaultInstance :: Name -> Inst -> TcM ()
 addDefaultInstance n inst =
   do
     modify
-      ( \ctx ->
-          ctx {defaultEnv = Map.insert n inst (defaultEnv ctx)}
+      ( \st ->
+          st {defaultEnv = Map.insert n inst (defaultEnv st)}
       )
 
 maybeToTcM :: String -> Maybe a -> TcM a
@@ -603,7 +599,7 @@ maybeToTcM _ (Just x) = pure x
 -- checking coverage pragma
 
 pragmaEnabled :: Name -> PragmaStatus -> Bool
-pragmaEnabled n Enabled = False
+pragmaEnabled _ Enabled = False
 pragmaEnabled _ DisableAll = True
 pragmaEnabled n (DisableFor ns) = n `elem` N.toList ns
 
@@ -800,7 +796,7 @@ typeAlreadyDefinedError d n =
         ]
 
 dataTyFromInfo :: Name -> TypeInfo -> TcM DataTy
-dataTyFromInfo n (TypeInfo ar cs _) =
+dataTyFromInfo n (TypeInfo _ cs _) =
   do
     -- getting data constructor types
     (constrs, vs) <- unzip <$> mapM constrsFromEnv cs

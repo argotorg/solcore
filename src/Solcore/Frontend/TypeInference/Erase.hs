@@ -55,6 +55,8 @@ instance Erase (Stmt Id) where
     Match (erase es) (erase eqns)
   erase (Asm blk) =
     Asm blk
+  erase (If e blk1 blk2) =
+    If (erase e) (erase blk1) (erase blk2)
 
 instance Erase (Exp Id) where
   type EraseRes (Exp Id) = Exp Name
@@ -71,6 +73,10 @@ instance Erase (Exp Id) where
     Lam (erase ps) (erase bd) mt
   erase (TyExp e t) =
     TyExp (erase e) t
+  erase (Cond e1 e2 e3) =
+    Cond (erase e1) (erase e2) (erase e3)
+  erase (Indexed e1 e2) =
+    Indexed (erase e1) (erase e2)
   erase (Lit l) = Lit l
 
 instance Erase (Param Id) where

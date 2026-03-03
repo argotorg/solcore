@@ -1,15 +1,12 @@
 module Solcore.Frontend.TypeInference.TcEnv where
 
-import Data.List
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
-import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcSubst
-import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options
 import Solcore.Primitives.Primitives
 
@@ -116,7 +113,7 @@ data TcEnv
   }
 
 initTcEnv :: Option -> TcEnv
-initTcEnv options =
+initTcEnv opts =
   TcEnv
     { ctx = primCtx,
       instEnv = primInstEnv,
@@ -143,7 +140,7 @@ initTcEnv options =
       patterson = Enabled,
       boundVariable = Enabled,
       maxRecursionDepth = 100,
-      tcOptions = options
+      tcOptions = opts
     }
 
 primCtx :: Env

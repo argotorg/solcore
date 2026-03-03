@@ -19,3 +19,4 @@ addNumbers xs ys =
 
 newName :: NameSupply -> (Name, NameSupply)
 newName (x : xs) = (x, xs)
+newName [] = error "newName: empty name supply"
