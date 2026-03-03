@@ -1,8 +1,6 @@
 module Solcore.Desugarer.MatchCompiler where
 
-import Control.Monad
 import Control.Monad.Except
-import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
@@ -10,11 +8,9 @@ import Data.Either
 import Data.List
 import Data.List.NonEmpty qualified as L
 import Language.Yul
-import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Primitives.Primitives
-import Text.PrettyPrint.HughesPJ (hsep, render)
 
 {-
  Pattern matching compilation
@@ -190,13 +186,18 @@ thirdCase _ _ [] =
   throwError "Panic! Impossible --- thirdCase."
 thirdCase (e : es) d eqns =
   do
-    x@(Id n _) <- freshId
+    Id n _ <- freshId
     let vs = foldr (union . vars . L.head . L.fromList . fst) [] eqns
         s = map (\vi -> (vi, n)) vs
-        eqns' = map (\(_ : ps, ss) -> (ps, apply s ss)) eqns
+        eqns' = map (dropHeadPat s) eqns
         t = typeOfExp e
     res <- matchCompilerM es d eqns'
     return (Let (Id n t) (Just t) (Just e) : res)
+  where
+    dropHeadPat :: Subst -> Equation Id -> Equation Id
+    dropHeadPat subst (_ : ps, ss) = (ps, apply subst ss)
+    dropHeadPat _ eqn = eqn
+thirdCase [] _ _ = throwError "Panic! Impossible --- thirdCase with empty scrutinee."
 
 typeOfExp :: Exp Id -> Ty
 typeOfExp (Var i) = idType i
@@ -204,11 +205,11 @@ typeOfExp (Con i []) = idType i
 typeOfExp e@(Con i args) = go (idType i) args
   where
     go ty [] = ty
-    go (_ :-> u) (a : as) = go u as
+    go (_ :-> u) (_ : as) = go u as
     go _ _ = error $ "typeOfExp: " ++ show e
 typeOfExp (Lit (IntLit _)) = word -- TyCon "Word" []
-typeOfExp (Call Nothing i args) = idType i
-typeOfExp (Lam args body (Just tb)) = funtype tas tb
+typeOfExp (Call Nothing i _) = idType i
+typeOfExp (Lam args _ (Just tb)) = funtype tas tb
   where
     tas = map paramTy args
 typeOfExp e = error $ "typeOfExp: " ++ show e
@@ -224,9 +225,9 @@ fourthCase _ _ [] =
   throwError "Panic! Impossible --- fourthCase."
 fourthCase (e : es) d eqns =
   do
-    let (cons, vars) = span isConstr eqns
+    let (cons, varEqns) = span isConstr eqns
         cons' = sortBy compareConstr cons
-    defEqn <- eqnsForVars es d vars
+    defEqn <- eqnsForVars es d varEqns
     let ss = stmtsFrom defEqn -- statements for the closest var match,
     -- used for the default instruction semantics.
         cons'' = groupByConstrHead cons'
@@ -235,6 +236,7 @@ fourthCase (e : es) d eqns =
   where
     stmtsFrom [] = []
     stmtsFrom ((_, ss) : _) = ss
+fourthCase [] _ _ = throwError "Panic! Impossible --- fourthCase with empty scrutinee."
 
 groupByConstrHead :: Equations Id -> [Equations Id]
 groupByConstrHead = groupBy (\c c' -> compareConstr c c' == EQ)
@@ -249,15 +251,16 @@ compareConstr _ _ = EQ
 fifthCase :: [Exp Id] -> [Stmt Id] -> Equations Id -> CompilerM [Stmt Id]
 fifthCase [] _ [] =
   throwError "Panic! Impossible --- fifthCase"
-fifthCase es@(_ : _) d eqns@(_ : eqs) =
+fifthCase es@(_ : _) d eqns@(_ : _) =
   do
     let eqnss = reverse $ splits isConstr eqns
     case unsnoc eqnss of
-      Just (eqs, eq) -> do
-        d' <- generateFunctions es d eqs
-        r <- matchCompilerM es d' eq
+      Just (eqnGroups, tailEqns) -> do
+        d' <- generateFunctions es d eqnGroups
+        r <- matchCompilerM es d' tailEqns
         addDefaultCase d' r
       Nothing -> throwError "Panic! Impossible --- fifthCase"
+fifthCase _ _ _ = throwError "Panic! Impossible --- fifthCase invalid inputs."
 
 addDefaultCase :: [Stmt Id] -> [Stmt Id] -> CompilerM [Stmt Id]
 addDefaultCase _ [] = pure []
@@ -276,7 +279,7 @@ hasVarsBetweenConstrs eqns =
   length (splits isConstr eqns) >= 2
 
 generateFunctions :: [Exp Id] -> [Stmt Id] -> [Equations Id] -> CompilerM [Stmt Id]
-generateFunctions es d [] = return d
+generateFunctions _ d [] = return d
 generateFunctions es d (eqn : eqns) =
   do
     d' <- generateFunction es d eqn
@@ -287,7 +290,7 @@ generateFunction es d eqn =
   do
     n <- newFunName
     ss <- matchCompilerM es d eqn
-    let toParam n@(Id _ t) = Typed n t
+    let toParam paramId@(Id _ t) = Typed paramId t
         vs = ids ss
     let fd = FunDef (Signature [] [] n (map toParam vs) (Just (blockType ss))) ss
     tell [fd]
@@ -307,19 +310,23 @@ eqnsForConstrs ::
   [Stmt Id] ->
   Equations Id ->
   CompilerM (Equation Id)
-eqnsForConstrs (_ : es) d ss eqns@(((p : _), _) : _) =
+eqnsForConstrs (_ : es) d _ eqns@(((p : _), _) : _) =
   do
-    (p', ps', es') <- instantiatePat p
+    (p', _, es') <- instantiatePat p
     let eqns' = map dropHeadParam eqns
     res <- matchCompilerM (es' ++ es) d eqns'
     pure ([p'], res)
+eqnsForConstrs _ _ _ _ =
+  throwError "Panic! Impossible --- eqnsForConstrs with invalid equations."
 
 dropHeadParam :: Equation Id -> Equation Id
-dropHeadParam ((PCon n ps' : ps), ss) = (ps' ++ ps, ss)
+dropHeadParam ((PCon _ ps' : ps), ss) = (ps' ++ ps, ss)
 dropHeadParam x = x
 
 instantiatePat :: Pat Id -> CompilerM (Pat Id, [Pat Id], [Exp Id])
 instantiatePat p@(PLit _) = return (p, [], [])
+instantiatePat p@(PVar _) = return (p, [], [])
+instantiatePat PWildcard = return (PWildcard, [], [])
 instantiatePat (PCon n ps) =
   do
     ns <- mapM (const freshName) ps
@@ -330,6 +337,7 @@ instantiatePat (PCon n ps) =
 tyFromPat :: Pat Id -> CompilerM Ty
 tyFromPat (PVar (Id _ t)) = pure t
 tyFromPat (PLit _) = pure word
+tyFromPat PWildcard = pure unit
 tyFromPat (PCon (Id _ t) _) =
   maybe err pure (retTy t)
   where
@@ -340,7 +348,10 @@ eqnsForVars _ _ [] = return []
 eqnsForVars es d eqns =
   do
     v <- freshPVar
-    let [v'] = vars v
+    v' <- case vars v of
+      [x] -> pure x
+      _ -> throwError "Panic! Impossible --- eqnsForVars produced non-singleton vars."
+    let
         vs = foldr (union . vars . safeHead . fst) [] eqns
         s = map (\vi -> (vi, v')) vs
         eqns' = map (\(ps, ss) -> (ps, apply s ss)) eqns
@@ -491,6 +502,8 @@ instance Apply (Exp Id) where
   apply s (Lam args bd mt) =
     Lam args (apply s bd) mt
   apply s (TyExp e t) = TyExp (apply s e) t
+  apply s (Cond e1 e2 e3) = Cond (apply s e1) (apply s e2) (apply s e3)
+  apply s (Indexed e1 e2) = Indexed (apply s e1) (apply s e2)
 
   ids (Var n) = [n]
   ids (Con _ es) = ids es
@@ -607,9 +620,9 @@ freshName =
     return (Name ("var_" ++ show n))
 
 freshId :: CompilerM Id
-freshId = Id <$> freshName <*> var
+freshId = Id <$> freshName <*> freshTy
   where
-    var = (TyVar . TVar) <$> freshName
+    freshTy = (TyVar . TVar) <$> freshName
 
 freshExpVar :: CompilerM (Exp Id)
 freshExpVar =
