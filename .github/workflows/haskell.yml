@@ -39,6 +39,7 @@ jobs:
         set -euo pipefail
         nix develop --command bash -lc '
           set -euo pipefail
+          cabal update
           cabal clean
           cabal test sol-core-tests --ghc-options=-Werror --test-show-details=direct 2>&1 | tee sol-core-tests.log
           if grep -Eq ": warning: \\[GHC-" sol-core-tests.log; then
