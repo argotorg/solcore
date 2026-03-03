@@ -235,7 +235,6 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
       let dataDecls = map (CDataDecl . snd) (Map.toList dt)
       let funDecls = map (CFunDecl . snd) (Map.toList st)
       pure (dataDecls ++ funDecls)
-
 specialiseTopDecl d@TDataDef {} = pure [d]
 -- Drop all toplevel decls that are not contracts - we do not need them anymore
 specialiseTopDecl _ = pure []

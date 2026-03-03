@@ -80,40 +80,42 @@ tcStmt s@(If e blk1 blk2) =
   do
     (e', ps, t) <- tcExp e
     -- condition should have the boolean type
-    _ <- unify t boolTy
-      `catchError` ( \_ ->
-                       tcmError $
-                         unlines
-                           [ "Expression:",
-                             pretty e,
-                             "has type:",
-                             pretty t,
-                             "while it is expected to have type:",
-                             pretty boolTy
-                           ]
-                   )
-      `wrapError` s
+    _ <-
+      unify t boolTy
+        `catchError` ( \_ ->
+                         tcmError $
+                           unlines
+                             [ "Expression:",
+                               pretty e,
+                               "has type:",
+                               pretty t,
+                               "while it is expected to have type:",
+                               pretty boolTy
+                             ]
+                     )
+        `wrapError` s
     (blk1', ps1, t1) <- tcBody blk1
     (blk2', ps2, t2) <- tcBody blk2
     -- here we check if "else" branch is present.
     let t2' = if null blk2 then t1 else t2
         ps3 = ps ++ ps1 ++ ps2
     -- we force that both blocks should return the same type.
-    _ <- unify t1 t2'
-      `catchError` ( \_ ->
-                       tcmError $
-                         unlines
-                           [ "If blocks should produce the same return type but, block:",
-                             pretty blk1,
-                             "has return type:",
-                             pretty t1,
-                             "while block:",
-                             pretty blk2,
-                             "has return type:",
-                             pretty t2'
-                           ]
-                   )
-      `wrapError` s
+    _ <-
+      unify t1 t2'
+        `catchError` ( \_ ->
+                         tcmError $
+                           unlines
+                             [ "If blocks should produce the same return type but, block:",
+                               pretty blk1,
+                               "has return type:",
+                               pretty t1,
+                               "while block:",
+                               pretty blk2,
+                               "has return type:",
+                               pretty t2'
+                             ]
+                     )
+        `wrapError` s
     withCurrentSubst (If e' blk1' blk2', ps3, t1)
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
@@ -270,35 +272,37 @@ tcExp e@(Cond e1 e2 e3) =
     (e2', ps2, t2) <- tcExp e2 `wrapError` e
     (e3', ps3, t3) <- tcExp e3 `wrapError` e
     -- condition should have the boolean type
-    _ <- unify t1 boolTy
-      `catchError` ( \_ ->
-                       tcmError $
-                         unlines
-                           [ "Expression:",
-                             pretty e1,
-                             "has type:",
-                             pretty t1,
-                             "while it is expected to have type:",
-                             pretty boolTy
-                           ]
-                   )
-      `wrapError` e
+    _ <-
+      unify t1 boolTy
+        `catchError` ( \_ ->
+                         tcmError $
+                           unlines
+                             [ "Expression:",
+                               pretty e1,
+                               "has type:",
+                               pretty t1,
+                               "while it is expected to have type:",
+                               pretty boolTy
+                             ]
+                     )
+        `wrapError` e
     -- we force that both blocks should return the same type.
-    _ <- unify t2 t3
-      `catchError` ( \_ ->
-                       tcmError $
-                         unlines
-                           [ "Conditional expressions should produce the same return type, but:",
-                             pretty e2,
-                             "has return type:",
-                             pretty t2,
-                             "while:",
-                             pretty e3,
-                             "has return type:",
-                             pretty t3
-                           ]
-                   )
-      `wrapError` e
+    _ <-
+      unify t2 t3
+        `catchError` ( \_ ->
+                         tcmError $
+                           unlines
+                             [ "Conditional expressions should produce the same return type, but:",
+                               pretty e2,
+                               "has return type:",
+                               pretty t2,
+                               "while:",
+                               pretty e3,
+                               "has return type:",
+                               pretty t3
+                             ]
+                     )
+        `wrapError` e
     withCurrentSubst (Cond e1' e2' e3', ps1 ++ ps2 ++ ps3, t2)
 tcExp e@(Indexed arrExp idx) =
   do

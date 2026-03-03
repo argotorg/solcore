@@ -176,7 +176,7 @@ compile opts = runExceptT $ do
     else do
       specialized <-
         liftIO $
-              timeItNamed "Specialise    " $
+          timeItNamed "Specialise    " $
             specialiseCompUnit matchless (optDebugSpec opts) tcEnv
 
       liftIO $ when (optDumpSpec opts) $ do

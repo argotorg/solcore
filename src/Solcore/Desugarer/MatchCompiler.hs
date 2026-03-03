@@ -351,8 +351,7 @@ eqnsForVars es d eqns =
     v' <- case vars v of
       [x] -> pure x
       _ -> throwError "Panic! Impossible --- eqnsForVars produced non-singleton vars."
-    let
-        vs = foldr (union . vars . safeHead . fst) [] eqns
+    let vs = foldr (union . vars . safeHead . fst) [] eqns
         s = map (\vi -> (vi, v')) vs
         eqns' = map (\(ps, ss) -> (ps, apply s ss)) eqns
     ss' <- matchCompilerM es d eqns'
