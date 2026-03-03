@@ -60,7 +60,8 @@ instance Compile (TopDecl Id) where
 
 instance Compile (Contract Id) where
   compile (Contract n vs ds) =
-    Contract n vs <$> local (Map.union env') (compile ds)
+    Contract n vs
+      <$> local (\(te, ctx) -> (Map.union env' te, ctx ++ ["contract " ++ pretty n])) (compile ds)
     where
       ds' = [d | (CDataDecl d) <- ds]
       env' = foldr addDataTyInfo Map.empty ds'
@@ -80,7 +81,7 @@ instance Compile (Constructor Id) where
 
 instance Compile (FunDef Id) where
   compile (FunDef sig bd) =
-    FunDef sig <$> compile bd
+    FunDef sig <$> pushCtx ("function " ++ pretty (sigName sig)) (compile bd)
 
 instance Compile (Stmt Id) where
   compile (e1 := e2) =
@@ -103,7 +104,8 @@ instance Compile (Stmt Id) where
         occMap = Map.fromList (zip occs es')
         matrix = map fst eqns'
         actions = map snd eqns'
-    tree <- compileMatrix scrutTys occs matrix actions
+        matchDesc = "match (" ++ intercalate ", " (map pretty es') ++ ")"
+    tree <- pushCtx matchDesc $ compileMatrix scrutTys occs matrix actions
     treeToStmt occMap tree
 
 compileEqn :: Equation Id -> CompilerM (Equation Id)
@@ -117,7 +119,8 @@ compileMatrix ::
   CompilerM DecisionTree
 compileMatrix tys _ [] _ = do
   pats <- mapM freshPat tys
-  unless (null pats) $ tell [NonExhaustive pats]
+  ctx <- askWarnCtx
+  unless (null pats) $ tell [NonExhaustive ctx pats]
   pure Fail
 compileMatrix tys _ (firstRow : restRows) (firstAct : _)
   | all isVarPat firstRow = do
@@ -125,8 +128,9 @@ compileMatrix tys _ (firstRow : restRows) (firstAct : _)
         if null tys
           then pure (Just [])
           else inhabitsM restRows tys
+      ctx <- askWarnCtx
       let redundant = isNothing mw
-          warns = [RedundantClause firstRow firstAct | redundant]
+          warns = [RedundantClause ctx firstRow firstAct | redundant]
       tell warns
       pure (Leaf firstAct)
 compileMatrix tys occs matrix acts = do
@@ -209,7 +213,8 @@ buildConSwitch testOcc restOccs restTys matrix acts headCons = do
                       fieldPats <- mapM freshPat (conFieldTypes info)
                       pure [PCon k fieldPats]
                     [] -> mapM freshPat restTys
-              tell [NonExhaustive witPats]
+              ctx <- askWarnCtx
+              tell [NonExhaustive ctx witPats]
               pure (Just Fail)
             else Just <$> compileMatrix restTys restOccs defMat defActs
 
@@ -229,7 +234,8 @@ buildLitSwitch testOcc restOccs restTys matrix acts headLits = do
     if null defMat
       then do
         pats <- mapM freshPat restTys
-        tell [NonExhaustive pats]
+        ctx <- askWarnCtx
+        tell [NonExhaustive ctx pats]
         pure (Just Fail)
       else Just <$> compileMatrix restTys restOccs defMat defActs
   pure (LitSwitch testOcc branches mDefault)
@@ -261,7 +267,7 @@ instance Compile (Exp Id) where
   compile (Call me f es) =
     Call <$> compile me <*> pure f <*> compile es
   compile (Lam ps bd mt) =
-    Lam ps <$> compile bd <*> pure mt
+    Lam ps <$> pushCtx ("lambda (" ++ intercalate ", " (map pretty ps) ++ ")") (compile bd) <*> pure mt
   compile (TyExp e t) =
     flip TyExp t <$> compile e
   compile (Cond e1 e2 e3) =
@@ -271,7 +277,8 @@ instance Compile (Exp Id) where
 
 instance Compile (Instance Id) where
   compile (Instance d vs ps n ts t funs) =
-    Instance d vs ps n ts t <$> compile funs
+    Instance d vs ps n ts t
+      <$> pushCtx ("instance " ++ pretty t ++ " : " ++ pretty n) (compile funs)
 
 -- compiling a decision tree into a match
 
@@ -387,27 +394,40 @@ inhabitsLitCol matrix ty restTys = do
 
 -- definition of a monad
 
+-- Context attached to warnings: stack of pretty-printed descriptions of the
+-- syntax nodes being traversed, from outermost to innermost.
+type WarnCtx = [String]
+
 type CompilerM a =
-  ReaderT TypeEnv (ExceptT String (WriterT [Warning] (StateT Int IO))) a
+  ReaderT (TypeEnv, WarnCtx) (ExceptT String (WriterT [Warning] (StateT Int IO))) a
 
 runCompilerM :: TypeEnv -> CompilerM a -> IO (Either String (a, [Warning]))
 runCompilerM env m =
   do
-    ((r, ws), _) <- runStateT (runWriterT (runExceptT (runReaderT m env))) 0
+    ((r, ws), _) <- runStateT (runWriterT (runExceptT (runReaderT m (env, [])))) 0
     case r of
       Left err -> pure $ Left err
       Right t -> pure $ Right (t, ws)
 
+askTypeEnv :: CompilerM TypeEnv
+askTypeEnv = asks fst
+
+askWarnCtx :: CompilerM WarnCtx
+askWarnCtx = asks snd
+
+pushCtx :: String -> CompilerM a -> CompilerM a
+pushCtx s = local (\(te, ctx) -> (te, ctx ++ [s]))
+
 lookupConInfo :: Name -> CompilerM ConInfo
 lookupConInfo k = do
-  env <- ask
+  env <- askTypeEnv
   case Map.lookup k env of
     Just info -> pure info
     Nothing -> undefinedConstructorError k
 
 siblingConstructors :: Id -> CompilerM [Id]
 siblingConstructors k = do
-  env <- ask
+  env <- askTypeEnv
   info <- lookupConInfo (idName k)
   let rt = conReturnType info
   pure [idFromInfo kid ci | (kid, ci) <- Map.toList env, conReturnType ci == rt]
@@ -649,21 +669,25 @@ patHeadLit _ = Nothing
 -- warnings
 
 data Warning
-  = RedundantClause PatternRow Action
-  | NonExhaustive [Pattern]
+  = RedundantClause WarnCtx PatternRow Action
+  | NonExhaustive WarnCtx [Pattern]
   deriving (Eq, Show)
 
 isNonExaustive :: Warning -> Bool
-isNonExaustive (NonExhaustive _) = True
+isNonExaustive (NonExhaustive _ _) = True
 isNonExaustive _ = False
 
 -- Pretty-print a warning
 
 showWarning :: Warning -> String
-showWarning (RedundantClause row blk) =
-  unwords ["Warning: Clause ", "(", pretty (row, blk), ") is redundant."]
-showWarning (NonExhaustive pats) =
-  unwords ["Non-exhaustive pattern match. Missing case:", showRow $ nub pats]
+showWarning (RedundantClause ctx row blk) =
+  unwords ["Warning: Clause ", "(", pretty (row, blk), ") is redundant.", showWarnCtx ctx]
+showWarning (NonExhaustive ctx pats) =
+  unwords ["Non-exhaustive pattern match. Missing case:", showRow $ nub pats, showWarnCtx ctx]
+
+showWarnCtx :: WarnCtx -> String
+showWarnCtx [] = ""
+showWarnCtx ctx = "\n  in " ++ intercalate "\n  in " (reverse ctx)
 
 showRow :: [Pattern] -> String
 showRow = intercalate ", " . map pretty
