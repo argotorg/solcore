@@ -1,14 +1,14 @@
-{ lib, stdenv, fetchFromGitHub }:
+{ lib, stdenv, fetchFromGitHub, pin ? (import ./evmone-pins.nix).blst }:
 
 stdenv.mkDerivation {
   pname = "blst";
-  version = "0.3.15";
+  version = pin.version;
 
   src = fetchFromGitHub {
-    owner = "supranational";
-    repo = "blst";
-    rev = "v0.3.15";
-    hash = "sha256-Q9/zGN93TnJt2c8YvSaURstoxT02ts3nVkO5V08m4TI=";
+    owner = pin.owner;
+    repo = pin.repo;
+    rev = pin.rev;
+    hash = pin.hash;
   };
 
   buildPhase = ''
@@ -20,4 +20,8 @@ stdenv.mkDerivation {
     cp libblst.a $out/lib/
     cp bindings/blst.h bindings/blst_aux.h $out/include/
   '';
+
+  passthru = {
+    inherit pin;
+  };
 }

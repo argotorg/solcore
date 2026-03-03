@@ -1,21 +1,16 @@
 { lib, stdenv, cmake, fetchFromGitHub, callPackage }:
 
 let
+  pins = import ./evmone-pins.nix;
+
   # Keep these in sync with evmone's own CMake pins:
   # - cmake/Hunter/config.cmake (intx)
   # - cmake/blst.cmake (blst)
-  intx = callPackage ./intx.nix { };
-  blst = callPackage ./blst.nix { };
-
-  intxVersion = "0.14.0";
-  blstVersion = "0.3.15";
+  intx = callPackage ./intx.nix { pin = pins.intx; };
+  blst = callPackage ./blst.nix { pin = pins.blst; };
 
   src = fetchFromGitHub {
-    owner = "ipsilon";
-    repo = "evmone";
-    rev = "6521d9d5012c936f0bf5f1a48668792caefe9b7a";
-    fetchSubmodules = true;
-    hash = "sha256-yGspeBA4VhsOna+0VXEwShRNhi/apmrkw9Md8+P67DI=";
+    inherit (pins.evmone) owner repo rev hash fetchSubmodules;
   };
 in
 stdenv.mkDerivation {
@@ -31,13 +26,13 @@ stdenv.mkDerivation {
   # Create dummy .git directory to satisfy CMakeLists.txt check
   # Disable Hunter package manager and use Nix-provided dependencies
   preConfigure = ''
-    if ! grep -q "VERSION ${intxVersion}" cmake/Hunter/config.cmake; then
-      echo "evmone pinned intx version changed; update nix/intx.nix and nix/evmone.nix" >&2
+    if ! grep -Fq "${pins.intx.evmonePinPattern}" cmake/Hunter/config.cmake; then
+      echo "evmone pinned intx version changed; update nix/evmone-pins.nix" >&2
       exit 1
     fi
 
-    if ! grep -q "archive/refs/tags/v${blstVersion}.tar.gz" cmake/blst.cmake; then
-      echo "evmone pinned blst version changed; update nix/blst.nix and nix/evmone.nix" >&2
+    if ! grep -Fq "${pins.blst.evmonePinPattern}" cmake/blst.cmake; then
+      echo "evmone pinned blst version changed; update nix/evmone-pins.nix" >&2
       exit 1
     fi
 
@@ -70,7 +65,7 @@ EOF
   ];
 
   passthru = {
-    inherit intx blst intxVersion blstVersion;
+    inherit pins intx blst;
   };
 
   # CMake handles installation automatically

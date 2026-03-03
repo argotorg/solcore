@@ -2,7 +2,7 @@ module Main where
 
 import System.Directory (doesFileExist, getCurrentDirectory, setCurrentDirectory)
 import System.Exit (die, exitWith)
-import System.FilePath ((</>), takeDirectory)
+import System.FilePath (takeDirectory, (</>))
 import System.Process (rawSystem)
 
 main :: IO ()
