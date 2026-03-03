@@ -7,7 +7,6 @@ import Data.Data
 import Data.Generics.Aliases
 import Language.Haskell.TH as TH
 import Language.Haskell.TH.Quote
-import Language.Haskell.TH.Syntax
 import Language.Yul
 import Language.Yul.Parser qualified as Parser
 
@@ -33,10 +32,10 @@ simpleQuoter qExp qPat =
     }
 
 quoteUsingLift :: (a -> Q b) -> Parser a -> String -> Q b
-quoteUsingLift lift p s = do
+quoteUsingLift liftFn p s = do
   (file, _l, _c) <- getPosition
   let ast = runMyParser file (p <* eof) s
-  lift ast
+  liftFn ast
 
 liftYulExp :: (Data a) => a -> Q Exp
 liftYulExp = dataToExpQ (const Nothing `extQ` antiYulExp)
@@ -44,6 +43,7 @@ liftYulExp = dataToExpQ (const Nothing `extQ` antiYulExp)
 liftYulPat :: (Data a) => a -> Q Pat
 liftYulPat = dataToPatQ (const Nothing `extQ` antiYulPat)
 
+getPosition :: Q (String, Int, Int)
 getPosition = fmap transPos location
   where
     transPos loc =

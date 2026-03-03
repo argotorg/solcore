@@ -276,7 +276,7 @@ parseHex str = case readHex (drop 2 str) of
     _         -> error "impossible :)"
 
 simpleToken :: Lexeme -> AlexAction Token
-simpleToken lx (st, _, _, _) len
+simpleToken lx (st, _, _, _) _
   = return $ Token (position st) lx
 
 -- string literals
@@ -290,7 +290,7 @@ enterString inp@(pos, _, _, _) len
       skip inp len
 
 exitString :: AlexAction Token
-exitString inp@(pos, _, _, _) len
+exitString (pos, _, _, _) _
   = do
       s <- get
       put s{strStart = AlexPn 0 0 0, strBuffer = []}
@@ -298,7 +298,7 @@ exitString inp@(pos, _, _, _) len
       return $ Token (position pos) tk
 
 emit :: Char -> AlexAction Token
-emit c inp@(_, _, _, str) len = do
+emit c inp@(_, _, _, _) len = do
   modify $ \s -> s{strBuffer = c : strBuffer s}
   skip inp len
 
