@@ -235,7 +235,7 @@ yulPrimOps =
     (Name "datasize", monotype (string :-> word)),
     (Name "dataoffset", monotype (string :-> word)),
     (Name "extcodesize", monotype (word :-> word)),
-    (Name "extcodecopy", monotype (word :-> word :-> word :-> unit)),
+    (Name "extcodecopy", monotype (word :-> word :-> word :-> word :-> unit)),
     (Name "returndatasize", monotype word),
     (Name "returndatacopy", monotype (word :-> word :-> word :-> unit)),
     (Name "mcopy", monotype (word :-> word :-> word :-> unit)),
