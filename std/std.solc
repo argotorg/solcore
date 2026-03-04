@@ -474,6 +474,33 @@ forall t . instance calldata(t) : Typedef(word) {
     }
 }
 
+data code(t) = code(word);
+forall t . instance code(t) : Typedef(word) {
+    function abs(x: word) -> code(t) {
+        return code(x);
+    }
+
+    function rep(x: code(t)) -> word {
+        match x {
+        | code(w) => return w;
+       }
+    }
+}
+
+// extcode(t) uses packed representation: (address160, offset48, size48)
+data extcode(t) = extcode(word);
+forall t . instance extcode(t) : Typedef(word) {
+    function abs(x: word) -> extcode(t) {
+        return extcode(x);
+    }
+
+    function rep(x: extcode(t)) -> word {
+        match x {
+        | extcode(w) => return w;
+       }
+    }
+}
+
 data returndata(t) = returndata(word);
 forall t . instance returndata(t) : Typedef(word) {
     function abs(x: word) -> returndata(t) {
@@ -696,6 +723,91 @@ instance CalldataWordReader:WordReader {
     }
 }
 
+// WordReader for code
+data CodeWordReader = CodeWordReader(word);
+
+instance CodeWordReader : Typedef(word) {
+  function abs(a:word) -> CodeWordReader { return CodeWordReader(a); }
+  function rep(r:CodeWordReader) -> word {
+    match r {
+      | CodeWordReader(a) => return a;
+    }
+  }
+}
+
+instance CodeWordReader:WordReader {
+    function read(reader:CodeWordReader) -> word {
+        let result : word;
+        match reader {
+          | CodeWordReader(ptr) =>
+            let ptr2 = ptr;
+            assembly { codecopy(0, ptr2, 32) result := mload(0) }
+        }
+        return result;
+    }
+    function advance(reader:CodeWordReader, offset:word) -> CodeWordReader {
+        match reader {
+        | CodeWordReader(ptr) => return CodeWordReader(Add.add(ptr, offset));
+        }
+    }
+    function copyToMem(reader:CodeWordReader, dst:word, cnt: word) -> () {
+        match reader {
+        | CodeWordReader(ptr) => assembly { codecopy(dst, ptr, cnt) }
+        }
+    }
+}
+
+// WordReader for extcode
+// Extcode areas are packed as (address160, offset48, size48)
+data ExtcodeWordReader = ExtcodeWordReader(word);
+
+instance ExtcodeWordReader : Typedef(word) {
+  function abs(a:word) -> ExtcodeWordReader { return ExtcodeWordReader(a); }
+  function rep(r:ExtcodeWordReader) -> word {
+    match r {
+      | ExtcodeWordReader(a) => return a;
+    }
+  }
+}
+
+instance ExtcodeWordReader:WordReader {
+    function read(reader:ExtcodeWordReader) -> word {
+        let result : word;
+        match reader {
+          | ExtcodeWordReader(packed) =>
+            let packed2 = packed;
+            assembly {
+                let addr := shr(96, packed2)
+                let off := and(shr(48, packed2), 0xffffffffffff)
+                extcodecopy(addr, 0, off, 32)
+                result := mload(0)
+            }
+        }
+        return result;
+    }
+    function advance(reader:ExtcodeWordReader, offset:word) -> ExtcodeWordReader {
+        let newPacked : word;
+        match reader {
+        | ExtcodeWordReader(packed) =>
+            let packed2 = packed;
+            let offset2 = offset;
+            assembly { newPacked := add(packed2, shl(48, offset2)) }
+        }
+        return ExtcodeWordReader(newPacked);
+    }
+    function copyToMem(reader:ExtcodeWordReader, dst:word, cnt: word) -> () {
+        match reader {
+        | ExtcodeWordReader(packed) =>
+            let packed2 = packed;
+            assembly {
+                let addr := shr(96, packed2)
+                let off := and(shr(48, packed2), 0xffffffffffff)
+                extcodecopy(addr, dst, off, cnt)
+            }
+        }
+    }
+}
+
 // --- HasWordReader ---
 
 // The HasWordReader class defines the types for which a WordReader can be produced
@@ -713,6 +825,18 @@ instance memory(bytes):HasWordReader(MemoryWordReader) {
 instance calldata(bytes):HasWordReader(CalldataWordReader) {
     function getWordReader(x:calldata(bytes)) -> CalldataWordReader {
         return CalldataWordReader(Typedef.rep(x));
+    }
+}
+
+instance code(bytes):HasWordReader(CodeWordReader) {
+    function getWordReader(x:code(bytes)) -> CodeWordReader {
+        return CodeWordReader(Typedef.rep(x));
+    }
+}
+
+instance extcode(bytes):HasWordReader(ExtcodeWordReader) {
+    function getWordReader(x:extcode(bytes)) -> ExtcodeWordReader {
+        return ExtcodeWordReader(Typedef.rep(x));
     }
 }
 
