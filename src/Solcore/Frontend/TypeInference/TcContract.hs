@@ -3,19 +3,16 @@ module Solcore.Frontend.TypeInference.TcContract where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
-import Control.Monad.Trans
 import Data.Generics hiding (Constr)
 import Data.List
 import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
-import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.InvokeGen
-import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcStmt
@@ -28,9 +25,9 @@ typeInfer ::
   Option ->
   CompUnit Name ->
   IO (Either String (CompUnit Id, TcEnv))
-typeInfer options (CompUnit imps decls) =
+typeInfer opts (CompUnit imps topDecls) =
   do
-    r <- runTcM (tcCompUnit (CompUnit imps decls)) (initTcEnv options)
+    r <- runTcM (tcCompUnit (CompUnit imps topDecls)) (initTcEnv opts)
     case r of
       Left err1 -> pure $ Left err1
       Right (CompUnit _ ds, env) -> do
@@ -45,14 +42,14 @@ tcCompUnit (CompUnit imps cs) =
     setupPragmas ps
     checkSynonymCycles syns
     mapM_ checkTopDecl cls
-    mapM_ checkTopDecl cs'
-    cs' <- mapM tcTopDecl' cs
-    pure (CompUnit imps cs')
+    mapM_ checkTopDecl nonClassDecls
+    typedDecls <- mapM tcTopDecl' cs
+    pure (CompUnit imps typedDecls)
   where
     ps = foldr step [] cs
     step (TPragmaDecl p) ac = p : ac
     step _ ac = ac
-    (cls, cs') = partition isClass cs
+    (cls, nonClassDecls) = partition isClass cs
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
@@ -69,7 +66,7 @@ checkSynonymCycles syns =
         deps = [(symName s, synDeps synNames s) | s <- syns]
     case findCycle deps of
       Nothing -> pure ()
-      Just cycle -> recursiveSynonymError cycle
+      Just cyclePath -> recursiveSynonymError cyclePath
 
 synDeps :: [Name] -> TySym -> [Name]
 synDeps synNames (TySym _ _ t) = filter (`elem` synNames) (tyNames t)
@@ -93,15 +90,15 @@ findCycle deps = go [] (map fst deps)
       | otherwise = case Map.lookup n depMap of
           Nothing -> go visited ns
           Just ds -> case go (n : visited) ds of
-            Just cycle -> Just cycle
+            Just cyclePath -> Just cyclePath
             Nothing -> go visited ns
 
 recursiveSynonymError :: [Name] -> TcM a
-recursiveSynonymError cycle =
+recursiveSynonymError cyclePath =
   throwError $
     unlines
       [ "Recursive type synonym detected:",
-        "  " ++ intercalate " -> " (map pretty cycle)
+        "  " ++ intercalate " -> " (map pretty cyclePath)
       ]
 
 -- setting up pragmas for type checking
@@ -145,6 +142,7 @@ tcTopDecl (TInstDef is) =
 tcTopDecl (TMutualDef ts) =
   do
     let f (TFunDef fd) = fd
+        f td = error $ "tcTopDecl: expected function in mutual definition, got " ++ show td
     ts' <- tcBindGroup (map f ts)
     pure (TMutualDef $ map TFunDef ts')
 tcTopDecl (TDataDef d) =
@@ -171,11 +169,11 @@ checkTopDecl _ = pure ()
 -- type inference for contracts
 
 tcContract :: Contract Name -> TcM (Contract Id, [(Name, Scheme)])
-tcContract c@(Contract n vs decls) =
+tcContract c@(Contract n vs cdecls) =
   withLocalEnv $ withContractName n $ do
     ctx' <- gets ctx
     initializeEnv c
-    decls' <- mapM tcDecl' decls
+    decls' <- mapM tcDecl' cdecls
     ctx1 <- gets ctx
     let ctx2 = Map.toList $ Map.difference ctx1 ctx'
     pure (Contract n vs decls', ctx2)
@@ -190,8 +188,8 @@ tcContract c@(Contract n vs decls) =
 -- initializing context for a contract
 
 initializeEnv :: Contract Name -> TcM ()
-initializeEnv (Contract n vs decls) =
-  mapM_ checkDecl decls
+initializeEnv (Contract _ _ cdecls) =
+  mapM_ checkDecl cdecls
 
 checkDecl :: ContractDecl Name -> TcM ()
 checkDecl (CDataDecl dt) =
@@ -217,6 +215,7 @@ tcDecl (CFunDecl d) =
 tcDecl (CMutualDecl ds) =
   do
     let f (CFunDecl fd) = fd
+        f d = error $ "tcDecl: expected function declaration in mutual group, got " ++ show d
     ds' <- tcBindGroup (map f ds)
     pure (CMutualDecl (map CFunDecl ds'))
 tcDecl (CConstrDecl cd) = CConstrDecl <$> tcConstructor cd
@@ -237,21 +236,21 @@ tcConstr (Constr n ts) =
 tcField :: Field Name -> TcM (Field Id)
 tcField d@(Field n t (Just e)) =
   do
-    (e', ps', t') <- tcExp e
-    kindCheck t `wrapError` d
-    s <- mgu t t' `wrapError` d
+    (e', _, t') <- tcExp e
+    _ <- kindCheck t `wrapError` d
+    _ <- mgu t t' `wrapError` d
     extEnv n (monotype t)
     return (Field n t (Just e'))
 tcField d@(Field n t _) =
   do
-    kindCheck t `wrapError` d
+    _ <- kindCheck t `wrapError` d
     extEnv n (monotype t)
     pure (Field n t Nothing)
 
 tcClass :: Class Name -> TcM (Class Id)
-tcClass iclass@(Class bvs ctx n vs v sigs) =
+tcClass iclass@(Class bvs classCtx n vs v sigs) =
   do
-    let bvs' = bv ctx `union` bv (map TyVar (v : vs)) `union` bv sigs
+    let bvs' = bv classCtx `union` bv (map TyVar (v : vs)) `union` bv sigs
         ns = map sigName sigs
         qs = map (QualName n . pretty) ns
     when (any (`notElem` bvs) bvs') $ do
@@ -259,16 +258,16 @@ tcClass iclass@(Class bvs ctx n vs v sigs) =
       unboundTypeVars iclass unbound_vars
     schs <- mapM askEnv qs `wrapError` iclass
     sigs' <- mapM tcSig (zip sigs schs) `wrapError` iclass
-    pure (Class bvs ctx n vs v sigs')
+    pure (Class bvs classCtx n vs v sigs')
 
 tcSig :: (Signature Name, Scheme) -> TcM (Signature Id)
 tcSig (sig, (Forall _ (_ :=> t))) =
   do
     let (ts, r) = splitTy t
-        param (Typed n t) t1 = Typed (Id n t1) t1
+        param (Typed n _) t1 = Typed (Id n t1) t1
         param (Untyped n) t1 = Typed (Id n t1) t1
         params' = zipWith param (sigParams sig) ts
-    kindCheck t `wrapError` sig
+    _ <- kindCheck t `wrapError` sig
     pure
       ( Signature
           (sigVars sig)
@@ -306,8 +305,8 @@ tcBindGroup binds =
 generateTopDeclsFor :: [(FunDef Id, Scheme)] -> TcM ()
 generateTopDeclsFor ps =
   do
-    gen <- askGeneratingDefs
-    if gen
+    generating <- askGeneratingDefs
+    if generating
       then do
         (dts, instds) <- unzip <$> mapM generateDecls ps
         s <- getSubst
@@ -342,17 +341,16 @@ checkClass icls@(Class bvs ps n vs v sigs) =
     let p = InCls n (TyVar v) (TyVar <$> vs)
         ms' = map sigName sigs
     checkAllTypeVarsBound icls (v : vs) bvs
-    bound <- askBoundVariableCondition n
-    unless bound (checkBoundVariable ps (v : vs) `wrapError` icls)
+    boundEnabled <- askBoundVariableCondition n
+    unless boundEnabled (checkBoundVariable ps (v : vs) `wrapError` icls)
     addClassInfo n (length vs) ms' ps p
     mapM_ (checkSignature p) sigs
   where
-    checkSignature p sig@(Signature vs ctx f ps mt) =
+    checkSignature p sig@(Signature methodVars _ _ params mt) =
       do
-        pst <- mapM tyParam ps
-        t' <- maybe (pure unit) pure mt
-        let ft = funtype pst t'
-        checkAllTypeVarsBound sig (v : vs) bvs
+        _ <- mapM tyParam params
+        _ <- maybe (pure unit) pure mt
+        checkAllTypeVarsBound sig (v : methodVars) bvs
         addClassMethod p sig `wrapError` icls
 
 addClassInfo :: Name -> Arity -> [Method] -> [Pred] -> Pred -> TcM ()
@@ -372,13 +370,13 @@ addClassInfo n ar ms ps p =
       )
 
 addClassMethod :: Pred -> Signature Name -> TcM ()
-addClassMethod p@(InCls c _ _) sig@(Signature _ ctx f ps t) =
+addClassMethod p@(InCls c _ _) sig@(Signature _ methodCtx f ps t) =
   do
     tps <- mapM tyParam ps
     t' <- maybe (pure unit) pure t
     let ty = funtype tps t'
         vs = bv ty
-        ctx' = [p] `union` ctx
+        ctx' = [p] `union` methodCtx
         qn = if isQual f then f else QualName c (pretty f)
         sch = Forall vs (ctx' :=> ty)
     r <- maybeAskEnv f
@@ -397,8 +395,8 @@ addClassMethod p@(_ :~: _) (Signature _ _ n _ _) =
 -- error for class definitions
 
 signatureError :: Name -> Tyvar -> Signature Name -> Ty -> TcM ()
-signatureError n v sig@(Signature _ ctx f _ _) t
-  | null ctx =
+signatureError n v (Signature _ methodCtx f _ _) t
+  | null methodCtx =
       throwError $
         unlines
           [ "Impossible! Class context is empty in function:",
@@ -418,6 +416,7 @@ signatureError n v sig@(Signature _ ctx f _ _) t
             "that is a member of class definition",
             pretty n
           ]
+  | otherwise = pure ()
 
 duplicatedClassDecl :: Name -> TcM ()
 duplicatedClassDecl n =

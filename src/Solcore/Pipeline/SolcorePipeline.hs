@@ -22,7 +22,6 @@ import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
-import Solcore.Frontend.Syntax.Contract hiding (contracts)
 import Solcore.Frontend.Syntax.NameResolution
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
@@ -31,7 +30,6 @@ import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath
 import System.TimeIt qualified as TimeIt
-import Text.Pretty.Simple
 
 -- main compiler driver function
 pipeline :: IO ()
@@ -138,7 +136,7 @@ compile opts = runExceptT $ do
   liftIO $ when verbose $ do
     putStrLn "No type errors found!"
 
-  (typed, typeEnv) <-
+  (typed, tcEnv) <-
     ExceptT $
       timeItNamed
         "Typecheck (desugaring)  "
@@ -146,7 +144,7 @@ compile opts = runExceptT $ do
 
   liftIO $ when verbose $ do
     putStrLn "> Type inference logs:"
-    mapM_ putStrLn (reverse $ logs typeEnv)
+    mapM_ putStrLn (reverse $ logs tcEnv)
     putStrLn "> Elaborated tree:"
     putStrLn $ pretty typed
 
@@ -179,7 +177,7 @@ compile opts = runExceptT $ do
       specialized <-
         liftIO $
           timeItNamed "Specialise    " $
-            specialiseCompUnit matchless (optDebugSpec opts) typeEnv
+            specialiseCompUnit matchless (optDebugSpec opts) tcEnv
 
       liftIO $ when (optDumpSpec opts) $ do
         putStrLn "> Specialised contract:"

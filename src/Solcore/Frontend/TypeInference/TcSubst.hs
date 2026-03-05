@@ -2,7 +2,6 @@
 
 module Solcore.Frontend.TypeInference.TcSubst where
 
-import Common.Pretty
 import Data.List
 import Solcore.Frontend.Syntax
 
@@ -126,7 +125,7 @@ instance HasType Scheme where
   bv (Forall vs qt) = vs `union` bv qt
 
 instance (HasType a) => HasType (Signature a) where
-  apply s (Signature vs ctx n p r) =
+  apply s (Signature _ ctx n p r) =
     let ctx' = apply s ctx
         p' = apply s p
         r' = apply s r
@@ -166,11 +165,11 @@ instance (HasType a) => HasType (Instance a) where
       (apply s ts)
       (apply s t)
       (apply s funs)
-  fv (Instance _ _ ctx n ts t funs) =
+  fv (Instance _ _ ctx _ ts t _) =
     fv ctx `union` fv (t : ts)
-  mv (Instance _ _ ctx n ts t funs) =
+  mv (Instance _ _ ctx _ ts t _) =
     mv ctx `union` mv (t : ts)
-  bv (Instance _ vs ctx n ts t funs) =
+  bv (Instance _ vs ctx _ ts t _) =
     vs `union` bv ctx `union` bv (t : ts)
 
 instance (HasType a) => HasType (Exp a) where
@@ -186,7 +185,8 @@ instance (HasType a) => HasType (Exp a) where
   apply s (Cond e1 e2 e3) = Cond (apply s e1) (apply s e2) (apply s e3)
   apply s (TyExp e ty) =
     TyExp (apply s e) (apply s ty)
-  apply s (Lit l) = Lit l
+  apply _ (Lit l) = Lit l
+  apply s (Indexed e1 e2) = Indexed (apply s e1) (apply s e2)
 
   fv (Var v) = fv v
   fv (Con n es) =
@@ -200,6 +200,7 @@ instance (HasType a) => HasType (Exp a) where
   fv (Cond e1 e2 e3) = fv (e1, (e2, e3))
   fv (TyExp e ty) =
     fv e `union` fv ty
+  fv (Indexed e1 e2) = fv e1 `union` fv e2
   fv _ = []
 
   mv (Var v) = mv v
@@ -214,6 +215,7 @@ instance (HasType a) => HasType (Exp a) where
   mv (Cond e1 e2 e3) = mv (e1, (e2, e3))
   mv (TyExp e ty) =
     mv e `union` mv ty
+  mv (Indexed e1 e2) = mv e1 `union` mv e2
   mv _ = []
 
   bv (Var v) = bv v
@@ -228,6 +230,7 @@ instance (HasType a) => HasType (Exp a) where
   bv (Cond e1 e2 e3) = bv (e1, (e2, e3))
   bv (TyExp e ty) =
     bv e `union` bv ty
+  bv (Indexed e1 e2) = bv e1 `union` bv e2
   bv _ = []
 
 instance (HasType a) => HasType (Stmt a) where
@@ -251,8 +254,6 @@ instance (HasType a) => HasType (Stmt a) where
       (apply s blk2)
   apply _ (Asm yblk) =
     Asm yblk
-  apply _ s =
-    error $ "Cannot apply substitution to:" ++ show s
 
   fv (e1 := e2) =
     fv e1 `union` fv e2
@@ -264,7 +265,8 @@ instance (HasType a) => HasType (Stmt a) where
   fv (Return e) = fv e
   fv (Match es eqns) =
     fv es `union` fv eqns
-  fv (Asm blk) = []
+  fv (If e blk1 blk2) = fv e `union` fv blk1 `union` fv blk2
+  fv (Asm _) = []
 
   mv (e1 := e2) =
     mv e1 `union` mv e2
@@ -276,7 +278,8 @@ instance (HasType a) => HasType (Stmt a) where
   mv (Return e) = mv e
   mv (Match es eqns) =
     mv es `union` mv eqns
-  mv (Asm blk) = []
+  mv (If e blk1 blk2) = mv e `union` mv blk1 `union` mv blk2
+  mv (Asm _) = []
 
   bv (e1 := e2) =
     bv e1 `union` bv e2
@@ -288,7 +291,8 @@ instance (HasType a) => HasType (Stmt a) where
   bv (Return e) = bv e
   bv (Match es eqns) =
     bv es `union` bv eqns
-  bv (Asm blk) = []
+  bv (If e blk1 blk2) = bv e `union` bv blk1 `union` bv blk2
+  bv (Asm _) = []
 
 instance (HasType a) => HasType (Pat a) where
   apply s (PVar v) = PVar (apply s v)

@@ -2,7 +2,6 @@
 
 module Builtins (yulBuiltins, revertStmt) where
 
-import Data.String
 import Language.Yul
 
 yulBuiltins :: [YulStmt]

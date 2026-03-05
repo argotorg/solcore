@@ -4,7 +4,6 @@ import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty
-import Solcore.Frontend.TypeInference.Id
 import Prelude hiding (words)
 
 -- basic type classes
@@ -90,12 +89,16 @@ word = TyCon "word" []
 primPair :: (Name, Scheme)
 primPair = (Name "pair", Forall [aVar, bVar] ([] :=> (pairTy at bt)))
 
+aVar :: Tyvar
 aVar = TVar (Name "a")
 
+bVar :: Tyvar
 bVar = TVar (Name "b")
 
+at :: Ty
 at = TyVar aVar
 
+bt :: Ty
 bt = TyVar bVar
 
 primUnit :: (Name, Scheme)

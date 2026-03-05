@@ -27,3 +27,23 @@ jobs:
       with:
         github_access_token: ${{ secrets.GITHUB_TOKEN }}
     - run: nix build -L .#checks.x86_64-linux.ormolu
+
+  tests-no-warnings:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v31
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+    - run: |
+        set -euo pipefail
+        nix develop --command bash -lc '
+          set -euo pipefail
+          cabal update
+          cabal clean
+          cabal test sol-core-tests --ghc-options=-Werror --test-show-details=direct 2>&1 | tee sol-core-tests.log
+          if grep -Eq ": warning: \\[GHC-" sol-core-tests.log; then
+            echo "Unexpected GHC warning output detected in sol-core-tests."
+            exit 1
+          fi
+        '

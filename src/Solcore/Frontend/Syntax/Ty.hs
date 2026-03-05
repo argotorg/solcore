@@ -48,6 +48,7 @@ gen t = t
 
 infixr 4 :->
 
+pattern (:->) :: Ty -> Ty -> Ty
 pattern (:->) a b =
   TyCon (Name "->") [a, b]
 
@@ -57,9 +58,10 @@ argTy _ = []
 
 retTy :: Ty -> Maybe Ty
 retTy (TyVar _) = Nothing
-retTy (t1 :-> t2) = ret t2
+retTy (Meta _) = Nothing
+retTy (_ :-> t2) = ret t2
   where
-    ret (ta :-> tb) = ret tb
+    ret (_ :-> tb) = ret tb
     ret t = Just t
 retTy t@(TyCon _ _) = Just t
 
@@ -135,6 +137,7 @@ class HasMeasure a where
 
 instance HasMeasure Ty where
   measure (TyVar _) = 1
+  measure (Meta _) = 1
   measure (TyCon _ ts) = 1 + sum (map measure ts)
 
 instance HasMeasure Pred where

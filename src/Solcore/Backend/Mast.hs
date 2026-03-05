@@ -9,7 +9,6 @@ module Solcore.Backend.Mast where
 
 import Common.Pretty
 import Language.Yul (YulBlock)
-import Solcore.Frontend.Pretty.Name ()
 import Solcore.Frontend.Pretty.SolcorePretty ()
 import Solcore.Frontend.Syntax.Contract (DataTy (..), Import (..))
 import Solcore.Frontend.Syntax.Name
