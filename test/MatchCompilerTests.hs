@@ -171,7 +171,7 @@ test_singleVarRow_isLeaf_noWarnings =
       (runMatrix boolEnv [tyBool] occ1 [[pvar "x" tyBool]] [actionA])
     $ \tree warns -> do
       case tree of
-        Leaf act' -> assertEqual "leaf action should be actionA" actionA act'
+        Leaf _ act' -> assertEqual "leaf action should be actionA" actionA act'
         _ -> assertFailure ("expected Leaf, got: " ++ show tree)
       assertBool "should have no warnings" (null warns)
 
@@ -190,7 +190,7 @@ test_redundantVarRow_emitsRedundantClause =
       )
     $ \tree warns -> do
       case tree of
-        Leaf _ -> pure ()
+        Leaf _ _ -> pure ()
         _ -> assertFailure ("expected Leaf, got: " ++ show tree)
       assertBool "should emit RedundantClause warning" (any isRedundant warns)
       assertBool "should not emit NonExhaustive warning" (not (any isNonExh warns))
@@ -310,7 +310,7 @@ test_litPats_withVarDefault_noWarnings =
       )
     $ \tree warns -> do
       case tree of
-        LitSwitch [0] branches (Just (Leaf defAct)) -> do
+        LitSwitch [0] branches (Just (Leaf _ defAct)) -> do
           assertBool
             "should have literal 0 branch"
             (IntLit 0 `elem` branchLits branches)

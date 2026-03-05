@@ -5,6 +5,7 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
+import Data.Generics (everywhere, mkT)
 import Data.List
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -122,7 +123,7 @@ compileMatrix tys _ [] _ = do
   ctx <- askWarnCtx
   unless (null pats) $ tell [NonExhaustive ctx pats]
   pure Fail
-compileMatrix tys _ (firstRow : restRows) (firstAct : _)
+compileMatrix tys occs (firstRow : restRows) (firstAct : _)
   | all isVarPat firstRow = do
       mw <-
         if null tys
@@ -131,8 +132,9 @@ compileMatrix tys _ (firstRow : restRows) (firstAct : _)
       ctx <- askWarnCtx
       let redundant = isNothing mw
           warns = [RedundantClause ctx firstRow firstAct | redundant]
+          varBinds = [(v, occ) | (PVar v, occ) <- zip firstRow occs]
       tell warns
-      pure (Leaf firstAct)
+      pure (Leaf varBinds firstAct)
 compileMatrix tys occs matrix acts = do
   let col = selectColumn occs matrix
       matrix' = map (reorderList col) matrix
@@ -286,18 +288,18 @@ instance Compile (Instance Id) where
 -- Avoids wrapping multi-statement leaves in a fake Match node.
 treeToBody :: OccMap -> DecisionTree -> CompilerM [Stmt Id]
 treeToBody _ Fail = pure []
-treeToBody _ (Leaf stmts) = pure stmts
+treeToBody occMap (Leaf varBinds stmts) = do
+  subst <- buildSubst occMap varBinds
+  pure (map (substStmt subst) stmts)
 treeToBody occMap tree = (: []) <$> treeToStmt occMap tree
 
 treeToStmt :: OccMap -> DecisionTree -> CompilerM (Stmt Id)
-treeToStmt _ Fail =
-  -- An empty Match signals non-exhaustive patterns at runtime.
-  pure (Match [] [])
-treeToStmt _ (Leaf stmts) =
-  -- Wrap multi-statement bodies in a block; single statements unwrap cleanly.
-  case stmts of
+treeToStmt _ Fail = pure (Match [] [])
+treeToStmt occMap (Leaf varBinds stmts) = do
+  subst <- buildSubst occMap varBinds
+  case map (substStmt subst) stmts of
     [s] -> pure s
-    _ -> pure (Match [] [([], stmts)])
+    ss -> pure (Match [] [([], ss)])
 treeToStmt occMap (Switch occ branches mDef) = do
   scrutinee <- occToExp occMap occ
   eqns <- mapM (conBranchToEqn occMap occ) branches
@@ -318,6 +320,19 @@ treeToStmt occMap (LitSwitch occ branches mDef) = do
       v <- freshPat (scrutineeType scrutinee)
       pure [([v], body)]
   pure (Match [scrutinee] (eqns ++ defEqns))
+
+-- Build a substitution map from pattern variables to their occurrence expressions.
+buildSubst :: OccMap -> [(Id, Occurrence)] -> CompilerM (Map Id (Exp Id))
+buildSubst occMap varBinds = do
+  pairs <- mapM (\(v, occ) -> (v,) <$> occToExp occMap occ) varBinds
+  pure (Map.fromList pairs)
+
+-- Substitute pattern variables in a statement using the given map.
+substStmt :: Map Id (Exp Id) -> Stmt Id -> Stmt Id
+substStmt subst = everywhere (mkT go)
+  where
+    go e@(Var v) = Map.findWithDefault e v subst
+    go e = e
 
 occToExp :: OccMap -> Occurrence -> CompilerM (Exp Id)
 occToExp occMap occ =
@@ -476,7 +491,7 @@ type PatternRow = [Pattern]
 type PatternMatrix = [PatternRow]
 
 data DecisionTree
-  = Leaf Action
+  = Leaf [(Id, Occurrence)] Action -- var-occ bindings to substitute before running action
   | Fail
   | Switch Occurrence [(Id, [Pattern], DecisionTree)] (Maybe DecisionTree)
   | LitSwitch Occurrence [(Literal, DecisionTree)] (Maybe DecisionTree)
