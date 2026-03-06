@@ -1,6 +1,7 @@
 module Main where
 
 import Cases
+import MatchCompilerTests
 import Test.Tasty
 
 main :: IO ()
@@ -16,6 +17,6 @@ tests =
       spec,
       std,
       imports,
-      dispatches
-      --             , reduceTests
+      dispatches,
+      matchTests
     ]
