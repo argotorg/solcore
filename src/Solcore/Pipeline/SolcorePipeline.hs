@@ -166,7 +166,7 @@ compile opts = runExceptT $ do
       then pure desugared
       else do
         (ast, warns) <- ExceptT $ timeItNamed "Match compiler" $ matchCompiler desugared
-        unless (null warns) $ liftIO $ mapM_ (putStrLn . showWarning) warns
+        when (verbose && not (null warns)) $ liftIO $ mapM_ (putStrLn . showWarning) warns
         pure ast
 
   let printMatch = not noMatchCompiler && (verbose || optDumpDS opts)
