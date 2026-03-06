@@ -27,7 +27,6 @@ import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
-import Solcore.Primitives.Primitives
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath
 import System.TimeIt qualified as TimeIt
