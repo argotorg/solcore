@@ -36,7 +36,7 @@ replace (Typed n t@(_ :-> _)) =
   do
     (t1, v) <- freshTy
     let (args, ret) = splitTy t
-        argTy = tupleTyFromList args
-        p = InCls invokableName t1 [argTy, ret]
+        invokeArgTy = tupleTyFromList args
+        p = InCls invokableName t1 [invokeArgTy, ret]
     pure (Typed n t1, [p], [v])
 replace (Typed n t) = pure (Typed n t, [], [])

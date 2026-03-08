@@ -45,6 +45,9 @@ data Expr
 instance Show Expr where
   show = render . ppr
 
+instance Show Object where
+  show = render . ppr
+
 pattern SAV :: Name -> Expr -> Stmt
 pattern SAV x e = SAssign (EVar x) e
 
@@ -105,16 +108,6 @@ instance Pretty Object where
 
 instance Pretty Contract where
   ppr (Contract n stmts) = text "contract" <+> text n <+> lbrace $$ nest 4 (vcat (map ppr stmts)) $$ rbrace
-
-instance Pretty Type where
-  ppr TWord = text "word"
-  ppr TBool = text "bool"
-  ppr TUnit = text "unit"
-  ppr (TPair t1 t2) = parens (ppr t1 <+> text "*" <+> ppr t2)
-  ppr (TSum t1 t2) = parens (ppr t1 <+> text "+" <+> ppr t2)
-  ppr (TSumN ts) = text "sum" >< parens (commaSepList ts)
-  ppr (TFun ts t) = parens (hsep (map ppr ts) <+> text "->" <+> ppr t)
-  ppr (TNamed n t) = text n >< braces (ppr t)
 
 instance Pretty Expr where
   ppr (EWord i) = text (show i)
@@ -185,9 +178,6 @@ instance Pretty Arg where
 
 instance Pretty Hull where
   ppr (Hull stmts) = vcat (map ppr stmts)
-
-pprBody :: Body -> Doc
-pprBody stmts = braces $ nest 2 (vcat (map ppr stmts))
 
 instance Pretty [Stmt] where
   ppr stmts = vcat (map ppr stmts)

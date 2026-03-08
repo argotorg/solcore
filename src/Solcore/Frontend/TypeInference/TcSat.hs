@@ -2,8 +2,6 @@ module Solcore.Frontend.TypeInference.TcSat where
 
 import Control.Monad
 import Control.Monad.Except
-import Control.Monad.Trans
-import Data.List
 import Data.Maybe
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (gen)
@@ -11,7 +9,6 @@ import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
-import Solcore.Pipeline.Options
 
 sat :: [Pred] -> TcM [Subst]
 sat ps =
@@ -27,7 +24,7 @@ satI 0 p =
         pretty p,
         "because the solver exceeded the max number of iterations!"
       ]
-satI n [] = pure [mempty] -- rule SEmpty
+satI _ [] = pure [mempty] -- rule SEmpty
 satI n [p] = satOne n p -- rule SInst
 satI n (p : ps) =
   do
@@ -45,7 +42,6 @@ satOne n p = do
   when (null delta) $
     throwError $
       unwords ["There is no instance to satisfy:", pretty p]
-  ss <- mapM (\(s, q) -> satI (n - 1) q) delta
   foldM (step n p) [mempty] delta
 
 step :: Int -> Pred -> [Subst] -> (Subst, [Pred]) -> TcM [Subst]
@@ -56,7 +52,7 @@ step 0 p _ _ =
         pretty p,
         "because the solver exceeded the max number of iterations!"
       ]
-step n p sacc (s, ps) =
+step n _ sacc (s, ps) =
   do
     ss <- liftM (map (s <>)) (satI (n - 1) ps)
     return [s' <> s1 | s' <- ss, s1 <- sacc]
@@ -64,14 +60,14 @@ step n p sacc (s, ps) =
 -- function sats
 
 sats :: Pred -> TcM [(Subst, [Pred])]
-sats p@(InCls c t ts) =
+sats (InCls c t _) =
   do
-    insts <- askInstEnv c
-    catMaybes <$> mapM (gen t) insts
+    envInsts <- askInstEnv c
+    catMaybes <$> mapM (gen t) envInsts
 sats p = tcmError $ "Invalid constraint:" ++ pretty p
 
 gen :: Ty -> Inst -> TcM (Maybe (Subst, [Pred]))
-gen t k@(ps :=> h@(InCls _ t' _)) =
+gen t (ps :=> InCls _ t' _) =
   do
     r <- defaultM (mgu t t')
     case r of

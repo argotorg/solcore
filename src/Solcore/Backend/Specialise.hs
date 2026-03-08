@@ -1,4 +1,3 @@
--- {-# LANGUAGE DefaultSignatures #-}
 module Solcore.Backend.Specialise (specialiseCompUnit, typeOfTcExp) where
 
 -- \* Specialisation
@@ -7,7 +6,6 @@ module Solcore.Backend.Specialise (specialiseCompUnit, typeOfTcExp) where
 
 import Common.Monad
 import Common.Pretty
-import Control.Applicative
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
@@ -56,14 +54,6 @@ type SM = StateT SpecState IO
 
 getDebug :: SM Bool
 getDebug = gets spDebug
-
-withDebug :: SM a -> SM a
-withDebug m = do
-  savedDebug <- getDebug
-  modify $ \s -> s {spDebug = True}
-  a <- m
-  modify $ \s -> s {spDebug = savedDebug}
-  return a
 
 whenDebug :: SM () -> SM ()
 whenDebug m = do
@@ -245,18 +235,9 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
       let dataDecls = map (CDataDecl . snd) (Map.toList dt)
       let funDecls = map (CFunDecl . snd) (Map.toList st)
       pure (dataDecls ++ funDecls)
-
--- keep datatype defs intact
 specialiseTopDecl d@TDataDef {} = pure [d]
 -- Drop all toplevel decls that are not contracts - we do not need them anymore
 specialiseTopDecl _ = pure []
-
-findConstructor :: [ContractDecl Id] -> Maybe (Constructor Id)
-findConstructor = foldr (\d -> (getConstructor d <|>)) Nothing
-
-getConstructor :: ContractDecl Id -> Maybe (Constructor Id)
-getConstructor (CConstrDecl c) = Just c
-getConstructor _ = Nothing
 
 specEntry :: Name -> SM (Maybe Name)
 specEntry name = withLocalState do
@@ -531,12 +512,6 @@ mangleTy (TyCon (Name n) []) = n
 mangleTy (TyCon (Name n) ts) = n ++ "L" ++ intercalate "_" (map mangleTy ts) ++ "J"
 mangleTy ty = error ("mangleTy - unexpected type: " ++ show ty)
 
-showId :: Id -> String
-showId i = showsId i ""
-
-showsId :: Id -> String -> String
-showsId (Id n t) = shows n . ('@' :) . showsPrec 10 t
-
 prettyId :: Id -> String
 prettyId = render . pprId
 
@@ -655,10 +630,6 @@ newtype TVSubst
   = TVSubst {unTVSubst :: [(Tyvar, Ty)]}
   deriving (Eq, Show)
 
-restrict :: TVSubst -> [Tyvar] -> TVSubst
-restrict (TVSubst s) vs =
-  TVSubst [(v, t) | (v, t) <- s, v `notElem` vs]
-
 emptyTVSubst :: TVSubst
 emptyTVSubst = TVSubst []
 
@@ -774,9 +745,6 @@ instance Pretty TVRenaming where
   ppr = braces . commaSep . map go . unTVR
     where
       go (v, t) = ppr v <+> text "|->" <+> ppr t
-
-toTVS :: TVRenaming -> TVSubst
-toTVS = TVSubst . map (fmap TyVar) . unTVR
 
 fromTVS :: TVSubst -> TVRenaming
 fromTVS = TVR . map (fmap unTyVar) . unTVSubst

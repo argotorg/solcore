@@ -60,9 +60,7 @@ createUniqueType n =
 
 mkUniqueType :: Name -> DataTy
 mkUniqueType dn =
-  let argVar = TVar (Name "args")
-      retVar = TVar (Name "ret")
-      c = Constr dn []
+  let c = Constr dn []
    in DataTy dn [] [c]
 
 -- monad definition

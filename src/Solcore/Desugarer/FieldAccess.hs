@@ -10,13 +10,11 @@ import Data.Map qualified as Map
 import Data.Maybe (isJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Debug.Trace
 import GHC.Stack
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (name)
 import Solcore.Frontend.Syntax.Contract qualified as Contract
 import Solcore.Primitives.Primitives hiding (arr)
-import Text.Pretty.Simple
 import Prelude hiding (exp)
 
 type ContractName = Name

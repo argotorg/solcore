@@ -1,12 +1,10 @@
 module Solcore.Frontend.TypeInference.TcUnify where
 
 import Common.Pretty
-import Control.Monad
 import Control.Monad.Except
-import Control.Monad.Reader
 import Data.List
 import Solcore.Frontend.Pretty.ShortName
-import Solcore.Frontend.Pretty.SolcorePretty hiding ((<>))
+import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcSubst
 
@@ -54,12 +52,20 @@ instance Match Pred where
   match (InCls n t ts) (InCls n' t' ts')
     | n == n' = match (t : ts) (t' : ts')
     | otherwise = throwError "Classes differ!"
+  match p1 p2 =
+    throwError $
+      unlines
+        [ "Cannot match predicates:",
+          pretty p1,
+          "with",
+          pretty p2
+        ]
 
 instance (HasType a, Match a) => Match (Qual a) where
   match (ps :=> t) (ps' :=> t') =
     do
       s1 <- match t t'
-      s2 <- match (apply s1 t) (apply s1 t')
+      s2 <- match (apply s1 ps) (apply s1 ps')
       merge s1 s2
 
 -- most general unifier
@@ -101,6 +107,14 @@ instance MGU Pred where
             ]
   mgu (t1 :~: t2) (t1' :~: t2') =
     mgu [t1, t2] [t1', t2']
+  mgu p1 p2 =
+    throwError $
+      unlines
+        [ "Cannot unify predicates:",
+          pretty p1,
+          "with",
+          pretty p2
+        ]
 
 instance (HasType a, MGU a) => MGU (Qual a) where
   mgu (ps :=> t) (ps' :=> t') =
@@ -177,24 +191,24 @@ typesMatchListErr :: (MonadError String m) => [String] -> [String] -> m a
 typesMatchListErr ts ts' =
   throwError (errMsg ts ts')
   where
-    errMsg ts ts' =
+    errMsg lhs rhs =
       unwords
         [ "Type lists do not match: (typesMatchListErr)\n",
-          prettys ts,
+          prettys lhs,
           "and",
-          prettys ts'
+          prettys rhs
         ]
 
 typesMguListErr :: (MonadError String m, Pretty t) => [t] -> [t] -> m a
 typesMguListErr ts ts' =
   throwError (errMsg ts ts')
   where
-    errMsg ts ts' =
+    errMsg lhs rhs =
       unwords
         [ "Type lists do not unify: (typesMguListErr)\n",
-          prettys ts,
+          prettys lhs,
           "and",
-          prettys ts'
+          prettys rhs
         ]
 
 typesDoNotUnify :: (MonadError String m) => Ty -> Ty -> m a

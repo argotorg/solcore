@@ -130,13 +130,14 @@ hullExpr =
       pPrimaryExpr
     ]
 
+condExpr :: Parser Expr
 condExpr = do
-  pKeyword "if"
+  _ <- pKeyword "if"
   t <- angles hullType
   e1 <- hullExpr
-  pKeyword "then"
+  _ <- pKeyword "then"
   e2 <- hullExpr
-  pKeyword "else"
+  _ <- pKeyword "else"
   e3 <- hullExpr
   pure (ECond t e1 e2 e3)
 

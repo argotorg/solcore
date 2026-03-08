@@ -1,5 +1,7 @@
 module Language.Hull.Types where
 
+import Common.Pretty
+
 data Type
   = TWord
   | TBool
@@ -20,3 +22,13 @@ zeroSizedType TUnit = True
 zeroSizedType (TNamed _ t) = zeroSizedType t
 zeroSizedType (TPair t1 t2) = zeroSizedType t1 && zeroSizedType t2
 zeroSizedType _ = False
+
+instance Pretty Type where
+  ppr TWord = text "word"
+  ppr TBool = text "bool"
+  ppr TUnit = text "unit"
+  ppr (TPair t1 t2) = parens (ppr t1 <+> text "*" <+> ppr t2)
+  ppr (TSum t1 t2) = parens (ppr t1 <+> text "+" <+> ppr t2)
+  ppr (TSumN ts) = text "sum" >< parens (commaSepList ts)
+  ppr (TFun ts t) = parens (hsep (map ppr ts) <+> text "->" <+> ppr t)
+  ppr (TNamed n t) = text n >< braces (ppr t)

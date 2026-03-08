@@ -60,6 +60,7 @@ setCounter n = reader env_counter >>= flip store n
 getDebug :: TM Bool
 getDebug = reader (Options.debug . env_options)
 
+whenDebug :: ReaderT CEnv IO () -> ReaderT CEnv IO ()
 whenDebug m = do
   debugp <- getDebug
   when debugp m
