@@ -51,7 +51,11 @@ ensure_testrunner() {
     )
 
     if [[ ! -f "$root_dir/deps/nlohmann_json/CMakeLists.txt" ]] && command -v git >/dev/null 2>&1; then
-        git -C "$root_dir" submodule update --init --depth 1 deps/nlohmann_json >/dev/null 2>&1 || true
+        echo "[sol-core-contract-test] Initializing deps/nlohmann_json submodule..."
+        if ! git -C "$root_dir" submodule update --init deps/nlohmann_json; then
+            echo "[sol-core-contract-test] Warning: failed to initialize deps/nlohmann_json submodule." >&2
+            echo "[sol-core-contract-test] Falling back to system nlohmann_json (find_package)." >&2
+        fi
     fi
 
     if [[ ! -f "$root_dir/deps/nlohmann_json/CMakeLists.txt" ]]; then
@@ -59,7 +63,7 @@ ensure_testrunner() {
     fi
 
     if ! cmake "${cmake_configure_args[@]}"; then
-        fail_or_maybe_skip "failed to configure testrunner build (missing deps/nlohmann_json or system nlohmann_json package)."
+        fail_or_maybe_skip "failed to configure testrunner build (deps/nlohmann_json missing or invalid, and system nlohmann_json package not found)."
     fi
 
     if ! cmake --build "$root_dir/build" --target testrunner; then
