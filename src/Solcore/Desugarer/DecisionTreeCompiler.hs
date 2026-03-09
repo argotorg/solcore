@@ -100,13 +100,14 @@ instance Compile (Stmt Id) where
   compile (Match es eqns) = do
     es' <- compile es
     eqns' <- mapM compileEqn eqns
-    let scrutTys = map scrutineeType es'
-        occs = [[i] | i <- [0 .. length es' - 1]]
+    scrutTys <- mapM scrutineeType es'
+    let occs = [[i] | i <- [0 .. length es' - 1]]
         occMap = Map.fromList (zip occs es')
         matrix = map fst eqns'
         actions = map snd eqns'
+        bacts = [([], a) | a <- actions]
         matchDesc = "match (" ++ intercalate ", " (map pretty es') ++ ")"
-    tree <- pushCtx matchDesc $ compileMatrix scrutTys occs matrix actions
+    tree <- pushCtx matchDesc $ compileMatrix scrutTys occs matrix bacts
     treeToStmt occMap tree
 
 compileEqn :: Equation Id -> CompilerM (Equation Id)
@@ -116,14 +117,14 @@ compileMatrix ::
   [Ty] ->
   [Occurrence] ->
   PatternMatrix ->
-  [Action] ->
+  [BoundAction] ->
   CompilerM DecisionTree
 compileMatrix tys _ [] _ = do
   pats <- mapM freshPat tys
   ctx <- askWarnCtx
   unless (null pats) $ tell [NonExhaustive ctx pats]
   pure Fail
-compileMatrix tys occs (firstRow : restRows) (firstAct : _)
+compileMatrix tys occs (firstRow : restRows) ((firstBinds, firstAct) : _)
   | all isVarPat firstRow = do
       mw <-
         if null tys
@@ -134,8 +135,8 @@ compileMatrix tys occs (firstRow : restRows) (firstAct : _)
           warns = [RedundantClause ctx firstRow firstAct | redundant]
           varBinds = [(v, occ) | (PVar v, occ) <- zip firstRow occs]
       tell warns
-      pure (Leaf varBinds firstAct)
-compileMatrix tys occs matrix acts = do
+      pure (Leaf (firstBinds ++ varBinds) firstAct)
+compileMatrix tys occs matrix bacts = do
   let col = selectColumn occs matrix
       matrix' = map (reorderList col) matrix
       occs' = reorderList col occs
@@ -147,12 +148,12 @@ compileMatrix tys occs matrix acts = do
           headLits = nub (mapMaybe patHeadLit firstCol)
       case (headCons, headLits) of
         (c : cs, _) ->
-          buildConSwitch testOcc restOccs restTys matrix' acts (c : cs)
+          buildConSwitch testOcc restOccs restTys matrix' bacts (c : cs)
         ([], ls@(_ : _)) ->
-          buildLitSwitch testOcc restOccs restTys matrix' acts ls
+          buildLitSwitch testOcc restOccs restTys matrix' bacts ls
         ([], []) ->
           -- All wildcards after reordering: strip column and continue
-          compileMatrix restTys restOccs (defaultMatrix matrix') (defaultActions matrix' acts)
+          compileMatrix restTys restOccs (defaultMatrix matrix') (defaultBoundActs testOcc matrix' bacts)
     -- Unreachable: tys, occs, and matrix are parallel and all non-empty here
     _ -> pure Fail
 
@@ -161,10 +162,10 @@ buildConSwitch ::
   [Occurrence] ->
   [Ty] ->
   PatternMatrix ->
-  [Action] ->
+  [BoundAction] ->
   [Id] ->
   CompilerM DecisionTree
-buildConSwitch testOcc restOccs restTys matrix acts headCons = do
+buildConSwitch testOcc restOccs restTys matrix bacts headCons = do
   branches <- mapM buildBranch headCons
   complete <- isComplete headCons
   mDefault <-
@@ -178,7 +179,7 @@ buildConSwitch testOcc restOccs restTys matrix acts headCons = do
       let fieldTys = conFieldTypes info
           newOccs = childOccs testOcc (length fieldTys) ++ restOccs
           newTys = fieldTys ++ restTys
-          specActs = specializedActions k matrix acts
+          specBacts = specializedBoundActs k testOcc matrix bacts
           rawPats = case [ps | (PCon k' ps : _) <- matrix, idName k' == idName k] of
             (ps : _) -> ps
             [] -> []
@@ -186,7 +187,7 @@ buildConSwitch testOcc restOccs restTys matrix acts headCons = do
       -- so conBranchToEqn can extend the occMap for child occurrences.
       srcPats <- mapM ensureVar rawPats
       specMat <- specialize k fieldTys matrix
-      subTree <- compileMatrix newTys newOccs specMat specActs
+      subTree <- compileMatrix newTys newOccs specMat specBacts
       pure (k, srcPats, subTree)
 
     -- Replace non-PVar patterns with fresh variables so that conBranchToEqn
@@ -201,7 +202,7 @@ buildConSwitch testOcc restOccs restTys matrix acts headCons = do
 
     buildDefault =
       let defMat = defaultMatrix matrix
-          defActs = defaultActions matrix acts
+          defBacts = defaultBoundActs testOcc matrix bacts
        in if null defMat
             then do
               witPats <- case headCons of
@@ -218,20 +219,20 @@ buildConSwitch testOcc restOccs restTys matrix acts headCons = do
               ctx <- askWarnCtx
               tell [NonExhaustive ctx witPats]
               pure (Just Fail)
-            else Just <$> compileMatrix restTys restOccs defMat defActs
+            else Just <$> compileMatrix restTys restOccs defMat defBacts
 
 buildLitSwitch ::
   Occurrence ->
   [Occurrence] ->
   [Ty] ->
   PatternMatrix ->
-  [Action] ->
+  [BoundAction] ->
   [Literal] ->
   CompilerM DecisionTree
-buildLitSwitch testOcc restOccs restTys matrix acts headLits = do
+buildLitSwitch testOcc restOccs restTys matrix bacts headLits = do
   branches <- mapM buildBranch headLits
   let defMat = defaultMatrix matrix
-      defActs = defaultActions matrix acts
+      defBacts = defaultBoundActs testOcc matrix bacts
   mDefault <-
     if null defMat
       then do
@@ -239,23 +240,13 @@ buildLitSwitch testOcc restOccs restTys matrix acts headLits = do
         ctx <- askWarnCtx
         tell [NonExhaustive ctx pats]
         pure (Just Fail)
-      else Just <$> compileMatrix restTys restOccs defMat defActs
+      else Just <$> compileMatrix restTys restOccs defMat defBacts
   pure (LitSwitch testOcc branches mDefault)
   where
     buildBranch lit = do
       let specMat = specializeLit lit matrix
-          specActs = litSpecializedActs lit matrix acts
-      (lit,) <$> compileMatrix restTys restOccs specMat specActs
-
-    litSpecializedActs lit rows as_ =
-      [ a | (row, a) <- zip rows as_, case row of
-                                        [] -> False
-                                        (p : _) -> case p of
-                                          PLit l -> l == lit
-                                          PVar _ -> True
-                                          PCon _ _ -> False
-                                          _ -> error $ "PANIC! Found wildcard in specializeLit"
-      ]
+          specBacts = litSpecializedBoundActs lit testOcc matrix bacts
+      (lit,) <$> compileMatrix restTys restOccs specMat specBacts
 
 instance Compile (Exp Id) where
   compile v@(Var _) =
@@ -307,7 +298,8 @@ treeToStmt occMap (Switch occ branches mDef) = do
     Nothing -> pure []
     Just def -> do
       body <- treeToBody occMap def
-      v <- freshPat (scrutineeType scrutinee)
+      ty <- scrutineeType scrutinee
+      v <- freshPat ty
       pure [([v], body)]
   pure (Match [scrutinee] (eqns ++ defEqns))
 treeToStmt occMap (LitSwitch occ branches mDef) = do
@@ -317,7 +309,8 @@ treeToStmt occMap (LitSwitch occ branches mDef) = do
     Nothing -> pure []
     Just def -> do
       body <- treeToBody occMap def
-      v <- freshPat (scrutineeType scrutinee)
+      ty <- scrutineeType scrutinee
+      v <- freshPat ty
       pure [([v], body)]
   pure (Match [scrutinee] (eqns ++ defEqns))
 
@@ -380,12 +373,12 @@ inhabitsConCol matrix restTys (firstCon : otherCons) = do
     (k : _) -> do
       info <- lookupConInfo (idName k)
       let fieldTys = conFieldTypes info
-      mw <- inhabitsM (defaultMatrix matrix) (fieldTys ++ restTys)
+      mw <- inhabitsM (defaultMatrix matrix) restTys
       case mw of
         Nothing -> pure Nothing
-        Just ws ->
-          let (sub, rest) = splitAt (length fieldTys) ws
-           in pure . Just $ PCon k sub : rest
+        Just rest -> do
+          sub <- mapM freshPat fieldTys
+          pure . Just $ PCon k sub : rest
     [] -> do
       results <- mapM searchBranch headCons
       pure (listToMaybe (catMaybes results))
@@ -483,6 +476,10 @@ type Occurrence = [Int]
 type OccMap = Map Occurrence (Exp Id)
 
 type Action = [Stmt Id]
+
+-- Per-row accumulated bindings (var → occurrence) collected as PVar patterns
+-- are consumed by specialization steps, paired with the row's action.
+type BoundAction = ([(Id, Occurrence)], Action)
 
 type Pattern = Pat Id
 
@@ -606,23 +603,48 @@ defaultMatrix = concatMap defaultRow
         PLit _ -> []
         _ -> error "PANIC! Found wildcard in defaultMatrix"
 
-specializedActions :: Id -> PatternMatrix -> [a] -> [a]
-specializedActions k rows acts =
-  [ a | (row, a) <- zip rows acts, case row of
-                                     [] -> False
-                                     (p : _) -> case p of
-                                       PCon k' _ -> idName k' == idName k
-                                       PVar _ -> True
-                                       PLit _ -> False
-                                       PWildcard -> error "PANIC! Found wildcard in specializedActions"
+specializedBoundActs :: Id -> Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
+specializedBoundActs k testOcc rows bacts =
+  [ (addVarBinding row binds, a)
+    | (row, (binds, a)) <- zip rows bacts,
+      rowMatchesCon row
   ]
+  where
+    rowMatchesCon [] = False
+    rowMatchesCon (p : _) = case p of
+      PCon k' _ -> idName k' == idName k
+      PVar _ -> True
+      PLit _ -> False
+      PWildcard -> error "PANIC! Found wildcard in specializedBoundActs"
+    addVarBinding (PVar v : _) binds = binds ++ [(v, testOcc)]
+    addVarBinding _ binds = binds
 
-defaultActions :: PatternMatrix -> [a] -> [a]
-defaultActions rows acts =
-  [ a | (row, a) <- zip rows acts, case row of
-                                     [] -> False
-                                     (p : _) -> isVarPat p
+defaultBoundActs :: Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
+defaultBoundActs testOcc rows bacts =
+  [ (addVarBinding row binds, a)
+    | (row, (binds, a)) <- zip rows bacts,
+      case row of
+        (p : _) -> isVarPat p
+        [] -> False
   ]
+  where
+    addVarBinding (PVar v : _) binds = binds ++ [(v, testOcc)]
+    addVarBinding _ binds = binds
+
+litSpecializedBoundActs :: Literal -> Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
+litSpecializedBoundActs lit testOcc rows bacts =
+  [ (addVarBinding row binds, a)
+    | (row, (binds, a)) <- zip rows bacts,
+      rowMatchesLit row
+  ]
+  where
+    rowMatchesLit [] = False
+    rowMatchesLit (p : _) = case p of
+      PLit l -> l == lit
+      PVar _ -> True
+      _ -> False
+    addVarBinding (PVar v : _) binds = binds ++ [(v, testOcc)]
+    addVarBinding _ binds = binds
 
 -- column selection heuristic
 
@@ -652,18 +674,27 @@ childOccs occ n = [occ ++ [j] | j <- [0 .. n - 1]]
 
 -- auxiliar functions
 
-scrutineeType :: Exp Id -> Ty
-scrutineeType (Var i) = idType i
-scrutineeType (Con i _) = snd (splitTy (idType i))
-scrutineeType (Lit (IntLit _)) = word
-scrutineeType (Lit (StrLit _)) = string
-scrutineeType (Call Nothing i _) = snd (splitTy (idType i))
-scrutineeType (Lam args _body (Just tb)) = funtype tas tb
-  where
-    tas = map typeOfParam args
+scrutineeType :: Exp Id -> CompilerM Ty
+scrutineeType (Var i) = pure (idType i)
+scrutineeType (Con i _) = pure (snd (splitTy (idType i)))
+scrutineeType (Lit (IntLit _)) = pure word
+scrutineeType (Lit (StrLit _)) = pure string
+scrutineeType (Call _ i _) = pure (snd (splitTy (idType i)))
+scrutineeType (Lam args _body (Just tb)) = pure (funtype (map typeOfParam args) tb)
+scrutineeType (Lam _ _ Nothing) =
+  throwError
+    "scrutineeType: lambda scrutinee has no return-type annotation"
 scrutineeType (Cond _ _ e) = scrutineeType e
-scrutineeType (TyExp _ ty) = ty
-scrutineeType e = error $ "scrutineeType: " ++ show e
+scrutineeType (TyExp _ ty) = pure ty
+scrutineeType (FieldAccess _ n) = pure (idType n)
+scrutineeType (Indexed earr _) =
+  do
+    tarr <- scrutineeType earr
+    case tarr of
+      (_ :-> tres) -> pure tres
+      _ ->
+        throwError
+          "scrutineeType: index expression scrutinee has no type annotation"
 
 typeOfParam :: Param Id -> Ty
 typeOfParam (Typed i _t) = idType i

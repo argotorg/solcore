@@ -290,7 +290,8 @@ cases =
       runTestForFile "mod-example.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder,
       runTestForFile "snds.solc" caseFolder,
-      runTestForFile "bool-elim.solc" caseFolder
+      runTestForFile "bool-elim.solc" caseFolder,
+      runTestForFile "catch-all.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

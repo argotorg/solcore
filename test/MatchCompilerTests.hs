@@ -25,6 +25,15 @@ matchTests =
           test_litPats_withVarDefault_noWarnings,
           test_litPats_noDefault_nonExhaustive,
           test_unknownConstructor_isError
+        ],
+      testGroup
+        "treeToStmt"
+        [ test_treeToStmt_singleVar_substituted,
+          test_treeToStmt_multiColumn_varsBoundViaSpecialize
+        ],
+      testGroup
+        "inhabitsConCol"
+        [ test_inhabitsConCol_missingCon_withRestTys
         ]
     ]
 
@@ -36,7 +45,21 @@ runMatrix ::
   [Action] ->
   IO (Either String (DecisionTree, [Warning]))
 runMatrix env tys occs matrix acts =
-  runCompilerM env (compileMatrix tys occs matrix acts)
+  runCompilerM env (compileMatrix tys occs matrix [([], a) | a <- acts])
+
+-- Run compileMatrix then treeToStmt in one pass, returning the compiled statement.
+runFull ::
+  TypeEnv ->
+  OccMap ->
+  [Ty] ->
+  [Occurrence] ->
+  PatternMatrix ->
+  [Action] ->
+  IO (Either String (Stmt Id, [Warning]))
+runFull env occMap tys occs matrix acts =
+  runCompilerM env $ do
+    tree <- compileMatrix tys occs matrix [([], a) | a <- acts]
+    treeToStmt occMap tree
 
 assertRight ::
   String ->
@@ -357,3 +380,91 @@ test_unknownConstructor_isError =
     assertLeft
       "unknown-con"
       (runMatrix Map.empty [tyBool] occ1 [[patTrue]] [actionA])
+
+-- Shared data for treeToStmt and inhabitsConCol tests
+
+varX :: Exp Id
+varX = Var (Id (Name "x") tyBool)
+
+varY :: Exp Id
+varY = Var (Id (Name "y") tyBool)
+
+-- Type environment with both List and Bool constructors
+listBoolEnv :: TypeEnv
+listBoolEnv = Map.union listEnv boolEnv
+
+-- 11. treeToStmt correctly substitutes a PVar with the scrutinee expression
+--
+-- match y { | z => return z }
+-- should compile to: return y
+test_treeToStmt_singleVar_substituted :: TestTree
+test_treeToStmt_singleVar_substituted =
+  testCase "treeToStmt: PVar in single-column all-var row is substituted by occurrence" $ do
+    let idZ = Id (Name "z") tyBool
+        occMap = Map.fromList [([0 :: Int], varY)]
+    r <- runFull boolEnv occMap [tyBool] [[0]] [[PVar idZ]] [[Return (Var idZ)]]
+    case r of
+      Left err -> assertFailure ("unexpected error: " ++ err)
+      Right (stmt, _) -> assertEqual "z should be substituted with y" (Return varY) stmt
+
+-- 12. treeToStmt correctly substitutes PVars bound through specialize and defaultMatrix
+--
+-- match x, y { | True, z => return z; | z, w => return z }
+--
+-- True branch:    z is bound to occurrence [1] (= y) → return y
+-- default branch: z is bound to occurrence [0] (= x) via defaultBoundActs → return x
+test_treeToStmt_multiColumn_varsBoundViaSpecialize :: TestTree
+test_treeToStmt_multiColumn_varsBoundViaSpecialize =
+  testCase "treeToStmt: PVars bound via specialize/defaultMatrix are correctly substituted" $ do
+    let idZ = Id (Name "z") tyBool
+        idW = Id (Name "w") tyBool
+        occMap = Map.fromList [([0 :: Int], varX), ([1], varY)]
+        matrix = [[patTrue, PVar idZ], [PVar idZ, PVar idW]]
+        retZ = [Return (Var idZ)]
+    r <- runFull boolEnv occMap [tyBool, tyBool] [[0], [1]] matrix [retZ, retZ]
+    case r of
+      Left err -> assertFailure ("unexpected error: " ++ err)
+      Right (stmt, _) -> case stmt of
+        Match [scrutinee] eqns -> do
+          assertEqual "scrutinee should be x" varX scrutinee
+          let trueBodys = [body | ([PCon k _], body) <- eqns, idName k == Name "True"]
+          let defBodys = [body | ([PVar _], body) <- eqns]
+          case trueBodys of
+            (tb : _) -> assertEqual "True branch: z substituted with y" [Return varY] tb
+            [] -> assertFailure "True branch not found in Match alts"
+          case defBodys of
+            (db : _) -> assertEqual "default branch: z substituted with x" [Return varX] db
+            [] -> assertFailure "default branch not found in Match alts"
+        _ -> assertFailure ("expected Match [x] …, got: " ++ show stmt)
+
+-- 13. inhabitsConCol missing-constructor path with non-empty restTys
+--
+-- The inhabitsConCol missing-constructor branch is exercised via the all-var
+-- row redundancy check in compileMatrix:
+--
+--   match xs, y { | z, w => a; | Nil, True => b; | Nil, False => c }
+--
+-- inhabitsM [[Nil,True],[Nil,False]] [tyList, tyBool] calls inhabitsConCol
+-- with restTys = [tyBool] (the second column).  Constructor Cons is absent
+-- from the remaining rows, so inhabitsConCol returns Just (a witness exists),
+-- meaning the first all-var row is NOT redundant.
+test_inhabitsConCol_missingCon_withRestTys :: TestTree
+test_inhabitsConCol_missingCon_withRestTys =
+  testCase "inhabitsConCol: missing constructor with non-empty restTys keeps first all-var row non-redundant"
+    $ assertRight
+      "inhabits-cons+restTys"
+      ( runMatrix
+          listBoolEnv
+          [tyList, tyBool]
+          occ2
+          [ [pvar "z" tyList, pvar "w" tyBool],
+            [patNil, patTrue],
+            [patNil, patFalse]
+          ]
+          [actionA, actionB, actionC]
+      )
+    $ \tree warns -> do
+      case tree of
+        Leaf _ _ -> pure ()
+        _ -> assertFailure ("expected Leaf for first all-var row, got: " ++ show tree)
+      assertBool "first all-var row must NOT be marked redundant" (not (any isRedundant warns))
