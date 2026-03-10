@@ -24,10 +24,27 @@ cabal repl
 # build the project
 cabal build
 
-# run the tests
+# run unit tests only
+cabal test sol-core-tests
+
+# run contract integration tests through cabal
+# (auto-builds testrunner, auto-detects evmone; fails if deps are missing)
+cabal test sol-core-contract-test
+
+# run every test suite
 cabal test
 
-# run the CI pipeline locally
+# build the C++ testrunner (for integration tests)
+cmake -S . -B build
+cmake --build build --target testrunner
+
+# run integration tests directly (requires evmone)
+bash run_contests.sh
+
+# run integration tests via Nix (builds everything automatically)
+nix flake check
+
+# run the CI pipeline locally (builds sol-core)
 nix build
 
 # run all checks (including ormolu format check)
@@ -87,4 +104,70 @@ Options:
   --create-raw-arguments hex        Pass raw calldata directly to geth
   --create-callvalue value          Pass callvalue to geth (in wei)
   --debug-create                    Explore the evm execution in the interactive debugger
+```
+
+## Integration Tests
+
+The project includes a C++ testrunner that executes end-to-end integration tests by running compiled bytecode on the evmone EVM implementation. These tests verify the full compilation pipeline:
+
+```
+.solc → sol-core → .core → yule → .yul → solc → .hex → testrunner → results
+```
+
+### Building the Testrunner
+
+The testrunner requires cmake and boost, which are available in the `nix develop` shell:
+
+```bash
+# If the repo was cloned without submodules, initialize JSON dependency:
+git submodule update --init deps/nlohmann_json
+
+# Build the testrunner binary
+cmake -S . -B build
+cmake --build build --target testrunner
+# Creates: build/test/testrunner/testrunner
+```
+
+### Running Integration Tests
+
+**Option 1: Via cabal (recommended for local development)**
+```bash
+cabal test sol-core-contract-test
+```
+
+The cabal suite:
+- Reuses `run_contests.sh`
+- Builds `testrunner` automatically if missing
+- Auto-detects `libevmone` from common locations
+- Fails by default if dependencies are unavailable
+
+Set `SOLCORE_CONTRACT_TESTS_ALLOW_SKIP=1` only if you explicitly want dependency-related skips.
+
+**Option 2: Manual execution**
+```bash
+bash run_contests.sh
+```
+
+Manual mode is strict: if `testrunner` or `evmone` is missing, the script fails.
+
+**Option 3: Via Nix (builds everything automatically)**
+```bash
+nix flake check
+```
+
+The Nix approach automatically:
+- Builds the testrunner with all dependencies (including evmone with pinned intx/blst)
+- Compiles test contracts through the full pipeline
+- Executes tests and verifies results
+
+### Test Cases
+
+Integration test cases are located in `test/examples/dispatch/` as JSON files that specify:
+- Input contract (`.solc` file)
+- Test scenarios with input/output expectations
+- Expected EVM execution results
+
+The `contest.sh` script can also be used to run individual test cases:
+```bash
+bash contest.sh test/examples/dispatch/basic.json
 ```
