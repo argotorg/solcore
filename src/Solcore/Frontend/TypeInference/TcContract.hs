@@ -1,5 +1,8 @@
 module Solcore.Frontend.TypeInference.TcContract where
 
+import Algebra.Graph.AdjacencyMap
+import Algebra.Graph.AdjacencyMap.Algorithm
+import Algebra.Graph.NonEmpty.AdjacencyMap qualified as NAG
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
@@ -8,6 +11,8 @@ import Data.List
 import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
@@ -41,6 +46,7 @@ tcCompUnit (CompUnit imps cs) =
   do
     setupPragmas ps
     checkSynonymCycles syns
+    checkRecursiveTypes dts
     mapM_ checkTopDecl cls
     mapM_ checkTopDecl nonClassDecls
     typedDecls <- mapM tcTopDecl' cs
@@ -53,6 +59,7 @@ tcCompUnit (CompUnit imps cs) =
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
+    dts = allDataTys cs
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
@@ -99,6 +106,50 @@ recursiveSynonymError cyclePath =
     unlines
       [ "Recursive type synonym detected:",
         "  " ++ intercalate " -> " (map pretty cyclePath)
+      ]
+
+-- check for recursive data types
+
+allDataTys :: [TopDecl Name] -> [DataTy]
+allDataTys = concatMap collect
+  where
+    collect (TDataDef d) = [d]
+    collect (TContr (Contract _ _ cds)) = [d | CDataDecl d <- cds]
+    collect _ = []
+
+buildTypeDepsGraph :: Set Name -> [DataTy] -> AdjacencyMap Name
+buildTypeDepsGraph userTypes dts =
+  overlay isolated edged
+  where
+    isolated = vertices (Set.toList userTypes)
+    edged = stars [(dataName dt, deps dt) | dt <- dts]
+    deps (DataTy _ _ ctors) =
+      nub
+        . filter (`Set.member` userTypes)
+        . concatMap (\(Constr _ tys) -> concatMap tyNames tys)
+        $ ctors
+
+checkRecursiveTypes :: [DataTy] -> TcM ()
+checkRecursiveTypes dts =
+  case cyclicSccs of
+    [] -> pure ()
+    (c : _) -> recursiveTypeError (NAG.vertexList1 c)
+  where
+    userTypes = Set.fromList (map dataName dts)
+    graph = buildTypeDepsGraph userTypes dts
+    cyclicSccs = filter (isCyclic graph) (vertexList (scc graph))
+    isCyclic origGraph sccComp =
+      case N.toList (NAG.vertexList1 sccComp) of
+        [v] -> hasEdge v v origGraph -- singleton SCC: cyclic only if self-loop
+        _ -> True -- 2+ vertices: always a mutual cycle
+
+recursiveTypeError :: N.NonEmpty Name -> TcM a
+recursiveTypeError cycleVerts =
+  throwError $
+    unlines
+      [ "Recursive data type detected:",
+        "  " ++ intercalate ", " (map pretty (N.toList cycleVerts)),
+        "  (Data types must be non-recursive)"
       ]
 
 -- setting up pragmas for type checking

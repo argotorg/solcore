@@ -102,7 +102,7 @@ pragmas =
   testGroup
     "Files for pragmas cases"
     [ runTestExpectingFailure "bound.solc" pragmaFolder,
-      runTestForFile "coverage.solc" pragmaFolder,
+      runTestExpectingFailure "coverage.solc" pragmaFolder,
       runTestForFile "patterson.solc" pragmaFolder
     ]
   where
@@ -112,7 +112,7 @@ cases :: TestTree
 cases =
   testGroup
     "Files for folder cases"
-    [ runTestForFile "Ackermann.solc" caseFolder,
+    [ runTestExpectingFailure "Ackermann.solc" caseFolder,
       runTestForFile "Add1.solc" caseFolder,
       runTestExpectingFailure "add-moritz.solc" caseFolder,
       runTestForFile "another-subst.solc" caseFolder,
@@ -152,12 +152,12 @@ cases =
       runTestExpectingFailure "duplicated-type-name.solc" caseFolder,
       runTestForFile "DuplicateFun.solc" caseFolder,
       runTestExpectingFailure "DupFun.solc" caseFolder,
-      runTestForFile "EitherModule.solc" caseFolder,
+      runTestExpectingFailure "EitherModule.solc" caseFolder,
       runTestForFile "empty-asm.solc" caseFolder,
       runTestExpectingFailure "Enum.solc" caseFolder,
       runTestExpectingFailure "Eq.solc" caseFolder,
       runTestForFile "EqQual.solc" caseFolder,
-      runTestForFile "EvenOdd.solc" caseFolder,
+      runTestExpectingFailure "EvenOdd.solc" caseFolder,
       runTestExpectingFailure "Filter.solc" caseFolder,
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,
@@ -177,8 +177,8 @@ cases =
       runTestExpectingFailure "joinErr.solc" caseFolder,
       runTestExpectingFailure "KindTest.solc" caseFolder,
       runTestExpectingFailure "listeq.solc" caseFolder,
-      runTestForFile "ListModule.solc" caseFolder,
-      runTestForFile "listid.solc" caseFolder,
+      runTestExpectingFailure "ListModule.solc" caseFolder,
+      runTestExpectingFailure "listid.solc" caseFolder,
       runTestForFile "Logic.solc" caseFolder,
       runTestExpectingFailure "mainproxy.solc" caseFolder,
       runTestForFile "MatchCall.solc" caseFolder,
@@ -204,8 +204,8 @@ cases =
       runTestExpectingFailure "PairMatch2.solc" caseFolder,
       -- failing due to missing assign constraint
       runTestExpectingFailure "patterson-bug.solc" caseFolder,
-      runTestForFile "Peano.solc" caseFolder,
-      runTestForFile "PeanoMatch.solc" caseFolder,
+      runTestExpectingFailure "Peano.solc" caseFolder,
+      runTestExpectingFailure "PeanoMatch.solc" caseFolder,
       runTestForFile "polymatch-error.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder,
@@ -216,6 +216,8 @@ cases =
       runTestForFile "proxy.solc" caseFolder,
       runTestExpectingFailure "proxy1.solc" caseFolder,
       runTestForFile "rec.solc" caseFolder,
+      runTestExpectingFailure "recursive-type-direct.solc" caseFolder,
+      runTestExpectingFailure "recursive-type-mutual.solc" caseFolder,
       runTestExpectingFailure "Ref.solc" caseFolder,
       runTestForFile "RefDeref.solc" caseFolder,
       runTestExpectingFailure "reference.solc" caseFolder,
@@ -248,7 +250,7 @@ cases =
       runTestExpectingFailure "subject-index.solc" caseFolder,
       runTestExpectingFailure "subject-reduction.solc" caseFolder,
       runTestExpectingFailure "subsumption-test.solc" caseFolder,
-      runTestForFile "super-class.solc" caseFolder,
+      runTestExpectingFailure "super-class.solc" caseFolder,
       runTestForFile "super-class-num.solc" caseFolder,
       runTestForFile "tiamat.solc" caseFolder,
       runTestForFile "tuple-trick.solc" caseFolder,
