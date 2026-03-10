@@ -6,6 +6,7 @@ import Solcore.Desugarer.DecisionTreeCompiler
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
+import Solcore.Primitives.Primitives (at, bt, pair, sumTy)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -32,8 +33,31 @@ matchTests =
           test_treeToStmt_multiColumn_varsBoundViaSpecialize
         ],
       testGroup
-        "inhabitsConCol"
-        [ test_inhabitsConCol_missingCon_withRestTys
+        "redundancy warnings"
+        [ test_allVar_first_shadows_nonexhaustive_rest,
+          test_twoCol_noFalsePositive_partialOverlap,
+          test_twoCol_genuinelyRedundant_thirdRow,
+          test_singleCol_duplicateRow_warned
+        ],
+      testGroup
+        "non-exhaustive witness completeness"
+        [ test_twoCol_con_nonExh_witness_has_both_columns,
+          test_twoCol_lit_nonExh_witness_has_both_columns
+        ],
+      testGroup
+        "sibling set / missing-constructor witness"
+        [ test_nonExh_polyEnv_missingNil_witness_is_Nil,
+          test_nonExh_polyEnv_missingCons_witness_is_Cons
+        ],
+      testGroup
+        "inhabitsM correctness"
+        [ test_inhabitsM_wildcard_row_covers_all
+        ],
+      testGroup
+        "primEnv correctness"
+        [ test_pairConInfo_returnType_is_result_type,
+          test_inlConInfo_returnType_is_result_type,
+          test_inrConInfo_returnType_is_result_type
         ]
     ]
 
@@ -46,6 +70,22 @@ runMatrix ::
   IO (Either String (DecisionTree, [Warning]))
 runMatrix env tys occs matrix acts =
   runCompilerM env (compileMatrix tys occs matrix [([], a) | a <- acts])
+
+-- Like runMatrix but also runs the redundancy pre-pass so RedundantClause
+-- warnings are emitted (mirroring what compile (Match …) does end-to-end).
+runMatrixFull ::
+  TypeEnv ->
+  [Ty] ->
+  [Occurrence] ->
+  PatternMatrix ->
+  [Action] ->
+  IO (Either String (DecisionTree, [Warning]))
+runMatrixFull env tys occs matrix acts =
+  runCompilerM env $ do
+    ctx <- askWarnCtx
+    let bacts = [([], a) | a <- acts]
+    checkRedundancy ctx tys matrix bacts
+    compileMatrix tys occs matrix bacts
 
 -- Run compileMatrix then treeToStmt in one pass, returning the compiled statement.
 runFull ::
@@ -119,6 +159,40 @@ idNil = Id (Name "Nil") (funtype [] tyList)
 
 idCons :: Id
 idCons = Id (Name "Cons") (funtype [tyBool, tyList] tyList)
+
+-- Polymorphic list type, as addDataTyInfo produces for: data List a = Nil | Cons a (List a)
+-- conReturnType stores TyCon "List" [TyVar "a"], NOT the concrete TyCon "List" [Bool].
+tyVarA :: Ty
+tyVarA = TyVar (TVar (Name "a"))
+
+tyListPoly :: Ty
+tyListPoly = TyCon (Name "List") [tyVarA]
+
+-- TypeEnv as initialTypeEnv/addDataTyInfo would build it (polymorphic return types).
+polyListEnv :: TypeEnv
+polyListEnv =
+  Map.fromList
+    [ (Name "Nil", ConInfo {conFieldTypes = [], conReturnType = tyListPoly}),
+      (Name "Cons", ConInfo {conFieldTypes = [tyVarA, tyListPoly], conReturnType = tyListPoly})
+    ]
+
+-- Constructor Ids as the type-checker annotates them in patterns (concrete types).
+idNilConcrete :: Id
+idNilConcrete = Id (Name "Nil") tyList -- tyList = TyCon "List" [tyBool]
+
+idConsConcrete :: Id
+idConsConcrete = Id (Name "Cons") (funtype [tyBool, tyList] tyList)
+
+patNilConcrete :: Pattern
+patNilConcrete = PCon idNilConcrete []
+
+patConsConcrete :: Pattern
+patConsConcrete =
+  PCon
+    idConsConcrete
+    [ pvar "h" tyBool,
+      pvar "t" tyList
+    ]
 
 -- Type environments
 boolEnv :: TypeEnv
@@ -198,13 +272,13 @@ test_singleVarRow_isLeaf_noWarnings =
         _ -> assertFailure ("expected Leaf, got: " ++ show tree)
       assertBool "should have no warnings" (null warns)
 
--- 3. Variable row that is redundant → Leaf + RedundantClause
+-- 3. All-var first row always fires; later rows are dead code → warned as unreachable
 test_redundantVarRow_emitsRedundantClause :: TestTree
 test_redundantVarRow_emitsRedundantClause =
-  testCase "variable row preceded by complete cover is marked redundant"
+  testCase "all-var first row fires correctly; later rows are warned as unreachable"
     $ assertRight
       "redundant"
-      ( runMatrix
+      ( runMatrixFull
           boolEnv
           [tyBool]
           occ1
@@ -214,8 +288,11 @@ test_redundantVarRow_emitsRedundantClause =
     $ \tree warns -> do
       case tree of
         Leaf _ _ -> pure ()
-        _ -> assertFailure ("expected Leaf, got: " ++ show tree)
-      assertBool "should emit RedundantClause warning" (any isRedundant warns)
+        _ -> assertFailure ("expected Leaf for all-var first row, got: " ++ show tree)
+      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      assertBool "True clause must be warned as unreachable" (actionB `elem` redundantActs)
+      assertBool "False clause must be warned as unreachable" (actionC `elem` redundantActs)
+      assertBool "first all-var row must not be warned as redundant" (actionA `notElem` redundantActs)
       assertBool "should not emit NonExhaustive warning" (not (any isNonExh warns))
 
 -- 4. Complete Bool cover → Switch with Nothing default, no warnings
@@ -437,34 +514,302 @@ test_treeToStmt_multiColumn_varsBoundViaSpecialize =
             [] -> assertFailure "default branch not found in Match alts"
         _ -> assertFailure ("expected Match [x] …, got: " ++ show stmt)
 
--- 13. inhabitsConCol missing-constructor path with non-empty restTys
+-- 13. Rows after a first all-var row are warned as unreachable even when they
+-- are NOT exhaustive by themselves.
 --
--- The inhabitsConCol missing-constructor branch is exercised via the all-var
--- row redundancy check in compileMatrix:
+-- match x { | z => return z; | True => return True; }
 --
---   match xs, y { | z, w => a; | Nil, True => b; | Nil, False => c }
---
--- inhabitsM [[Nil,True],[Nil,False]] [tyList, tyBool] calls inhabitsConCol
--- with restTys = [tyBool] (the second column).  Constructor Cons is absent
--- from the remaining rows, so inhabitsConCol returns Just (a witness exists),
--- meaning the first all-var row is NOT redundant.
-test_inhabitsConCol_missingCon_withRestTys :: TestTree
-test_inhabitsConCol_missingCon_withRestTys =
-  testCase "inhabitsConCol: missing constructor with non-empty restTys keeps first all-var row non-redundant"
+-- The True clause is dead code: z catches everything first.  This must be
+-- warned as unreachable even though True alone does not cover the type.
+test_allVar_first_shadows_nonexhaustive_rest :: TestTree
+test_allVar_first_shadows_nonexhaustive_rest =
+  testCase "rows after first all-var row are unreachable even if not exhaustive"
     $ assertRight
-      "inhabits-cons+restTys"
-      ( runMatrix
-          listBoolEnv
-          [tyList, tyBool]
-          occ2
-          [ [pvar "z" tyList, pvar "w" tyBool],
-            [patNil, patTrue],
-            [patNil, patFalse]
-          ]
-          [actionA, actionB, actionC]
+      "catchall-shadows-partial"
+      ( runMatrixFull
+          boolEnv
+          [tyBool]
+          occ1
+          [[pvar "z" tyBool], [patTrue]]
+          [actionA, actionB]
       )
     $ \tree warns -> do
       case tree of
         Leaf _ _ -> pure ()
-        _ -> assertFailure ("expected Leaf for first all-var row, got: " ++ show tree)
-      assertBool "first all-var row must NOT be marked redundant" (not (any isRedundant warns))
+        _ -> assertFailure ("expected Leaf, got: " ++ show tree)
+      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      assertBool "True clause must be warned as unreachable" (actionB `elem` redundantActs)
+      assertBool "first all-var row must not be warned" (actionA `notElem` redundantActs)
+
+-- 14. Two-column match: (True,z) / (w,True) / (a,b)
+-- The rows after the first are NOT globally redundant:
+--   row 1 fires for (False, True), row 2 fires for (False, False).
+-- No RedundantClause warnings should be emitted.
+test_twoCol_noFalsePositive_partialOverlap :: TestTree
+test_twoCol_noFalsePositive_partialOverlap =
+  testCase "two-col: overlapping rows are not falsely warned as redundant"
+    $ assertRight
+      "two-col-no-false-pos"
+      ( runMatrixFull
+          boolEnv
+          [tyBool, tyBool]
+          occ2
+          [ [patTrue, pvar "z" tyBool],
+            [pvar "w" tyBool, patTrue],
+            [pvar "a" tyBool, pvar "b" tyBool]
+          ]
+          [actionA, actionB, actionC]
+      )
+    $ \_ warns -> do
+      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      assertBool "row 1 (w,True) must NOT be warned as redundant" (actionB `notElem` redundantActs)
+      assertBool "row 2 (a,b) must NOT be warned as redundant" (actionC `notElem` redundantActs)
+      assertBool "no RedundantClause warnings at all" (null redundantActs)
+
+-- 15. Two-column match: genuinely redundant third row.
+-- (True,True) / (False,True) / (z,True) — rows 0+1 cover all (x,True),
+-- so row 2 is truly dead.
+test_twoCol_genuinelyRedundant_thirdRow :: TestTree
+test_twoCol_genuinelyRedundant_thirdRow =
+  testCase "two-col: third row subsumed by first two is genuinely warned"
+    $ assertRight
+      "two-col-true-pos"
+      ( runMatrixFull
+          boolEnv
+          [tyBool, tyBool]
+          occ2
+          [ [patTrue, patTrue],
+            [patFalse, patTrue],
+            [pvar "z" tyBool, patTrue]
+          ]
+          [actionA, actionB, actionC]
+      )
+    $ \_ warns -> do
+      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      assertBool "row 2 (z,True) must be warned as redundant" (actionC `elem` redundantActs)
+      assertBool "row 0 must not be warned" (actionA `notElem` redundantActs)
+      assertBool "row 1 must not be warned" (actionB `notElem` redundantActs)
+
+-- 16. Single-column duplicate row: second True is redundant, False is not.
+test_singleCol_duplicateRow_warned :: TestTree
+test_singleCol_duplicateRow_warned =
+  testCase "single-col: exact duplicate constructor row is warned, later row is not"
+    $ assertRight
+      "dup-row"
+      ( runMatrixFull
+          boolEnv
+          [tyBool]
+          occ1
+          [[patTrue], [patTrue], [patFalse]]
+          [actionA, actionB, actionC]
+      )
+    $ \_ warns -> do
+      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      assertBool "second True must be warned as redundant" (actionB `elem` redundantActs)
+      assertBool "False must not be warned as redundant" (actionC `notElem` redundantActs)
+      assertBool "first True must not be warned" (actionA `notElem` redundantActs)
+
+-- 17. Two-column constructor match with one missing constructor:
+-- the NonExhaustive witness must cover BOTH columns, not just the
+-- selected constructor column.
+--
+-- match x, y { | True, z => ... }
+-- Missing: (False, _)  — witness should be [PCon False [], PVar _]
+test_twoCol_con_nonExh_witness_has_both_columns :: TestTree
+test_twoCol_con_nonExh_witness_has_both_columns =
+  testCase "two-col constructor: NonExhaustive witness covers both columns"
+    $ assertRight
+      "two-col-con-nonexh"
+      ( runMatrix
+          boolEnv
+          [tyBool, tyBool]
+          occ2
+          [[patTrue, pvar "z" tyBool]]
+          [actionA]
+      )
+    $ \_ warns -> do
+      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      case nonExhPats of
+        [] -> assertFailure "expected a NonExhaustive warning"
+        (pats : _) -> do
+          assertEqual
+            "witness must have one pattern per scrutinee column (2)"
+            2
+            (length pats)
+          case pats of
+            (PCon k [] : _) ->
+              assertEqual "first pattern must be the missing constructor False" (Name "False") (idName k)
+            _ ->
+              assertFailure ("expected PCon False as first witness pattern, got: " ++ show pats)
+
+-- 18. Two-column literal match without a catch-all:
+-- the NonExhaustive witness must cover BOTH columns, not just the
+-- remaining (non-literal) column.
+--
+-- match n, b { | 0, z => ... }
+-- Missing: (_, _)  — witness should be [PVar _, PVar _]
+test_twoCol_lit_nonExh_witness_has_both_columns :: TestTree
+test_twoCol_lit_nonExh_witness_has_both_columns =
+  testCase "two-col literal: NonExhaustive witness covers both columns"
+    $ assertRight
+      "two-col-lit-nonexh"
+      ( runMatrix
+          boolEnv
+          [tyWord, tyBool]
+          occ2
+          [[PLit (IntLit 0), pvar "z" tyBool]]
+          [actionA]
+      )
+    $ \_ warns -> do
+      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      case nonExhPats of
+        [] -> assertFailure "expected a NonExhaustive warning"
+        (pats : _) ->
+          assertEqual
+            "witness must have one pattern per scrutinee column (2)"
+            2
+            (length pats)
+
+-- 19. inhabitsM: a matrix that has a wildcard row covering all columns is
+-- exhaustive.  The bug in 'inhabitsConCol' returns a false witness when
+-- mRestWit = Nothing (the wildcard rows already cover every rest-column
+-- value), instead of returning Nothing (= exhaustive).
+--
+-- matrix: [ [True, True]   -- row 0: covers (True, True)
+--          , [z,   w   ] ] -- row 1: wildcard catches everything else
+-- types:  [Bool, Bool]
+--
+-- The wildcard row 1 means the matrix IS exhaustive → Nothing.
+-- Bug: inhabitsConCol finds missingCons=[False], computes
+--      mRestWit = Nothing (wildcard covers restTys), but still emits
+--      Just [PCon False [], $v].
+test_inhabitsM_wildcard_row_covers_all :: TestTree
+test_inhabitsM_wildcard_row_covers_all =
+  testCase "inhabitsM: wildcard row makes matrix exhaustive → Nothing (no false witness)" $ do
+    let idZ = Id (Name "z") tyBool
+        idW = Id (Name "w") tyBool
+        matrix =
+          [ [patTrue, patTrue],
+            [PVar idZ, PVar idW]
+          ]
+    r <- runCompilerM boolEnv (inhabitsM matrix [tyBool, tyBool])
+    case r of
+      Left err -> assertFailure ("unexpected error: " ++ err)
+      Right (mWit, _) ->
+        assertEqual
+          "wildcard row covers all patterns: inhabitsM should be Nothing"
+          Nothing
+          mWit
+
+-- 20. primEnv: pairConInfo.conReturnType stores pairTy at bt (the arrow type
+-- at :-> bt :-> pair at bt) instead of the result type pair at bt.
+-- Fix: ConInfo [at, bt] (pair at bt).
+test_pairConInfo_returnType_is_result_type :: TestTree
+test_pairConInfo_returnType_is_result_type =
+  testCase "pairConInfo: conReturnType should be pair at bt (result type, not arrow type)" $
+    assertEqual
+      "conReturnType pairConInfo"
+      (pair at bt)
+      (conReturnType pairConInfo)
+
+-- 21. primEnv: inlConInfo.conReturnType stores inlTy at bt (the arrow type
+-- at :-> sum at bt) instead of the result type sumTy at bt.
+-- Fix: ConInfo [at] (sumTy at bt).
+test_inlConInfo_returnType_is_result_type :: TestTree
+test_inlConInfo_returnType_is_result_type =
+  testCase "inlConInfo: conReturnType should be sumTy at bt (result type, not arrow type)" $
+    assertEqual
+      "conReturnType inlConInfo"
+      (sumTy at bt)
+      (conReturnType inlConInfo)
+
+-- 22. primEnv: inrConInfo.conReturnType stores inlTy at bt (wrong: uses inl
+-- instead of inr, and stores the arrow type rather than the result type).
+-- Fix: ConInfo [bt] (sumTy at bt).
+test_inrConInfo_returnType_is_result_type :: TestTree
+test_inrConInfo_returnType_is_result_type =
+  testCase "inrConInfo: conReturnType should be sumTy at bt (not inlTy at bt)" $
+    assertEqual
+      "conReturnType inrConInfo"
+      (sumTy at bt)
+      (conReturnType inrConInfo)
+
+-- ---------------------------------------------------------------------------
+-- Bug: `siblings \\ headCons` uses Eq Id (name + type).
+--
+-- `siblingConstructors` builds Id values via `idFromInfo`, which uses the
+-- TypeEnv's conReturnType.  When the TypeEnv was built by `addDataTyInfo`,
+-- conReturnType is polymorphic (e.g. TyCon "List" [TyVar "a"]).  But the
+-- constructor Ids in the pattern matrix come from the type-checker and carry
+-- concrete types (e.g. TyCon "List" [Bool]).
+--
+-- `siblings \\ headCons` therefore fails to remove any element of headCons
+-- from siblings, so `missing` contains ALL sibling constructors instead of
+-- just the absent ones.  The first element of `missing` may then be a
+-- constructor that IS already covered — producing a false or wrong witness.
+--
+-- Fix: compare by name only:
+--   let missing = filter (\s -> idName s `notElem` map idName headCons) siblings
+-- ---------------------------------------------------------------------------
+
+-- 23. polyListEnv has polymorphic return types (as addDataTyInfo produces).
+-- Matrix [[Cons h t]] on [List Bool] covers only Cons; Nil is missing.
+-- siblings = [Cons_poly, Nil_poly]; headCons = [Cons_concrete].
+-- Bug: (\\) finds Cons_poly /= Cons_concrete → missing = [Cons_poly, Nil_poly].
+-- First missing = Cons_poly → witness says "Cons missing" — WRONG.
+-- Fix: missing = [Nil_poly] → witness says "Nil missing" — CORRECT.
+test_nonExh_polyEnv_missingNil_witness_is_Nil :: TestTree
+test_nonExh_polyEnv_missingNil_witness_is_Nil =
+  testCase "poly TypeEnv: missing-constructor witness names Nil (not Cons) when Cons is covered"
+    $ assertRight
+      "poly-list-missing-nil"
+      ( runMatrix
+          polyListEnv
+          [tyList]
+          occ1
+          [[patConsConcrete]]
+          [actionA]
+      )
+    $ \_ warns -> do
+      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      case nonExhPats of
+        [] -> assertFailure "expected a NonExhaustive warning"
+        (pats : _) -> case pats of
+          (PCon k _ : _) ->
+            assertEqual
+              "missing constructor should be Nil (Cons is covered)"
+              (Name "Nil")
+              (idName k)
+          _ ->
+            assertFailure ("expected PCon as first witness pattern, got: " ++ show pats)
+
+-- 24. Same environment, opposite case: matrix [[Nil]] covers only Nil; Cons is missing.
+-- siblings = [Cons_poly, Nil_poly]; headCons = [Nil_concrete].
+-- Bug: (\\) finds Nil_poly /= Nil_concrete → missing = [Cons_poly, Nil_poly].
+-- First missing = Cons_poly → witness says "Cons missing" — happens to be correct
+--   BY ACCIDENT (Cons is alphabetically first in Map.toList).
+-- This test documents that the correct answer is Cons, and that the fix preserves it.
+test_nonExh_polyEnv_missingCons_witness_is_Cons :: TestTree
+test_nonExh_polyEnv_missingCons_witness_is_Cons =
+  testCase "poly TypeEnv: missing-constructor witness names Cons (not Nil) when Nil is covered"
+    $ assertRight
+      "poly-list-missing-cons"
+      ( runMatrix
+          polyListEnv
+          [tyList]
+          occ1
+          [[patNilConcrete]]
+          [actionA]
+      )
+    $ \_ warns -> do
+      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      case nonExhPats of
+        [] -> assertFailure "expected a NonExhaustive warning"
+        (pats : _) -> case pats of
+          (PCon k _ : _) ->
+            assertEqual
+              "missing constructor should be Cons (Nil is covered)"
+              (Name "Cons")
+              (idName k)
+          _ ->
+            assertFailure ("expected PCon as first witness pattern, got: " ++ show pats)

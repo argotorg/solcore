@@ -291,7 +291,9 @@ cases =
       runTestForFile "proxy-desugar.solc" caseFolder,
       runTestForFile "snds.solc" caseFolder,
       runTestForFile "bool-elim.solc" caseFolder,
-      runTestForFile "catch-all.solc" caseFolder
+      runTestForFile "catch-all.solc" caseFolder,
+      runTestForFile "redundant-match.solc" caseFolder,
+      runTestForFile "false-redundant-warning.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

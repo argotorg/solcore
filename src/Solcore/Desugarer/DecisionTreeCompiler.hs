@@ -107,6 +107,9 @@ instance Compile (Stmt Id) where
         actions = map snd eqns'
         bacts = [([], a) | a <- actions]
         matchDesc = "match (" ++ intercalate ", " (map pretty es') ++ ")"
+    pushCtx matchDesc $ do
+      ctx <- askWarnCtx
+      checkRedundancy ctx scrutTys matrix bacts
     tree <- pushCtx matchDesc $ compileMatrix scrutTys occs matrix bacts
     treeToStmt occMap tree
 
@@ -124,17 +127,9 @@ compileMatrix tys _ [] _ = do
   ctx <- askWarnCtx
   unless (null pats) $ tell [NonExhaustive ctx pats]
   pure Fail
-compileMatrix tys occs (firstRow : restRows) ((firstBinds, firstAct) : _)
+compileMatrix _tys occs (firstRow : _restRows) ((firstBinds, firstAct) : _restBacts)
   | all isVarPat firstRow = do
-      mw <-
-        if null tys
-          then pure (Just [])
-          else inhabitsM restRows tys
-      ctx <- askWarnCtx
-      let redundant = isNothing mw
-          warns = [RedundantClause ctx firstRow firstAct | redundant]
-          varBinds = [(v, occ) | (PVar v, occ) <- zip firstRow occs]
-      tell warns
+      let varBinds = [(v, occ) | (PVar v, occ) <- zip firstRow occs]
       pure (Leaf (firstBinds ++ varBinds) firstAct)
 compileMatrix tys occs matrix bacts = do
   let col = selectColumn occs matrix
@@ -142,15 +137,15 @@ compileMatrix tys occs matrix bacts = do
       occs' = reorderList col occs
       tys' = reorderList col tys
   case (tys', occs', matrix') of
-    (_ : restTys, testOcc : restOccs, _) -> do
+    (testTy : restTys, testOcc : restOccs, _) -> do
       let firstCol = [p | (p : _) <- matrix']
           headCons = nub (mapMaybe patHeadCon firstCol)
           headLits = nub (mapMaybe patHeadLit firstCol)
       case (headCons, headLits) of
         (c : cs, _) ->
-          buildConSwitch testOcc restOccs restTys matrix' bacts (c : cs)
+          buildConSwitch testOcc restOccs testTy restTys matrix' bacts (c : cs)
         ([], ls@(_ : _)) ->
-          buildLitSwitch testOcc restOccs restTys matrix' bacts ls
+          buildLitSwitch testOcc restOccs testTy restTys matrix' bacts ls
         ([], []) ->
           -- All wildcards after reordering: strip column and continue
           compileMatrix restTys restOccs (defaultMatrix matrix') (defaultBoundActs testOcc matrix' bacts)
@@ -160,12 +155,13 @@ compileMatrix tys occs matrix bacts = do
 buildConSwitch ::
   Occurrence ->
   [Occurrence] ->
+  Ty ->
   [Ty] ->
   PatternMatrix ->
   [BoundAction] ->
   [Id] ->
   CompilerM DecisionTree
-buildConSwitch testOcc restOccs restTys matrix bacts headCons = do
+buildConSwitch testOcc restOccs _testTy restTys matrix bacts headCons = do
   branches <- mapM buildBranch headCons
   complete <- isComplete headCons
   mDefault <-
@@ -209,12 +205,14 @@ buildConSwitch testOcc restOccs restTys matrix bacts headCons = do
                 [] -> mapM freshPat restTys
                 (first : _) -> do
                   siblings <- siblingConstructors first
-                  let missing = siblings \\ headCons
+                  let headNames = map idName headCons
+                      missing = filter (\s -> idName s `notElem` headNames) siblings
                   case missing of
                     (k : _) -> do
                       info <- lookupConInfo (idName k)
                       fieldPats <- mapM freshPat (conFieldTypes info)
-                      pure [PCon k fieldPats]
+                      restWit <- mapM freshPat restTys
+                      pure (PCon k fieldPats : restWit)
                     [] -> mapM freshPat restTys
               ctx <- askWarnCtx
               tell [NonExhaustive ctx witPats]
@@ -224,21 +222,23 @@ buildConSwitch testOcc restOccs restTys matrix bacts headCons = do
 buildLitSwitch ::
   Occurrence ->
   [Occurrence] ->
+  Ty ->
   [Ty] ->
   PatternMatrix ->
   [BoundAction] ->
   [Literal] ->
   CompilerM DecisionTree
-buildLitSwitch testOcc restOccs restTys matrix bacts headLits = do
+buildLitSwitch testOcc restOccs testTy restTys matrix bacts headLits = do
   branches <- mapM buildBranch headLits
   let defMat = defaultMatrix matrix
       defBacts = defaultBoundActs testOcc matrix bacts
   mDefault <-
     if null defMat
       then do
-        pats <- mapM freshPat restTys
+        litWit <- freshPat testTy
+        restWit <- mapM freshPat restTys
         ctx <- askWarnCtx
-        tell [NonExhaustive ctx pats]
+        tell [NonExhaustive ctx (litWit : restWit)]
         pure (Just Fail)
       else Just <$> compileMatrix restTys restOccs defMat defBacts
   pure (LitSwitch testOcc branches mDefault)
@@ -346,60 +346,6 @@ litBranchToEqn occMap (lit, tree) = do
   body <- treeToBody occMap tree
   pure ([PLit lit], body)
 
--- inhabitance tests
-
-inhabitsM :: PatternMatrix -> [Ty] -> CompilerM (Maybe [Pattern])
-inhabitsM [] tys = do
-  pats <- mapM freshPat tys
-  pure (Just pats)
-inhabitsM _ [] = pure Nothing
-inhabitsM matrix (ty : restTys) = do
-  let firstCol = [p | (p : _) <- matrix]
-      headCons = nub (mapMaybe patHeadCon firstCol)
-      headLits = nub (mapMaybe patHeadLit firstCol)
-  case (headCons, headLits) of
-    (c : cs, _) -> inhabitsConCol matrix restTys (c : cs)
-    ([], _ : _) -> inhabitsLitCol matrix ty restTys
-    ([], []) -> do
-      p <- freshPat ty
-      fmap (p :) <$> inhabitsM (defaultMatrix matrix) restTys
-
-inhabitsConCol :: PatternMatrix -> [Ty] -> [Id] -> CompilerM (Maybe [Pattern])
-inhabitsConCol matrix restTys (firstCon : otherCons) = do
-  siblings <- siblingConstructors firstCon
-  let headCons = firstCon : otherCons
-      missing = filter (\s -> idName s `notElem` map idName headCons) siblings
-  case missing of
-    (k : _) -> do
-      info <- lookupConInfo (idName k)
-      let fieldTys = conFieldTypes info
-      mw <- inhabitsM (defaultMatrix matrix) restTys
-      case mw of
-        Nothing -> pure Nothing
-        Just rest -> do
-          sub <- mapM freshPat fieldTys
-          pure . Just $ PCon k sub : rest
-    [] -> do
-      results <- mapM searchBranch headCons
-      pure (listToMaybe (catMaybes results))
-  where
-    searchBranch k = do
-      info <- lookupConInfo (idName k)
-      let fieldTys = conFieldTypes info
-      specMat <- specialize k fieldTys matrix
-      mw <- inhabitsM specMat (fieldTys ++ restTys)
-      case mw of
-        Nothing -> pure Nothing
-        Just ws ->
-          let (sub, rest) = splitAt (length fieldTys) ws
-           in pure . Just $ PCon k sub : rest
-inhabitsConCol _ _ [] = pure Nothing
-
-inhabitsLitCol :: PatternMatrix -> Ty -> [Ty] -> CompilerM (Maybe [Pattern])
-inhabitsLitCol matrix ty restTys = do
-  pat <- freshPat ty
-  fmap (pat :) <$> inhabitsM (defaultMatrix matrix) restTys
-
 -- definition of a monad
 
 -- Context attached to warnings: stack of pretty-printed descriptions of the
@@ -458,7 +404,7 @@ inc = do
 freshPat :: Ty -> CompilerM (Pat Id)
 freshPat t = do
   n <- inc
-  let v = Name $ "v" ++ show n
+  let v = Name $ "$v" ++ show n
   pure (PVar (Id v t))
 
 isComplete :: [Id] -> CompilerM Bool
@@ -534,13 +480,13 @@ pairName :: Name
 pairName = Name "pair"
 
 pairConInfo :: ConInfo
-pairConInfo = ConInfo [at, bt] (pairTy at bt)
+pairConInfo = ConInfo [at, bt] (pair at bt)
 
 inlConInfo :: ConInfo
-inlConInfo = ConInfo [at] (inlTy at bt)
+inlConInfo = ConInfo [at] (sumTy at bt)
 
 inrConInfo :: ConInfo
-inrConInfo = ConInfo [bt] (inlTy at bt)
+inrConInfo = ConInfo [bt] (sumTy at bt)
 
 trueConInfo :: ConInfo
 trueConInfo = ConInfo [] boolTy
@@ -711,6 +657,113 @@ patHeadCon _ = Nothing
 patHeadLit :: Pattern -> Maybe Literal
 patHeadLit (PLit l) = Just l
 patHeadLit _ = Nothing
+
+-- redundancy checking (pre-pass over the original matrix)
+
+-- checkRedundancy ctx tys matrix bacts emits RedundantClause warnings
+-- for every row that is not useful w.r.t. all the rows above it.
+checkRedundancy :: WarnCtx -> [Ty] -> PatternMatrix -> [BoundAction] -> CompilerM ()
+checkRedundancy ctx tys matrix bacts = go [] (zip matrix bacts)
+  where
+    go _ [] = pure ()
+    go prefix ((row, (_, act)) : rest) = do
+      useful <- isUseful tys prefix row
+      unless useful $ tell [RedundantClause ctx row act]
+      go (prefix ++ [row]) rest
+
+-- Maranget's U(P, q): returns True iff row q adds new coverage that no
+-- row in the prefix matrix P already handles.
+isUseful :: [Ty] -> PatternMatrix -> PatternRow -> CompilerM Bool
+isUseful _ [] _ = pure True
+isUseful _ _ [] = pure False
+isUseful tys matrix (q1 : qRest) =
+  case q1 of
+    PCon k ps -> do
+      info <- lookupConInfo (idName k)
+      let fieldTys = conFieldTypes info
+      specMat <- specialize k fieldTys matrix
+      isUseful (fieldTys ++ drop 1 tys) specMat (ps ++ qRest)
+    PLit l ->
+      isUseful (drop 1 tys) (specializeLit l matrix) qRest
+    PVar _ ->
+      case tys of
+        [] -> pure False
+        (_ : restTys) -> do
+          let headCons = nub (mapMaybe patHeadCon [p | (p : _) <- matrix])
+          complete <- if null headCons then pure False else isComplete headCons
+          if complete
+            then fmap or $ forM headCons $ \k -> do
+              info <- lookupConInfo (idName k)
+              let fieldTys = conFieldTypes info
+              freshFields <- mapM freshPat fieldTys
+              specMat <- specialize k fieldTys matrix
+              isUseful (fieldTys ++ restTys) specMat (freshFields ++ qRest)
+            else
+              isUseful restTys (defaultMatrix matrix) qRest
+    _ -> pure True -- PWildcard shouldn't appear after desugaring
+
+-- inhabitance checking (used for exhaustiveness)
+
+inhabitsM :: PatternMatrix -> [Ty] -> CompilerM (Maybe [Pattern])
+inhabitsM [] tys = Just <$> mapM freshPat tys
+inhabitsM _ [] = pure Nothing
+inhabitsM matrix (ty : restTys) = do
+  let firstCol = [p | (p : _) <- matrix]
+      headCons = nub (mapMaybe patHeadCon firstCol)
+      headLits = nub (mapMaybe patHeadLit firstCol)
+  case (headCons, headLits) of
+    (cs@(_ : _), _) -> inhabitsConCol matrix ty restTys cs
+    ([], _ : _) -> inhabitsLitCol matrix ty restTys
+    ([], []) -> do
+      r <- inhabitsM (defaultMatrix matrix) restTys
+      case r of
+        Nothing -> pure Nothing
+        Just restWit -> do
+          v <- freshPat ty
+          pure (Just (v : restWit))
+
+inhabitsConCol :: PatternMatrix -> Ty -> [Ty] -> [Id] -> CompilerM (Maybe [Pattern])
+inhabitsConCol matrix _ty restTys headCons =
+  case headCons of
+    [] -> pure Nothing
+    (first : _) -> do
+      siblings <- siblingConstructors first
+      let headNames = map idName headCons
+          missingCons = filter (\s -> idName s `notElem` headNames) siblings
+      case missingCons of
+        (k : _) -> do
+          info <- lookupConInfo (idName k)
+          let fieldTys = conFieldTypes info
+          mRestWit <- inhabitsM (defaultMatrix matrix) restTys
+          sub <- mapM freshPat fieldTys
+          case mRestWit of
+            Nothing ->
+              pure Nothing
+            Just restWit ->
+              pure (Just (PCon k sub : restWit))
+        [] ->
+          fmap msum $ mapM checkCon headCons
+  where
+    checkCon k = do
+      info <- lookupConInfo (idName k)
+      let fieldTys = conFieldTypes info
+          newTys = fieldTys ++ restTys
+      specMat <- specialize k fieldTys matrix
+      mWit <- inhabitsM specMat newTys
+      case mWit of
+        Nothing -> pure Nothing
+        Just wit -> do
+          let (fieldWit, restWit) = splitAt (length fieldTys) wit
+          pure (Just (PCon k fieldWit : restWit))
+
+inhabitsLitCol :: PatternMatrix -> Ty -> [Ty] -> CompilerM (Maybe [Pattern])
+inhabitsLitCol matrix ty restTys = do
+  r <- inhabitsM (defaultMatrix matrix) restTys
+  case r of
+    Nothing -> pure Nothing
+    Just restWit -> do
+      v <- freshPat ty
+      pure (Just (v : restWit))
 
 -- warnings
 
