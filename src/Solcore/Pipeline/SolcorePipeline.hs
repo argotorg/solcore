@@ -20,7 +20,7 @@ import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
-import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictCompileCompUnitWithImportedStart, flattenModuleStrictValidationCompUnit, loadModuleGraph)
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictCompileCompUnitWithImportedStart, flattenModuleStrictValidationCompUnit, loadModuleGraph, moduleSourcePath)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.Contract hiding (contracts)
@@ -69,18 +69,19 @@ compile opts = runExceptT $ do
   graph <- ExceptT $ loadModuleGraph dirs file
 
   -- Validate each module against only its own direct imports.
-  forM_ (moduleOrder graph) $ \modulePath -> do
+  forM_ (moduleOrder graph) $ \moduleId -> do
+    sourcePath <- ExceptT $ pure (moduleSourcePath graph moduleId)
     cunit <-
       ExceptT $
-        pure (flattenModuleStrictValidationCompUnit graph modulePath)
+        pure (flattenModuleStrictValidationCompUnit graph moduleId)
     _ <-
       ExceptT $
         pure $
-          first (\e -> "Module validation failed for " ++ modulePath ++ ":\n" ++ e) $
+          first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e) $
             validateDuplicateNamespacesInCompUnit cunit
     _ <-
       ExceptT $
-        first (\e -> "Module validation failed for " ++ modulePath ++ ":\n" ++ e)
+        first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e)
           <$> nameResolution cunit
     pure ()
 

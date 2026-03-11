@@ -137,14 +137,15 @@ resolveImportPath ::
   Import ->
   StateT LoadState (ExceptT String IO) (Mod.ModuleId, FilePath)
 resolveImportPath cfg currentModule imp = do
-  (targetId, targetPath) <- either throwError pure (resolveModuleImport cfg currentModule (importModule imp))
-  exists <- liftIO $ doesFileExist targetPath
-  unless exists $
-    throwError $
-      "import "
-        ++ Mod.modulePathDisplay (importModule imp)
-        ++ ": file not found"
-  pure (targetId, targetPath)
+  candidates <- either throwError pure (resolveModuleImportCandidates cfg currentModule (importModule imp))
+  resolved <- liftIO $ firstExisting candidates
+  case resolved of
+    Just target -> pure target
+    Nothing ->
+      throwError $
+        "import "
+          ++ Mod.modulePathDisplay (importModule imp)
+          ++ ": file not found"
 
 importModuleName :: Import -> Name
 importModuleName = Mod.modulePathName . importModule
@@ -152,29 +153,45 @@ importModuleName = Mod.modulePathName . importModule
 toFilePath :: FilePath -> Name -> FilePath
 toFilePath base = (base </>) . Mod.moduleFilePath
 
-resolveModuleImport ::
+resolveModuleImportCandidates ::
   LoaderConfig ->
   Mod.ModuleId ->
   ModulePath ->
-  Either String (Mod.ModuleId, FilePath)
-resolveModuleImport cfg currentModule path =
+  Either String [(Mod.ModuleId, FilePath)]
+resolveModuleImportCandidates cfg currentModule path =
   case path of
     RelativePath relName
       | isStdSpecial relName,
         Just root <- stdRoot cfg ->
-          pure (Mod.ModuleId Mod.StdLibrary relName, toFilePath root relName)
+          pure [(Mod.ModuleId Mod.StdLibrary relName, toFilePath root relName)]
       | otherwise ->
-          resolveWithinLibrary currentLibrary resolvedName
+          pure (resolveRelativeCandidates currentLibrary resolvedName relName)
       where
         currentLibrary = Mod.moduleLibrary currentModule
         resolvedName = Mod.appendRelativeModulePath (Mod.moduleName currentModule) relName
     LibraryPath absName ->
-      resolveWithinLibrary (Mod.moduleLibrary currentModule) absName
+      pure [resolveWithinLibrary (Mod.moduleLibrary currentModule) absName]
     ExternalPath libName _ ->
       Left ("unsupported external library import: @" ++ show libName)
   where
     resolveWithinLibrary libId modName =
-      (,toFilePath (rootForLibrary cfg libId) modName) <$> pure (Mod.ModuleId libId modName)
+      (Mod.ModuleId libId modName, toFilePath (rootForLibrary cfg libId) modName)
+
+    resolveRelativeCandidates libId resolvedName relName =
+      case stdRoot cfg of
+        Just root
+          | libId == Mod.MainLibrary ->
+              [ resolveWithinLibrary libId resolvedName,
+                (Mod.ModuleId Mod.StdLibrary relName, toFilePath root relName)
+              ]
+        _ ->
+          [resolveWithinLibrary libId resolvedName]
+
+firstExisting :: [(Mod.ModuleId, FilePath)] -> IO (Maybe (Mod.ModuleId, FilePath))
+firstExisting [] = pure Nothing
+firstExisting (candidate@(_, path) : rest) = do
+  exists <- doesFileExist path
+  if exists then pure (Just candidate) else firstExisting rest
 
 isStdSpecial :: Name -> Bool
 isStdSpecial (Name "std") = True
