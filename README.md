@@ -171,3 +171,15 @@ The `contest.sh` script can also be used to run individual test cases:
 ```bash
 bash contest.sh test/examples/dispatch/basic.json
 ```
+
+### Documentation
+
+To work on the language reference, enter the `doc` subdirectory and run:
+
+```sh
+# serve the docs on localhost (rebuilds when files change)
+mdbook serve
+
+# build a static copy of the docs
+mdbook build
+```

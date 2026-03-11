@@ -144,6 +144,7 @@
             (hspkgs.hevm.overrideAttrs (old: { patches = []; }))
             texlive
             (pkgs.callPackage ./nix/goevmlab.nix { src = inputs.goevmlab; })
+            pkgs.mdbook
           ];
         };
       }
