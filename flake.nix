@@ -146,9 +146,7 @@
             texlive
             (pkgs.callPackage ./nix/goevmlab.nix { src = inputs.goevmlab; })
           ];
-          shellHook = ''
-            export evmone="${evmone-lib}/lib/libevmone.so"
-          '';
+          evmone="${evmone-lib}/lib/libevmone.so";
         };
       }
     );
