@@ -2,8 +2,8 @@
 
 ## Introduction
 
-The Hull language is an intermediate step before Yul generation.
-It is basically Yul with algebraic types (sums/products)
+The Hull language is an intermediate step before Yul generation. It is basically Yul with algebraic
+types (sums/products)
 
 ### Naming
 
@@ -16,7 +16,7 @@ See `src/Language/Hull.hs`
 
 ### Types
 
-``` haskell
+```haskell
 data Type
     = TWord
     | TBool
@@ -30,7 +30,7 @@ data Type
 
 ### Expressions
 
-``` haskell
+```haskell
 data Expr
     = EWord Integer
     | EBool Bool
@@ -46,9 +46,11 @@ data Expr
 ```
 
 Notes:
+
 - `EInl/EInr` are binary sum constructors (injections)
 - `EInK k` represents k-th injection for n-ary sum
-- all injections are annotated with target type, so we have for example  `inr<Option{unit + word}>(42)`
+- all injections are annotated with target type, so we have for example
+  `inr<Option{unit + word}>(42)`
 - n-ary products not implemented yet, but planned (they are simpler than sums)
 
 ### Statements
@@ -72,25 +74,28 @@ data Con = CInl | CInr | CInK Int
 ```
 
 Notes:
-- there are no control constructs yet, except call/return/revert; this is mostly because the surface language does not have them either
+
+- there are no control constructs yet, except call/return/revert; this is mostly because the surface
+  language does not have them either
 - using comments can lead to problems, since Solidity seems to have no nested comments
 - for `YulStmt`, see `src/Language/Yul.hs`
 - as in Yul, there are no statement separators
 
 ### Contracts
 
-Right now a contract consists of a name and a list of statements. This is definitely a temporary solution.
+Right now a contract consists of a name and a list of statements. This is definitely a temporary
+solution.
 
 ```
 data Contract = Contract { ccName :: Name, ccStmts ::  [Stmt] }
 ```
 
-
 ## Concrete Syntax
 
 See `src/Language/Hull/Parser.hs`
 
-Although Hull is not meant to be written manually, it has concrete syntax, mostly for diagnostic purposes.
+Although Hull is not meant to be written manually, it has concrete syntax, mostly for diagnostic
+purposes.
 
 ```
 Block = "{" hullStmt* "}"
@@ -148,6 +153,7 @@ contract Option {
 ```
 
 #### Enumeration type
+
 ```
 contract RGB {
     function fromEnum (c : Color{unit + (unit + unit)}) -> word {
@@ -172,10 +178,10 @@ contract RGB {
 }
 ```
 
-
 ## Problems
 
-Type annotation are helpful for code generation and seem to be necessary for compression, but they lead to rather verbose syntax, e.g.
+Type annotation are helpful for code generation and seem to be necessary for compression, but they
+lead to rather verbose syntax, e.g.
 
 ```
 data Food = Curry | Beans | Other
@@ -248,4 +254,3 @@ contract Food {
 ```
 
 On the other programs are not really meant to be read by humans.
-
