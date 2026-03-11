@@ -5,10 +5,15 @@ executable EVM code. It has not been optimized for UX, and if you're looking for
 compiler with a clean UX and good error messages you will not find it here. The compiler contains
 bugs. You should under no circumstances be using this in a production setting.
 
-A high level overview of the lnaguage and it's design can be found in the [Core Solidity Deep
-Dive](https://www.solidity.org/blog/2025/11/14/core-solidity-deep-dive/) post on the Solidity blog. A pen and paper formalization of the type system is
-defined in the `./spec` directory, and pdf builds are available as artifacts from the [Spec PDF
-workflow](https://github.com/argotorg/solcore/actions/workflows/spec.yml?query=branch%3Amain).
+## Documentation
+
+- A high level overview of the language and it's design can be found in the [Core Solidity Deep
+    Dive](https://www.solidity.org/blog/2025/11/14/core-solidity-deep-dive/) post on the Solidity
+    blog.
+- Work in progress reference documentation is published at https://argotorg.github.io/solcore/.
+- A pen and paper formalization of the type system is
+    defined in the `./spec` directory, and pdf builds are available as artifacts from the [Spec PDF
+    workflow](https://github.com/argotorg/solcore/actions/workflows/spec.yml?query=branch%3Amain).
 
 Bug reports and feedback are very welcome.
 
