@@ -1,34 +1,50 @@
 module Solcore.Frontend.Module.Loader
   ( ModuleGraph (..),
+    LoadedModule (..),
     loadModuleGraph,
     flattenModuleValidationCompUnit,
     flattenModuleStrictCompileCompUnit,
     flattenModuleStrictCompileCompUnitWithImportedStart,
     flattenModuleStrictValidationCompUnit,
     loadCompUnit,
+    moduleSourcePath,
   )
 where
 
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
-import Data.List (intercalate)
+import Data.List (isPrefixOf, intercalate)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnit)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
-import System.Directory (canonicalizePath, doesFileExist)
+import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath
+
+data LoadedModule
+  = LoadedModule
+  { loadedSourcePath :: FilePath,
+    loadedCompUnit :: CompUnit
+  }
+  deriving (Eq, Show)
+
+data LoaderConfig
+  = LoaderConfig
+  { mainRoot :: FilePath,
+    stdRoot :: Maybe FilePath
+  }
 
 data LoadState
   = LoadState
-  { loadedModules :: Map FilePath CompUnit,
-    moduleDeps :: Map FilePath [FilePath],
-    loadOrder :: [FilePath]
+  { loadedModules :: Map Mod.ModuleId LoadedModule,
+    moduleDeps :: Map Mod.ModuleId [Mod.ModuleId],
+    loadOrder :: [Mod.ModuleId]
   }
 
 emptyLoadState :: LoadState
@@ -36,23 +52,29 @@ emptyLoadState = LoadState Map.empty Map.empty []
 
 data ModuleGraph
   = ModuleGraph
-  { entryModule :: FilePath,
-    modules :: Map FilePath CompUnit,
-    dependencies :: Map FilePath [FilePath],
-    moduleOrder :: [FilePath]
+  { entryModule :: Mod.ModuleId,
+    modules :: Map Mod.ModuleId LoadedModule,
+    dependencies :: Map Mod.ModuleId [Mod.ModuleId],
+    moduleOrder :: [Mod.ModuleId],
+    graphMainRoot :: FilePath,
+    graphStdRoot :: Maybe FilePath
   }
   deriving (Eq, Show)
 
 loadModuleGraph :: [FilePath] -> FilePath -> IO (Either String ModuleGraph)
 loadModuleGraph roots entryFile = runExceptT do
-  entryCanonical <- liftIO $ canonicalizePath entryFile
-  st <- execStateT (visit roots [] entryCanonical) emptyLoadState
+  entryAbsolute <- liftIO $ makeAbsolute entryFile
+  cfg <- liftIO $ mkLoaderConfig roots entryFile
+  entryId <- moduleIdForPath Mod.MainLibrary (mainRoot cfg) entryAbsolute
+  st <- execStateT (visit cfg [] entryId entryAbsolute) emptyLoadState
   pure
     ( ModuleGraph
-        { entryModule = entryCanonical,
+        { entryModule = entryId,
           modules = loadedModules st,
           dependencies = moduleDeps st,
-          moduleOrder = reverse (loadOrder st)
+          moduleOrder = reverse (loadOrder st),
+          graphMainRoot = mainRoot cfg,
+          graphStdRoot = stdRoot cfg
         }
     )
 
@@ -63,114 +85,193 @@ loadCompUnit roots entryFile = runExceptT do
   graph <- ExceptT $ loadModuleGraph roots entryFile
   ExceptT $ pure (flattenModuleValidationCompUnit graph (entryModule graph))
 
-visit :: [FilePath] -> [FilePath] -> FilePath -> StateT LoadState (ExceptT String IO) ()
-visit roots stack canonicalPath = do
-  alreadyLoaded <- gets (Map.member canonicalPath . loadedModules)
+mkLoaderConfig :: [FilePath] -> FilePath -> IO LoaderConfig
+mkLoaderConfig roots entryFile = do
+  let defaultMainRoot = takeDirectory entryFile
+      requestedMainRoot = case roots of
+        [] -> defaultMainRoot
+        x : _ -> x
+      requestedStdRoot = case roots of
+        [] -> Nothing
+        _ : xs -> case xs of
+          [] -> Nothing
+          y : _ -> Just y
+  mainRoot' <- makeAbsolute requestedMainRoot
+  stdRoot' <- traverse makeAbsolute requestedStdRoot
+  pure
+    LoaderConfig
+      { mainRoot = mainRoot',
+        stdRoot = stdRoot'
+      }
+
+visit ::
+  LoaderConfig ->
+  [Mod.ModuleId] ->
+  Mod.ModuleId ->
+  FilePath ->
+  StateT LoadState (ExceptT String IO) ()
+visit cfg stack moduleId sourcePath = do
+  alreadyLoaded <- gets (Map.member moduleId . loadedModules)
   unless alreadyLoaded do
-    when (canonicalPath `elem` stack) $
-      throwError (cycleError canonicalPath stack)
-    content <- liftIO (readFile canonicalPath)
+    when (moduleId `elem` stack) $
+      throwError (cycleError moduleId stack)
+    content <- liftIO (readFile sourcePath)
     parsed <- liftIO (parseCompUnit content)
     cunit <- either throwError pure parsed
-    importPaths <- mapM (resolveImportPath roots) (imports cunit)
-    canonicalImports <- liftIO (mapM canonicalizePath importPaths)
-    mapM_ (visit roots (canonicalPath : stack)) canonicalImports
+    importedModules <- mapM (resolveImportPath cfg moduleId) (imports cunit)
+    mapM_
+      (\(importId, importPath) -> visit cfg (moduleId : stack) importId importPath)
+      importedModules
     modify
       ( \st ->
           st
-            { loadedModules = Map.insert canonicalPath cunit (loadedModules st),
-              moduleDeps = Map.insert canonicalPath canonicalImports (moduleDeps st),
-              loadOrder = canonicalPath : loadOrder st
+            { loadedModules = Map.insert moduleId (LoadedModule sourcePath cunit) (loadedModules st),
+              moduleDeps = Map.insert moduleId (map fst importedModules) (moduleDeps st),
+              loadOrder = moduleId : loadOrder st
             }
       )
 
-resolveImportPath :: [FilePath] -> Import -> StateT LoadState (ExceptT String IO) FilePath
-resolveImportPath roots imp =
-  go roots
-  where
-    go [] =
-      throwError $
-        "import "
-          ++ modulePathDisplay (importModule imp)
-          ++ ": file not found"
-    go (dir : rest) = do
-      let path = toFilePath dir (importModuleName imp)
-      exists <- liftIO $ doesFileExist path
-      if exists then pure path else go rest
+resolveImportPath ::
+  LoaderConfig ->
+  Mod.ModuleId ->
+  Import ->
+  StateT LoadState (ExceptT String IO) (Mod.ModuleId, FilePath)
+resolveImportPath cfg currentModule imp = do
+  (targetId, targetPath) <- either throwError pure (resolveModuleImport cfg currentModule (importModule imp))
+  exists <- liftIO $ doesFileExist targetPath
+  unless exists $
+    throwError $
+      "import "
+        ++ Mod.modulePathDisplay (importModule imp)
+        ++ ": file not found"
+  pure (targetId, targetPath)
 
 importModuleName :: Import -> Name
-importModuleName = modulePathName . importModule
-
-modulePathName :: ModulePath -> Name
-modulePathName (RelativePath n) = n
-modulePathName (LibraryPath n) = n
-modulePathName (ExternalPath _ n) = n
-
-modulePathDisplay :: ModulePath -> String
-modulePathDisplay (RelativePath n) = show n
-modulePathDisplay (LibraryPath n) = "lib." ++ show n
-modulePathDisplay (ExternalPath libName n) = "@" ++ show libName ++ "." ++ show n
+importModuleName = Mod.modulePathName . importModule
 
 toFilePath :: FilePath -> Name -> FilePath
-toFilePath base =
-  (base </>) . (<.> "solc") . foldr step "" . show
+toFilePath base = (base </>) . Mod.moduleFilePath
+
+resolveModuleImport ::
+  LoaderConfig ->
+  Mod.ModuleId ->
+  ModulePath ->
+  Either String (Mod.ModuleId, FilePath)
+resolveModuleImport cfg currentModule path =
+  case path of
+    RelativePath relName
+      | isStdSpecial relName,
+        Just root <- stdRoot cfg ->
+          pure (Mod.ModuleId Mod.StdLibrary relName, toFilePath root relName)
+      | otherwise ->
+          resolveWithinLibrary currentLibrary resolvedName
+      where
+        currentLibrary = Mod.moduleLibrary currentModule
+        resolvedName = Mod.appendRelativeModulePath (Mod.moduleName currentModule) relName
+    LibraryPath absName ->
+      resolveWithinLibrary (Mod.moduleLibrary currentModule) absName
+    ExternalPath libName _ ->
+      Left ("unsupported external library import: @" ++ show libName)
   where
-    step c ac
-      | c == '.' = pathSeparator : ac
-      | otherwise = c : ac
+    resolveWithinLibrary libId modName =
+      (,toFilePath (rootForLibrary cfg libId) modName) <$> pure (Mod.ModuleId libId modName)
+
+isStdSpecial :: Name -> Bool
+isStdSpecial (Name "std") = True
+isStdSpecial (QualName (Name "std") _) = True
+isStdSpecial _ = False
+
+rootForLibrary :: LoaderConfig -> Mod.LibraryId -> FilePath
+rootForLibrary cfg Mod.MainLibrary = mainRoot cfg
+rootForLibrary cfg Mod.StdLibrary =
+  maybe (mainRoot cfg </> "std") id (stdRoot cfg)
+rootForLibrary _ (Mod.ExternalLibrary libName) =
+  error ("external library root is not configured: " ++ show libName)
+
+moduleIdForPath :: Mod.LibraryId -> FilePath -> FilePath -> ExceptT String IO Mod.ModuleId
+moduleIdForPath libId root filePath =
+  case makeRelativeToRoot root filePath of
+    Nothing ->
+      throwError $
+        "source file is outside library root:\n  "
+          ++ filePath
+          ++ "\n  root: "
+          ++ root
+    Just relPath ->
+      case splitDirectories (dropExtension relPath) of
+        [] ->
+          throwError ("invalid module path for source file: " ++ filePath)
+        parts ->
+          pure (Mod.ModuleId libId (Mod.joinQualifiedName parts))
+
+makeRelativeToRoot :: FilePath -> FilePath -> Maybe FilePath
+makeRelativeToRoot root filePath
+  | rootDir `isPrefixOf` fileDir = Just (makeRelative root filePath)
+  | otherwise = Nothing
+  where
+    rootDir = addTrailingPathSeparator (normalise root)
+    fileDir = normalise filePath
 
 topDeclsFrom :: CompUnit -> [TopDecl]
 topDeclsFrom (CompUnit _ ds) = ds
 
-cycleError :: FilePath -> [FilePath] -> String
+cycleError :: Mod.ModuleId -> [Mod.ModuleId] -> String
 cycleError path stack =
   let prefix = takeWhile (/= path) stack
       cycleChain = path : reverse prefix ++ [path]
    in unlines
         [ "Import cycle detected:",
-          "  " ++ foldr1 (\a b -> a ++ " -> " ++ b) cycleChain
+          "  " ++ foldr1 (\a b -> a ++ " -> " ++ b) (map Mod.moduleIdDisplay cycleChain)
         ]
 
-lookupLoadedModule :: ModuleGraph -> FilePath -> Either String CompUnit
+lookupLoadedModule :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
 lookupLoadedModule graph modulePath =
   maybe
-    (Left ("Internal error: module not loaded: " ++ modulePath))
-    Right
+    (Left ("Internal error: module not loaded: " ++ Mod.moduleIdDisplay modulePath))
+    (Right . loadedCompUnit)
     (Map.lookup modulePath (modules graph))
 
-moduleImportPairsFor :: ModuleGraph -> FilePath -> CompUnit -> [(Import, FilePath)]
+moduleSourcePath :: ModuleGraph -> Mod.ModuleId -> Either String FilePath
+moduleSourcePath graph modulePath =
+  maybe
+    (Left ("Internal error: module not loaded: " ++ Mod.moduleIdDisplay modulePath))
+    (Right . loadedSourcePath)
+    (Map.lookup modulePath (modules graph))
+
+moduleImportPairsFor :: ModuleGraph -> Mod.ModuleId -> CompUnit -> [(Import, Mod.ModuleId)]
 moduleImportPairsFor graph modulePath unit =
   zip (imports unit) (Map.findWithDefault [] modulePath (dependencies graph))
 
-prepareFlattenContext :: ModuleGraph -> FilePath -> Either String (CompUnit, [(Import, FilePath)])
+prepareFlattenContext :: ModuleGraph -> Mod.ModuleId -> Either String (CompUnit, FilePath, [(Import, Mod.ModuleId)])
 prepareFlattenContext graph modulePath = do
   unit <- lookupLoadedModule graph modulePath
-  _ <- moduleExportItems modulePath unit
+  sourcePath <- moduleSourcePath graph modulePath
+  _ <- moduleExportItems sourcePath unit
   let importPairs = moduleImportPairsFor graph modulePath unit
   ensureNoAmbiguousSelectedImports graph importPairs
   ensureNoDuplicateModuleQualifiers unit
   ensureNoDuplicateSelectedItems unit
   ensureImportItemsExist graph importPairs
-  pure (unit, importPairs)
+  pure (unit, sourcePath, importPairs)
 
-flattenModuleValidationCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
+flattenModuleValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
 flattenModuleValidationCompUnit graph modulePath = do
-  (unit, importPairs) <- prepareFlattenContext graph modulePath
+  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <- concat <$> mapM (importedDeclsFor graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
   pure (CompUnit (imports unit) (qualifiedDecls ++ importedDecls ++ topDeclsFrom unit))
 
-flattenModuleStrictCompileCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
+flattenModuleStrictCompileCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
 flattenModuleStrictCompileCompUnit graph modulePath =
   fst <$> flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath
 
 flattenModuleStrictCompileCompUnitWithImportedStart ::
   ModuleGraph ->
-  FilePath ->
+  Mod.ModuleId ->
   Either String (CompUnit, Int)
 flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath = do
-  (unit, importPairs) <- prepareFlattenContext graph modulePath
+  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <- concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
@@ -182,16 +283,16 @@ flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath = do
       importedStart
     )
 
-flattenModuleStrictValidationCompUnit :: ModuleGraph -> FilePath -> Either String CompUnit
+flattenModuleStrictValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
 flattenModuleStrictValidationCompUnit graph modulePath = do
-  (unit, importPairs) <- prepareFlattenContext graph modulePath
+  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
   importedDecls <- concat <$> mapM (strictValidationImportedDecls graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportStubDecls graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = shadowImportedDecls localDecls importedDecls
   pure (CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls))
 
-ensureImportItemsExist :: ModuleGraph -> [(Import, FilePath)] -> Either String ()
+ensureImportItemsExist :: ModuleGraph -> [(Import, Mod.ModuleId)] -> Either String ()
 ensureImportItemsExist graph importPairs = do
   unknownGroups <- mapM unknowns importPairs
   case concat unknownGroups of
@@ -203,32 +304,33 @@ ensureImportItemsExist graph importPairs = do
             unlines xs
           ]
   where
-    unknowns (ImportOnly moduleName items, modulePath) = do
-      selected <- resolveSelectedImportItems graph moduleName modulePath items
+    unknowns (ImportOnly importPath items, modulePath) = do
+      selected <- resolveSelectedImportItems graph importPath modulePath items
       available <- importableNamesForModule graph modulePath
       let missing = filter (`notElem` available) selected
-      pure [formatMissing moduleName n | n <- missing]
+      pure [formatMissing importPath n | n <- missing]
     unknowns _ = pure []
 
 formatMissing :: ModulePath -> Name -> String
-formatMissing moduleName itemName =
-  "  " ++ modulePathDisplay moduleName ++ "." ++ show itemName
+formatMissing importPath itemName =
+  "  " ++ Mod.modulePathDisplay importPath ++ "." ++ show itemName
 
-resolveSelectedImportItems :: ModuleGraph -> ModulePath -> FilePath -> ItemSelector -> Either String [Name]
+resolveSelectedImportItems :: ModuleGraph -> ModulePath -> Mod.ModuleId -> ItemSelector -> Either String [Name]
 resolveSelectedImportItems graph _moduleName modulePath SelectAll =
   importableNamesForModule graph modulePath
 resolveSelectedImportItems _graph _moduleName _modulePath (SelectOnly items) =
   Right items
 
-importableNamesForModule :: ModuleGraph -> FilePath -> Either String [Name]
+importableNamesForModule :: ModuleGraph -> Mod.ModuleId -> Either String [Name]
 importableNamesForModule graph modulePath = do
   publicDecls <- publicTopDeclsForModule graph modulePath
   pure (uniqueNames (concatMap topDeclNames publicDecls))
 
-publicTopDeclsForModule :: ModuleGraph -> FilePath -> Either String [TopDecl]
+publicTopDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
 publicTopDeclsForModule graph modulePath = do
   unit <- lookupLoadedModule graph modulePath
-  publicTopDeclsFromCompUnit modulePath unit
+  sourcePath <- moduleSourcePath graph modulePath
+  publicTopDeclsFromCompUnit sourcePath unit
 
 publicTopDeclsFromCompUnit :: FilePath -> CompUnit -> Either String [TopDecl]
 publicTopDeclsFromCompUnit modulePath unit@(CompUnit _ ds) = do
@@ -342,11 +444,11 @@ topDeclNames (TInstDef _) = []
 topDeclNames (TExportDecl _) = []
 topDeclNames (TPragmaDecl _) = []
 
-qualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
+qualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 qualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly _ _ -> Right []
-    ImportModule n -> qualifyDecls (modulePathName n)
+    ImportModule n -> qualifyDecls (Mod.modulePathName n)
     ImportAlias _ n -> qualifyDecls n
   where
     qualifyDecls qualifier = do
@@ -359,16 +461,16 @@ qualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
         qualifiedFunctionDecls typeRenameMap qualifier publicUnit allUnit
           ++ qualifiedTypeAliasDecls typeRenameMap qualifier publicUnit
 
-importableTopDeclsForCompiledModule :: ModuleGraph -> FilePath -> Either String [TopDecl]
+importableTopDeclsForCompiledModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
 importableTopDeclsForCompiledModule graph modulePath = do
   cunit <- flattenModuleStrictCompileCompUnit graph modulePath
   pure (filter isImportableTopDecl (topDeclsFrom cunit))
 
-qualifiedImportStubDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
+qualifiedImportStubDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 qualifiedImportStubDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ _ -> Right []
-    ImportModule n -> stubDecls (modulePathName n)
+    ImportModule n -> stubDecls (Mod.modulePathName n)
     ImportAlias _ n -> stubDecls n
   where
     stubDecls qualifier = do
@@ -886,11 +988,11 @@ stubFunction n =
     (Signature [] [] n [] Nothing)
     []
 
-importedDeclsFor :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
+importedDeclsFor :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 importedDeclsFor graph (imp, modulePath) =
   applyImportVisibility imp <$> publicTopDeclsForModule graph modulePath
 
-strictValidationImportedDecls :: ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
+strictValidationImportedDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 strictValidationImportedDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ SelectAll ->
@@ -918,13 +1020,13 @@ toValidationImportStub (TInstDef _) = Nothing
 toValidationImportStub (TExportDecl _) = Nothing
 toValidationImportStub (TPragmaDecl _) = Nothing
 
-strictCompileImportedDecls :: Set Name -> ModuleGraph -> (Import, FilePath) -> Either String [TopDecl]
+strictCompileImportedDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 strictCompileImportedDecls collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly moduleName selector ->
-      importOnlyCompileDecls (modulePathName moduleName) selector
+      importOnlyCompileDecls (Mod.modulePathName moduleName) selector
     ImportModule moduleName ->
-      moduleImportCompileDecls (modulePathName moduleName)
+      moduleImportCompileDecls (Mod.modulePathName moduleName)
     ImportAlias _ qualifier ->
       moduleImportCompileDecls qualifier
   where
@@ -992,7 +1094,7 @@ topDeclImportedTypeNames (TDataDef (DataTy n _ _)) = [n]
 topDeclImportedTypeNames (TSym (TySym n _ _)) = [n]
 topDeclImportedTypeNames _ = []
 
-collidingImportedTypeNames :: ModuleGraph -> [(Import, FilePath)] -> Either String (Set Name)
+collidingImportedTypeNames :: ModuleGraph -> [(Import, Mod.ModuleId)] -> Either String (Set Name)
 collidingImportedTypeNames graph importPairs = do
   importedTypeNames <- concat <$> mapM namesFromImport importPairs
   let counts =
@@ -1283,7 +1385,7 @@ selectTopDecl _ (TExportDecl _) =
 selectTopDecl _ (TPragmaDecl _) =
   Nothing
 
-ensureNoAmbiguousSelectedImports :: ModuleGraph -> [(Import, FilePath)] -> Either String ()
+ensureNoAmbiguousSelectedImports :: ModuleGraph -> [(Import, Mod.ModuleId)] -> Either String ()
 ensureNoAmbiguousSelectedImports graph importPairs = do
   selectedPairs <- concat <$> mapM selectedFromImport importPairs
   case ambiguous selectedPairs of
@@ -1314,7 +1416,7 @@ formatAmbiguous (item, mods) =
   "  "
     ++ show item
     ++ " imported from "
-    ++ intercalate ", " (map modulePathDisplay mods)
+    ++ intercalate ", " (map Mod.modulePathDisplay mods)
 
 uniqueNames :: [Name] -> [Name]
 uniqueNames = reverse . fst . foldl step ([], Map.empty)
@@ -1353,7 +1455,7 @@ ensureNoDuplicateModuleQualifiers (CompUnit imps _) =
     duplicates = duplicateNames (mapMaybe moduleQualifier imps)
 
 moduleQualifier :: Import -> Maybe Name
-moduleQualifier (ImportModule n) = Just (modulePathName n)
+moduleQualifier (ImportModule n) = Just (Mod.modulePathName n)
 moduleQualifier (ImportAlias _ n) = Just n
 moduleQualifier (ImportOnly _ _) = Nothing
 
@@ -1369,7 +1471,7 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
           ]
   where
     duplicateItems (ImportOnly moduleName (SelectOnly items)) =
-      [ "  " ++ modulePathDisplay moduleName ++ "." ++ show item
+      [ "  " ++ Mod.modulePathDisplay moduleName ++ "." ++ show item
         | item <- duplicateNames items
       ]
     duplicateItems (ImportOnly _ SelectAll) = []
