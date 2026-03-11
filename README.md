@@ -174,12 +174,12 @@ bash contest.sh test/examples/dispatch/basic.json
 
 ### Documentation
 
-To work on the language reference, enter the `doc` subdirectory and run:
+To work on the language reference, enter the nix development shell and run:
 
 ```sh
 # serve the docs on localhost (rebuilds when files change)
-mdbook serve
+mdbook serve doc
 
 # build a static copy of the docs
-mdbook build
+mdbook build doc
 ```
