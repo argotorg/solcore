@@ -190,6 +190,7 @@ cases =
       runTestForFile "modifier.solc" caseFolder,
       runTestForFile "morefun.solc" caseFolder,
       runTestForFile "Mutuals.solc" caseFolder,
+      runTestForFile "rec-memory.solc" caseFolder,
       runTestExpectingFailure "nano-desugared.solc" caseFolder,
       runTestForFile "NegPair.solc" caseFolder,
       runTestForFile "nid.solc" caseFolder,

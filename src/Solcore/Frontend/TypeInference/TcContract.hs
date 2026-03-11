@@ -117,16 +117,42 @@ allDataTys = concatMap collect
     collect (TContr (Contract _ _ cds)) = [d | CDataDecl d <- cds]
     collect _ = []
 
+tyVarNames :: Ty -> [Name]
+tyVarNames (TyVar tv) = [tyvarName tv]
+tyVarNames (TyCon _ ts) = concatMap tyVarNames ts
+tyVarNames _ = []
+
+buildPhantomMap :: [DataTy] -> Map.Map Name (Set Int)
+buildPhantomMap = Map.fromList . map phantomEntry
+  where
+    phantomEntry (DataTy n params ctors) =
+      let allFieldTys = concatMap constrTy ctors
+          usedVarNames = concatMap tyVarNames allFieldTys
+          isPhantomParam p = tyvarName p `notElem` usedVarNames
+          phantomIdxs = Set.fromList [i | (i, p) <- zip [0 ..] params, isPhantomParam p]
+       in (n, phantomIdxs)
+
+nonPhantomTyNames :: Map.Map Name (Set Int) -> Ty -> [Name]
+nonPhantomTyNames phantomMap (TyCon n args) =
+  n : concatMap processArg (zip [0 ..] args)
+  where
+    phantomIdxs = Map.findWithDefault Set.empty n phantomMap
+    processArg (i, arg)
+      | Set.member i phantomIdxs = []
+      | otherwise = nonPhantomTyNames phantomMap arg
+nonPhantomTyNames _ _ = []
+
 buildTypeDepsGraph :: Set Name -> [DataTy] -> AdjacencyMap Name
 buildTypeDepsGraph userTypes dts =
   overlay isolated edged
   where
+    phantomMap = buildPhantomMap dts
     isolated = vertices (Set.toList userTypes)
     edged = stars [(dataName dt, deps dt) | dt <- dts]
     deps (DataTy _ _ ctors) =
       nub
         . filter (`Set.member` userTypes)
-        . concatMap (\(Constr _ tys) -> concatMap tyNames tys)
+        . concatMap (\(Constr _ tys) -> concatMap (nonPhantomTyNames phantomMap) tys)
         $ ctors
 
 checkRecursiveTypes :: [DataTy] -> TcM ()
