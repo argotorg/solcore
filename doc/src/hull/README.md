@@ -1,13 +1,14 @@
-# Hull language (low level)
+# Hull
 
 ## Introduction
+
 The Hull language is an intermediate step before Yul generation.
 It is basically Yul with algebraic types (sums/products)
 
 ### Naming
 
-Hull was initially named Core, but once it was decided that the whole language should be called "Core Solidity",
-it was renamed to Hull.
+Hull was initially named Core, but once it was decided that the whole language should be called
+"Core Solidity", it was renamed to Hull.
 
 ## Abstract syntax
 
@@ -247,3 +248,4 @@ contract Food {
 ```
 
 On the other programs are not really meant to be read by humans.
+
