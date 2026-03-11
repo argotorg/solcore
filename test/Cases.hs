@@ -182,6 +182,7 @@ cases =
       runTestForFile "Logic.solc" caseFolder,
       runTestExpectingFailure "mainproxy.solc" caseFolder,
       runTestForFile "MatchCall.solc" caseFolder,
+      runTestExpectingFailure "match-compiler-undef-asm.solc" caseFolder,
       runTestForFile "match-yul.solc" caseFolder,
       runTestForFile "memory.solc" caseFolder,
       runTestForFile "Memory1.solc" caseFolder,

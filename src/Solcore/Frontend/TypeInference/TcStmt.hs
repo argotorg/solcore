@@ -499,6 +499,8 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd) =
     rs <- reduce [] ps1 `wrapError` d
     ty <- withCurrentSubst nt
     sch <- generalize (rs, ty)
+    -- check for phantom (unconstrained) meta variables from constructor applications
+    checkPhantomMetaVars n bd1 rs ty `wrapError` d
     -- checking ambiguity
     info [">>> Infered type for ", pretty n, " :: ", pretty sch]
     ambSch <- ambiguityCheck sch
@@ -581,6 +583,8 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _) _)
       ty <- withCurrentSubst nt
       checkConstraints rs
       inf <- generalize (rs, ty)
+      -- check for phantom (unconstrained) meta variables from constructor applications
+      checkPhantomMetaVars n bd1' rs ty `wrapError` d
       info [" - generalized inferred type: ", pretty inf]
       ann <- annotatedScheme vs' qs sig
       info [" - annotated type:", pretty ann]
@@ -625,6 +629,39 @@ toMeta t = t
 ambiguous :: Scheme -> Bool
 ambiguous (Forall _ (ps :=> t)) =
   not $ null $ bv ps \\ bv (closure ps (bv t))
+
+-- Check for phantom meta variables: meta vars appearing in constructor
+-- application result types in the body but not in the function's inferred
+-- type or environment. Such variables arise when a constructor has phantom
+-- type parameters (type parameters that do not appear in any constructor
+-- field). They cannot be determined from context and indicate a type error.
+checkPhantomMetaVars :: Name -> Body Id -> [Pred] -> Ty -> TcM ()
+checkPhantomMetaVars n body rs ty = do
+  envVars <- getEnvMetaVars
+  bodySubst <- withCurrentSubst body
+  tySubst <- withCurrentSubst (rs, ty)
+  let legitimateMVs = mv tySubst ++ envVars
+      conMVs = conResultMetaVars bodySubst
+      phantomMVs = conMVs \\ legitimateMVs
+  unless (null phantomMVs) $ do
+    let mvNames = intercalate ", " $ map (pretty . metaName) phantomMVs
+    throwError $
+      unlines
+        [ "Ambiguous type variable(s) " ++ mvNames ++ " in definition of " ++ pretty n ++ ".",
+          "A type variable could not be determined from the context.",
+          "This typically occurs when a constructor has phantom type parameters."
+        ]
+
+conResultMetaVars :: (Data a) => a -> [MetaTv]
+conResultMetaVars = nub . everything (++) (mkQ [] collectConMVs)
+  where
+    collectConMVs :: Exp Id -> [MetaTv]
+    collectConMVs (Con (Id _ ty) args) = mv (applyConArgs ty args)
+    collectConMVs _ = []
+
+    applyConArgs :: Ty -> [a] -> Ty
+    applyConArgs (_ :-> rest) (_ : as) = applyConArgs rest as
+    applyConArgs ty _ = ty
 
 reachable :: [Pred] -> [Tyvar] -> [Pred]
 reachable ps vs =

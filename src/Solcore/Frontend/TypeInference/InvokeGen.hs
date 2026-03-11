@@ -95,16 +95,9 @@ freshPatArg ty@(TyCon pn _) =
       _ -> do
         ti <- askTypeInfo pn
         case constrNames ti of
-          [cn] -> do
-            (_ :=> ty1) <- askEnv cn >>= fresh
-            let (args, _ret) = splitTy ty1
-            if null args
-              then do
-                n <- freshName
-                pure (PVar n, Var n)
-              else do
-                (ps', es) <- unzip <$> mapM freshPatArg args
-                pure (PCon cn ps', Con cn es)
+          [_cn] -> do
+            n <- freshName
+            pure (PVar n, Var n)
           _ -> do
             n <- freshName
             pure (PVar n, Var n)
