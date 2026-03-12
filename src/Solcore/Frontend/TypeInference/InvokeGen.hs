@@ -93,14 +93,8 @@ freshPatArg ty@(TyCon pn _) =
     case ty' of
       TyCon pn' _ | pn' /= pn -> freshPatArg ty' -- synonym was expanded, recurse
       _ -> do
-        ti <- askTypeInfo pn
-        case constrNames ti of
-          [_cn] -> do
-            n <- freshName
-            pure (PVar n, Var n)
-          _ -> do
-            n <- freshName
-            pure (PVar n, Var n)
+          n <- freshName
+          pure (PVar n, Var n)
 freshPatArg (TyVar _) =
   do
     n <- freshName
