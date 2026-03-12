@@ -323,11 +323,37 @@ moduleImportPairsFor :: ModuleGraph -> Mod.ModuleId -> CompUnit -> [(Import, Mod
 moduleImportPairsFor graph modulePath unit =
   zip (imports unit) (Map.findWithDefault [] modulePath (dependencies graph))
 
+data ExportedItemRef
+  = ExportedLocalItem Name
+  | ExportedRemoteItem Mod.ModuleId Name
+  deriving (Eq, Show)
+
+data ExportedModuleBinding
+  = ExportedModuleBinding
+  { exportedModuleName :: Name,
+    exportedModuleTarget :: Mod.ModuleId
+  }
+  deriving (Eq, Show)
+
+data ModulePublicInterface
+  = ModulePublicInterface
+  { publicItemRefs :: [ExportedItemRef],
+    publicModuleBindings :: [ExportedModuleBinding]
+  }
+  deriving (Eq, Show)
+
+emptyPublicInterface :: ModulePublicInterface
+emptyPublicInterface =
+  ModulePublicInterface
+    { publicItemRefs = [],
+      publicModuleBindings = []
+    }
+
 prepareFlattenContext :: ModuleGraph -> Mod.ModuleId -> Either String (CompUnit, FilePath, [(Import, Mod.ModuleId)])
 prepareFlattenContext graph modulePath = do
   unit <- lookupLoadedModule graph modulePath
   sourcePath <- moduleSourcePath graph modulePath
-  _ <- moduleExportItems sourcePath unit
+  _ <- publicModuleInterface graph modulePath
   let importPairs = moduleImportPairsFor graph modulePath unit
   ensureNoAmbiguousSelectedImports graph importPairs
   ensureNoDuplicateModuleQualifiers unit
@@ -404,111 +430,210 @@ resolveSelectedImportItems _graph _moduleName _modulePath (SelectOnly items) =
 
 importableNamesForModule :: ModuleGraph -> Mod.ModuleId -> Either String [Name]
 importableNamesForModule graph modulePath = do
-  publicDecls <- publicTopDeclsForModule graph modulePath
+  publicDecls <- publicItemDeclsForModule graph modulePath
   pure (uniqueNames (concatMap topDeclNames publicDecls))
+
+publicItemDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
+publicItemDeclsForModule graph modulePath = do
+  publicInterface <- publicModuleInterface graph modulePath
+  unit <- lookupLoadedModule graph modulePath
+  let localDecls =
+        selectPublicItemDecls
+          [name | ExportedLocalItem name <- publicItemRefs publicInterface]
+          (topDeclsFrom unit)
+  remoteDecls <- concat <$> mapM materializeRemoteDecls (groupRemoteItemRefs (publicItemRefs publicInterface))
+  pure (localDecls ++ remoteDecls)
+  where
+    materializeRemoteDecls (targetModule, names) = do
+      remoteDecls <- publicItemDeclsForModule graph targetModule
+      pure (selectPublicItemDecls names remoteDecls)
 
 publicTopDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
 publicTopDeclsForModule graph modulePath = do
+  publicDecls <- publicItemDeclsForModule graph modulePath
+  unit <- lookupLoadedModule graph modulePath
+  pure (publicDecls ++ [decl | decl@(TInstDef _) <- topDeclsFrom unit])
+
+publicModuleInterface :: ModuleGraph -> Mod.ModuleId -> Either String ModulePublicInterface
+publicModuleInterface graph modulePath = do
   unit <- lookupLoadedModule graph modulePath
   sourcePath <- moduleSourcePath graph modulePath
-  publicTopDeclsFromCompUnit sourcePath unit
+  expandedDecls <-
+    mapM
+      (expandExportDecl graph modulePath sourcePath unit)
+      [exportDecl | TExportDecl exportDecl <- topDeclsFrom unit]
+  let publicInterface =
+        ModulePublicInterface
+          { publicItemRefs = concatMap publicItemRefs expandedDecls,
+            publicModuleBindings = concatMap publicModuleBindings expandedDecls
+          }
+  ensureNoDuplicateExportedItems sourcePath (publicItemRefs publicInterface)
+  ensureNoDuplicateExportedModules sourcePath (publicModuleBindings publicInterface)
+  pure publicInterface
 
-publicTopDeclsFromCompUnit :: FilePath -> CompUnit -> Either String [TopDecl]
-publicTopDeclsFromCompUnit modulePath unit@(CompUnit _ ds) = do
-  exports <- requiredExportItems modulePath unit
-  let importableDecls = filter isImportableTopDecl ds
-  pure $
-    mapMaybe (selectTopDecl exports) importableDecls
+expandExportDecl ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  FilePath ->
+  CompUnit ->
+  Export ->
+  Either String ModulePublicInterface
+expandExportDecl graph currentModule sourcePath unit (ExportList specs) = do
+  expandedSpecs <- mapM (expandExportSpec graph currentModule sourcePath unit) specs
+  pure
+    ModulePublicInterface
+      { publicItemRefs = concatMap publicItemRefs expandedSpecs,
+        publicModuleBindings = concatMap publicModuleBindings expandedSpecs
+      }
+expandExportDecl graph currentModule _sourcePath _unit (ExportModule path) = do
+  targetModule <- lookupModuleReference graph currentModule path
+  pure
+    emptyPublicInterface
+      { publicModuleBindings =
+          [ExportedModuleBinding (defaultModuleBindingName path) targetModule]
+      }
+expandExportDecl graph currentModule _sourcePath _unit (ExportModuleAs path aliasName) = do
+  targetModule <- lookupModuleReference graph currentModule path
+  pure
+    emptyPublicInterface
+      { publicModuleBindings = [ExportedModuleBinding aliasName targetModule]
+      }
+expandExportDecl graph currentModule sourcePath _unit (ExportItemsFrom path selector) = do
+  itemRefs <- resolveRemoteExportItems graph currentModule sourcePath path selector
+  pure emptyPublicInterface {publicItemRefs = itemRefs}
 
-moduleExportItems :: FilePath -> CompUnit -> Either String (Maybe [Name])
-moduleExportItems modulePath (CompUnit _ ds) =
-  case mapM legacyExportSelector [exportDecl | TExportDecl exportDecl <- ds] of
-    Left err ->
-      Left $
-        unlines
-          [ "Invalid export declaration:",
-            "  " ++ modulePath,
-            "  " ++ err
-          ]
-    Right [] -> Right Nothing
-    Right [items] -> do
-      exports <- resolveExportItems modulePath ds items
-      ensureNoDuplicateExports modulePath exports
-      ensureExportsExist modulePath ds exports
-      Right (Just exports)
-    Right _ ->
-      Left $
-        unlines
-          [ "Invalid export declaration:",
-            "  " ++ modulePath,
-            "  multiple export declarations are not allowed"
-          ]
+expandExportSpec ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  FilePath ->
+  CompUnit ->
+  ExportSpec ->
+  Either String ModulePublicInterface
+expandExportSpec _graph _currentModule sourcePath unit (ExportName name) = do
+  ensureLocalExportExists sourcePath (topDeclsFrom unit) name
+  pure emptyPublicInterface {publicItemRefs = [ExportedLocalItem name]}
+expandExportSpec _graph _currentModule _sourcePath unit ExportAll =
+  pure
+    emptyPublicInterface
+      { publicItemRefs = map ExportedLocalItem (availableExportNames (topDeclsFrom unit))
+      }
+expandExportSpec graph currentModule sourcePath _unit (ExportModuleAll path) = do
+  itemRefs <- resolveRemoteExportItems graph currentModule sourcePath path SelectAll
+  pure emptyPublicInterface {publicItemRefs = itemRefs}
 
-legacyExportSelector :: Export -> Either String ItemSelector
-legacyExportSelector (ExportList []) = Right (SelectOnly [])
-legacyExportSelector (ExportList [ExportAll]) = Right SelectAll
-legacyExportSelector (ExportList items)
-  | all isNamedExport items =
-      Right (SelectOnly [n | ExportName n <- items])
-  | otherwise =
-      Left "mixed or module wildcard export lists are not supported yet"
-  where
-    isNamedExport (ExportName _) = True
-    isNamedExport _ = False
-legacyExportSelector _ =
-  Left "module re-exports are not supported yet"
-
-resolveExportItems :: FilePath -> [TopDecl] -> ItemSelector -> Either String [Name]
-resolveExportItems _modulePath ds SelectAll =
-  Right (availableExportNames ds)
-resolveExportItems _modulePath _ds (SelectOnly items) =
-  Right items
+resolveRemoteExportItems ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  FilePath ->
+  ModulePath ->
+  ItemSelector ->
+  Either String [ExportedItemRef]
+resolveRemoteExportItems graph currentModule sourcePath exportPath selector = do
+  targetModule <- lookupModuleReference graph currentModule exportPath
+  case selector of
+    SelectAll -> do
+      exportedNames <- importableNamesForModule graph targetModule
+      pure [ExportedRemoteItem targetModule name | name <- exportedNames]
+    SelectOnly names -> do
+      availableNames <- importableNamesForModule graph targetModule
+      ensureRemoteExportsExist sourcePath exportPath names availableNames
+      pure [ExportedRemoteItem targetModule name | name <- names]
 
 availableExportNames :: [TopDecl] -> [Name]
 availableExportNames ds =
   uniqueNames (concatMap topDeclNames (filter isImportableTopDecl ds))
 
-requiredExportItems :: FilePath -> CompUnit -> Either String [Name]
-requiredExportItems modulePath unit = do
-  exports <- moduleExportItems modulePath unit
-  case exports of
-    Just items -> Right items
-    Nothing ->
-      Left $
-        unlines
-          [ "Missing export declaration:",
-            "  " ++ modulePath,
-            "  imported modules must declare export { ... };"
-          ]
-
-ensureNoDuplicateExports :: FilePath -> [Name] -> Either String ()
-ensureNoDuplicateExports modulePath names =
+ensureNoDuplicateExportedItems :: FilePath -> [ExportedItemRef] -> Either String ()
+ensureNoDuplicateExportedItems modulePath itemRefs =
   case duplicates of
     [] -> Right ()
     xs ->
       Left $
         unlines
-          [ "Duplicate names in export declaration:",
+          [ "Duplicate exported item names:",
             "  " ++ modulePath,
             unlines (map (\n -> "  " ++ show n) xs)
           ]
   where
-    duplicates = duplicateNames names
+    duplicates = duplicateNames (map exportedItemName itemRefs)
 
-ensureExportsExist :: FilePath -> [TopDecl] -> [Name] -> Either String ()
-ensureExportsExist modulePath ds items =
+ensureNoDuplicateExportedModules :: FilePath -> [ExportedModuleBinding] -> Either String ()
+ensureNoDuplicateExportedModules modulePath moduleBindings =
+  case duplicates of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Duplicate exported module names:",
+            "  " ++ modulePath,
+            unlines (map (\n -> "  " ++ show n) xs)
+          ]
+  where
+    duplicates = duplicateNames [exportedModuleName binding | binding <- moduleBindings]
+
+ensureLocalExportExists :: FilePath -> [TopDecl] -> Name -> Either String ()
+ensureLocalExportExists sourcePath ds itemName
+  | itemName `elem` availableExportNames ds = Right ()
+  | otherwise =
+      Left $
+        unlines
+          [ "Unknown export:",
+            "  " ++ sourcePath,
+            "  " ++ show itemName
+          ]
+
+ensureRemoteExportsExist :: FilePath -> ModulePath -> [Name] -> [Name] -> Either String ()
+ensureRemoteExportsExist sourcePath exportPath names availableNames =
   case missing of
     [] -> Right ()
     xs ->
       Left $
         unlines
-          [ "Unknown exports:",
-            "  " ++ modulePath,
-            unlines (map (\n -> "  " ++ show n) xs)
+          [ "Unknown re-exported names:",
+            "  " ++ sourcePath,
+            unlines [formatMissing exportPath name | name <- xs]
           ]
   where
-    available = availableExportNames ds
-    missing = filter (`notElem` available) items
+    missing = filter (`notElem` availableNames) names
+
+exportedItemName :: ExportedItemRef -> Name
+exportedItemName (ExportedLocalItem name) = name
+exportedItemName (ExportedRemoteItem _ name) = name
+
+groupRemoteItemRefs :: [ExportedItemRef] -> [(Mod.ModuleId, [Name])]
+groupRemoteItemRefs =
+  reverse . fst . foldl step ([], Map.empty)
+  where
+    step (acc, seen) (ExportedLocalItem _) = (acc, seen)
+    step (acc, seen) (ExportedRemoteItem moduleId itemName) =
+      case Map.lookup moduleId seen of
+        Just names ->
+          ( replaceAssoc moduleId (names ++ [itemName]) acc,
+            Map.insert moduleId (names ++ [itemName]) seen
+          )
+        Nothing ->
+          ( (moduleId, [itemName]) : acc,
+            Map.insert moduleId [itemName] seen
+          )
+
+    replaceAssoc moduleId names =
+      map (\(currentModule, currentNames) -> if currentModule == moduleId then (currentModule, names) else (currentModule, currentNames))
+
+defaultModuleBindingName :: ModulePath -> Name
+defaultModuleBindingName =
+  moduleLeafName . Mod.modulePathName
+
+moduleLeafName :: Name -> Name
+moduleLeafName (Name n) = Name n
+moduleLeafName (QualName _ n) = Name n
+
+selectPublicItemDecls :: [Name] -> [TopDecl] -> [TopDecl]
+selectPublicItemDecls names =
+  mapMaybe (selectTopDecl names) . filter isPublicItemTopDecl
+
+isPublicItemTopDecl :: TopDecl -> Bool
+isPublicItemTopDecl (TInstDef _) = False
+isPublicItemTopDecl d = isImportableTopDecl d
 
 isImportableTopDecl :: TopDecl -> Bool
 isImportableTopDecl (TPragmaDecl _) = False
