@@ -30,7 +30,8 @@ import System.FilePath
 data LoadedModule
   = LoadedModule
   { loadedSourcePath :: FilePath,
-    loadedCompUnit :: CompUnit
+    loadedCompUnit :: CompUnit,
+    loadedModuleRefs :: Map ModulePath Mod.ModuleId
   }
   deriving (Eq, Show)
 
@@ -119,13 +120,22 @@ visit cfg stack moduleId sourcePath = do
     parsed <- liftIO (parseCompUnit content)
     cunit <- either throwError pure parsed
     importedModules <- mapM (resolveImportPath cfg moduleId) (imports cunit)
+    exportedModules <-
+      mapM (resolveModuleReference cfg moduleId "export") (exportModulePaths cunit)
+    let moduleRefs =
+          Map.fromList $
+            [(importModule imp, importId) | (imp, (importId, _)) <- zip (imports cunit) importedModules]
+              ++ [(path, exportId) | (path, exportId, _) <- exportedModules]
+        referencedModules =
+          uniqueResolvedModules
+            (importedModules ++ [(exportId, exportPath) | (_, exportId, exportPath) <- exportedModules])
     mapM_
-      (\(importId, importPath) -> visit cfg (moduleId : stack) importId importPath)
-      importedModules
+      (\(targetId, targetPath) -> visit cfg (moduleId : stack) targetId targetPath)
+      referencedModules
     modify
       ( \st ->
           st
-            { loadedModules = Map.insert moduleId (LoadedModule sourcePath cunit) (loadedModules st),
+            { loadedModules = Map.insert moduleId (LoadedModule sourcePath cunit moduleRefs) (loadedModules st),
               moduleDeps = Map.insert moduleId (map fst importedModules) (moduleDeps st),
               loadOrder = moduleId : loadOrder st
             }
@@ -136,15 +146,26 @@ resolveImportPath ::
   Mod.ModuleId ->
   Import ->
   StateT LoadState (ExceptT String IO) (Mod.ModuleId, FilePath)
-resolveImportPath cfg currentModule imp = do
-  candidates <- either throwError pure (resolveModuleImportCandidates cfg currentModule (importModule imp))
+resolveImportPath cfg currentModule imp =
+  fmap (\(_, targetId, targetPath) -> (targetId, targetPath)) $
+    resolveModuleReference cfg currentModule "import" (importModule imp)
+
+resolveModuleReference ::
+  LoaderConfig ->
+  Mod.ModuleId ->
+  String ->
+  ModulePath ->
+  StateT LoadState (ExceptT String IO) (ModulePath, Mod.ModuleId, FilePath)
+resolveModuleReference cfg currentModule refKind modulePath = do
+  candidates <- either throwError pure (resolveModuleImportCandidates cfg currentModule modulePath)
   resolved <- liftIO $ firstExisting candidates
   case resolved of
-    Just target -> pure target
+    Just (targetId, targetPath) -> pure (modulePath, targetId, targetPath)
     Nothing ->
       throwError $
-        "import "
-          ++ Mod.modulePathDisplay (importModule imp)
+        refKind
+          ++ " "
+          ++ Mod.modulePathDisplay modulePath
           ++ ": file not found"
 
 importModuleName :: Import -> Name
@@ -247,6 +268,49 @@ lookupLoadedModule graph modulePath =
     (Left ("Internal error: module not loaded: " ++ Mod.moduleIdDisplay modulePath))
     (Right . loadedCompUnit)
     (Map.lookup modulePath (modules graph))
+
+lookupModuleReference :: ModuleGraph -> Mod.ModuleId -> ModulePath -> Either String Mod.ModuleId
+lookupModuleReference graph modulePath refPath = do
+  loadedModule <- lookupLoadedModuleEntry graph modulePath
+  maybe
+    (Left ("Internal error: unresolved module reference: " ++ Mod.modulePathDisplay refPath))
+    Right
+    (Map.lookup refPath (loadedModuleRefs loadedModule))
+
+lookupLoadedModuleEntry :: ModuleGraph -> Mod.ModuleId -> Either String LoadedModule
+lookupLoadedModuleEntry graph modulePath =
+  maybe
+    (Left ("Internal error: module not loaded: " ++ Mod.moduleIdDisplay modulePath))
+    Right
+    (Map.lookup modulePath (modules graph))
+
+exportModulePaths :: CompUnit -> [ModulePath]
+exportModulePaths =
+  uniqueModulePaths . concatMap topDeclExportModulePaths . topDeclsFrom
+
+topDeclExportModulePaths :: TopDecl -> [ModulePath]
+topDeclExportModulePaths (TExportDecl exportDecl) =
+  exportDeclModulePaths exportDecl
+topDeclExportModulePaths _ =
+  []
+
+exportDeclModulePaths :: Export -> [ModulePath]
+exportDeclModulePaths (ExportList specs) =
+  [path | ExportModuleAll path <- specs]
+exportDeclModulePaths (ExportModule path) =
+  [path]
+exportDeclModulePaths (ExportModuleAs path _) =
+  [path]
+exportDeclModulePaths (ExportItemsFrom path _) =
+  [path]
+
+uniqueResolvedModules :: [(Mod.ModuleId, FilePath)] -> [(Mod.ModuleId, FilePath)]
+uniqueResolvedModules =
+  reverse . fst . foldl step ([], Set.empty)
+  where
+    step (acc, seen) pair@(moduleId, _)
+      | moduleId `Set.member` seen = (acc, seen)
+      | otherwise = (pair : acc, Set.insert moduleId seen)
 
 moduleSourcePath :: ModuleGraph -> Mod.ModuleId -> Either String FilePath
 moduleSourcePath graph modulePath =
