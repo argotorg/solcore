@@ -471,6 +471,10 @@ publicModuleInterface graph modulePath = do
   ensureNoDuplicateExportedModules sourcePath (publicModuleBindings publicInterface)
   pure publicInterface
 
+publicModuleBindingsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [ExportedModuleBinding]
+publicModuleBindingsForModule graph modulePath =
+  publicModuleBindings <$> publicModuleInterface graph modulePath
+
 expandExportDecl ::
   ModuleGraph ->
   Mod.ModuleId ->
@@ -627,6 +631,10 @@ moduleLeafName :: Name -> Name
 moduleLeafName (Name n) = Name n
 moduleLeafName (QualName _ n) = Name n
 
+importModuleQualifiers :: ModulePath -> [Name]
+importModuleQualifiers importPath =
+  uniqueNames [defaultModuleBindingName importPath, Mod.modulePathName importPath]
+
 selectPublicItemDecls :: [Name] -> [TopDecl] -> [TopDecl]
 selectPublicItemDecls names =
   mapMaybe (selectTopDecl names) . filter isPublicItemTopDecl
@@ -654,18 +662,26 @@ qualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Eit
 qualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly _ _ -> Right []
-    ImportModule n -> qualifyDecls (Mod.modulePathName n)
-    ImportAlias _ n -> qualifyDecls n
+    ImportModule importPath ->
+      concat <$> mapM (`qualifyDecls` modulePath) (importModuleQualifiers importPath)
+    ImportAlias _ qualifier ->
+      qualifyDecls qualifier modulePath
   where
-    qualifyDecls qualifier = do
-      publicDecls <- publicTopDeclsForModule graph modulePath
-      allDecls <- importableTopDeclsForCompiledModule graph modulePath
+    qualifyDecls qualifier targetModule = do
+      moduleBindings <- publicModuleBindingsForModule graph targetModule
+      nestedDecls <- concat <$> mapM (qualifyNestedModule qualifier) moduleBindings
+      publicDecls <- publicTopDeclsForModule graph targetModule
+      allDecls <- importableTopDeclsForCompiledModule graph targetModule
       let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
           publicUnit = CompUnit [] publicDecls
           allUnit = CompUnit [] allDecls
       pure $
         qualifiedFunctionDecls typeRenameMap qualifier publicUnit allUnit
           ++ qualifiedTypeAliasDecls typeRenameMap qualifier publicUnit
+          ++ nestedDecls
+
+    qualifyNestedModule qualifier (ExportedModuleBinding bindingName targetModule) =
+      qualifyDecls (QualName qualifier (show bindingName)) targetModule
 
 importableTopDeclsForCompiledModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
 importableTopDeclsForCompiledModule graph modulePath = do
@@ -676,15 +692,23 @@ qualifiedImportStubDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either Stri
 qualifiedImportStubDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ _ -> Right []
-    ImportModule n -> stubDecls (Mod.modulePathName n)
-    ImportAlias _ n -> stubDecls n
+    ImportModule importPath ->
+      concat <$> mapM (`stubDecls` modulePath) (importModuleQualifiers importPath)
+    ImportAlias _ qualifier ->
+      stubDecls qualifier modulePath
   where
-    stubDecls qualifier = do
-      publicDecls <- publicTopDeclsForModule graph modulePath
+    stubDecls qualifier targetModule = do
+      moduleBindings <- publicModuleBindingsForModule graph targetModule
+      nestedDecls <- concat <$> mapM (stubNestedModule qualifier) moduleBindings
+      publicDecls <- publicTopDeclsForModule graph targetModule
       let cunit = CompUnit [] publicDecls
       pure $
         qualifiedFunctionStubDecls qualifier cunit
           ++ qualifiedTypeStubDecls qualifier cunit
+          ++ nestedDecls
+
+    stubNestedModule qualifier (ExportedModuleBinding bindingName targetModule) =
+      stubDecls (QualName qualifier (show bindingName)) targetModule
 
 qualifyFunctionWrapper :: Name -> FunDef -> FunDef
 qualifyFunctionWrapper qualifier (FunDef sig _body) =
@@ -1661,7 +1685,7 @@ ensureNoDuplicateModuleQualifiers (CompUnit imps _) =
     duplicates = duplicateNames (mapMaybe moduleQualifier imps)
 
 moduleQualifier :: Import -> Maybe Name
-moduleQualifier (ImportModule n) = Just (Mod.modulePathName n)
+moduleQualifier (ImportModule n) = Just (defaultModuleBindingName n)
 moduleQualifier (ImportAlias _ n) = Just n
 moduleQualifier (ImportOnly _ _) = Nothing
 

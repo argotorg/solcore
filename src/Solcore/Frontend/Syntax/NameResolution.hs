@@ -851,16 +851,16 @@ addImportsToEnv imps env = foldr addImport env imps
 
 addImport :: S.Import -> Env -> Env
 addImport (S.ImportModule path) env =
-  foldr addModuleName env (modulePrefixes (syntaxModulePathName path))
+  addModuleName (defaultImportModuleName path) env
 addImport (S.ImportAlias _ n) env =
   addModuleName n env
 addImport (S.ImportOnly _ _) env =
   env
 
-syntaxModulePathName :: S.ModulePath -> Name
-syntaxModulePathName (S.RelativePath path) = path
-syntaxModulePathName (S.LibraryPath path) = path
-syntaxModulePathName (S.ExternalPath _ path) = path
+defaultImportModuleName :: S.ModulePath -> Name
+defaultImportModuleName (S.RelativePath path) = moduleLeafName path
+defaultImportModuleName (S.LibraryPath path) = moduleLeafName path
+defaultImportModuleName (S.ExternalPath _ path) = moduleLeafName path
 
 modulePrefixes :: Name -> [Name]
 modulePrefixes n =
@@ -869,11 +869,17 @@ modulePrefixes n =
     go q@(QualName p _) = q : go p
     go x = [x]
 
+moduleLeafName :: Name -> Name
+moduleLeafName (Name n) = Name n
+moduleLeafName (QualName _ n) = Name n
+
 addTopDecl :: S.TopDecl -> Env -> Env
 addTopDecl (S.TContr (S.Contract n _ _)) env =
-  env {typeEnv = Map.insert n TContract (typeEnv env)}
+  addQualifiedModules n $
+    env {typeEnv = Map.insert n TContract (typeEnv env)}
 addTopDecl (S.TFunDef (S.FunDef sig _)) env =
-  env {scopeEnv = Map.insert (S.sigName sig) TFunction (scopeEnv env)}
+  addQualifiedModules (S.sigName sig) $
+    env {scopeEnv = Map.insert (S.sigName sig) TFunction (scopeEnv env)}
 addTopDecl (S.TClassDef (S.Class _ _ n _ _ sigs)) env =
   let env' =
         foldr
@@ -883,29 +889,37 @@ addTopDecl (S.TClassDef (S.Class _ _ n _ _ sigs)) env =
           )
           (scopeEnv env)
           sigs
-   in env
-        { classEnv = Map.insert n TClass (classEnv env),
-          scopeEnv = env'
-        }
+   in addQualifiedModules n $
+        env
+          { classEnv = Map.insert n TClass (classEnv env),
+            scopeEnv = env'
+          }
 addTopDecl (S.TDataDef (S.DataTy n _ cons)) env =
-  env
-    { typeEnv = Map.insert n TTyCon (typeEnv env),
-      scopeEnv =
-        foldr
-          ( \d ac ->
-              Map.insert (qualifiedConstructorName n (S.constrName d)) TDataCon ac
-          )
-          (scopeEnv env)
-          cons
-    }
+  addQualifiedModules n $
+    env
+      { typeEnv = Map.insert n TTyCon (typeEnv env),
+        scopeEnv =
+          foldr
+            ( \d ac ->
+                Map.insert (qualifiedConstructorName n (S.constrName d)) TDataCon ac
+            )
+            (scopeEnv env)
+            cons
+      }
 addTopDecl (S.TSym (S.TySym n _ _)) env =
-  env {typeEnv = Map.insert n TTyCon (typeEnv env)}
+  addQualifiedModules n $
+    env {typeEnv = Map.insert n TTyCon (typeEnv env)}
 addTopDecl (S.TExportDecl _) env = env
 addTopDecl _ env = env
 
 addModuleName :: Name -> Env -> Env
 addModuleName n env =
   env {scopeEnv = Map.insertWith (\_ old -> old) n TModule (scopeEnv env)}
+
+addQualifiedModules :: Name -> Env -> Env
+addQualifiedModules (QualName qualifier _) env =
+  foldr addModuleName env (modulePrefixes qualifier)
+addQualifiedModules _ env = env
 
 -- definition of a monad for name resolution
 
