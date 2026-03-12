@@ -303,7 +303,7 @@ emitStmt (MastAsm as) = do
   -- unroll the vsubst to a series of assignments and insert them before the assembly block
   -- an alternative might be to painstakingly rename all vars in the the assembly block
   subst <- gets ecSubst
-  let yvars = getYVars' as
+  let yvars = getNames as
   let unrolled = [Hull.SAssign (Hull.EVar (show v)) e | (v, e) <- Map.toList subst, Set.member v yvars]
   pure $ unrolled ++ [Hull.SAssembly as]
 
@@ -489,11 +489,10 @@ debug msg = do
 concatMapM :: (Monad f) => (a -> f [b]) -> [a] -> f [b]
 concatMapM f xs = concat <$> mapM f xs
 
--- getYVars' is a conservative overapproximation
--- some vars may not be actually free in the assembly block but defined inside with let
--- this should be harmless
-getYVars' :: (Data d) => d -> Set.Set Name
-getYVars' code = everything Set.union (mkQ Set.empty step) code
+-- getNames is a conservative overapproximation
+-- some vars may not be actually free
+getNames :: (Data d) => d -> Set.Set Name
+getNames code = everything Set.union (mkQ Set.empty step) code
   where
     step :: Name -> Set.Set Name
     step name = Set.singleton name
