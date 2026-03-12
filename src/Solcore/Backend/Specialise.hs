@@ -213,7 +213,7 @@ addInstResolutions inst = forM_ (instFunctions inst) addMethod
       -- For named instances, also register under QualName lbl methodName
       -- so that specExp can find the definition directly by label.
       case instLabel inst of
-        Nothing  -> return ()
+        Nothing -> return ()
         Just lbl -> addNamedInstMethodResolution lbl (mainTy inst) fd
 
 -- Register a named-instance method under QualName lbl methodUnqualName.
@@ -221,14 +221,14 @@ addInstResolutions inst = forM_ (instFunctions inst) addMethod
 -- strip the class qualifier and substitute the instance label.
 addNamedInstMethodResolution :: Name -> Ty -> TcFunDef -> SM ()
 addNamedInstMethodResolution lbl ty fd = do
-  let sig      = funSignature fd
-      methUnq  = case sigName sig of
-                   QualName _ m -> m
-                   Name s       -> s
-      qname    = QualName lbl methUnq
-      name'    = specName qname [ty]
-      funType  = typeOfTcFunDef fd
-      fd'      = FunDef sig { sigName = name' } (funDefBody fd)
+  let sig = funSignature fd
+      methUnq = case sigName sig of
+        QualName _ m -> m
+        Name s -> s
+      qname = QualName lbl methUnq
+      name' = specName qname [ty]
+      funType = typeOfTcFunDef fd
+      fd' = FunDef sig {sigName = name'} (funDefBody fd)
   addResolution qname funType fd'
   debug ["+ addNamedInstMethodResolution: ", show qname, " / ", show name', " : ", pretty funType]
 
@@ -313,8 +313,8 @@ specExp (Call Nothing i lbl args) ty = do
   -- For named instance calls, resolve via QualName lbl method so the
   -- specialiser finds the definition registered under that label.
   let i' = case lbl of
-              Just l  -> i { idName = QualName l (pretty (idName i)) }
-              Nothing -> i
+        Just l -> i {idName = QualName l (pretty (idName i))}
+        Nothing -> i
   (i'', args') <- specCall i' args ty
   let e' = Call Nothing i'' Nothing args'
   -- debug ["< specExp (Call): ", pretty e']

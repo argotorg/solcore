@@ -448,9 +448,13 @@ instance Resolve S.Exp where
     dt <- lookupName qn
     case dt of
       Just TFunction -> pure (Call me' n (Just lbl) es')
-      _ -> throwError $
-        "Unknown named instance label '" ++ pretty lbl
-        ++ "' for method '" ++ pretty n ++ "'"
+      _ ->
+        throwError $
+          "Unknown named instance label '"
+            ++ pretty lbl
+            ++ "' for method '"
+            ++ pretty n
+            ++ "'"
 
 instance Resolve S.Literal where
   type Result S.Literal = Literal
@@ -601,13 +605,16 @@ addTopDecl (S.TDataDef (S.DataTy n _ cons)) env =
 addTopDecl (S.TSym (S.TySym n _ _)) env =
   env {typeEnv = Map.insert n TTyCon (typeEnv env)}
 addTopDecl (S.TInstDef (S.Instance _ (Just lbl) _ _ _ _ _ funs)) env =
-  env { scopeEnv =
-          foldr (\fd ac ->
-                   let qn = QualName lbl (pretty (S.sigName (S.funSignature fd)))
-                   in Map.insert qn TFunction ac)
-                (scopeEnv env)
-                funs
-      }
+  env
+    { scopeEnv =
+        foldr
+          ( \fd ac ->
+              let qn = QualName lbl (pretty (S.sigName (S.funSignature fd)))
+               in Map.insert qn TFunction ac
+          )
+          (scopeEnv env)
+          funs
+    }
 addTopDecl _ env = env
 
 -- definition of a monad for name resolution

@@ -594,7 +594,7 @@ addDefaultInstance n inst =
 
 addNamedInstance :: Name -> Instance Name -> TcM ()
 addNamedInstance label inst =
-  modify (\st -> st { namedInstEnv = Map.insert label inst (namedInstEnv st) })
+  modify (\st -> st {namedInstEnv = Map.insert label inst (namedInstEnv st)})
 
 askNamedInstance :: Name -> TcM (Maybe (Instance Name))
 askNamedInstance label = Map.lookup label <$> gets namedInstEnv

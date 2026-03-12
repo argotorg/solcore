@@ -936,7 +936,8 @@ checkInstance idef@(Instance d lbl vs predCtx n ts t funs) =
         -- Named instances: skip overlap check, register by label
         existing <- askNamedInstance label
         unless (isNothing existing) $
-          throwError $ "Duplicate named instance label: " ++ pretty label
+          throwError $
+            "Duplicate named instance label: " ++ pretty label
         addNamedInstance label idef
 
 -- checking a default instance
@@ -1144,27 +1145,34 @@ tcCallNamed me n lbl args =
     let callExpr = Call me n (Just lbl) args
     -- Look up the named instance by label
     minst <- askNamedInstance lbl
-    inst <- maybe
-      (throwError $ "Unknown named instance label: " ++ pretty lbl)
-      pure
-      minst
+    inst <-
+      maybe
+        (throwError $ "Unknown named instance label: " ++ pretty lbl)
+        pure
+        minst
     -- Find the method in the instance's function definitions
     let mfun = find (\fd -> sigName (funSignature fd) == n) (instFunctions inst)
-    fun <- maybe
-      (throwError $ unwords
-        ["Method", pretty n, "not found in named instance", pretty lbl])
-      pure
-      mfun
+    fun <-
+      maybe
+        ( throwError $
+            unwords
+              ["Method", pretty n, "not found in named instance", pretty lbl]
+        )
+        pure
+        mfun
     -- Build the type scheme from the method signature + instance context
     let sig = funSignature fun
-        vs   = instVars inst ++ sigVars sig
+        vs = instVars inst ++ sigVars sig
         preds = instContext inst ++ sigContext sig
         argTys = [t | Typed _ t <- sigParams sig]
-    ret <- maybe
-      (throwError $ unwords
-        ["Method", pretty n, "in named instance", pretty lbl, "missing return type"])
-      pure
-      (sigReturn sig)
+    ret <-
+      maybe
+        ( throwError $
+            unwords
+              ["Method", pretty n, "in named instance", pretty lbl, "missing return type"]
+        )
+        pure
+        (sigReturn sig)
     let scheme = Forall vs (preds :=> funtype argTys ret)
     (ps :=> t) <- freshInst scheme
     t' <- freshTyVar
