@@ -102,7 +102,7 @@ pragmas =
   testGroup
     "Files for pragmas cases"
     [ runTestExpectingFailure "bound.solc" pragmaFolder,
-      runTestExpectingFailure "coverage.solc" pragmaFolder,
+      runTestForFile "coverage.solc" pragmaFolder,
       runTestForFile "patterson.solc" pragmaFolder
     ]
   where
@@ -112,7 +112,7 @@ cases :: TestTree
 cases =
   testGroup
     "Files for folder cases"
-    [ runTestExpectingFailure "Ackermann.solc" caseFolder,
+    [ runTestForFile "Ackermann.solc" caseFolder,
       runTestForFile "Add1.solc" caseFolder,
       runTestExpectingFailure "add-moritz.solc" caseFolder,
       runTestForFile "another-subst.solc" caseFolder,
@@ -152,7 +152,7 @@ cases =
       runTestExpectingFailure "duplicated-type-name.solc" caseFolder,
       runTestForFile "DuplicateFun.solc" caseFolder,
       runTestExpectingFailure "DupFun.solc" caseFolder,
-      runTestExpectingFailure "EitherModule.solc" caseFolder,
+      runTestForFile "EitherModule.solc" caseFolder,
       runTestForFile "empty-asm.solc" caseFolder,
       runTestExpectingFailure "Enum.solc" caseFolder,
       runTestExpectingFailure "Eq.solc" caseFolder,

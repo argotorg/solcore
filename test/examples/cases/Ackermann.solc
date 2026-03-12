@@ -1,4 +1,6 @@
-data Nat = Zero | Succ(Nat) ;
+data memory(a) = memory(word);
+
+data Nat = Zero | Succ(memory(Nat)) ;
 
 function foo (x, y) {
   match y, x {

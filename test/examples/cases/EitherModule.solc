@@ -1,16 +1,30 @@
 contract EitherModule {
+  data memory(a) = memory(word);
   data Either(a,b) = Left(a) | Right(b);
-  data List(a) = Nil | Cons(a,List(a));
+  data List(a) = Nil | Cons(a, memory(List(a)));
 
-  function lefts(xs) {
+  forall a b . function lefts(xs : List (Either(a,b))) -> List(a) {
     match xs {
     | Nil => return Nil ;
     | Cons(y,ys) =>
       match y {
-      | Left(z) => return Cons(z,lefts(ys)) ;
-      | Right(z) => return lefts(ys) ;
+      | Left(z) => return Cons(z,storeList(lefts(loadList(ys)))) ;
+      | Right(z) => return lefts(loadList(ys)) ;
       }
     }
   }
 
+  forall a . function loadList(xs : memory(List(a))) -> List(a) {
+    match xs {
+    | memory(_) => return Nil ;
+    }
+  }
+
+  forall a . function storeList (xs : List(a)) -> memory(List(a)) {
+    return memory(0);
+  }
+
+  function main () -> word {
+    return 42;
+  }
 }
