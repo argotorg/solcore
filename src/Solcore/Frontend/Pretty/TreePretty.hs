@@ -134,7 +134,7 @@ pprSigPrefix vs ps =
   text "forall" <+> hsep (map ppr vs) <+> text "." $$ pprContext ps
 
 instance Pretty Instance where
-  ppr (Instance d vs ctx n tys ty funs) =
+  ppr (Instance d _ vs ctx n tys ty funs) =
     pprSigPrefix vs ctx
       <+> pprDefault d
       <+> text "instance"
@@ -261,6 +261,13 @@ instance Pretty Exp where
       <> parensWhen
         (not $ null es)
         (commaSep (map ppr es))
+  ppr (ExpNameAt me n lbl es) =
+    maybe empty (\e -> ppr e <> char '.') me
+      <> ppr n
+      <> text "@{"
+      <> ppr lbl
+      <> char '}'
+      <> parens (commaSep (map ppr es))
   ppr (ExpVar me v) =
     maybe (text "this") ppr me
       <> char '.'

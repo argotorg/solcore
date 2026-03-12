@@ -2,6 +2,7 @@ module Solcore.Desugarer.IndirectCall where
 
 import Control.Monad.State
 import Data.Map qualified as Map
+import Data.Maybe (isJust)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcEnv (primCtx)
@@ -93,18 +94,19 @@ instance Desugar (Exp Name) where
     Lam ps <$> desugar bd <*> pure t
   desugar (TyExp e t) =
     flip TyExp t <$> desugar e
-  desugar (Call m n es) =
+  desugar (Call m n lbl es) =
     do
       m' <- desugar m
       es' <- desugar es
       b <- isDirectCall n
       let qn = QualName invokableName "invoke"
           args' = [Var n, indirectArgs es']
-      if b
+      -- Named instance calls (Just lbl) are always direct: no defunctionalization
+      if b || isJust lbl
         then
-          pure $ Call m' n es'
+          pure $ Call m' n lbl es'
         else
-          pure $ Call Nothing qn args'
+          pure $ Call Nothing qn Nothing args'
   desugar (Cond e1 e2 e3) =
     Cond <$> desugar e1 <*> desugar e2 <*> desugar e3
   desugar x = pure x
@@ -113,8 +115,8 @@ instance Desugar (Equation Name) where
   desugar (ps, ss) = (ps,) <$> desugar ss
 
 instance Desugar (Instance Name) where
-  desugar (Instance d vs ps n ts t fs) =
-    Instance d vs ps n ts t <$> desugar fs
+  desugar (Instance d lbl vs ps n ts t fs) =
+    Instance d lbl vs ps n ts t <$> desugar fs
 
 -- building indirect function call arguments
 

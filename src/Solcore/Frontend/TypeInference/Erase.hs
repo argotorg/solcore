@@ -25,8 +25,8 @@ instance (Erase a, Erase b) => Erase (a, b) where
 instance Erase (Instance Id) where
   type EraseRes (Instance Id) = Instance Name
 
-  erase (Instance d vs ctx n ts t funs) =
-    Instance d vs ctx n ts t (erase funs)
+  erase (Instance d lbl vs ctx n ts t funs) =
+    Instance d lbl vs ctx n ts t (erase funs)
 
 instance Erase (FunDef Id) where
   type EraseRes (FunDef Id) = FunDef Name
@@ -67,8 +67,8 @@ instance Erase (Exp Id) where
     Con (idName n) (map erase es)
   erase (FieldAccess me n) =
     FieldAccess (erase me) (idName n)
-  erase (Call me n es) =
-    Call (erase me) (idName n) (erase es)
+  erase (Call me n lbl es) =
+    Call (erase me) (idName n) lbl (erase es)
   erase (Lam ps bd mt) =
     Lam (erase ps) (erase bd) mt
   erase (TyExp e t) =

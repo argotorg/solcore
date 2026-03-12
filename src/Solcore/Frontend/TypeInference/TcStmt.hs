@@ -240,8 +240,10 @@ tcExp (FieldAccess (Just e) n) =
     s <- askField tn n
     (ps' :=> t') <- freshInst s
     withCurrentSubst (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
-tcExp ex@(Call me n args) =
+tcExp ex@(Call me n Nothing args) =
   tcCall me n args `wrapError` ex
+tcExp ex@(Call me n (Just lbl) args) =
+  tcCallNamed me n lbl args `wrapError` ex
 tcExp (Lam args bd _) =
   do
     (args', schs, ts') <- tcArgs args
@@ -706,7 +708,7 @@ extSignature sig@(Signature _ _ n _ _) =
 -- typing instance
 
 tcInstance :: Instance Name -> TcM (Instance Id)
-tcInstance idecl@(Instance _ _ predCtx _ ts t _) =
+tcInstance idecl@(Instance _ _ _ predCtx _ ts t _) =
   do
     -- checking instance type parameters
     mapM_ kindCheck (t : ts) `wrapError` idecl
@@ -724,12 +726,12 @@ checkConstraint p@(InCls n t ts) =
 checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
 
 tcInstance' :: Instance Name -> TcM (Instance Id)
-tcInstance' idecl@(Instance d vs predCtx n ts t funs) =
+tcInstance' idecl@(Instance d lbl vs predCtx n ts t funs) =
   do
     checkCompleteInstDef n (map (sigName . funSignature) funs) `wrapError` idecl
     (funs1, _) <- unzip <$> mapM (tcFunDef False vs predCtx) funs `wrapError` idecl
-    instd <- withCurrentSubst (Instance d vs predCtx n ts t funs1)
-    let ind@(Instance _ _ ctx' _ ts' t' funs2) = everywhere (mkT gen) instd
+    instd <- withCurrentSubst (Instance d lbl vs predCtx n ts t funs1)
+    let ind@(Instance _ _ _ ctx' _ ts' t' funs2) = everywhere (mkT gen) instd
         vs1 = bv ind
         funs3 =
           sortBy
@@ -739,10 +741,10 @@ tcInstance' idecl@(Instance d vs predCtx n ts t funs) =
                   (sigName (funSignature f'))
             )
             (map (updateSignature vs1 n) funs2)
-    verifySignatures (Instance d vs1 ctx' n ts' t' funs3)
+    verifySignatures (Instance d lbl vs1 ctx' n ts' t' funs3)
 
 verifySignatures :: Instance Id -> TcM (Instance Id)
-verifySignatures instd@(Instance _ _ ps n ts t funs) =
+verifySignatures instd@(Instance _ _ _ ps n ts t funs) =
   do
     -- get class info
     mcinfo <- Map.lookup n <$> gets classTable
@@ -889,7 +891,7 @@ checkConstraints :: [Pred] -> TcM ()
 checkConstraints = mapM_ checkConstraint
 
 checkInstance :: Instance Name -> TcM ()
-checkInstance idef@(Instance d vs predCtx n ts t funs) =
+checkInstance idef@(Instance d lbl vs predCtx n ts t funs) =
   do
     -- checking if all variables are declared
     checkAllTypeVarsBound idef (bv idef) vs
@@ -903,31 +905,39 @@ checkInstance idef@(Instance d vs predCtx n ts t funs) =
     -- check if all the types and classes in the context are valid
     checkConstraints predCtx
     let ipred = InCls n t ts
-    -- checking the coverage condition
-    insts' <- askInstEnv n `wrapError` ipred
-    -- check overlapping only for non-default instances
-    let vs1 = bv ipred
-    ts1 <- mapM (const freshTyVar) vs1
-    let env = zip vs1 ts1
-        ipred' = insts env ipred
-    unless d (checkOverlap ipred' insts' `wrapError` idef)
-    -- check if default instance has a type variable as main argument.
-    when d (checkDefaultInst (predCtx :=> ipred) `wrapError` idef)
-    coverageEnabled <- askCoverage n
-    unless coverageEnabled (checkCoverage n ts t `wrapError` idef)
-    -- checking Patterson condition
-    pattersonEnabled <- askPattersonCondition n
-    unless pattersonEnabled (checkMeasure predCtx ipred `wrapError` idef)
-    -- checking bound variable condition
-    boundEnabled <- askBoundVariableCondition n
-    unless boundEnabled (checkBoundVariable predCtx (bv (t : ts)) `wrapError` idef)
     -- checking instance methods
     mapM_ (checkMethod ipred) funs `wrapError` idef
     let ninst = anfInstance $ predCtx :=> InCls n t ts
-    -- add to the environment
-    if d
-      then addDefaultInstance n ninst
-      else addInstance n ninst
+    case lbl of
+      Nothing -> do
+        -- checking the coverage condition
+        insts' <- askInstEnv n `wrapError` ipred
+        -- check overlapping only for non-default instances
+        let vs1 = bv ipred
+        ts1 <- mapM (const freshTyVar) vs1
+        let env = zip vs1 ts1
+            ipred' = insts env ipred
+        unless d (checkOverlap ipred' insts' `wrapError` idef)
+        -- check if default instance has a type variable as main argument.
+        when d (checkDefaultInst (predCtx :=> ipred) `wrapError` idef)
+        coverageEnabled <- askCoverage n
+        unless coverageEnabled (checkCoverage n ts t `wrapError` idef)
+        -- checking Patterson condition
+        pattersonEnabled <- askPattersonCondition n
+        unless pattersonEnabled (checkMeasure predCtx ipred `wrapError` idef)
+        -- checking bound variable condition
+        boundEnabled <- askBoundVariableCondition n
+        unless boundEnabled (checkBoundVariable predCtx (bv (t : ts)) `wrapError` idef)
+        -- add to the environment
+        if d
+          then addDefaultInstance n ninst
+          else addInstance n ninst
+      Just label -> do
+        -- Named instances: skip overlap check, register by label
+        existing <- askNamedInstance label
+        unless (isNothing existing) $
+          throwError $ "Duplicate named instance label: " ++ pretty label
+        addNamedInstance label idef
 
 -- checking a default instance
 
@@ -1107,7 +1117,7 @@ tcBody (s : ss) =
 tcCall :: Maybe (Exp Name) -> Name -> [Exp Name] -> TcM (Exp Id, [Pred], Ty)
 tcCall Nothing n args =
   do
-    s <- askEnv n `wrapError` (Call Nothing n args)
+    s <- askEnv n `wrapError` (Call Nothing n Nothing args)
     (ps :=> t) <- freshInst s
     t' <- freshTyVar
     (es', pss', ts') <- unzip3 <$> mapM tcExp args
@@ -1115,18 +1125,56 @@ tcCall Nothing n args =
     _ <- extSubst s'
     let ps' = foldr union [] (ps : pss')
         t1 = funtype ts' t'
-    withCurrentSubst (Call Nothing (Id n t1) es', ps', t')
+    withCurrentSubst (Call Nothing (Id n t1) Nothing es', ps', t')
 tcCall (Just e) n args =
   do
     (e', ps, _) <- tcExp e
-    s <- askEnv n `wrapError` (Call (Just e) n args)
+    s <- askEnv n `wrapError` (Call (Just e) n Nothing args)
     (ps1 :=> t) <- freshInst s
     t' <- freshTyVar
     (es', pss', ts') <- unzip3 <$> mapM tcExp args
     s' <- unify (foldr (:->) t' ts') t
     _ <- extSubst s'
     let ps' = foldr union [] ((ps ++ ps1) : pss')
-    withCurrentSubst (Call (Just e') (Id n t') es', ps', t')
+    withCurrentSubst (Call (Just e') (Id n t') Nothing es', ps', t')
+
+tcCallNamed :: Maybe (Exp Name) -> Name -> Name -> [Exp Name] -> TcM (Exp Id, [Pred], Ty)
+tcCallNamed me n lbl args =
+  do
+    let callExpr = Call me n (Just lbl) args
+    -- Look up the named instance by label
+    minst <- askNamedInstance lbl
+    inst <- maybe
+      (throwError $ "Unknown named instance label: " ++ pretty lbl)
+      pure
+      minst
+    -- Find the method in the instance's function definitions
+    let mfun = find (\fd -> sigName (funSignature fd) == n) (instFunctions inst)
+    fun <- maybe
+      (throwError $ unwords
+        ["Method", pretty n, "not found in named instance", pretty lbl])
+      pure
+      mfun
+    -- Build the type scheme from the method signature + instance context
+    let sig = funSignature fun
+        vs   = instVars inst ++ sigVars sig
+        preds = instContext inst ++ sigContext sig
+        argTys = [t | Typed _ t <- sigParams sig]
+    ret <- maybe
+      (throwError $ unwords
+        ["Method", pretty n, "in named instance", pretty lbl, "missing return type"])
+      pure
+      (sigReturn sig)
+    let scheme = Forall vs (preds :=> funtype argTys ret)
+    (ps :=> t) <- freshInst scheme
+    t' <- freshTyVar
+    me' <- mapM (\e -> (\(e', _, _) -> e') <$> tcExp e) me
+    (es', pss', ts') <- unzip3 <$> mapM tcExp args
+    s' <- unify t (funtype ts' t') `wrapError` callExpr
+    _ <- extSubst s'
+    let ps' = foldr union [] (ps : pss')
+        t1 = funtype ts' t'
+    withCurrentSubst (Call me' (Id n t1) (Just lbl) es', ps', t')
 
 tcParam :: Param Name -> TcM (Param Id)
 tcParam (Typed n t) =
@@ -1296,8 +1344,8 @@ instance Vars (Exp Id) where
   free (Con _ es) = free es
   free (FieldAccess Nothing _) = []
   free (FieldAccess (Just e) _) = free e
-  free (Call (Just e) n es) = free e `union` free n `union` free es
-  free (Call Nothing n es) = free n `union` free es
+  free (Call (Just e) n _ es) = free e `union` free n `union` free es
+  free (Call Nothing n _ es) = free n `union` free es
   free (Lam ps bd _) = free bd \\ bound ps
   free _ = []
 

@@ -20,7 +20,7 @@ import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (decls, name)
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
-import Solcore.Frontend.TypeInference.TcEnv (TcEnv (typeTable), TypeInfo (..))
+import Solcore.Frontend.TypeInference.TcEnv (TcEnv (ctx, typeTable), TypeInfo (..))
 import Solcore.Frontend.TypeInference.TcUnify (typesDoNotUnify)
 import Solcore.Primitives.Primitives
 
@@ -206,7 +206,31 @@ addDeclResolutions (TMutualDef decls) = forM_ decls addDeclResolutions
 addDeclResolutions _ = return ()
 
 addInstResolutions :: Instance Id -> SM ()
-addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instName inst) (mainTy inst))
+addInstResolutions inst = forM_ (instFunctions inst) addMethod
+  where
+    addMethod fd = do
+      addMethodResolution (instName inst) (mainTy inst) fd
+      -- For named instances, also register under QualName lbl methodName
+      -- so that specExp can find the definition directly by label.
+      case instLabel inst of
+        Nothing  -> return ()
+        Just lbl -> addNamedInstMethodResolution lbl (mainTy inst) fd
+
+-- Register a named-instance method under QualName lbl methodUnqualName.
+-- After type inference, method names are QualName className method; we
+-- strip the class qualifier and substitute the instance label.
+addNamedInstMethodResolution :: Name -> Ty -> TcFunDef -> SM ()
+addNamedInstMethodResolution lbl ty fd = do
+  let sig      = funSignature fd
+      methUnq  = case sigName sig of
+                   QualName _ m -> m
+                   Name s       -> s
+      qname    = QualName lbl methUnq
+      name'    = specName qname [ty]
+      funType  = typeOfTcFunDef fd
+      fd'      = FunDef sig { sigName = name' } (funDefBody fd)
+  addResolution qname funType fd'
+  debug ["+ addNamedInstMethodResolution: ", show qname, " / ", show name', " : ", pretty funType]
 
 specialiseTopDecl :: TopDecl Id -> SM [TopDecl Id]
 specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
@@ -284,10 +308,15 @@ addMethodResolution cname ty fd = do
 
 -- | `specExp` specialises an expression to given type
 specExp :: TcExp -> Ty -> SM TcExp
-specExp (Call Nothing i args) ty = do
+specExp (Call Nothing i lbl args) ty = do
   -- debug ["> specExp (Call): ", pretty e, " : ", pretty (idType i), " ~> ", pretty ty]
-  (i', args') <- specCall i args ty
-  let e' = Call Nothing i' args'
+  -- For named instance calls, resolve via QualName lbl method so the
+  -- specialiser finds the definition registered under that label.
+  let i' = case lbl of
+              Just l  -> i { idName = QualName l (pretty (idName i)) }
+              Nothing -> i
+  (i'', args') <- specCall i' args ty
+  let e' = Call Nothing i'' Nothing args'
   -- debug ["< specExp (Call): ", pretty e']
   return e'
 specExp e@(Con i es) ty = do
@@ -348,14 +377,21 @@ specCall i args ty = do
       extSpSubst phi
       subst <- getSpSubst
       let ty'' = applytv subst fty
-      ensureClosed ty'' (Call Nothing i args) subst
+      ensureClosed ty'' (Call Nothing i Nothing args) subst
       name' <- specFunDef fd
       debug ["< specCall: ", pretty name', " : ", show ty'']
       args'' <- atCurrentSubst args'
       return (Id name' ty'', args'')
     Nothing -> do
-      void $ panics ["! specCall: no resolution found for ", show name, " : ", pretty funType]
-      return (i, args')
+      -- Primitives are in primCtx but have no resolution entry; treat as monomorphic.
+      primEnv <- gets (ctx . spGlobalEnv)
+      if Map.member name primEnv
+        then do
+          debug ["< specCall (primitive): ", show name]
+          return (i', args')
+        else do
+          void $ panics ["! specCall: no resolution found for ", show name, " : ", pretty funType]
+          return (i, args')
 
 -- | `specFunDef` specialises a function definition
 -- to the given type of the form `arg1Ty -> arg2Ty -> ... -> resultTy`
@@ -536,7 +572,7 @@ typeOfTcExp e@(Con i args) = go (idType i) args
     go _ _ = error $ "typeOfTcExp: " ++ show e
 typeOfTcExp (Lit (IntLit _)) = word
 typeOfTcExp (Lit (StrLit _)) = string
-typeOfTcExp expr@(Call Nothing i args) = applyTo args funTy
+typeOfTcExp expr@(Call Nothing i _ args) = applyTo args funTy
   where
     funTy = idType i
     applyTo [] ty = ty
@@ -828,7 +864,7 @@ toMastExp :: Exp Id -> MastExp
 toMastExp (Var i) = MastVar (toMastId i)
 toMastExp (Con i es) = MastCon (toMastId i) (map toMastExp es)
 toMastExp (Lit l) = MastLit l
-toMastExp (Call Nothing i es) = MastCall (toMastId i) (map toMastExp es)
+toMastExp (Call Nothing i _ es) = MastCall (toMastId i) (map toMastExp es)
 toMastExp (TyExp e _) = toMastExp e
 toMastExp (Cond e1 e2 e3) = MastCond (toMastExp e1) (toMastExp e2) (toMastExp e3)
 toMastExp e = error $ "toMastExp: unexpected " ++ show e

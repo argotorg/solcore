@@ -158,10 +158,11 @@ pprSigPrefix vs ps =
   text "forall" <+> hsep (map ppr vs) <+> text "." $$ pprContext ps
 
 instance (Pretty a) => Pretty (Instance a) where
-  ppr (Instance d vs ctx n tys ty funs) =
+  ppr (Instance d lbl vs ctx n tys ty funs) =
     pprSigPrefix vs ctx
       <+> pprDefault d
       <> text "instance"
+      <+> pprInstLabel lbl
       <+> ppr ty
       <+> colon
       <+> ppr n
@@ -169,6 +170,10 @@ instance (Pretty a) => Pretty (Instance a) where
       <+> lbrace
       $$ nest 3 (pprFunBlock funs)
       $$ rbrace
+
+pprInstLabel :: Maybe Name -> Doc
+pprInstLabel Nothing    = empty
+pprInstLabel (Just lbl) = text "[" <> ppr lbl <> text "]"
 
 pprDefault :: Bool -> Doc
 pprDefault b = if b then text "default " else empty
@@ -283,8 +288,8 @@ instance (Pretty a) => Pretty (Exp a) where
             then empty
             else (parens (nest 1 $ commaSep $ map ppr es))
   ppr (Lit l) = ppr l
-  ppr (Call e n es) =
-    pprE e <> ppr n <> (parens (nest 1 $ commaSep $ map ppr es))
+  ppr (Call e n lbl es) =
+    pprE e <> ppr n <> pprCallLabel lbl <> (parens (nest 1 $ commaSep $ map ppr es))
   ppr (Lam args bd _) =
     text "lam"
       <+> pprParams args
@@ -302,6 +307,10 @@ instance (Pretty a) => Pretty (Exp a) where
 pprE :: (Pretty a) => Maybe (Exp a) -> Doc
 pprE Nothing = ""
 pprE (Just e) = ppr e <> text "."
+
+pprCallLabel :: Maybe Name -> Doc
+pprCallLabel Nothing    = empty
+pprCallLabel (Just lbl) = text "@{" <> ppr lbl <> text "}"
 
 instance (Pretty a) => Pretty (Pat a) where
   ppr (PVar n) =

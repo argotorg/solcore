@@ -152,7 +152,7 @@ instance Resolve S.Signature where
 instance Resolve S.Instance where
   type Result S.Instance = Instance Name
 
-  resolve i@(S.Instance d vs ps n ts t funs) =
+  resolve i@(S.Instance d lbl vs ps n ts t funs) =
     withLocalCtx $ do
       let ns = map tyconName vs
       ndt <- lookupClass n
@@ -164,7 +164,7 @@ instance Resolve S.Instance where
           t' <- resolve t `wrapError` i
           funs' <- resolve funs `wrapError` i
           let vs' = map TVar ns
-          pure (Instance d vs' ps' n ts' t' funs')
+          pure (Instance d lbl vs' ps' n ts' t' funs')
         _ -> undefinedClassError n
 
 instance Resolve S.Param where
@@ -326,7 +326,7 @@ instance Resolve S.Exp where
       case (me', dt) of
         -- normal function call
         (Nothing, Just TFunction) ->
-          pure (Call Nothing n es')
+          pure (Call Nothing n Nothing es')
         -- data constructors
         (Nothing, Just TDataCon) ->
           pure (Con n es')
@@ -338,7 +338,7 @@ instance Resolve S.Exp where
           case ct of
             Just TClass ->
               let qn = QualName c (pretty n)
-               in pure (Call Nothing qn es')
+               in pure (Call Nothing qn Nothing es')
             _ -> undefinedName c
         (Just (Var c), Nothing) -> do
           ct <- lookupName c
@@ -346,19 +346,19 @@ instance Resolve S.Exp where
           cf <- lookupName qn
           case (ct, cf) of
             (Just TClass, Just TFunction) ->
-              pure (Call Nothing qn es')
+              pure (Call Nothing qn Nothing es')
             _ -> undefinedName n
         (Just (Var c), Just TTyVar) -> do
           let qn = QualName c (pretty n)
           cf <- gets (Map.lookup qn . scopeEnv)
           case cf of
-            Just TFunction -> pure (Call Nothing qn es')
+            Just TFunction -> pure (Call Nothing qn Nothing es')
             _ -> undefinedName n
         -- variables
         (_, Just TLocalVar) ->
-          pure (Call Nothing n es')
+          pure (Call Nothing n Nothing es')
         (_, Just TParameter) ->
-          pure (Call Nothing n es')
+          pure (Call Nothing n Nothing es')
         -- error
         _ -> undefinedName n
   resolve c@(S.ExpPlus e1 e2) =
@@ -366,31 +366,31 @@ instance Resolve S.Exp where
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Add") "add"
-      pure $ Call Nothing fun [e1', e2']
+      pure $ Call Nothing fun Nothing [e1', e2']
   resolve c@(S.ExpMinus e1 e2) =
     do
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Sub") "sub"
-      pure $ Call Nothing fun [e1', e2']
+      pure $ Call Nothing fun Nothing [e1', e2']
   resolve c@(S.ExpTimes e1 e2) =
     do
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Mul") "mul"
-      pure $ Call Nothing fun [e1', e2']
+      pure $ Call Nothing fun Nothing [e1', e2']
   resolve c@(S.ExpDivide e1 e2) =
     do
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Div") "div"
-      pure $ Call Nothing fun [e1', e2']
+      pure $ Call Nothing fun Nothing [e1', e2']
   resolve c@(S.ExpModulo e1 e2) =
     do
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Mod") "mod"
-      pure $ Call Nothing fun [e1', e2']
+      pure $ Call Nothing fun Nothing [e1', e2']
   resolve c@(S.ExpIndexed array idx) = do
     arr' <- resolve array `wrapError` c
     idx' <- resolve idx `wrapError` c
@@ -398,40 +398,40 @@ instance Resolve S.Exp where
   resolve c@(S.ExpLT e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "lt") [e1', e2']
+    pure $ Call Nothing (Name "lt") Nothing [e1', e2']
   resolve c@(S.ExpGT e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
     let fun = QualName (Name "Ord") "gt"
-    pure $ Call Nothing fun [e1', e2']
+    pure $ Call Nothing fun Nothing [e1', e2']
   resolve c@(S.ExpLE e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "le") [e1', e2']
+    pure $ Call Nothing (Name "le") Nothing [e1', e2']
   resolve c@(S.ExpGE e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "ge") [e1', e2']
+    pure $ Call Nothing (Name "ge") Nothing [e1', e2']
   resolve c@(S.ExpEE e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
     let fun = QualName (Name "Eq") "eq"
-    pure $ Call Nothing fun [e1', e2']
+    pure $ Call Nothing fun Nothing [e1', e2']
   resolve c@(S.ExpNE e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "ne") [e1', e2']
+    pure $ Call Nothing (Name "ne") Nothing [e1', e2']
   resolve c@(S.ExpLAnd e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "and") [e1', e2']
+    pure $ Call Nothing (Name "and") Nothing [e1', e2']
   resolve c@(S.ExpLOr e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "or") [e1', e2']
+    pure $ Call Nothing (Name "or") Nothing [e1', e2']
   resolve c@(S.ExpLNot e) = do
     e' <- resolve e `wrapError` c
-    pure $ Call Nothing (Name "not") [e']
+    pure $ Call Nothing (Name "not") Nothing [e']
   resolve (S.ExpCond e1 e2 e3) =
     Cond <$> resolve e1 <*> resolve e2 <*> resolve e3
   resolve (S.ExpAt t) = do
@@ -441,6 +441,16 @@ instance Resolve S.Exp where
           (Con (Name "Proxy") [])
           (TyCon (Name "Proxy") [t'])
       )
+  resolve x@(S.ExpNameAt me n lbl es) = do
+    me' <- resolve me `wrapError` x
+    es' <- resolve es `wrapError` x
+    let qn = QualName lbl (pretty n)
+    dt <- lookupName qn
+    case dt of
+      Just TFunction -> pure (Call me' n (Just lbl) es')
+      _ -> throwError $
+        "Unknown named instance label '" ++ pretty lbl
+        ++ "' for method '" ++ pretty n ++ "'"
 
 instance Resolve S.Literal where
   type Result S.Literal = Literal
@@ -590,6 +600,14 @@ addTopDecl (S.TDataDef (S.DataTy n _ cons)) env =
     }
 addTopDecl (S.TSym (S.TySym n _ _)) env =
   env {typeEnv = Map.insert n TTyCon (typeEnv env)}
+addTopDecl (S.TInstDef (S.Instance _ (Just lbl) _ _ _ _ _ funs)) env =
+  env { scopeEnv =
+          foldr (\fd ac ->
+                   let qn = QualName lbl (pretty (S.sigName (S.funSignature fd)))
+                   in Map.insert qn TFunction ac)
+                (scopeEnv env)
+                funs
+      }
 addTopDecl _ env = env
 
 -- definition of a monad for name resolution

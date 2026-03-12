@@ -2,6 +2,7 @@ module Solcore.Frontend.Syntax.Stmt where
 
 import Data.Generics (Data, Typeable)
 import Language.Yul
+import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Ty
 
 -- definition of statements
@@ -38,7 +39,7 @@ data Exp a
   | Con a [Exp a] -- data type constructor
   | FieldAccess (Maybe (Exp a)) a -- field access
   | Lit Literal -- literal
-  | Call (Maybe (Exp a)) a [Exp a] -- function call
+  | Call (Maybe (Exp a)) a (Maybe Name) [Exp a] -- function call (third arg = instance label)
   | Lam [Param a] (Body a) (Maybe Ty) -- lambda-abstraction
   | TyExp (Exp a) Ty -- type annotated expression
   | Cond (Exp a) (Exp a) (Exp a) -- conditional expression
