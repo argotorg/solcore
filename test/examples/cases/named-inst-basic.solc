@@ -1,0 +1,31 @@
+// Basic named instance: explicit dispatch with @{label} syntax
+
+data Bool = True | False;
+
+forall a . class a : Eq {
+  function eq(x : a, y : a) -> Bool;
+}
+
+instance word : Eq {
+  function eq(x : word, y : word) -> Bool {
+    match primEqWord(x, y) {
+    | 0 => return False;
+    | _ => return True;
+    }
+  }
+}
+
+instance [myEq] word : Eq {
+  function eq(x : word, y : word) -> Bool {
+    match primEqWord(x, y) {
+    | 0 => return False;
+    | _ => return True;
+    }
+  }
+}
+
+contract NamedInstBasic {
+  function main() -> Bool {
+    return eq@{myEq}(1, 1);
+  }
+}

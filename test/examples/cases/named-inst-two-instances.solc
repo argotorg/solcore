@@ -1,0 +1,32 @@
+// Two named instances of the same class dispatched explicitly
+
+data Bool = True | False;
+
+forall a . class a : Eq {
+  function eq(x : a, y : a) -> Bool;
+}
+
+// Named instance: strict equality
+instance [strictEq] word : Eq {
+  function eq(x : word, y : word) -> Bool {
+    match primEqWord(x, y) {
+    | 0 => return False;
+    | _ => return True;
+    }
+  }
+}
+
+// Named instance: always equal (trivial equality)
+instance [trivialEq] word : Eq {
+  function eq(x : word, y : word) -> Bool {
+    return True;
+  }
+}
+
+contract TwoNamedInst {
+  function main() -> Bool {
+    let r1 : Bool = eq@{strictEq}(1, 1);
+    let r2 : Bool = eq@{trivialEq}(1, 2);
+    return r2;
+  }
+}

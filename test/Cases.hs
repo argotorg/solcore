@@ -288,7 +288,11 @@ cases =
       runTestForFile "field-name-error.solc" caseFolder,
       runTestExpectingFailure "field-access.solc" caseFolder,
       runTestForFile "mod-example.solc" caseFolder,
-      runTestForFile "proxy-desugar.solc" caseFolder
+      runTestForFile "proxy-desugar.solc" caseFolder,
+      runTestForFile "named-inst-basic.solc" caseFolder,
+      runTestForFile "named-inst-two-instances.solc" caseFolder,
+      runTestExpectingFailure "named-inst-unknown-label.solc" caseFolder,
+      runTestExpectingFailure "named-inst-dup-label.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

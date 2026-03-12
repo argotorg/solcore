@@ -1,0 +1,25 @@
+// Error case: two named instances sharing the same label
+
+data Bool = True | False;
+
+forall a . class a : Eq {
+  function eq(x : a, y : a) -> Bool;
+}
+
+instance [dupLabel] word : Eq {
+  function eq(x : word, y : word) -> Bool {
+    return True;
+  }
+}
+
+instance [dupLabel] word : Eq {
+  function eq(x : word, y : word) -> Bool {
+    return False;
+  }
+}
+
+contract NamedInstDupLabel {
+  function main() -> Bool {
+    return eq@{dupLabel}(1, 1);
+  }
+}
