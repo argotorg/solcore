@@ -1075,9 +1075,15 @@ hnfEntails qs ps =
     info ["Trying to entail:", pretty ps, " using:", pretty qs]
     ctable <- getClassEnv
     itable <- getInstEnv
+    depth <- askMaxRecursionDepth
     let qs' = nub $ concatMap (bySuperM ctable) qs
-        unsolved p = not (isInvoke p) && not (entail ctable itable qs' p)
-    pure (filter unsolved ps)
+        notInvoke p = not (isInvoke p)
+        needSolving = filter (\p -> notInvoke p && not (entail ctable itable qs' p)) ps
+    -- For predicates pure entailment couldn't discharge, try the monadic solver
+    -- within a local substitution scope so that Skolem bindings don't escape.
+    withLocalSubst $ do
+      remaining <- toHnfs depth needSolving
+      pure (filter notInvoke remaining)
 
 -- type generalization
 

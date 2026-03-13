@@ -142,7 +142,25 @@ toHnf depth p@(InCls c _ _)
   | isHnf p =
       do
         info [">>> Solving:", pretty p, " (HNF)"]
-        pure [p]
+        insts <- askInstEnv c
+        case byInstM insts p of
+          Just (ps', s, i) -> do
+            info [">>> Found instance for:", pretty p, "\n>>> Instance:", pretty i, "\n>>> Subst:", pretty s]
+            _ <- extSubst s
+            ps0 <- withCurrentSubst ps'
+            toHnfs (depth - 1) ps0
+          Nothing -> do
+            insts' <- mapM fromANF insts
+            info [">>> No matching instance for:", pretty p, " trying a default instance.Defined instances:\n", unlines (map pretty insts')]
+            denv <- getDefaultInstEnv
+            case proveDefaulting denv insts p of
+              Nothing -> do
+                info [">>>> No default instance found for:", pretty p]
+                pure [p]
+              Just (_, s) -> do
+                info [">>>> Default instance for:", pretty p, " found! (Solved), \n>>> Subst: ", pretty s]
+                _ <- extSubst s
+                pure []
   | depth <= 0 = notEnoughFuel [p]
   | otherwise =
       do
@@ -270,7 +288,7 @@ entail ctable itable qs p@(InCls n _ _) =
             let ps1 = apply s ps'
                 qs1 = apply s qs
              in all (entail ctable itable qs1) ps1
-entail _ _ _ (_ :~: _) = False
+entail _ _ qs (t1 :~: t2) = t1 == t2 || (t1 :~: t2) `elem` qs
 
 -- error messages
 
