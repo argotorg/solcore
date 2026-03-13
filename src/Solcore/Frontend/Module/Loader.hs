@@ -14,7 +14,8 @@ where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
-import Data.List (isPrefixOf, intercalate)
+import Data.Graph (SCC (..), stronglyConnComp)
+import Data.List (intercalate, isPrefixOf, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
@@ -45,17 +46,22 @@ data LoadState
   = LoadState
   { loadedModules :: Map Mod.ModuleId LoadedModule,
     moduleDeps :: Map Mod.ModuleId [Mod.ModuleId],
+    moduleRefDeps :: Map Mod.ModuleId [Mod.ModuleId],
+    loadingModules :: Set Mod.ModuleId,
     loadOrder :: [Mod.ModuleId]
   }
 
 emptyLoadState :: LoadState
-emptyLoadState = LoadState Map.empty Map.empty []
+emptyLoadState = LoadState Map.empty Map.empty Map.empty Set.empty []
 
 data ModuleGraph
   = ModuleGraph
   { entryModule :: Mod.ModuleId,
     modules :: Map Mod.ModuleId LoadedModule,
     dependencies :: Map Mod.ModuleId [Mod.ModuleId],
+    referenceDependencies :: Map Mod.ModuleId [Mod.ModuleId],
+    importGroups :: Map Mod.ModuleId [Mod.ModuleId],
+    referenceGroups :: Map Mod.ModuleId [Mod.ModuleId],
     moduleOrder :: [Mod.ModuleId],
     graphMainRoot :: FilePath,
     graphStdRoot :: Maybe FilePath
@@ -67,12 +73,18 @@ loadModuleGraph roots entryFile = runExceptT do
   entryAbsolute <- liftIO $ makeAbsolute entryFile
   cfg <- liftIO $ mkLoaderConfig roots entryFile
   entryId <- moduleIdForPath Mod.MainLibrary (mainRoot cfg) entryAbsolute
-  st <- execStateT (visit cfg [] entryId entryAbsolute) emptyLoadState
+  st <- execStateT (visit cfg entryId entryAbsolute) emptyLoadState
+  let loaded = loadedModules st
+      importDeps = moduleDeps st
+      refDeps = moduleRefDeps st
   pure
     ( ModuleGraph
         { entryModule = entryId,
-          modules = loadedModules st,
-          dependencies = moduleDeps st,
+          modules = loaded,
+          dependencies = importDeps,
+          referenceDependencies = refDeps,
+          importGroups = buildGroupMap loaded importDeps,
+          referenceGroups = buildGroupMap loaded refDeps,
           moduleOrder = reverse (loadOrder st),
           graphMainRoot = mainRoot cfg,
           graphStdRoot = stdRoot cfg
@@ -107,15 +119,14 @@ mkLoaderConfig roots entryFile = do
 
 visit ::
   LoaderConfig ->
-  [Mod.ModuleId] ->
   Mod.ModuleId ->
   FilePath ->
   StateT LoadState (ExceptT String IO) ()
-visit cfg stack moduleId sourcePath = do
+visit cfg moduleId sourcePath = do
   alreadyLoaded <- gets (Map.member moduleId . loadedModules)
-  unless alreadyLoaded do
-    when (moduleId `elem` stack) $
-      throwError (cycleError moduleId stack)
+  loading <- gets (Set.member moduleId . loadingModules)
+  unless (alreadyLoaded || loading) do
+    modify (\st -> st {loadingModules = Set.insert moduleId (loadingModules st)})
     content <- liftIO (readFile sourcePath)
     parsed <- liftIO (parseCompUnit content)
     cunit <- either throwError pure parsed
@@ -130,13 +141,15 @@ visit cfg stack moduleId sourcePath = do
           uniqueResolvedModules
             (importedModules ++ [(exportId, exportPath) | (_, exportId, exportPath) <- exportedModules])
     mapM_
-      (\(targetId, targetPath) -> visit cfg (moduleId : stack) targetId targetPath)
+      (\(targetId, targetPath) -> visit cfg targetId targetPath)
       referencedModules
     modify
       ( \st ->
           st
             { loadedModules = Map.insert moduleId (LoadedModule sourcePath cunit moduleRefs) (loadedModules st),
               moduleDeps = Map.insert moduleId (map fst importedModules) (moduleDeps st),
+              moduleRefDeps = Map.insert moduleId (map fst referencedModules) (moduleRefDeps st),
+              loadingModules = Set.delete moduleId (loadingModules st),
               loadOrder = moduleId : loadOrder st
             }
       )
@@ -312,6 +325,24 @@ uniqueResolvedModules =
       | moduleId `Set.member` seen = (acc, seen)
       | otherwise = (pair : acc, Set.insert moduleId seen)
 
+buildGroupMap :: Map Mod.ModuleId LoadedModule -> Map Mod.ModuleId [Mod.ModuleId] -> Map Mod.ModuleId [Mod.ModuleId]
+buildGroupMap loaded depMap =
+  Map.fromList
+    [ (moduleId, group)
+      | group <- groups,
+        moduleId <- group
+    ]
+  where
+    groups =
+      map flattenScc $
+        stronglyConnComp
+          [ (moduleId, moduleId, Map.findWithDefault [] moduleId depMap)
+            | moduleId <- Map.keys loaded
+          ]
+
+    flattenScc (AcyclicSCC moduleId) = [moduleId]
+    flattenScc (CyclicSCC moduleIds) = moduleIds
+
 moduleSourcePath :: ModuleGraph -> Mod.ModuleId -> Either String FilePath
 moduleSourcePath graph modulePath =
   maybe
@@ -322,6 +353,26 @@ moduleSourcePath graph modulePath =
 moduleImportPairsFor :: ModuleGraph -> Mod.ModuleId -> CompUnit -> [(Import, Mod.ModuleId)]
 moduleImportPairsFor graph modulePath unit =
   zip (imports unit) (Map.findWithDefault [] modulePath (dependencies graph))
+
+importGroupFor :: ModuleGraph -> Mod.ModuleId -> [Mod.ModuleId]
+importGroupFor graph modulePath =
+  Map.findWithDefault [modulePath] modulePath (importGroups graph)
+
+referenceGroupFor :: ModuleGraph -> Mod.ModuleId -> [Mod.ModuleId]
+referenceGroupFor graph modulePath =
+  Map.findWithDefault [modulePath] modulePath (referenceGroups graph)
+
+isSameImportGroup :: ModuleGraph -> Mod.ModuleId -> Mod.ModuleId -> Bool
+isSameImportGroup graph lhs rhs =
+  rhs `elem` importGroupFor graph lhs
+
+isRecursiveImportGroup :: ModuleGraph -> Mod.ModuleId -> Bool
+isRecursiveImportGroup graph modulePath =
+  case importGroupFor graph modulePath of
+    [] -> False
+    [_] ->
+      modulePath `elem` Map.findWithDefault [] modulePath (dependencies graph)
+    _ -> True
 
 data ExportedItemRef
   = ExportedLocalItem Name
@@ -348,6 +399,46 @@ emptyPublicInterface =
     { publicItemRefs = [],
       publicModuleBindings = []
     }
+
+normalizePublicInterface :: ModulePublicInterface -> ModulePublicInterface
+normalizePublicInterface publicInterface =
+  ModulePublicInterface
+    { publicItemRefs = normalizeItemRefs (publicItemRefs publicInterface),
+      publicModuleBindings = normalizeModuleBindings (publicModuleBindings publicInterface)
+    }
+  where
+    normalizeItemRefs refs =
+      map (\itemName -> chosenRefs Map.! itemName) (sortOn show orderedNames)
+      where
+        (orderedNames, chosenRefs) = foldl step ([], Map.empty) refs
+
+        step (names, chosen) ref =
+          let itemName = exportedItemName ref
+           in case Map.lookup itemName chosen of
+                Nothing ->
+                  (names ++ [itemName], Map.insert itemName ref chosen)
+                Just existingRef
+                  | preferExportedItemRef ref existingRef ->
+                      (names, Map.insert itemName ref chosen)
+                  | otherwise ->
+                      (names, chosen)
+
+    normalizeModuleBindings bindings =
+      [ chosen Map.! bindingName
+        | bindingName <- sortOn show orderedNames
+      ]
+      where
+        (orderedNames, chosen) = foldl step ([], Map.empty) bindings
+
+        step (names, current) binding =
+          let bindingName = exportedModuleName binding
+           in case Map.lookup bindingName current of
+                Nothing -> (names ++ [bindingName], Map.insert bindingName binding current)
+                Just _ -> (names, current)
+
+preferExportedItemRef :: ExportedItemRef -> ExportedItemRef -> Bool
+preferExportedItemRef (ExportedLocalItem _) (ExportedRemoteItem _ _) = True
+preferExportedItemRef _ _ = False
 
 prepareFlattenContext :: ModuleGraph -> Mod.ModuleId -> Either String (CompUnit, FilePath, [(Import, Mod.ModuleId)])
 prepareFlattenContext graph modulePath = do
@@ -377,11 +468,37 @@ flattenModuleStrictCompileCompUnitWithImportedStart ::
   ModuleGraph ->
   Mod.ModuleId ->
   Either String (CompUnit, Int)
+flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath
+  | isRecursiveImportGroup graph modulePath = do
+      compileSurfaces <- compileSurfacesForGroup graph (importGroupFor graph modulePath)
+      flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath
 flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <- dedupeImportedInstanceDecls . concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
+  let localDecls = topDeclsFrom unit
+      visibleImportedDecls = shadowImportedDecls localDecls importedDecls
+      importedStart = length qualifiedDecls + length localDecls
+  pure
+    ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
+      importedStart
+    )
+
+flattenModuleStrictCompileCompUnitWithSurfaces ::
+  Map Mod.ModuleId [TopDecl] ->
+  ModuleGraph ->
+  Mod.ModuleId ->
+  Either String (CompUnit, Int)
+flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath = do
+  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
+  collidingTypeNames <- collidingImportedTypeNames graph importPairs
+  importedDecls <-
+    dedupeImportedInstanceDecls
+      . concat
+      <$> mapM (strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph) importPairs
+  qualifiedDecls <-
+    concat <$> mapM (qualifiedImportDeclsWithSurfaces compileSurfaces collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = shadowImportedDecls localDecls importedDecls
       importedStart = length qualifiedDecls + length localDecls
@@ -434,19 +551,32 @@ importableNamesForModule graph modulePath = do
   pure (uniqueNames (concatMap topDeclNames publicDecls))
 
 publicItemDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
-publicItemDeclsForModule graph modulePath = do
+publicItemDeclsForModule graph modulePath =
+  publicItemDeclsForModuleSeen graph Set.empty modulePath
+
+publicItemDeclsForModuleSeen :: ModuleGraph -> Set (Mod.ModuleId, Name) -> Mod.ModuleId -> Either String [TopDecl]
+publicItemDeclsForModuleSeen graph seen modulePath = do
   publicInterface <- publicModuleInterface graph modulePath
   unit <- lookupLoadedModule graph modulePath
   let localDecls =
         selectPublicItemDecls
-          [name | ExportedLocalItem name <- publicItemRefs publicInterface]
+          [itemName | ExportedLocalItem itemName <- publicItemRefs publicInterface]
           (topDeclsFrom unit)
-  remoteDecls <- concat <$> mapM materializeRemoteDecls (groupRemoteItemRefs (publicItemRefs publicInterface))
-  pure (localDecls ++ remoteDecls)
+  remoteDecls <- concat <$> mapM materializeRemoteRef (publicItemRefs publicInterface)
+  pure (localDecls ++ shadowImportedDecls localDecls remoteDecls)
   where
-    materializeRemoteDecls (targetModule, names) = do
-      remoteDecls <- publicItemDeclsForModule graph targetModule
-      pure (selectPublicItemDecls names remoteDecls)
+    materializeRemoteRef (ExportedLocalItem _) =
+      pure []
+    materializeRemoteRef (ExportedRemoteItem targetModule itemName)
+      | (targetModule, itemName) `Set.member` seen =
+          pure []
+      | otherwise = do
+          remoteDecls <-
+            publicItemDeclsForModuleSeen
+              graph
+              (Set.insert (targetModule, itemName) seen)
+              targetModule
+          pure (selectPublicItemDecls [itemName] remoteDecls)
 
 publicTopDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
 publicTopDeclsForModule graph modulePath = do
@@ -456,92 +586,232 @@ publicTopDeclsForModule graph modulePath = do
 
 publicModuleInterface :: ModuleGraph -> Mod.ModuleId -> Either String ModulePublicInterface
 publicModuleInterface graph modulePath = do
-  unit <- lookupLoadedModule graph modulePath
-  sourcePath <- moduleSourcePath graph modulePath
-  expandedDecls <-
-    mapM
-      (expandExportDecl graph modulePath sourcePath unit)
-      [exportDecl | TExportDecl exportDecl <- topDeclsFrom unit]
-  let publicInterface =
-        ModulePublicInterface
-          { publicItemRefs = concatMap publicItemRefs expandedDecls,
-            publicModuleBindings = concatMap publicModuleBindings expandedDecls
-          }
-  ensureNoDuplicateExportedItems sourcePath (publicItemRefs publicInterface)
-  ensureNoDuplicateExportedModules sourcePath (publicModuleBindings publicInterface)
-  pure publicInterface
+  interfaces <- publicInterfacesForGroup graph (referenceGroupFor graph modulePath)
+  maybe
+    (Left ("Internal error: missing public interface for " ++ Mod.moduleIdDisplay modulePath))
+    Right
+    (Map.lookup modulePath interfaces)
+
+publicInterfacesForGroup :: ModuleGraph -> [Mod.ModuleId] -> Either String (Map Mod.ModuleId ModulePublicInterface)
+publicInterfacesForGroup graph groupModules =
+  go (0 :: Int) initialInterfaces
+  where
+    initialInterfaces =
+      Map.fromList [(moduleId, emptyPublicInterface) | moduleId <- groupModules]
+
+    maxIterations =
+      max 8 (length groupModules * 8)
+
+    go iterations currentInterfaces
+      | iterations > maxIterations =
+          Left $
+            "Module interface fixed point did not stabilize for recursive group:\n  "
+              ++ intercalate ", " (map Mod.moduleIdDisplay groupModules)
+      | otherwise = do
+          nextInterfaces <-
+            Map.fromList <$> mapM (stepInterface currentInterfaces) groupModules
+          if nextInterfaces == currentInterfaces
+            then do
+              validatePublicInterfaces graph groupModules nextInterfaces
+              pure nextInterfaces
+            else go (iterations + 1) nextInterfaces
+
+    stepInterface currentInterfaces moduleId = do
+      unit <- lookupLoadedModule graph moduleId
+      sourcePath <- moduleSourcePath graph moduleId
+      expandedDecls <-
+        mapM
+          (expandExportDeclFixed graph groupModules currentInterfaces moduleId sourcePath unit)
+          [exportDecl | TExportDecl exportDecl <- topDeclsFrom unit]
+      pure
+        ( moduleId,
+          normalizePublicInterface $
+          ModulePublicInterface
+            { publicItemRefs = concatMap publicItemRefs expandedDecls,
+              publicModuleBindings = concatMap publicModuleBindings expandedDecls
+            }
+        )
 
 publicModuleBindingsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [ExportedModuleBinding]
 publicModuleBindingsForModule graph modulePath =
   publicModuleBindings <$> publicModuleInterface graph modulePath
 
-expandExportDecl ::
+validatePublicInterfaces ::
   ModuleGraph ->
+  [Mod.ModuleId] ->
+  Map Mod.ModuleId ModulePublicInterface ->
+  Either String ()
+validatePublicInterfaces graph groupModules interfaces =
+  mapM_ validateModule groupModules
+  where
+    validateModule moduleId = do
+      unit <- lookupLoadedModule graph moduleId
+      sourcePath <- moduleSourcePath graph moduleId
+      ensureNoDuplicateExplicitLocalExports sourcePath unit
+      mapM_
+        (validateExportDecl sourcePath moduleId)
+        [exportDecl | TExportDecl exportDecl <- topDeclsFrom unit]
+      publicInterface <-
+        maybe
+          (Left ("Internal error: missing public interface for " ++ Mod.moduleIdDisplay moduleId))
+          Right
+          (Map.lookup moduleId interfaces)
+      ensureNoDuplicateExportedItems sourcePath (publicItemRefs publicInterface)
+      ensureNoDuplicateExportedModules sourcePath (publicModuleBindings publicInterface)
+
+    validateExportDecl sourcePath moduleId exportDecl =
+      case exportDecl of
+        ExportList specs ->
+          mapM_ (validateExportSpec sourcePath moduleId) specs
+        ExportModule _ ->
+          pure ()
+        ExportModuleAs _ _ ->
+          pure ()
+        ExportItemsFrom path SelectAll ->
+          ensureRemoteModuleVisible moduleId path
+        ExportItemsFrom path (SelectOnly names) -> do
+          targetModule <- lookupModuleReference graph moduleId path
+          availableNames <- interfaceNamesForModule targetModule
+          ensureRemoteExportsExist sourcePath path names availableNames
+
+    validateExportSpec sourcePath moduleId spec =
+      case spec of
+        ExportName itemName -> do
+          unit <- lookupLoadedModule graph moduleId
+          ensureLocalExportExists sourcePath (topDeclsFrom unit) itemName
+        ExportAll ->
+          pure ()
+        ExportModuleAll path ->
+          ensureRemoteModuleVisible moduleId path
+
+    ensureRemoteModuleVisible moduleId path = do
+      _ <- lookupModuleReference graph moduleId path
+      pure ()
+
+    interfaceNamesForModule targetModule
+      | targetModule `elem` groupModules =
+          pure $
+            maybe [] (uniqueNames . map exportedItemName . publicItemRefs) (Map.lookup targetModule interfaces)
+      | otherwise =
+          importableNamesForModule graph targetModule
+
+ensureNoDuplicateExplicitLocalExports :: FilePath -> CompUnit -> Either String ()
+ensureNoDuplicateExplicitLocalExports sourcePath unit =
+  case duplicateNames localExportNames of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Duplicate exported item names:",
+            "  " ++ sourcePath,
+            unlines (map (\n -> "  " ++ show n) xs)
+          ]
+  where
+    localExportNames =
+      concatMap exportDeclLocalNames [exportDecl | TExportDecl exportDecl <- topDeclsFrom unit]
+
+    exportDeclLocalNames (ExportList specs) =
+      concatMap exportSpecLocalNames specs
+    exportDeclLocalNames _ =
+      []
+
+    exportSpecLocalNames (ExportName itemName) =
+      [itemName]
+    exportSpecLocalNames ExportAll =
+      availableExportNames (topDeclsFrom unit)
+    exportSpecLocalNames (ExportModuleAll _) =
+      []
+
+expandExportDeclFixed ::
+  ModuleGraph ->
+  [Mod.ModuleId] ->
+  Map Mod.ModuleId ModulePublicInterface ->
   Mod.ModuleId ->
   FilePath ->
   CompUnit ->
   Export ->
   Either String ModulePublicInterface
-expandExportDecl graph currentModule sourcePath unit (ExportList specs) = do
-  expandedSpecs <- mapM (expandExportSpec graph currentModule sourcePath unit) specs
+expandExportDeclFixed graph groupModules currentInterfaces currentModule sourcePath unit (ExportList specs) = do
+  expandedSpecs <- mapM (expandExportSpecFixed graph groupModules currentInterfaces currentModule sourcePath unit) specs
   pure
     ModulePublicInterface
       { publicItemRefs = concatMap publicItemRefs expandedSpecs,
         publicModuleBindings = concatMap publicModuleBindings expandedSpecs
       }
-expandExportDecl graph currentModule _sourcePath _unit (ExportModule path) = do
+expandExportDeclFixed graph _groupModules _currentInterfaces currentModule _sourcePath _unit (ExportModule path) = do
   targetModule <- lookupModuleReference graph currentModule path
   pure
     emptyPublicInterface
       { publicModuleBindings =
           [ExportedModuleBinding (defaultModuleBindingName path) targetModule]
       }
-expandExportDecl graph currentModule _sourcePath _unit (ExportModuleAs path aliasName) = do
+expandExportDeclFixed graph _groupModules _currentInterfaces currentModule _sourcePath _unit (ExportModuleAs path aliasName) = do
   targetModule <- lookupModuleReference graph currentModule path
   pure
     emptyPublicInterface
       { publicModuleBindings = [ExportedModuleBinding aliasName targetModule]
       }
-expandExportDecl graph currentModule sourcePath _unit (ExportItemsFrom path selector) = do
-  itemRefs <- resolveRemoteExportItems graph currentModule sourcePath path selector
+expandExportDeclFixed graph groupModules currentInterfaces currentModule sourcePath _unit (ExportItemsFrom path selector) = do
+  itemRefs <- resolveRemoteExportItemsFixed graph groupModules currentInterfaces currentModule sourcePath path selector
   pure emptyPublicInterface {publicItemRefs = itemRefs}
 
-expandExportSpec ::
+expandExportSpecFixed ::
   ModuleGraph ->
+  [Mod.ModuleId] ->
+  Map Mod.ModuleId ModulePublicInterface ->
   Mod.ModuleId ->
   FilePath ->
   CompUnit ->
   ExportSpec ->
   Either String ModulePublicInterface
-expandExportSpec _graph _currentModule sourcePath unit (ExportName name) = do
-  ensureLocalExportExists sourcePath (topDeclsFrom unit) name
-  pure emptyPublicInterface {publicItemRefs = [ExportedLocalItem name]}
-expandExportSpec _graph _currentModule _sourcePath unit ExportAll =
+expandExportSpecFixed _graph _groupModules _currentInterfaces _currentModule sourcePath unit (ExportName itemName) = do
+  ensureLocalExportExists sourcePath (topDeclsFrom unit) itemName
+  pure emptyPublicInterface {publicItemRefs = [ExportedLocalItem itemName]}
+expandExportSpecFixed _graph _groupModules _currentInterfaces _currentModule _sourcePath unit ExportAll =
   pure
     emptyPublicInterface
       { publicItemRefs = map ExportedLocalItem (availableExportNames (topDeclsFrom unit))
       }
-expandExportSpec graph currentModule sourcePath _unit (ExportModuleAll path) = do
-  itemRefs <- resolveRemoteExportItems graph currentModule sourcePath path SelectAll
+expandExportSpecFixed graph groupModules currentInterfaces currentModule sourcePath _unit (ExportModuleAll path) = do
+  itemRefs <- resolveRemoteExportItemsFixed graph groupModules currentInterfaces currentModule sourcePath path SelectAll
   pure emptyPublicInterface {publicItemRefs = itemRefs}
 
-resolveRemoteExportItems ::
+resolveRemoteExportItemsFixed ::
   ModuleGraph ->
+  [Mod.ModuleId] ->
+  Map Mod.ModuleId ModulePublicInterface ->
   Mod.ModuleId ->
   FilePath ->
   ModulePath ->
   ItemSelector ->
   Either String [ExportedItemRef]
-resolveRemoteExportItems graph currentModule sourcePath exportPath selector = do
+resolveRemoteExportItemsFixed graph groupModules currentInterfaces currentModule sourcePath exportPath selector = do
   targetModule <- lookupModuleReference graph currentModule exportPath
-  case selector of
-    SelectAll -> do
-      exportedNames <- importableNamesForModule graph targetModule
-      pure [ExportedRemoteItem targetModule name | name <- exportedNames]
-    SelectOnly names -> do
-      availableNames <- importableNamesForModule graph targetModule
-      ensureRemoteExportsExist sourcePath exportPath names availableNames
-      pure [ExportedRemoteItem targetModule name | name <- names]
+  if targetModule `elem` groupModules
+    then resolveWithinGroup targetModule
+    else resolveOutsideGroup targetModule
+  where
+    resolveWithinGroup targetModule =
+      case selector of
+        SelectAll -> do
+          exportedNames <- currentInterfaceNames targetModule
+          pure [ExportedRemoteItem targetModule itemName | itemName <- exportedNames]
+        SelectOnly names ->
+          pure [ExportedRemoteItem targetModule itemName | itemName <- names]
+
+    resolveOutsideGroup targetModule =
+      case selector of
+        SelectAll -> do
+          exportedNames <- importableNamesForModule graph targetModule
+          pure [ExportedRemoteItem targetModule itemName | itemName <- exportedNames]
+        SelectOnly names -> do
+          availableNames <- importableNamesForModule graph targetModule
+          ensureRemoteExportsExist sourcePath exportPath names availableNames
+          pure [ExportedRemoteItem targetModule itemName | itemName <- names]
+
+    currentInterfaceNames targetModule =
+      pure $
+        maybe [] (uniqueNames . map exportedItemName . publicItemRefs) (Map.lookup targetModule currentInterfaces)
 
 availableExportNames :: [TopDecl] -> [Name]
 availableExportNames ds =
@@ -659,7 +929,16 @@ topDeclNames (TExportDecl _) = []
 topDeclNames (TPragmaDecl _) = []
 
 qualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
-qualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
+qualifiedImportDecls =
+  qualifiedImportDeclsWithSurfaces Map.empty
+
+qualifiedImportDeclsWithSurfaces ::
+  Map Mod.ModuleId [TopDecl] ->
+  Set Name ->
+  ModuleGraph ->
+  (Import, Mod.ModuleId) ->
+  Either String [TopDecl]
+qualifiedImportDeclsWithSurfaces compileSurfaces collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly _ _ -> Right []
     ImportModule importPath ->
@@ -671,7 +950,7 @@ qualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
       moduleBindings <- publicModuleBindingsForModule graph targetModule
       nestedDecls <- concat <$> mapM (qualifyNestedModule qualifier) moduleBindings
       publicDecls <- publicTopDeclsForModule graph targetModule
-      allDecls <- importableTopDeclsForCompiledModule graph targetModule
+      allDecls <- compileTargetTopDecls compileSurfaces graph targetModule
       let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
           publicUnit = CompUnit [] publicDecls
           allUnit = CompUnit [] allDecls
@@ -684,6 +963,13 @@ qualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
       qualifyDecls (QualName qualifier (show bindingName)) targetModule
 
 importableTopDeclsForCompiledModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
+importableTopDeclsForCompiledModule graph modulePath
+  | isRecursiveImportGroup graph modulePath = do
+      compileSurfaces <- compileSurfacesForGroup graph (importGroupFor graph modulePath)
+      maybe
+        (Left ("Internal error: missing compile surface for " ++ Mod.moduleIdDisplay modulePath))
+        Right
+        (Map.lookup modulePath compileSurfaces)
 importableTopDeclsForCompiledModule graph modulePath = do
   cunit <- flattenModuleStrictCompileCompUnit graph modulePath
   publicInterface <- publicModuleInterface graph modulePath
@@ -692,9 +978,17 @@ importableTopDeclsForCompiledModule graph modulePath = do
   pure (localDecls ++ shadowImportedDecls localDecls remoteDecls)
 
 compileSupportForRemoteItemGroup :: ModuleGraph -> (Mod.ModuleId, [Name]) -> Either String [TopDecl]
-compileSupportForRemoteItemGroup graph (targetModule, names) = do
+compileSupportForRemoteItemGroup =
+  compileSupportForRemoteItemGroupWithSurfaces Map.empty
+
+compileSupportForRemoteItemGroupWithSurfaces ::
+  Map Mod.ModuleId [TopDecl] ->
+  ModuleGraph ->
+  (Mod.ModuleId, [Name]) ->
+  Either String [TopDecl]
+compileSupportForRemoteItemGroupWithSurfaces compileSurfaces graph (targetModule, names) = do
   publicDecls <- publicTopDeclsForModule graph targetModule
-  allDecls <- importableTopDeclsForCompiledModule graph targetModule
+  allDecls <- compileTargetTopDecls compileSurfaces graph targetModule
   let selectedPublicDecls = mapMaybe (selectTopDecl names) publicDecls
       allFunctionDecls = [fd | TFunDef fd <- allDecls]
       supportNonFunctionDecls = filter (not . isFunctionTopDecl) allDecls
@@ -719,6 +1013,58 @@ compileSupportForRemoteItemGroup graph (targetModule, names) = do
             sigName (funSignature fd) `Set.member` requiredFunctionNames
         ]
   pure (requiredFunctionDecls ++ shadowImportedDecls requiredFunctionDecls supportNonFunctionDecls)
+
+compileTargetTopDecls ::
+  Map Mod.ModuleId [TopDecl] ->
+  ModuleGraph ->
+  Mod.ModuleId ->
+  Either String [TopDecl]
+compileTargetTopDecls compileSurfaces graph targetModule =
+  maybe
+    (importableTopDeclsForCompiledModule graph targetModule)
+    Right
+    (Map.lookup targetModule compileSurfaces)
+
+compileSurfacesForGroup ::
+  ModuleGraph ->
+  [Mod.ModuleId] ->
+  Either String (Map Mod.ModuleId [TopDecl])
+compileSurfacesForGroup graph groupModules =
+  go (0 :: Int) =<< initialSurfaces
+  where
+    maxIterations =
+      max 8 (length groupModules * 12)
+
+    initialSurfaces =
+      Map.fromList
+        <$> mapM
+          ( \moduleId -> do
+              unit <- lookupLoadedModule graph moduleId
+              pure (moduleId, filter isImportableTopDecl (topDeclsFrom unit))
+          )
+          groupModules
+
+    go iterations currentSurfaces
+      | iterations > maxIterations =
+          Left $
+            "Module compile surface fixed point did not stabilize for recursive group:\n  "
+              ++ intercalate ", " (map Mod.moduleIdDisplay groupModules)
+      | otherwise = do
+          nextSurfaces <- Map.fromList <$> mapM (stepSurface currentSurfaces) groupModules
+          if nextSurfaces == currentSurfaces
+            then pure nextSurfaces
+            else go (iterations + 1) nextSurfaces
+
+    stepSurface currentSurfaces moduleId = do
+      (cunit, _) <- flattenModuleStrictCompileCompUnitWithSurfaces currentSurfaces graph moduleId
+      publicInterface <- publicModuleInterface graph moduleId
+      let localDecls = filter isImportableTopDecl (topDeclsFrom cunit)
+      remoteDecls <-
+        concat
+          <$> mapM
+            (compileSupportForRemoteItemGroupWithSurfaces currentSurfaces graph)
+            (groupRemoteItemRefs (publicItemRefs publicInterface))
+      pure (moduleId, localDecls ++ shadowImportedDecls localDecls remoteDecls)
 
 qualifiedImportStubDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 qualifiedImportStubDecls graph (imp, modulePath) =
@@ -785,14 +1131,29 @@ forwardingWrapperBody sig targetName =
 
 qualifiedFunctionDecls :: Map Name Name -> Name -> CompUnit -> CompUnit -> [TopDecl]
 qualifiedFunctionDecls typeRenameMap qualifier publicUnit allUnit =
-  concatMap qualifyImpl allFds ++ concatMap qualifyWrapper exportedFds
+  concatMap qualifyImpl requiredFds ++ concatMap qualifyWrapper exportedFds
   where
     allFds = [fd | TFunDef fd <- topDeclsFrom allUnit]
+    allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFds]
     exportedNames = [sigName (funSignature fd) | TFunDef fd <- topDeclsFrom publicUnit]
     exportedFds =
       [ fd
         | fd <- allFds,
           sigName (funSignature fd) `elem` exportedNames
+      ]
+    depMap =
+      Map.fromList
+        [ ( sigName (funSignature fd),
+            filter (`Set.member` allFunctionNames) (funDefFunctionRefs fd)
+          )
+          | fd <- allFds
+        ]
+    requiredFunctionNames =
+      Set.fromList (functionDependencyClosure depMap exportedNames)
+    requiredFds =
+      [ fd
+        | fd <- allFds,
+          sigName (funSignature fd) `Set.member` requiredFunctionNames
       ]
     renameMap =
       Map.fromList
@@ -1283,7 +1644,16 @@ toValidationImportStub (TExportDecl _) = Nothing
 toValidationImportStub (TPragmaDecl _) = Nothing
 
 strictCompileImportedDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
-strictCompileImportedDecls collidingTypeNames graph (imp, modulePath) =
+strictCompileImportedDecls =
+  strictCompileImportedDeclsWithSurfaces Map.empty
+
+strictCompileImportedDeclsWithSurfaces ::
+  Map Mod.ModuleId [TopDecl] ->
+  Set Name ->
+  ModuleGraph ->
+  (Import, Mod.ModuleId) ->
+  Either String [TopDecl]
+strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly moduleName selector ->
       importOnlyCompileDecls (Mod.modulePathName moduleName) selector
@@ -1294,7 +1664,7 @@ strictCompileImportedDecls collidingTypeNames graph (imp, modulePath) =
   where
     importOnlyCompileDecls moduleName selector = do
       publicDecls <- publicTopDeclsForModule graph modulePath
-      allDecls <- importableTopDeclsForCompiledModule graph modulePath
+      allDecls <- compileTargetTopDecls compileSurfaces graph modulePath
       let allFunctionDecls = [fd | TFunDef fd <- allDecls]
           supportNonFunctionDecls = filter (not . isFunctionTopDecl) allDecls
           allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFunctionDecls]
@@ -1337,7 +1707,7 @@ strictCompileImportedDecls collidingTypeNames graph (imp, modulePath) =
     moduleImportCompileDecls qualifier targetModule = do
       moduleBindings <- publicModuleBindingsForModule graph targetModule
       publicDecls <- publicTopDeclsForModule graph targetModule
-      allDecls <- importableTopDeclsForCompiledModule graph targetModule
+      allDecls <- compileTargetTopDecls compileSurfaces graph targetModule
       let renameMap = importedFunctionRenameMap qualifier allDecls
           typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
           localSupportDecls =
