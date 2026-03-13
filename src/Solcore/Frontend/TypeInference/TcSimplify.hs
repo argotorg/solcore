@@ -139,9 +139,10 @@ tryDischargeByGivens _ _ = Nothing
 
 tryOneGiven :: Pred -> Pred -> Maybe Subst
 tryOneGiven (InCls cn' mainTy' params') (InCls cn mainTy1 params)
-  | cn == cn', mainTy1 == mainTy' =
+  | cn == cn',
+    mainTy1 == mainTy' =
       case mgu params params' of
-        Left _  -> Nothing
+        Left _ -> Nothing
         Right s -> Just s
 tryOneGiven _ _ = Nothing
 
