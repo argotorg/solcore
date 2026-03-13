@@ -380,7 +380,7 @@ flattenModuleStrictCompileCompUnitWithImportedStart ::
 flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
-  importedDecls <- concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
+  importedDecls <- dedupeImportedInstanceDecls . concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = shadowImportedDecls localDecls importedDecls
@@ -710,7 +710,9 @@ compileSupportForRemoteItemGroup graph (targetModule, names) = do
         [ sigName (funSignature fd)
           | TFunDef fd <- selectedPublicDecls
         ]
-      requiredFunctionNames = Set.fromList (functionDependencyClosure depMap selectedFunctionNames)
+      seedFunctionNames =
+        selectedFunctionNames ++ concatMap topDeclFunctionRefs supportNonFunctionDecls
+      requiredFunctionNames = Set.fromList (functionDependencyClosure depMap seedFunctionNames)
       requiredFunctionDecls =
         [ TFunDef fd
           | fd <- allFunctionDecls,
@@ -1313,7 +1315,9 @@ strictCompileImportedDecls collidingTypeNames graph (imp, modulePath) =
             [ sigName (funSignature fd)
               | TFunDef fd <- selectedPublicDecls
             ]
-          requiredFunctionNames = Set.fromList (functionDependencyClosure depMap selectedFunctionNames)
+          seedFunctionNames =
+            selectedFunctionNames ++ concatMap topDeclFunctionRefs supportNonFunctionDecls
+          requiredFunctionNames = Set.fromList (functionDependencyClosure depMap seedFunctionNames)
           requiredFunctionDecls =
             [ TFunDef fd
               | fd <- allFunctionDecls,
@@ -1437,6 +1441,26 @@ funDefFunctionRefs :: FunDef -> [Name]
 funDefFunctionRefs (FunDef _ body) =
   bodyFunctionRefs body
 
+topDeclFunctionRefs :: TopDecl -> [Name]
+topDeclFunctionRefs (TFunDef fd) =
+  funDefFunctionRefs fd
+topDeclFunctionRefs (TInstDef inst) =
+  concatMap funDefFunctionRefs (instFunctions inst)
+topDeclFunctionRefs (TContr (Contract _ _ decls)) =
+  concatMap contractDeclFunctionRefs decls
+topDeclFunctionRefs _ =
+  []
+
+contractDeclFunctionRefs :: ContractDecl -> [Name]
+contractDeclFunctionRefs (CFunDecl fd) =
+  funDefFunctionRefs fd
+contractDeclFunctionRefs (CFieldDecl (Field _ _ me)) =
+  maybe [] expFunctionRefs me
+contractDeclFunctionRefs (CConstrDecl (Constructor _ body)) =
+  bodyFunctionRefs body
+contractDeclFunctionRefs (CDataDecl _) =
+  []
+
 bodyFunctionRefs :: Body -> [Name]
 bodyFunctionRefs =
   concatMap stmtFunctionRefs
@@ -1557,6 +1581,7 @@ shadowImportedDecls :: [TopDecl] -> [TopDecl] -> [TopDecl]
 shadowImportedDecls localDecls =
   reverse . snd . foldl step (initialSeen, [])
   where
+    localClassNames = concatMap topDeclClassNames localDecls
     initialSeen =
       ( concatMap topDeclTermNames localDecls,
         concatMap topDeclTypeNames localDecls,
@@ -1600,6 +1625,7 @@ shadowImportedDecls localDecls =
             Just (TDataDef (DataTy n ts cs))
           )
     filterDecl (termNames, typeNames, classNames, instDecls) d@(TInstDef inst)
+      | instName inst `elem` localClassNames = ((termNames, typeNames, classNames, instDecls), Nothing)
       | inst `elem` instDecls = ((termNames, typeNames, classNames, instDecls), Nothing)
       | otherwise =
           ( (termNames, typeNames, classNames, inst : instDecls),
@@ -1607,6 +1633,19 @@ shadowImportedDecls localDecls =
           )
     filterDecl seen (TExportDecl _) = (seen, Nothing)
     filterDecl seen (TPragmaDecl _) = (seen, Nothing)
+
+dedupeImportedInstanceDecls :: [TopDecl] -> [TopDecl]
+dedupeImportedInstanceDecls =
+  reverse . snd . foldl step ([], [])
+  where
+    step (seenHeads, acc) d@(TInstDef inst)
+      | instanceDeclHeadKey inst `elem` seenHeads = (seenHeads, acc)
+      | otherwise = (instanceDeclHeadKey inst : seenHeads, d : acc)
+    step (seenHeads, acc) d = (seenHeads, d : acc)
+
+instanceDeclHeadKey :: Instance -> (Bool, Name, [Ty], Ty)
+instanceDeclHeadKey inst =
+  (instDefault inst, instName inst, paramsTy inst, mainTy inst)
 
 topDeclTermNames :: TopDecl -> [Name]
 topDeclTermNames (TFunDef (FunDef sig _)) = [sigName sig]
