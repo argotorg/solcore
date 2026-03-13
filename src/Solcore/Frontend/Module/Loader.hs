@@ -686,7 +686,37 @@ qualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
 importableTopDeclsForCompiledModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
 importableTopDeclsForCompiledModule graph modulePath = do
   cunit <- flattenModuleStrictCompileCompUnit graph modulePath
-  pure (filter isImportableTopDecl (topDeclsFrom cunit))
+  publicInterface <- publicModuleInterface graph modulePath
+  let localDecls = filter isImportableTopDecl (topDeclsFrom cunit)
+  remoteDecls <- concat <$> mapM (compileSupportForRemoteItemGroup graph) (groupRemoteItemRefs (publicItemRefs publicInterface))
+  pure (localDecls ++ shadowImportedDecls localDecls remoteDecls)
+
+compileSupportForRemoteItemGroup :: ModuleGraph -> (Mod.ModuleId, [Name]) -> Either String [TopDecl]
+compileSupportForRemoteItemGroup graph (targetModule, names) = do
+  publicDecls <- publicTopDeclsForModule graph targetModule
+  allDecls <- importableTopDeclsForCompiledModule graph targetModule
+  let selectedPublicDecls = mapMaybe (selectTopDecl names) publicDecls
+      allFunctionDecls = [fd | TFunDef fd <- allDecls]
+      supportNonFunctionDecls = filter (not . isFunctionTopDecl) allDecls
+      allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFunctionDecls]
+      depMap =
+        Map.fromList
+          [ ( sigName (funSignature fd),
+              filter (`Set.member` allFunctionNames) (funDefFunctionRefs fd)
+            )
+            | fd <- allFunctionDecls
+          ]
+      selectedFunctionNames =
+        [ sigName (funSignature fd)
+          | TFunDef fd <- selectedPublicDecls
+        ]
+      requiredFunctionNames = Set.fromList (functionDependencyClosure depMap selectedFunctionNames)
+      requiredFunctionDecls =
+        [ TFunDef fd
+          | fd <- allFunctionDecls,
+            sigName (funSignature fd) `Set.member` requiredFunctionNames
+        ]
+  pure (requiredFunctionDecls ++ shadowImportedDecls requiredFunctionDecls supportNonFunctionDecls)
 
 qualifiedImportStubDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 qualifiedImportStubDecls graph (imp, modulePath) =
@@ -1256,15 +1286,18 @@ strictCompileImportedDecls collidingTypeNames graph (imp, modulePath) =
     ImportOnly moduleName selector ->
       importOnlyCompileDecls (Mod.modulePathName moduleName) selector
     ImportModule moduleName ->
-      moduleImportCompileDecls (Mod.modulePathName moduleName)
+      moduleImportCompileDecls (Mod.modulePathName moduleName) modulePath
     ImportAlias _ qualifier ->
-      moduleImportCompileDecls qualifier
+      moduleImportCompileDecls qualifier modulePath
   where
     importOnlyCompileDecls moduleName selector = do
       publicDecls <- publicTopDeclsForModule graph modulePath
       allDecls <- importableTopDeclsForCompiledModule graph modulePath
       let allFunctionDecls = [fd | TFunDef fd <- allDecls]
+          supportNonFunctionDecls = filter (not . isFunctionTopDecl) allDecls
           allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFunctionDecls]
+          renameMap = importedFunctionRenameMap moduleName allDecls
+          typeRenameMap = importedTypeRenameMap collidingTypeNames moduleName publicDecls
           depMap =
             Map.fromList
               [ ( sigName (funSignature fd),
@@ -1276,31 +1309,42 @@ strictCompileImportedDecls collidingTypeNames graph (imp, modulePath) =
             case selector of
               SelectAll -> publicDecls
               SelectOnly names -> mapMaybe (selectTopDecl names) publicDecls
-          selectedNonFunctionDecls = filter (not . isFunctionTopDecl) selectedPublicDecls
           selectedFunctionNames =
             [ sigName (funSignature fd)
               | TFunDef fd <- selectedPublicDecls
             ]
-          seedFunctionNames = selectedFunctionNames
-          requiredFunctionNames = Set.fromList (functionDependencyClosure depMap seedFunctionNames)
+          requiredFunctionNames = Set.fromList (functionDependencyClosure depMap selectedFunctionNames)
           requiredFunctionDecls =
             [ TFunDef fd
               | fd <- allFunctionDecls,
                 sigName (funSignature fd) `Set.member` requiredFunctionNames
             ]
+          renamedSupportNonFunctionDecls =
+            map
+              (renameTopDeclTypeRefs typeRenameMap . renameTopDeclFunctionCalls renameMap)
+              supportNonFunctionDecls
           functionDecls =
             importOnlyFunctionDecls moduleName selectedFunctionNames requiredFunctionDecls
-      pure (functionDecls ++ selectedNonFunctionDecls)
+      pure
+        ( functionDecls
+            ++ shadowImportedDecls functionDecls renamedSupportNonFunctionDecls
+        )
 
-    moduleImportCompileDecls qualifier = do
-      publicDecls <- publicTopDeclsForModule graph modulePath
-      allDecls <- importableTopDeclsForCompiledModule graph modulePath
+    moduleImportCompileDecls qualifier targetModule = do
+      moduleBindings <- publicModuleBindingsForModule graph targetModule
+      publicDecls <- publicTopDeclsForModule graph targetModule
+      allDecls <- importableTopDeclsForCompiledModule graph targetModule
       let renameMap = importedFunctionRenameMap qualifier allDecls
           typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
-      pure $
-        map
-          (renameTopDeclTypeRefs typeRenameMap . renameTopDeclFunctionCalls renameMap)
-          (filter (not . isFunctionTopDecl) publicDecls)
+          localSupportDecls =
+            map
+              (renameTopDeclTypeRefs typeRenameMap . renameTopDeclFunctionCalls renameMap)
+              (filter (not . isFunctionTopDecl) publicDecls)
+      nestedSupportDecls <- concat <$> mapM (nestedModuleImportCompileDecls qualifier) moduleBindings
+      pure (localSupportDecls ++ nestedSupportDecls)
+
+    nestedModuleImportCompileDecls qualifier (ExportedModuleBinding bindingName targetModule) =
+      moduleImportCompileDecls (QualName qualifier (show bindingName)) targetModule
 
 importedFunctionRenameMap :: Name -> [TopDecl] -> Map Name Name
 importedFunctionRenameMap qualifier ds =

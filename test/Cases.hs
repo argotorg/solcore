@@ -140,6 +140,8 @@ imports =
       runImportSuccess "module_qualified_constructor_alias.solc",
       runImportSuccess "type_collision_main.solc",
       runImportSuccess "dot_context_expr.solc",
+      runImportSuccess "reexport_items_main.solc",
+      runImportSuccess "reexport_module_main.solc",
       runImportSuccess "import_std_minimal.solc",
       runImportFailure "pragma_scope_main.solc",
       runImportFailure "selfcycle.solc",
