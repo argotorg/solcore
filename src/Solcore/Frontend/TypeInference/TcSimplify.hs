@@ -29,7 +29,11 @@ reduce qs0 ps0 =
     let qs' = concatMap (bySuperM ctable) qs
         ps' = filter (not . entail ctable itable qs') ps
     info ["> After entailment:", pretty ps', " - ", pretty qs']
-    ps1 <- toHnfs depth ps'
+    -- Before falling through to instance lookup, try to discharge HNF wanteds
+    -- by unifying their weak args against a matching given predicate (same class, same main type).
+    psz <- solveByGivens qs' ps'
+    ps'' <- withCurrentSubst psz
+    ps1 <- toHnfs depth ps''
     ps2 <- withCurrentSubst ps1
     info ["< Reduced by instances constraints:", pretty ps2]
     -- simplify constraints using given constraints
@@ -109,6 +113,37 @@ simplify qs ps =
           do
             info [">>", pretty p', " cannot be entailed by:", pretty (rs `union` ps')]
             simplify' ct it (p' : rs) ps'
+
+-- Discharge HNF wanted predicates using given constraints before resorting to
+-- instance lookup.  For each wanted predicate whose main type is in HNF (i.e. a
+-- Meta or TyVar, not a concrete TyCon), look for a given predicate with the same
+-- class name and the same main type, and unify their weak arguments.  This gives
+-- the correct binding when the annotation context already determines the relationship
+solveByGivens :: [Pred] -> [Pred] -> TcM [Pred]
+solveByGivens _ [] = pure []
+solveByGivens qs (p : ps) = do
+  p' <- withCurrentSubst p
+  case tryDischargeByGivens qs p' of
+    Just s -> do
+      _ <- extSubst s
+      ps' <- withCurrentSubst ps
+      solveByGivens qs ps'
+    Nothing -> do
+      rest <- solveByGivens qs ps
+      pure (p' : rest)
+
+tryDischargeByGivens :: [Pred] -> Pred -> Maybe Subst
+tryDischargeByGivens qs p@(InCls _ _ _)
+  | isHnf p = msum [tryOneGiven q p | q <- qs]
+tryDischargeByGivens _ _ = Nothing
+
+tryOneGiven :: Pred -> Pred -> Maybe Subst
+tryOneGiven (InCls cn' mainTy' params') (InCls cn mainTy1 params)
+  | cn == cn', mainTy1 == mainTy' =
+      case mgu params params' of
+        Left _  -> Nothing
+        Right s -> Just s
+tryOneGiven _ _ = Nothing
 
 -- converting to head normal forms
 

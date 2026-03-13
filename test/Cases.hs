@@ -289,7 +289,8 @@ cases =
       runTestExpectingFailure "field-access.solc" caseFolder,
       runTestForFile "mod-example.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder,
-      runTestForFile "invokable-issue.solc" caseFolder
+      runTestForFile "invokable-issue.solc" caseFolder,
+      runTestForFile "td.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
