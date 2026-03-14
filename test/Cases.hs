@@ -144,8 +144,9 @@ imports =
       runImportSuccess "reexport_module_main.solc",
       runImportSuccess "import_std_minimal.solc",
       runImportFailure "pragma_scope_main.solc",
-      runImportFailure "selfcycle.solc",
-      runImportFailure "cycleA.solc",
+      runImportSuccess "selfcycle.solc",
+      runImportSuccess "cycle_main.solc",
+      runImportSuccess "wild_main.solc",
       runImportFailure "leak_main.solc"
     ]
   where
