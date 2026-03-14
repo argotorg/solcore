@@ -39,7 +39,8 @@ data LoadedModule
 data LoaderConfig
   = LoaderConfig
   { mainRoot :: FilePath,
-    stdRoot :: Maybe FilePath
+    stdRoot :: Maybe FilePath,
+    externalRoots :: Map Name FilePath
   }
 
 data LoadState
@@ -68,10 +69,10 @@ data ModuleGraph
   }
   deriving (Eq, Show)
 
-loadModuleGraph :: [FilePath] -> FilePath -> IO (Either String ModuleGraph)
-loadModuleGraph roots entryFile = runExceptT do
+loadModuleGraph :: [FilePath] -> [(Name, FilePath)] -> FilePath -> IO (Either String ModuleGraph)
+loadModuleGraph roots externalLibs entryFile = runExceptT do
   entryAbsolute <- liftIO $ makeAbsolute entryFile
-  cfg <- liftIO $ mkLoaderConfig roots entryFile
+  cfg <- liftIO $ mkLoaderConfig roots externalLibs entryFile
   entryId <- moduleIdForPath Mod.MainLibrary (mainRoot cfg) entryAbsolute
   st <- execStateT (visit cfg entryId entryAbsolute) emptyLoadState
   let loaded = loadedModules st
@@ -95,11 +96,11 @@ loadModuleGraph roots entryFile = runExceptT do
 -- flattened-declaration behavior for compatibility.
 loadCompUnit :: [FilePath] -> FilePath -> IO (Either String CompUnit)
 loadCompUnit roots entryFile = runExceptT do
-  graph <- ExceptT $ loadModuleGraph roots entryFile
+  graph <- ExceptT $ loadModuleGraph roots [] entryFile
   ExceptT $ pure (flattenModuleValidationCompUnit graph (entryModule graph))
 
-mkLoaderConfig :: [FilePath] -> FilePath -> IO LoaderConfig
-mkLoaderConfig roots entryFile = do
+mkLoaderConfig :: [FilePath] -> [(Name, FilePath)] -> FilePath -> IO LoaderConfig
+mkLoaderConfig roots externalLibs entryFile = do
   let defaultMainRoot = takeDirectory entryFile
       requestedMainRoot = case roots of
         [] -> defaultMainRoot
@@ -111,10 +112,19 @@ mkLoaderConfig roots entryFile = do
           y : _ -> Just y
   mainRoot' <- makeAbsolute requestedMainRoot
   stdRoot' <- traverse makeAbsolute requestedStdRoot
+  externalRoots' <-
+    Map.fromList
+      <$> mapM
+        ( \(libName, libRoot) -> do
+            absRoot <- makeAbsolute libRoot
+            pure (libName, absRoot)
+        )
+        externalLibs
   pure
     LoaderConfig
       { mainRoot = mainRoot',
-        stdRoot = stdRoot'
+        stdRoot = stdRoot',
+        externalRoots = externalRoots'
       }
 
 visit ::
@@ -205,8 +215,12 @@ resolveModuleImportCandidates cfg currentModule path =
         resolvedName = Mod.appendRelativeModulePath (Mod.moduleName currentModule) relName
     LibraryPath absName ->
       pure [resolveWithinLibrary (Mod.moduleLibrary currentModule) absName]
-    ExternalPath libName _ ->
-      Left ("unsupported external library import: @" ++ show libName)
+    ExternalPath libName modName ->
+      case Map.lookup libName (externalRoots cfg) of
+        Just root ->
+          pure [(Mod.ModuleId (Mod.ExternalLibrary libName) modName, toFilePath root modName)]
+        Nothing ->
+          Left ("external library root is not configured: @" ++ show libName)
   where
     resolveWithinLibrary libId modName =
       (Mod.ModuleId libId modName, toFilePath (rootForLibrary cfg libId) modName)
@@ -236,8 +250,11 @@ rootForLibrary :: LoaderConfig -> Mod.LibraryId -> FilePath
 rootForLibrary cfg Mod.MainLibrary = mainRoot cfg
 rootForLibrary cfg Mod.StdLibrary =
   maybe (mainRoot cfg </> "std") id (stdRoot cfg)
-rootForLibrary _ (Mod.ExternalLibrary libName) =
-  error ("external library root is not configured: " ++ show libName)
+rootForLibrary cfg (Mod.ExternalLibrary libName) =
+  case Map.lookup libName (externalRoots cfg) of
+    Just root -> root
+    Nothing ->
+      error ("internal error: external library root is not configured: " ++ show libName)
 
 moduleIdForPath :: Mod.LibraryId -> FilePath -> FilePath -> ExceptT String IO Mod.ModuleId
 moduleIdForPath libId root filePath =
@@ -1710,12 +1727,45 @@ strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph 
       allDecls <- compileTargetTopDecls compileSurfaces graph targetModule
       let renameMap = importedFunctionRenameMap qualifier allDecls
           typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
+          allFunctionDecls = [fd | TFunDef fd <- allDecls]
+          allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFunctionDecls]
+          depMap =
+            Map.fromList
+              [ ( sigName (funSignature fd),
+                  filter (`Set.member` allFunctionNames) (funDefFunctionRefs fd)
+                )
+                | fd <- allFunctionDecls
+              ]
+          publicFunctionNames =
+            [ sigName (funSignature fd)
+              | TFunDef fd <- publicDecls
+            ]
+          supportNonFunctionDecls = filter (not . isFunctionTopDecl) allDecls
+          exportedFunctionNames =
+            Set.fromList (functionDependencyClosure depMap publicFunctionNames)
+          supportFunctionNames =
+            Set.fromList
+              ( functionDependencyClosure
+                  depMap
+                  (concatMap topDeclFunctionRefs supportNonFunctionDecls)
+              )
+          extraSupportFunctions =
+            [ fd
+              | fd <- allFunctionDecls,
+                sigName (funSignature fd) `Set.member` Set.difference supportFunctionNames exportedFunctionNames
+            ]
           localSupportDecls =
             map
               (renameTopDeclTypeRefs typeRenameMap . renameTopDeclFunctionCalls renameMap)
-              (filter (not . isFunctionTopDecl) publicDecls)
+              supportNonFunctionDecls
+          localSupportFunctionDecls =
+            concatMap (qualifySupportImpl renameMap typeRenameMap qualifier) extraSupportFunctions
       nestedSupportDecls <- concat <$> mapM (nestedModuleImportCompileDecls qualifier) moduleBindings
-      pure (localSupportDecls ++ nestedSupportDecls)
+      pure
+        ( localSupportFunctionDecls
+            ++ localSupportDecls
+            ++ shadowImportedDecls (localSupportFunctionDecls ++ localSupportDecls) nestedSupportDecls
+        )
 
     nestedModuleImportCompileDecls qualifier (ExportedModuleBinding bindingName targetModule) =
       moduleImportCompileDecls (QualName qualifier (show bindingName)) targetModule
@@ -1795,6 +1845,15 @@ importOnlyFunctionWrapper qualifier (FunDef sig _body) =
   where
     originalName = sigName sig
     implName = hiddenFunctionName qualifier originalName
+
+qualifySupportImpl :: Map Name Name -> Map Name Name -> Name -> FunDef -> [TopDecl]
+qualifySupportImpl renameMap typeRenameMap qualifier fd
+  | sigName (funSignature fd') == Name "revert" =
+      [TFunDef fd']
+  | otherwise =
+      [TFunDef (qualifyFunctionImpl renameMap qualifier fd')]
+  where
+    fd' = renameFunDefTypeRefs typeRenameMap fd
 
 functionDependencyClosure :: Map Name [Name] -> [Name] -> [Name]
 functionDependencyClosure depMap seeds = reverse (go Set.empty seeds [])

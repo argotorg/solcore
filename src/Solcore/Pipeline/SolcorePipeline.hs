@@ -4,6 +4,7 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (first)
+import Data.Char (isAlpha, isAlphaNum)
 import Data.List.Split (splitOn)
 import Data.Time qualified as Time
 import Language.Hull qualified as Hull
@@ -64,9 +65,10 @@ compile opts = runExceptT $ do
       dir = takeDirectory file
       otherDirs = splitOn ":" (optImportDirs opts)
       dirs = dir : otherDirs
+  externalLibs <- ExceptT $ pure (parseExternalLibSpecs (optExternalLibs opts))
 
   -- Parsing and import loading
-  graph <- ExceptT $ loadModuleGraph dirs file
+  graph <- ExceptT $ loadModuleGraph dirs externalLibs file
 
   -- Validate each module against only its own direct imports.
   forM_ (moduleOrder graph) $ \moduleId -> do
@@ -238,6 +240,33 @@ compile opts = runExceptT $ do
         forM_ hull (putStrLn . pretty)
 
       pure hull
+
+parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
+parseExternalLibSpecs =
+  fmap reverse . foldM step []
+  where
+    step acc spec = do
+      (libName, libPath) <- splitSpec spec
+      when (any ((== libName) . fst) acc) $
+        Left ("Duplicate external library name: " ++ show libName)
+      pure ((libName, libPath) : acc)
+
+    splitSpec spec =
+      case break (== '=') spec of
+        (name, '=' : path)
+          | null name || null path ->
+              Left ("Invalid external library spec: " ++ spec)
+          | not (validLibName name) ->
+              Left ("Invalid external library name: " ++ name)
+          | otherwise ->
+              Right (Name name, path)
+        _ ->
+          Left ("Invalid external library spec: " ++ spec)
+
+    validLibName [] = False
+    validLibName (c : cs) =
+      (isAlpha c || c == '_')
+        && all (\ch -> isAlphaNum ch || ch == '_') cs
 
 -- add declarations generated in the previous step
 -- and moving data types inside contracts to the

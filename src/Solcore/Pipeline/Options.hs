@@ -6,6 +6,7 @@ data Option
   = Option
   { fileName :: !FilePath,
     optImportDirs :: !String,
+    optExternalLibs :: ![String],
     optNoSpec :: !Bool,
     optNoDesugarCalls :: !Bool,
     optNoMatchCompiler :: !Bool,
@@ -33,6 +34,7 @@ emptyOption path =
   Option
     { fileName = path,
       optImportDirs = "std",
+      optExternalLibs = [],
       optNoSpec = False,
       optNoDesugarCalls = False,
       optNoMatchCompiler = False,
@@ -82,6 +84,13 @@ options =
           <> metavar "dirs"
           <> value (optImportDirs stdOpt)
           <> help "This flag appends a colon-separated list of dirs to the search path."
+      )
+    <*> many
+      ( strOption
+          ( long "lib"
+              <> metavar "NAME=DIR"
+              <> help "Register an external library root for @NAME imports."
+          )
       )
     <*> switch
       ( long "no-specialise"
