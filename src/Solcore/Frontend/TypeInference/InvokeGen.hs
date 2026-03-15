@@ -95,10 +95,6 @@ freshPatArg ty@(TyCon pn _) =
       _ -> do
         n <- freshName
         pure (PVar n, Var n)
-freshPatArg (TyVar _) =
-  do
-    n <- freshName
-    pure (PVar n, Var n)
 freshPatArg _ =
   do
     n <- freshName
