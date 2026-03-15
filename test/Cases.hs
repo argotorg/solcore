@@ -142,7 +142,9 @@ imports =
       runImportSuccess "dot_context_expr.solc",
       runImportSuccess "reexport_items_main.solc",
       runImportSuccess "reexport_module_main.solc",
+      runImportSuccess "external_lib_main.solc",
       runImportSuccess "import_std_minimal.solc",
+      runImportFailure "external_lib_missing_fail.solc",
       runImportFailure "pragma_scope_main.solc",
       runImportSuccess "selfcycle.solc",
       runImportSuccess "cycle_main.solc",
@@ -151,7 +153,11 @@ imports =
     ]
   where
     importFolder = "./test/imports"
-    importOpt = stdOpt {optNoGenDispatch = True}
+    importOpt =
+      stdOpt
+        { optNoGenDispatch = True,
+          optExternalLibs = ["extlib=./test/imports/extlib"]
+        }
     runImportSuccess file = runTestForFileWith importOpt file importFolder
     runImportFailure file = runTestExpectingFailureWith importOpt file importFolder
 
