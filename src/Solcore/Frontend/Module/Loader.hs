@@ -63,9 +63,7 @@ data ModuleGraph
     referenceDependencies :: Map Mod.ModuleId [Mod.ModuleId],
     importGroups :: Map Mod.ModuleId [Mod.ModuleId],
     referenceGroups :: Map Mod.ModuleId [Mod.ModuleId],
-    moduleOrder :: [Mod.ModuleId],
-    graphMainRoot :: FilePath,
-    graphStdRoot :: Maybe FilePath
+    moduleOrder :: [Mod.ModuleId]
   }
   deriving (Eq, Show)
 
@@ -86,9 +84,7 @@ loadModuleGraph roots externalLibs entryFile = runExceptT do
           referenceDependencies = refDeps,
           importGroups = buildGroupMap loaded importDeps,
           referenceGroups = buildGroupMap loaded refDeps,
-          moduleOrder = reverse (loadOrder st),
-          graphMainRoot = mainRoot cfg,
-          graphStdRoot = stdRoot cfg
+          moduleOrder = reverse (loadOrder st)
         }
     )
 
@@ -191,9 +187,6 @@ resolveModuleReference cfg currentModule refKind modulePath = do
           ++ Mod.modulePathDisplay modulePath
           ++ ": file not found"
 
-importModuleName :: Import -> Name
-importModuleName = Mod.modulePathName . importModule
-
 toFilePath :: FilePath -> Name -> FilePath
 toFilePath base = (base </>) . Mod.moduleFilePath
 
@@ -283,15 +276,6 @@ makeRelativeToRoot root filePath
 topDeclsFrom :: CompUnit -> [TopDecl]
 topDeclsFrom (CompUnit _ ds) = ds
 
-cycleError :: Mod.ModuleId -> [Mod.ModuleId] -> String
-cycleError path stack =
-  let prefix = takeWhile (/= path) stack
-      cycleChain = path : reverse prefix ++ [path]
-   in unlines
-        [ "Import cycle detected:",
-          "  " ++ foldr1 (\a b -> a ++ " -> " ++ b) (map Mod.moduleIdDisplay cycleChain)
-        ]
-
 lookupLoadedModule :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
 lookupLoadedModule graph modulePath =
   maybe
@@ -378,10 +362,6 @@ importGroupFor graph modulePath =
 referenceGroupFor :: ModuleGraph -> Mod.ModuleId -> [Mod.ModuleId]
 referenceGroupFor graph modulePath =
   Map.findWithDefault [modulePath] modulePath (referenceGroups graph)
-
-isSameImportGroup :: ModuleGraph -> Mod.ModuleId -> Mod.ModuleId -> Bool
-isSameImportGroup graph lhs rhs =
-  rhs `elem` importGroupFor graph lhs
 
 isRecursiveImportGroup :: ModuleGraph -> Mod.ModuleId -> Bool
 isRecursiveImportGroup graph modulePath =
