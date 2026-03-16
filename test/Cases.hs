@@ -190,6 +190,7 @@ cases =
       runTestExpectingFailure "bound-only-test.solc" caseFolder,
       runTestForFile "bound-merge-case.solc" caseFolder,
       runTestForFile "bound-with-pragma.solc" caseFolder,
+      runTestExpectingFailure "class-type-name-collision.solc" caseFolder,
       runTestForFile "class-context.solc" caseFolder,
       runTestForFile "closure.solc" caseFolder,
       runTestForFile "closure-capture-only.solc" caseFolder,

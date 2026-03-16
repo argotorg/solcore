@@ -52,7 +52,6 @@ validateDuplicateNamespacesInCompUnit (S.CompUnit _ ds) =
 validateDuplicateNamespaces :: [S.TopDecl] -> Either String ()
 validateDuplicateNamespaces ds = do
   ensureNoDuplicateNames "type namespace" (topLevelTypeNames ds)
-  ensureNoDuplicateNames "class namespace" (topLevelClassNames ds)
   ensureNoDuplicateNames "term namespace" (topLevelTermNames ds)
   mapM_ validateContractDuplicates [c | S.TContr c <- ds]
 
@@ -70,11 +69,6 @@ topLevelTypeNames = concatMap collect
     collect (S.TContr (S.Contract n _ _)) = [n]
     collect (S.TDataDef (S.DataTy n _ _)) = [n]
     collect (S.TSym (S.TySym n _ _)) = [n]
-    collect _ = []
-
-topLevelClassNames :: [S.TopDecl] -> [Name]
-topLevelClassNames = concatMap collect
-  where
     collect (S.TClassDef (S.Class _ _ n _ _ _)) = [n]
     collect _ = []
 
