@@ -128,8 +128,9 @@ nonPhantomVarNames :: Map.Map Name (Set Int) -> Ty -> [Name]
 nonPhantomVarNames m (TyCon n args) =
   let phantomIdxs = Map.findWithDefault Set.empty n m
    in concatMap
-        (\(i, arg) ->
-          if Set.member i phantomIdxs then [] else nonPhantomVarNames m arg)
+        ( \(i, arg) ->
+            if Set.member i phantomIdxs then [] else nonPhantomVarNames m arg
+        )
         (zip [0 ..] args)
 nonPhantomVarNames _ (TyVar v) = [tyvarName v]
 nonPhantomVarNames _ _ = []
