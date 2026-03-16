@@ -122,13 +122,38 @@ tyVarNames (TyVar tv) = [tyvarName tv]
 tyVarNames (TyCon _ ts) = concatMap tyVarNames ts
 tyVarNames _ = []
 
+-- Collect type variable names that appear in non-phantom argument positions.
+-- Phantom positions (indices in the map for the head type constructor) are skipped.
+nonPhantomVarNames :: Map.Map Name (Set Int) -> Ty -> [Name]
+nonPhantomVarNames m (TyCon n args) =
+  let phantomIdxs = Map.findWithDefault Set.empty n m
+   in concatMap
+        (\(i, arg) ->
+          if Set.member i phantomIdxs then [] else nonPhantomVarNames m arg)
+        (zip [0 ..] args)
+nonPhantomVarNames _ (TyVar v) = [tyvarName v]
+nonPhantomVarNames _ _ = []
+
+-- Build the phantom-parameter map using fixpoint iteration so that
+-- transitively-phantom positions are discovered.  A parameter at index i of
+-- type T is phantom when it never appears in a non-phantom position across all
+-- constructor field types (using the current map to decide what counts as
+-- non-phantom).  Starting from the empty map and iterating monotonically to a
+-- fixpoint ensures that every position that can be proved phantom eventually is.
 buildPhantomMap :: [DataTy] -> Map.Map Name (Set Int)
-buildPhantomMap = Map.fromList . map phantomEntry
+buildPhantomMap dts = fixpoint initial
   where
-    phantomEntry (DataTy n params ctors) =
+    initial = Map.fromList [(dataName dt, Set.empty) | dt <- dts]
+
+    fixpoint m =
+      let m' = Map.fromList (map (refineEntry m) dts)
+       in if m == m' then m else fixpoint m'
+
+    refineEntry m (DataTy n params ctors) =
       let allFieldTys = concatMap constrTy ctors
-          usedVarNames = concatMap tyVarNames allFieldTys
-          isPhantomParam p = tyvarName p `notElem` usedVarNames
+          isPhantomParam p =
+            let pName = tyvarName p
+             in all (\ty -> pName `notElem` nonPhantomVarNames m ty) allFieldTys
           phantomIdxs = Set.fromList [i | (i, p) <- zip [0 ..] params, isPhantomParam p]
        in (n, phantomIdxs)
 
