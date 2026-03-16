@@ -12,7 +12,7 @@ contract Counter {
 */
 
 data counter_sel = counter_sel;
-instance StructField(ContractStorage(()), counter_sel):StructField(word, ()) {}
+instance StructField(ContractStorage(()), counter_sel):CStructField(word, ()) {}
 
 contract Counter {
    function main () -> word {

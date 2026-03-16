@@ -141,7 +141,7 @@ instance uint256:StorageType {
 // -- structure fields (including contract fields)
 
  forall self fieldType offsetType.
-class self:StructField(fieldType, offsetType) {}
+class self:CStructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 
 
@@ -160,7 +160,7 @@ function memberAccessBase(x:MemberAccessProxy(a, field, offset)) -> a {
 // ------------------------------------------------------------------
 
 forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  . StructField(ContractStorage(cxt), fieldSelector):CStructField(fieldType, offsetType)
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):LVA(storage(fieldType)) {
     function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> storage(fieldType) {
@@ -170,7 +170,7 @@ forall cxt fieldSelector fieldType offsetType
 }
 
 forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  . StructField(ContractStorage(cxt), fieldSelector):CStructField(fieldType, offsetType)
   , fieldType:StorageType
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):RVA(fieldType) {
@@ -182,7 +182,7 @@ forall cxt fieldSelector fieldType offsetType
 
 
 forall structType fieldSelector fieldType offsetType
-  . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
+  . StructField(structType, fieldSelector):CStructField(fieldType, offsetType)
   , offsetType:StorageSize
   => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType):LVA(storage(fieldType)) {
     function acc(x:MemberAccessProxy(storage(structType), fieldSelector, offsetType)) -> storage(fieldType) {
@@ -197,7 +197,7 @@ forall structType fieldSelector fieldType offsetType
 
 
 forall structType fieldSelector fieldType offsetType
-  . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
+  . StructField(structType, fieldSelector):CStructField(fieldType, offsetType)
   , offsetType:StorageSize
   , fieldType:StorageType
   => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType):RVA(fieldType) {

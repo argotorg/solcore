@@ -81,14 +81,14 @@ extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, 
     selName = selectorNameForField cname fname
     selDecl = TDataDef $ DataTy selName [] [Constr selName []]
     selType = TyCon selName []
-    -- instance StructField(ContractStorage(CCtx), fld1_sel):StructField(uint, ()) {}
+    -- instance StructField(ContractStorage(CCtx), fld1_sel):CStructField(uint, ()) {}
     ctxTy = TyCon "ContractStorage" [singletonTypeForContract cname]
     sfInstance =
       Instance
         { instDefault = False,
           instVars = [],
           instContext = [],
-          instName = "StructField",
+          instName = "CStructField",
           paramsTy = [translateFieldType fty, offset],
           mainTy = TyCon "StructField" [ctxTy, selType],
           instFunctions = []

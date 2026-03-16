@@ -250,7 +250,7 @@ forall a . a : StorageType => instance storageRef(a) : Assign (a) {
       StorageType.store(Typedef.rep(l), y);
    }
 }
-forall self fieldType offsetType . class  self : StructField (fieldType, offsetType) {
+forall self fieldType offsetType . class  self :CStructField(fieldType, offsetType) {
 }
 data StructField (structType, fieldSelector) = StructField(structType) ;
 data MemberAccessProxy (a, field, offset) = MemberAccessProxy(a, field) ;
@@ -266,7 +266,7 @@ forall self memberRefType . class  self : LValueMemberAccess (memberRefType) {
 forall self memberValueType . class  self : RValueMemberAccess (memberValueType) {
    function memberAccess (x : self) -> memberValueType;
 }
-forall structType fieldSelector fieldType offsetType . StructField(structType, fieldSelector) : StructField (fieldType, offsetType), offsetType : StorageSize => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType) : LValueMemberAccess (storageRef(fieldType)) {
+forall structType fieldSelector fieldType offsetType . StructField(structType, fieldSelector) :CStructField(fieldType, offsetType), offsetType : StorageSize => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType) : LValueMemberAccess (storageRef(fieldType)) {
    function memberAccess (x : MemberAccessProxy(storage(structType), fieldSelector, offsetType)) -> storageRef(fieldType) {
       let ptr : word = Typedef.rep(memberAccessD1(x)) ;
       let size : word = StorageSize.size(Proxy : Proxy(offsetType)) ;
@@ -304,7 +304,7 @@ forall a b . a : StorageSize, b : StorageSize => instance (a, b) : StorageSize {
       return a_sz;
    }
 }
-forall cxt fieldSelector fieldType offsetType . StructField(ContractStorage(cxt), fieldSelector) : StructField (fieldType, offsetType), offsetType : StorageSize => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType) : LValueMemberAccess (storageRef(fieldType)) {
+forall cxt fieldSelector fieldType offsetType . StructField(ContractStorage(cxt), fieldSelector) :CStructField(fieldType, offsetType), offsetType : StorageSize => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType) : LValueMemberAccess (storageRef(fieldType)) {
    function memberAccess (x : MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> storageRef(fieldType) {
       let ptr : word = 256 ;
       let offsetSize : word = StorageSize.size(Proxy : Proxy(offsetType)) ;
@@ -313,7 +313,7 @@ forall cxt fieldSelector fieldType offsetType . StructField(ContractStorage(cxt)
       return storageRef(ptr);
    }
 }
-forall cxt fieldSelector fieldType offsetType . StructField(ContractStorage(cxt), fieldSelector) : StructField (fieldType, offsetType), fieldType : StorageType, offsetType : StorageSize => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType) : RValueMemberAccess (fieldType) {
+forall cxt fieldSelector fieldType offsetType . StructField(ContractStorage(cxt), fieldSelector) :CStructField(fieldType, offsetType), fieldType : StorageType, offsetType : StorageSize => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType) : RValueMemberAccess (fieldType) {
    function memberAccess (x : MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> fieldType {
       let ptr : word = 256 ;
       let offsetSize : word = StorageSize.size(Proxy : Proxy(offsetType)) ;
@@ -387,22 +387,22 @@ function nop () -> () {
 }
 data UintCxt = UintCxt  ;
 data reserved_sel = reserved_sel  ;
-instance StructField(ContractStorage(UintCxt), reserved_sel) : StructField (word, ()) {
+instance StructField(ContractStorage(UintCxt), reserved_sel) :CStructField(word, ()) {
 }
 data msg_sender_sel = msg_sender_sel  ;
-instance StructField(ContractStorage(UintCxt), msg_sender_sel) : StructField (address, (word, ())) {
+instance StructField(ContractStorage(UintCxt), msg_sender_sel) :CStructField(address, (word, ())) {
 }
 data owner_sel = owner_sel  ;
-instance StructField(ContractStorage(UintCxt), owner_sel) : StructField (address, (word, (address, ()))) {
+instance StructField(ContractStorage(UintCxt), owner_sel) :CStructField(address, (word, (address, ()))) {
 }
 data decimals_sel = decimals_sel  ;
-instance StructField(ContractStorage(UintCxt), decimals_sel) : StructField (uint, (word, (address, (address, ())))) {
+instance StructField(ContractStorage(UintCxt), decimals_sel) :CStructField(uint, (word, (address, (address, ())))) {
 }
 data totalSupply_sel = totalSupply_sel  ;
-instance StructField(ContractStorage(UintCxt), totalSupply_sel) : StructField (uint, (word, (address, (address, (uint, ()))))) {
+instance StructField(ContractStorage(UintCxt), totalSupply_sel) :CStructField(uint, (word, (address, (address, (uint, ()))))) {
 }
 data balances_sel = balances_sel  ;
-instance StructField(ContractStorage(UintCxt), balances_sel) : StructField (mapping(address, uint), (word, (address, (address, (uint, (uint, ())))))) {
+instance StructField(ContractStorage(UintCxt), balances_sel) :CStructField(mapping(address, uint), (word, (address, (address, (uint, (uint, ())))))) {
 }
 contract Uint {
    function mint (amount : uint) {
