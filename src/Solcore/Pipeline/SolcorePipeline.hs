@@ -5,7 +5,6 @@ import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (first)
 import Data.Char (isAlpha, isAlphaNum)
-import Data.List.Split (splitOn)
 import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
@@ -62,13 +61,12 @@ compile opts = runExceptT $ do
       timeItNamed :: String -> IO a -> IO a
       timeItNamed = optTimeItNamed opts
       file = fileName opts
-      dir = takeDirectory file
-      otherDirs = splitOn ":" (optImportDirs opts)
-      dirs = dir : otherDirs
+      mainRoot = takeDirectory file
+  stdRoot <- ExceptT $ pure (parseStdRoot (optImportDirs opts))
   externalLibs <- ExceptT $ pure (parseExternalLibSpecs (optExternalLibs opts))
 
   -- Parsing and import loading
-  graph <- ExceptT $ loadModuleGraph dirs externalLibs file
+  graph <- ExceptT $ loadModuleGraph mainRoot stdRoot externalLibs file
 
   -- Validate each module against only its own direct imports.
   forM_ (moduleOrder graph) $ \moduleId -> do
@@ -267,6 +265,20 @@ parseExternalLibSpecs =
     validLibName (c : cs) =
       (isAlpha c || c == '_')
         && all (\ch -> isAlphaNum ch || ch == '_') cs
+
+parseStdRoot :: String -> Either String (Maybe FilePath)
+parseStdRoot spec =
+  case filter (not . null) (splitColon spec) of
+    [] -> Right Nothing
+    [root] -> Right (Just root)
+    _ ->
+      Left "Multiple --include roots are no longer supported; use --lib for external libraries."
+  where
+    splitColon [] = []
+    splitColon s =
+      case break (== ':') s of
+        (chunk, ':' : rest) -> chunk : splitColon rest
+        (chunk, _) -> [chunk]
 
 -- add declarations generated in the previous step
 -- and moving data types inside contracts to the

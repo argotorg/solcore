@@ -81,9 +81,9 @@ options =
     <*> strOption
       ( long "include"
           <> short 'i'
-          <> metavar "dirs"
+          <> metavar "DIR"
           <> value (optImportDirs stdOpt)
-          <> help "This flag appends a colon-separated list of dirs to the search path."
+          <> help "Set the std library root."
       )
     <*> many
       ( strOption

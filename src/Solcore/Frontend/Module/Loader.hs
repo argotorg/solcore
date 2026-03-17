@@ -67,10 +67,10 @@ data ModuleGraph
   }
   deriving (Eq, Show)
 
-loadModuleGraph :: [FilePath] -> [(Name, FilePath)] -> FilePath -> IO (Either String ModuleGraph)
-loadModuleGraph roots externalLibs entryFile = runExceptT do
+loadModuleGraph :: FilePath -> Maybe FilePath -> [(Name, FilePath)] -> FilePath -> IO (Either String ModuleGraph)
+loadModuleGraph mainRootPath stdRootPath externalLibs entryFile = runExceptT do
   entryAbsolute <- liftIO $ makeAbsolute entryFile
-  cfg <- liftIO $ mkLoaderConfig roots externalLibs entryFile
+  cfg <- liftIO $ mkLoaderConfig mainRootPath stdRootPath externalLibs entryFile
   entryId <- moduleIdForPath Mod.MainLibrary (mainRoot cfg) entryAbsolute
   st <- execStateT (visit cfg entryId entryAbsolute) emptyLoadState
   let loaded = loadedModules st
@@ -92,22 +92,20 @@ loadModuleGraph roots externalLibs entryFile = runExceptT do
 -- flattened-declaration behavior for compatibility.
 loadCompUnit :: [FilePath] -> FilePath -> IO (Either String CompUnit)
 loadCompUnit roots entryFile = runExceptT do
-  graph <- ExceptT $ loadModuleGraph roots [] entryFile
-  ExceptT $ pure (flattenModuleValidationCompUnit graph (entryModule graph))
-
-mkLoaderConfig :: [FilePath] -> [(Name, FilePath)] -> FilePath -> IO LoaderConfig
-mkLoaderConfig roots externalLibs entryFile = do
   let defaultMainRoot = takeDirectory entryFile
-      requestedMainRoot = case roots of
+      mainRootPath = case roots of
         [] -> defaultMainRoot
         x : _ -> x
-      requestedStdRoot = case roots of
-        [] -> Nothing
-        _ : xs -> case xs of
-          [] -> Nothing
-          y : _ -> Just y
-  mainRoot' <- makeAbsolute requestedMainRoot
-  stdRoot' <- traverse makeAbsolute requestedStdRoot
+      stdRootPath = case roots of
+        _ : y : _ -> Just y
+        _ -> Nothing
+  graph <- ExceptT $ loadModuleGraph mainRootPath stdRootPath [] entryFile
+  ExceptT $ pure (flattenModuleValidationCompUnit graph (entryModule graph))
+
+mkLoaderConfig :: FilePath -> Maybe FilePath -> [(Name, FilePath)] -> FilePath -> IO LoaderConfig
+mkLoaderConfig mainRootPath stdRootPath externalLibs _entryFile = do
+  mainRoot' <- makeAbsolute mainRootPath
+  stdRoot' <- traverse makeAbsolute stdRootPath
   externalRoots' <-
     Map.fromList
       <$> mapM
@@ -200,9 +198,9 @@ resolveModuleImportCandidates cfg currentModule path =
     RelativePath relName
       | isStdSpecial relName,
         Just root <- stdRoot cfg ->
-          pure [(Mod.ModuleId Mod.StdLibrary relName, toFilePath root relName)]
+          pure [resolveStdModule root relName]
       | otherwise ->
-          pure (resolveRelativeCandidates currentLibrary resolvedName relName)
+          pure [resolveWithinLibrary currentLibrary resolvedName]
       where
         currentLibrary = Mod.moduleLibrary currentModule
         resolvedName = Mod.appendRelativeModulePath (Mod.moduleName currentModule) relName
@@ -217,16 +215,9 @@ resolveModuleImportCandidates cfg currentModule path =
   where
     resolveWithinLibrary libId modName =
       (Mod.ModuleId libId modName, toFilePath (rootForLibrary cfg libId) modName)
-
-    resolveRelativeCandidates libId resolvedName relName =
-      case stdRoot cfg of
-        Just root
-          | libId == Mod.MainLibrary ->
-              [ resolveWithinLibrary libId resolvedName,
-                (Mod.ModuleId Mod.StdLibrary relName, toFilePath root relName)
-              ]
-        _ ->
-          [resolveWithinLibrary libId resolvedName]
+    resolveStdModule root modName =
+      let stdName = normalizeStdModuleName modName
+       in (Mod.ModuleId Mod.StdLibrary stdName, toFilePath root stdName)
 
 firstExisting :: [(Mod.ModuleId, FilePath)] -> IO (Maybe (Mod.ModuleId, FilePath))
 firstExisting [] = pure Nothing
@@ -238,6 +229,13 @@ isStdSpecial :: Name -> Bool
 isStdSpecial (Name "std") = True
 isStdSpecial (QualName (Name "std") _) = True
 isStdSpecial _ = False
+
+normalizeStdModuleName :: Name -> Name
+normalizeStdModuleName (Name "std") = Name "std"
+normalizeStdModuleName (QualName (Name "std") suffix) = Name suffix
+normalizeStdModuleName (QualName prefix suffix) =
+  QualName (normalizeStdModuleName prefix) suffix
+normalizeStdModuleName name = name
 
 rootForLibrary :: LoaderConfig -> Mod.LibraryId -> FilePath
 rootForLibrary cfg Mod.MainLibrary = mainRoot cfg
