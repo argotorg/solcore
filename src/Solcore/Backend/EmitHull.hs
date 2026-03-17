@@ -3,8 +3,10 @@ module Solcore.Backend.EmitHull (emitHull) where
 import Common.Monad
 import Control.Monad (when)
 import Control.Monad.State
+import Data.Generics (Data, everything, mkQ)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.Set qualified as Set
 import GHC.Stack (HasCallStack)
 import Language.Hull qualified as Hull
 import Solcore.Backend.Mast
@@ -297,7 +299,13 @@ emitStmt (MastLet (MastId name ty) _mty mexp) = do
       return (estmts ++ alloc ++ assign)
     Nothing -> return alloc
 emitStmt (MastMatch scrutinee alts) = emitMatch scrutinee alts
-emitStmt (MastAsm ys) = pure [Hull.SAssembly ys]
+emitStmt (MastAsm as) = do
+  -- unroll the vsubst to a series of assignments and insert them before the assembly block
+  -- an alternative might be to painstakingly rename all vars in the the assembly block
+  subst <- gets ecSubst
+  let yvars = getNames as
+  let unrolled = [Hull.SAssign (Hull.EVar (show v)) e | (v, e) <- Map.toList subst, Set.member v yvars]
+  pure $ unrolled ++ [Hull.SAssembly as]
 
 emitStmts :: [MastStmt] -> EM [Hull.Stmt]
 emitStmts = concatMapM emitStmt'
@@ -447,6 +455,7 @@ emitProdMatch _ [] = errorsEM ["emitProdMatch: no alternatives"]
 translateSingleMastAlt :: Hull.Expr -> MastAlt -> EM [Hull.Stmt]
 translateSingleMastAlt expr (MastPCon _con patargs, stmts) = withLocalState do
   let pvars = translateMastPatArgs expr patargs
+  debug ["! translateSingleMastAlt: pvars = ", show pvars]
   extendVSubst pvars
   emitStmts stmts
 translateSingleMastAlt _ (pat, _) =
@@ -479,3 +488,11 @@ debug msg = do
 
 concatMapM :: (Monad f) => (a -> f [b]) -> [a] -> f [b]
 concatMapM f xs = concat <$> mapM f xs
+
+-- getNames is a conservative overapproximation
+-- some vars may not be actually free
+getNames :: (Data d) => d -> Set.Set Name
+getNames code = everything Set.union (mkQ Set.empty step) code
+  where
+    step :: Name -> Set.Set Name
+    step name = Set.singleton name

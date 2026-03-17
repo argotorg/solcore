@@ -292,7 +292,9 @@ cases =
       runTestForFile "mod-example.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder,
       runTestForFile "fresh-pat-arg.solc" caseFolder,
-      runTestForFile "fresh-pat-arg-synonym.solc" caseFolder
+      runTestForFile "fresh-pat-arg-synonym.solc" caseFolder,
+      runTestExpectingFailure "weird-error-foo.solc" caseFolder,
+      runTestForFile "strange-unbound.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
