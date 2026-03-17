@@ -528,7 +528,7 @@ argumentAnnotation :: Param Name -> TcM Ty
 argumentAnnotation (Untyped _) =
   freshTyVar
 argumentAnnotation (Typed _ t) =
-  pure t
+  maybeExpandSynonym t
 
 checkAllTypeVarsBound :: (Pretty a) => a -> [Tyvar] -> [Tyvar] -> TcM ()
 checkAllTypeVarsBound context used declared =
@@ -539,7 +539,7 @@ annotatedScheme :: [Tyvar] -> [Pred] -> Signature Name -> TcM Scheme
 annotatedScheme vs' qs (Signature vs ps _ args rt) =
   do
     ts <- mapM argumentAnnotation args
-    t <- maybe freshTyVar pure rt
+    t <- maybe freshTyVar maybeExpandSynonym rt
     let vs1 = vs ++ vs' ++ fv qs
     pure (Forall vs1 ((qs ++ ps) :=> (funtype ts t)))
 
