@@ -289,10 +289,15 @@ cases =
       runTestExpectingFailure "field-access.solc" caseFolder,
       runTestForFile "mod-example.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder,
+<<<<<<< named-instances
       runTestForFile "named-inst-basic.solc" caseFolder,
       runTestForFile "named-inst-two-instances.solc" caseFolder,
       runTestExpectingFailure "named-inst-unknown-label.solc" caseFolder,
       runTestExpectingFailure "named-inst-dup-label.solc" caseFolder
+=======
+      runTestExpectingFailure "weird-error-foo.solc" caseFolder,
+      runTestForFile "strange-unbound.solc" caseFolder
+>>>>>>> main
     ]
   where
     caseFolder = "./test/examples/cases"
