@@ -353,7 +353,8 @@ tcField d@(Field n t _) =
 tcClass :: Class Name -> TcM (Class Id)
 tcClass iclass@(Class bvs classCtx n vs v sigs) =
   do
-    let bvs' = bv classCtx `union` bv (map TyVar (v : vs)) `union` bv sigs
+    let freeInSig (Signature sv _ _ ps mt) = bv (ps, mt) \\ sv
+        bvs' = bv classCtx `union` bv (map TyVar (v : vs)) `union` concatMap freeInSig sigs
         ns = map sigName sigs
         qs = map (QualName n . pretty) ns
     when (any (`notElem` bvs) bvs') $ do
@@ -453,7 +454,7 @@ checkClass icls@(Class bvs ps n vs v sigs) =
       do
         _ <- mapM tyParam params
         _ <- maybe (pure unit) pure mt
-        checkAllTypeVarsBound sig (v : methodVars) bvs
+        checkAllTypeVarsBound sig (bv sig) (bvs ++ methodVars)
         addClassMethod p sig `wrapError` icls
 
 addClassInfo :: Name -> Arity -> [Method] -> [Pred] -> Pred -> TcM ()

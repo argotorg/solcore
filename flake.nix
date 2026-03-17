@@ -141,10 +141,13 @@
             pkgs.go-ethereum
             pkgs.jq
             pkgs.solc
+            evmone-lib
             (hspkgs.hevm.overrideAttrs (old: { patches = []; }))
             texlive
             (pkgs.callPackage ./nix/goevmlab.nix { src = inputs.goevmlab; })
+            pkgs.mdbook
           ];
+          evmone="${evmone-lib}/lib/libevmone.so";
         };
       }
     );
