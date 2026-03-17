@@ -592,6 +592,13 @@ addDefaultInstance n inst =
           st {defaultEnv = Map.insert n inst (defaultEnv st)}
       )
 
+addNamedInstance :: Name -> Instance Name -> TcM ()
+addNamedInstance label inst =
+  modify (\st -> st {namedInstEnv = Map.insert label inst (namedInstEnv st)})
+
+askNamedInstance :: Name -> TcM (Maybe (Instance Name))
+askNamedInstance label = Map.lookup label <$> gets namedInstEnv
+
 maybeToTcM :: String -> Maybe a -> TcM a
 maybeToTcM s Nothing = throwError s
 maybeToTcM _ (Just x) = pure x

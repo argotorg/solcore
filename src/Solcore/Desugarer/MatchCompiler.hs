@@ -86,8 +86,8 @@ instance Compile (ContractDecl Id) where
 
 instance Compile (Instance Id) where
   type Res (Instance Id) = Instance Id
-  compile (Instance d vs ps n ts m funs) =
-    Instance d vs ps n ts m <$> compile funs
+  compile (Instance d lbl vs ps n ts m funs) =
+    Instance d lbl vs ps n ts m <$> compile funs
 
 instance Compile (FunDef Id) where
   type Res (FunDef Id) = FunDef Id
@@ -146,11 +146,11 @@ instance Compile (Exp Id) where
     Con v <$> compile es
   compile (FieldAccess me v) =
     flip FieldAccess v <$> compile me
-  compile (Call me v es) =
+  compile (Call me v lbl es) =
     do
       me' <- compile me
       es' <- compile es
-      pure (Call me' v es')
+      pure (Call me' v lbl es')
   compile (TyExp e ty) =
     flip TyExp ty <$> compile e
   compile (Cond e1 e2 e3) =
@@ -208,7 +208,7 @@ typeOfExp e@(Con i args) = go (idType i) args
     go (_ :-> u) (_ : as) = go u as
     go _ _ = error $ "typeOfExp: " ++ show e
 typeOfExp (Lit (IntLit _)) = word -- TyCon "Word" []
-typeOfExp (Call Nothing i _) = idType i
+typeOfExp (Call Nothing i _ _) = idType i
 typeOfExp (Lam args _ (Just tb)) = funtype tas tb
   where
     tas = map paramTy args
@@ -496,8 +496,8 @@ instance Apply (Exp Id) where
   apply s (FieldAccess e n) =
     FieldAccess (apply s e) n
   apply _ e@(Lit _) = e
-  apply s (Call me n es) =
-    Call (apply s me) n (apply s es)
+  apply s (Call me n lbl es) =
+    Call (apply s me) n lbl (apply s es)
   apply s (Lam args bd mt) =
     Lam args (apply s bd) mt
   apply s (TyExp e t) = TyExp (apply s e) t
@@ -507,7 +507,7 @@ instance Apply (Exp Id) where
   ids (Var n) = [n]
   ids (Con _ es) = ids es
   ids (FieldAccess e _) = ids e
-  ids (Call me _ es) = ids me `union` ids es
+  ids (Call me _ _ es) = ids me `union` ids es
   ids (Lam args bd _) =
     ids bd \\ ids args
   ids (TyExp e _) = ids e
@@ -535,7 +535,7 @@ matchErrorCase =
     return [StmtExp $ generateCall v [errorLit]]
 
 generateCall :: Id -> [Exp Id] -> Exp Id
-generateCall = Call Nothing
+generateCall i es = Call Nothing i Nothing es
 
 matchError :: CompilerM Id
 matchError =
@@ -575,7 +575,7 @@ expType (Con (Id _ t) _) =
   snd (splitTy t)
 expType (FieldAccess _ (Id _ t)) =
   t
-expType (Call _ (Id _ t) _) =
+expType (Call _ (Id _ t) _ _) =
   snd (splitTy t)
 expType (Lam _ _ (Just t)) =
   t
