@@ -1,6 +1,6 @@
 import std.{*};
 import std.{uint256, address};
-import dispatch.{*};
+import std.dispatch.{*};
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
