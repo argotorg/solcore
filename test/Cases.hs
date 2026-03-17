@@ -289,6 +289,7 @@ cases =
       runTestExpectingFailure "field-access.solc" caseFolder,
       runTestForFile "mod-example.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder,
+      runTestExpectingFailure "weird-error-foo.solc" caseFolder,
       runTestForFile "strange-unbound.solc" caseFolder
     ]
   where
