@@ -145,6 +145,7 @@ imports =
       runImportSuccess "external_lib_main.solc",
       runImportSuccess "import_std_minimal.solc",
       runImportFailure "external_lib_missing_fail.solc",
+      runImportFailure "symlink_identity_fail.solc",
       runImportFailure "pragma_scope_main.solc",
       runImportSuccess "selfcycle.solc",
       runImportSuccess "cycle_main.solc",
