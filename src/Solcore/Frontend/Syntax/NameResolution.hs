@@ -27,13 +27,23 @@ nameResolution (S.CompUnit imps ds) =
       Right ast -> pure (Right (CompUnit (map resolveImport imps) ast))
 
 resolveImport :: S.Import -> Import
-resolveImport (S.ImportModule qn) = ImportModule qn
-resolveImport (S.ImportAlias qn asName) = ImportAlias qn asName
-resolveImport (S.ImportOnly qn items) = ImportOnly qn (resolveItemSelector items)
+resolveImport (S.ImportModule qn) = ImportModule (resolveModulePath qn)
+resolveImport (S.ImportAlias qn asName) = ImportAlias (resolveModulePath qn) asName
+resolveImport (S.ImportOnly qn items) = ImportOnly (resolveModulePath qn) (resolveItemSelector items)
+
+resolveModulePath :: S.ModulePath -> ModulePath
+resolveModulePath (S.RelativePath path) = RelativePath path
+resolveModulePath (S.LibraryPath path) = LibraryPath path
+resolveModulePath (S.ExternalPath libName path) = ExternalPath libName path
 
 resolveItemSelector :: S.ItemSelector -> ItemSelector
 resolveItemSelector S.SelectAll = SelectAll
 resolveItemSelector (S.SelectOnly names) = SelectOnly names
+
+resolveExportSpec :: S.ExportSpec -> ExportSpec
+resolveExportSpec S.ExportAll = ExportAll
+resolveExportSpec (S.ExportName name) = ExportName name
+resolveExportSpec (S.ExportModuleAll path) = ExportModuleAll (resolveModulePath path)
 
 validateDuplicateNamespacesInCompUnit :: S.CompUnit -> Either String ()
 validateDuplicateNamespacesInCompUnit (S.CompUnit _ ds) =
@@ -143,9 +153,19 @@ instance Resolve S.TopDecl where
     TDataDef <$> withLocalCtx (resolve dt) `wrapError` t
   resolve t@(S.TSym ts) =
     TSym <$> withLocalCtx (resolve ts) `wrapError` t
-  resolve (S.TExportDecl (S.Export items)) =
-    pure (TExportDecl (Export (resolveItemSelector items)))
+  resolve (S.TExportDecl exportDecl) =
+    pure (TExportDecl (resolveExport exportDecl))
   resolve t@(S.TPragmaDecl p) = TPragmaDecl <$> resolve p `wrapError` t
+
+resolveExport :: S.Export -> Export
+resolveExport (S.ExportList items) =
+  ExportList (map resolveExportSpec items)
+resolveExport (S.ExportModule path) =
+  ExportModule (resolveModulePath path)
+resolveExport (S.ExportModuleAs path asName) =
+  ExportModuleAs (resolveModulePath path) asName
+resolveExport (S.ExportItemsFrom path items) =
+  ExportItemsFrom (resolveModulePath path) (resolveItemSelector items)
 
 instance Resolve S.Contract where
   type Result S.Contract = Contract Name
@@ -830,12 +850,17 @@ addImportsToEnv :: [S.Import] -> Env -> Env
 addImportsToEnv imps env = foldr addImport env imps
 
 addImport :: S.Import -> Env -> Env
-addImport (S.ImportModule n) env =
-  foldr addModuleName env (modulePrefixes n)
+addImport (S.ImportModule path) env =
+  foldr addModuleName env (modulePrefixes (syntaxModulePathName path))
 addImport (S.ImportAlias _ n) env =
   addModuleName n env
 addImport (S.ImportOnly _ _) env =
   env
+
+syntaxModulePathName :: S.ModulePath -> Name
+syntaxModulePathName (S.RelativePath path) = path
+syntaxModulePathName (S.LibraryPath path) = path
+syntaxModulePathName (S.ExternalPath _ path) = path
 
 modulePrefixes :: Name -> [Name]
 modulePrefixes n =

@@ -15,16 +15,22 @@ instance Pretty CompUnit where
     vcat (map ppr imps ++ map ppr cs)
 
 instance Pretty Import where
-  ppr (ImportModule qn) =
-    text "import" <+> ppr qn <+> semi
-  ppr (ImportAlias qn asName) =
-    hsep [text "import", ppr qn, text "as", ppr asName, semi]
-  ppr (ImportOnly qn items) =
+  ppr (ImportModule path) =
+    text "import" <+> ppr path <+> semi
+  ppr (ImportAlias path asName) =
+    hsep [text "import", ppr path, text "as", ppr asName, semi]
+  ppr (ImportOnly path items) =
     hsep
       [ text "import",
-        ppr qn <> text ".",
+        ppr path <> text ".",
         pprItemSelector items <> semi
       ]
+
+instance Pretty ModulePath where
+  ppr (RelativePath path) = ppr path
+  ppr (LibraryPath path) = text "lib." <> ppr path
+  ppr (ExternalPath libName path) =
+    text "@" <> ppr libName <> text "." <> ppr path
 
 instance Pretty TopDecl where
   ppr (TContr c) = ppr c
@@ -37,11 +43,27 @@ instance Pretty TopDecl where
   ppr (TPragmaDecl p) = ppr p
 
 instance Pretty Export where
-  ppr (Export items) =
+  ppr (ExportList items) =
     hsep
       [ text "export",
-        pprItemSelector items <> semi
+        pprExportSpecs items <> semi
       ]
+  ppr (ExportModule path) =
+    hsep [text "export", ppr path <> semi]
+  ppr (ExportModuleAs path asName) =
+    hsep [text "export", ppr path, text "as", ppr asName <> semi]
+  ppr (ExportItemsFrom path SelectAll) =
+    hsep [text "export", ppr path <> text ".*;"]
+  ppr (ExportItemsFrom path items) =
+    hsep [text "export", ppr path <> text ".", pprItemSelector items <> semi]
+
+pprExportSpecs :: [ExportSpec] -> Doc
+pprExportSpecs items = lbrace <> commaSep (map ppr items) <> rbrace
+
+instance Pretty ExportSpec where
+  ppr ExportAll = text "*"
+  ppr (ExportName name) = ppr name
+  ppr (ExportModuleAll path) = ppr path <> text ".*"
 
 pprItemSelector :: ItemSelector -> Doc
 pprItemSelector SelectAll = lbrace <> text "*" <> rbrace

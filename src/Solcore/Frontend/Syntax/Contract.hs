@@ -48,16 +48,29 @@ data Pragma
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
+data ModulePath
+  = RelativePath Name
+  | LibraryPath Name
+  | ExternalPath Name Name
+  deriving (Eq, Ord, Show, Data, Typeable)
+
 data Export
-  = Export
-  { exportItems :: ItemSelector
-  }
+  = ExportList [ExportSpec]
+  | ExportModule ModulePath
+  | ExportModuleAs ModulePath Name
+  | ExportItemsFrom ModulePath ItemSelector
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ExportSpec
+  = ExportName Name
+  | ExportAll
+  | ExportModuleAll ModulePath
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data Import
-  = ImportModule {importModule :: Name}
-  | ImportAlias {importModule :: Name, importAlias :: Name}
-  | ImportOnly {importModule :: Name, importItems :: ItemSelector}
+  = ImportModule {importModule :: ModulePath}
+  | ImportAlias {importModule :: ModulePath, importAlias :: Name}
+  | ImportOnly {importModule :: ModulePath, importItems :: ItemSelector}
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data ItemSelector

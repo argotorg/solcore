@@ -100,8 +100,8 @@ import Language.Yul
 %right    'if'
 %right    'else'
 
--- One intentional shift/reduce conflict: dangling `else` in `if ...` statements.
--- Shifting `else` is correct (it binds to the nearest unmatched `if`).
+-- One intentional shift/reduce conflict: shift `.` so `Foo.Bar` stays a
+-- qualified type name instead of ending the type before the dot.
 %expect 1
 
 %%
@@ -115,21 +115,28 @@ ImportList : ImportList Import                     { $1 ++ [$2] }
            | {- empty -}                           { [] }
 
 Import :: { Import }
-Import : 'import' ModName ';'                      { ImportModule $2 }
-       | 'import' ModName 'as' Name ';'            { ImportAlias $2 $4 }
-       | 'import' ModName '.' '{' ImportItems '}' ';' { ImportOnly $2 $5 }
+Import : 'import' ModName ';'                      { ImportModule (classifyImportPath $2) }
+       | 'import' ModName 'as' Name ';'            { ImportAlias (classifyImportPath $2) $4 }
+       | 'import' ModName '.' '{' ImportItems '}' ';' { ImportOnly (classifyImportPath $2) $5 }
+       | 'import' '@' identifier '.' ModName ';'   { ImportModule (ExternalPath (Name $3) $5) }
+       | 'import' '@' identifier '.' ModName 'as' Name ';' { ImportAlias (ExternalPath (Name $3) $5) $7 }
+       | 'import' '@' identifier '.' ModName '.' '{' ImportItems '}' ';'
+           { ImportOnly (ExternalPath (Name $3) $5) $8 }
 
 ImportItems :: { ItemSelector }
 ImportItems : '*'                                  { SelectAll }
             | ImportNameItems                      { SelectOnly $1 }
 
 ImportNameItems :: { [Name] }
-ImportNameItems : Name ',' ImportNameItems         { $1 : $3 }
-                | Name                             { [$1] }
+ImportNameItems : ItemName ',' ImportNameItems     { $1 : $3 }
+                | ItemName                         { [$1] }
 
 ModName :: { Name }
 ModName : identifier                               { Name $1 }
         | ModName '.' identifier                   { QualName $1 $3 }
+
+ItemName :: { Name }
+ItemName : identifier                              { Name $1 }
 
 TopDeclList :: { [TopDecl] }
 TopDeclList : TopDecl TopDeclList                  { $1 : $2 }
@@ -149,16 +156,30 @@ TopDecl : Contract                                 {TContr $1}
         | Pragma                                   {TPragmaDecl $1}
 
 ExportDecl :: { Export }
-ExportDecl : 'export' '{' ExportItems '}' ';'      { Export $3 }
+ExportDecl : 'export' '{' ExportItems '}' ';'      { ExportList $3 }
+           | 'export' ModName ExportTail           { $3 (classifyImportPath $2) }
+           | 'export' '@' identifier '.' ModName ExportTail
+               { $6 (ExternalPath (Name $3) $5) }
 
-ExportItems :: { ItemSelector }
-ExportItems : '*'                                  { SelectAll }
-            | ExportNameItems                      { SelectOnly $1 }
-            | {- empty -}                          { SelectOnly [] }
+ExportTail :: { ModulePath -> Export }
+ExportTail : ';'                                   { ExportModule }
+           | 'as' Name ';'                         { \path -> ExportModuleAs path $2 }
+           | '.' '{' ImportItems '}' ';'           { \path -> ExportItemsFrom path $3 }
+           | '.' '*' ';'                           { \path -> ExportItemsFrom path SelectAll }
 
-ExportNameItems :: { [Name] }
-ExportNameItems : Name ',' ExportNameItems         { $1 : $3 }
-                | Name                             { [$1] }
+ExportItems :: { [ExportSpec] }
+ExportItems : ExportListItems                      { $1 }
+            | {- empty -}                          { [] }
+
+ExportListItems :: { [ExportSpec] }
+ExportListItems : ExportListItem ',' ExportListItems { $1 : $3 }
+                | ExportListItem                   { [$1] }
+
+ExportListItem :: { ExportSpec }
+ExportListItem : '*'                               { ExportAll }
+               | ItemName                          { ExportName $1 }
+               | ModName '.' '*'                   { ExportModuleAll (classifyImportPath $1) }
+               | '@' identifier '.' ModName '.' '*' { ExportModuleAll (ExternalPath (Name $2) $4) }
 
 -- pragmas
 
@@ -545,6 +566,20 @@ moduleParser _dirs content
 
 parseCompUnit :: String -> IO (Either String CompUnit)
 parseCompUnit = moduleParser []
+
+classifyImportPath :: Name -> ModulePath
+classifyImportPath modName =
+  case splitName modName of
+    "lib" : rest@(_ : _) -> LibraryPath (mkName rest)
+    _ -> RelativePath modName
+
+splitName :: Name -> [String]
+splitName (Name n) = [n]
+splitName (QualName n s) = splitName n ++ [s]
+
+mkName :: [String] -> Name
+mkName [] = error "mkName: empty module path"
+mkName (n : ns) = foldl QualName (Name n) ns
 
 unitPCon :: Pat
 unitPCon = Pat (Name "()") []

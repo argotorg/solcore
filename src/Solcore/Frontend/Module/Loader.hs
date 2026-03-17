@@ -91,7 +91,7 @@ resolveImportPath roots imp =
     go [] =
       throwError $
         "import "
-          ++ show (importModuleName imp)
+          ++ modulePathDisplay (importModule imp)
           ++ ": file not found"
     go (dir : rest) = do
       let path = toFilePath dir (importModuleName imp)
@@ -99,9 +99,17 @@ resolveImportPath roots imp =
       if exists then pure path else go rest
 
 importModuleName :: Import -> Name
-importModuleName (ImportModule n) = n
-importModuleName (ImportAlias n _) = n
-importModuleName (ImportOnly n _) = n
+importModuleName = modulePathName . importModule
+
+modulePathName :: ModulePath -> Name
+modulePathName (RelativePath n) = n
+modulePathName (LibraryPath n) = n
+modulePathName (ExternalPath _ n) = n
+
+modulePathDisplay :: ModulePath -> String
+modulePathDisplay (RelativePath n) = show n
+modulePathDisplay (LibraryPath n) = "lib." ++ show n
+modulePathDisplay (ExternalPath libName n) = "@" ++ show libName ++ "." ++ show n
 
 toFilePath :: FilePath -> Name -> FilePath
 toFilePath base =
@@ -202,11 +210,11 @@ ensureImportItemsExist graph importPairs = do
       pure [formatMissing moduleName n | n <- missing]
     unknowns _ = pure []
 
-formatMissing :: Name -> Name -> String
+formatMissing :: ModulePath -> Name -> String
 formatMissing moduleName itemName =
-  "  " ++ show moduleName ++ "." ++ show itemName
+  "  " ++ modulePathDisplay moduleName ++ "." ++ show itemName
 
-resolveSelectedImportItems :: ModuleGraph -> Name -> FilePath -> ItemSelector -> Either String [Name]
+resolveSelectedImportItems :: ModuleGraph -> ModulePath -> FilePath -> ItemSelector -> Either String [Name]
 resolveSelectedImportItems graph _moduleName modulePath SelectAll =
   importableNamesForModule graph modulePath
 resolveSelectedImportItems _graph _moduleName _modulePath (SelectOnly items) =
@@ -231,20 +239,41 @@ publicTopDeclsFromCompUnit modulePath unit@(CompUnit _ ds) = do
 
 moduleExportItems :: FilePath -> CompUnit -> Either String (Maybe [Name])
 moduleExportItems modulePath (CompUnit _ ds) =
-  case [items | TExportDecl (Export items) <- ds] of
-    [] -> Right Nothing
-    [items] -> do
+  case mapM legacyExportSelector [exportDecl | TExportDecl exportDecl <- ds] of
+    Left err ->
+      Left $
+        unlines
+          [ "Invalid export declaration:",
+            "  " ++ modulePath,
+            "  " ++ err
+          ]
+    Right [] -> Right Nothing
+    Right [items] -> do
       exports <- resolveExportItems modulePath ds items
       ensureNoDuplicateExports modulePath exports
       ensureExportsExist modulePath ds exports
       Right (Just exports)
-    _ ->
+    Right _ ->
       Left $
         unlines
           [ "Invalid export declaration:",
             "  " ++ modulePath,
             "  multiple export declarations are not allowed"
           ]
+
+legacyExportSelector :: Export -> Either String ItemSelector
+legacyExportSelector (ExportList []) = Right (SelectOnly [])
+legacyExportSelector (ExportList [ExportAll]) = Right SelectAll
+legacyExportSelector (ExportList items)
+  | all isNamedExport items =
+      Right (SelectOnly [n | ExportName n <- items])
+  | otherwise =
+      Left "mixed or module wildcard export lists are not supported yet"
+  where
+    isNamedExport (ExportName _) = True
+    isNamedExport _ = False
+legacyExportSelector _ =
+  Left "module re-exports are not supported yet"
 
 resolveExportItems :: FilePath -> [TopDecl] -> ItemSelector -> Either String [Name]
 resolveExportItems _modulePath ds SelectAll =
@@ -317,7 +346,7 @@ qualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, FilePath) -> Either 
 qualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly _ _ -> Right []
-    ImportModule n -> qualifyDecls n
+    ImportModule n -> qualifyDecls (modulePathName n)
     ImportAlias _ n -> qualifyDecls n
   where
     qualifyDecls qualifier = do
@@ -339,7 +368,7 @@ qualifiedImportStubDecls :: ModuleGraph -> (Import, FilePath) -> Either String [
 qualifiedImportStubDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ _ -> Right []
-    ImportModule n -> stubDecls n
+    ImportModule n -> stubDecls (modulePathName n)
     ImportAlias _ n -> stubDecls n
   where
     stubDecls qualifier = do
@@ -893,9 +922,9 @@ strictCompileImportedDecls :: Set Name -> ModuleGraph -> (Import, FilePath) -> E
 strictCompileImportedDecls collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly moduleName selector ->
-      importOnlyCompileDecls moduleName selector
+      importOnlyCompileDecls (modulePathName moduleName) selector
     ImportModule moduleName ->
-      moduleImportCompileDecls moduleName
+      moduleImportCompileDecls (modulePathName moduleName)
     ImportAlias _ qualifier ->
       moduleImportCompileDecls qualifier
   where
@@ -1272,23 +1301,30 @@ ensureNoAmbiguousSelectedImports graph importPairs = do
     selectedFromImport _ = pure []
 
     ambiguous selectedPairs =
-      [ (item, uniqueNames mods)
+      [ (item, uniqueModulePaths mods)
         | (item, mods) <- Map.toList selections,
-          length (uniqueNames mods) > 1
+          length (uniqueModulePaths mods) > 1
       ]
       where
-        selections :: Map Name [Name]
+        selections :: Map Name [ModulePath]
         selections = Map.fromListWith (++) [(item, [modName]) | (item, modName) <- selectedPairs]
 
-formatAmbiguous :: (Name, [Name]) -> String
+formatAmbiguous :: (Name, [ModulePath]) -> String
 formatAmbiguous (item, mods) =
   "  "
     ++ show item
     ++ " imported from "
-    ++ intercalate ", " (map show mods)
+    ++ intercalate ", " (map modulePathDisplay mods)
 
 uniqueNames :: [Name] -> [Name]
 uniqueNames = reverse . fst . foldl step ([], Map.empty)
+  where
+    step (acc, seen) n
+      | Map.member n seen = (acc, seen)
+      | otherwise = (n : acc, Map.insert n () seen)
+
+uniqueModulePaths :: [ModulePath] -> [ModulePath]
+uniqueModulePaths = reverse . fst . foldl step ([], Map.empty)
   where
     step (acc, seen) n
       | Map.member n seen = (acc, seen)
@@ -1317,7 +1353,7 @@ ensureNoDuplicateModuleQualifiers (CompUnit imps _) =
     duplicates = duplicateNames (mapMaybe moduleQualifier imps)
 
 moduleQualifier :: Import -> Maybe Name
-moduleQualifier (ImportModule n) = Just n
+moduleQualifier (ImportModule n) = Just (modulePathName n)
 moduleQualifier (ImportAlias _ n) = Just n
 moduleQualifier (ImportOnly _ _) = Nothing
 
@@ -1333,7 +1369,7 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
           ]
   where
     duplicateItems (ImportOnly moduleName (SelectOnly items)) =
-      [ "  " ++ show moduleName ++ "." ++ show item
+      [ "  " ++ modulePathDisplay moduleName ++ "." ++ show item
         | item <- duplicateNames items
       ]
     duplicateItems (ImportOnly _ SelectAll) = []
