@@ -127,14 +127,14 @@ solveByGivens qs (p : ps) = do
     Just s -> do
       _ <- extSubst s
       ps' <- withCurrentSubst ps
-      solveByGivens qs ps'
+      qs' <- withCurrentSubst qs
+      solveByGivens qs' ps'
     Nothing -> do
       rest <- solveByGivens qs ps
       pure (p' : rest)
 
 tryDischargeByGivens :: [Pred] -> Pred -> Maybe Subst
-tryDischargeByGivens qs p@(InCls _ _ _)
-  | isHnf p = msum [tryOneGiven q p | q <- qs]
+tryDischargeByGivens qs p@(InCls _ _ _) = msum [tryOneGiven q p | q <- qs]
 tryDischargeByGivens _ _ = Nothing
 
 tryOneGiven :: Pred -> Pred -> Maybe Subst
