@@ -5,12 +5,10 @@ This document describes the current Solcore implementation.
 ## 1. Entry File and Library Roots
 
 - The entry file is the path passed to `-f` / `--file`.
-- The main library root is:
-  1. `takeDirectory(entryFile)` by default, or
-  2. the first path from `--include` when `--include` is provided.
-- The std library root is the second include root. With the default options this is `std`.
+- The main library root is configured with `--root`.
+- The default main library root is the current working directory.
+- The std library root is configured with `--include`. With the default options this is `std`.
 - External libraries are registered explicitly with repeated `--lib NAME=DIR` flags.
-- Additional `--include` entries beyond the first two are currently ignored by the module loader.
 
 ## 2. Module Identity and File Mapping
 
@@ -51,8 +49,8 @@ Import path kinds:
 Current std-specific behavior:
 
 - `import std;` resolves to the std library root from any library.
-- For modules in the main library, unresolved bare imports also fall back to the std root.
-  This keeps forms such as `import dispatch;` working.
+- `import std.dispatch;` resolves to `dispatch.solc` under the std root.
+- Bare imports do not fall back to the std root.
 
 ## 4. Import Visibility and Qualification
 
@@ -60,7 +58,7 @@ Current std-specific behavior:
 - `import M as A;` binds only `A`.
 - `import M.{X, Y};` imports selected exported names into unqualified scope.
 - `import M.{*};` imports all exported item names into unqualified scope.
-- Items inside `{...}` must be simple item names or `*`.
+- Items inside `{...}` may mix simple item names and `*`.
   Dotted item paths are not supported there.
 
 Default module bindings:
@@ -74,7 +72,7 @@ Default module bindings:
 Validation rules:
 
 - Duplicate qualifier names are rejected.
-- Duplicate names inside one selective import are rejected.
+- Duplicate explicit names inside one selective import are rejected.
 - Unknown selected names are rejected.
 - Ambiguous names introduced by selective or glob imports are rejected.
 
@@ -114,8 +112,9 @@ Validation rules:
 
 - Unknown local exports are rejected.
 - Unknown re-exported names are rejected.
-- Duplicate exported item names are rejected after expansion.
-- Duplicate exported module binding names are rejected after expansion.
+- Re-exporting two different underlying items under the same public name is rejected.
+- Re-exporting two different module targets under the same public module name is rejected.
+- Repeated exports of the same underlying item are normalized, so forms such as `export {main, *};` are accepted.
 
 Instance behavior:
 
@@ -130,7 +129,7 @@ Current duplicate checking is enforced separately for:
   - contracts
   - data types
   - type synonyms
-- the class namespace
+  - classes
 - the term namespace
   - functions
   - constructors
