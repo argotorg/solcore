@@ -29,6 +29,7 @@ import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
+import System.Directory (makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath
 import System.TimeIt qualified as TimeIt
@@ -61,7 +62,7 @@ compile opts = runExceptT $ do
       timeItNamed :: String -> IO a -> IO a
       timeItNamed = optTimeItNamed opts
       file = fileName opts
-      mainRoot = takeDirectory file
+  mainRoot <- liftIO $ makeAbsolute (optRootDir opts)
   stdRoot <- ExceptT $ pure (parseStdRoot (optImportDirs opts))
   externalLibs <- ExceptT $ pure (parseExternalLibSpecs (optExternalLibs opts))
 

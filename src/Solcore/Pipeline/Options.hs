@@ -5,6 +5,7 @@ import Options.Applicative
 data Option
   = Option
   { fileName :: !FilePath,
+    optRootDir :: !FilePath,
     optImportDirs :: !String,
     optExternalLibs :: ![String],
     optNoSpec :: !Bool,
@@ -33,6 +34,7 @@ emptyOption :: FilePath -> Option
 emptyOption path =
   Option
     { fileName = path,
+      optRootDir = ".",
       optImportDirs = "std",
       optExternalLibs = [],
       optNoSpec = False,
@@ -77,6 +79,12 @@ options =
           <> short 'f'
           <> metavar "FILE"
           <> help "Input file name"
+      )
+    <*> strOption
+      ( long "root"
+          <> metavar "DIR"
+          <> value (optRootDir stdOpt)
+          <> help "Set the main library root."
       )
     <*> strOption
       ( long "include"

@@ -144,6 +144,7 @@ imports =
       runImportSuccess "dot_context_expr.solc",
       runImportSuccess "reexport_items_main.solc",
       runImportSuccess "reexport_module_main.solc",
+      runImportSuccess "rootcheck/nested/main.solc",
       runImportSuccess "external_lib_main.solc",
       runImportSuccess "import_std_minimal.solc",
       runImportFailure "external_lib_missing_fail.solc",
@@ -388,7 +389,7 @@ runTestForFileWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestForFileWith opts file folder =
   testCase file $ do
     let filePath = folder </> file
-    result <- compile (opts {fileName = filePath})
+    result <- compile (opts {fileName = filePath, optRootDir = folder})
     case result of
       Left err -> assertFailure err
       Right _ -> return ()
@@ -402,7 +403,7 @@ runTestExpectingFailureWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestExpectingFailureWith opts file folder =
   testCase file $ do
     let filePath = folder </> file
-    result <- compile opts {fileName = filePath}
+    result <- compile opts {fileName = filePath, optRootDir = folder}
     case result of
       Left _ -> return () -- Expected failure
       Right _ -> assertFailure "Expected compilation to fail, but it succeeded"
