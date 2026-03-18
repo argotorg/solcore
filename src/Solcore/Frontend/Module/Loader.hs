@@ -370,16 +370,18 @@ isRecursiveImportGroup graph modulePath =
     _ -> True
 
 data ExportedItemRef
-  = ExportedLocalItem Name
-  | ExportedRemoteItem Mod.ModuleId Name
-  deriving (Eq, Show)
+  = ExportedItemRef
+  { exportedItemOrigin :: Mod.ModuleId,
+    exportedItemName :: Name
+  }
+  deriving (Eq, Ord, Show)
 
 data ExportedModuleBinding
   = ExportedModuleBinding
   { exportedModuleName :: Name,
     exportedModuleTarget :: Mod.ModuleId
   }
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 data ModulePublicInterface
   = ModulePublicInterface
@@ -412,11 +414,8 @@ normalizePublicInterface publicInterface =
            in case Map.lookup itemName chosen of
                 Nothing ->
                   (names ++ [itemName], Map.insert itemName ref chosen)
-                Just existingRef
-                  | preferExportedItemRef ref existingRef ->
-                      (names, Map.insert itemName ref chosen)
-                  | otherwise ->
-                      (names, chosen)
+                Just _ ->
+                  (names, chosen)
 
     normalizeModuleBindings bindings =
       [ chosen Map.! bindingName
@@ -430,10 +429,6 @@ normalizePublicInterface publicInterface =
            in case Map.lookup bindingName current of
                 Nothing -> (names ++ [bindingName], Map.insert bindingName binding current)
                 Just _ -> (names, current)
-
-preferExportedItemRef :: ExportedItemRef -> ExportedItemRef -> Bool
-preferExportedItemRef (ExportedLocalItem _) (ExportedRemoteItem _ _) = True
-preferExportedItemRef _ _ = False
 
 prepareFlattenContext :: ModuleGraph -> Mod.ModuleId -> Either String (CompUnit, FilePath, [(Import, Mod.ModuleId)])
 prepareFlattenContext graph modulePath = do
@@ -535,10 +530,16 @@ formatMissing importPath itemName =
   "  " ++ Mod.modulePathDisplay importPath ++ "." ++ show itemName
 
 resolveSelectedImportItems :: ModuleGraph -> ModulePath -> Mod.ModuleId -> ItemSelector -> Either String [Name]
-resolveSelectedImportItems graph _moduleName modulePath SelectAll =
-  importableNamesForModule graph modulePath
-resolveSelectedImportItems _graph _moduleName _modulePath (SelectOnly items) =
-  Right items
+resolveSelectedImportItems graph _moduleName modulePath selector = do
+  available <- importableNamesForModule graph modulePath
+  pure (selectedNamesFromAvailable available selector)
+
+selectedNamesFromAvailable :: [Name] -> ItemSelector -> [Name]
+selectedNamesFromAvailable available (SelectItems items) =
+  uniqueNames (concatMap expand items)
+  where
+    expand SelectAllItems = available
+    expand (SelectItem itemName) = [itemName]
 
 importableNamesForModule :: ModuleGraph -> Mod.ModuleId -> Either String [Name]
 importableNamesForModule graph modulePath = do
@@ -555,23 +556,26 @@ publicItemDeclsForModuleSeen graph seen modulePath = do
   unit <- lookupLoadedModule graph modulePath
   let localDecls =
         selectPublicItemDecls
-          [itemName | ExportedLocalItem itemName <- publicItemRefs publicInterface]
+          [ exportedItemName itemRef
+            | itemRef <- publicItemRefs publicInterface,
+              exportedItemOrigin itemRef == modulePath
+          ]
           (topDeclsFrom unit)
   remoteDecls <- concat <$> mapM materializeRemoteRef (publicItemRefs publicInterface)
   pure (localDecls ++ shadowImportedDecls localDecls remoteDecls)
   where
-    materializeRemoteRef (ExportedLocalItem _) =
-      pure []
-    materializeRemoteRef (ExportedRemoteItem targetModule itemName)
-      | (targetModule, itemName) `Set.member` seen =
+    materializeRemoteRef itemRef
+      | exportedItemOrigin itemRef == modulePath =
+          pure []
+      | (exportedItemOrigin itemRef, exportedItemName itemRef) `Set.member` seen =
           pure []
       | otherwise = do
           remoteDecls <-
             publicItemDeclsForModuleSeen
               graph
-              (Set.insert (targetModule, itemName) seen)
-              targetModule
-          pure (selectPublicItemDecls [itemName] remoteDecls)
+              (Set.insert (exportedItemOrigin itemRef, exportedItemName itemRef) seen)
+              (exportedItemOrigin itemRef)
+          pure (selectPublicItemDecls [exportedItemName itemRef] remoteDecls)
 
 publicTopDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
 publicTopDeclsForModule graph modulePath = do
@@ -646,13 +650,17 @@ validatePublicInterfaces graph groupModules interfaces =
       mapM_
         (validateExportDecl sourcePath moduleId)
         [exportDecl | TExportDecl exportDecl <- topDeclsFrom unit]
-      publicInterface <-
-        maybe
-          (Left ("Internal error: missing public interface for " ++ Mod.moduleIdDisplay moduleId))
-          Right
-          (Map.lookup moduleId interfaces)
-      ensureNoDuplicateExportedItems sourcePath (publicItemRefs publicInterface)
-      ensureNoDuplicateExportedModules sourcePath (publicModuleBindings publicInterface)
+      expandedDecls <-
+        mapM
+          (expandExportDeclFixed graph groupModules interfaces moduleId sourcePath unit)
+          [exportDecl | TExportDecl exportDecl <- topDeclsFrom unit]
+      let rawPublicInterface =
+            ModulePublicInterface
+              { publicItemRefs = concatMap publicItemRefs expandedDecls,
+                publicModuleBindings = concatMap publicModuleBindings expandedDecls
+              }
+      ensureNoDuplicateExportedItems sourcePath (publicItemRefs rawPublicInterface)
+      ensureNoDuplicateExportedModules sourcePath (publicModuleBindings rawPublicInterface)
 
     validateExportDecl sourcePath moduleId exportDecl =
       case exportDecl of
@@ -662,11 +670,11 @@ validatePublicInterfaces graph groupModules interfaces =
           pure ()
         ExportModuleAs _ _ ->
           pure ()
-        ExportItemsFrom path SelectAll ->
-          ensureRemoteModuleVisible moduleId path
-        ExportItemsFrom path (SelectOnly names) -> do
+        ExportItemsFrom path selector@(SelectItems _) -> do
           targetModule <- lookupModuleReference graph moduleId path
+          let names = explicitSelectorNames selector
           availableNames <- interfaceNamesForModule targetModule
+          when (hasSelectAll selector) (ensureRemoteModuleVisible moduleId path)
           ensureRemoteExportsExist sourcePath path names availableNames
 
     validateExportSpec sourcePath moduleId spec =
@@ -692,7 +700,7 @@ validatePublicInterfaces graph groupModules interfaces =
 
 ensureNoDuplicateExplicitLocalExports :: FilePath -> CompUnit -> Either String ()
 ensureNoDuplicateExplicitLocalExports sourcePath unit =
-  case duplicateNames localExportNames of
+  case duplicateNames explicitLocalExportNames of
     [] -> Right ()
     xs ->
       Left $
@@ -702,7 +710,7 @@ ensureNoDuplicateExplicitLocalExports sourcePath unit =
             unlines (map (\n -> "  " ++ show n) xs)
           ]
   where
-    localExportNames =
+    explicitLocalExportNames =
       concatMap exportDeclLocalNames [exportDecl | TExportDecl exportDecl <- topDeclsFrom unit]
 
     exportDeclLocalNames (ExportList specs) =
@@ -713,7 +721,7 @@ ensureNoDuplicateExplicitLocalExports sourcePath unit =
     exportSpecLocalNames (ExportName itemName) =
       [itemName]
     exportSpecLocalNames ExportAll =
-      availableExportNames (topDeclsFrom unit)
+      []
     exportSpecLocalNames (ExportModuleAll _) =
       []
 
@@ -759,16 +767,24 @@ expandExportSpecFixed ::
   CompUnit ->
   ExportSpec ->
   Either String ModulePublicInterface
-expandExportSpecFixed _graph _groupModules _currentInterfaces _currentModule sourcePath unit (ExportName itemName) = do
+expandExportSpecFixed _graph _groupModules _currentInterfaces currentModule sourcePath unit (ExportName itemName) = do
   ensureLocalExportExists sourcePath (topDeclsFrom unit) itemName
-  pure emptyPublicInterface {publicItemRefs = [ExportedLocalItem itemName]}
-expandExportSpecFixed _graph _groupModules _currentInterfaces _currentModule _sourcePath unit ExportAll =
+  pure emptyPublicInterface {publicItemRefs = [ExportedItemRef currentModule itemName]}
+expandExportSpecFixed _graph _groupModules _currentInterfaces currentModule _sourcePath unit ExportAll =
   pure
     emptyPublicInterface
-      { publicItemRefs = map ExportedLocalItem (availableExportNames (topDeclsFrom unit))
+      { publicItemRefs = map (ExportedItemRef currentModule) (availableExportNames (topDeclsFrom unit))
       }
 expandExportSpecFixed graph groupModules currentInterfaces currentModule sourcePath _unit (ExportModuleAll path) = do
-  itemRefs <- resolveRemoteExportItemsFixed graph groupModules currentInterfaces currentModule sourcePath path SelectAll
+  itemRefs <-
+    resolveRemoteExportItemsFixed
+      graph
+      groupModules
+      currentInterfaces
+      currentModule
+      sourcePath
+      path
+      (SelectItems [SelectAllItems])
   pure emptyPublicInterface {publicItemRefs = itemRefs}
 
 resolveRemoteExportItemsFixed ::
@@ -787,26 +803,32 @@ resolveRemoteExportItemsFixed graph groupModules currentInterfaces currentModule
     else resolveOutsideGroup targetModule
   where
     resolveWithinGroup targetModule =
-      case selector of
-        SelectAll -> do
-          exportedNames <- currentInterfaceNames targetModule
-          pure [ExportedRemoteItem targetModule itemName | itemName <- exportedNames]
-        SelectOnly names ->
-          pure [ExportedRemoteItem targetModule itemName | itemName <- names]
+      do
+        let availableRefs = currentInterfaceRefs targetModule
+            availableNames = uniqueNames (map exportedItemName availableRefs)
+            names = selectedNamesFromAvailable availableNames selector
+        pure (selectExportedItemRefs names availableRefs)
 
     resolveOutsideGroup targetModule =
-      case selector of
-        SelectAll -> do
-          exportedNames <- importableNamesForModule graph targetModule
-          pure [ExportedRemoteItem targetModule itemName | itemName <- exportedNames]
-        SelectOnly names -> do
-          availableNames <- importableNamesForModule graph targetModule
-          ensureRemoteExportsExist sourcePath exportPath names availableNames
-          pure [ExportedRemoteItem targetModule itemName | itemName <- names]
+      do
+        availableRefs <- publicItemRefs <$> publicModuleInterface graph targetModule
+        let availableNames = uniqueNames (map exportedItemName availableRefs)
+            names = selectedNamesFromAvailable availableNames selector
+        ensureRemoteExportsExist sourcePath exportPath (explicitSelectorNames selector) availableNames
+        pure (selectExportedItemRefs names availableRefs)
 
-    currentInterfaceNames targetModule =
-      pure $
-        maybe [] (uniqueNames . map exportedItemName . publicItemRefs) (Map.lookup targetModule currentInterfaces)
+    currentInterfaceRefs targetModule =
+      maybe [] publicItemRefs (Map.lookup targetModule currentInterfaces)
+
+selectExportedItemRefs :: [Name] -> [ExportedItemRef] -> [ExportedItemRef]
+selectExportedItemRefs names refs =
+  concatMap pick names
+  where
+    pick itemName =
+      [ ref
+        | ref <- refs,
+          exportedItemName ref == itemName
+      ]
 
 availableExportNames :: [TopDecl] -> [Name]
 availableExportNames ds =
@@ -814,7 +836,7 @@ availableExportNames ds =
 
 ensureNoDuplicateExportedItems :: FilePath -> [ExportedItemRef] -> Either String ()
 ensureNoDuplicateExportedItems modulePath itemRefs =
-  case duplicates of
+  case conflicts of
     [] -> Right ()
     xs ->
       Left $
@@ -824,11 +846,16 @@ ensureNoDuplicateExportedItems modulePath itemRefs =
             unlines (map (\n -> "  " ++ show n) xs)
           ]
   where
-    duplicates = duplicateNames (map exportedItemName itemRefs)
+    conflicts =
+      [ itemName
+        | (itemName, refs) <- Map.toList groupedRefs,
+          Set.size (Set.fromList refs) > 1
+      ]
+    groupedRefs = Map.fromListWith (++) [(exportedItemName ref, [ref]) | ref <- itemRefs]
 
 ensureNoDuplicateExportedModules :: FilePath -> [ExportedModuleBinding] -> Either String ()
 ensureNoDuplicateExportedModules modulePath moduleBindings =
-  case duplicates of
+  case conflicts of
     [] -> Right ()
     xs ->
       Left $
@@ -838,7 +865,12 @@ ensureNoDuplicateExportedModules modulePath moduleBindings =
             unlines (map (\n -> "  " ++ show n) xs)
           ]
   where
-    duplicates = duplicateNames [exportedModuleName binding | binding <- moduleBindings]
+    conflicts =
+      [ bindingName
+        | (bindingName, bindings) <- Map.toList groupedBindings,
+          Set.size (Set.fromList [exportedModuleTarget binding | binding <- bindings]) > 1
+      ]
+    groupedBindings = Map.fromListWith (++) [(exportedModuleName binding, [binding]) | binding <- moduleBindings]
 
 ensureLocalExportExists :: FilePath -> [TopDecl] -> Name -> Either String ()
 ensureLocalExportExists sourcePath ds itemName
@@ -865,25 +897,22 @@ ensureRemoteExportsExist sourcePath exportPath names availableNames =
   where
     missing = filter (`notElem` availableNames) names
 
-exportedItemName :: ExportedItemRef -> Name
-exportedItemName (ExportedLocalItem name) = name
-exportedItemName (ExportedRemoteItem _ name) = name
-
-groupRemoteItemRefs :: [ExportedItemRef] -> [(Mod.ModuleId, [Name])]
-groupRemoteItemRefs =
+groupRemoteItemRefs :: Mod.ModuleId -> [ExportedItemRef] -> [(Mod.ModuleId, [Name])]
+groupRemoteItemRefs currentModule =
   reverse . fst . foldl step ([], Map.empty)
   where
-    step (acc, seen) (ExportedLocalItem _) = (acc, seen)
-    step (acc, seen) (ExportedRemoteItem moduleId itemName) =
-      case Map.lookup moduleId seen of
-        Just names ->
-          ( replaceAssoc moduleId (names ++ [itemName]) acc,
-            Map.insert moduleId (names ++ [itemName]) seen
-          )
-        Nothing ->
-          ( (moduleId, [itemName]) : acc,
-            Map.insert moduleId [itemName] seen
-          )
+    step (acc, seen) itemRef
+      | exportedItemOrigin itemRef == currentModule = (acc, seen)
+      | otherwise =
+          case Map.lookup (exportedItemOrigin itemRef) seen of
+            Just names ->
+              ( replaceAssoc (exportedItemOrigin itemRef) (names ++ [exportedItemName itemRef]) acc,
+                Map.insert (exportedItemOrigin itemRef) (names ++ [exportedItemName itemRef]) seen
+              )
+            Nothing ->
+              ( (exportedItemOrigin itemRef, [exportedItemName itemRef]) : acc,
+                Map.insert (exportedItemOrigin itemRef) [exportedItemName itemRef] seen
+              )
 
     replaceAssoc moduleId names =
       map (\(currentModule, currentNames) -> if currentModule == moduleId then (currentModule, names) else (currentModule, currentNames))
@@ -969,7 +998,7 @@ importableTopDeclsForCompiledModule graph modulePath = do
   cunit <- flattenModuleStrictCompileCompUnit graph modulePath
   publicInterface <- publicModuleInterface graph modulePath
   let localDecls = filter isImportableTopDecl (topDeclsFrom cunit)
-  remoteDecls <- concat <$> mapM (compileSupportForRemoteItemGroup graph) (groupRemoteItemRefs (publicItemRefs publicInterface))
+  remoteDecls <- concat <$> mapM (compileSupportForRemoteItemGroup graph) (groupRemoteItemRefs modulePath (publicItemRefs publicInterface))
   pure (localDecls ++ shadowImportedDecls localDecls remoteDecls)
 
 compileSupportForRemoteItemGroup :: ModuleGraph -> (Mod.ModuleId, [Name]) -> Either String [TopDecl]
@@ -1058,7 +1087,7 @@ compileSurfacesForGroup graph groupModules =
         concat
           <$> mapM
             (compileSupportForRemoteItemGroupWithSurfaces currentSurfaces graph)
-            (groupRemoteItemRefs (publicItemRefs publicInterface))
+            (groupRemoteItemRefs moduleId (publicItemRefs publicInterface))
       pure (moduleId, localDecls ++ shadowImportedDecls localDecls remoteDecls)
 
 qualifiedImportStubDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
@@ -1613,11 +1642,10 @@ importedDeclsFor graph (imp, modulePath) =
 strictValidationImportedDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 strictValidationImportedDecls graph (imp, modulePath) =
   case imp of
-    ImportOnly _ SelectAll ->
-      mapMaybe toValidationImportStub <$> publicTopDeclsForModule graph modulePath
-    ImportOnly _ (SelectOnly names) ->
-      mapMaybe toValidationImportStub . mapMaybe (selectTopDecl names)
-        <$> publicTopDeclsForModule graph modulePath
+    ImportOnly _ selector -> do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+      pure (mapMaybe toValidationImportStub (mapMaybe (selectTopDecl names) publicDecls))
     ImportModule _ ->
       Right []
     ImportAlias _ _ ->
@@ -1673,9 +1701,8 @@ strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph 
                 | fd <- allFunctionDecls
               ]
       let selectedPublicDecls =
-            case selector of
-              SelectAll -> publicDecls
-              SelectOnly names -> mapMaybe (selectTopDecl names) publicDecls
+            let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+             in mapMaybe (selectTopDecl names) publicDecls
           selectedFunctionNames =
             [ sigName (funSignature fd)
               | TFunDef fd <- selectedPublicDecls
@@ -2070,10 +2097,10 @@ topDeclClassNames (TClassDef (Class _ _ n _ _ _)) = [n]
 topDeclClassNames _ = []
 
 applyImportVisibility :: Import -> [TopDecl] -> [TopDecl]
-applyImportVisibility (ImportOnly _ SelectAll) =
-  id
-applyImportVisibility (ImportOnly _ (SelectOnly names)) =
-  mapMaybe (selectTopDecl names)
+applyImportVisibility (ImportOnly _ selector) =
+  \decls ->
+    let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames decls)) selector
+     in mapMaybe (selectTopDecl names) decls
 applyImportVisibility (ImportModule _) =
   const []
 applyImportVisibility (ImportAlias _ _) =
@@ -2190,9 +2217,19 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
             unlines xs
           ]
   where
-    duplicateItems (ImportOnly moduleName (SelectOnly items)) =
+    duplicateItems (ImportOnly moduleName selector) =
       [ "  " ++ Mod.modulePathDisplay moduleName ++ "." ++ show item
-        | item <- duplicateNames items
+        | item <- duplicateNames (explicitSelectorNames selector)
       ]
-    duplicateItems (ImportOnly _ SelectAll) = []
     duplicateItems _ = []
+
+explicitSelectorNames :: ItemSelector -> [Name]
+explicitSelectorNames (SelectItems items) =
+  [ itemName | SelectItem itemName <- items ]
+
+hasSelectAll :: ItemSelector -> Bool
+hasSelectAll (SelectItems items) =
+  any isWildcard items
+  where
+    isWildcard SelectAllItems = True
+    isWildcard _ = False

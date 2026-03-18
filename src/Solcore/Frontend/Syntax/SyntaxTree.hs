@@ -73,8 +73,12 @@ data Import
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data ItemSelector
-  = SelectAll
-  | SelectOnly [Name]
+  = SelectItems [ItemSelectorEntry]
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ItemSelectorEntry
+  = SelectAllItems
+  | SelectItem Name
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of the contract structure

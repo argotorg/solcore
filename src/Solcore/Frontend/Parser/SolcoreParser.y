@@ -124,12 +124,15 @@ Import : 'import' ModName ';'                      { ImportModule (classifyImpor
            { ImportOnly (ExternalPath (Name $3) $5) $8 }
 
 ImportItems :: { ItemSelector }
-ImportItems : '*'                                  { SelectAll }
-            | ImportNameItems                      { SelectOnly $1 }
+ImportItems : ImportItemList                       { SelectItems $1 }
 
-ImportNameItems :: { [Name] }
-ImportNameItems : ItemName ',' ImportNameItems     { $1 : $3 }
-                | ItemName                         { [$1] }
+ImportItemList :: { [ItemSelectorEntry] }
+ImportItemList : ImportItem ',' ImportItemList     { $1 : $3 }
+               | ImportItem                        { [$1] }
+
+ImportItem :: { ItemSelectorEntry }
+ImportItem : '*'                                   { SelectAllItems }
+           | ItemName                              { SelectItem $1 }
 
 ModName :: { Name }
 ModName : identifier                               { Name $1 }
@@ -165,7 +168,7 @@ ExportTail :: { ModulePath -> Export }
 ExportTail : ';'                                   { ExportModule }
            | 'as' Name ';'                         { \path -> ExportModuleAs path $2 }
            | '.' '{' ImportItems '}' ';'           { \path -> ExportItemsFrom path $3 }
-           | '.' '*' ';'                           { \path -> ExportItemsFrom path SelectAll }
+           | '.' '*' ';'                           { \path -> ExportItemsFrom path (SelectItems [SelectAllItems]) }
 
 ExportItems :: { [ExportSpec] }
 ExportItems : ExportListItems                      { $1 }
