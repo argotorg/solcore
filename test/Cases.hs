@@ -291,7 +291,9 @@ cases =
       runTestForFile "proxy-desugar.solc" caseFolder,
       runTestForFile "invokable-issue.solc" caseFolder,
       runTestForFile "td.solc" caseFolder,
-      runTestForFile "bar.solc" caseFolder
+      runTestForFile "bar.solc" caseFolder,
+      runTestExpectingFailure "weird-error-foo.solc" caseFolder,
+      runTestForFile "strange-unbound.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
