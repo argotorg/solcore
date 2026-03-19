@@ -440,6 +440,7 @@ prepareFlattenContext graph modulePath = do
   ensureNoDuplicateModuleQualifiers unit
   ensureNoDuplicateSelectedItems unit
   ensureImportItemsExist graph importPairs
+  ensureNoModuleLookupConflicts graph unit importPairs
   pure (unit, sourcePath, importPairs)
 
 flattenModuleValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
@@ -468,7 +469,7 @@ flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath = do
   importedDecls <- dedupeImportedInstanceDecls . concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
-      visibleImportedDecls = shadowImportedDecls localDecls importedDecls
+      visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
       importedStart = length qualifiedDecls + length localDecls
   pure
     ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
@@ -490,7 +491,7 @@ flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath 
   qualifiedDecls <-
     concat <$> mapM (qualifiedImportDeclsWithSurfaces compileSurfaces collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
-      visibleImportedDecls = shadowImportedDecls localDecls importedDecls
+      visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
       importedStart = length qualifiedDecls + length localDecls
   pure
     ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
@@ -503,7 +504,7 @@ flattenModuleStrictValidationCompUnit graph modulePath = do
   importedDecls <- concat <$> mapM (strictValidationImportedDecls graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportStubDecls graph) importPairs
   let localDecls = topDeclsFrom unit
-      visibleImportedDecls = shadowImportedDecls localDecls importedDecls
+      visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
   pure (CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls))
 
 ensureImportItemsExist :: ModuleGraph -> [(Import, Mod.ModuleId)] -> Either String ()
@@ -2072,6 +2073,17 @@ shadowImportedDecls localDecls =
     filterDecl seen (TExportDecl _) = (seen, Nothing)
     filterDecl seen (TPragmaDecl _) = (seen, Nothing)
 
+filterImportedInstanceConflicts :: [TopDecl] -> [TopDecl] -> [TopDecl]
+filterImportedInstanceConflicts localDecls =
+  mapMaybe keepImportedDecl
+  where
+    localClassNames = concatMap topDeclClassNames localDecls
+
+    keepImportedDecl d@(TInstDef inst)
+      | instName inst `elem` localClassNames = Nothing
+      | otherwise = Just d
+    keepImportedDecl d = Just d
+
 dedupeImportedInstanceDecls :: [TopDecl] -> [TopDecl]
 dedupeImportedInstanceDecls =
   reverse . snd . foldl step ([], [])
@@ -2169,6 +2181,48 @@ formatAmbiguous (item, mods) =
     ++ " imported from "
     ++ intercalate ", " (map Mod.modulePathDisplay mods)
 
+ensureNoModuleLookupConflicts :: ModuleGraph -> CompUnit -> [(Import, Mod.ModuleId)] -> Either String ()
+ensureNoModuleLookupConflicts graph unit importPairs =
+  case conflicts of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Conflicting unqualified names:",
+            unlines (map (\n -> "  " ++ show n) xs)
+          ]
+  where
+    localTermNames =
+      uniqueNames (concatMap topDeclTermNames (topDeclsFrom unit))
+
+    visibleModuleNames =
+      uniqueNames (concatMap importVisibleModuleNames (imports unit))
+
+    importedTermNames =
+      uniqueNames $
+        concatMap snd $
+          mapMaybe importTermPair importPairs
+
+    conflicts =
+      uniqueNames
+        ( filter (`elem` visibleModuleNames) localTermNames
+            ++ filter (`elem` visibleModuleNames) importedTermNames
+        )
+
+    importTermPair (ImportOnly importPath selector, modulePath) =
+      Just
+        ( importPath,
+          either (const []) id (resolveSelectedImportTermNames graph modulePath selector)
+        )
+    importTermPair _ =
+      Nothing
+
+resolveSelectedImportTermNames :: ModuleGraph -> Mod.ModuleId -> ItemSelector -> Either String [Name]
+resolveSelectedImportTermNames graph modulePath selector = do
+  publicDecls <- publicTopDeclsForModule graph modulePath
+  let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+  pure (uniqueNames (concatMap topDeclTermNames (mapMaybe (selectTopDecl names) publicDecls)))
+
 uniqueNames :: [Name] -> [Name]
 uniqueNames = reverse . fst . foldl step ([], Map.empty)
   where
@@ -2182,6 +2236,13 @@ uniqueModulePaths = reverse . fst . foldl step ([], Map.empty)
     step (acc, seen) n
       | Map.member n seen = (acc, seen)
       | otherwise = (n : acc, Map.insert n () seen)
+
+uniqueTopDecls :: [TopDecl] -> [TopDecl]
+uniqueTopDecls = reverse . fst . foldl step ([], Map.empty)
+  where
+    step (acc, seen) decl
+      | Map.member decl seen = (acc, seen)
+      | otherwise = (decl : acc, Map.insert decl () seen)
 
 duplicateNames :: [Name] -> [Name]
 duplicateNames names =
@@ -2209,6 +2270,22 @@ moduleQualifier :: Import -> Maybe Name
 moduleQualifier (ImportModule n) = Just (defaultModuleBindingName n)
 moduleQualifier (ImportAlias _ n) = Just n
 moduleQualifier (ImportOnly _ _) = Nothing
+
+importVisibleModuleNames :: Import -> [Name]
+importVisibleModuleNames (ImportModule importPath) =
+  uniqueNames $
+    concatMap modulePrefixesForQualifier (importModuleQualifiers importPath)
+importVisibleModuleNames (ImportAlias _ qualifier) =
+  [qualifier]
+importVisibleModuleNames (ImportOnly _ _) =
+  []
+
+modulePrefixesForQualifier :: Name -> [Name]
+modulePrefixesForQualifier n =
+  reverse (go n)
+  where
+    go q@(QualName p _) = q : go p
+    go x = [x]
 
 ensureNoDuplicateSelectedItems :: CompUnit -> Either String ()
 ensureNoDuplicateSelectedItems (CompUnit imps _) =
