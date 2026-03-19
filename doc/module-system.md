@@ -33,6 +33,7 @@ import M;
 import M as A;
 import M.{X, Y};
 import M.{*};
+import M.{*} hiding {X};
 import lib.foo.bar;
 import @ext.foo.bar;
 ```
@@ -58,6 +59,7 @@ Current std-specific behavior:
 - `import M as A;` binds only `A`.
 - `import M.{X, Y};` imports selected exported names into unqualified scope.
 - `import M.{*};` imports all exported item names into unqualified scope.
+- `import M.{...} hiding {X, Y};` removes names from the selector result after expansion.
 - Items inside `{...}` may mix simple item names and `*`.
   Dotted item paths are not supported there.
 
@@ -73,7 +75,9 @@ Validation rules:
 
 - Duplicate qualifier names are rejected.
 - Duplicate explicit names inside one selective import are rejected.
+- Duplicate names inside one `hiding {...}` list are rejected.
 - Unknown selected names are rejected.
+- Unknown hidden names are rejected.
 - Ambiguous names introduced by selective or glob imports are rejected.
 
 ## 5. Export Syntax and Public Interfaces
