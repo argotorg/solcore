@@ -290,7 +290,12 @@ cases =
       runTestForFile "mod-example.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder,
       runTestExpectingFailure "weird-error-foo.solc" caseFolder,
-      runTestForFile "strange-unbound.solc" caseFolder
+      runTestForFile "strange-unbound.solc" caseFolder,
+      runTestForFile "type-synonym-arg.solc" caseFolder,
+      runTestForFile "instance-synonym.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-detected.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-missed-order.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-missed-two-synonyms.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
