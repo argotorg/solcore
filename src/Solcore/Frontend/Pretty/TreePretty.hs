@@ -67,14 +67,20 @@ instance Pretty ExportSpec where
   ppr (ExportModuleAll path) = ppr path <> text ".*"
 
 pprItemSelector :: ItemSelector -> Doc
-pprItemSelector (SelectItems items) = lbrace <> commaSep (map ppr items) <> rbrace
+pprItemSelector (SelectItems items hidden) =
+  base <> pprHiding hidden
+  where
+    base = lbrace <> commaSep (map ppr items) <> rbrace
+    pprHiding [] = empty
+    pprHiding names =
+      space <> (text "hiding" <+> (lbrace <> commaSep (map ppr names) <> rbrace))
 
 instance Pretty ItemSelectorEntry where
   ppr SelectAllItems = text "*"
   ppr (SelectItem name) = ppr name
 
 selectorIsOnlyWildcard :: ItemSelector -> Bool
-selectorIsOnlyWildcard (SelectItems [SelectAllItems]) = True
+selectorIsOnlyWildcard (SelectItems [SelectAllItems] []) = True
 selectorIsOnlyWildcard _ = False
 
 instance Pretty Pragma where

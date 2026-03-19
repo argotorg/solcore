@@ -74,7 +74,7 @@ data Import
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data ItemSelector
-  = SelectItems [ItemSelectorEntry]
+  = SelectItems [ItemSelectorEntry] [Name]
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data ItemSelectorEntry

@@ -25,6 +25,7 @@ import Language.Yul
       'contract' {Token _ TContract}
       'import'   {Token _ TImport}
       'export'   {Token _ TExport}
+      'hiding'   {Token _ THiding}
       'as'       {Token _ TAs}
       'let'      {Token _ TLet}
       '='        {Token _ TEq}
@@ -117,14 +118,15 @@ ImportList : ImportList Import                     { $1 ++ [$2] }
 Import :: { Import }
 Import : 'import' ModName ';'                      { ImportModule (classifyImportPath $2) }
        | 'import' ModName 'as' Name ';'            { ImportAlias (classifyImportPath $2) $4 }
-       | 'import' ModName '.' '{' ImportItems '}' ';' { ImportOnly (classifyImportPath $2) $5 }
+       | 'import' ModName '.' '{' ImportItems '}' ImportHiding ';'
+           { ImportOnly (classifyImportPath $2) (SelectItems $5 $7) }
        | 'import' '@' identifier '.' ModName ';'   { ImportModule (ExternalPath (Name $3) $5) }
        | 'import' '@' identifier '.' ModName 'as' Name ';' { ImportAlias (ExternalPath (Name $3) $5) $7 }
-       | 'import' '@' identifier '.' ModName '.' '{' ImportItems '}' ';'
-           { ImportOnly (ExternalPath (Name $3) $5) $8 }
+       | 'import' '@' identifier '.' ModName '.' '{' ImportItems '}' ImportHiding ';'
+           { ImportOnly (ExternalPath (Name $3) $5) (SelectItems $8 $10) }
 
-ImportItems :: { ItemSelector }
-ImportItems : ImportItemList                       { SelectItems $1 }
+ImportItems :: { [ItemSelectorEntry] }
+ImportItems : ImportItemList                       { $1 }
 
 ImportItemList :: { [ItemSelectorEntry] }
 ImportItemList : ImportItem ',' ImportItemList     { $1 : $3 }
@@ -133,6 +135,14 @@ ImportItemList : ImportItem ',' ImportItemList     { $1 : $3 }
 ImportItem :: { ItemSelectorEntry }
 ImportItem : '*'                                   { SelectAllItems }
            | ItemName                              { SelectItem $1 }
+
+ImportHiding :: { [Name] }
+ImportHiding : 'hiding' '{' HidingItemList '}'     { $3 }
+             | {- empty -}                         { [] }
+
+HidingItemList :: { [Name] }
+HidingItemList : ItemName ',' HidingItemList       { $1 : $3 }
+               | ItemName                          { [$1] }
 
 ModName :: { Name }
 ModName : identifier                               { Name $1 }
@@ -167,8 +177,8 @@ ExportDecl : 'export' '{' ExportItems '}' ';'      { ExportList $3 }
 ExportTail :: { ModulePath -> Export }
 ExportTail : ';'                                   { ExportModule }
            | 'as' Name ';'                         { \path -> ExportModuleAs path $2 }
-           | '.' '{' ImportItems '}' ';'           { \path -> ExportItemsFrom path $3 }
-           | '.' '*' ';'                           { \path -> ExportItemsFrom path (SelectItems [SelectAllItems]) }
+           | '.' '{' ImportItems '}' ';'           { \path -> ExportItemsFrom path (SelectItems $3 []) }
+           | '.' '*' ';'                           { \path -> ExportItemsFrom path (SelectItems [SelectAllItems] []) }
 
 ExportItems :: { [ExportSpec] }
 ExportItems : ExportListItems                      { $1 }

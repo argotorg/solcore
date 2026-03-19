@@ -37,7 +37,8 @@ resolveModulePath (S.LibraryPath path) = LibraryPath path
 resolveModulePath (S.ExternalPath libName path) = ExternalPath libName path
 
 resolveItemSelector :: S.ItemSelector -> ItemSelector
-resolveItemSelector (S.SelectItems items) = SelectItems (map resolveSelectorEntry items)
+resolveItemSelector (S.SelectItems items hidden) =
+  SelectItems (map resolveSelectorEntry items) hidden
 
 resolveSelectorEntry :: S.ItemSelectorEntry -> ItemSelectorEntry
 resolveSelectorEntry S.SelectAllItems = SelectAllItems

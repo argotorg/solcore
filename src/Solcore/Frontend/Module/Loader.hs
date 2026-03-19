@@ -508,22 +508,25 @@ flattenModuleStrictValidationCompUnit graph modulePath = do
 
 ensureImportItemsExist :: ModuleGraph -> [(Import, Mod.ModuleId)] -> Either String ()
 ensureImportItemsExist graph importPairs = do
-  unknownGroups <- mapM unknowns importPairs
-  case concat unknownGroups of
-    [] -> Right ()
-    xs ->
+  (unknownSelectedGroups, unknownHiddenGroups) <- unzip <$> mapM unknowns importPairs
+  case (concat unknownSelectedGroups, concat unknownHiddenGroups) of
+    ([], []) -> Right ()
+    (selectedXs, hiddenXs) ->
       Left $
         unlines
-          [ "Unknown selected imports:",
-            unlines xs
-          ]
+          ( (if null selectedXs then [] else ["Unknown selected imports:", unlines selectedXs])
+              ++ (if null hiddenXs then [] else ["Unknown hidden imports:", unlines hiddenXs])
+          )
   where
     unknowns (ImportOnly importPath items, modulePath) = do
-      selected <- resolveSelectedImportItems graph importPath modulePath items
       available <- importableNamesForModule graph modulePath
-      let missing = filter (`notElem` available) selected
-      pure [formatMissing importPath n | n <- missing]
-    unknowns _ = pure []
+      let missingSelected = filter (`notElem` available) (explicitSelectorNames items)
+          missingHidden = filter (`notElem` available) (explicitHiddenNames items)
+      pure
+        ( [formatMissing importPath n | n <- missingSelected],
+          [formatMissing importPath n | n <- missingHidden]
+        )
+    unknowns _ = pure ([], [])
 
 formatMissing :: ModulePath -> Name -> String
 formatMissing importPath itemName =
@@ -535,9 +538,10 @@ resolveSelectedImportItems graph _moduleName modulePath selector = do
   pure (selectedNamesFromAvailable available selector)
 
 selectedNamesFromAvailable :: [Name] -> ItemSelector -> [Name]
-selectedNamesFromAvailable available (SelectItems items) =
-  uniqueNames (concatMap expand items)
+selectedNamesFromAvailable available (SelectItems items hidden) =
+  filter (`notElem` hiddenNames) (uniqueNames (concatMap expand items))
   where
+    hiddenNames = uniqueNames hidden
     expand SelectAllItems = available
     expand (SelectItem itemName) = [itemName]
 
@@ -670,7 +674,7 @@ validatePublicInterfaces graph groupModules interfaces =
           pure ()
         ExportModuleAs _ _ ->
           pure ()
-        ExportItemsFrom path selector@(SelectItems _) -> do
+        ExportItemsFrom path selector@(SelectItems _ _) -> do
           targetModule <- lookupModuleReference graph moduleId path
           let names = explicitSelectorNames selector
           availableNames <- interfaceNamesForModule targetModule
@@ -784,7 +788,7 @@ expandExportSpecFixed graph groupModules currentInterfaces currentModule sourceP
       currentModule
       sourcePath
       path
-      (SelectItems [SelectAllItems])
+      (SelectItems [SelectAllItems] [])
   pure emptyPublicInterface {publicItemRefs = itemRefs}
 
 resolveRemoteExportItemsFixed ::
@@ -2221,14 +2225,20 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
       [ "  " ++ Mod.modulePathDisplay moduleName ++ "." ++ show item
         | item <- duplicateNames (explicitSelectorNames selector)
       ]
+        ++ [ "  " ++ Mod.modulePathDisplay moduleName ++ " hiding " ++ show item
+             | item <- duplicateNames (explicitHiddenNames selector)
+           ]
     duplicateItems _ = []
 
 explicitSelectorNames :: ItemSelector -> [Name]
-explicitSelectorNames (SelectItems items) =
+explicitSelectorNames (SelectItems items _) =
   [ itemName | SelectItem itemName <- items ]
 
+explicitHiddenNames :: ItemSelector -> [Name]
+explicitHiddenNames (SelectItems _ hidden) = hidden
+
 hasSelectAll :: ItemSelector -> Bool
-hasSelectAll (SelectItems items) =
+hasSelectAll (SelectItems items _) =
   any isWildcard items
   where
     isWildcard SelectAllItems = True
