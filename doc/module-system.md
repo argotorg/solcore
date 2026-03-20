@@ -142,9 +142,16 @@ Current duplicate checking is enforced separately for:
 Unqualified lookup order:
 
 1. Local lexical scope
-2. Current module top-level declarations
-3. Names introduced by `import M.{...}` / `import M.{*}`
+2. Current module top-level declarations and names introduced by `import M.{...}` / `import M.{*}` are treated at the same priority
+3. If that combined non-local set contains more than one candidate in the same namespace, validation fails with a hard error
 4. Otherwise unresolved
+
+Current behavior:
+
+- Local parameters and local variables still shadow non-local names.
+- Current-module top-level names no longer silently shadow selected or glob-imported names.
+- Selected or glob-imported names no longer silently shadow current-module top-level names.
+- Re-importing the same underlying declaration is normalized, so importing `std.{*}` and then `std.{uint256}` does not fail by itself.
 
 ## 7. Constructors and Dot Shorthand
 
