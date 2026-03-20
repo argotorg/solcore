@@ -209,8 +209,7 @@ kindCheck t@(TyCon n ts) =
                   ++ (show $ length ts)
                   ++ " arguments"
               ]
-        mapM_ kindCheck ts
-        pure t
+        maybeExpandSynonym t
       Nothing -> do
         ti <- askTypeInfo n `wrapError` t
         unless (n == Name "pair" || arity ti == length ts) $
@@ -228,8 +227,8 @@ kindCheck t@(TyCon n ts) =
                   ++ (show $ length ts)
                   ++ " arguments"
               ]
-        mapM_ kindCheck ts
-        pure t
+        ts' <- mapM kindCheck ts
+        pure (TyCon n ts')
 kindCheck t = pure t
 
 -- Skolemization

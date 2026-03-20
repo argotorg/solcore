@@ -59,7 +59,7 @@ createInstance udt fd sch =
     -- pattern variables for self type
     (spvs, svs) <- freshPatData udt
     -- pattern variables for arguments
-    (sargs, sarg) <- unzip <$> mapM freshPatArg args'
+    (sargs, sarg) <- unzip <$> mapM (const freshPatArg) args'
     let isig = Signature [] qs invokeName [selfParam, argParam] (Just returnTy)
         -- building the match of function body
         discr = epair (Var sn) (Var an)
@@ -85,34 +85,8 @@ freshPatData (DataTy _ _ ((Constr cn ts) : _))
 freshPatData dt =
   error $ "freshPatData: expected at least one constructor, got " ++ show dt
 
-freshPatArg :: Ty -> TcM (Pat Name, Exp Name)
-freshPatArg ty@(TyCon pn _) =
-  do
-    -- First try to expand if it's a synonym
-    ty' <- maybeExpandSynonym ty
-    case ty' of
-      TyCon pn' _ | pn' /= pn -> freshPatArg ty' -- synonym was expanded, recurse
-      _ -> do
-        ti <- askTypeInfo pn
-        case constrNames ti of
-          [cn] -> do
-            (_ :=> ty1) <- askEnv cn >>= fresh
-            let (args, _ret) = splitTy ty1
-            if null args
-              then do
-                n <- freshName
-                pure (PVar n, Var n)
-              else do
-                (ps', es) <- unzip <$> mapM freshPatArg args
-                pure (PCon cn ps', Con cn es)
-          _ -> do
-            n <- freshName
-            pure (PVar n, Var n)
-freshPatArg (TyVar _) =
-  do
-    n <- freshName
-    pure (PVar n, Var n)
-freshPatArg _ =
+freshPatArg :: TcM (Pat Name, Exp Name)
+freshPatArg =
   do
     n <- freshName
     pure (PVar n, Var n)
