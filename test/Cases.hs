@@ -294,12 +294,9 @@ cases =
       runTestExpectingFailure "field-access.solc" caseFolder,
       runTestForFile "mod-example.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder,
-<<<<<<< no-recursion-on-types
       runTestForFile "box.solc" caseFolder,
-=======
       runTestForFile "fresh-pat-arg.solc" caseFolder,
       runTestForFile "fresh-pat-arg-synonym.solc" caseFolder,
->>>>>>> main
       runTestExpectingFailure "weird-error-foo.solc" caseFolder,
       runTestForFile "strange-unbound.solc" caseFolder,
       runTestForFile "type-synonym-arg.solc" caseFolder,
