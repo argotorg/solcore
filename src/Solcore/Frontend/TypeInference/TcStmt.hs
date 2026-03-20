@@ -530,7 +530,7 @@ argumentAnnotation :: Param Name -> TcM Ty
 argumentAnnotation (Untyped _) =
   freshTyVar
 argumentAnnotation (Typed _ t) =
-  pure t
+  maybeExpandSynonym t
 
 checkAllTypeVarsBound :: (Pretty a) => a -> [Tyvar] -> [Tyvar] -> TcM ()
 checkAllTypeVarsBound context used declared =
@@ -541,7 +541,7 @@ annotatedScheme :: [Tyvar] -> [Pred] -> Signature Name -> TcM Scheme
 annotatedScheme vs' qs (Signature vs ps _ args rt) =
   do
     ts <- mapM argumentAnnotation args
-    t <- maybe freshTyVar pure rt
+    t <- maybe freshTyVar maybeExpandSynonym rt
     let vs1 = vs ++ vs' ++ fv qs
     pure (Forall vs1 ((qs ++ ps) :=> (funtype ts t)))
 
@@ -972,7 +972,11 @@ checkInstance idef@(Instance d vs predCtx n ts t funs) =
       classArityError n cinfo idef
     -- check if all the types and classes in the context are valid
     checkConstraints predCtx
-    let ipred = InCls n t ts
+    -- expand type synonyms in instance head (affects overlap check and stored instance)
+    tExp <- maybeExpandSynonym t
+    tsExp <- mapM maybeExpandSynonym ts
+    predCtxExp <- mapM expandPredSynonyms predCtx
+    let ipred = InCls n tExp tsExp
     -- checking the coverage condition
     insts' <- askInstEnv n `wrapError` ipred
     -- check overlapping only for non-default instances
@@ -982,22 +986,29 @@ checkInstance idef@(Instance d vs predCtx n ts t funs) =
         ipred' = insts env ipred
     unless d (checkOverlap ipred' insts' `wrapError` idef)
     -- check if default instance has a type variable as main argument.
-    when d (checkDefaultInst (predCtx :=> ipred) `wrapError` idef)
+    when d (checkDefaultInst (predCtxExp :=> ipred) `wrapError` idef)
     coverageEnabled <- askCoverage n
-    unless coverageEnabled (checkCoverage n ts t `wrapError` idef)
+    unless coverageEnabled (checkCoverage n tsExp tExp `wrapError` idef)
     -- checking Patterson condition
     pattersonEnabled <- askPattersonCondition n
-    unless pattersonEnabled (checkMeasure predCtx ipred `wrapError` idef)
+    unless pattersonEnabled (checkMeasure predCtxExp ipred `wrapError` idef)
     -- checking bound variable condition
     boundEnabled <- askBoundVariableCondition n
-    unless boundEnabled (checkBoundVariable predCtx (bv (t : ts)) `wrapError` idef)
+    unless boundEnabled (checkBoundVariable predCtxExp (bv (tExp : tsExp)) `wrapError` idef)
     -- checking instance methods
     mapM_ (checkMethod ipred) funs `wrapError` idef
-    let ninst = anfInstance $ predCtx :=> InCls n t ts
+    let ninst = anfInstance $ predCtxExp :=> ipred
     -- add to the environment
     if d
       then addDefaultInstance n ninst
       else addInstance n ninst
+
+expandPredSynonyms :: Pred -> TcM Pred
+expandPredSynonyms (InCls n t ts) = do
+  t' <- maybeExpandSynonym t
+  ts' <- mapM maybeExpandSynonym ts
+  pure (InCls n t' ts')
+expandPredSynonyms p = pure p
 
 -- checking a default instance
 
