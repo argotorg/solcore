@@ -1,0 +1,9 @@
+-- Direct recursion: Nat refers to itself in the Succ constructor.
+-- Expected: type checker rejects with "Recursive data type detected".
+data Nat = Zero | Succ(Nat);
+
+contract RecursiveTypeDirect {
+  function main() -> Nat {
+    Zero
+  }
+}
