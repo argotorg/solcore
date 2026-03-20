@@ -586,8 +586,6 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _) _)
       -- check for phantom (unconstrained) meta variables from constructor applications
       checkPhantomMetaVars False n bd1' rs ty `wrapError` d
       info [" - generalized inferred type: ", pretty inf]
-      -- check for phantom (unconstrained) meta variables in the body
-      checkPhantomMetaVars True n bd1' rs ty `wrapError` d
       ann <- annotatedScheme vs' qs sig
       info [" - annotated type:", pretty ann]
       -- checking ambiguity
