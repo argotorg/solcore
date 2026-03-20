@@ -1,0 +1,7 @@
+data MemoryWordReader = MemoryWordReader(word);
+
+function copyToMem(reader:MemoryWordReader, dst:word, cnt: word) -> () {
+      match reader {
+      | MemoryWordReader(ptr) => assembly { mcopy(dst, ptr, cnt) }
+      }
+}

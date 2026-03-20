@@ -5,7 +5,8 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-import Data.Generics (everywhere, mkT)
+import Data.Generics (everywhere, extT, mkT)
+import Language.Yul (YulExp (..))
 import Data.List
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -321,11 +322,18 @@ buildSubst occMap varBinds = do
   pure (Map.fromList pairs)
 
 -- Substitute pattern variables in a statement using the given map.
+-- Also substitutes YIdent names inside inline assembly blocks.
 substStmt :: Map Id (Exp Id) -> Stmt Id -> Stmt Id
-substStmt subst = everywhere (mkT go)
+substStmt subst = everywhere (mkT goExp `extT` goYul)
   where
-    go e@(Var v) = Map.findWithDefault e v subst
-    go e = e
+    goExp e@(Var v) = Map.findWithDefault e v subst
+    goExp e         = e
+    goYul :: YulExp -> YulExp
+    goYul e@(YIdent n) =
+      case [v | (k, Var v) <- Map.toList subst, idName k == n] of
+        (v : _) -> YIdent (idName v)
+        []      -> e
+    goYul e = e
 
 occToExp :: OccMap -> Occurrence -> CompilerM (Exp Id)
 occToExp occMap occ =
