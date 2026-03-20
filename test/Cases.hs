@@ -183,6 +183,7 @@ cases =
       runTestExpectingFailure "mainproxy.solc" caseFolder,
       runTestForFile "MatchCall.solc" caseFolder,
       runTestExpectingFailure "match-compiler-undef-asm.solc" caseFolder,
+      runTestExpectingFailure "phantom-type-return-con.solc" caseFolder,
       runTestForFile "match-yul.solc" caseFolder,
       runTestForFile "memory.solc" caseFolder,
       runTestForFile "Memory1.solc" caseFolder,
@@ -289,14 +290,25 @@ cases =
       runTestForFile "field-name-error.solc" caseFolder,
       runTestExpectingFailure "field-access.solc" caseFolder,
       runTestForFile "mod-example.solc" caseFolder,
-      runTestForFile "proxy-desugar.solc" caseFolder,
       runTestForFile "snds.solc" caseFolder,
       runTestForFile "bool-elim.solc" caseFolder,
       runTestForFile "catch-all.solc" caseFolder,
       runTestForFile "redundant-match.solc" caseFolder,
       runTestForFile "false-redundant-warning.solc" caseFolder,
+      runTestForFile "proxy-desugar.solc" caseFolder,
+      runTestForFile "invokable-issue.solc" caseFolder,
+      runTestForFile "td.solc" caseFolder,
+      runTestForFile "bar.solc" caseFolder,
+      runTestForFile "fresh-pat-arg.solc" caseFolder,
+      runTestForFile "fresh-pat-arg-synonym.solc" caseFolder,
       runTestExpectingFailure "weird-error-foo.solc" caseFolder,
-      runTestForFile "strange-unbound.solc" caseFolder
+      runTestForFile "strange-unbound.solc" caseFolder,
+      runTestForFile "type-synonym-arg.solc" caseFolder,
+      runTestForFile "instance-synonym.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-detected.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-missed-order.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-missed-two-synonyms.solc" caseFolder,
+      runTestForFile "copytomem.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
