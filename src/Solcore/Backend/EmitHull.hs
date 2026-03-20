@@ -300,12 +300,18 @@ emitStmt (MastLet (MastId name ty) _mty mexp) = do
     Nothing -> return alloc
 emitStmt (MastMatch scrutinee alts) = emitMatch scrutinee alts
 emitStmt (MastAsm as) = do
-  -- unroll the vsubst to a series of assignments and insert them before the assembly block
-  -- an alternative might be to painstakingly rename all vars in the the assembly block
+  -- Unroll VSubst entries for variables that appear in the assembly block.
+  -- We must emit SAlloc before SAssign because yule requires variables to be
+  -- declared before use. Assembly variables are always word-sized.
+  -- TODO: more systematic fix: make substStmt in DecisionTreeCompiler substitute
+  -- inside Asm blocks so the match compiler generates explicit Let bindings
+  -- instead of relying on VSubst propagation here.
   subst <- gets ecSubst
   let yvars = getNames as
-  let unrolled = [Hull.SAssign (Hull.EVar (show v)) e | (v, e) <- Map.toList subst, Set.member v yvars]
-  pure $ unrolled ++ [Hull.SAssembly as]
+  let bindings = [(v, e) | (v, e) <- Map.toList subst, Set.member v yvars]
+  let allocs   = [Hull.SAlloc (show v) Hull.TWord | (v, _) <- bindings]
+  let assigns  = [Hull.SAssign (Hull.EVar (show v)) e | (v, e) <- bindings]
+  pure $ allocs ++ assigns ++ [Hull.SAssembly as]
 
 emitStmts :: [MastStmt] -> EM [Hull.Stmt]
 emitStmts = concatMapM emitStmt'

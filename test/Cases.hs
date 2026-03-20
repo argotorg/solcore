@@ -294,7 +294,7 @@ cases =
       runTestForFile "bool-elim.solc" caseFolder,
       runTestForFile "catch-all.solc" caseFolder,
       runTestForFile "redundant-match.solc" caseFolder,
-      runTestForFile "false-redundant-warning.solc" caseFolder
+      runTestForFile "false-redundant-warning.solc" caseFolder,
       runTestExpectingFailure "weird-error-foo.solc" caseFolder,
       runTestForFile "strange-unbound.solc" caseFolder
     ]
