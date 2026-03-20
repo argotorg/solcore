@@ -177,8 +177,8 @@ ExportDecl : 'export' '{' ExportItems '}' ';'      { ExportList $3 }
 ExportTail :: { ModulePath -> Export }
 ExportTail : ';'                                   { ExportModule }
            | 'as' Name ';'                         { \path -> ExportModuleAs path $2 }
-           | '.' '{' ImportItems '}' ';'           { \path -> ExportItemsFrom path (SelectItems $3 []) }
-           | '.' '*' ';'                           { \path -> ExportItemsFrom path (SelectItems [SelectAllItems] []) }
+           | '.' '{' ExportFromItems '}' ';'       { \path -> ExportItemsFrom path (SelectExportItems $3) }
+           | '.' '*' ';'                           { \path -> ExportItemsFrom path (SelectExportItems [SelectExportAllItems]) }
 
 ExportItems :: { [ExportSpec] }
 ExportItems : ExportListItems                      { $1 }
@@ -191,8 +191,30 @@ ExportListItems : ExportListItem ',' ExportListItems { $1 : $3 }
 ExportListItem :: { ExportSpec }
 ExportListItem : '*'                               { ExportAll }
                | ItemName                          { ExportName $1 }
+               | ItemName '(' ExportConstructorItems ')' { ExportNameWithConstructors $1 $3 }
                | ModName '.' '*'                   { ExportModuleAll (classifyImportPath $1) }
                | '@' identifier '.' ModName '.' '*' { ExportModuleAll (ExternalPath (Name $2) $4) }
+
+ExportFromItems :: { [ExportSelectorEntry] }
+ExportFromItems : ExportFromItemList               { $1 }
+                | {- empty -}                      { [] }
+
+ExportFromItemList :: { [ExportSelectorEntry] }
+ExportFromItemList : ExportFromItem ',' ExportFromItemList { $1 : $3 }
+                   | ExportFromItem                { [$1] }
+
+ExportFromItem :: { ExportSelectorEntry }
+ExportFromItem : '*'                               { SelectExportAllItems }
+               | ItemName                          { SelectExportItem $1 }
+               | ItemName '(' ExportConstructorItems ')' { SelectExportConstructors $1 $3 }
+
+ExportConstructorItems :: { ConstructorSelector }
+ExportConstructorItems : '*'                       { SelectAllConstructors }
+                       | ConstructorNameList       { SelectConstructors $1 }
+
+ConstructorNameList :: { [Name] }
+ConstructorNameList : ItemName ',' ConstructorNameList { $1 : $3 }
+                    | ItemName                     { [$1] }
 
 -- pragmas
 

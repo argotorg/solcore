@@ -40,6 +40,24 @@ resolveItemSelector :: S.ItemSelector -> ItemSelector
 resolveItemSelector (S.SelectItems items hidden) =
   SelectItems (map resolveSelectorEntry items) hidden
 
+resolveConstructorSelector :: S.ConstructorSelector -> ConstructorSelector
+resolveConstructorSelector (S.SelectConstructors names) =
+  SelectConstructors names
+resolveConstructorSelector S.SelectAllConstructors =
+  SelectAllConstructors
+
+resolveExportSelector :: S.ExportSelector -> ExportSelector
+resolveExportSelector (S.SelectExportItems items) =
+  SelectExportItems (map resolveExportSelectorEntry items)
+
+resolveExportSelectorEntry :: S.ExportSelectorEntry -> ExportSelectorEntry
+resolveExportSelectorEntry S.SelectExportAllItems =
+  SelectExportAllItems
+resolveExportSelectorEntry (S.SelectExportItem name) =
+  SelectExportItem name
+resolveExportSelectorEntry (S.SelectExportConstructors name ctorSelector) =
+  SelectExportConstructors name (resolveConstructorSelector ctorSelector)
+
 resolveSelectorEntry :: S.ItemSelectorEntry -> ItemSelectorEntry
 resolveSelectorEntry S.SelectAllItems = SelectAllItems
 resolveSelectorEntry (S.SelectItem name) = SelectItem name
@@ -47,6 +65,8 @@ resolveSelectorEntry (S.SelectItem name) = SelectItem name
 resolveExportSpec :: S.ExportSpec -> ExportSpec
 resolveExportSpec S.ExportAll = ExportAll
 resolveExportSpec (S.ExportName name) = ExportName name
+resolveExportSpec (S.ExportNameWithConstructors name ctorSelector) =
+  ExportNameWithConstructors name (resolveConstructorSelector ctorSelector)
 resolveExportSpec (S.ExportModuleAll path) = ExportModuleAll (resolveModulePath path)
 
 validateDuplicateNamespacesInCompUnit :: S.CompUnit -> Either String ()
@@ -163,7 +183,7 @@ resolveExport (S.ExportModule path) =
 resolveExport (S.ExportModuleAs path asName) =
   ExportModuleAs (resolveModulePath path) asName
 resolveExport (S.ExportItemsFrom path items) =
-  ExportItemsFrom (resolveModulePath path) (resolveItemSelector items)
+  ExportItemsFrom (resolveModulePath path) (resolveExportSelector items)
 
 instance Resolve S.Contract where
   type Result S.Contract = Contract Name

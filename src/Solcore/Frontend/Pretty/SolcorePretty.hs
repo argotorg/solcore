@@ -76,10 +76,10 @@ instance Pretty Export where
   ppr (ExportModuleAs path asName) =
     hsep [text "export", ppr path, text "as", ppr asName <> semi]
   ppr (ExportItemsFrom path items)
-    | selectorIsOnlyWildcard items =
+    | exportSelectorIsOnlyWildcard items =
     hsep [text "export", ppr path <> text ".*;"]
     | otherwise =
-    hsep [text "export", ppr path <> text ".", pprItemSelector items <> semi]
+    hsep [text "export", ppr path <> text ".", pprExportSelector items <> semi]
 
 pprExportSpecs :: [ExportSpec] -> Doc
 pprExportSpecs items = lbrace <> commaSep (map ppr items) <> rbrace
@@ -87,7 +87,23 @@ pprExportSpecs items = lbrace <> commaSep (map ppr items) <> rbrace
 instance Pretty ExportSpec where
   ppr ExportAll = text "*"
   ppr (ExportName name) = ppr name
+  ppr (ExportNameWithConstructors name ctorSelector) =
+    ppr name <> parens (ppr ctorSelector)
   ppr (ExportModuleAll path) = ppr path <> text ".*"
+
+instance Pretty ConstructorSelector where
+  ppr SelectAllConstructors = text "*"
+  ppr (SelectConstructors names) = commaSep (map ppr names)
+
+pprExportSelector :: ExportSelector -> Doc
+pprExportSelector (SelectExportItems items) =
+  lbrace <> commaSep (map ppr items) <> rbrace
+
+instance Pretty ExportSelectorEntry where
+  ppr SelectExportAllItems = text "*"
+  ppr (SelectExportItem name) = ppr name
+  ppr (SelectExportConstructors name ctorSelector) =
+    ppr name <> parens (ppr ctorSelector)
 
 pprItemSelector :: ItemSelector -> Doc
 pprItemSelector (SelectItems items hidden) =
@@ -105,6 +121,10 @@ instance Pretty ItemSelectorEntry where
 selectorIsOnlyWildcard :: ItemSelector -> Bool
 selectorIsOnlyWildcard (SelectItems [SelectAllItems] []) = True
 selectorIsOnlyWildcard _ = False
+
+exportSelectorIsOnlyWildcard :: ExportSelector -> Bool
+exportSelectorIsOnlyWildcard (SelectExportItems [SelectExportAllItems]) = True
+exportSelectorIsOnlyWildcard _ = False
 
 instance Pretty Pragma where
   ppr (Pragma _ Enabled) = empty

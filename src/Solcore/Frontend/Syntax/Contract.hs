@@ -58,13 +58,29 @@ data Export
   = ExportList [ExportSpec]
   | ExportModule ModulePath
   | ExportModuleAs ModulePath Name
-  | ExportItemsFrom ModulePath ItemSelector
+  | ExportItemsFrom ModulePath ExportSelector
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ConstructorSelector
+  = SelectConstructors [Name]
+  | SelectAllConstructors
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data ExportSpec
   = ExportName Name
+  | ExportNameWithConstructors Name ConstructorSelector
   | ExportAll
   | ExportModuleAll ModulePath
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ExportSelector
+  = SelectExportItems [ExportSelectorEntry]
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ExportSelectorEntry
+  = SelectExportAllItems
+  | SelectExportItem Name
+  | SelectExportConstructors Name ConstructorSelector
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data Import

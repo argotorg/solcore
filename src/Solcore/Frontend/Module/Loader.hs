@@ -675,11 +675,11 @@ validatePublicInterfaces graph groupModules interfaces =
           pure ()
         ExportModuleAs _ _ ->
           pure ()
-        ExportItemsFrom path selector@(SelectItems _ _) -> do
+        ExportItemsFrom path selector -> do
           targetModule <- lookupModuleReference graph moduleId path
-          let names = explicitSelectorNames selector
+          let names = explicitExportSelectorNames selector
           availableNames <- interfaceNamesForModule targetModule
-          when (hasSelectAll selector) (ensureRemoteModuleVisible moduleId path)
+          when (hasExportSelectAll selector) (ensureRemoteModuleVisible moduleId path)
           ensureRemoteExportsExist sourcePath path names availableNames
 
     validateExportSpec sourcePath moduleId spec =
@@ -789,7 +789,7 @@ expandExportSpecFixed graph groupModules currentInterfaces currentModule sourceP
       currentModule
       sourcePath
       path
-      (SelectItems [SelectAllItems] [])
+      (SelectExportItems [SelectExportAllItems])
   pure emptyPublicInterface {publicItemRefs = itemRefs}
 
 resolveRemoteExportItemsFixed ::
@@ -799,7 +799,7 @@ resolveRemoteExportItemsFixed ::
   Mod.ModuleId ->
   FilePath ->
   ModulePath ->
-  ItemSelector ->
+  ExportSelector ->
   Either String [ExportedItemRef]
 resolveRemoteExportItemsFixed graph groupModules currentInterfaces currentModule sourcePath exportPath selector = do
   targetModule <- lookupModuleReference graph currentModule exportPath
@@ -811,15 +811,15 @@ resolveRemoteExportItemsFixed graph groupModules currentInterfaces currentModule
       do
         let availableRefs = currentInterfaceRefs targetModule
             availableNames = uniqueNames (map exportedItemName availableRefs)
-            names = selectedNamesFromAvailable availableNames selector
+            names = selectedNamesFromAvailable availableNames (exportSelectorToItemSelector selector)
         pure (selectExportedItemRefs names availableRefs)
 
     resolveOutsideGroup targetModule =
       do
         availableRefs <- publicItemRefs <$> publicModuleInterface graph targetModule
         let availableNames = uniqueNames (map exportedItemName availableRefs)
-            names = selectedNamesFromAvailable availableNames selector
-        ensureRemoteExportsExist sourcePath exportPath (explicitSelectorNames selector) availableNames
+            names = selectedNamesFromAvailable availableNames (exportSelectorToItemSelector selector)
+        ensureRemoteExportsExist sourcePath exportPath (explicitExportSelectorNames selector) availableNames
         pure (selectExportedItemRefs names availableRefs)
 
     currentInterfaceRefs targetModule =
@@ -2311,6 +2311,24 @@ explicitSelectorNames :: ItemSelector -> [Name]
 explicitSelectorNames (SelectItems items _) =
   [ itemName | SelectItem itemName <- items ]
 
+exportSelectorToItemSelector :: ExportSelector -> ItemSelector
+exportSelectorToItemSelector (SelectExportItems items) =
+  SelectItems (map toImportEntry items) []
+  where
+    toImportEntry SelectExportAllItems = SelectAllItems
+    toImportEntry (SelectExportItem itemName) = SelectItem itemName
+    toImportEntry (SelectExportConstructors typeName _) = SelectItem typeName
+
+explicitExportSelectorNames :: ExportSelector -> [Name]
+explicitExportSelectorNames (SelectExportItems items) =
+  [ itemName
+    | item <- items,
+      itemName <- case item of
+        SelectExportItem name -> [name]
+        SelectExportConstructors typeName _ -> [typeName]
+        SelectExportAllItems -> []
+  ]
+
 explicitHiddenNames :: ItemSelector -> [Name]
 explicitHiddenNames (SelectItems _ hidden) = hidden
 
@@ -2319,4 +2337,11 @@ hasSelectAll (SelectItems items _) =
   any isWildcard items
   where
     isWildcard SelectAllItems = True
+    isWildcard _ = False
+
+hasExportSelectAll :: ExportSelector -> Bool
+hasExportSelectAll (SelectExportItems items) =
+  any isWildcard items
+  where
+    isWildcard SelectExportAllItems = True
     isWildcard _ = False
