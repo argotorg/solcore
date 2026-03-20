@@ -182,6 +182,8 @@ cases =
       runTestForFile "Logic.solc" caseFolder,
       runTestExpectingFailure "mainproxy.solc" caseFolder,
       runTestForFile "MatchCall.solc" caseFolder,
+      runTestExpectingFailure "match-compiler-undef-asm.solc" caseFolder,
+      runTestExpectingFailure "phantom-type-return-con.solc" caseFolder,
       runTestForFile "match-yul.solc" caseFolder,
       runTestForFile "memory.solc" caseFolder,
       runTestForFile "Memory1.solc" caseFolder,
@@ -292,9 +294,19 @@ cases =
       runTestExpectingFailure "field-access.solc" caseFolder,
       runTestForFile "mod-example.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder,
+<<<<<<< no-recursion-on-types
       runTestForFile "box.solc" caseFolder,
+=======
+      runTestForFile "fresh-pat-arg.solc" caseFolder,
+      runTestForFile "fresh-pat-arg-synonym.solc" caseFolder,
+>>>>>>> main
       runTestExpectingFailure "weird-error-foo.solc" caseFolder,
-      runTestForFile "strange-unbound.solc" caseFolder
+      runTestForFile "strange-unbound.solc" caseFolder,
+      runTestForFile "type-synonym-arg.solc" caseFolder,
+      runTestForFile "instance-synonym.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-detected.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-missed-order.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-missed-two-synonyms.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

@@ -499,6 +499,8 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd) =
     rs <- reduce [] ps1 `wrapError` d
     ty <- withCurrentSubst nt
     sch <- generalize (rs, ty)
+    -- check for phantom (unconstrained) meta variables from constructor applications
+    checkPhantomMetaVars True n bd1 rs ty `wrapError` d
     -- checking ambiguity
     info [">>> Infered type for ", pretty n, " :: ", pretty sch]
     ambSch <- ambiguityCheck sch
@@ -528,7 +530,7 @@ argumentAnnotation :: Param Name -> TcM Ty
 argumentAnnotation (Untyped _) =
   freshTyVar
 argumentAnnotation (Typed _ t) =
-  pure t
+  maybeExpandSynonym t
 
 checkAllTypeVarsBound :: (Pretty a) => a -> [Tyvar] -> [Tyvar] -> TcM ()
 checkAllTypeVarsBound context used declared =
@@ -539,7 +541,7 @@ annotatedScheme :: [Tyvar] -> [Pred] -> Signature Name -> TcM Scheme
 annotatedScheme vs' qs (Signature vs ps _ args rt) =
   do
     ts <- mapM argumentAnnotation args
-    t <- maybe freshTyVar pure rt
+    t <- maybe freshTyVar maybeExpandSynonym rt
     let vs1 = vs ++ vs' ++ fv qs
     pure (Forall vs1 ((qs ++ ps) :=> (funtype ts t)))
 
@@ -581,6 +583,8 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _) _)
       ty <- withCurrentSubst nt
       checkConstraints rs
       inf <- generalize (rs, ty)
+      -- check for phantom (unconstrained) meta variables from constructor applications
+      checkPhantomMetaVars False n bd1' rs ty `wrapError` d
       info [" - generalized inferred type: ", pretty inf]
       ann <- annotatedScheme vs' qs sig
       info [" - annotated type:", pretty ann]
@@ -625,6 +629,72 @@ toMeta t = t
 ambiguous :: Scheme -> Bool
 ambiguous (Forall _ (ps :=> t)) =
   not $ null $ bv ps \\ bv (closure ps (bv t))
+
+-- Check for phantom meta variables: meta vars appearing in constructor
+-- application result types in the body but not in the function's inferred
+-- type or environment. Such variables arise when a constructor has phantom
+-- type parameters (type parameters that do not appear in any constructor
+-- field). They cannot be determined from context and indicate a type error.
+-- The function uses a boolean flag, checkReturn:
+-- checkReturn = True   (tiFunDef, unannotated): also flag constructor-result
+--   meta vars that escaped into the return type without being determined by
+--   the argument types or constraints.
+-- checkReturn = False  (tcFunDef, annotated): skip that second check, because
+--   the programmer explicitly declared the return type; any phantom variable
+--   in it is intentional and will be resolved by the instance or call context.
+checkPhantomMetaVars :: Bool -> Name -> Body Id -> [Pred] -> Ty -> TcM ()
+checkPhantomMetaVars checkReturn n body rs ty = do
+  envVars <- getEnvMetaVars
+  bodySubst <- withCurrentSubst body
+  tySubst <- withCurrentSubst (rs, ty)
+  let (rsApplied, tyApplied) = tySubst
+      legitimateMVs = mv tySubst ++ envVars
+      conMVs = conResultMetaVars bodySubst
+      -- Case 1: constructor-result MVs entirely absent from the function's type.
+      phantomMVs = conMVs \\ legitimateMVs
+      -- Case 2 (unannotated only): constructor-result MVs that appear in the
+      -- return type but not in the argument types or constraints.  A meta var
+      -- that appears in a constraint is determined at call sites through type
+      -- class dispatch, so it must be excluded from the suspicious set.
+      -- Compiler-generated closure types (from defunctionalization) are
+      -- excluded: their phantom parameters are legitimately resolved at the
+      -- call site via the Invokable instance.
+      (argTys, retTy') = splitTy tyApplied
+      determined = mv argTys `union` mv rsApplied
+  escapedReturnMVs <-
+    if not checkReturn
+      then pure []
+      else case outerTyCon retTy' of
+        Nothing -> pure []
+        Just retTyName -> do
+          isGenerated <- isUniqueTyName retTyName
+          if isGenerated
+            then pure []
+            else pure [m | m <- conMVs, m `elem` mv retTy', m `notElem` determined]
+  let allPhantomMVs = nub (phantomMVs ++ escapedReturnMVs)
+  unless (null allPhantomMVs) $ do
+    let mvNames = intercalate ", " $ map (pretty . metaName) allPhantomMVs
+    throwError $
+      unlines
+        [ "Ambiguous type variable(s) " ++ mvNames ++ " in definition of " ++ pretty n ++ ".",
+          "This typically occurs when a constructor has phantom type parameters.",
+          "Please, add a type signature to fix the ambiguous type variable."
+        ]
+
+outerTyCon :: Ty -> Maybe Name
+outerTyCon (TyCon n _) = Just n
+outerTyCon _ = Nothing
+
+conResultMetaVars :: (Data a) => a -> [MetaTv]
+conResultMetaVars = nub . everything (++) (mkQ [] collectConMVs)
+  where
+    collectConMVs :: Exp Id -> [MetaTv]
+    collectConMVs (Con (Id _ ty) args) = mv (applyConArgs ty args)
+    collectConMVs _ = []
+
+    applyConArgs :: Ty -> [a] -> Ty
+    applyConArgs (_ :-> rest) (_ : as) = applyConArgs rest as
+    applyConArgs ty _ = ty
 
 reachable :: [Pred] -> [Tyvar] -> [Pred]
 reachable ps vs =
@@ -902,7 +972,11 @@ checkInstance idef@(Instance d vs predCtx n ts t funs) =
       classArityError n cinfo idef
     -- check if all the types and classes in the context are valid
     checkConstraints predCtx
-    let ipred = InCls n t ts
+    -- expand type synonyms in instance head (affects overlap check and stored instance)
+    tExp <- maybeExpandSynonym t
+    tsExp <- mapM maybeExpandSynonym ts
+    predCtxExp <- mapM expandPredSynonyms predCtx
+    let ipred = InCls n tExp tsExp
     -- checking the coverage condition
     insts' <- askInstEnv n `wrapError` ipred
     -- check overlapping only for non-default instances
@@ -912,22 +986,29 @@ checkInstance idef@(Instance d vs predCtx n ts t funs) =
         ipred' = insts env ipred
     unless d (checkOverlap ipred' insts' `wrapError` idef)
     -- check if default instance has a type variable as main argument.
-    when d (checkDefaultInst (predCtx :=> ipred) `wrapError` idef)
+    when d (checkDefaultInst (predCtxExp :=> ipred) `wrapError` idef)
     coverageEnabled <- askCoverage n
-    unless coverageEnabled (checkCoverage n ts t `wrapError` idef)
+    unless coverageEnabled (checkCoverage n tsExp tExp `wrapError` idef)
     -- checking Patterson condition
     pattersonEnabled <- askPattersonCondition n
-    unless pattersonEnabled (checkMeasure predCtx ipred `wrapError` idef)
+    unless pattersonEnabled (checkMeasure predCtxExp ipred `wrapError` idef)
     -- checking bound variable condition
     boundEnabled <- askBoundVariableCondition n
-    unless boundEnabled (checkBoundVariable predCtx (bv (t : ts)) `wrapError` idef)
+    unless boundEnabled (checkBoundVariable predCtxExp (bv (tExp : tsExp)) `wrapError` idef)
     -- checking instance methods
     mapM_ (checkMethod ipred) funs `wrapError` idef
-    let ninst = anfInstance $ predCtx :=> InCls n t ts
+    let ninst = anfInstance $ predCtxExp :=> ipred
     -- add to the environment
     if d
       then addDefaultInstance n ninst
       else addInstance n ninst
+
+expandPredSynonyms :: Pred -> TcM Pred
+expandPredSynonyms (InCls n t ts) = do
+  t' <- maybeExpandSynonym t
+  ts' <- mapM maybeExpandSynonym ts
+  pure (InCls n t' ts')
+expandPredSynonyms p = pure p
 
 -- checking a default instance
 
