@@ -107,11 +107,23 @@ flexAll :: Data a => a -> a
 flexAll = everywhere (mkT flex)
 -}
 
--- | A signature forall tvs . t is considered ambiguous if `tvs \\ FTV(t) /= mempty`
--- this is should be the same as `FTV(body) \\ FTV(t) /= {}`
--- returns list of ambiguous variables
+-- | A signature forall tvs . ctx => t is considered ambiguous if a type variable
+-- in tvs neither appears in the function type nor is reachable from the function
+-- type's variables via the constraint graph.  Uses the same closure-based strategy
+-- as TcStmt.ambiguous so that a constraint like `abs:Typedef(rep)` is not flagged
+-- when `rep` appears in the type (abs is reachable through the constraint).
+-- Returns the list of ambiguous variables.
 ambiguousVarsInSig :: (HasTV a) => Signature a -> [Tyvar]
-ambiguousVarsInSig sig = sigVars sig \\ freetv (sigParams sig, sigReturn sig)
+-- ambiguousVarsInSig sig = sigVars sig \\ freetv (sigParams sig, sigReturn sig)
+ambiguousVarsInSig sig =
+  sigVars sig \\ (tyVars `union` freetv (constraintClosure ps tyVars))
+  where
+    ps = sigContext sig
+    tyVars = freetv (sigParams sig, sigReturn sig)
+    reachable preds vs = [p | p <- preds, any (`elem` vs) (freetv p)]
+    constraintClosure preds vs
+      | all (`elem` vs) (freetv (reachable preds vs)) = reachable preds vs
+      | otherwise = constraintClosure preds (freetv (reachable preds vs))
 
 addSpecialisation :: Name -> TcFunDef -> SM ()
 addSpecialisation name fd = modify $ \s -> s {specTable = Map.insert name fd (specTable s)}
@@ -683,6 +695,8 @@ instance (HasTV a) => HasTV (Maybe a) where
   freetv = maybe [] freetv
 
 instance (HasTV a, HasTV b) => HasTV (a, b) -- defaults
+
+instance HasTV Pred -- uses default: freetv = everything (<>) (mkQ mempty (freetv @Ty))
 
 {-
 instance (HasTV a, HasTV b, HasTV c) => HasTV (a,b,c) where
