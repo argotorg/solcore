@@ -6,12 +6,12 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.Generics (everywhere, extT, mkT)
-import Language.Yul (YulExp (..))
 import Data.List
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe
 import Data.Ord (comparing)
+import Language.Yul (YulExp (..))
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -327,12 +327,12 @@ substStmt :: Map Id (Exp Id) -> Stmt Id -> Stmt Id
 substStmt subst = everywhere (mkT goExp `extT` goYul)
   where
     goExp e@(Var v) = Map.findWithDefault e v subst
-    goExp e         = e
+    goExp e = e
     goYul :: YulExp -> YulExp
     goYul e@(YIdent n) =
       case [v | (k, Var v) <- Map.toList subst, idName k == n] of
         (v : _) -> YIdent (idName v)
-        []      -> e
+        [] -> e
     goYul e = e
 
 occToExp :: OccMap -> Occurrence -> CompilerM (Exp Id)
