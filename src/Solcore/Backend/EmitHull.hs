@@ -303,14 +303,11 @@ emitStmt (MastAsm as) = do
   -- Unroll VSubst entries for variables that appear in the assembly block.
   -- We must emit SAlloc before SAssign because yule requires variables to be
   -- declared before use. Assembly variables are always word-sized.
-  -- TODO: more systematic fix: make substStmt in DecisionTreeCompiler substitute
-  -- inside Asm blocks so the match compiler generates explicit Let bindings
-  -- instead of relying on VSubst propagation here.
   subst <- gets ecSubst
   let yvars = getNames as
   let bindings = [(v, e) | (v, e) <- Map.toList subst, Set.member v yvars]
-  let allocs   = [Hull.SAlloc (show v) Hull.TWord | (v, _) <- bindings]
-  let assigns  = [Hull.SAssign (Hull.EVar (show v)) e | (v, e) <- bindings]
+  let allocs = [Hull.SAlloc (show v) Hull.TWord | (v, _) <- bindings]
+  let assigns = [Hull.SAssign (Hull.EVar (show v)) e | (v, e) <- bindings]
   pure $ allocs ++ assigns ++ [Hull.SAssembly as]
 
 emitStmts :: [MastStmt] -> EM [Hull.Stmt]
