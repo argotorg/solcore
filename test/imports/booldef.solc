@@ -1,4 +1,4 @@
-export { Bool, True, False, not, C, D, id };
+export { Bool(*), not, C, D, id };
 
 data Bool = True | False;
 

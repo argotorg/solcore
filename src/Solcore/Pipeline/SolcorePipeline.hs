@@ -20,7 +20,7 @@ import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
-import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictCompileCompUnitWithImportedStart, flattenModuleStrictValidationCompUnit, loadModuleGraph, moduleSourcePath)
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictCompileCompUnitWithMetadata, flattenModuleStrictValidationCompUnit, loadModuleGraph, moduleSourcePath)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.Contract hiding (contracts)
@@ -86,9 +86,9 @@ compile opts = runExceptT $ do
           <$> nameResolution cunit
     pure ()
 
-  (parsed, importedStart) <-
+  (parsed, localStart, importedStart, partialImportedTypeNames) <-
     ExceptT $
-      pure (flattenModuleStrictCompileCompUnitWithImportedStart graph (entryModule graph))
+      pure (flattenModuleStrictCompileCompUnitWithMetadata graph (entryModule graph))
 
   -- Name resolution
   resolved <- ExceptT $ nameResolution parsed
@@ -97,6 +97,8 @@ compile opts = runExceptT $ do
         [ instanceHeadKey inst
           | TInstDef inst <- drop importedStart resolvedDecls
         ]
+      localDeclKeys =
+        take (importedStart - localStart) (drop localStart resolvedDecls) >>= topDeclKeys
 
   liftIO $ when (verbose || optDumpAST opts) $ do
     putStrLn "> AST after name resolution"
@@ -159,7 +161,7 @@ compile opts = runExceptT $ do
     ExceptT $
       timeItNamed
         "Typecheck (no desugaring)  "
-        (typeInferWithTrustedInstanceHeads noDesugarOpt trustedImportedInstanceHeads noFun)
+        (typeInferWithTrustedInstanceHeadsAndPartialTypes noDesugarOpt trustedImportedInstanceHeads localDeclKeys partialImportedTypeNames noFun)
 
   liftIO $ when verbose $ do
     putStrLn "No type errors found!"
@@ -168,7 +170,7 @@ compile opts = runExceptT $ do
     ExceptT $
       timeItNamed
         "Typecheck (desugaring)  "
-        (typeInferWithTrustedInstanceHeads opts trustedImportedInstanceHeads noFun)
+        (typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedImportedInstanceHeads localDeclKeys partialImportedTypeNames noFun)
 
   liftIO $ when verbose $ do
     putStrLn "> Type inference logs:"

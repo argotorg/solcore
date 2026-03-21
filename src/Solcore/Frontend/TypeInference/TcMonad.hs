@@ -83,6 +83,23 @@ isUniqueTyName n = do
   uenv <- gets uniqueTypes
   pure $ any (\d -> dataName d == n) (Map.elems uenv)
 
+isPartialDataType :: Name -> TcM Bool
+isPartialDataType n =
+  gets (Set.member n . partialDataTypes)
+
+withPartialDataTypesDisabled :: TcM a -> TcM a
+withPartialDataTypesDisabled action = do
+  partialTypes <- gets partialDataTypes
+  modify (\env -> env {partialDataTypes = Set.empty})
+  action
+    `catchError` ( \err -> do
+                     modify (\env -> env {partialDataTypes = partialTypes})
+                     throwError err
+                 )
+    >>= \result -> do
+      modify (\env -> env {partialDataTypes = partialTypes})
+      pure result
+
 typeInfoFor :: DataTy -> TypeInfo
 typeInfoFor (DataTy n vs cons) =
   TypeInfo (length vs) (map constrName cons) []

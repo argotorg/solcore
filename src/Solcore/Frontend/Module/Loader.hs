@@ -5,6 +5,7 @@ module Solcore.Frontend.Module.Loader
     flattenModuleValidationCompUnit,
     flattenModuleStrictCompileCompUnit,
     flattenModuleStrictCompileCompUnitWithImportedStart,
+    flattenModuleStrictCompileCompUnitWithMetadata,
     flattenModuleStrictValidationCompUnit,
     loadCompUnit,
     moduleSourcePath,
@@ -15,10 +16,10 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
 import Data.Graph (SCC (..), stronglyConnComp)
-import Data.List (intercalate, isPrefixOf, sortOn)
+import Data.List (find, intercalate, isPrefixOf, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Solcore.Frontend.Module.Identity qualified as Mod
@@ -372,7 +373,8 @@ isRecursiveImportGroup graph modulePath =
 data ExportedItemRef
   = ExportedItemRef
   { exportedItemOrigin :: Mod.ModuleId,
-    exportedItemName :: Name
+    exportedItemName :: Name,
+    exportedItemConstructors :: Maybe [Name]
   }
   deriving (Eq, Ord, Show)
 
@@ -405,17 +407,34 @@ normalizePublicInterface publicInterface =
     }
   where
     normalizeItemRefs refs =
-      map (\itemName -> chosenRefs Map.! itemName) (sortOn show orderedNames)
+      concatMap (\itemName -> Map.findWithDefault [] itemName chosenRefs) (sortOn show orderedNames)
       where
         (orderedNames, chosenRefs) = foldl step ([], Map.empty) refs
 
         step (names, chosen) ref =
           let itemName = exportedItemName ref
+              originKey existingRef = (exportedItemOrigin existingRef, isJust (exportedItemConstructors existingRef))
            in case Map.lookup itemName chosen of
                 Nothing ->
-                  (names ++ [itemName], Map.insert itemName ref chosen)
-                Just _ ->
-                  (names, chosen)
+                  (names ++ [itemName], Map.insert itemName [ref] chosen)
+                Just existingRefs ->
+                  (names, Map.insert itemName (mergeWith existingRefs ref) chosen)
+
+        mergeWith existingRefs ref =
+          case break ((== (exportedItemOrigin ref, isJust (exportedItemConstructors ref))) . originKey) existingRefs of
+            (before, matched : after) ->
+              before ++ [mergeRefs matched ref] ++ after
+            _ ->
+              existingRefs ++ [ref]
+
+        originKey existingRef = (exportedItemOrigin existingRef, isJust (exportedItemConstructors existingRef))
+
+        mergeRefs existingRef newRef =
+          existingRef {exportedItemConstructors = mergeConstructors (exportedItemConstructors existingRef) (exportedItemConstructors newRef)}
+
+        mergeConstructors Nothing _ = Nothing
+        mergeConstructors _ Nothing = Nothing
+        mergeConstructors (Just xs) (Just ys) = Just (uniqueNames (xs ++ ys))
 
     normalizeModuleBindings bindings =
       [ chosen Map.! bindingName
@@ -453,34 +472,47 @@ flattenModuleValidationCompUnit graph modulePath = do
 
 flattenModuleStrictCompileCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
 flattenModuleStrictCompileCompUnit graph modulePath =
-  fst <$> flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath
+  (\(cunit, _, _, _) -> cunit) <$> flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
 
 flattenModuleStrictCompileCompUnitWithImportedStart ::
   ModuleGraph ->
   Mod.ModuleId ->
   Either String (CompUnit, Int)
 flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath
+  | otherwise = do
+      (cunit, _, importedStart, _) <- flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
+      pure (cunit, importedStart)
+
+flattenModuleStrictCompileCompUnitWithMetadata ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  Either String (CompUnit, Int, Int, [Name])
+flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
   | isRecursiveImportGroup graph modulePath = do
       compileSurfaces <- compileSurfacesForGroup graph (importGroupFor graph modulePath)
       flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath
-flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath = do
+flattenModuleStrictCompileCompUnitWithMetadata graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <- dedupeImportedInstanceDecls . concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
+  partialImportedTypeNames <- concat <$> mapM (strictCompileImportedPartialTypeNames collidingTypeNames graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
+      localStart = length qualifiedDecls
       importedStart = length qualifiedDecls + length localDecls
   pure
     ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
-      importedStart
+      localStart,
+      importedStart,
+      uniqueNames partialImportedTypeNames
     )
 
 flattenModuleStrictCompileCompUnitWithSurfaces ::
   Map Mod.ModuleId [TopDecl] ->
   ModuleGraph ->
   Mod.ModuleId ->
-  Either String (CompUnit, Int)
+  Either String (CompUnit, Int, Int, [Name])
 flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
@@ -488,14 +520,22 @@ flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath 
     dedupeImportedInstanceDecls
       . concat
       <$> mapM (strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph) importPairs
+  partialImportedTypeNames <-
+    concat
+      <$> mapM
+        (strictCompileImportedPartialTypeNamesWithSurfaces compileSurfaces collidingTypeNames graph)
+        importPairs
   qualifiedDecls <-
     concat <$> mapM (qualifiedImportDeclsWithSurfaces compileSurfaces collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
+      localStart = length qualifiedDecls
       importedStart = length qualifiedDecls + length localDecls
   pure
     ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
-      importedStart
+      localStart,
+      importedStart,
+      uniqueNames partialImportedTypeNames
     )
 
 flattenModuleStrictValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
@@ -555,13 +595,13 @@ publicItemDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDec
 publicItemDeclsForModule graph modulePath =
   publicItemDeclsForModuleSeen graph Set.empty modulePath
 
-publicItemDeclsForModuleSeen :: ModuleGraph -> Set (Mod.ModuleId, Name) -> Mod.ModuleId -> Either String [TopDecl]
+publicItemDeclsForModuleSeen :: ModuleGraph -> Set ExportedItemRef -> Mod.ModuleId -> Either String [TopDecl]
 publicItemDeclsForModuleSeen graph seen modulePath = do
   publicInterface <- publicModuleInterface graph modulePath
   unit <- lookupLoadedModule graph modulePath
   let localDecls =
         selectPublicItemDecls
-          [ exportedItemName itemRef
+          [ itemRef
             | itemRef <- publicItemRefs publicInterface,
               exportedItemOrigin itemRef == modulePath
           ]
@@ -572,15 +612,15 @@ publicItemDeclsForModuleSeen graph seen modulePath = do
     materializeRemoteRef itemRef
       | exportedItemOrigin itemRef == modulePath =
           pure []
-      | (exportedItemOrigin itemRef, exportedItemName itemRef) `Set.member` seen =
+      | itemRef `Set.member` seen =
           pure []
       | otherwise = do
           remoteDecls <-
             publicItemDeclsForModuleSeen
               graph
-              (Set.insert (exportedItemOrigin itemRef, exportedItemName itemRef) seen)
+              (Set.insert itemRef seen)
               (exportedItemOrigin itemRef)
-          pure (selectPublicItemDecls [exportedItemName itemRef] remoteDecls)
+          pure (selectPublicItemDecls [itemRef] remoteDecls)
 
 publicTopDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
 publicTopDeclsForModule graph modulePath = do
@@ -651,7 +691,6 @@ validatePublicInterfaces graph groupModules interfaces =
     validateModule moduleId = do
       unit <- lookupLoadedModule graph moduleId
       sourcePath <- moduleSourcePath graph moduleId
-      ensureNoDuplicateExplicitLocalExports sourcePath unit
       mapM_
         (validateExportDecl sourcePath moduleId)
         [exportDecl | TExportDecl exportDecl <- topDeclsFrom unit]
@@ -687,6 +726,9 @@ validatePublicInterfaces graph groupModules interfaces =
         ExportName itemName -> do
           unit <- lookupLoadedModule graph moduleId
           ensureLocalExportExists sourcePath (topDeclsFrom unit) itemName
+        ExportNameWithConstructors typeName constructorSelector -> do
+          unit <- lookupLoadedModule graph moduleId
+          ensureLocalConstructorExportExists sourcePath (topDeclsFrom unit) typeName constructorSelector
         ExportAll ->
           pure ()
         ExportModuleAll path ->
@@ -725,6 +767,8 @@ ensureNoDuplicateExplicitLocalExports sourcePath unit =
 
     exportSpecLocalNames (ExportName itemName) =
       [itemName]
+    exportSpecLocalNames (ExportNameWithConstructors typeName _) =
+      [typeName]
     exportSpecLocalNames ExportAll =
       []
     exportSpecLocalNames (ExportModuleAll _) =
@@ -774,11 +818,14 @@ expandExportSpecFixed ::
   Either String ModulePublicInterface
 expandExportSpecFixed _graph _groupModules _currentInterfaces currentModule sourcePath unit (ExportName itemName) = do
   ensureLocalExportExists sourcePath (topDeclsFrom unit) itemName
-  pure emptyPublicInterface {publicItemRefs = [ExportedItemRef currentModule itemName]}
+  pure emptyPublicInterface {publicItemRefs = localExportRefsForName currentModule itemName (topDeclsFrom unit)}
+expandExportSpecFixed _graph _groupModules _currentInterfaces currentModule sourcePath unit (ExportNameWithConstructors typeName constructorSelector) = do
+  ensureLocalConstructorExportExists sourcePath (topDeclsFrom unit) typeName constructorSelector
+  pure emptyPublicInterface {publicItemRefs = [localDataExportRef currentModule typeName (resolveLocalConstructorSelection typeName constructorSelector (topDeclsFrom unit))]}
 expandExportSpecFixed _graph _groupModules _currentInterfaces currentModule _sourcePath unit ExportAll =
   pure
     emptyPublicInterface
-      { publicItemRefs = map (ExportedItemRef currentModule) (availableExportNames (topDeclsFrom unit))
+      { publicItemRefs = availableExportRefs currentModule (topDeclsFrom unit)
       }
 expandExportSpecFixed graph groupModules currentInterfaces currentModule sourcePath _unit (ExportModuleAll path) = do
   itemRefs <-
@@ -810,17 +857,12 @@ resolveRemoteExportItemsFixed graph groupModules currentInterfaces currentModule
     resolveWithinGroup targetModule =
       do
         let availableRefs = currentInterfaceRefs targetModule
-            availableNames = uniqueNames (map exportedItemName availableRefs)
-            names = selectedNamesFromAvailable availableNames (exportSelectorToItemSelector selector)
-        pure (selectExportedItemRefs names availableRefs)
+        selectRemoteExportRefs sourcePath exportPath selector availableRefs False
 
     resolveOutsideGroup targetModule =
       do
         availableRefs <- publicItemRefs <$> publicModuleInterface graph targetModule
-        let availableNames = uniqueNames (map exportedItemName availableRefs)
-            names = selectedNamesFromAvailable availableNames (exportSelectorToItemSelector selector)
-        ensureRemoteExportsExist sourcePath exportPath (explicitExportSelectorNames selector) availableNames
-        pure (selectExportedItemRefs names availableRefs)
+        selectRemoteExportRefs sourcePath exportPath selector availableRefs True
 
     currentInterfaceRefs targetModule =
       maybe [] publicItemRefs (Map.lookup targetModule currentInterfaces)
@@ -835,9 +877,124 @@ selectExportedItemRefs names refs =
           exportedItemName ref == itemName
       ]
 
+selectRemoteExportRefs ::
+  FilePath ->
+  ModulePath ->
+  ExportSelector ->
+  [ExportedItemRef] ->
+  Bool ->
+  Either String [ExportedItemRef]
+selectRemoteExportRefs sourcePath exportPath (SelectExportItems items) availableRefs shouldValidate =
+  concat <$> mapM selectEntry items
+  where
+    selectEntry SelectExportAllItems =
+      pure availableRefs
+    selectEntry (SelectExportItem itemName) = do
+      let matchingRefs = selectExportedItemRefs [itemName] availableRefs
+      when shouldValidate $
+        ensureRemoteExportsExist sourcePath exportPath [itemName] (uniqueNames (map exportedItemName availableRefs))
+      pure (map stripConstructorVisibility matchingRefs)
+    selectEntry (SelectExportConstructors typeName constructorSelector) =
+      case selectVisibleConstructors availableRefs typeName constructorSelector of
+        Nothing
+          | shouldValidate ->
+              Left $
+                unlines
+                  [ "Unknown re-exported constructors:",
+                    "  " ++ sourcePath,
+                    "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName
+                  ]
+          | otherwise ->
+              pure []
+        Just ref
+          | shouldValidate,
+            missingVisibleConstructors constructorSelector ref /= [] ->
+              Left $
+                unlines
+                  [ "Unknown re-exported constructors:",
+                    "  " ++ sourcePath,
+                    unlines
+                      [ "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName ++ "." ++ show constructorName
+                        | constructorName <- missingVisibleConstructors constructorSelector ref
+                      ]
+                  ]
+          | otherwise ->
+          pure [ref]
+
+stripConstructorVisibility :: ExportedItemRef -> ExportedItemRef
+stripConstructorVisibility itemRef =
+  case exportedItemConstructors itemRef of
+    Just _ ->
+      itemRef {exportedItemConstructors = Just []}
+    Nothing ->
+      itemRef
+
+selectVisibleConstructors :: [ExportedItemRef] -> Name -> ConstructorSelector -> Maybe ExportedItemRef
+selectVisibleConstructors availableRefs typeName constructorSelector = do
+  dataRef <- findVisibleDataRef availableRefs typeName
+  let visibleConstructorNames = fromMaybe [] (exportedItemConstructors dataRef)
+      selectedConstructors = selectConstructorSubset constructorSelector visibleConstructorNames
+  pure (dataRef {exportedItemConstructors = Just selectedConstructors})
+
+findVisibleDataRef :: [ExportedItemRef] -> Name -> Maybe ExportedItemRef
+findVisibleDataRef availableRefs typeName =
+  find (\itemRef -> exportedItemName itemRef == typeName && isJust (exportedItemConstructors itemRef)) availableRefs
+
+selectConstructorSubset :: ConstructorSelector -> [Name] -> [Name]
+selectConstructorSubset SelectAllConstructors visibleConstructorNames =
+  visibleConstructorNames
+selectConstructorSubset (SelectConstructors constructorNames) visibleConstructorNames =
+  [ constructorName
+    | constructorName <- uniqueNames constructorNames,
+      constructorName `elem` visibleConstructorNames
+  ]
+
+missingVisibleConstructors :: ConstructorSelector -> ExportedItemRef -> [Name]
+missingVisibleConstructors SelectAllConstructors _ =
+  []
+missingVisibleConstructors (SelectConstructors constructorNames) itemRef =
+  [ constructorName
+    | constructorName <- uniqueNames constructorNames,
+      constructorName `notElem` fromMaybe [] (exportedItemConstructors itemRef)
+  ]
+
 availableExportNames :: [TopDecl] -> [Name]
 availableExportNames ds =
   uniqueNames (concatMap topDeclNames (filter isImportableTopDecl ds))
+
+availableExportRefs :: Mod.ModuleId -> [TopDecl] -> [ExportedItemRef]
+availableExportRefs currentModule =
+  concatMap (localExportRefsForDecl currentModule) . filter isImportableTopDecl
+
+localExportRefsForName :: Mod.ModuleId -> Name -> [TopDecl] -> [ExportedItemRef]
+localExportRefsForName currentModule itemName decls =
+  concatMap (localExportRefsForMatchingName currentModule itemName) (filter isImportableTopDecl decls)
+
+localExportRefsForMatchingName :: Mod.ModuleId -> Name -> TopDecl -> [ExportedItemRef]
+localExportRefsForMatchingName currentModule itemName decl@(TDataDef (DataTy n _ _))
+  | itemName == n =
+      [localDataExportRef currentModule n []]
+  | otherwise =
+      []
+localExportRefsForMatchingName currentModule itemName decl
+  | itemName `elem` topDeclNames decl =
+      localExportRefsForDecl currentModule decl
+  | otherwise =
+      []
+
+localExportRefsForDecl :: Mod.ModuleId -> TopDecl -> [ExportedItemRef]
+localExportRefsForDecl currentModule decl =
+  case decl of
+    TDataDef (DataTy n _ _) ->
+      [localDataExportRef currentModule n []]
+    _ ->
+      [ ExportedItemRef currentModule itemName Nothing
+        | itemName <- topDeclNames decl
+      ]
+
+localDataExportRef :: Mod.ModuleId -> Name -> [Name] -> ExportedItemRef
+localDataExportRef currentModule typeName visibleConstructors =
+  ExportedItemRef currentModule typeName (Just (uniqueNames visibleConstructors))
 
 ensureNoDuplicateExportedItems :: FilePath -> [ExportedItemRef] -> Either String ()
 ensureNoDuplicateExportedItems modulePath itemRefs =
@@ -854,7 +1011,7 @@ ensureNoDuplicateExportedItems modulePath itemRefs =
     conflicts =
       [ itemName
         | (itemName, refs) <- Map.toList groupedRefs,
-          Set.size (Set.fromList refs) > 1
+          Set.size (Set.fromList [exportedItemOrigin ref | ref <- refs]) > 1
       ]
     groupedRefs = Map.fromListWith (++) [(exportedItemName ref, [ref]) | ref <- itemRefs]
 
@@ -887,6 +1044,58 @@ ensureLocalExportExists sourcePath ds itemName
             "  " ++ sourcePath,
             "  " ++ show itemName
           ]
+
+ensureLocalConstructorExportExists :: FilePath -> [TopDecl] -> Name -> ConstructorSelector -> Either String ()
+ensureLocalConstructorExportExists sourcePath decls typeName constructorSelector =
+  case findLocalDataType typeName decls of
+    Nothing ->
+      Left $
+        unlines
+          [ "Unknown export:",
+            "  " ++ sourcePath,
+            "  " ++ show typeName
+          ]
+    Just (DataTy _ _ constrs) ->
+      ensureConstructorSelectorExists sourcePath typeName constructorSelector constrs
+
+findLocalDataType :: Name -> [TopDecl] -> Maybe DataTy
+findLocalDataType typeName =
+  foldr
+    ( \decl acc ->
+        case decl of
+          TDataDef dataTy | dataName dataTy == typeName -> Just dataTy
+          _ -> acc
+    )
+    Nothing
+
+ensureConstructorSelectorExists :: FilePath -> Name -> ConstructorSelector -> [Constr] -> Either String ()
+ensureConstructorSelectorExists _sourcePath _typeName SelectAllConstructors _ =
+  Right ()
+ensureConstructorSelectorExists sourcePath typeName (SelectConstructors constructorNames) constrs =
+  case missing of
+    [] -> Right ()
+    xs ->
+      Left $
+        unlines
+          [ "Unknown exported constructors:",
+            "  " ++ sourcePath,
+            unlines [ "  " ++ show typeName ++ "." ++ show constructorName | constructorName <- xs ]
+          ]
+  where
+    availableNames = uniqueNames (map (constructorLeafName . constrName) constrs)
+    missing = filter (`notElem` availableNames) constructorNames
+
+resolveLocalConstructorSelection :: Name -> ConstructorSelector -> [TopDecl] -> [Name]
+resolveLocalConstructorSelection typeName constructorSelector decls =
+  case findLocalDataType typeName decls of
+    Just (DataTy _ _ constrs) -> resolveConstructorSelection constructorSelector constrs
+    Nothing -> []
+
+resolveConstructorSelection :: ConstructorSelector -> [Constr] -> [Name]
+resolveConstructorSelection SelectAllConstructors constrs =
+  uniqueNames (map (constructorLeafName . constrName) constrs)
+resolveConstructorSelection (SelectConstructors constructorNames) _ =
+  uniqueNames constructorNames
 
 ensureRemoteExportsExist :: FilePath -> ModulePath -> [Name] -> [Name] -> Either String ()
 ensureRemoteExportsExist sourcePath exportPath names availableNames =
@@ -934,9 +1143,14 @@ importModuleQualifiers :: ModulePath -> [Name]
 importModuleQualifiers importPath =
   uniqueNames [defaultModuleBindingName importPath, Mod.modulePathName importPath]
 
-selectPublicItemDecls :: [Name] -> [TopDecl] -> [TopDecl]
-selectPublicItemDecls names =
-  mapMaybe (selectTopDecl names) . filter isPublicItemTopDecl
+selectPublicItemDecls :: [ExportedItemRef] -> [TopDecl] -> [TopDecl]
+selectPublicItemDecls itemRefs decls =
+  uniqueTopDecls $
+    concatMap
+      (\itemRef -> mapMaybe (selectTopDeclForExportRef itemRef) filteredDecls)
+      itemRefs
+  where
+    filteredDecls = filter isPublicItemTopDecl decls
 
 isPublicItemTopDecl :: TopDecl -> Bool
 isPublicItemTopDecl (TInstDef _) = False
@@ -952,7 +1166,7 @@ topDeclNames (TFunDef (FunDef sig _)) = [sigName sig]
 topDeclNames (TSym (TySym n _ _)) = [n]
 topDeclNames (TClassDef (Class _ _ n _ _ _)) = [n]
 topDeclNames (TContr (Contract n _ _)) = [n]
-topDeclNames (TDataDef (DataTy n _ cs)) = n : map constrName cs
+topDeclNames (TDataDef (DataTy n _ _)) = [n]
 topDeclNames (TInstDef _) = []
 topDeclNames (TExportDecl _) = []
 topDeclNames (TPragmaDecl _) = []
@@ -1085,7 +1299,7 @@ compileSurfacesForGroup graph groupModules =
             else go (iterations + 1) nextSurfaces
 
     stepSurface currentSurfaces moduleId = do
-      (cunit, _) <- flattenModuleStrictCompileCompUnitWithSurfaces currentSurfaces graph moduleId
+      (cunit, _, _, _) <- flattenModuleStrictCompileCompUnitWithSurfaces currentSurfaces graph moduleId
       publicInterface <- publicModuleInterface graph moduleId
       let localDecls = filter isImportableTopDecl (topDeclsFrom cunit)
       remoteDecls <-
@@ -1675,6 +1889,10 @@ strictCompileImportedDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) 
 strictCompileImportedDecls =
   strictCompileImportedDeclsWithSurfaces Map.empty
 
+strictCompileImportedPartialTypeNames :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [Name]
+strictCompileImportedPartialTypeNames =
+  strictCompileImportedPartialTypeNamesWithSurfaces Map.empty
+
 strictCompileImportedDeclsWithSurfaces ::
   Map Mod.ModuleId [TopDecl] ->
   Set Name ->
@@ -1779,6 +1997,62 @@ strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph 
 
     nestedModuleImportCompileDecls qualifier (ExportedModuleBinding bindingName targetModule) =
       moduleImportCompileDecls (QualName qualifier (show bindingName)) targetModule
+
+strictCompileImportedPartialTypeNamesWithSurfaces ::
+  Map Mod.ModuleId [TopDecl] ->
+  Set Name ->
+  ModuleGraph ->
+  (Import, Mod.ModuleId) ->
+  Either String [Name]
+strictCompileImportedPartialTypeNamesWithSurfaces _compileSurfaces collidingTypeNames graph (imp, modulePath) =
+  case imp of
+    ImportOnly moduleName selector ->
+      importOnlyTypeNames (Mod.modulePathName moduleName) selector
+    ImportModule moduleName ->
+      moduleImportTypeNames (Mod.modulePathName moduleName) modulePath
+    ImportAlias _ qualifier ->
+      moduleImportTypeNames qualifier modulePath
+  where
+    importOnlyTypeNames qualifier selector = do
+      publicInterface <- publicModuleInterface graph modulePath
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+          selectedRefs = selectExportedItemRefs names (publicItemRefs publicInterface)
+          typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
+      partialVisibleImportedTypeNames typeRenameMap selectedRefs
+
+    moduleImportTypeNames qualifier targetModule = do
+      publicInterface <- publicModuleInterface graph targetModule
+      publicDecls <- publicTopDeclsForModule graph targetModule
+      let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
+      partialVisibleImportedTypeNames typeRenameMap (publicItemRefs publicInterface)
+
+    partialVisibleImportedTypeNames typeRenameMap itemRefs =
+      concat <$> mapM (partialTypeName typeRenameMap) itemRefs
+
+    partialTypeName typeRenameMap itemRef =
+      case exportedItemConstructors itemRef of
+        Nothing ->
+          pure []
+        Just visibleConstructors -> do
+          fullConstructors <- fullConstructorNamesForRef graph itemRef
+          let visibleSet = Set.fromList visibleConstructors
+              fullSet = Set.fromList fullConstructors
+              renamedTypeName = Map.findWithDefault (exportedItemName itemRef) (exportedItemName itemRef) typeRenameMap
+          pure [renamedTypeName | visibleSet /= fullSet]
+
+fullConstructorNamesForRef :: ModuleGraph -> ExportedItemRef -> Either String [Name]
+fullConstructorNamesForRef graph itemRef = do
+  originUnit <- lookupLoadedModule graph (exportedItemOrigin itemRef)
+  case findLocalDataType (exportedItemName itemRef) (topDeclsFrom originUnit) of
+    Just (DataTy _ _ constrs) ->
+      pure (uniqueNames (map (constructorLeafName . constrName) constrs))
+    Nothing ->
+      Left $
+        "Internal error: exported data type not found: "
+          ++ Mod.moduleIdDisplay (exportedItemOrigin itemRef)
+          ++ "."
+          ++ show (exportedItemName itemRef)
 
 importedFunctionRenameMap :: Name -> [TopDecl] -> Map Name Name
 importedFunctionRenameMap qualifier ds =
@@ -2099,7 +2373,6 @@ instanceDeclHeadKey inst =
 
 topDeclTermNames :: TopDecl -> [Name]
 topDeclTermNames (TFunDef (FunDef sig _)) = [sigName sig]
-topDeclTermNames (TDataDef (DataTy _ _ cs)) = map constrName cs
 topDeclTermNames _ = []
 
 topDeclTypeNames :: TopDecl -> [Name]
@@ -2137,16 +2410,55 @@ selectTopDecl names d@(TContr (Contract n _ _))
   | otherwise = Nothing
 selectTopDecl names (TDataDef (DataTy n ts cs))
   | n `elem` names = Just (TDataDef (DataTy n ts cs))
-  | otherwise =
-      case filter (\c -> constrName c `elem` names) cs of
-        [] -> Nothing
-        cs' -> Just (TDataDef (DataTy n ts cs'))
+  | otherwise = Nothing
 selectTopDecl _ d@(TInstDef _) =
   Just d
 selectTopDecl _ (TExportDecl _) =
   Nothing
 selectTopDecl _ (TPragmaDecl _) =
   Nothing
+
+selectTopDeclForExportRef :: ExportedItemRef -> TopDecl -> Maybe TopDecl
+selectTopDeclForExportRef itemRef d@(TFunDef (FunDef sig _))
+  | exportedItemName itemRef == sigName sig,
+    exportedItemConstructors itemRef == Nothing =
+      Just d
+  | otherwise =
+      Nothing
+selectTopDeclForExportRef itemRef d@(TSym (TySym n _ _))
+  | exportedItemName itemRef == n,
+    exportedItemConstructors itemRef == Nothing =
+      Just d
+  | otherwise =
+      Nothing
+selectTopDeclForExportRef itemRef d@(TClassDef (Class _ _ n _ _ _))
+  | exportedItemName itemRef == n,
+    exportedItemConstructors itemRef == Nothing =
+      Just d
+  | otherwise =
+      Nothing
+selectTopDeclForExportRef itemRef d@(TContr (Contract n _ _))
+  | exportedItemName itemRef == n,
+    exportedItemConstructors itemRef == Nothing =
+      Just d
+  | otherwise =
+      Nothing
+selectTopDeclForExportRef itemRef (TDataDef (DataTy n ts cs))
+  | exportedItemName itemRef /= n =
+      Nothing
+  | otherwise =
+      case exportedItemConstructors itemRef of
+        Just visibleConstructors ->
+          Just (TDataDef (DataTy n ts (filterVisibleConstructors visibleConstructors cs)))
+        Nothing ->
+          Nothing
+selectTopDeclForExportRef _ (TInstDef _) = Nothing
+selectTopDeclForExportRef _ (TExportDecl _) = Nothing
+selectTopDeclForExportRef _ (TPragmaDecl _) = Nothing
+
+filterVisibleConstructors :: [Name] -> [Constr] -> [Constr]
+filterVisibleConstructors visibleConstructors =
+  filter (\constr -> constructorLeafName (constrName constr) `elem` visibleConstructors)
 
 ensureNoAmbiguousSelectedImports :: ModuleGraph -> [(Import, Mod.ModuleId)] -> Either String ()
 ensureNoAmbiguousSelectedImports graph importPairs = do

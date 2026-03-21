@@ -1,4 +1,4 @@
-export {Wrap, Mk, unwrap, Unbox};
+export {Wrap(*), unwrap, Unbox};
 
 data Wrap = Mk(word);
 

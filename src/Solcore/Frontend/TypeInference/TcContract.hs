@@ -9,6 +9,7 @@ import Data.List
 import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
+import Data.Set qualified as Set
 import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -29,19 +30,29 @@ typeInfer ::
   CompUnit Name ->
   IO (Either String (CompUnit Id, TcEnv))
 typeInfer options =
-  typeInferWithTrustedInstanceHeads options []
+  typeInferWithTrustedInstanceHeadsAndPartialTypes options [] [] []
 
 typeInferWithTrustedInstanceHeads ::
   Option ->
   [InstanceHead] ->
   CompUnit Name ->
   IO (Either String (CompUnit Id, TcEnv))
-typeInferWithTrustedInstanceHeads options trustedInstances (CompUnit imps decls) =
+typeInferWithTrustedInstanceHeads options trustedInstances =
+  typeInferWithTrustedInstanceHeadsAndPartialTypes options trustedInstances [] []
+
+typeInferWithTrustedInstanceHeadsAndPartialTypes ::
+  Option ->
+  [InstanceHead] ->
+  [TopDeclKey] ->
+  [Name] ->
+  CompUnit Name ->
+  IO (Either String (CompUnit Id, TcEnv))
+typeInferWithTrustedInstanceHeadsAndPartialTypes options trustedInstances localDeclKeys partialTypes (CompUnit imps decls) =
   do
     r <-
       runTcM
-        (tcCompUnit (CompUnit imps decls))
-        ((initTcEnv options) {trustedInstanceHeads = trustedInstances})
+        (tcCompUnit localDeclKeys (CompUnit imps decls))
+        ((initTcEnv options) {trustedInstanceHeads = trustedInstances, partialDataTypes = Set.fromList partialTypes})
     case r of
       Left err1 -> pure $ Left err1
       Right (CompUnit _ ds, env) -> do
@@ -50,14 +61,14 @@ typeInferWithTrustedInstanceHeads options trustedInstances (CompUnit imps decls)
 
 -- type inference for a compilation unit
 
-tcCompUnit :: CompUnit Name -> TcM (CompUnit Id)
-tcCompUnit (CompUnit imps cs) =
+tcCompUnit :: [TopDeclKey] -> CompUnit Name -> TcM (CompUnit Id)
+tcCompUnit localDeclKeys (CompUnit imps cs) =
   do
     setupPragmas ps
     checkSynonymCycles syns
     mapM_ checkTopDecl cls
     mapM_ checkTopDecl cs'
-    cs' <- mapM tcTopDecl' cs
+    cs' <- mapM tcTopDeclWithVisibility cs
     pure (CompUnit imps cs')
   where
     ps = foldr step [] cs
@@ -67,6 +78,10 @@ tcCompUnit (CompUnit imps cs) =
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
+    localDeclKeySet = Set.fromList localDeclKeys
+    tcTopDeclWithVisibility d
+      | any (`Set.member` localDeclKeySet) (topDeclKeys d) = tcTopDecl' d
+      | otherwise = withPartialDataTypesDisabled (tcTopDecl' d)
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d

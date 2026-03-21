@@ -183,6 +183,26 @@ instanceHeadKey :: Instance a -> (Bool, Name, [Ty], Ty)
 instanceHeadKey inst =
   (instDefault inst, instName inst, paramsTy inst, mainTy inst)
 
+data TopDeclKey
+  = ContractKey Name
+  | FunKey Name
+  | ClassKey Name
+  | InstanceKey (Bool, Name, [Ty], Ty)
+  | DataKey Name
+  | SynonymKey Name
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+topDeclKeys :: TopDecl a -> [TopDeclKey]
+topDeclKeys (TContr contractDef) = [ContractKey (name contractDef)]
+topDeclKeys (TFunDef funDef) = [FunKey (sigName (funSignature funDef))]
+topDeclKeys (TClassDef cls) = [ClassKey (className cls)]
+topDeclKeys (TInstDef inst) = [InstanceKey (instanceHeadKey inst)]
+topDeclKeys (TMutualDef decls) = decls >>= topDeclKeys
+topDeclKeys (TDataDef dataTy) = [DataKey (dataName dataTy)]
+topDeclKeys (TSym tySym) = [SynonymKey (symName tySym)]
+topDeclKeys (TExportDecl _) = []
+topDeclKeys (TPragmaDecl _) = []
+
 -- definition of contract field variables
 
 data Field a

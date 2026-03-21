@@ -2,10 +2,10 @@ import std.{*};
 
 export {
   ABIString,
-  Contract,
+  Contract(*),
   ExecMethod,
-  Fallback,
-  Method,
+  Fallback(*),
+  Method(*),
   MethodLevelCallvalueCheck,
   NonPayable,
   Payable,

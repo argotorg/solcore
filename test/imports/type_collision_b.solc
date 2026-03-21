@@ -1,4 +1,4 @@
-export { T, B, mk };
+export { T(B), mk };
 
 data T = B;
 
