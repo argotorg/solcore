@@ -13,10 +13,10 @@ import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ContractDispatch (contractDispatchDesugarer)
+import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
 import Solcore.Desugarer.FieldAccess (fieldDesugarer)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
-import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
 import Solcore.Frontend.Parser.SolcoreParser
@@ -163,9 +163,12 @@ compile opts = runExceptT $ do
   matchless <-
     if noMatchCompiler
       then pure desugared
-      else ExceptT $ timeItNamed "Match compiler" $ matchCompiler desugared
+      else do
+        (ast, warns) <- ExceptT $ timeItNamed "Match compiler" $ matchCompiler desugared
+        when (verbose && not (null warns)) $ liftIO $ mapM_ (putStrLn . showWarning) warns
+        pure ast
 
-  let printMatch = (not $ noMatchCompiler) && (verbose || optDumpDS opts)
+  let printMatch = not noMatchCompiler && (verbose || optDumpDS opts)
   liftIO $ when printMatch $ do
     putStrLn "> Match compilation result:"
     putStrLn (pretty matchless)

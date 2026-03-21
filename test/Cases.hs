@@ -290,6 +290,11 @@ cases =
       runTestForFile "field-name-error.solc" caseFolder,
       runTestExpectingFailure "field-access.solc" caseFolder,
       runTestForFile "mod-example.solc" caseFolder,
+      runTestForFile "snds.solc" caseFolder,
+      runTestForFile "bool-elim.solc" caseFolder,
+      runTestForFile "catch-all.solc" caseFolder,
+      runTestForFile "redundant-match.solc" caseFolder,
+      runTestForFile "false-redundant-warning.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder,
       runTestForFile "invokable-issue.solc" caseFolder,
       runTestForFile "td.solc" caseFolder,
@@ -302,7 +307,9 @@ cases =
       runTestForFile "instance-synonym.solc" caseFolder,
       runTestExpectingFailure "overlap-synonym-detected.solc" caseFolder,
       runTestExpectingFailure "overlap-synonym-missed-order.solc" caseFolder,
-      runTestExpectingFailure "overlap-synonym-missed-two-synonyms.solc" caseFolder
+      runTestExpectingFailure "overlap-synonym-missed-two-synonyms.solc" caseFolder,
+      runTestForFile "copytomem.solc" caseFolder,
+      runTestForFile "fresh-variable-shadowing.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

@@ -304,7 +304,12 @@ emitStmt (MastAsm as) = do
   -- an alternative might be to painstakingly rename all vars in the the assembly block
   subst <- gets ecSubst
   let yvars = getNames as
-  let unrolled = [Hull.SAssign (Hull.EVar (show v)) e | (v, e) <- Map.toList subst, Set.member v yvars]
+  let unrolled =
+        concat
+          [ [Hull.SAlloc (show v) Hull.TWord, Hull.SAssign (Hull.EVar (show v)) e]
+            | (v, e) <- Map.toList subst,
+              Set.member v yvars
+          ]
   pure $ unrolled ++ [Hull.SAssembly as]
 
 emitStmts :: [MastStmt] -> EM [Hull.Stmt]

@@ -4,5 +4,6 @@ function f(x : word) {
       let ret : word;
       assembly {}
       return ret;
+    | _ => return 0;
   }
 }
