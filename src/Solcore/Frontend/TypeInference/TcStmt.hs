@@ -73,6 +73,7 @@ tcStmtWithExpectedReturn mExpectedReturn (Return e) =
 tcStmtWithExpectedReturn mExpectedReturn (Match es eqns) =
   do
     (es', pss', ts') <- unzip3 <$> mapM tcExp es
+    ensureVisiblePatternCoverage ts' eqns
     (eqns', pss1, resTy) <- tcEquationsWithExpectedReturn mExpectedReturn ts' eqns
     withCurrentSubst (Match es' eqns', concat (pss1 : pss'), resTy)
 tcStmtWithExpectedReturn _ (Asm yblk) =
@@ -141,6 +142,36 @@ tcEquationWithExpectedReturn mExpectedReturn ret ts eqn@(ps, ss) =
     (ss', pss', t) <- withLocalCtx res (tcBodyWithExpectedReturn mExpectedReturn ss)
     s <- unify t ret `wrapError` eqn
     withCurrentSubst ((ps', ss'), pss', apply s t)
+
+ensureVisiblePatternCoverage :: [Ty] -> Equations Name -> TcM ()
+ensureVisiblePatternCoverage scrutineeTys eqns =
+  mapM_ checkScrutinee (zip [0 ..] scrutineeTys)
+  where
+    checkScrutinee (index, scrutineeTy) = do
+      scrutineeTy' <- maybeExpandSynonym scrutineeTy
+      case scrutineeTy' of
+        TyCon typeName _ -> do
+          isPartial <- isPartialDataType typeName
+          when (isPartial && not (hasCatchAllAt index eqns)) $
+            throwError $
+              unlines
+                [ "Pattern match on type with hidden constructors requires a wildcard arm:",
+                  pretty typeName
+                ]
+        _ ->
+          pure ()
+
+    hasCatchAllAt index =
+      any hasCatchAllInEquation
+      where
+        hasCatchAllInEquation (patterns, _) =
+          case drop index patterns of
+            (patternAtIndex : _) -> isCatchAllPattern patternAtIndex
+            [] -> False
+
+    isCatchAllPattern (PVar _) = True
+    isCatchAllPattern PWildcard = True
+    isCatchAllPattern _ = False
 
 tcPats :: [Ty] -> [Pat Name] -> TcM ([Pat Id], [Ty], [(Name, Scheme)])
 tcPats ts ps

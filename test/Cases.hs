@@ -150,6 +150,7 @@ imports =
       runImportSuccess "reexport_module_main.solc",
       runImportFailure "hidden_ctor_expr_fail.solc",
       runImportFailure "hidden_ctor_pattern_fail.solc",
+      runImportFailure "hidden_ctor_nonexhaustive_fail.solc",
       runImportSuccess "hidden_ctor_wildcard_ok.solc",
       runImportSuccess "rootcheck/nested/main.solc",
       runImportSuccess "external_lib_main.solc",
