@@ -308,7 +308,8 @@ cases =
       runTestExpectingFailure "overlap-synonym-detected.solc" caseFolder,
       runTestExpectingFailure "overlap-synonym-missed-order.solc" caseFolder,
       runTestExpectingFailure "overlap-synonym-missed-two-synonyms.solc" caseFolder,
-      runTestForFile "copytomem.solc" caseFolder
+      runTestForFile "copytomem.solc" caseFolder,
+      runTestForFile "fresh-variable-shadowing.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
