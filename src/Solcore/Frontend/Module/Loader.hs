@@ -670,10 +670,10 @@ publicInterfacesForGroup graph groupModules =
       pure
         ( moduleId,
           normalizePublicInterface $
-          ModulePublicInterface
-            { publicItemRefs = concatMap publicItemRefs expandedDecls,
-              publicModuleBindings = concatMap publicModuleBindings expandedDecls
-            }
+            ModulePublicInterface
+              { publicItemRefs = concatMap publicItemRefs expandedDecls,
+                publicModuleBindings = concatMap publicModuleBindings expandedDecls
+              }
         )
 
 publicModuleBindingsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [ExportedModuleBinding]
@@ -919,7 +919,7 @@ selectRemoteExportRefs sourcePath exportPath (SelectExportItems items) available
                       ]
                   ]
           | otherwise ->
-          pure [ref]
+              pure [ref]
 
 stripConstructorVisibility :: ExportedItemRef -> ExportedItemRef
 stripConstructorVisibility itemRef =
@@ -1079,7 +1079,7 @@ ensureConstructorSelectorExists sourcePath typeName (SelectConstructors construc
         unlines
           [ "Unknown exported constructors:",
             "  " ++ sourcePath,
-            unlines [ "  " ++ show typeName ++ "." ++ show constructorName | constructorName <- xs ]
+            unlines ["  " ++ show typeName ++ "." ++ show constructorName | constructorName <- xs]
           ]
   where
     availableNames = uniqueNames (map (constructorLeafName . constrName) constrs)
@@ -2647,7 +2647,7 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
 
 explicitSelectorNames :: ItemSelector -> [Name]
 explicitSelectorNames (SelectItems items _) =
-  [ itemName | SelectItem itemName <- items ]
+  [itemName | SelectItem itemName <- items]
 
 exportSelectorToItemSelector :: ExportSelector -> ItemSelector
 exportSelectorToItemSelector (SelectExportItems items) =

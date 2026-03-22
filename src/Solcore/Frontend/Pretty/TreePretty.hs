@@ -54,9 +54,9 @@ instance Pretty Export where
     hsep [text "export", ppr path, text "as", ppr asName <> semi]
   ppr (ExportItemsFrom path items)
     | exportSelectorIsOnlyWildcard items =
-    hsep [text "export", ppr path <> text ".*;"]
+        hsep [text "export", ppr path <> text ".*;"]
     | otherwise =
-    hsep [text "export", ppr path <> text ".", pprExportSelector items <> semi]
+        hsep [text "export", ppr path <> text ".", pprExportSelector items <> semi]
 
 pprExportSpecs :: [ExportSpec] -> Doc
 pprExportSpecs items = lbrace <> commaSep (map ppr items) <> rbrace
