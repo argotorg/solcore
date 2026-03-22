@@ -236,7 +236,7 @@ normalizeStdModuleName (Name "std") = Name "std"
 normalizeStdModuleName (QualName (Name "std") suffix) = Name suffix
 normalizeStdModuleName (QualName prefix suffix) =
   QualName (normalizeStdModuleName prefix) suffix
-normalizeStdModuleName name = name
+normalizeStdModuleName moduleName = moduleName
 
 rootForLibrary :: LoaderConfig -> Mod.LibraryId -> FilePath
 rootForLibrary cfg Mod.MainLibrary = mainRoot cfg
@@ -413,7 +413,6 @@ normalizePublicInterface publicInterface =
 
         step (names, chosen) ref =
           let itemName = exportedItemName ref
-              originKey existingRef = (exportedItemOrigin existingRef, isJust (exportedItemConstructors existingRef))
            in case Map.lookup itemName chosen of
                 Nothing ->
                   (names ++ [itemName], Map.insert itemName [ref] chosen)
@@ -421,13 +420,13 @@ normalizePublicInterface publicInterface =
                   (names, Map.insert itemName (mergeWith existingRefs ref) chosen)
 
         mergeWith existingRefs ref =
-          case break ((== (exportedItemOrigin ref, isJust (exportedItemConstructors ref))) . originKey) existingRefs of
+          case break ((== refOriginKey ref) . refOriginKey) existingRefs of
             (before, matched : after) ->
               before ++ [mergeRefs matched ref] ++ after
             _ ->
               existingRefs ++ [ref]
 
-        originKey existingRef = (exportedItemOrigin existingRef, isJust (exportedItemConstructors existingRef))
+        refOriginKey existingRef = (exportedItemOrigin existingRef, isJust (exportedItemConstructors existingRef))
 
         mergeRefs existingRef newRef =
           existingRef {exportedItemConstructors = mergeConstructors (exportedItemConstructors existingRef) (exportedItemConstructors newRef)}
@@ -745,35 +744,6 @@ validatePublicInterfaces graph groupModules interfaces =
       | otherwise =
           importableNamesForModule graph targetModule
 
-ensureNoDuplicateExplicitLocalExports :: FilePath -> CompUnit -> Either String ()
-ensureNoDuplicateExplicitLocalExports sourcePath unit =
-  case duplicateNames explicitLocalExportNames of
-    [] -> Right ()
-    xs ->
-      Left $
-        unlines
-          [ "Duplicate exported item names:",
-            "  " ++ sourcePath,
-            unlines (map (\n -> "  " ++ show n) xs)
-          ]
-  where
-    explicitLocalExportNames =
-      concatMap exportDeclLocalNames [exportDecl | TExportDecl exportDecl <- topDeclsFrom unit]
-
-    exportDeclLocalNames (ExportList specs) =
-      concatMap exportSpecLocalNames specs
-    exportDeclLocalNames _ =
-      []
-
-    exportSpecLocalNames (ExportName itemName) =
-      [itemName]
-    exportSpecLocalNames (ExportNameWithConstructors typeName _) =
-      [typeName]
-    exportSpecLocalNames ExportAll =
-      []
-    exportSpecLocalNames (ExportModuleAll _) =
-      []
-
 expandExportDeclFixed ::
   ModuleGraph ->
   [Mod.ModuleId] ->
@@ -967,11 +937,11 @@ availableExportRefs currentModule =
   concatMap (localExportRefsForDecl currentModule) . filter isImportableTopDecl
 
 localExportRefsForName :: Mod.ModuleId -> Name -> [TopDecl] -> [ExportedItemRef]
-localExportRefsForName currentModule itemName decls =
-  concatMap (localExportRefsForMatchingName currentModule itemName) (filter isImportableTopDecl decls)
+localExportRefsForName currentModule itemName topLevelDecls =
+  concatMap (localExportRefsForMatchingName currentModule itemName) (filter isImportableTopDecl topLevelDecls)
 
 localExportRefsForMatchingName :: Mod.ModuleId -> Name -> TopDecl -> [ExportedItemRef]
-localExportRefsForMatchingName currentModule itemName decl@(TDataDef (DataTy n _ _))
+localExportRefsForMatchingName currentModule itemName (TDataDef (DataTy n _ _))
   | itemName == n =
       [localDataExportRef currentModule n []]
   | otherwise =
@@ -1046,8 +1016,8 @@ ensureLocalExportExists sourcePath ds itemName
           ]
 
 ensureLocalConstructorExportExists :: FilePath -> [TopDecl] -> Name -> ConstructorSelector -> Either String ()
-ensureLocalConstructorExportExists sourcePath decls typeName constructorSelector =
-  case findLocalDataType typeName decls of
+ensureLocalConstructorExportExists sourcePath topLevelDecls typeName constructorSelector =
+  case findLocalDataType typeName topLevelDecls of
     Nothing ->
       Left $
         unlines
@@ -1086,8 +1056,8 @@ ensureConstructorSelectorExists sourcePath typeName (SelectConstructors construc
     missing = filter (`notElem` availableNames) constructorNames
 
 resolveLocalConstructorSelection :: Name -> ConstructorSelector -> [TopDecl] -> [Name]
-resolveLocalConstructorSelection typeName constructorSelector decls =
-  case findLocalDataType typeName decls of
+resolveLocalConstructorSelection typeName constructorSelector topLevelDecls =
+  case findLocalDataType typeName topLevelDecls of
     Just (DataTy _ _ constrs) -> resolveConstructorSelection constructorSelector constrs
     Nothing -> []
 
@@ -1106,7 +1076,7 @@ ensureRemoteExportsExist sourcePath exportPath names availableNames =
         unlines
           [ "Unknown re-exported names:",
             "  " ++ sourcePath,
-            unlines [formatMissing exportPath name | name <- xs]
+            unlines [formatMissing exportPath missingName | missingName <- xs]
           ]
   where
     missing = filter (`notElem` availableNames) names
@@ -1129,7 +1099,7 @@ groupRemoteItemRefs currentModule =
               )
 
     replaceAssoc moduleId names =
-      map (\(currentModule, currentNames) -> if currentModule == moduleId then (currentModule, names) else (currentModule, currentNames))
+      map (\(loadedModule, currentNames) -> if loadedModule == moduleId then (loadedModule, names) else (loadedModule, currentNames))
 
 defaultModuleBindingName :: ModulePath -> Name
 defaultModuleBindingName =
@@ -1144,13 +1114,13 @@ importModuleQualifiers importPath =
   uniqueNames [defaultModuleBindingName importPath, Mod.modulePathName importPath]
 
 selectPublicItemDecls :: [ExportedItemRef] -> [TopDecl] -> [TopDecl]
-selectPublicItemDecls itemRefs decls =
+selectPublicItemDecls itemRefs topLevelDecls =
   uniqueTopDecls $
     concatMap
       (\itemRef -> mapMaybe (selectTopDeclForExportRef itemRef) filteredDecls)
       itemRefs
   where
-    filteredDecls = filter isPublicItemTopDecl decls
+    filteredDecls = filter isPublicItemTopDecl topLevelDecls
 
 isPublicItemTopDecl :: TopDecl -> Bool
 isPublicItemTopDecl (TInstDef _) = False
@@ -1466,6 +1436,7 @@ renameEquationFunctionCalls renameMap (ps, body) =
 
 renameExpFunctionCalls :: Map Name Name -> Exp -> Exp
 renameExpFunctionCalls _ litExp@(Lit _) = litExp
+renameExpFunctionCalls _ atExp@(ExpAt _) = atExp
 renameExpFunctionCalls renameMap (ExpName me n es) =
   case qualifiedMemberName me n of
     Just qn ->
@@ -1630,6 +1601,7 @@ renamePatNameTypeRefs renameMap n =
 
 renameExpTypeRefs :: Map Name Name -> Exp -> Exp
 renameExpTypeRefs _ litExp@(Lit _) = litExp
+renameExpTypeRefs _ atExp@(ExpAt _) = atExp
 renameExpTypeRefs renameMap (ExpName Nothing n es) =
   ExpName
     (sameNameConstructorQualifier renameMap n)
@@ -2078,8 +2050,8 @@ importedFunctionRenameMap qualifier ds =
     ]
 
 isBuiltinPassthroughFunctionName :: Name -> Bool
-isBuiltinPassthroughFunctionName name =
-  name `elem` passthroughNames
+isBuiltinPassthroughFunctionName functionName =
+  functionName `elem` passthroughNames
   where
     passthroughNames =
       [ Name "revert",
@@ -2185,8 +2157,8 @@ topDeclFunctionRefs (TFunDef fd) =
   funDefFunctionRefs fd
 topDeclFunctionRefs (TInstDef inst) =
   concatMap funDefFunctionRefs (instFunctions inst)
-topDeclFunctionRefs (TContr (Contract _ _ decls)) =
-  concatMap contractDeclFunctionRefs decls
+topDeclFunctionRefs (TContr (Contract _ _ contractDecls)) =
+  concatMap contractDeclFunctionRefs contractDecls
 topDeclFunctionRefs _ =
   []
 
@@ -2230,6 +2202,7 @@ equationFunctionRefs (_pats, body) =
 
 expFunctionRefs :: Exp -> [Name]
 expFunctionRefs (Lit _) = []
+expFunctionRefs (ExpAt _) = []
 expFunctionRefs (ExpName me n es) =
   directRef ++ maybe [] expFunctionRefs me ++ concatMap expFunctionRefs es
   where
@@ -2413,9 +2386,9 @@ topDeclClassNames _ = []
 
 applyImportVisibility :: Import -> [TopDecl] -> [TopDecl]
 applyImportVisibility (ImportOnly _ selector) =
-  \decls ->
-    let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames decls)) selector
-     in mapMaybe (selectTopDecl names) decls
+  \topLevelDecls ->
+    let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames topLevelDecls)) selector
+     in mapMaybe (selectTopDecl names) topLevelDecls
 applyImportVisibility (ImportModule _) =
   const []
 applyImportVisibility (ImportAlias _ _) =
@@ -2649,33 +2622,18 @@ explicitSelectorNames :: ItemSelector -> [Name]
 explicitSelectorNames (SelectItems items _) =
   [itemName | SelectItem itemName <- items]
 
-exportSelectorToItemSelector :: ExportSelector -> ItemSelector
-exportSelectorToItemSelector (SelectExportItems items) =
-  SelectItems (map toImportEntry items) []
-  where
-    toImportEntry SelectExportAllItems = SelectAllItems
-    toImportEntry (SelectExportItem itemName) = SelectItem itemName
-    toImportEntry (SelectExportConstructors typeName _) = SelectItem typeName
-
 explicitExportSelectorNames :: ExportSelector -> [Name]
 explicitExportSelectorNames (SelectExportItems items) =
   [ itemName
     | item <- items,
       itemName <- case item of
-        SelectExportItem name -> [name]
+        SelectExportItem exportItemName -> [exportItemName]
         SelectExportConstructors typeName _ -> [typeName]
         SelectExportAllItems -> []
   ]
 
 explicitHiddenNames :: ItemSelector -> [Name]
 explicitHiddenNames (SelectItems _ hidden) = hidden
-
-hasSelectAll :: ItemSelector -> Bool
-hasSelectAll (SelectItems items _) =
-  any isWildcard items
-  where
-    isWildcard SelectAllItems = True
-    isWildcard _ = False
 
 hasExportSelectAll :: ExportSelector -> Bool
 hasExportSelectAll (SelectExportItems items) =

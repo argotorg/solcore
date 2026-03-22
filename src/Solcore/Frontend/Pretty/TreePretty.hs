@@ -63,9 +63,9 @@ pprExportSpecs items = lbrace <> commaSep (map ppr items) <> rbrace
 
 instance Pretty ExportSpec where
   ppr ExportAll = text "*"
-  ppr (ExportName name) = ppr name
-  ppr (ExportNameWithConstructors name ctorSelector) =
-    ppr name <> parens (ppr ctorSelector)
+  ppr (ExportName itemName) = ppr itemName
+  ppr (ExportNameWithConstructors typeName ctorSelector) =
+    ppr typeName <> parens (ppr ctorSelector)
   ppr (ExportModuleAll path) = ppr path <> text ".*"
 
 instance Pretty ConstructorSelector where
@@ -78,9 +78,9 @@ pprExportSelector (SelectExportItems items) =
 
 instance Pretty ExportSelectorEntry where
   ppr SelectExportAllItems = text "*"
-  ppr (SelectExportItem name) = ppr name
-  ppr (SelectExportConstructors name ctorSelector) =
-    ppr name <> parens (ppr ctorSelector)
+  ppr (SelectExportItem itemName) = ppr itemName
+  ppr (SelectExportConstructors typeName ctorSelector) =
+    ppr typeName <> parens (ppr ctorSelector)
 
 pprItemSelector :: ItemSelector -> Doc
 pprItemSelector (SelectItems items hidden) =
@@ -93,11 +93,7 @@ pprItemSelector (SelectItems items hidden) =
 
 instance Pretty ItemSelectorEntry where
   ppr SelectAllItems = text "*"
-  ppr (SelectItem name) = ppr name
-
-selectorIsOnlyWildcard :: ItemSelector -> Bool
-selectorIsOnlyWildcard (SelectItems [SelectAllItems] []) = True
-selectorIsOnlyWildcard _ = False
+  ppr (SelectItem itemName) = ppr itemName
 
 exportSelectorIsOnlyWildcard :: ExportSelector -> Bool
 exportSelectorIsOnlyWildcard (SelectExportItems [SelectExportAllItems]) = True

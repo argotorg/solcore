@@ -152,13 +152,13 @@ ensureVisiblePatternCoverage scrutineeTys eqns =
     checkScrutinee (index, scrutineeTy) = do
       scrutineeTy' <- maybeExpandSynonym scrutineeTy
       case scrutineeTy' of
-        TyCon typeName _ -> do
-          isPartial <- isPartialDataType typeName
+        TyCon scrutineeTypeName _ -> do
+          isPartial <- isPartialDataType scrutineeTypeName
           when (isPartial && not (hasCatchAllAt index eqns)) $
             throwError $
               unlines
                 [ "Pattern match on type with hidden constructors requires a wildcard arm:",
-                  pretty typeName
+                  pretty scrutineeTypeName
                 ]
         _ ->
           pure ()
@@ -197,7 +197,7 @@ tcPat t p@(PCon n ps) =
     -- asking type from environment
     st <- askEnv n' `wrapError` p
     (_ :=> tc) <- freshInst st
-    let (argTys, retTy) = splitTy tc
+    let (argTys, resultTy) = splitTy tc
     when (length argTys /= length ps) $
       throwError $
         unlines
@@ -209,7 +209,7 @@ tcPat t p@(PCon n ps) =
           ]
     -- Refine argument expectations first so nested dot-shorthand patterns
     -- can resolve against the constructor result type context.
-    _ <- unify retTy t `wrapError` p
+    _ <- unify resultTy t `wrapError` p
     argTys' <- withCurrentSubst argTys
     -- typing parameters
     (ps1, ts, lctxs) <- unzip3 <$> zipWithM tcPat argTys' ps
@@ -222,7 +222,7 @@ tcPat t p@(PCon n ps) =
     -- checking if it is a defined constructor
     checkConstr tn n'
     -- building typing assumptions for introduced names
-    let lctx' = map (\(n', t1) -> (n', apply s t1)) (concat lctxs)
+    let lctx' = map (\(boundName, t1) -> (boundName, apply s t1)) (concat lctxs)
     pure (PCon (Id n' tc) ps1, t', apply s lctx')
 tcPat t PWildcard =
   pure (PWildcard, t, [])
@@ -320,7 +320,7 @@ tcExpWithExpected _ (FieldAccess (Just e) n) =
     withCurrentSubst (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExpWithExpected _ ex@(Call me n args) =
   tcCall me n args `wrapError` ex
-tcExpWithExpected _ e@(Lam args bd _) =
+tcExpWithExpected _ (Lam args bd _) =
   do
     (args', schs, ts') <- tcArgs args
     (bd', ps, t') <- withLocalCtx schs (tcBody bd)
@@ -1372,12 +1372,12 @@ constructorAcceptsArguments n argTys mExpected = do
     ( do
         sch <- askEnv n
         (_ :=> conTy) <- freshInst sch
-        retTy <- freshTyVar
-        _ <- unify conTy (funtype argTys retTy)
+        resultTy <- freshTyVar
+        _ <- unify conTy (funtype argTys resultTy)
         case mExpected of
           Just expectedTy -> do
             expectedTy' <- maybeExpandSynonym expectedTy
-            _ <- unify retTy expectedTy'
+            _ <- unify resultTy expectedTy'
             pure ()
           Nothing -> pure ()
         pure True

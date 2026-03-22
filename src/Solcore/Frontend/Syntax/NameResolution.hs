@@ -53,20 +53,20 @@ resolveExportSelector (S.SelectExportItems items) =
 resolveExportSelectorEntry :: S.ExportSelectorEntry -> ExportSelectorEntry
 resolveExportSelectorEntry S.SelectExportAllItems =
   SelectExportAllItems
-resolveExportSelectorEntry (S.SelectExportItem name) =
-  SelectExportItem name
-resolveExportSelectorEntry (S.SelectExportConstructors name ctorSelector) =
-  SelectExportConstructors name (resolveConstructorSelector ctorSelector)
+resolveExportSelectorEntry (S.SelectExportItem itemName) =
+  SelectExportItem itemName
+resolveExportSelectorEntry (S.SelectExportConstructors typeName ctorSelector) =
+  SelectExportConstructors typeName (resolveConstructorSelector ctorSelector)
 
 resolveSelectorEntry :: S.ItemSelectorEntry -> ItemSelectorEntry
 resolveSelectorEntry S.SelectAllItems = SelectAllItems
-resolveSelectorEntry (S.SelectItem name) = SelectItem name
+resolveSelectorEntry (S.SelectItem itemName) = SelectItem itemName
 
 resolveExportSpec :: S.ExportSpec -> ExportSpec
 resolveExportSpec S.ExportAll = ExportAll
-resolveExportSpec (S.ExportName name) = ExportName name
-resolveExportSpec (S.ExportNameWithConstructors name ctorSelector) =
-  ExportNameWithConstructors name (resolveConstructorSelector ctorSelector)
+resolveExportSpec (S.ExportName itemName) = ExportName itemName
+resolveExportSpec (S.ExportNameWithConstructors typeName ctorSelector) =
+  ExportNameWithConstructors typeName (resolveConstructorSelector ctorSelector)
 resolveExportSpec (S.ExportModuleAll path) = ExportModuleAll (resolveModulePath path)
 
 validateDuplicateNamespacesInCompUnit :: S.CompUnit -> Either String ()
@@ -1019,12 +1019,12 @@ addTyCon n =
   modify (\env -> env {typeEnv = Map.insert n TTyCon (typeEnv env)})
 
 addDataCon :: Name -> Name -> ResolveM ()
-addDataCon tyconName conName =
+addDataCon typeName conName =
   modify
     ( \env ->
         env
           { scopeEnv =
-              Map.insert (qualifiedConstructorName tyconName conName) TDataCon (scopeEnv env)
+              Map.insert (qualifiedConstructorName typeName conName) TDataCon (scopeEnv env)
           }
     )
 

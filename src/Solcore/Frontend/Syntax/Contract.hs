@@ -197,7 +197,7 @@ topDeclKeys (TContr contractDef) = [ContractKey (name contractDef)]
 topDeclKeys (TFunDef funDef) = [FunKey (sigName (funSignature funDef))]
 topDeclKeys (TClassDef cls) = [ClassKey (className cls)]
 topDeclKeys (TInstDef inst) = [InstanceKey (instanceHeadKey inst)]
-topDeclKeys (TMutualDef decls) = decls >>= topDeclKeys
+topDeclKeys (TMutualDef mutualDecls) = mutualDecls >>= topDeclKeys
 topDeclKeys (TDataDef dataTy) = [DataKey (dataName dataTy)]
 topDeclKeys (TSym tySym) = [SynonymKey (symName tySym)]
 topDeclKeys (TExportDecl _) = []

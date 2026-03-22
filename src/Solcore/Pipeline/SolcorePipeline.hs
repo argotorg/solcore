@@ -30,7 +30,6 @@ import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
 import System.Directory (makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
-import System.FilePath
 import System.TimeIt qualified as TimeIt
 
 -- main compiler driver function
@@ -255,13 +254,13 @@ parseExternalLibSpecs =
 
     splitSpec spec =
       case break (== '=') spec of
-        (name, '=' : path)
-          | null name || null path ->
+        (libNameStr, '=' : path)
+          | null libNameStr || null path ->
               Left ("Invalid external library spec: " ++ spec)
-          | not (validLibName name) ->
-              Left ("Invalid external library name: " ++ name)
+          | not (validLibName libNameStr) ->
+              Left ("Invalid external library name: " ++ libNameStr)
           | otherwise ->
-              Right (Name name, path)
+              Right (Name libNameStr, path)
         _ ->
           Left ("Invalid external library spec: " ++ spec)
 
