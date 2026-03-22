@@ -1339,8 +1339,11 @@ qualifyFunctionWrapper qualifier (FunDef sig _body) =
   where
     originalName = sigName sig
     qualifiedName = QualName qualifier (show originalName)
-    implName = hiddenFunctionName qualifier originalName
-    wrapperBody = forwardingWrapperBody sig implName
+    wrapperBody
+      | isBuiltinPassthroughFunctionName originalName =
+          forwardingWrapperBody sig originalName
+      | otherwise =
+          forwardingWrapperBody sig (hiddenFunctionName qualifier originalName)
 
 qualifyRevertFunction :: Name -> FunDef -> FunDef
 qualifyRevertFunction qualifier (FunDef sig body) =
@@ -1409,6 +1412,8 @@ qualifiedFunctionDecls typeRenameMap qualifier publicUnit allUnit =
     qualifyImpl fd
       | sigName (funSignature fd') == Name "revert" =
           [TFunDef (qualifyRevertFunction qualifier fd')]
+      | isBuiltinPassthroughFunctionName (sigName (funSignature fd')) =
+          []
       | otherwise =
           [TFunDef (qualifyFunctionImpl renameMap qualifier fd')]
       where
@@ -1988,9 +1993,19 @@ strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph 
               supportNonFunctionDecls
           localSupportFunctionDecls =
             concatMap (qualifySupportImpl renameMap typeRenameMap qualifier) extraSupportFunctions
+          requiredBuiltinSupportNames =
+            Set.filter
+              isBuiltinPassthroughFunctionName
+              (Set.union exportedFunctionNames supportFunctionNames)
+          builtinSupportDecls =
+            [ TFunDef fd
+              | fd <- allFunctionDecls,
+                sigName (funSignature fd) `Set.member` requiredBuiltinSupportNames
+            ]
       nestedSupportDecls <- concat <$> mapM (nestedModuleImportCompileDecls qualifier) moduleBindings
       pure
-        ( localSupportFunctionDecls
+        ( builtinSupportDecls
+            ++ localSupportFunctionDecls
             ++ localSupportDecls
             ++ shadowImportedDecls (localSupportFunctionDecls ++ localSupportDecls) nestedSupportDecls
         )
@@ -2059,8 +2074,19 @@ importedFunctionRenameMap qualifier ds =
   Map.fromList
     [ (sigName (funSignature fd), hiddenFunctionName qualifier (sigName (funSignature fd)))
       | TFunDef fd <- ds,
-        sigName (funSignature fd) /= Name "revert"
+        not (isBuiltinPassthroughFunctionName (sigName (funSignature fd)))
     ]
+
+isBuiltinPassthroughFunctionName :: Name -> Bool
+isBuiltinPassthroughFunctionName name =
+  name `elem` passthroughNames
+  where
+    passthroughNames =
+      [ Name "revert",
+        Name "concatLit",
+        Name "strlenLit",
+        Name "keccakLit"
+      ]
 
 importedTypeRenameMap :: Set Name -> Name -> [TopDecl] -> Map Name Name
 importedTypeRenameMap collidingTypeNames qualifier ds =
@@ -2111,12 +2137,12 @@ importOnlyFunctionDecls qualifier selectedNames allDecls =
       ]
     renameMap = importedFunctionRenameMap qualifier allDecls
     qualifyImpl fd
-      | sigName (funSignature fd) == Name "revert" =
+      | isBuiltinPassthroughFunctionName (sigName (funSignature fd)) =
           [TFunDef fd]
       | otherwise =
           [TFunDef (qualifyFunctionImpl renameMap qualifier fd)]
     wrapSelected fd
-      | sigName (funSignature fd) == Name "revert" =
+      | isBuiltinPassthroughFunctionName (sigName (funSignature fd)) =
           []
       | otherwise =
           [TFunDef (importOnlyFunctionWrapper qualifier fd)]
@@ -2132,8 +2158,8 @@ importOnlyFunctionWrapper qualifier (FunDef sig _body) =
 
 qualifySupportImpl :: Map Name Name -> Map Name Name -> Name -> FunDef -> [TopDecl]
 qualifySupportImpl renameMap typeRenameMap qualifier fd
-  | sigName (funSignature fd') == Name "revert" =
-      [TFunDef fd']
+  | isBuiltinPassthroughFunctionName (sigName (funSignature fd')) =
+      []
   | otherwise =
       [TFunDef (qualifyFunctionImpl renameMap qualifier fd')]
   where
