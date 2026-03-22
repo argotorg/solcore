@@ -91,11 +91,89 @@ imports :: TestTree
 imports =
   testGroup
     "Files for imports cases"
-    [ runTestForFile "booldef.solc" importFolder,
-      runTestForFile "boolmain.solc" importFolder
+    [ runImportSuccess "booldef.solc",
+      runImportSuccess "boolmain.solc",
+      runImportSuccess "boolalias.solc",
+      runImportFailure "boolalias_open_fail.solc",
+      runImportSuccess "boolqualified.solc",
+      runImportSuccess "boolqualifiedtype.solc",
+      runImportSuccess "boolaliastype.solc",
+      runImportFailure "module_unqualified_fun_fail.solc",
+      runImportFailure "alias_unqualified_fun_fail.solc",
+      runImportFailure "module_unqualified_type_fail.solc",
+      runImportFailure "alias_unqualified_type_fail.solc",
+      runImportFailure "module_unqualified_constr_fail.solc",
+      runImportFailure "alias_unqualified_constr_fail.solc",
+      runImportSuccess "selective_unqualified_fun_ok.solc",
+      runImportSuccess "transitive_dep_main_module.solc",
+      runImportSuccess "transitive_dep_main_select.solc",
+      runImportFailure "module_name_shadow.solc",
+      runImportSuccess "wrapper_shadow_success.solc",
+      runImportSuccess "ns_cross_ok.solc",
+      runImportSuccess "ns_constr_dup.solc",
+      runImportFailure "strict_open_fail.solc",
+      runImportSuccess "boolselect.solc",
+      runImportSuccess "boolconselect_ok.solc",
+      runImportFailure "boolconselect_fail.solc",
+      runImportSuccess "nested_alias.solc",
+      runImportSuccess "nested_select.solc",
+      runImportSuccess "nested_foo_and_bar.solc",
+      runImportSuccess "nested_direct_qualifier.solc",
+      runImportSuccess "nested_deep_qualifier.solc",
+      runImportSuccess "glob_import_ok.solc",
+      runImportSuccess "glob_import_mixed.solc",
+      runImportSuccess "glob_import_hiding.solc",
+      runImportSuccess "glob_hiding_amb_ok.solc",
+      runImportSuccess "glob_import_dup.solc",
+      runImportSuccess "glob_export_mixed.solc",
+      runImportFailure "glob_amb_main_fail.solc",
+      runImportFailure "glob_import_hiding_unknown_fail.solc",
+      runImportFailure "export_item_dup_fail.solc",
+      runImportFailure "export_module_dup_fail.solc",
+      runImportSuccess "select_ok.solc",
+      runImportFailure "select_shadow_local.solc",
+      runImportSuccess "select_shadow_param_ok.solc",
+      runImportFailure "select_fail.solc",
+      runImportFailure "select_unknown.solc",
+      runImportFailure "select_dup_item.solc",
+      runImportFailure "alias_dup.solc",
+      runImportFailure "amb_main.solc",
+      runImportSuccess "amb_ok.solc",
+      runImportSuccess "dupqual_main.solc",
+      runImportSuccess "dupqual_module_main.solc",
+      runImportSuccess "private_helper_main.solc",
+      runImportSuccess "module_qualified_constructor.solc",
+      runImportSuccess "module_qualified_constructor_pattern.solc",
+      runImportSuccess "module_qualified_constructor_alias.solc",
+      runImportSuccess "type_collision_main.solc",
+      runImportSuccess "dot_context_expr.solc",
+      runImportSuccess "reexport_items_main.solc",
+      runImportSuccess "reexport_module_main.solc",
+      runImportSuccess "reexport_ctor_pattern.solc",
+      runImportFailure "hidden_ctor_expr_fail.solc",
+      runImportFailure "hidden_ctor_pattern_fail.solc",
+      runImportFailure "hidden_ctor_nonexhaustive_fail.solc",
+      runImportSuccess "hidden_ctor_wildcard_ok.solc",
+      runImportSuccess "rootcheck/nested/main.solc",
+      runImportSuccess "external_lib_main.solc",
+      runImportSuccess "import_std_minimal.solc",
+      runImportFailure "external_lib_missing_fail.solc",
+      runImportFailure "symlink_identity_fail.solc",
+      runImportFailure "pragma_scope_main.solc",
+      runImportSuccess "selfcycle.solc",
+      runImportSuccess "cycle_main.solc",
+      runImportSuccess "wild_main.solc",
+      runImportFailure "leak_main.solc"
     ]
   where
     importFolder = "./test/imports"
+    importOpt =
+      stdOpt
+        { optNoGenDispatch = True,
+          optExternalLibs = ["extlib=./test/imports/extlib"]
+        }
+    runImportSuccess file = runTestForFileWith importOpt file importFolder
+    runImportFailure file = runTestExpectingFailureWith importOpt file importFolder
 
 pragmas :: TestTree
 pragmas =
@@ -126,6 +204,7 @@ cases =
       runTestExpectingFailure "bound-only-test.solc" caseFolder,
       runTestForFile "bound-merge-case.solc" caseFolder,
       runTestForFile "bound-with-pragma.solc" caseFolder,
+      runTestExpectingFailure "class-type-name-collision.solc" caseFolder,
       runTestForFile "class-context.solc" caseFolder,
       runTestForFile "closure.solc" caseFolder,
       runTestForFile "closure-capture-only.solc" caseFolder,
@@ -149,6 +228,17 @@ cases =
       runTestExpectingFailure "default-inst.solc" caseFolder,
       runTestExpectingFailure "default-instance-missing.solc" caseFolder,
       runTestExpectingFailure "default-instance-weak.solc" caseFolder,
+      runTestForFile "dot-expression-constructor.solc" caseFolder,
+      runTestForFile "dot-expression-call-arg-context.solc" caseFolder,
+      runTestForFile "dot-expression-match-return.solc" caseFolder,
+      runTestForFile "dot-expression-nested-context.solc" caseFolder,
+      runTestForFile "dot-expression-assignment-context.solc" caseFolder,
+      runTestExpectingFailure "dot-expression-no-context-fail.solc" caseFolder,
+      runTestExpectingFailure "dot-expression-unknown-fail.solc" caseFolder,
+      runTestForFile "dot-pattern-constructor.solc" caseFolder,
+      runTestForFile "dot-pattern-nested-constructor.solc" caseFolder,
+      runTestForFile "dot-primitive-constructor.solc" caseFolder,
+      runTestExpectingFailure "duplicated-contract-name.solc" caseFolder,
       runTestExpectingFailure "duplicated-type-name.solc" caseFolder,
       runTestForFile "DuplicateFun.solc" caseFolder,
       runTestExpectingFailure "DupFun.solc" caseFolder,
@@ -212,8 +302,8 @@ cases =
       runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder,
       runTestForFile "pragma_merge_base.solc" caseFolder,
-      runTestForFile "pragma_merge_import.solc" caseFolder,
-      runTestForFile "pragma_merge_verify.solc" caseFolder,
+      runTestExpectingFailure "pragma_merge_import.solc" caseFolder,
+      runTestExpectingFailure "pragma_merge_verify.solc" caseFolder,
       runTestForFile "pragma_test_patterson.solc" caseFolder,
       runTestForFile "proxy.solc" caseFolder,
       runTestExpectingFailure "proxy1.solc" caseFolder,
@@ -288,6 +378,7 @@ cases =
       runTestForFile "instance-closure-error.solc" caseFolder,
       runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder,
       runTestForFile "field-name-error.solc" caseFolder,
+      runTestForFile "field-helper-cxt-collision.solc" caseFolder,
       runTestExpectingFailure "field-access.solc" caseFolder,
       runTestForFile "mod-example.solc" caseFolder,
       runTestForFile "snds.solc" caseFolder,
@@ -329,7 +420,7 @@ runTestForFileWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestForFileWith opts file folder =
   testCase file $ do
     let filePath = folder </> file
-    result <- compile (opts {fileName = filePath})
+    result <- compile (opts {fileName = filePath, optRootDir = folder})
     case result of
       Left err -> assertFailure err
       Right _ -> return ()
@@ -343,7 +434,7 @@ runTestExpectingFailureWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestExpectingFailureWith opts file folder =
   testCase file $ do
     let filePath = folder </> file
-    result <- compile opts {fileName = filePath}
+    result <- compile opts {fileName = filePath, optRootDir = folder}
     case result of
       Left _ -> return () -- Expected failure
       Right _ -> assertFailure "Expected compilation to fail, but it succeeded"

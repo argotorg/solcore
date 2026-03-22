@@ -2,15 +2,15 @@ data Bool = False | True;
 
 function fromBool(b:Bool) -> word {
  match b {
-   | False => return 0;
-   | True => return 1;
+   | Bool.False => return 0;
+   | Bool.True => return 1;
  }
 }
 
 function toBool(x: word) -> Bool {
   match x {
-    | 0 => return False;
-    | _ => return True;
+    | 0 => return Bool.False;
+    | _ => return Bool.True;
   }
 }
 
@@ -31,8 +31,8 @@ instance word:Eq {
 
 function not (b) {
   match b {
-  | True => return False ;
-  | False => return True ;
+  | Bool.True => return Bool.False ;
+  | Bool.False => return Bool.True ;
   }
 }
 

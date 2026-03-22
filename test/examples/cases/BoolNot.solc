@@ -2,7 +2,7 @@ data Bool = False | True;
 
 function not (b) {
   match b {
-  | False => return True ;
-  | True => return False ;
+  | Bool.False => return Bool.True ;
+  | Bool.True => return Bool.False ;
   }
 }

@@ -5,7 +5,9 @@ import Options.Applicative
 data Option
   = Option
   { fileName :: !FilePath,
+    optRootDir :: !FilePath,
     optImportDirs :: !String,
+    optExternalLibs :: ![String],
     optNoSpec :: !Bool,
     optNoDesugarCalls :: !Bool,
     optNoMatchCompiler :: !Bool,
@@ -32,7 +34,9 @@ emptyOption :: FilePath -> Option
 emptyOption path =
   Option
     { fileName = path,
+      optRootDir = ".",
       optImportDirs = "std",
+      optExternalLibs = [],
       optNoSpec = False,
       optNoDesugarCalls = False,
       optNoMatchCompiler = False,
@@ -77,11 +81,24 @@ options =
           <> help "Input file name"
       )
     <*> strOption
+      ( long "root"
+          <> metavar "DIR"
+          <> value (optRootDir stdOpt)
+          <> help "Set the main library root."
+      )
+    <*> strOption
       ( long "include"
           <> short 'i'
-          <> metavar "dirs"
+          <> metavar "DIR"
           <> value (optImportDirs stdOpt)
-          <> help "This flag appends a colon-separated list of dirs to the search path."
+          <> help "Set the std library root."
+      )
+    <*> many
+      ( strOption
+          ( long "lib"
+              <> metavar "NAME=DIR"
+              <> help "Register an external library root for @NAME imports."
+          )
       )
     <*> switch
       ( long "no-specialise"

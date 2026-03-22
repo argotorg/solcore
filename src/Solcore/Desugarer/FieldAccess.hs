@@ -38,22 +38,30 @@ type NmEquation = Equation Name
 fieldDesugarer :: CompUnit Name -> CompUnit Name
 fieldDesugarer (CompUnit ims topdecls) = CompUnit ims (extras <> topdecls')
   where
+    existingDataTypes =
+      Set.fromList
+        [ dataName dt
+          | TDataDef dt <- topdecls
+        ]
     (extras, topdecls') = mapAccumL go mempty topdecls
-    go acc (TContr c) = (acc <> extraTopDeclsForContract c, TContr (transContract c))
+    go acc (TContr c) =
+      let hasSingletonCollision =
+            singletonNameForContract (Contract.name c) `Set.member` existingDataTypes
+       in (acc <> extraTopDeclsForContract (not hasSingletonCollision) c, TContr (transContract c))
     go acc v = (acc, v)
 
 --------------------------------
 -- # Extra Top Decls
 --------------------------------
 
-extraTopDeclsForContract :: NmContract -> [NmTopDecl]
-extraTopDeclsForContract (Contract cname _ts cdecls) = do
+extraTopDeclsForContract :: Bool -> NmContract -> [NmTopDecl]
+extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
   let singName = singletonNameForContract cname
   let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []]
 
   let fields = getFields cdecls
   let (_fieldTypes, extraFieldDecls) = foldl' (flip contractFieldStep) ([], []) fields
-  (contractSingDecl : extraFieldDecls)
+  (if includeSingleton then contractSingDecl : extraFieldDecls else extraFieldDecls)
   where
     -- given a list of contract field types so far and topdecls for them, amends them with data for another field
     -- the types of previous fields are needed to construct field offset
@@ -71,14 +79,14 @@ extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, 
     selName = selectorNameForField cname fname
     selDecl = TDataDef $ DataTy selName [] [Constr selName []]
     selType = TyCon selName []
-    -- instance StructField(ContractStorage(CCtx), fld1_sel):StructField(uint, ()) {}
+    -- instance StructField(ContractStorage(CCtx), fld1_sel):CStructField(uint, ()) {}
     ctxTy = TyCon "ContractStorage" [singletonTypeForContract cname]
     sfInstance =
       Instance
         { instDefault = False,
           instVars = [],
           instContext = [],
-          instName = "StructField",
+          instName = "CStructField",
           paramsTy = [translateFieldType fty, offset],
           mainTy = TyCon "StructField" [ctxTy, selType],
           instFunctions = []

@@ -1,4 +1,3 @@
-pragma no-patterson-condition RunDispatch, MethodLevelCallvalueCheck, TopLevelCallvalueCheck;
 
 // --- Preliminaries ---
 
@@ -89,8 +88,8 @@ forall ty callvalueCheckStatus . class ty:RunDispatch {
 forall m callvalueCheckStatus . m:ExecMethod, m:Selector => instance m:RunDispatch {
   function go(method : m, pstatus : Proxy(callvalueCheckStatus))  -> () {
     match selector_matches(Proxy : Proxy(m)) {
-      | True => ExecMethod.exec(method, pstatus);
-      | False => return ();
+      | Bool.True => ExecMethod.exec(method, pstatus);
+      | Bool.False => return ();
     }
   }
 }
@@ -101,10 +100,10 @@ forall n m callvalueCheckStatus . n:ExecMethod, n:Selector, m:ExecMethod, m:Sele
     match methods {
       | (method_n, method_m) =>
         match selector_matches(Proxy : Proxy(n)) {
-          | True => ExecMethod.exec(method_n);
-          | False => match selector_matches(Proxy : Proxy(m)) {
-            | True => ExecMethod.exec(method_m, pstatus);
-            | False => return ();
+          | Bool.True => ExecMethod.exec(method_n);
+          | Bool.False => match selector_matches(Proxy : Proxy(m)) {
+            | Bool.True => ExecMethod.exec(method_m, pstatus);
+            | Bool.False => return ();
           }
         }
     }
@@ -117,8 +116,8 @@ forall n m callvalueCheckStatus . n:ExecMethod, n:Selector, m:RunDispatch => ins
     match methods {
       | (method_n, rest) =>
         match selector_matches(Proxy : Proxy(n)) {
-          | True => ExecMethod.exec(method_n, pstatus);
-          | False => RunDispatch.go(rest, pstatus);
+          | Bool.True => ExecMethod.exec(method_n, pstatus);
+          | Bool.False => RunDispatch.go(rest, pstatus);
         }
     }
   }
@@ -134,8 +133,8 @@ forall name . name:Selector => function selector_matches(prx : Proxy(name)) -> B
     res := eq(sel, hash);
   }
   match res {
-    | 0 => return False;
-    | _ => return True;
+    | 0 => return Bool.False;
+    | _ => return Bool.True;
   }
 }
 

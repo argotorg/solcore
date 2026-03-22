@@ -22,12 +22,12 @@ data MapCtx = MapCtx;
 data owner_sel = owner_sel;
 data balances_sel = balances_sel;
 // field reserved:word
-instance StructField(ContractStorage(MapCtx), owner_sel):StructField(address, (word)) {}
-instance StructField(ContractStorage(MapCtx), balances_sel):StructField(mapping(address,word), (word, address)) {}
+instance StructField(ContractStorage(MapCtx), owner_sel):CStructField(address, (word)) {}
+instance StructField(ContractStorage(MapCtx), balances_sel):CStructField(mapping(address,word), (word, address)) {}
 
 contract Map {
 
-   forall sel ftype offset. StructField(ContractStorage(MapCtx), sel):StructField(ftype, offset)
+   forall sel ftype offset. StructField(ContractStorage(MapCtx), sel):CStructField(ftype, offset)
    => function proxy_for(s:sel) -> MemberAccessProxy(ContractStorage(MapCtx), sel, offset) {
       return MemberAccessProxy(ContractStorage(MapCtx), s);
    }

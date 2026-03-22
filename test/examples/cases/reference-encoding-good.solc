@@ -120,7 +120,7 @@ forall self memberValueType . class self:RValueMemberAccess(memberValueType) {
 }
 
 // This is *a lot* of pragmas...
-pragma no-coverage-condition StructField, LValueMemberAccess, RValueMemberAccess;
+pragma no-coverage-condition CStructField, LValueMemberAccess, RValueMemberAccess;
 pragma no-patterson-condition LValueMemberAccess, RValueMemberAccess;
 pragma no-bounded-variable-condition LValueMemberAccess, RValueMemberAccess;
 forall self fieldType offsetType . class self:CStructField(fieldType, offsetType) {}
@@ -191,7 +191,7 @@ instance StructField(S, x_sel):CStructField(word, ()) {}
 instance StructField(S, y_sel):CStructField(uint, word) {}
 // BUG: This next one should really be the following, but that breaks weirdly:
 // (I get a patterson condition violation on an invoke instance for g)
-// instance StructField(S, z_sel):StructField(word, (word,uint)) {}
+// instance StructField(S, z_sel):CStructField(word, (word,uint)) {}
 // So instead I use:
 instance StructField(S, z_sel):CStructField(word, word) {}
 

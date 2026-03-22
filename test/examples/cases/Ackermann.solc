@@ -2,9 +2,9 @@ data Nat = Zero | Succ(Nat) ;
 
 function foo (x, y) {
   match y, x {
-  | y1, Zero => return 1 ;
-  | Zero, Succ(x2) => return 2;
-  | Succ(y3), Succ(x3) => return 3;
+  | y1, Nat.Zero => return 1 ;
+  | Nat.Zero, Nat.Succ(x2) => return 2;
+  | Nat.Succ(y3), Nat.Succ(x3) => return 3;
   }
 }
 

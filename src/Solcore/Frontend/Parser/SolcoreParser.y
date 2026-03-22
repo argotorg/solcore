@@ -1,7 +1,6 @@
 {
 module Solcore.Frontend.Parser.SolcoreParser where
 
-import Data.Either
 import Data.List.NonEmpty (NonEmpty, cons, singleton)
 
 import Solcore.Frontend.Lexer.SolcoreLexer hiding (lexer)
@@ -10,8 +9,6 @@ import Solcore.Frontend.Syntax.SyntaxTree
 import Solcore.Primitives.Primitives hiding (pairTy)
 import Language.Yul
 
-import System.Directory
-import System.FilePath
 }
 
 
@@ -27,6 +24,9 @@ import System.FilePath
       stringlit  {Token _ (TString $$)}
       'contract' {Token _ TContract}
       'import'   {Token _ TImport}
+      'export'   {Token _ TExport}
+      'hiding'   {Token _ THiding}
+      'as'       {Token _ TAs}
       'let'      {Token _ TLet}
       '='        {Token _ TEq}
       '.'        {Token _ TDot}
@@ -101,7 +101,9 @@ import System.FilePath
 %right    'if'
 %right    'else'
 
-%expect 0
+-- One intentional shift/reduce conflict: shift `.` so `Foo.Bar` stays a
+-- qualified type name instead of ending the type before the dot.
+%expect 1
 
 %%
 -- compilation unit definition
@@ -110,11 +112,44 @@ CompilationUnit :: { CompUnit }
 CompilationUnit : ImportList TopDeclList          { CompUnit $1 $2 }
 
 ImportList :: { [Import] }
-ImportList : ImportList Import                     { $2 : $1 }
+ImportList : ImportList Import                     { $1 ++ [$2] }
            | {- empty -}                           { [] }
 
 Import :: { Import }
-Import : 'import' Name ';'                         { Import $2 }
+Import : 'import' ModName ';'                      { ImportModule (classifyImportPath $2) }
+       | 'import' ModName 'as' Name ';'            { ImportAlias (classifyImportPath $2) $4 }
+       | 'import' ModName '.' '{' ImportItems '}' ImportHiding ';'
+           { ImportOnly (classifyImportPath $2) (SelectItems $5 $7) }
+       | 'import' '@' identifier '.' ModName ';'   { ImportModule (ExternalPath (Name $3) $5) }
+       | 'import' '@' identifier '.' ModName 'as' Name ';' { ImportAlias (ExternalPath (Name $3) $5) $7 }
+       | 'import' '@' identifier '.' ModName '.' '{' ImportItems '}' ImportHiding ';'
+           { ImportOnly (ExternalPath (Name $3) $5) (SelectItems $8 $10) }
+
+ImportItems :: { [ItemSelectorEntry] }
+ImportItems : ImportItemList                       { $1 }
+
+ImportItemList :: { [ItemSelectorEntry] }
+ImportItemList : ImportItem ',' ImportItemList     { $1 : $3 }
+               | ImportItem                        { [$1] }
+
+ImportItem :: { ItemSelectorEntry }
+ImportItem : '*'                                   { SelectAllItems }
+           | ItemName                              { SelectItem $1 }
+
+ImportHiding :: { [Name] }
+ImportHiding : 'hiding' '{' HidingItemList '}'     { $3 }
+             | {- empty -}                         { [] }
+
+HidingItemList :: { [Name] }
+HidingItemList : ItemName ',' HidingItemList       { $1 : $3 }
+               | ItemName                          { [$1] }
+
+ModName :: { Name }
+ModName : identifier                               { Name $1 }
+        | ModName '.' identifier                   { QualName $1 $3 }
+
+ItemName :: { Name }
+ItemName : identifier                              { Name $1 }
 
 TopDeclList :: { [TopDecl] }
 TopDeclList : TopDecl TopDeclList                  { $1 : $2 }
@@ -130,7 +165,56 @@ TopDecl : Contract                                 {TContr $1}
         | InstDef                                  {TInstDef $1}
         | DataDef                                  {TDataDef $1}
         | TypeSynonym                              {TSym $1}
+        | ExportDecl                               {TExportDecl $1}
         | Pragma                                   {TPragmaDecl $1}
+
+ExportDecl :: { Export }
+ExportDecl : 'export' '{' ExportItems '}' ';'      { ExportList $3 }
+           | 'export' ModName ExportTail           { $3 (classifyImportPath $2) }
+           | 'export' '@' identifier '.' ModName ExportTail
+               { $6 (ExternalPath (Name $3) $5) }
+
+ExportTail :: { ModulePath -> Export }
+ExportTail : ';'                                   { ExportModule }
+           | 'as' Name ';'                         { \path -> ExportModuleAs path $2 }
+           | '.' '{' ExportFromItems '}' ';'       { \path -> ExportItemsFrom path (SelectExportItems $3) }
+           | '.' '*' ';'                           { \path -> ExportItemsFrom path (SelectExportItems [SelectExportAllItems]) }
+
+ExportItems :: { [ExportSpec] }
+ExportItems : ExportListItems                      { $1 }
+            | {- empty -}                          { [] }
+
+ExportListItems :: { [ExportSpec] }
+ExportListItems : ExportListItem ',' ExportListItems { $1 : $3 }
+                | ExportListItem                   { [$1] }
+
+ExportListItem :: { ExportSpec }
+ExportListItem : '*'                               { ExportAll }
+               | ItemName                          { ExportName $1 }
+               | ItemName '(' ExportConstructorItems ')' { ExportNameWithConstructors $1 $3 }
+               | ModName '.' '*'                   { ExportModuleAll (classifyImportPath $1) }
+               | '@' identifier '.' ModName '.' '*' { ExportModuleAll (ExternalPath (Name $2) $4) }
+
+ExportFromItems :: { [ExportSelectorEntry] }
+ExportFromItems : ExportFromItemList               { $1 }
+                | {- empty -}                      { [] }
+
+ExportFromItemList :: { [ExportSelectorEntry] }
+ExportFromItemList : ExportFromItem ',' ExportFromItemList { $1 : $3 }
+                   | ExportFromItem                { [$1] }
+
+ExportFromItem :: { ExportSelectorEntry }
+ExportFromItem : '*'                               { SelectExportAllItems }
+               | ItemName                          { SelectExportItem $1 }
+               | ItemName '(' ExportConstructorItems ')' { SelectExportConstructors $1 $3 }
+
+ExportConstructorItems :: { ConstructorSelector }
+ExportConstructorItems : '*'                       { SelectAllConstructors }
+                       | ConstructorNameList       { SelectConstructors $1 }
+
+ConstructorNameList :: { [Name] }
+ConstructorNameList : ItemName ',' ConstructorNameList { $1 : $3 }
+                    | ItemName                     { [$1] }
 
 -- pragmas
 
@@ -322,8 +406,10 @@ Expr :: { Exp }
 Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | Literal                                     {Lit $1}
      | '(' Expr ')'                                {$2}
+     | '.' Name FunArgs                            {ExpDotName $2 $3}
      | Expr '.' Name FunArgs                       {ExpName (Just $1) $3 $4}
      | Name                                        {ExpVar Nothing $1}
+     | '.' Name                                    {ExpDotName $2 []}
      | Expr '.' Name                               {ExpVar (Just $1) $3}
      | 'lam' '(' ParamList ')' OptRetTy Body       {Lam $3 $6 $5}
      | Expr ':' Type                               {TyExp $1 $3}
@@ -376,7 +462,8 @@ PatCommaList : Pattern                             {[$1]}
              | Pattern ',' PatCommaList            {$1 : $3}
 
 Pattern :: { Pat }
-Pattern : Name PatternList                         {Pat $1 $2}
+Pattern : TypeName PatternList                     {Pat $1 $2}
+        | '.' Name PatternList                     {PatDot $2 $3}
         | '_'                                      {PWildcard}
         | Literal                                  {PLit $1}
         | '(' Pattern ')'                          {$2}
@@ -399,7 +486,7 @@ Literal : number                                   {IntLit $ toInteger $1}
 -- basic type definitions
 
 Type :: { Ty }
-Type : Name OptTypeParam                            {TyCon $1 $2}
+Type : TypeName OptTypeParam                        {TyCon $1 $2}
      | LamType                                      {uncurry funtype $1}
      | TupleTy                                      {$1}
      | '@' Type                                     {TyCon (Name "Proxy") [$2]}
@@ -414,11 +501,11 @@ Var :: { Ty }
 Var : Name                                         {TyCon $1 []}
 
 Name :: { Name }
-Name : identifier                               { Name $1 }
-     | QualName %shift                          { QualName (fst $1) (snd $1) }
+Name : identifier                                 { Name $1 }
 
-QualName :: { (Name, String) }
-QualName : QualName '.' identifier              { (QualName (fst $1) (snd $1), $3)}
+TypeName :: { Name }
+TypeName : identifier                             { Name $1 }
+         | TypeName '.' identifier               { QualName $1 $3 }
 
 -- Yul statments and blocks
 
@@ -505,53 +592,29 @@ OptSemi : ';'                                      { () }
 {
 
 moduleParser :: [String] -> String -> IO (Either String CompUnit)
-moduleParser dirs content
+moduleParser _dirs content
   = do
       let r = runAlex content parser
       case r of
         Left err -> pure $ Left err
-        Right (CompUnit imps ds) -> do
-           ds' <- loadImports dirs imps
-           pure $ either Left (\ ds1 -> Right $ CompUnit imps (ds1 ++ ds)) ds'
+        Right cunit -> pure (Right cunit)
 
-loadImports :: [String] -> [Import] -> IO (Either String [TopDecl])
-loadImports dirs imps =
-  do
-    paths <- mapM (findImport dirs) imps
-    contents <- mapM readFile paths
-    rs <- mapM (moduleParser dirs) contents
-    let (errs, asts) = partitionEithers rs
-    case errs of
-      [] -> do
-        let ds' = concatMap topDeclsFrom asts
-        pure (Right ds')
-      (err : _) -> pure (Left err)
+parseCompUnit :: String -> IO (Either String CompUnit)
+parseCompUnit = moduleParser []
 
+classifyImportPath :: Name -> ModulePath
+classifyImportPath modName =
+  case splitName modName of
+    "lib" : rest@(_ : _) -> LibraryPath (mkName rest)
+    _ -> RelativePath modName
 
-findImport :: [FilePath] -> Import -> IO FilePath
-findImport [] imp  = error("import " ++ (show $ unImport imp) ++ ": file not found")
-findImport(dir:rest) i = do
-  found <- checkImport dir i
-  case found of
-    Just path -> return path
-    Nothing -> findImport rest i
+splitName :: Name -> [String]
+splitName (Name n) = [n]
+splitName (QualName n s) = splitName n ++ [s]
 
-checkImport :: FilePath -> Import -> IO (Maybe FilePath)
-checkImport dir imp = do
-  let path = toFilePath dir (unImport imp)
-  exists <- doesFileExist path
-  return if exists then Just path else Nothing
-
-toFilePath :: FilePath -> Name -> FilePath
-toFilePath base =
-  (base </>) . (<.> "solc") . foldr step "" . show
- where
-  step c ac
-    | c == '.' = pathSeparator : ac
-    | otherwise = c : ac
-
-topDeclsFrom :: CompUnit -> [TopDecl]
-topDeclsFrom (CompUnit _ ds) = ds
+mkName :: [String] -> Name
+mkName [] = error "mkName: empty module path"
+mkName (n : ns) = foldl QualName (Name n) ns
 
 unitPCon :: Pat
 unitPCon = Pat (Name "()") []
