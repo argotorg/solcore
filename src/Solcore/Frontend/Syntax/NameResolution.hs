@@ -411,7 +411,8 @@ instance Resolve S.Pat where
                       else unqualifiedConstructorError n
         _ -> do
           case n of
-            QualName _ _ -> undefinedName n
+            QualName qualifier conName ->
+              PCon <$> resolveQualifiedConstructorName qualifier (Name conName) <*> pure ps'
             Name _ -> do
               sameName <- isSameNameConstructor n
               if sameName
