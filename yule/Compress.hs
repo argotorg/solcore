@@ -6,15 +6,15 @@ class Compress a where
   compress :: a -> a
 
 instance Compress Type where
-  compress (TNamed n t@(TSum _ _)) = foldSum t
+  compress (TNamed _ t@(TSum _ _)) = foldSum t
   compress t = t
 
 foldSum :: Type -> Type
-foldSum t = TSumN (go t)
+foldSum ty = TSumN (go ty)
   where
     go :: Type -> [Type]
     go (TSum t1 t2) = go t1 ++ go t2
-    go t = [t]
+    go t1 = [t1]
 
 -- foldIns :: Type -> Expr -> Expr
 -- treat expressions of the form:
@@ -23,12 +23,15 @@ foldSum t = TSumN (go t)
 --  - inr+(e)       e.g. inr<T0+T1+T2>(inr(e)) becomes in(2)<T0+T1+T2>(e)
 -- Note: for complex types, such as Option{(unit + Option{(unit + word)})}
 --       inr(inr(x)) becomes in1(in1(x)) rather than in2(x)
-compressInjections ty@(TSumN ts) e = go 0 e
+compressInjections :: Type -> Expr -> Expr
+compressInjections ty@(TSumN ts) expr = go 0 expr
   where
     arity = length ts
-    go k e | k == arity - 1 = EInK k ty (compress e)
-    go k (EInr _ e) = go (k + 1) e
-    go k (EInl _ e) = EInK k ty e
+    go k expr1 | k == arity - 1 = EInK k ty (compress expr1)
+    go k (EInr _ expr1) = go (k + 1) expr1
+    go k (EInl _ expr1) = EInK k ty expr1
+    go k expr1 = EInK k ty (compress expr1)
+compressInjections _ expr = compress expr
 
 -- go k e = EInK k ty (compress e)
 

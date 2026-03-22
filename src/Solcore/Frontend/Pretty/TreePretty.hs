@@ -331,13 +331,14 @@ parensWhen _ d = d
 instance Pretty Exp where
   ppr (Lit l) = ppr l
   ppr (ExpName me n es) =
-    case me of
-      Nothing -> ppr n <> parens (commaSep (map ppr es))
-      Just e -> ppr e <> char '.' <> ppr n <> parens (commaSep (map ppr es))
+    maybe empty (\e -> ppr e <> char '.') me
+      <> ppr n
+      <> parensWhen
+        (not $ null es)
+        (commaSep (map ppr es))
   ppr (ExpVar me v) =
-    case me of
-      Nothing -> ppr v
-      Just e -> ppr e <> char '.' <> ppr v
+    maybe empty (\e -> ppr e <> char '.') me
+      <> ppr v
   ppr (ExpDotName n es) =
     char '.'
       <> ppr n

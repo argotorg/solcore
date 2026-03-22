@@ -1,4 +1,3 @@
--- {-# LANGUAGE DefaultSignatures #-}
 module Solcore.Backend.Specialise (specialiseCompUnit, typeOfTcExp) where
 
 -- \* Specialisation
@@ -7,7 +6,6 @@ module Solcore.Backend.Specialise (specialiseCompUnit, typeOfTcExp) where
 
 import Common.Monad
 import Common.Pretty
-import Control.Applicative
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
@@ -56,14 +54,6 @@ type SM = StateT SpecState IO
 
 getDebug :: SM Bool
 getDebug = gets spDebug
-
-withDebug :: SM a -> SM a
-withDebug m = do
-  savedDebug <- getDebug
-  modify $ \s -> s {spDebug = True}
-  a <- m
-  modify $ \s -> s {spDebug = savedDebug}
-  return a
 
 whenDebug :: SM () -> SM ()
 whenDebug m = do
@@ -117,11 +107,23 @@ flexAll :: Data a => a -> a
 flexAll = everywhere (mkT flex)
 -}
 
--- | A signature forall tvs . t is considered ambiguous if `tvs \\ FTV(t) /= mempty`
--- this is should be the same as `FTV(body) \\ FTV(t) /= {}`
--- returns list of ambiguous variables
+-- | A signature forall tvs . ctx => t is considered ambiguous if a type variable
+-- in tvs neither appears in the function type nor is reachable from the function
+-- type's variables via the constraint graph.  Uses the same closure-based strategy
+-- as TcStmt.ambiguous so that a constraint like `abs:Typedef(rep)` is not flagged
+-- when `rep` appears in the type (abs is reachable through the constraint).
+-- Returns the list of ambiguous variables.
 ambiguousVarsInSig :: (HasTV a) => Signature a -> [Tyvar]
-ambiguousVarsInSig sig = sigVars sig \\ freetv (sigParams sig, sigReturn sig)
+-- ambiguousVarsInSig sig = sigVars sig \\ freetv (sigParams sig, sigReturn sig)
+ambiguousVarsInSig sig =
+  sigVars sig \\ (tyVars `union` freetv (constraintClosure ps tyVars))
+  where
+    ps = sigContext sig
+    tyVars = freetv (sigParams sig, sigReturn sig)
+    reachable preds vs = [p | p <- preds, any (`elem` vs) (freetv p)]
+    constraintClosure preds vs
+      | all (`elem` vs) (freetv (reachable preds vs)) = reachable preds vs
+      | otherwise = constraintClosure preds (freetv (reachable preds vs))
 
 addSpecialisation :: Name -> TcFunDef -> SM ()
 addSpecialisation name fd = modify $ \s -> s {specTable = Map.insert name fd (specTable s)}
@@ -245,18 +247,9 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
       let dataDecls = map (CDataDecl . snd) (Map.toList dt)
       let funDecls = map (CFunDecl . snd) (Map.toList st)
       pure (dataDecls ++ funDecls)
-
--- keep datatype defs intact
 specialiseTopDecl d@TDataDef {} = pure [d]
 -- Drop all toplevel decls that are not contracts - we do not need them anymore
 specialiseTopDecl _ = pure []
-
-findConstructor :: [ContractDecl Id] -> Maybe (Constructor Id)
-findConstructor = foldr (\d -> (getConstructor d <|>)) Nothing
-
-getConstructor :: ContractDecl Id -> Maybe (Constructor Id)
-getConstructor (CConstrDecl c) = Just c
-getConstructor _ = Nothing
 
 specEntry :: Name -> SM (Maybe Name)
 specEntry name = withLocalState do
@@ -531,12 +524,6 @@ mangleTy (TyCon (Name n) []) = n
 mangleTy (TyCon (Name n) ts) = n ++ "L" ++ intercalate "_" (map mangleTy ts) ++ "J"
 mangleTy ty = error ("mangleTy - unexpected type: " ++ show ty)
 
-showId :: Id -> String
-showId i = showsId i ""
-
-showsId :: Id -> String -> String
-showsId (Id n t) = shows n . ('@' :) . showsPrec 10 t
-
 prettyId :: Id -> String
 prettyId = render . pprId
 
@@ -655,10 +642,6 @@ newtype TVSubst
   = TVSubst {unTVSubst :: [(Tyvar, Ty)]}
   deriving (Eq, Show)
 
-restrict :: TVSubst -> [Tyvar] -> TVSubst
-restrict (TVSubst s) vs =
-  TVSubst [(v, t) | (v, t) <- s, v `notElem` vs]
-
 emptyTVSubst :: TVSubst
 emptyTVSubst = TVSubst []
 
@@ -712,6 +695,8 @@ instance (HasTV a) => HasTV (Maybe a) where
   freetv = maybe [] freetv
 
 instance (HasTV a, HasTV b) => HasTV (a, b) -- defaults
+
+instance HasTV Pred -- uses default: freetv = everything (<>) (mkQ mempty (freetv @Ty))
 
 {-
 instance (HasTV a, HasTV b, HasTV c) => HasTV (a,b,c) where
@@ -774,9 +759,6 @@ instance Pretty TVRenaming where
   ppr = braces . commaSep . map go . unTVR
     where
       go (v, t) = ppr v <+> text "|->" <+> ppr t
-
-toTVS :: TVRenaming -> TVSubst
-toTVS = TVSubst . map (fmap TyVar) . unTVR
 
 fromTVS :: TVSubst -> TVRenaming
 fromTVS = TVR . map (fmap unTyVar) . unTVSubst

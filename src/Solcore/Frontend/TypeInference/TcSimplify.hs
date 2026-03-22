@@ -1,7 +1,6 @@
 module Solcore.Frontend.TypeInference.TcSimplify where
 
 import Control.Monad
-import Data.Either (isRight)
 import Data.List
 import Data.Map qualified as Map
 import Data.Maybe
@@ -30,7 +29,11 @@ reduce qs0 ps0 =
     let qs' = concatMap (bySuperM ctable) qs
         ps' = filter (not . entail ctable itable qs') ps
     info ["> After entailment:", pretty ps', " - ", pretty qs']
-    ps1 <- toHnfs depth ps'
+    -- Before falling through to instance lookup, try to discharge HNF wanteds
+    -- by unifying their weak args against a matching given predicate (same class, same main type).
+    psz <- solveByGivens qs' ps'
+    ps'' <- withCurrentSubst psz
+    ps1 <- toHnfs depth ps''
     ps2 <- withCurrentSubst ps1
     info ["< Reduced by instances constraints:", pretty ps2]
     -- simplify constraints using given constraints
@@ -52,7 +55,7 @@ enforceDependencies ps =
             && predMain p == predMain p'
         pss = splits eqMainTy ps
     s <- foldr (<>) mempty <$> mapM unifyWeakArgs pss
-    extSubst s
+    _ <- extSubst s
     pure (nub $ apply s ps)
 
 unifyWeakArgs :: [Pred] -> TcM Subst
@@ -111,6 +114,38 @@ simplify qs ps =
             info [">>", pretty p', " cannot be entailed by:", pretty (rs `union` ps')]
             simplify' ct it (p' : rs) ps'
 
+-- Discharge HNF wanted predicates using given constraints before resorting to
+-- instance lookup.  For each wanted predicate whose main type is in HNF (i.e. a
+-- Meta or TyVar, not a concrete TyCon), look for a given predicate with the same
+-- class name and the same main type, and unify their weak arguments.  This gives
+-- the correct binding when the annotation context already determines the relationship
+solveByGivens :: [Pred] -> [Pred] -> TcM [Pred]
+solveByGivens _ [] = pure []
+solveByGivens qs (p : ps) = do
+  p' <- withCurrentSubst p
+  case tryDischargeByGivens qs p' of
+    Just s -> do
+      _ <- extSubst s
+      ps' <- withCurrentSubst ps
+      qs' <- withCurrentSubst qs
+      solveByGivens qs' ps'
+    Nothing -> do
+      rest <- solveByGivens qs ps
+      pure (p' : rest)
+
+tryDischargeByGivens :: [Pred] -> Pred -> Maybe Subst
+tryDischargeByGivens qs p@(InCls _ _ _) = msum [tryOneGiven q p | q <- qs]
+tryDischargeByGivens _ _ = Nothing
+
+tryOneGiven :: Pred -> Pred -> Maybe Subst
+tryOneGiven (InCls cn' mainTy' params') (InCls cn mainTy1 params)
+  | cn == cn',
+    mainTy1 == mainTy' =
+      case mgu params params' of
+        Left _ -> Nothing
+        Right s -> Just s
+tryOneGiven _ _ = Nothing
+
 -- converting to head normal forms
 
 toHnfs :: Int -> [Pred] -> TcM [Pred]
@@ -143,7 +178,25 @@ toHnf depth p@(InCls c _ _)
   | isHnf p =
       do
         info [">>> Solving:", pretty p, " (HNF)"]
-        pure [p]
+        insts <- askInstEnv c
+        case byInstM insts p of
+          Just (ps', s, i) -> do
+            info [">>> Found instance for:", pretty p, "\n>>> Instance:", pretty i, "\n>>> Subst:", pretty s]
+            _ <- extSubst s
+            ps0 <- withCurrentSubst ps'
+            toHnfs (depth - 1) ps0
+          Nothing -> do
+            insts' <- mapM fromANF insts
+            info [">>> No matching instance for:", pretty p, " trying a default instance.Defined instances:\n", unlines (map pretty insts')]
+            denv <- getDefaultInstEnv
+            case proveDefaulting denv insts p of
+              Nothing -> do
+                info [">>>> No default instance found for:", pretty p]
+                pure [p]
+              Just (_, s) -> do
+                info [">>>> Default instance for:", pretty p, " found! (Solved), \n>>> Subst: ", pretty s]
+                _ <- extSubst s
+                pure []
   | depth <= 0 = notEnoughFuel [p]
   | otherwise =
       do
@@ -179,7 +232,7 @@ toHnf _ (t1 :~: t2) =
 -- checking for default instance
 
 proveDefaulting :: InstTable -> [Inst] -> Pred -> Maybe ([Pred], Subst)
-proveDefaulting denv ienv p@(InCls cname t ts)
+proveDefaulting denv ienv (InCls cname t ts)
   -- no instance head unify with current predicate
   | all isNothing [tryInst it | it <- ienv] =
       do
@@ -200,7 +253,7 @@ proveDefaulting denv ienv p@(InCls cname t ts)
     -- checking if a predicate can unify with an instance head.
     -- we just consider the instance head.
     tryInst :: Qual Pred -> Maybe Inst
-    tryInst i@(_ :=> h@(InCls _ t' ts')) =
+    tryInst i@(_ :=> InCls _ t' ts') =
       case mgu (t' : ts') (t : ts) of
         Left _ -> Nothing
         Right _ -> Just i
@@ -271,7 +324,7 @@ entail ctable itable qs p@(InCls n _ _) =
             let ps1 = apply s ps'
                 qs1 = apply s qs
              in all (entail ctable itable qs1) ps1
-entail _ _ _ (_ :~: _) = False
+entail _ _ qs (t1 :~: t2) = t1 == t2 || (t1 :~: t2) `elem` qs
 
 -- error messages
 
@@ -316,3 +369,4 @@ unsolvedPredError p@(InCls n _ _) =
           "using defined instances:",
           s
         ]
+unsolvedPredError p = tcmError $ unwords ["Cannot entail:", pretty p]

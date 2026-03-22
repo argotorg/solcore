@@ -1,11 +1,8 @@
 module Solcore.Desugarer.IfDesugarer where
 
-import Control.Monad.Identity
 import Data.Generics
-import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
-import Solcore.Frontend.TypeInference.TcEnv (primCtx)
 import Solcore.Primitives.Primitives
 
 ifDesugarer :: CompUnit Id -> CompUnit Id
@@ -45,6 +42,8 @@ desugarBoolCons (Lam ps bdy ty) =
 desugarBoolCons (Cond e1 e2 e3) = Cond (d e1) (d e2) (d e3) where d = desugarBoolCons
 desugarBoolCons (TyExp e t) =
   TyExp (desugarBoolCons e) t
+desugarBoolCons (Indexed e1 e2) =
+  Indexed (desugarBoolCons e1) (desugarBoolCons e2)
 desugarBoolCons (Var a) = Var a
 desugarBoolCons (Lit l) = Lit l
 
@@ -69,4 +68,5 @@ desugarTyBool (TyCon n ts) =
   TyCon n (map desugarTyBool ts)
 desugarTyBool t = t
 
+desugaredBoolTy :: Ty
 desugaredBoolTy = sumTy unit unit

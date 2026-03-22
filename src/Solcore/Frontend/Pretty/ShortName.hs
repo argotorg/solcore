@@ -1,11 +1,9 @@
 module Solcore.Frontend.Pretty.ShortName where
 
 import Common.Pretty
-import Solcore.Frontend.Pretty.Name
 import Solcore.Frontend.Pretty.SolcorePretty (pretty)
 import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name
-import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.TypeInference.Id
 
@@ -30,7 +28,7 @@ instance (HasShortName a) => HasShortName (FunDef a) where
   shortName fd = "function " ++ shortName (funSignature fd)
 
 instance (HasShortName a) => HasShortName (Instance a) where
-  shortName idef@(Instance _d _vs _ctx n ts t _funs) = do
+  shortName (Instance _d _vs _ctx n ts t _funs) = do
     unwords ["instance", pretty (InCls n t ts)]
 
 instance HasShortName Pred where
@@ -44,4 +42,5 @@ instance (HasShortName a) => HasShortName (TopDecl a) where
   shortName (TMutualDef ts) = concatMap shortName ts
   shortName (TDataDef d) = pretty (dataName d)
   shortName (TExportDecl e) = pretty e
+  shortName (TSym t) = pretty t
   shortName (TPragmaDecl p) = pretty p

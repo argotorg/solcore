@@ -1,0 +1,14 @@
+data Bool = False | True;
+
+  function second(x, y) {
+    match x, y {
+    | Bool.True, z => return z;
+    | Bool.False, z => return z;
+    }
+  }
+
+contract Second {
+  function main() -> word {
+    second(Bool.True, 42)
+  }
+}

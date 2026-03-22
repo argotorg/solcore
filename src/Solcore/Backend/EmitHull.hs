@@ -3,8 +3,10 @@ module Solcore.Backend.EmitHull (emitHull) where
 import Common.Monad
 import Control.Monad (when)
 import Control.Monad.State
+import Data.Generics (Data, everything, mkQ)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.Set qualified as Set
 import GHC.Stack (HasCallStack)
 import Language.Hull qualified as Hull
 import Solcore.Backend.Mast
@@ -14,7 +16,7 @@ import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
 import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..))
 import Solcore.Frontend.TypeInference.TcMonad (insts)
-import Prelude hiding (catch, product)
+import Prelude hiding (product)
 
 emitHull :: Bool -> MastCompUnit -> IO [Hull.Object]
 emitHull debugp cu = fmap concat $ runEM debugp $ mapM emitTopDecl (mastTopDecls cu)
@@ -98,12 +100,7 @@ dropContext = modify (\s -> s {ecContext = drop 1 $ ecContext s})
 withContext :: String -> EM a -> EM a
 withContext s m = pushContext s *> m <* dropContext
 
-inContext :: EM a -> String -> EM a
-inContext = flip withContext
-
 type Translation a = EM (a, [Hull.Stmt])
-
-type HullName = String
 
 emitTopDecl :: MastTopDecl -> EM [Hull.Object]
 emitTopDecl (MastTContr c) = withLocalState do
@@ -239,9 +236,9 @@ encodeCon :: Name -> [Constr] -> Hull.Type -> Hull.Expr -> Hull.Expr
 encodeCon n [c] _ e | constrName c == n = e
 encodeCon n cs (Hull.TNamed l t) e = label l (encodeCon n cs t e)
   where
-    label l (Hull.EInl t e) = Hull.EInl (Hull.TNamed l t) e
-    label l (Hull.EInr t e) = Hull.EInr (Hull.TNamed l t) e
-    label _ e = e
+    label n1 (Hull.EInl t1 e1) = Hull.EInl (Hull.TNamed n1 t1) e1
+    label n1 (Hull.EInr t1 e1) = Hull.EInr (Hull.TNamed n1 t1) e1
+    label _ expr = expr
 encodeCon n (con : cons) t@(Hull.TSum _ t2) e
   | constrName con == n = Hull.EInl t e
   | otherwise = Hull.EInr t (encodeCon n cons t2 e)
@@ -302,7 +299,18 @@ emitStmt (MastLet (MastId name ty) _mty mexp) = do
       return (estmts ++ alloc ++ assign)
     Nothing -> return alloc
 emitStmt (MastMatch scrutinee alts) = emitMatch scrutinee alts
-emitStmt (MastAsm ys) = pure [Hull.SAssembly ys]
+emitStmt (MastAsm as) = do
+  -- unroll the vsubst to a series of assignments and insert them before the assembly block
+  -- an alternative might be to painstakingly rename all vars in the the assembly block
+  subst <- gets ecSubst
+  let yvars = getNames as
+  let unrolled =
+        concat
+          [ [Hull.SAlloc (show v) Hull.TWord, Hull.SAssign (Hull.EVar (show v)) e]
+            | (v, e) <- Map.toList subst,
+              Set.member v yvars
+          ]
+  pure $ unrolled ++ [Hull.SAssembly as]
 
 emitStmts :: [MastStmt] -> EM [Hull.Stmt]
 emitStmts = concatMapM emitStmt'
@@ -390,7 +398,7 @@ emitSumMatch allCons scrutinee alts = do
   where
     allConNames = map constrName allCons
     insertBranch :: (MastPat, [Hull.Stmt]) -> BranchMap -> BranchMap
-    insertBranch (MastPVar _, stmts) m = Map.fromList [(c, stmts) | c <- allConNames]
+    insertBranch (MastPVar _, stmts) _ = Map.fromList [(c, stmts) | c <- allConNames]
     insertBranch (MastPCon (MastId n _) _, stmts) m = Map.insert n stmts m
     insertBranch _ _ = error "emitSumMatch.insertBranch: unexpected pattern"
 
@@ -420,12 +428,12 @@ emitSumMatch allCons scrutinee alts = do
     buildMatch sval0 sty branches = go sval0 sty branches
       where
         go _sval _sty [b] = b
-        go sval sty (b : bs) =
+        go sval curTy (b : bs) =
           [ Hull.SMatch
-              sty
+              curTy
               sval
               [ alt Hull.CInl left b,
-                alt Hull.CInr right (go (Hull.EVar right) (rightBranch sty) bs)
+                alt Hull.CInr right (go (Hull.EVar right) (rightBranch curTy) bs)
               ]
           ]
         go _ _ [] = error "buildMatch: empty branch list"
@@ -452,6 +460,7 @@ emitProdMatch _ [] = errorsEM ["emitProdMatch: no alternatives"]
 translateSingleMastAlt :: Hull.Expr -> MastAlt -> EM [Hull.Stmt]
 translateSingleMastAlt expr (MastPCon _con patargs, stmts) = withLocalState do
   let pvars = translateMastPatArgs expr patargs
+  debug ["! translateSingleMastAlt: pvars = ", show pvars]
   extendVSubst pvars
   emitStmts stmts
 translateSingleMastAlt _ (pat, _) =
@@ -484,3 +493,11 @@ debug msg = do
 
 concatMapM :: (Monad f) => (a -> f [b]) -> [a] -> f [b]
 concatMapM f xs = concat <$> mapM f xs
+
+-- getNames is a conservative overapproximation
+-- some vars may not be actually free
+getNames :: (Data d) => d -> Set.Set Name
+getNames code = everything Set.union (mkQ Set.empty step) code
+  where
+    step :: Name -> Set.Set Name
+    step name = Set.singleton name

@@ -2,6 +2,7 @@
 
 module Solcore.Frontend.Syntax.Name where
 
+import Common.Pretty
 import Data.Generics (Data, Typeable)
 import Data.String
 
@@ -17,3 +18,7 @@ instance Show Name where
 
 instance IsString Name where
   fromString = Name
+
+instance Pretty Name where
+  ppr (QualName n s) = ppr n <> text "." <> text s
+  ppr (Name s) = text s

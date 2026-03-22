@@ -8,6 +8,7 @@ contract MatchCall {
   function main() {
     match f() {
      | Bool.True => return 42;
+     | Bool.False => return 0;
     }
   }
 }

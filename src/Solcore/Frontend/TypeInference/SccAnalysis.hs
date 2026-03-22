@@ -3,17 +3,13 @@ module Solcore.Frontend.TypeInference.SccAnalysis where
 import Algebra.Graph.AdjacencyMap
 import Algebra.Graph.AdjacencyMap.Algorithm
 import Algebra.Graph.NonEmpty.AdjacencyMap qualified as N
-import Control.Monad
 import Control.Monad.Except
-import Control.Monad.Identity
-import Control.Monad.Trans
 import Control.Monad.Writer
 import Data.List
 import Data.List.NonEmpty (toList)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe
-import Language.Yul
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name
@@ -28,7 +24,7 @@ sccAnalysis cunit =
     r <- runSCC (sccAnalysis' cunit)
     case r of
       Left err -> pure $ Left err
-      Right (cunit', logs) -> pure $ Right cunit'
+      Right (cunit', _) -> pure $ Right cunit'
 
 sccAnalysis' :: CompUnit Name -> SCC (CompUnit Name)
 sccAnalysis' (CompUnit imps ds) =
@@ -135,13 +131,13 @@ instance Decl (ContractDecl Name) where
   decl (CFunDecl fd) = decl fd
   decl (CMutualDecl ds) =
     concatMap decl ds
-  decl (CConstrDecl cd) = []
+  decl (CConstrDecl _) = []
 
 instance Decl (Class Name) where
   decl (Class _ _ n _ _ sigs) =
     n : map (qual n) (decl sigs)
     where
-      qual n m = QualName n (pretty m)
+      qual clsName memberName = QualName clsName (pretty memberName)
 
 -- getting the mentioned names in a declaration
 
@@ -168,6 +164,7 @@ instance Names (Exp Name) where
   names (Lam ps bdy mt) = names (ps, bdy, mt)
   names (TyExp e t) = names e `union` names t
   names (Cond e1 e2 e3) = names (e1, e2, e3)
+  names (Indexed e1 e2) = names e1 `union` names e2
   names (Var n) = [n]
   names (Lit _) = []
 
@@ -249,8 +246,8 @@ instance Names (ContractDecl Name) where
   names (CConstrDecl cd) = names cd
 
 instance Names (Contract Name) where
-  names (Contract _ _ decls) =
-    names decls
+  names (Contract _ _ contractDecls) =
+    names contractDecls
 
 instance Names (TopDecl Name) where
   names (TContr c) = names c
@@ -263,7 +260,7 @@ instance Names (TopDecl Name) where
   names _ = []
 
 instance Names (CompUnit Name) where
-  names (CompUnit _ decls) = names decls
+  names (CompUnit _ topDecls) = names topDecls
 
 -- Groupable class for handling mutual definitions
 

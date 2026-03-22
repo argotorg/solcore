@@ -1,6 +1,5 @@
 module Common.Monad where
 
-import Control.Monad
 import Control.Monad.IO.Class (MonadIO (..))
 import GHC.Stack (HasCallStack)
 import System.Exit (exitFailure)

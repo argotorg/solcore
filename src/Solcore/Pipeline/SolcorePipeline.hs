@@ -14,16 +14,15 @@ import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ContractDispatch (contractDispatchDesugarer)
+import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
 import Solcore.Desugarer.FieldAccess (fieldDesugarer)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
-import Solcore.Desugarer.MatchCompiler (matchCompiler)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictCompileCompUnitWithMetadata, flattenModuleStrictValidationCompUnit, loadModuleGraph, moduleSourcePath)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
-import Solcore.Frontend.Syntax.Contract hiding (contracts)
 import Solcore.Frontend.Syntax.NameResolution
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
@@ -33,7 +32,6 @@ import System.Directory (makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath
 import System.TimeIt qualified as TimeIt
-import Text.Pretty.Simple
 
 -- main compiler driver function
 pipeline :: IO ()
@@ -166,7 +164,7 @@ compile opts = runExceptT $ do
   liftIO $ when verbose $ do
     putStrLn "No type errors found!"
 
-  (typed, typeEnv) <-
+  (typed, tcEnv) <-
     ExceptT $
       timeItNamed
         "Typecheck (desugaring)  "
@@ -174,7 +172,7 @@ compile opts = runExceptT $ do
 
   liftIO $ when verbose $ do
     putStrLn "> Type inference logs:"
-    mapM_ putStrLn (reverse $ logs typeEnv)
+    mapM_ putStrLn (reverse $ logs tcEnv)
     putStrLn "> Elaborated tree:"
     putStrLn $ pretty typed
 
@@ -193,9 +191,12 @@ compile opts = runExceptT $ do
   matchless <-
     if noMatchCompiler
       then pure desugared
-      else ExceptT $ timeItNamed "Match compiler" $ matchCompiler desugared
+      else do
+        (ast, warns) <- ExceptT $ timeItNamed "Match compiler" $ matchCompiler desugared
+        when (verbose && not (null warns)) $ liftIO $ mapM_ (putStrLn . showWarning) warns
+        pure ast
 
-  let printMatch = (not $ noMatchCompiler) && (verbose || optDumpDS opts)
+  let printMatch = not noMatchCompiler && (verbose || optDumpDS opts)
   liftIO $ when printMatch $ do
     putStrLn "> Match compilation result:"
     putStrLn (pretty matchless)
@@ -207,7 +208,7 @@ compile opts = runExceptT $ do
       specialized <-
         liftIO $
           timeItNamed "Specialise    " $
-            specialiseCompUnit matchless (optDebugSpec opts) typeEnv
+            specialiseCompUnit matchless (optDebugSpec opts) tcEnv
 
       liftIO $ when (optDumpSpec opts) $ do
         putStrLn "> Specialised contract:"

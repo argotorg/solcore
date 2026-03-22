@@ -7,7 +7,6 @@ import Common.Pretty
 import Data.List
 import Data.List.NonEmpty qualified as N
 import Language.Yul ()
-import Solcore.Frontend.Pretty.Name ()
 import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt

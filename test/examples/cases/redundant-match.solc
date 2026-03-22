@@ -1,0 +1,13 @@
+data Bool = False | True;
+
+  function f(x) {
+    match x {
+    | z     => return z;
+    | Bool.True  => return Bool.True;
+    | Bool.False => return Bool.False;
+    }
+  }
+
+  contract Test {
+    function main() -> Bool { f(Bool.True) }
+  }

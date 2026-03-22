@@ -130,6 +130,7 @@ data Ty
   = TyCon Name [Ty] -- type constructor
   deriving (Eq, Ord, Show, Data, Typeable)
 
+pattern (:->) :: Ty -> Ty -> Ty
 pattern (:->) t1 t2 = TyCon (Name "->") [t1, t2]
 
 tyName :: Ty -> Name

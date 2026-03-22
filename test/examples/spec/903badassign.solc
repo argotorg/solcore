@@ -15,6 +15,8 @@ contract Option {
     match mmx {
       | Option.Some(Option.Some(x)) => result = Option.Some(x);
       | Option.None => result = Option.None;
+      | Option.Some(Option.None) => result = Option.None;
+      | _ => result = Option.None;
     }
     return result;
   }

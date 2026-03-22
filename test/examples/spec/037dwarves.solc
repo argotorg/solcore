@@ -9,6 +9,7 @@ contract Dwarves {
       | Dwarf.Sleepy   => return 3;
       | Dwarf.Bashful  => return 4;
       | Dwarf.Happy    => return 5;
+      | _              => return 0;
     }
   }
 

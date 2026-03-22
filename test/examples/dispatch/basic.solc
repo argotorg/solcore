@@ -7,7 +7,6 @@ pragma no-bounded-variable-condition ;
 
 contract C {
     constructor() {}
-
     function nothing() -> () {}
 
     function something() -> (uint256) {

@@ -6,7 +6,6 @@ module Language.Yul where
 
 import Common.Pretty
 import Data.Generics (Data, Typeable)
-import Solcore.Frontend.Pretty.Name
 import Solcore.Frontend.Syntax.Name
 
 data YulObject = YulObject String YulCode [YulInner]
@@ -22,7 +21,23 @@ newtype Yul = Yul {yulStmts :: [YulStmt]}
 
 newtype YulCode = YulCode {ycStmts :: [YulStmt]}
 
-instance {-# OVERLAPPABLE #-} (Pretty a) => Show a where show = render . ppr
+instance Show YulObject where show = render . ppr
+
+instance Show YulInner where show = render . ppr
+
+instance Show YulData where show = render . ppr
+
+instance Show HexOrString where show = render . ppr
+
+instance Show Yul where show = render . ppr
+
+instance Show YulCode where show = render . ppr
+
+instance Show YulStmt where show = render . ppr
+
+instance Show YulExp where show = render . ppr
+
+instance Show YLiteral where show = render . ppr
 
 instance Semigroup Yul where
   Yul a <> Yul b = Yul (a <> b)
@@ -171,6 +186,7 @@ instance Pretty YulExp where
   ppr (YCall name args) = ppr name >< parens (commaSepList args)
   ppr (YIdent name) = ppr name
   ppr (YLit lit) = ppr lit
+  ppr (YMeta s) = text s
 
 instance Pretty YLiteral where
   ppr (YulNumber n) = integer n
