@@ -201,12 +201,12 @@ resolveModuleImportCandidates cfg currentModule path =
         Just root <- stdRoot cfg ->
           pure [resolveStdModule root relName]
       | otherwise ->
-          pure [resolveWithinLibrary currentLibrary resolvedName]
+          (: []) <$> resolveWithinLibrary currentLibrary resolvedName
       where
         currentLibrary = Mod.moduleLibrary currentModule
         resolvedName = Mod.appendRelativeModulePath (Mod.moduleName currentModule) relName
     LibraryPath absName ->
-      pure [resolveWithinLibrary (Mod.moduleLibrary currentModule) absName]
+      (: []) <$> resolveWithinLibrary (Mod.moduleLibrary currentModule) absName
     ExternalPath libName modName ->
       case Map.lookup libName (externalRoots cfg) of
         Just root ->
@@ -214,8 +214,9 @@ resolveModuleImportCandidates cfg currentModule path =
         Nothing ->
           Left ("external library root is not configured: @" ++ show libName)
   where
-    resolveWithinLibrary libId modName =
-      (Mod.ModuleId libId modName, toFilePath (rootForLibrary cfg libId) modName)
+    resolveWithinLibrary libId modName = do
+      root <- rootForLibrary cfg libId
+      pure (Mod.ModuleId libId modName, toFilePath root modName)
     resolveStdModule root modName =
       let stdName = normalizeStdModuleName modName
        in (Mod.ModuleId Mod.StdLibrary stdName, toFilePath root stdName)
@@ -238,15 +239,15 @@ normalizeStdModuleName (QualName prefix suffix) =
   QualName (normalizeStdModuleName prefix) suffix
 normalizeStdModuleName moduleName = moduleName
 
-rootForLibrary :: LoaderConfig -> Mod.LibraryId -> FilePath
-rootForLibrary cfg Mod.MainLibrary = mainRoot cfg
+rootForLibrary :: LoaderConfig -> Mod.LibraryId -> Either String FilePath
+rootForLibrary cfg Mod.MainLibrary = Right (mainRoot cfg)
 rootForLibrary cfg Mod.StdLibrary =
-  maybe (mainRoot cfg </> "std") id (stdRoot cfg)
+  Right (maybe (mainRoot cfg </> "std") id (stdRoot cfg))
 rootForLibrary cfg (Mod.ExternalLibrary libName) =
   case Map.lookup libName (externalRoots cfg) of
-    Just root -> root
+    Just root -> Right root
     Nothing ->
-      error ("internal error: external library root is not configured: " ++ show libName)
+      Left ("external library root is not configured: @" ++ show libName)
 
 moduleIdForPath :: Mod.LibraryId -> FilePath -> FilePath -> ExceptT String IO Mod.ModuleId
 moduleIdForPath libId root filePath =
