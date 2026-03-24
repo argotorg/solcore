@@ -1,4 +1,8 @@
-import std;
+import std.{*};
+import std.{address, uint256, mapping, Num, Add, Sub, Bounded, Eq, Ord, Typedef, ge, ne, not};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 function caller() -> address {
   let res: word;

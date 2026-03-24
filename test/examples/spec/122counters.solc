@@ -1,5 +1,5 @@
 // test multiple contract fields
-import std;
+import std.{*};
 // import StorageLib;
 
 

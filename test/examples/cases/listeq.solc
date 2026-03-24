@@ -6,5 +6,5 @@ forall a . class a : Eq {
 }
 
 function foo () {
-  return Eq.eq(Nil, Nil);
+  return Eq.eq(List.Nil, List.Nil);
 }

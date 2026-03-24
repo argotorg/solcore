@@ -16,8 +16,8 @@ instance Color : Enum {
   function fromEnum(c) {
     match c {
       | R => return 1;
-      | G => return 2;
-      | B => return 3;
+      | Color.G => return 2;
+      | Color.B => return 3;
     };
   }
 }
@@ -28,7 +28,7 @@ instance Bool : Enum {
   function fromEnum(b) {
       match b {
       | False => return 0;
-      | True => return 1;
+      | Bool.True => return 1;
       };
   }
 }
@@ -46,14 +46,14 @@ instance (a:Enum) => FromEnumToken(a) : Invokable(a,Word) {
 contract RGB {
   function main() {
   /*
-  let x = fromEnum(B);
-  let y = fromEnum(True);
+  let x = fromEnum(Color.B);
+  let y = fromEnum(Bool.True);
   */
 
   let fetC = FromEnumToken;
   let fetB = FromEnumToken;
-  let x = invoke(fetC, B);
-  let y = invoke(fetB,True);
+  let x = invoke(fetC, Color.B);
+  let y = invoke(fetB,Bool.True);
   return addW(x,y);
   }
 }

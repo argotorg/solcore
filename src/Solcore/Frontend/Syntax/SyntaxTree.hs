@@ -22,6 +22,7 @@ data TopDecl
   | TInstDef Instance
   | TDataDef DataTy
   | TSym TySym
+  | TExportDecl Export
   | TPragmaDecl Pragma
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -46,8 +47,54 @@ data Pragma
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
-newtype Import
-  = Import {unImport :: Name}
+data ModulePath
+  = RelativePath Name
+  | LibraryPath Name
+  | ExternalPath Name Name
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data Export
+  = ExportList [ExportSpec]
+  | ExportModule ModulePath
+  | ExportModuleAs ModulePath Name
+  | ExportItemsFrom ModulePath ExportSelector
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ConstructorSelector
+  = SelectConstructors [Name]
+  | SelectAllConstructors
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ExportSpec
+  = ExportName Name
+  | ExportNameWithConstructors Name ConstructorSelector
+  | ExportAll
+  | ExportModuleAll ModulePath
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ExportSelector
+  = SelectExportItems [ExportSelectorEntry]
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ExportSelectorEntry
+  = SelectExportAllItems
+  | SelectExportItem Name
+  | SelectExportConstructors Name ConstructorSelector
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data Import
+  = ImportModule {importModule :: ModulePath}
+  | ImportAlias {importModule :: ModulePath, importAlias :: Name}
+  | ImportOnly {importModule :: ModulePath, importItems :: ItemSelector}
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ItemSelector
+  = SelectItems [ItemSelectorEntry] [Name]
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ItemSelectorEntry
+  = SelectAllItems
+  | SelectItem Name
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of the contract structure
@@ -212,6 +259,7 @@ data Exp
   = Lit Literal -- literal
   | ExpName (Maybe Exp) Name [Exp] -- function call or constructor
   | ExpVar (Maybe Exp) Name -- variables or field access
+  | ExpDotName Name [Exp] -- contextual constructor shorthand, e.g. .Some(1), .None
   | Lam [Param] Body (Maybe Ty) -- lambda-abstraction
   | TyExp Exp Ty -- type annotation expression
   | ExpIndexed Exp Exp -- e1[e2]
@@ -237,6 +285,7 @@ data Exp
 
 data Pat
   = Pat Name [Pat]
+  | PatDot Name [Pat]
   | PWildcard
   | PLit Literal
   deriving (Eq, Ord, Show, Data, Typeable)

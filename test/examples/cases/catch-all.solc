@@ -3,12 +3,12 @@ data Bool = False | True;
 contract CatchAll {
     function catchAll(x, y) -> Bool{
       match x, y {
-      | True, True => return True;
+      | Bool.True, Bool.True => return Bool.True;
       | z, w      => return z;
       }
     }
 
   function main() -> Bool {
-    catchAll(True, False)
+    catchAll(Bool.True, Bool.False)
   }
 }

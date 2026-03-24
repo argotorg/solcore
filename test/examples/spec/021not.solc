@@ -2,20 +2,20 @@ contract Not {
   data Bool = False | True;
 
   function main() {
-    return fromBool(bnot(False));
+    return fromBool(bnot(Bool.False));
   }
 
   function fromBool(b) {
     match(b) {
-      | False => return 0;
-      | True  => return 1;
+      | Bool.False => return 0;
+      | Bool.True  => return 1;
     }
   }
 
   function bnot(b) {
     match b {
-      | False => return True;
-      | True => return False;
+      | Bool.False => return Bool.True;
+      | Bool.True => return Bool.False;
     }
   }
 }
