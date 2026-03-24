@@ -361,16 +361,17 @@ emitWordMatch :: MastExp -> [MastAlt] -> EM [Hull.Stmt]
 emitWordMatch scrutinee alts = do
   (sVal, sCode) <- emitExp scrutinee
   let hullType = Hull.TWord
-  hullAlts <- mapM emitWordAlt alts
+  hullAlts <- mapM (emitWordAlt sVal) alts
   return (sCode ++ [Hull.SMatch hullType sVal hullAlts])
   where
-    emitWordAlt :: MastAlt -> EM Hull.Alt
-    emitWordAlt (MastPLit (IntLit i), stmts) = Hull.Alt (Hull.PIntLit i) "$_" <$> emitStmts stmts
-    emitWordAlt (MastPVar (MastId n _), stmts) = do
+    emitWordAlt :: Hull.Expr -> MastAlt -> EM Hull.Alt
+    emitWordAlt _ (MastPLit (IntLit i), stmts) = Hull.Alt (Hull.PIntLit i) "$_" <$> emitStmts stmts
+    emitWordAlt sVal (MastPVar (MastId n _), stmts) = withLocalState do
+      extendVSubst (Map.singleton n sVal)
       hullStmts <- emitStmts stmts
       let hullName = show n
       return (Hull.Alt (Hull.PVar hullName) "$_" hullStmts)
-    emitWordAlt (pat, _) = errorsEM ["emitWordAlt not implemented for", show pat]
+    emitWordAlt _ (pat, _) = errorsEM ["emitWordAlt not implemented for", show pat]
 
 type BranchMap = Map.Map Name [Hull.Stmt]
 
@@ -397,16 +398,16 @@ emitSumMatch allCons scrutinee alts = do
 
     emitEqn :: Hull.Expr -> MastAlt -> EM (MastPat, [Hull.Stmt])
     emitEqn expr (pat, stmts) = withLocalState do
-      let patargs = getPatArgs pat
-      let pvars = translateMastPatArgs expr patargs
+      let pvars = case pat of
+            MastPVar (MastId n _) -> Map.singleton n expr
+            MastPCon _ patargs -> translateMastPatArgs expr patargs
+            _ -> Map.empty
       extendVSubst pvars
       let comment = Hull.SComment (pretty pat)
       hullStmts <- emitStmts stmts
       let hullStmts' = comment : hullStmts
       debug ["emitEqn: ", show pat, " / ", show expr, " -> ", show hullStmts']
       return (pat, hullStmts')
-    getPatArgs (MastPCon _ patargs) = patargs
-    getPatArgs _ = []
 
     emitEqns :: [MastAlt] -> EM [(MastPat, [Hull.Stmt])]
     emitEqns [eqn] = (: []) <$> emitEqn (Hull.EVar (altName True)) eqn
