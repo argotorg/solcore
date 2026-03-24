@@ -3,7 +3,6 @@ module Solcore.Backend.EmitHull (emitHull) where
 import Common.Monad
 import Control.Monad (when)
 import Control.Monad.State
-import Data.Generics (Data, everything, mkQ)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -488,14 +487,6 @@ debug msg = do
 concatMapM :: (Monad f) => (a -> f [b]) -> [a] -> f [b]
 concatMapM f xs = concat <$> mapM f xs
 
--- getNames is a conservative overapproximation
--- some vars may not be actually free
-getNames :: (Data d) => d -> Set.Set Name
-getNames code = everything Set.union (mkQ Set.empty step) code
-  where
-    step :: Name -> Set.Set Name
-    step name = Set.singleton name
-
 -----------------------------------------------------------------------
 -- Yul AST Renaming
 -----------------------------------------------------------------------
@@ -527,10 +518,10 @@ renameYulStmts subst stmts = goBlock Set.empty stmts
       mexp' <- mapM (goExp scope) mexp
       let scope' = scope `Set.union` Set.fromList names
       pure (YLet names mexp', scope')
-    goStmt scope (YAssign names exp) = do
-      exp' <- goExp scope exp
+    goStmt scope (YAssign names expr) = do
+      expr' <- goExp scope expr
       names' <- mapM (renameName scope) names
-      pure (YAssign names' exp', scope)
+      pure (YAssign names' expr', scope)
     goStmt scope (YIf cond blk) = do
       cond' <- goExp scope cond
       blk' <- goBlock scope blk
@@ -556,20 +547,7 @@ renameYulStmts subst stmts = goBlock Set.empty stmts
       pure (YExp e', scope)
 
     goExp :: Set.Set Name -> YulExp -> EM YulExp
-    goExp scope (YIdent n)
-      | not (Set.member n scope),
-        Just e <- Map.lookup n subst = do
-          case e of
-            Hull.EVar newName -> pure (YIdent (fromString newName))
-            -- FUTURE WORK (Materializing complex expressions):
-            -- If `e` is a complex expression like `EFst p`, it cannot be substituted inline in Yul.
-            -- To fix this properly later:
-            -- 1. Instead of throwing an error, record `n -> e` in a State map.
-            -- 2. Leave `YIdent n` unchanged inside the block.
-            -- 3. In `emitStmt (MastAsm as)`, emit `SAlloc n TWord` and `SAssign n e` BEFORE the block.
-            -- 4. Remove `n` from `ecSubst` so subsequent reads outside the block see the mutated Yul variable.
-            _ -> errorsEM ["not implemented: Yul assembly block references variable '", show n, "' mapped to complex expression '", show e, "'"]
-      | otherwise = pure (YIdent n)
+    goExp scope (YIdent n) = YIdent <$> renameName scope n
     goExp scope (YCall f args) = do
       f' <- renameName scope f
       args' <- mapM (goExp scope) args
@@ -582,7 +560,13 @@ renameYulStmts subst stmts = goBlock Set.empty stmts
         Just e <- Map.lookup n subst = do
           case e of
             Hull.EVar newName -> pure (fromString newName)
-            -- See comment in goExp above for future materialization implementation details
+            -- FUTURE WORK (Materializing complex expressions):
+            -- If `e` is a complex expression like `EFst p`, it cannot be substituted inline in Yul.
+            -- To fix this properly later:
+            -- 1. Instead of throwing an error, record `n -> e` in a State map.
+            -- 2. Leave `YIdent n` unchanged inside the block.
+            -- 3. In `emitStmt (MastAsm as)`, emit `SAlloc n TWord` and `SAssign n e` BEFORE the block.
+            -- 4. Remove `n` from `ecSubst` so subsequent reads outside the block see the mutated Yul variable.
             _ -> errorsEM ["not implemented: Yul assembly block references variable '", show n, "' mapped to complex expression '", show e, "'"]
       | otherwise = pure n
 
