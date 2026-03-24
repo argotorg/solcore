@@ -1,0 +1,15 @@
+contract SumMatchDefault {
+  data Option(a) = None | Some(a);
+
+  function g(s : Option(word)) -> Option(word) {
+    match s {
+      | None => return None;
+      | x => return x;
+    }
+  }
+
+  function main() -> word {
+    g(None);
+    return 42;
+  }
+}

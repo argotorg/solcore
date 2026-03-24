@@ -1,8 +1,0 @@
-[book]
-authors = ["The Core Solidity Implementors"]
-language = "en"
-src = "src"
-title = "The Core Solidity Reference"
-
-[output.html]
-mathjax-support = true

@@ -16,6 +16,12 @@
     }
   }
 
+  function snds (p1, p2) {
+    match p1, p2 {
+    | (a,b) , (c,d) => return (b,d);
+    }
+  }
+
   function curry(f,x,y) {
     return f((x,y)) ;
   }

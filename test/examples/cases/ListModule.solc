@@ -3,19 +3,24 @@ contract ListModule {
   data Bool = True | False;
 
 
-  function zipWith (f,xs,ys) {
+  forall a b c . function zipWith (f : (a,b) -> c,xs : List(a),ys : List(b)) -> List(c) {
     match xs, ys {
     | Nil, Nil => return Nil ;
     | Cons(x1,xs1), Cons(y1,ys1) =>
       return Cons(f(x1,y1), zipWith(f,xs1,ys1)) ;
+    | _ , _ => return Nil;
     }
   }
 
-  function foldr(f, v, xs) {
+  forall a b . function foldr(f : (a,b) -> b, v : b, xs : List(a)) -> b {
     match xs {
     | Nil => return v;
     | Cons(y,ys) =>
       return f(y, foldr(f,v,ys)) ;
     }
+  }
+
+  function main () -> word {
+    return 0;
   }
 }
