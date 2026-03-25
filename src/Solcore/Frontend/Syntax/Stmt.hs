@@ -23,7 +23,7 @@ data Stmt a
 type Body a = [Stmt a]
 
 data Param a
-  = Typed Bool a Ty   -- Bool is True when 'const' modifier is present
+  = Typed Bool a Ty -- Bool is True when 'const' modifier is present
   | Untyped Bool a
   deriving (Eq, Ord, Show, Data, Typeable)
 
