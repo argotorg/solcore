@@ -169,7 +169,7 @@ instance Names (Exp Name) where
   names (Lit _) = []
 
 instance Names (Param Name) where
-  names (Typed _ t) =
+  names (Typed _ _ t) =
     names t
   names _ = []
 

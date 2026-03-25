@@ -651,8 +651,8 @@ scrutineeType (Indexed earr _) =
           "scrutineeType: index expression scrutinee has no type annotation"
 
 typeOfParam :: Param Id -> Ty
-typeOfParam (Typed i _t) = idType i
-typeOfParam (Untyped i) = idType i
+typeOfParam (Typed _ i _t) = idType i
+typeOfParam (Untyped _ i) = idType i
 
 isVarPat :: Pattern -> Bool
 isVarPat (PVar _) = True

@@ -170,8 +170,8 @@ instance Resolve S.Instance where
 instance Resolve S.Param where
   type Result S.Param = Param Name
 
-  resolve (S.Typed n t) = Typed n <$> resolve t
-  resolve (S.Untyped n) = pure (Untyped n)
+  resolve (S.Typed c n t) = Typed c n <$> resolve t
+  resolve (S.Untyped c n) = pure (Untyped c n)
 
 instance Resolve S.Pragma where
   type Result S.Pragma = Pragma

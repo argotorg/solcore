@@ -265,8 +265,8 @@ tcSig :: (Signature Name, Scheme) -> TcM (Signature Id)
 tcSig (sig, (Forall _ (_ :=> t))) =
   do
     let (ts, r) = splitTy t
-        param (Typed n _) t1 = Typed (Id n t1) t1
-        param (Untyped n) t1 = Typed (Id n t1) t1
+        param (Typed c n _) t1 = Typed c (Id n t1) t1
+        param (Untyped c n) t1 = Typed c (Id n t1) t1
         params' = zipWith param (sigParams sig) ts
     _ <- kindCheck t `wrapError` sig
     pure
@@ -325,8 +325,8 @@ tcConstructor (Constructor ps bd) =
   do
     -- building parameters for constructors
     ps' <- mapM tcParam ps
-    let f (Typed (Id n t) _) = pure (n, monotype t)
-        f (Untyped (Id n _)) = ((n,) . monotype) <$> freshTyVar
+    let f (Typed _ (Id n t) _) = pure (n, monotype t)
+        f (Untyped _ (Id n _)) = ((n,) . monotype) <$> freshTyVar
     lctx <- mapM f ps'
     (bd', _, _) <- withLocalCtx lctx (tcBody bd)
     pure (Constructor ps' bd')

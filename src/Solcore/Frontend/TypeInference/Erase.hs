@@ -82,10 +82,10 @@ instance Erase (Exp Id) where
 instance Erase (Param Id) where
   type EraseRes (Param Id) = Param Name
 
-  erase (Typed n t) =
-    Typed (idName n) t
-  erase (Untyped n) =
-    Untyped (idName n)
+  erase (Typed c n t) =
+    Typed c (idName n) t
+  erase (Untyped c n) =
+    Untyped c (idName n)
 
 instance Erase (Pat Id) where
   type EraseRes (Pat Id) = Pat Name

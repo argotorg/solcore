@@ -573,8 +573,8 @@ typeOfTcExp (TyExp _ ty) = ty
 typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
 
 typeOfTcParam :: Param Id -> Ty
-typeOfTcParam (Typed i _t) = idType i -- seems better than t - see issue #6
-typeOfTcParam (Untyped i) = idType i
+typeOfTcParam (Typed _ i _t) = idType i -- seems better than t - see issue #6
+typeOfTcParam (Untyped _ i) = idType i
 
 typeOfTcSignature :: Signature Id -> Ty
 typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) returnType
@@ -589,7 +589,7 @@ schemeOfTcSignature sig@(Signature vs ps _n args (Just rt)) =
     Just ts -> Forall vs (ps :=> (funtype ts rt))
     Nothing -> error $ unwords ["Invalid instance member signature:", pretty sig]
   where
-    getType (Typed _ t) = Just t
+    getType (Typed _ _ t) = Just t
     getType _ = Nothing
 schemeOfTcSignature sig = error ("no return type in signature of: " ++ show (sigName sig))
 
@@ -815,8 +815,8 @@ toMastParam p = MastParam (idName i) (toMastTy (idType i))
     i = getParamId p
 
 getParamId :: Param Id -> Id
-getParamId (Typed i _) = i
-getParamId (Untyped i) = i
+getParamId (Typed _ i _) = i
+getParamId (Untyped _ i) = i
 
 toMastTy :: Ty -> MastTy
 toMastTy = tyToMast

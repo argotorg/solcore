@@ -80,7 +80,7 @@ genMainFn addMain (Contract cname tys cdecls)
     isTyped (Typed {}) = True
     isTyped (Untyped {}) = False
 
-    getTy (Typed _ t) = Just t
+    getTy (Typed _ _ t) = Just t
     getTy (Untyped {}) = Nothing
 
 transformCDecl :: Name -> ContractDecl Name -> Set (ContractDecl Name)
@@ -168,7 +168,7 @@ transformConstructor contractName cons
     isTyped (Typed {}) = True
     isTyped (Untyped {}) = False
 
-    getTy (Typed _ t) = Just t
+    getTy (Typed _ _ t) = Just t
     getTy (Untyped {}) = Nothing
 
 initFunName :: Name
@@ -180,7 +180,7 @@ mkNameTy cname fname = DataTy (nameTypeName cname fname) [] []
 mkNameInst :: DataTy -> Name -> Instance Name
 mkNameInst (DataTy dname [] []) fname =
   let nameTy = TyCon dname []
-      sig = Signature [] [] "sigStr" [Typed "p" (proxyTy nameTy)] (Just string)
+      sig = Signature [] [] "sigStr" [Typed False "p" (proxyTy nameTy)] (Just string)
       body = [Return (Lit (StrLit (show fname)))]
    in Instance
         { instDefault = False,

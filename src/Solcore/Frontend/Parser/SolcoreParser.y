@@ -86,6 +86,7 @@ import System.FilePath
       '-='       {Token _ TMinusEq}
       'then'     {Token _ TThen}
       '@'        {Token _ TAt}
+      'comptime' {Token _ TComptime}
 
 %nonassoc '+=' '-='
 %left     ':'
@@ -235,8 +236,10 @@ ParamList : Param                                  {[$1]}
           | {- empty -}                            {[]}
 
 Param :: { Param }
-Param : Name ':' Type                              {Typed $1 $3}
-      | Name                                       {Untyped $1}
+Param : 'comptime' Name ':' Type                   {Typed True $2 $4}
+      | Name ':' Type                              {Typed False $1 $3}
+      | 'comptime' Name                            {Untyped True $2}
+      | Name                                       {Untyped False $1}
 
 -- instance declarations
 

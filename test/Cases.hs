@@ -70,7 +70,8 @@ spec =
       runTestForFile "121counter.solc" specFolder,
       runTestForFile "126nanoerc20.solc" specFolder,
       runTestForFile "127microerc20.solc" specFolder,
-      runTestForFile "128minierc20.solc" specFolder
+      runTestForFile "128minierc20.solc" specFolder,
+      runTestForFile "comptime_param.solc" specFolder
     ]
   where
     specFolder = "./test/examples/spec"

@@ -202,8 +202,8 @@ data Stmt
 type Body = [Stmt]
 
 data Param
-  = Typed Name Ty
-  | Untyped Name
+  = Typed Bool Name Ty   -- Bool is True when 'const' modifier is present
+  | Untyped Bool Name
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- expression syntax

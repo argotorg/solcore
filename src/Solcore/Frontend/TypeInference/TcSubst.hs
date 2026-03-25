@@ -136,14 +136,14 @@ instance (HasType a) => HasType (Signature a) where
   bv (Signature vs c _ p r) = vs `union` bv (c, p, r)
 
 instance (HasType a) => HasType (Param a) where
-  apply s (Typed i t) = Typed (apply s i) (apply s t)
-  apply s (Untyped i) = Untyped (apply s i)
-  fv (Typed i t) = fv (i, t)
-  fv (Untyped i) = fv i
-  mv (Typed i t) = mv (i, t)
-  mv (Untyped i) = mv i
-  bv (Typed i t) = bv (i, t)
-  bv (Untyped i) = bv i
+  apply s (Typed c i t) = Typed c (apply s i) (apply s t)
+  apply s (Untyped c i) = Untyped c (apply s i)
+  fv (Typed _ i t) = fv (i, t)
+  fv (Untyped _ i) = fv i
+  mv (Typed _ i t) = mv (i, t)
+  mv (Untyped _ i) = mv i
+  bv (Typed _ i t) = bv (i, t)
+  bv (Untyped _ i) = bv i
 
 instance (HasType a) => HasType (FunDef a) where
   apply s (FunDef sig bd) =

@@ -55,8 +55,8 @@ invokeSignature =
     [selfVar, argsVar]
     []
     invokeName
-    [ Typed selfName (TyVar selfVar),
-      Typed argsName (TyVar argsVar)
+    [ Typed False selfName (TyVar selfVar),
+      Typed False argsName (TyVar argsVar)
     ]
     (Just (TyVar retVar))
 

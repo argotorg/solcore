@@ -23,13 +23,13 @@ data Stmt a
 type Body a = [Stmt a]
 
 data Param a
-  = Typed a Ty
-  | Untyped a
+  = Typed Bool a Ty   -- Bool is True when 'const' modifier is present
+  | Untyped Bool a
   deriving (Eq, Ord, Show, Data, Typeable)
 
 paramName :: Param a -> a
-paramName (Typed n _) = n
-paramName (Untyped n) = n
+paramName (Typed _ n _) = n
+paramName (Untyped _ n) = n
 
 -- definition of the expression syntax
 

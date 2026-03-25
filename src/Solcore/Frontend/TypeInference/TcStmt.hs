@@ -401,7 +401,7 @@ createClosureFun fn freeIds cdt args bdy ps ty =
     let args0 = everywhere (mkT gen) args
         ps0 = everywhere (mkT gen) ps
         cName = Name $ "env" ++ show j
-        cParam = Typed (Id cName ct) ct
+        cParam = Typed False (Id cName ct) ct
         args' = cParam : args0
         (_, retTy1) = splitTy ty
         vs' = union (bv ct) (bv ps0)
@@ -445,21 +445,21 @@ tcArgs params =
     pure (ps, schs, ts)
 
 tcArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty)
-tcArg (Untyped n) =
+tcArg (Untyped c n) =
   do
     v <- freshTyVar
     let ty = monotype v
-    pure (Typed (Id n v) v, (n, ty), v)
-tcArg a@(Typed n ty) =
+    pure (Typed c (Id n v) v, (n, ty), v)
+tcArg a@(Typed c n ty) =
   do
     ty1 <- kindCheck ty `wrapError` a
-    pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1)
+    pure (Typed c (Id n ty1) ty1, (n, monotype ty1), ty1)
 
 hasAnn :: Signature Name -> Bool
 hasAnn (Signature _ _ _ args rt) =
   any isAnn args || isJust rt
   where
-    isAnn (Typed _ _) = True
+    isAnn (Typed {}) = True
     isAnn _ = False
 
 -- boolean flag indicates if the assumption for the
@@ -469,14 +469,14 @@ hasAnn (Signature _ _ _ args rt) =
 -- type class definition.
 
 tiArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty)
-tiArg (Untyped n) =
+tiArg (Untyped c n) =
   do
     t <- freshTyVar
-    pure (Typed (Id n t) t, (n, monotype t), t)
-tiArg (Typed n _) =
+    pure (Typed c (Id n t) t, (n, monotype t), t)
+tiArg (Typed c n _) =
   do
     t <- freshTyVar
-    pure (Typed (Id n t) t, (n, monotype t), t)
+    pure (Typed c (Id n t) t, (n, monotype t), t)
 
 tiArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
 tiArgs args = unzip3 <$> mapM tiArg args
@@ -527,9 +527,9 @@ ambiguityCheck (Forall _ (ps :=> ty)) =
     pure (ambiguous sch')
 
 argumentAnnotation :: Param Name -> TcM Ty
-argumentAnnotation (Untyped _) =
+argumentAnnotation (Untyped _ _) =
   freshTyVar
-argumentAnnotation (Typed _ t) =
+argumentAnnotation (Typed _ _ t) =
   maybeExpandSynonym t
 
 checkAllTypeVarsBound :: (Pretty a) => a -> [Tyvar] -> [Tyvar] -> TcM ()
@@ -739,8 +739,8 @@ elabSignature vs1 sig (Forall _ (ps :=> t)) =
     pure sig2
 
 elabParam :: Ty -> Param Name -> TcM (Param Id)
-elabParam t (Typed n _) = pure $ Typed (Id n t) t
-elabParam t (Untyped n) = pure $ Typed (Id n t) t
+elabParam t (Typed c n _) = pure $ Typed c (Id n t) t
+elabParam t (Untyped c n) = pure $ Typed c (Id n t) t
 
 annotateSignature :: Scheme -> Signature Name -> TcM (Signature Name)
 annotateSignature (Forall vs (ps :=> t)) sig =
@@ -751,8 +751,8 @@ annotateSignature (Forall vs (ps :=> t)) sig =
     ret = Just t'
 
 annotateParam :: Ty -> Param Name -> Param Name
-annotateParam t (Typed n _) = Typed n t
-annotateParam t (Untyped n) = Typed n t
+annotateParam t (Typed c n _) = Typed c n t
+annotateParam t (Untyped c n) = Typed c n t
 
 -- qualify name for contract functions
 
@@ -899,10 +899,10 @@ schemeFromSignature sig@(Signature vs ps _ args (Just rt)) =
         unwords ["Invalid instance member signature:", pretty sig]
     pure $ Forall vs (ps :=> (funtype ts rt))
   where
-    isTyped (Typed _ _) = True
+    isTyped (Typed {}) = True
     isTyped _ = False
 
-    extractType (Typed _ t) = t
+    extractType (Typed _ _ t) = t
     extractType p =
       error $ "schemeFromSignature: expected typed parameter, got " ++ show p
 
@@ -1101,7 +1101,7 @@ fullSignature sig@(Signature _ _ _ ps t) =
     (all isTyped ps && maybe False (const True) t)
     (throwError $ unlines ["Instance methods must have complete type signatures:", pretty sig])
   where
-    isTyped (Typed _ _) = True
+    isTyped (Typed {}) = True
     isTyped _ = False
 
 findPred :: Name -> [Pred] -> Maybe Pred
@@ -1216,12 +1216,12 @@ tcCall (Just e) n args =
     withCurrentSubst (Call (Just e') (Id n t') es', ps', t')
 
 tcParam :: Param Name -> TcM (Param Id)
-tcParam (Typed n t) =
-  pure $ Typed (Id n t) t
-tcParam (Untyped n) =
+tcParam (Typed c n t) =
+  pure $ Typed c (Id n t) t
+tcParam (Untyped c n) =
   do
     t <- freshTyVar
-    pure (Typed (Id n t) t)
+    pure (Typed c (Id n t) t)
 
 typeName :: Ty -> TcM Name
 typeName (TyCon n _) = pure n
@@ -1358,8 +1358,8 @@ instance Vars (Pat Id) where
 instance Vars (Param Id) where
   free _ = []
 
-  bound (Typed n _) = [n]
-  bound (Untyped n) = [n]
+  bound (Typed _ n _) = [n]
+  bound (Untyped _ n) = [n]
 
 instance Vars (Stmt Id) where
   free (e1 := e2) = free [e1, e2]

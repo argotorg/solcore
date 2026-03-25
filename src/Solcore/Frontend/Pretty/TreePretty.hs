@@ -182,11 +182,15 @@ pprRetTy Nothing = empty
 pprParams :: [Param] -> Doc
 pprParams = parens . commaSep . map ppr
 
+pprConst :: Bool -> Doc
+pprConst True = text "comptime "
+pprConst False = empty
+
 instance Pretty Param where
-  ppr (Typed n ty) =
-    ppr n <+> colon <+> ppr ty
-  ppr (Untyped n) =
-    ppr n
+  ppr (Typed c n ty) =
+    pprConst c <> (ppr n <+> colon <+> ppr ty)
+  ppr (Untyped c n) =
+    pprConst c <> ppr n
 
 instance Pretty Stmt where
   ppr (Assign n e) =

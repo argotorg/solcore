@@ -1,0 +1,10 @@
+contract Comptime1 {
+
+  function f(comptime x : word) {
+    return x;
+  }
+
+  function main() {
+    return f(42);
+  }
+}
