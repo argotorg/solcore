@@ -63,6 +63,7 @@ tokens :-
         <0>    "leave"                           {simpleToken TLeave}
         <0>    "continue"                        {simpleToken TContinue}
         <0>    "break"                           {simpleToken TBreak}
+        <0>    "comptime"                        {simpleToken TComptime}
         <0>    "lam"                             {simpleToken TLam}
         <0>    "assembly"                        {simpleToken TAssembly}
         <0>    "pragma"                          {simpleToken TPragma}
@@ -226,6 +227,7 @@ data Lexeme
   | TNoBoundVariableCondition
   | TBar
   | TThen
+  | TComptime
   | TAt
   | TEOF
   deriving (Eq, Ord, Show)

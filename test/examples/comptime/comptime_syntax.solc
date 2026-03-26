@@ -1,0 +1,15 @@
+contract ComptimeSyntax {
+
+  function f(comptime x : word) -> comptime word {
+    return x;
+  }
+
+  function g() -> word {
+    let y : comptime word = f(42);
+    return y;
+  }
+
+  function main() {
+    return g();
+  }
+}

@@ -125,7 +125,7 @@ transBody :: NmBody -> ContractEnv -> NmBody
 transBody body cenv = snd $ mapAccumL transStmt cenv body
 
 transStmt :: ContractEnv -> NmStmt -> (ContractEnv, NmStmt)
-transStmt cenv (Let x mty me) = (cenv {ceLocals = Set.insert x cenv.ceLocals}, Let x mty me')
+transStmt cenv (Let c x mty me) = (cenv {ceLocals = Set.insert x cenv.ceLocals}, Let c x mty me')
   where
     me' = flip transRhs cenv <$> me
 transStmt cenv stmt = (cenv, go stmt cenv)
