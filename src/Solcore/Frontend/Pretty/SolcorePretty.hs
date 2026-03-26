@@ -142,12 +142,12 @@ pprSignatures =
   vcat . map ((<> semi) . ppr)
 
 instance (Pretty a) => Pretty (Signature a) where
-  ppr (Signature vs ctx n ps ty) =
+  ppr (Signature vs ctx n ps rc ty) =
     pprSigPrefix vs ctx
       <+> text "function"
       <+> ppr n
       <+> pprParams ps
-      <+> pprRetTy ty
+      <+> pprRetTy rc ty
 
 pprSigPrefix :: [Tyvar] -> [Pred] -> Doc
 pprSigPrefix [] [] = empty
@@ -199,9 +199,9 @@ instance (Pretty a) => Pretty (FunDef a) where
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace
 
-pprRetTy :: Maybe Ty -> Doc
-pprRetTy (Just t) = text "->" <+> ppr t
-pprRetTy Nothing = empty
+pprRetTy :: Bool -> Maybe Ty -> Doc
+pprRetTy _ Nothing = empty
+pprRetTy rc (Just t) = text "->" <+> pprConst rc <> ppr t
 
 pprParams :: (Pretty a) => [Param a] -> Doc
 pprParams = parens . commaSep . map ppr
@@ -219,8 +219,8 @@ instance (Pretty a) => Pretty (Param a) where
 instance (Pretty a) => Pretty (Stmt a) where
   ppr (n := e) =
     ppr n <+> equals <+> ppr e <+> semi
-  ppr (Let n ty m) =
-    text "let" <+> ppr n <+> pprOptTy ty <+> pprInitOpt m
+  ppr (Let c n ty m) =
+    text "let" <+> ppr n <+> pprOptTy c ty <+> pprInitOpt m
   ppr (StmtExp e) =
     ppr e <> semi
   ppr (Return e) =
@@ -257,12 +257,12 @@ instance (Pretty a) => Pretty (Equation a) where
 instance (Pretty a) => Pretty (Equations a) where
   ppr = vcat . map ppr
 
-pprOptTy :: Maybe Ty -> Doc
-pprOptTy Nothing = empty
-pprOptTy (Just t)
+pprOptTy :: Bool -> Maybe Ty -> Doc
+pprOptTy _ Nothing = empty
+pprOptTy c (Just t)
   | isVar t = empty
   | otherwise = case splitTy t of
-      ([], t') -> text ":" <+> ppr t'
+      ([], t') -> text ":" <+> pprConst c <> ppr t'
       (ts', t') ->
         text ":"
           <+> parens (commaSep (map ppr ts'))

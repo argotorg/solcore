@@ -31,7 +31,8 @@ comptime =
       runTestForFile "fib.solc" comptimeFolder,
       runTestForFile "string-lit-ops.solc" comptimeFolder,
       runTestForFile "string-lit-len.solc" comptimeFolder,
-      runTestForFile "string-lit-keccak.solc" comptimeFolder
+      runTestForFile "string-lit-keccak.solc" comptimeFolder,
+      runTestForFile "comptime_syntax.solc" comptimeFolder
     ]
   where
     comptimeFolder = "./test/examples/comptime"
@@ -70,8 +71,7 @@ spec =
       runTestForFile "121counter.solc" specFolder,
       runTestForFile "126nanoerc20.solc" specFolder,
       runTestForFile "127microerc20.solc" specFolder,
-      runTestForFile "128minierc20.solc" specFolder,
-      runTestForFile "comptime_param.solc" specFolder
+      runTestForFile "128minierc20.solc" specFolder
     ]
   where
     specFolder = "./test/examples/spec"

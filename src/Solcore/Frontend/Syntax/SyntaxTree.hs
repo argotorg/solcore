@@ -139,6 +139,7 @@ data Signature
     sigContext :: [Pred],
     sigName :: Name,
     sigParams :: [Param],
+    sigRetComptime :: Bool,
     sigReturn :: Maybe Ty
   }
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -191,7 +192,7 @@ data Stmt
   = Assign Exp Exp -- assignment
   | StmtPlusEq Exp Exp -- e1 += e2
   | StmtMinusEq Exp Exp -- e1 -= e2
-  | Let Name (Maybe Ty) (Maybe Exp) -- local variable
+  | Let Bool Name (Maybe Ty) (Maybe Exp) -- local variable; Bool is True when 'comptime' modifier is present
   | StmtExp Exp -- expression level statements
   | Return Exp -- return statements
   | Match [Exp] Equations -- pattern matching

@@ -12,7 +12,7 @@ type Equations a = [Equation a]
 
 data Stmt a
   = (Exp a) := (Exp a) -- assignment
-  | Let a (Maybe Ty) (Maybe (Exp a)) -- local variable
+  | Let Bool a (Maybe Ty) (Maybe (Exp a)) -- local variable; Bool is True when 'comptime' modifier is present
   | StmtExp (Exp a) -- expression level statements
   | Return (Exp a) -- return statements
   | Match [Exp a] (Equations a) -- pattern matching

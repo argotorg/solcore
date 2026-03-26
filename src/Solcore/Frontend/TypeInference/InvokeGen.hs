@@ -60,7 +60,7 @@ createInstance udt fd sch =
     (spvs, svs) <- freshPatData udt
     -- pattern variables for arguments
     (sargs, sarg) <- unzip <$> mapM (const freshPatArg) args'
-    let isig = Signature [] qs invokeName [selfParam, argParam] (Just returnTy)
+    let isig = Signature [] qs invokeName [selfParam, argParam] False (Just returnTy)
         -- building the match of function body
         discr = epair (Var sn) (Var an)
         fname = sigName (funSignature fd)

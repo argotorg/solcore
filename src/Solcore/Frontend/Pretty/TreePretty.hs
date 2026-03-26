@@ -118,12 +118,12 @@ pprSignatures =
   vcat . map ((<> semi) . ppr)
 
 instance Pretty Signature where
-  ppr (Signature vs ctx n ps ty) =
+  ppr (Signature vs ctx n ps rc ty) =
     pprSigPrefix vs ctx
       <+> text "function"
       <+> ppr n
       <+> pprParams ps
-      <+> pprRetTy ty
+      <+> pprRetTy rc ty
 
 pprSigPrefix :: [Ty] -> [Pred] -> Doc
 pprSigPrefix [] [] = empty
@@ -175,9 +175,9 @@ instance Pretty FunDef where
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace
 
-pprRetTy :: Maybe Ty -> Doc
-pprRetTy (Just t) = text "->" <+> ppr t
-pprRetTy Nothing = empty
+pprRetTy :: Bool -> Maybe Ty -> Doc
+pprRetTy _ Nothing = empty
+pprRetTy rc (Just t) = text "->" <+> (pprConst rc <> ppr t)
 
 pprParams :: [Param] -> Doc
 pprParams = parens . commaSep . map ppr
@@ -199,8 +199,8 @@ instance Pretty Stmt where
     hsep [ppr e1, text "+=", ppr e2]
   ppr (StmtMinusEq e1 e2) =
     hsep [ppr e1, text "-=", ppr e2]
-  ppr (Let n ty m) =
-    text "let" <+> ppr n <+> pprOptTy ty <+> pprInitOpt m
+  ppr (Let c n ty m) =
+    text "let" <+> ppr n <+> pprOptTy c ty <+> pprInitOpt m
   ppr (StmtExp e) =
     ppr e <> semi
   ppr (Return e) =
@@ -237,11 +237,11 @@ instance Pretty Equation where
 instance Pretty Equations where
   ppr = vcat . map ppr
 
-pprOptTy :: Maybe Ty -> Doc
-pprOptTy Nothing = empty
-pprOptTy (Just t) =
+pprOptTy :: Bool -> Maybe Ty -> Doc
+pprOptTy _ Nothing = empty
+pprOptTy c (Just t) =
   case splitTy t of
-    ([], t') -> text ":" <+> ppr t'
+    ([], t') -> text ":" <+> (pprConst c <> ppr t')
     (ts', t') ->
       text ":"
         <+> parens (commaSep (map ppr ts'))

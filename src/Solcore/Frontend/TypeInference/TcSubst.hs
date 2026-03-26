@@ -125,15 +125,15 @@ instance HasType Scheme where
   bv (Forall vs qt) = vs `union` bv qt
 
 instance (HasType a) => HasType (Signature a) where
-  apply s (Signature _ ctx n p r) =
+  apply s (Signature _ ctx n p rc r) =
     let ctx' = apply s ctx
         p' = apply s p
         r' = apply s r
         vs' = bv ctx' `union` bv p' `union` bv r'
-     in Signature vs' ctx' n p' r'
-  fv (Signature vs c _ p r) = fv (c, p, r) \\ vs
-  mv (Signature _ c _ p r) = mv (c, p, r)
-  bv (Signature vs c _ p r) = vs `union` bv (c, p, r)
+     in Signature vs' ctx' n p' rc r'
+  fv (Signature vs c _ p _ r) = fv (c, p, r) \\ vs
+  mv (Signature _ c _ p _ r) = mv (c, p, r)
+  bv (Signature vs c _ p _ r) = vs `union` bv (c, p, r)
 
 instance (HasType a) => HasType (Param a) where
   apply s (Typed c i t) = Typed c (apply s i) (apply s t)
@@ -236,8 +236,9 @@ instance (HasType a) => HasType (Exp a) where
 instance (HasType a) => HasType (Stmt a) where
   apply s (e1 := e2) =
     (apply s e1) := (apply s e2)
-  apply s (Let v mt me) =
+  apply s (Let c v mt me) =
     Let
+      c
       (apply s v)
       (apply s <$> mt)
       (apply s <$> me)
@@ -257,7 +258,7 @@ instance (HasType a) => HasType (Stmt a) where
 
   fv (e1 := e2) =
     fv e1 `union` fv e2
-  fv (Let v mt me) =
+  fv (Let _ v mt me) =
     fv v
       `union` (maybe [] fv mt)
       `union` (maybe [] fv me)
@@ -270,7 +271,7 @@ instance (HasType a) => HasType (Stmt a) where
 
   mv (e1 := e2) =
     mv e1 `union` mv e2
-  mv (Let v mt me) =
+  mv (Let _ v mt me) =
     mv v
       `union` (maybe [] mv mt)
       `union` (maybe [] mv me)
@@ -283,7 +284,7 @@ instance (HasType a) => HasType (Stmt a) where
 
   bv (e1 := e2) =
     bv e1 `union` bv e2
-  bv (Let v mt me) =
+  bv (Let _ v mt me) =
     bv v
       `union` (maybe [] bv mt)
       `union` (maybe [] bv me)

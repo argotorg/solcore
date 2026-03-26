@@ -88,8 +88,8 @@ instance Compile (FunDef Id) where
 instance Compile (Stmt Id) where
   compile (e1 := e2) =
     (:=) <$> compile e1 <*> compile e2
-  compile (Let v mt me) =
-    Let v mt <$> compile me
+  compile (Let c v mt me) =
+    Let c v mt <$> compile me
   compile (StmtExp e) =
     StmtExp <$> compile e
   compile (Return e) =

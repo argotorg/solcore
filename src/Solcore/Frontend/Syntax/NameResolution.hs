@@ -139,7 +139,7 @@ instance Resolve S.Class where
 instance Resolve S.Signature where
   type Result S.Signature = Signature Name
 
-  resolve s@(S.Signature vs ctx n ps mt) =
+  resolve s@(S.Signature vs ctx n ps rc mt) =
     withLocalCtx $ do
       let ns = map tyconName vs
       mapM_ addTyVar ns
@@ -147,7 +147,7 @@ instance Resolve S.Signature where
       ps' <- resolve ps `wrapError` s
       mt' <- resolve mt `wrapError` s
       let vs' = map TVar ns
-      pure (Signature vs' ctx' n ps' mt')
+      pure (Signature vs' ctx' n ps' rc mt')
 
 instance Resolve S.Instance where
   type Result S.Instance = Instance Name
@@ -199,7 +199,7 @@ instance Resolve S.PragmaStatus where
 instance Resolve S.FunDef where
   type Result S.FunDef = FunDef Name
 
-  resolve f@(S.FunDef (S.Signature vs ctx n ps mt) bds) =
+  resolve f@(S.FunDef (S.Signature vs ctx n ps rc mt) bds) =
     do
       let ns = map tyconName vs
       withLocalCtx $ do
@@ -211,7 +211,7 @@ instance Resolve S.FunDef where
         mapM_ addParameter args
         bds' <- resolve bds `wrapError` f
         let vs' = map TVar ns
-            sig = Signature vs' ctx' n ps' mt'
+            sig = Signature vs' ctx' n ps' rc mt'
         pure (FunDef sig bds')
 
 instance Resolve S.Stmt where
@@ -226,12 +226,12 @@ instance Resolve S.Stmt where
     (:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs)
   resolve (S.StmtMinusEq lhs rhs) =
     (:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs)
-  resolve s@(S.Let n mt me) =
+  resolve s@(S.Let c n mt me) =
     do
       mt' <- resolve mt `wrapError` s
       me' <- resolve me `wrapError` s
       addLocalVar n
-      pure (Let n mt' me')
+      pure (Let c n mt' me')
   resolve s@(S.StmtExp e) =
     StmtExp <$> resolve e `wrapError` s
   resolve s@(S.Return e) =

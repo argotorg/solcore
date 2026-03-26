@@ -176,7 +176,7 @@ instance Names (Param Name) where
 instance Names (Stmt Name) where
   names (e1 := e2) =
     names [e1, e2]
-  names (Let _ mt me) =
+  names (Let _ _ mt me) =
     names mt `union` names me
   names (StmtExp e) =
     names e
@@ -192,7 +192,7 @@ instance Names (Equation Name) where
   names (_, bdy) = names bdy
 
 instance Names (Signature Name) where
-  names (Signature _ ctx _ ps mret) =
+  names (Signature _ ctx _ ps _ mret) =
     names ctx `union` names ps `union` names mret
 
 instance Names (FunDef Name) where

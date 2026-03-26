@@ -223,7 +223,7 @@ Signatures : Signature ';' Signatures              {$1 : $3}
            | {- empty -}                           {[]}
 
 Signature :: { Signature }
-Signature : SigPrefix 'function' Name '(' ParamList ')' OptRetTy {Signature (fst $1) (snd $1) $3 $5 $7}
+Signature : SigPrefix 'function' Name '(' ParamList ')' OptRetTy {Signature (fst $1) (snd $1) $3 $5 (fst $7) (snd $7)}
 
 SigPrefix :: {([Ty], [Pred])}
 SigPrefix : 'forall' Tyvars '.' ConstraintList '=>' {($2, $4)}
@@ -277,9 +277,10 @@ Function : Signature Body {FunDef $1 $2}
 -- Proposed Rust-style short return, e.g `function d(x) { 2*x }`
          | Signature '{' Expr '}' {FunDef $1 [Return $3]}
 
-OptRetTy :: { Maybe Ty }
-OptRetTy : '->' Type                               {Just $2}
-         | {- empty -}                             {Nothing}
+OptRetTy :: { (Bool, Maybe Ty) }
+OptRetTy : '->' 'comptime' Type                    {(True, Just $3)}
+         | '->' Type                               {(False, Just $2)}
+         | {- empty -}                             {(False, Nothing)}
 
 -- Contract constructor
 
@@ -301,8 +302,9 @@ Stmt :: { Stmt }
 Stmt : Expr '=' Expr ';'                              {Assign $1 $3}
      | Expr '+=' Expr ';'                             {StmtPlusEq $1 $3}
      | Expr '-=' Expr ';'                             {StmtMinusEq $1 $3}
-     | 'let' Name ':' Type InitOpt ';'                {Let $2 (Just $4) $5}
-     | 'let' Name InitOpt ';'                         {Let $2 Nothing $3}
+     | 'let' Name ':' 'comptime' Type InitOpt ';'      {Let True $2 (Just $5) $6}
+     | 'let' Name ':' Type InitOpt ';'                {Let False $2 (Just $4) $5}
+     | 'let' Name InitOpt ';'                         {Let False $2 Nothing $3}
      | Expr ';'                                       {StmtExp $1}
      | 'return' Expr ';'                              {Return $2}
      | 'match' MatchArgList '{' Equations  '}'        {Match $2 $4}
@@ -328,7 +330,7 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | Expr '.' Name FunArgs                       {ExpName (Just $1) $3 $4}
      | Name                                        {ExpVar Nothing $1}
      | Expr '.' Name                               {ExpVar (Just $1) $3}
-     | 'lam' '(' ParamList ')' OptRetTy Body       {Lam $3 $6 $5}
+     | 'lam' '(' ParamList ')' OptRetTy Body       {Lam $3 $6 (snd $5)}
      | Expr ':' Type                               {TyExp $1 $3}
      | '(' TupleArgs ')'                           {tupleExp $2}
      | Expr '[' Expr ']'                           {ExpIndexed $1 $3 }

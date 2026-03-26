@@ -58,6 +58,7 @@ invokeSignature =
     [ Typed False selfName (TyVar selfVar),
       Typed False argsName (TyVar argsVar)
     ]
+    False
     (Just (TyVar retVar))
 
 -- basic types
