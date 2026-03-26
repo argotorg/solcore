@@ -803,6 +803,7 @@ toMastFunDef (FunDef sig body) =
   MastFunDef
     { mastFunName = sigName sig,
       mastFunParams = map toMastParam (sigParams sig),
+      mastFunRetComptime = sigRetComptime sig,
       mastFunReturn = case sigReturn sig of
         Just t -> toMastTy t
         Nothing -> error $ "toMastFunDef: no return type for " ++ show (sigName sig),
@@ -826,7 +827,7 @@ toMastId (Id n t) = MastId n (toMastTy t)
 
 toMastStmt :: Stmt Id -> MastStmt
 toMastStmt (Var i := e) = MastAssign (toMastId i) (toMastExp e)
-toMastStmt (Let _ct i mty me) = MastLet (toMastId i) (fmap toMastTy mty) (fmap toMastExp me)
+toMastStmt (Let ct i mty me) = MastLet ct (toMastId i) (fmap toMastTy mty) (fmap toMastExp me)
 toMastStmt (StmtExp e) = MastStmtExp (toMastExp e)
 toMastStmt (Return e) = MastReturn (toMastExp e)
 toMastStmt (Match [scrutinee] alts) = MastMatch (toMastExp scrutinee) (map toMastAlt alts)
