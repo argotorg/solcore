@@ -40,10 +40,10 @@ tcStmt e@(Let n mt me) =
     (me', psf, tf) <- case (mt, me) of
       (Just t, Just e1) -> do
         (e', ps1, t1) <- tcExp e1
-        _ <- kindCheck t1 `wrapError` e
-        let bvs = bv t
+        t2 <- kindCheck t `wrapError` e
+        let bvs = bv t2
         sks <- mapM (const freshTyVar) bvs
-        let t' = insts (zip bvs sks) t
+        let t' = insts (zip bvs sks) t2
         s <- tcmMatch t1 t' `wrapError` e
         _ <- extSubst s
         withCurrentSubst (Just e', ps1, t')
@@ -160,9 +160,7 @@ tcPat t p@(PCon n ps) =
     -- unifying the infered pattern type with constructor type
     s <- unify tc (funtype ts t) `wrapError` p
     let t' = apply s t
-    -- expand synonyms before extracting type name
-    t'' <- maybeExpandSynonym t'
-    tn <- typeName t''
+    tn <- typeName t'
     -- checking if it is a defined constructor
     checkConstr tn n
     -- building typing assumptions for introduced names
@@ -218,8 +216,7 @@ tcExp e@(Con n es) =
     -- unifying inferred parameter types
     t' <- freshTyVar
     s <- unify (funtype ts t') t `wrapError` e
-    -- expand synonyms before extracting type name
-    t'' <- maybeExpandSynonym (apply s t')
+    let t'' = apply s t'
     tn <- typeName t''
     -- checking if the constructor belongs to type tn
     checkConstr tn n
@@ -233,9 +230,7 @@ tcExp (FieldAccess (Just e) n) =
   do
     -- inferring expression type
     (e', ps, t) <- tcExp e
-    -- expand synonyms before extracting type name
-    tExp <- maybeExpandSynonym t
-    tn <- typeName tExp
+    tn <- typeName t
     -- getting field type
     s <- askField tn n
     (ps' :=> t') <- freshInst s
@@ -261,11 +256,11 @@ tcExp (Lam args bd _) =
         withCurrentSubst (exp1, ps1, t)
 tcExp e1@(TyExp e ty) =
   do
-    _ <- kindCheck ty `wrapError` e1
+    ty1 <- kindCheck ty `wrapError` e1
     (e', ps, ty') <- tcExp e
-    s <- tcmMatch ty' ty
+    s <- tcmMatch ty' ty1
     _ <- extSubst s
-    withCurrentSubst (TyExp e' ty, ps, ty)
+    withCurrentSubst (TyExp e' ty1, ps, ty1)
 tcExp e@(Cond e1 e2 e3) =
   do
     (e1', ps1, t1) <- tcExp e1 `wrapError` e
@@ -530,7 +525,7 @@ argumentAnnotation :: Param Name -> TcM Ty
 argumentAnnotation (Untyped _) =
   freshTyVar
 argumentAnnotation (Typed _ t) =
-  maybeExpandSynonym t
+  pure t
 
 checkAllTypeVarsBound :: (Pretty a) => a -> [Tyvar] -> [Tyvar] -> TcM ()
 checkAllTypeVarsBound context used declared =
@@ -541,7 +536,7 @@ annotatedScheme :: [Tyvar] -> [Pred] -> Signature Name -> TcM Scheme
 annotatedScheme vs' qs (Signature vs ps _ args rt) =
   do
     ts <- mapM argumentAnnotation args
-    t <- maybe freshTyVar maybeExpandSynonym rt
+    t <- maybe freshTyVar pure rt
     let vs1 = vs ++ vs' ++ fv qs
     pure (Forall vs1 ((qs ++ ps) :=> (funtype ts t)))
 
@@ -776,22 +771,26 @@ extSignature sig@(Signature _ _ n _ _) =
 -- typing instance
 
 tcInstance :: Instance Name -> TcM (Instance Id)
-tcInstance idecl@(Instance _ _ predCtx _ ts t _) =
+tcInstance idecl@(Instance d vs predCtx n ts t funs) =
   do
     -- checking instance type parameters
-    mapM_ kindCheck (t : ts) `wrapError` idecl
+    t' <- kindCheck t `wrapError` idecl
+    ts' <- mapM kindCheck ts `wrapError` idecl
     -- checking constraints
-    mapM_ checkConstraint predCtx `wrapError` idecl
-    tcInstance' idecl
+    qs' <- mapM checkConstraint predCtx `wrapError` idecl
+    tcInstance' (Instance d vs qs' n ts' t' funs)
 
-checkConstraint :: Pred -> TcM ()
+checkConstraint :: Pred -> TcM Pred
 checkConstraint p@(InCls n t ts) =
   do
     cinfo <- askClassInfo n
     unless (length ts == classArity cinfo) $
       classArityError n cinfo p
-    mapM_ kindCheck (t : ts) `wrapError` p
-checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
+    t' <- kindCheck t `wrapError` p
+    ts' <- mapM kindCheck ts `wrapError` p
+    pure (InCls n t' ts')
+checkConstraint (t :~: t') =
+  (:~:) <$> kindCheck t <*> kindCheck t'
 
 tcInstance' :: Instance Name -> TcM (Instance Id)
 tcInstance' idecl@(Instance d vs predCtx n ts t funs) =
@@ -972,11 +971,7 @@ checkInstance idef@(Instance d vs predCtx n ts t funs) =
       classArityError n cinfo idef
     -- check if all the types and classes in the context are valid
     checkConstraints predCtx
-    -- expand type synonyms in instance head (affects overlap check and stored instance)
-    tExp <- maybeExpandSynonym t
-    tsExp <- mapM maybeExpandSynonym ts
-    predCtxExp <- mapM expandPredSynonyms predCtx
-    let ipred = InCls n tExp tsExp
+    let ipred = InCls n t ts
     -- checking the coverage condition
     insts' <- askInstEnv n `wrapError` ipred
     -- check overlapping only for non-default instances
@@ -986,29 +981,22 @@ checkInstance idef@(Instance d vs predCtx n ts t funs) =
         ipred' = insts env ipred
     unless d (checkOverlap ipred' insts' `wrapError` idef)
     -- check if default instance has a type variable as main argument.
-    when d (checkDefaultInst (predCtxExp :=> ipred) `wrapError` idef)
+    when d (checkDefaultInst (predCtx :=> ipred) `wrapError` idef)
     coverageEnabled <- askCoverage n
-    unless coverageEnabled (checkCoverage n tsExp tExp `wrapError` idef)
+    unless coverageEnabled (checkCoverage n ts t `wrapError` idef)
     -- checking Patterson condition
     pattersonEnabled <- askPattersonCondition n
-    unless pattersonEnabled (checkMeasure predCtxExp ipred `wrapError` idef)
+    unless pattersonEnabled (checkMeasure predCtx ipred `wrapError` idef)
     -- checking bound variable condition
     boundEnabled <- askBoundVariableCondition n
-    unless boundEnabled (checkBoundVariable predCtxExp (bv (tExp : tsExp)) `wrapError` idef)
+    unless boundEnabled (checkBoundVariable predCtx (bv (t : ts)) `wrapError` idef)
     -- checking instance methods
     mapM_ (checkMethod ipred) funs `wrapError` idef
-    let ninst = anfInstance $ predCtxExp :=> ipred
+    let ninst = anfInstance $ predCtx :=> ipred
     -- add to the environment
     if d
       then addDefaultInstance n ninst
       else addInstance n ninst
-
-expandPredSynonyms :: Pred -> TcM Pred
-expandPredSynonyms (InCls n t ts) = do
-  t' <- maybeExpandSynonym t
-  ts' <- mapM maybeExpandSynonym ts
-  pure (InCls n t' ts')
-expandPredSynonyms p = pure p
 
 -- checking a default instance
 

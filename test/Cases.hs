@@ -307,6 +307,7 @@ cases =
       runTestForFile "strange-unbound.solc" caseFolder,
       runTestForFile "type-synonym-arg.solc" caseFolder,
       runTestForFile "instance-synonym.solc" caseFolder,
+      runTestForFile "instance-synonym-int.solc" caseFolder,
       runTestExpectingFailure "overlap-synonym-detected.solc" caseFolder,
       runTestExpectingFailure "overlap-synonym-missed-order.solc" caseFolder,
       runTestExpectingFailure "overlap-synonym-missed-two-synonyms.solc" caseFolder,

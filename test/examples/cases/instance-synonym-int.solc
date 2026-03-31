@@ -1,0 +1,18 @@
+type W = word;
+
+forall i.
+class i : Int {
+  function fromWord(x:word) ->  i;
+}
+
+instance word : Int {
+  function fromWord(x:word) -> word { x }
+}
+
+contract C {
+
+  function main () -> W {
+    let r : W = Int.fromWord(42);
+    return r;
+  }
+}
