@@ -1,0 +1,3 @@
+data memory(a) = memory(word);
+data Box(a) = Box(memory(a));
+data Rec = Rec(Box(Rec));
