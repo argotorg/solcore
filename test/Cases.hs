@@ -158,6 +158,7 @@ imports =
       runImportFailure "reexport_ctor_expr_hidden_fail.solc",
       runImportFailure "reexport_ctor_hidden_fail.solc",
       runImportFailure "hidden_ctor_expr_fail.solc",
+      runImportFailure "hidden_ctor_dot_fail.solc",
       runImportFailure "hidden_ctor_pattern_fail.solc",
       runImportFailure "hidden_ctor_nonexhaustive_fail.solc",
       runImportSuccess "hidden_ctor_wildcard_ok.solc",

@@ -113,6 +113,7 @@ data TcEnv
     boundVariable :: PragmaStatus, -- Disable bound variable condition for names.
     trustedInstanceHeads :: [InstanceHead], -- Imported instances trusted by module boundary.
     partialDataTypes :: Set Name, -- Data types with hidden constructors in the current module.
+    partialDataTypeConstructors :: Map Name (Set Name), -- Visible constructors for imported partial data types.
     maxRecursionDepth :: Int, -- max recursion depth in
     -- context reduction
     tcOptions :: Option
@@ -147,6 +148,7 @@ initTcEnv opts =
       boundVariable = Enabled,
       trustedInstanceHeads = [],
       partialDataTypes = Set.empty,
+      partialDataTypeConstructors = Map.empty,
       maxRecursionDepth = 100,
       tcOptions = opts
     }

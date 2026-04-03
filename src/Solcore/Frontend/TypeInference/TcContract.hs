@@ -41,7 +41,7 @@ typeInferWithTrustedInstanceHeadsAndPartialTypes ::
   Option ->
   [InstanceHead] ->
   [TopDeclKey] ->
-  [Name] ->
+  [(Name, [Name])] ->
   CompUnit Name ->
   IO (Either String (CompUnit Id, TcEnv))
 typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances localDeclKeys partialTypes (CompUnit imps topLevelDecls) =
@@ -49,7 +49,16 @@ typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances localDecl
     r <-
       runTcM
         (tcCompUnit localDeclKeys (CompUnit imps topLevelDecls))
-        ((initTcEnv opts) {trustedInstanceHeads = trustedInstances, partialDataTypes = Set.fromList partialTypes})
+        ( (initTcEnv opts)
+            { trustedInstanceHeads = trustedInstances,
+              partialDataTypes = Set.fromList (map fst partialTypes),
+              partialDataTypeConstructors =
+                Map.fromList
+                  [ (partialTypeName, Set.fromList constructorNames)
+                    | (partialTypeName, constructorNames) <- partialTypes
+                  ]
+            }
+        )
     case r of
       Left err1 -> pure $ Left err1
       Right (CompUnit _ ds, env) -> do

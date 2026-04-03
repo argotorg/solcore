@@ -83,17 +83,22 @@ isPartialDataType :: Name -> TcM Bool
 isPartialDataType n =
   gets (Set.member n . partialDataTypes)
 
+visibleConstructorsForPartialDataType :: Name -> TcM (Maybe (Set.Set Name))
+visibleConstructorsForPartialDataType n =
+  gets (Map.lookup n . partialDataTypeConstructors)
+
 withPartialDataTypesDisabled :: TcM a -> TcM a
 withPartialDataTypesDisabled action = do
   partialTypes <- gets partialDataTypes
-  modify (\env -> env {partialDataTypes = Set.empty})
+  partialTypeConstructors <- gets partialDataTypeConstructors
+  modify (\env -> env {partialDataTypes = Set.empty, partialDataTypeConstructors = Map.empty})
   action
     `catchError` ( \err -> do
-                     modify (\env -> env {partialDataTypes = partialTypes})
+                     modify (\env -> env {partialDataTypes = partialTypes, partialDataTypeConstructors = partialTypeConstructors})
                      throwError err
                  )
     >>= \result -> do
-      modify (\env -> env {partialDataTypes = partialTypes})
+      modify (\env -> env {partialDataTypes = partialTypes, partialDataTypeConstructors = partialTypeConstructors})
       pure result
 
 typeInfoFor :: DataTy -> TypeInfo

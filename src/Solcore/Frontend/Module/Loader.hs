@@ -486,7 +486,7 @@ flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath
 flattenModuleStrictCompileCompUnitWithMetadata ::
   ModuleGraph ->
   Mod.ModuleId ->
-  Either String (CompUnit, Int, Int, [Name])
+  Either String (CompUnit, Int, Int, [(Name, [Name])])
 flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
   | isRecursiveImportGroup graph modulePath = do
       compileSurfaces <- compileSurfacesForGroup graph (importGroupFor graph modulePath)
@@ -495,7 +495,7 @@ flattenModuleStrictCompileCompUnitWithMetadata graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <- dedupeImportedInstanceDecls . concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
-  partialImportedTypeNames <- concat <$> mapM (strictCompileImportedPartialTypeNames collidingTypeNames graph) importPairs
+  partialImportedTypes <- concat <$> mapM (strictCompileImportedPartialTypes collidingTypeNames graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
@@ -505,14 +505,14 @@ flattenModuleStrictCompileCompUnitWithMetadata graph modulePath = do
     ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
       localStart,
       importedStart,
-      uniqueNames partialImportedTypeNames
+      normalizePartialImportedTypes partialImportedTypes
     )
 
 flattenModuleStrictCompileCompUnitWithSurfaces ::
   Map Mod.ModuleId [TopDecl] ->
   ModuleGraph ->
   Mod.ModuleId ->
-  Either String (CompUnit, Int, Int, [Name])
+  Either String (CompUnit, Int, Int, [(Name, [Name])])
 flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
@@ -520,10 +520,10 @@ flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath 
     dedupeImportedInstanceDecls
       . concat
       <$> mapM (strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph) importPairs
-  partialImportedTypeNames <-
+  partialImportedTypes <-
     concat
       <$> mapM
-        (strictCompileImportedPartialTypeNamesWithSurfaces compileSurfaces collidingTypeNames graph)
+        (strictCompileImportedPartialTypesWithSurfaces compileSurfaces collidingTypeNames graph)
         importPairs
   qualifiedDecls <-
     concat <$> mapM (qualifiedImportDeclsWithSurfaces compileSurfaces collidingTypeNames graph) importPairs
@@ -535,7 +535,7 @@ flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath 
     ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
       localStart,
       importedStart,
-      uniqueNames partialImportedTypeNames
+      normalizePartialImportedTypes partialImportedTypes
     )
 
 flattenModuleStrictValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
@@ -1867,9 +1867,9 @@ strictCompileImportedDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) 
 strictCompileImportedDecls =
   strictCompileImportedDeclsWithSurfaces Map.empty
 
-strictCompileImportedPartialTypeNames :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [Name]
-strictCompileImportedPartialTypeNames =
-  strictCompileImportedPartialTypeNamesWithSurfaces Map.empty
+strictCompileImportedPartialTypes :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [(Name, [Name])]
+strictCompileImportedPartialTypes =
+  strictCompileImportedPartialTypesWithSurfaces Map.empty
 
 strictCompileImportedDeclsWithSurfaces ::
   Map Mod.ModuleId [TopDecl] ->
@@ -1924,7 +1924,9 @@ strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph 
             importOnlyFunctionDecls moduleName selectedFunctionNames requiredFunctionDecls
       pure
         ( functionDecls
-            ++ shadowImportedDecls functionDecls renamedSupportNonFunctionDecls
+            ++ shadowImportedDecls
+              functionDecls
+              renamedSupportNonFunctionDecls
         )
 
     moduleImportCompileDecls qualifier targetModule = do
@@ -1986,39 +1988,39 @@ strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph 
     nestedModuleImportCompileDecls qualifier (ExportedModuleBinding bindingName targetModule) =
       moduleImportCompileDecls (QualName qualifier (show bindingName)) targetModule
 
-strictCompileImportedPartialTypeNamesWithSurfaces ::
+strictCompileImportedPartialTypesWithSurfaces ::
   Map Mod.ModuleId [TopDecl] ->
   Set Name ->
   ModuleGraph ->
   (Import, Mod.ModuleId) ->
-  Either String [Name]
-strictCompileImportedPartialTypeNamesWithSurfaces _compileSurfaces collidingTypeNames graph (imp, modulePath) =
+  Either String [(Name, [Name])]
+strictCompileImportedPartialTypesWithSurfaces _compileSurfaces collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly moduleName selector ->
-      importOnlyTypeNames (Mod.modulePathName moduleName) selector
+      importOnlyTypes (Mod.modulePathName moduleName) selector
     ImportModule moduleName ->
-      moduleImportTypeNames (Mod.modulePathName moduleName) modulePath
+      moduleImportTypes (Mod.modulePathName moduleName) modulePath
     ImportAlias _ qualifier ->
-      moduleImportTypeNames qualifier modulePath
+      moduleImportTypes qualifier modulePath
   where
-    importOnlyTypeNames qualifier selector = do
+    importOnlyTypes qualifier selector = do
       publicInterface <- publicModuleInterface graph modulePath
       publicDecls <- publicTopDeclsForModule graph modulePath
       let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
           selectedRefs = selectExportedItemRefs names (publicItemRefs publicInterface)
           typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
-      partialVisibleImportedTypeNames typeRenameMap selectedRefs
+      partialVisibleImportedTypes typeRenameMap selectedRefs
 
-    moduleImportTypeNames qualifier targetModule = do
+    moduleImportTypes qualifier targetModule = do
       publicInterface <- publicModuleInterface graph targetModule
       publicDecls <- publicTopDeclsForModule graph targetModule
       let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
-      partialVisibleImportedTypeNames typeRenameMap (publicItemRefs publicInterface)
+      partialVisibleImportedTypes typeRenameMap (publicItemRefs publicInterface)
 
-    partialVisibleImportedTypeNames typeRenameMap itemRefs =
-      concat <$> mapM (partialTypeName typeRenameMap) itemRefs
+    partialVisibleImportedTypes typeRenameMap itemRefs =
+      concat <$> mapM (partialTypeInfo typeRenameMap) itemRefs
 
-    partialTypeName typeRenameMap itemRef =
+    partialTypeInfo typeRenameMap itemRef =
       case exportedItemConstructors itemRef of
         Nothing ->
           pure []
@@ -2027,7 +2029,18 @@ strictCompileImportedPartialTypeNamesWithSurfaces _compileSurfaces collidingType
           let visibleSet = Set.fromList visibleConstructors
               fullSet = Set.fromList fullConstructors
               renamedTypeName = Map.findWithDefault (exportedItemName itemRef) (exportedItemName itemRef) typeRenameMap
-          pure [renamedTypeName | visibleSet /= fullSet]
+          pure [(renamedTypeName, uniqueNames visibleConstructors) | visibleSet /= fullSet]
+
+normalizePartialImportedTypes :: [(Name, [Name])] -> [(Name, [Name])]
+normalizePartialImportedTypes partialTypes =
+  [ (typeName, constructorNames)
+    | (typeName, constructorNames) <- Map.toAscList merged
+  ]
+  where
+    merged =
+      Map.fromListWith
+        (\xs ys -> uniqueNames (xs ++ ys))
+        [(typeName, uniqueNames constructorNames) | (typeName, constructorNames) <- partialTypes]
 
 fullConstructorNamesForRef :: ModuleGraph -> ExportedItemRef -> Either String [Name]
 fullConstructorNamesForRef graph itemRef = do

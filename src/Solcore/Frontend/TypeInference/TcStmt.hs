@@ -8,6 +8,7 @@ import Data.Generics hiding (Constr)
 import Data.List
 import Data.Map qualified as Map
 import Data.Maybe
+import Data.Set qualified as Set
 import GHC.Stack
 import Language.Yul
 import Solcore.Frontend.Pretty.ShortName
@@ -1393,7 +1394,8 @@ candidatesForDotExpression dotName mExpected = do
   case mExpected' of
     Just (TyCon tyName _) -> do
       ti <- askTypeInfo tyName
-      pure (Just (matchingConstructors leaf (constrNames ti)))
+      visibleConstructors <- visibleConstructorsForType tyName (constrNames ti)
+      pure (Just (matchingConstructors leaf visibleConstructors))
     _ ->
       pure Nothing
 
@@ -1432,9 +1434,19 @@ candidatesForDotPattern dotName expectedTy = do
   case expectedTy' of
     TyCon tyName _ -> do
       ti <- askTypeInfo tyName
-      pure (Just (matchingConstructors leaf (constrNames ti)))
+      visibleConstructors <- visibleConstructorsForType tyName (constrNames ti)
+      pure (Just (matchingConstructors leaf visibleConstructors))
     _ ->
       pure Nothing
+
+visibleConstructorsForType :: Name -> [Name] -> TcM [Name]
+visibleConstructorsForType tyName allConstructors = do
+  mVisibleLeafNames <- visibleConstructorsForPartialDataType tyName
+  pure $
+    case mVisibleLeafNames of
+      Nothing -> allConstructors
+      Just visibleLeafNames ->
+        filter (\n -> constructorLeafName n `Set.member` visibleLeafNames) allConstructors
 
 matchingConstructors :: Name -> [Name] -> [Name]
 matchingConstructors leaf =

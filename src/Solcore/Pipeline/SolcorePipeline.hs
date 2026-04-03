@@ -83,7 +83,7 @@ compile opts = runExceptT $ do
           <$> nameResolution cunit
     pure ()
 
-  (parsed, localStart, importedStart, partialImportedTypeNames) <-
+  (parsed, localStart, importedStart, partialImportedTypes) <-
     ExceptT $
       pure (flattenModuleStrictCompileCompUnitWithMetadata graph (entryModule graph))
 
@@ -158,7 +158,7 @@ compile opts = runExceptT $ do
     ExceptT $
       timeItNamed
         "Typecheck (no desugaring)  "
-        (typeInferWithTrustedInstanceHeadsAndPartialTypes noDesugarOpt trustedImportedInstanceHeads localDeclKeys partialImportedTypeNames noFun)
+        (typeInferWithTrustedInstanceHeadsAndPartialTypes noDesugarOpt trustedImportedInstanceHeads localDeclKeys partialImportedTypes noFun)
 
   liftIO $ when verbose $ do
     putStrLn "No type errors found!"
@@ -167,7 +167,7 @@ compile opts = runExceptT $ do
     ExceptT $
       timeItNamed
         "Typecheck (desugaring)  "
-        (typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedImportedInstanceHeads localDeclKeys partialImportedTypeNames noFun)
+        (typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedImportedInstanceHeads localDeclKeys partialImportedTypes noFun)
 
   liftIO $ when verbose $ do
     putStrLn "> Type inference logs:"
