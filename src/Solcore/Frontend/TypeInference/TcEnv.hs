@@ -2,6 +2,8 @@ module Solcore.Frontend.TypeInference.TcEnv where
 
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Solcore.Desugarer.UniqueTypeGen (UniqueTyMap)
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -84,6 +86,8 @@ type InstTable = Table [Inst]
 
 type DefTable = Table Inst
 
+type InstanceHead = (Bool, Name, [Ty], Ty)
+
 data TcEnv
   = TcEnv
   { ctx :: Env, -- Variable environment
@@ -107,6 +111,9 @@ data TcEnv
     coverage :: PragmaStatus, -- Disable coverage checking for names.
     patterson :: PragmaStatus, -- Disable Patterson condition for names.
     boundVariable :: PragmaStatus, -- Disable bound variable condition for names.
+    trustedInstanceHeads :: [InstanceHead], -- Imported instances trusted by module boundary.
+    partialDataTypes :: Set Name, -- Data types with hidden constructors in the current module.
+    partialDataTypeConstructors :: Map Name (Set Name), -- Visible constructors for imported partial data types.
     maxRecursionDepth :: Int, -- max recursion depth in
     -- context reduction
     tcOptions :: Option
@@ -139,6 +146,9 @@ initTcEnv opts =
       coverage = Enabled,
       patterson = Enabled,
       boundVariable = Enabled,
+      trustedInstanceHeads = [],
+      partialDataTypes = Set.empty,
+      partialDataTypeConstructors = Map.empty,
       maxRecursionDepth = 100,
       tcOptions = opts
     }

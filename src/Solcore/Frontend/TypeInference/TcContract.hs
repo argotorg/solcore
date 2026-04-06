@@ -8,6 +8,7 @@ import Data.List
 import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
+import Data.Set qualified as Set
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
@@ -25,9 +26,39 @@ typeInfer ::
   Option ->
   CompUnit Name ->
   IO (Either String (CompUnit Id, TcEnv))
-typeInfer opts (CompUnit imps topDecls) =
+typeInfer opts =
+  typeInferWithTrustedInstanceHeadsAndPartialTypes opts [] [] []
+
+typeInferWithTrustedInstanceHeads ::
+  Option ->
+  [InstanceHead] ->
+  CompUnit Name ->
+  IO (Either String (CompUnit Id, TcEnv))
+typeInferWithTrustedInstanceHeads opts trustedInstances =
+  typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances [] []
+
+typeInferWithTrustedInstanceHeadsAndPartialTypes ::
+  Option ->
+  [InstanceHead] ->
+  [TopDeclKey] ->
+  [(Name, [Name])] ->
+  CompUnit Name ->
+  IO (Either String (CompUnit Id, TcEnv))
+typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances localDeclKeys partialTypes (CompUnit imps topLevelDecls) =
   do
-    r <- runTcM (tcCompUnit (CompUnit imps topDecls)) (initTcEnv opts)
+    r <-
+      runTcM
+        (tcCompUnit localDeclKeys (CompUnit imps topLevelDecls))
+        ( (initTcEnv opts)
+            { trustedInstanceHeads = trustedInstances,
+              partialDataTypes = Set.fromList (map fst partialTypes),
+              partialDataTypeConstructors =
+                Map.fromList
+                  [ (partialTypeName, Set.fromList constructorNames)
+                    | (partialTypeName, constructorNames) <- partialTypes
+                  ]
+            }
+        )
     case r of
       Left err1 -> pure $ Left err1
       Right (CompUnit _ ds, env) -> do
@@ -36,14 +67,14 @@ typeInfer opts (CompUnit imps topDecls) =
 
 -- type inference for a compilation unit
 
-tcCompUnit :: CompUnit Name -> TcM (CompUnit Id)
-tcCompUnit (CompUnit imps cs) =
+tcCompUnit :: [TopDeclKey] -> CompUnit Name -> TcM (CompUnit Id)
+tcCompUnit localDeclKeys (CompUnit imps cs) =
   do
     setupPragmas ps
     checkSynonymCycles syns
     mapM_ checkTopDecl cls
     mapM_ checkTopDecl nonClassDecls
-    typedDecls <- mapM tcTopDecl' cs
+    typedDecls <- mapM tcTopDeclWithVisibility cs
     pure (CompUnit imps typedDecls)
   where
     ps = foldr step [] cs
@@ -53,6 +84,10 @@ tcCompUnit (CompUnit imps cs) =
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
+    localDeclKeySet = Set.fromList localDeclKeys
+    tcTopDeclWithVisibility d
+      | any (`Set.member` localDeclKeySet) (topDeclKeys d) = tcTopDecl' d
+      | otherwise = withPartialDataTypesDisabled (tcTopDecl' d)
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
@@ -150,6 +185,8 @@ tcTopDecl (TDataDef d) =
     pure (TDataDef d)
 tcTopDecl (TSym s) =
   pure (TSym s)
+tcTopDecl (TExportDecl d) =
+  pure (TExportDecl d)
 tcTopDecl (TPragmaDecl d) =
   pure (TPragmaDecl d)
 
@@ -164,6 +201,7 @@ checkTopDecl (TSym s) =
   checkSynonym s
 checkTopDecl (TFunDef (FunDef sig _)) =
   extSignature sig
+checkTopDecl (TExportDecl _) = pure ()
 checkTopDecl _ = pure ()
 
 -- type inference for contracts

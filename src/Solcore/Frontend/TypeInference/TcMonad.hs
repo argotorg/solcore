@@ -79,6 +79,28 @@ isUniqueTyName n = do
   uenv <- gets uniqueTypes
   pure $ any (\d -> dataName d == n) (Map.elems uenv)
 
+isPartialDataType :: Name -> TcM Bool
+isPartialDataType n =
+  gets (Set.member n . partialDataTypes)
+
+visibleConstructorsForPartialDataType :: Name -> TcM (Maybe (Set.Set Name))
+visibleConstructorsForPartialDataType n =
+  gets (Map.lookup n . partialDataTypeConstructors)
+
+withPartialDataTypesDisabled :: TcM a -> TcM a
+withPartialDataTypesDisabled action = do
+  partialTypes <- gets partialDataTypes
+  partialTypeConstructors <- gets partialDataTypeConstructors
+  modify (\env -> env {partialDataTypes = Set.empty, partialDataTypeConstructors = Map.empty})
+  action
+    `catchError` ( \err -> do
+                     modify (\env -> env {partialDataTypes = partialTypes, partialDataTypeConstructors = partialTypeConstructors})
+                     throwError err
+                 )
+    >>= \result -> do
+      modify (\env -> env {partialDataTypes = partialTypes, partialDataTypeConstructors = partialTypeConstructors})
+      pure result
+
 typeInfoFor :: DataTy -> TypeInfo
 typeInfoFor (DataTy _ vs cons) =
   TypeInfo (length vs) (map constrName cons) []
@@ -629,6 +651,10 @@ askBoundVariableCondition n =
 setBoundVariableCondition :: PragmaStatus -> TcM ()
 setBoundVariableCondition st =
   modify (\env -> env {boundVariable = st})
+
+isTrustedImportedInstance :: Instance Name -> TcM Bool
+isTrustedImportedInstance inst =
+  (instanceHeadKey inst `elem`) <$> gets trustedInstanceHeads
 
 disableBoundVariableCondition :: TcM a -> TcM a
 disableBoundVariableCondition m =

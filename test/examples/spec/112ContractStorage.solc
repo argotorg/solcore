@@ -15,10 +15,10 @@ contract Counter {
 
 
 // form:
-// instance StructField(S, f_sel):StructField(ftype, preceding)) {}
+// instance StructField(S, f_sel):CStructField(ftype, preceding)) {}
 data CounterCxt = CounterCxt;
 data counter_sel = counter_sel;
-instance StructField(ContractStorage(CounterCxt), counter_sel):StructField(word, ()) {}
+instance StructField(ContractStorage(CounterCxt), counter_sel):CStructField(word, ()) {}
 
 contract Counter {
   // struct CounterCxt { counter:word }
