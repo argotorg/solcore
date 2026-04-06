@@ -35,7 +35,7 @@ tcStmt e@(lhs := rhs) =
     s <- unify t1 t2 `wrapError` e
     _ <- extSubst s
     pure (lhs1 := rhs1, apply s $ ps1 ++ ps2, unit)
-tcStmt e@(Let n mt me) =
+tcStmt e@(Let ct n mt me) =
   do
     (me', psf, tf) <- case (mt, me) of
       (Just t, Just e1) -> do
@@ -55,7 +55,7 @@ tcStmt e@(Let n mt me) =
       (Nothing, Nothing) ->
         (Nothing,[],) <$> freshTyVar
     extEnv n (monotype tf)
-    let e' = Let (Id n tf) (Just tf) me'
+    let e' = Let ct (Id n tf) (Just tf) me'
     withCurrentSubst (e', psf, unit)
 tcStmt (StmtExp e) =
   do
@@ -401,12 +401,12 @@ createClosureFun fn freeIds cdt args bdy ps ty =
     let args0 = everywhere (mkT gen) args
         ps0 = everywhere (mkT gen) ps
         cName = Name $ "env" ++ show j
-        cParam = Typed (Id cName ct) ct
+        cParam = Typed False (Id cName ct) ct
         args' = cParam : args0
         (_, retTy1) = splitTy ty
         vs' = union (bv ct) (bv ps0)
         ty' = ct :-> ty
-        sig = Signature vs' ps0 fn args' (Just retTy1)
+        sig = Signature vs' ps0 fn args' False (Just retTy1)
     bdy' <- createClosureBody cName cdt freeIds bdy
     sch <- generalize (ps0, ty')
     pure (everywhere (mkT gen) $ FunDef sig bdy', sch)
@@ -435,7 +435,7 @@ createClosureFreeFun fn args bdy ps ty =
   do
     let (_, retTy1) = splitTy ty
         vs = bv ty `union` bv ps
-        sig = Signature vs ps fn args (Just retTy1)
+        sig = Signature vs ps fn args False (Just retTy1)
     pure (everywhere (mkT gen) $ FunDef sig bdy)
 
 tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
@@ -445,21 +445,21 @@ tcArgs params =
     pure (ps, schs, ts)
 
 tcArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty)
-tcArg (Untyped n) =
+tcArg (Untyped c n) =
   do
     v <- freshTyVar
     let ty = monotype v
-    pure (Typed (Id n v) v, (n, ty), v)
-tcArg a@(Typed n ty) =
+    pure (Typed c (Id n v) v, (n, ty), v)
+tcArg a@(Typed c n ty) =
   do
     ty1 <- kindCheck ty `wrapError` a
-    pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1)
+    pure (Typed c (Id n ty1) ty1, (n, monotype ty1), ty1)
 
 hasAnn :: Signature Name -> Bool
-hasAnn (Signature _ _ _ args rt) =
+hasAnn (Signature _ _ _ args _ rt) =
   any isAnn args || isJust rt
   where
-    isAnn (Typed _ _) = True
+    isAnn (Typed {}) = True
     isAnn _ = False
 
 -- boolean flag indicates if the assumption for the
@@ -469,20 +469,20 @@ hasAnn (Signature _ _ _ args rt) =
 -- type class definition.
 
 tiArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty)
-tiArg (Untyped n) =
+tiArg (Untyped c n) =
   do
     t <- freshTyVar
-    pure (Typed (Id n t) t, (n, monotype t), t)
-tiArg (Typed n _) =
+    pure (Typed c (Id n t) t, (n, monotype t), t)
+tiArg (Typed c n _) =
   do
     t <- freshTyVar
-    pure (Typed (Id n t) t, (n, monotype t), t)
+    pure (Typed c (Id n t) t, (n, monotype t), t)
 
 tiArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
 tiArgs args = unzip3 <$> mapM tiArg args
 
 tiFunDef :: FunDef Name -> TcM (FunDef Id, Scheme)
-tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd) =
+tiFunDef d@(FunDef sig@(Signature _ _ n args _ _) bd) =
   do
     info ["# tiFunDef:", pretty sig]
     -- getting fresh type variables for arguments
@@ -527,9 +527,9 @@ ambiguityCheck (Forall _ (ps :=> ty)) =
     pure (ambiguous sch')
 
 argumentAnnotation :: Param Name -> TcM Ty
-argumentAnnotation (Untyped _) =
+argumentAnnotation (Untyped _ _) =
   freshTyVar
-argumentAnnotation (Typed _ t) =
+argumentAnnotation (Typed _ _ t) =
   maybeExpandSynonym t
 
 checkAllTypeVarsBound :: (Pretty a) => a -> [Tyvar] -> [Tyvar] -> TcM ()
@@ -538,7 +538,7 @@ checkAllTypeVarsBound context used declared =
    in unless (null unbound) $ unboundTypeVars context unbound
 
 annotatedScheme :: [Tyvar] -> [Pred] -> Signature Name -> TcM Scheme
-annotatedScheme vs' qs (Signature vs ps _ args rt) =
+annotatedScheme vs' qs (Signature vs ps _ args _ rt) =
   do
     ts <- mapM argumentAnnotation args
     t <- maybe freshTyVar maybeExpandSynonym rt
@@ -546,7 +546,7 @@ annotatedScheme vs' qs (Signature vs ps _ args rt) =
     pure (Forall vs1 ((qs ++ ps) :=> (funtype ts t)))
 
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
-tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _) _)
+tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _) _)
   | hasAnn sig = do
       info ["\n# tcFunDef ", pretty d]
       let vars = vs `union` vs'
@@ -555,7 +555,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _) _)
       -- instantiate signatures in function definition
       sks <- mapM (const freshTyVar) vars
       let env = zip vars sks
-          FunDef sig1@(Signature _ ps1 _ args1 rt1) bd1 = everywhere (mkT (insts @Ty env)) d
+          FunDef sig1@(Signature _ ps1 _ args1 _ rt1) bd1 = everywhere (mkT (insts @Ty env)) d
           qs1 = everywhere (mkT (insts @Ty env)) qs
       -- checking if all constraints have a respective class and are well kinded
       checkConstraints ps `wrapError` d
@@ -735,24 +735,24 @@ elabSignature vs1 sig (Forall _ (ps :=> t)) =
         -- formal parameters are present in the signature.
         ret = Just $ if null params' then t else (funtype rs t')
         vs' = bv params' `union` bv ret `union` bv ps
-    sig2 <- withCurrentSubst (Signature (vs' \\ vs1) ps (sigName sig) params' ret)
+    sig2 <- withCurrentSubst (Signature (vs' \\ vs1) ps (sigName sig) params' (sigRetComptime sig) ret)
     pure sig2
 
 elabParam :: Ty -> Param Name -> TcM (Param Id)
-elabParam t (Typed n _) = pure $ Typed (Id n t) t
-elabParam t (Untyped n) = pure $ Typed (Id n t) t
+elabParam t (Typed c n _) = pure $ Typed c (Id n t) t
+elabParam t (Untyped c n) = pure $ Typed c (Id n t) t
 
 annotateSignature :: Scheme -> Signature Name -> TcM (Signature Name)
 annotateSignature (Forall vs (ps :=> t)) sig =
-  pure $ Signature vs ps (sigName sig) params' ret
+  pure $ Signature vs ps (sigName sig) params' (sigRetComptime sig) ret
   where
     (ts, t') = splitTy t
     params' = zipWith annotateParam ts (sigParams sig)
     ret = Just t'
 
 annotateParam :: Ty -> Param Name -> Param Name
-annotateParam t (Typed n _) = Typed n t
-annotateParam t (Untyped n) = Typed n t
+annotateParam t (Typed c n _) = Typed c n t
+annotateParam t (Untyped c n) = Typed c n t
 
 -- qualify name for contract functions
 
@@ -766,7 +766,7 @@ correctName (Name s) =
       else pure (Name s)
 
 extSignature :: Signature Name -> TcM ()
-extSignature sig@(Signature _ _ n _ _) =
+extSignature sig@(Signature _ _ n _ _ _) =
   do
     te <- gets directCalls
     -- checking if the function is previously defined
@@ -892,17 +892,17 @@ invalidMemberType n cls ins =
       ]
 
 schemeFromSignature :: Signature Id -> TcM Scheme
-schemeFromSignature sig@(Signature vs ps _ args (Just rt)) =
+schemeFromSignature sig@(Signature vs ps _ args _ (Just rt)) =
   do
     unless (all isTyped args) $
       throwError $
         unwords ["Invalid instance member signature:", pretty sig]
     pure $ Forall vs (ps :=> (funtype ts rt))
   where
-    isTyped (Typed _ _) = True
+    isTyped (Typed {}) = True
     isTyped _ = False
 
-    extractType (Typed _ t) = t
+    extractType (Typed _ _ t) = t
     extractType p =
       error $ "schemeFromSignature: expected typed parameter, got " ++ show p
 
@@ -912,8 +912,8 @@ schemeFromSignature sig =
     unwords ["Invalid instance member signature (missing return type):", pretty sig]
 
 updateSignature :: [Tyvar] -> Name -> FunDef Id -> FunDef Id
-updateSignature vs' c (FunDef (Signature vs ps n args rt) bd) =
-  FunDef (Signature (vs \\ vs') ps (QualName c (pretty n)) args rt) bd
+updateSignature vs' c (FunDef (Signature vs ps n args rc rt) bd) =
+  FunDef (Signature (vs \\ vs') ps (QualName c (pretty n)) args rc rt) bd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
 checkDeferedConstraints = mapM_ checkDeferedConstraint
@@ -1096,12 +1096,12 @@ checkMethod ih@(InCls n _ _) d@(FunDef sig _) =
 checkMethod p d = invalidMethodPred p d
 
 fullSignature :: Signature Name -> TcM ()
-fullSignature sig@(Signature _ _ _ ps t) =
+fullSignature sig@(Signature _ _ _ ps _ t) =
   unless
     (all isTyped ps && maybe False (const True) t)
     (throwError $ unlines ["Instance methods must have complete type signatures:", pretty sig])
   where
-    isTyped (Typed _ _) = True
+    isTyped (Typed {}) = True
     isTyped _ = False
 
 findPred :: Name -> [Pred] -> Maybe Pred
@@ -1216,12 +1216,12 @@ tcCall (Just e) n args =
     withCurrentSubst (Call (Just e') (Id n t') es', ps', t')
 
 tcParam :: Param Name -> TcM (Param Id)
-tcParam (Typed n t) =
-  pure $ Typed (Id n t) t
-tcParam (Untyped n) =
+tcParam (Typed c n t) =
+  pure $ Typed c (Id n t) t
+tcParam (Untyped c n) =
   do
     t <- freshTyVar
-    pure (Typed (Id n t) t)
+    pure (Typed c (Id n t) t)
 
 typeName :: Ty -> TcM Name
 typeName (TyCon n _) = pure n
@@ -1358,20 +1358,20 @@ instance Vars (Pat Id) where
 instance Vars (Param Id) where
   free _ = []
 
-  bound (Typed n _) = [n]
-  bound (Untyped n) = [n]
+  bound (Typed _ n _) = [n]
+  bound (Untyped _ n) = [n]
 
 instance Vars (Stmt Id) where
   free (e1 := e2) = free [e1, e2]
-  free (Let _ _ (Just e)) = free e
-  free (Let _ _ _) = []
+  free (Let _ _ _ (Just e)) = free e
+  free (Let _ _ _ _) = []
   free (StmtExp e) = free e
   free (Return e) = free e
   free (Match e eqns) = free e `union` free eqns
   free (If e blk1 blk2) = free e `union` free blk1 `union` free blk2
   free (Asm _) = []
 
-  bound (Let n _ _) = [n]
+  bound (Let _ n _ _) = [n]
   bound _ = []
 
 instance Vars (Equation Id) where

@@ -250,7 +250,7 @@ tcField d@(Field n t _) =
 tcClass :: Class Name -> TcM (Class Id)
 tcClass iclass@(Class bvs classCtx n vs v sigs) =
   do
-    let freeInSig (Signature sv _ _ ps mt) = bv (ps, mt) \\ sv
+    let freeInSig (Signature sv _ _ ps _ mt) = bv (ps, mt) \\ sv
         bvs' = bv classCtx `union` bv (map TyVar (v : vs)) `union` concatMap freeInSig sigs
         ns = map sigName sigs
         qs = map (QualName n . pretty) ns
@@ -265,8 +265,8 @@ tcSig :: (Signature Name, Scheme) -> TcM (Signature Id)
 tcSig (sig, (Forall _ (_ :=> t))) =
   do
     let (ts, r) = splitTy t
-        param (Typed n _) t1 = Typed (Id n t1) t1
-        param (Untyped n) t1 = Typed (Id n t1) t1
+        param (Typed c n _) t1 = Typed c (Id n t1) t1
+        param (Untyped c n) t1 = Typed c (Id n t1) t1
         params' = zipWith param (sigParams sig) ts
     _ <- kindCheck t `wrapError` sig
     pure
@@ -275,6 +275,7 @@ tcSig (sig, (Forall _ (_ :=> t))) =
           (sigContext sig)
           (sigName sig)
           params'
+          (sigRetComptime sig)
           (Just r)
       )
 
@@ -325,8 +326,8 @@ tcConstructor (Constructor ps bd) =
   do
     -- building parameters for constructors
     ps' <- mapM tcParam ps
-    let f (Typed (Id n t) _) = pure (n, monotype t)
-        f (Untyped (Id n _)) = ((n,) . monotype) <$> freshTyVar
+    let f (Typed _ (Id n t) _) = pure (n, monotype t)
+        f (Untyped _ (Id n _)) = ((n,) . monotype) <$> freshTyVar
     lctx <- mapM f ps'
     (bd', _, _) <- withLocalCtx lctx (tcBody bd)
     pure (Constructor ps' bd')
@@ -347,7 +348,7 @@ checkClass icls@(Class bvs ps n vs v sigs) =
     addClassInfo n (length vs) ms' ps p
     mapM_ (checkSignature p) sigs
   where
-    checkSignature p sig@(Signature methodVars _ _ params mt) =
+    checkSignature p sig@(Signature methodVars _ _ params _ mt) =
       do
         _ <- mapM tyParam params
         _ <- maybe (pure unit) pure mt
@@ -371,7 +372,7 @@ addClassInfo n ar ms ps p =
       )
 
 addClassMethod :: Pred -> Signature Name -> TcM ()
-addClassMethod p@(InCls c _ _) sig@(Signature _ methodCtx f ps t) =
+addClassMethod p@(InCls c _ _) sig@(Signature _ methodCtx f ps _ t) =
   do
     tps <- mapM tyParam ps
     t' <- maybe (pure unit) pure t
@@ -384,7 +385,7 @@ addClassMethod p@(InCls c _ _) sig@(Signature _ methodCtx f ps t) =
     unless (isNothing r) (duplicatedClassMethod f `wrapError` sig)
     extEnv qn sch
     pure ()
-addClassMethod p@(_ :~: _) (Signature _ _ n _ _) =
+addClassMethod p@(_ :~: _) (Signature _ _ n _ _ _) =
   throwError $
     unlines
       [ "Invalid constraint:",
@@ -396,7 +397,7 @@ addClassMethod p@(_ :~: _) (Signature _ _ n _ _) =
 -- error for class definitions
 
 signatureError :: Name -> Tyvar -> Signature Name -> Ty -> TcM ()
-signatureError n v (Signature _ methodCtx f _ _) t
+signatureError n v (Signature _ methodCtx f _ _ _) t
   | null methodCtx =
       throwError $
         unlines

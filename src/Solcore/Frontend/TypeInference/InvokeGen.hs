@@ -60,7 +60,7 @@ createInstance udt fd sch =
     (spvs, svs) <- freshPatData udt
     -- pattern variables for arguments
     (sargs, sarg) <- unzip <$> mapM (const freshPatArg) args'
-    let isig = Signature [] qs invokeName [selfParam, argParam] (Just returnTy)
+    let isig = Signature [] qs invokeName [selfParam, argParam] False (Just returnTy)
         -- building the match of function body
         discr = epair (Var sn) (Var an)
         fname = sigName (funSignature fd)
@@ -98,7 +98,7 @@ freshParam :: String -> Ty -> TcM (Param Name, Name)
 freshParam s t =
   do
     n <- freshFromString s
-    pure (Typed n t, n)
+    pure (Typed False n t, n)
 
 freshFromString :: String -> TcM Name
 freshFromString s =
@@ -132,8 +132,8 @@ isQual (QualName _ _) = True
 isQual _ = False
 
 tyParam :: Param a -> TcM Ty
-tyParam (Typed _ t) = pure t
-tyParam (Untyped _) = freshTyVar
+tyParam (Typed _ _ t) = pure t
+tyParam (Untyped _ _) = freshTyVar
 
 tyFromData :: DataTy -> Ty
 tyFromData (DataTy dn vs _) =

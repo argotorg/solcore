@@ -17,6 +17,12 @@ import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..))
 import Solcore.Primitives.Primitives (word)
 
 -----------------------------------------------------------------------
+-- Comptime flag
+-----------------------------------------------------------------------
+
+type ComptimeFlag = Bool
+
+-----------------------------------------------------------------------
 -- Types: no TyVar, no Meta — only type constructors
 -----------------------------------------------------------------------
 
@@ -71,6 +77,7 @@ data MastContractDecl
 data MastFunDef = MastFunDef
   { mastFunName :: Name,
     mastFunParams :: [MastParam],
+    mastFunRetComptime :: ComptimeFlag,
     mastFunReturn :: MastTy,
     mastFunBody :: [MastStmt]
   }
@@ -88,7 +95,7 @@ data MastParam = MastParam
 
 data MastStmt
   = MastAssign MastId MastExp
-  | MastLet MastId (Maybe MastTy) (Maybe MastExp)
+  | MastLet ComptimeFlag MastId (Maybe MastTy) (Maybe MastExp)
   | MastStmtExp MastExp
   | MastReturn MastExp
   | MastMatch MastExp [MastAlt]
@@ -195,12 +202,12 @@ instance Pretty MastContractDecl where
   ppr (MastCMutualDecl ds) = vcat (map ppr ds)
 
 instance Pretty MastFunDef where
-  ppr (MastFunDef n ps ret bd) =
+  ppr (MastFunDef n ps ct ret bd) =
     text "function"
       <+> ppr n
       <+> parens (commaSep (map ppr ps))
       <+> text "->"
-      <+> ppr ret
+      <+> (if ct then text "comptime" <+> ppr ret else ppr ret)
       <+> lbrace
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace
@@ -210,8 +217,8 @@ instance Pretty MastParam where
 
 instance Pretty MastStmt where
   ppr (MastAssign i e) = ppr i <+> equals <+> ppr e <+> semi
-  ppr (MastLet i ty m) =
-    text "let" <+> ppr i <+> pprOptMastTy ty <+> pprMastInit m
+  ppr (MastLet ct i ty m) =
+    (if ct then text "let comptime" else text "let") <+> ppr i <+> pprOptMastTy ty <+> pprMastInit m
   ppr (MastStmtExp e) = ppr e >< semi
   ppr (MastReturn e) = text "return" <+> ppr e >< semi
   ppr (MastMatch e alts) =

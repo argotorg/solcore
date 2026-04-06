@@ -49,7 +49,7 @@ genMainFn addMain (Contract cname tys cdecls)
   | otherwise = Contract cname tys (Set.toList cdecls')
   where
     cdecls' = Set.unions (map (transformCDecl cname) cdecls)
-    mainfn = FunDef (Signature [] [] "main" [] Nothing) body
+    mainfn = FunDef (Signature [] [] "main" [] False Nothing) body
     body = [StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
     cdata = Con "Contract" [methods, fallback]
     methods = tupleExpFromList (fmap mkMethod (mapMaybe unwrapSigs cdecls))
@@ -62,7 +62,7 @@ genMainFn addMain (Contract cname tys cdecls)
           Var "revert_handler"
         ]
 
-    mkMethod (Signature _ _ fname fargs (Just ret))
+    mkMethod (Signature _ _ fname fargs _ (Just ret))
       | all isTyped fargs =
           Con
             "Method"
@@ -80,7 +80,7 @@ genMainFn addMain (Contract cname tys cdecls)
     isTyped (Typed {}) = True
     isTyped (Untyped {}) = False
 
-    getTy (Typed _ t) = Just t
+    getTy (Typed _ _ t) = Just t
     getTy (Untyped {}) = Nothing
 
 transformCDecl :: Name -> ContractDecl Name -> Set (ContractDecl Name)
@@ -101,6 +101,7 @@ transformConstructor contractName cons
           sigContext = mempty,
           sigName = initFunName,
           sigParams = params,
+          sigRetComptime = False,
           sigReturn = Just unit
         }
 
@@ -110,14 +111,15 @@ transformConstructor contractName cons
           sigContext = mempty,
           sigName = "copy_arguments_for_constructor",
           sigParams = mempty,
+          sigRetComptime = False,
           sigReturn = Just argsTuple
         }
     contractString = show contractName
     yulContractName = YLit $ YulString contractString
     deployer = YLit $ YulString $ contractString <> "Deploy"
     copyBody =
-      [ Let "res" (Just argsTuple) Nothing,
-        Let "memoryDataOffset" (Just word) Nothing,
+      [ Let False "res" (Just argsTuple) Nothing,
+        Let False "memoryDataOffset" (Just word) Nothing,
         Asm
           [yulBlock|{
              let programSize := datasize(`deployer`)
@@ -126,7 +128,7 @@ transformConstructor contractName cons
              mstore(64, add(memoryDataOffset, argSize))
              codecopy(memoryDataOffset, programSize, argSize)
           }|],
-        Let "source" (Just (memoryT bytesT)) (Just (memoryE (Var "memoryDataOffset"))),
+        Let False "source" (Just (memoryT bytesT)) (Just (memoryE (Var "memoryDataOffset"))),
         Var "res"
           := Call
             Nothing
@@ -148,13 +150,14 @@ transformConstructor contractName cons
           sigContext = mempty,
           sigName = "start",
           sigParams = mempty,
+          sigRetComptime = False,
           sigReturn = Just unit
         }
     startBody =
       [ Asm [yulBlock|{ mstore(64, memoryguard(128)) }|],
-        Let "conargs" (Just argsTuple) (Just (Call Nothing "copy_arguments_for_constructor" [])),
+        Let False "conargs" (Just argsTuple) (Just (Call Nothing "copy_arguments_for_constructor" [])),
         -- , Match [Var "conargs"] ...
-        Let "fun" Nothing (Just (Var initFunName)),
+        Let False "fun" Nothing (Just (Var initFunName)),
         StmtExp $ Call Nothing "fun" [Var "conargs"],
         Asm
           [yulBlock|{
@@ -168,7 +171,7 @@ transformConstructor contractName cons
     isTyped (Typed {}) = True
     isTyped (Untyped {}) = False
 
-    getTy (Typed _ t) = Just t
+    getTy (Typed _ _ t) = Just t
     getTy (Untyped {}) = Nothing
 
 initFunName :: Name
@@ -180,7 +183,7 @@ mkNameTy cname fname = DataTy (nameTypeName cname fname) [] []
 mkNameInst :: DataTy -> Name -> Instance Name
 mkNameInst (DataTy dname [] []) fname =
   let nameTy = TyCon dname []
-      sig = Signature [] [] "sigStr" [Typed "p" (proxyTy nameTy)] (Just string)
+      sig = Signature [] [] "sigStr" [Typed False "p" (proxyTy nameTy)] False (Just string)
       body = [Return (Lit (StrLit (show fname)))]
    in Instance
         { instDefault = False,

@@ -230,7 +230,7 @@ translateProduct :: [MastExp] -> Translation Hull.Expr
 translateProduct [] = pure (Hull.EUnit, [])
 translateProduct es = do
   (hullExps, codes) <- unzip <$> mapM emitExp es
-  let product = foldr1 (Hull.EPair) hullExps
+  let product = foldr1 Hull.EPair hullExps
   pure (product, concat codes)
 
 encodeCon :: Name -> [Constr] -> Hull.Type -> Hull.Expr -> Hull.Expr
@@ -289,7 +289,7 @@ emitStmt (MastAssign i e) = do
   (e', stmts) <- emitExp e
   let assign = [Hull.SAssign (Hull.EVar (show (mastIdName i))) e']
   return (stmts ++ assign)
-emitStmt (MastLet (MastId name ty) _mty mexp) = do
+emitStmt (MastLet _ct (MastId name ty) _mty mexp) = do
   let hullName = show name
   hullTy <- translateMastType ty
   let alloc = [Hull.SAlloc hullName hullTy]
@@ -436,7 +436,7 @@ emitSumMatch allCons scrutinee alts = do
         rightBranch t = error ("rightBranch: not a sum type: " ++ show t)
         left = altName False
         right = altName True
-        alt con n stmts = Hull.ConAlt con n stmts
+        alt = Hull.ConAlt
 
     altName :: Bool -> String
     altName False = "$alt"
@@ -539,9 +539,9 @@ renameYulStmts subst stmts = goBlock Set.empty stmts
       post' <- goBlock preScope post
       blk' <- goBlock preScope blk
       pure (YFor pre' cond' post' blk', scope)
-    goStmt scope s@(YBreak) = pure (s, scope)
-    goStmt scope s@(YContinue) = pure (s, scope)
-    goStmt scope s@(YLeave) = pure (s, scope)
+    goStmt scope s@YBreak = pure (s, scope)
+    goStmt scope s@YContinue = pure (s, scope)
+    goStmt scope s@YLeave = pure (s, scope)
     goStmt scope s@(YComment _) = pure (s, scope)
     goStmt scope (YExp e) = do
       e' <- goExp scope e
