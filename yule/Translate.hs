@@ -155,7 +155,7 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
     placeArgs :: [Arg] -> TM [Name]
     placeArgs as = concat <$> mapM placeArg as
     placeArg :: Arg -> TM [Name]
-    placeArg (TArg argName TWord) = do
+    placeArg (TArg argName typ) | isWordType typ = do
       let loc = LocNamed argName
       insertVar argName loc
       return [yulVarName argName]
@@ -373,6 +373,13 @@ padToSize :: Location -> Int -> Location
 padToSize loc n = case max 0 (n - sizeOf loc) of
   0 -> loc
   m -> LocPair loc (LocEmpty m)
+
+-- | Check if a Hull type is word-sized (unwrapping TNamed wrappers and trivial sums)
+isWordType :: Type -> Bool
+isWordType TWord = True
+isWordType (TNamed _ t) = isWordType t
+isWordType (TSumN [t]) = isWordType t
+isWordType _ = False
 
 -- simulate LLVM "poison" value
 yulPoison :: YulExp

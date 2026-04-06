@@ -365,6 +365,8 @@ cases =
       runTestExpectingFailure "vartyped.solc" caseFolder,
       runTestExpectingFailure "weirdfoo.solc" caseFolder,
       runTestExpectingFailure "withdraw.solc" caseFolder,
+      runTestForFile "word-match-default.solc" caseFolder,
+      runTestForFile "sum-match-default.solc" caseFolder,
       runTestForFile "word-match.solc" caseFolder,
       runTestExpectingFailure "xref.solc" caseFolder,
       runTestForFile "yul-function-typing.solc" caseFolder,
