@@ -371,6 +371,7 @@ emitWordMatch scrutinee alts = do
       hullStmts <- emitStmts stmts
       let hullName = show n
       return (Hull.Alt (Hull.PVar hullName) "$_" hullStmts)
+    emitWordAlt _ (MastPExp _, _) = errorsEM ["PANIC: MastPExp reached EmitHull — was not evaluated by MastEval"]
     emitWordAlt _ (pat, _) = errorsEM ["emitWordAlt not implemented for", show pat]
 
 type BranchMap = Map.Map Name [Hull.Stmt]

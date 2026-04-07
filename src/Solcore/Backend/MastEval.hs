@@ -196,8 +196,19 @@ evalAlt :: VEnv -> MastAlt -> EvalM MastAlt
 evalAlt env (pat, body) = do
   -- Pattern bindings shadow existing bindings, but we don't track them
   -- (conservative: treat all pattern-bound vars as unknown)
+  pat' <- evalPat env pat
   (_, body') <- evalStmts env body
-  pure (pat, body')
+  pure (pat', body')
+
+-- Evaluate expression labels in patterns.
+-- MastPExp must reduce to a literal; any other form is a compile-time error.
+evalPat :: VEnv -> MastPat -> EvalM MastPat
+evalPat env (MastPExp e) = do
+  e' <- evalExp env e
+  case e' of
+    MastLit l -> pure (MastPLit l)
+    _ -> error $ "comptime expression in match label could not be evaluated to a literal: " ++ show e'
+evalPat _ pat = pure pat
 
 -----------------------------------------------------------------------
 -- Evaluate expressions
@@ -333,7 +344,8 @@ evalFunBody env (stmt : rest) = case stmt of
     pure $ if isKnownValue e' then Just e' else Nothing
   MastMatch scrut alts -> do
     scrut' <- evalExp env scrut
-    case matchAlts env scrut' alts of
+    alts' <- mapM (\(p, b) -> (,b) <$> evalPat env p) alts
+    case matchAlts env scrut' alts' of
       Just (env', body) -> evalFunBody env' body
       Nothing -> pure Nothing -- Scrutinee not known, can't select branch
   MastAsm _ -> pure Nothing -- Should not happen: purity analysis excludes asm functions
@@ -373,6 +385,7 @@ findLitMatch env lit ((pat, body) : rest) =
       let env' = Map.insert varId (MastLit lit) env
        in Just (env', body)
     MastPWildcard -> Just (env, body)
+    MastPExp _ -> error "PANIC: MastPExp reached findLitMatch — evalAlt failed to evaluate it"
     _ -> findLitMatch env lit rest
 
 -- Bind pattern variables to argument expressions
@@ -401,6 +414,7 @@ bindPatterns env (pat : pats) (arg : args) =
       case arg of
         MastLit argLit | argLit == patLit -> bindPatterns env pats args
         _ -> Nothing
+    MastPExp _ -> error "PANIC: MastPExp reached bindPatterns — evalAlt failed to evaluate it"
 
 -----------------------------------------------------------------------
 -- Helpers

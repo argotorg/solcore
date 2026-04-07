@@ -141,12 +141,12 @@ compileMatrix tys occs matrix bacts = do
     (testTy : restTys, testOcc : restOccs, _) -> do
       let firstCol = [p | (p : _) <- matrix']
           headCons = nub (mapMaybe patHeadCon firstCol)
-          headLits = nub (mapMaybe patHeadLit firstCol)
-      case (headCons, headLits) of
+          headAtomics = nub (mapMaybe patHeadAtomic firstCol)
+      case (headCons, headAtomics) of
         (c : cs, _) ->
           buildConSwitch testOcc restOccs testTy restTys matrix' bacts (c : cs)
-        ([], ls@(_ : _)) ->
-          buildLitSwitch testOcc restOccs testTy restTys matrix' bacts ls
+        ([], as@(_ : _)) ->
+          buildAtomicSwitch testOcc restOccs testTy restTys matrix' bacts as
         ([], []) ->
           -- All wildcards after reordering: strip column and continue
           compileMatrix restTys restOccs (defaultMatrix matrix') (defaultBoundActs testOcc matrix' bacts)
@@ -220,34 +220,34 @@ buildConSwitch testOcc restOccs _testTy restTys matrix bacts headCons = do
               pure (Just Fail)
             else Just <$> compileMatrix restTys restOccs defMat defBacts
 
-buildLitSwitch ::
+buildAtomicSwitch ::
   Occurrence ->
   [Occurrence] ->
   Ty ->
   [Ty] ->
   PatternMatrix ->
   [BoundAction] ->
-  [Literal] ->
+  [AtomicPat] ->
   CompilerM DecisionTree
-buildLitSwitch testOcc restOccs testTy restTys matrix bacts headLits = do
-  branches <- mapM buildBranch headLits
+buildAtomicSwitch testOcc restOccs testTy restTys matrix bacts headAtomics = do
+  branches <- mapM buildBranch headAtomics
   let defMat = defaultMatrix matrix
       defBacts = defaultBoundActs testOcc matrix bacts
   mDefault <-
     if null defMat
       then do
-        litWit <- freshPat testTy
+        wit <- freshPat testTy
         restWit <- mapM freshPat restTys
         ctx <- askWarnCtx
-        tell [NonExhaustive ctx (litWit : restWit)]
+        tell [NonExhaustive ctx (wit : restWit)]
         pure (Just Fail)
       else Just <$> compileMatrix restTys restOccs defMat defBacts
-  pure (LitSwitch testOcc branches mDefault)
+  pure (AtomicSwitch testOcc branches mDefault)
   where
-    buildBranch lit = do
-      let specMat = specializeLit lit matrix
-          specBacts = litSpecializedBoundActs lit testOcc matrix bacts
-      (lit,) <$> compileMatrix restTys restOccs specMat specBacts
+    buildBranch ap = do
+      let specMat = specializeAtomic ap matrix
+          specBacts = atomicSpecializedBoundActs ap testOcc matrix bacts
+      (ap,) <$> compileMatrix restTys restOccs specMat specBacts
 
 instance Compile (Exp Id) where
   compile v@(Var _) =
@@ -303,9 +303,9 @@ treeToStmt occMap (Switch occ branches mDef) = do
       v <- freshPat ty
       pure [([v], body)]
   pure (Match [scrutinee] (eqns ++ defEqns))
-treeToStmt occMap (LitSwitch occ branches mDef) = do
+treeToStmt occMap (AtomicSwitch occ branches mDef) = do
   scrutinee <- occToExp occMap occ
-  eqns <- mapM (litBranchToEqn occMap) branches
+  eqns <- mapM (atomicBranchToEqn occMap) branches
   defEqns <- case mDef of
     Nothing -> pure []
     Just def -> do
@@ -349,10 +349,13 @@ conBranchToEqn occMap occ (k, srcPats, tree) = do
   body <- treeToBody occMap' tree
   pure ([PCon k srcPats], body)
 
-litBranchToEqn :: OccMap -> (Literal, DecisionTree) -> CompilerM (PatternRow, Action)
-litBranchToEqn occMap (lit, tree) = do
+atomicBranchToEqn :: OccMap -> (AtomicPat, DecisionTree) -> CompilerM (PatternRow, Action)
+atomicBranchToEqn occMap (Left lit, tree) = do
   body <- treeToBody occMap tree
   pure ([PLit lit], body)
+atomicBranchToEqn occMap (Right e, tree) = do
+  body <- treeToBody occMap tree
+  pure ([PExp e], body)
 
 -- definition of a monad
 
@@ -445,8 +448,13 @@ data DecisionTree
   = Leaf [(Id, Occurrence)] Action -- var-occ bindings to substitute before running action
   | Fail
   | Switch Occurrence [(Id, [Pattern], DecisionTree)] (Maybe DecisionTree)
-  | LitSwitch Occurrence [(Literal, DecisionTree)] (Maybe DecisionTree)
+  | AtomicSwitch Occurrence [(AtomicPat, DecisionTree)] (Maybe DecisionTree)
   deriving (Eq, Show)
+
+-- An atomic pattern is a compile-time value used as a match label.
+-- Left  = integer literal (already evaluated)
+-- Right = comptime expression (evaluated post-specialization by MastEval)
+type AtomicPat = Either Literal (Exp Id)
 
 -- data constructor information and environment
 
@@ -529,20 +537,22 @@ specRow k pats (p : rest) =
       | otherwise -> Nothing
     PVar _ -> Just (pats ++ rest)
     PLit _ -> Nothing
+    PExp _ -> Nothing
     _ -> error "PANIC! Found wildcard in specRow"
 
-specializeLit :: Literal -> PatternMatrix -> PatternMatrix
-specializeLit lit = mapMaybe specLitRow
+specializeAtomic :: AtomicPat -> PatternMatrix -> PatternMatrix
+specializeAtomic ap = mapMaybe specAtomicRow
   where
-    specLitRow [] = Nothing
-    specLitRow (p : rest) =
+    specAtomicRow [] = Nothing
+    specAtomicRow (p : rest) =
       case p of
-        PLit l
-          | l == lit -> Just rest
-          | otherwise -> Nothing
+        PLit l | Left l == ap -> Just rest
+        PLit _ -> Nothing
+        PExp e | Right e == ap -> Just rest
+        PExp _ -> Nothing
         PVar _ -> Just rest
         PCon _ _ -> Nothing
-        _ -> error "PANIC! Found wildcard in specializeLit"
+        _ -> error "PANIC! Found wildcard in specializeAtomic"
 
 -- matrix definitions
 
@@ -555,6 +565,7 @@ defaultMatrix = concatMap defaultRow
         PVar _ -> [rest]
         PCon _ _ -> []
         PLit _ -> []
+        PExp _ -> []
         _ -> error "PANIC! Found wildcard in defaultMatrix"
 
 specializedBoundActs :: Id -> Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
@@ -569,6 +580,7 @@ specializedBoundActs k testOcc rows bacts =
       PCon k' _ -> idName k' == idName k
       PVar _ -> True
       PLit _ -> False
+      PExp _ -> False
       PWildcard -> error "PANIC! Found wildcard in specializedBoundActs"
     addVarBinding (PVar v : _) binds = binds ++ [(v, testOcc)]
     addVarBinding _ binds = binds
@@ -585,16 +597,17 @@ defaultBoundActs testOcc rows bacts =
     addVarBinding (PVar v : _) binds = binds ++ [(v, testOcc)]
     addVarBinding _ binds = binds
 
-litSpecializedBoundActs :: Literal -> Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
-litSpecializedBoundActs lit testOcc rows bacts =
+atomicSpecializedBoundActs :: AtomicPat -> Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
+atomicSpecializedBoundActs ap testOcc rows bacts =
   [ (addVarBinding row binds, a)
     | (row, (binds, a)) <- zip rows bacts,
-      rowMatchesLit row
+      rowMatchesAtomic row
   ]
   where
-    rowMatchesLit [] = False
-    rowMatchesLit (p : _) = case p of
-      PLit l -> l == lit
+    rowMatchesAtomic [] = False
+    rowMatchesAtomic (p : _) = case p of
+      PLit l -> Left l == ap
+      PExp e -> Right e == ap
       PVar _ -> True
       _ -> False
     addVarBinding (PVar v : _) binds = binds ++ [(v, testOcc)]
@@ -662,9 +675,10 @@ patHeadCon :: Pattern -> Maybe Id
 patHeadCon (PCon k _) = Just k
 patHeadCon _ = Nothing
 
-patHeadLit :: Pattern -> Maybe Literal
-patHeadLit (PLit l) = Just l
-patHeadLit _ = Nothing
+patHeadAtomic :: Pattern -> Maybe AtomicPat
+patHeadAtomic (PLit l) = Just (Left l)
+patHeadAtomic (PExp e) = Just (Right e)
+patHeadAtomic _ = Nothing
 
 -- redundancy checking (pre-pass over the original matrix)
 
@@ -692,7 +706,9 @@ isUseful tys matrix (q1 : qRest) =
       specMat <- specialize k fieldTys matrix
       isUseful (fieldTys ++ drop 1 tys) specMat (ps ++ qRest)
     PLit l ->
-      isUseful (drop 1 tys) (specializeLit l matrix) qRest
+      isUseful (drop 1 tys) (specializeAtomic (Left l) matrix) qRest
+    PExp _ ->
+      pure True -- conservative: expression labels are always considered useful
     PVar _ ->
       case tys of
         [] -> pure False
@@ -718,10 +734,10 @@ inhabitsM _ [] = pure Nothing
 inhabitsM matrix (ty : restTys) = do
   let firstCol = [p | (p : _) <- matrix]
       headCons = nub (mapMaybe patHeadCon firstCol)
-      headLits = nub (mapMaybe patHeadLit firstCol)
-  case (headCons, headLits) of
+      headAtomics = nub (mapMaybe patHeadAtomic firstCol)
+  case (headCons, headAtomics) of
     (cs@(_ : _), _) -> inhabitsConCol matrix ty restTys cs
-    ([], _ : _) -> inhabitsLitCol matrix ty restTys
+    ([], _ : _) -> inhabitsAtomCol matrix ty restTys
     ([], []) -> do
       r <- inhabitsM (defaultMatrix matrix) restTys
       case r of
@@ -764,8 +780,8 @@ inhabitsConCol matrix _ty restTys headCons =
           let (fieldWit, restWit) = splitAt (length fieldTys) wit
           pure (Just (PCon k fieldWit : restWit))
 
-inhabitsLitCol :: PatternMatrix -> Ty -> [Ty] -> CompilerM (Maybe [Pattern])
-inhabitsLitCol matrix ty restTys = do
+inhabitsAtomCol :: PatternMatrix -> Ty -> [Ty] -> CompilerM (Maybe [Pattern])
+inhabitsAtomCol matrix ty restTys = do
   r <- inhabitsM (defaultMatrix matrix) restTys
   case r of
     Nothing -> pure Nothing

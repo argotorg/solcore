@@ -2,6 +2,7 @@ module MatchCompilerTests where
 
 import Data.List (sort)
 import Data.Map qualified as Map
+import Data.Maybe (mapMaybe)
 import Solcore.Desugarer.DecisionTreeCompiler
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
@@ -136,8 +137,8 @@ branchNames bs = sort [nameOf (idName k) | (k, _, _) <- bs]
   where
     nameOf n = pretty n
 
-branchLits :: [(Literal, DecisionTree)] -> [Literal]
-branchLits = map fst
+branchLits :: [(AtomicPat, DecisionTree)] -> [Literal]
+branchLits = mapMaybe (either Just (const Nothing) . fst)
 
 tyBool :: Ty
 tyBool = TyCon (Name "Bool") []
@@ -395,10 +396,10 @@ test_twoColumn_completeCover_noWarnings =
     assertInnerHasNoDefault t =
       assertFailure ("inner subtree should have no default branch, got: " ++ show t)
 
--- 8. Literal patterns with a variable catch-all → LitSwitch with Leaf default, no warnings
+-- 8. Literal patterns with a variable catch-all → AtomicSwitch with Leaf default, no warnings
 test_litPats_withVarDefault_noWarnings :: TestTree
 test_litPats_withVarDefault_noWarnings =
-  testCase "lit patterns with variable fallback -> LitSwitch with Leaf default, no warnings"
+  testCase "lit patterns with variable fallback -> AtomicSwitch with Leaf default, no warnings"
     $ assertRight
       "lit-default"
       ( runMatrix
@@ -410,7 +411,7 @@ test_litPats_withVarDefault_noWarnings =
       )
     $ \tree warns -> do
       case tree of
-        LitSwitch [0] branches (Just (Leaf _ defAct)) -> do
+        AtomicSwitch [0] branches (Just (Leaf _ defAct)) -> do
           assertBool
             "should have literal 0 branch"
             (IntLit 0 `elem` branchLits branches)
@@ -419,15 +420,15 @@ test_litPats_withVarDefault_noWarnings =
             (IntLit 1 `elem` branchLits branches)
           assertEqual "default leaf should be actionC" actionC defAct
           assertBool "should have no warnings:" (null warns)
-        LitSwitch _ _ Nothing ->
+        AtomicSwitch _ _ Nothing ->
           assertFailure "expected a default branch for the variable catch-all"
         _ ->
-          assertFailure ("expected LitSwitch, got: " ++ show tree)
+          assertFailure ("expected AtomicSwitch, got: " ++ show tree)
 
--- 9. Literal patterns without a catch-all → LitSwitch with Fail default + NonExhaustive
+-- 9. Literal patterns without a catch-all → AtomicSwitch with Fail default + NonExhaustive
 test_litPats_noDefault_nonExhaustive :: TestTree
 test_litPats_noDefault_nonExhaustive =
-  testCase "lit patterns without catch-all -> LitSwitch with Fail default and NonExhaustive"
+  testCase "lit patterns without catch-all -> AtomicSwitch with Fail default and NonExhaustive"
     $ assertRight
       "lit-no-default"
       ( runMatrix
@@ -439,7 +440,7 @@ test_litPats_noDefault_nonExhaustive =
       )
     $ \tree warns -> do
       case tree of
-        LitSwitch [0] branches (Just Fail) -> do
+        AtomicSwitch [0] branches (Just Fail) -> do
           assertBool
             "should have literal 0 branch"
             (IntLit 0 `elem` branchLits branches)
@@ -448,7 +449,7 @@ test_litPats_noDefault_nonExhaustive =
             (IntLit 1 `elem` branchLits branches)
           assertBool "should emit NonExhaustive warning" (any isNonExh warns)
         _ ->
-          assertFailure ("expected LitSwitch … (Just Fail), got: " ++ show tree)
+          assertFailure ("expected AtomicSwitch … (Just Fail), got: " ++ show tree)
 
 -- 10. Constructor absent from the TypeEnv → Left error
 test_unknownConstructor_isError :: TestTree

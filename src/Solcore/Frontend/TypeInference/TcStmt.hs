@@ -173,6 +173,18 @@ tcPat t' (PLit l) =
     t <- tcLit l
     s <- unify t t'
     pure (PLit l, apply s t, [])
+tcPat t' (PExp e) =
+  do
+    (e', _ps, t) <- tcExp e
+    -- _ps (predicates) are discarded: comptime expression labels have concrete
+    -- numeric types resolved by unification with the scrutinee, so constraints
+    -- are solved implicitly. A fuller implementation would thread _ps upward.
+    s <- unify t t'
+    numericOk <- isNumericTy (apply s t)
+    unless numericOk $
+      tcmError $
+        "expression match label must have a numeric type, got: " ++ pretty (apply s t)
+    withCurrentSubst (PExp (apply s e'), apply s t, [])
 
 -- type inference for expressions
 

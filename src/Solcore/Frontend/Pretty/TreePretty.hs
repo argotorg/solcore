@@ -330,6 +330,8 @@ instance Pretty Pat where
     text "_"
   ppr (PLit l) =
     ppr l
+  ppr (PExp e) =
+    text "comptime" <+> ppr e
 
 instance Pretty Literal where
   ppr (IntLit l) = integer (toInteger l)
