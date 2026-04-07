@@ -98,3 +98,5 @@ instance Erase (Pat Id) where
     PWildcard
   erase (PLit l) =
     PLit l
+  erase (PExp e) =
+    PExp (erase e)

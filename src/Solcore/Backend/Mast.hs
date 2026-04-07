@@ -125,6 +125,7 @@ data MastPat
   | MastPCon MastId [MastPat]
   | MastPWildcard
   | MastPLit Literal
+  | MastPExp MastExp -- comptime expression label; must be evaluated by MastEval
   deriving (Eq, Ord, Show)
 
 -----------------------------------------------------------------------
@@ -269,6 +270,7 @@ instance Pretty MastPat where
     | otherwise = ppr n >< parens (commaSep $ map ppr ps)
   ppr MastPWildcard = text "_"
   ppr (MastPLit l) = ppr l
+  ppr (MastPExp e) = text "comptime" <+> ppr e
 
 -----------------------------------------------------------------------
 -- Helpers (shared with SolcorePretty)

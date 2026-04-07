@@ -57,6 +57,7 @@ desugarBoolPat (PCon c@(Id n _) ps)
 desugarBoolPat (PVar a) = PVar a
 desugarBoolPat PWildcard = PWildcard
 desugarBoolPat (PLit l) = PLit l
+desugarBoolPat (PExp e) = PExp e
 
 -- desugaring the boolean type constructor
 
