@@ -240,6 +240,7 @@ data Pat
   = Pat Name [Pat]
   | PWildcard
   | PLit Literal
+  | PExp Exp -- comptime expression label (numeric matches only)
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of literals
