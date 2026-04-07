@@ -244,10 +244,10 @@ buildAtomicSwitch testOcc restOccs testTy restTys matrix bacts headAtomics = do
       else Just <$> compileMatrix restTys restOccs defMat defBacts
   pure (AtomicSwitch testOcc branches mDefault)
   where
-    buildBranch ap = do
-      let specMat = specializeAtomic ap matrix
-          specBacts = atomicSpecializedBoundActs ap testOcc matrix bacts
-      (ap,) <$> compileMatrix restTys restOccs specMat specBacts
+    buildBranch apat = do
+      let specMat = specializeAtomic apat matrix
+          specBacts = atomicSpecializedBoundActs apat testOcc matrix bacts
+      (apat,) <$> compileMatrix restTys restOccs specMat specBacts
 
 instance Compile (Exp Id) where
   compile v@(Var _) =
@@ -541,14 +541,14 @@ specRow k pats (p : rest) =
     _ -> error "PANIC! Found wildcard in specRow"
 
 specializeAtomic :: AtomicPat -> PatternMatrix -> PatternMatrix
-specializeAtomic ap = mapMaybe specAtomicRow
+specializeAtomic apat = mapMaybe specAtomicRow
   where
     specAtomicRow [] = Nothing
     specAtomicRow (p : rest) =
       case p of
-        PLit l | Left l == ap -> Just rest
+        PLit l | Left l == apat -> Just rest
         PLit _ -> Nothing
-        PExp e | Right e == ap -> Just rest
+        PExp e | Right e == apat -> Just rest
         PExp _ -> Nothing
         PVar _ -> Just rest
         PCon _ _ -> Nothing
@@ -598,7 +598,7 @@ defaultBoundActs testOcc rows bacts =
     addVarBinding _ binds = binds
 
 atomicSpecializedBoundActs :: AtomicPat -> Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
-atomicSpecializedBoundActs ap testOcc rows bacts =
+atomicSpecializedBoundActs apat testOcc rows bacts =
   [ (addVarBinding row binds, a)
     | (row, (binds, a)) <- zip rows bacts,
       rowMatchesAtomic row
@@ -606,8 +606,8 @@ atomicSpecializedBoundActs ap testOcc rows bacts =
   where
     rowMatchesAtomic [] = False
     rowMatchesAtomic (p : _) = case p of
-      PLit l -> Left l == ap
-      PExp e -> Right e == ap
+      PLit l -> Left l == apat
+      PExp e -> Right e == apat
       PVar _ -> True
       _ -> False
     addVarBinding (PVar v : _) binds = binds ++ [(v, testOcc)]
