@@ -7,7 +7,7 @@ where
 
 {- Partial Evaluator for Mast
    Performs compile-time evaluation where possible:
-   - Folds calls to `addWord`, `gtWord`, `eqWord` with literal arguments
+   - Folds calls to `addWord`, `subWord`, `mulWord`, `gtWord`, `eqWord` with literal arguments
    - Propagates known variable values
    - Inlines simple pure functions with literal arguments
 -}
@@ -256,6 +256,8 @@ evalPrimitive (Name "addWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (MastLit (IntLit (a + b)))
 evalPrimitive (Name "subWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (MastLit (IntLit (a - b)))
+evalPrimitive (Name "mulWord") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (a * b)))
 evalPrimitive (Name "gtWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just $ mkBool (a > b)
 evalPrimitive (Name "eqWord") [MastLit (IntLit a), MastLit (IntLit b)] =
@@ -437,6 +439,7 @@ builtinPureFuns =
   Set.fromList
     [ Name "addWord",
       Name "subWord",
+      Name "mulWord",
       Name "gtWord",
       Name "eqWord",
       Name "concatLit",
