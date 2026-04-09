@@ -4,7 +4,7 @@ module Solcore.Desugarer.FieldAccess (fieldDesugarer) where
 
 import Control.Monad.Reader (MonadReader (..))
 -- import Data.Generics(Data, mkT, everywhere)
-import Data.List (foldl', mapAccumL)
+import Data.List (mapAccumL)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (isJust)
