@@ -39,8 +39,6 @@ common common-opts
     , time
     , timeit
 
-  build-tool-depends: happy:happy, alex:alex
-
   default-language: Haskell2010
   default-extensions: OverloadedStrings
                       FlexibleInstances
@@ -57,6 +55,7 @@ common common-opts
 
 library
   import: common-opts
+  build-tool-depends: happy:happy, alex:alex
 
   -- cabal-fmt: expand src
   exposed-modules:
@@ -146,6 +145,45 @@ executable yule
                       sol-core
     ghc-options:
       -rtsopts
+
+executable csol
+    main-is:          Main.hs
+    hs-source-dirs:   cli, yule
+    default-language: Haskell2010
+    default-extensions:
+      LambdaCase
+      OverloadedStrings
+      FlexibleInstances
+      FlexibleContexts
+      PatternSynonyms
+      BlockArguments
+      DeriveDataTypeable
+      ImportQualifiedPost
+      ScopedTypeVariables
+    other-modules:
+      Csol.Build
+      Csol.BuildOpts
+      Locus
+      Options
+      TM
+      Translate
+      Builtins
+      Compress
+      Pipeline
+    build-depends:
+      base >= 4.19.0.0,
+      containers,
+      directory,
+      filepath,
+      mtl,
+      megaparsec >= 9.6,
+      parser-combinators >= 1.3,
+      optparse-applicative,
+      pretty,
+      process,
+      sol-core
+    ghc-options:
+      -O1 -rtsopts
 
 test-suite sol-core-tests
   import: common-opts
