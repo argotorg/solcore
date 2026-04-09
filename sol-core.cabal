@@ -60,6 +60,7 @@ library
 
   -- cabal-fmt: expand src
   exposed-modules:
+      Solcore.Backend.ComptimeCheck
       Solcore.Backend.EmitHull
       Solcore.Backend.Mast
       Solcore.Backend.MastEval

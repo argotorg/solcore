@@ -32,7 +32,17 @@ comptime =
       runTestForFile "string-lit-ops.solc" comptimeFolder,
       runTestForFile "string-lit-len.solc" comptimeFolder,
       runTestForFile "string-lit-keccak.solc" comptimeFolder,
-      runTestForFile "comptime_syntax.solc" comptimeFolder
+      runTestForFile "comptime_syntax.solc" comptimeFolder,
+      -- comptime verification: positive cases (must compile)
+      runTestForFile "ct_param_ok.solc" comptimeFolder,
+      runTestForFile "ct_chain_ok.solc" comptimeFolder,
+      runTestForFile "ct_let_ok.solc" comptimeFolder,
+      runTestForFile "ct_overloaded_ok.solc" comptimeFolder,
+      -- comptime verification: negative cases (must be rejected)
+      runTestExpectingFailure "ct_runtime_arg.solc" comptimeFolder,
+      runTestExpectingFailure "ct_let_runtime.solc" comptimeFolder,
+      runTestExpectingFailure "ct_asm_ret.solc" comptimeFolder,
+      runTestExpectingFailure "ct_overloaded_bad.solc" comptimeFolder
     ]
   where
     comptimeFolder = "./test/examples/comptime"

@@ -2,6 +2,9 @@ module Solcore.Backend.MastEval
   ( evalCompUnit,
     defaultFuel,
     eliminateDeadCode,
+    FunTable,
+    buildFunTable,
+    computePureFuns,
   )
 where
 

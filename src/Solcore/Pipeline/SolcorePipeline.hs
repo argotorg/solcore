@@ -8,6 +8,7 @@ import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
 
+import Solcore.Backend.ComptimeCheck (checkComptime)
 import Solcore.Backend.EmitHull (emitHull)
 import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
@@ -203,6 +204,9 @@ compile opts = runExceptT $ do
       liftIO $ when (optDumpSpec opts) $ do
         putStrLn "> After dead code elimination:"
         putStrLn (pretty optimized)
+
+      -- Comptime verification: check comptime annotations are satisfied
+      ExceptT $ return $ checkComptime optimized
 
       hull <-
         liftIO $
