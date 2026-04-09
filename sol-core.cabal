@@ -163,6 +163,7 @@ test-suite sol-core-tests
   other-modules:
     Cases
     MatchCompilerTests
+    YulEvalTests
 
   build-depends:
     , sol-core
