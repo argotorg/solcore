@@ -135,7 +135,7 @@ executable yule
       BlockArguments
       ImportQualifiedPost
     other-modules: Locus, Options, TM, Translate, Builtins, Compress, Pipeline
-    build-depends:    base ^>=4.19.1.0,
+    build-depends:    base >= 4.19.0.0,
                       pretty >=  1.1,
                       containers >= 0.6,
                       mtl >= 2.3,
@@ -160,9 +160,15 @@ executable csol
       DeriveDataTypeable
       ImportQualifiedPost
       ScopedTypeVariables
+      TypeApplications
+      OverloadedLabels
     other-modules:
       Csol.Build
       Csol.BuildOpts
+      Csol.Exec
+      Csol.Run
+      Csol.RunOpts
+      -- yule modules (hs-source-dirs includes yule/)
       Locus
       Options
       TM
@@ -172,16 +178,26 @@ executable csol
       Pipeline
     build-depends:
       base >= 4.19.0.0,
+      aeson,
+      base16-bytestring,
+      bytestring,
       containers,
       directory,
       filepath,
+      hevm,
+      lens,
+      lens-aeson,
       mtl,
       megaparsec >= 9.6,
       parser-combinators >= 1.3,
       optparse-applicative,
       pretty,
       process,
-      sol-core
+      sol-core,
+      split,
+      temporary,
+      text,
+      transformers
     ghc-options:
       -O1 -rtsopts
 
