@@ -39,6 +39,8 @@ comptime =
       runTestForFile "ct_let_ok.solc" comptimeFolder,
       runTestForFile "ct_overloaded_ok.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
+      runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
+      runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_runtime_arg.solc" comptimeFolder,
       runTestExpectingFailure "ct_let_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_asm_ret.solc" comptimeFolder,

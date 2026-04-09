@@ -20,6 +20,7 @@ import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
+import Solcore.Frontend.ComptimeCheck (checkComptimeEarly)
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
@@ -148,6 +149,9 @@ compile opts = runExceptT $ do
     mapM_ putStrLn (reverse $ logs tcEnv)
     putStrLn "> Elaborated tree:"
     putStrLn $ pretty typed
+
+  -- SAIL-level comptime verification
+  ExceptT $ return $ checkComptimeEarly typed
 
   -- If / boolean desugaring
   desugared <-
