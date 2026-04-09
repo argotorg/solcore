@@ -22,7 +22,7 @@
           inherit system;
           overlays = [ inputs.foundry.overlay ];
         };
-        hspkgs = pkgs.haskell.packages.ghc98;
+        hspkgs = pkgs.haskell.packages.ghc910;
 
         gitignore = pkgs.nix-gitignore.gitignoreSourcePure [ ./.gitignore ];
         sol-core = pkgs.haskell.lib.overrideCabal
