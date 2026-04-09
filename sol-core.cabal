@@ -135,7 +135,7 @@ executable yule
       PatternSynonyms
       BlockArguments
       ImportQualifiedPost
-    other-modules: Locus, Options, TM, Translate, Builtins, Compress
+    other-modules: Locus, Options, TM, Translate, Builtins, Compress, Pipeline
     build-depends:    base ^>=4.19.1.0,
                       pretty >=  1.1,
                       containers >= 0.6,
