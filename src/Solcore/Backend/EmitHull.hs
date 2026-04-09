@@ -160,7 +160,7 @@ emitFunDef fd = withContext (show (mastFunName fd)) do
   return [hullFun]
 
 translateParam :: MastParam -> EM Hull.Arg
-translateParam (MastParam n t) = Hull.TArg (show n) <$> translateMastType t
+translateParam (MastParam n _ct t) = Hull.TArg (show n) <$> translateMastType t
 
 -----------------------------------------------------------------------
 -- Translating types and value constructors
