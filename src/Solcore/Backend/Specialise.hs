@@ -230,7 +230,7 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
   -- Deployer code
   modify (\st -> st {specTable = emptyTable})
   -- let deployerName = Name (pretty name <> "$Deployer")
-  mStart <- specEntry "start"
+  mStart <- specEntryOpt "start"
   deployDecls <- case mStart of
     Just {} -> do
       depDecls <- getSpecialisedDecls
@@ -252,16 +252,23 @@ specialiseTopDecl d@TDataDef {} = pure [d]
 specialiseTopDecl _ = pure []
 
 specEntry :: Name -> SM (Maybe Name)
-specEntry name = withLocalState do
+specEntry name = do
+  mres <- specEntryOpt name
+  when (null mres) $ warns ["!! Warning: no resolution found for ", show name]
+  pure mres
+
+-- | Like 'specEntry' but silently returns Nothing when the name is absent.
+-- Use for optional entry points (e.g. "start") that may not exist when
+-- contract dispatch generation is disabled.
+specEntryOpt :: Name -> SM (Maybe Name)
+specEntryOpt name = withLocalState do
   let anytype = TyVar (TVar (Name "any"))
   mres <- lookupResolution name anytype
   case mres of
     Just (fd, ty, subst) -> do
       debug ["< resolution: ", show name, " : ", pretty ty, "@", pretty subst]
       Just <$> specFunDef fd
-    Nothing -> do
-      warns ["!! Warning: no resolution found for ", show name]
-      pure Nothing
+    Nothing -> pure Nothing
 
 addContractResolutions :: Contract Id -> SM ()
 addContractResolutions (Contract _name _args cdecls) = do
