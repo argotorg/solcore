@@ -560,8 +560,8 @@ defaultMatrix = concatMap defaultRow
 specializedBoundActs :: Id -> Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
 specializedBoundActs k testOcc rows bacts =
   [ (addVarBinding row binds, a)
-    | (row, (binds, a)) <- zip rows bacts,
-      rowMatchesCon row
+  | (row, (binds, a)) <- zip rows bacts,
+    rowMatchesCon row
   ]
   where
     rowMatchesCon [] = False
@@ -576,10 +576,10 @@ specializedBoundActs k testOcc rows bacts =
 defaultBoundActs :: Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
 defaultBoundActs testOcc rows bacts =
   [ (addVarBinding row binds, a)
-    | (row, (binds, a)) <- zip rows bacts,
-      case row of
-        (p : _) -> isVarPat p
-        [] -> False
+  | (row, (binds, a)) <- zip rows bacts,
+    case row of
+      (p : _) -> isVarPat p
+      [] -> False
   ]
   where
     addVarBinding (PVar v : _) binds = binds ++ [(v, testOcc)]
@@ -588,8 +588,8 @@ defaultBoundActs testOcc rows bacts =
 litSpecializedBoundActs :: Literal -> Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
 litSpecializedBoundActs lit testOcc rows bacts =
   [ (addVarBinding row binds, a)
-    | (row, (binds, a)) <- zip rows bacts,
-      rowMatchesLit row
+  | (row, (binds, a)) <- zip rows bacts,
+    rowMatchesLit row
   ]
   where
     rowMatchesLit [] = False

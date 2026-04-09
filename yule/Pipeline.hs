@@ -39,9 +39,10 @@ lower options inputObject = do
 -- wrap in a Yul object with the given name, returning (finalName, doc)
 wrapInObject' :: Bool -> YulObject -> (String, Doc)
 wrapInObject' deploy yulo@(YulObject name code inners)
-  | deploy    = let deployed = createDeployment yulo
-                    YulObject dname _ _ = deployed
-                in (dname, ppr deployed)
+  | deploy =
+      let deployed = createDeployment yulo
+          YulObject dname _ _ = deployed
+       in (dname, ppr deployed)
   | otherwise = (name, ppr (YulObject name (addRetCode code) inners))
 
 addRetCode :: YulCode -> YulCode
