@@ -31,6 +31,10 @@ paramName :: Param a -> a
 paramName (Typed _ n _) = n
 paramName (Untyped _ n) = n
 
+paramComptime :: Param a -> Bool
+paramComptime (Typed ct _ _) = ct
+paramComptime (Untyped ct _) = ct
+
 -- definition of the expression syntax
 
 data Exp a
