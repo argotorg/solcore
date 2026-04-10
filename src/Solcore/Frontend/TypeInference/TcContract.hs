@@ -41,16 +41,25 @@ buildSynTable :: [TySym] -> SynTable
 buildSynTable syns =
   Map.fromList [(symName s, SynInfo (length (symVars s)) (symVars s) (symType s)) | s <- syns]
 
--- Pure recursive expansion of a single Ty using a SynTable
-expandTyPure :: SynTable -> Ty -> Ty
-expandTyPure st (TyCon n ts) =
-  let ts' = map (expandTyPure st) ts
-   in case Map.lookup n st of
-        Just (SynInfo _ params body)
-          | length params == length ts' -> expandTyPure st (insts (zip params ts') body)
-        _ -> TyCon n ts'
-expandTyPure st (t1 :-> t2) = expandTyPure st t1 :-> expandTyPure st t2
-expandTyPure _ t = t
+-- Monadic recursive expansion of a single Ty using a SynTable.
+-- Reports an error when a synonym is applied to the wrong number of arguments.
+expandTyM :: SynTable -> Ty -> TcM Ty
+expandTyM st (TyCon n ts) = do
+  ts' <- mapM (expandTyM st) ts
+  case Map.lookup n st of
+    Just (SynInfo _ params body)
+      | length params == length ts' ->
+          expandTyM st (insts (zip params ts') body)
+      | otherwise ->
+          throwError $
+            unlines
+              [ "Type synonym arity mismatch for '" ++ pretty n ++ "':",
+                "  expected " ++ show (length params) ++ " argument(s)",
+                "  but got  " ++ show (length ts')
+              ]
+    Nothing -> pure (TyCon n ts')
+expandTyM st (t1 :-> t2) = (:->) <$> expandTyM st t1 <*> expandTyM st t2
+expandTyM _ t = pure t
 
 tcCompUnit :: CompUnit Name -> TcM (CompUnit Id)
 tcCompUnit (CompUnit imps cs) =
@@ -58,7 +67,7 @@ tcCompUnit (CompUnit imps cs) =
     setupPragmas ps
     checkSynonymCycles syns
     let st = buildSynTable syns
-        cs' = everywhere (mkT (expandTyPure st)) cs
+    cs' <- everywhereM (mkM (expandTyM st)) cs
     mapM_ checkTopDecl (filter isClass cs')
     mapM_ checkTopDecl (filter (not . isClass) cs')
     typedDecls <- mapM tcTopDecl' cs'

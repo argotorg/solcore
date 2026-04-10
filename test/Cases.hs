@@ -242,6 +242,7 @@ cases =
       runTestExpectingFailure "synonym-recursive.solc" caseFolder,
       runTestExpectingFailure "synonym-self-recursive.solc" caseFolder,
       runTestExpectingFailure "synonym-long-cycle.solc" caseFolder,
+      runTestExpectingFailure "synonym-arity-mismatch.solc" caseFolder,
       runTestExpectingFailure "signature.solc" caseFolder,
       runTestExpectingFailure "SillyReturn.solc" caseFolder,
       runTestExpectingFailure "SimpleInvoke.solc" caseFolder,
