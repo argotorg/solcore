@@ -141,19 +141,7 @@ matchTy t t' =
     extSubst s
 
 tcmMatch :: Ty -> Ty -> TcM Subst
-tcmMatch t u = do
-  result <- tryMatch t u
-  case result of
-    Right s -> pure s
-    Left err -> do
-      t' <- maybeExpandSynonym t
-      u' <- maybeExpandSynonym u
-      if t' == t && u' == u
-        then throwError err
-        else tcmMatch t' u'
-  where
-    tryMatch :: Ty -> Ty -> TcM (Either String Subst)
-    tryMatch t1 t2 = catchError (Right <$> match t1 t2) (pure . Left)
+tcmMatch t u = catchError (match t u) throwError
 
 addFunctionName :: Name -> TcM ()
 addFunctionName n =
@@ -191,44 +179,24 @@ kindCheck (t1 :-> t2) =
   (:->) <$> kindCheck t1 <*> kindCheck t2
 kindCheck t@(TyCon n ts) =
   do
-    mSyn <- maybeAskSynInfo n
-    case mSyn of
-      Just (SynInfo ar _ _) -> do
-        unless (ar == length ts) $
-          throwError $
-            unlines
-              [ "Invalid number of type arguments!",
-                "Type synonym "
-                  ++ pretty n
-                  ++ " expects "
-                  ++ show ar
-                  ++ " type arguments",
-                "but, type "
-                  ++ pretty t
-                  ++ " has "
-                  ++ (show $ length ts)
-                  ++ " arguments"
-              ]
-        maybeExpandSynonym t
-      Nothing -> do
-        ti <- askTypeInfo n `wrapError` t
-        unless (n == Name "pair" || arity ti == length ts) $
-          throwError $
-            unlines
-              [ "Invalid number of type arguments!",
-                "Type "
-                  ++ pretty n
-                  ++ " is expected to have "
-                  ++ show (arity ti)
-                  ++ " type arguments",
-                "but, type "
-                  ++ pretty t
-                  ++ " has "
-                  ++ (show $ length ts)
-                  ++ " arguments"
-              ]
-        ts' <- mapM kindCheck ts
-        pure (TyCon n ts')
+    ti <- askTypeInfo n `wrapError` t
+    unless (n == Name "pair" || arity ti == length ts) $
+      throwError $
+        unlines
+          [ "Invalid number of type arguments!",
+            "Type "
+              ++ pretty n
+              ++ " is expected to have "
+              ++ show (arity ti)
+              ++ " type arguments",
+            "but, type "
+              ++ pretty t
+              ++ " has "
+              ++ (show $ length ts)
+              ++ " arguments"
+          ]
+    ts' <- mapM kindCheck ts
+    pure (TyCon n ts')
 kindCheck t = pure t
 
 -- Skolemization
@@ -511,38 +479,6 @@ duplicatedSynonymDecl :: Name -> TcM a
 duplicatedSynonymDecl n =
   throwError $ unwords ["Duplicated type synonym definition:", pretty n]
 
--- type synonym expansion
-
-expandSynonym :: Name -> [Ty] -> TcM Ty
-expandSynonym n ts =
-  do
-    SynInfo ar params body <- askSynInfo n
-    unless (ar == length ts) $
-      throwError $
-        unlines
-          [ "Type synonym " ++ pretty n ++ " expects " ++ show ar ++ " arguments",
-            "but was given " ++ show (length ts)
-          ]
-    let env = zip params ts
-    pure (insts env body)
-
-maybeExpandSynonym :: Ty -> TcM Ty
-maybeExpandSynonym (TyCon n ts) =
-  do
-    isSyn <- isSynonym n
-    if isSyn
-      then expandSynonym n ts >>= maybeExpandSynonym -- recursively expand nested synonyms
-      else do
-        -- Recursively expand synonyms in type arguments
-        ts' <- mapM maybeExpandSynonym ts
-        pure (TyCon n ts')
-maybeExpandSynonym (t1 :-> t2) =
-  do
-    t1' <- maybeExpandSynonym t1
-    t2' <- maybeExpandSynonym t2
-    pure (t1' :-> t2')
-maybeExpandSynonym t = pure t
-
 -- manipulating the instance environment
 
 getClassEnv :: TcM ClassTable
@@ -698,19 +634,7 @@ wrapError m e =
     decorate msg = msg ++ "\n - in:" ++ pretty e
 
 tcmMgu :: Ty -> Ty -> TcM Subst
-tcmMgu t u = do
-  result <- tryMgu t u
-  case result of
-    Right s -> pure s
-    Left err -> do
-      t' <- maybeExpandSynonym t
-      u' <- maybeExpandSynonym u
-      if t' == t && u' == u
-        then tcmError err
-        else tcmMgu t' u'
-  where
-    tryMgu :: Ty -> Ty -> TcM (Either String Subst)
-    tryMgu t1 t2 = catchError (Right <$> mgu t1 t2) (pure . Left)
+tcmMgu t u = catchError (mgu t u) tcmError
 
 -- error messages
 
