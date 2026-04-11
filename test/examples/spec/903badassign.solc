@@ -14,6 +14,7 @@ contract Option {
     let result = None;
     match mmx {
       | Some(Some(x)) => result = Some(x);
+      | Some(None) => result = None;
       | None => result = None;
     }
     return result;

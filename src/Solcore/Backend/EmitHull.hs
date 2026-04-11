@@ -3,12 +3,13 @@ module Solcore.Backend.EmitHull (emitHull) where
 import Common.Monad
 import Control.Monad (when)
 import Control.Monad.State
-import Data.Generics (Data, everything, mkQ)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
+import Data.String (fromString)
 import GHC.Stack (HasCallStack)
 import Language.Hull qualified as Hull
+import Language.Yul
 import Solcore.Backend.Mast
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.Contract (Constr (..), DataTy (..))
@@ -300,12 +301,9 @@ emitStmt (MastLet (MastId name ty) _mty mexp) = do
     Nothing -> return alloc
 emitStmt (MastMatch scrutinee alts) = emitMatch scrutinee alts
 emitStmt (MastAsm as) = do
-  -- unroll the vsubst to a series of assignments and insert them before the assembly block
-  -- an alternative might be to painstakingly rename all vars in the the assembly block
   subst <- gets ecSubst
-  let yvars = getNames as
-  let unrolled = [Hull.SAssign (Hull.EVar (show v)) e | (v, e) <- Map.toList subst, Set.member v yvars]
-  pure $ unrolled ++ [Hull.SAssembly as]
+  as' <- renameYulStmts subst as
+  pure [Hull.SAssembly as']
 
 emitStmts :: [MastStmt] -> EM [Hull.Stmt]
 emitStmts = concatMapM emitStmt'
@@ -363,16 +361,17 @@ emitWordMatch :: MastExp -> [MastAlt] -> EM [Hull.Stmt]
 emitWordMatch scrutinee alts = do
   (sVal, sCode) <- emitExp scrutinee
   let hullType = Hull.TWord
-  hullAlts <- mapM emitWordAlt alts
+  hullAlts <- mapM (emitWordAlt sVal) alts
   return (sCode ++ [Hull.SMatch hullType sVal hullAlts])
   where
-    emitWordAlt :: MastAlt -> EM Hull.Alt
-    emitWordAlt (MastPLit (IntLit i), stmts) = Hull.Alt (Hull.PIntLit i) "$_" <$> emitStmts stmts
-    emitWordAlt (MastPVar (MastId n _), stmts) = do
+    emitWordAlt :: Hull.Expr -> MastAlt -> EM Hull.Alt
+    emitWordAlt _ (MastPLit (IntLit i), stmts) = Hull.Alt (Hull.PIntLit i) "$_" <$> emitStmts stmts
+    emitWordAlt sVal (MastPVar (MastId n _), stmts) = withLocalState do
+      extendVSubst (Map.singleton n sVal)
       hullStmts <- emitStmts stmts
       let hullName = show n
       return (Hull.Alt (Hull.PVar hullName) "$_" hullStmts)
-    emitWordAlt (pat, _) = errorsEM ["emitWordAlt not implemented for", show pat]
+    emitWordAlt _ (pat, _) = errorsEM ["emitWordAlt not implemented for", show pat]
 
 type BranchMap = Map.Map Name [Hull.Stmt]
 
@@ -399,16 +398,16 @@ emitSumMatch allCons scrutinee alts = do
 
     emitEqn :: Hull.Expr -> MastAlt -> EM (MastPat, [Hull.Stmt])
     emitEqn expr (pat, stmts) = withLocalState do
-      let patargs = getPatArgs pat
-      let pvars = translateMastPatArgs expr patargs
+      let pvars = case pat of
+            MastPVar (MastId n _) -> Map.singleton n expr
+            MastPCon _ patargs -> translateMastPatArgs expr patargs
+            _ -> Map.empty
       extendVSubst pvars
       let comment = Hull.SComment (pretty pat)
       hullStmts <- emitStmts stmts
       let hullStmts' = comment : hullStmts
       debug ["emitEqn: ", show pat, " / ", show expr, " -> ", show hullStmts']
       return (pat, hullStmts')
-    getPatArgs (MastPCon _ patargs) = patargs
-    getPatArgs _ = []
 
     emitEqns :: [MastAlt] -> EM [(MastPat, [Hull.Stmt])]
     emitEqns [eqn] = (: []) <$> emitEqn (Hull.EVar (altName True)) eqn
@@ -489,10 +488,91 @@ debug msg = do
 concatMapM :: (Monad f) => (a -> f [b]) -> [a] -> f [b]
 concatMapM f xs = concat <$> mapM f xs
 
--- getNames is a conservative overapproximation
--- some vars may not be actually free
-getNames :: (Data d) => d -> Set.Set Name
-getNames code = everything Set.union (mkQ Set.empty step) code
+-----------------------------------------------------------------------
+-- Yul AST Renaming
+-----------------------------------------------------------------------
+
+-- | Renames variables in a Yul AST based on a substitution map.
+-- It correctly handles lexical scoping of Yul statements.
+-- Free variables matching the VSubst map are replaced.
+-- If they map to a simple EVar, they are substituted inline.
+-- If they map to complex expressions, an error is thrown.
+renameYulStmts :: VSubst -> [YulStmt] -> EM [YulStmt]
+renameYulStmts subst stmts = goBlock Set.empty stmts
   where
-    step :: Name -> Set.Set Name
-    step name = Set.singleton name
+    goBlock :: Set.Set Name -> [YulStmt] -> EM [YulStmt]
+    goBlock _ [] = pure []
+    goBlock scope (s : ss) = do
+      (s', scope') <- goStmt scope s
+      ss' <- goBlock scope' ss
+      pure (s' : ss')
+
+    goStmt :: Set.Set Name -> YulStmt -> EM (YulStmt, Set.Set Name)
+    goStmt scope (YBlock blk) = do
+      blk' <- goBlock scope blk
+      pure (YBlock blk', scope)
+    goStmt scope (YFun f args rets blk) = do
+      let scope' = scope `Set.union` Set.fromList (args ++ fromMaybe [] rets)
+      blk' <- goBlock scope' blk
+      pure (YFun f args rets blk', Set.insert f scope)
+    goStmt scope (YLet names mexp) = do
+      mexp' <- mapM (goExp scope) mexp
+      let scope' = scope `Set.union` Set.fromList names
+      pure (YLet names mexp', scope')
+    goStmt scope (YAssign names expr) = do
+      expr' <- goExp scope expr
+      names' <- mapM (renameName scope) names
+      pure (YAssign names' expr', scope)
+    goStmt scope (YIf cond blk) = do
+      cond' <- goExp scope cond
+      blk' <- goBlock scope blk
+      pure (YIf cond' blk', scope)
+    goStmt scope (YSwitch cond cases def) = do
+      cond' <- goExp scope cond
+      cases' <- mapM (\(l, b) -> (l,) <$> goBlock scope b) cases
+      def' <- mapM (goBlock scope) def
+      pure (YSwitch cond' cases' def', scope)
+    goStmt scope (YFor pre cond post blk) = do
+      let preScope = scope `Set.union` getDecls pre
+      pre' <- goBlock preScope pre
+      cond' <- goExp preScope cond
+      post' <- goBlock preScope post
+      blk' <- goBlock preScope blk
+      pure (YFor pre' cond' post' blk', scope)
+    goStmt scope s@(YBreak) = pure (s, scope)
+    goStmt scope s@(YContinue) = pure (s, scope)
+    goStmt scope s@(YLeave) = pure (s, scope)
+    goStmt scope s@(YComment _) = pure (s, scope)
+    goStmt scope (YExp e) = do
+      e' <- goExp scope e
+      pure (YExp e', scope)
+
+    goExp :: Set.Set Name -> YulExp -> EM YulExp
+    goExp scope (YIdent n) = YIdent <$> renameName scope n
+    goExp scope (YCall f args) = do
+      f' <- renameName scope f
+      args' <- mapM (goExp scope) args
+      pure (YCall f' args')
+    goExp _ e = pure e
+
+    renameName :: Set.Set Name -> Name -> EM Name
+    renameName scope n
+      | not (Set.member n scope),
+        Just e <- Map.lookup n subst = do
+          case e of
+            Hull.EVar newName -> pure (fromString newName)
+            -- FUTURE WORK (Materializing complex expressions):
+            -- If `e` is a complex expression like `EFst p`, it cannot be substituted inline in Yul.
+            -- To fix this properly later:
+            -- 1. Instead of throwing an error, record `n -> e` in a State map.
+            -- 2. Leave `YIdent n` unchanged inside the block.
+            -- 3. In `emitStmt (MastAsm as)`, emit `SAlloc n TWord` and `SAssign n e` BEFORE the block.
+            -- 4. Remove `n` from `ecSubst` so subsequent reads outside the block see the mutated Yul variable.
+            _ -> errorsEM ["not implemented: Yul assembly block references variable '", show n, "' mapped to complex expression '", show e, "'"]
+      | otherwise = pure n
+
+    getDecls :: [YulStmt] -> Set.Set Name
+    getDecls [] = Set.empty
+    getDecls (YLet names _ : ss) = Set.fromList names `Set.union` getDecls ss
+    getDecls (YFun f _ _ _ : ss) = Set.insert f (getDecls ss)
+    getDecls (_ : ss) = getDecls ss
