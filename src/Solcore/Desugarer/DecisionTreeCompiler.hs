@@ -633,7 +633,7 @@ scrutineeType (Var i) = pure (idType i)
 scrutineeType (Con i _) = pure (snd (splitTy (idType i)))
 scrutineeType (Lit (IntLit _)) = pure word
 scrutineeType (Lit (StrLit _)) = pure string
-scrutineeType (Call _ i _) = pure (snd (splitTy (idType i)))
+scrutineeType (Call _ i _ _) = pure (snd (splitTy (idType i)))
 scrutineeType (Lam args _body (Just tb)) = pure (funtype (map typeOfParam args) tb)
 scrutineeType (Lam _ _ Nothing) =
   throwError

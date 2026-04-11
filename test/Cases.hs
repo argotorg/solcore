@@ -300,6 +300,7 @@ cases =
       runTestForFile "false-redundant-warning.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder,
       runTestForFile "named-inst-basic.solc" caseFolder,
+      runTestForFile "named-inst-receiver.solc" caseFolder,
       runTestForFile "named-inst-two-instances.solc" caseFolder,
       runTestExpectingFailure "named-inst-unknown-label.solc" caseFolder,
       runTestExpectingFailure "named-inst-dup-label.solc" caseFolder,

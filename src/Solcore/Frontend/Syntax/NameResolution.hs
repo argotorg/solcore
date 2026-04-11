@@ -445,9 +445,10 @@ instance Resolve S.Exp where
     me' <- resolve me `wrapError` x
     es' <- resolve es `wrapError` x
     let qn = QualName lbl (pretty n)
+        args = maybe es' (: es') me'
     dt <- lookupName qn
     case dt of
-      Just TFunction -> pure (Call me' n (Just lbl) es')
+      Just TFunction -> pure (Call Nothing n (Just lbl) args)
       _ ->
         throwError $
           "Unknown named instance label '"

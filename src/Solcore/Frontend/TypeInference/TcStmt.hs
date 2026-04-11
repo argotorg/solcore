@@ -1251,13 +1251,18 @@ tcCallNamed me n lbl args =
     let scheme = Forall vs (preds :=> funtype argTys ret)
     (ps :=> t) <- freshInst scheme
     t' <- freshTyVar
-    me' <- mapM (\e -> (\(e', _, _) -> e') <$> tcExp e) me
+    mrecv <- mapM tcExp me
     (es', pss', ts') <- unzip3 <$> mapM tcExp args
-    s' <- unify t (funtype ts' t') `wrapError` callExpr
+    let recvArgs = maybe [] (\(e', _, _) -> [e']) mrecv
+        recvPreds = maybe [] (\(_, ps0, _) -> ps0) mrecv
+        recvTys = maybe [] (\(_, _, ty0) -> [ty0]) mrecv
+        allArgs = recvArgs ++ es'
+        allTys = recvTys ++ ts'
+    s' <- unify t (funtype allTys t') `wrapError` callExpr
     _ <- extSubst s'
-    let ps' = foldr union [] (ps : pss')
-        t1 = funtype ts' t'
-    withCurrentSubst (Call me' (Id n t1) (Just lbl) es', ps', t')
+    let ps' = foldr union [] (ps : recvPreds : pss')
+        t1 = funtype allTys t'
+    withCurrentSubst (Call Nothing (Id n t1) (Just lbl) allArgs, ps', t')
 
 tcParam :: Param Name -> TcM (Param Id)
 tcParam (Typed n t) =
