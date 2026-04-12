@@ -325,7 +325,11 @@ specExp (Call Nothing i lbl args) ty = do
   -- For named instance calls, resolve via QualName lbl method so the
   -- specialiser finds the definition registered under that label.
   let i' = case lbl of
-        Just l -> i {idName = QualName l (pretty (idName i))}
+        Just l ->
+          let meth = case idName i of
+                QualName _ m -> m
+                Name s -> s
+           in i {idName = QualName l meth}
         Nothing -> i
   (i'', args') <- specCall i' args ty
   let e' = Call Nothing i'' Nothing args'

@@ -1265,10 +1265,16 @@ differentNamedInstHead inst inst' =
     || paramsTy inst /= paramsTy inst'
 
 hasNamedMethod :: Name -> Instance Name -> Bool
-hasNamedMethod n = isJust . findNamedMethod n
+hasNamedMethod n inst =
+  let (mcls, meth) = splitNamedMethod n
+   in maybe True (== instName inst) mcls && isJust (findNamedMethod meth inst)
 
 findNamedMethod :: Name -> Instance Name -> Maybe (FunDef Name)
 findNamedMethod n = find (\fd -> sigName (funSignature fd) == n) . instFunctions
+
+splitNamedMethod :: Name -> (Maybe Name, Name)
+splitNamedMethod (QualName cls meth) = (Just cls, Name meth)
+splitNamedMethod n = (Nothing, n)
 
 namedInstPred :: Instance Name -> Pred
 namedInstPred inst = InCls (instName inst) (mainTy inst) (paramsTy inst)
@@ -1276,6 +1282,11 @@ namedInstPred inst = InCls (instName inst) (mainTy inst) (paramsTy inst)
 namedMethodScheme :: Name -> Name -> Instance Name -> TcM Scheme
 namedMethodScheme n lbl inst =
   do
+    let (mcls, meth) = splitNamedMethod n
+    unless (maybe True (== instName inst) mcls) $
+      throwError $
+        unwords
+          ["Method", pretty n, "not found in named instance", pretty lbl]
     fun <-
       maybe
         ( throwError $
@@ -1283,7 +1294,7 @@ namedMethodScheme n lbl inst =
               ["Method", pretty n, "not found in named instance", pretty lbl]
         )
         pure
-        (findNamedMethod n inst)
+        (findNamedMethod meth inst)
     let sig = funSignature fun
         vs = instVars inst ++ sigVars sig
         preds = instContext inst ++ sigContext sig
