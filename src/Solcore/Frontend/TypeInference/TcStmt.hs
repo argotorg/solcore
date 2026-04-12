@@ -1002,11 +1002,12 @@ checkInstance idef@(Instance d lbl vs predCtx n ts t funs) =
           then addDefaultInstance n ninst
           else addInstance n ninst
       Just label -> do
-        -- Named instances: skip overlap check, register by label
-        existing <- askNamedInstance label
-        unless (isNothing existing) $
+        -- Named instances: skip overlap check, register by label.
+        -- Reusing a label is allowed as long as the instance head differs.
+        existing <- askNamedInstances label
+        unless (all (differentNamedInstHead idef) existing) $
           throwError $
-            "Duplicate named instance label: " ++ pretty label
+            "Duplicate named instance label/head combination: " ++ pretty label
         addNamedInstance label idef
 
 -- checking a default instance
@@ -1218,15 +1219,63 @@ tcCallNamed :: Maybe (Exp Name) -> Name -> Name -> [Exp Name] -> TcM (Exp Id, [P
 tcCallNamed me n lbl args =
   do
     let callExpr = Call me n (Just lbl) args
-    -- Look up the named instance by label
-    minst <- askNamedInstance lbl
-    inst <-
-      maybe
-        (throwError $ "Unknown named instance label: " ++ pretty lbl)
-        pure
-        minst
-    -- Find the method in the instance's function definitions
-    let mfun = find (\fd -> sigName (funSignature fd) == n) (instFunctions inst)
+    namedInsts <- askNamedInstances lbl
+    when (null namedInsts) $
+      throwError $ "Unknown named instance label: " ++ pretty lbl
+    mrecv <- mapM tcExp me
+    (es', pss', ts') <- unzip3 <$> mapM tcExp args
+    let recvArgs = maybe [] (\(e', _, _) -> [e']) mrecv
+        recvPreds = maybe [] (\(_, ps0, _) -> ps0) mrecv
+        recvTys = maybe [] (\(_, _, ty0) -> [ty0]) mrecv
+        allArgs = recvArgs ++ es'
+        allTys = recvTys ++ ts'
+        methodInsts = filter (hasNamedMethod n) namedInsts
+    when (null methodInsts) $
+      throwError $
+        unwords
+          ["Method", pretty n, "not found in named instance", pretty lbl]
+    matches <- filterM (matchesNamedCall callExpr n lbl allTys) methodInsts
+    case matches of
+      [] ->
+        throwError $
+          unwords
+            [ "No named instance labelled",
+              pretty lbl,
+              "matches call to",
+              pretty n
+            ]
+      [inst] -> tcCallNamedWithInst callExpr n lbl recvPreds allArgs pss' allTys inst
+      _ ->
+        throwError $
+          unlines $
+            [ unwords
+                [ "Ambiguous named instance label",
+                  pretty lbl,
+                  "for method",
+                  pretty n
+                ],
+              "Matching heads:"
+            ]
+              ++ map (("  " ++) . pretty . namedInstPred) matches
+
+differentNamedInstHead :: Instance Name -> Instance Name -> Bool
+differentNamedInstHead inst inst' =
+  instName inst /= instName inst'
+    || mainTy inst /= mainTy inst'
+    || paramsTy inst /= paramsTy inst'
+
+hasNamedMethod :: Name -> Instance Name -> Bool
+hasNamedMethod n = isJust . findNamedMethod n
+
+findNamedMethod :: Name -> Instance Name -> Maybe (FunDef Name)
+findNamedMethod n = find (\fd -> sigName (funSignature fd) == n) . instFunctions
+
+namedInstPred :: Instance Name -> Pred
+namedInstPred inst = InCls (instName inst) (mainTy inst) (paramsTy inst)
+
+namedMethodScheme :: Name -> Name -> Instance Name -> TcM Scheme
+namedMethodScheme n lbl inst =
+  do
     fun <-
       maybe
         ( throwError $
@@ -1234,8 +1283,7 @@ tcCallNamed me n lbl args =
               ["Method", pretty n, "not found in named instance", pretty lbl]
         )
         pure
-        mfun
-    -- Build the type scheme from the method signature + instance context
+        (findNamedMethod n inst)
     let sig = funSignature fun
         vs = instVars inst ++ sigVars sig
         preds = instContext inst ++ sigContext sig
@@ -1248,16 +1296,39 @@ tcCallNamed me n lbl args =
         )
         pure
         (sigReturn sig)
-    let scheme = Forall vs (preds :=> funtype argTys ret)
+    pure (Forall vs (preds :=> funtype argTys ret))
+
+matchesNamedCall :: Exp Name -> Name -> Name -> [Ty] -> Instance Name -> TcM Bool
+matchesNamedCall callExpr n lbl allTys inst =
+  do
+    st <- get
+    res <-
+      ( do
+          scheme <- namedMethodScheme n lbl inst
+          (_ :=> t) <- freshInst scheme
+          t' <- freshTyVar
+          _ <- unify t (funtype allTys t') `wrapError` callExpr
+          pure True
+      )
+        `catchError` (\_ -> pure False)
+    put st
+    pure res
+
+tcCallNamedWithInst ::
+  Exp Name ->
+  Name ->
+  Name ->
+  [Pred] ->
+  [Exp Id] ->
+  [[Pred]] ->
+  [Ty] ->
+  Instance Name ->
+  TcM (Exp Id, [Pred], Ty)
+tcCallNamedWithInst callExpr n lbl recvPreds allArgs pss' allTys inst =
+  do
+    scheme <- namedMethodScheme n lbl inst
     (ps :=> t) <- freshInst scheme
     t' <- freshTyVar
-    mrecv <- mapM tcExp me
-    (es', pss', ts') <- unzip3 <$> mapM tcExp args
-    let recvArgs = maybe [] (\(e', _, _) -> [e']) mrecv
-        recvPreds = maybe [] (\(_, ps0, _) -> ps0) mrecv
-        recvTys = maybe [] (\(_, _, ty0) -> [ty0]) mrecv
-        allArgs = recvArgs ++ es'
-        allTys = recvTys ++ ts'
     s' <- unify t (funtype allTys t') `wrapError` callExpr
     _ <- extSubst s'
     let ps' = foldr union [] (ps : recvPreds : pss')
