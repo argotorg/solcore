@@ -27,6 +27,7 @@ import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
+import System.Directory (createDirectoryIfMissing)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath
 import System.TimeIt qualified as TimeIt
@@ -43,7 +44,10 @@ pipeline = do
       exitWith (ExitFailure 1)
     Right contracts -> do
       forM_ (zip [(1 :: Int) ..] contracts) $ \(i, c) -> do
-        let filename = "output" <> show i <> ".hull"
+        let basename = "output" <> show i <> ".hull"
+            filename = maybe basename (</> basename) (optOutputDir opts)
+            dir = takeDirectory filename
+        unless (null dir) $ createDirectoryIfMissing True dir
         putStrLn ("Writing to " ++ filename)
         writeFile filename (show c)
 

@@ -22,7 +22,7 @@
           inherit system;
           overlays = [ inputs.foundry.overlay ];
         };
-        hspkgs = pkgs.haskell.packages.ghc98;
+        hspkgs = pkgs.haskell.packages.ghc910;
 
         gitignore = pkgs.nix-gitignore.gitignoreSourcePure [ ./.gitignore ];
         sol-core = pkgs.haskell.lib.overrideCabal
@@ -61,7 +61,8 @@
         packages.default = packages.sol-core;
 
         apps.sol-core = inputs.flake-utils.lib.mkApp { drv = packages.sol-core; };
-        apps.default = apps.sol-core;
+        apps.csol = inputs.flake-utils.lib.mkApp { drv = packages.sol-core; name = "csol"; };
+        apps.default = apps.csol;
 
         checks = {
           ormolu = pkgs.runCommand "ormolu-check" {
