@@ -1,0 +1,26 @@
+// test complex match example from the blog post
+// simplified to use word instead of uint256
+
+import std;
+
+data AuctionState =
+    NotStarted(word)
+  | Active(word, address)
+  | Ended(word, address)
+  | Cancelled(word, address);
+
+data Phase = Early | Late;
+
+function discount(state : AuctionState, phase : Phase) -> word {
+    match state, phase {
+    | Active(bid, _), Early => return bid / 10;
+    | Active(bid, _), Late  => return bid / 20;
+    | _, _                  => return 0;
+    }
+}
+
+contract Discount {
+  function main() -> word {
+    discount(Active(420,address(0)), Early)
+  }
+}
