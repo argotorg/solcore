@@ -1,0 +1,26 @@
+// A label may exist and still fail if none of its heads matches the call.
+
+data Bool = True | False;
+data Flag = F;
+
+forall self rep . class self : Pick(rep) {
+  function pick(x : self, y : rep) -> rep;
+}
+
+instance [shared] word : Pick(word) {
+  function pick(x : word, y : word) -> word {
+    return y;
+  }
+}
+
+instance [shared] word : Pick(Bool) {
+  function pick(x : word, y : Bool) -> Bool {
+    return y;
+  }
+}
+
+contract NamedInstNoMatchingHead {
+  function main() -> Bool {
+    return pick@{shared}(1, F);
+  }
+}
