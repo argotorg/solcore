@@ -301,6 +301,7 @@ cases =
       runTestForFile "proxy-desugar.solc" caseFolder,
       runTestForFile "named-inst-basic.solc" caseFolder,
       runTestForFile "named-inst-class-qualified.solc" caseFolder,
+      runTestForFile "named-inst-shared-label-params.solc" caseFolder,
       runTestForFile "named-inst-receiver.solc" caseFolder,
       runTestForFile "named-inst-shared-label.solc" caseFolder,
       runTestForFile "named-inst-two-instances.solc" caseFolder,
