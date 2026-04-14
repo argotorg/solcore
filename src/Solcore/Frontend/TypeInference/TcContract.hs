@@ -292,8 +292,8 @@ tcSig (sig, (Forall _ (_ :=> t))) =
   do
     t1 <- kindCheck t `wrapError` sig
     let (ts, r) = splitTy t1
-        param (Typed c n _) t1 = Typed c (Id n t1) t1
-        param (Untyped c n) t1 = Typed c (Id n t1) t1
+        param (Typed c n _) t2 = Typed c (Id n t2) t2
+        param (Untyped c n) t2 = Typed c (Id n t2) t2
         params' = zipWith param (sigParams sig) ts
     pure
       ( Signature
