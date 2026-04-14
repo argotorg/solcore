@@ -88,8 +88,8 @@ instance Compile (FunDef Id) where
 instance Compile (Stmt Id) where
   compile (e1 := e2) =
     (:=) <$> compile e1 <*> compile e2
-  compile (Let v mt me) =
-    Let v mt <$> compile me
+  compile (Let c v mt me) =
+    Let c v mt <$> compile me
   compile (StmtExp e) =
     StmtExp <$> compile e
   compile (Return e) =
@@ -651,8 +651,8 @@ scrutineeType (Indexed earr _) =
           "scrutineeType: index expression scrutinee has no type annotation"
 
 typeOfParam :: Param Id -> Ty
-typeOfParam (Typed i _t) = idType i
-typeOfParam (Untyped i) = idType i
+typeOfParam (Typed _ i _t) = idType i
+typeOfParam (Untyped _ i) = idType i
 
 isVarPat :: Pattern -> Bool
 isVarPat (PVar _) = True

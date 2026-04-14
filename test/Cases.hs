@@ -31,7 +31,8 @@ comptime =
       runTestForFile "fib.solc" comptimeFolder,
       runTestForFile "string-lit-ops.solc" comptimeFolder,
       runTestForFile "string-lit-len.solc" comptimeFolder,
-      runTestForFile "string-lit-keccak.solc" comptimeFolder
+      runTestForFile "string-lit-keccak.solc" comptimeFolder,
+      runTestForFile "comptime_syntax.solc" comptimeFolder
     ]
   where
     comptimeFolder = "./test/examples/comptime"

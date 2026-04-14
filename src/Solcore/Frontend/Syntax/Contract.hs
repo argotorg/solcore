@@ -116,6 +116,7 @@ data Signature a
     sigContext :: [Pred],
     sigName :: Name,
     sigParams :: [Param a],
+    sigRetComptime :: Bool,
     sigReturn :: Maybe Ty
   }
   deriving (Eq, Ord, Show, Data, Typeable)

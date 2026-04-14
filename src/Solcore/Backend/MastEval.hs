@@ -160,13 +160,13 @@ evalStmts env (s : ss) = do
 
 evalStmt :: VEnv -> MastStmt -> EvalM (VEnv, [MastStmt])
 evalStmt env stmt = case stmt of
-  MastLet i ty mInit -> do
+  MastLet ct i ty mInit -> do
     mInit' <- traverse (evalExp env) mInit
     let env' = case mInit' of
           Just e | isKnownValue e -> Map.insert i e env
           _ -> Map.delete i env -- Shadow/remove any existing binding
           -- Always emit the let: the variable may be referenced by opaque asm blocks
-    pure (env', [MastLet i ty mInit'])
+    pure (env', [MastLet ct i ty mInit'])
   MastAssign i e -> do
     e' <- evalExp env e
     let env' =
@@ -314,7 +314,7 @@ tryInline fname args = do
 evalFunBody :: VEnv -> [MastStmt] -> EvalM (Maybe MastExp)
 evalFunBody _ [] = pure Nothing -- No return statement found
 evalFunBody env (stmt : rest) = case stmt of
-  MastLet i _ mInit -> do
+  MastLet _ i _ mInit -> do
     mInit' <- traverse (evalExp env) mInit
     let env' = case mInit' of
           Just e | isKnownValue e -> Map.insert i e env
@@ -463,7 +463,7 @@ bodyIsPure pureFuns = all (stmtIsPure pureFuns)
 
 stmtIsPure :: Set.Set Name -> MastStmt -> Bool
 stmtIsPure _ (MastAsm _) = False
-stmtIsPure pureFuns (MastLet _ _ mInit) = maybe True (expIsPure pureFuns) mInit
+stmtIsPure pureFuns (MastLet _ _ _ mInit) = maybe True (expIsPure pureFuns) mInit
 stmtIsPure pureFuns (MastAssign _ e) = expIsPure pureFuns e
 stmtIsPure pureFuns (MastStmtExp e) = expIsPure pureFuns e
 stmtIsPure pureFuns (MastReturn e) = expIsPure pureFuns e
@@ -549,7 +549,7 @@ callsInFun :: MastFunDef -> Set.Set Name
 callsInFun fd = Set.unions (map callsInStmt (mastFunBody fd))
 
 callsInStmt :: MastStmt -> Set.Set Name
-callsInStmt (MastLet _ _ mInit) = maybe Set.empty callsInExp mInit
+callsInStmt (MastLet _ _ _ mInit) = maybe Set.empty callsInExp mInit
 callsInStmt (MastAssign _ e) = callsInExp e
 callsInStmt (MastStmtExp e) = callsInExp e
 callsInStmt (MastReturn e) = callsInExp e
