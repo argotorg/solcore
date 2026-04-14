@@ -52,6 +52,7 @@ data Pat a
   | PCon a [Pat a]
   | PWildcard
   | PLit Literal
+  | PExp (Exp a) -- comptime expression label (numeric matches only)
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of literals

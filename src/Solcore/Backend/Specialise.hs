@@ -499,8 +499,15 @@ specMatch exps alts = do
       -- debug ["specAlt, pattern: ", show pat]
       -- debug ["specAlt, body: ", show body]
       body' <- specBody body
-      pat' <- atCurrentSubst pat
+      pat' <- mapM specPat =<< atCurrentSubst pat
       return (pat', body')
+    -- Specialize function calls inside PExp patterns.
+    -- Other pattern forms only need type substitution (handled by atCurrentSubst).
+    specPat :: Pat Id -> SM (Pat Id)
+    specPat (PExp e) = do
+      ty <- atCurrentSubst (typeOfTcExp e)
+      PExp <$> specExp e ty
+    specPat p = pure p
     specScruts = mapM specScrut
     specScrut e = do
       ty <- atCurrentSubst (typeOfTcExp e)
@@ -853,3 +860,4 @@ toMastPat (PVar i) = MastPVar (toMastId i)
 toMastPat (PCon i ps) = MastPCon (toMastId i) (map toMastPat ps)
 toMastPat PWildcard = MastPWildcard
 toMastPat (PLit l) = MastPLit l
+toMastPat (PExp e) = MastPExp (toMastExp e)

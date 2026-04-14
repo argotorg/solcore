@@ -1,0 +1,33 @@
+/* Test comptime expression match labels.
+   Covers: comptime literal, comptime arithmetic with a variable,
+   comptime function call, and pattern variable catch-all.
+*/
+
+import std;
+
+forall i.
+class i : Int {
+  function fromWord(x:word) -> comptime i;
+  function toWord(x:i) -> comptime word;
+}
+
+instance uint256 : Int {
+  function fromWord(x:word) -> comptime uint256 { uint256(x) }
+  function toWord(x:uint256) -> comptime word { Typedef.rep(x) }
+}
+
+contract MatchLabels {
+
+  function classify(x : word) -> word {
+    let two : comptime word = 2;
+    match x {
+      | comptime two + 0             => return 2;
+      | comptime toWord(uint256(40)) => return 40;
+      | other                        => return other;
+    }
+  }
+
+  function main() -> word {
+    return classify(0) + classify(2) + classify(40);
+  }
+}

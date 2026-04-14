@@ -384,6 +384,7 @@ Pattern :: { Pat }
 Pattern : Name PatternList                         {Pat $1 $2}
         | '_'                                      {PWildcard}
         | Literal                                  {PLit $1}
+        | 'comptime' Expr                          {PExp $2}
         | '(' Pattern ')'                          {$2}
         | PatternList                              {Pat (Name "pair") $1}
 

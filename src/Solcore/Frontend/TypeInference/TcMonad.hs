@@ -15,6 +15,7 @@ import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options (Option (..))
+import Solcore.Primitives.Primitives (word)
 import System.TimeIt qualified as TimeIt
 import Text.Printf
 
@@ -78,6 +79,22 @@ isUniqueTyName :: Name -> TcM Bool
 isUniqueTyName n = do
   uenv <- gets uniqueTypes
   pure $ any (\d -> dataName d == n) (Map.elems uenv)
+
+-- A type is numeric if it is 'word', or if it is an algebraic type with
+-- exactly one constructor that takes exactly one argument of type 'word'.
+-- Examples: word, uint256 (= data uint256 = uint256(word))
+-- Non-examples: bool, mw (= data mw = N | J(word))
+isNumericTy :: Ty -> TcM Bool
+isNumericTy ty
+  | ty == word = pure True
+  | TyCon n [] <- ty = do
+      mti <- maybeAskTypeInfo n
+      case mti of
+        Just (TypeInfo _ [con] _) -> do
+          (Constr _ fields, _) <- constrsFromEnv con
+          pure (fields == [word])
+        _ -> pure False
+  | otherwise = pure False
 
 typeInfoFor :: DataTy -> TypeInfo
 typeInfoFor (DataTy _ vs cons) =

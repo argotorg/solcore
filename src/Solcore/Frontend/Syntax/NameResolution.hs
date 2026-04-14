@@ -255,6 +255,7 @@ instance Resolve S.Pat where
 
   resolve S.PWildcard = pure PWildcard
   resolve (S.PLit l) = PLit <$> resolve l
+  resolve (S.PExp e) = PExp <$> resolve e
   resolve p@(S.Pat n ps) =
     do
       ps' <- resolve ps `wrapError` p
