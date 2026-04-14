@@ -5,6 +5,11 @@ module Solcore.Backend.MastEval
     FunTable,
     buildFunTable,
     computePureFuns,
+    -- Evaluation monad (exported for testing)
+    EvalEnv (..),
+    EvalState (..),
+    EvalM,
+    runEvalM,
     -- Yul interpreter (exported for testing)
     YulState,
     evalYulExp,
@@ -13,6 +18,8 @@ module Solcore.Backend.MastEval
     evalYulBlock,
     asmIsInterpretable,
     maskWord,
+    mstoreBytes,
+    mloadWord,
   )
 where
 
@@ -27,6 +34,8 @@ where
 import Control.Monad.Reader
 import Control.Monad.State
 import Crypto.Hash (Digest, hash)
+import Data.Bits (shiftR, (.&.))
+import Data.List (foldl')
 import Crypto.Hash.Algorithms (Keccak_256)
 import Data.ByteArray qualified as BA
 import Data.ByteString qualified as BS
@@ -74,11 +83,19 @@ data EvalEnv = EvalEnv
     envPureFuns :: Set.Set Name
   }
 
--- Reader for constant environment, State for fuel budget
-type EvalM = ReaderT EvalEnv (State Fuel)
+data EvalState = EvalState
+  { esFuel :: !Fuel,
+    esMem  :: !(Map.Map Integer Word8)
+  }
+
+-- Reader for constant environment, State for fuel + memory
+type EvalM = ReaderT EvalEnv (State EvalState)
 
 runEvalM :: EvalEnv -> Fuel -> EvalM a -> (a, Fuel)
-runEvalM env fuel m = runState (runReaderT m env) fuel
+runEvalM env fuel m =
+  let initState = EvalState {esFuel = fuel, esMem = Map.empty}
+      (a, finalState) = runState (runReaderT m env) initState
+   in (a, esFuel finalState)
 
 askFunTable :: EvalM FunTable
 askFunTable = asks envFunTable
@@ -87,7 +104,7 @@ askPureFuns :: EvalM (Set.Set Name)
 askPureFuns = asks envPureFuns
 
 getFuel :: EvalM Fuel
-getFuel = lift get
+getFuel = lift $ gets esFuel
 
 -- Consume one unit of fuel, returns True if fuel was available
 useFuel :: EvalM Bool
@@ -95,13 +112,19 @@ useFuel = do
   f <- getFuel
   if f > 0
     then do
-      lift $ put (f - 1)
+      lift $ modify (\s -> s {esFuel = esFuel s - 1})
       pure True
     else pure False
 
 -- Restore one unit of fuel (called after successful inlining)
 restoreFuel :: EvalM ()
-restoreFuel = lift $ modify (+ 1)
+restoreFuel = lift $ modify (\s -> s {esFuel = esFuel s + 1})
+
+getsMem :: EvalM (Map.Map Integer Word8)
+getsMem = lift $ gets esMem
+
+modifyMem :: (Map.Map Integer Word8 -> Map.Map Integer Word8) -> EvalM ()
+modifyMem f = lift $ modify (\s -> s {esMem = f (esMem s)})
 
 -----------------------------------------------------------------------
 -- Main entry point
@@ -177,6 +200,7 @@ evalContractDecl d@(MastCDataDecl _) = pure d
 
 evalFunDef :: MastFunDef -> EvalM MastFunDef
 evalFunDef fd = do
+  modifyMem (const Map.empty)
   let tyReg = buildTypeReg (mastFunParams fd) (mastFunBody fd)
   (_, body') <- evalStmts tyReg Map.empty (mastFunBody fd)
   pure $ fd {mastFunBody = body'}
@@ -227,16 +251,17 @@ evalStmt tyReg env stmt = case stmt of
     e' <- evalExp env e
     alts' <- mapM (evalAlt tyReg env) alts
     pure (env, [MastMatch e' alts'])
-  MastAsm yul ->
+  MastAsm yul -> do
     -- Try to interpret arithmetic-only asm blocks statically.
     -- If successful, update VEnv with computed values (but still emit the block
     -- for code generation). If not, conservatively clear all bindings.
     let yulState = venvToYulState env
-     in case evalYulBlock yulState yul of
-          Just yulState' ->
-            pure (mergeYulStateToVEnv tyReg yulState' env, [MastAsm yul])
-          Nothing ->
-            pure (Map.empty, [MastAsm yul])
+    mYulState' <- evalYulBlock yulState yul
+    case mYulState' of
+      Just yulState' ->
+        pure (mergeYulStateToVEnv tyReg yulState' env, [MastAsm yul])
+      Nothing ->
+        pure (Map.empty, [MastAsm yul])
 
 evalAlt :: TypeReg -> VEnv -> MastAlt -> EvalM MastAlt
 evalAlt tyReg env (pat, body) = do
@@ -341,7 +366,7 @@ mkBool b = MastCon conId [unitVal]
     unitVal = MastCon (MastId (Name "()") unitTy) []
 
 -----------------------------------------------------------------------
--- Yul arithmetic interpreter
+-- Yul interpreter: memory helpers (pure)
 -----------------------------------------------------------------------
 
 -- | 256-bit word modulus (EVM semantics for arithmetic operations).
@@ -352,40 +377,95 @@ wordMod = 2 ^ (256 :: Integer)
 maskWord :: Integer -> Integer
 maskWord n = n `mod` wordMod
 
+-- | Write a 256-bit value to memory at byte address p (big-endian, 32 bytes).
+mstoreBytes :: Integer -> Integer -> Map.Map Integer Word8 -> Map.Map Integer Word8
+mstoreBytes p v mem =
+  foldl'
+    (\m i -> Map.insert (p + i) (fromIntegral ((v `shiftR` (8 * (31 - fromIntegral i))) .&. 0xff)) m)
+    mem
+    [0 .. 31]
+
+-- | Read a 256-bit value from memory at byte address p (big-endian, 32 bytes).
+-- Returns Nothing if any byte in p..p+31 was not written during this comptime
+-- evaluation. We cannot assume unwritten bytes are 0: runtime code may have
+-- written to memory before this function executes (e.g. the free memory pointer
+-- at slot 64 is set by initialization code before any user function runs).
+mloadWord :: Integer -> Map.Map Integer Word8 -> Maybe Integer
+mloadWord p mem =
+  foldl'
+    (\mAcc i -> do acc <- mAcc; b <- Map.lookup (p + i) mem; pure (acc * 256 + fromIntegral b))
+    (Just 0)
+    [0 .. 31]
+
+-----------------------------------------------------------------------
+-- Yul interpreter: expression and statement evaluator (in EvalM)
+-----------------------------------------------------------------------
+
 -- | Evaluate a Yul expression given the current Yul state.
 -- Returns Nothing if any operand is unknown or the operation is unsupported.
-evalYulExp :: YulState -> YulExp -> Maybe Integer
-evalYulExp env (YIdent n) = Map.lookup n env
-evalYulExp _ (YLit (YulNumber n)) = Just n
-evalYulExp _ (YLit YulTrue) = Just 1
-evalYulExp _ (YLit YulFalse) = Just 0
+-- Clause order matters: mload must precede the general YCall catch-all.
+evalYulExp :: YulState -> YulExp -> EvalM (Maybe Integer)
+evalYulExp env (YIdent n) = pure (Map.lookup n env)
+evalYulExp _ (YLit (YulNumber n)) = pure (Just n)
+evalYulExp _ (YLit YulTrue) = pure (Just 1)
+evalYulExp _ (YLit YulFalse) = pure (Just 0)
+evalYulExp env (YCall (Name "mload") [pExp]) = do
+  mp <- evalYulExp env pExp
+  case mp of
+    Just p -> do
+      mem <- getsMem
+      pure (mloadWord p mem)  -- Nothing if any byte was not written in this eval context
+    Nothing -> pure Nothing
 evalYulExp env (YCall op args) = do
-  vals <- mapM (evalYulExp env) args
-  evalYulOp op vals
-evalYulExp _ _ = Nothing
+  mvals <- mapM (evalYulExp env) args
+  case sequence mvals of
+    Nothing   -> pure Nothing
+    Just vals -> evalYulOp op vals
+evalYulExp _ _ = pure Nothing
 
--- | Evaluate a Yul built-in arithmetic operation on known integer values.
+-- | Evaluate a Yul built-in operation on known integer values.
 -- Returns Nothing for unsupported or unknown operations.
-evalYulOp :: Name -> [Integer] -> Maybe Integer
-evalYulOp (Name "add") [a, b] = Just (maskWord (a + b))
-evalYulOp (Name "mul") [a, b] = Just (maskWord (a * b))
-evalYulOp _ _ = Nothing
+evalYulOp :: Name -> [Integer] -> EvalM (Maybe Integer)
+evalYulOp (Name "add") [a, b] = pure (Just (maskWord (a + b)))
+evalYulOp (Name "mul") [a, b] = pure (Just (maskWord (a * b)))
+evalYulOp _ _ = pure Nothing
 
 -- | Evaluate one Yul statement, updating the Yul state.
+-- mstore/mstore8 update EvalM memory; assignments update YulState.
 -- Returns Nothing if the statement form is unsupported.
-evalYulStmt :: YulState -> YulStmt -> Maybe YulState
+evalYulStmt :: YulState -> YulStmt -> EvalM (Maybe YulState)
 evalYulStmt env (YAssign [n] e) = do
-  val <- evalYulExp env e
-  Just (Map.insert n val env)
-evalYulStmt _ _ = Nothing
+  mv <- evalYulExp env e
+  pure (fmap (\v -> Map.insert n v env) mv)
+evalYulStmt env (YExp (YCall (Name "mstore") [pExp, vExp])) = do
+  mp <- evalYulExp env pExp
+  mv <- evalYulExp env vExp
+  case (mp, mv) of
+    (Just p, Just v) -> do
+      modifyMem (mstoreBytes p v)
+      pure (Just env)  -- YulState unchanged; memory updated in EvalM
+    _ -> pure Nothing
+evalYulStmt env (YExp (YCall (Name "mstore8") [pExp, vExp])) = do
+  mp <- evalYulExp env pExp
+  mv <- evalYulExp env vExp
+  case (mp, mv) of
+    (Just p, Just v) -> do
+      modifyMem (Map.insert p (fromIntegral (v .&. 0xff)))
+      pure (Just env)
+    _ -> pure Nothing
+evalYulStmt _ _ = pure Nothing
 
 -- | Evaluate a Yul block, threading the Yul state through each statement.
 -- Returns Nothing if any statement cannot be evaluated.
-evalYulBlock :: YulState -> [YulStmt] -> Maybe YulState
-evalYulBlock env [] = Just env
+-- Note: a failed block may leave partial mstore writes in esMem; this is
+-- harmless because asmIsInterpretable gates which blocks are attempted.
+evalYulBlock :: YulState -> [YulStmt] -> EvalM (Maybe YulState)
+evalYulBlock env [] = pure (Just env)
 evalYulBlock env (s : ss) = do
-  env' <- evalYulStmt env s
-  evalYulBlock env' ss
+  menv' <- evalYulStmt env s
+  case menv' of
+    Nothing   -> pure Nothing
+    Just env' -> evalYulBlock env' ss
 
 -----------------------------------------------------------------------
 -- VEnv / YulState / TypeReg helpers
@@ -460,13 +540,14 @@ evalFunBody tyReg env (stmt : rest) = case stmt of
     case matchAlts env scrut' alts' of
       Just (env', body) -> evalFunBody tyReg env' body
       Nothing -> pure Nothing -- Scrutinee not known, can't select branch
-  MastAsm yul ->
+  MastAsm yul -> do
     -- Try to interpret the asm block statically.
     -- If successful, update env and continue inlining; otherwise give up.
     let yulState = venvToYulState env
-     in case evalYulBlock yulState yul of
-          Just yulState' -> evalFunBody tyReg (mergeYulStateToVEnv tyReg yulState' env) rest
-          Nothing -> pure Nothing
+    mYulState' <- evalYulBlock yulState yul
+    case mYulState' of
+      Just yulState' -> evalFunBody tyReg (mergeYulStateToVEnv tyReg yulState' env) rest
+      Nothing -> pure Nothing
 
 -- Try to match a known scrutinee against alternatives.
 -- Returns the extended environment and the body of the matching alternative.
@@ -616,20 +697,24 @@ expIsPure pureFuns (MastCond e1 e2 e3) =
   expIsPure pureFuns e1 && expIsPure pureFuns e2 && expIsPure pureFuns e3
 
 -- | True if an asm block contains only statically interpretable statements.
--- Such blocks can be evaluated at compile time by the Yul arithmetic interpreter,
+-- Such blocks can be evaluated at compile time by the Yul interpreter,
 -- and functions containing only such blocks are eligible for PE inlining.
--- Operations NOT listed here (sload, mload, mstore, …) make the block non-interpretable,
+-- Operations NOT listed here (sload, …) make the block non-interpretable,
 -- which keeps the enclosing function out of pureFuns and preserves comptime-check soundness.
 asmIsInterpretable :: [YulStmt] -> Bool
 asmIsInterpretable = all interpretableStmt
   where
     interpretableStmt (YAssign [_] e) = interpretableExp e
+    interpretableStmt (YExp (YCall (Name "mstore")  [p, v])) = interpretableExp p && interpretableExp v
+    interpretableStmt (YExp (YCall (Name "mstore8") [p, v])) = interpretableExp p && interpretableExp v
     interpretableStmt _ = False
 
+    -- mload has its own clause (reads memory); general YCall delegates to interpretableOp
     interpretableExp (YIdent _) = True
     interpretableExp (YLit (YulNumber _)) = True
     interpretableExp (YLit YulTrue) = True
     interpretableExp (YLit YulFalse) = True
+    interpretableExp (YCall (Name "mload") [p]) = interpretableExp p
     interpretableExp (YCall op args) =
       interpretableOp op (length args) && all interpretableExp args
     interpretableExp _ = False
