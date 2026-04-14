@@ -258,8 +258,8 @@ instance Compile (Exp Id) where
     flip FieldAccess n <$> compile me
   compile l@(Lit _) =
     pure l
-  compile (Call me f es) =
-    Call <$> compile me <*> pure f <*> compile es
+  compile (Call me f lbl es) =
+    Call <$> compile me <*> pure f <*> pure lbl <*> compile es
   compile (Lam ps bd mt) =
     Lam ps <$> pushCtx ("lambda (" ++ intercalate ", " (map pretty ps) ++ ")") (compile bd) <*> pure mt
   compile (TyExp e t) =
@@ -270,8 +270,8 @@ instance Compile (Exp Id) where
     Indexed <$> compile e1 <*> compile e2
 
 instance Compile (Instance Id) where
-  compile (Instance d vs ps n ts t funs) =
-    Instance d vs ps n ts t
+  compile (Instance d lbl vs ps n ts t funs) =
+    Instance d lbl vs ps n ts t
       <$> pushCtx ("instance " ++ pretty t ++ " : " ++ pretty n) (compile funs)
 
 -- compiling a decision tree into a match
@@ -633,7 +633,7 @@ scrutineeType (Var i) = pure (idType i)
 scrutineeType (Con i _) = pure (snd (splitTy (idType i)))
 scrutineeType (Lit (IntLit _)) = pure word
 scrutineeType (Lit (StrLit _)) = pure string
-scrutineeType (Call _ i _) = pure (snd (splitTy (idType i)))
+scrutineeType (Call _ i _ _) = pure (snd (splitTy (idType i)))
 scrutineeType (Lam args _body (Just tb)) = pure (funtype (map typeOfParam args) tb)
 scrutineeType (Lam _ _ Nothing) =
   throwError

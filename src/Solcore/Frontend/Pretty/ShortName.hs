@@ -28,7 +28,7 @@ instance (HasShortName a) => HasShortName (FunDef a) where
   shortName fd = "function " ++ shortName (funSignature fd)
 
 instance (HasShortName a) => HasShortName (Instance a) where
-  shortName (Instance _d _vs _ctx n ts t _funs) = do
+  shortName (Instance _d _ _vs _ctx n ts t _funs) = do
     unwords ["instance", pretty (InCls n t ts)]
 
 instance HasShortName Pred where

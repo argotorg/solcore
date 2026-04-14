@@ -89,6 +89,7 @@ data TcEnv
   { ctx :: Env, -- Variable environment
     instEnv :: InstTable, -- Instance Environment
     defaultEnv :: DefTable, -- Default instance environment
+    namedInstEnv :: Map Name [Instance Name], -- Named instance environment (by label)
     typeTable :: TypeTable, -- Type information environment
     synTable :: SynTable, -- Type synonym environment
     classTable :: ClassTable, -- Class information table
@@ -118,6 +119,7 @@ initTcEnv opts =
     { ctx = primCtx,
       instEnv = primInstEnv,
       defaultEnv = Map.empty,
+      namedInstEnv = Map.empty,
       typeTable = primTypeEnv,
       synTable = Map.empty,
       classTable = primClassEnv,

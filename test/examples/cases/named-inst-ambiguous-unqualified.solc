@@ -1,0 +1,30 @@
+// Unqualified named calls should fail when the same label is reused across
+// multiple classes exposing the same method name.
+
+data Bool = True | False;
+
+forall a . class a : Foo {
+  function run(x : a) -> Bool;
+}
+
+forall a . class a : Bar {
+  function run(x : a) -> Bool;
+}
+
+instance [shared] word : Foo {
+  function run(x : word) -> Bool {
+    return True;
+  }
+}
+
+instance [shared] word : Bar {
+  function run(x : word) -> Bool {
+    return False;
+  }
+}
+
+contract NamedInstAmbiguousUnqualified {
+  function main() -> Bool {
+    return run@{shared}(1);
+  }
+}

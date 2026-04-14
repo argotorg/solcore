@@ -159,7 +159,7 @@ instance (Names a, Names b, Names c) => Names (a, b, c) where
 instance Names (Exp Name) where
   names (Con n es) = n : names es
   names (FieldAccess me n) = n : names me
-  names (Call me n es) =
+  names (Call me n _ es) =
     n : names me `union` names es
   names (Lam ps bdy mt) = names (ps, bdy, mt)
   names (TyExp e t) = names e `union` names t
@@ -208,7 +208,7 @@ instance Names (Class Name) where
     names ctx `union` names sigs
 
 instance Names (Instance Name) where
-  names (Instance _ _ ctx n ts t funs) =
+  names (Instance _ _ _ ctx n ts t funs) =
     [n] `union` names ctx `union` names (t : ts) `union` names funs
 
 instance Names Ty where

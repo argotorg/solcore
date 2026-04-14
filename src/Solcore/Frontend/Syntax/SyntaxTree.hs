@@ -146,6 +146,7 @@ data Signature
 data Instance
   = Instance
   { instDefault :: Bool,
+    instLabel :: Maybe Name,
     instVars :: [Ty],
     instContext :: [Pred],
     instName :: Name,
@@ -231,6 +232,9 @@ data Exp
   | ExpLNot Exp -- ! e
   | ExpCond Exp Exp Exp -- if e1 then e2 else e3
   | ExpAt Ty -- proxy sugar
+  | -- | ExpNameAt receiver methodName instanceLabel args
+    --   Represents receiver.method@{label}(args) or method@{label}(args)
+    ExpNameAt (Maybe Exp) Name Name [Exp]
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- pattern matching equations
