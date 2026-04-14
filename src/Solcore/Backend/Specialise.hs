@@ -229,8 +229,7 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
     getSpecialisedDecls
   -- Deployer code
   modify (\st -> st {specTable = emptyTable})
-  -- let deployerName = Name (pretty name <> "$Deployer")
-  mStart <- specEntryOpt "start"
+  mStart <- specEntryOpt deployerName
   deployDecls <- case mStart of
     Just {} -> do
       depDecls <- getSpecialisedDecls
@@ -258,7 +257,7 @@ specEntry name = do
   pure mres
 
 -- | Like 'specEntry' but silently returns Nothing when the name is absent.
--- Use for optional entry points (e.g. "start") that may not exist when
+-- Use for optional entry points (e.g. deployer) that may not exist when
 -- contract dispatch generation is disabled.
 specEntryOpt :: Name -> SM (Maybe Name)
 specEntryOpt name = withLocalState do

@@ -63,7 +63,7 @@ addRetCode c = c <> retCode
 deployCode :: String -> Bool -> YulCode
 deployCode _name withStart = YulCode $ go withStart
   where
-    go True = [[yulStmt| usr$start() |]]
+    go True = [[yulStmt| usr$_start() |]]
     go False = []
 
 createDeployment :: YulObject -> YulObject
