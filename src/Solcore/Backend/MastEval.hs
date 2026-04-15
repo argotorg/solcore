@@ -457,6 +457,8 @@ builtinImpureFuns = Set.fromList [Name "revert"]
 -- | Compute the set of pure functions via fixed-point iteration.
 -- Start from builtinPureFuns; each iteration adds functions whose bodies
 -- contain no asm and whose every call target is already known-pure.
+-- Self-recursive calls are handled by including the candidate function in
+-- the assumed-pure set when checking its own body.
 computePureFuns :: FunTable -> Set.Set Name
 computePureFuns ft = go builtinPureFuns
   where
@@ -468,7 +470,7 @@ computePureFuns ft = go builtinPureFuns
                     || fname `Set.member` builtinImpureFuns
                     then acc
                     else
-                      if bodyIsPure acc (mastFunBody fd)
+                      if bodyIsPure (Set.insert fname acc) (mastFunBody fd)
                         then Set.insert fname acc
                         else acc
               )

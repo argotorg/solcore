@@ -90,9 +90,12 @@ checkFunDef :: SigTable -> String -> FunDef Id -> Either String ()
 checkFunDef st ctx fd = checkBody st (sigRetComptime sig) ctx initEnv (funDefBody fd)
   where
     sig = funSignature fd
+    -- For '-> comptime' functions, treat ALL params as CTComptime when checking
+    -- the body: this verifies "given comptime args, does the body produce comptime?"
+    -- For other functions, non-comptime params are CTRuntime.
     initEnv =
       Map.fromList
-        [ (idName (paramName p), if paramComptime p then CTComptime else CTRuntime)
+        [ (idName (paramName p), if paramComptime p || sigRetComptime sig then CTComptime else CTRuntime)
           | p <- sigParams sig
         ]
 
@@ -232,23 +235,22 @@ combineCt cts
   | otherwise = CTDeferred
 
 -- | Classify a function call result.
---   CTComptime iff the function is annotated '-> comptime' and every
---   argument to a comptime-annotated parameter is CTComptime.
---   Never CTRuntime for calls — uncertain cases are deferred to Stage 1.
+--   CTComptime iff the function is annotated '-> comptime' and ALL arguments
+--   are CTComptime.  A non-comptime-annotated param in a '-> comptime' function
+--   means "result is comptime when this arg happens to be comptime", so all args
+--   must be checked, not just the comptime-annotated ones.
+--   Never CTRuntime for calls — uncertain cases are deferred to MAST.
 classifyCall :: SigTable -> CtEnv -> Id -> [Exp Id] -> Ctness
 classifyCall st env f args =
   case Map.lookup (idName f) st of
     Nothing -> CTDeferred
     Just sig
-      | sigRetComptime sig && allCtParamsAreComptime sig ->
+      | sigRetComptime sig && allArgsComptime ->
           CTComptime
       | otherwise ->
           CTDeferred
   where
-    allCtParamsAreComptime sig =
-      all
-        (\(param, arg) -> not (paramComptime param) || classifyExp st env arg == CTComptime)
-        (zip (sigParams sig) args)
+    allArgsComptime = all (\arg -> classifyExp st env arg == CTComptime) args
 
 -----------------------------------------------------------------------
 -- Helper

@@ -1,0 +1,12 @@
+import std;
+
+function fib3(n : word) -> word {
+   if(n < 2) { return n; } else {return fib3(n-1) + fib3(n-2); }
+}
+
+contract Fib {
+  function main() -> word {
+    let res : comptime word = fib3(10);
+    return res;
+  }
+}

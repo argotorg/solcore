@@ -38,6 +38,9 @@ comptime =
       runTestForFile "ct_chain_ok.solc" comptimeFolder,
       runTestForFile "ct_let_ok.solc" comptimeFolder,
       runTestForFile "ct_overloaded_ok.solc" comptimeFolder,
+      runTestForFile "fib.solc" comptimeFolder,
+      runTestForFile "fib2.solc" comptimeFolder,
+      runTestForFile "fib3.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
       runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,
