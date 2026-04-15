@@ -79,8 +79,9 @@ defaultFuel = 100
 -----------------------------------------------------------------------
 
 data EvalEnv = EvalEnv
-  { envFunTable :: FunTable,
-    envPureFuns :: Set.Set Name
+  { envFunTable     :: FunTable,
+    envPureFuns     :: Set.Set Name,
+    envComptimeMode :: Bool     -- True while evaluating a comptime let RHS
   }
 
 data EvalState = EvalState
@@ -102,6 +103,13 @@ askFunTable = asks envFunTable
 
 askPureFuns :: EvalM (Set.Set Name)
 askPureFuns = asks envPureFuns
+
+askComptimeMode :: EvalM Bool
+askComptimeMode = asks envComptimeMode
+
+-- Run an action with comptime mode enabled (memory ops become active).
+withComptimeMode :: EvalM a -> EvalM a
+withComptimeMode = local (\e -> e {envComptimeMode = True})
 
 getFuel :: EvalM Fuel
 getFuel = lift $ gets esFuel
@@ -136,7 +144,7 @@ evalCompUnit fuel cu = (cu {mastTopDecls = decls'}, remainingFuel)
   where
     funTable = buildFunTable cu
     pureFuns = computePureFuns funTable
-    env = EvalEnv {envFunTable = funTable, envPureFuns = pureFuns}
+    env = EvalEnv {envFunTable = funTable, envPureFuns = pureFuns, envComptimeMode = False}
     (decls', remainingFuel) = runEvalM env fuel (mapM evalTopDecl (mastTopDecls cu))
 
 -----------------------------------------------------------------------
@@ -225,7 +233,7 @@ evalStmts tyReg env (s : ss) = do
 evalStmt :: TypeReg -> VEnv -> MastStmt -> EvalM (VEnv, [MastStmt])
 evalStmt tyReg env stmt = case stmt of
   MastLet ct i ty mInit -> do
-    mInit' <- traverse (evalExp env) mInit
+    mInit' <- traverse (if ct then withComptimeMode . evalExp env else evalExp env) mInit
     let env' = case mInit' of
           Just e | isKnownValue e -> Map.insert i e env
           _ -> Map.delete i env -- Shadow/remove any existing binding
@@ -410,12 +418,14 @@ evalYulExp _ (YLit (YulNumber n)) = pure (Just n)
 evalYulExp _ (YLit YulTrue) = pure (Just 1)
 evalYulExp _ (YLit YulFalse) = pure (Just 0)
 evalYulExp env (YCall (Name "mload") [pExp]) = do
-  mp <- evalYulExp env pExp
-  case mp of
-    Just p -> do
-      mem <- getsMem
-      pure (mloadWord p mem)  -- Nothing if any byte was not written in this eval context
-    Nothing -> pure Nothing
+  compt <- askComptimeMode
+  if not compt
+    then pure Nothing  -- mload is only meaningful in comptime context
+    else do
+      mp <- evalYulExp env pExp
+      case mp of
+        Just p  -> mloadWord p <$> getsMem  -- Nothing if any byte unwritten
+        Nothing -> pure Nothing
 evalYulExp env (YCall op args) = do
   mvals <- mapM (evalYulExp env) args
   case sequence mvals of
@@ -438,27 +448,35 @@ evalYulStmt env (YAssign [n] e) = do
   mv <- evalYulExp env e
   pure (fmap (\v -> Map.insert n v env) mv)
 evalYulStmt env (YExp (YCall (Name "mstore") [pExp, vExp])) = do
-  mp <- evalYulExp env pExp
-  mv <- evalYulExp env vExp
-  case (mp, mv) of
-    (Just p, Just v) -> do
-      modifyMem (mstoreBytes p v)
-      pure (Just env)  -- YulState unchanged; memory updated in EvalM
-    _ -> pure Nothing
+  compt <- askComptimeMode
+  if not compt
+    then pure Nothing  -- mstore only in comptime context; fail block so callers aren't inlined
+    else do
+      mp <- evalYulExp env pExp
+      mv <- evalYulExp env vExp
+      case (mp, mv) of
+        (Just p, Just v) -> do
+          modifyMem (mstoreBytes p v)
+          pure (Just env)  -- YulState unchanged; memory updated in EvalM
+        _ -> pure Nothing
 evalYulStmt env (YExp (YCall (Name "mstore8") [pExp, vExp])) = do
-  mp <- evalYulExp env pExp
-  mv <- evalYulExp env vExp
-  case (mp, mv) of
-    (Just p, Just v) -> do
-      modifyMem (Map.insert p (fromIntegral (v .&. 0xff)))
-      pure (Just env)
-    _ -> pure Nothing
+  compt <- askComptimeMode
+  if not compt
+    then pure Nothing  -- mstore8 only in comptime context
+    else do
+      mp <- evalYulExp env pExp
+      mv <- evalYulExp env vExp
+      case (mp, mv) of
+        (Just p, Just v) -> do
+          modifyMem (Map.insert p (fromIntegral (v .&. 0xff)))
+          pure (Just env)
+        _ -> pure Nothing
 evalYulStmt _ _ = pure Nothing
 
 -- | Evaluate a Yul block, threading the Yul state through each statement.
 -- Returns Nothing if any statement cannot be evaluated.
--- Note: a failed block may leave partial mstore writes in esMem; this is
--- harmless because asmIsInterpretable gates which blocks are attempted.
+-- mstore/mstore8/mload only execute in comptime mode; outside it they return
+-- Nothing immediately, aborting the block and preventing unsound inlining.
 evalYulBlock :: YulState -> [YulStmt] -> EvalM (Maybe YulState)
 evalYulBlock env [] = pure (Just env)
 evalYulBlock env (s : ss) = do

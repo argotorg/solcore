@@ -28,9 +28,13 @@ yExp op args = YExp (YCall (Name op) args)
 st :: [(String, Integer)] -> YulState
 st = Map.fromList . map (\(n, v) -> (Name n, v))
 
--- Run an EvalM action with empty environment and default fuel, ignoring fuel remainder.
+-- Run an EvalM action in non-comptime mode (memory ops inactive).
 runPure :: EvalM a -> a
-runPure m = fst $ runEvalM (EvalEnv Map.empty Set.empty) defaultFuel m
+runPure m = fst $ runEvalM (EvalEnv Map.empty Set.empty False) defaultFuel m
+
+-- Run an EvalM action in comptime mode (memory ops active).
+runComptime :: EvalM a -> a
+runComptime m = fst $ runEvalM (EvalEnv Map.empty Set.empty True) defaultFuel m
 
 yulEvalTests :: TestTree
 yulEvalTests =
@@ -224,7 +228,7 @@ memoryEvalTests =
   testGroup
     "Memory in Yul evaluator"
     [ testCase "mstore then mload at same address" $
-        runPure
+        runComptime
           ( evalYulBlock
               Map.empty
               [ yExp "mstore" [yNum 0, yNum 42],
@@ -233,7 +237,7 @@ memoryEvalTests =
           )
           @?= Just (st [("r", 42)]),
       testCase "mstore at non-zero address" $
-        runPure
+        runComptime
           ( evalYulBlock
               Map.empty
               [ yExp "mstore" [yNum 32, yNum 100],
@@ -243,11 +247,11 @@ memoryEvalTests =
           @?= Just (st [("r", 100)]),
       testCase "mload from unwritten memory returns Nothing" $
         -- Cannot determine mload result without knowing what runtime code wrote there
-        runPure (evalYulBlock Map.empty [yAssign "r" (yCall "mload" [yNum 0])])
+        runComptime (evalYulBlock Map.empty [yAssign "r" (yCall "mload" [yNum 0])])
           @?= Nothing,
       testCase "mstore8 single byte then mload: Nothing (31 bytes still unknown)" $
         -- mstore8 writes only 1 byte; the other 31 are not in esMem → mload fails
-        runPure
+        runComptime
           ( evalYulBlock
               Map.empty
               [ yExp "mstore8" [yNum 31, yNum 0xff],
@@ -261,30 +265,30 @@ memoryEvalTests =
                     ++ [yAssign "r" (yCall "mload" [yNum 0])]
             -- byte i = i+1, so value = 0x0102...20
             expected = foldl (\acc b -> acc * 256 + b) 0 [1..32]
-        runPure (evalYulBlock Map.empty stmts) @?= Just (st [("r", expected)]),
+        runComptime (evalYulBlock Map.empty stmts) @?= Just (st [("r", expected)]),
       testCase "mstore with unknown address → Nothing" $
-        runPure
+        runComptime
           ( evalYulBlock
               Map.empty
               [yExp "mstore" [yIdent "unknown_addr", yNum 42]]
           )
           @?= Nothing,
       testCase "mstore with unknown value → Nothing" $
-        runPure
+        runComptime
           ( evalYulBlock
               Map.empty
               [yExp "mstore" [yNum 0, yIdent "unknown_val"]]
           )
           @?= Nothing,
       testCase "mload with unknown address → Nothing" $
-        runPure
+        runComptime
           ( evalYulBlock
               Map.empty
               [yAssign "r" (yCall "mload" [yIdent "unknown_addr"])]
           )
           @?= Nothing,
       testCase "mstore value from variable" $
-        runPure
+        runComptime
           ( evalYulBlock
               (st [("v", 77)])
               [ yExp "mstore" [yNum 0, yIdent "v"],
@@ -293,7 +297,7 @@ memoryEvalTests =
           )
           @?= Just (st [("r", 77), ("v", 77)]),
       testCase "chain: two stores, read both back" $
-        runPure
+        runComptime
           ( evalYulBlock
               Map.empty
               [ yExp "mstore" [yNum 0, yNum 1],
@@ -302,7 +306,22 @@ memoryEvalTests =
                 yAssign "b" (yCall "mload" [yNum 32])
               ]
           )
-          @?= Just (st [("a", 1), ("b", 2)])
+          @?= Just (st [("a", 1), ("b", 2)]),
+      testCase "mstore in non-comptime mode → Nothing (block aborted)" $
+        -- Outside a comptime let, mstore fails the block; prevents unsound inlining
+        runPure
+          ( evalYulBlock
+              Map.empty
+              [yExp "mstore" [yNum 0, yNum 42]]
+          )
+          @?= Nothing,
+      testCase "mload in non-comptime mode → Nothing" $
+        runPure
+          ( evalYulBlock
+              Map.empty
+              [yAssign "r" (yCall "mload" [yNum 0])]
+          )
+          @?= Nothing
     ]
 
 -----------------------------------------------------------------------
