@@ -41,6 +41,7 @@ comptime =
       runTestForFile "fib.solc" comptimeFolder,
       runTestForFile "fib2.solc" comptimeFolder,
       runTestForFile "fib3.solc" comptimeFolder,
+      runTestForFile "ct_asm_mem.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
       runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,

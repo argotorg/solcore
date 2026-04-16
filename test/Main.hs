@@ -3,6 +3,7 @@ module Main where
 import Cases
 import MatchCompilerTests
 import Test.Tasty
+import YulEvalTests
 
 main :: IO ()
 main = defaultMain tests
@@ -18,5 +19,6 @@ tests =
       std,
       imports,
       dispatches,
-      matchTests
+      matchTests,
+      yulEvalTests
     ]

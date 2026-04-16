@@ -1,7 +1,7 @@
 import std;
 
 contract StringLitLen {
-  function main() {
+  function main() -> word {
     // strlenLit folds to a word
     return strlenLit("hello");
   }
