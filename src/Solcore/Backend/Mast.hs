@@ -85,6 +85,7 @@ data MastFunDef = MastFunDef
 
 data MastParam = MastParam
   { mastParamName :: Name,
+    mastParamComptime :: ComptimeFlag,
     mastParamType :: MastTy
   }
   deriving (Eq, Ord, Show)
@@ -214,7 +215,7 @@ instance Pretty MastFunDef where
       $$ rbrace
 
 instance Pretty MastParam where
-  ppr (MastParam n t) = ppr n <+> colon <+> ppr t
+  ppr (MastParam n ct t) = (if ct then text "comptime" <+> ppr n else ppr n) <+> colon <+> ppr t
 
 instance Pretty MastStmt where
   ppr (MastAssign i e) = ppr i <+> equals <+> ppr e <+> semi

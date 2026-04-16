@@ -2,12 +2,15 @@ module Solcore.Backend.MastEval
   ( evalCompUnit,
     defaultFuel,
     eliminateDeadCode,
+    FunTable,
+    buildFunTable,
+    computePureFuns,
   )
 where
 
 {- Partial Evaluator for Mast
    Performs compile-time evaluation where possible:
-   - Folds calls to `addWord`, `gtWord`, `eqWord` with literal arguments
+   - Folds calls to `addWord`, `subWord`, `mulWord`, `gtWord`, `eqWord` with literal arguments
    - Propagates known variable values
    - Inlines simple pure functions with literal arguments
 -}
@@ -256,6 +259,8 @@ evalPrimitive (Name "addWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (MastLit (IntLit (a + b)))
 evalPrimitive (Name "subWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (MastLit (IntLit (a - b)))
+evalPrimitive (Name "mulWord") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (a * b)))
 evalPrimitive (Name "gtWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just $ mkBool (a > b)
 evalPrimitive (Name "eqWord") [MastLit (IntLit a), MastLit (IntLit b)] =
@@ -437,6 +442,7 @@ builtinPureFuns =
   Set.fromList
     [ Name "addWord",
       Name "subWord",
+      Name "mulWord",
       Name "gtWord",
       Name "eqWord",
       Name "concatLit",
@@ -451,6 +457,8 @@ builtinImpureFuns = Set.fromList [Name "revert"]
 -- | Compute the set of pure functions via fixed-point iteration.
 -- Start from builtinPureFuns; each iteration adds functions whose bodies
 -- contain no asm and whose every call target is already known-pure.
+-- Self-recursive calls are handled by including the candidate function in
+-- the assumed-pure set when checking its own body.
 computePureFuns :: FunTable -> Set.Set Name
 computePureFuns ft = go builtinPureFuns
   where
@@ -462,7 +470,7 @@ computePureFuns ft = go builtinPureFuns
                     || fname `Set.member` builtinImpureFuns
                     then acc
                     else
-                      if bodyIsPure acc (mastFunBody fd)
+                      if bodyIsPure (Set.insert fname acc) (mastFunBody fd)
                         then Set.insert fname acc
                         else acc
               )

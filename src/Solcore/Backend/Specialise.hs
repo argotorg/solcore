@@ -818,7 +818,7 @@ toMastFunDef (FunDef sig body) =
     }
 
 toMastParam :: Param Id -> MastParam
-toMastParam p = MastParam (idName i) (toMastTy (idType i))
+toMastParam p = MastParam (idName i) (paramComptime p) (toMastTy (idType i))
   where
     i = getParamId p
 
