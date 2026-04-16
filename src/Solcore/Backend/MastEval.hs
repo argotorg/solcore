@@ -34,11 +34,11 @@ where
 import Control.Monad.Reader
 import Control.Monad.State
 import Crypto.Hash (Digest, hash)
-import Data.Bits (shiftR, (.&.))
-import Data.List (foldl')
 import Crypto.Hash.Algorithms (Keccak_256)
+import Data.Bits (shiftR, (.&.))
 import Data.ByteArray qualified as BA
 import Data.ByteString qualified as BS
+import Data.List (foldl')
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
@@ -79,14 +79,14 @@ defaultFuel = 100
 -----------------------------------------------------------------------
 
 data EvalEnv = EvalEnv
-  { envFunTable     :: FunTable,
-    envPureFuns     :: Set.Set Name,
-    envComptimeMode :: Bool     -- True while evaluating a comptime let RHS
+  { envFunTable :: FunTable,
+    envPureFuns :: Set.Set Name,
+    envComptimeMode :: Bool -- True while evaluating a comptime let RHS
   }
 
 data EvalState = EvalState
   { esFuel :: !Fuel,
-    esMem  :: !(Map.Map Integer Word8)
+    esMem :: !(Map.Map Integer Word8)
   }
 
 -- Reader for constant environment, State for fuel + memory
@@ -237,8 +237,12 @@ evalStmt tyReg env stmt = case stmt of
     let env' = case mInit' of
           Just e | isKnownValue e -> Map.insert i e env
           _ -> Map.delete i env -- Shadow/remove any existing binding
-          -- Always emit the let: the variable may be referenced by opaque asm blocks
-    pure (env', [MastLet ct i ty mInit'])
+          -- Comptime lets with known values are dead after evaluation: all uses will be
+          -- substituted from VEnv, and EmitHull cannot handle string-typed variables.
+    let stmts = case mInit' of
+          Just e | ct && isKnownValue e -> []
+          _ -> [MastLet ct i ty mInit']
+    pure (env', stmts)
   MastAssign i e -> do
     e' <- evalExp env e
     let env' =
@@ -260,16 +264,21 @@ evalStmt tyReg env stmt = case stmt of
     alts' <- mapM (evalAlt tyReg env) alts
     pure (env, [MastMatch e' alts'])
   MastAsm yul -> do
+    -- Substitute known comptime values into the block first.  This is necessary
+    -- because comptime lets with known values are eliminated from the statement
+    -- list; any asm reference to those variables must be replaced inline.
+    let subst = venvToSubst env
+        yul' = substYulBlock subst yul
     -- Try to interpret arithmetic-only asm blocks statically.
     -- If successful, update VEnv with computed values (but still emit the block
     -- for code generation). If not, conservatively clear all bindings.
     let yulState = venvToYulState env
-    mYulState' <- evalYulBlock yulState yul
+    mYulState' <- evalYulBlock yulState yul'
     case mYulState' of
       Just yulState' ->
-        pure (mergeYulStateToVEnv tyReg yulState' env, [MastAsm yul])
+        pure (mergeYulStateToVEnv tyReg yulState' env, [MastAsm yul'])
       Nothing ->
-        pure (Map.empty, [MastAsm yul])
+        pure (Map.empty, [MastAsm yul'])
 
 evalAlt :: TypeReg -> VEnv -> MastAlt -> EvalM MastAlt
 evalAlt tyReg env (pat, body) = do
@@ -420,16 +429,16 @@ evalYulExp _ (YLit YulFalse) = pure (Just 0)
 evalYulExp env (YCall (Name "mload") [pExp]) = do
   compt <- askComptimeMode
   if not compt
-    then pure Nothing  -- mload is only meaningful in comptime context
+    then pure Nothing -- mload is only meaningful in comptime context
     else do
       mp <- evalYulExp env pExp
       case mp of
-        Just p  -> mloadWord p <$> getsMem  -- Nothing if any byte unwritten
+        Just p -> mloadWord p <$> getsMem -- Nothing if any byte unwritten
         Nothing -> pure Nothing
 evalYulExp env (YCall op args) = do
   mvals <- mapM (evalYulExp env) args
   case sequence mvals of
-    Nothing   -> pure Nothing
+    Nothing -> pure Nothing
     Just vals -> evalYulOp op vals
 evalYulExp _ _ = pure Nothing
 
@@ -450,19 +459,19 @@ evalYulStmt env (YAssign [n] e) = do
 evalYulStmt env (YExp (YCall (Name "mstore") [pExp, vExp])) = do
   compt <- askComptimeMode
   if not compt
-    then pure Nothing  -- mstore only in comptime context; fail block so callers aren't inlined
+    then pure Nothing -- mstore only in comptime context; fail block so callers aren't inlined
     else do
       mp <- evalYulExp env pExp
       mv <- evalYulExp env vExp
       case (mp, mv) of
         (Just p, Just v) -> do
           modifyMem (mstoreBytes p v)
-          pure (Just env)  -- YulState unchanged; memory updated in EvalM
+          pure (Just env) -- YulState unchanged; memory updated in EvalM
         _ -> pure Nothing
 evalYulStmt env (YExp (YCall (Name "mstore8") [pExp, vExp])) = do
   compt <- askComptimeMode
   if not compt
-    then pure Nothing  -- mstore8 only in comptime context
+    then pure Nothing -- mstore8 only in comptime context
     else do
       mp <- evalYulExp env pExp
       mv <- evalYulExp env vExp
@@ -482,7 +491,7 @@ evalYulBlock env [] = pure (Just env)
 evalYulBlock env (s : ss) = do
   menv' <- evalYulStmt env s
   case menv' of
-    Nothing   -> pure Nothing
+    Nothing -> pure Nothing
     Just env' -> evalYulBlock env' ss
 
 -----------------------------------------------------------------------
@@ -493,6 +502,50 @@ evalYulBlock env (s : ss) = do
 venvToYulState :: VEnv -> YulState
 venvToYulState env =
   Map.fromList [(mastIdName k, v) | (k, MastLit (IntLit v)) <- Map.toList env]
+
+-- | Build a name→YulExp substitution map from all known literal values in VEnv.
+-- Used to inline comptime values into asm blocks so that eliminated 'let' bindings
+-- remain available to the asm code.
+venvToSubst :: VEnv -> Map.Map Name YulExp
+venvToSubst env =
+  Map.fromList
+    [ (mastIdName k, yulLit l)
+      | (k, MastLit l) <- Map.toList env
+    ]
+  where
+    yulLit (IntLit v) = YLit (YulNumber v)
+    yulLit (StrLit s) = YLit (YulString s)
+
+-- | Substitute known literal values into a Yul block.
+-- Only replaces YIdent occurrences in expression positions; does not touch
+-- variable names on the left-hand side of let/assign or function parameter lists.
+substYulBlock :: Map.Map Name YulExp -> [YulStmt] -> [YulStmt]
+substYulBlock subst = map (substYulStmt subst)
+
+substYulStmt :: Map.Map Name YulExp -> YulStmt -> YulStmt
+substYulStmt subst (YAssign names e) = YAssign names (substYulExp subst e)
+substYulStmt subst (YExp e) = YExp (substYulExp subst e)
+substYulStmt subst (YLet names me) = YLet names (fmap (substYulExp subst) me)
+substYulStmt subst (YIf e block) = YIf (substYulExp subst e) (substYulBlock subst block)
+substYulStmt subst (YBlock stmts) = YBlock (substYulBlock subst stmts)
+substYulStmt subst (YFun n as rs body) = YFun n as rs (substYulBlock subst body)
+substYulStmt subst (YFor pre c post b) =
+  YFor
+    (substYulBlock subst pre)
+    (substYulExp subst c)
+    (substYulBlock subst post)
+    (substYulBlock subst b)
+substYulStmt subst (YSwitch e cases def) =
+  YSwitch
+    (substYulExp subst e)
+    (map (\(lit, block) -> (lit, substYulBlock subst block)) cases)
+    (fmap (substYulBlock subst) def)
+substYulStmt _ stmt = stmt -- YBreak, YContinue, YLeave, YComment unchanged
+
+substYulExp :: Map.Map Name YulExp -> YulExp -> YulExp
+substYulExp subst (YIdent n) = Map.findWithDefault (YIdent n) n subst
+substYulExp subst (YCall op args) = YCall op (map (substYulExp subst) args)
+substYulExp _ e = e -- YLit, YMeta unchanged
 
 -- | Merge a YulState back into VEnv, using TypeReg to find the right MastIds.
 -- Only names present in TypeReg are merged; others are silently ignored.
@@ -723,7 +776,7 @@ asmIsInterpretable :: [YulStmt] -> Bool
 asmIsInterpretable = all interpretableStmt
   where
     interpretableStmt (YAssign [_] e) = interpretableExp e
-    interpretableStmt (YExp (YCall (Name "mstore")  [p, v])) = interpretableExp p && interpretableExp v
+    interpretableStmt (YExp (YCall (Name "mstore") [p, v])) = interpretableExp p && interpretableExp v
     interpretableStmt (YExp (YCall (Name "mstore8") [p, v])) = interpretableExp p && interpretableExp v
     interpretableStmt _ = False
 

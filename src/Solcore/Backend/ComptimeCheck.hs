@@ -51,11 +51,12 @@ checkFunDef ft pure_ fd =
     -- For '-> comptime' functions, assume ALL params are comptime when checking
     -- the body: this verifies "if all args happen to be comptime, is the result?"
     -- For other functions, only explicitly-annotated comptime params are trusted.
-    initEnv = Set.fromList
-      [ mastParamName p
-      | p <- mastFunParams fd
-      , mastParamComptime p || mastFunRetComptime fd
-      ]
+    initEnv =
+      Set.fromList
+        [ mastParamName p
+          | p <- mastFunParams fd,
+            mastParamComptime p || mastFunRetComptime fd
+        ]
 
 -- | Check a sequence of statements, threading the comptime environment.
 checkStmts :: FunTable -> Set.Set Name -> Bool -> Name -> ComptimeEnv -> [MastStmt] -> Either String ()
