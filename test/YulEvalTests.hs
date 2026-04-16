@@ -261,10 +261,11 @@ memoryEvalTests =
           @?= Nothing,
       testCase "mstore8 all 32 bytes, read back via mload" $ do
         -- Write each byte of a 32-byte word individually via mstore8, then mload
-        let stmts = [yExp "mstore8" [yNum (fromIntegral i), yNum (fromIntegral i + 1)] | i <- [0..31 :: Int]]
-                    ++ [yAssign "r" (yCall "mload" [yNum 0])]
+        let stmts =
+              [yExp "mstore8" [yNum (fromIntegral i), yNum (fromIntegral i + 1)] | i <- [0 .. 31 :: Int]]
+                ++ [yAssign "r" (yCall "mload" [yNum 0])]
             -- byte i = i+1, so value = 0x0102...20
-            expected = foldl (\acc b -> acc * 256 + b) 0 [1..32]
+            expected = foldl (\acc b -> acc * 256 + b) 0 [1 .. 32]
         runComptime (evalYulBlock Map.empty stmts) @?= Just (st [("r", expected)]),
       testCase "mstore with unknown address → Nothing" $
         runComptime
