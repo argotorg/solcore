@@ -1,6 +1,27 @@
-import std;
+import std.{*};
 
-pragma no-patterson-condition RunDispatch, ExecMethod;
+export {
+  ABIString,
+  Contract(*),
+  ExecMethod,
+  Fallback(*),
+  Method(*),
+  MethodLevelCallvalueCheck,
+  NonPayable,
+  Payable,
+  RunContract,
+  RunDispatch,
+  Selector,
+  SigString,
+  do_exec,
+  fallback_default_implementation,
+  selector_matches,
+  sigStr
+};
+
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 // --- Core Data Types ---
 
@@ -26,8 +47,10 @@ forall t. t: SigString =>
 function sigStr(p:Proxy(t)) -> string { SigString.sigStr(p) }
 
 instance uint256 : SigString { function sigStr(x:Proxy(uint256)) -> string { "uint256" }}
+instance bytes32 : SigString { function sigStr(x:Proxy(bytes32)) -> string { "bytes32" }}
 instance address : SigString { function sigStr(x:Proxy(address)) -> string { "address" }}
 instance memory(string) : SigString { function sigStr(x:Proxy(memory(string))) -> string { "string" }}
+instance memory(bytes) : SigString { function sigStr(x:Proxy(memory(bytes))) -> string { "bytes" }}
 instance ():SigString { function sigStr(x:Proxy(())) -> string { "" } }
 
 forall a b. a:SigString, b: SigString =>
@@ -71,22 +94,40 @@ forall name payability args rets fn
 
 // Describes how to execute a given method / fallback
 forall ty . class ty:ExecMethod {
-  function exec(x: ty);
+  function exec(x: ty) -> ();
 }
 
-// If fn matches the provided args/ret types, then we can execute any method
-forall name payability args rets fn
+// If fn matches the provided args/ret types, then we can execute any non-payable method
+forall name args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
   , rets:ABIAttribs
   , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
   , rets:ABIEncode
-  , payability:MethodLevelCallvalueCheck
-=> instance Method(name,payability,args,rets,fn):ExecMethod {
-  function exec(m : Method(name,payability,args,rets,fn)) -> () {
+=> instance Method(name,NonPayable,args,rets,fn):ExecMethod {
+  function exec(m : Method(name,NonPayable,args,rets,fn)) -> () {
     match m {
       | Method(pnm,ppayability,pargs,prets,fn) =>
-        do_exec(ppayability, pargs, prets, fn);
+        // non-payable methods must reject any callvalue before running
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(NonPayable));
+        do_exec(pargs, prets, fn);
+    }
+  }
+}
+
+// If fn matches the provided args/ret types, then we can execute any payable method
+// payable methods skip the callvalue check entirely
+forall name args rets fn
+  . fn:invokable(args,rets)
+  , args:ABIAttribs
+  , rets:ABIAttribs
+  , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
+  , rets:ABIEncode
+=> instance Method(name,Payable,args,rets,fn):ExecMethod {
+  function exec(m : Method(name,Payable,args,rets,fn)) -> () {
+    match m {
+      | Method(pnm,ppayability,pargs,prets,fn) =>
+        do_exec(pargs, prets, fn);
     }
   }
 }
@@ -103,28 +144,28 @@ forall payability args rets fn
   function exec(fb : Fallback(payability,args,rets,fn)) -> () {
     match fb {
       | Fallback(ppayability, pargs, prets, fn) =>
-        do_exec(ppayability, pargs, prets, fn);
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(payability));
+        do_exec(pargs, prets, fn);
     }
   }
 }
 
-forall payability args rets fn
+forall args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
   , rets:ABIAttribs
   , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
   , rets:ABIEncode
-  , payability:MethodLevelCallvalueCheck
-=> function do_exec(ppayability : Proxy(payability), pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
-    // check callvalue
-    MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(payability));
-
+=> function do_exec(pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
     // check we have enough calldata for the head of args
     let hdsz = ABIAttribs.headSize(pargs);
+    let cdsz;
     assembly {
-        if lt(sub(calldatasize(), 4), hdsz) {
-            revert(0,0);
-        };
+      cdsz := calldatasize()
+    }
+    if ((cdsz - 4) < hdsz) {
+      let ABIInputTruncated = Error(0x08638556);
+      revertWithError(ABIInputTruncated);
     }
 
     // TODO: calldatasize checks for dynamic types
@@ -146,11 +187,10 @@ forall payability args rets fn
     // the approach above does not work for dynamically sized types...
     // ...instead we take the size of memory allocated by the encoding
     let start : word = Typedef.rep(ptr);
-    let encStart : word = Typedef.rep(ptr); // cannot be called start - see #252
     let end : word = get_free_memory();
-    let retSz : word = Sub.sub(end, encStart);
+    let retSz : word = end - start;
     assembly {
-        return(encStart, retSz)
+        return(start, retSz)
     }
 }
 
@@ -191,15 +231,11 @@ forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispat
 // Given evidence of a type with a known selector, we can check if it matches the selector in the first four bytes of calldata
 forall ty . ty:Selector => function selector_matches(prx : Proxy(ty)) -> bool {
   let candidate = Typedef.rep(Selector.compute(prx));
-  let res : word;
+  let selector: word;
   assembly {
-    let sel := shr(224, calldataload(0));
-    res := eq(sel, candidate);
+    selector := shr(224, calldataload(0))
   }
-  match res {
-    | 0 => return false;
-    | _ => return true;
-  }
+  return selector == candidate;
 }
 
 // --- Callvalue Checks ---
@@ -208,7 +244,7 @@ data Payable;
 data NonPayable;
 
 forall ty . class ty:MethodLevelCallvalueCheck {
-    function checkCallvalue(pty : Proxy(ty));
+    function checkCallvalue(pty : Proxy(ty)) -> ();
 }
 
 // no callvalue check for Payable methods
@@ -218,11 +254,13 @@ instance Payable:MethodLevelCallvalueCheck {
 // NonPayable methods revert if passed value
 instance NonPayable:MethodLevelCallvalueCheck {
    function checkCallvalue(prx : Proxy(NonPayable)) -> () {
+       let value: word;
        assembly {
-         if gt(callvalue(), 0) {
-           mstore(0, 0x1);
-           revert(0, 32);
-         }
+         value := callvalue()
+       }
+       if (value > 0) {
+         let NonPayableReceivedValue = Error(0xb5988ea3);
+         revertWithError(NonPayableReceivedValue);
        }
    }
 }
@@ -243,18 +281,15 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
         // TODO: if all methods are non payable then we should life the callvalue check here
 
         // check that we have at least 4 bytes of calldata
-        let haveSelector : word;
+        let cdsz: word;
         assembly {
-          haveSelector := lt(3, calldatasize());
+          cdsz := calldatasize()
         }
-
-        match haveSelector {
-          | 0 =>
-              assembly {
-                  mstore(0,0xff)
-                  revert(0,1)
-              }
-          | _ =>
+        match cdsz < 4 {
+          | true =>
+            let SelectorTooShort = Error(0x35ffc70e);
+            revertWithError(SelectorTooShort);
+          | false =>
             // set free memory pointer to the output of memoryguard
             // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
             // TODO: we will need to consider immutables here at some point...
@@ -269,6 +304,8 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
   }
 }
 
-function revert_handler() -> () {
-  assembly { revert(0,0) }
+// This is the default fallback used if none is defined.
+function fallback_default_implementation() -> () {
+  let NoSelectorMatchedWithoutFallback = Error(0x4924aef0);
+  revertWithError(NoSelectorMatchedWithoutFallback);
 }

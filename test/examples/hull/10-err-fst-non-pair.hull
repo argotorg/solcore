@@ -1,0 +1,8 @@
+// Error: fst requires a pair type, but x has type word.
+object FstErr {
+  code {
+    function bad(x : word) -> word {
+      return fst x
+    }
+  }
+}

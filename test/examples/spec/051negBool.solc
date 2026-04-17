@@ -9,8 +9,8 @@ data B = F | T;
 instance B : Neg {
   function neg (x : B) {
     match x {
-    | F => return T;
-    | T => return F;
+    | B.F => return B.T;
+    | B.T => return B.F;
     }
   }
 }
@@ -20,10 +20,10 @@ contract NegBool {
 
   function fromB(b) {
     match b  {
-    | F => return 0;
-    | T => return 1;
+    | B.F => return 0;
+    | B.T => return 1;
     }
   }
 
-  function main() { return  fromB(Neg.neg(F)); }
+  function main() { return  fromB(Neg.neg(B.F)); }
 }

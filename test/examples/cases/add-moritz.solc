@@ -19,40 +19,40 @@ data B = F | T;
 
 
 instance B : Typedef(word) {
-  function rep(x) {
+  function rep(x : B) -> word {
     match x {
-      | F => return 0;
-      | T => return 1;
+      | B.F => return 0;
+      | B.T => return 1;
     }
   }
 
-  function abs(x) {
+  function abs(x : word) -> B {
     match x {
-      | 0 => return F;
-      | 1 => return T;
+      | 0 => return B.F;
+      | 1 => return B.T;
     }
   }
 }
 
 instance B : Add {
-  function add(x, y) {
+  function add(x : B, y : B) -> B {
     match x {
-      | F =>
+      | B.F =>
         match y {
-          | F => return F;
-          | T => return T;
+          | B.F => return B.F;
+          | B.T => return B.T;
         }
 
-      | T =>
+      | B.T =>
         match y {
-          | F => return T;
-          | T => return F;
+          | B.F => return B.T;
+          | B.T => return B.F;
         }
     }
   }
 }
 
-function fun(a, b) { //  -> c
+function fun(a : (B, B), b : (B, B)) -> (B, B) { //  -> c
   match a, b {
     | (a1, a2), (b1, b2) => return (Add.add(a1, b1), fun(a2, b2));
   }
@@ -61,8 +61,8 @@ function fun(a, b) { //  -> c
 
 contract Compose {
 
-  function main() {
-    let res = fun ((T, T, F), (F, F, T));
+  function main() -> word {
+    let res = fun ((B.T, B.T, B.F), (B.F, B.F, B.T));
     match res {
       | (r1, r2, r3) => return Typedef.rep(r1);
     }

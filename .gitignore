@@ -11,6 +11,7 @@ cabal-dev
 .hpc
 .hsenv
 .cabal-sandbox/
+.cabal-local/
 cabal.sandbox.config
 *.prof
 *.aux
@@ -33,9 +34,6 @@ test/examples/spec/attic/
 /build/
 output.core
 output*.core
-
-# generated code
-/src/Solcore/Frontend/Parser/SolcoreParser.hs
 
 # nix
 /result

@@ -1,0 +1,10 @@
+type W = word;
+
+function f(x:W) -> W { x }
+
+contract C {
+
+  function main () -> word {
+    return f(42);
+  }
+}

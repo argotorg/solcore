@@ -1,6 +1,10 @@
 module Main where
 
 import Cases
+import HullCases
+import MatchCompilerTests
+import ModuleTypeCheckTests
+import ParserTests
 import Test.Tasty
 
 main :: IO ()
@@ -10,12 +14,15 @@ tests :: TestTree
 tests =
   testGroup
     "Tests"
-    [ cases,
+    [ parserTests,
+      cases,
       comptime,
       pragmas,
       spec,
       std,
       imports,
-      dispatches
-      --             , reduceTests
+      moduleTypeCheckTests,
+      dispatches,
+      matchTests,
+      hullTests
     ]

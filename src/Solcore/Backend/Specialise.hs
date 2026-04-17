@@ -107,11 +107,23 @@ flexAll :: Data a => a -> a
 flexAll = everywhere (mkT flex)
 -}
 
--- | A signature forall tvs . t is considered ambiguous if `tvs \\ FTV(t) /= mempty`
--- this is should be the same as `FTV(body) \\ FTV(t) /= {}`
--- returns list of ambiguous variables
+-- | A signature forall tvs . ctx => t is considered ambiguous if a type variable
+-- in tvs neither appears in the function type nor is reachable from the function
+-- type's variables via the constraint graph.  Uses the same closure-based strategy
+-- as TcStmt.ambiguous so that a constraint like `abs:Typedef(rep)` is not flagged
+-- when `rep` appears in the type (abs is reachable through the constraint).
+-- Returns the list of ambiguous variables.
 ambiguousVarsInSig :: (HasTV a) => Signature a -> [Tyvar]
-ambiguousVarsInSig sig = sigVars sig \\ freetv (sigParams sig, sigReturn sig)
+-- ambiguousVarsInSig sig = sigVars sig \\ freetv (sigParams sig, sigReturn sig)
+ambiguousVarsInSig sig =
+  sigVars sig \\ (tyVars `union` freetv (constraintClosure ps tyVars))
+  where
+    ps = sigContext sig
+    tyVars = freetv (sigParams sig, sigReturn sig)
+    reachable preds vs = [p | p <- preds, any (`elem` vs) (freetv p)]
+    constraintClosure preds vs
+      | all (`elem` vs) (freetv (reachable preds vs)) = reachable preds vs
+      | otherwise = constraintClosure preds (freetv (reachable preds vs))
 
 addSpecialisation :: Name -> TcFunDef -> SM ()
 addSpecialisation name fd = modify $ \s -> s {specTable = Map.insert name fd (specTable s)}
@@ -217,8 +229,7 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
     getSpecialisedDecls
   -- Deployer code
   modify (\st -> st {specTable = emptyTable})
-  -- let deployerName = Name (pretty name <> "$Deployer")
-  mStart <- specEntry "start"
+  mStart <- specEntryOpt deployerName
   deployDecls <- case mStart of
     Just {} -> do
       depDecls <- getSpecialisedDecls
@@ -240,16 +251,23 @@ specialiseTopDecl d@TDataDef {} = pure [d]
 specialiseTopDecl _ = pure []
 
 specEntry :: Name -> SM (Maybe Name)
-specEntry name = withLocalState do
+specEntry name = do
+  mres <- specEntryOpt name
+  when (null mres) $ warns ["!! Warning: no resolution found for ", show name]
+  pure mres
+
+-- | Like 'specEntry' but silently returns Nothing when the name is absent.
+-- Use for optional entry points (e.g. deployer) that may not exist when
+-- contract dispatch generation is disabled.
+specEntryOpt :: Name -> SM (Maybe Name)
+specEntryOpt name = withLocalState do
   let anytype = TyVar (TVar (Name "any"))
   mres <- lookupResolution name anytype
   case mres of
     Just (fd, ty, subst) -> do
       debug ["< resolution: ", show name, " : ", pretty ty, "@", pretty subst]
       Just <$> specFunDef fd
-    Nothing -> do
-      warns ["!! Warning: no resolution found for ", show name]
-      pure Nothing
+    Nothing -> pure Nothing
 
 addContractResolutions :: Contract Id -> SM ()
 addContractResolutions (Contract _name _args cdecls) = do
@@ -345,6 +363,19 @@ specCall i args ty = do
   case mres of
     Just (fd, fty, phi) -> do
       debug ["< resolution: ", show name, "~>", shortName fd, " : ", pretty fty, "@", pretty phi]
+      let varToVar = [(v, t) | (v, t) <- unTVSubst phi, isTyVar t]
+      unless (null varToVar) $
+        warns
+          [ "Warning: call to ",
+            show name,
+            " resolved with ungrounded type variable(s): ",
+            prettys (map snd varToVar),
+            "\n  The intermediate type cannot be determined from this call site.",
+            "\n  Expression: ",
+            pretty (Call Nothing i args),
+            "\n  This often occurs when a polymorphic-return function (e.g. `require`)",
+            "\n  is passed directly to a polymorphic-argument function (e.g. `void`)."
+          ]
       extSpSubst phi
       subst <- getSpSubst
       let ty'' = applytv subst fty
@@ -411,14 +442,19 @@ ensureClosed :: (Pretty a) => Ty -> a -> TVSubst -> SM ()
 ensureClosed ty ctxt subst = do
   let tvs = freetv ty
   unless (null tvs) $
-    panics
-      [ "spec(",
+    nopanics
+      [ "Error: cannot specialise ",
         pretty ctxt,
-        "): free type vars in ",
+        "\n",
+        "  Type variable(s) ",
+        prettys tvs,
+        " remain unresolved in type ",
         pretty ty,
-        ": ",
-        show tvs,
-        " @ subst=",
+        "\n",
+        "  This usually means a polymorphic return value is passed to another\n",
+        "  polymorphic function without any concrete type context to resolve\n",
+        "  the intermediate type (e.g. void(require(...))).\n",
+        "  Substitution: ",
         pretty subst
       ]
 
@@ -467,10 +503,25 @@ specStmt stmt@(Let i mty mexp) = do
   case mexp of
     Nothing -> return $ Let i' mty' Nothing
     Just e -> Let i' mty' . Just <$> specExp e ty'
+specStmt (Block body) =
+  Block <$> specBody body
 specStmt (StmtExp e) = do
   ty <- atCurrentSubst (typeOfTcExp e)
-  e' <- specExp e ty
+  -- replace all type variables with unit - the value is dropped anyway
+
+  let groundTy (TyVar _) = unit
+      groundTy (TyCon n tys) = TyCon n (map groundTy tys)
+      groundTy (a :-> b) = groundTy a :-> groundTy b
+      groundTy t = t
+
+  e' <- specExp e (groundTy ty)
   return $ StmtExp e'
+specStmt (For initStmt cond post body) = do
+  initStmt' <- specStmt initStmt
+  cond' <- specExp cond desugaredBoolTy
+  post' <- specStmt post
+  body' <- specBody body
+  return $ For initStmt' cond' post' body'
 specStmt (Asm ys) = pure (Asm ys)
 specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
 
@@ -572,7 +623,7 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) returnType
       Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
 
 schemeOfTcSignature :: Signature Id -> Scheme
-schemeOfTcSignature sig@(Signature vs ps _n args (Just rt)) =
+schemeOfTcSignature sig@(Signature vs ps _n args (Just rt) _) =
   case mapM getType args of
     Just ts -> Forall vs (ps :=> (funtype ts rt))
     Nothing -> error $ unwords ["Invalid instance member signature:", pretty sig]
@@ -593,6 +644,10 @@ prettyResolutions = render . brackets . commaSep . map pprRes
 
 -- instance Pretty (Ty, FunDef Id) where
 --  ppr = pprRes
+
+isTyVar :: Ty -> Bool
+isTyVar (TyVar _) = True
+isTyVar _ = False
 
 specmgu :: Ty -> Ty -> Either String TVSubst
 specmgu (TyCon n ts) (TyCon n' ts')
@@ -683,6 +738,8 @@ instance (HasTV a) => HasTV (Maybe a) where
   freetv = maybe [] freetv
 
 instance (HasTV a, HasTV b) => HasTV (a, b) -- defaults
+
+instance HasTV Pred -- uses default: freetv = everything (<>) (mkQ mempty (freetv @Ty))
 
 {-
 instance (HasTV a, HasTV b, HasTV c) => HasTV (a,b,c) where
@@ -792,7 +849,7 @@ toMastFunDef (FunDef sig body) =
       mastFunReturn = case sigReturn sig of
         Just t -> toMastTy t
         Nothing -> error $ "toMastFunDef: no return type for " ++ show (sigName sig),
-      mastFunBody = map toMastStmt body
+      mastFunBody = toMastBody body
     }
 
 toMastParam :: Param Id -> MastParam
@@ -818,10 +875,18 @@ toMastStmt (Return e) = MastReturn (toMastExp e)
 toMastStmt (Match [scrutinee] alts) = MastMatch (toMastExp scrutinee) (map toMastAlt alts)
 toMastStmt (Match es _) = error $ "toMastStmt: multi-scrutinee match should have been desugared: " ++ show es
 toMastStmt (Asm ys) = MastAsm ys
+toMastStmt (For initStmt cond postStmt body) =
+  MastFor (toMastStmt initStmt) (toMastExp cond) (toMastStmt postStmt) (toMastBody body)
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
+toMastBody :: [Stmt Id] -> [MastStmt]
+toMastBody = concatMap go
+  where
+    go (Block body) = toMastBody body
+    go stmt = [toMastStmt stmt]
+
 toMastAlt :: ([Pat Id], [Stmt Id]) -> MastAlt
-toMastAlt ([p], body) = (toMastPat p, map toMastStmt body)
+toMastAlt ([p], body) = (toMastPat p, toMastBody body)
 toMastAlt (ps, _) = error $ "toMastAlt: multi-pattern alt should have been desugared: " ++ show ps
 
 toMastExp :: Exp Id -> MastExp

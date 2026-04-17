@@ -5,9 +5,6 @@
 import pragma_merge_base;
 
 // Add more pragmas - these should merge with imported ones
-pragma no-patterson-condition TestClassC3,TestClassB4;
-pragma no-coverage-condition TestClassC3;
-pragma no-bounded-variable-condition TestClassB4;
 
 forall a b . class a:TestClassC3(b) {}
 forall a . class a:TestClassB4 {}
@@ -23,4 +20,3 @@ forall a c . c:TestClassB1(a) => instance TestType1(a):TestClassB4 {}
 
 // fails bound var & patterson (pragma set in base)
 forall a c . c:TestClassB1(a) => instance TestType1(a):TestClassB3 {}
-

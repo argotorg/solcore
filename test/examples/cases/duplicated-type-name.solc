@@ -2,5 +2,5 @@ data Foo = Bar;
 data Foo = Baz;
 
 function main() {
-  let x = Baz;
+  let x = Foo.Baz;
 }

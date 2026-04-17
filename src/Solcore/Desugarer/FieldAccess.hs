@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 
-module Solcore.Desugarer.FieldAccess (fieldDesugarer) where
+module Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls, fieldDesugarer) where
 
 import Control.Monad.Reader (MonadReader (..))
 -- import Data.Generics(Data, mkT, everywhere)
@@ -36,24 +36,35 @@ type NmExp = Exp Name
 type NmEquation = Equation Name
 
 fieldDesugarer :: CompUnit Name -> CompUnit Name
-fieldDesugarer (CompUnit ims topdecls) = CompUnit ims (extras <> topdecls')
+fieldDesugarer (CompUnit ims topdecls) = CompUnit ims (fieldDesugarTopDecls topdecls)
+
+fieldDesugarTopDecls :: [TopDecl Name] -> [TopDecl Name]
+fieldDesugarTopDecls topdecls = extras <> topdecls'
   where
+    existingDataTypes =
+      Set.fromList
+        [ dataName dt
+          | TDataDef dt <- topdecls
+        ]
     (extras, topdecls') = mapAccumL go mempty topdecls
-    go acc (TContr c) = (acc <> extraTopDeclsForContract c, TContr (transContract c))
+    go acc (TContr c) =
+      let hasSingletonCollision =
+            singletonNameForContract (Contract.name c) `Set.member` existingDataTypes
+       in (acc <> extraTopDeclsForContract (not hasSingletonCollision) c, TContr (transContract c))
     go acc v = (acc, v)
 
 --------------------------------
 -- # Extra Top Decls
 --------------------------------
 
-extraTopDeclsForContract :: NmContract -> [NmTopDecl]
-extraTopDeclsForContract (Contract cname _ts cdecls) = do
+extraTopDeclsForContract :: Bool -> NmContract -> [NmTopDecl]
+extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
   let singName = singletonNameForContract cname
   let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []]
 
   let fields = getFields cdecls
   let (_fieldTypes, extraFieldDecls) = foldl' (flip contractFieldStep) ([], []) fields
-  (contractSingDecl : extraFieldDecls)
+  (if includeSingleton then contractSingDecl : extraFieldDecls else extraFieldDecls)
   where
     -- given a list of contract field types so far and topdecls for them, amends them with data for another field
     -- the types of previous fields are needed to construct field offset
@@ -71,14 +82,14 @@ extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, 
     selName = selectorNameForField cname fname
     selDecl = TDataDef $ DataTy selName [] [Constr selName []]
     selType = TyCon selName []
-    -- instance StructField(ContractStorage(CCtx), fld1_sel):StructField(uint, ()) {}
+    -- instance StructField(ContractStorage(CCtx), fld1_sel):CStructField(uint, ()) {}
     ctxTy = TyCon "ContractStorage" [singletonTypeForContract cname]
     sfInstance =
       Instance
         { instDefault = False,
           instVars = [],
           instContext = [],
-          instName = "StructField",
+          instName = "CStructField",
           paramsTy = [translateFieldType fty, offset],
           mainTy = TyCon "StructField" [ctxTy, selType],
           instFunctions = []
@@ -133,8 +144,16 @@ transStmt cenv stmt = (cenv, go stmt cenv)
     go :: NmStmt -> CEM NmStmt
     go (lhs := rhs) = transAssignment lhs rhs
     go (Return exp) = Return <$> transRhs exp
+    go (Block body) = pure (Block (transBody body cenv))
     go (StmtExp exp) = StmtExp <$> transRhs exp
     go (If e b1 b2) = If <$> transRhs e <*> transBody b1 <*> transBody b2
+    go (For initStmt cond postStmt body) =
+      pure $ For initStmt' cond' postStmt' body'
+      where
+        (forEnv, initStmt') = transStmt cenv initStmt
+        cond' = transRhs cond forEnv
+        (_, postStmt') = transStmt forEnv postStmt
+        body' = transBody body forEnv
     go (Match es eqns) = traces [pretty (r cenv)] r where r = Match <$> mapM transRhs es <*> mapM transEquation eqns
     go Let {} = error "Impossible"
     go s@Asm {} = pure s

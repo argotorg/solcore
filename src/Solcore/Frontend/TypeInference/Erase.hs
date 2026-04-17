@@ -37,8 +37,8 @@ instance Erase (FunDef Id) where
 instance Erase (Signature Id) where
   type EraseRes (Signature Id) = Signature Name
 
-  erase (Signature n ps t args rt) =
-    Signature n ps t (erase args) rt
+  erase (Signature n ps t args rt pay) =
+    Signature n ps t (erase args) rt pay
 
 instance Erase (Stmt Id) where
   type EraseRes (Stmt Id) = Stmt Name
@@ -47,6 +47,8 @@ instance Erase (Stmt Id) where
     (erase e1) := (erase e2)
   erase (Let n mt me) =
     Let (idName n) mt (erase me)
+  erase (Block body) =
+    Block (erase body)
   erase (StmtExp e) =
     StmtExp (erase e)
   erase (Return e) =
@@ -57,6 +59,8 @@ instance Erase (Stmt Id) where
     Asm blk
   erase (If e blk1 blk2) =
     If (erase e) (erase blk1) (erase blk2)
+  erase (For initStmt cond postStmt body) =
+    For (erase initStmt) (erase cond) (erase postStmt) (erase body)
 
 instance Erase (Exp Id) where
   type EraseRes (Exp Id) = Exp Name

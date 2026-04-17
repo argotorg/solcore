@@ -14,14 +14,25 @@ bugs. You should under no circumstances be using this in a production setting.
 - A pen and paper formalization of the type system is
     defined in the `./spec` directory, and pdf builds are available as artifacts from the [Spec PDF
     workflow](https://github.com/argotorg/solcore/actions/workflows/spec.yml?query=branch%3Amain).
+- The implemented module and namespace behavior is documented in [`doc/module-system.md`](doc/module-system.md).
 
 Bug reports and feedback are very welcome.
 
 ## Development
 
+Please make sure that [nix](https://nixos.org/download/) is available on the system. The following commands (e.g. `nix develop`)
+will install all required dependencies, and there is no need to do anything else. It is not
+recommended to try avoiding Nix.
+
 ```sh
 # enter a development shell with all required dependencies
+# note: do not run git submodule update --init, nix will take care of it
 nix develop
+
+# if prompted, may need to enable a feature: nix --extra-experimental-features "nix-command flakes" develop
+
+# update the package list of hackage.haskell.org
+cabal update
 
 # enter a repl
 cabal repl
@@ -124,8 +135,7 @@ The project includes a C++ testrunner that executes end-to-end integration tests
 The testrunner requires cmake and boost, which are available in the `nix develop` shell:
 
 ```bash
-# If the repo was cloned without submodules, initialize JSON dependency:
-git submodule update --init deps/nlohmann_json
+# If the submodule is not initialized, make sure to run nix develop first.
 
 # Build the testrunner binary
 cmake -S . -B build

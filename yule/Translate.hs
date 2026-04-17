@@ -3,7 +3,8 @@
 module Translate where
 
 import Builtins
-import Common.Pretty
+import Data.List (partition)
+import Data.Map qualified as Map
 import Data.String
 import GHC.Stack
 import Language.Hull hiding (Name)
@@ -36,9 +37,9 @@ genExpr (EInl (TSum _ r) e) = do
   (stmts, loc) <- genExpr e
   let loc' = loc `padToSize` sizeOf r
   pure (stmts, LocSeq [LocBool False, loc'])
-genExpr (EInr (TSum _ r) e) = do
+genExpr (EInr (TSum l r) e) = do
   (stmts, loc) <- genExpr e
-  let loc' = loc `paddedTo` r
+  let loc' = loc `padToSize` max (sizeOf l) (sizeOf r)
   pure (stmts, LocSeq [LocBool True, loc'])
 genExpr (EInl (TNamed _ t) e) = genExpr (EInl t e)
 genExpr (EInr (TNamed _ t) e) = genExpr (EInr t e)
@@ -107,7 +108,52 @@ genStmtWithComment s = do
 genStmt :: Stmt -> TM [YulStmt]
 genStmt (SAssembly stmts) = do
   -- debug ["assembly:", render$ ppr (Yul stmts)]
-  pure stmts
+  env <- getVarEnv
+  pure (map (substAsmStmt env) stmts)
+  where
+    -- Substitute Hull variable references in assembly statements with their
+    -- current Yul names.  Assembly blocks are emitted verbatim, so without
+    -- this substitution a variable declared as `let msg_value : uint256` (which
+    -- gets allocated as `_v0`) would be referenced by its Hull name and be
+    -- undeclared in the generated Yul.
+    substAsmStmt env (YBlock body) =
+      YBlock (map (substAsmStmt env) body)
+    substAsmStmt env (YFun name args rets body) =
+      YFun name args rets (map (substAsmStmt env) body)
+    substAsmStmt env (YLet names me) =
+      YLet names (fmap (substAsmExp env) me)
+    substAsmStmt env (YAssign lhs e) =
+      YAssign (map (substAsmName env) lhs) (substAsmExp env e)
+    substAsmStmt env (YExp e) =
+      YExp (substAsmExp env e)
+    substAsmStmt env (YIf e body) =
+      YIf (substAsmExp env e) (map (substAsmStmt env) body)
+    substAsmStmt env (YSwitch e cases mdef) =
+      YSwitch
+        (substAsmExp env e)
+        (map (\(lit, body) -> (lit, map (substAsmStmt env) body)) cases)
+        (fmap (map (substAsmStmt env)) mdef)
+    substAsmStmt env (YFor pre cond post body) =
+      YFor
+        (map (substAsmStmt env) pre)
+        (substAsmExp env cond)
+        (map (substAsmStmt env) post)
+        (map (substAsmStmt env) body)
+    substAsmStmt _ s = s
+
+    substAsmExp env (YIdent n) = case Map.lookup (show n) env of
+      Just loc -> case flattenRhs loc of
+        [e'] -> e'
+        _ -> YIdent n -- multi-slot locations cannot appear in assembly
+      Nothing -> YIdent n
+    substAsmExp env (YCall f args) = YCall f (map (substAsmExp env) args)
+    substAsmExp _ e = e
+
+    substAsmName env n = case Map.lookup (show n) env of
+      Just loc -> case flattenLhs loc of
+        [n'] -> n'
+        _ -> n -- multi-slot: cannot appear as a single assembly lvalue
+      Nothing -> n
 genStmt (SAlloc name typ) = allocVar name typ
 genStmt (SAssign name expr) = hullAssign name expr
 genStmt (SReturn expr) = do
@@ -120,7 +166,7 @@ genStmt (SReturn expr) = do
       let stmts' = copyLocs resultLoc loc
       pure (stmts ++ stmts' ++ [YLeave])
 genStmt (SBlock stmts) = withLocalEnv do genStmts stmts
-genStmt (SMatch _ e alts) = do
+genStmt (SMatch ty e alts) = do
   (scrutStmts, scrutineeLoc) <- genExpr e
   -- debug ["> SMatch: ", show e , ":", show sty, " @ " , show scrutineeLoc]
   matchStmts <- case normalizeLoc scrutineeLoc of
@@ -132,8 +178,30 @@ genStmt (SMatch _ e alts) = do
   where
     genSwitch :: Location -> Location -> [Alt] -> TM [YulStmt]
     genSwitch tag payload altBranches = do
-      (yulAlts, yulDefault) <- genNAlts payload altBranches
+      (yulAlts, yulDefault) <- genNAlts (stripTypeName ty) payload altBranches
       pure [YSwitch (loadLoc tag) yulAlts yulDefault]
+genStmt (SFor initStmt cond post body) = do
+  initStmts <- genForInit initStmt
+  (condStmts, condLoc) <- genExpr cond
+  -- condStmts must go both in the init stmt and post stmt, with special treatment for allocations
+  let condExp = loadLoc (normalizeLoc condLoc)
+  postStmts <- genStmt post
+  bodyStmts <- genStmt body
+  -- Yul for post block does not allow `let` declarations.
+  -- Hoist all allocs (from cond and post) into the init block so they are
+  -- in scope for the entire loop; only computations go in the post block.
+  let (condAllocs, condCompute) = partition isAlloc condStmts
+  let (postAllocs, postCompute) = partition isAlloc postStmts
+  pure [YFor (initStmts ++ condAllocs ++ postAllocs ++ condCompute) condExp (postCompute ++ condCompute) bodyStmts]
+  where
+    isAlloc (YLet _ Nothing) = True
+    isAlloc _ = False
+
+    -- For-loop init declarations must stay visible while translating
+    -- condition/post/body, so do not run SBlock init under withLocalEnv.
+    genForInit :: Stmt -> TM [YulStmt]
+    genForInit (SBlock stmts) = genStmts stmts
+    genForInit s = genStmt s
 genStmt (SFunction name args ret stmts) = withLocalEnv do
   -- debug ["> SFunction: ", name, " ", show args, " -> ", show ret]
   yulArgs <- placeArgs args
@@ -155,7 +223,7 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
     placeArgs :: [Arg] -> TM [Name]
     placeArgs as = concat <$> mapM placeArg as
     placeArg :: Arg -> TM [Name]
-    placeArg (TArg argName TWord) = do
+    placeArg (TArg argName typ) | isWordType typ = do
       let loc = LocNamed argName
       insertVar argName loc
       return [yulVarName argName]
@@ -185,47 +253,45 @@ scanStmt _ = pure ()
 genBody :: Body -> TM [YulStmt]
 genBody stmts = concat <$> mapM genStmt stmts
 
-genBinAlts :: Location -> [Alt] -> TM [(YLiteral, [YulStmt])]
-genBinAlts payload [Alt _ lname lbody, Alt _ rname rbody] = do
-  yulLStmts <- withName lname payload lbody
-  yulRStmts <- withName rname payload rbody
-  pure [(YulFalse, yulLStmts), (YulTrue, yulRStmts)]
-  where
-    withName name loc body = withLocalEnv do
-      insertVar name loc
-      genBody body
-genBinAlts _ alts =
-  error
-    ( "genAlts: invalid number of alternatives:\n"
-        ++ unlines (map (render . ppr) alts)
-    )
+-- Trim payload to n slots so pattern variables are not mapped to padding.
+trimPayload :: Int -> Location -> Location
+trimPayload n (LocSeq ls) = normalizeLoc (LocSeq (take n ls))
+trimPayload _ loc = loc
 
-genNAlts :: Location -> [Alt] -> TM (YulCases, YulDefault)
-genNAlts payload alts = do
-  results <- mapM (genAlt payload) alts
+-- Payload size for each constructor given the scrutinee type.
+conPayload :: Type -> Con -> Location -> Location
+conPayload (TSum l _) CInl payload = trimPayload (sizeOf l) payload
+conPayload (TSum _ r) CInr payload = trimPayload (sizeOf r) payload
+conPayload (TSumN ts) (CInK k) payload = trimPayload (sizeOf (ts !! k)) payload
+conPayload (TNamed _ t) con payload = conPayload t con payload
+conPayload _ _ payload = payload
+
+genNAlts :: Type -> Location -> [Alt] -> TM (YulCases, YulDefault)
+genNAlts ty payload alts = do
+  results <- mapM (genAlt ty payload) alts
   return (gather results)
   where
     gather = foldr combine ([], Nothing)
     combine (Left (tag, stmts)) (cases, def) = ((tag, stmts) : cases, def)
     combine (Right stmts) (cases, _) = (cases, Just stmts)
 
-genAlt :: Location -> Alt -> TM (Either YulCase YulBlock)
-genAlt payload (Alt (PCon con) name body) = withLocalEnv do
-  insertVar name payload
+genAlt :: Type -> Location -> Alt -> TM (Either YulCase YulBlock)
+genAlt ty payload (Alt (PCon con) name body) = withLocalEnv do
+  insertVar name (conPayload ty con payload)
   altStmts <- genBody body
   pure (Left (yulCon con, altStmts))
   where
     yulCon CInl = YulFalse
     yulCon CInr = YulTrue
     yulCon (CInK k) = YulNumber (fromIntegral k)
-genAlt _ (Alt (PIntLit k) _ body) = withLocalEnv do
+genAlt _ _ (Alt (PIntLit k) _ body) = withLocalEnv do
   altStmts <- genBody body
   pure (Left (YulNumber (fromIntegral k), altStmts))
-genAlt payload (Alt (PVar name) _ body) = do
+genAlt _ payload (Alt (PVar name) _ body) = do
   insertVar name payload
   altStmts <- genBody body
   pure (Right altStmts)
-genAlt _ alt = error ("genAlt unimplemented for: " ++ show alt)
+genAlt _ _ alt = error ("genAlt unimplemented for: " ++ show alt)
 
 allocVar :: Hull.Name -> Type -> TM [YulStmt]
 allocVar name TWord = do

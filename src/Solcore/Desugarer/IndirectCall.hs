@@ -1,4 +1,8 @@
-module Solcore.Desugarer.IndirectCall where
+module Solcore.Desugarer.IndirectCall
+  ( indirectCall,
+    indirectCallTopDecls,
+  )
+where
 
 import Control.Monad.State
 import Data.Map qualified as Map
@@ -10,13 +14,19 @@ import Solcore.Primitives.Primitives
 -- top level desugarer
 
 indirectCall :: CompUnit Name -> IO (CompUnit Name, [Name])
-indirectCall cunit =
+indirectCall (CompUnit imps topDecls) =
+  do
+    (topDecls', fnames) <- indirectCallTopDecls topDecls
+    pure (CompUnit imps topDecls', fnames)
+
+indirectCallTopDecls :: [TopDecl Name] -> IO ([TopDecl Name], [Name])
+indirectCallTopDecls topDecls =
   (,fnames)
     <$> runIndirectM
-      (desugar cunit)
+      (desugar topDecls)
       (Env (Map.keys primCtx ++ fnames))
   where
-    fnames = QualName invokableName "invoke" : collect cunit
+    fnames = QualName invokableName "invoke" : collect topDecls
 
 -- type class for desugar indirect calls
 
@@ -39,6 +49,7 @@ instance Desugar (TopDecl Name) where
   desugar (TInstDef i) = TInstDef <$> desugar i
   desugar (TDataDef d) = pure $ TDataDef d
   desugar (TSym s) = pure $ TSym s
+  desugar (TExportDecl d) = pure $ TExportDecl d
   desugar (TPragmaDecl d) = pure $ TPragmaDecl d
   desugar (TMutualDef ms) = TMutualDef <$> desugar ms
 
@@ -74,6 +85,8 @@ instance Desugar (Stmt Name) where
     (:=) <$> desugar lhs <*> desugar rhs
   desugar (Let n mt me) =
     Let n mt <$> desugar me
+  desugar (Block body) =
+    Block <$> desugar body
   desugar (StmtExp e) =
     StmtExp <$> desugar e
   desugar (Return e) =
@@ -83,6 +96,8 @@ instance Desugar (Stmt Name) where
   desugar e@(Asm _) = pure e
   desugar (If e blk1 blk2) =
     If <$> desugar e <*> desugar blk1 <*> desugar blk2
+  desugar (For initStmt cond postStmt body) =
+    For <$> desugar initStmt <*> desugar cond <*> desugar postStmt <*> desugar body
 
 instance Desugar (Exp Name) where
   desugar (Con a es) =
@@ -145,6 +160,7 @@ instance Collect (TopDecl Name) where
   collect (TInstDef _) = []
   collect (TDataDef _) = []
   collect (TSym _) = []
+  collect (TExportDecl _) = []
   collect (TPragmaDecl _) = []
   collect (TMutualDef ms) = collect ms
 
@@ -179,7 +195,3 @@ runIndirectM m env = evalStateT m env
 
 isDirectCall :: Name -> IndirectM Bool
 isDirectCall n = (elem n) <$> gets funNames
-
-addFunctionName :: Name -> IndirectM ()
-addFunctionName n =
-  modify (\env -> env {funNames = n : funNames env})

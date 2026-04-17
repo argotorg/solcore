@@ -5,7 +5,7 @@ data storage(a) = storage(word) ;
 
 data IndexAP (m, idx, member) = IndexAP(m, idx, Proxy(member)) ;
 
-function wal(ref: storage(dict(address, word)) , src : address, amt: word) {
+function wal(ref: storage(dict(address, word)) , src : address, amt: word) -> () {
   let ip = IndexAP(ref, src, Proxy : Proxy(word));
   Assign.assign(LVA.acc(ip), amt);
 }

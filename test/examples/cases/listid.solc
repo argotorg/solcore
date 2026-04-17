@@ -4,9 +4,9 @@ forall a . function id(x : a) -> a {
   return x;
 }
 
-function listid(xs) {
+function listid(xs : List(word)) -> List(word) {
   match xs {
-  | Nil => return Nil ;
-  | Cons(x,xs) => return Cons(id(x), listid(xs));
+  | List.Nil => return List.Nil ;
+  | List.Cons(x,xs) => return List.Cons(id(x), listid(xs));
   }
 }

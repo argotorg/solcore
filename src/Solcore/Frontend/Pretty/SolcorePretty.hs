@@ -35,8 +35,22 @@ instance (Pretty a) => Pretty (CompUnit a) where
     vcat (map ppr imps ++ map ppr cs)
 
 instance Pretty Import where
-  ppr (Import qn) =
-    text "import" <+> ppr qn <+> semi
+  ppr (ImportModule path) =
+    text "import" <+> ppr path <+> semi
+  ppr (ImportAlias path asName) =
+    hsep [text "import", ppr path, text "as", ppr asName, semi]
+  ppr (ImportOnly path items) =
+    hsep
+      [ text "import",
+        ppr path <> text ".",
+        pprItemSelector items <> semi
+      ]
+
+instance Pretty ModulePath where
+  ppr (RelativePath path) = ppr path
+  ppr (LibraryPath path) = text "lib." <> ppr path
+  ppr (ExternalPath libName path) =
+    text "@" <> ppr libName <> text "." <> ppr path
 
 instance (Pretty a) => Pretty (TopDecl a) where
   ppr (TContr c) = ppr c
@@ -47,7 +61,67 @@ instance (Pretty a) => Pretty (TopDecl a) where
     vcat (map ppr ts)
   ppr (TDataDef d) = ppr d
   ppr (TSym s) = ppr s
+  ppr (TExportDecl e) = ppr e
   ppr (TPragmaDecl p) = ppr p
+
+instance Pretty Export where
+  ppr (ExportList items) =
+    hsep
+      [ text "export",
+        pprExportSpecs items <> semi
+      ]
+  ppr (ExportModule path) =
+    hsep [text "export", ppr path <> semi]
+  ppr (ExportModuleAs path asName) =
+    hsep [text "export", ppr path, text "as", ppr asName <> semi]
+  ppr (ExportItemsFrom path items)
+    | exportSelectorIsOnlyWildcard items =
+        hsep [text "export", ppr path <> text ".*;"]
+    | otherwise =
+        hsep [text "export", ppr path <> text ".", pprExportSelector items <> semi]
+
+pprExportSpecs :: [ExportSpec] -> Doc
+pprExportSpecs items = lbrace <> commaSep (map ppr items) <> rbrace
+
+instance Pretty ExportSpec where
+  ppr ExportAll = text "*"
+  ppr (ExportName itemName) = ppr itemName
+  ppr (ExportNameWithConstructors typeName ctorSelector) =
+    ppr typeName <> parens (ppr ctorSelector)
+  ppr (ExportModuleAll path) = ppr path <> text ".*"
+
+instance Pretty ConstructorSelector where
+  ppr SelectAllConstructors = text "*"
+  ppr (SelectConstructors names) = commaSep (map ppr names)
+
+pprExportSelector :: ExportSelector -> Doc
+pprExportSelector (SelectExportItems items) =
+  lbrace <> commaSep (map ppr items) <> rbrace
+
+instance Pretty ExportSelectorEntry where
+  ppr SelectExportAllItems = text "*"
+  ppr (SelectExportItem itemName) = ppr itemName
+  ppr (SelectExportConstructors typeName ctorSelector) =
+    ppr typeName <> parens (ppr ctorSelector)
+
+pprItemSelector :: ItemSelector -> Doc
+pprItemSelector (SelectItems items hidden) =
+  base <> pprHiding hidden
+  where
+    base = lbrace <> commaSep (map ppr items) <> rbrace
+    pprHiding [] = empty
+    pprHiding names =
+      space <> (text "hiding" <+> (lbrace <> commaSep (map ppr names) <> rbrace))
+
+instance Pretty ItemSelectorEntry where
+  ppr SelectAllItems = text "*"
+  ppr (SelectItem itemName) = ppr itemName
+  ppr (SelectItemAs itemName aliasName) =
+    hsep [ppr itemName, text "as", ppr aliasName]
+
+exportSelectorIsOnlyWildcard :: ExportSelector -> Bool
+exportSelectorIsOnlyWildcard (SelectExportItems [SelectExportAllItems]) = True
+exportSelectorIsOnlyWildcard _ = False
 
 instance Pretty Pragma where
   ppr (Pragma _ Enabled) = empty
@@ -142,8 +216,9 @@ pprSignatures =
   vcat . map ((<> semi) . ppr)
 
 instance (Pretty a) => Pretty (Signature a) where
-  ppr (Signature vs ctx n ps ty) =
+  ppr (Signature vs ctx n ps ty pay) =
     pprSigPrefix vs ctx
+      <+> (if pay then text "payable" else empty)
       <+> text "function"
       <+> ppr n
       <+> pprParams ps
@@ -217,6 +292,10 @@ instance (Pretty a) => Pretty (Stmt a) where
     ppr n <+> equals <+> ppr e <+> semi
   ppr (Let n ty m) =
     text "let" <+> ppr n <+> pprOptTy ty <+> pprInitOpt m
+  ppr (Block body) =
+    lbrace
+      $$ nest 3 (ppr body)
+      $$ rbrace
   ppr (StmtExp e) =
     ppr e <> semi
   ppr (Return e) =
@@ -242,6 +321,22 @@ instance (Pretty a) => Pretty (Stmt a) where
       <+> lbrace
       $$ nest 3 (ppr blk2)
       $$ rbrace
+  ppr (For initStmt cond postStmt body) =
+    text "for"
+      <+> parens (hsep [pprForClause initStmt <> semi, ppr cond <> semi, pprForClause postStmt])
+      <+> lbrace
+      $$ nest 3 (ppr body)
+      $$ rbrace
+
+pprForClause :: (Pretty a) => Stmt a -> Doc
+pprForClause (n := e) = ppr n <+> equals <+> ppr e
+pprForClause (Let n ty m) = text "let" <+> ppr n <+> pprOptTy ty <+> pprForInitOpt m
+pprForClause (StmtExp e) = ppr e
+pprForClause s = ppr s
+
+pprForInitOpt :: (Pretty a) => Maybe (Exp a) -> Doc
+pprForInitOpt Nothing = empty
+pprForInitOpt (Just e) = equals <+> ppr e
 
 instance (Pretty a) => Pretty (Equation a) where
   ppr (p, ss) =

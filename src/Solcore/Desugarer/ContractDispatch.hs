@@ -8,7 +8,11 @@
 -- contract methods by examining the first four bytes of calldata and comparing it
 -- to the computed function selector for each method. The instances and datatypes
 -- used to implement this dispatch can be found in std/dispatch.solc.
-module Solcore.Desugarer.ContractDispatch where
+module Solcore.Desugarer.ContractDispatch
+  ( contractDispatchDesugarer,
+    contractDispatchTopDecls,
+  )
+where
 
 import Data.List (mapAccumL)
 import Data.Maybe (mapMaybe)
@@ -16,17 +20,27 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Language.Yul
 import Language.Yul.QuasiQuote
+import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax
 import Solcore.Primitives.Primitives (string, tupleExpFromList, tupleTyFromList, unit, word)
 
 contractDispatchDesugarer :: CompUnit Name -> CompUnit Name
-contractDispatchDesugarer (CompUnit ims topdecls) = CompUnit ims (Set.toList extras <> topdecls')
+contractDispatchDesugarer (CompUnit ims topdecls) = CompUnit ims (contractDispatchTopDecls topdecls)
+
+contractDispatchTopDecls :: [TopDecl Name] -> [TopDecl Name]
+contractDispatchTopDecls topdecls = Set.toList extras <> topdecls'
   where
     (extras, topdecls') = mapAccumL go Set.empty topdecls
     go acc (TContr c)
       | "main" `notElem` functionNames c = (Set.union acc (genNameDecls c), TContr (genMainFn True c))
       | otherwise = (acc, TContr (genMainFn False c))
     go acc v = (acc, v)
+
+hasConstructor :: [ContractDecl Name] -> Bool
+hasConstructor = any isConstr
+  where
+    isConstr (CConstrDecl _) = True
+    isConstr _ = False
 
 functionNames :: Contract a -> [Name]
 functionNames = foldr go [] . decls
@@ -48,8 +62,10 @@ genMainFn addMain (Contract cname tys cdecls)
   | addMain = Contract cname tys (CFunDecl mainfn : Set.toList cdecls')
   | otherwise = Contract cname tys (Set.toList cdecls')
   where
-    cdecls' = Set.unions (map (transformCDecl cname) cdecls)
-    mainfn = FunDef (Signature [] [] "main" [] Nothing) body
+    cdecls'' = if hasConstructor cdecls then cdecls else cdecls ++ [defaultConstructor]
+    cdecls' = Set.unions (map (transformCDecl cname) cdecls'')
+    defaultConstructor = CConstrDecl (Constructor {constrParams = [], constrBody = []})
+    mainfn = FunDef (Signature [] [] "main" [] (Just unit) False) body
     body = [StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
     cdata = Con "Contract" [methods, fallback]
     methods = tupleExpFromList (fmap mkMethod (mapMaybe unwrapSigs cdecls))
@@ -59,15 +75,15 @@ genMainFn addMain (Contract cname tys cdecls)
         [ proxyExp (TyCon "NonPayable" []),
           proxyExp unit,
           proxyExp unit,
-          Var "revert_handler"
+          Var "fallback_default_implementation"
         ]
 
-    mkMethod (Signature _ _ fname fargs (Just ret))
+    mkMethod (Signature _ _ fname fargs (Just ret) payable)
       | all isTyped fargs =
           Con
             "Method"
             [ proxyExp (TyCon (nameTypeName cname fname) []),
-              proxyExp (TyCon "NonPayable" []),
+              proxyExp (TyCon (if payable then "Payable" else "NonPayable") []),
               proxyExp (tupleTyFromList (mapMaybe getTy fargs)),
               proxyExp ret,
               Var fname
@@ -101,7 +117,8 @@ transformConstructor contractName cons
           sigContext = mempty,
           sigName = initFunName,
           sigParams = params,
-          sigReturn = Just unit
+          sigReturn = Just unit,
+          sigPayable = False
         }
 
     copySig =
@@ -110,33 +127,36 @@ transformConstructor contractName cons
           sigContext = mempty,
           sigName = "copy_arguments_for_constructor",
           sigParams = mempty,
-          sigReturn = Just argsTuple
+          sigReturn = Just argsTuple,
+          sigPayable = False
         }
     contractString = show contractName
     yulContractName = YLit $ YulString contractString
     deployer = YLit $ YulString $ contractString <> "Deploy"
-    copyBody =
-      [ Let "res" (Just argsTuple) Nothing,
-        Let "memoryDataOffset" (Just word) Nothing,
-        Asm
-          [yulBlock|{
-             let programSize := datasize(`deployer`)
-             let argSize := sub(codesize(), programSize)
-             memoryDataOffset := mload(64)
-             mstore(64, add(memoryDataOffset, argSize))
-             codecopy(memoryDataOffset, programSize, argSize)
-          }|],
-        Let "source" (Just (memoryT bytesT)) (Just (memoryE (Var "memoryDataOffset"))),
-        Var "res"
-          := Call
-            Nothing
-            "abi_decode"
-            [ Var "source",
-              proxyExp argsTuple,
-              proxyExp (TyCon "MemoryWordReader" [])
-            ],
-        Return (Var "res")
-      ]
+    copyBody
+      | null params = [Return (Con "()" [])]
+      | otherwise =
+          [ Let "res" (Just argsTuple) Nothing,
+            Let "memoryDataOffset" (Just word) Nothing,
+            Asm
+              [yulBlock|{
+                 let programSize := datasize(`deployer`)
+                 let argSize := sub(codesize(), programSize)
+                 memoryDataOffset := mload(64)
+                 mstore(64, add(memoryDataOffset, argSize))
+                 codecopy(memoryDataOffset, programSize, argSize)
+              }|],
+            Let "source" (Just (memoryT bytesT)) (Just (memoryE (Var "memoryDataOffset"))),
+            Var "res"
+              := Call
+                Nothing
+                "abi_decode"
+                [ Var "source",
+                  proxyExp argsTuple,
+                  proxyExp (TyCon "MemoryWordReader" [])
+                ],
+            Return (Var "res")
+          ]
     memoryT t = TyCon "memory" [t]
     memoryE e = Con "memory" [e]
     bytesT = TyCon "bytes" []
@@ -146,9 +166,10 @@ transformConstructor contractName cons
       Signature
         { sigVars = mempty,
           sigContext = mempty,
-          sigName = "start",
+          sigName = deployerName,
           sigParams = mempty,
-          sigReturn = Just unit
+          sigReturn = Just unit,
+          sigPayable = False
         }
     startBody =
       [ Asm [yulBlock|{ mstore(64, memoryguard(128)) }|],
@@ -180,7 +201,7 @@ mkNameTy cname fname = DataTy (nameTypeName cname fname) [] []
 mkNameInst :: DataTy -> Name -> Instance Name
 mkNameInst (DataTy dname [] []) fname =
   let nameTy = TyCon dname []
-      sig = Signature [] [] "sigStr" [Typed "p" (proxyTy nameTy)] (Just string)
+      sig = Signature [] [] "sigStr" [Typed "p" (proxyTy nameTy)] (Just string) False
       body = [Return (Lit (StrLit (show fname)))]
    in Instance
         { instDefault = False,

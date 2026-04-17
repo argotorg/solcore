@@ -39,8 +39,6 @@ common common-opts
     , time
     , timeit
 
-  build-tool-depends: happy:happy, alex:alex
-
   default-language: Haskell2010
   default-extensions: OverloadedStrings
                       FlexibleInstances
@@ -64,16 +62,23 @@ library
       Solcore.Backend.Mast
       Solcore.Backend.MastEval
       Solcore.Backend.Specialise
+      Solcore.Desugarer.DecisionTreeCompiler
       Solcore.Desugarer.FieldAccess
       Solcore.Desugarer.IfDesugarer
       Solcore.Desugarer.IndirectCall
-      Solcore.Desugarer.MatchCompiler
       Solcore.Desugarer.ReplaceWildcard
       Solcore.Desugarer.ContractDispatch
       Solcore.Desugarer.ReplaceFunTypeArgs
       Solcore.Desugarer.UniqueTypeGen
       Solcore.Frontend.Lexer.SolcoreLexer
+      Solcore.Frontend.Module.Identity
+      Solcore.Frontend.Module.Loader
+      Solcore.Frontend.Parser.Decl
+      Solcore.Frontend.Parser.Expr
+      Solcore.Frontend.Parser.Patterns
       Solcore.Frontend.Parser.SolcoreParser
+      Solcore.Frontend.Parser.SolcoreTypes
+      Solcore.Frontend.Parser.Stmt
       Solcore.Frontend.Pretty.SolcorePretty
       Solcore.Frontend.Pretty.Name
       Solcore.Frontend.Pretty.ShortName
@@ -93,6 +98,7 @@ library
       Solcore.Frontend.TypeInference.TcContract
       Solcore.Frontend.TypeInference.TcEnv
       Solcore.Frontend.TypeInference.TcMonad
+      Solcore.Frontend.TypeInference.TcModule
       Solcore.Frontend.TypeInference.TcSat
       Solcore.Frontend.TypeInference.TcSimplify
       Solcore.Frontend.TypeInference.TcStmt
@@ -103,6 +109,9 @@ library
       Solcore.Primitives.Primitives
       Language.Hull
       Language.Hull.Parser
+      Language.Hull.TcEnv
+      Language.Hull.TcMonad
+      Language.Hull.TypeCheck
       Language.Hull.Types
       Language.Yul
       Language.Yul.Parser
@@ -122,7 +131,6 @@ executable sol-core
   hs-source-dirs:
       app
   build-depends: sol-core
-  build-tool-depends: alex:alex, happy:happy
   ghc-options:
     -O1 -rtsopts
 
@@ -160,6 +168,10 @@ test-suite sol-core-tests
   -- cabal-fmt: expand test -Main
   other-modules:
     Cases
+    HullCases
+    MatchCompilerTests
+    ModuleTypeCheckTests
+    ParserTests
 
   build-depends:
     , sol-core

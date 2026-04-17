@@ -45,8 +45,79 @@
           "returndata": "0000000000000000000000000000000000000000000000000000000000000005",
           "status": "success"
         }
+      },
+      {
+        "input": {
+          "text-calldata": "id_bytes(bytes) -> (bytes)",
+          "calldata":"0xbb1ec80900000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata":"00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "id_string(string) -> (string)",
+          "calldata":"0x145ef75500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata":"00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "selector too short",
+          "calldata":"c0de",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata":"35ffc70e",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "abi data too short -- using id_string(string)",
+          "calldata":"145ef755",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata":"08638556",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "value sent for non-payable function",
+          "calldata":"a7a0d537",
+          "value": "42"
+        },
+        "kind": "call",
+        "output": {
+          "returndata":"b5988ea3",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "missing fallback",
+          "calldata":"deadc0de",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata":"4924aef0",
+          "status": "failure"
+        }
       }
-
     ]
   }
 }

@@ -1,13 +1,14 @@
 data Bool = False | True;
 
 contract MatchCall {
-  function f() {
-    return True;
+  function f() -> Bool {
+    return Bool.True;
   }
 
-  function main() {
+  function main() -> word {
     match f() {
-     | True => return 42;
+     | Bool.True => return 42;
+     | Bool.False => return 0;
     }
   }
 }

@@ -92,9 +92,6 @@ forall a b . a: MemoryType, b: MemoryType => function mstore2(aa:word, va:a, vb:
   MemoryType.mstore(ab, vb);
 }
 
-pragma no-bounded-variable-condition MemoryRef;
-pragma no-coverage-condition Ref;
-pragma no-patterson-condition Ref;
 data XRef(st, field, fieldType) = XRef(st, field);
 data PairFst = PairFst;
 data PairSnd = PairSnd;

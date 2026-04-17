@@ -1,8 +1,9 @@
-function f(x : word) {
+function f(x : word) -> word {
   match x {
     | 0 =>
       let ret : word;
       assembly {}
       return ret;
+    | _ => return 0;
   }
 }

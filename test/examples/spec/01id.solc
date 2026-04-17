@@ -2,13 +2,13 @@ contract Id1 {
 
   data Bool = False | True;
 
-  function id(x) {
+  function id(x : word) -> word {
     return x ;
   }
 
-  function const(x, y) { return x; }
+  function const(x : word, y : Bool) -> word { return x; }
 
-  function main() {
-    return const(id(42), False);
+  function main() -> word {
+    return const(id(42), Bool.False);
   }
 }

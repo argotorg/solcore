@@ -1,0 +1,6 @@
+import std.{lt};
+export { ltproxy };
+
+function ltproxy() -> bool {
+    return (0 < 42);
+}

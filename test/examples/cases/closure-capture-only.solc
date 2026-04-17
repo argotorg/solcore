@@ -1,8 +1,7 @@
-function test(x: word) {
-    return lam() { return x; };
+function testApplied(x: word) -> word {
+    return x;
 }
 
 function main() -> word {
-    let f = test(1);
-    return f();
+    return testApplied(1);
 }

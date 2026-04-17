@@ -3,7 +3,7 @@ data Bool = True | False;
 
 function even (n) -> Bool {
   match n {
-  | Zero => return 1; return True;
-  | Succ(m) => return 0; return False;
+  | Nat.Zero => return 1; return Bool.True;
+  | Nat.Succ(m) => return 0; return Bool.False;
   }
 }

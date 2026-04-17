@@ -1,4 +1,8 @@
-import std;
+import std.{*};
+import std.{address, uint256, mapping, Num, Add, Sub, Bounded, Eq, Ord, Typedef, ge, not};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 function caller() -> address {
   let res: word;
@@ -16,12 +20,12 @@ function myrevert( msg: (word, word) ) -> () {
   }
 }
 
-function require(cond: bool, msg: (word, word) ) {
+function myrequire(cond: bool, msg: (word, word) ) -> () {
       if( not(cond) ) { myrevert(msg); }
 }
 
-function require1(cond: bool) {
-    require (cond, (0x72657175697265313a204641494c, 14) /* "require1: FAIL" */ );
+function require1(cond: bool) -> () {
+    myrequire (cond, (0x72657175697265313a204641494c, 14) /* "require1: FAIL" */ );
 }
 
 
@@ -35,7 +39,7 @@ contract Uint {
   totalSupply : uint256;
   balances : mapping(address,uint256);
 
-  function mint(amount:uint256) {
+  function mint(amount:uint256) -> () {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
@@ -54,15 +58,15 @@ contract Uint {
   }
 
 
-  function withdraw(src:address, amt:uint256) {
+  function withdraw(src:address, amt:uint256) -> () {
     balances[src] = Num.sub(balances[src], amt):uint256;
   }
   
-  function deposit(dst:address, amt:uint256) {
+  function deposit(dst:address, amt:uint256) -> () {
     balances[dst] = Num.add(balances[dst], amt):uint256;
   }
 
-  function init() {
+  function init() -> () {
     owner = address(0x123456789abcdef);
     msg_sender = caller();
     decimals = uint256(18);
@@ -77,4 +81,3 @@ contract Uint {
     return balances[msg_sender] : uint256;
   }
 }
-

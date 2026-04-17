@@ -125,15 +125,15 @@ instance HasType Scheme where
   bv (Forall vs qt) = vs `union` bv qt
 
 instance (HasType a) => HasType (Signature a) where
-  apply s (Signature _ ctx n p r) =
+  apply s (Signature _ ctx n p r pay) =
     let ctx' = apply s ctx
         p' = apply s p
         r' = apply s r
         vs' = bv ctx' `union` bv p' `union` bv r'
-     in Signature vs' ctx' n p' r'
-  fv (Signature vs c _ p r) = fv (c, p, r) \\ vs
-  mv (Signature _ c _ p r) = mv (c, p, r)
-  bv (Signature vs c _ p r) = vs `union` bv (c, p, r)
+     in Signature vs' ctx' n p' r' pay
+  fv (Signature vs c _ p r _) = fv (c, p, r) \\ vs
+  mv (Signature _ c _ p r _) = mv (c, p, r)
+  bv (Signature vs c _ p r _) = vs `union` bv (c, p, r)
 
 instance (HasType a) => HasType (Param a) where
   apply s (Typed i t) = Typed (apply s i) (apply s t)
@@ -241,6 +241,8 @@ instance (HasType a) => HasType (Stmt a) where
       (apply s v)
       (apply s <$> mt)
       (apply s <$> me)
+  apply s (Block body) =
+    Block (apply s body)
   apply s (StmtExp e) =
     StmtExp (apply s e)
   apply s (Return e) =
@@ -252,6 +254,12 @@ instance (HasType a) => HasType (Stmt a) where
       (apply s e)
       (apply s blk1)
       (apply s blk2)
+  apply s (For initStmt cond postStmt body) =
+    For
+      (apply s initStmt)
+      (apply s cond)
+      (apply s postStmt)
+      (apply s body)
   apply _ (Asm yblk) =
     Asm yblk
 
@@ -261,11 +269,14 @@ instance (HasType a) => HasType (Stmt a) where
     fv v
       `union` (maybe [] fv mt)
       `union` (maybe [] fv me)
+  fv (Block body) = fv body
   fv (StmtExp e) = fv e
   fv (Return e) = fv e
   fv (Match es eqns) =
     fv es `union` fv eqns
   fv (If e blk1 blk2) = fv e `union` fv blk1 `union` fv blk2
+  fv (For initStmt cond postStmt body) =
+    fv initStmt `union` fv cond `union` fv postStmt `union` fv body
   fv (Asm _) = []
 
   mv (e1 := e2) =
@@ -274,11 +285,14 @@ instance (HasType a) => HasType (Stmt a) where
     mv v
       `union` (maybe [] mv mt)
       `union` (maybe [] mv me)
+  mv (Block body) = mv body
   mv (StmtExp e) = mv e
   mv (Return e) = mv e
   mv (Match es eqns) =
     mv es `union` mv eqns
   mv (If e blk1 blk2) = mv e `union` mv blk1 `union` mv blk2
+  mv (For initStmt cond postStmt body) =
+    mv initStmt `union` mv cond `union` mv postStmt `union` mv body
   mv (Asm _) = []
 
   bv (e1 := e2) =
@@ -287,11 +301,14 @@ instance (HasType a) => HasType (Stmt a) where
     bv v
       `union` (maybe [] bv mt)
       `union` (maybe [] bv me)
+  bv (Block body) = bv body
   bv (StmtExp e) = bv e
   bv (Return e) = bv e
   bv (Match es eqns) =
     bv es `union` bv eqns
   bv (If e blk1 blk2) = bv e `union` bv blk1 `union` bv blk2
+  bv (For initStmt cond postStmt body) =
+    bv initStmt `union` bv cond `union` bv postStmt `union` bv body
   bv (Asm _) = []
 
 instance (HasType a) => HasType (Pat a) where

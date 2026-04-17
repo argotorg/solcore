@@ -13,7 +13,6 @@ data MemberAccess(ty, field) = MemberAccess(ty);
 data PairFst = PairFst;
 data PairSnd = PairSnd;
 
-pragma no-bounded-variable-condition Ref;
 data XRef(st, field, fieldType) = XRef(st, field);
 forall r : Ref (a,b) . instance XRef(r, PairFst, a) : Ref(a) {}
 forall r : Ref (a,b) . instance XRef(r, PairSnd, b) : Ref(b) {}

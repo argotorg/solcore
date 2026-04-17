@@ -9,6 +9,7 @@ if [[ $# -lt 1 ]]; then
     echo "  --runtime-calldata sig [args...]  Generate calldata using cast calldata"
     echo "  --runtime-raw-calldata hex        Pass raw calldata directly to geth"
     echo "  --runtime-callvalue value         Pass callvalue to geth (in wei)"
+    echo "  --runtime-sender address          Set the sender address for the runtime call"
     echo "  --debug-runtime                   Explore the evm execution in the interactive debugger"
     echo "  --create true|false               Run the initcode to deploy the contract (default: true)"
     echo "  --create-arguments sig [args...]  Generate calldata using cast calldata"
@@ -43,6 +44,7 @@ runtime_calldata_sig=""
 runtime_calldata_args=()
 runtime_raw_calldata=""
 runtime_callvalue=""
+runtime_sender=""
 runtime_debug=false
 
 create=true
@@ -87,6 +89,15 @@ while [[ $# -gt 0 ]]; do
              runtime_callvalue=$1
              shift
              ;;
+          --runtime-sender)
+              shift
+              if [[ $# -eq 0 ]]; then
+                  echo "Error: --runtime-sender requires an address"
+                  exit 1
+              fi
+              runtime_sender=$1
+              shift
+              ;;
           --debug-runtime)
               shift
               runtime_debug=true
@@ -280,10 +291,17 @@ if [[ "$create" == "true" ]]; then
 
   if [[ "$error" == "null" ]]; then
       echo "Creation successful"
-      echo "returndata: 0x${result}"
+      if [[ ${#result} -gt 16 ]]; then
+          echo "returndata: 0x${result:0:8}...${result: -8}"
+      else
+          echo "returndata: 0x${result}"
+      fi
   else
       echo "Creation failed: $error"
       echo "returndata: 0x$result"
+      if [[ ${#result} -ge 8 ]]; then
+          sig=$(cast 4byte "0x${result:0:8}" 2>/dev/null) && echo "error selector: $sig"
+      fi
   fi
 fi
 
@@ -307,6 +325,10 @@ fi
 
 if [[ -n "$runtime_callvalue" ]]; then
     evm_cmd="$evm_cmd --value $runtime_callvalue"
+fi
+
+if [[ -n "$runtime_sender" ]]; then
+    evm_cmd="$evm_cmd --sender $runtime_sender"
 fi
 
 echo "Executing..."
@@ -340,4 +362,7 @@ if [[ "$error" == "null" ]]; then
 else
     echo "Execution failed: $error"
     echo "returndata: 0x$result"
+    if [[ ${#result} -ge 8 ]]; then
+        sig=$(cast 4byte "0x${result:0:8}" 2>/dev/null) && echo "error selector: $sig"
+    fi
 fi

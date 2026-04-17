@@ -1,0 +1,19 @@
+data Foo(a) = Foo(word);
+
+forall a . function read(x : Foo(a)) -> word {
+  let res : word;
+  match (x) {
+  | Foo(w) =>
+    assembly {
+      res := w
+    }
+  }
+  return res;
+}
+
+contract Bla {
+
+  function main () -> word {
+    return read(Foo(42));
+  }
+}

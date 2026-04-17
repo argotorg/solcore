@@ -1,5 +1,9 @@
-import std;
-import dispatch;
+import std.{*};
+import std.{address, uint256, mapping, string, memory, Num, Add, Sub, Bounded, Eq, Ord, Typedef};
+import std.dispatch.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 function caller() -> address {
   let res: word;
@@ -7,14 +11,6 @@ function caller() -> address {
      res := caller()
   }
   return address(res);
-}
-
-function myrevert(msg: word) -> () {
-       assembly { mstore(0, msg) revert(0, 32) }
-}
-
-function require(cond: bool, msg: word ) {
-      if( !cond ) { myrevert(msg); }
 }
 
 contract MiniERC20 {
@@ -58,6 +54,7 @@ contract MiniERC20 {
     return totalSupply;
   }
 
+  // Note that this is not access guarded — the minting always goes to the owner
   function mint(amount:uint256) -> () {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
@@ -69,14 +66,11 @@ contract MiniERC20 {
 
   function transferFrom(src:address, dst:address, amt:uint256) -> bool {
      let msg_sender = caller();
-     require( balances[src] >= amt /* "token/insufficient-balance" */
-            , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
-	    );
+     require(balances[src] >= amt, Error(0xf4d678b8)); // InsufficientBalance()
 
      if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint256)) {
-        require( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
-	       , 0x746f6b656e2f696e73756666696369656e742d616c6c6f77616e6365
-	       );
+        require(allowance[src][msg_sender] >= amt, Error(0x13be252b)); // InsufficientAllowance()
+
         allowance[src][msg_sender] -= amt;
      }
      balances[src] = balances[src] - amt;

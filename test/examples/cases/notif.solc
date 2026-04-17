@@ -1,4 +1,4 @@
-function not(x){
+function not(x : bool) -> bool {
   if (x) {
     return false ;
   } else {
@@ -6,7 +6,7 @@ function not(x){
   }
 }
 
-function not2(x) {
+function not2(x : bool) -> bool {
   if (x) {
     return false ;
   }

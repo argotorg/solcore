@@ -1,0 +1,17 @@
+import std.{*};
+
+function yul_asm_switch_body() -> () {
+    let result : uint256 = uint256(0);
+    let flag : word = 1;
+    assembly {
+        switch flag
+        case 0 { result := 0 }
+        default { result := callvalue() }
+    }
+}
+
+contract Foo {
+    function main() -> () {
+        yul_asm_switch_body()
+    }
+}

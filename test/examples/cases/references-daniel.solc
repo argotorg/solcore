@@ -147,9 +147,6 @@ forall a b . instance MemberAccessProxy(memory((a,b)), zero):LValueMemberAccess(
         return memoryRef(ptr);
     }
 }
-pragma no-coverage-condition LValueMemberAccess;
-pragma no-patterson-condition LValueMemberAccess;
-pragma no-bounded-variable-condition LValueMemberAccess;
 
 forall a b c n. MemberAccessProxy(memory(b), n):LValueMemberAccess(c), a:MemorySize =>
 instance MemberAccessProxy(memory((a,b)), suc(n)):LValueMemberAccess(c) {

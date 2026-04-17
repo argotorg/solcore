@@ -1,7 +1,9 @@
 module Cases where
 
+import Control.Exception (try)
 import Solcore.Pipeline.Options
 import Solcore.Pipeline.SolcorePipeline
+import System.Exit (ExitCode (..))
 import System.FilePath
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -60,6 +62,7 @@ spec =
       runTestForFile "043fstsnd.solc" specFolder,
       runTestForFile "047rgb.solc" specFolder,
       runTestForFile "048rgb2.solc" specFolder,
+      runTestForFile "049rgb3.solc" specFolder,
       runTestForFile "06comp.solc" specFolder,
       runTestForFile "09not.solc" specFolder,
       runTestForFile "10negBool.solc" specFolder,
@@ -91,11 +94,106 @@ imports :: TestTree
 imports =
   testGroup
     "Files for imports cases"
-    [ runTestForFile "booldef.solc" importFolder,
-      runTestForFile "boolmain.solc" importFolder
+    [ runImportSuccess "booldef.solc",
+      runImportSuccess "boolmain.solc",
+      runImportSuccess "unordered_imports_main.solc",
+      runImportSuccess "boolalias.solc",
+      runImportFailure "alias_hides_original_fail.solc",
+      runImportFailure "boolalias_open_fail.solc",
+      runImportSuccess "boolqualified.solc",
+      runImportSuccess "boolqualifiedtype.solc",
+      runImportSuccess "boolaliastype.solc",
+      runImportFailure "module_unqualified_fun_fail.solc",
+      runImportFailure "alias_unqualified_fun_fail.solc",
+      runImportFailure "module_unqualified_type_fail.solc",
+      runImportFailure "alias_unqualified_type_fail.solc",
+      runImportFailure "module_unqualified_constr_fail.solc",
+      runImportFailure "alias_unqualified_constr_fail.solc",
+      runImportSuccess "selective_unqualified_fun_ok.solc",
+      runImportSuccess "transitive_dep_main_module.solc",
+      runImportSuccess "transitive_dep_main_select.solc",
+      runImportFailure "module_name_shadow.solc",
+      runImportSuccess "wrapper_shadow_success.solc",
+      runImportSuccess "ns_cross_ok.solc",
+      runImportSuccess "ns_constr_dup.solc",
+      runImportFailure "strict_open_fail.solc",
+      runImportSuccess "boolselect.solc",
+      runImportSuccess "boolconselect_ok.solc",
+      runImportFailure "boolconselect_fail.solc",
+      runImportSuccess "nested_alias.solc",
+      runImportSuccess "nested_select.solc",
+      runImportSuccess "nested_foo_and_bar.solc",
+      runImportSuccess "nested_direct_qualifier.solc",
+      runImportSuccess "nested_deep_qualifier.solc",
+      runImportSuccess "glob_import_ok.solc",
+      runImportSuccess "glob_import_mixed.solc",
+      runImportSuccess "glob_import_hiding.solc",
+      runImportSuccess "glob_hiding_amb_ok.solc",
+      runImportSuccess "glob_import_dup.solc",
+      runImportSuccess "glob_export_mixed.solc",
+      runImportFailure "glob_amb_main_fail.solc",
+      runImportFailure "glob_import_hiding_unknown_fail.solc",
+      runImportSuccess "select_hiding_ok.solc",
+      runImportFailure "select_hiding_fail.solc",
+      runImportFailure "export_item_dup_fail.solc",
+      runImportFailure "export_module_dup_fail.solc",
+      runImportSuccess "select_ok.solc",
+      runImportFailure "select_shadow_local.solc",
+      runImportSuccess "select_shadow_param_ok.solc",
+      runImportFailure "select_fail.solc",
+      runImportFailure "select_unknown.solc",
+      runImportFailure "select_dup_item.solc",
+      runImportFailure "alias_dup.solc",
+      runImportFailure "amb_main.solc",
+      runImportSuccess "amb_ok.solc",
+      runImportSuccess "dupqual_main.solc",
+      runImportSuccess "dupqual_module_main.solc",
+      runImportSuccess "private_helper_main.solc",
+      runImportSuccess "module_qualified_constructor.solc",
+      runImportSuccess "module_qualified_constructor_pattern.solc",
+      runImportSuccess "module_qualified_constructor_alias.solc",
+      runImportSuccess "type_collision_main.solc",
+      runImportSuccess "dot_context_expr.solc",
+      runImportSuccess "reexport_items_main.solc",
+      runImportSuccess "reexport_select_main.solc",
+      runImportSuccess "reexport_select_alias_main.solc",
+      runImportSuccess "reexport_module_main.solc",
+      runImportSuccess "reexport_module_alias_main.solc",
+      runImportSuccess "reexport_ctor_pattern.solc",
+      runImportSuccess "reexport_ctor_expr_ok.solc",
+      runImportFailure "reexport_ctor_expr_hidden_fail.solc",
+      runImportFailure "reexport_ctor_hidden_fail.solc",
+      runImportFailure "hidden_ctor_expr_fail.solc",
+      runImportFailure "hidden_ctor_dot_fail.solc",
+      runImportFailure "hidden_ctor_pattern_fail.solc",
+      runImportFailure "hidden_ctor_nonexhaustive_fail.solc",
+      runImportSuccess "hidden_ctor_wildcard_ok.solc",
+      runImportSuccess "rootcheck/nested/main.solc",
+      runImportSuccess "rootcheck/nested/relative_and_lib_main.solc",
+      runImportSuccess "external_lib_main.solc",
+      runImportSuccess "external_lib_alias_main.solc",
+      runImportSuccess "import_std_minimal.solc",
+      runImportSuccess "select_alias_item_ok.solc",
+      runImportSuccess "select_alias_multi_ok.solc",
+      runImportFailure "select_alias_tail_fail.solc",
+      runImportFailure "external_lib_missing_fail.solc",
+      runImportFailure "symlink_identity_fail.solc",
+      runImportFailure "private_bad_main.solc",
+      runImportFailure "pragma_scope_main.solc",
+      runImportSuccess "selfcycle.solc",
+      runImportSuccess "cycle_main.solc",
+      runImportSuccess "wild_main.solc",
+      runImportFailure "leak_main.solc"
     ]
   where
     importFolder = "./test/imports"
+    importOpt =
+      stdOpt
+        { optNoGenDispatch = True,
+          optExternalLibs = ["extlib=./test/imports/extlib"]
+        }
+    runImportSuccess file = runTestForFileWith importOpt file importFolder
+    runImportFailure file = runTestExpectingFailureWith importOpt file importFolder
 
 pragmas :: TestTree
 pragmas =
@@ -119,6 +217,8 @@ cases =
       runTestForFileWith noDesugarOpt "app.solc" caseFolder,
       runTestForFile "array.solc" caseFolder,
       runTestForFile "assembly.solc" caseFolder,
+      runTestExpectingFailure "asm-assign-no-return.solc" caseFolder,
+      runTestExpectingFailure "asm-let-no-return.solc" caseFolder,
       runTestForFile "bal.solc" caseFolder,
       runTestExpectingFailure "BadInstance.solc" caseFolder,
       runTestForFile "BoolNot.solc" caseFolder,
@@ -126,11 +226,11 @@ cases =
       runTestExpectingFailure "bound-only-test.solc" caseFolder,
       runTestForFile "bound-merge-case.solc" caseFolder,
       runTestForFile "bound-with-pragma.solc" caseFolder,
+      runTestExpectingFailure "class-type-name-collision.solc" caseFolder,
       runTestForFile "class-context.solc" caseFolder,
       runTestForFile "closure.solc" caseFolder,
       runTestForFile "closure-capture-only.solc" caseFolder,
       runTestForFileWith noDesugarOpt "Compose.solc" caseFolder,
-      runTestForFile "Compose2.solc" caseFolder,
       runTestForFile "Compose3.solc" caseFolder,
       -- The following test makes the test runner throw an exception
       -- , runTestForFile "comp.solc" caseFolder
@@ -149,6 +249,17 @@ cases =
       runTestExpectingFailure "default-inst.solc" caseFolder,
       runTestExpectingFailure "default-instance-missing.solc" caseFolder,
       runTestExpectingFailure "default-instance-weak.solc" caseFolder,
+      runTestForFile "dot-expression-constructor.solc" caseFolder,
+      runTestForFile "dot-expression-call-arg-context.solc" caseFolder,
+      runTestForFile "dot-expression-match-return.solc" caseFolder,
+      runTestForFile "dot-expression-nested-context.solc" caseFolder,
+      runTestForFile "dot-expression-assignment-context.solc" caseFolder,
+      runTestExpectingFailure "dot-expression-no-context-fail.solc" caseFolder,
+      runTestExpectingFailure "dot-expression-unknown-fail.solc" caseFolder,
+      runTestForFile "dot-pattern-constructor.solc" caseFolder,
+      runTestForFile "dot-pattern-nested-constructor.solc" caseFolder,
+      runTestForFile "dot-primitive-constructor.solc" caseFolder,
+      runTestExpectingFailure "duplicated-contract-name.solc" caseFolder,
       runTestExpectingFailure "duplicated-type-name.solc" caseFolder,
       runTestForFile "DuplicateFun.solc" caseFolder,
       runTestExpectingFailure "DupFun.solc" caseFolder,
@@ -161,12 +272,17 @@ cases =
       runTestExpectingFailure "Filter.solc" caseFolder,
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,
+      runTestForFile "for-body-shadow.solc" caseFolder,
+      runTestForFile "for-inner-block.solc" caseFolder,
+      runTestForFile "for-init-shadow.solc" caseFolder,
+      runTestForFile "for-let.solc" caseFolder,
+      runTestExpectingFailure "for-let-post.solc" caseFolder,
+      runTestForFile "for-loop.solc" caseFolder,
       runTestExpectingFailure "GetSet.solc" caseFolder,
       runTestExpectingFailure "GoodInstance.solc" caseFolder,
       runTestForFile "Id.solc" caseFolder,
       runTestForFile "if-examples.solc" caseFolder,
       runTestExpectingFailure "index-example.solc" caseFolder,
-      runTestExpectingFailure "IndexLib.solc" caseFolder,
       runTestForFile "import-std.solc" caseFolder,
       runTestForFile "inc-closure.solc" caseFolder,
       runTestExpectingFailure "IncompleteInstDef.solc" caseFolder,
@@ -182,12 +298,15 @@ cases =
       runTestForFile "Logic.solc" caseFolder,
       runTestExpectingFailure "mainproxy.solc" caseFolder,
       runTestForFile "MatchCall.solc" caseFolder,
+      runTestExpectingFailure "match-compiler-undef-asm.solc" caseFolder,
+      runTestExpectingFailure "phantom-type-return-con.solc" caseFolder,
       runTestForFile "match-yul.solc" caseFolder,
       runTestForFile "memory.solc" caseFolder,
       runTestForFile "Memory1.solc" caseFolder,
       runTestForFile "Memory2.solc" caseFolder,
       runTestExpectingFailure "missing-instance.solc" caseFolder,
       runTestForFile "modifier.solc" caseFolder,
+      runTestForFile "monomorphic-require.solc" caseFolder,
       runTestForFile "morefun.solc" caseFolder,
       runTestForFile "Mutuals.solc" caseFolder,
       runTestForFile "rec-memory.solc" caseFolder,
@@ -208,17 +327,23 @@ cases =
       runTestExpectingFailure "Peano.solc" caseFolder,
       runTestExpectingFailure "PeanoMatch.solc" caseFolder,
       runTestForFile "polymatch-error.solc" caseFolder,
+      runTestForFile "polymorphic-require.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder,
       runTestForFile "pragma_merge_base.solc" caseFolder,
-      runTestForFile "pragma_merge_import.solc" caseFolder,
-      runTestForFile "pragma_merge_verify.solc" caseFolder,
+      runTestExpectingFailure "pragma_merge_import.solc" caseFolder,
+      runTestExpectingFailure "pragma_merge_verify.solc" caseFolder,
       runTestForFile "pragma_test_patterson.solc" caseFolder,
       runTestForFile "proxy.solc" caseFolder,
       runTestExpectingFailure "proxy1.solc" caseFolder,
       runTestForFile "rec.solc" caseFolder,
       runTestExpectingFailure "recursive-type-direct.solc" caseFolder,
       runTestExpectingFailure "recursive-type-mutual.solc" caseFolder,
+      runTestExpectingFailure "require-annotation-missing-param.solc" caseFolder,
+      runTestExpectingFailure "require-annotation-missing-return.solc" caseFolder,
+      runTestExpectingFailure "require-annotation-missing-both.solc" caseFolder,
+      runTestExpectingFailure "require-annotation-contract-method.solc" caseFolder,
+      runTestExpectingFailure "require-annotation-mutual.solc" caseFolder,
       runTestExpectingFailure "Ref.solc" caseFolder,
       runTestForFile "RefDeref.solc" caseFolder,
       runTestExpectingFailure "reference.solc" caseFolder,
@@ -227,6 +352,7 @@ cases =
       runTestExpectingFailure "reference-encoding.solc" caseFolder,
       runTestExpectingFailure "reference-test.solc" caseFolder,
       runTestExpectingFailure "references-daniel.solc" caseFolder,
+      runTestExpectingFailure "skolem-let.solc" caseFolder,
       runTestForFile "simpleid.solc" caseFolder,
       runTestForFile "SimpleLambda.solc" caseFolder,
       runTestForFile "single-lambda.solc" caseFolder,
@@ -243,6 +369,7 @@ cases =
       runTestExpectingFailure "synonym-recursive.solc" caseFolder,
       runTestExpectingFailure "synonym-self-recursive.solc" caseFolder,
       runTestExpectingFailure "synonym-long-cycle.solc" caseFolder,
+      runTestExpectingFailure "synonym-arity-mismatch.solc" caseFolder,
       runTestExpectingFailure "signature.solc" caseFolder,
       runTestExpectingFailure "SillyReturn.solc" caseFolder,
       runTestExpectingFailure "SimpleInvoke.solc" caseFolder,
@@ -265,7 +392,8 @@ cases =
       runTestForFile "unit.solc" caseFolder,
       runTestExpectingFailure "vartyped.solc" caseFolder,
       runTestExpectingFailure "weirdfoo.solc" caseFolder,
-      runTestExpectingFailure "withdraw.solc" caseFolder,
+      runTestForFile "word-match-default.solc" caseFolder,
+      runTestForFile "sum-match-default.solc" caseFolder,
       runTestForFile "word-match.solc" caseFolder,
       runTestExpectingFailure "xref.solc" caseFolder,
       runTestForFile "yul-function-typing.solc" caseFolder,
@@ -289,12 +417,44 @@ cases =
       runTestForFile "instance-closure-error.solc" caseFolder,
       runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder,
       runTestForFile "field-name-error.solc" caseFolder,
+      runTestForFile "field-helper-cxt-collision.solc" caseFolder,
       runTestExpectingFailure "field-access.solc" caseFolder,
       runTestForFile "mod-example.solc" caseFolder,
+      runTestForFile "snds.solc" caseFolder,
+      runTestForFile "bool-elim.solc" caseFolder,
+      runTestForFile "catch-all.solc" caseFolder,
+      runTestForFile "redundant-match.solc" caseFolder,
+      runTestForFile "false-redundant-warning.solc" caseFolder,
       runTestForFile "proxy-desugar.solc" caseFolder,
       runTestForFile "box.solc" caseFolder,
+      runTestForFile "invokable-issue.solc" caseFolder,
+      runTestForFile "td.solc" caseFolder,
+      runTestForFile "bar.solc" caseFolder,
+      runTestForFile "fresh-pat-arg.solc" caseFolder,
+      runTestForFile "fresh-pat-arg-synonym.solc" caseFolder,
       runTestExpectingFailure "weird-error-foo.solc" caseFolder,
-      runTestForFile "strange-unbound.solc" caseFolder
+      runTestForFile "strange-unbound.solc" caseFolder,
+      runTestForFile "type-synonym-arg.solc" caseFolder,
+      runTestForFile "instance-synonym.solc" caseFolder,
+      runTestForFile "instance-synonym-int.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-detected.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-missed-order.solc" caseFolder,
+      runTestExpectingFailure "overlap-synonym-missed-two-synonyms.solc" caseFolder,
+      runTestForFile "copytomem.solc" caseFolder,
+      runTestForFile "fresh-variable-shadowing.solc" caseFolder,
+      runTestForFile "simpleDiscount.solc" caseFolder,
+      runTestForFile "yul-deposit-example.solc" caseFolder,
+      runTestForFile "yul-asm-for-body.solc" caseFolder,
+      runTestForFile
+        "yul-asm-switch-body.solc"
+        caseFolder,
+      runTestForFile
+        "multi-stmt-var-leaf.solc"
+        caseFolder,
+      runTestForFile "ltimp.solc" caseFolder,
+      runTestExpectingFailure "class-return-type-miss.solc" caseFolder,
+      runTestExpectingFailure "catenable-err.solc" caseFolder,
+      runTestForFile "pars.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
@@ -314,7 +474,7 @@ runTestForFileWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestForFileWith opts file folder =
   testCase file $ do
     let filePath = folder </> file
-    result <- compile (opts {fileName = filePath})
+    result <- compile (opts {fileName = filePath, optRootDir = folder})
     case result of
       Left err -> assertFailure err
       Right _ -> return ()
@@ -328,7 +488,9 @@ runTestExpectingFailureWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestExpectingFailureWith opts file folder =
   testCase file $ do
     let filePath = folder </> file
-    result <- compile opts {fileName = filePath}
-    case result of
-      Left _ -> return () -- Expected failure
-      Right _ -> assertFailure "Expected compilation to fail, but it succeeded"
+    outcome <- try (compile opts {fileName = filePath, optRootDir = folder})
+    case outcome of
+      Left (ExitFailure _) -> return () -- Expected failure via exitFailure
+      Left ExitSuccess -> assertFailure "Expected compilation to fail, but it exited successfully"
+      Right (Left _) -> return () -- Expected failure via Either
+      Right (Right _) -> assertFailure "Expected compilation to fail, but it succeeded"

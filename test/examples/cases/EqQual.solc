@@ -12,13 +12,13 @@ instance word : Eq {
   function eq (x : word, y : word) -> Bool {
     match primEqWord(x,y) {
     | 0 =>
-      return False;
+      return Bool.False;
     | _ =>
-      return True ;
+      return Bool.True ;
     }
   }
 }
 
-function foo (x) {
+function foo (x : word) -> Bool {
   return Eq.eq (x, 0);
 }
