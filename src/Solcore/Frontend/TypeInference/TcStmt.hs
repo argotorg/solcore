@@ -40,10 +40,10 @@ tcStmt e@(Let n mt me) =
     (me', psf, tf) <- case (mt, me) of
       (Just t, Just e1) -> do
         (e', ps1, t1) <- tcExp e1
-        _ <- kindCheck t1 `wrapError` e
-        let bvs = bv t
+        t2 <- kindCheck t `wrapError` e
+        let bvs = bv t2
         sks <- mapM (const freshTyVar) bvs
-        let t' = insts (zip bvs sks) t
+        let t' = insts (zip bvs sks) t2
         s <- tcmMatch t1 t' `wrapError` e
         _ <- extSubst s
         withCurrentSubst (Just e', ps1, t')
@@ -160,9 +160,7 @@ tcPat t p@(PCon n ps) =
     -- unifying the infered pattern type with constructor type
     s <- unify tc (funtype ts t) `wrapError` p
     let t' = apply s t
-    -- expand synonyms before extracting type name
-    t'' <- maybeExpandSynonym t'
-    tn <- typeName t''
+    tn <- typeName t'
     -- checking if it is a defined constructor
     checkConstr tn n
     -- building typing assumptions for introduced names
@@ -218,8 +216,7 @@ tcExp e@(Con n es) =
     -- unifying inferred parameter types
     t' <- freshTyVar
     s <- unify (funtype ts t') t `wrapError` e
-    -- expand synonyms before extracting type name
-    t'' <- maybeExpandSynonym (apply s t')
+    let t'' = apply s t'
     tn <- typeName t''
     -- checking if the constructor belongs to type tn
     checkConstr tn n
@@ -233,9 +230,7 @@ tcExp (FieldAccess (Just e) n) =
   do
     -- inferring expression type
     (e', ps, t) <- tcExp e
-    -- expand synonyms before extracting type name
-    tExp <- maybeExpandSynonym t
-    tn <- typeName tExp
+    tn <- typeName t
     -- getting field type
     s <- askField tn n
     (ps' :=> t') <- freshInst s
@@ -261,11 +256,11 @@ tcExp (Lam args bd _) =
         withCurrentSubst (exp1, ps1, t)
 tcExp e1@(TyExp e ty) =
   do
-    _ <- kindCheck ty `wrapError` e1
+    ty1 <- kindCheck ty `wrapError` e1
     (e', ps, ty') <- tcExp e
-    s <- tcmMatch ty' ty
+    s <- tcmMatch ty' ty1
     _ <- extSubst s
-    withCurrentSubst (TyExp e' ty, ps, ty)
+    withCurrentSubst (TyExp e' ty1, ps, ty1)
 tcExp e@(Cond e1 e2 e3) =
   do
     (e1', ps1, t1) <- tcExp e1 `wrapError` e
@@ -499,6 +494,8 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _) bd) =
     rs <- reduce [] ps1 `wrapError` d
     ty <- withCurrentSubst nt
     sch <- generalize (rs, ty)
+    -- check for phantom (unconstrained) meta variables from constructor applications
+    checkPhantomMetaVars True n bd1 rs ty `wrapError` d
     -- checking ambiguity
     info [">>> Infered type for ", pretty n, " :: ", pretty sch]
     ambSch <- ambiguityCheck sch
@@ -581,6 +578,8 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _) _)
       ty <- withCurrentSubst nt
       checkConstraints rs
       inf <- generalize (rs, ty)
+      -- check for phantom (unconstrained) meta variables from constructor applications
+      checkPhantomMetaVars False n bd1' rs ty `wrapError` d
       info [" - generalized inferred type: ", pretty inf]
       ann <- annotatedScheme vs' qs sig
       info [" - annotated type:", pretty ann]
@@ -625,6 +624,72 @@ toMeta t = t
 ambiguous :: Scheme -> Bool
 ambiguous (Forall _ (ps :=> t)) =
   not $ null $ bv ps \\ bv (closure ps (bv t))
+
+-- Check for phantom meta variables: meta vars appearing in constructor
+-- application result types in the body but not in the function's inferred
+-- type or environment. Such variables arise when a constructor has phantom
+-- type parameters (type parameters that do not appear in any constructor
+-- field). They cannot be determined from context and indicate a type error.
+-- The function uses a boolean flag, checkReturn:
+-- checkReturn = True   (tiFunDef, unannotated): also flag constructor-result
+--   meta vars that escaped into the return type without being determined by
+--   the argument types or constraints.
+-- checkReturn = False  (tcFunDef, annotated): skip that second check, because
+--   the programmer explicitly declared the return type; any phantom variable
+--   in it is intentional and will be resolved by the instance or call context.
+checkPhantomMetaVars :: Bool -> Name -> Body Id -> [Pred] -> Ty -> TcM ()
+checkPhantomMetaVars checkReturn n body rs ty = do
+  envVars <- getEnvMetaVars
+  bodySubst <- withCurrentSubst body
+  tySubst <- withCurrentSubst (rs, ty)
+  let (rsApplied, tyApplied) = tySubst
+      legitimateMVs = mv tySubst ++ envVars
+      conMVs = conResultMetaVars bodySubst
+      -- Case 1: constructor-result MVs entirely absent from the function's type.
+      phantomMVs = conMVs \\ legitimateMVs
+      -- Case 2 (unannotated only): constructor-result MVs that appear in the
+      -- return type but not in the argument types or constraints.  A meta var
+      -- that appears in a constraint is determined at call sites through type
+      -- class dispatch, so it must be excluded from the suspicious set.
+      -- Compiler-generated closure types (from defunctionalization) are
+      -- excluded: their phantom parameters are legitimately resolved at the
+      -- call site via the Invokable instance.
+      (argTys, retTy') = splitTy tyApplied
+      determined = mv argTys `union` mv rsApplied
+  escapedReturnMVs <-
+    if not checkReturn
+      then pure []
+      else case outerTyCon retTy' of
+        Nothing -> pure []
+        Just retTyName -> do
+          isGenerated <- isUniqueTyName retTyName
+          if isGenerated
+            then pure []
+            else pure [m | m <- conMVs, m `elem` mv retTy', m `notElem` determined]
+  let allPhantomMVs = nub (phantomMVs ++ escapedReturnMVs)
+  unless (null allPhantomMVs) $ do
+    let mvNames = intercalate ", " $ map (pretty . metaName) allPhantomMVs
+    throwError $
+      unlines
+        [ "Ambiguous type variable(s) " ++ mvNames ++ " in definition of " ++ pretty n ++ ".",
+          "This typically occurs when a constructor has phantom type parameters.",
+          "Please, add a type signature to fix the ambiguous type variable."
+        ]
+
+outerTyCon :: Ty -> Maybe Name
+outerTyCon (TyCon n _) = Just n
+outerTyCon _ = Nothing
+
+conResultMetaVars :: (Data a) => a -> [MetaTv]
+conResultMetaVars = nub . everything (++) (mkQ [] collectConMVs)
+  where
+    collectConMVs :: Exp Id -> [MetaTv]
+    collectConMVs (Con (Id _ ty) args) = mv (applyConArgs ty args)
+    collectConMVs _ = []
+
+    applyConArgs :: Ty -> [a] -> Ty
+    applyConArgs (_ :-> rest) (_ : as) = applyConArgs rest as
+    applyConArgs ty _ = ty
 
 reachable :: [Pred] -> [Tyvar] -> [Pred]
 reachable ps vs =
@@ -706,22 +771,26 @@ extSignature sig@(Signature _ _ n _ _) =
 -- typing instance
 
 tcInstance :: Instance Name -> TcM (Instance Id)
-tcInstance idecl@(Instance _ _ predCtx _ ts t _) =
+tcInstance idecl@(Instance d vs predCtx n ts t funs) =
   do
     -- checking instance type parameters
-    mapM_ kindCheck (t : ts) `wrapError` idecl
+    t' <- kindCheck t `wrapError` idecl
+    ts' <- mapM kindCheck ts `wrapError` idecl
     -- checking constraints
-    mapM_ checkConstraint predCtx `wrapError` idecl
-    tcInstance' idecl
+    qs' <- mapM checkConstraint predCtx `wrapError` idecl
+    tcInstance' (Instance d vs qs' n ts' t' funs)
 
-checkConstraint :: Pred -> TcM ()
+checkConstraint :: Pred -> TcM Pred
 checkConstraint p@(InCls n t ts) =
   do
     cinfo <- askClassInfo n
     unless (length ts == classArity cinfo) $
       classArityError n cinfo p
-    mapM_ kindCheck (t : ts) `wrapError` p
-checkConstraint (t :~: t') = mapM_ kindCheck [t, t']
+    t' <- kindCheck t `wrapError` p
+    ts' <- mapM kindCheck ts `wrapError` p
+    pure (InCls n t' ts')
+checkConstraint (t :~: t') =
+  (:~:) <$> kindCheck t <*> kindCheck t'
 
 tcInstance' :: Instance Name -> TcM (Instance Id)
 tcInstance' idecl@(Instance d vs predCtx n ts t funs) =
@@ -923,7 +992,7 @@ checkInstance idef@(Instance d vs predCtx n ts t funs) =
     unless boundEnabled (checkBoundVariable predCtx (bv (t : ts)) `wrapError` idef)
     -- checking instance methods
     mapM_ (checkMethod ipred) funs `wrapError` idef
-    let ninst = anfInstance $ predCtx :=> InCls n t ts
+    let ninst = anfInstance $ predCtx :=> ipred
     -- add to the environment
     if d
       then addDefaultInstance n ninst
@@ -1075,9 +1144,15 @@ hnfEntails qs ps =
     info ["Trying to entail:", pretty ps, " using:", pretty qs]
     ctable <- getClassEnv
     itable <- getInstEnv
+    depth <- askMaxRecursionDepth
     let qs' = nub $ concatMap (bySuperM ctable) qs
-        unsolved p = not (isInvoke p) && not (entail ctable itable qs' p)
-    pure (filter unsolved ps)
+        notInvoke p = not (isInvoke p)
+        needSolving = filter (\p -> notInvoke p && not (entail ctable itable qs' p)) ps
+    -- For predicates pure entailment couldn't discharge, try the monadic solver
+    -- within a local substitution scope so that Skolem bindings don't escape.
+    withLocalSubst $ do
+      remaining <- toHnfs depth needSolving
+      pure (filter notInvoke remaining)
 
 -- type generalization
 

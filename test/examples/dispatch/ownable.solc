@@ -1,0 +1,42 @@
+import std;
+import dispatch;
+
+// caller(), myrevert(), require() are not in the std library yet,
+// so every contract must define its own
+
+// returns uint256 instead of address because the dispatch system
+// requires ABIEncode for function params/returns, and address has no ABIEncode instance yet
+function caller() -> uint256 {
+  let res: word;
+  assembly {
+     res := caller()
+  }
+  return uint256(res);
+}
+
+function myrevert(msg: word) -> () {
+  assembly { mstore(0, msg) revert(0, 32) }
+}
+
+function require(cond: bool, msg: word) {
+  if (!cond) { myrevert(msg); }
+}
+
+contract Ownable {
+  // stored as uint256 instead of address for the same ABIEncode reason
+  owner : uint256;
+
+  constructor() {
+    owner = caller();
+  }
+
+  // named getOwner() instead of owner() to avoid collision with the field name
+  function getOwner() -> uint256 {
+    return owner;
+  }
+
+  function changeOwner(newOwner : uint256) -> () {
+    require(caller() == owner, 0x6e6f74206f776e6572);
+    owner = newOwner;
+  }
+}

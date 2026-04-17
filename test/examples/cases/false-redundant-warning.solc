@@ -1,0 +1,15 @@
+data Bool = False | True;
+
+function test(x, y) {
+  match x, y {
+  | True, z  => return z;
+  | w, True  => return w;
+  | a, b     => return b;
+  }
+}
+
+contract FalseRedundantWarning {
+  function main() -> Bool {
+    test(False, True)
+  }
+}
