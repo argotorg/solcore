@@ -96,9 +96,10 @@ tcTopDeclChecks topDeclChecks =
   do
     setupPragmas ps
     checkSynonymCycles syns
-    checkRecursiveTypes dts
     let st = buildSynTable syns
     csExpanded <- everywhereM (mkM (expandTyM st)) cs
+    checkRecursiveTypes (topLevelDts csExpanded)
+    mapM_ checkRecursiveTypes (perContractDts csExpanded)
     mapM_ checkTopDecl (filter isClass csExpanded)
     mapM_ checkTopDecl (filter (not . isClass) csExpanded)
     trustImportedDecls csExpanded
@@ -111,7 +112,6 @@ tcTopDeclChecks topDeclChecks =
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
-    dts = allDataTys cs
     trustImportedDecls expandedDecls =
       mapM_
         (withPartialDataTypesDisabled . trustImportedTopDecl)
@@ -126,6 +126,8 @@ tcTopDeclChecks topDeclChecks =
         TrustTopDeclBody ->
           withPartialDataTypesDisabled $
             pure Nothing
+    topLevelDts cs' = [d | TDataDef d <- cs']
+    perContractDts cs' = [[d | CDataDecl d <- cds] | TContr (Contract _ _ cds) <- cs']
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
@@ -367,7 +369,7 @@ checkTopDecl _ = pure ()
 
 tcContract :: Contract Name -> TcM (Contract Id, [(Name, Scheme)])
 tcContract c@(Contract n vs cdecls) =
-  withLocalEnv $ withContractName n $ do
+  withLocalContractEnv $ withContractName n $ do
     ctx' <- gets ctx
     initializeEnv c
     decls' <- mapM tcDecl' cdecls

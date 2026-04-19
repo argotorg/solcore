@@ -243,6 +243,7 @@ cases =
       runTestForFile "const.solc" caseFolder,
       runTestExpectingFailure "const-array.solc" caseFolder,
       runTestForFile "constructor-weak-args.solc" caseFolder,
+      runTestForFile "constructors-contract.solc" caseFolder,
       runTestExpectingFailure "complexproxy.solc" caseFolder,
       runTestForFile "cyclical-defs.solc" caseFolder,
       runTestForFile "cyclical-defs-inferred.solc" caseFolder,
@@ -454,7 +455,8 @@ cases =
       runTestForFile "ltimp.solc" caseFolder,
       runTestExpectingFailure "class-return-type-miss.solc" caseFolder,
       runTestExpectingFailure "catenable-err.solc" caseFolder,
-      runTestForFile "pars.solc" caseFolder
+      runTestForFile "pars.solc" caseFolder,
+      runTestExpectingFailure "synonym-example.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
