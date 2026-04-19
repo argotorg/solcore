@@ -102,17 +102,30 @@ instance Compile (Stmt Id) where
     es' <- compile es
     eqns' <- mapM compileEqn eqns
     scrutTys <- mapM scrutineeType es'
-    let occs = [[i] | i <- [0 .. length es' - 1]]
-        occMap = Map.fromList (zip occs es')
+    preparedScruts <- zipWithM prepareScrutinee es' scrutTys
+    let scrutBindings = concatMap fst preparedScruts
+        scrutVars = map snd preparedScruts
+        occs = [[i] | i <- [0 .. length es' - 1]]
+        occMap = Map.fromList (zip occs scrutVars)
         matrix = map fst eqns'
         actions = map snd eqns'
         bacts = [([], a) | a <- actions]
-        matchDesc = "match (" ++ intercalate ", " (map pretty es') ++ ")"
+        matchDesc = "match (" ++ intercalate ", " (map pretty scrutVars) ++ ")"
     pushCtx matchDesc $ do
       ctx <- askWarnCtx
       checkRedundancy ctx scrutTys matrix bacts
     tree <- pushCtx matchDesc $ compileMatrix scrutTys occs matrix bacts
-    treeToStmt occMap tree
+    stmt <- treeToStmt occMap tree
+    pure $
+      case scrutBindings of
+        [] -> stmt
+        binds -> Match [] [([], binds ++ [stmt])]
+
+prepareScrutinee :: Exp Id -> Ty -> CompilerM ([Stmt Id], Exp Id)
+prepareScrutinee e@(Var _) _ = pure ([], e)
+prepareScrutinee e ty = do
+  v <- freshId ty
+  pure ([Let v (Just ty) (Just e)], Var v)
 
 compileEqn :: Equation Id -> CompilerM (Equation Id)
 compileEqn (pats, stmts) = (pats,) <$> compile stmts
@@ -414,6 +427,13 @@ freshPat t = do
   n <- inc
   let v = Name $ "$v" ++ show n
   pure (PVar (Id v t))
+
+freshId :: Ty -> CompilerM Id
+freshId t = do
+  pat <- freshPat t
+  case pat of
+    PVar v -> pure v
+    _ -> error "freshId: freshPat returned a non-variable pattern"
 
 isComplete :: [Id] -> CompilerM Bool
 isComplete [] = pure False

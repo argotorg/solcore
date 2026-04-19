@@ -405,7 +405,17 @@ specFunDef fd0 = withLocalState do
       return name'
 
 specBody :: [Stmt Id] -> SM [Stmt Id]
-specBody = mapM specStmt
+specBody = fmap concat . mapM specStmtBody
+  where
+    specStmtBody stmt = do
+      stmt' <- specStmt stmt
+      pure (flattenSyntheticBlock stmt')
+
+    -- The match compiler uses `Match [] [([], body)]` as an internal block
+    -- wrapper for multi-statement leaves. Flatten it before converting to MAST,
+    -- where zero-scrutinee matches are not representable.
+    flattenSyntheticBlock (Match [] [([], body)]) = body
+    flattenSyntheticBlock stmt = [stmt]
 
 {-
 ensureSimple ty' stmt subst = case ty' of

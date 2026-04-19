@@ -1,5 +1,6 @@
 module MatchCompilerTests where
 
+import Data.Generics (everything, mkQ)
 import Data.List (sort)
 import Data.Map qualified as Map
 import Solcore.Desugarer.DecisionTreeCompiler
@@ -30,7 +31,8 @@ matchTests =
       testGroup
         "treeToStmt"
         [ test_treeToStmt_singleVar_substituted,
-          test_treeToStmt_multiColumn_varsBoundViaSpecialize
+          test_treeToStmt_multiColumn_varsBoundViaSpecialize,
+          test_compileMatch_bindsScrutineeOnce
         ],
       testGroup
         "redundancy warnings"
@@ -100,6 +102,13 @@ runFull env occMap tys occs matrix acts =
   runCompilerM env $ do
     tree <- compileMatrix tys occs matrix [([], a) | a <- acts]
     treeToStmt occMap tree
+
+runCompileStmt ::
+  TypeEnv ->
+  Stmt Id ->
+  IO (Either String (Stmt Id, [Warning]))
+runCompileStmt env stmt =
+  runCompilerM env (compile stmt)
 
 assertRight ::
   String ->
@@ -466,6 +475,12 @@ varX = Var (Id (Name "x") tyBool)
 varY :: Exp Id
 varY = Var (Id (Name "y") tyBool)
 
+idF :: Id
+idF = Id (Name "f") (funtype [] tyBool)
+
+idG :: Id
+idG = Id (Name "g") (funtype [tyBool, tyBool] tyBool)
+
 -- Type environment with both List and Bool constructors
 listBoolEnv :: TypeEnv
 listBoolEnv = Map.union listEnv boolEnv
@@ -514,7 +529,38 @@ test_treeToStmt_multiColumn_varsBoundViaSpecialize =
             [] -> assertFailure "default branch not found in Match alts"
         _ -> assertFailure ("expected Match [x] …, got: " ++ show stmt)
 
--- 13. Rows after a first all-var row are warned as unreachable even when they
+-- 13. Compiling a catch-all over a non-variable scrutinee must not duplicate
+-- scrutinee evaluation.
+--
+-- match f() { | z => return g(z, z) }
+--
+-- The compiled statement should evaluate f() once and reuse the bound result.
+test_compileMatch_bindsScrutineeOnce :: TestTree
+test_compileMatch_bindsScrutineeOnce =
+  testCase "compile Match: catch-all row evaluates scrutinee only once" $ do
+    let idZ = Id (Name "z") tyBool
+        stmt =
+          Match
+            [Call Nothing idF []]
+            [([PVar idZ], [Return (Call Nothing idG [Var idZ, Var idZ])])]
+    r <- runCompileStmt boolEnv stmt
+    case r of
+      Left err -> assertFailure ("unexpected error: " ++ err)
+      Right (stmt', _) ->
+        assertEqual
+          "f() should appear exactly once after compilation"
+          1
+          (countNamedCalls (idName idF) stmt')
+  where
+    countNamedCalls :: Name -> Stmt Id -> Int
+    countNamedCalls target =
+      everything (+) (mkQ 0 countExp)
+      where
+        countExp :: Exp Id -> Int
+        countExp (Call Nothing i _) | idName i == target = 1
+        countExp _ = 0
+
+-- 14. Rows after a first all-var row are warned as unreachable even when they
 -- are NOT exhaustive by themselves.
 --
 -- match x { | z => return z; | True => return True; }
@@ -541,7 +587,7 @@ test_allVar_first_shadows_nonexhaustive_rest =
       assertBool "True clause must be warned as unreachable" (actionB `elem` redundantActs)
       assertBool "first all-var row must not be warned" (actionA `notElem` redundantActs)
 
--- 14. Two-column match: (True,z) / (w,True) / (a,b)
+-- 15. Two-column match: (True,z) / (w,True) / (a,b)
 -- The rows after the first are NOT globally redundant:
 --   row 1 fires for (False, True), row 2 fires for (False, False).
 -- No RedundantClause warnings should be emitted.

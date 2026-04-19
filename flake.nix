@@ -69,7 +69,7 @@
             src = gitignore ./.;
           } ''
             cd $src
-            ormolu --mode check $(find . -name '*.hs')
+            ormolu --mode check $(find app src yule test -name '*.hs')
             touch $out
           '';
 
