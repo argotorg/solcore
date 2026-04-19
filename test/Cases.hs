@@ -143,6 +143,7 @@ cases =
       runTestForFile "const.solc" caseFolder,
       runTestExpectingFailure "const-array.solc" caseFolder,
       runTestForFile "constructor-weak-args.solc" caseFolder,
+      runTestForFile "constructors-contract.solc" caseFolder,
       runTestExpectingFailure "complexproxy.solc" caseFolder,
       runTestForFile "cyclical-defs.solc" caseFolder,
       runTestForFile "cyclical-defs-inferred.solc" caseFolder,
@@ -317,7 +318,8 @@ cases =
       runTestExpectingFailure "overlap-synonym-missed-order.solc" caseFolder,
       runTestExpectingFailure "overlap-synonym-missed-two-synonyms.solc" caseFolder,
       runTestForFile "copytomem.solc" caseFolder,
-      runTestForFile "fresh-variable-shadowing.solc" caseFolder
+      runTestForFile "fresh-variable-shadowing.solc" caseFolder,
+      runTestExpectingFailure "synonym-example.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

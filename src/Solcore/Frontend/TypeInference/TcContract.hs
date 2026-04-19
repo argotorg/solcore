@@ -71,9 +71,10 @@ tcCompUnit (CompUnit imps cs) =
   do
     setupPragmas ps
     checkSynonymCycles syns
-    checkRecursiveTypes dts
     let st = buildSynTable syns
     cs' <- everywhereM (mkM (expandTyM st)) cs
+    checkRecursiveTypes (topLevelDts cs')
+    mapM_ checkRecursiveTypes (perContractDts cs')
     mapM_ checkTopDecl (filter isClass cs')
     mapM_ checkTopDecl (filter (not . isClass) cs')
     typedDecls <- mapM tcTopDecl' cs'
@@ -85,7 +86,8 @@ tcCompUnit (CompUnit imps cs) =
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
-    dts = allDataTys cs
+    topLevelDts cs' = [d | TDataDef d <- cs']
+    perContractDts cs' = [[d | CDataDecl d <- cds] | TContr (Contract _ _ cds) <- cs']
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
@@ -299,7 +301,7 @@ checkTopDecl _ = pure ()
 
 tcContract :: Contract Name -> TcM (Contract Id, [(Name, Scheme)])
 tcContract c@(Contract n vs cdecls) =
-  withLocalEnv $ withContractName n $ do
+  withLocalContractEnv $ withContractName n $ do
     ctx' <- gets ctx
     initializeEnv c
     decls' <- mapM tcDecl' cdecls
