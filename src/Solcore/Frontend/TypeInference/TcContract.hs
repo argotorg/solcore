@@ -84,7 +84,6 @@ tcCompUnit (CompUnit imps cs) =
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
-    dts = allDataTys cs
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
