@@ -71,6 +71,7 @@ tcCompUnit (CompUnit imps cs) =
   do
     setupPragmas ps
     checkSynonymCycles syns
+    checkRecursiveTypes dts
     let st = buildSynTable syns
     cs' <- everywhereM (mkM (expandTyM st)) cs
     mapM_ checkTopDecl (filter isClass cs')
@@ -84,6 +85,7 @@ tcCompUnit (CompUnit imps cs) =
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
+    dts = allDataTys cs
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
