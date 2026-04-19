@@ -422,7 +422,7 @@ withLocalEnv ta =
 withLocalContractEnv :: TcM a -> TcM a
 withLocalContractEnv ta =
   do
-    savedCtx   <- gets ctx
+    savedCtx <- gets ctx
     savedTypes <- gets typeTable
     a <- ta
     putEnv savedCtx
