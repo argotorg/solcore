@@ -23,6 +23,9 @@ Bug reports and feedback are very welcome.
 # enter a development shell with all required dependencies
 nix develop
 
+# update the package list of hackage.haskell.org
+cabal update
+
 # enter a repl
 cabal repl
 
