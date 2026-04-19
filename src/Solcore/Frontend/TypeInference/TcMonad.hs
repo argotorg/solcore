@@ -395,6 +395,18 @@ withLocalEnv ta =
     putEnv savedCtx
     pure a
 
+-- Like withLocalEnv but also restores the typeTable, for contract scopes
+-- where data type names must not leak between sibling contracts.
+withLocalContractEnv :: TcM a -> TcM a
+withLocalContractEnv ta =
+  do
+    savedCtx <- gets ctx
+    savedTypes <- gets typeTable
+    a <- ta
+    putEnv savedCtx
+    modify (\env -> env {typeTable = savedTypes})
+    pure a
+
 envList :: TcM [(Name, Scheme)]
 envList = gets (Map.toList . ctx)
 

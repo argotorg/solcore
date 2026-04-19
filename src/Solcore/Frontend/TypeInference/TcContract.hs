@@ -1,5 +1,8 @@
 module Solcore.Frontend.TypeInference.TcContract where
 
+import Algebra.Graph.AdjacencyMap
+import Algebra.Graph.AdjacencyMap.Algorithm
+import Algebra.Graph.NonEmpty.AdjacencyMap qualified as NAG
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
@@ -8,6 +11,8 @@ import Data.List
 import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
@@ -68,6 +73,8 @@ tcCompUnit (CompUnit imps cs) =
     checkSynonymCycles syns
     let st = buildSynTable syns
     cs' <- everywhereM (mkM (expandTyM st)) cs
+    checkRecursiveTypes (topLevelDts cs')
+    mapM_ checkRecursiveTypes (perContractDts cs')
     mapM_ checkTopDecl (filter isClass cs')
     mapM_ checkTopDecl (filter (not . isClass) cs')
     typedDecls <- mapM tcTopDecl' cs'
@@ -79,6 +86,8 @@ tcCompUnit (CompUnit imps cs) =
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
+    topLevelDts cs' = [d | TDataDef d <- cs']
+    perContractDts cs' = [[d | CDataDecl d <- cds] | TContr (Contract _ _ cds) <- cs']
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
@@ -125,6 +134,102 @@ recursiveSynonymError cyclePath =
     unlines
       [ "Recursive type synonym detected:",
         "  " ++ intercalate " -> " (map pretty cyclePath)
+      ]
+
+-- check for recursive data types
+
+allDataTys :: [TopDecl Name] -> [DataTy]
+allDataTys = concatMap collect
+  where
+    collect (TDataDef d) = [d]
+    collect (TContr (Contract _ _ cds)) = [d | CDataDecl d <- cds]
+    collect _ = []
+
+tyVarNames :: Ty -> [Name]
+tyVarNames (TyVar tv) = [tyvarName tv]
+tyVarNames (TyCon _ ts) = concatMap tyVarNames ts
+tyVarNames _ = []
+
+-- Collect type variable names that appear in non-phantom argument positions.
+-- Phantom positions (indices in the map for the head type constructor) are skipped.
+nonPhantomVarNames :: Map.Map Name (Set Int) -> Ty -> [Name]
+nonPhantomVarNames m (TyCon n args) =
+  let phantomIdxs = Map.findWithDefault Set.empty n m
+   in concatMap
+        ( \(i, arg) ->
+            if Set.member i phantomIdxs then [] else nonPhantomVarNames m arg
+        )
+        (zip [0 ..] args)
+nonPhantomVarNames _ (TyVar v) = [tyvarName v]
+nonPhantomVarNames _ _ = []
+
+-- Build the phantom-parameter map using fixpoint iteration so that
+-- transitively-phantom positions are discovered.  A parameter at index i of
+-- type T is phantom when it never appears in a non-phantom position across all
+-- constructor field types (using the current map to decide what counts as
+-- non-phantom).  Starting from the empty map and iterating monotonically to a
+-- fixpoint ensures that every position that can be proved phantom eventually is.
+buildPhantomMap :: [DataTy] -> Map.Map Name (Set Int)
+buildPhantomMap dts = fixpoint initial
+  where
+    initial = Map.fromList [(dataName dt, Set.empty) | dt <- dts]
+
+    fixpoint m =
+      let m' = Map.fromList (map (refineEntry m) dts)
+       in if m == m' then m else fixpoint m'
+
+    refineEntry m (DataTy n params ctors) =
+      let allFieldTys = concatMap constrTy ctors
+          isPhantomParam p =
+            let pName = tyvarName p
+             in all (\ty -> pName `notElem` nonPhantomVarNames m ty) allFieldTys
+          phantomIdxs = Set.fromList [i | (i, p) <- zip [0 ..] params, isPhantomParam p]
+       in (n, phantomIdxs)
+
+nonPhantomTyNames :: Map.Map Name (Set Int) -> Ty -> [Name]
+nonPhantomTyNames phantomMap (TyCon n args) =
+  n : concatMap processArg (zip [0 ..] args)
+  where
+    phantomIdxs = Map.findWithDefault Set.empty n phantomMap
+    processArg (i, arg)
+      | Set.member i phantomIdxs = []
+      | otherwise = nonPhantomTyNames phantomMap arg
+nonPhantomTyNames _ _ = []
+
+buildTypeDepsGraph :: Set Name -> [DataTy] -> AdjacencyMap Name
+buildTypeDepsGraph userTypes dts =
+  overlay isolated edged
+  where
+    phantomMap = buildPhantomMap dts
+    isolated = vertices (Set.toList userTypes)
+    edged = stars [(dataName dt, deps dt) | dt <- dts]
+    deps (DataTy _ _ ctors) =
+      nub
+        . filter (`Set.member` userTypes)
+        . concatMap (\(Constr _ tys) -> concatMap (nonPhantomTyNames phantomMap) tys)
+        $ ctors
+
+checkRecursiveTypes :: [DataTy] -> TcM ()
+checkRecursiveTypes dts =
+  case cyclicSccs of
+    [] -> pure ()
+    (c : _) -> recursiveTypeError (NAG.vertexList1 c)
+  where
+    userTypes = Set.fromList (map dataName dts)
+    graph = buildTypeDepsGraph userTypes dts
+    cyclicSccs = filter (isCyclic graph) (vertexList (scc graph))
+    isCyclic origGraph sccComp =
+      case N.toList (NAG.vertexList1 sccComp) of
+        [v] -> hasEdge v v origGraph -- singleton SCC: cyclic only if self-loop
+        _ -> True -- 2+ vertices: always a mutual cycle
+
+recursiveTypeError :: N.NonEmpty Name -> TcM a
+recursiveTypeError cycleVerts =
+  throwError $
+    unlines
+      [ "Recursive data type detected:",
+        "  " ++ intercalate ", " (map pretty (N.toList cycleVerts)),
+        "  (Data types must be non-recursive)"
       ]
 
 -- setting up pragmas for type checking
@@ -196,7 +301,7 @@ checkTopDecl _ = pure ()
 
 tcContract :: Contract Name -> TcM (Contract Id, [(Name, Scheme)])
 tcContract c@(Contract n vs cdecls) =
-  withLocalEnv $ withContractName n $ do
+  withLocalContractEnv $ withContractName n $ do
     ctx' <- gets ctx
     initializeEnv c
     decls' <- mapM tcDecl' cdecls

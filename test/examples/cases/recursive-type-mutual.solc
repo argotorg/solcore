@@ -1,0 +1,10 @@
+-- Mutual recursion: Even refers to Odd and Odd refers to Even.
+-- Expected: type checker rejects with "Recursive data type detected".
+data Even = Zero | SuccE(Odd);
+data Odd  = SuccO(Even);
+
+contract RecursiveTypeMutual {
+  function main() -> Even {
+    Zero
+  }
+}

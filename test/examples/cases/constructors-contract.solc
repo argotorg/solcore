@@ -1,0 +1,9 @@
+contract A {
+  data T = MkT(U);
+  data U = MkU(word);
+}
+
+contract B {
+  data T = MkT2(word);
+  data U = MkU2(T);
+}
