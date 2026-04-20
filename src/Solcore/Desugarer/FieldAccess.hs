@@ -76,6 +76,7 @@ extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, 
     sfInstance =
       Instance
         { instDefault = False,
+          instLabel = Nothing,
           instVars = [],
           instContext = [],
           instName = "StructField",
@@ -172,7 +173,7 @@ transAssignment (Indexed arr idx) rhs cenv = do
   let lhs' = traces ["lhsIndex", pretty arr, pretty idx] $ lhsIndex arr idx' cenv
   let rhs' = traces ["transRhs", pretty rhs] $ transRhs rhs cenv
   let assignName = QualName (Name "Assign") "assign"
-  StmtExp $ Call Nothing assignName [lhs', rhs']
+  StmtExp $ Call Nothing assignName Nothing [lhs', rhs']
 transAssignment lhs rhs cenv =
   traces ["Other assignment:", pretty (lhs := rhs)] $
     (lhs := rhs')
@@ -196,7 +197,7 @@ transContractFieldAssignment field rhs = do
   let lhs' = lhsAccess fieldMap
   rhs' <- transRhs rhs
   let assignName = QualName (Name "Assign") "assign"
-  pure $ StmtExp $ Call Nothing assignName [lhs', rhs']
+  pure $ StmtExp $ Call Nothing assignName Nothing [lhs', rhs']
 
 transRhs :: (HasCallStack) => NmExp -> CEM NmExp
 transRhs expr@(FieldAccess Nothing x) cenv
@@ -213,7 +214,7 @@ transRhs expr@FieldAccess {} _ = notImplemented "transRhs" expr
 transRhs expr cenv = go expr cenv
   where
     go e@(Indexed arr idx) = \env -> let e' = rhsIndex arr idx env in traces ["transRhs", pretty e, "- rhsIndex ->", pretty e'] e' -- FIXME
-    go (Call me f as) = Call me f <$> mapM transRhs as
+    go (Call me f lbl as) = Call me f lbl <$> mapM transRhs as
     go (Lam ps b mty) = Lam ps <$> transBody b <*> pure mty
     go (TyExp e ty) = TyExp <$> transRhs e <*> pure ty
     go (Cond e1 e2 e3) = Cond <$> transRhs e1 <*> transRhs e2 <*> transRhs e3
@@ -234,13 +235,13 @@ indexAccess dir exp@(FieldAccess Nothing name) idx = traces ["iA FA: " ++ pretty
       arrProxy <- memberProxyFor name
       let arrRef = lhsAccess arrProxy
       idx' <- transRhs idx
-      pure $ Call Nothing (indexFun dir) [arrRef, idx']
+      pure $ Call Nothing (indexFun dir) Nothing [arrRef, idx']
     else notImplemented "indexAccess" exp
 indexAccess dir _exp@(Indexed arr1 idx1) idx2 = traces ["iA II:", pretty arr1, pretty idx1, pretty idx2] $ do
   idx2' <- traces ["transRhs", pretty idx2] $ transRhs idx2
   idx1' <- traces ["transRhs", pretty idx1] $ transRhs idx1
   arr' <- traces ["lhsIndex", pretty arr1, pretty idx1'] $ lhsIndex arr1 idx1'
-  pure $ Call Nothing (indexFun dir) [arr', idx2']
+  pure $ Call Nothing (indexFun dir) Nothing [arr', idx2']
 indexAccess _dir exp idx = notImplemented "indexAccess" (Indexed exp idx)
 
 lhsIndex, rhsIndex :: (HasCallStack) => NmExp -> NmExp -> CEM (Exp Name)
@@ -303,10 +304,10 @@ memberProxyFor field = do
   pure fieldMap
 
 lhsAccess :: Exp Name -> Exp Name
-lhsAccess e = Call Nothing (QualName "LVA" "acc") [e]
+lhsAccess e = Call Nothing (QualName "LVA" "acc") Nothing [e]
 
 rhsAccess :: Exp Name -> Exp Name
-rhsAccess e = Call Nothing (QualName "RVA" "acc") [e]
+rhsAccess e = Call Nothing (QualName "RVA" "acc") Nothing [e]
 
 notImplemented :: (HasCallStack, Pretty a) => String -> a -> b
 notImplemented funName a = error $ concat [funName, " not implemented yet for ", pretty a]

@@ -1,0 +1,13 @@
+// Error case: calling with unknown named instance label
+
+data Bool = True | False;
+
+forall a . class a : Eq {
+  function eq(x : a, y : a) -> Bool;
+}
+
+contract NamedInstUnknown {
+  function main() -> Bool {
+    return eq@{noSuchLabel}(1, 1);
+  }
+}

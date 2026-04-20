@@ -1,0 +1,30 @@
+// Reusing the same named-instance label for different heads should work.
+
+data Bool = True | False;
+
+forall a . class a : Eq {
+  function eq(x : a, y : a) -> Bool;
+}
+
+instance [shared] word : Eq {
+  function eq(x : word, y : word) -> Bool {
+    return True;
+  }
+}
+
+instance [shared] Bool : Eq {
+  function eq(x : Bool, y : Bool) -> Bool {
+    match x, y {
+    | True, True => return True;
+    | _, _ => return False;
+    }
+  }
+}
+
+contract NamedInstSharedLabel {
+  function main() -> Bool {
+    let x : Bool = eq@{shared}(1, 2);
+    let y : Bool = eq@{shared}(True, True);
+    return y;
+  }
+}
