@@ -52,14 +52,14 @@ bash run_contests.sh
 # run integration tests via Nix (builds everything automatically)
 nix flake check
 
-# run the CI pipeline locally (builds sol-core)
+# build all binaries (sol-core, yule, csol)
 nix build
 
 # run all checks (including ormolu format check)
 nix flake check
 
 # format all Haskell files with ormolu.
-ormolu --mode inplace $(find app src yule test -name '*.hs')
+ormolu --mode inplace $(find app cli src yule test -name '*.hs')
 ```
 
 ## Using nix and flakes
@@ -77,41 +77,58 @@ nix with flakes enabled automatically.
 
 # Usage
 
-## Compilation
+## csol
 
-The compiler is currented implemented as two binaries:
+`csol` is the main CLI for compiling and running core solidity contracts. It drives the full
+pipeline (`sol-core` → `yule` → `solc` → `evm`) from a single command.
+
+```sh
+# compile a .solc file to yul (default)
+csol build input.solc
+
+# compile to evm bytecode
+csol build input.solc --emit evm
+
+# emit multiple targets
+csol build input.solc --emit hull,yul,evm
+
+# select a contract (required when source has multiple contracts)
+csol build input.solc --contract MyToken
+
+# compile and run
+csol run input.solc
+
+# run with a function call
+csol run input.solc --runtime-sig "transfer(address,uint256)" --runtime-arg 0x123 --runtime-arg 100
+
+# run with raw calldata
+csol run input.solc --runtime-raw-calldata 0xabcd...
+
+# skip deployment (run bytecode directly)
+csol run input.solc --no-create
+
+# pass value in wei
+csol run input.solc --runtime-callvalue 1000000000
+
+# enable solc optimizer
+csol build input.solc --emit evm --solc-optimize --solc-optimize-runs 200
+```
+
+Run `csol build --help` or `csol run --help` for the full list of options.
+
+## Lower-level binaries
+
+The compiler pipeline can also be driven manually via two separate binaries:
 
 1. `sol-core`: typechecks, specializes, and lowers to the `core` IR
 2. `yule`: lowers `core` files to `yul`
 
-```
-# produces `output1.core`
-$ cabal run -- sol-core -f <input>
+```sh
+# produces output1.core
+cabal run -- sol-core -f <input>
 
-# produces an output.yul
-$ cabal run -- yule output1.core -o output.yul
-```
-
-## Running Code
-
-The `runsol.sh` script implements a small pipeline that executes a core solidity contract by
-compiling via `sol-core` -> `yule` -> `solc`, and then using `geth` to execute the resulting EVM
-code.
-
-It takes the following arguments:
-
-```
-> ./runsol.sh
-Options:
-  --runtime-calldata sig [args...]  Generate calldata using cast calldata
-  --runtime-raw-calldata hex        Pass raw calldata directly to geth
-  --runtime-callvalue value         Pass callvalue to geth (in wei)
-  --debug-runtime                   Explore the evm execution in the interactive debugger
-  --create true|false               Run the initcode to deploy the contract (default: true)
-  --create-arguments sig [args...]  Generate calldata using cast calldata
-  --create-raw-arguments hex        Pass raw calldata directly to geth
-  --create-callvalue value          Pass callvalue to geth (in wei)
-  --debug-create                    Explore the evm execution in the interactive debugger
+# produces output.yul
+cabal run -- yule output1.core -o output.yul
 ```
 
 ## Integration Tests

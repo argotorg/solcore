@@ -24,7 +24,9 @@ data Option
     optDebugHull :: !Bool,
     optTiming :: !Bool,
     -- Partial evaluation options
-    optPEFuel :: !(Maybe Int)
+    optPEFuel :: !(Maybe Int),
+    -- Output options
+    optOutputDir :: !(Maybe FilePath)
   }
   deriving (Eq, Show)
 
@@ -51,7 +53,9 @@ emptyOption path =
       optDebugHull = False,
       optTiming = False,
       -- Partial evaluation options
-      optPEFuel = Nothing
+      optPEFuel = Nothing,
+      -- Output options
+      optOutputDir = Nothing
     }
 
 stdOpt :: Option
@@ -158,6 +162,13 @@ options =
           ( long "pe-fuel"
               <> metavar "N"
               <> help "Fuel for partial evaluation inlining depth limit (default: 100)"
+          )
+      )
+    <*> optional
+      ( strOption
+          ( long "output-dir"
+              <> metavar "DIR"
+              <> help "Directory for output files (default: current directory)"
           )
       )
 

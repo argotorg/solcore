@@ -115,7 +115,7 @@ addData dt = modify (\s -> s {ecDT = Map.insert (dataName dt) dt (ecDT s)})
 emitContract :: MastContract -> EM Hull.Object
 emitContract c = do
   let cname = show (mastContrName c)
-  writes ["Emitting hull for contract ", cname]
+  debug ["Emitting hull for contract ", cname]
   runtimeBody <- concatMapM emitCDecl (mastContrDecls c)
   deployer <- gets ecDeployer
   case deployer of

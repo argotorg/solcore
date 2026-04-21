@@ -172,7 +172,7 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
       return (flattenLhs loc)
 genStmt (SExpr e) = fst <$> genExpr e
 genStmt (SRevert s) = pure (revertStmt s)
-genStmt e = error $ "genStmt unimplemented for: " ++ show e
+genStmt (SComment c) = pure [YComment c]
 
 -- If the statement is a function definition, record its type
 scanStmt :: Stmt -> TM ()
