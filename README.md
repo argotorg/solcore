@@ -27,6 +27,8 @@ recommended to try avoiding Nix.
 # enter a development shell with all required dependencies
 nix develop
 
+# if prompted, may need to enable a feature: nix --extra-experimental-features "nix-command flakes" develop
+
 # update the package list of hackage.haskell.org
 cabal update
 
