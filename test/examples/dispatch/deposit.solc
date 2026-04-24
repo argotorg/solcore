@@ -1,0 +1,249 @@
+import std;
+import dispatch;
+
+function caller() -> address {
+  let res: word;
+  assembly {
+     res := caller()
+  }
+  return address(res);
+}
+
+function callvalue() -> uint256 {
+    let res : word;
+    assembly {
+        res := callvalue()
+    }
+    return uint256(res);
+}
+
+function assert(cond: bool) {
+    if (!cond) {
+        assembly {
+            invalid()
+        }
+    }
+}
+
+function require(cond: bool) {
+    if (!cond) {
+        assembly {
+            revert(0, 0)
+        }
+    }
+}
+
+forall T . class T:MemoryHelpers {
+    function ptr(a: T) -> word;
+    function len(a: T) -> word;
+    function concat(a: T, b: T) -> memory(bytes);
+}
+
+instance memory(bytes):MemoryHelpers {
+    function ptr(a: memory(bytes)) -> word {
+        let rep = Typedef.rep(a);
+        return rep + 32;
+    }
+
+    function len(a: memory(bytes)) -> word {
+        let rep = Typedef.rep(a);
+        let res: word;
+        assembly {
+            res := mload(rep)
+        }
+        return res;
+    }
+
+    function concat(a: memory(bytes), b: memory(bytes)) -> memory(bytes) {
+        let a_ptr = MemoryHelpers.ptr(a);
+        let a_len = MemoryHelpers.len(a);
+        let b_ptr = MemoryHelpers.ptr(b);
+        let b_len = MemoryHelpers.len(b);
+
+        let len = 32 + a_len + b_len;
+        let res: word = allocate_memory(len);
+        assembly {
+            mstore(res, len)
+            mcopy(add(res, 32), a_ptr, a_len)
+            mcopy(add(add(res, 32), a_len), b_ptr, b_len)
+        }
+        return memory(res);
+    } 
+}
+
+instance uint256:MemoryHelpers {
+    function ptr(a: uint256) -> word {
+        return 0;
+    }
+    function len(a: uint256) -> word {
+        return 0;
+    }
+    function concat(a: uint256, b: uint256) -> memory(bytes) {
+        let res: word = allocate_memory(96);
+        let a_val = Typedef.rep(a);
+        let b_val = Typedef.rep(b);
+        assembly {
+            mstore(res, 64)
+            mstore(add(res, 32), a_val)
+            mstore(add(res, 64), b_val)
+        }
+        return memory(res);
+    }
+}
+
+// This calls the SHA256 precompile.
+// TODO: Should return bytes32.
+function sha256(input: memory(bytes)) -> uint256 {
+    // TODO: `ptr()` / `len()` helpers would be useful
+    let ptr : word = Typedef.rep(input);
+    let res : word;
+    // We assume the [0, 32] scratch space is reserved.
+    assembly {
+        let ret := staticcall(gas(), 2, add(ptr, 32), mload(ptr), 0, 32)
+        if iszero(ret) {
+            revert(0, 0)
+        }
+        res := mload(0)
+    }
+    return uint256(res);
+}
+
+// Should use uint64 and bytes.
+// Assumes 64-bit input.
+function to_little_endian_64(v: uint256) -> memory(string) {
+    let res: word = allocate_memory(32 + 8);
+    let value: word = Typedef.rep(v);
+    assembly {
+        mstore(res, 8)
+        mstore8(add(res, 32), and(value, 0xff))
+        mstore8(add(res, 33), and(shr(value, 8), 0xff))
+        mstore8(add(res, 34), and(shr(value, 16), 0xff))
+        mstore8(add(res, 35), and(shr(value, 24), 0xff))
+        mstore8(add(res, 36), and(shr(value, 32), 0xff))
+        mstore8(add(res, 37), and(shr(value, 40), 0xff))
+        mstore8(add(res, 38), and(shr(value, 48), 0xff))
+        mstore8(add(res, 39), and(shr(value, 56), 0xff))
+    }
+    return memory(res);
+}
+
+// No constants are supported yet, using this as a workaround.
+// Defining variables outside of contract/function is not supported.
+function DEPOSIT_CONTRACT_TREE_DEPTH() -> uint256 {
+    return uint256(32);
+}
+function MAX_DEPOSIT_COUNT() -> uint256 {
+    // Could use Bounded(uint256).maxVal()
+    return uint256(0xFFFFFFFF);
+}
+
+contract DepositContract {
+  deposit_count : uint256;
+  // TODO: need storage array support
+  // branch: array(uint256, DEPOSIT_CONTRACT_TREE_DEPTH());
+  // zero_hashes : array(uint256, DEPOSIT_CONTRACT_TREE_DEPTH());
+  // misusing mappings here, the index is the key
+  zero_hashes : mapping(uint256, uint256);
+
+  constructor() {
+    // Compute hashes in empty sparse Merkle tree
+    // TODO: no for loops yet, so unrolled
+    let height: uint256 = uint256(0);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+/*
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    height = height + uint256(1);
+    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+*/
+
+    //for (uint height = 0; height < DEPOSIT_CONTRACT_TREE_DEPTH - 1; height++)
+    //  zero_hashes[height + 1] = sha256(abi.encodePacked(zero_hashes[height], zero_hashes[height]));
+  }
+
+  // TODO: this is for testing only
+  function get_zero_hash(index: uint256) -> uint256 {
+    return zero_hashes[index];
+  }
+
+  // TODO: return bytes32
+  function get_deposit_root() -> uint256 {
+    // FIXME: implement
+    return uint256(0);
+  }
+
+  // TODO: return memory(bytes)
+  function get_deposit_count() -> memory(string) {
+    return to_little_endian_64(deposit_count);
+  }
+
+  // TOOD: use memory(bytes) and bytes32
+  function deposit(pubkey: memory(string), withdrawal_credentials: memory(string), signature: memory(string), deposit_data_root: uint256) -> () {
+    require(callvalue() != uint256(0));
+    // FIXME: implement
+    assert(false);
+  }
+
+  // TODO: use bytes4
+  function supportsInterface(interfaceId: uint256) -> bool {
+    return false;
+  }
+}

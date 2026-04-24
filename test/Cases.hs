@@ -158,7 +158,8 @@ dispatches =
       runDispatchTest "array_string.solc",
       runDispatchTest "array_nested.solc",
       runDispatchTest "derive_ord.solc",
-      runDispatchTest "derive_contract_local.solc"
+      runDispatchTest "derive_contract_local.solc",
+      runDispatchTest "deposit.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"

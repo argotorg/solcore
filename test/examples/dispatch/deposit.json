@@ -1,0 +1,138 @@
+{
+  "depositcontract": {
+    "bytecode": "_CODE",
+      "contract": "DepositContract",
+    "tests": [
+      {
+          "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+
+      {
+        "input": {
+            "comment": "get_zero_hash(0)",
+            "calldata": "43ca34020000000000000000000000000000000000000000000000000000000000000000",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_zero_hash(1)",
+            "calldata": "43ca34020000000000000000000000000000000000000000000000000000000000000001",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b",
+            "status": "success"
+        }
+      },
+
+
+      {
+        "input": {
+            "comment": "get_zero_hash(2)",
+            "calldata": "43ca34020000000000000000000000000000000000000000000000000000000000000002",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "db56114e00fdd4c1f85c892bf35ac9a89289aaecb1ebd0a96cde606a748b5d71",
+            "status": "success"
+        }
+      },
+
+
+      {
+        "input": {
+            "comment": "get_zero_hash(3)",
+            "calldata": "43ca34020000000000000000000000000000000000000000000000000000000000000003",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "c78009fdf07fc56a11f122370658a353aaa542ed63e44c4bc15ff4cd105ab33c",
+            "status": "success"
+        }
+      },
+
+
+      {
+        "input": {
+            "comment": "get_zero_hash(4)",
+            "calldata": "43ca34020000000000000000000000000000000000000000000000000000000000000004",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "536d98837f2dd165a55d5eeae91485954472d56f246df256bf3cae19352a123c",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_zero_hash(15)",
+            "calldata": "43ca3402000000000000000000000000000000000000000000000000000000000000000f",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "comment": "The correct one 0xd49a7502ffcfb0340b1d7885688500ca308161a7f96b62df9d083b71fcc8f2bb",
+            "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_zero_hash(31)",
+            "calldata": "43ca3402000000000000000000000000000000000000000000000000000000000000001f",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "comment": "The correct one 0x985e929f70af28d0bdd1a90a808f977f597c7c778c489e98d3bd8910d31ac0f7",
+            "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_deposit_root()",
+            "calldata": "c5f2892f",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_deposit_count()",
+            "calldata": "621fd130",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success"
+        }
+      }
+    ]
+  }
+}
