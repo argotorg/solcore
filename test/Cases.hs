@@ -117,7 +117,8 @@ dispatches =
       runDispatchTest "Revert.solc",
       runDispatchTest "hashes.solc",
       runDispatchTest "empty.solc",
-      runDispatchTest "empty_no_constructor.solc"
+      runDispatchTest "empty_no_constructor.solc",
+      runDispatchTest "deposit.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
