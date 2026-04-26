@@ -1,0 +1,13 @@
+// Generic isomorphism class (sum-of-products representation).
+//
+// `a : Generic(rep)` witnesses that type `a` is isomorphic to `rep`,
+// where `rep` is a nested combination of `pair`, `sum`, `()`, `bool`,
+// and `word` — the sum-of-products normal form.
+//
+// Users write exactly one instance per data type; all generic operations
+// (Packable, Storable, ...) follow automatically via the bridge instances.
+
+forall a rep. class a : Generic(rep) {
+    function from(x : a) -> rep;
+    function to(x : rep) -> a;
+}

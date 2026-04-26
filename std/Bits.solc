@@ -1,0 +1,63 @@
+// Bitwise word operations using EVM assembly.
+
+function band(a : word, b : word) -> word {
+    let res : word;
+    assembly { res := and(a, b) }
+    return res;
+}
+
+function bor(a : word, b : word) -> word {
+    let res : word;
+    assembly { res := or(a, b) }
+    return res;
+}
+
+function bxor(a : word, b : word) -> word {
+    let res : word;
+    assembly { res := xor(a, b) }
+    return res;
+}
+
+function bnot(a : word) -> word {
+    let res : word;
+    assembly { res := not(a) }
+    return res;
+}
+
+// shl(n, x): shift x left by n bits
+function shl_(n : word, x : word) -> word {
+    let res : word;
+    assembly { res := shl(n, x) }
+    return res;
+}
+
+// shr(n, x): logical shift x right by n bits
+function shr_(n : word, x : word) -> word {
+    let res : word;
+    assembly { res := shr(n, x) }
+    return res;
+}
+
+// mask(n): n-bit mask in the least significant positions (bits 0..n-1 set to 1)
+function mask(n : word) -> word {
+    let res : word;
+    assembly { res := sub(shl(n, 1), 1) }
+    return res;
+}
+
+// maxWord(a, b): returns the larger of the two words
+function maxWord(a : word, b : word) -> word {
+    let cond : word;
+    assembly { cond := gt(a, b) }
+    match cond {
+    | 0 => return b;
+    | _ => return a;
+    }
+}
+
+// addWord(a, b): wrapping 256-bit addition
+function addWord(a : word, b : word) -> word {
+    let res : word;
+    assembly { res := add(a, b) }
+    return res;
+}

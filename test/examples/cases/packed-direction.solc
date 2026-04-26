@@ -1,0 +1,52 @@
+import Generic;
+import Storage;
+
+// Direction = North | South | East | West
+// Rep: sum((), sum((), sum((), ())))
+// bitWidth = 1 + max(0, 1 + max(0, 1 + max(0, 0)))
+//          = 1 + max(0, 1 + max(0, 1))
+//          = 1 + max(0, 1 + 1)
+//          = 1 + 2 = 3 bits
+
+data Direction = North | South | East | West;
+
+instance Direction : Generic(sum((), sum((), sum((), ())))) {
+    function from(x : Direction) -> sum((), sum((), sum((), ()))) {
+        match x {
+        | North => return inl(());
+        | South => return inr(inl(()));
+        | East  => return inr(inr(inl(())));
+        | West  => return inr(inr(inr(())));
+        }
+    }
+    function to(x : sum((), sum((), sum((), ())))) -> Direction {
+        match x {
+        | inl(_)            => return North;
+        | inr(inl(_))       => return South;
+        | inr(inr(inl(_)))  => return East;
+        | inr(inr(inr(_)))  => return West;
+        }
+    }
+}
+
+contract PackedDirection {
+    // Store West (tag=inr(inr(inr(())))) in slot 0, then load and return its pack value.
+    // pack(West) = pack(inr(inr(inr(())))) = bor(shl(1, pack(inr(inr(())))), 1)
+    //   inner pack(inr(inr(()))) = bor(shl(1, pack(inr(()))), 1)
+    //     innermost pack(inr(())) = bor(shl(1, pack(())), 1) = bor(0, 1) = 1
+    //   = bor(shl(1, 1), 1) = bor(2, 1) = 3
+    // = bor(shl(1, 3), 1) = bor(6, 1) = 7
+    // So main() should return 7.
+    function main() -> word {
+        let slot : word = 0;
+        let d : Direction = West;
+        Storable.sstore(slot, d);
+        let d2 : Direction = Storable.sload(slot);
+        match d2 {
+        | North => return 0;
+        | South => return 1;
+        | East  => return 2;
+        | West  => return 3;
+        }
+    }
+}

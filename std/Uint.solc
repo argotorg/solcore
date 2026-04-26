@@ -1,0 +1,72 @@
+import Packable;
+
+// Fixed-width unsigned integer newtypes with Packable instances.
+// Each wraps a word and masks off the relevant bits.
+
+data Uint8 = MkUint8(word);
+data Uint16 = MkUint16(word);
+data Uint32 = MkUint32(word);
+data Uint64 = MkUint64(word);
+data Uint128 = MkUint128(word);
+data Address = MkAddress(word);
+
+instance Uint8 : Packable {
+    function bitWidth(x : Uint8) -> word { return 8; }
+    function pack(x : Uint8) -> word {
+        match x { | MkUint8(w) => return band(w, mask(8)); }
+    }
+    function unpack(w : word) -> Uint8 {
+        return MkUint8(band(w, mask(8)));
+    }
+}
+
+instance Uint16 : Packable {
+    function bitWidth(x : Uint16) -> word { return 16; }
+    function pack(x : Uint16) -> word {
+        match x { | MkUint16(w) => return band(w, mask(16)); }
+    }
+    function unpack(w : word) -> Uint16 {
+        return MkUint16(band(w, mask(16)));
+    }
+}
+
+instance Uint32 : Packable {
+    function bitWidth(x : Uint32) -> word { return 32; }
+    function pack(x : Uint32) -> word {
+        match x { | MkUint32(w) => return band(w, mask(32)); }
+    }
+    function unpack(w : word) -> Uint32 {
+        return MkUint32(band(w, mask(32)));
+    }
+}
+
+instance Uint64 : Packable {
+    function bitWidth(x : Uint64) -> word { return 64; }
+    function pack(x : Uint64) -> word {
+        match x { | MkUint64(w) => return band(w, mask(64)); }
+    }
+    function unpack(w : word) -> Uint64 {
+        return MkUint64(band(w, mask(64)));
+    }
+}
+
+instance Uint128 : Packable {
+    function bitWidth(x : Uint128) -> word { return 128; }
+    function pack(x : Uint128) -> word {
+        match x { | MkUint128(w) => return band(w, mask(128)); }
+    }
+    function unpack(w : word) -> Uint128 {
+        return MkUint128(band(w, mask(128)));
+    }
+}
+
+// Address: 160 bits (Ethereum address)
+instance Address : Packable {
+    function bitWidth(x : Address) -> word { return 160; }
+    function pack(x : Address) -> word {
+        match x { | MkAddress(w) => return band(w, mask(160)); }
+    }
+    function unpack(w : word) -> Address {
+        return MkAddress(band(w, mask(160)));
+    }
+}
