@@ -57,6 +57,10 @@ tcStmt e@(Let n mt me) =
     extEnv n (monotype tf)
     let e' = Let (Id n tf) (Just tf) me'
     withCurrentSubst (e', psf, unit)
+tcStmt (Block body) =
+  withLocalCtx [] $ do
+    (body', ps, t) <- tcBody body
+    pure (Block body', ps, t)
 tcStmt (StmtExp e) =
   do
     (e', ps', _) <- tcExp e
@@ -1365,6 +1369,7 @@ instance Vars (Stmt Id) where
   free (e1 := e2) = free [e1, e2]
   free (Let _ _ (Just e)) = free e
   free (Let _ _ _) = []
+  free (Block body) = free body
   free (StmtExp e) = free e
   free (Return e) = free e
   free (Match e eqns) = free e `union` free eqns
@@ -1372,6 +1377,7 @@ instance Vars (Stmt Id) where
   free (Asm _) = []
 
   bound (Let n _ _) = [n]
+  bound (Block _) = []
   bound _ = []
 
 instance Vars (Equation Id) where

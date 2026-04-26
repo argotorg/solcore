@@ -232,6 +232,8 @@ instance Resolve S.Stmt where
       me' <- resolve me `wrapError` s
       addLocalVar n
       pure (Let n mt' me')
+  resolve (S.Block blk) =
+    withLocalCtx (Block <$> resolve blk)
   resolve s@(S.StmtExp e) =
     StmtExp <$> resolve e `wrapError` s
   resolve s@(S.Return e) =

@@ -90,6 +90,8 @@ instance Compile (Stmt Id) where
     (:=) <$> compile e1 <*> compile e2
   compile (Let v mt me) =
     Let v mt <$> compile me
+  compile (Block body) =
+    Block <$> compile body
   compile (StmtExp e) =
     StmtExp <$> compile e
   compile (Return e) =
@@ -119,7 +121,7 @@ instance Compile (Stmt Id) where
     pure $
       case scrutBindings of
         [] -> stmt
-        binds -> Match [] [([], binds ++ [stmt])]
+        binds -> Block (binds ++ [stmt])
 
 prepareScrutinee :: Exp Id -> Ty -> CompilerM ([Stmt Id], Exp Id)
 prepareScrutinee e@(Var _) _ = pure ([], e)
@@ -290,7 +292,6 @@ instance Compile (Instance Id) where
 -- compiling a decision tree into a match
 
 -- Convert a decision tree to a statement body (list of statements).
--- Avoids wrapping multi-statement leaves in a fake Match node.
 treeToBody :: OccMap -> DecisionTree -> CompilerM [Stmt Id]
 treeToBody _ Fail = pure []
 treeToBody occMap (Leaf varBinds stmts) = do
@@ -299,12 +300,12 @@ treeToBody occMap (Leaf varBinds stmts) = do
 treeToBody occMap tree = (: []) <$> treeToStmt occMap tree
 
 treeToStmt :: OccMap -> DecisionTree -> CompilerM (Stmt Id)
-treeToStmt _ Fail = pure (Match [] [])
+treeToStmt _ Fail = pure (Block [])
 treeToStmt occMap (Leaf varBinds stmts) = do
   subst <- buildSubst occMap varBinds
   case map (substStmt subst) stmts of
     [s] -> pure s
-    ss -> pure (Match [] [([], ss)])
+    ss -> pure (Block ss)
 treeToStmt occMap (Switch occ branches mDef) = do
   scrutinee <- occToExp occMap occ
   eqns <- mapM (conBranchToEqn occMap occ) branches

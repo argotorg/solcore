@@ -74,6 +74,8 @@ instance Desugar (Stmt Name) where
     (:=) <$> desugar lhs <*> desugar rhs
   desugar (Let n mt me) =
     Let n mt <$> desugar me
+  desugar (Block body) =
+    Block <$> desugar body
   desugar (StmtExp e) =
     StmtExp <$> desugar e
   desugar (Return e) =

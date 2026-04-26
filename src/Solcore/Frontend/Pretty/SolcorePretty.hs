@@ -217,6 +217,10 @@ instance (Pretty a) => Pretty (Stmt a) where
     ppr n <+> equals <+> ppr e <+> semi
   ppr (Let n ty m) =
     text "let" <+> ppr n <+> pprOptTy ty <+> pprInitOpt m
+  ppr (Block body) =
+    lbrace
+      $$ nest 3 (ppr body)
+      $$ rbrace
   ppr (StmtExp e) =
     ppr e <> semi
   ppr (Return e) =

@@ -47,6 +47,8 @@ instance Erase (Stmt Id) where
     (erase e1) := (erase e2)
   erase (Let n mt me) =
     Let (idName n) mt (erase me)
+  erase (Block body) =
+    Block (erase body)
   erase (StmtExp e) =
     StmtExp (erase e)
   erase (Return e) =
