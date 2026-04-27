@@ -493,6 +493,7 @@ function hash2(x: word, y: word) -> word {
   return result;
 }
 
+
 // --- Value Types ---
 
 forall t. t:Typedef(word) =>
