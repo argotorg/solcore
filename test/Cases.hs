@@ -202,6 +202,8 @@ cases =
       runTestForFile "option2.solc" caseFolder,
       runTestExpectingFailure "overlapping-heads.solc" caseFolder,
       runTestForFile "Pair.solc" caseFolder,
+      runTestForFile "packed-token.solc" caseFolder,
+      runTestForFile "packed-direction.solc" caseFolder,
       runTestExpectingFailure "PairMatch1.solc" caseFolder,
       runTestExpectingFailure "PairMatch2.solc" caseFolder,
       -- failing due to missing assign constraint

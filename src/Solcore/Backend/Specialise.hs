@@ -349,14 +349,15 @@ specCall i args ty = do
   let name = idName i'
   let argTypes = map typeOfTcExp args
   argTypes' <- atCurrentSubst argTypes
-  let typedArgs = zip args argTypes'
-  args' <- forM typedArgs (uncurry specExp)
   let funType = foldr (:->) ty' argTypes'
   debug ["> specCall: ", show name, " : ", pretty funType]
   mres <- lookupResolution name funType
   case mres of
     Just (fd, fty, phi) -> do
       debug ["< resolution: ", show name, "~>", shortName fd, " : ", pretty fty, "@", pretty phi]
+      let argTypesForArgs = map (applytv phi) argTypes'
+      let typedArgs = zip args argTypesForArgs
+      args' <- forM typedArgs (uncurry specExp)
       extSpSubst phi
       subst <- getSpSubst
       let ty'' = applytv subst fty
@@ -366,6 +367,8 @@ specCall i args ty = do
       args'' <- atCurrentSubst args'
       return (Id name' ty'', args'')
     Nothing -> do
+      let typedArgs = zip args argTypes'
+      args' <- forM typedArgs (uncurry specExp)
       void $ panics ["! specCall: no resolution found for ", show name, " : ", pretty funType]
       return (i, args')
 
@@ -474,11 +477,19 @@ specStmt stmt@(Let i mty mexp) = do
   debug ["> specStmt (Let): ", pretty i, " : ", pretty (idType i), " @ ", pretty subst]
   i' <- atCurrentSubst i
   let ty' = idType i'
-  ensureClosed ty' stmt subst
   mty' <- atCurrentSubst mty
   case mexp of
-    Nothing -> return $ Let i' mty' Nothing
-    Just e -> Let i' mty' . Just <$> specExp e ty'
+    Nothing -> do
+      ensureClosed ty' stmt subst
+      return $ Let i' mty' Nothing
+    Just e -> do
+      e' <- specExp e ty'
+      i'' <- atCurrentSubst i'
+      let ty'' = idType i''
+      subst' <- getSpSubst
+      ensureClosed ty'' stmt subst'
+      mty'' <- atCurrentSubst mty'
+      return $ Let i'' mty'' (Just e')
 specStmt (StmtExp e) = do
   ty <- atCurrentSubst (typeOfTcExp e)
   e' <- specExp e ty
