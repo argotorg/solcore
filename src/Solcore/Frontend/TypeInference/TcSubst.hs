@@ -241,6 +241,8 @@ instance (HasType a) => HasType (Stmt a) where
       (apply s v)
       (apply s <$> mt)
       (apply s <$> me)
+  apply s (Block body) =
+    Block (apply s body)
   apply s (StmtExp e) =
     StmtExp (apply s e)
   apply s (Return e) =
@@ -261,6 +263,7 @@ instance (HasType a) => HasType (Stmt a) where
     fv v
       `union` (maybe [] fv mt)
       `union` (maybe [] fv me)
+  fv (Block body) = fv body
   fv (StmtExp e) = fv e
   fv (Return e) = fv e
   fv (Match es eqns) =
@@ -274,6 +277,7 @@ instance (HasType a) => HasType (Stmt a) where
     mv v
       `union` (maybe [] mv mt)
       `union` (maybe [] mv me)
+  mv (Block body) = mv body
   mv (StmtExp e) = mv e
   mv (Return e) = mv e
   mv (Match es eqns) =
@@ -287,6 +291,7 @@ instance (HasType a) => HasType (Stmt a) where
     bv v
       `union` (maybe [] bv mt)
       `union` (maybe [] bv me)
+  bv (Block body) = bv body
   bv (StmtExp e) = bv e
   bv (Return e) = bv e
   bv (Match es eqns) =

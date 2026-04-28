@@ -485,6 +485,8 @@ specStmt stmt@(Let i mty mexp) = do
   case mexp of
     Nothing -> return $ Let i' mty' Nothing
     Just e -> Let i' mty' . Just <$> specExp e ty'
+specStmt (Block body) =
+  Block <$> specBody body
 specStmt (StmtExp e) = do
   ty <- atCurrentSubst (typeOfTcExp e)
   e' <- specExp e ty
@@ -812,7 +814,7 @@ toMastFunDef (FunDef sig body) =
       mastFunReturn = case sigReturn sig of
         Just t -> toMastTy t
         Nothing -> error $ "toMastFunDef: no return type for " ++ show (sigName sig),
-      mastFunBody = map toMastStmt body
+      mastFunBody = toMastBody body
     }
 
 toMastParam :: Param Id -> MastParam
@@ -840,8 +842,14 @@ toMastStmt (Match es _) = error $ "toMastStmt: multi-scrutinee match should have
 toMastStmt (Asm ys) = MastAsm ys
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
+toMastBody :: [Stmt Id] -> [MastStmt]
+toMastBody = concatMap go
+  where
+    go (Block body) = toMastBody body
+    go stmt = [toMastStmt stmt]
+
 toMastAlt :: ([Pat Id], [Stmt Id]) -> MastAlt
-toMastAlt ([p], body) = (toMastPat p, map toMastStmt body)
+toMastAlt ([p], body) = (toMastPat p, toMastBody body)
 toMastAlt (ps, _) = error $ "toMastAlt: multi-pattern alt should have been desugared: " ++ show ps
 
 toMastExp :: Exp Id -> MastExp

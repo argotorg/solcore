@@ -197,6 +197,10 @@ instance Pretty Stmt where
     hsep [ppr e1, text "-=", ppr e2]
   ppr (Let n ty m) =
     text "let" <+> ppr n <+> pprOptTy ty <+> pprInitOpt m
+  ppr (Block body) =
+    lbrace
+      $$ nest 3 (ppr body)
+      $$ rbrace
   ppr (StmtExp e) =
     ppr e <> semi
   ppr (Return e) =

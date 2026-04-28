@@ -192,6 +192,7 @@ data Stmt
   | StmtPlusEq Exp Exp -- e1 += e2
   | StmtMinusEq Exp Exp -- e1 -= e2
   | Let Name (Maybe Ty) (Maybe Exp) -- local variable
+  | Block Body -- lexical block
   | StmtExp Exp -- expression level statements
   | Return Exp -- return statements
   | Match [Exp] Equations -- pattern matching

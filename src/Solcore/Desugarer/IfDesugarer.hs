@@ -17,6 +17,8 @@ ifDesugarer cunit =
 desugarStmt :: Stmt Id -> Stmt Id
 desugarStmt (Match es eqns) =
   Match es (map (\(ps, bdy) -> (ps, map desugarStmt bdy)) eqns)
+desugarStmt (Block body) =
+  Block (map desugarStmt body)
 desugarStmt (If e bdy1 bdy2) =
   Match [e] [eqntrue, eqnfalse]
   where

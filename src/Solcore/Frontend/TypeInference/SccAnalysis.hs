@@ -178,6 +178,8 @@ instance Names (Stmt Name) where
     names [e1, e2]
   names (Let _ mt me) =
     names mt `union` names me
+  names (Block body) =
+    names body
   names (StmtExp e) =
     names e
   names (Return e) =
