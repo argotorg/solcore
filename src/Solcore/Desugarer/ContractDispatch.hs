@@ -16,6 +16,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Language.Yul
 import Language.Yul.QuasiQuote
+import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax
 import Solcore.Primitives.Primitives (string, tupleExpFromList, tupleTyFromList, unit, word)
 
@@ -156,7 +157,7 @@ transformConstructor contractName cons
       Signature
         { sigVars = mempty,
           sigContext = mempty,
-          sigName = "start",
+          sigName = deployerName,
           sigParams = mempty,
           sigReturn = Just unit
         }

@@ -142,7 +142,7 @@ findConstructor :: [MastContractDecl] -> Maybe MastFunDef
 findConstructor = go
   where
     go [] = Nothing
-    go (MastCFunDecl d : _) | mastFunName d == "start" = Just d
+    go (MastCFunDecl d : _) | mastFunName d == deployerName = Just d
     go (_ : ds) = go ds
 
 -----------------------------------------------------------------------

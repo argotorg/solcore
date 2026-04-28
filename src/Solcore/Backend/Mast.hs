@@ -8,6 +8,7 @@ module Solcore.Backend.Mast where
 -}
 
 import Common.Pretty
+import Data.String
 import Language.Yul (YulBlock)
 import Solcore.Frontend.Pretty.SolcorePretty ()
 import Solcore.Frontend.Syntax.Contract (DataTy (..), Import (..))
@@ -15,6 +16,9 @@ import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
 import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..))
 import Solcore.Primitives.Primitives (word)
+
+deployerName :: Name
+deployerName = fromString "_start"
 
 -----------------------------------------------------------------------
 -- Types: no TyVar, no Meta — only type constructors
