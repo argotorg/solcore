@@ -484,7 +484,7 @@ expIsPure pureFuns (MastCond e1 e2 e3) =
 -----------------------------------------------------------------------
 
 -- | Remove unused functions from a compilation unit.
--- 'start' and 'main' are always considered roots (entry points).
+-- deployer  and 'main' are always considered roots (entry points).
 eliminateDeadCode :: MastCompUnit -> MastCompUnit
 eliminateDeadCode cu = cu {mastTopDecls = map elimTopDecl (mastTopDecls cu)}
   where
@@ -504,12 +504,12 @@ eliminateDeadCode cu = cu {mastTopDecls = map elimTopDecl (mastTopDecls cu)}
         isUsedDecl (MastCMutualDecl ds) = any isUsedDecl ds
         isUsedDecl (MastCDataDecl _) = True
 
--- | Find all functions reachable from root functions ('start', 'main')
+-- | Find all functions reachable from root functions
 findUsedFunctions :: MastContract -> Set.Set Name
 findUsedFunctions c = go initialRoots initialRoots
   where
     -- Root functions that are always considered used
-    rootNames = Set.fromList [Name "start", Name "main"]
+    rootNames = Set.fromList [deployerName, Name "main"]
 
     -- Start with roots that actually exist in the contract
     initialRoots = Set.intersection rootNames allFunNames
