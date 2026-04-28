@@ -1084,6 +1084,33 @@ checkInstance idef@(Instance d vs predCtx n ts t funs) =
       then addDefaultInstance n ninst
       else addInstance n ninst
 
+maybeExpandSynonym :: Ty -> TcM Ty
+maybeExpandSynonym (TyCon n ts) = do
+  ts' <- mapM maybeExpandSynonym ts
+  mSyn <- maybeAskSynInfo n
+  case mSyn of
+    Just (SynInfo ar params body)
+      | ar == length ts' ->
+          maybeExpandSynonym (insts (zip params ts') body)
+      | otherwise ->
+          throwError $
+            unlines
+              [ "Type synonym arity mismatch for '" ++ pretty n ++ "':",
+                "  expected " ++ show ar ++ " argument(s)",
+                "  but got  " ++ show (length ts')
+              ]
+    Nothing -> pure (TyCon n ts')
+maybeExpandSynonym (t1 :-> t2) = (:->) <$> maybeExpandSynonym t1 <*> maybeExpandSynonym t2
+maybeExpandSynonym t = pure t
+
+expandPredSynonyms :: Pred -> TcM Pred
+expandPredSynonyms (InCls n t ts) = do
+  t' <- maybeExpandSynonym t
+  ts' <- mapM maybeExpandSynonym ts
+  pure (InCls n t' ts')
+expandPredSynonyms (t1 :~: t2) =
+  (:~:) <$> maybeExpandSynonym t1 <*> maybeExpandSynonym t2
+
 -- checking a default instance
 
 checkDefaultInst :: Qual Pred -> TcM ()
