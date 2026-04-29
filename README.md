@@ -19,7 +19,7 @@ Bug reports and feedback are very welcome.
 
 ## Development
 
-Please make sure that [NixOS](https://nixos.org/download/) is available on the system. The following commands (e.g. `nix develop`)
+Please make sure that [nix](https://nixos.org/download/) is available on the system. The following commands (e.g. `nix develop`)
 will install all required dependencies, and there is no need to do anything else. It is not
 recommended to try avoiding Nix.
 
