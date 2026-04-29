@@ -41,7 +41,8 @@ data EcState = EcState
     ecNest :: Int,
     ecDebug :: Bool,
     ecContext :: [String],
-    ecDeployer :: Maybe Hull.Body
+    ecDeployer :: Maybe Hull.Body,
+    ecFresh :: Int
   }
 
 initEcState :: Bool -> EcState
@@ -52,15 +53,22 @@ initEcState debugp =
       ecNest = 0,
       ecDebug = debugp,
       ecContext = [],
-      ecDeployer = Nothing
+      ecDeployer = Nothing,
+      ecFresh = 0
     }
 
+-- isolate local changes to nesting level and variable substitution
+-- e.g. when translating match alts
 withLocalState :: EM a -> EM a
 withLocalState m = do
   s <- get
   a <- m
-  put s
+  s' <- get
+  put s' {ecNest = ecNest s, ecSubst = ecSubst s}
   return a
+
+freshInt :: EM Int
+freshInt = state (\s -> (ecFresh s, s {ecFresh = ecFresh s + 1}))
 
 type DataTable = Map.Map Name DataTy
 
@@ -373,31 +381,36 @@ emitWordMatch scrutinee alts = do
       return (Hull.Alt (Hull.PVar hullName) "$_" hullStmts)
     emitWordAlt _ (pat, _) = errorsEM ["emitWordAlt not implemented for", show pat]
 
-type BranchMap = Map.Map Name [Hull.Stmt]
+-- prebranch reflects the fact that we don't know its position (Inl/Inr/InK) yet, just a name and body
+type HullPreBranch = (Hull.Name, [Hull.Stmt])
+
+type PreBranchMap = Map.Map Name HullPreBranch
 
 emitSumMatch :: [Constr] -> MastExp -> [MastAlt] -> EM [Hull.Stmt]
 emitSumMatch allCons scrutinee alts = do
   (sVal, sCode) <- emitExp scrutinee
   let sType = typeOfMastExp scrutinee
   sHullType <- translateMastType sType
-  let noMatch c = [Hull.SRevert ("no match for: " ++ show c)]
+  let noMatch c = ("_", [Hull.SRevert ("no match for: " ++ show c)])
   debug ["emitMatch: allCons ", show allConNames]
   let defaultBranchMap = Map.fromList [(c, noMatch c) | c <- allConNames]
   branches <- emitEqns alts
   let branchMap = foldr insertBranch defaultBranchMap branches
   let orderedBranches = [branchMap Map.! c | c <- allConNames]
   debug ["emitMatch: branches ", show orderedBranches]
-  let matchCode = buildMatch sVal sHullType orderedBranches
+  matchCode <- buildMatch sVal sHullType orderedBranches
   return (sCode ++ matchCode)
   where
     allConNames = map constrName allCons
-    insertBranch :: (MastPat, [Hull.Stmt]) -> BranchMap -> BranchMap
+    insertBranch :: (MastPat, HullPreBranch) -> PreBranchMap -> PreBranchMap
     insertBranch (MastPVar _, stmts) _ = Map.fromList [(c, stmts) | c <- allConNames]
     insertBranch (MastPCon (MastId n _) _, stmts) m = Map.insert n stmts m
     insertBranch _ _ = error "emitSumMatch.insertBranch: unexpected pattern"
 
-    emitEqn :: Hull.Expr -> MastAlt -> EM (MastPat, [Hull.Stmt])
-    emitEqn expr (pat, stmts) = withLocalState do
+    emitEqn :: MastAlt -> EM (MastPat, HullPreBranch)
+    emitEqn (pat, stmts) = withLocalState do
+      aname <- freshAltName
+      let expr = Hull.EVar aname
       let pvars = case pat of
             MastPVar (MastId n _) -> Map.singleton n expr
             MastPCon _ patargs -> translateMastPatArgs expr patargs
@@ -407,40 +420,43 @@ emitSumMatch allCons scrutinee alts = do
       hullStmts <- emitStmts stmts
       let hullStmts' = comment : hullStmts
       debug ["emitEqn: ", show pat, " / ", show expr, " -> ", show hullStmts']
-      return (pat, hullStmts')
+      return (pat, (aname, hullStmts'))
 
-    emitEqns :: [MastAlt] -> EM [(MastPat, [Hull.Stmt])]
-    emitEqns [eqn] = (: []) <$> emitEqn (Hull.EVar (altName True)) eqn
-    emitEqns (eqn : eqns) = do
-      b <- emitEqn (Hull.EVar (altName False)) eqn
-      bs <- emitEqns eqns
-      return (b : bs)
-    emitEqns [] = pure []
+    emitEqns :: [MastAlt] -> EM [(MastPat, HullPreBranch)]
+    emitEqns = mapM emitEqn
 
-    buildMatch :: Hull.Expr -> Hull.Type -> [[Hull.Stmt]] -> [Hull.Stmt]
+    -- buildMatch takes a list of branches for a sum type and builds a nested match statement
+    -- arguments:
+    -- sval: the scrutinee value
+    -- sty: the scrutinee type
+    -- branches: a list of branches, where each branch is a list of statements
+    buildMatch :: Hull.Expr -> Hull.Type -> [HullPreBranch] -> EM [Hull.Stmt]
     buildMatch _sval _sty [] = error "buildMatch: empty branch list"
     buildMatch sval0 sty branches = go sval0 sty branches
       where
-        go _sval _sty [b] = b
-        go sval curTy (b : bs) =
-          [ Hull.SMatch
-              curTy
-              sval
-              [ alt Hull.CInl left b,
-                alt Hull.CInr right (go (Hull.EVar right) (rightBranch curTy) bs)
-              ]
-          ]
-        go _ _ [] = error "buildMatch: empty branch list"
+        go :: Hull.Expr -> Hull.Type -> [HullPreBranch] -> EM [Hull.Stmt]
+        go _sval _sty [(_, b)] = pure b
+        go sval curTy ((leftVar, b) : bs@((rightVar, _) : _)) = do
+          rest <- go (Hull.EVar rightVar) (rightBranch curTy) bs
+          pure
+            [ Hull.SMatch
+                curTy
+                sval
+                [ alt Hull.CInl leftVar b,
+                  alt Hull.CInr rightVar rest
+                ]
+            ]
+        go _ _ [] = error "buildMatch/go - impossible: empty branch list"
         rightBranch (Hull.TSum _ r) = r
         rightBranch (Hull.TNamed _ t) = rightBranch t
         rightBranch t = error ("rightBranch: not a sum type: " ++ show t)
-        left = altName False
-        right = altName True
+
         alt con n stmts = Hull.ConAlt con n stmts
 
-    altName :: Bool -> String
-    altName False = "$alt"
-    altName True = "$alt"
+freshAltName :: EM String
+freshAltName = do
+  i <- freshInt
+  return ("$alt" ++ show i)
 
 emitProdMatch :: MastExp -> [MastAlt] -> EM [Hull.Stmt]
 emitProdMatch scrutinee (eqn : _) = do

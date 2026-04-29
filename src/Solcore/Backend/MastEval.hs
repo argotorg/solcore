@@ -186,7 +186,11 @@ evalStmt env stmt = case stmt of
   MastMatch e alts -> do
     e' <- evalExp env e
     alts' <- mapM (evalAlt env) alts
-    pure (env, [MastMatch e' alts'])
+    -- Any variable assigned in any alt may be updated; remove from env
+    -- so downstream code doesn't see the pre-match value.
+    let mutated = foldMap (assignedInStmts . snd) alts
+        env' = foldr Map.delete env (Set.toList mutated)
+    pure (env', [MastMatch e' alts'])
   MastAsm yul ->
     -- Assembly blocks are opaque; we don't know what they modify
     -- Conservative: clear all variable bindings
@@ -198,6 +202,16 @@ evalAlt env (pat, body) = do
   -- (conservative: treat all pattern-bound vars as unknown)
   (_, body') <- evalStmts env body
   pure (pat, body')
+
+-- Collect variables assigned (via MastAssign) in a list of statements.
+-- Recurses into nested match arms. Used to invalidate env entries after a match.
+assignedInStmts :: [MastStmt] -> Set.Set MastId
+assignedInStmts = foldMap assignedInStmt
+
+assignedInStmt :: MastStmt -> Set.Set MastId
+assignedInStmt (MastAssign i _) = Set.singleton i
+assignedInStmt (MastMatch _ alts) = foldMap (assignedInStmts . snd) alts
+assignedInStmt _ = Set.empty
 
 -----------------------------------------------------------------------
 -- Evaluate expressions
