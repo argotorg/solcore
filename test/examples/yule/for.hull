@@ -1,0 +1,49 @@
+object Prefor {
+  code {
+    function Add_add$word (l : word, r : word) -> word {
+      return addWord(l, r)
+    }
+    function Ord_gt$word (x : word, y : word) -> sum{(unit + unit)} {
+      return gtWord(x, y)
+    }
+    function addWord (l : word, r : word) -> word {
+      let rw : word
+      assembly {
+        rw := add(l, r)
+      }
+      return rw
+    }
+    function gtWord (x : word, y : word) -> sum{(unit + unit)} {
+      let res : word
+      assembly {
+        res := gt(x, y)
+      }
+      return tobool(res)
+    }
+    function le$word (x : word, y : word) -> sum{(unit + unit)} {
+      return not(Ord_gt$word(x, y))
+    }
+    function main () -> word {
+      let i : word
+      let s : word
+      for (i := 1;  le$word(i, 100); i := Add_add$word(i, 1)) {
+        s := Add_add$word(s, i)
+      }
+      return s
+    }
+    function not (b : sum{(unit + unit)}) -> sum{(unit + unit)} {
+      match<sum{(unit + unit)}> b with {
+        inl $alt => {/* inl<() -> sum((), ())>($v66<()>) */
+                     return inr<sum{(unit + unit)}>(())}
+        inr $alt => {/* inr<() -> sum((), ())>($v68<()>) */
+                     return inl<sum{(unit + unit)}>(())}
+      }
+    }
+    function tobool (x : word) -> sum{(unit + unit)} {
+      match<word> x with {
+        0 $_ => {return inl<sum{(unit + unit)}>(())}
+        $v53 $_ => {return inr<sum{(unit + unit)}>(())}
+      }
+    }
+  }
+}

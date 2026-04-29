@@ -59,8 +59,8 @@ data Stmt
   | SReturn Expr
   | SComment String
   | SBlock Body
-  | -- | SMatch Expr [Alt]
-    SMatch Type Expr [Alt]
+  | SFor Stmt Expr Stmt Stmt
+  | SMatch Type Expr [Alt]
   | SFunction Name [Arg] Type [Stmt]
   | SRevert String
 
@@ -135,11 +135,11 @@ instance Pretty Stmt where
   ppr (SReturn e) = text "return" <+> ppr e
   ppr (SComment c) = text "/*" <+> text c <+> "*/"
   ppr (SBlock stmts) = lbrace $$ nest 2 (vcat (map ppr stmts)) $$ rbrace
-  {-
-  ppr (SMatch e alts) =
-      text "match" <+> ppr e <+> text "with"
-      <+> lbrace $$ nest 2 (vcat $ map ppr alts) $$ rbrace
-  -}
+  ppr (SFor init cond post body) =
+    text "for"
+      <+> parens (ppr init >< semi <+> ppr cond >< semi <+> ppr post)
+      <+> braces (ppr body)
+      $$ rbrace
   ppr (SMatch t e alts) =
     text "match"
       >< angles (ppr t)
