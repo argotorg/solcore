@@ -116,26 +116,26 @@ genStmt (SAssembly stmts) = do
     -- this substitution a variable declared as `let msg_value : uint256` (which
     -- gets allocated as `_v0`) would be referenced by its Hull name and be
     -- undeclared in the generated Yul.
-    substAsmStmt env (YAssign lhs e) 
-        = YAssign (map (substAsmName env) lhs) (substAsmExp env e)
-    substAsmStmt env (YExp e) 
-        = YExp (substAsmExp env e)
-    substAsmStmt env (YIf e body)       
-        = YIf (substAsmExp env e) (map (substAsmStmt env) body)
-    substAsmStmt _   s = s
+    substAsmStmt env (YAssign lhs e) =
+      YAssign (map (substAsmName env) lhs) (substAsmExp env e)
+    substAsmStmt env (YExp e) =
+      YExp (substAsmExp env e)
+    substAsmStmt env (YIf e body) =
+      YIf (substAsmExp env e) (map (substAsmStmt env) body)
+    substAsmStmt _ s = s
 
     substAsmExp env (YIdent n) = case Map.lookup (show n) env of
       Just loc -> case flattenRhs loc of
         [e'] -> e'
-        _    -> YIdent n  -- multi-slot locations cannot appear in assembly
-      Nothing  -> YIdent n
+        _ -> YIdent n -- multi-slot locations cannot appear in assembly
+      Nothing -> YIdent n
     substAsmExp env (YCall f args) = YCall f (map (substAsmExp env) args)
-    substAsmExp _   e              = e
+    substAsmExp _ e = e
 
     substAsmName env n = case Map.lookup (show n) env of
-      Just (LocStack i)  -> stkLoc i
+      Just (LocStack i) -> stkLoc i
       Just (LocNamed n') -> fromString n'
-      _                  -> n
+      _ -> n
 genStmt (SAlloc name typ) = allocVar name typ
 genStmt (SAssign name expr) = hullAssign name expr
 genStmt (SReturn expr) = do
