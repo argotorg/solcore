@@ -4,8 +4,7 @@ Hull is an intermediate language used by the Core Solidity compiler between SAIL
 Hull after type-checking, monomorphization, and match compilation. Hull is then
 translated to Yul for final code generation.
 
-Hull retains algebraic data types — products and sums — from the source
-language, but eliminates polymorphism, type classes, higher-order functions, and
+Hull retains algebraic data types — products and sums — from SAIL, but eliminates polymorphism, type classes, higher-order functions, and
 all surface syntax sugar. The result is a first-order, monomorphic language
 whose structure maps directly onto Yul constructs.
 
