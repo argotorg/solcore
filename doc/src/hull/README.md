@@ -1,7 +1,6 @@
 # Hull
 
-Hull is an intermediate language used by the Core Solidity compiler between the
-typed frontend and the Yul backend. Every Core Solidity contract is lowered to
+Hull is an intermediate language used by the Core Solidity compiler between SAIL and the Yul backend. Every SAIL program is lowered to
 Hull after type-checking, monomorphization, and match compilation. Hull is then
 translated to Yul for final code generation.
 
