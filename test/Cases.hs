@@ -415,7 +415,8 @@ cases =
       runTestExpectingFailure "overlap-synonym-missed-two-synonyms.solc" caseFolder,
       runTestForFile "copytomem.solc" caseFolder,
       runTestForFile "fresh-variable-shadowing.solc" caseFolder,
-      runTestForFile "simpleDiscount.solc" caseFolder
+      runTestForFile "simpleDiscount.solc" caseFolder,
+      runTestForFile "yul-deposit-example.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
