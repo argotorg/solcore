@@ -3,6 +3,7 @@ module Solcore.Backend.EmitHull (emitHull) where
 import Common.Monad
 import Control.Monad (when)
 import Control.Monad.State
+import Data.List (partition)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -308,6 +309,25 @@ emitStmt (MastLet (MastId name ty) _mty mexp) = do
       return (estmts ++ alloc ++ assign)
     Nothing -> return alloc
 emitStmt (MastMatch scrutinee alts) = emitMatch scrutinee alts
+emitStmt (MastFor initStmt cond post body) = do
+  initStmts <- emitStmt initStmt
+  (condExp, condStmts) <- emitExp cond
+  postStmts <- emitStmt post
+  bodyStmts <- emitStmt body
+  -- Hoist all allocs (from cond and post) into the init stmt so they are
+  -- in scope for the entire loop; only computations go in the post block.
+  let (condAllocs, condCompute) = partition isAlloc condStmts
+  let (postAllocs, postCompute) = partition isAlloc postStmts
+  pure
+    [ Hull.SFor
+        (Hull.SBlock (initStmts ++ condAllocs ++ postAllocs ++ condCompute))
+        condExp
+        (Hull.SBlock (postCompute ++ condCompute))
+        (Hull.SBlock bodyStmts)
+    ]
+  where
+    isAlloc (Hull.SAlloc _ _) = True
+    isAlloc _ = False
 emitStmt (MastAsm as) = do
   subst <- gets ecSubst
   as' <- renameYulStmts subst as
