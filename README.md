@@ -26,6 +26,7 @@ recommended to try avoiding Nix.
 
 ```sh
 # enter a development shell with all required dependencies
+# note: do not run git submodule update --init, nix will take care of it
 nix develop
 
 # if prompted, may need to enable a feature: nix --extra-experimental-features "nix-command flakes" develop
