@@ -7,23 +7,23 @@ data CFood = Red(Food) | Green(Food) | Nocolor;
 
   function fromEnum(x : Food) {
      match x {
-       | Curry => return 1;
-       | Beans => return 42;
-       | Other => return 3;
+       | Food.Curry => return 1;
+       | Food.Beans => return 42;
+       | Food.Other => return 3;
      }
   }
 
 
-contract Food {
+contract FoodContract {
   function eat(x) {
     match x {
-       | Red(f) => return f;
-       | Green(f) => return f;
-       | _ => return Other;
+       | CFood.Red(f) => return f;
+       | CFood.Green(f) => return f;
+       | _ => return Food.Other;
     }
   }
 
   function main() {
-  return fromEnum(eat(Green(Beans)));
+  return fromEnum(eat(CFood.Green(Food.Beans)));
   }
 }

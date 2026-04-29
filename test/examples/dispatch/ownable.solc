@@ -1,5 +1,9 @@
-import std;
-import dispatch;
+import std.{*};
+import std.{uint256, Eq, Typedef};
+import std.dispatch.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 // caller(), myrevert(), require() are not in the std library yet,
 // so every contract must define its own

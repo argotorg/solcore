@@ -2,11 +2,11 @@ data Nat = Zero | Succ(Nat);
 
 function natInd (step,v,n) {
   match n {
-  | Zero => return v ;
-  | Succ(m) => return step(m, natInd(step,v,m));
+  | Nat.Zero => return v ;
+  | Nat.Succ(m) => return step(m, natInd(step,v,m));
   }
 }
 
 function add(n,m) {
-  return natInd (lam (x, acc) {return Succ(acc) ; }, m, n);
+  return natInd (lam (x, acc) {return Nat.Succ(acc) ; }, m, n);
 }

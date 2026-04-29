@@ -3,13 +3,13 @@ contract SumMatchDefault {
 
   function g(s : Option(word)) -> Option(word) {
     match s {
-      | None => return None;
+      | Option.None => return Option.None;
       | x => return x;
     }
   }
 
   function main() -> word {
-    g(None);
+    g(Option.None);
     return 42;
   }
 }

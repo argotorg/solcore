@@ -4,15 +4,15 @@ contract EvenOdd {
 
   function even (n) {
     match n {
-    | Zero => return True;
-    | Succ(m) => return odd(m);
+    | Nat.Zero => return Bool.True;
+    | Nat.Succ(m) => return odd(m);
     }
   }
 
   function odd(n) {
     match n {
-    | Zero => return False;
-    | Succ(m) => return even(m);
+    | Nat.Zero => return Bool.False;
+    | Nat.Succ(m) => return even(m);
     }
   }
 }

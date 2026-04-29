@@ -14,6 +14,7 @@ bugs. You should under no circumstances be using this in a production setting.
 - A pen and paper formalization of the type system is
     defined in the `./spec` directory, and pdf builds are available as artifacts from the [Spec PDF
     workflow](https://github.com/argotorg/solcore/actions/workflows/spec.yml?query=branch%3Amain).
+- The implemented module and namespace behavior is documented in [`doc/module-system.md`](doc/module-system.md).
 
 Bug reports and feedback are very welcome.
 

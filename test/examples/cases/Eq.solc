@@ -12,9 +12,9 @@ instance word : Eq {
   function eq (x,y) {
     match primEqWord(x,y) {
     | 0 =>
-      return False;
+      return Bool.False;
     | _ =>
-      return True ;
+      return Bool.True ;
     }
   }
 }

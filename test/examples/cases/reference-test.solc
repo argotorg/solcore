@@ -16,8 +16,6 @@ instance memory(a):Typedef(word) {
     }
 }
 
-pragma no-patterson-condition Test;
-pragma no-bounded-variable-condition Test;
 class self:Test {
     function test(x:self) -> word;
 }

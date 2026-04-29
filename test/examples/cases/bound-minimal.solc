@@ -1,7 +1,6 @@
 // Minimal test for bound variable condition
 // This SHOULD FAIL - variable 'bad' in context but not in instance head
 
-pragma no-patterson-condition TestBound;
 
 forall a . class a:TestBound {}
 forall a b . class a:TestHelper(b) {}

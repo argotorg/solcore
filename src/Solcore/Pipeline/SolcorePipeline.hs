@@ -3,7 +3,8 @@ module Solcore.Pipeline.SolcorePipeline where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
-import Data.List.Split (splitOn)
+import Data.Bifunctor (first)
+import Data.Char (isAlpha, isAlphaNum)
 import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
@@ -19,7 +20,7 @@ import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
-import Solcore.Frontend.Parser.SolcoreParser
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictCompileCompUnitWithMetadata, flattenModuleStrictValidationCompUnit, loadModuleGraph, moduleSourcePath)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.NameResolution
@@ -27,8 +28,8 @@ import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
+import System.Directory (makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
-import System.FilePath
 import System.TimeIt qualified as TimeIt
 
 -- main compiler driver function
@@ -58,17 +59,43 @@ compile opts = runExceptT $ do
       timeItNamed :: String -> IO a -> IO a
       timeItNamed = optTimeItNamed opts
       file = fileName opts
-      dir = takeDirectory file
-      otherDirs = splitOn ":" (optImportDirs opts)
-      dirs = dir : otherDirs
+  mainRoot <- liftIO $ makeAbsolute (optRootDir opts)
+  stdRoot <- ExceptT $ pure (parseStdRoot (optImportDirs opts))
+  externalLibs <- ExceptT $ pure (parseExternalLibSpecs (optExternalLibs opts))
 
-  -- Parsing
-  content <- liftIO $ readFile file
+  -- Parsing and import loading
+  graph <- ExceptT $ loadModuleGraph mainRoot stdRoot externalLibs file
 
-  parsed <- ExceptT $ moduleParser dirs content
+  -- Validate each module against only its own direct imports.
+  forM_ (moduleOrder graph) $ \moduleId -> do
+    sourcePath <- ExceptT $ pure (moduleSourcePath graph moduleId)
+    cunit <-
+      ExceptT $
+        pure (flattenModuleStrictValidationCompUnit graph moduleId)
+    _ <-
+      ExceptT $
+        pure $
+          first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e) $
+            validateDuplicateNamespacesInCompUnit cunit
+    _ <-
+      ExceptT $
+        first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e)
+          <$> nameResolution cunit
+    pure ()
+
+  (parsed, localStart, importedStart, partialImportedTypes) <-
+    ExceptT $
+      pure (flattenModuleStrictCompileCompUnitWithMetadata graph (entryModule graph))
 
   -- Name resolution
   resolved <- ExceptT $ nameResolution parsed
+  let CompUnit _ resolvedDecls = resolved
+      trustedImportedInstanceHeads =
+        [ instanceHeadKey inst
+          | TInstDef inst <- drop importedStart resolvedDecls
+        ]
+      localDeclKeys =
+        take (importedStart - localStart) (drop localStart resolvedDecls) >>= topDeclKeys
 
   liftIO $ when (verbose || optDumpAST opts) $ do
     putStrLn "> AST after name resolution"
@@ -131,7 +158,7 @@ compile opts = runExceptT $ do
     ExceptT $
       timeItNamed
         "Typecheck (no desugaring)  "
-        (typeInfer noDesugarOpt noFun)
+        (typeInferWithTrustedInstanceHeadsAndPartialTypes noDesugarOpt trustedImportedInstanceHeads localDeclKeys partialImportedTypes noFun)
 
   liftIO $ when verbose $ do
     putStrLn "No type errors found!"
@@ -140,7 +167,7 @@ compile opts = runExceptT $ do
     ExceptT $
       timeItNamed
         "Typecheck (desugaring)  "
-        (typeInfer opts noFun)
+        (typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedImportedInstanceHeads localDeclKeys partialImportedTypes noFun)
 
   liftIO $ when verbose $ do
     putStrLn "> Type inference logs:"
@@ -214,6 +241,47 @@ compile opts = runExceptT $ do
         forM_ hull (putStrLn . pretty)
 
       pure hull
+
+parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
+parseExternalLibSpecs =
+  fmap reverse . foldM step []
+  where
+    step acc spec = do
+      (libName, libPath) <- splitSpec spec
+      when (any ((== libName) . fst) acc) $
+        Left ("Duplicate external library name: " ++ show libName)
+      pure ((libName, libPath) : acc)
+
+    splitSpec spec =
+      case break (== '=') spec of
+        (libNameStr, '=' : path)
+          | null libNameStr || null path ->
+              Left ("Invalid external library spec: " ++ spec)
+          | not (validLibName libNameStr) ->
+              Left ("Invalid external library name: " ++ libNameStr)
+          | otherwise ->
+              Right (Name libNameStr, path)
+        _ ->
+          Left ("Invalid external library spec: " ++ spec)
+
+    validLibName [] = False
+    validLibName (c : cs) =
+      (isAlpha c || c == '_')
+        && all (\ch -> isAlphaNum ch || ch == '_') cs
+
+parseStdRoot :: String -> Either String (Maybe FilePath)
+parseStdRoot spec =
+  case filter (not . null) (splitColon spec) of
+    [] -> Right Nothing
+    [root] -> Right (Just root)
+    _ ->
+      Left "Multiple --include roots are no longer supported; use --lib for external libraries."
+  where
+    splitColon [] = []
+    splitColon s =
+      case break (== ':') s of
+        (chunk, ':' : rest) -> chunk : splitColon rest
+        (chunk, _) -> [chunk]
 
 -- add declarations generated in the previous step
 -- and moving data types inside contracts to the
