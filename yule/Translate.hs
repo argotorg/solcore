@@ -4,6 +4,7 @@ module Translate where
 
 import Builtins
 import Common.Pretty
+import Data.List (partition)
 import Data.String
 import GHC.Stack
 import Language.Hull hiding (Name)
@@ -134,6 +135,22 @@ genStmt (SMatch _ e alts) = do
     genSwitch tag payload altBranches = do
       (yulAlts, yulDefault) <- genNAlts payload altBranches
       pure [YSwitch (loadLoc tag) yulAlts yulDefault]
+genStmt (SFor initStmt cond post body) = do
+  initStmts <- genStmt initStmt
+  (condStmts, condLoc) <- genExpr cond
+  -- condStmts must go both in the init stmt and post stmt, with special treatment for allocations
+  let condExp = loadLoc (normalizeLoc condLoc)
+  postStmts <- genStmt post
+  bodyStmts <- genStmt body
+  -- Yul for post block does not allow `let` declarations.
+  -- Hoist all allocs (from cond and post) into the init block so they are
+  -- in scope for the entire loop; only computations go in the post block.
+  let (condAllocs, condCompute) = partition isAlloc condStmts
+  let (postAllocs, postCompute) = partition isAlloc postStmts
+  pure [YFor (initStmts ++ condAllocs ++ postAllocs ++ condCompute) condExp (postCompute ++ condCompute) bodyStmts]
+  where
+    isAlloc (YLet _ Nothing) = True
+    isAlloc _ = False
 genStmt (SFunction name args ret stmts) = withLocalEnv do
   -- debug ["> SFunction: ", name, " ", show args, " -> ", show ret]
   yulArgs <- placeArgs args

@@ -135,9 +135,9 @@ instance Pretty Stmt where
   ppr (SReturn e) = text "return" <+> ppr e
   ppr (SComment c) = text "/*" <+> text c <+> "*/"
   ppr (SBlock stmts) = lbrace $$ nest 2 (vcat (map ppr stmts)) $$ rbrace
-  ppr (SFor init cond post body) =
+  ppr (SFor initStmt cond post body) =
     text "for"
-      <+> parens (ppr init >< semi <+> ppr cond >< semi <+> ppr post)
+      <+> parens (ppr initStmt >< semi <+> ppr cond >< semi <+> ppr post)
       <+> braces (ppr body)
       $$ rbrace
   ppr (SMatch t e alts) =
