@@ -116,13 +116,13 @@ function to_little_endian_64(v: uint256) -> memory(string) {
     assembly {
         mstore(res, 8)
         mstore8(add(res, 32), and(value, 0xff))
-        mstore8(add(res, 33), and(shr(value, 8), 0xff))
-        mstore8(add(res, 34), and(shr(value, 16), 0xff))
-        mstore8(add(res, 35), and(shr(value, 24), 0xff))
-        mstore8(add(res, 36), and(shr(value, 32), 0xff))
-        mstore8(add(res, 37), and(shr(value, 40), 0xff))
-        mstore8(add(res, 38), and(shr(value, 48), 0xff))
-        mstore8(add(res, 39), and(shr(value, 56), 0xff))
+        mstore8(add(res, 33), and(shr(8, value), 0xff))
+        mstore8(add(res, 34), and(shr(16, value), 0xff))
+        mstore8(add(res, 35), and(shr(24, value), 0xff))
+        mstore8(add(res, 36), and(shr(32, value), 0xff))
+        mstore8(add(res, 37), and(shr(40, value), 0xff))
+        mstore8(add(res, 38), and(shr(48, value), 0xff))
+        mstore8(add(res, 39), and(shr(56, value), 0xff))
     }
     return memory(res);
 }
