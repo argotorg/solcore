@@ -198,11 +198,20 @@ evalStmt env stmt = case stmt of
   MastFor initStmt cond post body -> do
     -- Evaluate loop parts for local simplification, but do not propagate
     -- value bindings across the loop boundary.
-    (_, initStmt') <- evalLoopStmt env initStmt
-    cond' <- evalExp env cond
-    (_, post') <- evalLoopStmt env post
-    (_, body') <- evalLoopStmt env body
-    pure (Map.empty, [MastFor initStmt' cond' post' body'])
+    -- Remove any variables assigned in the loop from the environment to
+    -- prevent stale pre-loop values from being constant-propagated into
+    -- the loop body (e.g. `s := 0` before the loop must not replace `s`
+    -- inside the body where `s` is being updated).
+    let assigned =
+          assignedInStmt initStmt
+            `Set.union` assignedInStmt post
+            `Set.union` foldMap assignedInStmt body
+        loopEnv = foldr Map.delete env (Set.toList assigned)
+    (_, initStmt') <- evalLoopStmt loopEnv initStmt
+    cond' <- evalExp loopEnv cond
+    (_, post') <- evalLoopStmt loopEnv post
+    bodies' <- mapM (fmap snd . evalLoopStmt loopEnv) body
+    pure (Map.empty, [MastFor initStmt' cond' post' bodies'])
 
 -- Evaluate a statement while preserving statement shape.
 -- Used for nested contexts like MastFor where we cannot drop statements.
@@ -237,8 +246,8 @@ evalLoopStmt env st = case st of
     (_, initStmt') <- evalLoopStmt env initStmt
     cond' <- evalExp env cond
     (_, post') <- evalLoopStmt env post
-    (_, body') <- evalLoopStmt env body
-    pure (Map.empty, MastFor initStmt' cond' post' body')
+    bodies' <- mapM (fmap snd . evalLoopStmt env) body
+    pure (Map.empty, MastFor initStmt' cond' post' bodies')
   MastAsm yul -> pure (Map.empty, MastAsm yul)
 
 evalAlt :: VEnv -> MastAlt -> EvalM MastAlt
@@ -259,7 +268,7 @@ assignedInStmt (MastMatch _ alts) = foldMap (assignedInStmts . snd) alts
 assignedInStmt (MastFor initStmt _ post body) =
   assignedInStmt initStmt
     `Set.union` assignedInStmt post
-    `Set.union` assignedInStmt body
+    `Set.union` foldMap assignedInStmt body
 assignedInStmt _ = Set.empty
 
 -----------------------------------------------------------------------
@@ -537,7 +546,7 @@ stmtIsPure pureFuns (MastFor initStmt cond post body) =
   stmtIsPure pureFuns initStmt
     && expIsPure pureFuns cond
     && stmtIsPure pureFuns post
-    && stmtIsPure pureFuns body
+    && bodyIsPure pureFuns body
 
 expIsPure :: Set.Set Name -> MastExp -> Bool
 expIsPure _ (MastLit _) = True
@@ -629,7 +638,7 @@ callsInStmt (MastFor initStmt cond post body) =
     [ callsInStmt initStmt,
       callsInExp cond,
       callsInStmt post,
-      callsInStmt body
+      Set.unions (map callsInStmt body)
     ]
 callsInStmt (MastAsm _) = Set.empty
 

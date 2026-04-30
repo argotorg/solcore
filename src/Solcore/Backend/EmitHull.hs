@@ -313,17 +313,23 @@ emitStmt (MastFor initStmt cond post body) = do
   initStmts <- emitStmt initStmt
   (condExp, condStmts) <- emitExp cond
   postStmts <- emitStmt post
-  bodyStmts <- emitStmt body
-  -- Hoist all allocs (from cond and post) into the init stmt so they are
-  -- in scope for the entire loop; only computations go in the post block.
+  bodyStmts <- concat <$> mapM emitStmt body
+  -- Hoist allocs (from init/cond/post) into an outer block so variables
+  -- declared in for-init are visible in cond/post/body.
   let (condAllocs, condCompute) = partition isAlloc condStmts
   let (postAllocs, postCompute) = partition isAlloc postStmts
+  let initAll = initStmts ++ condAllocs ++ postAllocs
+  let (initAllocs, initCompute) = partition isAlloc initAll
+  let forStmt =
+        Hull.SFor
+          (Hull.SBlock (initCompute ++ condCompute))
+          condExp
+          (Hull.SBlock (postCompute ++ condCompute))
+          (Hull.SBlock bodyStmts)
   pure
-    [ Hull.SFor
-        (Hull.SBlock (initStmts ++ condAllocs ++ postAllocs ++ condCompute))
-        condExp
-        (Hull.SBlock (postCompute ++ condCompute))
-        (Hull.SBlock bodyStmts)
+    [ if null initAllocs
+        then forStmt
+        else Hull.SBlock (initAllocs ++ [forStmt])
     ]
   where
     isAlloc (Hull.SAlloc _ _) = True

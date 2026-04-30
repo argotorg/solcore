@@ -136,7 +136,7 @@ genStmt (SMatch _ e alts) = do
       (yulAlts, yulDefault) <- genNAlts payload altBranches
       pure [YSwitch (loadLoc tag) yulAlts yulDefault]
 genStmt (SFor initStmt cond post body) = do
-  initStmts <- genStmt initStmt
+  initStmts <- genForInit initStmt
   (condStmts, condLoc) <- genExpr cond
   -- condStmts must go both in the init stmt and post stmt, with special treatment for allocations
   let condExp = loadLoc (normalizeLoc condLoc)
@@ -151,6 +151,12 @@ genStmt (SFor initStmt cond post body) = do
   where
     isAlloc (YLet _ Nothing) = True
     isAlloc _ = False
+
+    -- For-loop init declarations must stay visible while translating
+    -- condition/post/body, so do not run SBlock init under withLocalEnv.
+    genForInit :: Stmt -> TM [YulStmt]
+    genForInit (SBlock stmts) = genStmts stmts
+    genForInit s = genStmt s
 genStmt (SFunction name args ret stmts) = withLocalEnv do
   -- debug ["> SFunction: ", name, " ", show args, " -> ", show ret]
   yulArgs <- placeArgs args

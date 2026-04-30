@@ -138,8 +138,7 @@ instance Pretty Stmt where
   ppr (SFor initStmt cond post body) =
     text "for"
       <+> parens (ppr initStmt >< semi <+> ppr cond >< semi <+> ppr post)
-      <+> braces (ppr body)
-      $$ rbrace
+      <+> ppr body
   ppr (SMatch t e alts) =
     text "match"
       >< angles (ppr t)

@@ -489,6 +489,12 @@ specStmt (StmtExp e) = do
   ty <- atCurrentSubst (typeOfTcExp e)
   e' <- specExp e ty
   return $ StmtExp e'
+specStmt (For initStmt cond post body) = do
+  initStmt' <- specStmt initStmt
+  cond' <- specExp cond desugaredBoolTy
+  post' <- specStmt post
+  body' <- specBody body
+  return $ For initStmt' cond' post' body'
 specStmt (Asm ys) = pure (Asm ys)
 specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
 
@@ -838,6 +844,8 @@ toMastStmt (Return e) = MastReturn (toMastExp e)
 toMastStmt (Match [scrutinee] alts) = MastMatch (toMastExp scrutinee) (map toMastAlt alts)
 toMastStmt (Match es _) = error $ "toMastStmt: multi-scrutinee match should have been desugared: " ++ show es
 toMastStmt (Asm ys) = MastAsm ys
+toMastStmt (For initStmt cond postStmt body) =
+  MastFor (toMastStmt initStmt) (toMastExp cond) (toMastStmt postStmt) (map toMastStmt body)
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
 toMastAlt :: ([Pat Id], [Stmt Id]) -> MastAlt
