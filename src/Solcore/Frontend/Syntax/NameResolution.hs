@@ -364,6 +364,8 @@ instance Resolve S.Stmt where
     pure (Asm blk)
   resolve (S.If e blk1 blk2) =
     If <$> resolve e <*> resolve blk1 <*> resolve blk2
+  resolve (S.For initStmt cond postStmt body) =
+    For <$> resolve initStmt <*> resolve cond <*> resolve postStmt <*> resolve body
 
 instance Resolve S.Equation where
   type Result S.Equation = Equation Name

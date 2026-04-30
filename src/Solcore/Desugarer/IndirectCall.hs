@@ -84,6 +84,8 @@ instance Desugar (Stmt Name) where
   desugar e@(Asm _) = pure e
   desugar (If e blk1 blk2) =
     If <$> desugar e <*> desugar blk1 <*> desugar blk2
+  desugar (For initStmt cond postStmt body) =
+    For <$> desugar initStmt <*> desugar cond <*> desugar postStmt <*> desugar body
 
 instance Desugar (Exp Name) where
   desugar (Con a es) =

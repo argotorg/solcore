@@ -124,6 +124,27 @@ tcStmtWithExpectedReturn mExpectedReturn s@(If e blk1 blk2) =
                      )
         `wrapError` s
     withCurrentSubst (If e' blk1' blk2', ps3, t1)
+tcStmtWithExpectedReturn mExpectedReturn s@(For initStmt cond postStmt body) =
+  withLocalEnv $ do
+    (initStmt', psInit, _) <- tcStmtWithExpectedReturn Nothing initStmt
+    (cond', psCond, condTy) <- tcExp cond
+    _ <-
+      unify condTy boolTy
+        `catchError` ( \_ ->
+                         tcmError $
+                           unlines
+                             [ "Expression:",
+                               pretty cond,
+                               "has type:",
+                               pretty condTy,
+                               "while it is expected to have type:",
+                               pretty boolTy
+                             ]
+                     )
+        `wrapError` s
+    (postStmt', psPost, _) <- tcStmtWithExpectedReturn Nothing postStmt
+    (body', psBody, _) <- tcBodyWithExpectedReturn mExpectedReturn body
+    withCurrentSubst (For initStmt' cond' postStmt' body', psInit ++ psCond ++ psPost ++ psBody, unit)
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations = tcEquationsWithExpectedReturn Nothing
@@ -1631,6 +1652,8 @@ instance Vars (Stmt Id) where
   free (Return e) = free e
   free (Match e eqns) = free e `union` free eqns
   free (If e blk1 blk2) = free e `union` free blk1 `union` free blk2
+  free (For initStmt cond postStmt body) =
+    free initStmt `union` ((free cond `union` free postStmt `union` free body) \\ bound initStmt)
   free (Asm _) = []
 
   bound (Let n _ _) = [n]

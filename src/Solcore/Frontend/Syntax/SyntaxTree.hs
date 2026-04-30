@@ -244,6 +244,7 @@ data Stmt
   | Match [Exp] Equations -- pattern matching
   | Asm YulBlock -- Yul block
   | If Exp Body Body -- If statement
+  | For Stmt Exp Stmt Body -- for(init; cond; post) { body }
   deriving (Eq, Ord, Show, Data, Typeable)
 
 type Body = [Stmt]

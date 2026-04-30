@@ -314,6 +314,22 @@ instance (Pretty a) => Pretty (Stmt a) where
       <+> lbrace
       $$ nest 3 (ppr blk2)
       $$ rbrace
+  ppr (For initStmt cond postStmt body) =
+    text "for"
+      <+> parens (hsep [pprForClause initStmt <> semi, ppr cond <> semi, pprForClause postStmt])
+      <+> lbrace
+      $$ nest 3 (ppr body)
+      $$ rbrace
+
+pprForClause :: (Pretty a) => Stmt a -> Doc
+pprForClause (n := e) = ppr n <+> equals <+> ppr e
+pprForClause (Let n ty m) = text "let" <+> ppr n <+> pprOptTy ty <+> pprForInitOpt m
+pprForClause (StmtExp e) = ppr e
+pprForClause s = ppr s
+
+pprForInitOpt :: (Pretty a) => Maybe (Exp a) -> Doc
+pprForInitOpt Nothing = empty
+pprForInitOpt (Just e) = equals <+> ppr e
 
 instance (Pretty a) => Pretty (Equation a) where
   ppr (p, ss) =

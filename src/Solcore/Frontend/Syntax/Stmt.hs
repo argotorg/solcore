@@ -18,6 +18,7 @@ data Stmt a
   | Match [Exp a] (Equations a) -- pattern matching
   | Asm YulBlock -- Yul block
   | If (Exp a) (Body a) (Body a) -- If statement
+  | For (Stmt a) (Exp a) (Stmt a) (Body a) -- for(init; cond; post) { body }
   deriving (Eq, Ord, Show, Data, Typeable)
 
 type Body a = [Stmt a]

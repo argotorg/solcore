@@ -143,6 +143,13 @@ transStmt cenv stmt = (cenv, go stmt cenv)
     go (Return exp) = Return <$> transRhs exp
     go (StmtExp exp) = StmtExp <$> transRhs exp
     go (If e b1 b2) = If <$> transRhs e <*> transBody b1 <*> transBody b2
+    go (For initStmt cond postStmt body) =
+      pure $ For initStmt' cond' postStmt' body'
+      where
+        (forEnv, initStmt') = transStmt cenv initStmt
+        cond' = transRhs cond forEnv
+        (_, postStmt') = transStmt forEnv postStmt
+        body' = transBody body forEnv
     go (Match es eqns) = traces [pretty (r cenv)] r where r = Match <$> mapM transRhs es <*> mapM transEquation eqns
     go Let {} = error "Impossible"
     go s@Asm {} = pure s
