@@ -27,9 +27,9 @@ function assert(cond: bool) {
 
 function require(cond: bool) {
     if (!cond) {
-        assembly {
+/*        assembly {
             revert(0, 0)
-        }
+        }*/
     }
 }
 
@@ -69,6 +69,12 @@ instance memory(bytes):MemoryHelpers {
         }
         return memory(res);
     } 
+}
+
+function empty_string(len: word) -> memory(string) {
+    let res: word = allocate_memory(32 + len);
+    mstore(res, len);
+    return memory(res);
 }
 
 instance uint256:MemoryHelpers {
@@ -237,7 +243,47 @@ contract DepositContract {
 
   // TOOD: use memory(bytes) and bytes32
   function deposit(pubkey: memory(string), withdrawal_credentials: memory(string), signature: memory(string), deposit_data_root: uint256) -> () {
-    require(callvalue() != uint256(0));
+    //require(callvalue() != uint256(0));
+
+    let deposit_amount = callvalue() / uint256(1000000000); // 1 gwei
+
+    let amount: memory(string) = to_little_endian_64(deposit_amount);
+    // TODO: emit DepositEvent
+
+    // Compute deposit data root (`DepositData` hash tree root)
+    let pubkey_root = sha256(MemoryHelpers.concat(pubkey, empty_string(16)));
+    let signature_root = sha256(MemoryHelpers.concat(
+        sha256(signature), // slice
+        sha256(MemoryHelpers.concat(signature, empty_string(32))), // slice
+    ));
+    let node = sha256(MemoryHelpers.concat(
+        sha256(MemoryHelpers.concat(pubkey_root, withdrawal_credentials)),
+        sha256(MemoryHelpers.concat(MemoryHelpers.concat(amount, empty_string(24)), signature_root))
+    ));
+
+/*
+        // Emit `DepositEvent` log
+        bytes memory amount = to_little_endian_64(uint64(deposit_amount));
+        emit DepositEvent(
+            pubkey,
+            withdrawal_credentials,
+            amount,
+            signature,
+            to_little_endian_64(uint64(deposit_count))
+        );
+
+        // Compute deposit data root (`DepositData` hash tree root)
+        bytes32 pubkey_root = sha256(abi.encodePacked(pubkey, bytes16(0)));
+        bytes32 signature_root = sha256(abi.encodePacked(
+            sha256(abi.encodePacked(signature[:64])),
+            sha256(abi.encodePacked(signature[64:], bytes32(0)))
+        ));
+        bytes32 node = sha256(abi.encodePacked(
+            sha256(abi.encodePacked(pubkey_root, withdrawal_credentials)),
+            sha256(abi.encodePacked(amount, bytes24(0), signature_root))
+        ));
+*/
+
     // FIXME: implement
     assert(false);
   }
