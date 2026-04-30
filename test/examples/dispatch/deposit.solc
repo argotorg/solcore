@@ -253,10 +253,18 @@ contract DepositContract {
 
   // TOOD: use memory(bytes) and bytes32
   function deposit(pubkey: memory(bytes), withdrawal_credentials: memory(bytes), signature: memory(bytes), deposit_data_root: uint256) -> () {
-    require(callvalue() != uint256(0));
+     // Extended ABI length checks since dynamic types are used.
+    require(MemoryHelpers.len(pubkey) == 48);
+    require(MemoryHelpers.len(withdrawal_credentials) == 32);
+    require(MemoryHelpers.len(signature) == 96);
+
+    // Check deposit amount
+    require(Typedef.rep(callvalue()) >= 1000000000000000000); // >= 1 ether
+    require(Typedef.rep(callvalue()) % 1000000000 == 0); // % 1 gwei == 0
 
 //    let deposit_amount = callvalue() / uint256(1000000000); // 1 gwei
     let deposit_amount = uint256(Typedef.rep(callvalue()) / 1000000000);
+    require(Typedef.rep(deposit_amount) <= 0xffffffffffffffff); // <= type(uint64).max
 
     let amount: memory(bytes) = to_little_endian_64(deposit_amount);
     // TODO: emit DepositEvent
