@@ -195,6 +195,51 @@ evalStmt env stmt = case stmt of
     -- Assembly blocks are opaque; we don't know what they modify
     -- Conservative: clear all variable bindings
     pure (Map.empty, [MastAsm yul])
+  MastFor initStmt cond post body -> do
+    -- Evaluate loop parts for local simplification, but do not propagate
+    -- value bindings across the loop boundary.
+    (_, initStmt') <- evalLoopStmt env initStmt
+    cond' <- evalExp env cond
+    (_, post') <- evalLoopStmt env post
+    (_, body') <- evalLoopStmt env body
+    pure (Map.empty, [MastFor initStmt' cond' post' body'])
+
+-- Evaluate a statement while preserving statement shape.
+-- Used for nested contexts like MastFor where we cannot drop statements.
+evalLoopStmt :: VEnv -> MastStmt -> EvalM (VEnv, MastStmt)
+evalLoopStmt env st = case st of
+  MastLet i ty mInit -> do
+    mInit' <- traverse (evalExp env) mInit
+    let env' = case mInit' of
+          Just e | isKnownValue e -> Map.insert i e env
+          _ -> Map.delete i env
+    pure (env', MastLet i ty mInit')
+  MastAssign i e -> do
+    e' <- evalExp env e
+    let env' =
+          if isKnownValue e'
+            then Map.insert i e' env
+            else Map.delete i env
+    pure (env', MastAssign i e')
+  MastStmtExp e -> do
+    e' <- evalExp env e
+    pure (env, MastStmtExp e')
+  MastReturn e -> do
+    e' <- evalExp env e
+    pure (env, MastReturn e')
+  MastMatch e alts -> do
+    e' <- evalExp env e
+    alts' <- mapM (evalAlt env) alts
+    let mutated = foldMap (assignedInStmts . snd) alts
+        env' = foldr Map.delete env (Set.toList mutated)
+    pure (env', MastMatch e' alts')
+  MastFor initStmt cond post body -> do
+    (_, initStmt') <- evalLoopStmt env initStmt
+    cond' <- evalExp env cond
+    (_, post') <- evalLoopStmt env post
+    (_, body') <- evalLoopStmt env body
+    pure (Map.empty, MastFor initStmt' cond' post' body')
+  MastAsm yul -> pure (Map.empty, MastAsm yul)
 
 evalAlt :: VEnv -> MastAlt -> EvalM MastAlt
 evalAlt env (pat, body) = do
@@ -211,6 +256,10 @@ assignedInStmts = foldMap assignedInStmt
 assignedInStmt :: MastStmt -> Set.Set MastId
 assignedInStmt (MastAssign i _) = Set.singleton i
 assignedInStmt (MastMatch _ alts) = foldMap (assignedInStmts . snd) alts
+assignedInStmt (MastFor initStmt _ post body) =
+  assignedInStmt initStmt
+    `Set.union` assignedInStmt post
+    `Set.union` assignedInStmt body
 assignedInStmt _ = Set.empty
 
 -----------------------------------------------------------------------
@@ -350,6 +399,7 @@ evalFunBody env (stmt : rest) = case stmt of
     case matchAlts env scrut' alts of
       Just (env', body) -> evalFunBody env' body
       Nothing -> pure Nothing -- Scrutinee not known, can't select branch
+  MastFor {} -> pure Nothing -- Loop execution cannot be folded safely here
   MastAsm _ -> pure Nothing -- Should not happen: purity analysis excludes asm functions
 
 -- Try to match a known scrutinee against alternatives.
@@ -483,6 +533,11 @@ stmtIsPure pureFuns (MastStmtExp e) = expIsPure pureFuns e
 stmtIsPure pureFuns (MastReturn e) = expIsPure pureFuns e
 stmtIsPure pureFuns (MastMatch e alts) =
   expIsPure pureFuns e && all (bodyIsPure pureFuns . snd) alts
+stmtIsPure pureFuns (MastFor initStmt cond post body) =
+  stmtIsPure pureFuns initStmt
+    && expIsPure pureFuns cond
+    && stmtIsPure pureFuns post
+    && stmtIsPure pureFuns body
 
 expIsPure :: Set.Set Name -> MastExp -> Bool
 expIsPure _ (MastLit _) = True
@@ -569,6 +624,13 @@ callsInStmt (MastStmtExp e) = callsInExp e
 callsInStmt (MastReturn e) = callsInExp e
 callsInStmt (MastMatch e alts) =
   Set.union (callsInExp e) (Set.unions [Set.unions (map callsInStmt body) | (_, body) <- alts])
+callsInStmt (MastFor initStmt cond post body) =
+  Set.unions
+    [ callsInStmt initStmt,
+      callsInExp cond,
+      callsInStmt post,
+      callsInStmt body
+    ]
 callsInStmt (MastAsm _) = Set.empty
 
 callsInExp :: MastExp -> Set.Set Name
