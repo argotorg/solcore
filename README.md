@@ -135,8 +135,7 @@ The project includes a C++ testrunner that executes end-to-end integration tests
 The testrunner requires cmake and boost, which are available in the `nix develop` shell:
 
 ```bash
-# If the repo was cloned without submodules, initialize JSON dependency:
-git submodule update --init deps/nlohmann_json
+# If the submodule is not initialized, make sure to run nix develop first.
 
 # Build the testrunner binary
 cmake -S . -B build
