@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="316" viewBox="0 0 560 316">
+<style>
+  .box       { stroke: #444; stroke-width: 1.8; }
+  .box-main  { fill: #ffffff; }
+  .box-hl    { fill: #fff9db; stroke: #b8860b; stroke-width: 2; }
+  .label     { font-family: monospace; font-size: 14px; fill: #222;
+               text-anchor: middle; dominant-baseline: central; }
+  .arrow-lbl { font-family: sans-serif; font-size: 11px; fill: #666;
+               text-anchor: middle; dominant-baseline: central; }
+  .badge     { font-family: monospace; font-size: 11px; fill: #b8860b;
+               text-anchor: middle; dominant-baseline: central; }
+</style>
+<rect x="170" y="20" width="220" height="48" rx="8" class="box box-main"/>
+<text x="280" y="44" class="label">Core Solidity (.solc)</text>
+<line x1="280" y1="68" x2="280" y2="88" stroke="#444444" stroke-width="1.8"/>
+<polygon points="280,96 275,88 285,88" fill="#444444"/>
+<text x="402" y="82" class="arrow-lbl" text-anchor="start">type-check · specialize · match-compile</text>
+<rect x="170" y="96" width="220" height="48" rx="8" class="box box-hl"/>
+<text x="280" y="120" class="label">Hull</text>
+<text x="442" y="120" class="badge" text-anchor="start">← this document</text>
+<line x1="280" y1="144" x2="280" y2="164" stroke="#444444" stroke-width="1.8"/>
+<polygon points="280,172 275,164 285,164" fill="#444444"/>
+<text x="402" y="158" class="arrow-lbl" text-anchor="start">Yul translation  (yule binary)</text>
+<rect x="170" y="172" width="220" height="48" rx="8" class="box box-main"/>
+<text x="280" y="196" class="label">Yul</text>
+<line x1="280" y1="220" x2="280" y2="240" stroke="#444444" stroke-width="1.8"/>
+<polygon points="280,248 275,240 285,240" fill="#444444"/>
+<text x="402" y="234" class="arrow-lbl" text-anchor="start">solc</text>
+<rect x="170" y="248" width="220" height="48" rx="8" class="box box-main"/>
+<text x="280" y="272" class="label">EVM bytecode</text>
+</svg>
