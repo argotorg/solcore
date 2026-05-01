@@ -1014,42 +1014,31 @@ function round_up_to_mul_of_32(value:word) -> word {
   return result;
 }
 
+function encodeIntoForBytes(srcPtr:word, basePtr:word, offset:word, tail:word) -> word {
+    let tailOffset = Sub.sub(tail,basePtr);
+
+    assembly {
+      let length := mload(srcPtr)
+      let total := add(length, 32)
+
+      mstore(add(basePtr, offset), sub(tail, basePtr))
+      mcopy(tail, srcPtr, total)
+      let rounded := and(add(total, 31), not(31))
+      tail := add(tail, rounded)
+    }
+
+    return tail;
+}
+
 instance memory(string):ABIEncode {
     function encodeInto(x:memory(string), basePtr:word, offset:word, tail:word) -> word {
-      let tailOffset = Sub.sub(tail,basePtr);
-      let srcPtr = Typedef.rep(x);
-
-      assembly {
-        let length := mload(srcPtr)
-	let total := add(length, 32)
-
-	mstore(add(basePtr, offset), sub(tail, basePtr))
-        mcopy(tail, srcPtr, total)
-	let rounded := and(add(total, 31), not(31))
-	tail := add(tail, rounded)
-      }
-
-      return tail;
+      return encodeIntoForBytes(Typedef.rep(x), basePtr, offset, tail);
     }
 }
 
-// TODO: this is a copy of memory(string)
 instance memory(bytes):ABIEncode {
     function encodeInto(x:memory(bytes), basePtr:word, offset:word, tail:word) -> word {
-      let tailOffset = Sub.sub(tail,basePtr);
-      let srcPtr = Typedef.rep(x);
-
-      assembly {
-        let length := mload(srcPtr)
-	let total := add(length, 32)
-
-	mstore(add(basePtr, offset), sub(tail, basePtr))
-        mcopy(tail, srcPtr, total)
-	let rounded := and(add(total, 31), not(31))
-	tail := add(tail, rounded)
-      }
-
-      return tail;
+      return encodeIntoForBytes(Typedef.rep(x), basePtr, offset, tail);
     }
 }
 
