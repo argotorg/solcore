@@ -116,12 +116,29 @@ genStmt (SAssembly stmts) = do
     -- this substitution a variable declared as `let msg_value : uint256` (which
     -- gets allocated as `_v0`) would be referenced by its Hull name and be
     -- undeclared in the generated Yul.
+    substAsmStmt env (YBlock body) =
+      YBlock (map (substAsmStmt env) body)
+    substAsmStmt env (YFun name args rets body) =
+      YFun name args rets (map (substAsmStmt env) body)
+    substAsmStmt env (YLet names me) =
+      YLet names (fmap (substAsmExp env) me)
     substAsmStmt env (YAssign lhs e) =
       YAssign (map (substAsmName env) lhs) (substAsmExp env e)
     substAsmStmt env (YExp e) =
       YExp (substAsmExp env e)
     substAsmStmt env (YIf e body) =
       YIf (substAsmExp env e) (map (substAsmStmt env) body)
+    substAsmStmt env (YSwitch e cases mdef) =
+      YSwitch
+        (substAsmExp env e)
+        (map (\(lit, body) -> (lit, map (substAsmStmt env) body)) cases)
+        (fmap (map (substAsmStmt env)) mdef)
+    substAsmStmt env (YFor pre cond post body) =
+      YFor
+        (map (substAsmStmt env) pre)
+        (substAsmExp env cond)
+        (map (substAsmStmt env) post)
+        (map (substAsmStmt env) body)
     substAsmStmt _ s = s
 
     substAsmExp env (YIdent n) = case Map.lookup (show n) env of
