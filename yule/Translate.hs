@@ -4,6 +4,7 @@ module Translate where
 
 import Builtins
 import Common.Pretty
+import Data.Map qualified as Map
 import Data.String
 import GHC.Stack
 import Language.Hull hiding (Name)
@@ -107,7 +108,51 @@ genStmtWithComment s = do
 genStmt :: Stmt -> TM [YulStmt]
 genStmt (SAssembly stmts) = do
   -- debug ["assembly:", render$ ppr (Yul stmts)]
-  pure stmts
+  env <- getVarEnv
+  pure (map (substAsmStmt env) stmts)
+  where
+    -- Substitute Hull variable references in assembly statements with their
+    -- current Yul names.  Assembly blocks are emitted verbatim, so without
+    -- this substitution a variable declared as `let msg_value : uint256` (which
+    -- gets allocated as `_v0`) would be referenced by its Hull name and be
+    -- undeclared in the generated Yul.
+    substAsmStmt env (YBlock body) =
+      YBlock (map (substAsmStmt env) body)
+    substAsmStmt env (YFun name args rets body) =
+      YFun name args rets (map (substAsmStmt env) body)
+    substAsmStmt env (YLet names me) =
+      YLet names (fmap (substAsmExp env) me)
+    substAsmStmt env (YAssign lhs e) =
+      YAssign (map (substAsmName env) lhs) (substAsmExp env e)
+    substAsmStmt env (YExp e) =
+      YExp (substAsmExp env e)
+    substAsmStmt env (YIf e body) =
+      YIf (substAsmExp env e) (map (substAsmStmt env) body)
+    substAsmStmt env (YSwitch e cases mdef) =
+      YSwitch
+        (substAsmExp env e)
+        (map (\(lit, body) -> (lit, map (substAsmStmt env) body)) cases)
+        (fmap (map (substAsmStmt env)) mdef)
+    substAsmStmt env (YFor pre cond post body) =
+      YFor
+        (map (substAsmStmt env) pre)
+        (substAsmExp env cond)
+        (map (substAsmStmt env) post)
+        (map (substAsmStmt env) body)
+    substAsmStmt _ s = s
+
+    substAsmExp env (YIdent n) = case Map.lookup (show n) env of
+      Just loc -> case flattenRhs loc of
+        [e'] -> e'
+        _ -> YIdent n -- multi-slot locations cannot appear in assembly
+      Nothing -> YIdent n
+    substAsmExp env (YCall f args) = YCall f (map (substAsmExp env) args)
+    substAsmExp _ e = e
+
+    substAsmName env n = case Map.lookup (show n) env of
+      Just (LocStack i) -> stkLoc i
+      Just (LocNamed n') -> fromString n'
+      _ -> n
 genStmt (SAlloc name typ) = allocVar name typ
 genStmt (SAssign name expr) = hullAssign name expr
 genStmt (SReturn expr) = do
