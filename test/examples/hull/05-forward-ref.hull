@@ -1,0 +1,24 @@
+// Functions can be called before they are defined (forward references).
+object ForwardRef {
+  code {
+    function double(n : word) -> word {
+      return addSelf(n)
+    }
+    function triple(n : word) -> word {
+      let d : word
+      d := double(n)
+      let r : word
+      assembly {
+        r := add(d, n)
+      }
+      return r
+    }
+    function addSelf(n : word) -> word {
+      let r : word
+      assembly {
+        r := add(n, n)
+      }
+      return r
+    }
+  }
+}

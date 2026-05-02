@@ -1,0 +1,22 @@
+object SumOps {
+  code {
+    function injectL(x : word) -> word + word {
+      return inl<word + word> x
+    }
+    function injectR(x : word) -> word + word {
+      return inr<word + word> x
+    }
+    function extract(s : word + word) -> word {
+      match<word + word> s with {
+        inl x => { return x }
+        inr y => { return y }
+      }
+    }
+    function isLeft(s : word + word) -> bool {
+      match<word + word> s with {
+        inl _ => { return true }
+        inr _ => { return false }
+      }
+    }
+  }
+}

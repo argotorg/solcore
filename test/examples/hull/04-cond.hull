@@ -1,0 +1,10 @@
+object CondOps {
+  code {
+    function select(flag : bool, a : word, b : word) -> word {
+      return if<word> flag then a else b
+    }
+    function selectPair(flag : bool, p : word * word, q : word * word) -> word * word {
+      return if<word * word> flag then p else q
+    }
+  }
+}

@@ -1,0 +1,15 @@
+// Error: add2 expects 2 arguments but is called with 1.
+object ArityErr {
+  code {
+    function add2(a : word, b : word) -> word {
+      let r : word
+      assembly {
+        r := add(a, b)
+      }
+      return r
+    }
+    function bad(x : word) -> word {
+      return add2(x)
+    }
+  }
+}

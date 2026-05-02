@@ -1,0 +1,8 @@
+// Error: variable y is not defined.
+object UndefVar {
+  code {
+    function bad(x : word) -> word {
+      return y
+    }
+  }
+}
