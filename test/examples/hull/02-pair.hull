@@ -1,0 +1,16 @@
+object PairOps {
+  code {
+    function mkPair(a : word, b : word) -> word * word {
+      return (a, b)
+    }
+    function swap(p : word * word) -> word * word {
+      return (snd p, fst p)
+    }
+    function first(p : word * word) -> word {
+      return fst p
+    }
+    function second(p : word * word) -> word {
+      return snd p
+    }
+  }
+}

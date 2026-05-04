@@ -10,7 +10,8 @@ data Options = Options
     debug :: Bool,
     compress :: Bool,
     wrap :: Bool,
-    runOnce :: Bool
+    runOnce :: Bool,
+    noTypeCheck :: Bool
   }
   deriving (Show)
 
@@ -61,6 +62,10 @@ optionsParser =
     <*> switch
       ( long "nodeploy"
           <> help "Output code to be run once, without the deployment code"
+      )
+    <*> switch
+      ( long "no-typecheck"
+          <> help "Skip Hull/Yul type checking"
       )
 
 parseOptions :: IO Options

@@ -8,13 +8,17 @@ module Main where
 import Builtins (yulBuiltins)
 import Common.Pretty
 import Compress
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import Language.Hull.Parser (parseObject)
+import Language.Hull.TcEnv (emptyHullTcEnv)
+import Language.Hull.TcMonad (runHullTcM)
+import Language.Hull.TypeCheck (checkObject)
 import Language.Yul
 import Language.Yul.QuasiQuote
 import Options (parseOptions)
 import Options qualified
 import Solcore.Frontend.Syntax.Name
+import System.Exit (exitFailure)
 import TM
 import Translate
 
@@ -32,6 +36,14 @@ main = do
         if oCompress
           then compress inputObject
           else inputObject
+  -- Hull/Yul type checking (skipped with --no-typecheck)
+  unless (Options.noTypeCheck options) $ do
+    result <- runHullTcM (checkObject compObject) emptyHullTcEnv
+    case result of
+      Left err -> do
+        putStrLn ("Type error:\n" ++ err)
+        exitFailure
+      Right () -> pure ()
   -- Yul "preobject" - lacking deployment code
   yulPreobject@(YulObject yulName yulCode _) <- runTM options (translateObject compObject)
   let withDeployment = not (Options.runOnce options)

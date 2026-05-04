@@ -1,0 +1,9 @@
+// Error: inl<word + word * word> expects a word payload,
+//        but p has type word * word.
+object WrongPayload {
+  code {
+    function bad(p : word * word) -> word + word * word {
+      return inl<word + word * word> p
+    }
+  }
+}
