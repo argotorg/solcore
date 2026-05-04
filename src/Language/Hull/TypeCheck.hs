@@ -24,8 +24,8 @@ import Solcore.Frontend.Syntax.Name qualified as SName
 
 checkObject :: Object -> HullTcM ()
 checkObject (Object _ code inners) = do
--- Pre-scan registers all SFunction signatures before type-checking bodies.
--- This allows forward references and mutual recursion between Hull functions.
+  -- Pre-scan registers all SFunction signatures before type-checking bodies.
+  -- This allows forward references and mutual recursion between Hull functions.
   preScanBody code
   checkBody code
   mapM_ checkObject inners
