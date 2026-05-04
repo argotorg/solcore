@@ -193,10 +193,11 @@ toHnf depth p@(InCls c _ _)
               Nothing -> do
                 info [">>>> No default instance found for:", pretty p]
                 pure [p]
-              Just (_, s) -> do
+              Just (ps', s) -> do
                 info [">>>> Default instance for:", pretty p, " found! (Solved), \n>>> Subst: ", pretty s]
                 _ <- extSubst s
-                pure []
+                ps0 <- withCurrentSubst ps'
+                toHnfs (depth - 1) ps0
   | depth <= 0 = notEnoughFuel [p]
   | otherwise =
       do
@@ -207,16 +208,15 @@ toHnf depth p@(InCls c _ _)
             insts' <- mapM fromANF insts
             info [">>> No matching instance for:", pretty p, " trying a default instance.Defined instances:\n", unlines (map pretty insts')]
             denv <- getDefaultInstEnv
-            -- does c have a default instance?
             case proveDefaulting denv insts p of
               Nothing -> do
                 info [">>>> No default instance found for:", pretty p]
                 pure [p]
-              Just (_, s) -> do
+              Just (ps', s) -> do
                 info [">>>> Default instance for:", pretty p, " found! (Solved), \n>>> Subst: ", pretty s]
-                -- default instances should not have any additional contraints.
                 _ <- extSubst s
-                pure []
+                ps0 <- withCurrentSubst ps'
+                toHnfs (depth - 1) ps0
           Just (ps', s, i) -> do
             info [">>> Found instance for:", pretty p, "\n>>> Instance:", pretty i, "\n>>> Subst:", pretty s]
             _ <- extSubst s

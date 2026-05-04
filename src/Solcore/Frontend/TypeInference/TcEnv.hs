@@ -163,6 +163,8 @@ primCtx =
       primUnit,
       primTrue,
       primFalse,
+      primInl,
+      primInr,
       primInvoke
     ]
 

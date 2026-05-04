@@ -1,0 +1,35 @@
+import Generic;
+import Uint;
+import Storage;
+
+// Token = (owner: Address, amount: Uint32, locked: bool)
+// bitWidth = 160 + 32 + 1 = 193 bits, fits in one EVM slot.
+
+data Token = MkToken(Address, Uint32, bool);
+
+instance Token : Generic(pair(Address, pair(Uint32, bool))) {
+    function from(x : Token) -> pair(Address, pair(Uint32, bool)) {
+        match x {
+        | MkToken(a, b, c) => return (a, (b, c));
+        }
+    }
+    function to(x : pair(Address, pair(Uint32, bool))) -> Token {
+        match x {
+        | (a, (b, c)) => return MkToken(a, b, c);
+        }
+    }
+}
+
+contract PackedToken {
+    function main() -> word {
+        let slot : word = 0;
+        let owner : Address = MkAddress(0xdeadbeef);
+        let amount : Uint32 = MkUint32(42);
+        let t : Token = MkToken(owner, amount, false);
+        Storable.sstore(slot, t);
+        let t2 : Token = Storable.sload(slot);
+        match t2 {
+        | MkToken(_, MkUint32(v), _) => return v;
+        }
+    }
+}

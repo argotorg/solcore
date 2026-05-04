@@ -1,0 +1,28 @@
+import Packable;
+
+// Storable: EVM storage read/write derived from Packable.
+//
+// The default instance reads/writes the packed word representation.
+// For types with bitWidth > 256 the user must provide a specialised instance
+// that distributes the value across multiple storage slots.
+
+forall a. a : Packable =>
+class a : Storable {
+    function sload(slot : word) -> a;
+    function sstore(slot : word, v : a) -> ();
+}
+
+pragma no-patterson-condition Storable;
+pragma no-bounded-variable-condition Storable;
+forall a. a : Packable =>
+default instance a : Storable {
+    function sload(slot : word) -> a {
+        let raw : word;
+        assembly { raw := sload(slot) }
+        return Packable.unpack(raw);
+    }
+    function sstore(slot : word, v : a) -> () {
+        let w : word = Packable.pack(v);
+        assembly { sstore(slot, w) }
+    }
+}

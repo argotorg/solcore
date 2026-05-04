@@ -1,0 +1,111 @@
+import Bits;
+import Generic;
+
+// Packable: types that fit in a 256-bit word with a dense bit layout.
+//
+// Invariant: pack(x) uses only the least significant bitWidth(x) bits.
+// bitWidth takes a value so the bridge instance can call Generic.from(x)
+// to resolve the rep type variable before any let-binding needs it.
+
+forall a. class a : Packable {
+    function bitWidth(x : a) -> word;
+    function pack(x : a) -> word;
+    function unpack(w : word) -> a;
+}
+
+instance () : Packable {
+    function bitWidth(x : ()) -> word { return 0; }
+    function pack(x : ()) -> word { return 0; }
+    function unpack(w : word) -> () { return (); }
+}
+
+instance bool : Packable {
+    function bitWidth(x : bool) -> word { return 1; }
+    function pack(x : bool) -> word {
+        match x {
+        | true  => return 1;
+        | false => return 0;
+        }
+    }
+    function unpack(w : word) -> bool {
+        match band(w, 1) {
+        | 0 => return false;
+        | _ => return true;
+        }
+    }
+}
+
+instance word : Packable {
+    function bitWidth(x : word) -> word { return 256; }
+    function pack(x : word) -> word { return x; }
+    function unpack(w : word) -> word { return w; }
+}
+
+// pair: low field a packed in bits 0..bitWidth(a)-1,
+//       high field b packed in bits bitWidth(a)..bitWidth(a)+bitWidth(b)-1
+forall a b. a : Packable, b : Packable =>
+instance pair(a, b) : Packable {
+    function bitWidth(x : pair(a, b)) -> word {
+        match x {
+        | (l, r) => return addWord(Packable.bitWidth(l), Packable.bitWidth(r));
+        }
+    }
+    function pack(x : pair(a, b)) -> word {
+        match x {
+        | (l, r) =>
+            let bw : word = Packable.bitWidth(l);
+            return bor(Packable.pack(l), shl_(bw, Packable.pack(r)));
+        }
+    }
+    function unpack(w : word) -> pair(a, b) {
+        let lo_dummy : a = Packable.unpack(0);
+        let bw : word = Packable.bitWidth(lo_dummy);
+        let lo : a = Packable.unpack(band(w, mask(bw)));
+        let hi : b = Packable.unpack(shr_(bw, w));
+        return (lo, hi);
+    }
+}
+
+// sum: bit 0 is the tag (0 = inl, 1 = inr); payload in the upper bits
+forall a b. a : Packable, b : Packable =>
+instance sum(a, b) : Packable {
+    function bitWidth(x : sum(a, b)) -> word {
+        let la : a = Packable.unpack(0);
+        let lb : b = Packable.unpack(0);
+        return addWord(1, maxWord(Packable.bitWidth(la), Packable.bitWidth(lb)));
+    }
+    function pack(x : sum(a, b)) -> word {
+        match x {
+        | inl(l) => return shl_(1, Packable.pack(l));
+        | inr(r) => return bor(shl_(1, Packable.pack(r)), 1);
+        }
+    }
+    function unpack(w : word) -> sum(a, b) {
+        match band(w, 1) {
+        | 0 => return inl(Packable.unpack(shr_(1, w)):a);
+        | _ => return inr(Packable.unpack(shr_(1, w)):b);
+        }
+    }
+}
+
+// --- Bridge instance ---
+// Any type with a Generic instance is automatically Packable.
+// bitWidth calls Generic.from(x) first so that the rep type variable
+// is resolved into the specialiser substitution before it is needed.
+
+pragma no-patterson-condition Packable;
+pragma no-bounded-variable-condition Packable;
+forall a rep. a : Generic(rep), rep : Packable =>
+default instance a : Packable {
+    function bitWidth(x : a) -> word {
+        let r : rep = Generic.from(x);
+        return Packable.bitWidth(r);
+    }
+    function pack(x : a) -> word {
+        let r : rep = Generic.from(x);
+        return Packable.pack(r);
+    }
+    function unpack(w : word) -> a {
+        return Generic.to(Packable.unpack(w):rep);
+    }
+}
