@@ -1014,22 +1014,31 @@ function round_up_to_mul_of_32(value:word) -> word {
   return result;
 }
 
+function encodeIntoForBytes(srcPtr:word, basePtr:word, offset:word, tail:word) -> word {
+    let tailOffset = Sub.sub(tail,basePtr);
+
+    assembly {
+      let length := mload(srcPtr)
+      let total := add(length, 32)
+
+      mstore(add(basePtr, offset), sub(tail, basePtr))
+      mcopy(tail, srcPtr, total)
+      let rounded := and(add(total, 31), not(31))
+      tail := add(tail, rounded)
+    }
+
+    return tail;
+}
+
 instance memory(string):ABIEncode {
     function encodeInto(x:memory(string), basePtr:word, offset:word, tail:word) -> word {
-      let tailOffset = Sub.sub(tail,basePtr);
-      let srcPtr = Typedef.rep(x);
+      return encodeIntoForBytes(Typedef.rep(x), basePtr, offset, tail);
+    }
+}
 
-      assembly {
-        let length := mload(srcPtr)
-	let total := add(length, 32)
-
-	mstore(add(basePtr, offset), sub(tail, basePtr))
-        mcopy(tail, srcPtr, total)
-	let rounded := and(add(total, 31), not(31))
-	tail := add(tail, rounded)
-      }
-
-      return tail;
+instance memory(bytes):ABIEncode {
+    function encodeInto(x:memory(bytes), basePtr:word, offset:word, tail:word) -> word {
+      return encodeIntoForBytes(Typedef.rep(x), basePtr, offset, tail);
     }
 }
 
@@ -1140,6 +1149,27 @@ forall reader. reader : WordReader =>
 instance ABIDecoder(memory(string), reader):ABIDecode(memory(string))
 {
     function decode(ptr:ABIDecoder(memory(string), reader), currentHeadOffset:word) -> memory(string) {
+        let tmp:word;
+        let headRdr = WordReader.advance(ptr, currentHeadOffset);
+        let tailPtr : word = WordReader.read(headRdr);
+
+        let src = WordReader.advance(ptr, tailPtr);
+        let srcRdr = getReader(src);
+        let length = WordReader.read(src);
+        let total = Add.add(length, 32);
+	let rounded = round_up_to_mul_of_32(total);
+        let resultPtr : word = allocate_memory(rounded)	;
+        WordReader.copyToMem(srcRdr, resultPtr, total);
+        return memory(resultPtr);
+    } // decode ends
+}
+
+// ABI decoding for bytes (only in memory)
+// TODO: copy of memory(string)
+forall reader. reader : WordReader =>
+instance ABIDecoder(memory(bytes), reader):ABIDecode(memory(bytes))
+{
+    function decode(ptr:ABIDecoder(memory(bytes), reader), currentHeadOffset:word) -> memory(bytes) {
         let tmp:word;
         let headRdr = WordReader.advance(ptr, currentHeadOffset);
         let tailPtr : word = WordReader.read(headRdr);
