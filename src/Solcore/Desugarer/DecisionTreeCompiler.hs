@@ -96,6 +96,8 @@ instance Compile (Stmt Id) where
     Return <$> compile e
   compile (If e1 bd1 bd2) =
     If <$> compile e1 <*> compile bd1 <*> compile bd2
+  compile (For initStmt cond postStmt body) =
+    For <$> compile initStmt <*> compile cond <*> compile postStmt <*> compile body
   compile s@(Asm _) =
     pure s
   compile (Match es eqns) = do

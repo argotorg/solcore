@@ -96,6 +96,7 @@ data MastStmt
   | MastStmtExp MastExp
   | MastReturn MastExp
   | MastMatch MastExp [MastAlt]
+  | MastFor MastStmt MastExp MastStmt [MastStmt]
   | MastAsm YulBlock
   deriving (Eq, Ord, Show)
 
@@ -223,6 +224,12 @@ instance Pretty MastStmt where
       <+> parens (ppr e)
       <+> lbrace
       $$ vcat (map pprMastAlt alts)
+      $$ rbrace
+  ppr (MastFor initStmt cond post body) =
+    text "for"
+      <+> parens (ppr initStmt <+> semi <+> ppr cond <+> semi <+> ppr post)
+      <+> lbrace
+      $$ vcat (map ppr body)
       $$ rbrace
   ppr (MastAsm yblk) =
     text "assembly"

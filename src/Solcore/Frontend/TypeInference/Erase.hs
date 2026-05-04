@@ -57,6 +57,8 @@ instance Erase (Stmt Id) where
     Asm blk
   erase (If e blk1 blk2) =
     If (erase e) (erase blk1) (erase blk2)
+  erase (For initStmt cond postStmt body) =
+    For (erase initStmt) (erase cond) (erase postStmt) (erase body)
 
 instance Erase (Exp Id) where
   type EraseRes (Exp Id) = Exp Name

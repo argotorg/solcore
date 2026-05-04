@@ -252,6 +252,12 @@ instance (HasType a) => HasType (Stmt a) where
       (apply s e)
       (apply s blk1)
       (apply s blk2)
+  apply s (For initStmt cond postStmt body) =
+    For
+      (apply s initStmt)
+      (apply s cond)
+      (apply s postStmt)
+      (apply s body)
   apply _ (Asm yblk) =
     Asm yblk
 
@@ -266,6 +272,8 @@ instance (HasType a) => HasType (Stmt a) where
   fv (Match es eqns) =
     fv es `union` fv eqns
   fv (If e blk1 blk2) = fv e `union` fv blk1 `union` fv blk2
+  fv (For initStmt cond postStmt body) =
+    fv initStmt `union` fv cond `union` fv postStmt `union` fv body
   fv (Asm _) = []
 
   mv (e1 := e2) =
@@ -279,6 +287,8 @@ instance (HasType a) => HasType (Stmt a) where
   mv (Match es eqns) =
     mv es `union` mv eqns
   mv (If e blk1 blk2) = mv e `union` mv blk1 `union` mv blk2
+  mv (For initStmt cond postStmt body) =
+    mv initStmt `union` mv cond `union` mv postStmt `union` mv body
   mv (Asm _) = []
 
   bv (e1 := e2) =
@@ -292,6 +302,8 @@ instance (HasType a) => HasType (Stmt a) where
   bv (Match es eqns) =
     bv es `union` bv eqns
   bv (If e blk1 blk2) = bv e `union` bv blk1 `union` bv blk2
+  bv (For initStmt cond postStmt body) =
+    bv initStmt `union` bv cond `union` bv postStmt `union` bv body
   bv (Asm _) = []
 
 instance (HasType a) => HasType (Pat a) where

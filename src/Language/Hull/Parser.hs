@@ -16,6 +16,7 @@ import Language.Hull
         SAssign,
         SBlock,
         SExpr,
+        SFor,
         SFunction,
         SMatch,
         SReturn,
@@ -148,10 +149,10 @@ hullStmt =
       SReturn <$> (pKeyword "return" *> hullExpr),
       SBlock <$> braces (many hullStmt),
       SMatch <$> (pKeyword "match" *> angles hullType) <*> (hullExpr <* pKeyword "with") <*> braces (many hullAlt),
-      -- , SMatch <$> (pKeyword "match" *> hullExpr <* pKeyword "with") <*> (symbol "{" *> many hullAlt <* symbol "}")
+      hullFor,
       SFunction
         <$> (pKeyword "function" *> identifier)
-        <*> (parens (commaSep hullArg))
+        <*> parens (commaSep hullArg)
         <*> (symbol "->" *> hullType)
         <*> hullBody,
       SAssembly <$> (pKeyword "assembly" *> yulBlock),
@@ -159,6 +160,18 @@ hullStmt =
       try (SAssign <$> (hullExpr <* symbol ":=") <*> hullExpr),
       SExpr <$> hullExpr
     ]
+
+hullFor :: Parser Stmt
+hullFor = do
+  _ <- pKeyword "for"
+  (initStmt, cond, post) <- parens $ do
+    initStmt <- hullStmt
+    _ <- symbol ";"
+    cond <- hullExpr
+    _ <- symbol ";"
+    post <- hullStmt
+    pure (initStmt, cond, post)
+  SFor initStmt cond post <$> hullStmt
 
 hullBody :: Parser Body
 hullBody = braces (many hullStmt)

@@ -3,6 +3,7 @@ module Solcore.Backend.EmitHull (emitHull) where
 import Common.Monad
 import Control.Monad (when)
 import Control.Monad.State
+import Data.List (partition)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -308,6 +309,31 @@ emitStmt (MastLet (MastId name ty) _mty mexp) = do
       return (estmts ++ alloc ++ assign)
     Nothing -> return alloc
 emitStmt (MastMatch scrutinee alts) = emitMatch scrutinee alts
+emitStmt (MastFor initStmt cond post body) = do
+  initStmts <- emitStmt initStmt
+  (condExp, condStmts) <- emitExp cond
+  postStmts <- emitStmt post
+  bodyStmts <- concat <$> mapM emitStmt body
+  -- Hoist allocs (from init/cond/post) into an outer block so variables
+  -- declared in for-init are visible in cond/post/body.
+  let (condAllocs, condCompute) = partition isAlloc condStmts
+  let (postAllocs, postCompute) = partition isAlloc postStmts
+  let initAll = initStmts ++ condAllocs ++ postAllocs
+  let (initAllocs, initCompute) = partition isAlloc initAll
+  let forStmt =
+        Hull.SFor
+          (Hull.SBlock (initCompute ++ condCompute))
+          condExp
+          (Hull.SBlock (postCompute ++ condCompute))
+          (Hull.SBlock bodyStmts)
+  pure
+    [ if null initAllocs
+        then forStmt
+        else Hull.SBlock (initAllocs ++ [forStmt])
+    ]
+  where
+    isAlloc (Hull.SAlloc _ _) = True
+    isAlloc _ = False
 emitStmt (MastAsm as) = do
   subst <- gets ecSubst
   as' <- renameYulStmts subst as

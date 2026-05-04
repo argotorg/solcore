@@ -261,6 +261,8 @@ cases =
       runTestExpectingFailure "Filter.solc" caseFolder,
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,
+      runTestForFile "for-let.solc" caseFolder,
+      runTestForFile "for-loop.solc" caseFolder,
       runTestExpectingFailure "GetSet.solc" caseFolder,
       runTestExpectingFailure "GoodInstance.solc" caseFolder,
       runTestForFile "Id.solc" caseFolder,

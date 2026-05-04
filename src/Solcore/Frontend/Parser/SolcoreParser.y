@@ -390,6 +390,15 @@ Stmt : Expr '=' Expr ';'                              {Assign $1 $3}
      | AsmBlock                                       {Asm $1}
      | 'if' '(' Expr ')' Body %shift                  {If $3 $5 []}
      | 'if' '(' Expr ')' Body 'else' Body             {If $3 $5 $7}
+        | 'for' '(' ForClauseStmt ';' Expr ';' ForClauseStmt ')' Body {For $3 $5 $7 $9}
+
+ForClauseStmt :: { Stmt }
+ForClauseStmt : Expr '=' Expr                         {Assign $1 $3}
+                   | Expr '+=' Expr                         {StmtPlusEq $1 $3}
+                   | Expr '-=' Expr                         {StmtMinusEq $1 $3}
+                   | 'let' Name ':' Type InitOpt            {Let $2 (Just $4) $5}
+                   | 'let' Name InitOpt                     {Let $2 Nothing $3}
+                   | Expr                                   {StmtExp $1}
 
 
 MatchArgList :: {[Exp]}

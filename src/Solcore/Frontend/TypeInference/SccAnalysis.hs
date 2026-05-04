@@ -187,6 +187,8 @@ instance Names (Stmt Name) where
   names (Asm _) = []
   names (If e blk1 blk2) =
     names e `union` names blk1 `union` names blk2
+  names (For initStmt cond postStmt body) =
+    names initStmt `union` names cond `union` names postStmt `union` names body
 
 instance Names (Equation Name) where
   names (_, bdy) = names bdy
