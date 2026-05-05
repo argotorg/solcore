@@ -157,6 +157,22 @@ function revert(s:string) -> () {
   return ();
 }
 
+// Empty revert.
+function revert() {
+  assembly {
+    revert(0, 0)
+  }
+}
+
+// Revert with Error selector.
+function revert(selector:bytes4) {
+  let selector_: word = Typedef.rep(selector);
+  assembly {
+    mstore(0, selector_)
+    revert(0, 4)
+  }
+}
+
 // --- booleans ---
 
 // TODO: this should short circuit. probably needs some compiler magic to do so.
