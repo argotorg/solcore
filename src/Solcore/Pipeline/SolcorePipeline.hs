@@ -8,6 +8,7 @@ import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
 
+import Solcore.Backend.ComptimeCheck (checkComptime)
 import Solcore.Backend.EmitHull (emitHull)
 import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
@@ -19,6 +20,7 @@ import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
+import Solcore.Frontend.ComptimeCheck (checkComptimeEarly)
 import Solcore.Frontend.Parser.SolcoreParser
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
@@ -148,6 +150,9 @@ compile opts = runExceptT $ do
     putStrLn "> Elaborated tree:"
     putStrLn $ pretty typed
 
+  -- SAIL-level comptime verification
+  ExceptT $ return $ checkComptimeEarly typed
+
   -- If / boolean desugaring
   desugared <-
     liftIO $
@@ -203,6 +208,9 @@ compile opts = runExceptT $ do
       liftIO $ when (optDumpSpec opts) $ do
         putStrLn "> After dead code elimination:"
         putStrLn (pretty optimized)
+
+      -- Comptime verification: check comptime annotations are satisfied
+      ExceptT $ return $ checkComptime optimized
 
       hull <-
         liftIO $

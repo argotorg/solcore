@@ -284,13 +284,17 @@ instance word:Sub {
     }
 }
 
+function mulWord(l: word, r: word) -> word {
+    let rw : word;
+    assembly {
+        rw := mul(l,r);
+    }
+    return rw;
+}
+
 instance word:Mul {
     function mul(l: word, r: word) -> word {
-        let rw : word;
-        assembly {
-            rw := mul(l,r);
-        }
-        return rw;
+        return mulWord(l, r);
     }
 }
 
