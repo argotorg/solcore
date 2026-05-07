@@ -356,6 +356,7 @@ cases =
       runTestExpectingFailure "subject-reduction.solc" caseFolder,
       runTestExpectingFailure "subsumption-test.solc" caseFolder,
       runTestForFile "super-class.solc" caseFolder,
+      runTabledTestForFile "super-class.solc" caseFolder,
       runTestForFile "super-class-num.solc" caseFolder,
       runTestForFile "tiamat.solc" caseFolder,
       runTestForFile "tuple-trick.solc" caseFolder,
@@ -446,7 +447,21 @@ runTestForFile file folder = runTestForFileWith option file folder
 
 runTestForFileWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestForFileWith opts file folder =
-  testCase file $ do
+  runNamedTestForFile file opts file folder
+
+runTabledTestForFile :: FileName -> BaseFolder -> TestTree
+runTabledTestForFile file folder =
+  runNamedTestForFile (file ++ " (tabled)") option file folder
+  where
+    option =
+      stdOpt
+        { optNoGenDispatch = True,
+          optTypeClassResolution = TabledResolution
+        }
+
+runNamedTestForFile :: String -> Option -> FileName -> BaseFolder -> TestTree
+runNamedTestForFile testName opts file folder =
+  testCase testName $ do
     let filePath = folder </> file
     result <- compile (opts {fileName = filePath, optRootDir = folder})
     case result of
