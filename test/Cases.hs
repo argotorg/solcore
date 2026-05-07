@@ -312,7 +312,7 @@ cases =
       runTestForFile "Peano.solc" caseFolder,
       runTestForFile "PeanoMatch.solc" caseFolder,
       runTestForFile "polymatch-error.solc" caseFolder,
-      runTestExpectingFailure "polymorphic-require.solc" caseFolder,
+      runTestForFile "polymorphic-require.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder,
       runTestForFile "pragma_merge_base.solc" caseFolder,

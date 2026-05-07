@@ -507,7 +507,14 @@ specStmt (Block body) =
   Block <$> specBody body
 specStmt (StmtExp e) = do
   ty <- atCurrentSubst (typeOfTcExp e)
-  e' <- specExp e ty
+  -- replace all type variables with unit - the value is dropped anyway
+
+  let groundTy (TyVar _) = unit
+      groundTy (TyCon n tys) = TyCon n (map groundTy tys)
+      groundTy (a :-> b) = groundTy a :-> groundTy b
+      groundTy t = t
+
+  e' <- specExp e (groundTy ty)
   return $ StmtExp e'
 specStmt (Asm ys) = pure (Asm ys)
 specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
