@@ -330,6 +330,7 @@ cases =
       runTestExpectingFailure "reference-encoding.solc" caseFolder,
       runTestExpectingFailure "reference-test.solc" caseFolder,
       runTestExpectingFailure "references-daniel.solc" caseFolder,
+      runTestExpectingFailure "skolem-let.solc" caseFolder,
       runTestForFile "simpleid.solc" caseFolder,
       runTestForFile "SimpleLambda.solc" caseFolder,
       runTestForFile "single-lambda.solc" caseFolder,
