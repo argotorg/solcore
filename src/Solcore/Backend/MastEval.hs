@@ -14,7 +14,6 @@ where
 
 import Control.Monad.Reader
 import Control.Monad.State
-import Data.Traversable (mapAccumM)
 import Crypto.Hash (Digest, hash)
 import Crypto.Hash.Algorithms (Keccak_256)
 import Data.ByteArray qualified as BA
@@ -23,6 +22,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Traversable (mapAccumM)
 import Data.Word (Word8)
 import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax.Name
