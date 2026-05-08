@@ -1512,9 +1512,16 @@ tcYulBlock (s : ss) =
     pure (ns ++ nss, t)
 
 tcYulStmt :: YulStmt -> TcM ([Name], Ty)
-tcYulStmt (YAssign _ e) =
+tcYulStmt (YAssign ns e) =
   do
-    -- do not define names
+    forM_ ns $ \n -> do
+      msch <- maybeAskEnv n
+      case msch of
+        Nothing -> pure ()
+        Just sch -> do
+          (_ :=> t) <- freshInst sch
+          _ <- unify t word `catchError` const (pure mempty)
+          pure ()
     _ <- tcYulExp e
     pure ([], unit)
 tcYulStmt (YBlock yblk) =
