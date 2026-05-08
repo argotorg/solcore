@@ -252,7 +252,7 @@ contract DepositContract {
   }
 
   // TOOD: use memory(bytes) and bytes32
-  function deposit(pubkey: memory(bytes), withdrawal_credentials: memory(bytes), signature: memory(bytes), deposit_data_root: uint256) -> () {
+  function deposit(pubkey: memory(bytes), withdrawal_credentials: memory(bytes), signature: memory(bytes), deposit_data_root: bytes32) -> () {
      // Extended ABI length checks since dynamic types are used.
     require(MemoryHelpers.len(pubkey) == 48);
     require(MemoryHelpers.len(withdrawal_credentials) == 32);
@@ -289,7 +289,7 @@ contract DepositContract {
         sha256(MemoryHelpers.concat(MemoryHelpers.concat(amount, empty_bytes(24)), to_bytes(signature_root)))
     ));
 
-    require(node == deposit_data_root);
+    require(node == uint256(Typedef.rep(deposit_data_root)));
 
     require(deposit_count < MAX_DEPOSIT_COUNT());
 
