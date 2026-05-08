@@ -154,11 +154,13 @@ compile opts = runExceptT $ do
     putStrLn $ pretty noFun
 
   -- Type inference, first round without any desugaring
+  let noDesugarTypecheckOpt =
+        noDesugarOpt {optTypeClassResolution = optTypeClassResolution opts}
   (_typed, _typedEnv) <-
     ExceptT $
       timeItNamed
         "Typecheck (no desugaring)  "
-        (typeInferWithTrustedInstanceHeadsAndPartialTypes noDesugarOpt trustedImportedInstanceHeads localDeclKeys partialImportedTypes noFun)
+        (typeInferWithTrustedInstanceHeadsAndPartialTypes noDesugarTypecheckOpt trustedImportedInstanceHeads localDeclKeys partialImportedTypes noFun)
 
   liftIO $ when verbose $ do
     putStrLn "No type errors found!"

@@ -358,6 +358,7 @@ cases =
       runTestForFile "super-class.solc" caseFolder,
       runTabledTestForFile "super-class.solc" caseFolder,
       runTestForFile "super-class-num.solc" caseFolder,
+      runTabledTestExpectingFailure "tabled-cycle-fail.solc" caseFolder,
       runTestForFile "tiamat.solc" caseFolder,
       runTestForFile "tuple-trick.solc" caseFolder,
       runTestForFile "tuva.solc" caseFolder,
@@ -459,6 +460,16 @@ runTabledTestForFile file folder =
           optTypeClassResolution = TabledResolution
         }
 
+runTabledTestExpectingFailure :: FileName -> BaseFolder -> TestTree
+runTabledTestExpectingFailure file folder =
+  runNamedTestExpectingFailure (file ++ " (tabled)") option file folder
+  where
+    option =
+      stdOpt
+        { optNoGenDispatch = True,
+          optTypeClassResolution = TabledResolution
+        }
+
 runNamedTestForFile :: String -> Option -> FileName -> BaseFolder -> TestTree
 runNamedTestForFile testName opts file folder =
   testCase testName $ do
@@ -475,7 +486,11 @@ runTestExpectingFailure file folder = runTestExpectingFailureWith option file fo
 
 runTestExpectingFailureWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestExpectingFailureWith opts file folder =
-  testCase file $ do
+  runNamedTestExpectingFailure file opts file folder
+
+runNamedTestExpectingFailure :: String -> Option -> FileName -> BaseFolder -> TestTree
+runNamedTestExpectingFailure testName opts file folder =
+  testCase testName $ do
     let filePath = folder </> file
     outcome <- try (compile opts {fileName = filePath, optRootDir = folder})
     case outcome of
