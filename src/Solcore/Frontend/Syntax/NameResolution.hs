@@ -515,8 +515,8 @@ instance Resolve S.Exp where
   resolve c@(S.ExpVar me n) =
     do
       me' <- resolve me `wrapError` c
-      dt <- lookupName n
-      case (me', dt) of
+      declType <- lookupName n
+      case (me', declType) of
         -- local variables
         (_, Just TLocalVar) -> pure (Var n)
         -- function parameters
@@ -525,7 +525,7 @@ instance Resolve S.Exp where
         (Nothing, Just TField) ->
           pure (FieldAccess Nothing n)
         -- function reference
-        (_, Just TFunction) -> do
+        (_, Just dt) | isFunctionDecl dt -> do
           dt1 <- gets (Map.lookup n . fieldEnv)
           case dt1 of
             Just TField -> pure (FieldAccess Nothing n)
@@ -544,7 +544,7 @@ instance Resolve S.Exp where
           let qn = QualName d (pretty n)
           qdt <- lookupName qn
           case qdt of
-            Just TFunction -> pure (Var qn)
+            Just dt | isFunctionDecl dt -> pure (Var qn)
             Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
             Just TTyCon -> pure (Var qn)
             Just TModule -> pure (Var qn)
@@ -564,7 +564,7 @@ instance Resolve S.Exp where
           let qn = QualName d (pretty n)
           qdt <- lookupName qn
           case qdt of
-            Just TFunction -> pure (Var qn)
+            Just dt | isFunctionDecl dt -> pure (Var qn)
             Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
             Just TTyCon -> pure (Var qn)
             Just TModule -> pure (Var qn)
@@ -587,11 +587,12 @@ instance Resolve S.Exp where
     do
       me' <- resolve me `wrapError` x
       es' <- resolve es `wrapError` x
-      dt <- lookupName n
-      case (me', dt) of
+      declType <- lookupName n
+      case (me', declType) of
         -- normal function call
-        (Nothing, Just TFunction) ->
-          pure (Call Nothing n [] es')
+        (Nothing, Just dt)
+          | isFunctionDecl dt ->
+              pure (Call Nothing n [] es')
         (Nothing, Just TTyCon) -> do
           sameName <- isSameNameConstructor n
           if sameName
@@ -611,11 +612,11 @@ instance Resolve S.Exp where
           let qn = QualName c (pretty n)
           qdt <- lookupName qn
           case qdt of
-            Just TFunction -> pure (Call Nothing qn [] es')
+            Just dt | isFunctionDecl dt -> pure (Call Nothing qn [] es')
             Just TDataCon -> Con <$> resolveQualifiedConstructorName c n <*> pure es'
             _ -> undefinedName n
         -- class functions
-        (Just (Var c), Just TFunction) -> do
+        (Just (Var c), Just dt) | isFunctionDecl dt -> do
           ct <- lookupName c
           let qn = QualName c (pretty n)
           case ct of
@@ -624,7 +625,7 @@ instance Resolve S.Exp where
             Just TModule -> do
               cf <- lookupName qn
               case cf of
-                Just TFunction -> pure (Call Nothing qn [] es')
+                Just dt' | isFunctionDecl dt' -> pure (Call Nothing qn [] es')
                 Just TDataCon -> Con <$> resolveQualifiedConstructorName c n <*> pure es'
                 _ -> undefinedName n
             _ -> undefinedName c
@@ -633,10 +634,12 @@ instance Resolve S.Exp where
           let qn = QualName c (pretty n)
           cf <- lookupName qn
           case (ct, cf) of
-            (Just TClass, Just TFunction) ->
-              pure (Call Nothing qn [] es')
-            (_, Just TFunction) ->
-              pure (Call Nothing qn [] es')
+            (Just TClass, Just dt)
+              | isFunctionDecl dt ->
+                  pure (Call Nothing qn [] es')
+            (_, Just dt)
+              | isFunctionDecl dt ->
+                  pure (Call Nothing qn [] es')
             (_, Just TDataCon) ->
               Con <$> resolveQualifiedConstructorName c n <*> pure es'
             _ -> do
@@ -650,7 +653,7 @@ instance Resolve S.Exp where
           let qn = QualName c (pretty n)
           cf <- gets (Map.lookup qn . scopeEnv)
           case cf of
-            Just TFunction -> pure (Call Nothing qn [] es')
+            Just dt | isFunctionDecl dt -> pure (Call Nothing qn [] es')
             _ -> undefinedName n
         -- variables
         (_, Just TLocalVar) ->
@@ -759,7 +762,7 @@ instance Resolve S.Exp where
             let qn = QualName c (pretty n)
             cf <- gets (Map.lookup qn . scopeEnv)
             case cf of
-              Just TFunction -> pure (Call Nothing qn implArgs' es')
+              Just dt | isFunctionDecl dt -> pure (Call Nothing qn implArgs' es')
               _ -> undefinedName n
           _ -> resolveNamedCall me' n implArgs' es'
       _ -> resolveNamedCall me' n implArgs' es'
@@ -833,6 +836,7 @@ instance Resolve S.Ty where
 data DeclType
   = TContract
   | TFunction
+  | TFunctionAndNamedInstance
   | TDataCon
   | TLocalVar
   | TParameter
@@ -844,6 +848,23 @@ data DeclType
   | TModule
   | TNamedInstance
   deriving (Eq, Show)
+
+isFunctionDecl :: DeclType -> Bool
+isFunctionDecl TFunction = True
+isFunctionDecl TFunctionAndNamedInstance = True
+isFunctionDecl _ = False
+
+isNamedInstanceDecl :: DeclType -> Bool
+isNamedInstanceDecl TNamedInstance = True
+isNamedInstanceDecl TFunctionAndNamedInstance = True
+isNamedInstanceDecl _ = False
+
+mergeScopeDecl :: DeclType -> DeclType -> DeclType
+mergeScopeDecl TFunction TNamedInstance = TFunctionAndNamedInstance
+mergeScopeDecl TNamedInstance TFunction = TFunctionAndNamedInstance
+mergeScopeDecl TFunctionAndNamedInstance _ = TFunctionAndNamedInstance
+mergeScopeDecl _ TFunctionAndNamedInstance = TFunctionAndNamedInstance
+mergeScopeDecl new _ = new
 
 data Env
   = Env
@@ -922,7 +943,7 @@ addTopDecl (S.TContr (S.Contract n _ _)) env =
     env {typeEnv = Map.insert n TContract (typeEnv env)}
 addTopDecl (S.TFunDef (S.FunDef sig _)) env =
   addQualifiedModules (S.sigName sig) $
-    env {scopeEnv = Map.insert (S.sigName sig) TFunction (scopeEnv env)}
+    env {scopeEnv = Map.insertWith mergeScopeDecl (S.sigName sig) TFunction (scopeEnv env)}
 addTopDecl (S.TClassDef (S.Class _ _ n _ _ sigs)) env =
   let env' =
         foldr
@@ -956,7 +977,7 @@ addTopDecl (S.TExportDecl _) env = env
 addTopDecl (S.TInstDef (S.Instance _ (Just lbl) _ _ _ _ _ funs)) env =
   env
     { scopeEnv =
-        Map.insert lbl TNamedInstance $
+        Map.insertWith mergeScopeDecl lbl TNamedInstance $
           foldr
             ( \fd ac ->
                 let qn = QualName lbl (pretty (S.sigName (S.funSignature fd)))
@@ -979,9 +1000,9 @@ addQualifiedModules _ env = env
 resolveImplArg :: S.ImplArg -> ResolveM ImplArg
 resolveImplArg (S.ImplArg slot implName) = do
   dt <- lookupName implName
-  case dt of
-    Just TNamedInstance -> pure (ImplArg slot implName)
-    _ ->
+  if maybe False isNamedInstanceDecl dt
+    then pure (ImplArg slot implName)
+    else
       throwError $
         "Unknown named instance '"
           ++ pretty implName
@@ -1049,7 +1070,7 @@ addContractName n =
 
 addFunctionName :: Name -> ResolveM ()
 addFunctionName n =
-  modify (\env -> env {scopeEnv = Map.insert n TFunction (scopeEnv env)})
+  modify (\env -> env {scopeEnv = Map.insertWith mergeScopeDecl n TFunction (scopeEnv env)})
 
 addParameter :: Name -> ResolveM ()
 addParameter n =

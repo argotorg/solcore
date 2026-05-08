@@ -1421,7 +1421,7 @@ tcCallWithNamedEvidence callExpr me n args resolvedImplArgs =
 solveNamedImplArgs :: Name -> [Pred] -> [ResolvedImplArg] -> TcM ([Pred], Subst, [Pred])
 solveNamedImplArgs _ ps [] = pure ([], mempty, ps)
 solveNamedImplArgs n ps ((implArg, inst) : rest) = do
-  matching <- catMaybes <$> mapM (namedImplArgSolvesWanted implArg inst) ps
+  matching <- namedImplArgSolvesWanteds n ps implArg inst
   case matching of
     [(p, instPreds, evidenceSubst)] -> do
       let psNext = apply evidenceSubst (delete p ps)
@@ -1448,12 +1448,26 @@ solveNamedImplArgs n ps ((implArg, inst) : rest) = do
             "Use an explicit constraint slot to disambiguate."
           ]
 
-namedImplArgSolvesWanted :: ImplArg -> Instance Name -> Pred -> TcM (Maybe (Pred, [Pred], Subst))
-namedImplArgSolvesWanted implArg inst wanted
-  | Just slot <- implArgSlot implArg,
-    not (slotMatchesPred slot wanted) =
-      pure Nothing
-  | otherwise = namedInstSolvesWanted inst wanted
+namedImplArgSolvesWanteds :: Name -> [Pred] -> ImplArg -> Instance Name -> TcM [(Pred, [Pred], Subst)]
+namedImplArgSolvesWanteds n ps implArg inst =
+  case implArgSlot implArg of
+    Nothing ->
+      catMaybes <$> mapM (namedInstSolvesWanted inst) ps
+    Just slot ->
+      case filter (slotMatchesPred slot) ps of
+        [] -> pure []
+        [wanted] -> maybeToList <$> namedInstSolvesWanted inst wanted
+        _ ->
+          throwError $
+            unlines
+              [ unwords
+                  [ "Constraint slot",
+                    pretty slot,
+                    "matches multiple wanted constraints for",
+                    pretty n
+                  ],
+                "Use a class name with exact capitalisation to disambiguate."
+              ]
 
 namedInstSolvesWanted :: Instance Name -> Pred -> TcM (Maybe (Pred, [Pred], Subst))
 namedInstSolvesWanted inst wanted =
@@ -1549,7 +1563,8 @@ matchesNamedCall callExpr n lbl allTys inst =
           pure True
         )
         `catchError` (\_ -> pure False)
-    put st
+    st' <- get
+    put st {nameSupply = nameSupply st', counter = counter st'}
     pure res
 
 tcCallNamedWithInst ::
