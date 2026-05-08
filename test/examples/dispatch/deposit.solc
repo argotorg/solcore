@@ -1,5 +1,5 @@
-import std;
-import dispatch;
+import std.{*};
+import std.dispatch.{*};
 
 function caller() -> address {
   let res: word;
