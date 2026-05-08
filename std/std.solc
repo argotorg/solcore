@@ -1025,6 +1025,15 @@ instance uint256:ABIEncode {
     }
 }
 
+instance bytes32:ABIEncode {
+    // a bytes32 is written directly into the head
+    function encodeInto(x:bytes32, basePtr:word, offset:word, tail:word) -> word {
+        let repx : word = Typedef.rep(x);
+        assembly { mstore(add(basePtr, offset), repx) }
+        return tail;
+    }
+}
+
 instance bool:ABIEncode {
 
     function encodeInto(x:bool, basePtr:word, offset:word, tail:word) -> word {
