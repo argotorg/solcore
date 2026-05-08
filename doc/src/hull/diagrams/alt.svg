@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="80" viewBox="0 0 538.5 80" width="538.5">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width:2; stroke:#333; fill:none; }
+svg.railroad-diagram text { font:bold 14px monospace; fill:#333; text-anchor:middle; }
+svg.railroad-diagram text.comment { font:italic 12px monospace; fill:#888; }
+svg.railroad-diagram rect { stroke-width:2; stroke:#333; fill:#fff; }
+svg.railroad-diagram rect.group-box { stroke:#aaa; stroke-dasharray:4 2; fill:none; }
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 30v20m10 -20v20m-10 -10h20" /></g><path d="M40 40h10" /><g>
+<path d="M50 40h0.0" /><path d="M488.5 40h0.0" /><g class="non-terminal ">
+<path d="M50.0 40h0.0" /><path d="M95.5 40h0.0" /><rect height="22" width="45.5" x="50" y="29"></rect><text x="72.75" y="44">Con</text></g><path d="M95.5 40h10" /><path d="M105.5 40h10" /><g class="non-terminal ">
+<path d="M115.5 40h0.0" /><path d="M169.5 40h0.0" /><rect height="22" width="54" x="115.5" y="29"></rect><text x="142.5" y="44">Name</text></g><path d="M169.5 40h10" /><path d="M179.5 40h10" /><g class="terminal ">
+<path d="M189.5 40h0.0" /><path d="M243.5 40h0.0" /><rect height="22" rx="10" ry="10" width="54" x="189.5" y="29"></rect><text x="216.5" y="44">&quot;=>&quot;</text></g><path d="M243.5 40h10" /><path d="M253.5 40h10" /><g class="terminal ">
+<path d="M263.5 40h0.0" /><path d="M309.0 40h0.0" /><rect height="22" rx="10" ry="10" width="45.5" x="263.5" y="29"></rect><text x="286.25" y="44">&quot;{&quot;</text></g><path d="M309.0 40h10" /><g>
+<path d="M319.0 40h0.0" /><path d="M433.0 40h0.0" /><path d="M319.0 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M339.0 20h74.0" /></g><path d="M413.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M319.0 40h20" /><g>
+<path d="M339.0 40h0.0" /><path d="M413.0 40h0.0" /><path d="M339.0 40h10" /><g class="non-terminal ">
+<path d="M349.0 40h0.0" /><path d="M403.0 40h0.0" /><rect height="22" width="54" x="349" y="29"></rect><text x="376" y="44">Stmt</text></g><path d="M403.0 40h10" /><path d="M349.0 40a10 10 0 0 0 -10 10v0a10 10 0 0 0 10 10" /><g>
+<path d="M349.0 60h54.0" /></g><path d="M403.0 60a10 10 0 0 0 10 -10v0a10 10 0 0 0 -10 -10" /></g><path d="M413.0 40h20" /></g><path d="M433.0 40h10" /><g class="terminal ">
+<path d="M443.0 40h0.0" /><path d="M488.5 40h0.0" /><rect height="22" rx="10" ry="10" width="45.5" x="443" y="29"></rect><text x="465.75" y="44">&quot;}&quot;</text></g></g><path d="M488.5 40h10" /><path d="M 498.5 40 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>

@@ -1,0 +1,18 @@
+object WordOps {
+  code {
+    function addWords(a : word, b : word) -> word {
+      let r : word
+      assembly {
+        r := add(a, b)
+      }
+      return r
+    }
+    function mulWords(a : word, b : word) -> word {
+      let r : word
+      assembly {
+        r := mul(a, b)
+      }
+      return r
+    }
+  }
+}

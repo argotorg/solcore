@@ -1,0 +1,64 @@
+# Hull Language Grammar
+
+# Types
+
+Type = PrimaryType
+    | PrimaryType "*" Type
+    | PrimaryType "+" Type
+
+PrimaryType = "word"
+    | "bool"
+    | "unit"
+    | "sum" "(" Type { "," Type } ")"
+    | Name "{" Type "}"
+    | "(" Type ")"
+
+
+# Expressions
+
+Expr = "inl" "<" Type ">" PrimaryExpr
+    | "inr" "<" Type ">" PrimaryExpr
+    | "in" "(" Integer ")" "<" Type ">" PrimaryExpr
+    | "fst" PrimaryExpr
+    | "snd" PrimaryExpr
+    | "if" "<" Type ">" Expr "then" Expr "else" Expr
+    | PrimaryExpr
+
+PrimaryExpr = Integer
+    | "true"
+    | "false"
+    | "(" ")"
+    | "(" Expr { "," Expr } ")"
+    | Name "(" [ Expr { "," Expr } ] ")"
+    | Name
+
+
+# Statements
+
+Stmt = "let" Name ":" Type
+    | Expr ":=" Expr
+    | "return" Expr
+    | "revert" String
+    | Block
+    | "match" "<" Type ">" Expr "with" "{" { Alt } "}"
+    | "function" Name "(" [ Arg { "," Arg } ] ")" "->" Type Block
+    | "assembly" "{" { YulStmt } "}"
+    | Expr
+
+Block = "{" { Stmt } "}"
+
+
+# Function arguments and match alternatives
+
+Arg = Name ":" Type
+
+Alt = Con Name "=>" Block
+
+Con = "inl"
+    | "inr"
+    | "in" "(" Integer ")"
+
+
+# Top-level objects
+
+Object = "object" Name "{" "code" Block { Object } "}"

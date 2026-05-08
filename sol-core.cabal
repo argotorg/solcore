@@ -105,6 +105,9 @@ library
       Solcore.Primitives.Primitives
       Language.Hull
       Language.Hull.Parser
+      Language.Hull.TcEnv
+      Language.Hull.TcMonad
+      Language.Hull.TypeCheck
       Language.Hull.Types
       Language.Yul
       Language.Yul.Parser
@@ -162,6 +165,7 @@ test-suite sol-core-tests
   -- cabal-fmt: expand test -Main
   other-modules:
     Cases
+    HullCases
     MatchCompilerTests
 
   build-depends:

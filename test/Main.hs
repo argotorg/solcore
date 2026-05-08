@@ -1,6 +1,7 @@
 module Main where
 
 import Cases
+import HullCases
 import MatchCompilerTests
 import Test.Tasty
 
@@ -18,5 +19,6 @@ tests =
       std,
       imports,
       dispatches,
-      matchTests
+      matchTests,
+      hullTests
     ]

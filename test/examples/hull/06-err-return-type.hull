@@ -1,0 +1,8 @@
+// Error: function returns word but declared return type is word * word.
+object WrongReturn {
+  code {
+    function bad(x : word) -> word * word {
+      return x
+    }
+  }
+}

@@ -1,0 +1,32 @@
+// This should trigger a warning and an error in the specialiser
+// due to unability to resolve result type of require
+import std.{uint256,not,Eq,ne,Proxy,bytes4,string};
+import std.dispatch.{*};
+
+forall a.
+function require(cond: bool) -> a {
+    if (!cond) {
+        assembly {
+            revert(0, 0)
+        }
+    }
+}
+
+function callvalue() -> uint256 {
+    let res : word;
+    assembly {
+        res := callvalue()
+    }
+    return uint256(res);
+}
+
+contract Deposit {
+function deposit() -> () {
+    require(callvalue() != uint256(0));
+    return ();
+  }
+
+function main() -> () {
+  deposit();
+}
+}

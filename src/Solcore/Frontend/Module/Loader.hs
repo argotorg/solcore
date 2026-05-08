@@ -1502,6 +1502,8 @@ renameStmtFunctionCalls renameMap (Match es eqns) =
   Match
     (map (renameExpFunctionCalls renameMap) es)
     (map (renameEquationFunctionCalls renameMap) eqns)
+renameStmtFunctionCalls renameMap (Block body) =
+  Block (renameBodyFunctionCalls renameMap body)
 renameStmtFunctionCalls _ stmt@(Asm _) = stmt
 renameStmtFunctionCalls renameMap (If e blk1 blk2) =
   If
@@ -1659,6 +1661,8 @@ renameStmtTypeRefs renameMap (Match es eqns) =
   Match
     (map (renameExpTypeRefs renameMap) es)
     (map (renameEquationTypeRefs renameMap) eqns)
+renameStmtTypeRefs renameMap (Block body) =
+  Block (renameBodyTypeRefs renameMap body)
 renameStmtTypeRefs _ stmt@(Asm _) = stmt
 renameStmtTypeRefs renameMap (If e blk1 blk2) =
   If
@@ -2308,6 +2312,8 @@ stmtFunctionRefs (Return e) =
   expFunctionRefs e
 stmtFunctionRefs (Match es eqns) =
   concatMap expFunctionRefs es ++ concatMap equationFunctionRefs eqns
+stmtFunctionRefs (Block body) =
+  bodyFunctionRefs body
 stmtFunctionRefs (Asm _) =
   []
 stmtFunctionRefs (If e blk1 blk2) =

@@ -504,6 +504,19 @@ specCallWithEvidence implArgs i args ty = do
   case mres of
     Just (fd, fty, phi) -> do
       debug ["< resolution: ", show name, "~>", shortName fd, " : ", pretty fty, "@", pretty phi]
+      let varToVar = [(v, t) | (v, t) <- unTVSubst phi, isTyVar t]
+      unless (null varToVar) $
+        warns
+          [ "Warning: call to ",
+            show name,
+            " resolved with ungrounded type variable(s): ",
+            prettys (map snd varToVar),
+            "\n  The intermediate type cannot be determined from this call site.",
+            "\n  Expression: ",
+            pretty (Call Nothing i [] args),
+            "\n  This often occurs when a polymorphic-return function (e.g. `require`)",
+            "\n  is passed directly to a polymorphic-argument function (e.g. `void`)."
+          ]
       extSpSubst phi
       subst <- getSpSubst
       let ty'' = applytv subst fty
@@ -577,14 +590,19 @@ ensureClosed :: (Pretty a) => Ty -> a -> TVSubst -> SM ()
 ensureClosed ty ctxt subst = do
   let tvs = freetv ty
   unless (null tvs) $
-    panics
-      [ "spec(",
+    nopanics
+      [ "Error: cannot specialise ",
         pretty ctxt,
-        "): free type vars in ",
+        "\n",
+        "  Type variable(s) ",
+        prettys tvs,
+        " remain unresolved in type ",
         pretty ty,
-        ": ",
-        show tvs,
-        " @ subst=",
+        "\n",
+        "  This usually means a polymorphic return value is passed to another\n",
+        "  polymorphic function without any concrete type context to resolve\n",
+        "  the intermediate type (e.g. void(require(...))).\n",
+        "  Substitution: ",
         pretty subst
       ]
 
@@ -633,6 +651,8 @@ specStmt stmt@(Let i mty mexp) = do
   case mexp of
     Nothing -> return $ Let i' mty' Nothing
     Just e -> Let i' mty' . Just <$> specExp e ty'
+specStmt (Block body) =
+  Block <$> specBody body
 specStmt (StmtExp e) = do
   ty <- atCurrentSubst (typeOfTcExp e)
   e' <- specExp e ty
@@ -759,6 +779,10 @@ prettyResolutions = render . brackets . commaSep . map pprRes
 
 -- instance Pretty (Ty, FunDef Id) where
 --  ppr = pprRes
+
+isTyVar :: Ty -> Bool
+isTyVar (TyVar _) = True
+isTyVar _ = False
 
 specmgu :: Ty -> Ty -> Either String TVSubst
 specmgu (TyCon n ts) (TyCon n' ts')
@@ -960,7 +984,7 @@ toMastFunDef (FunDef sig body) =
       mastFunReturn = case sigReturn sig of
         Just t -> toMastTy t
         Nothing -> error $ "toMastFunDef: no return type for " ++ show (sigName sig),
-      mastFunBody = map toMastStmt body
+      mastFunBody = toMastBody body
     }
 
 toMastParam :: Param Id -> MastParam
@@ -988,8 +1012,14 @@ toMastStmt (Match es _) = error $ "toMastStmt: multi-scrutinee match should have
 toMastStmt (Asm ys) = MastAsm ys
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
+toMastBody :: [Stmt Id] -> [MastStmt]
+toMastBody = concatMap go
+  where
+    go (Block body) = toMastBody body
+    go stmt = [toMastStmt stmt]
+
 toMastAlt :: ([Pat Id], [Stmt Id]) -> MastAlt
-toMastAlt ([p], body) = (toMastPat p, map toMastStmt body)
+toMastAlt ([p], body) = (toMastPat p, toMastBody body)
 toMastAlt (ps, _) = error $ "toMastAlt: multi-pattern alt should have been desugared: " ++ show ps
 
 toMastExp :: Exp Id -> MastExp
