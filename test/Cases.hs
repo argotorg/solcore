@@ -1,7 +1,9 @@
 module Cases where
 
+import Control.Exception (try)
 import Solcore.Pipeline.Options
 import Solcore.Pipeline.SolcorePipeline
+import System.Exit (ExitCode (..))
 import System.FilePath
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -295,6 +297,7 @@ cases =
       runTestForFile "Memory2.solc" caseFolder,
       runTestExpectingFailure "missing-instance.solc" caseFolder,
       runTestForFile "modifier.solc" caseFolder,
+      runTestForFile "monomorphic-require.solc" caseFolder,
       runTestForFile "morefun.solc" caseFolder,
       runTestForFile "Mutuals.solc" caseFolder,
       runTestExpectingFailure "nano-desugared.solc" caseFolder,
@@ -314,6 +317,7 @@ cases =
       runTestForFile "Peano.solc" caseFolder,
       runTestForFile "PeanoMatch.solc" caseFolder,
       runTestForFile "polymatch-error.solc" caseFolder,
+      runTestForFile "polymorphic-require.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder,
       runTestForFile "pragma_merge_base.solc" caseFolder,
@@ -420,6 +424,15 @@ cases =
       runTestExpectingFailure "overlap-synonym-missed-two-synonyms.solc" caseFolder,
       runTestForFile "copytomem.solc" caseFolder,
       runTestForFile "fresh-variable-shadowing.solc" caseFolder,
+      runTestForFile "simpleDiscount.solc" caseFolder,
+      runTestForFile "yul-deposit-example.solc" caseFolder,
+      runTestForFile "yul-asm-for-body.solc" caseFolder,
+      runTestForFile
+        "yul-asm-switch-body.solc"
+        caseFolder,
+      runTestForFile
+        "multi-stmt-var-leaf.solc"
+        caseFolder,
       runTestForFile "simpleDiscount.solc" caseFolder
     ]
   where
@@ -454,7 +467,9 @@ runTestExpectingFailureWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestExpectingFailureWith opts file folder =
   testCase file $ do
     let filePath = folder </> file
-    result <- compile opts {fileName = filePath, optRootDir = folder}
-    case result of
-      Left _ -> return () -- Expected failure
-      Right _ -> assertFailure "Expected compilation to fail, but it succeeded"
+    outcome <- try (compile opts {fileName = filePath, optRootDir = folder})
+    case outcome of
+      Left (ExitFailure _) -> return () -- Expected failure via exitFailure
+      Left ExitSuccess -> assertFailure "Expected compilation to fail, but it exited successfully"
+      Right (Left _) -> return () -- Expected failure via Either
+      Right (Right _) -> assertFailure "Expected compilation to fail, but it succeeded"

@@ -141,6 +141,7 @@ transStmt cenv stmt = (cenv, go stmt cenv)
     go :: NmStmt -> CEM NmStmt
     go (lhs := rhs) = transAssignment lhs rhs
     go (Return exp) = Return <$> transRhs exp
+    go (Block body) = pure (Block (transBody body cenv))
     go (StmtExp exp) = StmtExp <$> transRhs exp
     go (If e b1 b2) = If <$> transRhs e <*> transBody b1 <*> transBody b2
     go (For initStmt cond postStmt body) =

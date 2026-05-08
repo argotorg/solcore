@@ -69,7 +69,7 @@
             src = gitignore ./.;
           } ''
             cd $src
-            ormolu --mode check $(find . -name '*.hs')
+            ormolu --mode check $(find app src yule test -name '*.hs')
             touch $out
           '';
 
@@ -147,7 +147,7 @@
             (pkgs.callPackage ./nix/goevmlab.nix { src = inputs.goevmlab; })
             pkgs.mdbook
           ];
-          evmone="${evmone-lib}/lib/libevmone.so";
+          evmone="${evmone-lib}/lib/${if pkgs.stdenv.isDarwin then "libevmone.dylib" else "libevmone.so"}";
         };
       }
     );

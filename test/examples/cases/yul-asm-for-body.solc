@@ -1,0 +1,16 @@
+import std.{*};
+
+function yul_asm_for_body() -> () {
+    let result : uint256 = uint256(0);
+    assembly {
+        for { let i := 0 } lt(i, 3) { i := add(i, 1) } {
+            result := callvalue()
+        }
+    }
+}
+
+contract Foo {
+    function main() -> () {
+        yul_asm_for_body()
+    }
+}

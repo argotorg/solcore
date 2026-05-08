@@ -459,6 +459,18 @@ instance uint256:Sub {
   }
 }
 
+instance uint256:Mul {
+  function mul(x : uint256, y : uint256) -> uint256 {
+    return Typedef.abs(Mul.mul(Typedef.rep(x), Typedef.rep(y)));
+  }
+}
+
+instance uint256:Div {
+  function div(x : uint256, y : uint256) -> uint256 {
+    return Typedef.abs(Div.div(Typedef.rep(x), Typedef.rep(y)));
+  }
+}
+
 instance uint256:Eq {
   function eq(x : uint256, y : uint256) -> bool {
     return Eq.eq(Typedef.rep(x), Typedef.rep(y));
@@ -1014,22 +1026,31 @@ function round_up_to_mul_of_32(value:word) -> word {
   return result;
 }
 
+function encodeIntoFromBytesLike(srcPtr:word, basePtr:word, offset:word, tail:word) -> word {
+    let tailOffset = Sub.sub(tail,basePtr);
+
+    assembly {
+      let length := mload(srcPtr)
+      let total := add(length, 32)
+
+      mstore(add(basePtr, offset), sub(tail, basePtr))
+      mcopy(tail, srcPtr, total)
+      let rounded := and(add(total, 31), not(31))
+      tail := add(tail, rounded)
+    }
+
+    return tail;
+}
+
 instance memory(string):ABIEncode {
     function encodeInto(x:memory(string), basePtr:word, offset:word, tail:word) -> word {
-      let tailOffset = Sub.sub(tail,basePtr);
-      let srcPtr = Typedef.rep(x);
+      return encodeIntoFromBytesLike(Typedef.rep(x), basePtr, offset, tail);
+    }
+}
 
-      assembly {
-        let length := mload(srcPtr)
-	let total := add(length, 32)
-
-	mstore(add(basePtr, offset), sub(tail, basePtr))
-        mcopy(tail, srcPtr, total)
-	let rounded := and(add(total, 31), not(31))
-	tail := add(tail, rounded)
-      }
-
-      return tail;
+instance memory(bytes):ABIEncode {
+    function encodeInto(x:memory(bytes), basePtr:word, offset:word, tail:word) -> word {
+      return encodeIntoFromBytesLike(Typedef.rep(x), basePtr, offset, tail);
     }
 }
 
@@ -1135,11 +1156,9 @@ forall reader . reader:WordReader => instance ABIDecoder((), reader):ABIDecode((
     }
 }
 
-// ABI decoding for strings (only in memory)
-forall reader. reader : WordReader =>
-instance ABIDecoder(memory(string), reader):ABIDecode(memory(string))
-{
-    function decode(ptr:ABIDecoder(memory(string), reader), currentHeadOffset:word) -> memory(string) {
+// ABI decoding for bytes/strings (only in memory)
+forall a ptrtype reader. reader:WordReader =>
+function decodeBytesLike(ptr:ABIDecoder(memory(a), reader), currentHeadOffset:word) -> memory(a) {
         let tmp:word;
         let headRdr = WordReader.advance(ptr, currentHeadOffset);
         let tailPtr : word = WordReader.read(headRdr);
@@ -1148,13 +1167,29 @@ instance ABIDecoder(memory(string), reader):ABIDecode(memory(string))
         let srcRdr = getReader(src);
         let length = WordReader.read(src);
         let total = Add.add(length, 32);
-	let rounded = round_up_to_mul_of_32(total);
-        let resultPtr : word = allocate_memory(rounded)	;
+        let rounded = round_up_to_mul_of_32(total);
+        let resultPtr : word = allocate_memory(rounded);
         WordReader.copyToMem(srcRdr, resultPtr, total);
         return memory(resultPtr);
-    } // decode ends
 }
 
+// ABI decoding for strings (only in memory)
+forall reader. reader : WordReader =>
+instance ABIDecoder(memory(string), reader):ABIDecode(memory(string))
+{
+    function decode(ptr:ABIDecoder(memory(string), reader), currentHeadOffset:word) -> memory(string) {
+      return decodeBytesLike(ptr, currentHeadOffset);
+    }
+}
+
+// ABI decoding for bytes (only in memory)
+forall reader. reader : WordReader =>
+instance ABIDecoder(memory(bytes), reader):ABIDecode(memory(bytes))
+{
+    function decode(ptr:ABIDecoder(memory(bytes), reader), currentHeadOffset:word) -> memory(bytes) {
+      return decodeBytesLike(ptr, currentHeadOffset);
+    }
+}
 
 // ABI decoding for a pair of decodable values
 // FAIL: Coverage

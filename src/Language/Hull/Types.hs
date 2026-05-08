@@ -11,11 +11,17 @@ data Type
   | TFun [Type] Type
   | TUnit
   | TNamed String Type -- named type, e.g. Option{unit + word}
-  deriving (Show)
+  deriving (Show, Eq)
 
 stripTypeName :: Type -> Type
 stripTypeName (TNamed _ t) = stripTypeName t
 stripTypeName t = t
+
+isWordType :: Type -> Bool
+isWordType TWord = True
+isWordType (TNamed _ t) = isWordType t
+isWordType (TSumN [t]) = isWordType t
+isWordType _ = False
 
 zeroSizedType :: Type -> Bool
 zeroSizedType TUnit = True
