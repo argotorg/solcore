@@ -76,6 +76,18 @@ checkStmt (SExpr e) =
   checkExpr e >> pure ()
 checkStmt (SAssembly stmts) =
   withLocalEnv (checkAsmBlock stmts)
+checkStmt (SFor initStmt cond post body) =
+  -- Variables declared in the init block are scoped over the entire for loop
+  -- (cond, post, body), matching Yul's for-loop scoping rules.
+  withLocalEnv $ do
+    checkBody (blockStmts initStmt)
+    te <- checkExpr cond
+    expectType TBool te
+    checkStmt post
+    checkStmt body
+  where
+    blockStmts (SBlock ss) = ss
+    blockStmts s = [s]
 checkStmt (SRevert _) = pure ()
 checkStmt (SComment _) = pure ()
 
