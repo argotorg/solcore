@@ -356,9 +356,7 @@ cases =
       runTestExpectingFailure "subject-reduction.solc" caseFolder,
       runTestExpectingFailure "subsumption-test.solc" caseFolder,
       runTestForFile "super-class.solc" caseFolder,
-      runTabledTestForFile "super-class.solc" caseFolder,
       runTestForFile "super-class-num.solc" caseFolder,
-      runTabledTestExpectingFailure "tabled-cycle-fail.solc" caseFolder,
       runTestForFile "tiamat.solc" caseFolder,
       runTestForFile "tuple-trick.solc" caseFolder,
       runTestForFile "tuva.solc" caseFolder,
@@ -434,6 +432,43 @@ cases =
     ]
   where
     caseFolder = "./test/examples/cases"
+
+tabledResolution :: TestTree
+tabledResolution =
+  testGroup
+    "Tabled type class resolution"
+    [ testGroup
+        "Cases"
+        [ runTabledTestForFile "constrained-instance.solc" caseFolder,
+          runTabledTestForFile "constrained-instance-context.solc" caseFolder,
+          runTabledTestForFile "constructor-weak-args.solc" caseFolder,
+          runTabledTestForFile "EqQual.solc" caseFolder,
+          runTabledTestForFile "super-class.solc" caseFolder,
+          runTabledTestForFile "super-class-num.solc" caseFolder,
+          runTabledTestForFile "field-helper-cxt-collision.solc" caseFolder,
+          runTabledTestForFile "instance-synonym.solc" caseFolder,
+          runTabledTestForFile "invokable-issue.solc" caseFolder,
+          runTabledTestForFile "td.solc" caseFolder,
+          runTabledTestForFile "tuple-trick.solc" caseFolder,
+          runTabledTestForFile "typedef.solc" caseFolder,
+          runTabledTestForFile "word-match.solc" caseFolder,
+          runTabledTestExpectingFailure "tabled-cycle-fail.solc" caseFolder
+        ],
+      testGroup
+        "Spec"
+        [ runTabledTestForFile "024arith.solc" specFolder,
+          runTabledTestForFile "031maybe.solc" specFolder,
+          runTabledTestForFile "041pair.solc" specFolder,
+          runTabledTestForFile "047rgb.solc" specFolder
+        ],
+      testGroup
+        "Standard library"
+        [ runTabledTestForFile "std.solc" stdFolder
+        ]
+    ]
+  where
+    caseFolder = "./test/examples/cases"
+    specFolder = "./test/examples/spec"
 
 -- basic infrastructure for tests
 

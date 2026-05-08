@@ -13,6 +13,7 @@ tests =
   testGroup
     "Tests"
     [ cases,
+      tabledResolution,
       comptime,
       pragmas,
       spec,
