@@ -262,8 +262,7 @@ contract DepositContract {
     require(Typedef.rep(callvalue()) >= 1000000000000000000); // >= 1 ether
     require(Typedef.rep(callvalue()) % 1000000000 == 0); // % 1 gwei == 0
 
-//    let deposit_amount = callvalue() / uint256(1000000000); // 1 gwei
-    let deposit_amount = uint256(Typedef.rep(callvalue()) / 1000000000);
+    let deposit_amount = callvalue() / uint256(1000000000); // 1 gwei
     require(Typedef.rep(deposit_amount) <= 0xffffffffffffffff); // <= type(uint64).max
 
     let amount: memory(bytes) = to_little_endian_64(deposit_amount);
