@@ -539,6 +539,21 @@ instance bytes4:Typedef(word) {
     }
 }
 
+// --- Bytes32 ---
+
+data bytes32 = bytes32(word);
+
+instance bytes32:Typedef(word) {
+    function rep(b : bytes32) -> word {
+        match b {
+            | bytes32(w) => return w;
+        }
+    }
+    function abs(w : word) -> bytes32 {
+        return bytes32(w);
+    }
+}
+
 // --- Pointers ---
 
 data memory(t) = memory(word);
@@ -1136,10 +1151,17 @@ forall ty reader . reader:WordReader => instance ABIDecoder(ty, reader):WordRead
     }
 }
 
-// ABI Decoding for uint
+// ABI Decoding for uint256
 forall reader . reader:WordReader => instance ABIDecoder(uint256, reader):ABIDecode(uint256) {
     function decode(ptr:ABIDecoder(uint256, reader), currentHeadOffset:word) -> uint256 {
         return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : uint256;
+    }
+}
+
+// ABI Decoding for bytes32
+forall reader . reader:WordReader => instance ABIDecoder(bytes32, reader):ABIDecode(bytes32) {
+    function decode(ptr:ABIDecoder(bytes32, reader), currentHeadOffset:word) -> bytes32 {
+        return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : bytes32;
     }
 }
 
