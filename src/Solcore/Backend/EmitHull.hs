@@ -314,22 +314,18 @@ emitStmt (MastFor initStmt cond post body) = do
   (condExp, condStmts) <- emitExp cond
   postStmts <- emitStmt post
   bodyStmts <- concat <$> mapM emitStmt body
-  -- Hoist allocs (from init/cond/post) into an outer block so variables
-  -- declared in for-init are visible in cond/post/body.
   let (condAllocs, condCompute) = partition isAlloc condStmts
   let (postAllocs, postCompute) = partition isAlloc postStmts
-  let initAll = initStmts ++ condAllocs ++ postAllocs
-  let (initAllocs, initCompute) = partition isAlloc initAll
-  let forStmt =
-        Hull.SFor
-          (Hull.SBlock (initCompute ++ condCompute))
-          condExp
-          (Hull.SBlock (postCompute ++ condCompute))
-          (Hull.SBlock bodyStmts)
+  let (initAllocs, initCompute) = partition isAlloc initStmts
+  -- All allocs go into the for-init block; Yul scopes for-init variables
+  -- over the entire loop (cond, post, body), so no outer wrapper needed.
+  let allAllocs = initAllocs ++ condAllocs ++ postAllocs
   pure
-    [ if null initAllocs
-        then forStmt
-        else Hull.SBlock (initAllocs ++ [forStmt])
+    [ Hull.SFor
+        (Hull.SBlock (allAllocs ++ initCompute ++ condCompute))
+        condExp
+        (Hull.SBlock (postCompute ++ condCompute))
+        (Hull.SBlock bodyStmts)
     ]
   where
     isAlloc (Hull.SAlloc _ _) = True

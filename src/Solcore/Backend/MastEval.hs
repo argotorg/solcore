@@ -14,6 +14,7 @@ where
 
 import Control.Monad.Reader
 import Control.Monad.State
+import Data.Traversable (mapAccumM)
 import Crypto.Hash (Digest, hash)
 import Crypto.Hash.Algorithms (Keccak_256)
 import Data.ByteArray qualified as BA
@@ -210,7 +211,7 @@ evalStmt env stmt = case stmt of
     (_, initStmt') <- evalLoopStmt loopEnv initStmt
     cond' <- evalExp loopEnv cond
     (_, post') <- evalLoopStmt loopEnv post
-    bodies' <- mapM (fmap snd . evalLoopStmt loopEnv) body
+    (_, bodies') <- mapAccumM evalLoopStmt loopEnv body
     pure (Map.empty, [MastFor initStmt' cond' post' bodies'])
 
 -- Evaluate a statement while preserving statement shape.
