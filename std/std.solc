@@ -46,6 +46,7 @@ export {
   byte(*),
   bytes,
   bytes4(*),
+  bytes32(*),
   calldata(*),
   concatLit,
   eqWord,
