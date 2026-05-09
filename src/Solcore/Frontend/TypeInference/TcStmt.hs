@@ -1523,7 +1523,7 @@ tcYulStmt (YAssign ns e) =
           t' <- withCurrentSubst t
           case t' of
             Meta _ -> unify t' word >> pure ()
-            _      -> pure ()
+            _ -> pure ()
     _ <- tcYulExp e
     pure ([], unit)
 tcYulStmt (YBlock yblk) =
