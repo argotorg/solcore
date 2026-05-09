@@ -1520,8 +1520,10 @@ tcYulStmt (YAssign ns e) =
         Nothing -> pure ()
         Just sch -> do
           (_ :=> t) <- freshInst sch
-          _ <- unify t word `catchError` const (pure mempty)
-          pure ()
+          t' <- withCurrentSubst t
+          case t' of
+            Meta _ -> unify t' word >> pure ()
+            _      -> pure ()
     _ <- tcYulExp e
     pure ([], unit)
 tcYulStmt (YBlock yblk) =
