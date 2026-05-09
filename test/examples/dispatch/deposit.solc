@@ -143,6 +143,15 @@ function to_little_endian_64(v: uint256) -> memory(bytes) {
     return memory(res);
 }
 
+function is_odd(v:uint256) -> bool {
+    let res: word;
+    let v_ = Typedef.rep(v);
+    assembly {
+        res := eq(mod(v_, 2), 1)
+    }
+    return tobool(res);
+}
+
 // No constants are supported yet, using this as a workaround.
 // Defining variables outside of contract/function is not supported.
 function DEPOSIT_CONTRACT_TREE_DEPTH() -> uint256 {
@@ -244,21 +253,26 @@ contract DepositContract {
   // TODO: return bytes32
   function get_deposit_root() -> uint256 {
     // FIXME: implement
-    return uint256(0);
+//    return uint256(0);
 
-    bytes32 node;
+    let node: uint256;
     let size = deposit_count;
-    for (let height = 0; height < DEPOSIT_CONTRACT_TREE_DEPTH(); height++) {
-        if ((size & 1) == 1)
+    for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height = height + uint256(1)) {
+        //if ((size & 1) == 1) {
+        //if ((size % uint256(2)) == uint256(1)) {
+        if (is_odd(size)) {
             node = sha256(MemoryHelpers.concat(branch[height], node));
-        else
+        } else {
             node = sha256(MemoryHelpers.concat(node, zero_hashes[height]));
-        size /= 2;
+        }
+        size = size / uint256(2);
     }
     return sha256(MemoryHelpers.concat(
-        node,
-        to_little_endian_64(uint64(deposit_count)),
-        bytes24(0)
+        MemoryHelpers.concat(
+            to_bytes(node),
+            to_little_endian_64(deposit_count)
+        ),
+        empty_bytes(24)
     ));
   }
 
@@ -311,15 +325,18 @@ contract DepositContract {
     // FIXME: implement checks and updating branch[]
 
     // Add deposit data root to Merkle tree (update a single `branch` node)
-    deposit_count += 1;
+    deposit_count += uint256(1);
     let size = deposit_count;
-    for (let height = 0; height < DEPOSIT_CONTRACT_TREE_DEPTH(); height++) {
-        if ((size & 1) == 1) {
-            branch[height] = node;
-            return;
+    let node_ = uint256(Typedef.rep(node));
+    for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height = height + uint256(1)) {
+        //if ((size & 1) == 1) {
+        //if ((size % 2) == 1) {
+        if (is_odd(size)) {
+            branch[height] = node_;
+            return ();
         }
-        node = sha256(MemoryHelpers.concat(branch[height], node));
-        size /= 2;
+        node_ = sha256(MemoryHelpers.concat(branch[height], node_));
+        size = size / uint256(2);
     }
 
     // As the loop should always end prematurely with the `return` statement,
