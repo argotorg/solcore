@@ -455,6 +455,14 @@ tabledResolution =
           runTabledTestExpectingFailure "tabled-cycle-fail.solc" caseFolder
         ],
       testGroup
+        "Conformance"
+        [ runTabledTestForFile "tabled-answer-reuse.solc" caseFolder,
+          runTabledTestForFile "tabled-default-instance.solc" caseFolder,
+          runTabledTestForFile "tabled-mutual-chain.solc" caseFolder,
+          runTabledTestForFile "tabled-residual-given.solc" caseFolder,
+          runTabledTestExpectingFailure "tabled-left-recursive-fail.solc" caseFolder
+        ],
+      testGroup
         "Spec"
         [ runTabledTestForFile "024arith.solc" specFolder,
           runTabledTestForFile "031maybe.solc" specFolder,
