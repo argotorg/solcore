@@ -555,6 +555,18 @@ instance bytes32:Typedef(word) {
     }
 }
 
+instance bytes32:Eq {
+  function eq(x : bytes32, y : bytes32) -> bool {
+    return Eq.eq(Typedef.rep(x), Typedef.rep(y));
+  }
+}
+
+instance bytes32:Ord {
+  function gt(x : bytes32, y : bytes32) -> bool {
+    return Ord.gt(Typedef.rep(x), Typedef.rep(y));
+  }
+}
+
 // --- Pointers ---
 
 data memory(t) = memory(word);
@@ -1381,6 +1393,12 @@ instance uint256:StorageSize {
     }
 }
 
+instance bytes32:StorageSize {
+    function size(x:Proxy(bytes32)) -> word {
+        return 1;
+    }
+}
+
 instance address:StorageSize {
     function size(x:Proxy(address)) -> word {
         return 1;
@@ -1459,6 +1477,11 @@ function storeViaWord(ptr:word, value:a) -> () {
 instance uint256:StorageType {
   function sload(ptr:word) -> uint256 { return uint256(StorageType.sload(ptr):word); }
   function store(ptr:word, value:uint256) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
+}
+
+instance bytes32:StorageType {
+  function sload(ptr:word) -> bytes32 { return bytes32(StorageType.sload(ptr):word); }
+  function store(ptr:word, value:bytes32) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
 }
 
 
@@ -1627,6 +1650,15 @@ default instance a:CanStore(a) {
       StorageType.store(Typedef.rep(l), r);
     }
     function sload(l:storage(uint256)) -> uint256 {
+      return StorageType.sload(Typedef.rep(l));
+    }
+}
+
+ instance storage(bytes32):CanStore(bytes32) {
+    function store(l:storage(bytes32), r:bytes32) -> () {
+      StorageType.store(Typedef.rep(l), r);
+    }
+    function sload(l:storage(bytes32)) -> bytes32 {
       return StorageType.sload(Typedef.rep(l));
     }
 }
