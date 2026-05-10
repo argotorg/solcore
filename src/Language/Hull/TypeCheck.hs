@@ -82,12 +82,16 @@ checkStmt (SFor initStmt cond post body) =
   withLocalEnv $ do
     checkBody (blockStmts initStmt)
     te <- checkExpr cond
-    expectType TBool te
+    expectBoolType te
     checkStmt post
     checkStmt body
   where
     blockStmts (SBlock ss) = ss
     blockStmts s = [s]
+    expectBoolType t = case stripTypeName t of
+      TBool -> pure ()
+      TSum TUnit TUnit -> pure ()
+      _ -> hullError ("for condition must be bool or sum () (), got " ++ show t)
 checkStmt (SRevert _) = pure ()
 checkStmt (SComment _) = pure ()
 
