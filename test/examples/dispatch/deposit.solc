@@ -60,8 +60,8 @@ instance memory(bytes):MemoryHelpers {
         let b_ptr = MemoryHelpers.ptr(b);
         let b_len = MemoryHelpers.len(b);
 
-        let len = 32 + a_len + b_len;
-        let res: word = allocate_memory(len);
+        let len = a_len + b_len;
+        let res: word = allocate_memory(32 + len);
         assembly {
             mstore(res, len)
             mcopy(add(res, 32), a_ptr, a_len)
