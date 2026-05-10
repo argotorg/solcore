@@ -1,0 +1,8 @@
+import std.{lt,Ord,Add,Sub,Bounded,Num,Eq,Typedef};
+contract ForInner {
+  function main() -> () {
+      for (let height = 0; height < 1; height = height + 1) {
+	      if (true) {} else {}
+	  }
+  }
+}

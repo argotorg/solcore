@@ -876,7 +876,7 @@ toMastStmt (Match [scrutinee] alts) = MastMatch (toMastExp scrutinee) (map toMas
 toMastStmt (Match es _) = error $ "toMastStmt: multi-scrutinee match should have been desugared: " ++ show es
 toMastStmt (Asm ys) = MastAsm ys
 toMastStmt (For initStmt cond postStmt body) =
-  MastFor (toMastStmt initStmt) (toMastExp cond) (toMastStmt postStmt) (map toMastStmt body)
+  MastFor (toMastStmt initStmt) (toMastExp cond) (toMastStmt postStmt) (toMastBody body)
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
 toMastBody :: [Stmt Id] -> [MastStmt]
