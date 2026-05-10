@@ -74,6 +74,14 @@ instance memory(bytes):MemoryHelpers {
 function empty_bytes(len: word) -> memory(bytes) {
     let res: word = allocate_memory(32 + len);
     mstore(res, len);
+    // TODO: zero out space
+    // TODO: make this efficient
+    assembly {
+        let ptr := add(res, 32)
+        for { let i := 0 } lt(i, len) { i := add(i, 1) } {
+            mstore8(add(ptr, i), 0)
+        }
+    }
     return memory(res);
 }
 
@@ -122,6 +130,41 @@ function to_bytes(v: uint256) -> memory(bytes) {
         mstore(add(res, 32), value)
     }
     return memory(res);
+}
+
+// TODO: use slice()
+function bytes_slice(input: memory(bytes), start: word) -> memory(bytes) {
+    let len = MemoryHelpers.len(input);
+    if (len < start) {
+        assembly {
+            revert(0, 0)
+        }
+    }
+    len = len - start;
+    let res = empty_bytes(len);
+    let src_ptr = MemoryHelpers.ptr(input);
+    let dst_ptr = MemoryHelpers.ptr(res);
+    assembly {
+        mcopy(dst_ptr, add(src_ptr, start), len)
+    }
+    return res;
+}
+
+// TODO: use slice()
+function bytes_truncate(input: memory(bytes), end: word) -> memory(bytes) {
+    let len = MemoryHelpers.len(input);
+    if (len < end) {
+        assembly {
+            revert(0, 0)
+        }
+    }
+    let res = empty_bytes(end);
+    let src_ptr = MemoryHelpers.ptr(input);
+    let dst_ptr = MemoryHelpers.ptr(res);
+    assembly {
+        mcopy(dst_ptr, src_ptr, end)
+    }
+    return res;
 }
 
 // Should use uint64 and bytes.
@@ -237,18 +280,51 @@ contract DepositContract {
         );
     */
 
+/*
+let x = bytes_truncate(signature, 64);
+let x_ = MemoryHelpers.ptr(x);
+require(MemoryHelpers.len(x) == 64);
+let y = bytes_slice(signature, 64);
+let y_ = MemoryHelpers.ptr(y);
+require(MemoryHelpers.len(y) == 32);
+    assembly {
+        mstore(0, mload(y_))
+        return(0, 32)
+    }
+*/
+
+/*
+        // Compute deposit data root (`DepositData` hash tree root)
+        bytes32 pubkey_root = sha256(abi.encodePacked(pubkey, bytes16(0)));
+        bytes32 signature_root = sha256(abi.encodePacked(
+            sha256(abi.encodePacked(signature[:64])),
+            sha256(abi.encodePacked(signature[64:], bytes32(0)))
+        ));
+        bytes32 node = sha256(abi.encodePacked(
+            sha256(abi.encodePacked(pubkey_root, withdrawal_credentials)),
+            sha256(abi.encodePacked(amount, bytes24(0), signature_root))
+        ));
+*/
+
     // Compute deposit data root (`DepositData` hash tree root)
     let pubkey_root = sha256(MemoryHelpers.concat(pubkey, empty_bytes(16)));
     let signature_root = sha256(MemoryHelpers.concat(
-        sha256(signature), // slice
-        sha256(MemoryHelpers.concat(signature, empty_bytes(32))), // slice
+        sha256(bytes_truncate(signature, 64)), // slice
+        sha256(MemoryHelpers.concat(bytes_slice(signature, 64), empty_bytes(32))), // slice
     ));
     let node = sha256(MemoryHelpers.concat(
         sha256(MemoryHelpers.concat(to_bytes(pubkey_root), withdrawal_credentials)),
         sha256(MemoryHelpers.concat(MemoryHelpers.concat(amount, empty_bytes(24)), to_bytes(signature_root)))
     ));
 
-    require(node == uint256(Typedef.rep(deposit_data_root)));
+// Expected: d2b73e995b4c94bf83bcbf58cb9dede2c5e0211ec61eeb09c43aeaad97ce0262
+let node_ = Typedef.rep(node);
+    assembly {
+        mstore(0, node_)
+        return(0, 32)
+    }
+
+//    require(node == uint256(Typedef.rep(deposit_data_root)));
 
     require(deposit_count < MAX_DEPOSIT_COUNT());
 
