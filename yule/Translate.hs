@@ -151,9 +151,10 @@ genStmt (SAssembly stmts) = do
     substAsmExp _ e = e
 
     substAsmName env n = case Map.lookup (show n) env of
-      Just (LocStack i) -> stkLoc i
-      Just (LocNamed n') -> fromString n'
-      _ -> n
+      Just loc -> case flattenLhs loc of
+        [n'] -> n'
+        _ -> n -- multi-slot: cannot appear as a single assembly lvalue
+      Nothing -> n
 genStmt (SAlloc name typ) = allocVar name typ
 genStmt (SAssign name expr) = hullAssign name expr
 genStmt (SReturn expr) = do
