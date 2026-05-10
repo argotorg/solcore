@@ -143,11 +143,8 @@ function sha256(input: memory(bytes)) -> bytes32 {
 
 function to_bytes(v: bytes32) -> memory(bytes) {
     let res: word = allocate_memory(64);
-    let value: word = Typedef.rep(v);
-    assembly {
-        mstore(res, 32)
-        mstore(add(res, 32), value)
-    }
+    mstore(res, 32);
+    mstore(res + 32, Typedef.rep(v));
     return memory(res);
 }
 
