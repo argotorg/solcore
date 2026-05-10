@@ -207,6 +207,7 @@ function to_little_endian_64(v: uint256) -> memory(bytes) {
 function DEPOSIT_CONTRACT_TREE_DEPTH() -> uint256 {
     return uint256(32);
 }
+
 function MAX_DEPOSIT_COUNT() -> uint256 {
     // uint constant MAX_DEPOSIT_COUNT = 2**DEPOSIT_CONTRACT_TREE_DEPTH - 1;
     // Could use Bounded(uint256).maxVal()
@@ -266,11 +267,11 @@ contract DepositContract {
     require(MemoryHelpers.len(signature) == 96);
 
     // Check deposit amount
-    require(Typedef.rep(callvalue()) >= 1000000000000000000); // >= 1 ether
-    require(Typedef.rep(callvalue()) % 1000000000 == 0); // % 1 gwei == 0
+    require(callvalue() >= uint256(1000000000000000000)); // >= 1 ether
+    require(callvalue() % uint256(1000000000) == uint256(0)); // % 1 gwei == 0
 
     let deposit_amount = callvalue() / uint256(1000000000); // 1 gwei
-    require(Typedef.rep(deposit_amount) <= 0xffffffffffffffff); // <= type(uint64).max
+    require(deposit_amount <= uint256(0xffffffffffffffff)); // <= type(uint64).max
 
     let amount: memory(bytes) = to_little_endian_64(deposit_amount);
     // TODO: emit DepositEvent
