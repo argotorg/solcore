@@ -201,6 +201,7 @@ function DEPOSIT_CONTRACT_TREE_DEPTH() -> uint256 {
     return uint256(32);
 }
 function MAX_DEPOSIT_COUNT() -> uint256 {
+    // uint constant MAX_DEPOSIT_COUNT = 2**DEPOSIT_CONTRACT_TREE_DEPTH - 1;
     // Could use Bounded(uint256).maxVal()
     return uint256(0xFFFFFFFF);
 }
