@@ -252,14 +252,11 @@ contract DepositContract {
 
   // TODO: return bytes32
   function get_deposit_root() -> uint256 {
-    // FIXME: implement
-//    return uint256(0);
-
     let node: uint256;
     let size = deposit_count;
     for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height = height + uint256(1)) {
         //if ((size & 1) == 1) {
-        //if ((size % uint256(2)) == uint256(1)) {
+        //if ((size % 2)) == 1) {
         if (is_odd(size)) {
             node = sha256(MemoryHelpers.concat(branch[height], node));
         } else {
@@ -321,8 +318,6 @@ contract DepositContract {
     require(node == uint256(Typedef.rep(deposit_data_root)));
 
     require(deposit_count < MAX_DEPOSIT_COUNT());
-
-    // FIXME: implement checks and updating branch[]
 
     // Add deposit data root to Merkle tree (update a single `branch` node)
     deposit_count += uint256(1);
