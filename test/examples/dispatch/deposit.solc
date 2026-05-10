@@ -173,76 +173,9 @@ contract DepositContract {
 
   constructor() {
     // Compute hashes in empty sparse Merkle tree
-    // TODO: no for loops yet, so unrolled
-    let height: uint256 = uint256(0);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-/*
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-    height = height + uint256(1);
-    zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
-*/
-
-    //for (uint height = 0; height < DEPOSIT_CONTRACT_TREE_DEPTH - 1; height++)
-    //  zero_hashes[height + 1] = sha256(abi.encodePacked(zero_hashes[height], zero_hashes[height]));
+    for (let height = uint256(0); height < (DEPOSIT_CONTRACT_TREE_DEPTH() - uint256(1)); height = height + uint256(1)) {
+        zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+    }
   }
 
   // TODO: this is for testing only
