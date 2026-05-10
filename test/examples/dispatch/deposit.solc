@@ -202,15 +202,6 @@ function to_little_endian_64(v: uint256) -> memory(bytes) {
     return memory(res);
 }
 
-function is_odd(v:uint256) -> bool {
-    let res: word;
-    let v_ = Typedef.rep(v);
-    assembly {
-        res := eq(mod(v_, 2), 1)
-    }
-    return tobool(res);
-}
-
 // No constants are supported yet, using this as a workaround.
 // Defining variables outside of contract/function is not supported.
 function DEPOSIT_CONTRACT_TREE_DEPTH() -> uint256 {
@@ -248,8 +239,7 @@ contract DepositContract {
     let size = deposit_count;
     for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height = height + uint256(1)) {
         //if ((size & 1) == 1) {
-        //if ((size % 2)) == 1) {
-        if (is_odd(size)) {
+        if ((size % uint256(2)) == uint256(1)) {
             node = sha256(MemoryHelpers.concat(branch[height], node));
         } else {
             node = sha256(MemoryHelpers.concat(node, zero_hashes[height]));
@@ -326,8 +316,7 @@ contract DepositContract {
     let size = deposit_count;
     for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height = height + uint256(1)) {
         //if ((size & 1) == 1) {
-        //if ((size % 2) == 1) {
-        if (is_odd(size)) {
+        if ((size % uint256(2)) == uint256(1)) {
             branch[height] = node;
             return ();
         }
