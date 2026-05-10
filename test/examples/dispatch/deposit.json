@@ -182,6 +182,32 @@
             "returndata": "",
             "status": "failure"
         }
+      },
+
+      {
+        "input": {
+            "comment": "get_deposit_root()",
+            "calldata": "c5f2892f",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "d3014e96ac4ef15ccbac8047549cac09ad687f6169cba901b92c8875a62ca917",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_deposit_count()",
+            "calldata": "621fd130",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000080100000000000000000000000000000000000000000000000000000000000000",
+            "status": "success"
+        }
       }
     ]
   }
