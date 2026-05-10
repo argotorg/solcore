@@ -27,9 +27,9 @@ function assert(cond: bool) {
 
 function require(cond: bool) {
     if (!cond) {
-/*        assembly {
+        assembly {
             revert(0, 0)
-        }*/
+        }
     }
 }
 
