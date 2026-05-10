@@ -471,11 +471,18 @@ instance uint256:Div {
   }
 }
 
+instance uint256:Mod {
+  function mod(x : uint256, y : uint256) -> uint256 {
+    return Typedef.abs(Mod.mod(Typedef.rep(x), Typedef.rep(y)));
+  }
+}
+
 instance uint256:Eq {
   function eq(x : uint256, y : uint256) -> bool {
     return Eq.eq(Typedef.rep(x), Typedef.rep(y));
   }
 }
+
 instance uint256:Ord {
   function gt(x : uint256, y : uint256) -> bool {
     return Ord.gt(Typedef.rep(x), Typedef.rep(y));
