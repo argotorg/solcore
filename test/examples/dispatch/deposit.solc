@@ -71,17 +71,28 @@ instance memory(bytes):MemoryHelpers {
     } 
 }
 
+function zeroize_memory(ptr: word, len: word) {
+    assembly {
+        let end_ptr := add(ptr, len)
+
+        // Zero out 32-byte words
+        let words := div(len, 32)
+        for { let i := 0 } lt(i, words) { i := add(i, 1) } {
+            mstore(ptr, 0)
+            ptr := add(ptr, 32)
+        }
+
+        // Zero out trailing bytes
+        for { } lt(ptr, end_ptr) { ptr := add(ptr, 1) } {
+            mstore8(ptr, 0)
+        }
+    }
+}
+
 function empty_bytes(len: word) -> memory(bytes) {
     let res: word = allocate_memory(32 + len);
     mstore(res, len);
-    // TODO: zero out space
-    // TODO: make this efficient
-    assembly {
-        let ptr := add(res, 32)
-        for { let i := 0 } lt(i, len) { i := add(i, 1) } {
-            mstore8(add(ptr, i), 0)
-        }
-    }
+    zeroize_memory(res + 32, len);
     return memory(res);
 }
 
@@ -308,8 +319,10 @@ contract DepositContract {
         sha256(MemoryHelpers.concat(MemoryHelpers.concat(amount, empty_bytes(24)), to_bytes(signature_root)))
     ));
 
+    // Verify computed and expected deposit data roots match
     require(node == deposit_data_root);
 
+    // Avoid overflowing the Merkle tree (and prevent edge case in computing `branch`)
     require(deposit_count < MAX_DEPOSIT_COUNT());
 
     // Add deposit data root to Merkle tree (update a single `branch` node)
