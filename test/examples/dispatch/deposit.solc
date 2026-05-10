@@ -288,6 +288,14 @@ contract DepositContract {
     let amount: memory(bytes) = to_little_endian_64(deposit_amount);
     // TODO: emit DepositEvent
     /*
+    event DepositEvent(
+        bytes pubkey,
+        bytes withdrawal_credentials,
+        bytes amount,
+        bytes signature,
+        bytes index
+    );
+
         emit DepositEvent(
             pubkey,
             withdrawal_credentials,
@@ -296,6 +304,10 @@ contract DepositContract {
             to_little_endian_64(uint64(deposit_count))
         );
     */
+    assembly {
+        // TODO: need to ABI-encode all the arguments
+        log1(0, 0, 0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5)
+    }
 
     // Compute deposit data root (`DepositData` hash tree root)
     let pubkey_root = sha256(MemoryHelpers.concat(pubkey, empty_bytes(16)));
