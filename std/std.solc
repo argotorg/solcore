@@ -15,6 +15,7 @@ export {
   ContractStorage(*),
   Div,
   DynArray,
+  Error,
   Eq,
   HasWordReader,
   IndexAccess,
@@ -166,9 +167,11 @@ function revertEmpty() {
   }
 }
 
+data Error = Error(bytes4);
+
 // Revert with Error selector.
-function revertWithError(selector:bytes4) {
-  let selector_: word = Typedef.rep(selector);
+function revertWithError(e:Error) {
+  let selector_: word = Typedef.rep(e);
   assembly {
     mstore(0, selector_)
     revert(0, 4)
