@@ -144,8 +144,9 @@ function log1(v:t, topic:word) -> () {
   }
 }
 
-function unimplemented() -> () {
-  revertWithError(Error(0xaddc0de1)):
+forall a. function unimplemented() -> a {
+  let Unimplemented = Error(0x6e128399);
+  return revertWithError(Unimplemented);
 }
 
 // ------------------------------------------------------------------
@@ -158,16 +159,17 @@ function revert(s:string) -> () {
 }
 
 // Empty revert.
-function revertEmpty() {
+forall a. function revertEmpty() -> a {
   assembly {
     revert(0, 0)
   }
 }
 
-data Error = Error(bytes4);
+// TODO: use bytes4
+data Error = Error(word);
 
 // Revert with Error selector.
-function revertWithError(e:Error) {
+forall a. function revertWithError(e:Error) -> a {
   let selector_: word = Typedef.rep(e);
   assembly {
     mstore(0, selector_)
