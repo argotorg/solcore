@@ -275,10 +275,8 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
 
         match haveSelector {
           | 0 =>
-              assembly {
-                  mstore(0,0xff)
-                  revert(0,1)
-              }
+            let SelectorTooShort = Error(0x35ffc70e);
+            revertWithError(SelectorTooShort);
           | _ =>
             // set free memory pointer to the output of memoryguard
             // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
