@@ -174,7 +174,8 @@ function revertWithError(e:Error) {
   let selector_: word = Typedef.rep(e);
   assembly {
     mstore(0, selector_)
-    revert(0, 4)
+    // We only care about the BE MSB.
+    revert(28, 4)
   }
 }
 
