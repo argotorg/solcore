@@ -15,7 +15,7 @@ export {
   ContractStorage(*),
   Div,
   DynArray,
-  Error,
+  Error(*),
   Eq,
   HasWordReader,
   IndexAccess,
@@ -167,6 +167,17 @@ forall a. function revertEmpty() -> a {
 
 // TODO: use bytes4
 data Error = Error(word);
+
+instance Error:Typedef(word) {
+    function rep(b : Error) -> word {
+        match b {
+            | Error(w) => return w;
+        }
+    }
+    function abs(w : word) -> Error {
+        return Error(w);
+    }
+}
 
 // Revert with Error selector.
 forall a. function revertWithError(e:Error) -> a {
