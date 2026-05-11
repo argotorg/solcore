@@ -145,10 +145,7 @@ function log1(v:t, topic:word) -> () {
 }
 
 function unimplemented() -> () {
-  assembly {
-    mstore(0, 0xaddc0de1)
-    revert(0, 4)
-  }
+  revertWithError(Error(0xaddc0de1)):
 }
 
 // ------------------------------------------------------------------
@@ -1709,7 +1706,7 @@ forall k v.
     }
     function sload(l:storage(mapping(k,v))) -> storage(mapping(k,v)) {
       // return StorageType.sload(Typedef.rep(l));
-      assembly { mstore(0, 0xaddc0de1) revert(0, 4) }
+      unimplemented();
       return l;
     }
 }
