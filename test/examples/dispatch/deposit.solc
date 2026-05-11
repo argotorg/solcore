@@ -47,11 +47,7 @@ instance memory(bytes):MemoryHelpers {
 
     function len(a: memory(bytes)) -> word {
         let rep = Typedef.rep(a);
-        let res: word;
-        assembly {
-            res := mload(rep)
-        }
-        return res;
+        return mload(rep);
     }
 
     function concat(a: memory(bytes), b: memory(bytes)) -> memory(bytes) {
