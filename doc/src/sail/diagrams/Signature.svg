@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="71" viewBox="0 0 824.0 71" width="824.0">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 30v20m10 -20v20m-10 -10h20" /></g><path d="M40 40h10" /><g>
+<path d="M50 40h0.0" /><path d="M774.0 40h0.0" /><g class="non-terminal ">
+<path d="M50.0 40h0.0" /><path d="M146.5 40h0.0" /><rect height="22" width="96.5" x="50" y="29"></rect><text x="98.25" y="44">SigPrefix</text></g><path d="M146.5 40h10" /><path d="M156.5 40h10" /><g class="terminal ">
+<path d="M166.5 40h0.0" /><path d="M254.5 40h0.0" /><rect height="22" rx="10" ry="10" width="88" x="166.5" y="29"></rect><text x="210.5" y="44">function</text></g><path d="M254.5 40h10" /><path d="M264.5 40h10" /><g class="non-terminal ">
+<path d="M274.5 40h0.0" /><path d="M379.5 40h0.0" /><rect height="22" width="105" x="274.5" y="29"></rect><text x="327" y="44">Identifier</text></g><path d="M379.5 40h10" /><path d="M389.5 40h10" /><g class="terminal ">
+<path d="M399.5 40h0.0" /><path d="M428.0 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="399.5" y="29"></rect><text x="413.75" y="44">(</text></g><path d="M428.0 40h10" /><g>
+<path d="M438.0 40h0.0" /><path d="M574.5 40h0.0" /><path d="M438.0 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M458.0 20h96.5" /></g><path d="M554.5 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M438.0 40h20" /><g class="non-terminal ">
+<path d="M458.0 40h0.0" /><path d="M554.5 40h0.0" /><rect height="22" width="96.5" x="458" y="29"></rect><text x="506.25" y="44">ParamList</text></g><path d="M554.5 40h20" /></g><path d="M574.5 40h10" /><g class="terminal ">
+<path d="M584.5 40h0.0" /><path d="M613.0 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="584.5" y="29"></rect><text x="598.75" y="44">)</text></g><path d="M613.0 40h10" /><g>
+<path d="M623.0 40h0.0" /><path d="M774.0 40h0.0" /><path d="M623.0 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M643.0 20h111.0" /></g><path d="M754.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M623.0 40h20" /><g>
+<path d="M643.0 40h0.0" /><path d="M754.0 40h0.0" /><g class="terminal ">
+<path d="M643.0 40h0.0" /><path d="M680.0 40h0.0" /><rect height="22" rx="10" ry="10" width="37" x="643" y="29"></rect><text x="661.5" y="44">-></text></g><path d="M680.0 40h10" /><path d="M690.0 40h10" /><g class="non-terminal ">
+<path d="M700.0 40h0.0" /><path d="M754.0 40h0.0" /><rect height="22" width="54" x="700" y="29"></rect><text x="727" y="44">Type</text></g></g><path d="M754.0 40h20" /></g></g><path d="M774.0 40h10" /><path d="M 784.0 40 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>

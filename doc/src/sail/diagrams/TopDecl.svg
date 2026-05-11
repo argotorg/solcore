@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="272" viewBox="0 0 233.5 272" width="233.5">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 21v20m10 -20v20m-10 -10h20" /></g><g>
+<path d="M40 31h0.0" /><path d="M193.5 31h0.0" /><path d="M40.0 31h20" /><g class="non-terminal ">
+<path d="M60.0 31h12.75" /><path d="M160.75 31h12.75" /><rect height="22" width="88" x="72.75" y="20"></rect><text x="116.75" y="35">Contract</text></g><path d="M173.5 31h20" /><path d="M40.0 31a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10" /><g class="non-terminal ">
+<path d="M60.0 61h12.75" /><path d="M160.75 61h12.75" /><rect height="22" width="88" x="72.75" y="50"></rect><text x="116.75" y="65">Function</text></g><path d="M173.5 61a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10" /><path d="M40.0 31a10 10 0 0 1 10 10v40a10 10 0 0 0 10 10" /><g class="non-terminal ">
+<path d="M60.0 91h12.75" /><path d="M160.75 91h12.75" /><rect height="22" width="88" x="72.75" y="80"></rect><text x="116.75" y="95">ClassDef</text></g><path d="M173.5 91a10 10 0 0 0 10 -10v-40a10 10 0 0 1 10 -10" /><path d="M40.0 31a10 10 0 0 1 10 10v70a10 10 0 0 0 10 10" /><g class="non-terminal ">
+<path d="M60.0 121h17.0" /><path d="M156.5 121h17.0" /><rect height="22" width="79.5" x="77" y="110"></rect><text x="116.75" y="125">InstDef</text></g><path d="M173.5 121a10 10 0 0 0 10 -10v-70a10 10 0 0 1 10 -10" /><path d="M40.0 31a10 10 0 0 1 10 10v100a10 10 0 0 0 10 10" /><g class="non-terminal ">
+<path d="M60.0 151h17.0" /><path d="M156.5 151h17.0" /><rect height="22" width="79.5" x="77" y="140"></rect><text x="116.75" y="155">DataDef</text></g><path d="M173.5 151a10 10 0 0 0 10 -10v-100a10 10 0 0 1 10 -10" /><path d="M40.0 31a10 10 0 0 1 10 10v130a10 10 0 0 0 10 10" /><g class="non-terminal ">
+<path d="M60.0 181h0.0" /><path d="M173.5 181h0.0" /><rect height="22" width="113.5" x="60" y="170"></rect><text x="116.75" y="185">TypeSynonym</text></g><path d="M173.5 181a10 10 0 0 0 10 -10v-130a10 10 0 0 1 10 -10" /><path d="M40.0 31a10 10 0 0 1 10 10v160a10 10 0 0 0 10 10" /><g class="non-terminal ">
+<path d="M60.0 211h4.25" /><path d="M169.25 211h4.25" /><rect height="22" width="105" x="64.25" y="200"></rect><text x="116.75" y="215">ExportDecl</text></g><path d="M173.5 211a10 10 0 0 0 10 -10v-160a10 10 0 0 1 10 -10" /><path d="M40.0 31a10 10 0 0 1 10 10v190a10 10 0 0 0 10 10" /><g class="non-terminal ">
+<path d="M60.0 241h21.25" /><path d="M152.25 241h21.25" /><rect height="22" width="71" x="81.25" y="230"></rect><text x="116.75" y="245">Pragma</text></g><path d="M173.5 241a10 10 0 0 0 10 -10v-190a10 10 0 0 1 10 -10" /></g><path d="M 193.5 31 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>
