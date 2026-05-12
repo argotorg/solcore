@@ -3,7 +3,7 @@ class self : invokable(args, ret) {
     function invoke (s:self,  a:args) -> ret;
   }
 
-  function id(x) {
+  forall a . function id(x : a) -> a {
     return x ;
   }
 

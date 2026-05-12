@@ -16,7 +16,7 @@ data UIP  (m, idx, member) = UIP(m ,idx);
 // Typed Index (access) Proxy
 data TIP  (m, idx, member) = TIP(m ,idx, Proxy(member));
 
-function setbal(ref: storage(dict(address, word)) , src : address, amt: word) {
+function setbal(ref: storage(dict(address, word)) , src : address, amt: word) -> () {
   /* Based on inference:
     ref : storage(dict(address, word))
     => ref[src] : storage(word)  assuming src is of the right type
@@ -127,7 +127,7 @@ instance storage(a):Assign(a) {
 }
 
 contract Tiamat {
-  function main() {
+  function main() -> word {
     let allowances : storage(dict(address, dict(address, word)));
     let src = address(17);
     setAllowance(allowances, address(1),address(2), 666);

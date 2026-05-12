@@ -12,7 +12,7 @@ function caller() -> address {
   return address(res);
 }
 
-function require1fail() {
+function require1fail() -> () {
   let res: word;
   assembly {
     mstore(0x0, 0x72657175697265313a204641494c) // "require1: FAIL"
@@ -21,7 +21,7 @@ function require1fail() {
   return (); // for the typechecker
 }
 
-function require1(cond: bool) {
+function require1(cond: bool) -> () {
     match cond {
     | false => return require1fail();
     | true => return ();
@@ -60,7 +60,7 @@ contract Mini {
 */
 
 //  function transferFrom(src:address, dst:address, amt:uint256) -> bool {
-  function transferFrom(src, dst, amt) -> bool  {
+  function transferFrom(src : address, dst : address, amt : uint256) -> bool  {
      require1(ge(balances[src], amt));
 
      match (Eq.eq(src, msg_sender)) {

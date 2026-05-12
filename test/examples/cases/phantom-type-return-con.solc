@@ -1,5 +1,5 @@
 data Foo(a) = Foo(word);
-  function wrap(x) {
+  forall a . function wrap(x : word) -> Foo(a) {
     return Foo(x);
   }
 

@@ -1,16 +1,16 @@
 contract Option {
   data Option(a) = None | Some(a);
 
-  function just(x) { return Option.Some(x); }
+  function just(x : word) -> Option(word) { return Option.Some(x); }
 
-  function maybe(n, o) {
+  function maybe(n : word, o : Option(word)) -> word {
     match o {
       | Option.None => return n;
       | Option.Some(x) => return x;
     }
   }
 
-  function join(mmx) {
+  function join(mmx : Option(Option(word))) -> Option(word) {
     match mmx {
       | Option.None => return Option.None;
       | Option.Some(Option.None) => return Option.None;
@@ -18,7 +18,7 @@ contract Option {
     }
   }
 
-  function join2(mmx) {
+  function join2(mmx : Option(Option(word))) -> Option(word) {
     match mmx {
       | Option.Some(m) => match m {
           | Option.None => return Option.None;
@@ -28,7 +28,7 @@ contract Option {
     }
   }
 
-  function main() {
+  function main() -> word {
    //  return maybe(0, join(Option.Some(Option.Some(42))));
    return 42;
   }

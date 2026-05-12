@@ -7,6 +7,6 @@ function foo(x : @word) -> word {
   return 0;
 }
 
-function fuz(y) -> word {
+function fuz(y : word) -> word {
   return y + foo(@word);
 }

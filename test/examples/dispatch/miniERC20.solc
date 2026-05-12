@@ -17,7 +17,7 @@ function myrevert(msg: word) -> () {
        assembly { mstore(0, msg) revert(0, 32) }
 }
 
-function require(cond: bool, msg: word ) {
+function require(cond: bool, msg: word ) -> () {
       if( !cond ) { myrevert(msg); }
 }
 

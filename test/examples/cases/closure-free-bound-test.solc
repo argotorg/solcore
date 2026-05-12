@@ -1,7 +1,7 @@
-function foo (b) {
+function foo (b : bool) -> () {
   let y:word;
-  let f = lam(x) {
+  let f = lam(x : word) {
     if (b) { let z = 7; y = z; } else {x = 1;}
   };
-  return f(44);
+  f(44);
 }

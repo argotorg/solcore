@@ -1,5 +1,5 @@
 contract Add1 {
-  function main() {
+  function main() -> word {
     let res: word;
     assembly {
        res := add(40, 2)

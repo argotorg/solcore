@@ -22,13 +22,13 @@ instance B : Neg {
 }
 
 
-function pairfst (p) {
+forall a b . function pairfst (p : Pair(a,b)) -> a {
   match p {
     | Pair(x,y) => return x;
   }
 }
 
-function pairsnd(p) {
+forall a b . function pairsnd(p : Pair(a,b)) -> b {
   match p {
     | Pair(x,y) => return y;
   }

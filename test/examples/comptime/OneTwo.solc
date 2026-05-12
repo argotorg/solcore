@@ -7,15 +7,15 @@ function addWord(l: word, r: word) -> word {
   return rw;
 }
 
-  function zero () {
+  function zero () -> word {
     return 0;
   }
 
-function one() {
+function one() -> word {
     return addWord(1, zero()) ;
   }
 
-function two () {
+function two () -> word {
   let x = zero();
   x = addWord(x, one());
   x = addWord(x,x);

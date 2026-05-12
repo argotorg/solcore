@@ -1,4 +1,4 @@
-  function fst (x) {
+  forall a b . function fst (x : (a,b)) -> a {
     match x {
     | (a,_) => return a;
     }
@@ -10,18 +10,18 @@
     }
   }
 
-  function uncurry(f,x) {
+  function uncurry(f : (word, word) -> word, x : (word,word)) -> word {
     match x {
     | (a,b) => return f(a,b);
     }
   }
 
-  function snds (p1, p2) {
+  function snds (p1 : (word,word), p2 : (word,word)) -> (word,word) {
     match p1, p2 {
     | (a,b) , (c,d) => return (b,d);
     }
   }
 
-  function curry(f,x,y) {
+  function curry(f : ((word,word)) -> word, x : word, y : word) -> word {
     return f((x,y)) ;
   }

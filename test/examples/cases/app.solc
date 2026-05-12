@@ -1,14 +1,17 @@
-function app () {
-  return lam (f, x) {return f(x);};
+forall a b c . c : invokable(a, b) => function app (f : c, x : a) -> b {
+  return invokable.invoke(f, x);
 }
 
-function id (x) {
-  return x;
+data t_id = t_id;
+
+instance t_id : invokable(word, word) {
+  function invoke(self : t_id, x : word) -> word {
+    return x;
+  }
 }
 
 function foo() -> word {
-  let f = app();
-  return f(id,0);
+  return app(t_id, 0);
 }
 
 contract C {
