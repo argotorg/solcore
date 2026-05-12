@@ -140,7 +140,7 @@ function log1(v:t, topic:word) -> () {
   }
 }
 
-function unimplemented() {
+function unimplemented() -> () {
   assembly {
     mstore(0, 0xaddc0de1)
     revert(0, 4)
@@ -181,14 +181,14 @@ function not(b:bool) -> bool {
   }
 }
 
-function frombool(b) {
+function frombool(b : bool) -> word {
  match b {
    | false => return 0;
    | true => return 1;
  }
 }
 
-function tobool(x: word) {
+function tobool(x: word) -> bool {
   match x {
     | 0 => return false;
     | _ => return true;
@@ -248,7 +248,7 @@ instance word:Eq {
 }
 
 forall a. a:Eq =>
-function ne(x:a, y:a) {
+function ne(x:a, y:a) -> bool {
   return not(Eq.eq(x,y));
 }
 
@@ -625,7 +625,7 @@ function get_free_memory() -> word {
 }
 
 // set the value stored in memory(0x40)
-function set_free_memory(loc : word) {
+function set_free_memory(loc : word) -> () {
     assembly { mstore(0x40, loc) }
 }
 
@@ -1306,7 +1306,7 @@ function sload_(x:word) -> word {
     return res;
   }
 
-function sstore_(a:word, v:word) {
+function sstore_(a:word, v:word) -> () {
     assembly { sstore(a,v) }
 }
 
@@ -1616,7 +1616,8 @@ forall k v.
     }
     function sload(l:storage(mapping(k,v))) -> storage(mapping(k,v)) {
       // return StorageType.sload(Typedef.rep(l));
-      return unimplemented();
+      assembly { mstore(0, 0xaddc0de1) revert(0, 4) }
+      return l;
     }
 }
 
