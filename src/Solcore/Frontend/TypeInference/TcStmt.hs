@@ -1209,6 +1209,19 @@ fullSignature sig@(Signature _ _ _ ps t) =
     isTyped (Typed _ _) = True
     isTyped _ = False
 
+requireAnnotations :: FunDef Name -> TcM ()
+requireAnnotations (FunDef sig@(Signature _ _ _ ps rt) _) =
+  unless (all isTyped ps && isJust rt) $
+    tcmError $
+      unlines
+        [ "Top-level function must have complete type annotations:",
+          "  " ++ pretty sig,
+          "Annotate every parameter (name : Type) and provide a return type (-> Type)."
+        ]
+  where
+    isTyped (Typed _ _) = True
+    isTyped _ = False
+
 findPred :: Name -> [Pred] -> Maybe Pred
 findPred _ [] = Nothing
 findPred n (p@(InCls n' _ _) : ps)

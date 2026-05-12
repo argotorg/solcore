@@ -192,6 +192,7 @@ tcTopDecl (TContr c) =
     pure (TContr c')
 tcTopDecl (TFunDef fd) =
   do
+    requireAnnotations fd
     fd' <- tcBindGroup [fd]
     case fd' of
       (fd1 : _) -> pure (TFunDef fd1)
@@ -204,7 +205,9 @@ tcTopDecl (TMutualDef ts) =
   do
     let f (TFunDef fd) = fd
         f td = error $ "tcTopDecl: expected function in mutual definition, got " ++ show td
-    ts' <- tcBindGroup (map f ts)
+    let fds = map f ts
+    mapM_ requireAnnotations fds
+    ts' <- tcBindGroup fds
     pure (TMutualDef $ map TFunDef ts')
 tcTopDecl (TDataDef d) =
   do
@@ -272,6 +275,7 @@ tcDecl :: ContractDecl Name -> TcM (ContractDecl Id)
 tcDecl (CFieldDecl fd) = CFieldDecl <$> tcField fd
 tcDecl (CFunDecl d) =
   do
+    requireAnnotations d
     d' <- tcBindGroup [d]
     case d' of
       [] -> throwError "Impossible! Empty function binding!"
@@ -280,7 +284,9 @@ tcDecl (CMutualDecl ds) =
   do
     let f (CFunDecl fd) = fd
         f d = error $ "tcDecl: expected function declaration in mutual group, got " ++ show d
-    ds' <- tcBindGroup (map f ds)
+    let fds = map f ds
+    mapM_ requireAnnotations fds
+    ds' <- tcBindGroup fds
     pure (CMutualDecl (map CFunDecl ds'))
 tcDecl (CConstrDecl cd) = CConstrDecl <$> tcConstructor cd
 tcDecl (CDataDecl d) = CDataDecl <$> tcDataDecl d
