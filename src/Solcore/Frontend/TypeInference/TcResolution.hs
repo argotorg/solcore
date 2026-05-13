@@ -6,7 +6,6 @@ import Control.Monad.State
 import Data.List (sort)
 import Data.Map qualified as Map
 import Data.Maybe
-import Data.Set qualified as Set
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcEnv
@@ -644,56 +643,200 @@ legacyEntail _ _ qs (t1 :~: t2) = t1 == t2 || (t1 :~: t2) `elem` qs
 
 type EntailKey = ([Pred], Pred)
 
-type EntailTable = Map.Map EntailKey Bool
+data EntailTarget
+  = EntailRoot
+  | EntailAnswer EntailKey
+  deriving (Eq, Ord, Show)
 
-type ActiveEntails = Set.Set EntailKey
+data EntailWaiter
+  = EntailWaiter
+  { entailWaiterTarget :: EntailTarget,
+    entailWaiterQs :: [Pred],
+    entailWaiterRest :: [Pred]
+  }
+  deriving (Show)
+
+data EntailBranch
+  = EntailBranch
+  { entailBranchQs :: [Pred],
+    entailBranchGoals :: [Pred]
+  }
+  deriving (Show)
+
+data EntailGenerator
+  = EntailGenerator
+  { entailGeneratorKey :: EntailKey,
+    entailGeneratorBranches :: [EntailBranch],
+    entailGeneratorIndex :: Int
+  }
+  deriving (Show)
+
+data EntailEntry
+  = EntailEntry
+  { entailEntryWaiters :: [EntailWaiter],
+    entailEntryAnswered :: Bool,
+    entailEntryExhausted :: Bool
+  }
+  deriving (Show)
+
+data EntailSearch
+  = EntailSearch
+  { entailGeneratorStack :: [EntailGenerator],
+    entailResumeStack :: [EntailWaiter],
+    entailEntries :: Map.Map EntailKey EntailEntry,
+    entailRootAnswered :: Bool
+  }
+  deriving (Show)
+
+emptyEntailSearch :: EntailSearch
+emptyEntailSearch =
+  EntailSearch
+    { entailGeneratorStack = [],
+      entailResumeStack = [],
+      entailEntries = Map.empty,
+      entailRootAnswered = False
+    }
+
+emptyEntailEntry :: EntailEntry
+emptyEntailEntry = EntailEntry [] False False
 
 tabledEntail :: ClassTable -> InstTable -> [Pred] -> Pred -> Bool
 tabledEntail ctable itable qs p =
-  fst (tabledEntailWith ctable itable Set.empty Map.empty qs p)
+  entailRootAnswered $
+    execState
+      ( do
+          newEntailConsumer ctable itable EntailRoot qs [p]
+          entailSearchLoop ctable itable
+      )
+      emptyEntailSearch
 
-tabledEntailWith :: ClassTable -> InstTable -> ActiveEntails -> EntailTable -> [Pred] -> Pred -> (Bool, EntailTable)
-tabledEntailWith ctable itable active table qs p =
-  case Map.lookup key table of
-    Just r -> (r, table)
-    Nothing
-      | key `Set.member` active ->
-          (False, Map.insert key False table)
+entailSearchLoop :: ClassTable -> InstTable -> State EntailSearch ()
+entailSearchLoop ctable itable = do
+  st <- get
+  unless (entailRootAnswered st) $
+    case entailResumeStack st of
+      (waiter : rest) -> do
+        put st {entailResumeStack = rest}
+        newEntailConsumer ctable itable (entailWaiterTarget waiter) (entailWaiterQs waiter) (entailWaiterRest waiter)
+        entailSearchLoop ctable itable
+      [] ->
+        case entailGeneratorStack st of
+          [] -> pure ()
+          _ -> do
+            generateEntailStep ctable itable
+            entailSearchLoop ctable itable
+
+newEntailConsumer :: ClassTable -> InstTable -> EntailTarget -> [Pred] -> [Pred] -> State EntailSearch ()
+newEntailConsumer _ _ target _ [] =
+  addEntailAnswer target
+newEntailConsumer ctable itable target qs (p : ps)
+  | directlyEntailed ctable qs p =
+      newEntailConsumer ctable itable target qs ps
+  | otherwise =
+      newEntailSubgoal itable target qs p ps
+
+newEntailSubgoal :: InstTable -> EntailTarget -> [Pred] -> Pred -> [Pred] -> State EntailSearch ()
+newEntailSubgoal itable target qs p rest = do
+  let key = canonicalEntailKey qs p
+      waiter = EntailWaiter target qs rest
+  mEntry <- gets (Map.lookup key . entailEntries)
+  case mEntry of
+    Nothing -> do
+      let entry = emptyEntailEntry
+          generator = EntailGenerator key (entailBranches itable qs p) 0
+      modify $ \st ->
+        st
+          { entailEntries = Map.insert key entry (entailEntries st),
+            entailGeneratorStack = generator : entailGeneratorStack st
+          }
+      registerEntailWaiter key waiter
+    Just entry
+      | entailEntryAnswered entry ->
+          enqueueEntailResume waiter
+      | entailEntryExhausted entry ->
+          pure ()
       | otherwise ->
-          let (r, table') = tabledEntailStep ctable itable (Set.insert key active) table qs p
-           in (r, Map.insert key r table')
-  where
-    key = canonicalEntailKey qs p
+          registerEntailWaiter key waiter
+
+registerEntailWaiter :: EntailKey -> EntailWaiter -> State EntailSearch ()
+registerEntailWaiter key waiter =
+  modifyEntailEntry key $ \entry ->
+    entry {entailEntryWaiters = waiter : entailEntryWaiters entry}
+
+enqueueEntailResume :: EntailWaiter -> State EntailSearch ()
+enqueueEntailResume waiter =
+  modify $ \st ->
+    st {entailResumeStack = waiter : entailResumeStack st}
+
+generateEntailStep :: ClassTable -> InstTable -> State EntailSearch ()
+generateEntailStep ctable itable = do
+  st <- get
+  case entailGeneratorStack st of
+    [] -> pure ()
+    (generator : rest)
+      | entailGeneratorIndex generator < length (entailGeneratorBranches generator) -> do
+          let branch = entailGeneratorBranches generator !! entailGeneratorIndex generator
+              generator' = generator {entailGeneratorIndex = entailGeneratorIndex generator + 1}
+          put st {entailGeneratorStack = generator' : rest}
+          newEntailConsumer
+            ctable
+            itable
+            (EntailAnswer (entailGeneratorKey generator))
+            (entailBranchQs branch)
+            (entailBranchGoals branch)
+      | otherwise -> do
+          put st {entailGeneratorStack = rest}
+          markEntailExhausted (entailGeneratorKey generator)
+
+addEntailAnswer :: EntailTarget -> State EntailSearch ()
+addEntailAnswer EntailRoot =
+  modify $ \st -> st {entailRootAnswered = True}
+addEntailAnswer (EntailAnswer key) = do
+  entry <- gets (fromMaybe emptyEntailEntry . Map.lookup key . entailEntries)
+  unless (entailEntryAnswered entry) $ do
+    modifyEntailEntry key $ \entry' ->
+      entry' {entailEntryAnswered = True}
+    mapM_ enqueueEntailResume (entailEntryWaiters entry)
+
+markEntailExhausted :: EntailKey -> State EntailSearch ()
+markEntailExhausted key =
+  modifyEntailEntry key $ \entry ->
+    entry {entailEntryExhausted = True}
+
+modifyEntailEntry :: EntailKey -> (EntailEntry -> EntailEntry) -> State EntailSearch ()
+modifyEntailEntry key f =
+  modify $ \st ->
+    st
+      { entailEntries =
+          Map.insert
+            key
+            (f (fromMaybe emptyEntailEntry (Map.lookup key (entailEntries st))))
+            (entailEntries st)
+      }
+
+directlyEntailed :: ClassTable -> [Pred] -> Pred -> Bool
+directlyEntailed ctable qs p@(InCls _ _ _) =
+  p `elem` qs || any (p `elem`) (map (bySuperM ctable) qs)
+directlyEntailed _ qs (t1 :~: t2) =
+  t1 == t2 || (t1 :~: t2) `elem` qs
+
+entailBranches :: InstTable -> [Pred] -> Pred -> [EntailBranch]
+entailBranches itable qs p@(InCls n _ _) =
+  case Map.lookup n itable of
+    Nothing -> []
+    Just its ->
+      [ EntailBranch (apply s qs) (apply s ps)
+        | (ps, s, _) <- byInstsM its p
+      ]
+entailBranches _ _ _ = []
 
 canonicalEntailKey :: [Pred] -> Pred -> EntailKey
 canonicalEntailKey qs p =
   let allPreds = canonicalPreds (qs ++ [p])
-   in (take (length qs) allPreds, last allPreds)
-
-tabledEntailStep :: ClassTable -> InstTable -> ActiveEntails -> EntailTable -> [Pred] -> Pred -> (Bool, EntailTable)
-tabledEntailStep ctable itable active table qs p@(InCls n _ _)
-  | any (p `elem`) (map (bySuperM ctable) qs) || p `elem` qs =
-      (True, table)
-  | otherwise =
-      case Map.lookup n itable of
-        Nothing -> (False, table)
-        Just its ->
-          case byInstM its p of
-            Nothing -> (False, table)
-            Just (ps', s, _) ->
-              let ps1 = apply s ps'
-                  qs1 = apply s qs
-               in tabledEntailAll ctable itable active table qs1 ps1
-tabledEntailStep _ _ _ table qs (t1 :~: t2) =
-  (t1 == t2 || (t1 :~: t2) `elem` qs, table)
-
-tabledEntailAll :: ClassTable -> InstTable -> ActiveEntails -> EntailTable -> [Pred] -> [Pred] -> (Bool, EntailTable)
-tabledEntailAll _ _ _ table _ [] = (True, table)
-tabledEntailAll ctable itable active table qs (p : ps) =
-  let (r, table') = tabledEntailWith ctable itable active table qs p
-   in if r
-        then tabledEntailAll ctable itable active table' qs ps
-        else (False, table')
+      p' = last allPreds
+      qs' = sort (take (length qs) allPreds)
+      normalized = canonicalPreds (qs' ++ [p'])
+   in (take (length qs) normalized, last normalized)
 
 -- error messages
 
