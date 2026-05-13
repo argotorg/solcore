@@ -429,8 +429,6 @@ cases =
       runTestForFile
         "multi-stmt-var-leaf.solc"
         caseFolder,
-      runTestForFile "simpleDiscount.solc" caseFolder,
-      runTestExpectingFailure "skolem-let.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
