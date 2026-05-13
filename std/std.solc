@@ -46,6 +46,7 @@ export {
   byte(*),
   bytes,
   bytes4(*),
+  bytes32(*),
   calldata(*),
   concatLit,
   eqWord,
@@ -546,6 +547,33 @@ instance bytes4:Typedef(word) {
     }
 }
 
+// --- Bytes32 ---
+
+data bytes32 = bytes32(word);
+
+instance bytes32:Typedef(word) {
+    function rep(b : bytes32) -> word {
+        match b {
+            | bytes32(w) => return w;
+        }
+    }
+    function abs(w : word) -> bytes32 {
+        return bytes32(w);
+    }
+}
+
+instance bytes32:Eq {
+  function eq(x : bytes32, y : bytes32) -> bool {
+    return Eq.eq(Typedef.rep(x), Typedef.rep(y));
+  }
+}
+
+instance bytes32:Ord {
+  function gt(x : bytes32, y : bytes32) -> bool {
+    return Ord.gt(Typedef.rep(x), Typedef.rep(y));
+  }
+}
+
 // --- Pointers ---
 
 data memory(t) = memory(word);
@@ -1017,6 +1045,15 @@ instance uint256:ABIEncode {
     }
 }
 
+instance bytes32:ABIEncode {
+    // a bytes32 is written directly into the head
+    function encodeInto(x:bytes32, basePtr:word, offset:word, tail:word) -> word {
+        let repx : word = Typedef.rep(x);
+        assembly { mstore(add(basePtr, offset), repx) }
+        return tail;
+    }
+}
+
 instance bool:ABIEncode {
 
     function encodeInto(x:bool, basePtr:word, offset:word, tail:word) -> word {
@@ -1143,10 +1180,17 @@ forall ty reader . reader:WordReader => instance ABIDecoder(ty, reader):WordRead
     }
 }
 
-// ABI Decoding for uint
+// ABI Decoding for uint256
 forall reader . reader:WordReader => instance ABIDecoder(uint256, reader):ABIDecode(uint256) {
     function decode(ptr:ABIDecoder(uint256, reader), currentHeadOffset:word) -> uint256 {
         return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : uint256;
+    }
+}
+
+// ABI Decoding for bytes32
+forall reader . reader:WordReader => instance ABIDecoder(bytes32, reader):ABIDecode(bytes32) {
+    function decode(ptr:ABIDecoder(bytes32, reader), currentHeadOffset:word) -> bytes32 {
+        return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : bytes32;
     }
 }
 
@@ -1356,6 +1400,12 @@ instance uint256:StorageSize {
     }
 }
 
+instance bytes32:StorageSize {
+    function size(x:Proxy(bytes32)) -> word {
+        return 1;
+    }
+}
+
 instance address:StorageSize {
     function size(x:Proxy(address)) -> word {
         return 1;
@@ -1434,6 +1484,11 @@ function storeViaWord(ptr:word, value:a) -> () {
 instance uint256:StorageType {
   function sload(ptr:word) -> uint256 { return uint256(StorageType.sload(ptr):word); }
   function store(ptr:word, value:uint256) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
+}
+
+instance bytes32:StorageType {
+  function sload(ptr:word) -> bytes32 { return bytes32(StorageType.sload(ptr):word); }
+  function store(ptr:word, value:bytes32) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
 }
 
 
@@ -1602,6 +1657,15 @@ default instance a:CanStore(a) {
       StorageType.store(Typedef.rep(l), r);
     }
     function sload(l:storage(uint256)) -> uint256 {
+      return StorageType.sload(Typedef.rep(l));
+    }
+}
+
+ instance storage(bytes32):CanStore(bytes32) {
+    function store(l:storage(bytes32), r:bytes32) -> () {
+      StorageType.store(Typedef.rep(l), r);
+    }
+    function sload(l:storage(bytes32)) -> bytes32 {
       return StorageType.sload(Typedef.rep(l));
     }
 }
