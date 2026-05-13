@@ -428,7 +428,7 @@ cases =
         caseFolder,
       runTestForFile
         "multi-stmt-var-leaf.solc"
-        caseFolder,
+        caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
