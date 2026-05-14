@@ -229,6 +229,8 @@ default instance t:Typedef(t) {
 }
 
 // --- Equality ---
+// Note: All these are used by the compiler by name.
+
 forall a.
 class a:Eq {
   function eq(x:a, y:a) -> bool;
@@ -240,6 +242,7 @@ function ne(x:a, y:a) -> bool {
 }
 
 // --- Ordering ---
+// Note: All these are used by the compiler by name.
 
 forall a. a:Eq =>
 class a:Ord {
@@ -266,8 +269,8 @@ function lt(x:a, y:a) -> bool {
     return Ord.gt(y,x);
 }
 
-
 // --- Arithmetic ---
+// Note: All these are used by the compiler by name.
 
 forall t . class t:Add {
     function add(l: t, r: t) -> t;
