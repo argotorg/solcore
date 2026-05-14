@@ -324,18 +324,14 @@ default instance a:Num {
 // --- Word Arithmetic & Logic ---
 // TODO: make these checked
 
+// These are intended to be folded by MastEval when their arguments are
+// statically known word values.
 function eqWord(x:word, y:word) -> bool {
   let res : word;
   assembly {
      res := eq(x, y)
   }
   return tobool(res);
-}
-
-instance word:Eq {
-  function eq(x:word, y:word) -> bool {
-    return eqWord(x, y);
-  }
 }
 
 function gtWord(x:word, y:word) -> bool {
@@ -346,12 +342,6 @@ function gtWord(x:word, y:word) -> bool {
   return tobool(res);
 }
 
-instance word:Ord {
-  function gt(x:word, y:word) -> bool {
-    return gtWord(x, y);
-  }
-}
-
 function addWord(l: word, r: word) -> word {
   let rw : word;
   assembly {
@@ -360,18 +350,30 @@ function addWord(l: word, r: word) -> word {
   return rw;
 }
 
-instance word:Add {
-    function add(l: word, r: word) -> word {
-        return addWord(l, r);
-    }
-}
-
 function subWord(l: word, r: word) -> word {
     let rw : word;
     assembly {
         rw := sub(l,r);
     }
     return rw;
+}
+
+instance word:Eq {
+  function eq(x:word, y:word) -> bool {
+    return eqWord(x, y);
+  }
+}
+
+instance word:Ord {
+  function gt(x:word, y:word) -> bool {
+    return gtWord(x, y);
+  }
+}
+
+instance word:Add {
+    function add(l: word, r: word) -> word {
+        return addWord(l, r);
+    }
 }
 
 instance word:Sub {
