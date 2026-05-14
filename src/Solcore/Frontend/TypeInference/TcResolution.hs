@@ -6,6 +6,7 @@ import Control.Monad.State
 import Data.List (sort)
 import Data.Map qualified as Map
 import Data.Maybe
+import Data.Set qualified as Set
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcEnv
@@ -595,14 +596,19 @@ byInstsM ienv p@(InCls _ _ _) =
 byInstsM _ p = error ("Internal error: byInstsM used on an unsupported constraint" ++ pretty p)
 
 bySuperM :: ClassTable -> Pred -> [Pred]
-bySuperM ctable p@(InCls c _ _) =
-  case Map.lookup c ctable of
-    Nothing -> [p]
-    Just cinfo ->
-      case match (classpred cinfo) p of
-        Left _ -> [p]
-        Right u -> p : concatMap (bySuperM ctable) (apply u $ supers cinfo)
-bySuperM _ _ = []
+bySuperM ctable = go Set.empty
+  where
+    go visited p@(InCls c _ _)
+      | c `Set.member` visited = []
+      | otherwise =
+          case Map.lookup c ctable of
+            Nothing -> [p]
+            Just cinfo ->
+              case match (classpred cinfo) p of
+                Left _ -> [p]
+                Right u ->
+                  p : concatMap (go (Set.insert c visited)) (apply u $ supers cinfo)
+    go _ _ = []
 
 isHnf :: Pred -> Bool
 isHnf (InCls _ t _) = hnf t
