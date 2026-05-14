@@ -234,20 +234,6 @@ class a:Eq {
   function eq(x:a, y:a) -> bool;
 }
 
-function eqWord(x:word, y:word) -> bool {
-  let res : word;
-  assembly {
-     res := eq(x, y)
-  }
-  return tobool(res);
-}
-
-instance word:Eq {
-  function eq(x:word, y:word) -> bool {
-    return eqWord(x, y);
-  }
-}
-
 forall a. a:Eq =>
 function ne(x:a, y:a) -> bool {
   return not(Eq.eq(x,y));
@@ -303,16 +289,6 @@ forall t . class t:Mod {
     function mod(l: t, r: t) -> t;
 }
 
-instance word : Mod {
-  function mod (l : word, r : word) -> word {
-    let res : word;
-    assembly {
-      res := mod(l,r);
-    }
-    return res;
-  }
-}
-
 forall t . class t:Bounded {
   function minVal() -> t;
   function maxVal() -> t;
@@ -342,8 +318,36 @@ default instance a:Num {
   function gt(x: a, y: a) -> bool { return Ord.gt(x, y); }
 }
 
-// --- Word Arithmetic ---
+// --- Word Arithmetic & Logic ---
 // TODO: make these checked
+
+function eqWord(x:word, y:word) -> bool {
+  let res : word;
+  assembly {
+     res := eq(x, y)
+  }
+  return tobool(res);
+}
+
+instance word:Eq {
+  function eq(x:word, y:word) -> bool {
+    return eqWord(x, y);
+  }
+}
+
+function gtWord(x:word, y:word) -> bool {
+  let res : word;
+  assembly {
+     res := gt(x, y)
+  }
+  return tobool(res);
+}
+
+instance word:Ord {
+  function gt(x:word, y:word) -> bool {
+    return gtWord(x, y);
+  }
+}
 
 function addWord(l: word, r: word) -> word {
   let rw : word;
@@ -399,6 +403,16 @@ instance word:Div {
     }
 }
 
+instance word : Mod {
+  function mod (l : word, r : word) -> word {
+    let res : word;
+    assembly {
+      res := mod(l,r);
+    }
+    return res;
+  }
+}
+
 function hash1(x: word) -> word {
   let result: word = 0;
   assembly {
@@ -418,19 +432,6 @@ function hash2(x: word, y: word) -> word {
   return result;
 }
 
-function gtWord(x:word, y:word) -> bool {
-  let res : word;
-  assembly {
-     res := gt(x, y)
-  }
-  return tobool(res);
-}
-
-instance word:Ord {
-  function gt(x:word, y:word) -> bool {
-    return gtWord(x, y);
-  }
-}
 // --- Value Types ---
 
 forall t. t:Typedef(word) =>
