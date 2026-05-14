@@ -330,6 +330,7 @@ class a:Num {
   function add(x:a, y:a) -> a;
   function sub(x:a, y:a) -> a;
   function gt(x:a, y:a) -> bool;
+  function lt(x:a, y:a) -> bool;
 }
 
 forall a. a:Add, a:Sub, a:Bounded, a:Eq, a:Ord, a:Typedef(word) =>
@@ -340,6 +341,7 @@ default instance a:Num {
   function add(x:a, y:a) -> a { return Add.add(x,y); }
   function sub(x:a, y:a) -> a { return Sub.sub(x,y); }
   function gt(x: a, y: a) -> bool { return Ord.gt(x, y); }
+  function lt(x: a, y: a) -> bool { return Ord.gt(y, x); }
 }
 
 // --- Word Arithmetic ---
