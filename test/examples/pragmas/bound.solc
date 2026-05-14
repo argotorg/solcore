@@ -1,4 +1,3 @@
-pragma no-bounded-variable-condition F;
 
 forall a . class a:D { function f(x:a); }
 forall a b . class a:F(b) {}

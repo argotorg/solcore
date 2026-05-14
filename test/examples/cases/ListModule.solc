@@ -5,17 +5,17 @@ contract ListModule {
 
   forall a b c . function zipWith (f : (a,b) -> c,xs : List(a),ys : List(b)) -> List(c) {
     match xs, ys {
-    | Nil, Nil => return Nil ;
-    | Cons(x1,xs1), Cons(y1,ys1) =>
-      return Cons(f(x1,y1), zipWith(f,xs1,ys1)) ;
-    | _ , _ => return Nil;
+    | List.Nil, List.Nil => return List.Nil ;
+    | List.Cons(x1,xs1), List.Cons(y1,ys1) =>
+      return List.Cons(f(x1,y1), zipWith(f,xs1,ys1)) ;
+    | _, _ => return List.Nil;
     }
   }
 
   forall a b . function foldr(f : (a,b) -> b, v : b, xs : List(a)) -> b {
     match xs {
-    | Nil => return v;
-    | Cons(y,ys) =>
+    | List.Nil => return v;
+    | List.Cons(y,ys) =>
       return f(y, foldr(f,v,ys)) ;
     }
   }

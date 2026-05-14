@@ -3,31 +3,31 @@ contract Logic {
 
   function not (x) {
     match x {
-    | True => return False ;
-    | False => return True ;
+    | Bool.True => return Bool.False ;
+    | Bool.False => return Bool.True ;
     }
   }
 
   function and(x, y) {
     match x, y {
-    | False, _ => return False ;
-    | True , _ => return y ;
+    | Bool.False, _ => return Bool.False ;
+    | Bool.True , _ => return y ;
     }
   }
 
   function and1 (x, y) {
     match x, y {
-    | False, False => return False ;
-    | True , False => return False;
-    | False ,True => return False;
-    | True, True => return True;
+    | Bool.False, Bool.False => return Bool.False ;
+    | Bool.True , Bool.False => return Bool.False;
+    | Bool.False ,Bool.True => return Bool.False;
+    | Bool.True, Bool.True => return Bool.True;
     }
   }
 
   function elim (f, g, x) {
     match x {
-    | True => return f;
-    | False => return g;
+    | Bool.True => return f;
+    | Bool.False => return g;
     }
   }
 }

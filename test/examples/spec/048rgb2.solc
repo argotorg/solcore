@@ -3,11 +3,11 @@ contract RGB {
 
   function fromEnum(c) {
     match c {
-      | R => return 4;
-      | G => return 2;
-      | B => return 42;
+      | Color.R => return 4;
+      | Color.G => return 2;
+      | Color.B => return 42;
     }
   }
 
-  function main() { return fromEnum(B); }
+  function main() { return fromEnum(Color.B); }
 }

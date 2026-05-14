@@ -1,0 +1,64 @@
+{
+  "ownable": {
+    "bytecode": "",
+    "contract": "Ownable",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "getOwner()(uint256) - should return deployer address",
+          "calldata": "893d20e8",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000001212121212121212121212121212120000000012",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "changeOwner(uint256) to 0xdead - should succeed from owner",
+          "calldata": "924c19f7000000000000000000000000000000000000000000000000000000000000dead",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getOwner()(uint256) - should now return 0xdead",
+          "calldata": "893d20e8",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000dead",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "changeOwner(uint256) - should fail, caller is no longer owner",
+          "calldata": "924c19f7000000000000000000000000000000000000000000000000000000000000beef",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000006e6f74206f776e6572",
+          "status": "failure"
+        }
+      }
+    ]
+  }
+}

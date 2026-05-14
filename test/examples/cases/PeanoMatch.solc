@@ -2,8 +2,8 @@ data Nat = Zero | Succ(Nat);
 
 function foo(n) {
   match n {
-  | Zero => return Succ(Zero) ;
-  | Succ(Succ(x)) => return x;
-  | x => return Zero;
+  | Nat.Zero => return Nat.Succ(Nat.Zero) ;
+  | Nat.Succ(Nat.Succ(x)) => return x;
+  | x => return Nat.Zero;
   }
 }

@@ -3,11 +3,11 @@ data Bool = False | True;
   function f(x) {
     match x {
     | z     => return z;
-    | True  => return True;
-    | False => return False;
+    | Bool.True  => return Bool.True;
+    | Bool.False => return Bool.False;
     }
   }
 
   contract Test {
-    function main() -> Bool { f(True) }
+    function main() -> Bool { f(Bool.True) }
   }

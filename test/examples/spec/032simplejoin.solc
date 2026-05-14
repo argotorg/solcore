@@ -1,35 +1,35 @@
 contract Option {
   data Option(a) = None | Some(a);
 
-  function just(x) { return Some(x); }
+  function just(x) { return Option.Some(x); }
 
   function maybe(n, o) {
     match o {
-      | None => return n;
-      | Some(x) => return x;
+      | Option.None => return n;
+      | Option.Some(x) => return x;
     }
   }
 
 
   function join(mmx) {
     match mmx {
-      | None => return None;
-      | Some(None) => return None;
-      | Some(Some(x)) => return Some(x);
+      | Option.None => return Option.None;
+      | Option.Some(Option.None) => return Option.None;
+      | Option.Some(Option.Some(x)) => return Option.Some(x);
     }
   }
 
   function join2(mmx) {
     match mmx {
-      | Some(m) => match m {
-          | None => return None;
-          | Some(x) => return Some(x);
+      | Option.Some(m) => match m {
+          | Option.None => return Option.None;
+          | Option.Some(x) => return Option.Some(x);
       }
-      | _ => return None;
+      | _ => return Option.None;
     }
   }
 
   function main() {
-    return maybe(0, join(Some(Some(42))));
+    return maybe(0, join(Option.Some(Option.Some(42))));
   }
 }

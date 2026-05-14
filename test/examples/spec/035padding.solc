@@ -3,12 +3,12 @@ contract Option {
 
   function maybe(n, o) {
     match o {
-      | Some(x) => return x;
-      | None => return n;
+      | Option.Some(x) => return x;
+      | Option.None => return n;
     }
   }
 
   function main() {
-    return maybe(7, None);
+    return maybe(7, Option.None);
   }
 }

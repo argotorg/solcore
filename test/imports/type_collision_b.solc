@@ -1,0 +1,7 @@
+export { T(B), mk };
+
+data T = B;
+
+function mk() -> T {
+  return T.B;
+}

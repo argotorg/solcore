@@ -1,8 +1,11 @@
 import std;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 contract StringLitKeccak {
   function main() {
     // keccakLit folds to a 256-bit word (EVM/Yul semantics)
-    return keccakLit("abc");
+    return std.keccakLit("abc");
   }
 }

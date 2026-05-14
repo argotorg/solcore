@@ -1,0 +1,3 @@
+import std;
+
+function main() {}

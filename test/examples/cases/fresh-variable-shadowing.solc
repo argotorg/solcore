@@ -2,13 +2,13 @@ data Bool = False | True;
 
 function test(v0, p) {
   match p {
-  | True => return False;
+  | Bool.True => return Bool.False;
   | z    => return v0;
   }
 }
 
 contract FreshVariableShadowing {
   function main() -> Bool {
-    test(True, False)
+    test(Bool.True, Bool.False)
   }
 }

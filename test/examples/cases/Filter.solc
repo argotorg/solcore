@@ -3,8 +3,8 @@ data Bool = False | True;
 
 function and(x,y) {
   match x, y {
-  | False, _ => return False;
-  | True, z => return z;
+  | Bool.False, _ => return Bool.False;
+  | Bool.True, z => return z;
   }
 }
 
@@ -15,8 +15,8 @@ class a : Eq {
 instance Word : Eq {
   function eq (x, y) {
     match primEqWord(x,y) {
-    | 0 => return False ;
-    | _ => return True ;
+    | 0 => return Bool.False ;
+    | _ => return Bool.True ;
     }
   }
 }
@@ -24,17 +24,17 @@ instance Word : Eq {
 
 function filter (f, xs) {
   match xs {
-  | Nil => return Nil ;
-  | Cons(y,ys) =>
+  | List.Nil => return List.Nil ;
+  | List.Cons(y,ys) =>
     match f(y) {
-    | False => return filter(f,ys);
-    | True => return Cons(y,filter(f,ys));
+    | Bool.False => return filter(f,ys);
+    | Bool.True => return List.Cons(y,filter(f,ys));
     }
   }
 }
 
 function list1 () {
-  return Cons(1, Cons(2, Cons(3, Nil)));
+  return List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)));
 }
 
 function foo0(y) {

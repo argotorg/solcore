@@ -229,8 +229,7 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
     getSpecialisedDecls
   -- Deployer code
   modify (\st -> st {specTable = emptyTable})
-  -- let deployerName = Name (pretty name <> "$Deployer")
-  mStart <- specEntry "start"
+  mStart <- specEntryOpt deployerName
   deployDecls <- case mStart of
     Just {} -> do
       depDecls <- getSpecialisedDecls
@@ -252,16 +251,23 @@ specialiseTopDecl d@TDataDef {} = pure [d]
 specialiseTopDecl _ = pure []
 
 specEntry :: Name -> SM (Maybe Name)
-specEntry name = withLocalState do
+specEntry name = do
+  mres <- specEntryOpt name
+  when (null mres) $ warns ["!! Warning: no resolution found for ", show name]
+  pure mres
+
+-- | Like 'specEntry' but silently returns Nothing when the name is absent.
+-- Use for optional entry points (e.g. deployer) that may not exist when
+-- contract dispatch generation is disabled.
+specEntryOpt :: Name -> SM (Maybe Name)
+specEntryOpt name = withLocalState do
   let anytype = TyVar (TVar (Name "any"))
   mres <- lookupResolution name anytype
   case mres of
     Just (fd, ty, subst) -> do
       debug ["< resolution: ", show name, " : ", pretty ty, "@", pretty subst]
       Just <$> specFunDef fd
-    Nothing -> do
-      warns ["!! Warning: no resolution found for ", show name]
-      pure Nothing
+    Nothing -> pure Nothing
 
 addContractResolutions :: Contract Id -> SM ()
 addContractResolutions (Contract _name _args cdecls) = do
@@ -357,6 +363,19 @@ specCall i args ty = do
   case mres of
     Just (fd, fty, phi) -> do
       debug ["< resolution: ", show name, "~>", shortName fd, " : ", pretty fty, "@", pretty phi]
+      let varToVar = [(v, t) | (v, t) <- unTVSubst phi, isTyVar t]
+      unless (null varToVar) $
+        warns
+          [ "Warning: call to ",
+            show name,
+            " resolved with ungrounded type variable(s): ",
+            prettys (map snd varToVar),
+            "\n  The intermediate type cannot be determined from this call site.",
+            "\n  Expression: ",
+            pretty (Call Nothing i args),
+            "\n  This often occurs when a polymorphic-return function (e.g. `require`)",
+            "\n  is passed directly to a polymorphic-argument function (e.g. `void`)."
+          ]
       extSpSubst phi
       subst <- getSpSubst
       let ty'' = applytv subst fty
@@ -423,14 +442,19 @@ ensureClosed :: (Pretty a) => Ty -> a -> TVSubst -> SM ()
 ensureClosed ty ctxt subst = do
   let tvs = freetv ty
   unless (null tvs) $
-    panics
-      [ "spec(",
+    nopanics
+      [ "Error: cannot specialise ",
         pretty ctxt,
-        "): free type vars in ",
+        "\n",
+        "  Type variable(s) ",
+        prettys tvs,
+        " remain unresolved in type ",
         pretty ty,
-        ": ",
-        show tvs,
-        " @ subst=",
+        "\n",
+        "  This usually means a polymorphic return value is passed to another\n",
+        "  polymorphic function without any concrete type context to resolve\n",
+        "  the intermediate type (e.g. void(require(...))).\n",
+        "  Substitution: ",
         pretty subst
       ]
 
@@ -479,9 +503,18 @@ specStmt stmt@(Let ct i mty mexp) = do
   case mexp of
     Nothing -> return $ Let ct i' mty' Nothing
     Just e -> Let ct i' mty' . Just <$> specExp e ty'
+specStmt (Block body) =
+  Block <$> specBody body
 specStmt (StmtExp e) = do
   ty <- atCurrentSubst (typeOfTcExp e)
-  e' <- specExp e ty
+  -- replace all type variables with unit - the value is dropped anyway
+
+  let groundTy (TyVar _) = unit
+      groundTy (TyCon n tys) = TyCon n (map groundTy tys)
+      groundTy (a :-> b) = groundTy a :-> groundTy b
+      groundTy t = t
+
+  e' <- specExp e (groundTy ty)
   return $ StmtExp e'
 specStmt (Asm ys) = pure (Asm ys)
 specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
@@ -612,6 +645,10 @@ prettyResolutions = render . brackets . commaSep . map pprRes
 
 -- instance Pretty (Ty, FunDef Id) where
 --  ppr = pprRes
+
+isTyVar :: Ty -> Bool
+isTyVar (TyVar _) = True
+isTyVar _ = False
 
 specmgu :: Ty -> Ty -> Either String TVSubst
 specmgu (TyCon n ts) (TyCon n' ts')
@@ -814,7 +851,7 @@ toMastFunDef (FunDef sig body) =
       mastFunReturn = case sigReturn sig of
         Just t -> toMastTy t
         Nothing -> error $ "toMastFunDef: no return type for " ++ show (sigName sig),
-      mastFunBody = map toMastStmt body
+      mastFunBody = toMastBody body
     }
 
 toMastParam :: Param Id -> MastParam
@@ -842,8 +879,14 @@ toMastStmt (Match es _) = error $ "toMastStmt: multi-scrutinee match should have
 toMastStmt (Asm ys) = MastAsm ys
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
+toMastBody :: [Stmt Id] -> [MastStmt]
+toMastBody = concatMap go
+  where
+    go (Block body) = toMastBody body
+    go stmt = [toMastStmt stmt]
+
 toMastAlt :: ([Pat Id], [Stmt Id]) -> MastAlt
-toMastAlt ([p], body) = (toMastPat p, map toMastStmt body)
+toMastAlt ([p], body) = (toMastPat p, toMastBody body)
 toMastAlt (ps, _) = error $ "toMastAlt: multi-pattern alt should have been desugared: " ++ show ps
 
 toMastExp :: Exp Id -> MastExp

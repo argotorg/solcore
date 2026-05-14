@@ -1,16 +1,16 @@
 contract Option {
   data Option(a) = None | Some(a);
 
-  function just(x) { return Some(x); }
+  function just(x) { return Option.Some(x); }
 
   function maybe(n, o) {
     match o {
-      | None => return n;
-      | Some(x) => return x;
+      | Option.None => return n;
+      | Option.Some(x) => return x;
     }
   }
 
   function main() {
-    return maybe(0, Some(42));
+    return maybe(0, Option.Some(42));
   }
 }

@@ -166,7 +166,7 @@ forall a . a : StorageType => instance storageRef(a):Assign(a) {
 }
 
 forall self fieldType offsetType.
-class self:StructField(fieldType, offsetType) {}
+class self:CStructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 
 
@@ -190,7 +190,7 @@ class self:RValueMemberAccess(memberValueType) {
 }
 
 forall structType fieldSelector fieldType offsetType
-  . StructField(structType, fieldSelector):StructField(fieldType, offsetType)
+  . StructField(structType, fieldSelector):CStructField(fieldType, offsetType)
   , offsetType:StorageSize
   => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType):LValueMemberAccess(storageRef(fieldType)) {
     function memberAccess(x:MemberAccessProxy(storage(structType), fieldSelector, offsetType)) -> storageRef(fieldType) {
@@ -249,15 +249,13 @@ forall a b . a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
     }
 }
 
-pragma no-patterson-condition RValueMemberAccess; // this is due to ContractStorage(cxt); probably not needed once we have local instances
-pragma no-coverage-condition MemberAccessProxy, LValueMemberAccess, RValueMemberAccess;
 
 // ------------------------------------------------------------------
 // Contract field access
 // ------------------------------------------------------------------
 
 forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  . StructField(ContractStorage(cxt), fieldSelector):CStructField(fieldType, offsetType)
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):LValueMemberAccess(storageRef(fieldType)) {
     function memberAccess(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType)) -> storageRef(fieldType) {
@@ -272,7 +270,7 @@ forall cxt fieldSelector fieldType offsetType
 }
 
 forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  . StructField(ContractStorage(cxt), fieldSelector):CStructField(fieldType, offsetType)
   , fieldType:StorageType
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):RValueMemberAccess(fieldType) {
@@ -285,7 +283,7 @@ forall cxt fieldSelector fieldType offsetType
 
 /*
 forall cxt fieldSelector fieldType offsetType
-  . StructField(ContractStorage(cxt), fieldSelector):StructField(fieldType, offsetType)
+  . StructField(ContractStorage(cxt), fieldSelector):CStructField(fieldType, offsetType)
   , fieldType:StorageType
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, offsetType):RValueMemberAccess(fieldType) {

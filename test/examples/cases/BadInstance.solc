@@ -9,8 +9,8 @@ data Bool = False | True;
 instance Bool : Enum {
   function fromEnum(b) {
       match b {
-      | R => return 0;
-      | G => return 1;
+      | Color.R => return 0;
+      | Color.G => return 1;
       }
   }
 }

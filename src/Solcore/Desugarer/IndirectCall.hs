@@ -39,6 +39,7 @@ instance Desugar (TopDecl Name) where
   desugar (TInstDef i) = TInstDef <$> desugar i
   desugar (TDataDef d) = pure $ TDataDef d
   desugar (TSym s) = pure $ TSym s
+  desugar (TExportDecl d) = pure $ TExportDecl d
   desugar (TPragmaDecl d) = pure $ TPragmaDecl d
   desugar (TMutualDef ms) = TMutualDef <$> desugar ms
 
@@ -74,6 +75,8 @@ instance Desugar (Stmt Name) where
     (:=) <$> desugar lhs <*> desugar rhs
   desugar (Let c n mt me) =
     Let c n mt <$> desugar me
+  desugar (Block body) =
+    Block <$> desugar body
   desugar (StmtExp e) =
     StmtExp <$> desugar e
   desugar (Return e) =
@@ -145,6 +148,7 @@ instance Collect (TopDecl Name) where
   collect (TInstDef _) = []
   collect (TDataDef _) = []
   collect (TSym _) = []
+  collect (TExportDecl _) = []
   collect (TPragmaDecl _) = []
   collect (TMutualDef ms) = collect ms
 

@@ -8,8 +8,8 @@ data B = F | T;
 instance B : Neg {
   function neg (x : B) -> B {
     match x {
-    | F => return T;
-    | T => return F;
+    | B.F => return B.T;
+    | B.T => return B.F;
     }
   }
 }
@@ -37,17 +37,17 @@ contract NegPair {
 
  function bnot(x) {
    match x {
-     | T => return F;
-     | F => return T;
+     | B.T => return B.F;
+     | B.F => return B.T;
    }
 }
 
  function fromB(b) {
   match b  {
-    | F => return 0;
-    | T => return 1;
+    | B.F => return 0;
+    | B.T => return 1;
   }
 }
 
- function main() { return  fromB(fst(Neg.neg((F,T)))); }
+ function main() { return  fromB(fst(Neg.neg((B.F,B.T)))); }
 }

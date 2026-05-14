@@ -1,4 +1,7 @@
-import std;
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 function f(x: word, y:word) -> bool {
   return (!((x == y)
           && (x != y)

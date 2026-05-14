@@ -1,0 +1,19 @@
+export {Wrap(*), unwrap, Unbox};
+
+data Wrap = Mk(word);
+
+forall self . class self:Unbox {
+  function unbox(x:self) -> word;
+}
+
+instance Wrap:Unbox {
+  function unbox(x:Wrap) -> word {
+    match x {
+    | Wrap.Mk(w) => return w;
+    }
+  }
+}
+
+function unwrap(x:Wrap) -> word {
+  return Unbox.unbox(x);
+}

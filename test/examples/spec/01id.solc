@@ -9,6 +9,6 @@ contract Id1 {
   function const(x, y) { return x; }
 
   function main() {
-    return const(id(42), False);
+    return const(id(42), Bool.False);
   }
 }

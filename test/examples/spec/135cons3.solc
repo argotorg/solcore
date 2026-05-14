@@ -1,5 +1,5 @@
 // test constructor with multiple args
-import std;
+import std.{*};
 // import prelude;
 
 

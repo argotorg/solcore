@@ -1,4 +1,3 @@
-pragma no-coverage-condition TAdd;
 
 data Zero;
 data Succ(a);
@@ -35,7 +34,7 @@ instance Zero : ToWord {
 
 forall prev . prev:ToWord => instance Succ(prev) : ToWord {
     function toWord(self: Itself(Succ(prev))) {
-        let returnVal : word = ToWord.toWord(ItselfRuntimeTag:Itself(prev));
+        let returnVal : word = ToWord.toWord(Itself.ItselfRuntimeTag:Itself(prev));
         assembly {
             returnVal := add(1, returnVal)
         }
@@ -61,7 +60,7 @@ instance word:MemoryType {
 
 forall size elem . size : ToWord, elem:MemoryType => instance memory(array(size, elem)) : IndexAccessible(word, elem) {
     function at(self, index) -> elem {
-        let sizeValue = ToWord.toWord(ItselfRuntimeTag:Itself(size));
+        let sizeValue = ToWord.toWord(Itself.ItselfRuntimeTag:Itself(size));
        // this should work but doesn't
         // assembly {
         //    if iszero(lt(index, sizeValue)) {
@@ -80,7 +79,7 @@ forall size elem . size : ToWord, elem:MemoryType => instance memory(array(size,
     }
 
     function set(self, index, val) {
-        let sizeValue = ToWord.toWord(ItselfRuntimeTag:Itself(size));
+        let sizeValue = ToWord.toWord(Itself.ItselfRuntimeTag:Itself(size));
 
         //assembly {
         //    if iszero(lt(index, sizeValue)) {

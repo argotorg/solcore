@@ -8,6 +8,7 @@ import Data.List
 import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
+import Data.Set qualified as Set
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
@@ -25,9 +26,39 @@ typeInfer ::
   Option ->
   CompUnit Name ->
   IO (Either String (CompUnit Id, TcEnv))
-typeInfer opts (CompUnit imps topDecls) =
+typeInfer opts =
+  typeInferWithTrustedInstanceHeadsAndPartialTypes opts [] [] []
+
+typeInferWithTrustedInstanceHeads ::
+  Option ->
+  [InstanceHead] ->
+  CompUnit Name ->
+  IO (Either String (CompUnit Id, TcEnv))
+typeInferWithTrustedInstanceHeads opts trustedInstances =
+  typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances [] []
+
+typeInferWithTrustedInstanceHeadsAndPartialTypes ::
+  Option ->
+  [InstanceHead] ->
+  [TopDeclKey] ->
+  [(Name, [Name])] ->
+  CompUnit Name ->
+  IO (Either String (CompUnit Id, TcEnv))
+typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances localDeclKeys partialTypes (CompUnit imps topLevelDecls) =
   do
-    r <- runTcM (tcCompUnit (CompUnit imps topDecls)) (initTcEnv opts)
+    r <-
+      runTcM
+        (tcCompUnit localDeclKeys (CompUnit imps topLevelDecls))
+        ( (initTcEnv opts)
+            { trustedInstanceHeads = trustedInstances,
+              partialDataTypes = Set.fromList (map fst partialTypes),
+              partialDataTypeConstructors =
+                Map.fromList
+                  [ (partialTypeName, Set.fromList constructorNames)
+                    | (partialTypeName, constructorNames) <- partialTypes
+                  ]
+            }
+        )
     case r of
       Left err1 -> pure $ Left err1
       Right (CompUnit _ ds, env) -> do
@@ -36,23 +67,53 @@ typeInfer opts (CompUnit imps topDecls) =
 
 -- type inference for a compilation unit
 
-tcCompUnit :: CompUnit Name -> TcM (CompUnit Id)
-tcCompUnit (CompUnit imps cs) =
+-- Build a pure synonym table from parsed synonym declarations
+buildSynTable :: [TySym] -> SynTable
+buildSynTable syns =
+  Map.fromList [(symName s, SynInfo (length (symVars s)) (symVars s) (symType s)) | s <- syns]
+
+-- Monadic recursive expansion of a single Ty using a SynTable.
+-- Reports an error when a synonym is applied to the wrong number of arguments.
+expandTyM :: SynTable -> Ty -> TcM Ty
+expandTyM st (TyCon n ts) = do
+  ts' <- mapM (expandTyM st) ts
+  case Map.lookup n st of
+    Just (SynInfo _ params body)
+      | length params == length ts' ->
+          expandTyM st (insts (zip params ts') body)
+      | otherwise ->
+          throwError $
+            unlines
+              [ "Type synonym arity mismatch for '" ++ pretty n ++ "':",
+                "  expected " ++ show (length params) ++ " argument(s)",
+                "  but got  " ++ show (length ts')
+              ]
+    Nothing -> pure (TyCon n ts')
+expandTyM st (t1 :-> t2) = (:->) <$> expandTyM st t1 <*> expandTyM st t2
+expandTyM _ t = pure t
+
+tcCompUnit :: [TopDeclKey] -> CompUnit Name -> TcM (CompUnit Id)
+tcCompUnit localDeclKeys (CompUnit imps cs) =
   do
     setupPragmas ps
     checkSynonymCycles syns
-    mapM_ checkTopDecl cls
-    mapM_ checkTopDecl nonClassDecls
-    typedDecls <- mapM tcTopDecl' cs
+    let st = buildSynTable syns
+    csExpanded <- everywhereM (mkM (expandTyM st)) cs
+    mapM_ checkTopDecl (filter isClass csExpanded)
+    mapM_ checkTopDecl (filter (not . isClass) csExpanded)
+    typedDecls <- mapM tcTopDeclWithVisibility csExpanded
     pure (CompUnit imps typedDecls)
   where
     ps = foldr step [] cs
     step (TPragmaDecl p) ac = p : ac
     step _ ac = ac
-    (cls, nonClassDecls) = partition isClass cs
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
+    localDeclKeySet = Set.fromList localDeclKeys
+    tcTopDeclWithVisibility d
+      | any (`Set.member` localDeclKeySet) (topDeclKeys d) = tcTopDecl' d
+      | otherwise = withPartialDataTypesDisabled (tcTopDecl' d)
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
@@ -150,6 +211,8 @@ tcTopDecl (TDataDef d) =
     pure (TDataDef d)
 tcTopDecl (TSym s) =
   pure (TSym s)
+tcTopDecl (TExportDecl d) =
+  pure (TExportDecl d)
 tcTopDecl (TPragmaDecl d) =
   pure (TPragmaDecl d)
 
@@ -164,6 +227,7 @@ checkTopDecl (TSym s) =
   checkSynonym s
 checkTopDecl (TFunDef (FunDef sig _)) =
   extSignature sig
+checkTopDecl (TExportDecl _) = pure ()
 checkTopDecl _ = pure ()
 
 -- type inference for contracts
@@ -237,15 +301,15 @@ tcField :: Field Name -> TcM (Field Id)
 tcField d@(Field n t (Just e)) =
   do
     (e', _, t') <- tcExp e
-    _ <- kindCheck t `wrapError` d
+    t1 <- kindCheck t `wrapError` d
     _ <- mgu t t' `wrapError` d
-    extEnv n (monotype t)
-    return (Field n t (Just e'))
+    extEnv n (monotype t1)
+    return (Field n t1 (Just e'))
 tcField d@(Field n t _) =
   do
-    _ <- kindCheck t `wrapError` d
-    extEnv n (monotype t)
-    pure (Field n t Nothing)
+    t1 <- kindCheck t `wrapError` d
+    extEnv n (monotype t1)
+    pure (Field n t1 Nothing)
 
 tcClass :: Class Name -> TcM (Class Id)
 tcClass iclass@(Class bvs classCtx n vs v sigs) =
@@ -264,11 +328,11 @@ tcClass iclass@(Class bvs classCtx n vs v sigs) =
 tcSig :: (Signature Name, Scheme) -> TcM (Signature Id)
 tcSig (sig, (Forall _ (_ :=> t))) =
   do
-    let (ts, r) = splitTy t
-        param (Typed c n _) t1 = Typed c (Id n t1) t1
-        param (Untyped c n) t1 = Typed c (Id n t1) t1
+    t1 <- kindCheck t `wrapError` sig
+    let (ts, r) = splitTy t1
+        param (Typed c n _) t2 = Typed c (Id n t2) t2
+        param (Untyped c n) t2 = Typed c (Id n t2) t2
         params' = zipWith param (sigParams sig) ts
-    _ <- kindCheck t `wrapError` sig
     pure
       ( Signature
           (sigVars sig)

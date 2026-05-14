@@ -1,10 +1,14 @@
 import std;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 // These functions are intended to be folded by MastEval at compile time.
 
 contract StringLitOps {
   function main() {
-    // concat folds to a string literal, enabling revert("...")
+    // concat folds to a string literal, enabling revert("...") lowering
+    // cannot handle string variables yet
     let s : comptime string = concatLit("ab", "cd");
     revert(s);
   }

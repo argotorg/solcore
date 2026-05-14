@@ -1,4 +1,9 @@
-import dispatch;
+import std.{*};
+import std.{uint256, address};
+import std.dispatch.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 contract Counter {
   // some dummy fields to test offset calculation
   fld0 : word;

@@ -5,7 +5,7 @@ data Proxy(a) = Proxy;
 data Bool = True | False;
 default instance a:Test(word) { function f(x:a) -> word { return 42; }}
 
-instance memory(memory(word)):Test(Bool) { function f(x:self) { return True; }}
+instance memory(memory(word)):Test(Bool) { function f(x:self) { return Bool.True; }}
 
 // If we choose the default instance to typecheck f,
 // this will pass type-checking, since ``r`` is word.

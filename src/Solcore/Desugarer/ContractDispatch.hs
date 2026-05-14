@@ -16,6 +16,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Language.Yul
 import Language.Yul.QuasiQuote
+import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax
 import Solcore.Primitives.Primitives (string, tupleExpFromList, tupleTyFromList, unit, word)
 
@@ -27,6 +28,12 @@ contractDispatchDesugarer (CompUnit ims topdecls) = CompUnit ims (Set.toList ext
       | "main" `notElem` functionNames c = (Set.union acc (genNameDecls c), TContr (genMainFn True c))
       | otherwise = (acc, TContr (genMainFn False c))
     go acc v = (acc, v)
+
+hasConstructor :: [ContractDecl Name] -> Bool
+hasConstructor = any isConstr
+  where
+    isConstr (CConstrDecl _) = True
+    isConstr _ = False
 
 functionNames :: Contract a -> [Name]
 functionNames = foldr go [] . decls
@@ -48,7 +55,9 @@ genMainFn addMain (Contract cname tys cdecls)
   | addMain = Contract cname tys (CFunDecl mainfn : Set.toList cdecls')
   | otherwise = Contract cname tys (Set.toList cdecls')
   where
-    cdecls' = Set.unions (map (transformCDecl cname) cdecls)
+    cdecls'' = if hasConstructor cdecls then cdecls else cdecls ++ [defaultConstructor]
+    cdecls' = Set.unions (map (transformCDecl cname) cdecls'')
+    defaultConstructor = CConstrDecl (Constructor {constrParams = [], constrBody = []})
     mainfn = FunDef (Signature [] [] "main" [] False Nothing) body
     body = [StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
     cdata = Con "Contract" [methods, fallback]
@@ -148,7 +157,7 @@ transformConstructor contractName cons
       Signature
         { sigVars = mempty,
           sigContext = mempty,
-          sigName = "start",
+          sigName = deployerName,
           sigParams = mempty,
           sigRetComptime = False,
           sigReturn = Just unit

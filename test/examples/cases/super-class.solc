@@ -3,8 +3,8 @@ data Bool = False | True;
 
 function and (x,y) {
   match x,y {
-  | False, _ => return False;
-  | True, y => return y;
+  | Bool.False, _ => return Bool.False;
+  | Bool.True, y => return y;
   }
 }
 
@@ -15,9 +15,9 @@ forall a . class a : Eq {
 instance Bool : Eq {
   function eq (x : Bool, y : Bool) -> Bool {
     match x, y {
-    | False, False => return True;
-    | True, True => return True;
-    | _, _ => return False;
+    | Bool.False, Bool.False => return Bool.True;
+    | Bool.True, Bool.True => return Bool.True;
+    | _, _ => return Bool.False;
     }
   }
 }
@@ -25,14 +25,14 @@ instance Bool : Eq {
 forall a . a : Eq => instance (List(a)) : Eq {
   function eq (xs : List(a), ys : List(a)) -> Bool {
     match xs, ys {
-    | Nil, Nil => return True;
-    | Cons(x,xs), Cons(y,ys) =>
+    | List.Nil, List.Nil => return Bool.True;
+    | List.Cons(x,xs), List.Cons(y,ys) =>
         return and(Eq.eq(x,y),Eq.eq(xs,ys));
-    | _ , _ => return False;
+    | _ , _ => return Bool.False;
     }
   }
 }
 
 function foo() {
-  let x = Eq.eq(Cons(True,Nil), Nil);
+  let x = Eq.eq(List.Cons(Bool.True,List.Nil), List.Nil);
 }

@@ -1,6 +1,7 @@
 module Main where
 
 import Cases
+import HullCases
 import MatchCompilerTests
 import Test.Tasty
 import YulEvalTests
@@ -20,5 +21,6 @@ tests =
       imports,
       dispatches,
       matchTests,
-      yulEvalTests
+      yulEvalTests,
+      hullTests
     ]

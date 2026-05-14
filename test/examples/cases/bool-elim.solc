@@ -2,13 +2,13 @@ data Bool = False | True;
 
   function second(x, y) {
     match x, y {
-    | True, z => return z;
-    | False, z => return z;
+    | Bool.True, z => return z;
+    | Bool.False, z => return z;
     }
   }
 
 contract Second {
   function main() -> word {
-    second(True, 42)
+    second(Bool.True, 42)
   }
 }

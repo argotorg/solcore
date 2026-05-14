@@ -13,7 +13,7 @@ forall a . instance storageRef(a):Assign(a) {
     }
 }
 
-forall self fieldType offsetType . class self:StructField(fieldType, offsetType) {}
+forall self fieldType offsetType . class self:CStructField(fieldType, offsetType) {}
 data StructField(structType, fieldSelector) = StructField(structType);
 
 
@@ -29,7 +29,7 @@ forall self memberRefType . class self:LValueMemberAccess(memberRefType) {
 // ------------------------------------------------------------------
 
 forall cxt fieldSelector fieldType offsetType
-  . StructField(cxt, fieldSelector):StructField(fieldType, offsetType)
+  . StructField(cxt, fieldSelector):CStructField(fieldType, offsetType)
   => instance MemberAccessProxy(cxt, fieldSelector, offsetType):LValueMemberAccess(storageRef(fieldType)) {
     function memberAccess(x:MemberAccessProxy(cxt, fieldSelector, offsetType)) -> storageRef(fieldType) {
         return storageRef(0x100);
@@ -52,7 +52,7 @@ forall map index member.
 
 data MintCtx = MintCtx;
 data balances_sel = balances_sel;
-instance StructField(MintCtx, balances_sel):StructField(mapping(word,word), ()) {}
+instance StructField(MintCtx, balances_sel):CStructField(mapping(word,word), ()) {}
 
    function mint(amount:word) {
      let bal_prx = MemberAccessProxy(MintCtx, balances_sel);

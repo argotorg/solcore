@@ -153,6 +153,7 @@ checkStmt st retCt ctx env stmt = case stmt of
     checkBody st retCt ctx env f
     return env
   Asm _ -> return env
+  Block body -> checkBody st retCt ctx env body >> return env
 
 -- | Decide the Ctness to assign to a let-bound variable.
 --   If declared comptime, treat as CTComptime (Stage 1 verifies the RHS).
