@@ -77,8 +77,24 @@ evalYulOpTests =
         runPure (evalYulOp (Name "mul") [2 ^ (128 :: Integer), 2 ^ (128 :: Integer)]) @?= Just 0,
       testCase "sload: unsupported → Nothing" $
         runPure (evalYulOp (Name "sload") [0]) @?= Nothing,
-      testCase "sub: unsupported (not yet in interpreter) → Nothing" $
-        runPure (evalYulOp (Name "sub") [10, 3]) @?= Nothing,
+      testCase "sub: 10 - 3 = 7" $
+        runPure (evalYulOp (Name "sub") [10, 3]) @?= Just 7,
+      testCase "sub: wraps at 2^256" $
+        runPure (evalYulOp (Name "sub") [0, 1]) @?= Just (2 ^ (256 :: Integer) - 1),
+      testCase "gt: 5 > 3 = 1" $
+        runPure (evalYulOp (Name "gt") [5, 3]) @?= Just 1,
+      testCase "gt: 3 > 5 = 0" $
+        runPure (evalYulOp (Name "gt") [3, 5]) @?= Just 0,
+      testCase "lt: 3 < 5 = 1" $
+        runPure (evalYulOp (Name "lt") [3, 5]) @?= Just 1,
+      testCase "eq: 4 == 4 = 1" $
+        runPure (evalYulOp (Name "eq") [4, 4]) @?= Just 1,
+      testCase "eq: 4 == 5 = 0" $
+        runPure (evalYulOp (Name "eq") [4, 5]) @?= Just 0,
+      testCase "iszero: 0 = 1" $
+        runPure (evalYulOp (Name "iszero") [0]) @?= Just 1,
+      testCase "iszero: 1 = 0" $
+        runPure (evalYulOp (Name "iszero") [1]) @?= Just 0,
       testCase "add with wrong arity → Nothing" $
         runPure (evalYulOp (Name "add") [1, 2, 3]) @?= Nothing,
       testCase "unknown op → Nothing" $
@@ -359,9 +375,9 @@ asmIsInterpretableTests =
       testCase "sload-assign → False" $
         asmIsInterpretable [yAssign "rw" (yCall "sload" [yNum 0])]
           @?= False,
-      testCase "sub-assign → False (not yet in interpreter)" $
+      testCase "sub-assign → True" $
         asmIsInterpretable [yAssign "rw" (yCall "sub" [yIdent "x", yIdent "y"])]
-          @?= False,
+          @?= True,
       testCase "multi-assign form → False" $
         asmIsInterpretable [YAssign [Name "a", Name "b"] (yNum 0)]
           @?= False,

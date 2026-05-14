@@ -1,7 +1,0 @@
-object ComptimeOverloadedOk {
-  code {
-    function main () -> word {
-      return 32
-    }
-  }
-}

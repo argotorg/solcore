@@ -35,7 +35,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Crypto.Hash (Digest, hash)
 import Crypto.Hash.Algorithms (Keccak_256)
-import Data.Bits (shiftR, (.&.))
+import Data.Bits (complement, shiftL, shiftR, xor, (.&.), (.|.))
 import Data.ByteArray qualified as BA
 import Data.ByteString qualified as BS
 import Data.List (foldl')
@@ -454,9 +454,23 @@ evalYulExp _ _ = pure Nothing
 
 -- | Evaluate a Yul built-in operation on known integer values.
 -- Returns Nothing for unsupported or unknown operations.
+-- All operations use EVM semantics: unsigned 256-bit arithmetic, no exceptions.
 evalYulOp :: Name -> [Integer] -> EvalM (Maybe Integer)
 evalYulOp (Name "add") [a, b] = pure (Just (maskWord (a + b)))
+evalYulOp (Name "sub") [a, b] = pure (Just (maskWord (a - b)))
 evalYulOp (Name "mul") [a, b] = pure (Just (maskWord (a * b)))
+evalYulOp (Name "div") [a, b] = pure (Just (if b == 0 then 0 else a `div` b))
+evalYulOp (Name "mod") [a, b] = pure (Just (if b == 0 then 0 else a `mod` b))
+evalYulOp (Name "gt") [a, b] = pure (Just (if a > b then 1 else 0))
+evalYulOp (Name "lt") [a, b] = pure (Just (if a < b then 1 else 0))
+evalYulOp (Name "eq") [a, b] = pure (Just (if a == b then 1 else 0))
+evalYulOp (Name "iszero") [a] = pure (Just (if a == 0 then 1 else 0))
+evalYulOp (Name "and") [a, b] = pure (Just (a .&. b))
+evalYulOp (Name "or") [a, b] = pure (Just (a .|. b))
+evalYulOp (Name "xor") [a, b] = pure (Just (a `xor` b))
+evalYulOp (Name "not") [a] = pure (Just (maskWord (complement a)))
+evalYulOp (Name "shl") [sh, v] = pure (Just (maskWord (v `shiftL` fromIntegral sh)))
+evalYulOp (Name "shr") [sh, v] = pure (Just (v `shiftR` fromIntegral sh))
 evalYulOp _ _ = pure Nothing
 
 -- | Evaluate one Yul statement, updating the Yul state.
@@ -801,7 +815,20 @@ asmIsInterpretable = all interpretableStmt
     interpretableExp _ = False
 
     interpretableOp (Name "add") 2 = True
+    interpretableOp (Name "sub") 2 = True
     interpretableOp (Name "mul") 2 = True
+    interpretableOp (Name "div") 2 = True
+    interpretableOp (Name "mod") 2 = True
+    interpretableOp (Name "gt") 2 = True
+    interpretableOp (Name "lt") 2 = True
+    interpretableOp (Name "eq") 2 = True
+    interpretableOp (Name "iszero") 1 = True
+    interpretableOp (Name "and") 2 = True
+    interpretableOp (Name "or") 2 = True
+    interpretableOp (Name "xor") 2 = True
+    interpretableOp (Name "not") 1 = True
+    interpretableOp (Name "shl") 2 = True
+    interpretableOp (Name "shr") 2 = True
     interpretableOp _ _ = False
 
 -----------------------------------------------------------------------

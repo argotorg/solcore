@@ -1,4 +1,4 @@
-import std;
+import std.{*};
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
