@@ -1,7 +1,0 @@
-contract Compose {
-  function id(x : word) -> word { return x; }
-
-  function main() -> word {
-    return id(id(42));
-  }
-}

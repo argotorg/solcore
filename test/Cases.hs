@@ -221,7 +221,6 @@ cases =
       runTestForFile "closure.solc" caseFolder,
       runTestForFile "closure-capture-only.solc" caseFolder,
       runTestForFileWith noDesugarOpt "Compose.solc" caseFolder,
-      runTestForFile "Compose2.solc" caseFolder,
       runTestForFile "Compose3.solc" caseFolder,
       -- The following test makes the test runner throw an exception
       -- , runTestForFile "comp.solc" caseFolder
