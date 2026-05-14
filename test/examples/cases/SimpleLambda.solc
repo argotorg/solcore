@@ -7,16 +7,16 @@ function addWord(x : word, y : word) -> word {
 }
 
 contract SimpleLambda{
-  function f (z) {
-    let n = lam (x,y) {
+  function f (z : word) -> word {
+    let n = lam (x : word, y : word) {
       return addWord(x,addWord(y,1));
     } ;
-    let m = lam (x) {
+    let m = lam (x : word) {
       return addWord (z,x) ;
     } ;
     return m(n(1,0));
   }
-  function main() {
+  function main() -> word {
     return f(40);
   }
 }

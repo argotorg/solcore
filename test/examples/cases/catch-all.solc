@@ -1,7 +1,7 @@
 data Bool = False | True;
 
 contract CatchAll {
-    function catchAll(x, y) -> Bool{
+    function catchAll(x : Bool, y : Bool) -> Bool{
       match x, y {
       | Bool.True, Bool.True => return Bool.True;
       | z, w      => return z;

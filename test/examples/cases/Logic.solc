@@ -1,21 +1,21 @@
 contract Logic {
   data Bool = True | False;
 
-  function not (x) {
+  function not (x : Bool) -> Bool {
     match x {
     | Bool.True => return Bool.False ;
     | Bool.False => return Bool.True ;
     }
   }
 
-  function and(x, y) {
+  function and(x : Bool, y : Bool) -> Bool {
     match x, y {
     | Bool.False, _ => return Bool.False ;
     | Bool.True , _ => return y ;
     }
   }
 
-  function and1 (x, y) {
+  function and1 (x : Bool, y : Bool) -> Bool {
     match x, y {
     | Bool.False, Bool.False => return Bool.False ;
     | Bool.True , Bool.False => return Bool.False;
@@ -24,10 +24,12 @@ contract Logic {
     }
   }
 
-  function elim (f, g, x) {
+  function elim (f : word, g : word, x : Bool) -> word {
     match x {
     | Bool.True => return f;
     | Bool.False => return g;
     }
   }
+
+  function main() -> word { return 0; }
 }

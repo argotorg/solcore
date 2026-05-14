@@ -2,17 +2,19 @@ contract EvenOdd {
   data Nat = Zero | Succ(Nat);
   data Bool = False | True;
 
-  function even (n) {
+  function even (n : Nat) -> Bool {
     match n {
     | Nat.Zero => return Bool.True;
     | Nat.Succ(m) => return odd(m);
     }
   }
 
-  function odd(n) {
+  function odd(n : Nat) -> Bool {
     match n {
     | Nat.Zero => return Bool.False;
     | Nat.Succ(m) => return even(m);
     }
   }
+
+  function main() -> word { return 0; }
 }

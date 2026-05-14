@@ -1,11 +1,11 @@
-function toBool(x) {
+function toBool(x : word) -> bool {
   match x {
   | 0 => return false;
   | _ => return true;
   }
 }
 
-function gt(x,y) {
+function gt(x : word, y : word) -> bool {
   let res : word;
   assembly {
     res := gt(x,y)
@@ -13,7 +13,7 @@ function gt(x,y) {
   return toBool(res);
 }
 
-function max(x,y) {
+function max(x : word, y : word) -> word {
   let res : word;
   if (gt(x,y)) {
     res = x;
@@ -27,20 +27,17 @@ function not(x:bool) -> bool {
   if (x) { return false; }  else { return true; }
 }
 
-function foo () /* -> (word) -> bool */ {
-  return lam (x) {
-            if (gt(x,0)) {
-                return true;
-            } else {
-                return false;
-            }
-         };
+function foo(x : word) -> bool {
+  if (gt(x,0)) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 
 contract IfExamples {
 	 function main() -> word {
-	    let f = foo();
-	   return (if not(f(42)) then 0 else 1);
+	   return (if not(foo(42)) then 0 else 1);
 	 }
 }

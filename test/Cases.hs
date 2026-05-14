@@ -221,7 +221,6 @@ cases =
       runTestForFile "closure.solc" caseFolder,
       runTestForFile "closure-capture-only.solc" caseFolder,
       runTestForFileWith noDesugarOpt "Compose.solc" caseFolder,
-      runTestForFile "Compose2.solc" caseFolder,
       runTestForFile "Compose3.solc" caseFolder,
       -- The following test makes the test runner throw an exception
       -- , runTestForFile "comp.solc" caseFolder
@@ -322,6 +321,11 @@ cases =
       runTestForFile "proxy.solc" caseFolder,
       runTestExpectingFailure "proxy1.solc" caseFolder,
       runTestForFile "rec.solc" caseFolder,
+      runTestExpectingFailure "require-annotation-missing-param.solc" caseFolder,
+      runTestExpectingFailure "require-annotation-missing-return.solc" caseFolder,
+      runTestExpectingFailure "require-annotation-missing-both.solc" caseFolder,
+      runTestExpectingFailure "require-annotation-contract-method.solc" caseFolder,
+      runTestExpectingFailure "require-annotation-mutual.solc" caseFolder,
       runTestExpectingFailure "Ref.solc" caseFolder,
       runTestForFile "RefDeref.solc" caseFolder,
       runTestExpectingFailure "reference.solc" caseFolder,

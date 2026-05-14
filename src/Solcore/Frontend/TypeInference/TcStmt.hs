@@ -1201,10 +1201,24 @@ checkMethod ih@(InCls n _ _) d@(FunDef sig _) =
 checkMethod p d = invalidMethodPred p d
 
 fullSignature :: Signature Name -> TcM ()
-fullSignature sig@(Signature _ _ _ ps t) =
+fullSignature sig =
   unless
-    (all isTyped ps && maybe False (const True) t)
+    (isFullyAnnotated sig)
     (throwError $ unlines ["Instance methods must have complete type signatures:", pretty sig])
+
+requireAnnotations :: FunDef Name -> TcM ()
+requireAnnotations (FunDef sig _) =
+  unless (isFullyAnnotated sig) $
+    tcmError $
+      unlines
+        [ "Top-level function must have complete type annotations:",
+          "  " ++ pretty sig,
+          "Annotate every parameter (name : Type) and provide a return type (-> Type)."
+        ]
+
+isFullyAnnotated :: Signature Name -> Bool
+isFullyAnnotated (Signature _ _ _ ps rt) =
+  all isTyped ps && isJust rt
   where
     isTyped (Typed _ _) = True
     isTyped _ = False

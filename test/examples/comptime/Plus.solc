@@ -2,15 +2,15 @@ import std.{*};
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
-  function zero () {
+  function zero () -> word {
     return 0;
   }
 
-function one() {
+function one() -> word {
     return 1 + zero() ;
   }
 
-function two () {
+function two () -> word {
   let x = zero();
   x = x + one();
   x =  x + x ;

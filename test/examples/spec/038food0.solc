@@ -3,7 +3,7 @@ data CFood = Red(Food) | Green(Food) | Nocolor;
 
 
 
-  function fromEnum(x : CFood) {
+  function fromEnum(x : CFood) -> word {
      match x {
        | CFood.Red(Food.Curry) => return 1;
        | CFood.Green(Food.Beans) => return 42;
@@ -13,11 +13,11 @@ data CFood = Red(Food) | Green(Food) | Nocolor;
 
 
 contract FoodContract {
-  function id(x) {
+  function id(x : CFood) -> CFood {
     return(x);
   }
 
-  function main() {
+  function main() -> word {
   return fromEnum(id(CFood.Green(Food.Beans)));
   }
 }

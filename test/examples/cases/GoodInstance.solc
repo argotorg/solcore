@@ -5,7 +5,7 @@ class a:Enum {
   data Color = R | G | B;
 
 instance Color : Enum {
-  function fromEnum(c) {
+  function fromEnum(c : Color) -> Word {
     match c {
       | Color.R => return 1;
       | Color.G => return 2;
@@ -18,7 +18,7 @@ instance Color : Enum {
 data Bool = False | True;
 
 instance Bool : Enum {
-  function fromEnum(b) {
+  function fromEnum(b : Bool) -> Word {
       match b {
       | Bool.False => return 0;
       | Bool.True => return 1;
@@ -27,5 +27,5 @@ instance Bool : Enum {
 }
 
 contract GoodInstance {
-  function main() { return fromEnum(Bool.True);}
+  function main() -> Word { return fromEnum(Bool.True);}
 }
