@@ -148,6 +148,19 @@ function sha256(input: memory(bytes)) -> bytes32 {
     return bytes32(res);
 }
 
+forall t . class t:ToBytesLike {
+    function to_bytes(value: t) -> memory(bytes);
+}
+
+instance bytes32:ToBytesLike {
+    function to_bytes(value: bytes32) -> memory(bytes) {
+        let res: word = allocate_memory(64);
+        mstore(res, 32);
+        mstore(res + 32, Typedef.rep(value));
+        return memory(res);
+    }
+}
+
 function to_bytes(v: bytes32) -> memory(bytes) {
     let res: word = allocate_memory(64);
     mstore(res, 32);
