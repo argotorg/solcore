@@ -694,7 +694,7 @@ function set_free_memory(loc : word) -> () {
 
 function allocate_memory(size : word) -> word {
     let ptr = get_free_memory();
-    set_free_memory(Add.add(ptr,size));
+    set_free_memory(ptr + size);
     return ptr;
 }
 
@@ -744,11 +744,11 @@ forall t . t:Typedef(word) => instance memory(DynArray(t)):IndexAccess(t) {
 
 forall t . function allocateDynamicArray(prx : Proxy(t), length : word) -> memory(DynArray(t)) {
     // size of allocation in bytes
-    let sz : word = Mul.mul(Add.add(length, 1), 32);
+    let sz : word = (length + 1) * 32;
 
     // get start of array & increment free by sz
     let free : word = get_free_memory();
-    set_free_memory(Add.add(free, sz));
+    set_free_memory(free + sz);
 
     // write array length and return
     assembly { mstore(free, length) }
@@ -826,7 +826,7 @@ instance MemoryWordReader:WordReader {
     }
     function advance(reader:MemoryWordReader, offset:word) -> MemoryWordReader {
         match reader {
-        | MemoryWordReader(ptr) => return MemoryWordReader(Add.add(ptr, offset));
+        | MemoryWordReader(ptr) => return MemoryWordReader(ptr + offset);
         }
     }
     function copyToMem(reader:MemoryWordReader, dst:word, cnt: word) -> () {
@@ -861,7 +861,7 @@ instance CalldataWordReader:WordReader {
     }
     function advance(reader:CalldataWordReader, offset:word) -> CalldataWordReader {
         match reader {
-        | CalldataWordReader(ptr) => return CalldataWordReader(Add.add(ptr, offset));
+        | CalldataWordReader(ptr) => return CalldataWordReader(ptr + offset);
         }
     }
     function copyToMem(reader:CalldataWordReader, dst:word, cnt: word) -> () {
@@ -1003,7 +1003,7 @@ forall a b . a:ABIAttribs, b:ABIAttribs => instance (a,b):ABIAttribs {
         let pb : Proxy(b);
         let sza = ABIAttribs.headSize(pa);
         let szb = ABIAttribs.headSize(pb);
-        return Add.add(sza, szb);
+        return sza + szb;
     }
     function isStatic(ty : Proxy((a,b))) -> bool {
         let pa : Proxy(a);
@@ -1057,7 +1057,7 @@ forall ty . ty:ABIAttribs => instance calldata(ty):ABIAttribs {
 // abi encodes an instance of `ty` and returns a pointer to the result
 forall ty . ty:ABIAttribs, ty:ABIEncode => function abi_encode(val : ty) -> memory(bytes) {
     let free = get_free_memory();
-    let tail = ABIEncode.encodeInto(val, free, 0, Add.add(free, ABIAttribs.headSize(Proxy : Proxy(ty))));
+    let tail = ABIEncode.encodeInto(val, free, 0, free + ABIAttribs.headSize(Proxy : Proxy(ty)));
     set_free_memory(tail);
     return memory(free);
 }
@@ -1105,7 +1105,7 @@ function round_up_to_mul_of_32(value:word) -> word {
 }
 
 function encodeIntoFromBytesLike(srcPtr:word, basePtr:word, offset:word, tail:word) -> word {
-    let tailOffset = Sub.sub(tail,basePtr);
+    let tailOffset = tail - basePtr;
 
     assembly {
       let length := mload(srcPtr)
@@ -1147,7 +1147,7 @@ forall a b . a:ABIAttribs, a:ABIEncode, b:ABIEncode => instance (a,b):ABIEncode 
             let newTail = ABIEncode.encodeInto(l, basePtr, offset, tail);
             let pa : Proxy(a);
             let a_sz = ABIAttribs.headSize(pa);
-            return ABIEncode.encodeInto(r, basePtr, Add.add(offset, a_sz), newTail);
+            return ABIEncode.encodeInto(r, basePtr, offset + a_sz, newTail);
         }
     }
 }
@@ -1170,7 +1170,7 @@ forall tuple . tuple:ABIEncode, tuple:ABIAttribs => instance ABITuple(tuple):ABI
             // encode the underlying tuple into the tail
             let headSize = ABIAttribs.headSize(Proxy : Proxy(tuple));
             basePtr = tail;
-            assembly { tail := add(tail, headSize) }
+            tail = tail + headSize;
             return ABIEncode.encodeInto(Typedef.rep(x), basePtr, 0, tail);
         }
     }
@@ -1251,7 +1251,7 @@ function decodeBytesLike(ptr:ABIDecoder(memory(a), reader), currentHeadOffset:wo
         let src = WordReader.advance(ptr, tailPtr);
         let srcRdr = getReader(src);
         let length = WordReader.read(src);
-        let total = Add.add(length, 32);
+        let total = length + 32;
         let rounded = round_up_to_mul_of_32(total);
         let resultPtr : word = allocate_memory(rounded);
         WordReader.copyToMem(srcRdr, resultPtr, total);
@@ -1287,7 +1287,7 @@ forall a b a_decoded b_decoded reader . reader:WordReader, ABIDecoder(b,reader):
             let decoder_a : ABIDecoder(a, reader) = ABIDecoder(rdr);
             let decoder_b : ABIDecoder(b, reader) = ABIDecoder(rdr);
             let a_val : a_decoded = ABIDecode.decode(decoder_a, currentHeadOffset);
-            let b_val : b_decoded = ABIDecode.decode(decoder_b, Add.add(currentHeadOffset, ABIAttribs.headSize(prx)));
+            let b_val : b_decoded = ABIDecode.decode(decoder_b, currentHeadOffset + ABIAttribs.headSize(prx));
             return (a_val, b_val);
         }
     }
@@ -1462,7 +1462,7 @@ forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
     function size(x:Proxy((a,b))) -> word {
         let a_sz:word = StorageSize.size(Proxy:Proxy(a));
         let b_sz:word = StorageSize.size(Proxy:Proxy(b));
-        return addWord(a_sz, b_sz);
+        return a_sz + b_sz;
     }
 }
 
@@ -1578,10 +1578,7 @@ forall structType fieldSelector fieldType storageType offsetType
     function acc(x:MemberAccessProxy(storage(structType), fieldSelector, fieldType,  offsetType)) -> storage(fieldType) {
         let ptr:word = Typedef.rep(memberAccessBase(x));
         let size:word = StorageSize.size(Proxy:Proxy(offsetType));
-        assembly {
-            ptr := add(ptr, size)
-        }
-        return storage(ptr);
+        return storage(ptr + size);
     }
 }
 
@@ -1593,10 +1590,7 @@ forall structType fieldSelector fieldType storageType offsetType
     function acc(x:MemberAccessProxy(storage(structType), fieldSelector, fieldType,  offsetType)) -> fieldType {
         let ptr:word = Typedef.rep(memberAccessBase(x));
         let size:word = StorageSize.size(Proxy:Proxy(offsetType));
-        assembly {
-            ptr := add(ptr, size)
-        }
-        return CanStore.sload(ptr);
+        return CanStore.sload(ptr + size);
     }
 }
 */
