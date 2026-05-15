@@ -173,15 +173,19 @@ function revertEmpty() -> () {
 }
 
 // TODO: use bytes4
-data Error = Error(word);
+// TODO: add Msg(string)
+data Error = Error(word) | Empty;
 
 // Revert with Error selector.
 function revertWithError(e:Error) -> () {
     match e {
-        | Error(selector) => assembly {
+        | Error.Error(selector) => assembly {
             mstore(0, selector)
             // We only care about the BE MSB.
             revert(28, 4)
+        }
+        | Error.Empty => assembly {
+            revert(0, 0)
         }
     }
 }
