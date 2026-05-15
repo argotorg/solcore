@@ -217,15 +217,11 @@ forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispat
 // Given evidence of a type with a known selector, we can check if it matches the selector in the first four bytes of calldata
 forall ty . ty:Selector => function selector_matches(prx : Proxy(ty)) -> bool {
   let candidate = Typedef.rep(Selector.compute(prx));
-  let res : word;
+  let selector: word;
   assembly {
-    let sel := shr(224, calldataload(0));
-    res := eq(sel, candidate);
+    selector := shr(224, calldataload(0))
   }
-  match res {
-    | 0 => return false;
-    | _ => return true;
-  }
+  return selector == candidate;
 }
 
 // --- Callvalue Checks ---
