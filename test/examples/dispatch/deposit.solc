@@ -148,6 +148,62 @@ function sha256(input: memory(bytes)) -> bytes32 {
     return bytes32(res);
 }
 
+forall t . class t:MemoryAttributes {
+    // The size needed for the value.
+    function len(v: t) -> word;
+    // If this is a non-memory type, memory is allocated first.
+    function ptr(v: t) -> word;
+    // Serialize the entire contents at a provided memory area.
+    function encodeInto(v: t, target: word) -> ();
+}
+
+forall a b . a:MemoryAttributes, b:MemoryAttributes => function concat(x: a, y: b) -> memory(bytes) {
+    let x_len = MemoryAttributes.len(x);
+    let y_len = MemoryAttributes.len(y);
+    let res: word = allocate_memory(32 + x_len + y_len);
+    mstore(res, x_len + y_len);
+    MemoryAttributes.encodeInto(x, res + 32);
+    MemoryAttributes.encodeInto(y, res + 32 + x_len);
+    return memory(res);
+}
+
+instance bytes32:MemoryAttributes {
+    function len(v: bytes32) -> word {
+        return 32;
+    }
+    function ptr(v: bytes32) -> word {
+        // TODO: use `allocate_bytes_array` + `encodeInto`
+        return Typedef.rep(to_bytes(v));
+    }
+    function encodeInto(v: bytes32, target: word) -> () {
+        mstore(target, Typedef.rep(v));
+    }
+}
+
+instance memory(bytes):MemoryAttributes {
+    function len(v: memory(bytes)) -> word {
+        return mload(Typedef.rep(v));
+    }
+    function ptr(v: memory(bytes)) -> word {
+        return Typedef.rep(v);
+    }
+    function encodeInto(v: memory(bytes), target: word) -> () {
+        let v_ = Typedef.rep(v);
+        assembly {
+            mcopy(target, add(v_, 32), mload(v_))
+        }
+    }
+}
+
+/*
+data Concatenator = Concatenator(t));
+
+forall t . class t:Concaternator {
+    function concat()
+}
+*/
+
+
 forall t . class t:ToBytesLike {
     function to_bytes(value: t) -> memory(bytes);
 }
@@ -246,7 +302,8 @@ contract DepositContract {
   constructor() {
     // Compute hashes in empty sparse Merkle tree
     for (let height = uint256(0); height < (DEPOSIT_CONTRACT_TREE_DEPTH() - uint256(1)); height = height + uint256(1)) {
-        zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+//        zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
+        zero_hashes[height + uint256(1)] = sha256(concat(zero_hashes[height], zero_hashes[height]));
     }
   }
 
@@ -324,7 +381,8 @@ contract DepositContract {
         sha256(MemoryHelpers.concat(bytes_slice(signature, 64), empty_bytes(32))), // slice
     ));
     let node = sha256(MemoryHelpers.concat(
-        sha256(MemoryHelpers.concat(to_bytes(pubkey_root), withdrawal_credentials)),
+//        sha256(MemoryHelpers.concat(to_bytes(pubkey_root), withdrawal_credentials)),
+        sha256(concat(pubkey_root, withdrawal_credentials)),
         sha256(MemoryHelpers.concat(MemoryHelpers.concat(amount, empty_bytes(24)), to_bytes(signature_root)))
     ));
 
