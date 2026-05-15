@@ -117,7 +117,7 @@ tcCompUnit importedDeclMode localDeclKeys (CompUnit imps cs) =
     csExpanded <- everywhereM (mkM (expandTyM st)) cs
     mapM_ checkTopDecl (filter isClass csExpanded)
     mapM_ checkTopDecl (filter (not . isClass) csExpanded)
-    typedDecls <- catMaybes <$> mapM tcTopDeclWithVisibility csExpanded
+    typedDecls <- catMaybes <$> zipWithM tcTopDeclWithVisibility cs csExpanded
     pure (CompUnit imps typedDecls)
   where
     ps = foldr step [] cs
@@ -127,15 +127,16 @@ tcCompUnit importedDeclMode localDeclKeys (CompUnit imps cs) =
     isClass _ = False
     syns = [s | TSym s <- cs]
     localDeclKeySet = Set.fromList localDeclKeys
-    tcTopDeclWithVisibility d
-      | any (`Set.member` localDeclKeySet) (topDeclKeys d) = Just <$> tcTopDecl' d
+    tcTopDeclWithVisibility originalDecl expandedDecl
+      | any (`Set.member` localDeclKeySet) (topDeclKeys originalDecl) =
+          Just <$> tcTopDecl' expandedDecl
       | otherwise =
           withPartialDataTypesDisabled $
             case importedDeclMode of
               CheckImportedDeclBodies ->
-                Just <$> tcTopDecl' d
+                Just <$> tcTopDecl' expandedDecl
               TrustImportedDeclBodies ->
-                Nothing <$ trustImportedTopDecl d
+                Nothing <$ trustImportedTopDecl expandedDecl
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d

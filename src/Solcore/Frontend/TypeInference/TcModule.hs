@@ -1,6 +1,8 @@
 module Solcore.Frontend.TypeInference.TcModule
   ( CheckedModule (..),
     ModuleTypeCheckInput (..),
+    assembleCheckedModules,
+    checkedModulesInOrder,
     loadModuleLocalTypeCheckInput,
     loadModuleTypeCheckInput,
     mkModuleTypeCheckInput,
@@ -9,6 +11,8 @@ module Solcore.Frontend.TypeInference.TcModule
   )
 where
 
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader
 import Solcore.Frontend.Syntax.NameResolution
@@ -137,3 +141,32 @@ typeInferModuleLocals opts input =
     (moduleLocalDeclKeys input)
     (modulePartialImportedTypes input)
     (moduleTypeCheckCompUnit input)
+
+checkedModulesInOrder ::
+  ModuleGraph ->
+  Map Mod.ModuleId CheckedModule ->
+  Either String [CheckedModule]
+checkedModulesInOrder graph checkedModules =
+  mapM lookupCheckedModule (moduleOrder graph)
+  where
+    lookupCheckedModule moduleId =
+      maybe
+        (Left ("Internal error: module was not typechecked: " ++ Mod.moduleIdDisplay moduleId))
+        Right
+        (Map.lookup moduleId checkedModules)
+
+assembleCheckedModules ::
+  ModuleGraph ->
+  Map Mod.ModuleId CheckedModule ->
+  Either String (CompUnit Id)
+assembleCheckedModules graph checkedModules = do
+  orderedModules <- checkedModulesInOrder graph checkedModules
+  entryCheckedModule <-
+    maybe
+      (Left ("Internal error: entry module was not typechecked: " ++ Mod.moduleIdDisplay (entryModule graph)))
+      Right
+      (Map.lookup (entryModule graph) checkedModules)
+  pure $
+    CompUnit
+      (imports (checkedModuleTyped entryCheckedModule))
+      (concatMap (contracts . checkedModuleTyped) orderedModules)

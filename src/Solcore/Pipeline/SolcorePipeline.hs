@@ -27,6 +27,7 @@ import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictVali
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.NameResolution
+import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcModule
@@ -84,40 +85,10 @@ compile opts = runExceptT $ do
           <$> nameResolution cunit
     pure ()
 
-  _checkedModules <- typeCheckLoadedModules opts graph
+  checkedModules <- typeCheckLoadedModules opts graph
+  _checkedAssembly <- ExceptT $ pure (assembleCheckedModules graph checkedModules)
 
-  resolvedModuleInput <- ExceptT $ loadModuleTypeCheckInput graph (entryModule graph)
-  let resolved = moduleTypeCheckCompUnit resolvedModuleInput
-
-  liftIO $ when (verbose || optDumpAST opts) $ do
-    putStrLn "> AST after name resolution"
-    putStrLn $ pretty resolved
-
-  noFun <- prepareForTypeInference opts True resolved
-  let moduleInput =
-        resolvedModuleInput {moduleTypeCheckCompUnit = noFun}
-
-  -- Type inference, first round without any desugaring
-  (_typed, _typedEnv) <-
-    ExceptT $
-      timeItNamed
-        "Typecheck (no desugaring)  "
-        (typeInferModule noDesugarOpt moduleInput)
-
-  liftIO $ when verbose $ do
-    putStrLn "No type errors found!"
-
-  (typed, tcEnv) <-
-    ExceptT $
-      timeItNamed
-        "Typecheck (desugaring)  "
-        (typeInferModule opts moduleInput)
-
-  liftIO $ when verbose $ do
-    putStrLn "> Type inference logs:"
-    mapM_ putStrLn (reverse $ logs tcEnv)
-    putStrLn "> Elaborated tree:"
-    putStrLn $ pretty typed
+  (typed, tcEnv) <- typeCheckFlattenedEntryForBackend opts graph
 
   -- If / boolean desugaring
   desugared <-
@@ -185,6 +156,49 @@ compile opts = runExceptT $ do
         forM_ hull (putStrLn . pretty)
 
       pure hull
+
+typeCheckFlattenedEntryForBackend ::
+  Option ->
+  ModuleGraph ->
+  ExceptT String IO (CompUnit Id, TcEnv)
+typeCheckFlattenedEntryForBackend opts graph = do
+  let verbose = optVerbose opts
+      timeItNamed :: String -> IO a -> IO a
+      timeItNamed = optTimeItNamed opts
+  resolvedModuleInput <- ExceptT $ loadModuleTypeCheckInput graph (entryModule graph)
+  let resolved = moduleTypeCheckCompUnit resolvedModuleInput
+
+  liftIO $ when (verbose || optDumpAST opts) $ do
+    putStrLn "> AST after name resolution"
+    putStrLn $ pretty resolved
+
+  noFun <- prepareForTypeInference opts True resolved
+  let moduleInput =
+        resolvedModuleInput {moduleTypeCheckCompUnit = noFun}
+
+  -- Type inference, first round without any desugaring
+  (_typed, _typedEnv) <-
+    ExceptT $
+      timeItNamed
+        "Typecheck (no desugaring)  "
+        (typeInferModule noDesugarOpt moduleInput)
+
+  liftIO $ when verbose $ do
+    putStrLn "No type errors found!"
+
+  (typed, tcEnv) <-
+    ExceptT $
+      timeItNamed
+        "Typecheck (desugaring)  "
+        (typeInferModule opts moduleInput)
+
+  liftIO $ when verbose $ do
+    putStrLn "> Type inference logs:"
+    mapM_ putStrLn (reverse $ logs tcEnv)
+    putStrLn "> Elaborated tree:"
+    putStrLn $ pretty typed
+
+  pure (typed, tcEnv)
 
 typeCheckLoadedModules :: Option -> ModuleGraph -> ExceptT String IO (Map Mod.ModuleId CheckedModule)
 typeCheckLoadedModules opts graph =
