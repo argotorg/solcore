@@ -17,7 +17,7 @@ function callvalue() -> uint256 {
     return uint256(res);
 }
 
-function assert(cond: bool) {
+function assert(cond: bool) -> () {
     if (!cond) {
         assembly {
             invalid()
@@ -25,7 +25,7 @@ function assert(cond: bool) {
     }
 }
 
-function require(cond: bool) {
+function require(cond: bool) -> () {
     if (!cond) {
         assembly {
             revert(0, 0)
@@ -67,7 +67,7 @@ instance memory(bytes):MemoryHelpers {
     } 
 }
 
-function zeroize_memory(ptr: word, len: word) {
+function zeroize_memory(ptr: word, len: word) -> () {
     assembly {
         let end_ptr := add(ptr, len)
 
