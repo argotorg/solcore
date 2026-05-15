@@ -80,6 +80,7 @@ export {
   revert,
   revertEmpty,
   revertWithError,
+  require,
   ridx,
   round_up_to_mul_of_32,
   rval,
@@ -182,6 +183,12 @@ function revertWithError(e:Error) -> () {
             // We only care about the BE MSB.
             revert(28, 4)
         }
+    }
+}
+
+function require(cond: bool, e: Error) -> () {
+    if (!cond) {
+        revertWithError(e);
     }
 }
 
