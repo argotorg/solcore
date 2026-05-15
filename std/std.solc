@@ -106,6 +106,7 @@ export {
   strlenLit,
   subWord,
   toWord,
+  to_bytes,
   tobool,
   uint256(*),
   unimplemented
@@ -2002,4 +2003,12 @@ instance memory(bytes):MemoryAttributes {
             mcopy(target, add(v_, 32), mload(v_))
         }
     }
+}
+
+forall a . a:MemoryAttributes => function to_bytes(x: a) -> memory(bytes) {
+    let len = MemoryAttributes.len(x);
+    let res = allocate_memory(32 + len);
+    mstore(res, len);
+    MemoryAttributes.encodeInto(x, res + 32);
+    return memory(res);
 }
