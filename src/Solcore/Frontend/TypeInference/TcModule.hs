@@ -1,5 +1,6 @@
 module Solcore.Frontend.TypeInference.TcModule
   ( CheckedModule (..),
+    CheckedAssembly (..),
     ModuleTypeCheckInput (..),
     assembleCheckedModules,
     checkedModulesInOrder,
@@ -39,6 +40,12 @@ data CheckedModule
     checkedModuleNoDesugar :: CompUnit Id,
     checkedModuleTyped :: CompUnit Id,
     checkedModuleEnv :: TcEnv
+  }
+
+data CheckedAssembly
+  = CheckedAssembly
+  { checkedAssemblyCompUnit :: CompUnit Id,
+    checkedAssemblyEnv :: TcEnv
   }
 
 loadModuleTypeCheckInput ::
@@ -158,7 +165,7 @@ checkedModulesInOrder graph checkedModules =
 assembleCheckedModules ::
   ModuleGraph ->
   Map Mod.ModuleId CheckedModule ->
-  Either String (CompUnit Id)
+  Either String CheckedAssembly
 assembleCheckedModules graph checkedModules = do
   orderedModules <- checkedModulesInOrder graph checkedModules
   entryCheckedModule <-
@@ -166,7 +173,19 @@ assembleCheckedModules graph checkedModules = do
       (Left ("Internal error: entry module was not typechecked: " ++ Mod.moduleIdDisplay (entryModule graph)))
       Right
       (Map.lookup (entryModule graph) checkedModules)
+  let assembledCompUnit =
+        CompUnit
+          (imports (checkedModuleTyped entryCheckedModule))
+          (concatMap (contracts . checkedModuleTyped) orderedModules)
   pure $
-    CompUnit
-      (imports (checkedModuleTyped entryCheckedModule))
-      (concatMap (contracts . checkedModuleTyped) orderedModules)
+    CheckedAssembly
+      { checkedAssemblyCompUnit = assembledCompUnit,
+        checkedAssemblyEnv = mergeCheckedModuleEnvs entryCheckedModule orderedModules
+      }
+
+mergeCheckedModuleEnvs :: CheckedModule -> [CheckedModule] -> TcEnv
+mergeCheckedModuleEnvs entryCheckedModule orderedModules =
+  (checkedModuleEnv entryCheckedModule)
+    { typeTable =
+        Map.unions (map (typeTable . checkedModuleEnv) orderedModules)
+    }

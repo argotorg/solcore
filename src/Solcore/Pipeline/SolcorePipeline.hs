@@ -86,9 +86,14 @@ compile opts = runExceptT $ do
     pure ()
 
   checkedModules <- typeCheckLoadedModules opts graph
-  _checkedAssembly <- ExceptT $ pure (assembleCheckedModules graph checkedModules)
+  checkedAssembly <- ExceptT $ pure (assembleCheckedModules graph checkedModules)
 
-  (typed, tcEnv) <- typeCheckFlattenedEntryForBackend opts graph
+  (typed, tcEnv) <-
+    case checkedAssemblyBackendResult opts graph checkedAssembly of
+      Just checkedBackend ->
+        pure checkedBackend
+      Nothing ->
+        typeCheckFlattenedEntryForBackend opts graph
 
   -- If / boolean desugaring
   desugared <-
@@ -156,6 +161,30 @@ compile opts = runExceptT $ do
         forM_ hull (putStrLn . pretty)
 
       pure hull
+
+checkedAssemblyBackendResult ::
+  Option ->
+  ModuleGraph ->
+  CheckedAssembly ->
+  Maybe (CompUnit Id, TcEnv)
+checkedAssemblyBackendResult opts graph checkedAssembly
+  | canUseCheckedAssemblyForBackend opts graph =
+      Just (checkedAssemblyCompUnit checkedAssembly, checkedAssemblyEnv checkedAssembly)
+  | otherwise =
+      Nothing
+
+canUseCheckedAssemblyForBackend :: Option -> ModuleGraph -> Bool
+canUseCheckedAssemblyForBackend opts graph =
+  moduleOrder graph == [entryModule graph]
+    && not
+      ( or
+          [ optVerbose opts,
+            optDumpAST opts,
+            optDumpDispatch opts,
+            optDumpDF opts,
+            optTiming opts
+          ]
+      )
 
 typeCheckFlattenedEntryForBackend ::
   Option ->
