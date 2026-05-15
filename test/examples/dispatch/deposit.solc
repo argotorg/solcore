@@ -195,6 +195,14 @@ instance memory(bytes):MemoryAttributes {
     }
 }
 
+forall a . a:MemoryAttributes => function to_bytes(x: a) -> memory(bytes) {
+    let len = MemoryAttributes.len(x);
+    let res = allocate_memory(32 + len);
+    mstore(res, len);
+    MemoryAttributes.encodeInto(x, res + 32);
+    return memory(res);
+}
+
 /*
 data Concatenator = Concatenator(t));
 
@@ -217,7 +225,7 @@ instance bytes32:ToBytesLike {
     }
 }
 
-function to_bytes(v: bytes32) -> memory(bytes) {
+function to_bytes2(v: bytes32) -> memory(bytes) {
     let res: word = allocate_memory(64);
     mstore(res, 32);
     mstore(res + 32, Typedef.rep(v));
