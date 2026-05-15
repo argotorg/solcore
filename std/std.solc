@@ -901,11 +901,7 @@ instance uint256:MemoryType(uint256) {
 /*
 forall ty ret . ty:MemoryType(ret) => instance DynArray(ty):MemoryType(slice(memory(ret))) {
     function loadFromMemory(p : Proxy (DynArray(ty)), loc:word) -> slice(memory(ret)) {
-        let length;
-        assembly {
-            length := mload(loc)
-            off := add(loc, 32)
-        }
+        let length = mload(loc);
         return slice(Typedef.abs(loc) : memory(ret), length);
     }
 }
