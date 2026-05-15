@@ -20,6 +20,8 @@ module Solcore.Backend.MastEval
     maskWord,
     mstoreBytes,
     mloadWord,
+    -- Primitive evaluator (exported for testing)
+    evalPrimitive,
   )
 where
 

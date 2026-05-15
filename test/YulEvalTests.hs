@@ -4,8 +4,10 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Word (Word8)
 import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
+import Solcore.Backend.Mast (MastExp (..), MastId (..), MastTy (..), mastIdName)
 import Solcore.Backend.MastEval
 import Solcore.Frontend.Syntax.Name (Name (..))
+import Solcore.Frontend.Syntax.Stmt (Literal (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -36,16 +38,82 @@ runPure m = fst $ runEvalM (EvalEnv Map.empty Set.empty False) defaultFuel m
 runComptime :: EvalM a -> a
 runComptime m = fst $ runEvalM (EvalEnv Map.empty Set.empty True) defaultFuel m
 
+-- Extract the boolean value from a comptime bool (inr = true, inl = false).
+asMastBool :: MastExp -> Maybe Bool
+asMastBool (MastCon i _)
+  | mastIdName i == Name "inr" = Just True
+  | mastIdName i == Name "inl" = Just False
+asMastBool _ = Nothing
+
+intLit :: Integer -> MastExp
+intLit n = MastLit (IntLit n)
+
 yulEvalTests :: TestTree
 yulEvalTests =
   testGroup
     "Yul interpreter"
-    [ evalYulOpTests,
+    [ evalPrimitiveTests,
+      evalYulOpTests,
       evalYulExpTests,
       evalYulBlockTests,
       memoryHelperTests,
       memoryEvalTests,
       asmIsInterpretableTests
+    ]
+
+-----------------------------------------------------------------------
+-- evalPrimitive: integer builtins
+-----------------------------------------------------------------------
+
+evalPrimitiveTests :: TestTree
+evalPrimitiveTests =
+  testGroup
+    "evalPrimitive (integer builtins)"
+    [ testCase "wordToInteger: identity" $
+        evalPrimitive (Name "wordToInteger") [intLit 42] @?= Just (intLit 42),
+      testCase "wordToInteger: max word" $
+        evalPrimitive (Name "wordToInteger") [intLit (maskWord (-1))]
+          @?= Just (intLit (maskWord (-1))),
+      testCase "wordFromInteger: identity below 2^256" $
+        evalPrimitive (Name "wordFromInteger") [intLit 42] @?= Just (intLit 42),
+      testCase "wordFromInteger: truncates at 2^256" $
+        evalPrimitive (Name "wordFromInteger") [intLit (2 ^ (256 :: Integer))]
+          @?= Just (intLit 0),
+      testCase "wordFromInteger: 2^256 + 1 truncates to 1" $
+        evalPrimitive (Name "wordFromInteger") [intLit (2 ^ (256 :: Integer) + 1)]
+          @?= Just (intLit 1),
+      testCase "integerAdd: no overflow (2^255 + 2^255 = 2^256, not 0)" $
+        evalPrimitive (Name "integerAdd") [intLit (2 ^ (255 :: Integer)), intLit (2 ^ (255 :: Integer))]
+          @?= Just (intLit (2 ^ (256 :: Integer))),
+      testCase "integerAdd: basic" $
+        evalPrimitive (Name "integerAdd") [intLit 3, intLit 5] @?= Just (intLit 8),
+      testCase "integerSub: basic" $
+        evalPrimitive (Name "integerSub") [intLit 10, intLit 3] @?= Just (intLit 7),
+      testCase "integerSub: exact (no wrapping)" $
+        evalPrimitive (Name "integerSub") [intLit 1, intLit 2] @?= Just (intLit (-1)),
+      testCase "integerMul: no overflow (2^128 * 2^128 = 2^256)" $
+        evalPrimitive (Name "integerMul") [intLit (2 ^ (128 :: Integer)), intLit (2 ^ (128 :: Integer))]
+          @?= Just (intLit (2 ^ (256 :: Integer))),
+      testCase "integerLt: true when a < b" $
+        (asMastBool =<< evalPrimitive (Name "integerLt") [intLit (2 ^ (256 :: Integer)), intLit (2 ^ (256 :: Integer) + 1)])
+          @?= Just True,
+      testCase "integerLt: false when a == b" $
+        (asMastBool =<< evalPrimitive (Name "integerLt") [intLit 5, intLit 5])
+          @?= Just False,
+      testCase "integerLt: false when a > b" $
+        (asMastBool =<< evalPrimitive (Name "integerLt") [intLit 6, intLit 5])
+          @?= Just False,
+      testCase "integerEq: true when equal" $
+        (asMastBool =<< evalPrimitive (Name "integerEq") [intLit (2 ^ (256 :: Integer)), intLit (2 ^ (256 :: Integer))])
+          @?= Just True,
+      testCase "integerEq: false when unequal" $
+        (asMastBool =<< evalPrimitive (Name "integerEq") [intLit 3, intLit 4])
+          @?= Just False,
+      testCase "evalPrimitive: wrong arity → Nothing" $
+        evalPrimitive (Name "integerAdd") [intLit 1] @?= Nothing,
+      testCase "evalPrimitive: non-literal arg → Nothing" $
+        let unknownVar = MastVar (MastId (Name "x") (MastTyCon (Name "integer") []))
+         in evalPrimitive (Name "integerAdd") [intLit 1, unknownVar] @?= Nothing
     ]
 
 -----------------------------------------------------------------------
