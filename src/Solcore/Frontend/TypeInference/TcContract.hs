@@ -44,11 +44,27 @@ typeInferWithTrustedInstanceHeadsAndPartialTypes ::
   [(Name, [Name])] ->
   CompUnit Name ->
   IO (Either String (CompUnit Id, TcEnv))
-typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances localDeclKeys partialTypes (CompUnit imps topLevelDecls) =
+typeInferWithTrustedInstanceHeadsAndPartialTypes =
+  typeInferWithImportedDeclMode CheckImportedDeclBodies
+
+data ImportedDeclMode
+  = CheckImportedDeclBodies
+  | TrustImportedDeclBodies
+  deriving (Eq, Show)
+
+typeInferWithImportedDeclMode ::
+  ImportedDeclMode ->
+  Option ->
+  [InstanceHead] ->
+  [TopDeclKey] ->
+  [(Name, [Name])] ->
+  CompUnit Name ->
+  IO (Either String (CompUnit Id, TcEnv))
+typeInferWithImportedDeclMode importedDeclMode opts trustedInstances localDeclKeys partialTypes (CompUnit imps topLevelDecls) =
   do
     r <-
       runTcM
-        (tcCompUnit localDeclKeys (CompUnit imps topLevelDecls))
+        (tcCompUnit importedDeclMode localDeclKeys (CompUnit imps topLevelDecls))
         ( (initTcEnv opts)
             { trustedInstanceHeads = trustedInstances,
               partialDataTypes = Set.fromList (map fst partialTypes),
@@ -92,8 +108,8 @@ expandTyM st (TyCon n ts) = do
 expandTyM st (t1 :-> t2) = (:->) <$> expandTyM st t1 <*> expandTyM st t2
 expandTyM _ t = pure t
 
-tcCompUnit :: [TopDeclKey] -> CompUnit Name -> TcM (CompUnit Id)
-tcCompUnit localDeclKeys (CompUnit imps cs) =
+tcCompUnit :: ImportedDeclMode -> [TopDeclKey] -> CompUnit Name -> TcM (CompUnit Id)
+tcCompUnit importedDeclMode localDeclKeys (CompUnit imps cs) =
   do
     setupPragmas ps
     checkSynonymCycles syns
@@ -101,7 +117,7 @@ tcCompUnit localDeclKeys (CompUnit imps cs) =
     csExpanded <- everywhereM (mkM (expandTyM st)) cs
     mapM_ checkTopDecl (filter isClass csExpanded)
     mapM_ checkTopDecl (filter (not . isClass) csExpanded)
-    typedDecls <- mapM tcTopDeclWithVisibility csExpanded
+    typedDecls <- catMaybes <$> mapM tcTopDeclWithVisibility csExpanded
     pure (CompUnit imps typedDecls)
   where
     ps = foldr step [] cs
@@ -112,8 +128,14 @@ tcCompUnit localDeclKeys (CompUnit imps cs) =
     syns = [s | TSym s <- cs]
     localDeclKeySet = Set.fromList localDeclKeys
     tcTopDeclWithVisibility d
-      | any (`Set.member` localDeclKeySet) (topDeclKeys d) = tcTopDecl' d
-      | otherwise = withPartialDataTypesDisabled (tcTopDecl' d)
+      | any (`Set.member` localDeclKeySet) (topDeclKeys d) = Just <$> tcTopDecl' d
+      | otherwise =
+          withPartialDataTypesDisabled $
+            case importedDeclMode of
+              CheckImportedDeclBodies ->
+                Just <$> tcTopDecl' d
+              TrustImportedDeclBodies ->
+                Nothing <$ trustImportedTopDecl d
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
@@ -218,6 +240,19 @@ tcTopDecl (TExportDecl d) =
   pure (TExportDecl d)
 tcTopDecl (TPragmaDecl d) =
   pure (TPragmaDecl d)
+
+trustImportedTopDecl :: TopDecl Name -> TcM ()
+trustImportedTopDecl (TFunDef fd) =
+  extImportedFunDefs [fd]
+trustImportedTopDecl (TMutualDef ds) =
+  extImportedFunDefs [fd | TFunDef fd <- ds]
+trustImportedTopDecl _ =
+  pure ()
+
+extImportedFunDefs :: [FunDef Name] -> TcM ()
+extImportedFunDefs fds = do
+  nmschs <- extractSignatures fds
+  mapM_ (uncurry extEnv) nmschs
 
 checkTopDecl :: TopDecl Name -> TcM ()
 checkTopDecl (TClassDef c) =

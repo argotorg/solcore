@@ -5,6 +5,8 @@ import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (first)
 import Data.Char (isAlpha, isAlphaNum)
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
@@ -20,6 +22,7 @@ import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
+import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictValidationCompUnit, loadModuleGraph, moduleSourcePath)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
@@ -80,6 +83,8 @@ compile opts = runExceptT $ do
         first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e)
           <$> nameResolution cunit
     pure ()
+
+  _checkedModules <- typeCheckLoadedModules opts graph
 
   resolvedModuleInput <- ExceptT $ loadModuleTypeCheckInput graph (entryModule graph)
   let resolved = moduleTypeCheckCompUnit resolvedModuleInput
@@ -180,6 +185,49 @@ compile opts = runExceptT $ do
         forM_ hull (putStrLn . pretty)
 
       pure hull
+
+typeCheckLoadedModules :: Option -> ModuleGraph -> ExceptT String IO (Map Mod.ModuleId CheckedModule)
+typeCheckLoadedModules opts graph =
+  Map.fromList <$> mapM (typeCheckModuleFromGraph opts graph) (moduleOrder graph)
+
+typeCheckModuleFromGraph ::
+  Option ->
+  ModuleGraph ->
+  Mod.ModuleId ->
+  ExceptT String IO (Mod.ModuleId, CheckedModule)
+typeCheckModuleFromGraph opts graph moduleId = do
+  sourcePath <- ExceptT $ pure (moduleSourcePath graph moduleId)
+  resolvedInput <-
+    ExceptT $
+      first (moduleTypeCheckError sourcePath "input") <$> loadModuleLocalTypeCheckInput graph moduleId
+  prepared <- prepareForTypeInference opts False (moduleTypeCheckCompUnit resolvedInput)
+  let moduleInput =
+        resolvedInput {moduleTypeCheckCompUnit = prepared}
+  (noDesugarChecked, _noDesugarEnv) <-
+    ExceptT $
+      first (moduleTypeCheckError sourcePath "no desugaring") <$> typeInferModuleLocals noDesugarOpt moduleInput
+  (typed, tcEnv) <-
+    ExceptT $
+      first (moduleTypeCheckError sourcePath "desugaring") <$> typeInferModuleLocals opts moduleInput
+  pure
+    ( moduleId,
+      CheckedModule
+        { checkedModuleId = moduleId,
+          checkedModuleInput = moduleInput,
+          checkedModuleNoDesugar = noDesugarChecked,
+          checkedModuleTyped = typed,
+          checkedModuleEnv = tcEnv
+        }
+    )
+
+moduleTypeCheckError :: FilePath -> String -> String -> String
+moduleTypeCheckError sourcePath phase err =
+  "Module typecheck failed for "
+    ++ sourcePath
+    ++ " ("
+    ++ phase
+    ++ "):\n"
+    ++ err
 
 prepareForTypeInference ::
   Option ->

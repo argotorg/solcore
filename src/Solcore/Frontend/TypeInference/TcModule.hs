@@ -1,8 +1,11 @@
 module Solcore.Frontend.TypeInference.TcModule
-  ( ModuleTypeCheckInput (..),
+  ( CheckedModule (..),
+    ModuleTypeCheckInput (..),
+    loadModuleLocalTypeCheckInput,
     loadModuleTypeCheckInput,
     mkModuleTypeCheckInput,
     typeInferModule,
+    typeInferModuleLocals,
   )
 where
 
@@ -10,6 +13,7 @@ import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader
 import Solcore.Frontend.Syntax.NameResolution
 import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax.SyntaxTree qualified as Parsed
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
@@ -24,6 +28,15 @@ data ModuleTypeCheckInput
   }
   deriving (Eq, Show)
 
+data CheckedModule
+  = CheckedModule
+  { checkedModuleId :: Mod.ModuleId,
+    checkedModuleInput :: ModuleTypeCheckInput,
+    checkedModuleNoDesugar :: CompUnit Id,
+    checkedModuleTyped :: CompUnit Id,
+    checkedModuleEnv :: TcEnv
+  }
+
 loadModuleTypeCheckInput ::
   ModuleGraph ->
   Mod.ModuleId ->
@@ -36,6 +49,51 @@ loadModuleTypeCheckInput graph moduleId =
       fmap
         (\resolved -> mkModuleTypeCheckInput resolved localStart importedStart partialImportedTypes)
         <$> nameResolution parsed
+
+loadModuleLocalTypeCheckInput ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  IO (Either String ModuleTypeCheckInput)
+loadModuleLocalTypeCheckInput graph moduleId =
+  case flattenModuleStrictCompileCompUnitWithMetadata graph moduleId of
+    Left err ->
+      pure (Left err)
+    Right (parsed, localStart, importedStart, partialImportedTypes) ->
+      fmap
+        (\resolved -> mkModuleTypeCheckInput resolved localStart importedStart partialImportedTypes)
+        <$> nameResolution (stubNonLocalDeclBodies localStart importedStart parsed)
+
+stubNonLocalDeclBodies :: Int -> Int -> Parsed.CompUnit -> Parsed.CompUnit
+stubNonLocalDeclBodies localStart importedStart (Parsed.CompUnit imps topDecls) =
+  Parsed.CompUnit imps (zipWith stubAt [(0 :: Int) ..] topDecls)
+  where
+    stubAt index decl
+      | localStart <= index && index < importedStart = decl
+      | otherwise = stubTopDeclBody decl
+
+stubTopDeclBody :: Parsed.TopDecl -> Parsed.TopDecl
+stubTopDeclBody (Parsed.TContr (Parsed.Contract n vs contractDecls)) =
+  Parsed.TContr (Parsed.Contract n vs (map stubContractDeclBody contractDecls))
+stubTopDeclBody (Parsed.TFunDef fd) =
+  Parsed.TFunDef (stubFunDefBody fd)
+stubTopDeclBody (Parsed.TInstDef (Parsed.Instance d vs predCtx n ts t _funs)) =
+  Parsed.TInstDef (Parsed.Instance d vs predCtx n ts t [])
+stubTopDeclBody decl =
+  decl
+
+stubContractDeclBody :: Parsed.ContractDecl -> Parsed.ContractDecl
+stubContractDeclBody (Parsed.CFieldDecl (Parsed.Field n ty _initExp)) =
+  Parsed.CFieldDecl (Parsed.Field n ty Nothing)
+stubContractDeclBody (Parsed.CFunDecl fd) =
+  Parsed.CFunDecl (stubFunDefBody fd)
+stubContractDeclBody (Parsed.CConstrDecl (Parsed.Constructor params _body)) =
+  Parsed.CConstrDecl (Parsed.Constructor params [])
+stubContractDeclBody decl =
+  decl
+
+stubFunDefBody :: Parsed.FunDef -> Parsed.FunDef
+stubFunDefBody (Parsed.FunDef sig _body) =
+  Parsed.FunDef sig []
 
 mkModuleTypeCheckInput ::
   CompUnit Name ->
@@ -61,6 +119,19 @@ typeInferModule ::
   IO (Either String (CompUnit Id, TcEnv))
 typeInferModule opts input =
   typeInferWithTrustedInstanceHeadsAndPartialTypes
+    opts
+    (moduleTrustedInstanceHeads input)
+    (moduleLocalDeclKeys input)
+    (modulePartialImportedTypes input)
+    (moduleTypeCheckCompUnit input)
+
+typeInferModuleLocals ::
+  Option ->
+  ModuleTypeCheckInput ->
+  IO (Either String (CompUnit Id, TcEnv))
+typeInferModuleLocals opts input =
+  typeInferWithImportedDeclMode
+    TrustImportedDeclBodies
     opts
     (moduleTrustedInstanceHeads input)
     (moduleLocalDeclKeys input)
