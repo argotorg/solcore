@@ -44,6 +44,7 @@ export {
   address(*),
   allocate_memory,
   and,
+  assert,
   byte(*),
   bytes,
   bytes4(*),
@@ -186,6 +187,14 @@ function revertWithError(e:Error) -> () {
         }
         | Error.Empty => assembly {
             revert(0, 0)
+        }
+    }
+}
+
+function assert(cond: bool) -> () {
+    if (!cond) {
+        assembly {
+            invalid()
         }
     }
 }
