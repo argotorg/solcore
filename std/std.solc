@@ -334,6 +334,7 @@ class a:Num {
   function maxVal() -> a;
   function toWord(x:a) -> word;
   function fromWord(x:word) -> a;
+  function fromInteger(comptime x:integer) -> comptime a;
   function add(x:a, y:a) -> a;
   function sub(x:a, y:a) -> a;
   function gt(x:a, y:a) -> bool;
@@ -344,6 +345,7 @@ default instance a:Num {
   function maxVal() -> a { return Bounded.maxVal(); }
   function toWord(x:a) -> word { return Typedef.rep(x); }
   function fromWord(x:word) -> a { return Typedef.abs(x); }
+  function fromInteger(comptime x:integer) -> comptime a { return Typedef.abs(wordFromInteger(x)); }
   function add(x:a, y:a) -> a { return Add.add(x,y); }
   function sub(x:a, y:a) -> a { return Sub.sub(x,y); }
   function gt(x: a, y: a) -> bool { return Ord.gt(x, y); }

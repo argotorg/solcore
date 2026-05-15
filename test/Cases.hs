@@ -46,6 +46,7 @@ comptime =
       runTestForFile "ct_asm_mem.solc" comptimeFolder,
       runTestForFile "integer-basic.solc" comptimeFolder,
       runTestForFile "integer-fib.solc" comptimeFolder,
+      runTestForFile "integer-from-integer.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
       runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,
