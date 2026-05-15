@@ -1483,28 +1483,43 @@ renameExpFunctionCalls renameMap (ExpDivide e1 e2) =
 renameExpFunctionCalls renameMap (ExpModulo e1 e2) =
   ExpModulo (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
 renameExpFunctionCalls renameMap (ExpLT e1 e2) =
-  ExpLT (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+  renameOp2 renameMap (Name "lt") ExpLT e1 e2
 renameExpFunctionCalls renameMap (ExpGT e1 e2) =
   ExpGT (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
 renameExpFunctionCalls renameMap (ExpLE e1 e2) =
-  ExpLE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+  renameOp2 renameMap (Name "le") ExpLE e1 e2
 renameExpFunctionCalls renameMap (ExpGE e1 e2) =
-  ExpGE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+  renameOp2 renameMap (Name "ge") ExpGE e1 e2
 renameExpFunctionCalls renameMap (ExpEE e1 e2) =
   ExpEE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
 renameExpFunctionCalls renameMap (ExpNE e1 e2) =
-  ExpNE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+  renameOp2 renameMap (Name "ne") ExpNE e1 e2
 renameExpFunctionCalls renameMap (ExpLAnd e1 e2) =
-  ExpLAnd (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+  renameOp2 renameMap (Name "and") ExpLAnd e1 e2
 renameExpFunctionCalls renameMap (ExpLOr e1 e2) =
-  ExpLOr (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
+  renameOp2 renameMap (Name "or") ExpLOr e1 e2
 renameExpFunctionCalls renameMap (ExpLNot e) =
-  ExpLNot (renameExpFunctionCalls renameMap e)
+  let e' = renameExpFunctionCalls renameMap e
+   in case Map.lookup (Name "not") renameMap of
+        Just n -> ExpName Nothing n [e']
+        Nothing -> ExpLNot e'
 renameExpFunctionCalls renameMap (ExpCond e1 e2 e3) =
   ExpCond
     (renameExpFunctionCalls renameMap e1)
     (renameExpFunctionCalls renameMap e2)
     (renameExpFunctionCalls renameMap e3)
+
+-- | Rename a binary operator that desugars to an unqualified free-function call.
+-- When the function name appears in the rename map (because it was imported and
+-- needs to be hidden under a qualifier), we emit an explicit ExpName call so
+-- the renamed definition is referenced rather than the original unqualified name.
+renameOp2 :: Map Name Name -> Name -> (Exp -> Exp -> Exp) -> Exp -> Exp -> Exp
+renameOp2 renameMap fn keep e1 e2 =
+  let e1' = renameExpFunctionCalls renameMap e1
+      e2' = renameExpFunctionCalls renameMap e2
+   in case Map.lookup fn renameMap of
+        Just n -> ExpName Nothing n [e1', e2']
+        Nothing -> keep e1' e2'
 
 qualifiedMemberName :: Maybe Exp -> Name -> Maybe Name
 qualifiedMemberName me n =
@@ -2256,23 +2271,23 @@ expFunctionRefs (ExpDivide e1 e2) =
 expFunctionRefs (ExpModulo e1 e2) =
   expFunctionRefs e1 ++ expFunctionRefs e2
 expFunctionRefs (ExpLT e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
+  Name "lt" : expFunctionRefs e1 ++ expFunctionRefs e2
 expFunctionRefs (ExpGT e1 e2) =
   expFunctionRefs e1 ++ expFunctionRefs e2
 expFunctionRefs (ExpLE e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
+  Name "le" : expFunctionRefs e1 ++ expFunctionRefs e2
 expFunctionRefs (ExpGE e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
+  Name "ge" : expFunctionRefs e1 ++ expFunctionRefs e2
 expFunctionRefs (ExpEE e1 e2) =
   expFunctionRefs e1 ++ expFunctionRefs e2
 expFunctionRefs (ExpNE e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
+  Name "ne" : expFunctionRefs e1 ++ expFunctionRefs e2
 expFunctionRefs (ExpLAnd e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
+  Name "and" : expFunctionRefs e1 ++ expFunctionRefs e2
 expFunctionRefs (ExpLOr e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
+  Name "or" : expFunctionRefs e1 ++ expFunctionRefs e2
 expFunctionRefs (ExpLNot e) =
-  expFunctionRefs e
+  Name "not" : expFunctionRefs e
 expFunctionRefs (ExpCond e1 e2 e3) =
   expFunctionRefs e1 ++ expFunctionRefs e2 ++ expFunctionRefs e3
 

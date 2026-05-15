@@ -1,0 +1,5 @@
+import ltproxy.{ltproxy};
+
+contract LtImp {
+  function main() -> bool { ltproxy() }
+}
