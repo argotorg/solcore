@@ -372,6 +372,7 @@ assignedInStmt (MastFor initStmt _ post body) =
     `Set.union` foldMap assignedInStmt body
 assignedInStmt _ = Set.empty
 
+
 -----------------------------------------------------------------------
 -- Evaluate expressions
 -----------------------------------------------------------------------
@@ -436,6 +437,21 @@ evalPrimitive (Name "keccakLit") [MastLit (StrLit s)] =
       digestBytes :: BS.ByteString
       digestBytes = BA.convert digest
    in Just (MastLit (IntLit (bsToIntegerBE digestBytes)))
+-- Integer (comptime-only, unlimited precision) primitives:
+evalPrimitive (Name "wordToInteger") [MastLit (IntLit n)] =
+  Just (MastLit (IntLit n)) -- value-level identity
+evalPrimitive (Name "wordFromInteger") [MastLit (IntLit n)] =
+  Just (MastLit (IntLit (maskWord n))) -- truncate to 256 bits
+evalPrimitive (Name "integerAdd") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (a + b))) -- exact, no overflow
+evalPrimitive (Name "integerSub") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (a - b)))
+evalPrimitive (Name "integerMul") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (a * b)))
+evalPrimitive (Name "integerLt") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (mkBool (a < b))
+evalPrimitive (Name "integerEq") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (mkBool (a == b))
 evalPrimitive _ _ = Nothing
 
 bsToIntegerBE :: BS.ByteString -> Integer
@@ -799,7 +815,14 @@ builtinPureFuns =
       Name "eqWord",
       Name "concatLit",
       Name "strlenLit",
-      Name "keccakLit"
+      Name "keccakLit",
+      Name "wordToInteger",
+      Name "wordFromInteger",
+      Name "integerAdd",
+      Name "integerSub",
+      Name "integerMul",
+      Name "integerLt",
+      Name "integerEq"
     ]
 
 -- Functions with dummy pure bodies that are intercepted by EmitHull
