@@ -20,13 +20,13 @@ import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
-import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictCompileCompUnitWithMetadata, flattenModuleStrictValidationCompUnit, loadModuleGraph, moduleSourcePath)
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictValidationCompUnit, loadModuleGraph, moduleSourcePath)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.NameResolution
 import Solcore.Frontend.TypeInference.SccAnalysis
-import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
+import Solcore.Frontend.TypeInference.TcModule
 import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
 import System.Directory (makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
@@ -52,8 +52,6 @@ pipeline = do
 compile :: Option -> IO (Either String [Hull.Object])
 compile opts = runExceptT $ do
   let verbose = optVerbose opts
-      noDesugarCalls = optNoDesugarCalls opts
-      noGenDispatch = optNoGenDispatch opts
       noMatchCompiler = optNoMatchCompiler opts
       noIfDesugar = optNoIfDesugar opts
       timeItNamed :: String -> IO a -> IO a
@@ -83,82 +81,23 @@ compile opts = runExceptT $ do
           <$> nameResolution cunit
     pure ()
 
-  (parsed, localStart, importedStart, partialImportedTypes) <-
-    ExceptT $
-      pure (flattenModuleStrictCompileCompUnitWithMetadata graph (entryModule graph))
-
-  -- Name resolution
-  resolved <- ExceptT $ nameResolution parsed
-  let CompUnit _ resolvedDecls = resolved
-      trustedImportedInstanceHeads =
-        [ instanceHeadKey inst
-          | TInstDef inst <- drop importedStart resolvedDecls
-        ]
-      localDeclKeys =
-        take (importedStart - localStart) (drop localStart resolvedDecls) >>= topDeclKeys
+  resolvedModuleInput <- ExceptT $ loadModuleTypeCheckInput graph (entryModule graph)
+  let resolved = moduleTypeCheckCompUnit resolvedModuleInput
 
   liftIO $ when (verbose || optDumpAST opts) $ do
     putStrLn "> AST after name resolution"
     putStrLn $ pretty resolved
 
-  -- contract field access desugaring
-  let accessed = fieldDesugarer resolved
-  liftIO $ when verbose $ do
-    putStrLn "Contract field access desugaring:"
-    putStrLn $ pretty accessed
-
-  -- contract dispatch generation
-  dispatched <-
-    liftIO $
-      if noGenDispatch
-        then pure accessed
-        else timeItNamed "Contract dispatch generation" $ pure (contractDispatchDesugarer accessed)
-
-  liftIO $ when (optDumpDispatch opts) $ do
-    putStrLn "> Dispatch:"
-    putStrLn $ pretty dispatched
-
-  -- SCC analysis
-  connected <-
-    ExceptT $
-      timeItNamed "SCC           " $
-        sccAnalysis dispatched
-
-  liftIO $ when verbose $ do
-    putStrLn "> SCC Analysis:"
-    putStrLn $ pretty connected
-
-  -- Indirect call handling
-  direct <-
-    liftIO $
-      if noDesugarCalls
-        then pure connected
-        else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
-
-  liftIO $ when (verbose || optDumpDF opts) $ do
-    putStrLn "> Indirect call desugaring:"
-    putStrLn $ pretty direct
-
-  -- Pattern wildcard desugaring
-
-  let noWild = replaceWildcard direct
-  liftIO $ when verbose $ do
-    putStrLn "> Pattern wildcard desugaring:"
-    putStrLn $ pretty noWild
-
-  -- Eliminate function type arguments
-
-  let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
-  liftIO $ when verbose $ do
-    putStrLn "> Eliminating argments with function types"
-    putStrLn $ pretty noFun
+  noFun <- prepareForTypeInference opts True resolved
+  let moduleInput =
+        resolvedModuleInput {moduleTypeCheckCompUnit = noFun}
 
   -- Type inference, first round without any desugaring
   (_typed, _typedEnv) <-
     ExceptT $
       timeItNamed
         "Typecheck (no desugaring)  "
-        (typeInferWithTrustedInstanceHeadsAndPartialTypes noDesugarOpt trustedImportedInstanceHeads localDeclKeys partialImportedTypes noFun)
+        (typeInferModule noDesugarOpt moduleInput)
 
   liftIO $ when verbose $ do
     putStrLn "No type errors found!"
@@ -167,7 +106,7 @@ compile opts = runExceptT $ do
     ExceptT $
       timeItNamed
         "Typecheck (desugaring)  "
-        (typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedImportedInstanceHeads localDeclKeys partialImportedTypes noFun)
+        (typeInferModule opts moduleInput)
 
   liftIO $ when verbose $ do
     putStrLn "> Type inference logs:"
@@ -241,6 +180,72 @@ compile opts = runExceptT $ do
         forM_ hull (putStrLn . pretty)
 
       pure hull
+
+prepareForTypeInference ::
+  Option ->
+  Bool ->
+  CompUnit Name ->
+  ExceptT String IO (CompUnit Name)
+prepareForTypeInference opts emitOutput resolved = do
+  let verbose = emitOutput && optVerbose opts
+      noDesugarCalls = optNoDesugarCalls opts
+      noGenDispatch = optNoGenDispatch opts
+      timeItNamed :: String -> IO a -> IO a
+      timeItNamed
+        | emitOutput = optTimeItNamed opts
+        | otherwise = \_ action -> action
+
+  -- contract field access desugaring
+  let accessed = fieldDesugarer resolved
+  liftIO $ when verbose $ do
+    putStrLn "Contract field access desugaring:"
+    putStrLn $ pretty accessed
+
+  -- contract dispatch generation
+  dispatched <-
+    liftIO $
+      if noGenDispatch
+        then pure accessed
+        else timeItNamed "Contract dispatch generation" $ pure (contractDispatchDesugarer accessed)
+
+  liftIO $ when (emitOutput && optDumpDispatch opts) $ do
+    putStrLn "> Dispatch:"
+    putStrLn $ pretty dispatched
+
+  -- SCC analysis
+  connected <-
+    ExceptT $
+      timeItNamed "SCC           " $
+        sccAnalysis dispatched
+
+  liftIO $ when verbose $ do
+    putStrLn "> SCC Analysis:"
+    putStrLn $ pretty connected
+
+  -- Indirect call handling
+  direct <-
+    liftIO $
+      if noDesugarCalls
+        then pure connected
+        else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
+
+  liftIO $ when (emitOutput && (optVerbose opts || optDumpDF opts)) $ do
+    putStrLn "> Indirect call desugaring:"
+    putStrLn $ pretty direct
+
+  -- Pattern wildcard desugaring
+  let noWild = replaceWildcard direct
+  liftIO $ when verbose $ do
+    putStrLn "> Pattern wildcard desugaring:"
+    putStrLn $ pretty noWild
+
+  -- Eliminate function type arguments
+  let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
+  liftIO $ when verbose $ do
+    putStrLn "> Eliminating argments with function types"
+    putStrLn $ pretty noFun
+
+  pure noFun
 
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =

@@ -1,10 +1,14 @@
 module Solcore.Frontend.TypeInference.TcModule
   ( ModuleTypeCheckInput (..),
+    loadModuleTypeCheckInput,
     mkModuleTypeCheckInput,
     typeInferModule,
   )
 where
 
+import Solcore.Frontend.Module.Identity qualified as Mod
+import Solcore.Frontend.Module.Loader
+import Solcore.Frontend.Syntax.NameResolution
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.TcContract
@@ -19,6 +23,19 @@ data ModuleTypeCheckInput
     modulePartialImportedTypes :: [(Name, [Name])]
   }
   deriving (Eq, Show)
+
+loadModuleTypeCheckInput ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  IO (Either String ModuleTypeCheckInput)
+loadModuleTypeCheckInput graph moduleId =
+  case flattenModuleStrictCompileCompUnitWithMetadata graph moduleId of
+    Left err ->
+      pure (Left err)
+    Right (parsed, localStart, importedStart, partialImportedTypes) ->
+      fmap
+        (\resolved -> mkModuleTypeCheckInput resolved localStart importedStart partialImportedTypes)
+        <$> nameResolution parsed
 
 mkModuleTypeCheckInput ::
   CompUnit Name ->
