@@ -682,14 +682,12 @@ function strlen(s:memory(string)) -> word {
 
 // returns the value stored in memory(0x40)
 function get_free_memory() -> word {
-    let res : word;
-    assembly { res := mload(0x40) }
-    return res;
+    return mload(0x40);
 }
 
 // set the value stored in memory(0x40)
 function set_free_memory(loc : word) -> () {
-    assembly { mstore(0x40, loc) }
+    mstore(0x40, loc);
 }
 
 function allocate_memory(size : word) -> word {
@@ -751,7 +749,7 @@ forall t . function allocateDynamicArray(prx : Proxy(t), length : word) -> memor
     set_free_memory(free + sz);
 
     // write array length and return
-    assembly { mstore(free, length) }
+    mstore(free, length);
     let res : memory(DynArray(t)) = Typedef.abs(free);
     return res;
 }
@@ -818,11 +816,9 @@ forall ty . class ty:WordReader {
 data MemoryWordReader = MemoryWordReader(word);
 instance MemoryWordReader:WordReader {
     function read(reader:MemoryWordReader) -> word {
-        let result : word;
         match reader {
-        | MemoryWordReader(ptr) => assembly { result := mload(ptr) }
+        | MemoryWordReader(ptr) => return mload(ptr);
         }
-        return result;
     }
     function advance(reader:MemoryWordReader, offset:word) -> MemoryWordReader {
         match reader {
@@ -904,9 +900,7 @@ forall self loadedType. class self:MemoryType(loadedType) {
 // A uint256 can be loaded from memory and pushed straight onto the stack
 instance uint256:MemoryType(uint256) {
     function loadFromMemory(p:Proxy(uint256), loc:word) -> uint256 {
-        let v;
-        assembly { v := mload(loc) }
-        return uint256(v);
+        return uint256(mload(loc));
     }
 }
 
@@ -1074,7 +1068,7 @@ instance uint256:ABIEncode {
     // a unit256 is written directly into the head
     function encodeInto(x:uint256, basePtr:word, offset:word, tail:word) -> word {
         let repx : word = Typedef.rep(x);
-        assembly { mstore(add(basePtr, offset), repx) }
+        mstore(basePtr + offset, repx);
         return tail;
     }
 }
@@ -1083,17 +1077,15 @@ instance bytes32:ABIEncode {
     // a bytes32 is written directly into the head
     function encodeInto(x:bytes32, basePtr:word, offset:word, tail:word) -> word {
         let repx : word = Typedef.rep(x);
-        assembly { mstore(add(basePtr, offset), repx) }
+        mstore(basePtr + offset, repx);
         return tail;
     }
 }
 
 instance bool:ABIEncode {
-
     function encodeInto(x:bool, basePtr:word, offset:word, tail:word) -> word {
-
         let repx : word = frombool(x);
-        assembly { mstore(add(basePtr, offset), repx) }
+        mstore(basePtr + offset, repx);
         return tail;
     }
 }
@@ -1165,7 +1157,7 @@ forall tuple . tuple:ABIEncode, tuple:ABIAttribs => instance ABITuple(tuple):ABI
         // pointer in the head, and encode the tuple into the tail
         | false =>
             // store the length of the head in basePtr
-            assembly { mstore(basePtr, sub(tail, basePtr)) }
+            mstore(basePtr, tail - basePtr);
 
             // encode the underlying tuple into the tail
             let headSize = ABIAttribs.headSize(Proxy : Proxy(tuple));
