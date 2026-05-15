@@ -168,25 +168,15 @@ forall a. function revertEmpty() -> a {
 // TODO: use bytes4
 data Error = Error(word);
 
-instance Error:Typedef(word) {
-    function rep(b : Error) -> word {
-        match b {
-            | Error(w) => return w;
-        }
-    }
-    function abs(w : word) -> Error {
-        return Error(w);
-    }
-}
-
 // Revert with Error selector.
 forall a. function revertWithError(e:Error) -> a {
-  let selector_: word = Typedef.rep(e);
-  assembly {
-    mstore(0, selector_)
-    // We only care about the BE MSB.
-    revert(28, 4)
-  }
+    match e {
+        | Error(selector) => assembly {
+            mstore(0, selector)
+            // We only care about the BE MSB.
+            revert(28, 4)
+        }
+    }
 }
 
 // --- booleans ---
