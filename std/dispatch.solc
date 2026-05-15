@@ -271,16 +271,15 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
         // TODO: if all methods are non payable then we should life the callvalue check here
 
         // check that we have at least 4 bytes of calldata
-        let haveSelector : word;
+        let cdsz: word;
         assembly {
-          haveSelector := lt(3, calldatasize());
+          cdsz := calldatasize()
         }
-
-        match haveSelector {
-          | 0 =>
+        match cdsz < 4 {
+          | true =>
             let SelectorTooShort = Error(0x35ffc70e);
             revertWithError(SelectorTooShort);
-          | _ =>
+          | false =>
             // set free memory pointer to the output of memoryguard
             // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
             // TODO: we will need to consider immutables here at some point...
