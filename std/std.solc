@@ -15,6 +15,7 @@ export {
   ContractStorage(*),
   Div,
   DynArray,
+  Error(*),
   Eq,
   HasWordReader,
   IndexAccess,
@@ -73,9 +74,12 @@ export {
   ne,
   not,
   or,
+  out_of_bounds,
   readStorage,
   returndata(*),
   revert,
+  revertEmpty,
+  revertWithError,
   ridx,
   round_up_to_mul_of_32,
   rval,
@@ -142,10 +146,13 @@ function log1(v:t, topic:word) -> () {
 }
 
 function unimplemented() -> () {
-  assembly {
-    mstore(0, 0xaddc0de1)
-    revert(0, 4)
-  }
+  let Unimplemented = Error(0x6e128399);
+  revertWithError(Unimplemented);
+}
+
+function out_of_bounds() -> () {
+    let OutOfBounds = Error(0xb4120f14);
+    revertWithError(OutOfBounds);
 }
 
 // ------------------------------------------------------------------
@@ -155,6 +162,27 @@ function unimplemented() -> () {
 // constant-folded the argument to a string literal.
 function revert(s:string) -> () {
   return ();
+}
+
+// Empty revert.
+function revertEmpty() -> () {
+  assembly {
+    revert(0, 0)
+  }
+}
+
+// TODO: use bytes4
+data Error = Error(word);
+
+// Revert with Error selector.
+function revertWithError(e:Error) -> () {
+    match e {
+        | Error(selector) => assembly {
+            mstore(0, selector)
+            // We only care about the BE MSB.
+            revert(28, 4)
+        }
+    }
 }
 
 // --- booleans ---
@@ -696,7 +724,7 @@ forall t . t:Typedef(word) => instance memory(DynArray(t)):IndexAccess(t) {
         assembly { oob := gt(iw, mload(loc)); }
         match oob {
         | 0 => assembly { res := mload(add(loc, mul(iw, 32))); }
-        | _ => assembly { revert(0,0); }
+        | _ => out_of_bounds();
         }
         return Typedef.abs(res);
     }
@@ -709,7 +737,7 @@ forall t . t:Typedef(word) => instance memory(DynArray(t)):IndexAccess(t) {
         assembly { oob := gt(iw, mload(loc)); }
         match oob {
         | 0 => assembly { res := mstore(add(loc, mul(iw, 32)), vw); }
-        | _ => assembly { revert(0,0); }
+        | _ => out_of_bounds();
         }
     }
 }
@@ -1693,7 +1721,7 @@ forall k v.
     }
     function sload(l:storage(mapping(k,v))) -> storage(mapping(k,v)) {
       // return StorageType.sload(Typedef.rep(l));
-      assembly { mstore(0, 0xaddc0de1) revert(0, 4) }
+      unimplemented();
       return l;
     }
 }
