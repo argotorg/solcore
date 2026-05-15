@@ -7,7 +7,7 @@ module Solcore.Desugarer.IntegerLiteralDesugar (desugarIntegerLiterals, desugarI
 
    Two-stage design:
      1. Signature collection — build a table (Name -> [param types]) from:
-          - the seven integer compiler builtins (hardcoded)
+          - the integer compiler builtins (from Primitives.integerPrimNames)
           - all user-defined and class/instance functions in the CompUnit,
             stored under both unqualified and qualified names
      2. Contextual transform — walk the AST maintaining the expected type at
@@ -24,7 +24,7 @@ module Solcore.Desugarer.IntegerLiteralDesugar (desugarIntegerLiterals, desugarI
        because `wordToInteger`'s param type is `word`, not `integer`.
 -}
 
-import qualified Data.Map.Strict as Map
+import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name (Name (..))
@@ -45,7 +45,7 @@ integerTy = TyCon (Name "integer") []
 type SigTable = Map.Map Name [Ty]
 
 -----------------------------------------------------------------------
--- Hardcoded signatures for the seven integer compiler builtins
+-- Hardcoded signatures for the integer compiler builtins
 -- These are registered in primCtx and have no source Signature.
 -----------------------------------------------------------------------
 
@@ -78,7 +78,6 @@ buildSigTable cu =
       Map.unions (map (fromSig (Just (instName inst)) . funSignature) (instFunctions inst))
     fromTopDecl (TMutualDef ds) = Map.unions (map fromTopDecl ds)
     fromTopDecl _ = Map.empty -- TDataDef, TSym, TExportDecl, TPragmaDecl: no sigs
-
     fromContrDecl (CFunDecl fd) = fromSig Nothing (funSignature fd)
     fromContrDecl (CMutualDecl ds) = Map.unions (map fromContrDecl ds)
     fromContrDecl _ = Map.empty

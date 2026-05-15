@@ -348,16 +348,10 @@ specConApp i@(Id _n conTy) args ty = do
 -- given actual arguments and the expected result type
 -- Compiler builtins that are monomorphic and have no function body to
 -- specialise.  Pass through with args specialised at their declared types.
+-- Derived from Primitives.integerPrimNames (single source of truth shared
+-- with MastEval.builtinPureFuns).
 comptimeBuiltins :: [Name]
-comptimeBuiltins =
-  [ Name "wordToInteger",
-    Name "wordFromInteger",
-    Name "integerAdd",
-    Name "integerSub",
-    Name "integerMul",
-    Name "integerLt",
-    Name "integerEq"
-  ]
+comptimeBuiltins = integerPrimNames
 
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
 specCall i@(Id (Name "revert") _) args _ = pure (i, args) -- FIXME

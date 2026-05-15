@@ -137,6 +137,21 @@ integerLt = (Name "integerLt", monotype (integer :-> integer :-> boolTy))
 integerEq :: (Name, Scheme)
 integerEq = (Name "integerEq", monotype (integer :-> integer :-> boolTy))
 
+-- | Integer primitive function names.
+-- Single source of truth — used by MastEval (builtinPureFuns) and
+-- Specialise (comptimeBuiltins) to avoid drift between the two.
+-- Extend this list when adding new integer primitives.
+integerPrimNames :: [Name]
+integerPrimNames =
+  [ Name "wordToInteger",
+    Name "wordFromInteger",
+    Name "integerAdd",
+    Name "integerSub",
+    Name "integerMul",
+    Name "integerLt",
+    Name "integerEq"
+  ]
+
 stack :: Ty -> Ty
 stack t = TyCon "stack" [t]
 

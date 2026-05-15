@@ -51,6 +51,7 @@ import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
 import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
+import Solcore.Primitives.Primitives (integerPrimNames)
 
 -----------------------------------------------------------------------
 -- Data structures
@@ -808,24 +809,20 @@ isKnownValue _ = False
 -- Purity analysis
 -----------------------------------------------------------------------
 
--- Primitives the PE evaluates directly; their std asm bodies are irrelevant
+-- Primitives the PE evaluates directly; their std asm bodies are irrelevant.
+-- Integer primitive names come from Primitives.integerPrimNames (single source
+-- of truth shared with Specialise.comptimeBuiltins).
 builtinPureFuns :: Set.Set Name
 builtinPureFuns =
-  Set.fromList
+  Set.fromList $
     [ Name "subWord",
       Name "gtWord",
       Name "eqWord",
       Name "concatLit",
       Name "strlenLit",
-      Name "keccakLit",
-      Name "wordToInteger",
-      Name "wordFromInteger",
-      Name "integerAdd",
-      Name "integerSub",
-      Name "integerMul",
-      Name "integerLt",
-      Name "integerEq"
+      Name "keccakLit"
     ]
+      ++ integerPrimNames
 
 -- Functions with dummy pure bodies that are intercepted by EmitHull
 builtinImpureFuns :: Set.Set Name
