@@ -229,23 +229,11 @@ default instance t:Typedef(t) {
 }
 
 // --- Equality ---
+// Note: All these are used by the compiler by name.
+
 forall a.
 class a:Eq {
   function eq(x:a, y:a) -> bool;
-}
-
-function eqWord(x:word, y:word) -> bool {
-  let res : word;
-  assembly {
-     res := eq(x, y)
-  }
-  return tobool(res);
-}
-
-instance word:Eq {
-  function eq(x:word, y:word) -> bool {
-    return eqWord(x, y);
-  }
 }
 
 forall a. a:Eq =>
@@ -254,6 +242,7 @@ function ne(x:a, y:a) -> bool {
 }
 
 // --- Ordering ---
+// Note: All these are used by the compiler by name.
 
 forall a. a:Eq =>
 class a:Ord {
@@ -280,8 +269,8 @@ function lt(x:a, y:a) -> bool {
     return Ord.gt(y,x);
 }
 
-
 // --- Arithmetic ---
+// Note: All these are used by the compiler by name.
 
 forall t . class t:Add {
     function add(l: t, r: t) -> t;
@@ -301,16 +290,6 @@ forall t . class t:Div {
 
 forall t . class t:Mod {
     function mod(l: t, r: t) -> t;
-}
-
-instance word : Mod {
-  function mod (l : word, r : word) -> word {
-    let res : word;
-    assembly {
-      res := mod(l,r);
-    }
-    return res;
-  }
 }
 
 forall t . class t:Bounded {
@@ -342,8 +321,26 @@ default instance a:Num {
   function gt(x: a, y: a) -> bool { return Ord.gt(x, y); }
 }
 
-// --- Word Arithmetic ---
+// --- Word Arithmetic & Logic ---
 // TODO: make these checked
+
+// These are intended to be folded by MastEval when their arguments are
+// statically known word values.
+function eqWord(x:word, y:word) -> bool {
+  let res : word;
+  assembly {
+     res := eq(x, y)
+  }
+  return tobool(res);
+}
+
+function gtWord(x:word, y:word) -> bool {
+  let res : word;
+  assembly {
+     res := gt(x, y)
+  }
+  return tobool(res);
+}
 
 function addWord(l: word, r: word) -> word {
   let rw : word;
@@ -353,24 +350,30 @@ function addWord(l: word, r: word) -> word {
   return rw;
 }
 
-instance word:Add {
-    function add(l: word, r: word) -> word {
-        return addWord(l, r);
-    }
-}
-
-instance string:Add {
-    function add(l: string, r: string) -> string {
-        return concatLit(l, r);
-    }
-}
-
 function subWord(l: word, r: word) -> word {
     let rw : word;
     assembly {
         rw := sub(l,r);
     }
     return rw;
+}
+
+instance word:Eq {
+  function eq(x:word, y:word) -> bool {
+    return eqWord(x, y);
+  }
+}
+
+instance word:Ord {
+  function gt(x:word, y:word) -> bool {
+    return gtWord(x, y);
+  }
+}
+
+instance word:Add {
+    function add(l: word, r: word) -> word {
+        return addWord(l, r);
+    }
 }
 
 instance word:Sub {
@@ -399,6 +402,16 @@ instance word:Div {
     }
 }
 
+instance word : Mod {
+  function mod (l : word, r : word) -> word {
+    let res : word;
+    assembly {
+      res := mod(l,r);
+    }
+    return res;
+  }
+}
+
 function hash1(x: word) -> word {
   let result: word = 0;
   assembly {
@@ -418,19 +431,6 @@ function hash2(x: word, y: word) -> word {
   return result;
 }
 
-function gtWord(x:word, y:word) -> bool {
-  let res : word;
-  assembly {
-     res := gt(x, y)
-  }
-  return tobool(res);
-}
-
-instance word:Ord {
-  function gt(x:word, y:word) -> bool {
-    return gtWord(x, y);
-  }
-}
 // --- Value Types ---
 
 forall t. t:Typedef(word) =>
@@ -742,6 +742,12 @@ data bytes;
 
 // TODO: should this be a typedef over `bytes`?
 data string;
+
+instance string:Add {
+    function add(l: string, r: string) -> string {
+        return concatLit(l, r);
+    }
+}
 
 // ------------------------------------------------------------------
 // Compile-time string literal builtins
