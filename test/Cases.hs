@@ -47,6 +47,8 @@ comptime =
       runTestForFile "integer-basic.solc" comptimeFolder,
       runTestForFile "integer-fib.solc" comptimeFolder,
       runTestForFile "integer-from-integer.solc" comptimeFolder,
+      runTestForFile "integer-lit.solc" comptimeFolder,
+      runTestForFile "integer-lit-safe.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
       runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,

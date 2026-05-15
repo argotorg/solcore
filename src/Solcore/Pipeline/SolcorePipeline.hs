@@ -21,6 +21,7 @@ import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
+import Solcore.Desugarer.IntegerLiteralDesugar (desugarIntegerLiteralsTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Frontend.ComptimeCheck (checkComptimeEarly)
@@ -333,7 +334,13 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Eliminating argments with function types"
     putStrLn $ prettyInferenceDecls noFun
 
-  pure noFun
+  -- Integer literal desugaring: insert wordToInteger at integer literal sites
+  let intLit = mapModuleInferenceTopDecls desugarIntegerLiteralsTopDecls noFun
+  liftIO $ when verbose $ do
+    putStrLn "> Integer literal desugaring:"
+    putStrLn $ prettyInferenceDecls intLit
+
+  pure intLit
 
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =
