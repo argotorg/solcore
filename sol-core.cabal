@@ -95,6 +95,7 @@ library
       Solcore.Frontend.TypeInference.TcContract
       Solcore.Frontend.TypeInference.TcEnv
       Solcore.Frontend.TypeInference.TcMonad
+      Solcore.Frontend.TypeInference.TcModule
       Solcore.Frontend.TypeInference.TcSat
       Solcore.Frontend.TypeInference.TcSimplify
       Solcore.Frontend.TypeInference.TcStmt
