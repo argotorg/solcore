@@ -16,33 +16,30 @@ contract body.
 
 ## Enumeration Types
 
-The simplest kind of algebraic data type has only nullary constructors — no
+The simplest kind of algebraic data type has only nullary constructors with no
 fields. Such a type acts as a finite enumeration.
 
 ```solcore
-data Dwarf = Doc | Grumpy | Sleepy | Bashful | Happy | Sneezy | Dopey;
+data TokenStatus = Active | Paused | Deprecated;
 ```
 
 Each constructor is a distinct value of the type. Enumerations are commonly
 used wherever Solidity uses `enum`.
 
 ```solcore
-contract Dwarves {
-    data Dwarf = Doc | Grumpy | Sleepy | Bashful | Happy | Sneezy | Dopey;
+contract Registry {
+    data TokenStatus = Active | Paused | Deprecated;
 
-    function fromEnum(d : Dwarf) -> word {
-        match d {
-        | Dwarf.Doc     => return 1;
-        | Dwarf.Grumpy  => return 2;
-        | Dwarf.Sleepy  => return 3;
-        | Dwarf.Bashful => return 4;
-        | Dwarf.Happy   => return 5;
-        | _             => return 0;
+    function statusCode(s : TokenStatus) -> word {
+        match s {
+        | TokenStatus.Active     => return 1;
+        | TokenStatus.Paused     => return 2;
+        | TokenStatus.Deprecated => return 0;
         }
     }
 
     function main() -> word {
-        return fromEnum(Dwarf.Happy);
+        return statusCode(TokenStatus.Active);
     }
 }
 ```
@@ -55,22 +52,22 @@ A constructor can carry one or more fields. The field types are listed in
 parentheses, separated by commas.
 
 ```solcore
-data Color = Red | Green | Blue;
-data CFood = Red(Color) | Green(Color) | Nocolor;
+data TxStatus  = Pending | Settled | Failed;
+data TxOutcome = Success(TxStatus) | Revert(TxStatus) | Unknown;
 ```
 
-A constructor with fields is applied like a function: `CFood.Red(Color.Red)`
-produces a value of type `CFood` wrapping a value of type `Color`.
+A constructor with fields is applied like a function: `TxOutcome.Success(TxStatus.Settled)`
+produces a value of type `TxOutcome` wrapping a value of type `TxStatus`.
 
-Fields are extracted by pattern matching — there is no record-style field
+Fields are extracted by pattern matching; there is no record-style field
 access. The pattern mirrors the constructor application:
 
 ```solcore
-function fromEnum(x : CFood) -> word {
+function outcomeCode(x : TxOutcome) -> word {
     match x {
-    | CFood.Red(Color.Red)    => return 1;
-    | CFood.Green(Color.Green) => return 42;
-    | _                        => return 3;
+    | TxOutcome.Success(TxStatus.Settled) => return 1;
+    | TxOutcome.Revert(TxStatus.Failed)   => return 2;
+    | _                                   => return 0;
     }
 }
 ```
@@ -126,9 +123,9 @@ constructors in a single arm.
 ```solcore
 data Option(a) = None | Some(a);
 
-// Flatten Option(Option(a)) -> Option(a)
-function join(mmx : Option(Option(word))) -> Option(word) {
-    match mmx {
+// Unwrap an approval amount nested in two Option layers.
+function resolveApproval(outer : Option(Option(word))) -> Option(word) {
+    match outer {
     | Option.Some(Option.Some(x)) => return Option.Some(x);
     | _                           => return Option.None;
     }
@@ -233,8 +230,8 @@ The unit type `()` is the zero-element tuple. It carries no information and
 is used as the return type of functions that exist only for their side effects.
 
 ```solcore
-function store(loc : word, val : word) -> () {
-    assembly { mstore(loc, val) }
+function storeBalance(account : word, amount : word) -> () {
+    assembly { sstore(account, amount) }
 }
 ```
 

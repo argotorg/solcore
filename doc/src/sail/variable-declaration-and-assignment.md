@@ -25,17 +25,17 @@ does not insert a default value.
 ### Declaration with a type annotation
 
 ```solcore
-let res : word;
+let bal : word;
 ```
 
 The type is fixed to `word` at the point of declaration. The variable is still
 uninitialized; it must be assigned before use.
 
 ```solcore
-function add(x : word, y : word) -> word {
-    let res : word;
-    assembly { res := add(x, y) }
-    return res;
+function loadBalance(account : word) -> word {
+    let bal : word;
+    assembly { bal := sload(account) }
+    return bal;
 }
 ```
 
@@ -45,21 +45,22 @@ An initialiser provides a value at declaration time. The type may still be
 omitted and will be inferred from the initialiser expression.
 
 ```solcore
-let x = 42;          // type inferred as word
-let y : word = 42;   // type annotation and initialiser together
+let amount = 100;        // type inferred as word
+let fee : word = 3;      // type annotation and initialiser together
 ```
 
 Initialised declarations are useful when the right-hand side is an expression
 whose type would otherwise be ambiguous:
 
 ```solcore
-data Option(a) = None | Some(a);
+data Result = Ok(word) | Err(word);
 
-function join(mmx : Option(Option(word))) -> Option(word) {
-    let result = Option.None;   // type inferred as Option(word) from later uses
-    match mmx {
-    | Option.Some(Option.Some(x)) => result = Option.Some(x);
-    | _                           => result = Option.None;
+function safeTransfer(from : word, to : word, amount : word) -> Result {
+    let result = Result.Err(0);   // type inferred as Result from constructor
+    let bal : word;
+    assembly { bal := sload(from) }
+    if (gte(bal, amount)) {
+        result = Result.Ok(amount);
     }
     return result;
 }
@@ -72,7 +73,7 @@ function join(mmx : Option(Option(word))) -> Option(word) {
 ### Simple assignment
 
 An assignment statement writes a new value to an existing variable or to a
-contract field. The left-hand side must be an _lvalue_ — a name or an indexed
+contract field. The left-hand side must be an _lvalue_: a name or an indexed
 expression.
 
 ```solcore
@@ -82,13 +83,13 @@ x = expr;
 The type of `expr` must match the declared type of `x`.
 
 ```solcore
-contract Counter {
-    count : word;
+contract Vault {
+    balance : word;
 
-    function increment() {
+    function deposit(amount : word) -> () {
         let next : word;
-        next = count;
-        count = next;
+        next = balance;
+        balance = add(next, amount);
     }
 }
 ```
@@ -99,21 +100,20 @@ The `+=` and `-=` operators combine a read, an arithmetic operation, and a
 write in a single statement.
 
 ```solcore
-count += 1;   // equivalent to count = count + 1
-count -= 1;   // equivalent to count = count - 1
+balance += amount;   // equivalent to balance = balance + amount
+balance -= amount;   // equivalent to balance = balance - amount
 ```
 
 Compound assignment is most commonly used with contract fields:
 
 ```solcore
-contract Counter {
-    counter1 : word;
-    counter3 : word;
+contract ERC20 {
+    totalSupply : word;
+    feePool     : word;
 
-    function main() -> word {
-        counter1 += 1;
-        counter3 += 2;
-        return counter1 + counter3;
+    function mint(amount : word) -> () {
+        totalSupply += amount;
+        feePool     += div(amount, 100);
     }
 }
 ```
@@ -128,7 +128,7 @@ and retain their values between calls.
 
 ```solcore
 contract Token {
-    owner   : address;
+    owner   : word;
     supply  : word;
     paused  : bool;
 }
@@ -141,7 +141,7 @@ contract. A field cannot be accessed from a free function.
 contract Token {
     supply : word;
 
-    function mint(amount : word) {
+    function mint(amount : word) -> () {
         supply += amount;
     }
 
@@ -157,8 +157,8 @@ An optional initialiser sets the field's value at deployment time. It is
 evaluated once when the contract is deployed.
 
 ```solcore
-contract Counter {
-    count : word = 0;
+contract Token {
+    supply : word = 0;
 }
 ```
 
@@ -172,12 +172,12 @@ left-hand side, the contextual constructor shorthand `.Constructor` can be
 used on the right-hand side.
 
 ```solcore
-data Option(a) = None | Some(a);
+data Result = Ok(word) | Err(word);
 
-function main() -> Option(word) {
-    let x : Option(word);
-    x = .None;         // equivalent to Option.None
-    return x;
+function main() -> Result {
+    let r : Result;
+    r = .Ok(0);         // equivalent to Result.Ok(0)
+    return r;
 }
 ```
 
@@ -205,12 +205,12 @@ context where a value is expected. When used purely for side effects the
 types need only be consistent:
 
 ```solcore
-contract Counter {
-    count : word;
+contract Token {
+    paused : bool;
 
-    function increment(active : bool) {
-        if (active) {
-            count += 1;
+    function transfer(to : word, amount : word) -> () {
+        if (paused) {
+            assembly { revert(0, 0) }
         }
     }
 }
@@ -229,12 +229,15 @@ its side effects and the result is discarded. This is the standard way to
 call a function whose return type is `()`.
 
 ```solcore
-function log(msg : word) -> () {
-    assembly { mstore(0, msg) }
+function emitTransfer(from : word, to : word, amount : word) -> () {
+    assembly {
+        mstore(0x00, amount)
+        log3(0x00, 0x20, 0xddf252ad, from, to)
+    }
 }
 
-function main() {
-    log(42);    // expression statement: result () is discarded
+function main(to : word, amount : word) -> () {
+    emitTransfer(caller(), to, amount);    // expression statement: result () is discarded
 }
 ```
 
@@ -247,12 +250,12 @@ enclosing block. A variable declared in an inner block shadows an outer
 declaration of the same name for the duration of that block.
 
 ```solcore
-function example() -> word {
-    let x : word = 1;
+function computeFee(amount : word) -> word {
+    let fee : word = 1;
     {
-        let x : word = 2;   // shadows outer x inside this block
+        let fee : word = div(amount, 100);   // shadows outer fee inside this block
     }
-    return x;               // refers to the outer x; returns 1
+    return fee;                              // refers to the outer fee; returns 1
 }
 ```
 

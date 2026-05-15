@@ -3,16 +3,15 @@
 SAIL allows inline _assembly blocks_ that embed Yul statements directly in a
 function body. Assembly blocks provide unrestricted access to EVM opcodes and
 are the primary mechanism for operations that SAIL has no built-in syntax for,
-such as memory reads and writes, cryptographic operations, and ABI encoding
-helpers.
+such as storage reads and writes, event emission, and ABI encoding helpers.
 
 ```solcore
-function add(x : word, y : word) -> word {
-    let res : word;
+function loadBalance(account : word) -> word {
+    let bal : word;
     assembly {
-        res := add(x, y)
+        bal := sload(account)
     }
-    return res;
+    return bal;
 }
 ```
 
@@ -28,7 +27,7 @@ function add(x : word, y : word) -> word {
 The contents of an `assembly { … }` block are written in
 [Yul](https://docs.soliditylang.org/en/latest/yul.html), the low-level
 intermediate language used by the Solidity compiler. Yul operates exclusively
-on 256-bit machine words — the native value type of the EVM.
+on 256-bit machine words, the native value type of the EVM.
 
 SAIL variables whose type is `word` are accessible by name inside the block.
 Variables of other SAIL types cannot be referenced directly in Yul.
@@ -64,9 +63,9 @@ An assignment in Yul uses `:=`. The left-hand side must be either a Yul
 variable or a SAIL `word` variable in scope.
 
 ```solcore
-function store(loc : word, val : word) -> () {
+function storeBalance(account : word, amount : word) -> () {
     assembly {
-        mstore(loc, val)   // EVM opcode: write val to memory address loc
+        sstore(account, amount)   // EVM opcode: write amount to storage slot account
     }
 }
 ```
@@ -74,7 +73,7 @@ function store(loc : word, val : word) -> () {
 Assigning to a SAIL variable communicates a result back to the SAIL scope:
 
 ```solcore
-function get_free_ptr() -> word {
+function getFreeMemPtr() -> word {
     let ptr : word;
     assembly {
         ptr := mload(0x40)
@@ -129,20 +128,20 @@ Yul's `for` statement provides a general loop with an initialisation block, a
 condition expression, a post-iteration block, and a body block.
 
 ```solcore
-contract YulFor {
-    function main() -> word {
-        let loopStart : word = 128;
-        let loopEnd   : word = 256;
-        let res : word;
+contract ERC20 {
+    function sumSlots(startSlot : word, count : word) -> word {
+        let endSlot : word;
+        let total   : word;
         assembly {
-            let i := loopStart
-            for {} lt(i, loopEnd) { i := add(i, 32) }
-            {
-                mstore(i, 42)
-            }
-            res := mload(192)
+            endSlot := add(startSlot, count)
         }
-        return res;
+        assembly {
+            for { let i := startSlot } lt(i, endSlot) { i := add(i, 1) }
+            {
+                total := add(total, sload(i))
+            }
+        }
+        return total;
     }
 }
 ```
@@ -177,23 +176,74 @@ assembly {
 
 ## Accessing SAIL Variables
 
-SAIL variables of type `word` that are in scope at the point of the `assembly`
-block can be read and written directly by name inside Yul. Variables of any
-other SAIL type are not directly accessible.
+Only SAIL variables of type `word` can be read or written inside an assembly
+block. This restriction is enforced at compile time: every SAIL name that
+appears inside Yul must resolve to a variable or parameter whose type is
+`word`. Parameters, local variables declared with `let`, and contract field
+variables are all subject to this rule.
 
 ```solcore
-function example(x : word) -> word {
-    let result : word;
+function transfer(account : word, amount : word) -> () {
+    let bal : word;
     assembly {
-        result := add(x, 1)   // x is a SAIL parameter; result is a SAIL local
+        bal    := sload(account)      // account and bal are SAIL word variables
+        sstore(account, sub(bal, amount))
     }
-    return result;
 }
 ```
 
 > **Note** Variables assigned inside an assembly block must have been declared
-> with `let` in the enclosing SAIL scope before the block. Attempting to
-> read a SAIL variable of a non-`word` type inside Yul is a type error.
+> with `let` in the enclosing SAIL scope before the block opens.
+
+### Rejected: parameter of type `bool`
+
+A parameter of type `bool` cannot be named inside Yul. The compiler reports a
+type mismatch because Yul has no boolean type and cannot represent the value.
+
+```solcore
+// Error: bool is not word.
+function bad(paused : bool) -> () {
+    assembly {
+        sstore(0, paused)
+    }
+}
+```
+
+```
+Types: bool and word do not unify
+ - in: function bad (paused : bool) -> () { ... }
+```
+
+To work with a `bool` value inside an assembly block, convert it to a `word`
+first using an explicit conditional in SAIL.
+
+### Rejected: variable of an algebraic data type
+
+A local variable whose type is a user-defined `data` type is equally
+rejected. Sum and product types are not EVM words and have no direct Yul
+representation.
+
+```solcore
+data Result = Ok(word) | Err(word);
+
+// Error: Result is not word.
+function bad(r : Result) -> word {
+    let res : word;
+    assembly {
+        res := r
+    }
+    return res;
+}
+```
+
+```
+Types: Result and word do not unify
+ - in: function bad (r : Result) -> word { ... }
+```
+
+To operate on structured values from assembly, extract the relevant `word`
+fields first in SAIL, pass them as `word` parameters or local variables, and
+perform the Yul computation on those.
 
 ---
 
