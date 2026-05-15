@@ -714,28 +714,21 @@ data DynArray(t);
 
 forall t . t:Typedef(word) => instance memory(DynArray(t)):IndexAccess(t) {
     function get(ptr : memory(DynArray(t)), i : uint256) -> t {
-        let sz : word;
-        let oob : word;
-        let iw : word = Typedef.rep(i);
-        let loc : word = Typedef.rep(ptr);
-        let res : word;
-        assembly { oob := gt(iw, mload(loc)); }
-        match oob {
-        | 0 => assembly { res := mload(add(loc, mul(iw, 32))); }
-        | _ => out_of_bounds();
+        let i_: word = Typedef.rep(i);
+        let loc = Typedef.rep(ptr);
+        let res: word;
+        match (i_ > mload(loc)) {
+        | false => res = mload((i_ * 32) + loc);
+        | true => out_of_bounds();
         }
         return Typedef.abs(res);
     }
     function set(arr : memory(DynArray(t)), i : uint256, val : t) -> () {
-        let sz : word;
-        let oob : word;
-        let iw : word = Typedef.rep(i);
+        let i_ : word = Typedef.rep(i);
         let loc : word = Typedef.rep(arr);
-        let vw : word = Typedef.rep(val);
-        assembly { oob := gt(iw, mload(loc)); }
-        match oob {
-        | 0 => assembly { res := mstore(add(loc, mul(iw, 32)), vw); }
-        | _ => out_of_bounds();
+        match i_ > mload(loc) {
+        | false => mstore((i_ * 32) + loc, Typedef.rep(val));
+        | true => out_of_bounds();
         }
     }
 }
