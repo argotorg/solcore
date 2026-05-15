@@ -74,6 +74,7 @@ export {
   ne,
   not,
   or,
+  out_of_bounds,
   readStorage,
   returndata(*),
   revert,
@@ -147,6 +148,11 @@ function log1(v:t, topic:word) -> () {
 function unimplemented() -> () {
   let Unimplemented = Error(0x6e128399);
   revertWithError(Unimplemented);
+}
+
+function out_of_bounds() -> () {
+    let OutOfBounds = Error(0xb4120f14);
+    revertWithError(OutOfBounds);
 }
 
 // ------------------------------------------------------------------
@@ -718,7 +724,7 @@ forall t . t:Typedef(word) => instance memory(DynArray(t)):IndexAccess(t) {
         assembly { oob := gt(iw, mload(loc)); }
         match oob {
         | 0 => assembly { res := mload(add(loc, mul(iw, 32))); }
-        | _ => assembly { revert(0,0); }
+        | _ => out_of_bounds();
         }
         return Typedef.abs(res);
     }
@@ -731,7 +737,7 @@ forall t . t:Typedef(word) => instance memory(DynArray(t)):IndexAccess(t) {
         assembly { oob := gt(iw, mload(loc)); }
         match oob {
         | 0 => assembly { res := mstore(add(loc, mul(iw, 32)), vw); }
-        | _ => assembly { revert(0,0); }
+        | _ => out_of_bounds();
         }
     }
 }
