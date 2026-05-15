@@ -22,7 +22,7 @@ function myrevert(msg: word) -> () {
   assembly { mstore(0, msg) revert(0, 32) }
 }
 
-function require(cond: bool, msg: word) -> () {
+function myrequire(cond: bool, msg: word) -> () {
   if (!cond) { myrevert(msg); }
 }
 
@@ -40,7 +40,7 @@ contract Ownable {
   }
 
   function changeOwner(newOwner : uint256) -> () {
-    require(caller() == owner, 0x6e6f74206f776e6572);
+    myrequire(caller() == owner, 0x6e6f74206f776e6572);
     owner = newOwner;
   }
 }

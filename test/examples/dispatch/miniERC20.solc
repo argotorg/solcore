@@ -17,7 +17,7 @@ function myrevert(msg: word) -> () {
        assembly { mstore(0, msg) revert(0, 32) }
 }
 
-function require(cond: bool, msg: word ) -> () {
+function myrequire(cond: bool, msg: word ) -> () {
       if( !cond ) { myrevert(msg); }
 }
 
@@ -73,12 +73,12 @@ contract MiniERC20 {
 
   function transferFrom(src:address, dst:address, amt:uint256) -> bool {
      let msg_sender = caller();
-     require( balances[src] >= amt /* "token/insufficient-balance" */
+     myrequire( balances[src] >= amt /* "token/insufficient-balance" */
             , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
 	    );
 
      if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint256)) {
-        require( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
+        myrequire( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
 	       , 0x746f6b656e2f696e73756666696369656e742d616c6c6f77616e6365
 	       );
         allowance[src][msg_sender] -= amt;
