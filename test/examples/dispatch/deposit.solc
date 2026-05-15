@@ -203,6 +203,29 @@ forall a . a:MemoryAttributes => function to_bytes(x: a) -> memory(bytes) {
     return memory(res);
 }
 
+// Placeholder for an empty memory area.
+// The value is the size of the area in bytes. The area will be zeroed upon serialization.
+// NOTE: not implementing Typedef by design.
+data empty = empty(word);
+
+instance empty:MemoryAttributes {
+    function len(v: empty) -> word {
+        match v {
+            | empty(size) => return size;
+        }
+    }
+    function ptr(v: empty) -> word {
+        return 0; // TODO
+    }
+    function encodeInto(v: empty, target: word) -> () {
+        let size;
+        match v {
+            | empty(size_) => size = size_;
+        }
+        zeroize_memory(target, size);
+    }
+}
+
 /*
 data Concatenator = Concatenator(t));
 
@@ -386,7 +409,8 @@ contract DepositContract {
     let pubkey_root = sha256(concat(pubkey, empty_bytes(16)));
     let signature_root = sha256(MemoryHelpers.concat(
         sha256(bytes_truncate(signature, 64)), // slice
-        sha256(concat(bytes_slice(signature, 64), empty_bytes(32))), // slice
+//        sha256(concat(bytes_slice(signature, 64), empty_bytes(32))), // slice
+        sha256(concat(bytes_slice(signature, 64), empty(32)))
     ));
     let node = sha256(MemoryHelpers.concat(
 //        sha256(MemoryHelpers.concat(pubkey_root, withdrawal_credentials)),
