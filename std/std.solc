@@ -88,9 +88,9 @@ export {
   sloadViaWord,
   sload_,
   sstore_,
+  sstoreViaWord,
   storage(*),
   storeBytesFromMemory,
-  storeViaWord,
   string,
   strlen,
   strlenLit,
@@ -1450,12 +1450,12 @@ forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
 
 forall self.
 class self:StorageType {
-    function sload(ptr:word) -> self;
+    function load(ptr:word) -> self;
     function store(ptr:word, value:self) -> ();
 }
 
 instance word:StorageType {
-    function sload(ptr:word) -> word {
+    function load(ptr:word) -> word {
         let r:word;
         assembly {
             r := sload(ptr);
@@ -1470,7 +1470,7 @@ instance word:StorageType {
 }
 
 instance address:StorageType {
-    function sload(ptr:word) -> address {
+    function load(ptr:word) -> address {
         return Typedef.abs(sload_(ptr)):address; // type annotation needed due to a typechecker bug
     }
     function store(ptr:word, value:address) -> () {
@@ -1489,7 +1489,7 @@ function sloadViaWord(ptr:word) -> a {
 }
 
 forall a. a:Typedef(word) =>
-function storeViaWord(ptr:word, value:a) -> () {
+function sstoreViaWord(ptr:word, value:a) -> () {
     let w: word = Typedef.rep(value);
     assembly {
 	sstore(ptr, w)
@@ -1497,12 +1497,12 @@ function storeViaWord(ptr:word, value:a) -> () {
 }
 
 instance uint256:StorageType {
-  function sload(ptr:word) -> uint256 { return uint256(StorageType.sload(ptr):word); }
+  function load(ptr:word) -> uint256 { return uint256(StorageType.load(ptr):word); }
   function store(ptr:word, value:uint256) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
 }
 
 instance bytes32:StorageType {
-  function sload(ptr:word) -> bytes32 { return bytes32(StorageType.sload(ptr):word); }
+  function load(ptr:word) -> bytes32 { return bytes32(StorageType.load(ptr):word); }
   function store(ptr:word, value:bytes32) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
 }
 
@@ -1546,7 +1546,7 @@ forall cxt fieldSelector loadType offsetType storageType
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType):RVA(loadType) {
     function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType)) -> loadType {
         let offset:word = StorageSize.size(Proxy:Proxy(offsetType));
-        return CanStore.sload(storage(offset):storage(storageType)):loadType;
+        return CanStore.load(storage(offset):storage(storageType)):loadType;
     }
 }
 
@@ -1571,7 +1571,7 @@ forall structType fieldSelector fieldType storageType offsetType
     function acc(x:MemberAccessProxy(storage(structType), fieldSelector, fieldType,  offsetType)) -> fieldType {
         let ptr:word = Typedef.rep(memberAccessBase(x));
         let size:word = StorageSize.size(Proxy:Proxy(offsetType));
-        return CanStore.sload(ptr + size);
+        return CanStore.load(ptr + size);
     }
 }
 */
@@ -1629,7 +1629,7 @@ class lhs:Assign(rhs) {
 forall a b.
 class a:CanStore(b) {
   function store(r:a, v:b);
-  function sload(r:a) -> b;
+  function load(r:a) -> b;
 }
 
 
@@ -1646,8 +1646,8 @@ default instance a:CanStore(a) {
     function store(l:storage(a), r:a) -> () {
       StorageType.store(Typedef.rep(l), r);
     }
-    function sload(l:storage(a)) -> a {
-      return StorageType.sload(Typedef.rep(l));
+    function load(l:storage(a)) -> a {
+      return StorageType.load(Typedef.rep(l));
     }
 }
 */
@@ -1656,8 +1656,8 @@ default instance a:CanStore(a) {
     function store(l:storage(word), r:word) -> () {
       StorageType.store(Typedef.rep(l), r);
     }
-    function sload(l:storage(word)) -> word {
-      return StorageType.sload(Typedef.rep(l));
+    function load(l:storage(word)) -> word {
+      return StorageType.load(Typedef.rep(l));
     }
 }
 
@@ -1665,8 +1665,8 @@ default instance a:CanStore(a) {
     function store(l:storage(uint256), r:uint256) -> () {
       StorageType.store(Typedef.rep(l), r);
     }
-    function sload(l:storage(uint256)) -> uint256 {
-      return StorageType.sload(Typedef.rep(l));
+    function load(l:storage(uint256)) -> uint256 {
+      return StorageType.load(Typedef.rep(l));
     }
 }
 
@@ -1674,8 +1674,8 @@ default instance a:CanStore(a) {
     function store(l:storage(bytes32), r:bytes32) -> () {
       StorageType.store(Typedef.rep(l), r);
     }
-    function sload(l:storage(bytes32)) -> bytes32 {
-      return StorageType.sload(Typedef.rep(l));
+    function load(l:storage(bytes32)) -> bytes32 {
+      return StorageType.load(Typedef.rep(l));
     }
 }
 
@@ -1683,8 +1683,8 @@ default instance a:CanStore(a) {
     function store(l:storage(address), r:address) -> () {
       StorageType.store(Typedef.rep(l), r);
     }
-    function sload(l:storage(address)) -> address {
-      return StorageType.sload(Typedef.rep(l));
+    function load(l:storage(address)) -> address {
+      return StorageType.load(Typedef.rep(l));
     }
 }
 
@@ -1694,8 +1694,8 @@ forall k v.
       // StorageType.store(Typedef.rep(l), r);
       unimplemented();
     }
-    function sload(l:storage(mapping(k,v))) -> storage(mapping(k,v)) {
-      // return StorageType.sload(Typedef.rep(l));
+    function load(l:storage(mapping(k,v))) -> storage(mapping(k,v)) {
+      // return StorageType.load(Typedef.rep(l));
       unimplemented();
       return l;
     }
@@ -1709,7 +1709,7 @@ instance storage(string):CanStore(memory(string)) {
     storeBytesFromMemory(slot, srcPtr);
   }
 
-  function sload(src:storage(string)) -> memory(string) {
+  function load(src:storage(string)) -> memory(string) {
     let srcPtr : word = Typedef.rep(src);
     let dstPtr : word = get_free_memory();
     let endPtr = loadBytesFromStorage(srcPtr, dstPtr);
@@ -1821,7 +1821,7 @@ instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
   function lookup(xi : (storage(mapping(i,a)), i)) -> a {
   /*
     match(xi) {
-      | (x, i) => return StorageType.sload(hash2(Typedef.rep(x), Typedef.rep(i)));
+      | (x, i) => return StorageType.load(hash2(Typedef.rep(x), Typedef.rep(i)));
     }
   */
   return readStorage(LValueIdxAccess.lookup(xi));
@@ -1830,7 +1830,7 @@ instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
 
 forall a. a:StorageType =>
 function readStorage(x:storage(a)) -> a {
-  return StorageType.sload(Typedef.rep(x));
+  return StorageType.load(Typedef.rep(x));
 }
 /*
 forall r a. a:StorageType, r: RValueIdxAccess(a) =>
@@ -1851,5 +1851,5 @@ function lidx( m: storage(mapping(i,a)), x:i) -> storage(a) {
 
 forall i a . i:Typedef(word), a:StorageType  =>
 function ridx( m: storage(mapping(i,a)), x:i) -> a {
-  return StorageType.sload(hash2(Typedef.rep(m), Typedef.rep(x)));
+  return StorageType.load(hash2(Typedef.rep(m), Typedef.rep(x)));
 }
