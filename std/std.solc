@@ -174,20 +174,25 @@ function revertEmpty() -> () {
 }
 
 // TODO: use bytes4
-// TODO: add Msg(string)
-data Error = Error(word) | Empty;
+// TODO: add literal version Msg(string)
+data Error = Error(word) | Empty | Msg(memory(string));
 
 // Revert with Error selector.
 function revertWithError(e:Error) -> () {
     match e {
-        | Error.Error(selector) => assembly {
+        | .Error(selector) => assembly {
             mstore(0, selector)
             // We only care about the BE MSB.
             revert(28, 4)
         }
-        | Error.Empty => assembly {
+        | .Empty => assembly {
             revert(0, 0)
         }
+        | .Msg(msg) =>
+            let msg_ = Typedef.rep(msg);
+            assembly {
+                revert(add(msg_, 32), mload(msg_))
+            }
     }
 }
 
