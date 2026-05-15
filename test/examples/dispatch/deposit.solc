@@ -326,15 +326,15 @@ contract DepositContract {
     for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height = height + uint256(1)) {
         //if ((size & 1) == 1) {
         if ((size % uint256(2)) == uint256(1)) {
-            node = sha256(MemoryHelpers.concat(branch[height], node));
+            node = sha256(concat(branch[height], node));
         } else {
-            node = sha256(MemoryHelpers.concat(node, zero_hashes[height]));
+            node = sha256(concat(node, zero_hashes[height]));
         }
         size = size / uint256(2);
     }
-    return sha256(MemoryHelpers.concat(
-        MemoryHelpers.concat(
-            to_bytes(node),
+    return sha256(concat(
+        concat(
+            node,
             to_little_endian_64(deposit_count)
         ),
         empty_bytes(24)
@@ -383,15 +383,15 @@ contract DepositContract {
     }
 
     // Compute deposit data root (`DepositData` hash tree root)
-    let pubkey_root = sha256(MemoryHelpers.concat(pubkey, empty_bytes(16)));
+    let pubkey_root = sha256(concat(pubkey, empty_bytes(16)));
     let signature_root = sha256(MemoryHelpers.concat(
         sha256(bytes_truncate(signature, 64)), // slice
-        sha256(MemoryHelpers.concat(bytes_slice(signature, 64), empty_bytes(32))), // slice
+        sha256(concat(bytes_slice(signature, 64), empty_bytes(32))), // slice
     ));
     let node = sha256(MemoryHelpers.concat(
-//        sha256(MemoryHelpers.concat(to_bytes(pubkey_root), withdrawal_credentials)),
+//        sha256(MemoryHelpers.concat(pubkey_root, withdrawal_credentials)),
         sha256(concat(pubkey_root, withdrawal_credentials)),
-        sha256(MemoryHelpers.concat(MemoryHelpers.concat(amount, empty_bytes(24)), to_bytes(signature_root)))
+        sha256(concat(MemoryHelpers.concat(amount, empty_bytes(24)), signature_root))
     ));
 
     // Verify computed and expected deposit data roots match
