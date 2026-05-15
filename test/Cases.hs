@@ -357,6 +357,7 @@ cases =
       runTestExpectingFailure "subsumption-test.solc" caseFolder,
       runTestForFile "super-class.solc" caseFolder,
       runTestForFile "super-class-cycle.solc" caseFolder,
+      runTestExpectingFailure "super-class-cycle-fail.solc" caseFolder,
       runTestForFile "super-class-num.solc" caseFolder,
       runTestForFile "tiamat.solc" caseFolder,
       runTestForFile "tuple-trick.solc" caseFolder,
@@ -459,9 +460,11 @@ tabledResolution =
         "Conformance"
         [ runTabledTestForFile "tabled-answer-reuse.solc" caseFolder,
           runTabledTestForFile "tabled-default-instance.solc" caseFolder,
+          runTabledTestForFile "tabled-given-order.solc" caseFolder,
           runTabledTestForFile "tabled-mutual-chain.solc" caseFolder,
           runTabledTestForFile "tabled-residual-given.solc" caseFolder,
           runTabledTestForFile "super-class-cycle.solc" caseFolder,
+          runTabledTestExpectingFailure "super-class-cycle-fail.solc" caseFolder,
           runTabledTestExpectingFailure "tabled-left-recursive-fail.solc" caseFolder
         ],
       testGroup
