@@ -59,6 +59,7 @@ export {
   calldata(*),
   concat,
   concatLit,
+  empty(*),
   eqWord,
   frombool,
   ge,
@@ -2011,4 +2012,45 @@ forall a . a:MemoryAttributes => function to_bytes(x: a) -> memory(bytes) {
     mstore(res, len);
     MemoryAttributes.encodeInto(x, res + 32);
     return memory(res);
+}
+
+// Placeholder for an empty memory area.
+// The value is the size of the area in bytes. The area will be zeroed upon serialization.
+// NOTE: not implementing Typedef by design.
+data empty = empty(word);
+
+instance empty:MemoryAttributes {
+    function len(v: empty) -> word {
+        match v {
+            | empty(size) => return size;
+        }
+    }
+    function ptr(v: empty) -> word {
+        return 0; // TODO
+    }
+    function encodeInto(v: empty, target: word) -> () {
+        let size;
+        match v {
+            | empty(size_) => size = size_;
+        }
+        zeroize_memory(target, size);
+    }
+}
+
+function zeroize_memory(ptr: word, len: word) -> () {
+    assembly {
+        let end_ptr := add(ptr, len)
+
+        // Zero out 32-byte words
+        let words := div(len, 32)
+        for { let i := 0 } lt(i, words) { i := add(i, 1) } {
+            mstore(ptr, 0)
+            ptr := add(ptr, 32)
+        }
+
+        // Zero out trailing bytes
+        for { } lt(ptr, end_ptr) { ptr := add(ptr, 1) } {
+            mstore8(ptr, 0)
+        }
+    }
 }
