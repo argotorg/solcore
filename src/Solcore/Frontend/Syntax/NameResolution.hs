@@ -862,6 +862,7 @@ emptyEnv =
     ( Map.fromList
         [ (Name "word", TTyCon),
           (Name "bool", TTyCon),
+          (Name "integer", TTyCon),
           (Name "()", TTyCon),
           (Name "->", TTyCon),
           (Name "pair", TTyCon),
@@ -879,7 +880,14 @@ emptyEnv =
           (Name "inr", TDataCon),
           (Name "invoke", TFunction),
           (Name "primAddWord", TFunction),
-          (Name "primEqWord", TFunction)
+          (Name "primEqWord", TFunction),
+          (Name "wordToInteger", TFunction),
+          (Name "wordFromInteger", TFunction),
+          (Name "integerAdd", TFunction),
+          (Name "integerSub", TFunction),
+          (Name "integerMul", TFunction),
+          (Name "integerLt", TFunction),
+          (Name "integerEq", TFunction)
         ]
     )
 

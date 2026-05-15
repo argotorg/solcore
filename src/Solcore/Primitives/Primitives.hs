@@ -111,6 +111,32 @@ pairTy t1 t2 = t1 :-> t2 :-> pair t1 t2
 string :: Ty
 string = TyCon "string" []
 
+integer :: Ty
+integer = TyCon "integer" []
+
+-- integer primitives (comptime-only; evaluated by MastEval, never emitted)
+
+wordToInteger :: (Name, Scheme)
+wordToInteger = (Name "wordToInteger", monotype (word :-> integer))
+
+wordFromInteger :: (Name, Scheme)
+wordFromInteger = (Name "wordFromInteger", monotype (integer :-> word))
+
+integerAdd :: (Name, Scheme)
+integerAdd = (Name "integerAdd", monotype (integer :-> integer :-> integer))
+
+integerSub :: (Name, Scheme)
+integerSub = (Name "integerSub", monotype (integer :-> integer :-> integer))
+
+integerMul :: (Name, Scheme)
+integerMul = (Name "integerMul", monotype (integer :-> integer :-> integer))
+
+integerLt :: (Name, Scheme)
+integerLt = (Name "integerLt", monotype (integer :-> integer :-> boolTy))
+
+integerEq :: (Name, Scheme)
+integerEq = (Name "integerEq", monotype (integer :-> integer :-> boolTy))
+
 stack :: Ty -> Ty
 stack t = TyCon "stack" [t]
 

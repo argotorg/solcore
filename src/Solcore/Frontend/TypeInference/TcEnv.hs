@@ -163,7 +163,14 @@ primCtx =
       primUnit,
       primTrue,
       primFalse,
-      primInvoke
+      primInvoke,
+      wordToInteger,
+      wordFromInteger,
+      integerAdd,
+      integerSub,
+      integerMul,
+      integerLt,
+      integerEq
     ]
 
 primTypeEnv :: TypeTable
@@ -174,7 +181,8 @@ primTypeEnv =
       (Name "->", arrowTypeInfo),
       (Name "()", unitTypeInfo),
       (Name "bool", boolTypeInfo),
-      (Name "sum", sumTypeInfo)
+      (Name "sum", sumTypeInfo),
+      (Name "integer", TypeInfo 0 [] [])
     ]
 
 primInstEnv :: InstTable
