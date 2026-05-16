@@ -24,7 +24,7 @@ import Solcore.Desugarer.IndirectCall (indirectCall)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
 import Solcore.Frontend.Module.Identity qualified as Mod
-import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictValidationCompUnit, loadModuleGraph, moduleSourcePath)
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourcePath, moduleStrictValidationCompUnit)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.NameResolution
@@ -74,7 +74,7 @@ compile opts = runExceptT $ do
     sourcePath <- ExceptT $ pure (moduleSourcePath graph moduleId)
     cunit <-
       ExceptT $
-        pure (flattenModuleStrictValidationCompUnit graph moduleId)
+        pure (moduleStrictValidationCompUnit graph moduleId)
     _ <-
       ExceptT $
         pure $
@@ -86,15 +86,13 @@ compile opts = runExceptT $ do
           <$> nameResolution cunit
     pure ()
 
-  checkedModules <- typeCheckLoadedModules opts graph
+  checkedModules <-
+    ExceptT $
+      timeItNamed "Typecheck modules" $
+        runExceptT (typeCheckLoadedModules opts graph)
   checkedAssembly <- ExceptT $ pure (assembleCheckedModules graph checkedModules)
-
-  (typed, tcEnv) <-
-    case checkedAssemblyBackendResult opts graph checkedAssembly of
-      Just checkedBackend ->
-        pure checkedBackend
-      Nothing ->
-        typeCheckFlattenedEntryForBackend opts graph
+  let typed = checkedAssemblyCompUnit checkedAssembly
+      tcEnv = checkedAssemblyEnv checkedAssembly
 
   -- If / boolean desugaring
   desugared <-
@@ -163,72 +161,6 @@ compile opts = runExceptT $ do
 
       pure hull
 
-checkedAssemblyBackendResult ::
-  Option ->
-  ModuleGraph ->
-  CheckedAssembly ->
-  Maybe (CompUnit Id, TcEnv)
-checkedAssemblyBackendResult opts graph checkedAssembly
-  | canUseCheckedAssemblyForBackend opts graph =
-      Just (checkedAssemblyCompUnit checkedAssembly, checkedAssemblyEnv checkedAssembly)
-  | otherwise =
-      Nothing
-
-canUseCheckedAssemblyForBackend :: Option -> ModuleGraph -> Bool
-canUseCheckedAssemblyForBackend opts _graph =
-  not
-      ( or
-          [ optVerbose opts,
-            optDumpAST opts,
-            optDumpDispatch opts,
-            optDumpDF opts,
-            optTiming opts
-          ]
-      )
-
-typeCheckFlattenedEntryForBackend ::
-  Option ->
-  ModuleGraph ->
-  ExceptT String IO (CompUnit Id, TcEnv)
-typeCheckFlattenedEntryForBackend opts graph = do
-  let verbose = optVerbose opts
-      timeItNamed :: String -> IO a -> IO a
-      timeItNamed = optTimeItNamed opts
-  resolvedModuleInput <- ExceptT $ loadBackendTypeCheckInput graph (entryModule graph)
-  let resolved = moduleTypeCheckCompUnit resolvedModuleInput
-
-  liftIO $ when (verbose || optDumpAST opts) $ do
-    putStrLn "> AST after name resolution"
-    putStrLn $ pretty resolved
-
-  noFun <- prepareForTypeInference opts True resolved
-  let moduleInput =
-        resolvedModuleInput {moduleTypeCheckCompUnit = noFun}
-
-  -- Type inference, first round without any desugaring
-  (_typed, _typedEnv) <-
-    ExceptT $
-      timeItNamed
-        "Typecheck (no desugaring)  "
-        (typeInferModule noDesugarOpt moduleInput)
-
-  liftIO $ when verbose $ do
-    putStrLn "No type errors found!"
-
-  (typed, tcEnv) <-
-    ExceptT $
-      timeItNamed
-        "Typecheck (desugaring)  "
-        (typeInferModule opts moduleInput)
-
-  liftIO $ when verbose $ do
-    putStrLn "> Type inference logs:"
-    mapM_ putStrLn (reverse $ logs tcEnv)
-    putStrLn "> Elaborated tree:"
-    putStrLn $ pretty typed
-
-  pure (typed, tcEnv)
-
 typeCheckLoadedModules :: Option -> ModuleGraph -> ExceptT String IO (Map Mod.ModuleId CheckedModule)
 typeCheckLoadedModules opts graph =
   Map.fromList <$> mapM (typeCheckModuleFromGraph opts graph) (moduleOrder graph)
@@ -243,15 +175,19 @@ typeCheckModuleFromGraph opts graph moduleId = do
   resolvedInput <-
     ExceptT $
       first (moduleTypeCheckError sourcePath "input") <$> loadModuleLocalTypeCheckInput graph moduleId
-  prepared <- prepareForTypeInference opts False (moduleTypeCheckCompUnit resolvedInput)
+  liftIO $ dumpModuleResolvedAST opts sourcePath resolvedInput
+  prepared <- prepareForTypeInference opts (emitModulePreparationDiagnostics opts) (moduleTypeCheckCompUnit resolvedInput)
   let moduleInput =
         withPreparedModuleCompUnit resolvedInput prepared
   (noDesugarChecked, _noDesugarEnv) <-
     ExceptT $
       first (moduleTypeCheckError sourcePath "no desugaring") <$> typeInferModuleLocals noDesugarOpt moduleInput
+  liftIO $ when (optVerbose opts) $
+    putStrLn ("No type errors found for " ++ sourcePath ++ "!")
   (typed, tcEnv) <-
     ExceptT $
       first (moduleTypeCheckError sourcePath "desugaring") <$> typeInferModuleLocals opts moduleInput
+  liftIO $ dumpModuleTypeInference opts sourcePath typed tcEnv
   pure
     ( moduleId,
       CheckedModule
@@ -262,6 +198,28 @@ typeCheckModuleFromGraph opts graph moduleId = do
           checkedModuleEnv = tcEnv
         }
     )
+
+dumpModuleResolvedAST :: Option -> FilePath -> ModuleTypeCheckInput -> IO ()
+dumpModuleResolvedAST opts sourcePath input =
+  when (optVerbose opts || optDumpAST opts) $ do
+    putStrLn ("> AST after name resolution for " ++ sourcePath)
+    putStrLn $ pretty (moduleTypeCheckCompUnit input)
+
+emitModulePreparationDiagnostics :: Option -> Bool
+emitModulePreparationDiagnostics opts =
+  or
+    [ optVerbose opts,
+      optDumpDispatch opts,
+      optDumpDF opts
+    ]
+
+dumpModuleTypeInference :: Option -> FilePath -> CompUnit Id -> TcEnv -> IO ()
+dumpModuleTypeInference opts sourcePath typed tcEnv =
+  when (optVerbose opts) $ do
+    putStrLn ("> Type inference logs for " ++ sourcePath ++ ":")
+    mapM_ putStrLn (reverse $ logs tcEnv)
+    putStrLn ("> Elaborated tree for " ++ sourcePath ++ ":")
+    putStrLn $ pretty typed
 
 withPreparedModuleCompUnit :: ModuleTypeCheckInput -> CompUnit Name -> ModuleTypeCheckInput
 withPreparedModuleCompUnit input prepared =

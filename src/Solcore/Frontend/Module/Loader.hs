@@ -6,9 +6,8 @@ module Solcore.Frontend.Module.Loader
     flattenModuleStrictCompileCompUnit,
     flattenModuleStrictCompileCompUnitWithImportedStart,
     flattenModuleStrictCompileCompUnitWithMetadata,
-    flattenedBackendTypeCheckCompUnitWithMetadata,
-    flattenModuleStrictValidationCompUnit,
     loadCompUnit,
+    moduleStrictValidationCompUnit,
     moduleSourcePath,
     moduleLocalTypeCheckCompUnitWithMetadata,
   )
@@ -510,15 +509,6 @@ flattenModuleStrictCompileCompUnitWithMetadata graph modulePath = do
       normalizePartialImportedTypes partialImportedTypes
     )
 
-flattenedBackendTypeCheckCompUnitWithMetadata ::
-  ModuleGraph ->
-  Mod.ModuleId ->
-  Either String (CompUnit, Int, Int, [(Name, [Name])])
-flattenedBackendTypeCheckCompUnitWithMetadata graph modulePath =
-  case unflattenedModuleTypeCheckCompUnitWithMetadata graph modulePath of
-    Just result -> result
-    Nothing -> flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
-
 moduleLocalTypeCheckCompUnitWithMetadata ::
   ModuleGraph ->
   Mod.ModuleId ->
@@ -623,8 +613,8 @@ flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath 
       normalizePartialImportedTypes partialImportedTypes
     )
 
-flattenModuleStrictValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
-flattenModuleStrictValidationCompUnit graph modulePath = do
+moduleStrictValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
+moduleStrictValidationCompUnit graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
   importedDecls <- concat <$> mapM (strictValidationImportedDecls graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportStubDecls graph) importPairs
