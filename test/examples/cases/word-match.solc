@@ -1,7 +1,7 @@
 
 forall a . class a:IsWord { function toWord(x : a) -> word; }
 
-function kw(a:word, b:word) {return a;}
+function kw(a:word, b:word) -> word {return a;}
 
 forall a b . a:IsWord, b:IsWord
 => function bar(x:(a,b)) -> word {

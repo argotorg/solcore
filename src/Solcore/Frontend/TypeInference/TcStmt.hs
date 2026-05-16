@@ -1202,10 +1202,24 @@ checkMethod ih@(InCls n _ _) d@(FunDef sig _) =
 checkMethod p d = invalidMethodPred p d
 
 fullSignature :: Signature Name -> TcM ()
-fullSignature sig@(Signature _ _ _ ps t) =
+fullSignature sig =
   unless
-    (all isTyped ps && maybe False (const True) t)
+    (isFullyAnnotated sig)
     (throwError $ unlines ["Instance methods must have complete type signatures:", pretty sig])
+
+requireAnnotations :: FunDef Name -> TcM ()
+requireAnnotations (FunDef sig _) =
+  unless (isFullyAnnotated sig) $
+    tcmError $
+      unlines
+        [ "Top-level function must have complete type annotations:",
+          "  " ++ pretty sig,
+          "Annotate every parameter (name : Type) and provide a return type (-> Type)."
+        ]
+
+isFullyAnnotated :: Signature Name -> Bool
+isFullyAnnotated (Signature _ _ _ ps rt) =
+  all isTyped ps && isJust rt
   where
     isTyped (Typed _ _) = True
     isTyped _ = False
@@ -1513,9 +1527,18 @@ tcYulBlock (s : ss) =
     pure (ns ++ nss, t)
 
 tcYulStmt :: YulStmt -> TcM ([Name], Ty)
-tcYulStmt (YAssign _ e) =
+tcYulStmt (YAssign ns e) =
   do
-    -- do not define names
+    forM_ ns $ \n -> do
+      msch <- maybeAskEnv n
+      case msch of
+        Nothing -> pure ()
+        Just sch -> do
+          (_ :=> t) <- freshInst sch
+          t' <- withCurrentSubst t
+          case t' of
+            Meta _ -> unify t' word >> pure ()
+            _ -> pure ()
     _ <- tcYulExp e
     pure ([], unit)
 tcYulStmt (YBlock yblk) =

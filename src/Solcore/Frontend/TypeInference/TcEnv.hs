@@ -149,7 +149,7 @@ initTcEnv opts =
       trustedInstanceHeads = [],
       partialDataTypes = Set.empty,
       partialDataTypeConstructors = Map.empty,
-      maxRecursionDepth = 100,
+      maxRecursionDepth = 100000,
       tcOptions = opts
     }
 

@@ -1,4 +1,4 @@
-function f(x : word) {
+function f(x : word) -> word {
   match x {
     | 0 =>
       let ret : word;

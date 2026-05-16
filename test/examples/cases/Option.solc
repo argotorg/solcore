@@ -1,11 +1,13 @@
 contract Option {
   data Option(a) = None | Some(a);
 
-  function join(mmx) {
+  function join(mmx : Option(Option(word))) -> Option(word) {
     match mmx {
     | Option.None => return Option.None;
     | Option.Some(Option.Some(x)) => return Option.Some(x);
     | Option.Some(Option.None) => return Option.None;
     }
   }
+
+  function main() -> word { return 0; }
  }

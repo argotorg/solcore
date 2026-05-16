@@ -1,6 +1,6 @@
 data Bool = False | True;
 
-  function second(x, y) {
+  function second(x : Bool, y : word) -> word {
     match x, y {
     | Bool.True, z => return z;
     | Bool.False, z => return z;

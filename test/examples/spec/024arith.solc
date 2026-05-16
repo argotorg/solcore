@@ -1,6 +1,6 @@
 
 
-function add(x : word, y : word) {
+function add(x : word, y : word) -> word {
   let res: word;
   assembly {
      res := add(x, y)
@@ -8,7 +8,7 @@ function add(x : word, y : word) {
   return res;
 }
 
-function sub(x : word, y : word) {
+function sub(x : word, y : word) -> word {
   let res: word;
   assembly {
      res := sub(x, y)
@@ -16,7 +16,7 @@ function sub(x : word, y : word) {
   return res;
 }
 
-function div(x : word, y: word) {
+function div(x : word, y: word) -> word {
   let res: word;
   assembly {
      res := div(x, y)
@@ -24,7 +24,7 @@ function div(x : word, y: word) {
   return res;
 }
 
-function sdiv(x : word, y: word) {
+function sdiv(x : word, y: word) -> word {
   let res: word;
   assembly {
      res := sdiv(x, y)
@@ -32,7 +32,7 @@ function sdiv(x : word, y: word) {
   return res;
 }
 
-function mod(x : word, y: word) {
+function mod(x : word, y: word) -> word {
   let res: word;
   assembly {
      res := mod(x, y)
@@ -40,7 +40,7 @@ function mod(x : word, y: word) {
   return res;
 }
 
-function smod(x : word, y: word) {
+function smod(x : word, y: word) -> word {
   let res: word;
   assembly {
      res := smod(x, y)
@@ -48,7 +48,7 @@ function smod(x : word, y: word) {
   return res;
 }
 
-function exp(x : word, y: word) {
+function exp(x : word, y: word) -> word {
   let res: word;
   assembly {
      res := exp(x, y)
@@ -58,7 +58,7 @@ function exp(x : word, y: word) {
 
 
 contract Arith {
-  function main() {
+  function main() -> word {
     return add(mod(sub(div(exp(2,18),4), 1), 16), 27);
   }
 }

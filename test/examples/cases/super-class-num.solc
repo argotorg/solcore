@@ -29,14 +29,14 @@ instance word:Eq {
   }
 }
 
-function not (b) {
+function not (b : Bool) -> Bool {
   match b {
   | Bool.True => return Bool.False ;
   | Bool.False => return Bool.True ;
   }
 }
 
-function ne(x, y) {
+forall a . a:Eq => function ne(x : a, y : a) -> Bool {
   return not(Eq.eq(x,y));
 }
 

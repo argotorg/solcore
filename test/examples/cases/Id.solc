@@ -1,12 +1,10 @@
-function id() {
-    return lam (x) { return x; } ;
+function id (x : word) -> word {
+    return x;
 }
 
 contract Id {
-  function main () {
-    let f = id();
-    return f(0);
+  function main () -> word {
+    return id(0);
   }
 }
-
 

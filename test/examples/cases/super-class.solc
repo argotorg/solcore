@@ -1,7 +1,7 @@
 data List(a) = Nil | Cons(a,List(a));
 data Bool = False | True;
 
-function and (x,y) {
+function and (x : Bool, y : Bool) -> Bool {
   match x,y {
   | Bool.False, _ => return Bool.False;
   | Bool.True, y => return y;
@@ -33,6 +33,6 @@ forall a . a : Eq => instance (List(a)) : Eq {
   }
 }
 
-function foo() {
+function foo() -> () {
   let x = Eq.eq(List.Cons(Bool.True,List.Nil), List.Nil);
 }

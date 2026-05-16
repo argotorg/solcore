@@ -47,6 +47,7 @@ forall t. t: SigString =>
 function sigStr(p:Proxy(t)) -> string { SigString.sigStr(p) }
 
 instance uint256 : SigString { function sigStr(x:Proxy(uint256)) -> string { "uint256" }}
+instance bytes32 : SigString { function sigStr(x:Proxy(bytes32)) -> string { "bytes32" }}
 instance address : SigString { function sigStr(x:Proxy(address)) -> string { "address" }}
 instance memory(string) : SigString { function sigStr(x:Proxy(memory(string))) -> string { "string" }}
 instance memory(bytes) : SigString { function sigStr(x:Proxy(memory(bytes))) -> string { "bytes" }}
@@ -143,10 +144,13 @@ forall payability args rets fn
 
     // check we have enough calldata for the head of args
     let hdsz = ABIAttribs.headSize(pargs);
+    let cdsz;
     assembly {
-        if lt(sub(calldatasize(), 4), hdsz) {
-            revert(0,0);
-        };
+      cdsz := calldatasize()
+    }
+    if ((cdsz - 4) < hdsz) {
+      let ABIInputTruncated = Error(0x9d11c942);
+      revertWithError(ABIInputTruncated);
     }
 
     // TODO: calldatasize checks for dynamic types
@@ -240,11 +244,13 @@ instance Payable:MethodLevelCallvalueCheck {
 // NonPayable methods revert if passed value
 instance NonPayable:MethodLevelCallvalueCheck {
    function checkCallvalue(prx : Proxy(NonPayable)) -> () {
+       let value: word;
        assembly {
-         if gt(callvalue(), 0) {
-           mstore(0, 0x1);
-           revert(0, 32);
-         }
+         value := callvalue()
+       }
+       if (value > 0) {
+         let NonPayableReceivedValue = Error(0xb5988ea3);
+         revertWithError(NonPayableReceivedValue);
        }
    }
 }
@@ -272,10 +278,8 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
 
         match haveSelector {
           | 0 =>
-              assembly {
-                  mstore(0,0xff)
-                  revert(0,1)
-              }
+            let SelectorTooShort = Error(0x35ffc70e);
+            revertWithError(SelectorTooShort);
           | _ =>
             // set free memory pointer to the output of memoryguard
             // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard

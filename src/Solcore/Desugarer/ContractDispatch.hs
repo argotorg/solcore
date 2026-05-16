@@ -58,7 +58,7 @@ genMainFn addMain (Contract cname tys cdecls)
     cdecls'' = if hasConstructor cdecls then cdecls else cdecls ++ [defaultConstructor]
     cdecls' = Set.unions (map (transformCDecl cname) cdecls'')
     defaultConstructor = CConstrDecl (Constructor {constrParams = [], constrBody = []})
-    mainfn = FunDef (Signature [] [] "main" [] Nothing) body
+    mainfn = FunDef (Signature [] [] "main" [] (Just unit)) body
     body = [StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
     cdata = Con "Contract" [methods, fallback]
     methods = tupleExpFromList (fmap mkMethod (mapMaybe unwrapSigs cdecls))
