@@ -14,6 +14,7 @@ where
 
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Set qualified as Set
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader
 import Solcore.Frontend.Syntax.NameResolution
@@ -173,15 +174,44 @@ assembleCheckedModules graph checkedModules = do
       (Left ("Internal error: entry module was not typechecked: " ++ Mod.moduleIdDisplay (entryModule graph)))
       Right
       (Map.lookup (entryModule graph) checkedModules)
+  importWrappers <- importForwardingWrappers graph checkedModules
   let assembledCompUnit =
         CompUnit
           (imports (checkedModuleTyped entryCheckedModule))
-          (concatMap (contracts . checkedModuleTyped) orderedModules)
+          (assemblyDecls orderedModules importWrappers)
   pure $
     CheckedAssembly
       { checkedAssemblyCompUnit = assembledCompUnit,
         checkedAssemblyEnv = mergeCheckedModuleEnvs entryCheckedModule orderedModules
       }
+
+assemblyDecls :: [CheckedModule] -> [TopDecl Id] -> [TopDecl Id]
+assemblyDecls orderedModules extraDecls =
+  moduleDecls ++ dedupeNewFunctionDecls moduleFunctionNames extraDecls
+  where
+    moduleDecls = concatMap (contracts . checkedModuleTyped) orderedModules
+    moduleFunctionNames = concatMap topDeclFunctionNames moduleDecls
+
+dedupeNewFunctionDecls :: [Name] -> [TopDecl Id] -> [TopDecl Id]
+dedupeNewFunctionDecls existingNames =
+  go (Set.fromList existingNames)
+  where
+    go _ [] = []
+    go seen (decl : rest)
+      | any (`Set.member` seen) names =
+          go seen rest
+      | otherwise =
+          decl : go (foldr Set.insert seen names) rest
+      where
+        names = topDeclFunctionNames decl
+
+topDeclFunctionNames :: TopDecl Id -> [Name]
+topDeclFunctionNames (TFunDef fd) =
+  [sigName (funSignature fd)]
+topDeclFunctionNames (TMutualDef mutualDecls) =
+  concatMap topDeclFunctionNames mutualDecls
+topDeclFunctionNames _ =
+  []
 
 mergeCheckedModuleEnvs :: CheckedModule -> [CheckedModule] -> TcEnv
 mergeCheckedModuleEnvs entryCheckedModule orderedModules =
@@ -189,3 +219,74 @@ mergeCheckedModuleEnvs entryCheckedModule orderedModules =
     { typeTable =
         Map.unions (map (typeTable . checkedModuleEnv) orderedModules)
     }
+
+importForwardingWrappers ::
+  ModuleGraph ->
+  Map Mod.ModuleId CheckedModule ->
+  Either String [TopDecl Id]
+importForwardingWrappers graph checkedModules =
+  concat <$> mapM wrappersForLoadedModule (Map.elems (modules graph))
+  where
+    wrappersForLoadedModule loadedModule =
+      concat <$> mapM (wrappersForImport loadedModule) (Parsed.imports (loadedCompUnit loadedModule))
+
+    wrappersForImport loadedModule (Parsed.ImportModule importPath) =
+      wrappersForQualifiers loadedModule importPath (defaultImportQualifiers importPath)
+    wrappersForImport loadedModule (Parsed.ImportAlias importPath qualifier) =
+      wrappersForQualifiers loadedModule importPath [qualifier]
+    wrappersForImport _ (Parsed.ImportOnly _ _) =
+      pure []
+
+    wrappersForQualifiers loadedModule importPath qualifiers = do
+      targetModuleId <-
+        maybe
+          (Left ("Internal error: import target was not loaded: " ++ Mod.modulePathDisplay importPath))
+          Right
+          (Map.lookup importPath (loadedModuleRefs loadedModule))
+      targetModule <-
+        maybe
+          (Left ("Internal error: import target was not typechecked: " ++ Mod.moduleIdDisplay targetModuleId))
+          Right
+          (Map.lookup targetModuleId checkedModules)
+      pure
+        [ TFunDef (typedForwardingWrapper qualifier fd)
+          | qualifier <- qualifiers,
+            TFunDef fd <- contracts (checkedModuleTyped targetModule)
+        ]
+
+defaultImportQualifiers :: Parsed.ModulePath -> [Name]
+defaultImportQualifiers importPath =
+  if leafName == fullName
+    then [leafName]
+    else [leafName, fullName]
+  where
+    fullName = Mod.modulePathName importPath
+    leafName = importedModuleLeafName fullName
+
+importedModuleLeafName :: Name -> Name
+importedModuleLeafName (Name n) = Name n
+importedModuleLeafName (QualName _ n) = Name n
+
+typedForwardingWrapper :: Name -> FunDef Id -> FunDef Id
+typedForwardingWrapper qualifier (FunDef sig _body) =
+  FunDef
+    (sig {sigName = QualName qualifier (show originalName)})
+    [Return (Call Nothing targetId args)]
+  where
+    originalName = sigName sig
+    targetId = Id originalName (typedSignatureType sig)
+    args = map (Var . paramName) (sigParams sig)
+
+typedSignatureType :: Signature Id -> Ty
+typedSignatureType sig =
+  funtype (map typedParamType (sigParams sig)) returnType
+  where
+    returnType =
+      maybe
+        (error ("no return type in checked signature of: " ++ show (sigName sig)))
+        id
+        (sigReturn sig)
+
+typedParamType :: Param Id -> Ty
+typedParamType (Typed i _) = idType i
+typedParamType (Untyped i) = idType i

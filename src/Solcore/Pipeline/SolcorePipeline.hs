@@ -174,9 +174,8 @@ checkedAssemblyBackendResult opts graph checkedAssembly
       Nothing
 
 canUseCheckedAssemblyForBackend :: Option -> ModuleGraph -> Bool
-canUseCheckedAssemblyForBackend opts graph =
-  moduleOrder graph == [entryModule graph]
-    && not
+canUseCheckedAssemblyForBackend opts _graph =
+  not
       ( or
           [ optVerbose opts,
             optDumpAST opts,
