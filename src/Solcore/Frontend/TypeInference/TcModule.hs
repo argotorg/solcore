@@ -4,8 +4,8 @@ module Solcore.Frontend.TypeInference.TcModule
     ModuleTypeCheckInput (..),
     assembleCheckedModules,
     checkedModulesInOrder,
+    loadBackendTypeCheckInput,
     loadModuleLocalTypeCheckInput,
-    loadModuleTypeCheckInput,
     mkModuleTypeCheckInput,
     typeInferModule,
     typeInferModuleLocals,
@@ -49,12 +49,12 @@ data CheckedAssembly
     checkedAssemblyEnv :: TcEnv
   }
 
-loadModuleTypeCheckInput ::
+loadBackendTypeCheckInput ::
   ModuleGraph ->
   Mod.ModuleId ->
   IO (Either String ModuleTypeCheckInput)
-loadModuleTypeCheckInput graph moduleId =
-  loadResolvedModuleTypeCheckInput (moduleTypeCheckCompUnitWithMetadata graph moduleId)
+loadBackendTypeCheckInput graph moduleId =
+  loadResolvedModuleTypeCheckInput (flattenedBackendTypeCheckCompUnitWithMetadata graph moduleId)
 
 loadModuleLocalTypeCheckInput ::
   ModuleGraph ->

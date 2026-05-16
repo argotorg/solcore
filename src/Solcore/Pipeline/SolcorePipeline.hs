@@ -176,8 +176,7 @@ checkedAssemblyBackendResult opts graph checkedAssembly
 
 canUseCheckedAssemblyForBackend :: Option -> ModuleGraph -> Bool
 canUseCheckedAssemblyForBackend opts _graph =
-  optNoGenDispatch opts
-    && not
+  not
       ( or
           [ optVerbose opts,
             optDumpAST opts,
@@ -195,7 +194,7 @@ typeCheckFlattenedEntryForBackend opts graph = do
   let verbose = optVerbose opts
       timeItNamed :: String -> IO a -> IO a
       timeItNamed = optTimeItNamed opts
-  resolvedModuleInput <- ExceptT $ loadModuleTypeCheckInput graph (entryModule graph)
+  resolvedModuleInput <- ExceptT $ loadBackendTypeCheckInput graph (entryModule graph)
   let resolved = moduleTypeCheckCompUnit resolvedModuleInput
 
   liftIO $ when (verbose || optDumpAST opts) $ do

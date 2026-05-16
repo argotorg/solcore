@@ -6,11 +6,11 @@ module Solcore.Frontend.Module.Loader
     flattenModuleStrictCompileCompUnit,
     flattenModuleStrictCompileCompUnitWithImportedStart,
     flattenModuleStrictCompileCompUnitWithMetadata,
+    flattenedBackendTypeCheckCompUnitWithMetadata,
     flattenModuleStrictValidationCompUnit,
     loadCompUnit,
     moduleSourcePath,
     moduleLocalTypeCheckCompUnitWithMetadata,
-    moduleTypeCheckCompUnitWithMetadata,
   )
 where
 
@@ -510,11 +510,11 @@ flattenModuleStrictCompileCompUnitWithMetadata graph modulePath = do
       normalizePartialImportedTypes partialImportedTypes
     )
 
-moduleTypeCheckCompUnitWithMetadata ::
+flattenedBackendTypeCheckCompUnitWithMetadata ::
   ModuleGraph ->
   Mod.ModuleId ->
   Either String (CompUnit, Int, Int, [(Name, [Name])])
-moduleTypeCheckCompUnitWithMetadata graph modulePath =
+flattenedBackendTypeCheckCompUnitWithMetadata graph modulePath =
   case unflattenedModuleTypeCheckCompUnitWithMetadata graph modulePath of
     Just result -> result
     Nothing -> flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
@@ -526,25 +526,8 @@ moduleLocalTypeCheckCompUnitWithMetadata ::
 moduleLocalTypeCheckCompUnitWithMetadata graph modulePath =
   case unflattenedModuleTypeCheckCompUnitWithMetadata graph modulePath of
     Just result -> result
-    Nothing
-      | isRecursiveImportGroup graph modulePath ->
-          legacyLocalTypeCheckCompUnitWithMetadata graph modulePath
-      | otherwise ->
-          moduleLocalTypeCheckSurfaceWithMetadata graph modulePath
-
-legacyLocalTypeCheckCompUnitWithMetadata ::
-  ModuleGraph ->
-  Mod.ModuleId ->
-  Either String (CompUnit, Int, Int, [(Name, [Name])])
-legacyLocalTypeCheckCompUnitWithMetadata graph modulePath = do
-  (cunit, localStart, importedStart, partialImportedTypes) <-
-    flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
-  pure
-    ( stubNonLocalDeclBodies localStart importedStart cunit,
-      localStart,
-      importedStart,
-      partialImportedTypes
-    )
+    Nothing ->
+      moduleLocalTypeCheckSurfaceWithMetadata graph modulePath
 
 moduleLocalTypeCheckSurfaceWithMetadata ::
   ModuleGraph ->
@@ -585,14 +568,6 @@ unflattenedModuleTypeCheckCompUnitWithMetadata graph modulePath =
         unit = loadedCompUnit loadedModule
     _ ->
       Nothing
-
-stubNonLocalDeclBodies :: Int -> Int -> CompUnit -> CompUnit
-stubNonLocalDeclBodies localStart importedStart (CompUnit imps topDecls) =
-  CompUnit imps (zipWith stubAt [(0 :: Int) ..] topDecls)
-  where
-    stubAt index decl
-      | localStart <= index && index < importedStart = decl
-      | otherwise = stubTopDeclBody decl
 
 stubTopDeclBody :: TopDecl -> TopDecl
 stubTopDeclBody (TContr (Contract n vs contractDecls)) =

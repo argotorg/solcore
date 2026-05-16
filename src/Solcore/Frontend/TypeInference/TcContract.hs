@@ -117,6 +117,7 @@ tcCompUnit importedDeclMode localDeclKeys (CompUnit imps cs) =
     csExpanded <- everywhereM (mkM (expandTyM st)) cs
     mapM_ checkTopDecl (filter isClass csExpanded)
     mapM_ checkTopDecl (filter (not . isClass) csExpanded)
+    trustImportedDecls csExpanded
     typedDecls <- catMaybes <$> zipWithM tcTopDeclWithVisibility cs csExpanded
     pure (CompUnit imps typedDecls)
   where
@@ -127,8 +128,18 @@ tcCompUnit importedDeclMode localDeclKeys (CompUnit imps cs) =
     isClass _ = False
     syns = [s | TSym s <- cs]
     localDeclKeySet = Set.fromList localDeclKeys
+    isLocalDecl originalDecl =
+      any (`Set.member` localDeclKeySet) (topDeclKeys originalDecl)
+    trustImportedDecls expandedDecls =
+      case importedDeclMode of
+        CheckImportedDeclBodies ->
+          pure ()
+        TrustImportedDeclBodies ->
+          mapM_
+            (withPartialDataTypesDisabled . trustImportedTopDecl)
+            [expandedDecl | (originalDecl, expandedDecl) <- zip cs expandedDecls, not (isLocalDecl originalDecl)]
     tcTopDeclWithVisibility originalDecl expandedDecl
-      | any (`Set.member` localDeclKeySet) (topDeclKeys originalDecl) =
+      | isLocalDecl originalDecl =
           Just <$> tcTopDecl' expandedDecl
       | otherwise =
           withPartialDataTypesDisabled $
@@ -136,7 +147,7 @@ tcCompUnit importedDeclMode localDeclKeys (CompUnit imps cs) =
               CheckImportedDeclBodies ->
                 Just <$> tcTopDecl' expandedDecl
               TrustImportedDeclBodies ->
-                Nothing <$ trustImportedTopDecl expandedDecl
+                pure Nothing
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
@@ -254,6 +265,15 @@ extImportedFunDefs :: [FunDef Name] -> TcM ()
 extImportedFunDefs fds = do
   nmschs <- extractSignatures fds
   mapM_ (uncurry extEnv) nmschs
+  noDesugarCalls <- getNoDesugarCalls
+  unless noDesugarCalls $ do
+    typedFds <- mapM typedImportedFunDef fds
+    generateTopDeclsFor (zip typedFds (map snd nmschs))
+
+typedImportedFunDef :: FunDef Name -> TcM (FunDef Id)
+typedImportedFunDef (FunDef sig _body) = do
+  params <- mapM tcParam (sigParams sig)
+  pure (FunDef sig {sigParams = params} [])
 
 checkTopDecl :: TopDecl Name -> TcM ()
 checkTopDecl (TClassDef c) =
