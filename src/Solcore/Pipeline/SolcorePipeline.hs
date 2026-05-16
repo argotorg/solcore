@@ -7,6 +7,7 @@ import Data.Bifunctor (first)
 import Data.Char (isAlpha, isAlphaNum)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Set qualified as Set
 import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
@@ -175,7 +176,8 @@ checkedAssemblyBackendResult opts graph checkedAssembly
 
 canUseCheckedAssemblyForBackend :: Option -> ModuleGraph -> Bool
 canUseCheckedAssemblyForBackend opts _graph =
-  not
+  optNoGenDispatch opts
+    && not
       ( or
           [ optVerbose opts,
             optDumpAST opts,
@@ -244,7 +246,7 @@ typeCheckModuleFromGraph opts graph moduleId = do
       first (moduleTypeCheckError sourcePath "input") <$> loadModuleLocalTypeCheckInput graph moduleId
   prepared <- prepareForTypeInference opts False (moduleTypeCheckCompUnit resolvedInput)
   let moduleInput =
-        resolvedInput {moduleTypeCheckCompUnit = prepared}
+        withPreparedModuleCompUnit resolvedInput prepared
   (noDesugarChecked, _noDesugarEnv) <-
     ExceptT $
       first (moduleTypeCheckError sourcePath "no desugaring") <$> typeInferModuleLocals noDesugarOpt moduleInput
@@ -261,6 +263,39 @@ typeCheckModuleFromGraph opts graph moduleId = do
           checkedModuleEnv = tcEnv
         }
     )
+
+withPreparedModuleCompUnit :: ModuleTypeCheckInput -> CompUnit Name -> ModuleTypeCheckInput
+withPreparedModuleCompUnit input prepared =
+  input
+    { moduleTypeCheckCompUnit = prepared,
+      moduleLocalDeclKeys =
+        uniqueTopDeclKeys
+          (moduleLocalDeclKeys input ++ generatedPreparedDeclKeys input prepared)
+    }
+
+generatedPreparedDeclKeys :: ModuleTypeCheckInput -> CompUnit Name -> [TopDeclKey]
+generatedPreparedDeclKeys input prepared =
+  [ key
+    | topDecl <- compUnitTopDecls prepared,
+      key <- topDeclKeys topDecl,
+      key `Set.notMember` originalKeys
+  ]
+  where
+    originalKeys =
+      Set.fromList (compUnitTopDecls (moduleTypeCheckCompUnit input) >>= topDeclKeys)
+
+uniqueTopDeclKeys :: [TopDeclKey] -> [TopDeclKey]
+uniqueTopDeclKeys =
+  go Set.empty
+  where
+    go _ [] = []
+    go seen (key : keys)
+      | key `Set.member` seen = go seen keys
+      | otherwise = key : go (Set.insert key seen) keys
+
+compUnitTopDecls :: CompUnit a -> [TopDecl a]
+compUnitTopDecls (CompUnit _ topDecls) =
+  topDecls
 
 moduleTypeCheckError :: FilePath -> String -> String -> String
 moduleTypeCheckError sourcePath phase err =

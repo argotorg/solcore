@@ -54,58 +54,26 @@ loadModuleTypeCheckInput ::
   Mod.ModuleId ->
   IO (Either String ModuleTypeCheckInput)
 loadModuleTypeCheckInput graph moduleId =
-  case flattenModuleStrictCompileCompUnitWithMetadata graph moduleId of
-    Left err ->
-      pure (Left err)
-    Right (parsed, localStart, importedStart, partialImportedTypes) ->
-      fmap
-        (\resolved -> mkModuleTypeCheckInput resolved localStart importedStart partialImportedTypes)
-        <$> nameResolution parsed
+  loadResolvedModuleTypeCheckInput (moduleTypeCheckCompUnitWithMetadata graph moduleId)
 
 loadModuleLocalTypeCheckInput ::
   ModuleGraph ->
   Mod.ModuleId ->
   IO (Either String ModuleTypeCheckInput)
 loadModuleLocalTypeCheckInput graph moduleId =
-  case flattenModuleStrictCompileCompUnitWithMetadata graph moduleId of
+  loadResolvedModuleTypeCheckInput (moduleLocalTypeCheckCompUnitWithMetadata graph moduleId)
+
+loadResolvedModuleTypeCheckInput ::
+  Either String (Parsed.CompUnit, Int, Int, [(Name, [Name])]) ->
+  IO (Either String ModuleTypeCheckInput)
+loadResolvedModuleTypeCheckInput input =
+  case input of
     Left err ->
       pure (Left err)
     Right (parsed, localStart, importedStart, partialImportedTypes) ->
       fmap
         (\resolved -> mkModuleTypeCheckInput resolved localStart importedStart partialImportedTypes)
-        <$> nameResolution (stubNonLocalDeclBodies localStart importedStart parsed)
-
-stubNonLocalDeclBodies :: Int -> Int -> Parsed.CompUnit -> Parsed.CompUnit
-stubNonLocalDeclBodies localStart importedStart (Parsed.CompUnit imps topDecls) =
-  Parsed.CompUnit imps (zipWith stubAt [(0 :: Int) ..] topDecls)
-  where
-    stubAt index decl
-      | localStart <= index && index < importedStart = decl
-      | otherwise = stubTopDeclBody decl
-
-stubTopDeclBody :: Parsed.TopDecl -> Parsed.TopDecl
-stubTopDeclBody (Parsed.TContr (Parsed.Contract n vs contractDecls)) =
-  Parsed.TContr (Parsed.Contract n vs (map stubContractDeclBody contractDecls))
-stubTopDeclBody (Parsed.TFunDef fd) =
-  Parsed.TFunDef (stubFunDefBody fd)
-stubTopDeclBody (Parsed.TInstDef (Parsed.Instance d vs predCtx n ts t _funs)) =
-  Parsed.TInstDef (Parsed.Instance d vs predCtx n ts t [])
-stubTopDeclBody decl =
-  decl
-
-stubContractDeclBody :: Parsed.ContractDecl -> Parsed.ContractDecl
-stubContractDeclBody (Parsed.CFieldDecl (Parsed.Field n ty _initExp)) =
-  Parsed.CFieldDecl (Parsed.Field n ty Nothing)
-stubContractDeclBody (Parsed.CFunDecl fd) =
-  Parsed.CFunDecl (stubFunDefBody fd)
-stubContractDeclBody (Parsed.CConstrDecl (Parsed.Constructor params _body)) =
-  Parsed.CConstrDecl (Parsed.Constructor params [])
-stubContractDeclBody decl =
-  decl
-
-stubFunDefBody :: Parsed.FunDef -> Parsed.FunDef
-stubFunDefBody (Parsed.FunDef sig _body) =
-  Parsed.FunDef sig []
+        <$> nameResolution parsed
 
 mkModuleTypeCheckInput ::
   CompUnit Name ->
@@ -268,12 +236,18 @@ importedModuleLeafName (Name n) = Name n
 importedModuleLeafName (QualName _ n) = Name n
 
 typedForwardingWrapper :: Name -> FunDef Id -> FunDef Id
-typedForwardingWrapper qualifier (FunDef sig _body) =
-  FunDef
-    (sig {sigName = QualName qualifier (show originalName)})
-    [Return (Call Nothing targetId args)]
+typedForwardingWrapper qualifier (FunDef sig body)
+  | originalName == Name "revert" =
+      FunDef
+        (sig {sigName = qualifiedName})
+        body
+  | otherwise =
+      FunDef
+        (sig {sigName = qualifiedName})
+        [Return (Call Nothing targetId args)]
   where
     originalName = sigName sig
+    qualifiedName = QualName qualifier (show originalName)
     targetId = Id originalName (typedSignatureType sig)
     args = map (Var . paramName) (sigParams sig)
 

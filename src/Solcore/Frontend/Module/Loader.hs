@@ -9,6 +9,8 @@ module Solcore.Frontend.Module.Loader
     flattenModuleStrictValidationCompUnit,
     loadCompUnit,
     moduleSourcePath,
+    moduleLocalTypeCheckCompUnitWithMetadata,
+    moduleTypeCheckCompUnitWithMetadata,
   )
 where
 
@@ -507,6 +509,114 @@ flattenModuleStrictCompileCompUnitWithMetadata graph modulePath = do
       importedStart,
       normalizePartialImportedTypes partialImportedTypes
     )
+
+moduleTypeCheckCompUnitWithMetadata ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  Either String (CompUnit, Int, Int, [(Name, [Name])])
+moduleTypeCheckCompUnitWithMetadata graph modulePath =
+  case unflattenedModuleTypeCheckCompUnitWithMetadata graph modulePath of
+    Just result -> result
+    Nothing -> flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
+
+moduleLocalTypeCheckCompUnitWithMetadata ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  Either String (CompUnit, Int, Int, [(Name, [Name])])
+moduleLocalTypeCheckCompUnitWithMetadata graph modulePath =
+  case unflattenedModuleTypeCheckCompUnitWithMetadata graph modulePath of
+    Just result -> result
+    Nothing
+      | isRecursiveImportGroup graph modulePath ->
+          legacyLocalTypeCheckCompUnitWithMetadata graph modulePath
+      | otherwise ->
+          moduleLocalTypeCheckSurfaceWithMetadata graph modulePath
+
+legacyLocalTypeCheckCompUnitWithMetadata ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  Either String (CompUnit, Int, Int, [(Name, [Name])])
+legacyLocalTypeCheckCompUnitWithMetadata graph modulePath = do
+  (cunit, localStart, importedStart, partialImportedTypes) <-
+    flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
+  pure
+    ( stubNonLocalDeclBodies localStart importedStart cunit,
+      localStart,
+      importedStart,
+      partialImportedTypes
+    )
+
+moduleLocalTypeCheckSurfaceWithMetadata ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  Either String (CompUnit, Int, Int, [(Name, [Name])])
+moduleLocalTypeCheckSurfaceWithMetadata graph modulePath = do
+  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
+  collidingTypeNames <- collidingImportedTypeNames graph importPairs
+  importedDecls <-
+    dedupeImportedInstanceDecls
+      . concat
+      <$> mapM (typeCheckImportedDecls collidingTypeNames graph) importPairs
+  partialImportedTypes <-
+    concat <$> mapM (strictCompileImportedPartialTypes collidingTypeNames graph) importPairs
+  qualifiedDecls <-
+    concat <$> mapM (typeCheckQualifiedImportDecls collidingTypeNames graph) importPairs
+  let localDecls = topDeclsFrom unit
+      visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
+      localStart = length qualifiedDecls
+      importedStart = length qualifiedDecls + length localDecls
+  pure
+    ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
+      localStart,
+      importedStart,
+      normalizePartialImportedTypes partialImportedTypes
+    )
+
+unflattenedModuleTypeCheckCompUnitWithMetadata ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  Maybe (Either String (CompUnit, Int, Int, [(Name, [Name])]))
+unflattenedModuleTypeCheckCompUnitWithMetadata graph modulePath =
+  case Map.lookup modulePath (modules graph) of
+    Just loadedModule
+      | null (imports unit) ->
+          Just (Right (unit, 0, length (topDeclsFrom unit), []))
+      where
+        unit = loadedCompUnit loadedModule
+    _ ->
+      Nothing
+
+stubNonLocalDeclBodies :: Int -> Int -> CompUnit -> CompUnit
+stubNonLocalDeclBodies localStart importedStart (CompUnit imps topDecls) =
+  CompUnit imps (zipWith stubAt [(0 :: Int) ..] topDecls)
+  where
+    stubAt index decl
+      | localStart <= index && index < importedStart = decl
+      | otherwise = stubTopDeclBody decl
+
+stubTopDeclBody :: TopDecl -> TopDecl
+stubTopDeclBody (TContr (Contract n vs contractDecls)) =
+  TContr (Contract n vs (map stubContractDeclBody contractDecls))
+stubTopDeclBody (TFunDef fd) =
+  TFunDef (stubFunDefBody fd)
+stubTopDeclBody (TInstDef (Instance d vs predCtx n ts t _funs)) =
+  TInstDef (Instance d vs predCtx n ts t [])
+stubTopDeclBody decl =
+  decl
+
+stubContractDeclBody :: ContractDecl -> ContractDecl
+stubContractDeclBody (CFieldDecl (Field n ty _initExp)) =
+  CFieldDecl (Field n ty Nothing)
+stubContractDeclBody (CFunDecl fd) =
+  CFunDecl (stubFunDefBody fd)
+stubContractDeclBody (CConstrDecl (Constructor params _body)) =
+  CConstrDecl (Constructor params [])
+stubContractDeclBody decl =
+  decl
+
+stubFunDefBody :: FunDef -> FunDef
+stubFunDefBody (FunDef sig _body) =
+  FunDef sig []
 
 flattenModuleStrictCompileCompUnitWithSurfaces ::
   Map Mod.ModuleId [TopDecl] ->
@@ -1866,6 +1976,109 @@ toValidationImportStub (TDataDef (DataTy n _ cs)) =
 toValidationImportStub (TInstDef _) = Nothing
 toValidationImportStub (TExportDecl _) = Nothing
 toValidationImportStub (TPragmaDecl _) = Nothing
+
+typeCheckQualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
+typeCheckQualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
+  case imp of
+    ImportOnly _ _ -> Right []
+    ImportModule importPath ->
+      concat <$> mapM (`qualifyDecls` modulePath) (importModuleQualifiers importPath)
+    ImportAlias _ qualifier ->
+      qualifyDecls qualifier modulePath
+  where
+    qualifyDecls qualifier targetModule = do
+      moduleBindings <- publicModuleBindingsForModule graph targetModule
+      publicDecls <- publicTopDeclsForModule graph targetModule
+      nestedDecls <- concat <$> mapM (qualifyNestedModule qualifier) moduleBindings
+      let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
+          publicUnit = CompUnit [] publicDecls
+      pure $
+        qualifiedFunctionSignatureDecls typeRenameMap qualifier publicUnit
+          ++ qualifiedTypeAliasDecls typeRenameMap qualifier publicUnit
+          ++ nestedDecls
+
+    qualifyNestedModule qualifier (ExportedModuleBinding bindingName targetModule) =
+      qualifyDecls (QualName qualifier (show bindingName)) targetModule
+
+qualifiedFunctionSignatureDecls :: Map Name Name -> Name -> CompUnit -> [TopDecl]
+qualifiedFunctionSignatureDecls typeRenameMap qualifier cunit =
+  [ TFunDef (stubFunDefBody (qualifyFunctionWrapper qualifier fd'))
+    | TFunDef fd <- topDeclsFrom cunit,
+      let fd' = renameFunDefTypeRefs typeRenameMap fd
+  ]
+
+typeCheckImportedDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
+typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
+  case imp of
+    ImportOnly moduleName selector ->
+      importOnlyDecls (Mod.modulePathName moduleName) selector
+    ImportModule moduleName ->
+      moduleImportDecls (Mod.modulePathName moduleName) modulePath
+    ImportAlias _ qualifier ->
+      moduleImportDecls qualifier modulePath
+  where
+    importOnlyDecls qualifier selector = do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      supportDecls <- typeCheckSupportNonFunctionDecls graph modulePath
+      let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+          selectedPublicDecls = mapMaybe (selectTopDecl names) publicDecls
+          typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
+          selectedFunctionDecls =
+            [ TFunDef (stubFunDefBody (renameFunDefTypeRefs typeRenameMap fd))
+              | TFunDef fd <- selectedPublicDecls
+            ]
+          supportNonFunctionDecls =
+            map
+              (stubTopDeclBody . renameTopDeclTypeRefs typeRenameMap)
+              supportDecls
+      pure (selectedFunctionDecls ++ shadowImportedDecls selectedFunctionDecls supportNonFunctionDecls)
+
+    moduleImportDecls qualifier targetModule = do
+      moduleBindings <- publicModuleBindingsForModule graph targetModule
+      publicDecls <- publicTopDeclsForModule graph targetModule
+      supportDecls <- typeCheckSupportNonFunctionDecls graph targetModule
+      nestedSupportDecls <- concat <$> mapM (nestedModuleImportDecls qualifier) moduleBindings
+      let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
+          localSupportDecls =
+            map
+              (stubTopDeclBody . renameTopDeclTypeRefs typeRenameMap)
+              supportDecls
+      pure (localSupportDecls ++ shadowImportedDecls localSupportDecls nestedSupportDecls)
+
+    nestedModuleImportDecls qualifier (ExportedModuleBinding bindingName targetModule) =
+      moduleImportDecls (QualName qualifier (show bindingName)) targetModule
+
+typeCheckSupportNonFunctionDecls :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
+typeCheckSupportNonFunctionDecls graph =
+  typeCheckSupportNonFunctionDeclsSeen graph Set.empty
+
+typeCheckSupportNonFunctionDeclsSeen :: ModuleGraph -> Set Mod.ModuleId -> Mod.ModuleId -> Either String [TopDecl]
+typeCheckSupportNonFunctionDeclsSeen graph seen modulePath
+  | modulePath `Set.member` seen = Right []
+  | otherwise = do
+      unit <- lookupLoadedModule graph modulePath
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      let importPairs = moduleImportPairsFor graph modulePath unit
+          localSupport = filterSupport (topDeclsFrom unit)
+          publicSupport = filterSupport publicDecls
+          ownSupport = publicSupport ++ shadowImportedDecls publicSupport localSupport
+      collidingTypeNames <- collidingImportedTypeNames graph importPairs
+      importedSupport <-
+        concat <$> mapM (supportFromImport collidingTypeNames (Set.insert modulePath seen)) importPairs
+      pure (ownSupport ++ shadowImportedDecls ownSupport importedSupport)
+  where
+    filterSupport =
+      filter (\decl -> isImportableTopDecl decl && not (isFunctionTopDecl decl))
+
+    supportFromImport collidingTypeNames seen' (imp, targetModule) = do
+      publicDecls <- publicTopDeclsForModule graph targetModule
+      supportDecls <- typeCheckSupportNonFunctionDeclsSeen graph seen' targetModule
+      let typeRenameMap = importedTypeRenameMap collidingTypeNames (importQualifier imp) publicDecls
+      pure (map (renameTopDeclTypeRefs typeRenameMap) supportDecls)
+
+    importQualifier (ImportOnly moduleName _) = Mod.modulePathName moduleName
+    importQualifier (ImportModule moduleName) = Mod.modulePathName moduleName
+    importQualifier (ImportAlias _ qualifier) = qualifier
 
 strictCompileImportedDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 strictCompileImportedDecls =
