@@ -1432,6 +1432,12 @@ renameStmtFunctionCalls renameMap (If e blk1 blk2) =
     (renameExpFunctionCalls renameMap e)
     (renameBodyFunctionCalls renameMap blk1)
     (renameBodyFunctionCalls renameMap blk2)
+renameStmtFunctionCalls renameMap (For initStmt cond postStmt body) =
+  For
+    (renameStmtFunctionCalls renameMap initStmt)
+    (renameExpFunctionCalls renameMap cond)
+    (renameStmtFunctionCalls renameMap postStmt)
+    (renameBodyFunctionCalls renameMap body)
 
 renameEquationFunctionCalls :: Map Name Name -> Equation -> Equation
 renameEquationFunctionCalls renameMap (ps, body) =
@@ -1583,6 +1589,12 @@ renameStmtTypeRefs renameMap (If e blk1 blk2) =
     (renameExpTypeRefs renameMap e)
     (renameBodyTypeRefs renameMap blk1)
     (renameBodyTypeRefs renameMap blk2)
+renameStmtTypeRefs renameMap (For initStmt cond postStmt body) =
+  For
+    (renameStmtTypeRefs renameMap initStmt)
+    (renameExpTypeRefs renameMap cond)
+    (renameStmtTypeRefs renameMap postStmt)
+    (renameBodyTypeRefs renameMap body)
 
 renameEquationTypeRefs :: Map Name Name -> Equation -> Equation
 renameEquationTypeRefs renameMap (ps, body) =
@@ -2215,6 +2227,11 @@ stmtFunctionRefs (Asm _) =
   []
 stmtFunctionRefs (If e blk1 blk2) =
   expFunctionRefs e ++ bodyFunctionRefs blk1 ++ bodyFunctionRefs blk2
+stmtFunctionRefs (For initStmt cond postStmt body) =
+  stmtFunctionRefs initStmt
+    ++ expFunctionRefs cond
+    ++ stmtFunctionRefs postStmt
+    ++ bodyFunctionRefs body
 
 equationFunctionRefs :: Equation -> [Name]
 equationFunctionRefs (_pats, body) =
