@@ -316,7 +316,8 @@ addAnswer RootConsumer residual = do
   let answer = ResolutionAnswer (InCls (Name "$root") unit []) answerSubst' residual'
   known <- gets (isKnownAnswer answer . searchRootAnswers)
   unless known $
-    modify $ \st -> st {searchRootAnswers = searchRootAnswers st ++ [answer]}
+    modify $
+      \st -> st {searchRootAnswers = searchRootAnswers st ++ [answer]}
 addAnswer (AnswerConsumer key goal) residual = do
   answerSubst' <- lift getSubst
   residual' <- lift $ withCurrentSubst residual
