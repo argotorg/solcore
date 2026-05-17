@@ -11,6 +11,7 @@ module Solcore.Frontend.TypeInference.TcModule
     moduleInferenceLocalDecls,
     moduleInferenceQualifiedDecls,
     moduleResolvedCompUnit,
+    moduleResolvedTopDecls,
     typeInferModuleLocals,
     withPreparedModuleDecls,
   )

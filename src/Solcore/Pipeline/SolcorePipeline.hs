@@ -175,10 +175,7 @@ typeCheckModuleFromGraph opts graph moduleId = do
     ExceptT $
       first (moduleTypeCheckError sourcePath "input") <$> loadModuleLocalTypeCheckInput graph moduleId
   liftIO $ dumpModuleResolvedAST opts sourcePath resolvedInput
-  prepared <- prepareForTypeInference opts (emitModulePreparationDiagnostics opts) (moduleResolvedCompUnit resolvedInput)
-  let moduleInput =
-        withPreparedModuleDecls resolvedInput preparedDecls
-      CompUnit _ preparedDecls = prepared
+  moduleInput <- prepareModuleTypeCheckInput opts resolvedInput
   (noDesugarChecked, _noDesugarEnv) <-
     ExceptT $
       first (moduleTypeCheckError sourcePath "no desugaring") <$> typeInferModuleLocals noDesugarOpt moduleInput
@@ -198,6 +195,19 @@ typeCheckModuleFromGraph opts graph moduleId = do
           checkedModuleEnv = tcEnv
         }
     )
+
+prepareModuleTypeCheckInput ::
+  Option ->
+  ModuleTypeCheckInput ->
+  ExceptT String IO ModuleTypeCheckInput
+prepareModuleTypeCheckInput opts resolvedInput = do
+  preparedDecls <-
+    prepareTopDeclsForTypeInference
+      opts
+      (emitModulePreparationDiagnostics opts)
+      (moduleResolvedImports resolvedInput)
+      (moduleResolvedTopDecls resolvedInput)
+  pure (withPreparedModuleDecls resolvedInput preparedDecls)
 
 dumpModuleResolvedAST :: Option -> FilePath -> ModuleTypeCheckInput -> IO ()
 dumpModuleResolvedAST opts sourcePath input =
@@ -235,7 +245,26 @@ prepareForTypeInference ::
   Bool ->
   CompUnit Name ->
   ExceptT String IO (CompUnit Name)
-prepareForTypeInference opts emitOutput resolved = do
+prepareForTypeInference opts emitOutput (CompUnit imps topDecls) =
+  CompUnit imps <$> prepareTopDeclsForTypeInference opts emitOutput imps topDecls
+
+prepareTopDeclsForTypeInference ::
+  Option ->
+  Bool ->
+  [Import] ->
+  [TopDecl Name] ->
+  ExceptT String IO [TopDecl Name]
+prepareTopDeclsForTypeInference opts emitOutput imps topDecls = do
+  prepared <- prepareCompUnitForTypeInference opts emitOutput (CompUnit imps topDecls)
+  let CompUnit _ preparedDecls = prepared
+  pure preparedDecls
+
+prepareCompUnitForTypeInference ::
+  Option ->
+  Bool ->
+  CompUnit Name ->
+  ExceptT String IO (CompUnit Name)
+prepareCompUnitForTypeInference opts emitOutput resolved = do
   let verbose = emitOutput && optVerbose opts
       noDesugarCalls = optNoDesugarCalls opts
       noGenDispatch = optNoGenDispatch opts
