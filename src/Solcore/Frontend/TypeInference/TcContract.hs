@@ -52,6 +52,18 @@ data ImportedDeclMode
   | TrustImportedDeclBodies
   deriving (Eq, Show)
 
+data TopDeclCheckMode
+  = CheckTopDeclBody
+  | TrustTopDeclBody
+  deriving (Eq, Show)
+
+data TopDeclCheck a
+  = TopDeclCheck
+  { topDeclCheckMode :: TopDeclCheckMode,
+    topDeclCheckDecl :: TopDecl a
+  }
+  deriving (Eq, Show)
+
 typeInferWithImportedDeclMode ::
   ImportedDeclMode ->
   Option ->
@@ -80,10 +92,27 @@ typeInferTopDeclsWithImportedDeclMode ::
   [TopDecl Name] ->
   IO (Either String (CompUnit Id, TcEnv))
 typeInferTopDeclsWithImportedDeclMode importedDeclMode opts imps trustedInstances localDeclKeys partialTypes topLevelDecls =
+  typeInferTopDeclChecksWithImportedDeclMode
+    importedDeclMode
+    opts
+    imps
+    trustedInstances
+    partialTypes
+    (markTopDeclChecks localDeclKeys topLevelDecls)
+
+typeInferTopDeclChecksWithImportedDeclMode ::
+  ImportedDeclMode ->
+  Option ->
+  [Import] ->
+  [InstanceHead] ->
+  [(Name, [Name])] ->
+  [TopDeclCheck Name] ->
+  IO (Either String (CompUnit Id, TcEnv))
+typeInferTopDeclChecksWithImportedDeclMode importedDeclMode opts imps trustedInstances partialTypes topDeclChecks =
   do
     r <-
       runTcM
-        (tcCompUnit importedDeclMode localDeclKeys (CompUnit imps topLevelDecls))
+        (tcTopDeclChecks importedDeclMode topDeclChecks)
         ( (initTcEnv opts)
             { trustedInstanceHeads = trustedInstances,
               partialDataTypes = Set.fromList (map fst partialTypes),
@@ -96,7 +125,7 @@ typeInferTopDeclsWithImportedDeclMode importedDeclMode opts imps trustedInstance
         )
     case r of
       Left err1 -> pure $ Left err1
-      Right (CompUnit _ ds, env) -> do
+      Right (ds, env) -> do
         let ds1 = (ds ++ generated env)
         pure (Right (CompUnit imps ds1, env))
 
@@ -129,6 +158,14 @@ expandTyM _ t = pure t
 
 tcCompUnit :: ImportedDeclMode -> [TopDeclKey] -> CompUnit Name -> TcM (CompUnit Id)
 tcCompUnit importedDeclMode localDeclKeys (CompUnit imps cs) =
+  CompUnit imps <$> tcTopDecls importedDeclMode localDeclKeys cs
+
+tcTopDecls :: ImportedDeclMode -> [TopDeclKey] -> [TopDecl Name] -> TcM [TopDecl Id]
+tcTopDecls importedDeclMode localDeclKeys cs =
+  tcTopDeclChecks importedDeclMode (markTopDeclChecks localDeclKeys cs)
+
+tcTopDeclChecks :: ImportedDeclMode -> [TopDeclCheck Name] -> TcM [TopDecl Id]
+tcTopDeclChecks importedDeclMode topDeclChecks =
   do
     setupPragmas ps
     checkSynonymCycles syns
@@ -137,18 +174,15 @@ tcCompUnit importedDeclMode localDeclKeys (CompUnit imps cs) =
     mapM_ checkTopDecl (filter isClass csExpanded)
     mapM_ checkTopDecl (filter (not . isClass) csExpanded)
     trustImportedDecls csExpanded
-    typedDecls <- catMaybes <$> zipWithM tcTopDeclWithVisibility cs csExpanded
-    pure (CompUnit imps typedDecls)
+    catMaybes <$> zipWithM tcTopDeclWithVisibility topDeclChecks csExpanded
   where
+    cs = map topDeclCheckDecl topDeclChecks
     ps = foldr step [] cs
     step (TPragmaDecl p) ac = p : ac
     step _ ac = ac
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
-    localDeclKeySet = Set.fromList localDeclKeys
-    isLocalDecl originalDecl =
-      any (`Set.member` localDeclKeySet) (topDeclKeys originalDecl)
     trustImportedDecls expandedDecls =
       case importedDeclMode of
         CheckImportedDeclBodies ->
@@ -156,20 +190,37 @@ tcCompUnit importedDeclMode localDeclKeys (CompUnit imps cs) =
         TrustImportedDeclBodies ->
           mapM_
             (withPartialDataTypesDisabled . trustImportedTopDecl)
-            [expandedDecl | (originalDecl, expandedDecl) <- zip cs expandedDecls, not (isLocalDecl originalDecl)]
-    tcTopDeclWithVisibility originalDecl expandedDecl
-      | isLocalDecl originalDecl =
+            [ expandedDecl
+              | (topDeclCheck, expandedDecl) <- zip topDeclChecks expandedDecls,
+                topDeclCheckMode topDeclCheck == TrustTopDeclBody
+            ]
+    tcTopDeclWithVisibility topDeclCheck expandedDecl =
+      case (importedDeclMode, topDeclCheckMode topDeclCheck) of
+        (_, CheckTopDeclBody) ->
           Just <$> tcTopDecl' expandedDecl
-      | otherwise =
+        (CheckImportedDeclBodies, TrustTopDeclBody) ->
           withPartialDataTypesDisabled $
-            case importedDeclMode of
-              CheckImportedDeclBodies ->
-                Just <$> tcTopDecl' expandedDecl
-              TrustImportedDeclBodies ->
-                pure Nothing
+            Just <$> tcTopDecl' expandedDecl
+        (TrustImportedDeclBodies, TrustTopDeclBody) ->
+          withPartialDataTypesDisabled $
+            pure Nothing
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
+
+markTopDeclChecks :: [TopDeclKey] -> [TopDecl Name] -> [TopDeclCheck Name]
+markTopDeclChecks localDeclKeys =
+  map markTopDeclCheck
+  where
+    localDeclKeySet = Set.fromList localDeclKeys
+    markTopDeclCheck topDecl =
+      TopDeclCheck
+        { topDeclCheckMode =
+            if any (`Set.member` localDeclKeySet) (topDeclKeys topDecl)
+              then CheckTopDeclBody
+              else TrustTopDeclBody,
+          topDeclCheckDecl = topDecl
+        }
 
 -- check for recursive type synonyms
 

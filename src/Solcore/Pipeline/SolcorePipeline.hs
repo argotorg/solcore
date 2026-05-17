@@ -177,7 +177,8 @@ typeCheckModuleFromGraph opts graph moduleId = do
   liftIO $ dumpModuleResolvedAST opts sourcePath resolvedInput
   prepared <- prepareForTypeInference opts (emitModulePreparationDiagnostics opts) (moduleResolvedCompUnit resolvedInput)
   let moduleInput =
-        withPreparedModuleCompUnit resolvedInput prepared
+        withPreparedModuleDecls resolvedInput preparedDecls
+      CompUnit _ preparedDecls = prepared
   (noDesugarChecked, _noDesugarEnv) <-
     ExceptT $
       first (moduleTypeCheckError sourcePath "no desugaring") <$> typeInferModuleLocals noDesugarOpt moduleInput
