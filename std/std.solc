@@ -736,7 +736,7 @@ forall t . t:Typedef(word) => instance memory(DynArray(t)):IndexAccess(t) {
         let vw : word = Typedef.rep(val);
         assembly { oob := gt(iw, mload(loc)); }
         match oob {
-        | 0 => assembly { res := mstore(add(loc, mul(iw, 32)), vw); }
+        | 0 => assembly { mstore(add(loc, mul(iw, 32)), vw); }
         | _ => out_of_bounds();
         }
     }
