@@ -19,12 +19,22 @@ import Solcore.Frontend.Syntax.Ty
 
 nameResolution :: S.CompUnit -> IO (Either String (CompUnit Name))
 nameResolution (S.CompUnit imps ds) =
+  fmap fst <$> nameResolutionTopDeclSegments imps [ds]
+
+nameResolutionTopDeclSegments ::
+  [S.Import] ->
+  [[S.TopDecl]] ->
+  IO (Either String (CompUnit Name, [[TopDecl Name]]))
+nameResolutionTopDeclSegments imps segments =
   do
-    let genv = addImportsToEnv imps (globalEnv ds)
-    r <- runResolveM (resolve ds) genv
+    let ds = concat segments
+        genv = addImportsToEnv imps (globalEnv ds)
+    r <- runResolveM (mapM resolve segments) genv
     case r of
       Left err -> pure (Left err)
-      Right ast -> pure (Right (CompUnit (map resolveImport imps) ast))
+      Right resolvedSegments ->
+        let resolvedImports = map resolveImport imps
+         in pure (Right (CompUnit resolvedImports (concat resolvedSegments), resolvedSegments))
 
 resolveImport :: S.Import -> Import
 resolveImport (S.ImportModule qn) = ImportModule (resolveModulePath qn)

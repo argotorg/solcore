@@ -1,6 +1,7 @@
 module Solcore.Frontend.Module.Loader
   ( ModuleGraph (..),
     LoadedModule (..),
+    ModuleTypeCheckSurface (..),
     loadModuleGraph,
     flattenModuleValidationCompUnit,
     flattenModuleStrictCompileCompUnit,
@@ -9,7 +10,7 @@ module Solcore.Frontend.Module.Loader
     loadCompUnit,
     moduleStrictValidationCompUnit,
     moduleSourcePath,
-    moduleLocalTypeCheckCompUnitWithMetadata,
+    moduleLocalTypeCheckSurface,
   )
 where
 
@@ -66,6 +67,16 @@ data ModuleGraph
     importGroups :: Map Mod.ModuleId [Mod.ModuleId],
     referenceGroups :: Map Mod.ModuleId [Mod.ModuleId],
     moduleOrder :: [Mod.ModuleId]
+  }
+  deriving (Eq, Show)
+
+data ModuleTypeCheckSurface
+  = ModuleTypeCheckSurface
+  { moduleSurfaceImports :: [Import],
+    moduleSurfaceQualifiedDecls :: [TopDecl],
+    moduleSurfaceLocalDecls :: [TopDecl],
+    moduleSurfaceImportedDecls :: [TopDecl],
+    moduleSurfacePartialImportedTypes :: [(Name, [Name])]
   }
   deriving (Eq, Show)
 
@@ -450,8 +461,8 @@ normalizePublicInterface publicInterface =
                 Nothing -> (names ++ [bindingName], Map.insert bindingName binding current)
                 Just _ -> (names, current)
 
-prepareFlattenContext :: ModuleGraph -> Mod.ModuleId -> Either String (CompUnit, FilePath, [(Import, Mod.ModuleId)])
-prepareFlattenContext graph modulePath = do
+prepareModuleImportContext :: ModuleGraph -> Mod.ModuleId -> Either String (CompUnit, FilePath, [(Import, Mod.ModuleId)])
+prepareModuleImportContext graph modulePath = do
   unit <- lookupLoadedModule graph modulePath
   sourcePath <- moduleSourcePath graph modulePath
   _ <- publicModuleInterface graph modulePath
@@ -465,7 +476,7 @@ prepareFlattenContext graph modulePath = do
 
 flattenModuleValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
 flattenModuleValidationCompUnit graph modulePath = do
-  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
+  (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <- concat <$> mapM (importedDeclsFor graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
@@ -493,7 +504,7 @@ flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
       compileSurfaces <- compileSurfacesForGroup graph (importGroupFor graph modulePath)
       flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath
 flattenModuleStrictCompileCompUnitWithMetadata graph modulePath = do
-  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
+  (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <- dedupeImportedInstanceDecls . concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
   partialImportedTypes <- concat <$> mapM (strictCompileImportedPartialTypes collidingTypeNames graph) importPairs
@@ -509,22 +520,22 @@ flattenModuleStrictCompileCompUnitWithMetadata graph modulePath = do
       normalizePartialImportedTypes partialImportedTypes
     )
 
-moduleLocalTypeCheckCompUnitWithMetadata ::
+moduleLocalTypeCheckSurface ::
   ModuleGraph ->
   Mod.ModuleId ->
-  Either String (CompUnit, Int, Int, [(Name, [Name])])
-moduleLocalTypeCheckCompUnitWithMetadata graph modulePath =
-  case unflattenedModuleTypeCheckCompUnitWithMetadata graph modulePath of
+  Either String ModuleTypeCheckSurface
+moduleLocalTypeCheckSurface graph modulePath =
+  case unflattenedModuleTypeCheckSurface graph modulePath of
     Just result -> result
     Nothing ->
-      moduleLocalTypeCheckSurfaceWithMetadata graph modulePath
+      moduleLocalTypeCheckSurfaceWithImports graph modulePath
 
-moduleLocalTypeCheckSurfaceWithMetadata ::
+moduleLocalTypeCheckSurfaceWithImports ::
   ModuleGraph ->
   Mod.ModuleId ->
-  Either String (CompUnit, Int, Int, [(Name, [Name])])
-moduleLocalTypeCheckSurfaceWithMetadata graph modulePath = do
-  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
+  Either String ModuleTypeCheckSurface
+moduleLocalTypeCheckSurfaceWithImports graph modulePath = do
+  (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <-
     dedupeImportedInstanceDecls
@@ -536,24 +547,32 @@ moduleLocalTypeCheckSurfaceWithMetadata graph modulePath = do
     concat <$> mapM (typeCheckQualifiedImportDecls collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
-      localStart = length qualifiedDecls
-      importedStart = length qualifiedDecls + length localDecls
   pure
-    ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
-      localStart,
-      importedStart,
-      normalizePartialImportedTypes partialImportedTypes
-    )
+    ModuleTypeCheckSurface
+      { moduleSurfaceImports = imports unit,
+        moduleSurfaceQualifiedDecls = qualifiedDecls,
+        moduleSurfaceLocalDecls = localDecls,
+        moduleSurfaceImportedDecls = visibleImportedDecls,
+        moduleSurfacePartialImportedTypes = normalizePartialImportedTypes partialImportedTypes
+      }
 
-unflattenedModuleTypeCheckCompUnitWithMetadata ::
+unflattenedModuleTypeCheckSurface ::
   ModuleGraph ->
   Mod.ModuleId ->
-  Maybe (Either String (CompUnit, Int, Int, [(Name, [Name])]))
-unflattenedModuleTypeCheckCompUnitWithMetadata graph modulePath =
+  Maybe (Either String ModuleTypeCheckSurface)
+unflattenedModuleTypeCheckSurface graph modulePath =
   case Map.lookup modulePath (modules graph) of
     Just loadedModule
       | null (imports unit) ->
-          Just (Right (unit, 0, length (topDeclsFrom unit), []))
+          Just $
+            Right
+              ModuleTypeCheckSurface
+                { moduleSurfaceImports = imports unit,
+                  moduleSurfaceQualifiedDecls = [],
+                  moduleSurfaceLocalDecls = topDeclsFrom unit,
+                  moduleSurfaceImportedDecls = [],
+                  moduleSurfacePartialImportedTypes = []
+                }
       where
         unit = loadedCompUnit loadedModule
     _ ->
@@ -589,7 +608,7 @@ flattenModuleStrictCompileCompUnitWithSurfaces ::
   Mod.ModuleId ->
   Either String (CompUnit, Int, Int, [(Name, [Name])])
 flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath = do
-  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
+  (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <-
     dedupeImportedInstanceDecls
@@ -615,7 +634,7 @@ flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath 
 
 moduleStrictValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
 moduleStrictValidationCompUnit graph modulePath = do
-  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
+  (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   importedDecls <- concat <$> mapM (strictValidationImportedDecls graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportStubDecls graph) importPairs
   let localDecls = topDeclsFrom unit

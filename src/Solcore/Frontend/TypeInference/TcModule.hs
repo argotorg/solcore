@@ -53,37 +53,47 @@ loadModuleLocalTypeCheckInput ::
   Mod.ModuleId ->
   IO (Either String ModuleTypeCheckInput)
 loadModuleLocalTypeCheckInput graph moduleId =
-  loadResolvedModuleTypeCheckInput (moduleLocalTypeCheckCompUnitWithMetadata graph moduleId)
+  loadResolvedModuleTypeCheckInput (moduleLocalTypeCheckSurface graph moduleId)
 
 loadResolvedModuleTypeCheckInput ::
-  Either String (Parsed.CompUnit, Int, Int, [(Name, [Name])]) ->
+  Either String ModuleTypeCheckSurface ->
   IO (Either String ModuleTypeCheckInput)
 loadResolvedModuleTypeCheckInput input =
   case input of
     Left err ->
       pure (Left err)
-    Right (parsed, localStart, importedStart, partialImportedTypes) ->
-      fmap
-        (\resolved -> mkModuleTypeCheckInput resolved localStart importedStart partialImportedTypes)
-        <$> nameResolution parsed
+    Right surface -> do
+      resolved <-
+        nameResolutionTopDeclSegments
+          (moduleSurfaceImports surface)
+          [ moduleSurfaceQualifiedDecls surface,
+            moduleSurfaceLocalDecls surface,
+            moduleSurfaceImportedDecls surface
+          ]
+      pure (resolved >>= mkModuleTypeCheckInput surface)
 
 mkModuleTypeCheckInput ::
-  CompUnit Name ->
-  Int ->
-  Int ->
-  [(Name, [Name])] ->
-  ModuleTypeCheckInput
-mkModuleTypeCheckInput resolved@(CompUnit _ resolvedDecls) localStart importedStart partialImportedTypes =
-  ModuleTypeCheckInput
-    { moduleTypeCheckCompUnit = resolved,
-      moduleLocalDeclKeys =
-        take (importedStart - localStart) (drop localStart resolvedDecls) >>= topDeclKeys,
-      moduleTrustedInstanceHeads =
-        [ instanceHeadKey inst
-          | TInstDef inst <- drop importedStart resolvedDecls
-        ],
-      modulePartialImportedTypes = partialImportedTypes
-    }
+  ModuleTypeCheckSurface ->
+  (CompUnit Name, [[TopDecl Name]]) ->
+  Either String ModuleTypeCheckInput
+mkModuleTypeCheckInput surface (resolved, resolvedSegments) =
+  case resolvedSegments of
+    [_, resolvedLocalDecls, resolvedImportedDecls] ->
+      Right
+        ModuleTypeCheckInput
+          { moduleTypeCheckCompUnit = resolved,
+            moduleLocalDeclKeys =
+              resolvedLocalDecls >>= topDeclKeys,
+            moduleTrustedInstanceHeads =
+              [ instanceHeadKey inst
+                | TInstDef inst <- resolvedImportedDecls
+              ],
+            modulePartialImportedTypes = moduleSurfacePartialImportedTypes surface
+          }
+    _ ->
+      Left $
+        "Internal error: expected 3 resolved module typecheck surface segments, got "
+          ++ show (length resolvedSegments)
 
 typeInferModule ::
   Option ->
