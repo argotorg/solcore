@@ -3,10 +3,6 @@ module Solcore.Frontend.Module.Loader
     LoadedModule (..),
     ModuleTypeCheckSurface (..),
     loadModuleGraph,
-    flattenModuleValidationCompUnit,
-    flattenModuleStrictCompileCompUnit,
-    flattenModuleStrictCompileCompUnitWithImportedStart,
-    flattenModuleStrictCompileCompUnitWithMetadata,
     loadCompUnit,
     moduleStrictValidationCompUnit,
     moduleSourcePath,
@@ -485,15 +481,6 @@ flattenModuleValidationCompUnit graph modulePath = do
 flattenModuleStrictCompileCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
 flattenModuleStrictCompileCompUnit graph modulePath =
   (\(cunit, _, _, _) -> cunit) <$> flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
-
-flattenModuleStrictCompileCompUnitWithImportedStart ::
-  ModuleGraph ->
-  Mod.ModuleId ->
-  Either String (CompUnit, Int)
-flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath
-  | otherwise = do
-      (cunit, _, importedStart, _) <- flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
-      pure (cunit, importedStart)
 
 flattenModuleStrictCompileCompUnitWithMetadata ::
   ModuleGraph ->
