@@ -148,6 +148,33 @@ function sha256(input: memory(bytes)) -> bytes32 {
     return bytes32(res);
 }
 
+data variadic(a, b, c, d) = v0 | v1(a) | v2(a, b) | v3(a, b, c) | v4(a, b, c, d);
+
+forall a b c d . a:MemoryAttributes, b:MemoryAttributes, c:MemoryAttributes, d:MemoryAttributes => 
+function concat2(x: variadic(a, b, c, d)) -> memory(bytes) {
+    let res;
+    match x {
+        | .v2(a, b) =>
+            let a_len = MemoryAttributes.len(a);
+            let b_len = MemoryAttributes.len(b);
+            let res: word = allocate_memory(32 + a_len + b_len);
+            mstore(res, a_len + b_len);
+            MemoryAttributes.encodeInto(a, res + 32);
+            MemoryAttributes.encodeInto(b, res + 32 + a_len);
+        | .v3(a, b, c) =>
+            let a_len = MemoryAttributes.len(a);
+            let b_len = MemoryAttributes.len(b);
+            let c_len = MemoryAttributes.len(c);
+            let res: word = allocate_memory(32 + a_len + b_len + c_len);
+            mstore(res, a_len + b_len + c_len);
+            MemoryAttributes.encodeInto(a, res + 32);
+            MemoryAttributes.encodeInto(b, res + 32 + a_len);
+            MemoryAttributes.encodeInto(c, res + 32 + a_len + b_len);
+        | _ => revertEmpty();
+    }
+    return memory(res);
+}
+
 forall t . class t:MemoryAttributes {
     // The size needed for the value.
     function len(v: t) -> word;
@@ -355,6 +382,13 @@ contract DepositContract {
         }
         size = size / uint256(2);
     }
+    let count = to_little_endian_64(deposit_count);
+//    return sha256(concat2(variadic.v3(node, to_little_endian_64(deposit_count), empty(24))));
+let x = variadic.v3(node, count, empty(24));
+return bytes32(0);
+    //return sha256(concat2(variadic.v3(node, count, empty(24))));
+
+/*
     return sha256(concat(
         concat(
             node,
@@ -362,6 +396,7 @@ contract DepositContract {
         ),
         empty_bytes(24)
     ));
+*/
   }
 
   function get_deposit_count() -> memory(bytes) {
@@ -406,16 +441,16 @@ contract DepositContract {
     }
 
     // Compute deposit data root (`DepositData` hash tree root)
-    let pubkey_root = sha256(concat(pubkey, empty_bytes(16)));
+    let pubkey_root = sha256(concat(pubkey, empty(16)));
     let signature_root = sha256(MemoryHelpers.concat(
         sha256(bytes_truncate(signature, 64)), // slice
 //        sha256(concat(bytes_slice(signature, 64), empty_bytes(32))), // slice
         sha256(concat(bytes_slice(signature, 64), empty(32)))
     ));
-    let node = sha256(MemoryHelpers.concat(
+    let node = sha256(concat(
 //        sha256(MemoryHelpers.concat(pubkey_root, withdrawal_credentials)),
         sha256(concat(pubkey_root, withdrawal_credentials)),
-        sha256(concat(MemoryHelpers.concat(amount, empty_bytes(24)), signature_root))
+        sha256(concat(concat(amount, empty(24)), signature_root))
     ));
 
     // Verify computed and expected deposit data roots match
