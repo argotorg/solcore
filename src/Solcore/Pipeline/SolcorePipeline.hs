@@ -7,7 +7,6 @@ import Data.Bifunctor (first)
 import Data.Char (isAlpha, isAlphaNum)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Set qualified as Set
 import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
@@ -176,7 +175,7 @@ typeCheckModuleFromGraph opts graph moduleId = do
     ExceptT $
       first (moduleTypeCheckError sourcePath "input") <$> loadModuleLocalTypeCheckInput graph moduleId
   liftIO $ dumpModuleResolvedAST opts sourcePath resolvedInput
-  prepared <- prepareForTypeInference opts (emitModulePreparationDiagnostics opts) (moduleTypeCheckCompUnit resolvedInput)
+  prepared <- prepareForTypeInference opts (emitModulePreparationDiagnostics opts) (moduleResolvedCompUnit resolvedInput)
   let moduleInput =
         withPreparedModuleCompUnit resolvedInput prepared
   (noDesugarChecked, _noDesugarEnv) <-
@@ -203,7 +202,7 @@ dumpModuleResolvedAST :: Option -> FilePath -> ModuleTypeCheckInput -> IO ()
 dumpModuleResolvedAST opts sourcePath input =
   when (optVerbose opts || optDumpAST opts) $ do
     putStrLn ("> AST after name resolution for " ++ sourcePath)
-    putStrLn $ pretty (moduleTypeCheckCompUnit input)
+    putStrLn $ pretty (moduleResolvedCompUnit input)
 
 emitModulePreparationDiagnostics :: Option -> Bool
 emitModulePreparationDiagnostics opts =
@@ -220,39 +219,6 @@ dumpModuleTypeInference opts sourcePath typed tcEnv =
     mapM_ putStrLn (reverse $ logs tcEnv)
     putStrLn ("> Elaborated tree for " ++ sourcePath ++ ":")
     putStrLn $ pretty typed
-
-withPreparedModuleCompUnit :: ModuleTypeCheckInput -> CompUnit Name -> ModuleTypeCheckInput
-withPreparedModuleCompUnit input prepared =
-  input
-    { moduleTypeCheckCompUnit = prepared,
-      moduleLocalDeclKeys =
-        uniqueTopDeclKeys
-          (moduleLocalDeclKeys input ++ generatedPreparedDeclKeys input prepared)
-    }
-
-generatedPreparedDeclKeys :: ModuleTypeCheckInput -> CompUnit Name -> [TopDeclKey]
-generatedPreparedDeclKeys input prepared =
-  [ key
-    | topDecl <- compUnitTopDecls prepared,
-      key <- topDeclKeys topDecl,
-      key `Set.notMember` originalKeys
-  ]
-  where
-    originalKeys =
-      Set.fromList (compUnitTopDecls (moduleTypeCheckCompUnit input) >>= topDeclKeys)
-
-uniqueTopDeclKeys :: [TopDeclKey] -> [TopDeclKey]
-uniqueTopDeclKeys =
-  go Set.empty
-  where
-    go _ [] = []
-    go seen (key : keys)
-      | key `Set.member` seen = go seen keys
-      | otherwise = key : go (Set.insert key seen) keys
-
-compUnitTopDecls :: CompUnit a -> [TopDecl a]
-compUnitTopDecls (CompUnit _ topDecls) =
-  topDecls
 
 moduleTypeCheckError :: FilePath -> String -> String -> String
 moduleTypeCheckError sourcePath phase err =

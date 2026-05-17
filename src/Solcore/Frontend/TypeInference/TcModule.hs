@@ -5,9 +5,9 @@ module Solcore.Frontend.TypeInference.TcModule
     assembleCheckedModules,
     checkedModulesInOrder,
     loadModuleLocalTypeCheckInput,
-    mkModuleTypeCheckInput,
-    typeInferModule,
+    moduleResolvedCompUnit,
     typeInferModuleLocals,
+    withPreparedModuleCompUnit,
   )
 where
 
@@ -27,6 +27,10 @@ import Solcore.Pipeline.Options
 data ModuleTypeCheckInput
   = ModuleTypeCheckInput
   { moduleTypeCheckCompUnit :: CompUnit Name,
+    moduleResolvedImports :: [Import],
+    moduleResolvedQualifiedDecls :: [TopDecl Name],
+    moduleResolvedLocalDecls :: [TopDecl Name],
+    moduleResolvedImportedDecls :: [TopDecl Name],
     moduleLocalDeclKeys :: [TopDeclKey],
     moduleTrustedInstanceHeads :: [InstanceHead],
     modulePartialImportedTypes :: [(Name, [Name])]
@@ -78,10 +82,14 @@ mkModuleTypeCheckInput ::
   Either String ModuleTypeCheckInput
 mkModuleTypeCheckInput surface (resolved, resolvedSegments) =
   case resolvedSegments of
-    [_, resolvedLocalDecls, resolvedImportedDecls] ->
+    [resolvedQualifiedDecls, resolvedLocalDecls, resolvedImportedDecls] ->
       Right
         ModuleTypeCheckInput
           { moduleTypeCheckCompUnit = resolved,
+            moduleResolvedImports = imports resolved,
+            moduleResolvedQualifiedDecls = resolvedQualifiedDecls,
+            moduleResolvedLocalDecls = resolvedLocalDecls,
+            moduleResolvedImportedDecls = resolvedImportedDecls,
             moduleLocalDeclKeys =
               resolvedLocalDecls >>= topDeclKeys,
             moduleTrustedInstanceHeads =
@@ -95,18 +103,6 @@ mkModuleTypeCheckInput surface (resolved, resolvedSegments) =
         "Internal error: expected 3 resolved module typecheck surface segments, got "
           ++ show (length resolvedSegments)
 
-typeInferModule ::
-  Option ->
-  ModuleTypeCheckInput ->
-  IO (Either String (CompUnit Id, TcEnv))
-typeInferModule opts input =
-  typeInferWithTrustedInstanceHeadsAndPartialTypes
-    opts
-    (moduleTrustedInstanceHeads input)
-    (moduleLocalDeclKeys input)
-    (modulePartialImportedTypes input)
-    (moduleTypeCheckCompUnit input)
-
 typeInferModuleLocals ::
   Option ->
   ModuleTypeCheckInput ->
@@ -119,6 +115,49 @@ typeInferModuleLocals opts input =
     (moduleLocalDeclKeys input)
     (modulePartialImportedTypes input)
     (moduleTypeCheckCompUnit input)
+
+moduleResolvedCompUnit :: ModuleTypeCheckInput -> CompUnit Name
+moduleResolvedCompUnit input =
+  CompUnit (moduleResolvedImports input) (moduleResolvedTopDecls input)
+
+withPreparedModuleCompUnit :: ModuleTypeCheckInput -> CompUnit Name -> ModuleTypeCheckInput
+withPreparedModuleCompUnit input prepared =
+  input
+    { moduleTypeCheckCompUnit = prepared,
+      moduleLocalDeclKeys =
+        uniqueTopDeclKeys
+          (moduleLocalDeclKeys input ++ generatedPreparedDeclKeys input prepared)
+    }
+
+generatedPreparedDeclKeys :: ModuleTypeCheckInput -> CompUnit Name -> [TopDeclKey]
+generatedPreparedDeclKeys input prepared =
+  [ key
+    | topDecl <- compUnitTopDecls prepared,
+      key <- topDeclKeys topDecl,
+      key `Set.notMember` originalKeys
+  ]
+  where
+    originalKeys =
+      Set.fromList (moduleResolvedTopDecls input >>= topDeclKeys)
+
+moduleResolvedTopDecls :: ModuleTypeCheckInput -> [TopDecl Name]
+moduleResolvedTopDecls input =
+  moduleResolvedQualifiedDecls input
+    ++ moduleResolvedLocalDecls input
+    ++ moduleResolvedImportedDecls input
+
+uniqueTopDeclKeys :: [TopDeclKey] -> [TopDeclKey]
+uniqueTopDeclKeys =
+  go Set.empty
+  where
+    go _ [] = []
+    go seen (key : keys)
+      | key `Set.member` seen = go seen keys
+      | otherwise = key : go (Set.insert key seen) keys
+
+compUnitTopDecls :: CompUnit a -> [TopDecl a]
+compUnitTopDecls (CompUnit _ topDecls) =
+  topDecls
 
 checkedModulesInOrder ::
   ModuleGraph ->
