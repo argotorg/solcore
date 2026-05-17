@@ -61,6 +61,25 @@ typeInferWithImportedDeclMode ::
   CompUnit Name ->
   IO (Either String (CompUnit Id, TcEnv))
 typeInferWithImportedDeclMode importedDeclMode opts trustedInstances localDeclKeys partialTypes (CompUnit imps topLevelDecls) =
+  typeInferTopDeclsWithImportedDeclMode
+    importedDeclMode
+    opts
+    imps
+    trustedInstances
+    localDeclKeys
+    partialTypes
+    topLevelDecls
+
+typeInferTopDeclsWithImportedDeclMode ::
+  ImportedDeclMode ->
+  Option ->
+  [Import] ->
+  [InstanceHead] ->
+  [TopDeclKey] ->
+  [(Name, [Name])] ->
+  [TopDecl Name] ->
+  IO (Either String (CompUnit Id, TcEnv))
+typeInferTopDeclsWithImportedDeclMode importedDeclMode opts imps trustedInstances localDeclKeys partialTypes topLevelDecls =
   do
     r <-
       runTcM

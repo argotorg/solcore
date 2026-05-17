@@ -1,10 +1,16 @@
 module Solcore.Frontend.TypeInference.TcModule
   ( CheckedModule (..),
     CheckedAssembly (..),
+    ModuleDeclSegment (..),
+    ModuleInferenceDecl (..),
     ModuleTypeCheckInput (..),
     assembleCheckedModules,
     checkedModulesInOrder,
     loadModuleLocalTypeCheckInput,
+    moduleInferenceCompUnit,
+    moduleInferenceImportedDecls,
+    moduleInferenceLocalDecls,
+    moduleInferenceQualifiedDecls,
     moduleResolvedCompUnit,
     typeInferModuleLocals,
     withPreparedModuleCompUnit,
@@ -24,9 +30,22 @@ import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Pipeline.Options
 
+data ModuleDeclSegment
+  = ModuleQualifiedDecl
+  | ModuleLocalDecl
+  | ModuleImportedDecl
+  deriving (Eq, Show)
+
+data ModuleInferenceDecl
+  = ModuleInferenceDecl
+  { moduleInferenceDeclSegment :: ModuleDeclSegment,
+    moduleInferenceDeclTopDecl :: TopDecl Name
+  }
+  deriving (Eq, Show)
+
 data ModuleTypeCheckInput
   = ModuleTypeCheckInput
-  { moduleInferenceCompUnit :: CompUnit Name,
+  { moduleInferenceDecls :: [ModuleInferenceDecl],
     moduleResolvedImports :: [Import],
     moduleResolvedQualifiedDecls :: [TopDecl Name],
     moduleResolvedLocalDecls :: [TopDecl Name],
@@ -88,8 +107,7 @@ mkModuleTypeCheckInput surface (resolved, resolvedSegments) =
     [resolvedQualifiedDecls, resolvedLocalDecls, resolvedImportedDecls] ->
       Right
         ModuleTypeCheckInput
-          { moduleInferenceCompUnit = resolved,
-            moduleResolvedImports = imports resolved,
+          { moduleResolvedImports = imports resolved,
             moduleResolvedQualifiedDecls = resolvedQualifiedDecls,
             moduleResolvedLocalDecls = resolvedLocalDecls,
             moduleResolvedImportedDecls = resolvedImportedDecls,
@@ -99,6 +117,10 @@ mkModuleTypeCheckInput surface (resolved, resolvedSegments) =
               resolvedLocalDecls >>= topDeclKeys,
             moduleResolvedImportedDeclKeys =
               resolvedImportedDecls >>= topDeclKeys,
+            moduleInferenceDecls =
+              taggedInferenceDecls ModuleQualifiedDecl resolvedQualifiedDecls
+                ++ taggedInferenceDecls ModuleLocalDecl resolvedLocalDecls
+                ++ taggedInferenceDecls ModuleImportedDecl resolvedImportedDecls,
             moduleGeneratedLocalDeclKeys = [],
             moduleTrustedInstanceHeads =
               [ instanceHeadKey inst
@@ -116,36 +138,57 @@ typeInferModuleLocals ::
   ModuleTypeCheckInput ->
   IO (Either String (CompUnit Id, TcEnv))
 typeInferModuleLocals opts input =
-  typeInferWithImportedDeclMode
+  typeInferTopDeclsWithImportedDeclMode
     TrustImportedDeclBodies
     opts
+    (moduleResolvedImports input)
     (moduleTrustedInstanceHeads input)
     (moduleInferenceLocalDeclKeys input)
     (modulePartialImportedTypes input)
-    (moduleInferenceCompUnit input)
+    (moduleInferenceTopDecls input)
 
 moduleResolvedCompUnit :: ModuleTypeCheckInput -> CompUnit Name
 moduleResolvedCompUnit input =
   CompUnit (moduleResolvedImports input) (moduleResolvedTopDecls input)
 
+moduleInferenceCompUnit :: ModuleTypeCheckInput -> CompUnit Name
+moduleInferenceCompUnit input =
+  CompUnit (moduleResolvedImports input) (moduleInferenceTopDecls input)
+
+moduleInferenceQualifiedDecls :: ModuleTypeCheckInput -> [TopDecl Name]
+moduleInferenceQualifiedDecls input =
+  moduleInferenceDeclsInSegment ModuleQualifiedDecl (moduleInferenceDecls input)
+
+moduleInferenceLocalDecls :: ModuleTypeCheckInput -> [TopDecl Name]
+moduleInferenceLocalDecls input =
+  moduleInferenceDeclsInSegment ModuleLocalDecl (moduleInferenceDecls input)
+
+moduleInferenceImportedDecls :: ModuleTypeCheckInput -> [TopDecl Name]
+moduleInferenceImportedDecls input =
+  moduleInferenceDeclsInSegment ModuleImportedDecl (moduleInferenceDecls input)
+
 withPreparedModuleCompUnit :: ModuleTypeCheckInput -> CompUnit Name -> ModuleTypeCheckInput
 withPreparedModuleCompUnit input prepared =
   input
-    { moduleInferenceCompUnit = prepared,
+    { moduleInferenceDecls = inferenceDecls,
       moduleGeneratedLocalDeclKeys =
         uniqueTopDeclKeys
-          (moduleGeneratedLocalDeclKeys input ++ generatedPreparedDeclKeys input prepared)
+          (moduleGeneratedLocalDeclKeys input ++ generatedLocalDeclKeys input localDecls)
     }
+  where
+    inferenceDecls =
+      classifyInferenceDecls input (compUnitTopDecls prepared)
+    localDecls = moduleInferenceDeclsInSegment ModuleLocalDecl inferenceDecls
 
 moduleInferenceLocalDeclKeys :: ModuleTypeCheckInput -> [TopDeclKey]
 moduleInferenceLocalDeclKeys input =
   uniqueTopDeclKeys
     (moduleResolvedLocalDeclKeys input ++ moduleGeneratedLocalDeclKeys input)
 
-generatedPreparedDeclKeys :: ModuleTypeCheckInput -> CompUnit Name -> [TopDeclKey]
-generatedPreparedDeclKeys input prepared =
+generatedLocalDeclKeys :: ModuleTypeCheckInput -> [TopDecl Name] -> [TopDeclKey]
+generatedLocalDeclKeys input localDecls =
   [ key
-    | topDecl <- compUnitTopDecls prepared,
+    | topDecl <- localDecls,
       key <- topDeclKeys topDecl,
       key `Set.notMember` originalKeys
   ]
@@ -164,6 +207,42 @@ moduleResolvedDeclKeys input =
   moduleResolvedQualifiedDeclKeys input
     ++ moduleResolvedLocalDeclKeys input
     ++ moduleResolvedImportedDeclKeys input
+
+moduleInferenceTopDecls :: ModuleTypeCheckInput -> [TopDecl Name]
+moduleInferenceTopDecls =
+  map moduleInferenceDeclTopDecl . moduleInferenceDecls
+
+classifyInferenceDecls ::
+  ModuleTypeCheckInput ->
+  [TopDecl Name] ->
+  [ModuleInferenceDecl]
+classifyInferenceDecls input =
+  map classify
+  where
+    qualifiedKeys = Set.fromList (moduleResolvedQualifiedDeclKeys input)
+    localKeys = Set.fromList (moduleResolvedLocalDeclKeys input)
+    importedKeys = Set.fromList (moduleResolvedImportedDeclKeys input)
+
+    classify topDecl
+      | any (`Set.member` qualifiedKeys) keys =
+          ModuleInferenceDecl ModuleQualifiedDecl topDecl
+      | any (`Set.member` localKeys) keys || null keys =
+          ModuleInferenceDecl ModuleLocalDecl topDecl
+      | any (`Set.member` importedKeys) keys =
+          ModuleInferenceDecl ModuleImportedDecl topDecl
+      | otherwise =
+          ModuleInferenceDecl ModuleLocalDecl topDecl
+      where
+        keys = topDeclKeys topDecl
+
+taggedInferenceDecls :: ModuleDeclSegment -> [TopDecl Name] -> [ModuleInferenceDecl]
+taggedInferenceDecls segment =
+  map (ModuleInferenceDecl segment)
+
+moduleInferenceDeclsInSegment :: ModuleDeclSegment -> [ModuleInferenceDecl] -> [TopDecl Name]
+moduleInferenceDeclsInSegment segment =
+  map moduleInferenceDeclTopDecl
+    . filter ((== segment) . moduleInferenceDeclSegment)
 
 uniqueTopDeclKeys :: [TopDeclKey] -> [TopDeclKey]
 uniqueTopDeclKeys =
