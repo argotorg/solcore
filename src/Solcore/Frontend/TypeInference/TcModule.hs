@@ -128,8 +128,7 @@ typeInferModuleLocals ::
   ModuleTypeCheckInput ->
   IO (Either String (CompUnit Id, TcEnv))
 typeInferModuleLocals opts input =
-  typeInferTopDeclChecksWithImportedDeclMode
-    TrustImportedDeclBodies
+  typeInferTopDeclChecks
     opts
     (moduleResolvedImports input)
     (moduleTrustedInstanceHeads input)

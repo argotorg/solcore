@@ -22,36 +22,6 @@ import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options
 import Solcore.Primitives.Primitives
 
-typeInfer ::
-  Option ->
-  CompUnit Name ->
-  IO (Either String (CompUnit Id, TcEnv))
-typeInfer opts =
-  typeInferWithTrustedInstanceHeadsAndPartialTypes opts [] [] []
-
-typeInferWithTrustedInstanceHeads ::
-  Option ->
-  [InstanceHead] ->
-  CompUnit Name ->
-  IO (Either String (CompUnit Id, TcEnv))
-typeInferWithTrustedInstanceHeads opts trustedInstances =
-  typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances [] []
-
-typeInferWithTrustedInstanceHeadsAndPartialTypes ::
-  Option ->
-  [InstanceHead] ->
-  [TopDeclKey] ->
-  [(Name, [Name])] ->
-  CompUnit Name ->
-  IO (Either String (CompUnit Id, TcEnv))
-typeInferWithTrustedInstanceHeadsAndPartialTypes =
-  typeInferWithImportedDeclMode CheckImportedDeclBodies
-
-data ImportedDeclMode
-  = CheckImportedDeclBodies
-  | TrustImportedDeclBodies
-  deriving (Eq, Show)
-
 data TopDeclCheckMode
   = CheckTopDeclBody
   | TrustTopDeclBody
@@ -64,55 +34,18 @@ data TopDeclCheck a
   }
   deriving (Eq, Show)
 
-typeInferWithImportedDeclMode ::
-  ImportedDeclMode ->
-  Option ->
-  [InstanceHead] ->
-  [TopDeclKey] ->
-  [(Name, [Name])] ->
-  CompUnit Name ->
-  IO (Either String (CompUnit Id, TcEnv))
-typeInferWithImportedDeclMode importedDeclMode opts trustedInstances localDeclKeys partialTypes (CompUnit imps topLevelDecls) =
-  typeInferTopDeclsWithImportedDeclMode
-    importedDeclMode
-    opts
-    imps
-    trustedInstances
-    localDeclKeys
-    partialTypes
-    topLevelDecls
-
-typeInferTopDeclsWithImportedDeclMode ::
-  ImportedDeclMode ->
-  Option ->
-  [Import] ->
-  [InstanceHead] ->
-  [TopDeclKey] ->
-  [(Name, [Name])] ->
-  [TopDecl Name] ->
-  IO (Either String (CompUnit Id, TcEnv))
-typeInferTopDeclsWithImportedDeclMode importedDeclMode opts imps trustedInstances localDeclKeys partialTypes topLevelDecls =
-  typeInferTopDeclChecksWithImportedDeclMode
-    importedDeclMode
-    opts
-    imps
-    trustedInstances
-    partialTypes
-    (markTopDeclChecks localDeclKeys topLevelDecls)
-
-typeInferTopDeclChecksWithImportedDeclMode ::
-  ImportedDeclMode ->
+typeInferTopDeclChecks ::
   Option ->
   [Import] ->
   [InstanceHead] ->
   [(Name, [Name])] ->
   [TopDeclCheck Name] ->
   IO (Either String (CompUnit Id, TcEnv))
-typeInferTopDeclChecksWithImportedDeclMode importedDeclMode opts imps trustedInstances partialTypes topDeclChecks =
+typeInferTopDeclChecks opts imps trustedInstances partialTypes topDeclChecks =
   do
     r <-
       runTcM
-        (tcTopDeclChecks importedDeclMode topDeclChecks)
+        (tcTopDeclChecks topDeclChecks)
         ( (initTcEnv opts)
             { trustedInstanceHeads = trustedInstances,
               partialDataTypes = Set.fromList (map fst partialTypes),
@@ -128,8 +61,6 @@ typeInferTopDeclChecksWithImportedDeclMode importedDeclMode opts imps trustedIns
       Right (ds, env) -> do
         let ds1 = (ds ++ generated env)
         pure (Right (CompUnit imps ds1, env))
-
--- type inference for a compilation unit
 
 -- Build a pure synonym table from parsed synonym declarations
 buildSynTable :: [TySym] -> SynTable
@@ -156,16 +87,8 @@ expandTyM st (TyCon n ts) = do
 expandTyM st (t1 :-> t2) = (:->) <$> expandTyM st t1 <*> expandTyM st t2
 expandTyM _ t = pure t
 
-tcCompUnit :: ImportedDeclMode -> [TopDeclKey] -> CompUnit Name -> TcM (CompUnit Id)
-tcCompUnit importedDeclMode localDeclKeys (CompUnit imps cs) =
-  CompUnit imps <$> tcTopDecls importedDeclMode localDeclKeys cs
-
-tcTopDecls :: ImportedDeclMode -> [TopDeclKey] -> [TopDecl Name] -> TcM [TopDecl Id]
-tcTopDecls importedDeclMode localDeclKeys cs =
-  tcTopDeclChecks importedDeclMode (markTopDeclChecks localDeclKeys cs)
-
-tcTopDeclChecks :: ImportedDeclMode -> [TopDeclCheck Name] -> TcM [TopDecl Id]
-tcTopDeclChecks importedDeclMode topDeclChecks =
+tcTopDeclChecks :: [TopDeclCheck Name] -> TcM [TopDecl Id]
+tcTopDeclChecks topDeclChecks =
   do
     setupPragmas ps
     checkSynonymCycles syns
@@ -184,43 +107,22 @@ tcTopDeclChecks importedDeclMode topDeclChecks =
     isClass _ = False
     syns = [s | TSym s <- cs]
     trustImportedDecls expandedDecls =
-      case importedDeclMode of
-        CheckImportedDeclBodies ->
-          pure ()
-        TrustImportedDeclBodies ->
-          mapM_
-            (withPartialDataTypesDisabled . trustImportedTopDecl)
-            [ expandedDecl
-              | (topDeclCheck, expandedDecl) <- zip topDeclChecks expandedDecls,
-                topDeclCheckMode topDeclCheck == TrustTopDeclBody
-            ]
+      mapM_
+        (withPartialDataTypesDisabled . trustImportedTopDecl)
+        [ expandedDecl
+          | (topDeclCheck, expandedDecl) <- zip topDeclChecks expandedDecls,
+            topDeclCheckMode topDeclCheck == TrustTopDeclBody
+        ]
     tcTopDeclWithVisibility topDeclCheck expandedDecl =
-      case (importedDeclMode, topDeclCheckMode topDeclCheck) of
-        (_, CheckTopDeclBody) ->
+      case topDeclCheckMode topDeclCheck of
+        CheckTopDeclBody ->
           Just <$> tcTopDecl' expandedDecl
-        (CheckImportedDeclBodies, TrustTopDeclBody) ->
-          withPartialDataTypesDisabled $
-            Just <$> tcTopDecl' expandedDecl
-        (TrustImportedDeclBodies, TrustTopDeclBody) ->
+        TrustTopDeclBody ->
           withPartialDataTypesDisabled $
             pure Nothing
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
-
-markTopDeclChecks :: [TopDeclKey] -> [TopDecl Name] -> [TopDeclCheck Name]
-markTopDeclChecks localDeclKeys =
-  map markTopDeclCheck
-  where
-    localDeclKeySet = Set.fromList localDeclKeys
-    markTopDeclCheck topDecl =
-      TopDeclCheck
-        { topDeclCheckMode =
-            if any (`Set.member` localDeclKeySet) (topDeclKeys topDecl)
-              then CheckTopDeclBody
-              else TrustTopDeclBody,
-          topDeclCheckDecl = topDecl
-        }
 
 -- check for recursive type synonyms
 

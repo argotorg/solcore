@@ -3,7 +3,6 @@ module Solcore.Frontend.Module.Loader
     LoadedModule (..),
     ModuleTypeCheckSurface (..),
     loadModuleGraph,
-    loadCompUnit,
     moduleStrictValidationTopDeclSegments,
     moduleSourcePath,
     moduleLocalTypeCheckSurface,
@@ -96,20 +95,6 @@ loadModuleGraph mainRootPath stdRootPath externalLibs entryFile = runExceptT do
           moduleOrder = reverse (loadOrder st)
         }
     )
-
--- Loads the entry file and all recursive imports, and keeps the old
--- flattened-declaration behavior for compatibility.
-loadCompUnit :: [FilePath] -> FilePath -> IO (Either String CompUnit)
-loadCompUnit roots entryFile = runExceptT do
-  let defaultMainRoot = takeDirectory entryFile
-      mainRootPath = case roots of
-        [] -> defaultMainRoot
-        x : _ -> x
-      stdRootPath = case roots of
-        _ : y : _ -> Just y
-        _ -> Nothing
-  graph <- ExceptT $ loadModuleGraph mainRootPath stdRootPath [] entryFile
-  ExceptT $ pure (legacyFlattenModuleValidationCompUnit graph (entryModule graph))
 
 mkLoaderConfig :: FilePath -> Maybe FilePath -> [(Name, FilePath)] -> FilePath -> IO LoaderConfig
 mkLoaderConfig mainRootPath stdRootPath externalLibs _entryFile = do
@@ -470,14 +455,6 @@ prepareModuleImportContext graph modulePath = do
   ensureNoModuleLookupConflicts graph unit importPairs
   pure (unit, sourcePath, importPairs)
 
-legacyFlattenModuleValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
-legacyFlattenModuleValidationCompUnit graph modulePath = do
-  (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
-  collidingTypeNames <- collidingImportedTypeNames graph importPairs
-  importedDecls <- concat <$> mapM (importedDeclsFor graph) importPairs
-  qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
-  pure (CompUnit (imports unit) (qualifiedDecls ++ importedDecls ++ topDeclsFrom unit))
-
 flattenModuleStrictCompileCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
 flattenModuleStrictCompileCompUnit graph modulePath =
   (\(cunit, _, _, _) -> cunit) <$> flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
@@ -494,7 +471,7 @@ flattenModuleStrictCompileCompUnitWithMetadata graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <- dedupeImportedInstanceDecls . concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
-  partialImportedTypes <- concat <$> mapM (strictCompileImportedPartialTypes collidingTypeNames graph) importPairs
+  partialImportedTypes <- concat <$> mapM (importedPartialTypes collidingTypeNames graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
@@ -511,17 +488,7 @@ moduleLocalTypeCheckSurface ::
   ModuleGraph ->
   Mod.ModuleId ->
   Either String ModuleTypeCheckSurface
-moduleLocalTypeCheckSurface graph modulePath =
-  case unflattenedModuleTypeCheckSurface graph modulePath of
-    Just result -> result
-    Nothing ->
-      moduleLocalTypeCheckSurfaceWithImports graph modulePath
-
-moduleLocalTypeCheckSurfaceWithImports ::
-  ModuleGraph ->
-  Mod.ModuleId ->
-  Either String ModuleTypeCheckSurface
-moduleLocalTypeCheckSurfaceWithImports graph modulePath = do
+moduleLocalTypeCheckSurface graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <-
@@ -529,7 +496,7 @@ moduleLocalTypeCheckSurfaceWithImports graph modulePath = do
       . concat
       <$> mapM (typeCheckImportedDecls collidingTypeNames graph) importPairs
   partialImportedTypes <-
-    concat <$> mapM (strictCompileImportedPartialTypes collidingTypeNames graph) importPairs
+    concat <$> mapM (importedPartialTypes collidingTypeNames graph) importPairs
   qualifiedDecls <-
     concat <$> mapM (typeCheckQualifiedImportDecls collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
@@ -542,28 +509,6 @@ moduleLocalTypeCheckSurfaceWithImports graph modulePath = do
         moduleSurfaceImportedDecls = visibleImportedDecls,
         moduleSurfacePartialImportedTypes = normalizePartialImportedTypes partialImportedTypes
       }
-
-unflattenedModuleTypeCheckSurface ::
-  ModuleGraph ->
-  Mod.ModuleId ->
-  Maybe (Either String ModuleTypeCheckSurface)
-unflattenedModuleTypeCheckSurface graph modulePath =
-  case Map.lookup modulePath (modules graph) of
-    Just loadedModule
-      | null (imports unit) ->
-          Just $
-            Right
-              ModuleTypeCheckSurface
-                { moduleSurfaceImports = imports unit,
-                  moduleSurfaceQualifiedDecls = [],
-                  moduleSurfaceLocalDecls = topDeclsFrom unit,
-                  moduleSurfaceImportedDecls = [],
-                  moduleSurfacePartialImportedTypes = []
-                }
-      where
-        unit = loadedCompUnit loadedModule
-    _ ->
-      Nothing
 
 stubTopDeclBody :: TopDecl -> TopDecl
 stubTopDeclBody (TContr (Contract n vs contractDecls)) =
@@ -603,9 +548,7 @@ flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath 
       <$> mapM (strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph) importPairs
   partialImportedTypes <-
     concat
-      <$> mapM
-        (strictCompileImportedPartialTypesWithSurfaces compileSurfaces collidingTypeNames graph)
-        importPairs
+      <$> mapM (importedPartialTypes collidingTypeNames graph) importPairs
   qualifiedDecls <-
     concat <$> mapM (qualifiedImportDeclsWithSurfaces compileSurfaces collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
@@ -2055,10 +1998,6 @@ strictCompileImportedDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) 
 strictCompileImportedDecls =
   strictCompileImportedDeclsWithSurfaces Map.empty
 
-strictCompileImportedPartialTypes :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [(Name, [Name])]
-strictCompileImportedPartialTypes =
-  strictCompileImportedPartialTypesWithSurfaces Map.empty
-
 strictCompileImportedDeclsWithSurfaces ::
   Map Mod.ModuleId [TopDecl] ->
   Set Name ->
@@ -2176,13 +2115,12 @@ strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph 
     nestedModuleImportCompileDecls qualifier (ExportedModuleBinding bindingName targetModule) =
       moduleImportCompileDecls (QualName qualifier (show bindingName)) targetModule
 
-strictCompileImportedPartialTypesWithSurfaces ::
-  Map Mod.ModuleId [TopDecl] ->
+importedPartialTypes ::
   Set Name ->
   ModuleGraph ->
   (Import, Mod.ModuleId) ->
   Either String [(Name, [Name])]
-strictCompileImportedPartialTypesWithSurfaces _compileSurfaces collidingTypeNames graph (imp, modulePath) =
+importedPartialTypes collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly moduleName selector ->
       importOnlyTypes (Mod.modulePathName moduleName) selector
