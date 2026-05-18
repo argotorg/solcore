@@ -4,7 +4,6 @@ module Solcore.Frontend.Module.Loader
     ModuleTypeCheckSurface (..),
     loadModuleGraph,
     loadCompUnit,
-    moduleStrictValidationCompUnit,
     moduleStrictValidationTopDeclSegments,
     moduleSourcePath,
     moduleLocalTypeCheckSurface,
@@ -110,7 +109,7 @@ loadCompUnit roots entryFile = runExceptT do
         _ : y : _ -> Just y
         _ -> Nothing
   graph <- ExceptT $ loadModuleGraph mainRootPath stdRootPath [] entryFile
-  ExceptT $ pure (flattenModuleValidationCompUnit graph (entryModule graph))
+  ExceptT $ pure (legacyFlattenModuleValidationCompUnit graph (entryModule graph))
 
 mkLoaderConfig :: FilePath -> Maybe FilePath -> [(Name, FilePath)] -> FilePath -> IO LoaderConfig
 mkLoaderConfig mainRootPath stdRootPath externalLibs _entryFile = do
@@ -471,8 +470,8 @@ prepareModuleImportContext graph modulePath = do
   ensureNoModuleLookupConflicts graph unit importPairs
   pure (unit, sourcePath, importPairs)
 
-flattenModuleValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
-flattenModuleValidationCompUnit graph modulePath = do
+legacyFlattenModuleValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
+legacyFlattenModuleValidationCompUnit graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <- concat <$> mapM (importedDeclsFor graph) importPairs
@@ -619,11 +618,6 @@ flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath 
       importedStart,
       normalizePartialImportedTypes partialImportedTypes
     )
-
-moduleStrictValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
-moduleStrictValidationCompUnit graph modulePath = do
-  (imps, segments) <- moduleStrictValidationTopDeclSegments graph modulePath
-  pure (CompUnit imps (concat segments))
 
 moduleStrictValidationTopDeclSegments :: ModuleGraph -> Mod.ModuleId -> Either String ([Import], [[TopDecl]])
 moduleStrictValidationTopDeclSegments graph modulePath = do

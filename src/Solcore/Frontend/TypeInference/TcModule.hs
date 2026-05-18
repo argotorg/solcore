@@ -12,12 +12,12 @@ module Solcore.Frontend.TypeInference.TcModule
     moduleInferenceQualifiedDecls,
     moduleInferenceTopDecls,
     retagModuleInferenceDecls,
-    moduleResolvedTopDecls,
     typeInferModuleLocals,
     withPreparedModuleInferenceDecls,
   )
 where
 
+import Data.List (foldl')
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
@@ -158,12 +158,6 @@ moduleInferenceTopDecls :: [ModuleInferenceDecl] -> [TopDecl Name]
 moduleInferenceTopDecls =
   map moduleInferenceDeclTopDecl
 
-moduleResolvedTopDecls :: ModuleTypeCheckInput -> [TopDecl Name]
-moduleResolvedTopDecls input =
-  moduleResolvedQualifiedDecls input
-    ++ moduleResolvedLocalDecls input
-    ++ moduleResolvedImportedDecls input
-
 moduleTopDeclChecks :: ModuleTypeCheckInput -> [TopDeclCheck Name]
 moduleTopDeclChecks =
   map moduleInferenceDeclCheck . moduleInferenceDecls
@@ -185,29 +179,40 @@ retagModuleInferenceDecls ::
   [TopDecl Name] ->
   [ModuleInferenceDecl]
 retagModuleInferenceDecls inferenceDecls =
-  map classify
+  map (retagModuleInferenceDecl keySegments)
   where
-    qualifiedKeys = declKeysInSegment ModuleQualifiedDecl inferenceDecls
-    localKeys = declKeysInSegment ModuleLocalDecl inferenceDecls
-    importedKeys = declKeysInSegment ModuleImportedDecl inferenceDecls
+    keySegments =
+      moduleInferenceDeclSegmentByKey inferenceDecls
 
-    classify topDecl
-      | any (`Set.member` qualifiedKeys) keys =
-          ModuleInferenceDecl ModuleQualifiedDecl topDecl
-      | any (`Set.member` localKeys) keys || null keys =
-          ModuleInferenceDecl ModuleLocalDecl topDecl
-      | any (`Set.member` importedKeys) keys =
-          ModuleInferenceDecl ModuleImportedDecl topDecl
-      | otherwise =
-          ModuleInferenceDecl ModuleLocalDecl topDecl
+retagModuleInferenceDecl :: Map TopDeclKey ModuleDeclSegment -> TopDecl Name -> ModuleInferenceDecl
+retagModuleInferenceDecl keySegments topDecl =
+  ModuleInferenceDecl (retaggedDeclSegment keySegments topDecl) topDecl
+
+retaggedDeclSegment :: Map TopDeclKey ModuleDeclSegment -> TopDecl Name -> ModuleDeclSegment
+retaggedDeclSegment keySegments topDecl =
+  chooseSegment knownSegments
+  where
+    knownSegments =
+      [ segment
+        | key <- topDeclKeys topDecl,
+          Just segment <- [Map.lookup key keySegments]
+      ]
+    chooseSegment segments
+      | ModuleLocalDecl `elem` segments = ModuleLocalDecl
+      | ModuleQualifiedDecl `elem` segments = ModuleQualifiedDecl
+      | ModuleImportedDecl `elem` segments = ModuleImportedDecl
+      | otherwise = ModuleLocalDecl
+
+moduleInferenceDeclSegmentByKey :: [ModuleInferenceDecl] -> Map TopDeclKey ModuleDeclSegment
+moduleInferenceDeclSegmentByKey =
+  foldl' addDecl Map.empty
+  where
+    addDecl segments inferenceDecl =
+      foldl' addKey segments (topDeclKeys (moduleInferenceDeclTopDecl inferenceDecl))
       where
-        keys = topDeclKeys topDecl
-
-declKeysInSegment :: ModuleDeclSegment -> [ModuleInferenceDecl] -> Set.Set TopDeclKey
-declKeysInSegment segment =
-  Set.fromList
-    . concatMap (topDeclKeys . moduleInferenceDeclTopDecl)
-    . filter ((== segment) . moduleInferenceDeclSegment)
+        segment = moduleInferenceDeclSegment inferenceDecl
+        addKey acc key =
+          Map.insertWith (\_ old -> old) key segment acc
 
 taggedInferenceDecls :: ModuleDeclSegment -> [TopDecl Name] -> [ModuleInferenceDecl]
 taggedInferenceDecls segment =

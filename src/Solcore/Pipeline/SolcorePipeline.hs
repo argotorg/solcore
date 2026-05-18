@@ -219,7 +219,16 @@ dumpModuleResolvedAST :: Option -> FilePath -> ModuleTypeCheckInput -> IO ()
 dumpModuleResolvedAST opts sourcePath input =
   when (optVerbose opts || optDumpAST opts) $ do
     putStrLn ("> AST after name resolution for " ++ sourcePath)
-    putStrLn $ pretty (CompUnit (moduleResolvedImports input) (moduleResolvedTopDecls input))
+    putStrLn $ pretty (moduleResolvedDisplayCompUnit input)
+
+moduleResolvedDisplayCompUnit :: ModuleTypeCheckInput -> CompUnit Name
+moduleResolvedDisplayCompUnit input =
+  CompUnit
+    (moduleResolvedImports input)
+    ( moduleResolvedQualifiedDecls input
+        ++ moduleResolvedLocalDecls input
+        ++ moduleResolvedImportedDecls input
+    )
 
 emitModulePreparationDiagnostics :: Option -> Bool
 emitModulePreparationDiagnostics opts =

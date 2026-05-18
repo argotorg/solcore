@@ -168,6 +168,7 @@ test-suite sol-core-tests
     Cases
     HullCases
     MatchCompilerTests
+    ModuleTypeCheckTests
 
   build-depends:
     , sol-core
