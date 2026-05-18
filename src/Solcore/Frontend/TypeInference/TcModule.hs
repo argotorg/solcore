@@ -10,10 +10,11 @@ module Solcore.Frontend.TypeInference.TcModule
     moduleInferenceImportedDecls,
     moduleInferenceLocalDecls,
     moduleInferenceQualifiedDecls,
-    moduleResolvedCompUnit,
+    preparedModuleInferenceDecls,
     moduleResolvedTopDecls,
     typeInferModuleLocals,
     withPreparedModuleDecls,
+    withPreparedModuleInferenceDecls,
   )
 where
 
@@ -144,10 +145,6 @@ typeInferModuleLocals opts input =
     (modulePartialImportedTypes input)
     (moduleTopDeclChecks input)
 
-moduleResolvedCompUnit :: ModuleTypeCheckInput -> CompUnit Name
-moduleResolvedCompUnit input =
-  CompUnit (moduleResolvedImports input) (moduleResolvedTopDecls input)
-
 moduleInferenceQualifiedDecls :: ModuleTypeCheckInput -> [TopDecl Name]
 moduleInferenceQualifiedDecls input =
   moduleInferenceDeclsInSegment ModuleQualifiedDecl (moduleInferenceDecls input)
@@ -162,12 +159,17 @@ moduleInferenceImportedDecls input =
 
 withPreparedModuleDecls :: ModuleTypeCheckInput -> [TopDecl Name] -> ModuleTypeCheckInput
 withPreparedModuleDecls input preparedDecls =
+  withPreparedModuleInferenceDecls input (preparedModuleInferenceDecls input preparedDecls)
+
+withPreparedModuleInferenceDecls :: ModuleTypeCheckInput -> [ModuleInferenceDecl] -> ModuleTypeCheckInput
+withPreparedModuleInferenceDecls input inferenceDecls =
   input
     { moduleInferenceDecls = inferenceDecls
     }
-  where
-    inferenceDecls =
-      classifyInferenceDecls input preparedDecls
+
+preparedModuleInferenceDecls :: ModuleTypeCheckInput -> [TopDecl Name] -> [ModuleInferenceDecl]
+preparedModuleInferenceDecls =
+  classifyInferenceDecls
 
 moduleResolvedTopDecls :: ModuleTypeCheckInput -> [TopDecl Name]
 moduleResolvedTopDecls input =

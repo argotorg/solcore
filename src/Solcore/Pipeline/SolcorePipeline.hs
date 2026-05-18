@@ -201,19 +201,27 @@ prepareModuleTypeCheckInput ::
   ModuleTypeCheckInput ->
   ExceptT String IO ModuleTypeCheckInput
 prepareModuleTypeCheckInput opts resolvedInput = do
+  inferenceDecls <- prepareModuleInferenceDeclsForTypeInference opts resolvedInput
+  pure (withPreparedModuleInferenceDecls resolvedInput inferenceDecls)
+
+prepareModuleInferenceDeclsForTypeInference ::
+  Option ->
+  ModuleTypeCheckInput ->
+  ExceptT String IO [ModuleInferenceDecl]
+prepareModuleInferenceDeclsForTypeInference opts input = do
   preparedDecls <-
     prepareTopDeclsForTypeInference
-      opts
-      (emitModulePreparationDiagnostics opts)
-      (moduleResolvedImports resolvedInput)
-      (moduleResolvedTopDecls resolvedInput)
-  pure (withPreparedModuleDecls resolvedInput preparedDecls)
+    opts
+    (emitModulePreparationDiagnostics opts)
+    (moduleResolvedImports input)
+    (map moduleInferenceDeclTopDecl (moduleInferenceDecls input))
+  pure (preparedModuleInferenceDecls input preparedDecls)
 
 dumpModuleResolvedAST :: Option -> FilePath -> ModuleTypeCheckInput -> IO ()
 dumpModuleResolvedAST opts sourcePath input =
   when (optVerbose opts || optDumpAST opts) $ do
     putStrLn ("> AST after name resolution for " ++ sourcePath)
-    putStrLn $ pretty (moduleResolvedCompUnit input)
+    putStrLn $ pretty (CompUnit (moduleResolvedImports input) (moduleResolvedTopDecls input))
 
 emitModulePreparationDiagnostics :: Option -> Bool
 emitModulePreparationDiagnostics opts =
