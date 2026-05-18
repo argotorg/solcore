@@ -23,7 +23,7 @@ import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Frontend.Module.Identity qualified as Mod
-import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourcePath, moduleStrictValidationCompUnit)
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourcePath, moduleStrictValidationTopDeclSegments)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.NameResolution
@@ -71,18 +71,18 @@ compile opts = runExceptT $ do
   -- Validate each module against only its own direct imports.
   forM_ (moduleOrder graph) $ \moduleId -> do
     sourcePath <- ExceptT $ pure (moduleSourcePath graph moduleId)
-    cunit <-
+    (validationImports, validationSegments) <-
       ExceptT $
-        pure (moduleStrictValidationCompUnit graph moduleId)
+        pure (moduleStrictValidationTopDeclSegments graph moduleId)
     _ <-
       ExceptT $
         pure $
           first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e) $
-            validateDuplicateNamespacesInCompUnit cunit
+            validateDuplicateNamespacesInTopDeclSegments validationSegments
     _ <-
       ExceptT $
         first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e)
-          <$> nameResolution cunit
+          <$> nameResolutionTopDeclSegments validationImports validationSegments
     pure ()
 
   checkedModules <-
@@ -245,28 +245,6 @@ moduleTypeCheckError sourcePath phase err =
     ++ phase
     ++ "):\n"
     ++ err
-
-prepareForTypeInference ::
-  Option ->
-  Bool ->
-  CompUnit Name ->
-  ExceptT String IO (CompUnit Name)
-prepareForTypeInference opts emitOutput (CompUnit imps topDecls) =
-  CompUnit imps <$> prepareTopDeclsForTypeInference opts emitOutput imps topDecls
-
-prepareTopDeclsForTypeInference ::
-  Option ->
-  Bool ->
-  [Import] ->
-  [TopDecl Name] ->
-  ExceptT String IO [TopDecl Name]
-prepareTopDeclsForTypeInference opts emitOutput imps topDecls =
-  moduleInferenceTopDecls
-    <$> prepareInferenceDeclsForTypeInference
-      opts
-      emitOutput
-      imps
-      (map (ModuleInferenceDecl ModuleLocalDecl) topDecls)
 
 prepareInferenceDeclsForTypeInference ::
   Option ->

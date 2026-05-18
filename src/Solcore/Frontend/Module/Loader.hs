@@ -5,6 +5,7 @@ module Solcore.Frontend.Module.Loader
     loadModuleGraph,
     loadCompUnit,
     moduleStrictValidationCompUnit,
+    moduleStrictValidationTopDeclSegments,
     moduleSourcePath,
     moduleLocalTypeCheckSurface,
   )
@@ -621,12 +622,17 @@ flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath 
 
 moduleStrictValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
 moduleStrictValidationCompUnit graph modulePath = do
+  (imps, segments) <- moduleStrictValidationTopDeclSegments graph modulePath
+  pure (CompUnit imps (concat segments))
+
+moduleStrictValidationTopDeclSegments :: ModuleGraph -> Mod.ModuleId -> Either String ([Import], [[TopDecl]])
+moduleStrictValidationTopDeclSegments graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   importedDecls <- concat <$> mapM (strictValidationImportedDecls graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportStubDecls graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
-  pure (CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls))
+  pure (imports unit, [qualifiedDecls, localDecls, visibleImportedDecls])
 
 ensureImportItemsExist :: ModuleGraph -> [(Import, Mod.ModuleId)] -> Either String ()
 ensureImportItemsExist graph importPairs = do

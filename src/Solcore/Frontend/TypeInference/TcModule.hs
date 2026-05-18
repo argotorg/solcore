@@ -11,11 +11,9 @@ module Solcore.Frontend.TypeInference.TcModule
     moduleInferenceLocalDecls,
     moduleInferenceQualifiedDecls,
     moduleInferenceTopDecls,
-    preparedModuleInferenceDecls,
     retagModuleInferenceDecls,
     moduleResolvedTopDecls,
     typeInferModuleLocals,
-    withPreparedModuleDecls,
     withPreparedModuleInferenceDecls,
   )
 where
@@ -150,19 +148,11 @@ moduleInferenceImportedDecls :: ModuleTypeCheckInput -> [TopDecl Name]
 moduleInferenceImportedDecls input =
   moduleInferenceDeclsInSegment ModuleImportedDecl (moduleInferenceDecls input)
 
-withPreparedModuleDecls :: ModuleTypeCheckInput -> [TopDecl Name] -> ModuleTypeCheckInput
-withPreparedModuleDecls input preparedDecls =
-  withPreparedModuleInferenceDecls input (preparedModuleInferenceDecls input preparedDecls)
-
 withPreparedModuleInferenceDecls :: ModuleTypeCheckInput -> [ModuleInferenceDecl] -> ModuleTypeCheckInput
 withPreparedModuleInferenceDecls input inferenceDecls =
   input
     { moduleInferenceDecls = inferenceDecls
     }
-
-preparedModuleInferenceDecls :: ModuleTypeCheckInput -> [TopDecl Name] -> [ModuleInferenceDecl]
-preparedModuleInferenceDecls input =
-  retagModuleInferenceDecls (moduleInferenceDecls input)
 
 moduleInferenceTopDecls :: [ModuleInferenceDecl] -> [TopDecl Name]
 moduleInferenceTopDecls =

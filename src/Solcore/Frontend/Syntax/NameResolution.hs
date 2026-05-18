@@ -83,6 +83,12 @@ validateDuplicateNamespacesInCompUnit :: S.CompUnit -> Either String ()
 validateDuplicateNamespacesInCompUnit (S.CompUnit _ ds) =
   validateDuplicateNamespaces ds
 
+validateDuplicateNamespacesInTopDeclSegments :: [[S.TopDecl]] -> Either String ()
+validateDuplicateNamespacesInTopDeclSegments segments = do
+  ensureNoDuplicateNames "type namespace" (concatMap topLevelTypeNames segments)
+  ensureNoDuplicateNames "term namespace" (concatMap topLevelTermNames segments)
+  mapM_ validateContractDuplicates [c | segment <- segments, S.TContr c <- segment]
+
 validateDuplicateNamespaces :: [S.TopDecl] -> Either String ()
 validateDuplicateNamespaces ds = do
   ensureNoDuplicateNames "type namespace" (topLevelTypeNames ds)
