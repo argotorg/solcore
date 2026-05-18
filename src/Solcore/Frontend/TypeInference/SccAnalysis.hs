@@ -1,4 +1,8 @@
-module Solcore.Frontend.TypeInference.SccAnalysis where
+module Solcore.Frontend.TypeInference.SccAnalysis
+  ( sccAnalysis,
+    sccAnalysisTopDecls,
+  )
+where
 
 import Algebra.Graph.AdjacencyMap
 import Algebra.Graph.AdjacencyMap.Algorithm
@@ -26,11 +30,23 @@ sccAnalysis cunit =
       Left err -> pure $ Left err
       Right (cunit', _) -> pure $ Right cunit'
 
+sccAnalysisTopDecls :: [TopDecl Name] -> IO (Either String [TopDecl Name])
+sccAnalysisTopDecls topDecls =
+  do
+    r <- runSCC (sccTopDecls topDecls)
+    case r of
+      Left err -> pure $ Left err
+      Right (topDecls', _) -> pure $ Right topDecls'
+
 sccAnalysis' :: CompUnit Name -> SCC (CompUnit Name)
 sccAnalysis' (CompUnit imps ds) =
+  CompUnit imps <$> sccTopDecls ds
+
+sccTopDecls :: [TopDecl Name] -> SCC [TopDecl Name]
+sccTopDecls ds =
   do
     cs' <- mapM sccContract cs
-    CompUnit imps <$> analysis (cs' ++ ds')
+    analysis (cs' ++ ds')
   where
     isContract (TContr _) = True
     isContract _ = False

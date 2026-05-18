@@ -15,13 +15,13 @@ import Solcore.Backend.EmitHull (emitHull)
 import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
-import Solcore.Desugarer.ContractDispatch (contractDispatchDesugarer)
+import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
-import Solcore.Desugarer.FieldAccess (fieldDesugarer)
+import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
-import Solcore.Desugarer.IndirectCall (indirectCall)
+import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
-import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
+import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourcePath, moduleStrictValidationCompUnit)
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -255,16 +255,6 @@ prepareTopDeclsForTypeInference ::
   [TopDecl Name] ->
   ExceptT String IO [TopDecl Name]
 prepareTopDeclsForTypeInference opts emitOutput imps topDecls = do
-  prepared <- prepareCompUnitForTypeInference opts emitOutput (CompUnit imps topDecls)
-  let CompUnit _ preparedDecls = prepared
-  pure preparedDecls
-
-prepareCompUnitForTypeInference ::
-  Option ->
-  Bool ->
-  CompUnit Name ->
-  ExceptT String IO (CompUnit Name)
-prepareCompUnitForTypeInference opts emitOutput resolved = do
   let verbose = emitOutput && optVerbose opts
       noDesugarCalls = optNoDesugarCalls opts
       noGenDispatch = optNoGenDispatch opts
@@ -274,54 +264,54 @@ prepareCompUnitForTypeInference opts emitOutput resolved = do
         | otherwise = \_ action -> action
 
   -- contract field access desugaring
-  let accessed = fieldDesugarer resolved
+  let accessed = fieldDesugarTopDecls topDecls
   liftIO $ when verbose $ do
     putStrLn "Contract field access desugaring:"
-    putStrLn $ pretty accessed
+    putStrLn $ pretty (CompUnit imps accessed)
 
   -- contract dispatch generation
   dispatched <-
     liftIO $
       if noGenDispatch
         then pure accessed
-        else timeItNamed "Contract dispatch generation" $ pure (contractDispatchDesugarer accessed)
+        else timeItNamed "Contract dispatch generation" $ pure (contractDispatchTopDecls accessed)
 
   liftIO $ when (emitOutput && optDumpDispatch opts) $ do
     putStrLn "> Dispatch:"
-    putStrLn $ pretty dispatched
+    putStrLn $ pretty (CompUnit imps dispatched)
 
   -- SCC analysis
   connected <-
     ExceptT $
       timeItNamed "SCC           " $
-        sccAnalysis dispatched
+        sccAnalysisTopDecls dispatched
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"
-    putStrLn $ pretty connected
+    putStrLn $ pretty (CompUnit imps connected)
 
   -- Indirect call handling
   direct <-
     liftIO $
       if noDesugarCalls
         then pure connected
-        else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
+        else timeItNamed "Indirect Calls" $ (fst <$> indirectCallTopDecls connected)
 
   liftIO $ when (emitOutput && (optVerbose opts || optDumpDF opts)) $ do
     putStrLn "> Indirect call desugaring:"
-    putStrLn $ pretty direct
+    putStrLn $ pretty (CompUnit imps direct)
 
   -- Pattern wildcard desugaring
-  let noWild = replaceWildcard direct
+  let noWild = replaceWildcardTopDecls direct
   liftIO $ when verbose $ do
     putStrLn "> Pattern wildcard desugaring:"
-    putStrLn $ pretty noWild
+    putStrLn $ pretty (CompUnit imps noWild)
 
   -- Eliminate function type arguments
   let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
   liftIO $ when verbose $ do
     putStrLn "> Eliminating argments with function types"
-    putStrLn $ pretty noFun
+    putStrLn $ pretty (CompUnit imps noFun)
 
   pure noFun
 

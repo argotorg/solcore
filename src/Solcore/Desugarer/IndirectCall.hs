@@ -1,4 +1,8 @@
-module Solcore.Desugarer.IndirectCall where
+module Solcore.Desugarer.IndirectCall
+  ( indirectCall,
+    indirectCallTopDecls,
+  )
+where
 
 import Control.Monad.State
 import Data.Map qualified as Map
@@ -10,13 +14,19 @@ import Solcore.Primitives.Primitives
 -- top level desugarer
 
 indirectCall :: CompUnit Name -> IO (CompUnit Name, [Name])
-indirectCall cunit =
+indirectCall (CompUnit imps topDecls) =
+  do
+    (topDecls', fnames) <- indirectCallTopDecls topDecls
+    pure (CompUnit imps topDecls', fnames)
+
+indirectCallTopDecls :: [TopDecl Name] -> IO ([TopDecl Name], [Name])
+indirectCallTopDecls topDecls =
   (,fnames)
     <$> runIndirectM
-      (desugar cunit)
+      (desugar topDecls)
       (Env (Map.keys primCtx ++ fnames))
   where
-    fnames = QualName invokableName "invoke" : collect cunit
+    fnames = QualName invokableName "invoke" : collect topDecls
 
 -- type class for desugar indirect calls
 
@@ -183,7 +193,3 @@ runIndirectM m env = evalStateT m env
 
 isDirectCall :: Name -> IndirectM Bool
 isDirectCall n = (elem n) <$> gets funNames
-
-addFunctionName :: Name -> IndirectM ()
-addFunctionName n =
-  modify (\env -> env {funNames = n : funNames env})

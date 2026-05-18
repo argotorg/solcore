@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 
-module Solcore.Desugarer.FieldAccess (fieldDesugarer) where
+module Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls, fieldDesugarer) where
 
 import Control.Monad.Reader (MonadReader (..))
 -- import Data.Generics(Data, mkT, everywhere)
@@ -36,7 +36,10 @@ type NmExp = Exp Name
 type NmEquation = Equation Name
 
 fieldDesugarer :: CompUnit Name -> CompUnit Name
-fieldDesugarer (CompUnit ims topdecls) = CompUnit ims (extras <> topdecls')
+fieldDesugarer (CompUnit ims topdecls) = CompUnit ims (fieldDesugarTopDecls topdecls)
+
+fieldDesugarTopDecls :: [TopDecl Name] -> [TopDecl Name]
+fieldDesugarTopDecls topdecls = extras <> topdecls'
   where
     existingDataTypes =
       Set.fromList
