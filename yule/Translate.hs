@@ -167,7 +167,7 @@ genStmt (SReturn expr) = do
       let stmts' = copyLocs resultLoc loc
       pure (stmts ++ stmts' ++ [YLeave])
 genStmt (SBlock stmts) = withLocalEnv do genStmts stmts
-genStmt (SMatch _ e alts) = do
+genStmt (SMatch ty e alts) = do
   (scrutStmts, scrutineeLoc) <- genExpr e
   -- debug ["> SMatch: ", show e , ":", show sty, " @ " , show scrutineeLoc]
   matchStmts <- case normalizeLoc scrutineeLoc of
@@ -179,7 +179,7 @@ genStmt (SMatch _ e alts) = do
   where
     genSwitch :: Location -> Location -> [Alt] -> TM [YulStmt]
     genSwitch tag payload altBranches = do
-      (yulAlts, yulDefault) <- genNAlts payload altBranches
+      (yulAlts, yulDefault) <- genNAlts (stripTypeName ty) payload altBranches
       pure [YSwitch (loadLoc tag) yulAlts yulDefault]
 genStmt (SFor initStmt cond post body) = do
   initStmts <- genForInit initStmt
@@ -269,32 +269,44 @@ genBinAlts _ alts =
         ++ unlines (map (render . ppr) alts)
     )
 
-genNAlts :: Location -> [Alt] -> TM (YulCases, YulDefault)
-genNAlts payload alts = do
-  results <- mapM (genAlt payload) alts
+-- Trim payload to n slots so pattern variables are not mapped to padding.
+trimPayload :: Int -> Location -> Location
+trimPayload n (LocSeq ls) = normalizeLoc (LocSeq (take n ls))
+trimPayload _ loc = loc
+
+-- Payload size for each constructor given the scrutinee type.
+conPayload :: Type -> Con -> Location -> Location
+conPayload (TSum l _) CInl payload = trimPayload (sizeOf l) payload
+conPayload (TSum _ r) CInr payload = trimPayload (sizeOf r) payload
+conPayload (TNamed _ t) con payload = conPayload t con payload
+conPayload _ _ payload = payload
+
+genNAlts :: Type -> Location -> [Alt] -> TM (YulCases, YulDefault)
+genNAlts ty payload alts = do
+  results <- mapM (genAlt ty payload) alts
   return (gather results)
   where
     gather = foldr combine ([], Nothing)
     combine (Left (tag, stmts)) (cases, def) = ((tag, stmts) : cases, def)
     combine (Right stmts) (cases, _) = (cases, Just stmts)
 
-genAlt :: Location -> Alt -> TM (Either YulCase YulBlock)
-genAlt payload (Alt (PCon con) name body) = withLocalEnv do
-  insertVar name payload
+genAlt :: Type -> Location -> Alt -> TM (Either YulCase YulBlock)
+genAlt ty payload (Alt (PCon con) name body) = withLocalEnv do
+  insertVar name (conPayload ty con payload)
   altStmts <- genBody body
   pure (Left (yulCon con, altStmts))
   where
     yulCon CInl = YulFalse
     yulCon CInr = YulTrue
     yulCon (CInK k) = YulNumber (fromIntegral k)
-genAlt _ (Alt (PIntLit k) _ body) = withLocalEnv do
+genAlt _ _ (Alt (PIntLit k) _ body) = withLocalEnv do
   altStmts <- genBody body
   pure (Left (YulNumber (fromIntegral k), altStmts))
-genAlt payload (Alt (PVar name) _ body) = do
+genAlt _ payload (Alt (PVar name) _ body) = do
   insertVar name payload
   altStmts <- genBody body
   pure (Right altStmts)
-genAlt _ alt = error ("genAlt unimplemented for: " ++ show alt)
+genAlt _ _ alt = error ("genAlt unimplemented for: " ++ show alt)
 
 allocVar :: Hull.Name -> Type -> TM [YulStmt]
 allocVar name TWord = do
