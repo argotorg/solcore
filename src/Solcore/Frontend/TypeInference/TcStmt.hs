@@ -129,6 +129,27 @@ tcStmtWithExpectedReturn mExpectedReturn s@(If e blk1 blk2) =
                      )
         `wrapError` s
     withCurrentSubst (If e' blk1' blk2', ps3, t1)
+tcStmtWithExpectedReturn mExpectedReturn s@(For initStmt cond postStmt body) =
+  withLocalEnv $ do
+    (initStmt', psInit, _) <- tcStmtWithExpectedReturn Nothing initStmt
+    (cond', psCond, condTy) <- tcExp cond
+    _ <-
+      unify condTy boolTy
+        `catchError` ( \_ ->
+                         tcmError $
+                           unlines
+                             [ "Expression:",
+                               pretty cond,
+                               "has type:",
+                               pretty condTy,
+                               "while it is expected to have type:",
+                               pretty boolTy
+                             ]
+                     )
+        `wrapError` s
+    (postStmt', psPost, _) <- tcStmtWithExpectedReturn Nothing postStmt
+    (body', psBody, _) <- tcBodyWithExpectedReturn mExpectedReturn body
+    withCurrentSubst (For initStmt' cond' postStmt' body', psInit ++ psCond ++ psPost ++ psBody, unit)
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations = tcEquationsWithExpectedReturn Nothing
@@ -1215,10 +1236,24 @@ checkMethod ih@(InCls n _ _) d@(FunDef sig _) =
 checkMethod p d = invalidMethodPred p d
 
 fullSignature :: Signature Name -> TcM ()
-fullSignature sig@(Signature _ _ _ ps t) =
+fullSignature sig =
   unless
-    (all isTyped ps && maybe False (const True) t)
+    (isFullyAnnotated sig)
     (throwError $ unlines ["Instance methods must have complete type signatures:", pretty sig])
+
+requireAnnotations :: FunDef Name -> TcM ()
+requireAnnotations (FunDef sig _) =
+  unless (isFullyAnnotated sig) $
+    tcmError $
+      unlines
+        [ "Top-level function must have complete type annotations:",
+          "  " ++ pretty sig,
+          "Annotate every parameter (name : Type) and provide a return type (-> Type)."
+        ]
+
+isFullyAnnotated :: Signature Name -> Bool
+isFullyAnnotated (Signature _ _ _ ps rt) =
+  all isTyped ps && isJust rt
   where
     isTyped (Typed _ _) = True
     isTyped _ = False
@@ -1786,9 +1821,18 @@ tcYulBlock (s : ss) =
     pure (ns ++ nss, t)
 
 tcYulStmt :: YulStmt -> TcM ([Name], Ty)
-tcYulStmt (YAssign _ e) =
+tcYulStmt (YAssign ns e) =
   do
-    -- do not define names
+    forM_ ns $ \n -> do
+      msch <- maybeAskEnv n
+      case msch of
+        Nothing -> pure ()
+        Just sch -> do
+          (_ :=> t) <- freshInst sch
+          t' <- withCurrentSubst t
+          case t' of
+            Meta _ -> unify t' word >> pure ()
+            _ -> pure ()
     _ <- tcYulExp e
     pure ([], unit)
 tcYulStmt (YBlock yblk) =
@@ -1910,6 +1954,8 @@ instance Vars (Stmt Id) where
   free (Return e) = free e
   free (Match e eqns) = free e `union` free eqns
   free (If e blk1 blk2) = free e `union` free blk1 `union` free blk2
+  free (For initStmt cond postStmt body) =
+    free initStmt `union` ((free cond `union` free postStmt `union` free body) \\ bound initStmt)
   free (Asm _) = []
 
   bound (Let n _ _) = [n]

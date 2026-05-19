@@ -1,6 +1,6 @@
 data Bool = False | True;
 
-  function f(x) {
+  function f(x : Bool) -> Bool {
     match x {
     | z     => return z;
     | Bool.True  => return Bool.True;

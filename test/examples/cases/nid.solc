@@ -1,8 +1,8 @@
-function nid() {
-  return id;
-}
-function id (x) {
+function id (x : word) -> word {
   return x;
 }
 
+function nid (x : word) -> word {
+  return id(x);
+}
 

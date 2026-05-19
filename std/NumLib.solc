@@ -1,5 +1,5 @@
 import types;
-function addW(x : word, y : word) {
+function addW(x : word, y : word) -> word {
   let res: word;
   assembly {
      res := add(x, y)
@@ -7,7 +7,7 @@ function addW(x : word, y : word) {
   return res;
 }
 
-function subW(x : word, y : word) {
+function subW(x : word, y : word) -> word {
   let res: word;
   assembly {
      res := sub(x, y)
@@ -67,14 +67,14 @@ function and(x:bool, y:bool) -> bool {
   }
 }
 
-function frombool(b) {
+function frombool(b : bool) -> word {
  match b {
    | false => return 0;
    | true => return 1;
  }
 }
 
-function tobool(x: word) {
+function tobool(x: word) -> bool {
   match x {
     | 0 => return false;
     | _ => return true;
@@ -97,7 +97,7 @@ instance word:Eq {
 }
 
 forall a. a:Eq =>
-function ne(x:a, y:a) {
+function ne(x:a, y:a) -> bool {
   return not(Eq.eq(x,y));
 }
 

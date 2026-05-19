@@ -3,6 +3,7 @@ module Solcore.Backend.EmitHull (emitHull) where
 import Common.Monad
 import Control.Monad (when)
 import Control.Monad.State
+import Data.List (partition)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -308,6 +309,27 @@ emitStmt (MastLet (MastId name ty) _mty mexp) = do
       return (estmts ++ alloc ++ assign)
     Nothing -> return alloc
 emitStmt (MastMatch scrutinee alts) = emitMatch scrutinee alts
+emitStmt (MastFor initStmt cond post body) = do
+  initStmts <- emitStmt initStmt
+  (condExp, condStmts) <- emitExp cond
+  postStmts <- emitStmt post
+  bodyStmts <- concat <$> mapM emitStmt body
+  let (condAllocs, condCompute) = partition isAlloc condStmts
+  let (postAllocs, postCompute) = partition isAlloc postStmts
+  let (initAllocs, initCompute) = partition isAlloc initStmts
+  -- All allocs go into the for-init block; Yul scopes for-init variables
+  -- over the entire loop (cond, post, body), so no outer wrapper needed.
+  let allAllocs = initAllocs ++ condAllocs ++ postAllocs
+  pure
+    [ Hull.SFor
+        (Hull.SBlock (allAllocs ++ initCompute ++ condCompute))
+        condExp
+        (Hull.SBlock (postCompute ++ condCompute))
+        (Hull.SBlock bodyStmts)
+    ]
+  where
+    isAlloc (Hull.SAlloc _ _) = True
+    isAlloc _ = False
 emitStmt (MastAsm as) = do
   subst <- gets ecSubst
   as' <- renameYulStmts subst as

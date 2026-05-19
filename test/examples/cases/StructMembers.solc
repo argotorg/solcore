@@ -62,14 +62,14 @@ class self:MemorySize {
 }
 
 /// Size of the struct member types in memory:
-instance Unit:MemorySize { function memorySize(x) -> Word { return 0; } }
-instance Uint256:MemorySize { function memorySize(x) -> Word { return 32; } }
-instance Bool:MemorySize { function memorySize(x) -> Word { return 32; } }
-instance Bytes32:MemorySize { function memorySize(x) -> Word { return 32; } }
+instance Unit:MemorySize { function memorySize(x : Proxy(Unit)) -> Word { return 0; } }
+instance Uint256:MemorySize { function memorySize(x : Proxy(Uint256)) -> Word { return 32; } }
+instance Bool:MemorySize { function memorySize(x : Proxy(Bool)) -> Word { return 32; } }
+instance Bytes32:MemorySize { function memorySize(x : Proxy(Bytes32)) -> Word { return 32; } }
 
 /// Memory size of pairs
 instance Pair(a,b):MemorySize {
-    function memorySize(x) -> Word
+    function memorySize(x : Proxy((a,b))) -> Word
     {
         let pa:Proxy(a);
         let pb:Proxy(b);
@@ -95,7 +95,7 @@ instance Uint256:MemoryType {
 }
 
 instance (a:MemoryType) => Memory(a):Ref(a) {
-    function load(x) {
+    function load(x : Memory(a)) -> a {
         let p:Proxy(a);
         match x { | Memory(off) => return loadFromMemory(p, off); };
     }
@@ -113,7 +113,7 @@ instance (
     Memory(ty)
 ):Ref(ty)
 {
-    function load(x) {
+    function load(x : MemberAccess(Memory(structType), fieldType, Memory(ty))) -> ty {
         let ptr:Word;
         match x { | MemberAccess(Memory(y)) => ptr = y; };
 
@@ -127,7 +127,7 @@ instance (
     }
 }
 
-function test()
+function test() -> ()
 {
     let x:Memory(S);
     let memberAccess:MemberAccess(Memory(S), Field_x,

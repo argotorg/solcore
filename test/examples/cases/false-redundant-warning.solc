@@ -1,6 +1,6 @@
 data Bool = False | True;
 
-function test(x, y) {
+function test(x : Bool, y : Bool) -> Bool {
   match x, y {
   | Bool.True, z  => return z;
   | w, Bool.True  => return w;

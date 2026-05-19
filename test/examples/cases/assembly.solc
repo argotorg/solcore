@@ -8,7 +8,7 @@ instance word : Mem {
   }
 }
 
-function foo () {
+function foo () -> () {
   let ptr : word;
   let size = Mem.size(0);
   assembly {

@@ -1,12 +1,12 @@
 contract Pair {
 
-  function fst(p) {
+  function fst(p : (word, word)) -> word {
     match p {
       | (a,b) => return a;
     }
   }
 
-  function main() {
+  function main() -> word {
     return fst((1,0));
   }
 }

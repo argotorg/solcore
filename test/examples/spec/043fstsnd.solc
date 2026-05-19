@@ -3,19 +3,19 @@
 data B = F | T;
 data Pair(a,b) = Pair(a,b);
 
-function fst (p) {
+forall a b . function fst (p : Pair(a, b)) -> a {
   match p {
     | Pair(x,y) => return x;
   }
 }
 
-function snd(p) {
+forall a b . function snd(p : Pair(a, b)) -> b {
   match p {
     | Pair(x,y) => return y;
   }
 }
 
-function add(x : word, y : word) {
+function add(x : word, y : word) -> word {
   let res: word;
   assembly {
      res := add(x, y)
@@ -24,10 +24,10 @@ function add(x : word, y : word) {
 }
 
 
-function addPair(p) {
+function addPair(p : Pair(word, word)) -> word {
   return add(fst(p), snd(p));
 }
 
 contract FstSnd {
- function main() { return  addPair(Pair(41,1)); }
+ function main() -> word { return  addPair(Pair(41,1)); }
 }

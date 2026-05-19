@@ -19,6 +19,6 @@ instance word : Eq {
   }
 }
 
-function foo (x) {
+function foo (x : word) -> Bool {
   return Eq.eq (x, 0);
 }
