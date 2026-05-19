@@ -219,16 +219,15 @@ dumpModuleResolvedAST :: Option -> FilePath -> ModuleTypeCheckInput -> IO ()
 dumpModuleResolvedAST opts sourcePath input =
   when (optVerbose opts || optDumpAST opts) $ do
     putStrLn ("> AST after name resolution for " ++ sourcePath)
-    putStrLn $ pretty (moduleResolvedDumpCompUnit input)
-
-moduleResolvedDumpCompUnit :: ModuleTypeCheckInput -> CompUnit Name
-moduleResolvedDumpCompUnit input =
-  CompUnit
-    (moduleResolvedImports input)
-    ( moduleResolvedQualifiedDecls input
-        ++ moduleResolvedLocalDecls input
-        ++ moduleResolvedImportedDecls input
-    )
+    putStrLn $ pretty dumpCompUnit
+  where
+    dumpCompUnit =
+      CompUnit
+        (moduleResolvedImports input)
+        ( moduleResolvedQualifiedDecls input
+            ++ moduleResolvedLocalDecls input
+            ++ moduleResolvedImportedDecls input
+        )
 
 emitModulePreparationDiagnostics :: Option -> Bool
 emitModulePreparationDiagnostics opts =
@@ -265,6 +264,8 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
   let verbose = emitOutput && optVerbose opts
       noDesugarCalls = optNoDesugarCalls opts
       noGenDispatch = optNoGenDispatch opts
+      prettyInferenceDecls inferenceDumpDecls =
+        pretty (CompUnit imps (moduleInferenceTopDecls inferenceDumpDecls))
       timeItNamed :: String -> IO a -> IO a
       timeItNamed
         | emitOutput = optTimeItNamed opts
@@ -274,7 +275,7 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
   let accessed = mapModuleInferenceTopDecls fieldDesugarTopDecls inferenceDecls
   liftIO $ when verbose $ do
     putStrLn "Contract field access desugaring:"
-    putStrLn $ prettyInferenceDecls imps accessed
+    putStrLn $ prettyInferenceDecls accessed
 
   -- contract dispatch generation
   dispatched <-
@@ -285,7 +286,7 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
 
   liftIO $ when (emitOutput && optDumpDispatch opts) $ do
     putStrLn "> Dispatch:"
-    putStrLn $ prettyInferenceDecls imps dispatched
+    putStrLn $ prettyInferenceDecls dispatched
 
   -- SCC analysis
   connected <-
@@ -296,7 +297,7 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"
-    putStrLn $ prettyInferenceDecls imps connected
+    putStrLn $ prettyInferenceDecls connected
 
   -- Indirect call handling
   direct <-
@@ -309,29 +310,21 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
 
   liftIO $ when (emitOutput && (optVerbose opts || optDumpDF opts)) $ do
     putStrLn "> Indirect call desugaring:"
-    putStrLn $ prettyInferenceDecls imps direct
+    putStrLn $ prettyInferenceDecls direct
 
   -- Pattern wildcard desugaring
   let noWild = mapModuleInferenceTopDecls replaceWildcardTopDecls direct
   liftIO $ when verbose $ do
     putStrLn "> Pattern wildcard desugaring:"
-    putStrLn $ prettyInferenceDecls imps noWild
+    putStrLn $ prettyInferenceDecls noWild
 
   -- Eliminate function type arguments
   let noFun = if noDesugarCalls then noWild else mapModuleInferenceTopDecls replaceFunParam noWild
   liftIO $ when verbose $ do
     putStrLn "> Eliminating argments with function types"
-    putStrLn $ prettyInferenceDecls imps noFun
+    putStrLn $ prettyInferenceDecls noFun
 
   pure noFun
-
-prettyInferenceDecls :: [Import] -> [ModuleInferenceDecl] -> String
-prettyInferenceDecls imps inferenceDecls =
-  pretty (moduleInferenceDumpCompUnit imps inferenceDecls)
-
-moduleInferenceDumpCompUnit :: [Import] -> [ModuleInferenceDecl] -> CompUnit Name
-moduleInferenceDumpCompUnit imps inferenceDecls =
-  CompUnit imps (moduleInferenceTopDecls inferenceDecls)
 
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =
