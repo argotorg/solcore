@@ -7,11 +7,13 @@ module Solcore.Frontend.TypeInference.TcModule
     assembleCheckedModules,
     checkedModulesInOrder,
     loadModuleLocalTypeCheckInput,
+    mapModuleInferenceTopDecls,
     moduleInferenceImportedDecls,
     moduleInferenceLocalDecls,
     moduleInferenceQualifiedDecls,
     moduleInferenceTopDecls,
     retagModuleInferenceDecls,
+    traverseModuleInferenceTopDecls,
     typeInferModuleLocals,
     withPreparedModuleInferenceDecls,
   )
@@ -156,6 +158,21 @@ withPreparedModuleInferenceDecls input inferenceDecls =
 moduleInferenceTopDecls :: [ModuleInferenceDecl] -> [TopDecl Name]
 moduleInferenceTopDecls =
   map moduleInferenceDeclTopDecl
+
+mapModuleInferenceTopDecls ::
+  ([TopDecl Name] -> [TopDecl Name]) ->
+  [ModuleInferenceDecl] ->
+  [ModuleInferenceDecl]
+mapModuleInferenceTopDecls pass inferenceDecls =
+  retagModuleInferenceDecls inferenceDecls (pass (moduleInferenceTopDecls inferenceDecls))
+
+traverseModuleInferenceTopDecls ::
+  (Functor f) =>
+  ([TopDecl Name] -> f [TopDecl Name]) ->
+  [ModuleInferenceDecl] ->
+  f [ModuleInferenceDecl]
+traverseModuleInferenceTopDecls pass inferenceDecls =
+  retagModuleInferenceDecls inferenceDecls <$> pass (moduleInferenceTopDecls inferenceDecls)
 
 moduleTopDeclChecks :: ModuleTypeCheckInput -> [TopDeclCheck Name]
 moduleTopDeclChecks =

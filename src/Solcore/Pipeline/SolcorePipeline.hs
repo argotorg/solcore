@@ -23,7 +23,7 @@ import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Frontend.Module.Identity qualified as Mod
-import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourcePath, moduleStrictValidationTopDeclSegments)
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourcePath, moduleValidationTopDeclSegments)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.NameResolution
@@ -73,7 +73,7 @@ compile opts = runExceptT $ do
     sourcePath <- ExceptT $ pure (moduleSourcePath graph moduleId)
     (validationImports, validationSegments) <-
       ExceptT $
-        pure (moduleStrictValidationTopDeclSegments graph moduleId)
+        pure (moduleValidationTopDeclSegments graph moduleId)
     _ <-
       ExceptT $
         pure $
@@ -219,10 +219,10 @@ dumpModuleResolvedAST :: Option -> FilePath -> ModuleTypeCheckInput -> IO ()
 dumpModuleResolvedAST opts sourcePath input =
   when (optVerbose opts || optDumpAST opts) $ do
     putStrLn ("> AST after name resolution for " ++ sourcePath)
-    putStrLn $ pretty (moduleResolvedDisplayCompUnit input)
+    putStrLn $ pretty (moduleResolvedDumpCompUnit input)
 
-moduleResolvedDisplayCompUnit :: ModuleTypeCheckInput -> CompUnit Name
-moduleResolvedDisplayCompUnit input =
+moduleResolvedDumpCompUnit :: ModuleTypeCheckInput -> CompUnit Name
+moduleResolvedDumpCompUnit input =
   CompUnit
     (moduleResolvedImports input)
     ( moduleResolvedQualifiedDecls input
@@ -271,7 +271,7 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
         | otherwise = \_ action -> action
 
   -- contract field access desugaring
-  let accessed = runTopDeclPass fieldDesugarTopDecls inferenceDecls
+  let accessed = mapModuleInferenceTopDecls fieldDesugarTopDecls inferenceDecls
   liftIO $ when verbose $ do
     putStrLn "Contract field access desugaring:"
     putStrLn $ prettyInferenceDecls imps accessed
@@ -281,7 +281,7 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     liftIO $
       if noGenDispatch
         then pure accessed
-        else timeItNamed "Contract dispatch generation" $ pure (runTopDeclPass contractDispatchTopDecls accessed)
+        else timeItNamed "Contract dispatch generation" $ pure (mapModuleInferenceTopDecls contractDispatchTopDecls accessed)
 
   liftIO $ when (emitOutput && optDumpDispatch opts) $ do
     putStrLn "> Dispatch:"
@@ -291,7 +291,8 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
   connected <-
     ExceptT $
       timeItNamed "SCC           " $
-        fmap (retagModuleInferenceDecls dispatched) <$> sccAnalysisTopDecls (moduleInferenceTopDecls dispatched)
+        runExceptT $
+          traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) dispatched
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"
@@ -304,37 +305,33 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
         then pure connected
         else
           timeItNamed "Indirect Calls" $
-            retagModuleInferenceDecls connected . fst
-              <$> indirectCallTopDecls (moduleInferenceTopDecls connected)
+            traverseModuleInferenceTopDecls (fmap fst . indirectCallTopDecls) connected
 
   liftIO $ when (emitOutput && (optVerbose opts || optDumpDF opts)) $ do
     putStrLn "> Indirect call desugaring:"
     putStrLn $ prettyInferenceDecls imps direct
 
   -- Pattern wildcard desugaring
-  let noWild = runTopDeclPass replaceWildcardTopDecls direct
+  let noWild = mapModuleInferenceTopDecls replaceWildcardTopDecls direct
   liftIO $ when verbose $ do
     putStrLn "> Pattern wildcard desugaring:"
     putStrLn $ prettyInferenceDecls imps noWild
 
   -- Eliminate function type arguments
-  let noFun = if noDesugarCalls then noWild else runTopDeclPass replaceFunParam noWild
+  let noFun = if noDesugarCalls then noWild else mapModuleInferenceTopDecls replaceFunParam noWild
   liftIO $ when verbose $ do
     putStrLn "> Eliminating argments with function types"
     putStrLn $ prettyInferenceDecls imps noFun
 
   pure noFun
 
-runTopDeclPass ::
-  ([TopDecl Name] -> [TopDecl Name]) ->
-  [ModuleInferenceDecl] ->
-  [ModuleInferenceDecl]
-runTopDeclPass pass inferenceDecls =
-  retagModuleInferenceDecls inferenceDecls (pass (moduleInferenceTopDecls inferenceDecls))
-
 prettyInferenceDecls :: [Import] -> [ModuleInferenceDecl] -> String
 prettyInferenceDecls imps inferenceDecls =
-  pretty (CompUnit imps (moduleInferenceTopDecls inferenceDecls))
+  pretty (moduleInferenceDumpCompUnit imps inferenceDecls)
+
+moduleInferenceDumpCompUnit :: [Import] -> [ModuleInferenceDecl] -> CompUnit Name
+moduleInferenceDumpCompUnit imps inferenceDecls =
+  CompUnit imps (moduleInferenceTopDecls inferenceDecls)
 
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =

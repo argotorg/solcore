@@ -3,7 +3,7 @@ module Solcore.Frontend.Module.Loader
     LoadedModule (..),
     ModuleTypeCheckSurface (..),
     loadModuleGraph,
-    moduleStrictValidationTopDeclSegments,
+    moduleValidationTopDeclSegments,
     moduleSourcePath,
     moduleLocalTypeCheckSurface,
   )
@@ -326,14 +326,14 @@ buildGroupMap loaded depMap =
     ]
   where
     groups =
-      map flattenScc $
+      map sccGroupModuleIds $
         stronglyConnComp
           [ (moduleId, moduleId, Map.findWithDefault [] moduleId depMap)
             | moduleId <- Map.keys loaded
           ]
 
-    flattenScc (AcyclicSCC moduleId) = [moduleId]
-    flattenScc (CyclicSCC moduleIds) = moduleIds
+    sccGroupModuleIds (AcyclicSCC moduleId) = [moduleId]
+    sccGroupModuleIds (CyclicSCC moduleIds) = moduleIds
 
 moduleSourcePath :: ModuleGraph -> Mod.ModuleId -> Either String FilePath
 moduleSourcePath graph modulePath =
@@ -491,10 +491,10 @@ stubFunDefBody :: FunDef -> FunDef
 stubFunDefBody (FunDef sig _body) =
   FunDef sig []
 
-moduleStrictValidationTopDeclSegments :: ModuleGraph -> Mod.ModuleId -> Either String ([Import], [[TopDecl]])
-moduleStrictValidationTopDeclSegments graph modulePath = do
+moduleValidationTopDeclSegments :: ModuleGraph -> Mod.ModuleId -> Either String ([Import], [[TopDecl]])
+moduleValidationTopDeclSegments graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
-  importedDecls <- concat <$> mapM (strictValidationImportedDecls graph) importPairs
+  importedDecls <- concat <$> mapM (validationImportedDecls graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportStubDecls graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
@@ -1435,8 +1435,8 @@ stubFunction n =
     (Signature [] [] n [] Nothing)
     []
 
-strictValidationImportedDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
-strictValidationImportedDecls graph (imp, modulePath) =
+validationImportedDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
+validationImportedDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ selector -> do
       publicDecls <- publicTopDeclsForModule graph modulePath
