@@ -19,6 +19,7 @@ import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcMonad
+import Solcore.Frontend.TypeInference.TcResolution
 import Solcore.Frontend.TypeInference.TcSimplify
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
@@ -1297,9 +1298,9 @@ hnfEntails qs ps =
     ctable <- getClassEnv
     itable <- getInstEnv
     depth <- askMaxRecursionDepth
-    let qs' = nub $ concatMap (bySuperM ctable) qs
-        notInvoke p = not (isInvoke p)
-        needSolving = filter (\p -> notInvoke p && not (entail ctable itable qs' p)) ps
+    qs' <- nub <$> superPredsM ctable qs
+    let notInvoke p = not (isInvoke p)
+    needSolving <- filterM (\p -> (notInvoke p &&) . not <$> entailM ctable itable qs' p) ps
     -- For predicates pure entailment couldn't discharge, try the monadic solver
     -- within a local substitution scope so that Skolem bindings don't escape.
     withLocalSubst $ do
