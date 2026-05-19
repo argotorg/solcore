@@ -3,14 +3,23 @@ module Solcore.Frontend.TypeInference.TcModule
     CheckedAssembly (..),
     ModuleDeclSegment (..),
     ModuleInferenceDecl (..),
-    ModuleTypeCheckInput (..),
+    ModuleResolvedTypeCheckInput (..),
+    ModuleTypeCheckInput,
     assembleCheckedModules,
     checkedModulesInOrder,
     loadModuleLocalTypeCheckInput,
     mapModuleInferenceTopDecls,
+    moduleInitialInferenceDecls,
     moduleInferenceImportedDecls,
     moduleInferenceLocalDecls,
     moduleInferenceQualifiedDecls,
+    moduleInferenceDecls,
+    modulePartialImportedTypes,
+    moduleResolvedImportedDecls,
+    moduleResolvedImports,
+    moduleResolvedLocalDecls,
+    moduleResolvedQualifiedDecls,
+    moduleTrustedInstanceHeads,
     moduleInferenceTopDecls,
     retagModuleInferenceDecls,
     traverseModuleInferenceTopDecls,
@@ -25,8 +34,8 @@ import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader
-import Solcore.Frontend.Syntax.NameResolution
 import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax.NameResolution
 import Solcore.Frontend.Syntax.SyntaxTree qualified as Parsed
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.TcContract
@@ -46,15 +55,21 @@ data ModuleInferenceDecl
   }
   deriving (Eq, Show)
 
+data ModuleResolvedTypeCheckInput
+  = ModuleResolvedTypeCheckInput
+  { moduleResolvedInputImports :: [Import],
+    moduleResolvedInputQualifiedDecls :: [TopDecl Name],
+    moduleResolvedInputLocalDecls :: [TopDecl Name],
+    moduleResolvedInputImportedDecls :: [TopDecl Name],
+    moduleResolvedInputTrustedInstanceHeads :: [InstanceHead],
+    moduleResolvedInputPartialImportedTypes :: [(Name, [Name])]
+  }
+  deriving (Eq, Show)
+
 data ModuleTypeCheckInput
   = ModuleTypeCheckInput
-  { moduleInferenceDecls :: [ModuleInferenceDecl],
-    moduleResolvedImports :: [Import],
-    moduleResolvedQualifiedDecls :: [TopDecl Name],
-    moduleResolvedLocalDecls :: [TopDecl Name],
-    moduleResolvedImportedDecls :: [TopDecl Name],
-    moduleTrustedInstanceHeads :: [InstanceHead],
-    modulePartialImportedTypes :: [(Name, [Name])]
+  { moduleTypeCheckResolvedInput :: ModuleResolvedTypeCheckInput,
+    modulePreparedInferenceDecls :: [ModuleInferenceDecl]
   }
   deriving (Eq, Show)
 
@@ -76,13 +91,13 @@ data CheckedAssembly
 loadModuleLocalTypeCheckInput ::
   ModuleGraph ->
   Mod.ModuleId ->
-  IO (Either String ModuleTypeCheckInput)
+  IO (Either String ModuleResolvedTypeCheckInput)
 loadModuleLocalTypeCheckInput graph moduleId =
   loadResolvedModuleTypeCheckInput (moduleLocalTypeCheckSurface graph moduleId)
 
 loadResolvedModuleTypeCheckInput ::
   Either String ModuleTypeCheckSurface ->
-  IO (Either String ModuleTypeCheckInput)
+  IO (Either String ModuleResolvedTypeCheckInput)
 loadResolvedModuleTypeCheckInput input =
   case input of
     Left err ->
@@ -95,30 +110,26 @@ loadResolvedModuleTypeCheckInput input =
             moduleSurfaceLocalDecls surface,
             moduleSurfaceImportedDecls surface
           ]
-      pure (resolved >>= mkModuleTypeCheckInput surface)
+      pure (resolved >>= mkModuleResolvedTypeCheckInput surface)
 
-mkModuleTypeCheckInput ::
+mkModuleResolvedTypeCheckInput ::
   ModuleTypeCheckSurface ->
   (CompUnit Name, [[TopDecl Name]]) ->
-  Either String ModuleTypeCheckInput
-mkModuleTypeCheckInput surface (resolved, resolvedSegments) =
+  Either String ModuleResolvedTypeCheckInput
+mkModuleResolvedTypeCheckInput surface (resolved, resolvedSegments) =
   case resolvedSegments of
     [resolvedQualifiedDecls, resolvedLocalDecls, resolvedImportedDecls] ->
       Right
-        ModuleTypeCheckInput
-          { moduleResolvedImports = imports resolved,
-            moduleResolvedQualifiedDecls = resolvedQualifiedDecls,
-            moduleResolvedLocalDecls = resolvedLocalDecls,
-            moduleResolvedImportedDecls = resolvedImportedDecls,
-            moduleInferenceDecls =
-              taggedInferenceDecls ModuleQualifiedDecl resolvedQualifiedDecls
-                ++ taggedInferenceDecls ModuleLocalDecl resolvedLocalDecls
-                ++ taggedInferenceDecls ModuleImportedDecl resolvedImportedDecls,
-            moduleTrustedInstanceHeads =
+        ModuleResolvedTypeCheckInput
+          { moduleResolvedInputImports = imports resolved,
+            moduleResolvedInputQualifiedDecls = resolvedQualifiedDecls,
+            moduleResolvedInputLocalDecls = resolvedLocalDecls,
+            moduleResolvedInputImportedDecls = resolvedImportedDecls,
+            moduleResolvedInputTrustedInstanceHeads =
               [ instanceHeadKey inst
                 | TInstDef inst <- resolvedImportedDecls
               ],
-            modulePartialImportedTypes = moduleSurfacePartialImportedTypes surface
+            moduleResolvedInputPartialImportedTypes = moduleSurfacePartialImportedTypes surface
           }
     _ ->
       Left $
@@ -132,10 +143,46 @@ typeInferModuleLocals ::
 typeInferModuleLocals opts input =
   typeInferTopDeclChecks
     opts
-    (moduleResolvedImports input)
-    (moduleTrustedInstanceHeads input)
-    (modulePartialImportedTypes input)
+    (moduleResolvedImports resolvedInput)
+    (moduleTrustedInstanceHeads resolvedInput)
+    (modulePartialImportedTypes resolvedInput)
     (moduleTopDeclChecks input)
+  where
+    resolvedInput = moduleTypeCheckResolvedInput input
+
+moduleResolvedImports :: ModuleResolvedTypeCheckInput -> [Import]
+moduleResolvedImports =
+  moduleResolvedInputImports
+
+moduleResolvedQualifiedDecls :: ModuleResolvedTypeCheckInput -> [TopDecl Name]
+moduleResolvedQualifiedDecls =
+  moduleResolvedInputQualifiedDecls
+
+moduleResolvedLocalDecls :: ModuleResolvedTypeCheckInput -> [TopDecl Name]
+moduleResolvedLocalDecls =
+  moduleResolvedInputLocalDecls
+
+moduleResolvedImportedDecls :: ModuleResolvedTypeCheckInput -> [TopDecl Name]
+moduleResolvedImportedDecls =
+  moduleResolvedInputImportedDecls
+
+moduleTrustedInstanceHeads :: ModuleResolvedTypeCheckInput -> [InstanceHead]
+moduleTrustedInstanceHeads =
+  moduleResolvedInputTrustedInstanceHeads
+
+modulePartialImportedTypes :: ModuleResolvedTypeCheckInput -> [(Name, [Name])]
+modulePartialImportedTypes =
+  moduleResolvedInputPartialImportedTypes
+
+moduleInitialInferenceDecls :: ModuleResolvedTypeCheckInput -> [ModuleInferenceDecl]
+moduleInitialInferenceDecls input =
+  taggedInferenceDecls ModuleQualifiedDecl (moduleResolvedQualifiedDecls input)
+    ++ taggedInferenceDecls ModuleLocalDecl (moduleResolvedLocalDecls input)
+    ++ taggedInferenceDecls ModuleImportedDecl (moduleResolvedImportedDecls input)
+
+moduleInferenceDecls :: ModuleTypeCheckInput -> [ModuleInferenceDecl]
+moduleInferenceDecls =
+  modulePreparedInferenceDecls
 
 moduleInferenceQualifiedDecls :: ModuleTypeCheckInput -> [TopDecl Name]
 moduleInferenceQualifiedDecls input =
@@ -149,10 +196,11 @@ moduleInferenceImportedDecls :: ModuleTypeCheckInput -> [TopDecl Name]
 moduleInferenceImportedDecls input =
   moduleInferenceDeclsInSegment ModuleImportedDecl (moduleInferenceDecls input)
 
-withPreparedModuleInferenceDecls :: ModuleTypeCheckInput -> [ModuleInferenceDecl] -> ModuleTypeCheckInput
+withPreparedModuleInferenceDecls :: ModuleResolvedTypeCheckInput -> [ModuleInferenceDecl] -> ModuleTypeCheckInput
 withPreparedModuleInferenceDecls input inferenceDecls =
-  input
-    { moduleInferenceDecls = inferenceDecls
+  ModuleTypeCheckInput
+    { moduleTypeCheckResolvedInput = input,
+      modulePreparedInferenceDecls = inferenceDecls
     }
 
 moduleInferenceTopDecls :: [ModuleInferenceDecl] -> [TopDecl Name]

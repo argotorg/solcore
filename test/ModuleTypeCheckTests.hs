@@ -26,13 +26,23 @@ moduleTypeCheckTests =
               ]
             retagged =
               singleDecl $
-              retagModuleInferenceDecls
-                inferenceDecls
-                [TMutualDef [funDecl "imported", funDecl "local"]]
+                retagModuleInferenceDecls
+                  inferenceDecls
+                  [TMutualDef [funDecl "imported", funDecl "local"]]
         assertEqual
           "mixed mutual segment"
           ModuleLocalDecl
           (moduleInferenceDeclSegment retagged),
+      testCase "resolved input derives initial inference segments" $ do
+        let inferenceDecls =
+              [ ModuleInferenceDecl ModuleQualifiedDecl (funDecl "qualified"),
+                ModuleInferenceDecl ModuleLocalDecl (funDecl "local"),
+                ModuleInferenceDecl ModuleImportedDecl (funDecl "imported")
+              ]
+        assertEqual
+          "initial inference segments"
+          (map moduleInferenceDeclSegment inferenceDecls)
+          (map moduleInferenceDeclSegment (moduleInitialInferenceDecls (resolvedModuleInput inferenceDecls))),
       testCase "type inference trusts imported bodies while checking local bodies" $ do
         result <-
           typeInferModuleLocals
@@ -59,14 +69,17 @@ assertLeft label (Right _) =
 
 moduleInput :: [ModuleInferenceDecl] -> ModuleTypeCheckInput
 moduleInput inferenceDecls =
-  ModuleTypeCheckInput
-    { moduleInferenceDecls = inferenceDecls,
-      moduleResolvedImports = [],
-      moduleResolvedQualifiedDecls = declsInSegment ModuleQualifiedDecl inferenceDecls,
-      moduleResolvedLocalDecls = declsInSegment ModuleLocalDecl inferenceDecls,
-      moduleResolvedImportedDecls = declsInSegment ModuleImportedDecl inferenceDecls,
-      moduleTrustedInstanceHeads = [],
-      modulePartialImportedTypes = []
+  withPreparedModuleInferenceDecls (resolvedModuleInput inferenceDecls) inferenceDecls
+
+resolvedModuleInput :: [ModuleInferenceDecl] -> ModuleResolvedTypeCheckInput
+resolvedModuleInput inferenceDecls =
+  ModuleResolvedTypeCheckInput
+    { moduleResolvedInputImports = [],
+      moduleResolvedInputQualifiedDecls = declsInSegment ModuleQualifiedDecl inferenceDecls,
+      moduleResolvedInputLocalDecls = declsInSegment ModuleLocalDecl inferenceDecls,
+      moduleResolvedInputImportedDecls = declsInSegment ModuleImportedDecl inferenceDecls,
+      moduleResolvedInputTrustedInstanceHeads = [],
+      moduleResolvedInputPartialImportedTypes = []
     }
 
 declsInSegment :: ModuleDeclSegment -> [ModuleInferenceDecl] -> [TopDecl Name]

@@ -179,8 +179,9 @@ typeCheckModuleFromGraph opts graph moduleId = do
   (noDesugarChecked, _noDesugarEnv) <-
     ExceptT $
       first (moduleTypeCheckError sourcePath "no desugaring") <$> typeInferModuleLocals noDesugarOpt moduleInput
-  liftIO $ when (optVerbose opts) $
-    putStrLn ("No type errors found for " ++ sourcePath ++ "!")
+  liftIO $
+    when (optVerbose opts) $
+      putStrLn ("No type errors found for " ++ sourcePath ++ "!")
   (typed, tcEnv) <-
     ExceptT $
       first (moduleTypeCheckError sourcePath "desugaring") <$> typeInferModuleLocals opts moduleInput
@@ -198,7 +199,7 @@ typeCheckModuleFromGraph opts graph moduleId = do
 
 prepareModuleTypeCheckInput ::
   Option ->
-  ModuleTypeCheckInput ->
+  ModuleResolvedTypeCheckInput ->
   ExceptT String IO ModuleTypeCheckInput
 prepareModuleTypeCheckInput opts resolvedInput = do
   inferenceDecls <- prepareModuleInferenceDeclsForTypeInference opts resolvedInput
@@ -206,16 +207,16 @@ prepareModuleTypeCheckInput opts resolvedInput = do
 
 prepareModuleInferenceDeclsForTypeInference ::
   Option ->
-  ModuleTypeCheckInput ->
+  ModuleResolvedTypeCheckInput ->
   ExceptT String IO [ModuleInferenceDecl]
 prepareModuleInferenceDeclsForTypeInference opts input =
   prepareInferenceDeclsForTypeInference
     opts
     (emitModulePreparationDiagnostics opts)
     (moduleResolvedImports input)
-    (moduleInferenceDecls input)
+    (moduleInitialInferenceDecls input)
 
-dumpModuleResolvedAST :: Option -> FilePath -> ModuleTypeCheckInput -> IO ()
+dumpModuleResolvedAST :: Option -> FilePath -> ModuleResolvedTypeCheckInput -> IO ()
 dumpModuleResolvedAST opts sourcePath input =
   when (optVerbose opts || optDumpAST opts) $ do
     putStrLn ("> AST after name resolution for " ++ sourcePath)
