@@ -1,0 +1,27 @@
+// A named instance can be passed as explicit evidence to a constrained call.
+
+forall a . class a : Score {
+  function score(x : a) -> word;
+}
+
+forall a . a : Score => function useScore(x : a) -> word {
+  return Score.score(x);
+}
+
+instance word : Score {
+  function score(x : word) -> word {
+    return 0;
+  }
+}
+
+instance [fastScore] word : Score {
+  function score(x : word) -> word {
+    return 1;
+  }
+}
+
+contract NamedInstConstrainedCall {
+  function main() -> word {
+    return useScore@{fastScore}(3);
+  }
+}

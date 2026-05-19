@@ -626,7 +626,7 @@ publicTopDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl
 publicTopDeclsForModule graph modulePath = do
   publicDecls <- publicItemDeclsForModule graph modulePath
   unit <- lookupLoadedModule graph modulePath
-  pure (publicDecls ++ [decl | decl@(TInstDef _) <- topDeclsFrom unit])
+  pure (uniqueTopDecls (publicDecls ++ [decl | decl@(TInstDef _) <- topDeclsFrom unit]))
 
 publicModuleInterface :: ModuleGraph -> Mod.ModuleId -> Either String ModulePublicInterface
 publicModuleInterface graph modulePath = do
@@ -1124,7 +1124,7 @@ selectPublicItemDecls itemRefs topLevelDecls =
     filteredDecls = filter isPublicItemTopDecl topLevelDecls
 
 isPublicItemTopDecl :: TopDecl -> Bool
-isPublicItemTopDecl (TInstDef _) = False
+isPublicItemTopDecl (TInstDef inst) = isJust (instLabel inst)
 isPublicItemTopDecl d = isImportableTopDecl d
 
 isImportableTopDecl :: TopDecl -> Bool
@@ -1138,7 +1138,7 @@ topDeclNames (TSym (TySym n _ _)) = [n]
 topDeclNames (TClassDef (Class _ _ n _ _ _)) = [n]
 topDeclNames (TContr (Contract n _ _)) = [n]
 topDeclNames (TDataDef (DataTy n _ _)) = [n]
-topDeclNames (TInstDef _) = []
+topDeclNames (TInstDef inst) = maybe [] pure (instLabel inst)
 topDeclNames (TExportDecl _) = []
 topDeclNames (TPragmaDecl _) = []
 
@@ -1297,6 +1297,8 @@ qualifiedImportStubDecls graph (imp, modulePath) =
       pure $
         qualifiedFunctionStubDecls qualifier cunit
           ++ qualifiedTypeStubDecls qualifier cunit
+          ++ qualifiedClassDecls qualifier cunit
+          ++ qualifiedNamedInstanceDecls qualifier cunit
           ++ nestedDecls
 
     stubNestedModule qualifier (ExportedModuleBinding bindingName targetModule) =
@@ -1403,6 +1405,82 @@ qualifiedFunctionStubDecls qualifier cunit =
     | TFunDef fd <- topDeclsFrom cunit
   ]
 
+qualifiedNamedInstanceDecls :: Name -> CompUnit -> [TopDecl]
+qualifiedNamedInstanceDecls qualifier cunit =
+  [ TInstDef (qualifyNamedInstanceLabel qualifier (renameInstanceClassRefs classRenameMap (renameInstanceTypeRefs typeRenameMap inst)))
+    | TInstDef inst <- topDeclsFrom cunit,
+      isJust (instLabel inst)
+  ]
+  where
+    classRenameMap = localClassRenameMap qualifier (topDeclsFrom cunit)
+    typeRenameMap = localTypeRenameMap qualifier (topDeclsFrom cunit)
+
+qualifiedClassDecls :: Name -> CompUnit -> [TopDecl]
+qualifiedClassDecls qualifier cunit =
+  [ TClassDef (renameClassDeclClassRefs classRenameMap (renameClassTypeRefs typeRenameMap cls {className = renamedClassName (className cls)}))
+    | TClassDef cls <- topDeclsFrom cunit
+  ]
+  where
+    classRenameMap = localClassRenameMap qualifier (topDeclsFrom cunit)
+    typeRenameMap = localTypeRenameMap qualifier (topDeclsFrom cunit)
+    renamedClassName n = Map.findWithDefault n n classRenameMap
+
+localClassRenameMap :: Name -> [TopDecl] -> Map Name Name
+localClassRenameMap qualifier topDecls =
+  Map.fromList
+    [ (n, QualName qualifier (show n))
+      | TClassDef (Class _ _ n _ _ _) <- topDecls
+    ]
+
+localTypeRenameMap :: Name -> [TopDecl] -> Map Name Name
+localTypeRenameMap qualifier topDecls =
+  Map.fromList
+    [ (n, QualName qualifier (show n))
+      | d <- topDecls,
+        n <- topDeclImportedTypeNames d
+    ]
+
+qualifyTopDeclNamedInstanceLabel :: Name -> TopDecl -> TopDecl
+qualifyTopDeclNamedInstanceLabel qualifier (TInstDef inst)
+  | isJust (instLabel inst) = TInstDef (qualifyNamedInstanceLabel qualifier inst)
+qualifyTopDeclNamedInstanceLabel _ decl = decl
+
+qualifyNamedInstanceLabel :: Name -> Instance -> Instance
+qualifyNamedInstanceLabel qualifier inst =
+  inst {instLabel = QualName qualifier . show <$> instLabel inst}
+
+renameInstanceClassRefs :: Map Name Name -> Instance -> Instance
+renameInstanceClassRefs renameMap (Instance d lbl vs ctx n pts mt fns) =
+  Instance
+    d
+    lbl
+    vs
+    (map (renamePredClassRefs renameMap) ctx)
+    (renameClassName renameMap n)
+    pts
+    mt
+    (map (renameFunDefClassRefs renameMap) fns)
+
+renameClassDeclClassRefs :: Map Name Name -> Class -> Class
+renameClassDeclClassRefs renameMap (Class bvs ctx n pvs mv sigs) =
+  Class bvs (map (renamePredClassRefs renameMap) ctx) n pvs mv (map (renameSignatureClassRefs renameMap) sigs)
+
+renameFunDefClassRefs :: Map Name Name -> FunDef -> FunDef
+renameFunDefClassRefs renameMap (FunDef sig body) =
+  FunDef (renameSignatureClassRefs renameMap sig) body
+
+renameSignatureClassRefs :: Map Name Name -> Signature -> Signature
+renameSignatureClassRefs renameMap (Signature vs ctx n ps mt) =
+  Signature vs (map (renamePredClassRefs renameMap) ctx) n ps mt
+
+renamePredClassRefs :: Map Name Name -> Pred -> Pred
+renamePredClassRefs renameMap (InCls n t ts) =
+  InCls (renameClassName renameMap n) t ts
+
+renameClassName :: Map Name Name -> Name -> Name
+renameClassName renameMap n =
+  Map.findWithDefault n n renameMap
+
 renameBodyFunctionCalls :: Map Name Name -> Body -> Body
 renameBodyFunctionCalls renameMap =
   map (renameStmtFunctionCalls renameMap)
@@ -1454,6 +1532,14 @@ renameExpFunctionCalls renameMap (ExpName me n es) =
         Nothing -> ExpName me' n es'
     Nothing ->
       ExpName me' n' es'
+  where
+    me' = fmap (renameExpFunctionCalls renameMap) me
+    n'
+      | me == Nothing = Map.findWithDefault n n renameMap
+      | otherwise = n
+    es' = map (renameExpFunctionCalls renameMap) es
+renameExpFunctionCalls renameMap (ExpNameAt me n implArgs es) =
+  ExpNameAt me' n' implArgs es'
   where
     me' = fmap (renameExpFunctionCalls renameMap) me
     n'
@@ -1644,6 +1730,12 @@ renameExpTypeRefs renameMap (ExpName me n es) =
     (renameMemberQualifierTypeRefs renameMap <$> me)
     n
     (map (renameExpTypeRefs renameMap) es)
+renameExpTypeRefs renameMap (ExpNameAt me n implArgs es) =
+  ExpNameAt
+    (renameMemberQualifierTypeRefs renameMap <$> me)
+    n
+    implArgs
+    (map (renameExpTypeRefs renameMap) es)
 renameExpTypeRefs renameMap (ExpVar Nothing n) =
   ExpVar
     (sameNameConstructorQualifier renameMap n)
@@ -1751,9 +1843,10 @@ renameClassTypeRefs renameMap (Class bvs ctx n pvs mv sigs) =
     (map (renameSignatureTypeRefs renameMap) sigs)
 
 renameInstanceTypeRefs :: Map Name Name -> Instance -> Instance
-renameInstanceTypeRefs renameMap (Instance d vs ctx n pts mt fns) =
+renameInstanceTypeRefs renameMap (Instance d lbl vs ctx n pts mt fns) =
   Instance
     d
+    lbl
     (map (renameTyTypeRefs renameMap) vs)
     (map (renamePredTypeRefs renameMap) ctx)
     n
@@ -1890,7 +1983,7 @@ toValidationImportStub (TContr (Contract n _ _)) =
   Just (TContr (Contract n [] []))
 toValidationImportStub (TDataDef (DataTy n _ cs)) =
   Just (TDataDef (DataTy n [] [Constr (constrName c) [] | c <- cs]))
-toValidationImportStub (TInstDef _) = Nothing
+toValidationImportStub d@(TInstDef _) = Just d
 toValidationImportStub (TExportDecl _) = Nothing
 toValidationImportStub (TPragmaDecl _) = Nothing
 
@@ -1921,7 +2014,8 @@ strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph 
       publicDecls <- publicTopDeclsForModule graph modulePath
       allDecls <- compileTargetTopDecls compileSurfaces graph modulePath
       let allFunctionDecls = [fd | TFunDef fd <- allDecls]
-          supportNonFunctionDecls = filter (not . isFunctionTopDecl) allDecls
+          selectedNames = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+          supportNonFunctionDecls = filter (isImportOnlySupportDecl selectedNames) allDecls
           allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFunctionDecls]
           renameMap = importedFunctionRenameMap moduleName allDecls
           typeRenameMap = importedTypeRenameMap collidingTypeNames moduleName publicDecls
@@ -1933,8 +2027,7 @@ strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph 
                 | fd <- allFunctionDecls
               ]
       let selectedPublicDecls =
-            let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
-             in mapMaybe (selectTopDecl names) publicDecls
+            mapMaybe (selectTopDecl selectedNames) publicDecls
           selectedFunctionNames =
             [ sigName (funSignature fd)
               | TFunDef fd <- selectedPublicDecls
@@ -1959,6 +2052,13 @@ strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph 
               functionDecls
               renamedSupportNonFunctionDecls
         )
+
+    isImportOnlySupportDecl selectedNames (TInstDef inst) =
+      case instLabel inst of
+        Nothing -> True
+        Just lbl -> lbl `elem` selectedNames
+    isImportOnlySupportDecl _ d =
+      not (isFunctionTopDecl d)
 
     moduleImportCompileDecls qualifier targetModule = do
       moduleBindings <- publicModuleBindingsForModule graph targetModule
@@ -1995,7 +2095,10 @@ strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph 
             ]
           localSupportDecls =
             map
-              (renameTopDeclTypeRefs typeRenameMap . renameTopDeclFunctionCalls renameMap)
+              ( qualifyTopDeclNamedInstanceLabel qualifier
+                  . renameTopDeclTypeRefs typeRenameMap
+                  . renameTopDeclFunctionCalls renameMap
+              )
               supportNonFunctionDecls
           localSupportFunctionDecls =
             concatMap (qualifySupportImpl renameMap typeRenameMap qualifier) extraSupportFunctions
@@ -2262,6 +2365,13 @@ expFunctionRefs (ExpName me n es) =
       case me of
         Nothing -> [n]
         _ -> maybe [] pure (qualifiedMemberName me n)
+expFunctionRefs (ExpNameAt me n _ es) =
+  directRef ++ maybe [] expFunctionRefs me ++ concatMap expFunctionRefs es
+  where
+    directRef =
+      case me of
+        Nothing -> [n]
+        _ -> maybe [] pure (qualifiedMemberName me n)
 expFunctionRefs (ExpVar me n) =
   directRef ++ maybe [] expFunctionRefs me
   where
@@ -2418,9 +2528,9 @@ dedupeImportedInstanceDecls =
       | otherwise = (instanceDeclHeadKey inst : seenHeads, d : acc)
     step (seenHeads, acc) d = (seenHeads, d : acc)
 
-instanceDeclHeadKey :: Instance -> (Bool, Name, [Ty], Ty)
+instanceDeclHeadKey :: Instance -> (Maybe Name, Bool, Name, [Ty], Ty)
 instanceDeclHeadKey inst =
-  (instDefault inst, instName inst, paramsTy inst, mainTy inst)
+  (instLabel inst, instDefault inst, instName inst, paramsTy inst, mainTy inst)
 
 topDeclTermNames :: TopDecl -> [Name]
 topDeclTermNames (TFunDef (FunDef sig _)) = [sigName sig]
@@ -2462,8 +2572,9 @@ selectTopDecl names d@(TContr (Contract n _ _))
 selectTopDecl names (TDataDef (DataTy n ts cs))
   | n `elem` names = Just (TDataDef (DataTy n ts cs))
   | otherwise = Nothing
-selectTopDecl _ d@(TInstDef _) =
-  Just d
+selectTopDecl names d@(TInstDef inst)
+  | maybe False (`elem` names) (instLabel inst) = Just d
+  | otherwise = Nothing
 selectTopDecl _ (TExportDecl _) =
   Nothing
 selectTopDecl _ (TPragmaDecl _) =
@@ -2503,7 +2614,12 @@ selectTopDeclForExportRef itemRef (TDataDef (DataTy n ts cs))
           Just (TDataDef (DataTy n ts (filterVisibleConstructors visibleConstructors cs)))
         Nothing ->
           Nothing
-selectTopDeclForExportRef _ (TInstDef _) = Nothing
+selectTopDeclForExportRef itemRef d@(TInstDef inst)
+  | exportedItemConstructors itemRef == Nothing,
+    Just (exportedItemName itemRef) == instLabel inst =
+      Just d
+  | otherwise =
+      Nothing
 selectTopDeclForExportRef _ (TExportDecl _) = Nothing
 selectTopDeclForExportRef _ (TPragmaDecl _) = Nothing
 

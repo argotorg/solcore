@@ -1,0 +1,23 @@
+// A constrained function can share its name with a class method. In that case,
+// @{...} should supply evidence to the function call, not eagerly dispatch to
+// the same-named method from the selected instance.
+
+forall a . class a : Score {
+  function score(x : a) -> word;
+}
+
+forall a . a : Score => function score(x : a, ignored : word) -> word {
+  return Score.score(x);
+}
+
+instance [fastScore] word : Score {
+  function score(x : word) -> word {
+    return 7;
+  }
+}
+
+contract NamedInstFunctionMethodCollision {
+  function main() -> word {
+    return score@{fastScore}(3, 5);
+  }
+}

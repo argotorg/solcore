@@ -59,7 +59,7 @@ genMainFn addMain (Contract cname tys cdecls)
     cdecls' = Set.unions (map (transformCDecl cname) cdecls'')
     defaultConstructor = CConstrDecl (Constructor {constrParams = [], constrBody = []})
     mainfn = FunDef (Signature [] [] "main" [] (Just unit)) body
-    body = [StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
+    body = [StmtExp (Call Nothing (QualName "RunContract" "exec") [] [cdata])]
     cdata = Con "Contract" [methods, fallback]
     methods = tupleExpFromList (fmap mkMethod (mapMaybe unwrapSigs cdecls))
     fallback =
@@ -142,6 +142,7 @@ transformConstructor contractName cons
               := Call
                 Nothing
                 "abi_decode"
+                []
                 [ Var "source",
                   proxyExp argsTuple,
                   proxyExp (TyCon "MemoryWordReader" [])
@@ -163,10 +164,10 @@ transformConstructor contractName cons
         }
     startBody =
       [ Asm [yulBlock|{ mstore(64, memoryguard(128)) }|],
-        Let "conargs" (Just argsTuple) (Just (Call Nothing "copy_arguments_for_constructor" [])),
+        Let "conargs" (Just argsTuple) (Just (Call Nothing "copy_arguments_for_constructor" [] [])),
         -- , Match [Var "conargs"] ...
         Let "fun" Nothing (Just (Var initFunName)),
-        StmtExp $ Call Nothing "fun" [Var "conargs"],
+        StmtExp $ Call Nothing "fun" [] [Var "conargs"],
         Asm
           [yulBlock|{
             let size := datasize(`yulContractName`)
@@ -195,6 +196,7 @@ mkNameInst (DataTy dname [] []) fname =
       body = [Return (Lit (StrLit (show fname)))]
    in Instance
         { instDefault = False,
+          instLabel = Nothing,
           instVars = [],
           instContext = [],
           instName = "SigString",

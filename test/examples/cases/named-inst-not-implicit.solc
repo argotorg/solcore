@@ -1,0 +1,18 @@
+// Named instances are explicit evidence and should not be used by ordinary
+// implicit instance search.
+
+forall a . class a : Score {
+  function score(x : a) -> word;
+}
+
+instance [fastScore] word : Score {
+  function score(x : word) -> word {
+    return 7;
+  }
+}
+
+contract NamedInstNotImplicit {
+  function main() -> word {
+    return Score.score(3);
+  }
+}

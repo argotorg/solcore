@@ -1,0 +1,17 @@
+// Named instances and default instances are distinct mechanisms.
+
+forall a . class a : Score {
+  function score(x : a) -> word;
+}
+
+default instance [fastScore] word : Score {
+  function score(x : word) -> word {
+    return 7;
+  }
+}
+
+contract NamedInstDefaultFail {
+  function main() -> word {
+    return score@{fastScore}(3);
+  }
+}

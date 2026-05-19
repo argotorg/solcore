@@ -1,0 +1,10 @@
+import namedinst.a as A;
+import namedinst.b as B;
+
+contract NamedInstQualifiedImport {
+  function main() -> word {
+    let x : word = score@{A.byPriority}(1);
+    let y : word = score@{B.byPriority}(1);
+    return y;
+  }
+}

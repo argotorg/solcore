@@ -10,9 +10,9 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Generics
-import Data.List (intercalate, union, (\\))
+import Data.List (find, intercalate, union, (\\))
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Solcore.Backend.Mast
 import Solcore.Desugarer.IfDesugarer (desugaredBoolTy)
 import Solcore.Frontend.Pretty.ShortName
@@ -20,7 +20,7 @@ import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (decls, name)
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
-import Solcore.Frontend.TypeInference.TcEnv (TcEnv (typeTable), TypeInfo (..))
+import Solcore.Frontend.TypeInference.TcEnv (TcEnv (ctx, namedInstEnv, typeTable), TypeInfo (..))
 import Solcore.Frontend.TypeInference.TcUnify (typesDoNotUnify)
 import Solcore.Primitives.Primitives
 
@@ -46,6 +46,7 @@ data SpecState = SpecState
     spGlobalEnv :: TcEnv,
     splocalEnv :: Table Ty,
     spSubst :: TVSubst,
+    spNamedEvidence :: [(ImplArg, Instance Name)],
     spDebug :: Bool,
     spNS :: NameSupply
   }
@@ -91,6 +92,7 @@ initSpecState debugp env =
       spGlobalEnv = env,
       splocalEnv = emptyTable,
       spSubst = emptyTVSubst,
+      spNamedEvidence = [],
       spDebug = debugp,
       spNS = namePool
     }
@@ -183,6 +185,23 @@ extSpSubst subst = modify $ \s -> s {spSubst = spSubst s <> subst}
 atCurrentSubst :: (HasTV a) => a -> SM a
 atCurrentSubst a = flip applytv a <$> getSpSubst
 
+withNamedEvidence :: ImplArg -> SM a -> SM a
+withNamedEvidence implArg action = do
+  env <- gets spGlobalEnv
+  case Map.lookup (implArgName implArg) (namedInstEnv env) of
+    Nothing -> action
+    Just inst -> do
+      saved <- gets spNamedEvidence
+      modify $ \s -> s {spNamedEvidence = (implArg, inst) : saved}
+      result <- action
+      modify $ \s -> s {spNamedEvidence = saved}
+      pure result
+
+withNamedEvidences :: [ImplArg] -> SM a -> SM a
+withNamedEvidences [] action = action
+withNamedEvidences (implArg : implArgs) action =
+  withNamedEvidence implArg (withNamedEvidences implArgs action)
+
 addData :: DataTy -> SM ()
 addData dt = modify (\s -> s {spDataTable = Map.insert (dataName dt) dt (spDataTable s)})
 
@@ -218,7 +237,32 @@ addDeclResolutions (TMutualDef decls) = forM_ decls addDeclResolutions
 addDeclResolutions _ = return ()
 
 addInstResolutions :: Instance Id -> SM ()
-addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instName inst) (mainTy inst))
+addInstResolutions inst = forM_ (instFunctions inst) addMethod
+  where
+    addMethod fd = do
+      case instLabel inst of
+        Nothing ->
+          addMethodResolution (instName inst) (mainTy inst) fd
+        -- Named instances are explicit evidence and should not participate in
+        -- ordinary method resolution.
+        Just lbl ->
+          addNamedInstMethodResolution lbl (mainTy inst) fd
+
+-- Register a named-instance method under QualName lbl methodUnqualName.
+-- After type inference, method names are QualName className method; we
+-- strip the class qualifier and substitute the instance label.
+addNamedInstMethodResolution :: Name -> Ty -> TcFunDef -> SM ()
+addNamedInstMethodResolution lbl ty fd = do
+  let sig = funSignature fd
+      methUnq = case sigName sig of
+        QualName _ m -> m
+        Name s -> s
+      qname = QualName lbl methUnq
+      name' = specName qname [ty]
+      funType = typeOfTcFunDef fd
+      fd' = FunDef sig {sigName = name'} (funDefBody fd)
+  addResolution qname funType fd'
+  debug ["+ addNamedInstMethodResolution: ", show qname, " / ", show name', " : ", pretty funType]
 
 specialiseTopDecl :: TopDecl Id -> SM [TopDecl Id]
 specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
@@ -300,14 +344,101 @@ addMethodResolution cname ty fd = do
   addResolution qname funType fd'
   debug ["+ addMethodResolution: ", show qname, " / ", show name', " : ", pretty funType]
 
+methodNameString :: Name -> String
+methodNameString (QualName _ meth) = meth
+methodNameString (Name meth) = meth
+
+methodName :: Name -> Name
+methodName = Name . methodNameString
+
+instanceHasMethod :: Name -> Instance a -> Bool
+instanceHasMethod meth inst =
+  any ((== meth) . methodName . sigName . funSignature) (instFunctions inst)
+
+namedEvidenceHasMethod :: Name -> Id -> SM Bool
+namedEvidenceHasMethod lbl i = do
+  env <- gets spGlobalEnv
+  pure $
+    case Map.lookup lbl (namedInstEnv env) of
+      Nothing -> False
+      Just inst ->
+        case idName i of
+          QualName cls _ -> cls == instName inst && hasMethod inst
+          Name _ -> hasMethod inst
+  where
+    hasMethod = instanceHasMethod (methodName (idName i))
+
+explicitNamedEvidenceForCall :: Id -> [TcExp] -> Ty -> SM (Maybe Name)
+explicitNamedEvidenceForCall i args ty =
+  case idName i of
+    QualName cls meth -> do
+      argTypes <- atCurrentSubst (map typeOfTcExp args)
+      ty' <- atCurrentSubst ty
+      let funType = foldr (:->) ty' argTypes
+          methName = Name meth
+      evidences <- gets spNamedEvidence
+      pure $ implArgName . fst <$> find (matchesNamedEvidence cls methName funType) evidences
+    Name _ -> pure Nothing
+
+matchesNamedEvidence :: Name -> Name -> Ty -> (ImplArg, Instance Name) -> Bool
+matchesNamedEvidence cls meth funType (_, inst) =
+  instName inst == cls
+    && instanceHasMethod meth inst
+    && maybe False (`methodTypeMatches` funType) (namedInstanceMethodType meth inst)
+
+namedInstanceMethodType :: Name -> Instance Name -> Maybe Ty
+namedInstanceMethodType meth inst =
+  typeOfNamedFunDef <$> find ((== meth) . methodName . sigName . funSignature) (instFunctions inst)
+
+typeOfNamedFunDef :: FunDef Name -> Ty
+typeOfNamedFunDef (FunDef sig _) = typeOfNamedSignature sig
+
+typeOfNamedSignature :: Signature Name -> Ty
+typeOfNamedSignature sig =
+  funtype (map typeOfParam (sigParams sig)) returnType
+  where
+    returnType = case sigReturn sig of
+      Just t -> t
+      Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
+    typeOfParam (Typed _ t) = t
+    typeOfParam p = error ("untyped parameter in signature of: " ++ show p)
+
+methodTypeMatches :: Ty -> Ty -> Bool
+methodTypeMatches methodTy callTy =
+  case specmgu methodTy callTy of
+    Right _ -> True
+    Left _ -> False
+
 -- | `specExp` specialises an expression to given type
 specExp :: TcExp -> Ty -> SM TcExp
-specExp (Call Nothing i args) ty = do
+specExp (Call Nothing i [] args) ty = do
   -- debug ["> specExp (Call): ", pretty e, " : ", pretty (idType i), " ~> ", pretty ty]
-  (i', args') <- specCall i args ty
-  let e' = Call Nothing i' args'
+  mlbl <- explicitNamedEvidenceForCall i args ty
+  case mlbl of
+    Just lbl -> specExp (Call Nothing i [ImplArg Nothing lbl] args) ty
+    Nothing -> do
+      (i'', args') <- specCall i args ty
+      let e' = Call Nothing i'' [] args'
+      -- debug ["< specExp (Call): ", pretty e']
+      return e'
+specExp (Call Nothing i [implArg] args) ty = do
+  -- A label can either select a named instance method directly, or supply
+  -- explicit evidence to a constrained function call.
+  let lbl = implArgName implArg
+  isNamedMethod <- namedEvidenceHasMethod lbl i
+  hasFunctionResolution <- callHasResolution i args ty
+  (i'', args') <-
+    if isNamedMethod && not hasFunctionResolution
+      then do
+        let i' = i {idName = QualName lbl (methodNameString (idName i))}
+        specCall i' args ty
+      else specCallWithEvidence [implArg] i args ty
+  let e' = Call Nothing i'' [] args'
   -- debug ["< specExp (Call): ", pretty e']
   return e'
+specExp (Call Nothing i implArgs args) ty =
+  specCallWithEvidence implArgs i args ty >>= \(i'', args') ->
+    pure (Call Nothing i'' [] args')
 specExp e@(Con i es) ty = do
   debug ["> specConApp: ", pretty e, " : ", pretty (typeOfTcExp e), " ~> ", pretty ty]
   (i', es') <- specConApp i es ty
@@ -347,8 +478,18 @@ specConApp i@(Id _n conTy) args ty = do
 -- | Specialise a function call
 -- given actual arguments and the expected result type
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revert") _) args _ = pure (i, args) -- FIXME
-specCall i args ty = do
+specCall = specCallWithEvidence []
+
+callHasResolution :: Id -> [TcExp] -> Ty -> SM Bool
+callHasResolution i args ty = do
+  i' <- atCurrentSubst i
+  ty' <- atCurrentSubst ty
+  argTypes' <- atCurrentSubst (map typeOfTcExp args)
+  isJust <$> lookupResolution (idName i') (foldr (:->) ty' argTypes')
+
+specCallWithEvidence :: [ImplArg] -> Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
+specCallWithEvidence _ i@(Id (Name "revert") _) args _ = pure (i, args) -- FIXME
+specCallWithEvidence implArgs i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
   -- debug ["> specCall: ", pretty i', show args, " : ", pretty ty']
@@ -372,21 +513,28 @@ specCall i args ty = do
             prettys (map snd varToVar),
             "\n  The intermediate type cannot be determined from this call site.",
             "\n  Expression: ",
-            pretty (Call Nothing i args),
+            pretty (Call Nothing i [] args),
             "\n  This often occurs when a polymorphic-return function (e.g. `require`)",
             "\n  is passed directly to a polymorphic-argument function (e.g. `void`)."
           ]
       extSpSubst phi
       subst <- getSpSubst
       let ty'' = applytv subst fty
-      ensureClosed ty'' (Call Nothing i args) subst
-      name' <- specFunDef fd
+      ensureClosed ty'' (Call Nothing i [] args) subst
+      name' <- withNamedEvidences implArgs (specFunDef fd)
       debug ["< specCall: ", pretty name', " : ", show ty'']
       args'' <- atCurrentSubst args'
       return (Id name' ty'', args'')
     Nothing -> do
-      void $ panics ["! specCall: no resolution found for ", show name, " : ", pretty funType]
-      return (i, args')
+      -- Primitives are in primCtx but have no resolution entry; treat as monomorphic.
+      primEnv <- gets (ctx . spGlobalEnv)
+      if Map.member name primEnv
+        then do
+          debug ["< specCall (primitive): ", show name]
+          return (i', args')
+        else do
+          void $ panics ["! specCall: no resolution found for ", show name, " : ", pretty funType]
+          return (i, args')
 
 -- | `specFunDef` specialises a function definition
 -- to the given type of the form `arg1Ty -> arg2Ty -> ... -> resultTy`
@@ -587,7 +735,7 @@ typeOfTcExp e@(Con i args) = go (idType i) args
     go _ _ = error $ "typeOfTcExp: " ++ show e
 typeOfTcExp (Lit (IntLit _)) = word
 typeOfTcExp (Lit (StrLit _)) = string
-typeOfTcExp expr@(Call Nothing i args) = applyTo args funTy
+typeOfTcExp expr@(Call Nothing i _ args) = applyTo args funTy
   where
     funTy = idType i
     applyTo [] ty = ty
@@ -893,7 +1041,7 @@ toMastExp :: Exp Id -> MastExp
 toMastExp (Var i) = MastVar (toMastId i)
 toMastExp (Con i es) = MastCon (toMastId i) (map toMastExp es)
 toMastExp (Lit l) = MastLit l
-toMastExp (Call Nothing i es) = MastCall (toMastId i) (map toMastExp es)
+toMastExp (Call Nothing i _ es) = MastCall (toMastId i) (map toMastExp es)
 toMastExp (TyExp e _) = toMastExp e
 toMastExp (Cond e1 e2 e3) = MastCond (toMastExp e1) (toMastExp e2) (toMastExp e3)
 toMastExp e = error $ "toMastExp: unexpected " ++ show e

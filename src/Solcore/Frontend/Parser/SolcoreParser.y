@@ -86,6 +86,7 @@ import Language.Yul
       '-='       {Token _ TMinusEq}
       'then'     {Token _ TThen}
       '@'        {Token _ TAt}
+      '@{'       {Token _ TAtBrace}
 
 %nonassoc '+=' '-='
 %left     ':'
@@ -324,8 +325,12 @@ Param : Name ':' Type                              {Typed $1 $3}
 
 -- instance declarations
 
+InstLabel :: { Maybe Name }
+InstLabel : '[' identifier ']'            { Just (Name $2) }
+          | {- empty -}                   { Nothing }
+
 InstDef :: { Instance }
-InstDef : SigPrefix DefaultOpt 'instance' Type ':' Name OptTypeParam InstBody { Instance $2 (fst $1) (snd $1) $6 $7 $4 $8 }
+InstDef : SigPrefix DefaultOpt 'instance' InstLabel Type ':' Name OptTypeParam InstBody { Instance $2 $4 (fst $1) (snd $1) $7 $8 $5 $9 }
 
 DefaultOpt :: { Bool }
 DefaultOpt : 'default'                        {True}
@@ -446,9 +451,20 @@ Expr : Name FunArgs                                {ExpName Nothing $1 $2}
      | '!' Expr                                    {ExpLNot $2 }
      | Conditional                                 {$1}
      | '@' Type                                    {ExpAt $2}
+     | Name '@{' ImplArgList '}' FunArgs { ExpNameAt Nothing $1 $3 $5 }
+     | Expr '.' Name '@{' ImplArgList '}' FunArgs { ExpNameAt (Just $1) $3 $5 $7 }
+
 
 Conditional :: { Exp }
 Conditional : 'if' Expr 'then' Expr 'else' Expr    {ExpCond $2 $4 $6}
+
+ImplArgList :: { [ImplArg] }
+ImplArgList : ImplArg                              {[$1]}
+            | ImplArg ',' ImplArgList              {$1 : $3}
+
+ImplArg :: { ImplArg }
+ImplArg : TypeName                                 {ImplArg Nothing $1}
+        | Name '=' TypeName                        {ImplArg (Just $1) $3}
 
 TupleArgs :: { [Exp] }
 TupleArgs : Expr ',' Expr                          {[$1, $3]}

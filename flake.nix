@@ -34,6 +34,10 @@
           });
         texlive = pkgs.texlive.combine { inherit (pkgs.texlive) scheme-small thmtools pdfsync lkproof cm-super; };
         evmone-lib = pkgs.callPackage ./nix/evmone.nix { };
+        evmone-shared-lib =
+          if pkgs.stdenv.hostPlatform.isDarwin
+          then "${evmone-lib}/lib/libevmone.dylib"
+          else "${evmone-lib}/lib/libevmone.so";
 
         testrunner = pkgs.stdenv.mkDerivation {
           pname = "testrunner";
@@ -147,7 +151,7 @@
             (pkgs.callPackage ./nix/goevmlab.nix { src = inputs.goevmlab; })
             pkgs.mdbook
           ];
-          evmone="${evmone-lib}/lib/${if pkgs.stdenv.isDarwin then "libevmone.dylib" else "libevmone.so"}";
+          evmone = evmone-shared-lib;
         };
       }
     );

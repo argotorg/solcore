@@ -1,0 +1,32 @@
+// The lowercase alias "eq" would identify both Eq and eq here, so it should
+// be rejected before using the selected instance head to pick one silently.
+
+forall a . class a : Eq {
+  function upperScore(x : a) -> word;
+}
+
+forall a . class a : eq {
+  function lowerScore(x : a) -> word;
+}
+
+forall a . a : Eq, a : eq => function useBoth(x : a) -> word {
+  return Eq.upperScore(x);
+}
+
+instance [upperEq] word : Eq {
+  function upperScore(x : word) -> word {
+    return 1;
+  }
+}
+
+instance [lowerEq] word : eq {
+  function lowerScore(x : word) -> word {
+    return 2;
+  }
+}
+
+contract NamedInstSlotCapitalisationAmbiguous {
+  function main() -> word {
+    return useBoth@{eq = upperEq}(1);
+  }
+}

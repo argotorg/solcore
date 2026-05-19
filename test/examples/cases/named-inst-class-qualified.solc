@@ -1,0 +1,31 @@
+// Class-qualified named calls should dispatch through the selected instance.
+
+data Bool = True | False;
+
+forall a . class a : Foo {
+  function run(x : a) -> Bool;
+}
+
+forall a . class a : Bar {
+  function run(x : a) -> Bool;
+}
+
+instance [fooShared] word : Foo {
+  function run(x : word) -> Bool {
+    return Bool.True;
+  }
+}
+
+instance [barShared] word : Bar {
+  function run(x : word) -> Bool {
+    return Bool.False;
+  }
+}
+
+contract NamedInstClassQualified {
+  function main() -> Bool {
+    let x : Bool = Foo.run@{fooShared}(1);
+    let y : Bool = Bar.run@{barShared}(1);
+    return y;
+  }
+}

@@ -1,0 +1,16 @@
+// A named instance declaration may share its name with a term-level function.
+// The shared name should resolve as a function in ordinary calls.
+
+forall a . class a : C {}
+
+instance [foo] word : C {}
+
+function foo(x : word) -> word {
+  return 7;
+}
+
+contract NamedInstFunctionLabelClash {
+  function main() -> word {
+    return foo(1);
+  }
+}

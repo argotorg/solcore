@@ -170,6 +170,7 @@ data Signature a
 data Instance a
   = Instance
   { instDefault :: Bool,
+    instLabel :: Maybe Name,
     instVars :: [Tyvar],
     instContext :: [Pred],
     instName :: Name,

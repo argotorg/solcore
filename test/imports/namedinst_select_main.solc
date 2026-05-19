@@ -1,0 +1,7 @@
+import namedinst.a.{Score, byPriority};
+
+contract NamedInstSelectedImport {
+  function main() -> word {
+    return score@{byPriority}(1);
+  }
+}

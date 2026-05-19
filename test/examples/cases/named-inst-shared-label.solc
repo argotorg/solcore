@@ -1,0 +1,30 @@
+// Reusing the same named-instance declaration name in one module is rejected.
+
+data Bool = True | False;
+
+forall a . class a : Eq {
+  function eq(x : a, y : a) -> Bool;
+}
+
+instance [shared] word : Eq {
+  function eq(x : word, y : word) -> Bool {
+    return Bool.True;
+  }
+}
+
+instance [shared] Bool : Eq {
+  function eq(x : Bool, y : Bool) -> Bool {
+    match x, y {
+    | Bool.True, Bool.True => return Bool.True;
+    | _, _ => return Bool.False;
+    }
+  }
+}
+
+contract NamedInstSharedLabel {
+  function main() -> Bool {
+    let x : Bool = eq@{shared}(1, 2);
+    let y : Bool = eq@{shared}(Bool.True, Bool.True);
+    return y;
+  }
+}

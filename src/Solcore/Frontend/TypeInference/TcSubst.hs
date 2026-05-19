@@ -156,20 +156,21 @@ instance (HasType a) => HasType (FunDef a) where
     bv sig `union` bv bd
 
 instance (HasType a) => HasType (Instance a) where
-  apply s (Instance d vs ctx n ts t funs) =
+  apply s (Instance d lbl vs ctx n ts t funs) =
     Instance
       d
+      lbl
       vs
       (apply s ctx)
       n
       (apply s ts)
       (apply s t)
       (apply s funs)
-  fv (Instance _ _ ctx _ ts t _) =
+  fv (Instance _ _ _ ctx _ ts t _) =
     fv ctx `union` fv (t : ts)
-  mv (Instance _ _ ctx _ ts t _) =
+  mv (Instance _ _ _ ctx _ ts t _) =
     mv ctx `union` mv (t : ts)
-  bv (Instance _ vs ctx _ ts t _) =
+  bv (Instance _ _ vs ctx _ ts t _) =
     vs `union` bv ctx `union` bv (t : ts)
 
 instance (HasType a) => HasType (Exp a) where
@@ -178,8 +179,8 @@ instance (HasType a) => HasType (Exp a) where
     Con (apply s n) (apply s es)
   apply s (FieldAccess e v) =
     FieldAccess (apply s e) (apply s v)
-  apply s (Call m v es) =
-    Call (apply s <$> m) (apply s v) (apply s es)
+  apply s (Call m v lbl es) =
+    Call (apply s <$> m) (apply s v) lbl (apply s es)
   apply s (Lam ps bd mt) =
     Lam (apply s ps) (apply s bd) (apply s <$> mt)
   apply s (Cond e1 e2 e3) = Cond (apply s e1) (apply s e2) (apply s e3)
@@ -193,7 +194,7 @@ instance (HasType a) => HasType (Exp a) where
     fv n `union` fv es
   fv (FieldAccess e v) =
     fv e `union` fv v
-  fv (Call m v es) =
+  fv (Call m v _ es) =
     maybe [] fv m `union` fv v `union` fv es
   fv (Lam ps bd mt) =
     fv ps `union` fv bd `union` maybe [] fv mt
@@ -208,7 +209,7 @@ instance (HasType a) => HasType (Exp a) where
     mv n `union` mv es
   mv (FieldAccess e v) =
     mv e `union` mv v
-  mv (Call m v es) =
+  mv (Call m v _ es) =
     maybe [] mv m `union` mv v `union` mv es
   mv (Lam ps bd mt) =
     mv ps `union` mv bd `union` maybe [] mv mt
@@ -223,7 +224,7 @@ instance (HasType a) => HasType (Exp a) where
     bv n `union` bv es
   bv (FieldAccess e v) =
     bv e `union` bv v
-  bv (Call m v es) =
+  bv (Call m v _ es) =
     maybe [] bv m `union` bv v `union` bv es
   bv (Lam ps bd mt) =
     bv ps `union` bv bd `union` maybe [] bv mt

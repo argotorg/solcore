@@ -1,0 +1,28 @@
+// Reusing a named-instance declaration name in one module is rejected even
+// when the instance heads differ by weak parameters.
+
+data Bool = True | False;
+
+forall self rep . class self : Pick(rep) {
+  function pick(x : self, y : rep) -> rep;
+}
+
+instance [shared] word : Pick(word) {
+  function pick(x : word, y : word) -> word {
+    return y;
+  }
+}
+
+instance [shared] word : Pick(Bool) {
+  function pick(x : word, y : Bool) -> Bool {
+    return y;
+  }
+}
+
+contract NamedInstSharedLabelParams {
+  function main() -> Bool {
+    let x : word = pick@{shared}(1, 2);
+    let y : Bool = pick@{shared}(1, Bool.True);
+    return y;
+  }
+}

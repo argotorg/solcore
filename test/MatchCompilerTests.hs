@@ -541,8 +541,8 @@ test_compileMatch_bindsScrutineeOnce =
     let idZ = Id (Name "z") tyBool
         stmt =
           Match
-            [Call Nothing idF []]
-            [([PVar idZ], [Return (Call Nothing idG [Var idZ, Var idZ])])]
+            [Call Nothing idF [] []]
+            [([PVar idZ], [Return (Call Nothing idG [] [Var idZ, Var idZ])])]
     r <- runCompileStmt boolEnv stmt
     case r of
       Left err -> assertFailure ("unexpected error: " ++ err)
@@ -557,7 +557,7 @@ test_compileMatch_bindsScrutineeOnce =
       everything (+) (mkQ 0 countExp)
       where
         countExp :: Exp Id -> Int
-        countExp (Call Nothing i _) | idName i == target = 1
+        countExp (Call Nothing i _ _) | idName i == target = 1
         countExp _ = 0
 
 -- 14. Rows after a first all-var row are warned as unreachable even when they

@@ -1,0 +1,33 @@
+// Slot syntax can pass multiple named instances to a constrained call.
+
+forall a . class a : Eq {
+  function same(x : a, y : a) -> word;
+}
+
+forall a . class a : Ord {
+  function cmp(x : a, y : a) -> word;
+}
+
+forall a . a : Eq, a : Ord => function choose(x : a, y : a) -> word {
+  let e : word = Eq.same(x, y);
+  let o : word = Ord.cmp(x, y);
+  return o;
+}
+
+instance [strictEq] word : Eq {
+  function same(x : word, y : word) -> word {
+    return primEqWord(x, y);
+  }
+}
+
+instance [fastOrd] word : Ord {
+  function cmp(x : word, y : word) -> word {
+    return x;
+  }
+}
+
+contract NamedInstSlotCall {
+  function main() -> word {
+    return choose@{eq = strictEq, ord = fastOrd}(1, 2);
+  }
+}

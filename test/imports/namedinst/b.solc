@@ -1,0 +1,11 @@
+export { Score, byPriority };
+
+forall a . class a : Score {
+  function score(x : a) -> word;
+}
+
+instance [byPriority] word : Score {
+  function score(x : word) -> word {
+    return 2;
+  }
+}
