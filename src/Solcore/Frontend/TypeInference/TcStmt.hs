@@ -1458,7 +1458,7 @@ namedImplArgSolvesWanteds n ps implArg inst =
     Nothing ->
       catMaybes <$> mapM (namedInstSolvesWanted inst) ps
     Just slot ->
-      case filter (slotMatchesPred slot) ps of
+      case predsMatchingSlot slot ps of
         [] -> pure []
         [wanted] -> maybeToList <$> namedInstSolvesWanted inst wanted
         _ ->
@@ -1494,15 +1494,28 @@ solveNamedInstPred (InCls c t ts) (InCls c' t' ts')
       mgu (t : ts) (t' : ts')
 solveNamedInstPred _ _ = throwError "Named instance does not solve wanted predicate"
 
-slotMatchesPred :: Name -> Pred -> Bool
-slotMatchesPred slot (InCls cls _ _) = slot `elem` classSlotNames cls
-slotMatchesPred _ _ = False
+-- Exact class-name slots take precedence over lowercase aliases so Eq and eq
+-- can be disambiguated independently of named evidence argument order.
+predsMatchingSlot :: Name -> [Pred] -> [Pred]
+predsMatchingSlot slot ps =
+  let exactMatches = filter (slotMatchesExactClassName slot) ps
+   in if null exactMatches
+        then filter (slotMatchesLowerClassAlias slot) ps
+        else exactMatches
 
-classSlotNames :: Name -> [Name]
-classSlotNames cls =
-  nub [Name baseName, Name (lowerFirst baseName)]
-  where
-    baseName = nameLeaf cls
+slotMatchesExactClassName :: Name -> Pred -> Bool
+slotMatchesExactClassName slot (InCls cls _ _) = slot == classSlotName cls
+slotMatchesExactClassName _ _ = False
+
+slotMatchesLowerClassAlias :: Name -> Pred -> Bool
+slotMatchesLowerClassAlias slot (InCls cls _ _) = slot == lowerClassSlotAlias cls
+slotMatchesLowerClassAlias _ _ = False
+
+classSlotName :: Name -> Name
+classSlotName cls = Name (nameLeaf cls)
+
+lowerClassSlotAlias :: Name -> Name
+lowerClassSlotAlias cls = Name (lowerFirst (nameLeaf cls))
 
 nameLeaf :: Name -> String
 nameLeaf (Name s) = s

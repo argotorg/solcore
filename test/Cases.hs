@@ -421,6 +421,7 @@ cases =
       runTestForFile "named-inst-slot-capitalisation.solc" caseFolder,
       runTestExpectingFailure "named-inst-slot-capitalisation-ambiguous.solc" caseFolder,
       runTestForFile "named-inst-slot-call.solc" caseFolder,
+      runTestForFile "named-inst-slot-order-sensitivity.solc" caseFolder,
       runTestForFile "named-inst-two-instances.solc" caseFolder,
       runTestExpectingFailure "named-inst-unknown-label.solc" caseFolder,
       runTestExpectingFailure "named-inst-dup-label.solc" caseFolder,

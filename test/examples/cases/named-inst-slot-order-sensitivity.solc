@@ -1,0 +1,33 @@
+// Exact class-name slots should disambiguate before lowercase aliases, so the
+// order of explicit named evidence does not matter when class names differ only
+// by capitalisation.
+
+forall a . class a : Eq {
+  function upperScore(x : a) -> word;
+}
+
+forall a . class a : eq {
+  function lowerScore(x : a) -> word;
+}
+
+forall a . a : Eq, a : eq => function useBoth(x : a) -> word {
+  return Eq.upperScore(x);
+}
+
+instance [upperEq] word : Eq {
+  function upperScore(x : word) -> word {
+    return 1;
+  }
+}
+
+instance [lowerEq] word : eq {
+  function lowerScore(x : word) -> word {
+    return 2;
+  }
+}
+
+contract NamedInstSlotOrderSensitivity {
+  function main() -> word {
+    return useBoth@{eq = lowerEq, Eq = upperEq}(1);
+  }
+}
