@@ -1109,6 +1109,15 @@ qualifiedFunctionStubDecls qualifier cunit =
     | TFunDef fd <- topDeclsFrom cunit
   ]
 
+qualifierFromExpVarChain :: Exp -> Maybe Name
+qualifierFromExpVarChain (ExpVar Nothing n) =
+  Just n
+qualifierFromExpVarChain (ExpVar (Just e) n) = do
+  q <- qualifierFromExpVarChain e
+  pure (QualName q (show n))
+qualifierFromExpVarChain _ =
+  Nothing
+
 renameTopDeclTypeRefs :: Map Name Name -> TopDecl -> TopDecl
 renameTopDeclTypeRefs renameMap (TFunDef fd) =
   TFunDef (renameFunDefTypeRefs renameMap fd)
@@ -1173,6 +1182,12 @@ renameStmtTypeRefs renameMap (If e blk1 blk2) =
     (renameExpTypeRefs renameMap e)
     (renameBodyTypeRefs renameMap blk1)
     (renameBodyTypeRefs renameMap blk2)
+renameStmtTypeRefs renameMap (For initStmt cond postStmt body) =
+  For
+    (renameStmtTypeRefs renameMap initStmt)
+    (renameExpTypeRefs renameMap cond)
+    (renameStmtTypeRefs renameMap postStmt)
+    (renameBodyTypeRefs renameMap body)
 
 renameEquationTypeRefs :: Map Name Name -> Equation -> Equation
 renameEquationTypeRefs renameMap (ps, body) =
@@ -1270,15 +1285,6 @@ renameMemberQualifierTypeRefs renameMap e =
             else qualifierNameToExp q'
     Nothing ->
       renameExpTypeRefs renameMap e
-
-qualifierFromExpVarChain :: Exp -> Maybe Name
-qualifierFromExpVarChain (ExpVar Nothing n) =
-  Just n
-qualifierFromExpVarChain (ExpVar (Just e) n) = do
-  q <- qualifierFromExpVarChain e
-  pure (QualName q (show n))
-qualifierFromExpVarChain _ =
-  Nothing
 
 sameNameConstructorQualifier :: Map Name Name -> Name -> Maybe Exp
 sameNameConstructorQualifier renameMap n =

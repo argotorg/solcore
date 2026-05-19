@@ -263,6 +263,12 @@ cases =
       runTestExpectingFailure "Filter.solc" caseFolder,
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,
+      runTestForFile "for-body-shadow.solc" caseFolder,
+      runTestForFile "for-inner-block.solc" caseFolder,
+      runTestForFile "for-init-shadow.solc" caseFolder,
+      runTestForFile "for-let.solc" caseFolder,
+      runTestExpectingFailure "for-let-post.solc" caseFolder,
+      runTestForFile "for-loop.solc" caseFolder,
       runTestExpectingFailure "GetSet.solc" caseFolder,
       runTestExpectingFailure "GoodInstance.solc" caseFolder,
       runTestForFile "Id.solc" caseFolder,
@@ -433,7 +439,8 @@ cases =
         caseFolder,
       runTestForFile
         "multi-stmt-var-leaf.solc"
-        caseFolder
+        caseFolder,
+      runTestForFile "ltimp.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
