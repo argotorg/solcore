@@ -375,7 +375,6 @@ assignedInStmt (MastFor initStmt _ post body) =
     `Set.union` foldMap assignedInStmt body
 assignedInStmt _ = Set.empty
 
-
 -----------------------------------------------------------------------
 -- Evaluate expressions
 -----------------------------------------------------------------------
