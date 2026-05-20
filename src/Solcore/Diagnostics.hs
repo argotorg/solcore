@@ -17,26 +17,31 @@ module Solcore.Diagnostics
     sourceMapFromFiles,
     emptySourceMap,
     insertSourceFile,
+    lookupSourceFile,
+    sourceMapNull,
     legacyDiagnostic,
+    encodeDiagnostic,
+    decodeDiagnostic,
     diagnosticPrimarySpan,
     renderDiagnostic,
     renderDiagnostics,
   )
 where
 
-import Data.List (foldl')
+import Data.List (foldl', stripPrefix)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Prettyprinter (Doc, defaultLayoutOptions, layoutPretty, pretty, vsep)
 import Prettyprinter.Render.String (renderString)
+import Text.Read (readMaybe)
 
 data Severity
   = Error
   | Warning
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Read, Show)
 
 newtype DiagnosticCode = DiagnosticCode String
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Read, Show)
 
 data SourceSpan
   = SourceSpan
@@ -48,12 +53,12 @@ data SourceSpan
     spanEndLine :: Int,
     spanEndColumn :: Int
   }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Read, Show)
 
 data LabelStyle
   = Primary
   | Secondary
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Read, Show)
 
 data Label
   = Label
@@ -61,7 +66,7 @@ data Label
     labelStyle :: LabelStyle,
     labelMessage :: Maybe String
   }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Read, Show)
 
 data Diagnostic
   = Diagnostic
@@ -72,7 +77,7 @@ data Diagnostic
     diagnosticNotes :: [String],
     diagnosticHelp :: [String]
   }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Read, Show)
 
 newtype SourceId = SourceId FilePath
   deriving (Eq, Ord, Show)
@@ -144,6 +149,14 @@ insertSourceFile :: SourceFile -> SourceMap -> SourceMap
 insertSourceFile source (SourceMap sources) =
   SourceMap (Map.insert (sourcePath source) source sources)
 
+lookupSourceFile :: FilePath -> SourceMap -> Maybe SourceFile
+lookupSourceFile path (SourceMap sources) =
+  Map.lookup path sources
+
+sourceMapNull :: SourceMap -> Bool
+sourceMapNull (SourceMap sources) =
+  Map.null sources
+
 legacyDiagnostic :: String -> Diagnostic
 legacyDiagnostic msg =
   Diagnostic
@@ -154,6 +167,18 @@ legacyDiagnostic msg =
       diagnosticNotes = [],
       diagnosticHelp = []
     }
+
+encodeDiagnostic :: Diagnostic -> String
+encodeDiagnostic diagnostic =
+  diagnosticEnvelopePrefix ++ show diagnostic
+
+decodeDiagnostic :: String -> Maybe Diagnostic
+decodeDiagnostic raw = do
+  encoded <- stripPrefix diagnosticEnvelopePrefix raw
+  readMaybe encoded
+
+diagnosticEnvelopePrefix :: String
+diagnosticEnvelopePrefix = "\STXsolcore-diagnostic\ETX"
 
 diagnosticPrimarySpan :: Diagnostic -> Maybe SourceSpan
 diagnosticPrimarySpan diagnostic =
