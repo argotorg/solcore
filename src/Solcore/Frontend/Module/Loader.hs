@@ -19,6 +19,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Solcore.Diagnostics (SourceFile, makeSourceFile)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
 import Solcore.Frontend.Syntax.Name
@@ -29,6 +30,7 @@ import System.FilePath
 data LoadedModule
   = LoadedModule
   { loadedSourcePath :: FilePath,
+    loadedSource :: SourceFile,
     loadedCompUnit :: CompUnit,
     loadedModuleRefs :: Map ModulePath Mod.ModuleId
   }
@@ -124,6 +126,7 @@ visit cfg moduleId sourcePath = do
   unless (alreadyLoaded || loading) do
     modify (\st -> st {loadingModules = Set.insert moduleId (loadingModules st)})
     content <- liftIO (readFile sourcePath)
+    let source = makeSourceFile sourcePath content
     parsed <- liftIO (parseCompUnitWithPath sourcePath content)
     cunit <- either throwError pure parsed
     importedModules <- mapM (resolveImportPath cfg moduleId) (imports cunit)
@@ -142,7 +145,7 @@ visit cfg moduleId sourcePath = do
     modify
       ( \st ->
           st
-            { loadedModules = Map.insert moduleId (LoadedModule sourcePath cunit moduleRefs) (loadedModules st),
+            { loadedModules = Map.insert moduleId (LoadedModule sourcePath source cunit moduleRefs) (loadedModules st),
               moduleDeps = Map.insert moduleId (map fst importedModules) (moduleDeps st),
               moduleRefDeps = Map.insert moduleId (map fst referencedModules) (moduleRefDeps st),
               loadingModules = Set.delete moduleId (loadingModules st),
