@@ -298,16 +298,6 @@ evalPat env (MastPExp e) = do
     _ -> error $ "comptime expression in match label could not be evaluated to a literal: " ++ show e'
 evalPat _ pat = pure pat
 
--- Collect variables assigned (via MastAssign) in a list of statements.
--- Recurses into nested match arms. Used to invalidate env entries after a match.
-assignedInStmts :: [MastStmt] -> Set.Set MastId
-assignedInStmts = foldMap assignedInStmt
-
-assignedInStmt :: MastStmt -> Set.Set MastId
-assignedInStmt (MastAssign i _) = Set.singleton i
-assignedInStmt (MastMatch _ alts) = foldMap (assignedInStmts . snd) alts
-assignedInStmt _ = Set.empty
-
 -----------------------------------------------------------------------
 -- Evaluate expressions
 -----------------------------------------------------------------------
