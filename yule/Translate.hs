@@ -3,7 +3,6 @@
 module Translate where
 
 import Builtins
-import Common.Pretty
 import Data.List (partition)
 import Data.Map qualified as Map
 import Data.String
@@ -253,21 +252,6 @@ scanStmt _ = pure ()
 
 genBody :: Body -> TM [YulStmt]
 genBody stmts = concat <$> mapM genStmt stmts
-
-genBinAlts :: Location -> [Alt] -> TM [(YLiteral, [YulStmt])]
-genBinAlts payload [Alt _ lname lbody, Alt _ rname rbody] = do
-  yulLStmts <- withName lname payload lbody
-  yulRStmts <- withName rname payload rbody
-  pure [(YulFalse, yulLStmts), (YulTrue, yulRStmts)]
-  where
-    withName name loc body = withLocalEnv do
-      insertVar name loc
-      genBody body
-genBinAlts _ alts =
-  error
-    ( "genAlts: invalid number of alternatives:\n"
-        ++ unlines (map (render . ppr) alts)
-    )
 
 -- Trim payload to n slots so pattern variables are not mapped to padding.
 trimPayload :: Int -> Location -> Location
