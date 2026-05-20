@@ -20,7 +20,7 @@ import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Solcore.Frontend.Module.Identity qualified as Mod
-import Solcore.Frontend.Parser.SolcoreParser (parseCompUnit)
+import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 import System.Directory (doesFileExist, makeAbsolute)
@@ -124,7 +124,7 @@ visit cfg moduleId sourcePath = do
   unless (alreadyLoaded || loading) do
     modify (\st -> st {loadingModules = Set.insert moduleId (loadingModules st)})
     content <- liftIO (readFile sourcePath)
-    parsed <- liftIO (parseCompUnit content)
+    parsed <- liftIO (parseCompUnitWithPath sourcePath content)
     cunit <- either throwError pure parsed
     importedModules <- mapM (resolveImportPath cfg moduleId) (imports cunit)
     exportedModules <-

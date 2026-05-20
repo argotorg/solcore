@@ -607,9 +607,12 @@ OptSemi : ';'                                      { () }
 {
 
 moduleParser :: [String] -> String -> IO (Either String CompUnit)
-moduleParser _dirs content
+moduleParser _dirs = parseCompUnitWithPath "<input>"
+
+parseCompUnitWithPath :: FilePath -> String -> IO (Either String CompUnit)
+parseCompUnitWithPath sourcePath content
   = do
-      let r = runAlex content parser
+      let r = runAlex content (setSourceName sourcePath >> parser)
       case r of
         Left err -> pure $ Left err
         Right cunit -> pure (Right cunit)

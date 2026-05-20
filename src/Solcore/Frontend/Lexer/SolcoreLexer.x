@@ -4,6 +4,7 @@ module Solcore.Frontend.Lexer.SolcoreLexer where
 
 import Control.Monad
 import Numeric (readHex)
+import Solcore.Diagnostics
 }
 
 
@@ -123,11 +124,12 @@ data AlexUserState
       nestLevel :: Int
     , strStart :: AlexPosn
     , strBuffer :: String
+    , sourceName :: FilePath
     }
 
 alexInitUserState :: AlexUserState
 alexInitUserState
-  = AlexUserState 0 (AlexPn 0 0 0) []
+  = AlexUserState 0 (AlexPn 0 0 0) [] "<input>"
 
 get :: Alex AlexUserState
 get = Alex $ \s -> Right (s, alex_ust s)
@@ -139,6 +141,10 @@ modify :: (AlexUserState -> AlexUserState) -> Alex ()
 modify f
   = Alex $ \s -> Right (s{alex_ust = f (alex_ust s)}, ())
 
+setSourceName :: FilePath -> Alex ()
+setSourceName name =
+  modify $ \s -> s{sourceName = name}
+
 alexEOF :: Alex Token
 alexEOF = do
   (pos, _, _, _) <- alexGetInput
@@ -147,20 +153,71 @@ alexEOF = do
     alexError "Error: unclosed comment"
   when (startCode == state_string) $
     alexError "Error: unclosed string"
-  pure $ Token (position pos) TEOF
-
--- FIXME: Use AlexPosn in the token type to represent the location.
+  file <- sourceName <$> get
+  pure $ mkToken file pos 0 TEOF
 
 position :: AlexPosn -> (Int, Int)
 position (AlexPn _ x y) = (x,y)
 
+sourceSpan :: FilePath -> AlexPosn -> Int -> SourceSpan
+sourceSpan file (AlexPn offset line column) len =
+  SourceSpan
+    { spanFile = file,
+      spanStartByte = offset,
+      spanEndByte = offset + len,
+      spanStartLine = line,
+      spanStartColumn = column,
+      spanEndLine = line,
+      spanEndColumn = column + max 1 len
+    }
+
+sourceSpanBetween :: FilePath -> AlexPosn -> AlexPosn -> Int -> SourceSpan
+sourceSpanBetween file (AlexPn startOffset startLine startColumn) (AlexPn endOffset endLine endColumn) endLen =
+  SourceSpan
+    { spanFile = file,
+      spanStartByte = startOffset,
+      spanEndByte = endOffset + endLen,
+      spanStartLine = startLine,
+      spanStartColumn = startColumn,
+      spanEndLine = endLine,
+      spanEndColumn = endColumn + max 1 endLen
+    }
+
+mkToken :: FilePath -> AlexPosn -> Int -> Lexeme -> Token
+mkToken file st len lx =
+  TokenWithSpan (sourceSpan file st len) (position st) lx
+
+mkTokenWithSpan :: SourceSpan -> Lexeme -> Token
+mkTokenWithSpan span lx =
+  TokenWithSpan span (spanStartLine span, spanStartColumn span) lx
+
 -- token definition
 
 data Token
-  = Token {
-      pos :: (Int, Int)
+  = TokenWithSpan {
+      tokenSpan :: SourceSpan
+    , pos :: (Int, Int)
     , lexeme :: Lexeme
     } deriving (Eq, Ord, Show)
+
+pattern Token :: (Int, Int) -> Lexeme -> Token
+pattern Token p lx <- TokenWithSpan _ p lx
+  where
+    Token p lx = TokenWithSpan (uncurriedSourceSpan p) p lx
+
+{-# COMPLETE Token #-}
+
+uncurriedSourceSpan :: (Int, Int) -> SourceSpan
+uncurriedSourceSpan (line, column) =
+  SourceSpan
+    { spanFile = "<input>",
+      spanStartByte = 0,
+      spanEndByte = 0,
+      spanStartLine = line,
+      spanStartColumn = column,
+      spanEndLine = line,
+      spanEndColumn = column + 1
+    }
 
 data Lexeme
   = TIdent { unIdent :: String }
@@ -240,44 +297,50 @@ data Lexeme
 
 mkIdent :: AlexAction Token
 mkIdent (st, _, _, str) len
-  = case take len str of
-      "match" -> return $ Token (position st) TMatch
-      "data" -> return $ Token (position st) TData
-      "import" -> return $ Token (position st) TImport
-      "export" -> return $ Token (position st) TExport
-      "hiding" -> return $ Token (position st) THiding
-      "as" -> return $ Token (position st) TAs
-      "contract" -> return $ Token (position st) TContract
-      "function" -> return $ Token (position st) TFunction
-      "constructor" -> return $ Token (position st) TConstructor
-      "return" -> return $ Token (position st) TReturn
-      "continue" -> return $ Token (position st) TContinue
-      "break" -> return $ Token (position st) TBreak
-      "let" -> return $ Token (position st) TLet
-      "assembly" -> return $ Token (position st) TAssembly
-      "if" -> return $ Token (position st) TIf
-      "else" -> return $ Token (position st) TElse
-      "switch" -> return $ Token (position st) TSwitch
-      "for" -> return $ Token (position st) TFor
-      "default" -> return $ Token (position st) TDefault
-      "type" -> return $ Token (position st) TType
-      "forall" -> return $ Token (position st) TForall
-      "pragma" -> return $ Token (position st) TPragma
-      "no-coverage-condition" ->
-        return $ Token (position st) TNoCoverageCondition
-      "no-patterson-condition" ->
-        return $ Token (position st) TNoPattersonCondition
-      "no-bounded-variable-condition" ->
-        return $ Token (position st) TNoBoundVariableCondition
-      _ -> return $ Token (position st) (TIdent $ take len str)
+  = do
+      file <- sourceName <$> get
+      pure $ mkToken file st len (lexemeFor (take len str))
+  where
+    lexemeFor str =
+      case str of
+        "match" -> TMatch
+        "data" -> TData
+        "import" -> TImport
+        "export" -> TExport
+        "hiding" -> THiding
+        "as" -> TAs
+        "contract" -> TContract
+        "function" -> TFunction
+        "constructor" -> TConstructor
+        "return" -> TReturn
+        "continue" -> TContinue
+        "break" -> TBreak
+        "let" -> TLet
+        "assembly" -> TAssembly
+        "if" -> TIf
+        "else" -> TElse
+        "switch" -> TSwitch
+        "for" -> TFor
+        "default" -> TDefault
+        "type" -> TType
+        "forall" -> TForall
+        "pragma" -> TPragma
+        "no-coverage-condition" -> TNoCoverageCondition
+        "no-patterson-condition" -> TNoPattersonCondition
+        "no-bounded-variable-condition" -> TNoBoundVariableCondition
+        _ -> TIdent str
 
 mkNumber :: AlexAction Token
 mkNumber (st, _, _, str) len
-  = pure $ Token (position st) (TNumber $ read $ take len str)
+  = do
+      file <- sourceName <$> get
+      pure $ mkToken file st len (TNumber $ read $ take len str)
 
 mkHexlit :: AlexAction Token
 mkHexlit (st, _, _, str) len
-  = pure $ Token (position st) (TNumber $ parseHex $ take len str)
+  = do
+      file <- sourceName <$> get
+      pure $ mkToken file st len (TNumber $ parseHex $ take len str)
 
 parseHex :: String -> Integer
 parseHex str = case readHex (drop 2 str) of
@@ -285,8 +348,10 @@ parseHex str = case readHex (drop 2 str) of
     _         -> error "impossible :)"
 
 simpleToken :: Lexeme -> AlexAction Token
-simpleToken lx (st, _, _, _) _
-  = return $ Token (position st) lx
+simpleToken lx (st, _, _, _) len
+  = do
+      file <- sourceName <$> get
+      return $ mkToken file st len lx
 
 -- string literals
 
@@ -299,12 +364,12 @@ enterString inp@(pos, _, _, _) len
       skip inp len
 
 exitString :: AlexAction Token
-exitString (pos, _, _, _) _
+exitString (pos, _, _, _) len
   = do
       s <- get
       put s{strStart = AlexPn 0 0 0, strBuffer = []}
       let tk = TString $ reverse $ '"' : strBuffer s
-      return $ Token (position pos) tk
+      return $ mkTokenWithSpan (sourceSpanBetween (sourceName s) (strStart s) pos len) tk
 
 emit :: Char -> AlexAction Token
 emit c inp@(_, _, _, _) len = do
