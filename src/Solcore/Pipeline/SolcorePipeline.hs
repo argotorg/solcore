@@ -22,6 +22,7 @@ import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
+import Solcore.Diagnostics (emptySourceMap, legacyDiagnostic, renderDiagnostic)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourcePath, moduleValidationTopDeclSegments)
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -31,7 +32,7 @@ import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcModule
-import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
+import Solcore.Pipeline.Options (Option (..), argumentsParser, diagnosticRenderOptions, noDesugarOpt)
 import System.Directory (makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
 import System.TimeIt qualified as TimeIt
@@ -44,7 +45,7 @@ pipeline = do
   result <- compile opts
   case result of
     Left err -> do
-      putStrLn err
+      putStrLn (renderDiagnostic (diagnosticRenderOptions opts) emptySourceMap (legacyDiagnostic err))
       exitWith (ExitFailure 1)
     Right contracts -> do
       forM_ (zip [(1 :: Int) ..] contracts) $ \(i, c) -> do

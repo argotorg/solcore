@@ -1,6 +1,7 @@
 module Solcore.Pipeline.Options where
 
 import Options.Applicative
+import Solcore.Diagnostics
 
 data Option
   = Option
@@ -25,6 +26,10 @@ data Option
     optDebugSpec :: !Bool,
     optDebugHull :: !Bool,
     optTiming :: !Bool,
+    optDiagnosticColor :: !ColorChoice,
+    optDiagnosticUnicode :: !UnicodeChoice,
+    optDiagnosticWidth :: !Int,
+    optDiagnosticFormat :: !DiagnosticFormat,
     -- Partial evaluation options
     optPEFuel :: !(Maybe Int)
   }
@@ -54,6 +59,10 @@ emptyOption path =
       optDebugSpec = False,
       optDebugHull = False,
       optTiming = False,
+      optDiagnosticColor = diagnosticColor defaultDiagnosticRenderOptions,
+      optDiagnosticUnicode = diagnosticUnicode defaultDiagnosticRenderOptions,
+      optDiagnosticWidth = diagnosticWidth defaultDiagnosticRenderOptions,
+      optDiagnosticFormat = diagnosticFormat defaultDiagnosticRenderOptions,
       -- Partial evaluation options
       optPEFuel = Nothing
     }
@@ -168,6 +177,38 @@ options =
       ( long "timing"
           <> help "Measure time of some phases"
       )
+    <*> option
+      colorChoiceReader
+      ( long "color"
+          <> metavar "auto|always|never"
+          <> value (optDiagnosticColor stdOpt)
+          <> showDefaultWith showColorChoice
+          <> help "Configure diagnostic colors"
+      )
+    <*> option
+      unicodeChoiceReader
+      ( long "unicode"
+          <> metavar "auto|always|never"
+          <> value (optDiagnosticUnicode stdOpt)
+          <> showDefaultWith showUnicodeChoice
+          <> help "Configure diagnostic Unicode output"
+      )
+    <*> option
+      auto
+      ( long "diagnostic-width"
+          <> metavar "N"
+          <> value (optDiagnosticWidth stdOpt)
+          <> showDefault
+          <> help "Set diagnostic output width"
+      )
+    <*> option
+      diagnosticFormatReader
+      ( long "diagnostic-format"
+          <> metavar "human|short"
+          <> value (optDiagnosticFormat stdOpt)
+          <> showDefaultWith showDiagnosticFormat
+          <> help "Configure diagnostic output format"
+      )
     -- Partial evaluation options
     <*> optional
       ( option
@@ -188,3 +229,52 @@ argumentsParser = do
               <> header "Solcore - solidity core language"
           )
   execParser opts
+
+diagnosticRenderOptions :: Option -> DiagnosticRenderOptions
+diagnosticRenderOptions opts =
+  DiagnosticRenderOptions
+    { diagnosticColor = optDiagnosticColor opts,
+      diagnosticUnicode = optDiagnosticUnicode opts,
+      diagnosticWidth = optDiagnosticWidth opts,
+      diagnosticFormat = optDiagnosticFormat opts
+    }
+
+colorChoiceReader :: ReadM ColorChoice
+colorChoiceReader =
+  eitherReader $ \raw ->
+    case raw of
+      "auto" -> Right ColorAuto
+      "always" -> Right ColorAlways
+      "never" -> Right ColorNever
+      _ -> Left "expected one of: auto, always, never"
+
+unicodeChoiceReader :: ReadM UnicodeChoice
+unicodeChoiceReader =
+  eitherReader $ \raw ->
+    case raw of
+      "auto" -> Right UnicodeAuto
+      "always" -> Right UnicodeAlways
+      "never" -> Right UnicodeNever
+      _ -> Left "expected one of: auto, always, never"
+
+diagnosticFormatReader :: ReadM DiagnosticFormat
+diagnosticFormatReader =
+  eitherReader $ \raw ->
+    case raw of
+      "human" -> Right DiagnosticHuman
+      "short" -> Right DiagnosticShort
+      _ -> Left "expected one of: human, short"
+
+showColorChoice :: ColorChoice -> String
+showColorChoice ColorAuto = "auto"
+showColorChoice ColorAlways = "always"
+showColorChoice ColorNever = "never"
+
+showUnicodeChoice :: UnicodeChoice -> String
+showUnicodeChoice UnicodeAuto = "auto"
+showUnicodeChoice UnicodeAlways = "always"
+showUnicodeChoice UnicodeNever = "never"
+
+showDiagnosticFormat :: DiagnosticFormat -> String
+showDiagnosticFormat DiagnosticHuman = "human"
+showDiagnosticFormat DiagnosticShort = "short"
