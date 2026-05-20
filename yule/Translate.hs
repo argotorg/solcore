@@ -37,9 +37,9 @@ genExpr (EInl (TSum _ r) e) = do
   (stmts, loc) <- genExpr e
   let loc' = loc `padToSize` sizeOf r
   pure (stmts, LocSeq [LocBool False, loc'])
-genExpr (EInr (TSum _ r) e) = do
+genExpr (EInr (TSum l r) e) = do
   (stmts, loc) <- genExpr e
-  let loc' = loc `paddedTo` r
+  let loc' = loc `padToSize` max (sizeOf l) (sizeOf r)
   pure (stmts, LocSeq [LocBool True, loc'])
 genExpr (EInl (TNamed _ t) e) = genExpr (EInl t e)
 genExpr (EInr (TNamed _ t) e) = genExpr (EInr t e)
@@ -262,6 +262,7 @@ trimPayload _ loc = loc
 conPayload :: Type -> Con -> Location -> Location
 conPayload (TSum l _) CInl payload = trimPayload (sizeOf l) payload
 conPayload (TSum _ r) CInr payload = trimPayload (sizeOf r) payload
+conPayload (TSumN ts) (CInK k) payload = trimPayload (sizeOf (ts !! k)) payload
 conPayload (TNamed _ t) con payload = conPayload t con payload
 conPayload _ _ payload = payload
 
