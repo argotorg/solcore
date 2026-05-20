@@ -22,9 +22,9 @@ import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
-import Solcore.Diagnostics (emptySourceMap, legacyDiagnostic, renderDiagnostic)
+import Solcore.Diagnostics (Diagnostic, SourceMap, diagnosticMessage, emptySourceMap, legacyDiagnostic, renderDiagnostics)
 import Solcore.Frontend.Module.Identity qualified as Mod
-import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourcePath, moduleValidationTopDeclSegments)
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourceMap, moduleSourcePath, moduleValidationTopDeclSegments)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.NameResolution
@@ -42,10 +42,10 @@ pipeline :: IO ()
 pipeline = do
   _startTime <- Time.getCurrentTime
   opts <- argumentsParser
-  result <- compile opts
+  result <- compileWithDiagnostics opts
   case result of
     Left err -> do
-      putStrLn (renderDiagnostic (diagnosticRenderOptions opts) emptySourceMap (legacyDiagnostic err))
+      putStrLn (renderCompileDiagnostics opts err)
       exitWith (ExitFailure 1)
     Right contracts -> do
       forM_ (zip [(1 :: Int) ..] contracts) $ \(i, c) -> do
@@ -53,9 +53,20 @@ pipeline = do
         putStrLn ("Writing to " ++ filename)
         writeFile filename (show c)
 
+data CompileDiagnostics
+  = CompileDiagnostics
+  { compileDiagnosticSources :: SourceMap,
+    compileDiagnosticMessages :: [Diagnostic]
+  }
+  deriving (Eq, Show)
+
 -- Version that returns Either for testing
 compile :: Option -> IO (Either String [Hull.Object])
-compile opts = runExceptT $ do
+compile opts =
+  first compileDiagnosticsText <$> compileWithDiagnostics opts
+
+compileWithDiagnostics :: Option -> IO (Either CompileDiagnostics [Hull.Object])
+compileWithDiagnostics opts = runExceptT $ do
   let verbose = optVerbose opts
       noMatchCompiler = optNoMatchCompiler opts
       noIfDesugar = optNoIfDesugar opts
@@ -63,34 +74,39 @@ compile opts = runExceptT $ do
       timeItNamed = optTimeItNamed opts
       file = fileName opts
   mainRoot <- liftIO $ makeAbsolute (optRootDir opts)
-  stdRoot <- ExceptT $ pure (parseStdRoot (optImportDirs opts))
-  externalLibs <- ExceptT $ pure (parseExternalLibSpecs (optExternalLibs opts))
+  stdRoot <- liftEitherDiagnostic emptySourceMap (parseStdRoot (optImportDirs opts))
+  externalLibs <- liftEitherDiagnostic emptySourceMap (parseExternalLibSpecs (optExternalLibs opts))
 
   -- Parsing and import loading
-  graph <- ExceptT $ loadModuleGraph mainRoot stdRoot externalLibs file
+  graph <- liftEitherDiagnosticIO emptySourceMap (loadModuleGraph mainRoot stdRoot externalLibs file)
+  let sources = moduleSourceMap graph
 
   -- Validate each module against only its own direct imports.
   forM_ (moduleOrder graph) $ \moduleId -> do
-    sourcePath <- ExceptT $ pure (moduleSourcePath graph moduleId)
+    sourcePath <- liftEitherDiagnostic sources (moduleSourcePath graph moduleId)
     (validationImports, validationSegments) <-
-      ExceptT $
-        pure (moduleValidationTopDeclSegments graph moduleId)
+      liftEitherDiagnostic sources (moduleValidationTopDeclSegments graph moduleId)
     _ <-
-      ExceptT $
-        pure $
-          first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e) $
+      liftEitherDiagnostic
+        sources
+        ( first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e) $
             validateDuplicateNamespacesInTopDeclSegments validationSegments
+        )
     _ <-
-      ExceptT $
-        first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e)
-          <$> nameResolutionTopDeclSegments validationImports validationSegments
+      liftEitherDiagnosticIO
+        sources
+        ( first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e)
+            <$> nameResolutionTopDeclSegments validationImports validationSegments
+        )
     pure ()
 
   checkedModules <-
-    ExceptT $
-      timeItNamed "Typecheck modules" $
-        runExceptT (typeCheckLoadedModules opts graph)
-  checkedAssembly <- ExceptT $ pure (assembleCheckedModules graph checkedModules)
+    liftEitherDiagnosticIO
+      sources
+      ( timeItNamed "Typecheck modules" $
+          runExceptT (typeCheckLoadedModules opts graph)
+      )
+  checkedAssembly <- liftEitherDiagnostic sources (assembleCheckedModules graph checkedModules)
   let typed = checkedAssemblyCompUnit checkedAssembly
       tcEnv = checkedAssemblyEnv checkedAssembly
 
@@ -110,7 +126,7 @@ compile opts = runExceptT $ do
     if noMatchCompiler
       then pure desugared
       else do
-        (ast, warns) <- ExceptT $ timeItNamed "Match compiler" $ matchCompiler desugared
+        (ast, warns) <- liftEitherDiagnosticIO sources (timeItNamed "Match compiler" $ matchCompiler desugared)
         when (verbose && not (null warns)) $ liftIO $ mapM_ (putStrLn . showWarning) warns
         pure ast
 
@@ -160,6 +176,32 @@ compile opts = runExceptT $ do
         forM_ hull (putStrLn . pretty)
 
       pure hull
+
+renderCompileDiagnostics :: Option -> CompileDiagnostics -> String
+renderCompileDiagnostics opts diagnostics =
+  renderDiagnostics
+    (diagnosticRenderOptions opts)
+    (compileDiagnosticSources diagnostics)
+    (compileDiagnosticMessages diagnostics)
+
+compileDiagnosticsText :: CompileDiagnostics -> String
+compileDiagnosticsText =
+  unlines . map diagnosticMessage . compileDiagnosticMessages
+
+liftEitherDiagnostic :: SourceMap -> Either String a -> ExceptT CompileDiagnostics IO a
+liftEitherDiagnostic sources =
+  ExceptT . pure . first (compileDiagnosticError sources)
+
+liftEitherDiagnosticIO :: SourceMap -> IO (Either String a) -> ExceptT CompileDiagnostics IO a
+liftEitherDiagnosticIO sources action =
+  ExceptT (first (compileDiagnosticError sources) <$> action)
+
+compileDiagnosticError :: SourceMap -> String -> CompileDiagnostics
+compileDiagnosticError sources err =
+  CompileDiagnostics
+    { compileDiagnosticSources = sources,
+      compileDiagnosticMessages = [legacyDiagnostic err]
+    }
 
 typeCheckLoadedModules :: Option -> ModuleGraph -> ExceptT String IO (Map Mod.ModuleId CheckedModule)
 typeCheckLoadedModules opts graph =

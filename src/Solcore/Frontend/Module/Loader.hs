@@ -3,6 +3,7 @@ module Solcore.Frontend.Module.Loader
     LoadedModule (..),
     ModuleTypeCheckSurface (..),
     loadModuleGraph,
+    moduleSourceMap,
     moduleValidationTopDeclSegments,
     moduleSourcePath,
     moduleLocalTypeCheckSurface,
@@ -19,7 +20,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Solcore.Diagnostics (SourceFile, makeSourceFile)
+import Solcore.Diagnostics (SourceFile, SourceMap, makeSourceFile, sourceMapFromFiles)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
 import Solcore.Frontend.Syntax.Name
@@ -344,6 +345,10 @@ moduleSourcePath graph modulePath =
     (Left ("Internal error: module not loaded: " ++ Mod.moduleIdDisplay modulePath))
     (Right . loadedSourcePath)
     (Map.lookup modulePath (modules graph))
+
+moduleSourceMap :: ModuleGraph -> SourceMap
+moduleSourceMap graph =
+  sourceMapFromFiles (map loadedSource (Map.elems (modules graph)))
 
 moduleImportPairsFor :: ModuleGraph -> Mod.ModuleId -> CompUnit -> [(Import, Mod.ModuleId)]
 moduleImportPairsFor graph modulePath unit =
