@@ -43,6 +43,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Traversable (mapAccumM)
 import Data.Word (Word8)
 import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
 import Solcore.Backend.Mast
@@ -262,7 +263,11 @@ evalStmt tyReg env stmt = case stmt of
   MastMatch e alts -> do
     e' <- evalExp env e
     alts' <- mapM (evalAlt tyReg env) alts
-    pure (env, [MastMatch e' alts'])
+    -- Any variable assigned in any alt may be updated; remove from env
+    -- so downstream code doesn't see the pre-match value.
+    let mutated = foldMap (assignedInStmts . snd) alts
+        env' = foldr Map.delete env (Set.toList mutated)
+    pure (env', [MastMatch e' alts'])
   MastAsm yul -> do
     -- Substitute known comptime values into the block first.  This is necessary
     -- because comptime lets with known values are eliminated from the statement
@@ -279,6 +284,61 @@ evalStmt tyReg env stmt = case stmt of
         pure (mergeYulStateToVEnv tyReg yulState' env, [MastAsm yul'])
       Nothing ->
         pure (Map.empty, [MastAsm yul'])
+  MastFor initStmt cond post body -> do
+    -- Evaluate loop parts for local simplification, but do not propagate
+    -- value bindings across the loop boundary.
+    -- Remove any variables assigned in the loop from the environment to
+    -- prevent stale pre-loop values from being constant-propagated into
+    -- the loop body (e.g. `s := 0` before the loop must not replace `s`
+    -- inside the body where `s` is being updated).
+    let assigned =
+          assignedInStmt initStmt
+            `Set.union` assignedInStmt post
+            `Set.union` foldMap assignedInStmt body
+        loopEnv = foldr Map.delete env (Set.toList assigned)
+    (_, initStmt') <- evalLoopStmt loopEnv initStmt
+    cond' <- evalExp loopEnv cond
+    (_, post') <- evalLoopStmt loopEnv post
+    (_, bodies') <- mapAccumM evalLoopStmt loopEnv body
+    pure (Map.empty, [MastFor initStmt' cond' post' bodies'])
+
+-- Evaluate a statement while preserving statement shape.
+-- Used for nested contexts like MastFor where we cannot drop statements.
+evalLoopStmt :: VEnv -> MastStmt -> EvalM (VEnv, MastStmt)
+evalLoopStmt env st = case st of
+  MastLet ct i ty mInit -> do
+    mInit' <- traverse (evalExp env) mInit
+    let env' = case mInit' of
+          Just e | isKnownValue e -> Map.insert i e env
+          _ -> Map.delete i env
+    pure (env', MastLet ct i ty mInit')
+  MastAssign i e -> do
+    e' <- evalExp env e
+    let env' =
+          if isKnownValue e'
+            then Map.insert i e' env
+            else Map.delete i env
+    pure (env', MastAssign i e')
+  MastStmtExp e -> do
+    e' <- evalExp env e
+    pure (env, MastStmtExp e')
+  MastReturn e -> do
+    e' <- evalExp env e
+    pure (env, MastReturn e')
+  MastMatch e alts -> do
+    e' <- evalExp env e
+    -- No tyReg in loop context; asm in loop bodies is treated as opaque.
+    alts' <- mapM (evalAlt Map.empty env) alts
+    let mutated = foldMap (assignedInStmts . snd) alts
+        env' = foldr Map.delete env (Set.toList mutated)
+    pure (env', MastMatch e' alts')
+  MastFor initStmt cond post body -> do
+    (_, initStmt') <- evalLoopStmt env initStmt
+    cond' <- evalExp env cond
+    (_, post') <- evalLoopStmt env post
+    bodies' <- mapM (fmap snd . evalLoopStmt env) body
+    pure (Map.empty, MastFor initStmt' cond' post' bodies')
+  MastAsm yul -> pure (Map.empty, MastAsm yul)
 
 evalAlt :: TypeReg -> VEnv -> MastAlt -> EvalM MastAlt
 evalAlt tyReg env (pat, body) = do
@@ -297,6 +357,20 @@ evalPat env (MastPExp e) = do
     MastLit l -> pure (MastPLit l)
     _ -> error $ "comptime expression in match label could not be evaluated to a literal: " ++ show e'
 evalPat _ pat = pure pat
+
+-- Collect variables assigned (via MastAssign) in a list of statements.
+-- Recurses into nested match arms. Used to invalidate env entries after a match.
+assignedInStmts :: [MastStmt] -> Set.Set MastId
+assignedInStmts = foldMap assignedInStmt
+
+assignedInStmt :: MastStmt -> Set.Set MastId
+assignedInStmt (MastAssign i _) = Set.singleton i
+assignedInStmt (MastMatch _ alts) = foldMap (assignedInStmts . snd) alts
+assignedInStmt (MastFor initStmt _ post body) =
+  assignedInStmt initStmt
+    `Set.union` assignedInStmt post
+    `Set.union` foldMap assignedInStmt body
+assignedInStmt _ = Set.empty
 
 -----------------------------------------------------------------------
 -- Evaluate expressions
@@ -625,6 +699,7 @@ evalFunBody tyReg env (stmt : rest) = case stmt of
     case matchAlts env scrut' alts' of
       Just (env', body) -> evalFunBody tyReg env' body
       Nothing -> pure Nothing -- Scrutinee not known, can't select branch
+  MastFor {} -> pure Nothing -- Loop execution cannot be folded safely here
   MastAsm yul -> do
     -- Try to interpret the asm block statically.
     -- If successful, update env and continue inlining; otherwise give up.
@@ -771,6 +846,11 @@ stmtIsPure pureFuns (MastStmtExp e) = expIsPure pureFuns e
 stmtIsPure pureFuns (MastReturn e) = expIsPure pureFuns e
 stmtIsPure pureFuns (MastMatch e alts) =
   expIsPure pureFuns e && all (bodyIsPure pureFuns . snd) alts
+stmtIsPure pureFuns (MastFor initStmt cond post body) =
+  stmtIsPure pureFuns initStmt
+    && expIsPure pureFuns cond
+    && stmtIsPure pureFuns post
+    && bodyIsPure pureFuns body
 
 expIsPure :: Set.Set Name -> MastExp -> Bool
 expIsPure _ (MastLit _) = True
@@ -897,6 +977,13 @@ callsInStmt (MastStmtExp e) = callsInExp e
 callsInStmt (MastReturn e) = callsInExp e
 callsInStmt (MastMatch e alts) =
   Set.union (callsInExp e) (Set.unions [Set.unions (map callsInStmt body) | (_, body) <- alts])
+callsInStmt (MastFor initStmt cond post body) =
+  Set.unions
+    [ callsInStmt initStmt,
+      callsInExp cond,
+      callsInStmt post,
+      Set.unions (map callsInStmt body)
+    ]
 callsInStmt (MastAsm _) = Set.empty
 
 callsInExp :: MastExp -> Set.Set Name

@@ -1,0 +1,10 @@
+import std.{lt,Ord,Add,Sub,Bounded,Num,Eq,Typedef};
+contract ForInner {
+  function main() -> word {
+      let result = 0;
+      for (let height = 0; height < 7; height = height + 1) {
+	      if (true) { result = height;  } else {}
+	  }
+      return result;
+  }
+}

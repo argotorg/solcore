@@ -1,6 +1,6 @@
 data Nat = Zero | Succ(Nat) ;
 
-function foo (x, y) {
+function foo (x : Nat, y : Nat) -> word {
   match y, x {
   | y1, Nat.Zero => return 1 ;
   | Nat.Zero, Nat.Succ(x2) => return 2;

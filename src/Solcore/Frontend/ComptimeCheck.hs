@@ -152,6 +152,11 @@ checkStmt st retCt ctx env stmt = case stmt of
     checkBody st retCt ctx env t
     checkBody st retCt ctx env f
     return env
+  For initStmt _ postStmt body -> do
+    checkStmt st retCt ctx env initStmt
+    checkBody st retCt ctx env body
+    checkStmt st retCt ctx env postStmt
+    return env
   Asm _ -> return env
   Block body -> checkBody st retCt ctx env body >> return env
 

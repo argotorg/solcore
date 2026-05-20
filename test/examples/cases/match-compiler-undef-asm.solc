@@ -1,6 +1,6 @@
 data Foo(a) = Foo(word);
 
-function read(x) {
+forall a . function read(x : Foo(a)) -> word {
   let res : word;
   match (x) {
   | Foo(w) =>

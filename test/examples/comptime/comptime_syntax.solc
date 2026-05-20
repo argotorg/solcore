@@ -9,7 +9,7 @@ contract ComptimeSyntax {
     return y;
   }
 
-  function main() {
+  function main() -> word {
     return g();
   }
 }

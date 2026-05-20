@@ -93,6 +93,12 @@ checkStmt ft pure_ retCt fname env stmt = case stmt of
     checkExp ft pure_ env scrut
     mapM_ (checkAlt ft pure_ retCt fname env) alts
     return env
+  MastFor initStmt cond postStmt body -> do
+    checkStmt ft pure_ retCt fname env initStmt
+    checkExp ft pure_ env cond
+    checkStmt ft pure_ retCt fname env postStmt
+    mapM_ (checkStmt ft pure_ retCt fname env) body
+    return env
   MastAsm _ ->
     return env
 
