@@ -126,28 +126,30 @@ transformConstructor contractName cons
     contractString = show contractName
     yulContractName = YLit $ YulString contractString
     deployer = YLit $ YulString $ contractString <> "Deploy"
-    copyBody =
-      [ Let False "res" (Just argsTuple) Nothing,
-        Let False "memoryDataOffset" (Just word) Nothing,
-        Asm
-          [yulBlock|{
-             let programSize := datasize(`deployer`)
-             let argSize := sub(codesize(), programSize)
-             memoryDataOffset := mload(64)
-             mstore(64, add(memoryDataOffset, argSize))
-             codecopy(memoryDataOffset, programSize, argSize)
-          }|],
-        Let False "source" (Just (memoryT bytesT)) (Just (memoryE (Var "memoryDataOffset"))),
-        Var "res"
-          := Call
-            Nothing
-            "abi_decode"
-            [ Var "source",
-              proxyExp argsTuple,
-              proxyExp (TyCon "MemoryWordReader" [])
-            ],
-        Return (Var "res")
-      ]
+    copyBody
+      | null params = [Return (Con "()" [])]
+      | otherwise =
+          [ Let False "res" (Just argsTuple) Nothing,
+            Let False "memoryDataOffset" (Just word) Nothing,
+            Asm
+              [yulBlock|{
+                 let programSize := datasize(`deployer`)
+                 let argSize := sub(codesize(), programSize)
+                 memoryDataOffset := mload(64)
+                 mstore(64, add(memoryDataOffset, argSize))
+                 codecopy(memoryDataOffset, programSize, argSize)
+              }|],
+            Let False "source" (Just (memoryT bytesT)) (Just (memoryE (Var "memoryDataOffset"))),
+            Var "res"
+              := Call
+                Nothing
+                "abi_decode"
+                [ Var "source",
+                  proxyExp argsTuple,
+                  proxyExp (TyCon "MemoryWordReader" [])
+                ],
+            Return (Var "res")
+          ]
     memoryT t = TyCon "memory" [t]
     memoryE e = Con "memory" [e]
     bytesT = TyCon "bytes" []
