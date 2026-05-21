@@ -8,6 +8,7 @@ import Control.Monad.State
 import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Solcore.Diagnostics (Diagnostic (..), decodeDiagnostic, encodeDiagnostic)
 import Solcore.Frontend.Pretty.TreePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts, decls)
 import Solcore.Frontend.Syntax.Name
@@ -1009,7 +1010,14 @@ wrapError m e =
   catchError m handler
   where
     handler msg = throwError (decorate msg)
-    decorate msg = msg ++ "\n - in:" ++ pretty e
+    decorate msg =
+      case decodeDiagnostic msg of
+        Just diagnostic ->
+          encodeDiagnostic
+            diagnostic
+              { diagnosticNotes = diagnosticNotes diagnostic ++ ["in: " ++ pretty e]
+              }
+        Nothing -> msg ++ "\n - in:" ++ pretty e
 
 addContractName :: Name -> ResolveM ()
 addContractName n =
