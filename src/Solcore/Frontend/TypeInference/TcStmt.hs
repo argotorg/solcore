@@ -1225,7 +1225,7 @@ fullSignature :: Signature Name -> TcM ()
 fullSignature sig =
   unless
     (isFullyAnnotated sig)
-    (throwError $ unlines ["Instance methods must have complete type signatures:", pretty sig])
+    (throwError $ unlines ["Top-level functions must have complete type signatures:", pretty sig])
 
 requireAnnotations :: FunDef Name -> TcM ()
 requireAnnotations (FunDef sig _) =

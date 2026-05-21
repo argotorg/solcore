@@ -94,7 +94,7 @@ forall name payability args rets fn
 
 // Describes how to execute a given method / fallback
 forall ty . class ty:ExecMethod {
-  function exec(x: ty);
+  function exec(x: ty) -> ();
 }
 
 // If fn matches the provided args/ret types, then we can execute any method
@@ -229,7 +229,7 @@ data Payable;
 data NonPayable;
 
 forall ty . class ty:MethodLevelCallvalueCheck {
-    function checkCallvalue(pty : Proxy(ty));
+    function checkCallvalue(pty : Proxy(ty)) -> ();
 }
 
 // no callvalue check for Payable methods
