@@ -2041,16 +2041,14 @@ function zeroize_memory(ptr: word, len: word) -> () {
     assembly {
         let end_ptr := add(ptr, len)
 
-        // Zero out 32-byte words
+        // Zero out 32-byte words.
         let words := div(len, 32)
         for { let i := 0 } lt(i, words) { i := add(i, 1) } {
             mstore(ptr, 0)
             ptr := add(ptr, 32)
         }
 
-        // Zero out trailing bytes
-        for { } lt(ptr, end_ptr) { ptr := add(ptr, 1) } {
-            mstore8(ptr, 0)
-        }
+        // Zero out trailing bytes. We rely on the zero-slot (0x60-0x7f).
+        mcopy(ptr, 0x60, sub(end_ptr, ptr))
     }
 }
