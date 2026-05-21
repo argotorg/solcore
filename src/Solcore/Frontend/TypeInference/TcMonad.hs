@@ -8,7 +8,7 @@ import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
 import Data.Set qualified as Set
-import Solcore.Diagnostics (Diagnostic (..), decodeDiagnostic, encodeDiagnostic)
+import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Severity (..), decodeDiagnostic, encodeDiagnostic)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -680,43 +680,45 @@ tcmError s = do
 
 undefinedName :: Name -> TcM a
 undefinedName n =
-  throwError $ unwords ["Undefined name:", pretty n]
+  tcDiagnosticError
+    "SC0202"
+    ("undefined name: " ++ pretty n)
+    []
+    []
 
 undefinedType :: Name -> TcM a
 undefinedType n =
   do
     s <- (unlines . reverse) <$> gets logs
-    throwError $ unwords ["Undefined type:", pretty n, "\n", s]
+    tcDiagnosticError
+      "SC0203"
+      ("undefined type: " ++ pretty n)
+      (if null s then [] else [s])
+      []
 
 undefinedField :: Name -> Name -> TcM a
 undefinedField n n' =
-  throwError $
-    unlines
-      [ "Undefined field:",
-        pretty n,
-        "in type:",
-        pretty n'
-      ]
+  tcDiagnosticError
+    "SC0204"
+    ("undefined field: " ++ pretty n)
+    ["in type: " ++ pretty n']
+    []
 
 undefinedConstr :: Name -> Name -> TcM a
 undefinedConstr tn cn =
-  throwError $
-    unlines
-      [ "Undefined constructor:",
-        pretty cn,
-        "in type:",
-        pretty tn
-      ]
+  tcDiagnosticError
+    "SC0205"
+    ("undefined constructor: " ++ pretty cn)
+    ["in type: " ++ pretty tn]
+    []
 
 undefinedFunction :: Name -> Name -> TcM a
 undefinedFunction t n =
-  throwError $
-    unlines
-      [ "The type:",
-        pretty t,
-        "does not define function:",
-        pretty n
-      ]
+  tcDiagnosticError
+    "SC0206"
+    ("undefined function: " ++ pretty n)
+    ["type " ++ pretty t ++ " does not define this function"]
+    []
 
 typeNotPolymorphicEnough :: Signature Name -> Scheme -> Scheme -> TcM a
 typeNotPolymorphicEnough sig sch1 sch2 =
@@ -732,11 +734,32 @@ typeNotPolymorphicEnough sig sch1 sch2 =
 
 undefinedClass :: Name -> TcM a
 undefinedClass n =
-  throwError $ unlines ["Undefined class:", pretty n]
+  tcDiagnosticError
+    "SC0207"
+    ("undefined class: " ++ pretty n)
+    []
+    []
 
 undefinedSynonym :: Name -> TcM a
 undefinedSynonym n =
-  throwError $ unwords ["Undefined type synonym:", pretty n]
+  tcDiagnosticError
+    "SC0208"
+    ("undefined type synonym: " ++ pretty n)
+    []
+    []
+
+tcDiagnosticError :: String -> String -> [String] -> [String] -> TcM a
+tcDiagnosticError code message notes help =
+  throwError $
+    encodeDiagnostic
+      Diagnostic
+        { diagnosticSeverity = Error,
+          diagnosticCode = Just (DiagnosticCode code),
+          diagnosticMessage = message,
+          diagnosticLabels = [],
+          diagnosticNotes = notes,
+          diagnosticHelp = help
+        }
 
 typeAlreadyDefinedError :: DataTy -> Name -> TcM a
 typeAlreadyDefinedError d n =
