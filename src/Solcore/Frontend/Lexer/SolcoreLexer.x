@@ -31,7 +31,7 @@ tokens :-
         <0>    $white+                           ;
         <0>    "//" .*                           ;
         <0>   "/*"                               {nestComment `andBegin` state_comment}
-        <0>   "*/"                               {\ _ _ -> alexError "Error: unexpected close comment!"}
+        <0>   "*/"                               {unexpectedCloseComment}
         <state_comment> "/*"                     {nestComment}
         <state_comment> "*/"                     {unnestComment}
         <state_comment> .                        ;
@@ -149,12 +149,15 @@ alexEOF :: Alex Token
 alexEOF = do
   (pos, _, _, _) <- alexGetInput
   startCode <- alexGetStartCode
+  state <- get
   when (startCode == state_comment) $
-    alexError "Error: unclosed comment"
+    lexerErrorAt pos 1 "unclosed comment" "comment is not closed"
   when (startCode == state_string) $
-    alexError "Error: unclosed string"
-  file <- sourceName <$> get
-  pure $ mkToken file pos 0 TEOF
+    lexerErrorWithSpan
+      (sourceSpanBetween (sourceName state) (strStart state) pos 0)
+      "unclosed string"
+      "string literal is not closed"
+  pure $ mkToken (sourceName state) pos 0 TEOF
 
 position :: AlexPosn -> (Int, Int)
 position (AlexPn _ x y) = (x,y)
@@ -190,6 +193,31 @@ mkToken file st len lx =
 mkTokenWithSpan :: SourceSpan -> Lexeme -> Token
 mkTokenWithSpan span lx =
   TokenWithSpan span (spanStartLine span, spanStartColumn span) lx
+
+lexerErrorAt :: AlexPosn -> Int -> String -> String -> Alex a
+lexerErrorAt pos len message label =
+  do
+    file <- sourceName <$> get
+    lexerErrorWithSpan (sourceSpan file pos len) message label
+
+lexerErrorWithSpan :: SourceSpan -> String -> String -> Alex a
+lexerErrorWithSpan span message label =
+  alexError $
+    encodeDiagnostic
+      Diagnostic
+        { diagnosticSeverity = Error,
+          diagnosticCode = Just (DiagnosticCode "SC0000"),
+          diagnosticMessage = message,
+          diagnosticLabels =
+            [ Label
+                { labelSpan = span,
+                  labelStyle = Primary,
+                  labelMessage = Just label
+                }
+            ],
+          diagnosticNotes = [],
+          diagnosticHelp = []
+        }
 
 -- token definition
 
@@ -352,6 +380,10 @@ simpleToken lx (st, _, _, _) len
   = do
       file <- sourceName <$> get
       return $ mkToken file st len lx
+
+unexpectedCloseComment :: AlexAction Token
+unexpectedCloseComment (st, _, _, _) len =
+  lexerErrorAt st len "unexpected close comment" "this close comment has no matching open comment"
 
 -- string literals
 
