@@ -5,7 +5,7 @@ pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
 
-// caller(), myrevert(), require() are not in the std library yet,
+// caller() is not in the std library yet,
 // so every contract must define its own
 
 // returns uint256 instead of address because the dispatch system
@@ -16,14 +16,6 @@ function caller() -> uint256 {
      res := caller()
   }
   return uint256(res);
-}
-
-function myrevert(msg: word) -> () {
-  assembly { mstore(0, msg) revert(0, 32) }
-}
-
-function myrequire(cond: bool, msg: word) -> () {
-  if (!cond) { myrevert(msg); }
 }
 
 contract Ownable {
@@ -40,7 +32,7 @@ contract Ownable {
   }
 
   function changeOwner(newOwner : uint256) -> () {
-    myrequire(caller() == owner, 0x6e6f74206f776e6572);
+    require(caller() == owner, Error(0x12b0c500)); // OwnableUnauthorizedAccount()
     owner = newOwner;
   }
 }
