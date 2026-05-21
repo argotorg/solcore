@@ -22,7 +22,20 @@ import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
-import Solcore.Diagnostics (Diagnostic, SourceMap, diagnosticMessage, emptySourceMap, legacyDiagnostic, renderDiagnostics)
+import Solcore.Diagnostics
+  ( Diagnostic,
+    SourceMap,
+    decodeDiagnostic,
+    diagnosticMessage,
+    diagnosticPrimarySpan,
+    emptySourceMap,
+    insertSourceFile,
+    legacyDiagnostic,
+    lookupSourceFile,
+    makeSourceFile,
+    renderDiagnostics,
+    spanFile,
+  )
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourceMap, moduleSourcePath, moduleValidationTopDeclSegments)
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -33,7 +46,7 @@ import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcModule
 import Solcore.Pipeline.Options (Option (..), argumentsParser, diagnosticRenderOptions, noDesugarOpt)
-import System.Directory (makeAbsolute)
+import System.Directory (doesFileExist, makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
 import System.TimeIt qualified as TimeIt
 
@@ -194,14 +207,53 @@ liftEitherDiagnostic sources =
 
 liftEitherDiagnosticIO :: SourceMap -> IO (Either String a) -> ExceptT CompileDiagnostics IO a
 liftEitherDiagnosticIO sources action =
-  ExceptT (first (compileDiagnosticError sources) <$> action)
+  ExceptT $ do
+    result <- action
+    case result of
+      Left err -> Left <$> compileDiagnosticErrorIO sources err
+      Right value -> pure (Right value)
 
 compileDiagnosticError :: SourceMap -> String -> CompileDiagnostics
 compileDiagnosticError sources err =
   CompileDiagnostics
     { compileDiagnosticSources = sources,
-      compileDiagnosticMessages = [legacyDiagnostic err]
+      compileDiagnosticMessages = diagnosticsFromError err
     }
+
+compileDiagnosticErrorIO :: SourceMap -> String -> IO CompileDiagnostics
+compileDiagnosticErrorIO sources err = do
+  let diagnostics = diagnosticsFromError err
+  sources' <- ensureDiagnosticSources sources diagnostics
+  pure
+    CompileDiagnostics
+      { compileDiagnosticSources = sources',
+        compileDiagnosticMessages = diagnostics
+      }
+
+diagnosticsFromError :: String -> [Diagnostic]
+diagnosticsFromError err =
+  case decodeDiagnostic err of
+    Just diagnostic -> [diagnostic]
+    Nothing -> [legacyDiagnostic err]
+
+ensureDiagnosticSources :: SourceMap -> [Diagnostic] -> IO SourceMap
+ensureDiagnosticSources =
+  foldM ensureDiagnosticSource
+
+ensureDiagnosticSource :: SourceMap -> Diagnostic -> IO SourceMap
+ensureDiagnosticSource sources diagnostic =
+  case diagnosticPrimarySpan diagnostic of
+    Nothing -> pure sources
+    Just sourceSpan
+      | null (spanFile sourceSpan) -> pure sources
+      | Just _ <- lookupSourceFile (spanFile sourceSpan) sources -> pure sources
+      | otherwise -> do
+          exists <- doesFileExist (spanFile sourceSpan)
+          if exists
+            then do
+              content <- readFile (spanFile sourceSpan)
+              pure (insertSourceFile (makeSourceFile (spanFile sourceSpan) content) sources)
+            else pure sources
 
 typeCheckLoadedModules :: Option -> ModuleGraph -> ExceptT String IO (Map Mod.ModuleId CheckedModule)
 typeCheckLoadedModules opts graph =

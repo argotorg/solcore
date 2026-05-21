@@ -8,6 +8,7 @@ import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 import Solcore.Primitives.Primitives hiding (pairTy)
 import Language.Yul
+import Solcore.Diagnostics
 
 }
 
@@ -653,9 +654,31 @@ tupleExp (t1 : ts) = pairExp t1 (tupleExp ts)
 rmquotes :: String -> String
 rmquotes = read
 
-parseError (Token (line, col) lexeme)
-  = alexError $ "Parse error while processing lexeme: " ++ show lexeme
-                ++ "\n at line " ++ show line ++ ", column " ++ show col
+parseError token@(Token _ lexeme)
+  = alexError $
+      encodeDiagnostic
+        Diagnostic
+          { diagnosticSeverity = Error,
+            diagnosticCode = Just (DiagnosticCode "SC0001"),
+            diagnosticMessage = "parse error: unexpected " ++ lexemeDescription lexeme,
+            diagnosticLabels =
+              [ Label
+                  { labelSpan = tokenSpan token,
+                    labelStyle = Primary,
+                    labelMessage = Just (labelDescription lexeme)
+                  }
+              ],
+            diagnosticNotes = [],
+            diagnosticHelp = []
+          }
+
+lexemeDescription :: Lexeme -> String
+lexemeDescription TEOF = "end of file"
+lexemeDescription lexeme = show lexeme
+
+labelDescription :: Lexeme -> String
+labelDescription TEOF = "expected more input"
+labelDescription _ = "unexpected token"
 
 lexer :: (Token -> Alex a) -> Alex a
 lexer = (=<< alexMonadScan)
