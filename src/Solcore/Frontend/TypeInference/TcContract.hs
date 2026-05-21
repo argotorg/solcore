@@ -22,33 +22,30 @@ import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options
 import Solcore.Primitives.Primitives
 
-typeInfer ::
-  Option ->
-  CompUnit Name ->
-  IO (Either String (CompUnit Id, TcEnv))
-typeInfer opts =
-  typeInferWithTrustedInstanceHeadsAndPartialTypes opts [] [] []
+data TopDeclCheckMode
+  = CheckTopDeclBody
+  | TrustTopDeclBody
+  deriving (Eq, Show)
 
-typeInferWithTrustedInstanceHeads ::
-  Option ->
-  [InstanceHead] ->
-  CompUnit Name ->
-  IO (Either String (CompUnit Id, TcEnv))
-typeInferWithTrustedInstanceHeads opts trustedInstances =
-  typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances [] []
+data TopDeclCheck a
+  = TopDeclCheck
+  { topDeclCheckMode :: TopDeclCheckMode,
+    topDeclCheckDecl :: TopDecl a
+  }
+  deriving (Eq, Show)
 
-typeInferWithTrustedInstanceHeadsAndPartialTypes ::
+typeInferTopDeclChecks ::
   Option ->
+  [Import] ->
   [InstanceHead] ->
-  [TopDeclKey] ->
   [(Name, [Name])] ->
-  CompUnit Name ->
+  [TopDeclCheck Name] ->
   IO (Either String (CompUnit Id, TcEnv))
-typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances localDeclKeys partialTypes (CompUnit imps topLevelDecls) =
+typeInferTopDeclChecks opts imps trustedInstances partialTypes topDeclChecks =
   do
     r <-
       runTcM
-        (tcCompUnit localDeclKeys (CompUnit imps topLevelDecls))
+        (tcTopDeclChecks topDeclChecks)
         ( (initTcEnv opts)
             { trustedInstanceHeads = trustedInstances,
               partialDataTypes = Set.fromList (map fst partialTypes),
@@ -61,11 +58,9 @@ typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances localDecl
         )
     case r of
       Left err1 -> pure $ Left err1
-      Right (CompUnit _ ds, env) -> do
+      Right (ds, env) -> do
         let ds1 = (ds ++ generated env)
         pure (Right (CompUnit imps ds1, env))
-
--- type inference for a compilation unit
 
 -- Build a pure synonym table from parsed synonym declarations
 buildSynTable :: [TySym] -> SynTable
@@ -92,8 +87,8 @@ expandTyM st (TyCon n ts) = do
 expandTyM st (t1 :-> t2) = (:->) <$> expandTyM st t1 <*> expandTyM st t2
 expandTyM _ t = pure t
 
-tcCompUnit :: [TopDeclKey] -> CompUnit Name -> TcM (CompUnit Id)
-tcCompUnit localDeclKeys (CompUnit imps cs) =
+tcTopDeclChecks :: [TopDeclCheck Name] -> TcM [TopDecl Id]
+tcTopDeclChecks topDeclChecks =
   do
     setupPragmas ps
     checkSynonymCycles syns
@@ -101,19 +96,30 @@ tcCompUnit localDeclKeys (CompUnit imps cs) =
     csExpanded <- everywhereM (mkM (expandTyM st)) cs
     mapM_ checkTopDecl (filter isClass csExpanded)
     mapM_ checkTopDecl (filter (not . isClass) csExpanded)
-    typedDecls <- mapM tcTopDeclWithVisibility csExpanded
-    pure (CompUnit imps typedDecls)
+    trustImportedDecls csExpanded
+    catMaybes <$> zipWithM tcTopDeclWithVisibility topDeclChecks csExpanded
   where
+    cs = map topDeclCheckDecl topDeclChecks
     ps = foldr step [] cs
     step (TPragmaDecl p) ac = p : ac
     step _ ac = ac
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
-    localDeclKeySet = Set.fromList localDeclKeys
-    tcTopDeclWithVisibility d
-      | any (`Set.member` localDeclKeySet) (topDeclKeys d) = tcTopDecl' d
-      | otherwise = withPartialDataTypesDisabled (tcTopDecl' d)
+    trustImportedDecls expandedDecls =
+      mapM_
+        (withPartialDataTypesDisabled . trustImportedTopDecl)
+        [ expandedDecl
+          | (topDeclCheck, expandedDecl) <- zip topDeclChecks expandedDecls,
+            topDeclCheckMode topDeclCheck == TrustTopDeclBody
+        ]
+    tcTopDeclWithVisibility topDeclCheck expandedDecl =
+      case topDeclCheckMode topDeclCheck of
+        CheckTopDeclBody ->
+          Just <$> tcTopDecl' expandedDecl
+        TrustTopDeclBody ->
+          withPartialDataTypesDisabled $
+            pure Nothing
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
@@ -218,6 +224,28 @@ tcTopDecl (TExportDecl d) =
   pure (TExportDecl d)
 tcTopDecl (TPragmaDecl d) =
   pure (TPragmaDecl d)
+
+trustImportedTopDecl :: TopDecl Name -> TcM ()
+trustImportedTopDecl (TFunDef fd) =
+  extImportedFunDefs [fd]
+trustImportedTopDecl (TMutualDef ds) =
+  extImportedFunDefs [fd | TFunDef fd <- ds]
+trustImportedTopDecl _ =
+  pure ()
+
+extImportedFunDefs :: [FunDef Name] -> TcM ()
+extImportedFunDefs fds = do
+  nmschs <- extractSignatures fds
+  mapM_ (uncurry extEnv) nmschs
+  noDesugarCalls <- getNoDesugarCalls
+  unless noDesugarCalls $ do
+    typedFds <- mapM typedImportedFunDef fds
+    generateTopDeclsFor (zip typedFds (map snd nmschs))
+
+typedImportedFunDef :: FunDef Name -> TcM (FunDef Id)
+typedImportedFunDef (FunDef sig _body) = do
+  params <- mapM tcParam (sigParams sig)
+  pure (FunDef sig {sigParams = params} [])
 
 checkTopDecl :: TopDecl Name -> TcM ()
 checkTopDecl (TClassDef c) =

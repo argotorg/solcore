@@ -8,7 +8,11 @@
 -- contract methods by examining the first four bytes of calldata and comparing it
 -- to the computed function selector for each method. The instances and datatypes
 -- used to implement this dispatch can be found in std/dispatch.solc.
-module Solcore.Desugarer.ContractDispatch where
+module Solcore.Desugarer.ContractDispatch
+  ( contractDispatchDesugarer,
+    contractDispatchTopDecls,
+  )
+where
 
 import Data.List (mapAccumL)
 import Data.Maybe (mapMaybe)
@@ -21,7 +25,10 @@ import Solcore.Frontend.Syntax
 import Solcore.Primitives.Primitives (string, tupleExpFromList, tupleTyFromList, unit, word)
 
 contractDispatchDesugarer :: CompUnit Name -> CompUnit Name
-contractDispatchDesugarer (CompUnit ims topdecls) = CompUnit ims (Set.toList extras <> topdecls')
+contractDispatchDesugarer (CompUnit ims topdecls) = CompUnit ims (contractDispatchTopDecls topdecls)
+
+contractDispatchTopDecls :: [TopDecl Name] -> [TopDecl Name]
+contractDispatchTopDecls topdecls = Set.toList extras <> topdecls'
   where
     (extras, topdecls') = mapAccumL go Set.empty topdecls
     go acc (TContr c)

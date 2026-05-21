@@ -3,6 +3,7 @@ module Main where
 import Cases
 import HullCases
 import MatchCompilerTests
+import ModuleTypeCheckTests
 import Test.Tasty
 
 main :: IO ()
@@ -18,6 +19,7 @@ tests =
       spec,
       std,
       imports,
+      moduleTypeCheckTests,
       dispatches,
       matchTests,
       hullTests
