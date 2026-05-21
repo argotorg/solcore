@@ -49,6 +49,12 @@ export {
   bytes,
   bytes4(*),
   bytes32(*),
+  bandWord,
+  borWord,
+  bxorWord,
+  bnotWord,
+  bshlWord,
+  bshrWord,
   calldata(*),
   concatLit,
   eqWord,
@@ -409,6 +415,60 @@ function subWord(l: word, r: word) -> word {
         rw := sub(l,r);
     }
     return rw;
+}
+
+// Bitwise AND
+function bandWord(x: word, y: word) -> word {
+    let res: word;
+    assembly {
+        res := and(x, y)
+    }
+    return res;
+}
+
+// Bitwise OR
+function borWord(x: word) -> word {
+    let res: word;
+    assembly {
+        res := or(x)
+    }
+    return res;
+}
+
+// Bitwise XOR
+function bxorWord(x: word) -> word {
+    let res: word;
+    assembly {
+        res := xor(x)
+    }
+    return res;
+}
+
+// Bitwise NOT
+function bnotWord(x: word) -> word {
+    let res: word;
+    assembly {
+        res := not(x)
+    }
+    return res;
+}
+
+// Bitwise SHL
+function bshlWord(x: word, y: word) -> word {
+    let res: word;
+    assembly {
+        res := shl(x, y)
+    }
+    return res;
+}
+
+// Bitwise SHR
+function bshrWord(x: word, y: word) -> word {
+    let res: word;
+    assembly {
+        res := shr(x, y)
+    }
+    return res;
 }
 
 instance word:Eq {
