@@ -8,7 +8,7 @@ import Control.Monad.State
 import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Solcore.Diagnostics (Diagnostic (..), decodeDiagnostic, encodeDiagnostic)
+import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Severity (..), decodeDiagnostic, encodeDiagnostic)
 import Solcore.Frontend.Pretty.TreePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts, decls)
 import Solcore.Frontend.Syntax.Name
@@ -1080,33 +1080,69 @@ resolveQualifiedConstructorName qualifier conName =
 
 undefinedTypeVariables :: [Name] -> ResolveM a
 undefinedTypeVariables ns =
-  throwError $ unlines ["Undefined type variables:", unwords (map pretty ns)]
+  diagnosticError
+    "SC0102"
+    ("undefined type variables: " ++ unwords (map pretty ns))
+    []
+    []
 
 undefinedTypeConstructor :: S.Ty -> ResolveM a
 undefinedTypeConstructor t =
-  throwError $ unlines ["Undefined type constructor:", pretty t]
+  diagnosticError
+    "SC0103"
+    ("undefined type constructor: " ++ pretty t)
+    []
+    []
 
 invalidTypeSynonymError :: S.TySym -> ResolveM a
 invalidTypeSynonymError t =
-  throwError $ unlines ["Invalid type synonym:", pretty t]
+  diagnosticError
+    "SC0104"
+    ("invalid type synonym: " ++ pretty t)
+    []
+    []
 
 undefinedClassError :: Name -> ResolveM a
 undefinedClassError n =
-  throwError $ unlines ["Undefined class:", pretty n]
+  diagnosticError
+    "SC0105"
+    ("undefined class: " ++ pretty n)
+    []
+    []
 
 undefinedName :: Name -> ResolveM a
 undefinedName n =
-  throwError $ unwords ["Undefined name:", pretty n]
+  diagnosticError
+    "SC0101"
+    ("undefined name: " ++ pretty n)
+    []
+    []
 
 unqualifiedConstructorError :: Name -> ResolveM a
 unqualifiedConstructorError n =
-  throwError $
-    unlines
-      [ "Unqualified constructor:",
-        pretty n,
-        "Use Type.Constructor form."
-      ]
+  diagnosticError
+    "SC0106"
+    ("unqualified constructor: " ++ pretty n)
+    []
+    ["use Type.Constructor form"]
 
 invalidPatternSyntax :: S.Pat -> ResolveM a
 invalidPatternSyntax p =
-  throwError $ unwords ["Invalid pattern syntax:", pretty p]
+  diagnosticError
+    "SC0107"
+    ("invalid pattern syntax: " ++ pretty p)
+    []
+    []
+
+diagnosticError :: String -> String -> [String] -> [String] -> ResolveM a
+diagnosticError code message notes help =
+  throwError $
+    encodeDiagnostic
+      Diagnostic
+        { diagnosticSeverity = Error,
+          diagnosticCode = Just (DiagnosticCode code),
+          diagnosticMessage = message,
+          diagnosticLabels = [],
+          diagnosticNotes = notes,
+          diagnosticHelp = help
+        }
