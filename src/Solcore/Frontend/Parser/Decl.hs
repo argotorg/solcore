@@ -1,0 +1,353 @@
+module Solcore.Frontend.Parser.Decl
+  ( compUnitP,
+    topDeclP,
+    importP,
+  )
+where
+
+import Common.LightYear
+import Control.Monad (void)
+import Data.List.NonEmpty qualified as NE
+import Solcore.Frontend.Lexer.SolcoreLexer
+import Solcore.Frontend.Parser.Expr (exprP)
+import Solcore.Frontend.Parser.SolcoreTypes
+  ( atomTypeP,
+    paramP,
+    qualifiedName,
+    sigPrefixP,
+    typeP,
+  )
+import Solcore.Frontend.Parser.Stmt (bodyP)
+import Solcore.Frontend.Syntax.Name (Name (..))
+import Solcore.Frontend.Syntax.SyntaxTree
+
+-- Top-level entry point
+
+compUnitP :: Parser CompUnit
+compUnitP = sc *> (CompUnit <$> many importP <*> many topDeclP) <* eof
+
+expP :: Parser Exp
+expP = exprP bodyP
+
+withSigPrefix :: ([Ty] -> [Pred] -> Parser a) -> Parser a
+withSigPrefix k = do
+  (vars, ctx) <- option ([], []) (try sigPrefixP)
+  k vars ctx
+
+importP :: Parser Import
+importP = do
+  keyword "import"
+  choice
+    [ do
+        path <- externalPathP
+        choice
+          [ do
+              _ <- symbol "."
+              entries <- braces (itemEntryP `sepBy` comma)
+              hids <- option [] hidingP
+              _ <- semicolon
+              return (ImportOnly path (SelectItems entries hids)),
+            do
+              keyword "as"
+              n <- Name <$> identifier
+              _ <- semicolon
+              return (ImportAlias path n),
+            ImportModule path <$ semicolon
+          ],
+      do
+        path <- modulePathP
+        choice
+          [ do
+              _ <- symbol "."
+              entries <- braces (itemEntryP `sepBy` comma)
+              hids <- option [] hidingP
+              _ <- semicolon
+              return (ImportOnly path (SelectItems entries hids)),
+            do
+              keyword "as"
+              n <- Name <$> identifier
+              _ <- semicolon
+              return (ImportAlias path n),
+            ImportModule path <$ semicolon
+          ]
+    ]
+  where
+    hidingP = keyword "hiding" *> braces (fmap Name identifier `sepBy` comma)
+
+modulePathP :: Parser ModulePath
+modulePathP = do
+  h <- identifier
+  ts <- many (try (char '.' *> notFollowedBy (char '{') *> identifier))
+  return (classifyModulePath (foldl QualName (Name h) ts))
+
+externalPathP :: Parser ModulePath
+externalPathP = do
+  _ <- symbol "@"
+  lib <- identifier
+  _ <- char '.'
+  sc
+  h <- identifier
+  ts <- many (try (char '.' *> notFollowedBy (char '{') *> identifier))
+  return (ExternalPath (Name lib) (foldl QualName (Name h) ts))
+
+classifyModulePath :: Name -> ModulePath
+classifyModulePath n = case splitQual n of
+  ("lib" : rest@(_ : _)) -> LibraryPath (mkQualName rest)
+  _ -> RelativePath n
+
+splitQual :: Name -> [String]
+splitQual (Name s) = [s]
+splitQual (QualName n s) = splitQual n ++ [s]
+
+mkQualName :: [String] -> Name
+mkQualName [] = error "mkQualName: empty list"
+mkQualName (x : xs) = foldl QualName (Name x) xs
+
+itemEntryP :: Parser ItemSelectorEntry
+itemEntryP =
+  SelectAllItems
+    <$ symbol "*"
+      <|> SelectItem
+      . Name
+    <$> identifier
+
+exportP :: Parser Export
+exportP = do
+  keyword "export"
+  choice
+    [ ExportList <$> braces (exportSpecP `sepBy` comma) <* semicolon,
+      do
+        path <- externalPathP
+        exportTailP path,
+      do
+        path <- modulePathP
+        exportTailP path
+    ]
+
+exportTailP :: ModulePath -> Parser Export
+exportTailP path =
+  choice
+    [ do
+        _ <- symbol "."
+        choice
+          [ ExportItemsFrom path . SelectExportItems
+              <$> braces (exportSelEntryP `sepBy` comma)
+              <* semicolon,
+            ExportItemsFrom path (SelectExportItems [SelectExportAllItems])
+              <$ symbol "*"
+              <* semicolon
+          ],
+      do
+        keyword "as"
+        n <- Name <$> identifier
+        _ <- semicolon
+        return (ExportModuleAs path n),
+      ExportModule path <$ semicolon
+    ]
+
+exportSpecP :: Parser ExportSpec
+exportSpecP =
+  ExportAll
+    <$ symbol "*"
+      <|> try
+        ( do
+            path <- externalPathP
+            _ <- symbol "."
+            _ <- symbol "*"
+            return (ExportModuleAll path)
+        )
+      <|> try
+        ( do
+            n <- moduleNameP
+            _ <- symbol "."
+            _ <- symbol "*"
+            return (ExportModuleAll (classifyModulePath n))
+        )
+      <|> do
+        n <- Name <$> identifier
+        mSel <- optional (parens constrSelectorP)
+        return $ case mSel of
+          Nothing -> ExportName n
+          Just sel -> ExportNameWithConstructors n sel
+
+moduleNameP :: Parser Name
+moduleNameP = do
+  h <- identifier
+  ts <- many (try (char '.' *> notFollowedBy (char '*' <|> char '{') *> identifier))
+  return (foldl QualName (Name h) ts)
+
+exportSelEntryP :: Parser ExportSelectorEntry
+exportSelEntryP =
+  SelectExportAllItems
+    <$ symbol "*"
+      <|> do
+        n <- Name <$> identifier
+        mSel <- optional (parens constrSelectorP)
+        return $ case mSel of
+          Nothing -> SelectExportItem n
+          Just sel -> SelectExportConstructors n sel
+
+constrSelectorP :: Parser ConstructorSelector
+constrSelectorP =
+  SelectAllConstructors
+    <$ symbol "*"
+      <|> SelectConstructors
+      . map Name
+    <$> (identifier `sepBy1` comma)
+
+pragmaP :: Parser Pragma
+pragmaP = do
+  keyword "pragma"
+  ty <- pragmaTypeP
+  st <- pragmaStatusP
+  _ <- semicolon
+  return (Pragma ty st)
+
+pragmaTypeP :: Parser PragmaType
+pragmaTypeP =
+  NoCoverageCondition
+    <$ keyword "no-coverage-condition"
+      <|> NoPattersonCondition
+    <$ keyword "no-patterson-condition"
+      <|> NoBoundVariableCondition
+    <$ keyword "no-bounded-variable-condition"
+
+pragmaStatusP :: Parser PragmaStatus
+pragmaStatusP = option DisableAll $ do
+  names <- (Name <$> identifier) `sepBy1` comma
+  return (DisableFor (NE.fromList names))
+
+dataP :: Parser DataTy
+dataP = do
+  keyword "data"
+  n <- Name <$> identifier
+  params <- option [] (parens (typeP `sepBy1` comma))
+  cs <- option [] (equalsP *> (constrP `sepBy1` symbol "|"))
+  _ <- semicolon
+  return (DataTy n params cs)
+
+constrP :: Parser Constr
+constrP = do
+  n <- Name <$> identifier
+  args <- option [] (parens (typeP `sepBy1` comma))
+  return (Constr n args)
+
+tySymP :: Parser TySym
+tySymP = do
+  keyword "type"
+  n <- Name <$> identifier
+  params <- option [] (parens (typeP `sepBy1` comma))
+  _ <- equalsP
+  t <- typeP
+  _ <- semicolon
+  return (TySym n params t)
+
+funDefP :: Parser FunDef
+funDefP = try $ withSigPrefix funDefAfterPrefix
+
+funDefAfterPrefix :: [Ty] -> [Pred] -> Parser FunDef
+funDefAfterPrefix vars ctx = do
+  sig <- signatureP vars ctx
+  body <- braces bodyP
+  return (FunDef sig (implicitReturn body))
+
+implicitReturn :: Body -> Body
+implicitReturn [StmtExp e] = [Return e]
+implicitReturn stmts = stmts
+
+signatureP :: [Ty] -> [Pred] -> Parser Signature
+signatureP vars ctx = do
+  keyword "function"
+  n <- Name <$> identifier
+  ps <- parens (paramP `sepBy` comma)
+  ret <- optional (symbol "->" *> typeP)
+  return (Signature vars ctx n ps ret)
+
+sigDeclP :: Parser Signature
+sigDeclP = try $ withSigPrefix sigDeclAfterPrefix
+
+sigDeclAfterPrefix :: [Ty] -> [Pred] -> Parser Signature
+sigDeclAfterPrefix vars ctx = do
+  sig <- signatureP vars ctx
+  _ <- semicolon
+  return sig
+
+classAfterPrefix :: [Ty] -> [Pred] -> Parser Class
+classAfterPrefix vars ctx = do
+  keyword "class"
+  mty <- atomTypeP
+  _ <- colon
+  cname <- qualifiedName
+  params <- option [] (parens (typeP `sepBy1` comma))
+  sigs <- braces (many sigDeclP)
+  return (Class vars ctx cname params mty sigs)
+
+instanceAfterPrefix :: [Ty] -> [Pred] -> Parser Instance
+instanceAfterPrefix vars ctx = do
+  isDefault <- option False (True <$ keyword "default")
+  keyword "instance"
+  mty <- atomTypeP
+  _ <- colon
+  iname <- qualifiedName
+  params <- option [] (parens (typeP `sepBy1` comma))
+  funs <- braces (many funDefP)
+  return (Instance isDefault vars ctx iname params mty funs)
+
+contractP :: Parser Contract
+contractP = do
+  keyword "contract"
+  n <- Name <$> identifier
+  params <- option [] (parens (typeP `sepBy1` comma))
+  ds <- braces (many contractDeclP)
+  return (Contract n params ds)
+
+contractDeclP :: Parser ContractDecl
+contractDeclP =
+  CDataDecl
+    <$> dataP
+      <|> CConstrDecl
+    <$> constructorDeclP
+      <|> withSigPrefix (\vars ctx -> CFunDecl <$> funDefAfterPrefix vars ctx)
+      <|> CFieldDecl
+    <$> fieldDeclP
+
+fieldDeclP :: Parser Field
+fieldDeclP = do
+  n <- Name <$> identifier
+  _ <- colon
+  ty <- typeP
+  me <- optional (equalsP *> expP)
+  _ <- semicolon
+  return (Field n ty me)
+
+constructorDeclP :: Parser Constructor
+constructorDeclP = do
+  keyword "constructor"
+  ps <- parens (paramP `sepBy` comma)
+  body <- braces bodyP
+  return (Constructor ps body)
+
+topDeclP :: Parser TopDecl
+topDeclP =
+  TPragmaDecl
+    <$> pragmaP
+      <|> TExportDecl
+    <$> exportP
+      <|> TDataDef
+    <$> dataP
+      <|> TSym
+    <$> tySymP
+      <|> TContr
+    <$> contractP
+      <|> withSigPrefix
+        ( \vars ctx ->
+            TFunDef
+              <$> funDefAfterPrefix vars ctx
+                <|> TClassDef
+              <$> classAfterPrefix vars ctx
+                <|> TInstDef
+              <$> instanceAfterPrefix vars ctx
+        )
+
+equalsP :: Parser ()
+equalsP = void $ try (lexeme (char '=' <* notFollowedBy (char '=')))
