@@ -3,6 +3,7 @@ module Main where
 import Cases
 import HullCases
 import MatchCompilerTests
+import ModuleTypeCheckTests
 import Test.Tasty
 import YulEvalTests
 
@@ -19,6 +20,7 @@ tests =
       spec,
       std,
       imports,
+      moduleTypeCheckTests,
       dispatches,
       matchTests,
       yulEvalTests,

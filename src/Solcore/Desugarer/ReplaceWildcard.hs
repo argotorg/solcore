@@ -1,4 +1,8 @@
-module Solcore.Desugarer.ReplaceWildcard where
+module Solcore.Desugarer.ReplaceWildcard
+  ( replaceWildcard,
+    replaceWildcardTopDecls,
+  )
+where
 
 import Control.Monad.State
 import Data.Generics
@@ -7,9 +11,15 @@ import Solcore.Frontend.Syntax
 -- replacing wildcards by fresh pattern variables
 
 replaceWildcard :: CompUnit Name -> CompUnit Name
-replaceWildcard c = fst (runState (replace c) 0)
+replaceWildcard = replaceWildcards
 
-replace :: CompUnit Name -> State Int (CompUnit Name)
+replaceWildcardTopDecls :: [TopDecl Name] -> [TopDecl Name]
+replaceWildcardTopDecls = replaceWildcards
+
+replaceWildcards :: (Data a) => a -> a
+replaceWildcards c = fst (runState (replace c) 0)
+
+replace :: (Data a) => a -> State Int a
 replace c = everywhereM (mkM replacePat) c
 
 replacePat :: Pat Name -> State Int (Pat Name)

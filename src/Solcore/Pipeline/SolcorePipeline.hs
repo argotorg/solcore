@@ -5,6 +5,8 @@ import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (first)
 import Data.Char (isAlpha, isAlphaNum)
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
@@ -14,22 +16,23 @@ import Solcore.Backend.EmitHull (emitHull)
 import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
-import Solcore.Desugarer.ContractDispatch (contractDispatchDesugarer)
+import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
-import Solcore.Desugarer.FieldAccess (fieldDesugarer)
+import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
-import Solcore.Desugarer.IndirectCall (indirectCall)
+import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
-import Solcore.Desugarer.ReplaceWildcard (replaceWildcard)
+import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Frontend.ComptimeCheck (checkComptimeEarly)
-import Solcore.Frontend.Module.Loader (ModuleGraph (..), flattenModuleStrictCompileCompUnitWithMetadata, flattenModuleStrictValidationCompUnit, loadModuleGraph, moduleSourcePath)
-import Solcore.Frontend.Parser.SolcoreParser
+import Solcore.Frontend.Module.Identity qualified as Mod
+import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourcePath, moduleValidationTopDeclSegments)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (contracts)
 import Solcore.Frontend.Syntax.NameResolution
+import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.SccAnalysis
-import Solcore.Frontend.TypeInference.TcContract
 import Solcore.Frontend.TypeInference.TcEnv
+import Solcore.Frontend.TypeInference.TcModule
 import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
 import System.Directory (makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
@@ -55,8 +58,6 @@ pipeline = do
 compile :: Option -> IO (Either String [Hull.Object])
 compile opts = runExceptT $ do
   let verbose = optVerbose opts
-      noDesugarCalls = optNoDesugarCalls opts
-      noGenDispatch = optNoGenDispatch opts
       noMatchCompiler = optNoMatchCompiler opts
       noIfDesugar = optNoIfDesugar opts
       timeItNamed :: String -> IO a -> IO a
@@ -72,111 +73,27 @@ compile opts = runExceptT $ do
   -- Validate each module against only its own direct imports.
   forM_ (moduleOrder graph) $ \moduleId -> do
     sourcePath <- ExceptT $ pure (moduleSourcePath graph moduleId)
-    cunit <-
+    (validationImports, validationSegments) <-
       ExceptT $
-        pure (flattenModuleStrictValidationCompUnit graph moduleId)
+        pure (moduleValidationTopDeclSegments graph moduleId)
     _ <-
       ExceptT $
         pure $
           first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e) $
-            validateDuplicateNamespacesInCompUnit cunit
+            validateDuplicateNamespacesInTopDeclSegments validationSegments
     _ <-
       ExceptT $
         first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e)
-          <$> nameResolution cunit
+          <$> nameResolutionTopDeclSegments validationImports validationSegments
     pure ()
 
-  (parsed, localStart, importedStart, partialImportedTypes) <-
+  checkedModules <-
     ExceptT $
-      pure (flattenModuleStrictCompileCompUnitWithMetadata graph (entryModule graph))
-
-  -- Name resolution
-  resolved <- ExceptT $ nameResolution parsed
-  let CompUnit _ resolvedDecls = resolved
-      trustedImportedInstanceHeads =
-        [ instanceHeadKey inst
-          | TInstDef inst <- drop importedStart resolvedDecls
-        ]
-      localDeclKeys =
-        take (importedStart - localStart) (drop localStart resolvedDecls) >>= topDeclKeys
-
-  liftIO $ when (verbose || optDumpAST opts) $ do
-    putStrLn "> AST after name resolution"
-    putStrLn $ pretty resolved
-
-  -- contract field access desugaring
-  let accessed = fieldDesugarer resolved
-  liftIO $ when verbose $ do
-    putStrLn "Contract field access desugaring:"
-    putStrLn $ pretty accessed
-
-  -- contract dispatch generation
-  dispatched <-
-    liftIO $
-      if noGenDispatch
-        then pure accessed
-        else timeItNamed "Contract dispatch generation" $ pure (contractDispatchDesugarer accessed)
-
-  liftIO $ when (optDumpDispatch opts) $ do
-    putStrLn "> Dispatch:"
-    putStrLn $ pretty dispatched
-
-  -- SCC analysis
-  connected <-
-    ExceptT $
-      timeItNamed "SCC           " $
-        sccAnalysis dispatched
-
-  liftIO $ when verbose $ do
-    putStrLn "> SCC Analysis:"
-    putStrLn $ pretty connected
-
-  -- Indirect call handling
-  direct <-
-    liftIO $
-      if noDesugarCalls
-        then pure connected
-        else timeItNamed "Indirect Calls" $ (fst <$> indirectCall connected)
-
-  liftIO $ when (verbose || optDumpDF opts) $ do
-    putStrLn "> Indirect call desugaring:"
-    putStrLn $ pretty direct
-
-  -- Pattern wildcard desugaring
-
-  let noWild = replaceWildcard direct
-  liftIO $ when verbose $ do
-    putStrLn "> Pattern wildcard desugaring:"
-    putStrLn $ pretty noWild
-
-  -- Eliminate function type arguments
-
-  let noFun = if noDesugarCalls then noWild else replaceFunParam noWild
-  liftIO $ when verbose $ do
-    putStrLn "> Eliminating argments with function types"
-    putStrLn $ pretty noFun
-
-  -- Type inference, first round without any desugaring
-  (_typed, _typedEnv) <-
-    ExceptT $
-      timeItNamed
-        "Typecheck (no desugaring)  "
-        (typeInferWithTrustedInstanceHeadsAndPartialTypes noDesugarOpt trustedImportedInstanceHeads localDeclKeys partialImportedTypes noFun)
-
-  liftIO $ when verbose $ do
-    putStrLn "No type errors found!"
-
-  (typed, tcEnv) <-
-    ExceptT $
-      timeItNamed
-        "Typecheck (desugaring)  "
-        (typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedImportedInstanceHeads localDeclKeys partialImportedTypes noFun)
-
-  liftIO $ when verbose $ do
-    putStrLn "> Type inference logs:"
-    mapM_ putStrLn (reverse $ logs tcEnv)
-    putStrLn "> Elaborated tree:"
-    putStrLn $ pretty typed
+      timeItNamed "Typecheck modules" $
+        runExceptT (typeCheckLoadedModules opts graph)
+  checkedAssembly <- ExceptT $ pure (assembleCheckedModules graph checkedModules)
+  let typed = checkedAssemblyCompUnit checkedAssembly
+      tcEnv = checkedAssemblyEnv checkedAssembly
 
   -- SAIL-level comptime verification
   ExceptT $ return $ checkComptimeEarly typed
@@ -250,6 +167,173 @@ compile opts = runExceptT $ do
         forM_ hull (putStrLn . pretty)
 
       pure hull
+
+typeCheckLoadedModules :: Option -> ModuleGraph -> ExceptT String IO (Map Mod.ModuleId CheckedModule)
+typeCheckLoadedModules opts graph =
+  Map.fromList <$> mapM (typeCheckModuleFromGraph opts graph) (moduleOrder graph)
+
+typeCheckModuleFromGraph ::
+  Option ->
+  ModuleGraph ->
+  Mod.ModuleId ->
+  ExceptT String IO (Mod.ModuleId, CheckedModule)
+typeCheckModuleFromGraph opts graph moduleId = do
+  sourcePath <- ExceptT $ pure (moduleSourcePath graph moduleId)
+  resolvedInput <-
+    ExceptT $
+      first (moduleTypeCheckError sourcePath "input") <$> loadModuleLocalTypeCheckInput graph moduleId
+  liftIO $ dumpModuleResolvedAST opts sourcePath resolvedInput
+  moduleInput <- prepareModuleTypeCheckInput opts resolvedInput
+  (noDesugarChecked, _noDesugarEnv) <-
+    ExceptT $
+      first (moduleTypeCheckError sourcePath "no desugaring") <$> typeInferModuleLocals noDesugarOpt moduleInput
+  liftIO $
+    when (optVerbose opts) $
+      putStrLn ("No type errors found for " ++ sourcePath ++ "!")
+  (typed, tcEnv) <-
+    ExceptT $
+      first (moduleTypeCheckError sourcePath "desugaring") <$> typeInferModuleLocals opts moduleInput
+  liftIO $ dumpModuleTypeInference opts sourcePath typed tcEnv
+  pure
+    ( moduleId,
+      CheckedModule
+        { checkedModuleId = moduleId,
+          checkedModuleInput = moduleInput,
+          checkedModuleNoDesugar = noDesugarChecked,
+          checkedModuleTyped = typed,
+          checkedModuleEnv = tcEnv
+        }
+    )
+
+prepareModuleTypeCheckInput ::
+  Option ->
+  ModuleResolvedTypeCheckInput ->
+  ExceptT String IO ModuleTypeCheckInput
+prepareModuleTypeCheckInput opts resolvedInput = do
+  inferenceDecls <- prepareModuleInferenceDeclsForTypeInference opts resolvedInput
+  pure (withPreparedModuleInferenceDecls resolvedInput inferenceDecls)
+
+prepareModuleInferenceDeclsForTypeInference ::
+  Option ->
+  ModuleResolvedTypeCheckInput ->
+  ExceptT String IO [ModuleInferenceDecl]
+prepareModuleInferenceDeclsForTypeInference opts input =
+  prepareInferenceDeclsForTypeInference
+    opts
+    (emitModulePreparationDiagnostics opts)
+    (moduleResolvedImports input)
+    (moduleInitialInferenceDecls input)
+
+dumpModuleResolvedAST :: Option -> FilePath -> ModuleResolvedTypeCheckInput -> IO ()
+dumpModuleResolvedAST opts sourcePath input =
+  when (optVerbose opts || optDumpAST opts) $ do
+    putStrLn ("> AST after name resolution for " ++ sourcePath)
+    putStrLn $ pretty dumpCompUnit
+  where
+    dumpCompUnit =
+      CompUnit
+        (moduleResolvedImports input)
+        ( moduleResolvedQualifiedDecls input
+            ++ moduleResolvedLocalDecls input
+            ++ moduleResolvedImportedDecls input
+        )
+
+emitModulePreparationDiagnostics :: Option -> Bool
+emitModulePreparationDiagnostics opts =
+  or
+    [ optVerbose opts,
+      optDumpDispatch opts,
+      optDumpDF opts
+    ]
+
+dumpModuleTypeInference :: Option -> FilePath -> CompUnit Id -> TcEnv -> IO ()
+dumpModuleTypeInference opts sourcePath typed tcEnv =
+  when (optVerbose opts) $ do
+    putStrLn ("> Type inference logs for " ++ sourcePath ++ ":")
+    mapM_ putStrLn (reverse $ logs tcEnv)
+    putStrLn ("> Elaborated tree for " ++ sourcePath ++ ":")
+    putStrLn $ pretty typed
+
+moduleTypeCheckError :: FilePath -> String -> String -> String
+moduleTypeCheckError sourcePath phase err =
+  "Module typecheck failed for "
+    ++ sourcePath
+    ++ " ("
+    ++ phase
+    ++ "):\n"
+    ++ err
+
+prepareInferenceDeclsForTypeInference ::
+  Option ->
+  Bool ->
+  [Import] ->
+  [ModuleInferenceDecl] ->
+  ExceptT String IO [ModuleInferenceDecl]
+prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
+  let verbose = emitOutput && optVerbose opts
+      noDesugarCalls = optNoDesugarCalls opts
+      noGenDispatch = optNoGenDispatch opts
+      prettyInferenceDecls inferenceDumpDecls =
+        pretty (CompUnit imps (moduleInferenceTopDecls inferenceDumpDecls))
+      timeItNamed :: String -> IO a -> IO a
+      timeItNamed
+        | emitOutput = optTimeItNamed opts
+        | otherwise = \_ action -> action
+
+  -- contract field access desugaring
+  let accessed = mapModuleInferenceTopDecls fieldDesugarTopDecls inferenceDecls
+  liftIO $ when verbose $ do
+    putStrLn "Contract field access desugaring:"
+    putStrLn $ prettyInferenceDecls accessed
+
+  -- contract dispatch generation
+  dispatched <-
+    liftIO $
+      if noGenDispatch
+        then pure accessed
+        else timeItNamed "Contract dispatch generation" $ pure (mapModuleInferenceTopDecls contractDispatchTopDecls accessed)
+
+  liftIO $ when (emitOutput && optDumpDispatch opts) $ do
+    putStrLn "> Dispatch:"
+    putStrLn $ prettyInferenceDecls dispatched
+
+  -- SCC analysis
+  connected <-
+    ExceptT $
+      timeItNamed "SCC           " $
+        runExceptT $
+          traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) dispatched
+
+  liftIO $ when verbose $ do
+    putStrLn "> SCC Analysis:"
+    putStrLn $ prettyInferenceDecls connected
+
+  -- Indirect call handling
+  direct <-
+    liftIO $
+      if noDesugarCalls
+        then pure connected
+        else
+          timeItNamed "Indirect Calls" $
+            traverseModuleInferenceTopDecls (fmap fst . indirectCallTopDecls) connected
+
+  liftIO $ when (emitOutput && (optVerbose opts || optDumpDF opts)) $ do
+    putStrLn "> Indirect call desugaring:"
+    putStrLn $ prettyInferenceDecls direct
+
+  -- Pattern wildcard desugaring
+  let noWild = mapModuleInferenceTopDecls replaceWildcardTopDecls direct
+  liftIO $ when verbose $ do
+    putStrLn "> Pattern wildcard desugaring:"
+    putStrLn $ prettyInferenceDecls noWild
+
+  -- Eliminate function type arguments
+  let noFun = if noDesugarCalls then noWild else mapModuleInferenceTopDecls replaceFunParam noWild
+  liftIO $ when verbose $ do
+    putStrLn "> Eliminating argments with function types"
+    putStrLn $ prettyInferenceDecls noFun
+
+  pure noFun
 
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =

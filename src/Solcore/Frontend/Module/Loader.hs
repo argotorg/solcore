@@ -1,14 +1,11 @@
 module Solcore.Frontend.Module.Loader
   ( ModuleGraph (..),
     LoadedModule (..),
+    ModuleTypeCheckSurface (..),
     loadModuleGraph,
-    flattenModuleValidationCompUnit,
-    flattenModuleStrictCompileCompUnit,
-    flattenModuleStrictCompileCompUnitWithImportedStart,
-    flattenModuleStrictCompileCompUnitWithMetadata,
-    flattenModuleStrictValidationCompUnit,
-    loadCompUnit,
+    moduleValidationTopDeclSegments,
     moduleSourcePath,
+    moduleLocalTypeCheckSurface,
   )
 where
 
@@ -62,9 +59,18 @@ data ModuleGraph
     modules :: Map Mod.ModuleId LoadedModule,
     dependencies :: Map Mod.ModuleId [Mod.ModuleId],
     referenceDependencies :: Map Mod.ModuleId [Mod.ModuleId],
-    importGroups :: Map Mod.ModuleId [Mod.ModuleId],
     referenceGroups :: Map Mod.ModuleId [Mod.ModuleId],
     moduleOrder :: [Mod.ModuleId]
+  }
+  deriving (Eq, Show)
+
+data ModuleTypeCheckSurface
+  = ModuleTypeCheckSurface
+  { moduleSurfaceImports :: [Import],
+    moduleSurfaceQualifiedDecls :: [TopDecl],
+    moduleSurfaceLocalDecls :: [TopDecl],
+    moduleSurfaceImportedDecls :: [TopDecl],
+    moduleSurfacePartialImportedTypes :: [(Name, [Name])]
   }
   deriving (Eq, Show)
 
@@ -83,25 +89,10 @@ loadModuleGraph mainRootPath stdRootPath externalLibs entryFile = runExceptT do
           modules = loaded,
           dependencies = importDeps,
           referenceDependencies = refDeps,
-          importGroups = buildGroupMap loaded importDeps,
           referenceGroups = buildGroupMap loaded refDeps,
           moduleOrder = reverse (loadOrder st)
         }
     )
-
--- Loads the entry file and all recursive imports, and keeps the old
--- flattened-declaration behavior for compatibility.
-loadCompUnit :: [FilePath] -> FilePath -> IO (Either String CompUnit)
-loadCompUnit roots entryFile = runExceptT do
-  let defaultMainRoot = takeDirectory entryFile
-      mainRootPath = case roots of
-        [] -> defaultMainRoot
-        x : _ -> x
-      stdRootPath = case roots of
-        _ : y : _ -> Just y
-        _ -> Nothing
-  graph <- ExceptT $ loadModuleGraph mainRootPath stdRootPath [] entryFile
-  ExceptT $ pure (flattenModuleValidationCompUnit graph (entryModule graph))
 
 mkLoaderConfig :: FilePath -> Maybe FilePath -> [(Name, FilePath)] -> FilePath -> IO LoaderConfig
 mkLoaderConfig mainRootPath stdRootPath externalLibs _entryFile = do
@@ -335,14 +326,14 @@ buildGroupMap loaded depMap =
     ]
   where
     groups =
-      map flattenScc $
+      map sccGroupModuleIds $
         stronglyConnComp
           [ (moduleId, moduleId, Map.findWithDefault [] moduleId depMap)
             | moduleId <- Map.keys loaded
           ]
 
-    flattenScc (AcyclicSCC moduleId) = [moduleId]
-    flattenScc (CyclicSCC moduleIds) = moduleIds
+    sccGroupModuleIds (AcyclicSCC moduleId) = [moduleId]
+    sccGroupModuleIds (CyclicSCC moduleIds) = moduleIds
 
 moduleSourcePath :: ModuleGraph -> Mod.ModuleId -> Either String FilePath
 moduleSourcePath graph modulePath =
@@ -355,21 +346,9 @@ moduleImportPairsFor :: ModuleGraph -> Mod.ModuleId -> CompUnit -> [(Import, Mod
 moduleImportPairsFor graph modulePath unit =
   zip (imports unit) (Map.findWithDefault [] modulePath (dependencies graph))
 
-importGroupFor :: ModuleGraph -> Mod.ModuleId -> [Mod.ModuleId]
-importGroupFor graph modulePath =
-  Map.findWithDefault [modulePath] modulePath (importGroups graph)
-
 referenceGroupFor :: ModuleGraph -> Mod.ModuleId -> [Mod.ModuleId]
 referenceGroupFor graph modulePath =
   Map.findWithDefault [modulePath] modulePath (referenceGroups graph)
-
-isRecursiveImportGroup :: ModuleGraph -> Mod.ModuleId -> Bool
-isRecursiveImportGroup graph modulePath =
-  case importGroupFor graph modulePath of
-    [] -> False
-    [_] ->
-      modulePath `elem` Map.findWithDefault [] modulePath (dependencies graph)
-    _ -> True
 
 data ExportedItemRef
   = ExportedItemRef
@@ -449,8 +428,8 @@ normalizePublicInterface publicInterface =
                 Nothing -> (names ++ [bindingName], Map.insert bindingName binding current)
                 Just _ -> (names, current)
 
-prepareFlattenContext :: ModuleGraph -> Mod.ModuleId -> Either String (CompUnit, FilePath, [(Import, Mod.ModuleId)])
-prepareFlattenContext graph modulePath = do
+prepareModuleImportContext :: ModuleGraph -> Mod.ModuleId -> Either String (CompUnit, FilePath, [(Import, Mod.ModuleId)])
+prepareModuleImportContext graph modulePath = do
   unit <- lookupLoadedModule graph modulePath
   sourcePath <- moduleSourcePath graph modulePath
   _ <- publicModuleInterface graph modulePath
@@ -462,90 +441,64 @@ prepareFlattenContext graph modulePath = do
   ensureNoModuleLookupConflicts graph unit importPairs
   pure (unit, sourcePath, importPairs)
 
-flattenModuleValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
-flattenModuleValidationCompUnit graph modulePath = do
-  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
-  collidingTypeNames <- collidingImportedTypeNames graph importPairs
-  importedDecls <- concat <$> mapM (importedDeclsFor graph) importPairs
-  qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
-  pure (CompUnit (imports unit) (qualifiedDecls ++ importedDecls ++ topDeclsFrom unit))
-
-flattenModuleStrictCompileCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
-flattenModuleStrictCompileCompUnit graph modulePath =
-  (\(cunit, _, _, _) -> cunit) <$> flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
-
-flattenModuleStrictCompileCompUnitWithImportedStart ::
+moduleLocalTypeCheckSurface ::
   ModuleGraph ->
   Mod.ModuleId ->
-  Either String (CompUnit, Int)
-flattenModuleStrictCompileCompUnitWithImportedStart graph modulePath
-  | otherwise = do
-      (cunit, _, importedStart, _) <- flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
-      pure (cunit, importedStart)
-
-flattenModuleStrictCompileCompUnitWithMetadata ::
-  ModuleGraph ->
-  Mod.ModuleId ->
-  Either String (CompUnit, Int, Int, [(Name, [Name])])
-flattenModuleStrictCompileCompUnitWithMetadata graph modulePath
-  | isRecursiveImportGroup graph modulePath = do
-      compileSurfaces <- compileSurfacesForGroup graph (importGroupFor graph modulePath)
-      flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath
-flattenModuleStrictCompileCompUnitWithMetadata graph modulePath = do
-  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
-  collidingTypeNames <- collidingImportedTypeNames graph importPairs
-  importedDecls <- dedupeImportedInstanceDecls . concat <$> mapM (strictCompileImportedDecls collidingTypeNames graph) importPairs
-  partialImportedTypes <- concat <$> mapM (strictCompileImportedPartialTypes collidingTypeNames graph) importPairs
-  qualifiedDecls <- concat <$> mapM (qualifiedImportDecls collidingTypeNames graph) importPairs
-  let localDecls = topDeclsFrom unit
-      visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
-      localStart = length qualifiedDecls
-      importedStart = length qualifiedDecls + length localDecls
-  pure
-    ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
-      localStart,
-      importedStart,
-      normalizePartialImportedTypes partialImportedTypes
-    )
-
-flattenModuleStrictCompileCompUnitWithSurfaces ::
-  Map Mod.ModuleId [TopDecl] ->
-  ModuleGraph ->
-  Mod.ModuleId ->
-  Either String (CompUnit, Int, Int, [(Name, [Name])])
-flattenModuleStrictCompileCompUnitWithSurfaces compileSurfaces graph modulePath = do
-  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
+  Either String ModuleTypeCheckSurface
+moduleLocalTypeCheckSurface graph modulePath = do
+  (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <-
     dedupeImportedInstanceDecls
       . concat
-      <$> mapM (strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph) importPairs
+      <$> mapM (typeCheckImportedDecls collidingTypeNames graph) importPairs
   partialImportedTypes <-
-    concat
-      <$> mapM
-        (strictCompileImportedPartialTypesWithSurfaces compileSurfaces collidingTypeNames graph)
-        importPairs
+    concat <$> mapM (importedPartialTypes collidingTypeNames graph) importPairs
   qualifiedDecls <-
-    concat <$> mapM (qualifiedImportDeclsWithSurfaces compileSurfaces collidingTypeNames graph) importPairs
+    concat <$> mapM (typeCheckQualifiedImportDecls collidingTypeNames graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
-      localStart = length qualifiedDecls
-      importedStart = length qualifiedDecls + length localDecls
   pure
-    ( CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls),
-      localStart,
-      importedStart,
-      normalizePartialImportedTypes partialImportedTypes
-    )
+    ModuleTypeCheckSurface
+      { moduleSurfaceImports = imports unit,
+        moduleSurfaceQualifiedDecls = qualifiedDecls,
+        moduleSurfaceLocalDecls = localDecls,
+        moduleSurfaceImportedDecls = visibleImportedDecls,
+        moduleSurfacePartialImportedTypes = normalizePartialImportedTypes partialImportedTypes
+      }
 
-flattenModuleStrictValidationCompUnit :: ModuleGraph -> Mod.ModuleId -> Either String CompUnit
-flattenModuleStrictValidationCompUnit graph modulePath = do
-  (unit, _sourcePath, importPairs) <- prepareFlattenContext graph modulePath
-  importedDecls <- concat <$> mapM (strictValidationImportedDecls graph) importPairs
+stubTopDeclBody :: TopDecl -> TopDecl
+stubTopDeclBody (TContr (Contract n vs contractDecls)) =
+  TContr (Contract n vs (map stubContractDeclBody contractDecls))
+stubTopDeclBody (TFunDef fd) =
+  TFunDef (stubFunDefBody fd)
+stubTopDeclBody (TInstDef (Instance d vs predCtx n ts t _funs)) =
+  TInstDef (Instance d vs predCtx n ts t [])
+stubTopDeclBody decl =
+  decl
+
+stubContractDeclBody :: ContractDecl -> ContractDecl
+stubContractDeclBody (CFieldDecl (Field n ty _initExp)) =
+  CFieldDecl (Field n ty Nothing)
+stubContractDeclBody (CFunDecl fd) =
+  CFunDecl (stubFunDefBody fd)
+stubContractDeclBody (CConstrDecl (Constructor params _body)) =
+  CConstrDecl (Constructor params [])
+stubContractDeclBody decl =
+  decl
+
+stubFunDefBody :: FunDef -> FunDef
+stubFunDefBody (FunDef sig _body) =
+  FunDef sig []
+
+moduleValidationTopDeclSegments :: ModuleGraph -> Mod.ModuleId -> Either String ([Import], [[TopDecl]])
+moduleValidationTopDeclSegments graph modulePath = do
+  (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
+  importedDecls <- concat <$> mapM (validationImportedDecls graph) importPairs
   qualifiedDecls <- concat <$> mapM (qualifiedImportStubDecls graph) importPairs
   let localDecls = topDeclsFrom unit
       visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
-  pure (CompUnit (imports unit) (qualifiedDecls ++ localDecls ++ visibleImportedDecls))
+  pure (imports unit, [qualifiedDecls, localDecls, visibleImportedDecls])
 
 ensureImportItemsExist :: ModuleGraph -> [(Import, Mod.ModuleId)] -> Either String ()
 ensureImportItemsExist graph importPairs = do
@@ -1082,26 +1035,6 @@ ensureRemoteExportsExist sourcePath exportPath names availableNames =
   where
     missing = filter (`notElem` availableNames) names
 
-groupRemoteItemRefs :: Mod.ModuleId -> [ExportedItemRef] -> [(Mod.ModuleId, [Name])]
-groupRemoteItemRefs currentModule =
-  reverse . fst . foldl step ([], Map.empty)
-  where
-    step (acc, seen) itemRef
-      | exportedItemOrigin itemRef == currentModule = (acc, seen)
-      | otherwise =
-          case Map.lookup (exportedItemOrigin itemRef) seen of
-            Just names ->
-              ( replaceAssoc (exportedItemOrigin itemRef) (names ++ [exportedItemName itemRef]) acc,
-                Map.insert (exportedItemOrigin itemRef) (names ++ [exportedItemName itemRef]) seen
-              )
-            Nothing ->
-              ( (exportedItemOrigin itemRef, [exportedItemName itemRef]) : acc,
-                Map.insert (exportedItemOrigin itemRef) [exportedItemName itemRef] seen
-              )
-
-    replaceAssoc moduleId names =
-      map (\(loadedModule, currentNames) -> if loadedModule == moduleId then (loadedModule, names) else (loadedModule, currentNames))
-
 defaultModuleBindingName :: ModulePath -> Name
 defaultModuleBindingName =
   moduleLeafName . Mod.modulePathName
@@ -1142,144 +1075,6 @@ topDeclNames (TInstDef _) = []
 topDeclNames (TExportDecl _) = []
 topDeclNames (TPragmaDecl _) = []
 
-qualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
-qualifiedImportDecls =
-  qualifiedImportDeclsWithSurfaces Map.empty
-
-qualifiedImportDeclsWithSurfaces ::
-  Map Mod.ModuleId [TopDecl] ->
-  Set Name ->
-  ModuleGraph ->
-  (Import, Mod.ModuleId) ->
-  Either String [TopDecl]
-qualifiedImportDeclsWithSurfaces compileSurfaces collidingTypeNames graph (imp, modulePath) =
-  case imp of
-    ImportOnly _ _ -> Right []
-    ImportModule importPath ->
-      concat <$> mapM (`qualifyDecls` modulePath) (importModuleQualifiers importPath)
-    ImportAlias _ qualifier ->
-      qualifyDecls qualifier modulePath
-  where
-    qualifyDecls qualifier targetModule = do
-      moduleBindings <- publicModuleBindingsForModule graph targetModule
-      nestedDecls <- concat <$> mapM (qualifyNestedModule qualifier) moduleBindings
-      publicDecls <- publicTopDeclsForModule graph targetModule
-      allDecls <- compileTargetTopDecls compileSurfaces graph targetModule
-      let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
-          publicUnit = CompUnit [] publicDecls
-          allUnit = CompUnit [] allDecls
-      pure $
-        qualifiedFunctionDecls typeRenameMap qualifier publicUnit allUnit
-          ++ qualifiedTypeAliasDecls typeRenameMap qualifier publicUnit
-          ++ nestedDecls
-
-    qualifyNestedModule qualifier (ExportedModuleBinding bindingName targetModule) =
-      qualifyDecls (QualName qualifier (show bindingName)) targetModule
-
-importableTopDeclsForCompiledModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
-importableTopDeclsForCompiledModule graph modulePath
-  | isRecursiveImportGroup graph modulePath = do
-      compileSurfaces <- compileSurfacesForGroup graph (importGroupFor graph modulePath)
-      maybe
-        (Left ("Internal error: missing compile surface for " ++ Mod.moduleIdDisplay modulePath))
-        Right
-        (Map.lookup modulePath compileSurfaces)
-importableTopDeclsForCompiledModule graph modulePath = do
-  cunit <- flattenModuleStrictCompileCompUnit graph modulePath
-  publicInterface <- publicModuleInterface graph modulePath
-  let localDecls = filter isImportableTopDecl (topDeclsFrom cunit)
-  remoteDecls <- concat <$> mapM (compileSupportForRemoteItemGroup graph) (groupRemoteItemRefs modulePath (publicItemRefs publicInterface))
-  pure (localDecls ++ shadowImportedDecls localDecls remoteDecls)
-
-compileSupportForRemoteItemGroup :: ModuleGraph -> (Mod.ModuleId, [Name]) -> Either String [TopDecl]
-compileSupportForRemoteItemGroup =
-  compileSupportForRemoteItemGroupWithSurfaces Map.empty
-
-compileSupportForRemoteItemGroupWithSurfaces ::
-  Map Mod.ModuleId [TopDecl] ->
-  ModuleGraph ->
-  (Mod.ModuleId, [Name]) ->
-  Either String [TopDecl]
-compileSupportForRemoteItemGroupWithSurfaces compileSurfaces graph (targetModule, names) = do
-  publicDecls <- publicTopDeclsForModule graph targetModule
-  allDecls <- compileTargetTopDecls compileSurfaces graph targetModule
-  let selectedPublicDecls = mapMaybe (selectTopDecl names) publicDecls
-      allFunctionDecls = [fd | TFunDef fd <- allDecls]
-      supportNonFunctionDecls = filter (not . isFunctionTopDecl) allDecls
-      allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFunctionDecls]
-      depMap =
-        Map.fromList
-          [ ( sigName (funSignature fd),
-              filter (`Set.member` allFunctionNames) (funDefFunctionRefs fd)
-            )
-            | fd <- allFunctionDecls
-          ]
-      selectedFunctionNames =
-        [ sigName (funSignature fd)
-          | TFunDef fd <- selectedPublicDecls
-        ]
-      seedFunctionNames =
-        selectedFunctionNames ++ concatMap topDeclFunctionRefs supportNonFunctionDecls
-      requiredFunctionNames = Set.fromList (functionDependencyClosure depMap seedFunctionNames)
-      requiredFunctionDecls =
-        [ TFunDef fd
-          | fd <- allFunctionDecls,
-            sigName (funSignature fd) `Set.member` requiredFunctionNames
-        ]
-  pure (requiredFunctionDecls ++ shadowImportedDecls requiredFunctionDecls supportNonFunctionDecls)
-
-compileTargetTopDecls ::
-  Map Mod.ModuleId [TopDecl] ->
-  ModuleGraph ->
-  Mod.ModuleId ->
-  Either String [TopDecl]
-compileTargetTopDecls compileSurfaces graph targetModule =
-  maybe
-    (importableTopDeclsForCompiledModule graph targetModule)
-    Right
-    (Map.lookup targetModule compileSurfaces)
-
-compileSurfacesForGroup ::
-  ModuleGraph ->
-  [Mod.ModuleId] ->
-  Either String (Map Mod.ModuleId [TopDecl])
-compileSurfacesForGroup graph groupModules =
-  go (0 :: Int) =<< initialSurfaces
-  where
-    maxIterations =
-      max 8 (length groupModules * 12)
-
-    initialSurfaces =
-      Map.fromList
-        <$> mapM
-          ( \moduleId -> do
-              unit <- lookupLoadedModule graph moduleId
-              pure (moduleId, filter isImportableTopDecl (topDeclsFrom unit))
-          )
-          groupModules
-
-    go iterations currentSurfaces
-      | iterations > maxIterations =
-          Left $
-            "Module compile surface fixed point did not stabilize for recursive group:\n  "
-              ++ intercalate ", " (map Mod.moduleIdDisplay groupModules)
-      | otherwise = do
-          nextSurfaces <- Map.fromList <$> mapM (stepSurface currentSurfaces) groupModules
-          if nextSurfaces == currentSurfaces
-            then pure nextSurfaces
-            else go (iterations + 1) nextSurfaces
-
-    stepSurface currentSurfaces moduleId = do
-      (cunit, _, _, _) <- flattenModuleStrictCompileCompUnitWithSurfaces currentSurfaces graph moduleId
-      publicInterface <- publicModuleInterface graph moduleId
-      let localDecls = filter isImportableTopDecl (topDeclsFrom cunit)
-      remoteDecls <-
-        concat
-          <$> mapM
-            (compileSupportForRemoteItemGroupWithSurfaces currentSurfaces graph)
-            (groupRemoteItemRefs moduleId (publicItemRefs publicInterface))
-      pure (moduleId, localDecls ++ shadowImportedDecls localDecls remoteDecls)
-
 qualifiedImportStubDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 qualifiedImportStubDecls graph (imp, modulePath) =
   case imp of
@@ -1302,234 +1097,17 @@ qualifiedImportStubDecls graph (imp, modulePath) =
     stubNestedModule qualifier (ExportedModuleBinding bindingName targetModule) =
       stubDecls (QualName qualifier (show bindingName)) targetModule
 
-qualifyFunctionWrapper :: Name -> FunDef -> FunDef
-qualifyFunctionWrapper qualifier (FunDef sig _body) =
-  FunDef
-    (sig {sigName = qualifiedName})
-    wrapperBody
-  where
-    originalName = sigName sig
-    qualifiedName = QualName qualifier (show originalName)
-    wrapperBody
-      | isBuiltinPassthroughFunctionName originalName =
-          forwardingWrapperBody sig originalName
-      | otherwise =
-          forwardingWrapperBody sig (hiddenFunctionName qualifier originalName)
-
-qualifyRevertFunction :: Name -> FunDef -> FunDef
-qualifyRevertFunction qualifier (FunDef sig body) =
+qualifyFunctionSignature :: Name -> FunDef -> FunDef
+qualifyFunctionSignature qualifier (FunDef sig body) =
   FunDef
     (sig {sigName = QualName qualifier (show (sigName sig))})
     body
-
-qualifyFunctionImpl :: Map Name Name -> Name -> FunDef -> FunDef
-qualifyFunctionImpl renameMap qualifier (FunDef sig body) =
-  FunDef
-    (sig {sigName = hiddenFunctionName qualifier (sigName sig)})
-    (renameBodyFunctionCalls renameMap body)
-
-hiddenFunctionName :: Name -> Name -> Name
-hiddenFunctionName qualifier originalName =
-  QualName qualifier ("$impl$" ++ flattenName originalName)
-
-flattenName :: Name -> String
-flattenName (Name n) = n
-flattenName (QualName q n) = flattenName q ++ "_" ++ n
-
-sigParamName :: Param -> Name
-sigParamName (Typed _ n _) = n
-sigParamName (Untyped _ n) = n
-
-forwardingWrapperBody :: Signature -> Name -> Body
-forwardingWrapperBody sig targetName =
-  [Return (ExpName Nothing targetName (map (ExpVar Nothing) argNames))]
-  where
-    argNames = map sigParamName (sigParams sig)
-
-qualifiedFunctionDecls :: Map Name Name -> Name -> CompUnit -> CompUnit -> [TopDecl]
-qualifiedFunctionDecls typeRenameMap qualifier publicUnit allUnit =
-  concatMap qualifyImpl requiredFds ++ concatMap qualifyWrapper exportedFds
-  where
-    allFds = [fd | TFunDef fd <- topDeclsFrom allUnit]
-    allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFds]
-    exportedNames = [sigName (funSignature fd) | TFunDef fd <- topDeclsFrom publicUnit]
-    exportedFds =
-      [ fd
-        | fd <- allFds,
-          sigName (funSignature fd) `elem` exportedNames
-      ]
-    depMap =
-      Map.fromList
-        [ ( sigName (funSignature fd),
-            filter (`Set.member` allFunctionNames) (funDefFunctionRefs fd)
-          )
-          | fd <- allFds
-        ]
-    requiredFunctionNames =
-      Set.fromList (functionDependencyClosure depMap exportedNames)
-    requiredFds =
-      [ fd
-        | fd <- allFds,
-          sigName (funSignature fd) `Set.member` requiredFunctionNames
-      ]
-    renameMap =
-      Map.fromList
-        [ ( sigName (funSignature fd),
-            hiddenFunctionName qualifier (sigName (funSignature fd))
-          )
-          | fd <- allFds,
-            sigName (funSignature fd) /= Name "revert"
-        ]
-    qualifyImpl fd
-      | sigName (funSignature fd') == Name "revert" =
-          [TFunDef (qualifyRevertFunction qualifier fd')]
-      | isBuiltinPassthroughFunctionName (sigName (funSignature fd')) =
-          []
-      | otherwise =
-          [TFunDef (qualifyFunctionImpl renameMap qualifier fd')]
-      where
-        fd' = renameFunDefTypeRefs typeRenameMap fd
-    qualifyWrapper fd
-      | sigName (funSignature fd') == Name "revert" =
-          []
-      | otherwise =
-          [TFunDef (qualifyFunctionWrapper qualifier fd')]
-      where
-        fd' = renameFunDefTypeRefs typeRenameMap fd
 
 qualifiedFunctionStubDecls :: Name -> CompUnit -> [TopDecl]
 qualifiedFunctionStubDecls qualifier cunit =
   [ TFunDef (stubFunction (QualName qualifier (show (sigName (funSignature fd)))))
     | TFunDef fd <- topDeclsFrom cunit
   ]
-
-renameBodyFunctionCalls :: Map Name Name -> Body -> Body
-renameBodyFunctionCalls renameMap =
-  map (renameStmtFunctionCalls renameMap)
-
-renameStmtFunctionCalls :: Map Name Name -> Stmt -> Stmt
-renameStmtFunctionCalls renameMap (Assign lhs rhs) =
-  Assign (renameExpFunctionCalls renameMap lhs) (renameExpFunctionCalls renameMap rhs)
-renameStmtFunctionCalls renameMap (StmtPlusEq e1 e2) =
-  StmtPlusEq (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
-renameStmtFunctionCalls renameMap (StmtMinusEq e1 e2) =
-  StmtMinusEq (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
-renameStmtFunctionCalls renameMap (Let ct n mt me) =
-  Let ct n mt (renameExpFunctionCalls renameMap <$> me)
-renameStmtFunctionCalls renameMap (StmtExp e) =
-  StmtExp (renameExpFunctionCalls renameMap e)
-renameStmtFunctionCalls renameMap (Return e) =
-  Return (renameExpFunctionCalls renameMap e)
-renameStmtFunctionCalls renameMap (Match es eqns) =
-  Match
-    (map (renameExpFunctionCalls renameMap) es)
-    (map (renameEquationFunctionCalls renameMap) eqns)
-renameStmtFunctionCalls renameMap (Block body) =
-  Block (renameBodyFunctionCalls renameMap body)
-renameStmtFunctionCalls _ stmt@(Asm _) = stmt
-renameStmtFunctionCalls renameMap (If e blk1 blk2) =
-  If
-    (renameExpFunctionCalls renameMap e)
-    (renameBodyFunctionCalls renameMap blk1)
-    (renameBodyFunctionCalls renameMap blk2)
-renameStmtFunctionCalls renameMap (For initStmt cond postStmt body) =
-  For
-    (renameStmtFunctionCalls renameMap initStmt)
-    (renameExpFunctionCalls renameMap cond)
-    (renameStmtFunctionCalls renameMap postStmt)
-    (renameBodyFunctionCalls renameMap body)
-
-renameEquationFunctionCalls :: Map Name Name -> Equation -> Equation
-renameEquationFunctionCalls renameMap (ps, body) =
-  (ps, renameBodyFunctionCalls renameMap body)
-
-renameExpFunctionCalls :: Map Name Name -> Exp -> Exp
-renameExpFunctionCalls _ litExp@(Lit _) = litExp
-renameExpFunctionCalls _ atExp@(ExpAt _) = atExp
-renameExpFunctionCalls renameMap (ExpName me n es) =
-  case qualifiedMemberName me n of
-    Just qn ->
-      case Map.lookup qn renameMap of
-        Just renamedName -> ExpName Nothing renamedName es'
-        Nothing -> ExpName me' n es'
-    Nothing ->
-      ExpName me' n' es'
-  where
-    me' = fmap (renameExpFunctionCalls renameMap) me
-    n'
-      | me == Nothing = Map.findWithDefault n n renameMap
-      | otherwise = n
-    es' = map (renameExpFunctionCalls renameMap) es
-renameExpFunctionCalls renameMap (ExpVar me n) =
-  case qualifiedMemberName me n of
-    Just qn ->
-      case Map.lookup qn renameMap of
-        Just renamedName -> ExpVar Nothing renamedName
-        Nothing -> ExpVar me' n
-    Nothing ->
-      ExpVar me' n
-  where
-    me' = fmap (renameExpFunctionCalls renameMap) me
-renameExpFunctionCalls renameMap (ExpDotName n es) =
-  ExpDotName n (map (renameExpFunctionCalls renameMap) es)
-renameExpFunctionCalls renameMap (Lam ps bd mt) =
-  Lam ps (renameBodyFunctionCalls renameMap bd) mt
-renameExpFunctionCalls renameMap (TyExp e ty) =
-  TyExp (renameExpFunctionCalls renameMap e) ty
-renameExpFunctionCalls renameMap (ExpIndexed e1 e2) =
-  ExpIndexed (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
-renameExpFunctionCalls renameMap (ExpPlus e1 e2) =
-  ExpPlus (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
-renameExpFunctionCalls renameMap (ExpMinus e1 e2) =
-  ExpMinus (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
-renameExpFunctionCalls renameMap (ExpTimes e1 e2) =
-  ExpTimes (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
-renameExpFunctionCalls renameMap (ExpDivide e1 e2) =
-  ExpDivide (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
-renameExpFunctionCalls renameMap (ExpModulo e1 e2) =
-  ExpModulo (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
-renameExpFunctionCalls renameMap (ExpLT e1 e2) =
-  renameOp2 renameMap (Name "lt") ExpLT e1 e2
-renameExpFunctionCalls renameMap (ExpGT e1 e2) =
-  ExpGT (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
-renameExpFunctionCalls renameMap (ExpLE e1 e2) =
-  renameOp2 renameMap (Name "le") ExpLE e1 e2
-renameExpFunctionCalls renameMap (ExpGE e1 e2) =
-  renameOp2 renameMap (Name "ge") ExpGE e1 e2
-renameExpFunctionCalls renameMap (ExpEE e1 e2) =
-  ExpEE (renameExpFunctionCalls renameMap e1) (renameExpFunctionCalls renameMap e2)
-renameExpFunctionCalls renameMap (ExpNE e1 e2) =
-  renameOp2 renameMap (Name "ne") ExpNE e1 e2
-renameExpFunctionCalls renameMap (ExpLAnd e1 e2) =
-  renameOp2 renameMap (Name "and") ExpLAnd e1 e2
-renameExpFunctionCalls renameMap (ExpLOr e1 e2) =
-  renameOp2 renameMap (Name "or") ExpLOr e1 e2
-renameExpFunctionCalls renameMap (ExpLNot e) =
-  let e' = renameExpFunctionCalls renameMap e
-   in case Map.lookup (Name "not") renameMap of
-        Just n -> ExpName Nothing n [e']
-        Nothing -> ExpLNot e'
-renameExpFunctionCalls renameMap (ExpCond e1 e2 e3) =
-  ExpCond
-    (renameExpFunctionCalls renameMap e1)
-    (renameExpFunctionCalls renameMap e2)
-    (renameExpFunctionCalls renameMap e3)
-
--- | Rename a binary operator that desugars to an unqualified free-function call.
--- When the function name appears in the rename map (because it was imported and
--- needs to be hidden under a qualifier), we emit an explicit ExpName call so
--- the renamed definition is referenced rather than the original unqualified name.
-renameOp2 :: Map Name Name -> Name -> (Exp -> Exp -> Exp) -> Exp -> Exp -> Exp
-renameOp2 renameMap fn keep e1 e2 =
-  let e1' = renameExpFunctionCalls renameMap e1
-      e2' = renameExpFunctionCalls renameMap e2
-   in case Map.lookup fn renameMap of
-        Just n -> ExpName Nothing n [e1', e2']
-        Nothing -> keep e1' e2'
-
-qualifiedMemberName :: Maybe Exp -> Name -> Maybe Name
-qualifiedMemberName me n =
-  QualName <$> (me >>= qualifierFromExpVarChain) <*> pure (show n)
 
 qualifierFromExpVarChain :: Exp -> Maybe Name
 qualifierFromExpVarChain (ExpVar Nothing n) =
@@ -1622,6 +1200,7 @@ renamePatTypeRefs renameMap (PatDot n ps) =
   PatDot n (map (renamePatTypeRefs renameMap) ps)
 renamePatTypeRefs _ p@(PWildcard) = p
 renamePatTypeRefs _ p@(PLit _) = p
+renamePatTypeRefs _ p@(PExp _) = p
 
 renamePatNameTypeRefs :: Map Name Name -> Name -> Name
 renamePatNameTypeRefs renameMap (QualName q n) =
@@ -1863,12 +1442,8 @@ stubFunction n =
     (Signature [] [] n [] False Nothing)
     []
 
-importedDeclsFor :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
-importedDeclsFor graph (imp, modulePath) =
-  applyImportVisibility imp <$> publicTopDeclsForModule graph modulePath
-
-strictValidationImportedDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
-strictValidationImportedDecls graph (imp, modulePath) =
+validationImportedDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
+validationImportedDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ selector -> do
       publicDecls <- publicTopDeclsForModule graph modulePath
@@ -1894,138 +1469,115 @@ toValidationImportStub (TInstDef _) = Nothing
 toValidationImportStub (TExportDecl _) = Nothing
 toValidationImportStub (TPragmaDecl _) = Nothing
 
-strictCompileImportedDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
-strictCompileImportedDecls =
-  strictCompileImportedDeclsWithSurfaces Map.empty
-
-strictCompileImportedPartialTypes :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [(Name, [Name])]
-strictCompileImportedPartialTypes =
-  strictCompileImportedPartialTypesWithSurfaces Map.empty
-
-strictCompileImportedDeclsWithSurfaces ::
-  Map Mod.ModuleId [TopDecl] ->
-  Set Name ->
-  ModuleGraph ->
-  (Import, Mod.ModuleId) ->
-  Either String [TopDecl]
-strictCompileImportedDeclsWithSurfaces compileSurfaces collidingTypeNames graph (imp, modulePath) =
+typeCheckQualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
+typeCheckQualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
   case imp of
-    ImportOnly moduleName selector ->
-      importOnlyCompileDecls (Mod.modulePathName moduleName) selector
-    ImportModule moduleName ->
-      moduleImportCompileDecls (Mod.modulePathName moduleName) modulePath
+    ImportOnly _ _ -> Right []
+    ImportModule importPath ->
+      concat <$> mapM (`qualifyDecls` modulePath) (importModuleQualifiers importPath)
     ImportAlias _ qualifier ->
-      moduleImportCompileDecls qualifier modulePath
+      qualifyDecls qualifier modulePath
   where
-    importOnlyCompileDecls moduleName selector = do
-      publicDecls <- publicTopDeclsForModule graph modulePath
-      allDecls <- compileTargetTopDecls compileSurfaces graph modulePath
-      let allFunctionDecls = [fd | TFunDef fd <- allDecls]
-          supportNonFunctionDecls = filter (not . isFunctionTopDecl) allDecls
-          allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFunctionDecls]
-          renameMap = importedFunctionRenameMap moduleName allDecls
-          typeRenameMap = importedTypeRenameMap collidingTypeNames moduleName publicDecls
-          depMap =
-            Map.fromList
-              [ ( sigName (funSignature fd),
-                  filter (`Set.member` allFunctionNames) (funDefFunctionRefs fd)
-                )
-                | fd <- allFunctionDecls
-              ]
-      let selectedPublicDecls =
-            let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
-             in mapMaybe (selectTopDecl names) publicDecls
-          selectedFunctionNames =
-            [ sigName (funSignature fd)
-              | TFunDef fd <- selectedPublicDecls
-            ]
-          seedFunctionNames =
-            selectedFunctionNames ++ concatMap topDeclFunctionRefs supportNonFunctionDecls
-          requiredFunctionNames = Set.fromList (functionDependencyClosure depMap seedFunctionNames)
-          requiredFunctionDecls =
-            [ TFunDef fd
-              | fd <- allFunctionDecls,
-                sigName (funSignature fd) `Set.member` requiredFunctionNames
-            ]
-          renamedSupportNonFunctionDecls =
-            map
-              (renameTopDeclTypeRefs typeRenameMap . renameTopDeclFunctionCalls renameMap)
-              supportNonFunctionDecls
-          functionDecls =
-            importOnlyFunctionDecls moduleName selectedFunctionNames requiredFunctionDecls
-      pure
-        ( functionDecls
-            ++ shadowImportedDecls
-              functionDecls
-              renamedSupportNonFunctionDecls
-        )
-
-    moduleImportCompileDecls qualifier targetModule = do
+    qualifyDecls qualifier targetModule = do
       moduleBindings <- publicModuleBindingsForModule graph targetModule
       publicDecls <- publicTopDeclsForModule graph targetModule
-      allDecls <- compileTargetTopDecls compileSurfaces graph targetModule
-      let renameMap = importedFunctionRenameMap qualifier allDecls
+      nestedDecls <- concat <$> mapM (qualifyNestedModule qualifier) moduleBindings
+      let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
+          publicUnit = CompUnit [] publicDecls
+      pure $
+        qualifiedFunctionSignatureDecls typeRenameMap qualifier publicUnit
+          ++ qualifiedTypeAliasDecls typeRenameMap qualifier publicUnit
+          ++ nestedDecls
+
+    qualifyNestedModule qualifier (ExportedModuleBinding bindingName targetModule) =
+      qualifyDecls (QualName qualifier (show bindingName)) targetModule
+
+qualifiedFunctionSignatureDecls :: Map Name Name -> Name -> CompUnit -> [TopDecl]
+qualifiedFunctionSignatureDecls typeRenameMap qualifier cunit =
+  [ TFunDef (stubFunDefBody (qualifyFunctionSignature qualifier fd'))
+    | TFunDef fd <- topDeclsFrom cunit,
+      let fd' = renameFunDefTypeRefs typeRenameMap fd
+  ]
+
+typeCheckImportedDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
+typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
+  case imp of
+    ImportOnly moduleName selector ->
+      importOnlyDecls (Mod.modulePathName moduleName) selector
+    ImportModule moduleName ->
+      moduleImportDecls (Mod.modulePathName moduleName) modulePath
+    ImportAlias _ qualifier ->
+      moduleImportDecls qualifier modulePath
+  where
+    importOnlyDecls qualifier selector = do
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      supportDecls <- typeCheckSupportNonFunctionDecls graph modulePath
+      let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+          selectedPublicDecls = mapMaybe (selectTopDecl names) publicDecls
           typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
-          allFunctionDecls = [fd | TFunDef fd <- allDecls]
-          allFunctionNames = Set.fromList [sigName (funSignature fd) | fd <- allFunctionDecls]
-          depMap =
-            Map.fromList
-              [ ( sigName (funSignature fd),
-                  filter (`Set.member` allFunctionNames) (funDefFunctionRefs fd)
-                )
-                | fd <- allFunctionDecls
-              ]
-          publicFunctionNames =
-            [ sigName (funSignature fd)
-              | TFunDef fd <- publicDecls
+          selectedFunctionDecls =
+            [ TFunDef (stubFunDefBody (renameFunDefTypeRefs typeRenameMap fd))
+              | TFunDef fd <- selectedPublicDecls
             ]
-          supportNonFunctionDecls = filter (not . isFunctionTopDecl) allDecls
-          exportedFunctionNames =
-            Set.fromList (functionDependencyClosure depMap publicFunctionNames)
-          supportFunctionNames =
-            Set.fromList
-              ( functionDependencyClosure
-                  depMap
-                  (concatMap topDeclFunctionRefs supportNonFunctionDecls)
-              )
-          extraSupportFunctions =
-            [ fd
-              | fd <- allFunctionDecls,
-                sigName (funSignature fd) `Set.member` Set.difference supportFunctionNames exportedFunctionNames
-            ]
+          supportNonFunctionDecls =
+            map
+              (stubTopDeclBody . renameTopDeclTypeRefs typeRenameMap)
+              supportDecls
+      pure (selectedFunctionDecls ++ shadowImportedDecls selectedFunctionDecls supportNonFunctionDecls)
+
+    moduleImportDecls qualifier targetModule = do
+      moduleBindings <- publicModuleBindingsForModule graph targetModule
+      publicDecls <- publicTopDeclsForModule graph targetModule
+      supportDecls <- typeCheckSupportNonFunctionDecls graph targetModule
+      nestedSupportDecls <- concat <$> mapM (nestedModuleImportDecls qualifier) moduleBindings
+      let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
           localSupportDecls =
             map
-              (renameTopDeclTypeRefs typeRenameMap . renameTopDeclFunctionCalls renameMap)
-              supportNonFunctionDecls
-          localSupportFunctionDecls =
-            concatMap (qualifySupportImpl renameMap typeRenameMap qualifier) extraSupportFunctions
-          requiredBuiltinSupportNames =
-            Set.filter
-              isBuiltinPassthroughFunctionName
-              (Set.union exportedFunctionNames supportFunctionNames)
-          builtinSupportDecls =
-            [ TFunDef fd
-              | fd <- allFunctionDecls,
-                sigName (funSignature fd) `Set.member` requiredBuiltinSupportNames
-            ]
-      nestedSupportDecls <- concat <$> mapM (nestedModuleImportCompileDecls qualifier) moduleBindings
-      pure
-        ( builtinSupportDecls
-            ++ localSupportFunctionDecls
-            ++ localSupportDecls
-            ++ shadowImportedDecls (localSupportFunctionDecls ++ localSupportDecls) nestedSupportDecls
-        )
+              (stubTopDeclBody . renameTopDeclTypeRefs typeRenameMap)
+              supportDecls
+      pure (localSupportDecls ++ shadowImportedDecls localSupportDecls nestedSupportDecls)
 
-    nestedModuleImportCompileDecls qualifier (ExportedModuleBinding bindingName targetModule) =
-      moduleImportCompileDecls (QualName qualifier (show bindingName)) targetModule
+    nestedModuleImportDecls qualifier (ExportedModuleBinding bindingName targetModule) =
+      moduleImportDecls (QualName qualifier (show bindingName)) targetModule
 
-strictCompileImportedPartialTypesWithSurfaces ::
-  Map Mod.ModuleId [TopDecl] ->
+typeCheckSupportNonFunctionDecls :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
+typeCheckSupportNonFunctionDecls graph =
+  typeCheckSupportNonFunctionDeclsSeen graph Set.empty
+
+typeCheckSupportNonFunctionDeclsSeen :: ModuleGraph -> Set Mod.ModuleId -> Mod.ModuleId -> Either String [TopDecl]
+typeCheckSupportNonFunctionDeclsSeen graph seen modulePath
+  | modulePath `Set.member` seen = Right []
+  | otherwise = do
+      unit <- lookupLoadedModule graph modulePath
+      publicDecls <- publicTopDeclsForModule graph modulePath
+      let importPairs = moduleImportPairsFor graph modulePath unit
+          localSupport = filterSupport (topDeclsFrom unit)
+          publicSupport = filterSupport publicDecls
+          ownSupport = publicSupport ++ shadowImportedDecls publicSupport localSupport
+      collidingTypeNames <- collidingImportedTypeNames graph importPairs
+      importedSupport <-
+        concat <$> mapM (supportFromImport collidingTypeNames (Set.insert modulePath seen)) importPairs
+      pure (ownSupport ++ shadowImportedDecls ownSupport importedSupport)
+  where
+    filterSupport =
+      filter (\decl -> isImportableTopDecl decl && not (isFunctionTopDecl decl))
+
+    supportFromImport collidingTypeNames seen' (imp, targetModule) = do
+      publicDecls <- publicTopDeclsForModule graph targetModule
+      supportDecls <- typeCheckSupportNonFunctionDeclsSeen graph seen' targetModule
+      let typeRenameMap = importedTypeRenameMap collidingTypeNames (importQualifier imp) publicDecls
+      pure (map (renameTopDeclTypeRefs typeRenameMap) supportDecls)
+
+    importQualifier (ImportOnly moduleName _) = Mod.modulePathName moduleName
+    importQualifier (ImportModule moduleName) = Mod.modulePathName moduleName
+    importQualifier (ImportAlias _ qualifier) = qualifier
+
+importedPartialTypes ::
   Set Name ->
   ModuleGraph ->
   (Import, Mod.ModuleId) ->
   Either String [(Name, [Name])]
-strictCompileImportedPartialTypesWithSurfaces _compileSurfaces collidingTypeNames graph (imp, modulePath) =
+importedPartialTypes collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly moduleName selector ->
       importOnlyTypes (Mod.modulePathName moduleName) selector
@@ -2086,25 +1638,6 @@ fullConstructorNamesForRef graph itemRef = do
           ++ "."
           ++ show (exportedItemName itemRef)
 
-importedFunctionRenameMap :: Name -> [TopDecl] -> Map Name Name
-importedFunctionRenameMap qualifier ds =
-  Map.fromList
-    [ (sigName (funSignature fd), hiddenFunctionName qualifier (sigName (funSignature fd)))
-      | TFunDef fd <- ds,
-        not (isBuiltinPassthroughFunctionName (sigName (funSignature fd)))
-    ]
-
-isBuiltinPassthroughFunctionName :: Name -> Bool
-isBuiltinPassthroughFunctionName functionName =
-  functionName `elem` passthroughNames
-  where
-    passthroughNames =
-      [ Name "revert",
-        Name "concatLit",
-        Name "strlenLit",
-        Name "keccakLit"
-      ]
-
 importedTypeRenameMap :: Set Name -> Name -> [TopDecl] -> Map Name Name
 importedTypeRenameMap collidingTypeNames qualifier ds =
   Map.fromList
@@ -2141,201 +1674,6 @@ collidingImportedTypeNames graph importPairs = do
     topDeclTypeNamesForModule modulePath = do
       publicDecls <- publicTopDeclsForModule graph modulePath
       pure (concatMap topDeclImportedTypeNames publicDecls)
-
-importOnlyFunctionDecls :: Name -> [Name] -> [TopDecl] -> [TopDecl]
-importOnlyFunctionDecls qualifier selectedNames allDecls =
-  concatMap qualifyImpl allFds ++ concatMap wrapSelected selectedFds
-  where
-    allFds = [fd | TFunDef fd <- allDecls]
-    selectedFds =
-      [ fd
-        | fd <- allFds,
-          sigName (funSignature fd) `elem` selectedNames
-      ]
-    renameMap = importedFunctionRenameMap qualifier allDecls
-    qualifyImpl fd
-      | isBuiltinPassthroughFunctionName (sigName (funSignature fd)) =
-          [TFunDef fd]
-      | otherwise =
-          [TFunDef (qualifyFunctionImpl renameMap qualifier fd)]
-    wrapSelected fd
-      | isBuiltinPassthroughFunctionName (sigName (funSignature fd)) =
-          []
-      | otherwise =
-          [TFunDef (importOnlyFunctionWrapper qualifier fd)]
-
-importOnlyFunctionWrapper :: Name -> FunDef -> FunDef
-importOnlyFunctionWrapper qualifier (FunDef sig _body) =
-  FunDef
-    sig
-    (forwardingWrapperBody sig implName)
-  where
-    originalName = sigName sig
-    implName = hiddenFunctionName qualifier originalName
-
-qualifySupportImpl :: Map Name Name -> Map Name Name -> Name -> FunDef -> [TopDecl]
-qualifySupportImpl renameMap typeRenameMap qualifier fd
-  | isBuiltinPassthroughFunctionName (sigName (funSignature fd')) =
-      []
-  | otherwise =
-      [TFunDef (qualifyFunctionImpl renameMap qualifier fd')]
-  where
-    fd' = renameFunDefTypeRefs typeRenameMap fd
-
-functionDependencyClosure :: Map Name [Name] -> [Name] -> [Name]
-functionDependencyClosure depMap seeds = reverse (go Set.empty seeds [])
-  where
-    go :: Set Name -> [Name] -> [Name] -> [Name]
-    go _ [] acc = acc
-    go seen (n : pending) acc
-      | n `Set.member` seen = go seen pending acc
-      | otherwise =
-          let deps = Map.findWithDefault [] n depMap
-           in go (Set.insert n seen) (deps ++ pending) (n : acc)
-
-funDefFunctionRefs :: FunDef -> [Name]
-funDefFunctionRefs (FunDef _ body) =
-  bodyFunctionRefs body
-
-topDeclFunctionRefs :: TopDecl -> [Name]
-topDeclFunctionRefs (TFunDef fd) =
-  funDefFunctionRefs fd
-topDeclFunctionRefs (TInstDef inst) =
-  concatMap funDefFunctionRefs (instFunctions inst)
-topDeclFunctionRefs (TContr (Contract _ _ contractDecls)) =
-  concatMap contractDeclFunctionRefs contractDecls
-topDeclFunctionRefs _ =
-  []
-
-contractDeclFunctionRefs :: ContractDecl -> [Name]
-contractDeclFunctionRefs (CFunDecl fd) =
-  funDefFunctionRefs fd
-contractDeclFunctionRefs (CFieldDecl (Field _ _ me)) =
-  maybe [] expFunctionRefs me
-contractDeclFunctionRefs (CConstrDecl (Constructor _ body)) =
-  bodyFunctionRefs body
-contractDeclFunctionRefs (CDataDecl _) =
-  []
-
-bodyFunctionRefs :: Body -> [Name]
-bodyFunctionRefs =
-  concatMap stmtFunctionRefs
-
-stmtFunctionRefs :: Stmt -> [Name]
-stmtFunctionRefs (Assign lhs rhs) =
-  expFunctionRefs lhs ++ expFunctionRefs rhs
-stmtFunctionRefs (StmtPlusEq e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
-stmtFunctionRefs (StmtMinusEq e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
-stmtFunctionRefs (Let _ _ _ me) =
-  maybe [] expFunctionRefs me
-stmtFunctionRefs (StmtExp e) =
-  expFunctionRefs e
-stmtFunctionRefs (Return e) =
-  expFunctionRefs e
-stmtFunctionRefs (Match es eqns) =
-  concatMap expFunctionRefs es ++ concatMap equationFunctionRefs eqns
-stmtFunctionRefs (Block body) =
-  bodyFunctionRefs body
-stmtFunctionRefs (Asm _) =
-  []
-stmtFunctionRefs (If e blk1 blk2) =
-  expFunctionRefs e ++ bodyFunctionRefs blk1 ++ bodyFunctionRefs blk2
-stmtFunctionRefs (For initStmt cond postStmt body) =
-  stmtFunctionRefs initStmt
-    ++ expFunctionRefs cond
-    ++ stmtFunctionRefs postStmt
-    ++ bodyFunctionRefs body
-
-equationFunctionRefs :: Equation -> [Name]
-equationFunctionRefs (_pats, body) =
-  bodyFunctionRefs body
-
-expFunctionRefs :: Exp -> [Name]
-expFunctionRefs (Lit _) = []
-expFunctionRefs (ExpAt _) = []
-expFunctionRefs (ExpName me n es) =
-  directRef ++ maybe [] expFunctionRefs me ++ concatMap expFunctionRefs es
-  where
-    directRef =
-      case me of
-        Nothing -> [n]
-        _ -> maybe [] pure (qualifiedMemberName me n)
-expFunctionRefs (ExpVar me n) =
-  directRef ++ maybe [] expFunctionRefs me
-  where
-    directRef =
-      case me of
-        Nothing -> [n]
-        _ -> maybe [] pure (qualifiedMemberName me n)
-expFunctionRefs (ExpDotName _ es) =
-  concatMap expFunctionRefs es
-expFunctionRefs (Lam _ body _mt) =
-  bodyFunctionRefs body
-expFunctionRefs (TyExp e _ty) =
-  expFunctionRefs e
-expFunctionRefs (ExpIndexed e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpPlus e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpMinus e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpTimes e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpDivide e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpModulo e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpLT e1 e2) =
-  Name "lt" : expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpGT e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpLE e1 e2) =
-  Name "le" : expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpGE e1 e2) =
-  Name "ge" : expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpEE e1 e2) =
-  expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpNE e1 e2) =
-  Name "ne" : expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpLAnd e1 e2) =
-  Name "and" : expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpLOr e1 e2) =
-  Name "or" : expFunctionRefs e1 ++ expFunctionRefs e2
-expFunctionRefs (ExpLNot e) =
-  Name "not" : expFunctionRefs e
-expFunctionRefs (ExpCond e1 e2 e3) =
-  expFunctionRefs e1 ++ expFunctionRefs e2 ++ expFunctionRefs e3
-
-renameTopDeclFunctionCalls :: Map Name Name -> TopDecl -> TopDecl
-renameTopDeclFunctionCalls renameMap (TInstDef inst) =
-  TInstDef
-    ( inst
-        { instFunctions =
-            map (renameFunDefFunctionCalls renameMap) (instFunctions inst)
-        }
-    )
-renameTopDeclFunctionCalls renameMap (TContr c) =
-  TContr (renameContractFunctionCalls renameMap c)
-renameTopDeclFunctionCalls _ d = d
-
-renameFunDefFunctionCalls :: Map Name Name -> FunDef -> FunDef
-renameFunDefFunctionCalls renameMap (FunDef sig body) =
-  FunDef sig (renameBodyFunctionCalls renameMap body)
-
-renameContractFunctionCalls :: Map Name Name -> Contract -> Contract
-renameContractFunctionCalls renameMap (Contract n ts ds) =
-  Contract n ts (map (renameContractDeclFunctionCalls renameMap) ds)
-
-renameContractDeclFunctionCalls :: Map Name Name -> ContractDecl -> ContractDecl
-renameContractDeclFunctionCalls renameMap (CFunDecl fd) =
-  CFunDecl (renameFunDefFunctionCalls renameMap fd)
-renameContractDeclFunctionCalls renameMap (CFieldDecl (Field n ty me)) =
-  CFieldDecl (Field n ty (renameExpFunctionCalls renameMap <$> me))
-renameContractDeclFunctionCalls renameMap (CConstrDecl (Constructor ps body)) =
-  CConstrDecl (Constructor ps (renameBodyFunctionCalls renameMap body))
-renameContractDeclFunctionCalls _ d = d
 
 isFunctionTopDecl :: TopDecl -> Bool
 isFunctionTopDecl (TFunDef _) = True
@@ -2435,16 +1773,6 @@ topDeclTypeNames _ = []
 topDeclClassNames :: TopDecl -> [Name]
 topDeclClassNames (TClassDef (Class _ _ n _ _ _)) = [n]
 topDeclClassNames _ = []
-
-applyImportVisibility :: Import -> [TopDecl] -> [TopDecl]
-applyImportVisibility (ImportOnly _ selector) =
-  \topLevelDecls ->
-    let names = selectedNamesFromAvailable (uniqueNames (concatMap topDeclNames topLevelDecls)) selector
-     in mapMaybe (selectTopDecl names) topLevelDecls
-applyImportVisibility (ImportModule _) =
-  const []
-applyImportVisibility (ImportAlias _ _) =
-  const []
 
 selectTopDecl :: [Name] -> TopDecl -> Maybe TopDecl
 selectTopDecl names d@(TFunDef (FunDef sig _))

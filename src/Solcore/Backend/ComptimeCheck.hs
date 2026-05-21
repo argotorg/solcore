@@ -94,9 +94,9 @@ checkStmt ft pure_ retCt fname env stmt = case stmt of
     mapM_ (checkAlt ft pure_ retCt fname env) alts
     return env
   MastFor initStmt cond postStmt body -> do
-    checkStmt ft pure_ retCt fname env initStmt
+    _ <- checkStmt ft pure_ retCt fname env initStmt
     checkExp ft pure_ env cond
-    checkStmt ft pure_ retCt fname env postStmt
+    _ <- checkStmt ft pure_ retCt fname env postStmt
     mapM_ (checkStmt ft pure_ retCt fname env) body
     return env
   MastAsm _ ->
