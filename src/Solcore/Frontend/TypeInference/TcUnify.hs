@@ -3,6 +3,7 @@ module Solcore.Frontend.TypeInference.TcUnify where
 import Common.Pretty
 import Control.Monad.Except
 import Data.List
+import Solcore.Diagnostics
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
@@ -179,13 +180,7 @@ infiniteTyErr v t =
 
 typesNotMatch :: (MonadError String m) => Ty -> Ty -> m a
 typesNotMatch t1 t2 =
-  throwError $
-    unwords
-      [ "Types do not match:",
-        pretty t1,
-        "and",
-        pretty t2
-      ]
+  typeMismatchDiagnostic "types do not match" t1 t2
 
 typesMatchListErr :: (MonadError String m) => [String] -> [String] -> m a
 typesMatchListErr ts ts' =
@@ -213,14 +208,23 @@ typesMguListErr ts ts' =
 
 typesDoNotUnify :: (MonadError String m) => Ty -> Ty -> m a
 typesDoNotUnify t1 t2 =
+  typeMismatchDiagnostic "types do not unify" t1 t2
+
+typeMismatchDiagnostic :: (MonadError String m) => String -> Ty -> Ty -> m a
+typeMismatchDiagnostic message t1 t2 =
   throwError $
-    unwords
-      [ "Types:",
-        pretty t1,
-        "and",
-        pretty t2,
-        "do not unify"
-      ]
+    encodeDiagnostic
+      Diagnostic
+        { diagnosticSeverity = Error,
+          diagnosticCode = Just (DiagnosticCode "SC0201"),
+          diagnosticMessage = message ++ ": " ++ pretty t1 ++ " and " ++ pretty t2,
+          diagnosticLabels = [],
+          diagnosticNotes =
+            [ "left type: " ++ pretty t1,
+              "right type: " ++ pretty t2
+            ],
+          diagnosticHelp = []
+        }
 
 boundVariablesErr :: (MonadError String m) => [Tyvar] -> m a
 boundVariablesErr ts =

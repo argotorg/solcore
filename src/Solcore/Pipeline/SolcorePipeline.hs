@@ -23,12 +23,13 @@ import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Diagnostics
-  ( Diagnostic,
+  ( Diagnostic (..),
     SourceMap,
     decodeDiagnostic,
     diagnosticMessage,
     diagnosticPrimarySpan,
     emptySourceMap,
+    encodeDiagnostic,
     insertSourceFile,
     legacyDiagnostic,
     lookupSourceFile,
@@ -102,13 +103,13 @@ compileWithDiagnostics opts = runExceptT $ do
     _ <-
       liftEitherDiagnostic
         sources
-        ( first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e) $
+        ( first (decorateDiagnosticContext ("module validation failed for " ++ sourcePath)) $
             validateDuplicateNamespacesInTopDeclSegments validationSegments
         )
     _ <-
       liftEitherDiagnosticIO
         sources
-        ( first (\e -> "Module validation failed for " ++ sourcePath ++ ":\n" ++ e)
+        ( first (decorateDiagnosticContext ("module validation failed for " ++ sourcePath))
             <$> nameResolutionTopDeclSegments validationImports validationSegments
         )
     pure ()
@@ -343,12 +344,19 @@ dumpModuleTypeInference opts sourcePath typed tcEnv =
 
 moduleTypeCheckError :: FilePath -> String -> String -> String
 moduleTypeCheckError sourcePath phase err =
-  "Module typecheck failed for "
-    ++ sourcePath
-    ++ " ("
-    ++ phase
-    ++ "):\n"
-    ++ err
+  decorateDiagnosticContext
+    ("module typecheck failed for " ++ sourcePath ++ " (" ++ phase ++ ")")
+    err
+
+decorateDiagnosticContext :: String -> String -> String
+decorateDiagnosticContext context err =
+  case decodeDiagnostic err of
+    Just diagnostic ->
+      encodeDiagnostic
+        diagnostic
+          { diagnosticNotes = diagnosticNotes diagnostic ++ [context]
+          }
+    Nothing -> context ++ ":\n" ++ err
 
 prepareInferenceDeclsForTypeInference ::
   Option ->
