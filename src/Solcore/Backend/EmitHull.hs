@@ -308,19 +308,19 @@ emitStmt (MastAssign i e) = do
   (e', stmts) <- emitExp e
   let assign = [Hull.SAssign (Hull.EVar (show (mastIdName i))) e']
   return (stmts ++ assign)
-emitStmt (MastLet _ct i@(MastId name _) _mty mexp)
-  | mastIdType i == mastIntegerTy =
+emitStmt (MastLet _ct (MastId name ty) _ mexp)
+  | ty == mastIntegerTy =
       errorsEM ["integer-typed let '", show name, "': comptime value not eliminated before hull emission"]
-emitStmt (MastLet _ct (MastId name ty) _mty mexp) = do
-  let hullName = show name
-  hullTy <- translateMastType ty
-  let alloc = [Hull.SAlloc hullName hullTy]
-  case mexp of
-    Just e -> do
-      (v, estmts) <- emitExp e
-      let assign = [Hull.SAssign (Hull.EVar hullName) v]
-      return (estmts ++ alloc ++ assign)
-    Nothing -> return alloc
+  | otherwise = do
+      let hullName = show name
+      hullTy <- translateMastType ty
+      let alloc = [Hull.SAlloc hullName hullTy]
+      case mexp of
+        Just e -> do
+          (v, estmts) <- emitExp e
+          let assign = [Hull.SAssign (Hull.EVar hullName) v]
+          return (estmts ++ alloc ++ assign)
+        Nothing -> return alloc
 emitStmt (MastMatch scrutinee alts) = emitMatch scrutinee alts
 emitStmt (MastFor initStmt cond post body) = do
   initStmts <- emitStmt initStmt
