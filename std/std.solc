@@ -1,4 +1,4 @@
-import std.opcodes.{addmod as addmod_, mulmod as mulmod_, and as and_, not as not_, gas, staticcall, mstore, mload, mcopy, sstore, sload};
+import std.opcodes.{add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, log1 as log1_, staticcall, invalid};
 
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
@@ -161,10 +161,8 @@ export {
 forall t.t:Typedef(word) =>
 function log1(v:t, topic:word) -> () {
   let w : word = Typedef.rep(v);
-  assembly {
-    mstore(0,w)
-    log1(0,32,topic)
-  }
+  mstore(0, w);
+  log1_(0, 32, topic);
 }
 
 function unimplemented() -> () {
@@ -218,9 +216,7 @@ function revertWithError(e:Error) -> () {
 
 function assert(cond: bool) -> () {
     if (!cond) {
-        assembly {
-            invalid()
-        }
+        invalid();
     }
 }
 
@@ -402,89 +398,49 @@ default instance a:Num {
 // These are intended to be folded by MastEval when their arguments are
 // statically known word values.
 function eqWord(x:word, y:word) -> bool {
-  let res : word;
-  assembly {
-     res := eq(x, y)
-  }
-  return tobool(res);
+    return tobool(eq(x, y));
 }
 
 function gtWord(x:word, y:word) -> bool {
-  let res : word;
-  assembly {
-     res := gt(x, y)
-  }
-  return tobool(res);
+    return tobool(gt_(x, y));
 }
 
 function addWord(l: word, r: word) -> word {
-  let rw : word;
-  assembly {
-      rw := add(l,r)
-  }
-  return rw;
+    return add(l, r);
 }
 
 function subWord(l: word, r: word) -> word {
-    let rw : word;
-    assembly {
-        rw := sub(l,r)
-    }
-    return rw;
+    return sub(l, r);
 }
 
 // Bitwise AND
 function bandWord(x: word, y: word) -> word {
-    let res: word;
-    assembly {
-        res := and(x, y)
-    }
-    return res;
+    return and_(x, y);
 }
 
 // Bitwise OR
 function borWord(x: word, y: word) -> word {
-    let res: word;
-    assembly {
-        res := or(x, y)
-    }
-    return res;
+    return or_(x, y);
 }
 
 // Bitwise XOR
 function bxorWord(x: word, y: word) -> word {
-    let res: word;
-    assembly {
-        res := xor(x, y)
-    }
-    return res;
+    return xor_(x, y);
 }
 
 // Bitwise NOT
 function bnotWord(x: word) -> word {
-    let res: word;
-    assembly {
-        res := not(x)
-    }
-    return res;
+    return not_(x);
 }
 
 // Bitwise SHL
 function bshlWord(x: word, y: word) -> word {
-    let res: word;
-    assembly {
-        res := shl(x, y)
-    }
-    return res;
+    return shl(x, y);
 }
 
 // Bitwise SHR
 function bshrWord(x: word, y: word) -> word {
-    let res: word;
-    assembly {
-        res := shr(x, y)
-    }
-    return res;
+    return shr(x, y);
 }
 
 instance word:Eq {
@@ -512,11 +468,7 @@ instance word:Sub {
 }
 
 function mulWord(l: word, r: word) -> word {
-    let rw : word;
-    assembly {
-        rw := mul(l,r)
-    }
-    return rw;
+    return mul(l, r);
 }
 
 instance word:Mul {
@@ -527,21 +479,13 @@ instance word:Mul {
 
 instance word:Div {
     function div(l: word, r: word) -> word {
-        let rw : word;
-        assembly {
-            rw := div(l,r)
-        }
-        return rw;
+        return div(l, r);
     }
 }
 
 instance word : Mod {
   function mod (l : word, r : word) -> word {
-    let res : word;
-    assembly {
-      res := mod(l,r)
-    }
-    return res;
+    return mod(l, r);
   }
 }
 
@@ -585,22 +529,14 @@ instance word:Bounded {
 }
 
 function hash1(x: word) -> word {
-  let result: word = 0;
-  assembly {
-    mstore(0, x)
-    result := keccak256(0,32)
-  }
-  return result;
+    mstore(0, x);
+    return keccak256(0, 32);
 }
 
 function hash2(x: word, y: word) -> word {
-  let result: word = 0;
-  assembly {
-    mstore(0, x)
-    mstore(32, y)
-    result := keccak256(0,64)
-  }
-  return result;
+    mstore(0, x);
+    mstore(32, y);
+    return keccak256(0, 64);
 }
 
 // --- Value Types ---
@@ -984,7 +920,7 @@ instance MemoryWordReader:WordReader {
     }
     function copyToMem(reader:MemoryWordReader, dst:word, cnt: word) -> () {
         match reader {
-        | MemoryWordReader(ptr) => assembly { mcopy(dst, ptr, cnt) }
+        | MemoryWordReader(ptr) => mcopy(dst, ptr, cnt);
         }
     }
 }
@@ -1003,14 +939,9 @@ instance CalldataWordReader : Typedef(word) {
 
 instance CalldataWordReader:WordReader {
     function read(reader:CalldataWordReader) -> word {
-        let result : word;
         match reader {
-          | CalldataWordReader(ptr) =>
-            // https://github.com/argotorg/solcore/issues/188
-            let ptr2 = ptr;
-            assembly { result := calldataload(ptr2) }
+          | CalldataWordReader(ptr) => return calldataload(ptr);
         }
-        return result;
     }
     function advance(reader:CalldataWordReader, offset:word) -> CalldataWordReader {
         match reader {
@@ -1019,7 +950,7 @@ instance CalldataWordReader:WordReader {
     }
     function copyToMem(reader:CalldataWordReader, dst:word, cnt: word) -> () {
         match reader {
-        | CalldataWordReader(ptr) => assembly { calldatacopy(dst, ptr, cnt) }
+        | CalldataWordReader(ptr) => calldatacopy(dst, ptr, cnt);
         }
     }
 }
@@ -1253,7 +1184,7 @@ instance bool:ABIEncode {
 }
 
 function round_up_to_mul_of_32(value:word) -> word {
-    return bandWord(value + 31, bnotWord(31));
+    return and_(value + 31, not_(31));
 }
 
 function encodeIntoFromBytesLike(srcPtr:word, basePtr:word, offset:word, tail:word) -> word {
@@ -2047,9 +1978,7 @@ instance memory(bytes):MemoryPointer {
 instance memory(bytes):MemoryEncode {
     function encodeInto(v: memory(bytes), target: word) -> () {
         let v_ = Typedef.rep(v);
-        assembly {
-            mcopy(target, add(v_, 32), mload(v_))
-        }
+        mcopy(target, v_ + 32, mload(v_));
     }
 }
 
@@ -2101,7 +2030,7 @@ instance memory_ref:MemoryPointer {
 instance memory_ref:MemoryEncode {
     function encodeInto(v: memory_ref, target: word) -> () {
         match v {
-            | memory_ref(ptr, len) => assembly { mcopy(target, ptr, len) }
+            | memory_ref(ptr, len) => mcopy(target, ptr, len);
         }
     }
 }
@@ -2129,11 +2058,7 @@ function truncate(input: a, end: word) -> memory_ref {
 forall a . a:MemorySize, a:MemoryPointer => function keccak256_(input: a) -> bytes32 {
     let len : word = MemorySize.len(input);
     let ptr : word = MemoryPointer.ptr(input);
-    let res : word;
-    assembly {
-        res := keccak256(ptr, len)
-    }
-    return bytes32(res);
+    return bytes32(keccak256(ptr, len));
 }
 
 forall a . a:MemorySize, a:MemoryPointer => function sha256(input: a) -> bytes32 {
