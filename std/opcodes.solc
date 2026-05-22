@@ -72,7 +72,7 @@ export {
     create,
     call,
     callcode,
-    return,
+    return_,
     delegatecall,
     create2,
     staticcall,
@@ -387,11 +387,13 @@ function extcodesize(a: word) -> word {
     return res;
 }
 
+
 function extcodecopy(a: word, b: word, c: word, d: word) -> () {
     assembly {
         extcodecopy(a, b, c, d)
     }
 }
+
 
 function returndatasize() -> word {
     let res;
@@ -633,7 +635,7 @@ function callcode(a: word, b: word, c: word, d: word, e: word, f: word, g: word)
     return res;
 }
 
-function return(a: word, b: word) -> () {
+function return_(a: word, b: word) -> () {
     assembly {
         return(a, b)
     }
