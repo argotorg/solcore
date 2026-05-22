@@ -1,4 +1,5 @@
 import std.opcodes.{add, mstore, mload, mcopy, sstore, sload};
+//import std.opcodes.{not} as not_;
 
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
@@ -1245,24 +1246,34 @@ instance bool:ABIEncode {
     }
 }
 
+// TODO: support import renaming
+function and_(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := and(a, b)
+    }
+    return res;
+}
+
+function not_(a: word) -> word {
+    let res;
+    assembly {
+        res := not(a)
+    }
+    return res;
+}
+
 function round_up_to_mul_of_32(value:word) -> word {
-    return bandWord(value + 31, bnotWord(31));
+    return and_(value + 31, not_(31));
 }
 
 function encodeIntoFromBytesLike(srcPtr:word, basePtr:word, offset:word, tail:word) -> word {
     let tailOffset = tail - basePtr;
-
-    assembly {
-      let length := mload(srcPtr)
-      let total := add(length, 32)
-
-      mstore(add(basePtr, offset), sub(tail, basePtr))
-      mcopy(tail, srcPtr, total)
-      let rounded := and(add(total, 31), not(31))
-      tail := add(tail, rounded)
-    }
-
-    return tail;
+    let length = mload(srcPtr);
+    let total = length + 32;
+    mstore(basePtr + offset, tail - basePtr);
+    mcopy(tail, srcPtr, total);
+    return tail + round_up_to_mul_of_32(total);
 }
 
 instance memory(string):ABIEncode {
