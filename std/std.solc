@@ -1,4 +1,4 @@
-import std.opcodes.{add, mstore, mload, mcopy, sstore, sload};
+import std.opcodes.{add, mstore, mload, mcopy, sstore, sload, calldataload, calldatacopy};
 //import std.opcodes.{not} as not_;
 
 pragma no-patterson-condition ABIEncode, Num;
@@ -997,14 +997,9 @@ instance CalldataWordReader : Typedef(word) {
 
 instance CalldataWordReader:WordReader {
     function read(reader:CalldataWordReader) -> word {
-        let result : word;
         match reader {
-          | CalldataWordReader(ptr) =>
-            // https://github.com/argotorg/solcore/issues/188
-            let ptr2 = ptr;
-            assembly { result := calldataload(ptr2) }
+          | CalldataWordReader(ptr) => return calldataload(ptr);
         }
-        return result;
     }
     function advance(reader:CalldataWordReader, offset:word) -> CalldataWordReader {
         match reader {
@@ -1013,7 +1008,7 @@ instance CalldataWordReader:WordReader {
     }
     function copyToMem(reader:CalldataWordReader, dst:word, cnt: word) -> () {
         match reader {
-        | CalldataWordReader(ptr) => assembly { calldatacopy(dst, ptr, cnt) }
+        | CalldataWordReader(ptr) => calldatacopy(dst, ptr, cnt);
         }
     }
 }
