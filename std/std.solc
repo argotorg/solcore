@@ -1183,9 +1183,7 @@ instance bool:ABIEncode {
 }
 
 function round_up_to_mul_of_32(value:word) -> word {
-  let result : word;
-  assembly { result := and(add(value, 31), not(31)) }
-  return result;
+    return bandWord(value + 31, bnotWord(31));
 }
 
 function encodeIntoFromBytesLike(srcPtr:word, basePtr:word, offset:word, tail:word) -> word {

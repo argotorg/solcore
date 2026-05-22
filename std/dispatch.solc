@@ -82,11 +82,8 @@ forall name payability args rets fn
 => instance Method(name,payability,args,rets,fn):Selector {
     function compute(prx : Proxy(Method(name,payability,args,rets,fn))) -> bytes4 {
         // let hash : word = keccakLit(sigStr(prx));
-	let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
-	let res : word;
-        assembly { res := shr(224, hash) }
- 	
-        return bytes4(res);
+        let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
+        return bytes4(bshrWord(224, hash));
     }
 }
 
