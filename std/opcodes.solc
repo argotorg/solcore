@@ -1,0 +1,82 @@
+export {
+    stop,
+    add,
+    mstore,
+    mload,
+    mcopy,
+    sstore,
+    sload,
+    keccak256,
+    callvalue,
+    revert
+};
+
+function stop() -> () {
+    assembly {
+        stop()
+    }
+}
+
+function add(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := add(a, b)
+    }
+    return res;
+}
+
+function mstore(a: word, b: word) -> () {
+    assembly {
+        mstore( a, b)
+    }
+}
+
+function mload(a: word) -> word {
+    let res;
+    assembly {
+        res := mload(a)
+    }
+    return res;
+}
+
+function mcopy(a: word, b: word, c: word) -> () {
+    assembly {
+        mcopy(a, b, c)
+    }
+}
+
+function sstore(a: word, b: word) -> () {
+    assembly {
+        sstore( a, b)
+    }
+}
+
+function sload(a: word) -> word {
+    let res;
+    assembly {
+        res := sload(a)
+    }
+    return res;
+}
+
+function keccak256(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := keccak256(a, b)
+    }
+    return res;
+}
+
+function callvalue() -> word {
+    let res;
+    assembly {
+        res := callvalue()
+    }
+    return res;
+}
+
+function revert(a: word, b: word) -> () {
+    assembly {
+        revert(a, b)
+    }
+}
