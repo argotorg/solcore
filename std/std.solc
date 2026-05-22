@@ -1812,39 +1812,34 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
 
 // shamelessly stolen from abi_encode_t_string_storage_to_t_string_memory_ptr
 function loadBytesFromStorage(slot:word, memPtr:word) -> word {
-  let ret : word;
-  assembly {
-    let pos := memPtr
-    let slotValue := sload(slot)
-    let length := div(slotValue, 2)
-    let outOfPlaceEncoding := and(slotValue, 1)
-    if iszero(outOfPlaceEncoding) {
-	length := and(length, 0x7f)
+    let pos = memPtr;
+    let slotValue = sload(slot);
+    let length = slotValue / 2;
+    let outOfPlaceEncoding = and_(slotValue, 1);
+    if (iszero(outOfPlaceEncoding) == 1) {
+        length = and_(length, 0x7f);
     }
-    mstore(pos, length)
-    pos := add(pos, 0x20)
-
-    switch outOfPlaceEncoding
-    case 0 {
-        // short byte array
-        mstore(pos, and(slotValue, not(0xff)))
-        let empty := iszero(length)
-        let notzero := iszero(empty)
-        ret := add(pos, mul(0x20, notzero))
+    mstore(pos, length);
+    pos += 32;
+    match outOfPlaceEncoding {
+        | 0 =>
+            // Short byte array
+            mstore(pos, and_(slotValue, not_(0xff)));
+            let empty = iszero(length);
+            let notzero = iszero(empty);
+            return pos + (notzero * 32);
+        | 1 =>
+            // Long byte array
+            mstore(0, slot);
+            let dataPos = keccak256(0, 32);
+            let i = 0;
+            for (; i < length; i += 32) {
+                mstore(pos + i, sload(dataPos));
+                dataPos += 1;
+            }
+            return pos + i;
+        | _ => return 0; // unreachable
     }
-    case 1 {
-        // long byte array
-        mstore(0, slot)
-        let dataPos := keccak256(0, 32)
-        let i := 0
-        for { } lt(i, length) { i := add(i, 0x20) } {
-            mstore(add(pos, i), sload(dataPos))
-            dataPos := add(dataPos, 1)
-        }
-        ret := add(pos, i)
-    }
-  }
-  return ret;
 }
 
 
