@@ -34,8 +34,13 @@
           });
         sol-core-tests-no-warnings = pkgs.haskell.lib.overrideCabal sol-core
           (old: {
+            buildTarget = "test:sol-core-tests";
             doHaddock = false;
             enableLibraryProfiling = false;
+            checkPhase = ''
+              runHook preCheck
+              runHook postCheck
+            '';
             configureFlags = (old.configureFlags or []) ++ [
               "--ghc-options=-Werror"
             ];
