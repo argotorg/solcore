@@ -1,4 +1,4 @@
-import std.opcodes.{add, mstore, mload, mcopy};
+import std.opcodes.{add, mstore, mload, mcopy, sstore, sload};
 
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
@@ -1529,18 +1529,12 @@ pragma no-bounded-variable-condition LVA, RVA;
 // -- storage
 
 function sload_(x:word) -> word {
-    let res: word;
-    assembly {
-       res := sload(x)
-    }
-    return res;
-  }
-
-function sstore_(a:word, v:word) -> () {
-    assembly { sstore(a,v) }
+    return sload(x);
 }
 
-
+function sstore_(a:word, v:word) -> () {
+    sstore(a, v);
+}
 
 forall self.
 class self:StorageSize {
@@ -1620,34 +1614,21 @@ class self:StorageType {
 
 instance word:StorageType {
     function load(ptr:word) -> word {
-        let r:word;
-        assembly {
-            r := sload(ptr)
-        }
-        return r;
+        return sload(ptr);
     }
     function store(ptr:word, value:word) -> () {
-        assembly {
-            sstore(ptr, value)
-        }
+        sstore(ptr, value);
     }
 }
 
 forall a. a:Typedef(word) =>
 function sloadViaWord(ptr:word) -> a {
-    let r:word;
-    assembly {
-	r := sload(ptr)
-    }
-    return Typedef.abs(r);
+    return Typedef.abs(sload(ptr));
 }
 
 forall a. a:Typedef(word) =>
 function sstoreViaWord(ptr:word, value:a) -> () {
-    let w: word = Typedef.rep(value);
-    assembly {
-	sstore(ptr, w)
-    }
+    sstore(ptr, Typedef.rep(value));
 }
 
 instance uint256:StorageType {
