@@ -440,7 +440,8 @@ cases =
       runTestForFile
         "multi-stmt-var-leaf.solc"
         caseFolder,
-      runTestForFile "ltimp.solc" caseFolder
+      runTestForFile "ltimp.solc" caseFolder,
+      runTestExpectingFailure "class-return-type-miss.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

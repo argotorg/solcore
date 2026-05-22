@@ -47,7 +47,7 @@ forall prev . prev:ToWord => instance Succ(prev) : ToWord {
 
 forall self . class self:MemoryType {
     function load(ptr:word) -> self;
-    function store(ptr:word, value:self);
+    function store(ptr:word, value:self) -> ();
 }
 
 instance word:MemoryType {
