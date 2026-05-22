@@ -1,4 +1,5 @@
 import std.{*};
+import std.opcodes.{callvalue};
 
 export {
   ABIString,
@@ -256,10 +257,7 @@ instance Payable:MethodLevelCallvalueCheck {
 // NonPayable methods revert if passed value
 instance NonPayable:MethodLevelCallvalueCheck {
    function checkCallvalue(prx : Proxy(NonPayable)) -> () {
-       let value: word;
-       assembly {
-         value := callvalue()
-       }
+       let value = callvalue();
        if (value > 0) {
          let NonPayableReceivedValue = Error(0xb5988ea3);
          revertWithError(NonPayableReceivedValue);
