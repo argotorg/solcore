@@ -1,14 +1,84 @@
 export {
     stop,
     add,
-    mstore,
-    mload,
-    mcopy,
-    sstore,
-    sload,
+    mul,
+    sub,
+    div,
+    sdiv,
+    mod,
+    smod,
+    addmod,
+    mulmod,
+    exp,
+    signextend,
+    lt,
+    gt,
+    slt,
+    sgt,
+    eq,
+    iszero,
+    and,
+    or,
+    xor,
+    not,
+    byte,
+    shl,
+    shr,
+    sar,
     keccak256,
+    address,
+    balance,
+    origin,
+    caller,
     callvalue,
-    revert
+    calldataload,
+    calldatasize,
+    calldatacopy,
+    codesize,
+    codecopy,
+    gasprice,
+    extcodesize,
+    extcodecopy,
+    returndatasize,
+    returndatacopy,
+    extcodehash,
+    blockhash,
+    coinbase,
+    timestamp,
+    number,
+    prevrandao,
+    gaslimit,
+    chainid,
+    selfbalance,
+    basefee,
+    blobhash,
+    blobbasefee,
+    pop,
+    mload,
+    mstore,
+    mstore8,
+    sload,
+    sstore,
+    msize,
+    gas,
+    tload,
+    tstore,
+    mcopy,
+    log0,
+    log1,
+    log2,
+    log3,
+    log4,
+    create,
+    call,
+    callcode,
+    return,
+    delegatecall,
+    create2,
+    staticcall,
+    revert,
+    invalid,
+    selfdestruct
 };
 
 function stop() -> () {
@@ -25,36 +95,194 @@ function add(a: word, b: word) -> word {
     return res;
 }
 
-function mstore(a: word, b: word) -> () {
-    assembly {
-        mstore( a, b)
-    }
-}
-
-function mload(a: word) -> word {
+function mul(a: word, b: word) -> word {
     let res;
     assembly {
-        res := mload(a)
+        res := mul(a, b)
     }
     return res;
 }
 
-function mcopy(a: word, b: word, c: word) -> () {
-    assembly {
-        mcopy(a, b, c)
-    }
-}
-
-function sstore(a: word, b: word) -> () {
-    assembly {
-        sstore( a, b)
-    }
-}
-
-function sload(a: word) -> word {
+function sub(a: word, b: word) -> word {
     let res;
     assembly {
-        res := sload(a)
+        res := sub(a, b)
+    }
+    return res;
+}
+
+function div(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := div(a, b)
+    }
+    return res;
+}
+
+function sdiv(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := sdiv(a, b)
+    }
+    return res;
+}
+
+function mod(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := mod(a, b)
+    }
+    return res;
+}
+
+function smod(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := smod(a, b)
+    }
+    return res;
+}
+
+function addmod(a: word, b: word, c: word) -> word {
+    let res;
+    assembly {
+        res := addmod(a, b, c)
+    }
+    return res;
+}
+
+function mulmod(a: word, b: word, c: word) -> word {
+    let res;
+    assembly {
+        res := mulmod(a, b, c)
+    }
+    return res;
+}
+
+function exp(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := exp(a, b)
+    }
+    return res;
+}
+
+function signextend(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := signextend(a, b)
+    }
+    return res;
+}
+
+function lt(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := lt(a, b)
+    }
+    return res;
+}
+
+function gt(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := gt(a, b)
+    }
+    return res;
+}
+
+function slt(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := slt(a, b)
+    }
+    return res;
+}
+
+function sgt(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := sgt(a, b)
+    }
+    return res;
+}
+
+function eq(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := eq(a, b)
+    }
+    return res;
+}
+
+function iszero(a: word) -> word {
+    let res;
+    assembly {
+        res := iszero(a)
+    }
+    return res;
+}
+
+function and(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := and(a, b)
+    }
+    return res;
+}
+
+function or(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := or(a, b)
+    }
+    return res;
+}
+
+function xor(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := xor(a, b)
+    }
+    return res;
+}
+
+function not(a: word) -> word {
+    let res;
+    assembly {
+        res := not(a)
+    }
+    return res;
+}
+
+function byte(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := byte(a, b)
+    }
+    return res;
+}
+
+function shl(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := shl(a, b)
+    }
+    return res;
+}
+
+function shr(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := shr(a, b)
+    }
+    return res;
+}
+
+function sar(a: word, b: word) -> word {
+    let res;
+    assembly {
+        res := sar(a, b)
     }
     return res;
 }
@@ -67,6 +295,38 @@ function keccak256(a: word, b: word) -> word {
     return res;
 }
 
+function address() -> word {
+    let res;
+    assembly {
+        res := address()
+    }
+    return res;
+}
+
+function balance(a: word) -> word {
+    let res;
+    assembly {
+        res := balance(a)
+    }
+    return res;
+}
+
+function origin() -> word {
+    let res;
+    assembly {
+        res := origin()
+    }
+    return res;
+}
+
+function caller() -> word {
+    let res;
+    assembly {
+        res := caller()
+    }
+    return res;
+}
+
 function callvalue() -> word {
     let res;
     assembly {
@@ -75,8 +335,348 @@ function callvalue() -> word {
     return res;
 }
 
+function calldataload(a: word) -> word {
+    let res;
+    assembly {
+        res := calldataload(a)
+    }
+    return res;
+}
+
+function calldatasize() -> word {
+    let res;
+    assembly {
+        res := calldatasize()
+    }
+    return res;
+}
+
+function calldatacopy(a: word, b: word, c: word) -> () {
+    assembly {
+        calldatacopy(a, b, c)
+    }
+}
+
+function codesize() -> word {
+    let res;
+    assembly {
+        res := codesize()
+    }
+    return res;
+}
+
+function codecopy(a: word, b: word, c: word) -> () {
+    assembly {
+        codecopy(a, b, c)
+    }
+}
+
+function gasprice() -> word {
+    let res;
+    assembly {
+        res := gasprice()
+    }
+    return res;
+}
+
+function extcodesize(a: word) -> word {
+    let res;
+    assembly {
+        res := extcodesize(a)
+    }
+    return res;
+}
+
+function extcodecopy(a: word, b: word, c: word, d: word) -> () {
+    assembly {
+        extcodecopy(a, b, c, d)
+    }
+}
+
+function returndatasize() -> word {
+    let res;
+    assembly {
+        res := returndatasize()
+    }
+    return res;
+}
+
+function returndatacopy(a: word, b: word, c: word) -> () {
+    assembly {
+        returndatacopy(a, b, c)
+    }
+}
+
+function extcodehash(a: word) -> word {
+    let res;
+    assembly {
+        res := extcodehash(a)
+    }
+    return res;
+}
+
+function blockhash(a: word) -> word {
+    let res;
+    assembly {
+        res := blockhash(a)
+    }
+    return res;
+}
+
+function coinbase() -> word {
+    let res;
+    assembly {
+        res := coinbase()
+    }
+    return res;
+}
+
+function timestamp() -> word {
+    let res;
+    assembly {
+        res := timestamp()
+    }
+    return res;
+}
+
+function number() -> word {
+    let res;
+    assembly {
+        res := number()
+    }
+    return res;
+}
+
+function prevrandao() -> word {
+    let res;
+    assembly {
+        res := prevrandao()
+    }
+    return res;
+}
+
+function gaslimit() -> word {
+    let res;
+    assembly {
+        res := gaslimit()
+    }
+    return res;
+}
+
+function chainid() -> word {
+    let res;
+    assembly {
+        res := chainid()
+    }
+    return res;
+}
+
+function selfbalance() -> word {
+    let res;
+    assembly {
+        res := selfbalance()
+    }
+    return res;
+}
+
+function basefee() -> word {
+    let res;
+    assembly {
+        res := basefee()
+    }
+    return res;
+}
+
+function blobhash(a: word) -> word {
+    let res;
+    assembly {
+        res := blobhash(a)
+    }
+    return res;
+}
+
+function blobbasefee() -> word {
+    let res;
+    assembly {
+        res := blobbasefee()
+    }
+    return res;
+}
+
+function pop(a: word) -> () {
+    assembly {
+        pop(a)
+    }
+}
+
+function mload(a: word) -> word {
+    let res;
+    assembly {
+        res := mload(a)
+    }
+    return res;
+}
+
+function mstore(a: word, b: word) -> () {
+    assembly {
+        mstore(a, b)
+    }
+}
+
+function mstore8(a: word, b: word) -> () {
+    assembly {
+        mstore8(a, b)
+    }
+}
+
+function sload(a: word) -> word {
+    let res;
+    assembly {
+        res := sload(a)
+    }
+    return res;
+}
+
+function sstore(a: word, b: word) -> () {
+    assembly {
+        sstore(a, b)
+    }
+}
+
+function msize() -> word {
+    let res;
+    assembly {
+        res := msize()
+    }
+    return res;
+}
+
+function gas() -> word {
+    let res;
+    assembly {
+        res := gas()
+    }
+    return res;
+}
+
+function tload(a: word) -> word {
+    let res;
+    assembly {
+        res := tload(a)
+    }
+    return res;
+}
+
+function tstore(a: word, b: word) -> () {
+    assembly {
+        tstore(a, b)
+    }
+}
+
+function mcopy(a: word, b: word, c: word) -> () {
+    assembly {
+        mcopy(a, b, c)
+    }
+}
+
+function log0(a: word, b: word) -> () {
+    assembly {
+        log0(a, b)
+    }
+}
+
+function log1(a: word, b: word, c: word) -> () {
+    assembly {
+        log1(a, b, c)
+    }
+}
+
+function log2(a: word, b: word, c: word, d: word) -> () {
+    assembly {
+        log2(a, b, c, d)
+    }
+}
+
+function log3(a: word, b: word, c: word, d: word, e: word) -> () {
+    assembly {
+        log3(a, b, c, d, e)
+    }
+}
+
+function log4(a: word, b: word, c: word, d: word, e: word, f: word) -> () {
+    assembly {
+        log4(a, b, c, d, e, f)
+    }
+}
+
+function create(a: word, b: word, c: word) -> word {
+    let res;
+    assembly {
+        res := create(a, b, c)
+    }
+    return res;
+}
+
+function call(a: word, b: word, c: word, d: word, e: word, f: word, g: word) -> word {
+    let res;
+    assembly {
+        res := call(a, b, c, d, e, f, g)
+    }
+    return res;
+}
+
+function callcode(a: word, b: word, c: word, d: word, e: word, f: word, g: word) -> word {
+    let res;
+    assembly {
+        res := callcode(a, b, c, d, e, f, g)
+    }
+    return res;
+}
+
+function return(a: word, b: word) -> () {
+    assembly {
+        return(a, b)
+    }
+}
+
+function delegatecall(a: word, b: word, c: word, d: word, e: word, f: word) -> word {
+    let res;
+    assembly {
+        res := delegatecall(a, b, c, d, e, f)
+    }
+    return res;
+}
+
+function create2(a: word, b: word, c: word, d: word) -> word {
+    let res;
+    assembly {
+        res := create2(a, b, c, d)
+    }
+    return res;
+}
+
+function staticcall(a: word, b: word, c: word, d: word, e: word, f: word) -> word {
+    let res;
+    assembly {
+        res := staticcall(a, b, c, d, e, f)
+    }
+    return res;
+}
+
 function revert(a: word, b: word) -> () {
     assembly {
         revert(a, b)
+    }
+}
+
+function invalid() -> () {
+    assembly {
+        invalid()
+    }
+}
+
+function selfdestruct(a: word) -> () {
+    assembly {
+        selfdestruct(a)
     }
 }
