@@ -440,6 +440,15 @@ instance word : Mod {
   }
 }
 
+instance word:Bounded {
+  function maxVal() -> word {
+    return 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+  }
+  function minVal () -> word {
+    return 0;
+  }
+}
+
 function hash1(x: word) -> word {
   let result: word = 0;
   assembly {
