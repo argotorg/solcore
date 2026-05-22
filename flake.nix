@@ -32,6 +32,14 @@
             # Contract tests run in checks.contests where evmone/testrunner are provisioned.
             testTargets = [ "sol-core-tests" ];
           });
+        sol-core-tests-no-warnings = pkgs.haskell.lib.overrideCabal sol-core
+          (old: {
+            doHaddock = false;
+            enableLibraryProfiling = false;
+            configureFlags = (old.configureFlags or []) ++ [
+              "--ghc-options=-Werror"
+            ];
+          });
         texlive = pkgs.texlive.combine { inherit (pkgs.texlive) scheme-small thmtools pdfsync lkproof cm-super; };
         evmone-lib = pkgs.callPackage ./nix/evmone.nix { };
 
@@ -58,6 +66,7 @@
         packages.spec = pkgs.callPackage ./spec { solcoreTexlive = texlive; };
         packages.testrunner = testrunner;
         packages.evmone = evmone-lib;
+        packages.tests-no-warnings = sol-core-tests-no-warnings;
         packages.default = packages.sol-core;
 
         apps.sol-core = inputs.flake-utils.lib.mkApp { drv = packages.sol-core; };
