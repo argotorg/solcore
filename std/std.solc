@@ -1096,6 +1096,15 @@ instance uint256:ABIEncode {
     }
 }
 
+instance address:ABIEncode {
+    // an address is written directly into the head (into a full 32-byte slot)
+    function encodeInto(x:address, basePtr:word, offset:word, tail:word) -> word {
+        let repx : word = Typedef.rep(x);
+        mstore(basePtr + offset, repx);
+        return tail;
+    }
+}
+
 instance bytes32:ABIEncode {
     // a bytes32 is written directly into the head
     function encodeInto(x:bytes32, basePtr:word, offset:word, tail:word) -> word {
@@ -1505,7 +1514,7 @@ instance word:StorageType {
 
 instance address:StorageType {
     function load(ptr:word) -> address {
-        return Typedef.abs(sload_(ptr)):address; // type annotation needed due to a typechecker bug
+        return Typedef.abs(sload_(ptr));
     }
     function store(ptr:word, value:address) -> () {
         return sstore_(ptr, Typedef.rep(value));
