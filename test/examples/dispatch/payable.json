@@ -1,0 +1,64 @@
+{
+  "payable": {
+    "bytecode": "",
+    "contract": "PayableTest",
+    "tests": [
+      {
+        "input": {
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+	    "text-calldata": "deposit()(uint256)",
+          "calldata": "d0e30db0",
+          "value": "42"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+	    "text-calldata": "deposit()(uint256)",
+          "calldata": "d0e30db0",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+	    "text-calldata": "balance()(uint256)",
+          "calldata": "b69ef8a8",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+	    "text-calldata": "balance()(uint256)",
+          "calldata": "b69ef8a8",
+          "value": "42"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "b5988ea3",
+          "status": "failure"
+        }
+      }
+
+    ]
+  }
+}
