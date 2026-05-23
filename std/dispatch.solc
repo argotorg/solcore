@@ -290,5 +290,6 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
 }
 
 function revert_handler() -> () {
-  assembly { revert(0,0) }
+  let NoSelectorMatchedWithoutFallback = Error(0x4924aef0);
+  revertWithError(NoSelectorMatchedWithoutFallback);
 }

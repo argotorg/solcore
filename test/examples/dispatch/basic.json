@@ -69,6 +69,18 @@
           "returndata":"00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
           "status": "success"
         }
+      },
+      {
+        "input": {
+          "text-calldata": "missing fallback",
+          "calldata":"deadc0de",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata":"4924aef0",
+          "status": "failure"
+        }
       }
     ]
   }
