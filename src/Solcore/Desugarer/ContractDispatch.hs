@@ -75,7 +75,7 @@ genMainFn addMain (Contract cname tys cdecls)
         [ proxyExp (TyCon "NonPayable" []),
           proxyExp unit,
           proxyExp unit,
-          Var "revert_handler"
+          Var "fallback_default_implementation"
         ]
 
     mkMethod (Signature _ _ fname fargs (Just ret))
