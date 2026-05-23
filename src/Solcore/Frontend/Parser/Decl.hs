@@ -241,11 +241,12 @@ implicitReturn stmts = stmts
 
 signatureP :: [Ty] -> [Pred] -> Parser Signature
 signatureP vars ctx = do
+  payable <- option False (True <$ keyword "payable")
   keyword "function"
   n <- Name <$> identifier
   ps <- parens (paramP `sepBy` comma)
   ret <- optional (symbol "->" *> typeP)
-  return (Signature vars ctx n ps ret)
+  return (Signature vars ctx n ps ret payable)
 
 -- | One function signature inside a class body.
 -- Commits to requiring ';' once the signature is parsed, so a missing

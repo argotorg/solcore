@@ -216,8 +216,9 @@ pprSignatures =
   vcat . map ((<> semi) . ppr)
 
 instance (Pretty a) => Pretty (Signature a) where
-  ppr (Signature vs ctx n ps ty) =
+  ppr (Signature vs ctx n ps ty pay) =
     pprSigPrefix vs ctx
+      <+> (if pay then text "payable" else empty)
       <+> text "function"
       <+> ppr n
       <+> pprParams ps
