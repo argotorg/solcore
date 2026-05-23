@@ -1512,16 +1512,6 @@ instance word:StorageType {
     }
 }
 
-instance address:StorageType {
-    function load(ptr:word) -> address {
-        return Typedef.abs(sload_(ptr));
-    }
-    function store(ptr:word, value:address) -> () {
-        return sstore_(ptr, Typedef.rep(value));
-    }
-}
-
-
 forall a. a:Typedef(word) =>
 function sloadViaWord(ptr:word) -> a {
     let r:word;
@@ -1549,6 +1539,10 @@ instance bytes32:StorageType {
   function store(ptr:word, value:bytes32) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
 }
 
+instance address:StorageType {
+  function load(ptr:word) -> address { return address(StorageType.load(ptr):word); }
+  function store(ptr:word, value:address) -> () { StorageType.store(ptr, Typedef.rep(value):word); }
+}
 
 // -- structure fields (including contract fields)
 
