@@ -1,6 +1,7 @@
 module Main where
 
 import Cases
+import DiagnosticTests
 import HullCases
 import MatchCompilerTests
 import ModuleTypeCheckTests
@@ -18,6 +19,7 @@ tests =
       pragmas,
       spec,
       std,
+      diagnosticTests,
       imports,
       moduleTypeCheckTests,
       dispatches,
