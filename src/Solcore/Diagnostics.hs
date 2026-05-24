@@ -33,7 +33,7 @@ where
 import Data.List (foldl', isPrefixOf, stripPrefix, tails)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Prettyprinter (Doc, defaultLayoutOptions, layoutPretty, pretty, vsep)
+import Prettyprinter (Doc, LayoutOptions (..), PageWidth (..), layoutPretty, pretty, vsep)
 import Prettyprinter.Render.String (renderString)
 import Text.Read (readMaybe)
 
@@ -235,14 +235,20 @@ renderDiagnostics opts sources diagnostics =
 renderDiagnostic :: DiagnosticRenderOptions -> SourceMap -> Diagnostic -> String
 renderDiagnostic opts sources diagnostic =
   case diagnosticFormat opts of
-    DiagnosticShort -> renderShortDiagnostic diagnostic
-    DiagnosticHuman -> renderDoc (vsep (map pretty (humanDiagnosticLines sources diagnostic)))
+    DiagnosticShort -> renderShortDiagnostic opts diagnostic
+    DiagnosticHuman -> renderDoc opts (vsep (map pretty (humanDiagnosticLines opts sources diagnostic)))
 
-renderDoc :: Doc ann -> String
-renderDoc = renderString . layoutPretty defaultLayoutOptions
+renderDoc :: DiagnosticRenderOptions -> Doc ann -> String
+renderDoc opts =
+  renderString . layoutPretty layoutOptions
+  where
+    layoutOptions =
+      LayoutOptions
+        { layoutPageWidth = AvailablePerLine (max 20 (diagnosticWidth opts)) 1.0
+        }
 
-renderShortDiagnostic :: Diagnostic -> String
-renderShortDiagnostic diagnostic =
+renderShortDiagnostic :: DiagnosticRenderOptions -> Diagnostic -> String
+renderShortDiagnostic opts diagnostic =
   case diagnosticPrimarySpan diagnostic of
     Just sourceSpan ->
       spanFile sourceSpan
@@ -251,23 +257,24 @@ renderShortDiagnostic diagnostic =
         ++ ":"
         ++ show (spanStartColumn sourceSpan)
         ++ ": "
-        ++ diagnosticHeader diagnostic
-    Nothing -> diagnosticHeader diagnostic
+        ++ diagnosticHeader opts diagnostic
+    Nothing -> diagnosticHeader opts diagnostic
 
-humanDiagnosticLines :: SourceMap -> Diagnostic -> [String]
-humanDiagnosticLines sources diagnostic =
-  [diagnosticHeader diagnostic]
-    ++ locationLines diagnostic
-    ++ concatMap (labelSnippetLines sources) (diagnosticLabels diagnostic)
-    ++ map ("note: " ++) (diagnosticNotes diagnostic)
-    ++ map ("help: " ++) (diagnosticHelp diagnostic)
+humanDiagnosticLines :: DiagnosticRenderOptions -> SourceMap -> Diagnostic -> [String]
+humanDiagnosticLines opts sources diagnostic =
+  [diagnosticHeader opts diagnostic]
+    ++ locationLines opts diagnostic
+    ++ concatMap (labelSnippetLines opts (diagnosticSeverity diagnostic) sources) (diagnosticLabels diagnostic)
+    ++ concatMap (prefixedWrappedLines opts "note: ") (diagnosticNotes diagnostic)
+    ++ concatMap (prefixedWrappedLines opts "help: ") (diagnosticHelp diagnostic)
 
-diagnosticHeader :: Diagnostic -> String
-diagnosticHeader diagnostic =
-  severityName (diagnosticSeverity diagnostic)
-    ++ codeText (diagnosticCode diagnostic)
+diagnosticHeader :: DiagnosticRenderOptions -> Diagnostic -> String
+diagnosticHeader opts diagnostic =
+  colorize opts (severityAnsi (diagnosticSeverity diagnostic)) header
     ++ ": "
     ++ diagnosticMessage diagnostic
+  where
+    header = severityName (diagnosticSeverity diagnostic) ++ codeText (diagnosticCode diagnostic)
 
 severityName :: Severity -> String
 severityName Error = "error"
@@ -277,29 +284,33 @@ codeText :: Maybe DiagnosticCode -> String
 codeText Nothing = ""
 codeText (Just (DiagnosticCode code)) = "[" ++ code ++ "]"
 
-locationLines :: Diagnostic -> [String]
-locationLines diagnostic =
+locationLines :: DiagnosticRenderOptions -> Diagnostic -> [String]
+locationLines opts diagnostic =
   case diagnosticPrimarySpan diagnostic of
     Nothing -> []
     Just sourceSpan ->
-      [ "  --> "
-          ++ spanFile sourceSpan
-          ++ ":"
-          ++ show (spanStartLine sourceSpan)
-          ++ ":"
-          ++ show (spanStartColumn sourceSpan)
+      [ colorize
+          opts
+          locationAnsi
+          ( locationArrow opts
+              ++ spanFile sourceSpan
+              ++ ":"
+              ++ show (spanStartLine sourceSpan)
+              ++ ":"
+              ++ show (spanStartColumn sourceSpan)
+          )
       ]
 
-labelSnippetLines :: SourceMap -> Label -> [String]
-labelSnippetLines (SourceMap sources) label =
+labelSnippetLines :: DiagnosticRenderOptions -> Severity -> SourceMap -> Label -> [String]
+labelSnippetLines opts severity (SourceMap sources) label =
   case Map.lookup (spanFile sourceSpan) sources of
     Nothing -> []
-    Just source -> sourceLabelSnippet source label
+    Just source -> sourceLabelSnippet opts severity source label
   where
     sourceSpan = labelSpan label
 
-sourceLabelSnippet :: SourceFile -> Label -> [String]
-sourceLabelSnippet source label =
+sourceLabelSnippet :: DiagnosticRenderOptions -> Severity -> SourceFile -> Label -> [String]
+sourceLabelSnippet opts severity source label =
   [gutter]
     ++ concatMap renderLine [firstLine .. lastLine]
   where
@@ -307,17 +318,27 @@ sourceLabelSnippet source label =
     firstLine = max 1 (spanStartLine sourceSpan)
     lastLine = max firstLine (spanEndLine sourceSpan)
     lineNoWidth = length (show lastLine)
-    gutter = replicate lineNoWidth ' ' ++ " |"
+    gutter = gutterLine opts lineNoWidth
     marker = case labelStyle label of
       Primary -> '^'
       Secondary -> '-'
+    markerAnsi = case labelStyle label of
+      Primary -> severityAnsi severity
+      Secondary -> secondaryAnsi
 
     renderLine lineNo =
       let lineText = sourceLine source lineNo
+          displayLine = expandTabs tabWidth lineText
           underline = underlineForLine sourceSpan lineNo lineText marker
           message = if lineNo == firstLine then maybe "" (" " ++) (labelMessage label) else ""
-       in [ padLeft lineNoWidth (show lineNo) ++ " | " ++ lineText,
-            replicate lineNoWidth ' ' ++ " | " ++ underline ++ message
+       in [ colorize opts lineNumberAnsi (padLeft lineNoWidth (show lineNo))
+              ++ gutterSeparator opts
+              ++ " "
+              ++ displayLine,
+            gutterLine opts lineNoWidth
+              ++ " "
+              ++ colorize opts markerAnsi underline
+              ++ message
           ]
 
 underlineForLine :: SourceSpan -> Int -> String -> Char -> String
@@ -325,11 +346,11 @@ underlineForLine sourceSpan lineNo lineText marker =
   replicate (startCol - 1) ' ' ++ replicate markerWidth marker
   where
     startCol
-      | lineNo == spanStartLine sourceSpan = max 1 (spanStartColumn sourceSpan)
+      | lineNo == spanStartLine sourceSpan = sourceColumnToVisual lineText (max 1 (spanStartColumn sourceSpan))
       | otherwise = 1
     endCol
-      | lineNo == spanEndLine sourceSpan = max startCol (spanEndColumn sourceSpan)
-      | otherwise = max startCol (length lineText + 1)
+      | lineNo == spanEndLine sourceSpan = max startCol (sourceColumnToVisual lineText (max 1 (spanEndColumn sourceSpan)))
+      | otherwise = max startCol (visualLength lineText + 1)
     markerWidth = max 1 (endCol - startCol)
 
 sourceLine :: SourceFile -> Int -> String
@@ -354,6 +375,109 @@ computeLineStarts =
 padLeft :: Int -> String -> String
 padLeft width str =
   replicate (max 0 (width - length str)) ' ' ++ str
+
+prefixedWrappedLines :: DiagnosticRenderOptions -> String -> String -> [String]
+prefixedWrappedLines opts prefix body =
+  case linesOrBlank body of
+    [] -> [prefix]
+    firstLine : restLines ->
+      wrapPhysicalLine prefix firstLine
+        ++ concatMap (wrapPhysicalLine continuationPrefix) restLines
+  where
+    continuationPrefix = replicate (length prefix) ' '
+    wrapPhysicalLine linePrefix line =
+      case wrapWords (max 20 (diagnosticWidth opts)) linePrefix line of
+        [] -> [linePrefix]
+        wrapped -> wrapped
+
+wrapWords :: Int -> String -> String -> [String]
+wrapWords width prefix raw =
+  case words raw of
+    [] -> [prefix]
+    word : rest -> go [prefix ++ word] rest
+  where
+    continuationPrefix = replicate (length prefix) ' '
+    go acc [] = reverse acc
+    go [] _ = []
+    go (line : acc) (word : rest)
+      | length line + 1 + length word <= width =
+          go ((line ++ " " ++ word) : acc) rest
+      | length word + length continuationPrefix <= width =
+          go ((continuationPrefix ++ word) : line : acc) rest
+      | otherwise =
+          go ((continuationPrefix ++ word) : line : acc) rest
+
+linesOrBlank :: String -> [String]
+linesOrBlank "" = [""]
+linesOrBlank body = lines body
+
+gutterLine :: DiagnosticRenderOptions -> Int -> String
+gutterLine opts lineNoWidth =
+  replicate lineNoWidth ' ' ++ gutterSeparator opts
+
+gutterSeparator :: DiagnosticRenderOptions -> String
+gutterSeparator opts
+  | useUnicode opts = " │"
+  | otherwise = " |"
+
+locationArrow :: DiagnosticRenderOptions -> String
+locationArrow opts
+  | useUnicode opts = "  ──> "
+  | otherwise = "  --> "
+
+useUnicode :: DiagnosticRenderOptions -> Bool
+useUnicode opts =
+  case diagnosticUnicode opts of
+    UnicodeAlways -> True
+    UnicodeAuto -> False
+    UnicodeNever -> False
+
+useColor :: DiagnosticRenderOptions -> Bool
+useColor opts =
+  case diagnosticColor opts of
+    ColorAlways -> True
+    ColorAuto -> False
+    ColorNever -> False
+
+colorize :: DiagnosticRenderOptions -> String -> String -> String
+colorize opts ansi body
+  | useColor opts = "\ESC[" ++ ansi ++ "m" ++ body ++ "\ESC[0m"
+  | otherwise = body
+
+severityAnsi :: Severity -> String
+severityAnsi Error = "1;31"
+severityAnsi Warning = "1;33"
+
+locationAnsi :: String
+locationAnsi = "1;36"
+
+lineNumberAnsi :: String
+lineNumberAnsi = "1;34"
+
+secondaryAnsi :: String
+secondaryAnsi = "1;34"
+
+tabWidth :: Int
+tabWidth = 4
+
+expandTabs :: Int -> String -> String
+expandTabs width =
+  go 1
+  where
+    go _ [] = []
+    go column ('\t' : rest) =
+      let spaces = width - ((column - 1) `mod` width)
+       in replicate spaces ' ' ++ go (column + spaces) rest
+    go column (c : rest) =
+      c : go (column + 1) rest
+
+visualLength :: String -> Int
+visualLength =
+  length . expandTabs tabWidth
+
+sourceColumnToVisual :: String -> Int -> Int
+sourceColumnToVisual lineText sourceColumn =
+  visualLength (take (sourceColumn - 1) lineText) + 1
 
 joinWithBlankLines :: [String] -> String
 joinWithBlankLines [] = ""
