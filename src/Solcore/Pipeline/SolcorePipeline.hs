@@ -4,9 +4,11 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (first)
-import Data.Char (isAlpha, isAlphaNum)
+import Data.Char (isAlpha, isAlphaNum, isSpace)
+import Data.List (isInfixOf, isPrefixOf, nub, stripPrefix)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (mapMaybe)
 import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
@@ -24,17 +26,24 @@ import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Diagnostics
   ( Diagnostic (..),
+    DiagnosticCode (..),
+    Label (..),
+    LabelStyle (..),
+    SourceFile,
     SourceMap,
+    SourceSpan,
     decodeDiagnostic,
     diagnosticMessage,
     diagnosticPrimarySpan,
     emptySourceMap,
     encodeDiagnostic,
+    findTextSpansInSource,
     insertSourceFile,
     legacyDiagnostic,
     lookupSourceFile,
     makeSourceFile,
     renderDiagnostics,
+    sourceMapFiles,
     spanFile,
   )
 import Solcore.Frontend.Module.Identity qualified as Mod
@@ -216,10 +225,11 @@ liftEitherDiagnosticIO sources action =
 
 compileDiagnosticError :: SourceMap -> String -> CompileDiagnostics
 compileDiagnosticError sources err =
-  CompileDiagnostics
-    { compileDiagnosticSources = sources,
-      compileDiagnosticMessages = diagnosticsFromError err
-    }
+  let diagnostics = diagnosticsFromError err
+   in CompileDiagnostics
+        { compileDiagnosticSources = sources,
+          compileDiagnosticMessages = map (enrichDiagnostic sources) diagnostics
+        }
 
 compileDiagnosticErrorIO :: SourceMap -> String -> IO CompileDiagnostics
 compileDiagnosticErrorIO sources err = do
@@ -228,7 +238,7 @@ compileDiagnosticErrorIO sources err = do
   pure
     CompileDiagnostics
       { compileDiagnosticSources = sources',
-        compileDiagnosticMessages = diagnostics
+        compileDiagnosticMessages = map (enrichDiagnostic sources') diagnostics
       }
 
 diagnosticsFromError :: String -> [Diagnostic]
@@ -236,6 +246,191 @@ diagnosticsFromError err =
   case decodeDiagnostic err of
     Just diagnostic -> [diagnostic]
     Nothing -> [legacyDiagnostic err]
+
+enrichDiagnostic :: SourceMap -> Diagnostic -> Diagnostic
+enrichDiagnostic sources diagnostic
+  | not (null (diagnosticLabels diagnostic)) = diagnostic
+  | isDuplicateDiagnostic diagnostic,
+    Just labels <- inferDuplicateLabels sources diagnostic =
+      diagnostic {diagnosticLabels = labels}
+  | Just label <- inferPrimaryLabel sources diagnostic =
+      diagnostic {diagnosticLabels = [label]}
+  | otherwise = diagnostic
+
+inferPrimaryLabel :: SourceMap -> Diagnostic -> Maybe Label
+inferPrimaryLabel sources diagnostic = do
+  term <- firstMatchTerm sources diagnostic (diagnosticSearchTerms diagnostic)
+  foundSpan <- firstSpanForTerm sources diagnostic term
+  pure
+    Label
+      { labelSpan = foundSpan,
+        labelStyle = Primary,
+        labelMessage = Just (primaryLabelMessage diagnostic)
+      }
+
+inferDuplicateLabels :: SourceMap -> Diagnostic -> Maybe [Label]
+inferDuplicateLabels sources diagnostic =
+  case firstTwoSpans of
+    [previous, duplicate] ->
+      Just
+        [ Label previous Secondary (Just "previous definition"),
+          Label duplicate Primary (Just "duplicate definition")
+        ]
+    _ -> Nothing
+  where
+    firstTwoSpans =
+      take 2 $
+        concat
+          [ spansForTerm sources diagnostic term
+            | term <- duplicateSearchTerms diagnostic
+          ]
+
+firstMatchTerm :: SourceMap -> Diagnostic -> [String] -> Maybe String
+firstMatchTerm sources diagnostic =
+  go . filter (not . null)
+  where
+    go [] = Nothing
+    go (term : terms)
+      | null (spansForTerm sources diagnostic term) = go terms
+      | otherwise = Just term
+
+firstSpanForTerm :: SourceMap -> Diagnostic -> String -> Maybe SourceSpan
+firstSpanForTerm sources diagnostic term =
+  case spansForTerm sources diagnostic term of
+    foundSpan : _ -> Just foundSpan
+    [] -> Nothing
+
+spansForTerm :: SourceMap -> Diagnostic -> String -> [SourceSpan]
+spansForTerm sources diagnostic term =
+  concatMap (`findTextSpansInSource` term) (candidateSources sources diagnostic)
+
+candidateSources :: SourceMap -> Diagnostic -> [SourceFile]
+candidateSources sources diagnostic =
+  case mapMaybe (`lookupSourceFile` sources) (diagnosticSourcePaths diagnostic) of
+    [] -> sourceMapFiles sources
+    matched -> matched
+
+diagnosticSearchTerms :: Diagnostic -> [String]
+diagnosticSearchTerms diagnostic =
+  uniqueStrings $
+    concat
+      [ prefixedTerms
+          [ "undefined name: ",
+            "undefined type constructor: ",
+            "undefined type: ",
+            "undefined field: ",
+            "undefined constructor: ",
+            "undefined class: ",
+            "invalid pattern syntax: "
+          ]
+          (diagnosticMessage diagnostic),
+        typeMismatchTerms diagnostic,
+        unknownImportTerms diagnostic,
+        duplicateSearchTerms diagnostic
+      ]
+
+duplicateSearchTerms :: Diagnostic -> [String]
+duplicateSearchTerms diagnostic =
+  uniqueStrings $
+    concatMap indentedTerms (allDiagnosticText diagnostic)
+      ++ prefixedTerms
+        [ "Duplicated function definition:",
+          "Duplicated class definition:",
+          "Duplicated class method definition:",
+          "Duplicated type synonym definition:"
+        ]
+        (diagnosticMessage diagnostic)
+
+typeMismatchTerms :: Diagnostic -> [String]
+typeMismatchTerms diagnostic =
+  [trim (drop (length inPrefix) note) | note <- diagnosticNotes diagnostic, inPrefix `isPrefixOf` note, isSmallNote note]
+  where
+    inPrefix = "in: "
+    isSmallNote note = length note <= 80 && '\n' `notElem` note
+
+unknownImportTerms :: Diagnostic -> [String]
+unknownImportTerms diagnostic =
+  concatMap itemTerms (allDiagnosticText diagnostic)
+  where
+    itemTerms line =
+      case words (trim line) of
+        [word]
+          | "." `isInfixOf` word ->
+              [word, lastSegment word]
+        _ -> []
+
+prefixedTerms :: [String] -> String -> [String]
+prefixedTerms prefixes body =
+  [trim rest | prefix <- prefixes, Just rest <- [stripPrefix prefix body]]
+
+primaryLabelMessage :: Diagnostic -> String
+primaryLabelMessage diagnostic =
+  case diagnosticCode diagnostic of
+    Just (DiagnosticCode "SC0201") -> "expression has mismatched type"
+    Just (DiagnosticCode "SC0101") -> "unknown name"
+    Just (DiagnosticCode "SC0202") -> "unknown name"
+    _ -> diagnosticMessage diagnostic
+
+isDuplicateDiagnostic :: Diagnostic -> Bool
+isDuplicateDiagnostic diagnostic =
+  any
+    (`isInfixOf` diagnosticMessage diagnostic)
+    [ "Duplicate declarations",
+      "Duplicated ",
+      "Duplicate exported",
+      "Duplicate import",
+      "Duplicate names"
+    ]
+    || any ("Duplicate declarations" `isInfixOf`) (diagnosticNotes diagnostic)
+
+diagnosticSourcePaths :: Diagnostic -> [FilePath]
+diagnosticSourcePaths diagnostic =
+  uniqueStrings (concatMap sourcePathsFromLine (allDiagnosticText diagnostic))
+
+sourcePathsFromLine :: String -> [FilePath]
+sourcePathsFromLine line =
+  mapMaybe (`sourcePathAfterPrefix` line) prefixes
+  where
+    prefixes =
+      [ "module validation failed for ",
+        "module typecheck failed for ",
+        "source file is outside library root:"
+      ]
+
+sourcePathAfterPrefix :: String -> String -> Maybe FilePath
+sourcePathAfterPrefix prefix line = do
+  rest <- stripPrefix prefix (trim line)
+  let path = trim (takeWhile (\c -> c /= ':' && c /= '(') rest)
+  if null path then Nothing else Just path
+
+allDiagnosticText :: Diagnostic -> [String]
+allDiagnosticText diagnostic =
+  concatMap lines (diagnosticMessage diagnostic : diagnosticNotes diagnostic ++ diagnosticHelp diagnostic)
+
+indentedTerms :: String -> [String]
+indentedTerms line
+  | "  " `isPrefixOf` line =
+      case words (trim line) of
+        [term]
+          | term /= "module" -> [term, lastSegment term]
+        _ -> []
+  | otherwise = []
+
+lastSegment :: String -> String
+lastSegment =
+  reverse . takeWhile (/= '.') . reverse
+
+uniqueStrings :: [String] -> [String]
+uniqueStrings =
+  nub . filter (not . null) . map trim
+
+trim :: String -> String
+trim =
+  dropWhileEnd isSpace . dropWhile isSpace
+
+dropWhileEnd :: (a -> Bool) -> [a] -> [a]
+dropWhileEnd p =
+  reverse . dropWhile p . reverse
 
 ensureDiagnosticSources :: SourceMap -> [Diagnostic] -> IO SourceMap
 ensureDiagnosticSources =
