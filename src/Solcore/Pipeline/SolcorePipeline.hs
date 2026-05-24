@@ -8,7 +8,7 @@ import Data.Char (isAlpha, isAlphaNum, isSpace)
 import Data.List (isInfixOf, isPrefixOf, nub, stripPrefix)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, maybeToList)
 import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
@@ -18,7 +18,7 @@ import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls)
-import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
+import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, warningDiagnostic)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
@@ -150,7 +150,10 @@ compileWithDiagnostics opts = runExceptT $ do
       then pure desugared
       else do
         (ast, warns) <- liftEitherDiagnosticIO sources (timeItNamed "Match compiler" $ matchCompiler desugared)
-        when (verbose && not (null warns)) $ liftIO $ mapM_ (putStrLn . showWarning) warns
+        let warningDiagnostics = map (enrichDiagnostic sources . warningDiagnostic) warns
+        when (verbose && not (null warningDiagnostics)) $
+          liftIO $
+            putStrLn (renderDiagnostics (diagnosticRenderOptions opts) sources warningDiagnostics)
         pure ast
 
   let printMatch = not noMatchCompiler && (verbose || optDumpDS opts)
@@ -243,9 +246,13 @@ compileDiagnosticErrorIO sources err = do
 
 diagnosticsFromError :: String -> [Diagnostic]
 diagnosticsFromError err =
-  case decodeDiagnostic err of
-    Just diagnostic -> [diagnostic]
-    Nothing -> [legacyDiagnostic err]
+  case mapM decodeDiagnostic (filter (not . null) (lines err)) of
+    Just diagnostics
+      | not (null diagnostics) -> diagnostics
+    _ ->
+      case decodeDiagnostic err of
+        Just diagnostic -> [diagnostic]
+        Nothing -> [legacyDiagnostic err]
 
 enrichDiagnostic :: SourceMap -> Diagnostic -> Diagnostic
 enrichDiagnostic sources diagnostic
@@ -325,6 +332,7 @@ diagnosticSearchTerms diagnostic =
           ]
           (diagnosticMessage diagnostic),
         typeMismatchTerms diagnostic,
+        warningSearchTerms diagnostic,
         unknownImportTerms diagnostic,
         duplicateSearchTerms diagnostic
       ]
@@ -343,10 +351,44 @@ duplicateSearchTerms diagnostic =
 
 typeMismatchTerms :: Diagnostic -> [String]
 typeMismatchTerms diagnostic =
-  [trim (drop (length inPrefix) note) | note <- diagnosticNotes diagnostic, inPrefix `isPrefixOf` note, isSmallNote note]
+  case diagnosticCode diagnostic of
+    Just (DiagnosticCode "SC0201") ->
+      [trim (drop (length inPrefix) note) | note <- diagnosticNotes diagnostic, inPrefix `isPrefixOf` note, isSmallNote note]
+    _ -> []
   where
     inPrefix = "in: "
     isSmallNote note = length note <= 80 && '\n' `notElem` note
+
+warningSearchTerms :: Diagnostic -> [String]
+warningSearchTerms diagnostic =
+  case diagnosticCode diagnostic of
+    Just (DiagnosticCode "SC0301") ->
+      uniqueStrings (clauseSearchTerms diagnostic ++ matchContextTerms diagnostic)
+    Just (DiagnosticCode "SC0302") ->
+      uniqueStrings (matchContextTerms diagnostic)
+    _ -> []
+
+clauseSearchTerms :: Diagnostic -> [String]
+clauseSearchTerms diagnostic =
+  concatMap clauseTerms (diagnosticNotes diagnostic)
+  where
+    clauseTerms note = do
+      rest <- maybeToList (stripPrefix "clause: " note)
+      let clauseLine = takeWhile (/= '\n') rest
+          rowText =
+            trim $
+              takeWhile (/= '=') $
+                dropWhile (== '|') $
+                  trim (stripPrettyTypeAnnotations clauseLine)
+      rowText : splitCommaTerms rowText
+
+matchContextTerms :: Diagnostic -> [String]
+matchContextTerms diagnostic =
+  concatMap matchTerm (diagnosticNotes diagnostic)
+  where
+    matchTerm note
+      | "in: match" `isPrefixOf` note = ["match"]
+      | otherwise = []
 
 unknownImportTerms :: Diagnostic -> [String]
 unknownImportTerms diagnostic =
@@ -369,6 +411,8 @@ primaryLabelMessage diagnostic =
     Just (DiagnosticCode "SC0201") -> "expression has mismatched type"
     Just (DiagnosticCode "SC0101") -> "unknown name"
     Just (DiagnosticCode "SC0202") -> "unknown name"
+    Just (DiagnosticCode "SC0301") -> "redundant clause"
+    Just (DiagnosticCode "SC0302") -> "non-exhaustive match"
     _ -> diagnosticMessage diagnostic
 
 isDuplicateDiagnostic :: Diagnostic -> Bool
@@ -419,6 +463,19 @@ indentedTerms line
 lastSegment :: String -> String
 lastSegment =
   reverse . takeWhile (/= '.') . reverse
+
+splitCommaTerms :: String -> [String]
+splitCommaTerms raw =
+  case break (== ',') raw of
+    (term, []) -> [trim term]
+    (term, _ : rest) -> trim term : splitCommaTerms rest
+
+stripPrettyTypeAnnotations :: String -> String
+stripPrettyTypeAnnotations [] = []
+stripPrettyTypeAnnotations ('<' : rest) =
+  stripPrettyTypeAnnotations (drop 1 (dropWhile (/= '>') rest))
+stripPrettyTypeAnnotations (c : rest) =
+  c : stripPrettyTypeAnnotations rest
 
 uniqueStrings :: [String] -> [String]
 uniqueStrings =

@@ -12,6 +12,7 @@ import Data.Map qualified as Map
 import Data.Maybe
 import Data.Ord (comparing)
 import Language.Yul (YulExp (..))
+import Solcore.Diagnostics qualified as Diag
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -30,7 +31,7 @@ matchCompiler cunit =
         if null nonExaustive
           then
             pure $ Right (unit', redundant)
-          else pure $ Left $ unlines $ map showWarning nonExaustive
+          else pure $ Left $ unlines $ map (Diag.encodeDiagnostic . warningAsErrorDiagnostic) nonExaustive
 
 -- type class for the defining the pattern matching compilation
 -- over the syntax tree
@@ -821,6 +822,41 @@ showWarnCtx ctx = "\n  in " ++ intercalate "\n  in " (reverse ctx)
 
 showRow :: [Pattern] -> String
 showRow = intercalate ", " . map pretty
+
+warningDiagnostic :: Warning -> Diag.Diagnostic
+warningDiagnostic (RedundantClause ctx row blk) =
+  Diag.Diagnostic
+    { Diag.diagnosticSeverity = Diag.Warning,
+      Diag.diagnosticCode = Just (Diag.DiagnosticCode "SC0301"),
+      Diag.diagnosticMessage = "redundant pattern clause",
+      Diag.diagnosticLabels = [],
+      Diag.diagnosticNotes =
+        [ "clause: " ++ pretty (row, blk)
+        ]
+          ++ warningContextNotes ctx,
+      Diag.diagnosticHelp = ["remove this clause or make an earlier pattern more specific"]
+    }
+warningDiagnostic (NonExhaustive ctx pats) =
+  Diag.Diagnostic
+    { Diag.diagnosticSeverity = Diag.Warning,
+      Diag.diagnosticCode = Just (Diag.DiagnosticCode "SC0302"),
+      Diag.diagnosticMessage = "non-exhaustive pattern match",
+      Diag.diagnosticLabels = [],
+      Diag.diagnosticNotes =
+        ["missing case: " ++ showRow (nub pats)]
+          ++ warningContextNotes ctx,
+      Diag.diagnosticHelp = ["add a clause that covers the missing case"]
+    }
+
+warningAsErrorDiagnostic :: Warning -> Diag.Diagnostic
+warningAsErrorDiagnostic warning =
+  (warningDiagnostic warning)
+    { Diag.diagnosticSeverity = Diag.Error
+    }
+
+warningContextNotes :: WarnCtx -> [String]
+warningContextNotes =
+  map ("in: " ++) . reverse
 
 -- error messages
 
