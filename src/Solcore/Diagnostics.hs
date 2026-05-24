@@ -18,7 +18,9 @@ module Solcore.Diagnostics
     emptySourceMap,
     insertSourceFile,
     lookupSourceFile,
+    sourceMapFiles,
     sourceMapNull,
+    findTextSpansInSource,
     legacyDiagnostic,
     encodeDiagnostic,
     decodeDiagnostic,
@@ -28,7 +30,7 @@ module Solcore.Diagnostics
   )
 where
 
-import Data.List (foldl', stripPrefix)
+import Data.List (foldl', isPrefixOf, stripPrefix, tails)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Prettyprinter (Doc, defaultLayoutOptions, layoutPretty, pretty, vsep)
@@ -153,9 +155,46 @@ lookupSourceFile :: FilePath -> SourceMap -> Maybe SourceFile
 lookupSourceFile path (SourceMap sources) =
   Map.lookup path sources
 
+sourceMapFiles :: SourceMap -> [SourceFile]
+sourceMapFiles (SourceMap sources) =
+  Map.elems sources
+
 sourceMapNull :: SourceMap -> Bool
 sourceMapNull (SourceMap sources) =
   Map.null sources
+
+findTextSpansInSource :: SourceFile -> String -> [SourceSpan]
+findTextSpansInSource source needle
+  | null needle = []
+  | otherwise =
+      [ lineSpan lineNo lineStart column
+        | (lineNo, lineStart, lineText) <- sourceLinesWithOffsets source,
+          column <- findColumns needle lineText
+      ]
+  where
+    needleLen = length needle
+    lineSpan lineNo lineStart column =
+      SourceSpan
+        { spanFile = sourcePath source,
+          spanStartByte = lineStart + column - 1,
+          spanEndByte = lineStart + column - 1 + needleLen,
+          spanStartLine = lineNo,
+          spanStartColumn = column,
+          spanEndLine = lineNo,
+          spanEndColumn = column + needleLen
+        }
+
+sourceLinesWithOffsets :: SourceFile -> [(Int, Int, String)]
+sourceLinesWithOffsets source =
+  zipWith3
+    (\lineNo lineStart lineText -> (lineNo, lineStart, lineText))
+    [1 ..]
+    (sourceLineStarts source)
+    (sourceLines source)
+
+findColumns :: String -> String -> [Int]
+findColumns needle haystack =
+  [column | (column, suffix) <- zip [1 ..] (tails haystack), needle `isPrefixOf` suffix]
 
 legacyDiagnostic :: String -> Diagnostic
 legacyDiagnostic msg =
