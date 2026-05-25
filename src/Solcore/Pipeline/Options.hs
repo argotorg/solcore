@@ -30,10 +30,18 @@ data Option
     optDiagnosticUnicode :: !UnicodeChoice,
     optDiagnosticWidth :: !Int,
     optDiagnosticFormat :: !DiagnosticFormat,
+    optWarningPolicy :: !WarningPolicy,
     -- Partial evaluation options
     optPEFuel :: !(Maybe Int)
   }
   deriving (Eq, Show)
+
+data WarningPolicy
+  = WarningsDefault
+  | WarningsAlways
+  | WarningsNever
+  | WarningsDeny
+  deriving (Eq, Ord, Show)
 
 emptyOption :: FilePath -> Option
 emptyOption path =
@@ -63,6 +71,7 @@ emptyOption path =
       optDiagnosticUnicode = diagnosticUnicode defaultDiagnosticRenderOptions,
       optDiagnosticWidth = diagnosticWidth defaultDiagnosticRenderOptions,
       optDiagnosticFormat = diagnosticFormat defaultDiagnosticRenderOptions,
+      optWarningPolicy = WarningsDefault,
       -- Partial evaluation options
       optPEFuel = Nothing
     }
@@ -209,6 +218,14 @@ options =
           <> showDefaultWith showDiagnosticFormat
           <> help "Configure diagnostic output format"
       )
+    <*> option
+      warningPolicyReader
+      ( long "warnings"
+          <> metavar "default|always|never|deny"
+          <> value (optWarningPolicy stdOpt)
+          <> showDefaultWith showWarningPolicy
+          <> help "Configure compiler warning diagnostics"
+      )
     -- Partial evaluation options
     <*> optional
       ( option
@@ -265,6 +282,16 @@ diagnosticFormatReader =
       "short" -> Right DiagnosticShort
       _ -> Left "expected one of: human, short"
 
+warningPolicyReader :: ReadM WarningPolicy
+warningPolicyReader =
+  eitherReader $ \raw ->
+    case raw of
+      "default" -> Right WarningsDefault
+      "always" -> Right WarningsAlways
+      "never" -> Right WarningsNever
+      "deny" -> Right WarningsDeny
+      _ -> Left "expected one of: default, always, never, deny"
+
 showColorChoice :: ColorChoice -> String
 showColorChoice ColorAuto = "auto"
 showColorChoice ColorAlways = "always"
@@ -278,3 +305,9 @@ showUnicodeChoice UnicodeNever = "never"
 showDiagnosticFormat :: DiagnosticFormat -> String
 showDiagnosticFormat DiagnosticHuman = "human"
 showDiagnosticFormat DiagnosticShort = "short"
+
+showWarningPolicy :: WarningPolicy -> String
+showWarningPolicy WarningsDefault = "default"
+showWarningPolicy WarningsAlways = "always"
+showWarningPolicy WarningsNever = "never"
+showWarningPolicy WarningsDeny = "deny"

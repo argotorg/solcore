@@ -87,8 +87,28 @@ diagnosticCliTests =
       testCase "short output" $
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/undefined-name.solc", "--no-specialise", "--diagnostic-format", "short"]
-          ["<cwd>/test/diagnostics/undefined-name.solc:1:34: error[SC0101]: undefined name: missing"]
+          ["<cwd>/test/diagnostics/undefined-name.solc:1:34: error[SC0101]: undefined name: missing"],
+      testCase "warnings always" $
+        expectSuccess
+          ["--root", "test/examples/cases", "--file", "test/examples/cases/redundant-match.solc", "--no-specialise", "--warnings", "always"]
+          redundantWarningsSnapshot,
+      testCase "warnings never" $
+        expectSuccess
+          ["--root", "test/examples/cases", "--file", "test/examples/cases/redundant-match.solc", "--no-specialise", "--warnings", "never"]
+          [],
+      testCase "warnings deny" $
+        expectFailure
+          ["--root", "test/examples/cases", "--file", "test/examples/cases/redundant-match.solc", "--no-specialise", "--warnings", "deny"]
+          (map denyWarningLine redundantWarningsSnapshot)
     ]
+
+expectSuccess :: [String] -> [String] -> Assertion
+expectSuccess args expectedLines = do
+  (exitCode, stdout, stderr) <- readProcessWithExitCode "sol-core" args ""
+  assertEqual "exit code" ExitSuccess exitCode
+  assertEqual "stderr" "" stderr
+  cwd <- normalizePath <$> getCurrentDirectory
+  assertEqual "stdout" (unlinesNoTrailing expectedLines) (stripFinalNewline (normalizeOutput cwd stdout))
 
 expectFailure :: [String] -> [String] -> Assertion
 expectFailure args expectedLines = do
@@ -97,6 +117,38 @@ expectFailure args expectedLines = do
   assertEqual "stderr" "" stderr
   cwd <- normalizePath <$> getCurrentDirectory
   assertEqual "stdout" (unlinesNoTrailing expectedLines) (stripFinalNewline (normalizeOutput cwd stdout))
+
+redundantWarningsSnapshot :: [String]
+redundantWarningsSnapshot =
+  [ "warning[SC0301]: redundant pattern clause",
+    "  --> <cwd>/test/examples/cases/redundant-match.solc:6:7",
+    "  |",
+    "6 |     | Bool.True  => return Bool.True;",
+    "  |       ^^^^^^^^^ redundant clause",
+    "note: clause: | Bool.True<Bool> =>",
+    "      return Bool.True<Bool>;",
+    "note: in: match (x<Bool>)",
+    "note: in: function f",
+    "help: remove this clause or make an earlier pattern more specific",
+    "",
+    "warning[SC0301]: redundant pattern clause",
+    "  --> <cwd>/test/examples/cases/redundant-match.solc:7:7",
+    "  |",
+    "7 |     | Bool.False => return Bool.False;",
+    "  |       ^^^^^^^^^^ redundant clause",
+    "note: clause: | Bool.False<Bool> =>",
+    "      return Bool.False<Bool>;",
+    "note: in: match (x<Bool>)",
+    "note: in: function f",
+    "help: remove this clause or make an earlier pattern more specific"
+  ]
+
+denyWarningLine :: String -> String
+denyWarningLine "warning[SC0301]: redundant pattern clause" =
+  "error[SC0301]: redundant pattern clause"
+denyWarningLine "help: remove this clause or make an earlier pattern more specific" =
+  "help: remove this clause or make an earlier pattern more specific\nhelp: pass --warnings=default, --warnings=always, or --warnings=never to allow this warning"
+denyWarningLine line = line
 
 normalizeOutput :: FilePath -> String -> String
 normalizeOutput cwd =

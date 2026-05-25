@@ -29,6 +29,7 @@ import Solcore.Diagnostics
     DiagnosticCode (..),
     Label (..),
     LabelStyle (..),
+    Severity (..),
     SourceFile,
     SourceMap,
     SourceSpan,
@@ -56,7 +57,7 @@ import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcModule
-import Solcore.Pipeline.Options (Option (..), argumentsParser, diagnosticRenderOptions, noDesugarOpt)
+import Solcore.Pipeline.Options (Option (..), WarningPolicy (..), argumentsParser, diagnosticRenderOptions, noDesugarOpt)
 import System.Directory (doesFileExist, makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
 import System.TimeIt qualified as TimeIt
@@ -152,9 +153,7 @@ compileWithDiagnostics opts = runExceptT $ do
       else do
         (ast, warns) <- liftEitherDiagnosticIO sources (timeItNamed "Match compiler" $ matchCompiler desugared)
         let warningDiagnostics = map (enrichDiagnostic sources . warningDiagnostic) warns
-        when (verbose && not (null warningDiagnostics)) $
-          liftIO $
-            putStrLn (renderDiagnostics (diagnosticRenderOptions opts) sources warningDiagnostics)
+        handleWarningDiagnostics opts sources warningDiagnostics
         pure ast
 
   let printMatch = not noMatchCompiler && (verbose || optDumpDS opts)
@@ -214,6 +213,36 @@ renderCompileDiagnostics opts diagnostics =
 compileDiagnosticsText :: CompileDiagnostics -> String
 compileDiagnosticsText =
   unlines . map diagnosticMessage . compileDiagnosticMessages
+
+handleWarningDiagnostics :: Option -> SourceMap -> [Diagnostic] -> ExceptT CompileDiagnostics IO ()
+handleWarningDiagnostics _ _ [] =
+  pure ()
+handleWarningDiagnostics opts sources diagnostics =
+  case optWarningPolicy opts of
+    WarningsNever -> pure ()
+    WarningsDefault
+      | optVerbose opts -> printWarnings
+      | otherwise -> pure ()
+    WarningsAlways -> printWarnings
+    WarningsDeny ->
+      throwError
+        CompileDiagnostics
+          { compileDiagnosticSources = sources,
+            compileDiagnosticMessages = map denyWarning diagnostics
+          }
+  where
+    printWarnings =
+      liftIO $
+        putStrLn (renderDiagnostics (diagnosticRenderOptions opts) sources diagnostics)
+
+denyWarning :: Diagnostic -> Diagnostic
+denyWarning diagnostic =
+  diagnostic
+    { diagnosticSeverity = Error,
+      diagnosticHelp =
+        diagnosticHelp diagnostic
+          ++ ["pass --warnings=default, --warnings=always, or --warnings=never to allow this warning"]
+    }
 
 liftEitherDiagnostic :: SourceMap -> Either String a -> ExceptT CompileDiagnostics IO a
 liftEitherDiagnostic sources =
