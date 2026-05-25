@@ -142,11 +142,11 @@ ensureNoDuplicateNamesIn ctx ns names =
     [] -> pure ()
     xs ->
       Left $
-        unlines
-          [ "Duplicate declarations in " ++ ns ++ ":",
-            "  " ++ ctx,
-            unlines (map (\n -> "  " ++ pretty n) xs)
-          ]
+        diagnosticString
+          "SC0108"
+          ("duplicate declarations in " ++ ns)
+          (("context: " ++ ctx) : map (\n -> "  " ++ pretty n) xs)
+          ["rename or remove the duplicate declaration"]
   where
     counts :: Map Name Int
     counts = Map.fromListWith (+) [(n, 1) | n <- names]
@@ -1136,13 +1136,16 @@ invalidPatternSyntax p =
 
 diagnosticError :: String -> String -> [String] -> [String] -> ResolveM a
 diagnosticError code message notes help =
-  throwError $
-    encodeDiagnostic
-      Diagnostic
-        { diagnosticSeverity = Error,
-          diagnosticCode = Just (DiagnosticCode code),
-          diagnosticMessage = message,
-          diagnosticLabels = [],
-          diagnosticNotes = notes,
-          diagnosticHelp = help
-        }
+  throwError $ diagnosticString code message notes help
+
+diagnosticString :: String -> String -> [String] -> [String] -> String
+diagnosticString code message notes help =
+  encodeDiagnostic
+    Diagnostic
+      { diagnosticSeverity = Error,
+        diagnosticCode = Just (DiagnosticCode code),
+        diagnosticMessage = message,
+        diagnosticLabels = [],
+        diagnosticNotes = notes,
+        diagnosticHelp = help
+      }

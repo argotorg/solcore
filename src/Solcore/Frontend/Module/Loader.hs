@@ -20,7 +20,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Solcore.Diagnostics (SourceFile, SourceMap, makeSourceFile, sourceMapFromFiles)
+import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Severity (..), SourceFile, SourceMap, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
 import Solcore.Frontend.Syntax.Name
@@ -242,17 +242,23 @@ rootForLibrary cfg (Mod.ExternalLibrary libName) =
   case Map.lookup libName (externalRoots cfg) of
     Just root -> Right root
     Nothing ->
-      Left ("external library root is not configured: @" ++ show libName)
+      Left $
+        loaderDiagnostic
+          "SC0118"
+          ("external library root is not configured: @" ++ show libName)
+          []
+          ["pass --external-lib " ++ show libName ++ "=PATH"]
 
 moduleIdForPath :: Mod.LibraryId -> FilePath -> FilePath -> ExceptT String IO Mod.ModuleId
 moduleIdForPath libId root filePath =
   case makeRelativeToRoot root filePath of
     Nothing ->
       throwError $
-        "source file is outside library root:\n  "
-          ++ filePath
-          ++ "\n  root: "
-          ++ root
+        loaderDiagnostic
+          "SC0119"
+          "source file is outside library root"
+          [filePath, "root: " ++ root]
+          ["choose --root so it contains the source file"]
     Just relPath ->
       case splitDirectories (dropExtension relPath) of
         [] ->
@@ -515,10 +521,13 @@ ensureImportItemsExist graph importPairs = do
     ([], []) -> Right ()
     (selectedXs, hiddenXs) ->
       Left $
-        unlines
-          ( (if null selectedXs then [] else ["Unknown selected imports:", unlines selectedXs])
-              ++ (if null hiddenXs then [] else ["Unknown hidden imports:", unlines hiddenXs])
+        loaderDiagnostic
+          "SC0110"
+          "unknown import item"
+          ( (if null selectedXs then [] else "unknown selected imports:" : selectedXs)
+              ++ (if null hiddenXs then [] else "unknown hidden imports:" : hiddenXs)
           )
+          ["check the imported module's exported names"]
   where
     unknowns (ImportOnly importPath items, modulePath) = do
       available <- importableNamesForModule graph modulePath
@@ -831,25 +840,26 @@ selectRemoteExportRefs sourcePath exportPath (SelectExportItems items) available
         Nothing
           | shouldValidate ->
               Left $
-                unlines
-                  [ "Unknown re-exported constructors:",
-                    "  " ++ sourcePath,
-                    "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName
-                  ]
+                loaderDiagnostic
+                  "SC0115"
+                  "unknown re-exported constructor"
+                  [sourcePath, "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName]
+                  ["re-export constructors provided by the target module"]
           | otherwise ->
               pure []
         Just ref
           | shouldValidate,
             missingVisibleConstructors constructorSelector ref /= [] ->
               Left $
-                unlines
-                  [ "Unknown re-exported constructors:",
-                    "  " ++ sourcePath,
-                    unlines
-                      [ "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName ++ "." ++ show constructorName
-                        | constructorName <- missingVisibleConstructors constructorSelector ref
-                      ]
-                  ]
+                loaderDiagnostic
+                  "SC0115"
+                  "unknown re-exported constructor"
+                  ( sourcePath
+                      : [ "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName ++ "." ++ show constructorName
+                          | constructorName <- missingVisibleConstructors constructorSelector ref
+                        ]
+                  )
+                  ["re-export constructors provided by the target module"]
           | otherwise ->
               pure [ref]
 
@@ -934,11 +944,11 @@ ensureNoDuplicateExportedItems modulePath itemRefs =
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Duplicate exported item names:",
-            "  " ++ modulePath,
-            unlines (map (\n -> "  " ++ show n) xs)
-          ]
+        loaderDiagnostic
+          "SC0111"
+          "duplicate exported item names"
+          (("module: " ++ modulePath) : map (\n -> "  " ++ show n) xs)
+          ["export each item name from only one origin"]
   where
     conflicts =
       [ itemName
@@ -953,11 +963,11 @@ ensureNoDuplicateExportedModules modulePath moduleBindings =
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Duplicate exported module names:",
-            "  " ++ modulePath,
-            unlines (map (\n -> "  " ++ show n) xs)
-          ]
+        loaderDiagnostic
+          "SC0112"
+          "duplicate exported module names"
+          (("module: " ++ modulePath) : map (\n -> "  " ++ show n) xs)
+          ["export each module name from only one origin"]
   where
     conflicts =
       [ bindingName
@@ -971,22 +981,22 @@ ensureLocalExportExists sourcePath ds itemName
   | itemName `elem` availableExportNames ds = Right ()
   | otherwise =
       Left $
-        unlines
-          [ "Unknown export:",
-            "  " ++ sourcePath,
-            "  " ++ show itemName
-          ]
+        loaderDiagnostic
+          "SC0113"
+          "unknown export"
+          [sourcePath, show itemName]
+          ["export a name defined in this module or re-export it from another module"]
 
 ensureLocalConstructorExportExists :: FilePath -> [TopDecl] -> Name -> ConstructorSelector -> Either String ()
 ensureLocalConstructorExportExists sourcePath topLevelDecls typeName constructorSelector =
   case findLocalDataType typeName topLevelDecls of
     Nothing ->
       Left $
-        unlines
-          [ "Unknown export:",
-            "  " ++ sourcePath,
-            "  " ++ show typeName
-          ]
+        loaderDiagnostic
+          "SC0113"
+          "unknown export"
+          [sourcePath, show typeName]
+          ["export a type defined in this module or re-export it from another module"]
     Just (DataTy _ _ constrs) ->
       ensureConstructorSelectorExists sourcePath typeName constructorSelector constrs
 
@@ -1008,11 +1018,11 @@ ensureConstructorSelectorExists sourcePath typeName (SelectConstructors construc
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Unknown exported constructors:",
-            "  " ++ sourcePath,
-            unlines ["  " ++ show typeName ++ "." ++ show constructorName | constructorName <- xs]
-          ]
+        loaderDiagnostic
+          "SC0114"
+          "unknown exported constructor"
+          (sourcePath : ["  " ++ show typeName ++ "." ++ show constructorName | constructorName <- xs])
+          ["select constructors defined by the exported type"]
   where
     availableNames = uniqueNames (map (constructorLeafName . constrName) constrs)
     missing = filter (`notElem` availableNames) constructorNames
@@ -1035,11 +1045,11 @@ ensureRemoteExportsExist sourcePath exportPath names availableNames =
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Unknown re-exported names:",
-            "  " ++ sourcePath,
-            unlines [formatMissing exportPath missingName | missingName <- xs]
-          ]
+        loaderDiagnostic
+          "SC0115"
+          "unknown re-exported name"
+          (sourcePath : [formatMissing exportPath missingName | missingName <- xs])
+          ["re-export a name provided by the target module"]
   where
     missing = filter (`notElem` availableNames) names
 
@@ -1957,10 +1967,11 @@ ensureNoDuplicateModuleQualifiers (CompUnit imps _) =
     [] -> Right ()
     qs ->
       Left $
-        unlines
-          [ "Duplicate import qualifiers:",
-            unlines (map (\q -> "  " ++ show q) qs)
-          ]
+        loaderDiagnostic
+          "SC0116"
+          "duplicate import qualifier"
+          (map (\q -> "  " ++ show q) qs)
+          ["use an explicit alias to disambiguate one of the imports"]
   where
     duplicates = duplicateNames (mapMaybe moduleQualifier imps)
 
@@ -1991,10 +2002,11 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Duplicate names in selective import:",
-            unlines xs
-          ]
+        loaderDiagnostic
+          "SC0117"
+          "duplicate name in selective import"
+          xs
+          ["list each selected or hidden name only once"]
   where
     duplicateItems (ImportOnly moduleName selector) =
       [ "  " ++ Mod.modulePathDisplay moduleName ++ "." ++ show item
@@ -2004,6 +2016,18 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
              | item <- duplicateNames (explicitHiddenNames selector)
            ]
     duplicateItems _ = []
+
+loaderDiagnostic :: String -> String -> [String] -> [String] -> String
+loaderDiagnostic code message notes help =
+  encodeDiagnostic
+    Diagnostic
+      { diagnosticSeverity = Error,
+        diagnosticCode = Just (DiagnosticCode code),
+        diagnosticMessage = message,
+        diagnosticLabels = [],
+        diagnosticNotes = notes,
+        diagnosticHelp = help
+      }
 
 explicitSelectorNames :: ItemSelector -> [Name]
 explicitSelectorNames (SelectItems items _) =

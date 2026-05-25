@@ -420,12 +420,18 @@ isDuplicateDiagnostic diagnostic =
   any
     (`isInfixOf` diagnosticMessage diagnostic)
     [ "Duplicate declarations",
+      "duplicate declarations",
       "Duplicated ",
+      "duplicate ",
       "Duplicate exported",
+      "duplicate exported",
       "Duplicate import",
-      "Duplicate names"
+      "duplicate import",
+      "Duplicate names",
+      "duplicate name"
     ]
     || any ("Duplicate declarations" `isInfixOf`) (diagnosticNotes diagnostic)
+    || any ("duplicate declarations" `isInfixOf`) (diagnosticNotes diagnostic)
 
 diagnosticSourcePaths :: Diagnostic -> [FilePath]
 diagnosticSourcePaths diagnostic =
