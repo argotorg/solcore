@@ -6,6 +6,7 @@ module Solcore.Diagnostics
     Label (..),
     Diagnostic (..),
     SourceId (..),
+    SourceToken (..),
     SourceFile (..),
     SourceMap,
     DiagnosticFormat (..),
@@ -20,6 +21,7 @@ module Solcore.Diagnostics
     lookupSourceFile,
     sourceMapFiles,
     sourceMapNull,
+    findTokenSpansInSource,
     findTextSpansInSource,
     legacyDiagnostic,
     encodeDiagnostic,
@@ -30,6 +32,7 @@ module Solcore.Diagnostics
   )
 where
 
+import Data.Char (isAlpha, isAlphaNum)
 import Data.List (foldl', isPrefixOf, stripPrefix, tails)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -89,7 +92,15 @@ data SourceFile
   { sourceId :: SourceId,
     sourcePath :: FilePath,
     sourceText :: String,
-    sourceLineStarts :: [Int]
+    sourceLineStarts :: [Int],
+    sourceTokens :: [SourceToken]
+  }
+  deriving (Eq, Ord, Show)
+
+data SourceToken
+  = SourceToken
+  { sourceTokenText :: String,
+    sourceTokenSpan :: SourceSpan
   }
   deriving (Eq, Ord, Show)
 
@@ -137,7 +148,8 @@ makeSourceFile path content =
     { sourceId = SourceId path,
       sourcePath = path,
       sourceText = content,
-      sourceLineStarts = computeLineStarts content
+      sourceLineStarts = computeLineStarts content,
+      sourceTokens = computeSourceTokens path content
     }
 
 sourceMapFromFiles :: [SourceFile] -> SourceMap
@@ -162,6 +174,15 @@ sourceMapFiles (SourceMap sources) =
 sourceMapNull :: SourceMap -> Bool
 sourceMapNull (SourceMap sources) =
   Map.null sources
+
+findTokenSpansInSource :: SourceFile -> String -> [SourceSpan]
+findTokenSpansInSource source needle
+  | null needle = []
+  | otherwise =
+      [ sourceTokenSpan sourceToken
+        | sourceToken <- sourceTokens source,
+          sourceTokenText sourceToken == needle
+      ]
 
 findTextSpansInSource :: SourceFile -> String -> [SourceSpan]
 findTextSpansInSource source needle
@@ -371,6 +392,62 @@ computeLineStarts =
   where
     step (starts, offset) '\n' = (offset + 1 : starts, offset + 1)
     step (starts, offset) _ = (starts, offset + 1)
+
+computeSourceTokens :: FilePath -> String -> [SourceToken]
+computeSourceTokens path content =
+  concat
+    [ lineTokens path lineNo lineStart lineText
+      | (lineNo, lineStart, lineText) <- zip3 [1 ..] (computeLineStarts content) (sourceLinesFromText content)
+    ]
+
+sourceLinesFromText :: String -> [String]
+sourceLinesFromText content =
+  case lines content of
+    [] -> [""]
+    xs -> xs
+
+lineTokens :: FilePath -> Int -> Int -> String -> [SourceToken]
+lineTokens path lineNo lineStart lineText =
+  go 1 lineText
+  where
+    go _ [] = []
+    go column chars@(c : rest)
+      | isIdentifierStart c =
+          let (tokenText, suffix) = spanQualifiedIdentifier chars
+              endColumn = column + length tokenText
+           in SourceToken
+                { sourceTokenText = tokenText,
+                  sourceTokenSpan =
+                    SourceSpan
+                      { spanFile = path,
+                        spanStartByte = lineStart + column - 1,
+                        spanEndByte = lineStart + endColumn - 1,
+                        spanStartLine = lineNo,
+                        spanStartColumn = column,
+                        spanEndLine = lineNo,
+                        spanEndColumn = endColumn
+                      }
+                }
+                : go endColumn suffix
+      | otherwise = go (column + 1) rest
+
+spanQualifiedIdentifier :: String -> (String, String)
+spanQualifiedIdentifier chars =
+  let (segment, rest) = span isIdentifierContinue chars
+   in case rest of
+        '.' : next : suffix
+          | isIdentifierStart next ->
+              let (tailText, finalRest) = spanQualifiedIdentifier (next : suffix)
+               in (segment ++ "." ++ tailText, finalRest)
+        _ -> (segment, rest)
+
+isIdentifierStart :: Char -> Bool
+isIdentifierStart c =
+  isAlpha c || c == '_'
+
+isIdentifierContinue :: Char -> Bool
+isIdentifierContinue c =
+  isAlphaNum c || c == '_' || c == '\''
 
 padLeft :: Int -> String -> String
 padLeft width str =

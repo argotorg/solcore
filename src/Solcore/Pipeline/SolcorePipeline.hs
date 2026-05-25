@@ -38,6 +38,7 @@ import Solcore.Diagnostics
     emptySourceMap,
     encodeDiagnostic,
     findTextSpansInSource,
+    findTokenSpansInSource,
     insertSourceFile,
     legacyDiagnostic,
     lookupSourceFile,
@@ -309,7 +310,13 @@ firstSpanForTerm sources diagnostic term =
 
 spansForTerm :: SourceMap -> Diagnostic -> String -> [SourceSpan]
 spansForTerm sources diagnostic term =
-  concatMap (`findTextSpansInSource` term) (candidateSources sources diagnostic)
+  concatMap (`spansInSource` term) (candidateSources sources diagnostic)
+
+spansInSource :: SourceFile -> String -> [SourceSpan]
+spansInSource source term =
+  case findTokenSpansInSource source term of
+    [] -> findTextSpansInSource source term
+    tokenSpans -> tokenSpans
 
 candidateSources :: SourceMap -> Diagnostic -> [SourceFile]
 candidateSources sources diagnostic =

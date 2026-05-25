@@ -12,7 +12,8 @@ diagnosticTests =
       testCase "short diagnostic snapshot" test_shortDiagnosticSnapshot,
       testCase "unicode diagnostic snapshot" test_unicodeDiagnosticSnapshot,
       testCase "diagnostic notes wrap to configured width" test_diagnosticWidthWrapsNotes,
-      testCase "color always emits ANSI styles" test_colorAlwaysEmitsAnsi
+      testCase "color always emits ANSI styles" test_colorAlwaysEmitsAnsi,
+      testCase "source token spans are exact" test_sourceTokenSpansAreExact
     ]
 
 test_humanDiagnosticSnapshot :: Assertion
@@ -79,6 +80,14 @@ test_colorAlwaysEmitsAnsi =
     sourceMap
     undefinedNameDiagnostic
     @?= "main.solc:2:10: \ESC[1;31merror[SC0101]\ESC[0m: undefined name `missing`"
+
+test_sourceTokenSpansAreExact :: Assertion
+test_sourceTokenSpansAreExact =
+  map spanStartColumn (findTokenSpansInSource tokenSourceFile "missing")
+    @?= [20]
+  where
+    tokenSourceFile =
+      makeSourceFile "tokens.solc" "let missingValue = missing;"
 
 sourceMap :: SourceMap
 sourceMap =
