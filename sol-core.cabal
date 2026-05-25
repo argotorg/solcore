@@ -169,6 +169,7 @@ test-suite sol-core-tests
   -- cabal-fmt: expand test -Main
   other-modules:
     Cases
+    DiagnosticCliTests
     DiagnosticTests
     HullCases
     MatchCompilerTests
@@ -181,6 +182,7 @@ test-suite sol-core-tests
     , tasty-expected-failure
     , tasty-hunit
     , HUnit
+    , process
 
   build-tool-depends: sol-core:sol-core, sol-core:yule
 
