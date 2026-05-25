@@ -8,7 +8,7 @@ import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
 import Data.Set qualified as Set
-import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Severity (..), decodeDiagnostic, encodeDiagnostic)
+import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Severity (..), addDiagnosticNote, decodeDiagnostic, encodeDiagnostic)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -661,10 +661,7 @@ wrapError m e =
     decorate msg =
       case decodeDiagnostic msg of
         Just diagnostic ->
-          encodeDiagnostic
-            diagnostic
-              { diagnosticNotes = diagnosticNotes diagnostic ++ ["in: " ++ pretty e]
-              }
+          encodeDiagnostic (addDiagnosticNote ("in: " ++ pretty e) diagnostic)
         Nothing -> msg ++ "\n - in:" ++ pretty e
 
 tcmMgu :: Ty -> Ty -> TcM Subst

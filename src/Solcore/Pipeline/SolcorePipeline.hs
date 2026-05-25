@@ -33,6 +33,8 @@ import Solcore.Diagnostics
     SourceFile,
     SourceMap,
     SourceSpan,
+    addDiagnosticHelp,
+    addDiagnosticNote,
     decodeDiagnostic,
     diagnosticMessage,
     diagnosticPrimarySpan,
@@ -249,12 +251,9 @@ handleWarningDiagnostics opts sources diagnostics =
 
 denyWarning :: Diagnostic -> Diagnostic
 denyWarning diagnostic =
-  diagnostic
-    { diagnosticSeverity = Error,
-      diagnosticHelp =
-        diagnosticHelp diagnostic
-          ++ ["pass --warnings=default, --warnings=always, or --warnings=never to allow this warning"]
-    }
+  addDiagnosticHelp
+    "pass --warnings=default, --warnings=always, or --warnings=never to allow this warning"
+    diagnostic {diagnosticSeverity = Error}
 
 liftEitherDiagnostic :: SourceMap -> Either String a -> ExceptT CompileDiagnostics IO a
 liftEitherDiagnostic sources =
@@ -658,10 +657,7 @@ decorateDiagnosticContext :: String -> String -> String
 decorateDiagnosticContext context err =
   case decodeDiagnostic err of
     Just diagnostic ->
-      encodeDiagnostic
-        diagnostic
-          { diagnosticNotes = diagnosticNotes diagnostic ++ [context]
-          }
+      encodeDiagnostic (addDiagnosticNote context diagnostic)
     Nothing -> context ++ ":\n" ++ err
 
 prepareInferenceDeclsForTypeInference ::

@@ -25,6 +25,8 @@ module Solcore.Diagnostics
     findTokenSpansInSource,
     findTextSpansInSource,
     legacyDiagnostic,
+    addDiagnosticNote,
+    addDiagnosticHelp,
     encodeDiagnostic,
     decodeDiagnostic,
     diagnosticPrimarySpan,
@@ -259,6 +261,20 @@ legacyDiagnostic msg =
       diagnosticNotes = [],
       diagnosticHelp = []
     }
+
+addDiagnosticNote :: String -> Diagnostic -> Diagnostic
+addDiagnosticNote note diagnostic =
+  diagnostic {diagnosticNotes = appendUnique note (diagnosticNotes diagnostic)}
+
+addDiagnosticHelp :: String -> Diagnostic -> Diagnostic
+addDiagnosticHelp help diagnostic =
+  diagnostic {diagnosticHelp = appendUnique help (diagnosticHelp diagnostic)}
+
+appendUnique :: String -> [String] -> [String]
+appendUnique item items
+  | null item = items
+  | item `elem` items = items
+  | otherwise = items ++ [item]
 
 encodeDiagnostic :: Diagnostic -> String
 encodeDiagnostic diagnostic =

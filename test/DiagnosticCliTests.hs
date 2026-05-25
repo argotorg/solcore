@@ -32,9 +32,6 @@ diagnosticCliTests =
             "note: in: function main () -> word {",
             "      return missing ;",
             "      }",
-            "note: in: function main () -> word {",
-            "      return missing ;",
-            "      }",
             "note: module validation failed for",
             "      <cwd>/test/diagnostics/undefined-name.solc"
           ],

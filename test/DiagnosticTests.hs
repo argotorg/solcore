@@ -14,6 +14,7 @@ diagnosticTests =
       testCase "diagnostic notes wrap to configured width" test_diagnosticWidthWrapsNotes,
       testCase "color always emits ANSI styles" test_colorAlwaysEmitsAnsi,
       testCase "nearby labels share one snippet" test_nearbyLabelsShareOneSnippet,
+      testCase "diagnostic notes are deduplicated" test_diagnosticNotesAreDeduplicated,
       testCase "source token spans are exact" test_sourceTokenSpansAreExact
     ]
 
@@ -94,6 +95,15 @@ test_nearbyLabelsShareOneSnippet =
         "2 | function foo() -> word { return 2; }",
         "  |          ^^^ duplicate definition"
       ]
+
+test_diagnosticNotesAreDeduplicated :: Assertion
+test_diagnosticNotesAreDeduplicated =
+  diagnosticNotes
+    ( addDiagnosticNote
+        "in: main"
+        (addDiagnosticNote "in: main" undefinedNameDiagnostic)
+    )
+    @?= ["names must be in scope", "in: main"]
 
 test_sourceTokenSpansAreExact :: Assertion
 test_sourceTokenSpansAreExact =
