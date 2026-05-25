@@ -13,6 +13,7 @@ diagnosticTests =
       testCase "unicode diagnostic snapshot" test_unicodeDiagnosticSnapshot,
       testCase "diagnostic notes wrap to configured width" test_diagnosticWidthWrapsNotes,
       testCase "color always emits ANSI styles" test_colorAlwaysEmitsAnsi,
+      testCase "nearby labels share one snippet" test_nearbyLabelsShareOneSnippet,
       testCase "source token spans are exact" test_sourceTokenSpansAreExact
     ]
 
@@ -81,6 +82,19 @@ test_colorAlwaysEmitsAnsi =
     undefinedNameDiagnostic
     @?= "main.solc:2:10: \ESC[1;31merror[SC0101]\ESC[0m: undefined name `missing`"
 
+test_nearbyLabelsShareOneSnippet :: Assertion
+test_nearbyLabelsShareOneSnippet =
+  renderDiagnostic defaultDiagnosticRenderOptions duplicateSourceMap duplicateDiagnostic
+    @?= unlinesNoTrailing
+      [ "error[SC0108]: duplicate declarations",
+        "  --> dup.solc:2:10",
+        "  |",
+        "1 | function foo() -> word { return 1; }",
+        "  |          --- previous definition",
+        "2 | function foo() -> word { return 2; }",
+        "  |          ^^^ duplicate definition"
+      ]
+
 test_sourceTokenSpansAreExact :: Assertion
 test_sourceTokenSpansAreExact =
   map spanStartColumn (findTokenSpansInSource tokenSourceFile "missing")
@@ -96,6 +110,14 @@ sourceMap =
 sourceFile :: SourceFile
 sourceFile =
   makeSourceFile "main.solc" (unlines ["function main() -> word {", "  return missing;", "}"])
+
+duplicateSourceMap :: SourceMap
+duplicateSourceMap =
+  sourceMapFromFiles [duplicateSourceFile]
+
+duplicateSourceFile :: SourceFile
+duplicateSourceFile =
+  makeSourceFile "dup.solc" (unlines ["function foo() -> word { return 1; }", "function foo() -> word { return 2; }"])
 
 undefinedNameDiagnostic :: Diagnostic
 undefinedNameDiagnostic =
@@ -121,6 +143,46 @@ undefinedNameDiagnostic =
         ],
       diagnosticNotes = ["names must be in scope"],
       diagnosticHelp = ["import it explicitly"]
+    }
+
+duplicateDiagnostic :: Diagnostic
+duplicateDiagnostic =
+  Diagnostic
+    { diagnosticSeverity = Error,
+      diagnosticCode = Just (DiagnosticCode "SC0108"),
+      diagnosticMessage = "duplicate declarations",
+      diagnosticLabels =
+        [ Label
+            { labelSpan =
+                SourceSpan
+                  { spanFile = "dup.solc",
+                    spanStartByte = 9,
+                    spanEndByte = 12,
+                    spanStartLine = 1,
+                    spanStartColumn = 10,
+                    spanEndLine = 1,
+                    spanEndColumn = 13
+                  },
+              labelStyle = Secondary,
+              labelMessage = Just "previous definition"
+            },
+          Label
+            { labelSpan =
+                SourceSpan
+                  { spanFile = "dup.solc",
+                    spanStartByte = 47,
+                    spanEndByte = 50,
+                    spanStartLine = 2,
+                    spanStartColumn = 10,
+                    spanEndLine = 2,
+                    spanEndColumn = 13
+                  },
+              labelStyle = Primary,
+              labelMessage = Just "duplicate definition"
+            }
+        ],
+      diagnosticNotes = [],
+      diagnosticHelp = []
     }
 
 unlinesNoTrailing :: [String] -> String

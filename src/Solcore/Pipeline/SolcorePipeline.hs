@@ -45,6 +45,7 @@ import Solcore.Diagnostics
     lookupSourceFile,
     makeSourceFile,
     renderDiagnostics,
+    resolveDiagnosticRenderOptions,
     sourceMapFiles,
     spanFile,
   )
@@ -70,7 +71,8 @@ pipeline = do
   result <- compileWithDiagnostics opts
   case result of
     Left err -> do
-      putStrLn (renderCompileDiagnostics opts err)
+      rendered <- renderCompileDiagnosticsIO opts err
+      putStrLn rendered
       exitWith (ExitFailure 1)
     Right contracts -> do
       forM_ (zip [(1 :: Int) ..] contracts) $ \(i, c) -> do
@@ -210,6 +212,15 @@ renderCompileDiagnostics opts diagnostics =
     (compileDiagnosticSources diagnostics)
     (compileDiagnosticMessages diagnostics)
 
+renderCompileDiagnosticsIO :: Option -> CompileDiagnostics -> IO String
+renderCompileDiagnosticsIO opts diagnostics = do
+  renderOptions <- resolveDiagnosticRenderOptions (diagnosticRenderOptions opts)
+  pure $
+    renderDiagnostics
+      renderOptions
+      (compileDiagnosticSources diagnostics)
+      (compileDiagnosticMessages diagnostics)
+
 compileDiagnosticsText :: CompileDiagnostics -> String
 compileDiagnosticsText =
   unlines . map diagnosticMessage . compileDiagnosticMessages
@@ -232,8 +243,9 @@ handleWarningDiagnostics opts sources diagnostics =
           }
   where
     printWarnings =
-      liftIO $
-        putStrLn (renderDiagnostics (diagnosticRenderOptions opts) sources diagnostics)
+      liftIO $ do
+        renderOptions <- resolveDiagnosticRenderOptions (diagnosticRenderOptions opts)
+        putStrLn (renderDiagnostics renderOptions sources diagnostics)
 
 denyWarning :: Diagnostic -> Diagnostic
 denyWarning diagnostic =

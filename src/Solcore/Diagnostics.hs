@@ -14,6 +14,7 @@ module Solcore.Diagnostics
     UnicodeChoice (..),
     DiagnosticRenderOptions (..),
     defaultDiagnosticRenderOptions,
+    resolveDiagnosticRenderOptions,
     makeSourceFile,
     sourceMapFromFiles,
     emptySourceMap,
@@ -33,11 +34,13 @@ module Solcore.Diagnostics
 where
 
 import Data.Char (isAlpha, isAlphaNum)
-import Data.List (foldl', isPrefixOf, stripPrefix, tails)
+import Data.List (foldl', isPrefixOf, sortOn, stripPrefix, tails)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Prettyprinter (Doc, LayoutOptions (..), PageWidth (..), layoutPretty, pretty, vsep)
 import Prettyprinter.Render.String (renderString)
+import System.Environment (lookupEnv)
+import System.IO (hIsTerminalDevice, stdout)
 import Text.Read (readMaybe)
 
 data Severity
@@ -141,6 +144,35 @@ defaultDiagnosticRenderOptions =
       diagnosticWidth = 100,
       diagnosticFormat = DiagnosticHuman
     }
+
+resolveDiagnosticRenderOptions :: DiagnosticRenderOptions -> IO DiagnosticRenderOptions
+resolveDiagnosticRenderOptions opts = do
+  isTerminal <- hIsTerminalDevice stdout
+  columns <- lookupEnv "COLUMNS"
+  pure
+    opts
+      { diagnosticColor = resolveColor isTerminal (diagnosticColor opts),
+        diagnosticUnicode = resolveUnicode isTerminal (diagnosticUnicode opts),
+        diagnosticWidth = resolveWidth columns (diagnosticWidth opts)
+      }
+
+resolveColor :: Bool -> ColorChoice -> ColorChoice
+resolveColor isTerminal ColorAuto
+  | isTerminal = ColorAlways
+  | otherwise = ColorNever
+resolveColor _ choice = choice
+
+resolveUnicode :: Bool -> UnicodeChoice -> UnicodeChoice
+resolveUnicode isTerminal UnicodeAuto
+  | isTerminal = UnicodeAlways
+  | otherwise = UnicodeNever
+resolveUnicode _ choice = choice
+
+resolveWidth :: Maybe String -> Int -> Int
+resolveWidth columns width
+  | width == diagnosticWidth defaultDiagnosticRenderOptions =
+      maybe width (max 20) (columns >>= readMaybe)
+  | otherwise = width
 
 makeSourceFile :: FilePath -> String -> SourceFile
 makeSourceFile path content =
@@ -285,7 +317,7 @@ humanDiagnosticLines :: DiagnosticRenderOptions -> SourceMap -> Diagnostic -> [S
 humanDiagnosticLines opts sources diagnostic =
   [diagnosticHeader opts diagnostic]
     ++ locationLines opts diagnostic
-    ++ concatMap (labelSnippetLines opts (diagnosticSeverity diagnostic) sources) (diagnosticLabels diagnostic)
+    ++ labelSnippetLines opts (diagnosticSeverity diagnostic) sources (diagnosticLabels diagnostic)
     ++ concatMap (prefixedWrappedLines opts "note: ") (diagnosticNotes diagnostic)
     ++ concatMap (prefixedWrappedLines opts "help: ") (diagnosticHelp diagnostic)
 
@@ -322,45 +354,88 @@ locationLines opts diagnostic =
           )
       ]
 
-labelSnippetLines :: DiagnosticRenderOptions -> Severity -> SourceMap -> Label -> [String]
-labelSnippetLines opts severity (SourceMap sources) label =
-  case Map.lookup (spanFile sourceSpan) sources of
-    Nothing -> []
-    Just source -> sourceLabelSnippet opts severity source label
+labelSnippetLines :: DiagnosticRenderOptions -> Severity -> SourceMap -> [Label] -> [String]
+labelSnippetLines opts severity (SourceMap sources) labels =
+  concatMap renderGroup (groupNearbyLabels labels)
+  where
+    renderGroup [] = []
+    renderGroup group@(label : _) =
+      case Map.lookup (spanFile (labelSpan label)) sources of
+        Nothing -> []
+        Just source -> sourceLabelsSnippet opts severity source group
+
+groupNearbyLabels :: [Label] -> [[Label]]
+groupNearbyLabels =
+  foldr insertLabel [] . sortOn labelSortKey
+  where
+    insertLabel label [] = [[label]]
+    insertLabel label (group : groups)
+      | labelBelongsWith label group = (label : group) : groups
+      | otherwise = [label] : group : groups
+
+labelBelongsWith :: Label -> [Label] -> Bool
+labelBelongsWith _ [] = False
+labelBelongsWith label group@(firstLabel : _) =
+  spanFile nextSpan == spanFile firstSpan
+    && spanStartLine nextSpan <= groupEndLine group + 2
+  where
+    nextSpan = labelSpan label
+    firstSpan = labelSpan firstLabel
+
+groupEndLine :: [Label] -> Int
+groupEndLine =
+  maximum . map (spanEndLine . labelSpan)
+
+labelSortKey :: Label -> (FilePath, Int, Int, Int)
+labelSortKey label =
+  (spanFile sourceSpan, spanStartLine sourceSpan, spanStartColumn sourceSpan, labelStyleRank (labelStyle label))
   where
     sourceSpan = labelSpan label
 
-sourceLabelSnippet :: DiagnosticRenderOptions -> Severity -> SourceFile -> Label -> [String]
-sourceLabelSnippet opts severity source label =
+labelStyleRank :: LabelStyle -> Int
+labelStyleRank Primary = 0
+labelStyleRank Secondary = 1
+
+sourceLabelsSnippet :: DiagnosticRenderOptions -> Severity -> SourceFile -> [Label] -> [String]
+sourceLabelsSnippet opts severity source labels =
   [gutter]
     ++ concatMap renderLine [firstLine .. lastLine]
   where
-    sourceSpan = labelSpan label
-    firstLine = max 1 (spanStartLine sourceSpan)
-    lastLine = max firstLine (spanEndLine sourceSpan)
+    firstLine = minimum (map (spanStartLine . labelSpan) labels)
+    lastLine = maximum (map (spanEndLine . labelSpan) labels)
     lineNoWidth = length (show lastLine)
     gutter = gutterLine opts lineNoWidth
-    marker = case labelStyle label of
-      Primary -> '^'
-      Secondary -> '-'
-    markerAnsi = case labelStyle label of
-      Primary -> severityAnsi severity
-      Secondary -> secondaryAnsi
 
     renderLine lineNo =
       let lineText = sourceLine source lineNo
           displayLine = expandTabs tabWidth lineText
-          underline = underlineForLine sourceSpan lineNo lineText marker
-          message = if lineNo == firstLine then maybe "" (" " ++) (labelMessage label) else ""
+          lineLabels = filter (labelTouchesLine lineNo) labels
        in [ colorize opts lineNumberAnsi (padLeft lineNoWidth (show lineNo))
               ++ gutterSeparator opts
               ++ " "
-              ++ displayLine,
-            gutterLine opts lineNoWidth
-              ++ " "
-              ++ colorize opts markerAnsi underline
-              ++ message
+              ++ displayLine
           ]
+            ++ map (renderLabelMarker lineNo lineText) lineLabels
+
+    renderLabelMarker lineNo lineText label =
+      let marker = case labelStyle label of
+            Primary -> '^'
+            Secondary -> '-'
+          markerAnsi = case labelStyle label of
+            Primary -> severityAnsi severity
+            Secondary -> secondaryAnsi
+          underline = underlineForLine (labelSpan label) lineNo lineText marker
+          message = if lineNo == spanStartLine (labelSpan label) then maybe "" (" " ++) (labelMessage label) else ""
+       in gutterLine opts lineNoWidth
+            ++ " "
+            ++ colorize opts markerAnsi underline
+            ++ message
+
+labelTouchesLine :: Int -> Label -> Bool
+labelTouchesLine lineNo label =
+  lineNo >= spanStartLine sourceSpan && lineNo <= spanEndLine sourceSpan
+  where
+    sourceSpan = labelSpan label
 
 underlineForLine :: SourceSpan -> Int -> String -> Char -> String
 underlineForLine sourceSpan lineNo lineText marker =

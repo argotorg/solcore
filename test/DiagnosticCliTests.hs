@@ -46,7 +46,6 @@ diagnosticCliTests =
             "  |",
             "1 | function foo() -> word { return 1; }",
             "  |          --- previous definition",
-            "  |",
             "2 | function foo() -> word { return 2; }",
             "  |          ^^^ duplicate definition",
             "note: context: module",
