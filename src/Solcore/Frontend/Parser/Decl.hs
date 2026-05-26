@@ -263,13 +263,14 @@ signatureP vars ctx = do
   ret <- optional (symbol "->" *> typeP)
   return (Signature vars ctx n ps ret)
 
-sigDeclP :: Parser Signature
-sigDeclP = try $ withSigPrefix sigDeclAfterPrefix
-
-sigDeclAfterPrefix :: [Ty] -> [Pred] -> Parser Signature
-sigDeclAfterPrefix vars ctx = do
-  sig <- signatureP vars ctx
-  _ <- semicolon
+-- | One function signature inside a class body.
+-- Commits to requiring ';' once the signature is parsed, so a missing
+-- semicolon produces "expecting ';' after function signature" rather than
+-- the confusing "unexpected 'f', expecting '}'".
+classSigP :: Parser Signature
+classSigP = do
+  sig <- try (withSigPrefix signatureP)
+  _ <- semicolon <?> "';' after function signature"
   return sig
 
 classAfterPrefix :: [Ty] -> [Pred] -> Parser Class
@@ -279,7 +280,7 @@ classAfterPrefix vars ctx = do
   _ <- colon
   cname <- qualifiedName
   params <- option [] (parens (typeP `sepBy1` comma))
-  sigs <- braces (many sigDeclP)
+  sigs <- braces (many classSigP)
   return (Class vars ctx cname params mty sigs)
 
 instanceAfterPrefix :: [Ty] -> [Pred] -> Parser Instance
