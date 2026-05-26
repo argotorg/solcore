@@ -6,7 +6,7 @@ import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (first)
 import Data.Char (isAlpha, isAlphaNum, isSpace)
-import Data.List (isInfixOf, isPrefixOf, nub, stripPrefix)
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf, nub, stripPrefix)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe, maybeToList)
@@ -388,6 +388,7 @@ diagnosticSearchTerms diagnostic =
         typeMismatchTerms diagnostic,
         warningSearchTerms diagnostic,
         unknownImportTerms diagnostic,
+        moduleReferenceTerms diagnostic,
         duplicateSearchTerms diagnostic,
         declarationSearchTerms diagnostic,
         inContextSearchTerms diagnostic
@@ -492,6 +493,31 @@ unknownImportTerms diagnostic =
               [word, lastSegment word]
         _ -> []
 
+moduleReferenceTerms :: Diagnostic -> [String]
+moduleReferenceTerms diagnostic =
+  concatMap referenceTerms (allDiagnosticText diagnostic)
+  where
+    referenceTerms line =
+      case words (trim line) of
+        ("import" : path : _) -> modulePathTerms path
+        ("export" : path : _) -> modulePathTerms path
+        _ -> []
+
+modulePathTerms :: String -> [String]
+modulePathTerms raw =
+  uniqueStrings
+    [ dropAt cleanPath,
+      cleanPath,
+      lastSegment cleanPath
+    ]
+  where
+    cleanPath =
+      trimModulePath raw
+
+trimModulePath :: String -> String
+trimModulePath =
+  takeWhile (\c -> c /= ';' && c /= ',' && c /= '{' && c /= '}')
+
 declarationSearchTerms :: Diagnostic -> [String]
 declarationSearchTerms diagnostic =
   concatMap declarationTerms (allDiagnosticText diagnostic)
@@ -539,13 +565,40 @@ prefixedTerms prefixes body =
 primaryLabelMessage :: Diagnostic -> String
 primaryLabelMessage diagnostic =
   case diagnosticCode diagnostic of
-    Just (DiagnosticCode "SC0201") -> "expression has mismatched type"
     Just (DiagnosticCode "SC0101") -> "unknown name"
+    Just (DiagnosticCode "SC0102") -> "undefined type variable"
+    Just (DiagnosticCode "SC0103") -> "undefined type constructor"
+    Just (DiagnosticCode "SC0104") -> "invalid type synonym"
+    Just (DiagnosticCode "SC0105") -> "undefined class"
+    Just (DiagnosticCode "SC0106") -> "unqualified constructor"
+    Just (DiagnosticCode "SC0107") -> "invalid pattern"
+    Just (DiagnosticCode "SC0110") -> "unknown import item"
+    Just (DiagnosticCode "SC0201") -> "expression has mismatched type"
     Just (DiagnosticCode "SC0202") -> "unknown name"
+    Just (DiagnosticCode "SC0203") -> "undefined type"
+    Just (DiagnosticCode "SC0204") -> "undefined field"
+    Just (DiagnosticCode "SC0205") -> "undefined constructor"
+    Just (DiagnosticCode "SC0206") -> "undefined function"
+    Just (DiagnosticCode "SC0207") -> "undefined class"
+    Just (DiagnosticCode "SC0208") -> "undefined type synonym"
     Just (DiagnosticCode "SC0301") -> "redundant clause"
     Just (DiagnosticCode "SC0302") -> "non-exhaustive match"
+    Just (DiagnosticCode "SC0109") -> "module reference"
+    Just (DiagnosticCode "SC0118") -> "external library import"
+    Just (DiagnosticCode "SC0119") -> "source file"
     Nothing -> "diagnostic reported here"
-    _ -> diagnosticMessage diagnostic
+    _ -> defaultPrimaryLabelMessage diagnostic
+
+defaultPrimaryLabelMessage :: Diagnostic -> String
+defaultPrimaryLabelMessage diagnostic
+  | diagnosticMessageLooksLikeHeader diagnostic = "diagnostic reported here"
+  | otherwise = diagnosticMessage diagnostic
+
+diagnosticMessageLooksLikeHeader :: Diagnostic -> Bool
+diagnosticMessageLooksLikeHeader diagnostic =
+  '\n' `elem` message || length message > 80
+  where
+    message = diagnosticMessage diagnostic
 
 isDuplicateDiagnostic :: Diagnostic -> Bool
 isDuplicateDiagnostic diagnostic =
@@ -571,13 +624,17 @@ diagnosticSourcePaths diagnostic =
 
 sourcePathsFromLine :: String -> [FilePath]
 sourcePathsFromLine line =
-  mapMaybe (`sourcePathAfterPrefix` line) prefixes
+  mapMaybe (`sourcePathAfterPrefix` line) prefixes ++ standaloneSourcePaths line
   where
     prefixes =
       [ "module validation failed for ",
         "module typecheck failed for ",
         "source file is outside library root:"
       ]
+
+standaloneSourcePaths :: String -> [FilePath]
+standaloneSourcePaths line =
+  [path | let path = trim line, ".solc" `isSuffixOf` path]
 
 sourcePathAfterPrefix :: String -> String -> Maybe FilePath
 sourcePathAfterPrefix prefix line = do
@@ -601,6 +658,10 @@ indentedTerms line
 lastSegment :: String -> String
 lastSegment =
   reverse . takeWhile (/= '.') . reverse
+
+dropAt :: String -> String
+dropAt ('@' : rest) = rest
+dropAt path = path
 
 splitCommaTerms :: String -> [String]
 splitCommaTerms raw =

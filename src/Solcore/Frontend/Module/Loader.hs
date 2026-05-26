@@ -130,9 +130,9 @@ visit cfg moduleId sourcePath = do
     let source = makeSourceFile sourcePath content
     parsed <- liftIO (parseCompUnitWithPath sourcePath content)
     cunit <- either throwError pure parsed
-    importedModules <- mapM (resolveImportPath cfg moduleId) (imports cunit)
+    importedModules <- mapM (resolveImportPath cfg moduleId sourcePath) (imports cunit)
     exportedModules <-
-      mapM (resolveModuleReference cfg moduleId "export") (exportModulePaths cunit)
+      mapM (resolveModuleReference cfg moduleId sourcePath "export") (exportModulePaths cunit)
     let moduleRefs =
           Map.fromList $
             [(importModule imp, importId) | (imp, (importId, _)) <- zip (imports cunit) importedModules]
@@ -157,29 +157,54 @@ visit cfg moduleId sourcePath = do
 resolveImportPath ::
   LoaderConfig ->
   Mod.ModuleId ->
+  FilePath ->
   Import ->
   StateT LoadState (ExceptT String IO) (Mod.ModuleId, FilePath)
-resolveImportPath cfg currentModule imp =
+resolveImportPath cfg currentModule currentSourcePath imp =
   fmap (\(_, targetId, targetPath) -> (targetId, targetPath)) $
-    resolveModuleReference cfg currentModule "import" (importModule imp)
+    resolveModuleReference cfg currentModule currentSourcePath "import" (importModule imp)
 
 resolveModuleReference ::
   LoaderConfig ->
   Mod.ModuleId ->
+  FilePath ->
   String ->
   ModulePath ->
   StateT LoadState (ExceptT String IO) (ModulePath, Mod.ModuleId, FilePath)
-resolveModuleReference cfg currentModule refKind modulePath = do
-  candidates <- either throwError pure (resolveModuleImportCandidates cfg currentModule modulePath)
+resolveModuleReference cfg currentModule currentSourcePath refKind modulePath = do
+  candidates <-
+    either
+      (throwError . moduleReferenceDiagnostic "SC0118" currentSourcePath refKind modulePath)
+      pure
+      (resolveModuleImportCandidates cfg currentModule modulePath)
   resolved <- liftIO $ firstExisting candidates
   case resolved of
     Just (targetId, targetPath) -> pure (modulePath, targetId, targetPath)
     Nothing ->
       throwError $
-        refKind
-          ++ " "
-          ++ Mod.modulePathDisplay modulePath
-          ++ ": file not found"
+        moduleReferenceDiagnostic
+          "SC0109"
+          currentSourcePath
+          refKind
+          modulePath
+          ( refKind
+              ++ " "
+              ++ Mod.modulePathDisplay modulePath
+              ++ ": file not found"
+          )
+
+moduleReferenceDiagnostic :: String -> FilePath -> String -> ModulePath -> String -> String
+moduleReferenceDiagnostic code sourcePath refKind modulePath message =
+  loaderDiagnostic
+    code
+    message
+    [sourcePath, refKind ++ " " ++ Mod.modulePathDisplay modulePath]
+    (moduleReferenceHelp code)
+
+moduleReferenceHelp :: String -> [String]
+moduleReferenceHelp "SC0118" = ["pass --external-lib NAME=PATH for external imports"]
+moduleReferenceHelp "SC0109" = ["check the module path or add the missing source file"]
+moduleReferenceHelp _ = []
 
 toFilePath :: FilePath -> Name -> FilePath
 toFilePath base = (base </>) . Mod.moduleFilePath

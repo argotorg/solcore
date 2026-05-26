@@ -80,6 +80,29 @@ diagnosticCliTests =
             "note: function foo ()",
             "note: Annotate every parameter (name : Type) and provide a return type (-> Type)."
           ],
+      testCase "legacy typecheck label does not repeat the full error" $
+        expectFailure
+          ["--root", "test/diagnostics", "--file", "test/diagnostics/not-polymorphic-enough.solc", "--no-specialise"]
+          [ "error: module typecheck failed for <cwd>/test/diagnostics/not-polymorphic-enough.solc (no desugaring):",
+            "  --> <cwd>/test/diagnostics/not-polymorphic-enough.solc:3:26",
+            "  |",
+            "3 |   assembly { result := x }",
+            "  |                          ^ diagnostic reported here",
+            "note: Type not polymorphic enough! The annotated type is:",
+            "note: forall a . word -> a",
+            "note: but the infered type is:",
+            "note: word -> word",
+            "note: in:",
+            "note: forall a . function fromWord (x : word) -> a",
+            "note: ",
+            "note: - in:forall a . function fromWord (x : word) -> a {",
+            "note: let result ;",
+            "note: assembly {",
+            "note: result := x",
+            "note: }",
+            "note: return result;",
+            "note: }"
+          ],
       testCase "import error" $
         expectFailure
           ["--root", "test/imports", "--file", "test/imports/select_unknown.solc", "--no-specialise"]
@@ -91,6 +114,18 @@ diagnosticCliTests =
             "note: unknown selected imports:",
             "note: selectlib.missing",
             "help: check the imported module's exported names"
+          ],
+      testCase "loader error before graph keeps source span" $
+        expectFailure
+          ["--root", "test/imports", "--file", "test/imports/external_lib_missing_fail.solc", "--no-specialise"]
+          [ "error[SC0118]: external library root is not configured: @missing",
+            "  --> <cwd>/test/imports/external_lib_missing_fail.solc:1:9",
+            "  |",
+            "1 | import @missing.math.api;",
+            "  |         ^^^^^^^^^^^^^^^^ external library import",
+            "note: <cwd>/test/imports/external_lib_missing_fail.solc",
+            "note: import @missing.math.api",
+            "help: pass --external-lib NAME=PATH for external imports"
           ],
       testCase "short output" $
         expectFailure
