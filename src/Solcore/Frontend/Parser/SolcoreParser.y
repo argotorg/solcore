@@ -121,10 +121,10 @@ Import : 'import' ModName ';'                      { ImportModule (classifyImpor
        | 'import' ModName 'as' Name ';'            { ImportAlias (classifyImportPath $2) $4 }
        | 'import' ModName '.' '{' ImportItems '}' ImportHiding ';'
            { ImportOnly (classifyImportPath $2) (SelectItems $5 $7) }
-       | 'import' '@' identifier '.' ModName ';'   { ImportModule (ExternalPath (Name $3) $5) }
-       | 'import' '@' identifier '.' ModName 'as' Name ';' { ImportAlias (ExternalPath (Name $3) $5) $7 }
+       | 'import' '@' identifier '.' ModName ';'   { ImportModule (ExternalPath (nameFromIdent $3) $5) }
+       | 'import' '@' identifier '.' ModName 'as' Name ';' { ImportAlias (ExternalPath (nameFromIdent $3) $5) $7 }
        | 'import' '@' identifier '.' ModName '.' '{' ImportItems '}' ImportHiding ';'
-           { ImportOnly (ExternalPath (Name $3) $5) (SelectItems $8 $10) }
+           { ImportOnly (ExternalPath (nameFromIdent $3) $5) (SelectItems $8 $10) }
 
 ImportItems :: { [ItemSelectorEntry] }
 ImportItems : ImportItemList                       { $1 }
@@ -146,11 +146,11 @@ HidingItemList : ItemName ',' HidingItemList       { $1 : $3 }
                | ItemName                          { [$1] }
 
 ModName :: { Name }
-ModName : identifier                               { Name $1 }
-        | ModName '.' identifier                   { QualName $1 $3 }
+ModName : identifier                               { nameFromIdent $1 }
+        | ModName '.' identifier                   { qualNameFromIdent $1 $3 }
 
 ItemName :: { Name }
-ItemName : identifier                              { Name $1 }
+ItemName : identifier                              { nameFromIdent $1 }
 
 TopDeclList :: { [TopDecl] }
 TopDeclList : TopDecl TopDeclList                  { $1 : $2 }
@@ -173,7 +173,7 @@ ExportDecl :: { Export }
 ExportDecl : 'export' '{' ExportItems '}' ';'      { ExportList $3 }
            | 'export' ModName ExportTail           { $3 (classifyImportPath $2) }
            | 'export' '@' identifier '.' ModName ExportTail
-               { $6 (ExternalPath (Name $3) $5) }
+               { $6 (ExternalPath (nameFromIdent $3) $5) }
 
 ExportTail :: { ModulePath -> Export }
 ExportTail : ';'                                   { ExportModule }
@@ -194,7 +194,7 @@ ExportListItem : '*'                               { ExportAll }
                | ItemName                          { ExportName $1 }
                | ItemName '(' ExportConstructorItems ')' { ExportNameWithConstructors $1 $3 }
                | ModName '.' '*'                   { ExportModuleAll (classifyImportPath $1) }
-               | '@' identifier '.' ModName '.' '*' { ExportModuleAll (ExternalPath (Name $2) $4) }
+               | '@' identifier '.' ModName '.' '*' { ExportModuleAll (ExternalPath (nameFromIdent $2) $4) }
 
 ExportFromItems :: { [ExportSelectorEntry] }
 ExportFromItems : ExportFromItemList               { $1 }
@@ -517,11 +517,11 @@ Var :: { Ty }
 Var : Name                                         {TyCon $1 []}
 
 Name :: { Name }
-Name : identifier                                 { Name $1 }
+Name : identifier                                 { nameFromIdent $1 }
 
 TypeName :: { Name }
-TypeName : identifier                             { Name $1 }
-         | TypeName '.' identifier               { QualName $1 $3 }
+TypeName : identifier                             { nameFromIdent $1 }
+         | TypeName '.' identifier               { qualNameFromIdent $1 $3 }
 
 -- Yul statments and blocks
 
@@ -620,6 +620,14 @@ parseCompUnitWithPath sourcePath content
 
 parseCompUnit :: String -> IO (Either String CompUnit)
 parseCompUnit = moduleParser []
+
+nameFromIdent :: LocatedText -> Name
+nameFromIdent ident =
+  locatedName (locatedTextSpan ident) (Name (locatedTextText ident))
+
+qualNameFromIdent :: Name -> LocatedText -> Name
+qualNameFromIdent qualifier ident =
+  locatedQualName qualifier (locatedTextSpan ident) (locatedTextText ident)
 
 classifyImportPath :: Name -> ModulePath
 classifyImportPath modName =

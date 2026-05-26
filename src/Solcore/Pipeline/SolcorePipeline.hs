@@ -581,6 +581,7 @@ primaryLabelMessage diagnostic =
     Just (DiagnosticCode "SC0206") -> "undefined function"
     Just (DiagnosticCode "SC0207") -> "undefined class"
     Just (DiagnosticCode "SC0208") -> "undefined type synonym"
+    Just (DiagnosticCode "SC0209") -> "type is not polymorphic enough"
     Just (DiagnosticCode "SC0301") -> "redundant clause"
     Just (DiagnosticCode "SC0302") -> "non-exhaustive match"
     Just (DiagnosticCode "SC0109") -> "module reference"

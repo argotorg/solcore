@@ -247,8 +247,15 @@ uncurriedSourceSpan (line, column) =
       spanEndColumn = column + 1
     }
 
+data LocatedText
+  = LocatedText
+  { locatedTextSpan :: SourceSpan,
+    locatedTextText :: String
+  }
+  deriving (Eq, Ord, Show)
+
 data Lexeme
-  = TIdent { unIdent :: String }
+  = TIdent { unIdent :: LocatedText }
   | TNumber { unNum :: Integer }
   | TString { unStr :: String }
   | TContract
@@ -327,9 +334,10 @@ mkIdent :: AlexAction Token
 mkIdent (st, _, _, str) len
   = do
       file <- sourceName <$> get
-      pure $ mkToken file st len (lexemeFor (take len str))
+      let identSpan = sourceSpan file st len
+      pure $ mkTokenWithSpan identSpan (lexemeFor identSpan (take len str))
   where
-    lexemeFor str =
+    lexemeFor identSpan str =
       case str of
         "match" -> TMatch
         "data" -> TData
@@ -356,7 +364,7 @@ mkIdent (st, _, _, str) len
         "no-coverage-condition" -> TNoCoverageCondition
         "no-patterson-condition" -> TNoPattersonCondition
         "no-bounded-variable-condition" -> TNoBoundVariableCondition
-        _ -> TIdent str
+        _ -> TIdent (LocatedText identSpan str)
 
 mkNumber :: AlexAction Token
 mkNumber (st, _, _, str) len

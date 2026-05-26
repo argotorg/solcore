@@ -5,10 +5,13 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Generics (Data, everything, mkQ)
 import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Severity (..), addDiagnosticNote, decodeDiagnostic, encodeDiagnostic)
+import Data.Maybe (mapMaybe)
+import Data.Monoid (First (..))
+import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, decodeDiagnostic, encodeDiagnostic)
 import Solcore.Frontend.Pretty.TreePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts, decls)
 import Solcore.Frontend.Syntax.Name
@@ -131,7 +134,7 @@ contractTermNames = concatMap collect
 
 qualifiedConstructorName :: Name -> Name -> Name
 qualifiedConstructorName tyCon conName =
-  QualName tyCon (pretty (constructorLeafName conName))
+  qualifyName tyCon (constructorLeafName conName)
 
 ensureNoDuplicateNames :: String -> [Name] -> Either String ()
 ensureNoDuplicateNames ns = ensureNoDuplicateNamesIn "module" ns
@@ -455,11 +458,11 @@ pairPat :: Pat Name -> Pat Name -> Pat Name
 pairPat p1 p2 = PCon (Name "pair") [p1, p2]
 
 constructorLeafName :: Name -> Name
-constructorLeafName (QualName _ n) = Name n
+constructorLeafName q@(QualName _ n) = copyNameSourceSpan q (Name n)
 constructorLeafName n = n
 
 dotConstructorMarker :: Name -> Name
-dotConstructorMarker n = Name ('.' : pretty (constructorLeafName n))
+dotConstructorMarker n = copyNameSourceSpan n (Name ('.' : pretty (constructorLeafName n)))
 
 isPrimitiveConstructor :: Name -> Bool
 isPrimitiveConstructor n =
@@ -475,8 +478,8 @@ isPrimitiveConstructor n =
       ]
 
 splitQualifiedName :: Name -> Maybe (Name, Name)
-splitQualifiedName (QualName qualifier conName) =
-  Just (qualifier, Name conName)
+splitQualifiedName q@(QualName qualifier conName) =
+  Just (qualifier, copyNameSourceSpan q (Name conName))
 splitQualifiedName _ = Nothing
 
 hasQualifiedConstructorLeaf :: Name -> ResolveM Bool
@@ -555,7 +558,7 @@ instance Resolve S.Exp where
         (Just (Var d), Just TDataCon) ->
           Con <$> resolveQualifiedConstructorName d n <*> pure []
         (Just (Var d), Just TTyCon) -> do
-          let qn = QualName d (pretty n)
+          let qn = qualifyName d n
           qdt <- lookupName qn
           case qdt of
             Just TFunction -> pure (Var qn)
@@ -575,7 +578,7 @@ instance Resolve S.Exp where
         (_, Just TModule) -> pure (Var n)
         -- module-qualified function or constructor reference
         (Just (Var d), Nothing) -> do
-          let qn = QualName d (pretty n)
+          let qn = qualifyName d n
           qdt <- lookupName qn
           case qdt of
             Just TFunction -> pure (Var qn)
@@ -583,7 +586,7 @@ instance Resolve S.Exp where
             Just TTyCon -> pure (Var qn)
             Just TModule -> pure (Var qn)
             _ -> do
-              let fallback = QualName (constructorLeafName d) (pretty n)
+              let fallback = qualifyName (constructorLeafName d) n
               fdt <- lookupName fallback
               case fdt of
                 Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
@@ -622,7 +625,7 @@ instance Resolve S.Exp where
         (Just (Var d), Just TDataCon) ->
           Con <$> resolveQualifiedConstructorName d n <*> pure es'
         (Just (Var c), Just TTyCon) -> do
-          let qn = QualName c (pretty n)
+          let qn = qualifyName c n
           qdt <- lookupName qn
           case qdt of
             Just TFunction -> pure (Call Nothing qn es')
@@ -631,7 +634,7 @@ instance Resolve S.Exp where
         -- class functions
         (Just (Var c), Just TFunction) -> do
           ct <- lookupName c
-          let qn = QualName c (pretty n)
+          let qn = qualifyName c n
           case ct of
             Just TClass ->
               pure (Call Nothing qn es')
@@ -644,7 +647,7 @@ instance Resolve S.Exp where
             _ -> undefinedName c
         (Just (Var c), Nothing) -> do
           ct <- lookupName c
-          let qn = QualName c (pretty n)
+          let qn = qualifyName c n
           cf <- lookupName qn
           case (ct, cf) of
             (Just TClass, Just TFunction) ->
@@ -654,14 +657,14 @@ instance Resolve S.Exp where
             (_, Just TDataCon) ->
               Con <$> resolveQualifiedConstructorName c n <*> pure es'
             _ -> do
-              let fallback = QualName (constructorLeafName c) (pretty n)
+              let fallback = qualifyName (constructorLeafName c) n
               fdt <- lookupName fallback
               case fdt of
                 Just TDataCon ->
                   Con <$> resolveQualifiedConstructorName c n <*> pure es'
                 _ -> undefinedName n
         (Just (Var c), Just TTyVar) -> do
-          let qn = QualName c (pretty n)
+          let qn = qualifyName c n
           cf <- gets (Map.lookup qn . scopeEnv)
           case cf of
             Just TFunction -> pure (Call Nothing qn es')
@@ -924,7 +927,7 @@ addTopDecl (S.TClassDef (S.Class _ _ n _ _ sigs)) env =
   let env' =
         foldr
           ( \s ac ->
-              let qn = QualName n (pretty (S.sigName s))
+              let qn = qualifyName n (S.sigName s)
                in Map.insert qn TFunction ac
           )
           (scopeEnv env)
@@ -1005,7 +1008,7 @@ lookupName n =
         fdt = Map.lookup n (fieldEnv env)
     pure (ldt <|> gdt <|> cdt <|> fdt)
 
-wrapError :: (Pretty b) => ResolveM a -> b -> ResolveM a
+wrapError :: (Pretty b, Data b) => ResolveM a -> b -> ResolveM a
 wrapError m e =
   catchError m handler
   where
@@ -1013,8 +1016,44 @@ wrapError m e =
     decorate msg =
       case decodeDiagnostic msg of
         Just diagnostic ->
-          encodeDiagnostic (addDiagnosticNote ("in: " ++ pretty e) diagnostic)
+          encodeDiagnostic (addDiagnosticNote ("in: " ++ pretty e) (addContextLabel e diagnostic))
         Nothing -> msg ++ "\n - in:" ++ pretty e
+
+addContextLabel :: (Data b) => b -> Diagnostic -> Diagnostic
+addContextLabel context diagnostic
+  | any ((== Primary) . labelStyle) (diagnosticLabels diagnostic) = diagnostic
+  | otherwise =
+      case contextSourceSpan context of
+        Just sourceSpan ->
+          diagnostic
+            { diagnosticLabels =
+                Label
+                  { labelSpan = sourceSpan,
+                    labelStyle = Primary,
+                    labelMessage = Just (contextLabelMessage diagnostic)
+                  }
+                  : diagnosticLabels diagnostic
+            }
+        Nothing -> diagnostic
+
+contextLabelMessage :: Diagnostic -> String
+contextLabelMessage diagnostic =
+  case diagnosticCode diagnostic of
+    Just (DiagnosticCode "SC0101") -> "unknown name"
+    Just (DiagnosticCode "SC0102") -> "undefined type variable"
+    Just (DiagnosticCode "SC0103") -> "undefined type constructor"
+    Just (DiagnosticCode "SC0104") -> "invalid type synonym"
+    Just (DiagnosticCode "SC0105") -> "undefined class"
+    Just (DiagnosticCode "SC0106") -> "unqualified constructor"
+    Just (DiagnosticCode "SC0107") -> "invalid pattern"
+    _ -> "diagnostic reported here"
+
+contextSourceSpan :: (Data a) => a -> Maybe SourceSpan
+contextSourceSpan value =
+  getFirst $ everything (<>) (mkQ (First Nothing) nameSpan) value
+  where
+    nameSpan :: Name -> First SourceSpan
+    nameSpan = First . nameSourceSpan
 
 addContractName :: Name -> ResolveM ()
 addContractName n =
@@ -1061,12 +1100,12 @@ addTyVar n =
 resolveQualifiedConstructorName :: Name -> Name -> ResolveM Name
 resolveQualifiedConstructorName qualifier conName =
   do
-    let qn = QualName qualifier (pretty conName)
+    let qn = qualifyName qualifier conName
     dt <- lookupName qn
     case dt of
       Just TDataCon -> pure qn
       _ ->
-        let fallback = QualName (constructorLeafName qualifier) (pretty conName)
+        let fallback = qualifyName (constructorLeafName qualifier) conName
          in do
               fdt <- lookupName fallback
               case fdt of
@@ -1077,49 +1116,60 @@ resolveQualifiedConstructorName qualifier conName =
 
 undefinedTypeVariables :: [Name] -> ResolveM a
 undefinedTypeVariables ns =
-  diagnosticError
+  diagnosticErrorWithLabels
     "SC0102"
     ("undefined type variables: " ++ unwords (map pretty ns))
+    (mapMaybe (primaryNameLabel "undefined type variable") ns)
     []
     []
 
 undefinedTypeConstructor :: S.Ty -> ResolveM a
 undefinedTypeConstructor t =
-  diagnosticError
+  diagnosticErrorAtName
     "SC0103"
     ("undefined type constructor: " ++ pretty t)
+    (S.tyName t)
+    "undefined type constructor"
     []
     []
 
 invalidTypeSynonymError :: S.TySym -> ResolveM a
 invalidTypeSynonymError t =
-  diagnosticError
+  diagnosticErrorAtName
     "SC0104"
     ("invalid type synonym: " ++ pretty t)
+    (S.symName t)
+    "invalid type synonym"
     []
     []
 
 undefinedClassError :: Name -> ResolveM a
 undefinedClassError n =
-  diagnosticError
+  diagnosticErrorAtName
     "SC0105"
     ("undefined class: " ++ pretty n)
+    n
+    "undefined class"
     []
     []
 
 undefinedName :: Name -> ResolveM a
 undefinedName n =
-  diagnosticError
+  diagnosticErrorAtName
     "SC0101"
     ("undefined name: " ++ pretty n)
+    n
+    "unknown name"
     []
     []
 
 unqualifiedConstructorError :: Name -> ResolveM a
 unqualifiedConstructorError n =
-  diagnosticError
+  diagnosticErrorAtName
     "SC0106"
     ("unqualified constructor: " ++ pretty n)
+    n
+    "constructor must be qualified"
     []
     ["use Type.Constructor form"]
 
@@ -1133,16 +1183,39 @@ invalidPatternSyntax p =
 
 diagnosticError :: String -> String -> [String] -> [String] -> ResolveM a
 diagnosticError code message notes help =
-  throwError $ diagnosticString code message notes help
+  diagnosticErrorWithLabels code message [] notes help
+
+diagnosticErrorAtName :: String -> String -> Name -> String -> [String] -> [String] -> ResolveM a
+diagnosticErrorAtName code message identName label notes help =
+  diagnosticErrorWithLabels code message (maybe [] pure (primaryNameLabel label identName)) notes help
+
+diagnosticErrorWithLabels :: String -> String -> [Label] -> [String] -> [String] -> ResolveM a
+diagnosticErrorWithLabels code message labels notes help =
+  throwError $ diagnosticStringWithLabels code message labels notes help
 
 diagnosticString :: String -> String -> [String] -> [String] -> String
 diagnosticString code message notes help =
+  diagnosticStringWithLabels code message [] notes help
+
+diagnosticStringWithLabels :: String -> String -> [Label] -> [String] -> [String] -> String
+diagnosticStringWithLabels code message labels notes help =
   encodeDiagnostic
     Diagnostic
       { diagnosticSeverity = Error,
         diagnosticCode = Just (DiagnosticCode code),
         diagnosticMessage = message,
-        diagnosticLabels = [],
+        diagnosticLabels = labels,
         diagnosticNotes = notes,
         diagnosticHelp = help
       }
+
+primaryNameLabel :: String -> Name -> Maybe Label
+primaryNameLabel message identName =
+  do
+    sourceSpan <- nameSourceSpan identName
+    pure
+      Label
+        { labelSpan = sourceSpan,
+          labelStyle = Primary,
+          labelMessage = Just message
+        }

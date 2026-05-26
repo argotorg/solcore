@@ -3,12 +3,14 @@ module Solcore.Frontend.TypeInference.TcMonad where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Generics (Data, everything, mkQ)
 import Data.List
 import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
+import Data.Monoid (First (..))
 import Data.Set qualified as Set
-import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Severity (..), addDiagnosticNote, decodeDiagnostic, encodeDiagnostic)
+import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, decodeDiagnostic, encodeDiagnostic)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -653,7 +655,7 @@ dumpLogs = do
 
 -- wrapping error messages
 
-wrapError :: (Pretty b) => TcM a -> b -> TcM a
+wrapError :: (Pretty b, Data b) => TcM a -> b -> TcM a
 wrapError m e =
   catchError m handler
   where
@@ -661,8 +663,46 @@ wrapError m e =
     decorate msg =
       case decodeDiagnostic msg of
         Just diagnostic ->
-          encodeDiagnostic (addDiagnosticNote ("in: " ++ pretty e) diagnostic)
+          encodeDiagnostic (addDiagnosticNote ("in: " ++ pretty e) (addContextLabel e diagnostic))
         Nothing -> msg ++ "\n - in:" ++ pretty e
+
+addContextLabel :: (Data b) => b -> Diagnostic -> Diagnostic
+addContextLabel context diagnostic
+  | any ((== Primary) . labelStyle) (diagnosticLabels diagnostic) = diagnostic
+  | otherwise =
+      case contextSourceSpan context of
+        Just sourceSpan ->
+          diagnostic
+            { diagnosticLabels =
+                Label
+                  { labelSpan = sourceSpan,
+                    labelStyle = Primary,
+                    labelMessage = Just (contextLabelMessage diagnostic)
+                  }
+                  : diagnosticLabels diagnostic
+            }
+        Nothing -> diagnostic
+
+contextLabelMessage :: Diagnostic -> String
+contextLabelMessage diagnostic =
+  case diagnosticCode diagnostic of
+    Just (DiagnosticCode "SC0201") -> "expression has mismatched type"
+    Just (DiagnosticCode "SC0202") -> "unknown name"
+    Just (DiagnosticCode "SC0203") -> "undefined type"
+    Just (DiagnosticCode "SC0204") -> "undefined field"
+    Just (DiagnosticCode "SC0205") -> "undefined constructor"
+    Just (DiagnosticCode "SC0206") -> "undefined function"
+    Just (DiagnosticCode "SC0207") -> "undefined class"
+    Just (DiagnosticCode "SC0208") -> "undefined type synonym"
+    Just (DiagnosticCode "SC0209") -> "type is not polymorphic enough"
+    _ -> "diagnostic reported here"
+
+contextSourceSpan :: (Data a) => a -> Maybe SourceSpan
+contextSourceSpan value =
+  getFirst $ everything (<>) (mkQ (First Nothing) nameSpan) value
+  where
+    nameSpan :: Name -> First SourceSpan
+    nameSpan = First . nameSourceSpan
 
 tcmMgu :: Ty -> Ty -> TcM Subst
 tcmMgu t u = catchError (mgu t u) tcmError
@@ -677,9 +717,11 @@ tcmError s = do
 
 undefinedName :: Name -> TcM a
 undefinedName n =
-  tcDiagnosticError
+  tcDiagnosticErrorAtName
     "SC0202"
     ("undefined name: " ++ pretty n)
+    n
+    "unknown name"
     []
     []
 
@@ -687,75 +729,107 @@ undefinedType :: Name -> TcM a
 undefinedType n =
   do
     s <- (unlines . reverse) <$> gets logs
-    tcDiagnosticError
+    tcDiagnosticErrorAtName
       "SC0203"
       ("undefined type: " ++ pretty n)
+      n
+      "undefined type"
       (if null s then [] else [s])
       []
 
 undefinedField :: Name -> Name -> TcM a
 undefinedField n n' =
-  tcDiagnosticError
+  tcDiagnosticErrorAtName
     "SC0204"
     ("undefined field: " ++ pretty n)
+    n
+    "undefined field"
     ["in type: " ++ pretty n']
     []
 
 undefinedConstr :: Name -> Name -> TcM a
 undefinedConstr tn cn =
-  tcDiagnosticError
+  tcDiagnosticErrorAtName
     "SC0205"
     ("undefined constructor: " ++ pretty cn)
+    cn
+    "undefined constructor"
     ["in type: " ++ pretty tn]
     []
 
 undefinedFunction :: Name -> Name -> TcM a
 undefinedFunction t n =
-  tcDiagnosticError
+  tcDiagnosticErrorAtName
     "SC0206"
     ("undefined function: " ++ pretty n)
+    n
+    "undefined function"
     ["type " ++ pretty t ++ " does not define this function"]
     []
 
 typeNotPolymorphicEnough :: Signature Name -> Scheme -> Scheme -> TcM a
 typeNotPolymorphicEnough sig sch1 sch2 =
-  tcmError $
-    unlines
-      [ "Type not polymorphic enough! The annotated type is:",
-        pretty sch2,
-        "but the infered type is:",
-        pretty sch1,
-        "in:",
-        pretty sig
-      ]
+  tcDiagnosticErrorAtName
+    "SC0209"
+    "type is not polymorphic enough"
+    (sigName sig)
+    "annotated type is not polymorphic enough"
+    [ "annotated type: " ++ pretty sch2,
+      "inferred type: " ++ pretty sch1,
+      "in: " ++ pretty sig
+    ]
+    []
 
 undefinedClass :: Name -> TcM a
 undefinedClass n =
-  tcDiagnosticError
+  tcDiagnosticErrorAtName
     "SC0207"
     ("undefined class: " ++ pretty n)
+    n
+    "undefined class"
     []
     []
 
 undefinedSynonym :: Name -> TcM a
 undefinedSynonym n =
-  tcDiagnosticError
+  tcDiagnosticErrorAtName
     "SC0208"
     ("undefined type synonym: " ++ pretty n)
+    n
+    "undefined type synonym"
     []
     []
 
 tcDiagnosticError :: String -> String -> [String] -> [String] -> TcM a
 tcDiagnosticError code message notes help =
+  tcDiagnosticErrorWithLabels code message [] notes help
+
+tcDiagnosticErrorAtName :: String -> String -> Name -> String -> [String] -> [String] -> TcM a
+tcDiagnosticErrorAtName code message identName label notes help =
+  tcDiagnosticErrorWithLabels code message (maybe [] pure (primaryNameLabel label identName)) notes help
+
+tcDiagnosticErrorWithLabels :: String -> String -> [Label] -> [String] -> [String] -> TcM a
+tcDiagnosticErrorWithLabels code message labels notes help =
   throwError $
     encodeDiagnostic
       Diagnostic
         { diagnosticSeverity = Error,
           diagnosticCode = Just (DiagnosticCode code),
           diagnosticMessage = message,
-          diagnosticLabels = [],
+          diagnosticLabels = labels,
           diagnosticNotes = notes,
           diagnosticHelp = help
+        }
+
+primaryNameLabel :: String -> Name -> Maybe Label
+primaryNameLabel message identName =
+  do
+    sourceSpan <- nameSourceSpan identName
+    pure
+      Label
+        { labelSpan = sourceSpan,
+          labelStyle = Primary,
+          labelMessage = Just message
         }
 
 typeAlreadyDefinedError :: DataTy -> Name -> TcM a

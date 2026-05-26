@@ -1083,8 +1083,8 @@ defaultModuleBindingName =
   moduleLeafName . Mod.modulePathName
 
 moduleLeafName :: Name -> Name
-moduleLeafName (Name n) = Name n
-moduleLeafName (QualName _ n) = Name n
+moduleLeafName n@(Name _) = n
+moduleLeafName q@(QualName _ n) = copyNameSourceSpan q (Name n)
 
 importModuleQualifiers :: ModulePath -> [Name]
 importModuleQualifiers importPath =
@@ -1138,17 +1138,17 @@ qualifiedImportStubDecls graph (imp, modulePath) =
           ++ nestedDecls
 
     stubNestedModule qualifier (ExportedModuleBinding bindingName targetModule) =
-      stubDecls (QualName qualifier (show bindingName)) targetModule
+      stubDecls (qualifyName qualifier bindingName) targetModule
 
 qualifyFunctionSignature :: Name -> FunDef -> FunDef
 qualifyFunctionSignature qualifier (FunDef sig body) =
   FunDef
-    (sig {sigName = QualName qualifier (show (sigName sig))})
+    (sig {sigName = qualifyName qualifier (sigName sig)})
     body
 
 qualifiedFunctionStubDecls :: Name -> CompUnit -> [TopDecl]
 qualifiedFunctionStubDecls qualifier cunit =
-  [ TFunDef (stubFunction (QualName qualifier (show (sigName (funSignature fd)))))
+  [ TFunDef (stubFunction (qualifyName qualifier (sigName (funSignature fd))))
     | TFunDef fd <- topDeclsFrom cunit
   ]
 
@@ -1157,7 +1157,7 @@ qualifierFromExpVarChain (ExpVar Nothing n) =
   Just n
 qualifierFromExpVarChain (ExpVar (Just e) n) = do
   q <- qualifierFromExpVarChain e
-  pure (QualName q (show n))
+  pure (qualifyName q n)
 qualifierFromExpVarChain _ =
   Nothing
 
@@ -1245,11 +1245,11 @@ renamePatTypeRefs _ p@(PWildcard) = p
 renamePatTypeRefs _ p@(PLit _) = p
 
 renamePatNameTypeRefs :: Map Name Name -> Name -> Name
-renamePatNameTypeRefs renameMap (QualName q n) =
-  QualName (renameTypeName renameMap q) n
+renamePatNameTypeRefs renameMap qn@(QualName q n) =
+  copyNameSourceSpan qn (QualName (renameTypeName renameMap q) n)
 renamePatNameTypeRefs renameMap n =
   case Map.lookup n renameMap of
-    Just qn -> QualName qn (show n)
+    Just qn -> qualifyName qn n
     Nothing -> n
 
 renameExpTypeRefs :: Map Name Name -> Exp -> Exp
@@ -1394,8 +1394,8 @@ renameConstrTypeRefs renameMap (Constr n tys) =
   Constr (renameConstrNameTypeRefs renameMap n) (map (renameTyTypeRefs renameMap) tys)
 
 renameConstrNameTypeRefs :: Map Name Name -> Name -> Name
-renameConstrNameTypeRefs renameMap (QualName q n) =
-  QualName (renameTypeName renameMap q) n
+renameConstrNameTypeRefs renameMap qn@(QualName q n) =
+  copyNameSourceSpan qn (QualName (renameTypeName renameMap q) n)
 renameConstrNameTypeRefs _ n = n
 
 renameTySymTypeRefs :: Map Name Name -> TySym -> TySym
@@ -1422,7 +1422,7 @@ renameTypeName renameMap n =
     Just n' -> n'
     Nothing ->
       case n of
-        QualName q x -> QualName (renameTypeName renameMap q) x
+        qn@(QualName q x) -> copyNameSourceSpan qn (QualName (renameTypeName renameMap q) x)
         _ -> n
 
 qualifiedTypeAliasDecls :: Map Name Name -> Name -> CompUnit -> [TopDecl]
@@ -1447,25 +1447,25 @@ qualifiedTypeStubDecls qualifier cunit =
     dataAliases =
       [ TDataDef
           ( DataTy
-              (QualName qualifier (show n))
+              (qualifyName qualifier n)
               []
               [Constr (constructorLeafName (constrName c)) [] | c <- cs]
           )
         | TDataDef (DataTy n _ cs) <- topDeclsFrom cunit
       ]
     symAliases =
-      [ TSym (stubType (QualName qualifier (show n)))
+      [ TSym (stubType (qualifyName qualifier n))
         | TSym (TySym n _ _) <- topDeclsFrom cunit
       ]
 
 constructorLeafName :: Name -> Name
-constructorLeafName (QualName _ n) = Name n
+constructorLeafName q@(QualName _ n) = copyNameSourceSpan q (Name n)
 constructorLeafName n = n
 
 qualifyTyCon :: Name -> Name -> [Ty] -> TySym
 qualifyTyCon qualifier unqualName tyVars =
   TySym
-    { symName = QualName qualifier (show unqualName),
+    { symName = qualifyName qualifier unqualName,
       symVars = tyVars,
       symType = TyCon unqualName tyVars
     }
@@ -1532,7 +1532,7 @@ typeCheckQualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
           ++ nestedDecls
 
     qualifyNestedModule qualifier (ExportedModuleBinding bindingName targetModule) =
-      qualifyDecls (QualName qualifier (show bindingName)) targetModule
+      qualifyDecls (qualifyName qualifier bindingName) targetModule
 
 qualifiedFunctionSignatureDecls :: Map Name Name -> Name -> CompUnit -> [TopDecl]
 qualifiedFunctionSignatureDecls typeRenameMap qualifier cunit =
@@ -1580,7 +1580,7 @@ typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
       pure (localSupportDecls ++ shadowImportedDecls localSupportDecls nestedSupportDecls)
 
     nestedModuleImportDecls qualifier (ExportedModuleBinding bindingName targetModule) =
-      moduleImportDecls (QualName qualifier (show bindingName)) targetModule
+      moduleImportDecls (qualifyName qualifier bindingName) targetModule
 
 typeCheckSupportNonFunctionDecls :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
 typeCheckSupportNonFunctionDecls graph =
@@ -1683,7 +1683,7 @@ fullConstructorNamesForRef graph itemRef = do
 importedTypeRenameMap :: Set Name -> Name -> [TopDecl] -> Map Name Name
 importedTypeRenameMap collidingTypeNames qualifier ds =
   Map.fromList
-    [ (n, QualName qualifier (show n))
+    [ (n, qualifyName qualifier n)
       | d <- ds,
         n <- topDeclImportedTypeNames d,
         n `Set.member` collidingTypeNames

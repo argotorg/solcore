@@ -24,6 +24,7 @@ module Solcore.Diagnostics
     sourceMapNull,
     findTokenSpansInSource,
     findTextSpansInSource,
+    combineSourceSpans,
     legacyDiagnostic,
     addDiagnosticNote,
     addDiagnosticHelp,
@@ -36,6 +37,7 @@ module Solcore.Diagnostics
 where
 
 import Data.Char (isAlpha, isAlphaNum)
+import Data.Generics (Data, Typeable)
 import Data.List (foldl', isPrefixOf, sortOn, stripPrefix, tails)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -63,7 +65,7 @@ data SourceSpan
     spanEndLine :: Int,
     spanEndColumn :: Int
   }
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Data, Typeable)
 
 data LabelStyle
   = Primary
@@ -237,7 +239,28 @@ findTextSpansInSource source needle
           spanStartColumn = column,
           spanEndLine = lineNo,
           spanEndColumn = column + needleLen
+      }
+
+combineSourceSpans :: SourceSpan -> SourceSpan -> SourceSpan
+combineSourceSpans left right
+  | spanFile left /= spanFile right = left
+  | otherwise =
+      SourceSpan
+        { spanFile = spanFile left,
+          spanStartByte = spanStartByte start,
+          spanEndByte = spanEndByte end,
+          spanStartLine = spanStartLine start,
+          spanStartColumn = spanStartColumn start,
+          spanEndLine = spanEndLine end,
+          spanEndColumn = spanEndColumn end
         }
+  where
+    start
+      | spanStartByte left <= spanStartByte right = left
+      | otherwise = right
+    end
+      | spanEndByte left >= spanEndByte right = left
+      | otherwise = right
 
 sourceLinesWithOffsets :: SourceFile -> [(Int, Int, String)]
 sourceLinesWithOffsets source =

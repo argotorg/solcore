@@ -80,28 +80,27 @@ diagnosticCliTests =
             "note: function foo ()",
             "note: Annotate every parameter (name : Type) and provide a return type (-> Type)."
           ],
-      testCase "legacy typecheck label does not repeat the full error" $
+      testCase "polymorphic type error uses signature span" $
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/not-polymorphic-enough.solc", "--no-specialise"]
-          [ "error: module typecheck failed for <cwd>/test/diagnostics/not-polymorphic-enough.solc (no desugaring):",
-            "  --> <cwd>/test/diagnostics/not-polymorphic-enough.solc:3:26",
+          [ "error[SC0209]: type is not polymorphic enough",
+            "  --> <cwd>/test/diagnostics/not-polymorphic-enough.solc:1:21",
             "  |",
-            "3 |   assembly { result := x }",
-            "  |                          ^ diagnostic reported here",
-            "note: Type not polymorphic enough! The annotated type is:",
-            "note: forall a . word -> a",
-            "note: but the infered type is:",
-            "note: word -> word",
-            "note: in:",
-            "note: forall a . function fromWord (x : word) -> a",
-            "note: ",
-            "note: - in:forall a . function fromWord (x : word) -> a {",
-            "note: let result ;",
-            "note: assembly {",
-            "note: result := x",
-            "note: }",
-            "note: return result;",
-            "note: }"
+            "1 | forall a . function fromWord(x : word) -> a {",
+            "  |                     ^^^^^^^^ annotated type is not polymorphic enough",
+            "note: annotated type: forall a . word -> a",
+            "note: inferred type: word -> word",
+            "note: in: forall a . function fromWord (x : word) -> a",
+            "note: in: forall a . function fromWord (x : word) -> a {",
+            "      let result ;",
+            "      assembly {",
+            "      result := x",
+            "      }",
+            "      return result;",
+            "      }",
+            "note: module typecheck failed for",
+            "      <cwd>/test/diagnostics/not-polymorphic-enough.solc (no",
+            "      desugaring)"
           ],
       testCase "import error" $
         expectFailure

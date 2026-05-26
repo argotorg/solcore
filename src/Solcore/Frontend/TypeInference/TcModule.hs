@@ -401,8 +401,8 @@ defaultImportQualifiers importPath =
     leafName = importedModuleLeafName fullName
 
 importedModuleLeafName :: Name -> Name
-importedModuleLeafName (Name n) = Name n
-importedModuleLeafName (QualName _ n) = Name n
+importedModuleLeafName n@(Name _) = n
+importedModuleLeafName q@(QualName _ n) = copyNameSourceSpan q (Name n)
 
 typedForwardingWrapper :: Name -> FunDef Id -> FunDef Id
 typedForwardingWrapper qualifier (FunDef sig body)
@@ -416,7 +416,7 @@ typedForwardingWrapper qualifier (FunDef sig body)
         [Return (Call Nothing targetId args)]
   where
     originalName = sigName sig
-    qualifiedName = QualName qualifier (show originalName)
+    qualifiedName = qualifyName qualifier originalName
     targetId = Id originalName (typedSignatureType sig)
     args = map (Var . paramName) (sigParams sig)
 

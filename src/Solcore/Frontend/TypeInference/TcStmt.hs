@@ -860,12 +860,12 @@ annotateParam t (Untyped n) = Typed n t
 
 correctName :: Name -> TcM Name
 correctName n@(QualName _ _) = pure n
-correctName (Name s) =
+correctName n@(Name s) =
   do
     c <- gets contract
     if isJust c
-      then pure (QualName (fromJust c) s)
-      else pure (Name s)
+      then pure (copyNameSourceSpan n (QualName (fromJust c) s))
+      else pure n
 
 extSignature :: Signature Name -> TcM ()
 extSignature sig@(Signature _ _ n _ _) =
@@ -942,7 +942,7 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
     s <- match classc' ih `wrapError` instd
     -- getting method types
     let qnames = map qual (methods cinfo)
-        qual v = if v == invoke then v else QualName n (pretty v)
+        qual v = if v == invoke then v else qualifyName n v
     -- getting most general types and instantiate them
     aqts <-
       mapM
@@ -1019,7 +1019,7 @@ schemeFromSignature sig =
 
 updateSignature :: [Tyvar] -> Name -> FunDef Id -> FunDef Id
 updateSignature vs' c (FunDef (Signature vs ps n args rt) bd) =
-  FunDef (Signature (vs \\ vs') ps (QualName c (pretty n)) args rt) bd
+  FunDef (Signature (vs \\ vs') ps (qualifyName c n) args rt) bd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
 checkDeferedConstraints = mapM_ checkDeferedConstraint
@@ -1203,7 +1203,7 @@ checkMethod ih@(InCls n _ _) d@(FunDef sig _) =
     -- checking if the signature is fully annotated
     fullSignature sig
     -- getting current method signature in class
-    let qn = QualName n (show (sigName sig))
+    let qn = qualifyName n (sigName sig)
     sch <- askEnv qn `wrapError` d
     (qs :=> _) <- freshInst sch
     p <-
@@ -1393,7 +1393,7 @@ canonicalizeConstructorName n =
     case mUnqual of
       Just _ -> pure n
       Nothing -> do
-        let qn = QualName n (pretty n)
+        let qn = qualifyName n n
         mQual <- maybeAskEnv qn
         pure (if isJust mQual then qn else n)
 
@@ -1517,11 +1517,11 @@ isDotConstructorMarker (Name ('.' : _)) = True
 isDotConstructorMarker _ = False
 
 dotMarkerLeafName :: Name -> Name
-dotMarkerLeafName (Name ('.' : xs)) = Name xs
+dotMarkerLeafName n@(Name ('.' : xs)) = copyNameSourceSpan n (Name xs)
 dotMarkerLeafName n = constructorLeafName n
 
 constructorLeafName :: Name -> Name
-constructorLeafName (QualName _ n) = Name n
+constructorLeafName q@(QualName _ n) = copyNameSourceSpan q (Name n)
 constructorLeafName n = n
 
 typeName :: Ty -> TcM Name
