@@ -8,6 +8,7 @@ import Control.Applicative ((<|>))
 import Data.Generics (Data, Typeable)
 import Data.String
 import Solcore.Diagnostics (SourceSpan, combineSourceSpans)
+import Solcore.Frontend.Syntax.Location
 
 data Name
   = NameWithSpan (Maybe SourceSpan) String
@@ -47,6 +48,9 @@ instance Pretty Name where
 nameSourceSpan :: Name -> Maybe SourceSpan
 nameSourceSpan (NameWithSpan sourceSpan _) = sourceSpan
 nameSourceSpan (QualNameWithSpan sourceSpan qualifier _) = sourceSpan <|> nameSourceSpan qualifier
+
+instance HasSourceSpan Name where
+  sourceSpanOf = nameSourceSpan
 
 locatedName :: SourceSpan -> Name -> Name
 locatedName sourceSpan (Name s) = NameWithSpan (Just sourceSpan) s

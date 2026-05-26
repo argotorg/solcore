@@ -11,6 +11,7 @@ import Data.Maybe
 import Data.Set qualified as Set
 import GHC.Stack
 import Language.Yul
+import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
@@ -28,11 +29,35 @@ import Solcore.Primitives.Primitives
 
 type Infer f = f Name -> TcM (f Id, [Pred], Ty)
 
+locatedLike :: (HasSourceSpan source) => source -> (SourceSpan -> target -> target) -> target -> target
+locatedLike source locate target =
+  maybe target (`locate` target) (sourceSpanOf source)
+
+locatedInferResult ::
+  (HasSourceSpan source) =>
+  (SourceSpan -> node -> node) ->
+  source ->
+  (node, [Pred], Ty) ->
+  (node, [Pred], Ty)
+locatedInferResult locate source (node, preds, ty) =
+  (locatedLike source locate node, preds, ty)
+
+locatedPatResult ::
+  Pat Name ->
+  (Pat Id, Ty, [(Name, Scheme)]) ->
+  (Pat Id, Ty, [(Name, Scheme)])
+locatedPatResult source (pat, ty, context) =
+  (locatedLike source locatedPat pat, ty, context)
+
 tcStmt :: Infer Stmt
 tcStmt = tcStmtWithExpectedReturn Nothing
 
 tcStmtWithExpectedReturn :: Maybe Ty -> Infer Stmt
-tcStmtWithExpectedReturn _ e@(lhs := rhs) =
+tcStmtWithExpectedReturn mExpectedReturn stmt =
+  locatedInferResult locatedStmt stmt <$> tcStmtWithExpectedReturn' mExpectedReturn stmt
+
+tcStmtWithExpectedReturn' :: Maybe Ty -> Infer Stmt
+tcStmtWithExpectedReturn' _ e@(lhs := rhs) =
   do
     (lhs1, ps1, t1) <- tcExp lhs
     s0 <- getSubst
@@ -41,7 +66,7 @@ tcStmtWithExpectedReturn _ e@(lhs := rhs) =
     s <- unify t1 t2 `wrapError` e
     _ <- extSubst s
     pure (lhs1 := rhs1, apply s $ ps1 ++ ps2, unit)
-tcStmtWithExpectedReturn _ e@(Let n mt me) =
+tcStmtWithExpectedReturn' _ e@(Let n mt me) =
   do
     (me', psf, tf) <- case (mt, me) of
       (Just t, Just e1) -> do
@@ -63,31 +88,31 @@ tcStmtWithExpectedReturn _ e@(Let n mt me) =
     extEnv n (monotype tf)
     let e' = Let (Id n tf) (Just tf) me'
     withCurrentSubst (e', psf, unit)
-tcStmtWithExpectedReturn mExpectedReturn (Block body) =
+tcStmtWithExpectedReturn' mExpectedReturn (Block body) =
   withLocalCtx [] $ do
     (body', ps, t) <- tcBodyWithExpectedReturn mExpectedReturn body
     pure (Block body', ps, t)
-tcStmtWithExpectedReturn _ (StmtExp e) =
+tcStmtWithExpectedReturn' _ (StmtExp e) =
   do
     (e', ps', _) <- tcExp e
     pure (StmtExp e', ps', unit)
-tcStmtWithExpectedReturn mExpectedReturn (Return e) =
+tcStmtWithExpectedReturn' mExpectedReturn (Return e) =
   do
     (e', ps, t) <- tcExpWithExpected mExpectedReturn e
     pure (Return e', ps, t)
-tcStmtWithExpectedReturn mExpectedReturn (Match es eqns) =
+tcStmtWithExpectedReturn' mExpectedReturn (Match es eqns) =
   do
     (es', pss', ts') <- unzip3 <$> mapM tcExp es
     ensureVisiblePatternCoverage ts' eqns
     (eqns', pss1, resTy) <- tcEquationsWithExpectedReturn mExpectedReturn ts' eqns
     withCurrentSubst (Match es' eqns', concat (pss1 : pss'), resTy)
-tcStmtWithExpectedReturn _ (Asm yblk) =
+tcStmtWithExpectedReturn' _ (Asm yblk) =
   withLocalCtx yulPrimOps $ do
     (newBinds, t) <- tcYulBlock yblk
     let word' = monotype word
     mapM_ (flip extEnv word') newBinds
     pure (Asm yblk, [], t)
-tcStmtWithExpectedReturn mExpectedReturn s@(If e blk1 blk2) =
+tcStmtWithExpectedReturn' mExpectedReturn s@(If e blk1 blk2) =
   do
     (e', ps, t) <- tcExp e
     -- condition should have the boolean type
@@ -128,7 +153,7 @@ tcStmtWithExpectedReturn mExpectedReturn s@(If e blk1 blk2) =
                      )
         `wrapError` s
     withCurrentSubst (If e' blk1' blk2', ps3, t1)
-tcStmtWithExpectedReturn mExpectedReturn s@(For initStmt cond postStmt body) =
+tcStmtWithExpectedReturn' mExpectedReturn s@(For initStmt cond postStmt body) =
   withLocalEnv $ do
     (initStmt', psInit, _) <- tcStmtWithExpectedReturn Nothing initStmt
     (cond', psCond, condTy) <- tcExp cond
@@ -213,11 +238,15 @@ tcPats ts ps
       pure (ps', ts', concat ctxs)
 
 tcPat :: Ty -> Pat Name -> TcM (Pat Id, Ty, [(Name, Scheme)])
-tcPat t (PVar n) =
+tcPat t pat =
+  locatedPatResult pat <$> tcPat' t pat
+
+tcPat' :: Ty -> Pat Name -> TcM (Pat Id, Ty, [(Name, Scheme)])
+tcPat' t (PVar n) =
   do
     let v = PVar (Id n t)
     pure (v, t, [(n, monotype t)])
-tcPat t p@(PCon n ps) =
+tcPat' t p@(PCon n ps) =
   do
     n' <- resolvePatternConstructor n t `wrapError` p
     -- asking type from environment
@@ -248,9 +277,9 @@ tcPat t p@(PCon n ps) =
     -- building typing assumptions for introduced names
     let lctx' = map (\(boundName, t1) -> (boundName, apply s t1)) (concat lctxs)
     pure (PCon (Id n' tc) ps1, t', apply s lctx')
-tcPat t PWildcard =
+tcPat' t PWildcard =
   pure (PWildcard, t, [])
-tcPat t' (PLit l) =
+tcPat' t' (PLit l) =
   do
     t <- tcLit l
     s <- unify t t'
@@ -274,13 +303,17 @@ tcExp :: (HasCallStack) => Infer Exp
 tcExp = tcExpWithExpected Nothing
 
 tcExpWithExpected :: (HasCallStack) => Maybe Ty -> Exp Name -> TcM (Exp Id, [Pred], Ty)
-tcExpWithExpected _ (Lit l) =
+tcExpWithExpected mExpected expr =
+  locatedInferResult locatedExp expr <$> tcExpWithExpected' mExpected expr
+
+tcExpWithExpected' :: (HasCallStack) => Maybe Ty -> Exp Name -> TcM (Exp Id, [Pred], Ty)
+tcExpWithExpected' _ (Lit l) =
   do
     t <- tcLit l
     pure (Lit l, [], t)
-tcExpWithExpected _ (Var n) =
+tcExpWithExpected' _ e@(Var n) =
   do
-    s <- askEnv n `wrapError` (Var n)
+    s <- askEnv n `wrapError` e
     (ps :=> t) <- freshInst s
     noDesugarCalls <- getNoDesugarCalls
     if noDesugarCalls
@@ -291,7 +324,7 @@ tcExpWithExpected _ (Var n) =
         r <- lookupUniqueTy n
         p <- maybe (pure $ (Var (Id n t), t)) mkCon r
         withCurrentSubst (fst p, ps, snd p)
-tcExpWithExpected mExpected e@(Con n es) =
+tcExpWithExpected' mExpected e@(Con n es) =
   do
     expectedArgTys <- mapM (const freshTyVar) es
     n' <- resolveExpressionConstructor n expectedArgTys mExpected `wrapError` e
@@ -328,10 +361,10 @@ tcExpWithExpected mExpected e@(Con n es) =
     let ps' = concat (ps : pss)
         e1 = Con (Id n' t) es'
     withCurrentSubst (e1, ps', t')
-tcExpWithExpected _ e@(FieldAccess Nothing _) =
+tcExpWithExpected' _ e@(FieldAccess Nothing _) =
   -- = notImplementedS "tcExp" e
   throwError ("tcExp not implemented for: " ++ pretty e ++ "\n" ++ show e)
-tcExpWithExpected _ (FieldAccess (Just e) n) =
+tcExpWithExpected' _ (FieldAccess (Just e) n) =
   do
     -- inferring expression type
     (e', ps, t) <- tcExpWithExpected Nothing e
@@ -342,9 +375,9 @@ tcExpWithExpected _ (FieldAccess (Just e) n) =
     s <- askField tn n
     (ps' :=> t') <- freshInst s
     withCurrentSubst (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
-tcExpWithExpected _ ex@(Call me n args) =
+tcExpWithExpected' _ ex@(Call me n args) =
   tcCall me n args `wrapError` ex
-tcExpWithExpected _ (Lam args bd _) =
+tcExpWithExpected' _ (Lam args bd _) =
   do
     (args', schs, ts') <- tcArgs args
     (bd', ps, t') <- withLocalCtx schs (tcBody bd)
@@ -361,14 +394,14 @@ tcExpWithExpected _ (Lam args bd _) =
       else do
         (exp1, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty
         withCurrentSubst (exp1, ps1, t)
-tcExpWithExpected _ e1@(TyExp e ty) =
+tcExpWithExpected' _ e1@(TyExp e ty) =
   do
     ty1 <- kindCheck ty `wrapError` e1
     (e', ps, ty') <- tcExpWithExpected (Just ty1) e
     s <- tcmMatch ty' ty1
     _ <- extSubst s
     withCurrentSubst (TyExp e' ty1, ps, ty1)
-tcExpWithExpected _ e@(Cond e1 e2 e3) =
+tcExpWithExpected' _ e@(Cond e1 e2 e3) =
   do
     (e1', ps1, t1) <- tcExpWithExpected Nothing e1 `wrapError` e
     (e2', ps2, t2) <- tcExpWithExpected Nothing e2 `wrapError` e
@@ -406,7 +439,7 @@ tcExpWithExpected _ e@(Cond e1 e2 e3) =
                      )
         `wrapError` e
     withCurrentSubst (Cond e1' e2' e3', ps1 ++ ps2 ++ ps3, t2)
-tcExpWithExpected _ e@(Indexed arrExp idx) =
+tcExpWithExpected' _ e@(Indexed arrExp idx) =
   do
     (arr', psArr, tArr) <- tcExp arrExp `wrapError` e
     (idx', psIdx, tIdx) <- tcExp idx `wrapError` e

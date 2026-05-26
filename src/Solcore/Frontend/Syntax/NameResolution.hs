@@ -14,6 +14,7 @@ import Data.Monoid (First (..))
 import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, decodeDiagnostic, encodeDiagnostic)
 import Solcore.Frontend.Pretty.TreePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts, decls)
+import Solcore.Frontend.Syntax.Location
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.SyntaxTree qualified as S
@@ -175,6 +176,10 @@ instance (Resolve a) => Resolve (Maybe a) where
 
   resolve Nothing = pure Nothing
   resolve (Just x) = Just <$> resolve x
+
+locatedLike :: (HasSourceSpan source) => source -> (SourceSpan -> target -> target) -> target -> target
+locatedLike source locate target =
+  maybe target (`locate` target) (sourceSpanOf source)
 
 instance Resolve S.TopDecl where
   type Result S.TopDecl = TopDecl Name
@@ -360,34 +365,34 @@ instance Resolve S.Stmt where
   type Result S.Stmt = Stmt Name
 
   resolve s@(S.Assign lhs rhs) =
-    do
+    locatedLike s locatedStmt <$> do
       lhs' <- resolve lhs `wrapError` s
       rhs' <- resolve rhs `wrapError` s
       pure (lhs' := rhs')
-  resolve (S.StmtPlusEq lhs rhs) =
-    (:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs)
-  resolve (S.StmtMinusEq lhs rhs) =
-    (:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs)
+  resolve s@(S.StmtPlusEq lhs rhs) =
+    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs))
+  resolve s@(S.StmtMinusEq lhs rhs) =
+    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs))
   resolve s@(S.Let n mt me) =
-    do
+    locatedLike s locatedStmt <$> do
       mt' <- resolve mt `wrapError` s
       me' <- resolve me `wrapError` s
       addLocalVar n
       pure (Let n mt' me')
-  resolve (S.Block blk) =
-    withLocalCtx (Block <$> resolve blk)
+  resolve s@(S.Block blk) =
+    locatedLike s locatedStmt <$> withLocalCtx (Block <$> resolve blk)
   resolve s@(S.StmtExp e) =
-    StmtExp <$> resolve e `wrapError` s
+    locatedLike s locatedStmt <$> (StmtExp <$> resolve e `wrapError` s)
   resolve s@(S.Return e) =
-    Return <$> resolve e `wrapError` s
-  resolve (S.Match es eqns) =
-    Match <$> resolve es <*> resolve eqns
-  resolve (S.Asm blk) =
-    pure (Asm blk)
-  resolve (S.If e blk1 blk2) =
-    If <$> resolve e <*> resolve blk1 <*> resolve blk2
-  resolve (S.For initStmt cond postStmt body) =
-    For <$> resolve initStmt <*> resolve cond <*> resolve postStmt <*> resolve body
+    locatedLike s locatedStmt <$> (Return <$> resolve e `wrapError` s)
+  resolve s@(S.Match es eqns) =
+    locatedLike s locatedStmt <$> (Match <$> resolve es <*> resolve eqns)
+  resolve s@(S.Asm blk) =
+    pure (locatedLike s locatedStmt (Asm blk))
+  resolve s@(S.If e blk1 blk2) =
+    locatedLike s locatedStmt <$> (If <$> resolve e <*> resolve blk1 <*> resolve blk2)
+  resolve s@(S.For initStmt cond postStmt body) =
+    locatedLike s locatedStmt <$> (For <$> resolve initStmt <*> resolve cond <*> resolve postStmt <*> resolve body)
 
 instance Resolve S.Equation where
   type Result S.Equation = Equation Name
@@ -399,13 +404,13 @@ instance Resolve S.Equation where
 instance Resolve S.Pat where
   type Result S.Pat = Pat Name
 
-  resolve S.PWildcard = pure PWildcard
-  resolve (S.PLit l) = PLit <$> resolve l
+  resolve p@S.PWildcard = pure (locatedLike p locatedPat PWildcard)
+  resolve p@(S.PLit l) = locatedLike p locatedPat <$> (PLit <$> resolve l)
   resolve p@(S.PatDot n ps) = do
     ps' <- resolve ps `wrapError` p
-    pure (PCon (dotConstructorMarker n) ps')
+    pure (locatedLike p locatedPat (PCon (dotConstructorMarker n) ps'))
   resolve p@(S.Pat n ps) =
-    do
+    locatedLike p locatedPat <$> do
       ps' <- resolve ps `wrapError` p
       mdt <- lookupName n
       case mdt of
@@ -516,10 +521,13 @@ resolveSameNameConstructorName n =
 instance Resolve S.Exp where
   type Result S.Exp = Exp Name
 
-  resolve (S.Lit l) = Lit <$> resolve l
-  resolve e@(S.ExpDotName n es) =
+  resolve e = locatedLike e locatedExp <$> resolveExp e
+
+resolveExp :: S.Exp -> ResolveM (Exp Name)
+resolveExp (S.Lit l) = Lit <$> resolve l
+resolveExp e@(S.ExpDotName n es) =
     Con (dotConstructorMarker n) <$> resolve es `wrapError` e
-  resolve e@(S.Lam ps bd mt) =
+resolveExp e@(S.Lam ps bd mt) =
     withLocalCtx $ do
       ps' <- resolve ps `wrapError` e
       mt' <- resolve mt `wrapError` e
@@ -527,9 +535,9 @@ instance Resolve S.Exp where
       mapM_ addParameter args
       bd' <- resolve bd `wrapError` e
       pure (Lam ps' bd' mt')
-  resolve (S.TyExp e t) =
+resolveExp (S.TyExp e t) =
     TyExp <$> resolve e <*> resolve t
-  resolve c@(S.ExpVar me n) =
+resolveExp c@(S.ExpVar me n) =
     do
       me' <- resolve me `wrapError` c
       dt <- lookupName n
@@ -600,7 +608,7 @@ instance Resolve S.Exp where
               if hasQualified
                 then unqualifiedConstructorError n
                 else undefinedName n
-  resolve x@(S.ExpName me n es) =
+resolveExp x@(S.ExpName me n es) =
     do
       me' <- resolve me `wrapError` x
       es' <- resolve es `wrapError` x
@@ -684,80 +692,80 @@ instance Resolve S.Exp where
               if hasQualified
                 then unqualifiedConstructorError n
                 else undefinedName n
-  resolve c@(S.ExpPlus e1 e2) =
+resolveExp c@(S.ExpPlus e1 e2) =
     do
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Add") "add"
       pure $ Call Nothing fun [e1', e2']
-  resolve c@(S.ExpMinus e1 e2) =
+resolveExp c@(S.ExpMinus e1 e2) =
     do
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Sub") "sub"
       pure $ Call Nothing fun [e1', e2']
-  resolve c@(S.ExpTimes e1 e2) =
+resolveExp c@(S.ExpTimes e1 e2) =
     do
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Mul") "mul"
       pure $ Call Nothing fun [e1', e2']
-  resolve c@(S.ExpDivide e1 e2) =
+resolveExp c@(S.ExpDivide e1 e2) =
     do
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Div") "div"
       pure $ Call Nothing fun [e1', e2']
-  resolve c@(S.ExpModulo e1 e2) =
+resolveExp c@(S.ExpModulo e1 e2) =
     do
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Mod") "mod"
       pure $ Call Nothing fun [e1', e2']
-  resolve c@(S.ExpIndexed array idx) = do
+resolveExp c@(S.ExpIndexed array idx) = do
     arr' <- resolve array `wrapError` c
     idx' <- resolve idx `wrapError` c
     pure $ Indexed arr' idx'
-  resolve c@(S.ExpLT e1 e2) = do
+resolveExp c@(S.ExpLT e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "lt") [e1', e2']
-  resolve c@(S.ExpGT e1 e2) = do
+resolveExp c@(S.ExpGT e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
     let fun = QualName (Name "Ord") "gt"
     pure $ Call Nothing fun [e1', e2']
-  resolve c@(S.ExpLE e1 e2) = do
+resolveExp c@(S.ExpLE e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "le") [e1', e2']
-  resolve c@(S.ExpGE e1 e2) = do
+resolveExp c@(S.ExpGE e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "ge") [e1', e2']
-  resolve c@(S.ExpEE e1 e2) = do
+resolveExp c@(S.ExpEE e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
     let fun = QualName (Name "Eq") "eq"
     pure $ Call Nothing fun [e1', e2']
-  resolve c@(S.ExpNE e1 e2) = do
+resolveExp c@(S.ExpNE e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "ne") [e1', e2']
-  resolve c@(S.ExpLAnd e1 e2) = do
+resolveExp c@(S.ExpLAnd e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "and") [e1', e2']
-  resolve c@(S.ExpLOr e1 e2) = do
+resolveExp c@(S.ExpLOr e1 e2) = do
     e1' <- resolve e1 `wrapError` c
     e2' <- resolve e2 `wrapError` c
     pure $ Call Nothing (Name "or") [e1', e2']
-  resolve c@(S.ExpLNot e) = do
+resolveExp c@(S.ExpLNot e) = do
     e' <- resolve e `wrapError` c
     pure $ Call Nothing (Name "not") [e']
-  resolve (S.ExpCond e1 e2 e3) =
+resolveExp (S.ExpCond e1 e2 e3) =
     Cond <$> resolve e1 <*> resolve e2 <*> resolve e3
-  resolve (S.ExpAt t) = do
+resolveExp (S.ExpAt t) = do
     t' <- resolve t
     pure
       ( TyExp
@@ -822,7 +830,7 @@ instance Resolve S.Ty where
   type Result S.Ty = Ty
 
   resolve tc@(S.TyCon n ts) =
-    do
+    locatedLike tc locatedTy <$> do
       ndt <- lookupType n
       case ndt of
         Just TTyCon -> TyCon n <$> resolve ts `wrapError` tc

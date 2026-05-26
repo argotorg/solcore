@@ -4,6 +4,7 @@ module Solcore.Frontend.Parser.SolcoreParser where
 import Data.List.NonEmpty (NonEmpty, cons, singleton)
 
 import Solcore.Frontend.Lexer.SolcoreLexer hiding (lexer)
+import Solcore.Frontend.Syntax.Location
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 import Solcore.Primitives.Primitives hiding (pairTy)
@@ -43,7 +44,7 @@ import Solcore.Diagnostics
       'leave'    {Token _ TLeave}
       'continue' {Token _ TContinue}
       'break'    {Token _ TBreak}
-      'assembly' {Token _ TAssembly}
+      'assembly' {TokenWithSpan $$ _ TAssembly}
       'data'     {Token _ TData}
       'match'    {Token _ TMatch}
       'function' {Token _ TFunction}
@@ -60,7 +61,7 @@ import Solcore.Diagnostics
       ':'        {Token _ TColon}
       ','        {Token _ TComma}
       '->'       {Token _ TArrow}
-      '_'        {Token _ TWildCard}
+      '_'        {TokenWithSpan $$ _ TWildCard}
       '=>'       {Token _ TDArrow}
       '('        {Token _ TLParen}
       ')'        {Token _ TRParen}
@@ -357,7 +358,7 @@ InstBody : '{' Functions '}'                       {$2}
 Function :: { FunDef }
 Function : Signature Body {FunDef $1 $2}
 -- Proposed Rust-style short return, e.g `function d(x) { 2*x }`
-         | Signature '{' Expr '}' {FunDef $1 [Return $3]}
+         | Signature '{' Expr '}' {FunDef $1 [locatedFrom $3 locatedStmt (Return $3)]}
 
 OptRetTy :: { Maybe Ty }
 OptRetTy : '->' Type                               {Just $2}
@@ -380,32 +381,32 @@ StmtList : Stmt StmtList                       {$1 : $2}
 -- Statements
 
 Stmt :: { Stmt }
-Stmt : Expr '=' Expr ';'                              {Assign $1 $3}
-     | Expr '+=' Expr ';'                             {StmtPlusEq $1 $3}
-     | Expr '-=' Expr ';'                             {StmtMinusEq $1 $3}
-     | 'let' Name ':' Type InitOpt ';'                {Let $2 (Just $4) $5}
-     | 'let' Name InitOpt ';'                         {Let $2 Nothing $3}
-     | Expr ';'                                       {StmtExp $1}
-     | 'return' Expr ';'                              {Return $2}
-     | 'match' MatchArgList '{' Equations  '}'        {Match $2 $4}
-     | AsmBlock                                       {Asm $1}
-     | 'if' '(' Expr ')' Body %shift                  {If $3 $5 []}
-     | 'if' '(' Expr ')' Body 'else' Body             {If $3 $5 $7}
-        | 'for' '(' ForInitStmt ';' Expr ';' ForPostStmt ')' Body {For $3 $5 $7 $9}
+Stmt : Expr '=' Expr ';'                              {locatedBetween $1 $3 locatedStmt (Assign $1 $3)}
+     | Expr '+=' Expr ';'                             {locatedBetween $1 $3 locatedStmt (StmtPlusEq $1 $3)}
+     | Expr '-=' Expr ';'                             {locatedBetween $1 $3 locatedStmt (StmtMinusEq $1 $3)}
+     | 'let' Name ':' Type InitOpt ';'                {locatedBetween $2 (Just $4, $5) locatedStmt (Let $2 (Just $4) $5)}
+     | 'let' Name InitOpt ';'                         {locatedBetween $2 $3 locatedStmt (Let $2 Nothing $3)}
+     | Expr ';'                                       {locatedFrom $1 locatedStmt (StmtExp $1)}
+     | 'return' Expr ';'                              {locatedFrom $2 locatedStmt (Return $2)}
+     | 'match' MatchArgList '{' Equations  '}'        {locatedBetween $2 $4 locatedStmt (Match $2 $4)}
+     | AsmBlock                                       {locatedValueWith locatedStmt $1 Asm}
+     | 'if' '(' Expr ')' Body %shift                  {locatedBetween $3 $5 locatedStmt (If $3 $5 [])}
+     | 'if' '(' Expr ')' Body 'else' Body             {locatedBetween $3 ($5, $7) locatedStmt (If $3 $5 $7)}
+        | 'for' '(' ForInitStmt ';' Expr ';' ForPostStmt ')' Body {locatedBetween $3 ($5, $7, $9) locatedStmt (For $3 $5 $7 $9)}
 
 ForInitStmt :: { Stmt }
-ForInitStmt : Expr '=' Expr                               {Assign $1 $3}
-            | Expr '+=' Expr                              {StmtPlusEq $1 $3}
-            | Expr '-=' Expr                              {StmtMinusEq $1 $3}
-            | 'let' Name ':' Type InitOpt                 {Let $2 (Just $4) $5}
-            | 'let' Name InitOpt                          {Let $2 Nothing $3}
-            | Expr                                        {StmtExp $1}
+ForInitStmt : Expr '=' Expr                               {locatedBetween $1 $3 locatedStmt (Assign $1 $3)}
+            | Expr '+=' Expr                              {locatedBetween $1 $3 locatedStmt (StmtPlusEq $1 $3)}
+            | Expr '-=' Expr                              {locatedBetween $1 $3 locatedStmt (StmtMinusEq $1 $3)}
+            | 'let' Name ':' Type InitOpt                 {locatedBetween $2 (Just $4, $5) locatedStmt (Let $2 (Just $4) $5)}
+            | 'let' Name InitOpt                          {locatedBetween $2 $3 locatedStmt (Let $2 Nothing $3)}
+            | Expr                                        {locatedFrom $1 locatedStmt (StmtExp $1)}
 
 ForPostStmt :: { Stmt }
-ForPostStmt : Expr '=' Expr                               {Assign $1 $3}
-            | Expr '+=' Expr                              {StmtPlusEq $1 $3}
-            | Expr '-=' Expr                              {StmtMinusEq $1 $3}
-            | Expr                                        {StmtExp $1}
+ForPostStmt : Expr '=' Expr                               {locatedBetween $1 $3 locatedStmt (Assign $1 $3)}
+            | Expr '+=' Expr                              {locatedBetween $1 $3 locatedStmt (StmtPlusEq $1 $3)}
+            | Expr '-=' Expr                              {locatedBetween $1 $3 locatedStmt (StmtMinusEq $1 $3)}
+            | Expr                                        {locatedFrom $1 locatedStmt (StmtExp $1)}
 
 
 MatchArgList :: {[Exp]}
@@ -419,37 +420,37 @@ InitOpt : {- empty -}                              {Nothing}
 -- Expressions
 
 Expr :: { Exp }
-Expr : Name FunArgs                                {ExpName Nothing $1 $2}
-     | Literal                                     {Lit $1}
+Expr : Name FunArgs                                {locatedBetween $1 $2 locatedExp (ExpName Nothing $1 $2)}
+     | Literal                                     {locatedValueWith locatedExp $1 Lit}
      | '(' Expr ')'                                {$2}
-     | '.' Name FunArgs                            {ExpDotName $2 $3}
-     | Expr '.' Name FunArgs                       {ExpName (Just $1) $3 $4}
-     | Name                                        {ExpVar Nothing $1}
-     | '.' Name                                    {ExpDotName $2 []}
-     | Expr '.' Name                               {ExpVar (Just $1) $3}
-     | 'lam' '(' ParamList ')' OptRetTy Body       {Lam $3 $6 $5}
-     | Expr ':' Type                               {TyExp $1 $3}
-     | '(' TupleArgs ')'                           {tupleExp $2}
-     | Expr '[' Expr ']'                           {ExpIndexed $1 $3 }
-     | Expr '+' Expr                               {ExpPlus $1 $3 }
-     | Expr '-' Expr                               {ExpMinus $1 $3 }
-     | Expr '*' Expr                               {ExpTimes $1 $3 }
-     | Expr '/' Expr                               {ExpDivide $1 $3 }
-     | Expr '%' Expr                               {ExpModulo $1 $3 }
-     | Expr '<' Expr                               {ExpLT $1 $3 }
-     | Expr '>' Expr                               {ExpGT $1 $3 }
-     | Expr '<=' Expr                              {ExpLE $1 $3 }
-     | Expr '>=' Expr                              {ExpGE $1 $3 }
-     | Expr '==' Expr                              {ExpEE $1 $3 }
-     | Expr '!=' Expr                              {ExpNE $1 $3 }
-     | Expr '&&' Expr                              {ExpLAnd $1 $3 }
-     | Expr '||' Expr                              {ExpLOr $1 $3 }
-     | '!' Expr                                    {ExpLNot $2 }
+     | '.' Name FunArgs                            {locatedBetween $2 $3 locatedExp (ExpDotName $2 $3)}
+     | Expr '.' Name FunArgs                       {locatedBetween $1 ($3, $4) locatedExp (ExpName (Just $1) $3 $4)}
+     | Name                                        {locatedFrom $1 locatedExp (ExpVar Nothing $1)}
+     | '.' Name                                    {locatedFrom $2 locatedExp (ExpDotName $2 [])}
+     | Expr '.' Name                               {locatedBetween $1 $3 locatedExp (ExpVar (Just $1) $3)}
+     | 'lam' '(' ParamList ')' OptRetTy Body       {locatedBetween $3 ($5, $6) locatedExp (Lam $3 $6 $5)}
+     | Expr ':' Type                               {locatedBetween $1 $3 locatedExp (TyExp $1 $3)}
+     | '(' TupleArgs ')'                           {locatedFrom $2 locatedExp (tupleExp $2)}
+     | Expr '[' Expr ']'                           {locatedBetween $1 $3 locatedExp (ExpIndexed $1 $3)}
+     | Expr '+' Expr                               {locatedBetween $1 $3 locatedExp (ExpPlus $1 $3)}
+     | Expr '-' Expr                               {locatedBetween $1 $3 locatedExp (ExpMinus $1 $3)}
+     | Expr '*' Expr                               {locatedBetween $1 $3 locatedExp (ExpTimes $1 $3)}
+     | Expr '/' Expr                               {locatedBetween $1 $3 locatedExp (ExpDivide $1 $3)}
+     | Expr '%' Expr                               {locatedBetween $1 $3 locatedExp (ExpModulo $1 $3)}
+     | Expr '<' Expr                               {locatedBetween $1 $3 locatedExp (ExpLT $1 $3)}
+     | Expr '>' Expr                               {locatedBetween $1 $3 locatedExp (ExpGT $1 $3)}
+     | Expr '<=' Expr                              {locatedBetween $1 $3 locatedExp (ExpLE $1 $3)}
+     | Expr '>=' Expr                              {locatedBetween $1 $3 locatedExp (ExpGE $1 $3)}
+     | Expr '==' Expr                              {locatedBetween $1 $3 locatedExp (ExpEE $1 $3)}
+     | Expr '!=' Expr                              {locatedBetween $1 $3 locatedExp (ExpNE $1 $3)}
+     | Expr '&&' Expr                              {locatedBetween $1 $3 locatedExp (ExpLAnd $1 $3)}
+     | Expr '||' Expr                              {locatedBetween $1 $3 locatedExp (ExpLOr $1 $3)}
+     | '!' Expr                                    {locatedFrom $2 locatedExp (ExpLNot $2)}
      | Conditional                                 {$1}
-     | '@' Type                                    {ExpAt $2}
+     | '@' Type                                    {locatedFrom $2 locatedExp (ExpAt $2)}
 
 Conditional :: { Exp }
-Conditional : 'if' Expr 'then' Expr 'else' Expr    {ExpCond $2 $4 $6}
+Conditional : 'if' Expr 'then' Expr 'else' Expr    {locatedBetween $2 $6 locatedExp (ExpCond $2 $4 $6)}
 
 TupleArgs :: { [Exp] }
 TupleArgs : Expr ',' Expr                          {[$1, $3]}
@@ -478,12 +479,12 @@ PatCommaList : Pattern                             {[$1]}
              | Pattern ',' PatCommaList            {$1 : $3}
 
 Pattern :: { Pat }
-Pattern : TypeName PatternList                     {Pat $1 $2}
-        | '.' Name PatternList                     {PatDot $2 $3}
-        | '_'                                      {PWildcard}
-        | Literal                                  {PLit $1}
+Pattern : TypeName PatternList                     {locatedBetween $1 $2 locatedPat (Pat $1 $2)}
+        | '.' Name PatternList                     {locatedBetween $2 $3 locatedPat (PatDot $2 $3)}
+        | '_'                                      {locatedPat $1 PWildcard}
+        | Literal                                  {locatedValueWith locatedPat $1 PLit}
         | '(' Pattern ')'                          {$2}
-        | PatternList                              {Pat (Name "pair") $1}
+        | PatternList                              {locatedFrom $1 locatedPat (Pat (Name "pair") $1)}
 
 PatternList :: {[Pat]}
 PatternList : '(' PatList ')'                      {$2}
@@ -495,17 +496,17 @@ PatList : Pattern %shift                           {[$1]}
 
 -- literals
 
-Literal :: { Literal }
-Literal : number                                   {IntLit $ toInteger $1}
-        | stringlit                                {StrLit $ rmquotes $1}
+Literal :: { LocatedValue Literal }
+Literal : number                                   {LocatedValue (locatedValueSpan $1) (IntLit (toInteger (locatedValue $1)))}
+        | stringlit                                {LocatedValue (locatedValueSpan $1) (StrLit (rmquotes (locatedValue $1)))}
 
 -- basic type definitions
 
 Type :: { Ty }
-Type : TypeName OptTypeParam                        {TyCon $1 $2}
-     | LamType                                      {uncurry funtype $1}
+Type : TypeName OptTypeParam                        {locatedBetween $1 $2 locatedTy (TyCon $1 $2)}
+     | LamType                                      {locatedFrom $1 locatedTy (uncurry funtype $1)}
      | TupleTy                                      {$1}
-     | '@' Type                                     {TyCon (Name "Proxy") [$2]}
+     | '@' Type                                     {locatedFrom $2 locatedTy (TyCon (Name "Proxy") [$2])}
 
 TupleTy :: { Ty }
 TupleTy : '(' TypeCommaList ')'                     {mkTupleTy $2}
@@ -514,7 +515,7 @@ LamType :: {([Ty], Ty)}
 LamType : '(' TypeCommaList ')' '->' Type          {($2, $5)}
 
 Var :: { Ty }
-Var : Name                                         {TyCon $1 []}
+Var : Name                                         {locatedFrom $1 locatedTy (TyCon $1 [])}
 
 Name :: { Name }
 Name : identifier                                 { nameFromIdent $1 }
@@ -525,8 +526,8 @@ TypeName : identifier                             { nameFromIdent $1 }
 
 -- Yul statments and blocks
 
-AsmBlock :: {YulBlock}
-AsmBlock : 'assembly' YulBlock                     {$2}
+AsmBlock :: {LocatedValue YulBlock}
+AsmBlock : 'assembly' YulBlock                     {LocatedValue $1 $2}
 
 YulBlock :: {YulBlock}
 YulBlock : '{' YulStmts '}'                        {$2}
@@ -598,8 +599,8 @@ YulExpCommaList : YulExp                           {[$1]}
               | YulExp ',' YulExpCommaList         {$1 : $3}
 
 YulLiteral :: { YLiteral }
-YulLiteral : number                                {YulNumber $ toInteger $1}
-        | stringlit                                {YulString (rmquotes $1)}
+YulLiteral : number                                {YulNumber (toInteger (locatedValue $1))}
+        | stringlit                                {YulString (rmquotes (locatedValue $1))}
 
 OptSemi :: { () }
 OptSemi : ';'                                      { () }
@@ -658,6 +659,18 @@ tupleExp [] = ExpName Nothing (Name "()") []
 tupleExp [t1] = t1
 tupleExp [t1, t2] = pairExp t1 t2
 tupleExp (t1 : ts) = pairExp t1 (tupleExp ts)
+
+locatedFrom :: (HasSourceSpan anchor) => anchor -> (SourceSpan -> node -> node) -> node -> node
+locatedFrom anchor locate node =
+  maybe node (`locate` node) (sourceSpanOf anchor)
+
+locatedBetween :: (HasSourceSpan left, HasSourceSpan right) => left -> right -> (SourceSpan -> node -> node) -> node -> node
+locatedBetween left right locate node =
+  maybe node (`locate` node) (combineMaybeSourceSpans (sourceSpanOf left) (sourceSpanOf right))
+
+locatedValueWith :: (SourceSpan -> node -> node) -> LocatedValue value -> (value -> node) -> node
+locatedValueWith locate located build =
+  locate (locatedValueSpan located) (build (locatedValue located))
 
 rmquotes :: String -> String
 rmquotes = read

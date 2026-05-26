@@ -254,10 +254,17 @@ data LocatedText
   }
   deriving (Eq, Ord, Show)
 
+data LocatedValue a
+  = LocatedValue
+  { locatedValueSpan :: SourceSpan,
+    locatedValue :: a
+  }
+  deriving (Eq, Ord, Show)
+
 data Lexeme
   = TIdent { unIdent :: LocatedText }
-  | TNumber { unNum :: Integer }
-  | TString { unStr :: String }
+  | TNumber { unNum :: LocatedValue Integer }
+  | TString { unStr :: LocatedValue String }
   | TContract
   | TImport
   | TExport
@@ -370,13 +377,15 @@ mkNumber :: AlexAction Token
 mkNumber (st, _, _, str) len
   = do
       file <- sourceName <$> get
-      pure $ mkToken file st len (TNumber $ read $ take len str)
+      let numberSpan = sourceSpan file st len
+      pure $ mkTokenWithSpan numberSpan (TNumber $ LocatedValue numberSpan $ read $ take len str)
 
 mkHexlit :: AlexAction Token
 mkHexlit (st, _, _, str) len
   = do
       file <- sourceName <$> get
-      pure $ mkToken file st len (TNumber $ parseHex $ take len str)
+      let numberSpan = sourceSpan file st len
+      pure $ mkTokenWithSpan numberSpan (TNumber $ LocatedValue numberSpan $ parseHex $ take len str)
 
 parseHex :: String -> Integer
 parseHex str = case readHex (drop 2 str) of
@@ -408,8 +417,9 @@ exitString (pos, _, _, _) len
   = do
       s <- get
       put s{strStart = AlexPn 0 0 0, strBuffer = []}
-      let tk = TString $ reverse $ '"' : strBuffer s
-      return $ mkTokenWithSpan (sourceSpanBetween (sourceName s) (strStart s) pos len) tk
+      let stringSpan = sourceSpanBetween (sourceName s) (strStart s) pos len
+          tk = TString $ LocatedValue stringSpan $ reverse $ '"' : strBuffer s
+      return $ mkTokenWithSpan stringSpan tk
 
 emit :: Char -> AlexAction Token
 emit c inp@(_, _, _, _) len = do
