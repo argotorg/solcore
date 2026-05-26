@@ -1,6 +1,7 @@
 module Solcore.Pipeline.SolcorePipeline where
 
 import Control.Monad
+import Control.Applicative ((<|>))
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (first)
@@ -32,12 +33,13 @@ import Solcore.Diagnostics
     Severity (..),
     SourceFile,
     SourceMap,
-    SourceSpan,
+    SourceSpan (..),
     addDiagnosticHelp,
     addDiagnosticNote,
     decodeDiagnostic,
     diagnosticMessage,
     diagnosticPrimarySpan,
+    defaultDiagnosticRenderOptions,
     emptySourceMap,
     encodeDiagnostic,
     findTextSpansInSource,
@@ -49,8 +51,8 @@ import Solcore.Diagnostics
     renderDiagnostics,
     resolveDiagnosticRenderOptions,
     sourceMapFiles,
-    spanFile,
   )
+import Solcore.Diagnostics qualified as Diag
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourceMap, moduleSourcePath, moduleValidationTopDeclSegments)
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -224,8 +226,11 @@ renderCompileDiagnosticsIO opts diagnostics = do
       (compileDiagnosticMessages diagnostics)
 
 compileDiagnosticsText :: CompileDiagnostics -> String
-compileDiagnosticsText =
-  unlines . map diagnosticMessage . compileDiagnosticMessages
+compileDiagnosticsText diagnostics =
+  renderDiagnostics
+    defaultDiagnosticRenderOptions
+    (compileDiagnosticSources diagnostics)
+    (compileDiagnosticMessages diagnostics)
 
 handleWarningDiagnostics :: Option -> SourceMap -> [Diagnostic] -> ExceptT CompileDiagnostics IO ()
 handleWarningDiagnostics _ _ [] =
@@ -302,6 +307,8 @@ enrichDiagnostic sources diagnostic
     Just labels <- inferDuplicateLabels sources diagnostic =
       diagnostic {diagnosticLabels = labels}
   | Just label <- inferPrimaryLabel sources diagnostic =
+      diagnostic {diagnosticLabels = [label]}
+  | Just label <- inferFallbackLabel sources diagnostic =
       diagnostic {diagnosticLabels = [label]}
   | otherwise = diagnostic
 
@@ -381,8 +388,45 @@ diagnosticSearchTerms diagnostic =
         typeMismatchTerms diagnostic,
         warningSearchTerms diagnostic,
         unknownImportTerms diagnostic,
-        duplicateSearchTerms diagnostic
+        duplicateSearchTerms diagnostic,
+        declarationSearchTerms diagnostic,
+        inContextSearchTerms diagnostic
       ]
+
+inferFallbackLabel :: SourceMap -> Diagnostic -> Maybe Label
+inferFallbackLabel sources diagnostic = do
+  source <- firstSource (candidateSources sources diagnostic)
+  pure
+    Label
+      { labelSpan = sourceFallbackSpan source,
+        labelStyle = Primary,
+        labelMessage = Just (fallbackLabelMessage diagnostic)
+      }
+
+firstSource :: [SourceFile] -> Maybe SourceFile
+firstSource [] = Nothing
+firstSource (source : _) = Just source
+
+sourceFallbackSpan :: SourceFile -> SourceSpan
+sourceFallbackSpan source =
+  case Diag.sourceTokens source of
+    token : _ -> Diag.sourceTokenSpan token
+    [] ->
+      SourceSpan
+        { spanFile = Diag.sourcePath source,
+          spanStartByte = 0,
+          spanEndByte = 1,
+          spanStartLine = 1,
+          spanStartColumn = 1,
+          spanEndLine = 1,
+          spanEndColumn = 2
+        }
+
+fallbackLabelMessage :: Diagnostic -> String
+fallbackLabelMessage diagnostic =
+  case diagnosticCode diagnostic of
+    Nothing -> "diagnostic reported here"
+    Just _ -> primaryLabelMessage diagnostic
 
 duplicateSearchTerms :: Diagnostic -> [String]
 duplicateSearchTerms diagnostic =
@@ -448,6 +492,46 @@ unknownImportTerms diagnostic =
               [word, lastSegment word]
         _ -> []
 
+declarationSearchTerms :: Diagnostic -> [String]
+declarationSearchTerms diagnostic =
+  concatMap declarationTerms (allDiagnosticText diagnostic)
+  where
+    declarationTerms raw =
+      case words (stripContextPrefix (trim raw)) of
+        "function" : declName : _ -> [stripTrailingParens declName]
+        "contract" : declName : _ -> [stripTrailingParens declName]
+        "class" : _vars : ":" : declName : _ -> [stripTrailingParens declName]
+        "class" : declName : _ -> [stripTrailingParens declName]
+        "data" : declName : _ -> [stripTrailingParens declName]
+        "type" : declName : _ -> [stripTrailingParens declName]
+        "constructor" : _ -> ["constructor"]
+        "instance" : _mainTy : ":" : instanceClassName : _ -> [stripTrailingParens instanceClassName, "instance"]
+        "instance" : instanceClassName : _ -> [stripTrailingParens instanceClassName, "instance"]
+        _ -> []
+
+inContextSearchTerms :: Diagnostic -> [String]
+inContextSearchTerms diagnostic =
+  concatMap contextTerms (allDiagnosticText diagnostic)
+  where
+    contextTerms raw =
+      case stripPrefix "in: " (trim raw) <|> stripPrefix "- in:" (trim raw) of
+        Nothing -> []
+        Just context ->
+          take 1 (declarationSearchTerms (diagnostic {diagnosticMessage = context, diagnosticNotes = []}))
+
+stripContextPrefix :: String -> String
+stripContextPrefix raw =
+  case stripPrefix "- in:" raw of
+    Just rest -> trim rest
+    Nothing ->
+      case stripPrefix "in: " raw of
+        Just rest -> trim rest
+        Nothing -> raw
+
+stripTrailingParens :: String -> String
+stripTrailingParens =
+  takeWhile (\c -> c /= '(' && c /= ',' && c /= ';' && c /= '{')
+
 prefixedTerms :: [String] -> String -> [String]
 prefixedTerms prefixes body =
   [trim rest | prefix <- prefixes, Just rest <- [stripPrefix prefix body]]
@@ -460,6 +544,7 @@ primaryLabelMessage diagnostic =
     Just (DiagnosticCode "SC0202") -> "unknown name"
     Just (DiagnosticCode "SC0301") -> "redundant clause"
     Just (DiagnosticCode "SC0302") -> "non-exhaustive match"
+    Nothing -> "diagnostic reported here"
     _ -> diagnosticMessage diagnostic
 
 isDuplicateDiagnostic :: Diagnostic -> Bool
@@ -548,18 +633,25 @@ ensureDiagnosticSources =
 
 ensureDiagnosticSource :: SourceMap -> Diagnostic -> IO SourceMap
 ensureDiagnosticSource sources diagnostic =
-  case diagnosticPrimarySpan diagnostic of
-    Nothing -> pure sources
-    Just sourceSpan
-      | null (spanFile sourceSpan) -> pure sources
-      | Just _ <- lookupSourceFile (spanFile sourceSpan) sources -> pure sources
-      | otherwise -> do
-          exists <- doesFileExist (spanFile sourceSpan)
-          if exists
-            then do
-              content <- readFile (spanFile sourceSpan)
-              pure (insertSourceFile (makeSourceFile (spanFile sourceSpan) content) sources)
-            else pure sources
+  foldM ensureSourcePath sources (diagnosticReferencedSourcePaths diagnostic)
+
+diagnosticReferencedSourcePaths :: Diagnostic -> [FilePath]
+diagnosticReferencedSourcePaths diagnostic =
+  uniqueStrings $
+    maybeToList (spanFile <$> diagnosticPrimarySpan diagnostic)
+      ++ diagnosticSourcePaths diagnostic
+
+ensureSourcePath :: SourceMap -> FilePath -> IO SourceMap
+ensureSourcePath sources path
+  | null path = pure sources
+  | Just _ <- lookupSourceFile path sources = pure sources
+  | otherwise = do
+      exists <- doesFileExist path
+      if exists
+        then do
+          content <- readFile path
+          pure (insertSourceFile (makeSourceFile path content) sources)
+        else pure sources
 
 typeCheckLoadedModules :: Option -> ModuleGraph -> ExceptT String IO (Map Mod.ModuleId CheckedModule)
 typeCheckLoadedModules opts graph =

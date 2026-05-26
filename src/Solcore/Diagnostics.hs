@@ -256,11 +256,16 @@ legacyDiagnostic msg =
   Diagnostic
     { diagnosticSeverity = Error,
       diagnosticCode = Nothing,
-      diagnosticMessage = msg,
+      diagnosticMessage = message,
       diagnosticLabels = [],
-      diagnosticNotes = [],
+      diagnosticNotes = notes,
       diagnosticHelp = []
     }
+  where
+    (message, notes) =
+      case lines msg of
+        [] -> ("", [])
+        firstLine : restLines -> (firstLine, restLines)
 
 addDiagnosticNote :: String -> Diagnostic -> Diagnostic
 addDiagnosticNote note diagnostic =

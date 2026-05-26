@@ -68,6 +68,18 @@ diagnosticCliTests =
             "note: module typecheck failed for",
             "      <cwd>/test/diagnostics/type-mismatch.solc (no desugaring)"
           ],
+      testCase "legacy typecheck error has fallback span" $
+        expectFailure
+          ["--root", "test/diagnostics", "--file", "test/diagnostics/missing-signature.solc", "--no-specialise"]
+          [ "error: module typecheck failed for <cwd>/test/diagnostics/missing-signature.solc (no desugaring):",
+            "  --> <cwd>/test/diagnostics/missing-signature.solc:1:10",
+            "  |",
+            "1 | function foo() {",
+            "  |          ^^^ diagnostic reported here",
+            "note: Top-level function must have complete type annotations:",
+            "note: function foo ()",
+            "note: Annotate every parameter (name : Type) and provide a return type (-> Type)."
+          ],
       testCase "import error" $
         expectFailure
           ["--root", "test/imports", "--file", "test/imports/select_unknown.solc", "--no-specialise"]
