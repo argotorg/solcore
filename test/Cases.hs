@@ -96,6 +96,7 @@ imports =
     "Files for imports cases"
     [ runImportSuccess "booldef.solc",
       runImportSuccess "boolmain.solc",
+      runImportSuccess "unordered_imports_main.solc",
       runImportSuccess "boolalias.solc",
       runImportFailure "alias_hides_original_fail.solc",
       runImportFailure "boolalias_open_fail.solc",

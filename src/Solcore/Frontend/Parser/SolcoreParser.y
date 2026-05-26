@@ -109,11 +109,15 @@ import Language.Yul
 -- compilation unit definition
 
 CompilationUnit :: { CompUnit }
-CompilationUnit : ImportList TopDeclList          { CompUnit $1 $2 }
+CompilationUnit : TopLevelItemList                 { mkCompUnit $1 }
 
-ImportList :: { [Import] }
-ImportList : ImportList Import                     { $1 ++ [$2] }
-           | {- empty -}                           { [] }
+TopLevelItemList :: { [TopLevelItem] }
+TopLevelItemList : TopLevelItem TopLevelItemList   { $1 : $2 }
+                 | {- empty -}                     { [] }
+
+TopLevelItem :: { TopLevelItem }
+TopLevelItem : Import                              { TopLevelImport $1 }
+             | TopDecl                             { TopLevelDecl $1 }
 
 Import :: { Import }
 Import : 'import' ModName ';'                      { ImportModule (classifyImportPath $2) }
@@ -150,11 +154,6 @@ ModName : identifier                               { Name $1 }
 
 ItemName :: { Name }
 ItemName : identifier                              { Name $1 }
-
-TopDeclList :: { [TopDecl] }
-TopDeclList : TopDecl TopDeclList                  { $1 : $2 }
-             | {- empty -}                         { [] }
-
 
 -- top level declarations
 
@@ -616,6 +615,16 @@ moduleParser _dirs content
 
 parseCompUnit :: String -> IO (Either String CompUnit)
 parseCompUnit = moduleParser []
+
+data TopLevelItem
+  = TopLevelImport Import
+  | TopLevelDecl TopDecl
+
+mkCompUnit :: [TopLevelItem] -> CompUnit
+mkCompUnit = uncurry CompUnit . foldr collect ([], [])
+  where
+    collect (TopLevelImport i) (is, ds) = (i : is, ds)
+    collect (TopLevelDecl d) (is, ds) = (is, d : ds)
 
 classifyImportPath :: Name -> ModulePath
 classifyImportPath modName =
