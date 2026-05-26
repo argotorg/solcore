@@ -154,6 +154,7 @@ imports =
       runImportSuccess "type_collision_main.solc",
       runImportSuccess "dot_context_expr.solc",
       runImportSuccess "reexport_items_main.solc",
+      runImportSuccess "reexport_select_main.solc",
       runImportSuccess "reexport_module_main.solc",
       runImportSuccess "reexport_module_alias_main.solc",
       runImportSuccess "reexport_ctor_pattern.solc",
