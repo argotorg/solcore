@@ -94,7 +94,7 @@ forall name payability args rets fn
 
 // Describes how to execute a given method / fallback
 forall ty . class ty:ExecMethod {
-  function exec(x: ty);
+  function exec(x: ty) -> ();
 }
 
 // If fn matches the provided args/ret types, then we can execute any method
@@ -172,11 +172,10 @@ forall payability args rets fn
     // the approach above does not work for dynamically sized types...
     // ...instead we take the size of memory allocated by the encoding
     let start : word = Typedef.rep(ptr);
-    let encStart : word = Typedef.rep(ptr); // cannot be called start - see #252
     let end : word = get_free_memory();
-    let retSz : word = Sub.sub(end, encStart);
+    let retSz : word = end - start;
     assembly {
-        return(encStart, retSz)
+        return(start, retSz)
     }
 }
 
@@ -217,15 +216,11 @@ forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispat
 // Given evidence of a type with a known selector, we can check if it matches the selector in the first four bytes of calldata
 forall ty . ty:Selector => function selector_matches(prx : Proxy(ty)) -> bool {
   let candidate = Typedef.rep(Selector.compute(prx));
-  let res : word;
+  let selector: word;
   assembly {
-    let sel := shr(224, calldataload(0));
-    res := eq(sel, candidate);
+    selector := shr(224, calldataload(0))
   }
-  match res {
-    | 0 => return false;
-    | _ => return true;
-  }
+  return selector == candidate;
 }
 
 // --- Callvalue Checks ---
@@ -234,7 +229,7 @@ data Payable;
 data NonPayable;
 
 forall ty . class ty:MethodLevelCallvalueCheck {
-    function checkCallvalue(pty : Proxy(ty));
+    function checkCallvalue(pty : Proxy(ty)) -> ();
 }
 
 // no callvalue check for Payable methods
@@ -271,16 +266,15 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
         // TODO: if all methods are non payable then we should life the callvalue check here
 
         // check that we have at least 4 bytes of calldata
-        let haveSelector : word;
+        let cdsz: word;
         assembly {
-          haveSelector := lt(3, calldatasize());
+          cdsz := calldatasize()
         }
-
-        match haveSelector {
-          | 0 =>
+        match cdsz < 4 {
+          | true =>
             let SelectorTooShort = Error(0x35ffc70e);
             revertWithError(SelectorTooShort);
-          | _ =>
+          | false =>
             // set free memory pointer to the output of memoryguard
             // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
             // TODO: we will need to consider immutables here at some point...

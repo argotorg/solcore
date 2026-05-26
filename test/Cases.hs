@@ -62,6 +62,7 @@ spec =
       runTestForFile "043fstsnd.solc" specFolder,
       runTestForFile "047rgb.solc" specFolder,
       runTestForFile "048rgb2.solc" specFolder,
+      runTestForFile "049rgb3.solc" specFolder,
       runTestForFile "06comp.solc" specFolder,
       runTestForFile "09not.solc" specFolder,
       runTestForFile "10negBool.solc" specFolder,
@@ -440,7 +441,8 @@ cases =
       runTestForFile
         "multi-stmt-var-leaf.solc"
         caseFolder,
-      runTestForFile "ltimp.solc" caseFolder
+      runTestForFile "ltimp.solc" caseFolder,
+      runTestExpectingFailure "class-return-type-miss.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

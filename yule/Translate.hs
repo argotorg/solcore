@@ -3,7 +3,6 @@
 module Translate where
 
 import Builtins
-import Common.Pretty
 import Data.List (partition)
 import Data.Map qualified as Map
 import Data.String
@@ -38,9 +37,9 @@ genExpr (EInl (TSum _ r) e) = do
   (stmts, loc) <- genExpr e
   let loc' = loc `padToSize` sizeOf r
   pure (stmts, LocSeq [LocBool False, loc'])
-genExpr (EInr (TSum _ r) e) = do
+genExpr (EInr (TSum l r) e) = do
   (stmts, loc) <- genExpr e
-  let loc' = loc `paddedTo` r
+  let loc' = loc `padToSize` max (sizeOf l) (sizeOf r)
   pure (stmts, LocSeq [LocBool True, loc'])
 genExpr (EInl (TNamed _ t) e) = genExpr (EInl t e)
 genExpr (EInr (TNamed _ t) e) = genExpr (EInr t e)
@@ -167,7 +166,7 @@ genStmt (SReturn expr) = do
       let stmts' = copyLocs resultLoc loc
       pure (stmts ++ stmts' ++ [YLeave])
 genStmt (SBlock stmts) = withLocalEnv do genStmts stmts
-genStmt (SMatch _ e alts) = do
+genStmt (SMatch ty e alts) = do
   (scrutStmts, scrutineeLoc) <- genExpr e
   -- debug ["> SMatch: ", show e , ":", show sty, " @ " , show scrutineeLoc]
   matchStmts <- case normalizeLoc scrutineeLoc of
@@ -179,7 +178,7 @@ genStmt (SMatch _ e alts) = do
   where
     genSwitch :: Location -> Location -> [Alt] -> TM [YulStmt]
     genSwitch tag payload altBranches = do
-      (yulAlts, yulDefault) <- genNAlts payload altBranches
+      (yulAlts, yulDefault) <- genNAlts (stripTypeName ty) payload altBranches
       pure [YSwitch (loadLoc tag) yulAlts yulDefault]
 genStmt (SFor initStmt cond post body) = do
   initStmts <- genForInit initStmt
@@ -254,47 +253,45 @@ scanStmt _ = pure ()
 genBody :: Body -> TM [YulStmt]
 genBody stmts = concat <$> mapM genStmt stmts
 
-genBinAlts :: Location -> [Alt] -> TM [(YLiteral, [YulStmt])]
-genBinAlts payload [Alt _ lname lbody, Alt _ rname rbody] = do
-  yulLStmts <- withName lname payload lbody
-  yulRStmts <- withName rname payload rbody
-  pure [(YulFalse, yulLStmts), (YulTrue, yulRStmts)]
-  where
-    withName name loc body = withLocalEnv do
-      insertVar name loc
-      genBody body
-genBinAlts _ alts =
-  error
-    ( "genAlts: invalid number of alternatives:\n"
-        ++ unlines (map (render . ppr) alts)
-    )
+-- Trim payload to n slots so pattern variables are not mapped to padding.
+trimPayload :: Int -> Location -> Location
+trimPayload n (LocSeq ls) = normalizeLoc (LocSeq (take n ls))
+trimPayload _ loc = loc
 
-genNAlts :: Location -> [Alt] -> TM (YulCases, YulDefault)
-genNAlts payload alts = do
-  results <- mapM (genAlt payload) alts
+-- Payload size for each constructor given the scrutinee type.
+conPayload :: Type -> Con -> Location -> Location
+conPayload (TSum l _) CInl payload = trimPayload (sizeOf l) payload
+conPayload (TSum _ r) CInr payload = trimPayload (sizeOf r) payload
+conPayload (TSumN ts) (CInK k) payload = trimPayload (sizeOf (ts !! k)) payload
+conPayload (TNamed _ t) con payload = conPayload t con payload
+conPayload _ _ payload = payload
+
+genNAlts :: Type -> Location -> [Alt] -> TM (YulCases, YulDefault)
+genNAlts ty payload alts = do
+  results <- mapM (genAlt ty payload) alts
   return (gather results)
   where
     gather = foldr combine ([], Nothing)
     combine (Left (tag, stmts)) (cases, def) = ((tag, stmts) : cases, def)
     combine (Right stmts) (cases, _) = (cases, Just stmts)
 
-genAlt :: Location -> Alt -> TM (Either YulCase YulBlock)
-genAlt payload (Alt (PCon con) name body) = withLocalEnv do
-  insertVar name payload
+genAlt :: Type -> Location -> Alt -> TM (Either YulCase YulBlock)
+genAlt ty payload (Alt (PCon con) name body) = withLocalEnv do
+  insertVar name (conPayload ty con payload)
   altStmts <- genBody body
   pure (Left (yulCon con, altStmts))
   where
     yulCon CInl = YulFalse
     yulCon CInr = YulTrue
     yulCon (CInK k) = YulNumber (fromIntegral k)
-genAlt _ (Alt (PIntLit k) _ body) = withLocalEnv do
+genAlt _ _ (Alt (PIntLit k) _ body) = withLocalEnv do
   altStmts <- genBody body
   pure (Left (YulNumber (fromIntegral k), altStmts))
-genAlt payload (Alt (PVar name) _ body) = do
+genAlt _ payload (Alt (PVar name) _ body) = do
   insertVar name payload
   altStmts <- genBody body
   pure (Right altStmts)
-genAlt _ alt = error ("genAlt unimplemented for: " ++ show alt)
+genAlt _ _ alt = error ("genAlt unimplemented for: " ++ show alt)
 
 allocVar :: Hull.Name -> Type -> TM [YulStmt]
 allocVar name TWord = do

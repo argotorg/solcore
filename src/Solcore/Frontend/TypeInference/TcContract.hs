@@ -447,6 +447,7 @@ checkClass icls@(Class bvs ps n vs v sigs) =
   where
     checkSignature p sig@(Signature methodVars _ _ params mt) =
       do
+        fullSignature sig `wrapError` icls
         _ <- mapM tyParam params
         _ <- maybe (pure unit) pure mt
         checkAllTypeVarsBound sig (bv sig) (bvs ++ methodVars)
