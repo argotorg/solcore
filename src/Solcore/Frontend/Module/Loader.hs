@@ -20,7 +20,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Severity (..), SourceFile, SourceMap, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
+import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
 import Solcore.Frontend.Syntax.Name
@@ -195,11 +195,17 @@ resolveModuleReference cfg currentModule currentSourcePath refKind modulePath = 
 
 moduleReferenceDiagnostic :: String -> FilePath -> String -> ModulePath -> String -> String
 moduleReferenceDiagnostic code sourcePath refKind modulePath message =
-  loaderDiagnostic
+  loaderDiagnosticWithLabels
     code
     message
+    (maybe [] pure (primaryModulePathLabel (moduleReferenceLabelMessage code refKind) modulePath))
     [sourcePath, refKind ++ " " ++ Mod.modulePathDisplay modulePath]
     (moduleReferenceHelp code)
+
+moduleReferenceLabelMessage :: String -> String -> String
+moduleReferenceLabelMessage "SC0118" _ = "external library import"
+moduleReferenceLabelMessage "SC0109" _ = "module reference"
+moduleReferenceLabelMessage _ refKind = refKind ++ " path"
 
 moduleReferenceHelp :: String -> [String]
 moduleReferenceHelp "SC0118" = ["pass --external-lib NAME=PATH for external imports"]
@@ -546,11 +552,14 @@ ensureImportItemsExist graph importPairs = do
     ([], []) -> Right ()
     (selectedXs, hiddenXs) ->
       Left $
-        loaderDiagnostic
+        loaderDiagnosticWithLabels
           "SC0110"
           "unknown import item"
-          ( (if null selectedXs then [] else "unknown selected imports:" : selectedXs)
-              ++ (if null hiddenXs then [] else "unknown hidden imports:" : hiddenXs)
+          ( primaryNameLabels "unknown import item" (map snd selectedXs)
+              ++ primaryNameLabels "unknown import item" (map snd hiddenXs)
+          )
+          ( (if null selectedXs then [] else "unknown selected imports:" : map (uncurry formatMissing) selectedXs)
+              ++ (if null hiddenXs then [] else "unknown hidden imports:" : map (uncurry formatMissing) hiddenXs)
           )
           ["check the imported module's exported names"]
   where
@@ -559,8 +568,8 @@ ensureImportItemsExist graph importPairs = do
       let missingSelected = filter (`notElem` available) (explicitSelectorNames items)
           missingHidden = filter (`notElem` available) (explicitHiddenNames items)
       pure
-        ( [formatMissing importPath n | n <- missingSelected],
-          [formatMissing importPath n | n <- missingHidden]
+        ( [(importPath, n) | n <- missingSelected],
+          [(importPath, n) | n <- missingHidden]
         )
     unknowns _ = pure ([], [])
 
@@ -865,9 +874,10 @@ selectRemoteExportRefs sourcePath exportPath (SelectExportItems items) available
         Nothing
           | shouldValidate ->
               Left $
-                loaderDiagnostic
+                loaderDiagnosticWithLabels
                   "SC0115"
                   "unknown re-exported constructor"
+                  (maybe [] pure (primaryNameLabel "unknown re-exported constructor" typeName))
                   [sourcePath, "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName]
                   ["re-export constructors provided by the target module"]
           | otherwise ->
@@ -876,9 +886,10 @@ selectRemoteExportRefs sourcePath exportPath (SelectExportItems items) available
           | shouldValidate,
             missingVisibleConstructors constructorSelector ref /= [] ->
               Left $
-                loaderDiagnostic
+                loaderDiagnosticWithLabels
                   "SC0115"
                   "unknown re-exported constructor"
+                  (primaryNameLabels "unknown re-exported constructor" (missingVisibleConstructors constructorSelector ref))
                   ( sourcePath
                       : [ "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName ++ "." ++ show constructorName
                           | constructorName <- missingVisibleConstructors constructorSelector ref
@@ -1006,9 +1017,10 @@ ensureLocalExportExists sourcePath ds itemName
   | itemName `elem` availableExportNames ds = Right ()
   | otherwise =
       Left $
-        loaderDiagnostic
+        loaderDiagnosticWithLabels
           "SC0113"
           "unknown export"
+          (maybe [] pure (primaryNameLabel "unknown export" itemName))
           [sourcePath, show itemName]
           ["export a name defined in this module or re-export it from another module"]
 
@@ -1017,9 +1029,10 @@ ensureLocalConstructorExportExists sourcePath topLevelDecls typeName constructor
   case findLocalDataType typeName topLevelDecls of
     Nothing ->
       Left $
-        loaderDiagnostic
+        loaderDiagnosticWithLabels
           "SC0113"
           "unknown export"
+          (maybe [] pure (primaryNameLabel "unknown export" typeName))
           [sourcePath, show typeName]
           ["export a type defined in this module or re-export it from another module"]
     Just (DataTy _ _ constrs) ->
@@ -1043,9 +1056,10 @@ ensureConstructorSelectorExists sourcePath typeName (SelectConstructors construc
     [] -> Right ()
     xs ->
       Left $
-        loaderDiagnostic
+        loaderDiagnosticWithLabels
           "SC0114"
           "unknown exported constructor"
+          (primaryNameLabels "unknown exported constructor" xs)
           (sourcePath : ["  " ++ show typeName ++ "." ++ show constructorName | constructorName <- xs])
           ["select constructors defined by the exported type"]
   where
@@ -1070,9 +1084,10 @@ ensureRemoteExportsExist sourcePath exportPath names availableNames =
     [] -> Right ()
     xs ->
       Left $
-        loaderDiagnostic
+        loaderDiagnosticWithLabels
           "SC0115"
           "unknown re-exported name"
+          (primaryNameLabels "unknown re-exported name" xs)
           (sourcePath : [formatMissing exportPath missingName | missingName <- xs])
           ["re-export a name provided by the target module"]
   where
@@ -1888,10 +1903,12 @@ ensureNoAmbiguousSelectedImports graph importPairs = do
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Ambiguous selected imports:",
-            unlines (map formatAmbiguous xs)
-          ]
+        loaderDiagnosticWithLabels
+          "SC0120"
+          "ambiguous selected imports"
+          (primaryNameLabels "ambiguous selected import" (map fst xs))
+          (map formatAmbiguous xs)
+          ["use an explicit module qualifier or narrow the selected imports"]
   where
     selectedFromImport (ImportOnly modName selector, modulePath) = do
       names <- resolveSelectedImportItems graph modName modulePath selector
@@ -1920,10 +1937,12 @@ ensureNoModuleLookupConflicts graph unit importPairs =
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Conflicting unqualified names:",
-            unlines (map (\n -> "  " ++ show n) xs)
-          ]
+        loaderDiagnosticWithLabels
+          "SC0121"
+          "conflicting unqualified names"
+          (primaryNameLabels "conflicting unqualified name" xs)
+          (map (\n -> "  " ++ show n) xs)
+          ["rename the local binding or use an import alias"]
   where
     localTermNames =
       uniqueNames (concatMap topDeclTermNames (topDeclsFrom unit))
@@ -1992,9 +2011,10 @@ ensureNoDuplicateModuleQualifiers (CompUnit imps _) =
     [] -> Right ()
     qs ->
       Left $
-        loaderDiagnostic
+        loaderDiagnosticWithLabels
           "SC0116"
           "duplicate import qualifier"
+          (primaryNameLabels "duplicate import qualifier" qs)
           (map (\q -> "  " ++ show q) qs)
           ["use an explicit alias to disambiguate one of the imports"]
   where
@@ -2027,32 +2047,71 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
     [] -> Right ()
     xs ->
       Left $
-        loaderDiagnostic
+        loaderDiagnosticWithLabels
           "SC0117"
           "duplicate name in selective import"
-          xs
+          (primaryNameLabels "duplicate selected import" (map snd xs))
+          (map (("  " ++) . fst) xs)
           ["list each selected or hidden name only once"]
   where
     duplicateItems (ImportOnly moduleName selector) =
-      [ "  " ++ Mod.modulePathDisplay moduleName ++ "." ++ show item
+      [ (Mod.modulePathDisplay moduleName ++ "." ++ show item, item)
         | item <- duplicateNames (explicitSelectorNames selector)
       ]
-        ++ [ "  " ++ Mod.modulePathDisplay moduleName ++ " hiding " ++ show item
+        ++ [ (Mod.modulePathDisplay moduleName ++ " hiding " ++ show item, item)
              | item <- duplicateNames (explicitHiddenNames selector)
            ]
     duplicateItems _ = []
 
 loaderDiagnostic :: String -> String -> [String] -> [String] -> String
 loaderDiagnostic code message notes help =
+  loaderDiagnosticWithLabels code message [] notes help
+
+loaderDiagnosticWithLabels :: String -> String -> [Label] -> [String] -> [String] -> String
+loaderDiagnosticWithLabels code message labels notes help =
   encodeDiagnostic
     Diagnostic
       { diagnosticSeverity = Error,
         diagnosticCode = Just (DiagnosticCode code),
         diagnosticMessage = message,
-        diagnosticLabels = [],
+        diagnosticLabels = labels,
         diagnosticNotes = notes,
         diagnosticHelp = help
       }
+
+primaryNameLabel :: String -> Name -> Maybe Label
+primaryNameLabel message identName = do
+  sourceSpan <- nameSourceSpan identName
+  pure
+    Label
+      { labelSpan = sourceSpan,
+        labelStyle = Primary,
+        labelMessage = Just message
+      }
+
+primaryNameLabels :: String -> [Name] -> [Label]
+primaryNameLabels message =
+  mapMaybe (primaryNameLabel message)
+
+primaryModulePathLabel :: String -> ModulePath -> Maybe Label
+primaryModulePathLabel message modulePath = do
+  sourceSpan <- modulePathSourceSpan modulePath
+  pure
+    Label
+      { labelSpan = sourceSpan,
+        labelStyle = Primary,
+        labelMessage = Just message
+      }
+
+modulePathSourceSpan :: ModulePath -> Maybe SourceSpan
+modulePathSourceSpan (ExternalPath libName pathName) =
+  case (nameSourceSpan libName, nameSourceSpan pathName) of
+    (Just left, Just right) -> Just (combineSourceSpans left right)
+    (Just left, Nothing) -> Just left
+    (Nothing, Just right) -> Just right
+    (Nothing, Nothing) -> Nothing
+modulePathSourceSpan modulePath =
+  nameSourceSpan (Mod.modulePathName modulePath)
 
 explicitSelectorNames :: ItemSelector -> [Name]
 explicitSelectorNames (SelectItems items _) =
