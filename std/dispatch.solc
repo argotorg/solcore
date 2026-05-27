@@ -248,11 +248,9 @@ instance Payable:MethodLevelCallvalueCheck {
 }
 // NonPayable methods revert if passed value
 instance NonPayable:MethodLevelCallvalueCheck {
-   function checkCallvalue(prx : Proxy(NonPayable)) -> () {
-       if (callvalue() > 0) {
-         let NonPayableReceivedValue = Error(0xb5988ea3);
-         revertWithError(NonPayableReceivedValue);
-       }
+    function checkCallvalue(prx : Proxy(NonPayable)) -> () {
+        let NonPayableReceivedValue = Error(0xb5988ea3);
+        require(callvalue() == 0, NonPayableReceivedValue);
    }
 }
 
