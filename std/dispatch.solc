@@ -157,9 +157,7 @@ forall args rets fn
   , rets:ABIEncode
 => function do_exec(pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
     // check we have enough calldata for the head of args
-    let hdsz = ABIAttribs.headSize(pargs);
-    let cdsz = calldatasize();
-    if (cdsz < (hdsz + 4)) {
+    if (calldatasize() < (ABIAttribs.headSize(pargs) + 4)) {
       let ABIInputTruncated = Error(0x08638556);
       revertWithError(ABIInputTruncated);
     }
@@ -252,8 +250,7 @@ instance Payable:MethodLevelCallvalueCheck {
 // NonPayable methods revert if passed value
 instance NonPayable:MethodLevelCallvalueCheck {
    function checkCallvalue(prx : Proxy(NonPayable)) -> () {
-       let value = callvalue();
-       if (value > 0) {
+       if (callvalue() > 0) {
          let NonPayableReceivedValue = Error(0xb5988ea3);
          revertWithError(NonPayableReceivedValue);
        }
@@ -282,8 +279,7 @@ forall methods fb . methods:RunDispatch, fb:ExecMethod => instance Contract(meth
 
         // calldata shorter than 4 bytes can't contain a selector — skip
         // dispatch and invoke the fallback directly (matches Solidity)
-        let cdsz = calldatasize();
-        if (cdsz >= 4) {
+        if (calldatasize() >= 4) {
             // dispatch to method based on selector
             RunDispatch.go(ms);
         }
