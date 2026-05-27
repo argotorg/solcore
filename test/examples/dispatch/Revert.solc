@@ -1,12 +1,11 @@
 import std.{*};
-import std.{revert, uint256};
 import std.dispatch.{*};
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
 
 function my_revert() -> word {
-  revert("regression");
+  revertLit("regression");
   return 0;
 }
 

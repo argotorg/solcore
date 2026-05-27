@@ -78,7 +78,7 @@ export {
   out_of_bounds,
   readStorage,
   returndata(*),
-  revert,
+  revertLit,
   revertEmpty,
   revertWithError,
   require,
@@ -160,9 +160,9 @@ function out_of_bounds() -> () {
 // ------------------------------------------------------------------
 // High-level revert helper
 // ------------------------------------------------------------------
-// EmitHull has special handling for `revert("...")` after MastEval has
+// EmitHull has special handling for `revertLit("...")` after MastEval has
 // constant-folded the argument to a string literal.
-function revert(s:string) -> () {
+function revertLit(s:string) -> () {
   return ();
 }
 

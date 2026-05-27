@@ -406,7 +406,7 @@ importedModuleLeafName (QualName _ n) = Name n
 
 typedForwardingWrapper :: Name -> FunDef Id -> FunDef Id
 typedForwardingWrapper qualifier (FunDef sig body)
-  | originalName == Name "revert" =
+  | originalName == Name "revertLit" =
       FunDef
         (sig {sigName = qualifiedName})
         body

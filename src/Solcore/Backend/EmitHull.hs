@@ -271,8 +271,8 @@ emitExp (MastVar x) = do
   case Map.lookup (mastIdName x) subst of
     Just e -> pure (e, [])
     Nothing -> pure (Hull.EVar (show (mastIdName x)), [])
--- special handling of revert
-emitExp (MastCall (MastId "revert" _) [MastLit (StrLit s)]) = pure (Hull.EUnit, [Hull.SRevert s])
+-- special handling of revertLit
+emitExp (MastCall (MastId "revertLit" _) [MastLit (StrLit s)]) = pure (Hull.EUnit, [Hull.SRevert s])
 emitExp (MastCall f as) = do
   (hullArgs, codes) <- unzip <$> mapM emitExp as
   let call = Hull.ECall (show (mastIdName f)) hullArgs

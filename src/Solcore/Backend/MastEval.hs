@@ -506,7 +506,7 @@ builtinPureFuns =
 
 -- Functions with dummy pure bodies that are intercepted by EmitHull
 builtinImpureFuns :: Set.Set Name
-builtinImpureFuns = Set.fromList [Name "revert"]
+builtinImpureFuns = Set.fromList [Name "revertLit"]
 
 -- | Compute the set of pure functions via fixed-point iteration.
 -- Start from builtinPureFuns; each iteration adds functions whose bodies

@@ -156,7 +156,7 @@ hullStmt =
         <*> (symbol "->" *> hullType)
         <*> hullBody,
       SAssembly <$> (pKeyword "assembly" *> yulBlock),
-      SRevert <$> (pKeyword "revert" *> stringLiteral),
+      SRevert <$> (pKeyword "revertLit" *> stringLiteral),
       try (SAssign <$> (hullExpr <* symbol ":=") <*> hullExpr),
       SExpr <$> hullExpr
     ]
