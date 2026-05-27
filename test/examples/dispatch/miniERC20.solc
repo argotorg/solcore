@@ -68,7 +68,8 @@ contract MiniERC20 {
      require(balances[src] >= amt, Error(0xf4d678b8)); // InsufficientBalance()
 
      if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint256)) {
-        require(allowance[src][msg_sender] >= amt, Error(0xf4d678b8)); // InsufficientBalance()
+        require(allowance[src][msg_sender] >= amt, Error(0x13be252b)); // InsufficientAllowance()
+
         allowance[src][msg_sender] -= amt;
      }
      balances[src] = balances[src] - amt;
