@@ -14,7 +14,7 @@ export {
   Selector,
   SigString,
   do_exec,
-  revert_handler,
+  fallback_default_implementation,
   selector_matches,
   sigStr
 };
@@ -289,6 +289,8 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
   }
 }
 
-function revert_handler() -> () {
-  assembly { revert(0,0) }
+// This is the default fallback used if none is defined.
+function fallback_default_implementation() -> () {
+  let NoSelectorMatchedWithoutFallback = Error(0x4924aef0);
+  revertWithError(NoSelectorMatchedWithoutFallback);
 }
