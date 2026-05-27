@@ -149,7 +149,7 @@ forall payability args rets fn
       cdsz := calldatasize()
     }
     if ((cdsz - 4) < hdsz) {
-      let ABIInputTruncated = Error(0x9d11c942);
+      let ABIInputTruncated = Error(0x08638556);
       revertWithError(ABIInputTruncated);
     }
 
