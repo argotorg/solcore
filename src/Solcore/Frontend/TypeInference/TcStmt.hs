@@ -206,7 +206,7 @@ ensureVisiblePatternCoverage scrutineeTys eqns =
         TyCon scrutineeTypeName _ -> do
           isPartial <- isPartialDataType scrutineeTypeName
           when (isPartial && not (hasCatchAllAt index eqns)) $
-            throwError $
+            tcmError $
               unlines
                 [ "Pattern match on type with hidden constructors requires a wildcard arm:",
                   pretty scrutineeTypeName
@@ -254,7 +254,7 @@ tcPat' t p@(PCon n ps) =
     (_ :=> tc) <- freshInst st
     let (argTys, resultTy) = splitTy tc
     when (length argTys /= length ps) $
-      throwError $
+      tcmError $
         unlines
           [ "Wrong number of pattern arguments for constructor:",
             pretty n',
@@ -363,7 +363,7 @@ tcExpWithExpected' mExpected e@(Con n es) =
     withCurrentSubst (e1, ps', t')
 tcExpWithExpected' _ e@(FieldAccess Nothing _) =
   -- = notImplementedS "tcExp" e
-  throwError ("tcExp not implemented for: " ++ pretty e ++ "\n" ++ show e)
+  tcmError ("tcExp not implemented for: " ++ pretty e ++ "\n" ++ show e)
 tcExpWithExpected' _ (FieldAccess (Just e) n) =
   do
     -- inferring expression type
@@ -809,7 +809,7 @@ checkPhantomMetaVars checkReturn n body rs ty = do
   let allPhantomMVs = nub (phantomMVs ++ escapedReturnMVs)
   unless (null allPhantomMVs) $ do
     let mvNames = intercalate ", " $ map (pretty . metaName) allPhantomMVs
-    throwError $
+    tcmError $
       unlines
         [ "Ambiguous type variable(s) " ++ mvNames ++ " in definition of " ++ pretty n ++ ".",
           "This typically occurs when a constructor has phantom type parameters.",
@@ -1020,7 +1020,7 @@ hasClosureType = any isClosureName . tyconNames
 
 invalidMemberType :: Name -> Ty -> Ty -> TcM a
 invalidMemberType n cls ins =
-  throwError $
+  tcmError $
     unlines
       [ "The instance method:",
         pretty n,
@@ -1034,7 +1034,7 @@ schemeFromSignature :: Signature Id -> TcM Scheme
 schemeFromSignature sig@(Signature vs ps _ args (Just rt)) =
   do
     unless (all isTyped args) $
-      throwError $
+      tcmError $
         unwords ["Invalid instance member signature:", pretty sig]
     pure $ Forall vs (ps :=> (funtype ts rt))
   where
@@ -1047,7 +1047,7 @@ schemeFromSignature sig@(Signature vs ps _ args (Just rt)) =
 
     ts = map extractType args
 schemeFromSignature sig =
-  throwError $
+  tcmError $
     unwords ["Invalid instance member signature (missing return type):", pretty sig]
 
 updateSignature :: [Tyvar] -> Name -> FunDef Id -> FunDef Id
@@ -1081,7 +1081,7 @@ checkCompleteInstDef n ns =
         mths' = map unqual mths
         remaining = mths' \\ ns
     when (not $ null remaining) do
-      throwError $
+      tcmError $
         unlines $
           [ "Incomplete definition for class:",
             pretty n,
@@ -1151,7 +1151,7 @@ maybeExpandSynonym (TyCon n ts) = do
       | ar == length ts' ->
           maybeExpandSynonym (insts (zip params ts') body)
       | otherwise ->
-          throwError $
+          tcmError $
             unlines
               [ "Type synonym arity mismatch for '" ++ pretty n ++ "':",
                 "  expected " ++ show ar ++ " argument(s)",
@@ -1185,7 +1185,7 @@ isTyVar _ = False
 checkBoundVariable :: [Pred] -> [Tyvar] -> TcM ()
 checkBoundVariable ps vs =
   unless (all (`elem` vs) (bv ps)) $ do
-    throwError "Bounded variable condition fails!"
+    tcmError "Bounded variable condition fails!"
 
 checkOverlap :: Pred -> [Inst] -> TcM ()
 checkOverlap _ [] = pure ()
@@ -1196,7 +1196,7 @@ checkOverlap p@(InCls _ t _) (i : is) =
       (_ :=> (InCls _ t' _)) ->
         case mgu t t' of
           Right _ ->
-            throwError
+            tcmError
               ( unlines
                   [ "Overlapping instances are not supported",
                     "instance:",
@@ -1219,7 +1219,7 @@ checkCoverage cn ts t =
         weakTvs = bv ts
         undetermined = weakTvs \\ strongTvs
     unless (null undetermined) $
-      throwError
+      tcmError
         ( unlines
             [ "Coverage condition fails for class:",
               pretty cn,
@@ -1258,7 +1258,7 @@ fullSignature :: Signature Name -> TcM ()
 fullSignature sig =
   unless
     (isFullyAnnotated sig)
-    (throwError $ unlines ["Class and instance methods must have complete type signatures:", pretty sig])
+    (tcmError $ unlines ["Class and instance methods must have complete type signatures:", pretty sig])
 
 requireAnnotations :: FunDef Name -> TcM ()
 requireAnnotations (FunDef sig _) =
@@ -1291,7 +1291,7 @@ checkMeasure ps c =
   if all smaller ps
     then return ()
     else
-      throwError $
+      tcmError $
         unlines
           [ "Instance ",
             pretty c,
@@ -1360,7 +1360,7 @@ tcBodyWithExpectedReturn mExpectedReturn [s] =
     (s', ps', t') <- tcStmtWithExpectedReturn mExpectedReturn s
     pure ([s'], ps', t')
 tcBodyWithExpectedReturn _ (Return _ : _) =
-  throwError "Illegal return statement"
+  tcmError "Illegal return statement"
 tcBodyWithExpectedReturn mExpectedReturn (s : ss) =
   do
     (s', ps', _) <- tcStmtWithExpectedReturn mExpectedReturn s
@@ -1436,7 +1436,7 @@ resolveDotExpressionConstructor dotName argTys mExpected = do
   candidates <- case mcandidates of
     Just xs -> pure xs
     Nothing ->
-      throwError $
+      tcmError $
         unlines
           [ "Cannot resolve shorthand constructor expression without expected constructor type:",
             pretty dotName
@@ -1444,14 +1444,14 @@ resolveDotExpressionConstructor dotName argTys mExpected = do
   valid <- filterM (\n -> constructorAcceptsArguments n argTys mExpected) (nub candidates)
   case valid of
     [] ->
-      throwError $
+      tcmError $
         unlines
           [ "No matching constructor for shorthand expression:",
             pretty dotName
           ]
     [n] -> pure n
     xs ->
-      throwError $
+      tcmError $
         unlines
           [ "Ambiguous shorthand constructor expression:",
             pretty dotName,
@@ -1498,21 +1498,21 @@ resolveDotPatternConstructor dotName expectedTy = do
   candidates <- case mcandidates of
     Just xs -> pure xs
     Nothing ->
-      throwError $
+      tcmError $
         unlines
           [ "Cannot resolve shorthand constructor pattern without expected constructor type:",
             pretty dotName
           ]
   case nub candidates of
     [] ->
-      throwError $
+      tcmError $
         unlines
           [ "No matching constructor for shorthand pattern:",
             pretty dotName
           ]
     [n] -> pure n
     xs ->
-      throwError $
+      tcmError $
         unlines
           [ "Ambiguous shorthand constructor pattern:",
             pretty dotName,
@@ -1560,7 +1560,7 @@ constructorLeafName n = n
 typeName :: Ty -> TcM Name
 typeName (TyCon n _) = pure n
 typeName t =
-  throwError $
+  tcmError $
     unlines
       [ "Expected type, but found:",
         pretty t
@@ -1749,7 +1749,7 @@ rename t =
 
 classArityError :: (Pretty a) => Name -> ClassInfo -> a -> TcM ()
 classArityError n cinfo v =
-  throwError $
+  tcmError $
     unlines
       [ "Type class " ++ pretty n,
         "requires " ++ show (classArity cinfo) ++ " weak parameter(s)",
@@ -1759,14 +1759,14 @@ classArityError n cinfo v =
 
 unboundTypeVars :: (Pretty a) => a -> [Tyvar] -> TcM b
 unboundTypeVars sig vs =
-  throwError $ unlines ["Type variables:", vs', "are unbound in:", pretty sig]
+  tcmError $ unlines ["Type variables:", vs', "are unbound in:", pretty sig]
   where
     vs' = unwords $ map pretty vs
 
 typeMatch :: Scheme -> Scheme -> TcM ()
 typeMatch t1 t2 =
   unless (t1 == t2) $
-    throwError $
+    tcmError $
       unwords
         [ "Types",
           pretty t1,
@@ -1777,13 +1777,13 @@ typeMatch t1 t2 =
 
 invalidYulType :: Name -> Ty -> TcM a
 invalidYulType (Name n) ty =
-  throwError $ unlines ["Yul values can only be of word type:", unwords [n, ":", pretty ty]]
+  tcmError $ unlines ["Yul values can only be of word type:", unwords [n, ":", pretty ty]]
 invalidYulType qn ty =
-  throwError $ unlines ["Yul values can only be of word type:", unwords [pretty qn, ":", pretty ty]]
+  tcmError $ unlines ["Yul values can only be of word type:", unwords [pretty qn, ":", pretty ty]]
 
 invalidMethodPred :: Pred -> FunDef Name -> TcM a
 invalidMethodPred p d =
-  throwError $
+  tcmError $
     unlines
       [ "Expected class predicate in instance head for method check:",
         pretty p,
@@ -1793,7 +1793,7 @@ invalidMethodPred p d =
 
 expectedFunction :: Ty -> TcM a
 expectedFunction t =
-  throwError $
+  tcmError $
     unlines
       [ "Expected function type. Found:",
         pretty t
@@ -1801,7 +1801,7 @@ expectedFunction t =
 
 wrongPatternNumber :: [Ty] -> [Pat Name] -> TcM a
 wrongPatternNumber qts ps =
-  throwError $
+  tcmError $
     unlines
       [ "Wrong number of patterns in:",
         unwords (map pretty ps),
@@ -1812,7 +1812,7 @@ wrongPatternNumber qts ps =
 
 duplicatedFunDef :: Name -> TcM ()
 duplicatedFunDef n =
-  throwError $ "Duplicated function definition:" ++ pretty n
+  tcmError $ "Duplicated function definition:" ++ pretty n
 
 entailmentError :: [Pred] -> [Pred] -> TcM ()
 entailmentError base nonentail =

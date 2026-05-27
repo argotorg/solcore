@@ -28,6 +28,7 @@ import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Diagnostics
   ( Diagnostic (..),
     DiagnosticCode (..),
+    CompilerError (..),
     Label (..),
     LabelStyle (..),
     Severity (..),
@@ -36,16 +37,16 @@ import Solcore.Diagnostics
     SourceSpan (..),
     addDiagnosticHelp,
     addDiagnosticNote,
-    decodeDiagnostic,
     diagnosticMessage,
     diagnosticPrimarySpan,
     defaultDiagnosticRenderOptions,
     emptySourceMap,
-    encodeDiagnostic,
+    compilerErrorDiagnostics,
+    compilerErrorFromString,
+    compilerErrorText,
     findTextSpansInSource,
     findTokenSpansInSource,
     insertSourceFile,
-    legacyDiagnostic,
     lookupSourceFile,
     makeSourceFile,
     renderDiagnostics,
@@ -118,21 +119,21 @@ compileWithDiagnostics opts = runExceptT $ do
     (validationImports, validationSegments) <-
       liftEitherDiagnostic sources (moduleValidationTopDeclSegments graph moduleId)
     _ <-
-      liftEitherDiagnostic
+      liftCompilerDiagnostic
         sources
-        ( first (decorateDiagnosticContext ("module validation failed for " ++ sourcePath)) $
+        ( first (decorateCompilerDiagnosticContext ("module validation failed for " ++ sourcePath)) $
             validateDuplicateNamespacesInTopDeclSegments validationSegments
         )
     _ <-
-      liftEitherDiagnosticIO
+      liftCompilerDiagnosticIO
         sources
-        ( first (decorateDiagnosticContext ("module validation failed for " ++ sourcePath))
+        ( first (decorateCompilerDiagnosticContext ("module validation failed for " ++ sourcePath))
             <$> nameResolutionTopDeclSegments validationImports validationSegments
         )
     pure ()
 
   checkedModules <-
-    liftEitherDiagnosticIO
+    liftCompilerDiagnosticIO
       sources
       ( timeItNamed "Typecheck modules" $
           runExceptT (typeCheckLoadedModules opts graph)
@@ -272,17 +273,37 @@ liftEitherDiagnosticIO sources action =
       Left err -> Left <$> compileDiagnosticErrorIO sources err
       Right value -> pure (Right value)
 
+liftCompilerDiagnostic :: SourceMap -> Either CompilerError a -> ExceptT CompileDiagnostics IO a
+liftCompilerDiagnostic sources =
+  ExceptT . pure . first (compileCompilerError sources)
+
+liftCompilerDiagnosticIO :: SourceMap -> IO (Either CompilerError a) -> ExceptT CompileDiagnostics IO a
+liftCompilerDiagnosticIO sources action =
+  ExceptT $ do
+    result <- action
+    case result of
+      Left err -> Left <$> compileCompilerErrorIO sources err
+      Right value -> pure (Right value)
+
 compileDiagnosticError :: SourceMap -> String -> CompileDiagnostics
 compileDiagnosticError sources err =
-  let diagnostics = diagnosticsFromError err
+  compileCompilerError sources (compilerErrorFromString err)
+
+compileDiagnosticErrorIO :: SourceMap -> String -> IO CompileDiagnostics
+compileDiagnosticErrorIO sources err =
+  compileCompilerErrorIO sources (compilerErrorFromString err)
+
+compileCompilerError :: SourceMap -> CompilerError -> CompileDiagnostics
+compileCompilerError sources err =
+  let diagnostics = compilerErrorDiagnostics err
    in CompileDiagnostics
         { compileDiagnosticSources = sources,
           compileDiagnosticMessages = map (enrichDiagnostic sources) diagnostics
         }
 
-compileDiagnosticErrorIO :: SourceMap -> String -> IO CompileDiagnostics
-compileDiagnosticErrorIO sources err = do
-  let diagnostics = diagnosticsFromError err
+compileCompilerErrorIO :: SourceMap -> CompilerError -> IO CompileDiagnostics
+compileCompilerErrorIO sources err = do
+  let diagnostics = compilerErrorDiagnostics err
   sources' <- ensureDiagnosticSources sources diagnostics
   pure
     CompileDiagnostics
@@ -291,14 +312,8 @@ compileDiagnosticErrorIO sources err = do
       }
 
 diagnosticsFromError :: String -> [Diagnostic]
-diagnosticsFromError err =
-  case mapM decodeDiagnostic (filter (not . null) (lines err)) of
-    Just diagnostics
-      | not (null diagnostics) -> diagnostics
-    _ ->
-      case decodeDiagnostic err of
-        Just diagnostic -> [diagnostic]
-        Nothing -> [legacyDiagnostic err]
+diagnosticsFromError =
+  compilerErrorDiagnostics . compilerErrorFromString
 
 enrichDiagnostic :: SourceMap -> Diagnostic -> Diagnostic
 enrichDiagnostic sources diagnostic
@@ -715,7 +730,7 @@ ensureSourcePath sources path
           pure (insertSourceFile (makeSourceFile path content) sources)
         else pure sources
 
-typeCheckLoadedModules :: Option -> ModuleGraph -> ExceptT String IO (Map Mod.ModuleId CheckedModule)
+typeCheckLoadedModules :: Option -> ModuleGraph -> ExceptT CompilerError IO (Map Mod.ModuleId CheckedModule)
 typeCheckLoadedModules opts graph =
   Map.fromList <$> mapM (typeCheckModuleFromGraph opts graph) (moduleOrder graph)
 
@@ -723,9 +738,9 @@ typeCheckModuleFromGraph ::
   Option ->
   ModuleGraph ->
   Mod.ModuleId ->
-  ExceptT String IO (Mod.ModuleId, CheckedModule)
+  ExceptT CompilerError IO (Mod.ModuleId, CheckedModule)
 typeCheckModuleFromGraph opts graph moduleId = do
-  sourcePath <- ExceptT $ pure (moduleSourcePath graph moduleId)
+  sourcePath <- ExceptT $ pure (first compilerErrorFromString (moduleSourcePath graph moduleId))
   resolvedInput <-
     ExceptT $
       first (moduleTypeCheckError sourcePath "input") <$> loadModuleLocalTypeCheckInput graph moduleId
@@ -755,7 +770,7 @@ typeCheckModuleFromGraph opts graph moduleId = do
 prepareModuleTypeCheckInput ::
   Option ->
   ModuleResolvedTypeCheckInput ->
-  ExceptT String IO ModuleTypeCheckInput
+  ExceptT CompilerError IO ModuleTypeCheckInput
 prepareModuleTypeCheckInput opts resolvedInput = do
   inferenceDecls <- prepareModuleInferenceDeclsForTypeInference opts resolvedInput
   pure (withPreparedModuleInferenceDecls resolvedInput inferenceDecls)
@@ -763,7 +778,7 @@ prepareModuleTypeCheckInput opts resolvedInput = do
 prepareModuleInferenceDeclsForTypeInference ::
   Option ->
   ModuleResolvedTypeCheckInput ->
-  ExceptT String IO [ModuleInferenceDecl]
+  ExceptT CompilerError IO [ModuleInferenceDecl]
 prepareModuleInferenceDeclsForTypeInference opts input =
   prepareInferenceDeclsForTypeInference
     opts
@@ -801,25 +816,28 @@ dumpModuleTypeInference opts sourcePath typed tcEnv =
     putStrLn ("> Elaborated tree for " ++ sourcePath ++ ":")
     putStrLn $ pretty typed
 
-moduleTypeCheckError :: FilePath -> String -> String -> String
+moduleTypeCheckError :: FilePath -> String -> CompilerError -> CompilerError
 moduleTypeCheckError sourcePath phase err =
-  decorateDiagnosticContext
+  decorateCompilerDiagnosticContext
     ("module typecheck failed for " ++ sourcePath ++ " (" ++ phase ++ ")")
     err
 
 decorateDiagnosticContext :: String -> String -> String
 decorateDiagnosticContext context err =
-  case decodeDiagnostic err of
-    Just diagnostic ->
-      encodeDiagnostic (addDiagnosticNote context diagnostic)
-    Nothing -> context ++ ":\n" ++ err
+  compilerErrorText (decorateCompilerDiagnosticContext context (compilerErrorFromString err))
+
+decorateCompilerDiagnosticContext :: String -> CompilerError -> CompilerError
+decorateCompilerDiagnosticContext context (CompilerDiagnostics diagnostics) =
+  CompilerDiagnostics (map (addDiagnosticNote context) diagnostics)
+decorateCompilerDiagnosticContext context (CompilerLegacyError err) =
+  CompilerLegacyError (context ++ ":\n" ++ err)
 
 prepareInferenceDeclsForTypeInference ::
   Option ->
   Bool ->
   [Import] ->
   [ModuleInferenceDecl] ->
-  ExceptT String IO [ModuleInferenceDecl]
+  ExceptT CompilerError IO [ModuleInferenceDecl]
 prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
   let verbose = emitOutput && optVerbose opts
       noDesugarCalls = optNoDesugarCalls opts
@@ -851,9 +869,10 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
   -- SCC analysis
   connected <-
     ExceptT $
-      timeItNamed "SCC           " $
-        runExceptT $
-          traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) dispatched
+      fmap (first compilerErrorFromString) $
+        timeItNamed "SCC           " $
+          runExceptT $
+            traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) dispatched
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"

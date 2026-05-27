@@ -3,14 +3,14 @@ module Solcore.Frontend.TypeInference.TcMonad where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
-import Data.Generics (Data, everything, mkQ)
+import Data.Generics (Data, everything, extQ, mkQ)
 import Data.List
 import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
 import Data.Monoid (First (..))
 import Data.Set qualified as Set
-import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, decodeDiagnostic, encodeDiagnostic)
+import Solcore.Diagnostics (CompilerError (..), Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, diagnosticCompilerError, legacyCompilerError)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -23,9 +23,9 @@ import Text.Printf
 
 -- definition of type inference monad infrastructure
 
-type TcM a = (StateT TcEnv (ExceptT String IO)) a
+type TcM a = (StateT TcEnv (ExceptT CompilerError IO)) a
 
-runTcM :: TcM a -> TcEnv -> IO (Either String (a, TcEnv))
+runTcM :: TcM a -> TcEnv -> IO (Either CompilerError (a, TcEnv))
 runTcM m env = runExceptT (runStateT m env)
 
 defaultM :: TcM a -> TcM (Maybe a)
@@ -166,7 +166,7 @@ matchTy t t' =
     extSubst s
 
 tcmMatch :: Ty -> Ty -> TcM Subst
-tcmMatch t u = catchError (match t u) throwError
+tcmMatch = match
 
 addFunctionName :: Name -> TcM ()
 addFunctionName n =
@@ -206,7 +206,7 @@ kindCheck t@(TyCon n ts) =
   do
     ti <- askTypeInfo n `wrapError` t
     unless (n == Name "pair" || arity ti == length ts) $
-      throwError $
+      tcmError $
         unlines
           [ "Invalid number of type arguments!",
             "Type "
@@ -356,7 +356,7 @@ askCurrentContract =
   do
     n <- gets contract
     maybe
-      (throwError "Impossible! Lacking current contract name!")
+      (tcmError "Impossible! Lacking current contract name!")
       pure
       n
 
@@ -502,7 +502,7 @@ checkSynonym (TySym n vs t) =
 
 duplicatedSynonymDecl :: Name -> TcM a
 duplicatedSynonymDecl n =
-  throwError $ unwords ["Duplicated type synonym definition:", pretty n]
+  tcmError $ unwords ["Duplicated type synonym definition:", pretty n]
 
 -- manipulating the instance environment
 
@@ -553,7 +553,7 @@ addDefaultInstance n inst =
       )
 
 maybeToTcM :: String -> Maybe a -> TcM a
-maybeToTcM s Nothing = throwError s
+maybeToTcM s Nothing = tcmError s
 maybeToTcM _ (Just x) = pure x
 
 -- checking coverage pragma
@@ -660,11 +660,13 @@ wrapError m e =
   catchError m handler
   where
     handler msg = throwError (decorate msg)
-    decorate msg =
-      case decodeDiagnostic msg of
-        Just diagnostic ->
-          encodeDiagnostic (addDiagnosticNote ("in: " ++ pretty e) (addContextLabel e diagnostic))
-        Nothing -> msg ++ "\n - in:" ++ pretty e
+    decorate (CompilerDiagnostics diagnostics) =
+      CompilerDiagnostics $
+        map
+          (addDiagnosticNote ("in: " ++ pretty e) . addContextLabel e)
+          diagnostics
+    decorate (CompilerLegacyError msg) =
+      CompilerLegacyError (msg ++ "\n - in:" ++ pretty e)
 
 addContextLabel :: (Data b) => b -> Diagnostic -> Diagnostic
 addContextLabel context diagnostic
@@ -699,13 +701,16 @@ contextLabelMessage diagnostic =
 
 contextSourceSpan :: (Data a) => a -> Maybe SourceSpan
 contextSourceSpan value =
-  getFirst $ everything (<>) (mkQ (First Nothing) nameSpan) value
+  getFirst $ everything (<>) (mkQ (First Nothing) locationSpan `extQ` nameSpan) value
   where
+    locationSpan :: NodeLocation -> First SourceSpan
+    locationSpan = First . nodeLocationSpan
+
     nameSpan :: Name -> First SourceSpan
     nameSpan = First . nameSourceSpan
 
 tcmMgu :: Ty -> Ty -> TcM Subst
-tcmMgu t u = catchError (mgu t u) tcmError
+tcmMgu = mgu
 
 -- error messages
 
@@ -713,7 +718,7 @@ tcmError :: String -> TcM a
 tcmError s = do
   verbose <- isVerbose
   when verbose dumpLogs
-  throwError s
+  throwError (legacyCompilerError s)
 
 undefinedName :: Name -> TcM a
 undefinedName n =
@@ -811,7 +816,7 @@ tcDiagnosticErrorAtName code message identName label notes help =
 tcDiagnosticErrorWithLabels :: String -> String -> [Label] -> [String] -> [String] -> TcM a
 tcDiagnosticErrorWithLabels code message labels notes help =
   throwError $
-    encodeDiagnostic
+    diagnosticCompilerError $
       Diagnostic
         { diagnosticSeverity = Error,
           diagnosticCode = Just (DiagnosticCode code),
@@ -838,7 +843,7 @@ typeAlreadyDefinedError d n =
     -- get type info
     di <- askTypeInfo n
     d' <- dataTyFromInfo n di `wrapError` d
-    throwError $
+    tcmError $
       unlines
         [ "Duplicated type definition for " ++ pretty n ++ ":",
           pretty d,

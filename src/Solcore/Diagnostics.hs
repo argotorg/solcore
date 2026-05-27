@@ -5,6 +5,7 @@ module Solcore.Diagnostics
     LabelStyle (..),
     Label (..),
     Diagnostic (..),
+    CompilerError (..),
     SourceId (..),
     SourceToken (..),
     SourceFile (..),
@@ -28,6 +29,13 @@ module Solcore.Diagnostics
     legacyDiagnostic,
     addDiagnosticNote,
     addDiagnosticHelp,
+    diagnosticCompilerError,
+    diagnosticsCompilerError,
+    legacyCompilerError,
+    compilerErrorDiagnostics,
+    compilerErrorText,
+    compilerErrorFromString,
+    mapCompilerErrorDiagnostics,
     encodeDiagnostic,
     decodeDiagnostic,
     diagnosticPrimarySpan,
@@ -90,6 +98,11 @@ data Diagnostic
     diagnosticHelp :: [String]
   }
   deriving (Eq, Ord, Read, Show)
+
+data CompilerError
+  = CompilerDiagnostics [Diagnostic]
+  | CompilerLegacyError String
+  deriving (Eq, Ord, Show)
 
 newtype SourceId = SourceId FilePath
   deriving (Eq, Ord, Show)
@@ -297,6 +310,43 @@ addDiagnosticNote note diagnostic =
 addDiagnosticHelp :: String -> Diagnostic -> Diagnostic
 addDiagnosticHelp help diagnostic =
   diagnostic {diagnosticHelp = appendUnique help (diagnosticHelp diagnostic)}
+
+diagnosticCompilerError :: Diagnostic -> CompilerError
+diagnosticCompilerError diagnostic =
+  CompilerDiagnostics [diagnostic]
+
+diagnosticsCompilerError :: [Diagnostic] -> CompilerError
+diagnosticsCompilerError diagnostics =
+  CompilerDiagnostics diagnostics
+
+legacyCompilerError :: String -> CompilerError
+legacyCompilerError =
+  CompilerLegacyError
+
+compilerErrorDiagnostics :: CompilerError -> [Diagnostic]
+compilerErrorDiagnostics (CompilerDiagnostics diagnostics) = diagnostics
+compilerErrorDiagnostics (CompilerLegacyError message) = [legacyDiagnostic message]
+
+compilerErrorText :: CompilerError -> String
+compilerErrorText (CompilerDiagnostics diagnostics) =
+  unlines (map encodeDiagnostic diagnostics)
+compilerErrorText (CompilerLegacyError message) = message
+
+compilerErrorFromString :: String -> CompilerError
+compilerErrorFromString err =
+  case mapM decodeDiagnostic (filter (not . null) (lines err)) of
+    Just diagnostics
+      | not (null diagnostics) -> CompilerDiagnostics diagnostics
+    _ ->
+      case decodeDiagnostic err of
+        Just diagnostic -> CompilerDiagnostics [diagnostic]
+        Nothing -> CompilerLegacyError err
+
+mapCompilerErrorDiagnostics :: ([Diagnostic] -> [Diagnostic]) -> CompilerError -> CompilerError
+mapCompilerErrorDiagnostics f (CompilerDiagnostics diagnostics) =
+  CompilerDiagnostics (f diagnostics)
+mapCompilerErrorDiagnostics f (CompilerLegacyError message) =
+  CompilerDiagnostics (f [legacyDiagnostic message])
 
 appendUnique :: String -> [String] -> [String]
 appendUnique item items

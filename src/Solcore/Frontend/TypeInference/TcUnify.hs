@@ -11,7 +11,7 @@ import Solcore.Frontend.TypeInference.TcSubst
 
 -- standard unification machinery
 
-varBind :: (MonadError String m) => MetaTv -> Ty -> m Subst
+varBind :: (MonadError CompilerError m) => MetaTv -> Ty -> m Subst
 varBind v t
   | t == Meta v = return mempty
   | v `elem` mv t = infiniteTyErr v t
@@ -25,7 +25,7 @@ isTyCon _ = False
 -- type matching
 
 class Match a where
-  match :: (MonadError String m) => a -> a -> m Subst
+  match :: (MonadError CompilerError m) => a -> a -> m Subst
 
 instance Match Ty where
   match (TyCon n ts) (TyCon n' ts')
@@ -52,9 +52,10 @@ instance (Pretty a, Match a) => Match [a] where
 instance Match Pred where
   match (InCls n t ts) (InCls n' t' ts')
     | n == n' = match (t : ts) (t' : ts')
-    | otherwise = throwError "Classes differ!"
+    | otherwise = throwError (legacyCompilerError "Classes differ!")
   match p1 p2 =
     throwError $
+      legacyCompilerError $
       unlines
         [ "Cannot match predicates:",
           pretty p1,
@@ -72,7 +73,7 @@ instance (HasType a, Match a) => Match (Qual a) where
 -- most general unifier
 
 class MGU a where
-  mgu :: (MonadError String m) => a -> a -> m Subst
+  mgu :: (MonadError CompilerError m) => a -> a -> m Subst
 
 instance (HasType a, MGU a, Pretty a) => MGU [a] where
   mgu ts1 ts2
@@ -99,8 +100,9 @@ instance MGU Pred where
   mgu p1@(InCls n t ts) p2@(InCls n' t' ts')
     | n == n' = mgu (t : ts) (t' : ts')
     | otherwise =
-        throwError $
-          unlines
+      throwError $
+        legacyCompilerError $
+        unlines
             [ "Cannot unify predicates:",
               pretty p1,
               "with",
@@ -110,6 +112,7 @@ instance MGU Pred where
     mgu [t1, t2] [t1', t2']
   mgu p1 p2 =
     throwError $
+      legacyCompilerError $
       unlines
         [ "Cannot unify predicates:",
           pretty p1,
@@ -123,7 +126,7 @@ instance (HasType a, MGU a) => MGU (Qual a) where
       s <- mgu (sort ps) (sort ps')
       mgu (apply s t) (apply s t')
 
-solve :: (MonadError String m, MGU a, HasType a) => [(a, a)] -> Subst -> m Subst
+solve :: (MonadError CompilerError m, MGU a, HasType a) => [(a, a)] -> Subst -> m Subst
 solve [] s = pure s
 solve ((t1, t2) : ts) s =
   do
@@ -131,10 +134,10 @@ solve ((t1, t2) : ts) s =
     s2 <- solve ts s1
     pure (s2 <> s1)
 
-unifyTypes :: (MonadError String m) => [Ty] -> [Ty] -> m Subst
+unifyTypes :: (MonadError CompilerError m) => [Ty] -> [Ty] -> m Subst
 unifyTypes ts ts' = solve (zip ts ts') mempty
 
-unifyAllTypes :: (MonadError String m) => [Ty] -> m Subst
+unifyAllTypes :: (MonadError CompilerError m) => [Ty] -> m Subst
 unifyAllTypes [] = pure mempty
 unifyAllTypes (t : ts) =
   do
@@ -144,7 +147,7 @@ unifyAllTypes (t : ts) =
 
 -- composition operator for matching
 
-merge :: (MonadError String m) => Subst -> Subst -> m Subst
+merge :: (MonadError CompilerError m) => Subst -> Subst -> m Subst
 merge s1@(Subst p1) s2@(Subst p2) =
   if agree
     then pure (Subst $ nub (p1 ++ p2))
@@ -160,17 +163,18 @@ merge s1@(Subst p1) s2@(Subst p2) =
         (dom p1 `intersect` dom p2)
     dom s = map fst s
 
-mergeError :: (MonadError String m) => [(Ty, Ty)] -> m a
-mergeError ts = throwError $ unlines $ "Cannot match types:" : ss
+mergeError :: (MonadError CompilerError m) => [(Ty, Ty)] -> m a
+mergeError ts = throwError $ legacyCompilerError $ unlines $ "Cannot match types:" : ss
   where
     ss = map go ts
     go (x, y) = pretty x ++ " with " ++ pretty y
 
 -- basic error messages
 
-infiniteTyErr :: (MonadError String m) => MetaTv -> Ty -> m a
+infiniteTyErr :: (MonadError CompilerError m) => MetaTv -> Ty -> m a
 infiniteTyErr v t =
   throwError $
+    legacyCompilerError $
     unwords
       [ "Cannot construct the infinite type:",
         pretty (metaName v),
@@ -178,13 +182,13 @@ infiniteTyErr v t =
         pretty t
       ]
 
-typesNotMatch :: (MonadError String m) => Ty -> Ty -> m a
+typesNotMatch :: (MonadError CompilerError m) => Ty -> Ty -> m a
 typesNotMatch t1 t2 =
   typeMismatchDiagnostic "types do not match" t1 t2
 
-typesMatchListErr :: (MonadError String m) => [String] -> [String] -> m a
+typesMatchListErr :: (MonadError CompilerError m) => [String] -> [String] -> m a
 typesMatchListErr ts ts' =
-  throwError (errMsg ts ts')
+  throwError (legacyCompilerError (errMsg ts ts'))
   where
     errMsg lhs rhs =
       unwords
@@ -194,9 +198,9 @@ typesMatchListErr ts ts' =
           prettys rhs
         ]
 
-typesMguListErr :: (MonadError String m, Pretty t) => [t] -> [t] -> m a
+typesMguListErr :: (MonadError CompilerError m, Pretty t) => [t] -> [t] -> m a
 typesMguListErr ts ts' =
-  throwError (errMsg ts ts')
+  throwError (legacyCompilerError (errMsg ts ts'))
   where
     errMsg lhs rhs =
       unwords
@@ -206,14 +210,14 @@ typesMguListErr ts ts' =
           prettys rhs
         ]
 
-typesDoNotUnify :: (MonadError String m) => Ty -> Ty -> m a
+typesDoNotUnify :: (MonadError CompilerError m) => Ty -> Ty -> m a
 typesDoNotUnify t1 t2 =
   typeMismatchDiagnostic "types do not unify" t1 t2
 
-typeMismatchDiagnostic :: (MonadError String m) => String -> Ty -> Ty -> m a
+typeMismatchDiagnostic :: (MonadError CompilerError m) => String -> Ty -> Ty -> m a
 typeMismatchDiagnostic message t1 t2 =
   throwError $
-    encodeDiagnostic
+    diagnosticCompilerError $
       Diagnostic
         { diagnosticSeverity = Error,
           diagnosticCode = Just (DiagnosticCode "SC0201"),
@@ -226,9 +230,10 @@ typeMismatchDiagnostic message t1 t2 =
           diagnosticHelp = []
         }
 
-boundVariablesErr :: (MonadError String m) => [Tyvar] -> m a
+boundVariablesErr :: (MonadError CompilerError m) => [Tyvar] -> m a
 boundVariablesErr ts =
   throwError $
+    legacyCompilerError $
     unwords $
       [ "Panic!",
         "The following bound variables where",

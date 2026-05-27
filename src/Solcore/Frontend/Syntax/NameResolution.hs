@@ -5,13 +5,13 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
-import Data.Generics (Data, everything, mkQ)
+import Data.Generics (Data, everything, extQ, mkQ)
 import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Monoid (First (..))
-import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, decodeDiagnostic, encodeDiagnostic)
+import Solcore.Diagnostics (CompilerError (..), Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, diagnosticCompilerError)
 import Solcore.Frontend.Pretty.TreePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts, decls)
 import Solcore.Frontend.Syntax.Location
@@ -22,14 +22,14 @@ import Solcore.Frontend.Syntax.Ty
 
 -- name resolution
 
-nameResolution :: S.CompUnit -> IO (Either String (CompUnit Name))
+nameResolution :: S.CompUnit -> IO (Either CompilerError (CompUnit Name))
 nameResolution (S.CompUnit imps ds) =
   fmap fst <$> nameResolutionTopDeclSegments imps [ds]
 
 nameResolutionTopDeclSegments ::
   [S.Import] ->
   [[S.TopDecl]] ->
-  IO (Either String (CompUnit Name, [[TopDecl Name]]))
+  IO (Either CompilerError (CompUnit Name, [[TopDecl Name]]))
 nameResolutionTopDeclSegments imps segments =
   do
     let ds = concat segments
@@ -84,23 +84,23 @@ resolveExportSpec (S.ExportNameWithConstructors typeName ctorSelector) =
   ExportNameWithConstructors typeName (resolveConstructorSelector ctorSelector)
 resolveExportSpec (S.ExportModuleAll path) = ExportModuleAll (resolveModulePath path)
 
-validateDuplicateNamespacesInCompUnit :: S.CompUnit -> Either String ()
+validateDuplicateNamespacesInCompUnit :: S.CompUnit -> Either CompilerError ()
 validateDuplicateNamespacesInCompUnit (S.CompUnit _ ds) =
   validateDuplicateNamespaces ds
 
-validateDuplicateNamespacesInTopDeclSegments :: [[S.TopDecl]] -> Either String ()
+validateDuplicateNamespacesInTopDeclSegments :: [[S.TopDecl]] -> Either CompilerError ()
 validateDuplicateNamespacesInTopDeclSegments segments = do
   ensureNoDuplicateNames "type namespace" (concatMap topLevelTypeNames segments)
   ensureNoDuplicateNames "term namespace" (concatMap topLevelTermNames segments)
   mapM_ validateContractDuplicates [c | segment <- segments, S.TContr c <- segment]
 
-validateDuplicateNamespaces :: [S.TopDecl] -> Either String ()
+validateDuplicateNamespaces :: [S.TopDecl] -> Either CompilerError ()
 validateDuplicateNamespaces ds = do
   ensureNoDuplicateNames "type namespace" (topLevelTypeNames ds)
   ensureNoDuplicateNames "term namespace" (topLevelTermNames ds)
   mapM_ validateContractDuplicates [c | S.TContr c <- ds]
 
-validateContractDuplicates :: S.Contract -> Either String ()
+validateContractDuplicates :: S.Contract -> Either CompilerError ()
 validateContractDuplicates (S.Contract cname _ decls) = do
   let typeNames = [n | S.CDataDecl (S.DataTy n _ _) <- decls]
       termNames = contractTermNames decls
@@ -137,20 +137,22 @@ qualifiedConstructorName :: Name -> Name -> Name
 qualifiedConstructorName tyCon conName =
   qualifyName tyCon (constructorLeafName conName)
 
-ensureNoDuplicateNames :: String -> [Name] -> Either String ()
+ensureNoDuplicateNames :: String -> [Name] -> Either CompilerError ()
 ensureNoDuplicateNames ns = ensureNoDuplicateNamesIn "module" ns
 
-ensureNoDuplicateNamesIn :: String -> String -> [Name] -> Either String ()
+ensureNoDuplicateNamesIn :: String -> String -> [Name] -> Either CompilerError ()
 ensureNoDuplicateNamesIn ctx ns names =
   case duplicates of
     [] -> pure ()
     xs ->
       Left $
-        diagnosticString
-          "SC0108"
-          ("duplicate declarations in " ++ ns)
-          (("context: " ++ ctx) : map (\n -> "  " ++ pretty n) xs)
-          ["rename or remove the duplicate declaration"]
+        diagnosticCompilerError $
+          diagnosticValue
+            "SC0108"
+            ("duplicate declarations in " ++ ns)
+            []
+            (("context: " ++ ctx) : map (\n -> "  " ++ pretty n) xs)
+            ["rename or remove the duplicate declaration"]
   where
     counts :: Map Name Int
     counts = Map.fromListWith (+) [(n, 1) | n <- names]
@@ -974,9 +976,9 @@ addQualifiedModules _ env = env
 
 -- definition of a monad for name resolution
 
-type ResolveM a = StateT Env (ExceptT String IO) a
+type ResolveM a = StateT Env (ExceptT CompilerError IO) a
 
-runResolveM :: ResolveM a -> Env -> IO (Either String a)
+runResolveM :: ResolveM a -> Env -> IO (Either CompilerError a)
 runResolveM m env =
   do
     r <- runExceptT (runStateT m env)
@@ -1021,11 +1023,13 @@ wrapError m e =
   catchError m handler
   where
     handler msg = throwError (decorate msg)
-    decorate msg =
-      case decodeDiagnostic msg of
-        Just diagnostic ->
-          encodeDiagnostic (addDiagnosticNote ("in: " ++ pretty e) (addContextLabel e diagnostic))
-        Nothing -> msg ++ "\n - in:" ++ pretty e
+    decorate (CompilerDiagnostics diagnostics) =
+      CompilerDiagnostics $
+        map
+          (addDiagnosticNote ("in: " ++ pretty e) . addContextLabel e)
+          diagnostics
+    decorate (CompilerLegacyError msg) =
+      CompilerLegacyError (msg ++ "\n - in:" ++ pretty e)
 
 addContextLabel :: (Data b) => b -> Diagnostic -> Diagnostic
 addContextLabel context diagnostic
@@ -1058,8 +1062,11 @@ contextLabelMessage diagnostic =
 
 contextSourceSpan :: (Data a) => a -> Maybe SourceSpan
 contextSourceSpan value =
-  getFirst $ everything (<>) (mkQ (First Nothing) nameSpan) value
+  getFirst $ everything (<>) (mkQ (First Nothing) locationSpan `extQ` nameSpan) value
   where
+    locationSpan :: NodeLocation -> First SourceSpan
+    locationSpan = First . nodeLocationSpan
+
     nameSpan :: Name -> First SourceSpan
     nameSpan = First . nameSourceSpan
 
@@ -1199,23 +1206,19 @@ diagnosticErrorAtName code message identName label notes help =
 
 diagnosticErrorWithLabels :: String -> String -> [Label] -> [String] -> [String] -> ResolveM a
 diagnosticErrorWithLabels code message labels notes help =
-  throwError $ diagnosticStringWithLabels code message labels notes help
+  throwError $ diagnosticCompilerError $ diagnosticValue code message labels notes help
 
-diagnosticString :: String -> String -> [String] -> [String] -> String
-diagnosticString code message notes help =
-  diagnosticStringWithLabels code message [] notes help
+diagnosticValue :: String -> String -> [Label] -> [String] -> [String] -> Diagnostic
+diagnosticValue code message labels notes help =
+  Diagnostic
+    { diagnosticSeverity = Error,
+      diagnosticCode = Just (DiagnosticCode code),
+      diagnosticMessage = message,
+      diagnosticLabels = labels,
+      diagnosticNotes = notes,
+      diagnosticHelp = help
+    }
 
-diagnosticStringWithLabels :: String -> String -> [Label] -> [String] -> [String] -> String
-diagnosticStringWithLabels code message labels notes help =
-  encodeDiagnostic
-    Diagnostic
-      { diagnosticSeverity = Error,
-        diagnosticCode = Just (DiagnosticCode code),
-        diagnosticMessage = message,
-        diagnosticLabels = labels,
-        diagnosticNotes = notes,
-        diagnosticHelp = help
-      }
 
 primaryNameLabel :: String -> Name -> Maybe Label
 primaryNameLabel message identName =

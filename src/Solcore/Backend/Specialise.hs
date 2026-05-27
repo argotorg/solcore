@@ -21,7 +21,6 @@ import Solcore.Frontend.Syntax hiding (decls, name)
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv (TcEnv (typeTable), TypeInfo (..))
-import Solcore.Frontend.TypeInference.TcUnify (typesDoNotUnify)
 import Solcore.Primitives.Primitives
 
 -- ** Specialisation state and monad
@@ -655,7 +654,7 @@ specmgu (TyCon n ts) (TyCon n' ts')
       specsolve (zip ts ts') mempty
 specmgu (TyVar v) t = varBind v t
 specmgu t (TyVar v) = varBind v t
-specmgu t1 t2 = typesDoNotUnify t1 t2
+specmgu t1 t2 = Left $ "types do not unify: " ++ pretty t1 ++ " and " ++ pretty t2
 
 varBind :: (MonadError String m) => Tyvar -> Ty -> m TVSubst
 varBind v t
