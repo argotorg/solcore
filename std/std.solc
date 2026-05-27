@@ -88,8 +88,6 @@ export {
   memberAccessBase,
   memory(*),
   memory_ref,
- // mload, // Re-exporting does not work yet
-//  mstore,
   ne,
   not,
   or,

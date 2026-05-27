@@ -1,5 +1,6 @@
 import std.{*};
-import std.{memory, string, Typedef, log1, allocate_memory, mstore, uint256};
+import std.{memory, string, Typedef, log1, allocate_memory, uint256};
+import std.opcodes.{mstore};
 import std.dispatch.{*};
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
