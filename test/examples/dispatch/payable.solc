@@ -19,4 +19,14 @@ contract PayableTest {
         }
         return uint256(value);
     }
+
+    payable fallback() -> () {
+        let value;
+        assembly {
+            value := callvalue()
+        }
+        if (value == 0) {
+            revert("fallback-was-called-no-value");
+        }
+    }
 }

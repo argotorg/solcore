@@ -248,6 +248,20 @@ signatureP vars ctx = do
   ret <- optional (symbol "->" *> typeP)
   return (Signature vars ctx n ps ret payable)
 
+fallbackDefAfterPrefix :: [Ty] -> [Pred] -> Parser FunDef
+fallbackDefAfterPrefix vars ctx = do
+  sig <- fallbackSignatureP vars ctx
+  body <- braces bodyP
+  return (FunDef sig (implicitReturn body))
+
+fallbackSignatureP :: [Ty] -> [Pred] -> Parser Signature
+fallbackSignatureP vars ctx = do
+  payable <- option False (True <$ keyword "payable")
+  keyword "fallback"
+  ps <- parens (paramP `sepBy` comma)
+  ret <- optional (symbol "->" *> typeP)
+  return (Signature vars ctx (Name "fallback") ps ret payable)
+
 -- | One function signature inside a class body.
 -- Commits to requiring ';' once the signature is parsed, so a missing
 -- semicolon produces "expecting ';' after function signature" rather than
@@ -293,7 +307,11 @@ contractDeclP =
     <$> dataP
       <|> CConstrDecl
     <$> constructorDeclP
-      <|> withSigPrefix (\vars ctx -> CFunDecl <$> funDefAfterPrefix vars ctx)
+      <|> withSigPrefix
+        ( \vars ctx ->
+            CFunDecl
+              <$> (try (funDefAfterPrefix vars ctx) <|> fallbackDefAfterPrefix vars ctx)
+        )
       <|> CFieldDecl
     <$> fieldDeclP
 

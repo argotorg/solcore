@@ -1,0 +1,14 @@
+import std.{*};
+import std.dispatch.{*};
+
+contract WithFallback {
+    constructor() {}
+
+    function answer() -> uint256 {
+        return uint256(42);
+    }
+
+    fallback() -> () {
+        revert("fallback-was-called");
+    }
+}

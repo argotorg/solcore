@@ -27,7 +27,7 @@ pragma no-bounded-variable-condition ;
 
 // A contract contains a tuple of methods and a single fallback
 // TODO: implement receive()
-data Contract(methods, fallback) = Contract(methods,fallback);
+data Contract(methods, fb) = Contract(methods,fb);
 
 // A method contains an implementation (fn) as well as it's name and type signature
 data Method(name, payability, args, rets, fn) = Method(Proxy(name), Proxy(payability), Proxy(args), Proxy(rets), fn);
@@ -273,8 +273,8 @@ forall c . class c:RunContract {
 }
 
 // If we have a dispatch for the contracts methods, and we know how to execute it's fallback, then we can define an entrypoint
-forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance Contract(methods, fallback):RunContract {
-  function exec(c : Contract(methods, fallback)) -> () {
+forall methods fb . methods:RunDispatch, fb:ExecMethod => instance Contract(methods, fb):RunContract {
+  function exec(c : Contract(methods, fb)) -> () {
     match c {
       | Contract(ms, fb) =>
 
