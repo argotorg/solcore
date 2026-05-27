@@ -156,9 +156,7 @@ forall args rets fn
   , rets:ABIEncode
 => function do_exec(pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
     // check we have enough calldata for the head of args
-    let hdsz = ABIAttribs.headSize(pargs);
-    let cdsz = calldatasize();
-    if ((cdsz - 4) < hdsz) {
+    if ((calldatasize() - 4) < ABIAttribs.headSize(pargs)) {
       let ABIInputTruncated = Error(0x08638556);
       revertWithError(ABIInputTruncated);
     }
@@ -251,8 +249,7 @@ instance Payable:MethodLevelCallvalueCheck {
 // NonPayable methods revert if passed value
 instance NonPayable:MethodLevelCallvalueCheck {
    function checkCallvalue(prx : Proxy(NonPayable)) -> () {
-       let value = callvalue();
-       if (value > 0) {
+       if (callvalue() > 0) {
          let NonPayableReceivedValue = Error(0xb5988ea3);
          revertWithError(NonPayableReceivedValue);
        }
