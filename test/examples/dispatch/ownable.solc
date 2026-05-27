@@ -1,5 +1,4 @@
 import std.{*};
-import std.{uint256, Eq, Typedef};
 import std.dispatch.{*};
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
@@ -8,30 +7,27 @@ pragma no-bounded-variable-condition ;
 // caller() is not in the std library yet,
 // so every contract must define its own
 
-// returns uint256 instead of address because the dispatch system
-// requires ABIEncode for function params/returns, and address has no ABIEncode instance yet
-function caller() -> uint256 {
+function caller() -> address {
   let res: word;
   assembly {
      res := caller()
   }
-  return uint256(res);
+  return address(res);
 }
 
 contract Ownable {
-  // stored as uint256 instead of address for the same ABIEncode reason
-  owner : uint256;
+  owner : address;
 
   constructor() {
     owner = caller();
   }
 
   // named getOwner() instead of owner() to avoid collision with the field name
-  function getOwner() -> uint256 {
+  function getOwner() -> address {
     return owner;
   }
 
-  function changeOwner(newOwner : uint256) -> () {
+  function changeOwner(newOwner : address) -> () {
     require(caller() == owner, Error(0x12b0c500)); // OwnableUnauthorizedAccount()
     owner = newOwner;
   }
