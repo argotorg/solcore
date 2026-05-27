@@ -71,6 +71,7 @@ resolveExportSelectorEntry (S.SelectExportConstructors typeName ctorSelector) =
 resolveSelectorEntry :: S.ItemSelectorEntry -> ItemSelectorEntry
 resolveSelectorEntry S.SelectAllItems = SelectAllItems
 resolveSelectorEntry (S.SelectItem itemName) = SelectItem itemName
+resolveSelectorEntry (S.SelectItemAs itemName aliasName) = SelectItemAs itemName aliasName
 
 resolveExportSpec :: S.ExportSpec -> ExportSpec
 resolveExportSpec S.ExportAll = ExportAll
