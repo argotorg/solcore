@@ -20,12 +20,12 @@ function myrevert( msg: (word, word) ) -> () {
   }
 }
 
-function require(cond: bool, msg: (word, word) ) -> () {
+function myrequire(cond: bool, msg: (word, word) ) -> () {
       if( not(cond) ) { myrevert(msg); }
 }
 
 function require1(cond: bool) -> () {
-    require (cond, (0x72657175697265313a204641494c, 14) /* "require1: FAIL" */ );
+    myrequire (cond, (0x72657175697265313a204641494c, 14) /* "require1: FAIL" */ );
 }
 
 
