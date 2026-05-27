@@ -104,7 +104,8 @@ spec =
       runTestForFile "126nanoerc20.solc" specFolder,
       runTestForFile "127microerc20.solc" specFolder,
       runTestForFile "128minierc20.solc" specFolder,
-      runTestForFile "129arraystorage.solc" specFolder
+      runTestForFile "129arraystorage.solc" specFolder,
+      runTestForFile "130arrayfield.solc" specFolder
     ]
   where
     specFolder = "./test/examples/spec"

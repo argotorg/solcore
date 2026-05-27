@@ -804,7 +804,7 @@ forall t . instance returndata(t) : Typedef(word) {
 
 data mapping(member, index) = mapping(word) ;
 
-data array(member, index) = array(word) ;
+data array(member) = array(word) ;
 
 // --- Low-level memory ops
 
@@ -1728,22 +1728,22 @@ instance mapping(index, member):StorageSize {
     }
 }
 
-forall member index . instance array(member, index):Typedef(word) {
-    function rep(x:array(member, index)) -> word {
+forall member . instance array(member):Typedef(word) {
+    function rep(x:array(member)) -> word {
         match x {
             | array(y) => return y;
         }
     }
-    function abs(x:word) -> array(member, index) {
+    function abs(x:word) -> array(member) {
         return array(x);
     }
 }
 
 // cf https://docs.soliditylang.org/en/latest/internals/layout_in_storage.html#mappings-and-dynamic-arrays
 // the slot itself stores the array length; elements live at keccak256(slot) + i
-forall member index .
-instance array(member, index):StorageSize {
-    function size(x:Proxy(array(member, index))) -> word {
+forall member .
+instance array(member):StorageSize {
+    function size(x:Proxy(array(member))) -> word {
         return 1;
     }
 }
@@ -1859,13 +1859,13 @@ forall k v.
     }
 }
 
-forall v i.
- instance storage(array(v,i)):CanStore(storage(array(v,i))) {
-    function store(l:storage(array(v,i)), r:storage(array(v,i))) -> () {
+forall v.
+ instance storage(array(v)):CanStore(storage(array(v))) {
+    function store(l:storage(array(v)), r:storage(array(v))) -> () {
       // StorageType.store(Typedef.rep(l), r);
       unimplemented();
     }
-    function load(l:storage(array(v,i))) -> storage(array(v,i)) {
+    function load(l:storage(array(v))) -> storage(array(v)) {
       // return StorageType.load(Typedef.rep(l));
       unimplemented();
       return l;
@@ -2011,8 +2011,8 @@ instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
 }
 
 forall a i . i:Typedef(word) =>
-instance (storage(array(a,i)), i): LValueIdxAccess(storage(a)) {
-  function lookup(xi : (storage(array(a,i)), i)) -> storage(a) {
+instance (storage(array(a)), i): LValueIdxAccess(storage(a)) {
+  function lookup(xi : (storage(array(a)), i)) -> storage(a) {
     match(xi) {
       | (x, i) => return storage(addWord(hash1(Typedef.rep(x)), Typedef.rep(i)));
     }
@@ -2020,8 +2020,8 @@ instance (storage(array(a,i)), i): LValueIdxAccess(storage(a)) {
 }
 
 forall a i . storage(a):CanStore(a), i:Typedef(word) =>
-instance (storage(array(a,i)), i): RValueIdxAccess(a) {
-  function lookup(xi : (storage(array(a,i)), i)) -> a {
+instance (storage(array(a)), i): RValueIdxAccess(a) {
+  function lookup(xi : (storage(array(a)), i)) -> a {
     return readStorage(LValueIdxAccess.lookup(xi));
   }
 }
@@ -2056,12 +2056,12 @@ function ridx( m: storage(mapping(i,a)), x:i) -> a {
 }
 
 forall a i . i:Typedef(word) =>
-function larr( m: storage(array(a,i)), x:i) -> storage(a) {
+function larr( m: storage(array(a)), x:i) -> storage(a) {
   return storage(addWord(hash1(Typedef.rep(m)), Typedef.rep(x)));
 }
 
 forall a i . i:Typedef(word), a:StorageType  =>
-function rarr( m: storage(array(a,i)), x:i) -> a {
+function rarr( m: storage(array(a)), x:i) -> a {
   return StorageType.load(addWord(hash1(Typedef.rep(m)), Typedef.rep(x)));
 }
 
