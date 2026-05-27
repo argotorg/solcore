@@ -1,4 +1,4 @@
-import std.opcodes.{add, mstore, mload, mcopy, sstore, sload, calldataload, calldatacopy, iszero, keccak256};
+import std.opcodes.{add, mstore, mload, mcopy, sstore, sload, calldataload, calldatacopy, iszero, keccak256, log1 as log1_, invalid};
 //import std.opcodes.{not} as not_;
 
 pragma no-patterson-condition ABIEncode, Num;
@@ -163,10 +163,8 @@ export {
 forall t.t:Typedef(word) =>
 function log1(v:t, topic:word) -> () {
   let w : word = Typedef.rep(v);
-  assembly {
-    mstore(0,w)
-    log1(0,32,topic)
-  }
+  mstore(0, w);
+  log1_(0, 32, topic);
 }
 
 function unimplemented() -> () {
@@ -220,9 +218,7 @@ function revertWithError(e:Error) -> () {
 
 function assert(cond: bool) -> () {
     if (!cond) {
-        assembly {
-            invalid()
-        }
+        invalid();
     }
 }
 
@@ -583,22 +579,14 @@ instance word:Bounded {
 }
 
 function hash1(x: word) -> word {
-  let result: word = 0;
-  assembly {
-    mstore(0, x)
-    result := keccak256(0,32)
-  }
-  return result;
+    mstore(0, x);
+    return keccak256(0, 32);
 }
 
 function hash2(x: word, y: word) -> word {
-  let result: word = 0;
-  assembly {
-    mstore(0, x)
-    mstore(32, y)
-    result := keccak256(0,64)
-  }
-  return result;
+    mstore(0, x);
+    mstore(32, y);
+    return keccak256(0, 64);
 }
 
 // --- Value Types ---
