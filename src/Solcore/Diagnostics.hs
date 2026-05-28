@@ -252,7 +252,7 @@ findTextSpansInSource source needle
           spanStartColumn = column,
           spanEndLine = lineNo,
           spanEndColumn = column + needleLen
-      }
+        }
 
 combineSourceSpans :: SourceSpan -> SourceSpan -> SourceSpan
 combineSourceSpans left right

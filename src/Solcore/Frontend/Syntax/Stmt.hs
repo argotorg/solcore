@@ -4,10 +4,10 @@ module Solcore.Frontend.Syntax.Stmt where
 
 import Data.Generics (Data, Typeable)
 import Language.Yul
-import Prelude hiding (exp)
 import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Syntax.Location
 import Solcore.Frontend.Syntax.Ty
+import Prelude hiding (exp)
 
 -- definition of statements
 

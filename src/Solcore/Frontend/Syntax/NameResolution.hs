@@ -528,252 +528,252 @@ instance Resolve S.Exp where
 resolveExp :: S.Exp -> ResolveM (Exp Name)
 resolveExp (S.Lit l) = Lit <$> resolve l
 resolveExp e@(S.ExpDotName n es) =
-    Con (dotConstructorMarker n) <$> resolve es `wrapError` e
+  Con (dotConstructorMarker n) <$> resolve es `wrapError` e
 resolveExp e@(S.Lam ps bd mt) =
-    withLocalCtx $ do
-      ps' <- resolve ps `wrapError` e
-      mt' <- resolve mt `wrapError` e
-      let args = map paramName ps'
-      mapM_ addParameter args
-      bd' <- resolve bd `wrapError` e
-      pure (Lam ps' bd' mt')
+  withLocalCtx $ do
+    ps' <- resolve ps `wrapError` e
+    mt' <- resolve mt `wrapError` e
+    let args = map paramName ps'
+    mapM_ addParameter args
+    bd' <- resolve bd `wrapError` e
+    pure (Lam ps' bd' mt')
 resolveExp (S.TyExp e t) =
-    TyExp <$> resolve e <*> resolve t
+  TyExp <$> resolve e <*> resolve t
 resolveExp c@(S.ExpVar me n) =
-    do
-      me' <- resolve me `wrapError` c
-      dt <- lookupName n
-      case (me', dt) of
-        -- local variables
-        (_, Just TLocalVar) -> pure (Var n)
-        -- function parameters
-        (_, Just TParameter) -> pure (Var n)
-        -- field access
-        (Nothing, Just TField) ->
-          pure (FieldAccess Nothing n)
-        -- function reference
-        (_, Just TFunction) -> do
-          dt1 <- gets (Map.lookup n . fieldEnv)
-          case dt1 of
-            Just TField -> pure (FieldAccess Nothing n)
-            _ -> pure (Var n)
-        -- data constructor
-        (Nothing, Just TDataCon) -> do
-          if isPrimitiveConstructor n
-            then pure (Con n [])
-            else case splitQualifiedName n of
-              Just (qualifier, conName) ->
-                Con <$> resolveQualifiedConstructorName qualifier conName <*> pure []
-              Nothing -> unqualifiedConstructorError n
-        (Just (Var d), Just TDataCon) ->
-          Con <$> resolveQualifiedConstructorName d n <*> pure []
-        (Just (Var d), Just TTyCon) -> do
-          let qn = qualifyName d n
-          qdt <- lookupName qn
-          case qdt of
-            Just TFunction -> pure (Var qn)
-            Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
-            Just TTyCon -> pure (Var qn)
-            Just TModule -> pure (Var qn)
-            _ -> undefinedName n
-        -- class name
-        (_, Just TClass) -> pure (Var n)
-        -- type constructor used as a constructor qualifier
-        (Nothing, Just TTyCon) -> do
-          sameName <- isSameNameConstructor n
-          if sameName
-            then Con <$> resolveSameNameConstructorName n <*> pure []
-            else pure (Var n)
-        -- imported module qualifier name
-        (_, Just TModule) -> pure (Var n)
-        -- module-qualified function or constructor reference
-        (Just (Var d), Nothing) -> do
-          let qn = qualifyName d n
-          qdt <- lookupName qn
-          case qdt of
-            Just TFunction -> pure (Var qn)
-            Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
-            Just TTyCon -> pure (Var qn)
-            Just TModule -> pure (Var qn)
-            _ -> do
-              let fallback = qualifyName (constructorLeafName d) n
-              fdt <- lookupName fallback
-              case fdt of
-                Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
-                _ -> undefinedName n
-        _ -> do
-          sameName <- isSameNameConstructor n
-          if sameName
-            then Con <$> resolveSameNameConstructorName n <*> pure []
-            else do
-              hasQualified <- hasQualifiedConstructorLeaf n
-              if hasQualified
-                then unqualifiedConstructorError n
-                else undefinedName n
+  do
+    me' <- resolve me `wrapError` c
+    dt <- lookupName n
+    case (me', dt) of
+      -- local variables
+      (_, Just TLocalVar) -> pure (Var n)
+      -- function parameters
+      (_, Just TParameter) -> pure (Var n)
+      -- field access
+      (Nothing, Just TField) ->
+        pure (FieldAccess Nothing n)
+      -- function reference
+      (_, Just TFunction) -> do
+        dt1 <- gets (Map.lookup n . fieldEnv)
+        case dt1 of
+          Just TField -> pure (FieldAccess Nothing n)
+          _ -> pure (Var n)
+      -- data constructor
+      (Nothing, Just TDataCon) -> do
+        if isPrimitiveConstructor n
+          then pure (Con n [])
+          else case splitQualifiedName n of
+            Just (qualifier, conName) ->
+              Con <$> resolveQualifiedConstructorName qualifier conName <*> pure []
+            Nothing -> unqualifiedConstructorError n
+      (Just (Var d), Just TDataCon) ->
+        Con <$> resolveQualifiedConstructorName d n <*> pure []
+      (Just (Var d), Just TTyCon) -> do
+        let qn = qualifyName d n
+        qdt <- lookupName qn
+        case qdt of
+          Just TFunction -> pure (Var qn)
+          Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+          Just TTyCon -> pure (Var qn)
+          Just TModule -> pure (Var qn)
+          _ -> undefinedName n
+      -- class name
+      (_, Just TClass) -> pure (Var n)
+      -- type constructor used as a constructor qualifier
+      (Nothing, Just TTyCon) -> do
+        sameName <- isSameNameConstructor n
+        if sameName
+          then Con <$> resolveSameNameConstructorName n <*> pure []
+          else pure (Var n)
+      -- imported module qualifier name
+      (_, Just TModule) -> pure (Var n)
+      -- module-qualified function or constructor reference
+      (Just (Var d), Nothing) -> do
+        let qn = qualifyName d n
+        qdt <- lookupName qn
+        case qdt of
+          Just TFunction -> pure (Var qn)
+          Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+          Just TTyCon -> pure (Var qn)
+          Just TModule -> pure (Var qn)
+          _ -> do
+            let fallback = qualifyName (constructorLeafName d) n
+            fdt <- lookupName fallback
+            case fdt of
+              Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+              _ -> undefinedName n
+      _ -> do
+        sameName <- isSameNameConstructor n
+        if sameName
+          then Con <$> resolveSameNameConstructorName n <*> pure []
+          else do
+            hasQualified <- hasQualifiedConstructorLeaf n
+            if hasQualified
+              then unqualifiedConstructorError n
+              else undefinedName n
 resolveExp x@(S.ExpName me n es) =
-    do
-      me' <- resolve me `wrapError` x
-      es' <- resolve es `wrapError` x
-      dt <- lookupName n
-      case (me', dt) of
-        -- normal function call
-        (Nothing, Just TFunction) ->
-          pure (Call Nothing n es')
-        (Nothing, Just TTyCon) -> do
-          sameName <- isSameNameConstructor n
-          if sameName
-            then Con <$> resolveSameNameConstructorName n <*> pure es'
-            else undefinedName n
-        -- data constructors
-        (Nothing, Just TDataCon) -> do
-          if isPrimitiveConstructor n
-            then pure (Con n es')
-            else case splitQualifiedName n of
-              Just (qualifier, conName) ->
-                Con <$> resolveQualifiedConstructorName qualifier conName <*> pure es'
-              Nothing -> unqualifiedConstructorError n
-        (Just (Var d), Just TDataCon) ->
-          Con <$> resolveQualifiedConstructorName d n <*> pure es'
-        (Just (Var c), Just TTyCon) -> do
-          let qn = qualifyName c n
-          qdt <- lookupName qn
-          case qdt of
-            Just TFunction -> pure (Call Nothing qn es')
-            Just TDataCon -> Con <$> resolveQualifiedConstructorName c n <*> pure es'
-            _ -> undefinedName n
-        -- class functions
-        (Just (Var c), Just TFunction) -> do
-          ct <- lookupName c
-          let qn = qualifyName c n
-          case ct of
-            Just TClass ->
-              pure (Call Nothing qn es')
-            Just TModule -> do
-              cf <- lookupName qn
-              case cf of
-                Just TFunction -> pure (Call Nothing qn es')
-                Just TDataCon -> Con <$> resolveQualifiedConstructorName c n <*> pure es'
-                _ -> undefinedName n
-            _ -> undefinedName c
-        (Just (Var c), Nothing) -> do
-          ct <- lookupName c
-          let qn = qualifyName c n
-          cf <- lookupName qn
-          case (ct, cf) of
-            (Just TClass, Just TFunction) ->
-              pure (Call Nothing qn es')
-            (_, Just TFunction) ->
-              pure (Call Nothing qn es')
-            (_, Just TDataCon) ->
-              Con <$> resolveQualifiedConstructorName c n <*> pure es'
-            _ -> do
-              let fallback = qualifyName (constructorLeafName c) n
-              fdt <- lookupName fallback
-              case fdt of
-                Just TDataCon ->
-                  Con <$> resolveQualifiedConstructorName c n <*> pure es'
-                _ -> undefinedName n
-        (Just (Var c), Just TTyVar) -> do
-          let qn = qualifyName c n
-          cf <- gets (Map.lookup qn . scopeEnv)
-          case cf of
-            Just TFunction -> pure (Call Nothing qn es')
-            _ -> undefinedName n
-        -- variables
-        (_, Just TLocalVar) ->
-          pure (Call Nothing n es')
-        (_, Just TParameter) ->
-          pure (Call Nothing n es')
-        -- error
-        _ -> do
-          sameName <- isSameNameConstructor n
-          if sameName
-            then Con <$> resolveSameNameConstructorName n <*> pure es'
-            else do
-              hasQualified <- hasQualifiedConstructorLeaf n
-              if hasQualified
-                then unqualifiedConstructorError n
-                else undefinedName n
+  do
+    me' <- resolve me `wrapError` x
+    es' <- resolve es `wrapError` x
+    dt <- lookupName n
+    case (me', dt) of
+      -- normal function call
+      (Nothing, Just TFunction) ->
+        pure (Call Nothing n es')
+      (Nothing, Just TTyCon) -> do
+        sameName <- isSameNameConstructor n
+        if sameName
+          then Con <$> resolveSameNameConstructorName n <*> pure es'
+          else undefinedName n
+      -- data constructors
+      (Nothing, Just TDataCon) -> do
+        if isPrimitiveConstructor n
+          then pure (Con n es')
+          else case splitQualifiedName n of
+            Just (qualifier, conName) ->
+              Con <$> resolveQualifiedConstructorName qualifier conName <*> pure es'
+            Nothing -> unqualifiedConstructorError n
+      (Just (Var d), Just TDataCon) ->
+        Con <$> resolveQualifiedConstructorName d n <*> pure es'
+      (Just (Var c), Just TTyCon) -> do
+        let qn = qualifyName c n
+        qdt <- lookupName qn
+        case qdt of
+          Just TFunction -> pure (Call Nothing qn es')
+          Just TDataCon -> Con <$> resolveQualifiedConstructorName c n <*> pure es'
+          _ -> undefinedName n
+      -- class functions
+      (Just (Var c), Just TFunction) -> do
+        ct <- lookupName c
+        let qn = qualifyName c n
+        case ct of
+          Just TClass ->
+            pure (Call Nothing qn es')
+          Just TModule -> do
+            cf <- lookupName qn
+            case cf of
+              Just TFunction -> pure (Call Nothing qn es')
+              Just TDataCon -> Con <$> resolveQualifiedConstructorName c n <*> pure es'
+              _ -> undefinedName n
+          _ -> undefinedName c
+      (Just (Var c), Nothing) -> do
+        ct <- lookupName c
+        let qn = qualifyName c n
+        cf <- lookupName qn
+        case (ct, cf) of
+          (Just TClass, Just TFunction) ->
+            pure (Call Nothing qn es')
+          (_, Just TFunction) ->
+            pure (Call Nothing qn es')
+          (_, Just TDataCon) ->
+            Con <$> resolveQualifiedConstructorName c n <*> pure es'
+          _ -> do
+            let fallback = qualifyName (constructorLeafName c) n
+            fdt <- lookupName fallback
+            case fdt of
+              Just TDataCon ->
+                Con <$> resolveQualifiedConstructorName c n <*> pure es'
+              _ -> undefinedName n
+      (Just (Var c), Just TTyVar) -> do
+        let qn = qualifyName c n
+        cf <- gets (Map.lookup qn . scopeEnv)
+        case cf of
+          Just TFunction -> pure (Call Nothing qn es')
+          _ -> undefinedName n
+      -- variables
+      (_, Just TLocalVar) ->
+        pure (Call Nothing n es')
+      (_, Just TParameter) ->
+        pure (Call Nothing n es')
+      -- error
+      _ -> do
+        sameName <- isSameNameConstructor n
+        if sameName
+          then Con <$> resolveSameNameConstructorName n <*> pure es'
+          else do
+            hasQualified <- hasQualifiedConstructorLeaf n
+            if hasQualified
+              then unqualifiedConstructorError n
+              else undefinedName n
 resolveExp c@(S.ExpPlus e1 e2) =
-    do
-      e1' <- resolve e1 `wrapError` c
-      e2' <- resolve e2 `wrapError` c
-      let fun = QualName (Name "Add") "add"
-      pure $ Call Nothing fun [e1', e2']
+  do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
+    let fun = QualName (Name "Add") "add"
+    pure $ Call Nothing fun [e1', e2']
 resolveExp c@(S.ExpMinus e1 e2) =
-    do
-      e1' <- resolve e1 `wrapError` c
-      e2' <- resolve e2 `wrapError` c
-      let fun = QualName (Name "Sub") "sub"
-      pure $ Call Nothing fun [e1', e2']
+  do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
+    let fun = QualName (Name "Sub") "sub"
+    pure $ Call Nothing fun [e1', e2']
 resolveExp c@(S.ExpTimes e1 e2) =
-    do
-      e1' <- resolve e1 `wrapError` c
-      e2' <- resolve e2 `wrapError` c
-      let fun = QualName (Name "Mul") "mul"
-      pure $ Call Nothing fun [e1', e2']
+  do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
+    let fun = QualName (Name "Mul") "mul"
+    pure $ Call Nothing fun [e1', e2']
 resolveExp c@(S.ExpDivide e1 e2) =
-    do
-      e1' <- resolve e1 `wrapError` c
-      e2' <- resolve e2 `wrapError` c
-      let fun = QualName (Name "Div") "div"
-      pure $ Call Nothing fun [e1', e2']
+  do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
+    let fun = QualName (Name "Div") "div"
+    pure $ Call Nothing fun [e1', e2']
 resolveExp c@(S.ExpModulo e1 e2) =
-    do
-      e1' <- resolve e1 `wrapError` c
-      e2' <- resolve e2 `wrapError` c
-      let fun = QualName (Name "Mod") "mod"
-      pure $ Call Nothing fun [e1', e2']
+  do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
+    let fun = QualName (Name "Mod") "mod"
+    pure $ Call Nothing fun [e1', e2']
 resolveExp c@(S.ExpIndexed array idx) = do
-    arr' <- resolve array `wrapError` c
-    idx' <- resolve idx `wrapError` c
-    pure $ Indexed arr' idx'
+  arr' <- resolve array `wrapError` c
+  idx' <- resolve idx `wrapError` c
+  pure $ Indexed arr' idx'
 resolveExp c@(S.ExpLT e1 e2) = do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "lt") [e1', e2']
+  e1' <- resolve e1 `wrapError` c
+  e2' <- resolve e2 `wrapError` c
+  pure $ Call Nothing (Name "lt") [e1', e2']
 resolveExp c@(S.ExpGT e1 e2) = do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    let fun = QualName (Name "Ord") "gt"
-    pure $ Call Nothing fun [e1', e2']
+  e1' <- resolve e1 `wrapError` c
+  e2' <- resolve e2 `wrapError` c
+  let fun = QualName (Name "Ord") "gt"
+  pure $ Call Nothing fun [e1', e2']
 resolveExp c@(S.ExpLE e1 e2) = do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "le") [e1', e2']
+  e1' <- resolve e1 `wrapError` c
+  e2' <- resolve e2 `wrapError` c
+  pure $ Call Nothing (Name "le") [e1', e2']
 resolveExp c@(S.ExpGE e1 e2) = do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "ge") [e1', e2']
+  e1' <- resolve e1 `wrapError` c
+  e2' <- resolve e2 `wrapError` c
+  pure $ Call Nothing (Name "ge") [e1', e2']
 resolveExp c@(S.ExpEE e1 e2) = do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    let fun = QualName (Name "Eq") "eq"
-    pure $ Call Nothing fun [e1', e2']
+  e1' <- resolve e1 `wrapError` c
+  e2' <- resolve e2 `wrapError` c
+  let fun = QualName (Name "Eq") "eq"
+  pure $ Call Nothing fun [e1', e2']
 resolveExp c@(S.ExpNE e1 e2) = do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "ne") [e1', e2']
+  e1' <- resolve e1 `wrapError` c
+  e2' <- resolve e2 `wrapError` c
+  pure $ Call Nothing (Name "ne") [e1', e2']
 resolveExp c@(S.ExpLAnd e1 e2) = do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "and") [e1', e2']
+  e1' <- resolve e1 `wrapError` c
+  e2' <- resolve e2 `wrapError` c
+  pure $ Call Nothing (Name "and") [e1', e2']
 resolveExp c@(S.ExpLOr e1 e2) = do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    pure $ Call Nothing (Name "or") [e1', e2']
+  e1' <- resolve e1 `wrapError` c
+  e2' <- resolve e2 `wrapError` c
+  pure $ Call Nothing (Name "or") [e1', e2']
 resolveExp c@(S.ExpLNot e) = do
-    e' <- resolve e `wrapError` c
-    pure $ Call Nothing (Name "not") [e']
+  e' <- resolve e `wrapError` c
+  pure $ Call Nothing (Name "not") [e']
 resolveExp (S.ExpCond e1 e2 e3) =
-    Cond <$> resolve e1 <*> resolve e2 <*> resolve e3
+  Cond <$> resolve e1 <*> resolve e2 <*> resolve e3
 resolveExp (S.ExpAt t) = do
-    t' <- resolve t
-    pure
-      ( TyExp
-          (Con (Name "Proxy") [])
-          (TyCon (Name "Proxy") [t'])
-      )
+  t' <- resolve t
+  pure
+    ( TyExp
+        (Con (Name "Proxy") [])
+        (TyCon (Name "Proxy") [t'])
+    )
 
 instance Resolve S.Literal where
   type Result S.Literal = Literal
@@ -1218,7 +1218,6 @@ diagnosticValue code message labels notes help =
       diagnosticNotes = notes,
       diagnosticHelp = help
     }
-
 
 primaryNameLabel :: String -> Name -> Maybe Label
 primaryNameLabel message identName =

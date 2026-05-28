@@ -871,9 +871,9 @@ primaryNameLabel message identName =
     pure
       Label
         { labelSpan = sourceSpan,
-        labelStyle = Primary,
-        labelMessage = Just message
-      }
+          labelStyle = Primary,
+          labelMessage = Just message
+        }
 
 primarySourceLabel :: (HasSourceSpan source) => String -> source -> Maybe Label
 primarySourceLabel message source =

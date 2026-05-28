@@ -1,7 +1,7 @@
 module Solcore.Pipeline.SolcorePipeline where
 
-import Control.Monad
 import Control.Applicative ((<|>))
+import Control.Monad
 import Control.Monad.Except
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (first)
@@ -26,9 +26,9 @@ import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Diagnostics
-  ( Diagnostic (..),
+  ( CompilerError (..),
+    Diagnostic (..),
     DiagnosticCode (..),
-    CompilerError (..),
     Label (..),
     LabelStyle (..),
     Severity (..),
@@ -37,13 +37,13 @@ import Solcore.Diagnostics
     SourceSpan (..),
     addDiagnosticHelp,
     addDiagnosticNote,
-    diagnosticMessage,
-    diagnosticPrimarySpan,
-    defaultDiagnosticRenderOptions,
-    emptySourceMap,
     compilerErrorDiagnostics,
     compilerErrorFromString,
     compilerErrorText,
+    defaultDiagnosticRenderOptions,
+    diagnosticMessage,
+    diagnosticPrimarySpan,
+    emptySourceMap,
     findTextSpansInSource,
     findTokenSpansInSource,
     insertSourceFile,

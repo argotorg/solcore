@@ -3,9 +3,9 @@ module ModuleTypeCheckTests
   )
 where
 
+import Solcore.Diagnostics (CompilerError, compilerErrorText)
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcModule
-import Solcore.Diagnostics (CompilerError, compilerErrorText)
 import Solcore.Pipeline.Options (noDesugarOpt)
 import Test.Tasty
 import Test.Tasty.HUnit

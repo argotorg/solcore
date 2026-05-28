@@ -6,10 +6,10 @@ import Data.Generics (Data, Typeable)
 import Data.List (union)
 import Data.List.NonEmpty
 import Language.Yul
-import Prelude hiding (exp)
 import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Syntax.Location
 import Solcore.Frontend.Syntax.Name
+import Prelude hiding (exp)
 
 -- compilation unit
 
