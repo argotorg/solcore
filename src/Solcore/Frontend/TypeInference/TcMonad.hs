@@ -502,7 +502,13 @@ checkSynonym (TySym n vs t) =
 
 duplicatedSynonymDecl :: Name -> TcM a
 duplicatedSynonymDecl n =
-  tcmError $ unwords ["Duplicated type synonym definition:", pretty n]
+  tcDiagnosticErrorAtName
+    "SC0226"
+    ("duplicate type synonym definition: " ++ pretty n)
+    n
+    "duplicate type synonym"
+    []
+    ["rename or remove the duplicate type synonym"]
 
 -- manipulating the instance environment
 
@@ -697,6 +703,16 @@ contextLabelMessage diagnostic =
     Just (DiagnosticCode "SC0207") -> "undefined class"
     Just (DiagnosticCode "SC0208") -> "undefined type synonym"
     Just (DiagnosticCode "SC0209") -> "type is not polymorphic enough"
+    Just (DiagnosticCode "SC0220") -> "incomplete signature"
+    Just (DiagnosticCode "SC0221") -> "incomplete method signature"
+    Just (DiagnosticCode "SC0222") -> "return before end of block"
+    Just (DiagnosticCode "SC0223") -> "unsolved constraint"
+    Just (DiagnosticCode "SC0224") -> "shorthand constructor"
+    Just (DiagnosticCode "SC0225") -> "duplicate function"
+    Just (DiagnosticCode "SC0226") -> "duplicate type synonym"
+    Just (DiagnosticCode "SC0227") -> "duplicate class"
+    Just (DiagnosticCode "SC0228") -> "duplicate class method"
+    Just (DiagnosticCode "SC0229") -> "duplicate type"
     _ -> "diagnostic reported here"
 
 contextSourceSpan :: (Data a) => a -> Maybe SourceSpan
@@ -831,6 +847,10 @@ tcDiagnosticErrorAtName :: String -> String -> Name -> String -> [String] -> [St
 tcDiagnosticErrorAtName code message identName label notes help =
   tcDiagnosticErrorWithLabels code message (maybe [] pure (primaryNameLabel label identName)) notes help
 
+tcDiagnosticErrorAtSource :: (HasSourceSpan source) => String -> String -> source -> String -> [String] -> [String] -> TcM a
+tcDiagnosticErrorAtSource code message source label notes help =
+  tcDiagnosticErrorWithLabels code message (maybe [] pure (primarySourceLabel label source)) notes help
+
 tcDiagnosticErrorWithLabels :: String -> String -> [Label] -> [String] -> [String] -> TcM a
 tcDiagnosticErrorWithLabels code message labels notes help =
   throwError $
@@ -851,9 +871,68 @@ primaryNameLabel message identName =
     pure
       Label
         { labelSpan = sourceSpan,
+        labelStyle = Primary,
+        labelMessage = Just message
+      }
+
+primarySourceLabel :: (HasSourceSpan source) => String -> source -> Maybe Label
+primarySourceLabel message source =
+  do
+    sourceSpan <- sourceSpanOf source
+    pure
+      Label
+        { labelSpan = sourceSpan,
           labelStyle = Primary,
           labelMessage = Just message
         }
+
+topLevelFunctionAnnotationError :: Signature Name -> TcM a
+topLevelFunctionAnnotationError sig =
+  tcDiagnosticErrorAtName
+    "SC0220"
+    "top-level function must have complete type annotations"
+    (sigName sig)
+    "incomplete signature"
+    ["signature: " ++ pretty sig]
+    ["annotate every parameter (name : Type) and provide a return type (-> Type)"]
+
+methodAnnotationError :: Signature Name -> TcM a
+methodAnnotationError sig =
+  tcDiagnosticErrorAtName
+    "SC0221"
+    "class and instance methods must have complete type signatures"
+    (sigName sig)
+    "incomplete method signature"
+    ["signature: " ++ pretty sig]
+    ["annotate every method parameter and provide a return type"]
+
+illegalReturnStatement :: Stmt Name -> TcM a
+illegalReturnStatement stmt =
+  tcDiagnosticErrorAtSource
+    "SC0222"
+    "illegal return statement"
+    stmt
+    "return before end of block"
+    ["return statements must be the final statement in a block"]
+    []
+
+cannotEntail :: Pred -> [String] -> TcM a
+cannotEntail predValue notes =
+  tcDiagnosticError
+    "SC0223"
+    ("cannot entail: " ++ pretty predValue)
+    notes
+    ["add a matching instance or strengthen the surrounding type context"]
+
+shorthandConstructorError :: String -> Name -> [String] -> TcM a
+shorthandConstructorError message constructorName notes =
+  tcDiagnosticErrorAtName
+    "SC0224"
+    message
+    constructorName
+    "shorthand constructor"
+    notes
+    ["use a constructor that is visible for the expected type"]
 
 typeAlreadyDefinedError :: DataTy -> Name -> TcM a
 typeAlreadyDefinedError d n =
@@ -861,13 +940,13 @@ typeAlreadyDefinedError d n =
     -- get type info
     di <- askTypeInfo n
     d' <- dataTyFromInfo n di `wrapError` d
-    tcmError $
-      unlines
-        [ "Duplicated type definition for " ++ pretty n ++ ":",
-          pretty d,
-          "and",
-          pretty d'
-        ]
+    tcDiagnosticErrorAtName
+      "SC0229"
+      ("duplicate type definition: " ++ pretty n)
+      n
+      "duplicate type"
+      ["new definition: " ++ pretty d, "existing definition: " ++ pretty d']
+      ["rename or remove the duplicate type definition"]
 
 dataTyFromInfo :: Name -> TypeInfo -> TcM DataTy
 dataTyFromInfo n (TypeInfo _ cs _) =

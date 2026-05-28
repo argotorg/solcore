@@ -520,11 +520,23 @@ signatureError n v (Signature _ methodCtx f _ _) t
 
 duplicatedClassDecl :: Name -> TcM ()
 duplicatedClassDecl n =
-  tcmError $ "Duplicated class definition:" ++ pretty n
+  tcDiagnosticErrorAtName
+    "SC0227"
+    ("duplicate class definition: " ++ pretty n)
+    n
+    "duplicate class"
+    []
+    ["rename or remove the duplicate class definition"]
 
 duplicatedClassMethod :: Name -> TcM ()
 duplicatedClassMethod n =
-  tcmError $ "Duplicated class method definition:" ++ pretty n
+  tcDiagnosticErrorAtName
+    "SC0228"
+    ("duplicate class method definition: " ++ pretty n)
+    n
+    "duplicate class method"
+    []
+    ["rename or remove the duplicate class method"]
 
 invalidPragmaDecl :: [Pragma] -> TcM ()
 invalidPragmaDecl ps =

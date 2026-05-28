@@ -68,18 +68,18 @@ diagnosticCliTests =
             "note: module typecheck failed for",
             "      <cwd>/test/diagnostics/type-mismatch.solc (no desugaring)"
           ],
-      testCase "generic typecheck error has fallback span" $
+      testCase "missing signature uses signature span" $
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/missing-signature.solc", "--no-specialise"]
-          [ "error[SC0299]: Top-level function must have complete type annotations:",
+          [ "error[SC0220]: top-level function must have complete type annotations",
             "  --> <cwd>/test/diagnostics/missing-signature.solc:1:10",
             "  |",
             "1 | function foo() {",
-            "  |          ^^^ diagnostic reported here",
-            "note: function foo ()",
-            "note: Annotate every parameter (name : Type) and provide a return type (-> Type).",
+            "  |          ^^^ incomplete signature",
+            "note: signature: function foo ()",
             "note: module typecheck failed for",
-            "      <cwd>/test/diagnostics/missing-signature.solc (no desugaring)"
+            "      <cwd>/test/diagnostics/missing-signature.solc (no desugaring)",
+            "help: annotate every parameter (name : Type) and provide a return type (-> Type)"
           ],
       testCase "polymorphic type error uses signature span" $
         expectFailure
@@ -106,12 +106,11 @@ diagnosticCliTests =
       testCase "missing instance" $
         expectFailure
           ["--root", "test/examples/cases", "--file", "test/examples/cases/missing-instance.solc", "--no-specialise"]
-          [ "error[SC0299]: Cannot entail:",
+          [ "error[SC0223]: cannot entail: word : Typedef (word)",
             "  --> <cwd>/test/examples/cases/missing-instance.solc:12:14",
             "   |",
             "12 |     function load(ptr:word) -> word {",
-            "   |              ^^^^ diagnostic reported here",
-            "note: word : Typedef (word)",
+            "   |              ^^^^ unsolved constraint",
             "note: using defined instances:",
             "note: in: function load (ptr : word) -> word {",
             "      return Typedef.abs(MemoryType.load(ptr) : word);",
@@ -123,24 +122,26 @@ diagnosticCliTests =
             "      }",
             "note: module typecheck failed for",
             "      <cwd>/test/examples/cases/missing-instance.solc (no",
-            "      desugaring)"
+            "      desugaring)",
+            "help: add a matching instance or strengthen the surrounding type context"
           ],
       testCase "dot shorthand constructor error" $
         expectFailure
           ["--root", "test/examples/cases", "--file", "test/examples/cases/dot-expression-unknown-fail.solc", "--no-specialise"]
-          [ "error[SC0299]: No matching constructor for shorthand expression:",
+          [ "error[SC0224]: no matching constructor for shorthand expression",
             "  --> <cwd>/test/examples/cases/dot-expression-unknown-fail.solc:4:11",
             "  |",
             "4 |   return .Nope(1);",
-            "  |           ^^^^ diagnostic reported here",
-            "note: .Nope",
+            "  |           ^^^^ shorthand constructor",
+            "note: constructor: .Nope",
             "note: in: .Nope(1)",
             "note: in: function bad () -> Option {",
             "      return .Nope(1);",
             "      }",
             "note: module typecheck failed for",
             "      <cwd>/test/examples/cases/dot-expression-unknown-fail.solc (no",
-            "      desugaring)"
+            "      desugaring)",
+            "help: use a constructor that is visible for the expected type"
           ],
       testCase "import error" $
         expectFailure

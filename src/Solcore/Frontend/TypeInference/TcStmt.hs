@@ -1258,17 +1258,11 @@ fullSignature :: Signature Name -> TcM ()
 fullSignature sig =
   unless
     (isFullyAnnotated sig)
-    (tcmError $ unlines ["Class and instance methods must have complete type signatures:", pretty sig])
+    (methodAnnotationError sig)
 
 requireAnnotations :: FunDef Name -> TcM ()
 requireAnnotations (FunDef sig _) =
-  unless (isFullyAnnotated sig) $
-    tcmError $
-      unlines
-        [ "Top-level function must have complete type annotations:",
-          "  " ++ pretty sig,
-          "Annotate every parameter (name : Type) and provide a return type (-> Type)."
-        ]
+  unless (isFullyAnnotated sig) (topLevelFunctionAnnotationError sig)
 
 isFullyAnnotated :: Signature Name -> Bool
 isFullyAnnotated (Signature _ _ _ ps rt) =
@@ -1359,8 +1353,8 @@ tcBodyWithExpectedReturn mExpectedReturn [s] =
   do
     (s', ps', t') <- tcStmtWithExpectedReturn mExpectedReturn s
     pure ([s'], ps', t')
-tcBodyWithExpectedReturn _ (Return _ : _) =
-  tcmError "Illegal return statement"
+tcBodyWithExpectedReturn _ (returnStmt@(Return _) : _) =
+  illegalReturnStatement returnStmt
 tcBodyWithExpectedReturn mExpectedReturn (s : ss) =
   do
     (s', ps', _) <- tcStmtWithExpectedReturn mExpectedReturn s
@@ -1436,28 +1430,25 @@ resolveDotExpressionConstructor dotName argTys mExpected = do
   candidates <- case mcandidates of
     Just xs -> pure xs
     Nothing ->
-      tcmError $
-        unlines
-          [ "Cannot resolve shorthand constructor expression without expected constructor type:",
-            pretty dotName
-          ]
+      shorthandConstructorError
+        "cannot resolve shorthand constructor expression without expected constructor type"
+        dotName
+        ["constructor: " ++ pretty dotName]
   valid <- filterM (\n -> constructorAcceptsArguments n argTys mExpected) (nub candidates)
   case valid of
     [] ->
-      tcmError $
-        unlines
-          [ "No matching constructor for shorthand expression:",
-            pretty dotName
-          ]
+      shorthandConstructorError
+        "no matching constructor for shorthand expression"
+        dotName
+        ["constructor: " ++ pretty dotName]
     [n] -> pure n
     xs ->
-      tcmError $
-        unlines
-          [ "Ambiguous shorthand constructor expression:",
-            pretty dotName,
-            "Candidates:",
-            unwords (map pretty xs)
-          ]
+      shorthandConstructorError
+        "ambiguous shorthand constructor expression"
+        dotName
+        [ "constructor: " ++ pretty dotName,
+          "candidates: " ++ unwords (map pretty xs)
+        ]
 
 constructorAcceptsArguments :: Name -> [Ty] -> Maybe Ty -> TcM Bool
 constructorAcceptsArguments n argTys mExpected = do
@@ -1498,27 +1489,24 @@ resolveDotPatternConstructor dotName expectedTy = do
   candidates <- case mcandidates of
     Just xs -> pure xs
     Nothing ->
-      tcmError $
-        unlines
-          [ "Cannot resolve shorthand constructor pattern without expected constructor type:",
-            pretty dotName
-          ]
+      shorthandConstructorError
+        "cannot resolve shorthand constructor pattern without expected constructor type"
+        dotName
+        ["constructor: " ++ pretty dotName]
   case nub candidates of
     [] ->
-      tcmError $
-        unlines
-          [ "No matching constructor for shorthand pattern:",
-            pretty dotName
-          ]
+      shorthandConstructorError
+        "no matching constructor for shorthand pattern"
+        dotName
+        ["constructor: " ++ pretty dotName]
     [n] -> pure n
     xs ->
-      tcmError $
-        unlines
-          [ "Ambiguous shorthand constructor pattern:",
-            pretty dotName,
-            "Candidates:",
-            unwords (map pretty xs)
-          ]
+      shorthandConstructorError
+        "ambiguous shorthand constructor pattern"
+        dotName
+        [ "constructor: " ++ pretty dotName,
+          "candidates: " ++ unwords (map pretty xs)
+        ]
 
 candidatesForDotPattern :: Name -> Ty -> TcM (Maybe [Name])
 candidatesForDotPattern dotName expectedTy = do
@@ -1812,7 +1800,13 @@ wrongPatternNumber qts ps =
 
 duplicatedFunDef :: Name -> TcM ()
 duplicatedFunDef n =
-  tcmError $ "Duplicated function definition:" ++ pretty n
+  tcDiagnosticErrorAtName
+    "SC0225"
+    ("duplicate function definition: " ++ pretty n)
+    n
+    "duplicate function"
+    []
+    ["rename or remove the duplicate function definition"]
 
 entailmentError :: [Pred] -> [Pred] -> TcM ()
 entailmentError base nonentail =
