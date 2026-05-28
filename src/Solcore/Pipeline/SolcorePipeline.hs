@@ -401,7 +401,6 @@ diagnosticSearchTerms diagnostic =
           ]
           (diagnosticMessage diagnostic),
         typeMismatchTerms diagnostic,
-        warningSearchTerms diagnostic,
         unknownImportTerms diagnostic,
         moduleReferenceTerms diagnostic,
         duplicateSearchTerms diagnostic,
@@ -465,37 +464,6 @@ typeMismatchTerms diagnostic =
   where
     inPrefix = "in: "
     isSmallNote note = length note <= 80 && '\n' `notElem` note
-
-warningSearchTerms :: Diagnostic -> [String]
-warningSearchTerms diagnostic =
-  case diagnosticCode diagnostic of
-    Just (DiagnosticCode "SC0301") ->
-      uniqueStrings (clauseSearchTerms diagnostic ++ matchContextTerms diagnostic)
-    Just (DiagnosticCode "SC0302") ->
-      uniqueStrings (matchContextTerms diagnostic)
-    _ -> []
-
-clauseSearchTerms :: Diagnostic -> [String]
-clauseSearchTerms diagnostic =
-  concatMap clauseTerms (diagnosticNotes diagnostic)
-  where
-    clauseTerms note = do
-      rest <- maybeToList (stripPrefix "clause: " note)
-      let clauseLine = takeWhile (/= '\n') rest
-          rowText =
-            trim $
-              takeWhile (/= '=') $
-                dropWhile (== '|') $
-                  trim (stripPrettyTypeAnnotations clauseLine)
-      rowText : splitCommaTerms rowText
-
-matchContextTerms :: Diagnostic -> [String]
-matchContextTerms diagnostic =
-  concatMap matchTerm (diagnosticNotes diagnostic)
-  where
-    matchTerm note
-      | "in: match" `isPrefixOf` note = ["match"]
-      | otherwise = []
 
 unknownImportTerms :: Diagnostic -> [String]
 unknownImportTerms diagnostic =
@@ -689,19 +657,6 @@ lastSegment =
 dropAt :: String -> String
 dropAt ('@' : rest) = rest
 dropAt path = path
-
-splitCommaTerms :: String -> [String]
-splitCommaTerms raw =
-  case break (== ',') raw of
-    (term, []) -> [trim term]
-    (term, _ : rest) -> trim term : splitCommaTerms rest
-
-stripPrettyTypeAnnotations :: String -> String
-stripPrettyTypeAnnotations [] = []
-stripPrettyTypeAnnotations ('<' : rest) =
-  stripPrettyTypeAnnotations (drop 1 (dropWhile (/= '>') rest))
-stripPrettyTypeAnnotations (c : rest) =
-  c : stripPrettyTypeAnnotations rest
 
 uniqueStrings :: [String] -> [String]
 uniqueStrings =

@@ -18,3 +18,6 @@ instance HasType Id where
   fv (Id _ t) = fv t
   mv (Id _ t) = mv t
   bv (Id _ t) = bv t
+
+instance HasSourceSpan Id where
+  sourceSpanOf = sourceSpanOf . idName
