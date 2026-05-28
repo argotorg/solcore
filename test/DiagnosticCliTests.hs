@@ -68,17 +68,18 @@ diagnosticCliTests =
             "note: module typecheck failed for",
             "      <cwd>/test/diagnostics/type-mismatch.solc (no desugaring)"
           ],
-      testCase "legacy typecheck error has fallback span" $
+      testCase "generic typecheck error has fallback span" $
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/missing-signature.solc", "--no-specialise"]
-          [ "error: module typecheck failed for <cwd>/test/diagnostics/missing-signature.solc (no desugaring):",
+          [ "error[SC0299]: Top-level function must have complete type annotations:",
             "  --> <cwd>/test/diagnostics/missing-signature.solc:1:10",
             "  |",
             "1 | function foo() {",
             "  |          ^^^ diagnostic reported here",
-            "note: Top-level function must have complete type annotations:",
             "note: function foo ()",
-            "note: Annotate every parameter (name : Type) and provide a return type (-> Type)."
+            "note: Annotate every parameter (name : Type) and provide a return type (-> Type).",
+            "note: module typecheck failed for",
+            "      <cwd>/test/diagnostics/missing-signature.solc (no desugaring)"
           ],
       testCase "polymorphic type error uses signature span" $
         expectFailure
@@ -100,6 +101,45 @@ diagnosticCliTests =
             "      }",
             "note: module typecheck failed for",
             "      <cwd>/test/diagnostics/not-polymorphic-enough.solc (no",
+            "      desugaring)"
+          ],
+      testCase "missing instance" $
+        expectFailure
+          ["--root", "test/examples/cases", "--file", "test/examples/cases/missing-instance.solc", "--no-specialise"]
+          [ "error[SC0299]: Cannot entail:",
+            "  --> <cwd>/test/examples/cases/missing-instance.solc:12:14",
+            "   |",
+            "12 |     function load(ptr:word) -> word {",
+            "   |              ^^^^ diagnostic reported here",
+            "note: word : Typedef (word)",
+            "note: using defined instances:",
+            "note: in: function load (ptr : word) -> word {",
+            "      return Typedef.abs(MemoryType.load(ptr) : word);",
+            "      }",
+            "note: in: instance word : MemoryType {",
+            "      function load (ptr : word) -> word {",
+            "      return Typedef.abs(MemoryType.load(ptr) : word);",
+            "      }",
+            "      }",
+            "note: module typecheck failed for",
+            "      <cwd>/test/examples/cases/missing-instance.solc (no",
+            "      desugaring)"
+          ],
+      testCase "dot shorthand constructor error" $
+        expectFailure
+          ["--root", "test/examples/cases", "--file", "test/examples/cases/dot-expression-unknown-fail.solc", "--no-specialise"]
+          [ "error[SC0299]: No matching constructor for shorthand expression:",
+            "  --> <cwd>/test/examples/cases/dot-expression-unknown-fail.solc:4:11",
+            "  |",
+            "4 |   return .Nope(1);",
+            "  |           ^^^^ diagnostic reported here",
+            "note: .Nope",
+            "note: in: .Nope(1)",
+            "note: in: function bad () -> Option {",
+            "      return .Nope(1);",
+            "      }",
+            "note: module typecheck failed for",
+            "      <cwd>/test/examples/cases/dot-expression-unknown-fail.solc (no",
             "      desugaring)"
           ],
       testCase "import error" $
@@ -125,6 +165,32 @@ diagnosticCliTests =
             "note: <cwd>/test/imports/external_lib_missing_fail.solc",
             "note: import @missing.math.api",
             "help: pass --external-lib NAME=PATH for external imports"
+          ],
+      testCase "ambiguous selected import" $
+        expectFailure
+          ["--root", "test/imports", "--file", "test/imports/amb_main.solc", "--no-specialise"]
+          [ "error[SC0120]: ambiguous selected imports",
+            "  --> <cwd>/test/imports/amb_main.solc:2:14",
+            "  |",
+            "2 | import ambB.{pick};",
+            "  |              ^^^^ ambiguous selected import",
+            "note: pick imported from ambB, ambA",
+            "help: use an explicit module qualifier or narrow the selected imports"
+          ],
+      testCase "hidden constructor import" $
+        expectFailure
+          ["--root", "test/imports", "--file", "test/imports/hidden_ctor_expr_fail.solc", "--no-specialise"]
+          [ "error[SC0101]: undefined name: Err",
+            "  --> <cwd>/test/imports/hidden_ctor_expr_fail.solc:4:16",
+            "  |",
+            "4 |   return Token.Err(0);",
+            "  |                ^^^ unknown name",
+            "note: in: return Token.Err(0) ;",
+            "note: in: function main () -> Token {",
+            "      return Token.Err(0) ;",
+            "      }",
+            "note: module validation failed for",
+            "      <cwd>/test/imports/hidden_ctor_expr_fail.solc"
           ],
       testCase "short output" $
         expectFailure

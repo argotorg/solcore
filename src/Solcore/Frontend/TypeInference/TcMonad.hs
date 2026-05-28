@@ -10,7 +10,7 @@ import Data.Map qualified as Map
 import Data.Maybe
 import Data.Monoid (First (..))
 import Data.Set qualified as Set
-import Solcore.Diagnostics (CompilerError (..), Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, diagnosticCompilerError, legacyCompilerError)
+import Solcore.Diagnostics (CompilerError (..), Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, diagnosticCompilerError)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -718,7 +718,25 @@ tcmError :: String -> TcM a
 tcmError s = do
   verbose <- isVerbose
   when verbose dumpLogs
-  throwError (legacyCompilerError s)
+  throwError (genericTypecheckError s)
+
+genericTypecheckError :: String -> CompilerError
+genericTypecheckError rawMessage =
+  diagnosticCompilerError $
+    Diagnostic
+      { diagnosticSeverity = Error,
+        diagnosticCode = Just (DiagnosticCode "SC0299"),
+        diagnosticMessage = message,
+        diagnosticLabels = [],
+        diagnosticNotes = notes,
+        diagnosticHelp = []
+      }
+  where
+    rawLines = dropWhile null (lines rawMessage)
+    (message, notes) =
+      case rawLines of
+        [] -> ("typecheck error", [])
+        firstLine : rest -> (firstLine, filter (not . null) rest)
 
 undefinedName :: Name -> TcM a
 undefinedName n =

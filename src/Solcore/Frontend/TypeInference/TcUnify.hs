@@ -52,16 +52,18 @@ instance (Pretty a, Match a) => Match [a] where
 instance Match Pred where
   match (InCls n t ts) (InCls n' t' ts')
     | n == n' = match (t : ts) (t' : ts')
-    | otherwise = throwError (legacyCompilerError "Classes differ!")
+    | otherwise =
+        structuredUnifyError
+          "SC0210"
+          "classes do not match"
+          ["left class: " ++ pretty n, "right class: " ++ pretty n']
+          []
   match p1 p2 =
-    throwError $
-      legacyCompilerError $
-      unlines
-        [ "Cannot match predicates:",
-          pretty p1,
-          "with",
-          pretty p2
-        ]
+    structuredUnifyError
+      "SC0211"
+      "predicates do not match"
+      ["left predicate: " ++ pretty p1, "right predicate: " ++ pretty p2]
+      []
 
 instance (HasType a, Match a) => Match (Qual a) where
   match (ps :=> t) (ps' :=> t') =
@@ -100,25 +102,19 @@ instance MGU Pred where
   mgu p1@(InCls n t ts) p2@(InCls n' t' ts')
     | n == n' = mgu (t : ts) (t' : ts')
     | otherwise =
-      throwError $
-        legacyCompilerError $
-        unlines
-            [ "Cannot unify predicates:",
-              pretty p1,
-              "with",
-              pretty p2
-            ]
+        structuredUnifyError
+          "SC0212"
+          "predicates do not unify"
+          ["left predicate: " ++ pretty p1, "right predicate: " ++ pretty p2]
+          []
   mgu (t1 :~: t2) (t1' :~: t2') =
     mgu [t1, t2] [t1', t2']
   mgu p1 p2 =
-    throwError $
-      legacyCompilerError $
-      unlines
-        [ "Cannot unify predicates:",
-          pretty p1,
-          "with",
-          pretty p2
-        ]
+    structuredUnifyError
+      "SC0212"
+      "predicates do not unify"
+      ["left predicate: " ++ pretty p1, "right predicate: " ++ pretty p2]
+      []
 
 instance (HasType a, MGU a) => MGU (Qual a) where
   mgu (ps :=> t) (ps' :=> t') =
@@ -164,23 +160,25 @@ merge s1@(Subst p1) s2@(Subst p2) =
     dom s = map fst s
 
 mergeError :: (MonadError CompilerError m) => [(Ty, Ty)] -> m a
-mergeError ts = throwError $ legacyCompilerError $ unlines $ "Cannot match types:" : ss
+mergeError ts =
+  structuredUnifyError
+    "SC0213"
+    "substitutions assign incompatible types"
+    ss
+    []
   where
-    ss = map go ts
+    ss = map (("conflict: " ++) . go) ts
     go (x, y) = pretty x ++ " with " ++ pretty y
 
 -- basic error messages
 
 infiniteTyErr :: (MonadError CompilerError m) => MetaTv -> Ty -> m a
 infiniteTyErr v t =
-  throwError $
-    legacyCompilerError $
-    unwords
-      [ "Cannot construct the infinite type:",
-        pretty (metaName v),
-        "~",
-        pretty t
-      ]
+  structuredUnifyError
+    "SC0214"
+    "cannot construct infinite type"
+    ["meta variable: " ++ pretty (metaName v), "type: " ++ pretty t]
+    []
 
 typesNotMatch :: (MonadError CompilerError m) => Ty -> Ty -> m a
 typesNotMatch t1 t2 =
@@ -188,27 +186,19 @@ typesNotMatch t1 t2 =
 
 typesMatchListErr :: (MonadError CompilerError m) => [String] -> [String] -> m a
 typesMatchListErr ts ts' =
-  throwError (legacyCompilerError (errMsg ts ts'))
-  where
-    errMsg lhs rhs =
-      unwords
-        [ "Type lists do not match: (typesMatchListErr)\n",
-          prettys lhs,
-          "and",
-          prettys rhs
-        ]
+  structuredUnifyError
+    "SC0215"
+    "type lists do not match"
+    ["left types: " ++ prettys ts, "right types: " ++ prettys ts']
+    []
 
 typesMguListErr :: (MonadError CompilerError m, Pretty t) => [t] -> [t] -> m a
 typesMguListErr ts ts' =
-  throwError (legacyCompilerError (errMsg ts ts'))
-  where
-    errMsg lhs rhs =
-      unwords
-        [ "Type lists do not unify: (typesMguListErr)\n",
-          prettys lhs,
-          "and",
-          prettys rhs
-        ]
+  structuredUnifyError
+    "SC0216"
+    "type lists do not unify"
+    ["left types: " ++ prettys ts, "right types: " ++ prettys ts']
+    []
 
 typesDoNotUnify :: (MonadError CompilerError m) => Ty -> Ty -> m a
 typesDoNotUnify t1 t2 =
@@ -232,11 +222,21 @@ typeMismatchDiagnostic message t1 t2 =
 
 boundVariablesErr :: (MonadError CompilerError m) => [Tyvar] -> m a
 boundVariablesErr ts =
+  structuredUnifyError
+    "SC0217"
+    "bound variable escaped unification"
+    ["bound variables: " ++ prettys ts]
+    ["report this as a compiler bug if it is reachable from source code"]
+
+structuredUnifyError :: (MonadError CompilerError m) => String -> String -> [String] -> [String] -> m a
+structuredUnifyError code message notes help =
   throwError $
-    legacyCompilerError $
-    unwords $
-      [ "Panic!",
-        "The following bound variables where",
-        "found in unification / matching:"
-      ]
-        ++ map pretty ts
+    diagnosticCompilerError $
+      Diagnostic
+        { diagnosticSeverity = Error,
+          diagnosticCode = Just (DiagnosticCode code),
+          diagnosticMessage = message,
+          diagnosticLabels = [],
+          diagnosticNotes = notes,
+          diagnosticHelp = help
+        }
