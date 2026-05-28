@@ -1,8 +1,10 @@
 module DiagnosticCliTests where
 
 import Data.List (isSuffixOf, stripPrefix)
-import System.Directory (getCurrentDirectory)
+import System.Directory (doesFileExist, findExecutable, getCurrentDirectory)
+import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
+import System.FilePath ((</>))
 import System.Process (readProcessWithExitCode)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -32,8 +34,7 @@ diagnosticCliTests =
             "note: in: function main () -> word {",
             "      return missing ;",
             "      }",
-            "note: module validation failed for",
-            "      <cwd>/test/diagnostics/undefined-name.solc"
+            "note: module validation failed for <cwd>/test/diagnostics/undefined-name.solc"
           ],
       testCase "duplicate definition" $
         expectFailure
@@ -47,8 +48,7 @@ diagnosticCliTests =
             "  |          ^^^ duplicate definition",
             "note: context: module",
             "note: foo",
-            "note: module validation failed for",
-            "      <cwd>/test/diagnostics/duplicate-definition.solc",
+            "note: module validation failed for <cwd>/test/diagnostics/duplicate-definition.solc",
             "help: rename or remove the duplicate declaration"
           ],
       testCase "type mismatch" $
@@ -65,8 +65,7 @@ diagnosticCliTests =
             "note: in: function main () -> word {",
             "      return true;",
             "      }",
-            "note: module typecheck failed for",
-            "      <cwd>/test/diagnostics/type-mismatch.solc (no desugaring)"
+            "note: module typecheck failed for <cwd>/test/diagnostics/type-mismatch.solc (no desugaring)"
           ],
       testCase "missing signature uses signature span" $
         expectFailure
@@ -77,8 +76,7 @@ diagnosticCliTests =
             "1 | function foo() {",
             "  |          ^^^ incomplete signature",
             "note: signature: function foo ()",
-            "note: module typecheck failed for",
-            "      <cwd>/test/diagnostics/missing-signature.solc (no desugaring)",
+            "note: module typecheck failed for <cwd>/test/diagnostics/missing-signature.solc (no desugaring)",
             "help: annotate every parameter (name : Type) and provide a return type (-> Type)"
           ],
       testCase "polymorphic type error uses signature span" $
@@ -99,9 +97,7 @@ diagnosticCliTests =
             "      }",
             "      return result;",
             "      }",
-            "note: module typecheck failed for",
-            "      <cwd>/test/diagnostics/not-polymorphic-enough.solc (no",
-            "      desugaring)"
+            "note: module typecheck failed for <cwd>/test/diagnostics/not-polymorphic-enough.solc (no desugaring)"
           ],
       testCase "missing instance" $
         expectFailure
@@ -120,9 +116,7 @@ diagnosticCliTests =
             "      return Typedef.abs(MemoryType.load(ptr) : word);",
             "      }",
             "      }",
-            "note: module typecheck failed for",
-            "      <cwd>/test/examples/cases/missing-instance.solc (no",
-            "      desugaring)",
+            "note: module typecheck failed for <cwd>/test/examples/cases/missing-instance.solc (no desugaring)",
             "help: add a matching instance or strengthen the surrounding type context"
           ],
       testCase "dot shorthand constructor error" $
@@ -138,9 +132,7 @@ diagnosticCliTests =
             "note: in: function bad () -> Option {",
             "      return .Nope(1);",
             "      }",
-            "note: module typecheck failed for",
-            "      <cwd>/test/examples/cases/dot-expression-unknown-fail.solc (no",
-            "      desugaring)",
+            "note: module typecheck failed for <cwd>/test/examples/cases/dot-expression-unknown-fail.solc (no desugaring)",
             "help: use a constructor that is visible for the expected type"
           ],
       testCase "import error" $
@@ -190,8 +182,7 @@ diagnosticCliTests =
             "note: in: function main () -> Token {",
             "      return Token.Err(0) ;",
             "      }",
-            "note: module validation failed for",
-            "      <cwd>/test/imports/hidden_ctor_expr_fail.solc"
+            "note: module validation failed for <cwd>/test/imports/hidden_ctor_expr_fail.solc"
           ],
       testCase "short output" $
         expectFailure
@@ -213,7 +204,8 @@ diagnosticCliTests =
 
 expectSuccess :: [String] -> [String] -> Assertion
 expectSuccess args expectedLines = do
-  (exitCode, stdout, stderr) <- readProcessWithExitCode "sol-core" args ""
+  exe <- solCoreExecutable
+  (exitCode, stdout, stderr) <- readProcessWithExitCode exe (stableDiagnosticArgs args) ""
   assertEqual "exit code" ExitSuccess exitCode
   assertEqual "stderr" "" stderr
   cwd <- normalizePath <$> getCurrentDirectory
@@ -221,11 +213,41 @@ expectSuccess args expectedLines = do
 
 expectFailure :: [String] -> [String] -> Assertion
 expectFailure args expectedLines = do
-  (exitCode, stdout, stderr) <- readProcessWithExitCode "sol-core" args ""
+  exe <- solCoreExecutable
+  (exitCode, stdout, stderr) <- readProcessWithExitCode exe (stableDiagnosticArgs args) ""
   assertEqual "exit code" (ExitFailure 1) exitCode
   assertEqual "stderr" "" stderr
   cwd <- normalizePath <$> getCurrentDirectory
   assertEqual "stdout" (unlinesNoTrailing expectedLines) (stripFinalNewline (normalizeOutput cwd stdout))
+
+solCoreExecutable :: IO FilePath
+solCoreExecutable = do
+  envExe <- lookupEnv "SOL_CORE_EXE"
+  pathExe <- findExecutable "sol-core"
+  cwd <- getCurrentDirectory
+  found <-
+    firstExisting
+      ( maybeToList envExe
+          ++ maybeToList pathExe
+          ++ [cwd </> "dist" </> "build" </> "sol-core" </> "sol-core"]
+      )
+  case found of
+    Just exe -> pure exe
+    Nothing -> assertFailure "could not find sol-core executable"
+
+stableDiagnosticArgs :: [String] -> [String]
+stableDiagnosticArgs args =
+  args ++ ["--diagnostic-width", "240"]
+
+firstExisting :: [FilePath] -> IO (Maybe FilePath)
+firstExisting [] = pure Nothing
+firstExisting (path : paths) = do
+  exists <- doesFileExist path
+  if exists then pure (Just path) else firstExisting paths
+
+maybeToList :: Maybe a -> [a]
+maybeToList Nothing = []
+maybeToList (Just value) = [value]
 
 redundantWarningsSnapshot :: [String]
 redundantWarningsSnapshot =
