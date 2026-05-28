@@ -5,8 +5,8 @@ Core Solidity compiler. It extends Solidity's surface syntax with a
 statically-typed functional core: parametric polymorphism via `forall`
 quantifiers, type classes for constrained overloading, and algebraic data types
 with exhaustive pattern matching. Every SAIL program is compiled to monomorphic
-Core IR through specialization, then translated to Yul and assembled into EVM
-bytecode.
+Core IR, named Hull, through specialization, then translated to Yul and
+assembled into EVM bytecode.
 
 This section documents the SAIL language itself. The chapters are ordered from
 the most foundational concepts to the most advanced:
@@ -29,6 +29,6 @@ the most foundational concepts to the most advanced:
   constraints, and the three soundness conditions the compiler enforces.
 - **Modules** describes the import and export system, qualified names, and
   visibility rules.
-- **Type Inference** explains the bidirectional constraint-based algorithm,
-  what must be annotated explicitly, and the error messages the compiler
-  produces when inference fails.
+- **Type Inference** explains the bidirectional constraint-based algorithm, what
+  must be annotated explicitly, and the error messages the compiler produces
+  when inference fails.
