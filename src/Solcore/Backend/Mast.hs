@@ -14,7 +14,7 @@ import Solcore.Frontend.Pretty.SolcorePretty ()
 import Solcore.Frontend.Syntax.Contract (DataTy (..), Import (..))
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
-import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..))
+import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..), pattern TyCon)
 import Solcore.Primitives.Primitives (word)
 
 deployerName :: Name

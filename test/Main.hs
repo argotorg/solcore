@@ -1,7 +1,10 @@
 module Main where
 
 import Cases
+import DiagnosticCliTests
+import DiagnosticTests
 import HullCases
+import LocationTests
 import MatchCompilerTests
 import ModuleTypeCheckTests
 import Test.Tasty
@@ -18,6 +21,9 @@ tests =
       pragmas,
       spec,
       std,
+      diagnosticCliTests,
+      diagnosticTests,
+      locationTests,
       imports,
       moduleTypeCheckTests,
       dispatches,

@@ -1,5 +1,6 @@
 module Solcore.Desugarer.DecisionTreeCompiler where
 
+import Control.Applicative ((<|>))
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -12,6 +13,7 @@ import Data.Map qualified as Map
 import Data.Maybe
 import Data.Ord (comparing)
 import Language.Yul (YulExp (..))
+import Solcore.Diagnostics qualified as Diag
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -30,7 +32,7 @@ matchCompiler cunit =
         if null nonExaustive
           then
             pure $ Right (unit', redundant)
-          else pure $ Left $ unlines $ map showWarning nonExaustive
+          else pure $ Left $ unlines $ map (Diag.encodeDiagnostic . warningAsErrorDiagnostic) nonExaustive
 
 -- type class for the defining the pattern matching compilation
 -- over the syntax tree
@@ -63,7 +65,7 @@ instance Compile (TopDecl Id) where
 instance Compile (Contract Id) where
   compile (Contract n vs ds) =
     Contract n vs
-      <$> local (\(te, ctx) -> (Map.union env' te, ctx ++ ["contract " ++ pretty n])) (compile ds)
+      <$> local (\(te, ctx, warnSpan) -> (Map.union env' te, ctx ++ ["contract " ++ pretty n], warnSpan)) (compile ds)
     where
       ds' = [d | (CDataDecl d) <- ds]
       env' = foldr addDataTyInfo Map.empty ds'
@@ -102,7 +104,7 @@ instance Compile (Stmt Id) where
     For <$> compile initStmt <*> compile cond <*> compile postStmt <*> compile body
   compile s@(Asm _) =
     pure s
-  compile (Match es eqns) = do
+  compile matchStmt@(Match es eqns) = withWarnSpan (sourceSpanOf matchStmt) $ do
     es' <- compile es
     eqns' <- mapM compileEqn eqns
     scrutTys <- mapM scrutineeType es'
@@ -143,7 +145,9 @@ compileMatrix ::
 compileMatrix tys _ [] _ = do
   pats <- mapM freshPat tys
   ctx <- askWarnCtx
-  unless (null pats) $ tell [NonExhaustive ctx pats]
+  unless (null pats) $ do
+    warnSpan <- askWarnSpan
+    tell [NonExhaustive ctx warnSpan pats]
   pure Fail
 compileMatrix _tys occs (firstRow : _restRows) ((firstBinds, firstAct) : _restBacts)
   | all isVarPat firstRow = do
@@ -233,7 +237,8 @@ buildConSwitch testOcc restOccs _testTy restTys matrix bacts headCons = do
                       pure (PCon k fieldPats : restWit)
                     [] -> mapM freshPat restTys
               ctx <- askWarnCtx
-              tell [NonExhaustive ctx witPats]
+              warnSpan <- askWarnSpan
+              tell [NonExhaustive ctx warnSpan witPats]
               pure (Just Fail)
             else Just <$> compileMatrix restTys restOccs defMat defBacts
 
@@ -256,7 +261,8 @@ buildLitSwitch testOcc restOccs testTy restTys matrix bacts headLits = do
         litWit <- freshPat testTy
         restWit <- mapM freshPat restTys
         ctx <- askWarnCtx
-        tell [NonExhaustive ctx (litWit : restWit)]
+        warnSpan <- askWarnSpan
+        tell [NonExhaustive ctx warnSpan (litWit : restWit)]
         pure (Just Fail)
       else Just <$> compileMatrix restTys restOccs defMat defBacts
   pure (LitSwitch testOcc branches mDefault)
@@ -377,24 +383,31 @@ litBranchToEqn occMap (lit, tree) = do
 type WarnCtx = [String]
 
 type CompilerM a =
-  ReaderT (TypeEnv, WarnCtx) (ExceptT String (WriterT [Warning] (StateT Int IO))) a
+  ReaderT (TypeEnv, WarnCtx, Maybe Diag.SourceSpan) (ExceptT String (WriterT [Warning] (StateT Int IO))) a
 
 runCompilerM :: TypeEnv -> CompilerM a -> IO (Either String (a, [Warning]))
 runCompilerM env m =
   do
-    ((r, ws), _) <- runStateT (runWriterT (runExceptT (runReaderT m (env, [])))) 0
+    ((r, ws), _) <- runStateT (runWriterT (runExceptT (runReaderT m (env, [], Nothing)))) 0
     case r of
       Left err -> pure $ Left err
       Right t -> pure $ Right (t, ws)
 
 askTypeEnv :: CompilerM TypeEnv
-askTypeEnv = asks fst
+askTypeEnv = asks (\(typeEnv, _, _) -> typeEnv)
 
 askWarnCtx :: CompilerM WarnCtx
-askWarnCtx = asks snd
+askWarnCtx = asks (\(_, warnCtx, _) -> warnCtx)
+
+askWarnSpan :: CompilerM (Maybe Diag.SourceSpan)
+askWarnSpan = asks (\(_, _, warnSpan) -> warnSpan)
 
 pushCtx :: String -> CompilerM a -> CompilerM a
-pushCtx s = local (\(te, ctx) -> (te, ctx ++ [s]))
+pushCtx s = local (\(te, ctx, warnSpan) -> (te, ctx ++ [s], warnSpan))
+
+withWarnSpan :: Maybe Diag.SourceSpan -> CompilerM a -> CompilerM a
+withWarnSpan sourceSpan =
+  local (\(te, ctx, currentSpan) -> (te, ctx, sourceSpan <|> currentSpan))
 
 lookupConInfo :: Name -> CompilerM ConInfo
 lookupConInfo k = do
@@ -699,7 +712,7 @@ checkRedundancy ctx tys matrix bacts = go [] (zip matrix bacts)
     go _ [] = pure ()
     go prefix ((row, (_, act)) : rest) = do
       useful <- isUseful tys prefix row
-      unless useful $ tell [RedundantClause ctx row act]
+      unless useful $ tell [RedundantClause ctx (sourceSpanOf row) row act]
       go (prefix ++ [row]) rest
 
 -- Maranget's U(P, q): returns True iff row q adds new coverage that no
@@ -799,20 +812,20 @@ inhabitsLitCol matrix ty restTys = do
 -- warnings
 
 data Warning
-  = RedundantClause WarnCtx PatternRow Action
-  | NonExhaustive WarnCtx [Pattern]
+  = RedundantClause WarnCtx (Maybe Diag.SourceSpan) PatternRow Action
+  | NonExhaustive WarnCtx (Maybe Diag.SourceSpan) [Pattern]
   deriving (Eq, Show)
 
 isNonExaustive :: Warning -> Bool
-isNonExaustive (NonExhaustive _ _) = True
+isNonExaustive (NonExhaustive _ _ _) = True
 isNonExaustive _ = False
 
 -- Pretty-print a warning
 
 showWarning :: Warning -> String
-showWarning (RedundantClause ctx row blk) =
+showWarning (RedundantClause ctx _ row blk) =
   unwords ["Warning: Clause ", "(", pretty (row, blk), ") is redundant.", showWarnCtx ctx]
-showWarning (NonExhaustive ctx pats) =
+showWarning (NonExhaustive ctx _ pats) =
   unwords ["Non-exhaustive pattern match. Missing case:", showRow $ nub pats, showWarnCtx ctx]
 
 showWarnCtx :: WarnCtx -> String
@@ -821,6 +834,51 @@ showWarnCtx ctx = "\n  in " ++ intercalate "\n  in " (reverse ctx)
 
 showRow :: [Pattern] -> String
 showRow = intercalate ", " . map pretty
+
+warningDiagnostic :: Warning -> Diag.Diagnostic
+warningDiagnostic (RedundantClause ctx sourceSpan row blk) =
+  Diag.Diagnostic
+    { Diag.diagnosticSeverity = Diag.Warning,
+      Diag.diagnosticCode = Just (Diag.DiagnosticCode "SC0301"),
+      Diag.diagnosticMessage = "redundant pattern clause",
+      Diag.diagnosticLabels = warningLabels "redundant clause" sourceSpan,
+      Diag.diagnosticNotes =
+        [ "clause: " ++ pretty (row, blk)
+        ]
+          ++ warningContextNotes ctx,
+      Diag.diagnosticHelp = ["remove this clause or make an earlier pattern more specific"]
+    }
+warningDiagnostic (NonExhaustive ctx sourceSpan pats) =
+  Diag.Diagnostic
+    { Diag.diagnosticSeverity = Diag.Warning,
+      Diag.diagnosticCode = Just (Diag.DiagnosticCode "SC0302"),
+      Diag.diagnosticMessage = "non-exhaustive pattern match",
+      Diag.diagnosticLabels = warningLabels "non-exhaustive match" sourceSpan,
+      Diag.diagnosticNotes =
+        ["missing case: " ++ showRow (nub pats)]
+          ++ warningContextNotes ctx,
+      Diag.diagnosticHelp = ["add a clause that covers the missing case"]
+    }
+
+warningLabels :: String -> Maybe Diag.SourceSpan -> [Diag.Label]
+warningLabels _ Nothing = []
+warningLabels message (Just sourceSpan) =
+  [ Diag.Label
+      { Diag.labelSpan = sourceSpan,
+        Diag.labelStyle = Diag.Primary,
+        Diag.labelMessage = Just message
+      }
+  ]
+
+warningAsErrorDiagnostic :: Warning -> Diag.Diagnostic
+warningAsErrorDiagnostic warning =
+  (warningDiagnostic warning)
+    { Diag.diagnosticSeverity = Diag.Error
+    }
+
+warningContextNotes :: WarnCtx -> [String]
+warningContextNotes =
+  map ("in: " ++) . reverse
 
 -- error messages
 

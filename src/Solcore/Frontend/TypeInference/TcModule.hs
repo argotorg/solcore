@@ -32,6 +32,7 @@ import Data.List (foldl')
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
+import Solcore.Diagnostics (CompilerError, compilerErrorFromString, legacyCompilerError)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader
 import Solcore.Frontend.Syntax
@@ -91,17 +92,17 @@ data CheckedAssembly
 loadModuleLocalTypeCheckInput ::
   ModuleGraph ->
   Mod.ModuleId ->
-  IO (Either String ModuleResolvedTypeCheckInput)
+  IO (Either CompilerError ModuleResolvedTypeCheckInput)
 loadModuleLocalTypeCheckInput graph moduleId =
   loadResolvedModuleTypeCheckInput (moduleLocalTypeCheckSurface graph moduleId)
 
 loadResolvedModuleTypeCheckInput ::
   Either String ModuleTypeCheckSurface ->
-  IO (Either String ModuleResolvedTypeCheckInput)
+  IO (Either CompilerError ModuleResolvedTypeCheckInput)
 loadResolvedModuleTypeCheckInput input =
   case input of
     Left err ->
-      pure (Left err)
+      pure (Left (compilerErrorFromString err))
     Right surface -> do
       resolved <-
         nameResolutionTopDeclSegments
@@ -115,7 +116,7 @@ loadResolvedModuleTypeCheckInput input =
 mkModuleResolvedTypeCheckInput ::
   ModuleTypeCheckSurface ->
   (CompUnit Name, [[TopDecl Name]]) ->
-  Either String ModuleResolvedTypeCheckInput
+  Either CompilerError ModuleResolvedTypeCheckInput
 mkModuleResolvedTypeCheckInput surface (resolved, resolvedSegments) =
   case resolvedSegments of
     [resolvedQualifiedDecls, resolvedLocalDecls, resolvedImportedDecls] ->
@@ -133,13 +134,14 @@ mkModuleResolvedTypeCheckInput surface (resolved, resolvedSegments) =
           }
     _ ->
       Left $
-        "Internal error: expected 3 resolved module typecheck surface segments, got "
-          ++ show (length resolvedSegments)
+        legacyCompilerError $
+          "Internal error: expected 3 resolved module typecheck surface segments, got "
+            ++ show (length resolvedSegments)
 
 typeInferModuleLocals ::
   Option ->
   ModuleTypeCheckInput ->
-  IO (Either String (CompUnit Id, TcEnv))
+  IO (Either CompilerError (CompUnit Id, TcEnv))
 typeInferModuleLocals opts input =
   typeInferTopDeclChecks
     opts
@@ -401,8 +403,8 @@ defaultImportQualifiers importPath =
     leafName = importedModuleLeafName fullName
 
 importedModuleLeafName :: Name -> Name
-importedModuleLeafName (Name n) = Name n
-importedModuleLeafName (QualName _ n) = Name n
+importedModuleLeafName n@(Name _) = n
+importedModuleLeafName q@(QualName _ n) = copyNameSourceSpan q (Name n)
 
 typedForwardingWrapper :: Name -> FunDef Id -> FunDef Id
 typedForwardingWrapper qualifier (FunDef sig body)
@@ -416,7 +418,7 @@ typedForwardingWrapper qualifier (FunDef sig body)
         [Return (Call Nothing targetId args)]
   where
     originalName = sigName sig
-    qualifiedName = QualName qualifier (show originalName)
+    qualifiedName = qualifyName qualifier originalName
     targetId = Id originalName (typedSignatureType sig)
     args = map (Var . paramName) (sigParams sig)
 
