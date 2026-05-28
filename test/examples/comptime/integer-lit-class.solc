@@ -1,0 +1,43 @@
+// bare integer literals at `integer` sites, without explicit wordToInteger.
+// The desugaring pass inserts wordToInteger automatically.
+//
+// operations on comptime integers overloaded
+
+import std.{Eq,Ord,lt, Add,Sub};
+
+instance integer : Ord {
+  function gt(x:integer, y:integer) -> comptime bool {
+    return integerLt(y,x);
+  }
+}
+
+instance integer : Add {
+  function add(x:integer, y:integer) -> comptime integer {
+    return integerAdd(x,y);
+  }
+}
+
+instance integer : Sub {
+  function sub(x:integer, y:integer) -> comptime integer {
+    return integerSub(x,y);
+  }
+}
+
+function int(comptime n : word) -> comptime integer { wordToInteger(n) }
+
+function fib(comptime n : integer) -> comptime integer {
+  if (n < int(2)) { // the 'int' coercion should not be needed in the final design 
+    return n;
+  } else {
+    return 
+      fib(n - int(1)) + fib(n - int(2));
+  }
+}
+
+contract IntegerLit {
+  function main() -> word {
+    let x : comptime integer = 20;
+    let res : comptime word = wordFromInteger(fib(x));
+    return res;
+  }
+}
