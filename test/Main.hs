@@ -4,6 +4,7 @@ import Cases
 import DiagnosticCliTests
 import DiagnosticTests
 import HullCases
+import LocationTests
 import MatchCompilerTests
 import ModuleTypeCheckTests
 import Test.Tasty
@@ -22,6 +23,7 @@ tests =
       std,
       diagnosticCliTests,
       diagnosticTests,
+      locationTests,
       imports,
       moduleTypeCheckTests,
       dispatches,

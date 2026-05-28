@@ -1,11 +1,16 @@
 module Solcore.Frontend.Syntax.Location where
 
 import Control.Applicative ((<|>))
-import Data.Generics (Data, Typeable)
+import Data.Generics (Data, Typeable, everything, mkQ)
 import Solcore.Diagnostics (SourceSpan, combineSourceSpans)
 
+data NodeOrigin
+  = SourceNode SourceSpan
+  | GeneratedNode
+  deriving (Show, Data, Typeable)
+
 newtype NodeLocation
-  = NodeLocation {nodeLocationSpan :: Maybe SourceSpan}
+  = NodeLocation {nodeLocationOrigin :: NodeOrigin}
   deriving (Show, Data, Typeable)
 
 instance Eq NodeLocation where
@@ -15,13 +20,35 @@ instance Ord NodeLocation where
   compare _ _ = EQ
 
 unlocatedNode :: NodeLocation
-unlocatedNode = NodeLocation Nothing
+unlocatedNode = generatedNode
+
+generatedNode :: NodeLocation
+generatedNode = NodeLocation GeneratedNode
 
 locatedNode :: SourceSpan -> NodeLocation
-locatedNode = NodeLocation . Just
+locatedNode = NodeLocation . SourceNode
 
 withNodeSourceSpan :: Maybe SourceSpan -> NodeLocation
-withNodeSourceSpan = NodeLocation
+withNodeSourceSpan Nothing = generatedNode
+withNodeSourceSpan (Just sourceSpan) = locatedNode sourceSpan
+
+nodeLocationSpan :: NodeLocation -> Maybe SourceSpan
+nodeLocationSpan (NodeLocation (SourceNode sourceSpan)) = Just sourceSpan
+nodeLocationSpan (NodeLocation GeneratedNode) = Nothing
+
+isSourceNodeLocation :: NodeLocation -> Bool
+isSourceNodeLocation (NodeLocation (SourceNode _)) = True
+isSourceNodeLocation (NodeLocation GeneratedNode) = False
+
+isGeneratedNodeLocation :: NodeLocation -> Bool
+isGeneratedNodeLocation = not . isSourceNodeLocation
+
+nodeLocationsOf :: (Data a) => a -> [NodeLocation]
+nodeLocationsOf =
+  everything (++) (mkQ [] nodeLocationList)
+  where
+    nodeLocationList :: NodeLocation -> [NodeLocation]
+    nodeLocationList location = [location]
 
 combineMaybeSourceSpans :: Maybe SourceSpan -> Maybe SourceSpan -> Maybe SourceSpan
 combineMaybeSourceSpans Nothing right = right

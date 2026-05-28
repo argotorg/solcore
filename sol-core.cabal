@@ -173,6 +173,7 @@ test-suite sol-core-tests
     DiagnosticCliTests
     DiagnosticTests
     HullCases
+    LocationTests
     MatchCompilerTests
     ModuleTypeCheckTests
 
