@@ -222,6 +222,125 @@ contract Token {
 
 ---
 
+## For Loop
+
+The `for` statement provides a C-style counted loop. Its header has three
+clauses separated by `;`:
+
+```
+for ( ForInitStmt ; Condition ; ForPostStmt ) Body
+```
+
+The **condition** is any expression of type `bool`; the loop runs while it is
+`true`.
+
+### Initialisation clause
+
+The init clause runs once before the first iteration. It may:
+
+* Declare a new local variable (typed or untyped, with or without an initialiser):
+
+  ```solcore
+  for (let i = 0; i < 10; i = i + 1) { ... }
+  for (let i : word; i < 10; i = i + 1) { ... }
+  ```
+
+* Assign to an already-declared variable:
+
+  ```solcore
+  let i : word;
+  for (i = 0; i < 10; i = i + 1) { ... }
+  ```
+
+* Use a compound assignment or a plain expression.
+
+### Post-iteration clause
+
+The post clause runs after each iteration, before the condition is re-tested. It
+follows the same grammar as the init clause. A `let` binding introduced here
+creates a fresh variable scoped to the body of **that iteration only**:
+
+```solcore
+for (i = 0; i <= 0; let j = 1) {
+    s = j;    // j is in scope here and rebound on every iteration
+    i = i + 1;
+}
+```
+
+### Complete examples
+
+**Accumulate a sum from 1 to 10:**
+
+```solcore
+import std.{Num, Add, Sub, Eq, Ord, Bounded, Typedef, le};
+
+contract Sum {
+    function main() -> word {
+        let s = 0;
+        for (let i = 1; i <= 10; i = i + 1) { s = s + i; }
+        return s;    // 55
+    }
+}
+```
+
+**Loop variable declared before the `for`:**
+
+```solcore
+contract Sum {
+    function main() -> word {
+        let i : word;
+        let s = 0;
+        for (i = 1; i <= 10; i = i + 1) { s = s + i; }
+        return s;
+    }
+}
+```
+
+**Loop variable shadows an outer declaration:**
+
+```solcore
+contract Shadow {
+    function main() -> word {
+        let i = 100;
+        let s = 0;
+        for (let i = 1; i <= 10; i = i + 1) { s = s + i; }
+        // i is 100 here again
+        return s;
+    }
+}
+```
+
+**Nested `if` inside a `for` body:**
+
+```solcore
+contract ForInner {
+    function main() -> word {
+        let result = 0;
+        for (let height = 0; height < 7; height = height + 1) {
+            if (true) { result = height; } else {}
+        }
+        return result;
+    }
+}
+```
+
+### Scope rules
+
+A variable declared in the **init clause** is in scope for the condition
+expression, the post-iteration clause, and the entire body.
+
+A variable declared in the **post clause** is in scope only for the body of the
+current iteration — it is re-bound at the start of each subsequent one.
+
+The loop body is its own block; declarations inside it do not escape to the
+enclosing function.
+
+> **Note** The condition must be of type `bool`. SAIL does not implicitly
+> convert `word` to `bool`. Use an explicit comparison (`le(i, 10)` or
+> `i <= 10`) when comparing integer counters.
+
+---
+
 ## Expression Statements
 
 Any expression may appear as a statement. The expression is evaluated for

@@ -182,8 +182,28 @@ Stmt = Expr "=" Expr ";"
      | "match" MatchArgs "{" { Equation } "}"
      | AsmBlock
      | "if" "(" Expr ")" Body [ "else" Body ]
+     | "for" "(" ForInitStmt ";" Expr ";" ForPostStmt ")" Body
 
 Body = "{" { Stmt } "}"
+
+# The initialisation clause of a for-loop.  Unlike a regular statement it
+# has no trailing semicolon; the semicolons are part of the for(…) syntax.
+ForInitStmt = Expr "=" Expr
+            | Expr "+=" Expr
+            | Expr "-=" Expr
+            | "let" Identifier ":" Type [ "=" Expr ]
+            | "let" Identifier [ "=" Expr ]
+            | Expr
+
+# The post-iteration clause of a for-loop.  Let-bindings are allowed here;
+# a binding introduced in ForPostStmt is in scope for the body of that
+# iteration only.
+ForPostStmt = Expr "=" Expr
+            | Expr "+=" Expr
+            | Expr "-=" Expr
+            | "let" Identifier ":" Type [ "=" Expr ]
+            | "let" Identifier [ "=" Expr ]
+            | Expr
 
 MatchArgs = Expr { "," Expr }
 

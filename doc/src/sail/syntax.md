@@ -287,7 +287,9 @@ A literal value: a decimal or hexadecimal integer, or a double-quoted string.
 
 A statement is an executable step inside a function body. Assignment operators
 `=`, `+=`, and `-=` require a terminating `;`. `let` declares a local variable,
-optionally with a type annotation and an initialiser.
+optionally with a type annotation and an initialiser. The `for` statement provides
+a C-style counted loop; its initialisation and post-iteration clauses obey the
+`ForInitStmt` and `ForPostStmt` grammars respectively.
 
 ![Stmt](diagrams/Stmt.svg)
 
@@ -299,6 +301,27 @@ A brace-enclosed sequence of zero or more statements forming the body of a
 function, branch, or constructor.
 
 ![Body](diagrams/Body.svg)
+
+---
+
+### ForInitStmt
+
+The initialisation clause of a `for` loop. It may be an assignment, a compound
+assignment, a `let` binding (typed or untyped, with or without an initialiser),
+or a plain expression. Unlike a regular statement, there is no trailing `;` — the
+semicolons are written explicitly in the `for(…; …; …)` header.
+
+![ForInitStmt](diagrams/ForInitStmt.svg)
+
+---
+
+### ForPostStmt
+
+The post-iteration clause executed after each loop body. It follows the same
+grammar as `ForInitStmt`. A `let` binding introduced here is scoped to the body
+of that single iteration.
+
+![ForPostStmt](diagrams/ForPostStmt.svg)
 
 ---
 
