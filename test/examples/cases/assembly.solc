@@ -10,7 +10,8 @@ instance word : Mem {
 
 function foo () -> () {
   let ptr : word;
-  let size = Mem.size(0);
+  let arg : word = 0;
+  let size = Mem.size(arg);
   assembly {
     ptr := add(32, size);
   }

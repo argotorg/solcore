@@ -869,7 +869,7 @@ emptyEnv =
           (Name "sum", TTyCon)
         ]
     )
-    (Map.fromList [(Name "invokable", TClass)])
+    (Map.fromList [(Name "invokable", TClass), (Name "Int", TClass)])
     Map.empty
     ( Map.fromList
         [ (Name "true", TDataCon),
@@ -887,7 +887,8 @@ emptyEnv =
           (Name "integerSub", TFunction),
           (Name "integerMul", TFunction),
           (Name "integerLt", TFunction),
-          (Name "integerEq", TFunction)
+          (Name "integerEq", TFunction),
+          (QualName (Name "Int") "fromInteger", TFunction)
         ]
     )
 

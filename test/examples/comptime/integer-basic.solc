@@ -1,11 +1,11 @@
 // Exercises integer primitives: wordToInteger, wordFromInteger, integerAdd, integerMul.
-// All intermediate integer values are comptime so MastEval folds and eliminates them.
+// Integer-typed lets are implicitly comptime; literals are polymorphic via FromInteger.
 // Expected: main() folds to word literal 100.
 
 contract IntegerBasic {
   function main() -> word {
-    let x : comptime integer = wordToInteger(42);
-    let y : comptime integer = integerAdd(x, wordToInteger(8));
-    return wordFromInteger(integerMul(y, wordToInteger(2)));
+    let x = 42;
+    let y = integerAdd(x, 8);
+    return wordFromInteger(integerMul(y, 2));
   }
 }

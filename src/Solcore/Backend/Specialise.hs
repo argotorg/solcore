@@ -22,7 +22,8 @@ import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv (TcEnv (typeTable), TypeInfo (..))
 import Solcore.Frontend.TypeInference.TcUnify (typesDoNotUnify)
-import Solcore.Primitives.Primitives
+import Solcore.Primitives.Primitives hiding (integer)
+import Solcore.Primitives.Primitives qualified as Prim
 
 -- ** Specialisation state and monad
 
@@ -355,6 +356,16 @@ comptimeBuiltins = integerPrimNames
 
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
 specCall i@(Id (Name "revert") _) args _ = pure (i, args) -- FIXME
+-- Int.fromInteger coercion: resolve to the appropriate primitive based on result type.
+-- integer -> word    becomes wordFromInteger (handled by MastEval)
+-- integer -> integer is identity (handled by MastEval)
+specCall (Id (QualName (Name "Int") "fromInteger") ty) args _ = do
+  args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+  s <- getSpSubst
+  let resultTy = snd (splitTy (applytv s ty))
+  if resultTy == word
+    then pure (Id (Name "wordFromInteger") (Prim.integer :-> word), args')
+    else pure (Id (QualName (Name "Int") "fromInteger") (Prim.integer :-> resultTy), args')
 specCall i args _ty
   | idName i `elem` comptimeBuiltins = do
       args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
@@ -603,7 +614,7 @@ typeOfTcExp e@(Con i args) = go (idType i) args
     go ty [] = ty
     go (_ :-> u) (_ : as) = go u as
     go _ _ = error $ "typeOfTcExp: " ++ show e
-typeOfTcExp (Lit (IntLit _)) = word
+typeOfTcExp (Lit (IntLit _)) = Prim.integer
 typeOfTcExp (Lit (StrLit _)) = string
 typeOfTcExp expr@(Call Nothing i args) = applyTo args funTy
   where

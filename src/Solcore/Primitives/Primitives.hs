@@ -137,6 +137,26 @@ integerLt = (Name "integerLt", monotype (integer :-> integer :-> boolTy))
 integerEq :: (Name, Scheme)
 integerEq = (Name "integerEq", monotype (integer :-> integer :-> boolTy))
 
+-- Int class: overloaded coercion from integer literals
+-- instance integer : Int { fromInteger = identity }
+-- instance word : Int    { fromInteger = wordFromInteger }
+
+intClassName :: Name
+intClassName = Name "Int"
+
+intVar :: Tyvar
+intVar = aVar
+
+intPred :: Pred
+intPred = InCls intClassName (TyVar intVar) []
+
+-- | Scheme for fromInteger: forall a. (a:Int) => integer -> a
+fromIntegerScheme :: Scheme
+fromIntegerScheme = Forall [intVar] ([intPred] :=> (integer :-> TyVar intVar))
+
+fromIntegerEntry :: (Name, Scheme)
+fromIntegerEntry = (QualName intClassName "fromInteger", fromIntegerScheme)
+
 -- | Integer primitive function names.
 -- Single source of truth — used by MastEval (builtinPureFuns) and
 -- Specialise (comptimeBuiltins) to avoid drift between the two.
@@ -149,7 +169,8 @@ integerPrimNames =
     Name "integerSub",
     Name "integerMul",
     Name "integerLt",
-    Name "integerEq"
+    Name "integerEq",
+    QualName intClassName "fromInteger"
   ]
 
 stack :: Ty -> Ty

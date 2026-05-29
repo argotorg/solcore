@@ -61,7 +61,7 @@ instance memory(string):ABIString {
 }
 
 function append_left_bracket(head : word, tail : word) -> word {
-    let size = 1;
+    let size : word = 1;
     assembly {
         mstore(head, add(mload(head), size));
         mstore(tail, 0x2800000000000000000000000000000000000000000000000000000000000000);
@@ -70,7 +70,7 @@ function append_left_bracket(head : word, tail : word) -> word {
 }
 
 function append_right_bracket(head : word, tail : word) -> word {
-    let size = 1;
+    let size : word = 1;
     assembly {
         mstore(head, add(mload(head), size));
         mstore(tail, 0x2900000000000000000000000000000000000000000000000000000000000000);
@@ -79,7 +79,7 @@ function append_right_bracket(head : word, tail : word) -> word {
 }
 
 function append_comma(head : word, tail : word) -> word {
-    let size = 1;
+    let size : word = 1;
     assembly {
         mstore(head, add(mload(head), size));
         mstore(tail, 0x2c00000000000000000000000000000000000000000000000000000000000000);
