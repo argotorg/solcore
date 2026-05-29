@@ -121,23 +121,16 @@ exportP = do
 exportTailP :: ModulePath -> Parser Export
 exportTailP path =
   choice
-    [ do
-        _ <- symbol "."
-        choice
-          [ ExportItemsFrom path . SelectExportItems
-              <$> braces (exportSelEntryP `sepBy` comma)
-              <* semicolon,
-            ExportItemsFrom path (SelectExportItems [SelectExportAllItems])
-              <$ symbol "*"
-              <* semicolon
-          ],
-      do
-        keyword "as"
-        n <- Name <$> identifier
-        _ <- semicolon
-        return (ExportModuleAs path n),
+    [ symbol "." *> dotExportP,
+      keyword "as" *> (ExportModuleAs path . Name <$> identifier) <* semicolon,
       ExportModule path <$ semicolon
     ]
+  where
+    dotExportP = ExportItemsFrom path . SelectExportItems <$> itemsP <* semicolon
+    itemsP =
+      braces (exportSelEntryP `sepBy` comma)
+        <|> [SelectExportAllItems]
+        <$ symbol "*"
 
 exportSpecP :: Parser ExportSpec
 exportSpecP =
