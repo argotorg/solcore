@@ -124,12 +124,7 @@ forAssignP = do
     ]
 
 equationP :: Parser Equation
-equationP = do
-  _ <- symbol "|"
-  pats <- patListP
-  _ <- symbol "=>"
-  stmts <- many stmtP
-  return (pats, stmts)
+equationP = (,) <$> (symbol "|" *> patListP) <*> (symbol "=>" *> bodyP)
 
 equalsP :: Parser ()
 equalsP = void $ try (lexeme (char '=' <* notFollowedBy (char '=')))
