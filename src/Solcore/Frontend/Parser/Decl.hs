@@ -136,26 +136,19 @@ exportSpecP :: Parser ExportSpec
 exportSpecP =
   ExportAll
     <$ symbol "*"
-      <|> try
-        ( do
-            path <- externalPathP
-            _ <- symbol "."
-            _ <- symbol "*"
-            return (ExportModuleAll path)
-        )
-      <|> try
-        ( do
-            n <- moduleNameP
-            _ <- symbol "."
-            _ <- symbol "*"
-            return (ExportModuleAll (classifyModulePath n))
-        )
+      <|> ExportModuleAll
+    <$> try moduleAllPathP
       <|> do
         n <- Name <$> identifier
         mSel <- optional (parens constrSelectorP)
         return $ case mSel of
           Nothing -> ExportName n
           Just sel -> ExportNameWithConstructors n sel
+  where
+    moduleAllPathP =
+      (externalPathP <|> classifyModulePath <$> moduleNameP)
+        <* symbol "."
+        <* symbol "*"
 
 moduleNameP :: Parser Name
 moduleNameP = do
