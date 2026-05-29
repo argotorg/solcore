@@ -115,7 +115,6 @@ exportP = do
     [ ExportList <$> braces (exportSpecP `sepBy` comma) <* semicolon,
       externalPathP >>= exportTailP,
       modulePathP >>= exportTailP
-
     ]
 
 exportTailP :: ModulePath -> Parser Export
