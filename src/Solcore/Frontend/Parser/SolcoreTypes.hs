@@ -39,14 +39,11 @@ namedTypeP :: Parser Ty
 namedTypeP = TyCon <$> qualifiedName <*> option [] (parens (typeP `sepBy1` comma))
 
 parenTypeP :: Parser Ty
-parenTypeP = parens insideP
+parenTypeP = parens (mkParenTy <$> (typeP `sepBy` comma))
   where
-    insideP = do
-      ts <- typeP `sepBy` comma
-      return $ case ts of
-        [] -> TyCon "()" []
-        [t] -> t
-        _ -> foldr1 pairTy ts
+    mkParenTy [] = TyCon "()" []
+    mkParenTy [t] = t
+    mkParenTy ts = foldr1 pairTy ts
 
 predP :: Parser Pred
 predP = do
