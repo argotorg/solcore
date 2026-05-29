@@ -77,10 +77,7 @@ matchP = do
   return (Match scrutinees eqns)
 
 asmP :: Parser Stmt
-asmP = do
-  keyword "assembly"
-  yblk <- yulBlock -- yulBlock includes the surrounding braces
-  return (Asm yblk)
+asmP = Asm <$> (keyword "assembly" *> yulBlock) -- yulBlock includes the surrounding braces
 
 blockP :: Parser Stmt
 blockP = Block <$> braces bodyP
