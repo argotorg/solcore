@@ -26,12 +26,8 @@ qualifiedName = do
   return (foldl QualName (Name h) ts)
 
 typeP :: Parser Ty
-typeP = do
-  t <- atomTypeP
-  option t $ do
-    _ <- symbol "->"
-    t2 <- typeP
-    return (TyCon (Name "->") [t, t2])
+typeP = makeExprParser atomTypeP [[InfixR (mkArrowTy <$ symbol "->")]] where
+    mkArrowTy t1 t2 = TyCon "->" [t1, t2]
 
 atomTypeP :: Parser Ty
 atomTypeP = proxyTypeP <|> parenTypeP <|> namedTypeP
