@@ -33,10 +33,7 @@ atomTypeP :: Parser Ty
 atomTypeP = proxyTypeP <|> parenTypeP <|> namedTypeP
 
 proxyTypeP :: Parser Ty
-proxyTypeP = do
-  _ <- symbol "@"
-  t <- atomTypeP
-  return (TyCon "Proxy" [t])
+proxyTypeP = TyCon "Proxy" . (:[]) <$> (symbol "@" *> atomTypeP)
 
 namedTypeP :: Parser Ty
 namedTypeP = do
