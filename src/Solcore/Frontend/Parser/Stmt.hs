@@ -46,11 +46,7 @@ letP = do
   return (Let (Name n) mt me)
 
 returnP :: Parser Stmt
-returnP = do
-  keyword "return"
-  e <- expP
-  _ <- semicolon
-  return (Return e)
+returnP = Return <$> (keyword "return" *> expP <* semicolon)
 
 ifP :: Parser Stmt
 ifP = do
