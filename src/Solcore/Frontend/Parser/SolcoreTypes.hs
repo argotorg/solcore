@@ -36,10 +36,7 @@ proxyTypeP :: Parser Ty
 proxyTypeP = TyCon "Proxy" . (:[]) <$> (symbol "@" *> atomTypeP)
 
 namedTypeP :: Parser Ty
-namedTypeP = do
-  n <- qualifiedName
-  args <- option [] (parens (typeP `sepBy1` comma))
-  return (TyCon n args)
+namedTypeP = TyCon <$> qualifiedName <*> option [] (parens (typeP `sepBy1` comma))
 
 parenTypeP :: Parser Ty
 parenTypeP = parens insideP
