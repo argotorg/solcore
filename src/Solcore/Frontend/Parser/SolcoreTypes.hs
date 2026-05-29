@@ -9,8 +9,8 @@ module Solcore.Frontend.Parser.SolcoreTypes
   )
 where
 
-import Control.Monad.Combinators.Expr
 import Common.LightYear
+import Control.Monad.Combinators.Expr
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Syntax.Name (Name (..))
 import Solcore.Frontend.Syntax.SyntaxTree
