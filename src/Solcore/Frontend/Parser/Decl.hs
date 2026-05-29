@@ -310,25 +310,21 @@ constructorDeclP = do
 
 topDeclP :: Parser TopDecl
 topDeclP =
-  TPragmaDecl
-    <$> pragmaP
-      <|> TExportDecl
-    <$> exportP
-      <|> TDataDef
-    <$> dataP
-      <|> TSym
-    <$> tySymP
-      <|> TContr
-    <$> contractP
-      <|> withSigPrefix
+  choice
+    [ TPragmaDecl <$> pragmaP,
+      TExportDecl <$> exportP,
+      TDataDef <$> dataP,
+      TSym <$> tySymP,
+      TContr <$> contractP,
+      withSigPrefix
         ( \vars ctx ->
-            TFunDef
-              <$> funDefAfterPrefix vars ctx
-                <|> TClassDef
-              <$> classAfterPrefix vars ctx
-                <|> TInstDef
-              <$> instanceAfterPrefix vars ctx
+            choice
+              [ TFunDef <$> funDefAfterPrefix vars ctx,
+                TClassDef <$> classAfterPrefix vars ctx,
+                TInstDef <$> instanceAfterPrefix vars ctx
+              ]
         )
+    ]
 
 equalsP :: Parser ()
 equalsP = void $ try (lexeme (char '=' <* notFollowedBy (char '=')))
