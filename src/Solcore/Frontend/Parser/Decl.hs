@@ -81,9 +81,7 @@ modulePathP = do
 
 externalPathP :: Parser ModulePath
 externalPathP = do
-  _ <- symbol "@"
-  lib <- identifier
-  _ <- char '.'
+  lib <- symbol "@" *> identifier <* char '.'
   sc
   h <- identifier
   ts <- many (try (char '.' *> notFollowedBy (char '{') *> identifier))
