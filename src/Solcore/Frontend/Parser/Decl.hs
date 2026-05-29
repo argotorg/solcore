@@ -44,8 +44,7 @@ importP = do
           [ do
               _ <- symbol "."
               entries <- braces (itemEntryP `sepBy` comma)
-              hids <- option [] hidingP
-              _ <- semicolon
+              hids <- option [] hidingP <* semicolon
               return (ImportOnly path (SelectItems entries hids)),
             do
               keyword "as"
