@@ -56,6 +56,16 @@ data LoadState
 emptyLoadState :: LoadState
 emptyLoadState = LoadState Map.empty Map.empty Map.empty Set.empty []
 
+data ModuleReferenceKind
+  = ImportReference
+  | ExportReference
+  deriving (Eq, Show)
+
+data ModuleReferenceFailure
+  = ModuleReferenceNotFound
+  | ModuleReferenceMissingExternalRoot
+  deriving (Eq, Show)
+
 data ModuleGraph
   = ModuleGraph
   { entryModule :: Mod.ModuleId,
@@ -132,7 +142,7 @@ visit cfg moduleId sourcePath = do
     cunit <- either throwError pure parsed
     importedModules <- mapM (resolveImportPath cfg moduleId sourcePath) (imports cunit)
     exportedModules <-
-      mapM (resolveModuleReference cfg moduleId sourcePath "export") (exportModulePaths cunit)
+      mapM (resolveModuleReference cfg moduleId sourcePath ExportReference) (exportModulePaths cunit)
     let moduleRefs =
           Map.fromList $
             [(importModule imp, importId) | (imp, (importId, _)) <- zip (imports cunit) importedModules]
@@ -162,19 +172,19 @@ resolveImportPath ::
   StateT LoadState (ExceptT String IO) (Mod.ModuleId, FilePath)
 resolveImportPath cfg currentModule currentSourcePath imp =
   fmap (\(_, targetId, targetPath) -> (targetId, targetPath)) $
-    resolveModuleReference cfg currentModule currentSourcePath "import" (importModule imp)
+    resolveModuleReference cfg currentModule currentSourcePath ImportReference (importModule imp)
 
 resolveModuleReference ::
   LoaderConfig ->
   Mod.ModuleId ->
   FilePath ->
-  String ->
+  ModuleReferenceKind ->
   ModulePath ->
   StateT LoadState (ExceptT String IO) (ModulePath, Mod.ModuleId, FilePath)
 resolveModuleReference cfg currentModule currentSourcePath refKind modulePath = do
   candidates <-
     either
-      (throwError . moduleReferenceDiagnostic "SC0118" currentSourcePath refKind modulePath)
+      (throwError . moduleReferenceDiagnostic ModuleReferenceMissingExternalRoot currentSourcePath refKind modulePath)
       pure
       (resolveModuleImportCandidates cfg currentModule modulePath)
   resolved <- liftIO $ firstExisting candidates
@@ -183,34 +193,40 @@ resolveModuleReference cfg currentModule currentSourcePath refKind modulePath = 
     Nothing ->
       throwError $
         moduleReferenceDiagnostic
-          "SC0109"
+          ModuleReferenceNotFound
           currentSourcePath
           refKind
           modulePath
-          ( refKind
+          ( moduleReferenceKindText refKind
               ++ " "
               ++ Mod.modulePathDisplay modulePath
               ++ ": file not found"
           )
 
-moduleReferenceDiagnostic :: String -> FilePath -> String -> ModulePath -> String -> String
-moduleReferenceDiagnostic code sourcePath refKind modulePath message =
+moduleReferenceDiagnostic :: ModuleReferenceFailure -> FilePath -> ModuleReferenceKind -> ModulePath -> String -> String
+moduleReferenceDiagnostic failure sourcePath refKind modulePath message =
   loaderDiagnosticWithLabels
-    code
+    (moduleReferenceDiagnosticCode failure)
     message
-    (maybe [] pure (primaryModulePathLabel (moduleReferenceLabelMessage code refKind) modulePath))
-    [sourcePath, refKind ++ " " ++ Mod.modulePathDisplay modulePath]
-    (moduleReferenceHelp code)
+    (maybe [] pure (primaryModulePathLabel (moduleReferenceLabelMessage failure refKind) modulePath))
+    [sourcePath, moduleReferenceKindText refKind ++ " " ++ Mod.modulePathDisplay modulePath]
+    (moduleReferenceHelp failure)
 
-moduleReferenceLabelMessage :: String -> String -> String
-moduleReferenceLabelMessage "SC0118" _ = "external library import"
-moduleReferenceLabelMessage "SC0109" _ = "module reference"
-moduleReferenceLabelMessage _ refKind = refKind ++ " path"
+moduleReferenceDiagnosticCode :: ModuleReferenceFailure -> String
+moduleReferenceDiagnosticCode ModuleReferenceMissingExternalRoot = "SC0118"
+moduleReferenceDiagnosticCode ModuleReferenceNotFound = "SC0109"
 
-moduleReferenceHelp :: String -> [String]
-moduleReferenceHelp "SC0118" = ["pass --external-lib NAME=PATH for external imports"]
-moduleReferenceHelp "SC0109" = ["check the module path or add the missing source file"]
-moduleReferenceHelp _ = []
+moduleReferenceLabelMessage :: ModuleReferenceFailure -> ModuleReferenceKind -> String
+moduleReferenceLabelMessage ModuleReferenceMissingExternalRoot _ = "external library import"
+moduleReferenceLabelMessage ModuleReferenceNotFound _ = "module reference"
+
+moduleReferenceHelp :: ModuleReferenceFailure -> [String]
+moduleReferenceHelp ModuleReferenceMissingExternalRoot = ["pass --external-lib NAME=PATH for external imports"]
+moduleReferenceHelp ModuleReferenceNotFound = ["check the module path or add the missing source file"]
+
+moduleReferenceKindText :: ModuleReferenceKind -> String
+moduleReferenceKindText ImportReference = "import"
+moduleReferenceKindText ExportReference = "export"
 
 toFilePath :: FilePath -> Name -> FilePath
 toFilePath base = (base </>) . Mod.moduleFilePath
