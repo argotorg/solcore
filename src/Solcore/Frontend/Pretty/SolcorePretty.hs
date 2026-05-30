@@ -116,6 +116,8 @@ pprItemSelector (SelectItems items hidden) =
 instance Pretty ItemSelectorEntry where
   ppr SelectAllItems = text "*"
   ppr (SelectItem itemName) = ppr itemName
+  ppr (SelectItemAs itemName aliasName) =
+    hsep [ppr itemName, text "as", ppr aliasName]
 
 exportSelectorIsOnlyWildcard :: ExportSelector -> Bool
 exportSelectorIsOnlyWildcard (SelectExportItems [SelectExportAllItems]) = True

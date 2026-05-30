@@ -95,6 +95,7 @@ data ItemSelector
 data ItemSelectorEntry
   = SelectAllItems
   | SelectItem Name
+  | SelectItemAs Name Name
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of the contract structure

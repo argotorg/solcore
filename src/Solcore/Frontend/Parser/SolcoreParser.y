@@ -139,6 +139,7 @@ ImportItemList : ImportItem ',' ImportItemList     { $1 : $3 }
 ImportItem :: { ItemSelectorEntry }
 ImportItem : '*'                                   { SelectAllItems }
            | ItemName                              { SelectItem $1 }
+           | ItemName 'as' Name                    { SelectItemAs $1 $3 }
 
 ImportHiding :: { [Name] }
 ImportHiding : 'hiding' '{' HidingItemList '}'     { $3 }
