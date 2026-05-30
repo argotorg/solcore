@@ -60,7 +60,8 @@ data ModuleGraph
     dependencies :: Map Mod.ModuleId [Mod.ModuleId],
     referenceDependencies :: Map Mod.ModuleId [Mod.ModuleId],
     referenceGroups :: Map Mod.ModuleId [Mod.ModuleId],
-    moduleOrder :: [Mod.ModuleId]
+    moduleOrder :: [Mod.ModuleId],
+    publicInterfaceCache :: Map Mod.ModuleId ModulePublicInterface
   }
   deriving (Eq, Show)
 
@@ -83,16 +84,18 @@ loadModuleGraph mainRootPath stdRootPath externalLibs entryFile = runExceptT do
   let loaded = loadedModules st
       importDeps = moduleDeps st
       refDeps = moduleRefDeps st
-  pure
-    ( ModuleGraph
-        { entryModule = entryId,
-          modules = loaded,
-          dependencies = importDeps,
-          referenceDependencies = refDeps,
-          referenceGroups = buildGroupMap loaded refDeps,
-          moduleOrder = reverse (loadOrder st)
-        }
-    )
+      graph =
+        ModuleGraph
+          { entryModule = entryId,
+            modules = loaded,
+            dependencies = importDeps,
+            referenceDependencies = refDeps,
+            referenceGroups = buildGroupMap loaded refDeps,
+            moduleOrder = reverse (loadOrder st),
+            publicInterfaceCache = Map.empty
+          }
+  interfaces <- ExceptT $ pure (buildPublicInterfaceCache graph)
+  pure graph {publicInterfaceCache = interfaces}
 
 mkLoaderConfig :: FilePath -> Maybe FilePath -> [(Name, FilePath)] -> FilePath -> IO LoaderConfig
 mkLoaderConfig mainRootPath stdRootPath externalLibs _entryFile = do
@@ -602,12 +605,39 @@ publicTopDeclsForModule graph modulePath = do
   pure (publicDecls ++ [decl | decl@(TInstDef _) <- topDeclsFrom unit])
 
 publicModuleInterface :: ModuleGraph -> Mod.ModuleId -> Either String ModulePublicInterface
-publicModuleInterface graph modulePath = do
-  interfaces <- publicInterfacesForGroup graph (referenceGroupFor graph modulePath)
-  maybe
-    (Left ("Internal error: missing public interface for " ++ Mod.moduleIdDisplay modulePath))
-    Right
-    (Map.lookup modulePath interfaces)
+publicModuleInterface graph modulePath =
+  case Map.lookup modulePath (publicInterfaceCache graph) of
+    Just publicInterface ->
+      Right publicInterface
+    Nothing -> do
+      interfaces <- publicInterfacesForGroup graph (referenceGroupFor graph modulePath)
+      maybe
+        (Left ("Internal error: missing public interface for " ++ Mod.moduleIdDisplay modulePath))
+        Right
+        (Map.lookup modulePath interfaces)
+
+buildPublicInterfaceCache :: ModuleGraph -> Either String (Map Mod.ModuleId ModulePublicInterface)
+buildPublicInterfaceCache graph =
+  foldM addGroup Map.empty (uniqueReferenceGroups graph)
+  where
+    addGroup cache groupModules
+      | all (`Map.member` cache) groupModules =
+          Right cache
+      | otherwise = do
+          interfaces <- publicInterfacesForGroup (graph {publicInterfaceCache = cache}) groupModules
+          Right (Map.union interfaces cache)
+
+uniqueReferenceGroups :: ModuleGraph -> [[Mod.ModuleId]]
+uniqueReferenceGroups graph =
+  reverse groups
+  where
+    (groups, _) = foldl step ([], Set.empty) (map (referenceGroupFor graph) (moduleOrder graph))
+
+    step (acc, seen) groupModules =
+      let groupKey = Set.fromList groupModules
+       in if groupKey `Set.member` seen
+            then (acc, seen)
+            else (groupModules : acc, Set.insert groupKey seen)
 
 publicInterfacesForGroup :: ModuleGraph -> [Mod.ModuleId] -> Either String (Map Mod.ModuleId ModulePublicInterface)
 publicInterfacesForGroup graph groupModules =
