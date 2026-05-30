@@ -1,5 +1,5 @@
-import std.opcodes.{add, mstore, mload, mcopy, sstore, sload, calldataload, calldatacopy, iszero, keccak256, log1 as log1_, invalid};
-//import std.opcodes.{not} as not_;
+
+import std.opcodes.{add, not as not_, and as and_, mstore, mload, mcopy, sstore, sload, calldataload, calldatacopy, iszero, keccak256, log1 as log1_, invalid};
 
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
@@ -1225,23 +1225,6 @@ instance bool:ABIEncode {
         mstore(basePtr + offset, repx);
         return tail;
     }
-}
-
-// TODO: support import renaming
-function and_(a: word, b: word) -> word {
-    let res;
-    assembly {
-        res := and(a, b)
-    }
-    return res;
-}
-
-function not_(a: word) -> word {
-    let res;
-    assembly {
-        res := not(a)
-    }
-    return res;
 }
 
 function round_up_to_mul_of_32(value:word) -> word {
