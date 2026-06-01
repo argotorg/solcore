@@ -10,14 +10,16 @@ without qualification unless the import form places it directly into scope.
 
 ## File Layout
 
-A source file consists of zero or more import declarations followed by zero or
-more top-level declarations. Import declarations must come before any other
-declaration in the file.
+A source file is a sequence of import declarations and top-level declarations
+in any order. Import declarations may appear before, after, or interleaved with
+top-level declarations.
 
 ```
-import-declaration*
-top-level-declaration*
+( import-declaration | top-level-declaration )*
 ```
+
+The conventional style places all imports at the top of the file, but this is
+not enforced by the compiler.
 
 ---
 
@@ -83,6 +85,19 @@ function doTransfer(t : Token, to : word, amount : word) -> () {
 }
 ```
 
+Each item in the selector list may optionally be renamed with `as`:
+
+```solidity
+import selectlib.{keep as keep_, drop as drop_};
+
+function main(x : word) -> word {
+    return drop_(keep_(x));
+}
+```
+
+The original name `keep` is not placed into scope. Only the alias `keep_` is available.
+Multiple items may be renamed independently in the same selector list.
+
 Constructors of an imported type must still be qualified with the type name
 even when the type itself was selectively imported:
 
@@ -134,6 +149,36 @@ function main(x : word) -> word {
     return keep(x);    // drop is not in scope
 }
 ```
+
+### Importing operator symbols
+
+User-defined operator symbols are exported and imported using parenthesised
+syntax `(sym)`, where `sym` is the operator character sequence. Importing an
+operator brings both its precedence/fixity declaration and its bound function
+into scope.
+
+```solidity
+// math.solc  (declares and exports the operator)
+infixl 70 (^^) => pow;
+export { pow, (^^) };
+
+function pow(b : word, e : word) -> word { ... }
+```
+
+```solidity
+// main.solc  (imports the operator by symbol)
+import math.{pow, (^^)};
+
+contract Main {
+    function main() -> word {
+        return 2 ^^ 10;    // 1024
+    }
+}
+```
+
+Operator symbols may be mixed freely with ordinary names in the same selector
+list. Importing the function name alone (without the symbol) makes the
+implementation callable as a regular function but does not enable infix syntax.
 
 ---
 
@@ -313,6 +358,20 @@ export { Token(Ok) };           // exports only the Ok constructor
 export { Token(Ok, Err) };      // exports both constructors
 export { Bool(*) };             // exports Bool and all its constructors
 ```
+
+### Exporting operator symbols
+
+Operator symbols are separate exportable entities from the functions they
+implement. To make an operator available to importers as infix syntax, both
+the function name and the operator symbol must appear in the export list:
+
+```solidity
+infixl 70 (^^) => pow;
+export { pow, (^^) };
+```
+
+Exporting only `pow` (without `(^^)`) makes the function callable by name
+but does not grant importers access to the infix `^^` syntax.
 
 ### Wildcard export
 

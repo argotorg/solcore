@@ -13,8 +13,8 @@ zero-or-more repetition.
 
 ### CompilationUnit
 
-A SAIL source file consists of an optional sequence of import declarations
-followed by a sequence of top-level declarations.
+A SAIL source file is a sequence of import declarations and top-level
+declarations in any order. Imports are not required to precede declarations.
 
 ![CompilationUnit](diagrams/CompilationUnit.svg)
 
@@ -23,8 +23,8 @@ followed by a sequence of top-level declarations.
 ### TopDecl
 
 A top-level declaration is one of: a contract, a free function, a type class,
-an instance, an algebraic data type, a type synonym, an export declaration, or
-a pragma.
+an instance, an algebraic data type, a type synonym, an export declaration, a
+pragma, or an operator declaration.
 
 ![TopDecl](diagrams/TopDecl.svg)
 
@@ -59,10 +59,24 @@ The list of names to import from a module, enclosed in braces.
 
 ### ImportItem
 
-A single item to import: either a specific identifier or the wildcard `*` which
-imports all exported names.
+A single item to import. Four forms are available:
+
+- `*` imports all exported names (wildcard).
+- `Name` imports a single name into the unqualified scope.
+- `Name as Alias` imports a single name under a local alias. The original name is not placed in scope.
+- `(sym)` imports an operator symbol and enables its infix syntax in this file.
 
 ![ImportItem](diagrams/ImportItem.svg)
+
+---
+
+### OperatorSymbol
+
+A non-empty sequence of operator characters (`+-*/%<>=!&|^~#?` or Unicode
+mathematical symbols in the range U+2200 to U+23FF), written between
+parentheses in import and export item lists.
+
+![OperatorSymbol](diagrams/OperatorSymbol.svg)
 
 ---
 
@@ -92,8 +106,9 @@ The list of names to export from the current module, enclosed in braces.
 
 ### ExportItem
 
-A single export entry: the wildcard `*`, a plain name, a name together with its
-constructors, or all names from a module.
+A single export entry. It may be the wildcard `*`, a plain name, a name together
+with its constructors, all names from a module, or an operator symbol in
+parentheses.
 
 ![ExportItem](diagrams/ExportItem.svg)
 

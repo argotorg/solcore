@@ -17,7 +17,8 @@ TypeName = Identifier
 
 ## Compilation Unit
 
-CompilationUnit = { Import } { TopDecl }
+# Imports and top-level declarations may be interleaved in any order.
+CompilationUnit = { Import | TopDecl }
 
 TopDecl = Contract
         | Function
@@ -27,6 +28,7 @@ TopDecl = Contract
         | TypeSynonym
         | ExportDecl
         | Pragma
+        | OperatorDecl
 
 
 ## Module System
@@ -44,6 +46,13 @@ ImportItems = ImportItem { "," ImportItem }
 
 ImportItem = "*"
            | Identifier
+           | Identifier "as" Identifier
+           | "(" OperatorSymbol ")"
+
+# OperatorSymbol is a non-empty sequence of operator characters:
+# ASCII: + - * / % < > = ! & | ^ ~ # ?
+# Unicode: U+2200..U+22FF (mathematical operators) and U+2300..U+23FF
+OperatorSymbol = opChar { opChar }
 
 HidingList = Identifier { "," Identifier }
 
@@ -64,6 +73,7 @@ ExportItem = "*"
            | Identifier "(" ExportConstructors ")"
            | ModulePath "." "*"
            | "@" Identifier "." ModulePath "." "*"
+           | "(" OperatorSymbol ")"
 
 ExportConstructors = "*"
                    | Identifier { "," Identifier }
