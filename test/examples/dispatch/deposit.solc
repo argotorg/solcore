@@ -17,7 +17,7 @@ function callvalue() -> uint256 {
     return uint256(res);
 }
 
-function assert(cond: bool) -> () {
+function assert_(cond: bool) -> () {
     if (!cond) {
         assembly {
             invalid()
@@ -25,7 +25,7 @@ function assert(cond: bool) -> () {
     }
 }
 
-function require(cond: bool) -> () {
+function require_(cond: bool) -> () {
     if (!cond) {
         assembly {
             revert(0, 0)
