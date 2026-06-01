@@ -25,7 +25,7 @@ function assert_(cond: bool) -> () {
     }
 }
 
-function require_(cond: bool) -> () {
+function myrequire(cond: bool) -> () {
     if (!cond) {
         assembly {
             revert(0, 0)
@@ -370,16 +370,16 @@ contract DepositContract {
 
   function deposit(pubkey: memory(bytes), withdrawal_credentials: memory(bytes), signature: memory(bytes), deposit_data_root: bytes32) -> () {
     // Extended ABI length checks since dynamic types are used.
-    require(MemoryHelpers.len(pubkey) == 48);
-    require(MemoryHelpers.len(withdrawal_credentials) == 32);
-    require(MemoryHelpers.len(signature) == 96);
+    myrequire(MemoryHelpers.len(pubkey) == 48);
+    myrequire(MemoryHelpers.len(withdrawal_credentials) == 32);
+    myrequire(MemoryHelpers.len(signature) == 96);
 
     // Check deposit amount
-    require(callvalue() >= uint256(1000000000000000000)); // >= 1 ether
-    require(callvalue() % uint256(1000000000) == uint256(0)); // % 1 gwei == 0
+    myrequire(callvalue() >= uint256(1000000000000000000)); // >= 1 ether
+    myrequire(callvalue() % uint256(1000000000) == uint256(0)); // % 1 gwei == 0
 
     let deposit_amount = callvalue() / uint256(1000000000); // 1 gwei
-    require(deposit_amount <= uint256(0xffffffffffffffff)); // <= type(uint64).max
+    myrequire(deposit_amount <= uint256(0xffffffffffffffff)); // <= type(uint64).max
 
     let amount: memory(bytes) = to_little_endian_64(deposit_amount);
     // TODO: emit DepositEvent
@@ -419,10 +419,10 @@ contract DepositContract {
     ));
 
     // Verify computed and expected deposit data roots match
-    require(node == deposit_data_root);
+    myrequire(node == deposit_data_root);
 
     // Avoid overflowing the Merkle tree (and prevent edge case in computing `branch`)
-    require(deposit_count < MAX_DEPOSIT_COUNT());
+    myrequire(deposit_count < MAX_DEPOSIT_COUNT());
 
     // Add deposit data root to Merkle tree (update a single `branch` node)
     deposit_count += uint256(1);
