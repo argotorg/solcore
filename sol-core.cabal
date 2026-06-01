@@ -39,8 +39,6 @@ common common-opts
     , time
     , timeit
 
-  build-tool-depends: happy:happy, alex:alex
-
   default-language: Haskell2010
   default-extensions: OverloadedStrings
                       FlexibleInstances
@@ -75,7 +73,12 @@ library
       Solcore.Frontend.Lexer.SolcoreLexer
       Solcore.Frontend.Module.Identity
       Solcore.Frontend.Module.Loader
+      Solcore.Frontend.Parser.Decl
+      Solcore.Frontend.Parser.Expr
+      Solcore.Frontend.Parser.Patterns
       Solcore.Frontend.Parser.SolcoreParser
+      Solcore.Frontend.Parser.SolcoreTypes
+      Solcore.Frontend.Parser.Stmt
       Solcore.Frontend.Pretty.SolcorePretty
       Solcore.Frontend.Pretty.Name
       Solcore.Frontend.Pretty.ShortName
@@ -128,7 +131,6 @@ executable sol-core
   hs-source-dirs:
       app
   build-depends: sol-core
-  build-tool-depends: alex:alex, happy:happy
   ghc-options:
     -O1 -rtsopts
 
@@ -169,6 +171,7 @@ test-suite sol-core-tests
     HullCases
     MatchCompilerTests
     ModuleTypeCheckTests
+    ParserTests
 
   build-depends:
     , sol-core
