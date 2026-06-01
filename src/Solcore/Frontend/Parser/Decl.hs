@@ -106,9 +106,12 @@ mkQualName (x : xs) = foldl QualName (Name x) xs
 
 itemEntryP :: Parser ItemSelectorEntry
 itemEntryP =
-  SelectAllItems <$ symbol "*"
-    <|> try (SelectItemAs <$> (Name <$> identifier) <* keyword "as" <*> (Name <$> identifier))
-    <|> SelectItem . Name <$> identifier
+  SelectAllItems
+    <$ symbol "*"
+      <|> try (SelectItemAs <$> (Name <$> identifier) <* keyword "as" <*> (Name <$> identifier))
+      <|> SelectItem
+      . Name
+    <$> identifier
 
 exportP :: Parser Export
 exportP = do
