@@ -650,6 +650,13 @@ evmc::Result EVMHost::precompileRipeMD160(evmc_message const& _message) noexcept
 				fromHex("000000000000000000000000ac5ab22e07b0fb80c69b6207902f725e2507e546"),
 				calc_cost(32)
 			}
+		},
+		{
+			fromHex("616263"),
+			{
+				fromHex("0000000000000000000000008eb208f7e05d987a9b044a8e98c6b087f15a0bfc"),
+				calc_cost(32)
+			}
 		}
 	};
 	return precompileGeneric(_message, inputOutput);
