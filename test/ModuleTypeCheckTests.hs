@@ -128,5 +128,6 @@ wordSignature funName =
       sigContext = [],
       sigName = Name funName,
       sigParams = [],
-      sigReturn = Just wordTy
+      sigReturn = Just wordTy,
+      sigPayable = False
     }

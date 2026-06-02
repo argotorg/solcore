@@ -212,7 +212,7 @@ instance Names (Equation Name) where
   names (_, bdy) = names bdy
 
 instance Names (Signature Name) where
-  names (Signature _ ctx _ ps mret) =
+  names (Signature _ ctx _ ps mret _) =
     names ctx `union` names ps `union` names mret
 
 instance Names (FunDef Name) where

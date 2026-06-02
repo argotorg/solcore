@@ -164,7 +164,8 @@ data Signature a
     sigContext :: [Pred],
     sigName :: Name,
     sigParams :: [Param a],
-    sigReturn :: Maybe Ty
+    sigReturn :: Maybe Ty,
+    sigPayable :: Bool
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 

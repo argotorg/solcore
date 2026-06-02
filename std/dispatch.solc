@@ -97,19 +97,37 @@ forall ty . class ty:ExecMethod {
   function exec(x: ty) -> ();
 }
 
-// If fn matches the provided args/ret types, then we can execute any method
-forall name payability args rets fn
+// If fn matches the provided args/ret types, then we can execute any non-payable method
+forall name args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
   , rets:ABIAttribs
   , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
   , rets:ABIEncode
-  , payability:MethodLevelCallvalueCheck
-=> instance Method(name,payability,args,rets,fn):ExecMethod {
-  function exec(m : Method(name,payability,args,rets,fn)) -> () {
+=> instance Method(name,NonPayable,args,rets,fn):ExecMethod {
+  function exec(m : Method(name,NonPayable,args,rets,fn)) -> () {
     match m {
       | Method(pnm,ppayability,pargs,prets,fn) =>
-        do_exec(ppayability, pargs, prets, fn);
+        // non-payable methods must reject any callvalue before running
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(NonPayable));
+        do_exec(pargs, prets, fn);
+    }
+  }
+}
+
+// If fn matches the provided args/ret types, then we can execute any payable method
+// payable methods skip the callvalue check entirely
+forall name args rets fn
+  . fn:invokable(args,rets)
+  , args:ABIAttribs
+  , rets:ABIAttribs
+  , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
+  , rets:ABIEncode
+=> instance Method(name,Payable,args,rets,fn):ExecMethod {
+  function exec(m : Method(name,Payable,args,rets,fn)) -> () {
+    match m {
+      | Method(pnm,ppayability,pargs,prets,fn) =>
+        do_exec(pargs, prets, fn);
     }
   }
 }
@@ -126,22 +144,19 @@ forall payability args rets fn
   function exec(fb : Fallback(payability,args,rets,fn)) -> () {
     match fb {
       | Fallback(ppayability, pargs, prets, fn) =>
-        do_exec(ppayability, pargs, prets, fn);
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(payability));
+        do_exec(pargs, prets, fn);
     }
   }
 }
 
-forall payability args rets fn
+forall args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
   , rets:ABIAttribs
   , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
   , rets:ABIEncode
-  , payability:MethodLevelCallvalueCheck
-=> function do_exec(ppayability : Proxy(payability), pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
-    // check callvalue
-    MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(payability));
-
+=> function do_exec(pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
     // check we have enough calldata for the head of args
     let hdsz = ABIAttribs.headSize(pargs);
     let cdsz;
