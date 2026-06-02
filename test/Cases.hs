@@ -85,7 +85,8 @@ dispatches =
     [ runDispatchTest "basic.solc",
       runDispatchTest "stringid.solc",
       runDispatchTest "miniERC20.solc",
-      runDispatchTest "Revert.solc"
+      runDispatchTest "Revert.solc",
+      runDispatchTest "hashes.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"

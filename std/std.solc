@@ -69,6 +69,7 @@ export {
   gtWord,
   hash1,
   hash2,
+  keccak256_,
   keccakLit,
   le,
   lidx,
@@ -92,9 +93,11 @@ export {
   revertWithError,
   require,
   ridx,
+  ripemd160,
   round_up_to_mul_of_32,
   rval,
   set_free_memory,
+  sha256,
   slice(*),
   sloadViaWord,
   sload_,
@@ -2051,4 +2054,46 @@ function zeroize_memory(ptr: word, len: word) -> () {
         // Zero out trailing bytes. We rely on the zero-slot (0x60-0x7f).
         mcopy(ptr, 0x60, sub(end_ptr, ptr))
     }
+}
+
+// --- Hashing ---
+
+// NOTE: keccak256 name conflicts with assembly namespace
+function keccak256_(input: memory(bytes)) -> bytes32 {
+    let ptr : word = Typedef.rep(input);
+    let res : word;
+    assembly {
+        res := keccak256(add(ptr, 32), mload(ptr))
+    }
+    return bytes32(res);
+}
+
+function sha256(input: memory(bytes)) -> bytes32 {
+    let ptr : word = Typedef.rep(input);
+    let res : word;
+    // We assume the [0, 32] scratch space is reserved.
+    // TODO: add specific error code
+    assembly {
+        let ret := staticcall(gas(), 2, add(ptr, 32), mload(ptr), 0, 32)
+        if iszero(ret) {
+            revert(0, 0)
+        }
+        res := mload(0)
+    }
+    return bytes32(res);
+}
+
+function ripemd160(input: memory(bytes)) -> bytes32 {
+    let ptr : word = Typedef.rep(input);
+    let res : word;
+    // We assume the [0, 32] scratch space is reserved.
+    // TODO: add specific error code
+    assembly {
+        let ret := staticcall(gas(), 3, add(ptr, 32), mload(ptr), 0, 32)
+        if iszero(ret) {
+            revert(0, 0)
+        }
+        res := mload(0)
+    }
+    return bytes32(res);
 }
