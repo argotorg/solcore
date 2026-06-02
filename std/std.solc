@@ -2014,7 +2014,7 @@ forall a i . i:Typedef(word) =>
 instance (storage(array(a)), i): LValueIdxAccess(storage(a)) {
   function lookup(xi : (storage(array(a)), i)) -> storage(a) {
     match(xi) {
-      | (x, i) => return storage(addWord(hash1(Typedef.rep(x)), Typedef.rep(i)));
+      | (x, i) => return storage(hash1(Typedef.rep(x)) + Typedef.rep(i));
     }
   }
 }
@@ -2057,12 +2057,12 @@ function ridx( m: storage(mapping(i,a)), x:i) -> a {
 
 forall a i . i:Typedef(word) =>
 function larr( m: storage(array(a)), x:i) -> storage(a) {
-  return storage(addWord(hash1(Typedef.rep(m)), Typedef.rep(x)));
+  return storage(hash1(Typedef.rep(m)) + Typedef.rep(x));
 }
 
 forall a i . i:Typedef(word), a:StorageType  =>
 function rarr( m: storage(array(a)), x:i) -> a {
-  return StorageType.load(addWord(hash1(Typedef.rep(m)), Typedef.rep(x)));
+  return StorageType.load(hash1(Typedef.rep(m)) + Typedef.rep(x));
 }
 
 // --- Memory Encoding ---
