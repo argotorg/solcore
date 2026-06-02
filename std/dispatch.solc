@@ -291,13 +291,12 @@ forall methods fb . methods:RunDispatch, fb:ExecMethod => instance Contract(meth
         assembly {
           cdsz := calldatasize()
         }
-        match cdsz < 4 {
-          | true => ExecMethod.exec(fb);
-          | false =>
+        if (cdsz >= 4) {
             RunDispatch.go(ms);
-            // run fallback if no methods matched
-            ExecMethod.exec(fb);
         }
+        // fallthrough to fallback -- this will be reached upon short input
+        //                            or no matching selector
+        ExecMethod.exec(fb);
     }
   }
 }
