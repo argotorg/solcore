@@ -1547,7 +1547,7 @@ tcYulBlock (s : ss) =
     pure (ns ++ nss, t)
 
 tcYulStmt :: YulStmt -> TcM ([Name], Ty)
-tcYulStmt (YAssign ns e) =
+tcYulStmt s@(YAssign ns e) =
   do
     forM_ ns $ \n -> do
       msch <- maybeAskEnv n
@@ -1559,16 +1559,18 @@ tcYulStmt (YAssign ns e) =
           case t' of
             Meta _ -> unify t' word >> pure ()
             _ -> pure ()
-    _ <- tcYulExp e
+    t <- tcYulExp e
+    checkYulAssignArity s ns e t
     pure ([], unit)
 tcYulStmt (YBlock yblk) =
   do
     _ <- tcYulBlock yblk
     -- names defined in should not return
     pure ([], unit)
-tcYulStmt (YLet ns (Just e)) =
+tcYulStmt s@(YLet ns (Just e)) =
   do
-    _ <- tcYulExp e
+    t <- tcYulExp e
+    checkYulAssignArity s ns e t
     mapM_ (flip extEnv mword) ns
     pure (ns, unit)
 tcYulStmt (YExp e) =
@@ -1597,6 +1599,33 @@ tcYulStmt (YFor initBlk e bdy upd) =
       pure ()
     pure ([], unit)
 tcYulStmt _ = pure ([], unit)
+
+-- Yul builtins/opcodes return either 0 values (type 'unit') or 1 value
+-- (any other type). Compare the number of names on the left-hand side of
+-- an assignment with the actual return arity of the right-hand side.
+yulReturnArity :: Ty -> Int
+yulReturnArity t
+  | t == unit = 0
+  | otherwise = 1
+
+checkYulAssignArity :: YulStmt -> [Name] -> YulExp -> Ty -> TcM ()
+checkYulAssignArity s ns e t =
+  do
+    t' <- withCurrentSubst t
+    let expected = length ns
+        actual = yulReturnArity t'
+    when (expected /= actual) $
+      tcmError
+        ( unlines
+            [ "In Yul statement:",
+              pretty s,
+              "the right-hand side:",
+              pretty e,
+              "produces " ++ show actual ++ " value(s),",
+              "but " ++ show expected ++ " value(s) are being assigned."
+            ]
+        )
+        `wrapError` s
 
 tcYulExp :: YulExp -> TcM Ty
 tcYulExp (YLit l) =
