@@ -278,7 +278,7 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
             // set free memory pointer to the output of memoryguard
             // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
             // TODO: we will need to consider immutables here at some point...
-            assembly { mstore(0x40, memoryguard(128)); }
+            assembly { mstore(0x40, memoryguard(128)) }
 
             // dispatch to method based on selector
             RunDispatch.go(ms);

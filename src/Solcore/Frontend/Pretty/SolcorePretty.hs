@@ -326,12 +326,14 @@ instance (Pretty a) => Pretty (Stmt a) where
       <+> lbrace
       $$ nest 3 (ppr body)
       $$ rbrace
+  ppr EmptyStmt = empty
 
 pprForClause :: (Pretty a) => Stmt a -> Doc
 pprForClause (n := e) = ppr n <+> equals <+> ppr e
 pprForClause (Let n ty m) = text "let" <+> ppr n <+> pprOptTy ty <+> pprForInitOpt m
 pprForClause (StmtExp e) = ppr e
 pprForClause (Block stmts) = hsep (punctuate comma (map pprForClause stmts))
+pprForClause EmptyStmt = empty
 pprForClause s = ppr s
 
 pprForInitOpt :: (Pretty a) => Maybe (Exp a) -> Doc

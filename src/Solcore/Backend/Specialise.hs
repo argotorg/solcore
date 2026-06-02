@@ -523,6 +523,7 @@ specStmt (For initStmt cond post body) = do
   body' <- specBody body
   return $ For initStmt' cond' post' body'
 specStmt (Asm ys) = pure (Asm ys)
+specStmt EmptyStmt = pure EmptyStmt
 specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
 
 specMatch :: [Exp Id] -> [([Pat Id], [Stmt Id])] -> SM (Stmt Id)
@@ -878,6 +879,7 @@ toMastStmt (Asm ys) = MastAsm ys
 toMastStmt (For initStmt cond postStmt body) =
   MastFor (toMastStmt initStmt) (toMastExp cond) (toMastStmt postStmt) (toMastBody body)
 toMastStmt (Block body) = MastSeq (toMastBody body)
+toMastStmt EmptyStmt = MastSeq []
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
 toMastBody :: [Stmt Id] -> [MastStmt]

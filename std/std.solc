@@ -398,7 +398,7 @@ function gtWord(x:word, y:word) -> bool {
 function addWord(l: word, r: word) -> word {
   let rw : word;
   assembly {
-      rw := add(l,r);
+      rw := add(l,r)
   }
   return rw;
 }
@@ -406,7 +406,7 @@ function addWord(l: word, r: word) -> word {
 function subWord(l: word, r: word) -> word {
     let rw : word;
     assembly {
-        rw := sub(l,r);
+        rw := sub(l,r)
     }
     return rw;
 }
@@ -439,7 +439,7 @@ instance word:Mul {
     function mul(l: word, r: word) -> word {
         let rw : word;
         assembly {
-            rw := mul(l,r);
+            rw := mul(l,r)
         }
         return rw;
     }
@@ -449,7 +449,7 @@ instance word:Div {
     function div(l: word, r: word) -> word {
         let rw : word;
         assembly {
-            rw := div(l,r);
+            rw := div(l,r)
         }
         return rw;
     }
@@ -459,7 +459,7 @@ instance word : Mod {
   function mod (l : word, r : word) -> word {
     let res : word;
     assembly {
-      res := mod(l,r);
+      res := mod(l,r)
     }
     return res;
   }
@@ -1501,7 +1501,7 @@ instance word:StorageType {
     function load(ptr:word) -> word {
         let r:word;
         assembly {
-            r := sload(ptr);
+            r := sload(ptr)
         }
         return r;
     }
@@ -1516,7 +1516,7 @@ forall a. a:Typedef(word) =>
 function sloadViaWord(ptr:word) -> a {
     let r:word;
     assembly {
-	r := sload(ptr);
+	r := sload(ptr)
     }
     return Typedef.abs(r);
 }

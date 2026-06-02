@@ -104,7 +104,7 @@ instance word:StorageType {
     function sload(ptr:word) -> word {
         let r:word;
         assembly {
-            r := sload(ptr);
+            r := sload(ptr)
         }
         return r;
     }

@@ -149,6 +149,8 @@ tcStmtWithExpectedReturn mExpectedReturn s@(For initStmt cond postStmt body) =
     (postStmt', psPost, _) <- tcStmtWithExpectedReturn Nothing postStmt
     (body', psBody, _) <- tcBodyWithExpectedReturn mExpectedReturn body
     withCurrentSubst (For initStmt' cond' postStmt' body', psInit ++ psCond ++ psPost ++ psBody, unit)
+tcStmtWithExpectedReturn _ EmptyStmt =
+  pure (EmptyStmt, [], unit)
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations = tcEquationsWithExpectedReturn Nothing
@@ -1683,6 +1685,7 @@ instance Vars (Stmt Id) where
   free (For initStmt cond postStmt body) =
     free initStmt `union` ((free cond `union` free postStmt `union` free body) \\ bound initStmt)
   free (Asm _) = []
+  free EmptyStmt = []
 
   bound (Let n _ _) = [n]
   bound (Block _) = []
