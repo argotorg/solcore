@@ -276,6 +276,8 @@ cases =
       runTestForFile "for-let.solc" caseFolder,
       runTestExpectingFailure "for-let-post.solc" caseFolder,
       runTestForFile "for-loop.solc" caseFolder,
+      runTestForFile "for-multi-init.solc" caseFolder,
+      runTestForFile "for-multi-post.solc" caseFolder,
       runTestExpectingFailure "GetSet.solc" caseFolder,
       runTestExpectingFailure "GoodInstance.solc" caseFolder,
       runTestForFile "Id.solc" caseFolder,

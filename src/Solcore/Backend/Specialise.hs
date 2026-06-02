@@ -877,6 +877,7 @@ toMastStmt (Match es _) = error $ "toMastStmt: multi-scrutinee match should have
 toMastStmt (Asm ys) = MastAsm ys
 toMastStmt (For initStmt cond postStmt body) =
   MastFor (toMastStmt initStmt) (toMastExp cond) (toMastStmt postStmt) (toMastBody body)
+toMastStmt (Block body) = MastSeq (toMastBody body)
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
 toMastBody :: [Stmt Id] -> [MastStmt]
