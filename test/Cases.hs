@@ -217,6 +217,8 @@ cases =
       runTestForFileWith noDesugarOpt "app.solc" caseFolder,
       runTestForFile "array.solc" caseFolder,
       runTestForFile "assembly.solc" caseFolder,
+      runTestExpectingFailure "asm-assign-no-return.solc" caseFolder,
+      runTestExpectingFailure "asm-let-no-return.solc" caseFolder,
       runTestForFile "bal.solc" caseFolder,
       runTestExpectingFailure "BadInstance.solc" caseFolder,
       runTestForFile "BoolNot.solc" caseFolder,
