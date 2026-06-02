@@ -19,6 +19,6 @@ contract ArrayStorage {
     // arr[0] + arr[1]
     let a0 : uint256 = rarr(arr, uint256(0));
     let a1 : uint256 = rarr(arr, uint256(1));
-    return Num.add(a0, a1);
+    return a0 + a1;
   }
 }
