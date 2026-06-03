@@ -113,11 +113,8 @@ contract Multisig {
         }
     }
 
-    // Anyone can call this.
-    function approveWithSignature(nonce_: uint256, signature: Signature) -> () {
-        // TODO: include domain/chaind information in hash
-        let hash = abi_encode(operations[nonce_]);
 
+    function checkSignature(hash: bytes32, signature: Signature) -> () {
         match signature {
             | ECDSA(r, s) =>
                 let signer = eip2098_signer(hash, r, s);
@@ -129,12 +126,25 @@ contract Multisig {
                 require(isSigner(contract), Error(0x12345678)); // NotASigner()
                 require(eip1271_verify(contract, hash, signature), Error(0x12345678)); // EIP1271VerificationRejected()
         }
+    }
+
+    // Anyone can call this.
+    function approveWithSignature(nonce_: uint256, signature: Signature) -> () {
+        // TODO: include domain/chaind information in hash
+        let hash = abi_encode(operations[nonce_]);
+
+        checkSignature(hash, signature);
 
         // TODO: implement
         unimplemented();
     }
 
     function rejectWithSignature(nonce_: uint256, signature: Signature) -> () {
+        // TODO: include domain/chaind information in hash
+        let hash = abi_encode(operations[nonce_]);
+
+        checkSignature(hash, signature);
+
         // TOOD: implement
         unimplemented();
     }
