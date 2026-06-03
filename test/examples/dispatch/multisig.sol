@@ -249,6 +249,8 @@ contract Multisig {
                     ret := call(gas(), target, amount, 0, 0, 0, 0)
                 }
                 require(tobool(ret), Error(0x12345678)); // EtherTransferFailed()
+            | TransferToken(target, token, amount) =>
+                safe_erc20_transfer(token, target, amount);
             | UnstoredCall(hash) =>
                 require(hash == keccak256(payload), Error(0x12345678)); // InvalidPayloadSupplied()
                 let ret: word;
