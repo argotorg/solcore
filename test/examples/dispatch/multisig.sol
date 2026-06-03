@@ -64,6 +64,7 @@ contract Multisig {
     // TODO: Stored by hash -- or should it be by nonce?
     operations: mapping(uint256 -> Operation); // TODO: use array()
     operations_count: uint256;
+    approvals: mapping(uint256 -> address -> bool);
     nonce: uint256; // current nonce
     status: mapping(uint256 -> OperationStatus);
 
@@ -94,6 +95,9 @@ contract Multisig {
 
         match status[nonce_] {
             | Pending(count) =>
+                require(!approvals[nonce_][caller()], Error(0x12345678)); // SignerAlreadyApproved()
+                approvals[nonce_][caller()] = true;
+
                 if (count + 1 >= signers_required) {
                     status[nonce_] = OperationStatus.Approved;
                 } else {
