@@ -78,7 +78,11 @@ contract Multisig {
     // Only signers can call this.
     function queue(op: Operation) -> () {
         require(isSigner(caller()), Error(0x12345678)); // NotASigner()
+        perform_queue(op);
+    }
 
+    // TODO: mark private
+    function perform_queue(op: Operation) -> () {
         // Some basic sanity checks.
         match op {
             | ChangeSigRequired(count) =>
@@ -95,6 +99,11 @@ contract Multisig {
     // Only signers can call this.
     function approve(nonce_: uint256) -> () {
         require(isSigner(caller()), Error(0x12345678)); // NotASigner()
+        perform_approve(nonce_);
+    }
+
+    // TODO: mark private
+    function perform_approve(nonce_: uint256) -> () {
         require(nonce_ < operations_count, Error(0x12345678)); // OperationNotFound()
 
         // TODO: emit log
@@ -135,8 +144,7 @@ contract Multisig {
 
         checkSignature(hash, signature);
 
-        // TODO: implement
-        unimplemented();
+        perform_queue(operation);
     }
 
     // Anyone can call this.
@@ -146,8 +154,7 @@ contract Multisig {
 
         checkSignature(hash, signature);
 
-        // TODO: implement
-        unimplemented();
+        perform_approve(nonce_);
     }
 
     // Anyone can call this.
@@ -157,8 +164,7 @@ contract Multisig {
 
         checkSignature(hash, signature);
 
-        // TOOD: implement
-        unimplemented();
+        perform_reject(nonce_);
     }
 
     function batch(operations: array(BatchOperation)) -> () {
@@ -175,6 +181,11 @@ contract Multisig {
     // Only signers can call this.
     function reject(nonce_: uint256) -> () {
         require(isSigner(caller()), Error(0x12345678)); // NotASigner()
+        perform_reject(nonce_);
+    }
+
+    // TODO: mark private
+    function perform_reject(nonce_: uint256) -> () {
         require(nonce_ < operations_count, Error(0x12345678)); // OperationNotFound()
 
         // TODO: emit log
