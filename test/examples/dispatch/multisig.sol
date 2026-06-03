@@ -39,7 +39,8 @@ data Operation =
     | TransferEth(address, uint256) // Transfers ether.
     | TransferToken(address, address, uint256) // Transfers a token.
     | Call(address, uint256, memory(bytes)) // Arbitrary calls to an address.
-    | UnstoredCall(address, bytes32); // Arbitrary calls to an address, represented by a hash (supplied at execution time).
+    | UnstoredCall(bytes32); // Arbitrary calls to an address, represented by a hash (supplied at execution time).
+                             // It is encoded as [address][value][payload]
 
 data OperationStatus =
       Pending(uint256) // approval count (TODO: use uint8/uint16 to be realistic)
@@ -248,15 +249,21 @@ contract Multisig {
                     ret := call(gas(), target, amount, 0, 0, 0, 0)
                 }
                 require(tobool(ret), Error(0x12345678)); // EtherTransferFailed()
-            | UnstoredCall(target, hash) =>
+            | UnstoredCall(hash) =>
                 require(hash == keccak256(payload), Error(0x12345678)); // InvalidPayloadSupplied()
                 let ret: word;
                 let payload_ = Typedef.rep(payload);
                 assembly {
-                    // TODO: split up contents as <gas | amount | data>
-                    ret := call(gas(), target, 0, add(payload_, 32), mload(payload_), 0, 0)
+                    let size := mload(payload_)
+                    // Check for minimum length of 64 bytes
+                    if lt(size, 64) {
+                        revert(0, 0) // TODO return proper error
+                    }
+                    let target := mload(add(payload_, 32))
+                    let value := mload(add(payload_, 64))
+                    ret := call(gas(), target, value, add(payload_, 96), sub(size, 64), 0, 0)
                 }
-                require(tobool(ret), Error(0x12345678)); // CallFailed()
+                require(tobool(ret), Error(0x12345678)); // UnstoredCallFailed()
             | _ => unimplemented(); // TODO
         }
     }
