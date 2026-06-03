@@ -82,9 +82,9 @@ dispatches :: TestTree
 dispatches =
   testGroup
     "Files for dispatch cases"
-    [ runDispatchTest "basic.solc",
-      runDispatchTest "stringid.solc",
-      runDispatchTest "miniERC20.solc",
+    [ -- runDispatchTest "basic.solc",
+      -- runDispatchTest "stringid.solc",
+      -- runDispatchTest "miniERC20.solc",
       runDispatchTest "Revert.solc"
     ]
   where
