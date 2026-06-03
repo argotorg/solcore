@@ -59,6 +59,7 @@ export {
   calldata(*),
   concat,
   concatLit,
+  ecrecover,
   empty(*),
   eqWord,
   frombool,
@@ -2096,4 +2097,34 @@ function ripemd160(input: memory(bytes)) -> bytes32 {
         res := mload(0)
     }
     return bytes32(res);
+}
+
+// --- Precompiles ---
+
+// TODO: use uint8
+function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address {
+    let hash_ = Typedef.rep(hash);
+    let v_ = Typedef.rep(v);
+    let r_ = Typedef.rep(r);
+    let s_ = Typedef.rep(s);
+    let ptr = get_free_memory();
+    let res: word;
+    // We assume the [0, 32] scratch space is reserved.
+    // TODO: add specific error code
+    assembly {
+        mstore(ptr, hash_)
+        mstore(add(ptr, 32), v_)
+        mstore(add(ptr, 64), r_)
+        mstore(add(ptr, 96), s_)
+
+        let ret := staticcall(gas(), 1, ptr, 128, 0, 32)
+        if iszero(ret) {
+            revert(0, 0)
+        }
+        res := mload(0)
+        if iszero(res) {
+            revert(0, 0)
+        }
+    }
+    return address(res);
 }
