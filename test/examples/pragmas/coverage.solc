@@ -1,6 +1,8 @@
 pragma no-coverage-condition ;
 
-data List(a) = Nil | Cons(a,List(a));
+data memory(a) = memory(word);
+
+data List(a) = Nil | Cons(a,memory(List(a)));
 data Bool = True | False ;
 
 forall a b c . class a : C(b,c) {}

@@ -1,6 +1,7 @@
 contract EitherModule {
+  data memory(a) = memory(word);
   data Either(a,b) = Left(a) | Right(b);
-  data List(a) = Nil | Cons(a,List(a));
+  data List(a) = Nil | Cons(a, memory(List(a)));
 
   function lefts(xs : List(Either(word,word))) -> List(word) {
     match xs {
