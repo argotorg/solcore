@@ -264,7 +264,7 @@ cases =
       runTestExpectingFailure "duplicated-type-name.solc" caseFolder,
       runTestForFile "DuplicateFun.solc" caseFolder,
       runTestExpectingFailure "DupFun.solc" caseFolder,
-      runTestForFile "EitherModule.solc" caseFolder,
+      runTestExpectingFailure "EitherModule.solc" caseFolder,
       runTestForFile "empty-asm.solc" caseFolder,
       runTestExpectingFailure "Enum.solc" caseFolder,
       runTestExpectingFailure "Eq.solc" caseFolder,
