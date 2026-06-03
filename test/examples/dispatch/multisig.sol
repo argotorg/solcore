@@ -71,6 +71,7 @@ contract Multisig {
     operations_count: uint256;
     votes: mapping(uint256 -> address -> Vote);
     status: mapping(uint256 -> OperationStatus);
+    nonce: uint256; // Strict ordering. Next executable operation.
 
     constructor() -> () {
         // The creator becomes the first signer.
@@ -216,10 +217,17 @@ contract Multisig {
     function execute(nonce_: uint256, payload: memory(bytes)) -> () {
         // Ensure status.
         require(nonce_ < operations_count, Error(0x12345678)); // OperationNotFound()
+        require(nonce_ == nonce, Error(0x12345678)); // IncorrectSequence()
+        if (status[nonce_] == OperationStatus.Rejected) {
+            // Special case for rejections: we operate as a no-op.
+            nonce += 1;
+            return;
+        }
         require(status[nonce_] == OperationStatus.Approved, Error(0x12345678)); // IncorrectStatus()
 
         // Update status.
         status[nonce_] = OperationStatus.Executed;
+        nonce += 1;
 
         // TODO: emit log
 
