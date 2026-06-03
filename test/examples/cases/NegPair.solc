@@ -35,19 +35,19 @@ forall a b . a : Neg, b : Neg => instance (a,b):Neg {
 
 contract NegPair {
 
- function bnot(x : B) -> B {
+ public function bnot(x : B) -> B {
    match x {
      | B.T => return B.F;
      | B.F => return B.T;
    }
 }
 
- function fromB(b : B) -> word {
+ public function fromB(b : B) -> word {
   match b  {
     | B.F => return 0;
     | B.T => return 1;
   }
 }
 
- function main() -> word { return  fromB(fst(Neg.neg((B.F,B.T)))); }
+ public function main() -> word { return  fromB(fst(Neg.neg((B.F,B.T)))); }
 }

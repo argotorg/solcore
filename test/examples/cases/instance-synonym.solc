@@ -11,7 +11,7 @@ instance W:IdTy {
 }
 
 contract C {
-  function main() -> word {
+  public function main() -> word {
     return IdTy.id(42);
   }
 }

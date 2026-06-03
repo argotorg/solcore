@@ -1,23 +1,23 @@
 contract Option {
   data Option(a) = None | Some(a);
 
-  function just(x : word) -> Option(word) { return Option.Some(x); }
+  public function just(x : word) -> Option(word) { return Option.Some(x); }
 
-  function maybe(n : word, o : Option(word)) -> word {
+  public function maybe(n : word, o : Option(word)) -> word {
     match o {
       | Option.None => return n;
       | Option.Some(x) => return x;
     }
   }
 
-  function join(mmx : Option(Option(word))) -> Option(word) {
+  public function join(mmx : Option(Option(word))) -> Option(word) {
     match mmx {
       | Option.Some(Option.Some(x)) => return Option.Some(x);
       | _ => return Option.None;
     }
   }
 
-  function main() -> word {
+  public function main() -> word {
     return maybe(0, join(Option.Some(Option.Some(42))));
   }
 }

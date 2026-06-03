@@ -80,7 +80,7 @@ function add1mod(f) {
 contract Modifier {
 
 
-function main() {
+public function main() {
   let barClos = add1mod(FooToken);
   return invoke(barClos, 39);
 }

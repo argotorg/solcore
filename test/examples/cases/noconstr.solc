@@ -11,7 +11,7 @@ function bla (x : a) -> word {
 }
 
 contract Test {
-  function main() {
+  public function main() {
     return bla(1);
   }
 }

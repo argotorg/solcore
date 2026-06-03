@@ -10,13 +10,13 @@ forall a . function the_bug(x : a, y : a) -> Bool {
 }
 
 contract Foo {
-    function x() {
+    public function x() {
         let b1 = Bool.True;
         let b2 = Bool.False;
         the_bug(b1, b2);
     }
 
-    function main() {
+    public function main() {
         x();
     }
 }

@@ -4,7 +4,7 @@ import std.dispatch.{*};
 contract WithFallback {
     constructor() {}
 
-    function answer() -> uint256 {
+    public function answer() -> uint256 {
         return uint256(42);
     }
 

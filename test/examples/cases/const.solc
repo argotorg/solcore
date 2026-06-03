@@ -3,7 +3,7 @@ function constApplied(x : word, y : word) -> word {
 }
 
 contract Foo {
-  function main () -> word {
+  public function main () -> word {
     return constApplied(0,1);
   }
 }

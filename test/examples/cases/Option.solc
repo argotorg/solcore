@@ -1,7 +1,7 @@
 contract Option {
   data Option(a) = None | Some(a);
 
-  function join(mmx : Option(Option(word))) -> Option(word) {
+  public function join(mmx : Option(Option(word))) -> Option(word) {
     match mmx {
     | Option.None => return Option.None;
     | Option.Some(Option.Some(x)) => return Option.Some(x);
@@ -9,5 +9,5 @@ contract Option {
     }
   }
 
-  function main() -> word { return 0; }
+  public function main() -> word { return 0; }
  }

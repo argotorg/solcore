@@ -1,5 +1,5 @@
 contract Sstore {
-  function main() {
+  public function main() {
     let res : word;
     assembly {
 	sstore(0, 42)

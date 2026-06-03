@@ -29,7 +29,7 @@ forall t. function morefun(p:Proxy(t)) -> word {
 }
 
 contract TestMemoryType {
-  function main() -> word {
+  public function main() -> word {
     return BaseMemoryType.memorySize(Proxy:Proxy( (word,word) ));
   }
 }

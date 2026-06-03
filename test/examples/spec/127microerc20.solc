@@ -39,7 +39,7 @@ contract Mini {
   balances : mapping(address,uint256);
   allowance : mapping(address, mapping(address, uint256));
 
-  function mint(amount:uint256) -> () {
+  public function mint(amount:uint256) -> () {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
@@ -60,7 +60,7 @@ contract Mini {
 */
 
 //  function transferFrom(src:address, dst:address, amt:uint256) -> bool {
-  function transferFrom(src : address, dst : address, amt : uint256) -> bool  {
+  public function transferFrom(src : address, dst : address, amt : uint256) -> bool  {
      require1(ge(balances[src], amt));
 
      match (Eq.eq(src, msg_sender)) {
@@ -90,13 +90,13 @@ contract Mini {
 */
 
 
-  function init() -> () {
+  public function init() -> () {
     owner = address(0x123456789abcdef);
     msg_sender = caller();
     decimals = uint256(18);
   }
 
-  function main() -> uint256 {
+  public function main() -> uint256 {
     init();
     mint(uint256(1000));
     allowance[owner][msg_sender] = uint256(10000);

@@ -29,5 +29,5 @@ function addPair(p : Pair(word, word)) -> word {
 }
 
 contract FstSnd {
- function main() -> word { return  addPair(Pair(41,1)); }
+ public function main() -> word { return  addPair(Pair(41,1)); }
 }

@@ -1,11 +1,11 @@
 contract Compose {
-  forall a . function id(x : a) -> a { return x; }
+  forall a . public function id(x : a) -> a { return x; }
 
-  function apply1(f : (word) -> word, a : word) -> word { return f(a); }
+  public function apply1(f : (word) -> word, a : word) -> word { return f(a); }
 
-  function idThenId(x : word) -> word { return id(id(x)); }
+  public function idThenId(x : word) -> word { return id(id(x)); }
 
-  function main() -> word {
+  public function main() -> word {
     return apply1(idThenId, 42);
   }
 }

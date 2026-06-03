@@ -12,15 +12,15 @@ function abcBytes() -> memory(bytes) {
 contract C {
     constructor() {}
 
-    function keccak() -> bytes32 {
+    public function keccak() -> bytes32 {
         return keccak256_(abcBytes());
     }
 
-    function sha() -> bytes32 {
+    public function sha() -> bytes32 {
         return sha256(abcBytes());
     }
 
-    function ripemd() -> bytes32 {
+    public function ripemd() -> bytes32 {
         return ripemd160(abcBytes());
     }
 }

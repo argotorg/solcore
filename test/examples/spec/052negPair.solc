@@ -45,19 +45,19 @@ instance (a:Neg,b:Neg) => Pair(a,b):Neg {
 */
 contract NegPair {
 
- function bnot(x) {
+ public function bnot(x) {
    match x {
      | B.T => return B.F;
      | B.F => return B.T;
    }
 }
 
- function fromB(b) {
+ public function fromB(b) {
   match b  {
     | B.F => return 0;
     | B.T => return 1;
   }
 }
 
- function main() { return  fromB(fst(Neg.neg(Pair(B.F,B.T)))); }
+ public function main() { return  fromB(fst(Neg.neg(Pair(B.F,B.T)))); }
 }

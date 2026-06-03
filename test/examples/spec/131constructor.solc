@@ -2,13 +2,13 @@
 
 contract Counter {
 
-  function setCounter(v: word) {
+  public function setCounter(v: word) {
     assembly {
       sstore(0x00, v)
     }
   }
 
-  function getCounter() -> word {
+  public function getCounter() -> word {
     let res;
     assembly {
       res := sload(0x00)
@@ -21,7 +21,7 @@ contract Counter {
    setCounter(42);
   }
 
-  function main() -> word {
+  public function main() -> word {
     return getCounter();
   }
 }

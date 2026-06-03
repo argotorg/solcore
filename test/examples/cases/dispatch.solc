@@ -253,13 +253,13 @@ instance C_Add2_Selector:Selector {
 // transform
 
 contract C {
-  function add2(x : word, y : word) -> word {
+  public function add2(x : word, y : word) -> word {
     let ret : word;
     assembly { ret := add(x,y) }
     return ret;
   }
 
-  function main() -> word {
+  public function main() -> word {
     let c = Contract(
       Method(C_Add2_Selector, Proxy : Proxy((word,word)), Proxy : Proxy(word), add2),
       Fallback(Proxy : Proxy(()),Proxy : Proxy(()),revert_handler)
