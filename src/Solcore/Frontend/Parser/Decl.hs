@@ -263,6 +263,10 @@ fallbackSignatureP vars ctx = do
     [] -> pure ()
     _ -> fail "fallback function must not declare input parameters"
   ret <- optional (symbol "->" *> typeP)
+  case ret of
+    Nothing -> pure ()
+    Just (TyCon (Name "()") []) -> pure ()
+    Just _ -> fail "fallback function must return unit (`()`)"
   return (Signature vars ctx (Name "fallback") ps ret payable)
 
 -- | One function signature inside a class body.
