@@ -171,6 +171,9 @@ contract Multisig {
         match operations[nonce_] {
             | AddSigner(signer) => add_signer(signer);
             | RemoveSigner(signer) => remove_signer(signer);
+            | ChangeSigRequired(count) =>
+                require(count <= signers_count, Error(0x12345678)); // ThresholdExceedsSigners()
+                signers_required = count;
             | _ => unimplemented(); // TODO
         }
     }
