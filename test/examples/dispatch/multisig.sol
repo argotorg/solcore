@@ -99,19 +99,19 @@ contract Multisig {
     // Only signers can call this.
     function approve(nonce_: uint256) -> () {
         require(isSigner(caller()), Error(0x12345678)); // NotASigner()
-        perform_approve(nonce_);
+        perform_approve(nonce_, caller());
     }
 
     // TODO: mark private
-    function perform_approve(nonce_: uint256) -> () {
+    function perform_approve(nonce_: uint256, signer: address) -> () {
         require(nonce_ < operations_count, Error(0x12345678)); // OperationNotFound()
 
         // TODO: emit log
 
         match status[nonce_] {
             | Pending(count) =>
-                require(!approvals[nonce_][caller()], Error(0x12345678)); // SignerAlreadyApproved()
-                approvals[nonce_][caller()] = true;
+                require(!approvals[nonce_][signer], Error(0x12345678)); // SignerAlreadyApproved()
+                approvals[nonce_][signer] = true;
 
                 if (count + 1 >= signers_required) {
                     status[nonce_] = OperationStatus.Approved;
@@ -123,17 +123,20 @@ contract Multisig {
     }
 
 
-    function checkSignature(hash: bytes32, signature: Signature) -> () {
+    function checkSignature(hash: bytes32, signature: Signature) -> address {
         match signature {
             | ECDSA(r, s) =>
                 let signer = eip2098_signer(hash, r, s);
                 require(isSigner(signer), Error(0x12345678)); // NotASigner()
+                return signer;
             | Contract(contract) =>
                 require(isSigner(contract), Error(0x12345678)); // NotASigner()
                 require(check_contract_hash(contract, hash), Error(0x12345678)); // HashNotApprovedByTarget()
+                return contract;
             | EIP1271(contract, signature) =>
                 require(isSigner(contract), Error(0x12345678)); // NotASigner()
                 require(eip1271_verify(contract, hash, signature), Error(0x12345678)); // EIP1271VerificationRejected()
+                return contract;
         }
     }
 
@@ -152,9 +155,9 @@ contract Multisig {
         // TODO: include domain/chaind information in hash
         let hash = abi_encode(operations[nonce_]);
 
-        checkSignature(hash, signature);
+        let signer = checkSignature(hash, signature);
 
-        perform_approve(nonce_);
+        perform_approve(nonce_, signer);
     }
 
     // Anyone can call this.
