@@ -296,7 +296,10 @@ contract Multisig {
     }
 
     payable fallback() -> () {
-        // Accept incoming payments unconditionally.
+        // Accept incoming payments if no selector is hit.
+        require(calldatasize() == 0, Error(0x12345678)); // UnexpectedEtherTransfer()
+
+        // TODO: emit log
     }
 
     // ERC-1271 receiver
