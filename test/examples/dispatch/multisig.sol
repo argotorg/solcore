@@ -251,6 +251,8 @@ contract Multisig {
                 require(tobool(ret), Error(0x12345678)); // EtherTransferFailed()
             | TransferToken(target, token, amount) =>
                 safe_erc20_transfer(token, target, amount);
+            | Call(target, value, payload) =>
+                require(arbitrary_call(target, value, payload), Error(0x12345678)); // CallFailed()
             | UnstoredCall(hash) =>
                 require(hash == keccak256(payload), Error(0x12345678)); // InvalidPayloadSupplied()
                 let ret: word;
@@ -429,4 +431,15 @@ function safe_erc20_transfer(token: address, to: address, value: uint256) -> () 
             }
         }
     }
+}
+
+function arbitrary_call(target: address, value: uint256, payload: memory(bytes)) -> bool {
+    let target_ = Typedef.rep(target);
+    let value_ = Typedef.rep(value);
+    let payload_ = Typedef.rep(payload);
+    let ret: word;
+    assembly {
+        ret := call(gas(), target_, value_, add(payload_, 32), mload(payload_), 0, 0)
+    }
+    return tobool(ret);
 }
