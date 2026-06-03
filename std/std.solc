@@ -1895,7 +1895,7 @@ function loadBytesFromStorage(slot:word, memPtr:word) -> word {
             // Long byte array
             let dataPos = hash1(slot);
             let i = 0;
-            for (let x; i < length; i = i + 32) {
+            for (i = 0; i < length; i = i + 32) {
                 mstore(pos + i, sload(dataPos));
                 dataPos = dataPos + 1;
             }
