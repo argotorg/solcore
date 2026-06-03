@@ -15,9 +15,16 @@
 // - with `reject` the state changes to Rejected iff the current state is Pending(i) or Approved
 // - with `execute` the state changes to Executed iff the current state is Approved
 //
+// The second layer is queueWithSignature/approveWithSignature/rejectWithSignature,
+// where a signature is passed along and thus the caller is not checked. This
+// signature can be multiple options:
+// - EIP-2098 compact ECDSA signature,
+// - approved hash by target contract, which must be a signer,
+// - EIP-1271 contract signature validation, which must be a signer.
+//
+// The last layer is batching operations.
+//
 // Optional future improvements:
-// - Passing signatures with operations
-// - Batching
 // - EIP-712 for signing
 // - Operation.ChangeSigner -- batched change to replace a given signer
 // - Operation.DelegateCall -- it is a security surface, and not neccessarily needed
@@ -38,6 +45,17 @@ data OperationStatus =
     | Approved
     | Rejected
     | Executed;
+
+data Signature =
+      ECDSA(bytes32, bytes32) // EIP-2098-style r/s/v (TODO: add chainid/domain)
+    | Contract(address) // If the hash is approved by the contract.
+    | EIP1271(address, memory(bytes)); // EIP-1271 signature validation
+
+data BatchOperation =
+      Queue(Operation)
+    | Approve(uint256, Signature)
+    | Reject(uint256, Signature)
+    | Execute(uint256);
 
 contract Multisig {
     signers: mapping(uint256 -> address); // TODO use array()
@@ -83,6 +101,37 @@ contract Multisig {
                 }
             | _ => revertWithError(Error(0x12345678)); // UnexpectedStatus()
         }
+    }
+
+    // Anyone can call this.
+    function approveWithSignature(nonce_: uint256, signature: Signature) -> () {
+        // TODO: include domain/chaind information in hash
+        let hash = abi_encode(operations[nonce_]);
+
+        match signature {
+            | ECDSA(r, s) =>
+                let signer = eip2098_signer(hash, r, s);
+                require(isSigner(signer), Error(0x12345678)); // NotASigner()
+            | Contract(contract) =>
+                require(isSigner(contract), Error(0x12345678)); // NotASigner()
+                require(check_contract_hash(contract, hash), Error(0x12345678)); // HashNotApprovedByTarget()
+            | EIP1271(contract, signature) =>
+                require(isSigner(contract), Error(0x12345678)); // NotASigner()
+                require(eip1271_verify(contract, hash, signature), Error(0x12345678)); // EIP1271VerificationRejected()
+        }
+
+        // TODO: implement
+        unimplemented();
+    }
+
+    function rejectWithSignature(nonce_: uint256, signature: Signature) -> () {
+        // TOOD: implement
+        unimplemented();
+    }
+
+    function batch(operations: array(Operation)) -> () {
+        // TOOD: implement
+        unimplemented();
     }
 
     // Only signers can call this.
@@ -168,4 +217,82 @@ function caller() -> address {
         ret := caller()
     }
     return address(ret);
+}
+
+function check_contract_hash(contract: address, hash: bytes32) -> bool {
+    let ptr = get_free_memory();
+    let contract_ = Typedef.rep(contract);
+    let hash_ = Typedef.rep(hash);
+    let res: word;
+    // We assume the [0, 32] scratch space is reserved.
+    // TODO: add specific error code
+    assembly {
+        mstore(ptr, shl(224, 0x12345678)) // IsHashApproved(bytes32)
+        mstore(add(ptr, 4), hash_)
+        // Alternative option is ignoring ret, but setting mem[0] to 0.
+        let ret := staticcall(gas(), contract_, ptr, 36, 0, 32)
+        res := mload(0)
+    }
+    return ret == 1 && res == 0x12345678; // Must match the magic.
+}
+
+function eip1271_verify(contract: address, hash: bytes32, signature: memory(bytes)) -> bool {
+    let ptr = get_free_memory();
+    let contract_ = Typedef.rep(contract);
+    let hash_ = Typedef.rep(hash);
+    let signature_ = Typedef.rep(signature);
+    let res: word;
+    // We assume the [0, 32] scratch space is reserved.
+    // TODO: add specific error code
+    assembly {
+        // TODO: use abi.encode to build this
+        mstore(ptr, shl(224, 0x1626ba7e))
+        mstore(add(ptr, 4), hash_)
+        mstore(add(ptr, 36), 64)
+        let size := mload(signature_)
+        mstore(add(ptr, 68), size)
+        mcopy(add(ptr, 100), add(signature_, 32), size)
+        // Alternative option is ignoring ret, but setting mem[0] to 0.
+        let ret := staticcall(gas(), contract_, ptr, add(100, size), 0, 32)
+        res := mload(0)
+    }
+    return ret == 1 && res == 0x1626ba7e; // Must match the magic.
+}
+
+function eip2098_signer(hash: bytes32, r: bytes32, s_: bytes32) -> address {
+    let s: word;
+    let v: word;
+    assembly {
+        s := and(s_, sub(shl(255, 1), 1))
+        v := add(shr(255, s_), 27)
+    }
+    return ecrecover(hash, uint256(v), r, bytes32(s));
+}
+
+// TODO: use uint8
+function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address {
+    let hash_ = Typedef.rep(hash);
+    let v_ = Typedef.rep(v);
+    let r_ = Typedef.rep(r);
+    let s_ = Typedef.rep(s);
+    let ptr = get_free_memory();
+    let res: word;
+    // We assume the [0, 32] scratch space is reserved.
+    // TODO: add specific error code
+    assembly {
+        mstore(ptr, hash_)
+        mstore(add(ptr, 32), v_)
+        mstore(add(ptr, 64), r_)
+        mstore(add(ptr, 96), s_)
+
+        let ret := staticcall(gas(), 1, ptr, 128, 0, 32)
+        if iszero(ret) {
+            revert(0, 0)
+        }
+        res := mload(0)
+        if iszero(res) {
+            revert(0, 0)
+        }
+    }
+    return address(res);
 }
