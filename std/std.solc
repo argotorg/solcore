@@ -2101,8 +2101,18 @@ function ripemd160(input: memory(bytes)) -> bytes32 {
 
 // --- Precompiles ---
 
+// Perform an ECDSA signature recovery. It ensures the call has succeeded,
+// and that the signature is not malleable (s ≤ secp256k1n/2). Transactions
+// were updated to ban this, but the precompile wasn't. If a user relies on that
+// feature they can call the precompile via assembly.
 // TODO: use uint8
 function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address {
+    // MalleableSignatureRejected()
+    require(
+        Typedef.rep(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0,
+        Error(0x25260b20)
+    );
+
     let hash_ = Typedef.rep(hash);
     let v_ = Typedef.rep(v);
     let r_ = Typedef.rep(r);
