@@ -344,6 +344,7 @@ function eip2098_signer(hash: bytes32, r: bytes32, s_: bytes32) -> address {
         s := and(s_, sub(shl(255, 1), 1))
         v := add(shr(255, s_), 27)
     }
+    // TODO: enforce s ≤ secp256k1n/2
     let parity = match v {
         | 27 => Even,
         | 28 => Odd,
