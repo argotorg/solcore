@@ -284,6 +284,14 @@ contract Multisig {
         // Accept incoming payments unconditionally.
     }
 
+    // ERC-1271 receiver
+    // NOTE: view function.
+    function isValidSignature(hash: bytes32, signature: memory(bytes)) -> bytes4 {
+        // TODO: implement this.
+        unimplemented();
+        return bytes4(0x1626ba7e);
+    }
+
     // TODO: these functions should be non-public
 
     // TODO: this is suboptimal
