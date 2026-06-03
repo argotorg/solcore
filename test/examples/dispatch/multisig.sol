@@ -46,6 +46,11 @@ data OperationStatus =
     | Rejected
     | Executed;
 
+data Vote =
+      None
+    | Approved
+    | Rejected;
+
 data Signature =
       ECDSA(bytes32, bytes32) // EIP-2098-style r/s/v (TODO: add chainid/domain)
     | Contract(address) // If the hash is approved by the contract.
@@ -64,7 +69,7 @@ contract Multisig {
     // TODO: Stored by hash -- or should it be by nonce?
     operations: mapping(uint256 -> Operation); // TODO: use array()
     operations_count: uint256;
-    approvals: mapping(uint256 -> address -> bool);
+    votes: mapping(uint256 -> address -> Vote);
     status: mapping(uint256 -> OperationStatus);
 
     constructor() -> () {
@@ -112,8 +117,8 @@ contract Multisig {
 
         match status[nonce_] {
             | Pending(count) =>
-                require(!approvals[nonce_][signer], Error(0x12345678)); // SignerAlreadyApproved()
-                approvals[nonce_][signer] = true;
+                require(votes[nonce_][signer] == Vote.None, Error(0x12345678)); // SignerAlreadyApproved()
+                votes[nonce_][signer] = Vote.Approved;
 
                 if (count + 1 >= signers_required) {
                     status[nonce_] = OperationStatus.Approved;
@@ -167,9 +172,9 @@ contract Multisig {
         // TODO: include domain/chaind information in hash
         let hash = abi_encode(operations[nonce_]);
 
-        checkSignature(hash, signature);
+        let signer = checkSignature(hash, signature);
 
-        perform_reject(nonce_);
+        perform_reject(nonce_, signer);
     }
 
     function batch(operations: array(BatchOperation)) -> () {
@@ -186,11 +191,11 @@ contract Multisig {
     // Only signers can call this.
     function reject(nonce_: uint256) -> () {
         require(isSigner(caller()), Error(0x12345678)); // NotASigner()
-        perform_reject(nonce_);
+        perform_reject(nonce_, caller());
     }
 
     // TODO: mark private
-    function perform_reject(nonce_: uint256) -> () {
+    function perform_reject(nonce_: uint256, signer: address) -> () {
         require(nonce_ < operations_count, Error(0x12345678)); // OperationNotFound()
 
         // TODO: emit log
@@ -198,8 +203,10 @@ contract Multisig {
         match status[nonce_] {
             | Pending(count) =>
                 status[nonce_] = OperationStatus.Rejected;
+                votes[nonce_][signer] = Vote.Rejected;
             | Approved =>
                 status[nonce_] = OperationStatus.Rejected;
+                votes[nonce_][signer] = Vote.Rejected;
             | _ => revertWithError(Error(0x12345678)); // UnexpectedStatus()
         }
     }
