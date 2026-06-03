@@ -269,6 +269,7 @@ cases =
       runTestExpectingFailure "Eq.solc" caseFolder,
       runTestForFile "EqQual.solc" caseFolder,
       runTestForFile "EvenOdd.solc" caseFolder,
+      runTestExpectingFailure "fallback-with-args.solc" caseFolder,
       runTestExpectingFailure "Filter.solc" caseFolder,
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,

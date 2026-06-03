@@ -259,6 +259,9 @@ fallbackSignatureP vars ctx = do
   payable <- option False (True <$ keyword "payable")
   keyword "fallback"
   ps <- parens (paramP `sepBy` comma)
+  case ps of
+    [] -> pure ()
+    _ -> fail "fallback function must not declare input parameters"
   ret <- optional (symbol "->" *> typeP)
   return (Signature vars ctx (Name "fallback") ps ret payable)
 
