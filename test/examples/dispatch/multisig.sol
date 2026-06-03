@@ -174,6 +174,12 @@ contract Multisig {
             | ChangeSigRequired(count) =>
                 require(count <= signers_count, Error(0x12345678)); // ThresholdExceedsSigners()
                 signers_required = count;
+            | TransferEth(target, amount) =>
+                let ret: word;
+                assembly {
+                    ret := call(gas(), target, amount, 0, 0, 0, 0)
+                }
+                require(tobool(ret), Error(0x12345678)); // EtherTransferFailed()
             | _ => unimplemented(); // TODO
         }
     }
