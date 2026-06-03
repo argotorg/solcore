@@ -41,7 +41,8 @@ data Operation =
     | Call(address, uint256, memory(bytes)) // Arbitrary calls to an address.
     | UnstoredCall(bytes32)  // Arbitrary calls to an address, represented by a hash (supplied at execution time).
                              // It is encoded as [address][value][payload]
-    | ApproveSignedHash(bytes32); // For interacting as an EIP-1271 signer.
+    | ApproveSignedHash(bytes32) // For interacting as an EIP-1271 signer.
+    | RevokeSignedHash(bytes32);
 
 data OperationStatus =
       Pending(uint256) // approval count (TODO: use uint8/uint16 to be realistic)
@@ -282,6 +283,10 @@ contract Multisig {
                 // Sanity check.
                 require(!approved_signed_hashes[hash], Error(0x12345678)); // ApprovedSignedHashExist()
                 approved_signed_hashes[hash] = true;
+            | RevokeSignedHash(hash) =>
+                // Sanity check.
+                require(approved_signed_hashes[hash], Error(0x12345678)); // ApprovedSignedHashDoesNotExist()
+                approved_signed_hashes[hash] = false;
             | _ => unimplemented(); // TODO
         }
     }
