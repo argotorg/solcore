@@ -82,8 +82,8 @@ instance Compile (Constructor Id) where
     Constructor ps <$> compile bd
 
 instance Compile (FunDef Id) where
-  compile (FunDef sig bd) =
-    FunDef sig <$> pushCtx ("function " ++ pretty (sigName sig)) (compile bd)
+  compile (FunDef p sig bd) =
+    FunDef p sig <$> pushCtx ("function " ++ pretty (sigName sig)) (compile bd)
 
 instance Compile (Stmt Id) where
   compile (e1 := e2) =

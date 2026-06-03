@@ -424,13 +424,15 @@ importedModuleLeafName (Name n) = Name n
 importedModuleLeafName (QualName _ n) = Name n
 
 typedForwardingWrapper :: Name -> FunDef Id -> FunDef Id
-typedForwardingWrapper qualifier (FunDef sig body)
+typedForwardingWrapper qualifier (FunDef isPub sig body)
   | originalName == Name "revertLit" =
       FunDef
+        isPub
         (sig {sigName = qualifiedName})
         body
   | otherwise =
       FunDef
+        isPub
         (sig {sigName = qualifiedName})
         [Return (Call Nothing targetId args)]
   where
@@ -440,8 +442,8 @@ typedForwardingWrapper qualifier (FunDef sig body)
     args = map (Var . paramName) (sigParams sig)
 
 typedAliasingWrapper :: Name -> FunDef Id -> FunDef Id
-typedAliasingWrapper aliasName (FunDef sig body) =
-  FunDef (sig {sigName = aliasName}) body
+typedAliasingWrapper aliasName (FunDef isPub sig body) =
+  FunDef isPub (sig {sigName = aliasName}) body
 
 typedSignatureType :: Signature Id -> Ty
 typedSignatureType sig =

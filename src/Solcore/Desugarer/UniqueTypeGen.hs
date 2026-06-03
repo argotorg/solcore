@@ -33,7 +33,7 @@ instance UniqueTypeGen (TopDecl Name) where
   uniqueTyGen _ = pure ()
 
 instance UniqueTypeGen (FunDef Name) where
-  uniqueTyGen (FunDef sig _) = uniqueTyGen sig
+  uniqueTyGen (FunDef _ sig _) = uniqueTyGen sig
 
 instance UniqueTypeGen (Signature Name) where
   uniqueTyGen sig =

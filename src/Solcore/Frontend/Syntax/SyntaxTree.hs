@@ -219,7 +219,8 @@ data Field
 
 data FunDef
   = FunDef
-  { funSignature :: Signature,
+  { funIsPublic :: Bool,
+    funSignature :: Signature,
     funDefBody :: Body
   }
   deriving (Eq, Ord, Show, Data, Typeable)

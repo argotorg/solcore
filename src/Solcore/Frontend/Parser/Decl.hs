@@ -231,9 +231,10 @@ funDefP = try $ withSigPrefix funDefAfterPrefix
 
 funDefAfterPrefix :: [Ty] -> [Pred] -> Parser FunDef
 funDefAfterPrefix vars ctx = do
+  isPub <- option False (True <$ try (keyword "public"))
   sig <- signatureP vars ctx
   body <- braces bodyP
-  return (FunDef sig (implicitReturn body))
+  return (FunDef isPub sig (implicitReturn body))
 
 implicitReturn :: Body -> Body
 implicitReturn [StmtExp e] = [Return e]
@@ -256,7 +257,7 @@ fallbackDefAfterPrefix :: [Ty] -> [Pred] -> Parser FunDef
 fallbackDefAfterPrefix vars ctx = do
   sig <- fallbackSignatureP vars ctx
   body <- braces bodyP
-  return (FunDef sig (implicitReturn body))
+  return (FunDef False sig (implicitReturn body))
 
 fallbackSignatureP :: [Ty] -> [Pred] -> Parser Signature
 fallbackSignatureP vars ctx = do

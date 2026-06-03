@@ -67,7 +67,7 @@ createInstance udt fd sch =
         ssargs = take (length args) (svs ++ sarg)
         scall = Return (Call Nothing fname ssargs)
         bdy = Match [discr] [([foldr1 ppair (spvs : sargs)], [scall])]
-        ifd = FunDef isig [bdy]
+        ifd = FunDef False isig [bdy]
         vs' = bv qs `union` bv [tupleArgTy, returnTy, selfTy] `union` bv ifd
         instd = Instance False vs' qs invokableName [tupleArgTy, returnTy] selfTy [ifd]
     info [">> Generated invokable instance:\n", pretty instd]

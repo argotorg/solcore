@@ -61,6 +61,7 @@ reservedWords =
     "function",
     "fallback",
     "payable",
+    "public",
     "constructor",
     "return",
     "lam",

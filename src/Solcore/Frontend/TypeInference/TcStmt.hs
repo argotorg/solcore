@@ -549,7 +549,7 @@ createClosureFun fn freeIds cdt args bdy ps ty =
         sig = Signature vs' ps0 fn args' False (Just retTy1) False
     bdy' <- createClosureBody cName cdt freeIds bdy
     sch <- generalize (ps0, ty')
-    pure (everywhere (mkT gen) $ FunDef sig bdy', sch)
+    pure (everywhere (mkT gen) $ FunDef False sig bdy', sch)
 
 closureTyCon :: DataTy -> TcM Ty
 closureTyCon (DataTy dn vs _) =
@@ -576,7 +576,7 @@ createClosureFreeFun fn args bdy ps ty =
     let (_, retTy1) = splitTy ty
         vs = bv ty `union` bv ps
         sig = Signature vs ps fn args False (Just retTy1) False
-    pure (everywhere (mkT gen) $ FunDef sig bdy)
+    pure (everywhere (mkT gen) $ FunDef False sig bdy)
 
 tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
 tcArgs params =
@@ -622,7 +622,7 @@ tiArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
 tiArgs args = unzip3 <$> mapM tiArg args
 
 tiFunDef :: FunDef Name -> TcM (FunDef Id, Scheme)
-tiFunDef d@(FunDef sig@(Signature _ _ n args _ _ _) bd) =
+tiFunDef d@(FunDef isPub sig@(Signature _ _ n args _ _ _) bd) =
   do
     info ["# tiFunDef:", pretty sig]
     -- getting fresh type variables for arguments
@@ -648,7 +648,7 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _ _ _) bd) =
       ambiguousTypeError sch sig
     -- elaborating the type signature
     sig' <- elabSignature [] sig sch
-    (fd', sch') <- withCurrentSubst (FunDef sig' bd1, sch)
+    (fd', sch') <- withCurrentSubst (FunDef isPub sig' bd1, sch)
     pure (markIntegerComptime fd', sch')
 
 ambiguityCheck :: Scheme -> TcM Bool
@@ -687,7 +687,7 @@ annotatedScheme vs' qs (Signature vs ps _ args _ rt _) =
     pure (Forall vs1 ((qs ++ ps) :=> (funtype ts t)))
 
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
-tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _ _) _)
+tcFunDef incl vs' qs d@(FunDef isPub sig@(Signature vs ps n _ _ _ _) _)
   | hasAnn sig = do
       info ["\n# tcFunDef ", pretty d]
       let vars = vs `union` vs'
@@ -696,7 +696,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _ _) _)
       -- instantiate signatures in function definition
       sks <- mapM (const freshTyVar) vars
       let env = zip vars sks
-          FunDef sig1@(Signature _ ps1 _ args1 _ rt1 _) bd1 = everywhere (mkT (insts @Ty env)) d
+          FunDef _ sig1@(Signature _ ps1 _ args1 _ rt1 _) bd1 = everywhere (mkT (insts @Ty env)) d
           qs1 = everywhere (mkT (insts @Ty env)) qs
       -- checking if all constraints have a respective class and are well kinded
       checkConstraints ps `wrapError` d
@@ -738,7 +738,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _ _) _)
         subsCheck sig inf ann `wrapError` d
       -- elaborating function body
       let ann' = if changeTy then inf else ann
-      fdt <- elabFunDef vs' sig1 bd1' inf ann' `wrapError` d
+      fdt <- elabFunDef isPub vs' sig1 bd1' inf ann' `wrapError` d
       (fd', ann'') <- withCurrentSubst (fdt, ann')
       pure (markIntegerComptime fd', ann'')
   | otherwise = tiFunDef d
@@ -746,19 +746,20 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _ _) _)
 -- elaborating function definition
 
 elabFunDef ::
+  Bool -> -- visibility flag (public)
   [Tyvar] -> -- additional variables which came from outer scope
   Signature Name -> -- original function signature
   Body Id -> -- elaborated function body (with fresh variables)
   Scheme -> -- function infered type
   Scheme -> -- function annotated type
   TcM (FunDef Id)
-elabFunDef vs sig bdy (Forall _ (_ :=> tinf)) ann@(Forall _ (_ :=> tann)) =
+elabFunDef isPub vs sig bdy (Forall _ (_ :=> tinf)) ann@(Forall _ (_ :=> tann)) =
   do
     let tinf' = everywhere (mkT toMeta) tinf
         tann' = everywhere (mkT toMeta) tann
     s <- unify tinf' tann'
     sig2 <- elabSignature vs sig ann
-    let fd2 = everywhere (mkT (apply @Ty s)) (FunDef sig2 bdy)
+    let fd2 = everywhere (mkT (apply @Ty s)) (FunDef isPub sig2 bdy)
     pure (everywhere (mkT gen) fd2)
 
 toMeta :: Ty -> Ty
@@ -1058,8 +1059,8 @@ schemeFromSignature sig =
     unwords ["Invalid instance member signature (missing return type):", pretty sig]
 
 updateSignature :: [Tyvar] -> Name -> FunDef Id -> FunDef Id
-updateSignature vs' c (FunDef (Signature vs ps n args rc rt pay) bd) =
-  FunDef (Signature (vs \\ vs') ps (QualName c (pretty n)) args rc rt pay) bd
+updateSignature vs' c (FunDef p (Signature vs ps n args rc rt pay) bd) =
+  FunDef p (Signature (vs \\ vs') ps (QualName c (pretty n)) args rc rt pay) bd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
 checkDeferedConstraints = mapM_ checkDeferedConstraint
@@ -1238,7 +1239,7 @@ checkCoverage cn ts t =
         )
 
 checkMethod :: Pred -> FunDef Name -> TcM ()
-checkMethod ih@(InCls n _ _) d@(FunDef sig _) =
+checkMethod ih@(InCls n _ _) d@(FunDef _ sig _) =
   do
     -- checking if the signature is fully annotated
     fullSignature sig
@@ -1268,7 +1269,7 @@ fullSignature sig =
     (throwError $ unlines ["Class and instance methods must have complete type signatures:", pretty sig])
 
 requireAnnotations :: FunDef Name -> TcM ()
-requireAnnotations (FunDef sig _) =
+requireAnnotations (FunDef _ sig _) =
   unless (isFullyAnnotated sig) $
     tcmError $
       unlines
