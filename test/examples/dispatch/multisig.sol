@@ -10,10 +10,10 @@
 // it as a state machine.
 //
 // The states of an Operation:
-// - upon creation, called `queue`, the state becomes Pending(0), where 0 means 0 approvals
-// - with `approve` the state increments Pending(i) to Pending (i + 1) or Approved iff i + 1 == signers_required
-// - with `reject` the state changes to Rejected iff the current state is Pending(i) or Approved
-// - with `execute` the state changes to Executed iff the current state is Approved
+// - upon creation, called `queue`, the state becomes Approvals(0), where 0 means 0 approvals
+// - with `approve` the state increments Approvals(i) to Approvals (i + 1)
+// - with `reject` the state changes to Rejected iff the current state is Approvals(i)
+// - with `execute` the state changes to Executed iff the current state is Approvals(i) with i >= signers_required
 //
 // Operations must be executed in strict order. If something becomes Rejected, it must
 // still be executed, and execution will mark and skip it. Note that if a transaction
@@ -49,8 +49,7 @@ data Operation =
     | RevokeSignedHash(bytes32);
 
 data OperationStatus =
-      Pending(uint256) // approval count (TODO: use uint8/uint16 to be realistic)
-    | Approved
+      Approvals(uint256) // approval count (TODO: use uint8/uint16 to be realistic)
     | Rejected
     | Executed;
 
@@ -112,7 +111,7 @@ contract Multisig {
         }
 
         operations[operations_count] = op;
-        status[operations_count] = OperationStatus.Pending(0);
+        status[operations_count] = OperationStatus.Approvals(0);
         operations_count += 1;
 
         // TODO: emit log
@@ -131,15 +130,10 @@ contract Multisig {
         // TODO: emit log
 
         match status[nonce_] {
-            | Pending(count) =>
+            | Approvals(count) =>
                 require(votes[nonce_][signer] == Vote.None, Error(0x12345678)); // SignerAlreadyApproved()
                 votes[nonce_][signer] = Vote.Approved;
-
-                if (count + 1 >= signers_required) {
-                    status[nonce_] = OperationStatus.Approved;
-                } else {
-                    status[nonce_] = OperationStatus.Pending(count + 1);
-                }
+                status[nonce_] = OperationStatus.Approvals(count + 1);
             | _ => revertWithError(Error(0x12345678)); // UnexpectedStatus()
         }
     }
@@ -219,10 +213,7 @@ contract Multisig {
         // TODO: emit log
 
         match status[nonce_] {
-            | Pending(count) =>
-                status[nonce_] = OperationStatus.Rejected;
-                votes[nonce_][signer] = Vote.Rejected;
-            | Approved =>
+            | Approvals(count) =>
                 status[nonce_] = OperationStatus.Rejected;
                 votes[nonce_][signer] = Vote.Rejected;
             | _ => revertWithError(Error(0x12345678)); // UnexpectedStatus()
@@ -242,7 +233,8 @@ contract Multisig {
                 nonce += 1;
                 // Special case for rejections: we operate as a no-op.
                 return;
-            | Approved =>
+            | Approvals(count) =>
+                require(count >= signers_required, Error(0x12345678)); // NotEnoughApprovals()
                 nonce += 1;
                 // Update status.
                 status[nonce_] = OperationStatus.Executed;
