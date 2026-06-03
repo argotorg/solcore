@@ -55,7 +55,7 @@ data BatchOperation =
       Queue(Operation)
     | Approve(uint256, Signature)
     | Reject(uint256, Signature)
-    | Execute(uint256);
+    | Execute(uint256, memory(bytes));
 
 contract Multisig {
     signers: mapping(uint256 -> address); // TODO use array()
@@ -149,9 +149,15 @@ contract Multisig {
         unimplemented();
     }
 
-    function batch(operations: array(Operation)) -> () {
-        // TOOD: implement
-        unimplemented();
+    function batch(operations: array(BatchOperation)) -> () {
+        for (let i = 0; i < operations.length; i++) {
+            match operations[i] {
+                | Queue(op) => queue(op); // TODO: fix caller
+                | Approve(nonce_, signature) => approveWithSignature(nonce_, signature);
+                | Reject(nonce_, signature) => rejectWithSignature(nonce_, signature);
+                | Execute(nonce_, payload) => execute(nonce_, payload);
+            }
+        }
     }
 
     // Only signers can call this.
