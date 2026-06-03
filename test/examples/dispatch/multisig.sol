@@ -79,6 +79,12 @@ contract Multisig {
     function queue(op: Operation) -> () {
         require(isSigner(caller()), Error(0x12345678)); // NotASigner()
 
+        // Some basic sanity checks.
+        match op {
+            | ChangeSigRequired(count) =>
+                require(count >= 1, Error(0x12345678)); // ThresholdBelowMinimum()
+        }
+
         operations[operations_count] = op;
         status[operations_count] = OperationStatus.Pending(0);
         operations_count += 1;
