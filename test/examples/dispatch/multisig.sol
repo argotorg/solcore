@@ -65,7 +65,6 @@ contract Multisig {
     operations: mapping(uint256 -> Operation); // TODO: use array()
     operations_count: uint256;
     approvals: mapping(uint256 -> address -> bool);
-    nonce: uint256; // current nonce
     status: mapping(uint256 -> OperationStatus);
 
     constructor() -> () {
@@ -210,12 +209,10 @@ contract Multisig {
     function execute(nonce_: uint256, payload: memory(bytes)) -> () {
         // Ensure status.
         require(nonce_ < operations_count, Error(0x12345678)); // OperationNotFound()
-        require(nonce_ == nonce, Error(0x12345678)); // IncorrectSequence()
         require(status[nonce_] == OperationStatus.Approved, Error(0x12345678)); // IncorrectStatus()
 
         // Update status.
         status[nonce_] = OperationStatus.Executed;
-        nonce += 1;
 
         // TODO: emit log
 
