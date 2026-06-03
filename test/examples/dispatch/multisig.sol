@@ -367,7 +367,6 @@ function eip2098_signer(hash: bytes32, r: bytes32, s_: bytes32) -> address {
         s := and(s_, sub(shl(255, 1), 1))
         v := add(shr(255, s_), 27)
     }
-    // TODO: enforce s ≤ secp256k1n/2
     let parity = match v {
         | 27 => Even,
         | 28 => Odd,
@@ -379,6 +378,9 @@ data ECDSAParity = Even | Odd;
 
 // TODO: use uint8
 function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address {
+    // MalleableSignatureRejected()
+    require(s <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0, Error(0x25260b20));
+
     let hash_ = Typedef.rep(hash);
     let v_ = Typedef.rep(v);
     let r_ = Typedef.rep(r);
