@@ -15,6 +15,10 @@
 // - with `reject` the state changes to Rejected iff the current state is Pending(i) or Approved
 // - with `execute` the state changes to Executed iff the current state is Approved
 //
+// Operations must be executed in strict order. If something becomes Rejected, it must
+// still be executed, and execution will mark and skip it. Note that if a transaction
+// becomes non-executable for any reason, it can be marked as rejected and skipped.
+//
 // The second layer is queueWithSignature/approveWithSignature/rejectWithSignature,
 // where a signature is passed along and thus the caller is not checked. This
 // signature can be multiple options:
