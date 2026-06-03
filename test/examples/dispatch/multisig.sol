@@ -30,6 +30,7 @@
 // - Operation.DelegateCall -- it is a security surface, and not neccessarily needed
 // - be an EIP-1271 signer
 // - gas optimisations
+// - Strict sequence vs. re-entracy guard for execute()
 
 data Operation =
       AddSigner(address) // Adds a new signer.
@@ -217,17 +218,20 @@ contract Multisig {
     function execute(nonce_: uint256, payload: memory(bytes)) -> () {
         // Ensure status.
         require(nonce_ < operations_count, Error(0x12345678)); // OperationNotFound()
-        require(nonce_ == nonce, Error(0x12345678)); // IncorrectSequence()
-        if (status[nonce_] == OperationStatus.Rejected) {
-            // Special case for rejections: we operate as a no-op.
-            nonce += 1;
-            return;
-        }
-        require(status[nonce_] == OperationStatus.Approved, Error(0x12345678)); // IncorrectStatus()
 
-        // Update status.
-        status[nonce_] = OperationStatus.Executed;
-        nonce += 1;
+        // Enforce strict sequence ordering.
+        require(nonce_ == nonce, Error(0x12345678)); // IncorrectSequence()
+        match status[nonce_] {
+            | Rejected =>
+                nonce += 1;
+                // Special case for rejections: we operate as a no-op.
+                return;
+            | Approved =>
+                nonce += 1;
+                // Update status.
+                status[nonce_] = OperationStatus.Executed;
+            | _ => revertWithError(Error(0x12345678)); // IncorrectStatus();
+        }
 
         // TODO: emit log
 
