@@ -85,6 +85,9 @@ contract Multisig {
     function perform_queue(op: Operation) -> () {
         // Some basic sanity checks.
         match op {
+            | AddSigner(signer) =>
+                require(signer != address(0), Error(0x12345678)); // CannotAddZeroAddressAsSigner()
+                require(signer != address(this), Error(0x12345678)); // CannotAddSelfAsSigner()
             | ChangeSigRequired(count) =>
                 require(count >= 1, Error(0x12345678)); // ThresholdBelowMinimum()
         }
