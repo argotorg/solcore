@@ -155,7 +155,8 @@ contract Multisig {
     }
 
     // Anyone can execute, as long as the status is correct.
-    function execute(nonce_: uint256) -> () {
+    // Payload is optional, used in case UnstoredCall is encountered.
+    function execute(nonce_: uint256, payload: memory(bytes)) -> () {
         // Ensure status.
         require(nonce_ < operations_count, Error(0x12345678)); // OperationNotFound()
         require(nonce_ == nonce, Error(0x12345678)); // IncorrectSequence()
@@ -180,6 +181,15 @@ contract Multisig {
                     ret := call(gas(), target, amount, 0, 0, 0, 0)
                 }
                 require(tobool(ret), Error(0x12345678)); // EtherTransferFailed()
+            | UnstoredCall(target, hash) =>
+                require(hash == keccak256(payload), Error(0x12345678)); // InvalidPayloadSupplied()
+                let ret: word;
+                let payload_ = Typedef.rep(payload);
+                assembly {
+                    // TODO: split up contents as <gas | amount | data>
+                    ret := call(gas(), target, 0, add(payload_, 32), mload(payload_), 0, 0)
+                }
+                require(tobool(ret), Error(0x12345678)); // CallFailed()
             | _ => unimplemented(); // TODO
         }
     }
