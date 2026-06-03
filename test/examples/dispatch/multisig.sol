@@ -58,6 +58,11 @@ data Signature =
     | Contract(address) // If the hash is approved by the contract.
     | EIP1271(address, memory(bytes)); // EIP-1271 signature validation
 
+data OperationKind =
+      Queue
+    | Approve
+    | Reject;
+
 data BatchOperation =
       Queue(Operation, Signature)
     | Approve(uint256, Signature)
@@ -150,10 +155,15 @@ contract Multisig {
         }
     }
 
+    // TODO: mark this private.
+    function create_signature_hash(kind: OperationKind, operation: Operation) -> bytes32 {
+        // TODO: include domain/chaind information in hash
+        return keccak256(concat(kind, abi_encode(operation)));
+    }
+
     // Anyone can call this.
     function queueWithSignature(operation: Operation, signature: Signature) -> () {
-        // TODO: include domain/chaind information in hash
-        let hash = abi_encode(operation);
+        let hash = create_signature_hash(OperationKind.Queue, operation);
 
         checkSignature(hash, signature);
 
@@ -162,8 +172,7 @@ contract Multisig {
 
     // Anyone can call this.
     function approveWithSignature(nonce_: uint256, signature: Signature) -> () {
-        // TODO: include domain/chaind information in hash
-        let hash = abi_encode(operations[nonce_]);
+        let hash = create_signature_hash(OperationKind.Approve, operations[nonce_]);
 
         let signer = checkSignature(hash, signature);
 
@@ -172,8 +181,7 @@ contract Multisig {
 
     // Anyone can call this.
     function rejectWithSignature(nonce_: uint256, signature: Signature) -> () {
-        // TODO: include domain/chaind information in hash
-        let hash = abi_encode(operations[nonce_]);
+        let hash = create_signature_hash(OperationKind.Reject, operations[nonce_]);
 
         let signer = checkSignature(hash, signature);
 
