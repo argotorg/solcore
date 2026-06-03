@@ -39,8 +39,9 @@ data Operation =
     | TransferEth(address, uint256) // Transfers ether.
     | TransferToken(address, address, uint256) // Transfers a token.
     | Call(address, uint256, memory(bytes)) // Arbitrary calls to an address.
-    | UnstoredCall(bytes32); // Arbitrary calls to an address, represented by a hash (supplied at execution time).
+    | UnstoredCall(bytes32)  // Arbitrary calls to an address, represented by a hash (supplied at execution time).
                              // It is encoded as [address][value][payload]
+    | ApproveSignedHash(bytes32); // For interacting as an EIP-1271 signer.
 
 data OperationStatus =
       Pending(uint256) // approval count (TODO: use uint8/uint16 to be realistic)
@@ -79,6 +80,7 @@ contract Multisig {
     votes: mapping(uint256 -> address -> Vote);
     status: mapping(uint256 -> OperationStatus);
     nonce: uint256; // Strict ordering. Next executable operation.
+    approved_signed_hashes: mapping(bytes32 -> bool);
 
     constructor() -> () {
         // The creator becomes the first signer.
@@ -276,6 +278,10 @@ contract Multisig {
                     ret := call(gas(), target, value, add(payload_, 96), sub(size, 64), 0, 0)
                 }
                 require(tobool(ret), Error(0x12345678)); // UnstoredCallFailed()
+            | ApproveSignedHash(hash) =>
+                // Sanity check.
+                require(!approved_signed_hashes[hash], Error(0x12345678)); // ApprovedSignedHashExist()
+                approved_signed_hashes[hash] = true;
             | _ => unimplemented(); // TODO
         }
     }
@@ -287,8 +293,10 @@ contract Multisig {
     // ERC-1271 receiver
     // NOTE: view function.
     function isValidSignature(hash: bytes32, signature: memory(bytes)) -> bytes4 {
-        // TODO: implement this.
-        unimplemented();
+        require(approved_signed_hashes[hash], Error(0x12345678)); // HashNotApproved();
+        let signature_ = Typedef.rep(signature);
+        require(mload(signature_) == 0, Error(0x12345678)); // EmptySignatureExpected()
+        // TODO: consider pass-through signature checking if the hash is not found (needs passing data and not hash)
         return bytes4(0x1626ba7e);
     }
 
