@@ -270,8 +270,14 @@ function eip2098_signer(hash: bytes32, r: bytes32, s_: bytes32) -> address {
         s := and(s_, sub(shl(255, 1), 1))
         v := add(shr(255, s_), 27)
     }
+    let parity = match v {
+        | 27 => Even,
+        | 28 => Odd,
+    }
     return ecrecover(hash, uint256(v), r, bytes32(s));
 }
+
+data ECDSAParity = Even | Odd;
 
 // TODO: use uint8
 function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address {
