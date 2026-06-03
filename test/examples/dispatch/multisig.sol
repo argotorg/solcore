@@ -52,7 +52,7 @@ data Signature =
     | EIP1271(address, memory(bytes)); // EIP-1271 signature validation
 
 data BatchOperation =
-      Queue(Operation)
+      Queue(Operation, Signature)
     | Approve(uint256, Signature)
     | Reject(uint256, Signature)
     | Execute(uint256, memory(bytes));
@@ -129,6 +129,17 @@ contract Multisig {
     }
 
     // Anyone can call this.
+    function queueWithSignature(operation: Operation, signature: Signature) -> () {
+        // TODO: include domain/chaind information in hash
+        let hash = abi_encode(operation);
+
+        checkSignature(hash, signature);
+
+        // TODO: implement
+        unimplemented();
+    }
+
+    // Anyone can call this.
     function approveWithSignature(nonce_: uint256, signature: Signature) -> () {
         // TODO: include domain/chaind information in hash
         let hash = abi_encode(operations[nonce_]);
@@ -139,6 +150,7 @@ contract Multisig {
         unimplemented();
     }
 
+    // Anyone can call this.
     function rejectWithSignature(nonce_: uint256, signature: Signature) -> () {
         // TODO: include domain/chaind information in hash
         let hash = abi_encode(operations[nonce_]);
@@ -152,7 +164,7 @@ contract Multisig {
     function batch(operations: array(BatchOperation)) -> () {
         for (let i = 0; i < operations.length; i++) {
             match operations[i] {
-                | Queue(op) => queue(op); // TODO: fix caller
+                | Queue(operation, signature) => queueWithSignature(operation, signature);
                 | Approve(nonce_, signature) => approveWithSignature(nonce_, signature);
                 | Reject(nonce_, signature) => rejectWithSignature(nonce_, signature);
                 | Execute(nonce_, payload) => execute(nonce_, payload);
