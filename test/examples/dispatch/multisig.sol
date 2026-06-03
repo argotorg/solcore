@@ -400,3 +400,31 @@ function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address
     }
     return address(res);
 }
+
+// Performs a safe transfer of ERC-20 tokens. Makes sure the call succeeded,
+// and if the token follows the standard and returns a boolean, that is also true.
+function safe_erc20_transfer(token: address, to: address, value: uint256) -> () {
+    let ptr = get_free_memory();
+    let token_ = Typedef.rep(token);
+    let to_ = Typedef.rep(to);
+    let value_ = Typedef.rep(value);
+    assembly {
+        // Assemble the [selector][address][value]
+        mstore(ptr, shl(224, 0xa9059cbb))
+        mstore(add(ptr, 4), to_)
+        mstore(add(ptr, 36), value_)
+        let ret := call(gas(), token_, 0, ptr, 68, 0, 32)
+        if iszero(ret) {
+            // Bubble up error.
+            returndatacopy(0, 0, returndatasize())
+            revert(0, returndatasize())
+        }
+        // If the token follows the standard and returns a bool, check it returned true.
+        // This allows any non-zero value as true, just like OpenZeppelin.
+        if returndatasize() {
+            if iszero(mload(0)) {
+                revert(0, 0) // TODO: use error codes
+            }
+        }
+    }
+}
