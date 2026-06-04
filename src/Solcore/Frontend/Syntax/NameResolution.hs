@@ -510,6 +510,17 @@ resolveSameNameConstructorName n =
   where
     leaf = constructorLeafName n
 
+-- A receiver like @Error@ in @Error.Empty@ is first parsed as an expression
+-- on its own and resolved before the outer member-access context is known.
+-- When the type has a same-name constructor (@data Error = Error(...) | ...@),
+-- the inner resolver eagerly produces @Con (QualName Error Error) []@ for the
+-- bare name. Treat that shape as if it were @Var Error@ when it appears in
+-- qualifier position so the outer qualifier-handling cases still match.
+unwrapQualifierReceiver :: Maybe (Exp Name) -> Maybe (Exp Name)
+unwrapQualifierReceiver (Just (Con (QualName d conName) []))
+  | pretty d == conName = Just (Var d)
+unwrapQualifierReceiver me = me
+
 instance Resolve S.Exp where
   type Result S.Exp = Exp Name
 
@@ -528,7 +539,7 @@ instance Resolve S.Exp where
     TyExp <$> resolve e <*> resolve t
   resolve c@(S.ExpVar me n) =
     do
-      me' <- resolve me `wrapError` c
+      me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` c)
       dt <- lookupName n
       case (me', dt) of
         -- local variables
@@ -599,7 +610,7 @@ instance Resolve S.Exp where
                 else undefinedName n
   resolve x@(S.ExpName me n es) =
     do
-      me' <- resolve me `wrapError` x
+      me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` x)
       es' <- resolve es `wrapError` x
       dt <- lookupName n
       case (me', dt) of

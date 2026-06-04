@@ -259,6 +259,7 @@ cases =
       runTestForFile "dot-pattern-constructor.solc" caseFolder,
       runTestForFile "dot-pattern-nested-constructor.solc" caseFolder,
       runTestForFile "dot-primitive-constructor.solc" caseFolder,
+      runTestForFile "same-name-constructor-qualifier.solc" caseFolder,
       runTestExpectingFailure "duplicated-contract-name.solc" caseFolder,
       runTestExpectingFailure "duplicated-type-name.solc" caseFolder,
       runTestForFile "DuplicateFun.solc" caseFolder,
