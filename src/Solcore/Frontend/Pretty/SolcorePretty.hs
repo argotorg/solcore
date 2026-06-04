@@ -116,6 +116,8 @@ pprItemSelector (SelectItems items hidden) =
 instance Pretty ItemSelectorEntry where
   ppr SelectAllItems = text "*"
   ppr (SelectItem itemName) = ppr itemName
+  ppr (SelectItemAs itemName aliasName) =
+    hsep [ppr itemName, text "as", ppr aliasName]
 
 exportSelectorIsOnlyWildcard :: ExportSelector -> Bool
 exportSelectorIsOnlyWildcard (SelectExportItems [SelectExportAllItems]) = True
@@ -214,8 +216,9 @@ pprSignatures =
   vcat . map ((<> semi) . ppr)
 
 instance (Pretty a) => Pretty (Signature a) where
-  ppr (Signature vs ctx n ps rc ty) =
+  ppr (Signature vs ctx n ps rc ty pay) =
     pprSigPrefix vs ctx
+      <+> (if pay then text "payable" else empty)
       <+> text "function"
       <+> ppr n
       <+> pprParams ps

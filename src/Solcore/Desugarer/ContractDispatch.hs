@@ -65,7 +65,7 @@ genMainFn addMain (Contract cname tys cdecls)
     cdecls'' = if hasConstructor cdecls then cdecls else cdecls ++ [defaultConstructor]
     cdecls' = Set.unions (map (transformCDecl cname) cdecls'')
     defaultConstructor = CConstrDecl (Constructor {constrParams = [], constrBody = []})
-    mainfn = FunDef (Signature [] [] "main" [] False (Just unit)) body
+    mainfn = FunDef (Signature [] [] "main" [] False (Just unit) False) body
     body = [StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
     cdata = Con "Contract" [methods, fallback]
     methods = tupleExpFromList (fmap mkMethod (mapMaybe unwrapSigs cdecls))
@@ -75,15 +75,15 @@ genMainFn addMain (Contract cname tys cdecls)
         [ proxyExp (TyCon "NonPayable" []),
           proxyExp unit,
           proxyExp unit,
-          Var "revert_handler"
+          Var "fallback_default_implementation"
         ]
 
-    mkMethod (Signature _ _ fname fargs _ (Just ret))
+    mkMethod (Signature _ _ fname fargs _ (Just ret) payable)
       | all isTyped fargs =
           Con
             "Method"
             [ proxyExp (TyCon (nameTypeName cname fname) []),
-              proxyExp (TyCon "NonPayable" []),
+              proxyExp (TyCon (if payable then "Payable" else "NonPayable") []),
               proxyExp (tupleTyFromList (mapMaybe getTy fargs)),
               proxyExp ret,
               Var fname
@@ -118,7 +118,8 @@ transformConstructor contractName cons
           sigName = initFunName,
           sigParams = params,
           sigRetComptime = False,
-          sigReturn = Just unit
+          sigReturn = Just unit,
+          sigPayable = False
         }
 
     copySig =
@@ -128,7 +129,8 @@ transformConstructor contractName cons
           sigName = "copy_arguments_for_constructor",
           sigParams = mempty,
           sigRetComptime = False,
-          sigReturn = Just argsTuple
+          sigReturn = Just argsTuple,
+          sigPayable = False
         }
     contractString = show contractName
     yulContractName = YLit $ YulString contractString
@@ -169,7 +171,8 @@ transformConstructor contractName cons
           sigName = deployerName,
           sigParams = mempty,
           sigRetComptime = False,
-          sigReturn = Just unit
+          sigReturn = Just unit,
+          sigPayable = False
         }
     startBody =
       [ Asm [yulBlock|{ mstore(64, memoryguard(128)) }|],
@@ -201,7 +204,7 @@ mkNameTy cname fname = DataTy (nameTypeName cname fname) [] []
 mkNameInst :: DataTy -> Name -> Instance Name
 mkNameInst (DataTy dname [] []) fname =
   let nameTy = TyCon dname []
-      sig = Signature [] [] "sigStr" [Typed False "p" (proxyTy nameTy)] False (Just string)
+      sig = Signature [] [] "sigStr" [Typed False "p" (proxyTy nameTy)] False (Just string) False
       body = [Return (Lit (StrLit (show fname)))]
    in Instance
         { instDefault = False,

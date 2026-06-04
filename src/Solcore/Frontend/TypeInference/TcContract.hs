@@ -348,7 +348,7 @@ tcField d@(Field n t _) =
 tcClass :: Class Name -> TcM (Class Id)
 tcClass iclass@(Class bvs classCtx n vs v sigs) =
   do
-    let freeInSig (Signature sv _ _ ps _ mt) = bv (ps, mt) \\ sv
+    let freeInSig (Signature sv _ _ ps _ mt _) = bv (ps, mt) \\ sv
         bvs' = bv classCtx `union` bv (map TyVar (v : vs)) `union` concatMap freeInSig sigs
         ns = map sigName sigs
         qs = map (QualName n . pretty) ns
@@ -375,6 +375,7 @@ tcSig (sig, (Forall _ (_ :=> t))) =
           params'
           (sigRetComptime sig)
           (Just r)
+          (sigPayable sig)
       )
 
 -- type checking binding groups
@@ -446,8 +447,9 @@ checkClass icls@(Class bvs ps n vs v sigs) =
     addClassInfo n (length vs) ms' ps p
     mapM_ (checkSignature p) sigs
   where
-    checkSignature p sig@(Signature methodVars _ _ params _ mt) =
+    checkSignature p sig@(Signature methodVars _ _ params _ mt _) =
       do
+        fullSignature sig `wrapError` icls
         _ <- mapM tyParam params
         _ <- maybe (pure unit) pure mt
         checkAllTypeVarsBound sig (bv sig) (bvs ++ methodVars)
@@ -470,7 +472,7 @@ addClassInfo n ar ms ps p =
       )
 
 addClassMethod :: Pred -> Signature Name -> TcM ()
-addClassMethod p@(InCls c _ _) sig@(Signature _ methodCtx f ps _ t) =
+addClassMethod p@(InCls c _ _) sig@(Signature _ methodCtx f ps _ t _) =
   do
     tps <- mapM tyParam ps
     t' <- maybe (pure unit) pure t
@@ -483,7 +485,7 @@ addClassMethod p@(InCls c _ _) sig@(Signature _ methodCtx f ps _ t) =
     unless (isNothing r) (duplicatedClassMethod f `wrapError` sig)
     extEnv qn sch
     pure ()
-addClassMethod p@(_ :~: _) (Signature _ _ n _ _ _) =
+addClassMethod p@(_ :~: _) (Signature _ _ n _ _ _ _) =
   throwError $
     unlines
       [ "Invalid constraint:",
@@ -495,7 +497,7 @@ addClassMethod p@(_ :~: _) (Signature _ _ n _ _ _) =
 -- error for class definitions
 
 signatureError :: Name -> Tyvar -> Signature Name -> Ty -> TcM ()
-signatureError n v (Signature _ methodCtx f _ _ _) t
+signatureError n v (Signature _ methodCtx f _ _ _ _) t
   | null methodCtx =
       throwError $
         unlines

@@ -1,0 +1,22 @@
+import std.{*};
+import std.dispatch.{*};
+
+contract PayableTest {
+    constructor() {}
+
+    payable function deposit() -> uint256 {
+        let value;
+        assembly {
+            value := callvalue()
+        }
+        return uint256(value);
+    }
+
+    function balance() -> uint256 {
+        let value;
+        assembly {
+            value := selfbalance()
+        }
+        return uint256(value);
+    }
+}

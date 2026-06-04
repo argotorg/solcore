@@ -630,7 +630,7 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) returnType
       Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
 
 schemeOfTcSignature :: Signature Id -> Scheme
-schemeOfTcSignature sig@(Signature vs ps _n args _ (Just rt)) =
+schemeOfTcSignature sig@(Signature vs ps _n args _ (Just rt) _) =
   case mapM getType args of
     Just ts -> Forall vs (ps :=> (funtype ts rt))
     Nothing -> error $ unwords ["Invalid instance member signature:", pretty sig]

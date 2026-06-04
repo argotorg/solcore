@@ -14,7 +14,7 @@ export {
   Selector,
   SigString,
   do_exec,
-  revert_handler,
+  fallback_default_implementation,
   selector_matches,
   sigStr
 };
@@ -82,11 +82,8 @@ forall name payability args rets fn
 => instance Method(name,payability,args,rets,fn):Selector {
     function compute(prx : Proxy(Method(name,payability,args,rets,fn))) -> bytes4 {
         // let hash : word = keccakLit(sigStr(prx));
-	let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
-	let res : word;
-        assembly { res := shr(224, hash) }
- 	
-        return bytes4(res);
+        let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
+        return bytes4(bshrWord(224, hash));
     }
 }
 
@@ -94,22 +91,40 @@ forall name payability args rets fn
 
 // Describes how to execute a given method / fallback
 forall ty . class ty:ExecMethod {
-  function exec(x: ty);
+  function exec(x: ty) -> ();
 }
 
-// If fn matches the provided args/ret types, then we can execute any method
-forall name payability args rets fn
+// If fn matches the provided args/ret types, then we can execute any non-payable method
+forall name args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
   , rets:ABIAttribs
   , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
   , rets:ABIEncode
-  , payability:MethodLevelCallvalueCheck
-=> instance Method(name,payability,args,rets,fn):ExecMethod {
-  function exec(m : Method(name,payability,args,rets,fn)) -> () {
+=> instance Method(name,NonPayable,args,rets,fn):ExecMethod {
+  function exec(m : Method(name,NonPayable,args,rets,fn)) -> () {
     match m {
       | Method(pnm,ppayability,pargs,prets,fn) =>
-        do_exec(ppayability, pargs, prets, fn);
+        // non-payable methods must reject any callvalue before running
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(NonPayable));
+        do_exec(pargs, prets, fn);
+    }
+  }
+}
+
+// If fn matches the provided args/ret types, then we can execute any payable method
+// payable methods skip the callvalue check entirely
+forall name args rets fn
+  . fn:invokable(args,rets)
+  , args:ABIAttribs
+  , rets:ABIAttribs
+  , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
+  , rets:ABIEncode
+=> instance Method(name,Payable,args,rets,fn):ExecMethod {
+  function exec(m : Method(name,Payable,args,rets,fn)) -> () {
+    match m {
+      | Method(pnm,ppayability,pargs,prets,fn) =>
+        do_exec(pargs, prets, fn);
     }
   }
 }
@@ -126,22 +141,19 @@ forall payability args rets fn
   function exec(fb : Fallback(payability,args,rets,fn)) -> () {
     match fb {
       | Fallback(ppayability, pargs, prets, fn) =>
-        do_exec(ppayability, pargs, prets, fn);
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(payability));
+        do_exec(pargs, prets, fn);
     }
   }
 }
 
-forall payability args rets fn
+forall args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
   , rets:ABIAttribs
   , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
   , rets:ABIEncode
-  , payability:MethodLevelCallvalueCheck
-=> function do_exec(ppayability : Proxy(payability), pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
-    // check callvalue
-    MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(payability));
-
+=> function do_exec(pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
     // check we have enough calldata for the head of args
     let hdsz = ABIAttribs.headSize(pargs);
     let cdsz;
@@ -149,7 +161,7 @@ forall payability args rets fn
       cdsz := calldatasize()
     }
     if ((cdsz - 4) < hdsz) {
-      let ABIInputTruncated = Error(0x9d11c942);
+      let ABIInputTruncated = Error(0x08638556);
       revertWithError(ABIInputTruncated);
     }
 
@@ -229,7 +241,7 @@ data Payable;
 data NonPayable;
 
 forall ty . class ty:MethodLevelCallvalueCheck {
-    function checkCallvalue(pty : Proxy(ty));
+    function checkCallvalue(pty : Proxy(ty)) -> ();
 }
 
 // no callvalue check for Payable methods
@@ -289,6 +301,8 @@ forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance C
   }
 }
 
-function revert_handler() -> () {
-  assembly { revert(0,0) }
+// This is the default fallback used if none is defined.
+function fallback_default_implementation() -> () {
+  let NoSelectorMatchedWithoutFallback = Error(0x4924aef0);
+  revertWithError(NoSelectorMatchedWithoutFallback);
 }

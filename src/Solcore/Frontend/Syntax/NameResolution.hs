@@ -71,6 +71,7 @@ resolveExportSelectorEntry (S.SelectExportConstructors typeName ctorSelector) =
 resolveSelectorEntry :: S.ItemSelectorEntry -> ItemSelectorEntry
 resolveSelectorEntry S.SelectAllItems = SelectAllItems
 resolveSelectorEntry (S.SelectItem itemName) = SelectItem itemName
+resolveSelectorEntry (S.SelectItemAs itemName aliasName) = SelectItemAs itemName aliasName
 
 resolveExportSpec :: S.ExportSpec -> ExportSpec
 resolveExportSpec S.ExportAll = ExportAll
@@ -277,7 +278,7 @@ instance Resolve S.Class where
 instance Resolve S.Signature where
   type Result S.Signature = Signature Name
 
-  resolve s@(S.Signature vs ctx n ps rc mt) =
+  resolve s@(S.Signature vs ctx n ps rc mt pay) =
     withLocalCtx $ do
       let ns = map tyconName vs
       mapM_ addTyVar ns
@@ -285,7 +286,7 @@ instance Resolve S.Signature where
       ps' <- resolve ps `wrapError` s
       mt' <- resolve mt `wrapError` s
       let vs' = map TVar ns
-      pure (Signature vs' ctx' n ps' rc mt')
+      pure (Signature vs' ctx' n ps' rc mt' pay)
 
 instance Resolve S.Instance where
   type Result S.Instance = Instance Name
@@ -337,7 +338,7 @@ instance Resolve S.PragmaStatus where
 instance Resolve S.FunDef where
   type Result S.FunDef = FunDef Name
 
-  resolve f@(S.FunDef (S.Signature vs ctx n ps rc mt) bds) =
+  resolve f@(S.FunDef (S.Signature vs ctx n ps rc mt pay) bds) =
     do
       let ns = map tyconName vs
       withLocalCtx $ do
@@ -349,7 +350,7 @@ instance Resolve S.FunDef where
         mapM_ addParameter args
         bds' <- resolve bds `wrapError` f
         let vs' = map TVar ns
-            sig = Signature vs' ctx' n ps' rc mt'
+            sig = Signature vs' ctx' n ps' rc mt' pay
         pure (FunDef sig bds')
 
 instance Resolve S.Stmt where
