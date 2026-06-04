@@ -371,8 +371,27 @@ importForwardingWrappers graph checkedModules =
       wrappersForQualifiers loadedModule importPath (defaultImportQualifiers importPath)
     wrappersForImport loadedModule (Parsed.ImportAlias importPath qualifier) =
       wrappersForQualifiers loadedModule importPath [qualifier]
-    wrappersForImport _ (Parsed.ImportOnly _ _) =
-      pure []
+    wrappersForImport loadedModule (Parsed.ImportOnly importPath selector) = do
+      let aliases = importAliases selector
+      if null aliases
+        then pure []
+        else do
+          targetModuleId <-
+            maybe
+              (Left ("Internal error: import target was not loaded: " ++ Mod.modulePathDisplay importPath))
+              Right
+              (Map.lookup importPath (loadedModuleRefs loadedModule))
+          targetModule <-
+            maybe
+              (Left ("Internal error: import target was not typechecked: " ++ Mod.moduleIdDisplay targetModuleId))
+              Right
+              (Map.lookup targetModuleId checkedModules)
+          pure
+            [ TFunDef (typedAliasWrapper localName fd)
+              | (sourceName, localName) <- aliases,
+                TFunDef fd <- contracts (checkedModuleTyped targetModule),
+                sigName (funSignature fd) == sourceName
+            ]
 
     wrappersForQualifiers loadedModule importPath qualifiers = do
       targetModuleId <-
@@ -403,6 +422,14 @@ defaultImportQualifiers importPath =
 importedModuleLeafName :: Name -> Name
 importedModuleLeafName (Name n) = Name n
 importedModuleLeafName (QualName _ n) = Name n
+
+importAliases :: Parsed.ItemSelector -> [(Name, Name)]
+importAliases (Parsed.SelectItems entries _) =
+  [(src, loc) | Parsed.SelectItemAs src loc <- entries]
+
+typedAliasWrapper :: Name -> FunDef Id -> FunDef Id
+typedAliasWrapper aliasName (FunDef sig body) =
+  FunDef (sig {sigName = aliasName}) body
 
 typedForwardingWrapper :: Name -> FunDef Id -> FunDef Id
 typedForwardingWrapper qualifier (FunDef sig body)
