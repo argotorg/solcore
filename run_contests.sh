@@ -12,3 +12,4 @@ bash ./contest.sh test/examples/dispatch/Revert.json
 bash ./contest.sh test/examples/dispatch/ownable.json
 bash ./contest.sh test/examples/dispatch/payable.json
 bash ./contest.sh test/examples/dispatch/tupleret.json
+bash ./contest.sh test/examples/dispatch/dyntail.json
