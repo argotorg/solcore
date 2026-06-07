@@ -211,6 +211,11 @@ forall name payability args rets fn
   }
 }
 
+// Base case: a contract with no methods has nothing to dispatch to
+instance ():RunDispatch {
+  function go(methods : ()) -> () { }
+}
+
 // Recursive instance
 forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispatch {
   function go(methods : (n,m)) -> () {
