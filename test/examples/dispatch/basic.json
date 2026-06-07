@@ -144,6 +144,18 @@
       },
       {
         "input": {
+          "text-calldata": "empty calldata (cdsz == 0) -- the 'plain ETH transfer' shape",
+          "calldata":"",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata":"4924aef0",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
           "text-calldata": "abi data too short -- using id_string(string)",
           "calldata":"145ef755",
           "value": "0"
