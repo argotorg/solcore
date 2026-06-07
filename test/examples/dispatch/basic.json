@@ -72,8 +72,8 @@
       },
       {
         "input": {
-          "text-calldata": "pair()(uint256,uint256)",
-          "calldata": "a8aa1b31",
+          "text-calldata": "id_pair()(uint256,uint256)",
+          "calldata": "5880a1a0",
           "value": "0"
         },
         "kind": "call",
