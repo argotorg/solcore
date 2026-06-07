@@ -28,4 +28,8 @@ contract C {
     function id_string(b: memory(string)) -> memory(string) {
         return b;
     }
+
+    function id_bytes32(b: bytes32) -> bytes32 {
+        return b;
+    }
 }
