@@ -1,0 +1,17 @@
+import std.{*};
+import std.dispatch.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+// Covers a contract method whose return type is a tuple of static
+// values. This exercises the (a,b):ABIEncode / (a,b):ABIAttribs
+// instances on the return side of do_exec in std/dispatch.solc.
+
+contract TupleRet {
+  constructor() {}
+
+  function pair() -> (uint256, uint256) {
+    return (uint256(7), uint256(11));
+  }
+}

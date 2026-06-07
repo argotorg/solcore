@@ -1,0 +1,27 @@
+{
+  "tupleret": {
+    "bytecode": "",
+    "contract": "TupleRet",
+    "tests": [
+      {
+        "input": {
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "text-calldata": "pair()(uint256,uint256)",
+          "calldata": "a8aa1b31",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000007000000000000000000000000000000000000000000000000000000000000000b",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}
