@@ -15,7 +15,7 @@ module Solcore.Desugarer.ContractDispatch
 where
 
 import Data.List (mapAccumL)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Language.Yul
@@ -42,23 +42,37 @@ hasConstructor = any isConstr
     isConstr (CConstrDecl _) = True
     isConstr _ = False
 
+-- | Special internal name used by the parser for the (optional) `fallback`
+-- function defined inside a contract.
+fallbackName :: Name
+fallbackName = Name "fallback"
+
+isFallback :: FunDef a -> Bool
+isFallback fd = sigName (funSignature fd) == fallbackName
+
 functionNames :: Contract a -> [Name]
 functionNames = foldr go [] . decls
   where
     go (CFunDecl fd) = (sigName (funSignature fd) :)
     go _ = id
 
+-- | Returns the (at most one) user-defined fallback function for a contract.
+findFallback :: Contract a -> Maybe (FunDef a)
+findFallback c = listToMaybe [fd | CFunDecl fd <- decls c, isFallback fd]
+
 genNameDecls :: Contract Name -> Set (TopDecl Name)
 genNameDecls (Contract cname _ cdecls) = foldl go Set.empty cdecls
   where
-    go acc (CFunDecl (FunDef sig _)) =
-      let dataTy = mkNameTy cname (sigName sig)
-          instDef = mkNameInst dataTy (sigName sig)
-       in Set.union (Set.fromList [TDataDef dataTy, TInstDef instDef]) acc
+    go acc (CFunDecl (FunDef sig _))
+      | sigName sig == fallbackName = acc
+      | otherwise =
+          let dataTy = mkNameTy cname (sigName sig)
+              instDef = mkNameInst dataTy (sigName sig)
+           in Set.union (Set.fromList [TDataDef dataTy, TInstDef instDef]) acc
     go acc _ = acc
 
 genMainFn :: Bool -> Contract Name -> Contract Name
-genMainFn addMain (Contract cname tys cdecls)
+genMainFn addMain c@(Contract cname tys cdecls)
   | addMain = Contract cname tys (CFunDecl mainfn : Set.toList cdecls')
   | otherwise = Contract cname tys (Set.toList cdecls')
   where
@@ -69,14 +83,23 @@ genMainFn addMain (Contract cname tys cdecls)
     body = [StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
     cdata = Con "Contract" [methods, fallback]
     methods = tupleExpFromList (fmap mkMethod (mapMaybe unwrapSigs cdecls))
-    fallback =
-      Con
-        "Fallback"
-        [ proxyExp (TyCon "NonPayable" []),
-          proxyExp unit,
-          proxyExp unit,
-          Var "fallback_default_implementation"
-        ]
+    fallback = case findFallback c of
+      Just (FunDef sig _) ->
+        Con
+          "Fallback"
+          [ proxyExp (TyCon (if sigPayable sig then "Payable" else "NonPayable") []),
+            proxyExp (tupleTyFromList (mapMaybe getTy (sigParams sig))),
+            proxyExp (fromMaybe unit (sigReturn sig)),
+            Var fallbackName
+          ]
+      Nothing ->
+        Con
+          "Fallback"
+          [ proxyExp (TyCon "NonPayable" []),
+            proxyExp unit,
+            proxyExp unit,
+            Var "fallback_default_implementation"
+          ]
 
     mkMethod (Signature _ _ fname fargs (Just ret) payable)
       | all isTyped fargs =
@@ -90,7 +113,10 @@ genMainFn addMain (Contract cname tys cdecls)
             ]
     mkMethod s = error $ "Internal Error: contract methods must be fully typed: " <> show s
 
-    unwrapSigs (CFunDecl (FunDef s _)) = Just s
+    -- skip the optional fallback function in the methods tuple
+    unwrapSigs (CFunDecl (FunDef s _))
+      | sigName s == fallbackName = Nothing
+      | otherwise = Just s
     unwrapSigs _ = Nothing
 
     isTyped (Typed {}) = True
