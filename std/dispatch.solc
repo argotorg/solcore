@@ -27,7 +27,7 @@ pragma no-bounded-variable-condition ;
 
 // A contract contains a tuple of methods and a single fallback
 // TODO: implement receive()
-data Contract(methods, fallback) = Contract(methods,fallback);
+data Contract(methods, fb) = Contract(methods,fb);
 
 // A method contains an implementation (fn) as well as it's name and type signature
 data Method(name, payability, args, rets, fn) = Method(Proxy(name), Proxy(payability), Proxy(args), Proxy(rets), fn);
@@ -275,33 +275,30 @@ forall c . class c:RunContract {
 }
 
 // If we have a dispatch for the contracts methods, and we know how to execute it's fallback, then we can define an entrypoint
-forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance Contract(methods, fallback):RunContract {
-  function exec(c : Contract(methods, fallback)) -> () {
+forall methods fb . methods:RunDispatch, fb:ExecMethod => instance Contract(methods, fb):RunContract {
+  function exec(c : Contract(methods, fb)) -> () {
     match c {
       | Contract(ms, fb) =>
 
         // TODO: if all methods are non payable then we should life the callvalue check here
 
-        // check that we have at least 4 bytes of calldata
+        // set free memory pointer to the output of memoryguard
+        // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
+        // TODO: we will need to consider immutables here at some point...
+        assembly { mstore(0x40, memoryguard(128)); }
+
+        // calldata shorter than 4 bytes can't contain a selector — skip
+        // dispatch and invoke the fallback directly (matches Solidity)
         let cdsz: word;
         assembly {
           cdsz := calldatasize()
         }
-        match cdsz < 4 {
-          | true =>
-            let SelectorTooShort = Error(0x35ffc70e);
-            revertWithError(SelectorTooShort);
-          | false =>
-            // set free memory pointer to the output of memoryguard
-            // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
-            // TODO: we will need to consider immutables here at some point...
-            assembly { mstore(0x40, memoryguard(128)); }
-
-            // dispatch to method based on selector
+        if (cdsz >= 4) {
             RunDispatch.go(ms);
-            // run fallback if no methods matched
-            ExecMethod.exec(fb);
         }
+        // fallthrough to fallback -- this will be reached upon short input
+        //                            or no matching selector
+        ExecMethod.exec(fb);
     }
   }
 }

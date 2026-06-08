@@ -88,6 +88,7 @@ dispatches =
       runDispatchTest "Revert.solc",
       runDispatchTest "empty.solc",
       runDispatchTest "empty_no_constructor.solc"
+      runDispatchTest "hashes.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -272,6 +273,8 @@ cases =
       runTestExpectingFailure "Eq.solc" caseFolder,
       runTestForFile "EqQual.solc" caseFolder,
       runTestForFile "EvenOdd.solc" caseFolder,
+      runTestExpectingFailure "fallback-with-args.solc" caseFolder,
+      runTestExpectingFailure "fallback-with-return.solc" caseFolder,
       runTestExpectingFailure "Filter.solc" caseFolder,
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,
