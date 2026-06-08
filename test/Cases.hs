@@ -87,7 +87,7 @@ dispatches =
       runDispatchTest "miniERC20.solc",
       runDispatchTest "Revert.solc",
       runDispatchTest "empty.solc",
-      runDispatchTest "empty_no_constructor.solc"
+      runDispatchTest "empty_no_constructor.solc",
       runDispatchTest "hashes.solc"
     ]
   where
