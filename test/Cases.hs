@@ -315,6 +315,8 @@ cases =
       runTestForFile "EvenOdd.solc" caseFolder,
       runTestExpectingFailure "fallback-with-args.solc" caseFolder,
       runTestExpectingFailure "fallback-with-return.solc" caseFolder,
+      runTestExpectingFailure "public-fallback.solc" caseFolder,
+      runTestExpectingFailure "public-constructor.solc" caseFolder,
       runTestExpectingFailure "Filter.solc" caseFolder,
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,

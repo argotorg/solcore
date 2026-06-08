@@ -319,6 +319,7 @@ contractDeclP =
     <$> dataP
       <|> CConstrDecl
     <$> constructorDeclP
+      <|> rejectPublicOnImplicitlyPublicP
       <|> withSigPrefix
         ( \vars ctx ->
             CFunDecl
@@ -326,6 +327,17 @@ contractDeclP =
         )
       <|> CFieldDecl
     <$> fieldDeclP
+
+-- | `fallback` and `constructor` are implicitly public; reject an explicit
+-- `public` modifier on them with a clear error rather than a confusing
+-- parser failure.
+rejectPublicOnImplicitlyPublicP :: Parser a
+rejectPublicOnImplicitlyPublicP = do
+  kw <- try $ do
+    _ <- keyword "public"
+    _ <- optional (keyword "payable")
+    ("fallback" <$ keyword "fallback") <|> ("constructor" <$ keyword "constructor")
+  fail (kw ++ " is implicitly public; remove the 'public' keyword")
 
 fieldDeclP :: Parser Field
 fieldDeclP = do
