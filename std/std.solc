@@ -44,6 +44,7 @@ export {
   allocateDynamicArray,
   address(*),
   allocate_memory,
+  allocate_zeroed_memory,
   and,
   assert,
   byte(*),
@@ -796,6 +797,12 @@ function set_free_memory(loc : word) -> () {
 function allocate_memory(size : word) -> word {
     let ptr = get_free_memory();
     set_free_memory(ptr + size);
+    return ptr;
+}
+
+function allocate_zeroed_memory(size: word) -> word {
+    let ptr = allocate_memory(size);
+    zeroize_memory(ptr, size);
     return ptr;
 }
 
