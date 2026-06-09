@@ -154,6 +154,7 @@
             pkgs.foundry-bin
             pkgs.go-ethereum
             pkgs.jq
+            pkgs.nlohmann_json
             pkgs.solc
             evmone-lib
             (hspkgs.hevm.overrideAttrs (old: { patches = []; }))
@@ -162,6 +163,22 @@
             pkgs.mdbook
           ];
           evmone="${evmone-lib}/lib/${if pkgs.stdenv.isDarwin then "libevmone.dylib" else "libevmone.so"}";
+
+          # Make sure the C++ testrunner is (re)built whenever its sources
+          # change. CMake's incremental build is a no-op when nothing has
+          # changed, so this is cheap on warm shells.
+          shellHook = ''
+            if [ -z "''${SOLCORE_SKIP_TESTRUNNER_BUILD:-}" ]; then
+              testrunner_build_dir="''${PWD}/build"
+              if [ ! -f "$testrunner_build_dir/CMakeCache.txt" ]; then
+                echo "[nix develop] Configuring testrunner build in $testrunner_build_dir"
+                cmake -S "$PWD" -B "$testrunner_build_dir" \
+                  -DIGNORE_VENDORED_DEPENDENCIES=ON >/dev/null
+              fi
+              echo "[nix develop] Building testrunner (incremental)"
+              cmake --build "$testrunner_build_dir" --target testrunner
+            fi
+          '';
         };
       }
     );
