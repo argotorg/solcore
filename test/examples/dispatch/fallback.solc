@@ -9,6 +9,6 @@ contract WithFallback {
     }
 
     fallback() -> () {
-        revert("fallback-was-called");
+        revertLit("fallback-was-called");
     }
 }

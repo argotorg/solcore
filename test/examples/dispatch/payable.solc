@@ -26,7 +26,7 @@ contract PayableTest {
             value := callvalue()
         }
         if (value == 0) {
-            revert("fallback-was-called-no-value");
+            revertLit("fallback-was-called-no-value");
         }
     }
 }
