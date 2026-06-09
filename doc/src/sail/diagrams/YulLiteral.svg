@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="92" viewBox="0 0 250.5 92" width="250.5">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 21v20m10 -20v20m-10 -10h20" /></g><g>
+<path d="M40 31h0.0" /><path d="M210.5 31h0.0" /><path d="M40.0 31h20" /><g class="non-terminal ">
+<path d="M60.0 31h25.5" /><path d="M165.0 31h25.5" /><rect height="22" width="79.5" x="85.5" y="20"></rect><text x="125.25" y="35">Integer</text></g><path d="M190.5 31h20" /><path d="M40.0 31a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10" /><g class="non-terminal ">
+<path d="M60.0 61h0.0" /><path d="M190.5 61h0.0" /><rect height="22" width="130.5" x="60" y="50"></rect><text x="125.25" y="65">StringLiteral</text></g><path d="M190.5 61a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10" /></g><path d="M 210.5 31 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>

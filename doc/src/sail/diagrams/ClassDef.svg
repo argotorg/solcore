@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="80" viewBox="0 0 1050.0 80" width="1050.0">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 30v20m10 -20v20m-10 -10h20" /></g><path d="M40 40h10" /><g>
+<path d="M50 40h0.0" /><path d="M1000.0 40h0.0" /><g class="non-terminal ">
+<path d="M50.0 40h0.0" /><path d="M146.5 40h0.0" /><rect height="22" width="96.5" x="50" y="29"></rect><text x="98.25" y="44">SigPrefix</text></g><path d="M146.5 40h10" /><path d="M156.5 40h10" /><g class="terminal ">
+<path d="M166.5 40h0.0" /><path d="M229.0 40h0.0" /><rect height="22" rx="10" ry="10" width="62.5" x="166.5" y="29"></rect><text x="197.75" y="44">class</text></g><path d="M229.0 40h10" /><path d="M239.0 40h10" /><g class="non-terminal ">
+<path d="M249.0 40h0.0" /><path d="M354.0 40h0.0" /><rect height="22" width="105" x="249" y="29"></rect><text x="301.5" y="44">Identifier</text></g><path d="M354.0 40h10" /><path d="M364.0 40h10" /><g class="terminal ">
+<path d="M374.0 40h0.0" /><path d="M402.5 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="374" y="29"></rect><text x="388.25" y="44">:</text></g><path d="M402.5 40h10" /><path d="M412.5 40h10" /><g class="non-terminal ">
+<path d="M422.5 40h0.0" /><path d="M527.5 40h0.0" /><rect height="22" width="105" x="422.5" y="29"></rect><text x="475" y="44">Identifier</text></g><path d="M527.5 40h10" /><g>
+<path d="M537.5 40h0.0" /><path d="M708.0 40h0.0" /><path d="M537.5 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M557.5 20h130.5" /></g><path d="M688.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M537.5 40h20" /><g class="non-terminal ">
+<path d="M557.5 40h0.0" /><path d="M688.0 40h0.0" /><rect height="22" width="130.5" x="557.5" y="29"></rect><text x="622.75" y="44">TypeVarParams</text></g><path d="M688.0 40h20" /></g><path d="M708.0 40h10" /><g class="terminal ">
+<path d="M718.0 40h0.0" /><path d="M746.5 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="718" y="29"></rect><text x="732.25" y="44">{</text></g><path d="M746.5 40h10" /><g>
+<path d="M756.5 40h0.0" /><path d="M961.5 40h0.0" /><path d="M756.5 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M776.5 20h165.0" /></g><path d="M941.5 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M756.5 40h20" /><g>
+<path d="M776.5 40h0.0" /><path d="M941.5 40h0.0" /><path d="M776.5 40h10" /><g>
+<path d="M786.5 40h0.0" /><path d="M931.5 40h0.0" /><g class="non-terminal ">
+<path d="M786.5 40h0.0" /><path d="M883.0 40h0.0" /><rect height="22" width="96.5" x="786.5" y="29"></rect><text x="834.75" y="44">Signature</text></g><path d="M883.0 40h10" /><path d="M893.0 40h10" /><g class="terminal ">
+<path d="M903.0 40h0.0" /><path d="M931.5 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="903" y="29"></rect><text x="917.25" y="44">;</text></g></g><path d="M931.5 40h10" /><path d="M786.5 40a10 10 0 0 0 -10 10v0a10 10 0 0 0 10 10" /><g>
+<path d="M786.5 60h145.0" /></g><path d="M931.5 60a10 10 0 0 0 10 -10v0a10 10 0 0 0 -10 -10" /></g><path d="M941.5 40h20" /></g><path d="M961.5 40h10" /><g class="terminal ">
+<path d="M971.5 40h0.0" /><path d="M1000.0 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="971.5" y="29"></rect><text x="985.75" y="44">}</text></g></g><path d="M1000.0 40h10" /><path d="M 1010.0 40 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>

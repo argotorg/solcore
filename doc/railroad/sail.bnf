@@ -1,0 +1,318 @@
+# SAIL Language Grammar
+
+## Lexical Tokens 
+
+Identifier = letter { letter | digit | "_" }
+
+Integer = digit { digit }
+        | "0x" hexDigit { hexDigit }
+
+StringLiteral = '"' { char } '"'
+
+## Names 
+
+TypeName = Identifier
+         | TypeName "." Identifier
+
+
+## Compilation Unit
+
+# Imports and top-level declarations may be interleaved in any order.
+CompilationUnit = { Import | TopDecl }
+
+TopDecl = Contract
+        | Function
+        | ClassDef
+        | InstDef
+        | DataDef
+        | TypeSynonym
+        | ExportDecl
+        | Pragma
+        | OperatorDecl
+
+
+## Module System
+
+Import = "import" ModulePath ";"
+       | "import" ModulePath "as" Identifier ";"
+       | "import" ModulePath "." "{" ImportItems "}" [ "hiding" "{" HidingList "}" ] ";"
+       | "import" "@" Identifier "." ModulePath ";"
+       | "import" "@" Identifier "." ModulePath "as" Identifier ";"
+       | "import" "@" Identifier "." ModulePath "." "{" ImportItems "}" [ "hiding" "{" HidingList "}" ] ";"
+
+ModulePath = Identifier { "." Identifier }
+
+ImportItems = ImportItem { "," ImportItem }
+
+ImportItem = "*"
+           | Identifier
+           | Identifier "as" Identifier
+           | "(" OperatorSymbol ")"
+
+# OperatorSymbol is a non-empty sequence of operator characters:
+# ASCII: + - * / % < > = ! & | ^ ~ # ?
+# Unicode: U+2200..U+22FF (mathematical operators) and U+2300..U+23FF
+OperatorSymbol = opChar { opChar }
+
+HidingList = Identifier { "," Identifier }
+
+ExportDecl = "export" "{" [ ExportItems ] "}" ";"
+           | "export" ModulePath ";"
+           | "export" ModulePath "as" Identifier ";"
+           | "export" ModulePath "." "{" [ ExportFromItems ] "}" ";"
+           | "export" ModulePath "." "*" ";"
+           | "export" "@" Identifier "." ModulePath ";"
+           | "export" "@" Identifier "." ModulePath "as" Identifier ";"
+           | "export" "@" Identifier "." ModulePath "." "{" [ ExportFromItems ] "}" ";"
+           | "export" "@" Identifier "." ModulePath "." "*" ";"
+
+ExportItems = ExportItem { "," ExportItem }
+
+ExportItem = "*"
+           | Identifier
+           | Identifier "(" ExportConstructors ")"
+           | ModulePath "." "*"
+           | "@" Identifier "." ModulePath "." "*"
+           | "(" OperatorSymbol ")"
+
+ExportConstructors = "*"
+                   | Identifier { "," Identifier }
+
+ExportFromItems = ExportFromItem { "," ExportFromItem }
+
+ExportFromItem = "*"
+               | Identifier
+               | Identifier "(" ExportConstructors ")"
+
+
+## Pragmas
+
+Pragma = "pragma" PragmaKind [ PragmaTargets ] ";"
+
+PragmaKind = "no-coverage-condition"
+           | "no-patterson-condition"
+           | "no-bounded-variable-condition"
+
+PragmaTargets = Identifier { "," Identifier }
+
+
+## Types
+
+Type = TypeName [ "(" TypeList ")" ]
+     | "(" TypeList ")" "->" Type
+     | "(" TypeList ")"
+     | "@" Type
+
+TypeList = Type { "," Type }
+
+# Space-separated type variable names in forall quantifiers (e.g. "forall a b c .").
+TypeVarSeq = { Identifier }
+
+# Comma-separated type variable names in parentheses, used in type, data, and
+# class declarations (e.g. "(a, b)").
+TypeVarParams = "(" Identifier { "," Identifier } ")"
+
+
+# ── Data Types ────────────────────────────────────────────────────────────────
+
+DataDef = "data" Identifier [ TypeVarParams ] [ "=" DataConstrs ] ";"
+
+DataConstrs = DataConstr { "|" DataConstr }
+
+DataConstr = Identifier [ "(" TypeList ")" ]
+
+
+# ── Type Synonyms ─────────────────────────────────────────────────────────────
+
+TypeSynonym = "type" Identifier [ TypeVarParams ] "=" Type ";"
+
+
+# ── Patterns ──────────────────────────────────────────────────────────────────
+
+Pattern = TypeName [ "(" PatternList ")" ]
+        | "." Identifier [ "(" PatternList ")" ]
+        | "_"
+        | Literal
+        | "(" Pattern ")"
+        | "(" Pattern "," PatternList ")"
+
+PatternList = Pattern { "," Pattern }
+
+
+# ── Expressions ───────────────────────────────────────────────────────────────
+
+# Operators follow standard precedence: arithmetic > comparison > logical.
+# Associativity: left for binary operators, right for "if-then-else".
+
+Expr = Identifier "(" [ ExprList ] ")"
+     | Expr "." Identifier "(" [ ExprList ] ")"
+     | Expr "." Identifier
+     | "." Identifier "(" [ ExprList ] ")"
+     | "." Identifier
+     | Identifier
+     | Literal
+     | "(" Expr ")"
+     | "(" ")"
+     | "(" Expr "," Expr { "," Expr } ")"
+     | "lam" "(" [ ParamList ] ")" [ "->" Type ] Body
+     | Expr ":" Type
+     | Expr "[" Expr "]"
+     | Expr "+" Expr
+     | Expr "-" Expr
+     | Expr "*" Expr
+     | Expr "/" Expr
+     | Expr "%" Expr
+     | Expr "<" Expr
+     | Expr ">" Expr
+     | Expr "<=" Expr
+     | Expr ">=" Expr
+     | Expr "==" Expr
+     | Expr "!=" Expr
+     | Expr "&&" Expr
+     | Expr "||" Expr
+     | "!" Expr
+     | "if" Expr "then" Expr "else" Expr
+     | "@" Type
+
+ExprList = Expr { "," Expr }
+
+Literal = Integer
+        | StringLiteral
+
+
+# ── Statements ────────────────────────────────────────────────────────────────
+
+Stmt = Expr "=" Expr ";"
+     | Expr "+=" Expr ";"
+     | Expr "-=" Expr ";"
+     | "let" Identifier ":" Type [ "=" Expr ] ";"
+     | "let" Identifier [ "=" Expr ] ";"
+     | Expr ";"
+     | "return" Expr ";"
+     | "match" MatchArgs "{" { Equation } "}"
+     | AsmBlock
+     | "if" "(" Expr ")" Body [ "else" Body ]
+     | "for" "(" ForInitStmt ";" Expr ";" ForPostStmt ")" Body
+
+Body = "{" { Stmt } "}"
+
+# The initialisation clause of a for-loop.  Unlike a regular statement it
+# has no trailing semicolon; the semicolons are part of the for(…) syntax.
+ForInitStmt = Expr "=" Expr
+            | Expr "+=" Expr
+            | Expr "-=" Expr
+            | "let" Identifier ":" Type [ "=" Expr ]
+            | "let" Identifier [ "=" Expr ]
+            | Expr
+
+# The post-iteration clause of a for-loop.  Let-bindings are allowed here;
+# a binding introduced in ForPostStmt is in scope for the body of that
+# iteration only.
+ForPostStmt = Expr "=" Expr
+            | Expr "+=" Expr
+            | Expr "-=" Expr
+            | "let" Identifier ":" Type [ "=" Expr ]
+            | "let" Identifier [ "=" Expr ]
+            | Expr
+
+MatchArgs = Expr { "," Expr }
+
+# A match equation: each arm binds a list of patterns to a list of statements.
+Equation = "|" PatternList "=>" { Stmt }
+
+
+# ── Parameters ────────────────────────────────────────────────────────────────
+
+Param = Identifier ":" Type
+      | Identifier
+
+ParamList = Param { "," Param }
+
+
+# ── Functions ─────────────────────────────────────────────────────────────────
+
+# Long form uses a statement block; short form uses a single return expression
+# (the expression result is returned implicitly).
+
+Function = Signature Body
+         | Signature "{" Expr "}"
+
+Signature = SigPrefix "function" Identifier "(" [ ParamList ] ")" [ "->" Type ]
+
+# Polymorphic signatures begin with a forall prefix. If there are constraints
+# they are listed before the "=>" arrow.
+
+SigPrefix = "forall" TypeVarSeq "." ConstraintList "=>"
+          | "forall" TypeVarSeq "."
+          |
+
+ConstraintList = Constraint { "," Constraint }
+
+# A constraint asserts that a type belongs to a type class, optionally with
+# additional type parameters (e.g. "a : Functor", "n : Nth(b, c)").
+
+Constraint = Type ":" TypeName [ "(" TypeList ")" ]
+
+
+# ── Type Classes ──────────────────────────────────────────────────────────────
+
+# A class declaration introduces a new type class named ClassName.
+# The self-variable (e.g. "a") is the main type being constrained.
+# Additional type parameters (e.g. "(b, c)") are auxiliary associated types.
+
+ClassDef = SigPrefix "class" Identifier ":" Identifier [ TypeVarParams ] "{" { Signature ";" } "}"
+
+
+# ── Instances ─────────────────────────────────────────────────────────────────
+
+# An instance declaration provides implementations of class methods for a
+# specific type. The optional "default" keyword marks overlappable instances.
+
+InstDef = SigPrefix [ "default" ] "instance" Type ":" TypeName [ "(" TypeList ")" ] "{" { Function } "}"
+
+
+# ── Contracts ─────────────────────────────────────────────────────────────────
+
+Contract = "contract" Identifier [ TypeVarParams ] "{" { ContractDecl } "}"
+
+ContractDecl = FieldDecl
+             | DataDef
+             | Function
+             | Constructor
+
+FieldDecl = Identifier ":" Type [ "=" Expr ] ";"
+
+Constructor = "constructor" "(" [ ParamList ] ")" Body
+
+
+# ── Assembly Blocks (Yul Sublanguage) ─────────────────────────────────────────
+
+# Assembly blocks embed Yul code directly in SAIL. Yul provides low-level EVM
+# access: storage operations, arithmetic, and control flow.
+
+AsmBlock = "assembly" "{" { YulStmt } "}"
+
+YulStmt = YulNames ":=" YulExpr
+        | "let" YulNames [ ":=" YulExpr ]
+        | "if" YulExpr "{" { YulStmt } "}"
+        | "switch" YulExpr { YulCase } [ "default" "{" { YulStmt } "}" ]
+        | "for" "{" { YulStmt } "}" YulExpr "{" { YulStmt } "}" "{" { YulStmt } "}"
+        | "continue"
+        | "break"
+        | "leave"
+        | YulExpr
+        | "{" { YulStmt } "}"
+
+YulCase = "case" YulLiteral "{" { YulStmt } "}"
+
+YulExpr = YulLiteral
+        | Identifier
+        | Identifier "(" [ YulExprList ] ")"
+        | "return" "(" [ YulExprList ] ")"
+
+YulNames = Identifier { "," Identifier }
+
+YulExprList = YulExpr { "," YulExpr }
+
+YulLiteral = Integer
+           | StringLiteral
