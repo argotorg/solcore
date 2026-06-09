@@ -203,38 +203,6 @@ forall a . a:MemoryAttributes => function to_bytes(x: a) -> memory(bytes) {
     return memory(res);
 }
 
-// Placeholder for an empty memory area.
-// The value is the size of the area in bytes. The area will be zeroed upon serialization.
-// NOTE: not implementing Typedef by design.
-data empty = empty(word);
-
-instance empty:MemoryAttributes {
-    function len(v: empty) -> word {
-        match v {
-            | empty(size) => return size;
-        }
-    }
-    function ptr(v: empty) -> word {
-        return 0; // TODO
-    }
-    function encodeInto(v: empty, target: word) -> () {
-        let size;
-        match v {
-            | empty(size_) => size = size_;
-        }
-        zeroize_memory(target, size);
-    }
-}
-
-/*
-data Concatenator = Concatenator(t));
-
-forall t . class t:Concaternator {
-    function concat()
-}
-*/
-
-
 forall t . class t:ToBytesLike {
     function to_bytes(value: t) -> memory(bytes);
 }
