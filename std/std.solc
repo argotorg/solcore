@@ -1978,6 +1978,7 @@ forall t . class t:MemoryEncode {
 }
 
 // TODO: support variadic arguments
+// Allocates new memory and concatenates the inputs into it.
 forall a b . a:MemorySize, a:MemoryEncode, b:MemorySize, b:MemoryEncode => function concat(x: a, y: b) -> memory(bytes) {
     let x_len = MemorySize.len(x);
     let y_len = MemorySize.len(y);
@@ -1985,6 +1986,15 @@ forall a b . a:MemorySize, a:MemoryEncode, b:MemorySize, b:MemoryEncode => funct
     mstore(res, x_len + y_len);
     MemoryEncode.encodeInto(x, res + 32);
     MemoryEncode.encodeInto(y, res + 32 + x_len);
+    return memory(res);
+}
+
+// This is a specialized 1-input version of concat.
+forall a . a:MemorySize, a:MemoryEncode => function to_bytes(x: a) -> memory(bytes) {
+    let len = MemorySize.len(x);
+    let res = allocate_memory(32 + len);
+    mstore(res, len);
+    MemoryEncode.encodeInto(x, res + 32);
     return memory(res);
 }
 
@@ -2019,14 +2029,6 @@ instance memory(bytes):MemoryEncode {
             mcopy(target, add(v_, 32), mload(v_))
         }
     }
-}
-
-forall a . a:MemorySize, a:MemoryEncode => function to_bytes(x: a) -> memory(bytes) {
-    let len = MemorySize.len(x);
-    let res = allocate_memory(32 + len);
-    mstore(res, len);
-    MemoryEncode.encodeInto(x, res + 32);
-    return memory(res);
 }
 
 // Placeholder for an empty memory area.
