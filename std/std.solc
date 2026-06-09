@@ -400,11 +400,7 @@ default instance a:Num {
 // These are intended to be folded by MastEval when their arguments are
 // statically known word values.
 function eqWord(x:word, y:word) -> bool {
-  let res : word;
-  assembly {
-     res := eq(x, y)
-  }
-  return tobool(res);
+    return tobool(eq(x, y));
 }
 
 function gtWord(x:word, y:word) -> bool {
@@ -2027,10 +2023,7 @@ instance memory(bytes):MemoryPointer {
 instance memory(bytes):MemoryEncode {
     function encodeInto(v: memory(bytes), target: word) -> () {
         let v_ = Typedef.rep(v);
-        assembly {
-            mcopy(target, add(v_, 32), mload(v_))
-        }
-    }
+        mcopy(target, v_ + 32, mload(v_));
 }
 
 // Placeholder for an empty memory area.
@@ -2109,11 +2102,7 @@ function truncate(input: a, end: word) -> memory_ref {
 forall a . a:MemorySize, a:MemoryPointer => function keccak256_(input: a) -> bytes32 {
     let len : word = MemorySize.len(input);
     let ptr : word = MemoryPointer.ptr(input);
-    let res : word;
-    assembly {
-        res := keccak256(ptr, len)
-    }
-    return bytes32(res);
+    return bytes32(keccak256(ptr, len));
 }
 
 forall a . a:MemorySize, a:MemoryPointer => function sha256(input: a) -> bytes32 {
