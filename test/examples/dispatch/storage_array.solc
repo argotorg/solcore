@@ -17,20 +17,22 @@ contract MemberRegistry {
 
   // MemberNotFound() selector
   function removeMember(addr : address) -> () {
-    let count : uint256 = members.length();
-    let found : bool = false;
-    let foundIdx : uint256 = uint256(0);
+    // foundIdx == length() acts as the "not found" sentinel.
+    let foundIdx : uint256 = members.length();
     let i : uint256;
-    for (i = uint256(0); i < count; i = i + uint256(1)) {
+    for (i = uint256(0); i < members.length(); i = i + uint256(1)) {
       if (members[i] == addr) {
+        // NOTE: solcore has no `break`, so we keep scanning.
         foundIdx = i;
-        found = true;
       }
     }
-    require(found, Error(0xdeadbeef));
+    require(foundIdx != members.length(), Error(0xdeadbeef));
 
-    let lastIdx : uint256 = count - uint256(1);
-    members[foundIdx] = members[lastIdx];
+    // Shift subsequent elements down one slot to close the gap.
+    for (; foundIdx < members.length() - uint256(1); foundIdx = foundIdx + uint256(1)) {
+      members[foundIdx] = members[foundIdx + uint256(1)];
+    }
+    // Drop the (now-duplicated) last item and adjust the length.
     members.pop();
   }
 
