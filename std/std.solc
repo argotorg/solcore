@@ -22,8 +22,9 @@ export {
   LVA,
   LValueIdxAccess,
   MemberAccessProxy(*),
-  MemoryAttributes,
   MemoryEncode,
+  MemoryPointer,
+  MemorySize,
   MemoryType,
   MemoryWordReader(*),
   Mod,
@@ -1960,24 +1961,26 @@ function ridx( m: storage(mapping(i,a)), x:i) -> a {
 
 // --- Memory Encoding ---
 
-// This is similar to ABIEncode, but targets in-memory encoding.
+forall t . class t:MemorySize {
+    // The size needed for the value.
+    function len(v: t) -> word;
+}
+
+// NOTE: this is not implemented for value types.
+forall t . class t:MemoryPointer {
+    // In-memory location of the given value.
+    function ptr(v: t) -> word;
+}
+
 forall t . class t:MemoryEncode {
     // Serialize the entire contents at a provided memory area.
     function encodeInto(v: t, target: word) -> ();
 }
 
-// Basic attributes about memory representation of types.
-forall t . class t:MemoryAttributes {
-    // The size needed for the value.
-    function len(v: t) -> word;
-    // If this is a non-memory type, memory is allocated first.
-    function ptr(v: t) -> word;
-}
-
 // TODO: support variadic arguments
-forall a b . a:MemoryAttributes, a:MemoryEncode, b:MemoryAttributes, b:MemoryEncode => function concat(x: a, y: b) -> memory(bytes) {
-    let x_len = MemoryAttributes.len(x);
-    let y_len = MemoryAttributes.len(y);
+forall a b . a:MemorySize, a:MemoryEncode, b:MemorySize, b:MemoryEncode => function concat(x: a, y: b) -> memory(bytes) {
+    let x_len = MemorySize.len(x);
+    let y_len = MemorySize.len(y);
     let res: word = allocate_memory(32 + x_len + y_len);
     mstore(res, x_len + y_len);
     MemoryEncode.encodeInto(x, res + 32);
@@ -1985,15 +1988,9 @@ forall a b . a:MemoryAttributes, a:MemoryEncode, b:MemoryAttributes, b:MemoryEnc
     return memory(res);
 }
 
-instance bytes32:MemoryAttributes {
+instance bytes32:MemorySize {
     function len(v: bytes32) -> word {
         return 32;
-    }
-    function ptr(v: bytes32) -> word {
-        let ptr = allocate_memory(64);
-        mstore(ptr, 32);
-        mstore(ptr + 32, Typedef.rep(v));
-        return Typedef.rep(ptr);
     }
 }
 
@@ -2003,12 +2000,15 @@ instance bytes32:MemoryEncode {
     }
 }
 
-instance memory(bytes):MemoryAttributes {
+instance memory(bytes):MemorySize {
     function len(v: memory(bytes)) -> word {
         return mload(Typedef.rep(v));
     }
+}
+
+instance memory(bytes):MemoryPointer {
     function ptr(v: memory(bytes)) -> word {
-        return Typedef.rep(v);
+        return Typedef.rep(v) + 32;
     }
 }
 
@@ -2021,8 +2021,8 @@ instance memory(bytes):MemoryEncode {
     }
 }
 
-forall a . a:MemoryAttributes, a:MemoryEncode => function to_bytes(x: a) -> memory(bytes) {
-    let len = MemoryAttributes.len(x);
+forall a . a:MemorySize, a:MemoryEncode => function to_bytes(x: a) -> memory(bytes) {
+    let len = MemorySize.len(x);
     let res = allocate_memory(32 + len);
     mstore(res, len);
     MemoryEncode.encodeInto(x, res + 32);
@@ -2034,14 +2034,11 @@ forall a . a:MemoryAttributes, a:MemoryEncode => function to_bytes(x: a) -> memo
 // NOTE: not implementing Typedef by design.
 data empty = empty(word);
 
-instance empty:MemoryAttributes {
+instance empty:MemorySize {
     function len(v: empty) -> word {
         match v {
             | empty(size) => return size;
         }
-    }
-    function ptr(v: empty) -> word {
-        return 0; // TODO
     }
 }
 
