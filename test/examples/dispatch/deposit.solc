@@ -11,7 +11,7 @@ function empty_bytes(len: word) -> memory(bytes) {
 
 // TODO: use slice()
 function bytes_slice(input: memory(bytes), start: word) -> memory(bytes) {
-    let len = MemoryAttributes.len(input);
+    let len = MemorySize.len(input);
     if (len < start) {
         assembly {
             revert(0, 0)
@@ -19,8 +19,8 @@ function bytes_slice(input: memory(bytes), start: word) -> memory(bytes) {
     }
     len = len - start;
     let res = empty_bytes(len);
-    let src_ptr = MemoryAttributes.ptr(input);
-    let dst_ptr = MemoryAttributes.ptr(res);
+    let src_ptr = MemoryPointer.ptr(input);
+    let dst_ptr = MemoryPointer.ptr(res);
     assembly {
         mcopy(dst_ptr, add(src_ptr, start), len)
     }
@@ -29,15 +29,15 @@ function bytes_slice(input: memory(bytes), start: word) -> memory(bytes) {
 
 // TODO: use slice()
 function bytes_truncate(input: memory(bytes), end: word) -> memory(bytes) {
-    let len = MemoryAttributes.len(input);
+    let len = MemorySize.len(input);
     if (len < end) {
         assembly {
             revert(0, 0)
         }
     }
     let res = empty_bytes(end);
-    let src_ptr = MemoryAttributes.ptr(input);
-    let dst_ptr = MemoryAttributes.ptr(res);
+    let src_ptr = MemoryPointer.ptr(input);
+    let dst_ptr = MemoryPointer.ptr(res);
     assembly {
         mcopy(dst_ptr, src_ptr, end)
     }
@@ -123,9 +123,9 @@ contract DepositContract {
 
   payable function deposit(pubkey: memory(bytes), withdrawal_credentials: memory(bytes), signature: memory(bytes), deposit_data_root: bytes32) -> () {
     // Extended ABI length checks since dynamic types are used.
-    require(MemoryAttributes.len(pubkey) == 48, Error(0x12345678));
-    require(MemoryAttributes.len(withdrawal_credentials) == 32, Error(0x12345678));
-    require(MemoryAttributes.len(signature) == 96, Error(0x12345678));
+    require(MemorySize.len(pubkey) == 48, Error(0x12345678));
+    require(MemorySize.len(withdrawal_credentials) == 32, Error(0x12345678));
+    require(MemorySize.len(signature) == 96, Error(0x12345678));
 
     // Check deposit amount
     require(callvalue() >= 1000000000000000000, Error(0x12345678)); // >= 1 ether
