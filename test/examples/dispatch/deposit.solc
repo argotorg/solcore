@@ -2,12 +2,12 @@ import std.{*};
 import std.dispatch.{*};
 import std.opcodes.{callvalue, mcopy};
 
-data bytes_slice = bytes_slice(memory(bytes), word, word);
+data bytes_slice = bytes_slice(word, word);
 
 instance bytes_slice:MemorySize {
     function len(v: bytes_slice) -> word {
         match v {
-            | bytes_slice(ptr, start, len) => return len;
+            | bytes_slice(ptr, len) => return len;
         }
     }
 }
@@ -15,7 +15,7 @@ instance bytes_slice:MemorySize {
 instance bytes_slice:MemoryPointer {
     function ptr(v: bytes_slice) -> word {
         match v {
-            | bytes_slice(ptr_, start, len) => return MemoryPointer.ptr(ptr_) + start;
+            | bytes_slice(ptr, len) => return ptr;
         }
     }
 }
@@ -23,8 +23,8 @@ instance bytes_slice:MemoryPointer {
 instance bytes_slice:MemoryEncode {
     function encodeInto(v: bytes_slice, target: word) -> () {
         match v {
-            | bytes_slice(ptr_, start, len) =>
-                mcopy(target, MemoryPointer.ptr(ptr_) + start, len);
+            | bytes_slice(ptr, len) =>
+                mcopy(target, ptr, len);
         }
     }
 }
@@ -42,7 +42,8 @@ instance memory(bytes):Sliceable {
                 revert(0, 0)
             }
         }
-        return bytes_slice(input, start, len - start);
+        let ptr = MemoryPointer.ptr(input);
+        return bytes_slice(ptr + start, len - start);
     }
 
     function truncate(input: memory(bytes), end: word) -> bytes_slice {
@@ -52,32 +53,33 @@ instance memory(bytes):Sliceable {
                 revert(0, 0)
             }
         }
-        return bytes_slice(input, 0, end);
+        let ptr = MemoryPointer.ptr(input);
+        return bytes_slice(ptr, end);
     }
 }
 
 instance bytes_slice:Sliceable {
     function slice(input: bytes_slice, start: word) -> bytes_slice {
         match input {
-            | bytes_slice(ptr, start_, len) =>
+            | bytes_slice(ptr, len) =>
                 if (len < start) {
                     assembly {
                         revert(0, 0)
                     }
                 }
-                return bytes_slice(ptr, start_ + start, len - start);
+                return bytes_slice(ptr + start, len - start);
         }
     }
 
     function truncate(input: bytes_slice, end: word) -> bytes_slice {
         match input {
-            | bytes_slice(ptr, start, len) =>
+            | bytes_slice(ptr, len) =>
                 if (len < end) {
                     assembly {
                         revert(0, 0)
                     }
                 }
-                return bytes_slice(ptr, start, end);
+                return bytes_slice(ptr, end);
         }
     }
 }
