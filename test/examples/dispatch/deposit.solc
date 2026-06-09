@@ -2,14 +2,6 @@ import std.{*};
 import std.dispatch.{*};
 import std.opcodes.{callvalue};
 
-function assert_(cond: bool) -> () {
-    if (!cond) {
-        assembly {
-            invalid()
-        }
-    }
-}
-
 function myrequire(cond: bool) -> () {
     if (!cond) {
         assembly {
