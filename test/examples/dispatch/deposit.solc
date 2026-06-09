@@ -29,24 +29,57 @@ instance bytes_slice:MemoryEncode {
     }
 }
 
-function bytes_slice_(input: memory(bytes), start: word) -> bytes_slice {
-    let len = MemorySize.len(input);
-    if (len < start) {
-        assembly {
-            revert(0, 0)
-        }
-    }
-    return bytes_slice(input, start, len - start);
+forall t . class t:Sliceable {
+    function slice(v: t, start: word) -> bytes_slice;
+    function truncate(v: t, end: word) -> bytes_slice;
 }
 
-function bytes_truncate(input: memory(bytes), end: word) -> bytes_slice {
-    let len = MemorySize.len(input);
-    if (len < end) {
-        assembly {
-            revert(0, 0)
+instance memory(bytes):Sliceable {
+    function slice(input: memory(bytes), start: word) -> bytes_slice {
+        let len = MemorySize.len(input);
+        if (len < start) {
+            assembly {
+                revert(0, 0)
+            }
+        }
+        return bytes_slice(input, start, len - start);
+    }
+
+    function truncate(input: memory(bytes), end: word) -> bytes_slice {
+        let len = MemorySize.len(input);
+        if (len < end) {
+            assembly {
+                revert(0, 0)
+            }
+        }
+        return bytes_slice(input, 0, end);
+    }
+}
+
+instance bytes_slice:Sliceable {
+    function slice(input: bytes_slice, start: word) -> bytes_slice {
+        match input {
+            | bytes_slice(ptr, start_, len) =>
+                if (len < start) {
+                    assembly {
+                        revert(0, 0)
+                    }
+                }
+                return bytes_slice(ptr, start_ + start, len - start);
         }
     }
-    return bytes_slice(input, 0, end);
+
+    function truncate(input: bytes_slice, end: word) -> bytes_slice {
+        match input {
+            | bytes_slice(ptr, start, len) =>
+                if (len < end) {
+                    assembly {
+                        revert(0, 0)
+                    }
+                }
+                return bytes_slice(ptr, start, end);
+        }
+    }
 }
 
 // Should use uint64 and bytes.
@@ -166,8 +199,8 @@ contract DepositContract {
     // Compute deposit data root (`DepositData` hash tree root)
     let pubkey_root = sha256(concat(pubkey, empty(16)));
     let signature_root = sha256(concat(
-        sha256(to_bytes(bytes_truncate(signature, 64))), // slice
-        sha256(concat(bytes_slice_(signature, 64), empty(32)))
+        sha256(to_bytes(Sliceable.truncate(signature, 64))), // slice
+        sha256(concat(Sliceable.slice(signature, 64), empty(32)))
     ));
     let node = sha256(concat(
         sha256(concat(pubkey_root, withdrawal_credentials)),
