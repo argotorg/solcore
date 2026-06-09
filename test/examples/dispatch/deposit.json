@@ -179,7 +179,7 @@
         },
         "kind": "call",
         "output": {
-            "returndata": "",
+            "returndata": "42345678",
             "status": "failure"
         }
       },
