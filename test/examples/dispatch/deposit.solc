@@ -156,7 +156,6 @@ contract DepositContract {
   constructor() {
     // Compute hashes in empty sparse Merkle tree
     for (let height = uint256(0); height < (DEPOSIT_CONTRACT_TREE_DEPTH() - uint256(1)); height = height + uint256(1)) {
-//        zero_hashes[height + uint256(1)] = sha256(MemoryHelpers.concat(zero_hashes[height], zero_hashes[height]));
         zero_hashes[height + uint256(1)] = sha256(concat(zero_hashes[height], zero_hashes[height]));
     }
   }
@@ -183,7 +182,7 @@ contract DepositContract {
             node,
             to_little_endian_64(deposit_count)
         ),
-        empty_bytes(24)
+        empty(24)
     ));
   }
 
@@ -229,16 +228,14 @@ contract DepositContract {
     }
 
     // Compute deposit data root (`DepositData` hash tree root)
-    let pubkey_root = sha256(concat(pubkey, empty_bytes(16)));
-    let signature_root = sha256(MemoryHelpers.concat(
+    let pubkey_root = sha256(concat(pubkey, empty(16)));
+    let signature_root = sha256(concat(
         sha256(bytes_truncate(signature, 64)), // slice
-//        sha256(concat(bytes_slice(signature, 64), empty_bytes(32))), // slice
         sha256(concat(bytes_slice(signature, 64), empty(32)))
     ));
-    let node = sha256(MemoryHelpers.concat(
-//        sha256(MemoryHelpers.concat(pubkey_root, withdrawal_credentials)),
+    let node = sha256(concat(
         sha256(concat(pubkey_root, withdrawal_credentials)),
-        sha256(concat(MemoryHelpers.concat(amount, empty_bytes(24)), signature_root))
+        sha256(concat(concat(amount, empty(24)), signature_root))
     ));
 
     // Verify computed and expected deposit data roots match
@@ -256,7 +253,7 @@ contract DepositContract {
             branch[height] = node;
             return ();
         }
-        node = sha256(MemoryHelpers.concat(branch[height], node));
+        node = sha256(concat(branch[height], node));
         size = size / uint256(2);
     }
 
