@@ -9,16 +9,16 @@ contract ArrayStorage {
 
   function main() -> uint256 {
     // A storage array sitting at a fixed slot. The slot itself stores the
-    // (logical) length; elements live at keccak256(slot) + i.
+    // length; elements live at keccak256(slot) + i.
     let arr : storage(array(uint256)) = storage(0x100);
 
-    // arr[0] = 42; arr[1] = 100
-    Assign.assign(larr(arr, uint256(0)), uint256(42));
-    Assign.assign(larr(arr, uint256(1)), uint256(100));
+    // push appends and grows the length automatically.
+    Array.push(arr, uint256(42));
+    Array.push(arr, uint256(100));
 
-    // arr[0] + arr[1]
-    let a0 : uint256 = rarr(arr, uint256(0));
-    let a1 : uint256 = rarr(arr, uint256(1));
-    return a0 + a1;
+    // `arr[i]` syntax only desugars for contract fields, so use the
+    // explicit ridx helper for this local-variable array. ridx dispatches
+    // through RValueIdxAccess, which bounds-checks against Array.length.
+    return ridx(arr, uint256(0)) + ridx(arr, uint256(1));
   }
 }

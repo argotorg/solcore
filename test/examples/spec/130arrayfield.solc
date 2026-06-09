@@ -9,14 +9,11 @@ contract ArrayField {
   arr : array(uint256);
 
   function main() -> uint256 {
-    // `arr` desugars to RVA.acc(...) which, via the
-    // storage(array(v)):CanStore(storage(array(v))) instance,
-    // yields a `storage(array(uint256))` reference to the field.
-    Assign.assign(larr(arr, uint256(0)), uint256(42));
-    Assign.assign(larr(arr, uint256(1)), uint256(100));
+    // push appends and grows the length automatically.
+    arr.push(uint256(42));
+    arr.push(uint256(100));
 
-    let a0 : uint256 = rarr(arr, uint256(0));
-    let a1 : uint256 = rarr(arr, uint256(1));
-    return a0 + a1;
+    // arr[i] — bounds-checked indexed access.
+    return arr[uint256(0)] + arr[uint256(1)];
   }
 }

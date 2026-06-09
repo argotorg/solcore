@@ -12,19 +12,17 @@ contract MemberRegistry {
   constructor() {}
 
   function addMember(addr : address) -> () {
-    let i : uint256 = Array.length(members);
-    Assign.assign(larr(members, i), addr);
-    Array.setLength(members, i + uint256(1));
+    members.push(addr);
   }
 
   // MemberNotFound() selector
   function removeMember(addr : address) -> () {
-    let count : uint256 = Array.length(members);
+    let count : uint256 = members.length();
     let found : bool = false;
     let foundIdx : uint256 = uint256(0);
     let i : uint256;
     for (i = uint256(0); i < count; i = i + uint256(1)) {
-      if (rarr(members, i) == addr) {
+      if (members[i] == addr) {
         foundIdx = i;
         found = true;
       }
@@ -32,26 +30,24 @@ contract MemberRegistry {
     require(found, Error(0xdeadbeef));
 
     let lastIdx : uint256 = count - uint256(1);
-    let last : address = rarr(members, lastIdx);
-    Assign.assign(larr(members, foundIdx), last);
-    Array.setLength(members, lastIdx);
+    members[foundIdx] = members[lastIdx];
+    members.pop();
   }
 
   function numberOfMembers() -> uint256 {
-    return Array.length(members);
+    return members.length();
   }
 
   function getMembers() -> memory(DynArray(address)) {
-    let count : word = Typedef.rep(Array.length(members));
+    let count : word = Typedef.rep(members.length());
     let totalBytes : word = (count + 1) * 32;
     let ptr : word = allocate_memory(totalBytes);
     mstore(ptr, count);
 
     let i : word;
     for (i = 0; i < count; i = i + 1) {
-      let addr : address = rarr(members, uint256(i));
-      let addrWord : word = Typedef.rep(addr);
-      mstore(ptr + 32 + i * 32, addrWord);
+      let addr : address = members[uint256(i)];
+      mstore(ptr + 32 + i * 32, Typedef.rep(addr));
     }
     return Typedef.abs(ptr) : memory(DynArray(address));
   }

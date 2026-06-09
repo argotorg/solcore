@@ -546,6 +546,13 @@ unwrapQualifierReceiver (Just (Con (QualName d conName) []))
   | pretty d == conName = Just (Var d)
 unwrapQualifierReceiver me = me
 
+-- True for receivers that should trigger UFCS-style method-call rewriting.
+-- For now this only covers (unresolved) contract field accesses, so
+-- `members.push(addr)` resolves into `Array.push(members, addr)`.
+isUfcsReceiver :: Exp Name -> Bool
+isUfcsReceiver (FieldAccess Nothing _) = True
+isUfcsReceiver _ = False
+
 instance Resolve S.Exp where
   type Result S.Exp = Exp Name
 
@@ -747,6 +754,14 @@ resolveExp x@(S.ExpName me n es) =
               Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
               _ -> undefinedName n
           _ -> pure (Call Nothing n es')
+      -- UFCS-style method call on a value receiver:
+      -- `receiver.method(args)` -> `Class.method(receiver, args)` when there
+      -- is a unique class containing a method named `n`.
+      (Just receiver, _) | isUfcsReceiver receiver -> do
+        mClass <- findClassWithMethod n
+        case mClass of
+          Just c -> pure (Call Nothing (qualifyName c n) (receiver : es'))
+          Nothing -> undefinedName n
       -- error
       _ -> do
         sameName <- isSameNameConstructor n
@@ -1107,6 +1122,24 @@ lookupName n =
         cdt = Map.lookup n (classEnv env)
         fdt = Map.lookup n (fieldEnv env)
     pure (ldt <|> gdt <|> cdt <|> fdt)
+
+-- For UFCS-style method calls (`value.method(args)`): find a class that has
+-- a method named `m` so we can rewrite the call as `Class.method(value,args)`.
+-- Returns the first match; ambiguity across multiple classes falls back to
+-- the regular undefined-name path.
+findClassWithMethod :: Name -> ResolveM (Maybe Name)
+findClassWithMethod m =
+  do
+    env <- get
+    let classes = Map.keys (classEnv env)
+        matches =
+          [ c
+          | c <- classes,
+            Map.lookup (QualName c (pretty m)) (scopeEnv env) == Just TFunction
+          ]
+    pure $ case matches of
+      [c] -> Just c
+      _ -> Nothing
 
 wrapError :: (Pretty b, Data b) => ResolveM a -> b -> ResolveM a
 wrapError m e =

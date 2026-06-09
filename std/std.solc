@@ -1,7 +1,7 @@
 import std.opcodes.{add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, returndatasize, returndatacopy, log1 as log1_, call, staticcall, revert as revert_, invalid};
 
-pragma no-patterson-condition ABIEncode, Num;
-pragma no-coverage-condition ABIDecode, MemoryType;
+pragma no-patterson-condition ABIEncode, Num, Array;
+pragma no-coverage-condition ABIDecode, MemoryType, Array;
 
 export {
   ABIAttribs,
@@ -84,7 +84,6 @@ export {
   hash2,
   keccak256_,
   keccakLit,
-  larr,
   le,
   lidx,
   loadBytesFromStorage,
@@ -101,7 +100,6 @@ export {
   or,
   out_of_bounds,
   raw_call,
-  rarr,
   readStorage,
   returndata(*),
   revertLit,
@@ -1781,18 +1779,31 @@ instance array(member):StorageSize {
 
 // Dynamic storage arrays carry their length at the slot itself (matching the
 // Solidity convention) while elements live at keccak256(slot) + i.
-forall self . class self:Array {
+forall self elem . class self:Array(elem) {
     function length(arr:self) -> uint256;
     function setLength(arr:self, n:uint256) -> ();
+    function push(arr:self, val:elem) -> ();
+    function pop(arr:self) -> ();
 }
 
-forall t .
-instance storage(array(t)):Array {
+forall t . t:StorageType =>
+instance storage(array(t)):Array(t) {
     function length(arr:storage(array(t))) -> uint256 {
         return uint256(sload_(Typedef.rep(arr)));
     }
     function setLength(arr:storage(array(t)), n:uint256) -> () {
         sstore_(Typedef.rep(arr), Typedef.rep(n));
+    }
+    function push(arr:storage(array(t)), val:t) -> () {
+        let n : uint256 = Array.length(arr);
+        let slot : word = hash1(Typedef.rep(arr)) + Typedef.rep(n);
+        StorageType.store(slot, val);
+        Array.setLength(arr, n + uint256(1));
+    }
+    function pop(arr:storage(array(t))) -> () {
+        let n : uint256 = Array.length(arr);
+        if (n == uint256(0)) { out_of_bounds(); }
+        Array.setLength(arr, n - uint256(1));
     }
 }
 
@@ -2058,11 +2069,15 @@ instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
   }
 }
 
-forall a i . i:Typedef(word) =>
+forall a i . a:StorageType, i:Typedef(word) =>
 instance (storage(array(a)), i): LValueIdxAccess(storage(a)) {
   function lookup(xi : (storage(array(a)), i)) -> storage(a) {
     match(xi) {
-      | (x, i) => return storage(hash1(Typedef.rep(x)) + Typedef.rep(i));
+      | (x, i) =>
+          let idx : word = Typedef.rep(i);
+          let len : uint256 = Array.length(x);
+          if (idx >= Typedef.rep(len)) { out_of_bounds(); }
+          return storage(hash1(Typedef.rep(x)) + idx);
     }
   }
 }
@@ -2093,24 +2108,18 @@ function lval(x:r) -> a {
 }
 */
 
-forall i a . i:Typedef(word) =>
-function lidx( m: storage(mapping(i,a)), x:i) -> storage(a) {
-  return storage(hash2(Typedef.rep(m), Typedef.rep(x)));
+// lidx/ridx are the generic indexed-access helpers used by the `arr[i]`
+// desugaring. They dispatch through LValueIdxAccess / RValueIdxAccess, so any
+// collection (mapping, array, ...) that provides those instances supports the
+// `arr[i]` syntax.
+forall col idx ref . (col, idx):LValueIdxAccess(ref) =>
+function lidx(c: col, i: idx) -> ref {
+    return LValueIdxAccess.lookup((c, i));
 }
 
-forall i a . i:Typedef(word), storage(a):CanStore(a) =>
-function ridx( m: storage(mapping(i,a)), x:i) -> a {
-  return CanStore.load(storage(hash2(Typedef.rep(m), Typedef.rep(x))) : storage(a));
-}
-
-forall a i . i:Typedef(word) =>
-function larr( m: storage(array(a)), x:i) -> storage(a) {
-  return storage(hash1(Typedef.rep(m)) + Typedef.rep(x));
-}
-
-forall a i . i:Typedef(word), a:StorageType  =>
-function rarr( m: storage(array(a)), x:i) -> a {
-  return StorageType.load(hash1(Typedef.rep(m)) + Typedef.rep(x));
+forall col idx val . (col, idx):RValueIdxAccess(val) =>
+function ridx(c: col, i: idx) -> val {
+    return RValueIdxAccess.lookup((c, i));
 }
 
 // --- Memory Encoding ---
