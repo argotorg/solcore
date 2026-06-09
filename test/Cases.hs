@@ -209,6 +209,15 @@ pragmas =
   where
     pragmaFolder = "./test/examples/pragmas"
 
+opcodes :: TestTree
+opcodes =
+  testGroup
+    "Files for opcodes wrappers"
+    [ runTestForFile "all-shapes.solc" opcodesFolder
+    ]
+  where
+    opcodesFolder = "./test/examples/opcodes"
+
 cases :: TestTree
 cases =
   testGroup
