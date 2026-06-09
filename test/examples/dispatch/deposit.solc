@@ -40,26 +40,6 @@ function empty_bytes(len: word) -> memory(bytes) {
     return memory(res);
 }
 
-forall t . class t:ToBytesLike {
-    function to_bytes(value: t) -> memory(bytes);
-}
-
-instance bytes32:ToBytesLike {
-    function to_bytes(value: bytes32) -> memory(bytes) {
-        let res: word = allocate_memory(64);
-        mstore(res, 32);
-        mstore(res + 32, Typedef.rep(value));
-        return memory(res);
-    }
-}
-
-function to_bytes2(v: bytes32) -> memory(bytes) {
-    let res: word = allocate_memory(64);
-    mstore(res, 32);
-    mstore(res + 32, Typedef.rep(v));
-    return memory(res);
-}
-
 // TODO: use slice()
 function bytes_slice(input: memory(bytes), start: word) -> memory(bytes) {
     let len = MemoryAttributes.len(input);
