@@ -54,6 +54,7 @@ contract MiniERC20 {
     return totalSupply;
   }
 
+  // Note that this is not access guarded — the minting always goes to the owner
   function mint(amount:uint256) -> () {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);

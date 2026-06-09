@@ -85,7 +85,10 @@ dispatches =
     [ runDispatchTest "basic.solc",
       runDispatchTest "stringid.solc",
       runDispatchTest "miniERC20.solc",
-      runDispatchTest "Revert.solc"
+      runDispatchTest "Revert.solc",
+      runDispatchTest "hashes.solc",
+      runDispatchTest "empty.solc",
+      runDispatchTest "empty_no_constructor.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -217,6 +220,8 @@ cases =
       runTestForFileWith noDesugarOpt "app.solc" caseFolder,
       runTestForFile "array.solc" caseFolder,
       runTestForFile "assembly.solc" caseFolder,
+      runTestExpectingFailure "asm-assign-no-return.solc" caseFolder,
+      runTestExpectingFailure "asm-let-no-return.solc" caseFolder,
       runTestForFile "bal.solc" caseFolder,
       runTestExpectingFailure "BadInstance.solc" caseFolder,
       runTestForFile "BoolNot.solc" caseFolder,
@@ -257,6 +262,7 @@ cases =
       runTestForFile "dot-pattern-constructor.solc" caseFolder,
       runTestForFile "dot-pattern-nested-constructor.solc" caseFolder,
       runTestForFile "dot-primitive-constructor.solc" caseFolder,
+      runTestForFile "same-name-constructor-qualifier.solc" caseFolder,
       runTestExpectingFailure "duplicated-contract-name.solc" caseFolder,
       runTestExpectingFailure "duplicated-type-name.solc" caseFolder,
       runTestForFile "DuplicateFun.solc" caseFolder,
@@ -267,6 +273,8 @@ cases =
       runTestExpectingFailure "Eq.solc" caseFolder,
       runTestForFile "EqQual.solc" caseFolder,
       runTestForFile "EvenOdd.solc" caseFolder,
+      runTestExpectingFailure "fallback-with-args.solc" caseFolder,
+      runTestExpectingFailure "fallback-with-return.solc" caseFolder,
       runTestExpectingFailure "Filter.solc" caseFolder,
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,

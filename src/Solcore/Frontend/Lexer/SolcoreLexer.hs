@@ -59,6 +59,8 @@ reservedWords =
     "assembly",
     "match",
     "function",
+    "fallback",
+    "payable",
     "constructor",
     "return",
     "lam",

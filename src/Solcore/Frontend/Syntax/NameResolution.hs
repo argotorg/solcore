@@ -278,7 +278,7 @@ instance Resolve S.Class where
 instance Resolve S.Signature where
   type Result S.Signature = Signature Name
 
-  resolve s@(S.Signature vs ctx n ps mt) =
+  resolve s@(S.Signature vs ctx n ps mt pay) =
     withLocalCtx $ do
       let ns = map tyconName vs
       mapM_ addTyVar ns
@@ -286,7 +286,7 @@ instance Resolve S.Signature where
       ps' <- resolve ps `wrapError` s
       mt' <- resolve mt `wrapError` s
       let vs' = map TVar ns
-      pure (Signature vs' ctx' n ps' mt')
+      pure (Signature vs' ctx' n ps' mt' pay)
 
 instance Resolve S.Instance where
   type Result S.Instance = Instance Name
@@ -338,7 +338,7 @@ instance Resolve S.PragmaStatus where
 instance Resolve S.FunDef where
   type Result S.FunDef = FunDef Name
 
-  resolve f@(S.FunDef (S.Signature vs ctx n ps mt) bds) =
+  resolve f@(S.FunDef (S.Signature vs ctx n ps mt pay) bds) =
     do
       let ns = map tyconName vs
       withLocalCtx $ do
@@ -350,7 +350,7 @@ instance Resolve S.FunDef where
         mapM_ addParameter args
         bds' <- resolve bds `wrapError` f
         let vs' = map TVar ns
-            sig = Signature vs' ctx' n ps' mt'
+            sig = Signature vs' ctx' n ps' mt' pay
         pure (FunDef sig bds')
 
 instance Resolve S.Stmt where
@@ -511,6 +511,17 @@ resolveSameNameConstructorName n =
   where
     leaf = constructorLeafName n
 
+-- A receiver like @Error@ in @Error.Empty@ is first parsed as an expression
+-- on its own and resolved before the outer member-access context is known.
+-- When the type has a same-name constructor (@data Error = Error(...) | ...@),
+-- the inner resolver eagerly produces @Con (QualName Error Error) []@ for the
+-- bare name. Treat that shape as if it were @Var Error@ when it appears in
+-- qualifier position so the outer qualifier-handling cases still match.
+unwrapQualifierReceiver :: Maybe (Exp Name) -> Maybe (Exp Name)
+unwrapQualifierReceiver (Just (Con (QualName d conName) []))
+  | pretty d == conName = Just (Var d)
+unwrapQualifierReceiver me = me
+
 instance Resolve S.Exp where
   type Result S.Exp = Exp Name
 
@@ -529,7 +540,7 @@ instance Resolve S.Exp where
     TyExp <$> resolve e <*> resolve t
   resolve c@(S.ExpVar me n) =
     do
-      me' <- resolve me `wrapError` c
+      me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` c)
       dt <- lookupName n
       case (me', dt) of
         -- local variables
@@ -600,7 +611,7 @@ instance Resolve S.Exp where
                 else undefinedName n
   resolve x@(S.ExpName me n es) =
     do
-      me' <- resolve me `wrapError` x
+      me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` x)
       es' <- resolve es `wrapError` x
       dt <- lookupName n
       case (me', dt) of

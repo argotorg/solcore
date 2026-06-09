@@ -1573,7 +1573,7 @@ stubType n =
 stubFunction :: Name -> FunDef
 stubFunction n =
   FunDef
-    (Signature [] [] n [] Nothing)
+    (Signature [] [] n [] Nothing False)
     []
 
 validationImportedDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]

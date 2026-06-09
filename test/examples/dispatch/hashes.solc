@@ -1,0 +1,26 @@
+import std.{*};
+import std.dispatch.{*};
+
+// Build a memory(bytes) holding the three-byte string "abc".
+function abcBytes() -> memory(bytes) {
+    let p = allocate_memory(64);
+    mstore(p, 3);
+    mstore(p + 32, 0x6162630000000000000000000000000000000000000000000000000000000000);
+    return memory(p);
+}
+
+contract C {
+    constructor() {}
+
+    function keccak() -> bytes32 {
+        return keccak256_(abcBytes());
+    }
+
+    function sha() -> bytes32 {
+        return sha256(abcBytes());
+    }
+
+    function ripemd() -> bytes32 {
+        return ripemd160(abcBytes());
+    }
+}
