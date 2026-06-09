@@ -1,21 +1,6 @@
 import std.{*};
 import std.dispatch.{*};
-
-function caller() -> address {
-  let res: word;
-  assembly {
-     res := caller()
-  }
-  return address(res);
-}
-
-function callvalue() -> uint256 {
-    let res : word;
-    assembly {
-        res := callvalue()
-    }
-    return uint256(res);
-}
+import std.opcodes.{callvalue};
 
 function assert_(cond: bool) -> () {
     if (!cond) {
@@ -159,13 +144,13 @@ contract DepositContract {
     myrequire(MemoryAttributes.len(signature) == 96);
 
     // Check deposit amount
-    myrequire(callvalue() >= uint256(1000000000000000000)); // >= 1 ether
-    myrequire(callvalue() % uint256(1000000000) == uint256(0)); // % 1 gwei == 0
+    myrequire(callvalue() >= 1000000000000000000); // >= 1 ether
+    myrequire((callvalue() % 1000000000) == 0); // % 1 gwei == 0
 
-    let deposit_amount = callvalue() / uint256(1000000000); // 1 gwei
-    myrequire(deposit_amount <= uint256(0xffffffffffffffff)); // <= type(uint64).max
+    let deposit_amount = callvalue() / 1000000000; // 1 gwei
+    myrequire(deposit_amount <= 0xffffffffffffffff); // <= type(uint64).max
 
-    let amount: memory(bytes) = to_little_endian_64(deposit_amount);
+    let amount: memory(bytes) = to_little_endian_64(uint256(deposit_amount));
     // TODO: emit DepositEvent
     /*
     event DepositEvent(
