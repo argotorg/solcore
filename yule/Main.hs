@@ -60,7 +60,10 @@ main = do
 wrapInObject :: Bool -> YulObject -> Doc
 wrapInObject deploy yulo@(YulObject name code inners)
   | deploy = ppr (createDeployment yulo)
-  | otherwise = ppr (YulObject name (addRetCode code) inners)
+  | otherwise = ppr (YulObject name (addMemInit (addRetCode code)) inners)
+
+addMemInit :: YulCode -> YulCode
+addMemInit c = YulCode [[yulStmt| mstore(64, memoryguard(128)) |]] <> c
 
 addRetCode :: YulCode -> YulCode
 addRetCode c = c <> retCode
