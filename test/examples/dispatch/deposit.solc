@@ -29,46 +29,24 @@ instance bytes_slice:MemoryEncode {
     }
 }
 
-function empty_bytes(len: word) -> memory(bytes) {
-    let res: word = allocate_memory(32 + len);
-    mstore(res, len);
-    zeroize_memory(res + 32, len);
-    return memory(res);
-}
-
-// TODO: use slice()
-function bytes_slice(input: memory(bytes), start: word) -> memory(bytes) {
+function bytes_slice_(input: memory(bytes), start: word) -> bytes_slice {
     let len = MemorySize.len(input);
     if (len < start) {
         assembly {
             revert(0, 0)
         }
     }
-    len = len - start;
-    let res = empty_bytes(len);
-    let src_ptr = MemoryPointer.ptr(input);
-    let dst_ptr = MemoryPointer.ptr(res);
-    assembly {
-        mcopy(dst_ptr, add(src_ptr, start), len)
-    }
-    return res;
+    return bytes_slice(input, start, len - start);
 }
 
-// TODO: use slice()
-function bytes_truncate(input: memory(bytes), end: word) -> memory(bytes) {
+function bytes_truncate(input: memory(bytes), end: word) -> bytes_slice {
     let len = MemorySize.len(input);
     if (len < end) {
         assembly {
             revert(0, 0)
         }
     }
-    let res = empty_bytes(end);
-    let src_ptr = MemoryPointer.ptr(input);
-    let dst_ptr = MemoryPointer.ptr(res);
-    assembly {
-        mcopy(dst_ptr, src_ptr, end)
-    }
-    return res;
+    return bytes_slice(input, 0, end);
 }
 
 // Should use uint64 and bytes.
@@ -188,8 +166,8 @@ contract DepositContract {
     // Compute deposit data root (`DepositData` hash tree root)
     let pubkey_root = sha256(concat(pubkey, empty(16)));
     let signature_root = sha256(concat(
-        sha256(bytes_truncate(signature, 64)), // slice
-        sha256(concat(bytes_slice(signature, 64), empty(32)))
+        sha256(to_bytes(bytes_truncate(signature, 64))), // slice
+        sha256(concat(bytes_slice_(signature, 64), empty(32)))
     ));
     let node = sha256(concat(
         sha256(concat(pubkey_root, withdrawal_credentials)),
