@@ -2,14 +2,6 @@ import std.{*};
 import std.dispatch.{*};
 import std.opcodes.{callvalue};
 
-function myrequire(cond: bool) -> () {
-    if (!cond) {
-        assembly {
-            revert(0, 0)
-        }
-    }
-}
-
 function empty_bytes(len: word) -> memory(bytes) {
     let res: word = allocate_memory(32 + len);
     mstore(res, len);
@@ -131,16 +123,16 @@ contract DepositContract {
 
   payable function deposit(pubkey: memory(bytes), withdrawal_credentials: memory(bytes), signature: memory(bytes), deposit_data_root: bytes32) -> () {
     // Extended ABI length checks since dynamic types are used.
-    myrequire(MemoryAttributes.len(pubkey) == 48);
-    myrequire(MemoryAttributes.len(withdrawal_credentials) == 32);
-    myrequire(MemoryAttributes.len(signature) == 96);
+    require(MemoryAttributes.len(pubkey) == 48, Error(0x12345678));
+    require(MemoryAttributes.len(withdrawal_credentials) == 32, Error(0x12345678));
+    require(MemoryAttributes.len(signature) == 96, Error(0x12345678));
 
     // Check deposit amount
-    myrequire(callvalue() >= 1000000000000000000); // >= 1 ether
-    myrequire((callvalue() % 1000000000) == 0); // % 1 gwei == 0
+    require(callvalue() >= 1000000000000000000, Error(0x12345678)); // >= 1 ether
+    require((callvalue() % 1000000000) == 0, Error(0x12345678)); // % 1 gwei == 0
 
     let deposit_amount = callvalue() / 1000000000; // 1 gwei
-    myrequire(deposit_amount <= 0xffffffffffffffff); // <= type(uint64).max
+    require(deposit_amount <= 0xffffffffffffffff, Error(0x12345678)); // <= type(uint64).max
 
     let amount: memory(bytes) = to_little_endian_64(uint256(deposit_amount));
     // TODO: emit DepositEvent
@@ -178,10 +170,10 @@ contract DepositContract {
     ));
 
     // Verify computed and expected deposit data roots match
-    myrequire(node == deposit_data_root);
+    require(node == deposit_data_root, Error(0x12345678));
 
     // Avoid overflowing the Merkle tree (and prevent edge case in computing `branch`)
-    myrequire(deposit_count < MAX_DEPOSIT_COUNT());
+    require(deposit_count < MAX_DEPOSIT_COUNT(), Error(0x12345678));
 
     // Add deposit data root to Merkle tree (update a single `branch` node)
     deposit_count += uint256(1);
