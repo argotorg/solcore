@@ -156,10 +156,7 @@ forall args rets fn
   , rets:ABIEncode
 => function do_exec(pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
     // check we have enough calldata for the head of args
-    if ((calldatasize() - 4) < ABIAttribs.headSize(pargs)) {
-      let ABIInputTruncated = Error(0x08638556);
-      revertWithError(ABIInputTruncated);
-    }
+    require(calldatasize() >= (ABIAttribs.headSize(pargs) + 4), Error(0x08638556)); // ABIInputTruncated()
 
     // TODO: calldatasize checks for dynamic types
 
