@@ -199,7 +199,7 @@ contract DepositContract {
     // Compute deposit data root (`DepositData` hash tree root)
     let pubkey_root = sha256(concat(pubkey, empty(16)));
     let signature_root = sha256(concat(
-        sha256(to_bytes(Sliceable.truncate(signature, 64))), // slice
+        sha256(Sliceable.truncate(signature, 64)), // slice
         sha256(concat(Sliceable.slice(signature, 64), empty(32)))
     ));
     let node = sha256(concat(
