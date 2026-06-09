@@ -196,6 +196,7 @@ evalStmt env stmt = case stmt of
     -- Assembly blocks are opaque; we don't know what they modify
     -- Conservative: clear all variable bindings
     pure (Map.empty, [MastAsm yul])
+  MastSeq stmts -> evalStmts env stmts
   MastFor initStmt cond post body -> do
     -- Evaluate loop parts for local simplification, but do not propagate
     -- value bindings across the loop boundary.
@@ -250,6 +251,9 @@ evalLoopStmt env st = case st of
     bodies' <- mapM (fmap snd . evalLoopStmt env) body
     pure (Map.empty, MastFor initStmt' cond' post' bodies')
   MastAsm yul -> pure (Map.empty, MastAsm yul)
+  MastSeq stmts -> do
+    (env', stmts') <- mapAccumM evalLoopStmt env stmts
+    pure (env', MastSeq stmts')
 
 evalAlt :: VEnv -> MastAlt -> EvalM MastAlt
 evalAlt env (pat, body) = do
@@ -270,6 +274,7 @@ assignedInStmt (MastFor initStmt _ post body) =
   assignedInStmt initStmt
     `Set.union` assignedInStmt post
     `Set.union` foldMap assignedInStmt body
+assignedInStmt (MastSeq stmts) = foldMap assignedInStmt stmts
 assignedInStmt _ = Set.empty
 
 -----------------------------------------------------------------------
@@ -411,6 +416,7 @@ evalFunBody env (stmt : rest) = case stmt of
       Nothing -> pure Nothing -- Scrutinee not known, can't select branch
   MastFor {} -> pure Nothing -- Loop execution cannot be folded safely here
   MastAsm _ -> pure Nothing -- Should not happen: purity analysis excludes asm functions
+  MastSeq stmts -> evalFunBody env stmts
 
 -- Try to match a known scrutinee against alternatives.
 -- Returns the extended environment and the body of the matching alternative.
@@ -548,6 +554,7 @@ stmtIsPure pureFuns (MastFor initStmt cond post body) =
     && expIsPure pureFuns cond
     && stmtIsPure pureFuns post
     && bodyIsPure pureFuns body
+stmtIsPure pureFuns (MastSeq stmts) = bodyIsPure pureFuns stmts
 
 expIsPure :: Set.Set Name -> MastExp -> Bool
 expIsPure _ (MastLit _) = True
@@ -641,6 +648,7 @@ callsInStmt (MastFor initStmt cond post body) =
       callsInStmt post,
       Set.unions (map callsInStmt body)
     ]
+callsInStmt (MastSeq stmts) = Set.unions (map callsInStmt stmts)
 callsInStmt (MastAsm _) = Set.empty
 
 callsInExp :: MastExp -> Set.Set Name

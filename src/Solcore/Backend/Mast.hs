@@ -98,6 +98,7 @@ data MastStmt
   | MastMatch MastExp [MastAlt]
   | MastFor MastStmt MastExp MastStmt [MastStmt]
   | MastAsm YulBlock
+  | MastSeq [MastStmt]
   deriving (Eq, Ord, Show)
 
 type MastAlt = (MastPat, [MastStmt])
@@ -236,6 +237,7 @@ instance Pretty MastStmt where
       <+> lbrace
       $$ nest 3 (vcat (map ppr yblk))
       $$ rbrace
+  ppr (MastSeq stmts) = hsep (punctuate comma (map ppr stmts))
 
 pprMastAlt :: MastAlt -> Doc
 pprMastAlt (p, ss) =

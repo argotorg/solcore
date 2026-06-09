@@ -334,6 +334,7 @@ emitStmt (MastAsm as) = do
   subst <- gets ecSubst
   as' <- renameYulStmts subst as
   pure [Hull.SAssembly as']
+emitStmt (MastSeq stmts) = concat <$> mapM emitStmt stmts
 
 emitStmts :: [MastStmt] -> EM [Hull.Stmt]
 emitStmts = concatMapM emitStmt'

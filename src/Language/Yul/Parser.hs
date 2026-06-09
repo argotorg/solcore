@@ -92,10 +92,7 @@ yulStmt =
       ]
 
 yulBlock :: Parser [YulStmt]
-yulBlock = sc *> between (symbol "{") (symbol "}") (many yulStmtSemi)
-
-yulStmtSemi :: Parser YulStmt
-yulStmtSemi = yulStmt <* optional (symbol ";")
+yulBlock = sc *> between (symbol "{") (symbol "}") (many yulStmt)
 
 yulCase :: Parser (YLiteral, [YulStmt])
 yulCase = do

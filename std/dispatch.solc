@@ -285,7 +285,7 @@ forall methods fb . methods:RunDispatch, fb:ExecMethod => instance Contract(meth
         // set free memory pointer to the output of memoryguard
         // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
         // TODO: we will need to consider immutables here at some point...
-        assembly { mstore(0x40, memoryguard(128)); }
+        assembly { mstore(0x40, memoryguard(128)) }
 
         // calldata shorter than 4 bytes can't contain a selector — skip
         // dispatch and invoke the fallback directly (matches Solidity)
