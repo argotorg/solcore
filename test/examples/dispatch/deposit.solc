@@ -132,22 +132,6 @@ instance bytes32:MemoryHelpers {
     }
 }
 
-// This calls the SHA256 precompile.
-function sha256(input: memory(bytes)) -> bytes32 {
-    // TODO: `ptr()` / `len()` helpers would be useful
-    let ptr : word = Typedef.rep(input);
-    let res : word;
-    // We assume the [0, 32] scratch space is reserved.
-    assembly {
-        let ret := staticcall(gas(), 2, add(ptr, 32), mload(ptr), 0, 32)
-        if iszero(ret) {
-            revert(0, 0)
-        }
-        res := mload(0)
-    }
-    return bytes32(res);
-}
-
 forall t . class t:ToBytesLike {
     function to_bytes(value: t) -> memory(bytes);
 }
