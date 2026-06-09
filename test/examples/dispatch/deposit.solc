@@ -124,15 +124,15 @@ contract DepositContract {
   payable function deposit(pubkey: memory(bytes), withdrawal_credentials: memory(bytes), signature: memory(bytes), deposit_data_root: bytes32) -> () {
     // Extended ABI length checks since dynamic types are used.
     require(MemorySize.len(pubkey) == 48, Error(0x12345678));
-    require(MemorySize.len(withdrawal_credentials) == 32, Error(0x12345678));
-    require(MemorySize.len(signature) == 96, Error(0x12345678));
+    require(MemorySize.len(withdrawal_credentials) == 32, Error(0x22345678));
+    require(MemorySize.len(signature) == 96, Error(0x32345678));
 
     // Check deposit amount
-    require(callvalue() >= 1000000000000000000, Error(0x12345678)); // >= 1 ether
-    require((callvalue() % 1000000000) == 0, Error(0x12345678)); // % 1 gwei == 0
+    require(callvalue() >= 1000000000000000000, Error(0x42345678)); // >= 1 ether
+    require((callvalue() % 1000000000) == 0, Error(0x52345678)); // % 1 gwei == 0
 
     let deposit_amount = callvalue() / 1000000000; // 1 gwei
-    require(deposit_amount <= 0xffffffffffffffff, Error(0x12345678)); // <= type(uint64).max
+    require(deposit_amount <= 0xffffffffffffffff, Error(0x62345678)); // <= type(uint64).max
 
     let amount: memory(bytes) = to_little_endian_64(uint256(deposit_amount));
     // TODO: emit DepositEvent
