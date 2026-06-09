@@ -1270,6 +1270,36 @@ instance memory(bytes):ABIEncode {
     }
 }
 
+// ABI encoding for a memory dynamic array whose elements fit in a single word.
+// Assumes memory layout `[ length | elem_0 | elem_1 | ... ]`, which matches the
+// on-the-wire tail of `t[]` so the body can be `mcopy`d verbatim.
+forall t . t:Typedef(word) =>
+instance memory(DynArray(t)):ABIEncode {
+    function encodeInto(x:memory(DynArray(t)), basePtr:word, offset:word, tail:word) -> word {
+        let srcPtr : word = Typedef.rep(x);
+        let len : word = mload(srcPtr);
+        let totalBytes : word = (len + 1) * 32;
+
+        // head slot: relative pointer from basePtr to tail
+        mstore(basePtr + offset, tail - basePtr);
+
+        // copy length + elements verbatim into the tail
+        let s : word = srcPtr;
+        let t_ : word = tail;
+        let n : word = totalBytes;
+        assembly {
+            mcopy(t_, s, n)
+        }
+
+        return tail + totalBytes;
+    }
+}
+
+forall t . instance memory(DynArray(t)):ABIAttribs {
+    function headSize(ty : Proxy(memory(DynArray(t)))) -> word { return 32; }
+    function isStatic(ty : Proxy(memory(DynArray(t)))) -> bool { return false; }
+}
+
 instance ():ABIEncode {
     // a unit256 is written directly into the head
     function encodeInto(x:(), basePtr:word, offset:word, tail:word) -> word {

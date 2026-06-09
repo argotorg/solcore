@@ -4,36 +4,6 @@ pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
 
-// ABI encoding for memory(DynArray(t)) where each element fits in a word.
-// We assume the memory layout has length at srcPtr and elements at srcPtr+32,
-// srcPtr+64, ... — i.e. the same shape as the on-the-wire tail of `t[]`.
-forall t . t:Typedef(word) =>
-instance memory(DynArray(t)):ABIEncode {
-    function encodeInto(x:memory(DynArray(t)), basePtr:word, offset:word, tail:word) -> word {
-        let srcPtr : word = Typedef.rep(x);
-        let len : word = mload(srcPtr);
-        let totalBytes : word = (len + 1) * 32;
-
-        // head slot: relative pointer from basePtr to tail
-        mstore(basePtr + offset, tail - basePtr);
-
-        // copy length + elements verbatim into the tail
-        let s : word = srcPtr;
-        let t_ : word = tail;
-        let n : word = totalBytes;
-        assembly {
-            mcopy(t_, s, n)
-        }
-
-        return tail + totalBytes;
-    }
-}
-
-forall t . instance memory(DynArray(t)):ABIAttribs {
-    function headSize(ty : Proxy(memory(DynArray(t)))) -> word { return 32; }
-    function isStatic(ty : Proxy(memory(DynArray(t)))) -> bool { return false; }
-}
-
 contract MemberRegistry {
   // forge uses at least 1 storage slot
   reserved : word;
