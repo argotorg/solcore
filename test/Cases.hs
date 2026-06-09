@@ -131,7 +131,8 @@ dispatches =
       runDispatchTest "storage_adt_bool.solc",
       runDispatchTest "storage_adt_mapping.solc",
       runDispatchTest "storage_adt_abi.solc",
-      runDispatchTest "storage_dynamic_field.solc"
+      runDispatchTest "storage_dynamic_field.solc",
+      runDispatchTest "storage_array.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"

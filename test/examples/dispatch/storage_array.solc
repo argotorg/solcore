@@ -1,0 +1,89 @@
+import std.{*};
+import std.dispatch.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+// ABI encoding for memory(DynArray(t)) where each element fits in a word.
+// We assume the memory layout has length at srcPtr and elements at srcPtr+32,
+// srcPtr+64, ... — i.e. the same shape as the on-the-wire tail of `t[]`.
+forall t . t:Typedef(word) =>
+instance memory(DynArray(t)):ABIEncode {
+    function encodeInto(x:memory(DynArray(t)), basePtr:word, offset:word, tail:word) -> word {
+        let srcPtr : word = Typedef.rep(x);
+        let len : word = mload(srcPtr);
+        let totalBytes : word = (len + 1) * 32;
+
+        // head slot: relative pointer from basePtr to tail
+        mstore(basePtr + offset, tail - basePtr);
+
+        // copy length + elements verbatim into the tail
+        let s : word = srcPtr;
+        let t_ : word = tail;
+        let n : word = totalBytes;
+        assembly {
+            mcopy(t_, s, n)
+        }
+
+        return tail + totalBytes;
+    }
+}
+
+forall t . instance memory(DynArray(t)):ABIAttribs {
+    function headSize(ty : Proxy(memory(DynArray(t)))) -> word { return 32; }
+    function isStatic(ty : Proxy(memory(DynArray(t)))) -> bool { return false; }
+}
+
+contract MemberRegistry {
+  // forge uses at least 1 storage slot
+  reserved : word;
+  memberCount : uint256;
+  members : array(address);
+
+  constructor() {}
+
+  function addMember(addr : address) -> () {
+    let i : uint256 = memberCount;
+    Assign.assign(larr(members, i), addr);
+    memberCount = memberCount + uint256(1);
+  }
+
+  // MemberNotFound() selector
+  function removeMember(addr : address) -> () {
+    let count : uint256 = memberCount;
+    let found : bool = false;
+    let foundIdx : uint256 = uint256(0);
+    let i : uint256;
+    for (i = uint256(0); i < count; i = i + uint256(1)) {
+      if (rarr(members, i) == addr) {
+        foundIdx = i;
+        found = true;
+      }
+    }
+    require(found, Error(0xdeadbeef));
+
+    let lastIdx : uint256 = count - uint256(1);
+    let last : address = rarr(members, lastIdx);
+    Assign.assign(larr(members, foundIdx), last);
+    memberCount = lastIdx;
+  }
+
+  function numberOfMembers() -> uint256 {
+    return memberCount;
+  }
+
+  function getMembers() -> memory(DynArray(address)) {
+    let count : word = Typedef.rep(memberCount);
+    let totalBytes : word = (count + 1) * 32;
+    let ptr : word = allocate_memory(totalBytes);
+    mstore(ptr, count);
+
+    let i : word;
+    for (i = 0; i < count; i = i + 1) {
+      let addr : address = rarr(members, uint256(i));
+      let addrWord : word = Typedef.rep(addr);
+      mstore(ptr + 32 + i * 32, addrWord);
+    }
+    return Typedef.abs(ptr) : memory(DynArray(address));
+  }
+}
