@@ -1,4 +1,4 @@
-import std.opcodes.{add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, log1 as log1_, staticcall, invalid};
+import std.opcodes.{add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, log1 as log1_, staticcall, revert as revert_, invalid};
 
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
@@ -186,9 +186,7 @@ function revertLit(s:string) -> () {
 
 // Empty revert.
 function revertEmpty() -> () {
-  assembly {
-    revert(0, 0)
-  }
+    revert_(0, 0);
 }
 
 // TODO: use bytes4
@@ -198,19 +196,15 @@ data Error = Error(word) | Empty | Msg(memory(string));
 // Revert with Error selector.
 function revertWithError(e:Error) -> () {
     match e {
-        | .Error(selector) => assembly {
-            mstore(0, selector)
+        | .Error(selector) =>
+            mstore(0, selector);
             // We only care about the BE MSB.
-            revert(28, 4)
-        }
-        | .Empty => assembly {
-            revert(0, 0)
-        }
+            revert_(28, 4);
+        | .Empty =>
+            revert_(0, 0);
         | .Msg(msg) =>
             let msg_ = Typedef.rep(msg);
-            assembly {
-                revert(add(msg_, 32), mload(msg_))
-            }
+            revert_(msg_ + 32, mload(msg_));
     }
 }
 
