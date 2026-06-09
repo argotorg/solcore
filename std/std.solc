@@ -10,6 +10,7 @@ export {
   ABIEncode,
   ABITuple(*),
   Add,
+  Array,
   Assign,
   BitAnd,
   BitOr,
@@ -1775,6 +1776,23 @@ forall member .
 instance array(member):StorageSize {
     function size(x:Proxy(array(member))) -> word {
         return 1;
+    }
+}
+
+// Dynamic storage arrays carry their length at the slot itself (matching the
+// Solidity convention) while elements live at keccak256(slot) + i.
+forall self . class self:Array {
+    function length(arr:self) -> uint256;
+    function setLength(arr:self, n:uint256) -> ();
+}
+
+forall t .
+instance storage(array(t)):Array {
+    function length(arr:storage(array(t))) -> uint256 {
+        return uint256(sload_(Typedef.rep(arr)));
+    }
+    function setLength(arr:storage(array(t)), n:uint256) -> () {
+        sstore_(Typedef.rep(arr), Typedef.rep(n));
     }
 }
 

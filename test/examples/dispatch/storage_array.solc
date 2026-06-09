@@ -7,20 +7,19 @@ pragma no-bounded-variable-condition ;
 contract MemberRegistry {
   // forge uses at least 1 storage slot
   reserved : word;
-  memberCount : uint256;
   members : array(address);
 
   constructor() {}
 
   function addMember(addr : address) -> () {
-    let i : uint256 = memberCount;
+    let i : uint256 = Array.length(members);
     Assign.assign(larr(members, i), addr);
-    memberCount = memberCount + uint256(1);
+    Array.setLength(members, i + uint256(1));
   }
 
   // MemberNotFound() selector
   function removeMember(addr : address) -> () {
-    let count : uint256 = memberCount;
+    let count : uint256 = Array.length(members);
     let found : bool = false;
     let foundIdx : uint256 = uint256(0);
     let i : uint256;
@@ -35,15 +34,15 @@ contract MemberRegistry {
     let lastIdx : uint256 = count - uint256(1);
     let last : address = rarr(members, lastIdx);
     Assign.assign(larr(members, foundIdx), last);
-    memberCount = lastIdx;
+    Array.setLength(members, lastIdx);
   }
 
   function numberOfMembers() -> uint256 {
-    return memberCount;
+    return Array.length(members);
   }
 
   function getMembers() -> memory(DynArray(address)) {
-    let count : word = Typedef.rep(memberCount);
+    let count : word = Typedef.rep(Array.length(members));
     let totalBytes : word = (count + 1) * 32;
     let ptr : word = allocate_memory(totalBytes);
     mstore(ptr, count);
