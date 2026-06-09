@@ -115,7 +115,8 @@ export {
   to_bytes,
   tobool,
   uint256(*),
-  unimplemented
+  unimplemented,
+  zeroize_memory
 };
 
 /*
