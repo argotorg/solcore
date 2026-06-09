@@ -1,6 +1,33 @@
 import std.{*};
 import std.dispatch.{*};
-import std.opcodes.{callvalue};
+import std.opcodes.{callvalue, mcopy};
+
+data bytes_slice = bytes_slice(memory(bytes), word, word);
+
+instance bytes_slice:MemorySize {
+    function len(v: bytes_slice) -> word {
+        match v {
+            | bytes_slice(ptr, start, len) => return len;
+        }
+    }
+}
+
+instance bytes_slice:MemoryPointer {
+    function ptr(v: bytes_slice) -> word {
+        match v {
+            | bytes_slice(ptr_, start, len) => return MemoryPointer.ptr(ptr_) + start;
+        }
+    }
+}
+
+instance bytes_slice:MemoryEncode {
+    function encodeInto(v: bytes_slice, target: word) -> () {
+        match v {
+            | bytes_slice(ptr_, start, len) =>
+                mcopy(target, MemoryPointer.ptr(ptr_) + start, len);
+        }
+    }
+}
 
 function empty_bytes(len: word) -> memory(bytes) {
     let res: word = allocate_memory(32 + len);
