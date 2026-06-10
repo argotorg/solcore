@@ -459,7 +459,7 @@ askEnvForCon n = do
   mPrim <- gets (Map.lookup n . constrCtx)
   case mPrim of
     Just sch -> pure sch
-    Nothing  -> askEnv n
+    Nothing -> askEnv n
 
 -- type information
 

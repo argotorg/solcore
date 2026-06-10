@@ -290,8 +290,9 @@ initializeEnv (Contract _ _ cdecls) = do
   -- before their bodies are type-checked.  Only annotated functions are
   -- pre-registered; unannotated ones would produce a stale fresh type variable
   -- that could interfere with later inference.
-  let fds = [fd | CFunDecl fd@(FunDef sig _) <- cdecls, hasAnn sig]
-         ++ [fd | CMutualDecl ds <- cdecls, CFunDecl fd@(FunDef sig _) <- ds, hasAnn sig]
+  let fds =
+        [fd | CFunDecl fd@(FunDef sig _) <- cdecls, hasAnn sig]
+          ++ [fd | CMutualDecl ds <- cdecls, CFunDecl fd@(FunDef sig _) <- ds, hasAnn sig]
   nmschs <- extractSignatures fds
   mapM_ (uncurry extEnv) nmschs
 
