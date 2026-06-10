@@ -5,11 +5,7 @@ contract PayableTest {
     constructor() {}
 
     payable function deposit() -> uint256 {
-        let value;
-        assembly {
-            value := callvalue()
-        }
-        return uint256(value);
+        return msg.value();
     }
 
     function balance() -> uint256 {
@@ -21,11 +17,7 @@ contract PayableTest {
     }
 
     payable fallback() -> () {
-        let value;
-        assembly {
-            value := callvalue()
-        }
-        if (value == 0) {
+        if (msg.value() == uint256(0)) {
             revertLit("fallback-was-called-no-value");
         }
     }
