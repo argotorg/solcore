@@ -84,6 +84,7 @@ export {
   maxVal,
   memberAccessBase,
   memory(*),
+  memory_slice,
   mload,
   mstore,
   ne,
@@ -103,6 +104,7 @@ export {
   set_free_memory,
   sha256,
   slice(*),
+  slice_,
   sloadViaWord,
   sload_,
   sstore_,
@@ -113,6 +115,7 @@ export {
   strlen,
   strlenLit,
   subWord,
+  truncate,
   toWord,
   to_bytes,
   tobool,
@@ -2078,6 +2081,53 @@ instance empty:MemoryEncode {
         }
         zeroize_memory(target, size);
     }
+}
+
+// --- Memory Slices ---
+
+// This is a very cheap abstraction over a memory area of [ptr, ptr+len)
+// No type information is preserved.
+data memory_slice = memory_slice(word, word);
+
+instance memory_slice:MemorySize {
+    function len(v: memory_slice) -> word {
+        match v {
+            | memory_slice(ptr, len) => return len;
+        }
+    }
+}
+
+instance memory_slice:MemoryPointer {
+    function ptr(v: memory_slice) -> word {
+        match v {
+            | memory_slice(ptr, len) => return ptr;
+        }
+    }
+}
+
+instance memory_slice:MemoryEncode {
+    function encodeInto(v: memory_slice, target: word) -> () {
+        match v {
+            | memory_slice(ptr, len) => assembly { mcopy(target, ptr, len) }
+        }
+    }
+}
+
+forall a . a:MemorySize, a:MemoryPointer =>
+function slice_(input: a, start: word) -> memory_slice {
+    let len = MemorySize.len(input);
+    // TODO: should this allow (it does now) a zero-length slice?
+    require(len >= start, Error(0xb4120f14)); // OutOfBounds()
+    let ptr_ = MemoryPointer.ptr(input);
+    return memory_slice(ptr_ + start, len - start);
+}
+
+forall a . a:MemorySize, a:MemoryPointer =>
+function truncate(input: a, end: word) -> memory_slice {
+    let len = MemorySize.len(input);
+    // TODO: should this allow (it does now) a zero-length slice?
+    require(len >= end, Error(0xb4120f14)); // OutOfBounds()
+    return memory_slice(MemoryPointer.ptr(input), end);
 }
 
 // --- Hashing ---
