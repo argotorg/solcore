@@ -1,0 +1,13 @@
+import std.{*};
+
+function sender() -> address {
+  return msg.sender();
+}
+
+function blockNumber() -> uint256 {
+  return block.number();
+}
+
+function gasPrice() -> uint256 {
+  return tx.gasprice();
+}
