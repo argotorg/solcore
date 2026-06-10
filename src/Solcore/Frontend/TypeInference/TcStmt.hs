@@ -222,8 +222,9 @@ tcPat t (PVar n) =
 tcPat t p@(PCon n ps) =
   do
     n' <- resolvePatternConstructor n t `wrapError` p
-    -- asking type from environment
-    st <- askEnv n' `wrapError` p
+    -- asking type from environment (use constrCtx-aware lookup so primitive
+    -- constructors like "pair" are not shadowed by same-named user functions)
+    st <- askEnvForCon n' `wrapError` p
     (_ :=> tc) <- freshInst st
     let (argTys, resultTy) = splitTy tc
     when (length argTys /= length ps) $
@@ -297,8 +298,9 @@ tcExpWithExpected mExpected e@(Con n es) =
   do
     expectedArgTys <- mapM (const freshTyVar) es
     n' <- resolveExpressionConstructor n expectedArgTys mExpected `wrapError` e
-    -- getting the type from the environment
-    sch <- askEnv n' `wrapError` e
+    -- getting the type from the environment (use constrCtx-aware lookup so primitive
+    -- constructors like "pair" are not shadowed by same-named user functions)
+    sch <- askEnvForCon n' `wrapError` e
     (ps :=> t) <- freshInst sch
     t' <- freshTyVar
     s0 <- unify t (funtype expectedArgTys t') `wrapError` e

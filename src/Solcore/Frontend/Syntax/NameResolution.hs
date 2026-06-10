@@ -1029,8 +1029,11 @@ addContractName n =
   modify (\env -> env {typeEnv = Map.insert n TContract (typeEnv env)})
 
 addFunctionName :: Name -> ResolveM ()
-addFunctionName n =
-  modify (\env -> env {scopeEnv = Map.insert n TFunction (scopeEnv env)})
+addFunctionName n = do
+  existing <- gets (Map.lookup n . scopeEnv)
+  case existing of
+    Just TDataCon | isPrimitiveConstructor n -> pure ()
+    _ -> modify (\env -> env {scopeEnv = Map.insert n TFunction (scopeEnv env)})
 
 addParameter :: Name -> ResolveM ()
 addParameter n =
