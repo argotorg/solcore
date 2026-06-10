@@ -1,7 +1,7 @@
 import std.opcodes.{add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, returndatasize, returndatacopy, log1 as log1_, call, staticcall, revert as revert_, invalid};
 
-pragma no-patterson-condition ABIEncode, Num, Array;
-pragma no-coverage-condition ABIDecode, MemoryType, Array;
+pragma no-patterson-condition ABIEncode, Num, Array, ArrayPush;
+pragma no-coverage-condition ABIDecode, MemoryType, Array, ArrayPush;
 
 export {
   ABIAttribs,
@@ -11,6 +11,7 @@ export {
   ABITuple(*),
   Add,
   Array,
+  ArrayPush,
   Assign,
   BitAnd,
   BitOr,
@@ -1776,35 +1777,42 @@ instance array(member):StorageSize {
 
 // Dynamic storage arrays carry their length at the slot itself (matching the
 // Solidity convention) while elements live at keccak256(slot) + i.
-forall self elem . class self:Array(elem) {
+forall self . class self:Array {
     function length(arr:self) -> uint256;
     function setLength(arr:self, n:uint256) -> ();
-    function push(arr:self, val:elem) -> ();
     function pop(arr:self) -> ();
 }
 
-forall t . t:StorageType =>
-instance storage(array(t)):Array(t) {
+// push is split into its own MPTC so its element type only shows up where it
+// actually matters (the value being appended), without forcing `length`/
+// `setLength`/`pop` to drag along an unconstrained `elem` parameter.
+forall self elem . class self:ArrayPush(elem) {
+    function push(arr:self, val:elem) -> ();
+}
+
+forall t .
+instance storage(array(t)):Array {
     function length(arr:storage(array(t))) -> uint256 {
         return uint256(sload_(Typedef.rep(arr)));
     }
     function setLength(arr:storage(array(t)), n:uint256) -> () {
         sstore_(Typedef.rep(arr), Typedef.rep(n));
     }
-    // Inlined to avoid re-dispatching through Array.length / Array.setLength
-    // inside the same instance (the specialiser otherwise has to recursively
-    // resolve `storage(array(t)):Array(t)` against its own body).
-    function push(arr:storage(array(t)), val:t) -> () {
-        let slot : word = Typedef.rep(arr);
-        let n : word = sload_(slot);
-        StorageType.store(hash1(slot) + n, val);
-        sstore_(slot, n + 1);
-    }
     function pop(arr:storage(array(t))) -> () {
         let slot : word = Typedef.rep(arr);
         let n : word = sload_(slot);
         if (n == 0) { out_of_bounds(); }
         sstore_(slot, n - 1);
+    }
+}
+
+forall t . t:StorageType =>
+instance storage(array(t)):ArrayPush(t) {
+    function push(arr:storage(array(t)), val:t) -> () {
+        let slot : word = Typedef.rep(arr);
+        let n : word = sload_(slot);
+        StorageType.store(hash1(slot) + n, val);
+        sstore_(slot, n + 1);
     }
 }
 
