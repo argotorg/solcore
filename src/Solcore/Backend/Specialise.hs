@@ -347,7 +347,7 @@ specConApp i@(Id _n conTy) args ty = do
 -- | Specialise a function call
 -- given actual arguments and the expected result type
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revert") _) args _ = pure (i, args) -- FIXME
+specCall i@(Id (Name "revertLit") _) args _ = pure (i, args) -- FIXME
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
@@ -523,6 +523,7 @@ specStmt (For initStmt cond post body) = do
   body' <- specBody body
   return $ For initStmt' cond' post' body'
 specStmt (Asm ys) = pure (Asm ys)
+specStmt EmptyStmt = pure EmptyStmt
 specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
 
 specMatch :: [Exp Id] -> [([Pat Id], [Stmt Id])] -> SM (Stmt Id)
@@ -885,6 +886,8 @@ toMastStmt (Match es _) = error $ "toMastStmt: multi-scrutinee match should have
 toMastStmt (Asm ys) = MastAsm ys
 toMastStmt (For initStmt cond postStmt body) =
   MastFor (toMastStmt initStmt) (toMastExp cond) (toMastStmt postStmt) (toMastBody body)
+toMastStmt (Block body) = MastSeq (toMastBody body)
+toMastStmt EmptyStmt = MastSeq []
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
 toMastBody :: [Stmt Id] -> [MastStmt]

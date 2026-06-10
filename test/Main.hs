@@ -18,6 +18,7 @@ tests =
     [ parserTests,
       cases,
       comptime,
+      opcodes,
       pragmas,
       spec,
       std,

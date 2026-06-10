@@ -102,6 +102,8 @@ instance Compile (Stmt Id) where
     For <$> compile initStmt <*> compile cond <*> compile postStmt <*> compile body
   compile s@(Asm _) =
     pure s
+  compile EmptyStmt =
+    pure EmptyStmt
   compile (Match es eqns) = do
     es' <- compile es
     eqns' <- mapM compileEqn eqns

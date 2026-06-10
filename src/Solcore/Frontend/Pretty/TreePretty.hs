@@ -311,6 +311,7 @@ instance Pretty Stmt where
       <+> lbrace
       $$ nest 3 (ppr body)
       $$ rbrace
+  ppr EmptyStmt = empty
 
 pprForClause :: Stmt -> Doc
 pprForClause (Assign n e) = ppr n <+> equals <+> ppr e
@@ -318,6 +319,7 @@ pprForClause (StmtPlusEq e1 e2) = hsep [ppr e1, text "+=", ppr e2]
 pprForClause (StmtMinusEq e1 e2) = hsep [ppr e1, text "-=", ppr e2]
 pprForClause (Let ct n ty m) = text "let" <+> ppr n <+> pprOptTy ct ty <+> pprForInitOpt m
 pprForClause (StmtExp e) = ppr e
+pprForClause EmptyStmt = empty
 pprForClause s = ppr s
 
 pprForInitOpt :: Maybe Exp -> Doc

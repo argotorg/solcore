@@ -97,10 +97,20 @@ exprOrAssignP = do
     ]
 
 forInitP :: Parser Stmt
-forInitP = forLetP <|> forAssignP
+forInitP = do
+  stmts <- (forLetP <|> forAssignP) `sepBy` comma
+  return $ case stmts of
+    [] -> EmptyStmt
+    [s] -> s
+    ss -> Block ss
 
 forPostP :: Parser Stmt
-forPostP = forAssignP
+forPostP = do
+  stmts <- forAssignP `sepBy` comma
+  return $ case stmts of
+    [] -> EmptyStmt
+    [s] -> s
+    ss -> Block ss
 
 forLetP :: Parser Stmt
 forLetP = do

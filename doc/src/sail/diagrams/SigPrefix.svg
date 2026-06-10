@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="122" viewBox="0 0 580.5 122" width="580.5">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 21v20m10 -20v20m-10 -10h20" /></g><g>
+<path d="M40 31h0.0" /><path d="M540.5 31h0.0" /><path d="M40.0 31h20" /><g>
+<path d="M60.0 31h0.0" /><path d="M520.5 31h0.0" /><g class="terminal ">
+<path d="M60.0 31h0.0" /><path d="M131.0 31h0.0" /><rect height="22" rx="10" ry="10" width="71" x="60" y="20"></rect><text x="95.5" y="35">forall</text></g><path d="M131.0 31h10" /><path d="M141.0 31h10" /><g class="non-terminal ">
+<path d="M151.0 31h0.0" /><path d="M256.0 31h0.0" /><rect height="22" width="105" x="151" y="20"></rect><text x="203.5" y="35">TypeVarSeq</text></g><path d="M256.0 31h10" /><path d="M266.0 31h10" /><g class="terminal ">
+<path d="M276.0 31h0.0" /><path d="M304.5 31h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="276" y="20"></rect><text x="290.25" y="35">.</text></g><path d="M304.5 31h10" /><path d="M314.5 31h10" /><g class="non-terminal ">
+<path d="M324.5 31h0.0" /><path d="M463.5 31h0.0" /><rect height="22" width="139" x="324.5" y="20"></rect><text x="394" y="35">ConstraintList</text></g><path d="M463.5 31h10" /><path d="M473.5 31h10" /><g class="terminal ">
+<path d="M483.5 31h0.0" /><path d="M520.5 31h0.0" /><rect height="22" rx="10" ry="10" width="37" x="483.5" y="20"></rect><text x="502" y="35">=></text></g></g><path d="M520.5 31h20" /><path d="M40.0 31a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10" /><g>
+<path d="M60.0 61h108.0" /><path d="M412.5 61h108.0" /><g class="terminal ">
+<path d="M168.0 61h0.0" /><path d="M239.0 61h0.0" /><rect height="22" rx="10" ry="10" width="71" x="168" y="50"></rect><text x="203.5" y="65">forall</text></g><path d="M239.0 61h10" /><path d="M249.0 61h10" /><g class="non-terminal ">
+<path d="M259.0 61h0.0" /><path d="M364.0 61h0.0" /><rect height="22" width="105" x="259" y="50"></rect><text x="311.5" y="65">TypeVarSeq</text></g><path d="M364.0 61h10" /><path d="M374.0 61h10" /><g class="terminal ">
+<path d="M384.0 61h0.0" /><path d="M412.5 61h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="384" y="50"></rect><text x="398.25" y="65">.</text></g></g><path d="M520.5 61a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10" /><path d="M40.0 31a10 10 0 0 1 10 10v40a10 10 0 0 0 10 10" /><g class="terminal ">
+<path d="M60.0 91h216.0" /><path d="M304.5 91h216.0" /><rect height="22" rx="10" ry="10" width="28.5" x="276" y="80"></rect><text x="290.25" y="95">ε</text></g><path d="M520.5 91a10 10 0 0 0 10 -10v-40a10 10 0 0 1 10 -10" /></g><path d="M 540.5 31 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>

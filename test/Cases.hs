@@ -102,7 +102,10 @@ dispatches =
     [ runDispatchTest "basic.solc",
       runDispatchTest "stringid.solc",
       runDispatchTest "miniERC20.solc",
-      runDispatchTest "Revert.solc"
+      runDispatchTest "Revert.solc",
+      runDispatchTest "hashes.solc",
+      runDispatchTest "empty.solc",
+      runDispatchTest "empty_no_constructor.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -223,6 +226,15 @@ pragmas =
   where
     pragmaFolder = "./test/examples/pragmas"
 
+opcodes :: TestTree
+opcodes =
+  testGroup
+    "Files for opcodes wrappers"
+    [ runTestForFile "all-shapes.solc" opcodesFolder
+    ]
+  where
+    opcodesFolder = "./test/examples/opcodes"
+
 cases :: TestTree
 cases =
   testGroup
@@ -276,6 +288,7 @@ cases =
       runTestForFile "dot-pattern-constructor.solc" caseFolder,
       runTestForFile "dot-pattern-nested-constructor.solc" caseFolder,
       runTestForFile "dot-primitive-constructor.solc" caseFolder,
+      runTestForFile "same-name-constructor-qualifier.solc" caseFolder,
       runTestExpectingFailure "duplicated-contract-name.solc" caseFolder,
       runTestExpectingFailure "duplicated-type-name.solc" caseFolder,
       runTestForFile "DuplicateFun.solc" caseFolder,
@@ -286,15 +299,20 @@ cases =
       runTestExpectingFailure "Eq.solc" caseFolder,
       runTestForFile "EqQual.solc" caseFolder,
       runTestForFile "EvenOdd.solc" caseFolder,
+      runTestExpectingFailure "fallback-with-args.solc" caseFolder,
+      runTestExpectingFailure "fallback-with-return.solc" caseFolder,
       runTestExpectingFailure "Filter.solc" caseFolder,
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,
       runTestForFile "for-body-shadow.solc" caseFolder,
+      runTestForFile "for-empty-init.solc" caseFolder,
       runTestForFile "for-inner-block.solc" caseFolder,
       runTestForFile "for-init-shadow.solc" caseFolder,
       runTestForFile "for-let.solc" caseFolder,
       runTestExpectingFailure "for-let-post.solc" caseFolder,
       runTestForFile "for-loop.solc" caseFolder,
+      runTestForFile "for-multi-init.solc" caseFolder,
+      runTestForFile "for-multi-post.solc" caseFolder,
       runTestExpectingFailure "GetSet.solc" caseFolder,
       runTestExpectingFailure "GoodInstance.solc" caseFolder,
       runTestForFile "Id.solc" caseFolder,

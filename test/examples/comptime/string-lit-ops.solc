@@ -7,9 +7,8 @@ pragma no-bounded-variable-condition ;
 
 contract StringLitOps {
   function main() -> () {
-    // concat folds to a string literal, enabling revert("...") lowering
-    // cannot handle string variables yet
-    let s : comptime string = concatLit("ab", "cd");
-    revert(s);
+    // concatLit folds to a string literal, enabling revertLit("...") lowering
+    let s : comptime string  = concatLit("ab", "cd");
+    revertLit(s);
   }
 }

@@ -207,6 +207,7 @@ instance Names (Stmt Name) where
     names e `union` names blk1 `union` names blk2
   names (For initStmt cond postStmt body) =
     names initStmt `union` names cond `union` names postStmt `union` names body
+  names EmptyStmt = []
 
 instance Names (Equation Name) where
   names (_, bdy) = names bdy

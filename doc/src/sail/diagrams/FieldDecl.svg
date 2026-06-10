@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="71" viewBox="0 0 518.5 71" width="518.5">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 30v20m10 -20v20m-10 -10h20" /></g><path d="M40 40h10" /><g>
+<path d="M50 40h0.0" /><path d="M468.5 40h0.0" /><g class="non-terminal ">
+<path d="M50.0 40h0.0" /><path d="M155.0 40h0.0" /><rect height="22" width="105" x="50" y="29"></rect><text x="102.5" y="44">Identifier</text></g><path d="M155.0 40h10" /><path d="M165.0 40h10" /><g class="terminal ">
+<path d="M175.0 40h0.0" /><path d="M203.5 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="175" y="29"></rect><text x="189.25" y="44">:</text></g><path d="M203.5 40h10" /><path d="M213.5 40h10" /><g class="non-terminal ">
+<path d="M223.5 40h0.0" /><path d="M277.5 40h0.0" /><rect height="22" width="54" x="223.5" y="29"></rect><text x="250.5" y="44">Type</text></g><path d="M277.5 40h10" /><g>
+<path d="M287.5 40h0.0" /><path d="M430.0 40h0.0" /><path d="M287.5 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M307.5 20h102.5" /></g><path d="M410.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M287.5 40h20" /><g>
+<path d="M307.5 40h0.0" /><path d="M410.0 40h0.0" /><g class="terminal ">
+<path d="M307.5 40h0.0" /><path d="M336.0 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="307.5" y="29"></rect><text x="321.75" y="44">=</text></g><path d="M336.0 40h10" /><path d="M346.0 40h10" /><g class="non-terminal ">
+<path d="M356.0 40h0.0" /><path d="M410.0 40h0.0" /><rect height="22" width="54" x="356" y="29"></rect><text x="383" y="44">Expr</text></g></g><path d="M410.0 40h20" /></g><path d="M430.0 40h10" /><g class="terminal ">
+<path d="M440.0 40h0.0" /><path d="M468.5 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="440" y="29"></rect><text x="454.25" y="44">;</text></g></g><path d="M468.5 40h10" /><path d="M 478.5 40 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>

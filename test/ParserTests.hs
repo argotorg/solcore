@@ -310,6 +310,36 @@ stmtTests =
               (Assign (var "i") (ExpPlus (var "i") (lit 1)))
               []
           ),
+      testCase "for loop with empty init and post" $
+        parsesAs
+          stmtP
+          "for (; i < 10; ) { }"
+          ( For
+              EmptyStmt
+              (ExpLT (var "i") (lit 10))
+              EmptyStmt
+              []
+          ),
+      testCase "for loop with empty init only" $
+        parsesAs
+          stmtP
+          "for (; i < 10; i = i + 1) { }"
+          ( For
+              EmptyStmt
+              (ExpLT (var "i") (lit 10))
+              (Assign (var "i") (ExpPlus (var "i") (lit 1)))
+              []
+          ),
+      testCase "for loop with empty post only" $
+        parsesAs
+          stmtP
+          "for (let i = 0; i < 10; ) { }"
+          ( For
+              (Let False "i" Nothing (Just (lit 0)))
+              (ExpLT (var "i") (lit 10))
+              EmptyStmt
+              []
+          ),
       testCase "match one equation" $
         parsesAs
           stmtP

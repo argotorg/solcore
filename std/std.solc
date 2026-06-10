@@ -22,6 +22,9 @@ export {
   LVA,
   LValueIdxAccess,
   MemberAccessProxy(*),
+  MemoryEncode,
+  MemoryPointer,
+  MemorySize,
   MemoryType,
   MemoryWordReader(*),
   Mod,
@@ -56,7 +59,10 @@ export {
   bshlWord,
   bshrWord,
   calldata(*),
+  concat,
   concatLit,
+  ecrecover,
+  empty(*),
   eqWord,
   frombool,
   ge,
@@ -66,6 +72,7 @@ export {
   gtWord,
   hash1,
   hash2,
+  keccak256_,
   keccakLit,
   le,
   lidx,
@@ -84,14 +91,16 @@ export {
   out_of_bounds,
   readStorage,
   returndata(*),
-  revert,
+  revertLit,
   revertEmpty,
   revertWithError,
   require,
   ridx,
+  ripemd160,
   round_up_to_mul_of_32,
   rval,
   set_free_memory,
+  sha256,
   slice(*),
   sloadViaWord,
   sload_,
@@ -104,6 +113,7 @@ export {
   strlenLit,
   subWord,
   toWord,
+  to_bytes,
   tobool,
   uint256(*),
   unimplemented
@@ -166,9 +176,9 @@ function out_of_bounds() -> () {
 // ------------------------------------------------------------------
 // High-level revert helper
 // ------------------------------------------------------------------
-// EmitHull has special handling for `revert("...")` after MastEval has
+// EmitHull has special handling for `revertLit("...")` after MastEval has
 // constant-folded the argument to a string literal.
-function revert(s:string) -> () {
+function revertLit(s:string) -> () {
   return ();
 }
 
@@ -404,7 +414,7 @@ function gtWord(x:word, y:word) -> bool {
 function addWord(l: word, r: word) -> word {
   let rw : word;
   assembly {
-      rw := add(l,r);
+      rw := add(l,r)
   }
   return rw;
 }
@@ -412,7 +422,7 @@ function addWord(l: word, r: word) -> word {
 function subWord(l: word, r: word) -> word {
     let rw : word;
     assembly {
-        rw := sub(l,r);
+        rw := sub(l,r)
     }
     return rw;
 }
@@ -498,7 +508,7 @@ instance word:Sub {
 function mulWord(l: word, r: word) -> word {
     let rw : word;
     assembly {
-        rw := mul(l,r);
+        rw := mul(l,r)
     }
     return rw;
 }
@@ -513,7 +523,7 @@ instance word:Div {
     function div(l: word, r: word) -> word {
         let rw : word;
         assembly {
-            rw := div(l,r);
+            rw := div(l,r)
         }
         return rw;
     }
@@ -523,7 +533,7 @@ instance word : Mod {
   function mod (l : word, r : word) -> word {
     let res : word;
     assembly {
-      res := mod(l,r);
+      res := mod(l,r)
     }
     return res;
   }
@@ -1563,7 +1573,7 @@ instance word:StorageType {
     function load(ptr:word) -> word {
         let r:word;
         assembly {
-            r := sload(ptr);
+            r := sload(ptr)
         }
         return r;
     }
@@ -1578,7 +1588,7 @@ forall a. a:Typedef(word) =>
 function sloadViaWord(ptr:word) -> a {
     let r:word;
     assembly {
-	r := sload(ptr);
+	r := sload(ptr)
     }
     return Typedef.abs(r);
 }
@@ -1951,4 +1961,197 @@ function lidx( m: storage(mapping(i,a)), x:i) -> storage(a) {
 forall i a . i:Typedef(word), a:StorageType  =>
 function ridx( m: storage(mapping(i,a)), x:i) -> a {
   return StorageType.load(hash2(Typedef.rep(m), Typedef.rep(x)));
+}
+
+// --- Memory Encoding ---
+
+forall t . class t:MemorySize {
+    // The size needed for the value.
+    function len(v: t) -> word;
+}
+
+// NOTE: this is not implemented for value types.
+forall t . class t:MemoryPointer {
+    // In-memory location of the given value.
+    function ptr(v: t) -> word;
+}
+
+forall t . class t:MemoryEncode {
+    // Serialize the entire contents at a provided memory area.
+    function encodeInto(v: t, target: word) -> ();
+}
+
+// TODO: support variadic arguments
+// Allocates new memory and concatenates the inputs into it.
+forall a b . a:MemorySize, a:MemoryEncode, b:MemorySize, b:MemoryEncode => function concat(x: a, y: b) -> memory(bytes) {
+    let x_len = MemorySize.len(x);
+    let y_len = MemorySize.len(y);
+    let res: word = allocate_memory(32 + x_len + y_len);
+    mstore(res, x_len + y_len);
+    MemoryEncode.encodeInto(x, res + 32);
+    MemoryEncode.encodeInto(y, res + 32 + x_len);
+    return memory(res);
+}
+
+// This is a specialized 1-input version of concat.
+forall a . a:MemorySize, a:MemoryEncode => function to_bytes(x: a) -> memory(bytes) {
+    let len = MemorySize.len(x);
+    let res = allocate_memory(32 + len);
+    mstore(res, len);
+    MemoryEncode.encodeInto(x, res + 32);
+    return memory(res);
+}
+
+instance bytes32:MemorySize {
+    function len(v: bytes32) -> word {
+        return 32;
+    }
+}
+
+instance bytes32:MemoryEncode {
+    function encodeInto(v: bytes32, target: word) -> () {
+        mstore(target, Typedef.rep(v));
+    }
+}
+
+instance memory(bytes):MemorySize {
+    function len(v: memory(bytes)) -> word {
+        return mload(Typedef.rep(v));
+    }
+}
+
+instance memory(bytes):MemoryPointer {
+    function ptr(v: memory(bytes)) -> word {
+        return Typedef.rep(v) + 32;
+    }
+}
+
+instance memory(bytes):MemoryEncode {
+    function encodeInto(v: memory(bytes), target: word) -> () {
+        let v_ = Typedef.rep(v);
+        assembly {
+            mcopy(target, add(v_, 32), mload(v_))
+        }
+    }
+}
+
+// Placeholder for an empty memory area.
+// The value is the size of the area in bytes. The area will be zeroed upon serialization.
+// NOTE: not implementing Typedef by design.
+data empty = empty(word);
+
+instance empty:MemorySize {
+    function len(v: empty) -> word {
+        match v {
+            | empty(size) => return size;
+        }
+    }
+}
+
+instance empty:MemoryEncode {
+    function encodeInto(v: empty, target: word) -> () {
+        let size;
+        match v {
+            | empty(size_) => size = size_;
+        }
+        zeroize_memory(target, size);
+    }
+}
+
+function zeroize_memory(ptr: word, len: word) -> () {
+    assembly {
+        let end_ptr := add(ptr, len)
+
+        // Zero out 32-byte words.
+        let words := div(len, 32)
+        for { let i := 0 } lt(i, words) { i := add(i, 1) } {
+            mstore(ptr, 0)
+            ptr := add(ptr, 32)
+        }
+
+        // Zero out trailing bytes. We rely on the zero-slot (0x60-0x7f).
+        mcopy(ptr, 0x60, sub(end_ptr, ptr))
+    }
+}
+
+// --- Hashing ---
+
+// NOTE: keccak256 name conflicts with assembly namespace
+function keccak256_(input: memory(bytes)) -> bytes32 {
+    let ptr : word = Typedef.rep(input);
+    let res : word;
+    assembly {
+        res := keccak256(add(ptr, 32), mload(ptr))
+    }
+    return bytes32(res);
+}
+
+function sha256(input: memory(bytes)) -> bytes32 {
+    let ptr : word = Typedef.rep(input);
+    let res : word;
+    // We assume the [0, 32] scratch space is reserved.
+    // TODO: add specific error code
+    assembly {
+        let ret := staticcall(gas(), 2, add(ptr, 32), mload(ptr), 0, 32)
+        if iszero(ret) {
+            revert(0, 0)
+        }
+        res := mload(0)
+    }
+    return bytes32(res);
+}
+
+function ripemd160(input: memory(bytes)) -> bytes32 {
+    let ptr : word = Typedef.rep(input);
+    let res : word;
+    // We assume the [0, 32] scratch space is reserved.
+    // TODO: add specific error code
+    assembly {
+        let ret := staticcall(gas(), 3, add(ptr, 32), mload(ptr), 0, 32)
+        if iszero(ret) {
+            revert(0, 0)
+        }
+        res := mload(0)
+    }
+    return bytes32(res);
+}
+
+// --- Precompiles ---
+
+// Perform an ECDSA signature recovery. It ensures the call has succeeded,
+// and that the signature is not malleable (s ≤ secp256k1n/2). Transactions
+// were updated to ban this, but the precompile wasn't. If a user relies on that
+// feature they can call the precompile via assembly.
+// TODO: use uint8
+function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address {
+    // MalleableSignatureRejected()
+    require(
+        Typedef.rep(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0,
+        Error(0x25260b20)
+    );
+
+    let hash_ = Typedef.rep(hash);
+    let v_ = Typedef.rep(v);
+    let r_ = Typedef.rep(r);
+    let s_ = Typedef.rep(s);
+    let ptr = get_free_memory();
+    let res: word;
+    // We assume the [0, 32] scratch space is reserved.
+    // TODO: add specific error code
+    assembly {
+        mstore(ptr, hash_)
+        mstore(add(ptr, 32), v_)
+        mstore(add(ptr, 64), r_)
+        mstore(add(ptr, 96), s_)
+
+        let ret := staticcall(gas(), 1, ptr, 128, 0, 32)
+        if iszero(ret) {
+            revert(0, 0)
+        }
+        res := mload(0)
+        if iszero(res) {
+            revert(0, 0)
+        }
+    }
+    return address(res);
 }
