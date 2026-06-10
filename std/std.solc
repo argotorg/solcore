@@ -1791,16 +1791,20 @@ instance storage(array(t)):Array(t) {
     function setLength(arr:storage(array(t)), n:uint256) -> () {
         sstore_(Typedef.rep(arr), Typedef.rep(n));
     }
+    // Inlined to avoid re-dispatching through Array.length / Array.setLength
+    // inside the same instance (the specialiser otherwise has to recursively
+    // resolve `storage(array(t)):Array(t)` against its own body).
     function push(arr:storage(array(t)), val:t) -> () {
-        let n : uint256 = Array.length(arr);
-        let slot : word = hash1(Typedef.rep(arr)) + Typedef.rep(n);
-        StorageType.store(slot, val);
-        Array.setLength(arr, n + uint256(1));
+        let slot : word = Typedef.rep(arr);
+        let n : word = sload_(slot);
+        StorageType.store(hash1(slot) + n, val);
+        sstore_(slot, n + 1);
     }
     function pop(arr:storage(array(t))) -> () {
-        let n : uint256 = Array.length(arr);
-        if (n == uint256(0)) { out_of_bounds(); }
-        Array.setLength(arr, n - uint256(1));
+        let slot : word = Typedef.rep(arr);
+        let n : word = sload_(slot);
+        if (n == 0) { out_of_bounds(); }
+        sstore_(slot, n - 1);
     }
 }
 
@@ -2066,15 +2070,17 @@ instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
   }
 }
 
-forall a i . a:StorageType, i:Typedef(word) =>
+forall a i . i:Typedef(word) =>
 instance (storage(array(a)), i): LValueIdxAccess(storage(a)) {
   function lookup(xi : (storage(array(a)), i)) -> storage(a) {
     match(xi) {
       | (x, i) =>
+          let slot : word = Typedef.rep(x);
           let idx : word = Typedef.rep(i);
-          let len : uint256 = Array.length(x);
-          if (idx >= Typedef.rep(len)) { out_of_bounds(); }
-          return storage(hash1(Typedef.rep(x)) + idx);
+          // Bounds check: idx must be in [0, length). Length lives at the
+          // slot itself; inlined to avoid an Array(t) dispatch here.
+          if (idx >= sload_(slot)) { out_of_bounds(); }
+          return storage(hash1(slot) + idx);
     }
   }
 }
