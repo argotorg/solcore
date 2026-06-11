@@ -2083,22 +2083,24 @@ instance empty:MemoryEncode {
 // --- Hashing ---
 
 // NOTE: keccak256 name conflicts with assembly namespace
-function keccak256_(input: memory(bytes)) -> bytes32 {
-    let ptr : word = Typedef.rep(input);
+forall a . a:MemorySize, a:MemoryPointer => function keccak256_(input: a) -> bytes32 {
+    let len : word = MemorySize.len(input);
+    let ptr : word = MemoryPointer.ptr(input);
     let res : word;
     assembly {
-        res := keccak256(add(ptr, 32), mload(ptr))
+        res := keccak256(ptr, len)
     }
     return bytes32(res);
 }
 
-function sha256(input: memory(bytes)) -> bytes32 {
-    let ptr : word = Typedef.rep(input);
+forall a . a:MemorySize, a:MemoryPointer => function sha256(input: a) -> bytes32 {
+    let len : word = MemorySize.len(input);
+    let ptr : word = MemoryPointer.ptr(input);
     let res : word;
     // We assume the [0, 32] scratch space is reserved.
     // TODO: add specific error code
     assembly {
-        let ret := staticcall(gas(), 2, add(ptr, 32), mload(ptr), 0, 32)
+        let ret := staticcall(gas(), 2, ptr, len, 0, 32)
         if iszero(ret) {
             revert(0, 0)
         }
@@ -2107,13 +2109,14 @@ function sha256(input: memory(bytes)) -> bytes32 {
     return bytes32(res);
 }
 
-function ripemd160(input: memory(bytes)) -> bytes32 {
-    let ptr : word = Typedef.rep(input);
+forall a . a:MemorySize, a:MemoryPointer => function ripemd160(input: a) -> bytes32 {
+    let len : word = MemorySize.len(input);
+    let ptr : word = MemoryPointer.ptr(input);
     let res : word;
     // We assume the [0, 32] scratch space is reserved.
     // TODO: add specific error code
     assembly {
-        let ret := staticcall(gas(), 3, add(ptr, 32), mload(ptr), 0, 32)
+        let ret := staticcall(gas(), 3, ptr, len, 0, 32)
         if iszero(ret) {
             revert(0, 0)
         }
