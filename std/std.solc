@@ -46,6 +46,7 @@ export {
   allocateDynamicArray,
   address(*),
   allocate_memory,
+  allocate_zeroed_memory,
   and,
   assert,
   byte(*),
@@ -116,7 +117,8 @@ export {
   to_bytes,
   tobool,
   uint256(*),
-  unimplemented
+  unimplemented,
+  zeroize_memory
 };
 
 /*
@@ -779,7 +781,7 @@ function strlen(s:memory(string)) -> word {
 }
 
 
-// --- Free Memory Pointer ---
+// --- Memory Utilities ---
 
 // Memory in solidity is bump allocated in a single arena
 // The word stored in memory at index 0x40 is used to store the start of the currently unused memory region
@@ -794,10 +796,34 @@ function set_free_memory(loc : word) -> () {
     mstore(0x40, loc);
 }
 
+// Allocate memory and update the memory pointer.
 function allocate_memory(size : word) -> word {
     let ptr = get_free_memory();
     set_free_memory(ptr + size);
     return ptr;
+}
+
+function allocate_zeroed_memory(size: word) -> word {
+    let ptr = allocate_memory(size);
+    zeroize_memory(ptr, size);
+    return ptr;
+}
+
+// Clears a memory area.
+function zeroize_memory(ptr: word, len: word) -> () {
+    assembly {
+        let end_ptr := add(ptr, len)
+
+        // Zero out 32-byte words.
+        let words := div(len, 32)
+        for { let i := 0 } lt(i, words) { i := add(i, 1) } {
+            mstore(ptr, 0)
+            ptr := add(ptr, 32)
+        }
+
+        // Zero out trailing bytes. We rely on the zero-slot (0x60-0x7f).
+        mcopy(ptr, 0x60, sub(end_ptr, ptr))
+    }
 }
 
 // --- Indexable Types ---
@@ -2051,22 +2077,6 @@ instance empty:MemoryEncode {
             | empty(size_) => size = size_;
         }
         zeroize_memory(target, size);
-    }
-}
-
-function zeroize_memory(ptr: word, len: word) -> () {
-    assembly {
-        let end_ptr := add(ptr, len)
-
-        // Zero out 32-byte words.
-        let words := div(len, 32)
-        for { let i := 0 } lt(i, words) { i := add(i, 1) } {
-            mstore(ptr, 0)
-            ptr := add(ptr, 32)
-        }
-
-        // Zero out trailing bytes. We rely on the zero-slot (0x60-0x7f).
-        mcopy(ptr, 0x60, sub(end_ptr, ptr))
     }
 }
 
