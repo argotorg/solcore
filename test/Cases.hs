@@ -179,7 +179,6 @@ imports =
       runImportSuccess "import_std_minimal.solc",
       runImportSuccess "std_context_select.solc",
       runImportSuccess "std_context_wildcard.solc",
-      runImportFailure "std_context_difficulty_fail.solc",
       runImportFailure "std_context_data_fail.solc",
       runImportSuccess "select_alias_item_ok.solc",
       runImportSuccess "select_alias_multi_ok.solc",

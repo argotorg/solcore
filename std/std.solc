@@ -1,8 +1,6 @@
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
 
-import std.opcodes.{blobbasefee as blobbasefee_};
-
 export {
   ABIAttribs,
   ABIDecode,
@@ -823,7 +821,11 @@ forall t . default instance t:block {
   }
 
   function blobbasefee() -> uint256 {
-    return uint256(blobbasefee_());
+    let res: word;
+    assembly {
+      res := blobbasefee()
+    }
+    return uint256(res);
   }
 
   function chainid() -> uint256 {

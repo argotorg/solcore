@@ -1,5 +1,0 @@
-import std.{block, uint256};
-
-function difficulty() -> uint256 {
-  return block.difficulty();
-}

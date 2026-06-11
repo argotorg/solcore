@@ -258,6 +258,7 @@ yulPrimOps =
     (Name "log4", monotype (funtype (words 6) unit)),
     (Name "chainid", monotype word),
     (Name "basefee", monotype word),
+    (Name "blobbasefee", monotype word),
     (Name "origin", monotype word),
     (Name "gasprice", monotype word),
     (Name "blockhash", monotype (word :-> word)),
