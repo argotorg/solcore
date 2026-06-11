@@ -1,3 +1,4 @@
+import std.{*};
 import std.dispatch.{*};
 contract Counter {
   // some dummy fields to test offset calculation

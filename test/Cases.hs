@@ -345,6 +345,7 @@ cases =
       runTestExpectingFailure "patterson-bug.solc" caseFolder,
       runTestForFile "Peano.solc" caseFolder,
       runTestForFile "PeanoMatch.solc" caseFolder,
+      runTestForFile "pair-bug.solc" caseFolder,
       runTestForFile "polymatch-error.solc" caseFolder,
       runTestForFile "polymorphic-require.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder,

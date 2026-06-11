@@ -283,8 +283,18 @@ tcContract c@(Contract n vs cdecls) =
 -- initializing context for a contract
 
 initializeEnv :: Contract Name -> TcM ()
-initializeEnv (Contract _ _ cdecls) =
+initializeEnv (Contract _ _ cdecls) = do
   mapM_ checkDecl cdecls
+  -- Pre-register annotated function signatures in ctx so that forward references
+  -- (e.g. the dispatch-generated 'main') can resolve user-defined functions
+  -- before their bodies are type-checked.  Only annotated functions are
+  -- pre-registered; unannotated ones would produce a stale fresh type variable
+  -- that could interfere with later inference.
+  let fds =
+        [fd | CFunDecl fd@(FunDef sig _) <- cdecls, hasAnn sig]
+          ++ [fd | CMutualDecl ds <- cdecls, CFunDecl fd@(FunDef sig _) <- ds, hasAnn sig]
+  nmschs <- extractSignatures fds
+  mapM_ (uncurry extEnv) nmschs
 
 checkDecl :: ContractDecl Name -> TcM ()
 checkDecl (CDataDecl dt) =
