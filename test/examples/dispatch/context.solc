@@ -11,6 +11,20 @@ contract ContextTest {
         return msg.calldata();
     }
 
+    function msgCalldataFirstWordAfterDirtyMemory() -> bytes32 {
+        let ptr = get_free_memory();
+        mstore(ptr + 32, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+        let callData : memory(bytes) = msg.calldata();
+        return bytes32(mload(Typedef.rep(callData) + 32));
+    }
+
+    function msgCalldataSecondWordAfterDirtyMemory() -> bytes32 {
+        let ptr = get_free_memory();
+        mstore(ptr + 64, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+        let callData : memory(bytes) = msg.calldata();
+        return bytes32(mload(Typedef.rep(callData) + 64));
+    }
+
     function msgSender() -> address {
         return msg.sender();
     }

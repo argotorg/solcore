@@ -25,6 +25,66 @@
       },
       {
         "input": {
+          "comment": "msgCalldataFirstWordAfterDirtyMemory()(bytes32) - selector-only calldata zeroes first-word padding",
+          "calldata": "15f1891b",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "15f1891b00000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgCalldataFirstWordAfterDirtyMemory()(bytes32) - 31-byte calldata zeroes final byte",
+          "calldata": "15f1891baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "15f1891baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgCalldataFirstWordAfterDirtyMemory()(bytes32) - 32-byte calldata leaves no padding",
+          "calldata": "15f1891bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "15f1891bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgCalldataSecondWordAfterDirtyMemory()(bytes32) - 33-byte calldata zeroes second-word padding",
+          "calldata": "f1e4985edddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "dd00000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgCalldataSecondWordAfterDirtyMemory()(bytes32) - 64-byte calldata leaves second word fully copied",
+          "calldata": "f1e4985eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
           "comment": "msgSender()(address) - caller account",
           "calldata": "d737d0c7",
           "value": "0"

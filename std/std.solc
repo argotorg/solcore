@@ -763,15 +763,17 @@ forall t . class t:msg {
 
 forall t . default instance t:msg {
   function calldata() -> memory(bytes) {
-    let ptr: word;
+    let size: word;
     assembly {
-      let size := calldatasize()
-      let rounded := and(add(size, 31), not(31))
-      ptr := mload(0x40)
-      mstore(0x40, add(add(ptr, 32), rounded))
-      mstore(ptr, size)
+      size := calldatasize()
+    }
+    let rounded = round_up_to_mul_of_32(size);
+    let ptr = allocate_memory(32 + rounded);
+    mstore(ptr, size);
+    assembly {
       calldatacopy(add(ptr, 32), 0, size)
     }
+    zeroize_memory(ptr + 32 + size, rounded - size);
     return memory(ptr);
   }
 
