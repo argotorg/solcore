@@ -753,6 +753,8 @@ forall t . instance calldata(t) : Typedef(word) {
 }
 
 forall t . class t:msg {
+  // Currently copies calldata into memory. 
+  // Will change once calldata(bytes) is operational.
   function calldata() -> memory(bytes);
   function sender() -> address;
   function sig() -> bytes4;
