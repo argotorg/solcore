@@ -1593,8 +1593,10 @@ toValidationImportStub (TFunDef (FunDef sig _)) =
   Just (TFunDef (stubFunction (sigName sig)))
 toValidationImportStub (TSym (TySym n _ _)) =
   Just (TSym (stubType n))
-toValidationImportStub d@(TClassDef _) =
-  Just d
+toValidationImportStub (TClassDef (Class bvs _ n pvs mv sigs)) =
+  Just (TClassDef (Class bvs [] n pvs mv (map stripSigContext sigs)))
+  where
+    stripSigContext (Signature vs _ sn ps ret) = Signature vs [] sn ps ret
 toValidationImportStub (TContr (Contract n _ _)) =
   Just (TContr (Contract n [] []))
 toValidationImportStub (TDataDef (DataTy n _ cs)) =
