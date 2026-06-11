@@ -84,6 +84,7 @@ dispatches =
     "Files for dispatch cases"
     [ runDispatchTest "basic.solc",
       runDispatchTest "stringid.solc",
+      runDispatchTest "context.solc",
       runDispatchTest "miniERC20.solc",
       runDispatchTest "Revert.solc",
       runDispatchTest "hashes.solc",

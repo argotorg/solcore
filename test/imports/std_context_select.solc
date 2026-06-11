@@ -1,4 +1,4 @@
-import std.{msg, block, tx, address, bytes, bytes4, calldata, uint256};
+import std.{msg, block, tx, address, bytes, bytes4, memory, uint256};
 
 function sender() -> address {
   return msg.sender();
@@ -12,7 +12,7 @@ function selector() -> bytes4 {
   return msg.sig();
 }
 
-function callData() -> calldata(bytes) {
+function callData() -> memory(bytes) {
   return msg.calldata();
 }
 

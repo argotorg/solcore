@@ -1,5 +1,5 @@
-import std.{msg, bytes, calldata};
+import std.{msg, bytes, memory};
 
-function callData() -> calldata(bytes) {
+function callData() -> memory(bytes) {
   return msg.data();
 }

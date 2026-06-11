@@ -753,15 +753,24 @@ forall t . instance calldata(t) : Typedef(word) {
 }
 
 forall t . class t:msg {
-  function calldata() -> calldata(bytes);
+  function calldata() -> memory(bytes);
   function sender() -> address;
   function sig() -> bytes4;
   function value() -> uint256;
 }
 
 forall t . default instance t:msg {
-  function calldata() -> calldata(bytes) {
-    return Typedef.abs(0) : calldata(bytes);
+  function calldata() -> memory(bytes) {
+    let ptr: word;
+    assembly {
+      let size := calldatasize()
+      let rounded := and(add(size, 31), not(31))
+      ptr := mload(0x40)
+      mstore(0x40, add(add(ptr, 32), rounded))
+      mstore(ptr, size)
+      calldatacopy(add(ptr, 32), 0, size)
+    }
+    return memory(ptr);
   }
 
   function sender() -> address {

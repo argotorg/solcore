@@ -1,6 +1,6 @@
 // This should trigger a warning and an error in the specialiser
 // due to unability to resolve result type of require
-import std.{uint256,lt,not,Eq,ne,Proxy,address,bytes,bytes4,calldata,string,msg};
+import std.{uint256,lt,not,Eq,ne,Proxy,address,bytes,bytes4,memory,string,msg};
 import std.dispatch.{*};
 
 forall a.
