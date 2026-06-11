@@ -1,0 +1,121 @@
+pragma no-patterson-condition ABIAttribs, ABIEncode;
+pragma no-bounded-variable-condition ABIAttribs, ABIEncode;
+
+export {
+    Sum(*),
+    Generic,
+    maxWord
+};
+
+import std.{*};
+
+// Binary tagged union: the only new representation type.
+// Native () and (f, g) are reused as Unit and Prod respectively;
+// they already have full ABIAttribs / ABIEncode / ABIDecode support in std.solc.
+data Sum(f, g) = Inl(f) | Inr(g);
+
+// MPTC: isomorphism between a user type and its SOP representation.
+// Pattern mirrors Typedef(rep) in std.solc.
+forall a rep.
+class a : Generic(rep) {
+    function from(x : a) -> rep;
+    function to(x : rep) -> a;
+}
+
+// Maximum of two words, used for Sum headSize.
+function maxWord(a : word, b : word) -> word {
+    match gtWord(a, b) {
+    | true  => return a;
+    | false => return b;
+    }
+}
+
+// ABIAttribs for Sum:
+// headSize = 32 (tag word) + max(headSize(f), headSize(g))
+forall f g . f:ABIAttribs, g:ABIAttribs =>
+instance Sum(f, g) : ABIAttribs {
+    function headSize(ty : Proxy(Sum(f, g))) -> word {
+        let pf : Proxy(f);
+        let pg : Proxy(g);
+        return 32 + maxWord(ABIAttribs.headSize(pf), ABIAttribs.headSize(pg));
+    }
+    function isStatic(ty : Proxy(Sum(f, g))) -> bool {
+        let pf : Proxy(f);
+        let pg : Proxy(g);
+        return and(ABIAttribs.isStatic(pf), ABIAttribs.isStatic(pg));
+    }
+}
+
+// ABIEncode for Sum.
+// Wire layout (static sums only):
+//   [offset + 0  .. offset + 31] : tag word (0 = Inl, 1 = Inr)
+//   [offset + 32 ..             ] : encoded branch payload
+// For uniform sums (headSize(f) == headSize(g)) no bytes are left uninitialised.
+forall f g . f:ABIAttribs, f:ABIEncode, g:ABIAttribs, g:ABIEncode =>
+instance Sum(f, g) : ABIEncode {
+    function encodeInto(x : Sum(f, g), basePtr : word, offset : word, tail : word) -> word {
+        match x {
+        | Sum.Inl(v) =>
+            mstore(basePtr + offset, 0);
+            return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+        | Sum.Inr(v) =>
+            mstore(basePtr + offset, 1);
+            return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+        }
+    }
+}
+
+// ABIDecode for Sum.
+// Reads the tag word at headOffset; dispatches to the f or g decoder at headOffset + 32.
+forall f g reader .
+    reader:WordReader,
+    f:ABIAttribs,
+    ABIDecoder(f, reader) : ABIDecode(f),
+    ABIDecoder(g, reader) : ABIDecode(g) =>
+instance ABIDecoder(Sum(f, g), reader) : ABIDecode(Sum(f, g)) {
+    function decode(ptr : ABIDecoder(Sum(f, g), reader), headOffset : word) -> Sum(f, g) {
+        match ptr {
+        | ABIDecoder(rdr) =>
+            let tag = WordReader.read(WordReader.advance(rdr, headOffset));
+            match tag {
+            | 0 =>
+                let dec_f : ABIDecoder(f, reader) = ABIDecoder(rdr);
+                return Sum.Inl(ABIDecode.decode(dec_f, headOffset + 32));
+            | _ =>
+                let dec_g : ABIDecoder(g, reader) = ABIDecoder(rdr);
+                return Sum.Inr(ABIDecode.decode(dec_g, headOffset + 32));
+            }
+        }
+    }
+}
+
+// Bridge: any type with a Generic(rep) instance gains ABIAttribs automatically.
+forall a rep . a:Generic(rep), rep:ABIAttribs =>
+default instance a : ABIAttribs {
+    function headSize(ty : Proxy(a)) -> word {
+        let prx : Proxy(rep);
+        return ABIAttribs.headSize(prx);
+    }
+    function isStatic(ty : Proxy(a)) -> bool {
+        let prx : Proxy(rep);
+        return ABIAttribs.isStatic(prx);
+    }
+}
+
+// Bridge: any type with a Generic(rep) instance gains ABIEncode automatically.
+forall a rep . a:Generic(rep), rep:ABIAttribs, rep:ABIEncode =>
+default instance a : ABIEncode {
+    function encodeInto(x : a, basePtr : word, offset : word, tail : word) -> word {
+        let r : rep = Generic.from(x);
+        return ABIEncode.encodeInto(r, basePtr, offset, tail);
+    }
+}
+
+// Note: ABIDecode bridge omitted.  The class head ABIDecoder(a, reader) is a type
+// application, not a plain variable, so Solcore's "default instance" restriction
+// makes automatic derivation impossible.  To decode a Generic type, create an
+// ABIDecoder for the representation type and call Generic.to on the result:
+//
+//   let dec : ABIDecoder(Rep, MemoryWordReader) = ABIDecoder.ABIDecoder(reader);
+//   let rep : Rep = ABIDecode.decode(dec, offset);
+//   let val : MyType = Generic.to(rep);
