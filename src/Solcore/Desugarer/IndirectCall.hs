@@ -77,8 +77,8 @@ instance Desugar (Field Name) where
     Field n t <$> desugar me
 
 instance Desugar (Constructor Name) where
-  desugar (Constructor ps bd) =
-    Constructor ps <$> desugar bd
+  desugar (Constructor ps bd payable) =
+    (\bd' -> Constructor ps bd' payable) <$> desugar bd
 
 instance Desugar (Stmt Name) where
   desugar (lhs := rhs) =

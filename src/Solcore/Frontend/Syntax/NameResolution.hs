@@ -238,13 +238,13 @@ instance Resolve S.ContractDecl where
 instance Resolve S.Constructor where
   type Result S.Constructor = Constructor Name
 
-  resolve c@(S.Constructor ps bdy) =
+  resolve c@(S.Constructor ps bdy payable) =
     withLocalCtx $ do
       ps' <- resolve ps `wrapError` c
       let args = map paramName ps'
       mapM_ addParameter args
       bdy' <- resolve bdy `wrapError` c
-      pure (Constructor ps' bdy')
+      pure (Constructor ps' bdy' payable)
 
 instance Resolve S.Field where
   type Result S.Field = Field Name

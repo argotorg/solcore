@@ -490,8 +490,8 @@ stubContractDeclBody (CFieldDecl (Field n ty _initExp)) =
   CFieldDecl (Field n ty Nothing)
 stubContractDeclBody (CFunDecl fd) =
   CFunDecl (stubFunDefBody fd)
-stubContractDeclBody (CConstrDecl (Constructor params _body)) =
-  CConstrDecl (Constructor params [])
+stubContractDeclBody (CConstrDecl (Constructor params _body payable)) =
+  CConstrDecl (Constructor params [] payable)
 stubContractDeclBody decl =
   decl
 
@@ -1449,11 +1449,12 @@ renameContractDeclTypeRefs renameMap (CFieldDecl (Field n ty me)) =
     (Field n (renameTyTypeRefs renameMap ty) (renameExpTypeRefs renameMap <$> me))
 renameContractDeclTypeRefs renameMap (CFunDecl fd) =
   CFunDecl (renameFunDefTypeRefs renameMap fd)
-renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body)) =
+renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body payable)) =
   CConstrDecl
     ( Constructor
         (map (renameParamTypeRefs renameMap) ps)
         (renameBodyTypeRefs renameMap body)
+        payable
     )
 
 renameClassTypeRefs :: Map Name Name -> Class -> Class
