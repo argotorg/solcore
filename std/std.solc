@@ -84,7 +84,7 @@ export {
   maxVal,
   memberAccessBase,
   memory(*),
-  memory_slice,
+  memory_ref,
   mload,
   mstore,
   ne,
@@ -2087,47 +2087,47 @@ instance empty:MemoryEncode {
 
 // This is a very cheap abstraction over a memory area of [ptr, ptr+len)
 // No type information is preserved.
-data memory_slice = memory_slice(word, word);
+data memory_ref = memory_ref(word, word);
 
-instance memory_slice:MemorySize {
-    function len(v: memory_slice) -> word {
+instance memory_ref:MemorySize {
+    function len(v: memory_ref) -> word {
         match v {
-            | memory_slice(ptr, len) => return len;
+            | memory_ref(ptr, len) => return len;
         }
     }
 }
 
-instance memory_slice:MemoryPointer {
-    function ptr(v: memory_slice) -> word {
+instance memory_ref:MemoryPointer {
+    function ptr(v: memory_ref) -> word {
         match v {
-            | memory_slice(ptr, len) => return ptr;
+            | memory_ref(ptr, len) => return ptr;
         }
     }
 }
 
-instance memory_slice:MemoryEncode {
-    function encodeInto(v: memory_slice, target: word) -> () {
+instance memory_ref:MemoryEncode {
+    function encodeInto(v: memory_ref, target: word) -> () {
         match v {
-            | memory_slice(ptr, len) => assembly { mcopy(target, ptr, len) }
+            | memory_ref(ptr, len) => assembly { mcopy(target, ptr, len) }
         }
     }
 }
 
 forall a . a:MemorySize, a:MemoryPointer =>
-function slice_(input: a, start: word) -> memory_slice {
+function slice_(input: a, start: word) -> memory_ref {
     let len = MemorySize.len(input);
     // TODO: should this allow (it does now) a zero-length slice?
     require(len >= start, Error(0xb4120f14)); // OutOfBounds()
     let ptr_ = MemoryPointer.ptr(input);
-    return memory_slice(ptr_ + start, len - start);
+    return memory_ref(ptr_ + start, len - start);
 }
 
 forall a . a:MemorySize, a:MemoryPointer =>
-function truncate(input: a, end: word) -> memory_slice {
+function truncate(input: a, end: word) -> memory_ref {
     let len = MemorySize.len(input);
     // TODO: should this allow (it does now) a zero-length slice?
     require(len >= end, Error(0xb4120f14)); // OutOfBounds()
-    return memory_slice(MemoryPointer.ptr(input), end);
+    return memory_ref(MemoryPointer.ptr(input), end);
 }
 
 // --- Hashing ---
