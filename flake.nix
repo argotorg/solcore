@@ -167,14 +167,21 @@
           # Make sure the C++ testrunner is (re)built whenever its sources
           # change. CMake's incremental build is a no-op when nothing has
           # changed, so this is cheap on warm shells.
+          #
+          # CMakeCache.txt is deleted before each configure so that cmake
+          # re-detects the compiler and make from the current nix store.
+          # The cache becomes stale when the shell enters a different
+          # derivation (different nix store hash for the same tool), causing
+          # "no such file or directory" errors when the old path is gone.
+          # Deleting the cache is safe: compiled object files are preserved
+          # so the subsequent build is still incremental.
           shellHook = ''
             if [ -z "''${SOLCORE_SKIP_TESTRUNNER_BUILD:-}" ]; then
               testrunner_build_dir="''${PWD}/build"
-              if [ ! -f "$testrunner_build_dir/CMakeCache.txt" ]; then
-                echo "[nix develop] Configuring testrunner build in $testrunner_build_dir"
-                cmake -S "$PWD" -B "$testrunner_build_dir" \
-                  -DIGNORE_VENDORED_DEPENDENCIES=ON >/dev/null
-              fi
+              echo "[nix develop] Configuring testrunner build in $testrunner_build_dir"
+              rm -f "$testrunner_build_dir/CMakeCache.txt"
+              cmake -S "$PWD" -B "$testrunner_build_dir" \
+                -DIGNORE_VENDORED_DEPENDENCIES=ON >/dev/null
               echo "[nix develop] Building testrunner (incremental)"
               cmake --build "$testrunner_build_dir" --target testrunner
             fi
