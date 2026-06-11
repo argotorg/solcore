@@ -153,6 +153,23 @@ addResolution name ty fun = do
             "\n do not occur in the argument/result types."
           ]
 
+addDefaultResolution :: Name -> Ty -> TcFunDef -> SM ()
+addDefaultResolution name ty fun = do
+  let sig = funSignature fun
+  let vars = ambiguousVarsInSig sig
+  let scheme = schemeOfTcSignature sig
+  unless (null vars) $
+    nopanics
+      [ "Error: function ",
+        pretty name,
+        " cannot be specialised because it has an ambiguous type:\n   ",
+        pretty scheme,
+        "\n variables: ",
+        prettys vars,
+        "\n do not occur in the argument/result types."
+      ]
+  modify $ \s -> s {spResTable = Map.insertWith (\_ old -> old ++ [(ty, fun)]) name [(ty, fun)] (spResTable s)}
+
 lookupResolution :: Name -> Ty -> SM (Maybe (TcFunDef, Ty, TVSubst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty
   where
@@ -219,7 +236,7 @@ addDeclResolutions (TMutualDef decls) = forM_ decls addDeclResolutions
 addDeclResolutions _ = return ()
 
 addInstResolutions :: Instance Id -> SM ()
-addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instName inst) (mainTy inst))
+addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instDefault inst) (instName inst) (mainTy inst))
 
 specialiseTopDecl :: TopDecl Id -> SM [TopDecl Id]
 specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
@@ -288,8 +305,8 @@ addFunDefResolution fd = do
   addResolution name funType fd
   debug ["+ addDeclResolution: ", show name, " : ", pretty funType]
 
-addMethodResolution :: Name -> Ty -> TcFunDef -> SM ()
-addMethodResolution cname ty fd = do
+addMethodResolution :: Bool -> Name -> Ty -> TcFunDef -> SM ()
+addMethodResolution isDefault cname ty fd = do
   let sig = funSignature fd
   let name = sigName sig
   let qname = case name of
@@ -298,7 +315,9 @@ addMethodResolution cname ty fd = do
   let name' = specName qname [ty]
   let funType = typeOfTcFunDef fd
   let fd' = FunDef (funIsPublic fd) sig {sigName = name'} (funDefBody fd)
-  addResolution qname funType fd'
+  if isDefault
+    then addDefaultResolution qname funType fd'
+    else addResolution qname funType fd'
   debug ["+ addMethodResolution: ", show qname, " / ", show name', " : ", pretty funType]
 
 -- | `specExp` specialises an expression to given type
@@ -521,11 +540,26 @@ specStmt stmt@(Let ct i mty mexp) = do
   debug ["> specStmt (Let): ", pretty i, " : ", pretty (idType i), " @ ", pretty subst]
   i' <- atCurrentSubst i
   let ty' = idType i'
-  ensureClosed ty' stmt subst
-  mty' <- atCurrentSubst mty
   case mexp of
-    Nothing -> return $ Let ct i' mty' Nothing
-    Just e -> Let ct i' mty' . Just <$> specExp e ty'
+    Nothing -> do
+      ensureClosed ty' stmt subst
+      mty' <- atCurrentSubst mty
+      return $ Let ct i' mty' Nothing
+    Just e ->
+      if null (freetv ty')
+        then do
+          ensureClosed ty' stmt subst
+          mty' <- atCurrentSubst mty
+          e' <- specExp e ty'
+          return $ Let ct i' mty' (Just e')
+        else do
+          e' <- specExp e ty'
+          subst' <- getSpSubst
+          i'' <- atCurrentSubst i
+          let ty'' = idType i''
+          ensureClosed ty'' stmt subst'
+          mty' <- atCurrentSubst mty
+          return $ Let ct i'' mty' (Just e')
 specStmt (Block body) =
   Block <$> specBody body
 specStmt (StmtExp e) = do
