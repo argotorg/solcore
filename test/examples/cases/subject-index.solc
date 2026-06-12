@@ -71,7 +71,7 @@ instance StructField(MintCtx, balances_sel):CStructField(mapping(word,word), ())
 
    }
 contract Map {
-   function main () {
+   public function main () {
       mint(1000);
    }
 }

@@ -46,6 +46,7 @@ export {
   allocateDynamicArray,
   address(*),
   allocate_memory,
+  allocate_zeroed_memory,
   and,
   assert,
   byte(*),
@@ -85,6 +86,7 @@ export {
   memberAccessBase,
   memory(*),
   msg,
+  memory_ref,
   mload,
   mstore,
   ne,
@@ -104,6 +106,7 @@ export {
   set_free_memory,
   sha256,
   slice(*),
+  slice_,
   sloadViaWord,
   sload_,
   sstore_,
@@ -114,12 +117,14 @@ export {
   strlen,
   strlenLit,
   subWord,
+  truncate,
   toWord,
   to_bytes,
   tobool,
   tx,
   uint256(*),
-  unimplemented
+  unimplemented,
+  zeroize_memory
 };
 
 /*
@@ -378,6 +383,7 @@ class a:Num {
   function maxVal() -> a;
   function toWord(x:a) -> word;
   function fromWord(x:word) -> a;
+  function fromInteger(comptime x:integer) -> comptime a;
   function add(x:a, y:a) -> a;
   function sub(x:a, y:a) -> a;
   function gt(x:a, y:a) -> bool;
@@ -388,6 +394,7 @@ default instance a:Num {
   function maxVal() -> a { return Bounded.maxVal(); }
   function toWord(x:a) -> word { return Typedef.rep(x); }
   function fromWord(x:word) -> a { return Typedef.abs(x); }
+  function fromInteger(comptime x:integer) -> comptime a { return Typedef.abs(wordFromInteger(x)); }
   function add(x:a, y:a) -> a { return Add.add(x,y); }
   function sub(x:a, y:a) -> a { return Sub.sub(x,y); }
   function gt(x: a, y: a) -> bool { return Ord.gt(x, y); }
@@ -508,13 +515,17 @@ instance word:Sub {
     }
 }
 
+function mulWord(l: word, r: word) -> word {
+    let rw : word;
+    assembly {
+        rw := mul(l,r)
+    }
+    return rw;
+}
+
 instance word:Mul {
     function mul(l: word, r: word) -> word {
-        let rw : word;
-        assembly {
-            rw := mul(l,r)
-        }
-        return rw;
+        return mulWord(l, r);
     }
 }
 
@@ -535,6 +546,36 @@ instance word : Mod {
       res := mod(l,r)
     }
     return res;
+  }
+}
+
+instance integer : Eq {
+  function eq(x : integer, y : integer) -> bool {
+    return integerEq(x, y);
+  }
+}
+
+instance integer : Ord {
+  function gt(x : integer, y : integer) -> bool {
+    return integerLt(y, x);
+  }
+}
+
+instance integer : Add {
+  function add(l : integer, r : integer) -> integer {
+    return integerAdd(l, r);
+  }
+}
+
+instance integer : Sub {
+  function sub(l : integer, r : integer) -> integer {
+    return integerSub(l, r);
+  }
+}
+
+instance integer : Mul {
+  function mul(l : integer, r : integer) -> integer {
+    return integerMul(l, r);
   }
 }
 
@@ -932,7 +973,7 @@ function strlen(s:memory(string)) -> word {
 }
 
 
-// --- Free Memory Pointer ---
+// --- Memory Utilities ---
 
 // Memory in solidity is bump allocated in a single arena
 // The word stored in memory at index 0x40 is used to store the start of the currently unused memory region
@@ -947,10 +988,34 @@ function set_free_memory(loc : word) -> () {
     mstore(0x40, loc);
 }
 
+// Allocate memory and update the memory pointer.
 function allocate_memory(size : word) -> word {
     let ptr = get_free_memory();
     set_free_memory(ptr + size);
     return ptr;
+}
+
+function allocate_zeroed_memory(size: word) -> word {
+    let ptr = allocate_memory(size);
+    zeroize_memory(ptr, size);
+    return ptr;
+}
+
+// Clears a memory area.
+function zeroize_memory(ptr: word, len: word) -> () {
+    assembly {
+        let end_ptr := add(ptr, len)
+
+        // Zero out 32-byte words.
+        let words := div(len, 32)
+        for { let i := 0 } lt(i, words) { i := add(i, 1) } {
+            mstore(ptr, 0)
+            ptr := add(ptr, 32)
+        }
+
+        // Zero out trailing bytes. We rely on the zero-slot (0x60-0x7f).
+        mcopy(ptr, 0x60, sub(end_ptr, ptr))
+    }
 }
 
 // --- Indexable Types ---
@@ -1578,7 +1643,7 @@ forall reader baseType baseType_decoded .baseType : ABIAttribs, reader:WordReade
         arrayPtr = WordReader.advance(arrayPtr, 32);
         let prx : Proxy(baseType_decoded);
         let result : memory(DynArray(baseType_decoded)) = allocateDynamicArray(prx, length);
-        let offset = 0;
+        let offset : word = 0;
         let prx : Proxy(baseType);
         let elementHeadSize : word = ABIAttribs.headSize(prx);
 
@@ -2207,41 +2272,74 @@ instance empty:MemoryEncode {
     }
 }
 
-function zeroize_memory(ptr: word, len: word) -> () {
-    assembly {
-        let end_ptr := add(ptr, len)
+// --- Memory Slices ---
 
-        // Zero out 32-byte words.
-        let words := div(len, 32)
-        for { let i := 0 } lt(i, words) { i := add(i, 1) } {
-            mstore(ptr, 0)
-            ptr := add(ptr, 32)
+// This is a very cheap abstraction over a memory area of [ptr, ptr+len)
+// No type information is preserved.
+data memory_ref = memory_ref(word, word);
+
+instance memory_ref:MemorySize {
+    function len(v: memory_ref) -> word {
+        match v {
+            | memory_ref(ptr, len) => return len;
         }
-
-        // Zero out trailing bytes. We rely on the zero-slot (0x60-0x7f).
-        mcopy(ptr, 0x60, sub(end_ptr, ptr))
     }
+}
+
+instance memory_ref:MemoryPointer {
+    function ptr(v: memory_ref) -> word {
+        match v {
+            | memory_ref(ptr, len) => return ptr;
+        }
+    }
+}
+
+instance memory_ref:MemoryEncode {
+    function encodeInto(v: memory_ref, target: word) -> () {
+        match v {
+            | memory_ref(ptr, len) => assembly { mcopy(target, ptr, len) }
+        }
+    }
+}
+
+forall a . a:MemorySize, a:MemoryPointer =>
+function slice_(input: a, start: word) -> memory_ref {
+    let len = MemorySize.len(input);
+    // TODO: should this allow (it does now) a zero-length slice?
+    require(len >= start, Error(0xb4120f14)); // OutOfBounds()
+    let ptr_ = MemoryPointer.ptr(input);
+    return memory_ref(ptr_ + start, len - start);
+}
+
+forall a . a:MemorySize, a:MemoryPointer =>
+function truncate(input: a, end: word) -> memory_ref {
+    let len = MemorySize.len(input);
+    // TODO: should this allow (it does now) a zero-length slice?
+    require(len >= end, Error(0xb4120f14)); // OutOfBounds()
+    return memory_ref(MemoryPointer.ptr(input), end);
 }
 
 // --- Hashing ---
 
 // NOTE: keccak256 name conflicts with assembly namespace
-function keccak256_(input: memory(bytes)) -> bytes32 {
-    let ptr : word = Typedef.rep(input);
+forall a . a:MemorySize, a:MemoryPointer => function keccak256_(input: a) -> bytes32 {
+    let len : word = MemorySize.len(input);
+    let ptr : word = MemoryPointer.ptr(input);
     let res : word;
     assembly {
-        res := keccak256(add(ptr, 32), mload(ptr))
+        res := keccak256(ptr, len)
     }
     return bytes32(res);
 }
 
-function sha256(input: memory(bytes)) -> bytes32 {
-    let ptr : word = Typedef.rep(input);
+forall a . a:MemorySize, a:MemoryPointer => function sha256(input: a) -> bytes32 {
+    let len : word = MemorySize.len(input);
+    let ptr : word = MemoryPointer.ptr(input);
     let res : word;
     // We assume the [0, 32] scratch space is reserved.
     // TODO: add specific error code
     assembly {
-        let ret := staticcall(gas(), 2, add(ptr, 32), mload(ptr), 0, 32)
+        let ret := staticcall(gas(), 2, ptr, len, 0, 32)
         if iszero(ret) {
             revert(0, 0)
         }
@@ -2250,13 +2348,14 @@ function sha256(input: memory(bytes)) -> bytes32 {
     return bytes32(res);
 }
 
-function ripemd160(input: memory(bytes)) -> bytes32 {
-    let ptr : word = Typedef.rep(input);
+forall a . a:MemorySize, a:MemoryPointer => function ripemd160(input: a) -> bytes32 {
+    let len : word = MemorySize.len(input);
+    let ptr : word = MemoryPointer.ptr(input);
     let res : word;
     // We assume the [0, 32] scratch space is reserved.
     // TODO: add specific error code
     assembly {
-        let ret := staticcall(gas(), 3, add(ptr, 32), mload(ptr), 0, 32)
+        let ret := staticcall(gas(), 3, ptr, len, 0, 32)
         if iszero(ret) {
             revert(0, 0)
         }

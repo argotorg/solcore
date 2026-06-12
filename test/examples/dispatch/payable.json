@@ -5,10 +5,14 @@
     "tests": [
       {
         "input": {
+          "text-calldata": "non-payable constructor accepts zero value",
           "calldata": "",
           "value": "0"
         },
-        "kind": "constructor"
+        "kind": "constructor",
+        "output": {
+          "status": "success"
+        }
       },
       {
         "input": {

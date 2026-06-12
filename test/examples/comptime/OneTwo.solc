@@ -23,6 +23,6 @@ function two () -> word {
 }
 
 contract OneTwo {
-  function main() -> word { return two(); }
+  public function main() -> word { return two(); }
 }
 

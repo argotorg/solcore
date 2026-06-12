@@ -7,7 +7,7 @@ function copyToMem(reader:MemoryWordReader, dst:word, cnt: word) -> () {
 }
 
 contract Main {
-  function main() -> () {
+  public function main() -> () {
     let r : MemoryWordReader = MemoryWordReader(42);
     copyToMem(r, 0, 32);
   }

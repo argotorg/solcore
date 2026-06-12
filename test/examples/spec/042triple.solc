@@ -1,12 +1,12 @@
 contract Triple {
 
-  function asel(t : (word, word, word)) -> word {
+  public function asel(t : (word, word, word)) -> word {
     match t {
       | (a,b,c) => return c;
     }
   }
 
-  function main() -> word {
+  public function main() -> word {
     return asel((1,21,42));
   }
 }

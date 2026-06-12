@@ -128,16 +128,23 @@ function main() -> () {
   let y : word = 0;
   let z : memory(array(word)) = memory(0);
 
+  let i0 : word = 0;
+  let i1 : word = 1;
+  let i2 : word = 2;
+  let i3 : word = 3;
+  let i4 : word = 4;
+  let i5 : word = 5;
+
   // y = z[0]
-  y = RValueIdxAccess.lookup((z, 0));
+  y = RValueIdxAccess.lookup((z, i0));
 
   //y = x[0][1]
-  y = RValueIdxAccess.lookup((RValueIdxAccess.lookup((x, 0)), 1));
+  y = RValueIdxAccess.lookup((RValueIdxAccess.lookup((x, i0)), i1));
 
   //x[2][3] = x[5][4]
   Assign.assign(
     // TODO: R or L for the x[2] lookup?
-    LValueIdxAccess.lookup((RValueIdxAccess.lookup((x, 2)), 3)),
-    RValueIdxAccess.lookup((RValueIdxAccess.lookup((x, 5)), 4))
+    LValueIdxAccess.lookup((RValueIdxAccess.lookup((x, i2)), i3)),
+    RValueIdxAccess.lookup((RValueIdxAccess.lookup((x, i5)), i4))
   );
 }

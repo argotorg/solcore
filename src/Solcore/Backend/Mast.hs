@@ -21,6 +21,12 @@ deployerName :: Name
 deployerName = fromString "_start"
 
 -----------------------------------------------------------------------
+-- Comptime flag
+-----------------------------------------------------------------------
+
+type ComptimeFlag = Bool
+
+-----------------------------------------------------------------------
 -- Types: no TyVar, no Meta — only type constructors
 -----------------------------------------------------------------------
 
@@ -75,6 +81,7 @@ data MastContractDecl
 data MastFunDef = MastFunDef
   { mastFunName :: Name,
     mastFunParams :: [MastParam],
+    mastFunRetComptime :: ComptimeFlag,
     mastFunReturn :: MastTy,
     mastFunBody :: [MastStmt]
   }
@@ -82,6 +89,7 @@ data MastFunDef = MastFunDef
 
 data MastParam = MastParam
   { mastParamName :: Name,
+    mastParamComptime :: ComptimeFlag,
     mastParamType :: MastTy
   }
   deriving (Eq, Ord, Show)
@@ -92,7 +100,7 @@ data MastParam = MastParam
 
 data MastStmt
   = MastAssign MastId MastExp
-  | MastLet MastId (Maybe MastTy) (Maybe MastExp)
+  | MastLet ComptimeFlag MastId (Maybe MastTy) (Maybe MastExp)
   | MastStmtExp MastExp
   | MastReturn MastExp
   | MastMatch MastExp [MastAlt]
@@ -124,6 +132,7 @@ data MastPat
   | MastPCon MastId [MastPat]
   | MastPWildcard
   | MastPLit Literal
+  | MastPExp MastExp -- comptime expression label; must be evaluated by MastEval
   deriving (Eq, Ord, Show)
 
 -----------------------------------------------------------------------
@@ -201,23 +210,23 @@ instance Pretty MastContractDecl where
   ppr (MastCMutualDecl ds) = vcat (map ppr ds)
 
 instance Pretty MastFunDef where
-  ppr (MastFunDef n ps ret bd) =
+  ppr (MastFunDef n ps ct ret bd) =
     text "function"
       <+> ppr n
       <+> parens (commaSep (map ppr ps))
       <+> text "->"
-      <+> ppr ret
+      <+> (if ct then text "comptime" <+> ppr ret else ppr ret)
       <+> lbrace
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace
 
 instance Pretty MastParam where
-  ppr (MastParam n t) = ppr n <+> colon <+> ppr t
+  ppr (MastParam n ct t) = (if ct then text "comptime" <+> ppr n else ppr n) <+> colon <+> ppr t
 
 instance Pretty MastStmt where
   ppr (MastAssign i e) = ppr i <+> equals <+> ppr e <+> semi
-  ppr (MastLet i ty m) =
-    text "let" <+> ppr i <+> pprOptMastTy ty <+> pprMastInit m
+  ppr (MastLet ct i ty m) =
+    (if ct then text "let comptime" else text "let") <+> ppr i <+> pprOptMastTy ty <+> pprMastInit m
   ppr (MastStmtExp e) = ppr e >< semi
   ppr (MastReturn e) = text "return" <+> ppr e >< semi
   ppr (MastMatch e alts) =
@@ -275,6 +284,7 @@ instance Pretty MastPat where
     | otherwise = ppr n >< parens (commaSep $ map ppr ps)
   ppr MastPWildcard = text "_"
   ppr (MastPLit l) = ppr l
+  ppr (MastPExp e) = text "comptime" <+> ppr e
 
 -----------------------------------------------------------------------
 -- Helpers (shared with SolcorePretty)

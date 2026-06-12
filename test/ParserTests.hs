@@ -247,12 +247,12 @@ exprTests =
         parsesAs
           expP
           "lam(x:word) -> word { return x; }"
-          (Lam [Typed "x" word] [Return (var "x")] (Just word)),
+          (Lam [Typed False "x" word] [Return (var "x")] (Just word)),
       testCase "lambda without return type" $
         parsesAs
           expP
           "lam(x:word) { return x; }"
-          (Lam [Typed "x" word] [Return (var "x")] Nothing)
+          (Lam [Typed False "x" word] [Return (var "x")] Nothing)
     ]
 
 stmtTests :: TestTree
@@ -260,13 +260,13 @@ stmtTests =
   testGroup
     "Statements"
     [ testCase "let no type no init" $
-        parsesAs stmtP "let x;" (Let "x" Nothing Nothing),
+        parsesAs stmtP "let x;" (Let False "x" Nothing Nothing),
       testCase "let with type" $
-        parsesAs stmtP "let x : word;" (Let "x" (Just word) Nothing),
+        parsesAs stmtP "let x : word;" (Let False "x" (Just word) Nothing),
       testCase "let with init" $
-        parsesAs stmtP "let x = 42;" (Let "x" Nothing (Just (lit 42))),
+        parsesAs stmtP "let x = 42;" (Let False "x" Nothing (Just (lit 42))),
       testCase "let with type and init" $
-        parsesAs stmtP "let x : word = 42;" (Let "x" (Just word) (Just (lit 42))),
+        parsesAs stmtP "let x : word = 42;" (Let False "x" (Just word) (Just (lit 42))),
       testCase "return literal" $
         parsesAs stmtP "return 0;" (Return (lit 0)),
       testCase "return expression" $
@@ -299,13 +299,13 @@ stmtTests =
       testCase "empty block" $
         parsesAs stmtP "{}" (Block []),
       testCase "block with statement" $
-        parsesAs stmtP "{ let x = 1; }" (Block [Let "x" Nothing (Just (lit 1))]),
+        parsesAs stmtP "{ let x = 1; }" (Block [Let False "x" Nothing (Just (lit 1))]),
       testCase "for loop" $
         parsesAs
           stmtP
           "for (let i = 0; i < 10; i = i + 1) { }"
           ( For
-              (Let "i" Nothing (Just (lit 0)))
+              (Let False "i" Nothing (Just (lit 0)))
               (ExpLT (var "i") (lit 10))
               (Assign (var "i") (ExpPlus (var "i") (lit 1)))
               []
@@ -335,7 +335,7 @@ stmtTests =
           stmtP
           "for (let i = 0; i < 10; ) { }"
           ( For
-              (Let "i" Nothing (Just (lit 0)))
+              (Let False "i" Nothing (Just (lit 0)))
               (ExpLT (var "i") (lit 10))
               EmptyStmt
               []
@@ -379,7 +379,8 @@ declTests =
           "function answer() -> word { return 42; }"
           ( TFunDef
               ( FunDef
-                  (Signature [] [] "answer" [] (Just word) False)
+                  False
+                  (Signature [] [] "answer" [] False (Just word) False)
                   [Return (lit 42)]
               )
           ),
@@ -389,7 +390,8 @@ declTests =
           "function id(x:word) -> word { return x; }"
           ( TFunDef
               ( FunDef
-                  (Signature [] [] "id" [Typed "x" word] (Just word) False)
+                  False
+                  (Signature [] [] "id" [Typed False "x" word] False (Just word) False)
                   [Return (var "x")]
               )
           ),
@@ -399,7 +401,8 @@ declTests =
           "function answer() -> word { 42 }"
           ( TFunDef
               ( FunDef
-                  (Signature [] [] "answer" [] (Just word) False)
+                  False
+                  (Signature [] [] "answer" [] False (Just word) False)
                   [Return (lit 42)]
               )
           ),
@@ -409,11 +412,13 @@ declTests =
           "forall a. function id(x:a) -> a { return x; }"
           ( TFunDef
               ( FunDef
+                  False
                   ( Signature
                       [TyCon "a" []]
                       []
                       "id"
-                      [Typed "x" (TyCon "a" [])]
+                      [Typed False "x" (TyCon "a" [])]
+                      False
                       (Just (TyCon "a" []))
                       False
                   )
@@ -426,11 +431,13 @@ declTests =
           "forall a. a:Eq => function eqSelf(x:a) -> bool { return x == x; }"
           ( TFunDef
               ( FunDef
+                  False
                   ( Signature
                       [TyCon "a" []]
                       [InCls "Eq" (TyCon "a" []) []]
                       "eqSelf"
-                      [Typed "x" (TyCon "a" [])]
+                      [Typed False "x" (TyCon "a" [])]
+                      False
                       (Just bool)
                       False
                   )
@@ -489,7 +496,8 @@ declTests =
                       []
                       []
                       "eq"
-                      [Typed "x" (TyCon "a" []), Typed "y" (TyCon "a" [])]
+                      [Typed False "x" (TyCon "a" []), Typed False "y" (TyCon "a" [])]
+                      False
                       (Just bool)
                       False
                   ]
@@ -510,7 +518,8 @@ declTests =
                       []
                       []
                       "cmp"
-                      [Typed "x" (TyCon "a" []), Typed "y" (TyCon "a" [])]
+                      [Typed False "x" (TyCon "a" []), Typed False "y" (TyCon "a" [])]
+                      False
                       (Just word)
                       False
                   ]
@@ -529,7 +538,8 @@ declTests =
                   []
                   word
                   [ FunDef
-                      (Signature [] [] "eq" [Typed "x" word, Typed "y" word] (Just bool) False)
+                      False
+                      (Signature [] [] "eq" [Typed False "x" word, Typed False "y" word] False (Just bool) False)
                       [Return (ExpEE (var "x") (var "y"))]
                   ]
               )
@@ -547,13 +557,15 @@ declTests =
                   []
                   (TyCon "pair" [TyCon "a" [], TyCon "a" []])
                   [ FunDef
+                      False
                       ( Signature
                           []
                           []
                           "eq"
-                          [ Typed "x" (TyCon "pair" [TyCon "a" [], TyCon "a" []]),
-                            Typed "y" (TyCon "pair" [TyCon "a" [], TyCon "a" []])
+                          [ Typed False "x" (TyCon "pair" [TyCon "a" [], TyCon "a" []]),
+                            Typed False "y" (TyCon "pair" [TyCon "a" [], TyCon "a" []])
                           ]
+                          False
                           (Just bool)
                           False
                       )
@@ -586,10 +598,35 @@ declTests =
                   []
                   [ CFunDecl
                       ( FunDef
-                          (Signature [] [] "get" [] (Just word) False)
+                          False
+                          (Signature [] [] "get" [] False (Just word) False)
                           [Return (var "x")]
                       )
                   ]
               )
-          )
+          ),
+      testCase "contract with public function" $
+        parsesAs
+          topDeclP
+          "contract C { public function get() -> word { return x; } }"
+          ( TContr
+              ( Contract
+                  "C"
+                  []
+                  [ CFunDecl
+                      ( FunDef
+                          True
+                          (Signature [] [] "get" [] False (Just word) False)
+                          [Return (var "x")]
+                      )
+                  ]
+              )
+          ),
+      -- `public` is only meaningful inside a contract; reject it elsewhere.
+      testCase "top-level public function fails" $
+        parseFails topDeclP "public function get() -> word { return 0; }",
+      testCase "public instance method fails" $
+        parseFails
+          topDeclP
+          "instance word:Eq { public function eq(x:word, y:word) -> bool { return x == y; } }"
     ]

@@ -22,7 +22,8 @@ import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv (TcEnv (typeTable), TypeInfo (..))
 import Solcore.Frontend.TypeInference.TcUnify (typesDoNotUnify)
-import Solcore.Primitives.Primitives
+import Solcore.Primitives.Primitives hiding (integer)
+import Solcore.Primitives.Primitives qualified as Prim
 
 -- ** Specialisation state and monad
 
@@ -296,7 +297,7 @@ addMethodResolution cname ty fd = do
         Name s -> QualName cname s
   let name' = specName qname [ty]
   let funType = typeOfTcFunDef fd
-  let fd' = FunDef sig {sigName = name'} (funDefBody fd)
+  let fd' = FunDef (funIsPublic fd) sig {sigName = name'} (funDefBody fd)
   addResolution qname funType fd'
   debug ["+ addMethodResolution: ", show qname, " / ", show name', " : ", pretty funType]
 
@@ -346,8 +347,30 @@ specConApp i@(Id _n conTy) args ty = do
 
 -- | Specialise a function call
 -- given actual arguments and the expected result type
+-- Compiler builtins that are monomorphic and have no function body to
+-- specialise.  Pass through with args specialised at their declared types.
+-- Derived from Primitives.integerPrimNames (single source of truth shared
+-- with MastEval.builtinPureFuns).
+comptimeBuiltins :: [Name]
+comptimeBuiltins = integerPrimNames
+
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revertLit") _) args _ = pure (i, args) -- FIXME
+specCall i@(Id (Name "revertLit") _) args _ = pure (i, args)
+specCall (Id (QualName (Name "std") "revertLit") ty) args _ = pure (Id (Name "revertLit") ty, args)
+-- Int.fromInteger coercion: resolve to the appropriate primitive based on result type.
+-- integer -> word    becomes wordFromInteger (handled by MastEval)
+-- integer -> integer is identity (handled by MastEval)
+specCall (Id (QualName (Name "Int") "fromInteger") ty) args _ = do
+  args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+  s <- getSpSubst
+  let resultTy = snd (splitTy (applytv s ty))
+  if resultTy == word
+    then pure (Id (Name "wordFromInteger") (Prim.integer :-> word), args')
+    else pure (Id (QualName (Name "Int") "fromInteger") (Prim.integer :-> resultTy), args')
+specCall i args _ty
+  | idName i `elem` comptimeBuiltins = do
+      args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+      pure (i, args')
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
@@ -415,10 +438,10 @@ specFunDef fd0 = withLocalState do
     Nothing -> do
       let sig' = applytv subst (funSignature fd)
       -- add a placeholder first to break loops
-      let placeholder = FunDef sig' []
+      let placeholder = FunDef (funIsPublic fd) sig' []
       addSpecialisation name' placeholder
       body' <- specBody (funDefBody fd)
-      let fd' = FunDef sig' {sigName = name'} body'
+      let fd' = FunDef (funIsPublic fd) sig' {sigName = name'} body'
       debug ["+ specFunDef: adding specialisation ", show name', " : ", pretty ty']
       addSpecialisation name' fd'
       return name'
@@ -493,7 +516,7 @@ specStmt stmt@(Var i := e) = do
   e' <- specExp e ty'
   debug ["< specExp (:=): ", pretty e']
   return $ Var i' := e'
-specStmt stmt@(Let i mty mexp) = do
+specStmt stmt@(Let ct i mty mexp) = do
   subst <- getSpSubst
   debug ["> specStmt (Let): ", pretty i, " : ", pretty (idType i), " @ ", pretty subst]
   i' <- atCurrentSubst i
@@ -501,8 +524,8 @@ specStmt stmt@(Let i mty mexp) = do
   ensureClosed ty' stmt subst
   mty' <- atCurrentSubst mty
   case mexp of
-    Nothing -> return $ Let i' mty' Nothing
-    Just e -> Let i' mty' . Just <$> specExp e ty'
+    Nothing -> return $ Let ct i' mty' Nothing
+    Just e -> Let ct i' mty' . Just <$> specExp e ty'
 specStmt (Block body) =
   Block <$> specBody body
 specStmt (StmtExp e) = do
@@ -539,8 +562,15 @@ specMatch exps alts = do
       -- debug ["specAlt, pattern: ", show pat]
       -- debug ["specAlt, body: ", show body]
       body' <- specBody body
-      pat' <- atCurrentSubst pat
+      pat' <- mapM specPat =<< atCurrentSubst pat
       return (pat', body')
+    -- Specialize function calls inside PExp patterns.
+    -- Other pattern forms only need type substitution (handled by atCurrentSubst).
+    specPat :: Pat Id -> SM (Pat Id)
+    specPat (PExp e) = do
+      ty <- atCurrentSubst (typeOfTcExp e)
+      PExp <$> specExp e ty
+    specPat p = pure p
     specScruts = mapM specScrut
     specScrut e = do
       ty <- atCurrentSubst (typeOfTcExp e)
@@ -586,7 +616,7 @@ typeOfTcExp e@(Con i args) = go (idType i) args
     go ty [] = ty
     go (_ :-> u) (_ : as) = go u as
     go _ _ = error $ "typeOfTcExp: " ++ show e
-typeOfTcExp (Lit (IntLit _)) = word
+typeOfTcExp (Lit (IntLit _)) = Prim.integer
 typeOfTcExp (Lit (StrLit _)) = string
 typeOfTcExp expr@(Call Nothing i args) = applyTo args funTy
   where
@@ -613,8 +643,8 @@ typeOfTcExp (TyExp _ ty) = ty
 typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
 
 typeOfTcParam :: Param Id -> Ty
-typeOfTcParam (Typed i _t) = idType i -- seems better than t - see issue #6
-typeOfTcParam (Untyped i) = idType i
+typeOfTcParam (Typed _ i _t) = idType i -- seems better than t - see issue #6
+typeOfTcParam (Untyped _ i) = idType i
 
 typeOfTcSignature :: Signature Id -> Ty
 typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) returnType
@@ -624,17 +654,17 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) returnType
       Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
 
 schemeOfTcSignature :: Signature Id -> Scheme
-schemeOfTcSignature sig@(Signature vs ps _n args (Just rt) _) =
+schemeOfTcSignature sig@(Signature vs ps _n args _ (Just rt) _) =
   case mapM getType args of
     Just ts -> Forall vs (ps :=> (funtype ts rt))
     Nothing -> error $ unwords ["Invalid instance member signature:", pretty sig]
   where
-    getType (Typed _ t) = Just t
+    getType (Typed _ _ t) = Just t
     getType _ = Nothing
 schemeOfTcSignature sig = error ("no return type in signature of: " ++ show (sigName sig))
 
 typeOfTcFunDef :: TcFunDef -> Ty
-typeOfTcFunDef (FunDef sig _) = typeOfTcSignature sig
+typeOfTcFunDef (FunDef _ sig _) = typeOfTcSignature sig
 
 pprRes :: Resolution -> Doc
 -- type Resolution = (Ty, FunDef Id)
@@ -786,7 +816,7 @@ instance HasTV (FunDef Id) where
     subst <- foldM addRenaming mempty (sigVars sig)
     let sig' = applytv subst sig
     let body' = applytv subst (funDefBody fd)
-    pure (FunDef sig' body', subst)
+    pure (FunDef (funIsPublic fd) sig' body', subst)
 
 addRenaming :: TVSubst -> Tyvar -> SM TVSubst
 addRenaming b a = do
@@ -843,10 +873,11 @@ toMastContractDecl (CMutualDecl ds) = MastCMutualDecl (map toMastContractDecl ds
 toMastContractDecl d = error $ "toMastContractDecl: unexpected " ++ show d
 
 toMastFunDef :: FunDef Id -> MastFunDef
-toMastFunDef (FunDef sig body) =
+toMastFunDef (FunDef _ sig body) =
   MastFunDef
     { mastFunName = sigName sig,
       mastFunParams = map toMastParam (sigParams sig),
+      mastFunRetComptime = sigRetComptime sig,
       mastFunReturn = case sigReturn sig of
         Just t -> toMastTy t
         Nothing -> error $ "toMastFunDef: no return type for " ++ show (sigName sig),
@@ -854,13 +885,13 @@ toMastFunDef (FunDef sig body) =
     }
 
 toMastParam :: Param Id -> MastParam
-toMastParam p = MastParam (idName i) (toMastTy (idType i))
+toMastParam p = MastParam (idName i) (paramComptime p) (toMastTy (idType i))
   where
     i = getParamId p
 
 getParamId :: Param Id -> Id
-getParamId (Typed i _) = i
-getParamId (Untyped i) = i
+getParamId (Typed _ i _) = i
+getParamId (Untyped _ i) = i
 
 toMastTy :: Ty -> MastTy
 toMastTy = tyToMast
@@ -870,7 +901,7 @@ toMastId (Id n t) = MastId n (toMastTy t)
 
 toMastStmt :: Stmt Id -> MastStmt
 toMastStmt (Var i := e) = MastAssign (toMastId i) (toMastExp e)
-toMastStmt (Let i mty me) = MastLet (toMastId i) (fmap toMastTy mty) (fmap toMastExp me)
+toMastStmt (Let ct i mty me) = MastLet ct (toMastId i) (fmap toMastTy mty) (fmap toMastExp me)
 toMastStmt (StmtExp e) = MastStmtExp (toMastExp e)
 toMastStmt (Return e) = MastReturn (toMastExp e)
 toMastStmt (Match [scrutinee] alts) = MastMatch (toMastExp scrutinee) (map toMastAlt alts)
@@ -906,3 +937,4 @@ toMastPat (PVar i) = MastPVar (toMastId i)
 toMastPat (PCon i ps) = MastPCon (toMastId i) (map toMastPat ps)
 toMastPat PWildcard = MastPWildcard
 toMastPat (PLit l) = MastPLit l
+toMastPat (PExp e) = MastPExp (toMastExp e)

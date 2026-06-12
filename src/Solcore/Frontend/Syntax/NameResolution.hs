@@ -116,7 +116,7 @@ topLevelTypeNames = concatMap collect
 topLevelTermNames :: [S.TopDecl] -> [Name]
 topLevelTermNames = concatMap collect
   where
-    collect (S.TFunDef (S.FunDef sig _)) = [S.sigName sig]
+    collect (S.TFunDef (S.FunDef _ sig _)) = [S.sigName sig]
     collect (S.TDataDef (S.DataTy tyCon _ cons)) =
       map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
@@ -124,7 +124,7 @@ topLevelTermNames = concatMap collect
 contractTermNames :: [S.ContractDecl] -> [Name]
 contractTermNames = concatMap collect
   where
-    collect (S.CFunDecl (S.FunDef sig _)) = [S.sigName sig]
+    collect (S.CFunDecl (S.FunDef _ sig _)) = [S.sigName sig]
     collect (S.CDataDecl (S.DataTy tyCon _ cons)) =
       map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
@@ -219,7 +219,7 @@ addContractDecl (S.CDataDecl (S.DataTy n _ cons)) =
     mapM_ (addDataCon n . S.constrName) cons
 addContractDecl (S.CFieldDecl (S.Field n _ _)) =
   addField n
-addContractDecl (S.CFunDecl (S.FunDef sig _)) =
+addContractDecl (S.CFunDecl (S.FunDef _ sig _)) =
   addFunctionName (S.sigName sig)
 addContractDecl _ = pure ()
 
@@ -238,13 +238,13 @@ instance Resolve S.ContractDecl where
 instance Resolve S.Constructor where
   type Result S.Constructor = Constructor Name
 
-  resolve c@(S.Constructor ps bdy) =
+  resolve c@(S.Constructor ps bdy payable) =
     withLocalCtx $ do
       ps' <- resolve ps `wrapError` c
       let args = map paramName ps'
       mapM_ addParameter args
       bdy' <- resolve bdy `wrapError` c
-      pure (Constructor ps' bdy')
+      pure (Constructor ps' bdy' payable)
 
 instance Resolve S.Field where
   type Result S.Field = Field Name
@@ -278,7 +278,7 @@ instance Resolve S.Class where
 instance Resolve S.Signature where
   type Result S.Signature = Signature Name
 
-  resolve s@(S.Signature vs ctx n ps mt pay) =
+  resolve s@(S.Signature vs ctx n ps rc mt pay) =
     withLocalCtx $ do
       let ns = map tyconName vs
       mapM_ addTyVar ns
@@ -286,7 +286,7 @@ instance Resolve S.Signature where
       ps' <- resolve ps `wrapError` s
       mt' <- resolve mt `wrapError` s
       let vs' = map TVar ns
-      pure (Signature vs' ctx' n ps' mt' pay)
+      pure (Signature vs' ctx' n ps' rc mt' pay)
 
 instance Resolve S.Instance where
   type Result S.Instance = Instance Name
@@ -309,8 +309,8 @@ instance Resolve S.Instance where
 instance Resolve S.Param where
   type Result S.Param = Param Name
 
-  resolve (S.Typed n t) = Typed n <$> resolve t
-  resolve (S.Untyped n) = pure (Untyped n)
+  resolve (S.Typed c n t) = Typed c n <$> resolve t
+  resolve (S.Untyped c n) = pure (Untyped c n)
 
 instance Resolve S.Pragma where
   type Result S.Pragma = Pragma
@@ -338,7 +338,7 @@ instance Resolve S.PragmaStatus where
 instance Resolve S.FunDef where
   type Result S.FunDef = FunDef Name
 
-  resolve f@(S.FunDef (S.Signature vs ctx n ps mt pay) bds) =
+  resolve f@(S.FunDef isPub (S.Signature vs ctx n ps rc mt pay) bds) =
     do
       let ns = map tyconName vs
       withLocalCtx $ do
@@ -350,8 +350,8 @@ instance Resolve S.FunDef where
         mapM_ addParameter args
         bds' <- resolve bds `wrapError` f
         let vs' = map TVar ns
-            sig = Signature vs' ctx' n ps' mt' pay
-        pure (FunDef sig bds')
+            sig = Signature vs' ctx' n ps' rc mt' pay
+        pure (FunDef isPub sig bds')
 
 instance Resolve S.Stmt where
   type Result S.Stmt = Stmt Name
@@ -365,12 +365,12 @@ instance Resolve S.Stmt where
     (:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs)
   resolve (S.StmtMinusEq lhs rhs) =
     (:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs)
-  resolve s@(S.Let n mt me) =
+  resolve s@(S.Let c n mt me) =
     do
       mt' <- resolve mt `wrapError` s
       me' <- resolve me `wrapError` s
       addLocalVar n
-      pure (Let n mt' me')
+      pure (Let c n mt' me')
   resolve (S.Block blk) =
     withLocalCtx (Block <$> resolve blk)
   resolve s@(S.StmtExp e) =
@@ -399,6 +399,7 @@ instance Resolve S.Pat where
 
   resolve S.PWildcard = pure PWildcard
   resolve (S.PLit l) = PLit <$> resolve l
+  resolve (S.PExp e) = PExp <$> resolve e
   resolve p@(S.PatDot n ps) = do
     ps' <- resolve ps `wrapError` p
     pure (PCon (dotConstructorMarker n) ps')
@@ -874,13 +875,14 @@ emptyEnv =
     ( Map.fromList
         [ (Name "word", TTyCon),
           (Name "bool", TTyCon),
+          (Name "integer", TTyCon),
           (Name "()", TTyCon),
           (Name "->", TTyCon),
           (Name "pair", TTyCon),
           (Name "sum", TTyCon)
         ]
     )
-    (Map.fromList [(Name "invokable", TClass)])
+    (Map.fromList [(Name "invokable", TClass), (Name "Int", TClass)])
     Map.empty
     ( Map.fromList
         [ (Name "true", TDataCon),
@@ -891,7 +893,15 @@ emptyEnv =
           (Name "inr", TDataCon),
           (Name "invoke", TFunction),
           (Name "primAddWord", TFunction),
-          (Name "primEqWord", TFunction)
+          (Name "primEqWord", TFunction),
+          (Name "wordToInteger", TFunction),
+          (Name "wordFromInteger", TFunction),
+          (Name "integerAdd", TFunction),
+          (Name "integerSub", TFunction),
+          (Name "integerMul", TFunction),
+          (Name "integerLt", TFunction),
+          (Name "integerEq", TFunction),
+          (QualName (Name "Int") "fromInteger", TFunction)
         ]
     )
 
@@ -929,7 +939,7 @@ addTopDecl :: S.TopDecl -> Env -> Env
 addTopDecl (S.TContr (S.Contract n _ _)) env =
   addQualifiedModules n $
     env {typeEnv = Map.insert n TContract (typeEnv env)}
-addTopDecl (S.TFunDef (S.FunDef sig _)) env =
+addTopDecl (S.TFunDef (S.FunDef _ sig _)) env =
   addQualifiedModules (S.sigName sig) $
     env {scopeEnv = Map.insert (S.sigName sig) TFunction (scopeEnv env)}
 addTopDecl (S.TClassDef (S.Class _ _ n _ _ sigs)) env =
@@ -1029,8 +1039,11 @@ addContractName n =
   modify (\env -> env {typeEnv = Map.insert n TContract (typeEnv env)})
 
 addFunctionName :: Name -> ResolveM ()
-addFunctionName n =
-  modify (\env -> env {scopeEnv = Map.insert n TFunction (scopeEnv env)})
+addFunctionName n = do
+  existing <- gets (Map.lookup n . scopeEnv)
+  case existing of
+    Just TDataCon | isPrimitiveConstructor n -> pure ()
+    _ -> modify (\env -> env {scopeEnv = Map.insert n TFunction (scopeEnv env)})
 
 addParameter :: Name -> ResolveM ()
 addParameter n =

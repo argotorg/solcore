@@ -2,13 +2,13 @@ contract Id1 {
 
   data Bool = False | True;
 
-  function id(x) {
+  public function id(x) {
     return x ;
   }
 
-  function const(x, y) { return x; }
+  public function const(x, y) { return x; }
 
-  function main() {
+  public function main() {
     return const(id(42), Bool.False);
   }
 }

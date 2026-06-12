@@ -490,14 +490,14 @@ stubContractDeclBody (CFieldDecl (Field n ty _initExp)) =
   CFieldDecl (Field n ty Nothing)
 stubContractDeclBody (CFunDecl fd) =
   CFunDecl (stubFunDefBody fd)
-stubContractDeclBody (CConstrDecl (Constructor params _body)) =
-  CConstrDecl (Constructor params [])
+stubContractDeclBody (CConstrDecl (Constructor params _body payable)) =
+  CConstrDecl (Constructor params [] payable)
 stubContractDeclBody decl =
   decl
 
 stubFunDefBody :: FunDef -> FunDef
-stubFunDefBody (FunDef sig _body) =
-  FunDef sig []
+stubFunDefBody (FunDef p sig _body) =
+  FunDef p sig []
 
 moduleValidationTopDeclSegments :: ModuleGraph -> Mod.ModuleId -> Either String ([Import], [[TopDecl]])
 moduleValidationTopDeclSegments graph modulePath = do
@@ -1200,7 +1200,7 @@ isImportableTopDecl (TExportDecl _) = False
 isImportableTopDecl _ = True
 
 topDeclNames :: TopDecl -> [Name]
-topDeclNames (TFunDef (FunDef sig _)) = [sigName sig]
+topDeclNames (TFunDef (FunDef _ sig _)) = [sigName sig]
 topDeclNames (TSym (TySym n _ _)) = [n]
 topDeclNames (TClassDef (Class _ _ n _ _ _)) = [n]
 topDeclNames (TContr (Contract n _ _)) = [n]
@@ -1232,8 +1232,9 @@ qualifiedImportStubDecls graph (imp, modulePath) =
       stubDecls (QualName qualifier (show bindingName)) targetModule
 
 qualifyFunctionSignature :: Name -> FunDef -> FunDef
-qualifyFunctionSignature qualifier (FunDef sig body) =
+qualifyFunctionSignature qualifier (FunDef p sig body) =
   FunDef
+    p
     (sig {sigName = QualName qualifier (show (sigName sig))})
     body
 
@@ -1268,8 +1269,9 @@ renameTopDeclTypeRefs renameMap (TSym s) =
 renameTopDeclTypeRefs _ d = d
 
 renameFunDefTypeRefs :: Map Name Name -> FunDef -> FunDef
-renameFunDefTypeRefs renameMap (FunDef sig body) =
+renameFunDefTypeRefs renameMap (FunDef p sig body) =
   FunDef
+    p
     (renameSignatureTypeRefs renameMap sig)
     (renameBodyTypeRefs renameMap body)
 
@@ -1283,9 +1285,9 @@ renameSignatureTypeRefs renameMap sig =
     }
 
 renameParamTypeRefs :: Map Name Name -> Param -> Param
-renameParamTypeRefs renameMap (Typed n ty) =
-  Typed n (renameTyTypeRefs renameMap ty)
-renameParamTypeRefs _ p@(Untyped _) = p
+renameParamTypeRefs renameMap (Typed ct n ty) =
+  Typed ct n (renameTyTypeRefs renameMap ty)
+renameParamTypeRefs _ p@(Untyped _ _) = p
 
 renameBodyTypeRefs :: Map Name Name -> Body -> Body
 renameBodyTypeRefs renameMap =
@@ -1298,8 +1300,8 @@ renameStmtTypeRefs renameMap (StmtPlusEq e1 e2) =
   StmtPlusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameStmtTypeRefs renameMap (StmtMinusEq e1 e2) =
   StmtMinusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (Let n mt me) =
-  Let n (renameTyTypeRefs renameMap <$> mt) (renameExpTypeRefs renameMap <$> me)
+renameStmtTypeRefs renameMap (Let ct n mt me) =
+  Let ct n (renameTyTypeRefs renameMap <$> mt) (renameExpTypeRefs renameMap <$> me)
 renameStmtTypeRefs renameMap (StmtExp e) =
   StmtExp (renameExpTypeRefs renameMap e)
 renameStmtTypeRefs renameMap (Return e) =
@@ -1335,6 +1337,7 @@ renamePatTypeRefs renameMap (PatDot n ps) =
   PatDot n (map (renamePatTypeRefs renameMap) ps)
 renamePatTypeRefs _ p@(PWildcard) = p
 renamePatTypeRefs _ p@(PLit _) = p
+renamePatTypeRefs _ p@(PExp _) = p
 
 renamePatNameTypeRefs :: Map Name Name -> Name -> Name
 renamePatNameTypeRefs renameMap (QualName q n) =
@@ -1446,11 +1449,12 @@ renameContractDeclTypeRefs renameMap (CFieldDecl (Field n ty me)) =
     (Field n (renameTyTypeRefs renameMap ty) (renameExpTypeRefs renameMap <$> me))
 renameContractDeclTypeRefs renameMap (CFunDecl fd) =
   CFunDecl (renameFunDefTypeRefs renameMap fd)
-renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body)) =
+renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body payable)) =
   CConstrDecl
     ( Constructor
         (map (renameParamTypeRefs renameMap) ps)
         (renameBodyTypeRefs renameMap body)
+        payable
     )
 
 renameClassTypeRefs :: Map Name Name -> Class -> Class
@@ -1573,7 +1577,8 @@ stubType n =
 stubFunction :: Name -> FunDef
 stubFunction n =
   FunDef
-    (Signature [] [] n [] Nothing False)
+    False
+    (Signature [] [] n [] False Nothing False)
     []
 
 validationImportedDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
@@ -1589,7 +1594,7 @@ validationImportedDecls graph (imp, modulePath) =
       Right []
 
 toValidationImportStub :: TopDecl -> Maybe TopDecl
-toValidationImportStub (TFunDef (FunDef sig _)) =
+toValidationImportStub (TFunDef (FunDef _ sig _)) =
   Just (TFunDef (stubFunction (sigName sig)))
 toValidationImportStub (TSym (TySym n _ _)) =
   Just (TSym (stubType n))
@@ -1830,7 +1835,7 @@ shadowImportedDecls localDecls =
         (seen', Just decl') -> (seen', decl' : acc)
         (seen', Nothing) -> (seen', acc)
 
-    filterDecl (termNames, typeNames, classNames, instDecls) d@(TFunDef (FunDef sig _))
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TFunDef (FunDef _ sig _))
       | sigName sig `elem` termNames = ((termNames, typeNames, classNames, instDecls), Nothing)
       | otherwise =
           ( (sigName sig : termNames, typeNames, classNames, instDecls),
@@ -1895,7 +1900,7 @@ instanceDeclHeadKey inst =
   (instDefault inst, instName inst, paramsTy inst, mainTy inst)
 
 topDeclTermNames :: TopDecl -> [Name]
-topDeclTermNames (TFunDef (FunDef sig _)) = [sigName sig]
+topDeclTermNames (TFunDef (FunDef _ sig _)) = [sigName sig]
 topDeclTermNames _ = []
 
 topDeclTypeNames :: TopDecl -> [Name]
@@ -1923,9 +1928,9 @@ renameTopDeclName oldName newName decl
   | oldName == newName = decl
   | otherwise =
       case decl of
-        TFunDef (FunDef sig body)
+        TFunDef (FunDef p sig body)
           | sigName sig == oldName ->
-              TFunDef (FunDef (sig {sigName = newName}) body)
+              TFunDef (FunDef p (sig {sigName = newName}) body)
         TSym sym@(TySym n _ _)
           | n == oldName ->
               TSym (sym {symName = newName})
@@ -1942,7 +1947,7 @@ renameTopDeclName oldName newName decl
           decl
 
 selectTopDeclForExportRef :: ExportedItemRef -> TopDecl -> Maybe TopDecl
-selectTopDeclForExportRef itemRef d@(TFunDef (FunDef sig _))
+selectTopDeclForExportRef itemRef d@(TFunDef (FunDef _ sig _))
   | exportedItemSourceName itemRef == sigName sig,
     exportedItemConstructors itemRef == Nothing =
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)

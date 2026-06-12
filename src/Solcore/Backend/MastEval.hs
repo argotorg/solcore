@@ -2,12 +2,33 @@ module Solcore.Backend.MastEval
   ( evalCompUnit,
     defaultFuel,
     eliminateDeadCode,
+    FunTable,
+    buildFunTable,
+    computePureFuns,
+    -- Evaluation monad (exported for testing)
+    EvalEnv (..),
+    EvalState (..),
+    EvalM,
+    runEvalM,
+    -- Yul interpreter (exported for testing)
+    YulState,
+    evalYulExp,
+    evalYulOp,
+    evalYulStmt,
+    evalYulBlock,
+    asmIsInterpretable,
+    maskWord,
+    mstoreBytes,
+    mloadWord,
+    -- Primitive evaluator (exported for testing)
+    evalPrimitive,
   )
 where
 
 {- Partial Evaluator for Mast
    Performs compile-time evaluation where possible:
-   - Folds calls to `addWord`, `gtWord`, `eqWord` with literal arguments
+   - Interprets assembly blocks containing supported Yul arithmetic operations
+   - Folds calls to `subWord`, `gtWord`, `eqWord` with literal arguments
    - Propagates known variable values
    - Inlines simple pure functions with literal arguments
 -}
@@ -16,17 +37,21 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Crypto.Hash (Digest, hash)
 import Crypto.Hash.Algorithms (Keccak_256)
+import Data.Bits (complement, shiftL, shiftR, xor, (.&.), (.|.))
 import Data.ByteArray qualified as BA
 import Data.ByteString qualified as BS
+import Data.List (foldl')
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Traversable (mapAccumM)
 import Data.Word (Word8)
+import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
 import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
+import Solcore.Primitives.Primitives (integerPrimNames)
 
 -----------------------------------------------------------------------
 -- Data structures
@@ -42,6 +67,14 @@ type FunTable = Map.Map Name MastFunDef
 -- Fuel for controlling recursion depth during inlining
 type Fuel = Int
 
+-- Type registry: variable name -> MastId (for reconstructing VEnv entries after asm).
+-- Pre-scanned from the whole function body so it survives no-init let deletions.
+type TypeReg = Map.Map Name MastId
+
+-- | State for Yul arithmetic interpretation.
+-- Currently tracks only variable values; may be extended to include memory.
+type YulState = Map.Map Name Integer
+
 defaultFuel :: Fuel
 defaultFuel = 100
 
@@ -51,14 +84,23 @@ defaultFuel = 100
 
 data EvalEnv = EvalEnv
   { envFunTable :: FunTable,
-    envPureFuns :: Set.Set Name
+    envPureFuns :: Set.Set Name,
+    envComptimeMode :: Bool -- True while evaluating a comptime let RHS
   }
 
--- Reader for constant environment, State for fuel budget
-type EvalM = ReaderT EvalEnv (State Fuel)
+data EvalState = EvalState
+  { esFuel :: !Fuel,
+    esMem :: !(Map.Map Integer Word8)
+  }
+
+-- Reader for constant environment, State for fuel + memory
+type EvalM = ReaderT EvalEnv (State EvalState)
 
 runEvalM :: EvalEnv -> Fuel -> EvalM a -> (a, Fuel)
-runEvalM env fuel m = runState (runReaderT m env) fuel
+runEvalM env fuel m =
+  let initState = EvalState {esFuel = fuel, esMem = Map.empty}
+      (a, finalState) = runState (runReaderT m env) initState
+   in (a, esFuel finalState)
 
 askFunTable :: EvalM FunTable
 askFunTable = asks envFunTable
@@ -66,8 +108,15 @@ askFunTable = asks envFunTable
 askPureFuns :: EvalM (Set.Set Name)
 askPureFuns = asks envPureFuns
 
+askComptimeMode :: EvalM Bool
+askComptimeMode = asks envComptimeMode
+
+-- Run an action with comptime mode enabled (memory ops become active).
+withComptimeMode :: EvalM a -> EvalM a
+withComptimeMode = local (\e -> e {envComptimeMode = True})
+
 getFuel :: EvalM Fuel
-getFuel = lift get
+getFuel = lift $ gets esFuel
 
 -- Consume one unit of fuel, returns True if fuel was available
 useFuel :: EvalM Bool
@@ -75,13 +124,19 @@ useFuel = do
   f <- getFuel
   if f > 0
     then do
-      lift $ put (f - 1)
+      lift $ modify (\s -> s {esFuel = esFuel s - 1})
       pure True
     else pure False
 
 -- Restore one unit of fuel (called after successful inlining)
 restoreFuel :: EvalM ()
-restoreFuel = lift $ modify (+ 1)
+restoreFuel = lift $ modify (\s -> s {esFuel = esFuel s + 1})
+
+getsMem :: EvalM (Map.Map Integer Word8)
+getsMem = lift $ gets esMem
+
+modifyMem :: (Map.Map Integer Word8 -> Map.Map Integer Word8) -> EvalM ()
+modifyMem f = lift $ modify (\s -> s {esMem = f (esMem s)})
 
 -----------------------------------------------------------------------
 -- Main entry point
@@ -93,7 +148,7 @@ evalCompUnit fuel cu = (cu {mastTopDecls = decls'}, remainingFuel)
   where
     funTable = buildFunTable cu
     pureFuns = computePureFuns funTable
-    env = EvalEnv {envFunTable = funTable, envPureFuns = pureFuns}
+    env = EvalEnv {envFunTable = funTable, envPureFuns = pureFuns, envComptimeMode = False}
     (decls', remainingFuel) = runEvalM env fuel (mapM evalTopDecl (mastTopDecls cu))
 
 -----------------------------------------------------------------------
@@ -114,6 +169,24 @@ buildFunTable cu = Map.fromList $ concatMap collectFromTopDecl (mastTopDecls cu)
     collectFromDecl (MastCFunDecl fd) = [(mastFunName fd, fd)]
     collectFromDecl (MastCMutualDecl ds) = concatMap collectFromDecl ds
     collectFromDecl (MastCDataDecl _) = []
+
+-----------------------------------------------------------------------
+-- Type registry: pre-scan a function body for all declared MastIds
+-----------------------------------------------------------------------
+
+-- | Build a registry from variable names to their full MastIds.
+-- Covers function parameters and let-declared variables throughout the body.
+-- Used to reconstruct VEnv entries after interpreting an asm block, since
+-- a no-init 'let' deletes the variable from VEnv before the asm block runs.
+buildTypeReg :: [MastParam] -> [MastStmt] -> TypeReg
+buildTypeReg params stmts =
+  Map.fromList $
+    [(mastParamName p, MastId (mastParamName p) (mastParamType p)) | p <- params]
+      ++ concatMap letIds stmts
+  where
+    letIds (MastLet _ i _ _) = [(mastIdName i, i)]
+    letIds (MastMatch _ alts) = concatMap (concatMap letIds . snd) alts
+    letIds _ = []
 
 -----------------------------------------------------------------------
 -- Evaluate top-level declarations
@@ -139,7 +212,9 @@ evalContractDecl d@(MastCDataDecl _) = pure d
 
 evalFunDef :: MastFunDef -> EvalM MastFunDef
 evalFunDef fd = do
-  (_, body') <- evalStmts Map.empty (mastFunBody fd)
+  modifyMem (const Map.empty)
+  let tyReg = buildTypeReg (mastFunParams fd) (mastFunBody fd)
+  (_, body') <- evalStmts tyReg Map.empty (mastFunBody fd)
   pure $ fd {mastFunBody = body'}
 
 -----------------------------------------------------------------------
@@ -152,22 +227,26 @@ evalFunDef fd = do
 -- TODO: consider unifying these two statement handlers
 
 -- Process statements left-to-right, threading environment through
-evalStmts :: VEnv -> [MastStmt] -> EvalM (VEnv, [MastStmt])
-evalStmts env [] = pure (env, [])
-evalStmts env (s : ss) = do
-  (env', s') <- evalStmt env s
-  (env'', ss') <- evalStmts env' ss
+evalStmts :: TypeReg -> VEnv -> [MastStmt] -> EvalM (VEnv, [MastStmt])
+evalStmts _ env [] = pure (env, [])
+evalStmts tyReg env (s : ss) = do
+  (env', s') <- evalStmt tyReg env s
+  (env'', ss') <- evalStmts tyReg env' ss
   pure (env'', s' <> ss')
 
-evalStmt :: VEnv -> MastStmt -> EvalM (VEnv, [MastStmt])
-evalStmt env stmt = case stmt of
-  MastLet i ty mInit -> do
-    mInit' <- traverse (evalExp env) mInit
+evalStmt :: TypeReg -> VEnv -> MastStmt -> EvalM (VEnv, [MastStmt])
+evalStmt tyReg env stmt = case stmt of
+  MastLet ct i ty mInit -> do
+    mInit' <- traverse (if ct then withComptimeMode . evalExp env else evalExp env) mInit
     let env' = case mInit' of
           Just e | isKnownValue e -> Map.insert i e env
           _ -> Map.delete i env -- Shadow/remove any existing binding
-          -- Always emit the let: the variable may be referenced by opaque asm blocks
-    pure (env', [MastLet i ty mInit'])
+          -- Comptime lets with known values are dead after evaluation: all uses will be
+          -- substituted from VEnv, and EmitHull cannot handle string-typed variables.
+    let stmts = case mInit' of
+          Just e | ct && isKnownValue e -> []
+          _ -> [MastLet ct i ty mInit']
+    pure (env', stmts)
   MastAssign i e -> do
     e' <- evalExp env e
     let env' =
@@ -186,17 +265,29 @@ evalStmt env stmt = case stmt of
     pure (env, [MastReturn e'])
   MastMatch e alts -> do
     e' <- evalExp env e
-    alts' <- mapM (evalAlt env) alts
+    alts' <- mapM (evalAlt tyReg env) alts
     -- Any variable assigned in any alt may be updated; remove from env
     -- so downstream code doesn't see the pre-match value.
     let mutated = foldMap (assignedInStmts . snd) alts
         env' = foldr Map.delete env (Set.toList mutated)
     pure (env', [MastMatch e' alts'])
-  MastAsm yul ->
-    -- Assembly blocks are opaque; we don't know what they modify
-    -- Conservative: clear all variable bindings
-    pure (Map.empty, [MastAsm yul])
-  MastSeq stmts -> evalStmts env stmts
+  MastAsm yul -> do
+    -- Substitute known comptime values into the block first.  This is necessary
+    -- because comptime lets with known values are eliminated from the statement
+    -- list; any asm reference to those variables must be replaced inline.
+    let subst = venvToSubst env
+        yul' = substYulBlock subst yul
+    -- Try to interpret arithmetic-only asm blocks statically.
+    -- If successful, update VEnv with computed values (but still emit the block
+    -- for code generation). If not, conservatively clear all bindings.
+    let yulState = venvToYulState env
+    mYulState' <- evalYulBlock yulState yul'
+    case mYulState' of
+      Just yulState' ->
+        pure (mergeYulStateToVEnv tyReg yulState' env, [MastAsm yul'])
+      Nothing ->
+        pure (Map.empty, [MastAsm yul'])
+  MastSeq stmts -> evalStmts tyReg env stmts
   MastFor initStmt cond post body -> do
     -- Evaluate loop parts for local simplification, but do not propagate
     -- value bindings across the loop boundary.
@@ -219,12 +310,12 @@ evalStmt env stmt = case stmt of
 -- Used for nested contexts like MastFor where we cannot drop statements.
 evalLoopStmt :: VEnv -> MastStmt -> EvalM (VEnv, MastStmt)
 evalLoopStmt env st = case st of
-  MastLet i ty mInit -> do
+  MastLet ct i ty mInit -> do
     mInit' <- traverse (evalExp env) mInit
     let env' = case mInit' of
           Just e | isKnownValue e -> Map.insert i e env
           _ -> Map.delete i env
-    pure (env', MastLet i ty mInit')
+    pure (env', MastLet ct i ty mInit')
   MastAssign i e -> do
     e' <- evalExp env e
     let env' =
@@ -240,7 +331,8 @@ evalLoopStmt env st = case st of
     pure (env, MastReturn e')
   MastMatch e alts -> do
     e' <- evalExp env e
-    alts' <- mapM (evalAlt env) alts
+    -- No tyReg in loop context; asm in loop bodies is treated as opaque.
+    alts' <- mapM (evalAlt Map.empty env) alts
     let mutated = foldMap (assignedInStmts . snd) alts
         env' = foldr Map.delete env (Set.toList mutated)
     pure (env', MastMatch e' alts')
@@ -255,12 +347,23 @@ evalLoopStmt env st = case st of
     (env', stmts') <- mapAccumM evalLoopStmt env stmts
     pure (env', MastSeq stmts')
 
-evalAlt :: VEnv -> MastAlt -> EvalM MastAlt
-evalAlt env (pat, body) = do
+evalAlt :: TypeReg -> VEnv -> MastAlt -> EvalM MastAlt
+evalAlt tyReg env (pat, body) = do
   -- Pattern bindings shadow existing bindings, but we don't track them
   -- (conservative: treat all pattern-bound vars as unknown)
-  (_, body') <- evalStmts env body
-  pure (pat, body')
+  pat' <- evalPat env pat
+  (_, body') <- evalStmts tyReg env body
+  pure (pat', body')
+
+-- Evaluate expression labels in patterns.
+-- MastPExp must reduce to a literal; any other form is a compile-time error.
+evalPat :: VEnv -> MastPat -> EvalM MastPat
+evalPat env (MastPExp e) = do
+  e' <- evalExp env e
+  case e' of
+    MastLit l -> pure (MastPLit l)
+    _ -> error $ "comptime expression in match label could not be evaluated to a literal: " ++ show e'
+evalPat _ pat = pure pat
 
 -- Collect variables assigned (via MastAssign) in a list of statements.
 -- Recurses into nested match arms. Used to invalidate env entries after a match.
@@ -315,14 +418,12 @@ evalExp env (MastCond e1 e2 e3) = do
   pure $ MastCond e1' e2' e3'
 
 -----------------------------------------------------------------------
--- Primitive evaluation
+-- Primitive evaluation (named-function fast paths)
 -----------------------------------------------------------------------
 
 evalPrimitive :: Name -> [MastExp] -> Maybe MastExp
-evalPrimitive (Name "addWord") [MastLit (IntLit a), MastLit (IntLit b)] =
-  Just (MastLit (IntLit (a + b)))
 evalPrimitive (Name "subWord") [MastLit (IntLit a), MastLit (IntLit b)] =
-  Just (MastLit (IntLit (a - b)))
+  Just (MastLit (IntLit (maskWord (a - b))))
 evalPrimitive (Name "gtWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just $ mkBool (a > b)
 evalPrimitive (Name "eqWord") [MastLit (IntLit a), MastLit (IntLit b)] =
@@ -343,6 +444,22 @@ evalPrimitive (Name "keccakLit") [MastLit (StrLit s)] =
       digestBytes :: BS.ByteString
       digestBytes = BA.convert digest
    in Just (MastLit (IntLit (bsToIntegerBE digestBytes)))
+-- Integer (comptime-only, unlimited precision) primitives:
+evalPrimitive (Name "wordToInteger") [MastLit (IntLit n)] =
+  Just (MastLit (IntLit n)) -- value-level identity
+evalPrimitive (Name "wordFromInteger") [MastLit (IntLit n)] =
+  Just (MastLit (IntLit (maskWord n))) -- truncate to 256 bits
+evalPrimitive (Name "integerAdd") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (a + b))) -- exact, no overflow
+evalPrimitive (Name "integerSub") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (a - b)))
+evalPrimitive (Name "integerMul") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (a * b)))
+evalPrimitive (Name "integerLt") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (mkBool (a < b))
+evalPrimitive (Name "integerEq") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (mkBool (a == b))
+evalPrimitive (QualName (Name "Int") "fromInteger") [x] = Just x -- identity for integer -> integer
 evalPrimitive _ _ = Nothing
 
 bsToIntegerBE :: BS.ByteString -> Integer
@@ -364,13 +481,203 @@ mkBool b = MastCon conId [unitVal]
     unitVal = MastCon (MastId (Name "()") unitTy) []
 
 -----------------------------------------------------------------------
+-- Yul interpreter: memory helpers (pure)
+-----------------------------------------------------------------------
+
+-- | 256-bit word modulus (EVM semantics for arithmetic operations).
+wordMod :: Integer
+wordMod = 2 ^ (256 :: Integer)
+
+-- | Truncate to 256-bit unsigned word.
+maskWord :: Integer -> Integer
+maskWord n = n `mod` wordMod
+
+-- | Write a 256-bit value to memory at byte address p (big-endian, 32 bytes).
+mstoreBytes :: Integer -> Integer -> Map.Map Integer Word8 -> Map.Map Integer Word8
+mstoreBytes p v mem =
+  foldl'
+    (\m i -> Map.insert (p + i) (fromIntegral ((v `shiftR` (8 * (31 - fromIntegral i))) .&. 0xff)) m)
+    mem
+    [0 .. 31]
+
+-- | Read a 256-bit value from memory at byte address p (big-endian, 32 bytes).
+-- Returns Nothing if any byte in p..p+31 was not written during this comptime
+-- evaluation. We cannot assume unwritten bytes are 0: runtime code may have
+-- written to memory before this function executes (e.g. the free memory pointer
+-- at slot 64 is set by initialization code before any user function runs).
+mloadWord :: Integer -> Map.Map Integer Word8 -> Maybe Integer
+mloadWord p mem =
+  foldl'
+    (\mAcc i -> do acc <- mAcc; b <- Map.lookup (p + i) mem; pure (acc * 256 + fromIntegral b))
+    (Just 0)
+    [0 .. 31]
+
+-----------------------------------------------------------------------
+-- Yul interpreter: expression and statement evaluator (in EvalM)
+-----------------------------------------------------------------------
+
+-- | Evaluate a Yul expression given the current Yul state.
+-- Returns Nothing if any operand is unknown or the operation is unsupported.
+-- Clause order matters: mload must precede the general YCall catch-all.
+evalYulExp :: YulState -> YulExp -> EvalM (Maybe Integer)
+evalYulExp env (YIdent n) = pure (Map.lookup n env)
+evalYulExp _ (YLit (YulNumber n)) = pure (Just n)
+evalYulExp _ (YLit YulTrue) = pure (Just 1)
+evalYulExp _ (YLit YulFalse) = pure (Just 0)
+evalYulExp env (YCall (Name "mload") [pExp]) = do
+  compt <- askComptimeMode
+  if not compt
+    then pure Nothing -- mload is only meaningful in comptime context
+    else do
+      mp <- evalYulExp env pExp
+      case mp of
+        Just p -> mloadWord p <$> getsMem -- Nothing if any byte unwritten
+        Nothing -> pure Nothing
+evalYulExp env (YCall op args) = do
+  mvals <- mapM (evalYulExp env) args
+  case sequence mvals of
+    Nothing -> pure Nothing
+    Just vals -> evalYulOp op vals
+evalYulExp _ _ = pure Nothing
+
+-- | Evaluate a Yul built-in operation on known integer values.
+-- Returns Nothing for unsupported or unknown operations.
+-- All operations use EVM semantics: unsigned 256-bit arithmetic, no exceptions.
+evalYulOp :: Name -> [Integer] -> EvalM (Maybe Integer)
+evalYulOp (Name "add") [a, b] = pure (Just (maskWord (a + b)))
+evalYulOp (Name "sub") [a, b] = pure (Just (maskWord (a - b)))
+evalYulOp (Name "mul") [a, b] = pure (Just (maskWord (a * b)))
+evalYulOp (Name "div") [a, b] = pure (Just (if b == 0 then 0 else a `div` b))
+evalYulOp (Name "mod") [a, b] = pure (Just (if b == 0 then 0 else a `mod` b))
+evalYulOp (Name "gt") [a, b] = pure (Just (if a > b then 1 else 0))
+evalYulOp (Name "lt") [a, b] = pure (Just (if a < b then 1 else 0))
+evalYulOp (Name "eq") [a, b] = pure (Just (if a == b then 1 else 0))
+evalYulOp (Name "iszero") [a] = pure (Just (if a == 0 then 1 else 0))
+evalYulOp (Name "and") [a, b] = pure (Just (a .&. b))
+evalYulOp (Name "or") [a, b] = pure (Just (a .|. b))
+evalYulOp (Name "xor") [a, b] = pure (Just (a `xor` b))
+evalYulOp (Name "not") [a] = pure (Just (maskWord (complement a)))
+evalYulOp (Name "shl") [sh, v] = pure (Just (maskWord (v `shiftL` fromIntegral sh)))
+evalYulOp (Name "shr") [sh, v] = pure (Just (v `shiftR` fromIntegral sh))
+evalYulOp _ _ = pure Nothing
+
+-- | Evaluate one Yul statement, updating the Yul state.
+-- mstore/mstore8 update EvalM memory; assignments update YulState.
+-- Returns Nothing if the statement form is unsupported.
+evalYulStmt :: YulState -> YulStmt -> EvalM (Maybe YulState)
+evalYulStmt env (YAssign [n] e) = do
+  mv <- evalYulExp env e
+  pure (fmap (\v -> Map.insert n v env) mv)
+evalYulStmt env (YExp (YCall (Name "mstore") [pExp, vExp])) = do
+  compt <- askComptimeMode
+  if not compt
+    then pure Nothing -- mstore only in comptime context; fail block so callers aren't inlined
+    else do
+      mp <- evalYulExp env pExp
+      mv <- evalYulExp env vExp
+      case (mp, mv) of
+        (Just p, Just v) -> do
+          modifyMem (mstoreBytes p v)
+          pure (Just env) -- YulState unchanged; memory updated in EvalM
+        _ -> pure Nothing
+evalYulStmt env (YExp (YCall (Name "mstore8") [pExp, vExp])) = do
+  compt <- askComptimeMode
+  if not compt
+    then pure Nothing -- mstore8 only in comptime context
+    else do
+      mp <- evalYulExp env pExp
+      mv <- evalYulExp env vExp
+      case (mp, mv) of
+        (Just p, Just v) -> do
+          modifyMem (Map.insert p (fromIntegral (v .&. 0xff)))
+          pure (Just env)
+        _ -> pure Nothing
+evalYulStmt _ _ = pure Nothing
+
+-- | Evaluate a Yul block, threading the Yul state through each statement.
+-- Returns Nothing if any statement cannot be evaluated.
+-- mstore/mstore8/mload only execute in comptime mode; outside it they return
+-- Nothing immediately, aborting the block and preventing unsound inlining.
+evalYulBlock :: YulState -> [YulStmt] -> EvalM (Maybe YulState)
+evalYulBlock env [] = pure (Just env)
+evalYulBlock env (s : ss) = do
+  menv' <- evalYulStmt env s
+  case menv' of
+    Nothing -> pure Nothing
+    Just env' -> evalYulBlock env' ss
+
+-----------------------------------------------------------------------
+-- VEnv / YulState / TypeReg helpers
+-----------------------------------------------------------------------
+
+-- | Extract known integer values from a VEnv into a YulState.
+venvToYulState :: VEnv -> YulState
+venvToYulState env =
+  Map.fromList [(mastIdName k, v) | (k, MastLit (IntLit v)) <- Map.toList env]
+
+-- | Build a name→YulExp substitution map from all known literal values in VEnv.
+-- Used to inline comptime values into asm blocks so that eliminated 'let' bindings
+-- remain available to the asm code.
+venvToSubst :: VEnv -> Map.Map Name YulExp
+venvToSubst env =
+  Map.fromList
+    [ (mastIdName k, yulLit l)
+      | (k, MastLit l) <- Map.toList env
+    ]
+  where
+    yulLit (IntLit v) = YLit (YulNumber v)
+    yulLit (StrLit s) = YLit (YulString s)
+
+-- | Substitute known literal values into a Yul block.
+-- Only replaces YIdent occurrences in expression positions; does not touch
+-- variable names on the left-hand side of let/assign or function parameter lists.
+substYulBlock :: Map.Map Name YulExp -> [YulStmt] -> [YulStmt]
+substYulBlock subst = map (substYulStmt subst)
+
+substYulStmt :: Map.Map Name YulExp -> YulStmt -> YulStmt
+substYulStmt subst (YAssign names e) = YAssign names (substYulExp subst e)
+substYulStmt subst (YExp e) = YExp (substYulExp subst e)
+substYulStmt subst (YLet names me) = YLet names (fmap (substYulExp subst) me)
+substYulStmt subst (YIf e block) = YIf (substYulExp subst e) (substYulBlock subst block)
+substYulStmt subst (YBlock stmts) = YBlock (substYulBlock subst stmts)
+substYulStmt subst (YFun n as rs body) = YFun n as rs (substYulBlock subst body)
+substYulStmt subst (YFor pre c post b) =
+  YFor
+    (substYulBlock subst pre)
+    (substYulExp subst c)
+    (substYulBlock subst post)
+    (substYulBlock subst b)
+substYulStmt subst (YSwitch e cases def) =
+  YSwitch
+    (substYulExp subst e)
+    (map (\(lit, block) -> (lit, substYulBlock subst block)) cases)
+    (fmap (substYulBlock subst) def)
+substYulStmt _ stmt = stmt -- YBreak, YContinue, YLeave, YComment unchanged
+
+substYulExp :: Map.Map Name YulExp -> YulExp -> YulExp
+substYulExp subst (YIdent n) = Map.findWithDefault (YIdent n) n subst
+substYulExp subst (YCall op args) = YCall op (map (substYulExp subst) args)
+substYulExp _ e = e -- YLit, YMeta unchanged
+
+-- | Merge a YulState back into VEnv, using TypeReg to find the right MastIds.
+-- Only names present in TypeReg are merged; others are silently ignored.
+mergeYulStateToVEnv :: TypeReg -> YulState -> VEnv -> VEnv
+mergeYulStateToVEnv tyReg yulState venv =
+  Map.foldlWithKey' update venv yulState
+  where
+    update acc n v =
+      case Map.lookup n tyReg of
+        Just mastId -> Map.insert mastId (MastLit (IntLit v)) acc
+        Nothing -> acc
+
+-----------------------------------------------------------------------
 -- Function inlining
 -----------------------------------------------------------------------
 
 -- Try to inline a function call.
 -- Works when: (1) all arguments are known values, or
 --             (2) function is "constant" (ignores its arguments)
--- Only pure functions (no asm, no impure calls) are eligible for inlining.
+-- Only pure functions (no non-interpretable asm, no impure calls) are eligible.
 tryInline :: Name -> [MastExp] -> EvalM (Maybe MastExp)
 tryInline fname args = do
   pureFuns <- askPureFuns
@@ -386,37 +693,46 @@ tryInline fname args = do
               let params = mastFunParams fd
                   paramToId p = MastId (mastParamName p) (mastParamType p)
                   env = Map.fromList $ zip (map paramToId params) args
-              evalFunBody env (mastFunBody fd)
+                  tyReg = buildTypeReg params (mastFunBody fd)
+              evalFunBody tyReg env (mastFunBody fd)
 
 -- Evaluate a function body and extract the return value
-evalFunBody :: VEnv -> [MastStmt] -> EvalM (Maybe MastExp)
-evalFunBody _ [] = pure Nothing -- No return statement found
-evalFunBody env (stmt : rest) = case stmt of
-  MastLet i _ mInit -> do
+evalFunBody :: TypeReg -> VEnv -> [MastStmt] -> EvalM (Maybe MastExp)
+evalFunBody _ _ [] = pure Nothing -- No return statement found
+evalFunBody tyReg env (stmt : rest) = case stmt of
+  MastLet _ i _ mInit -> do
     mInit' <- traverse (evalExp env) mInit
     let env' = case mInit' of
           Just e | isKnownValue e -> Map.insert i e env
           _ -> Map.delete i env
-    evalFunBody env' rest
+    evalFunBody tyReg env' rest
   MastAssign i e -> do
     e' <- evalExp env e
     let env' =
           if isKnownValue e'
             then Map.insert i e' env
             else Map.delete i env
-    evalFunBody env' rest
-  MastStmtExp _ -> evalFunBody env rest
+    evalFunBody tyReg env' rest
+  MastStmtExp _ -> evalFunBody tyReg env rest
   MastReturn e -> do
     e' <- evalExp env e
     pure $ if isKnownValue e' then Just e' else Nothing
   MastMatch scrut alts -> do
     scrut' <- evalExp env scrut
-    case matchAlts env scrut' alts of
-      Just (env', body) -> evalFunBody env' body
+    alts' <- mapM (\(p, b) -> (,b) <$> evalPat env p) alts
+    case matchAlts env scrut' alts' of
+      Just (env', body) -> evalFunBody tyReg env' body
       Nothing -> pure Nothing -- Scrutinee not known, can't select branch
   MastFor {} -> pure Nothing -- Loop execution cannot be folded safely here
-  MastAsm _ -> pure Nothing -- Should not happen: purity analysis excludes asm functions
-  MastSeq stmts -> evalFunBody env stmts
+  MastAsm yul -> do
+    -- Try to interpret the asm block statically.
+    -- If successful, update env and continue inlining; otherwise give up.
+    let yulState = venvToYulState env
+    mYulState' <- evalYulBlock yulState yul
+    case mYulState' of
+      Just yulState' -> evalFunBody tyReg (mergeYulStateToVEnv tyReg yulState' env) rest
+      Nothing -> pure Nothing
+  MastSeq stmts -> evalFunBody tyReg env stmts
 
 -- Try to match a known scrutinee against alternatives.
 -- Returns the extended environment and the body of the matching alternative.
@@ -453,6 +769,7 @@ findLitMatch env lit ((pat, body) : rest) =
       let env' = Map.insert varId (MastLit lit) env
        in Just (env', body)
     MastPWildcard -> Just (env, body)
+    MastPExp _ -> error "PANIC: MastPExp reached findLitMatch — evalAlt failed to evaluate it"
     _ -> findLitMatch env lit rest
 
 -- Bind pattern variables to argument expressions
@@ -481,6 +798,7 @@ bindPatterns env (pat : pats) (arg : args) =
       case arg of
         MastLit argLit | argLit == patLit -> bindPatterns env pats args
         _ -> Nothing
+    MastPExp _ -> error "PANIC: MastPExp reached bindPatterns — evalAlt failed to evaluate it"
 
 -----------------------------------------------------------------------
 -- Helpers
@@ -497,18 +815,20 @@ isKnownValue _ = False
 -- Purity analysis
 -----------------------------------------------------------------------
 
--- Primitives the PE evaluates directly; their std asm bodies are irrelevant
+-- Primitives the PE evaluates directly; their std asm bodies are irrelevant.
+-- Integer primitive names come from Primitives.integerPrimNames (single source
+-- of truth shared with Specialise.comptimeBuiltins).
 builtinPureFuns :: Set.Set Name
 builtinPureFuns =
-  Set.fromList
-    [ Name "addWord",
-      Name "subWord",
+  Set.fromList $
+    [ Name "subWord",
       Name "gtWord",
       Name "eqWord",
       Name "concatLit",
       Name "strlenLit",
       Name "keccakLit"
     ]
+      ++ integerPrimNames
 
 -- Functions with dummy pure bodies that are intercepted by EmitHull
 builtinImpureFuns :: Set.Set Name
@@ -517,6 +837,8 @@ builtinImpureFuns = Set.fromList [Name "revertLit"]
 -- | Compute the set of pure functions via fixed-point iteration.
 -- Start from builtinPureFuns; each iteration adds functions whose bodies
 -- contain no asm and whose every call target is already known-pure.
+-- Self-recursive calls are handled by including the candidate function in
+-- the assumed-pure set when checking its own body.
 computePureFuns :: FunTable -> Set.Set Name
 computePureFuns ft = go builtinPureFuns
   where
@@ -528,7 +850,7 @@ computePureFuns ft = go builtinPureFuns
                     || fname `Set.member` builtinImpureFuns
                     then acc
                     else
-                      if bodyIsPure acc (mastFunBody fd)
+                      if bodyIsPure (Set.insert fname acc) (mastFunBody fd)
                         then Set.insert fname acc
                         else acc
               )
@@ -542,8 +864,11 @@ bodyIsPure :: Set.Set Name -> [MastStmt] -> Bool
 bodyIsPure pureFuns = all (stmtIsPure pureFuns)
 
 stmtIsPure :: Set.Set Name -> MastStmt -> Bool
-stmtIsPure _ (MastAsm _) = False
-stmtIsPure pureFuns (MastLet _ _ mInit) = maybe True (expIsPure pureFuns) mInit
+-- Asm blocks are pure only if every statement uses a statically interpretable
+-- operation. This keeps storage/memory reads (sload, mload, …) out of pureFuns,
+-- which is load-bearing for the MAST-level comptime check.
+stmtIsPure _ (MastAsm stmts) = asmIsInterpretable stmts
+stmtIsPure pureFuns (MastLet _ _ _ mInit) = maybe True (expIsPure pureFuns) mInit
 stmtIsPure pureFuns (MastAssign _ e) = expIsPure pureFuns e
 stmtIsPure pureFuns (MastStmtExp e) = expIsPure pureFuns e
 stmtIsPure pureFuns (MastReturn e) = expIsPure pureFuns e
@@ -564,6 +889,46 @@ expIsPure pureFuns (MastCall i args) =
 expIsPure pureFuns (MastCon _ args) = all (expIsPure pureFuns) args
 expIsPure pureFuns (MastCond e1 e2 e3) =
   expIsPure pureFuns e1 && expIsPure pureFuns e2 && expIsPure pureFuns e3
+
+-- | True if an asm block contains only statically interpretable statements.
+-- Such blocks can be evaluated at compile time by the Yul interpreter,
+-- and functions containing only such blocks are eligible for PE inlining.
+-- Operations NOT listed here (sload, …) make the block non-interpretable,
+-- which keeps the enclosing function out of pureFuns and preserves comptime-check soundness.
+asmIsInterpretable :: [YulStmt] -> Bool
+asmIsInterpretable = all interpretableStmt
+  where
+    interpretableStmt (YAssign [_] e) = interpretableExp e
+    interpretableStmt (YExp (YCall (Name "mstore") [p, v])) = interpretableExp p && interpretableExp v
+    interpretableStmt (YExp (YCall (Name "mstore8") [p, v])) = interpretableExp p && interpretableExp v
+    interpretableStmt _ = False
+
+    -- mload has its own clause (reads memory); general YCall delegates to interpretableOp
+    interpretableExp (YIdent _) = True
+    interpretableExp (YLit (YulNumber _)) = True
+    interpretableExp (YLit YulTrue) = True
+    interpretableExp (YLit YulFalse) = True
+    interpretableExp (YCall (Name "mload") [p]) = interpretableExp p
+    interpretableExp (YCall op args) =
+      interpretableOp op (length args) && all interpretableExp args
+    interpretableExp _ = False
+
+    interpretableOp (Name "add") 2 = True
+    interpretableOp (Name "sub") 2 = True
+    interpretableOp (Name "mul") 2 = True
+    interpretableOp (Name "div") 2 = True
+    interpretableOp (Name "mod") 2 = True
+    interpretableOp (Name "gt") 2 = True
+    interpretableOp (Name "lt") 2 = True
+    interpretableOp (Name "eq") 2 = True
+    interpretableOp (Name "iszero") 1 = True
+    interpretableOp (Name "and") 2 = True
+    interpretableOp (Name "or") 2 = True
+    interpretableOp (Name "xor") 2 = True
+    interpretableOp (Name "not") 1 = True
+    interpretableOp (Name "shl") 2 = True
+    interpretableOp (Name "shr") 2 = True
+    interpretableOp _ _ = False
 
 -----------------------------------------------------------------------
 -- Dead code elimination
@@ -635,7 +1000,7 @@ callsInFun :: MastFunDef -> Set.Set Name
 callsInFun fd = Set.unions (map callsInStmt (mastFunBody fd))
 
 callsInStmt :: MastStmt -> Set.Set Name
-callsInStmt (MastLet _ _ mInit) = maybe Set.empty callsInExp mInit
+callsInStmt (MastLet _ _ _ mInit) = maybe Set.empty callsInExp mInit
 callsInStmt (MastAssign _ e) = callsInExp e
 callsInStmt (MastStmtExp e) = callsInExp e
 callsInStmt (MastReturn e) = callsInExp e

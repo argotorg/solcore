@@ -12,7 +12,7 @@ type Equations a = [Equation a]
 
 data Stmt a
   = (Exp a) := (Exp a) -- assignment
-  | Let a (Maybe Ty) (Maybe (Exp a)) -- local variable
+  | Let Bool a (Maybe Ty) (Maybe (Exp a)) -- local variable; Bool is True when 'comptime' modifier is present
   | Block (Body a) -- lexical block
   | StmtExp (Exp a) -- expression level statements
   | Return (Exp a) -- return statements
@@ -26,13 +26,17 @@ data Stmt a
 type Body a = [Stmt a]
 
 data Param a
-  = Typed a Ty
-  | Untyped a
+  = Typed Bool a Ty -- Bool is True when 'const' modifier is present
+  | Untyped Bool a
   deriving (Eq, Ord, Show, Data, Typeable)
 
 paramName :: Param a -> a
-paramName (Typed n _) = n
-paramName (Untyped n) = n
+paramName (Typed _ n _) = n
+paramName (Untyped _ n) = n
+
+paramComptime :: Param a -> Bool
+paramComptime (Typed ct _ _) = ct
+paramComptime (Untyped ct _) = ct
 
 -- definition of the expression syntax
 
@@ -55,6 +59,7 @@ data Pat a
   | PCon a [Pat a]
   | PWildcard
   | PLit Literal
+  | PExp (Exp a) -- comptime expression label (numeric matches only)
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of literals

@@ -61,7 +61,7 @@ function idx_lval(x:r) -> a {
 }
 
 contract TestTuva {
-  function main() -> word {
+  public function main() -> word {
     let balances : storage(mapping(address, word));
     let allowances : storage(mapping(address, mapping(address, word) ));
     let ref1 : storage(word) = idx_lval( (balances, address(17)) );

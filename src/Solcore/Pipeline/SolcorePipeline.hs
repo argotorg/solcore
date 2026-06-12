@@ -11,6 +11,7 @@ import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
 
+import Solcore.Backend.ComptimeCheck (checkComptime)
 import Solcore.Backend.EmitHull (emitHull)
 import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
@@ -20,8 +21,10 @@ import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
+import Solcore.Desugarer.IntLiteralDesugar (desugarIntLiterals)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
+import Solcore.Frontend.ComptimeCheck (checkComptimeEarly)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourcePath, moduleValidationTopDeclSegments)
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -93,6 +96,9 @@ compile opts = runExceptT $ do
   let typed = checkedAssemblyCompUnit checkedAssembly
       tcEnv = checkedAssemblyEnv checkedAssembly
 
+  -- SAIL-level comptime verification
+  ExceptT $ return $ checkComptimeEarly typed
+
   -- If / boolean desugaring
   desugared <-
     liftIO $
@@ -131,16 +137,19 @@ compile opts = runExceptT $ do
         putStrLn "> Specialised contract:"
         putStrLn (pretty specialized)
 
-      let peFuel = maybe defaultFuel id (optPEFuel opts)
-          (evaluated, remainingFuel) = evalCompUnit peFuel specialized
+      evaluated <- liftIO $ timeItNamed "Comptime eval " $ do
+        let peFuel = maybe defaultFuel id (optPEFuel opts)
+            (evalResult, remainingFuel) = evalCompUnit peFuel specialized
 
-      liftIO $
-        when (remainingFuel <= 0) $
-          putStrLn "!! Warning: partial evaluation ran out of fuel (use --pe-fuel N to increase)"
+        liftIO $
+          when (remainingFuel <= 0) $
+            putStrLn "!! Warning: partial evaluation ran out of fuel (use --pe-fuel N to increase)"
 
-      liftIO $ when (optDumpSpec opts) $ do
-        putStrLn "> After partial evaluation:"
-        putStrLn (pretty evaluated)
+        liftIO $ when (optDumpSpec opts) $ do
+          putStrLn "> After partial evaluation:"
+          putStrLn (pretty evalResult)
+
+        pure evalResult
 
       -- Dead code elimination: remove functions unreachable from 'start'/'main'
       let optimized = eliminateDeadCode evaluated
@@ -148,6 +157,9 @@ compile opts = runExceptT $ do
       liftIO $ when (optDumpSpec opts) $ do
         putStrLn "> After dead code elimination:"
         putStrLn (pretty optimized)
+
+      -- Comptime verification: check comptime annotations are satisfied
+      ExceptT $ return $ checkComptime optimized
 
       hull <-
         liftIO $
@@ -325,7 +337,13 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Eliminating argments with function types"
     putStrLn $ prettyInferenceDecls noFun
 
-  pure noFun
+  -- Integer literal desugaring: wrap bare integer literals in fromInteger()
+  let withFromInt = mapModuleInferenceTopDecls desugarIntLiterals noFun
+  liftIO $ when verbose $ do
+    putStrLn "> Integer literal desugaring:"
+    putStrLn $ prettyInferenceDecls withFromInt
+
+  pure withFromInt
 
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =

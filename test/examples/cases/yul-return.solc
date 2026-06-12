@@ -1,5 +1,5 @@
 contract C {
-  function main() -> () {
+  public function main() -> () {
     assembly {
       return(0,0)
     }

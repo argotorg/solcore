@@ -22,7 +22,8 @@ import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcSimplify
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
-import Solcore.Primitives.Primitives
+import Solcore.Primitives.Primitives hiding (integer)
+import Solcore.Primitives.Primitives qualified as Prim
 
 -- type inference for statements
 
@@ -41,7 +42,7 @@ tcStmtWithExpectedReturn _ e@(lhs := rhs) =
     s <- unify t1 t2 `wrapError` e
     _ <- extSubst s
     pure (lhs1 := rhs1, apply s $ ps1 ++ ps2, unit)
-tcStmtWithExpectedReturn _ e@(Let n mt me) =
+tcStmtWithExpectedReturn _ e@(Let ct n mt me) =
   do
     (me', psf, tf) <- case (mt, me) of
       (Just t, Just e1) -> do
@@ -61,7 +62,7 @@ tcStmtWithExpectedReturn _ e@(Let n mt me) =
       (Nothing, Nothing) ->
         (Nothing,[],) <$> freshTyVar
     extEnv n (monotype tf)
-    let e' = Let (Id n tf) (Just tf) me'
+    let e' = Let ct (Id n tf) (Just tf) me'
     withCurrentSubst (e', psf, unit)
 tcStmtWithExpectedReturn mExpectedReturn (Block body) =
   withLocalCtx [] $ do
@@ -222,8 +223,9 @@ tcPat t (PVar n) =
 tcPat t p@(PCon n ps) =
   do
     n' <- resolvePatternConstructor n t `wrapError` p
-    -- asking type from environment
-    st <- askEnv n' `wrapError` p
+    -- asking type from environment (use constrCtx-aware lookup so primitive
+    -- constructors like "pair" are not shadowed by same-named user functions)
+    st <- askEnvForCon n' `wrapError` p
     (_ :=> tc) <- freshInst st
     let (argTys, resultTy) = splitTy tc
     when (length argTys /= length ps) $
@@ -252,11 +254,44 @@ tcPat t p@(PCon n ps) =
     pure (PCon (Id n' tc) ps1, t', apply s lctx')
 tcPat t PWildcard =
   pure (PWildcard, t, [])
+-- Integer literal patterns are compatible with any numeric scrutinee type
+-- (word, uint256, or integer). The pattern adopts the scrutinee's type
+-- directly rather than unifying with a fixed literal type, since integer
+-- literals are structurally compatible with any numeric type.
+-- If the scrutinee type is still an unresolved type variable (e.g. the
+-- scrutinee is itself a literal), we default to word.
+tcPat t' (PLit l@(IntLit _)) = do
+  s <- getSubst
+  let t'' = apply s t'
+  numericOk <- isNumericTy t''
+  if numericOk
+    then pure (PLit l, t'', [])
+    else case t'' of
+      Meta _ -> do
+        s' <- unify t'' word
+        _ <- extSubst s'
+        pure (PLit l, word, [])
+      _ ->
+        tcmError $
+          "integer literal pattern requires numeric scrutinee type, got: " ++ pretty t''
 tcPat t' (PLit l) =
   do
     t <- tcLit l
     s <- unify t t'
     pure (PLit l, apply s t, [])
+tcPat t' (PExp e) =
+  do
+    (e', _ps, t) <- tcExp e
+    -- _ps (predicates) are discarded: comptime expression labels have concrete
+    -- numeric types resolved by unification with the scrutinee, so constraints
+    -- are solved implicitly. A fuller implementation would thread _ps upward.
+    s <- unify t t'
+    let t1 = apply s t
+    numericOk <- isNumericTy t1
+    unless numericOk $
+      tcmError $
+        "expression match label must have a numeric type, got: " ++ pretty t1
+    withCurrentSubst (PExp (apply s e'), apply s t, [])
 
 -- type inference for expressions
 
@@ -269,7 +304,7 @@ mkCon (DataTy nt vs ((Constr n _) : _)) =
 mkCon d = tcmError $ unlines ["Panic!!! This should not happen: mkCon", pretty d]
 
 tcLit :: Literal -> TcM Ty
-tcLit (IntLit _) = return word
+tcLit (IntLit _) = return Prim.integer
 tcLit (StrLit _) = return string
 
 tcExp :: (HasCallStack) => Infer Exp
@@ -297,8 +332,9 @@ tcExpWithExpected mExpected e@(Con n es) =
   do
     expectedArgTys <- mapM (const freshTyVar) es
     n' <- resolveExpressionConstructor n expectedArgTys mExpected `wrapError` e
-    -- getting the type from the environment
-    sch <- askEnv n' `wrapError` e
+    -- getting the type from the environment (use constrCtx-aware lookup so primitive
+    -- constructors like "pair" are not shadowed by same-named user functions)
+    sch <- askEnvForCon n' `wrapError` e
     (ps :=> t) <- freshInst sch
     t' <- freshTyVar
     s0 <- unify t (funtype expectedArgTys t') `wrapError` e
@@ -370,11 +406,11 @@ tcExpWithExpected _ e1@(TyExp e ty) =
     s <- tcmMatch ty' ty1
     _ <- extSubst s
     withCurrentSubst (TyExp e' ty1, ps, ty1)
-tcExpWithExpected _ e@(Cond e1 e2 e3) =
+tcExpWithExpected mExpected e@(Cond e1 e2 e3) =
   do
     (e1', ps1, t1) <- tcExpWithExpected Nothing e1 `wrapError` e
-    (e2', ps2, t2) <- tcExpWithExpected Nothing e2 `wrapError` e
-    (e3', ps3, t3) <- tcExpWithExpected Nothing e3 `wrapError` e
+    (e2', ps2, t2) <- tcExpWithExpected mExpected e2 `wrapError` e
+    (e3', ps3, t3) <- tcExpWithExpected mExpected e3 `wrapError` e
     -- condition should have the boolean type
     _ <-
       unify t1 boolTy
@@ -505,15 +541,15 @@ createClosureFun fn freeIds cdt args bdy ps ty =
     let args0 = everywhere (mkT gen) args
         ps0 = everywhere (mkT gen) ps
         cName = Name $ "env" ++ show j
-        cParam = Typed (Id cName ct) ct
+        cParam = Typed False (Id cName ct) ct
         args' = cParam : args0
         (_, retTy1) = splitTy ty
         vs' = union (bv ct) (bv ps0)
         ty' = ct :-> ty
-        sig = Signature vs' ps0 fn args' (Just retTy1) False
+        sig = Signature vs' ps0 fn args' False (Just retTy1) False
     bdy' <- createClosureBody cName cdt freeIds bdy
     sch <- generalize (ps0, ty')
-    pure (everywhere (mkT gen) $ FunDef sig bdy', sch)
+    pure (everywhere (mkT gen) $ FunDef False sig bdy', sch)
 
 closureTyCon :: DataTy -> TcM Ty
 closureTyCon (DataTy dn vs _) =
@@ -539,8 +575,8 @@ createClosureFreeFun fn args bdy ps ty =
   do
     let (_, retTy1) = splitTy ty
         vs = bv ty `union` bv ps
-        sig = Signature vs ps fn args (Just retTy1) False
-    pure (everywhere (mkT gen) $ FunDef sig bdy)
+        sig = Signature vs ps fn args False (Just retTy1) False
+    pure (everywhere (mkT gen) $ FunDef False sig bdy)
 
 tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
 tcArgs params =
@@ -549,21 +585,21 @@ tcArgs params =
     pure (ps, schs, ts)
 
 tcArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty)
-tcArg (Untyped n) =
+tcArg (Untyped c n) =
   do
     v <- freshTyVar
     let ty = monotype v
-    pure (Typed (Id n v) v, (n, ty), v)
-tcArg a@(Typed n ty) =
+    pure (Typed c (Id n v) v, (n, ty), v)
+tcArg a@(Typed c n ty) =
   do
     ty1 <- kindCheck ty `wrapError` a
-    pure (Typed (Id n ty1) ty1, (n, monotype ty1), ty1)
+    pure (Typed c (Id n ty1) ty1, (n, monotype ty1), ty1)
 
 hasAnn :: Signature Name -> Bool
-hasAnn (Signature _ _ _ args rt _) =
+hasAnn (Signature _ _ _ args _ rt _) =
   any isAnn args || isJust rt
   where
-    isAnn (Typed _ _) = True
+    isAnn (Typed {}) = True
     isAnn _ = False
 
 -- boolean flag indicates if the assumption for the
@@ -573,20 +609,20 @@ hasAnn (Signature _ _ _ args rt _) =
 -- type class definition.
 
 tiArg :: Param Name -> TcM (Param Id, (Name, Scheme), Ty)
-tiArg (Untyped n) =
+tiArg (Untyped c n) =
   do
     t <- freshTyVar
-    pure (Typed (Id n t) t, (n, monotype t), t)
-tiArg (Typed n _) =
+    pure (Typed c (Id n t) t, (n, monotype t), t)
+tiArg (Typed c n _) =
   do
     t <- freshTyVar
-    pure (Typed (Id n t) t, (n, monotype t), t)
+    pure (Typed c (Id n t) t, (n, monotype t), t)
 
 tiArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
 tiArgs args = unzip3 <$> mapM tiArg args
 
 tiFunDef :: FunDef Name -> TcM (FunDef Id, Scheme)
-tiFunDef d@(FunDef sig@(Signature _ _ n args _ _) bd) =
+tiFunDef d@(FunDef isPub sig@(Signature _ _ n args _ _ _) bd) =
   do
     info ["# tiFunDef:", pretty sig]
     -- getting fresh type variables for arguments
@@ -612,7 +648,8 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _ _) bd) =
       ambiguousTypeError sch sig
     -- elaborating the type signature
     sig' <- elabSignature [] sig sch
-    withCurrentSubst (FunDef sig' bd1, sch)
+    (fd', sch') <- withCurrentSubst (FunDef isPub sig' bd1, sch)
+    pure (markIntegerComptime fd', sch')
 
 ambiguityCheck :: Scheme -> TcM Bool
 ambiguityCheck (Forall _ (ps :=> ty)) =
@@ -624,17 +661,17 @@ ambiguityCheck (Forall _ (ps :=> ty)) =
     -- be generated.
     let ps' =
           if noDesugarCalls
-            then [p | p <- ps, not (isInvoke p)]
+            then [p | p <- ps, not (isInvoke p), not (isInt p)]
             else ps
         vs' = bv (ps' :=> ty)
         sch' = Forall vs' (ps' :=> ty)
     pure (ambiguous sch')
 
 argumentAnnotation :: Param Name -> TcM Ty
-argumentAnnotation (Untyped _) =
+argumentAnnotation (Untyped _ _) =
   freshTyVar
-argumentAnnotation (Typed _ t) =
-  pure t
+argumentAnnotation (Typed _ _ t) =
+  maybeExpandSynonym t
 
 checkAllTypeVarsBound :: (Pretty a) => a -> [Tyvar] -> [Tyvar] -> TcM ()
 checkAllTypeVarsBound context used declared =
@@ -642,7 +679,7 @@ checkAllTypeVarsBound context used declared =
    in unless (null unbound) $ unboundTypeVars context unbound
 
 annotatedScheme :: [Tyvar] -> [Pred] -> Signature Name -> TcM Scheme
-annotatedScheme vs' qs (Signature vs ps _ args rt _) =
+annotatedScheme vs' qs (Signature vs ps _ args _ rt _) =
   do
     ts <- mapM argumentAnnotation args
     t <- maybe freshTyVar pure rt
@@ -650,7 +687,7 @@ annotatedScheme vs' qs (Signature vs ps _ args rt _) =
     pure (Forall vs1 ((qs ++ ps) :=> (funtype ts t)))
 
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
-tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _) _)
+tcFunDef incl vs' qs d@(FunDef isPub sig@(Signature vs ps n _ _ _ _) _)
   | hasAnn sig = do
       info ["\n# tcFunDef ", pretty d]
       let vars = vs `union` vs'
@@ -659,7 +696,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _) _)
       -- instantiate signatures in function definition
       sks <- mapM (const freshTyVar) vars
       let env = zip vars sks
-          FunDef sig1@(Signature _ ps1 _ args1 rt1 _) bd1 = everywhere (mkT (insts @Ty env)) d
+          FunDef _ sig1@(Signature _ ps1 _ args1 _ rt1 _) bd1 = everywhere (mkT (insts @Ty env)) d
           qs1 = everywhere (mkT (insts @Ty env)) qs
       -- checking if all constraints have a respective class and are well kinded
       checkConstraints ps `wrapError` d
@@ -701,26 +738,28 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _) _)
         subsCheck sig inf ann `wrapError` d
       -- elaborating function body
       let ann' = if changeTy then inf else ann
-      fdt <- elabFunDef vs' sig1 bd1' inf ann' `wrapError` d
-      withCurrentSubst (fdt, ann')
+      fdt <- elabFunDef isPub vs' sig1 bd1' inf ann' `wrapError` d
+      (fd', ann'') <- withCurrentSubst (fdt, ann')
+      pure (markIntegerComptime fd', ann'')
   | otherwise = tiFunDef d
 
 -- elaborating function definition
 
 elabFunDef ::
+  Bool -> -- visibility flag (public)
   [Tyvar] -> -- additional variables which came from outer scope
   Signature Name -> -- original function signature
   Body Id -> -- elaborated function body (with fresh variables)
   Scheme -> -- function infered type
   Scheme -> -- function annotated type
   TcM (FunDef Id)
-elabFunDef vs sig bdy (Forall _ (_ :=> tinf)) ann@(Forall _ (_ :=> tann)) =
+elabFunDef isPub vs sig bdy (Forall _ (_ :=> tinf)) ann@(Forall _ (_ :=> tann)) =
   do
     let tinf' = everywhere (mkT toMeta) tinf
         tann' = everywhere (mkT toMeta) tann
     s <- unify tinf' tann'
     sig2 <- elabSignature vs sig ann
-    let fd2 = everywhere (mkT (apply @Ty s)) (FunDef sig2 bdy)
+    let fd2 = everywhere (mkT (apply @Ty s)) (FunDef isPub sig2 bdy)
     pure (everywhere (mkT gen) fd2)
 
 toMeta :: Ty -> Ty
@@ -839,24 +878,24 @@ elabSignature vs1 sig (Forall _ (ps :=> t)) =
         -- formal parameters are present in the signature.
         ret = Just $ if null params' then t else (funtype rs t')
         vs' = bv params' `union` bv ret `union` bv ps
-    sig2 <- withCurrentSubst (Signature (vs' \\ vs1) ps (sigName sig) params' ret (sigPayable sig))
+    sig2 <- withCurrentSubst (Signature (vs' \\ vs1) ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig))
     pure sig2
 
 elabParam :: Ty -> Param Name -> TcM (Param Id)
-elabParam t (Typed n _) = pure $ Typed (Id n t) t
-elabParam t (Untyped n) = pure $ Typed (Id n t) t
+elabParam t (Typed c n _) = pure $ Typed c (Id n t) t
+elabParam t (Untyped c n) = pure $ Typed c (Id n t) t
 
 annotateSignature :: Scheme -> Signature Name -> TcM (Signature Name)
 annotateSignature (Forall vs (ps :=> t)) sig =
-  pure $ Signature vs ps (sigName sig) params' ret (sigPayable sig)
+  pure $ Signature vs ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig)
   where
     (ts, t') = splitTy t
     params' = zipWith annotateParam ts (sigParams sig)
     ret = Just t'
 
 annotateParam :: Ty -> Param Name -> Param Name
-annotateParam t (Typed n _) = Typed n t
-annotateParam t (Untyped n) = Typed n t
+annotateParam t (Typed c n _) = Typed c n t
+annotateParam t (Untyped c n) = Typed c n t
 
 -- qualify name for contract functions
 
@@ -870,7 +909,7 @@ correctName (Name s) =
       else pure (Name s)
 
 extSignature :: Signature Name -> TcM ()
-extSignature sig@(Signature _ _ n _ _ _) =
+extSignature sig@(Signature _ _ n _ _ _ _) =
   do
     te <- gets directCalls
     -- checking if the function is previously defined
@@ -1000,17 +1039,17 @@ invalidMemberType n cls ins =
       ]
 
 schemeFromSignature :: Signature Id -> TcM Scheme
-schemeFromSignature sig@(Signature vs ps _ args (Just rt) _) =
+schemeFromSignature sig@(Signature vs ps _ args _ (Just rt) _) =
   do
     unless (all isTyped args) $
       throwError $
         unwords ["Invalid instance member signature:", pretty sig]
     pure $ Forall vs (ps :=> (funtype ts rt))
   where
-    isTyped (Typed _ _) = True
+    isTyped (Typed {}) = True
     isTyped _ = False
 
-    extractType (Typed _ t) = t
+    extractType (Typed _ _ t) = t
     extractType p =
       error $ "schemeFromSignature: expected typed parameter, got " ++ show p
 
@@ -1020,8 +1059,8 @@ schemeFromSignature sig =
     unwords ["Invalid instance member signature (missing return type):", pretty sig]
 
 updateSignature :: [Tyvar] -> Name -> FunDef Id -> FunDef Id
-updateSignature vs' c (FunDef (Signature vs ps n args rt pay) bd) =
-  FunDef (Signature (vs \\ vs') ps (QualName c (pretty n)) args rt pay) bd
+updateSignature vs' c (FunDef p (Signature vs ps n args rc rt pay) bd) =
+  FunDef p (Signature (vs \\ vs') ps (QualName c (pretty n)) args rc rt pay) bd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
 checkDeferedConstraints = mapM_ checkDeferedConstraint
@@ -1200,7 +1239,7 @@ checkCoverage cn ts t =
         )
 
 checkMethod :: Pred -> FunDef Name -> TcM ()
-checkMethod ih@(InCls n _ _) d@(FunDef sig _) =
+checkMethod ih@(InCls n _ _) d@(FunDef _ sig _) =
   do
     -- checking if the signature is fully annotated
     fullSignature sig
@@ -1230,7 +1269,7 @@ fullSignature sig =
     (throwError $ unlines ["Class and instance methods must have complete type signatures:", pretty sig])
 
 requireAnnotations :: FunDef Name -> TcM ()
-requireAnnotations (FunDef sig _) =
+requireAnnotations (FunDef _ sig _) =
   unless (isFullyAnnotated sig) $
     tcmError $
       unlines
@@ -1240,10 +1279,10 @@ requireAnnotations (FunDef sig _) =
         ]
 
 isFullyAnnotated :: Signature Name -> Bool
-isFullyAnnotated (Signature _ _ _ ps rt _) =
+isFullyAnnotated (Signature _ _ _ ps _ rt _) =
   all isTyped ps && isJust rt
   where
-    isTyped (Typed _ _) = True
+    isTyped (Typed {}) = True
     isTyped _ = False
 
 findPred :: Name -> [Pred] -> Maybe Pred
@@ -1299,14 +1338,24 @@ hnfEntails qs ps =
     ctable <- getClassEnv
     itable <- getInstEnv
     depth <- askMaxRecursionDepth
+    noDesugarCalls <- getNoDesugarCalls
     let qs' = nub $ concatMap (bySuperM ctable) qs
-        notInvoke p = not (isInvoke p)
-        needSolving = filter (\p -> notInvoke p && not (entail ctable itable qs' p)) ps
+        skip p = isInvoke p || (noDesugarCalls && isInt p)
+        needSolving = filter (\p -> not (skip p) && not (entail ctable itable qs' p)) ps
     -- For predicates pure entailment couldn't discharge, try the monadic solver
     -- within a local substitution scope so that Skolem bindings don't escape.
     withLocalSubst $ do
       remaining <- toHnfs depth needSolving
-      pure (filter notInvoke remaining)
+      pure (filter (not . skip) remaining)
+
+-- Any let binding whose type is `integer` is implicitly comptime: integer is a
+-- comptime-only type and cannot survive to hull emission regardless of whether
+-- the user wrote `comptime`.  Applied after the full substitution is known.
+markIntegerComptime :: FunDef Id -> FunDef Id
+markIntegerComptime = everywhere (mkT fix)
+  where
+    fix (Let _ i mt me) | idType i == Prim.integer = Let True i mt me
+    fix s = s
 
 -- type generalization
 
@@ -1369,12 +1418,12 @@ tcCall (Just e) n args =
     withCurrentSubst (Call (Just e') (Id n t') es', ps', t')
 
 tcParam :: Param Name -> TcM (Param Id)
-tcParam (Typed n t) =
-  pure $ Typed (Id n t) t
-tcParam (Untyped n) =
+tcParam (Typed c n t) =
+  pure $ Typed c (Id n t) t
+tcParam (Untyped c n) =
   do
     t <- freshTyVar
-    pure (Typed (Id n t) t)
+    pure (Typed c (Id n t) t)
 
 resolvePatternConstructor :: Name -> Ty -> TcM Name
 resolvePatternConstructor n expectedTy
@@ -1699,13 +1748,13 @@ instance Vars (Pat Id) where
 instance Vars (Param Id) where
   free _ = []
 
-  bound (Typed n _) = [n]
-  bound (Untyped n) = [n]
+  bound (Typed _ n _) = [n]
+  bound (Untyped _ n) = [n]
 
 instance Vars (Stmt Id) where
   free (e1 := e2) = free [e1, e2]
-  free (Let _ _ (Just e)) = free e
-  free (Let _ _ _) = []
+  free (Let _ _ _ (Just e)) = free e
+  free (Let _ _ _ _) = []
   free (Block body) = free body
   free (StmtExp e) = free e
   free (Return e) = free e
@@ -1716,7 +1765,7 @@ instance Vars (Stmt Id) where
   free (Asm _) = []
   free EmptyStmt = []
 
-  bound (Let n _ _) = [n]
+  bound (Let _ n _ _) = [n]
   bound (Block _) = []
   bound _ = []
 

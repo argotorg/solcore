@@ -6,11 +6,11 @@ pragma no-bounded-variable-condition ;
 contract Simple {
   myval : word ;
 
-  function getVal () -> word {
+  public function getVal () -> word {
     return myval ;
   }
 
-  function main () -> word {
+  public function main () -> word {
     return getVal();
   }
 }

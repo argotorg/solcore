@@ -55,9 +55,10 @@ invokeSignature =
     [selfVar, argsVar]
     []
     invokeName
-    [ Typed selfName (TyVar selfVar),
-      Typed argsName (TyVar argsVar)
+    [ Typed False selfName (TyVar selfVar),
+      Typed False argsName (TyVar argsVar)
     ]
+    False
     (Just (TyVar retVar))
     False
 
@@ -110,6 +111,68 @@ pairTy t1 t2 = t1 :-> t2 :-> pair t1 t2
 
 string :: Ty
 string = TyCon "string" []
+
+integer :: Ty
+integer = TyCon "integer" []
+
+-- integer primitives (comptime-only; evaluated by MastEval, never emitted)
+
+wordToInteger :: (Name, Scheme)
+wordToInteger = (Name "wordToInteger", monotype (word :-> integer))
+
+wordFromInteger :: (Name, Scheme)
+wordFromInteger = (Name "wordFromInteger", monotype (integer :-> word))
+
+integerAdd :: (Name, Scheme)
+integerAdd = (Name "integerAdd", monotype (integer :-> integer :-> integer))
+
+integerSub :: (Name, Scheme)
+integerSub = (Name "integerSub", monotype (integer :-> integer :-> integer))
+
+integerMul :: (Name, Scheme)
+integerMul = (Name "integerMul", monotype (integer :-> integer :-> integer))
+
+integerLt :: (Name, Scheme)
+integerLt = (Name "integerLt", monotype (integer :-> integer :-> boolTy))
+
+integerEq :: (Name, Scheme)
+integerEq = (Name "integerEq", monotype (integer :-> integer :-> boolTy))
+
+-- Int class: overloaded coercion from integer literals
+-- instance integer : Int { fromInteger = identity }
+-- instance word : Int    { fromInteger = wordFromInteger }
+
+intClassName :: Name
+intClassName = Name "Int"
+
+intVar :: Tyvar
+intVar = aVar
+
+intPred :: Pred
+intPred = InCls intClassName (TyVar intVar) []
+
+-- | Scheme for fromInteger: forall a. (a:Int) => integer -> a
+fromIntegerScheme :: Scheme
+fromIntegerScheme = Forall [intVar] ([intPred] :=> (integer :-> TyVar intVar))
+
+fromIntegerEntry :: (Name, Scheme)
+fromIntegerEntry = (QualName intClassName "fromInteger", fromIntegerScheme)
+
+-- | Integer primitive function names.
+-- Single source of truth — used by MastEval (builtinPureFuns) and
+-- Specialise (comptimeBuiltins) to avoid drift between the two.
+-- Extend this list when adding new integer primitives.
+integerPrimNames :: [Name]
+integerPrimNames =
+  [ Name "wordToInteger",
+    Name "wordFromInteger",
+    Name "integerAdd",
+    Name "integerSub",
+    Name "integerMul",
+    Name "integerLt",
+    Name "integerEq",
+    QualName intClassName "fromInteger"
+  ]
 
 stack :: Ty -> Ty
 stack t = TyCon "stack" [t]

@@ -68,5 +68,5 @@ instance (a:Neg,b:Neg) => Pair(a,b):Neg {
 
 contract NegPair {
  constructor() {}
- function negPair() -> uint256 { return uint256(fromB(pairfst(Neg.neg(Pair(B.F,B.T))))); }
+ public function negPair() -> uint256 { return uint256(fromB(pairfst(Neg.neg(Pair(B.F,B.T))))); }
 }

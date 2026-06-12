@@ -5,7 +5,7 @@ function deposit(pubkey: memory(string), withdrawal_credentials: memory(string),
 }
 
 contract Foo {
-   function main () -> () {
+   public function main () -> () {
       deposit(memory(0), memory(0), memory(0), uint256(2));
    }
 }

@@ -58,6 +58,7 @@ library
 
   -- cabal-fmt: expand src
   exposed-modules:
+      Solcore.Backend.ComptimeCheck
       Solcore.Backend.EmitHull
       Solcore.Backend.Mast
       Solcore.Backend.MastEval
@@ -66,10 +67,12 @@ library
       Solcore.Desugarer.FieldAccess
       Solcore.Desugarer.IfDesugarer
       Solcore.Desugarer.IndirectCall
+      Solcore.Desugarer.IntLiteralDesugar
       Solcore.Desugarer.ReplaceWildcard
       Solcore.Desugarer.ContractDispatch
       Solcore.Desugarer.ReplaceFunTypeArgs
       Solcore.Desugarer.UniqueTypeGen
+      Solcore.Frontend.ComptimeCheck
       Solcore.Frontend.Lexer.SolcoreLexer
       Solcore.Frontend.Module.Identity
       Solcore.Frontend.Module.Loader
@@ -171,6 +174,7 @@ test-suite sol-core-tests
     HullCases
     MatchCompilerTests
     ModuleTypeCheckTests
+    YulEvalTests
     ParserTests
 
   build-depends:

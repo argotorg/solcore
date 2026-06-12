@@ -1,16 +1,16 @@
 contract Option {
   data Option(a) = None | Some(a);
 
-  function just(x : word) -> Option(word) { return Option.Some(x); }
+  public function just(x : word) -> Option(word) { return Option.Some(x); }
 
-  function maybe(n : word, o : Option(word)) -> word {
+  public function maybe(n : word, o : Option(word)) -> word {
     match o {
       | Option.None => return n;
       | Option.Some(x) => return x;
     }
   }
 
-  function join(mmx : Option(Option(word))) -> Option(word) {
+  public function join(mmx : Option(Option(word))) -> Option(word) {
     let result = Option.None;
     match mmx {
       | Option.Some(Option.Some(x)) => result = Option.Some(x);
@@ -21,21 +21,21 @@ contract Option {
     return result;
   }
 
- function extract(mx : Option(word)) -> word {
+ public function extract(mx : Option(word)) -> word {
    match mx {
      | Option.Some(x) => return x;
      | Option.None => return 0;
    }
  }
 
-  function cojoin(x : Option(word)) -> Option(Option(word)) { // Test that sum types can grow
+  public function cojoin(x : Option(word)) -> Option(Option(word)) { // Test that sum types can grow
     let result = Option.None;
     result = Option.Some(x);
     return result;
    }
 
 
-  function main() -> word {
+  public function main() -> word {
     return maybe(0, join(cojoin(Option.Some(42))));
   }
 }

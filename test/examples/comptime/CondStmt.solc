@@ -11,7 +11,7 @@ function answer(n:word) -> word {
   return notAnswer(notAnswer(42));
 }
 contract Fib {
-function main() -> word {
+public function main() -> word {
    return answer(42);
 }
 }

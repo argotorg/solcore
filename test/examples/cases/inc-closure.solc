@@ -11,7 +11,7 @@ function inc(x : word) -> word {
 
 contract Foo {
 
-  function main () -> word {
+  public function main () -> word {
     return inc(0);
   }  
 }

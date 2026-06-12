@@ -1,18 +1,18 @@
 contract Not {
   data Bool = False | True;
 
-  function main() -> word {
+  public function main() -> word {
     return fromBool(bnot(Bool.False));
   }
 
-  function fromBool(b : Bool) -> word {
+  public function fromBool(b : Bool) -> word {
     match(b) {
       | Bool.False => return 0;
       | Bool.True  => return 1;
     }
   }
 
-  function bnot(b : Bool) -> Bool {
+  public function bnot(b : Bool) -> Bool {
     match b {
       | Bool.False => return Bool.True;
       | Bool.True => return Bool.False;

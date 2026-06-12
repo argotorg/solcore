@@ -53,7 +53,7 @@ contract ExpReturn {
 
 
 
-  function main() -> Word {
+  public function main() -> Word {
     return elimBool1(Bool.False);
     // return elimBool1(Bool.False);
   }

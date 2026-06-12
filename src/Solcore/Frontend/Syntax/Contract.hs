@@ -141,7 +141,8 @@ data TySym
 data Constructor a
   = Constructor
   { constrParams :: [Param a],
-    constrBody :: (Body a)
+    constrBody :: (Body a),
+    constrPayable :: Bool
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -164,6 +165,7 @@ data Signature a
     sigContext :: [Pred],
     sigName :: Name,
     sigParams :: [Param a],
+    sigRetComptime :: Bool,
     sigReturn :: Maybe Ty,
     sigPayable :: Bool
   }
@@ -219,7 +221,8 @@ data Field a
 
 data FunDef a
   = FunDef
-  { funSignature :: Signature a,
+  { funIsPublic :: Bool,
+    funSignature :: Signature a,
     funDefBody :: Body a
   }
   deriving (Eq, Ord, Show, Data, Typeable)

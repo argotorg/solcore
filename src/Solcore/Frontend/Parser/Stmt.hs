@@ -40,10 +40,14 @@ letP :: Parser Stmt
 letP = do
   keyword "let"
   n <- identifier
-  mt <- optional (colon *> typeP)
+  (ct, mt) <- option (False, Nothing) $ do
+    _ <- colon
+    ct <- option False (True <$ keyword "comptime")
+    t <- typeP
+    return (ct, Just t)
   me <- optional (equalsP *> expP)
   _ <- semicolon
-  return (Let (Name n) mt me)
+  return (Let ct (Name n) mt me)
 
 returnP :: Parser Stmt
 returnP = Return <$> (keyword "return" *> expP <* semicolon)
@@ -112,9 +116,13 @@ forLetP :: Parser Stmt
 forLetP = do
   keyword "let"
   n <- identifier
-  mt <- optional (colon *> typeP)
+  (ct, mt) <- option (False, Nothing) $ do
+    _ <- colon
+    ct <- option False (True <$ keyword "comptime")
+    t <- typeP
+    return (ct, Just t)
   me <- optional (equalsP *> expP)
-  return (Let (Name n) mt me)
+  return (Let ct (Name n) mt me)
 
 forAssignP :: Parser Stmt
 forAssignP = do

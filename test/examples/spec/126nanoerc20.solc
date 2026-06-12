@@ -31,13 +31,13 @@ contract Uint {
   totalSupply : uint256;
   balances : mapping(address,uint256);
 
-  function mint(amount:uint256) -> () {
+  public function mint(amount:uint256) -> () {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
 
   //     function transferFrom(address src, address dst, uint256 amt) public returns (bool) 
-  function transferFrom(src:address, dst:address, amt:uint256) -> bool {
+  public function transferFrom(src:address, dst:address, amt:uint256) -> bool {
      require1(ge(balances[src], amt));
 
      /*
@@ -50,21 +50,21 @@ contract Uint {
   }
 
 
-  function withdraw(src:address, amt:uint256) -> () {
+  public function withdraw(src:address, amt:uint256) -> () {
     balances[src] = Num.sub(balances[src], amt):uint256;
   }
   
-  function deposit(dst:address, amt:uint256) -> () {
+  public function deposit(dst:address, amt:uint256) -> () {
     balances[dst] = Num.add(balances[dst], amt):uint256;
   }
 
-  function init() -> () {
+  public function init() -> () {
     owner = address(0x123456789abcdef);
     msg_sender = msg.sender();
     decimals = uint256(18);
   }
   
-  function main() -> uint256 {
+  public function main() -> uint256 {
     init();
     mint(uint256(1000));
     let src : address = owner;

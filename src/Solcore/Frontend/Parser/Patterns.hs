@@ -6,12 +6,13 @@ where
 
 import Common.LightYear
 import Solcore.Frontend.Lexer.SolcoreLexer
+import Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.SolcoreTypes (qualifiedName)
 import Solcore.Frontend.Syntax.Name (Name (..))
 import Solcore.Frontend.Syntax.SyntaxTree (Literal (..), Pat (..))
 
 patP :: Parser Pat
-patP = wildcardP <|> litP <|> dotPatP <|> parenPatP <|> namedPatP
+patP = wildcardP <|> litP <|> dotPatP <|> parenPatP <|> try comptimePatP <|> namedPatP
 
 patListP :: Parser [Pat]
 patListP = patP `sepBy1` comma
@@ -51,3 +52,6 @@ namedPatP = do
   n <- qualifiedName
   args <- option [] (parens (patP `sepBy1` comma))
   return (Pat n args)
+
+comptimePatP :: Parser Pat
+comptimePatP = PExp <$> (keyword "comptime" *> exprP (return []))

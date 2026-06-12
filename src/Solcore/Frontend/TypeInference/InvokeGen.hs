@@ -60,14 +60,14 @@ createInstance udt fd sch =
     (spvs, svs) <- freshPatData udt
     -- pattern variables for arguments
     (sargs, sarg) <- unzip <$> mapM (const freshPatArg) args'
-    let isig = Signature [] qs invokeName [selfParam, argParam] (Just returnTy) False
+    let isig = Signature [] qs invokeName [selfParam, argParam] False (Just returnTy) False
         -- building the match of function body
         discr = epair (Var sn) (Var an)
         fname = sigName (funSignature fd)
         ssargs = take (length args) (svs ++ sarg)
         scall = Return (Call Nothing fname ssargs)
         bdy = Match [discr] [([foldr1 ppair (spvs : sargs)], [scall])]
-        ifd = FunDef isig [bdy]
+        ifd = FunDef False isig [bdy]
         vs' = bv qs `union` bv [tupleArgTy, returnTy, selfTy] `union` bv ifd
         instd = Instance False vs' qs invokableName [tupleArgTy, returnTy] selfTy [ifd]
     info [">> Generated invokable instance:\n", pretty instd]
@@ -98,7 +98,7 @@ freshParam :: String -> Ty -> TcM (Param Name, Name)
 freshParam s t =
   do
     n <- freshFromString s
-    pure (Typed n t, n)
+    pure (Typed False n t, n)
 
 freshFromString :: String -> TcM Name
 freshFromString s =
@@ -132,8 +132,8 @@ isQual (QualName _ _) = True
 isQual _ = False
 
 tyParam :: Param a -> TcM Ty
-tyParam (Typed _ t) = pure t
-tyParam (Untyped _) = freshTyVar
+tyParam (Typed _ _ t) = pure t
+tyParam (Untyped _ _) = freshTyVar
 
 tyFromData :: DataTy -> Ty
 tyFromData (DataTy dn vs _) =

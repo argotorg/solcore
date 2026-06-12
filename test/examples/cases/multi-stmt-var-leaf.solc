@@ -1,7 +1,7 @@
 data Bool = False | True;
 
 contract MultiStmtVarLeaf {
-  function main(x:Bool) -> Bool {
+  public function main(x:Bool) -> Bool {
     match x {
       | y =>
         let z = y;

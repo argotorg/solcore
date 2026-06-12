@@ -9,5 +9,5 @@ data Bool = False | True;
   }
 
   contract Test {
-    function main() -> Bool { f(Bool.True) }
+    public function main() -> Bool { f(Bool.True) }
   }

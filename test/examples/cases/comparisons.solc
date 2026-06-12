@@ -13,5 +13,5 @@ function f(x: word, y:word) -> bool {
 }
 
 contract Comparisons {
-  function main() -> bool { return f(0,1); }
+  public function main() -> bool { return f(0,1); }
 }

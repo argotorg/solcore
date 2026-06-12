@@ -8,7 +8,7 @@ function fib(n : word) -> word {
 }
 
 contract Fib {
-function main() -> word {
+public function main() -> word {
   return fib(10);
 }
 }

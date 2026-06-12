@@ -43,7 +43,7 @@ forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
 
 
 contract Size {
-  function main() -> word {
+  public function main() -> word {
   return
     StorageSize.size(Proxy:Proxy( (word, (word, ())))); }
 }

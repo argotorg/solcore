@@ -7,7 +7,7 @@ pragma no-bounded-variable-condition ;
 
 contract C {
     constructor() {}
-    function id(x:memory(string)) -> (memory(string)) {
+    public function id(x:memory(string)) -> (memory(string)) {
      let ptr : word = Typedef.rep(x);
      let len : word;
      let n1 : word;
@@ -21,14 +21,14 @@ contract C {
      return x;
     }
 
-    function const_a() -> (memory(string)) {
+    public function const_a() -> (memory(string)) {
       let resPtr = allocate_memory(64);
-      let payload = 0x7777777777777777777777777777777777777777777777777777777777777777;
+      let payload : word = 0x7777777777777777777777777777777777777777777777777777777777777777;
       mstore(resPtr, 3);
       mstore(resPtr+32, payload);
       return memory(resPtr);
     }
-    function mylen(x:memory(string)) -> uint256 {
+    public function mylen(x:memory(string)) -> uint256 {
      let ptr : word = Typedef.rep(x);
      let l : word;
      let n1 : word;

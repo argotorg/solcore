@@ -13,6 +13,10 @@ bash ./contest.sh test/examples/dispatch/Revert.json
 bash ./contest.sh test/examples/dispatch/ownable.json
 bash ./contest.sh test/examples/dispatch/hashes.json
 bash ./contest.sh test/examples/dispatch/payable.json
+bash ./contest.sh test/examples/dispatch/payable_ctor.json
+bash ./contest.sh test/examples/dispatch/nonpayable_ctor.json
 bash ./contest.sh test/examples/dispatch/concat.json
+bash ./contest.sh test/examples/dispatch/slices.json
 bash ./contest.sh test/examples/dispatch/fallback.json
 bash ./contest.sh test/examples/dispatch/ecrecover.json
+bash ./contest.sh test/examples/dispatch/memory.json
