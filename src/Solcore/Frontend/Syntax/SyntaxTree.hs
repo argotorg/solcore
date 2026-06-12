@@ -647,6 +647,7 @@ data Exp
   | ExpBNotWithLocation NodeLocation Exp -- ~ e
   | ExpCondWithLocation NodeLocation Exp Exp Exp -- if e1 then e2 else e3
   | ExpAtWithLocation NodeLocation Ty -- proxy sugar
+  | ExpTypeInfoWithLocation NodeLocation Name Name -- type(C).field primitive (e.g. type(C).publicMethods)
   deriving (Eq, Ord, Show, Data, Typeable)
 
 pattern Lit :: Literal -> Exp
@@ -784,7 +785,12 @@ pattern ExpAt ty <- ExpAtWithLocation _ ty
   where
     ExpAt ty = ExpAtWithLocation unlocatedNode ty
 
-{-# COMPLETE Lit, ExpName, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpPlus, ExpMinus, ExpTimes, ExpDivide, ExpModulo, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpBNot, ExpCond, ExpAt #-}
+pattern ExpTypeInfo :: Name -> Name -> Exp
+pattern ExpTypeInfo cn field <- ExpTypeInfoWithLocation _ cn field
+  where
+    ExpTypeInfo cn field = ExpTypeInfoWithLocation unlocatedNode cn field
+
+{-# COMPLETE Lit, ExpName, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpPlus, ExpMinus, ExpTimes, ExpDivide, ExpModulo, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpBNot, ExpCond, ExpAt, ExpTypeInfo #-}
 
 locatedExp :: SourceSpan -> Exp -> Exp
 locatedExp sourceSpan (Lit lit) = LitWithLocation location lit
@@ -816,6 +822,7 @@ locatedExp sourceSpan (ExpLNot exp) = ExpLNotWithLocation (locatedNode sourceSpa
 locatedExp sourceSpan (ExpBNot exp) = ExpBNotWithLocation (locatedNode sourceSpan) exp
 locatedExp sourceSpan (ExpCond cond thenExp elseExp) = ExpCondWithLocation (locatedNode sourceSpan) cond thenExp elseExp
 locatedExp sourceSpan (ExpAt ty) = ExpAtWithLocation (locatedNode sourceSpan) ty
+locatedExp sourceSpan (ExpTypeInfo cn field) = ExpTypeInfoWithLocation (locatedNode sourceSpan) cn field
 
 instance HasSourceSpan Exp where
   sourceSpanOf (LitWithLocation location _) = sourceSpanOf location
@@ -871,6 +878,8 @@ instance HasSourceSpan Exp where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf cond, sourceSpanOf thenExp, sourceSpanOf elseExp]
   sourceSpanOf (ExpAtWithLocation location ty) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf ty]
+  sourceSpanOf (ExpTypeInfoWithLocation location cn field) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf cn, sourceSpanOf field]
 
 -- pattern matching equations
 
