@@ -1,3 +1,6 @@
+
+import std.opcodes.{add, not as not_, and as and_, mstore, mload, mcopy, sstore, sload, calldataload, calldatacopy, iszero, keccak256, log1 as log1_, invalid};
+
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
 
@@ -85,8 +88,6 @@ export {
   memberAccessBase,
   memory(*),
   memory_ref,
-  mload,
-  mstore,
   ne,
   not,
   or,
@@ -162,10 +163,8 @@ export {
 forall t.t:Typedef(word) =>
 function log1(v:t, topic:word) -> () {
   let w : word = Typedef.rep(v);
-  assembly {
-    mstore(0,w)
-    log1(0,32,topic)
-  }
+  mstore(0, w);
+  log1_(0, 32, topic);
 }
 
 function unimplemented() -> () {
@@ -189,9 +188,7 @@ function revertLit(s:string) -> () {
 
 // Empty revert.
 function revertEmpty() -> () {
-  assembly {
-    revert(0, 0)
-  }
+    revert(0, 0);
 }
 
 // TODO: use bytes4
@@ -201,27 +198,21 @@ data Error = Error(word) | Empty | Msg(memory(string));
 // Revert with Error selector.
 function revertWithError(e:Error) -> () {
     match e {
-        | .Error(selector) => assembly {
-            mstore(0, selector)
+        | .Error(selector) =>
+            mstore(0, selector);
             // We only care about the BE MSB.
-            revert(28, 4)
-        }
-        | .Empty => assembly {
-            revert(0, 0)
-        }
+            revert(28, 4);
+        | .Empty =>
+            revert(0, 0);
         | .Msg(msg) =>
             let msg_ = Typedef.rep(msg);
-            assembly {
-                revert(add(msg_, 32), mload(msg_))
-            }
+            revert(msg_ + 32, mload(msg_));
     }
 }
 
 function assert(cond: bool) -> () {
     if (!cond) {
-        assembly {
-            invalid()
-        }
+        invalid();
     }
 }
 
@@ -403,11 +394,7 @@ default instance a:Num {
 // These are intended to be folded by MastEval when their arguments are
 // statically known word values.
 function eqWord(x:word, y:word) -> bool {
-  let res : word;
-  assembly {
-     res := eq(x, y)
-  }
-  return tobool(res);
+    return tobool(eq(x, y));
 }
 
 function gtWord(x:word, y:word) -> bool {
@@ -419,11 +406,7 @@ function gtWord(x:word, y:word) -> bool {
 }
 
 function addWord(l: word, r: word) -> word {
-  let rw : word;
-  assembly {
-      rw := add(l,r)
-  }
-  return rw;
+    return add(l, r);
 }
 
 function subWord(l: word, r: word) -> word {
@@ -586,22 +569,14 @@ instance word:Bounded {
 }
 
 function hash1(x: word) -> word {
-  let result: word = 0;
-  assembly {
-    mstore(0, x)
-    result := keccak256(0,32)
-  }
-  return result;
+    mstore(0, x);
+    return keccak256(0, 32);
 }
 
 function hash2(x: word, y: word) -> word {
-  let result: word = 0;
-  assembly {
-    mstore(0, x)
-    mstore(32, y)
-    result := keccak256(0,64)
-  }
-  return result;
+    mstore(0, x);
+    mstore(32, y);
+    return keccak256(0, 64);
 }
 
 // --- Value Types ---
@@ -805,16 +780,6 @@ data mapping(member, index) = mapping(word) ;
 
 // --- Low-level memory ops
 
-function mload(a:word) -> word {
-  let res: word;
-  assembly { res := mload(a) }
-  return res;
-}
-
-function mstore(a:word, v:word) -> () {
-  assembly { mstore(a,v) }
-}
-
 function strlen(s:memory(string)) -> word {
   match s { | memory(a) => return mload(a); }
 }
@@ -989,7 +954,7 @@ instance MemoryWordReader:WordReader {
     }
     function copyToMem(reader:MemoryWordReader, dst:word, cnt: word) -> () {
         match reader {
-        | MemoryWordReader(ptr) => assembly { mcopy(dst, ptr, cnt) }
+        | MemoryWordReader(ptr) => mcopy(dst, ptr, cnt);
         }
     }
 }
@@ -1008,14 +973,9 @@ instance CalldataWordReader : Typedef(word) {
 
 instance CalldataWordReader:WordReader {
     function read(reader:CalldataWordReader) -> word {
-        let result : word;
         match reader {
-          | CalldataWordReader(ptr) =>
-            // https://github.com/argotorg/solcore/issues/188
-            let ptr2 = ptr;
-            assembly { result := calldataload(ptr2) }
+          | CalldataWordReader(ptr) => return calldataload(ptr);
         }
-        return result;
     }
     function advance(reader:CalldataWordReader, offset:word) -> CalldataWordReader {
         match reader {
@@ -1024,7 +984,7 @@ instance CalldataWordReader:WordReader {
     }
     function copyToMem(reader:CalldataWordReader, dst:word, cnt: word) -> () {
         match reader {
-        | CalldataWordReader(ptr) => assembly { calldatacopy(dst, ptr, cnt) }
+        | CalldataWordReader(ptr) => calldatacopy(dst, ptr, cnt);
         }
     }
 }
@@ -1258,23 +1218,16 @@ instance bool:ABIEncode {
 }
 
 function round_up_to_mul_of_32(value:word) -> word {
-    return bandWord(value + 31, bnotWord(31));
+    return and_(value + 31, not_(31));
 }
 
 function encodeIntoFromBytesLike(srcPtr:word, basePtr:word, offset:word, tail:word) -> word {
     let tailOffset = tail - basePtr;
-
-    assembly {
-      let length := mload(srcPtr)
-      let total := add(length, 32)
-
-      mstore(add(basePtr, offset), sub(tail, basePtr))
-      mcopy(tail, srcPtr, total)
-      let rounded := and(add(total, 31), not(31))
-      tail := add(tail, rounded)
-    }
-
-    return tail;
+    let length = mload(srcPtr);
+    let total = length + 32;
+    mstore(basePtr + offset, tail - basePtr);
+    mcopy(tail, srcPtr, total);
+    return tail + round_up_to_mul_of_32(total);
 }
 
 instance memory(string):ABIEncode {
@@ -1541,18 +1494,12 @@ pragma no-bounded-variable-condition LVA, RVA;
 // -- storage
 
 function sload_(x:word) -> word {
-    let res: word;
-    assembly {
-       res := sload(x)
-    }
-    return res;
-  }
-
-function sstore_(a:word, v:word) -> () {
-    assembly { sstore(a,v) }
+    return sload(x);
 }
 
-
+function sstore_(a:word, v:word) -> () {
+    sstore(a, v);
+}
 
 forall self.
 class self:StorageSize {
@@ -1632,34 +1579,21 @@ class self:StorageType {
 
 instance word:StorageType {
     function load(ptr:word) -> word {
-        let r:word;
-        assembly {
-            r := sload(ptr)
-        }
-        return r;
+        return sload(ptr);
     }
     function store(ptr:word, value:word) -> () {
-        assembly {
-            sstore(ptr, value)
-        }
+        sstore(ptr, value);
     }
 }
 
 forall a. a:Typedef(word) =>
 function sloadViaWord(ptr:word) -> a {
-    let r:word;
-    assembly {
-	r := sload(ptr)
-    }
-    return Typedef.abs(r);
+    return Typedef.abs(sload(ptr));
 }
 
 forall a. a:Typedef(word) =>
 function sstoreViaWord(ptr:word, value:a) -> () {
-    let w: word = Typedef.rep(value);
-    assembly {
-	sstore(ptr, w)
-    }
+    sstore(ptr, Typedef.rep(value));
 }
 
 instance uint256:StorageType {
@@ -1931,39 +1865,32 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
 
 // shamelessly stolen from abi_encode_t_string_storage_to_t_string_memory_ptr
 function loadBytesFromStorage(slot:word, memPtr:word) -> word {
-  let ret : word;
-  assembly {
-    let pos := memPtr
-    let slotValue := sload(slot)
-    let length := div(slotValue, 2)
-    let outOfPlaceEncoding := and(slotValue, 1)
-    if iszero(outOfPlaceEncoding) {
-	length := and(length, 0x7f)
+    let pos = memPtr;
+    let slotValue = sload(slot);
+    let length = slotValue / 2;
+    let outOfPlaceEncoding = tobool(and_(slotValue, 1));
+    if (!outOfPlaceEncoding) {
+        length = and_(length, 0x7f);
     }
-    mstore(pos, length)
-    pos := add(pos, 0x20)
-
-    switch outOfPlaceEncoding
-    case 0 {
-        // short byte array
-        mstore(pos, and(slotValue, not(0xff)))
-        let empty := iszero(length)
-        let notzero := iszero(empty)
-        ret := add(pos, mul(0x20, notzero))
+    mstore(pos, length);
+    pos = pos + 32;
+    match outOfPlaceEncoding {
+        | false =>
+            // Short byte array
+            mstore(pos, and_(slotValue, not_(0xff)));
+            let empty = iszero(length);
+            let notzero = iszero(empty);
+            return pos + (notzero * 32);
+        | true =>
+            // Long byte array
+            let dataPos = hash1(slot);
+            let i = 0;
+            for (i = 0; i < length; i = i + 32) {
+                mstore(pos + i, sload(dataPos));
+                dataPos = dataPos + 1;
+            }
+            return pos + i;
     }
-    case 1 {
-        // long byte array
-        mstore(0, slot)
-        let dataPos := keccak256(0, 32)
-        let i := 0
-        for { } lt(i, length) { i := add(i, 0x20) } {
-            mstore(add(pos, i), sload(dataPos))
-            dataPos := add(dataPos, 1)
-        }
-        ret := add(pos, i)
-    }
-  }
-  return ret;
 }
 
 
@@ -2090,10 +2017,7 @@ instance memory(bytes):MemoryPointer {
 instance memory(bytes):MemoryEncode {
     function encodeInto(v: memory(bytes), target: word) -> () {
         let v_ = Typedef.rep(v);
-        assembly {
-            mcopy(target, add(v_, 32), mload(v_))
-        }
-    }
+        mcopy(target, v_ + 32, mload(v_));
 }
 
 // Placeholder for an empty memory area.
@@ -2172,11 +2096,7 @@ function truncate(input: a, end: word) -> memory_ref {
 forall a . a:MemorySize, a:MemoryPointer => function keccak256_(input: a) -> bytes32 {
     let len : word = MemorySize.len(input);
     let ptr : word = MemoryPointer.ptr(input);
-    let res : word;
-    assembly {
-        res := keccak256(ptr, len)
-    }
-    return bytes32(res);
+    return bytes32(keccak256(ptr, len));
 }
 
 forall a . a:MemorySize, a:MemoryPointer => function sha256(input: a) -> bytes32 {
@@ -2184,15 +2104,9 @@ forall a . a:MemorySize, a:MemoryPointer => function sha256(input: a) -> bytes32
     let ptr : word = MemoryPointer.ptr(input);
     let res : word;
     // We assume the [0, 32] scratch space is reserved.
-    // TODO: add specific error code
-    assembly {
-        let ret := staticcall(gas(), 2, ptr, len, 0, 32)
-        if iszero(ret) {
-            revert(0, 0)
-        }
-        res := mload(0)
-    }
-    return bytes32(res);
+    let ret = staticcall(gas(), 2, ptr, len, 0, 32);
+    require(ret != 0, Error(0x12345678)); // SHA256CallFailed()
+    return bytes32(mload(0));
 }
 
 forall a . a:MemorySize, a:MemoryPointer => function ripemd160(input: a) -> bytes32 {
