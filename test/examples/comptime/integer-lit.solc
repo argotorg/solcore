@@ -1,0 +1,29 @@
+// Step 6: bare integer literals at `integer` sites, without explicit wordToInteger.
+// The desugaring pass inserts wordToInteger automatically.
+//
+// Coercions inserted by the pass (no explicit wordToInteger in source):
+//   let x : comptime integer = 10          -> wordToInteger(10)
+//   integerLt(n, 2)                        -> integerLt(n, wordToInteger(2))
+//   integerSub(n, 1) / integerSub(n, 2)   -> integerSub(n, wordToInteger(1/2))
+//   integerAdd(fib(...), fib(...))         -> args are Calls, not literals: no change
+//
+// Expected: main() folds to word literal 55 (fib(10)).
+
+function fib(comptime n : integer) -> comptime integer {
+  if (integerLt(n, 2)) {
+    return n;
+  } else {
+    return integerAdd(
+      fib(integerSub(n, 1)),
+      fib(integerSub(n, 2))
+    );
+  }
+}
+
+contract IntegerLit {
+  function main() -> word {
+    let x : comptime integer = 10;
+    let res : comptime word = wordFromInteger(fib(x));
+    return res;
+  }
+}

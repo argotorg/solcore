@@ -89,6 +89,11 @@ sumDataTy =
 builtinDataInfo :: [(Name, DataTy)]
 builtinDataInfo = [("sum", sumDataTy)]
 
+-- | The comptime-only integer type.  Values of this type must be fully
+-- eliminated by MastEval before hull emission; reaching here is a bug.
+mastIntegerTy :: MastTy
+mastIntegerTy = MastTyCon (Name "integer") []
+
 type VSubst = Map.Map Name Hull.Expr
 
 emptyVSubst :: VSubst
@@ -159,6 +164,8 @@ findConstructor = go
 -----------------------------------------------------------------------
 emitFunDef :: (HasCallStack) => MastFunDef -> EM [Hull.Stmt]
 emitFunDef fd = withContext (show (mastFunName fd)) do
+  when (mastFunReturn fd == mastIntegerTy) $
+    errorsEM ["integer-typed return in '", show (mastFunName fd), "': comptime value not eliminated before hull emission"]
   let name = show (mastFunName fd)
   hullArgs <- mapM translateParam (mastFunParams fd)
   hullTyp <- translateMastType (mastFunReturn fd)
@@ -169,7 +176,10 @@ emitFunDef fd = withContext (show (mastFunName fd)) do
   return [hullFun]
 
 translateParam :: MastParam -> EM Hull.Arg
-translateParam (MastParam n _ct t) = Hull.TArg (show n) <$> translateMastType t
+translateParam (MastParam n _ct t)
+  | t == mastIntegerTy =
+      errorsEM ["integer-typed parameter '", show n, "': comptime value not eliminated before hull emission"]
+  | otherwise = Hull.TArg (show n) <$> translateMastType t
 
 -----------------------------------------------------------------------
 -- Translating types and value constructors
@@ -298,16 +308,19 @@ emitStmt (MastAssign i e) = do
   (e', stmts) <- emitExp e
   let assign = [Hull.SAssign (Hull.EVar (show (mastIdName i))) e']
   return (stmts ++ assign)
-emitStmt (MastLet _ct (MastId name ty) _mty mexp) = do
-  let hullName = show name
-  hullTy <- translateMastType ty
-  let alloc = [Hull.SAlloc hullName hullTy]
-  case mexp of
-    Just e -> do
-      (v, estmts) <- emitExp e
-      let assign = [Hull.SAssign (Hull.EVar hullName) v]
-      return (estmts ++ alloc ++ assign)
-    Nothing -> return alloc
+emitStmt (MastLet _ct (MastId name ty) _ mexp)
+  | ty == mastIntegerTy =
+      errorsEM ["integer-typed let '", show name, "': comptime value not eliminated before hull emission"]
+  | otherwise = do
+      let hullName = show name
+      hullTy <- translateMastType ty
+      let alloc = [Hull.SAlloc hullName hullTy]
+      case mexp of
+        Just e -> do
+          (v, estmts) <- emitExp e
+          let assign = [Hull.SAssign (Hull.EVar hullName) v]
+          return (estmts ++ alloc ++ assign)
+        Nothing -> return alloc
 emitStmt (MastMatch scrutinee alts) = emitMatch scrutinee alts
 emitStmt (MastFor initStmt cond post body) = do
   initStmts <- emitStmt initStmt

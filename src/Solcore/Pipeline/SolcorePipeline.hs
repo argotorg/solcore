@@ -21,6 +21,7 @@ import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
+import Solcore.Desugarer.IntegerLiteralDesugar (desugarIntegerLiteralsTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Frontend.ComptimeCheck (checkComptimeEarly)
@@ -136,16 +137,19 @@ compile opts = runExceptT $ do
         putStrLn "> Specialised contract:"
         putStrLn (pretty specialized)
 
-      let peFuel = maybe defaultFuel id (optPEFuel opts)
-          (evaluated, remainingFuel) = evalCompUnit peFuel specialized
+      evaluated <- liftIO $ timeItNamed "Comptime eval " $ do
+        let peFuel = maybe defaultFuel id (optPEFuel opts)
+            (evalResult, remainingFuel) = evalCompUnit peFuel specialized
 
-      liftIO $
-        when (remainingFuel <= 0) $
-          putStrLn "!! Warning: partial evaluation ran out of fuel (use --pe-fuel N to increase)"
+        liftIO $
+          when (remainingFuel <= 0) $
+            putStrLn "!! Warning: partial evaluation ran out of fuel (use --pe-fuel N to increase)"
 
-      liftIO $ when (optDumpSpec opts) $ do
-        putStrLn "> After partial evaluation:"
-        putStrLn (pretty evaluated)
+        liftIO $ when (optDumpSpec opts) $ do
+          putStrLn "> After partial evaluation:"
+          putStrLn (pretty evalResult)
+
+        pure evalResult
 
       -- Dead code elimination: remove functions unreachable from 'start'/'main'
       let optimized = eliminateDeadCode evaluated
@@ -333,7 +337,13 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Eliminating argments with function types"
     putStrLn $ prettyInferenceDecls noFun
 
-  pure noFun
+  -- Integer literal desugaring: insert wordToInteger at integer literal sites
+  let intLit = mapModuleInferenceTopDecls desugarIntegerLiteralsTopDecls noFun
+  liftIO $ when verbose $ do
+    putStrLn "> Integer literal desugaring:"
+    putStrLn $ prettyInferenceDecls intLit
+
+  pure intLit
 
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =

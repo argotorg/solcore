@@ -1,0 +1,32 @@
+import std.{*};
+
+// Step 6 safety: verify no spurious coercions.
+//
+// Cases that must NOT be coerced:
+//   addWord(1, 2)     — word params: 1 and 2 stay as word literals
+//   integerEq(wordToInteger(42), wordToInteger(42))
+//                     — args already wrapped; wordToInteger has word param,
+//                       so 42 inside is NOT re-wrapped
+//   wordFromInteger(wordToInteger(10))
+//                     — wordFromInteger param is integer, but arg is a Call
+//                       (not a literal), so no double-wrapping
+//   let z : word = 5  — annotation is word, not integer: no coercion
+
+contract IntegerLitSafe {
+  function main() -> word {
+    // word arithmetic: 1 and 2 must stay as word literals
+    let a : word = addWord(1, 2);
+
+    // already-explicit coercions: no double-wrapping of the inner 42
+    let ok : comptime bool = integerEq(wordToInteger(42), wordToInteger(42));
+
+    // wordFromInteger param is integer, but wordToInteger(10) is a Call not a
+    // literal, so no double-wrap; b folds to 10
+    let b : comptime word = wordFromInteger(wordToInteger(10));
+
+    // word-annotated let: annotation is word, not integer -> no coercion
+    let z : word = 5;
+
+    return addWord(a, addWord(b, z));
+  }
+}

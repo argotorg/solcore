@@ -1,11 +1,11 @@
-# Comptime Integer Type: Design and Implementation Plan
+# Comptime Integer Type: Design and Implementation
 
 ## Overview
 
 `integer` is a compile-time-only type for unlimited-precision integer arithmetic.
-It is the intended eventual type of all integer literals in Solcore, though in the
-first implementation literals remain typed as `word` and explicit coercions are
-required at literal sites.
+It is the intended eventual type of all integer literals in Solcore.  All six
+implementation steps have been completed; bare integer literals at `integer`-typed
+sites are automatically coerced by the desugaring pass.
 
 ### Motivation
 
@@ -65,8 +65,7 @@ converted before any runtime use.  Uses only compiler builtins — no `import st
 | Precision | Unlimited (backed by Haskell `Integer`) |
 | Runtime existence | None — must be fully eliminated before hull emission |
 | Comptime-only | Values may only appear in `comptime` bindings or as return values of `comptime`-annotated functions |
-| Literal syntax (PoC) | No new surface syntax; explicit coercion required: `let x : integer = wordToInteger(42)` |
-| Literal syntax (target) | `let x : integer = 42` — after the literal desugaring pass lands |
+| Literal syntax | `let x : integer = 42` — bare literals coerced by `desugarIntegerLiterals` pass |
 
 ### MAST representation
 
@@ -93,6 +92,12 @@ All functions below are registered in `Primitives.hs` and are available
 everywhere without `import std`.  `bool` is a compiler builtin
 (`boolTy = TyCon "bool" []` in `Primitives.hs`), so functions returning `bool`
 are likewise available without std.
+
+The complete set of primitive names is exported as `Primitives.integerPrimNames`
+and is the single source of truth used by `MastEval.builtinPureFuns`,
+`Specialise.comptimeBuiltins`, and `IntegerLiteralDesugar.integerBuiltinSigs`.
+Add new primitives to `integerPrimNames` and all three consumers update
+automatically (except `integerBuiltinSigs` which also needs a type entry).
 
 | Name | Type | Semantics |
 |---|---|---|
@@ -125,38 +130,33 @@ This enables `let x : uint256 = Num.fromInteger(fib(wordToInteger(10)))`.
 
 ---
 
-## Literals in the PoC: `word` with explicit coercions
+## Literals and the desugaring pass
 
-### Target design
+### Implemented approach
 
-The target design (described in `comptime-for-core.md`) follows Zig's
-`comptime_int` model: **integer literals have type `integer`**, and a
-desugaring pass inserts coercions at runtime use sites automatically.
-`let a : uint256 = 1` simply works — the compiler inserts `fromInteger(1)`.
+`tcLit (IntLit _)` continues to return `word` — this avoids breaking any
+existing test that uses integer literals.  The `desugarIntegerLiterals` pass
+(Step 6, `Solcore.Desugarer.IntegerLiteralDesugar`) runs before type inference
+and inserts `wordToInteger` coercions at literal sites where the expected type
+is `integer`:
 
-### PoC interim
+| Source site | After desugaring |
+|---|---|
+| `let x : integer = 42` | `let x : integer = wordToInteger(42)` |
+| `integerAdd(1, 2)` | `integerAdd(wordToInteger(1), wordToInteger(2))` |
+| `fib(10)` where `fib :: integer -> integer` | `fib(wordToInteger(10))` |
 
-The desugaring pass does not exist yet.  Until it does, switching
-`tcLit (IntLit _)` to return `integer` would break every existing test.
-The PoC therefore keeps `tcLit` returning `word` and requires explicit
-coercions at literal sites:
+Non-literal expressions (variables, calls) are left unchanged; the user writes
+explicit `wordToInteger` or `fromInteger` there.
 
-```solidity
-let x : integer = wordToInteger(42);   // lift word literal to integer
-let y : word    = wordFromInteger(x);  // lower integer back to word
-```
+### Remaining path
 
-This proves the `integer` type and primitives work end-to-end without
-touching any existing test.
-
-### Path to the target
-
-Once the desugaring pass exists:
-1. `tcLit (IntLit _)` is changed to return `integer`
-2. The pass inserts `fromInteger`/`wordFromInteger` at runtime use sites
-3. Explicit `wordToInteger(42)` at literal sites disappears from user code
-4. `wordToInteger` remains useful only for lifting a *runtime* `word` variable
-   into integer arithmetic (e.g. `wordToInteger(storageSlot)`)
+- `let x = 42` (unannotated) is still rejected — no expected type available
+- `let x : uint256 = 42` is not yet handled — requires `Num.fromWord(42)`
+- `wordToInteger` remains the explicit escape hatch for runtime `word` values
+  entering integer arithmetic (e.g. `wordToInteger(storageSlot)`)
+- Future: change `tcLit (IntLit _)` to return `integer` and insert `fromInteger`
+  at runtime-type use sites instead of `wordToInteger` at literal sites
 
 ---
 
@@ -197,31 +197,18 @@ evalPrimitive (Name "integerEq") [MastLit (IntLit a), MastLit (IntLit b)] =
 
 ### Dead variable elimination
 
-`integer`-typed comptime lets must be eliminated alongside comptime string lets.
-The current code (from the string-variable work) only eliminates `StrLit`
-bindings:
+The implemented code eliminates any comptime binding whose init expression is
+a `isKnownValue` (literal or constructor of literals), regardless of type:
 
 ```haskell
--- OLD (eliminates only strings):
 let stmts = case mInit' of
-      Just (MastLit (StrLit _)) | ct -> []
+      Just e | ct && isKnownValue e -> []
       _ -> [MastLet ct i ty mInit']
 ```
 
-Extend using `mastIdType i` (which carries the correct type, unlike
-`typeOfMastExp` which returns `word` for all `IntLit`):
-
-```haskell
--- NEW (eliminates all comptime-only types):
-let isComptimeOnly ty = ty `elem` [mastString, mastInteger]
-    stmts = case mInit' of
-          Just e | ct && isKnownValue e && isComptimeOnly (mastIdType i) -> []
-          _ -> [MastLet ct i ty mInit']
-
-mastString, mastInteger :: MastTy
-mastString  = MastTyCon (Name "string")  []
-mastInteger = MastTyCon (Name "integer") []
-```
+This is more aggressive than eliminating only comptime-only types, but safe:
+all uses are substituted from VEnv before the let is dropped, and EmitHull's
+guard catches any `integer`-typed binding that somehow survives.
 
 ### `venvToSubst` invariant
 
@@ -327,8 +314,9 @@ or the type checker are required for the PoC.
 
 No other files change at this step.
 
-Note: specialization handles `integer` automatically as a nullary type
-constructor — no changes to `Specialise.hs`.
+Note: specialization needed a bypass for the integer primitives.
+`Specialise.comptimeBuiltins` (derived from `integerPrimNames`) lists them so
+`specCall` passes them through without looking for a `TcFunDef` body.
 
 ### Step 2 — MastEval evaluation (`MastEval.hs`)
 
@@ -380,28 +368,46 @@ Expected: `main` folds to a constant returning `55`.
 ```solidity
 contract IntegerBasic {
     function main() -> word {
-        let x : integer = wordToInteger(42);
-        let y : integer = integerAdd(x, wordToInteger(8));
+        let x : comptime integer = wordToInteger(42);
+        let y : comptime integer = integerAdd(x, wordToInteger(8));
         return wordFromInteger(integerMul(y, wordToInteger(2)));
     }
 }
 ```
 
+Note: intermediate `integer` lets must carry `comptime` so MastEval folds and
+eliminates them (EmitHull cannot emit `integer`-typed variables).
+
 Expected: folds to constant `100`.
 
-### Step 5 — `Num.fromInteger` in stdlib (separate)
+### Step 5 — `Num.fromInteger` in stdlib ✓
 
-- Add `fromInteger :: integer -> a` to `Num` class and `word`/`uint256`
-  instances in `std/NumLib.solc`
-- `word:Num` delegates to the builtin `wordFromInteger`
-- Test: `test/examples/comptime/integer-from-integer.solc`
+- Added `fromInteger(comptime x: integer) -> comptime a` to the `Num` class
+  and default instance in `std/std.solc`; the default implementation uses
+  `Typedef.abs(wordFromInteger(x))` which works for `word` (identity) and
+  `uint256` (wrapping constructor)
+- Test: `test/examples/comptime/integer-from-integer.solc` exercises both
+  instances: `Num.fromInteger(wordToInteger(42)) : word = 42` and
+  `Num.fromInteger(fib(wordToInteger(10))) : uint256 = uint256(55)`
 
-### Step 6 — Literal desugaring pass (separate)
+### Step 6 — Literal desugaring pass ✓
 
-The Zig-style desugaring pass: `tcLit` is changed to return `integer`, and the
-pass inserts `wordFromInteger`/`fromInteger` at runtime use sites (not at
-literal sites).  Described in `comptime-for-core.md`.  When complete, explicit
-`wordToInteger(42)` at literal sites in user code is no longer needed.
+`Solcore.Desugarer.IntegerLiteralDesugar.desugarIntegerLiterals` runs before
+type inference on the untyped AST.  `tcLit` is **not** changed; literals remain
+`word`-typed.  The pass inserts `wordToInteger` coercions at integer literal
+sites where the expected type is `integer`, determined from:
+
+- Explicit let type annotations: `let x : integer = 42`
+- Function return types: `return 42` in `-> integer` functions
+- Declared parameter types: `integerAdd(1, 2)` via the signature table
+
+The signature table is built from hardcoded integer builtin signatures
+(names + param types) plus all user-defined and class/instance signatures
+collected from the CompUnit.  Only `TyCon "integer" []` triggers coercion;
+polymorphic params, unknown functions, and unannotated lets are left unchanged.
+
+Tests: `integer-lit.solc` (positive) and `integer-lit-safe.solc` (no spurious
+coercions in word arithmetic, already-wrapped args, word-annotated lets).
 
 ---
 
@@ -409,11 +415,12 @@ literal sites).  Described in `comptime-for-core.md`.  When complete, explicit
 
 | Gap | Impact | Resolution |
 |---|---|---|
-| `let x : integer = 42` (bare literal) | Requires `wordToInteger(42)` | Literal desugaring pass (Step 6) |
-| `integerAdd(42, 3)` with bare literals | Requires `wordToInteger` wrappers | Literal desugaring pass (Step 6) |
-| `instance integer : Add/Sub/Mul` | Cannot write `n + m` for `integer` | Std instances; depends on Step 6 |
-| `instance integer : Eq/Ord` | Use `integerLt`/`integerEq` in the interim | Std instances after Step 6 |
-| `let x = 3` (unannotated) | Rejected for now | Future: default to `word` |
-| `let x : uint256 = 3` | Requires `fromWord(3)` | Step 5 + literal desugaring pass |
+| ~~`let x : integer = 42` (bare literal)~~ | ~~Requires `wordToInteger(42)`~~ | ✓ Step 6 |
+| ~~`integerAdd(42, 3)` with bare literals~~ | ~~Requires `wordToInteger` wrappers~~ | ✓ Step 6 |
+| `instance integer : Add/Sub/Mul` | Cannot write `n + m` for `integer` | Std instances (future) |
+| `instance integer : Eq/Ord` | Use `integerLt`/`integerEq` in the interim | Std instances (future) |
+| `let x = 3` (unannotated) | Rejected — desugaring pass needs explicit annotation | Future: default to `word` |
+| `let x : uint256 = 3` | Requires `Num.fromWord(3)` or `uint256(3)` | Full Zig-style desugaring (future) |
 | `integer` binding without `comptime` | EmitHull panic if not folded | Enforce `comptime` in SAIL/MAST checkers |
 | `typeOfMastExp` for `integer` literals | Returns `word` — unreliable | Carry type tag in `MastLit` (AST change) |
+| `integerBuiltinSigs` param types | Must be manually synced with `Primitives.hs` | Could derive from `Scheme` objects (future) |

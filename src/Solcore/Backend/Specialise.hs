@@ -346,8 +346,20 @@ specConApp i@(Id _n conTy) args ty = do
 
 -- | Specialise a function call
 -- given actual arguments and the expected result type
+-- Compiler builtins that are monomorphic and have no function body to
+-- specialise.  Pass through with args specialised at their declared types.
+-- Derived from Primitives.integerPrimNames (single source of truth shared
+-- with MastEval.builtinPureFuns).
+comptimeBuiltins :: [Name]
+comptimeBuiltins = integerPrimNames
+
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revertLit") _) args _ = pure (i, args) -- FIXME
+specCall i@(Id (Name "revertLit") _) args _ = pure (i, args)
+specCall (Id (QualName (Name "std") "revertLit") ty) args _ = pure (Id (Name "revertLit") ty, args)
+specCall i args _ty
+  | idName i `elem` comptimeBuiltins = do
+      args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+      pure (i, args')
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty

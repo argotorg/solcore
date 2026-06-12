@@ -1,3 +1,4 @@
+import std;
 import std.{*};
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
@@ -9,6 +10,6 @@ contract StringLitOps {
   function main() -> () {
     // concatLit folds to a string literal, enabling revertLit("...") lowering
     let s : comptime string  = concatLit("ab", "cd");
-    revertLit(s);
+    std.revertLit(s);
   }
 }

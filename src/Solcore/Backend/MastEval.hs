@@ -20,6 +20,8 @@ module Solcore.Backend.MastEval
     maskWord,
     mstoreBytes,
     mloadWord,
+    -- Primitive evaluator (exported for testing)
+    evalPrimitive,
   )
 where
 
@@ -49,6 +51,7 @@ import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
 import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
+import Solcore.Primitives.Primitives (integerPrimNames)
 
 -----------------------------------------------------------------------
 -- Data structures
@@ -441,6 +444,21 @@ evalPrimitive (Name "keccakLit") [MastLit (StrLit s)] =
       digestBytes :: BS.ByteString
       digestBytes = BA.convert digest
    in Just (MastLit (IntLit (bsToIntegerBE digestBytes)))
+-- Integer (comptime-only, unlimited precision) primitives:
+evalPrimitive (Name "wordToInteger") [MastLit (IntLit n)] =
+  Just (MastLit (IntLit n)) -- value-level identity
+evalPrimitive (Name "wordFromInteger") [MastLit (IntLit n)] =
+  Just (MastLit (IntLit (maskWord n))) -- truncate to 256 bits
+evalPrimitive (Name "integerAdd") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (a + b))) -- exact, no overflow
+evalPrimitive (Name "integerSub") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (a - b)))
+evalPrimitive (Name "integerMul") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (a * b)))
+evalPrimitive (Name "integerLt") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (mkBool (a < b))
+evalPrimitive (Name "integerEq") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (mkBool (a == b))
 evalPrimitive _ _ = Nothing
 
 bsToIntegerBE :: BS.ByteString -> Integer
@@ -796,10 +814,12 @@ isKnownValue _ = False
 -- Purity analysis
 -----------------------------------------------------------------------
 
--- Primitives the PE evaluates directly; their std asm bodies are irrelevant
+-- Primitives the PE evaluates directly; their std asm bodies are irrelevant.
+-- Integer primitive names come from Primitives.integerPrimNames (single source
+-- of truth shared with Specialise.comptimeBuiltins).
 builtinPureFuns :: Set.Set Name
 builtinPureFuns =
-  Set.fromList
+  Set.fromList $
     [ Name "subWord",
       Name "gtWord",
       Name "eqWord",
@@ -807,6 +827,7 @@ builtinPureFuns =
       Name "strlenLit",
       Name "keccakLit"
     ]
+      ++ integerPrimNames
 
 -- Functions with dummy pure bodies that are intercepted by EmitHull
 builtinImpureFuns :: Set.Set Name
