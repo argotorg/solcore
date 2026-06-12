@@ -1,0 +1,40 @@
+{
+  "interfaceid": {
+    "bytecode": "",
+    "contract": "InterfaceId",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "interfaceId()(uint256) - XOR of foo/bar/interfaceId selectors = 0xed9d1481",
+          "calldata": "a64d0cd4",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000ed9d1481",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "foo(uint256) - sanity check the contract still dispatches normally",
+          "calldata": "2fbebd380000000000000000000000000000000000000000000000000000000000000007",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000007",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}
