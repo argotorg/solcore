@@ -50,11 +50,11 @@ contract DepositContract {
   }
 
   // TODO: this is for testing only
-  function get_zero_hash(index: uint256) -> bytes32 {
+  public function get_zero_hash(index: uint256) -> bytes32 {
     return zero_hashes[index];
   }
 
-  function get_deposit_root() -> bytes32 {
+  public function get_deposit_root() -> bytes32 {
     let node: bytes32;
     let size = deposit_count;
     for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height += uint256(1)) {
@@ -75,13 +75,13 @@ contract DepositContract {
     ));
   }
 
-  function get_deposit_count() -> memory(bytes) {
+  public function get_deposit_count() -> memory(bytes) {
     return to_little_endian_64(deposit_count);
   }
 
   // TODO: once string literals are properly supported, change errors to messages
   // matching the deposit contract, full 100% identical behaviour.
-  payable function deposit(pubkey: memory(bytes), withdrawal_credentials: memory(bytes), signature: memory(bytes), deposit_data_root: bytes32) -> () {
+  public payable function deposit(pubkey: memory(bytes), withdrawal_credentials: memory(bytes), signature: memory(bytes), deposit_data_root: bytes32) -> () {
     // Extended ABI length checks since dynamic types are used.
     require(MemorySize.len(pubkey) == 48, Error(0x9ca717ed)); // InvalidPubkeyLength()
     require(MemorySize.len(withdrawal_credentials) == 32, Error(0x3debbf1e)); // InvalidWithdrawalCredentialsLength()
@@ -157,7 +157,7 @@ contract DepositContract {
   }
 
   // TODO: use bytes4
-  function supportsInterface(interfaceId: uint256) -> bool {
+  public function supportsInterface(interfaceId: uint256) -> bool {
     return false;
   }
 }
