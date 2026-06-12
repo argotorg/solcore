@@ -11,6 +11,7 @@ import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
 
+import Solcore.Backend.ComptimeCheck (checkComptime)
 import Solcore.Backend.EmitHull (emitHull)
 import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
@@ -22,6 +23,7 @@ import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
+import Solcore.Frontend.ComptimeCheck (checkComptimeEarly)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourcePath, moduleValidationTopDeclSegments)
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -93,6 +95,9 @@ compile opts = runExceptT $ do
   let typed = checkedAssemblyCompUnit checkedAssembly
       tcEnv = checkedAssemblyEnv checkedAssembly
 
+  -- SAIL-level comptime verification
+  ExceptT $ return $ checkComptimeEarly typed
+
   -- If / boolean desugaring
   desugared <-
     liftIO $
@@ -148,6 +153,9 @@ compile opts = runExceptT $ do
       liftIO $ when (optDumpSpec opts) $ do
         putStrLn "> After dead code elimination:"
         putStrLn (pretty optimized)
+
+      -- Comptime verification: check comptime annotations are satisfied
+      ExceptT $ return $ checkComptime optimized
 
       hull <-
         liftIO $

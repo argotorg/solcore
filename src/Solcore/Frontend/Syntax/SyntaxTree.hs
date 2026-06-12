@@ -187,6 +187,7 @@ data Signature
     sigContext :: [Pred],
     sigName :: Name,
     sigParams :: [Param],
+    sigRetComptime :: Bool,
     sigReturn :: Maybe Ty,
     sigPayable :: Bool
   }
@@ -240,7 +241,7 @@ data Stmt
   = Assign Exp Exp -- assignment
   | StmtPlusEq Exp Exp -- e1 += e2
   | StmtMinusEq Exp Exp -- e1 -= e2
-  | Let Name (Maybe Ty) (Maybe Exp) -- local variable
+  | Let Bool Name (Maybe Ty) (Maybe Exp) -- local variable; Bool is True when 'comptime' modifier is present
   | Block Body -- lexical block
   | StmtExp Exp -- expression level statements
   | Return Exp -- return statements
@@ -254,8 +255,8 @@ data Stmt
 type Body = [Stmt]
 
 data Param
-  = Typed Name Ty
-  | Untyped Name
+  = Typed Bool Name Ty -- Bool is True when 'const' modifier is present
+  | Untyped Bool Name
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- expression syntax
@@ -293,6 +294,7 @@ data Pat
   | PatDot Name [Pat]
   | PWildcard
   | PLit Literal
+  | PExp Exp -- comptime expression label (numeric matches only)
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of literals

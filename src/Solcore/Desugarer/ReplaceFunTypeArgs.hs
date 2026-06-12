@@ -31,12 +31,12 @@ freshTy = do
   pure (n, v)
 
 replace :: Param Name -> ReplaceM (Param Name, [Pred], [Tyvar])
-replace (Untyped n) = pure (Untyped n, [], [])
-replace (Typed n t@(_ :-> _)) =
+replace (Untyped c n) = pure (Untyped c n, [], [])
+replace (Typed c n t@(_ :-> _)) =
   do
     (t1, v) <- freshTy
     let (args, ret) = splitTy t
         invokeArgTy = tupleTyFromList args
         p = InCls invokableName t1 [invokeArgTy, ret]
-    pure (Typed n t1, [p], [v])
-replace (Typed n t) = pure (Typed n t, [], [])
+    pure (Typed c n t1, [p], [v])
+replace (Typed c n t) = pure (Typed c n t, [], [])

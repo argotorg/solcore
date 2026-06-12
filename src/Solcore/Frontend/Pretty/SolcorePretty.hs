@@ -216,13 +216,13 @@ pprSignatures =
   vcat . map ((<> semi) . ppr)
 
 instance (Pretty a) => Pretty (Signature a) where
-  ppr (Signature vs ctx n ps ty pay) =
+  ppr (Signature vs ctx n ps rc ty pay) =
     pprSigPrefix vs ctx
       <+> (if pay then text "payable" else empty)
       <+> text "function"
       <+> ppr n
       <+> pprParams ps
-      <+> pprRetTy ty
+      <+> pprRetTy rc ty
 
 pprSigPrefix :: [Tyvar] -> [Pred] -> Doc
 pprSigPrefix [] [] = empty
@@ -274,24 +274,28 @@ instance (Pretty a) => Pretty (FunDef a) where
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace
 
-pprRetTy :: Maybe Ty -> Doc
-pprRetTy (Just t) = text "->" <+> ppr t
-pprRetTy Nothing = empty
+pprRetTy :: Bool -> Maybe Ty -> Doc
+pprRetTy _ Nothing = empty
+pprRetTy rc (Just t) = text "->" <+> pprConst rc <> ppr t
 
 pprParams :: (Pretty a) => [Param a] -> Doc
 pprParams = parens . commaSep . map ppr
 
+pprConst :: Bool -> Doc
+pprConst True = text "comptime "
+pprConst False = empty
+
 instance (Pretty a) => Pretty (Param a) where
-  ppr (Typed n ty) =
-    ppr n <+> colon <+> ppr ty
-  ppr (Untyped n) =
-    ppr n
+  ppr (Typed c n ty) =
+    pprConst c <> (ppr n <+> colon <+> ppr ty)
+  ppr (Untyped c n) =
+    pprConst c <> ppr n
 
 instance (Pretty a) => Pretty (Stmt a) where
   ppr (n := e) =
     ppr n <+> equals <+> ppr e <+> semi
-  ppr (Let n ty m) =
-    text "let" <+> ppr n <+> pprOptTy ty <+> pprInitOpt m
+  ppr (Let c n ty m) =
+    text "let" <+> ppr n <+> pprOptTy c ty <+> pprInitOpt m
   ppr (Block body) =
     lbrace
       $$ nest 3 (ppr body)
@@ -331,7 +335,7 @@ instance (Pretty a) => Pretty (Stmt a) where
 
 pprForClause :: (Pretty a) => Stmt a -> Doc
 pprForClause (n := e) = ppr n <+> equals <+> ppr e
-pprForClause (Let n ty m) = text "let" <+> ppr n <+> pprOptTy ty <+> pprForInitOpt m
+pprForClause (Let ct n ty m) = text "let" <+> ppr n <+> pprOptTy ct ty <+> pprForInitOpt m
 pprForClause (StmtExp e) = ppr e
 pprForClause (Block stmts) = hsep (punctuate comma (map pprForClause stmts))
 pprForClause EmptyStmt = empty
@@ -351,12 +355,12 @@ instance (Pretty a) => Pretty (Equation a) where
 instance (Pretty a) => Pretty (Equations a) where
   ppr = vcat . map ppr
 
-pprOptTy :: Maybe Ty -> Doc
-pprOptTy Nothing = empty
-pprOptTy (Just t)
+pprOptTy :: Bool -> Maybe Ty -> Doc
+pprOptTy _ Nothing = empty
+pprOptTy c (Just t)
   | isVar t = empty
   | otherwise = case splitTy t of
-      ([], t') -> text ":" <+> ppr t'
+      ([], t') -> text ":" <+> pprConst c <> ppr t'
       (ts', t') ->
         text ":"
           <+> parens (commaSep (map ppr ts'))
@@ -412,6 +416,8 @@ instance (Pretty a) => Pretty (Pat a) where
     text "_"
   ppr (PLit l) =
     ppr l
+  ppr (PExp e) =
+    text "comptime" <+> ppr e
 
 instance Pretty Literal where
   ppr (IntLit l) = integer (toInteger l)

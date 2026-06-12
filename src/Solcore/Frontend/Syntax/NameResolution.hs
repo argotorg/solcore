@@ -278,7 +278,7 @@ instance Resolve S.Class where
 instance Resolve S.Signature where
   type Result S.Signature = Signature Name
 
-  resolve s@(S.Signature vs ctx n ps mt pay) =
+  resolve s@(S.Signature vs ctx n ps rc mt pay) =
     withLocalCtx $ do
       let ns = map tyconName vs
       mapM_ addTyVar ns
@@ -286,7 +286,7 @@ instance Resolve S.Signature where
       ps' <- resolve ps `wrapError` s
       mt' <- resolve mt `wrapError` s
       let vs' = map TVar ns
-      pure (Signature vs' ctx' n ps' mt' pay)
+      pure (Signature vs' ctx' n ps' rc mt' pay)
 
 instance Resolve S.Instance where
   type Result S.Instance = Instance Name
@@ -309,8 +309,8 @@ instance Resolve S.Instance where
 instance Resolve S.Param where
   type Result S.Param = Param Name
 
-  resolve (S.Typed n t) = Typed n <$> resolve t
-  resolve (S.Untyped n) = pure (Untyped n)
+  resolve (S.Typed c n t) = Typed c n <$> resolve t
+  resolve (S.Untyped c n) = pure (Untyped c n)
 
 instance Resolve S.Pragma where
   type Result S.Pragma = Pragma
@@ -338,7 +338,7 @@ instance Resolve S.PragmaStatus where
 instance Resolve S.FunDef where
   type Result S.FunDef = FunDef Name
 
-  resolve f@(S.FunDef (S.Signature vs ctx n ps mt pay) bds) =
+  resolve f@(S.FunDef (S.Signature vs ctx n ps rc mt pay) bds) =
     do
       let ns = map tyconName vs
       withLocalCtx $ do
@@ -350,7 +350,7 @@ instance Resolve S.FunDef where
         mapM_ addParameter args
         bds' <- resolve bds `wrapError` f
         let vs' = map TVar ns
-            sig = Signature vs' ctx' n ps' mt' pay
+            sig = Signature vs' ctx' n ps' rc mt' pay
         pure (FunDef sig bds')
 
 instance Resolve S.Stmt where
@@ -365,12 +365,12 @@ instance Resolve S.Stmt where
     (:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs)
   resolve (S.StmtMinusEq lhs rhs) =
     (:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs)
-  resolve s@(S.Let n mt me) =
+  resolve s@(S.Let c n mt me) =
     do
       mt' <- resolve mt `wrapError` s
       me' <- resolve me `wrapError` s
       addLocalVar n
-      pure (Let n mt' me')
+      pure (Let c n mt' me')
   resolve (S.Block blk) =
     withLocalCtx (Block <$> resolve blk)
   resolve s@(S.StmtExp e) =
@@ -399,6 +399,7 @@ instance Resolve S.Pat where
 
   resolve S.PWildcard = pure PWildcard
   resolve (S.PLit l) = PLit <$> resolve l
+  resolve (S.PExp e) = PExp <$> resolve e
   resolve p@(S.PatDot n ps) = do
     ps' <- resolve ps `wrapError` p
     pure (PCon (dotConstructorMarker n) ps')

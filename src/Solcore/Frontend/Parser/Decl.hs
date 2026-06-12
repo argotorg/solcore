@@ -245,8 +245,12 @@ signatureP vars ctx = do
   keyword "function"
   n <- Name <$> identifier
   ps <- parens (paramP `sepBy` comma)
-  ret <- optional (symbol "->" *> typeP)
-  return (Signature vars ctx n ps ret payable)
+  (rc, ret) <- option (False, Nothing) $ do
+    _ <- symbol "->"
+    ct <- option False (True <$ keyword "comptime")
+    t <- typeP
+    return (ct, Just t)
+  return (Signature vars ctx n ps rc ret payable)
 
 fallbackDefAfterPrefix :: [Ty] -> [Pred] -> Parser FunDef
 fallbackDefAfterPrefix vars ctx = do
@@ -267,7 +271,7 @@ fallbackSignatureP vars ctx = do
     Nothing -> pure ()
     Just (TyCon (Name "()") []) -> pure ()
     Just _ -> fail "fallback function must return unit (`()`)"
-  return (Signature vars ctx (Name "fallback") ps ret payable)
+  return (Signature vars ctx (Name "fallback") ps False ret payable)
 
 -- | One function signature inside a class body.
 -- Commits to requiring ';' once the signature is parsed, so a missing

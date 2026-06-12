@@ -454,5 +454,5 @@ typedSignatureType sig =
         (sigReturn sig)
 
 typedParamType :: Param Id -> Ty
-typedParamType (Typed i _) = idType i
-typedParamType (Untyped i) = idType i
+typedParamType (Typed _ i _) = idType i
+typedParamType (Untyped _ i) = idType i

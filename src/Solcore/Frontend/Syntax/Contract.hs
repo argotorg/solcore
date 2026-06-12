@@ -164,6 +164,7 @@ data Signature a
     sigContext :: [Pred],
     sigName :: Name,
     sigParams :: [Param a],
+    sigRetComptime :: Bool,
     sigReturn :: Maybe Ty,
     sigPayable :: Bool
   }

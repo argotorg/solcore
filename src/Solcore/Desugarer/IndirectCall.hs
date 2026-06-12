@@ -83,8 +83,8 @@ instance Desugar (Constructor Name) where
 instance Desugar (Stmt Name) where
   desugar (lhs := rhs) =
     (:=) <$> desugar lhs <*> desugar rhs
-  desugar (Let n mt me) =
-    Let n mt <$> desugar me
+  desugar (Let c n mt me) =
+    Let c n mt <$> desugar me
   desugar (Block body) =
     Block <$> desugar body
   desugar (StmtExp e) =

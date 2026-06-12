@@ -192,13 +192,13 @@ pprSignatures =
   vcat . map ((<> semi) . ppr)
 
 instance Pretty Signature where
-  ppr (Signature vs ctx n ps ty pay) =
+  ppr (Signature vs ctx n ps rc ty pay) =
     pprSigPrefix vs ctx
       <+> (if pay then text "payable" else empty)
       <+> text "function"
       <+> ppr n
       <+> pprParams ps
-      <+> pprRetTy ty
+      <+> pprRetTy rc ty
 
 pprSigPrefix :: [Ty] -> [Pred] -> Doc
 pprSigPrefix [] [] = empty
@@ -250,18 +250,22 @@ instance Pretty FunDef where
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace
 
-pprRetTy :: Maybe Ty -> Doc
-pprRetTy (Just t) = text "->" <+> ppr t
-pprRetTy Nothing = empty
+pprRetTy :: Bool -> Maybe Ty -> Doc
+pprRetTy _ Nothing = empty
+pprRetTy rc (Just t) = text "->" <+> (pprConst rc <> ppr t)
 
 pprParams :: [Param] -> Doc
 pprParams = parens . commaSep . map ppr
 
+pprConst :: Bool -> Doc
+pprConst True = text "comptime "
+pprConst False = empty
+
 instance Pretty Param where
-  ppr (Typed n ty) =
-    ppr n <+> colon <+> ppr ty
-  ppr (Untyped n) =
-    ppr n
+  ppr (Typed c n ty) =
+    pprConst c <> (ppr n <+> colon <+> ppr ty)
+  ppr (Untyped c n) =
+    pprConst c <> ppr n
 
 instance Pretty Stmt where
   ppr (Assign n e) =
@@ -270,8 +274,8 @@ instance Pretty Stmt where
     hsep [ppr e1, text "+=", ppr e2]
   ppr (StmtMinusEq e1 e2) =
     hsep [ppr e1, text "-=", ppr e2]
-  ppr (Let n ty m) =
-    text "let" <+> ppr n <+> pprOptTy ty <+> pprInitOpt m
+  ppr (Let c n ty m) =
+    text "let" <+> ppr n <+> pprOptTy c ty <+> pprInitOpt m
   ppr (Block body) =
     lbrace
       $$ nest 3 (ppr body)
@@ -313,7 +317,7 @@ pprForClause :: Stmt -> Doc
 pprForClause (Assign n e) = ppr n <+> equals <+> ppr e
 pprForClause (StmtPlusEq e1 e2) = hsep [ppr e1, text "+=", ppr e2]
 pprForClause (StmtMinusEq e1 e2) = hsep [ppr e1, text "-=", ppr e2]
-pprForClause (Let n ty m) = text "let" <+> ppr n <+> pprOptTy ty <+> pprForInitOpt m
+pprForClause (Let ct n ty m) = text "let" <+> ppr n <+> pprOptTy ct ty <+> pprForInitOpt m
 pprForClause (StmtExp e) = ppr e
 pprForClause EmptyStmt = empty
 pprForClause s = ppr s
@@ -332,11 +336,11 @@ instance Pretty Equation where
 instance Pretty Equations where
   ppr = vcat . map ppr
 
-pprOptTy :: Maybe Ty -> Doc
-pprOptTy Nothing = empty
-pprOptTy (Just t) =
+pprOptTy :: Bool -> Maybe Ty -> Doc
+pprOptTy _ Nothing = empty
+pprOptTy c (Just t) =
   case splitTy t of
-    ([], t') -> text ":" <+> ppr t'
+    ([], t') -> text ":" <+> (pprConst c <> ppr t')
     (ts', t') ->
       text ":"
         <+> parens (commaSep (map ppr ts'))
@@ -435,6 +439,8 @@ instance Pretty Pat where
     text "_"
   ppr (PLit l) =
     ppr l
+  ppr (PExp e) =
+    text "comptime" <+> ppr e
 
 instance Pretty Literal where
   ppr (IntLit l) = integer (toInteger l)

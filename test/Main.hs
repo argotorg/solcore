@@ -6,6 +6,7 @@ import MatchCompilerTests
 import ModuleTypeCheckTests
 import ParserTests
 import Test.Tasty
+import YulEvalTests
 
 main :: IO ()
 main = defaultMain tests
@@ -25,5 +26,6 @@ tests =
       moduleTypeCheckTests,
       dispatches,
       matchTests,
+      yulEvalTests,
       hullTests
     ]

@@ -60,11 +60,12 @@ predListP = predP `sepBy1` comma
 
 paramP :: Parser Param
 paramP = do
+  ct <- option False (True <$ keyword "comptime")
   n <- identifier
   mt <- optional (colon *> typeP)
   return $ case mt of
-    Just t -> Typed (Name n) t
-    Nothing -> Untyped (Name n)
+    Just t -> Typed ct (Name n) t
+    Nothing -> Untyped ct (Name n)
 
 sigPrefixP :: Parser ([Ty], [Pred])
 sigPrefixP = do

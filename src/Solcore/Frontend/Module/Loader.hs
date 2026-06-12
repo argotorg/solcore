@@ -1283,9 +1283,9 @@ renameSignatureTypeRefs renameMap sig =
     }
 
 renameParamTypeRefs :: Map Name Name -> Param -> Param
-renameParamTypeRefs renameMap (Typed n ty) =
-  Typed n (renameTyTypeRefs renameMap ty)
-renameParamTypeRefs _ p@(Untyped _) = p
+renameParamTypeRefs renameMap (Typed ct n ty) =
+  Typed ct n (renameTyTypeRefs renameMap ty)
+renameParamTypeRefs _ p@(Untyped _ _) = p
 
 renameBodyTypeRefs :: Map Name Name -> Body -> Body
 renameBodyTypeRefs renameMap =
@@ -1298,8 +1298,8 @@ renameStmtTypeRefs renameMap (StmtPlusEq e1 e2) =
   StmtPlusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameStmtTypeRefs renameMap (StmtMinusEq e1 e2) =
   StmtMinusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (Let n mt me) =
-  Let n (renameTyTypeRefs renameMap <$> mt) (renameExpTypeRefs renameMap <$> me)
+renameStmtTypeRefs renameMap (Let ct n mt me) =
+  Let ct n (renameTyTypeRefs renameMap <$> mt) (renameExpTypeRefs renameMap <$> me)
 renameStmtTypeRefs renameMap (StmtExp e) =
   StmtExp (renameExpTypeRefs renameMap e)
 renameStmtTypeRefs renameMap (Return e) =
@@ -1335,6 +1335,7 @@ renamePatTypeRefs renameMap (PatDot n ps) =
   PatDot n (map (renamePatTypeRefs renameMap) ps)
 renamePatTypeRefs _ p@(PWildcard) = p
 renamePatTypeRefs _ p@(PLit _) = p
+renamePatTypeRefs _ p@(PExp _) = p
 
 renamePatNameTypeRefs :: Map Name Name -> Name -> Name
 renamePatNameTypeRefs renameMap (QualName q n) =
@@ -1573,7 +1574,7 @@ stubType n =
 stubFunction :: Name -> FunDef
 stubFunction n =
   FunDef
-    (Signature [] [] n [] Nothing False)
+    (Signature [] [] n [] False Nothing False)
     []
 
 validationImportedDecls :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]

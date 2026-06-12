@@ -493,7 +493,7 @@ specStmt stmt@(Var i := e) = do
   e' <- specExp e ty'
   debug ["< specExp (:=): ", pretty e']
   return $ Var i' := e'
-specStmt stmt@(Let i mty mexp) = do
+specStmt stmt@(Let ct i mty mexp) = do
   subst <- getSpSubst
   debug ["> specStmt (Let): ", pretty i, " : ", pretty (idType i), " @ ", pretty subst]
   i' <- atCurrentSubst i
@@ -501,8 +501,8 @@ specStmt stmt@(Let i mty mexp) = do
   ensureClosed ty' stmt subst
   mty' <- atCurrentSubst mty
   case mexp of
-    Nothing -> return $ Let i' mty' Nothing
-    Just e -> Let i' mty' . Just <$> specExp e ty'
+    Nothing -> return $ Let ct i' mty' Nothing
+    Just e -> Let ct i' mty' . Just <$> specExp e ty'
 specStmt (Block body) =
   Block <$> specBody body
 specStmt (StmtExp e) = do
@@ -539,8 +539,15 @@ specMatch exps alts = do
       -- debug ["specAlt, pattern: ", show pat]
       -- debug ["specAlt, body: ", show body]
       body' <- specBody body
-      pat' <- atCurrentSubst pat
+      pat' <- mapM specPat =<< atCurrentSubst pat
       return (pat', body')
+    -- Specialize function calls inside PExp patterns.
+    -- Other pattern forms only need type substitution (handled by atCurrentSubst).
+    specPat :: Pat Id -> SM (Pat Id)
+    specPat (PExp e) = do
+      ty <- atCurrentSubst (typeOfTcExp e)
+      PExp <$> specExp e ty
+    specPat p = pure p
     specScruts = mapM specScrut
     specScrut e = do
       ty <- atCurrentSubst (typeOfTcExp e)
@@ -613,8 +620,8 @@ typeOfTcExp (TyExp _ ty) = ty
 typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
 
 typeOfTcParam :: Param Id -> Ty
-typeOfTcParam (Typed i _t) = idType i -- seems better than t - see issue #6
-typeOfTcParam (Untyped i) = idType i
+typeOfTcParam (Typed _ i _t) = idType i -- seems better than t - see issue #6
+typeOfTcParam (Untyped _ i) = idType i
 
 typeOfTcSignature :: Signature Id -> Ty
 typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) returnType
@@ -624,12 +631,12 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) returnType
       Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
 
 schemeOfTcSignature :: Signature Id -> Scheme
-schemeOfTcSignature sig@(Signature vs ps _n args (Just rt) _) =
+schemeOfTcSignature sig@(Signature vs ps _n args _ (Just rt) _) =
   case mapM getType args of
     Just ts -> Forall vs (ps :=> (funtype ts rt))
     Nothing -> error $ unwords ["Invalid instance member signature:", pretty sig]
   where
-    getType (Typed _ t) = Just t
+    getType (Typed _ _ t) = Just t
     getType _ = Nothing
 schemeOfTcSignature sig = error ("no return type in signature of: " ++ show (sigName sig))
 
@@ -847,6 +854,7 @@ toMastFunDef (FunDef sig body) =
   MastFunDef
     { mastFunName = sigName sig,
       mastFunParams = map toMastParam (sigParams sig),
+      mastFunRetComptime = sigRetComptime sig,
       mastFunReturn = case sigReturn sig of
         Just t -> toMastTy t
         Nothing -> error $ "toMastFunDef: no return type for " ++ show (sigName sig),
@@ -854,13 +862,13 @@ toMastFunDef (FunDef sig body) =
     }
 
 toMastParam :: Param Id -> MastParam
-toMastParam p = MastParam (idName i) (toMastTy (idType i))
+toMastParam p = MastParam (idName i) (paramComptime p) (toMastTy (idType i))
   where
     i = getParamId p
 
 getParamId :: Param Id -> Id
-getParamId (Typed i _) = i
-getParamId (Untyped i) = i
+getParamId (Typed _ i _) = i
+getParamId (Untyped _ i) = i
 
 toMastTy :: Ty -> MastTy
 toMastTy = tyToMast
@@ -870,7 +878,7 @@ toMastId (Id n t) = MastId n (toMastTy t)
 
 toMastStmt :: Stmt Id -> MastStmt
 toMastStmt (Var i := e) = MastAssign (toMastId i) (toMastExp e)
-toMastStmt (Let i mty me) = MastLet (toMastId i) (fmap toMastTy mty) (fmap toMastExp me)
+toMastStmt (Let ct i mty me) = MastLet ct (toMastId i) (fmap toMastTy mty) (fmap toMastExp me)
 toMastStmt (StmtExp e) = MastStmtExp (toMastExp e)
 toMastStmt (Return e) = MastReturn (toMastExp e)
 toMastStmt (Match [scrutinee] alts) = MastMatch (toMastExp scrutinee) (map toMastAlt alts)
@@ -906,3 +914,4 @@ toMastPat (PVar i) = MastPVar (toMastId i)
 toMastPat (PCon i ps) = MastPCon (toMastId i) (map toMastPat ps)
 toMastPat PWildcard = MastPWildcard
 toMastPat (PLit l) = MastPLit l
+toMastPat (PExp e) = MastPExp (toMastExp e)

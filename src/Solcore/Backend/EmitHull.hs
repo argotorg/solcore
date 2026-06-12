@@ -169,7 +169,7 @@ emitFunDef fd = withContext (show (mastFunName fd)) do
   return [hullFun]
 
 translateParam :: MastParam -> EM Hull.Arg
-translateParam (MastParam n t) = Hull.TArg (show n) <$> translateMastType t
+translateParam (MastParam n _ct t) = Hull.TArg (show n) <$> translateMastType t
 
 -----------------------------------------------------------------------
 -- Translating types and value constructors
@@ -239,7 +239,7 @@ translateProduct :: [MastExp] -> Translation Hull.Expr
 translateProduct [] = pure (Hull.EUnit, [])
 translateProduct es = do
   (hullExps, codes) <- unzip <$> mapM emitExp es
-  let product = foldr1 (Hull.EPair) hullExps
+  let product = foldr1 Hull.EPair hullExps
   pure (product, concat codes)
 
 encodeCon :: Name -> [Constr] -> Hull.Type -> Hull.Expr -> Hull.Expr
@@ -298,7 +298,7 @@ emitStmt (MastAssign i e) = do
   (e', stmts) <- emitExp e
   let assign = [Hull.SAssign (Hull.EVar (show (mastIdName i))) e']
   return (stmts ++ assign)
-emitStmt (MastLet (MastId name ty) _mty mexp) = do
+emitStmt (MastLet _ct (MastId name ty) _mty mexp) = do
   let hullName = show name
   hullTy <- translateMastType ty
   let alloc = [Hull.SAlloc hullName hullTy]
@@ -410,6 +410,7 @@ emitWordMatch scrutinee alts = do
       hullStmts <- emitStmts stmts
       let hullName = show n
       return (Hull.Alt (Hull.PVar hullName) "$_" hullStmts)
+    emitWordAlt _ (MastPExp _, _) = errorsEM ["PANIC: MastPExp reached EmitHull — was not evaluated by MastEval"]
     emitWordAlt _ (pat, _) = errorsEM ["emitWordAlt not implemented for", show pat]
 
 -- prebranch reflects the fact that we don't know its position (Inl/Inr/InK) yet, just a name and body
@@ -603,9 +604,9 @@ renameYulStmts subst stmts = goBlock Set.empty stmts
       post' <- goBlock preScope post
       blk' <- goBlock preScope blk
       pure (YFor pre' cond' post' blk', scope)
-    goStmt scope s@(YBreak) = pure (s, scope)
-    goStmt scope s@(YContinue) = pure (s, scope)
-    goStmt scope s@(YLeave) = pure (s, scope)
+    goStmt scope s@YBreak = pure (s, scope)
+    goStmt scope s@YContinue = pure (s, scope)
+    goStmt scope s@YLeave = pure (s, scope)
     goStmt scope s@(YComment _) = pure (s, scope)
     goStmt scope (YExp e) = do
       e' <- goExp scope e
