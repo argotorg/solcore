@@ -9,14 +9,15 @@
 -- generates the body of that helper for every contract whose primitive is
 -- actually used.
 --
--- The helper builds a runtime @memory(DynArray(bytes4))@ holding the selector
--- of each public method, computed via the dispatcher's existing
--- @Selector.compute@ instance (which reuses @sigStr@/@SigString@).  Folding
--- those selectors with XOR — the interface-id computation itself — lives in
--- @std/dispatch.solc@ as 'calculateInterfaceId', so all hashing and selector
--- logic stays in the standard library, never in the compiler.
+-- The helper builds a runtime @SelectorArray@ (a flat, length-prefixed memory
+-- array; see @std/dispatch.solc@) holding the selector of each public method,
+-- computed via the dispatcher's existing @Selector.compute@ instance (which
+-- reuses @sigStr@/@SigString@).  Folding those selectors with XOR — the
+-- interface-id computation itself — lives in @std/dispatch.solc@ as
+-- 'calculateInterfaceId', so all hashing and selector logic stays in the
+-- standard library, never in the compiler.
 --
--- This must run AFTER contract dispatch generation, which produces the
+-- This must run BEFORE contract dispatch generation, which produces the
 -- per-method @DispatchNameTy_*@ name types (and their @SigString@ instances)
 -- that the generated selectors refer to.
 module Solcore.Desugarer.PublicMethods
@@ -70,9 +71,7 @@ genPublicMethodsFn c@(Contract cname _ _) =
     methodTys = publicMethodTypes c
     n = length methodTys
 
-    bytes4Ty = TyCon "bytes4" []
-    uint256Ty = TyCon "uint256" []
-    arrTy = TyCon "memory" [TyCon "DynArray" [bytes4Ty]]
+    arrTy = TyCon "SelectorArray" []
 
     sig =
       Signature
@@ -85,28 +84,22 @@ genPublicMethodsFn c@(Contract cname _ _) =
           sigPayable = False
         }
 
-    -- let arr : memory(DynArray(bytes4)) = allocateDynamicArray(Proxy, n);
+    -- let arr : SelectorArray = newSelectorArray(n);
     letArr =
       Let
         False
         "arr"
         (Just arrTy)
-        ( Just
-            ( Call
-                Nothing
-                "allocateDynamicArray"
-                [proxyExp bytes4Ty, Lit (IntLit (toInteger n))]
-            )
-        )
+        (Just (Call Nothing "newSelectorArray" [Lit (IntLit (toInteger n))]))
 
-    -- IndexAccess.set(arr, (Typedef.abs(i) : uint256), Selector.compute(Proxy:Proxy(Method(...))));
+    -- setSelector(arr, i, Selector.compute(Proxy:Proxy(Method(...))));
     setStmt i mty =
       StmtExp
         ( Call
             Nothing
-            (QualName "IndexAccess" "set")
+            "setSelector"
             [ Var "arr",
-              TyExp (Call Nothing (QualName "Typedef" "abs") [Lit (IntLit (toInteger i))]) uint256Ty,
+              Lit (IntLit (toInteger i)),
               Call Nothing (QualName "Selector" "compute") [proxyExp mty]
             ]
         )
