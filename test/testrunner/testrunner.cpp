@@ -74,6 +74,7 @@ int main(int argc, char** argv)
 
 		langutil::EVMVersion const evmVersion{};
 		evmcHost = std::make_unique<EVMHost>(evmVersion, vm);
+		evmcHost->resetBlockContext();
 
 		auto account = [](size_t i) {
 			return h160(h256(u256{"0x1212121212121212121212121212120000000012"} + i * 0x1000), h160::AlignRight);
