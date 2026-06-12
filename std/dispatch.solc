@@ -13,6 +13,8 @@ export {
   RunDispatch,
   Selector,
   SigString,
+  calculateInterfaceId,
+  calculateSelector,
   do_exec,
   fallback_default_implementation,
   selector_matches,
@@ -85,6 +87,54 @@ forall name payability args rets fn
         let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
         return bytes4(bshrWord(224, hash));
     }
+}
+
+// --- Interface Id ---
+
+// The ABI selector for a single method type. This is the same encoding used by
+// `Selector.compute`; it is exposed as a standalone function so the interface
+// id fold reads like its Solidity counterpart.
+forall ty . ty:Selector => function calculateSelector(prx : Proxy(ty)) -> bytes4 {
+    return Selector.compute(prx);
+}
+
+// 2-argument bitwise XOR (`^=` in the interface-id fold below).
+function xorWord(a : word, b : word) -> word {
+    let res : word;
+    assembly {
+        res := xor(a, b)
+    }
+    return res;
+}
+
+// Compute an ERC-165 style interface id by folding the public-method selectors
+// with XOR. Mirrors Solidity's `type(I).interfaceId`.
+//
+// `methods` is produced by the `type(C).publicMethods` primitive: a runtime
+// array holding each public method's 4-byte selector (each computed via
+// `Selector.compute`, which reuses `sigStr`/`SigString`). The XOR fold below is
+// the interface-id calculation, kept in the standard library rather than the
+// compiler:
+//
+//   let interfaceId = 0;
+//   for (let i = 0; i < publicMethods.length; i++)
+//       interfaceId ^= publicMethods[i];
+function calculateInterfaceId(methods : memory(DynArray(bytes4))) -> bytes4 {
+    let interfaceId : word = 0;
+
+    // length is stored in the first word of the array
+    let loc : word = Typedef.rep(methods);
+    let count : word;
+    assembly {
+        count := mload(loc)
+    }
+
+    for (let i : word = 0; i < count; i = i + 1) {
+        let selector : bytes4 = IndexAccess.get(methods, Typedef.abs(i) : uint256);
+        interfaceId = xorWord(interfaceId, Typedef.rep(selector));
+    }
+
+    return bytes4(interfaceId);
 }
 
 // --- Method Execution ---

@@ -16,3 +16,4 @@ bash ./contest.sh test/examples/dispatch/concat.json
 bash ./contest.sh test/examples/dispatch/fallback.json
 bash ./contest.sh test/examples/dispatch/ecrecover.json
 bash ./contest.sh test/examples/dispatch/memory.json
+bash ./contest.sh test/examples/dispatch/interfaceid.json

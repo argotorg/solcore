@@ -70,6 +70,7 @@ library
       Solcore.Desugarer.IntLiteralDesugar
       Solcore.Desugarer.ReplaceWildcard
       Solcore.Desugarer.ContractDispatch
+      Solcore.Desugarer.PublicMethods
       Solcore.Desugarer.ReplaceFunTypeArgs
       Solcore.Desugarer.UniqueTypeGen
       Solcore.Frontend.ComptimeCheck

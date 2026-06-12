@@ -11,6 +11,8 @@
 module Solcore.Desugarer.ContractDispatch
   ( contractDispatchDesugarer,
     contractDispatchTopDecls,
+    nameTypeName,
+    publicMethodTypes,
   )
 where
 
@@ -242,6 +244,43 @@ mkNameInst (DataTy dname [] []) fname =
           instFunctions = [FunDef sig body]
         }
 mkNameInst dt _ = error ("Internal Error: unexpected name type structure: " <> show dt)
+
+-- | The 'Method' type (as used by the dispatcher) for each public,
+-- fully-typed method of a contract, in dispatch order.  Used by the
+-- @type(C).publicMethods@ primitive to compute interface ids: each 'Method'
+-- type has a 'Selector' instance (which reuses 'sigStr'), so the selectors can
+-- be derived from these types without reimplementing any hashing in the
+-- compiler.  The payability and return types are carried faithfully; the
+-- function ('fn') field is irrelevant to the selector and is filled with a
+-- 'word' placeholder.  The fallback and any non-fully-typed methods are
+-- skipped.
+publicMethodTypes :: Contract Name -> [Ty]
+publicMethodTypes (Contract cname _ cdecls) =
+  mapMaybe methodTy (mapMaybe unwrapSigs cdecls)
+  where
+    unwrapSigs (CFunDecl (FunDef s _))
+      | sigName s == fallbackName = Nothing
+      | otherwise = Just s
+    unwrapSigs _ = Nothing
+
+    methodTy (Signature _ _ fname fargs _ (Just ret) payable)
+      | all isTyped fargs =
+          Just $
+            TyCon
+              "Method"
+              [ TyCon (nameTypeName cname fname) [],
+                TyCon (if payable then "Payable" else "NonPayable") [],
+                tupleTyFromList (mapMaybe getTy fargs),
+                ret,
+                word
+              ]
+    methodTy _ = Nothing
+
+    isTyped (Typed {}) = True
+    isTyped (Untyped {}) = False
+
+    getTy (Typed _ _ t) = Just t
+    getTy (Untyped {}) = Nothing
 
 --- Util ---
 
