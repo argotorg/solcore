@@ -544,24 +544,11 @@ instance Resolve S.Exp where
       me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` c)
       dt <- lookupName n
       case (me', dt) of
-        -- local variables (unqualified only)
+        -- local variables and function parameters (unqualified only)
         (Nothing, Just TLocalVar) -> pure (Var n)
-        -- function parameters (unqualified only)
         (Nothing, Just TParameter) -> pure (Var n)
         -- qualified access: qualifier takes precedence over local variable/parameter in scope
-        (Just (Var d), Just TLocalVar) -> do
-          ct <- lookupName d
-          let qn = QualName d (pretty n)
-          case ct of
-            Just TClass -> pure (Var qn)
-            Just TModule -> do
-              qdt <- lookupName qn
-              case qdt of
-                Just TFunction -> pure (Var qn)
-                Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
-                _ -> undefinedName n
-            _ -> pure (Var n)
-        (Just (Var d), Just TParameter) -> do
+        (Just (Var d), Just dt) | dt `elem` [TLocalVar, TParameter] -> do
           ct <- lookupName d
           let qn = QualName d (pretty n)
           case ct of
