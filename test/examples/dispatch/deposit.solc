@@ -79,18 +79,23 @@ contract DepositContract {
     return to_little_endian_64(deposit_count);
   }
 
+  // TODO: once string literals are properly supported, change errors to messages
+  // matching the deposit contract, full 100% identical behaviour.
   payable function deposit(pubkey: memory(bytes), withdrawal_credentials: memory(bytes), signature: memory(bytes), deposit_data_root: bytes32) -> () {
     // Extended ABI length checks since dynamic types are used.
-    require(MemorySize.len(pubkey) == 48, Error(0x12345678));
-    require(MemorySize.len(withdrawal_credentials) == 32, Error(0x22345678));
-    require(MemorySize.len(signature) == 96, Error(0x32345678));
+    require(MemorySize.len(pubkey) == 48, Error(0x9ca717ed)); // InvalidPubkeyLength()
+    require(MemorySize.len(withdrawal_credentials) == 32, Error(0x3debbf1e)); // InvalidWithdrawalCredentialsLength()
+    require(MemorySize.len(signature) == 96, Error(0x4be6321b)); // InvalidSignatureLength()
 
     // Check deposit amount
-    require(callvalue() >= 1000000000000000000, Error(0x42345678)); // >= 1 ether
-    require((callvalue() % 1000000000) == 0, Error(0x52345678)); // % 1 gwei == 0
+    // >= 1ether
+    require(callvalue() >= 1000000000000000000, Error(0xbdfc7472)); // DepositValueTooLow()
+    // % 1 gwei == 0
+    require((callvalue() % 1000000000) == 0, Error(0x9c7417e9)); // DepositValueNotMultipleOfOneGwei()
 
     let deposit_amount = callvalue() / 1000000000; // 1 gwei
-    require(deposit_amount <= 0xffffffffffffffff, Error(0x62345678)); // <= type(uint64).max
+    // <= type(uint64).max
+    require(deposit_amount <= 0xffffffffffffffff, Error(0x2aa66734)); // DepositValueTooHigh()
 
     let amount: memory(bytes) = to_little_endian_64(uint256(deposit_amount));
     // TODO: emit DepositEvent
@@ -128,10 +133,10 @@ contract DepositContract {
     ));
 
     // Verify computed and expected deposit data roots match
-    require(node == deposit_data_root, Error(0x12345678));
+    require(node == deposit_data_root, Error(0x2ec2f183)); // ReconstructedDepositDataMismatch()
 
     // Avoid overflowing the Merkle tree (and prevent edge case in computing `branch`)
-    require(deposit_count < MAX_DEPOSIT_COUNT(), Error(0x12345678));
+    require(deposit_count < MAX_DEPOSIT_COUNT(), Error(0xef5ccf66)); // MerkleTreeFull()
 
     // Add deposit data root to Merkle tree (update a single `branch` node)
     deposit_count += uint256(1);
