@@ -189,6 +189,18 @@
           "returndata":"4924aef0",
           "status": "failure"
         }
+      },
+      {
+        "input": {
+          "text-calldata": "non-public hidden() must not be dispatched",
+          "calldata":"aef6d4b1",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata":"4924aef0",
+          "status": "failure"
+        }
       }
     ]
   }

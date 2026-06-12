@@ -1,7 +1,7 @@
 import std.{Num,Add,Sub,Eq,Ord,Bounded,Typedef,le};
 
 contract C {
-    function main() -> word {
+    public function main() -> word {
         let x : word = 100;
         let i : word = 0;
         let s : word = 0;

@@ -58,8 +58,8 @@ instance Desugar (Contract Name) where
     Contract n vs <$> desugar ds
 
 instance Desugar (FunDef Name) where
-  desugar (FunDef sig bdy) =
-    FunDef sig <$> desugar bdy
+  desugar (FunDef p sig bdy) =
+    FunDef p sig <$> desugar bdy
 
 instance Desugar (ContractDecl Name) where
   desugar (CFieldDecl fd) =

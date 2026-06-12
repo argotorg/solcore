@@ -2,7 +2,7 @@ import std.{*};
 import std.dispatch.{*};
 
 contract EcrecoverTest {
-    function recover() -> address {
+    public function recover() -> address {
         let h: bytes32 = bytes32(0xaabbccddeeff00112233445566778899aabbccddeeff00112233445566778899);
         let v: uint256 = uint256(27);
         let r: bytes32 = bytes32(0xb3ba6dd3757d18f28736e84b1296af85362b7bdf4548710733c6325abf95311d);

@@ -11,7 +11,7 @@ instance word : FromWord {
 
 contract C {
 
-  function main () -> W {
+  public function main () -> W {
     let r : W = FromWord.fromWord(42);
     return r;
   }

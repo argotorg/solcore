@@ -2,14 +2,14 @@ import std.{*};
 import std.dispatch.{*};
 
 contract C {
-    function dirty_allocate() -> memory(bytes) {
+    public function dirty_allocate() -> memory(bytes) {
         mstore(get_free_memory() + 32, 0xdeadc0de);
         let ptr = allocate_memory(32 + 32);
         mstore(ptr, 32);
         return memory(ptr);
     }
 
-    function clear_allocate() -> memory(bytes) {
+    public function clear_allocate() -> memory(bytes) {
         mstore(get_free_memory() + 32, 0xdeadc0de);
         let ptr = allocate_zeroed_memory(32 + 32);
         mstore(ptr, 32);

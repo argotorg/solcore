@@ -10,7 +10,7 @@ function yul_asm_for_body() -> () {
 }
 
 contract Foo {
-    function main() -> () {
+    public function main() -> () {
         yul_asm_for_body()
     }
 }

@@ -15,7 +15,7 @@ data CFood = Red(Food) | Green(Food) | Nocolor;
 
 
 contract FoodContract {
-  function eat(x : CFood) -> Food {
+  public function eat(x : CFood) -> Food {
     match x {
        | CFood.Red(f) => return f;
        | CFood.Green(f) => return f;
@@ -23,7 +23,7 @@ contract FoodContract {
     }
   }
 
-  function main() -> word {
+  public function main() -> word {
   return fromEnum(eat(CFood.Green(Food.Beans)));
   }
 }

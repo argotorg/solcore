@@ -1,23 +1,23 @@
 contract Unit {
-function one (x : ()) -> word {
+public function one (x : ()) -> word {
   return 1;
 }
 
-function unitVal() -> () {
+public function unitVal() -> () {
   return ();
 }
 
-function unitMatch (x : ()) -> word {
+public function unitMatch (x : ()) -> word {
   match x {
   | () => return 1;
   }
 }
 
-function foo (x : word) -> () {
+public function foo (x : word) -> () {
   return ();
 }
 
-function main() -> word {
+public function main() -> word {
   return unitMatch(foo(one(unitVal())));
 }
 }

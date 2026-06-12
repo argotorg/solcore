@@ -6,7 +6,7 @@ module Solcore.Frontend.Parser.Decl
 where
 
 import Common.LightYear
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Data.List.NonEmpty qualified as NE
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.Expr (exprP)
@@ -227,13 +227,28 @@ tySymP = do
   return (TySym n params t)
 
 funDefP :: Parser FunDef
-funDefP = try $ withSigPrefix funDefAfterPrefix
+funDefP = try $ withSigPrefix (funDefAfterPrefix False)
 
-funDefAfterPrefix :: [Ty] -> [Pred] -> Parser FunDef
-funDefAfterPrefix vars ctx = do
+-- | Parse a function definition after its optional signature prefix.
+-- 'allowPublic' controls whether a leading `public` visibility modifier is
+-- accepted: it is only meaningful inside a `contract { … }` body, so callers
+-- outside a contract (top-level functions, instance methods) pass 'False'.
+funDefAfterPrefix :: Bool -> [Ty] -> [Pred] -> Parser FunDef
+funDefAfterPrefix allowPublic vars ctx = do
+  isPub <- publicModifierP allowPublic
   sig <- signatureP vars ctx
   body <- braces bodyP
-  return (FunDef sig (implicitReturn body))
+  return (FunDef isPub sig (implicitReturn body))
+
+-- | Parse an optional `public` visibility modifier. When 'allowPublic' is
+-- 'False' (anywhere outside a contract body), an explicit `public` is rejected
+-- with a clear error rather than being silently accepted.
+publicModifierP :: Bool -> Parser Bool
+publicModifierP allowPublic = do
+  isPub <- option False (True <$ try (keyword "public"))
+  when (isPub && not allowPublic) $
+    fail "'public' is only allowed on functions declared inside a contract"
+  return isPub
 
 implicitReturn :: Body -> Body
 implicitReturn [StmtExp e] = [Return e]
@@ -256,7 +271,7 @@ fallbackDefAfterPrefix :: [Ty] -> [Pred] -> Parser FunDef
 fallbackDefAfterPrefix vars ctx = do
   sig <- fallbackSignatureP vars ctx
   body <- braces bodyP
-  return (FunDef sig (implicitReturn body))
+  return (FunDef False sig (implicitReturn body))
 
 fallbackSignatureP :: [Ty] -> [Pred] -> Parser Signature
 fallbackSignatureP vars ctx = do
@@ -318,13 +333,25 @@ contractDeclP =
     <$> dataP
       <|> CConstrDecl
     <$> constructorDeclP
+      <|> rejectPublicOnImplicitlyPublicP
       <|> withSigPrefix
         ( \vars ctx ->
             CFunDecl
-              <$> (try (funDefAfterPrefix vars ctx) <|> fallbackDefAfterPrefix vars ctx)
+              <$> (try (funDefAfterPrefix True vars ctx) <|> fallbackDefAfterPrefix vars ctx)
         )
       <|> CFieldDecl
     <$> fieldDeclP
+
+-- | `fallback` and `constructor` are implicitly public; reject an explicit
+-- `public` modifier on them with a clear error rather than a confusing
+-- parser failure.
+rejectPublicOnImplicitlyPublicP :: Parser a
+rejectPublicOnImplicitlyPublicP = do
+  kw <- try $ do
+    _ <- keyword "public"
+    _ <- optional (keyword "payable")
+    ("fallback" <$ keyword "fallback") <|> ("constructor" <$ keyword "constructor")
+  fail (kw ++ " is implicitly public; remove the 'public' keyword")
 
 fieldDeclP :: Parser Field
 fieldDeclP = do
@@ -353,7 +380,7 @@ topDeclP =
       withSigPrefix
         ( \vars ctx ->
             choice
-              [ TFunDef <$> funDefAfterPrefix vars ctx,
+              [ TFunDef <$> funDefAfterPrefix False vars ctx,
                 TClassDef <$> classAfterPrefix vars ctx,
                 TInstDef <$> instanceAfterPrefix vars ctx
               ]

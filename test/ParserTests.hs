@@ -379,6 +379,7 @@ declTests =
           "function answer() -> word { return 42; }"
           ( TFunDef
               ( FunDef
+                  False
                   (Signature [] [] "answer" [] False (Just word) False)
                   [Return (lit 42)]
               )
@@ -389,6 +390,7 @@ declTests =
           "function id(x:word) -> word { return x; }"
           ( TFunDef
               ( FunDef
+                  False
                   (Signature [] [] "id" [Typed False "x" word] False (Just word) False)
                   [Return (var "x")]
               )
@@ -399,6 +401,7 @@ declTests =
           "function answer() -> word { 42 }"
           ( TFunDef
               ( FunDef
+                  False
                   (Signature [] [] "answer" [] False (Just word) False)
                   [Return (lit 42)]
               )
@@ -409,6 +412,7 @@ declTests =
           "forall a. function id(x:a) -> a { return x; }"
           ( TFunDef
               ( FunDef
+                  False
                   ( Signature
                       [TyCon "a" []]
                       []
@@ -427,6 +431,7 @@ declTests =
           "forall a. a:Eq => function eqSelf(x:a) -> bool { return x == x; }"
           ( TFunDef
               ( FunDef
+                  False
                   ( Signature
                       [TyCon "a" []]
                       [InCls "Eq" (TyCon "a" []) []]
@@ -533,6 +538,7 @@ declTests =
                   []
                   word
                   [ FunDef
+                      False
                       (Signature [] [] "eq" [Typed False "x" word, Typed False "y" word] False (Just bool) False)
                       [Return (ExpEE (var "x") (var "y"))]
                   ]
@@ -551,6 +557,7 @@ declTests =
                   []
                   (TyCon "pair" [TyCon "a" [], TyCon "a" []])
                   [ FunDef
+                      False
                       ( Signature
                           []
                           []
@@ -591,10 +598,35 @@ declTests =
                   []
                   [ CFunDecl
                       ( FunDef
+                          False
                           (Signature [] [] "get" [] False (Just word) False)
                           [Return (var "x")]
                       )
                   ]
               )
-          )
+          ),
+      testCase "contract with public function" $
+        parsesAs
+          topDeclP
+          "contract C { public function get() -> word { return x; } }"
+          ( TContr
+              ( Contract
+                  "C"
+                  []
+                  [ CFunDecl
+                      ( FunDef
+                          True
+                          (Signature [] [] "get" [] False (Just word) False)
+                          [Return (var "x")]
+                      )
+                  ]
+              )
+          ),
+      -- `public` is only meaningful inside a contract; reject it elsewhere.
+      testCase "top-level public function fails" $
+        parseFails topDeclP "public function get() -> word { return 0; }",
+      testCase "public instance method fails" $
+        parseFails
+          topDeclP
+          "instance word:Eq { public function eq(x:word, y:word) -> bool { return x == y; } }"
     ]

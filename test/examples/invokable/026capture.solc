@@ -38,7 +38,7 @@ instance Lam1Closure(a) : Invokable(a,Word) {
 
 
 contract InvokeCapLam {
-function main() {
+public function main() {
   let y = 42;
   let clos = Lam1Closure(y);
 

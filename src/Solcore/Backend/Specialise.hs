@@ -297,7 +297,7 @@ addMethodResolution cname ty fd = do
         Name s -> QualName cname s
   let name' = specName qname [ty]
   let funType = typeOfTcFunDef fd
-  let fd' = FunDef sig {sigName = name'} (funDefBody fd)
+  let fd' = FunDef (funIsPublic fd) sig {sigName = name'} (funDefBody fd)
   addResolution qname funType fd'
   debug ["+ addMethodResolution: ", show qname, " / ", show name', " : ", pretty funType]
 
@@ -438,10 +438,10 @@ specFunDef fd0 = withLocalState do
     Nothing -> do
       let sig' = applytv subst (funSignature fd)
       -- add a placeholder first to break loops
-      let placeholder = FunDef sig' []
+      let placeholder = FunDef (funIsPublic fd) sig' []
       addSpecialisation name' placeholder
       body' <- specBody (funDefBody fd)
-      let fd' = FunDef sig' {sigName = name'} body'
+      let fd' = FunDef (funIsPublic fd) sig' {sigName = name'} body'
       debug ["+ specFunDef: adding specialisation ", show name', " : ", pretty ty']
       addSpecialisation name' fd'
       return name'
@@ -664,7 +664,7 @@ schemeOfTcSignature sig@(Signature vs ps _n args _ (Just rt) _) =
 schemeOfTcSignature sig = error ("no return type in signature of: " ++ show (sigName sig))
 
 typeOfTcFunDef :: TcFunDef -> Ty
-typeOfTcFunDef (FunDef sig _) = typeOfTcSignature sig
+typeOfTcFunDef (FunDef _ sig _) = typeOfTcSignature sig
 
 pprRes :: Resolution -> Doc
 -- type Resolution = (Ty, FunDef Id)
@@ -816,7 +816,7 @@ instance HasTV (FunDef Id) where
     subst <- foldM addRenaming mempty (sigVars sig)
     let sig' = applytv subst sig
     let body' = applytv subst (funDefBody fd)
-    pure (FunDef sig' body', subst)
+    pure (FunDef (funIsPublic fd) sig' body', subst)
 
 addRenaming :: TVSubst -> Tyvar -> SM TVSubst
 addRenaming b a = do
@@ -873,7 +873,7 @@ toMastContractDecl (CMutualDecl ds) = MastCMutualDecl (map toMastContractDecl ds
 toMastContractDecl d = error $ "toMastContractDecl: unexpected " ++ show d
 
 toMastFunDef :: FunDef Id -> MastFunDef
-toMastFunDef (FunDef sig body) =
+toMastFunDef (FunDef _ sig body) =
   MastFunDef
     { mastFunName = sigName sig,
       mastFunParams = map toMastParam (sigParams sig),

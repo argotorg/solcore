@@ -18,5 +18,5 @@ function two () -> word {
 }
 
 contract Plus {
-  function main() -> word { return two() + two(); }
+  public function main() -> word { return two() + two(); }
 }

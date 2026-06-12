@@ -23,11 +23,11 @@ contract Ownable {
   }
 
   // named getOwner() instead of owner() to avoid collision with the field name
-  function getOwner() -> address {
+  public function getOwner() -> address {
     return owner;
   }
 
-  function changeOwner(newOwner : address) -> () {
+  public function changeOwner(newOwner : address) -> () {
     require(caller() == owner, Error(0x12b0c500)); // OwnableUnauthorizedAccount()
     owner = newOwner;
   }

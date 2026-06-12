@@ -3,7 +3,7 @@ function id (x : word) -> word {
 }
 
 contract Id {
-  function main () -> word {
+  public function main () -> word {
     return id(0);
   }
 }

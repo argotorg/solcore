@@ -31,8 +31,8 @@ instance Erase (Instance Id) where
 instance Erase (FunDef Id) where
   type EraseRes (FunDef Id) = FunDef Name
 
-  erase (FunDef sig bd) =
-    FunDef (erase sig) (erase bd)
+  erase (FunDef p sig bd) =
+    FunDef p (erase sig) (erase bd)
 
 instance Erase (Signature Id) where
   type EraseRes (Signature Id) = Signature Name

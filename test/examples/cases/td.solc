@@ -15,5 +15,5 @@ function lift1ac(f:(rep) -> res, x:abs) -> res { f(Typedef.rep(x)) }
 
 forall a. function id(x:a) -> a {x}
 contract TD {
-  function main() -> word { lift1ac(id, 42) }
+  public function main() -> word { lift1ac(id, 42) }
 }

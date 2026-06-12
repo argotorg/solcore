@@ -17,7 +17,7 @@ instance word:MemoryType {
 }
 
 contract C {
-  function main() -> word {
+  public function main() -> word {
       let ptr : word = 0;
       // if we inline the let below into return then another bug occurs: main is typed as forall a. () -> a
       // let w:word = MemoryType.load(0);

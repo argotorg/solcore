@@ -6,7 +6,7 @@ function fib(n : word) -> word {
 
 contract Fib {
   constructor() {}
-  function test() -> uint256 {
+  public function test() -> uint256 {
     return uint256(fib(10));
   }
 }

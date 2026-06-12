@@ -278,7 +278,7 @@ function g() -> word {
 }
 
 contract C {
-    function main() {
+    public function main() {
         return g();
     }
 }

@@ -47,7 +47,7 @@ forall abs rep . test(abs):Typedef(rep), rep:Test =>
   }
 
 contract C {
-    function main() {
+    public function main() {
         let x:test(word) = test(memory(42));
         let ptr:word = Test.test(x);
     }

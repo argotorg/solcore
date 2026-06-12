@@ -109,7 +109,7 @@ instance Pair(uint16,Proxy(uint256)):Convertible(uint256) {
 
 contract Bar {
 
-function main() -> word {
+public function main() -> word {
   let x = Unit;
   let y : word = convert(x);
   return y;

@@ -21,12 +21,12 @@ function callvalue() -> uint256 {
 }
 
 contract Deposit {
-function deposit() -> () {
+public function deposit() -> () {
     require(callvalue() != uint256(0));
     return ();
   }
 
-function main() -> () {
+public function main() -> () {
   deposit();
 }
 }

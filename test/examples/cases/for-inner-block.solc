@@ -1,6 +1,6 @@
 import std.{lt,Ord,Add,Sub,Bounded,Num,Eq,Typedef};
 contract ForInner {
-  function main() -> word {
+  public function main() -> word {
       let result : word = 0;
       for (let height : word = 0; height < 7; height = height + 1) {
 	      if (true) { result = height;  } else {}

@@ -8,7 +8,7 @@ function test(v0 : Bool, p : Bool) -> Bool {
 }
 
 contract FreshVariableShadowing {
-  function main() -> Bool {
+  public function main() -> Bool {
     test(Bool.True, Bool.False)
   }
 }

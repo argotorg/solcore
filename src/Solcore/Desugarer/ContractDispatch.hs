@@ -63,7 +63,7 @@ findFallback c = listToMaybe [fd | CFunDecl fd <- decls c, isFallback fd]
 genNameDecls :: Contract Name -> Set (TopDecl Name)
 genNameDecls (Contract cname _ cdecls) = foldl go Set.empty cdecls
   where
-    go acc (CFunDecl (FunDef sig _))
+    go acc (CFunDecl (FunDef True sig _))
       | sigName sig == fallbackName = acc
       | otherwise =
           let dataTy = mkNameTy cname (sigName sig)
@@ -79,12 +79,12 @@ genMainFn addMain c@(Contract cname tys cdecls)
     cdecls'' = if hasConstructor cdecls then cdecls else cdecls ++ [defaultConstructor]
     cdecls' = Set.unions (map (transformCDecl cname) cdecls'')
     defaultConstructor = CConstrDecl (Constructor {constrParams = [], constrBody = []})
-    mainfn = FunDef (Signature [] [] "main" [] False (Just unit) False) body
+    mainfn = FunDef False (Signature [] [] "main" [] False (Just unit) False) body
     body = [StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
     cdata = Con "Contract" [methods, fallback]
     methods = tupleExpFromList (fmap mkMethod (mapMaybe unwrapSigs cdecls))
     fallback = case findFallback c of
-      Just (FunDef sig _) ->
+      Just (FunDef _ sig _) ->
         Con
           "Fallback"
           [ proxyExp (TyCon (if sigPayable sig then "Payable" else "NonPayable") []),
@@ -113,8 +113,8 @@ genMainFn addMain c@(Contract cname tys cdecls)
             ]
     mkMethod s = error $ "Internal Error: contract methods must be fully typed: " <> show s
 
-    -- skip the optional fallback function in the methods tuple
-    unwrapSigs (CFunDecl (FunDef s _))
+    -- skip the optional fallback function and non-public methods in the methods tuple
+    unwrapSigs (CFunDecl (FunDef True s _))
       | sigName s == fallbackName = Nothing
       | otherwise = Just s
     unwrapSigs _ = Nothing
@@ -136,7 +136,7 @@ transformConstructor contractName cons
   where
     params = constrParams cons
     argsTuple = (tupleTyFromList (mapMaybe getTy params))
-    initFun = CFunDecl (FunDef initSig (constrBody cons))
+    initFun = CFunDecl (FunDef False initSig (constrBody cons))
     initSig =
       Signature
         { sigVars = mempty,
@@ -188,7 +188,7 @@ transformConstructor contractName cons
     memoryT t = TyCon "memory" [t]
     memoryE e = Con "memory" [e]
     bytesT = TyCon "bytes" []
-    copyArgsFun = CFunDecl (FunDef copySig copyBody)
+    copyArgsFun = CFunDecl (FunDef False copySig copyBody)
 
     startSig =
       Signature
@@ -213,7 +213,7 @@ transformConstructor contractName cons
             return(0, size)
           }|]
       ]
-    startFun = CFunDecl (FunDef startSig startBody)
+    startFun = CFunDecl (FunDef False startSig startBody)
 
     isTyped (Typed {}) = True
     isTyped (Untyped {}) = False
@@ -239,7 +239,7 @@ mkNameInst (DataTy dname [] []) fname =
           instName = "SigString",
           paramsTy = [],
           mainTy = nameTy,
-          instFunctions = [FunDef sig body]
+          instFunctions = [FunDef False sig body]
         }
 mkNameInst dt _ = error ("Internal Error: unexpected name type structure: " <> show dt)
 

@@ -15,11 +15,11 @@ instance word:Add {
 }
 
 contract Bug {
-    function main() -> word {
+    public function main() -> word {
         return makeClosure(42);
     }
 
-    function makeClosure(e : word) -> word {
+    public function makeClosure(e : word) -> word {
         let f = lam (x : word) {
             return Add.add(x,e);  // this crashes
 	    // return addW(e,x);  // this works

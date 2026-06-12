@@ -1,7 +1,7 @@
 contract RGB {
   data Color = R | G | B;
 
-  function fromEnum(c : Color) -> word {
+  public function fromEnum(c : Color) -> word {
     match c {
       | Color.R => return 4;
       | Color.G => return 2;
@@ -9,5 +9,5 @@ contract RGB {
     }
   }
 
-  function main() -> word { return fromEnum(Color.B); }
+  public function main() -> word { return fromEnum(Color.B); }
 }

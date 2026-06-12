@@ -1,5 +1,5 @@
 contract YulFor {
-  function main() -> word {
+  public function main() -> word {
     let loopStart : word = 128;
     let loopEnd : word = 256;
     let res : word;

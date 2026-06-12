@@ -7,7 +7,7 @@ function test() -> word {
 }
 
 contract C {
-    function main() -> word {
+    public function main() -> word {
         return test();
     }
 }

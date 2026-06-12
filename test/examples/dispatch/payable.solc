@@ -4,7 +4,7 @@ import std.dispatch.{*};
 contract PayableTest {
     constructor() {}
 
-    payable function deposit() -> uint256 {
+    public payable function deposit() -> uint256 {
         let value;
         assembly {
             value := callvalue()
@@ -12,7 +12,7 @@ contract PayableTest {
         return uint256(value);
     }
 
-    function balance() -> uint256 {
+    public function balance() -> uint256 {
         let value;
         assembly {
             value := selfbalance()

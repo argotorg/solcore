@@ -37,7 +37,7 @@ function foo(x : word) -> bool {
 
 
 contract IfExamples {
-	 function main() -> word {
+	 public function main() -> word {
 	   return (if not(foo(42)) then 0 else 1);
 	 }
 }

@@ -1,10 +1,10 @@
 contract Id1 {
-  function id(x) {
+  public function id(x) {
     return x ;
   }
 
 
-  function main() {
+  public function main() {
     let nid = lam(x) {return x;};
     return nid(42);
   }

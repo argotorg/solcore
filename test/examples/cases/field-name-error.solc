@@ -6,7 +6,7 @@ pragma no-bounded-variable-condition ;
 contract PoC {
     x : word;
 
-    function main () -> word {
+    public function main () -> word {
       return 0;
     }
 }
