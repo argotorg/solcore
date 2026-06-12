@@ -1,8 +1,5 @@
 import std.{*};
 import std.dispatch.{*};
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
 
 // Demonstrates the `type(C).publicMethods` primitive together with
 // `calculateInterfaceId` from std/dispatch.solc, replicating Solidity's
@@ -22,8 +19,9 @@ contract InterfaceId {
     return uint256(0);
   }
 
-  function interfaceId() -> uint256 {
+  // TODO: add bytes4 to ABI
+  function interfaceId() -> bytes32 {
     let id : bytes4 = calculateInterfaceId(type(InterfaceId).publicMethods);
-    return uint256(Typedef.rep(id));
+    return bytes32(Typedef.rep(id));
   }
 }
