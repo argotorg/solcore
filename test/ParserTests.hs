@@ -621,5 +621,12 @@ declTests =
                       )
                   ]
               )
-          )
+          ),
+      -- `public` is only meaningful inside a contract; reject it elsewhere.
+      testCase "top-level public function fails" $
+        parseFails topDeclP "public function get() -> word { return 0; }",
+      testCase "public instance method fails" $
+        parseFails
+          topDeclP
+          "instance word:Eq { public function eq(x:word, y:word) -> bool { return x == y; } }"
     ]
