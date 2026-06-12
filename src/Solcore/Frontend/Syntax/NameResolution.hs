@@ -558,7 +558,7 @@ instance Resolve S.Exp where
               case qdt of
                 Just TFunction -> pure (Var qn)
                 Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
-                _ -> undefinedName n
+                _ -> undefinedName qn
             _ -> pure (Var n)
         -- field access
         (Nothing, Just TField) ->
