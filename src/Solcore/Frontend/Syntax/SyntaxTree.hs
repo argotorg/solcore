@@ -95,6 +95,7 @@ data ItemSelector
 data ItemSelectorEntry
   = SelectAllItems
   | SelectItem Name
+  | SelectItemAs Name Name
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of the contract structure
@@ -187,7 +188,8 @@ data Signature
     sigName :: Name,
     sigParams :: [Param],
     sigRetComptime :: Bool,
-    sigReturn :: Maybe Ty
+    sigReturn :: Maybe Ty,
+    sigPayable :: Bool
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -247,6 +249,7 @@ data Stmt
   | Asm YulBlock -- Yul block
   | If Exp Body Body -- If statement
   | For Stmt Exp Stmt Body -- for(init; cond; post) { body }
+  | EmptyStmt -- empty statement (for empty for init/post)
   deriving (Eq, Ord, Show, Data, Typeable)
 
 type Body = [Stmt]

@@ -60,6 +60,7 @@ invokeSignature =
     ]
     False
     (Just (TyVar retVar))
+    False
 
 -- basic types
 
@@ -298,13 +299,13 @@ yulPrimOps =
     (Name "datasize", monotype (string :-> word)),
     (Name "dataoffset", monotype (string :-> word)),
     (Name "extcodesize", monotype (word :-> word)),
-    (Name "extcodecopy", monotype (word :-> word :-> word :-> unit)),
+    (Name "extcodecopy", monotype (word :-> word :-> word :-> word :-> unit)),
     (Name "returndatasize", monotype word),
     (Name "returndatacopy", monotype (word :-> word :-> word :-> unit)),
     (Name "mcopy", monotype (word :-> word :-> word :-> unit)),
     (Name "extcodehash", monotype (word :-> word)),
-    (Name "create", monotype (word :-> word :-> word :-> unit)),
-    (Name "create2", monotype (word :-> word :-> word :-> unit)),
+    (Name "create", monotype (word :-> word :-> word :-> word)),
+    (Name "create2", monotype (word :-> word :-> word :-> word :-> word)),
     (Name "call", monotype (funtype (words 7) word)),
     (Name "callcode", monotype (funtype (words 7) word)),
     (Name "delegatecall", monotype (funtype (words 6) word)),

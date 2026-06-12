@@ -157,6 +157,7 @@ transStmt cenv stmt = (cenv, go stmt cenv)
     go (Match es eqns) = traces [pretty (r cenv)] r where r = Match <$> mapM transRhs es <*> mapM transEquation eqns
     go Let {} = error "Impossible"
     go s@Asm {} = pure s
+    go EmptyStmt = pure EmptyStmt
 
 -- go s = pure s
 

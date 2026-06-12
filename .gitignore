@@ -35,9 +35,6 @@ test/examples/spec/attic/
 output.core
 output*.core
 
-# generated code
-/src/Solcore/Frontend/Parser/SolcoreParser.hs
-
 # nix
 /result
 

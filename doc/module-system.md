@@ -32,6 +32,7 @@ Supported forms:
 import M;
 import M as A;
 import M.{X, Y};
+import M.{X as Z};
 import M.{*};
 import M.{*} hiding {X};
 import lib.foo.bar;
@@ -60,6 +61,8 @@ Current std-specific behavior:
 - `import M;` does not open names into unqualified scope.
 - `import M as A;` binds only `A`.
 - `import M.{X, Y};` imports selected exported names into unqualified scope.
+- `import M.{X as Z};` imports `X` into unqualified scope as `Z`.
+- `as` after a selector block, such as `import M.{X} as Z;`, is rejected.
 - `import M.{*};` imports all exported item names into unqualified scope.
 - `import M.{...} hiding {X, Y};` removes names from the selector result after expansion.
 - Items inside `{...}` may mix simple item names and `*`.

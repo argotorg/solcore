@@ -101,6 +101,9 @@ checkStmt ft pure_ retCt fname env stmt = case stmt of
     return env
   MastAsm _ ->
     return env
+  MastSeq stmts -> do
+    checkStmts ft pure_ retCt fname env stmts
+    return env
 
 -- | Check an alternative in a match expression.
 checkAlt :: FunTable -> Set.Set Name -> Bool -> Name -> ComptimeEnv -> MastAlt -> Either String ()

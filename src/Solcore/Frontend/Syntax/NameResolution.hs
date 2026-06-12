@@ -71,6 +71,7 @@ resolveExportSelectorEntry (S.SelectExportConstructors typeName ctorSelector) =
 resolveSelectorEntry :: S.ItemSelectorEntry -> ItemSelectorEntry
 resolveSelectorEntry S.SelectAllItems = SelectAllItems
 resolveSelectorEntry (S.SelectItem itemName) = SelectItem itemName
+resolveSelectorEntry (S.SelectItemAs itemName aliasName) = SelectItemAs itemName aliasName
 
 resolveExportSpec :: S.ExportSpec -> ExportSpec
 resolveExportSpec S.ExportAll = ExportAll
@@ -277,7 +278,7 @@ instance Resolve S.Class where
 instance Resolve S.Signature where
   type Result S.Signature = Signature Name
 
-  resolve s@(S.Signature vs ctx n ps rc mt) =
+  resolve s@(S.Signature vs ctx n ps rc mt pay) =
     withLocalCtx $ do
       let ns = map tyconName vs
       mapM_ addTyVar ns
@@ -285,7 +286,7 @@ instance Resolve S.Signature where
       ps' <- resolve ps `wrapError` s
       mt' <- resolve mt `wrapError` s
       let vs' = map TVar ns
-      pure (Signature vs' ctx' n ps' rc mt')
+      pure (Signature vs' ctx' n ps' rc mt' pay)
 
 instance Resolve S.Instance where
   type Result S.Instance = Instance Name
@@ -337,7 +338,7 @@ instance Resolve S.PragmaStatus where
 instance Resolve S.FunDef where
   type Result S.FunDef = FunDef Name
 
-  resolve f@(S.FunDef (S.Signature vs ctx n ps rc mt) bds) =
+  resolve f@(S.FunDef (S.Signature vs ctx n ps rc mt pay) bds) =
     do
       let ns = map tyconName vs
       withLocalCtx $ do
@@ -349,7 +350,7 @@ instance Resolve S.FunDef where
         mapM_ addParameter args
         bds' <- resolve bds `wrapError` f
         let vs' = map TVar ns
-            sig = Signature vs' ctx' n ps' rc mt'
+            sig = Signature vs' ctx' n ps' rc mt' pay
         pure (FunDef sig bds')
 
 instance Resolve S.Stmt where
@@ -384,6 +385,7 @@ instance Resolve S.Stmt where
     If <$> resolve e <*> resolve blk1 <*> resolve blk2
   resolve (S.For initStmt cond postStmt body) =
     For <$> resolve initStmt <*> resolve cond <*> resolve postStmt <*> resolve body
+  resolve S.EmptyStmt = pure EmptyStmt
 
 instance Resolve S.Equation where
   type Result S.Equation = Equation Name
@@ -510,6 +512,17 @@ resolveSameNameConstructorName n =
   where
     leaf = constructorLeafName n
 
+-- A receiver like @Error@ in @Error.Empty@ is first parsed as an expression
+-- on its own and resolved before the outer member-access context is known.
+-- When the type has a same-name constructor (@data Error = Error(...) | ...@),
+-- the inner resolver eagerly produces @Con (QualName Error Error) []@ for the
+-- bare name. Treat that shape as if it were @Var Error@ when it appears in
+-- qualifier position so the outer qualifier-handling cases still match.
+unwrapQualifierReceiver :: Maybe (Exp Name) -> Maybe (Exp Name)
+unwrapQualifierReceiver (Just (Con (QualName d conName) []))
+  | pretty d == conName = Just (Var d)
+unwrapQualifierReceiver me = me
+
 instance Resolve S.Exp where
   type Result S.Exp = Exp Name
 
@@ -528,7 +541,7 @@ instance Resolve S.Exp where
     TyExp <$> resolve e <*> resolve t
   resolve c@(S.ExpVar me n) =
     do
-      me' <- resolve me `wrapError` c
+      me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` c)
       dt <- lookupName n
       case (me', dt) of
         -- local variables
@@ -599,7 +612,7 @@ instance Resolve S.Exp where
                 else undefinedName n
   resolve x@(S.ExpName me n es) =
     do
-      me' <- resolve me `wrapError` x
+      me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` x)
       es' <- resolve es `wrapError` x
       dt <- lookupName n
       case (me', dt) of
@@ -1026,8 +1039,11 @@ addContractName n =
   modify (\env -> env {typeEnv = Map.insert n TContract (typeEnv env)})
 
 addFunctionName :: Name -> ResolveM ()
-addFunctionName n =
-  modify (\env -> env {scopeEnv = Map.insert n TFunction (scopeEnv env)})
+addFunctionName n = do
+  existing <- gets (Map.lookup n . scopeEnv)
+  case existing of
+    Just TDataCon | isPrimitiveConstructor n -> pure ()
+    _ -> modify (\env -> env {scopeEnv = Map.insert n TFunction (scopeEnv env)})
 
 addParameter :: Name -> ResolveM ()
 addParameter n =
