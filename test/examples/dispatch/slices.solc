@@ -18,7 +18,7 @@ contract C {
 
     // --- slice_/truncate over the result of a concat ---
 
-    public unction slice_of_concat(a: bytes32, b: bytes32, start: uint256) -> memory(bytes) {
+    public function slice_of_concat(a: bytes32, b: bytes32, start: uint256) -> memory(bytes) {
         return to_bytes(slice_(concat(a, b), Typedef.rep(start)));
     }
 
