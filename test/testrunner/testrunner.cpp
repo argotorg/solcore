@@ -169,6 +169,13 @@ int main(int argc, char** argv)
 							continue;
 						}
 					}
+					else
+					{
+						std::cerr << "Unsupported expectedStatus: " << expectedStatus << std::endl;
+						resultRecorder.record(filename, "Unsupported constructor status expectation.", "failure", expectedStatus, gasUsed, gasUsedForDeposit);
+						hasTestFailure = true;
+						continue;
+					}
 					if (test["output"].contains("returndata"))
 					{
 						auto expectedOutput = test["output"]["returndata"].get<std::string>();
@@ -216,6 +223,13 @@ int main(int argc, char** argv)
 						hasTestFailure = true;
 						continue;
 					}
+				}
+				else
+				{
+					std::cerr << "Unsupported expectedStatus: " << expectedStatus << std::endl;
+					resultRecorder.record(filename, "Unsupported status expectation.", "failure", expectedStatus, gasUsed, gasUsedForDeposit);
+					hasTestFailure = true;
+					continue;
 				}
 				auto expectedOutput = test["output"]["returndata"].get<std::string>();
 				if (output != fromHex(expectedOutput))
