@@ -1,0 +1,29 @@
+import std.{*};
+import std.dispatch.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+// Demonstrates the `type(C).publicMethods` primitive together with
+// `calculateInterfaceId` from std/dispatch.solc, replicating Solidity's
+// `type(I).interfaceId`.
+//
+// The interface id is the XOR of the selectors of every public method:
+//   foo(uint256)   -> 0x2fbebd38
+//   bar(address)   -> 0x646ea56d
+//   interfaceId()  -> 0xa64d0cd4
+//   XOR            -> 0xed9d1481
+contract InterfaceId {
+  function foo(x : uint256) -> uint256 {
+    return x;
+  }
+
+  function bar(a : address) -> uint256 {
+    return 0;
+  }
+
+  function interfaceId() -> uint256 {
+    let id : bytes4 = calculateInterfaceId(type(InterfaceId).publicMethods);
+    return uint256(Typedef.rep(id));
+  }
+}
