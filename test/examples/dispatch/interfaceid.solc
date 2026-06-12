@@ -19,7 +19,7 @@ contract InterfaceId {
   }
 
   function bar(a : address) -> uint256 {
-    return 0;
+    return uint256(0);
   }
 
   function interfaceId() -> uint256 {
