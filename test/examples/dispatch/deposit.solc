@@ -1,56 +1,6 @@
 import std.{*};
 import std.dispatch.{*};
-import std.opcodes.{callvalue, mcopy};
-
-data bytes_slice = bytes_slice(word, word);
-
-instance bytes_slice:MemorySize {
-    function len(v: bytes_slice) -> word {
-        match v {
-            | bytes_slice(ptr, len) => return len;
-        }
-    }
-}
-
-instance bytes_slice:MemoryPointer {
-    function ptr(v: bytes_slice) -> word {
-        match v {
-            | bytes_slice(ptr, len) => return ptr;
-        }
-    }
-}
-
-instance bytes_slice:MemoryEncode {
-    function encodeInto(v: bytes_slice, target: word) -> () {
-        match v {
-            | bytes_slice(ptr, len) =>
-                mcopy(target, ptr, len);
-        }
-    }
-}
-
-forall a . a:MemorySize, a:MemoryPointer =>
-function slice_(input: a, start: word) -> bytes_slice {
-    let len = MemorySize.len(input);
-    if (len < start) {
-        assembly {
-            revert(0, 0)
-        }
-    }
-    let ptr_ = MemoryPointer.ptr(input);
-    return bytes_slice(ptr_ + start, len - start);
-}
-
-forall a . a:MemorySize, a:MemoryPointer =>
-function truncate(input: a, end: word) -> bytes_slice {
-    let len = MemorySize.len(input);
-    if (len < end) {
-        assembly {
-            revert(0, 0)
-        }
-    }
-    return bytes_slice(MemoryPointer.ptr(input), end);
-}
+import std.opcodes.{callvalue};
 
 // Should use uint64 and bytes.
 // Assumes 64-bit input.
