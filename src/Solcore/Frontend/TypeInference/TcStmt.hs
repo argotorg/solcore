@@ -149,6 +149,8 @@ tcStmtWithExpectedReturn mExpectedReturn s@(For initStmt cond postStmt body) =
     (postStmt', psPost, _) <- tcStmtWithExpectedReturn Nothing postStmt
     (body', psBody, _) <- tcBodyWithExpectedReturn mExpectedReturn body
     withCurrentSubst (For initStmt' cond' postStmt' body', psInit ++ psCond ++ psPost ++ psBody, unit)
+tcStmtWithExpectedReturn _ EmptyStmt =
+  pure (EmptyStmt, [], unit)
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations = tcEquationsWithExpectedReturn Nothing
@@ -220,8 +222,9 @@ tcPat t (PVar n) =
 tcPat t p@(PCon n ps) =
   do
     n' <- resolvePatternConstructor n t `wrapError` p
-    -- asking type from environment
-    st <- askEnv n' `wrapError` p
+    -- asking type from environment (use constrCtx-aware lookup so primitive
+    -- constructors like "pair" are not shadowed by same-named user functions)
+    st <- askEnvForCon n' `wrapError` p
     (_ :=> tc) <- freshInst st
     let (argTys, resultTy) = splitTy tc
     when (length argTys /= length ps) $
@@ -307,8 +310,9 @@ tcExpWithExpected mExpected e@(Con n es) =
   do
     expectedArgTys <- mapM (const freshTyVar) es
     n' <- resolveExpressionConstructor n expectedArgTys mExpected `wrapError` e
-    -- getting the type from the environment
-    sch <- askEnv n' `wrapError` e
+    -- getting the type from the environment (use constrCtx-aware lookup so primitive
+    -- constructors like "pair" are not shadowed by same-named user functions)
+    sch <- askEnvForCon n' `wrapError` e
     (ps :=> t) <- freshInst sch
     t' <- freshTyVar
     s0 <- unify t (funtype expectedArgTys t') `wrapError` e
@@ -520,7 +524,7 @@ createClosureFun fn freeIds cdt args bdy ps ty =
         (_, retTy1) = splitTy ty
         vs' = union (bv ct) (bv ps0)
         ty' = ct :-> ty
-        sig = Signature vs' ps0 fn args' False (Just retTy1)
+        sig = Signature vs' ps0 fn args' False (Just retTy1) False
     bdy' <- createClosureBody cName cdt freeIds bdy
     sch <- generalize (ps0, ty')
     pure (everywhere (mkT gen) $ FunDef sig bdy', sch)
@@ -549,7 +553,7 @@ createClosureFreeFun fn args bdy ps ty =
   do
     let (_, retTy1) = splitTy ty
         vs = bv ty `union` bv ps
-        sig = Signature vs ps fn args False (Just retTy1)
+        sig = Signature vs ps fn args False (Just retTy1) False
     pure (everywhere (mkT gen) $ FunDef sig bdy)
 
 tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
@@ -570,7 +574,7 @@ tcArg a@(Typed c n ty) =
     pure (Typed c (Id n ty1) ty1, (n, monotype ty1), ty1)
 
 hasAnn :: Signature Name -> Bool
-hasAnn (Signature _ _ _ args _ rt) =
+hasAnn (Signature _ _ _ args _ rt _) =
   any isAnn args || isJust rt
   where
     isAnn (Typed {}) = True
@@ -596,7 +600,7 @@ tiArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
 tiArgs args = unzip3 <$> mapM tiArg args
 
 tiFunDef :: FunDef Name -> TcM (FunDef Id, Scheme)
-tiFunDef d@(FunDef sig@(Signature _ _ n args _ _) bd) =
+tiFunDef d@(FunDef sig@(Signature _ _ n args _ _ _) bd) =
   do
     info ["# tiFunDef:", pretty sig]
     -- getting fresh type variables for arguments
@@ -652,7 +656,7 @@ checkAllTypeVarsBound context used declared =
    in unless (null unbound) $ unboundTypeVars context unbound
 
 annotatedScheme :: [Tyvar] -> [Pred] -> Signature Name -> TcM Scheme
-annotatedScheme vs' qs (Signature vs ps _ args _ rt) =
+annotatedScheme vs' qs (Signature vs ps _ args _ rt _) =
   do
     ts <- mapM argumentAnnotation args
     t <- maybe freshTyVar pure rt
@@ -660,7 +664,7 @@ annotatedScheme vs' qs (Signature vs ps _ args _ rt) =
     pure (Forall vs1 ((qs ++ ps) :=> (funtype ts t)))
 
 tcFunDef :: Bool -> [Tyvar] -> [Pred] -> FunDef Name -> TcM (FunDef Id, Scheme)
-tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _) _)
+tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _ _) _)
   | hasAnn sig = do
       info ["\n# tcFunDef ", pretty d]
       let vars = vs `union` vs'
@@ -669,7 +673,7 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _) _)
       -- instantiate signatures in function definition
       sks <- mapM (const freshTyVar) vars
       let env = zip vars sks
-          FunDef sig1@(Signature _ ps1 _ args1 _ rt1) bd1 = everywhere (mkT (insts @Ty env)) d
+          FunDef sig1@(Signature _ ps1 _ args1 _ rt1 _) bd1 = everywhere (mkT (insts @Ty env)) d
           qs1 = everywhere (mkT (insts @Ty env)) qs
       -- checking if all constraints have a respective class and are well kinded
       checkConstraints ps `wrapError` d
@@ -849,7 +853,7 @@ elabSignature vs1 sig (Forall _ (ps :=> t)) =
         -- formal parameters are present in the signature.
         ret = Just $ if null params' then t else (funtype rs t')
         vs' = bv params' `union` bv ret `union` bv ps
-    sig2 <- withCurrentSubst (Signature (vs' \\ vs1) ps (sigName sig) params' (sigRetComptime sig) ret)
+    sig2 <- withCurrentSubst (Signature (vs' \\ vs1) ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig))
     pure sig2
 
 elabParam :: Ty -> Param Name -> TcM (Param Id)
@@ -858,7 +862,7 @@ elabParam t (Untyped c n) = pure $ Typed c (Id n t) t
 
 annotateSignature :: Scheme -> Signature Name -> TcM (Signature Name)
 annotateSignature (Forall vs (ps :=> t)) sig =
-  pure $ Signature vs ps (sigName sig) params' (sigRetComptime sig) ret
+  pure $ Signature vs ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig)
   where
     (ts, t') = splitTy t
     params' = zipWith annotateParam ts (sigParams sig)
@@ -880,7 +884,7 @@ correctName (Name s) =
       else pure (Name s)
 
 extSignature :: Signature Name -> TcM ()
-extSignature sig@(Signature _ _ n _ _ _) =
+extSignature sig@(Signature _ _ n _ _ _ _) =
   do
     te <- gets directCalls
     -- checking if the function is previously defined
@@ -1010,7 +1014,7 @@ invalidMemberType n cls ins =
       ]
 
 schemeFromSignature :: Signature Id -> TcM Scheme
-schemeFromSignature sig@(Signature vs ps _ args _ (Just rt)) =
+schemeFromSignature sig@(Signature vs ps _ args _ (Just rt) _) =
   do
     unless (all isTyped args) $
       throwError $
@@ -1030,8 +1034,8 @@ schemeFromSignature sig =
     unwords ["Invalid instance member signature (missing return type):", pretty sig]
 
 updateSignature :: [Tyvar] -> Name -> FunDef Id -> FunDef Id
-updateSignature vs' c (FunDef (Signature vs ps n args rc rt) bd) =
-  FunDef (Signature (vs \\ vs') ps (QualName c (pretty n)) args rc rt) bd
+updateSignature vs' c (FunDef (Signature vs ps n args rc rt pay) bd) =
+  FunDef (Signature (vs \\ vs') ps (QualName c (pretty n)) args rc rt pay) bd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
 checkDeferedConstraints = mapM_ checkDeferedConstraint
@@ -1237,7 +1241,7 @@ fullSignature :: Signature Name -> TcM ()
 fullSignature sig =
   unless
     (isFullyAnnotated sig)
-    (throwError $ unlines ["Instance methods must have complete type signatures:", pretty sig])
+    (throwError $ unlines ["Class and instance methods must have complete type signatures:", pretty sig])
 
 requireAnnotations :: FunDef Name -> TcM ()
 requireAnnotations (FunDef sig _) =
@@ -1250,7 +1254,7 @@ requireAnnotations (FunDef sig _) =
         ]
 
 isFullyAnnotated :: Signature Name -> Bool
-isFullyAnnotated (Signature _ _ _ ps _ rt) =
+isFullyAnnotated (Signature _ _ _ ps _ rt _) =
   all isTyped ps && isJust rt
   where
     isTyped (Typed {}) = True
@@ -1559,7 +1563,7 @@ tcYulBlock (s : ss) =
     pure (ns ++ nss, t)
 
 tcYulStmt :: YulStmt -> TcM ([Name], Ty)
-tcYulStmt (YAssign ns e) =
+tcYulStmt s@(YAssign ns e) =
   do
     forM_ ns $ \n -> do
       msch <- maybeAskEnv n
@@ -1571,16 +1575,18 @@ tcYulStmt (YAssign ns e) =
           case t' of
             Meta _ -> unify t' word >> pure ()
             _ -> pure ()
-    _ <- tcYulExp e
+    t <- tcYulExp e
+    checkYulAssignArity s ns e t
     pure ([], unit)
 tcYulStmt (YBlock yblk) =
   do
     _ <- tcYulBlock yblk
     -- names defined in should not return
     pure ([], unit)
-tcYulStmt (YLet ns (Just e)) =
+tcYulStmt s@(YLet ns (Just e)) =
   do
-    _ <- tcYulExp e
+    t <- tcYulExp e
+    checkYulAssignArity s ns e t
     mapM_ (flip extEnv mword) ns
     pure (ns, unit)
 tcYulStmt (YExp e) =
@@ -1609,6 +1615,33 @@ tcYulStmt (YFor initBlk e bdy upd) =
       pure ()
     pure ([], unit)
 tcYulStmt _ = pure ([], unit)
+
+-- Yul builtins/opcodes return either 0 values (type 'unit') or 1 value
+-- (any other type). Compare the number of names on the left-hand side of
+-- an assignment with the actual return arity of the right-hand side.
+yulReturnArity :: Ty -> Int
+yulReturnArity t
+  | t == unit = 0
+  | otherwise = 1
+
+checkYulAssignArity :: YulStmt -> [Name] -> YulExp -> Ty -> TcM ()
+checkYulAssignArity s ns e t =
+  do
+    t' <- withCurrentSubst t
+    let expected = length ns
+        actual = yulReturnArity t'
+    when (expected /= actual) $
+      tcmError
+        ( unlines
+            [ "In Yul statement:",
+              pretty s,
+              "the right-hand side:",
+              pretty e,
+              "produces " ++ show actual ++ " value(s),",
+              "but " ++ show expected ++ " value(s) are being assigned."
+            ]
+        )
+        `wrapError` s
 
 tcYulExp :: YulExp -> TcM Ty
 tcYulExp (YLit l) =
@@ -1695,6 +1728,7 @@ instance Vars (Stmt Id) where
   free (For initStmt cond postStmt body) =
     free initStmt `union` ((free cond `union` free postStmt `union` free body) \\ bound initStmt)
   free (Asm _) = []
+  free EmptyStmt = []
 
   bound (Let _ n _ _) = [n]
   bound (Block _) = []

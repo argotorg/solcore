@@ -467,6 +467,17 @@ askEnv n =
     s <- maybeAskEnv n
     maybe (undefinedName n) pure s
 
+-- Look up a constructor scheme.  Prefers the protected primitive constructor
+-- environment over the regular ctx so that user-defined functions with the
+-- same name as a primitive constructor (e.g. "pair") cannot shadow it for
+-- Con/PCon expression lookups.
+askEnvForCon :: Name -> TcM Scheme
+askEnvForCon n = do
+  mPrim <- gets (Map.lookup n . constrCtx)
+  case mPrim of
+    Just sch -> pure sch
+    Nothing -> askEnv n
+
 -- type information
 
 maybeAskTypeInfo :: Name -> TcM (Maybe TypeInfo)

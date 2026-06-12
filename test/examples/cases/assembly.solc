@@ -12,6 +12,6 @@ function foo () -> () {
   let ptr : word;
   let size = Mem.size(0);
   assembly {
-    ptr := add(32, size);
+    ptr := add(32, size)
   }
 }

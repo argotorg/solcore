@@ -1,0 +1,63 @@
+{
+  "WithFallback": {
+    "bytecode": "",
+    "contract": "WithFallback",
+    "tests": [
+      {
+        "input": {
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "text-calldata": "answer()(uint256)",
+          "calldata": "85bb7d69",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "no selector -- user-defined fallback runs and reverts",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "66616c6c6261636b2d7761732d63616c6c6564",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "unknown selector -- user-defined fallback runs and reverts",
+          "calldata": "deadc0de",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "66616c6c6261636b2d7761732d63616c6c6564",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "unknown selector with value -- payable fallback runs and reverts",
+          "calldata": "deadc0de",
+          "value": "42"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "b5988ea3",
+          "status": "failure"
+        }
+      }
+    ]
+  }
+}

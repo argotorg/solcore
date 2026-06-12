@@ -91,6 +91,7 @@ type InstanceHead = (Bool, Name, [Ty], Ty)
 data TcEnv
   = TcEnv
   { ctx :: Env, -- Variable environment
+    constrCtx :: Env, -- Primitive constructor schemes (never shadowed by user definitions)
     instEnv :: InstTable, -- Instance Environment
     defaultEnv :: DefTable, -- Default instance environment
     typeTable :: TypeTable, -- Type information environment
@@ -123,6 +124,7 @@ initTcEnv :: Option -> TcEnv
 initTcEnv opts =
   TcEnv
     { ctx = primCtx,
+      constrCtx = primConstrCtx,
       instEnv = primInstEnv,
       defaultEnv = Map.empty,
       typeTable = primTypeEnv,
@@ -171,6 +173,20 @@ primCtx =
       integerMul,
       integerLt,
       integerEq
+    ]
+
+-- Primitive constructor schemes only — never overwritten by user function definitions.
+-- Used by the type checker for Con/PCon lookups so that user functions named after
+-- primitive constructors (e.g. "pair") cannot shadow them.
+primConstrCtx :: Env
+primConstrCtx =
+  Map.fromList
+    [ primPair,
+      primUnit,
+      primTrue,
+      primFalse,
+      primInl,
+      primInr
     ]
 
 primTypeEnv :: TypeTable

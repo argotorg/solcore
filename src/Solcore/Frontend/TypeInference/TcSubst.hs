@@ -125,15 +125,15 @@ instance HasType Scheme where
   bv (Forall vs qt) = vs `union` bv qt
 
 instance (HasType a) => HasType (Signature a) where
-  apply s (Signature _ ctx n p rc r) =
+  apply s (Signature _ ctx n p rc r pay) =
     let ctx' = apply s ctx
         p' = apply s p
         r' = apply s r
         vs' = bv ctx' `union` bv p' `union` bv r'
-     in Signature vs' ctx' n p' rc r'
-  fv (Signature vs c _ p _ r) = fv (c, p, r) \\ vs
-  mv (Signature _ c _ p _ r) = mv (c, p, r)
-  bv (Signature vs c _ p _ r) = vs `union` bv (c, p, r)
+     in Signature vs' ctx' n p' rc r' pay
+  fv (Signature vs c _ p _ r _) = fv (c, p, r) \\ vs
+  mv (Signature _ c _ p _ r _) = mv (c, p, r)
+  bv (Signature vs c _ p _ r _) = vs `union` bv (c, p, r)
 
 instance (HasType a) => HasType (Param a) where
   apply s (Typed c i t) = Typed c (apply s i) (apply s t)
@@ -263,6 +263,8 @@ instance (HasType a) => HasType (Stmt a) where
       (apply s body)
   apply _ (Asm yblk) =
     Asm yblk
+  apply _ EmptyStmt =
+    EmptyStmt
 
   fv (e1 := e2) =
     fv e1 `union` fv e2
@@ -279,6 +281,7 @@ instance (HasType a) => HasType (Stmt a) where
   fv (For initStmt cond postStmt body) =
     fv initStmt `union` fv cond `union` fv postStmt `union` fv body
   fv (Asm _) = []
+  fv EmptyStmt = []
 
   mv (e1 := e2) =
     mv e1 `union` mv e2
@@ -295,6 +298,7 @@ instance (HasType a) => HasType (Stmt a) where
   mv (For initStmt cond postStmt body) =
     mv initStmt `union` mv cond `union` mv postStmt `union` mv body
   mv (Asm _) = []
+  mv EmptyStmt = []
 
   bv (e1 := e2) =
     bv e1 `union` bv e2
@@ -311,6 +315,7 @@ instance (HasType a) => HasType (Stmt a) where
   bv (For initStmt cond postStmt body) =
     bv initStmt `union` bv cond `union` bv postStmt `union` bv body
   bv (Asm _) = []
+  bv EmptyStmt = []
 
 instance (HasType a) => HasType (Pat a) where
   apply s (PVar v) = PVar (apply s v)

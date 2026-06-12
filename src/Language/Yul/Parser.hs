@@ -34,7 +34,7 @@ pName :: Parser Name
 pName = Name <$> identifier
 
 integer :: Parser Integer
-integer = lexeme L.decimal
+integer = lexeme (try (string "0x" *> L.hexadecimal) <|> L.decimal)
 
 stringLiteral :: Parser String
 stringLiteral = char '"' *> manyTill L.charLiteral (char '"')

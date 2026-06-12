@@ -354,7 +354,7 @@ comptimeBuiltins :: [Name]
 comptimeBuiltins = integerPrimNames
 
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revert") _) args _ = pure (i, args) -- FIXME
+specCall i@(Id (Name "revertLit") _) args _ = pure (i, args)
 specCall i args _ty
   | idName i `elem` comptimeBuiltins = do
       args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
@@ -534,6 +534,7 @@ specStmt (For initStmt cond post body) = do
   body' <- specBody body
   return $ For initStmt' cond' post' body'
 specStmt (Asm ys) = pure (Asm ys)
+specStmt EmptyStmt = pure EmptyStmt
 specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
 
 specMatch :: [Exp Id] -> [([Pat Id], [Stmt Id])] -> SM (Stmt Id)
@@ -641,7 +642,7 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) returnType
       Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
 
 schemeOfTcSignature :: Signature Id -> Scheme
-schemeOfTcSignature sig@(Signature vs ps _n args _ (Just rt)) =
+schemeOfTcSignature sig@(Signature vs ps _n args _ (Just rt) _) =
   case mapM getType args of
     Just ts -> Forall vs (ps :=> (funtype ts rt))
     Nothing -> error $ unwords ["Invalid instance member signature:", pretty sig]
@@ -896,6 +897,8 @@ toMastStmt (Match es _) = error $ "toMastStmt: multi-scrutinee match should have
 toMastStmt (Asm ys) = MastAsm ys
 toMastStmt (For initStmt cond postStmt body) =
   MastFor (toMastStmt initStmt) (toMastExp cond) (toMastStmt postStmt) (toMastBody body)
+toMastStmt (Block body) = MastSeq (toMastBody body)
+toMastStmt EmptyStmt = MastSeq []
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
 toMastBody :: [Stmt Id] -> [MastStmt]

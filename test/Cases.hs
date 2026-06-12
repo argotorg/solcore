@@ -84,6 +84,7 @@ spec =
       runTestForFile "043fstsnd.solc" specFolder,
       runTestForFile "047rgb.solc" specFolder,
       runTestForFile "048rgb2.solc" specFolder,
+      runTestForFile "049rgb3.solc" specFolder,
       runTestForFile "06comp.solc" specFolder,
       runTestForFile "09not.solc" specFolder,
       runTestForFile "10negBool.solc" specFolder,
@@ -106,7 +107,10 @@ dispatches =
     [ runDispatchTest "basic.solc",
       runDispatchTest "stringid.solc",
       runDispatchTest "miniERC20.solc",
-      runDispatchTest "Revert.solc"
+      runDispatchTest "Revert.solc",
+      runDispatchTest "hashes.solc",
+      runDispatchTest "empty.solc",
+      runDispatchTest "empty_no_constructor.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -117,6 +121,7 @@ imports =
     "Files for imports cases"
     [ runImportSuccess "booldef.solc",
       runImportSuccess "boolmain.solc",
+      runImportSuccess "unordered_imports_main.solc",
       runImportSuccess "boolalias.solc",
       runImportFailure "alias_hides_original_fail.solc",
       runImportFailure "boolalias_open_fail.solc",
@@ -175,6 +180,8 @@ imports =
       runImportSuccess "type_collision_main.solc",
       runImportSuccess "dot_context_expr.solc",
       runImportSuccess "reexport_items_main.solc",
+      runImportSuccess "reexport_select_main.solc",
+      runImportSuccess "reexport_select_alias_main.solc",
       runImportSuccess "reexport_module_main.solc",
       runImportSuccess "reexport_module_alias_main.solc",
       runImportSuccess "reexport_ctor_pattern.solc",
@@ -191,6 +198,9 @@ imports =
       runImportSuccess "external_lib_main.solc",
       runImportSuccess "external_lib_alias_main.solc",
       runImportSuccess "import_std_minimal.solc",
+      runImportSuccess "select_alias_item_ok.solc",
+      runImportSuccess "select_alias_multi_ok.solc",
+      runImportFailure "select_alias_tail_fail.solc",
       runImportFailure "external_lib_missing_fail.solc",
       runImportFailure "symlink_identity_fail.solc",
       runImportFailure "private_bad_main.solc",
@@ -221,6 +231,15 @@ pragmas =
   where
     pragmaFolder = "./test/examples/pragmas"
 
+opcodes :: TestTree
+opcodes =
+  testGroup
+    "Files for opcodes wrappers"
+    [ runTestForFile "all-shapes.solc" opcodesFolder
+    ]
+  where
+    opcodesFolder = "./test/examples/opcodes"
+
 cases :: TestTree
 cases =
   testGroup
@@ -232,6 +251,10 @@ cases =
       runTestForFileWith noDesugarOpt "app.solc" caseFolder,
       runTestForFile "array.solc" caseFolder,
       runTestForFile "assembly.solc" caseFolder,
+      runTestExpectingFailure "asm-assign-no-return.solc" caseFolder,
+      runTestExpectingFailure "asm-let-no-return.solc" caseFolder,
+      runTestForFile "asm-match-tuple-read.solc" caseFolder,
+      runTestForFile "asm-match-tuple-write-read.solc" caseFolder,
       runTestForFile "bal.solc" caseFolder,
       runTestExpectingFailure "BadInstance.solc" caseFolder,
       runTestForFile "BoolNot.solc" caseFolder,
@@ -272,6 +295,7 @@ cases =
       runTestForFile "dot-pattern-constructor.solc" caseFolder,
       runTestForFile "dot-pattern-nested-constructor.solc" caseFolder,
       runTestForFile "dot-primitive-constructor.solc" caseFolder,
+      runTestForFile "same-name-constructor-qualifier.solc" caseFolder,
       runTestExpectingFailure "duplicated-contract-name.solc" caseFolder,
       runTestExpectingFailure "duplicated-type-name.solc" caseFolder,
       runTestForFile "DuplicateFun.solc" caseFolder,
@@ -282,21 +306,25 @@ cases =
       runTestExpectingFailure "Eq.solc" caseFolder,
       runTestForFile "EqQual.solc" caseFolder,
       runTestForFile "EvenOdd.solc" caseFolder,
+      runTestExpectingFailure "fallback-with-args.solc" caseFolder,
+      runTestExpectingFailure "fallback-with-return.solc" caseFolder,
       runTestExpectingFailure "Filter.solc" caseFolder,
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,
       runTestForFile "for-body-shadow.solc" caseFolder,
+      runTestForFile "for-empty-init.solc" caseFolder,
       runTestForFile "for-inner-block.solc" caseFolder,
       runTestForFile "for-init-shadow.solc" caseFolder,
       runTestForFile "for-let.solc" caseFolder,
       runTestExpectingFailure "for-let-post.solc" caseFolder,
       runTestForFile "for-loop.solc" caseFolder,
+      runTestForFile "for-multi-init.solc" caseFolder,
+      runTestForFile "for-multi-post.solc" caseFolder,
       runTestExpectingFailure "GetSet.solc" caseFolder,
       runTestExpectingFailure "GoodInstance.solc" caseFolder,
       runTestForFile "Id.solc" caseFolder,
       runTestForFile "if-examples.solc" caseFolder,
       runTestExpectingFailure "index-example.solc" caseFolder,
-      runTestExpectingFailure "IndexLib.solc" caseFolder,
       runTestForFile "import-std.solc" caseFolder,
       runTestForFile "inc-closure.solc" caseFolder,
       runTestExpectingFailure "IncompleteInstDef.solc" caseFolder,
@@ -339,6 +367,7 @@ cases =
       runTestExpectingFailure "patterson-bug.solc" caseFolder,
       runTestForFile "Peano.solc" caseFolder,
       runTestForFile "PeanoMatch.solc" caseFolder,
+      runTestForFile "pair-bug.solc" caseFolder,
       runTestForFile "polymatch-error.solc" caseFolder,
       runTestForFile "polymorphic-require.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder,
@@ -403,7 +432,6 @@ cases =
       runTestForFile "unit.solc" caseFolder,
       runTestExpectingFailure "vartyped.solc" caseFolder,
       runTestExpectingFailure "weirdfoo.solc" caseFolder,
-      runTestExpectingFailure "withdraw.solc" caseFolder,
       runTestForFile "word-match-default.solc" caseFolder,
       runTestForFile "sum-match-default.solc" caseFolder,
       runTestForFile "word-match.solc" caseFolder,
@@ -462,7 +490,10 @@ cases =
       runTestForFile
         "multi-stmt-var-leaf.solc"
         caseFolder,
-      runTestForFile "ltimp.solc" caseFolder
+      runTestForFile "ltimp.solc" caseFolder,
+      runTestExpectingFailure "class-return-type-miss.solc" caseFolder,
+      runTestExpectingFailure "catenable-err.solc" caseFolder,
+      runTestForFile "pars.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

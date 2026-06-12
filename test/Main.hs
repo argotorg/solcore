@@ -4,6 +4,7 @@ import Cases
 import HullCases
 import MatchCompilerTests
 import ModuleTypeCheckTests
+import ParserTests
 import Test.Tasty
 import YulEvalTests
 
@@ -14,8 +15,10 @@ tests :: TestTree
 tests =
   testGroup
     "Tests"
-    [ cases,
+    [ parserTests,
+      cases,
       comptime,
+      opcodes,
       pragmas,
       spec,
       std,

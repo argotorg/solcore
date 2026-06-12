@@ -96,6 +96,7 @@ data ItemSelector
 data ItemSelectorEntry
   = SelectAllItems
   | SelectItem Name
+  | SelectItemAs Name Name
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of the contract structure
@@ -164,7 +165,8 @@ data Signature a
     sigName :: Name,
     sigParams :: [Param a],
     sigRetComptime :: Bool,
-    sigReturn :: Maybe Ty
+    sigReturn :: Maybe Ty,
+    sigPayable :: Bool
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 

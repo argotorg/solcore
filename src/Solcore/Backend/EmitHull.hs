@@ -281,8 +281,8 @@ emitExp (MastVar x) = do
   case Map.lookup (mastIdName x) subst of
     Just e -> pure (e, [])
     Nothing -> pure (Hull.EVar (show (mastIdName x)), [])
--- special handling of revert
-emitExp (MastCall (MastId "revert" _) [MastLit (StrLit s)]) = pure (Hull.EUnit, [Hull.SRevert s])
+-- special handling of revertLit
+emitExp (MastCall (MastId "revertLit" _) [MastLit (StrLit s)]) = pure (Hull.EUnit, [Hull.SRevert s])
 emitExp (MastCall f as) = do
   (hullArgs, codes) <- unzip <$> mapM emitExp as
   let call = Hull.ECall (show (mastIdName f)) hullArgs
@@ -345,8 +345,17 @@ emitStmt (MastFor initStmt cond post body) = do
     isAlloc _ = False
 emitStmt (MastAsm as) = do
   subst <- gets ecSubst
-  as' <- renameYulStmts subst as
-  pure [Hull.SAssembly as']
+  let usedNames = yulUsedNames as
+      toMat = [(n, e) | n <- Set.toList usedNames, Just e <- [Map.lookup n subst], notEVar e]
+      preStmts = concatMap (\(n, e) -> [Hull.SAlloc (show n) Hull.TWord, Hull.SAV (show n) e]) toMat
+      subst' = foldr (\(n, _) m -> Map.insert n (Hull.EVar (show n)) m) subst toMat
+  as' <- renameYulStmts subst' as
+  modify (\s -> s {ecSubst = subst'})
+  pure (preStmts ++ [Hull.SAssembly as'])
+  where
+    notEVar (Hull.EVar _) = False
+    notEVar _ = True
+emitStmt (MastSeq stmts) = concat <$> mapM emitStmt stmts
 
 emitStmts :: [MastStmt] -> EM [Hull.Stmt]
 emitStmts = concatMapM emitStmt'
@@ -540,6 +549,23 @@ debug msg = do
 concatMapM :: (Monad f) => (a -> f [b]) -> [a] -> f [b]
 concatMapM f xs = concat <$> mapM f xs
 
+-- | Collect all identifier names used in expression positions in a Yul block.
+yulUsedNames :: [YulStmt] -> Set.Set Name
+yulUsedNames = Set.fromList . concatMap goStmt
+  where
+    goStmt (YBlock b) = concatMap goStmt b
+    goStmt (YFun _ _ _ b) = concatMap goStmt b
+    goStmt (YLet _ me) = maybe [] goExp me
+    goStmt (YAssign ns e) = ns ++ goExp e
+    goStmt (YIf e b) = goExp e ++ concatMap goStmt b
+    goStmt (YSwitch e cs d) = goExp e ++ concatMap (concatMap goStmt . snd) cs ++ maybe [] (concatMap goStmt) d
+    goStmt (YFor p e po b) = concatMap goStmt p ++ goExp e ++ concatMap goStmt po ++ concatMap goStmt b
+    goStmt (YExp e) = goExp e
+    goStmt _ = []
+    goExp (YIdent n) = [n]
+    goExp (YCall _ args) = concatMap goExp args
+    goExp _ = []
+
 -----------------------------------------------------------------------
 -- Yul AST Renaming
 -----------------------------------------------------------------------
@@ -613,14 +639,9 @@ renameYulStmts subst stmts = goBlock Set.empty stmts
         Just e <- Map.lookup n subst = do
           case e of
             Hull.EVar newName -> pure (fromString newName)
-            -- FUTURE WORK (Materializing complex expressions):
-            -- If `e` is a complex expression like `EFst p`, it cannot be substituted inline in Yul.
-            -- To fix this properly later:
-            -- 1. Instead of throwing an error, record `n -> e` in a State map.
-            -- 2. Leave `YIdent n` unchanged inside the block.
-            -- 3. In `emitStmt (MastAsm as)`, emit `SAlloc n TWord` and `SAssign n e` BEFORE the block.
-            -- 4. Remove `n` from `ecSubst` so subsequent reads outside the block see the mutated Yul variable.
-            _ -> errorsEM ["not implemented: Yul assembly block references variable '", show n, "' mapped to complex expression '", show e, "'"]
+            -- Complex expressions are materialized into real Yul variables by emitStmt (MastAsm)
+            -- before this rename pass runs, so this branch should be unreachable.
+            _ -> errorsEM ["ICE: assembly block references variable '", show n, "' still mapped to complex expression '", show e, "'"]
       | otherwise = pure n
 
     getDecls :: [YulStmt] -> Set.Set Name
