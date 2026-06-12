@@ -332,7 +332,7 @@ contractDeclP =
   CDataDecl
     <$> dataP
       <|> CConstrDecl
-    <$> constructorDeclP
+    <$> try constructorDeclP
       <|> rejectPublicOnImplicitlyPublicP
       <|> withSigPrefix
         ( \vars ctx ->
@@ -364,10 +364,11 @@ fieldDeclP = do
 
 constructorDeclP :: Parser Constructor
 constructorDeclP = do
+  payable <- option False (True <$ keyword "payable")
   keyword "constructor"
   ps <- parens (paramP `sepBy` comma)
   body <- braces bodyP
-  return (Constructor ps body)
+  return (Constructor ps body payable)
 
 topDeclP :: Parser TopDecl
 topDeclP =

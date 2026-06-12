@@ -141,14 +141,65 @@ int main(int argc, char** argv)
 
 			if (kind == "constructor")
 			{
-				if (!status)
+				// A constructor test may optionally declare an expected outcome via
+				// an "output" object (status + optional returndata), mirroring "call"
+				// tests. This lets us assert that a non-payable constructor rejects an
+				// incoming value transfer. When "output" is absent, creation is expected
+				// to succeed (backwards compatible with existing test suites).
+				if (test.contains("output"))
 				{
-					std::cerr << "Creation failed." << std::endl;
-					resultRecorder.record(filename, "Creation failed for constructor test.", "", "", gasUsed, gasUsedForDeposit);
-					hasTestFailure = true;
-					continue;
+					auto expectedStatus = test["output"]["status"].get<std::string>();
+					if (expectedStatus == "failure")
+					{
+						if (status)
+						{
+							std::cerr << "Expected creation failure but got success" << std::endl;
+							resultRecorder.record(filename, "Expected constructor status failure but got success.", "success", expectedStatus, gasUsed, gasUsedForDeposit);
+							hasTestFailure = true;
+							continue;
+						}
+					}
+					else if (expectedStatus == "success")
+					{
+						if (!status)
+						{
+							std::cerr << "Expected creation success but got failure" << std::endl;
+							resultRecorder.record(filename, "Expected constructor status success but got failure.", "failure", expectedStatus, gasUsed, gasUsedForDeposit);
+							hasTestFailure = true;
+							continue;
+						}
+					}
+					else
+					{
+						std::cerr << "Unsupported expectedStatus: " << expectedStatus << std::endl;
+						resultRecorder.record(filename, "Unsupported constructor status expectation.", "failure", expectedStatus, gasUsed, gasUsedForDeposit);
+						hasTestFailure = true;
+						continue;
+					}
+					if (test["output"].contains("returndata"))
+					{
+						auto expectedOutput = test["output"]["returndata"].get<std::string>();
+						if (output != fromHex(expectedOutput))
+						{
+							std::cerr << "Expected " << expectedOutput << " but got " << toHex(output) << std::endl;
+							resultRecorder.record(filename, "Expected different constructor output.", toHex(output), expectedOutput, gasUsed, gasUsedForDeposit);
+							hasTestFailure = true;
+							continue;
+						}
+					}
+					resultRecorder.record(filename, "Passed.", toHex(output), test["output"].value("returndata", std::string("")), gasUsed, gasUsedForDeposit);
 				}
-				resultRecorder.record(filename, "Creation succeeded.", "", "", gasUsed, gasUsedForDeposit);
+				else
+				{
+					if (!status)
+					{
+						std::cerr << "Creation failed." << std::endl;
+						resultRecorder.record(filename, "Creation failed for constructor test.", "", "", gasUsed, gasUsedForDeposit);
+						hasTestFailure = true;
+						continue;
+					}
+					resultRecorder.record(filename, "Creation succeeded.", "", "", gasUsed, gasUsedForDeposit);
+				}
 			}
 			else
 			{
@@ -172,6 +223,13 @@ int main(int argc, char** argv)
 						hasTestFailure = true;
 						continue;
 					}
+				}
+				else
+				{
+					std::cerr << "Unsupported expectedStatus: " << expectedStatus << std::endl;
+					resultRecorder.record(filename, "Unsupported status expectation.", "failure", expectedStatus, gasUsed, gasUsedForDeposit);
+					hasTestFailure = true;
+					continue;
 				}
 				auto expectedOutput = test["output"]["returndata"].get<std::string>();
 				if (output != fromHex(expectedOutput))

@@ -78,7 +78,7 @@ genMainFn addMain c@(Contract cname tys cdecls)
   where
     cdecls'' = if hasConstructor cdecls then cdecls else cdecls ++ [defaultConstructor]
     cdecls' = Set.unions (map (transformCDecl cname) cdecls'')
-    defaultConstructor = CConstrDecl (Constructor {constrParams = [], constrBody = []})
+    defaultConstructor = CConstrDecl (Constructor {constrParams = [], constrBody = [], constrPayable = False})
     mainfn = FunDef False (Signature [] [] "main" [] False (Just unit) False) body
     body = [StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
     cdata = Con "Contract" [methods, fallback]
@@ -135,6 +135,7 @@ transformConstructor contractName cons
   | otherwise = error $ "Internal Error: contract constructor must be fully typed"
   where
     params = constrParams cons
+    payable = constrPayable cons
     argsTuple = (tupleTyFromList (mapMaybe getTy params))
     initFun = CFunDecl (FunDef False initSig (constrBody cons))
     initSig =
@@ -200,19 +201,34 @@ transformConstructor contractName cons
           sigReturn = Just unit,
           sigPayable = False
         }
+    -- A non-payable constructor must reject any incoming value transfer
+    -- during deployment. A payable constructor skips this check. This mirrors
+    -- the method-level callvalue check used by the runtime dispatch and
+    -- reverts with the same NonPayableReceivedValue error (0xb5988ea3).
+    callvalueCheck
+      | payable = []
+      | otherwise =
+          [ StmtExp $
+              Call
+                Nothing
+                (QualName "MethodLevelCallvalueCheck" "checkCallvalue")
+                [proxyExp (TyCon "NonPayable" [])]
+          ]
     startBody =
-      [ Asm [yulBlock|{ mstore(64, memoryguard(128)) }|],
-        Let False "conargs" (Just argsTuple) (Just (Call Nothing "copy_arguments_for_constructor" [])),
-        -- , Match [Var "conargs"] ...
-        Let False "fun" Nothing (Just (Var initFunName)),
-        StmtExp $ Call Nothing "fun" [Var "conargs"],
-        Asm
-          [yulBlock|{
+      [ Asm [yulBlock|{ mstore(64, memoryguard(128)) }|]
+      ]
+        <> callvalueCheck
+        <> [ Let False "conargs" (Just argsTuple) (Just (Call Nothing "copy_arguments_for_constructor" [])),
+             -- , Match [Var "conargs"] ...
+             Let False "fun" Nothing (Just (Var initFunName)),
+             StmtExp $ Call Nothing "fun" [Var "conargs"],
+             Asm
+               [yulBlock|{
             let size := datasize(`yulContractName`)
             codecopy(0, dataoffset(`yulContractName`), datasize(`yulContractName`))
             return(0, size)
           }|]
-      ]
+           ]
     startFun = CFunDecl (FunDef False startSig startBody)
 
     isTyped (Typed {}) = True

@@ -141,7 +141,8 @@ data TySym
 data Constructor a
   = Constructor
   { constrParams :: [Param a],
-    constrBody :: (Body a)
+    constrBody :: (Body a),
+    constrPayable :: Bool
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 

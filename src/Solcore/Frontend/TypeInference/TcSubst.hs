@@ -405,11 +405,11 @@ instance (HasType a) => HasType (Field a) where
   bv (Field _ t me) = bv t `union` bv me
 
 instance (HasType a) => HasType (Constructor a) where
-  apply s (Constructor ps bd) =
-    Constructor (apply s ps) (apply s bd)
-  fv (Constructor ps bd) =
+  apply s (Constructor ps bd payable) =
+    Constructor (apply s ps) (apply s bd) payable
+  fv (Constructor ps bd _) =
     fv ps `union` fv bd
-  mv (Constructor ps bd) =
+  mv (Constructor ps bd _) =
     mv ps `union` mv bd
-  bv (Constructor ps bd) =
+  bv (Constructor ps bd _) =
     bv ps `union` bv bd

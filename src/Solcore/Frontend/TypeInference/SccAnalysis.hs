@@ -221,7 +221,7 @@ instance Names (FunDef Name) where
     names sig `union` names bdy
 
 instance Names (Constructor Name) where
-  names (Constructor ps bdy) =
+  names (Constructor ps bdy _) =
     names ps `union` names bdy
 
 instance Names (Class Name) where
