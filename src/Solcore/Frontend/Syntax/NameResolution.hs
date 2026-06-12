@@ -548,7 +548,7 @@ instance Resolve S.Exp where
         (Nothing, Just TLocalVar) -> pure (Var n)
         (Nothing, Just TParameter) -> pure (Var n)
         -- qualified access: qualifier takes precedence over local variable/parameter in scope
-        (Just (Var d), Just dt) | dt `elem` [TLocalVar, TParameter] -> do
+        (Just (Var d), Just dt') | dt' `elem` [TLocalVar, TParameter] -> do
           ct <- lookupName d
           let qn = QualName d (pretty n)
           case ct of
