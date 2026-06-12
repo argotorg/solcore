@@ -44,7 +44,7 @@ contract DepositContract {
 
   constructor() {
     // Compute hashes in empty sparse Merkle tree
-    for (let height = uint256(0); height < (DEPOSIT_CONTRACT_TREE_DEPTH() - uint256(1)); height = height + uint256(1)) {
+    for (let height = uint256(0); height < (DEPOSIT_CONTRACT_TREE_DEPTH() - uint256(1)); height += uint256(1)) {
         zero_hashes[height + uint256(1)] = sha256(concat(zero_hashes[height], zero_hashes[height]));
     }
   }
@@ -57,7 +57,7 @@ contract DepositContract {
   function get_deposit_root() -> bytes32 {
     let node: bytes32;
     let size = deposit_count;
-    for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height = height + uint256(1)) {
+    for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height += uint256(1)) {
         //if ((size & 1) == 1) {
         if ((size % uint256(2)) == uint256(1)) {
             node = sha256(concat(branch[height], node));
@@ -141,7 +141,7 @@ contract DepositContract {
     // Add deposit data root to Merkle tree (update a single `branch` node)
     deposit_count += uint256(1);
     let size = deposit_count;
-    for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height = height + uint256(1)) {
+    for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height += uint256(1)) {
         //if ((size & 1) == 1) {
         if ((size % uint256(2)) == uint256(1)) {
             branch[height] = node;
