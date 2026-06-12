@@ -2,7 +2,7 @@ import std.{*};
 import std.dispatch.{*};
 import std.opcodes.{callvalue};
 
-// Should use uint64 and bytes.
+// TODO: Should use uint64.
 // Assumes 64-bit input.
 function to_little_endian_64(v: uint256) -> memory(bytes) {
     let res: word = allocate_memory(32 + 8);
@@ -29,7 +29,7 @@ function DEPOSIT_CONTRACT_TREE_DEPTH() -> uint256 {
 
 function MAX_DEPOSIT_COUNT() -> uint256 {
     // uint constant MAX_DEPOSIT_COUNT = 2**DEPOSIT_CONTRACT_TREE_DEPTH - 1;
-    // Could use Bounded(uint256).maxVal()
+    // Could use Bounded(uint64).maxVal()
     return uint256(0xFFFFFFFF);
 }
 
