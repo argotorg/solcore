@@ -543,6 +543,36 @@ instance word : Mod {
   }
 }
 
+instance integer : Eq {
+  function eq(x : integer, y : integer) -> bool {
+    return integerEq(x, y);
+  }
+}
+
+instance integer : Ord {
+  function gt(x : integer, y : integer) -> bool {
+    return integerLt(y, x);
+  }
+}
+
+instance integer : Add {
+  function add(l : integer, r : integer) -> integer {
+    return integerAdd(l, r);
+  }
+}
+
+instance integer : Sub {
+  function sub(l : integer, r : integer) -> integer {
+    return integerSub(l, r);
+  }
+}
+
+instance integer : Mul {
+  function mul(l : integer, r : integer) -> integer {
+    return integerMul(l, r);
+  }
+}
+
 instance word:Bounded {
   function maxVal() -> word {
     return 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
@@ -1457,7 +1487,7 @@ forall reader baseType baseType_decoded .baseType : ABIAttribs, reader:WordReade
         arrayPtr = WordReader.advance(arrayPtr, 32);
         let prx : Proxy(baseType_decoded);
         let result : memory(DynArray(baseType_decoded)) = allocateDynamicArray(prx, length);
-        let offset = 0;
+        let offset : word = 0;
         let prx : Proxy(baseType);
         let elementHeadSize : word = ABIAttribs.headSize(prx);
 

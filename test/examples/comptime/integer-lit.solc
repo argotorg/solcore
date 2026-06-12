@@ -1,11 +1,8 @@
-// Step 6: bare integer literals at `integer` sites, without explicit wordToInteger.
-// The desugaring pass inserts wordToInteger automatically.
-//
-// Coercions inserted by the pass (no explicit wordToInteger in source):
-//   let x : comptime integer = 10          -> wordToInteger(10)
-//   integerLt(n, 2)                        -> integerLt(n, wordToInteger(2))
-//   integerSub(n, 1) / integerSub(n, 2)   -> integerSub(n, wordToInteger(1/2))
-//   integerAdd(fib(...), fib(...))         -> args are Calls, not literals: no change
+// Bare integer literals at `integer` sites, without explicit wordToInteger.
+// The type checker infers the literal type from the expected type at each site:
+//   let x : comptime integer = 10    -- expected type is integer
+//   integerLt(n, 2)                  -- param type is integer
+//   integerSub(n, 1)                 -- param type is integer
 //
 // Expected: main() folds to word literal 55 (fib(10)).
 

@@ -16,6 +16,7 @@ import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options (Option (..))
 import Solcore.Primitives.Primitives (word)
+import Solcore.Primitives.Primitives qualified as Prim
 import System.TimeIt qualified as TimeIt
 import Text.Printf
 
@@ -87,6 +88,7 @@ isUniqueTyName n = do
 isNumericTy :: Ty -> TcM Bool
 isNumericTy ty
   | ty == word = pure True
+  | ty == Prim.integer = pure True
   | TyCon n [] <- ty = do
       mti <- maybeAskTypeInfo n
       case mti of

@@ -1,33 +1,23 @@
-/* Test comptime expression match labels.
-   Covers: comptime literal, comptime arithmetic with a variable,
-   comptime function call, and pattern variable catch-all.
+/* Test comptime expression match labels: the intended use case is
+   matching function selectors against keccak hashes of signatures.
+   Covers: keccakLit of a literal, keccakLit of a concatenation, wildcard.
 */
 
-import std;
-
-forall i.
-class i : Int {
-  function fromWord(x:word) -> comptime i;
-  function toWord(x:i) -> comptime word;
-}
-
-instance uint256 : Int {
-  function fromWord(x:word) -> comptime uint256 { uint256(x) }
-  function toWord(x:uint256) -> comptime word { Typedef.rep(x) }
-}
+import std.{*};
 
 contract MatchLabels {
 
-  function classify(x : word) -> word {
-    let two : comptime word = 2;
-    match x {
-      | comptime two + 0             => return 2;
-      | comptime toWord(uint256(40)) => return 40;
-      | other                        => return other;
+  function dispatch(selector : word) -> word {
+    match selector {
+      | comptime keccakLit("transfer(address,uint256)") => return 1;
+      | comptime keccakLit("balanceOf" + "(" + "address" + ")")   => return 2;
+      | _                                                => return 0;
     }
   }
 
   function main() -> word {
-    return classify(0) + classify(2) + classify(40);
+    let t : comptime word = keccakLit("transfer(address,uint256)");
+    let b : comptime word = keccakLit("balanceOf(address)");
+    return dispatch(t) + dispatch(b) + dispatch(0);
   }
 }

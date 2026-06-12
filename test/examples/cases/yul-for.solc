@@ -1,7 +1,7 @@
 contract YulFor {
   function main() -> word {
-    let loopStart = 128;
-    let loopEnd = 256;
+    let loopStart : word = 128;
+    let loopEnd : word = 256;
     let res : word;
     assembly {
       let i := loopStart

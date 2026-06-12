@@ -49,6 +49,13 @@ comptime =
       runTestForFile "integer-from-integer.solc" comptimeFolder,
       runTestForFile "integer-lit.solc" comptimeFolder,
       runTestForFile "integer-lit-safe.solc" comptimeFolder,
+      runTestForFile "integer-lit-class.solc" comptimeFolder,
+      -- integer literal coercion: unit tests for each case
+      runTestForFile "integer-lit-word-site.solc" comptimeFolder,
+      runTestForFile "integer-lit-poly.solc" comptimeFolder,
+      runTestForFile "integer-lit-cond.solc" comptimeFolder,
+      runTestForFile "integer-lit-pat.solc" comptimeFolder,
+      runTestForFile "match_labels.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
       runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,

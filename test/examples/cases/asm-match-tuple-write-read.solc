@@ -5,7 +5,7 @@
 contract C {
   function main() -> word {
     let res : word;
-    let foo = (0, 0);
+    let foo : (word,word) = (0, 0);
     match foo {
       | (v0, v1) => {
         assembly { v1 := 42 }

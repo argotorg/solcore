@@ -459,6 +459,7 @@ evalPrimitive (Name "integerLt") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (mkBool (a < b))
 evalPrimitive (Name "integerEq") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (mkBool (a == b))
+evalPrimitive (QualName (Name "Int") "fromInteger") [x] = Just x -- identity for integer -> integer
 evalPrimitive _ _ = Nothing
 
 bsToIntegerBE :: BS.ByteString -> Integer

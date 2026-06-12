@@ -22,7 +22,8 @@ import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcSimplify
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
-import Solcore.Primitives.Primitives
+import Solcore.Primitives.Primitives hiding (integer)
+import Solcore.Primitives.Primitives qualified as Prim
 
 -- type inference for statements
 
@@ -253,6 +254,26 @@ tcPat t p@(PCon n ps) =
     pure (PCon (Id n' tc) ps1, t', apply s lctx')
 tcPat t PWildcard =
   pure (PWildcard, t, [])
+-- Integer literal patterns are compatible with any numeric scrutinee type
+-- (word, uint256, or integer). The pattern adopts the scrutinee's type
+-- directly rather than unifying with a fixed literal type, since integer
+-- literals are structurally compatible with any numeric type.
+-- If the scrutinee type is still an unresolved type variable (e.g. the
+-- scrutinee is itself a literal), we default to word.
+tcPat t' (PLit l@(IntLit _)) = do
+  s <- getSubst
+  let t'' = apply s t'
+  numericOk <- isNumericTy t''
+  if numericOk
+    then pure (PLit l, t'', [])
+    else case t'' of
+      Meta _ -> do
+        s' <- unify t'' word
+        _ <- extSubst s'
+        pure (PLit l, word, [])
+      _ ->
+        tcmError $
+          "integer literal pattern requires numeric scrutinee type, got: " ++ pretty t''
 tcPat t' (PLit l) =
   do
     t <- tcLit l
@@ -265,10 +286,11 @@ tcPat t' (PExp e) =
     -- numeric types resolved by unification with the scrutinee, so constraints
     -- are solved implicitly. A fuller implementation would thread _ps upward.
     s <- unify t t'
-    numericOk <- isNumericTy (apply s t)
+    let t1 = apply s t
+    numericOk <- isNumericTy t1
     unless numericOk $
       tcmError $
-        "expression match label must have a numeric type, got: " ++ pretty (apply s t)
+        "expression match label must have a numeric type, got: " ++ pretty t1
     withCurrentSubst (PExp (apply s e'), apply s t, [])
 
 -- type inference for expressions
@@ -282,7 +304,7 @@ mkCon (DataTy nt vs ((Constr n _) : _)) =
 mkCon d = tcmError $ unlines ["Panic!!! This should not happen: mkCon", pretty d]
 
 tcLit :: Literal -> TcM Ty
-tcLit (IntLit _) = return word
+tcLit (IntLit _) = return Prim.integer
 tcLit (StrLit _) = return string
 
 tcExp :: (HasCallStack) => Infer Exp
@@ -384,11 +406,11 @@ tcExpWithExpected _ e1@(TyExp e ty) =
     s <- tcmMatch ty' ty1
     _ <- extSubst s
     withCurrentSubst (TyExp e' ty1, ps, ty1)
-tcExpWithExpected _ e@(Cond e1 e2 e3) =
+tcExpWithExpected mExpected e@(Cond e1 e2 e3) =
   do
     (e1', ps1, t1) <- tcExpWithExpected Nothing e1 `wrapError` e
-    (e2', ps2, t2) <- tcExpWithExpected Nothing e2 `wrapError` e
-    (e3', ps3, t3) <- tcExpWithExpected Nothing e3 `wrapError` e
+    (e2', ps2, t2) <- tcExpWithExpected mExpected e2 `wrapError` e
+    (e3', ps3, t3) <- tcExpWithExpected mExpected e3 `wrapError` e
     -- condition should have the boolean type
     _ <-
       unify t1 boolTy
@@ -626,7 +648,8 @@ tiFunDef d@(FunDef sig@(Signature _ _ n args _ _ _) bd) =
       ambiguousTypeError sch sig
     -- elaborating the type signature
     sig' <- elabSignature [] sig sch
-    withCurrentSubst (FunDef sig' bd1, sch)
+    (fd', sch') <- withCurrentSubst (FunDef sig' bd1, sch)
+    pure (markIntegerComptime fd', sch')
 
 ambiguityCheck :: Scheme -> TcM Bool
 ambiguityCheck (Forall _ (ps :=> ty)) =
@@ -638,7 +661,7 @@ ambiguityCheck (Forall _ (ps :=> ty)) =
     -- be generated.
     let ps' =
           if noDesugarCalls
-            then [p | p <- ps, not (isInvoke p)]
+            then [p | p <- ps, not (isInvoke p), not (isInt p)]
             else ps
         vs' = bv (ps' :=> ty)
         sch' = Forall vs' (ps' :=> ty)
@@ -716,7 +739,8 @@ tcFunDef incl vs' qs d@(FunDef sig@(Signature vs ps n _ _ _ _) _)
       -- elaborating function body
       let ann' = if changeTy then inf else ann
       fdt <- elabFunDef vs' sig1 bd1' inf ann' `wrapError` d
-      withCurrentSubst (fdt, ann')
+      (fd', ann'') <- withCurrentSubst (fdt, ann')
+      pure (markIntegerComptime fd', ann'')
   | otherwise = tiFunDef d
 
 -- elaborating function definition
@@ -1313,14 +1337,24 @@ hnfEntails qs ps =
     ctable <- getClassEnv
     itable <- getInstEnv
     depth <- askMaxRecursionDepth
+    noDesugarCalls <- getNoDesugarCalls
     let qs' = nub $ concatMap (bySuperM ctable) qs
-        notInvoke p = not (isInvoke p)
-        needSolving = filter (\p -> notInvoke p && not (entail ctable itable qs' p)) ps
+        skip p = isInvoke p || (noDesugarCalls && isInt p)
+        needSolving = filter (\p -> not (skip p) && not (entail ctable itable qs' p)) ps
     -- For predicates pure entailment couldn't discharge, try the monadic solver
     -- within a local substitution scope so that Skolem bindings don't escape.
     withLocalSubst $ do
       remaining <- toHnfs depth needSolving
-      pure (filter notInvoke remaining)
+      pure (filter (not . skip) remaining)
+
+-- Any let binding whose type is `integer` is implicitly comptime: integer is a
+-- comptime-only type and cannot survive to hull emission regardless of whether
+-- the user wrote `comptime`.  Applied after the full substitution is known.
+markIntegerComptime :: FunDef Id -> FunDef Id
+markIntegerComptime = everywhere (mkT fix)
+  where
+    fix (Let _ i mt me) | idType i == Prim.integer = Let True i mt me
+    fix s = s
 
 -- type generalization
 

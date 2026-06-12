@@ -1,3 +1,3 @@
 contract Pars {
-   function main() -> (){  let f:word; 42; (); }
+   function main() -> (){  let f:word; 42:word; (); }
 }

@@ -1,36 +1,15 @@
-// bare integer literals at `integer` sites, without explicit wordToInteger.
-// The desugaring pass inserts wordToInteger automatically.
-//
-// operations on comptime integers overloaded
+// Bare integer literals with integer class instances from std.
+// The type checker infers the literal type from context: the integer:Ord/Add/Sub
+// instances constrain unresolved literals to `integer`.
 
-import std.{Eq,Ord,lt, Add,Sub};
-
-instance integer : Ord {
-  function gt(x:integer, y:integer) -> comptime bool {
-    return integerLt(y,x);
-  }
-}
-
-instance integer : Add {
-  function add(x:integer, y:integer) -> comptime integer {
-    return integerAdd(x,y);
-  }
-}
-
-instance integer : Sub {
-  function sub(x:integer, y:integer) -> comptime integer {
-    return integerSub(x,y);
-  }
-}
-
-function int(comptime n : word) -> comptime integer { wordToInteger(n) }
+import std.{Eq,Ord,lt,Add,Sub};
 
 function fib(comptime n : integer) -> comptime integer {
-  if (n < int(2)) { // the 'int' coercion should not be needed in the final design 
+  if (n < 2) {
     return n;
   } else {
-    return 
-      fib(n - int(1)) + fib(n - int(2));
+    return
+      fib(n - 1) + fib(n - 2);
   }
 }
 
