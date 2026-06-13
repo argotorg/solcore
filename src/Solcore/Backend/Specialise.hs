@@ -132,30 +132,8 @@ addSpecialisation name fd = modify $ \s -> s {specTable = Map.insert name fd (sp
 lookupSpecialisation :: Name -> SM (Maybe TcFunDef)
 lookupSpecialisation name = gets (Map.lookup name . specTable)
 
-addResolution :: Name -> Ty -> TcFunDef -> SM ()
-addResolution name ty fun = do
-  -- debug ["+ addResolution ", pretty name, "@", pretty ty, " |-> ", shortName fun]
-  let sig = funSignature fun
-  reportAmbiguousVars sig
-  modify $ \s -> s {spResTable = Map.insertWith (++) name [(ty, fun)] (spResTable s)}
-  where
-    reportAmbiguousVars sig = do
-      let vars = ambiguousVarsInSig sig
-      let scheme = schemeOfTcSignature sig
-      unless (null vars) $
-        nopanics
-          [ "Error: function ",
-            pretty name,
-            " cannot be specialised because it has an ambiguous type:\n   ",
-            pretty scheme,
-            "\n variables: ",
-            prettys vars,
-            "\n do not occur in the argument/result types."
-          ]
-
-addDefaultResolution :: Name -> Ty -> TcFunDef -> SM ()
-addDefaultResolution name ty fun = do
-  let sig = funSignature fun
+reportAmbiguousVars :: Name -> Signature Id -> SM ()
+reportAmbiguousVars name sig = do
   let vars = ambiguousVarsInSig sig
   let scheme = schemeOfTcSignature sig
   unless (null vars) $
@@ -168,7 +146,17 @@ addDefaultResolution name ty fun = do
         prettys vars,
         "\n do not occur in the argument/result types."
       ]
-  modify $ \s -> s {spResTable = Map.insertWith (\_ old -> old ++ [(ty, fun)]) name [(ty, fun)] (spResTable s)}
+
+addResolution :: Name -> Ty -> TcFunDef -> SM ()
+addResolution name ty fun = do
+  -- debug ["+ addResolution ", pretty name, "@", pretty ty, " |-> ", shortName fun]
+  reportAmbiguousVars name (funSignature fun)
+  modify $ \s -> s {spResTable = Map.insertWith (++) name [(ty, fun)] (spResTable s)}
+
+addDefaultResolution :: Name -> Ty -> TcFunDef -> SM ()
+addDefaultResolution name ty fun = do
+  reportAmbiguousVars name (funSignature fun)
+  modify $ \s -> s {spResTable = Map.insertWith (\new old -> old ++ new) name [(ty, fun)] (spResTable s)}
 
 lookupResolution :: Name -> Ty -> SM (Maybe (TcFunDef, Ty, TVSubst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty

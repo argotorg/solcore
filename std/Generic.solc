@@ -4,7 +4,6 @@ pragma no-bounded-variable-condition ABIAttribs, ABIEncode;
 export {
     Sum(*),
     Generic,
-    maxWord
 };
 
 import std.{*};
