@@ -1,0 +1,22 @@
+// Bug: local variable named `rep` causes name capture with the type variable `rep`
+// from `class abs : Typedef(rep)`.  The specialiser adds {rep |-> T} to the
+// substitution, which corrupts the dispatch invokable type for Typedef.rep.
+//
+// Expected: compiles and returns 42.
+// Actual:   PANIC: no resolution found for invokable.invoke : uint256 -> uint256 -> word
+
+import std.{*};
+import std.dispatch.{*};
+pragma no-patterson-condition;
+pragma no-coverage-condition;
+pragma no-bounded-variable-condition;
+
+contract Bug {
+    constructor() {}
+
+    function f(a : uint256) -> uint256 {
+        let rep : uint256 = a;
+        let w : word = Typedef.rep(a);
+        return Typedef.abs(w);
+    }
+}

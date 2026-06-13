@@ -544,10 +544,22 @@ instance Resolve S.Exp where
       me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` c)
       dt <- lookupName n
       case (me', dt) of
-        -- local variables
-        (_, Just TLocalVar) -> pure (Var n)
-        -- function parameters
-        (_, Just TParameter) -> pure (Var n)
+        -- local variables and function parameters (unqualified only)
+        (Nothing, Just TLocalVar) -> pure (Var n)
+        (Nothing, Just TParameter) -> pure (Var n)
+        -- qualified access: qualifier takes precedence over local variable/parameter in scope
+        (Just (Var d), Just dt') | dt' `elem` [TLocalVar, TParameter] -> do
+          ct <- lookupName d
+          let qn = QualName d (pretty n)
+          case ct of
+            Just TClass -> pure (Var qn)
+            Just TModule -> do
+              qdt <- lookupName qn
+              case qdt of
+                Just TFunction -> pure (Var qn)
+                Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+                _ -> undefinedName qn
+            _ -> pure (Var n)
         -- field access
         (Nothing, Just TField) ->
           pure (FieldAccess Nothing n)
@@ -679,11 +691,36 @@ instance Resolve S.Exp where
           case cf of
             Just TFunction -> pure (Call Nothing qn es')
             _ -> undefinedName n
-        -- variables
-        (_, Just TLocalVar) ->
+        -- variables (unqualified only)
+        (Nothing, Just TLocalVar) ->
           pure (Call Nothing n es')
-        (_, Just TParameter) ->
+        (Nothing, Just TParameter) ->
           pure (Call Nothing n es')
+        -- qualified access: qualifier takes precedence over local variable/parameter in scope
+        (Just (Var d), Just TLocalVar) -> do
+          ct <- lookupName d
+          let qn = QualName d (pretty n)
+          case ct of
+            Just TClass -> pure (Call Nothing qn es')
+            Just TModule -> do
+              qdt <- lookupName qn
+              case qdt of
+                Just TFunction -> pure (Call Nothing qn es')
+                Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
+                _ -> undefinedName n
+            _ -> pure (Call Nothing n es')
+        (Just (Var d), Just TParameter) -> do
+          ct <- lookupName d
+          let qn = QualName d (pretty n)
+          case ct of
+            Just TClass -> pure (Call Nothing qn es')
+            Just TModule -> do
+              qdt <- lookupName qn
+              case qdt of
+                Just TFunction -> pure (Call Nothing qn es')
+                Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
+                _ -> undefinedName n
+            _ -> pure (Call Nothing n es')
         -- error
         _ -> do
           sameName <- isSameNameConstructor n
