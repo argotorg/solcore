@@ -1,0 +1,79 @@
+import std.{*};
+import std.dispatch.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+contract ContextTest {
+    constructor() {}
+
+    function msgCalldata() -> memory(bytes) {
+        return msg.calldata();
+    }
+
+    function msgCalldataFirstWordAfterDirtyMemory() -> bytes32 {
+        let ptr = get_free_memory();
+        mstore(ptr + 32, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+        let callData : memory(bytes) = msg.calldata();
+        return bytes32(mload(Typedef.rep(callData) + 32));
+    }
+
+    function msgCalldataSecondWordAfterDirtyMemory() -> bytes32 {
+        let ptr = get_free_memory();
+        mstore(ptr + 64, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+        let callData : memory(bytes) = msg.calldata();
+        return bytes32(mload(Typedef.rep(callData) + 64));
+    }
+
+    function msgSender() -> address {
+        return msg.sender();
+    }
+
+    function msgSig() -> uint256 {
+        return uint256(toWord(msg.sig()));
+    }
+
+    payable function msgValue() -> uint256 {
+        return msg.value();
+    }
+
+    function txGasprice() -> uint256 {
+        return tx.gasprice();
+    }
+
+    function txOrigin() -> address {
+        return tx.origin();
+    }
+
+    function blockBasefee() -> uint256 {
+        return block.basefee();
+    }
+
+    function blockBlobbasefee() -> uint256 {
+        return block.blobbasefee();
+    }
+
+    function blockChainid() -> uint256 {
+        return block.chainid();
+    }
+
+    function blockCoinbase() -> address {
+        return block.coinbase();
+    }
+
+    function blockGaslimit() -> uint256 {
+        return block.gaslimit();
+    }
+
+    function blockNumber() -> uint256 {
+        return block.number();
+    }
+
+    function blockPrevrandao() -> uint256 {
+        return block.prevrandao();
+    }
+
+    function blockTimestamp() -> uint256 {
+        return block.timestamp();
+    }
+}

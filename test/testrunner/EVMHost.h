@@ -97,6 +97,13 @@ public:
 	/// Reset entire state (including accounts).
 	void reset();
 
+	/// Reset block fields that should not depend on test ordering.
+	void resetBlockContext()
+	{
+		tx_context.block_number = 10;
+		tx_context.block_timestamp = 0xF000;
+	}
+
 	/// Start new block.
 	void newBlock()
 	{

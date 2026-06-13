@@ -113,6 +113,7 @@ dispatches =
     "Files for dispatch cases"
     [ runDispatchTest "basic.solc",
       runDispatchTest "stringid.solc",
+      runDispatchTest "context.solc",
       runDispatchTest "miniERC20.solc",
       runDispatchTest "Revert.solc",
       runDispatchTest "hashes.solc",
@@ -205,6 +206,9 @@ imports =
       runImportSuccess "external_lib_main.solc",
       runImportSuccess "external_lib_alias_main.solc",
       runImportSuccess "import_std_minimal.solc",
+      runImportSuccess "std_context_select.solc",
+      runImportSuccess "std_context_wildcard.solc",
+      runImportFailure "std_context_data_fail.solc",
       runImportSuccess "select_alias_item_ok.solc",
       runImportSuccess "select_alias_multi_ok.solc",
       runImportFailure "select_alias_tail_fail.solc",

@@ -55,6 +55,7 @@ export {
   bytes32(*),
   bandWord,
   borWord,
+  block,
   bxorWord,
   bnotWord,
   bshlWord,
@@ -84,6 +85,7 @@ export {
   maxVal,
   memberAccessBase,
   memory(*),
+  msg,
   memory_ref,
   mload,
   mstore,
@@ -119,6 +121,7 @@ export {
   toWord,
   to_bytes,
   tobool,
+  tx,
   uint256(*),
   unimplemented,
   zeroize_memory
@@ -786,6 +789,156 @@ forall t . instance calldata(t) : Typedef(word) {
         | calldata(w) => return w;
        }
     }
+}
+
+forall t . class t:msg {
+  // Currently copies calldata into memory. 
+  // Will change once calldata(bytes) is operational.
+  function calldata() -> memory(bytes);
+  function sender() -> address;
+  function sig() -> bytes4;
+  function value() -> uint256;
+}
+
+forall t . default instance t:msg {
+  function calldata() -> memory(bytes) {
+    let size: word;
+    assembly {
+      size := calldatasize()
+    }
+    let rounded = round_up_to_mul_of_32(size);
+    let ptr = allocate_memory(32 + rounded);
+    mstore(ptr, size);
+    assembly {
+      calldatacopy(add(ptr, 32), 0, size)
+    }
+    zeroize_memory(ptr + 32 + size, rounded - size);
+    return memory(ptr);
+  }
+
+  function sender() -> address {
+    let res: word;
+    assembly {
+      res := caller()
+    }
+    return address(res);
+  }
+
+  function sig() -> bytes4 {
+    let res: word;
+    assembly {
+      res := shr(224, calldataload(0))
+    }
+    return bytes4(res);
+  }
+
+  function value() -> uint256 {
+    let res: word;
+    assembly {
+      res := callvalue()
+    }
+    return uint256(res);
+  }
+}
+
+forall t . class t:block {
+  function basefee() -> uint256;
+  function blobbasefee() -> uint256;
+  function chainid() -> uint256;
+  function coinbase() -> address;
+  function gaslimit() -> uint256;
+  function number() -> uint256;
+  function prevrandao() -> uint256;
+  function timestamp() -> uint256;
+}
+
+forall t . default instance t:block {
+  function basefee() -> uint256 {
+    let res: word;
+    assembly {
+      res := basefee()
+    }
+    return uint256(res);
+  }
+
+  function blobbasefee() -> uint256 {
+    let res: word;
+    assembly {
+      res := blobbasefee()
+    }
+    return uint256(res);
+  }
+
+  function chainid() -> uint256 {
+    let res: word;
+    assembly {
+      res := chainid()
+    }
+    return uint256(res);
+  }
+
+  function coinbase() -> address {
+    let res: word;
+    assembly {
+      res := coinbase()
+    }
+    return address(res);
+  }
+
+  function gaslimit() -> uint256 {
+    let res: word;
+    assembly {
+      res := gaslimit()
+    }
+    return uint256(res);
+  }
+
+  function number() -> uint256 {
+    let res: word;
+    assembly {
+      res := number()
+    }
+    return uint256(res);
+  }
+
+  function prevrandao() -> uint256 {
+    let res: word;
+    assembly {
+      res := prevrandao()
+    }
+    return uint256(res);
+  }
+
+  function timestamp() -> uint256 {
+    let res: word;
+    assembly {
+      res := timestamp()
+    }
+    return uint256(res);
+  }
+}
+
+forall t . class t:tx {
+  function gasprice() -> uint256;
+  function origin() -> address;
+}
+
+forall t . default instance t:tx {
+  function gasprice() -> uint256 {
+    let res: word;
+    assembly {
+      res := gasprice()
+    }
+    return uint256(res);
+  }
+
+  function origin() -> address {
+    let res: word;
+    assembly {
+      res := origin()
+    }
+    return address(res);
+  }
 }
 
 data returndata(t) = returndata(word);

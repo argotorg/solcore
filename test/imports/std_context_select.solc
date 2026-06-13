@@ -1,0 +1,25 @@
+import std.{msg, block, tx, address, bytes, bytes4, memory, uint256};
+
+function sender() -> address {
+  return msg.sender();
+}
+
+function value() -> uint256 {
+  return msg.value();
+}
+
+function selector() -> bytes4 {
+  return msg.sig();
+}
+
+function callData() -> memory(bytes) {
+  return msg.calldata();
+}
+
+function timestamp() -> uint256 {
+  return block.timestamp();
+}
+
+function originator() -> address {
+  return tx.origin();
+}

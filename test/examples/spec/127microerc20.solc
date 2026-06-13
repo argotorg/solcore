@@ -4,14 +4,6 @@ pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
  
-function caller() -> address {
-  let res: word;
-  assembly {
-     res := caller()
-  }
-  return address(res);
-}
-
 function require1fail() -> () {
   let res: word;
   assembly {
@@ -92,7 +84,7 @@ contract Mini {
 
   public function init() -> () {
     owner = address(0x123456789abcdef);
-    msg_sender = caller();
+    msg_sender = msg.sender();
     decimals = uint256(18);
   }
 

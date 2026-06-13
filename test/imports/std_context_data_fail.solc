@@ -1,0 +1,5 @@
+import std.{msg, bytes, memory};
+
+function callData() -> memory(bytes) {
+  return msg.data();
+}

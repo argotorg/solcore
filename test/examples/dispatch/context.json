@@ -1,0 +1,244 @@
+{
+  "context": {
+    "bytecode": "",
+    "contract": "ContextTest",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "msgCalldata()(bytes) - full calldata",
+          "calldata": "a11a65ff",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004a11a65ff00000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgCalldataFirstWordAfterDirtyMemory()(bytes32) - selector-only calldata zeroes first-word padding",
+          "calldata": "15f1891b",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "15f1891b00000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgCalldataFirstWordAfterDirtyMemory()(bytes32) - 31-byte calldata zeroes final byte",
+          "calldata": "15f1891baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "15f1891baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgCalldataFirstWordAfterDirtyMemory()(bytes32) - 32-byte calldata leaves no padding",
+          "calldata": "15f1891bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "15f1891bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgCalldataSecondWordAfterDirtyMemory()(bytes32) - 33-byte calldata zeroes second-word padding",
+          "calldata": "f1e4985edddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "dd00000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgCalldataSecondWordAfterDirtyMemory()(bytes32) - 64-byte calldata leaves second word fully copied",
+          "calldata": "f1e4985eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgSender()(address) - caller account",
+          "calldata": "d737d0c7",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000001212121212121212121212121212120000000012",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgSig()(uint256) - current selector",
+          "calldata": "ec3e88cf",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000ec3e88cf",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "msgValue()(uint256) - call value",
+          "calldata": "ddf363d7",
+          "value": "1234"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000004d2",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "txGasprice()(uint256)",
+          "calldata": "c824f6dc",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000b2d05e00",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "txOrigin()(address)",
+          "calldata": "f96757d1",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000009292929292929292929292929292929292929292",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "blockBasefee()(uint256)",
+          "calldata": "e5c47e1d",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000007",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "blockBlobbasefee()(uint256)",
+          "calldata": "3e8d64c6",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "blockChainid()(uint256)",
+          "calldata": "ca8db37e",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "blockCoinbase()(address)",
+          "calldata": "cebcbba9",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000007878787878787878787878787878787878787878",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "blockGaslimit()(uint256)",
+          "calldata": "4b0e0815",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000001312d00",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "blockNumber()(uint256)",
+          "calldata": "57e871e7",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000001c",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "blockPrevrandao()(uint256)",
+          "calldata": "3c112c57",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "a86c2e601b6c44eb4848f7d23d9df3113fbcac42041c49cbed5000cb4f118777",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "blockTimestamp()(uint256)",
+          "calldata": "adb61832",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000f12c",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

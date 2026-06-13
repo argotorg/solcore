@@ -169,6 +169,7 @@ EVMHost::EVMHost(langutil::EVMVersion _evmVersion, evmc::VM& _vm):
 
 void EVMHost::reset()
 {
+	resetBlockContext();
 	accounts.clear();
 	// Clear self destruct records
 	recorded_selfdestructs.clear();

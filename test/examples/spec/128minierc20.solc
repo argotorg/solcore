@@ -4,14 +4,6 @@ pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
 
-function caller() -> address {
-  let res: word;
-  assembly {
-     res := caller()
-  }
-  return address(res);
-}
-
 function myrevert(msg: word) -> () {
        assembly { mstore(0, msg) revert(0, 32) }
 }
@@ -49,7 +41,7 @@ contract MiniERC20 {
 */
 
   public function transferFrom(src:address, dst:address, amt:uint256) -> bool {
-     let msg_sender = caller();
+     let msg_sender = msg.sender();
      myrequire( balances[src] >= amt /* "token/insufficient-balance" */
             , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
 	    );
@@ -74,7 +66,7 @@ contract MiniERC20 {
 */
 
   public function approve(usr: address, amt: uint256) -> bool {
-      let msg_sender = caller();
+      let msg_sender = msg.sender();
       allowance[msg_sender][usr] = amt;
       // emit Approval(msg.sender, usr, amt);
       return true;
@@ -87,7 +79,7 @@ contract MiniERC20 {
   }
 
   public function main() -> uint256 {
-    let msg_sender = caller();
+    let msg_sender = msg.sender();
     init();
     mint(uint256(1000));
     allowance[owner][msg_sender] = uint256(1000);

@@ -5,14 +5,6 @@ pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
 
-function caller() -> address {
-  let res: word;
-  assembly {
-     res := caller()
-  }
-  return address(res);
-}
-
 contract MiniERC20 {
   name : string;
   symbol : string;
@@ -25,7 +17,7 @@ contract MiniERC20 {
   constructor(name_ : memory(string), symbol_ : memory(string), totalSupply_:uint256) {
     name = name_;
     symbol = symbol_;
-    owner = caller();
+    owner = msg.sender();
     decimals = uint256(18);
     mint(totalSupply_);
   }
@@ -65,7 +57,7 @@ contract MiniERC20 {
   }
 
   public function transferFrom(src:address, dst:address, amt:uint256) -> bool {
-     let msg_sender = caller();
+     let msg_sender = msg.sender();
      require(balances[src] >= amt, Error(0xf4d678b8)); // InsufficientBalance()
 
      if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint256)) {
@@ -80,7 +72,7 @@ contract MiniERC20 {
   }
 
   public function approve(usr: address, amt: uint256) -> bool {
-      let msg_sender = caller();
+      let msg_sender = msg.sender();
       allowance[msg_sender][usr] = amt;
       // emit Approval(msg.sender, usr, amt);
       return true;
@@ -89,12 +81,12 @@ contract MiniERC20 {
 
   // testing
   public function getMyBalance() -> uint256 {
-    return balances[caller()];
+    return balances[msg.sender()];
   }
 
   public function test() -> uint256 {
       approve(address(0), uint256(10));
-      transferFrom(caller(), address(0), uint256(958));
+      transferFrom(msg.sender(), address(0), uint256(958));
       return getMyBalance();
   }
 
