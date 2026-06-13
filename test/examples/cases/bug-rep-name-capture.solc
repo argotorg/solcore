@@ -1,9 +1,11 @@
 // Bug: local variable named `rep` causes name capture with the type variable `rep`
-// from `class abs : Typedef(rep)`.  The specialiser adds {rep |-> T} to the
-// substitution, which corrupts the dispatch invokable type for Typedef.rep.
+// from `class abs : Typedef(rep)`.  In NameResolution.hs, the S.ExpVar and
+// S.ExpName cases used a wildcard `_` for the qualifier in patterns like
+// `(_, Just TLocalVar)`, so a qualified call `Typedef.rep(a)` resolved to the
+// local variable `rep` instead of the class method.
 //
-// Expected: compiles and returns 42.
-// Actual:   PANIC: no resolution found for invokable.invoke : uint256 -> uint256 -> word
+// Expected: compiles successfully; `Typedef.rep` resolves to the class method.
+// Actual (before fix): PANIC: no resolution found for invokable.invoke
 
 import std.{*};
 import std.dispatch.{*};
