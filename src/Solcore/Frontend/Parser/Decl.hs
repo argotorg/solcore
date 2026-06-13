@@ -226,17 +226,20 @@ tySymP = do
   _ <- semicolon
   return (TySym n params t)
 
+-- Instance methods live outside a contract, so they may not carry the
+-- contract-only modifiers ('public' / 'payable').
 funDefP :: Parser FunDef
 funDefP = try $ withSigPrefix (funDefAfterPrefix False)
 
 -- | Parse a function definition after its optional signature prefix.
--- 'allowPublic' controls whether a leading `public` visibility modifier is
--- accepted: it is only meaningful inside a `contract { … }` body, so callers
--- outside a contract (top-level functions, instance methods) pass 'False'.
+-- 'allowContractModifiers' controls whether the leading `public` and `payable`
+-- modifiers are accepted: both are only meaningful inside a `contract { … }`
+-- body, so callers outside a contract (top-level functions, instance methods)
+-- pass 'False' and an explicit modifier is rejected with a clear error.
 funDefAfterPrefix :: Bool -> [Ty] -> [Pred] -> Parser FunDef
-funDefAfterPrefix allowPublic vars ctx = do
-  isPub <- publicModifierP allowPublic
-  sig <- signatureP vars ctx
+funDefAfterPrefix allowContractModifiers vars ctx = do
+  isPub <- publicModifierP allowContractModifiers
+  sig <- signatureP allowContractModifiers vars ctx
   body <- braces bodyP
   return (FunDef isPub sig (implicitReturn body))
 
@@ -254,9 +257,21 @@ implicitReturn :: Body -> Body
 implicitReturn [StmtExp e] = [Return e]
 implicitReturn stmts = stmts
 
-signatureP :: [Ty] -> [Pred] -> Parser Signature
-signatureP vars ctx = do
-  payable <- option False (True <$ keyword "payable")
+-- | Parse an optional @payable@ modifier. @payable@ is only meaningful on a
+-- function, the constructor, or the fallback *inside a contract*; callers in
+-- any other context pass @allowPayable = False@ so we reject it with a clear
+-- error instead of silently accepting it.
+payableP :: Bool -> Parser Bool
+payableP allowPayable =
+  option False $ do
+    keyword "payable"
+    if allowPayable
+      then pure True
+      else fail "`payable` is only allowed on a function, constructor, or fallback inside a contract"
+
+signatureP :: Bool -> [Ty] -> [Pred] -> Parser Signature
+signatureP allowPayable vars ctx = do
+  payable <- payableP allowPayable
   keyword "function"
   n <- Name <$> identifier
   ps <- parens (paramP `sepBy` comma)
@@ -275,7 +290,7 @@ fallbackDefAfterPrefix vars ctx = do
 
 fallbackSignatureP :: [Ty] -> [Pred] -> Parser Signature
 fallbackSignatureP vars ctx = do
-  payable <- option False (True <$ keyword "payable")
+  payable <- payableP True
   keyword "fallback"
   ps <- parens (paramP `sepBy` comma)
   case ps of
@@ -294,7 +309,7 @@ fallbackSignatureP vars ctx = do
 -- the confusing "unexpected 'f', expecting '}'".
 classSigP :: Parser Signature
 classSigP = do
-  sig <- try (withSigPrefix signatureP)
+  sig <- try (withSigPrefix (signatureP False))
   _ <- semicolon <?> "';' after function signature"
   return sig
 
@@ -378,6 +393,7 @@ topDeclP =
       TDataDef <$> dataP,
       TSym <$> tySymP,
       TContr <$> contractP,
+      contractOnlyDeclP,
       withSigPrefix
         ( \vars ctx ->
             choice
@@ -387,6 +403,18 @@ topDeclP =
               ]
         )
     ]
+
+-- | @constructor@ and @fallback@ declarations are only meaningful inside a
+-- @contract@. Catch them at the top level so we report a clear error instead
+-- of a confusing generic parse failure. Each branch commits (consumes the
+-- keyword) before failing, so the surrounding 'choice' does not fall through
+-- to the function/class/instance parser.
+contractOnlyDeclP :: Parser TopDecl
+contractOnlyDeclP =
+  keyword "constructor"
+    *> fail "a `constructor` may only be declared inside a contract"
+      <|> keyword "fallback"
+    *> fail "a `fallback` may only be declared inside a contract"
 
 equalsP :: Parser ()
 equalsP = void $ try (lexeme (char '=' <* notFollowedBy (char '=')))
