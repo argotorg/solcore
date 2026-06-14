@@ -66,7 +66,7 @@ isTagName _ = False
 -- for a contract.
 genPublicMethodsFn :: Contract Name -> TopDecl Name
 genPublicMethodsFn c@(Contract cname _ _) =
-  TFunDef (FunDef sig body)
+  TFunDef (FunDef False sig body)
   where
     methodTys = publicMethodTypes c
     n = length methodTys

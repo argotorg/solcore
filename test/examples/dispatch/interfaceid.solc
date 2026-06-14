@@ -11,16 +11,16 @@ import std.dispatch.{*};
 //   interfaceId()  -> 0xa64d0cd4
 //   XOR            -> 0xed9d1481
 contract InterfaceId {
-  function foo(x : uint256) -> uint256 {
+  public function foo(x : uint256) -> uint256 {
     return x;
   }
 
-  function bar(a : address) -> uint256 {
+  public function bar(a : address) -> uint256 {
     return uint256(0);
   }
 
   // TODO: add bytes4 to ABI
-  function interfaceId() -> bytes32 {
+  public function interfaceId() -> bytes32 {
     let id : bytes4 = calculateInterfaceId(type(InterfaceId).publicMethods);
     return bytes32(Typedef.rep(id));
   }
