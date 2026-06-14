@@ -86,7 +86,6 @@ hullBuiltins =
       ("timestamp", HullFunSig [] TWord),
       ("number", HullFunSig [] TWord),
       ("prevrandao", HullFunSig [] TWord),
-      ("difficulty", HullFunSig [] TWord),
       ("gaslimit", HullFunSig [] TWord),
       ("chainid", HullFunSig [] TWord),
       ("basefee", HullFunSig [] TWord),
