@@ -9,17 +9,21 @@
 -- generates the body of that helper for every contract whose primitive is
 -- actually used.
 --
--- The helper builds a runtime @SelectorArray@ (a flat, length-prefixed memory
--- array; see @std/dispatch.solc@) holding the selector of each public method,
--- computed via the dispatcher's existing @Selector.compute@ instance (which
--- reuses @sigStr@/@SigString@).  Folding those selectors with XOR — the
--- interface-id computation itself — lives in @std/dispatch.solc@ as
--- 'calculateInterfaceId', so all hashing and selector logic stays in the
--- standard library, never in the compiler.
+-- The helper hands back a type-level token — @Proxy(methods)@ — describing the
+-- contract's public methods as a right-nested tuple terminated by @()@:
+--
+--   @Proxy((Method(...), (Method(...), ... ())))@
+--
+-- Each element carries the very same @Method(name,payability,args,rets,fn)@
+-- typing consumed by @Selector.compute@ (see @std/dispatch.solc@), so no
+-- selector hashing leaks into the compiler.  Walking that tuple — counting the
+-- methods (@length@) and XOR-folding their selectors into an interface id — is
+-- the @PublicMethods@ type class in @std/dispatch.solc@; the compiler only
+-- exposes the method list, never the iteration or hashing.
 --
 -- This must run BEFORE contract dispatch generation, which produces the
 -- per-method @DispatchNameTy_*@ name types (and their @SigString@ instances)
--- that the generated selectors refer to.
+-- that the method tuple refers to.
 module Solcore.Desugarer.PublicMethods
   ( publicMethodsDesugarer,
     publicMethodsTopDecls,
@@ -31,6 +35,7 @@ import Data.List (isPrefixOf)
 import Solcore.Desugarer.ContractDispatch (publicMethodTypes)
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.Syntax.NameResolution (publicMethodsTagName)
+import Solcore.Primitives.Primitives (tupleTyFromList, unit)
 
 publicMethodsDesugarer :: CompUnit Name -> CompUnit Name
 publicMethodsDesugarer (CompUnit ims topdecls) =
@@ -62,16 +67,17 @@ isTagName :: Name -> Bool
 isTagName (Name s) = "$publicMethods$" `isPrefixOf` s
 isTagName _ = False
 
--- | Generate the helper function that builds the public-method selector array
--- for a contract.
+-- | Generate the helper that yields a contract's public-method tuple as a
+-- @Proxy@ type token.  The tuple is right-nested and terminated by @()@ so the
+-- @PublicMethods@ instances in @std/dispatch.solc@ only need a @()@ base case
+-- and an @(n, m)@ recursive case (no special single-method case).
 genPublicMethodsFn :: Contract Name -> TopDecl Name
 genPublicMethodsFn c@(Contract cname _ _) =
   TFunDef (FunDef False sig body)
   where
-    methodTys = publicMethodTypes c
-    n = length methodTys
-
-    arrTy = TyCon "SelectorArray" []
+    -- the public methods, plus a `()` terminator for the tuple
+    methodsTuple = tupleTyFromList (publicMethodTypes c ++ [unit])
+    proxyTy = TyCon "Proxy" [methodsTuple]
 
     sig =
       Signature
@@ -80,34 +86,9 @@ genPublicMethodsFn c@(Contract cname _ _) =
           sigName = publicMethodsTagName cname,
           sigParams = [],
           sigRetComptime = False,
-          sigReturn = Just arrTy,
+          sigReturn = Just proxyTy,
           sigPayable = False
         }
 
-    -- let arr : SelectorArray = newSelectorArray(n);
-    letArr =
-      Let
-        False
-        "arr"
-        (Just arrTy)
-        (Just (Call Nothing "newSelectorArray" [Lit (IntLit (toInteger n))]))
-
-    -- setSelector(arr, i, Selector.compute(Proxy:Proxy(Method(...))));
-    setStmt i mty =
-      StmtExp
-        ( Call
-            Nothing
-            "setSelector"
-            [ Var "arr",
-              Lit (IntLit (toInteger i)),
-              Call Nothing (QualName "Selector" "compute") [proxyExp mty]
-            ]
-        )
-
-    body =
-      [letArr]
-        ++ zipWith setStmt [0 :: Integer ..] methodTys
-        ++ [Return (Var "arr")]
-
-proxyExp :: Ty -> Exp Name
-proxyExp t = TyExp (Con "Proxy" []) (TyCon "Proxy" [t])
+    -- return Proxy : Proxy((Method(...), (Method(...), ... ())));
+    body = [Return (TyExp (Con "Proxy" []) proxyTy)]
