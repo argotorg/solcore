@@ -274,7 +274,9 @@ publicMethodTypes :: Contract Name -> [Ty]
 publicMethodTypes (Contract cname _ cdecls) =
   mapMaybe methodTy (mapMaybe unwrapSigs cdecls)
   where
-    unwrapSigs (CFunDecl (FunDef s _))
+    -- skip the optional fallback function and non-public methods, mirroring the
+    -- dispatch table built in 'genMainFn'
+    unwrapSigs (CFunDecl (FunDef True s _))
       | sigName s == fallbackName = Nothing
       | otherwise = Just s
     unwrapSigs _ = Nothing
