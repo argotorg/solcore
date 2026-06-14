@@ -753,14 +753,62 @@ elabFunDef ::
   Scheme -> -- function infered type
   Scheme -> -- function annotated type
   TcM (FunDef Id)
-elabFunDef isPub vs sig bdy (Forall _ (_ :=> tinf)) ann@(Forall _ (_ :=> tann)) =
+elabFunDef isPub vs sig bdy (Forall _ (pinf :=> tinf)) ann@(Forall _ (pann :=> tann)) =
   do
     let tinf' = everywhere (mkT toMeta) tinf
         tann' = everywhere (mkT toMeta) tann
     s <- unify tinf' tann'
+    -- Find bindings for phantom predicate variables (those appearing only in
+    -- predicates, not in the function type).  sig2's context uses annotation
+    -- TyVars (e.g. "rep"), but the body uses body TyVars (e.g. "$106550").
+    -- Build a TyVar-level renaming from the delta and patch sig2's context.
+    phantomDelta <- findPhantomPredBindings pann pinf
+    let tvs = [(gvar mv, gen ty) | (mv, ty) <- phantomDelta]
+        substTVPhantom t@(TyVar v) = fromMaybe t (lookup v tvs)
+        substTVPhantom t           = t
     sig2 <- elabSignature vs sig ann
-    let fd2 = everywhere (mkT (apply @Ty s)) (FunDef isPub sig2 bdy)
+    let sig2' = everywhere (mkT substTVPhantom) sig2
+    let fd2 = everywhere (mkT (apply @Ty s)) (FunDef isPub sig2' bdy)
     pure (everywhere (mkT gen) fd2)
+
+-- Unify annotation predicates against inferred predicates locally to discover
+-- mappings for phantom type variables (those absent from the function type).
+-- Returns new (annotation_meta -> body_meta) bindings for phantom variables,
+-- then restores the global substitution to its state on entry.
+findPhantomPredBindings :: [Pred] -> [Pred] -> TcM [(MetaTv, Ty)]
+findPhantomPredBindings pann pinf = do
+  s0 <- getSubst
+  let pann' = apply s0 (everywhere (mkT toMeta) pann)
+      pinf' = everywhere (mkT toMeta) pinf
+      dom_s0 = map fst (unSubst s0)
+  forM_ (phantomMatchingPreds dom_s0 pann' pinf') $ \(pa, pi_) ->
+    catchError (unifyPredExtras pa pi_) (\_ -> return ())
+  s_full <- getSubst
+  let delta = filter (\(v,_) -> v `notElem` dom_s0) (unSubst s_full)
+  putSubst s0  -- restore global subst
+  return delta
+
+-- Match annotation preds against inferred preds, keeping only pairs where the
+-- inferred pred contains at least one meta that is NOT in dom_s0 (i.e. phantom).
+-- This avoids cross-product pairings for predicates with the same class name where
+-- the body metas are already bound (non-phantom).
+phantomMatchingPreds :: [MetaTv] -> [Pred] -> [Pred] -> [(Pred, Pred)]
+phantomMatchingPreds dom_s0 pann pinf =
+  [ (pa, pi_)
+  | pa@(InCls cls _ _) <- pann
+  , pi_@(InCls cls' _ _) <- pinf
+  , cls == cls'
+  , hasPhantomMeta pi_
+  ]
+  where
+    hasPhantomMeta (InCls _ mt exts) = any (`notElem` dom_s0) (mv mt `union` mv exts)
+    hasPhantomMeta _                 = False
+
+unifyPredExtras :: Pred -> Pred -> TcM ()
+unifyPredExtras (InCls _ mt1 exts1) (InCls _ mt2 exts2) = do
+  void $ unify mt1 mt2
+  zipWithM_ (\e1 e2 -> void $ unify e1 e2) exts1 exts2
+unifyPredExtras _ _ = return ()
 
 toMeta :: Ty -> Ty
 toMeta (TyVar (TVar n)) = Meta (MetaTv n)

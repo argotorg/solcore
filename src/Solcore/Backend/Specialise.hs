@@ -347,10 +347,25 @@ specConApp i@(Id _n conTy) args ty = do
   let i' = applytv subst i
   let typedArgs = zip args argTypes'
   args' <- forM typedArgs (uncurry specExp)
+  -- Unify the constructor's result type (from the current subst-applied conTy)
+  -- with the target type ty.  This resolves phantom type parameters that do
+  -- not appear in the constructor arguments (e.g. the 'ty' in
+  -- ABIDecoder(ty, reader) = ABIDecoder(reader)), whose type var may differ
+  -- from the caller's declared variable because the type checker used a
+  -- fresh meta-variable and did not fully substitute it before emitting the
+  -- typed AST.
+  let resultConTy = applytv subst (resultTy conTy)
+  case specmgu resultConTy ty of
+    Right phi -> extSpSubst phi
+    Left  _   -> return ()
   let conTy' = foldr (:->) ty argTypes'
   debug ["> specConApp: ", prettyId i, " : ", pretty conTy, " ~> ", prettyId i', " : ", pretty conTy']
   debug ["< specConApp: ", prettyConApp i args, " ~> ", prettyConApp i' args']
   return (i', args')
+  where
+    -- Extract the result type of a function type (strip all arrows)
+    resultTy (t :-> rest) = resultTy rest
+    resultTy t            = t
 
 -- | Specialise a function call
 -- given actual arguments and the expected result type
@@ -447,6 +462,11 @@ specFunDef fd0 = withLocalState do
       -- add a placeholder first to break loops
       let placeholder = FunDef (funIsPublic fd) sig' []
       addSpecialisation name' placeholder
+      -- Resolve MPTC extra type parameters from constraints.
+      -- E.g. for  forall a rep. a:Generic(rep) => f(x:a)...
+      -- when a is concrete (say Option(uint256)) but rep is still free,
+      -- look up a Generic method for Option(uint256) to determine rep.
+      resolveMPTCFromPreds (sigContext sig')
       body' <- specBody (funDefBody fd)
       let fd' = FunDef (funIsPublic fd) sig' {sigName = name'} body'
       debug ["+ specFunDef: adding specialisation ", show name', " : ", pretty ty']
@@ -455,6 +475,53 @@ specFunDef fd0 = withLocalState do
 
 specBody :: [Stmt Id] -> SM [Stmt Id]
 specBody = mapM specStmt
+
+-- Resolve MPTC extra type parameters from function constraints.
+-- When a constraint  InCls cls mainTy [extra]  has a concrete mainTy but
+-- free extra type parameters, search the resolution table for a method of
+-- cls whose stored type can be unified against patterns involving mainTy,
+-- then extend the substitution with the discovered bindings.
+-- This handles cases like  forall a rep. a:Generic(rep) => ...  where a
+-- is determined from the call site but rep must come from the instance.
+resolveMPTCFromPreds :: [Pred] -> SM ()
+resolveMPTCFromPreds preds = do
+  subst <- getSpSubst
+  forM_ preds $ \pred -> case pred of
+    InCls clsName mainTy extras -> do
+      let mainTy' = applytv subst mainTy
+          extras' = map (applytv subst) extras
+      when (null (freetv mainTy') && any (not . null . freetv) extras') $
+        tryResolveMPTC clsName mainTy' extras'
+    _ -> return ()
+
+tryResolveMPTC :: Name -> Ty -> [Ty] -> SM ()
+tryResolveMPTC clsName mainTy extras = do
+  resTable <- gets spResTable
+  forM_ (Map.toList resTable) $ \(methName, entries) ->
+    when (isMethodOf clsName methName) $
+      forM_ entries $ \(storedTy, _) -> do
+        freshV <- TyVar . TVar <$> spNewName
+        -- Template A: method takes mainTy as first arg, returns rep
+        --   e.g. Generic.from : a -> rep
+        tryMPTCTemplate extras freshV storedTy (mainTy :-> freshV)
+        -- Template B: method takes rep as first arg, returns mainTy
+        --   e.g. Generic.to : rep -> a
+        tryMPTCTemplate extras freshV storedTy (freshV :-> mainTy)
+  where
+    isMethodOf cls (QualName cn _) = cn == cls
+    isMethodOf _   _               = False
+
+tryMPTCTemplate :: [Ty] -> Ty -> Ty -> Ty -> SM ()
+tryMPTCTemplate extras freshV storedTy template =
+  case specmgu storedTy template of
+    Left _ -> return ()
+    Right phi -> do
+      let concrete = applytv phi freshV
+      when (null (freetv concrete)) $
+        forM_ extras $ \extra ->
+          case specmgu extra concrete of
+            Left  _    -> return ()
+            Right phi2 -> extSpSubst phi2
 
 {-
 ensureSimple ty' stmt subst = case ty' of
@@ -525,7 +592,7 @@ specStmt stmt@(Var i := e) = do
   return $ Var i' := e'
 specStmt stmt@(Let ct i mty mexp) = do
   subst <- getSpSubst
-  debug ["> specStmt (Let): ", pretty i, " : ", pretty (idType i), " @ ", pretty subst]
+  debug ["> specStmt (Let): ", pretty i, " : ", pretty (idType i), " mty=", maybe "Nothing" pretty mty, " @ ", pretty subst]
   i' <- atCurrentSubst i
   let ty' = idType i'
   case mexp of
@@ -541,7 +608,21 @@ specStmt stmt@(Let ct i mty mexp) = do
           e' <- specExp e ty'
           return $ Let ct i' mty' (Just e')
         else do
-          e' <- specExp e ty'
+          -- ty' still has free type variables.  Try to resolve them from the
+          -- explicit type annotation (mty), which went through elabFunDef and
+          -- has the original forall-bound names (_g2, _h2, …) that are already
+          -- in the current substitution.  This handles the case where the type
+          -- checker introduced a fresh meta-variable for a phantom type
+          -- parameter (e.g. the `ty` in `ABIDecoder(ty, reader)`) that was
+          -- never renamed to the function's forall variable.
+          ty_for_spec <- case mty of
+            Just ann -> do
+              ann' <- atCurrentSubst ann
+              case specmgu ty' ann' of
+                Right phi -> extSpSubst phi >> atCurrentSubst ty'
+                Left _    -> return ty'
+            Nothing -> return ty'
+          e' <- specExp e ty_for_spec
           subst' <- getSpSubst
           i'' <- atCurrentSubst i
           let ty'' = idType i''
