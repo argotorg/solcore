@@ -53,7 +53,7 @@ contract MiniERC20 {
   }
 
   public function transfer(dst : address, amt : uint256) -> bool {
-      return transferFrom(caller(), dst, amt);
+      return transferFrom(msg.sender(), dst, amt);
   }
 
   public function transferFrom(src:address, dst:address, amt:uint256) -> bool {
