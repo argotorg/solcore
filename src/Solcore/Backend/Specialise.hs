@@ -357,15 +357,15 @@ specConApp i@(Id _n conTy) args ty = do
   let resultConTy = applytv subst (resultTy conTy)
   case specmgu resultConTy ty of
     Right phi -> extSpSubst phi
-    Left  _   -> return ()
+    Left _ -> return ()
   let conTy' = foldr (:->) ty argTypes'
   debug ["> specConApp: ", prettyId i, " : ", pretty conTy, " ~> ", prettyId i', " : ", pretty conTy']
   debug ["< specConApp: ", prettyConApp i args, " ~> ", prettyConApp i' args']
   return (i', args')
   where
     -- Extract the result type of a function type (strip all arrows)
-    resultTy (t :-> rest) = resultTy rest
-    resultTy t            = t
+    resultTy (_ :-> rest) = resultTy rest
+    resultTy t = t
 
 -- | Specialise a function call
 -- given actual arguments and the expected result type
@@ -486,16 +486,16 @@ specBody = mapM specStmt
 resolveMPTCFromPreds :: [Pred] -> SM ()
 resolveMPTCFromPreds preds = do
   subst <- getSpSubst
-  forM_ preds $ \pred -> case pred of
-    InCls clsName mainTy extras -> do
-      let mainTy' = applytv subst mainTy
+  forM_ preds $ \pred' -> case pred' of
+    InCls clsName mainTy1 extras -> do
+      let mainTy' = applytv subst mainTy1
           extras' = map (applytv subst) extras
       when (null (freetv mainTy') && any (not . null . freetv) extras') $
         tryResolveMPTC clsName mainTy' extras'
     _ -> return ()
 
 tryResolveMPTC :: Name -> Ty -> [Ty] -> SM ()
-tryResolveMPTC clsName mainTy extras = do
+tryResolveMPTC clsName mainTy' extras = do
   resTable <- gets spResTable
   forM_ (Map.toList resTable) $ \(methName, entries) ->
     when (isMethodOf clsName methName) $
@@ -503,13 +503,13 @@ tryResolveMPTC clsName mainTy extras = do
         freshV <- TyVar . TVar <$> spNewName
         -- Template A: method takes mainTy as first arg, returns rep
         --   e.g. Generic.from : a -> rep
-        tryMPTCTemplate extras freshV storedTy (mainTy :-> freshV)
+        tryMPTCTemplate extras freshV storedTy (mainTy' :-> freshV)
         -- Template B: method takes rep as first arg, returns mainTy
         --   e.g. Generic.to : rep -> a
-        tryMPTCTemplate extras freshV storedTy (freshV :-> mainTy)
+        tryMPTCTemplate extras freshV storedTy (freshV :-> mainTy')
   where
     isMethodOf cls (QualName cn _) = cn == cls
-    isMethodOf _   _               = False
+    isMethodOf _ _ = False
 
 tryMPTCTemplate :: [Ty] -> Ty -> Ty -> Ty -> SM ()
 tryMPTCTemplate extras freshV storedTy template =
@@ -520,7 +520,7 @@ tryMPTCTemplate extras freshV storedTy template =
       when (null (freetv concrete)) $
         forM_ extras $ \extra ->
           case specmgu extra concrete of
-            Left  _    -> return ()
+            Left _ -> return ()
             Right phi2 -> extSpSubst phi2
 
 {-
@@ -620,7 +620,7 @@ specStmt stmt@(Let ct i mty mexp) = do
               ann' <- atCurrentSubst ann
               case specmgu ty' ann' of
                 Right phi -> extSpSubst phi >> atCurrentSubst ty'
-                Left _    -> return ty'
+                Left _ -> return ty'
             Nothing -> return ty'
           e' <- specExp e ty_for_spec
           subst' <- getSpSubst

@@ -763,9 +763,9 @@ elabFunDef isPub vs sig bdy (Forall _ (pinf :=> tinf)) ann@(Forall _ (pann :=> t
     -- TyVars (e.g. "rep"), but the body uses body TyVars (e.g. "$106550").
     -- Build a TyVar-level renaming from the delta and patch sig2's context.
     phantomDelta <- findPhantomPredBindings pann pinf
-    let tvs = [(gvar mv, gen ty) | (mv, ty) <- phantomDelta]
+    let tvs = [(gvar mv', gen ty) | (mv', ty) <- phantomDelta]
         substTVPhantom t@(TyVar v) = fromMaybe t (lookup v tvs)
-        substTVPhantom t           = t
+        substTVPhantom t = t
     sig2 <- elabSignature vs sig ann
     let sig2' = everywhere (mkT substTVPhantom) sig2
     let fd2 = everywhere (mkT (apply @Ty s)) (FunDef isPub sig2' bdy)
@@ -784,8 +784,8 @@ findPhantomPredBindings pann pinf = do
   forM_ (phantomMatchingPreds dom_s0 pann' pinf') $ \(pa, pi_) ->
     catchError (unifyPredExtras pa pi_) (\_ -> return ())
   s_full <- getSubst
-  let delta = filter (\(v,_) -> v `notElem` dom_s0) (unSubst s_full)
-  putSubst s0  -- restore global subst
+  let delta = filter (\(v, _) -> v `notElem` dom_s0) (unSubst s_full)
+  putSubst s0 -- restore global subst
   return delta
 
 -- Match annotation preds against inferred preds, keeping only pairs where the
@@ -795,14 +795,14 @@ findPhantomPredBindings pann pinf = do
 phantomMatchingPreds :: [MetaTv] -> [Pred] -> [Pred] -> [(Pred, Pred)]
 phantomMatchingPreds dom_s0 pann pinf =
   [ (pa, pi_)
-  | pa@(InCls cls _ _) <- pann
-  , pi_@(InCls cls' _ _) <- pinf
-  , cls == cls'
-  , hasPhantomMeta pi_
+    | pa@(InCls cls _ _) <- pann,
+      pi_@(InCls cls' _ _) <- pinf,
+      cls == cls',
+      hasPhantomMeta pi_
   ]
   where
     hasPhantomMeta (InCls _ mt exts) = any (`notElem` dom_s0) (mv mt `union` mv exts)
-    hasPhantomMeta _                 = False
+    hasPhantomMeta _ = False
 
 unifyPredExtras :: Pred -> Pred -> TcM ()
 unifyPredExtras (InCls _ mt1 exts1) (InCls _ mt2 exts2) = do
