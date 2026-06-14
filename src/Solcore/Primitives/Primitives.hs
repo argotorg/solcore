@@ -248,6 +248,7 @@ tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 
 -- definition of yul primops
 
+-- Builtins as of Osaka
 yulPrimOps :: [(Name, Scheme)]
 yulPrimOps =
   [ (Name "stop", monotype unit),
@@ -276,6 +277,7 @@ yulPrimOps =
     (Name "shl", monotype (word :-> word :-> word)),
     (Name "shr", monotype (word :-> word :-> word)),
     (Name "sar", monotype (word :-> word :-> word)),
+    (Name "clz", monotype (word :-> word)),
     (Name "keccak256", monotype (word :-> word :-> word)),
     (Name "address", monotype word),
     (Name "balance", monotype (word :-> word)),
@@ -297,12 +299,13 @@ yulPrimOps =
     (Name "coinbase", monotype word),
     (Name "timestamp", monotype word),
     (Name "number", monotype word),
-    (Name "difficulty", monotype word), -- duplicate of prevrandao
     (Name "prevrandao", monotype word),
     (Name "gaslimit", monotype word),
     (Name "chainid", monotype word),
     (Name "selfbalance", monotype word),
     (Name "basefee", monotype word),
+    (Name "blobhash", monotype (word :-> word)),
+    (Name "blobbasefee", monotype word),
     (Name "pop", monotype (word :-> unit)),
     (Name "mload", monotype (word :-> word)),
     (Name "mstore", monotype (word :-> word :-> unit)),
@@ -312,6 +315,8 @@ yulPrimOps =
     (Name "pc", monotype word),
     (Name "msize", monotype word),
     (Name "gas", monotype word),
+    (Name "tload", monotype (word :-> word)),
+    (Name "tstore", monotype (word :-> word :-> unit)),
     (Name "mcopy", monotype (word :-> word :-> word :-> unit)),
     (Name "log0", monotype (word :-> word :-> unit)),
     (Name "log1", monotype (word :-> word :-> word :-> unit)),
