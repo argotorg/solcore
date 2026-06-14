@@ -50,8 +50,8 @@ publicMethodsTopDecls topdecls = topdecls ++ helpers
 
     helpers =
       [ genPublicMethodsFn c
-      | (tag, c) <- contractsByTag,
-        tag `elem` referenced
+        | (tag, c) <- contractsByTag,
+          tag `elem` referenced
       ]
 
 isTagCall :: Exp Name -> Bool
