@@ -337,6 +337,9 @@ yulPrimOps =
     (Name "datasize", monotype (string :-> word)),
     (Name "dataoffset", monotype (string :-> word)),
     (Name "datacopy", monotype (word :-> word :-> word :-> unit)),
+    (Name "setimmutable", monotype (word :-> string :-> word :-> unit)),
+    (Name "loadimmutable", monotype (string :-> word)),
+    (Name "linkersymbol", monotype (string :-> word)),
     (Name "memoryguard", monotype (word :-> word))
   ]
 
