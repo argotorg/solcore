@@ -293,11 +293,11 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn $ prettyInferenceDecls accessed
 
   -- `type(C).publicMethods` primitive: generate the per-contract helper that
-  -- builds the public-method selector array.  Runs BEFORE dispatch generation
-  -- so it sees only the user-declared methods (dispatch later injects
-  -- `main`/`init_`/deploy helpers, which must NOT count as public methods).
-  -- The selectors it emits refer to the `DispatchNameTy_*` name types that the
-  -- dispatch pass then creates.
+  -- yields the public-method tuple as a `Proxy` type token.  Runs BEFORE
+  -- dispatch generation so it sees only the user-declared methods (dispatch
+  -- later injects `main`/`init_`/deploy helpers, which must NOT count as public
+  -- methods).  The `Method(...)` types it emits refer to the `DispatchNameTy_*`
+  -- name types that the dispatch pass then creates.
   let withPublicMethods = mapModuleInferenceTopDecls publicMethodsTopDecls accessed
   liftIO $ when verbose $ do
     putStrLn "> publicMethods desugaring:"

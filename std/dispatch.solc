@@ -9,19 +9,15 @@ export {
   MethodLevelCallvalueCheck,
   NonPayable,
   Payable,
+  PublicMethods,
   RunContract,
   RunDispatch,
   Selector,
-  SelectorArray(*),
   SigString,
   calculateInterfaceId,
   calculateSelector,
   do_exec,
   fallback_default_implementation,
-  newSelectorArray,
-  selectorAt,
-  selectorCount,
-  setSelector,
   selector_matches,
   sigStr
 };
@@ -96,67 +92,9 @@ forall name payability args rets fn
 
 // --- Interface Id ---
 
-// A flat, length-prefixed array of 4-byte selectors held in memory:
-//   [ count | sel_0 | sel_1 | ... ]   (one word per entry)
-// Produced by the `type(C).publicMethods` primitive and consumed by
-// `calculateInterfaceId`. A dedicated concrete type (rather than the generic
-// `DynArray`) keeps the whole path monomorphic, mirroring how `bytes4` wraps a
-// `word`.
-data SelectorArray = SelectorArray(word);
-
-instance SelectorArray : Typedef(word) {
-    function rep(x : SelectorArray) -> word {
-        match x {
-            | SelectorArray(w) => return w;
-        }
-    }
-    function abs(w : word) -> SelectorArray {
-        return SelectorArray(w);
-    }
-}
-
-// Allocate room for `count` selectors and store the length prefix.
-function newSelectorArray(count : word) -> SelectorArray {
-    let base : word = get_free_memory();
-    set_free_memory(base + ((count + 1) * 32));
-    assembly {
-        mstore(base, count)
-    }
-    return SelectorArray(base);
-}
-
-// Store the selector for entry `i` (0-based).
-function setSelector(arr : SelectorArray, i : word, selector : bytes4) -> () {
-    let base : word = Typedef.rep(arr);
-    let selectorWord : word = Typedef.rep(selector);
-    assembly {
-        mstore(add(base, mul(add(i, 1), 32)), selectorWord)
-    }
-}
-
-// The selector word stored at entry `i`.
-function selectorAt(arr : SelectorArray, i : word) -> word {
-    let base : word = Typedef.rep(arr);
-    let result : word = 0;
-    assembly {
-        result := mload(add(base, mul(add(i, 1), 32)))
-    }
-    return result;
-}
-
-// Number of selectors in the array.
-function selectorCount(arr : SelectorArray) -> word {
-    let base : word = Typedef.rep(arr);
-    let result : word = 0;
-    assembly {
-        result := mload(base)
-    }
-    return result;
-}
-
 // The ABI selector for a single method type. This is the same encoding used by
-// `Selector.compute`; it is exposed as a standalone function so the interface
-// id fold reads like its Solidity counterpart.
+// `Selector.compute`; it is exposed as a standalone function so callers can
+// read a method's selector directly.
 forall ty . ty:Selector => function calculateSelector(prx : Proxy(ty)) -> bytes4 {
     return Selector.compute(prx);
 }
@@ -170,27 +108,62 @@ function xorWord(a : word, b : word) -> word {
     return res;
 }
 
-// Compute an ERC-165 style interface id by folding the public-method selectors
-// with XOR. Mirrors Solidity's `type(I).interfaceId`.
+// `type(C).publicMethods` hands back a `Proxy` over the contract's public
+// methods, encoded as a right-nested tuple terminated by `()`:
 //
-// `methods` is produced by the `type(C).publicMethods` primitive: a runtime
-// array holding each public method's 4-byte selector (each computed via
-// `Selector.compute`, which reuses `sigStr`/`SigString`). The XOR fold below is
-// the interface-id calculation, kept in the standard library rather than the
-// compiler:
+//   Proxy((Method(...), (Method(...), ... ())))
 //
-//   let interfaceId = 0;
-//   for (let i = 0; i < publicMethods.length; i++)
-//       interfaceId ^= publicMethods[i];
-function calculateInterfaceId(methods : SelectorArray) -> bytes4 {
-    let interfaceId : word = 0;
-    let count : word = selectorCount(methods);
+// Each element is a `Method(name,payability,args,rets,fn)` — the same typing
+// `Selector.compute` consumes — so its selector is recovered from the type with
+// no hashing in the compiler.
+//
+// The tuple is *heterogeneous*: every method is a distinct `Method(...)` type,
+// so it cannot be indexed by a runtime `word`. `PublicMethods` therefore walks
+// it structurally — a `()` base case and an `(n, m)` recursive case, mirroring
+// `RunDispatch` — exposing:
+//
+//   * `length`      — the number of public methods, and
+//   * `interfaceId` — the XOR fold of their selectors (the iteration itself).
+//
+// `calculateInterfaceId(type(C).publicMethods)` then reads like Solidity's
+// `type(I).interfaceId`, with all selector/iteration logic in the standard
+// library rather than the compiler.
+forall ty . class ty : PublicMethods {
+    function length(p : Proxy(ty)) -> word;
+    function interfaceId(p : Proxy(ty)) -> bytes4;
+}
 
-    for (let i : word = 0; i < count; i = i + 1) {
-        interfaceId = xorWord(interfaceId, selectorAt(methods, i));
+// Base case: the `()` tuple terminator — no methods left.
+instance () : PublicMethods {
+    function length(p : Proxy(())) -> word {
+        let zero : word = 0;
+        return zero;
     }
+    function interfaceId(p : Proxy(())) -> bytes4 {
+        let zero : word = 0;
+        return bytes4(zero);
+    }
+}
 
-    return bytes4(interfaceId);
+// Recursive case: head method `n` followed by the remaining methods `m`.
+forall n m . n : Selector, m : PublicMethods =>
+instance (n, m) : PublicMethods {
+    function length(p : Proxy((n, m))) -> word {
+        let one : word = 1;
+        return one + PublicMethods.length(Proxy : Proxy(m));
+    }
+    function interfaceId(p : Proxy((n, m))) -> bytes4 {
+        let head : bytes4 = Selector.compute(Proxy : Proxy(n));
+        let rest : bytes4 = PublicMethods.interfaceId(Proxy : Proxy(m));
+        return bytes4(xorWord(Typedef.rep(head), Typedef.rep(rest)));
+    }
+}
+
+// Compute an ERC-165 style interface id by XOR-folding the public-method
+// selectors. Mirrors Solidity's `type(I).interfaceId`.
+forall ty . ty : PublicMethods =>
+function calculateInterfaceId(methods : Proxy(ty)) -> bytes4 {
+    return PublicMethods.interfaceId(methods);
 }
 
 // --- Method Execution ---
