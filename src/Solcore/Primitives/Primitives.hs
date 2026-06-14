@@ -312,7 +312,6 @@ yulPrimOps =
     (Name "mstore8", monotype (word :-> word :-> unit)),
     (Name "sload", monotype (word :-> word)),
     (Name "sstore", monotype (word :-> word :-> unit)),
-    (Name "pc", monotype word),
     (Name "msize", monotype word),
     (Name "gas", monotype word),
     (Name "tload", monotype (word :-> word)),
