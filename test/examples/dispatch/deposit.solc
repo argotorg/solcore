@@ -1,0 +1,163 @@
+import std.{*};
+import std.dispatch.{*};
+import std.opcodes.{callvalue};
+
+// TODO: Should use uint64.
+// Assumes 64-bit input.
+function to_little_endian_64(v: uint256) -> memory(bytes) {
+    let res: word = allocate_memory(32 + 8);
+    let value: word = Typedef.rep(v);
+    assembly {
+        mstore(res, 8)
+        mstore8(add(res, 32), and(value, 0xff))
+        mstore8(add(res, 33), and(shr(8, value), 0xff))
+        mstore8(add(res, 34), and(shr(16, value), 0xff))
+        mstore8(add(res, 35), and(shr(24, value), 0xff))
+        mstore8(add(res, 36), and(shr(32, value), 0xff))
+        mstore8(add(res, 37), and(shr(40, value), 0xff))
+        mstore8(add(res, 38), and(shr(48, value), 0xff))
+        mstore8(add(res, 39), and(shr(56, value), 0xff))
+    }
+    return memory(res);
+}
+
+// No constants are supported yet, using this as a workaround.
+// Defining variables outside of contract/function is not supported.
+function DEPOSIT_CONTRACT_TREE_DEPTH() -> uint256 {
+    return uint256(32);
+}
+
+function MAX_DEPOSIT_COUNT() -> uint256 {
+    // uint constant MAX_DEPOSIT_COUNT = 2**DEPOSIT_CONTRACT_TREE_DEPTH - 1;
+    // Could use Bounded(uint64).maxVal()
+    return uint256(0xFFFFFFFF);
+}
+
+contract DepositContract {
+  deposit_count : uint256;
+  // TODO: need storage array support
+  // branch: array(uint256, DEPOSIT_CONTRACT_TREE_DEPTH());
+  // zero_hashes : array(uint256, DEPOSIT_CONTRACT_TREE_DEPTH());
+  // misusing mappings here, the index is the key
+  branch : mapping(uint256, bytes32);
+  zero_hashes : mapping(uint256, bytes32);
+
+  constructor() {
+    // Compute hashes in empty sparse Merkle tree
+    for (let height = uint256(0); height < (DEPOSIT_CONTRACT_TREE_DEPTH() - uint256(1)); height += uint256(1)) {
+        zero_hashes[height + uint256(1)] = sha256(concat(zero_hashes[height], zero_hashes[height]));
+    }
+  }
+
+  // TODO: this is for testing only
+  public function get_zero_hash(index: uint256) -> bytes32 {
+    return zero_hashes[index];
+  }
+
+  public function get_deposit_root() -> bytes32 {
+    let node: bytes32;
+    let size = deposit_count;
+    for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height += uint256(1)) {
+        //if ((size & 1) == 1) {
+        if ((size % uint256(2)) == uint256(1)) {
+            node = sha256(concat(branch[height], node));
+        } else {
+            node = sha256(concat(node, zero_hashes[height]));
+        }
+        size = size / uint256(2);
+    }
+    return sha256(concat(
+        concat(
+            node,
+            to_little_endian_64(deposit_count)
+        ),
+        empty(24)
+    ));
+  }
+
+  public function get_deposit_count() -> memory(bytes) {
+    return to_little_endian_64(deposit_count);
+  }
+
+  // TODO: once string literals are properly supported, change errors to messages
+  // matching the deposit contract, full 100% identical behaviour.
+  public payable function deposit(pubkey: memory(bytes), withdrawal_credentials: memory(bytes), signature: memory(bytes), deposit_data_root: bytes32) -> () {
+    // Extended ABI length checks since dynamic types are used.
+    require(MemorySize.len(pubkey) == 48, Error(0x9ca717ed)); // InvalidPubkeyLength()
+    require(MemorySize.len(withdrawal_credentials) == 32, Error(0x3debbf1e)); // InvalidWithdrawalCredentialsLength()
+    require(MemorySize.len(signature) == 96, Error(0x4be6321b)); // InvalidSignatureLength()
+
+    // Check deposit amount
+    // >= 1ether
+    require(callvalue() >= 1000000000000000000, Error(0xbdfc7472)); // DepositValueTooLow()
+    // % 1 gwei == 0
+    require((callvalue() % 1000000000) == 0, Error(0x9c7417e9)); // DepositValueNotMultipleOfOneGwei()
+
+    let deposit_amount = callvalue() / 1000000000; // 1 gwei
+    // <= type(uint64).max
+    require(deposit_amount <= 0xffffffffffffffff, Error(0x2aa66734)); // DepositValueTooHigh()
+
+    let amount: memory(bytes) = to_little_endian_64(uint256(deposit_amount));
+    // TODO: emit DepositEvent
+    /*
+    event DepositEvent(
+        bytes pubkey,
+        bytes withdrawal_credentials,
+        bytes amount,
+        bytes signature,
+        bytes index
+    );
+
+        emit DepositEvent(
+            pubkey,
+            withdrawal_credentials,
+            amount,
+            signature,
+            to_little_endian_64(uint64(deposit_count))
+        );
+    */
+    assembly {
+        // TODO: need to ABI-encode all the arguments
+        log1(0, 0, 0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5)
+    }
+
+    // Compute deposit data root (`DepositData` hash tree root)
+    let pubkey_root = sha256(concat(pubkey, empty(16)));
+    let signature_root = sha256(concat(
+        sha256(truncate(signature, 64)), // slice
+        sha256(concat(slice_(signature, 64), empty(32)))
+    ));
+    let node = sha256(concat(
+        sha256(concat(pubkey_root, withdrawal_credentials)),
+        sha256(concat(concat(amount, empty(24)), signature_root))
+    ));
+
+    // Verify computed and expected deposit data roots match
+    require(node == deposit_data_root, Error(0x2ec2f183)); // ReconstructedDepositDataMismatch()
+
+    // Avoid overflowing the Merkle tree (and prevent edge case in computing `branch`)
+    require(deposit_count < MAX_DEPOSIT_COUNT(), Error(0xef5ccf66)); // MerkleTreeFull()
+
+    // Add deposit data root to Merkle tree (update a single `branch` node)
+    deposit_count += uint256(1);
+    let size = deposit_count;
+    for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height += uint256(1)) {
+        //if ((size & 1) == 1) {
+        if ((size % uint256(2)) == uint256(1)) {
+            branch[height] = node;
+            return ();
+        }
+        node = sha256(concat(branch[height], node));
+        size = size / uint256(2);
+    }
+
+    // As the loop should always end prematurely with the `return` statement,
+    // this code should be unreachable. We assert `false` just to be safe.
+    assert(false);
+  }
+
+  // TODO: use bytes4
+  public function supportsInterface(interfaceId: uint256) -> bool {
+    return false;
+  }
+}

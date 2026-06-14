@@ -138,6 +138,8 @@ int main(int argc, char** argv)
 			}
 
 			bool status = result.status_code == EVMC_SUCCESS;
+			
+			std::cout << "Status: " << result.status_code << " Output: " << toHex(output) << std::endl;
 
 			if (kind == "constructor")
 			{

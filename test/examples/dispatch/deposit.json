@@ -1,0 +1,214 @@
+{
+  "depositcontract": {
+    "bytecode": "_CODE",
+      "contract": "DepositContract",
+    "tests": [
+      {
+          "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+
+      {
+        "input": {
+            "comment": "get_zero_hash(0)",
+            "calldata": "43ca34020000000000000000000000000000000000000000000000000000000000000000",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_zero_hash(1)",
+            "calldata": "43ca34020000000000000000000000000000000000000000000000000000000000000001",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b",
+            "status": "success"
+        }
+      },
+
+
+      {
+        "input": {
+            "comment": "get_zero_hash(2)",
+            "calldata": "43ca34020000000000000000000000000000000000000000000000000000000000000002",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "db56114e00fdd4c1f85c892bf35ac9a89289aaecb1ebd0a96cde606a748b5d71",
+            "status": "success"
+        }
+      },
+
+
+      {
+        "input": {
+            "comment": "get_zero_hash(3)",
+            "calldata": "43ca34020000000000000000000000000000000000000000000000000000000000000003",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "c78009fdf07fc56a11f122370658a353aaa542ed63e44c4bc15ff4cd105ab33c",
+            "status": "success"
+        }
+      },
+
+
+      {
+        "input": {
+            "comment": "get_zero_hash(4)",
+            "calldata": "43ca34020000000000000000000000000000000000000000000000000000000000000004",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "536d98837f2dd165a55d5eeae91485954472d56f246df256bf3cae19352a123c",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_zero_hash(15)",
+            "calldata": "43ca3402000000000000000000000000000000000000000000000000000000000000000f",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "d49a7502ffcfb0340b1d7885688500ca308161a7f96b62df9d083b71fcc8f2bb",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_zero_hash(31)",
+            "calldata": "43ca3402000000000000000000000000000000000000000000000000000000000000001f",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "985e929f70af28d0bdd1a90a808f977f597c7c778c489e98d3bd8910d31ac0f7",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_deposit_root()",
+            "calldata": "c5f2892f",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "d70a234731285c6804c2a4f56711ddb8c82c99740f207854891028af34e27e5e",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_deposit_count()",
+            "calldata": "621fd130",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "deposit(bytes,bytes,bytes,bytes32)",
+            "calldata": "22895118000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000000120d2b73e995b4c94bf83bcbf58cb9dede2c5e0211ec61eeb09c43aeaad97ce02620000000000000000000000000000000000000000000000000000000000000030abe405f4ca553d02da780b187e15c767fc89d4f9a707bd54c98a8d8e401124dedc6bc14dcdf0ed690e9ec424deae49a50000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200100000000000000000000007e2a2fa2a064f693f0a55c5639476d913ff12d0500000000000000000000000000000000000000000000000000000000000000608927fa063b70c19a28c3c78aa19bbb2e7b971fc1b8de2033930952a11ef17709348cc2cc14ae810ab249a1fe39e959470b850608afc299811c5cce190f92dd79529ba11846c138073ae200782476c8e5e4c6ea3b5938a16398835e4964c6bac0",
+            "value": "32000000000000000000"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_deposit_root()",
+            "calldata": "c5f2892f",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "d3014e96ac4ef15ccbac8047549cac09ad687f6169cba901b92c8875a62ca917",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_deposit_count()",
+            "calldata": "621fd130",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000080100000000000000000000000000000000000000000000000000000000000000",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "deposit(bytes,bytes,bytes,bytes32)",
+            "calldata": "22895118000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000000120d2b73e995b4c94bf83bcbf58cb9dede2c5e0211ec61eeb09c43aeaad97ce02620000000000000000000000000000000000000000000000000000000000000030abe405f4ca553d02da780b187e15c767fc89d4f9a707bd54c98a8d8e401124dedc6bc14dcdf0ed690e9ec424deae49a50000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200100000000000000000000007e2a2fa2a064f693f0a55c5639476d913ff12d0500000000000000000000000000000000000000000000000000000000000000608927fa063b70c19a28c3c78aa19bbb2e7b971fc1b8de2033930952a11ef17709348cc2cc14ae810ab249a1fe39e959470b850608afc299811c5cce190f92dd79529ba11846c138073ae200782476c8e5e4c6ea3b5938a16398835e4964c6bac0",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "bdfc7472",
+            "status": "failure"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_deposit_root()",
+            "calldata": "c5f2892f",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "d3014e96ac4ef15ccbac8047549cac09ad687f6169cba901b92c8875a62ca917",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "get_deposit_count()",
+            "calldata": "621fd130",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000080100000000000000000000000000000000000000000000000000000000000000",
+            "status": "success"
+        }
+      }
+    ]
+  }
+}
