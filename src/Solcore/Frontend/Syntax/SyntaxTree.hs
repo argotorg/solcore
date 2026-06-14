@@ -287,6 +287,7 @@ data Exp
   | ExpLNot Exp -- ! e
   | ExpCond Exp Exp Exp -- if e1 then e2 else e3
   | ExpAt Ty -- proxy sugar
+  | ExpTypeInfo Name Name -- type(C).field primitive (e.g. type(C).publicMethods)
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- pattern matching equations

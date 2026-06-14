@@ -12,9 +12,16 @@ export {
   RunContract,
   RunDispatch,
   Selector,
+  SelectorArray(*),
   SigString,
+  calculateInterfaceId,
+  calculateSelector,
   do_exec,
   fallback_default_implementation,
+  newSelectorArray,
+  selectorAt,
+  selectorCount,
+  setSelector,
   selector_matches,
   sigStr
 };
@@ -85,6 +92,105 @@ forall name payability args rets fn
         let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
         return bytes4(bshrWord(224, hash));
     }
+}
+
+// --- Interface Id ---
+
+// A flat, length-prefixed array of 4-byte selectors held in memory:
+//   [ count | sel_0 | sel_1 | ... ]   (one word per entry)
+// Produced by the `type(C).publicMethods` primitive and consumed by
+// `calculateInterfaceId`. A dedicated concrete type (rather than the generic
+// `DynArray`) keeps the whole path monomorphic, mirroring how `bytes4` wraps a
+// `word`.
+data SelectorArray = SelectorArray(word);
+
+instance SelectorArray : Typedef(word) {
+    function rep(x : SelectorArray) -> word {
+        match x {
+            | SelectorArray(w) => return w;
+        }
+    }
+    function abs(w : word) -> SelectorArray {
+        return SelectorArray(w);
+    }
+}
+
+// Allocate room for `count` selectors and store the length prefix.
+function newSelectorArray(count : word) -> SelectorArray {
+    let base : word = get_free_memory();
+    set_free_memory(base + ((count + 1) * 32));
+    assembly {
+        mstore(base, count)
+    }
+    return SelectorArray(base);
+}
+
+// Store the selector for entry `i` (0-based).
+function setSelector(arr : SelectorArray, i : word, selector : bytes4) -> () {
+    let base : word = Typedef.rep(arr);
+    let selectorWord : word = Typedef.rep(selector);
+    assembly {
+        mstore(add(base, mul(add(i, 1), 32)), selectorWord)
+    }
+}
+
+// The selector word stored at entry `i`.
+function selectorAt(arr : SelectorArray, i : word) -> word {
+    let base : word = Typedef.rep(arr);
+    let result : word = 0;
+    assembly {
+        result := mload(add(base, mul(add(i, 1), 32)))
+    }
+    return result;
+}
+
+// Number of selectors in the array.
+function selectorCount(arr : SelectorArray) -> word {
+    let base : word = Typedef.rep(arr);
+    let result : word = 0;
+    assembly {
+        result := mload(base)
+    }
+    return result;
+}
+
+// The ABI selector for a single method type. This is the same encoding used by
+// `Selector.compute`; it is exposed as a standalone function so the interface
+// id fold reads like its Solidity counterpart.
+forall ty . ty:Selector => function calculateSelector(prx : Proxy(ty)) -> bytes4 {
+    return Selector.compute(prx);
+}
+
+// 2-argument bitwise XOR (`^=` in the interface-id fold below).
+function xorWord(a : word, b : word) -> word {
+    let res : word;
+    assembly {
+        res := xor(a, b)
+    }
+    return res;
+}
+
+// Compute an ERC-165 style interface id by folding the public-method selectors
+// with XOR. Mirrors Solidity's `type(I).interfaceId`.
+//
+// `methods` is produced by the `type(C).publicMethods` primitive: a runtime
+// array holding each public method's 4-byte selector (each computed via
+// `Selector.compute`, which reuses `sigStr`/`SigString`). The XOR fold below is
+// the interface-id calculation, kept in the standard library rather than the
+// compiler:
+//
+//   let interfaceId = 0;
+//   for (let i = 0; i < publicMethods.length; i++)
+//       interfaceId ^= publicMethods[i];
+function calculateInterfaceId(methods : SelectorArray) -> bytes4 {
+    let interfaceId : word = 0;
+    let count : word = selectorCount(methods);
+
+    for (let i : word = 0; i < count; i = i + 1) {
+        interfaceId = xorWord(interfaceId, selectorAt(methods, i));
+    }
+
+    return bytes4(interfaceId);
 }
 
 // --- Method Execution ---

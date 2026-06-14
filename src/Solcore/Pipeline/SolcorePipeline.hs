@@ -22,6 +22,7 @@ import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.IntLiteralDesugar (desugarIntLiterals)
+import Solcore.Desugarer.PublicMethods (publicMethodsTopDecls)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Frontend.ComptimeCheck (checkComptimeEarly)
@@ -290,12 +291,23 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "Contract field access desugaring:"
     putStrLn $ prettyInferenceDecls accessed
 
+  -- `type(C).publicMethods` primitive: generate the per-contract helper that
+  -- builds the public-method selector array.  Runs BEFORE dispatch generation
+  -- so it sees only the user-declared methods (dispatch later injects
+  -- `main`/`init_`/deploy helpers, which must NOT count as public methods).
+  -- The selectors it emits refer to the `DispatchNameTy_*` name types that the
+  -- dispatch pass then creates.
+  let withPublicMethods = mapModuleInferenceTopDecls publicMethodsTopDecls accessed
+  liftIO $ when verbose $ do
+    putStrLn "> publicMethods desugaring:"
+    putStrLn $ prettyInferenceDecls withPublicMethods
+
   -- contract dispatch generation
   dispatched <-
     liftIO $
       if noGenDispatch
-        then pure accessed
-        else timeItNamed "Contract dispatch generation" $ pure (mapModuleInferenceTopDecls contractDispatchTopDecls accessed)
+        then pure withPublicMethods
+        else timeItNamed "Contract dispatch generation" $ pure (mapModuleInferenceTopDecls contractDispatchTopDecls withPublicMethods)
 
   liftIO $ when (emitOutput && optDumpDispatch opts) $ do
     putStrLn "> Dispatch:"
