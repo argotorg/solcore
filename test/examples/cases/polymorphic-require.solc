@@ -14,7 +14,7 @@ function require(cond: bool) -> a {
 
 contract Deposit {
 public function deposit() -> () {
-    require(callvalue() != uint256(0));
+    require(msg.value() != uint256(0));
     return ();
   }
 
