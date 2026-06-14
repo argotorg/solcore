@@ -18,7 +18,7 @@ opcodes = [
     {"name": "mulmod",         "inputs": 3, "output": 1},
     {"name": "exp",            "inputs": 2, "output": 1},
     {"name": "signextend",     "inputs": 2, "output": 1},
-    # 0x10-0x1d: comparison & bitwise
+    # 0x10-0x1e: comparison & bitwise
     {"name": "lt",             "inputs": 2, "output": 1},
     {"name": "gt",             "inputs": 2, "output": 1},
     {"name": "slt",            "inputs": 2, "output": 1},
@@ -33,6 +33,7 @@ opcodes = [
     {"name": "shl",            "inputs": 2, "output": 1},
     {"name": "shr",            "inputs": 2, "output": 1},
     {"name": "sar",            "inputs": 2, "output": 1},
+    {"name": "clz",            "inputs": 1, "output": 1},  # 0x1e, Osaka/EIP-7939
     # 0x20: keccak
     {"name": "keccak256",      "inputs": 2, "output": 1},
     # 0x30-0x3f: environment

@@ -25,6 +25,7 @@ export {
     shl,
     shr,
     sar,
+    clz,
     keccak256,
     address,
     balance,
@@ -287,6 +288,14 @@ function sar(a: word, b: word) -> word {
     return res;
 }
 
+function clz(a: word) -> word {
+    let res;
+    assembly {
+        res := clz(a)
+    }
+    return res;
+}
+
 function keccak256(a: word, b: word) -> word {
     let res;
     assembly {
@@ -387,13 +396,11 @@ function extcodesize(a: word) -> word {
     return res;
 }
 
-
 function extcodecopy(a: word, b: word, c: word, d: word) -> () {
     assembly {
         extcodecopy(a, b, c, d)
     }
 }
-
 
 function returndatasize() -> word {
     let res;
