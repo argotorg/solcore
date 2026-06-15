@@ -3,7 +3,7 @@ pragma no-bounded-variable-condition ABIAttribs, ABIEncode;
 
 export {
     Sum(*),
-    Generic,
+    Generic
 };
 
 import std.{*};
