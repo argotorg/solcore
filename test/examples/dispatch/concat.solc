@@ -1,9 +1,5 @@
 import std.{*};
-import std.{bytes32, uint256, memory, Typedef, concat, to_bytes, empty};
 import std.dispatch.{*};
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
 
 contract C {
     constructor() {}

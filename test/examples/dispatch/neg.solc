@@ -1,8 +1,5 @@
-import std.dispatch.{*};
 import std.{*};
-pragma no-patterson-condition;
-pragma no-coverage-condition;
-pragma no-bounded-variable-condition;
+import std.dispatch.{*};
 
 forall a.
 class  a : Neg {

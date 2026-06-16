@@ -1,8 +1,5 @@
 import std.{*};
 import std.dispatch.{*};
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
 
 // caller() is not in the std library yet,
 // so every contract must define its own
