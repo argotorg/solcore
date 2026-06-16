@@ -2193,17 +2193,10 @@ forall a . a:MemorySize, a:MemoryPointer => function sha256(input: a) -> bytes32
 forall a . a:MemorySize, a:MemoryPointer => function ripemd160(input: a) -> bytes32 {
     let len : word = MemorySize.len(input);
     let ptr : word = MemoryPointer.ptr(input);
-    let res : word;
     // We assume the [0, 32] scratch space is reserved.
-    // TODO: add specific error code
-    assembly {
-        let ret := staticcall(gas(), 3, ptr, len, 0, 32)
-        if iszero(ret) {
-            revert(0, 0)
-        }
-        res := mload(0)
-    }
-    return bytes32(res);
+    let ret = staticcall(gas(), 3, ptr, len, 0, 32);
+    require(ret != 0, Error(0x31a72d92)); // RIPEMD160CallFailed()
+    return bytes32(mload(0));
 }
 
 // --- Precompiles ---
