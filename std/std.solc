@@ -1,4 +1,4 @@
-import std.opcodes.{and as and_, not as not_, addmod as addmod_, mulmod as mulmod_, gas, staticcall, mstore, mload, sstore, sload};
+import std.opcodes.{addmod as addmod_, mulmod as mulmod_, and as and_, not as not_, gas, staticcall, mstore, mload, mcopy, sstore, sload};
 
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
@@ -848,19 +848,16 @@ function allocate_zeroed_memory(size: word) -> word {
 
 // Clears a memory area.
 function zeroize_memory(ptr: word, len: word) -> () {
-    assembly {
-        let end_ptr := add(ptr, len)
+    let end_ptr = ptr + len;
 
-        // Zero out 32-byte words.
-        let words := div(len, 32)
-        for { let i := 0 } lt(i, words) { i := add(i, 1) } {
-            mstore(ptr, 0)
-            ptr := add(ptr, 32)
-        }
-
-        // Zero out trailing bytes. We rely on the zero-slot (0x60-0x7f).
-        mcopy(ptr, 0x60, sub(end_ptr, ptr))
+    // Zero out 32-byte words.
+    for (let i = 0; i < len / 32; i += 1) {
+        mstore(ptr, 0)
+        ptr += 32;
     }
+
+    // Zero out trailing bytes. We rely on the zero-slot (0x60-0x7f).
+    mcopy(ptr, 0x60, end_ptr - ptr);
 }
 
 // --- Indexable Types ---
