@@ -251,7 +251,8 @@ cases :: TestTree
 cases =
   testGroup
     "Files for folder cases"
-    [ runTestForFile "Ackermann.solc" caseFolder,
+    [ runTestForFile "abigeneric.solc" caseFolder,
+      runTestForFile "Ackermann.solc" caseFolder,
       runTestForFile "Add1.solc" caseFolder,
       runTestExpectingFailure "add-moritz.solc" caseFolder,
       runTestForFile "another-subst.solc" caseFolder,
@@ -515,7 +516,9 @@ cases =
       runTestExpectingFailure "class-return-type-miss.solc" caseFolder,
       runTestExpectingFailure "catenable-err.solc" caseFolder,
       runTestForFile "pars.solc" caseFolder,
-      runTestForFile "bug-rep-name-capture.solc" caseFolder
+      runTestForFile "bug-rep-name-capture.solc" caseFolder,
+      runTestForFile "bug-import-default-inst-shadow.solc" caseFolder,
+      runTestForFile "abigeneric.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

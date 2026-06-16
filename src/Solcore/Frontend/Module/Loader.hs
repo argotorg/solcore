@@ -1880,9 +1880,11 @@ filterImportedInstanceConflicts localDecls =
   mapMaybe keepImportedDecl
   where
     localClassNames = concatMap topDeclClassNames localDecls
+    localInstanceHeads = [instanceDeclHeadKey inst | TInstDef inst <- localDecls]
 
     keepImportedDecl d@(TInstDef inst)
       | instName inst `elem` localClassNames = Nothing
+      | instanceDeclHeadKey inst `elem` localInstanceHeads = Nothing
       | otherwise = Just d
     keepImportedDecl d = Just d
 
