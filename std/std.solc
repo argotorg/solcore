@@ -2218,23 +2218,14 @@ function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address
     let r_ = Typedef.rep(r);
     let s_ = Typedef.rep(s);
     let ptr = get_free_memory();
-    let res: word;
     // We assume the [0, 32] scratch space is reserved.
-    // TODO: add specific error code
-    assembly {
-        mstore(ptr, hash_)
-        mstore(add(ptr, 32), v_)
-        mstore(add(ptr, 64), r_)
-        mstore(add(ptr, 96), s_)
-
-        let ret := staticcall(gas(), 1, ptr, 128, 0, 32)
-        if iszero(ret) {
-            revert(0, 0)
-        }
-        res := mload(0)
-        if iszero(res) {
-            revert(0, 0)
-        }
-    }
+    mstore(ptr, hash_);
+    mstore(ptr + 32, v_);
+    mstore(ptr + 64, r_);
+    mstore(ptr + 96, s_);
+    let ret = staticcall(gas(), 1, ptr, 128, 0, 32);
+    require(ret != 0, Error(0x578763f7)); // ECRecoverCallFailed()
+    let res = mload(0);
+    require(res != 0, Error(0x4fbfae63)); // ECRecoverFailed()
     return address(res);
 }
