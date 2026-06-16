@@ -1,4 +1,13 @@
-module Solcore.Backend.Specialise (specialiseCompUnit, typeOfTcExp) where
+module Solcore.Backend.Specialise
+  ( -- core API
+    specialiseCompUnit
+  , typeOfTcExp
+    -- testing API
+  , TVSubst (..)
+  , emptyTVSubst
+  , (|->)
+  , runResolveMPTCTest
+  ) where
 
 -- \* Specialisation
 -- Create specialised versions of polymorphic and overloaded functions.
@@ -501,6 +510,15 @@ resolveMPTCFromPreds preds = do
       when (null (freetv mainTy') && any (not . null . freetv) extras') $
         tryResolveMPTC clsName mainTy' extras'
     _ -> return ()
+
+-- | Testing entry point: run resolveMPTCFromPreds in an isolated SM environment.
+-- Sets the initial substitution to @s0@, runs @resolveMPTCFromPreds preds@, and
+-- returns the resulting substitution.  The @TcEnv@ supplies the instance table.
+runResolveMPTCTest :: TcEnv -> TVSubst -> [Pred] -> IO TVSubst
+runResolveMPTCTest env s0 preds = runSM False env $ do
+  putSpSubst s0
+  resolveMPTCFromPreds preds
+  getSpSubst
 
 -- tryResolveMPTC deduces concrete types for the extra parameters of a
 -- multi-parameter type class (MPTC) constraint when the "self" (main) type is
