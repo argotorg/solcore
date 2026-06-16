@@ -20,7 +20,7 @@ import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (decls, name)
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
-import Solcore.Frontend.TypeInference.TcEnv (TcEnv (typeTable), TypeInfo (..))
+import Solcore.Frontend.TypeInference.TcEnv (TcEnv (instEnv, typeTable), TypeInfo (..))
 import Solcore.Frontend.TypeInference.TcUnify (typesDoNotUnify)
 import Solcore.Primitives.Primitives hiding (integer)
 import Solcore.Primitives.Primitives qualified as Prim
@@ -476,13 +476,21 @@ specFunDef fd0 = withLocalState do
 specBody :: [Stmt Id] -> SM [Stmt Id]
 specBody = mapM specStmt
 
--- Resolve MPTC extra type parameters from function constraints.
--- When a constraint  InCls cls mainTy [extra]  has a concrete mainTy but
--- free extra type parameters, search the resolution table for a method of
--- cls whose stored type can be unified against patterns involving mainTy,
--- then extend the substitution with the discovered bindings.
--- This handles cases like  forall a rep. a:Generic(rep) => ...  where a
--- is determined from the call site but rep must come from the instance.
+-- Recover concrete bindings for MPTC extra type parameters that are still free
+-- after the call-site types have been applied.
+--
+-- A constraint  InCls cls mainTy [extra]  has two groups of type parameters:
+--   1. mainTy: the "self" type, determined directly from the call-site argument
+--              or return type (e.g. the concrete type passed to a polymorphic fn)
+--   2. extras: additional class parameters that may not appear in the function
+--              type at all (phantom parameters), so they cannot be read off the
+--              call site; they must be inferred from the instance.
+--
+-- The guard  null (freetv mainTy') && any (not . null . freetv) extras'
+-- captures exactly the interesting case: mainTy is fully concrete (we know
+-- which instance to look at) but at least one extra is still open (we need to
+-- read the instance to close it).  When all extras are already concrete, or
+-- when mainTy itself is still abstract, there is nothing for this function to do.
 resolveMPTCFromPreds :: [Pred] -> SM ()
 resolveMPTCFromPreds preds = do
   subst <- getSpSubst
@@ -494,34 +502,71 @@ resolveMPTCFromPreds preds = do
         tryResolveMPTC clsName mainTy' extras'
     _ -> return ()
 
+-- tryResolveMPTC deduces concrete types for the extra parameters of a
+-- multi-parameter type class (MPTC) constraint when the "self" (main) type is
+-- already fully concrete but some extra parameters are still free type variables.
+--
+-- The strategy is to search the type-checker's instance environment for the
+-- unique instance of C whose main type matches mainTy', then read the extras
+-- directly from the instance head.
+--
+-- Soundness: the instance environment is produced and verified by the type
+-- checker.  Every entry  (ctx :=> InCls C instMainTy instExtras)  is a
+-- certified fact: the type checker has established that instMainTy is an
+-- instance of C with extra parameters instExtras.  When specmatch confirms that
+-- instMainTy matches the concrete mainTy', we have that instExtras is a valid
+-- deduction, it recovers exactly what the type checker already knew.
+--
+-- Two guards prevent incorrect extensions:
+--
+--   1. all (null . freetv) concreteExtras
+--        Only propagate fully ground types.  If the matched instance is itself
+--        parametric in a variable not pinned by mainTy', we cannot determine a
+--        unique concrete type for the extra and skip to avoid a partial binding.
+--
+--   2. specmatch extra concrete returns Left
+--        If a call-site extra is already bound to a different type, specmatch
+--        fails and the no-op branch preserves the earlier authoritative binding.
+--
+-- Note: specmatch (not specmgu) is used throughout because both operations are
+-- inherently one-directional.  mainTy' is guaranteed ground (no free variables)
+-- by the caller, so the instance head is the pattern and the call-site type is
+-- the fixed target; there is no need to bind variables on the right-hand side.
+-- Using matching rather than unification makes this asymmetry explicit and
+-- rules out accidental bindings on the call-site side.
 tryResolveMPTC :: Name -> Ty -> [Ty] -> SM ()
 tryResolveMPTC clsName mainTy' extras = do
-  resTable <- gets spResTable
-  forM_ (Map.toList resTable) $ \(methName, entries) ->
-    when (isMethodOf clsName methName) $
-      forM_ entries $ \(storedTy, _) -> do
-        freshV <- TyVar . TVar <$> spNewName
-        -- Template A: method takes mainTy as first arg, returns rep
-        --   e.g. Generic.from : a -> rep
-        tryMPTCTemplate extras freshV storedTy (mainTy' :-> freshV)
-        -- Template B: method takes rep as first arg, returns mainTy
-        --   e.g. Generic.to : rep -> a
-        tryMPTCTemplate extras freshV storedTy (freshV :-> mainTy')
-  where
-    isMethodOf cls (QualName cn _) = cn == cls
-    isMethodOf _ _ = False
-
-tryMPTCTemplate :: [Ty] -> Ty -> Ty -> Ty -> SM ()
-tryMPTCTemplate extras freshV storedTy template =
-  case specmgu storedTy template of
-    Left _ -> return ()
-    Right phi -> do
-      let concrete = applytv phi freshV
-      when (null (freetv concrete)) $
-        forM_ extras $ \extra ->
-          case specmgu extra concrete of
-            Left _ -> return ()
-            Right phi2 -> extSpSubst phi2
+  -- The instance environment was produced by the type checker and maps each
+  -- class name to its list of verified instances.
+  instTable <- gets (instEnv . spGlobalEnv)
+  let clsInsts = fromMaybe [] (Map.lookup clsName instTable)
+  forM_ clsInsts $ \inst ->
+    case inst of
+      -- Only class constraint heads are relevant; skip equality constraints.
+      (_ :=> InCls _ instMainTy instExtras) ->
+        -- Match the instance's main type (pattern) against the call-site's
+        -- concrete main type (target).  specmatch binds the instance's
+        -- quantified type variables (TVar) as needed and never touches
+        -- variables on the target side.  Failure means this instance is for
+        -- a different concrete type; skip silently.
+        case specmatch instMainTy mainTy' of
+          Left _ -> return ()
+          Right phi -> do
+            -- Substitute to obtain the concrete extra types for this instance.
+            let concreteExtras = map (applytv phi) instExtras
+            -- If any extra is still abstract, the instance is parametric in a
+            -- way that mainTy' alone does not determine; skip to stay sound.
+            when (all (null . freetv) concreteExtras) $
+              forM_ (zip extras concreteExtras) $ \(extra, concrete) ->
+                -- Match the call-site free extra (pattern) against the
+                -- instance's concrete extra (target).  If extra is already
+                -- bound to the same type this is a no-op (phi = mempty).
+                -- If bound to a different type specmatch returns Left and the
+                -- earlier authoritative binding is preserved.
+                case specmatch extra concrete of
+                  Left _ -> return ()
+                  Right phi2 -> extSpSubst phi2
+      _ -> return ()
 
 {-
 ensureSimple ty' stmt subst = case ty' of
@@ -790,6 +835,28 @@ specmgu (TyCon n ts) (TyCon n' ts')
 specmgu (TyVar v) t = varBind v t
 specmgu t (TyVar v) = varBind v t
 specmgu t1 t2 = typesDoNotUnify t1 t2
+
+-- | One-directional matching: find a substitution @phi@ such that
+-- @applytv phi pat == tgt@, binding only variables that appear in @pat@.
+-- Unlike 'specmgu', a type variable on the right-hand side (@tgt@) is never
+-- bound; if @tgt@ contains a free variable the match fails.  This is the
+-- correct operation for instance-head lookup: the instance type is the pattern
+-- (may contain quantified variables) and the call-site type is the target
+-- (must be fully concrete).
+specmatch :: Ty -> Ty -> Either String TVSubst
+specmatch (TyCon n ts) (TyCon n' ts')
+  | n == n' && length ts == length ts' =
+      matchsolve (zip ts ts') mempty
+specmatch (TyVar v) t = varBind v t
+specmatch t1 t2 = typesDoNotUnify t1 t2
+
+matchsolve :: [(Ty, Ty)] -> TVSubst -> Either String TVSubst
+matchsolve [] s = pure s
+matchsolve ((pat, tgt) : rest) s =
+  do
+    s1 <- specmatch (applytv s pat) tgt
+    s2 <- matchsolve rest s1
+    pure (s2 <> s1)
 
 varBind :: (MonadError String m) => Tyvar -> Ty -> m TVSubst
 varBind v t

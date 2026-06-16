@@ -775,6 +775,20 @@ elabFunDef isPub vs sig bdy (Forall _ (pinf :=> tinf)) ann@(Forall _ (pann :=> t
 -- mappings for phantom type variables (those absent from the function type).
 -- Returns new (annotation_meta -> body_meta) bindings for phantom variables,
 -- then restores the global substitution to its state on entry.
+--
+-- Soundness: it is correct for this function to leave some phantom variables
+-- without a binding.  A variable like rep2 in
+--   forall a b rep1 rep2 . a:Tag(rep1), b:Tag(rep2) => f : a -> b -> rep1
+-- never appears in the function body, so type-checking the body produces no
+-- inferred constraint that mentions it; the returned delta simply says nothing
+-- about rep2.  This is safe because the specialiser resolves phantom variables
+-- later, at each concrete call site: when b is instantiated to TypeB, instance
+-- resolution against TypeB:Tag(TagB) immediately yields rep2 = TagB without
+-- any information from this phase.
+-- What would be unsound is a spurious unification of distinct type variables
+-- (e.g. a ≡ b) produced by mismatched predicate pairing, because that would
+-- corrupt the elaborated function signature and make specialisation impossible.
+-- The guards in phantomMatchingPreds prevent exactly that.
 findPhantomPredBindings :: [Pred] -> [Pred] -> TcM [(MetaTv, Ty)]
 findPhantomPredBindings pann pinf = do
   s0 <- getSubst
@@ -795,10 +809,12 @@ findPhantomPredBindings pann pinf = do
 phantomMatchingPreds :: [MetaTv] -> [Pred] -> [Pred] -> [(Pred, Pred)]
 phantomMatchingPreds dom_s0 pann pinf =
   [ (pa, pi_)
-    | pa@(InCls cls _ _) <- pann,
-      pi_@(InCls cls' _ _) <- pinf,
+    | pa@(InCls cls mt_a _) <- pann,
+      hasPhantomMeta pa, -- skip annotation preds already fully resolved in s0
+      pi_@(InCls cls' mt_i _) <- pinf,
       cls == cls',
-      hasPhantomMeta pi_
+      hasPhantomMeta pi_,
+      mt_a == mt_i -- self-types must agree to avoid cross-pairing same-class constraints
   ]
   where
     hasPhantomMeta (InCls _ mt exts) = any (`notElem` dom_s0) (mv mt `union` mv exts)
