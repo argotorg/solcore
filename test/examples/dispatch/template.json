@@ -5,6 +5,7 @@
     "tests": [
       {
         "input": {
+          "text-calldata": "constructor()",
           "calldata": "",
           "value": "0"
         },
@@ -12,6 +13,7 @@
       },
       {
         "input": {
+          "text-calldata": "26121ff0",
           "calldata": "26121ff0",
           "value": "0"
         },

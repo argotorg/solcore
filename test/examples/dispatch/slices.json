@@ -5,6 +5,7 @@
     "tests": [
       {
         "input": {
+          "text-calldata": "constructor()",
           "calldata": "",
           "value": "0"
         },

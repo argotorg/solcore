@@ -96,6 +96,15 @@ int main(int argc, char** argv)
 			message.sender = EVMHost::convertToEVMC(sender);
 			message.value = EVMHost::convertToEVMC(u256(test["input"]["value"].get<std::string>()));
 			auto kind = test["kind"].get<std::string>();
+
+			// Human-readable description of the call, shown when the test fails.
+			std::string const textCalldata = test["input"].value("text-calldata", std::string{});
+			auto reportFailure = [&](std::string const& _reason) {
+				std::cerr << _reason;
+				if (!textCalldata.empty())
+					std::cerr << " (text-calldata: " << textCalldata << ")";
+				std::cerr << std::endl;
+			};
 			if (kind == "constructor")
 			{
 				input = bytecode + input;
@@ -116,7 +125,7 @@ int main(int argc, char** argv)
 			}
 			else
 			{
-				std::cerr << "Unrecognized kind: " << kind << std::endl;
+				reportFailure("Unrecognized kind: " + kind);
 				hasTestFailure = true;
 				resultRecorder.record(filename, "Unrecognized kind of test", kind, R"("constructor" or "call")", 0, 0);
 				continue;
@@ -153,7 +162,7 @@ int main(int argc, char** argv)
 					{
 						if (status)
 						{
-							std::cerr << "Expected creation failure but got success" << std::endl;
+							reportFailure("Expected creation failure but got success");
 							resultRecorder.record(filename, "Expected constructor status failure but got success.", "success", expectedStatus, gasUsed, gasUsedForDeposit);
 							hasTestFailure = true;
 							continue;
@@ -163,7 +172,7 @@ int main(int argc, char** argv)
 					{
 						if (!status)
 						{
-							std::cerr << "Expected creation success but got failure" << std::endl;
+							reportFailure("Expected creation success but got failure");
 							resultRecorder.record(filename, "Expected constructor status success but got failure.", "failure", expectedStatus, gasUsed, gasUsedForDeposit);
 							hasTestFailure = true;
 							continue;
@@ -171,7 +180,7 @@ int main(int argc, char** argv)
 					}
 					else
 					{
-						std::cerr << "Unsupported expectedStatus: " << expectedStatus << std::endl;
+						reportFailure("Unsupported expectedStatus: " + expectedStatus);
 						resultRecorder.record(filename, "Unsupported constructor status expectation.", "failure", expectedStatus, gasUsed, gasUsedForDeposit);
 						hasTestFailure = true;
 						continue;
@@ -181,7 +190,7 @@ int main(int argc, char** argv)
 						auto expectedOutput = test["output"]["returndata"].get<std::string>();
 						if (output != fromHex(expectedOutput))
 						{
-							std::cerr << "Expected " << expectedOutput << " but got " << toHex(output) << std::endl;
+							reportFailure("Expected " + expectedOutput + " but got " + toHex(output));
 							resultRecorder.record(filename, "Expected different constructor output.", toHex(output), expectedOutput, gasUsed, gasUsedForDeposit);
 							hasTestFailure = true;
 							continue;
@@ -193,7 +202,7 @@ int main(int argc, char** argv)
 				{
 					if (!status)
 					{
-						std::cerr << "Creation failed." << std::endl;
+						reportFailure("Creation failed.");
 						resultRecorder.record(filename, "Creation failed for constructor test.", "", "", gasUsed, gasUsedForDeposit);
 						hasTestFailure = true;
 						continue;
@@ -208,7 +217,7 @@ int main(int argc, char** argv)
 				{
 					if (status)
 					{
-						std::cerr << "Expected failure but got success" << std::endl;
+						reportFailure("Expected failure but got success");
 						resultRecorder.record(filename, "Expected test status failure but got success.", "success", expectedStatus, gasUsed, gasUsedForDeposit);
 						hasTestFailure = true;
 						continue;
@@ -218,7 +227,7 @@ int main(int argc, char** argv)
 				{
 					if (!status)
 					{
-						std::cerr << "Expected success but got failure" << std::endl;
+						reportFailure("Expected success but got failure");
 						resultRecorder.record(filename, "Expected test status success but got failure.", "failure", expectedStatus, gasUsed, gasUsedForDeposit);
 						hasTestFailure = true;
 						continue;
@@ -226,7 +235,7 @@ int main(int argc, char** argv)
 				}
 				else
 				{
-					std::cerr << "Unsupported expectedStatus: " << expectedStatus << std::endl;
+					reportFailure("Unsupported expectedStatus: " + expectedStatus);
 					resultRecorder.record(filename, "Unsupported status expectation.", "failure", expectedStatus, gasUsed, gasUsedForDeposit);
 					hasTestFailure = true;
 					continue;
@@ -234,7 +243,7 @@ int main(int argc, char** argv)
 				auto expectedOutput = test["output"]["returndata"].get<std::string>();
 				if (output != fromHex(expectedOutput))
 				{
-					std::cerr << "Expected " << expectedOutput << " but got " << toHex(output) << std::endl;
+					reportFailure("Expected " + expectedOutput + " but got " + toHex(output));
 					resultRecorder.record(filename, "Expected different output.", toHex(output), expectedOutput, gasUsed, gasUsedForDeposit);
 					hasTestFailure = true;
 					continue;
