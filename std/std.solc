@@ -444,19 +444,19 @@ function bandWord(x: word, y: word) -> word {
 }
 
 // Bitwise OR
-function borWord(x: word) -> word {
+function borWord(x: word, y: word) -> word {
     let res: word;
     assembly {
-        res := or(x)
+        res := or(x, y)
     }
     return res;
 }
 
 // Bitwise XOR
-function bxorWord(x: word) -> word {
+function bxorWord(x: word, y: word) -> word {
     let res: word;
     assembly {
-        res := xor(x)
+        res := xor(x, y)
     }
     return res;
 }
