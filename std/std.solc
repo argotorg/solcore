@@ -1,3 +1,5 @@
+import std.opcodes.{mstore, mload, sstore, sload};
+
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
 
@@ -85,8 +87,6 @@ export {
   memberAccessBase,
   memory(*),
   memory_ref,
-  mload,
-  mstore,
   ne,
   not,
   or,
@@ -805,20 +805,9 @@ data mapping(member, index) = mapping(word) ;
 
 // --- Low-level memory ops
 
-function mload(a:word) -> word {
-  let res: word;
-  assembly { res := mload(a) }
-  return res;
-}
-
-function mstore(a:word, v:word) -> () {
-  assembly { mstore(a,v) }
-}
-
 function strlen(s:memory(string)) -> word {
   match s { | memory(a) => return mload(a); }
 }
-
 
 // --- Memory Utilities ---
 

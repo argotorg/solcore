@@ -1,5 +1,6 @@
 import std.{*};
 import std.dispatch.{*};
+import std.opcodes.{mstore};
 
 contract C {
     public function dirty_allocate() -> memory(bytes) {
