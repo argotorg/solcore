@@ -600,9 +600,51 @@ publicItemDeclsForModuleSeen graph seen modulePath = do
 
 publicTopDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
 publicTopDeclsForModule graph modulePath = do
+  publicDecls <- publicTopDeclsForModuleRaw graph modulePath
+  typeAliasMap <- moduleImportTypeAliasMap graph modulePath
+  pure (map (renameTopDeclTypeRefs typeAliasMap) publicDecls)
+
+publicTopDeclsForModuleRaw :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
+publicTopDeclsForModuleRaw graph modulePath = do
   publicDecls <- publicItemDeclsForModule graph modulePath
   unit <- lookupLoadedModule graph modulePath
   pure (publicDecls ++ [decl | decl@(TInstDef _) <- topDeclsFrom unit])
+
+moduleImportTypeAliasMap :: ModuleGraph -> Mod.ModuleId -> Either String (Map Name Name)
+moduleImportTypeAliasMap graph modulePath = do
+  unit <- lookupLoadedModule graph modulePath
+  let importPairs = moduleImportPairsFor graph modulePath unit
+  collidingTypeNames <- collidingImportedTypeNames graph importPairs
+  Map.fromList . concat <$> mapM (importTypeAliasPairs collidingTypeNames) importPairs
+  where
+    importTypeAliasPairs collidingTypeNames (imp, targetModule) = do
+      publicDecls <- publicTopDeclsForModuleRaw graph targetModule
+      bindings <- typeBindingsForImport imp publicDecls
+      let canonicalName = canonicalImportedTypeName collidingTypeNames (importQualifier imp) publicDecls
+      pure [(localName, canonicalName sourceName) | (sourceName, localName) <- bindings]
+
+    typeBindingsForImport (ImportOnly _ selector) publicDecls = do
+      let availableTypeNames = uniqueNames (concatMap topDeclImportedTypeNames publicDecls)
+      bindings <- selectedImportBindingsFromAvailable availableTypeNames selector
+      pure [(sourceName, localName) | (sourceName, localName) <- bindings, sourceName `elem` availableTypeNames]
+    typeBindingsForImport (ImportModule importPath) publicDecls =
+      pure
+        [ (typeName, QualName qualifier (show typeName))
+          | typeName <- uniqueNames (concatMap topDeclImportedTypeNames publicDecls),
+            qualifier <- importModuleQualifiers importPath
+        ]
+    typeBindingsForImport (ImportAlias _ qualifier) publicDecls =
+      pure
+        [ (typeName, QualName qualifier (show typeName))
+          | typeName <- uniqueNames (concatMap topDeclImportedTypeNames publicDecls)
+        ]
+
+    canonicalImportedTypeName collidingTypeNames qualifier publicDecls typeName =
+      Map.findWithDefault typeName typeName (importedTypeRenameMap collidingTypeNames qualifier publicDecls)
+
+    importQualifier (ImportOnly moduleName _) = Mod.modulePathName moduleName
+    importQualifier (ImportModule moduleName) = Mod.modulePathName moduleName
+    importQualifier (ImportAlias _ qualifier) = qualifier
 
 publicModuleInterface :: ModuleGraph -> Mod.ModuleId -> Either String ModulePublicInterface
 publicModuleInterface graph modulePath =
@@ -1652,17 +1694,29 @@ typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
       publicDecls <- publicTopDeclsForModule graph modulePath
       supportDecls <- typeCheckSupportNonFunctionDecls graph modulePath
       bindings <- selectedImportBindingsFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+      let selectedTypeRenameMap = selectedImportTypeRenameMap publicDecls bindings
       let selectedPublicDecls = mapMaybe (selectImportedTopDecl bindings) publicDecls
           typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
           selectedFunctionDecls =
-            [ TFunDef (stubFunDefBody (renameFunDefTypeRefs typeRenameMap fd))
+            [ TFunDef $
+                stubFunDefBody $
+                  renameFunDefTypeRefs selectedTypeRenameMap $
+                    renameFunDefTypeRefs typeRenameMap fd
               | TFunDef fd <- selectedPublicDecls
+            ]
+          selectedNonFunctionDecls =
+            [ stubTopDeclBody $
+                renameTopDeclTypeRefs selectedTypeRenameMap $
+                  renameTopDeclTypeRefs typeRenameMap decl
+              | decl <- selectedPublicDecls,
+                not (isFunctionTopDecl decl)
             ]
           supportNonFunctionDecls =
             map
               (stubTopDeclBody . renameTopDeclTypeRefs typeRenameMap)
               supportDecls
-      pure (selectedFunctionDecls ++ shadowImportedDecls selectedFunctionDecls supportNonFunctionDecls)
+          selectedDecls = selectedFunctionDecls ++ selectedNonFunctionDecls
+      pure (selectedDecls ++ shadowImportedDecls selectedDecls supportNonFunctionDecls)
 
     moduleImportDecls qualifier targetModule = do
       moduleBindings <- publicModuleBindingsForModule graph targetModule
@@ -1786,6 +1840,18 @@ importedTypeRenameMap collidingTypeNames qualifier ds =
         n `Set.member` collidingTypeNames
     ]
 
+selectedImportTypeRenameMap :: [TopDecl] -> [(Name, Name)] -> Map Name Name
+selectedImportTypeRenameMap publicDecls bindings =
+  Map.fromList
+    [ (sourceName, localName)
+      | (sourceName, localName) <- bindings,
+        sourceName /= localName,
+        sourceName `elem` publicTypeNames
+    ]
+  where
+    publicTypeNames =
+      uniqueNames (concatMap topDeclImportedTypeNames publicDecls)
+
 topDeclImportedTypeNames :: TopDecl -> [Name]
 topDeclImportedTypeNames (TDataDef (DataTy n _ _)) = [n]
 topDeclImportedTypeNames (TSym (TySym n _ _)) = [n]
@@ -1811,7 +1877,7 @@ collidingImportedTypeNames graph importPairs = do
       Right []
 
     topDeclTypeNamesForModule modulePath = do
-      publicDecls <- publicTopDeclsForModule graph modulePath
+      publicDecls <- publicTopDeclsForModuleRaw graph modulePath
       pure (concatMap topDeclImportedTypeNames publicDecls)
 
 isFunctionTopDecl :: TopDecl -> Bool
