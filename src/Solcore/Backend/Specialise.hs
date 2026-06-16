@@ -1,13 +1,14 @@
 module Solcore.Backend.Specialise
   ( -- core API
-    specialiseCompUnit
-  , typeOfTcExp
+    specialiseCompUnit,
+    typeOfTcExp,
     -- testing API
-  , TVSubst (..)
-  , emptyTVSubst
-  , (|->)
-  , runResolveMPTCTest
-  ) where
+    TVSubst (..),
+    emptyTVSubst,
+    (|->),
+    runResolveMPTCTest,
+  )
+where
 
 -- \* Specialisation
 -- Create specialised versions of polymorphic and overloaded functions.
