@@ -191,14 +191,10 @@ fi
 
 # Execute compilation pipeline
 echo "Compiling to hull..."
-if ! cabal run sol-core -- -f "$file"; then
+mkdir -p "$build_dir"
+if ! cabal run sol-core -- -f "$file" -o "$build_dir"; then
     echo "Error: sol-core compilation failed"
     exit 1
-fi
-
-mkdir -p build
-if ls ./output*.hull 1> /dev/null 2>&1; then
-    mv ./output*.hull build/
 fi
 
 echo "Generating Yul..."
