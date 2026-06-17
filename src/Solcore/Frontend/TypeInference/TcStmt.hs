@@ -792,8 +792,12 @@ elabFunDef isPub vs sig bdy (Forall _ (pinf :=> tinf)) ann@(Forall _ (pann :=> t
 findPhantomPredBindings :: [Pred] -> [Pred] -> TcM [(MetaTv, Ty)]
 findPhantomPredBindings pann pinf = do
   s0 <- getSubst
+  -- Apply s0 to BOTH sides so that fresh metas in pinf (e.g. "$94361") are
+  -- substituted to their source-named counterparts (e.g. Meta "a"), matching the
+  -- source-named metas in pann.  Phantom extras (e.g. "$94362" for "rep") remain
+  -- free in s0 and stay as fresh metas in pinf', making them identifiable.
   let pann' = apply s0 (everywhere (mkT toMeta) pann)
-      pinf' = everywhere (mkT toMeta) pinf
+      pinf' = apply s0 (everywhere (mkT toMeta) pinf)
       dom_s0 = map fst (unSubst s0)
   forM_ (phantomMatchingPreds dom_s0 pann' pinf') $ \(pa, pi_) ->
     catchError (unifyPredExtras pa pi_) (\_ -> return ())

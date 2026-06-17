@@ -1,0 +1,36 @@
+pragma no-patterson-condition ABIAttribs, ABIEncode, ABIDecode;
+pragma no-bounded-variable-condition ABIAttribs, ABIEncode, ABIDecode;
+pragma no-coverage-condition ABIDecode;
+
+export {
+    encode,
+    decode
+};
+
+import std.{*};
+import std.Generic.{*};
+
+// Top-level generic ABI encode.
+// Serialises any 'a' that has a Generic(rep) instance.
+// ABIEncode for 'a' is resolved via the default instance bridge in std.Generic.
+forall a rep . a:Generic(rep), rep:ABIAttribs, rep:ABIEncode =>
+function encode(x : a, basePtr : word, offset : word, tail : word) -> word {
+    let xrep : rep = Generic.from(x);
+    return ABIEncode.encodeInto(xrep, basePtr, offset, tail);
+}
+
+// Top-level generic ABI decode.
+// Deserialises any 'a' whose representation type 'rep' is decodable.
+// The caller supplies ABIDecoder(a, reader); the function wraps it in
+// ABIDecoder(rep, reader), decodes the rep, then converts via Generic.to.
+forall a rep reader .
+    a : Generic(rep),
+    reader : WordReader,
+    ABIDecoder(rep, reader) : ABIDecode(rep) =>
+function decode(ptr : ABIDecoder(a, reader), headOffset : word) -> a {
+    match ptr {
+    | ABIDecoder(rdr) =>
+        let rep_ptr : ABIDecoder(rep, reader) = ABIDecoder(rdr);
+        return Generic.to(ABIDecode.decode(rep_ptr, headOffset));
+    }
+}

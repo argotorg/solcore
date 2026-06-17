@@ -562,7 +562,7 @@ tryResolveMPTC clsName mainTy' extras = do
   forM_ clsInsts $ \inst ->
     case inst of
       -- Only class constraint heads are relevant; skip equality constraints.
-      (_ :=> InCls _ instMainTy instExtras) ->
+      (q :=> InCls _ instMainTy instExtras) ->
         -- Match the instance's main type (pattern) against the call-site's
         -- concrete main type (target).  specmatch binds the instance's
         -- quantified type variables (TVar) as needed and never touches
@@ -571,8 +571,30 @@ tryResolveMPTC clsName mainTy' extras = do
         case specmatch instMainTy mainTy' of
           Left _ -> return ()
           Right phi -> do
+            -- anfInstance normalises instances with extras by replacing each
+            -- concrete extra with a fresh variable bound by an equality pred:
+            --   C t [e1,e2]  =>  [v1:~:e1, v2:~:e2] :=> C t [v1,v2]
+            -- After matching instMainTy against mainTy' we must also resolve
+            -- these equality constraints (with phi applied) to recover the
+            -- actual concrete extras; otherwise instExtras still contains
+            -- the fresh TyVars and looks abstract.
+            let appliedQ = map (applytv phi) q
+                eqSubst =
+                  TVSubst
+                    [ (v, t)
+                    | (TyVar v :~: t) <- appliedQ,
+                      null (freetv t)
+                    ]
+                    <> TVSubst
+                      [ (v, t)
+                      | (t :~: TyVar v) <- appliedQ,
+                        null (freetv t)
+                      ]
+                phi' = phi <> eqSubst
+            debug ["  tryResolve match: phi=", pretty phi, " q=", show q, " appliedQ=", show appliedQ, " eqSubst=", pretty eqSubst, " phi'=", pretty phi', " instExtras=", show instExtras]
             -- Substitute to obtain the concrete extra types for this instance.
-            let concreteExtras = map (applytv phi) instExtras
+            let concreteExtras = map (applytv phi') instExtras
+            debug ["  concreteExtras=", show concreteExtras, " allClosed=", show (all (null . freetv) concreteExtras)]
             -- If any extra is still abstract, the instance is parametric in a
             -- way that mainTy' alone does not determine; skip to stay sound.
             when (all (null . freetv) concreteExtras) $
@@ -584,7 +606,9 @@ tryResolveMPTC clsName mainTy' extras = do
                 -- earlier authoritative binding is preserved.
                 case specmatch extra concrete of
                   Left _ -> return ()
-                  Right phi2 -> extSpSubst phi2
+                  Right phi2 -> do
+                    debug ["  extSpSubst phi2=", pretty phi2]
+                    extSpSubst phi2
       _ -> return ()
 
 {-

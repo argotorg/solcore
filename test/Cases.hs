@@ -117,7 +117,9 @@ dispatches =
       runDispatchTest "Revert.solc",
       runDispatchTest "hashes.solc",
       runDispatchTest "empty.solc",
-      runDispatchTest "empty_no_constructor.solc"
+      runDispatchTest "empty_no_constructor.solc",
+      runDispatchTest "generic_product.solc",
+      runDispatchTest "generic_sum.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -517,8 +519,7 @@ cases =
       runTestExpectingFailure "catenable-err.solc" caseFolder,
       runTestForFile "pars.solc" caseFolder,
       runTestForFile "bug-rep-name-capture.solc" caseFolder,
-      runTestForFile "bug-import-default-inst-shadow.solc" caseFolder,
-      runTestForFile "abigeneric.solc" caseFolder
+      runTestForFile "bug-import-default-inst-shadow.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
