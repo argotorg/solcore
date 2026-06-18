@@ -9,16 +9,18 @@ import Solcore.Frontend.Syntax
 deriveGenericTopDecls :: [DataTy] -> [TopDecl Name] -> Either String [TopDecl Name]
 deriveGenericTopDecls localData allDecls
   | not (genericClassVisible allDecls) = Right allDecls
-  | (n : _) <- conflicts               = Left (conflictError n)
-  | otherwise                          = Right (allDecls ++ newInsts)
+  | (n : _) <- conflicts = Left (conflictError n)
+  | otherwise = Right (allDecls ++ newInsts)
   where
-    excluded  = pragmaExcluded allDecls
-    hasInst   = existingGenericTypes allDecls
-    conflicts = [ dataName dt
-                | dt <- localData
-                , dataName dt `elem` hasInst
-                , dataName dt `notElem` excluded ]
-    newInsts  =
+    excluded = pragmaExcluded allDecls
+    hasInst = existingGenericTypes allDecls
+    conflicts =
+      [ dataName dt
+        | dt <- localData,
+          dataName dt `elem` hasInst,
+          dataName dt `notElem` excluded
+      ]
+    newInsts =
       [ TInstDef (buildInstance dt)
         | dt <- localData,
           not (null (dataConstrs dt)),
@@ -26,9 +28,13 @@ deriveGenericTopDecls localData allDecls
           dataName dt `notElem` hasInst
       ]
     conflictError n =
-      "type '" ++ show n ++ "' has a manual Generic instance " ++
-      "but no 'pragma no-generic-instance-for " ++ show n ++ "'; " ++
-      "add the pragma to suppress auto-derivation"
+      "type '"
+        ++ show n
+        ++ "' has a manual Generic instance "
+        ++ "but no 'pragma no-generic-instance-for "
+        ++ show n
+        ++ "'; "
+        ++ "add the pragma to suppress auto-derivation"
 
 genericClassVisible :: [TopDecl Name] -> Bool
 genericClassVisible = any isGenericClass
