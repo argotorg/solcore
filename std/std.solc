@@ -1,5 +1,3 @@
-import std.opcodes.{mstore, mload, sstore, sload};
-
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
 
@@ -87,6 +85,8 @@ export {
   memberAccessBase,
   memory(*),
   memory_ref,
+  mload,
+  mstore,
   ne,
   not,
   or,
@@ -105,6 +105,10 @@ export {
   sha256,
   slice(*),
   slice_,
+  sloadViaWord,
+  sload_,
+  sstore_,
+  sstoreViaWord,
   storage(*),
   storeBytesFromMemory,
   string,
@@ -801,9 +805,20 @@ data mapping(member, index) = mapping(word) ;
 
 // --- Low-level memory ops
 
+function mload(a:word) -> word {
+  let res: word;
+  assembly { res := mload(a) }
+  return res;
+}
+
+function mstore(a:word, v:word) -> () {
+  assembly { mstore(a,v) }
+}
+
 function strlen(s:memory(string)) -> word {
   match s { | memory(a) => return mload(a); }
 }
+
 
 // --- Memory Utilities ---
 
@@ -1525,6 +1540,20 @@ pragma no-coverage-condition MemberAccessProxy, LVA, RVA, CStructField, Assign;
 pragma no-bounded-variable-condition LVA, RVA;
 // -- storage
 
+function sload_(x:word) -> word {
+    let res: word;
+    assembly {
+       res := sload(x)
+    }
+    return res;
+  }
+
+function sstore_(a:word, v:word) -> () {
+    assembly { sstore(a,v) }
+}
+
+
+
 forall self.
 class self:StorageSize {
     function size(x:Proxy(self)) -> word;
@@ -1594,6 +1623,7 @@ forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
     }
 }
 
+
 forall self.
 class self:StorageType {
     function load(ptr:word) -> self;
@@ -1602,10 +1632,33 @@ class self:StorageType {
 
 instance word:StorageType {
     function load(ptr:word) -> word {
-        return sload(ptr);
+        let r:word;
+        assembly {
+            r := sload(ptr)
+        }
+        return r;
     }
     function store(ptr:word, value:word) -> () {
-        sstore(ptr, value);
+        assembly {
+            sstore(ptr, value)
+        }
+    }
+}
+
+forall a. a:Typedef(word) =>
+function sloadViaWord(ptr:word) -> a {
+    let r:word;
+    assembly {
+	r := sload(ptr)
+    }
+    return Typedef.abs(r);
+}
+
+forall a. a:Typedef(word) =>
+function sstoreViaWord(ptr:word, value:a) -> () {
+    let w: word = Typedef.rep(value);
+    assembly {
+	sstore(ptr, w)
     }
 }
 

@@ -1,6 +1,5 @@
 import std.{*};
 import std.dispatch.{*};
-import std.opcodes.{mstore};
 
 // Build a memory(bytes) holding the three-byte string "abc".
 function abcBytes() -> memory(bytes) {
