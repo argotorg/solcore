@@ -304,7 +304,10 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
 
   -- Generic instance derivation (only for locally-defined data types)
   let localData = [dt | ModuleInferenceDecl ModuleLocalDecl (TDataDef dt) <- dispatched]
-      derived = mapModuleInferenceTopDecls (deriveGenericTopDecls localData) dispatched
+  derived <-
+    ExceptT $
+      runExceptT $
+        traverseModuleInferenceTopDecls (ExceptT . pure . deriveGenericTopDecls localData) dispatched
 
   liftIO $ when verbose $ do
     putStrLn "> Generic instance derivation:"
