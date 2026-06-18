@@ -183,7 +183,7 @@ pragmaP :: Parser Pragma
 pragmaP = do
   keyword "pragma"
   ty <- pragmaTypeP
-  st <- pragmaStatusP
+  st <- pragmaStatusForP ty
   _ <- semicolon
   return (Pragma ty st)
 
@@ -195,9 +195,17 @@ pragmaTypeP =
     <$ keyword "no-patterson-condition"
       <|> NoBoundVariableCondition
     <$ keyword "no-bounded-variable-condition"
+      <|> NoGenericInstanceFor
+    <$ keyword "no-generic-instance-for"
 
-pragmaStatusP :: Parser PragmaStatus
-pragmaStatusP = option DisableAll $ do
+-- | Parse the pragma status.  For 'NoGenericInstanceFor' a non-empty list of
+-- type names is mandatory; for all other pragma types the list is optional and
+-- defaults to 'DisableAll'.
+pragmaStatusForP :: PragmaType -> Parser PragmaStatus
+pragmaStatusForP NoGenericInstanceFor = do
+  names <- (Name <$> identifier) `sepBy1` comma
+  return (DisableFor (NE.fromList names))
+pragmaStatusForP _ = option DisableAll $ do
   names <- (Name <$> identifier) `sepBy1` comma
   return (DisableFor (NE.fromList names))
 

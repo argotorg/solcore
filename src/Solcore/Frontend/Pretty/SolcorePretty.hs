@@ -132,6 +132,7 @@ instance Pretty PragmaType where
   ppr NoBoundVariableCondition = text "no-bounded-variable-condition"
   ppr NoCoverageCondition = text "no-coverage-condition"
   ppr NoPattersonCondition = text "no-patterson-condition"
+  ppr NoGenericInstanceFor = text "no-generic-instance-for"
 
 instance Pretty PragmaStatus where
   ppr (DisableFor ns) =

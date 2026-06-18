@@ -300,6 +300,8 @@ cases =
       runTestExpectingFailure "default-inst.solc" caseFolder,
       runTestExpectingFailure "default-instance-missing.solc" caseFolder,
       runTestExpectingFailure "default-instance-weak.solc" caseFolder,
+      runTestForFile "derive-generic-sum.solc" caseFolder,
+      runTestForFile "derive-generic-excluded.solc" caseFolder,
       runTestForFile "dot-expression-constructor.solc" caseFolder,
       runTestForFile "dot-expression-call-arg-context.solc" caseFolder,
       runTestForFile "dot-expression-match-return.solc" caseFolder,

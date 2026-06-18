@@ -18,6 +18,7 @@ import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
+import Solcore.Desugarer.DeriveGeneric (deriveGenericTopDecls)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
@@ -301,12 +302,20 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Dispatch:"
     putStrLn $ prettyInferenceDecls dispatched
 
+  -- Generic instance derivation (only for locally-defined data types)
+  let localData = [dt | ModuleInferenceDecl ModuleLocalDecl (TDataDef dt) <- dispatched]
+      derived = mapModuleInferenceTopDecls (deriveGenericTopDecls localData) dispatched
+
+  liftIO $ when verbose $ do
+    putStrLn "> Generic instance derivation:"
+    putStrLn $ prettyInferenceDecls derived
+
   -- SCC analysis
   connected <-
     ExceptT $
       timeItNamed "SCC           " $
         runExceptT $
-          traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) dispatched
+          traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) derived
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"

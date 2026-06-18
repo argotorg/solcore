@@ -327,6 +327,8 @@ instance Resolve S.PragmaType where
     pure NoPattersonCondition
   resolve S.NoBoundVariableCondition =
     pure NoBoundVariableCondition
+  resolve S.NoGenericInstanceFor =
+    pure NoGenericInstanceFor
 
 instance Resolve S.PragmaStatus where
   type Result S.PragmaStatus = PragmaStatus
