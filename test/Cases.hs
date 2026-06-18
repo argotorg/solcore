@@ -117,7 +117,9 @@ dispatches =
       runDispatchTest "Revert.solc",
       runDispatchTest "hashes.solc",
       runDispatchTest "empty.solc",
-      runDispatchTest "empty_no_constructor.solc"
+      runDispatchTest "empty_no_constructor.solc",
+      runDispatchTest "generic_product.solc",
+      runDispatchTest "generic_sum.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -256,7 +258,8 @@ cases :: TestTree
 cases =
   testGroup
     "Files for folder cases"
-    [ runTestForFile "Ackermann.solc" caseFolder,
+    [ runTestForFile "abigeneric.solc" caseFolder,
+      runTestForFile "Ackermann.solc" caseFolder,
       runTestForFile "Add1.solc" caseFolder,
       runTestExpectingFailure "add-moritz.solc" caseFolder,
       runTestForFile "another-subst.solc" caseFolder,
@@ -314,6 +317,8 @@ cases =
       runTestExpectingFailure "DupFun.solc" caseFolder,
       runTestForFile "EitherModule.solc" caseFolder,
       runTestForFile "empty-asm.solc" caseFolder,
+      runTestForFile "encoder.solc" caseFolder,
+      runTestForFile "encoder1.solc" caseFolder,
       runTestExpectingFailure "Enum.solc" caseFolder,
       runTestExpectingFailure "Eq.solc" caseFolder,
       runTestForFile "EqQual.solc" caseFolder,
@@ -366,6 +371,14 @@ cases =
       runTestForFile "Memory2.solc" caseFolder,
       runTestExpectingFailure "missing-instance.solc" caseFolder,
       runTestForFile "modifier.solc" caseFolder,
+      runTestForFile "mptc-both-templates.solc" caseFolder,
+      runTestForFile "mptc-chain-phantom.solc" caseFolder,
+      runTestForFile "mptc-guard-extras-concrete.solc" caseFolder,
+      runTestForFile "mptc-multi-instance.solc" caseFolder,
+      runTestForFile "mptc-nop-mainty-free.solc" caseFolder,
+      runTestForFile "mptc-partial-instance.solc" caseFolder,
+      runTestForFile "mptc-template-a-only.solc" caseFolder,
+      runTestForFile "mptc-template-b-only.solc" caseFolder,
       runTestForFile "monomorphic-require.solc" caseFolder,
       runTestForFile "morefun.solc" caseFolder,
       runTestForFile "Mutuals.solc" caseFolder,
@@ -429,6 +442,7 @@ cases =
       runTestExpectingFailure "synonym-long-cycle.solc" caseFolder,
       runTestExpectingFailure "synonym-arity-mismatch.solc" caseFolder,
       runTestExpectingFailure "signature.solc" caseFolder,
+      runTestExpectingFailure "spec-fail-ungrounded.solc" caseFolder,
       runTestExpectingFailure "SillyReturn.solc" caseFolder,
       runTestExpectingFailure "SimpleInvoke.solc" caseFolder,
       runTestExpectingFailure "string-const.solc" caseFolder,
@@ -512,7 +526,8 @@ cases =
       runTestExpectingFailure "class-return-type-miss.solc" caseFolder,
       runTestExpectingFailure "catenable-err.solc" caseFolder,
       runTestForFile "pars.solc" caseFolder,
-      runTestForFile "bug-rep-name-capture.solc" caseFolder
+      runTestForFile "bug-rep-name-capture.solc" caseFolder,
+      runTestForFile "bug-import-default-inst-shadow.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

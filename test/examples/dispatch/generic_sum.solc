@@ -1,0 +1,71 @@
+import std.{*};
+import std.dispatch.{*};
+import std.Generic.{*};
+import std.ABIGeneric.{*};
+
+pragma no-patterson-condition;
+pragma no-coverage-condition;
+pragma no-bounded-variable-condition;
+
+data Option(a) = None | Some(a);
+
+// Generic instance using the Sum ADT from std.Generic as the representation.
+// Sum((), uint256): Sum.Inl(()) = None, Sum.Inr(v) = Some(v)
+instance Option(uint256) : Generic(Sum((), uint256)) {
+    function from(x : Option(uint256)) -> Sum((), uint256) {
+        match x {
+        | Option.None    => return Sum.Inl(());
+        | Option.Some(v) => return Sum.Inr(v);
+        }
+    }
+    function to(r : Sum((), uint256)) -> Option(uint256) {
+        match r {
+        | Sum.Inl(_) => return Option.None;
+        | Sum.Inr(v) => return Option.Some(v);
+        }
+    }
+}
+
+contract GenericSum {
+    constructor() {}
+
+    // Calls encode; returns the tag word at offset 0.
+    // None -> 0 (Sum.Inl)
+    public function encodeNone() -> uint256 {
+        let x : Option(uint256) = Option.None;
+        let buf = allocate_zeroed_memory(64);
+        encode(x, buf, 0, 64);
+        return Typedef.abs(mload(buf));
+    }
+
+    // Calls encode; returns the tag word at offset 0.
+    // Some(n) -> 1 (Sum.Inr)
+    public function encodeSomeTag(n : uint256) -> uint256 {
+        let x : Option(uint256) = Option.Some(n);
+        let buf = allocate_zeroed_memory(64);
+        encode(x, buf, 0, 64);
+        return Typedef.abs(mload(buf));
+    }
+
+    // Calls encode; returns the payload word at offset 32.
+    public function encodePayload(n : uint256) -> uint256 {
+        let x : Option(uint256) = Option.Some(n);
+        let buf = allocate_zeroed_memory(64);
+        encode(x, buf, 0, 64);
+        return Typedef.abs(mload(buf + 32));
+    }
+
+    // Writes [tag][value] into memory, calls decode, returns the value or 0.
+    public function decodeAndGet(tag : uint256, value : uint256) -> uint256 {
+        let buf = allocate_zeroed_memory(64);
+        mstore(buf, Typedef.rep(tag));
+        mstore(buf + 32, Typedef.rep(value));
+        let rdr : MemoryWordReader = MemoryWordReader(buf);
+        let dec : ABIDecoder(Option(uint256), MemoryWordReader) = ABIDecoder(rdr);
+        let opt : Option(uint256) = decode(dec, 0);
+        match opt {
+        | Option.None    => return uint256(0);
+        | Option.Some(v) => return v;
+        }
+    }
+}

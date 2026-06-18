@@ -1,0 +1,127 @@
+pragma no-patterson-condition ABIAttribs, ABIEncode, ABIDecode;
+pragma no-bounded-variable-condition ABIAttribs, ABIEncode, ABIDecode;
+pragma no-coverage-condition ABIDecode;
+
+export {
+    encode,
+    decode
+};
+
+import std.{*};
+import std.Generic.{*};
+
+function maxWord(a : word, b : word) -> word {
+    match gtWord(a, b) {
+    | true  => return a;
+    | false => return b;
+    }
+}
+
+// ─── ABIAttribs for the primitive sum(f, g) type ─────────────────────────
+// headSize = 32 (tag word) + max(headSize(f), headSize(g))
+
+forall f g . f:ABIAttribs, g:ABIAttribs =>
+instance sum(f, g) : ABIAttribs {
+    function headSize(ty : Proxy(sum(f, g))) -> word {
+        let pf : Proxy(f);
+        let pg : Proxy(g);
+        return 32 + maxWord(ABIAttribs.headSize(pf), ABIAttribs.headSize(pg));
+    }
+    function isStatic(ty : Proxy(sum(f, g))) -> bool {
+        let pf : Proxy(f);
+        let pg : Proxy(g);
+        return and(ABIAttribs.isStatic(pf), ABIAttribs.isStatic(pg));
+    }
+}
+
+// ─── ABIEncode for sum(f, g) ─────────────────────────────────────────────
+// Wire layout (static sums only):
+//   [offset +  0 .. offset + 31] : tag word (0 = inl, 1 = inr)
+//   [offset + 32 ..             ] : encoded branch payload
+
+forall f g . f:ABIAttribs, f:ABIEncode, g:ABIAttribs, g:ABIEncode =>
+instance sum(f, g) : ABIEncode {
+    function encodeInto(x : sum(f, g), basePtr : word, offset : word, tail : word) -> word {
+        match x {
+        | inl(v) =>
+            mstore(basePtr + offset, 0);
+            return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+        | inr(v) =>
+            mstore(basePtr + offset, 1);
+            return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+        }
+    }
+}
+
+// ─── ABIDecode for sum(f, g) ─────────────────────────────────────────────
+// Reads the tag word at headOffset; dispatches to f or g decoder at headOffset + 32.
+
+forall f g reader .
+    reader : WordReader,
+    f : ABIAttribs,
+    ABIDecoder(f, reader) : ABIDecode(f),
+    ABIDecoder(g, reader) : ABIDecode(g) =>
+instance ABIDecoder(sum(f, g), reader) : ABIDecode(sum(f, g)) {
+    function decode(ptr : ABIDecoder(sum(f, g), reader), headOffset : word) -> sum(f, g) {
+        match ptr {
+        | ABIDecoder(rdr) =>
+            let tag = WordReader.read(WordReader.advance(rdr, headOffset));
+            match tag {
+            | 0 =>
+                let dec_f : ABIDecoder(f, reader) = ABIDecoder(rdr);
+                return inl(ABIDecode.decode(dec_f, headOffset + 32));
+            | _ =>
+                let dec_g : ABIDecoder(g, reader) = ABIDecoder(rdr);
+                return inr(ABIDecode.decode(dec_g, headOffset + 32));
+            }
+        }
+    }
+}
+
+// ─── Default bridges: ABIAttribs and ABIEncode via Generic ───────────────
+// Any type 'a' with Generic(rep) inherits its ABI layout from rep.
+
+forall a rep . a:Generic(rep), rep:ABIAttribs =>
+default instance a : ABIAttribs {
+    function headSize(ty : Proxy(a)) -> word {
+        let prx : Proxy(rep);
+        return ABIAttribs.headSize(prx);
+    }
+    function isStatic(ty : Proxy(a)) -> bool {
+        let prx : Proxy(rep);
+        return ABIAttribs.isStatic(prx);
+    }
+}
+
+forall a rep . a:Generic(rep), rep:ABIAttribs, rep:ABIEncode =>
+default instance a : ABIEncode {
+    function encodeInto(x : a, basePtr : word, offset : word, tail : word) -> word {
+        return ABIEncode.encodeInto(Generic.from(x), basePtr, offset, tail);
+    }
+}
+
+// ─── Top-level generic encode function ───────────────────────────────────
+// Serialises any 'a' that has a Generic(rep) instance.
+// Only the Generic instance is required — ABIEncode is resolved via the bridge.
+
+forall a rep . a:Generic(rep), rep:ABIAttribs, rep:ABIEncode =>
+function encode(x : a, basePtr : word, offset : word, tail : word) -> word {
+    let xrep : rep = Generic.from(x);
+    return ABIEncode.encodeInto(xrep, basePtr, offset, tail);
+}
+
+// ─── Top-level generic decode function ───────────────────────────────────
+// Deserialises any 'a' that has a Generic(rep) instance.
+// Only the Generic instance is required — ABIDecode is resolved via the bridge.
+
+forall a rep reader .
+    a : Generic(rep),
+    reader : WordReader,
+    ABIDecoder(rep, reader) : ABIDecode(rep) =>
+function decode(ptr : ABIDecoder(a, reader), headOffset : word) -> a {
+    match ptr {
+    | ABIDecoder(rdr) =>
+        let rep_ptr : ABIDecoder(rep, reader) = ABIDecoder(rdr);
+        return Generic.to(ABIDecode.decode(rep_ptr, headOffset));
+    }
+}

@@ -1,0 +1,52 @@
+import std.{*};
+import std.dispatch.{*};
+import std.Generic.{*};
+import std.ABIGeneric.{*};
+
+pragma no-patterson-condition;
+pragma no-coverage-condition;
+pragma no-bounded-variable-condition;
+
+data Point = Point(uint256, uint256);
+
+// Only requirement: Generic instance using the primitive pair type.
+// rep = (uint256, uint256) — primitive Solcore pair
+instance Point : Generic((uint256, uint256)) {
+    function from(p : Point) -> (uint256, uint256) {
+        match p { | Point(x, y) => return (x, y); }
+    }
+    function to(t : (uint256, uint256)) -> Point {
+        match t { | (x, y) => return Point(x, y); }
+    }
+}
+
+contract GenericProduct {
+    constructor() {}
+
+    // Calls encode; returns word at offset 0 (the x field).
+    public function encodeX(a : uint256, b : uint256) -> uint256 {
+        let p : Point = Point(a, b);
+        let buf = allocate_zeroed_memory(64);
+        encode(p, buf, 0, 64);
+        return Typedef.abs(mload(buf));
+    }
+
+    // Calls encode; returns word at offset 32 (the y field).
+    public function encodeY(a : uint256, b : uint256) -> uint256 {
+        let p : Point = Point(a, b);
+        let buf = allocate_zeroed_memory(64);
+        encode(p, buf, 0, 64);
+        return Typedef.abs(mload(buf + 32));
+    }
+
+    // Writes [a][b] into memory, calls decode, returns the x field.
+    public function decodeX(a : uint256, b : uint256) -> uint256 {
+        let buf = allocate_zeroed_memory(64);
+        mstore(buf, Typedef.rep(a));
+        mstore(buf + 32, Typedef.rep(b));
+        let rdr : MemoryWordReader = MemoryWordReader(buf);
+        let dec : ABIDecoder(Point, MemoryWordReader) = ABIDecoder(rdr);
+        let p : Point = decode(dec, 0);
+        match p { | Point(x, _) => return x; }
+    }
+}
