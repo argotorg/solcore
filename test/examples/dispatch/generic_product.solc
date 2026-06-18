@@ -1,5 +1,6 @@
 import std.{*};
 import std.dispatch.{*};
+import std.opcodes.{mload, mstore};
 import std.Generic.{*};
 import std.ABIGeneric.{*};
 
