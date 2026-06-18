@@ -49,7 +49,7 @@ hasAnyBind name s = any (\(v, _) -> v == TVar (Name name)) (unTVSubst s)
 specialiseTests :: TestTree
 specialiseTests =
   testGroup
-    "Specialise.resolveMPTCsFromPreds"
+    "Specialise.resolveMPTCFromPreds"
     [ testBind,
       testTwoBothPhantomExtras,
       testNopAFreeMain,
