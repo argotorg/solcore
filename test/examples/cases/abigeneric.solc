@@ -8,6 +8,7 @@ export {
 };
 
 import std.{*};
+import std.opcodes.{mstore};
 import std.Generic.{*};
 
 function maxWord(a : word, b : word) -> word {
