@@ -5,7 +5,7 @@
     "tests": [
       {
         "input": {
-          "text-calldata": "constructor()",
+          "comment": "constructor()",
           "calldata": "",
           "value": "0"
         },
@@ -13,7 +13,7 @@
       },
       {
         "input": {
-          "text-calldata": "getOwner()(address) - should return deployer address",
+          "comment": "getOwner()(address) - should return deployer address",
           "calldata": "893d20e8",
           "value": "0"
         },
@@ -25,7 +25,7 @@
       },
       {
         "input": {
-          "text-calldata": "changeOwner(address) to 0xdead - should succeed from owner",
+          "comment": "changeOwner(address) to 0xdead - should succeed from owner",
           "calldata": "a6f9dae1000000000000000000000000000000000000000000000000000000000000dead",
           "value": "0"
         },
@@ -37,7 +37,7 @@
       },
       {
         "input": {
-          "text-calldata": "getOwner()(address) - should now return 0xdead",
+          "comment": "getOwner()(address) - should now return 0xdead",
           "calldata": "893d20e8",
           "value": "0"
         },
@@ -49,7 +49,7 @@
       },
       {
         "input": {
-          "text-calldata": "changeOwner(address) - should fail, caller is no longer owner",
+          "comment": "changeOwner(address) - should fail, caller is no longer owner",
           "calldata": "a6f9dae1000000000000000000000000000000000000000000000000000000000000beef",
           "value": "0"
         },

@@ -5,7 +5,7 @@
     "tests": [
       {
         "input": {
-          "text-calldata": "payable constructor accepts value",
+          "comment": "payable constructor accepts value",
           "calldata": "",
           "value": "42"
         },
@@ -16,7 +16,7 @@
       },
       {
         "input": {
-          "text-calldata": "balance()(uint256) -- value sent at deploy was retained",
+          "comment": "balance()(uint256) -- value sent at deploy was retained",
           "calldata": "b69ef8a8",
           "value": "0"
         },

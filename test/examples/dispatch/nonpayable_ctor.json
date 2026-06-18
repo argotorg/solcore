@@ -5,7 +5,7 @@
     "tests": [
       {
         "input": {
-          "text-calldata": "non-payable constructor rejects incoming value",
+          "comment": "non-payable constructor rejects incoming value",
           "calldata": "",
           "value": "42"
         },

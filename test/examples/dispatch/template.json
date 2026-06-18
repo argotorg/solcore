@@ -5,7 +5,7 @@
     "tests": [
       {
         "input": {
-          "text-calldata": "constructor()",
+          "comment": "constructor()",
           "calldata": "",
           "value": "0"
         },
@@ -13,7 +13,7 @@
       },
       {
         "input": {
-          "text-calldata": "26121ff0",
+          "comment": "26121ff0",
           "calldata": "26121ff0",
           "value": "0"
         },

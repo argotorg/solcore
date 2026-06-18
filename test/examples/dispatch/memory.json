@@ -5,7 +5,7 @@
     "tests": [
       {
         "input": {
-          "text-calldata": "constructor()",
+          "comment": "constructor()",
           "calldata": "",
           "value": "0"
         },
@@ -13,7 +13,7 @@
       },
       {
         "input": {
-          "text-calldata": "dirty_allocate() -> (bytes)",
+          "comment": "dirty_allocate() -> (bytes)",
           "calldata": "9abc6cd9",
           "value": "0"
         },
@@ -25,7 +25,7 @@
       },
       {
         "input": {
-          "text-calldata": "clear_allocate() -> (bytes)",
+          "comment": "clear_allocate() -> (bytes)",
           "calldata": "a33a0cf7",
           "value": "0"
         },

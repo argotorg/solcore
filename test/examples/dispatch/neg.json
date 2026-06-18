@@ -5,7 +5,7 @@
     "tests": [
       {
         "input": {
-          "text-calldata": "constructor()",
+          "comment": "constructor()",
           "calldata": "",
           "value": "0"
         },
@@ -13,7 +13,7 @@
       },
       {
         "input": {
-          "text-calldata": "negPair()",
+          "comment": "negPair()",
           "calldata": "ce61a134",
           "value": "0"
         },

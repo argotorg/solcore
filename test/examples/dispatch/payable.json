@@ -5,7 +5,7 @@
     "tests": [
       {
         "input": {
-          "text-calldata": "non-payable constructor accepts zero value",
+          "comment": "non-payable constructor accepts zero value",
           "calldata": "",
           "value": "0"
         },
@@ -16,7 +16,7 @@
       },
       {
         "input": {
-	    "text-calldata": "deposit()(uint256)",
+	    "comment": "deposit()(uint256)",
           "calldata": "d0e30db0",
           "value": "42"
         },
@@ -28,7 +28,7 @@
       },
       {
         "input": {
-	    "text-calldata": "deposit()(uint256)",
+	    "comment": "deposit()(uint256)",
           "calldata": "d0e30db0",
           "value": "0"
         },
@@ -40,7 +40,7 @@
       },
       {
         "input": {
-	    "text-calldata": "balance()(uint256)",
+	    "comment": "balance()(uint256)",
           "calldata": "b69ef8a8",
           "value": "0"
         },
@@ -52,7 +52,7 @@
       },
       {
         "input": {
-	    "text-calldata": "balance()(uint256)",
+	    "comment": "balance()(uint256)",
           "calldata": "b69ef8a8",
           "value": "42"
         },
@@ -64,7 +64,7 @@
       },
       {
         "input": {
-	    "text-calldata": "fallback with value",
+	    "comment": "fallback with value",
           "calldata": "deadc0de",
           "value": "42"
         },
@@ -76,7 +76,7 @@
       },
       {
         "input": {
-	    "text-calldata": "fallback without value should fail",
+	    "comment": "fallback without value should fail",
           "calldata": "deadc0de",
           "value": "0"
         },
@@ -88,7 +88,7 @@
       },
       {
         "input": {
-	    "text-calldata": "balance()(uint256)",
+	    "comment": "balance()(uint256)",
           "calldata": "b69ef8a8",
           "value": "0"
         },

@@ -5,7 +5,7 @@
     "tests": [
       {
         "input": {
-          "text-calldata": "constructor()",
+          "comment": "constructor()",
           "calldata": "",
           "value": "0"
         },
@@ -13,7 +13,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_b32_b32(bytes32,bytes32) -> (bytes)",
+          "comment": "concat_b32_b32(bytes32,bytes32) -> (bytes)",
           "calldata": "edfc70fd11111111111111111111111111111111111111111111111111111111111111112222222222222222222222222222222222222222222222222222222222222222",
           "value": "0"
         },
@@ -25,7 +25,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_b32_bytes(bytes32,bytes) -> (bytes) with 0xaa..aa and 0xdeadbeef",
+          "comment": "concat_b32_bytes(bytes32,bytes) -> (bytes) with 0xaa..aa and 0xdeadbeef",
           "calldata": "6a43d85aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
           "value": "0"
         },
@@ -37,7 +37,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_b32_bytes(bytes32,bytes) -> (bytes) with 0xaa..aa and 33 bytes of 0xdd",
+          "comment": "concat_b32_bytes(bytes32,bytes) -> (bytes) with 0xaa..aa and 33 bytes of 0xdd",
           "calldata": "6a43d85aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000021dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd00000000000000000000000000000000000000000000000000000000000000",
           "value": "0"
         },
@@ -49,7 +49,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_b32_bytes(bytes32,bytes) -> (bytes) with 0xaa..aa and 64 bytes of 0xee",
+          "comment": "concat_b32_bytes(bytes32,bytes) -> (bytes) with 0xaa..aa and 64 bytes of 0xee",
           "calldata": "6a43d85aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000040eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
           "value": "0"
         },
@@ -61,7 +61,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_bytes_bytes(bytes,bytes) -> (bytes) with 0xdeadbeef and 0xcafebabe",
+          "comment": "concat_bytes_bytes(bytes,bytes) -> (bytes) with 0xdeadbeef and 0xcafebabe",
           "calldata": "3ccf57db000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000004deadbeef000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004cafebabe00000000000000000000000000000000000000000000000000000000",
           "value": "0"
         },
@@ -73,7 +73,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_bytes_bytes(bytes,bytes) -> (bytes) with 33 bytes of 0x11 and 64 bytes of 0x22",
+          "comment": "concat_bytes_bytes(bytes,bytes) -> (bytes) with 33 bytes of 0x11 and 64 bytes of 0x22",
           "calldata": "3ccf57db000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000002111111111111111111111111111111111111111111111111111111111111111111100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004022222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222",
           "value": "0"
         },
@@ -85,7 +85,7 @@
       },
       {
         "input": {
-          "text-calldata": "to_bytes_b32(bytes32) -> (bytes) with 0xcc..cc",
+          "comment": "to_bytes_b32(bytes32) -> (bytes) with 0xcc..cc",
           "calldata": "1b08db15cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
           "value": "0"
         },
@@ -97,7 +97,7 @@
       },
       {
         "input": {
-          "text-calldata": "to_bytes_bytes(bytes) -> (bytes) with 0xdeadbeef",
+          "comment": "to_bytes_bytes(bytes) -> (bytes) with 0xdeadbeef",
           "calldata": "6be8c51100000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
           "value": "0"
         },
@@ -109,7 +109,7 @@
       },
       {
         "input": {
-          "text-calldata": "to_bytes_bytes(bytes) -> (bytes) with 32 bytes of 0x33",
+          "comment": "to_bytes_bytes(bytes) -> (bytes) with 32 bytes of 0x33",
           "calldata": "6be8c511000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000203333333333333333333333333333333333333333333333333333333333333333",
           "value": "0"
         },
@@ -121,7 +121,7 @@
       },
       {
         "input": {
-          "text-calldata": "to_bytes_bytes(bytes) -> (bytes) with 33 bytes of 0x11",
+          "comment": "to_bytes_bytes(bytes) -> (bytes) with 33 bytes of 0x11",
           "calldata": "6be8c5110000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002111111111111111111111111111111111111111111111111111111111111111111100000000000000000000000000000000000000000000000000000000000000",
           "value": "0"
         },
@@ -133,7 +133,7 @@
       },
       {
         "input": {
-          "text-calldata": "to_bytes_bytes(bytes) -> (bytes) with 64 bytes of 0x22",
+          "comment": "to_bytes_bytes(bytes) -> (bytes) with 64 bytes of 0x22",
           "calldata": "6be8c5110000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000004022222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222",
           "value": "0"
         },
@@ -145,7 +145,7 @@
       },
       {
         "input": {
-          "text-calldata": "empty_area(uint256) -> (bytes) with n=8",
+          "comment": "empty_area(uint256) -> (bytes) with n=8",
           "calldata": "5defe8dc0000000000000000000000000000000000000000000000000000000000000008",
           "value": "0"
         },
@@ -157,7 +157,7 @@
       },
       {
         "input": {
-          "text-calldata": "empty_area(uint256) -> (bytes) with n=0",
+          "comment": "empty_area(uint256) -> (bytes) with n=0",
           "calldata": "5defe8dc0000000000000000000000000000000000000000000000000000000000000000",
           "value": "0"
         },
@@ -169,7 +169,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_b32_empty(bytes32,uint256) -> (bytes) with 0xbb..bb and n=16",
+          "comment": "concat_b32_empty(bytes32,uint256) -> (bytes) with 0xbb..bb and n=16",
           "calldata": "002a099abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000010",
           "value": "0"
         },
@@ -181,7 +181,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_b32_empty(bytes32,uint256) -> (bytes) with 0xbb..bb and n=1",
+          "comment": "concat_b32_empty(bytes32,uint256) -> (bytes) with 0xbb..bb and n=1",
           "calldata": "002a099abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000001",
           "value": "0"
         },
@@ -193,7 +193,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_b32_empty(bytes32,uint256) -> (bytes) with 0xbb..bb and n=32",
+          "comment": "concat_b32_empty(bytes32,uint256) -> (bytes) with 0xbb..bb and n=32",
           "calldata": "002a099abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000020",
           "value": "0"
         },
@@ -205,7 +205,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_b32_empty(bytes32,uint256) -> (bytes) with 0xbb..bb and n=33",
+          "comment": "concat_b32_empty(bytes32,uint256) -> (bytes) with 0xbb..bb and n=33",
           "calldata": "002a099abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000021",
           "value": "0"
         },
@@ -217,7 +217,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_b32_empty(bytes32,uint256) -> (bytes) with 0xbb..bb and n=64",
+          "comment": "concat_b32_empty(bytes32,uint256) -> (bytes) with 0xbb..bb and n=64",
           "calldata": "002a099abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000040",
           "value": "0"
         },
@@ -229,7 +229,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_nested_b32(bytes32,bytes32,bytes32) -> (bytes) with 0x11.., 0x22.., 0x33..",
+          "comment": "concat_nested_b32(bytes32,bytes32,bytes32) -> (bytes) with 0x11.., 0x22.., 0x33..",
           "calldata": "fb6e9fc2111111111111111111111111111111111111111111111111111111111111111122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333",
           "value": "0"
         },
@@ -241,7 +241,7 @@
       },
       {
         "input": {
-          "text-calldata": "concat_nested_empty(bytes32,uint256,bytes32) -> (bytes) with 0x11.., n=8, 0x33..",
+          "comment": "concat_nested_empty(bytes32,uint256,bytes32) -> (bytes) with 0x11.., n=8, 0x33..",
           "calldata": "dc7e53eb111111111111111111111111111111111111111111111111111111111111111100000000000000000000000000000000000000000000000000000000000000083333333333333333333333333333333333333333333333333333333333333333",
           "value": "0"
         },

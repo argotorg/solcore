@@ -5,7 +5,7 @@
     "tests": [
       {
         "input": {
-          "text-calldata": "constructor()",
+          "comment": "constructor()",
           "calldata": "",
           "value": "0"
         },
@@ -13,7 +13,7 @@
       },
       {
         "input": {
-          "text-calldata": "keccak()(bytes32)",
+          "comment": "keccak()(bytes32)",
           "calldata": "775dec49",
           "value": "0"
         },
@@ -25,7 +25,7 @@
       },
       {
         "input": {
-          "text-calldata": "sha()(bytes32)",
+          "comment": "sha()(bytes32)",
           "calldata": "65707d6f",
           "value": "0"
         },
@@ -37,7 +37,7 @@
       },
       {
         "input": {
-          "text-calldata": "ripemd()(bytes32)",
+          "comment": "ripemd()(bytes32)",
           "calldata": "a1e754ea",
           "value": "0"
         },

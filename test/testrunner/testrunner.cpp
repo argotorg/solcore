@@ -98,11 +98,11 @@ int main(int argc, char** argv)
 			auto kind = test["kind"].get<std::string>();
 
 			// Human-readable description of the call, shown when the test fails.
-			std::string const textCalldata = test["input"].value("text-calldata", std::string{});
+			std::string const comment = test["input"].value("comment", std::string{});
 			auto reportFailure = [&](std::string const& _reason) {
 				std::cerr << _reason;
-				if (!textCalldata.empty())
-					std::cerr << " (text-calldata: " << textCalldata << ")";
+				if (!comment.empty())
+					std::cerr << " (comment: " << comment << ")";
 				std::cerr << std::endl;
 			};
 			if (kind == "constructor")
