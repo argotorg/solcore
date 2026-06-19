@@ -142,7 +142,8 @@ forall payability args rets fn
     match fb {
       | Fallback(ppayability, pargs, prets, fn) =>
         MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(payability));
-        do_exec(pargs, prets, fn);
+        // Fallback has no inputs/outputs, so we skip checks here.
+        fn(());
     }
   }
 }
