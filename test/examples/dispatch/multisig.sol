@@ -86,8 +86,7 @@ contract Multisig {
     // TODO: Stored by hash -- or should it be by nonce?
     operations: mapping(uint256, Operation); // TODO: use array()
     operations_count: uint256;
-    //votes: mapping(uint256, address, Vote);
-    votes: mapping(bytes32, Vote);
+    votes: mapping(uint256, mapping(address, Vote));
     status: mapping(uint256, OperationStatus);
     nonce: uint256; // Strict ordering. Next executable operation.
     approved_signed_hashes: mapping(bytes32, bool);
@@ -137,11 +136,8 @@ contract Multisig {
 
         match status[nonce_] {
             | .Approvals(count) =>
-                let vote_key = keccak256_(concat(nonce_, signer));
-                require(votes[vote_key] == Vote.None, Error(0x12345678)); // SignerAlreadyApproved()
-                votes[vote_key] = Vote.Approved;
-//                require(votes[nonce_][signer] == Vote.None, Error(0x12345678)); // SignerAlreadyApproved()
-//                votes[nonce_][signer] = Vote.Approved;
+                require(votes[nonce_][signer] == Vote.None, Error(0x12345678)); // SignerAlreadyApproved()
+                votes[nonce_][signer] = Vote.Approved;
                 status[nonce_] = OperationStatus.Approvals(count + 1);
             | _ => revertWithError(Error(0x12345678)); // UnexpectedStatus()
         }
@@ -228,12 +224,11 @@ contract Multisig {
         match status[nonce_] {
             | .Approvals(count) =>
                 status[nonce_] = OperationStatus.Rejected;
-                let votes_key = keccak256_(concat(nonce_, signer));
-                votes[votes_key] = Vote.Rejected;
-//                votes[nonce_][signer] = Vote.Rejected;
+                votes[nonce_][signer] = Vote.Rejected;
             | _ => revertWithError(Error(0x12345678)); // UnexpectedStatus()
         }
-*/    }
+*/
+    }
 
     // Anyone can execute, as long as the status is correct.
     // Payload is optional, used in case UnstoredCall is encountered.
