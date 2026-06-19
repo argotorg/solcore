@@ -38,7 +38,7 @@
 
 import std.{*};
 import std.dispatch.{*};
-import std.opcodes.{address as address_, calldatasize, mload};
+import std.opcodes.{address as address_, calldatasize, mload, caller};
 import std.ABIGeneric.{*};
 
 data Operation =
@@ -341,14 +341,6 @@ contract Multisig {
         }
         revertWithError(Error(0x12345678)); // NotASigner()
     }
-}
-
-function caller() -> address {
-    let ret;
-    assembly {
-        ret := caller()
-    }
-    return address(ret);
 }
 
 function check_contract_hash(contract__: address, hash: bytes32) -> bool {
