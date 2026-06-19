@@ -129,7 +129,7 @@ forall name args rets fn
   }
 }
 
-// If fn matches the provided args/ret types, then we can execute any fallback
+// If fn does matches the provided args/ret types, then we can execute any fallback
 forall payability args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
@@ -160,7 +160,7 @@ forall args rets fn
     assembly {
       cdsz := calldatasize()
     }
-    if ((cdsz - 4) < hdsz) {
+    if (cdsz < (hdsz + 4)) {
       let ABIInputTruncated = Error(0x08638556);
       revertWithError(ABIInputTruncated);
     }
