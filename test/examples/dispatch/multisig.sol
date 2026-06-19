@@ -220,14 +220,12 @@ contract Multisig {
 
         // TODO: emit log
 
-/*
         match status[nonce_] {
-            | .Approvals(count) =>
+            | OperationStatus.Approvals(count) =>
                 status[nonce_] = OperationStatus.Rejected;
                 votes[nonce_][signer] = Vote.Rejected;
             | _ => revertWithError(Error(0x12345678)); // UnexpectedStatus()
         }
-*/
     }
 
     // Anyone can execute, as long as the status is correct.
