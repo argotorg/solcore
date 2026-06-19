@@ -649,7 +649,7 @@ tiFunDef d@(FunDef isPub sig@(Signature _ _ n args _ _ _) bd) =
     -- elaborating the type signature
     sig' <- elabSignature [] sig sch
     (fd', sch') <- withCurrentSubst (FunDef isPub sig' bd1, sch)
-    pure (markIntegerComptime fd', sch')
+    pure (markComptimeOnly fd', sch')
 
 ambiguityCheck :: Scheme -> TcM Bool
 ambiguityCheck (Forall _ (ps :=> ty)) =
@@ -740,7 +740,7 @@ tcFunDef incl vs' qs d@(FunDef isPub sig@(Signature vs ps n _ _ _ _) _)
       let ann' = if changeTy then inf else ann
       fdt <- elabFunDef isPub vs' sig1 bd1' inf ann' `wrapError` d
       (fd', ann'') <- withCurrentSubst (fdt, ann')
-      pure (markIntegerComptime fd', ann'')
+      pure (markComptimeOnly fd', ann'')
   | otherwise = tiFunDef d
 
 -- elaborating function definition
@@ -1416,14 +1416,16 @@ hnfEntails qs ps =
       remaining <- toHnfs depth needSolving
       pure (filter (not . skip) remaining)
 
--- Any let binding whose type is `integer` is implicitly comptime: integer is a
--- comptime-only type and cannot survive to hull emission regardless of whether
--- the user wrote `comptime`.  Applied after the full substitution is known.
-markIntegerComptime :: FunDef Id -> FunDef Id
-markIntegerComptime = everywhere (mkT fix)
+-- Any let binding whose type is comptime-only (`integer` or `string`) is
+-- implicitly comptime: such types have no runtime representation and cannot
+-- survive to hull emission regardless of whether the user wrote `comptime`.
+-- Applied after the full substitution is known.
+markComptimeOnly :: FunDef Id -> FunDef Id
+markComptimeOnly = everywhere (mkT fix)
   where
-    fix (Let _ i mt me) | idType i == Prim.integer = Let True i mt me
+    fix (Let _ i mt me) | isComptimeOnly (idType i) = Let True i mt me
     fix s = s
+    isComptimeOnly t = t == Prim.integer || t == Prim.string
 
 -- type generalization
 

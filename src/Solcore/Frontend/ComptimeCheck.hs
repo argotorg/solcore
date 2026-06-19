@@ -26,6 +26,7 @@ import Solcore.Frontend.Syntax.Name (Name)
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty (Ty (..))
 import Solcore.Frontend.TypeInference.Id (Id (..))
+import Solcore.Primitives.Primitives qualified as Prim
 
 -----------------------------------------------------------------------
 -- Comptime-ness classification
@@ -87,15 +88,16 @@ checkContrDecl _ _ = Right ()
 -----------------------------------------------------------------------
 
 checkFunDef :: SigTable -> String -> FunDef Id -> Either String ()
-checkFunDef st ctx fd = checkBody st (sigRetComptime sig) ctx initEnv (funDefBody fd)
+checkFunDef st ctx fd = checkBody st (effRetComptime sig) ctx initEnv (funDefBody fd)
   where
     sig = funSignature fd
     -- For '-> comptime' functions, treat ALL params as CTComptime when checking
     -- the body: this verifies "given comptime args, does the body produce comptime?"
-    -- For other functions, non-comptime params are CTRuntime.
+    -- A param of comptime-only type (string/integer) is also implicitly comptime,
+    -- since such values exist only at compile time.  Other params are CTRuntime.
     initEnv =
       Map.fromList
-        [ (idName (paramName p), if paramComptime p || sigRetComptime sig then CTComptime else CTRuntime)
+        [ (idName (paramName p), if paramComptime p || effRetComptime sig || isComptimeOnlyTy (paramTy p) then CTComptime else CTRuntime)
           | p <- sigParams sig
         ]
 
@@ -211,8 +213,20 @@ checkCallSite st env f args =
           ++ "' of '"
           ++ show (idName f)
           ++ "'"
-    paramTy (Typed _ _ ty) = ty
-    paramTy (Untyped _ _) = TyCon (error "paramTy: Untyped") []
+
+-- | A value of comptime-only type (string / integer) exists only at compile
+-- time, so it is always comptime regardless of annotation.
+isComptimeOnlyTy :: Ty -> Bool
+isComptimeOnlyTy t = t == Prim.string || t == Prim.integer
+
+-- | A function is effectively '-> comptime' if it is annotated so, or if its
+-- return type is comptime-only.
+effRetComptime :: Signature Id -> Bool
+effRetComptime sig = sigRetComptime sig || maybe False isComptimeOnlyTy (sigReturn sig)
+
+paramTy :: Param Id -> Ty
+paramTy (Typed _ _ ty) = ty
+paramTy (Untyped _ _) = TyCon (error "paramTy: Untyped") []
 
 -- | True if the type contains any type variable or meta variable.
 hasTypeVar :: Ty -> Bool
@@ -252,7 +266,7 @@ classifyCall st env f args =
   case Map.lookup (idName f) st of
     Nothing -> CTDeferred
     Just sig
-      | sigRetComptime sig && allArgsComptime ->
+      | effRetComptime sig && allArgsComptime ->
           CTComptime
       | otherwise ->
           CTDeferred

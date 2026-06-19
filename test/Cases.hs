@@ -56,13 +56,18 @@ comptime =
       runTestForFile "integer-lit-cond.solc" comptimeFolder,
       runTestForFile "integer-lit-pat.solc" comptimeFolder,
       runTestForFile "match_labels.solc" comptimeFolder,
+      -- comptime string materialization into memory(string)
+      runTestForFile "string-lit-mem.solc" comptimeFolder,
+      runTestForFile "string-concat-mem.solc" comptimeFolder,
+      runTestForFile "string-lit-dedup.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
       runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_runtime_arg.solc" comptimeFolder,
       runTestExpectingFailure "ct_let_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_asm_ret.solc" comptimeFolder,
-      runTestExpectingFailure "ct_overloaded_bad.solc" comptimeFolder
+      runTestExpectingFailure "ct_overloaded_bad.solc" comptimeFolder,
+      runTestExpectingFailure "string-mem-runtime-fail.solc" comptimeFolder
     ]
   where
     comptimeFolder = "./test/examples/comptime"

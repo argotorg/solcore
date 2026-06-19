@@ -84,7 +84,7 @@ checkEntails qs rs =
     noDesugarCalls <- getNoDesugarCalls
     info [">>! Trying to check the entailment of:", pretty rs, " from:", pretty qs]
     let qs' = nub $ concatMap (bySuperM ctable) qs
-        skip q = isInvoke q || (noDesugarCalls && isInt q)
+        skip q = isInvoke q || (noDesugarCalls && (isInt q || isStr q))
         unsolved q = not (isHnf q) && not (skip q) && not (entail ctable itable qs' q)
     -- compiler generated instances can introduce invokable constraints
     -- not present in the called function. Since type inference can produce
@@ -102,6 +102,10 @@ isInvoke _ = False
 isInt :: Pred -> Bool
 isInt (InCls n _ _) = n == Name "Int"
 isInt _ = False
+
+isStr :: Pred -> Bool
+isStr (InCls n _ _) = n == Name "Str"
+isStr _ = False
 
 simplify :: [Pred] -> [Pred] -> TcM [Pred]
 simplify qs ps =

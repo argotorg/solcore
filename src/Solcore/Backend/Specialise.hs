@@ -399,6 +399,16 @@ specCall (Id (QualName (Name "Int") "fromInteger") ty) args _ = do
   if resultTy == word
     then pure (Id (Name "wordFromInteger") (Prim.integer :-> word), args')
     else pure (Id (QualName (Name "Int") "fromInteger") (Prim.integer :-> resultTy), args')
+-- Str.fromString coercion: resolve based on result type.
+-- string -> memory(string) becomes memStringFromLit (lowered per-literal by EmitHull)
+-- string -> string         is identity (folded by MastEval)
+specCall (Id (QualName (Name "Str") "fromString") ty) args _ = do
+  args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+  s <- getSpSubst
+  let resultTy = snd (splitTy (applytv s ty))
+  if resultTy == Prim.memString
+    then pure (Id Prim.memStringFromLitName (Prim.string :-> Prim.memString), args')
+    else pure (Id (QualName (Name "Str") "fromString") (Prim.string :-> resultTy), args')
 specCall i args _ty
   | idName i `elem` comptimeBuiltins = do
       args' <- mapM (\a -> specExp a (typeOfTcExp a)) args

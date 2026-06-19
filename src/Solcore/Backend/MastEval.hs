@@ -51,7 +51,7 @@ import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
 import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
-import Solcore.Primitives.Primitives (integerPrimNames)
+import Solcore.Primitives.Primitives (integerPrimNames, memStringFromLitName, stringPrimNames)
 
 -----------------------------------------------------------------------
 -- Data structures
@@ -460,6 +460,7 @@ evalPrimitive (Name "integerLt") [MastLit (IntLit a), MastLit (IntLit b)] =
 evalPrimitive (Name "integerEq") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (mkBool (a == b))
 evalPrimitive (QualName (Name "Int") "fromInteger") [x] = Just x -- identity for integer -> integer
+evalPrimitive (QualName (Name "Str") "fromString") [x] = Just x -- identity for string -> string
 evalPrimitive _ _ = Nothing
 
 bsToIntegerBE :: BS.ByteString -> Integer
@@ -829,10 +830,11 @@ builtinPureFuns =
       Name "keccakLit"
     ]
       ++ integerPrimNames
+      ++ stringPrimNames
 
 -- Functions with dummy pure bodies that are intercepted by EmitHull
 builtinImpureFuns :: Set.Set Name
-builtinImpureFuns = Set.fromList [Name "revertLit"]
+builtinImpureFuns = Set.fromList [Name "revertLit", memStringFromLitName]
 
 -- | Compute the set of pure functions via fixed-point iteration.
 -- Start from builtinPureFuns; each iteration adds functions whose bodies
