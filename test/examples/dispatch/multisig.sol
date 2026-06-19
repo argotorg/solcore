@@ -99,12 +99,11 @@ contract Multisig {
     }
 
     // Only signers can call this.
-    function queue(op: Operation) -> () {
+    public function queue(op: Operation) -> () {
         require(isSigner(caller()), Error(0x12345678)); // NotASigner()
         perform_queue(op);
     }
 
-    // TODO: mark private
     function perform_queue(op: Operation) -> () {
         // Some basic sanity checks.
         match op {
@@ -123,12 +122,11 @@ contract Multisig {
     }
 
     // Only signers can call this.
-    function approve(nonce_: uint256) -> () {
+    public function approve(nonce_: uint256) -> () {
         require(isSigner(caller()), Error(0x12345678)); // NotASigner()
         perform_approve(nonce_, caller());
     }
 
-    // TODO: mark private
     function perform_approve(nonce_: uint256, signer: address) -> () {
         require(nonce_ < operations_count, Error(0x12345678)); // OperationNotFound()
 
@@ -142,7 +140,6 @@ contract Multisig {
             | _ => revertWithError(Error(0x12345678)); // UnexpectedStatus()
         }
     }
-
 
     function checkSignature(hash: bytes32, signature: Signature) -> address {
         match signature {
@@ -161,7 +158,6 @@ contract Multisig {
         }
     }
 
-    // TODO: mark this private.
     function create_signature_hash(kind: OperationKind, operation: Operation) -> bytes32 {
         // TODO: include domain/chaind information in hash
 //        return keccak256_(concat(abi_encode(kind), abi_encode(operation)));
@@ -170,7 +166,7 @@ contract Multisig {
     }
 
     // Anyone can call this.
-    function queueWithSignature(operation: Operation, signature: Signature) -> () {
+    public function queueWithSignature(operation: Operation, signature: Signature) -> () {
         let hash = create_signature_hash(OperationKind.Queue, operation);
 
         checkSignature(hash, signature);
@@ -179,7 +175,7 @@ contract Multisig {
     }
 
     // Anyone can call this.
-    function approveWithSignature(nonce_: uint256, signature: Signature) -> () {
+    public function approveWithSignature(nonce_: uint256, signature: Signature) -> () {
         let hash = create_signature_hash(OperationKind.Approve, operations[nonce_]);
 
         let signer = checkSignature(hash, signature);
@@ -188,7 +184,7 @@ contract Multisig {
     }
 
     // Anyone can call this.
-    function rejectWithSignature(nonce_: uint256, signature: Signature) -> () {
+    public function rejectWithSignature(nonce_: uint256, signature: Signature) -> () {
         let hash = create_signature_hash(OperationKind.Reject, operations[nonce_]);
 
         let signer = checkSignature(hash, signature);
@@ -197,7 +193,7 @@ contract Multisig {
     }
 
 /*
-    function batch(operations: array(BatchOperation)) -> () {
+    public function batch(operations: array(BatchOperation)) -> () {
         for (let i = 0; i < operations.length; i += 1) {
             match operations[i] {
                 | .Queue(operation, signature) => queueWithSignature(operation, signature);
@@ -209,12 +205,11 @@ contract Multisig {
     }
 */
     // Only signers can call this.
-    function reject(nonce_: uint256) -> () {
+    public function reject(nonce_: uint256) -> () {
         require(isSigner(caller()), Error(0x12345678)); // NotASigner()
         perform_reject(nonce_, caller());
     }
 
-    // TODO: mark private
     function perform_reject(nonce_: uint256, signer: address) -> () {
         require(nonce_ < operations_count, Error(0x12345678)); // OperationNotFound()
 
@@ -230,7 +225,7 @@ contract Multisig {
 
     // Anyone can execute, as long as the status is correct.
     // Payload is optional, used in case UnstoredCall is encountered.
-    function execute(nonce_: uint256, payload: memory(bytes)) -> () {
+    public function execute(nonce_: uint256, payload: memory(bytes)) -> () {
         // Ensure status.
         require(nonce_ < operations_count, Error(0x12345678)); // OperationNotFound()
 
