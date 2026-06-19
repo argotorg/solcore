@@ -348,6 +348,12 @@ abiOutputs (Just t)
   | t == unit = []
   | otherwise = map (mkAbiParam "") (flattenTuple t)
 
+-- | Flatten a right-nested @pair@ chain into its element list. Because every
+-- comma-tuple desugars to right-nested pairs, a flat tuple @(a, b, c)@ and a
+-- tuple whose tail is itself a tuple @(a, (b, c))@ share the same
+-- representation, so this cannot tell them apart and always flattens fully.
+-- That ambiguity is inherent to the language's tuple encoding, not specific to
+-- the ABI.
 flattenTuple :: Ty -> [Ty]
 flattenTuple (TyCon (Name "pair") [a, b]) = a : flattenTuple b
 flattenTuple t = [t]
@@ -369,7 +375,9 @@ abiTypeOf t@(TyCon (Name "pair") [_, _]) =
   ("tuple", map (mkAbiParam "") (flattenTuple t))
 abiTypeOf (TyCon (Name "word") []) = ("uint256", [])
 abiTypeOf (TyCon n _) = (nameStr n, [])
-abiTypeOf t = (show t, [])
+-- Anything else (e.g. a type variable or a function type) has no ABI spelling;
+-- fail loudly rather than emit a malformed `show`-rendered type into the ABI.
+abiTypeOf t = error ("contractAbiJson: cannot represent type in ABI: " <> show t)
 
 abiEntryJson :: AbiEntry -> Json
 abiEntryJson (AbiFunction fname ins outs mut) =
@@ -392,6 +400,9 @@ abiEntryJson (AbiFallback mut) =
       ("type", JStr "fallback")
     ]
 
+-- | @internalType@ and @type@ coincide for the value, @string@ and @bytes@
+-- types we expose today; solc only diverges them for structs, enums and
+-- contract types, which have no surface here yet.
 abiParamJson :: AbiParam -> Json
 abiParamJson p =
   JObj $
