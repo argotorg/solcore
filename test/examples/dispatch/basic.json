@@ -5,6 +5,7 @@
     "tests": [
       {
         "input": {
+          "comment": "constructor()",
           "calldata": "",
           "value": "0"
         },
@@ -12,7 +13,7 @@
       },
       {
         "input": {
-	    "text-calldata": "nothing()",
+          "comment": "nothing()",
           "calldata": "448f30a3",
           "value": "0"
         },
@@ -24,7 +25,7 @@
       },
       {
         "input": {
-	    "text-calldata": "something()(uint256)",
+          "comment": "something()(uint256)",
           "calldata": "a7a0d537",
           "value": "0"
         },
@@ -36,7 +37,7 @@
       },
       {
         "input": {
-	    "text-calldata": "add2(uint256,uint256)(uint256) 2 3",
+          "comment": "add2(uint256,uint256)(uint256) 2 3",
           "calldata": "0x29fcda3300000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003",
           "value": "0"
         },
@@ -48,7 +49,7 @@
       },
       {
         "input": {
-	    "text-calldata": "add3(uint256,uint256,uint256)(uint256) 2 3 4",
+          "comment": "add3(uint256,uint256,uint256)(uint256) 2 3 4",
           "calldata": "0x3faee853000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000004",
           "value": "0"
         },
@@ -60,19 +61,19 @@
       },
       {
         "input": {
-          "text-calldata": "id_bytes32(bytes32) -> (bytes32)",
-          "calldata":"0x10a4b2d4deadbeefcafebabe000000000000000000000000000000000000000000000000",
+          "comment": "id_bytes32(bytes32) -> (bytes32)",
+          "calldata": "0x10a4b2d4deadbeefcafebabe000000000000000000000000000000000000000000000000",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata":"deadbeefcafebabe000000000000000000000000000000000000000000000000",
+          "returndata": "deadbeefcafebabe000000000000000000000000000000000000000000000000",
           "status": "success"
         }
       },
       {
         "input": {
-          "text-calldata": "id_pair()(uint256,uint256)",
+          "comment": "id_pair()(uint256,uint256)",
           "calldata": "5880a1a0",
           "value": "0"
         },
@@ -84,121 +85,121 @@
       },
       {
         "input": {
-          "text-calldata": "id_bytes(bytes) -> (bytes)",
-          "calldata":"0xbb1ec80900000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
+          "comment": "id_bytes(bytes) -> (bytes)",
+          "calldata": "0xbb1ec80900000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata":"00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
           "status": "success"
         }
       },
       {
         "input": {
-          "text-calldata": "id_string(string) -> (string)",
-          "calldata":"0x145ef75500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
+          "comment": "id_string(string) -> (string)",
+          "calldata": "0x145ef75500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata":"00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
           "status": "success"
         }
       },
       {
         "input": {
-          "text-calldata": "id_bytes(bytes) with offset but no length/content (head OK, tail truncated)",
-          "calldata":"0xbb1ec8090000000000000000000000000000000000000000000000000000000000000020",
+          "comment": "id_bytes(bytes) with offset but no length/content (head OK, tail truncated)",
+          "calldata": "0xbb1ec8090000000000000000000000000000000000000000000000000000000000000020",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata":"00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000",
           "status": "success"
         }
       },
       {
         "input": {
-          "text-calldata": "id_string(string) with offset+length=4 but content truncated",
-          "calldata":"0x145ef75500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004",
+          "comment": "id_string(string) with offset+length=4 but content truncated",
+          "calldata": "0x145ef75500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata":"000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000",
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000",
           "status": "success"
         }
       },
       {
         "input": {
-          "text-calldata": "selector too short (same error as missing fallback)",
-          "calldata":"c0de",
+          "comment": "selector too short (same error as missing fallback)",
+          "calldata": "c0de",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata":"4924aef0",
+          "returndata": "4924aef0",
           "status": "failure"
         }
       },
       {
         "input": {
-          "text-calldata": "empty calldata (cdsz == 0) -- the 'plain ETH transfer' shape",
-          "calldata":"",
+          "comment": "empty calldata (cdsz == 0) -- the 'plain ETH transfer' shape",
+          "calldata": "",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata":"4924aef0",
+          "returndata": "4924aef0",
           "status": "failure"
         }
       },
       {
         "input": {
-          "text-calldata": "abi data too short -- using id_string(string)",
-          "calldata":"145ef755",
+          "comment": "abi data too short -- using id_string(string)",
+          "calldata": "145ef755",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata":"08638556",
+          "returndata": "08638556",
           "status": "failure"
         }
       },
       {
         "input": {
-          "text-calldata": "value sent for non-payable function",
-          "calldata":"a7a0d537",
+          "comment": "value sent for non-payable function",
+          "calldata": "a7a0d537",
           "value": "42"
         },
         "kind": "call",
         "output": {
-          "returndata":"b5988ea3",
+          "returndata": "b5988ea3",
           "status": "failure"
         }
       },
       {
         "input": {
-          "text-calldata": "missing fallback",
-          "calldata":"deadc0de",
+          "comment": "missing fallback",
+          "calldata": "deadc0de",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata":"4924aef0",
+          "returndata": "4924aef0",
           "status": "failure"
         }
       },
       {
         "input": {
-          "text-calldata": "non-public hidden() must not be dispatched",
-          "calldata":"aef6d4b1",
+          "comment": "non-public hidden() must not be dispatched",
+          "calldata": "aef6d4b1",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata":"4924aef0",
+          "returndata": "4924aef0",
           "status": "failure"
         }
       }

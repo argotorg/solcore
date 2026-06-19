@@ -5,6 +5,7 @@
     "tests": [
       {
         "input": {
+          "comment": "constructor()",
           "calldata": "",
           "value": "0"
         },
@@ -12,7 +13,7 @@
       },
       {
         "input": {
-          "text-calldata": "recover()(address)",
+          "comment": "recover()(address)",
           "calldata": "ce746024",
           "value": "0"
         },
@@ -24,7 +25,7 @@
       },
       {
         "input": {
-          "text-calldata": "recoverFail()(address)",
+          "comment": "recoverFail()(address)",
           "calldata": "75ebe7ac",
           "value": "0"
         },

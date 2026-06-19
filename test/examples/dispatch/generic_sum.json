@@ -12,7 +12,7 @@
       },
       {
         "input": {
-          "text-calldata": "encodeNone() -> 0",
+          "comment": "encodeNone() -> 0",
           "calldata": "cc5ae1e8",
           "value": "0"
         },
@@ -24,7 +24,7 @@
       },
       {
         "input": {
-          "text-calldata": "encodeSomeTag(42) -> 1",
+          "comment": "encodeSomeTag(42) -> 1",
           "calldata": "0xef5d5c21000000000000000000000000000000000000000000000000000000000000002a",
           "value": "0"
         },
@@ -36,7 +36,7 @@
       },
       {
         "input": {
-          "text-calldata": "encodePayload(99) -> 99",
+          "comment": "encodePayload(99) -> 99",
           "calldata": "0x342242e80000000000000000000000000000000000000000000000000000000000000063",
           "value": "0"
         },
@@ -48,7 +48,7 @@
       },
       {
         "input": {
-          "text-calldata": "decodeAndGet(tag=1, value=77) -> 77",
+          "comment": "decodeAndGet(tag=1, value=77) -> 77",
           "calldata": "0xc222f3f50000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004d",
           "value": "0"
         },
@@ -60,7 +60,7 @@
       },
       {
         "input": {
-          "text-calldata": "decodeAndGet(tag=0, value=0) -> 0 (None)",
+          "comment": "decodeAndGet(tag=0, value=0) -> 0 (None)",
           "calldata": "0xc222f3f500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
           "value": "0"
         },
