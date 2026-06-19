@@ -129,20 +129,21 @@ forall name args rets fn
   }
 }
 
-// If fn matches the provided args/ret types, then we can execute any fallback
-forall payability args rets fn
-  . fn:invokable(args,rets)
-  , args:ABIAttribs
-  , rets:ABIAttribs
-  , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
-  , rets:ABIEncode
+// Fallbacks have no ABI-decoded inputs or outputs, so the instance is
+// specialised to args = rets = () and bypasses the calldata length check
+// and ABI decode/encode entirely.
+forall payability fn
+  . fn:invokable((),())
   , payability:MethodLevelCallvalueCheck
-=> instance Fallback(payability,args,rets,fn):ExecMethod {
-  function exec(fb : Fallback(payability,args,rets,fn)) -> () {
+=> instance Fallback(payability,(),(),fn):ExecMethod {
+  function exec(fb : Fallback(payability,(),(),fn)) -> () {
     match fb {
       | Fallback(ppayability, pargs, prets, fn) =>
         MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(payability));
-        do_exec(pargs, prets, fn);
+        fn(());
+        assembly {
+          stop()
+        }
     }
   }
 }
@@ -160,7 +161,7 @@ forall args rets fn
     assembly {
       cdsz := calldatasize()
     }
-    if ((cdsz - 4) < hdsz) {
+    if (cdsz < (hdsz + 4)) {
       let ABIInputTruncated = Error(0x08638556);
       revertWithError(ABIInputTruncated);
     }
