@@ -28,6 +28,7 @@ import Solcore.Frontend.Syntax
 import Solcore.Primitives.Primitives (string, tupleExpFromList, tupleTyFromList, unit, word)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((<.>), (</>))
+import Text.Printf (printf)
 
 contractDispatchDesugarer :: CompUnit Name -> CompUnit Name
 contractDispatchDesugarer (CompUnit ims topdecls) = CompUnit ims (contractDispatchTopDecls topdecls)
@@ -444,4 +445,13 @@ jsonString s = '"' : concatMap esc s <> "\""
   where
     esc '"' = "\\\""
     esc '\\' = "\\\\"
-    esc c = [c]
+    esc '\n' = "\\n"
+    esc '\r' = "\\r"
+    esc '\t' = "\\t"
+    esc '\b' = "\\b"
+    esc '\f' = "\\f"
+    -- JSON requires the remaining control characters (U+0000–U+001F) to be
+    -- escaped as \uXXXX. Printable characters (incl. UTF-8) pass through.
+    esc c
+      | c < '\x20' = printf "\\u%04x" (fromEnum c)
+      | otherwise = [c]
