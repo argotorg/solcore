@@ -400,39 +400,6 @@ function eip2098_signer(hash: bytes32, r: bytes32, s_: bytes32) -> address {
     return ecrecover(hash, uint256(v), r, bytes32(s));
 }
 
-data ECDSAParity = Even | Odd;
-
-// TODO: use uint8
-function ecrecover_(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address {
-    // MalleableSignatureRejected()
-    require(s <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0, Error(0x25260b20));
-
-    let hash_ = Typedef.rep(hash);
-    let v_ = Typedef.rep(v);
-    let r_ = Typedef.rep(r);
-    let s_ = Typedef.rep(s);
-    let ptr = get_free_memory();
-    let res: word;
-    // We assume the [0, 32] scratch space is reserved.
-    // TODO: add specific error code
-    assembly {
-        mstore(ptr, hash_)
-        mstore(add(ptr, 32), v_)
-        mstore(add(ptr, 64), r_)
-        mstore(add(ptr, 96), s_)
-
-        let ret := staticcall(gas(), 1, ptr, 128, 0, 32)
-        if iszero(ret) {
-            revert(0, 0)
-        }
-        res := mload(0)
-        if iszero(res) {
-            revert(0, 0)
-        }
-    }
-    return address(res);
-}
-
 // Performs a safe transfer of ERC-20 tokens. Makes sure the call succeeded,
 // and if the token follows the standard and returns a boolean, that is also true.
 function safe_erc20_transfer(token: address, to: address, value: uint256) -> () {
