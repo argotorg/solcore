@@ -289,7 +289,6 @@ getTy :: Param a -> Maybe Ty
 getTy (Typed _ _ t) = Just t
 getTy (Untyped {}) = Nothing
 
-
 proxyTy :: Ty -> Ty
 proxyTy t = TyCon "Proxy" [t]
 
