@@ -541,6 +541,18 @@ evmc::Result EVMHost::precompileECRecover(evmc_message const& _message) noexcept
 				fromHex("0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf"),
 				gas_cost
 			}
+		},
+		{
+			fromHex(
+				"aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+				"000000000000000000000000000000000000000000000000000000000000001b"
+				"0000000000000000000000000000000000000000000000000000000000000000"
+				"3523e7d34da277c59af090e44cebddb10b73be11780f028d02cf5ae5f24109fc"
+			),
+			{
+				fromHex(""),
+				gas_cost
+			}
 		}
 	};
 	evmc::Result result = precompileGeneric(_message, inputOutput, true /* _ignoresTrailingInput */);

@@ -21,6 +21,18 @@
           "returndata": "0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf",
           "status": "success"
         }
+      },
+      {
+        "input": {
+          "text-calldata": "recoverFail()(address)",
+          "calldata": "75ebe7ac",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "4fbfae63",
+          "status": "failure"
+        }
       }
     ]
   }
