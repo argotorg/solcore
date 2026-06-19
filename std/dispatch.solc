@@ -141,6 +141,9 @@ forall payability fn
       | Fallback(ppayability, pargs, prets, fn) =>
         MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(payability));
         fn(());
+        assembly {
+          stop()
+        }
     }
   }
 }
