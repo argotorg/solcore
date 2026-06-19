@@ -1348,6 +1348,8 @@ renameStmtTypeRefs renameMap (StmtBAndEq e1 e2) =
   StmtBAndEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameStmtTypeRefs renameMap (StmtBOrEq e1 e2) =
   StmtBOrEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameStmtTypeRefs renameMap (StmtModEq e1 e2) =
+  StmtModEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameStmtTypeRefs renameMap (Let ct n mt me) =
   Let ct n (renameTyTypeRefs renameMap <$> mt) (renameExpTypeRefs renameMap <$> me)
 renameStmtTypeRefs renameMap (StmtExp e) =

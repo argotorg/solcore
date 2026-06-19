@@ -247,6 +247,7 @@ data Stmt
   | StmtXorEq Exp Exp -- e1 ^= e2
   | StmtBAndEq Exp Exp -- e1 &= e2
   | StmtBOrEq Exp Exp -- e1 |= e2
+  | StmtModEq Exp Exp -- e1 %= e2
   | Let Bool Name (Maybe Ty) (Maybe Exp) -- local variable; Bool is True when 'comptime' modifier is present
   | Block Body -- lexical block
   | StmtExp Exp -- expression level statements

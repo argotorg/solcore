@@ -373,6 +373,8 @@ instance Resolve S.Stmt where
     (:=) <$> resolve lhs <*> resolve (S.ExpBAnd lhs rhs)
   resolve (S.StmtBOrEq lhs rhs) =
     (:=) <$> resolve lhs <*> resolve (S.ExpBOr lhs rhs)
+  resolve (S.StmtModEq lhs rhs) =
+    (:=) <$> resolve lhs <*> resolve (S.ExpModulo lhs rhs)
   resolve s@(S.Let c n mt me) =
     do
       mt' <- resolve mt `wrapError` s

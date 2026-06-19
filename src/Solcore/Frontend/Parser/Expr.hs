@@ -53,7 +53,10 @@ opTable =
     ],
     [ InfixL (ExpTimes <$ try (symbol "*")),
       InfixL (ExpDivide <$ try (symbol "/")),
-      InfixL (ExpModulo <$ try (symbol "%"))
+      InfixL
+        ( ExpModulo
+            <$ try (lexeme (char '%' <* notFollowedBy (char '=')))
+        )
     ],
     [ InfixL
         ( ExpPlus
