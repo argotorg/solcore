@@ -753,14 +753,82 @@ elabFunDef ::
   Scheme -> -- function infered type
   Scheme -> -- function annotated type
   TcM (FunDef Id)
-elabFunDef isPub vs sig bdy (Forall _ (_ :=> tinf)) ann@(Forall _ (_ :=> tann)) =
+elabFunDef isPub vs sig bdy (Forall _ (pinf :=> tinf)) ann@(Forall _ (pann :=> tann)) =
   do
     let tinf' = everywhere (mkT toMeta) tinf
         tann' = everywhere (mkT toMeta) tann
     s <- unify tinf' tann'
+    -- Find bindings for phantom predicate variables (those appearing only in
+    -- predicates, not in the function type).  sig2's context uses annotation
+    -- TyVars (e.g. "rep"), but the body uses body TyVars (e.g. "$106550").
+    -- Build a TyVar-level renaming from the delta and patch sig2's context.
+    phantomDelta <- findPhantomPredBindings pann pinf
+    let tvs = [(gvar mv', gen ty) | (mv', ty) <- phantomDelta]
+        substTVPhantom t@(TyVar v) = fromMaybe t (lookup v tvs)
+        substTVPhantom t = t
     sig2 <- elabSignature vs sig ann
-    let fd2 = everywhere (mkT (apply @Ty s)) (FunDef isPub sig2 bdy)
+    let sig2' = everywhere (mkT substTVPhantom) sig2
+    let fd2 = everywhere (mkT (apply @Ty s)) (FunDef isPub sig2' bdy)
     pure (everywhere (mkT gen) fd2)
+
+-- Unify annotation predicates against inferred predicates locally to discover
+-- mappings for phantom type variables (those absent from the function type).
+-- Returns new (annotation_meta -> body_meta) bindings for phantom variables,
+-- then restores the global substitution to its state on entry.
+--
+-- Soundness: it is correct for this function to leave some phantom variables
+-- without a binding.  A variable like rep2 in
+--   forall a b rep1 rep2 . a:Tag(rep1), b:Tag(rep2) => f : a -> b -> rep1
+-- never appears in the function body, so type-checking the body produces no
+-- inferred constraint that mentions it; the returned delta simply says nothing
+-- about rep2.  This is safe because the specialiser resolves phantom variables
+-- later, at each concrete call site: when b is instantiated to TypeB, instance
+-- resolution against TypeB:Tag(TagB) immediately yields rep2 = TagB without
+-- any information from this phase.
+-- What would be unsound is a spurious unification of distinct type variables
+-- (e.g. a ≡ b) produced by mismatched predicate pairing, because that would
+-- corrupt the elaborated function signature and make specialisation impossible.
+-- The guards in phantomMatchingPreds prevent exactly that.
+findPhantomPredBindings :: [Pred] -> [Pred] -> TcM [(MetaTv, Ty)]
+findPhantomPredBindings pann pinf = do
+  s0 <- getSubst
+  -- Apply s0 to BOTH sides so that fresh metas in pinf (e.g. "$94361") are
+  -- substituted to their source-named counterparts (e.g. Meta "a"), matching the
+  -- source-named metas in pann.  Phantom extras (e.g. "$94362" for "rep") remain
+  -- free in s0 and stay as fresh metas in pinf', making them identifiable.
+  let pann' = apply s0 (everywhere (mkT toMeta) pann)
+      pinf' = apply s0 (everywhere (mkT toMeta) pinf)
+      dom_s0 = map fst (unSubst s0)
+  forM_ (phantomMatchingPreds dom_s0 pann' pinf') $ \(pa, pi_) ->
+    catchError (unifyPredExtras pa pi_) (\_ -> return ())
+  s_full <- getSubst
+  let delta = filter (\(v, _) -> v `notElem` dom_s0) (unSubst s_full)
+  putSubst s0 -- restore global subst
+  return delta
+
+-- Match annotation preds against inferred preds, keeping only pairs where the
+-- inferred pred contains at least one meta that is NOT in dom_s0 (i.e. phantom).
+-- This avoids cross-product pairings for predicates with the same class name where
+-- the body metas are already bound (non-phantom).
+phantomMatchingPreds :: [MetaTv] -> [Pred] -> [Pred] -> [(Pred, Pred)]
+phantomMatchingPreds dom_s0 pann pinf =
+  [ (pa, pi_)
+    | pa@(InCls cls mt_a _) <- pann,
+      hasPhantomMeta pa, -- skip annotation preds already fully resolved in s0
+      pi_@(InCls cls' mt_i _) <- pinf,
+      cls == cls',
+      hasPhantomMeta pi_,
+      mt_a == mt_i -- self-types must agree to avoid cross-pairing same-class constraints
+  ]
+  where
+    hasPhantomMeta (InCls _ mt exts) = any (`notElem` dom_s0) (mv mt `union` mv exts)
+    hasPhantomMeta _ = False
+
+unifyPredExtras :: Pred -> Pred -> TcM ()
+unifyPredExtras (InCls _ mt1 exts1) (InCls _ mt2 exts2) = do
+  void $ unify mt1 mt2
+  zipWithM_ (\e1 e2 -> void $ unify e1 e2) exts1 exts2
+unifyPredExtras _ _ = return ()
 
 toMeta :: Ty -> Ty
 toMeta (TyVar (TVar n)) = Meta (MetaTv n)

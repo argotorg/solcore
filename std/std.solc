@@ -1,3 +1,5 @@
+import std.opcodes.{gas, staticcall, mstore, mload, sstore, sload};
+
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
 
@@ -85,8 +87,6 @@ export {
   memberAccessBase,
   memory(*),
   memory_ref,
-  mload,
-  mstore,
   ne,
   not,
   or,
@@ -105,10 +105,6 @@ export {
   sha256,
   slice(*),
   slice_,
-  sloadViaWord,
-  sload_,
-  sstore_,
-  sstoreViaWord,
   storage(*),
   storeBytesFromMemory,
   string,
@@ -805,20 +801,9 @@ data mapping(member, index) = mapping(word) ;
 
 // --- Low-level memory ops
 
-function mload(a:word) -> word {
-  let res: word;
-  assembly { res := mload(a) }
-  return res;
-}
-
-function mstore(a:word, v:word) -> () {
-  assembly { mstore(a,v) }
-}
-
 function strlen(s:memory(string)) -> word {
   match s { | memory(a) => return mload(a); }
 }
-
 
 // --- Memory Utilities ---
 
@@ -1540,20 +1525,6 @@ pragma no-coverage-condition MemberAccessProxy, LVA, RVA, CStructField, Assign;
 pragma no-bounded-variable-condition LVA, RVA;
 // -- storage
 
-function sload_(x:word) -> word {
-    let res: word;
-    assembly {
-       res := sload(x)
-    }
-    return res;
-  }
-
-function sstore_(a:word, v:word) -> () {
-    assembly { sstore(a,v) }
-}
-
-
-
 forall self.
 class self:StorageSize {
     function size(x:Proxy(self)) -> word;
@@ -1623,7 +1594,6 @@ forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
     }
 }
 
-
 forall self.
 class self:StorageType {
     function load(ptr:word) -> self;
@@ -1632,33 +1602,10 @@ class self:StorageType {
 
 instance word:StorageType {
     function load(ptr:word) -> word {
-        let r:word;
-        assembly {
-            r := sload(ptr)
-        }
-        return r;
+        return sload(ptr);
     }
     function store(ptr:word, value:word) -> () {
-        assembly {
-            sstore(ptr, value)
-        }
-    }
-}
-
-forall a. a:Typedef(word) =>
-function sloadViaWord(ptr:word) -> a {
-    let r:word;
-    assembly {
-	r := sload(ptr)
-    }
-    return Typedef.abs(r);
-}
-
-forall a. a:Typedef(word) =>
-function sstoreViaWord(ptr:word, value:a) -> () {
-    let w: word = Typedef.rep(value);
-    assembly {
-	sstore(ptr, w)
+        sstore(ptr, value);
     }
 }
 
@@ -2182,33 +2129,19 @@ forall a . a:MemorySize, a:MemoryPointer => function keccak256_(input: a) -> byt
 forall a . a:MemorySize, a:MemoryPointer => function sha256(input: a) -> bytes32 {
     let len : word = MemorySize.len(input);
     let ptr : word = MemoryPointer.ptr(input);
-    let res : word;
     // We assume the [0, 32] scratch space is reserved.
-    // TODO: add specific error code
-    assembly {
-        let ret := staticcall(gas(), 2, ptr, len, 0, 32)
-        if iszero(ret) {
-            revert(0, 0)
-        }
-        res := mload(0)
-    }
-    return bytes32(res);
+    let ret = staticcall(gas(), 2, ptr, len, 0, 32);
+    require(ret != 0, Error(0x68c071bb)); // SHA256CallFailed()
+    return bytes32(mload(0));
 }
 
 forall a . a:MemorySize, a:MemoryPointer => function ripemd160(input: a) -> bytes32 {
     let len : word = MemorySize.len(input);
     let ptr : word = MemoryPointer.ptr(input);
-    let res : word;
     // We assume the [0, 32] scratch space is reserved.
-    // TODO: add specific error code
-    assembly {
-        let ret := staticcall(gas(), 3, ptr, len, 0, 32)
-        if iszero(ret) {
-            revert(0, 0)
-        }
-        res := mload(0)
-    }
-    return bytes32(res);
+    let ret = staticcall(gas(), 3, ptr, len, 0, 32);
+    require(ret != 0, Error(0x31a72d92)); // RIPEMD160CallFailed()
+    return bytes32(mload(0));
 }
 
 // --- Precompiles ---
@@ -2230,23 +2163,14 @@ function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address
     let r_ = Typedef.rep(r);
     let s_ = Typedef.rep(s);
     let ptr = get_free_memory();
-    let res: word;
     // We assume the [0, 32] scratch space is reserved.
-    // TODO: add specific error code
-    assembly {
-        mstore(ptr, hash_)
-        mstore(add(ptr, 32), v_)
-        mstore(add(ptr, 64), r_)
-        mstore(add(ptr, 96), s_)
-
-        let ret := staticcall(gas(), 1, ptr, 128, 0, 32)
-        if iszero(ret) {
-            revert(0, 0)
-        }
-        res := mload(0)
-        if iszero(res) {
-            revert(0, 0)
-        }
-    }
+    mstore(ptr, hash_);
+    mstore(ptr + 32, v_);
+    mstore(ptr + 64, r_);
+    mstore(ptr + 96, s_);
+    let ret = staticcall(gas(), 1, ptr, 128, 0, 32);
+    require(ret != 0, Error(0x578763f7)); // ECRecoverCallFailed()
+    let res = mload(0);
+    require(res != 0, Error(0x4fbfae63)); // ECRecoverFailed()
     return address(res);
 }

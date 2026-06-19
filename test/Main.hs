@@ -5,6 +5,7 @@ import HullCases
 import MatchCompilerTests
 import ModuleTypeCheckTests
 import ParserTests
+import SpecialiseTests
 import Test.Tasty
 import YulEvalTests
 
@@ -27,5 +28,6 @@ tests =
       dispatches,
       matchTests,
       yulEvalTests,
-      hullTests
+      hullTests,
+      specialiseTests
     ]
