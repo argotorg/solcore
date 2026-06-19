@@ -32,6 +32,7 @@ data PragmaType
   = NoCoverageCondition
   | NoPattersonCondition
   | NoBoundVariableCondition
+  | NoGenericInstanceFor
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data PragmaStatus
