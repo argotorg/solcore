@@ -25,7 +25,7 @@
       },
       {
         "input": {
-          "text-calldata": "recoverFail()(address)",
+          "comment": "recoverFail()(address)",
           "calldata": "75ebe7ac",
           "value": "0"
         },
