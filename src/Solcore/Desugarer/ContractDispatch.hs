@@ -115,18 +115,6 @@ genMainFn addMain c@(Contract cname tys cdecls)
             ]
     mkMethod s = error $ "Internal Error: contract methods must be fully typed: " <> show s
 
-    -- skip the optional fallback function and non-public methods in the methods tuple
-    unwrapSigs (CFunDecl (FunDef True s _))
-      | sigName s == fallbackName = Nothing
-      | otherwise = Just s
-    unwrapSigs _ = Nothing
-
-    isTyped (Typed {}) = True
-    isTyped (Untyped {}) = False
-
-    getTy (Typed _ _ t) = Just t
-    getTy (Untyped {}) = Nothing
-
 transformCDecl :: Name -> ContractDecl Name -> Set (ContractDecl Name)
 transformCDecl contractName (CConstrDecl c) = transformConstructor contractName c
 transformCDecl _ d = Set.singleton d
@@ -233,12 +221,6 @@ transformConstructor contractName cons
            ]
     startFun = CFunDecl (FunDef False startSig startBody)
 
-    isTyped (Typed {}) = True
-    isTyped (Untyped {}) = False
-
-    getTy (Typed _ _ t) = Just t
-    getTy (Untyped {}) = Nothing
-
 initFunName :: Name
 initFunName = "init_"
 
@@ -274,13 +256,6 @@ publicMethodTypes :: Contract Name -> [Ty]
 publicMethodTypes (Contract cname _ cdecls) =
   mapMaybe methodTy (mapMaybe unwrapSigs cdecls)
   where
-    -- skip the optional fallback function and non-public methods, mirroring the
-    -- dispatch table built in 'genMainFn'
-    unwrapSigs (CFunDecl (FunDef True s _))
-      | sigName s == fallbackName = Nothing
-      | otherwise = Just s
-    unwrapSigs _ = Nothing
-
     methodTy (Signature _ _ fname fargs _ (Just ret) payable)
       | all isTyped fargs =
           Just $
@@ -294,13 +269,26 @@ publicMethodTypes (Contract cname _ cdecls) =
               ]
     methodTy _ = Nothing
 
-    isTyped (Typed {}) = True
-    isTyped (Untyped {}) = False
-
-    getTy (Typed _ _ t) = Just t
-    getTy (Untyped {}) = Nothing
-
 --- Util ---
+
+-- | Pull the signature out of a public contract method, skipping the optional
+-- fallback function and any non-public ('FunDef False') declarations.  Used
+-- both by 'genMainFn' (to build the dispatch table) and 'publicMethodTypes'
+-- (to expose the same list as types for the @publicMethods@ primitive).
+unwrapSigs :: ContractDecl Name -> Maybe (Signature Name)
+unwrapSigs (CFunDecl (FunDef True s _))
+  | sigName s == fallbackName = Nothing
+  | otherwise = Just s
+unwrapSigs _ = Nothing
+
+isTyped :: Param a -> Bool
+isTyped (Typed {}) = True
+isTyped (Untyped {}) = False
+
+getTy :: Param a -> Maybe Ty
+getTy (Typed _ _ t) = Just t
+getTy (Untyped {}) = Nothing
+
 
 proxyTy :: Ty -> Ty
 proxyTy t = TyCon "Proxy" [t]
