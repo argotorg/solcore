@@ -671,10 +671,12 @@ instance uint256:Bounded {
 }
 
 function addmod(x: uint256, y: uint256, k: uint256) -> uint256 {
+    require(k != uint256(0), Error(0x12345678)); // AddModWithZero()
     return Typedef.abs(addmod_(Typedef.rep(x), Typedef.rep(y), Typedef.rep(k)));
 }
 
 function mulmod(x: uint256, y: uint256, k: uint256) -> uint256 {
+    require(k != uint256(0), Error(0x12345678)); // MulModWithZero()
     return Typedef.abs(mulmod_(Typedef.rep(x), Typedef.rep(y), Typedef.rep(k)));
 }
 
