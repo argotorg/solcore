@@ -1,4 +1,4 @@
-import std.opcodes.{gas, staticcall, mstore, mload, sstore, sload};
+import std.opcodes.{addmod as addmod_, mulmod as mulmod_, gas, staticcall, mstore, mload, sstore, sload};
 
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
@@ -45,6 +45,7 @@ export {
   abi_decode,
   abi_encode,
   addWord,
+  addmod,
   allocateDynamicArray,
   address(*),
   allocate_memory,
@@ -87,6 +88,7 @@ export {
   memberAccessBase,
   memory(*),
   memory_ref,
+  mulmod,
   ne,
   not,
   or,
@@ -666,6 +668,14 @@ instance uint256:Bounded {
   function minVal () -> uint256 {
     return uint256(0);
   }
+}
+
+function addmod(x: uint256, y: uint256, k: uint256) -> uint256 {
+    return Typedef.abs(addmod_(Typedef.rep(x), Typedef.rep(y), Typedef.rep(k)));
+}
+
+function mulmod(x: uint256, y: uint256, k: uint256) -> uint256 {
+    return Typedef.abs(mulmod_(Typedef.rep(x), Typedef.rep(y), Typedef.rep(k)));
 }
 
 data byte = byte(word);
