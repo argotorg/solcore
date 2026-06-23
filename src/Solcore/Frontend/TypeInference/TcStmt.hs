@@ -1690,10 +1690,14 @@ tcYulStmt (YBlock yblk) =
     _ <- tcYulBlock yblk
     -- names defined in should not return
     pure ([], unit)
-tcYulStmt s@(YLet ns (Just e)) =
+tcYulStmt s@(YLet ns me) =
   do
-    t <- tcYulExp e
-    checkYulAssignArity s ns e t
+    -- 'let x, y := e' type-checks the RHS and arity; 'let x' (no initializer)
+    -- just introduces the bindings. Either way the names must enter the env as
+    -- 'word', otherwise later 'YAssign'/'YIdent' uses go unchecked.
+    forM_ me $ \e -> do
+      t <- tcYulExp e
+      checkYulAssignArity s ns e t
     mapM_ (flip extEnv mword) ns
     pure (ns, unit)
 tcYulStmt (YExp e) =
@@ -1721,7 +1725,23 @@ tcYulStmt (YFor initBlk e bdy upd) =
       _ <- tcYulBlock upd
       pure ()
     pure ([], unit)
-tcYulStmt _ = pure ([], unit)
+tcYulStmt (YFun fnName args rets body) =
+  do
+    -- Yul functions are word-typed; register the name (so calls resolve and
+    -- recursion type-checks) and check the body with the parameters and named
+    -- returns bound. A zero-return function has type '... -> unit'.
+    let fnRetTy = maybe unit (\rs -> if null rs then unit else word) rets
+        fnTy = funtype (map (const word) args) fnRetTy
+    extEnv fnName (monotype fnTy)
+    _ <- withLocalEnv do
+      mapM_ (flip extEnv mword) args
+      mapM_ (flip extEnv mword) (concat rets)
+      tcYulBlock body
+    pure ([], unit)
+tcYulStmt YBreak = pure ([], unit)
+tcYulStmt YContinue = pure ([], unit)
+tcYulStmt YLeave = pure ([], unit)
+tcYulStmt (YComment _) = pure ([], unit)
 
 -- Yul builtins/opcodes return either 0 values (type 'unit') or 1 value
 -- (any other type). Compare the number of names on the left-hand side of
@@ -1773,7 +1793,9 @@ tcYulExp (YMeta _) = pure word
 tcYLit :: YLiteral -> TcM Ty
 tcYLit (YulString _) = return string
 tcYLit (YulNumber _) = return word
-tcYLit lit = notImplemented "tcYLit" lit
+-- Yul has no boolean type: 'true'/'false' are word literals (1/0).
+tcYLit YulTrue = return word
+tcYLit YulFalse = return word
 
 tcYulCases :: YulCases -> TcM ()
 tcYulCases = mapM_ tcYulCase
