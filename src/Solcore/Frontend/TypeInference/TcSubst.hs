@@ -263,6 +263,8 @@ instance (HasType a) => HasType (Stmt a) where
       (apply s body)
   apply _ (Asm yblk) =
     Asm yblk
+  apply _ Break =
+    Break
   apply _ EmptyStmt =
     EmptyStmt
 
@@ -281,6 +283,7 @@ instance (HasType a) => HasType (Stmt a) where
   fv (For initStmt cond postStmt body) =
     fv initStmt `union` fv cond `union` fv postStmt `union` fv body
   fv (Asm _) = []
+  fv Break = []
   fv EmptyStmt = []
 
   mv (e1 := e2) =
@@ -298,6 +301,7 @@ instance (HasType a) => HasType (Stmt a) where
   mv (For initStmt cond postStmt body) =
     mv initStmt `union` mv cond `union` mv postStmt `union` mv body
   mv (Asm _) = []
+  mv Break = []
   mv EmptyStmt = []
 
   bv (e1 := e2) =
@@ -315,6 +319,7 @@ instance (HasType a) => HasType (Stmt a) where
   bv (For initStmt cond postStmt body) =
     bv initStmt `union` bv cond `union` bv postStmt `union` bv body
   bv (Asm _) = []
+  bv Break = []
   bv EmptyStmt = []
 
 instance (HasType a) => HasType (Pat a) where

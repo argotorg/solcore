@@ -60,6 +60,7 @@ data Stmt
   | SComment String
   | SBlock Body
   | SFor Stmt Expr Stmt Stmt
+  | SBreak
   | SMatch Type Expr [Alt]
   | SFunction Name [Arg] Type [Stmt]
   | SRevert String
@@ -139,6 +140,7 @@ instance Pretty Stmt where
     text "for"
       <+> parens (ppr initStmt >< semi <+> ppr cond >< semi <+> ppr post)
       <+> ppr body
+  ppr SBreak = text "break"
   ppr (SMatch t e alts) =
     text "match"
       >< angles (ppr t)

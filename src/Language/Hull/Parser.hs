@@ -15,6 +15,7 @@ import Language.Hull
         SAssembly,
         SAssign,
         SBlock,
+        SBreak,
         SExpr,
         SFor,
         SFunction,
@@ -150,6 +151,7 @@ hullStmt =
       SBlock <$> braces (many hullStmt),
       SMatch <$> (pKeyword "match" *> angles hullType) <*> (hullExpr <* pKeyword "with") <*> braces (many hullAlt),
       hullFor,
+      SBreak <$ pKeyword "break",
       SFunction
         <$> (pKeyword "function" *> identifier)
         <*> parens (commaSep hullArg)

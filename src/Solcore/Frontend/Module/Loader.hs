@@ -1366,6 +1366,7 @@ renameStmtTypeRefs renameMap (For initStmt cond postStmt body) =
     (renameExpTypeRefs renameMap cond)
     (renameStmtTypeRefs renameMap postStmt)
     (renameBodyTypeRefs renameMap body)
+renameStmtTypeRefs _ Break = Break
 renameStmtTypeRefs _ EmptyStmt = EmptyStmt
 
 renameEquationTypeRefs :: Map Name Name -> Equation -> Equation
