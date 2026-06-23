@@ -1,7 +1,7 @@
 import std.{*};
 
 function deposit(pubkey: memory(string), withdrawal_credentials: memory(string), signature: memory(string), deposit_data_root: uint256) -> () {
-    let msg_value : uint256 = uint256(0);
+    let msg_value : word = 0;
     assembly {
         msg_value := callvalue()
     }
