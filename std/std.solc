@@ -1,4 +1,4 @@
-import std.opcodes.{addmod as addmod_, mulmod as mulmod_, gas, staticcall, mstore, mload, sstore, sload};
+import std.opcodes.{and as and_, not as not_, addmod as addmod_, mulmod as mulmod_, gas, staticcall, mstore, mload, sstore, sload};
 
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
@@ -68,6 +68,7 @@ export {
   ecrecover,
   empty(*),
   eqWord,
+  erc7201,
   frombool,
   ge,
   getReader,
@@ -2185,4 +2186,20 @@ function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address
     let res = mload(0);
     require(res != 0, Error(0x4fbfae63)); // ECRecoverFailed()
     return address(res);
+}
+
+// TODO: use string here
+// TODO: eventually this needs to become comptime
+function erc7201(id: memory(bytes)) -> bytes32 {
+//    return keccak256_(to_bytes(keccak256_(id) - 1)) & ~0xff;
+    return Typedef.abs(
+        and_(
+            Typedef.rep(
+                keccak256_(
+                    to_bytes(bytes32(Typedef.rep(keccak256_(id)) - 1))
+                )
+            ),
+            not_(0xff)
+        )
+    );
 }

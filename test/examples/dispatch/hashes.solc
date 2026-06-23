@@ -24,4 +24,8 @@ contract C {
     public function ripemd() -> bytes32 {
         return ripemd160(abcBytes());
     }
+
+    public function erc7201_(id: memory(bytes)) -> bytes32 {
+        return erc7201(id);
+    }
 }
