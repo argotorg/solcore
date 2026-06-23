@@ -267,6 +267,7 @@ cases =
       runTestForFile "array.solc" caseFolder,
       runTestForFile "assembly.solc" caseFolder,
       runTestExpectingFailure "asm-assign-no-return.solc" caseFolder,
+      runTestExpectingFailure "asm-assign-non-word.solc" caseFolder,
       runTestExpectingFailure "asm-let-no-return.solc" caseFolder,
       runTestForFile "asm-match-tuple-read.solc" caseFolder,
       runTestForFile "asm-match-tuple-write-read.solc" caseFolder,

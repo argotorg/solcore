@@ -1675,9 +1675,11 @@ tcYulStmt s@(YAssign ns e) =
         Just sch -> do
           (_ :=> t) <- freshInst sch
           t' <- withCurrentSubst t
-          case t' of
-            Meta _ -> unify t' word >> pure ()
-            _ -> pure ()
+          -- The LHS of a Yul assignment must be a 'word': assembly writes a
+          -- raw scalar, so allowing a non-word LHS (bool, data, struct, sum)
+          -- would corrupt its tagged runtime layout. Constrain it
+          -- unconditionally, mirroring the read path in 'tcYulExp (YIdent _)'.
+          unify t' word >> pure ()
     t <- tcYulExp e
     checkYulAssignArity s ns e t
     pure ([], unit)
