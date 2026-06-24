@@ -180,7 +180,8 @@ function out_of_bounds() -> () {
 // EmitHull has special handling for `revertLit("...")` after MastEval has
 // constant-folded the argument to a string literal.
 function revertLit(s:string) -> () {
-  return ();
+    unimplemented(); // Sanity check if folding ignores it.
+    return ();
 }
 
 // Empty revert.
@@ -929,14 +930,17 @@ instance string:Add {
 // statically known string literals.
 
 function concatLit(a:string, b:string) -> string {
+  unimplemented(); // Sanity check if folding ignores it.
   return "";
 }
 
 function strlenLit(a:string) -> word {
+  unimplemented(); // Sanity check if folding ignores it.
   return 0;
 }
 
 function keccakLit(a:string) -> word {
+  unimplemented(); // Sanity check if folding ignores it.
   return 0;
 }
 
