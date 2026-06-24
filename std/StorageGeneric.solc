@@ -181,13 +181,18 @@ instance storage(sum(f, g)) : CanStore(sum(f, g)) {
     function load(r : storage(sum(f, g))) -> sum(f, g) {
         let base : word = Typedef.rep(r);
         let tag : word = sload(base);
+        // NOTE: the loaded payload is inlined directly into inl(...) / inr(...)
+        // rather than bound to a `let x : f` / `let y : g` first. Binding the
+        // payload to an intermediate of the branch type (f or g) makes the
+        // compiler infer the *branch* type for the inl/inr application instead
+        // of the full sum(f, g), so it emits e.g. `inr<g>(y)` and Yul codegen
+        // rejects it (sum nesting off by one). Inlining matches the working
+        // ABIGeneric.decode pattern, so inl/inr pick up the full sum(f, g).
         match tag {
         | 0 =>
-            let x : f = CanStore.load(storage(base + 1) : storage(f));
-            return inl(x);
+            return inl(CanStore.load(storage(base + 1) : storage(f)));
         | _ =>
-            let y : g = CanStore.load(storage(base + 1) : storage(g));
-            return inr(y);
+            return inr(CanStore.load(storage(base + 1) : storage(g)));
         }
     }
 }
