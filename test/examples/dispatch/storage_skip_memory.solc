@@ -1,0 +1,59 @@
+import std.{*};
+import std.dispatch.{*};
+import std.Generic.{*};
+import std.StorageGeneric.{*};
+
+pragma no-patterson-condition;
+pragma no-bounded-variable-condition;
+
+// A data type carrying a dynamically-sized memory(bytes) payload has no fixed
+// storage layout, so DeriveGeneric must NOT emit StorageSize / StorageType /
+// CanStore for it. Doing so would synthesise a StorageType instance whose load
+// body demands an unsatisfiable `memory(bytes) : StorageType` constraint.
+//
+// Such a type is perfectly fine as long as it never lives in storage — here
+// Payload is only ever passed as a function argument. Only the genuinely
+// storable StorableThing is placed in a contract field, and its storage
+// instances are still derived as usual.
+//
+// This mirrors the multisig contract's Signature / BatchOperation types, which
+// each carry a memory(bytes) branch but are never stored.
+
+data Payload =
+      NoPayload
+    | RawPayload(memory(bytes));
+
+data StorableThing = StorableThing(uint256);
+
+function payloadPtr(p : Payload) -> word {
+    match p {
+    | Payload.NoPayload     => return 0;
+    | Payload.RawPayload(b) => return Typedef.rep(b);
+    }
+}
+
+contract C {
+    // Only the storable ADT actually lives in storage.
+    thing : StorableThing;
+
+    constructor() {
+        thing = StorableThing(0);
+        // The storable type still gets its derived StorageSize instance.
+        assert(eqWord(StorageSize.size(Proxy : Proxy(StorableThing)), 1));
+    }
+
+    // Payload (with its memory(bytes) branch) is used only as an argument.
+    public function ptrOf(p : Payload) -> word {
+        return payloadPtr(p);
+    }
+
+    public function setThing(v : uint256) -> () {
+        thing = StorableThing(v);
+    }
+
+    public function getThing() -> uint256 {
+        match thing {
+        | StorableThing(v) => return v;
+        }
+    }
+}

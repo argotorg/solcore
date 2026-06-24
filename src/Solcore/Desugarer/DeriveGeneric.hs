@@ -34,10 +34,22 @@ deriveGenericTopDecls localData allDecls
     -- so only StorageSize (to give the field layout the right slot count) and a
     -- functional CanStore (so contract field access can infer the stored type)
     -- need to be emitted per type. Recursive types are skipped: their storage
-    -- size is unbounded.
+    -- size is unbounded. Non-storable types are skipped too: a type carrying a
+    -- dynamically-sized pointer field (memory/calldata) has no fixed storage
+    -- layout, so deriving StorageType for it would emit an instance whose body
+    -- demands an unsatisfiable `memory(...) : StorageType` constraint (see
+    -- nonStorableDataNames). Such types are still given a Generic instance; they
+    -- simply cannot be placed in storage.
+    nonStorable = nonStorableDataNames localData
     storageInsts
       | storageClassVisible allDecls =
-          concatMap buildStorageInstances [dt | dt <- derivable, not (isRecursiveData dt)]
+          concatMap
+            buildStorageInstances
+            [ dt
+              | dt <- derivable,
+                not (isRecursiveData dt),
+                dataName dt `notElem` nonStorable
+            ]
       | otherwise = []
     conflictError n =
       "type '"
@@ -71,6 +83,28 @@ isRecursiveData dt =
   any selfRef (concatMap constrTy (dataConstrs dt))
   where
     selfRef t = dataName dt `elem` tyconNames t
+
+-- Type constructors that denote dynamically-sized pointer values (memory /
+-- calldata references). A type mentioning one of these has no fixed storage
+-- slot layout, so it cannot be given a StorageSize / StorageType instance.
+nonStorableTyCons :: [Name]
+nonStorableTyCons = [Name "memory", Name "calldata"]
+
+-- Names of the local data types that cannot be stored. A type is non-storable
+-- if one of its constructor fields directly mentions a non-storable pointer
+-- constructor, or mentions another non-storable data type. Computed as a
+-- fixpoint so non-storability propagates through nested ADTs (a record holding
+-- a non-storable field is itself non-storable).
+nonStorableDataNames :: [DataTy] -> [Name]
+nonStorableDataNames dts = fixpoint (nub initial)
+  where
+    fieldTyCons dt = concatMap tyconNames (concatMap constrTy (dataConstrs dt))
+    initial = [dataName dt | dt <- dts, any (`elem` nonStorableTyCons) (fieldTyCons dt)]
+    step acc =
+      nub (acc ++ [dataName dt | dt <- dts, any (`elem` acc) (fieldTyCons dt)])
+    fixpoint acc =
+      let acc' = step acc
+       in if length acc' == length acc then acc else fixpoint acc'
 
 collectDataDefs :: [TopDecl Name] -> [DataTy]
 collectDataDefs = concatMap go
