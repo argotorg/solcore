@@ -48,10 +48,10 @@ contract C {
         }
     }
 
-    public function isSome() -> uint256 {
+    public function isSome() -> bool {
         match someValue {
-        | Option.None    => return uint256(0);
-        | Option.Some(_) => return uint256(1);
+        | Option.None    => return false;
+        | Option.Some(_) => return true;
         }
     }
 
