@@ -1,7 +1,7 @@
 module Solcore.Desugarer.DeriveGeneric where
 
 import Data.List (nub)
-import Data.List.NonEmpty (NonEmpty ((:|)), toList)
+import Data.List.NonEmpty (toList)
 import Solcore.Frontend.Syntax
 
 -- Generate Generic instances for data types
@@ -29,32 +29,21 @@ deriveGenericTopDecls localData allDecls
       ]
     newInsts = [TInstDef (buildInstance dt) | dt <- derivable]
     -- When std.StorageGeneric is in scope, also derive the storage type-class
-    -- instances (StorageSize / StorageType / CanStore) so the data type can live
-    -- in contract storage. Recursive types are skipped: their storage size is
-    -- unbounded.
+    -- instances so the data type can live in contract storage: StorageSize (the
+    -- field's slot footprint, for offset arithmetic) and storage(T):CanStore(T)
+    -- (how a field is loaded/stored). Recursive types are skipped — their slot
+    -- footprint is unbounded.
     --
-    -- Whether a type is *actually* storable is decided by the StorageType /
-    -- CanStore traits, not by a syntactic check here: each derived instance is
-    -- emitted with a context requiring its representation (resp. the type
-    -- itself, for CanStore) to be storable, so the instance body type-checks
-    -- against that assumption instead of eagerly forcing it. A type that carries
-    -- a non-storable field (e.g. a `memory(bytes)` pointer) therefore still gets
-    -- the instances, but their contexts are unsatisfiable — which only matters
-    -- when something genuinely demands storage of the type (a contract field).
-    -- Multisig's Signature / BatchOperation, never stored, compile fine; an
-    -- Operation actually placed in storage fails at the field, where the error
-    -- belongs.
-    --
-    -- These contexts mention composite types, which violate the Patterson
-    -- termination measure for the (small) StorageType / StorageSize instance
-    -- heads. Pragmas are file-scoped (an imported `no-patterson-condition` does
-    -- not propagate), so we emit the relaxation alongside the instances rather
-    -- than requiring every StorageGeneric user to write it by hand.
-    derivedStorage =
-      concatMap buildStorageInstances [dt | dt <- derivable, not (isRecursiveData dt)]
+    -- Storability is decided by CanStore, not StorageType. The derived CanStore
+    -- decomposes the SOP representation through the structural CanStore instances
+    -- in std.StorageGeneric, so each leaf is stored via its own CanStore — a
+    -- fixed leaf via storage(word)/…, a dynamic leaf (memory(bytes)) via
+    -- storage(bytes). A data type with a dynamic field is therefore genuinely
+    -- storable, and a field whose type has no CanStore instance fails precisely
+    -- at the storage site, not while deriving an instance nobody uses.
     storageInsts
-      | storageClassVisible allDecls && not (null derivedStorage) =
-          storagePragmas ++ derivedStorage
+      | storageClassVisible allDecls =
+          concatMap buildStorageInstances [dt | dt <- derivable, not (isRecursiveData dt)]
       | otherwise = []
     conflictError n =
       "type '"
@@ -88,21 +77,6 @@ isRecursiveData dt =
   any selfRef (concatMap constrTy (dataConstrs dt))
   where
     selfRef t = dataName dt `elem` tyconNames t
-
--- The derived StorageType / StorageSize instances carry composite-typed
--- contexts (their representation must be storable). Those contexts are larger
--- than the instance head, so they fail the Patterson termination measure unless
--- the condition is relaxed for these classes. Emitting the pragma here keeps
--- StorageGeneric usable without per-file boilerplate; CanStore needs no
--- relaxation (its `storage(T)` head already dominates the context measure).
-storagePragmas :: [TopDecl Name]
-storagePragmas =
-  [ TPragmaDecl
-      ( Pragma
-          NoPattersonCondition
-          (DisableFor (Name "StorageType" :| [Name "StorageSize"]))
-      )
-  ]
 
 collectDataDefs :: [TopDecl Name] -> [DataTy]
 collectDataDefs = concatMap go
@@ -284,67 +258,8 @@ methodCall cls method args = Call Nothing (QualName (Name cls) method) args
 buildStorageInstances :: DataTy -> [TopDecl Name]
 buildStorageInstances dt =
   [ TInstDef (buildStorageSize dt),
-    TInstDef (buildStorageType dt),
     TInstDef (buildCanStore dt)
   ]
-
--- instance <ctx> => T(params) : StorageType {
---   function load(ptr : word) -> T(params) {
---     let r : <rep> = StorageType.load(ptr);
---     return Generic.to(r);
---   }
---   function store(ptr : word, value : T(params)) -> () {
---     StorageType.store(ptr, Generic.from(value));
---   }
--- }
--- This is emitted as a concrete instance (not a default) on purpose: a default
--- instance's `load` returns the head variable `a`, which the specializer cannot
--- monomorphize for the Generic.to call (the type is in the result, not the
--- arguments). Fixing `a` in the instance head makes Generic.to resolvable.
-buildStorageType :: DataTy -> Instance Name
-buildStorageType dt =
-  Instance
-    { instDefault = False,
-      instVars = dataParams dt,
-      -- The body loads/stores the SOP representation, so the instance is
-      -- conditional on that representation being storable. Listing the rep here
-      -- (rather than just the type parameters) lets the body discharge its
-      -- `rep : StorageType` obligation by assumption: a type with a non-storable
-      -- field still type-checks, and only fails when the instance is actually
-      -- demanded at a storage site.
-      instContext = [InCls (Name "StorageType") (sopRep dt) []],
-      instName = Name "StorageType",
-      paramsTy = [],
-      mainTy = mainT,
-      instFunctions = [FunDef False loadSig loadBody, FunDef False storeSig storeBody]
-    }
-  where
-    mainT = mainTyOf dt
-    loadSig =
-      Signature
-        { sigVars = [],
-          sigContext = [],
-          sigName = Name "load",
-          sigParams = [Typed False (Name "_ptr") wordTy],
-          sigRetComptime = False,
-          sigReturn = Just mainT,
-          sigPayable = False
-        }
-    loadBody =
-      [ Let False (Name "_r") (Just (sopRep dt)) (Just (methodCall "StorageType" "load" [Var (Name "_ptr")])),
-        Return (methodCall "Generic" "to" [Var (Name "_r")])
-      ]
-    storeSig =
-      Signature
-        { sigVars = [],
-          sigContext = [],
-          sigName = Name "store",
-          sigParams = [Typed False (Name "_ptr") wordTy, Typed False (Name "_v") mainT],
-          sigRetComptime = False,
-          sigReturn = Just unitTy,
-          sigPayable = False
-        }
-    storeBody = [StmtExp (methodCall "StorageType" "store" [Var (Name "_ptr"), methodCall "Generic" "from" [Var (Name "_v")]])]
 
 -- instance <ctx> => T(params) : StorageSize {
 --   function size(x : Proxy(T(params))) -> word {
@@ -356,8 +271,7 @@ buildStorageSize dt =
   Instance
     { instDefault = False,
       instVars = dataParams dt,
-      -- size delegates to the representation's StorageSize, so require that.
-      instContext = [InCls (Name "StorageSize") (sopRep dt) []],
+      instContext = [InCls (Name "StorageSize") (TyVar tv) [] | tv <- dataParams dt],
       instName = Name "StorageSize",
       paramsTy = [],
       mainTy = mainTyOf dt,
@@ -378,21 +292,29 @@ buildStorageSize dt =
 
 -- instance <ctx> => storage(T(params)) : CanStore(T(params)) {
 --   function store(r : storage(T(params)), v : T(params)) -> () {
---     StorageType.store(Typedef.rep(r), v);
+--     CanStore.store(storage(Typedef.rep(r)) : storage(<rep>), Generic.from(v));
 --   }
 --   function load(r : storage(T(params))) -> T(params) {
---     return StorageType.load(Typedef.rep(r));
+--     let x : <rep> = CanStore.load(storage(Typedef.rep(r)) : storage(<rep>));
+--     return Generic.to(x);
 --   }
 -- }
+--
+-- Storage is expressed entirely through CanStore: the type's SOP representation
+-- is stored at the slot via the structural CanStore instances (sum/pair/unit) in
+-- std.StorageGeneric, which decompose to each leaf's own CanStore. So a leaf of
+-- type memory(bytes) is stored via storage(bytes), and the type stays storable.
+-- For parametric types the context carries, per parameter, the field obligations
+-- the structural instances need (storage(a):CanStore(a) and a:StorageSize); for a
+-- concrete type the context is empty and everything resolves at the leaves.
 buildCanStore :: DataTy -> Instance Name
 buildCanStore dt =
   Instance
     { instDefault = False,
       instVars = dataParams dt,
-      -- load/store route through StorageType for the type itself, so the stored
-      -- type must be a StorageType. This is what makes a non-storable type fail
-      -- precisely at the contract field that tries to store it.
-      instContext = [InCls (Name "StorageType") (mainTyOf dt) []],
+      instContext =
+        [InCls (Name "CanStore") (storageTyOf (TyVar tv)) [TyVar tv] | tv <- dataParams dt]
+          ++ [InCls (Name "StorageSize") (TyVar tv) [] | tv <- dataParams dt],
       instName = Name "CanStore",
       paramsTy = [mainT],
       mainTy = storageTyOf mainT,
@@ -400,7 +322,9 @@ buildCanStore dt =
     }
   where
     mainT = mainTyOf dt
-    slot = methodCall "Typedef" "rep" [Var (Name "_r")]
+    repT = sopRep dt
+    -- storage(Typedef.rep(_r)) : storage(<rep>)
+    repSlot = TyExp (Con (Name "storage") [methodCall "Typedef" "rep" [Var (Name "_r")]]) (storageTyOf repT)
     storeSig =
       Signature
         { sigVars = [],
@@ -414,7 +338,7 @@ buildCanStore dt =
           sigReturn = Just unitTy,
           sigPayable = False
         }
-    storeBody = [StmtExp (methodCall "StorageType" "store" [slot, Var (Name "_v")])]
+    storeBody = [StmtExp (methodCall "CanStore" "store" [repSlot, methodCall "Generic" "from" [Var (Name "_v")]])]
     loadSig =
       Signature
         { sigVars = [],
@@ -425,4 +349,7 @@ buildCanStore dt =
           sigReturn = Just mainT,
           sigPayable = False
         }
-    loadBody = [Return (methodCall "StorageType" "load" [slot])]
+    loadBody =
+      [ Let False (Name "_x") (Just repT) (Just (methodCall "CanStore" "load" [repSlot])),
+        Return (methodCall "Generic" "to" [Var (Name "_x")])
+      ]

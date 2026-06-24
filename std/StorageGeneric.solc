@@ -114,6 +114,106 @@ instance sum(f, g):StorageType {
     }
 }
 
+// ─── Storage layout via CanStore ─────────────────────────────────────────
+//
+// The structural instances above teach StorageType the fixed-slot encoding of
+// the SOP primitives. But StorageType can only describe word-packed types: a
+// dynamically-sized field such as memory(bytes) has a StorageSize (one slot,
+// Solidity-style) and a CanStore instance (storage(bytes):CanStore(memory(bytes)))
+// but NO StorageType instance. Routing an ADT's storage through StorageType
+// therefore rejects any data type carrying such a field, even though the field
+// is perfectly storable.
+//
+// So we give CanStore the same structural treatment, decomposing the SOP
+// representation and storing each leaf through the leaf's OWN CanStore instance.
+// Fixed leaves resolve to storage(word)/storage(uint256)/… (which delegate to
+// StorageType); dynamic leaves resolve to storage(bytes)/storage(string). Each
+// field occupies StorageSize-many slots, so offsets are computed exactly as in
+// the StorageType layout. The slot handle for a value of type `t` is uniformly
+// `storage(t)`, which is why the dynamic leaves below are mirrored at that
+// handle.
+
+// The unit type occupies no slots.
+instance storage(()) : CanStore(()) {
+    function store(r : storage(()), v : ()) -> () {
+        return ();
+    }
+    function load(r : storage(())) -> () {
+        return ();
+    }
+}
+
+// Product: store `a` at the base slot, `b` size(a) slots later.
+forall a b . storage(a):CanStore(a), a:StorageSize, storage(b):CanStore(b) =>
+instance storage((a, b)) : CanStore((a, b)) {
+    function store(r : storage((a, b)), v : (a, b)) -> () {
+        match v {
+        | (x, y) =>
+            let base : word = Typedef.rep(r);
+            let a_sz : word = StorageSize.size(Proxy : Proxy(a));
+            CanStore.store(storage(base) : storage(a), x);
+            CanStore.store(storage(base + a_sz) : storage(b), y);
+        }
+    }
+    function load(r : storage((a, b))) -> (a, b) {
+        let base : word = Typedef.rep(r);
+        let a_sz : word = StorageSize.size(Proxy : Proxy(a));
+        let x : a = CanStore.load(storage(base) : storage(a));
+        let y : b = CanStore.load(storage(base + a_sz) : storage(b));
+        return (x, y);
+    }
+}
+
+// Tagged union: slot 0 holds the tag, the branch payload follows.
+forall f g . storage(f):CanStore(f), storage(g):CanStore(g) =>
+instance storage(sum(f, g)) : CanStore(sum(f, g)) {
+    function store(r : storage(sum(f, g)), v : sum(f, g)) -> () {
+        let base : word = Typedef.rep(r);
+        match v {
+        | inl(x) =>
+            sstore(base, 0);
+            CanStore.store(storage(base + 1) : storage(f), x);
+        | inr(y) =>
+            sstore(base, 1);
+            CanStore.store(storage(base + 1) : storage(g), y);
+        }
+    }
+    function load(r : storage(sum(f, g))) -> sum(f, g) {
+        let base : word = Typedef.rep(r);
+        let tag : word = sload(base);
+        match tag {
+        | 0 =>
+            let x : f = CanStore.load(storage(base + 1) : storage(f));
+            return inl(x);
+        | _ =>
+            let y : g = CanStore.load(storage(base + 1) : storage(g));
+            return inr(y);
+        }
+    }
+}
+
+// Dynamic leaves at the uniform storage(t) handle. std provides the storage(bytes)
+// / storage(string) instances (data lives at keccak(slot)); these mirror them at
+// the storage(memory(bytes)) / storage(memory(string)) handle the structural
+// decomposition asks for, so a memory(bytes) field inside an ADT is storable.
+instance storage(memory(bytes)) : CanStore(memory(bytes)) {
+    function store(r : storage(memory(bytes)), v : memory(bytes)) -> () {
+        CanStore.store(storage(Typedef.rep(r)) : storage(bytes), v);
+    }
+    function load(r : storage(memory(bytes))) -> memory(bytes) {
+        return CanStore.load(storage(Typedef.rep(r)) : storage(bytes));
+    }
+}
+
+instance storage(memory(string)) : CanStore(memory(string)) {
+    function store(r : storage(memory(string)), v : memory(string)) -> () {
+        CanStore.store(storage(Typedef.rep(r)) : storage(string), v);
+    }
+    function load(r : storage(memory(string))) -> memory(string) {
+        return CanStore.load(storage(Typedef.rep(r)) : storage(string));
+    }
+}
+
 // StorageType / CanStore for an ADT are NOT provided here as blanket bridges.
 //
 // A `default instance a:StorageType` would have its `load` return the head
@@ -123,10 +223,11 @@ instance sum(f, g):StorageType {
 // is non-functional (accepts any storable b), so contract field access cannot
 // infer the stored type from the slot type.
 //
-// Instead, DeriveGeneric emits concrete, per-type StorageType and
-// storage(T):CanStore(T) instances (see Solcore.Desugarer.DeriveGeneric) where
-// the data type is fixed in the instance head — both delegate to the structural
-// (sum/pair/unit) instances above via the type's Generic representation.
+// Instead, DeriveGeneric emits a concrete, per-type storage(T):CanStore(T)
+// instance (see Solcore.Desugarer.DeriveGeneric) where the data type is fixed
+// in the instance head; it delegates to the structural CanStore instances above
+// via the type's Generic representation. StorageSize is likewise derived
+// per-type for the field layout.
 
 // ─── Top-level helpers ───────────────────────────────────────────────────
 // Convenience wrappers mirroring std.ABIGeneric's encode / decode: persist or
