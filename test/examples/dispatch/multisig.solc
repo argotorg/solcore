@@ -368,6 +368,36 @@ contract Multisig {
         }
         revertWithError(Error(0x12345678)); // NotASigner()
     }
+
+    // --- Test helpers ---------------------------------------------------
+    // Thin public wrappers used by the integration test suite
+    // (test/examples/dispatch/multisig.json). They expose the otherwise
+    // internal add_signer/remove_signer plus a couple of getters so the
+    // signer bookkeeping can be observed from calldata, without going
+    // through the full queue/approve/execute governance path. These do NOT
+    // touch signers_required.
+
+    public function signersCount() -> uint256 {
+        return signers_count;
+    }
+
+    public function signersRequired() -> uint256 {
+        return signers_required;
+    }
+
+    public function isSignerOf(who: address) -> bool {
+        return isSigner(who);
+    }
+
+    public function addSigner(signer: address) -> uint256 {
+        add_signer(signer);
+        return signers_count;
+    }
+
+    public function removeSigner(signer: address) -> uint256 {
+        remove_signer(signer);
+        return signers_count;
+    }
 }
 
 function check_contract_hash(contract__: address, hash: bytes32) -> bool {
