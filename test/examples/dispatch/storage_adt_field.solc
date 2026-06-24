@@ -6,31 +6,34 @@ import std.StorageGeneric.{*};
 pragma no-patterson-condition;
 pragma no-bounded-variable-condition;
 
-// Algebraic data types used directly as contract storage fields.
+// Algebraic data types used directly as contract storage fields, including a
+// nested ADT (Option(Triple)).
 //
-//  - someValue : Option       (a sum,     rep = sum((), uint256)   -> 2 slots)
-//  - triple    : Triple       (a product, rep = (uint256,(uint256,uint256)) -> 3 slots)
+//  - someValue  : Option(uint256)  (sum,            rep sum((), uint256)        -> 2 slots)
+//  - triple     : Triple           (product,        rep (uint256,(uint256,uint256)) -> 3 slots)
+//  - someTriple : Option(Triple)   (sum of product, rep sum((), Triple)         -> 4 slots)
 //
-// Reads/writes of the fields go through the contract field access machinery,
-// which resolves storage(Option):CanStore(Option) / storage(Triple):CanStore(Triple)
-// via the Generic bridge in std.StorageGeneric. Generic itself is auto-derived.
+// Field reads/writes go through the contract field-access machinery, which
+// resolves storage(T):CanStore(T) via the per-type instances DeriveGeneric emits
+// (Generic + StorageSize + StorageType + CanStore) once std.StorageGeneric is
+// imported. The nested case exercises Triple:StorageType being reused inside
+// Option(Triple):StorageType.
 
-data Option = None | Some(uint256);
+data Option(a) = None | Some(a);
 data Triple = Triple(uint256, uint256, uint256);
 
-// No per-type storage boilerplate: because std.StorageGeneric is imported,
-// DeriveGeneric auto-derives Generic + StorageSize + CanStore for Option and
-// Triple, so they can be used directly as contract storage fields below.
-
 contract C {
-    someValue : Option;
+    someValue : Option(uint256);
     triple : Triple;
+    someTriple : Option(Triple);
 
     constructor() {
-        // sum: 1 tag slot + max(size (), size uint256) = 1 + 1 = 2
-        assert(eqWord(StorageSize.size(Proxy : Proxy(Option)), 2));
-        // product: size uint256 + (size uint256 + size uint256) = 1 + 2 = 3
+        // sum:            1 tag + max(size (), size uint256) = 1 + 1 = 2
+        assert(eqWord(StorageSize.size(Proxy : Proxy(Option(uint256))), 2));
+        // product:        size uint256 * 3                   = 3
         assert(eqWord(StorageSize.size(Proxy : Proxy(Triple)), 3));
+        // sum of product: 1 tag + max(size (), size Triple)  = 1 + 3 = 4
+        assert(eqWord(StorageSize.size(Proxy : Proxy(Option(Triple))), 4));
     }
 
     public function setValue(v : uint256) -> () {
@@ -62,6 +65,32 @@ contract C {
     public function tripleSum() -> uint256 {
         match triple {
         | Triple(a, b, c) => return a + b + c;
+        }
+    }
+
+    // Nested ADT: Option(Triple).
+    public function setSomeTriple(a : uint256, b : uint256, c : uint256) -> () {
+        someTriple = Option.Some(Triple(a, b, c));
+    }
+
+    public function clearSomeTriple() -> () {
+        someTriple = Option.None;
+    }
+
+    public function someTripleSum() -> uint256 {
+        match someTriple {
+        | Option.None    => revertEmpty(); return uint256(0);
+        | Option.Some(t) =>
+            match t {
+            | Triple(a, b, c) => return a + b + c;
+            }
+        }
+    }
+
+    public function hasSomeTriple() -> bool {
+        match someTriple {
+        | Option.None    => return false;
+        | Option.Some(_) => return true;
         }
     }
 }
