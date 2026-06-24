@@ -10,23 +10,35 @@ deriveGenericTopDecls :: [DataTy] -> [TopDecl Name] -> Either String [TopDecl Na
 deriveGenericTopDecls localData allDecls
   | not (genericClassVisible allDecls) = Right allDecls
   | (n : _) <- conflicts = Left (conflictError n)
-  | otherwise = Right (allDecls ++ newInsts)
+  | otherwise = Right (allDecls ++ newInsts ++ storageInsts)
   where
     excluded = pragmaExcluded allDecls
     hasInst = existingGenericTypes allDecls
+    derivable =
+      [ dt
+        | dt <- localData,
+          not (null (dataConstrs dt)),
+          dataName dt `notElem` excluded,
+          dataName dt `notElem` hasInst
+      ]
     conflicts =
       [ dataName dt
         | dt <- localData,
           dataName dt `elem` hasInst,
           dataName dt `notElem` excluded
       ]
-    newInsts =
-      [ TInstDef (buildInstance dt)
-        | dt <- localData,
-          not (null (dataConstrs dt)),
-          dataName dt `notElem` excluded,
-          dataName dt `notElem` hasInst
-      ]
+    newInsts = [TInstDef (buildInstance dt) | dt <- derivable]
+    -- When std.StorageGeneric is in scope, also derive the storage type-class
+    -- instances (StorageSize / CanStore) so the data type can live in contract
+    -- storage. StorageType is provided generically by the StorageGeneric bridge,
+    -- so only StorageSize (to give the field layout the right slot count) and a
+    -- functional CanStore (so contract field access can infer the stored type)
+    -- need to be emitted per type. Recursive types are skipped: their storage
+    -- size is unbounded.
+    storageInsts
+      | storageClassVisible allDecls =
+          concatMap buildStorageInstances [dt | dt <- derivable, not (isRecursiveData dt)]
+      | otherwise = []
     conflictError n =
       "type '"
         ++ show n
@@ -41,6 +53,24 @@ genericClassVisible = any isGenericClass
   where
     isGenericClass (TClassDef cls) = className cls == Name "Generic"
     isGenericClass _ = False
+
+-- The StorageDeriving marker class is declared in std.StorageGeneric; its
+-- presence signals that the storage type classes and their primitive
+-- (sum/pair/unit) instances are in scope, so storage instances can be derived.
+storageClassVisible :: [TopDecl Name] -> Bool
+storageClassVisible = any isMarker
+  where
+    isMarker (TClassDef cls) = className cls == Name "StorageDeriving"
+    isMarker _ = False
+
+-- A data type is recursive if one of its constructor fields mentions the type
+-- itself (directly). Such types have no fixed storage size, so we do not derive
+-- storage instances for them.
+isRecursiveData :: DataTy -> Bool
+isRecursiveData dt =
+  any selfRef (concatMap constrTy (dataConstrs dt))
+  where
+    selfRef t = dataName dt `elem` tyconNames t
 
 collectDataDefs :: [TopDecl Name] -> [DataTy]
 collectDataDefs = concatMap go
@@ -197,3 +227,107 @@ buildInstance dt =
       mainTy = TyCon (dataName dt) (map TyVar (dataParams dt)),
       instFunctions = [buildFrom dt, buildTo dt]
     }
+
+-- Storage instances (StorageSize + CanStore)
+
+mainTyOf :: DataTy -> Ty
+mainTyOf dt = TyCon (dataName dt) (map TyVar (dataParams dt))
+
+wordTy :: Ty
+wordTy = TyCon (Name "word") []
+
+storageTyOf :: Ty -> Ty
+storageTyOf t = TyCon (Name "storage") [t]
+
+proxyTyOf :: Ty -> Ty
+proxyTyOf t = TyCon (Name "Proxy") [t]
+
+proxyExpOf :: Ty -> Exp Name
+proxyExpOf t = TyExp (Con (Name "Proxy") []) (proxyTyOf t)
+
+-- A qualified class-method call, e.g. StorageType.store(...).
+methodCall :: String -> String -> [Exp Name] -> Exp Name
+methodCall cls method args = Call Nothing (QualName (Name cls) method) args
+
+buildStorageInstances :: DataTy -> [TopDecl Name]
+buildStorageInstances dt =
+  [ TInstDef (buildStorageSize dt),
+    TInstDef (buildCanStore dt)
+  ]
+
+-- instance <ctx> => T(params) : StorageSize {
+--   function size(x : Proxy(T(params))) -> word {
+--     return StorageSize.size(Proxy : Proxy(<rep>));
+--   }
+-- }
+buildStorageSize :: DataTy -> Instance Name
+buildStorageSize dt =
+  Instance
+    { instDefault = False,
+      instVars = dataParams dt,
+      instContext = [InCls (Name "StorageSize") (TyVar tv) [] | tv <- dataParams dt],
+      instName = Name "StorageSize",
+      paramsTy = [],
+      mainTy = mainTyOf dt,
+      instFunctions = [FunDef False sig body]
+    }
+  where
+    sig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "size",
+          sigParams = [Typed False (Name "_x") (proxyTyOf (mainTyOf dt))],
+          sigRetComptime = False,
+          sigReturn = Just wordTy,
+          sigPayable = False
+        }
+    body = [Return (methodCall "StorageSize" "size" [proxyExpOf (sopRep dt)])]
+
+-- instance <ctx> => storage(T(params)) : CanStore(T(params)) {
+--   function store(r : storage(T(params)), v : T(params)) -> () {
+--     StorageType.store(Typedef.rep(r), v);
+--   }
+--   function load(r : storage(T(params))) -> T(params) {
+--     return StorageType.load(Typedef.rep(r));
+--   }
+-- }
+buildCanStore :: DataTy -> Instance Name
+buildCanStore dt =
+  Instance
+    { instDefault = False,
+      instVars = dataParams dt,
+      instContext = [InCls (Name "StorageType") (TyVar tv) [] | tv <- dataParams dt],
+      instName = Name "CanStore",
+      paramsTy = [mainT],
+      mainTy = storageTyOf mainT,
+      instFunctions = [FunDef False storeSig storeBody, FunDef False loadSig loadBody]
+    }
+  where
+    mainT = mainTyOf dt
+    slot = methodCall "Typedef" "rep" [Var (Name "_r")]
+    storeSig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "store",
+          sigParams =
+            [ Typed False (Name "_r") (storageTyOf mainT),
+              Typed False (Name "_v") mainT
+            ],
+          sigRetComptime = False,
+          sigReturn = Just unitTy,
+          sigPayable = False
+        }
+    storeBody = [StmtExp (methodCall "StorageType" "store" [slot, Var (Name "_v")])]
+    loadSig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "load",
+          sigParams = [Typed False (Name "_r") (storageTyOf mainT)],
+          sigRetComptime = False,
+          sigReturn = Just mainT,
+          sigPayable = False
+        }
+    loadBody = [Return (methodCall "StorageType" "load" [slot])]
