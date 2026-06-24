@@ -1,4 +1,4 @@
-import std.opcodes.{add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, log1 as log1_, staticcall, revert as revert_, invalid};
+import std.opcodes.{add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, returndatasize, returndatacopy, log1 as log1_, call, staticcall, revert as revert_, invalid};
 
 pragma no-patterson-condition ABIEncode, Num;
 pragma no-coverage-condition ABIDecode, MemoryType;
@@ -94,6 +94,7 @@ export {
   not,
   or,
   out_of_bounds,
+  raw_call,
   readStorage,
   returndata(*),
   revertLit,
@@ -2108,4 +2109,25 @@ function erc7201(id: memory(bytes)) -> bytes32 {
             not_(0xff)
         )
     );
+}
+
+forall a . a:MemorySize, a:MemoryPointer => function raw_call(target: address, value: uint256, payload: a) -> (bool, memory(bytes)) {
+    let ret = call(
+        gas(),
+        Typedef.rep(target),
+        Typedef.rep(value),
+        MemoryPointer.ptr(payload),
+        MemorySize.len(payload),
+        0,
+        0
+    );
+    let retSize = returndatasize();
+    let retData = allocate_memory(32 + retSize);
+    mstore(retData, retSize);
+    // TODO: use returndatacopy(retData + 32, 0, retSize);, but it is a parser error
+    // See https://github.com/argotorg/solcore/issues/497
+    assembly {
+        returndatacopy(add(retData, 32), 0, retSize)
+    }
+    return (tobool(ret), memory(retData));
 }
