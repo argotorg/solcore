@@ -38,9 +38,13 @@
 
 import std.{*};
 import std.dispatch.{*};
-import std.opcodes.{address as address_, calldatasize, mload, caller};
+import std.opcodes.{address as address_, calldatasize, mload, caller as caller_};
 import std.ABIGeneric.{*};
 import std.StorageGeneric.{*};
+
+function caller() -> address {
+    return address(caller_());
+}
 
 data Operation =
       AddSigner(address) // Adds a new signer.
