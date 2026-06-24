@@ -112,10 +112,10 @@ contract Multisig {
     function perform_queue(op: Operation) -> () {
         // Some basic sanity checks.
         match op {
-            | .AddSigner(signer) =>
+            | Operation.AddSigner(signer) =>
                 require(signer != address(0), Error(0x12345678)); // CannotAddZeroAddressAsSigner()
                 require(signer != address(address_()), Error(0x12345678)); // CannotAddSelfAsSigner()
-            | .ChangeSigRequired(count) =>
+            | Operation.ChangeSigRequired(count) =>
                 require(count >= 1, Error(0x12345678)); // ThresholdBelowMinimum()
         }
 
@@ -138,7 +138,7 @@ contract Multisig {
         // TODO: emit log
 
         match status[nonce_] {
-            | .Approvals(count) =>
+            | OperationStatus.Approvals(count) =>
                 require(votes[nonce_][signer] == Vote.None, Error(0x12345678)); // SignerAlreadyApproved()
                 votes[nonce_][signer] = Vote.Approved;
                 status[nonce_] = OperationStatus.Approvals(count + 1);
@@ -148,15 +148,15 @@ contract Multisig {
 
     function checkSignature(hash: bytes32, signature: Signature) -> address {
         match signature {
-            | .ECDSA(r, s) =>
+            | Signature.ECDSA(r, s) =>
                 let signer = eip2098_signer(hash, r, s);
                 require(isSigner(signer), Error(0x12345678)); // NotASigner()
                 return signer;
-            | .Contract(contract_) =>
+            | Signature.Contract(contract_) =>
                 require(isSigner(contract_), Error(0x12345678)); // NotASigner()
                 require(check_contract_hash(contract_, hash), Error(0x12345678)); // HashNotApprovedByTarget()
                 return contract_;
-            | .EIP1271(contract_, signature) =>
+            | Signature.EIP1271(contract_, signature) =>
                 require(isSigner(contract_), Error(0x12345678)); // NotASigner()
                 require(eip1271_verify(contract_, hash, signature), Error(0x12345678)); // EIP1271VerificationRejected()
                 return contract_;
@@ -201,10 +201,10 @@ contract Multisig {
     public function batch(operations: array(BatchOperation)) -> () {
         for (let i = 0; i < operations.length; i += 1) {
             match operations[i] {
-                | .Queue(operation, signature) => queueWithSignature(operation, signature);
-                | .Approve(nonce_, signature) => approveWithSignature(nonce_, signature);
-                | .Reject(nonce_, signature) => rejectWithSignature(nonce_, signature);
-                | .Execute(nonce_, payload) => execute(nonce_, payload);
+                | Operation.Queue(operation, signature) => queueWithSignature(operation, signature);
+                | Operation.Approve(nonce_, signature) => approveWithSignature(nonce_, signature);
+                | Operation.Reject(nonce_, signature) => rejectWithSignature(nonce_, signature);
+                | Operation.Execute(nonce_, payload) => execute(nonce_, payload);
             }
         }
     }
@@ -237,11 +237,11 @@ contract Multisig {
         // Enforce strict sequence ordering.
         require(nonce_ == nonce, Error(0x12345678)); // IncorrectSequence()
         match status[nonce_] {
-            | .Rejected =>
+            | OperationStatus.Rejected =>
                 nonce += 1;
                 // Special case for rejections: we operate as a no-op.
                 return ();
-            | .Approvals(count) =>
+            | OperationStatus.Approvals(count) =>
                 require(count >= signers_required, Error(0x12345678)); // NotEnoughApprovals()
                 nonce += 1;
                 // Update status.
@@ -253,22 +253,22 @@ contract Multisig {
 
         // Execute.
         match operations[nonce_] {
-            | .AddSigner(signer) => add_signer(signer);
-            | .RemoveSigner(signer) => remove_signer(signer);
-            | .ChangeSigRequired(count) =>
+            | Operation.AddSigner(signer) => add_signer(signer);
+            | Operation.RemoveSigner(signer) => remove_signer(signer);
+            | Operation.ChangeSigRequired(count) =>
                 require(count <= signers_count, Error(0x12345678)); // ThresholdExceedsSigners()
                 signers_required = count;
-            | .TransferEth(target, amount) =>
+            | Operation.TransferEth(target, amount) =>
                 let ret: word;
                 assembly {
                     ret := call(gas(), target, amount, 0, 0, 0, 0)
                 }
                 require(tobool(ret), Error(0x12345678)); // EtherTransferFailed()
-            | .TransferToken(target, token, amount) =>
+            | Operation.TransferToken(target, token, amount) =>
                 safe_erc20_transfer(token, target, amount);
-            | .Call(target, value, payload) =>
+            | Operation.Call(target, value, payload) =>
                 require(arbitrary_call(target, value, payload), Error(0x12345678)); // CallFailed()
-            | .UnstoredCall(hash) =>
+            | Operation.UnstoredCall(hash) =>
                 require(hash == keccak256_(payload), Error(0x12345678)); // InvalidPayloadSupplied()
                 let ret: word;
                 let payload_ = Typedef.rep(payload);
@@ -283,11 +283,11 @@ contract Multisig {
                     ret := call(gas(), target, value, add(payload_, 96), sub(size, 64), 0, 0)
                 }
                 require(tobool(ret), Error(0x12345678)); // UnstoredCallFailed()
-            | .ApproveSignedHash(hash) =>
+            | Operation.ApproveSignedHash(hash) =>
                 // Sanity check.
                 require(!approved_signed_hashes[hash], Error(0x12345678)); // ApprovedSignedHashExist()
                 approved_signed_hashes[hash] = true;
-            | .RevokeSignedHash(hash) =>
+            | Operation.RevokeSignedHash(hash) =>
                 // Sanity check.
                 require(approved_signed_hashes[hash], Error(0x12345678)); // ApprovedSignedHashDoesNotExist()
                 approved_signed_hashes[hash] = false;
