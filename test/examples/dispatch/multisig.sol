@@ -84,6 +84,25 @@ data BatchOperation =
     | Reject(uint256, Signature)
     | Execute(uint256, memory(bytes));
 
+
+instance Vote:Eq {
+  function eq(a: Vote, b: Vote) -> bool {
+    let a_index: word;
+    match a {
+        | Vote.None => a_index = 0;
+        | Vote.Approved => a_index = 1;
+        | Vote.Rejected => a_index = 2;
+    }
+    let b_index: word;
+    match b {
+        | Vote.None => b_index = 0;
+        | Vote.Approved => b_index = 1;
+        | Vote.Rejected => b_index = 2;
+    }
+    return a_index == b_index;
+  }
+}
+
 contract Multisig {
     signers: mapping(uint256, address); // TODO use array()
     signers_count: uint256;
@@ -260,8 +279,10 @@ contract Multisig {
                 signers_required = count;
             | Operation.TransferEth(target, amount) =>
                 let ret: word;
+                let target_ = Typedef.rep(target);
+                let amount_ = Typedef.rep(amount);
                 assembly {
-                    ret := call(gas(), target, amount, 0, 0, 0, 0)
+                    ret := call(gas(), target_, amount_, 0, 0, 0, 0)
                 }
                 require(tobool(ret), Error(0x12345678)); // EtherTransferFailed()
             | Operation.TransferToken(target, token, amount) =>
