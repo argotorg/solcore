@@ -319,6 +319,7 @@ cases =
       runTestForFile "derive-generic-sum.solc" caseFolder,
       runTestForFile "derive-generic-excluded.solc" caseFolder,
       runTestForFile "storage-generic.solc" caseFolder,
+      runTestForFile "storage-adt-field.solc" caseFolder,
       runTestExpectingFailure "generic-manual-no-pragma.solc" caseFolder,
       runTestExpectingFailure "generic-sum-no-pragma.solc" caseFolder,
       runTestExpectingFailure "generic-product-no-pragma.solc" caseFolder,
