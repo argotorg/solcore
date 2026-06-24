@@ -387,6 +387,7 @@ instance Resolve S.Stmt where
     If <$> resolve e <*> resolve blk1 <*> resolve blk2
   resolve (S.For initStmt cond postStmt body) =
     For <$> resolve initStmt <*> resolve cond <*> resolve postStmt <*> resolve body
+  resolve S.Break = pure Break
   resolve S.EmptyStmt = pure EmptyStmt
 
 instance Resolve S.Equation where

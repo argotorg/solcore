@@ -312,6 +312,7 @@ instance Pretty Stmt where
       <+> lbrace
       $$ nest 3 (ppr body)
       $$ rbrace
+  ppr Break = text "break" <> semi
   ppr EmptyStmt = empty
 
 pprForClause :: Stmt -> Doc

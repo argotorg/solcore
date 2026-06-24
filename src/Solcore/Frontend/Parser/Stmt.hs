@@ -31,10 +31,14 @@ stmtP =
     <|> returnP
     <|> try ifP
     <|> forP
+    <|> breakP
     <|> matchP
     <|> asmP
     <|> blockP
     <|> try exprOrAssignP
+
+breakP :: Parser Stmt
+breakP = Break <$ (keyword "break" *> semicolon)
 
 letP :: Parser Stmt
 letP = do

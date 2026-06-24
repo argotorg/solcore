@@ -239,6 +239,7 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
       insertVar varName loc
       return (flattenLhs loc)
 genStmt (SExpr e) = fst <$> genExpr e
+genStmt SBreak = pure [YBreak]
 genStmt (SRevert s) = pure (revertStmt s)
 genStmt e = error $ "genStmt unimplemented for: " ++ show e
 

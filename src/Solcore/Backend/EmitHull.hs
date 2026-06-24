@@ -355,6 +355,7 @@ emitStmt (MastAsm as) = do
   where
     notEVar (Hull.EVar _) = False
     notEVar _ = True
+emitStmt MastBreak = pure [Hull.SBreak]
 emitStmt (MastSeq stmts) = concat <$> mapM emitStmt stmts
 
 emitStmts :: [MastStmt] -> EM [Hull.Stmt]
