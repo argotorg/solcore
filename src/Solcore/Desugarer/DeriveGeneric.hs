@@ -10,7 +10,7 @@ deriveGenericTopDecls :: [DataTy] -> [TopDecl Name] -> Either String [TopDecl Na
 deriveGenericTopDecls localData allDecls
   | not (genericClassVisible allDecls) = Right allDecls
   | (n : _) <- conflicts = Left (conflictError n)
-  | otherwise = Right (allDecls ++ newInsts ++ storageInsts)
+  | otherwise = Right (allDecls ++ newInsts ++ storageInsts ++ abiInsts)
   where
     excluded = pragmaExcluded allDecls
     hasInst = existingGenericTypes allDecls
@@ -45,6 +45,16 @@ deriveGenericTopDecls localData allDecls
       | storageClassVisible allDecls =
           concatMap buildStorageInstances [dt | dt <- derivable, not (isRecursiveData dt)]
       | otherwise = []
+    -- When std.ABIGeneric is in scope, derive a per-type ABIDecode instance so
+    -- the contract dispatch can decode ADT-typed method parameters from calldata.
+    -- ABIAttribs / ABIEncode come for free via the default Generic bridges in
+    -- ABIGeneric; only ABIDecode needs a concrete per-type instance (its decode
+    -- returns a result-position type variable a default instance can't
+    -- monomorphize). The instance delegates to the rep's structural ABIDecode.
+    abiInsts
+      | abiClassVisible allDecls =
+          [TInstDef (buildABIDecode dt) | dt <- derivable, not (isRecursiveData dt)]
+      | otherwise = []
     conflictError n =
       "type '"
         ++ show n
@@ -67,6 +77,15 @@ storageClassVisible :: [TopDecl Name] -> Bool
 storageClassVisible = any isMarker
   where
     isMarker (TClassDef cls) = className cls == Name "StorageDeriving"
+    isMarker _ = False
+
+-- The ABIDeriving marker class is declared in std.ABIGeneric; its presence
+-- signals that the ABI type classes and their structural instances are in
+-- scope, so a per-type ABIDecode instance can be derived.
+abiClassVisible :: [TopDecl Name] -> Bool
+abiClassVisible = any isMarker
+  where
+    isMarker (TClassDef cls) = className cls == Name "ABIDeriving"
     isMarker _ = False
 
 -- A data type is recursive if one of its constructor fields mentions the type
@@ -352,4 +371,76 @@ buildCanStore dt =
     loadBody =
       [ Let False (Name "_x") (Just repT) (Just (methodCall "CanStore" "load" [repSlot])),
         Return (methodCall "Generic" "to" [Var (Name "_x")])
+      ]
+
+-- ABIDecoder(ty, reader)
+abiDecoderTyOf :: Ty -> Ty -> Ty
+abiDecoderTyOf ty reader = TyCon (Name "ABIDecoder") [ty, reader]
+
+-- instance <ctx> => ABIDecoder(T(params), reader) : ABIDecode(T(params)) {
+--   function decode(ptr : ABIDecoder(T(params), reader), headOffset : word) -> T(params) {
+--     match ptr {
+--     | ABIDecoder(rdr) =>
+--         let rep_ptr : ABIDecoder(<rep>, reader) = ABIDecoder(rdr);
+--         return Generic.to(ABIDecode.decode(rep_ptr, headOffset));
+--     }
+--   }
+-- }
+-- Mirrors std.ABIGeneric's free `decode`, but with the data type fixed in the
+-- instance head so Generic.to is monomorphizable. The reader is left generic
+-- (its WordReader-ness is the only flat obligation); the rep is decoded in the
+-- body through the structural ABIDecode instances.
+buildABIDecode :: DataTy -> Instance Name
+buildABIDecode dt =
+  Instance
+    { instDefault = False,
+      instVars = dataParams dt ++ [readerTv],
+      -- Only the reader and, for parametric types, each parameter's decodability
+      -- are required. The rep's structural ABIDecode is resolved in the body via
+      -- the sum/pair/unit instances (bottoming out at the parameters / concrete
+      -- leaves), so we avoid a rep-sized context that would break Patterson.
+      instContext =
+        InCls (Name "WordReader") readerTy []
+          : [InCls (Name "ABIDecode") (abiDecoderTyOf (TyVar tv) readerTy) [TyVar tv] | tv <- dataParams dt],
+      instName = Name "ABIDecode",
+      paramsTy = [mainT],
+      mainTy = abiDecoderTyOf mainT readerTy,
+      instFunctions = [FunDef False sig body]
+    }
+  where
+    mainT = mainTyOf dt
+    repT = sopRep dt
+    readerTv = TVar (Name "_reader")
+    readerTy = TyVar readerTv
+    sig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "decode",
+          sigParams =
+            [ Typed False (Name "_ptr") (abiDecoderTyOf mainT readerTy),
+              Typed False (Name "_headOffset") wordTy
+            ],
+          sigRetComptime = False,
+          sigReturn = Just mainT,
+          sigPayable = False
+        }
+    body =
+      [ Match
+          [Var (Name "_ptr")]
+          [ ( [PCon (Name "ABIDecoder") [PVar (Name "_rdr")]],
+              [ Let
+                  False
+                  (Name "_rep_ptr")
+                  (Just (abiDecoderTyOf repT readerTy))
+                  (Just (Con (Name "ABIDecoder") [Var (Name "_rdr")])),
+                Return
+                  ( methodCall
+                      "Generic"
+                      "to"
+                      [methodCall "ABIDecode" "decode" [Var (Name "_rep_ptr"), Var (Name "_headOffset")]]
+                  )
+              ]
+            )
+          ]
       ]
