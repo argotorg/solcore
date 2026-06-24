@@ -135,12 +135,12 @@ contract Multisig {
                 require(signer != address(0), Error(0x12345678)); // CannotAddZeroAddressAsSigner()
                 require(signer != address(address_()), Error(0x12345678)); // CannotAddSelfAsSigner()
             | Operation.ChangeSigRequired(count) =>
-                require(count >= 1, Error(0x12345678)); // ThresholdBelowMinimum()
+                require(count >= uint256(1), Error(0x12345678)); // ThresholdBelowMinimum()
         }
 
         operations[operations_count] = op;
         status[operations_count] = OperationStatus.Approvals(0);
-        operations_count += 1;
+        operations_count += uint256(1);
 
         // TODO: emit log
     }
@@ -337,7 +337,7 @@ contract Multisig {
 
     // TODO: this is suboptimal
     function isSigner(signer: address) -> bool {
-        for (let i = 0; i < signers_count; i += 1) {
+        for (let i = uint256(0); i < signers_count; i += uint256(1)) {
             if (signers[i] == signer) {
                 return true;
             }
@@ -348,16 +348,16 @@ contract Multisig {
     function add_signer(signer: address) -> () {
         require(!isSigner(signer), Error(0x12345678)); // SignerAlreadyExists()
         signers[signers_count] = signer;
-        signers_count += 1;
+        signers_count += uint256(1);
     }
 
     function remove_signer(signer: address) -> () {
-        require(signers_count > 1, Error(0x12345678)); // CannotRemoveOnlySigner()
-        for (let i = 0; i < signers_count; i += 1) {
+        require(signers_count > uint256(1), Error(0x12345678)); // CannotRemoveOnlySigner()
+        for (let i = uint256(0); i < signers_count; i += uint256(1)) {
             if (signers[i] == signer) {
                 // Move last signer into this place.
-                signers[i] = signers[signers_count - 1];
-                signers_count -= 1;
+                signers[i] = signers[signers_count - uint256(1)];
+                signers_count -= uint256(1);
                 // Reduce requirement if needed.
                 if (signers_count < signers_required) {
                     signers_required = signers_count;
