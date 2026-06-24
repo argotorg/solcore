@@ -123,7 +123,7 @@ dispatches =
       runDispatchTest "generic_product.solc",
       runDispatchTest "generic_sum.solc",
       runDispatchTest "storage_adt_field.solc",
-      runDispatchTest "storage_skip_memory.solc"
+      runDispatchTest "storage_unstored_memory.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"

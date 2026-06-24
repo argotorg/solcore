@@ -1,7 +1,7 @@
 module Solcore.Desugarer.DeriveGeneric where
 
 import Data.List (nub)
-import Data.List.NonEmpty (toList)
+import Data.List.NonEmpty (NonEmpty ((:|)), toList)
 import Solcore.Frontend.Syntax
 
 -- Generate Generic instances for data types
@@ -29,27 +29,32 @@ deriveGenericTopDecls localData allDecls
       ]
     newInsts = [TInstDef (buildInstance dt) | dt <- derivable]
     -- When std.StorageGeneric is in scope, also derive the storage type-class
-    -- instances (StorageSize / CanStore) so the data type can live in contract
-    -- storage. StorageType is provided generically by the StorageGeneric bridge,
-    -- so only StorageSize (to give the field layout the right slot count) and a
-    -- functional CanStore (so contract field access can infer the stored type)
-    -- need to be emitted per type. Recursive types are skipped: their storage
-    -- size is unbounded. Non-storable types are skipped too: a type carrying a
-    -- dynamically-sized pointer field (memory/calldata) has no fixed storage
-    -- layout, so deriving StorageType for it would emit an instance whose body
-    -- demands an unsatisfiable `memory(...) : StorageType` constraint (see
-    -- nonStorableDataNames). Such types are still given a Generic instance; they
-    -- simply cannot be placed in storage.
-    nonStorable = nonStorableDataNames localData
+    -- instances (StorageSize / StorageType / CanStore) so the data type can live
+    -- in contract storage. Recursive types are skipped: their storage size is
+    -- unbounded.
+    --
+    -- Whether a type is *actually* storable is decided by the StorageType /
+    -- CanStore traits, not by a syntactic check here: each derived instance is
+    -- emitted with a context requiring its representation (resp. the type
+    -- itself, for CanStore) to be storable, so the instance body type-checks
+    -- against that assumption instead of eagerly forcing it. A type that carries
+    -- a non-storable field (e.g. a `memory(bytes)` pointer) therefore still gets
+    -- the instances, but their contexts are unsatisfiable — which only matters
+    -- when something genuinely demands storage of the type (a contract field).
+    -- Multisig's Signature / BatchOperation, never stored, compile fine; an
+    -- Operation actually placed in storage fails at the field, where the error
+    -- belongs.
+    --
+    -- These contexts mention composite types, which violate the Patterson
+    -- termination measure for the (small) StorageType / StorageSize instance
+    -- heads. Pragmas are file-scoped (an imported `no-patterson-condition` does
+    -- not propagate), so we emit the relaxation alongside the instances rather
+    -- than requiring every StorageGeneric user to write it by hand.
+    derivedStorage =
+      concatMap buildStorageInstances [dt | dt <- derivable, not (isRecursiveData dt)]
     storageInsts
-      | storageClassVisible allDecls =
-          concatMap
-            buildStorageInstances
-            [ dt
-              | dt <- derivable,
-                not (isRecursiveData dt),
-                dataName dt `notElem` nonStorable
-            ]
+      | storageClassVisible allDecls && not (null derivedStorage) =
+          storagePragmas ++ derivedStorage
       | otherwise = []
     conflictError n =
       "type '"
@@ -84,27 +89,20 @@ isRecursiveData dt =
   where
     selfRef t = dataName dt `elem` tyconNames t
 
--- Type constructors that denote dynamically-sized pointer values (memory /
--- calldata references). A type mentioning one of these has no fixed storage
--- slot layout, so it cannot be given a StorageSize / StorageType instance.
-nonStorableTyCons :: [Name]
-nonStorableTyCons = [Name "memory", Name "calldata"]
-
--- Names of the local data types that cannot be stored. A type is non-storable
--- if one of its constructor fields directly mentions a non-storable pointer
--- constructor, or mentions another non-storable data type. Computed as a
--- fixpoint so non-storability propagates through nested ADTs (a record holding
--- a non-storable field is itself non-storable).
-nonStorableDataNames :: [DataTy] -> [Name]
-nonStorableDataNames dts = fixpoint (nub initial)
-  where
-    fieldTyCons dt = concatMap tyconNames (concatMap constrTy (dataConstrs dt))
-    initial = [dataName dt | dt <- dts, any (`elem` nonStorableTyCons) (fieldTyCons dt)]
-    step acc =
-      nub (acc ++ [dataName dt | dt <- dts, any (`elem` acc) (fieldTyCons dt)])
-    fixpoint acc =
-      let acc' = step acc
-       in if length acc' == length acc then acc else fixpoint acc'
+-- The derived StorageType / StorageSize instances carry composite-typed
+-- contexts (their representation must be storable). Those contexts are larger
+-- than the instance head, so they fail the Patterson termination measure unless
+-- the condition is relaxed for these classes. Emitting the pragma here keeps
+-- StorageGeneric usable without per-file boilerplate; CanStore needs no
+-- relaxation (its `storage(T)` head already dominates the context measure).
+storagePragmas :: [TopDecl Name]
+storagePragmas =
+  [ TPragmaDecl
+      ( Pragma
+          NoPattersonCondition
+          (DisableFor (Name "StorageType" :| [Name "StorageSize"]))
+      )
+  ]
 
 collectDataDefs :: [TopDecl Name] -> [DataTy]
 collectDataDefs = concatMap go
@@ -308,7 +306,13 @@ buildStorageType dt =
   Instance
     { instDefault = False,
       instVars = dataParams dt,
-      instContext = [InCls (Name "StorageType") (TyVar tv) [] | tv <- dataParams dt],
+      -- The body loads/stores the SOP representation, so the instance is
+      -- conditional on that representation being storable. Listing the rep here
+      -- (rather than just the type parameters) lets the body discharge its
+      -- `rep : StorageType` obligation by assumption: a type with a non-storable
+      -- field still type-checks, and only fails when the instance is actually
+      -- demanded at a storage site.
+      instContext = [InCls (Name "StorageType") (sopRep dt) []],
       instName = Name "StorageType",
       paramsTy = [],
       mainTy = mainT,
@@ -352,7 +356,8 @@ buildStorageSize dt =
   Instance
     { instDefault = False,
       instVars = dataParams dt,
-      instContext = [InCls (Name "StorageSize") (TyVar tv) [] | tv <- dataParams dt],
+      -- size delegates to the representation's StorageSize, so require that.
+      instContext = [InCls (Name "StorageSize") (sopRep dt) []],
       instName = Name "StorageSize",
       paramsTy = [],
       mainTy = mainTyOf dt,
@@ -384,7 +389,10 @@ buildCanStore dt =
   Instance
     { instDefault = False,
       instVars = dataParams dt,
-      instContext = [InCls (Name "StorageType") (TyVar tv) [] | tv <- dataParams dt],
+      -- load/store route through StorageType for the type itself, so the stored
+      -- type must be a StorageType. This is what makes a non-storable type fail
+      -- precisely at the contract field that tries to store it.
+      instContext = [InCls (Name "StorageType") (mainTyOf dt) []],
       instName = Name "CanStore",
       paramsTy = [mainT],
       mainTy = storageTyOf mainT,

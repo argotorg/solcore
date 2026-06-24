@@ -3,21 +3,18 @@ import std.dispatch.{*};
 import std.Generic.{*};
 import std.StorageGeneric.{*};
 
-pragma no-patterson-condition;
-pragma no-bounded-variable-condition;
-
-// A data type carrying a dynamically-sized memory(bytes) payload has no fixed
-// storage layout, so DeriveGeneric must NOT emit StorageSize / StorageType /
-// CanStore for it. Doing so would synthesise a StorageType instance whose load
-// body demands an unsatisfiable `memory(bytes) : StorageType` constraint.
+// A data type carrying a dynamically-sized memory(bytes) payload is not
+// storable: there is no StorageType instance for memory(bytes). DeriveGeneric
+// still derives StorageType / StorageSize / CanStore for it, but those
+// instances are *conditional* on the representation being storable, so their
+// bodies type-check and the unsatisfiable obligation is deferred to any real
+// storage use. Because Payload is only ever passed as an argument, that
+// obligation is never demanded and the contract compiles.
 //
-// Such a type is perfectly fine as long as it never lives in storage — here
-// Payload is only ever passed as a function argument. Only the genuinely
-// storable StorableThing is placed in a contract field, and its storage
-// instances are still derived as usual.
-//
-// This mirrors the multisig contract's Signature / BatchOperation types, which
-// each carry a memory(bytes) branch but are never stored.
+// Note there are deliberately no `pragma no-patterson-condition` declarations
+// here (mirroring multisig.sol): DeriveGeneric emits the relaxation itself when
+// it derives storage instances. Only the genuinely storable StorableThing is
+// placed in a contract field.
 
 data Payload =
       NoPayload
