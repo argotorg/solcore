@@ -169,13 +169,8 @@ transformConstructor contractName cons
             Let False "memoryDataOffset" (Just word) Nothing,
             Asm
               [yulBlock|{
+                 // NOTE: we ensure no truncation in startBody below
                  let programSize := datasize(`deployer`)
-                 // Guard against argSize underflow: a truncated init-code
-                 // (codesize() < programSize) would make sub() wrap to ~2^256,
-                 // corrupting the free-memory pointer and codecopy length.
-                 // The very large pointer would result in out-of-gas.
-                 // TODO: use require with proper error
-                 if lt(codesize(), programSize) { revert(0, 0) }
                  let argSize := sub(codesize(), programSize)
                  memoryDataOffset := mload(64)
                  mstore(64, add(memoryDataOffset, argSize))
@@ -221,7 +216,16 @@ transformConstructor contractName cons
                 [proxyExp (TyCon "NonPayable" [])]
           ]
     startBody =
-      [ Asm [yulBlock|{ mstore(64, memoryguard(128)) }|]
+      [ Asm
+          [yulBlock|{
+            mstore(64, memoryguard(128))
+            // Guard against truncated deployer (which also covers yulContractName)
+            // A truncated input would cause `copy_arguments_for_constructor`
+            // to underflow and do an impossible memory expansion resulting in OOG.
+            // And such a truncation is unpredictable.
+            // TODO: use require with proper error
+            if lt(codesize(), datasize(`deployer`)) { revert(0, 0) }
+        }|]
       ]
         <> callvalueCheck
         <> [ Let False "conargs" (Just argsTuple) (Just (Call Nothing "copy_arguments_for_constructor" [])),
@@ -230,10 +234,10 @@ transformConstructor contractName cons
              StmtExp $ Call Nothing "fun" [Var "conargs"],
              Asm
                [yulBlock|{
-            let size := datasize(`yulContractName`)
-            codecopy(0, dataoffset(`yulContractName`), datasize(`yulContractName`))
-            return(0, size)
-          }|]
+                 let size := datasize(`yulContractName`)
+                 codecopy(0, dataoffset(`yulContractName`), datasize(`yulContractName`))
+                 return(0, size)
+             }|]
            ]
     startFun = CFunDecl (FunDef False startSig startBody)
 
