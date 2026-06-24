@@ -9,10 +9,13 @@ export {
   MethodLevelCallvalueCheck,
   NonPayable,
   Payable,
+  PublicMethods,
   RunContract,
   RunDispatch,
   Selector,
   SigString,
+  calculateInterfaceId,
+  calculateSelector,
   do_exec,
   fallback_default_implementation,
   selector_matches,
@@ -85,6 +88,77 @@ forall name payability args rets fn
         let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
         return bytes4(bshrWord(224, hash));
     }
+}
+
+// --- Interface Id ---
+
+// The ABI selector for a single method type. This is the same encoding used by
+// `Selector.compute`; it is exposed as a standalone function so callers can
+// read a method's selector directly.
+forall ty . ty:Selector => function calculateSelector(prx : Proxy(ty)) -> bytes4 {
+    return Selector.compute(prx);
+}
+
+// 2-argument bitwise XOR (`^=` in the interface-id fold below).
+function xorWord(a : word, b : word) -> word {
+    let res : word;
+    assembly {
+        res := xor(a, b)
+    }
+    return res;
+}
+
+// `type(C).publicMethods` hands back a `Proxy` over the contract's public
+// methods, encoded as a right-nested tuple terminated by `()`:
+//
+//   Proxy((Method(...), (Method(...), ... ())))
+//
+// Each element is a `Method(name,payability,args,rets,fn)` — the same typing
+// `Selector.compute` consumes — so its selector is recovered from the type with
+// no hashing in the compiler.
+//
+// The tuple is *heterogeneous*: every method is a distinct `Method(...)` type,
+// so it cannot be indexed by a runtime `word`. `PublicMethods` therefore walks
+// it structurally — a `()` base case and a `(Method(...), m)` recursive case,
+// mirroring `RunDispatch` — XOR-folding the per-method selectors into an
+// interface id. The recursive instance carries the very same `name:SigString,
+// args:SigString` constraints as the `Method(...):Selector` instance, so
+// `Selector.compute` resolves directly on the head method.
+//
+// `calculateInterfaceId(type(C).publicMethods)` then reads like Solidity's
+// `type(I).interfaceId`, with all selector/iteration logic in the standard
+// library rather than the compiler.
+forall ty . class ty : PublicMethods {
+    function interfaceId(p : Proxy(ty)) -> bytes4;
+}
+
+// Base case: the `()` tuple terminator — no methods left.
+instance () : PublicMethods {
+    function interfaceId(p : Proxy(())) -> bytes4 {
+        let zero : word = 0;
+        return bytes4(zero);
+    }
+}
+
+// Recursive case: a head `Method(...)` (same typing and constraints
+// `Selector.compute` uses) followed by the remaining methods `m`.
+forall name payability args rets fn m
+    . name : SigString
+    , args : SigString
+    , m : PublicMethods
+=> instance (Method(name,payability,args,rets,fn), m) : PublicMethods {
+    function interfaceId(p : Proxy((Method(name,payability,args,rets,fn), m))) -> bytes4 {
+        let head : bytes4 = Selector.compute(Proxy : Proxy(Method(name,payability,args,rets,fn)));
+        let rest : bytes4 = PublicMethods.interfaceId(Proxy : Proxy(m));
+        return bytes4(xorWord(Typedef.rep(head), Typedef.rep(rest)));
+    }
+}
+
+// Compute an ERC-165 style interface id by XOR-folding the public-method
+// selectors. Mirrors Solidity's `type(I).interfaceId`.
+forall ty . ty : PublicMethods =>
+function calculateInterfaceId(methods : Proxy(ty)) -> bytes4 {
+    return PublicMethods.interfaceId(methods);
 }
 
 // --- Method Execution ---

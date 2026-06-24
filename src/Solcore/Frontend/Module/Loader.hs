@@ -1454,6 +1454,8 @@ renameExpTypeRefs renameMap (ExpCond e1 e2 e3) =
     (renameExpTypeRefs renameMap e1)
     (renameExpTypeRefs renameMap e2)
     (renameExpTypeRefs renameMap e3)
+renameExpTypeRefs renameMap (ExpTypeInfo cn field) =
+  ExpTypeInfo (renameTypeName renameMap cn) field
 
 renameMemberQualifierTypeRefs :: Map Name Name -> Exp -> Exp
 renameMemberQualifierTypeRefs renameMap e =

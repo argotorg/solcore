@@ -11,6 +11,8 @@
 module Solcore.Desugarer.ContractDispatch
   ( contractDispatchDesugarer,
     contractDispatchTopDecls,
+    nameTypeName,
+    publicMethodTypes,
   )
 where
 
@@ -112,18 +114,6 @@ genMainFn addMain c@(Contract cname tys cdecls)
               Var fname
             ]
     mkMethod s = error $ "Internal Error: contract methods must be fully typed: " <> show s
-
-    -- skip the optional fallback function and non-public methods in the methods tuple
-    unwrapSigs (CFunDecl (FunDef True s _))
-      | sigName s == fallbackName = Nothing
-      | otherwise = Just s
-    unwrapSigs _ = Nothing
-
-    isTyped (Typed {}) = True
-    isTyped (Untyped {}) = False
-
-    getTy (Typed _ _ t) = Just t
-    getTy (Untyped {}) = Nothing
 
 transformCDecl :: Name -> ContractDecl Name -> Set (ContractDecl Name)
 transformCDecl contractName (CConstrDecl c) = transformConstructor contractName c
@@ -231,12 +221,6 @@ transformConstructor contractName cons
            ]
     startFun = CFunDecl (FunDef False startSig startBody)
 
-    isTyped (Typed {}) = True
-    isTyped (Untyped {}) = False
-
-    getTy (Typed _ _ t) = Just t
-    getTy (Untyped {}) = Nothing
-
 initFunName :: Name
 initFunName = "init_"
 
@@ -259,7 +243,51 @@ mkNameInst (DataTy dname [] []) fname =
         }
 mkNameInst dt _ = error ("Internal Error: unexpected name type structure: " <> show dt)
 
+-- | The 'Method' type (as used by the dispatcher) for each public,
+-- fully-typed method of a contract, in dispatch order.  Used by the
+-- @type(C).publicMethods@ primitive to compute interface ids: each 'Method'
+-- type has a 'Selector' instance (which reuses 'sigStr'), so the selectors can
+-- be derived from these types without reimplementing any hashing in the
+-- compiler.  The payability and return types are carried faithfully; the
+-- function ('fn') field is irrelevant to the selector and is filled with a
+-- 'word' placeholder.  The fallback and any non-fully-typed methods are
+-- skipped.
+publicMethodTypes :: Contract Name -> [Ty]
+publicMethodTypes (Contract cname _ cdecls) =
+  mapMaybe methodTy (mapMaybe unwrapSigs cdecls)
+  where
+    methodTy (Signature _ _ fname fargs _ (Just ret) payable)
+      | all isTyped fargs =
+          Just $
+            TyCon
+              "Method"
+              [ TyCon (nameTypeName cname fname) [],
+                TyCon (if payable then "Payable" else "NonPayable") [],
+                tupleTyFromList (mapMaybe getTy fargs),
+                ret,
+                word
+              ]
+    methodTy _ = Nothing
+
 --- Util ---
+
+-- | Pull the signature out of a public contract method, skipping the optional
+-- fallback function and any non-public ('FunDef False') declarations.  Used
+-- both by 'genMainFn' (to build the dispatch table) and 'publicMethodTypes'
+-- (to expose the same list as types for the @publicMethods@ primitive).
+unwrapSigs :: ContractDecl Name -> Maybe (Signature Name)
+unwrapSigs (CFunDecl (FunDef True s _))
+  | sigName s == fallbackName = Nothing
+  | otherwise = Just s
+unwrapSigs _ = Nothing
+
+isTyped :: Param a -> Bool
+isTyped (Typed {}) = True
+isTyped (Untyped {}) = False
+
+getTy :: Param a -> Maybe Ty
+getTy (Typed _ _ t) = Just t
+getTy (Untyped {}) = Nothing
 
 proxyTy :: Ty -> Ty
 proxyTy t = TyCon "Proxy" [t]
