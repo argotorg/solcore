@@ -117,9 +117,9 @@ contract Multisig {
 
     constructor() {
         // The creator becomes the first signer.
-        signers[0] = caller();
-        signers_count = 1;
-        signers_required = 1;
+        signers[uint256(0)] = caller();
+        signers_count = uint256(1);
+        signers_required = uint256(1);
     }
 
     // Only signers can call this.
@@ -139,7 +139,7 @@ contract Multisig {
         }
 
         operations[operations_count] = op;
-        status[operations_count] = OperationStatus.Approvals(0);
+        status[operations_count] = OperationStatus.Approvals(uint256(0));
         operations_count += uint256(1);
 
         // TODO: emit log
@@ -160,7 +160,7 @@ contract Multisig {
             | OperationStatus.Approvals(count) =>
                 require(votes[nonce_][signer] == Vote.None, Error(0x12345678)); // SignerAlreadyApproved()
                 votes[nonce_][signer] = Vote.Approved;
-                status[nonce_] = OperationStatus.Approvals(count + 1);
+                status[nonce_] = OperationStatus.Approvals(count + uint256(1));
             | _ => revertWithError(Error(0x12345678)); // UnexpectedStatus()
         }
     }
@@ -257,12 +257,12 @@ contract Multisig {
         require(nonce_ == nonce, Error(0x12345678)); // IncorrectSequence()
         match status[nonce_] {
             | OperationStatus.Rejected =>
-                nonce += 1;
+                nonce += uint256(1);
                 // Special case for rejections: we operate as a no-op.
                 return ();
             | OperationStatus.Approvals(count) =>
                 require(count >= signers_required, Error(0x12345678)); // NotEnoughApprovals()
-                nonce += 1;
+                nonce += uint256(1);
                 // Update status.
                 status[nonce_] = OperationStatus.Executed;
             | _ => revertWithError(Error(0x12345678)); // IncorrectStatus();
