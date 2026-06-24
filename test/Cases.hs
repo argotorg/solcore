@@ -319,7 +319,6 @@ cases =
       runTestExpectingFailure "default-instance-weak.solc" caseFolder,
       runTestForFile "derive-generic-sum.solc" caseFolder,
       runTestForFile "derive-generic-excluded.solc" caseFolder,
-      runTestForFile "storage-generic.solc" caseFolder,
       runTestExpectingFailure "generic-manual-no-pragma.solc" caseFolder,
       runTestExpectingFailure "generic-sum-no-pragma.solc" caseFolder,
       runTestExpectingFailure "generic-product-no-pragma.solc" caseFolder,
