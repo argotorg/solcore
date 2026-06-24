@@ -1,0 +1,81 @@
+import std.{*};
+import std.dispatch.{*};
+import std.Generic.{*};
+import std.StorageGeneric.{*};
+
+pragma no-patterson-condition;
+pragma no-bounded-variable-condition;
+
+// Algebraic data types used directly as contract storage fields.
+//
+//  - someValue : Option       (a sum,     rep = sum((), uint256)   -> 2 slots)
+//  - triple    : Triple       (a product, rep = (uint256,(uint256,uint256)) -> 3 slots)
+//
+// Reads/writes of the fields go through the contract field access machinery,
+// which resolves storage(Option):CanStore(Option) / storage(Triple):CanStore(Triple)
+// via the Generic bridge in std.StorageGeneric. Generic itself is auto-derived.
+
+data Option = None | Some(uint256);
+data Triple = Triple(uint256, uint256, uint256);
+
+// The per-type StorageSize tells the field-layout machinery how many slots each
+// field occupies (so `triple` is placed after `someValue`'s two slots, with no
+// overlap). It just forwards to the representation's StorageSize, which is
+// computed structurally by std.StorageGeneric. (A blanket StorageSize bridge is
+// not possible: std already defines the catch-all `default instance` returning 1,
+// and there can be only one default per class.)
+instance Option : StorageSize {
+    function size(x : Proxy(Option)) -> word {
+        return StorageSize.size(Proxy : Proxy(sum((), uint256)));
+    }
+}
+
+instance Triple : StorageSize {
+    function size(x : Proxy(Triple)) -> word {
+        return StorageSize.size(Proxy : Proxy((uint256, (uint256, uint256))));
+    }
+}
+
+contract C {
+    someValue : Option;
+    triple : Triple;
+
+    constructor() {
+        // sum: 1 tag slot + max(size (), size uint256) = 1 + 1 = 2
+        assert(eqWord(StorageSize.size(Proxy : Proxy(Option)), 2));
+        // product: size uint256 + (size uint256 + size uint256) = 1 + 2 = 3
+        assert(eqWord(StorageSize.size(Proxy : Proxy(Triple)), 3));
+    }
+
+    public function setValue(v : uint256) -> () {
+        someValue = Option.Some(v);
+    }
+
+    public function clearValue() -> () {
+        someValue = Option.None;
+    }
+
+    public function getValue() -> uint256 {
+        match someValue {
+        | Option.None    => revertEmpty();
+        | Option.Some(v) => return v;
+        }
+    }
+
+    public function isSome() -> uint256 {
+        match someValue {
+        | Option.None    => return uint256(0);
+        | Option.Some(_) => return uint256(1);
+        }
+    }
+
+    public function setTriple(a : uint256, b : uint256, c : uint256) -> () {
+        triple = Triple(a, b, c);
+    }
+
+    public function tripleSum() -> uint256 {
+        match triple {
+        | Triple(a, b, c) => return a + b + c;
+        }
+    }
+}
