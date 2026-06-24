@@ -36,6 +36,32 @@ instance Triple : StorageSize {
     }
 }
 
+// The contract field access machinery resolves `storage(T):CanStore(loadType)`
+// and must *infer* loadType from the slot type. That requires a functional
+// (per-type) CanStore instance — the generic `default instance a:CanStore(b)`
+// in std.StorageGeneric is non-functional (it accepts any storable b), so it
+// only serves direct calls where b is already known, not field-access where
+// loadType is a phantom parameter to be solved. Each instance just recovers the
+// slot and delegates to the StorageType bridge. (These per-type instances are
+// exactly what a `deriving`-style extension of DeriveGeneric would emit.)
+instance storage(Option) : CanStore(Option) {
+    function store(r : storage(Option), v : Option) -> () {
+        StorageType.store(Typedef.rep(r), v);
+    }
+    function load(r : storage(Option)) -> Option {
+        return StorageType.load(Typedef.rep(r));
+    }
+}
+
+instance storage(Triple) : CanStore(Triple) {
+    function store(r : storage(Triple), v : Triple) -> () {
+        StorageType.store(Typedef.rep(r), v);
+    }
+    function load(r : storage(Triple)) -> Triple {
+        return StorageType.load(Typedef.rep(r));
+    }
+}
+
 contract C {
     someValue : Option;
     triple : Triple;
