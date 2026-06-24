@@ -1,4 +1,5 @@
 import std.{*};
+import std.opcodes.{callvalue, calldatasize, calldataload, shr};
 
 export {
   ABIString,
@@ -83,7 +84,7 @@ forall name payability args rets fn
     function compute(prx : Proxy(Method(name,payability,args,rets,fn))) -> bytes4 {
         // let hash : word = keccakLit(sigStr(prx));
         let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
-        return bytes4(bshrWord(224, hash));
+        return bytes4(shr(224, hash));
     }
 }
 
@@ -156,15 +157,7 @@ forall args rets fn
   , rets:ABIEncode
 => function do_exec(pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
     // check we have enough calldata for the head of args
-    let hdsz = ABIAttribs.headSize(pargs);
-    let cdsz;
-    assembly {
-      cdsz := calldatasize()
-    }
-    if (cdsz < (hdsz + 4)) {
-      let ABIInputTruncated = Error(0x08638556);
-      revertWithError(ABIInputTruncated);
-    }
+    require(calldatasize() >= (ABIAttribs.headSize(pargs) + 4), Error(0x08638556)); // ABIInputTruncated()
 
     // TODO: calldatasize checks for dynamic types
 
@@ -234,10 +227,7 @@ forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispat
 // Given evidence of a type with a known selector, we can check if it matches the selector in the first four bytes of calldata
 forall ty . ty:Selector => function selector_matches(prx : Proxy(ty)) -> bool {
   let candidate = Typedef.rep(Selector.compute(prx));
-  let selector: word;
-  assembly {
-    selector := shr(224, calldataload(0))
-  }
+  let selector = shr(224, calldataload(0));
   return selector == candidate;
 }
 
@@ -256,15 +246,9 @@ instance Payable:MethodLevelCallvalueCheck {
 }
 // NonPayable methods revert if passed value
 instance NonPayable:MethodLevelCallvalueCheck {
-   function checkCallvalue(prx : Proxy(NonPayable)) -> () {
-       let value: word;
-       assembly {
-         value := callvalue()
-       }
-       if (value > 0) {
-         let NonPayableReceivedValue = Error(0xb5988ea3);
-         revertWithError(NonPayableReceivedValue);
-       }
+    function checkCallvalue(prx : Proxy(NonPayable)) -> () {
+        let NonPayableReceivedValue = Error(0xb5988ea3);
+        require(callvalue() == 0, NonPayableReceivedValue);
    }
 }
 
@@ -290,11 +274,8 @@ forall methods fb . methods:RunDispatch, fb:ExecMethod => instance Contract(meth
 
         // calldata shorter than 4 bytes can't contain a selector — skip
         // dispatch and invoke the fallback directly (matches Solidity)
-        let cdsz: word;
-        assembly {
-          cdsz := calldatasize()
-        }
-        if (cdsz >= 4) {
+        if (calldatasize() >= 4) {
+            // dispatch to method based on selector
             RunDispatch.go(ms);
         }
         // fallthrough to fallback -- this will be reached upon short input
