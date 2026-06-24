@@ -123,7 +123,8 @@ dispatches =
       runDispatchTest "empty_no_constructor.solc",
       runDispatchTest "generic_product.solc",
       runDispatchTest "generic_sum.solc",
-      runDispatchTest "specialise_sum_of_product.solc"
+      runDispatchTest "specialise_sum_of_product.solc",
+      runDispatchTest "storage_adt_field.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -319,7 +320,6 @@ cases =
       runTestForFile "derive-generic-sum.solc" caseFolder,
       runTestForFile "derive-generic-excluded.solc" caseFolder,
       runTestForFile "storage-generic.solc" caseFolder,
-      runTestForFile "storage-adt-field.solc" caseFolder,
       runTestExpectingFailure "generic-manual-no-pragma.solc" caseFolder,
       runTestExpectingFailure "generic-sum-no-pragma.solc" caseFolder,
       runTestExpectingFailure "generic-product-no-pragma.solc" caseFolder,
