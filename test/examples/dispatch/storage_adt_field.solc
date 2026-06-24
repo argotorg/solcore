@@ -43,7 +43,7 @@ contract C {
 
     public function getValue() -> uint256 {
         match someValue {
-        | Option.None    => revertEmpty();
+        | Option.None    => revertEmpty(); return uint256(0);
         | Option.Some(v) => return v;
         }
     }
