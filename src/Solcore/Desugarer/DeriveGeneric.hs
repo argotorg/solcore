@@ -252,8 +252,61 @@ methodCall cls method args = Call Nothing (QualName (Name cls) method) args
 buildStorageInstances :: DataTy -> [TopDecl Name]
 buildStorageInstances dt =
   [ TInstDef (buildStorageSize dt),
+    TInstDef (buildStorageType dt),
     TInstDef (buildCanStore dt)
   ]
+
+-- instance <ctx> => T(params) : StorageType {
+--   function load(ptr : word) -> T(params) {
+--     let r : <rep> = StorageType.load(ptr);
+--     return Generic.to(r);
+--   }
+--   function store(ptr : word, value : T(params)) -> () {
+--     StorageType.store(ptr, Generic.from(value));
+--   }
+-- }
+-- This is emitted as a concrete instance (not a default) on purpose: a default
+-- instance's `load` returns the head variable `a`, which the specializer cannot
+-- monomorphize for the Generic.to call (the type is in the result, not the
+-- arguments). Fixing `a` in the instance head makes Generic.to resolvable.
+buildStorageType :: DataTy -> Instance Name
+buildStorageType dt =
+  Instance
+    { instDefault = False,
+      instVars = dataParams dt,
+      instContext = [InCls (Name "StorageType") (TyVar tv) [] | tv <- dataParams dt],
+      instName = Name "StorageType",
+      paramsTy = [],
+      mainTy = mainT,
+      instFunctions = [FunDef False loadSig loadBody, FunDef False storeSig storeBody]
+    }
+  where
+    mainT = mainTyOf dt
+    loadSig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "load",
+          sigParams = [Typed False (Name "_ptr") wordTy],
+          sigRetComptime = False,
+          sigReturn = Just mainT,
+          sigPayable = False
+        }
+    loadBody =
+      [ Let False (Name "_r") (Just (sopRep dt)) (Just (methodCall "StorageType" "load" [Var (Name "_ptr")])),
+        Return (methodCall "Generic" "to" [Var (Name "_r")])
+      ]
+    storeSig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "store",
+          sigParams = [Typed False (Name "_ptr") wordTy, Typed False (Name "_v") mainT],
+          sigRetComptime = False,
+          sigReturn = Just unitTy,
+          sigPayable = False
+        }
+    storeBody = [StmtExp (methodCall "StorageType" "store" [Var (Name "_ptr"), methodCall "Generic" "from" [Var (Name "_v")]])]
 
 -- instance <ctx> => T(params) : StorageSize {
 --   function size(x : Proxy(T(params))) -> word {

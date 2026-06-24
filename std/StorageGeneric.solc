@@ -114,31 +114,19 @@ instance sum(f, g):StorageType {
     }
 }
 
-// ─── Default bridge: StorageType via Generic ─────────────────────────────
-// Any type 'a' with Generic(rep) inherits its storage layout from rep.
-// This is a default instance so that the primitive instances above (and the
-// concrete word/uint256/... instances in std) take precedence when they
-// apply, while every other data type falls back to its SOP representation.
-
-forall a rep . a:Generic(rep), rep:StorageType =>
-default instance a:StorageType {
-    function load(ptr : word) -> a {
-        let r : rep = StorageType.load(ptr);
-        return Generic.to(r);
-    }
-    function store(ptr : word, value : a) -> () {
-        StorageType.store(ptr, Generic.from(value));
-    }
-}
-
-// CanStore for a storage slot holding an ADT is NOT provided here as a blanket
-// default: the contract field-access machinery resolves
-// storage(storageType):CanStore(loadType) and must *infer* loadType from the
-// slot type, which requires a functional (per-type) instance. A tyvar-headed
-// default `a:CanStore(b)` is non-functional (it accepts any storable b), so it
-// cannot drive that inference. Instead, DeriveGeneric emits a concrete
-// `storage(T):CanStore(T)` per data type (see Solcore.Desugarer.DeriveGeneric),
-// each delegating to the StorageType bridge above.
+// StorageType / CanStore for an ADT are NOT provided here as blanket bridges.
+//
+// A `default instance a:StorageType` would have its `load` return the head
+// variable `a` via Generic.to — but the specializer cannot monomorphize a
+// result-position type variable of a default instance (it is not pinned by the
+// arguments), so loads panic. Likewise a tyvar-headed `default a:CanStore(b)`
+// is non-functional (accepts any storable b), so contract field access cannot
+// infer the stored type from the slot type.
+//
+// Instead, DeriveGeneric emits concrete, per-type StorageType and
+// storage(T):CanStore(T) instances (see Solcore.Desugarer.DeriveGeneric) where
+// the data type is fixed in the instance head — both delegate to the structural
+// (sum/pair/unit) instances above via the type's Generic representation.
 
 // ─── Top-level helpers ───────────────────────────────────────────────────
 // Convenience wrappers mirroring std.ABIGeneric's encode / decode: persist or
