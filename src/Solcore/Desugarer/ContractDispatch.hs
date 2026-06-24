@@ -170,6 +170,12 @@ transformConstructor contractName cons
             Asm
               [yulBlock|{
                  let programSize := datasize(`deployer`)
+                 // Guard against argSize underflow: a truncated init-code
+                 // (codesize() < programSize) would make sub() wrap to ~2^256,
+                 // corrupting the free-memory pointer and codecopy length.
+                 // The very large pointer would result in out-of-gas.
+                 // TODO: use require with proper error
+                 if lt(codesize(), programSize) { revert(0, 0) }
                  let argSize := sub(codesize(), programSize)
                  memoryDataOffset := mload(64)
                  mstore(64, add(memoryDataOffset, argSize))
