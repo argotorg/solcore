@@ -1,0 +1,159 @@
+pragma no-patterson-condition StorageType, CanStore;
+pragma no-bounded-variable-condition StorageType, CanStore;
+pragma no-coverage-condition CanStore;
+
+export {
+    loadGeneric,
+    storeGeneric
+};
+
+import std.{*};
+import std.opcodes.{sload, sstore};
+import std.Generic.{*};
+
+// ─── Storage layout for algebraic data types ─────────────────────────────
+//
+// This module is the storage analogue of std.ABIGeneric: it teaches the
+// StorageSize / StorageType / CanStore classes how to deal with the
+// primitive SOP types that `Generic` maps user data types onto
+//   sum(f, g)  with constructors inl / inr   (choice / tagged union)
+//   (f, g)     pair                          (product)
+//   ()         unit
+// and then bridges every type with a `Generic(rep)` instance to those
+// layouts. `Generic` instances are auto-derived for local data types, so
+// no per-type boilerplate is needed at the use site.
+
+function maxWord(a : word, b : word) -> word {
+    match gtWord(a, b) {
+    | true  => return a;
+    | false => return b;
+    }
+}
+
+// ─── StorageSize for the primitive sum(f, g) type ────────────────────────
+// A tagged union occupies one slot for the tag plus enough slots for the
+// largest branch:  size = 1 + max(size(f), size(g)).
+// (StorageSize for () and (a, b) is already provided by std.)
+
+forall f g . f:StorageSize, g:StorageSize =>
+instance sum(f, g):StorageSize {
+    function size(x : Proxy(sum(f, g))) -> word {
+        let f_sz : word = StorageSize.size(Proxy : Proxy(f));
+        let g_sz : word = StorageSize.size(Proxy : Proxy(g));
+        return 1 + maxWord(f_sz, g_sz);
+    }
+}
+
+// ─── StorageType for () ──────────────────────────────────────────────────
+// The unit type occupies no slots, so load/store are no-ops.
+
+instance ():StorageType {
+    function load(ptr : word) -> () {
+        return ();
+    }
+    function store(ptr : word, value : ()) -> () {
+        return ();
+    }
+}
+
+// ─── StorageType for the primitive product (a, b) ────────────────────────
+// Layout:  [ptr .. ptr + size(a) - 1]            : a
+//          [ptr + size(a) ..             ]       : b
+
+forall a b . a:StorageType, a:StorageSize, b:StorageType =>
+instance (a, b):StorageType {
+    function load(ptr : word) -> (a, b) {
+        let a_sz : word = StorageSize.size(Proxy : Proxy(a));
+        let x : a = StorageType.load(ptr);
+        let y : b = StorageType.load(ptr + a_sz);
+        return (x, y);
+    }
+    function store(ptr : word, value : (a, b)) -> () {
+        match value {
+        | (x, y) =>
+            let a_sz : word = StorageSize.size(Proxy : Proxy(a));
+            StorageType.store(ptr, x);
+            StorageType.store(ptr + a_sz, y);
+        }
+    }
+}
+
+// ─── StorageType for the primitive sum(f, g) ─────────────────────────────
+// Slot layout (static sums):
+//   [ptr]            : tag word (0 = inl, 1 = inr)
+//   [ptr + 1 ..    ] : encoded branch payload
+
+forall f g . f:StorageType, g:StorageType =>
+instance sum(f, g):StorageType {
+    function load(ptr : word) -> sum(f, g) {
+        let tag : word = sload(ptr);
+        match tag {
+        | 0 =>
+            let v : f = StorageType.load(ptr + 1);
+            return inl(v);
+        | _ =>
+            let v : g = StorageType.load(ptr + 1);
+            return inr(v);
+        }
+    }
+    function store(ptr : word, value : sum(f, g)) -> () {
+        match value {
+        | inl(v) =>
+            sstore(ptr, 0);
+            StorageType.store(ptr + 1, v);
+        | inr(v) =>
+            sstore(ptr, 1);
+            StorageType.store(ptr + 1, v);
+        }
+    }
+}
+
+// ─── Default bridge: StorageType via Generic ─────────────────────────────
+// Any type 'a' with Generic(rep) inherits its storage layout from rep.
+// This is a default instance so that the primitive instances above (and the
+// concrete word/uint256/... instances in std) take precedence when they
+// apply, while every other data type falls back to its SOP representation.
+
+forall a rep . a:Generic(rep), rep:StorageType =>
+default instance a:StorageType {
+    function load(ptr : word) -> a {
+        let r : rep = StorageType.load(ptr);
+        return Generic.to(r);
+    }
+    function store(ptr : word, value : a) -> () {
+        StorageType.store(ptr, Generic.from(value));
+    }
+}
+
+// ─── Default bridge: CanStore for storage slots holding ADTs ─────────────
+// A storage reference `storage(t)` is a Typedef(word) (the slot index), so we
+// recover the slot with Typedef.rep and delegate to the StorageType bridge.
+// Restricting the value type to one with a Generic instance keeps this from
+// shadowing the hand-written CanStore instances in std (storage(word),
+// storage(string), storage(mapping), ...), which take precedence anyway as
+// non-default instances.
+
+forall a b rep . a:Typedef(word), b:Generic(rep), b:StorageType =>
+default instance a:CanStore(b) {
+    function store(r : a, v : b) -> () {
+        StorageType.store(Typedef.rep(r), v);
+    }
+    function load(r : a) -> b {
+        return StorageType.load(Typedef.rep(r));
+    }
+}
+
+// ─── Top-level helpers ───────────────────────────────────────────────────
+// Convenience wrappers mirroring std.ABIGeneric's encode / decode: persist or
+// read back any 'a' that has a Generic(rep) instance at a raw storage slot.
+
+forall a rep . a:Generic(rep), rep:StorageType =>
+function storeGeneric(slot : word, value : a) -> () {
+    StorageType.store(slot, Generic.from(value));
+}
+
+forall a rep . a:Generic(rep), rep:StorageType =>
+function loadGeneric(slot : word) -> a {
+    let r : rep = StorageType.load(slot);
+    return Generic.to(r);
+}
