@@ -1,0 +1,79 @@
+// Storage support for algebraic data types, mirroring std.ABIGeneric.
+// Generic instances are auto-derived for Option / Triple; the storage
+// classes (StorageSize / StorageType / CanStore) are resolved through the
+// bridges in std.StorageGeneric over the primitive sum / pair / unit types.
+
+import std.{*};
+import std.Generic.{*};
+import std.StorageGeneric.{*};
+
+pragma no-patterson-condition;
+pragma no-bounded-variable-condition;
+
+data Option(a) = None | Some(a);
+
+data Triple = Triple(word, word, word);
+
+// StorageSize of a tagged union: 1 (tag) + max(size branches).
+// sum((), word) -> 1 + max(0, 1) = 2
+function optSize() -> word {
+    return StorageSize.size(Proxy : Proxy(sum((), word)));
+}
+
+// Round-trip a sum value through a storage slot via the top-level helpers.
+function roundtripSome(slot : word, v : word) -> word {
+    let x : Option(word) = Option.Some(v);
+    storeGeneric(slot, x);
+    let y : Option(word) = loadGeneric(slot);
+    match y {
+    | Option.None    => return 0;
+    | Option.Some(w) => return w;
+    }
+}
+
+// Round-trip the empty branch via the StorageType class directly.
+function roundtripNone(slot : word) -> word {
+    let x : Option(word) = Option.None;
+    StorageType.store(slot, x);
+    let y : Option(word) = StorageType.load(slot);
+    match y {
+    | Option.None    => return 0;
+    | Option.Some(w) => return w;
+    }
+}
+
+// Round-trip via CanStore on a `storage(T)` reference, the path used by
+// contract field access.
+function roundtripCanStore(slot : word, v : word) -> word {
+    let r : storage(Option(word)) = Typedef.abs(slot);
+    let x : Option(word) = Option.Some(v);
+    CanStore.store(r, x);
+    let y : Option(word) = CanStore.load(r);
+    match y {
+    | Option.None    => return 0;
+    | Option.Some(w) => return w;
+    }
+}
+
+// Round-trip a product (nested pair representation) through storage.
+function roundtripTriple(slot : word, a : word, b : word, c : word) -> word {
+    let x : Triple = Triple(a, b, c);
+    storeGeneric(slot, x);
+    let y : Triple = loadGeneric(slot);
+    match y {
+    | Triple(p, q, r) => return add(p, add(q, r));
+    }
+}
+
+contract StorageGenericTest {
+    constructor() {}
+
+    public function run(v : word) -> word {
+        let a = roundtripSome(0x100, v);
+        let b = roundtripNone(0x110);
+        let c = roundtripCanStore(0x120, v);
+        let t = roundtripTriple(0x130, v, v, v);
+        let s = optSize();
+        return add(a, add(b, add(c, add(t, s))));
+    }
+}
