@@ -128,12 +128,15 @@ default instance a:StorageType {
 // ─── Default bridge: CanStore for storage slots holding ADTs ─────────────
 // A storage reference `storage(t)` is a Typedef(word) (the slot index), so we
 // recover the slot with Typedef.rep and delegate to the StorageType bridge.
-// Restricting the value type to one with a Generic instance keeps this from
-// shadowing the hand-written CanStore instances in std (storage(word),
-// storage(string), storage(mapping), ...), which take precedence anyway as
-// non-default instances.
+// The hand-written CanStore instances in std (storage(word), storage(string),
+// storage(mapping), ...) take precedence anyway as non-default instances.
+//
+// Note: this gates only on `b:StorageType` and not `b:Generic(rep)`. A
+// Generic-only constraint would leave `rep` as a phantom type variable (it is
+// not mentioned in the head or the method bodies), which the solver cannot
+// ground — `b:StorageType` is already exactly what the methods need.
 
-forall a b rep . a:Typedef(word), b:Generic(rep), b:StorageType =>
+forall a b . a:Typedef(word), b:StorageType =>
 default instance a:CanStore(b) {
     function store(r : a, v : b) -> () {
         StorageType.store(Typedef.rep(r), v);
