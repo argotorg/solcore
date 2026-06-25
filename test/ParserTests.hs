@@ -468,12 +468,12 @@ declTests =
         parsesAs
           topDeclP
           "data Void;"
-          (TDataDef (DataTy "Void" [] [])),
+          (TDataDef (DataTy "Void" [] [] [])),
       testCase "data type with nullary constructors" $
         parsesAs
           topDeclP
           "data Bool = True | False;"
-          (TDataDef (DataTy "Bool" [] [Constr "True" [], Constr "False" []])),
+          (TDataDef (DataTy "Bool" [] [Constr "True" [], Constr "False" []] [])),
       testCase "data type with parameterized constructor" $
         parsesAs
           topDeclP
@@ -483,6 +483,19 @@ declTests =
                   "Option"
                   [TyCon "a" []]
                   [Constr "Some" [TyCon "a" []], Constr "None" []]
+                  []
+              )
+          ),
+      testCase "data type with derive attribute" $
+        parsesAs
+          topDeclP
+          "#[derive(Eq, Ord)] data Color = Red | Green;"
+          ( TDataDef
+              ( DataTy
+                  "Color"
+                  []
+                  [Constr "Red" [], Constr "Green" []]
+                  ["Eq", "Ord"]
               )
           ),
       testCase "type synonym no params" $
