@@ -114,6 +114,7 @@ dispatches =
     [ runDispatchTest "basic.solc",
       runDispatchTest "assembly.solc",
       runDispatchTest "stringid.solc",
+      runDispatchTest "storage.solc",
       runDispatchTest "miniERC20.solc",
       runDispatchTest "Revert.solc",
       runDispatchTest "hashes.solc",

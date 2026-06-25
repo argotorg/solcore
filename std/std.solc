@@ -1519,6 +1519,18 @@ instance memory(string):StorageSize {
     }
 }
 
+instance bytes:StorageSize {
+    function size(x:Proxy(bytes)) -> word {
+        return 1;
+    }
+}
+
+instance memory(bytes):StorageSize {
+    function size(x:Proxy(memory(bytes))) -> word {
+        return 1;
+    }
+}
+
 forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
     function size(x:Proxy((a,b))) -> word {
         let a_sz:word = StorageSize.size(Proxy:Proxy(a));
@@ -1760,6 +1772,24 @@ instance storage(string):CanStore(memory(string)) {
   }
 
   function load(src:storage(string)) -> memory(string) {
+    let srcPtr : word = Typedef.rep(src);
+    let dstPtr : word = get_free_memory();
+    let endPtr = loadBytesFromStorage(srcPtr, dstPtr);
+    set_free_memory(endPtr);
+    return memory(dstPtr);
+  }
+}
+
+// bytes share the same storage layout as string, so the same
+// storeBytesFromMemory / loadBytesFromStorage helpers apply.
+instance storage(bytes):CanStore(memory(bytes)) {
+  function store(dst:storage(bytes), src:memory(bytes)) -> () {
+    let srcPtr : word = Typedef.rep(src);
+    let slot = Typedef.rep(dst);
+    storeBytesFromMemory(slot, srcPtr);
+  }
+
+  function load(src:storage(bytes)) -> memory(bytes) {
     let srcPtr : word = Typedef.rep(src);
     let dstPtr : word = get_free_memory();
     let endPtr = loadBytesFromStorage(srcPtr, dstPtr);
