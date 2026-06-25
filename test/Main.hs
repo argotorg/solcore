@@ -1,6 +1,7 @@
 module Main where
 
 import Cases
+import ContractAbiTests
 import HullCases
 import MatchCompilerTests
 import ModuleTypeCheckTests
@@ -26,6 +27,7 @@ tests =
       imports,
       moduleTypeCheckTests,
       dispatches,
+      contractAbiTests,
       matchTests,
       yulEvalTests,
       hullTests,

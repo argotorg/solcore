@@ -16,7 +16,7 @@ import Solcore.Backend.EmitHull (emitHull)
 import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
-import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls)
+import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls, writeContractAbis)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, showWarning)
 import Solcore.Desugarer.DeriveGeneric (deriveGenericTopDecls)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
@@ -36,8 +36,9 @@ import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcModule
 import Solcore.Pipeline.Options (Option (..), argumentsParser, noDesugarOpt)
-import System.Directory (makeAbsolute)
+import System.Directory (createDirectoryIfMissing, makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
+import System.FilePath ((</>))
 import System.TimeIt qualified as TimeIt
 
 -- main compiler driver function
@@ -51,8 +52,10 @@ pipeline = do
       putStrLn err
       exitWith (ExitFailure 1)
     Right contracts -> do
+      let outDir = optOutputDir opts
+      unless (null contracts) (createDirectoryIfMissing True outDir)
       forM_ (zip [(1 :: Int) ..] contracts) $ \(i, c) -> do
-        let filename = "output" <> show i <> ".hull"
+        let filename = outDir </> "output" <> show i <> ".hull"
         putStrLn ("Writing to " ++ filename)
         writeFile filename (show c)
 
@@ -290,6 +293,16 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
   liftIO $ when verbose $ do
     putStrLn "Contract field access desugaring:"
     putStrLn $ prettyInferenceDecls accessed
+
+  -- Emit a JSON ABI file for each of the module's own contracts, named
+  -- <ContractName>.abi. Gated by --abi.
+  liftIO $ when (optEmitAbi opts) $ do
+    let localTopDecls =
+          [ moduleInferenceDeclTopDecl d
+            | d <- accessed,
+              moduleInferenceDeclSegment d == ModuleLocalDecl
+          ]
+    writeContractAbis (optOutputDir opts) localTopDecls
 
   -- contract dispatch generation
   dispatched <-

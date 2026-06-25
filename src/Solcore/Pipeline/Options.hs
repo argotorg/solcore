@@ -8,6 +8,8 @@ data Option
     optRootDir :: !FilePath,
     optImportDirs :: !String,
     optExternalLibs :: ![String],
+    optOutputDir :: !FilePath,
+    optEmitAbi :: !Bool,
     optNoSpec :: !Bool,
     optNoDesugarCalls :: !Bool,
     optNoMatchCompiler :: !Bool,
@@ -37,6 +39,8 @@ emptyOption path =
       optRootDir = ".",
       optImportDirs = "std",
       optExternalLibs = [],
+      optOutputDir = ".",
+      optEmitAbi = False,
       optNoSpec = False,
       optNoDesugarCalls = False,
       optNoMatchCompiler = False,
@@ -99,6 +103,17 @@ options =
               <> metavar "NAME=DIR"
               <> help "Register an external library root for @NAME imports."
           )
+      )
+    <*> strOption
+      ( long "output-dir"
+          <> short 'o'
+          <> metavar "DIR"
+          <> value (optOutputDir stdOpt)
+          <> help "Directory for generated output files (default: current directory)"
+      )
+    <*> switch
+      ( long "abi"
+          <> help "Emit a JSON ABI file (<ContractName>.abi) for each contract"
       )
     <*> switch
       ( long "no-specialise"

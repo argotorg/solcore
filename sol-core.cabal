@@ -172,6 +172,7 @@ test-suite sol-core-tests
   -- cabal-fmt: expand test -Main
   other-modules:
     Cases
+    ContractAbiTests
     HullCases
     MatchCompilerTests
     ModuleTypeCheckTests
