@@ -25,6 +25,18 @@
       },
       {
         "input": {
+          "comment": "getBytes() reverts on NoBlob",
+          "calldata": "0bcd3b33",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
           "comment": "setBytes(0xdeadbeef) stores SomeBytes via storage(bytes)",
           "calldata": "da359dc800000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
           "value": "0"
@@ -44,6 +56,18 @@
         "kind": "call",
         "output": {
           "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getBytes() -> 0xdeadbeef (round-trips the dynamic leaf out of storage)",
+          "calldata": "0bcd3b33",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
           "status": "success"
         }
       },
@@ -73,6 +97,18 @@
       },
       {
         "input": {
+          "comment": "getBytes() reverts on NoBlob after clear",
+          "calldata": "0bcd3b33",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
           "comment": "setBytes(0x) stores SomeBytes with a zero-length dynamic payload",
           "calldata": "da359dc800000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000",
           "value": "0"
@@ -97,6 +133,18 @@
       },
       {
         "input": {
+          "comment": "getBytes() -> 0x (round-trips an empty dynamic payload)",
+          "calldata": "0bcd3b33",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
           "comment": "setBytes(33 bytes of 0x11) overwrites with a multi-slot dynamic payload",
           "calldata": "da359dc80000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002111111111111111111111111111111111111111111111111111111111111111111100000000000000000000000000000000000000000000000000000000000000",
           "value": "0"
@@ -116,6 +164,18 @@
         "kind": "call",
         "output": {
           "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getBytes() -> 33 bytes of 0x11 (multi-slot dynamic payload round-trips)",
+          "calldata": "0bcd3b33",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002111111111111111111111111111111111111111111111111111111111111111111100000000000000000000000000000000000000000000000000000000000000",
           "status": "success"
         }
       }
