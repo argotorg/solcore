@@ -129,7 +129,8 @@ dispatches =
       runDispatchTest "storage_adt_bool.solc",
       runDispatchTest "storage_adt_mapping.solc",
       runDispatchTest "storage_adt_abi.solc",
-      runDispatchTest "storage_dynamic_field.solc"
+      runDispatchTest "storage_dynamic_field.solc",
+      runDispatchTest "derive_ord.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -324,6 +325,12 @@ cases =
       runTestExpectingFailure "default-instance-weak.solc" caseFolder,
       runTestForFile "derive-generic-sum.solc" caseFolder,
       runTestForFile "derive-generic-excluded.solc" caseFolder,
+      runTestForFile "derive-eq-enum.solc" caseFolder,
+      runTestForFile "derive-eq-pair.solc" caseFolder,
+      runTestForFile "derive-eq-action.solc" caseFolder,
+      runTestForFile "derive-custom-hash.solc" caseFolder,
+      runTestForFile "derive-universe-instances.solc" caseFolder,
+      runTestExpectingFailure "derive-unknown-class.solc" caseFolder,
       runTestExpectingFailure "generic-manual-no-pragma.solc" caseFolder,
       runTestExpectingFailure "generic-sum-no-pragma.solc" caseFolder,
       runTestExpectingFailure "generic-product-no-pragma.solc" caseFolder,
