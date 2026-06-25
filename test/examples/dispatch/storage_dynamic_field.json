@@ -1,0 +1,124 @@
+{
+  "storage_dynamic_field": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor() (asserts StorageSize.size(Blob)=2; sets blob=NoBlob)",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "isEmpty() -> true (constructor set NoBlob)",
+          "calldata": "681fe70c",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setBytes(0xdeadbeef) stores SomeBytes via storage(bytes)",
+          "calldata": "da359dc800000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "isEmpty() -> false (tag is SomeBytes)",
+          "calldata": "681fe70c",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "clear() resets blob=NoBlob",
+          "calldata": "52efea6e",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "isEmpty() -> true (back to NoBlob after clear)",
+          "calldata": "681fe70c",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setBytes(0x) stores SomeBytes with a zero-length dynamic payload",
+          "calldata": "da359dc800000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "isEmpty() -> false (SomeBytes(empty) is distinct from NoBlob)",
+          "calldata": "681fe70c",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setBytes(33 bytes of 0x11) overwrites with a multi-slot dynamic payload",
+          "calldata": "da359dc80000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002111111111111111111111111111111111111111111111111111111111111111111100000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "isEmpty() -> false (still SomeBytes after overwrite)",
+          "calldata": "681fe70c",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}
