@@ -112,6 +112,7 @@ dispatches =
   testGroup
     "Files for dispatch cases"
     [ runDispatchTest "basic.solc",
+      runDispatchTest "assembly.solc",
       runDispatchTest "stringid.solc",
       runDispatchTest "miniERC20.solc",
       runDispatchTest "Revert.solc",
@@ -269,6 +270,8 @@ cases =
       runTestExpectingFailure "asm-assign-no-return.solc" caseFolder,
       runTestExpectingFailure "asm-assign-non-word.solc" caseFolder,
       runTestExpectingFailure "asm-let-no-return.solc" caseFolder,
+      runTestForFile "asm-let-uninit.solc" caseFolder,
+      runTestForFile "asm-let-bool-lit.solc" caseFolder,
       runTestForFile "asm-match-tuple-read.solc" caseFolder,
       runTestForFile "asm-match-tuple-write-read.solc" caseFolder,
       runTestForFile "bal.solc" caseFolder,
