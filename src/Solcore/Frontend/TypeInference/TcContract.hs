@@ -333,8 +333,8 @@ tcDecl (CDataDecl d) = CDataDecl <$> tcDataDecl d
 -- kind check data declarations
 
 tcDataDecl :: DataTy -> TcM DataTy
-tcDataDecl (DataTy n vs cs) =
-  DataTy n vs <$> mapM tcConstr cs
+tcDataDecl (DataTy n vs cs ds) =
+  (\cs' -> DataTy n vs cs' ds) <$> mapM tcConstr cs
 
 tcConstr :: Constr -> TcM Constr
 tcConstr (Constr n ts) =

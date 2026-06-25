@@ -1,6 +1,6 @@
 import std.opcodes.{add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, returndatasize, returndatacopy, log1 as log1_, call, staticcall, revert as revert_, invalid};
 
-pragma no-patterson-condition ABIEncode, Num;
+pragma no-patterson-condition ABIEncode, Num, Eq, Ord;
 pragma no-coverage-condition ABIDecode, MemoryType;
 
 export {
@@ -335,6 +335,100 @@ function ge(x:a, y:a) -> bool {
 forall a. a:Ord =>
 function lt(x:a, y:a) -> bool {
     return Ord.gt(y,x);
+}
+
+// --- Generic deriving: structural instances over the representation universe ---
+// These let `#[derive(Eq)]` / `#[derive(Ord)]` work for any data type through
+// its Generic(rep) instance, where rep is built from (), sum(f, g) and (f, g).
+//
+// KNOWN LIMITATION: deriving Eq/Ord for a SUM whose constructor carries MORE THAN
+// ONE field (rep shaped like sum(pair(...), ...)) currently mis-compiles in the
+// backend (specialiser): the inner `match` scrutinee in the non-recursing branch
+// is mistyped sum(g, g) instead of sum(f, g). Enums and single-constructor
+// products work end-to-end; nested sum-of-product is frontend-only for now.
+
+instance () : Eq {
+  function eq(x : (), y : ()) -> bool {
+    return true;
+  }
+}
+
+forall f g . f:Eq, g:Eq =>
+instance sum(f, g) : Eq {
+  function eq(x : sum(f, g), y : sum(f, g)) -> bool {
+    match x {
+    | inl(a) =>
+        match y {
+        | inl(b) => return Eq.eq(a, b);
+        | inr(b) => return false;
+        }
+    | inr(a) =>
+        match y {
+        | inl(b) => return false;
+        | inr(b) => return Eq.eq(a, b);
+        }
+    }
+  }
+}
+
+forall f g . f:Eq, g:Eq =>
+instance (f, g) : Eq {
+  function eq(x : (f, g), y : (f, g)) -> bool {
+    match x {
+    | (a1, b1) =>
+        match y {
+        | (a2, b2) =>
+            match Eq.eq(a1, a2) {
+            | true  => return Eq.eq(b1, b2);
+            | false => return false;
+            }
+        }
+    }
+  }
+}
+
+instance () : Ord {
+  function gt(x : (), y : ()) -> bool {
+    return false;
+  }
+}
+
+forall f g . f:Ord, g:Ord =>
+instance sum(f, g) : Ord {
+  function gt(x : sum(f, g), y : sum(f, g)) -> bool {
+    match x {
+    | inl(a) =>
+        match y {
+        | inl(b) => return Ord.gt(a, b);
+        | inr(b) => return false;
+        }
+    | inr(a) =>
+        match y {
+        | inl(b) => return true;
+        | inr(b) => return Ord.gt(a, b);
+        }
+    }
+  }
+}
+
+forall f g . f:Ord, g:Ord =>
+instance (f, g) : Ord {
+  function gt(x : (f, g), y : (f, g)) -> bool {
+    match x {
+    | (a1, b1) =>
+        match y {
+        | (a2, b2) =>
+            match Ord.gt(a1, a2) {
+            | true  => return true;
+            | false =>
+                match Eq.eq(a1, a2) {
+                | true  => return Ord.gt(b1, b2);
+                | false => return false;
+                }
+            }
+        }
+    }
+  }
 }
 
 // --- Arithmetic ---

@@ -554,7 +554,7 @@ falseConInfo :: ConInfo
 falseConInfo = ConInfo [] boolTy
 
 addDataTyInfo :: DataTy -> TypeEnv -> TypeEnv
-addDataTyInfo (DataTy n vs cons) env =
+addDataTyInfo (DataTy n vs cons _) env =
   foldr (addConstructor res) env cons
   where
     res = TyCon n (map TyVar vs)

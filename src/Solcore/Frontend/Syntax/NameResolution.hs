@@ -103,7 +103,7 @@ validateDuplicateNamespaces ds = do
 
 validateContractDuplicates :: S.Contract -> Either CompilerError ()
 validateContractDuplicates (S.Contract cname _ decls) = do
-  let typeNames = [n | S.CDataDecl (S.DataTy n _ _) <- decls]
+  let typeNames = [n | S.CDataDecl (S.DataTy n _ _ _) <- decls]
       termNames = contractTermNames decls
       context = "contract " ++ pretty cname
   ensureNoDuplicateNamesIn context "type namespace" typeNames
@@ -113,7 +113,7 @@ topLevelTypeNames :: [S.TopDecl] -> [Name]
 topLevelTypeNames = concatMap collect
   where
     collect (S.TContr (S.Contract n _ _)) = [n]
-    collect (S.TDataDef (S.DataTy n _ _)) = [n]
+    collect (S.TDataDef (S.DataTy n _ _ _)) = [n]
     collect (S.TSym (S.TySym n _ _)) = [n]
     collect (S.TClassDef (S.Class _ _ n _ _ _)) = [n]
     collect _ = []
@@ -122,7 +122,7 @@ topLevelTermNames :: [S.TopDecl] -> [Name]
 topLevelTermNames = concatMap collect
   where
     collect (S.TFunDef (S.FunDef _ sig _)) = [S.sigName sig]
-    collect (S.TDataDef (S.DataTy tyCon _ cons)) =
+    collect (S.TDataDef (S.DataTy tyCon _ cons _)) =
       map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
 
@@ -130,7 +130,7 @@ contractTermNames :: [S.ContractDecl] -> [Name]
 contractTermNames = concatMap collect
   where
     collect (S.CFunDecl (S.FunDef _ sig _)) = [S.sigName sig]
-    collect (S.CDataDecl (S.DataTy tyCon _ cons)) =
+    collect (S.CDataDecl (S.DataTy tyCon _ cons _)) =
       map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
 
@@ -224,7 +224,7 @@ instance Resolve S.Contract where
       Contract n (map TVar ns) <$> resolve decls `wrapError` c
 
 addContractDecl :: S.ContractDecl -> ResolveM ()
-addContractDecl (S.CDataDecl (S.DataTy n _ cons)) =
+addContractDecl (S.CDataDecl (S.DataTy n _ cons _)) =
   do
     addTyCon n
     mapM_ (addDataCon n . S.constrName) cons
@@ -878,13 +878,21 @@ instance Resolve S.Pred where
 instance Resolve S.DataTy where
   type Result S.DataTy = DataTy
 
-  resolve d@(S.DataTy n vs cons) =
+  resolve d@(S.DataTy n vs cons ds) =
     withLocalCtx $ do
       mapM_ addTyVar vs'
       cons' <- resolve cons `wrapError` d
-      pure (DataTy n (map TVar vs') (map (qualifyConstrName n) cons'))
+      ds' <- mapM resolveDerivingClass ds
+      pure (DataTy n (map TVar vs') (map (qualifyConstrName n) cons') ds')
     where
       vs' = map tyconName vs
+
+resolveDerivingClass :: Name -> ResolveM Name
+resolveDerivingClass c = do
+  dt <- lookupClass c
+  case dt of
+    Just TClass -> pure c
+    _ -> undefinedClassError c
 
 qualifyConstrName :: Name -> Constr -> Constr
 qualifyConstrName tyCon (Constr conName tys) =
@@ -1037,7 +1045,7 @@ addTopDecl (S.TClassDef (S.Class _ _ n _ _ sigs)) env =
           { classEnv = Map.insert n TClass (classEnv env),
             scopeEnv = env'
           }
-addTopDecl (S.TDataDef (S.DataTy n _ cons)) env =
+addTopDecl (S.TDataDef (S.DataTy n _ cons _)) env =
   addQualifiedModules n $
     env
       { typeEnv = Map.insert n TTyCon (typeEnv env),
