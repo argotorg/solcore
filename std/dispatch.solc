@@ -63,13 +63,16 @@ instance (a,b):SigString {
 }
 
 // A tagged union (the SOP form of an ADT with several constructors). There is no
-// standard ABI type for sums, so this signature is structural: the comma-joined
-// branch signatures. It makes ADT-typed parameters produce a deterministic
-// selector; refine here if a specific on-the-wire sum convention is needed.
+// standard ABI type for sums, so this signature is structural: the branch
+// signatures wrapped in a `sum(l,r)` constructor. The explicit `sum(...)` wrapper
+// keeps sums from colliding with the comma-joined product `(a,b)` signature, so
+// `sum(uint256,uint256)` and `(uint256,uint256)` hash to distinct selectors. It
+// makes ADT-typed parameters produce a deterministic selector; refine here if a
+// specific on-the-wire sum convention is needed.
 forall f g. f:SigString, g: SigString =>
 instance sum(f,g):SigString {
   function sigStr(x:Proxy(sum(f,g))) -> string {
-    SigString.sigStr( Proxy:Proxy(f) ) + "," + SigString.sigStr( Proxy:Proxy(g) )
+    "sum(" + SigString.sigStr( Proxy:Proxy(f) ) + "," + SigString.sigStr( Proxy:Proxy(g) ) + ")"
   }
 }
 
