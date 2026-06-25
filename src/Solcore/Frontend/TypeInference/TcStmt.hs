@@ -331,7 +331,7 @@ tcPat' t' (PExp e) =
 -- type inference for expressions
 
 mkCon :: DataTy -> TcM (Exp Id, Ty)
-mkCon (DataTy nt vs ((Constr n _) : _)) =
+mkCon (DataTy nt vs ((Constr n _) : _) _) =
   do
     mvs <- mapM (const freshTyVar) vs
     let t1 = TyCon nt mvs
@@ -530,7 +530,7 @@ closureConversion vs args bdy ps ty =
         info [">> Creating lambda lifted function(free):\n", pretty fun1, show ty]
         sch <- generalize (ps', ty)
         -- creating the invoke instance and unique type def.
-        (udt@(DataTy dn tvs _), instd) <- generateDecls (fun1, sch)
+        (udt@(DataTy dn tvs _ _), instd) <- generateDecls (fun1, sch)
         let t = TyCon dn (map (Meta . MetaTv . tyvarName) tvs)
         -- updating the type inference state
         writeFunDef fun1
@@ -573,7 +573,7 @@ createClosureType ids vs ty =
         vs' = nub $ (mv ts) `union` (map (MetaTv . var) vs)
         ty' = TyCon dn (Meta <$> vs')
         cid = Id dn (funtype ts ty')
-        d = DataTy dn (map gvar vs') [Constr dn ts']
+        d = DataTy dn (map gvar vs') [Constr dn ts'] []
     info [">> Create closure type:", pretty d, " for type :", pretty ty]
     pure (d, Con cid ns, ty')
 
@@ -604,11 +604,11 @@ createClosureFun fn freeIds cdt args bdy ps ty =
     pure (everywhereButSpans (mkT gen) $ FunDef False sig bdy', sch)
 
 closureTyCon :: DataTy -> TcM Ty
-closureTyCon (DataTy dn vs _) =
+closureTyCon (DataTy dn vs _ _) =
   pure (TyCon dn (TyVar <$> vs))
 
 createClosureBody :: Name -> DataTy -> [Id] -> Body Id -> TcM (Body Id)
-createClosureBody n cdt@(DataTy _ _ [Constr cn ts]) ids bdy =
+createClosureBody n cdt@(DataTy _ _ [Constr cn ts] _) ids bdy =
   do
     ct <- closureTyCon cdt
     let ps = map PVar ids

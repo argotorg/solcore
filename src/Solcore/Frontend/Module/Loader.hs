@@ -1152,7 +1152,7 @@ localExportRefsForName currentModule itemName topLevelDecls =
   concatMap (localExportRefsForMatchingName currentModule itemName) (filter isImportableTopDecl topLevelDecls)
 
 localExportRefsForMatchingName :: Mod.ModuleId -> Name -> TopDecl -> [ExportedItemRef]
-localExportRefsForMatchingName currentModule itemName (TDataDef (DataTy n _ _))
+localExportRefsForMatchingName currentModule itemName (TDataDef (DataTy n _ _ _))
   | itemName == n =
       [localDataExportRef currentModule n []]
   | otherwise =
@@ -1166,7 +1166,7 @@ localExportRefsForMatchingName currentModule itemName decl
 localExportRefsForDecl :: Mod.ModuleId -> TopDecl -> [ExportedItemRef]
 localExportRefsForDecl currentModule decl =
   case decl of
-    TDataDef (DataTy n _ _) ->
+    TDataDef (DataTy n _ _ _) ->
       [localDataExportRef currentModule n []]
     _ ->
       [ ExportedItemRef currentModule itemName itemName Nothing
@@ -1226,7 +1226,7 @@ ensureLocalConstructorExportExists sourcePath topLevelDecls typeName constructor
           (maybe [] pure (primaryNameLabel "unknown export" typeName))
           [sourcePath, show typeName]
           ["export a type defined in this module or re-export it from another module"]
-    Just (DataTy _ _ constrs) ->
+    Just (DataTy _ _ constrs _) ->
       ensureConstructorSelectorExists sourcePath typeName constructorSelector constrs
 
 findLocalDataType :: Name -> [TopDecl] -> Maybe DataTy
@@ -1260,7 +1260,7 @@ ensureConstructorSelectorExists sourcePath typeName (SelectConstructors construc
 resolveLocalConstructorSelection :: Name -> ConstructorSelector -> [TopDecl] -> [Name]
 resolveLocalConstructorSelection typeName constructorSelector topLevelDecls =
   case findLocalDataType typeName topLevelDecls of
-    Just (DataTy _ _ constrs) -> resolveConstructorSelection constructorSelector constrs
+    Just (DataTy _ _ constrs _) -> resolveConstructorSelection constructorSelector constrs
     Nothing -> []
 
 resolveConstructorSelection :: ConstructorSelector -> [Constr] -> [Name]
@@ -1319,7 +1319,7 @@ topDeclNames (TFunDef (FunDef _ sig _)) = [sigName sig]
 topDeclNames (TSym (TySym n _ _)) = [n]
 topDeclNames (TClassDef (Class _ _ n _ _ _)) = [n]
 topDeclNames (TContr (Contract n _ _)) = [n]
-topDeclNames (TDataDef (DataTy n _ _)) = [n]
+topDeclNames (TDataDef (DataTy n _ _ _)) = [n]
 topDeclNames (TInstDef _) = []
 topDeclNames (TExportDecl _) = []
 topDeclNames (TPragmaDecl _) = []
@@ -1610,11 +1610,12 @@ renameInstanceTypeRefs renameMap (Instance d vs ctx n pts mt fns) =
     (map (renameFunDefTypeRefs renameMap) fns)
 
 renameDataTyTypeRefs :: Map Name Name -> DataTy -> DataTy
-renameDataTyTypeRefs renameMap (DataTy n vs cs) =
+renameDataTyTypeRefs renameMap (DataTy n vs cs ds) =
   DataTy
     (renameTypeName renameMap n)
     (map (renameTyTypeRefs renameMap) vs)
     (map (renameConstrTypeRefs renameMap) cs)
+    ds
 
 renameConstrTypeRefs :: Map Name Name -> Constr -> Constr
 renameConstrTypeRefs renameMap (Constr n tys) =
@@ -1658,7 +1659,7 @@ qualifiedTypeAliasDecls typeRenameMap qualifier cunit =
   where
     dataAliases =
       [ TSym (qualifyTyCon qualifier n vs)
-      | TDataDef (DataTy n vs _) <- topDeclsFrom cunit,
+      | TDataDef (DataTy n vs _ _) <- topDeclsFrom cunit,
         not (Map.member n typeRenameMap)
       ]
     symAliases =
@@ -1677,8 +1678,9 @@ qualifiedTypeStubDecls qualifier cunit =
               (qualifyName qualifier n)
               []
               [Constr (constructorLeafName (constrName c)) [] | c <- cs]
+              []
           )
-      | TDataDef (DataTy n _ cs) <- topDeclsFrom cunit
+      | TDataDef (DataTy n _ cs _) <- topDeclsFrom cunit
       ]
     symAliases =
       [ TSym (stubType (qualifyName qualifier n))
@@ -1733,8 +1735,8 @@ toValidationImportStub d@(TClassDef _) =
   Just d
 toValidationImportStub (TContr (Contract n _ _)) =
   Just (TContr (Contract n [] []))
-toValidationImportStub (TDataDef (DataTy n _ cs)) =
-  Just (TDataDef (DataTy n [] [Constr (constrName c) [] | c <- cs]))
+toValidationImportStub (TDataDef (DataTy n _ cs _)) =
+  Just (TDataDef (DataTy n [] [Constr (constrName c) [] | c <- cs] []))
 toValidationImportStub (TInstDef _) = Nothing
 toValidationImportStub (TExportDecl _) = Nothing
 toValidationImportStub (TPragmaDecl _) = Nothing
@@ -1911,7 +1913,7 @@ fullConstructorNamesForRef :: ModuleGraph -> ExportedItemRef -> Either String [N
 fullConstructorNamesForRef graph itemRef = do
   originUnit <- lookupLoadedModule graph (exportedItemOrigin itemRef)
   case findLocalDataType (exportedItemSourceName itemRef) (topDeclsFrom originUnit) of
-    Just (DataTy _ _ constrs) ->
+    Just (DataTy _ _ constrs _) ->
       pure (uniqueNames (map (constructorLeafName . constrName) constrs))
     Nothing ->
       Left $
@@ -1942,7 +1944,7 @@ selectedImportTypeRenameMap publicDecls bindings =
       uniqueNames (concatMap topDeclImportedTypeNames publicDecls)
 
 topDeclImportedTypeNames :: TopDecl -> [Name]
-topDeclImportedTypeNames (TDataDef (DataTy n _ _)) = [n]
+topDeclImportedTypeNames (TDataDef (DataTy n _ _ _)) = [n]
 topDeclImportedTypeNames (TSym (TySym n _ _)) = [n]
 topDeclImportedTypeNames _ = []
 
@@ -2014,11 +2016,11 @@ shadowImportedDecls localDecls =
           ( (termNames, n : typeNames, classNames, instDecls),
             Just d
           )
-    filterDecl (termNames, typeNames, classNames, instDecls) (TDataDef (DataTy n ts cs))
+    filterDecl (termNames, typeNames, classNames, instDecls) (TDataDef (DataTy n ts cs ds))
       | n `elem` typeNames = ((termNames, typeNames, classNames, instDecls), Nothing)
       | otherwise =
           ( (termNames, n : typeNames, classNames, instDecls),
-            Just (TDataDef (DataTy n ts cs))
+            Just (TDataDef (DataTy n ts cs ds))
           )
     filterDecl (termNames, typeNames, classNames, instDecls) d@(TInstDef inst)
       | instName inst `elem` localClassNames = ((termNames, typeNames, classNames, instDecls), Nothing)
@@ -2063,7 +2065,7 @@ topDeclTermNames _ = []
 topDeclTypeNames :: TopDecl -> [Name]
 topDeclTypeNames (TSym (TySym n _ _)) = [n]
 topDeclTypeNames (TContr (Contract n _ _)) = [n]
-topDeclTypeNames (TDataDef (DataTy n _ _)) = [n]
+topDeclTypeNames (TDataDef (DataTy n _ _ _)) = [n]
 topDeclTypeNames _ = []
 
 topDeclClassNames :: TopDecl -> [Name]
@@ -2097,9 +2099,9 @@ renameTopDeclName oldName newName decl
         TContr (Contract n params contractDecls)
           | n == oldName ->
               TContr (Contract newName params contractDecls)
-        TDataDef (DataTy n params constrs)
+        TDataDef (DataTy n params constrs ds)
           | n == oldName ->
-              TDataDef (DataTy newName params constrs)
+              TDataDef (DataTy newName params constrs ds)
         _ ->
           decl
 
@@ -2128,13 +2130,13 @@ selectTopDeclForExportRef itemRef d@(TContr (Contract n _ _))
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
-selectTopDeclForExportRef itemRef (TDataDef (DataTy n ts cs))
+selectTopDeclForExportRef itemRef (TDataDef (DataTy n ts cs ds))
   | exportedItemSourceName itemRef /= n =
       Nothing
   | otherwise =
       case exportedItemConstructors itemRef of
         Just visibleConstructors ->
-          Just (TDataDef (DataTy (exportedItemName itemRef) ts (filterVisibleConstructors visibleConstructors cs)))
+          Just (TDataDef (DataTy (exportedItemName itemRef) ts (filterVisibleConstructors visibleConstructors cs) ds))
         Nothing ->
           Nothing
 selectTopDeclForExportRef _ (TInstDef _) = Nothing
