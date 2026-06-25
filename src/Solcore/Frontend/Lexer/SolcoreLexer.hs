@@ -32,8 +32,11 @@ lexeme = L.lexeme sc
 symbol :: String -> Parser String
 symbol = L.symbol sc
 
+identChar :: Parser Char
+identChar = alphaNumChar <|> char '_'
+
 keyword :: String -> Parser ()
-keyword kw = lexeme (string kw *> notFollowedBy (alphaNumChar <|> char '_'))
+keyword kw = lexeme (try (string kw *> notFollowedBy identChar))
 
 reservedWords :: [String]
 reservedWords =
@@ -74,7 +77,7 @@ identifier = lexeme go <?> "identifier"
   where
     go = do
       h <- letterChar
-      t <- many (alphaNumChar <|> char '_')
+      t <- many identChar
       let w = h : t
       if w `elem` reservedWords
         then fail ("reserved word used as identifier: " ++ w)
