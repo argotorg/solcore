@@ -3,9 +3,6 @@ import std.dispatch.{*};
 import std.Generic.{*};
 import std.StorageGeneric.{*};
 
-pragma no-patterson-condition;
-pragma no-bounded-variable-condition;
-
 // Algebraic data types used directly as contract storage fields, including a
 // nested ADT (Option(Triple)).
 //
