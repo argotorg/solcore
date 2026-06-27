@@ -1187,12 +1187,13 @@ function round_up_to_mul_of_32(value:word) -> word {
 }
 
 function encodeIntoFromBytesLike(srcPtr:word, basePtr:word, offset:word, tail:word) -> word {
-    let tailOffset = tail - basePtr;
     let length = mload(srcPtr);
     let total = length + 32;
     mstore(basePtr + offset, tail - basePtr);
     mcopy(tail, srcPtr, total);
-    return tail + round_up_to_mul_of_32(total);
+    let rounded = round_up_to_mul_of_32(total);
+    zeroize_memory(tail + total, rounded - total);
+    return tail + rounded;
 }
 
 instance memory(string):ABIEncode {
