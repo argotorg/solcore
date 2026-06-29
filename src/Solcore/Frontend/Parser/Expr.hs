@@ -6,6 +6,7 @@ where
 import Common.LightYear
 import Control.Monad.Combinators.Expr
 import Solcore.Frontend.Lexer.SolcoreLexer
+import Solcore.Frontend.Parser.Patterns (patListP)
 import Solcore.Frontend.Parser.SolcoreTypes (atomTypeP, paramP, typeP)
 import Solcore.Frontend.Syntax.Name (Name (..))
 import Solcore.Frontend.Syntax.SyntaxTree (Exp (..), Literal (..), Stmt)
@@ -79,7 +80,14 @@ opTable =
     ],
     [ InfixL
         ( ExpBOr
-            <$ try (lexeme (char '|' <* notFollowedBy (char '|') <* notFollowedBy (char '=')))
+            <$ try
+              ( lexeme (char '|' <* notFollowedBy (char '|') <* notFollowedBy (char '='))
+                  -- `|` also separates match arms (`| pat => ...`). Since `=>`
+                  -- never follows a bitwise-or operand, treat `|` as a case
+                  -- separator (not an operator) whenever `pat =>` comes next,
+                  -- leaving it for the match-equation parser to consume.
+                  <* notFollowedBy (try (patListP *> symbol "=>"))
+              )
         )
     ],
     [ InfixN (ExpLE <$ try (symbol "<=")),
