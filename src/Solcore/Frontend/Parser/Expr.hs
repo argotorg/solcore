@@ -65,8 +65,18 @@ opTable =
         )
     ],
     [ InfixL
+        ( ExpBAnd
+            <$ try (lexeme (char '&' <* notFollowedBy (char '&') <* notFollowedBy (char '=')))
+        )
+    ],
+    [ InfixL
         ( ExpXor
             <$ try (lexeme (char '^' <* notFollowedBy (char '=')))
+        )
+    ],
+    [ InfixL
+        ( ExpBOr
+            <$ try (lexeme (char '|' <* notFollowedBy (char '|') <* notFollowedBy (char '=')))
         )
     ],
     [ InfixN (ExpLE <$ try (symbol "<=")),

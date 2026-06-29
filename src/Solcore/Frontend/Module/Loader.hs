@@ -1344,6 +1344,10 @@ renameStmtTypeRefs renameMap (StmtMinusEq e1 e2) =
   StmtMinusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameStmtTypeRefs renameMap (StmtXorEq e1 e2) =
   StmtXorEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameStmtTypeRefs renameMap (StmtBAndEq e1 e2) =
+  StmtBAndEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameStmtTypeRefs renameMap (StmtBOrEq e1 e2) =
+  StmtBOrEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameStmtTypeRefs renameMap (Let ct n mt me) =
   Let ct n (renameTyTypeRefs renameMap <$> mt) (renameExpTypeRefs renameMap <$> me)
 renameStmtTypeRefs renameMap (StmtExp e) =
@@ -1436,6 +1440,10 @@ renameExpTypeRefs renameMap (ExpModulo e1 e2) =
   ExpModulo (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpXor e1 e2) =
   ExpXor (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpBAnd e1 e2) =
+  ExpBAnd (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpBOr e1 e2) =
+  ExpBOr (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpLT e1 e2) =
   ExpLT (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpGT e1 e2) =

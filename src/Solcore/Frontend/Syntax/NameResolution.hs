@@ -369,6 +369,10 @@ instance Resolve S.Stmt where
     (:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs)
   resolve (S.StmtXorEq lhs rhs) =
     (:=) <$> resolve lhs <*> resolve (S.ExpXor lhs rhs)
+  resolve (S.StmtBAndEq lhs rhs) =
+    (:=) <$> resolve lhs <*> resolve (S.ExpBAnd lhs rhs)
+  resolve (S.StmtBOrEq lhs rhs) =
+    (:=) <$> resolve lhs <*> resolve (S.ExpBOr lhs rhs)
   resolve s@(S.Let c n mt me) =
     do
       mt' <- resolve mt `wrapError` s
@@ -771,6 +775,18 @@ instance Resolve S.Exp where
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Xor") "xor"
+      pure $ Call Nothing fun [e1', e2']
+  resolve c@(S.ExpBAnd e1 e2) =
+    do
+      e1' <- resolve e1 `wrapError` c
+      e2' <- resolve e2 `wrapError` c
+      let fun = QualName (Name "BitAnd") "band"
+      pure $ Call Nothing fun [e1', e2']
+  resolve c@(S.ExpBOr e1 e2) =
+    do
+      e1' <- resolve e1 `wrapError` c
+      e2' <- resolve e2 `wrapError` c
+      let fun = QualName (Name "BitOr") "bor"
       pure $ Call Nothing fun [e1', e2']
   resolve c@(S.ExpIndexed array idx) = do
     arr' <- resolve array `wrapError` c
