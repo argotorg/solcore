@@ -377,17 +377,22 @@ mkAbiParam pname t =
 -- | Map a Solcore type to its canonical ABI type name and (for tuples) its
 -- component parameters. Memory/calldata are location qualifiers and are
 -- transparent to the ABI. The native @word@ maps to @uint256@; the remaining
--- value-type names (uint256, address, bytes32, bool, bytes, string, ...) already
--- match the Solidity ABI spelling and are passed through unchanged.
+-- value-type names (uint256, address, bytes32, bool, bytes, string, ...) are
+-- nullary type constructors whose names already match the Solidity ABI
+-- spelling, so they are passed through unchanged.
 abiTypeOf :: Ty -> (String, [AbiParam])
 abiTypeOf (TyCon (Name "memory") [t]) = abiTypeOf t
 abiTypeOf (TyCon (Name "calldata") [t]) = abiTypeOf t
 abiTypeOf t@(TyCon (Name "pair") [_, _]) =
   ("tuple", map (mkAbiParam "") (flattenTuple t))
 abiTypeOf (TyCon (Name "word") []) = ("uint256", [])
-abiTypeOf (TyCon n _) = (nameStr n, [])
--- Anything else (e.g. a type variable or a function type) has no ABI spelling;
--- fail loudly rather than emit a malformed `show`-rendered type into the ABI.
+abiTypeOf (TyCon n []) = (nameStr n, [])
+-- Anything else has no ABI spelling: a type variable, a function type, or a
+-- parameterized type constructor (e.g. @mapping(word, word)@ or a custom
+-- generic) that is not one of the location/tuple cases handled above. Dropping
+-- the type arguments here would emit a bare, invalid ABI string like
+-- @"type":"mapping"@, which downstream ABI consumers (etherscan, ethers,
+-- web3py) would misparse — so fail loudly instead.
 abiTypeOf t = error ("contractAbiJson: cannot represent type in ABI: " <> show t)
 
 abiEntryJson :: AbiEntry -> Json
