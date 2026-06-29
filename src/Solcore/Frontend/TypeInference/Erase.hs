@@ -62,6 +62,7 @@ instance Erase (Stmt Id) where
   erase (For initStmt cond postStmt body) =
     For (erase initStmt) (erase cond) (erase postStmt) (erase body)
   erase Break = Break
+  erase Continue = Continue
   erase EmptyStmt = EmptyStmt
 
 instance Erase (Exp Id) where

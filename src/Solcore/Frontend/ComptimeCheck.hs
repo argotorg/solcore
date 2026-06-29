@@ -160,6 +160,7 @@ checkStmt st retCt ctx env stmt = case stmt of
   Asm _ -> return env
   Block body -> checkBody st retCt ctx env body >> return env
   Break -> return env
+  Continue -> return env
   EmptyStmt -> return env
 
 -- | Decide the Ctness to assign to a let-bound variable.

@@ -21,6 +21,7 @@ data Stmt a
   | If (Exp a) (Body a) (Body a) -- If statement
   | For (Stmt a) (Exp a) (Stmt a) (Body a) -- for(init; cond; post) { body }
   | Break -- break out of the innermost enclosing for loop
+  | Continue -- continue to the next iteration of the innermost enclosing for loop
   | EmptyStmt -- empty statement (for empty for init/post)
   deriving (Eq, Ord, Show, Data, Typeable)
 

@@ -106,6 +106,7 @@ data MastStmt
   | MastMatch MastExp [MastAlt]
   | MastFor MastStmt MastExp MastStmt [MastStmt]
   | MastBreak
+  | MastContinue
   | MastAsm YulBlock
   | MastSeq [MastStmt]
   deriving (Eq, Ord, Show)
@@ -248,6 +249,7 @@ instance Pretty MastStmt where
       $$ nest 3 (vcat (map ppr yblk))
       $$ rbrace
   ppr MastBreak = text "break" >< semi
+  ppr MastContinue = text "continue" >< semi
   ppr (MastSeq stmts) = hsep (punctuate comma (map ppr stmts))
 
 pprMastAlt :: MastAlt -> Doc

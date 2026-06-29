@@ -208,6 +208,7 @@ instance Names (Stmt Name) where
   names (For initStmt cond postStmt body) =
     names initStmt `union` names cond `union` names postStmt `union` names body
   names Break = []
+  names Continue = []
   names EmptyStmt = []
 
 instance Names (Equation Name) where

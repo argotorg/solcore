@@ -265,6 +265,8 @@ instance (HasType a) => HasType (Stmt a) where
     Asm yblk
   apply _ Break =
     Break
+  apply _ Continue =
+    Continue
   apply _ EmptyStmt =
     EmptyStmt
 
@@ -284,6 +286,7 @@ instance (HasType a) => HasType (Stmt a) where
     fv initStmt `union` fv cond `union` fv postStmt `union` fv body
   fv (Asm _) = []
   fv Break = []
+  fv Continue = []
   fv EmptyStmt = []
 
   mv (e1 := e2) =
@@ -302,6 +305,7 @@ instance (HasType a) => HasType (Stmt a) where
     mv initStmt `union` mv cond `union` mv postStmt `union` mv body
   mv (Asm _) = []
   mv Break = []
+  mv Continue = []
   mv EmptyStmt = []
 
   bv (e1 := e2) =
@@ -320,6 +324,7 @@ instance (HasType a) => HasType (Stmt a) where
     bv initStmt `union` bv cond `union` bv postStmt `union` bv body
   bv (Asm _) = []
   bv Break = []
+  bv Continue = []
   bv EmptyStmt = []
 
 instance (HasType a) => HasType (Pat a) where

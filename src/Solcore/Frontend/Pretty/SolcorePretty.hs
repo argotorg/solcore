@@ -333,6 +333,7 @@ instance (Pretty a) => Pretty (Stmt a) where
       $$ nest 3 (ppr body)
       $$ rbrace
   ppr Break = text "break" <> semi
+  ppr Continue = text "continue" <> semi
   ppr EmptyStmt = empty
 
 pprForClause :: (Pretty a) => Stmt a -> Doc

@@ -289,6 +289,7 @@ evalStmt tyReg env stmt = case stmt of
         pure (Map.empty, [MastAsm yul'])
   MastSeq stmts -> evalStmts tyReg env stmts
   MastBreak -> pure (env, [MastBreak])
+  MastContinue -> pure (env, [MastContinue])
   MastFor initStmt cond post body -> do
     -- Evaluate loop parts for local simplification, but do not propagate
     -- value bindings across the loop boundary.
@@ -345,6 +346,7 @@ evalLoopStmt env st = case st of
     pure (Map.empty, MastFor initStmt' cond' post' bodies')
   MastAsm yul -> pure (Map.empty, MastAsm yul)
   MastBreak -> pure (env, MastBreak)
+  MastContinue -> pure (env, MastContinue)
   MastSeq stmts -> do
     (env', stmts') <- mapAccumM evalLoopStmt env stmts
     pure (env', MastSeq stmts')
@@ -727,6 +729,7 @@ evalFunBody tyReg env (stmt : rest) = case stmt of
       Nothing -> pure Nothing -- Scrutinee not known, can't select branch
   MastFor {} -> pure Nothing -- Loop execution cannot be folded safely here
   MastBreak -> pure Nothing -- Control transfer cannot be folded
+  MastContinue -> pure Nothing -- Control transfer cannot be folded
   MastAsm yul -> do
     -- Try to interpret the asm block statically.
     -- If successful, update env and continue inlining; otherwise give up.
@@ -883,6 +886,7 @@ stmtIsPure pureFuns (MastFor initStmt cond post body) =
     && stmtIsPure pureFuns post
     && bodyIsPure pureFuns body
 stmtIsPure _ MastBreak = True
+stmtIsPure _ MastContinue = True
 stmtIsPure pureFuns (MastSeq stmts) = bodyIsPure pureFuns stmts
 
 expIsPure :: Set.Set Name -> MastExp -> Bool
@@ -1020,6 +1024,7 @@ callsInStmt (MastFor initStmt cond post body) =
 callsInStmt (MastSeq stmts) = Set.unions (map callsInStmt stmts)
 callsInStmt (MastAsm _) = Set.empty
 callsInStmt MastBreak = Set.empty
+callsInStmt MastContinue = Set.empty
 
 callsInExp :: MastExp -> Set.Set Name
 callsInExp (MastLit _) = Set.empty

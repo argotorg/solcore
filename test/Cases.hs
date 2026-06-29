@@ -346,6 +346,7 @@ cases =
       runTestForFile "Foo.solc" caseFolder,
       runTestForFile "for-body-shadow.solc" caseFolder,
       runTestForFile "for-break.solc" caseFolder,
+      runTestForFile "for-continue.solc" caseFolder,
       runTestForFile "for-empty-init.solc" caseFolder,
       runTestForFile "for-inner-block.solc" caseFolder,
       runTestForFile "for-init-shadow.solc" caseFolder,

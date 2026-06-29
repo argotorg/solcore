@@ -158,6 +158,7 @@ transStmt cenv stmt = (cenv, go stmt cenv)
     go Let {} = error "Impossible"
     go s@Asm {} = pure s
     go Break = pure Break
+    go Continue = pure Continue
     go EmptyStmt = pure EmptyStmt
 
 -- go s = pure s
