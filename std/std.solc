@@ -1306,7 +1306,9 @@ forall reader . reader:WordReader => instance ABIDecoder(bytes32, reader):ABIDec
 // ABI Decoding for address
 forall reader . reader:WordReader => instance ABIDecoder(address, reader):ABIDecode(address) {
     function decode(ptr:ABIDecoder(address, reader), currentHeadOffset:word) -> address {
-        return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : address;
+        let raw = WordReader.read(WordReader.advance(ptr, currentHeadOffset));
+        require(shr(160, raw) == 0, Error(0x7cc04fa7)); // DirtyHigherBitsForAddress()
+        return Typedef.abs(raw) : address;
     }
 }
 

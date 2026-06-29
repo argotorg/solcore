@@ -67,6 +67,10 @@ contract C {
         return b;
     }
 
+    public function id_address(a: address) -> address {
+        return a;
+    }
+
     public function id_pair() -> (uint256, uint256) {
         return (uint256(7), uint256(11));
     }

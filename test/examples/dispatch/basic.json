@@ -145,6 +145,30 @@
       },
       {
         "input": {
+          "comment": "id_address(address)(address) clean -- upper 96 bits zero",
+          "calldata": "0xd47cfd820000000000000000000000001111111111111111111111111111111111111111",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000001111111111111111111111111111111111111111",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "id_address(address) with dirty higher bits -> DirtyHigherBitsForAddress()",
+          "calldata": "0xd47cfd820000000000000000000000011111111111111111111111111111111111111111",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "7cc04fa7",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
           "comment": "id_pair()(uint256,uint256)",
           "calldata": "5880a1a0",
           "value": "0"
