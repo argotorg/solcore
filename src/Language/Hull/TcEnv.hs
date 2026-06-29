@@ -27,12 +27,19 @@ emptyHullTcEnv :: HullTcEnv
 emptyHullTcEnv = HullTcEnv Map.empty hullBuiltins Nothing
 
 -- Number of word-sized slots a return type occupies.
+-- This MUST mirror yule's @sizeOf@ (yule/Translate.hs): sum types lower to a
+-- tag word plus the widest variant payload, so they occupy more than one slot.
+-- Collapsing them to 1 here lets a sum-returning function be assigned into a
+-- single-word asm LHS that yule then lowers to a multi-word Yul return.
 returnCount :: Type -> Int
 returnCount TUnit = 0
 returnCount TWord = 1
+returnCount TBool = 1
 returnCount (TPair a b) = returnCount a + returnCount b
+returnCount (TSum a b) = 1 + max (returnCount a) (returnCount b)
+returnCount (TSumN ts) = 1 + maximum (map returnCount ts)
 returnCount (TNamed _ t) = returnCount t
-returnCount _ = 1
+returnCount (TFun _ _) = error "returnCount: function type has no runtime representation"
 
 -- Return type for exactly n word-sized return slots.
 nReturns :: Int -> Type
