@@ -1,0 +1,232 @@
+{
+  "multisig": {
+    "bytecode": "",
+    "contract": "Multisig",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor() - deployer becomes signers[0]; count=1, required=1",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "signersCount() -> 1",
+          "calldata": "e40956b1",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "signersRequired() -> 1",
+          "calldata": "2d2a7943",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "isSignerOf(A) -> false",
+          "calldata": "acb0538e00000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "addSigner(A) -> count 2",
+          "calldata": "eb12d61e00000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000002",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "isSignerOf(A) -> true",
+          "calldata": "acb0538e00000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "addSigner(B) -> count 3",
+          "calldata": "eb12d61e00000000000000000000000000000000000000000000000000000000000000bb",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000003",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "signersCount() -> 3",
+          "calldata": "e40956b1",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000003",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "addSigner(A) again -> reverts SignerAlreadyExists()",
+          "calldata": "eb12d61e00000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "12345678",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "comment": "signersCount() -> 3 (failed add rolled back)",
+          "calldata": "e40956b1",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000003",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "removeSigner(A) -> count 2 (B swapped into A's slot)",
+          "calldata": "0e316ab700000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000002",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "isSignerOf(A) -> false",
+          "calldata": "acb0538e00000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "isSignerOf(B) -> still true after swap",
+          "calldata": "acb0538e00000000000000000000000000000000000000000000000000000000000000bb",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "signersCount() -> 2",
+          "calldata": "e40956b1",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000002",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "removeSigner(A) again -> reverts NotASigner()",
+          "calldata": "0e316ab700000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "12345678",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "comment": "removeSigner(B) -> count 1",
+          "calldata": "0e316ab700000000000000000000000000000000000000000000000000000000000000bb",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "signersCount() -> 1",
+          "calldata": "e40956b1",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "removeSigner when only one signer left -> reverts CannotRemoveOnlySigner()",
+          "calldata": "0e316ab700000000000000000000000000000000000000000000000000000000000000bb",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "12345678",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "comment": "signersRequired() -> 1 (required_signatures never changed)",
+          "calldata": "2d2a7943",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

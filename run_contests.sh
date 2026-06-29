@@ -24,5 +24,7 @@ bash ./contest.sh test/examples/dispatch/storage.json
 bash ./contest.sh test/examples/dispatch/generic_sum.json
 bash ./contest.sh test/examples/dispatch/generic_product.json
 bash ./contest.sh test/examples/dispatch/sum_wide_product.json
+bash ./contest.sh test/examples/dispatch/storage_adt_field.json
 bash ./contest.sh test/examples/dispatch/forloops.json
 bash ./contest.sh test/examples/dispatch/weth9.json
+bash ./contest.sh test/examples/dispatch/multisig.json

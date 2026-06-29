@@ -1,0 +1,47 @@
+import std.{*};
+import std.dispatch.{*};
+import std.Generic.{*};
+import std.StorageGeneric.{*};
+
+// An ADT carrying a dynamically-sized memory(bytes) field IS storable. The
+// derived storage(Blob):CanStore(Blob) decomposes the SOP representation through
+// the structural CanStore instances in std.StorageGeneric, and the memory(bytes)
+// leaf is stored via storage(bytes) (Solidity-style dynamic bytes, one slot) —
+// never through StorageType, which has no instance for memory(bytes).
+//
+// This mirrors the multisig Operation type, whose Call variant carries a
+// memory(bytes) payload. No `pragma no-patterson-condition` is needed: the
+// structural CanStore instances satisfy the Patterson / coverage measures on
+// their own, and StorageSize already covers memory(bytes).
+
+data Blob =
+      NoBlob
+    | SomeBytes(memory(bytes));
+
+contract C {
+    blob : Blob;
+
+    constructor() {
+        blob = Blob.NoBlob;
+        // A dynamic field occupies one slot, so the sum is 1 (tag) + max(0, 1).
+        assert(eqWord(StorageSize.size(Proxy : Proxy(Blob)), 2));
+    }
+
+    public function clear() -> () {
+        blob = Blob.NoBlob;
+    }
+
+    // Stores the memory(bytes) payload into the ADT field (round-trips the
+    // dynamic leaf through storage(bytes)).
+    public function setBytes(b : memory(bytes)) -> () {
+        blob = Blob.SomeBytes(b);
+    }
+
+    // Loads the whole ADT back from storage and inspects its tag.
+    public function isEmpty() -> bool {
+        match blob {
+        | Blob.NoBlob       => return true;
+        | Blob.SomeBytes(_) => return false;
+        }
+    }
+}

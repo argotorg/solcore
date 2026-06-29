@@ -3,6 +3,7 @@ pragma no-bounded-variable-condition ABIAttribs, ABIEncode, ABIDecode;
 pragma no-coverage-condition ABIDecode;
 
 export {
+    ABIDeriving,
     encode,
     decode
 };
@@ -10,6 +11,15 @@ export {
 import std.{*};
 import std.opcodes.{mstore};
 import std.Generic.{*};
+
+// Marker class. Importing this module brings ABIDeriving into scope, which is
+// the signal DeriveGeneric looks for to auto-derive a per-type ABIDecode
+// instance for local data types. ABIAttribs / ABIEncode are provided generically
+// via the default Generic bridges below, but ABIDecode cannot be a default
+// instance (its decode returns the head variable `a` via Generic.to, a
+// result-position type variable the specializer cannot monomorphize), so a
+// concrete per-type instance is emitted instead — exactly as for storage.
+forall self. class self : ABIDeriving {}
 
 function maxWord(a : word, b : word) -> word {
     match gtWord(a, b) {
