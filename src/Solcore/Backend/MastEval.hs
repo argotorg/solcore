@@ -28,7 +28,7 @@ where
 {- Partial Evaluator for Mast
    Performs compile-time evaluation where possible:
    - Interprets assembly blocks containing supported Yul arithmetic operations
-   - Folds calls to `subWord`, `gtWord`, `eqWord` with literal arguments
+   - Folds calls to `subWord`, `gtWord`, `bxorWord`, `bandWord`, `borWord`, `eqWord` with literal arguments
    - Propagates known variable values
    - Inlines simple pure functions with literal arguments
 -}
@@ -428,6 +428,12 @@ evalPrimitive (Name "subWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (MastLit (IntLit (maskWord (a - b))))
 evalPrimitive (Name "gtWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just $ mkBool (a > b)
+evalPrimitive (Name "bxorWord") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (maskWord (a `xor` b))))
+evalPrimitive (Name "bandWord") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (maskWord (a .&. b))))
+evalPrimitive (Name "borWord") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (maskWord (a .|. b))))
 evalPrimitive (Name "eqWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just $ mkBool (a == b)
 -- String literal primitives (Solidity/Yul semantics):
@@ -826,6 +832,9 @@ builtinPureFuns =
   Set.fromList $
     [ Name "subWord",
       Name "gtWord",
+      Name "bxorWord",
+      Name "bandWord",
+      Name "borWord",
       Name "eqWord",
       Name "concatLit",
       Name "strlenLit",
