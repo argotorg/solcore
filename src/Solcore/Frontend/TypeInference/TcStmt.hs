@@ -1729,13 +1729,19 @@ tcYulStmt (YFun fnName args rets body) =
   do
     -- Yul functions are word-typed; register the name (so calls resolve and
     -- recursion type-checks) and check the body with the parameters and named
-    -- returns bound. A zero-return function has type '... -> unit'.
-    let fnRetTy = maybe unit (\rs -> if null rs then unit else word) rets
+    -- returns bound. The return arity is preserved by encoding the named
+    -- returns as a tuple of words: zero returns -> 'unit', one -> 'word', and
+    -- N >= 2 -> a right-nested 'pair' of N words. This keeps multi-return Yul
+    -- functions at their true arity for the call-site check (see
+    -- 'checkYulAssignArity' / 'yulReturnArity') instead of collapsing every
+    -- non-empty return list to a single 'word'.
+    let retNames = concat rets
+        fnRetTy = tupleTyFromList (map (const word) retNames)
         fnTy = funtype (map (const word) args) fnRetTy
     extEnv fnName (monotype fnTy)
     _ <- withLocalEnv do
       mapM_ (flip extEnv mword) args
-      mapM_ (flip extEnv mword) (concat rets)
+      mapM_ (flip extEnv mword) retNames
       tcYulBlock body
     pure ([], unit)
 tcYulStmt YBreak = pure ([], unit)
@@ -1743,13 +1749,18 @@ tcYulStmt YContinue = pure ([], unit)
 tcYulStmt YLeave = pure ([], unit)
 tcYulStmt (YComment _) = pure ([], unit)
 
--- Yul builtins/opcodes return either 0 values (type 'unit') or 1 value
--- (any other type). Compare the number of names on the left-hand side of
--- an assignment with the actual return arity of the right-hand side.
+-- Recover the Yul return arity from a type. Builtins/opcodes return either
+-- 0 values ('unit') or 1 value (any other single word-typed value).
+-- Multi-return Yul functions encode their N >= 2 results as a right-nested
+-- 'pair' of words (see 'tcYulStmt (YFun ...)'), so unfold the pair spine to
+-- recover the true arity. Compare this against the number of names on the
+-- left-hand side of an assignment.
 yulReturnArity :: Ty -> Int
 yulReturnArity t
   | t == unit = 0
-  | otherwise = 1
+  | otherwise = case t of
+      TyCon (Name "pair") [_, t2] -> 1 + yulReturnArity t2
+      _ -> 1
 
 checkYulAssignArity :: YulStmt -> [Name] -> YulExp -> Ty -> TcM ()
 checkYulAssignArity s ns e t =
