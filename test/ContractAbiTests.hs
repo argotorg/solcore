@@ -1,5 +1,7 @@
 module ContractAbiTests where
 
+import Control.Exception (ErrorCall (..), evaluate, try)
+import Data.List (isInfixOf)
 import Solcore.Desugarer.ContractDispatch (contractAbiJson)
 import Solcore.Frontend.Syntax
 import Solcore.Primitives.Primitives (word)
@@ -13,7 +15,20 @@ contractAbiTests =
     [ testCase "only public functions are exposed" $
         contractAbiJson onlyPublicContract @?= onlyPublicExpected,
       testCase "constructor, payable, word and tuple returns" $
-        contractAbiJson richContract @?= richExpected
+        contractAbiJson richContract @?= richExpected,
+      testCase "parameterized parameter type fails loudly" $ do
+        -- A public function whose parameter is a parameterized type
+        -- (e.g. `mapping(word, word)`) has no ABI spelling. Dropping the type
+        -- arguments would emit a bare, invalid `"type":"mapping"` string, so the
+        -- emitter must fail loudly instead.
+        result <- try (evaluate (length (contractAbiJson mappingParamContract)))
+        case result of
+          Left (ErrorCall msg) ->
+            assertBool
+              ("unexpected error message: " <> msg)
+              ("cannot represent type in ABI" `isInfixOf` msg)
+          Right _ ->
+            assertFailure "expected ABI emission to fail for a parameterized parameter type"
     ]
 
 -- Helpers for building sample contracts
@@ -83,6 +98,24 @@ richContract =
             [Typed False (Name "to") (tyCon "address")]
             (Just (TyCon (Name "pair") [word, tyCon "bool"]))
             True
+        )
+    ]
+
+-- A contract with a public function taking a parameterized type that the ABI
+-- emitter cannot represent (here `mapping(word, word)`).
+
+mappingParamContract :: Contract Name
+mappingParamContract =
+  Contract
+    (Name "Store")
+    []
+    [ fun
+        True
+        ( sig
+            "put"
+            [Typed False (Name "m") (TyCon (Name "mapping") [word, word])]
+            (Just (tyCon "uint256"))
+            False
         )
     ]
 
