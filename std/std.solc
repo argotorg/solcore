@@ -42,6 +42,7 @@ export {
   Sub,
   Typedef,
   WordReader,
+  Xor,
   abi_decode,
   abi_encode,
   addWord,
@@ -357,6 +358,10 @@ forall t . class t:Mod {
     function mod(l: t, r: t) -> t;
 }
 
+forall t . class t:Xor {
+    function xor(l: t, r: t) -> t;
+}
+
 forall t . class t:Bounded {
   function minVal() -> t;
   function maxVal() -> t;
@@ -479,10 +484,16 @@ instance word:Div {
     }
 }
 
-instance word : Mod {
+instance word:Mod {
   function mod (l : word, r : word) -> word {
     return mod(l, r);
   }
+}
+
+instance word:Xor {
+    function xor(l: word, r: word) -> word {
+        return bxorWord(l, r);
+    }
 }
 
 instance integer : Eq {

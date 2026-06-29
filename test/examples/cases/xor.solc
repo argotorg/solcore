@@ -1,0 +1,17 @@
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+// Exercises the `^` operator, the `^=` compound assignment, and the
+// bxorWord constant folding (mirrors gtWord).
+function f(x: word, y: word) -> word {
+  let acc : word = x ^ y;
+  acc ^= x;          // acc = (x ^ y) ^ x == y
+  return acc ^ 0;    // identity: a ^ 0 == a
+}
+
+contract Xor {
+  // 5 ^ 3 == 6, then ^ 5 == 3, then ^ 0 == 3 — folded at compile time.
+  public function main() -> word { return f(5, 3); }
+}

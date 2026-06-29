@@ -244,6 +244,7 @@ data Stmt
   = Assign Exp Exp -- assignment
   | StmtPlusEq Exp Exp -- e1 += e2
   | StmtMinusEq Exp Exp -- e1 -= e2
+  | StmtXorEq Exp Exp -- e1 ^= e2
   | Let Bool Name (Maybe Ty) (Maybe Exp) -- local variable; Bool is True when 'comptime' modifier is present
   | Block Body -- lexical block
   | StmtExp Exp -- expression level statements
@@ -278,6 +279,7 @@ data Exp
   | ExpTimes Exp Exp -- e1 * e2
   | ExpDivide Exp Exp -- e1 / e2
   | ExpModulo Exp Exp -- e1 % e2
+  | ExpXor Exp Exp -- e1 ^ e2
   | ExpLT Exp Exp -- e1 < e2
   | ExpGT Exp Exp -- e1 > e2
   | ExpLE Exp Exp -- e1 <= e2

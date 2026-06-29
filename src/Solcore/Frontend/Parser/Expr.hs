@@ -64,6 +64,11 @@ opTable =
             <$ try (lexeme (char '-' <* notFollowedBy (char '=')))
         )
     ],
+    [ InfixL
+        ( ExpXor
+            <$ try (lexeme (char '^' <* notFollowedBy (char '=')))
+        )
+    ],
     [ InfixN (ExpLE <$ try (symbol "<=")),
       InfixN (ExpGE <$ try (symbol ">=")),
       InfixN
