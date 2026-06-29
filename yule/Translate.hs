@@ -240,6 +240,7 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
       return (flattenLhs loc)
 genStmt (SExpr e) = fst <$> genExpr e
 genStmt SBreak = pure [YBreak]
+genStmt SContinue = pure [YContinue]
 genStmt (SRevert s) = pure (revertStmt s)
 genStmt e = error $ "genStmt unimplemented for: " ++ show e
 

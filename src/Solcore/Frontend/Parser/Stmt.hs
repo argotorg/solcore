@@ -32,6 +32,7 @@ stmtP =
     <|> try ifP
     <|> forP
     <|> breakP
+    <|> continueP
     <|> matchP
     <|> asmP
     <|> blockP
@@ -39,6 +40,9 @@ stmtP =
 
 breakP :: Parser Stmt
 breakP = Break <$ (keyword "break" *> semicolon)
+
+continueP :: Parser Stmt
+continueP = Continue <$ (keyword "continue" *> semicolon)
 
 letP :: Parser Stmt
 letP = do

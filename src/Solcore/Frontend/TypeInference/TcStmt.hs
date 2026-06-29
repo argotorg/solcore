@@ -152,6 +152,8 @@ tcStmtWithExpectedReturn mExpectedReturn s@(For initStmt cond postStmt body) =
     withCurrentSubst (For initStmt' cond' postStmt' body', psInit ++ psCond ++ psPost ++ psBody, unit)
 tcStmtWithExpectedReturn _ Break =
   pure (Break, [], unit)
+tcStmtWithExpectedReturn _ Continue =
+  pure (Continue, [], unit)
 tcStmtWithExpectedReturn _ EmptyStmt =
   pure (EmptyStmt, [], unit)
 
@@ -1858,6 +1860,7 @@ instance Vars (Stmt Id) where
     free initStmt `union` ((free cond `union` free postStmt `union` free body) \\ bound initStmt)
   free (Asm _) = []
   free Break = []
+  free Continue = []
   free EmptyStmt = []
 
   bound (Let _ n _ _) = [n]

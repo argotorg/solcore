@@ -25,6 +25,18 @@
       },
       {
         "input": {
+          "comment": "continue_sum()(uint256) -> 5+6+7+8+9 = 35",
+          "calldata": "e26b41bc",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000023",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
           "comment": "empty_init()(uint256) -> 3+4+5+6 = 18",
           "calldata": "73c5c5b9",
           "value": "0"

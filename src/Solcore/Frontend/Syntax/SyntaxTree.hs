@@ -253,6 +253,7 @@ data Stmt
   | If Exp Body Body -- If statement
   | For Stmt Exp Stmt Body -- for(init; cond; post) { body }
   | Break -- break out of the innermost enclosing for loop
+  | Continue -- continue to the next iteration of the innermost enclosing for loop
   | EmptyStmt -- empty statement (for empty for init/post)
   deriving (Eq, Ord, Show, Data, Typeable)
 

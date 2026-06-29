@@ -104,6 +104,8 @@ instance Compile (Stmt Id) where
     pure s
   compile Break =
     pure Break
+  compile Continue =
+    pure Continue
   compile EmptyStmt =
     pure EmptyStmt
   compile (Match es eqns) = do

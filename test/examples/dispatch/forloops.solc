@@ -29,6 +29,20 @@ contract C {
         return s;
     }
 
+    // Sum of 5..9 using `continue` to skip the iterations where i < 5.
+    // The post-statement (i = i + 1) must still run on `continue`, otherwise
+    // the loop would never terminate.
+    public function continue_sum() -> uint256 {
+        let s : uint256 = uint256(0);
+        for (let i : uint256 = uint256(0); i < uint256(10); i = i + uint256(1)) {
+            if (i < uint256(5)) {
+                continue;
+            } else {}
+            s = s + i;
+        }
+        return s;
+    }
+
     // Empty initializer: `i` is declared/initialised outside the loop.
     public function empty_init() -> uint256 {
         let i : uint256 = uint256(3);

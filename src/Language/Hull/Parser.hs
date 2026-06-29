@@ -16,6 +16,7 @@ import Language.Hull
         SAssign,
         SBlock,
         SBreak,
+        SContinue,
         SExpr,
         SFor,
         SFunction,
@@ -152,6 +153,7 @@ hullStmt =
       SMatch <$> (pKeyword "match" *> angles hullType) <*> (hullExpr <* pKeyword "with") <*> braces (many hullAlt),
       hullFor,
       SBreak <$ pKeyword "break",
+      SContinue <$ pKeyword "continue",
       SFunction
         <$> (pKeyword "function" *> identifier)
         <*> parens (commaSep hullArg)

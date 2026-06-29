@@ -103,6 +103,8 @@ checkStmt ft pure_ retCt fname env stmt = case stmt of
     return env
   MastBreak ->
     return env
+  MastContinue ->
+    return env
   MastSeq stmts -> do
     checkStmts ft pure_ retCt fname env stmts
     return env

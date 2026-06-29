@@ -61,6 +61,7 @@ data Stmt
   | SBlock Body
   | SFor Stmt Expr Stmt Stmt
   | SBreak
+  | SContinue
   | SMatch Type Expr [Alt]
   | SFunction Name [Arg] Type [Stmt]
   | SRevert String
@@ -141,6 +142,7 @@ instance Pretty Stmt where
       <+> parens (ppr initStmt >< semi <+> ppr cond >< semi <+> ppr post)
       <+> ppr body
   ppr SBreak = text "break"
+  ppr SContinue = text "continue"
   ppr (SMatch t e alts) =
     text "match"
       >< angles (ppr t)

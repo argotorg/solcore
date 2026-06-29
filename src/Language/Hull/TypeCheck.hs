@@ -93,6 +93,7 @@ checkStmt (SFor initStmt cond post body) =
       TSum TUnit TUnit -> pure ()
       _ -> hullError ("for condition must be bool or sum () (), got " ++ show t)
 checkStmt SBreak = pure ()
+checkStmt SContinue = pure ()
 checkStmt (SRevert _) = pure ()
 checkStmt (SComment _) = pure ()
 
