@@ -1,22 +1,18 @@
 import std.{*};
 import std.dispatch.{*};
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
+import std.opcodes.{mload, mstore};
 
 contract MemberRegistry {
-  // forge uses at least 1 storage slot
-  reserved : word;
   members : array(address);
 
   constructor() {}
 
-  function addMember(addr : address) -> () {
+  public function addMember(addr : address) -> () {
     members.push(addr);
   }
 
   // MemberNotFound() selector
-  function removeMember(addr : address) -> () {
+  public function removeMember(addr : address) -> () {
     // foundIdx == length() acts as the "not found" sentinel.
     let foundIdx : uint256 = members.length();
     let i : uint256;
@@ -36,11 +32,11 @@ contract MemberRegistry {
     members.pop();
   }
 
-  function numberOfMembers() -> uint256 {
+  public function numberOfMembers() -> uint256 {
     return members.length();
   }
 
-  function getMembers() -> memory(DynArray(address)) {
+  public function getMembers() -> memory(DynArray(address)) {
     let count : word = Typedef.rep(members.length());
     let totalBytes : word = (count + 1) * 32;
     let ptr : word = allocate_memory(totalBytes);
