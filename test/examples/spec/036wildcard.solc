@@ -1,14 +1,14 @@
 contract Option {
   data Option(a) = None | Some(a);
 
-  function maybe(n : word, o : Option(word)) -> word {
+  public function maybe(n : word, o : Option(word)) -> word {
     match o {
       | Option.Some(x) => return x;
       | _ => return n;
     }
   }
 
-  function main() -> word {
+  public function main() -> word {
     return maybe(7, Option.None);
   }
 }

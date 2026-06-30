@@ -23,7 +23,7 @@ instance StructField(ContractStorage(CounterCxt), counter_sel):CStructField(word
 contract Counter {
   // struct CounterCxt { counter:word }
 
-  function main() -> word {
+  public function main() -> word {
        let cxt : ContractStorage(CounterCxt) = ContractStorage(CounterCxt);
        let counter_map : MemberAccessProxy(ContractStorage(CounterCxt), counter_sel, ())
        = MemberAccessProxy(cxt, counter_sel);

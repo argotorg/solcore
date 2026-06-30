@@ -1,23 +1,19 @@
 import std.{*};
-import std.{revert, uint256};
 import std.dispatch.{*};
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
 
 function my_revert() -> word {
-  revert("regression");
+  revertLit("regression");
   return 0;
 }
 
 contract Foo {
   constructor() {}
 
-  function noAnswer() -> uint256 {
+  public function noAnswer() -> uint256 {
     return uint256(my_revert());
   }
 
-  function answer() -> uint256 {
+  public function answer() -> uint256 {
     return uint256(42);
   }
 }

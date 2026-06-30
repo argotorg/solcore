@@ -2,7 +2,7 @@ function addW(x: Word, y:Word) -> Word {
    let res : Word;
    assembly {
        res := add(x, y)
-    };
+    }
     return res;
 }
 
@@ -44,7 +44,7 @@ instance (a:Enum) => FromEnumToken(a) : Invokable(a,Word) {
    }
 }
 contract RGB {
-  function main() {
+  public function main() {
   /*
   let x = fromEnum(Color.B);
   let y = fromEnum(Bool.True);

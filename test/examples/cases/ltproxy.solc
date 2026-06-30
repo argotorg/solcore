@@ -2,5 +2,6 @@ import std.{lt};
 export { ltproxy };
 
 function ltproxy() -> bool {
-    return (0 < 42);
+    let zero : word = 0;
+    return (zero < 42);
 }

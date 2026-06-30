@@ -97,7 +97,8 @@ funDecl :: String -> TopDecl Name
 funDecl funName =
   TFunDef
     FunDef
-      { funSignature =
+      { funIsPublic = False,
+        funSignature =
           wordSignature funName,
         funDefBody = [Return (Lit (IntLit 0))]
       }
@@ -110,7 +111,8 @@ badImportedFun :: TopDecl Name
 badImportedFun =
   TFunDef
     FunDef
-      { funSignature = wordSignature "badImported",
+      { funIsPublic = False,
+        funSignature = wordSignature "badImported",
         funDefBody = [Return (Var (Name "missing"))]
       }
 
@@ -118,7 +120,8 @@ usesImportedFun :: TopDecl Name
 usesImportedFun =
   TFunDef
     FunDef
-      { funSignature = wordSignature "usesImported",
+      { funIsPublic = False,
+        funSignature = wordSignature "usesImported",
         funDefBody = [Return (Call Nothing (Name "badImported") [])]
       }
 
@@ -129,5 +132,7 @@ wordSignature funName =
       sigContext = [],
       sigName = Name funName,
       sigParams = [],
-      sigReturn = Just wordTy
+      sigRetComptime = False,
+      sigReturn = Just wordTy,
+      sigPayable = False
     }

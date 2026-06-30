@@ -91,6 +91,7 @@ type InstanceHead = (Bool, Name, [Ty], Ty)
 data TcEnv
   = TcEnv
   { ctx :: Env, -- Variable environment
+    constrCtx :: Env, -- Primitive constructor schemes (never shadowed by user definitions)
     instEnv :: InstTable, -- Instance Environment
     defaultEnv :: DefTable, -- Default instance environment
     typeTable :: TypeTable, -- Type information environment
@@ -123,6 +124,7 @@ initTcEnv :: Option -> TcEnv
 initTcEnv opts =
   TcEnv
     { ctx = primCtx,
+      constrCtx = primConstrCtx,
       instEnv = primInstEnv,
       defaultEnv = Map.empty,
       typeTable = primTypeEnv,
@@ -163,7 +165,29 @@ primCtx =
       primUnit,
       primTrue,
       primFalse,
-      primInvoke
+      primInvoke,
+      wordToInteger,
+      wordFromInteger,
+      integerAdd,
+      integerSub,
+      integerMul,
+      integerLt,
+      integerEq,
+      fromIntegerEntry
+    ]
+
+-- Primitive constructor schemes only — never overwritten by user function definitions.
+-- Used by the type checker for Con/PCon lookups so that user functions named after
+-- primitive constructors (e.g. "pair") cannot shadow them.
+primConstrCtx :: Env
+primConstrCtx =
+  Map.fromList
+    [ primPair,
+      primUnit,
+      primTrue,
+      primFalse,
+      primInl,
+      primInr
     ]
 
 primTypeEnv :: TypeTable
@@ -174,15 +198,26 @@ primTypeEnv =
       (Name "->", arrowTypeInfo),
       (Name "()", unitTypeInfo),
       (Name "bool", boolTypeInfo),
-      (Name "sum", sumTypeInfo)
+      (Name "sum", sumTypeInfo),
+      (Name "integer", TypeInfo 0 [] [])
     ]
 
 primInstEnv :: InstTable
-primInstEnv = Map.empty
+primInstEnv =
+  Map.fromList
+    [ ( intClassName,
+        [ [] :=> InCls intClassName word [],
+          [] :=> InCls intClassName integer []
+        ]
+      )
+    ]
 
 primClassEnv :: ClassTable
 primClassEnv =
-  Map.fromList [(Name "invokable", invokableInfo)]
+  Map.fromList
+    [ (Name "invokable", invokableInfo),
+      (intClassName, intInfo)
+    ]
   where
     invokableInfo =
       ClassInfo
@@ -192,6 +227,12 @@ primClassEnv =
         []
     self = TyVar (TVar (Name "self"))
     args = map TyVar [TVar (Name "args"), TVar (Name "ret")]
+    intInfo =
+      ClassInfo
+        0
+        [QualName intClassName "fromInteger"]
+        (InCls intClassName (TyVar (TVar (Name "a"))) [])
+        []
 
 primDataType :: Map Name DataTy
 primDataType =

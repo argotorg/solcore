@@ -239,6 +239,8 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
       insertVar varName loc
       return (flattenLhs loc)
 genStmt (SExpr e) = fst <$> genExpr e
+genStmt SBreak = pure [YBreak]
+genStmt SContinue = pure [YContinue]
 genStmt (SRevert s) = pure (revertStmt s)
 genStmt e = error $ "genStmt unimplemented for: " ++ show e
 
@@ -253,16 +255,36 @@ scanStmt _ = pure ()
 genBody :: Body -> TM [YulStmt]
 genBody stmts = concat <$> mapM genStmt stmts
 
--- Trim payload to n slots so pattern variables are not mapped to padding.
-trimPayload :: Int -> Location -> Location
-trimPayload n (LocSeq ls) = normalizeLoc (LocSeq (take n ls))
-trimPayload _ loc = loc
+-- Regroup a payload location (flattened by normalizeLoc on the scrutinee) back
+-- into the tree shape of its type. Products must keep their nested LocPair
+-- structure so EFst/ESnd can navigate them; sums and leaves stay flat. This
+-- mirrors buildLoc's layout and drops any trailing padding slots. Without it, a
+-- constructor payload that is a product of arity >= 3 (e.g. Option(Triple))
+-- would be bound as a flat sequence and the inner product match would fail with
+-- "EFst: type mismatch".
+reshapeLoc :: Type -> Location -> Location
+reshapeLoc ty loc = fst (go ty (flattenLoc loc))
+  where
+    go :: Type -> [Location] -> (Location, [Location])
+    go (TNamed _ t) ss = go t ss
+    go TUnit ss = (LocSeq [], ss)
+    go (TPair a b) ss =
+      let (la, ss1) = go a ss
+          (lb, ss2) = go b ss1
+       in (LocSeq [la, lb], ss2)
+    go t ss =
+      -- words, bools and sums occupy sizeOf t consecutive flat slots
+      let (here, rest) = splitAt (sizeOf t) ss
+          loc' = case here of
+            [l] -> l
+            _ -> LocSeq here
+       in (loc', rest)
 
--- Payload size for each constructor given the scrutinee type.
+-- Payload for each constructor given the scrutinee type, reshaped to its type.
 conPayload :: Type -> Con -> Location -> Location
-conPayload (TSum l _) CInl payload = trimPayload (sizeOf l) payload
-conPayload (TSum _ r) CInr payload = trimPayload (sizeOf r) payload
-conPayload (TSumN ts) (CInK k) payload = trimPayload (sizeOf (ts !! k)) payload
+conPayload (TSum l _) CInl payload = reshapeLoc l payload
+conPayload (TSum _ r) CInr payload = reshapeLoc r payload
+conPayload (TSumN ts) (CInK k) payload = reshapeLoc (ts !! k) payload
 conPayload (TNamed _ t) con payload = conPayload t con payload
 conPayload _ _ payload = payload
 

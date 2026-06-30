@@ -373,8 +373,27 @@ importForwardingWrappers graph checkedModules =
       wrappersForQualifiers loadedModule importPath (defaultImportQualifiers importPath)
     wrappersForImport loadedModule (Parsed.ImportAlias importPath qualifier) =
       wrappersForQualifiers loadedModule importPath [qualifier]
-    wrappersForImport _ (Parsed.ImportOnly _ _) =
-      pure []
+    wrappersForImport loadedModule (Parsed.ImportOnly importPath (Parsed.SelectItems items _)) =
+      let aliases = [(src, alias) | Parsed.SelectItemAs src alias <- items]
+       in if null aliases
+            then pure []
+            else do
+              targetModuleId <-
+                maybe
+                  (Left ("Internal error: import target was not loaded: " ++ Mod.modulePathDisplay importPath))
+                  Right
+                  (Map.lookup importPath (loadedModuleRefs loadedModule))
+              targetModule <-
+                maybe
+                  (Left ("Internal error: import target was not typechecked: " ++ Mod.moduleIdDisplay targetModuleId))
+                  Right
+                  (Map.lookup targetModuleId checkedModules)
+              pure
+                [ TFunDef (typedAliasingWrapper aliasName fd)
+                  | (sourceName, aliasName) <- aliases,
+                    TFunDef fd <- contracts (checkedModuleTyped targetModule),
+                    sigName (funSignature fd) == sourceName
+                ]
 
     wrappersForQualifiers loadedModule importPath qualifiers = do
       targetModuleId <-
@@ -407,13 +426,15 @@ importedModuleLeafName n@(Name _) = n
 importedModuleLeafName q@(QualName _ n) = copyNameSourceSpan q (Name n)
 
 typedForwardingWrapper :: Name -> FunDef Id -> FunDef Id
-typedForwardingWrapper qualifier (FunDef sig body)
-  | originalName == Name "revert" =
+typedForwardingWrapper qualifier (FunDef isPub sig body)
+  | originalName == Name "revertLit" =
       FunDef
+        isPub
         (sig {sigName = qualifiedName})
         body
   | otherwise =
       FunDef
+        isPub
         (sig {sigName = qualifiedName})
         [Return (Call Nothing targetId args)]
   where
@@ -421,6 +442,10 @@ typedForwardingWrapper qualifier (FunDef sig body)
     qualifiedName = qualifyName qualifier originalName
     targetId = Id originalName (typedSignatureType sig)
     args = map (Var . paramName) (sigParams sig)
+
+typedAliasingWrapper :: Name -> FunDef Id -> FunDef Id
+typedAliasingWrapper aliasName (FunDef isPub sig body) =
+  FunDef isPub (sig {sigName = aliasName}) body
 
 typedSignatureType :: Signature Id -> Ty
 typedSignatureType sig =
@@ -433,5 +458,5 @@ typedSignatureType sig =
         (sigReturn sig)
 
 typedParamType :: Param Id -> Ty
-typedParamType (Typed i _) = idType i
-typedParamType (Untyped i) = idType i
+typedParamType (Typed _ i _) = idType i
+typedParamType (Untyped _ i) = idType i

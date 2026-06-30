@@ -16,11 +16,12 @@ diagnosticCliTests =
     [ testCase "parser error" $
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/parse-error.solc", "--no-specialise"]
-          [ "error[SC0001]: parse error: unexpected TArrow",
+          [ "error[SC0001]: parse error: unexpected '-'",
             "  --> <cwd>/test/diagnostics/parse-error.solc:1:16",
             "  |",
             "1 | function main( -> word { return 0; }",
-            "  |                ^^ unexpected token"
+            "  |                ^^ unexpected token",
+            "note: expecting \"comptime\", ')', or identifier"
           ],
       testCase "undefined name" $
         expectFailure
@@ -128,9 +129,9 @@ diagnosticCliTests =
             "4 |   return .Nope(1);",
             "  |           ^^^^ shorthand constructor",
             "note: constructor: .Nope",
-            "note: in: .Nope(1)",
+            "note: in: .Nope(Int.fromInteger(1))",
             "note: in: function bad () -> Option {",
-            "      return .Nope(1);",
+            "      return .Nope(Int.fromInteger(1));",
             "      }",
             "note: module typecheck failed for <cwd>/test/examples/cases/dot-expression-unknown-fail.solc (no desugaring)",
             "help: use a constructor that is visible for the expected type"
@@ -255,7 +256,7 @@ redundantWarningsSnapshot =
     "  --> <cwd>/test/examples/cases/redundant-match.solc:6:7",
     "  |",
     "6 |     | Bool.True  => return Bool.True;",
-    "  |       ^^^^^^^^^ redundant clause",
+    "  |       ^^^^^^^^^^^ redundant clause",
     "note: clause: | Bool.True<Bool> =>",
     "      return Bool.True<Bool>;",
     "note: in: match (x<Bool>)",
@@ -266,7 +267,7 @@ redundantWarningsSnapshot =
     "  --> <cwd>/test/examples/cases/redundant-match.solc:7:7",
     "  |",
     "7 |     | Bool.False => return Bool.False;",
-    "  |       ^^^^^^^^^^ redundant clause",
+    "  |       ^^^^^^^^^^^ redundant clause",
     "note: clause: | Bool.False<Bool> =>",
     "      return Bool.False<Bool>;",
     "note: in: match (x<Bool>)",

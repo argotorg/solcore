@@ -1,9 +1,9 @@
 data Wrapper = Wrapper(word);
 contract C {
-    function main() -> word {
+    public function main() -> word {
         return foo(Wrapper(1));
     }
-    function foo(w:Wrapper) -> word {
+    public function foo(w:Wrapper) -> word {
         let result : word;
         match w {
             | Wrapper(ptr) =>

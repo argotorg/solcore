@@ -125,34 +125,34 @@ instance HasType Scheme where
   bv (Forall vs qt) = vs `union` bv qt
 
 instance (HasType a) => HasType (Signature a) where
-  apply s (Signature _ ctx n p r) =
+  apply s (Signature _ ctx n p rc r pay) =
     let ctx' = apply s ctx
         p' = apply s p
         r' = apply s r
         vs' = bv ctx' `union` bv p' `union` bv r'
-     in Signature vs' ctx' n p' r'
-  fv (Signature vs c _ p r) = fv (c, p, r) \\ vs
-  mv (Signature _ c _ p r) = mv (c, p, r)
-  bv (Signature vs c _ p r) = vs `union` bv (c, p, r)
+     in Signature vs' ctx' n p' rc r' pay
+  fv (Signature vs c _ p _ r _) = fv (c, p, r) \\ vs
+  mv (Signature _ c _ p _ r _) = mv (c, p, r)
+  bv (Signature vs c _ p _ r _) = vs `union` bv (c, p, r)
 
 instance (HasType a) => HasType (Param a) where
-  apply s (Typed i t) = Typed (apply s i) (apply s t)
-  apply s (Untyped i) = Untyped (apply s i)
-  fv (Typed i t) = fv (i, t)
-  fv (Untyped i) = fv i
-  mv (Typed i t) = mv (i, t)
-  mv (Untyped i) = mv i
-  bv (Typed i t) = bv (i, t)
-  bv (Untyped i) = bv i
+  apply s (Typed c i t) = Typed c (apply s i) (apply s t)
+  apply s (Untyped c i) = Untyped c (apply s i)
+  fv (Typed _ i t) = fv (i, t)
+  fv (Untyped _ i) = fv i
+  mv (Typed _ i t) = mv (i, t)
+  mv (Untyped _ i) = mv i
+  bv (Typed _ i t) = bv (i, t)
+  bv (Untyped _ i) = bv i
 
 instance (HasType a) => HasType (FunDef a) where
-  apply s (FunDef sig bd) =
-    FunDef (apply s sig) (apply s bd)
-  fv (FunDef sig bd) =
+  apply s (FunDef p sig bd) =
+    FunDef p (apply s sig) (apply s bd)
+  fv (FunDef _ sig bd) =
     fv sig `union` fv bd
-  mv (FunDef sig bd) =
+  mv (FunDef _ sig bd) =
     mv sig `union` mv bd
-  bv (FunDef sig bd) =
+  bv (FunDef _ sig bd) =
     bv sig `union` bv bd
 
 instance (HasType a) => HasType (Instance a) where
@@ -236,8 +236,9 @@ instance (HasType a) => HasType (Exp a) where
 instance (HasType a) => HasType (Stmt a) where
   apply s (e1 := e2) =
     (apply s e1) := (apply s e2)
-  apply s (Let v mt me) =
+  apply s (Let c v mt me) =
     Let
+      c
       (apply s v)
       (apply s <$> mt)
       (apply s <$> me)
@@ -262,10 +263,16 @@ instance (HasType a) => HasType (Stmt a) where
       (apply s body)
   apply _ (Asm yblk) =
     Asm yblk
+  apply _ Break =
+    Break
+  apply _ Continue =
+    Continue
+  apply _ EmptyStmt =
+    EmptyStmt
 
   fv (e1 := e2) =
     fv e1 `union` fv e2
-  fv (Let v mt me) =
+  fv (Let _ v mt me) =
     fv v
       `union` (maybe [] fv mt)
       `union` (maybe [] fv me)
@@ -278,10 +285,13 @@ instance (HasType a) => HasType (Stmt a) where
   fv (For initStmt cond postStmt body) =
     fv initStmt `union` fv cond `union` fv postStmt `union` fv body
   fv (Asm _) = []
+  fv Break = []
+  fv Continue = []
+  fv EmptyStmt = []
 
   mv (e1 := e2) =
     mv e1 `union` mv e2
-  mv (Let v mt me) =
+  mv (Let _ v mt me) =
     mv v
       `union` (maybe [] mv mt)
       `union` (maybe [] mv me)
@@ -294,10 +304,13 @@ instance (HasType a) => HasType (Stmt a) where
   mv (For initStmt cond postStmt body) =
     mv initStmt `union` mv cond `union` mv postStmt `union` mv body
   mv (Asm _) = []
+  mv Break = []
+  mv Continue = []
+  mv EmptyStmt = []
 
   bv (e1 := e2) =
     bv e1 `union` bv e2
-  bv (Let v mt me) =
+  bv (Let _ v mt me) =
     bv v
       `union` (maybe [] bv mt)
       `union` (maybe [] bv me)
@@ -310,6 +323,9 @@ instance (HasType a) => HasType (Stmt a) where
   bv (For initStmt cond postStmt body) =
     bv initStmt `union` bv cond `union` bv postStmt `union` bv body
   bv (Asm _) = []
+  bv Break = []
+  bv Continue = []
+  bv EmptyStmt = []
 
 instance (HasType a) => HasType (Pat a) where
   apply s (PVar v) = PVar (apply s v)
@@ -399,11 +415,11 @@ instance (HasType a) => HasType (Field a) where
   bv (Field _ t me) = bv t `union` bv me
 
 instance (HasType a) => HasType (Constructor a) where
-  apply s (Constructor ps bd) =
-    Constructor (apply s ps) (apply s bd)
-  fv (Constructor ps bd) =
+  apply s (Constructor ps bd payable) =
+    Constructor (apply s ps) (apply s bd) payable
+  fv (Constructor ps bd _) =
     fv ps `union` fv bd
-  mv (Constructor ps bd) =
+  mv (Constructor ps bd _) =
     mv ps `union` mv bd
-  bv (Constructor ps bd) =
+  bv (Constructor ps bd _) =
     bv ps `union` bv bd

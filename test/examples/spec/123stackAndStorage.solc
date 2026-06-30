@@ -6,7 +6,7 @@ contract Counter {
   counter2 : uint256;
   counter3 : word;
   
-  function main() -> word {
+  public function main() -> word {
     let x: word;
     x = counter1 + 1;
     counter1 = x;

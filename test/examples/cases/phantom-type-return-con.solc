@@ -10,7 +10,7 @@ data Foo(a) = Foo(word);
   }
 
   contract C {
-    function main() -> word {
+    public function main() -> word {
       return unwrap();
     }
   }

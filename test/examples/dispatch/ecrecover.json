@@ -1,0 +1,40 @@
+{
+  "ecrecover": {
+    "bytecode": "",
+    "contract": "EcrecoverTest",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "recover()(address)",
+          "calldata": "ce746024",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000007e5f4552091a69125d5dfcb7b8c2659029395bdf",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "recoverFail()(address)",
+          "calldata": "75ebe7ac",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "4fbfae63",
+          "status": "failure"
+        }
+      }
+    ]
+  }
+}

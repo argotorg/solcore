@@ -23,7 +23,7 @@ instance Lam0Token(a) : Invokable(a,a) {
 
 
 contract InvokeLam {
-function main() {
+public function main() {
   let nid = Lam0Token;
   return invoke(nid, 42);
 }

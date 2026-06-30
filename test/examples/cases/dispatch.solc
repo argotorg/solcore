@@ -8,7 +8,7 @@ data Proxy(a) = Proxy;
 
 // A contract contains a tuple of methods and a single fallback
 // TODO: implement receive()
-data Contract(methods, fallback) = Contract(methods,fallback);
+data Contract(methods, fb) = Contract(methods,fb);
 
 // A method contains an implementation (fn) as well as it's name and type signature
 data Method(name, args, rets, fn) = Method(name, args, rets, fn);
@@ -129,8 +129,8 @@ forall name . name:Selector => function selector_matches(prx : Proxy(name)) -> B
   let hash = Selector.hash(prx);
   let res : word;
   assembly {
-    let sel := shr(224, calldataload(0));
-    res := eq(sel, hash);
+    let sel := shr(224, calldataload(0))
+    res := eq(sel, hash)
   }
   match res {
     | 0 => return Bool.False;
@@ -167,7 +167,7 @@ forall methods . methods:AllNonPayable => instance methods:TopLevelCallvalueChec
     assembly {
       if gt(callvalue(), 0) {
         mstore(0,0x2)
-        revert(0,32);
+        revert(0,32)
       }
     }
     return Proxy : Proxy(CallvalueChecked);
@@ -187,8 +187,8 @@ forall method status . method:NonPayable, status:MethodsMustCheckCalldata => ins
   function checkCallvalue(pty : Proxy(method), pstatus : Proxy(status)) -> (){
     assembly {
       if gt(callvalue(), 0) {
-        mstore(0, 0x1);
-        revert(0, 32);
+        mstore(0, 0x1)
+        revert(0, 32)
       }
     }
   }
@@ -202,26 +202,26 @@ forall c . class c:RunContract {
 }
 
 // If we have a dispatch for the contracts methods, and we know how to execute it's fallback, then we can define an entrypoint
-forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance Contract(methods, fallback):RunContract {
-  function exec(c : Contract(methods, fallback)) -> () {
+forall methods fb . methods:RunDispatch, fb:ExecMethod => instance Contract(methods, fb):RunContract {
+  function exec(c : Contract(methods, fb)) -> () {
     match c {
       | Contract(ms, fb) =>
         // set free memory pointer to the output of memoryguard
         // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
         // TODO: we will need to consider immutables here at some point...
-        // assembly { mstore(0x40, memoryguard(128)); }
+        // assembly { mstore(0x40, memoryguard(128)) }
 
         // if all methods are non payable then check callvalue
-        let callvalueChecked = TopLevelCallvalueCheck.checkCallvalue(Proxy : Proxy((fallback, methods)));
+        let callvalueChecked = TopLevelCallvalueCheck.checkCallvalue(Proxy : Proxy((fb, methods)));
 
         // check that we have at least 4 bytes of calldata
         let haveSelector : word;
         assembly {
-          haveSelector := lt(3, calldatasize());
+          haveSelector := lt(3, calldatasize())
         }
 
         match haveSelector {
-          | 0 => assembly { revert(0,0); }
+          | 0 => assembly { revert(0,0) }
           | _ =>
             // dispatch to method based on selector
             RunDispatch.go(ms, callvalueChecked);
@@ -253,13 +253,13 @@ instance C_Add2_Selector:Selector {
 // transform
 
 contract C {
-  function add2(x : word, y : word) -> word {
+  public function add2(x : word, y : word) -> word {
     let ret : word;
     assembly { ret := add(x,y) }
     return ret;
   }
 
-  function main() -> word {
+  public function main() -> word {
     let c = Contract(
       Method(C_Add2_Selector, Proxy : Proxy((word,word)), Proxy : Proxy(word), add2),
       Fallback(Proxy : Proxy(()),Proxy : Proxy(()),revert_handler)

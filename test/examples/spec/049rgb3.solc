@@ -2,7 +2,7 @@ data RGB = Red(word) | Green(word) | Blue(word);
 
 contract RGB3 {
 
-  function choose(c:RGB) -> word {
+  public function choose(c:RGB) -> word {
     let res : word;
     match c {
       | .Red(x) => assembly { res := add(x,1) }
@@ -11,7 +11,7 @@ contract RGB3 {
       }
       return res;
   }
-  function main() -> word {
+  public function main() -> word {
     choose(RGB.Green(42))
   }
 }

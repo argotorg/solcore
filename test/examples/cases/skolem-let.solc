@@ -6,7 +6,7 @@ forall a. function fromWord(x: word) -> a {
   }
 
 contract Unsafe {
-  function main() {
+  public function main() {
     fromWord(7):();
     return 42;
   }

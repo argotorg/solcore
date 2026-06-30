@@ -1,9 +1,9 @@
 contract Compose {
-  function id(x : word) -> word { return x; }
+  public function id(x : word) -> word { return x; }
 
-  function idid(x : word) -> word { return id(id(x)); }
+  public function idid(x : word) -> word { return id(id(x)); }
 
-  function main() -> word {
+  public function main() -> word {
     return idid(42);
   }
 }

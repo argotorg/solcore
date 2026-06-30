@@ -4,7 +4,7 @@ Hull is an intermediate language used by the Core Solidity compiler between SAIL
 Hull after type-checking, monomorphization, and match compilation. Hull is then
 translated to Yul for final code generation.
 
-Hull retains algebraic data types — products and sums — from SAIL, but eliminates polymorphism, type classes, higher-order functions, and
+Hull retains algebraic data types (products and sums) from SAIL, but eliminates polymorphism, type classes, higher-order functions, and
 all surface syntax sugar. The result is a first-order, monomorphic language
 whose structure maps directly onto Yul constructs.
 
@@ -427,53 +427,53 @@ denote non-terminals.
 
 ### Types
 
-**PrimaryType** — the base forms that can appear in any type position:
+**PrimaryType**: the base forms that can appear in any type position:
 
 ![PrimaryType railroad diagram](diagrams/PrimaryType.svg)
 
-**Type** — combines primary types with `*` (product) and `+` (sum), both
+**Type**: combines primary types with `*` (product) and `+` (sum), both
 right-associative:
 
 ![Type railroad diagram](diagrams/Type.svg)
 
 ### Expressions
 
-**PrimaryExpr** — literals, variables, tuples, and calls:
+**PrimaryExpr**: literals, variables, tuples, and calls:
 
 ![PrimaryExpr railroad diagram](diagrams/PrimaryExpr.svg)
 
-**Expr** — the complete expression grammar, including injections, projections,
+**Expr**: the complete expression grammar, including injections, projections,
 conditionals, and primary expressions:
 
 ![Expr railroad diagram](diagrams/Expr.svg)
 
 ### Statements
 
-**Stmt** — the complete statement grammar:
+**Stmt**: the complete statement grammar:
 
 ![Stmt railroad diagram](diagrams/Stmt.svg)
 
-**Block** — a brace-enclosed sequence of statements:
+**Block**: a brace-enclosed sequence of statements:
 
 ![block railroad diagram](diagrams/Block.svg)
 
 ### Auxiliaries
 
-**Arg** — a typed parameter in a function definition:
+**Arg**: a typed parameter in a function definition:
 
 ![Arg railroad diagram](diagrams/Arg.svg)
 
-**Con** — a constructor tag in a match alternative:
+**Con**: a constructor tag in a match alternative:
 
 ![Con railroad diagram](diagrams/Con.svg)
 
-**Alt** — a match alternative, binding the payload to a name:
+**Alt**: a match alternative, binding the payload to a name:
 
 ![Alt railroad diagram](diagrams/Alt.svg)
 
 ### Objects
 
-**Object** — a named code container, optionally containing inner objects:
+**Object**: a named code container, optionally containing inner objects:
 
 ![Object railroad diagram](diagrams/Object.svg)
 

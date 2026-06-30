@@ -37,7 +37,7 @@ forall a . instance t_id3(a) : invokable(a,a) {
 }
 
 contract Foo {
-  function main() -> word {
+  public function main() -> word {
     let f = compose(t_id3, t_id3);
     return invokable.invoke(f, 0);
   }

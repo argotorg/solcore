@@ -1,0 +1,103 @@
+{
+  "payable": {
+    "bytecode": "",
+    "contract": "PayableTest",
+    "tests": [
+      {
+        "input": {
+          "comment": "non-payable constructor accepts zero value",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor",
+        "output": {
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+	    "comment": "deposit()(uint256)",
+          "calldata": "d0e30db0",
+          "value": "42"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+	    "comment": "deposit()(uint256)",
+          "calldata": "d0e30db0",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+	    "comment": "balance()(uint256)",
+          "calldata": "b69ef8a8",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+	    "comment": "balance()(uint256)",
+          "calldata": "b69ef8a8",
+          "value": "42"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "b5988ea3",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+	    "comment": "fallback with value",
+          "calldata": "deadc0de",
+          "value": "42"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+	    "comment": "fallback without value should fail",
+          "calldata": "deadc0de",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "66616c6c6261636b2d7761732d63616c6c65642d6e6f2d76616c7565",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+	    "comment": "balance()(uint256)",
+          "calldata": "b69ef8a8",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000054",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

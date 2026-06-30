@@ -20,7 +20,7 @@ function discount(state : AuctionState, phase : Phase) -> word {
 }
 
 contract Discount {
-  function main() -> word {
+  public function main() -> word {
     discount(.Active(420,.address(0)), .Early)
   }
 }

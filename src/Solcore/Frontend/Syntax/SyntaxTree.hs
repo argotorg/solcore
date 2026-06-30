@@ -37,6 +37,7 @@ data PragmaType
   = NoCoverageCondition
   | NoPattersonCondition
   | NoBoundVariableCondition
+  | NoGenericInstanceFor
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data PragmaStatus
@@ -100,6 +101,7 @@ data ItemSelector
 data ItemSelectorEntry
   = SelectAllItems
   | SelectItem Name
+  | SelectItemAs Name Name
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of the contract structure
@@ -187,7 +189,8 @@ data TySym
 data Constructor
   = Constructor
   { constrParams :: [Param],
-    constrBody :: Body
+    constrBody :: Body,
+    constrPayable :: Bool
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -210,7 +213,9 @@ data Signature
     sigContext :: [Pred],
     sigName :: Name,
     sigParams :: [Param],
-    sigReturn :: Maybe Ty
+    sigRetComptime :: Bool,
+    sigReturn :: Maybe Ty,
+    sigPayable :: Bool
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -240,7 +245,8 @@ data Field
 
 data FunDef
   = FunDef
-  { funSignature :: Signature,
+  { funIsPublic :: Bool,
+    funSignature :: Signature,
     funDefBody :: Body
   }
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -322,6 +328,8 @@ instance HasSourceSpan ItemSelector where
 instance HasSourceSpan ItemSelectorEntry where
   sourceSpanOf SelectAllItems = Nothing
   sourceSpanOf (SelectItem n) = sourceSpanOf n
+  sourceSpanOf (SelectItemAs n aliasName) =
+    firstSourceSpan [sourceSpanOf n, sourceSpanOf aliasName]
 
 instance HasSourceSpan Contract where
   sourceSpanOf (Contract n tyParams' contractDecls) =
@@ -340,7 +348,7 @@ instance HasSourceSpan TySym where
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tyParams', sourceSpanOf ty]
 
 instance HasSourceSpan Constructor where
-  sourceSpanOf (Constructor params body) =
+  sourceSpanOf (Constructor params body _) =
     firstSourceSpan [sourceSpanOf params, sourceSpanOf body]
 
 instance HasSourceSpan Class where
@@ -348,7 +356,7 @@ instance HasSourceSpan Class where
     firstSourceSpan [sourceSpanOf boundVars, sourceSpanOf context, sourceSpanOf clsName, sourceSpanOf params, sourceSpanOf main, sourceSpanOf signatures']
 
 instance HasSourceSpan Signature where
-  sourceSpanOf (Signature vars context sig params retTy) =
+  sourceSpanOf (Signature vars context sig params _ retTy _) =
     firstSourceSpan [sourceSpanOf vars, sourceSpanOf context, sourceSpanOf sig, sourceSpanOf params, sourceSpanOf retTy]
 
 instance HasSourceSpan Instance where
@@ -360,7 +368,7 @@ instance HasSourceSpan Field where
     firstSourceSpan [sourceSpanOf n, sourceSpanOf ty, sourceSpanOf initExp]
 
 instance HasSourceSpan FunDef where
-  sourceSpanOf (FunDef sig body) =
+  sourceSpanOf (FunDef _ sig body) =
     firstSourceSpan [sourceSpanOf sig, sourceSpanOf body]
 
 instance HasSourceSpan ContractDecl where
@@ -379,7 +387,7 @@ data Stmt
   = AssignWithLocation NodeLocation Exp Exp -- assignment
   | StmtPlusEqWithLocation NodeLocation Exp Exp -- e1 += e2
   | StmtMinusEqWithLocation NodeLocation Exp Exp -- e1 -= e2
-  | LetWithLocation NodeLocation Name (Maybe Ty) (Maybe Exp) -- local variable
+  | LetWithLocation NodeLocation Bool Name (Maybe Ty) (Maybe Exp) -- local variable; Bool is True when 'comptime' modifier is present
   | BlockWithLocation NodeLocation Body -- lexical block
   | StmtExpWithLocation NodeLocation Exp -- expression level statements
   | ReturnWithLocation NodeLocation Exp -- return statements
@@ -387,6 +395,9 @@ data Stmt
   | AsmWithLocation NodeLocation YulBlock -- Yul block
   | IfWithLocation NodeLocation Exp Body Body -- If statement
   | ForWithLocation NodeLocation Stmt Exp Stmt Body -- for(init; cond; post) { body }
+  | BreakWithLocation NodeLocation -- break out of the innermost enclosing for loop
+  | ContinueWithLocation NodeLocation -- continue to the next iteration of the innermost enclosing for loop
+  | EmptyStmtWithLocation NodeLocation -- empty statement (for empty for init/post)
   deriving (Eq, Ord, Show, Data, Typeable)
 
 pattern Assign :: Exp -> Exp -> Stmt
@@ -404,10 +415,10 @@ pattern StmtMinusEq lhs rhs <- StmtMinusEqWithLocation _ lhs rhs
   where
     StmtMinusEq lhs rhs = StmtMinusEqWithLocation unlocatedNode lhs rhs
 
-pattern Let :: Name -> Maybe Ty -> Maybe Exp -> Stmt
-pattern Let n ty value <- LetWithLocation _ n ty value
+pattern Let :: Bool -> Name -> Maybe Ty -> Maybe Exp -> Stmt
+pattern Let ct n ty value <- LetWithLocation _ ct n ty value
   where
-    Let n ty value = LetWithLocation unlocatedNode n ty value
+    Let ct n ty value = LetWithLocation unlocatedNode ct n ty value
 
 pattern Block :: Body -> Stmt
 pattern Block body <- BlockWithLocation _ body
@@ -444,7 +455,22 @@ pattern For initStmt cond postStmt body <- ForWithLocation _ initStmt cond postS
   where
     For initStmt cond postStmt body = ForWithLocation unlocatedNode initStmt cond postStmt body
 
-{-# COMPLETE Assign, StmtPlusEq, StmtMinusEq, Let, Block, StmtExp, Return, Match, Asm, If, For #-}
+pattern Break :: Stmt
+pattern Break <- BreakWithLocation _
+  where
+    Break = BreakWithLocation unlocatedNode
+
+pattern Continue :: Stmt
+pattern Continue <- ContinueWithLocation _
+  where
+    Continue = ContinueWithLocation unlocatedNode
+
+pattern EmptyStmt :: Stmt
+pattern EmptyStmt <- EmptyStmtWithLocation _
+  where
+    EmptyStmt = EmptyStmtWithLocation unlocatedNode
+
+{-# COMPLETE Assign, StmtPlusEq, StmtMinusEq, Let, Block, StmtExp, Return, Match, Asm, If, For, Break, Continue, EmptyStmt #-}
 
 type Body = [Stmt]
 
@@ -458,7 +484,7 @@ locatedStmt sourceSpan (StmtPlusEq lhs rhs) = StmtPlusEqWithLocation location lh
 locatedStmt sourceSpan (StmtMinusEq lhs rhs) = StmtMinusEqWithLocation location lhs rhs
   where
     location = locatedNode sourceSpan
-locatedStmt sourceSpan (Let n ty value) = LetWithLocation location n ty value
+locatedStmt sourceSpan (Let ct n ty value) = LetWithLocation location ct n ty value
   where
     location = locatedNode sourceSpan
 locatedStmt sourceSpan (Block body) = BlockWithLocation (locatedNode sourceSpan) body
@@ -468,6 +494,9 @@ locatedStmt sourceSpan (Match exps equations) = MatchWithLocation (locatedNode s
 locatedStmt sourceSpan (Asm block) = AsmWithLocation (locatedNode sourceSpan) block
 locatedStmt sourceSpan (If cond thenBody elseBody) = IfWithLocation (locatedNode sourceSpan) cond thenBody elseBody
 locatedStmt sourceSpan (For initStmt cond postStmt body) = ForWithLocation (locatedNode sourceSpan) initStmt cond postStmt body
+locatedStmt sourceSpan Break = BreakWithLocation (locatedNode sourceSpan)
+locatedStmt sourceSpan Continue = ContinueWithLocation (locatedNode sourceSpan)
+locatedStmt sourceSpan EmptyStmt = EmptyStmtWithLocation (locatedNode sourceSpan)
 
 instance HasSourceSpan Stmt where
   sourceSpanOf (AssignWithLocation location lhs rhs) =
@@ -476,7 +505,7 @@ instance HasSourceSpan Stmt where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (StmtMinusEqWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
-  sourceSpanOf (LetWithLocation location n ty value) =
+  sourceSpanOf (LetWithLocation location _ n ty value) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf n, sourceSpanOf ty, sourceSpanOf value]
   sourceSpanOf (BlockWithLocation location body) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf body]
@@ -492,16 +521,22 @@ instance HasSourceSpan Stmt where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf cond, sourceSpanOf thenBody, sourceSpanOf elseBody]
   sourceSpanOf (ForWithLocation location initStmt cond postStmt body) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf initStmt, sourceSpanOf cond, sourceSpanOf postStmt, sourceSpanOf body]
+  sourceSpanOf (BreakWithLocation location) =
+    sourceSpanOf location
+  sourceSpanOf (ContinueWithLocation location) =
+    sourceSpanOf location
+  sourceSpanOf (EmptyStmtWithLocation location) =
+    sourceSpanOf location
 
 data Param
-  = Typed Name Ty
-  | Untyped Name
+  = Typed Bool Name Ty -- Bool is True when 'const' modifier is present
+  | Untyped Bool Name
   deriving (Eq, Ord, Show, Data, Typeable)
 
 instance HasSourceSpan Param where
-  sourceSpanOf (Typed n ty) =
+  sourceSpanOf (Typed _ n ty) =
     firstSourceSpan [sourceSpanOf n, sourceSpanOf ty]
-  sourceSpanOf (Untyped n) =
+  sourceSpanOf (Untyped _ n) =
     sourceSpanOf n
 
 -- expression syntax
@@ -730,6 +765,7 @@ data Pat
   | PatDotWithLocation NodeLocation Name [Pat]
   | PWildcardWithLocation NodeLocation
   | PLitWithLocation NodeLocation Literal
+  | PExpWithLocation NodeLocation Exp -- comptime expression label (numeric matches only)
   deriving (Eq, Ord, Show, Data, Typeable)
 
 pattern Pat :: Name -> [Pat] -> Pat
@@ -752,13 +788,19 @@ pattern PLit lit <- PLitWithLocation _ lit
   where
     PLit lit = PLitWithLocation unlocatedNode lit
 
-{-# COMPLETE Pat, PatDot, PWildcard, PLit #-}
+pattern PExp :: Exp -> Pat
+pattern PExp exp <- PExpWithLocation _ exp
+  where
+    PExp exp = PExpWithLocation unlocatedNode exp
+
+{-# COMPLETE Pat, PatDot, PWildcard, PLit, PExp #-}
 
 locatedPat :: SourceSpan -> Pat -> Pat
 locatedPat sourceSpan (Pat n ps) = PatWithLocation (locatedNode sourceSpan) n ps
 locatedPat sourceSpan (PatDot n ps) = PatDotWithLocation (locatedNode sourceSpan) n ps
 locatedPat sourceSpan PWildcard = PWildcardWithLocation (locatedNode sourceSpan)
 locatedPat sourceSpan (PLit lit) = PLitWithLocation (locatedNode sourceSpan) lit
+locatedPat sourceSpan (PExp exp) = PExpWithLocation (locatedNode sourceSpan) exp
 
 instance HasSourceSpan Pat where
   sourceSpanOf (PatWithLocation location n ps) =
@@ -767,6 +809,8 @@ instance HasSourceSpan Pat where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf n, sourceSpanOf ps]
   sourceSpanOf (PWildcardWithLocation location) = sourceSpanOf location
   sourceSpanOf (PLitWithLocation location _) = sourceSpanOf location
+  sourceSpanOf (PExpWithLocation location exp) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf exp]
 
 -- definition of literals
 

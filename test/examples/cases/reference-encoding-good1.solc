@@ -70,7 +70,7 @@ instance word:MemoryType {
     function load(ptr:word) -> word {
         let r:word;
         assembly {
-            r := mload(ptr);
+            r := mload(ptr)
         }
         return r;
     }
@@ -228,7 +228,7 @@ function g() -> () {
     Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(s, z_sel)), RValueMemberAccess.memberAccess(MemberAccessProxy(s, x_sel)));
 }
 contract C {
-    function main() -> () {
+    public function main() -> () {
         f();
         g();
     }

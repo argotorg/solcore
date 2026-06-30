@@ -11,7 +11,7 @@ instance LambdaTy0(a) : invokable (a, a) {
   }
 }
 contract SimpleLambda {
-   function f () {
+   public function f () {
       let n = LambdaTy0 ;
       return invokable.invoke(n, 0);
    }

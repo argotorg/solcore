@@ -405,28 +405,28 @@ data balances_sel = balances_sel  ;
 instance StructField(ContractStorage(UintCxt), balances_sel) :CStructField(mapping(address, uint), (word, (address, (address, (uint, (uint, ())))))) {
 }
 contract Uint {
-   function mint (amount : uint) {
+   public function mint (amount : uint) {
       Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)))), Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)))), amount));
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), totalSupply_sel)), Num.add(rval(MemberAccessProxy(ContractStorage(UintCxt), totalSupply_sel)), amount));
    }
-   function transferFrom (src : address, dst : address, amt : uint) -> Bool {
+   public function transferFrom (src : address, dst : address, amt : uint) -> Bool {
       require1(ge(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), amt));
       withdraw(src, amt);
       deposit(dst, amt);
       return Bool.True;
    }
-   function withdraw (src : address, amt : uint) {
+   public function withdraw (src : address, amt : uint) {
       Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), Num.sub(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), amt) : uint);
    }
-   function deposit (dst : address, amt : uint) {
+   public function deposit (dst : address, amt : uint) {
       Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), dst)), Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), dst)), amt) : uint);
    }
-   function init () {
+   public function init () {
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)), address(81985529216486895));
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), msg_sender_sel)), caller());
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), decimals_sel)), Num.fromWord(18));
    }
-   function main () -> uint {
+   public function main () -> uint {
       init();
       mint(uint(1000));
       mint(uint(1000));

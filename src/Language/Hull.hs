@@ -60,6 +60,8 @@ data Stmt
   | SComment String
   | SBlock Body
   | SFor Stmt Expr Stmt Stmt
+  | SBreak
+  | SContinue
   | SMatch Type Expr [Alt]
   | SFunction Name [Arg] Type [Stmt]
   | SRevert String
@@ -139,6 +141,8 @@ instance Pretty Stmt where
     text "for"
       <+> parens (ppr initStmt >< semi <+> ppr cond >< semi <+> ppr post)
       <+> ppr body
+  ppr SBreak = text "break"
+  ppr SContinue = text "continue"
   ppr (SMatch t e alts) =
     text "match"
       >< angles (ppr t)
@@ -156,7 +160,7 @@ instance Pretty Stmt where
       <+> lbrace
       $$ nest 2 (vcat (map ppr stmts))
       $$ rbrace
-  ppr (SRevert s) = text "revert" <+> text (show s)
+  ppr (SRevert s) = text "revertLit" <+> text (show s)
 
 instance Pretty Pat where
   ppr (PVar x) = text x

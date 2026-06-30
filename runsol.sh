@@ -9,12 +9,15 @@ if [[ $# -lt 1 ]]; then
     echo "  --runtime-calldata sig [args...]  Generate calldata using cast calldata"
     echo "  --runtime-raw-calldata hex        Pass raw calldata directly to geth"
     echo "  --runtime-callvalue value         Pass callvalue to geth (in wei)"
+    echo "  --runtime-sender address          Set the sender address for the runtime call"
+    echo "  --runtime-sender-balance wei      Fund the sender account in the genesis state"
     echo "  --debug-runtime                   Explore the evm execution in the interactive debugger"
     echo "  --create true|false               Run the initcode to deploy the contract (default: true)"
     echo "  --create-arguments sig [args...]  Generate calldata using cast calldata"
     echo "  --create-raw-arguments hex        Pass raw calldata directly to geth"
     echo "  --create-callvalue value          Pass callvalue to geth (in wei)"
     echo "  --debug-create                    Explore the evm execution in the interactive debugger"
+    echo "  --verbose                         Print full returndata instead of truncating"
     exit 1
 fi
 
@@ -43,7 +46,10 @@ runtime_calldata_sig=""
 runtime_calldata_args=()
 runtime_raw_calldata=""
 runtime_callvalue=""
+runtime_sender=""
+runtime_sender_balance=""
 runtime_debug=false
+verbose=false
 
 create=true
 
@@ -87,6 +93,24 @@ while [[ $# -gt 0 ]]; do
              runtime_callvalue=$1
              shift
              ;;
+          --runtime-sender)
+              shift
+              if [[ $# -eq 0 ]]; then
+                  echo "Error: --runtime-sender requires an address"
+                  exit 1
+              fi
+              runtime_sender=$1
+              shift
+              ;;
+          --runtime-sender-balance)
+              shift
+              if [[ $# -eq 0 ]]; then
+                  echo "Error: --runtime-sender-balance requires a value in wei"
+                  exit 1
+              fi
+              runtime_sender_balance=$1
+              shift
+              ;;
           --debug-runtime)
               shift
               runtime_debug=true
@@ -143,6 +167,10 @@ while [[ $# -gt 0 ]]; do
               shift
               create_debug=true
               ;;
+          --verbose)
+              shift
+              verbose=true
+              ;;
         *)
             echo "Error: Unknown option: $1"
             exit 1
@@ -163,14 +191,10 @@ fi
 
 # Execute compilation pipeline
 echo "Compiling to hull..."
-if ! cabal run sol-core -- -f "$file"; then
+mkdir -p "$build_dir"
+if ! cabal run sol-core -- -f "$file" -o "$build_dir"; then
     echo "Error: sol-core compilation failed"
     exit 1
-fi
-
-mkdir -p build
-if ls ./output*.hull 1> /dev/null 2>&1; then
-    mv ./output*.hull build/
 fi
 
 echo "Generating Yul..."
@@ -267,6 +291,15 @@ if [[ "$create" == "true" ]]; then
     alloc: .accounts
   }')
 
+  if [[ -n "$runtime_sender_balance" ]]; then
+      sender_addr="${runtime_sender:-0x000000000000000000000000000073656e646572}"
+      balance_hex="0x$(printf '%x' "$runtime_sender_balance")"
+      genesis_json=$(echo "$genesis_json" | jq \
+          --arg addr "$sender_addr" \
+          --arg bal  "$balance_hex" \
+          '.alloc[$addr] = {balance: $bal}')
+  fi
+
   echo "$genesis_json" > "$create_poststate"
   echo "$output" | jq -R -c 'fromjson? | select(type == "object")' > "$create_tracefile"
 
@@ -280,10 +313,17 @@ if [[ "$create" == "true" ]]; then
 
   if [[ "$error" == "null" ]]; then
       echo "Creation successful"
-      echo "returndata: 0x${result}"
+      if [[ "$verbose" == "true" ]]; then
+          echo "returndata: 0x${result}"
+      else
+          echo "returndata: 0x${result:0:8}...${result: -8}"
+      fi
   else
       echo "Creation failed: $error"
       echo "returndata: 0x$result"
+      if [[ ${#result} -ge 8 ]]; then
+          sig=$(cast 4byte "0x${result:0:8}" 2>/dev/null) && echo "error selector: $sig"
+      fi
   fi
 fi
 
@@ -307,6 +347,10 @@ fi
 
 if [[ -n "$runtime_callvalue" ]]; then
     evm_cmd="$evm_cmd --value $runtime_callvalue"
+fi
+
+if [[ -n "$runtime_sender" ]]; then
+    evm_cmd="$evm_cmd --sender $runtime_sender"
 fi
 
 echo "Executing..."
@@ -340,4 +384,7 @@ if [[ "$error" == "null" ]]; then
 else
     echo "Execution failed: $error"
     echo "returndata: 0x$result"
+    if [[ ${#result} -ge 8 ]]; then
+        sig=$(cast 4byte "0x${result:0:8}" 2>/dev/null) && echo "error selector: $sig"
+    fi
 fi

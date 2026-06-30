@@ -50,7 +50,7 @@ let res: b; return res;
 
 
 contract ExpReturn {
-  function main() -> word {
+  public function main() -> word {
     return elimBool1(Bool.False);
     // return elimBool1(Bool.True);
   }

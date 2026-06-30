@@ -124,7 +124,7 @@ instance Decl (Signature Name) where
   decl s = [sigName s]
 
 instance Decl (FunDef Name) where
-  decl (FunDef sig _) = decl sig
+  decl (FunDef _ sig _) = decl sig
 
 instance Decl (Contract Name) where
   decl (Contract n _ ds) = n : concatMap decl ds
@@ -185,14 +185,14 @@ instance Names (Exp Name) where
   names (Lit _) = []
 
 instance Names (Param Name) where
-  names (Typed _ t) =
+  names (Typed _ _ t) =
     names t
   names _ = []
 
 instance Names (Stmt Name) where
   names (e1 := e2) =
     names [e1, e2]
-  names (Let _ mt me) =
+  names (Let _ _ mt me) =
     names mt `union` names me
   names (Block body) =
     names body
@@ -207,20 +207,23 @@ instance Names (Stmt Name) where
     names e `union` names blk1 `union` names blk2
   names (For initStmt cond postStmt body) =
     names initStmt `union` names cond `union` names postStmt `union` names body
+  names Break = []
+  names Continue = []
+  names EmptyStmt = []
 
 instance Names (Equation Name) where
   names (_, bdy) = names bdy
 
 instance Names (Signature Name) where
-  names (Signature _ ctx _ ps mret) =
+  names (Signature _ ctx _ ps _ mret _) =
     names ctx `union` names ps `union` names mret
 
 instance Names (FunDef Name) where
-  names (FunDef sig bdy) =
+  names (FunDef _ sig bdy) =
     names sig `union` names bdy
 
 instance Names (Constructor Name) where
-  names (Constructor ps bdy) =
+  names (Constructor ps bdy _) =
     names ps `union` names bdy
 
 instance Names (Class Name) where

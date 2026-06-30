@@ -14,15 +14,18 @@ import Data.Time qualified as Time
 import Language.Hull qualified as Hull
 -- Pretty instances for MastCompUnit
 
+import Solcore.Backend.ComptimeCheck (checkComptime)
 import Solcore.Backend.EmitHull (emitHull)
 import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
-import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls)
+import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls, writeContractAbis)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, warningDiagnostic)
+import Solcore.Desugarer.DeriveGeneric (deriveGenericTopDecls)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
+import Solcore.Desugarer.IntLiteralDesugar (desugarIntLiterals)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Diagnostics
@@ -54,6 +57,7 @@ import Solcore.Diagnostics
     sourceMapFiles,
   )
 import Solcore.Diagnostics qualified as Diag
+import Solcore.Frontend.ComptimeCheck (checkComptimeEarly)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraph, moduleSourceMap, moduleSourcePath, moduleValidationTopDeclSegments)
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -64,8 +68,9 @@ import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcModule
 import Solcore.Pipeline.Options (Option (..), WarningPolicy (..), argumentsParser, diagnosticRenderOptions, noDesugarOpt)
-import System.Directory (doesFileExist, makeAbsolute)
+import System.Directory (createDirectoryIfMissing, doesFileExist, makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
+import System.FilePath ((</>))
 import System.TimeIt qualified as TimeIt
 
 -- main compiler driver function
@@ -80,8 +85,10 @@ pipeline = do
       putStrLn rendered
       exitWith (ExitFailure 1)
     Right contracts -> do
+      let outDir = optOutputDir opts
+      unless (null contracts) (createDirectoryIfMissing True outDir)
       forM_ (zip [(1 :: Int) ..] contracts) $ \(i, c) -> do
-        let filename = "output" <> show i <> ".hull"
+        let filename = outDir </> "output" <> show i <> ".hull"
         putStrLn ("Writing to " ++ filename)
         writeFile filename (show c)
 
@@ -142,6 +149,9 @@ compileWithDiagnostics opts = runExceptT $ do
   let typed = checkedAssemblyCompUnit checkedAssembly
       tcEnv = checkedAssemblyEnv checkedAssembly
 
+  -- SAIL-level comptime verification
+  liftEitherDiagnostic sources (checkComptimeEarly typed)
+
   -- If / boolean desugaring
   desugared <-
     liftIO $
@@ -181,16 +191,19 @@ compileWithDiagnostics opts = runExceptT $ do
         putStrLn "> Specialised contract:"
         putStrLn (pretty specialized)
 
-      let peFuel = maybe defaultFuel id (optPEFuel opts)
-          (evaluated, remainingFuel) = evalCompUnit peFuel specialized
+      evaluated <- liftIO $ timeItNamed "Comptime eval " $ do
+        let peFuel = maybe defaultFuel id (optPEFuel opts)
+            (evalResult, remainingFuel) = evalCompUnit peFuel specialized
 
-      liftIO $
-        when (remainingFuel <= 0) $
-          putStrLn "!! Warning: partial evaluation ran out of fuel (use --pe-fuel N to increase)"
+        liftIO $
+          when (remainingFuel <= 0) $
+            putStrLn "!! Warning: partial evaluation ran out of fuel (use --pe-fuel N to increase)"
 
-      liftIO $ when (optDumpSpec opts) $ do
-        putStrLn "> After partial evaluation:"
-        putStrLn (pretty evaluated)
+        liftIO $ when (optDumpSpec opts) $ do
+          putStrLn "> After partial evaluation:"
+          putStrLn (pretty evalResult)
+
+        pure evalResult
 
       -- Dead code elimination: remove functions unreachable from 'start'/'main'
       let optimized = eliminateDeadCode evaluated
@@ -198,6 +211,9 @@ compileWithDiagnostics opts = runExceptT $ do
       liftIO $ when (optDumpSpec opts) $ do
         putStrLn "> After dead code elimination:"
         putStrLn (pretty optimized)
+
+      -- Comptime verification: check comptime annotations are satisfied
+      liftEitherDiagnostic sources (checkComptime optimized)
 
       hull <-
         liftIO $
@@ -821,6 +837,16 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "Contract field access desugaring:"
     putStrLn $ prettyInferenceDecls accessed
 
+  -- Emit a JSON ABI file for each of the module's own contracts, named
+  -- <ContractName>.abi. Gated by --abi.
+  liftIO $ when (optEmitAbi opts) $ do
+    let localTopDecls =
+          [ moduleInferenceDeclTopDecl d
+            | d <- accessed,
+              moduleInferenceDeclSegment d == ModuleLocalDecl
+          ]
+    writeContractAbis (optOutputDir opts) localTopDecls
+
   -- contract dispatch generation
   dispatched <-
     liftIO $
@@ -832,13 +858,25 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Dispatch:"
     putStrLn $ prettyInferenceDecls dispatched
 
+  -- Generic instance derivation (only for locally-defined data types)
+  let localData = [dt | ModuleInferenceDecl ModuleLocalDecl (TDataDef dt) <- dispatched]
+  derived <-
+    ExceptT $
+      fmap (first compilerErrorFromString) $
+        runExceptT $
+          traverseModuleInferenceTopDecls (ExceptT . pure . deriveGenericTopDecls localData) dispatched
+
+  liftIO $ when verbose $ do
+    putStrLn "> Generic instance derivation:"
+    putStrLn $ prettyInferenceDecls derived
+
   -- SCC analysis
   connected <-
     ExceptT $
       fmap (first compilerErrorFromString) $
         timeItNamed "SCC           " $
           runExceptT $
-            traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) dispatched
+            traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) derived
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"
@@ -869,7 +907,13 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Eliminating argments with function types"
     putStrLn $ prettyInferenceDecls noFun
 
-  pure noFun
+  -- Integer literal desugaring: wrap bare integer literals in fromInteger()
+  let withFromInt = mapModuleInferenceTopDecls desugarIntLiterals noFun
+  liftIO $ when verbose $ do
+    putStrLn "> Integer literal desugaring:"
+    putStrLn $ prettyInferenceDecls withFromInt
+
+  pure withFromInt
 
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =

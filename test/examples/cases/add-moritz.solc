@@ -61,7 +61,7 @@ function fun(a : (B, B), b : (B, B)) -> (B, B) { //  -> c
 
 contract Compose {
 
-  function main() -> word {
+  public function main() -> word {
     let res = fun ((B.T, B.T, B.F), (B.F, B.F, B.T));
     match res {
       | (r1, r2, r3) => return Typedef.rep(r1);

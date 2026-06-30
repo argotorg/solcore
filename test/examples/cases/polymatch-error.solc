@@ -4,7 +4,7 @@ forall a b . function fst(p: (a, b)) -> a {
     }
 }
 contract TestUnitMatch {
-  function main() -> () {
+  public function main() -> () {
     match ((), ()) {
      | x => return fst(x);
     }

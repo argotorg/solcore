@@ -3,7 +3,7 @@ contract ListModule {
   data Bool = True | False;
 
 
-  forall a b c . function zipWith (f : (a,b) -> c,xs : List(a),ys : List(b)) -> List(c) {
+  forall a b c . public function zipWith (f : (a,b) -> c,xs : List(a),ys : List(b)) -> List(c) {
     match xs, ys {
     | List.Nil, List.Nil => return List.Nil ;
     | List.Cons(x1,xs1), List.Cons(y1,ys1) =>
@@ -12,7 +12,7 @@ contract ListModule {
     }
   }
 
-  forall a b . function foldr(f : (a,b) -> b, v : b, xs : List(a)) -> b {
+  forall a b . public function foldr(f : (a,b) -> b, v : b, xs : List(a)) -> b {
     match xs {
     | List.Nil => return v;
     | List.Cons(y,ys) =>
@@ -20,7 +20,7 @@ contract ListModule {
     }
   }
 
-  function main () -> word {
+  public function main () -> word {
     return 0;
   }
 }

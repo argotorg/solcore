@@ -76,6 +76,7 @@ resolveExportSelectorEntry (S.SelectExportConstructors typeName ctorSelector) =
 resolveSelectorEntry :: S.ItemSelectorEntry -> ItemSelectorEntry
 resolveSelectorEntry S.SelectAllItems = SelectAllItems
 resolveSelectorEntry (S.SelectItem itemName) = SelectItem itemName
+resolveSelectorEntry (S.SelectItemAs itemName aliasName) = SelectItemAs itemName aliasName
 
 resolveExportSpec :: S.ExportSpec -> ExportSpec
 resolveExportSpec S.ExportAll = ExportAll
@@ -120,7 +121,7 @@ topLevelTypeNames = concatMap collect
 topLevelTermNames :: [S.TopDecl] -> [Name]
 topLevelTermNames = concatMap collect
   where
-    collect (S.TFunDef (S.FunDef sig _)) = [S.sigName sig]
+    collect (S.TFunDef (S.FunDef _ sig _)) = [S.sigName sig]
     collect (S.TDataDef (S.DataTy tyCon _ cons)) =
       map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
@@ -128,7 +129,7 @@ topLevelTermNames = concatMap collect
 contractTermNames :: [S.ContractDecl] -> [Name]
 contractTermNames = concatMap collect
   where
-    collect (S.CFunDecl (S.FunDef sig _)) = [S.sigName sig]
+    collect (S.CFunDecl (S.FunDef _ sig _)) = [S.sigName sig]
     collect (S.CDataDecl (S.DataTy tyCon _ cons)) =
       map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
@@ -229,7 +230,7 @@ addContractDecl (S.CDataDecl (S.DataTy n _ cons)) =
     mapM_ (addDataCon n . S.constrName) cons
 addContractDecl (S.CFieldDecl (S.Field n _ _)) =
   addField n
-addContractDecl (S.CFunDecl (S.FunDef sig _)) =
+addContractDecl (S.CFunDecl (S.FunDef _ sig _)) =
   addFunctionName (S.sigName sig)
 addContractDecl _ = pure ()
 
@@ -248,13 +249,13 @@ instance Resolve S.ContractDecl where
 instance Resolve S.Constructor where
   type Result S.Constructor = Constructor Name
 
-  resolve c@(S.Constructor ps bdy) =
+  resolve c@(S.Constructor ps bdy payable) =
     withLocalCtx $ do
       ps' <- resolve ps `wrapError` c
       let args = map paramName ps'
       mapM_ addParameter args
       bdy' <- resolve bdy `wrapError` c
-      pure (Constructor ps' bdy')
+      pure (Constructor ps' bdy' payable)
 
 instance Resolve S.Field where
   type Result S.Field = Field Name
@@ -288,7 +289,7 @@ instance Resolve S.Class where
 instance Resolve S.Signature where
   type Result S.Signature = Signature Name
 
-  resolve s@(S.Signature vs ctx n ps mt) =
+  resolve s@(S.Signature vs ctx n ps rc mt pay) =
     withLocalCtx $ do
       let ns = map tyconName vs
       mapM_ addTyVar ns
@@ -296,7 +297,7 @@ instance Resolve S.Signature where
       ps' <- resolve ps `wrapError` s
       mt' <- resolve mt `wrapError` s
       let vs' = map TVar ns
-      pure (Signature vs' ctx' n ps' mt')
+      pure (Signature vs' ctx' n ps' rc mt' pay)
 
 instance Resolve S.Instance where
   type Result S.Instance = Instance Name
@@ -319,8 +320,8 @@ instance Resolve S.Instance where
 instance Resolve S.Param where
   type Result S.Param = Param Name
 
-  resolve (S.Typed n t) = Typed n <$> resolve t
-  resolve (S.Untyped n) = pure (Untyped n)
+  resolve (S.Typed c n t) = Typed c n <$> resolve t
+  resolve (S.Untyped c n) = pure (Untyped c n)
 
 instance Resolve S.Pragma where
   type Result S.Pragma = Pragma
@@ -337,6 +338,8 @@ instance Resolve S.PragmaType where
     pure NoPattersonCondition
   resolve S.NoBoundVariableCondition =
     pure NoBoundVariableCondition
+  resolve S.NoGenericInstanceFor =
+    pure NoGenericInstanceFor
 
 instance Resolve S.PragmaStatus where
   type Result S.PragmaStatus = PragmaStatus
@@ -348,7 +351,7 @@ instance Resolve S.PragmaStatus where
 instance Resolve S.FunDef where
   type Result S.FunDef = FunDef Name
 
-  resolve f@(S.FunDef (S.Signature vs ctx n ps mt) bds) =
+  resolve f@(S.FunDef isPub (S.Signature vs ctx n ps rc mt pay) bds) =
     do
       let ns = map tyconName vs
       withLocalCtx $ do
@@ -360,8 +363,8 @@ instance Resolve S.FunDef where
         mapM_ addParameter args
         bds' <- resolve bds `wrapError` f
         let vs' = map TVar ns
-            sig = Signature vs' ctx' n ps' mt'
-        pure (FunDef sig bds')
+            sig = Signature vs' ctx' n ps' rc mt' pay
+        pure (FunDef isPub sig bds')
 
 instance Resolve S.Stmt where
   type Result S.Stmt = Stmt Name
@@ -375,12 +378,12 @@ instance Resolve S.Stmt where
     locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs))
   resolve s@(S.StmtMinusEq lhs rhs) =
     locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs))
-  resolve s@(S.Let n mt me) =
+  resolve s@(S.Let c n mt me) =
     locatedLike s locatedStmt <$> do
       mt' <- resolve mt `wrapError` s
       me' <- resolve me `wrapError` s
       addLocalVar n
-      pure (Let n mt' me')
+      pure (Let c n mt' me')
   resolve s@(S.Block blk) =
     locatedLike s locatedStmt <$> withLocalCtx (Block <$> resolve blk)
   resolve s@(S.StmtExp e) =
@@ -395,6 +398,9 @@ instance Resolve S.Stmt where
     locatedLike s locatedStmt <$> (If <$> resolve e <*> resolve blk1 <*> resolve blk2)
   resolve s@(S.For initStmt cond postStmt body) =
     locatedLike s locatedStmt <$> (For <$> resolve initStmt <*> resolve cond <*> resolve postStmt <*> resolve body)
+  resolve s@S.Break = pure (locatedLike s locatedStmt Break)
+  resolve s@S.Continue = pure (locatedLike s locatedStmt Continue)
+  resolve s@S.EmptyStmt = pure (locatedLike s locatedStmt EmptyStmt)
 
 instance Resolve S.Equation where
   type Result S.Equation = Equation Name
@@ -408,6 +414,7 @@ instance Resolve S.Pat where
 
   resolve p@S.PWildcard = pure (locatedLike p locatedPat PWildcard)
   resolve p@(S.PLit l) = locatedLike p locatedPat <$> (PLit <$> resolve l)
+  resolve p@(S.PExp e) = locatedLike p locatedPat <$> (PExp <$> resolve e)
   resolve p@(S.PatDot n ps) = do
     ps' <- resolve ps `wrapError` p
     pure (locatedLike p locatedPat (PCon (dotConstructorMarker n) ps'))
@@ -520,6 +527,17 @@ resolveSameNameConstructorName n =
   where
     leaf = constructorLeafName n
 
+-- A receiver like @Error@ in @Error.Empty@ is first parsed as an expression
+-- on its own and resolved before the outer member-access context is known.
+-- When the type has a same-name constructor (@data Error = Error(...) | ...@),
+-- the inner resolver eagerly produces @Con (QualName Error Error) []@ for the
+-- bare name. Treat that shape as if it were @Var Error@ when it appears in
+-- qualifier position so the outer qualifier-handling cases still match.
+unwrapQualifierReceiver :: Maybe (Exp Name) -> Maybe (Exp Name)
+unwrapQualifierReceiver (Just (Con (QualName d conName) []))
+  | pretty d == conName = Just (Var d)
+unwrapQualifierReceiver me = me
+
 instance Resolve S.Exp where
   type Result S.Exp = Exp Name
 
@@ -541,13 +559,25 @@ resolveExp (S.TyExp e t) =
   TyExp <$> resolve e <*> resolve t
 resolveExp c@(S.ExpVar me n) =
   do
-    me' <- resolve me `wrapError` c
+    me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` c)
     dt <- lookupName n
     case (me', dt) of
-      -- local variables
-      (_, Just TLocalVar) -> pure (Var n)
-      -- function parameters
-      (_, Just TParameter) -> pure (Var n)
+      -- local variables and function parameters (unqualified only)
+      (Nothing, Just TLocalVar) -> pure (Var n)
+      (Nothing, Just TParameter) -> pure (Var n)
+      -- qualified access: qualifier takes precedence over local variable/parameter in scope
+      (Just (Var d), Just dt') | dt' `elem` [TLocalVar, TParameter] -> do
+        ct <- lookupName d
+        let qn = qualifyName d n
+        case ct of
+          Just TClass -> pure (Var qn)
+          Just TModule -> do
+            qdt <- lookupName qn
+            case qdt of
+              Just TFunction -> pure (Var qn)
+              Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+              _ -> undefinedName qn
+          _ -> pure (Var n)
       -- field access
       (Nothing, Just TField) ->
         pure (FieldAccess Nothing n)
@@ -612,7 +642,7 @@ resolveExp c@(S.ExpVar me n) =
               else undefinedName n
 resolveExp x@(S.ExpName me n es) =
   do
-    me' <- resolve me `wrapError` x
+    me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` x)
     es' <- resolve es `wrapError` x
     dt <- lookupName n
     case (me', dt) of
@@ -679,11 +709,36 @@ resolveExp x@(S.ExpName me n es) =
         case cf of
           Just TFunction -> pure (Call Nothing qn es')
           _ -> undefinedName n
-      -- variables
-      (_, Just TLocalVar) ->
+      -- variables (unqualified only)
+      (Nothing, Just TLocalVar) ->
         pure (Call Nothing n es')
-      (_, Just TParameter) ->
+      (Nothing, Just TParameter) ->
         pure (Call Nothing n es')
+      -- qualified access: qualifier takes precedence over local variable/parameter in scope
+      (Just (Var d), Just TLocalVar) -> do
+        ct <- lookupName d
+        let qn = qualifyName d n
+        case ct of
+          Just TClass -> pure (Call Nothing qn es')
+          Just TModule -> do
+            qdt <- lookupName qn
+            case qdt of
+              Just TFunction -> pure (Call Nothing qn es')
+              Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
+              _ -> undefinedName n
+          _ -> pure (Call Nothing n es')
+      (Just (Var d), Just TParameter) -> do
+        ct <- lookupName d
+        let qn = qualifyName d n
+        case ct of
+          Just TClass -> pure (Call Nothing qn es')
+          Just TModule -> do
+            qdt <- lookupName qn
+            case qdt of
+              Just TFunction -> pure (Call Nothing qn es')
+              Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
+              _ -> undefinedName n
+          _ -> pure (Call Nothing n es')
       -- error
       _ -> do
         sameName <- isSameNameConstructor n
@@ -875,13 +930,14 @@ emptyEnv =
     ( Map.fromList
         [ (Name "word", TTyCon),
           (Name "bool", TTyCon),
+          (Name "integer", TTyCon),
           (Name "()", TTyCon),
           (Name "->", TTyCon),
           (Name "pair", TTyCon),
           (Name "sum", TTyCon)
         ]
     )
-    (Map.fromList [(Name "invokable", TClass)])
+    (Map.fromList [(Name "invokable", TClass), (Name "Int", TClass)])
     Map.empty
     ( Map.fromList
         [ (Name "true", TDataCon),
@@ -892,7 +948,15 @@ emptyEnv =
           (Name "inr", TDataCon),
           (Name "invoke", TFunction),
           (Name "primAddWord", TFunction),
-          (Name "primEqWord", TFunction)
+          (Name "primEqWord", TFunction),
+          (Name "wordToInteger", TFunction),
+          (Name "wordFromInteger", TFunction),
+          (Name "integerAdd", TFunction),
+          (Name "integerSub", TFunction),
+          (Name "integerMul", TFunction),
+          (Name "integerLt", TFunction),
+          (Name "integerEq", TFunction),
+          (QualName (Name "Int") "fromInteger", TFunction)
         ]
     )
 
@@ -930,7 +994,7 @@ addTopDecl :: S.TopDecl -> Env -> Env
 addTopDecl (S.TContr (S.Contract n _ _)) env =
   addQualifiedModules n $
     env {typeEnv = Map.insert n TContract (typeEnv env)}
-addTopDecl (S.TFunDef (S.FunDef sig _)) env =
+addTopDecl (S.TFunDef (S.FunDef _ sig _)) env =
   addQualifiedModules (S.sigName sig) $
     env {scopeEnv = Map.insert (S.sigName sig) TFunction (scopeEnv env)}
 addTopDecl (S.TClassDef (S.Class _ _ n _ _ sigs)) env =
@@ -1075,8 +1139,11 @@ addContractName n =
   modify (\env -> env {typeEnv = Map.insert n TContract (typeEnv env)})
 
 addFunctionName :: Name -> ResolveM ()
-addFunctionName n =
-  modify (\env -> env {scopeEnv = Map.insert n TFunction (scopeEnv env)})
+addFunctionName n = do
+  existing <- gets (Map.lookup n . scopeEnv)
+  case existing of
+    Just TDataCon | isPrimitiveConstructor n -> pure ()
+    _ -> modify (\env -> env {scopeEnv = Map.insert n TFunction (scopeEnv env)})
 
 addParameter :: Name -> ResolveM ()
 addParameter n =

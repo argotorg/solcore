@@ -34,6 +34,7 @@ data PragmaType
   = NoCoverageCondition
   | NoPattersonCondition
   | NoBoundVariableCondition
+  | NoGenericInstanceFor
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data PragmaStatus
@@ -97,6 +98,7 @@ data ItemSelector
 data ItemSelectorEntry
   = SelectAllItems
   | SelectItem Name
+  | SelectItemAs Name Name
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of the contract structure
@@ -141,7 +143,8 @@ data TySym
 data Constructor a
   = Constructor
   { constrParams :: [Param a],
-    constrBody :: (Body a)
+    constrBody :: (Body a),
+    constrPayable :: Bool
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -164,7 +167,9 @@ data Signature a
     sigContext :: [Pred],
     sigName :: Name,
     sigParams :: [Param a],
-    sigReturn :: Maybe Ty
+    sigRetComptime :: Bool,
+    sigReturn :: Maybe Ty,
+    sigPayable :: Bool
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -218,7 +223,8 @@ data Field a
 
 data FunDef a
   = FunDef
-  { funSignature :: Signature a,
+  { funIsPublic :: Bool,
+    funSignature :: Signature a,
     funDefBody :: Body a
   }
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -302,6 +308,8 @@ instance HasSourceSpan ItemSelector where
 instance HasSourceSpan ItemSelectorEntry where
   sourceSpanOf SelectAllItems = Nothing
   sourceSpanOf (SelectItem n) = sourceSpanOf n
+  sourceSpanOf (SelectItemAs n aliasName) =
+    firstSourceSpan [sourceSpanOf n, sourceSpanOf aliasName]
 
 instance (HasSourceSpan a) => HasSourceSpan (Contract a) where
   sourceSpanOf (Contract n tyVars contractDecls) =
@@ -320,7 +328,7 @@ instance HasSourceSpan TySym where
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tyVars, sourceSpanOf ty]
 
 instance (HasSourceSpan a) => HasSourceSpan (Constructor a) where
-  sourceSpanOf (Constructor params body) =
+  sourceSpanOf (Constructor params body _) =
     firstSourceSpan [sourceSpanOf params, sourceSpanOf body]
 
 instance (HasSourceSpan a) => HasSourceSpan (Class a) where
@@ -328,7 +336,7 @@ instance (HasSourceSpan a) => HasSourceSpan (Class a) where
     firstSourceSpan [sourceSpanOf boundVars, sourceSpanOf context, sourceSpanOf clsName, sourceSpanOf params, sourceSpanOf main, sourceSpanOf signatures']
 
 instance (HasSourceSpan a) => HasSourceSpan (Signature a) where
-  sourceSpanOf (Signature vars context sig params returnTy) =
+  sourceSpanOf (Signature vars context sig params _ returnTy _) =
     firstSourceSpan [sourceSpanOf vars, sourceSpanOf context, sourceSpanOf sig, sourceSpanOf params, sourceSpanOf returnTy]
 
 instance (HasSourceSpan a) => HasSourceSpan (Instance a) where
@@ -340,7 +348,7 @@ instance (HasSourceSpan a) => HasSourceSpan (Field a) where
     firstSourceSpan [sourceSpanOf n, sourceSpanOf ty, sourceSpanOf initExp]
 
 instance (HasSourceSpan a) => HasSourceSpan (FunDef a) where
-  sourceSpanOf (FunDef sig body) =
+  sourceSpanOf (FunDef _ sig body) =
     firstSourceSpan [sourceSpanOf sig, sourceSpanOf body]
 
 instance (HasSourceSpan a) => HasSourceSpan (ContractDecl a) where

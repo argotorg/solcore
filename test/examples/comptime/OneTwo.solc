@@ -2,7 +2,7 @@
 function addWord(l: word, r: word) -> word {
   let rw : word;
   assembly {
-      rw := add(l,r);
+      rw := add(l,r)
   }
   return rw;
 }
@@ -23,6 +23,6 @@ function two () -> word {
 }
 
 contract OneTwo {
-  function main() -> word { return two(); }
+  public function main() -> word { return two(); }
 }
 

@@ -16,7 +16,7 @@ instance IdToken(a) : Invokable(a,a) {
 }
 
 contract InvokeId {
-  function id(x) {
+  public function id(x) {
     return x ;
   }
 
@@ -26,11 +26,11 @@ contract InvokeId {
   }
   */
 
-  function nidimpl() {
+  public function nidimpl() {
     return IdToken;
   }
 
-  function main() {
+  public function main() {
     // Instead of: `return nid(42)`
     return invoke(nidimpl(), 42);
   }

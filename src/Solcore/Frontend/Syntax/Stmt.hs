@@ -17,7 +17,7 @@ type Equations a = [Equation a]
 
 data Stmt a
   = AssignWithLocation NodeLocation (Exp a) (Exp a) -- assignment
-  | LetWithLocation NodeLocation a (Maybe Ty) (Maybe (Exp a)) -- local variable
+  | LetWithLocation NodeLocation Bool a (Maybe Ty) (Maybe (Exp a)) -- local variable; Bool is True when 'comptime' modifier is present
   | BlockWithLocation NodeLocation (Body a) -- lexical block
   | StmtExpWithLocation NodeLocation (Exp a) -- expression level statements
   | ReturnWithLocation NodeLocation (Exp a) -- return statements
@@ -25,6 +25,9 @@ data Stmt a
   | AsmWithLocation NodeLocation YulBlock -- Yul block
   | IfWithLocation NodeLocation (Exp a) (Body a) (Body a) -- If statement
   | ForWithLocation NodeLocation (Stmt a) (Exp a) (Stmt a) (Body a) -- for(init; cond; post) { body }
+  | BreakWithLocation NodeLocation -- break out of the innermost enclosing for loop
+  | ContinueWithLocation NodeLocation -- continue to the next iteration of the innermost enclosing for loop
+  | EmptyStmtWithLocation NodeLocation -- empty statement (for empty for init/post)
   deriving (Eq, Ord, Show, Data, Typeable)
 
 infix 4 :=
@@ -34,10 +37,10 @@ pattern lhs := rhs <- AssignWithLocation _ lhs rhs
   where
     lhs := rhs = AssignWithLocation unlocatedNode lhs rhs
 
-pattern Let :: a -> Maybe Ty -> Maybe (Exp a) -> Stmt a
-pattern Let n ty value <- LetWithLocation _ n ty value
+pattern Let :: Bool -> a -> Maybe Ty -> Maybe (Exp a) -> Stmt a
+pattern Let ct n ty value <- LetWithLocation _ ct n ty value
   where
-    Let n ty value = LetWithLocation unlocatedNode n ty value
+    Let ct n ty value = LetWithLocation unlocatedNode ct n ty value
 
 pattern Block :: Body a -> Stmt a
 pattern Block body <- BlockWithLocation _ body
@@ -74,13 +77,28 @@ pattern For initStmt cond postStmt body <- ForWithLocation _ initStmt cond postS
   where
     For initStmt cond postStmt body = ForWithLocation unlocatedNode initStmt cond postStmt body
 
-{-# COMPLETE (:=), Let, Block, StmtExp, Return, Match, Asm, If, For #-}
+pattern Break :: Stmt a
+pattern Break <- BreakWithLocation _
+  where
+    Break = BreakWithLocation unlocatedNode
+
+pattern Continue :: Stmt a
+pattern Continue <- ContinueWithLocation _
+  where
+    Continue = ContinueWithLocation unlocatedNode
+
+pattern EmptyStmt :: Stmt a
+pattern EmptyStmt <- EmptyStmtWithLocation _
+  where
+    EmptyStmt = EmptyStmtWithLocation unlocatedNode
+
+{-# COMPLETE (:=), Let, Block, StmtExp, Return, Match, Asm, If, For, Break, Continue, EmptyStmt #-}
 
 type Body a = [Stmt a]
 
 locatedStmt :: SourceSpan -> Stmt a -> Stmt a
 locatedStmt sourceSpan (lhs := rhs) = AssignWithLocation (locatedNode sourceSpan) lhs rhs
-locatedStmt sourceSpan (Let n ty value) = LetWithLocation (locatedNode sourceSpan) n ty value
+locatedStmt sourceSpan (Let ct n ty value) = LetWithLocation (locatedNode sourceSpan) ct n ty value
 locatedStmt sourceSpan (Block body) = BlockWithLocation (locatedNode sourceSpan) body
 locatedStmt sourceSpan (StmtExp exp) = StmtExpWithLocation (locatedNode sourceSpan) exp
 locatedStmt sourceSpan (Return exp) = ReturnWithLocation (locatedNode sourceSpan) exp
@@ -88,11 +106,14 @@ locatedStmt sourceSpan (Match exps equations) = MatchWithLocation (locatedNode s
 locatedStmt sourceSpan (Asm block) = AsmWithLocation (locatedNode sourceSpan) block
 locatedStmt sourceSpan (If cond thenBody elseBody) = IfWithLocation (locatedNode sourceSpan) cond thenBody elseBody
 locatedStmt sourceSpan (For initStmt cond postStmt body) = ForWithLocation (locatedNode sourceSpan) initStmt cond postStmt body
+locatedStmt sourceSpan Break = BreakWithLocation (locatedNode sourceSpan)
+locatedStmt sourceSpan Continue = ContinueWithLocation (locatedNode sourceSpan)
+locatedStmt sourceSpan EmptyStmt = EmptyStmtWithLocation (locatedNode sourceSpan)
 
 instance (HasSourceSpan a) => HasSourceSpan (Stmt a) where
   sourceSpanOf (AssignWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
-  sourceSpanOf (LetWithLocation location n ty value) =
+  sourceSpanOf (LetWithLocation location _ n ty value) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf n, sourceSpanOf ty, sourceSpanOf value]
   sourceSpanOf (BlockWithLocation location body) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf body]
@@ -108,20 +129,30 @@ instance (HasSourceSpan a) => HasSourceSpan (Stmt a) where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf cond, sourceSpanOf thenBody, sourceSpanOf elseBody]
   sourceSpanOf (ForWithLocation location initStmt cond postStmt body) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf initStmt, sourceSpanOf cond, sourceSpanOf postStmt, sourceSpanOf body]
+  sourceSpanOf (BreakWithLocation location) =
+    sourceSpanOf location
+  sourceSpanOf (ContinueWithLocation location) =
+    sourceSpanOf location
+  sourceSpanOf (EmptyStmtWithLocation location) =
+    sourceSpanOf location
 
 data Param a
-  = Typed a Ty
-  | Untyped a
+  = Typed Bool a Ty -- Bool is True when 'const' modifier is present
+  | Untyped Bool a
   deriving (Eq, Ord, Show, Data, Typeable)
 
 paramName :: Param a -> a
-paramName (Typed n _) = n
-paramName (Untyped n) = n
+paramName (Typed _ n _) = n
+paramName (Untyped _ n) = n
+
+paramComptime :: Param a -> Bool
+paramComptime (Typed ct _ _) = ct
+paramComptime (Untyped ct _) = ct
 
 instance (HasSourceSpan a) => HasSourceSpan (Param a) where
-  sourceSpanOf (Typed n ty) =
+  sourceSpanOf (Typed _ n ty) =
     firstSourceSpan [sourceSpanOf n, sourceSpanOf ty]
-  sourceSpanOf (Untyped n) =
+  sourceSpanOf (Untyped _ n) =
     sourceSpanOf n
 
 -- definition of the expression syntax
@@ -223,6 +254,7 @@ data Pat a
   | PConWithLocation NodeLocation a [Pat a]
   | PWildcardWithLocation NodeLocation
   | PLitWithLocation NodeLocation Literal
+  | PExpWithLocation NodeLocation (Exp a) -- comptime expression label (numeric matches only)
   deriving (Eq, Ord, Show, Data, Typeable)
 
 pattern PVar :: a -> Pat a
@@ -245,13 +277,19 @@ pattern PLit lit <- PLitWithLocation _ lit
   where
     PLit lit = PLitWithLocation unlocatedNode lit
 
-{-# COMPLETE PVar, PCon, PWildcard, PLit #-}
+pattern PExp :: Exp a -> Pat a
+pattern PExp exp <- PExpWithLocation _ exp
+  where
+    PExp exp = PExpWithLocation unlocatedNode exp
+
+{-# COMPLETE PVar, PCon, PWildcard, PLit, PExp #-}
 
 locatedPat :: SourceSpan -> Pat a -> Pat a
 locatedPat sourceSpan (PVar n) = PVarWithLocation (locatedNode sourceSpan) n
 locatedPat sourceSpan (PCon n ps) = PConWithLocation (locatedNode sourceSpan) n ps
 locatedPat sourceSpan PWildcard = PWildcardWithLocation (locatedNode sourceSpan)
 locatedPat sourceSpan (PLit lit) = PLitWithLocation (locatedNode sourceSpan) lit
+locatedPat sourceSpan (PExp exp) = PExpWithLocation (locatedNode sourceSpan) exp
 
 instance (HasSourceSpan a) => HasSourceSpan (Pat a) where
   sourceSpanOf (PVarWithLocation location n) =
@@ -262,6 +300,8 @@ instance (HasSourceSpan a) => HasSourceSpan (Pat a) where
     sourceSpanOf location
   sourceSpanOf (PLitWithLocation location _) =
     sourceSpanOf location
+  sourceSpanOf (PExpWithLocation location exp) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf exp]
 
 -- definition of literals
 

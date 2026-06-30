@@ -1,4 +1,14 @@
-module Solcore.Backend.Specialise (specialiseCompUnit, typeOfTcExp) where
+module Solcore.Backend.Specialise
+  ( -- core API
+    specialiseCompUnit,
+    typeOfTcExp,
+    -- testing API
+    TVSubst (..),
+    emptyTVSubst,
+    (|->),
+    runResolveMPTCTest,
+  )
+where
 
 -- \* Specialisation
 -- Create specialised versions of polymorphic and overloaded functions.
@@ -20,8 +30,9 @@ import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (decls, name)
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
-import Solcore.Frontend.TypeInference.TcEnv (TcEnv (typeTable), TypeInfo (..))
-import Solcore.Primitives.Primitives
+import Solcore.Frontend.TypeInference.TcEnv (TcEnv (instEnv, typeTable), TypeInfo (..))
+import Solcore.Primitives.Primitives hiding (integer)
+import Solcore.Primitives.Primitives qualified as Prim
 
 -- ** Specialisation state and monad
 
@@ -130,26 +141,31 @@ addSpecialisation name fd = modify $ \s -> s {specTable = Map.insert name fd (sp
 lookupSpecialisation :: Name -> SM (Maybe TcFunDef)
 lookupSpecialisation name = gets (Map.lookup name . specTable)
 
+reportAmbiguousVars :: Name -> Signature Id -> SM ()
+reportAmbiguousVars name sig = do
+  let vars = ambiguousVarsInSig sig
+  let scheme = schemeOfTcSignature sig
+  unless (null vars) $
+    nopanics
+      [ "Error: function ",
+        pretty name,
+        " cannot be specialised because it has an ambiguous type:\n   ",
+        pretty scheme,
+        "\n variables: ",
+        prettys vars,
+        "\n do not occur in the argument/result types."
+      ]
+
 addResolution :: Name -> Ty -> TcFunDef -> SM ()
 addResolution name ty fun = do
   -- debug ["+ addResolution ", pretty name, "@", pretty ty, " |-> ", shortName fun]
-  let sig = funSignature fun
-  reportAmbiguousVars sig
+  reportAmbiguousVars name (funSignature fun)
   modify $ \s -> s {spResTable = Map.insertWith (++) name [(ty, fun)] (spResTable s)}
-  where
-    reportAmbiguousVars sig = do
-      let vars = ambiguousVarsInSig sig
-      let scheme = schemeOfTcSignature sig
-      unless (null vars) $
-        nopanics
-          [ "Error: function ",
-            pretty name,
-            " cannot be specialised because it has an ambiguous type:\n   ",
-            pretty scheme,
-            "\n variables: ",
-            prettys vars,
-            "\n do not occur in the argument/result types."
-          ]
+
+addDefaultResolution :: Name -> Ty -> TcFunDef -> SM ()
+addDefaultResolution name ty fun = do
+  reportAmbiguousVars name (funSignature fun)
+  modify $ \s -> s {spResTable = Map.insertWith (\new old -> old ++ new) name [(ty, fun)] (spResTable s)}
 
 lookupResolution :: Name -> Ty -> SM (Maybe (TcFunDef, Ty, TVSubst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty
@@ -217,7 +233,7 @@ addDeclResolutions (TMutualDef decls) = forM_ decls addDeclResolutions
 addDeclResolutions _ = return ()
 
 addInstResolutions :: Instance Id -> SM ()
-addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instName inst) (mainTy inst))
+addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instDefault inst) (instName inst) (mainTy inst))
 
 specialiseTopDecl :: TopDecl Id -> SM [TopDecl Id]
 specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
@@ -286,8 +302,8 @@ addFunDefResolution fd = do
   addResolution name funType fd
   debug ["+ addDeclResolution: ", show name, " : ", pretty funType]
 
-addMethodResolution :: Name -> Ty -> TcFunDef -> SM ()
-addMethodResolution cname ty fd = do
+addMethodResolution :: Bool -> Name -> Ty -> TcFunDef -> SM ()
+addMethodResolution isDefault cname ty fd = do
   let sig = funSignature fd
   let name = sigName sig
   let qname = case name of
@@ -295,8 +311,10 @@ addMethodResolution cname ty fd = do
         Name s -> QualName cname s
   let name' = specName qname [ty]
   let funType = typeOfTcFunDef fd
-  let fd' = FunDef sig {sigName = name'} (funDefBody fd)
-  addResolution qname funType fd'
+  let fd' = FunDef (funIsPublic fd) sig {sigName = name'} (funDefBody fd)
+  if isDefault
+    then addDefaultResolution qname funType fd'
+    else addResolution qname funType fd'
   debug ["+ addMethodResolution: ", show qname, " / ", show name', " : ", pretty funType]
 
 -- | `specExp` specialises an expression to given type
@@ -338,15 +356,52 @@ specConApp i@(Id _n conTy) args ty = do
   let i' = applytv subst i
   let typedArgs = zip args argTypes'
   args' <- forM typedArgs (uncurry specExp)
+  -- Unify the constructor's result type (from the current subst-applied conTy)
+  -- with the target type ty.  This resolves phantom type parameters that do
+  -- not appear in the constructor arguments (e.g. the 'ty' in
+  -- ABIDecoder(ty, reader) = ABIDecoder(reader)), whose type var may differ
+  -- from the caller's declared variable because the type checker used a
+  -- fresh meta-variable and did not fully substitute it before emitting the
+  -- typed AST.
+  let resultConTy = applytv subst (resultTy conTy)
+  case specmgu resultConTy ty of
+    Right phi -> extSpSubst phi
+    Left _ -> return ()
   let conTy' = foldr (:->) ty argTypes'
   debug ["> specConApp: ", prettyId i, " : ", pretty conTy, " ~> ", prettyId i', " : ", pretty conTy']
   debug ["< specConApp: ", prettyConApp i args, " ~> ", prettyConApp i' args']
   return (i', args')
+  where
+    -- Extract the result type of a function type (strip all arrows)
+    resultTy (_ :-> rest) = resultTy rest
+    resultTy t = t
 
 -- | Specialise a function call
 -- given actual arguments and the expected result type
+-- Compiler builtins that are monomorphic and have no function body to
+-- specialise.  Pass through with args specialised at their declared types.
+-- Derived from Primitives.integerPrimNames (single source of truth shared
+-- with MastEval.builtinPureFuns).
+comptimeBuiltins :: [Name]
+comptimeBuiltins = integerPrimNames
+
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCall i@(Id (Name "revert") _) args _ = pure (i, args) -- FIXME
+specCall i@(Id (Name "revertLit") _) args _ = pure (i, args)
+specCall (Id (QualName (Name "std") "revertLit") ty) args _ = pure (Id (Name "revertLit") ty, args)
+-- Int.fromInteger coercion: resolve to the appropriate primitive based on result type.
+-- integer -> word    becomes wordFromInteger (handled by MastEval)
+-- integer -> integer is identity (handled by MastEval)
+specCall (Id (QualName (Name "Int") "fromInteger") ty) args _ = do
+  args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+  s <- getSpSubst
+  let resultTy = snd (splitTy (applytv s ty))
+  if resultTy == word
+    then pure (Id (Name "wordFromInteger") (Prim.integer :-> word), args')
+    else pure (Id (QualName (Name "Int") "fromInteger") (Prim.integer :-> resultTy), args')
+specCall i args _ty
+  | idName i `elem` comptimeBuiltins = do
+      args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+      pure (i, args')
 specCall i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
@@ -414,16 +469,146 @@ specFunDef fd0 = withLocalState do
     Nothing -> do
       let sig' = applytv subst (funSignature fd)
       -- add a placeholder first to break loops
-      let placeholder = FunDef sig' []
+      let placeholder = FunDef (funIsPublic fd) sig' []
       addSpecialisation name' placeholder
+      -- Resolve MPTC extra type parameters from constraints.
+      -- E.g. for  forall a rep. a:Generic(rep) => f(x:a)...
+      -- when a is concrete (say Option(uint256)) but rep is still free,
+      -- look up a Generic method for Option(uint256) to determine rep.
+      resolveMPTCFromPreds (sigContext sig')
       body' <- specBody (funDefBody fd)
-      let fd' = FunDef sig' {sigName = name'} body'
+      let fd' = FunDef (funIsPublic fd) sig' {sigName = name'} body'
       debug ["+ specFunDef: adding specialisation ", show name', " : ", pretty ty']
       addSpecialisation name' fd'
       return name'
 
 specBody :: [Stmt Id] -> SM [Stmt Id]
 specBody = mapM specStmt
+
+-- Recover concrete bindings for MPTC extra type parameters that are still free
+-- after the call-site types have been applied.
+--
+-- A constraint  InCls cls mainTy [extra]  has two groups of type parameters:
+--   1. mainTy: the "self" type, determined directly from the call-site argument
+--              or return type (e.g. the concrete type passed to a polymorphic fn)
+--   2. extras: additional class parameters that may not appear in the function
+--              type at all (phantom parameters), so they cannot be read off the
+--              call site; they must be inferred from the instance.
+--
+-- The guard  null (freetv mainTy') && any (not . null . freetv) extras'
+-- captures exactly the interesting case: mainTy is fully concrete (we know
+-- which instance to look at) but at least one extra is still open (we need to
+-- read the instance to close it).  When all extras are already concrete, or
+-- when mainTy itself is still abstract, there is nothing for this function to do.
+resolveMPTCFromPreds :: [Pred] -> SM ()
+resolveMPTCFromPreds preds = do
+  subst <- getSpSubst
+  forM_ preds $ \pred' -> case pred' of
+    InCls clsName mainTy1 extras -> do
+      let mainTy' = applytv subst mainTy1
+          extras' = map (applytv subst) extras
+      when (null (freetv mainTy') && any (not . null . freetv) extras') $
+        tryResolveMPTC clsName mainTy' extras'
+    _ -> return ()
+
+-- | Testing entry point: run resolveMPTCFromPreds in an isolated SM environment.
+-- Sets the initial substitution to @s0@, runs @resolveMPTCFromPreds preds@, and
+-- returns the resulting substitution.  The @TcEnv@ supplies the instance table.
+runResolveMPTCTest :: TcEnv -> TVSubst -> [Pred] -> IO TVSubst
+runResolveMPTCTest env s0 preds = runSM False env $ do
+  putSpSubst s0
+  resolveMPTCFromPreds preds
+  getSpSubst
+
+-- tryResolveMPTC deduces concrete types for the extra parameters of a
+-- multi-parameter type class (MPTC) constraint when the "self" (main) type is
+-- already fully concrete but some extra parameters are still free type variables.
+--
+-- The strategy is to search the type-checker's instance environment for the
+-- unique instance of C whose main type matches mainTy', then read the extras
+-- directly from the instance head.
+--
+-- Soundness: the instance environment is produced and verified by the type
+-- checker.  Every entry  (ctx :=> InCls C instMainTy instExtras)  is a
+-- certified fact: the type checker has established that instMainTy is an
+-- instance of C with extra parameters instExtras.  When specmatch confirms that
+-- instMainTy matches the concrete mainTy', we have that instExtras is a valid
+-- deduction, it recovers exactly what the type checker already knew.
+--
+-- Two guards prevent incorrect extensions:
+--
+--   1. all (null . freetv) concreteExtras
+--        Only propagate fully ground types.  If the matched instance is itself
+--        parametric in a variable not pinned by mainTy', we cannot determine a
+--        unique concrete type for the extra and skip to avoid a partial binding.
+--
+--   2. specmatch extra concrete returns Left
+--        If a call-site extra is already bound to a different type, specmatch
+--        fails and the no-op branch preserves the earlier authoritative binding.
+--
+-- Note: specmatch (not specmgu) is used throughout because both operations are
+-- inherently one-directional.  mainTy' is guaranteed ground (no free variables)
+-- by the caller, so the instance head is the pattern and the call-site type is
+-- the fixed target; there is no need to bind variables on the right-hand side.
+-- Using matching rather than unification makes this asymmetry explicit and
+-- rules out accidental bindings on the call-site side.
+tryResolveMPTC :: Name -> Ty -> [Ty] -> SM ()
+tryResolveMPTC clsName mainTy' extras = do
+  -- The instance environment was produced by the type checker and maps each
+  -- class name to its list of verified instances.
+  instTable <- gets (instEnv . spGlobalEnv)
+  let clsInsts = fromMaybe [] (Map.lookup clsName instTable)
+  forM_ clsInsts $ \inst ->
+    case inst of
+      -- Only class constraint heads are relevant; skip equality constraints.
+      (q :=> InCls _ instMainTy instExtras) ->
+        -- Match the instance's main type (pattern) against the call-site's
+        -- concrete main type (target).  specmatch binds the instance's
+        -- quantified type variables (TVar) as needed and never touches
+        -- variables on the target side.  Failure means this instance is for
+        -- a different concrete type; skip silently.
+        case specmatch instMainTy mainTy' of
+          Left _ -> return ()
+          Right phi -> do
+            -- anfInstance normalises instances with extras by replacing each
+            -- concrete extra with a fresh variable bound by an equality pred:
+            --   C t [e1,e2]  =>  [v1:~:e1, v2:~:e2] :=> C t [v1,v2]
+            -- After matching instMainTy against mainTy' we must also resolve
+            -- these equality constraints (with phi applied) to recover the
+            -- actual concrete extras; otherwise instExtras still contains
+            -- the fresh TyVars and looks abstract.
+            let appliedQ = map (applytv phi) q
+                eqSubst =
+                  TVSubst
+                    [ (v, t)
+                      | (TyVar v :~: t) <- appliedQ,
+                        null (freetv t)
+                    ]
+                    <> TVSubst
+                      [ (v, t)
+                        | (t :~: TyVar v) <- appliedQ,
+                          null (freetv t)
+                      ]
+                phi' = phi <> eqSubst
+            debug ["  tryResolve match: phi=", pretty phi, " q=", show q, " appliedQ=", show appliedQ, " eqSubst=", pretty eqSubst, " phi'=", pretty phi', " instExtras=", show instExtras]
+            -- Substitute to obtain the concrete extra types for this instance.
+            let concreteExtras = map (applytv phi') instExtras
+            debug ["  concreteExtras=", show concreteExtras, " allClosed=", show (all (null . freetv) concreteExtras)]
+            -- If any extra is still abstract, the instance is parametric in a
+            -- way that mainTy' alone does not determine; skip to stay sound.
+            when (all (null . freetv) concreteExtras) $
+              forM_ (zip extras concreteExtras) $ \(extra, concrete) ->
+                -- Match the call-site free extra (pattern) against the
+                -- instance's concrete extra (target).  If extra is already
+                -- bound to the same type this is a no-op (phi = mempty).
+                -- If bound to a different type specmatch returns Left and the
+                -- earlier authoritative binding is preserved.
+                case specmatch extra concrete of
+                  Left _ -> return ()
+                  Right phi2 -> do
+                    debug ["  extSpSubst phi2=", pretty phi2]
+                    extSpSubst phi2
+      _ -> return ()
 
 {-
 ensureSimple ty' stmt subst = case ty' of
@@ -492,16 +677,45 @@ specStmt stmt@(Var i := e) = do
   e' <- specExp e ty'
   debug ["< specExp (:=): ", pretty e']
   return $ Var i' := e'
-specStmt stmt@(Let i mty mexp) = do
+specStmt stmt@(Let ct i mty mexp) = do
   subst <- getSpSubst
-  debug ["> specStmt (Let): ", pretty i, " : ", pretty (idType i), " @ ", pretty subst]
+  debug ["> specStmt (Let): ", pretty i, " : ", pretty (idType i), " mty=", maybe "Nothing" pretty mty, " @ ", pretty subst]
   i' <- atCurrentSubst i
   let ty' = idType i'
-  ensureClosed ty' stmt subst
-  mty' <- atCurrentSubst mty
   case mexp of
-    Nothing -> return $ Let i' mty' Nothing
-    Just e -> Let i' mty' . Just <$> specExp e ty'
+    Nothing -> do
+      ensureClosed ty' stmt subst
+      mty' <- atCurrentSubst mty
+      return $ Let ct i' mty' Nothing
+    Just e ->
+      if null (freetv ty')
+        then do
+          ensureClosed ty' stmt subst
+          mty' <- atCurrentSubst mty
+          e' <- specExp e ty'
+          return $ Let ct i' mty' (Just e')
+        else do
+          -- ty' still has free type variables.  Try to resolve them from the
+          -- explicit type annotation (mty), which went through elabFunDef and
+          -- has the original forall-bound names (_g2, _h2, …) that are already
+          -- in the current substitution.  This handles the case where the type
+          -- checker introduced a fresh meta-variable for a phantom type
+          -- parameter (e.g. the `ty` in `ABIDecoder(ty, reader)`) that was
+          -- never renamed to the function's forall variable.
+          ty_for_spec <- case mty of
+            Just ann -> do
+              ann' <- atCurrentSubst ann
+              case specmgu ty' ann' of
+                Right phi -> extSpSubst phi >> atCurrentSubst ty'
+                Left _ -> return ty'
+            Nothing -> return ty'
+          e' <- specExp e ty_for_spec
+          subst' <- getSpSubst
+          i'' <- atCurrentSubst i
+          let ty'' = idType i''
+          ensureClosed ty'' stmt subst'
+          mty' <- atCurrentSubst mty
+          return $ Let ct i'' mty' (Just e')
 specStmt (Block body) =
   Block <$> specBody body
 specStmt (StmtExp e) = do
@@ -522,6 +736,9 @@ specStmt (For initStmt cond post body) = do
   body' <- specBody body
   return $ For initStmt' cond' post' body'
 specStmt (Asm ys) = pure (Asm ys)
+specStmt Break = pure Break
+specStmt Continue = pure Continue
+specStmt EmptyStmt = pure EmptyStmt
 specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
 
 specMatch :: [Exp Id] -> [([Pat Id], [Stmt Id])] -> SM (Stmt Id)
@@ -529,7 +746,11 @@ specMatch exps alts = do
   -- subst <- getSpSubst
   -- debug ["> specMatch, scrutinee: ", pretty exps, " @ ", pretty subst]
   exps' <- specScruts exps
-  alts' <- forM alts specAlt
+  saved <- getSpSubst
+  alts' <- forM alts $ \alt -> do
+    putSpSubst saved
+    specAlt alt
+  putSpSubst saved
   -- debug ["< specMatch, alts': ", show alts']
   return $ Match exps' alts'
   where
@@ -537,8 +758,15 @@ specMatch exps alts = do
       -- debug ["specAlt, pattern: ", show pat]
       -- debug ["specAlt, body: ", show body]
       body' <- specBody body
-      pat' <- atCurrentSubst pat
+      pat' <- mapM specPat =<< atCurrentSubst pat
       return (pat', body')
+    -- Specialize function calls inside PExp patterns.
+    -- Other pattern forms only need type substitution (handled by atCurrentSubst).
+    specPat :: Pat Id -> SM (Pat Id)
+    specPat (PExp e) = do
+      ty <- atCurrentSubst (typeOfTcExp e)
+      PExp <$> specExp e ty
+    specPat p = pure p
     specScruts = mapM specScrut
     specScrut e = do
       ty <- atCurrentSubst (typeOfTcExp e)
@@ -584,7 +812,7 @@ typeOfTcExp e@(Con i args) = go (idType i) args
     go ty [] = ty
     go (_ :-> u) (_ : as) = go u as
     go _ _ = error $ "typeOfTcExp: " ++ show e
-typeOfTcExp (Lit (IntLit _)) = word
+typeOfTcExp (Lit (IntLit _)) = Prim.integer
 typeOfTcExp (Lit (StrLit _)) = string
 typeOfTcExp expr@(Call Nothing i args) = applyTo args funTy
   where
@@ -611,8 +839,8 @@ typeOfTcExp (TyExp _ ty) = ty
 typeOfTcExp e = error $ "typeOfTcExp: " ++ show e
 
 typeOfTcParam :: Param Id -> Ty
-typeOfTcParam (Typed i _t) = idType i -- seems better than t - see issue #6
-typeOfTcParam (Untyped i) = idType i
+typeOfTcParam (Typed _ i _t) = idType i -- seems better than t - see issue #6
+typeOfTcParam (Untyped _ i) = idType i
 
 typeOfTcSignature :: Signature Id -> Ty
 typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) returnType
@@ -622,17 +850,17 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) returnType
       Nothing -> error ("no return type in signature of: " ++ show (sigName sig))
 
 schemeOfTcSignature :: Signature Id -> Scheme
-schemeOfTcSignature sig@(Signature vs ps _n args (Just rt)) =
+schemeOfTcSignature sig@(Signature vs ps _n args _ (Just rt) _) =
   case mapM getType args of
     Just ts -> Forall vs (ps :=> (funtype ts rt))
     Nothing -> error $ unwords ["Invalid instance member signature:", pretty sig]
   where
-    getType (Typed _ t) = Just t
+    getType (Typed _ _ t) = Just t
     getType _ = Nothing
 schemeOfTcSignature sig = error ("no return type in signature of: " ++ show (sigName sig))
 
 typeOfTcFunDef :: TcFunDef -> Ty
-typeOfTcFunDef (FunDef sig _) = typeOfTcSignature sig
+typeOfTcFunDef (FunDef _ sig _) = typeOfTcSignature sig
 
 pprRes :: Resolution -> Doc
 -- type Resolution = (Ty, FunDef Id)
@@ -655,6 +883,28 @@ specmgu (TyCon n ts) (TyCon n' ts')
 specmgu (TyVar v) t = varBind v t
 specmgu t (TyVar v) = varBind v t
 specmgu t1 t2 = Left $ "types do not unify: " ++ pretty t1 ++ " and " ++ pretty t2
+
+-- | One-directional matching: find a substitution @phi@ such that
+-- @applytv phi pat == tgt@, binding only variables that appear in @pat@.
+-- Unlike 'specmgu', a type variable on the right-hand side (@tgt@) is never
+-- bound; if @tgt@ contains a free variable the match fails.  This is the
+-- correct operation for instance-head lookup: the instance type is the pattern
+-- (may contain quantified variables) and the call-site type is the target
+-- (must be fully concrete).
+specmatch :: Ty -> Ty -> Either String TVSubst
+specmatch (TyCon n ts) (TyCon n' ts')
+  | n == n' && length ts == length ts' =
+      matchsolve (zip ts ts') mempty
+specmatch (TyVar v) t = varBind v t
+specmatch t1 t2 = Left $ "types do not unify: " ++ pretty t1 ++ " and " ++ pretty t2
+
+matchsolve :: [(Ty, Ty)] -> TVSubst -> Either String TVSubst
+matchsolve [] s = pure s
+matchsolve ((pat, tgt) : rest) s =
+  do
+    s1 <- specmatch (applytv s pat) tgt
+    s2 <- matchsolve rest s1
+    pure (s2 <> s1)
 
 varBind :: (MonadError String m) => Tyvar -> Ty -> m TVSubst
 varBind v t
@@ -784,7 +1034,7 @@ instance HasTV (FunDef Id) where
     subst <- foldM addRenaming mempty (sigVars sig)
     let sig' = applytv subst sig
     let body' = applytv subst (funDefBody fd)
-    pure (FunDef sig' body', subst)
+    pure (FunDef (funIsPublic fd) sig' body', subst)
 
 addRenaming :: TVSubst -> Tyvar -> SM TVSubst
 addRenaming b a = do
@@ -841,10 +1091,11 @@ toMastContractDecl (CMutualDecl ds) = MastCMutualDecl (map toMastContractDecl ds
 toMastContractDecl d = error $ "toMastContractDecl: unexpected " ++ show d
 
 toMastFunDef :: FunDef Id -> MastFunDef
-toMastFunDef (FunDef sig body) =
+toMastFunDef (FunDef _ sig body) =
   MastFunDef
     { mastFunName = sigName sig,
       mastFunParams = map toMastParam (sigParams sig),
+      mastFunRetComptime = sigRetComptime sig,
       mastFunReturn = case sigReturn sig of
         Just t -> toMastTy t
         Nothing -> error $ "toMastFunDef: no return type for " ++ show (sigName sig),
@@ -852,13 +1103,13 @@ toMastFunDef (FunDef sig body) =
     }
 
 toMastParam :: Param Id -> MastParam
-toMastParam p = MastParam (idName i) (toMastTy (idType i))
+toMastParam p = MastParam (idName i) (paramComptime p) (toMastTy (idType i))
   where
     i = getParamId p
 
 getParamId :: Param Id -> Id
-getParamId (Typed i _) = i
-getParamId (Untyped i) = i
+getParamId (Typed _ i _) = i
+getParamId (Untyped _ i) = i
 
 toMastTy :: Ty -> MastTy
 toMastTy = tyToMast
@@ -868,7 +1119,7 @@ toMastId (Id n t) = MastId n (toMastTy t)
 
 toMastStmt :: Stmt Id -> MastStmt
 toMastStmt (Var i := e) = MastAssign (toMastId i) (toMastExp e)
-toMastStmt (Let i mty me) = MastLet (toMastId i) (fmap toMastTy mty) (fmap toMastExp me)
+toMastStmt (Let ct i mty me) = MastLet ct (toMastId i) (fmap toMastTy mty) (fmap toMastExp me)
 toMastStmt (StmtExp e) = MastStmtExp (toMastExp e)
 toMastStmt (Return e) = MastReturn (toMastExp e)
 toMastStmt (Match [scrutinee] alts) = MastMatch (toMastExp scrutinee) (map toMastAlt alts)
@@ -876,6 +1127,10 @@ toMastStmt (Match es _) = error $ "toMastStmt: multi-scrutinee match should have
 toMastStmt (Asm ys) = MastAsm ys
 toMastStmt (For initStmt cond postStmt body) =
   MastFor (toMastStmt initStmt) (toMastExp cond) (toMastStmt postStmt) (toMastBody body)
+toMastStmt (Block body) = MastSeq (toMastBody body)
+toMastStmt Break = MastBreak
+toMastStmt Continue = MastContinue
+toMastStmt EmptyStmt = MastSeq []
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
 toMastBody :: [Stmt Id] -> [MastStmt]
@@ -902,3 +1157,4 @@ toMastPat (PVar i) = MastPVar (toMastId i)
 toMastPat (PCon i ps) = MastPCon (toMastId i) (map toMastPat ps)
 toMastPat PWildcard = MastPWildcard
 toMastPat (PLit l) = MastPLit l
+toMastPat (PExp e) = MastPExp (toMastExp e)

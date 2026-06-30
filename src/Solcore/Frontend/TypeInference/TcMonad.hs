@@ -18,6 +18,8 @@ import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcSubst
 import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options (Option (..))
+import Solcore.Primitives.Primitives (word)
+import Solcore.Primitives.Primitives qualified as Prim
 import System.TimeIt qualified as TimeIt
 import Text.Printf
 
@@ -81,6 +83,23 @@ isUniqueTyName :: Name -> TcM Bool
 isUniqueTyName n = do
   uenv <- gets uniqueTypes
   pure $ any (\d -> dataName d == n) (Map.elems uenv)
+
+-- A type is numeric if it is 'word', or if it is an algebraic type with
+-- exactly one constructor that takes exactly one argument of type 'word'.
+-- Examples: word, uint256 (= data uint256 = uint256(word))
+-- Non-examples: bool, mw (= data mw = N | J(word))
+isNumericTy :: Ty -> TcM Bool
+isNumericTy ty
+  | ty == word = pure True
+  | ty == Prim.integer = pure True
+  | TyCon n [] <- ty = do
+      mti <- maybeAskTypeInfo n
+      case mti of
+        Just (TypeInfo _ [con] _) -> do
+          (Constr _ fields, _) <- constrsFromEnv con
+          pure (fields == [word])
+        _ -> pure False
+  | otherwise = pure False
 
 isPartialDataType :: Name -> TcM Bool
 isPartialDataType n =
@@ -452,6 +471,17 @@ askEnv n =
   do
     s <- maybeAskEnv n
     maybe (undefinedName n) pure s
+
+-- Look up a constructor scheme.  Prefers the protected primitive constructor
+-- environment over the regular ctx so that user-defined functions with the
+-- same name as a primitive constructor (e.g. "pair") cannot shadow it for
+-- Con/PCon expression lookups.
+askEnvForCon :: Name -> TcM Scheme
+askEnvForCon n = do
+  mPrim <- gets (Map.lookup n . constrCtx)
+  case mPrim of
+    Just sch -> pure sch
+    Nothing -> askEnv n
 
 -- type information
 

@@ -1,9 +1,9 @@
 import std.{Num,Add,Sub,Eq,Ord,Bounded,Typedef,le};
 
 contract C {
-    function main() -> word {
-        let i = 0;
-        let s = 99;
+    public function main() -> word {
+        let i : word = 0;
+        let s : word = 99;
         for(i=0;i<=0;let j=1) { s = j; i = i + 1; }
         return s;
     }

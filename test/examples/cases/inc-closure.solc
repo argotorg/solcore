@@ -2,7 +2,7 @@ function inc(x : word) -> word {
   let f = lam () {
     let res : word ; 
     assembly {
-      res := add(x,1);
+      res := add(x,1)
     }
     return res;
   } ; 
@@ -11,7 +11,7 @@ function inc(x : word) -> word {
 
 contract Foo {
 
-  function main () -> word {
+  public function main () -> word {
     return inc(0);
   }  
 }

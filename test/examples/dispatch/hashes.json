@@ -1,0 +1,64 @@
+{
+  "hashes": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "keccak()(bytes32)",
+          "calldata": "775dec49",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "sha()(bytes32)",
+          "calldata": "65707d6f",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "ripemd()(bytes32)",
+          "calldata": "a1e754ea",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000008eb208f7e05d987a9b044a8e98c6b087f15a0bfc",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "erc7201_(bytes)(bytes32) with \"example.main\"",
+          "calldata": "cd9e2a5b0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000c6578616d706c652e6d61696e0000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "183a6125c38840424c4a85fa12bab2ab606c4b6d0e7cc73c0c06ba5300eab500",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

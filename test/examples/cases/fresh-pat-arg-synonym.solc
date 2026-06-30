@@ -4,7 +4,7 @@ function f(x:W) -> W { x }
 
 contract C {
 
-  function main () -> word {
+  public function main () -> word {
     return f(42);
   }
 }
