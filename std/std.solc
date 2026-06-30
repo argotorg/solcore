@@ -11,6 +11,9 @@ export {
   ABITuple(*),
   Add,
   Assign,
+  BitAnd,
+  BitOr,
+  BitXor,
   Bounded,
   CalldataWordReader(*),
   CanStore,
@@ -357,6 +360,18 @@ forall t . class t:Mod {
     function mod(l: t, r: t) -> t;
 }
 
+forall t . class t:BitAnd {
+    function band(l: t, r: t) -> t;
+}
+
+forall t . class t:BitOr {
+    function bor(l: t, r: t) -> t;
+}
+
+forall t . class t:BitXor {
+    function bxor(l: t, r: t) -> t;
+}
+
 forall t . class t:Bounded {
   function minVal() -> t;
   function maxVal() -> t;
@@ -479,10 +494,28 @@ instance word:Div {
     }
 }
 
-instance word : Mod {
+instance word:Mod {
   function mod (l : word, r : word) -> word {
     return mod(l, r);
   }
+}
+
+instance word:BitAnd {
+    function band(l: word, r: word) -> word {
+        return bandWord(l, r);
+    }
+}
+
+instance word:BitOr {
+    function bor(l: word, r: word) -> word {
+        return borWord(l, r);
+    }
+}
+
+instance word:BitXor {
+    function bxor(l: word, r: word) -> word {
+        return bxorWord(l, r);
+    }
 }
 
 instance integer : Eq {
@@ -579,6 +612,24 @@ instance uint256:Div {
 instance uint256:Mod {
   function mod(x : uint256, y : uint256) -> uint256 {
     return Typedef.abs(Mod.mod(Typedef.rep(x), Typedef.rep(y)));
+  }
+}
+
+instance uint256:BitAnd {
+  function band(x : uint256, y : uint256) -> uint256 {
+    return Typedef.abs(BitAnd.band(Typedef.rep(x), Typedef.rep(y)));
+  }
+}
+
+instance uint256:BitOr {
+  function bor(x : uint256, y : uint256) -> uint256 {
+    return Typedef.abs(BitOr.bor(Typedef.rep(x), Typedef.rep(y)));
+  }
+}
+
+instance uint256:BitXor {
+  function bxor(x : uint256, y : uint256) -> uint256 {
+    return Typedef.abs(BitXor.bxor(Typedef.rep(x), Typedef.rep(y)));
   }
 }
 

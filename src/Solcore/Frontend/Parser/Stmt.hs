@@ -101,6 +101,10 @@ exprOrAssignP = do
     [ do rhs <- equalsP *> expP; _ <- semicolon; return (Assign lhs rhs),
       do rhs <- symbol "+=" *> expP; _ <- semicolon; return (StmtPlusEq lhs rhs),
       do rhs <- symbol "-=" *> expP; _ <- semicolon; return (StmtMinusEq lhs rhs),
+      do rhs <- symbol "^=" *> expP; _ <- semicolon; return (StmtBXorEq lhs rhs),
+      do rhs <- symbol "&=" *> expP; _ <- semicolon; return (StmtBAndEq lhs rhs),
+      do rhs <- symbol "|=" *> expP; _ <- semicolon; return (StmtBOrEq lhs rhs),
+      do rhs <- symbol "%=" *> expP; _ <- semicolon; return (StmtModEq lhs rhs),
       StmtExp lhs <$ optional semicolon
     ]
 
@@ -139,6 +143,10 @@ forAssignP = do
     [ do rhs <- equalsP *> expP; return (Assign lhs rhs),
       do rhs <- symbol "+=" *> expP; return (StmtPlusEq lhs rhs),
       do rhs <- symbol "-=" *> expP; return (StmtMinusEq lhs rhs),
+      do rhs <- symbol "^=" *> expP; return (StmtBXorEq lhs rhs),
+      do rhs <- symbol "&=" *> expP; return (StmtBAndEq lhs rhs),
+      do rhs <- symbol "|=" *> expP; return (StmtBOrEq lhs rhs),
+      do rhs <- symbol "%=" *> expP; return (StmtModEq lhs rhs),
       return (StmtExp lhs)
     ]
 

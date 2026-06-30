@@ -6,7 +6,7 @@ where
 
 import Common.LightYear
 import Solcore.Frontend.Lexer.SolcoreLexer
-import Solcore.Frontend.Parser.Expr (exprP)
+import {-# SOURCE #-} Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.SolcoreTypes (qualifiedName)
 import Solcore.Frontend.Syntax.Name (Name (..))
 import Solcore.Frontend.Syntax.SyntaxTree (Literal (..), Pat (..))
