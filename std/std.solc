@@ -1806,17 +1806,17 @@ instance storage(bytes):CanStore(memory(bytes)) {
 function storeBytesFromMemory(slot: word, src: word) -> () {
     let newLen = mload(src);
     // TODO: check old len, cleanup etc
-    let srcOffset = 32;
+    src += 32; // Move to data.
     match newLen > 31 {
         | true =>
             // Long byte array (out-of-place encoding)
             let dstPtr = hash1(slot);
             let loopEnd = and_(newLen, not_(0x1f));
-            for (let i = 0; i < loopEnd; i += 32, dstPtr += 1, srcOffset += 32) {
-                sstore(dstPtr, mload(src + srcOffset));
+            for (let i = 0; i < loopEnd; i += 32, dstPtr += 1, src += 32) {
+                sstore(dstPtr, mload(src));
             }
             if (loopEnd < newLen) {
-                let lastValue = mload(src + srcOffset);
+                let lastValue = mload(src);
                 let lastLen = and_(newLen, 0x1f);
                 let mask = not_(shr(8 * lastLen, not_(0)));
                 let data_ = and_(lastValue, mask);
@@ -1827,7 +1827,7 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
             // Short byte array (in-place encoding)
             let value = 0;
             if (newLen != 0) {
-                value = mload(src + srcOffset);
+                value = mload(src);
             }
             let mask = not_(shr(8 * newLen, not_(0)));
             let data_ = and_(value, mask);
