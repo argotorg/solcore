@@ -367,8 +367,8 @@ instance Resolve S.Stmt where
     (:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs)
   resolve (S.StmtMinusEq lhs rhs) =
     (:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs)
-  resolve (S.StmtXorEq lhs rhs) =
-    (:=) <$> resolve lhs <*> resolve (S.ExpXor lhs rhs)
+  resolve (S.StmtBXorEq lhs rhs) =
+    (:=) <$> resolve lhs <*> resolve (S.ExpBXor lhs rhs)
   resolve (S.StmtBAndEq lhs rhs) =
     (:=) <$> resolve lhs <*> resolve (S.ExpBAnd lhs rhs)
   resolve (S.StmtBOrEq lhs rhs) =
@@ -772,7 +772,7 @@ instance Resolve S.Exp where
       e2' <- resolve e2 `wrapError` c
       let fun = QualName (Name "Mod") "mod"
       pure $ Call Nothing fun [e1', e2']
-  resolve c@(S.ExpXor e1 e2) =
+  resolve c@(S.ExpBXor e1 e2) =
     do
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c

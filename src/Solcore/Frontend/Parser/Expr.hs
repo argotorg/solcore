@@ -74,7 +74,7 @@ opTable =
         )
     ],
     [ InfixL
-        ( ExpXor
+        ( ExpBXor
             <$ try (lexeme (char '^' <* notFollowedBy (char '=')))
         )
     ],

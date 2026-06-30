@@ -244,7 +244,7 @@ data Stmt
   = Assign Exp Exp -- assignment
   | StmtPlusEq Exp Exp -- e1 += e2
   | StmtMinusEq Exp Exp -- e1 -= e2
-  | StmtXorEq Exp Exp -- e1 ^= e2
+  | StmtBXorEq Exp Exp -- e1 ^= e2
   | StmtBAndEq Exp Exp -- e1 &= e2
   | StmtBOrEq Exp Exp -- e1 |= e2
   | StmtModEq Exp Exp -- e1 %= e2
@@ -282,7 +282,7 @@ data Exp
   | ExpTimes Exp Exp -- e1 * e2
   | ExpDivide Exp Exp -- e1 / e2
   | ExpModulo Exp Exp -- e1 % e2
-  | ExpXor Exp Exp -- e1 ^ e2
+  | ExpBXor Exp Exp -- e1 ^ e2
   | ExpBAnd Exp Exp -- e1 & e2
   | ExpBOr Exp Exp -- e1 | e2
   | ExpLT Exp Exp -- e1 < e2
