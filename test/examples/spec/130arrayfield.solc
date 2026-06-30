@@ -10,8 +10,8 @@ contract ArrayField {
 
   function main() -> uint256 {
     // push appends and grows the length automatically.
-    arr.push(uint256(42));
-    arr.push(uint256(100));
+    ArrayPush.push(arr, uint256(42));
+    ArrayPush.push(arr, uint256(100));
 
     // arr[i] — bounds-checked indexed access.
     return arr[uint256(0)] + arr[uint256(1)];

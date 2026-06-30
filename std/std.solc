@@ -1936,7 +1936,8 @@ forall v.
     function load(l:storage(array(v))) -> storage(array(v)) {
       // "Loading" a storage array field yields its storage reference (the
       // slot). push / pop / length / arr[i] all consume that reference, so a
-      // field read like `members.push(x)` must return the slot, not revert.
+      // field read like `ArrayPush.push(members, x)` must return the slot,
+      // not revert.
       return l;
     }
 }
