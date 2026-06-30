@@ -615,6 +615,24 @@ instance uint256:Mod {
   }
 }
 
+instance uint256:Xor {
+  function xor(x : uint256, y : uint256) -> uint256 {
+    return Typedef.abs(Xor.xor(Typedef.rep(x), Typedef.rep(y)));
+  }
+}
+
+instance uint256:BitAnd {
+  function band(x : uint256, y : uint256) -> uint256 {
+    return Typedef.abs(BitAnd.band(Typedef.rep(x), Typedef.rep(y)));
+  }
+}
+
+instance uint256:BitOr {
+  function bor(x : uint256, y : uint256) -> uint256 {
+    return Typedef.abs(BitOr.bor(Typedef.rep(x), Typedef.rep(y)));
+  }
+}
+
 instance uint256:Eq {
   function eq(x : uint256, y : uint256) -> bool {
     return Eq.eq(Typedef.rep(x), Typedef.rep(y));
