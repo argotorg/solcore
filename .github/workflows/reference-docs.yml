@@ -15,7 +15,7 @@ concurrency:
 permissions:
   contents: read
   pages: write
-  id-token: write # required by the deploy-pages action for some reason
+  id-token: write # required by actions/deploy-pages to request an OIDC token for GitHub Pages deployment
 
 jobs:
   # Build job
