@@ -1,4 +1,4 @@
-name: Deploy reference docs to github pages
+name: Deploy reference docs to GitHub Pages
 
 on:
   push:
