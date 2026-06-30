@@ -1921,8 +1921,8 @@ forall k v.
       unimplemented();
     }
     function load(l:storage(mapping(k,v))) -> storage(mapping(k,v)) {
-      // return StorageType.load(Typedef.rep(l));
-      unimplemented();
+      // "Loading" a storage mapping field yields its storage reference (the
+      // slot); indexed access / method calls consume that reference directly.
       return l;
     }
 }
@@ -1934,8 +1934,9 @@ forall v.
       unimplemented();
     }
     function load(l:storage(array(v))) -> storage(array(v)) {
-      // return StorageType.load(Typedef.rep(l));
-      unimplemented();
+      // "Loading" a storage array field yields its storage reference (the
+      // slot). push / pop / length / arr[i] all consume that reference, so a
+      // field read like `members.push(x)` must return the slot, not revert.
       return l;
     }
 }
