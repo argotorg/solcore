@@ -747,7 +747,11 @@ specMatch exps alts = do
   -- subst <- getSpSubst
   -- debug ["> specMatch, scrutinee: ", pretty exps, " @ ", pretty subst]
   exps' <- specScruts exps
-  alts' <- forM alts specAlt
+  saved <- getSpSubst
+  alts' <- forM alts $ \alt -> do
+    putSpSubst saved
+    specAlt alt
+  putSpSubst saved
   -- debug ["< specMatch, alts': ", show alts']
   return $ Match exps' alts'
   where
