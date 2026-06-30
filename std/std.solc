@@ -1812,10 +1812,12 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
             // Long byte array (out-of-place encoding)
             let dstPtr = hash1(slot);
             let loopEnd = and_(newLen, not_(0x1f));
-            for (let i = 0; i < loopEnd; i += 32, dstPtr += 1, src += 32) {
+            let trailing = loopEnd < newLen;
+            loopEnd += src;
+            for (; src < loopEnd; src += 32, dstPtr += 1) {
                 sstore(dstPtr, mload(src));
             }
-            if (loopEnd < newLen) {
+            if (trailing) {
                 let lastValue = mload(src);
                 let lastLen = and_(newLen, 0x1f);
                 let mask = not_(shr(8 * lastLen, not_(0)));
