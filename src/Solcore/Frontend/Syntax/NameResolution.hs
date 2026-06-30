@@ -776,7 +776,7 @@ instance Resolve S.Exp where
     do
       e1' <- resolve e1 `wrapError` c
       e2' <- resolve e2 `wrapError` c
-      let fun = QualName (Name "Xor") "xor"
+      let fun = QualName (Name "BitXor") "bxor"
       pure $ Call Nothing fun [e1', e2']
   resolve c@(S.ExpBAnd e1 e2) =
     do
