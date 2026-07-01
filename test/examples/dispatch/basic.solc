@@ -55,6 +55,24 @@ contract C {
         return mulmod(x, y, k);
     }
 
+    // Bitwise / modulo via the syntactic sugar only (no explicit class calls):
+    //   `^` -> BitXor.bxor, `|` -> BitOr.bor, `&` -> BitAnd.band, `%` -> Mod.mod.
+    public function bxor2(x : uint256, y : uint256) -> uint256 {
+        return x ^ y;
+    }
+
+    public function bor2(x : uint256, y : uint256) -> uint256 {
+        return x | y;
+    }
+
+    public function band2(x : uint256, y : uint256) -> uint256 {
+        return x & y;
+    }
+
+    public function mod2(x : uint256, y : uint256) -> uint256 {
+        return x % y;
+    }
+
     public function id_bytes(b: memory(bytes)) -> memory(bytes) {
         return b;
     }

@@ -1,0 +1,25 @@
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+// Exercises the `^` / `&` / `|` operators, the `^=` / `&=` / `|=`
+// compound assignments, and the bxorWord / bandWord / borWord constant
+// folding (mirrors gtWord).
+function fxor(x: word, y: word) -> word {
+  let acc : word = x ^ y;
+  acc ^= x;          // acc = (x ^ y) ^ x == y
+  return acc ^ 0;    // identity: a ^ 0 == a
+}
+
+function fbitwise(x: word, y: word) -> word {
+  let acc : word = x & y;
+  acc |= x;          // acc = (x & y) | x == x
+  acc &= y;          // acc = x & y
+  return acc | 0;    // identity: a | 0 == a
+}
+
+contract Bitwise {
+  // fxor(5, 3) == 3, fbitwise(6, 3) == 2, 3 ^ 2 == 1 — folded at compile time.
+  public function main() -> word { return fxor(5, 3) ^ fbitwise(6, 3); }
+}

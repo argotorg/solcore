@@ -7,6 +7,7 @@ import Common.LightYear
 import Control.Monad.Combinators.Expr
 import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Lexer.SolcoreLexer
+import Solcore.Frontend.Parser.Patterns (patListP)
 import Solcore.Frontend.Parser.SolcoreTypes (atomTypeP, locatedFromSpans, locatedP, paramP, simpleNameP, typeP)
 import Solcore.Frontend.Syntax.Location (sourceSpanOf)
 import Solcore.Frontend.Syntax.Name
@@ -57,7 +58,10 @@ opTable =
     ],
     [ InfixL (binaryExp ExpTimes <$ try (symbol "*")),
       InfixL (binaryExp ExpDivide <$ try (symbol "/")),
-      InfixL (binaryExp ExpModulo <$ try (symbol "%"))
+      InfixL
+        ( binaryExp ExpModulo
+            <$ try (lexeme (char '%' <* notFollowedBy (char '=')))
+        )
     ],
     [ InfixL
         ( binaryExp ExpPlus
@@ -66,6 +70,28 @@ opTable =
       InfixL
         ( binaryExp ExpMinus
             <$ try (lexeme (char '-' <* notFollowedBy (char '=')))
+        )
+    ],
+    [ InfixL
+        ( binaryExp ExpBAnd
+            <$ try (lexeme (char '&' <* notFollowedBy (char '&') <* notFollowedBy (char '=')))
+        )
+    ],
+    [ InfixL
+        ( binaryExp ExpBXor
+            <$ try (lexeme (char '^' <* notFollowedBy (char '=')))
+        )
+    ],
+    [ InfixL
+        ( binaryExp ExpBOr
+            <$ try
+              ( lexeme (char '|' <* notFollowedBy (char '|') <* notFollowedBy (char '='))
+                  -- `|` also separates match arms (`| pat => ...`). Since `=>`
+                  -- never follows a bitwise-or operand, treat `|` as a case
+                  -- separator (not an operator) whenever `pat =>` comes next,
+                  -- leaving it for the match-equation parser to consume.
+                  <* notFollowedBy (try (patListP *> symbol "=>"))
+              )
         )
     ],
     [ InfixN (binaryExp ExpLE <$ try (symbol "<=")),
