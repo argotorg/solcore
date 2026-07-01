@@ -1,4 +1,4 @@
-module Locus where
+module Language.Hull.ToYul.Locus where
 
 import Data.String
 

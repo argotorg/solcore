@@ -5,23 +5,25 @@ module Main where
 
 -- FIXME: move Name to Common
 -- (Doc, Pretty(..), nest, render)
-import Builtins (yulBuiltins)
+
 import Common.Pretty
-import Compress
 import Control.Monad (unless, when)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
+import Language.Hull.Compress
 import Language.Hull.Parser (parseObject)
 import Language.Hull.TcEnv (emptyHullTcEnv)
 import Language.Hull.TcMonad (runHullTcM)
+import Language.Hull.ToYul.Assemble (wrapInObject)
+import Language.Hull.ToYul.Options (parseOptions)
+import Language.Hull.ToYul.Options qualified as Options
+import Language.Hull.ToYul.TM
+import Language.Hull.ToYul.Translate
 import Language.Hull.TypeCheck (checkObject)
 import Language.Yul
+import Language.Yul.Builtins (yulBuiltins)
 import Language.Yul.QuasiQuote
-import Options (parseOptions)
-import Options qualified
 import Solcore.Frontend.Syntax.Name
 import System.Exit (exitFailure)
-import TM
-import Translate
 
 main :: IO ()
 main = do
@@ -55,47 +57,6 @@ main = do
           else wrapInObject withDeployment yulPreobject
   putStrLn ("writing output to " ++ Options.output options)
   writeFile (Options.output options) (render doc)
-
--- wrap in a Yul object with the given name
-wrapInObject :: Bool -> YulObject -> Doc
-wrapInObject deploy yulo@(YulObject name code inners)
-  | deploy = ppr (createDeployment yulo)
-  | otherwise = ppr (YulObject name (addMemInit (addRetCode code)) inners)
-
-addMemInit :: YulCode -> YulCode
-addMemInit c = YulCode [[yulStmt| mstore(64, memoryguard(128)) |]] <> c
-
-addRetCode :: YulCode -> YulCode
-addRetCode c = c <> retCode
-  where
-    retCode =
-      YulCode
-        [yulBlock|
-    {
-      mstore(0, _mainresult)
-      return(0, 32)
-    }
-    |]
-
-deployCode :: String -> Bool -> YulCode
-deployCode _name withStart = YulCode $ go withStart
-  where
-    go True = [[yulStmt| usr$_start() |]]
-    go False = []
-
-createDeployment :: YulObject -> YulObject
-createDeployment (YulObject yulName yulCode [InnerObject (YulObject innerName innerCode [])]) =
-  YulObject yulName yulCode' [yulInner']
-  where
-    yulCode' = yulCode <> deployCode innerName True
-    yulInner' = InnerObject (YulObject innerName (addRetCode innerCode) [])
-createDeployment (YulObject yulName yulCode []) =
-  YulObject yulName' yulCode' [yulInner']
-  where
-    yulName' = yulName <> "Deploy"
-    yulCode' = deployCode yulName False
-    yulInner' = InnerObject (YulObject yulName (addRetCode yulCode) [])
-createDeployment _ = error ("createDeployment not implemented for this type of object")
 
 -- | wrap a Yul chunk in a Solidity function with the given name
 --   assumes result is in a variable named "_result"

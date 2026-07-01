@@ -112,12 +112,21 @@ library
       Solcore.Pipeline.SolcorePipeline
       Solcore.Primitives.Primitives
       Language.Hull
+      Language.Hull.Compress
       Language.Hull.Parser
       Language.Hull.TcEnv
       Language.Hull.TcMonad
       Language.Hull.TypeCheck
       Language.Hull.Types
+      -- Hull -> Yul backend (was the separate `yule` executable); promoted to
+      -- the library so the translation is reusable (CLI, tests, other tools).
+      Language.Hull.ToYul.Assemble
+      Language.Hull.ToYul.Locus
+      Language.Hull.ToYul.Options
+      Language.Hull.ToYul.TM
+      Language.Hull.ToYul.Translate
       Language.Yul
+      Language.Yul.Builtins
       Language.Yul.Parser
       Language.Yul.QuasiQuote
       Common.LightYear
@@ -147,7 +156,7 @@ executable yule
       PatternSynonyms
       BlockArguments
       ImportQualifiedPost
-    other-modules: Locus, Options, TM, Translate, Builtins, Compress
+    -- Locus, Options, TM, Translate, Builtins, Compress now live in the library.
     build-depends:    base ^>=4.19.1.0,
                       pretty >=  1.1,
                       containers >= 0.6,
