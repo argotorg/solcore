@@ -5,11 +5,13 @@ where
 
 import Common.LightYear
 import Control.Monad.Combinators.Expr
+import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.Patterns (patListP)
-import Solcore.Frontend.Parser.SolcoreTypes (atomTypeP, paramP, typeP)
-import Solcore.Frontend.Syntax.Name (Name (..))
-import Solcore.Frontend.Syntax.SyntaxTree (Exp (..), Literal (..), Stmt)
+import Solcore.Frontend.Parser.SolcoreTypes (atomTypeP, locatedFromSpans, locatedP, paramP, simpleNameP, typeP)
+import Solcore.Frontend.Syntax.Location (sourceSpanOf)
+import Solcore.Frontend.Syntax.Name
+import Solcore.Frontend.Syntax.SyntaxTree
 
 type BodyP = Parser [Stmt]
 
@@ -19,7 +21,9 @@ exprP bp = tyAnnP bp
 tyAnnP :: BodyP -> Parser Exp
 tyAnnP bp = do
   e <- ternaryP bp
-  option e $ TyExp e <$> (colon *> typeP)
+  option e $ do
+    t <- colon *> typeP
+    pure (locatedExpFrom [sourceSpanOf e, sourceSpanOf t] (TyExp e t))
 
 ternaryP :: BodyP -> Parser Exp
 ternaryP bp =
@@ -30,10 +34,10 @@ ternaryP bp =
       e2 <- ternaryP bp
       _ <- symbol ":"
       e3 <- ternaryP bp
-      return (ExpCond e1 e2 e3)
+      return (locatedExpFrom (map sourceSpanOf [e1, e2, e3]) (ExpCond e1 e2 e3))
 
 ifThenElseP :: BodyP -> Parser Exp
-ifThenElseP bp = do
+ifThenElseP bp = locatedP locatedExp $ do
   keyword "if"
   e1 <- ternaryP bp
   keyword "then"
@@ -48,38 +52,38 @@ binaryP bp = makeExprParser (postfixP bp) opTable
 opTable :: [[Operator Parser Exp]]
 opTable =
   [ [ Prefix
-        ( ExpLNot
+        ( unaryExp ExpLNot
             <$ try (lexeme (char '!' <* notFollowedBy (char '=')))
         )
     ],
-    [ InfixL (ExpTimes <$ try (symbol "*")),
-      InfixL (ExpDivide <$ try (symbol "/")),
+    [ InfixL (binaryExp ExpTimes <$ try (symbol "*")),
+      InfixL (binaryExp ExpDivide <$ try (symbol "/")),
       InfixL
-        ( ExpModulo
+        ( binaryExp ExpModulo
             <$ try (lexeme (char '%' <* notFollowedBy (char '=')))
         )
     ],
     [ InfixL
-        ( ExpPlus
+        ( binaryExp ExpPlus
             <$ try (lexeme (char '+' <* notFollowedBy (char '=')))
         ),
       InfixL
-        ( ExpMinus
+        ( binaryExp ExpMinus
             <$ try (lexeme (char '-' <* notFollowedBy (char '=')))
         )
     ],
     [ InfixL
-        ( ExpBAnd
+        ( binaryExp ExpBAnd
             <$ try (lexeme (char '&' <* notFollowedBy (char '&') <* notFollowedBy (char '=')))
         )
     ],
     [ InfixL
-        ( ExpBXor
+        ( binaryExp ExpBXor
             <$ try (lexeme (char '^' <* notFollowedBy (char '=')))
         )
     ],
     [ InfixL
-        ( ExpBOr
+        ( binaryExp ExpBOr
             <$ try
               ( lexeme (char '|' <* notFollowedBy (char '|') <* notFollowedBy (char '='))
                   -- `|` also separates match arms (`| pat => ...`). Since `=>`
@@ -90,22 +94,22 @@ opTable =
               )
         )
     ],
-    [ InfixN (ExpLE <$ try (symbol "<=")),
-      InfixN (ExpGE <$ try (symbol ">=")),
+    [ InfixN (binaryExp ExpLE <$ try (symbol "<=")),
+      InfixN (binaryExp ExpGE <$ try (symbol ">=")),
       InfixN
-        ( ExpLT
+        ( binaryExp ExpLT
             <$ try (lexeme (char '<' <* notFollowedBy (char '=')))
         ),
       InfixN
-        ( ExpGT
+        ( binaryExp ExpGT
             <$ try (lexeme (char '>' <* notFollowedBy (char '=')))
         )
     ],
-    [ InfixN (ExpEE <$ try (symbol "==")),
-      InfixN (ExpNE <$ try (symbol "!="))
+    [ InfixN (binaryExp ExpEE <$ try (symbol "==")),
+      InfixN (binaryExp ExpNE <$ try (symbol "!="))
     ],
-    [InfixL (ExpLAnd <$ try (symbol "&&"))],
-    [InfixL (ExpLOr <$ try (symbol "||"))]
+    [InfixL (binaryExp ExpLAnd <$ try (symbol "&&"))],
+    [InfixL (binaryExp ExpLOr <$ try (symbol "||"))]
   ]
 
 postfixP :: BodyP -> Parser Exp
@@ -121,30 +125,31 @@ dotOp :: BodyP -> Parser (Exp -> Exp)
 dotOp bp = do
   _ <- char '.'
   sc
-  n <- identifier
+  n <- simpleNameP
   mArgs <- optional (parens (exprP bp `sepBy` comma))
   return $ case mArgs of
-    Just args -> \e -> ExpName (Just e) (Name n) args
-    Nothing -> \e -> ExpVar (Just e) (Name n)
+    Just args -> \e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf n, sourceSpanOf args] (ExpName (Just e) n args)
+    Nothing -> \e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf n] (ExpVar (Just e) n)
 
 idxOp :: BodyP -> Parser (Exp -> Exp)
 idxOp bp = do
   idx <- brackets (exprP bp)
-  return (\e -> ExpIndexed e idx)
+  return (\e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf idx] (ExpIndexed e idx))
 
 atomP :: BodyP -> Parser Exp
 atomP bp = litP <|> try (lamP bp) <|> proxyP <|> try (dotNameP bp) <|> parenP bp <|> nameP bp
 
 litP :: Parser Exp
 litP =
-  Lit . IntLit
-    <$> integer
-      <|> Lit
-      . StrLit
-    <$> stringLit
+  locatedP locatedExp $
+    Lit . IntLit
+      <$> integer
+        <|> Lit
+        . StrLit
+      <$> stringLit
 
 lamP :: BodyP -> Parser Exp
-lamP bp = do
+lamP bp = locatedP locatedExp $ do
   keyword "lam"
   ps <- parens (paramP `sepBy` comma)
   retTy <- optional (symbol "->" *> typeP)
@@ -152,30 +157,41 @@ lamP bp = do
   return (Lam ps body retTy)
 
 proxyP :: Parser Exp
-proxyP = ExpAt <$> (symbol "@" *> atomTypeP)
+proxyP = locatedP locatedExp (ExpAt <$> (symbol "@" *> atomTypeP))
 
 dotNameP :: BodyP -> Parser Exp
-dotNameP bp = do
+dotNameP bp = locatedP locatedExp $ do
   _ <- char '.'
   sc
-  n <- identifier
+  n <- simpleNameP
   args <- option [] (parens (exprP bp `sepBy` comma))
-  return (ExpDotName (Name n) args)
+  return (ExpDotName n args)
 
 parenP :: BodyP -> Parser Exp
-parenP bp = parens $ do
+parenP bp = locatedP locatedExp $ parens $ do
   es <- exprP bp `sepBy` comma
   return $ case es of
     [] -> ExpName Nothing (Name "()") []
     [e] -> e
     _ -> foldr1 pairE es
   where
-    pairE e1 e2 = ExpName Nothing (Name "pair") [e1, e2]
+    pairE e1 e2 = locatedExpFrom [sourceSpanOf e1, sourceSpanOf e2] (ExpName Nothing (Name "pair") [e1, e2])
 
 nameP :: BodyP -> Parser Exp
-nameP bp = do
-  n <- identifier
+nameP bp = locatedP locatedExp $ do
+  n <- simpleNameP
   mArgs <- optional (parens (exprP bp `sepBy` comma))
   return $ case mArgs of
-    Just args -> ExpName Nothing (Name n) args
-    Nothing -> ExpVar Nothing (Name n)
+    Just args -> ExpName Nothing n args
+    Nothing -> ExpVar Nothing n
+
+binaryExp :: (Exp -> Exp -> Exp) -> Exp -> Exp -> Exp
+binaryExp con left right =
+  locatedExpFrom [sourceSpanOf left, sourceSpanOf right] (con left right)
+
+unaryExp :: (Exp -> Exp) -> Exp -> Exp
+unaryExp con operand =
+  locatedExpFrom [sourceSpanOf operand] (con operand)
+
+locatedExpFrom :: [Maybe SourceSpan] -> Exp -> Exp
+locatedExpFrom = locatedFromSpans locatedExp

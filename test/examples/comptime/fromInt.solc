@@ -64,9 +64,9 @@ contract FromWord {
                                      f1(
 				        static_cast(42) //cast a literal - could be fromWord/staticInt
 				     ));
-  
+
     let y2 : comptime uint256 = staticInt( id_uint(staticInt(42)) ); // cast at literal, cast at let
-    
+
     let z = notcomptime(Typedef.rep(y1)); // no cast - not comptime
     let t = dynamic_cast(y1); // just testing
     return t;

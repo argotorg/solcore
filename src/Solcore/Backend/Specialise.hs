@@ -31,7 +31,6 @@ import Solcore.Frontend.Syntax hiding (decls, name)
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv (TcEnv (instEnv, typeTable), TypeInfo (..))
-import Solcore.Frontend.TypeInference.TcUnify (typesDoNotUnify)
 import Solcore.Primitives.Primitives hiding (integer)
 import Solcore.Primitives.Primitives qualified as Prim
 
@@ -883,7 +882,7 @@ specmgu (TyCon n ts) (TyCon n' ts')
       specsolve (zip ts ts') mempty
 specmgu (TyVar v) t = varBind v t
 specmgu t (TyVar v) = varBind v t
-specmgu t1 t2 = typesDoNotUnify t1 t2
+specmgu t1 t2 = Left $ "types do not unify: " ++ pretty t1 ++ " and " ++ pretty t2
 
 -- | One-directional matching: find a substitution @phi@ such that
 -- @applytv phi pat == tgt@, binding only variables that appear in @pat@.
@@ -897,7 +896,7 @@ specmatch (TyCon n ts) (TyCon n' ts')
   | n == n' && length ts == length ts' =
       matchsolve (zip ts ts') mempty
 specmatch (TyVar v) t = varBind v t
-specmatch t1 t2 = typesDoNotUnify t1 t2
+specmatch t1 t2 = Left $ "types do not unify: " ++ pretty t1 ++ " and " ++ pretty t2
 
 matchsolve :: [(Ty, Ty)] -> TVSubst -> Either String TVSubst
 matchsolve [] s = pure s

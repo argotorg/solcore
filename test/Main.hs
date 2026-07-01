@@ -2,7 +2,10 @@ module Main where
 
 import Cases
 import ContractAbiTests
+import DiagnosticCliTests
+import DiagnosticTests
 import HullCases
+import LocationTests
 import MatchCompilerTests
 import ModuleTypeCheckTests
 import ParserTests
@@ -24,6 +27,9 @@ tests =
       pragmas,
       spec,
       std,
+      diagnosticCliTests,
+      diagnosticTests,
+      locationTests,
       imports,
       moduleTypeCheckTests,
       dispatches,

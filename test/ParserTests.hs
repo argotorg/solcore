@@ -9,7 +9,7 @@ import Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.Patterns (patP)
 import Solcore.Frontend.Parser.SolcoreTypes (predP, typeP)
 import Solcore.Frontend.Parser.Stmt (bodyP, stmtP)
-import Solcore.Frontend.Syntax.Name (Name (..))
+import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 import Test.Tasty
 import Test.Tasty.HUnit

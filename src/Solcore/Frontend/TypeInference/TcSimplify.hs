@@ -351,16 +351,8 @@ undefinedInstance p@(InCls n _ _) =
   do
     insts <- askInstEnv n
     insts' <- mapM fromANF insts
-    tcmError $
-      unlines $
-        [ "Cannot entail:",
-          f (pretty p),
-          "currently defined instances:"
-        ]
-          ++ map (f . pretty) insts'
-  where
-    f s = "   " ++ s
-undefinedInstance p = tcmError $ unwords ["Cannot entail: ", pretty p]
+    cannotEntail p ("currently defined instances:" : map pretty insts')
+undefinedInstance p = cannotEntail p []
 
 unsolvedError :: [Pred] -> TcM ()
 unsolvedError = mapM_ unsolvedPredError
@@ -370,12 +362,5 @@ unsolvedPredError p@(InCls n _ _) =
   do
     insts <- askInstEnv n
     insts' <- mapM fromANF insts
-    let s = unlines (map pretty insts')
-    tcmError $
-      unlines
-        [ "Cannot entail:",
-          pretty p,
-          "using defined instances:",
-          s
-        ]
-unsolvedPredError p = tcmError $ unwords ["Cannot entail:", pretty p]
+    cannotEntail p ("using defined instances:" : map pretty insts')
+unsolvedPredError p = cannotEntail p []

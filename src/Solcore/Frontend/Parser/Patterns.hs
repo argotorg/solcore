@@ -7,12 +7,12 @@ where
 import Common.LightYear
 import Solcore.Frontend.Lexer.SolcoreLexer
 import {-# SOURCE #-} Solcore.Frontend.Parser.Expr (exprP)
-import Solcore.Frontend.Parser.SolcoreTypes (qualifiedName)
-import Solcore.Frontend.Syntax.Name (Name (..))
-import Solcore.Frontend.Syntax.SyntaxTree (Literal (..), Pat (..))
+import Solcore.Frontend.Parser.SolcoreTypes (locatedP, qualifiedName, simpleNameP)
+import Solcore.Frontend.Syntax.Name
+import Solcore.Frontend.Syntax.SyntaxTree
 
 patP :: Parser Pat
-patP = wildcardP <|> litP <|> dotPatP <|> parenPatP <|> try comptimePatP <|> namedPatP
+patP = locatedP locatedPat (wildcardP <|> litP <|> dotPatP <|> parenPatP <|> try comptimePatP <|> namedPatP)
 
 patListP :: Parser [Pat]
 patListP = patP `sepBy1` comma
@@ -33,9 +33,9 @@ dotPatP :: Parser Pat
 dotPatP = do
   _ <- char '.'
   sc
-  n <- identifier
+  n <- simpleNameP
   args <- option [] (parens (patP `sepBy1` comma))
-  return (PatDot (Name n) args)
+  return (PatDot n args)
 
 parenPatP :: Parser Pat
 parenPatP = parens insideP

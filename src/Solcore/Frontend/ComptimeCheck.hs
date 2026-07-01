@@ -24,7 +24,7 @@ import Data.Map qualified as Map
 import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name (Name)
 import Solcore.Frontend.Syntax.Stmt
-import Solcore.Frontend.Syntax.Ty (Ty (..))
+import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.TypeInference.Id (Id (..))
 
 -----------------------------------------------------------------------

@@ -3,6 +3,7 @@ module ModuleTypeCheckTests
   )
 where
 
+import Solcore.Diagnostics (CompilerError, compilerErrorText)
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcModule
 import Solcore.Pipeline.Options (noDesugarOpt)
@@ -57,12 +58,12 @@ moduleTypeCheckTests =
         assertLeft "local body should be checked" result
     ]
 
-assertRight :: String -> Either String a -> Assertion
+assertRight :: String -> Either CompilerError a -> Assertion
 assertRight _ (Right _) = pure ()
 assertRight label (Left err) =
-  assertFailure (label ++ ": unexpected failure:\n" ++ err)
+  assertFailure (label ++ ": unexpected failure:\n" ++ compilerErrorText err)
 
-assertLeft :: String -> Either String a -> Assertion
+assertLeft :: String -> Either CompilerError a -> Assertion
 assertLeft _ (Left _) = pure ()
 assertLeft label (Right _) =
   assertFailure (label ++ ": expected failure")

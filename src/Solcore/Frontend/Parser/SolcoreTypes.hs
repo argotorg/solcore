@@ -6,33 +6,50 @@ module Solcore.Frontend.Parser.SolcoreTypes
     predListP,
     paramP,
     sigPrefixP,
+    simpleNameP,
+    locatedP,
+    locatedFromSpans,
   )
 where
 
 import Common.LightYear
 import Control.Monad.Combinators.Expr
+import Data.Foldable (foldlM)
+import Solcore.Diagnostics (SourceSpan (..))
 import Solcore.Frontend.Lexer.SolcoreLexer
-import Solcore.Frontend.Syntax.Name (Name (..))
+import Solcore.Frontend.Syntax.Location
+import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
-  ( Param (..),
-    Pred (..),
-    Ty (..),
-    pairTy,
-  )
 
 qualifiedName :: Parser Name
 qualifiedName = do
-  h <- identifier
-  ts <- many (try (char '.' *> identifier))
-  return (foldl QualName (Name h) ts)
+  h <- simpleNameP
+  foldlM segment h =<< many (try (char '.' *> locatedIdentifierP))
+  where
+    segment qualifier (sourceSpan, leaf) =
+      pure (locatedQualName qualifier sourceSpan leaf)
+
+simpleNameP :: Parser Name
+simpleNameP =
+  uncurry (\sourceSpan identifierText -> locatedName sourceSpan (Name identifierText)) <$> locatedIdentifierP
+
+locatedIdentifierP :: Parser (SourceSpan, String)
+locatedIdentifierP = do
+  startPos <- getSourcePos
+  startOffset <- getOffset
+  identifierText <- identifier
+  endPos <- getSourcePos
+  endOffset <- getOffset
+  pure (sourceSpanBetween startOffset startPos endOffset endPos, identifierText)
 
 typeP :: Parser Ty
-typeP = makeExprParser atomTypeP [[InfixR (mkArrowTy <$ symbol "->")]]
+typeP = locatedP locatedTy (makeExprParser atomTypeP [[InfixR (mkArrowTy <$ symbol "->")]])
   where
-    mkArrowTy t1 t2 = TyCon "->" [t1, t2]
+    mkArrowTy t1 t2 =
+      locatedFromSpans locatedTy [sourceSpanOf t1, sourceSpanOf t2] (TyCon "->" [t1, t2])
 
 atomTypeP :: Parser Ty
-atomTypeP = proxyTypeP <|> parenTypeP <|> namedTypeP
+atomTypeP = locatedP locatedTy (proxyTypeP <|> parenTypeP <|> namedTypeP)
 
 proxyTypeP :: Parser Ty
 proxyTypeP = TyCon "Proxy" . (: []) <$> (symbol "@" *> atomTypeP)
@@ -49,11 +66,11 @@ parenTypeP = parens (mkParenTy <$> (typeP `sepBy` comma))
 
 predP :: Parser Pred
 predP = do
-  mainTy <- atomTypeP
+  subjectTy <- atomTypeP
   _ <- colon
   cls <- qualifiedName
   params <- option [] (parens (typeP `sepBy1` comma))
-  return (InCls cls mainTy params)
+  return (InCls cls subjectTy params)
 
 predListP :: Parser [Pred]
 predListP = predP `sepBy1` comma
@@ -61,11 +78,11 @@ predListP = predP `sepBy1` comma
 paramP :: Parser Param
 paramP = do
   ct <- option False (True <$ keyword "comptime")
-  n <- identifier
+  n <- simpleNameP
   mt <- optional (colon *> typeP)
   return $ case mt of
-    Just t -> Typed ct (Name n) t
-    Nothing -> Untyped ct (Name n)
+    Just t -> Typed ct n t
+    Nothing -> Untyped ct n
 
 sigPrefixP :: Parser ([Ty], [Pred])
 sigPrefixP = do
@@ -75,4 +92,29 @@ sigPrefixP = do
   ctx <- option [] $ try (predListP <* symbol "=>")
   return (vars, ctx)
   where
-    tyVar = (\n -> TyCon (Name n) []) <$> identifier
+    tyVar = locatedP locatedTy (flip TyCon [] <$> simpleNameP)
+
+locatedP :: (SourceSpan -> a -> a) -> Parser a -> Parser a
+locatedP locate parser = do
+  startPos <- getSourcePos
+  startOffset <- getOffset
+  value <- parser
+  endPos <- getSourcePos
+  endOffset <- getOffset
+  pure (locate (sourceSpanBetween startOffset startPos endOffset endPos) value)
+
+locatedFromSpans :: (SourceSpan -> a -> a) -> [Maybe SourceSpan] -> a -> a
+locatedFromSpans locate spans value =
+  maybe value (`locate` value) (foldr combineMaybeSourceSpans Nothing spans)
+
+sourceSpanBetween :: Int -> SourcePos -> Int -> SourcePos -> SourceSpan
+sourceSpanBetween startOffset startPos endOffset endPos =
+  SourceSpan
+    { spanFile = sourceName startPos,
+      spanStartByte = startOffset,
+      spanEndByte = endOffset,
+      spanStartLine = unPos (sourceLine startPos),
+      spanStartColumn = unPos (sourceColumn startPos),
+      spanEndLine = unPos (sourceLine endPos),
+      spanEndColumn = unPos (sourceColumn endPos)
+    }

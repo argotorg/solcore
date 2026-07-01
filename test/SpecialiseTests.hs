@@ -2,8 +2,8 @@ module SpecialiseTests (specialiseTests) where
 
 import Data.Map.Strict qualified as Map
 import Solcore.Backend.Specialise (TVSubst (..), emptyTVSubst, runResolveMPTCTest, (|->))
-import Solcore.Frontend.Syntax.Name (Name (..))
-import Solcore.Frontend.Syntax.Ty (Pred (..), Qual (..), Ty (..), Tyvar (..))
+import Solcore.Frontend.Syntax.Name
+import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.TypeInference.TcEnv (TcEnv (..), initTcEnv)
 import Solcore.Pipeline.Options (stdOpt)
 import Test.Tasty
