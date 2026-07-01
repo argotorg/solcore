@@ -388,21 +388,32 @@ comptimeBuiltins = integerPrimNames
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
 specCall i@(Id (Name "revertLit") _) args _ = pure (i, args)
 specCall (Id (QualName (Name "std") "revertLit") ty) args _ = pure (Id (Name "revertLit") ty, args)
--- Int.fromInteger coercion: resolve to the appropriate primitive based on result type.
--- integer -> word    becomes wordFromInteger (handled by MastEval)
--- integer -> integer is identity (handled by MastEval)
-specCall (Id (QualName (Name "Int") "fromInteger") ty) args _ = do
-  args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+-- Int.fromInteger coercion: resolve based on the result type.
+-- integer -> word     becomes wordFromInteger (handled by MastEval)
+-- integer -> integer  is identity (handled by MastEval)
+-- integer -> other    resolves to the type's `Int` instance body, which
+--                     performs any needed truncation via wordFromInteger.
+specCall self@(Id (QualName (Name "Int") "fromInteger") ty) args callTy = do
   s <- getSpSubst
   let resultTy = snd (splitTy (applytv s ty))
   if resultTy == word
-    then pure (Id (Name "wordFromInteger") (Prim.integer :-> word), args')
-    else pure (Id (QualName (Name "Int") "fromInteger") (Prim.integer :-> resultTy), args')
-specCall i args _ty
+    then do
+      args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+      pure (Id (Name "wordFromInteger") (Prim.integer :-> word), args')
+    else
+      if resultTy == Prim.integer
+        then do
+          args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+          pure (Id (QualName (Name "Int") "fromInteger") (Prim.integer :-> resultTy), args')
+        else specCallResolve self args callTy
+specCall i args ty
   | idName i `elem` comptimeBuiltins = do
       args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
       pure (i, args')
-specCall i args ty = do
+  | otherwise = specCallResolve i args ty
+
+specCallResolve :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
+specCallResolve i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
   -- debug ["> specCall: ", pretty i', show args, " : ", pretty ty']

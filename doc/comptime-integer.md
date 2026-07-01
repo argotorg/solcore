@@ -137,15 +137,24 @@ provides overloaded coercion from `integer` literals to concrete numeric types:
 
 ```
 class a : Int { fromInteger : integer -> a }
-instance word    : Int  -- fromInteger = wordFromInteger
-instance integer : Int  -- fromInteger = identity
+instance word    : Int  -- fromInteger = wordFromInteger (primitive)
+instance integer : Int  -- fromInteger = identity        (primitive)
+instance uint256 : Int  -- fromInteger = uint256(wordFromInteger(x)) (std.solc)
 ```
 
-Both instances are primitive (no source body).  `Int.fromInteger` is injected
-by the desugaring pass around every integer literal, but it is also accessible
-to user code directly (the class and method are registered in the name
-resolver's `emptyEnv`).  Because `Int` is a reserved primitive class name, user
-programs cannot define their own class named `Int`.
+The `word` and `integer` instances are primitive (no source body).  Concrete
+numeric types define their own `Int` instance in `std.solc`; `uint256` wraps
+`wordFromInteger` in its constructor, so `let x : uint256 = 42` truncates the
+literal mod 2^256 exactly like a `word` site.  `Int.fromInteger` is injected by
+the desugaring pass around every integer literal, but it is also accessible to
+user code directly (the class and method are registered in the name resolver's
+`emptyEnv`).  Because `Int` is a reserved primitive class name, user programs
+cannot define their own class named `Int`.
+
+Note: `Int` method names are stored **qualified** in the primitive class's
+`ClassInfo` (like `invokable`), so `verifySignatures` must not re-qualify them
+when checking a source instance body — otherwise the method resolves to the
+double-qualified `Int.Int.fromInteger`.
 
 `Int.fromInteger` is in `integerPrimNames`, so it seeds `builtinPureFuns`
 and is treated as a comptime builtin by the specializer.

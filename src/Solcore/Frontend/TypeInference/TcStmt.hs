@@ -1088,7 +1088,10 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
     s <- match classc' ih `wrapError` instd
     -- getting method types
     let qnames = map qual (methods cinfo)
-        qual v = if v == invoke then v else qualifyName n v
+        -- Primitive classes (invokable, Int) store their method names already
+        -- qualified; source classes store them unqualified. Only qualify the
+        -- latter, so we don't double-qualify into e.g. Int.Int.fromInteger.
+        qual v = if isQual v then v else qualifyName n v
     -- getting most general types and instantiate them
     aqts <-
       mapM

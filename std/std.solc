@@ -654,6 +654,12 @@ instance uint256:Bounded {
   }
 }
 
+instance uint256:Int {
+  function fromInteger(x:integer) -> uint256 {
+    return uint256(wordFromInteger(x));
+  }
+}
+
 function addmod(x: uint256, y: uint256, k: uint256) -> uint256 {
     require(k != uint256(0), Error(0x7125cbb9)); // AddModWithZero()
     return Typedef.abs(addmod_(Typedef.rep(x), Typedef.rep(y), Typedef.rep(k)));

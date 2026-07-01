@@ -959,18 +959,21 @@ eliminateDeadCode cu = cu {mastTopDecls = map elimTopDecl (mastTopDecls cu)}
     elimTopDecl (MastTContr c) = MastTContr (elimContract c)
     elimTopDecl d@(MastTDataDef _) = d
 
-    elimContract c = c {mastContrDecls = filter keepDecl (mastContrDecls c)}
+    elimContract c = c {mastContrDecls = concatMap filterDecl (mastContrDecls c)}
       where
         usedNames = findUsedFunctions c
-        keepDecl (MastCFunDecl fd) = mastFunName fd `Set.member` usedNames
-        keepDecl (MastCMutualDecl ds) =
-          -- Keep mutual block if any function in it is used
-          any isUsedDecl ds
-        keepDecl (MastCDataDecl _) = True
-
-        isUsedDecl (MastCFunDecl fd) = mastFunName fd `Set.member` usedNames
-        isUsedDecl (MastCMutualDecl ds) = any isUsedDecl ds
-        isUsedDecl (MastCDataDecl _) = True
+        -- Drop unreachable functions, recursing into mutual blocks so that
+        -- dead members of a block whose siblings are still reachable are also
+        -- removed (e.g. a helper the deployer only needed before partial
+        -- evaluation folded its call). Data declarations are always kept.
+        filterDecl d@(MastCFunDecl fd)
+          | mastFunName fd `Set.member` usedNames = [d]
+          | otherwise = []
+        filterDecl (MastCMutualDecl ds) =
+          case concatMap filterDecl ds of
+            [] -> []
+            ds' -> [MastCMutualDecl ds']
+        filterDecl d@(MastCDataDecl _) = [d]
 
 -- | Find all functions reachable from root functions
 findUsedFunctions :: MastContract -> Set.Set Name
