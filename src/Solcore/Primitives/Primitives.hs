@@ -55,10 +55,12 @@ invokeSignature =
     [selfVar, argsVar]
     []
     invokeName
-    [ Typed selfName (TyVar selfVar),
-      Typed argsName (TyVar argsVar)
+    [ Typed False selfName (TyVar selfVar),
+      Typed False argsName (TyVar argsVar)
     ]
+    False
     (Just (TyVar retVar))
+    False
 
 -- basic types
 
@@ -109,6 +111,68 @@ pairTy t1 t2 = t1 :-> t2 :-> pair t1 t2
 
 string :: Ty
 string = TyCon "string" []
+
+integer :: Ty
+integer = TyCon "integer" []
+
+-- integer primitives (comptime-only; evaluated by MastEval, never emitted)
+
+wordToInteger :: (Name, Scheme)
+wordToInteger = (Name "wordToInteger", monotype (word :-> integer))
+
+wordFromInteger :: (Name, Scheme)
+wordFromInteger = (Name "wordFromInteger", monotype (integer :-> word))
+
+integerAdd :: (Name, Scheme)
+integerAdd = (Name "integerAdd", monotype (integer :-> integer :-> integer))
+
+integerSub :: (Name, Scheme)
+integerSub = (Name "integerSub", monotype (integer :-> integer :-> integer))
+
+integerMul :: (Name, Scheme)
+integerMul = (Name "integerMul", monotype (integer :-> integer :-> integer))
+
+integerLt :: (Name, Scheme)
+integerLt = (Name "integerLt", monotype (integer :-> integer :-> boolTy))
+
+integerEq :: (Name, Scheme)
+integerEq = (Name "integerEq", monotype (integer :-> integer :-> boolTy))
+
+-- Int class: overloaded coercion from integer literals
+-- instance integer : Int { fromInteger = identity }
+-- instance word : Int    { fromInteger = wordFromInteger }
+
+intClassName :: Name
+intClassName = Name "Int"
+
+intVar :: Tyvar
+intVar = aVar
+
+intPred :: Pred
+intPred = InCls intClassName (TyVar intVar) []
+
+-- | Scheme for fromInteger: forall a. (a:Int) => integer -> a
+fromIntegerScheme :: Scheme
+fromIntegerScheme = Forall [intVar] ([intPred] :=> (integer :-> TyVar intVar))
+
+fromIntegerEntry :: (Name, Scheme)
+fromIntegerEntry = (QualName intClassName "fromInteger", fromIntegerScheme)
+
+-- | Integer primitive function names.
+-- Single source of truth — used by MastEval (builtinPureFuns) and
+-- Specialise (comptimeBuiltins) to avoid drift between the two.
+-- Extend this list when adding new integer primitives.
+integerPrimNames :: [Name]
+integerPrimNames =
+  [ Name "wordToInteger",
+    Name "wordFromInteger",
+    Name "integerAdd",
+    Name "integerSub",
+    Name "integerMul",
+    Name "integerLt",
+    Name "integerEq",
+    QualName intClassName "fromInteger"
+  ]
 
 stack :: Ty -> Ty
 stack t = TyCon "stack" [t]
@@ -184,18 +248,21 @@ tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 
 -- definition of yul primops
 
+-- Builtins as of Osaka
 yulPrimOps :: [(Name, Scheme)]
 yulPrimOps =
   [ (Name "stop", monotype unit),
     (Name "add", monotype (word :-> word :-> word)),
-    (Name "sub", monotype (word :-> word :-> word)),
     (Name "mul", monotype (word :-> word :-> word)),
+    (Name "sub", monotype (word :-> word :-> word)),
     (Name "div", monotype (word :-> word :-> word)),
     (Name "sdiv", monotype (word :-> word :-> word)),
     (Name "mod", monotype (word :-> word :-> word)),
     (Name "smod", monotype (word :-> word :-> word)),
+    (Name "addmod", monotype (word :-> word :-> word :-> word)),
+    (Name "mulmod", monotype (word :-> word :-> word :-> word)),
     (Name "exp", monotype (word :-> word :-> word)),
-    (Name "not", monotype (word :-> word)),
+    (Name "signextend", monotype (word :-> word :-> word)),
     (Name "lt", monotype (word :-> word :-> word)),
     (Name "gt", monotype (word :-> word :-> word)),
     (Name "slt", monotype (word :-> word :-> word)),
@@ -205,15 +272,40 @@ yulPrimOps =
     (Name "and", monotype (word :-> word :-> word)),
     (Name "or", monotype (word :-> word :-> word)),
     (Name "xor", monotype (word :-> word :-> word)),
+    (Name "not", monotype (word :-> word)),
     (Name "byte", monotype (word :-> word :-> word)),
     (Name "shl", monotype (word :-> word :-> word)),
     (Name "shr", monotype (word :-> word :-> word)),
     (Name "sar", monotype (word :-> word :-> word)),
-    (Name "addmod", monotype (word :-> word :-> word :-> word)),
-    (Name "mulmod", monotype (word :-> word :-> word :-> word)),
-    (Name "signextend", monotype (word :-> word :-> word)),
+    (Name "clz", monotype (word :-> word)),
     (Name "keccak256", monotype (word :-> word :-> word)),
-    (Name "pc", monotype word),
+    (Name "address", monotype word),
+    (Name "balance", monotype (word :-> word)),
+    (Name "origin", monotype word),
+    (Name "caller", monotype word),
+    (Name "callvalue", monotype word),
+    (Name "calldataload", monotype (word :-> word)),
+    (Name "calldatasize", monotype word),
+    (Name "calldatacopy", monotype (word :-> word :-> word :-> unit)),
+    (Name "codesize", monotype word),
+    (Name "codecopy", monotype (word :-> word :-> word :-> unit)),
+    (Name "gasprice", monotype word),
+    (Name "extcodesize", monotype (word :-> word)),
+    (Name "extcodecopy", monotype (word :-> word :-> word :-> word :-> unit)),
+    (Name "returndatasize", monotype word),
+    (Name "returndatacopy", monotype (word :-> word :-> word :-> unit)),
+    (Name "extcodehash", monotype (word :-> word)),
+    (Name "blockhash", monotype (word :-> word)),
+    (Name "coinbase", monotype word),
+    (Name "timestamp", monotype word),
+    (Name "number", monotype word),
+    (Name "prevrandao", monotype word),
+    (Name "gaslimit", monotype word),
+    (Name "chainid", monotype word),
+    (Name "selfbalance", monotype word),
+    (Name "basefee", monotype word),
+    (Name "blobhash", monotype (word :-> word)),
+    (Name "blobbasefee", monotype word),
     (Name "pop", monotype (word :-> unit)),
     (Name "mload", monotype (word :-> word)),
     (Name "mstore", monotype (word :-> word :-> unit)),
@@ -222,50 +314,31 @@ yulPrimOps =
     (Name "sstore", monotype (word :-> word :-> unit)),
     (Name "msize", monotype word),
     (Name "gas", monotype word),
-    (Name "address", monotype word),
-    (Name "balance", monotype (word :-> word)),
-    (Name "selfbalance", monotype word),
-    (Name "caller", monotype word),
-    (Name "callvalue", monotype word),
-    (Name "calldataload", monotype (word :-> word)),
-    (Name "calldatasize", monotype word),
-    (Name "calldatacopy", monotype (word :-> word :-> word :-> unit)),
-    (Name "codesize", monotype word),
-    (Name "codecopy", monotype (word :-> word :-> word :-> unit)),
-    (Name "datasize", monotype (string :-> word)),
-    (Name "dataoffset", monotype (string :-> word)),
-    (Name "extcodesize", monotype (word :-> word)),
-    (Name "extcodecopy", monotype (word :-> word :-> word :-> unit)),
-    (Name "returndatasize", monotype word),
-    (Name "returndatacopy", monotype (word :-> word :-> word :-> unit)),
+    (Name "tload", monotype (word :-> word)),
+    (Name "tstore", monotype (word :-> word :-> unit)),
     (Name "mcopy", monotype (word :-> word :-> word :-> unit)),
-    (Name "extcodehash", monotype (word :-> word)),
-    (Name "create", monotype (word :-> word :-> word :-> unit)),
-    (Name "create2", monotype (word :-> word :-> word :-> unit)),
-    (Name "call", monotype (funtype (words 7) word)),
-    (Name "callcode", monotype (funtype (words 7) word)),
-    (Name "delegatecall", monotype (funtype (words 6) word)),
-    (Name "staticcall", monotype (funtype (words 6) word)),
-    (Name "return", Forall [aVar] ([] :=> (word :-> word :-> (TyVar aVar)))),
-    (Name "revert", Forall [aVar] ([] :=> (word :-> word :-> (TyVar aVar)))),
-    (Name "selfdestruct", monotype (word :-> unit)),
-    (Name "invalid", monotype unit),
     (Name "log0", monotype (word :-> word :-> unit)),
     (Name "log1", monotype (word :-> word :-> word :-> unit)),
     (Name "log2", monotype (funtype (words 4) unit)),
     (Name "log3", monotype (funtype (words 5) unit)),
     (Name "log4", monotype (funtype (words 6) unit)),
-    (Name "chainid", monotype word),
-    (Name "basefee", monotype word),
-    (Name "origin", monotype word),
-    (Name "gasprice", monotype word),
-    (Name "blockhash", monotype (word :-> word)),
-    (Name "coinbase", monotype word),
-    (Name "timestamp", monotype word),
-    (Name "number", monotype word),
-    (Name "difficulty", monotype word),
-    (Name "prevrandao", monotype word),
-    (Name "gaslimit", monotype word),
+    (Name "create", monotype (word :-> word :-> word :-> word)),
+    (Name "call", monotype (funtype (words 7) word)),
+    (Name "callcode", monotype (funtype (words 7) word)),
+    (Name "return", Forall [aVar] ([] :=> (word :-> word :-> (TyVar aVar)))),
+    (Name "delegatecall", monotype (funtype (words 6) word)),
+    (Name "create2", monotype (word :-> word :-> word :-> word :-> word)),
+    (Name "staticcall", monotype (funtype (words 6) word)),
+    (Name "revert", Forall [aVar] ([] :=> (word :-> word :-> (TyVar aVar)))),
+    (Name "invalid", monotype unit),
+    (Name "selfdestruct", monotype (word :-> unit)),
+    -- Yul-specific
+    (Name "datasize", monotype (string :-> word)),
+    (Name "dataoffset", monotype (string :-> word)),
+    (Name "datacopy", monotype (word :-> word :-> word :-> unit)),
+    (Name "setimmutable", monotype (word :-> string :-> word :-> unit)),
+    (Name "loadimmutable", monotype (string :-> word)),
+    (Name "linkersymbol", monotype (string :-> word)),
     (Name "memoryguard", monotype (word :-> word))
   ]
 

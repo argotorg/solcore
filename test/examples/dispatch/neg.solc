@@ -1,8 +1,5 @@
-import std.dispatch.{*};
 import std.{*};
-pragma no-patterson-condition;
-pragma no-coverage-condition;
-pragma no-bounded-variable-condition;
+import std.dispatch.{*};
 
 forall a.
 class  a : Neg {
@@ -68,5 +65,5 @@ instance (a:Neg,b:Neg) => Pair(a,b):Neg {
 
 contract NegPair {
  constructor() {}
- function negPair() -> uint256 { return uint256(fromB(pairfst(Neg.neg(Pair(B.F,B.T))))); }
+ public function negPair() -> uint256 { return uint256(fromB(pairfst(Neg.neg(Pair(B.F,B.T))))); }
 }

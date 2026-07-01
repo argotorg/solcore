@@ -112,7 +112,7 @@ forall a b r . r:MemoryRef ((a,b)), a:MemoryType, b:MemoryType => instance XRef(
 }
 
 contract Ref219 {
-  function main() {
+  public function main() {
     let mp:M((word, word, word)) = M(96); // no alloc yet
     let p = (1,16,25);
     Ref.store(mp, p);

@@ -7,7 +7,7 @@ pragma no-bounded-variable-condition ;
 contract Counter {
   counter : word;
 
-  function main() -> word {
+  public function main() -> word {
     counter = std.addWord(counter, 1);
     return counter;
   }

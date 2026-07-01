@@ -1,4 +1,8 @@
-module Solcore.Desugarer.IndirectCall where
+module Solcore.Desugarer.IndirectCall
+  ( indirectCall,
+    indirectCallTopDecls,
+  )
+where
 
 import Control.Monad.State
 import Data.Map qualified as Map
@@ -10,13 +14,19 @@ import Solcore.Primitives.Primitives
 -- top level desugarer
 
 indirectCall :: CompUnit Name -> IO (CompUnit Name, [Name])
-indirectCall cunit =
+indirectCall (CompUnit imps topDecls) =
+  do
+    (topDecls', fnames) <- indirectCallTopDecls topDecls
+    pure (CompUnit imps topDecls', fnames)
+
+indirectCallTopDecls :: [TopDecl Name] -> IO ([TopDecl Name], [Name])
+indirectCallTopDecls topDecls =
   (,fnames)
     <$> runIndirectM
-      (desugar cunit)
+      (desugar topDecls)
       (Env (Map.keys primCtx ++ fnames))
   where
-    fnames = QualName invokableName "invoke" : collect cunit
+    fnames = QualName invokableName "invoke" : collect topDecls
 
 -- type class for desugar indirect calls
 
@@ -48,8 +58,8 @@ instance Desugar (Contract Name) where
     Contract n vs <$> desugar ds
 
 instance Desugar (FunDef Name) where
-  desugar (FunDef sig bdy) =
-    FunDef sig <$> desugar bdy
+  desugar (FunDef p sig bdy) =
+    FunDef p sig <$> desugar bdy
 
 instance Desugar (ContractDecl Name) where
   desugar (CFieldDecl fd) =
@@ -67,14 +77,14 @@ instance Desugar (Field Name) where
     Field n t <$> desugar me
 
 instance Desugar (Constructor Name) where
-  desugar (Constructor ps bd) =
-    Constructor ps <$> desugar bd
+  desugar (Constructor ps bd payable) =
+    (\bd' -> Constructor ps bd' payable) <$> desugar bd
 
 instance Desugar (Stmt Name) where
   desugar (lhs := rhs) =
     (:=) <$> desugar lhs <*> desugar rhs
-  desugar (Let n mt me) =
-    Let n mt <$> desugar me
+  desugar (Let c n mt me) =
+    Let c n mt <$> desugar me
   desugar (Block body) =
     Block <$> desugar body
   desugar (StmtExp e) =
@@ -86,6 +96,11 @@ instance Desugar (Stmt Name) where
   desugar e@(Asm _) = pure e
   desugar (If e blk1 blk2) =
     If <$> desugar e <*> desugar blk1 <*> desugar blk2
+  desugar (For initStmt cond postStmt body) =
+    For <$> desugar initStmt <*> desugar cond <*> desugar postStmt <*> desugar body
+  desugar Break = pure Break
+  desugar Continue = pure Continue
+  desugar EmptyStmt = pure EmptyStmt
 
 instance Desugar (Exp Name) where
   desugar (Con a es) =
@@ -183,7 +198,3 @@ runIndirectM m env = evalStateT m env
 
 isDirectCall :: Name -> IndirectM Bool
 isDirectCall n = (elem n) <$> gets funNames
-
-addFunctionName :: Name -> IndirectM ()
-addFunctionName n =
-  modify (\env -> env {funNames = n : funNames env})

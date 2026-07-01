@@ -31,22 +31,22 @@ instance Erase (Instance Id) where
 instance Erase (FunDef Id) where
   type EraseRes (FunDef Id) = FunDef Name
 
-  erase (FunDef sig bd) =
-    FunDef (erase sig) (erase bd)
+  erase (FunDef p sig bd) =
+    FunDef p (erase sig) (erase bd)
 
 instance Erase (Signature Id) where
   type EraseRes (Signature Id) = Signature Name
 
-  erase (Signature n ps t args rt) =
-    Signature n ps t (erase args) rt
+  erase (Signature n ps t args rc rt pay) =
+    Signature n ps t (erase args) rc rt pay
 
 instance Erase (Stmt Id) where
   type EraseRes (Stmt Id) = Stmt Name
 
   erase (e1 := e2) =
     (erase e1) := (erase e2)
-  erase (Let n mt me) =
-    Let (idName n) mt (erase me)
+  erase (Let c n mt me) =
+    Let c (idName n) mt (erase me)
   erase (Block body) =
     Block (erase body)
   erase (StmtExp e) =
@@ -59,6 +59,11 @@ instance Erase (Stmt Id) where
     Asm blk
   erase (If e blk1 blk2) =
     If (erase e) (erase blk1) (erase blk2)
+  erase (For initStmt cond postStmt body) =
+    For (erase initStmt) (erase cond) (erase postStmt) (erase body)
+  erase Break = Break
+  erase Continue = Continue
+  erase EmptyStmt = EmptyStmt
 
 instance Erase (Exp Id) where
   type EraseRes (Exp Id) = Exp Name
@@ -84,10 +89,10 @@ instance Erase (Exp Id) where
 instance Erase (Param Id) where
   type EraseRes (Param Id) = Param Name
 
-  erase (Typed n t) =
-    Typed (idName n) t
-  erase (Untyped n) =
-    Untyped (idName n)
+  erase (Typed c n t) =
+    Typed c (idName n) t
+  erase (Untyped c n) =
+    Untyped c (idName n)
 
 instance Erase (Pat Id) where
   type EraseRes (Pat Id) = Pat Name
@@ -100,3 +105,5 @@ instance Erase (Pat Id) where
     PWildcard
   erase (PLit l) =
     PLit l
+  erase (PExp e) =
+    PExp (erase e)

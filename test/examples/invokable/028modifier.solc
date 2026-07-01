@@ -6,7 +6,7 @@ function addW(x: Word, y:Word) -> Word {
    let res : Word;
    assembly {
        res := add(x, y)
-    };
+    }
     return res;
 }
 
@@ -80,7 +80,7 @@ function add1mod(f) {
 contract Modifier {
 
 
-function main() {
+public function main() {
   let barClos = add1mod(FooToken);
   return invoke(barClos, 39);
 }

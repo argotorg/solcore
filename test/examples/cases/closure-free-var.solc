@@ -1,7 +1,7 @@
 function addW (l: word, r: word) -> word {
      let rw : word;
      assembly {
-	 rw := add(l,r);
+	 rw := add(l,r)
      }
      return rw;
 }
@@ -15,11 +15,11 @@ instance word:Add {
 }
 
 contract Bug {
-    function main() -> word {
+    public function main() -> word {
         return makeClosure(42);
     }
 
-    function makeClosure(e : word) -> word {
+    public function makeClosure(e : word) -> word {
         let f = lam (x : word) {
             return Add.add(x,e);  // this crashes
 	    // return addW(e,x);  // this works

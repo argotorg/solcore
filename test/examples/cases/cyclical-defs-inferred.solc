@@ -6,7 +6,7 @@ function bar(x : word) -> word {
 }
 
 contract C {
-  function main() -> word {
+  public function main() -> word {
     return foo(1);
   }
 }

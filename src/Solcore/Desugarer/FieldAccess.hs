@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 
-module Solcore.Desugarer.FieldAccess (fieldDesugarer) where
+module Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls, fieldDesugarer) where
 
 import Control.Monad.Reader (MonadReader (..))
 -- import Data.Generics(Data, mkT, everywhere)
@@ -36,7 +36,10 @@ type NmExp = Exp Name
 type NmEquation = Equation Name
 
 fieldDesugarer :: CompUnit Name -> CompUnit Name
-fieldDesugarer (CompUnit ims topdecls) = CompUnit ims (extras <> topdecls')
+fieldDesugarer (CompUnit ims topdecls) = CompUnit ims (fieldDesugarTopDecls topdecls)
+
+fieldDesugarTopDecls :: [TopDecl Name] -> [TopDecl Name]
+fieldDesugarTopDecls topdecls = extras <> topdecls'
   where
     existingDataTypes =
       Set.fromList
@@ -133,7 +136,7 @@ transBody :: NmBody -> ContractEnv -> NmBody
 transBody body cenv = snd $ mapAccumL transStmt cenv body
 
 transStmt :: ContractEnv -> NmStmt -> (ContractEnv, NmStmt)
-transStmt cenv (Let x mty me) = (cenv {ceLocals = Set.insert x cenv.ceLocals}, Let x mty me')
+transStmt cenv (Let c x mty me) = (cenv {ceLocals = Set.insert x cenv.ceLocals}, Let c x mty me')
   where
     me' = flip transRhs cenv <$> me
 transStmt cenv stmt = (cenv, go stmt cenv)
@@ -144,9 +147,19 @@ transStmt cenv stmt = (cenv, go stmt cenv)
     go (Block body) = pure (Block (transBody body cenv))
     go (StmtExp exp) = StmtExp <$> transRhs exp
     go (If e b1 b2) = If <$> transRhs e <*> transBody b1 <*> transBody b2
+    go (For initStmt cond postStmt body) =
+      pure $ For initStmt' cond' postStmt' body'
+      where
+        (forEnv, initStmt') = transStmt cenv initStmt
+        cond' = transRhs cond forEnv
+        (_, postStmt') = transStmt forEnv postStmt
+        body' = transBody body forEnv
     go (Match es eqns) = traces [pretty (r cenv)] r where r = Match <$> mapM transRhs es <*> mapM transEquation eqns
     go Let {} = error "Impossible"
     go s@Asm {} = pure s
+    go Break = pure Break
+    go Continue = pure Continue
+    go EmptyStmt = pure EmptyStmt
 
 -- go s = pure s
 

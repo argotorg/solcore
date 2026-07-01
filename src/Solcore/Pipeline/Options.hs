@@ -1,6 +1,7 @@
 module Solcore.Pipeline.Options where
 
 import Options.Applicative
+import Solcore.Diagnostics
 
 data TypeClassResolutionMode
   = LegacyResolution
@@ -13,6 +14,8 @@ data Option
     optRootDir :: !FilePath,
     optImportDirs :: !String,
     optExternalLibs :: ![String],
+    optOutputDir :: !FilePath,
+    optEmitAbi :: !Bool,
     optNoSpec :: !Bool,
     optNoDesugarCalls :: !Bool,
     optNoMatchCompiler :: !Bool,
@@ -31,10 +34,22 @@ data Option
     optDebugSpec :: !Bool,
     optDebugHull :: !Bool,
     optTiming :: !Bool,
+    optDiagnosticColor :: !ColorChoice,
+    optDiagnosticUnicode :: !UnicodeChoice,
+    optDiagnosticWidth :: !Int,
+    optDiagnosticFormat :: !DiagnosticFormat,
+    optWarningPolicy :: !WarningPolicy,
     -- Partial evaluation options
     optPEFuel :: !(Maybe Int)
   }
   deriving (Eq, Show)
+
+data WarningPolicy
+  = WarningsDefault
+  | WarningsAlways
+  | WarningsNever
+  | WarningsDeny
+  deriving (Eq, Ord, Show)
 
 emptyOption :: FilePath -> Option
 emptyOption path =
@@ -43,6 +58,8 @@ emptyOption path =
       optRootDir = ".",
       optImportDirs = "std",
       optExternalLibs = [],
+      optOutputDir = ".",
+      optEmitAbi = False,
       optNoSpec = False,
       optNoDesugarCalls = False,
       optNoMatchCompiler = False,
@@ -61,6 +78,11 @@ emptyOption path =
       optDebugSpec = False,
       optDebugHull = False,
       optTiming = False,
+      optDiagnosticColor = diagnosticColor defaultDiagnosticRenderOptions,
+      optDiagnosticUnicode = diagnosticUnicode defaultDiagnosticRenderOptions,
+      optDiagnosticWidth = diagnosticWidth defaultDiagnosticRenderOptions,
+      optDiagnosticFormat = diagnosticFormat defaultDiagnosticRenderOptions,
+      optWarningPolicy = WarningsDefault,
       -- Partial evaluation options
       optPEFuel = Nothing
     }
@@ -106,6 +128,17 @@ options =
               <> metavar "NAME=DIR"
               <> help "Register an external library root for @NAME imports."
           )
+      )
+    <*> strOption
+      ( long "output-dir"
+          <> short 'o'
+          <> metavar "DIR"
+          <> value (optOutputDir stdOpt)
+          <> help "Directory for generated output files (default: current directory)"
+      )
+    <*> switch
+      ( long "abi"
+          <> help "Emit a JSON ABI file (<ContractName>.abi) for each contract"
       )
     <*> switch
       ( long "no-specialise"
@@ -183,6 +216,46 @@ options =
       ( long "timing"
           <> help "Measure time of some phases"
       )
+    <*> option
+      colorChoiceReader
+      ( long "color"
+          <> metavar "auto|always|never"
+          <> value (optDiagnosticColor stdOpt)
+          <> showDefaultWith showColorChoice
+          <> help "Configure diagnostic colors"
+      )
+    <*> option
+      unicodeChoiceReader
+      ( long "unicode"
+          <> metavar "auto|always|never"
+          <> value (optDiagnosticUnicode stdOpt)
+          <> showDefaultWith showUnicodeChoice
+          <> help "Configure diagnostic Unicode output"
+      )
+    <*> option
+      auto
+      ( long "diagnostic-width"
+          <> metavar "N"
+          <> value (optDiagnosticWidth stdOpt)
+          <> showDefault
+          <> help "Set diagnostic output width"
+      )
+    <*> option
+      diagnosticFormatReader
+      ( long "diagnostic-format"
+          <> metavar "human|short"
+          <> value (optDiagnosticFormat stdOpt)
+          <> showDefaultWith showDiagnosticFormat
+          <> help "Configure diagnostic output format"
+      )
+    <*> option
+      warningPolicyReader
+      ( long "warnings"
+          <> metavar "default|always|never|deny"
+          <> value (optWarningPolicy stdOpt)
+          <> showDefaultWith showWarningPolicy
+          <> help "Configure compiler warning diagnostics"
+      )
     -- Partial evaluation options
     <*> optional
       ( option
@@ -215,3 +288,68 @@ parseTypeClassResolutionMode =
 renderTypeClassResolutionMode :: TypeClassResolutionMode -> String
 renderTypeClassResolutionMode LegacyResolution = "legacy"
 renderTypeClassResolutionMode TabledResolution = "tabled"
+
+diagnosticRenderOptions :: Option -> DiagnosticRenderOptions
+diagnosticRenderOptions opts =
+  DiagnosticRenderOptions
+    { diagnosticColor = optDiagnosticColor opts,
+      diagnosticUnicode = optDiagnosticUnicode opts,
+      diagnosticWidth = optDiagnosticWidth opts,
+      diagnosticFormat = optDiagnosticFormat opts
+    }
+
+colorChoiceReader :: ReadM ColorChoice
+colorChoiceReader =
+  eitherReader $ \raw ->
+    case raw of
+      "auto" -> Right ColorAuto
+      "always" -> Right ColorAlways
+      "never" -> Right ColorNever
+      _ -> Left "expected one of: auto, always, never"
+
+unicodeChoiceReader :: ReadM UnicodeChoice
+unicodeChoiceReader =
+  eitherReader $ \raw ->
+    case raw of
+      "auto" -> Right UnicodeAuto
+      "always" -> Right UnicodeAlways
+      "never" -> Right UnicodeNever
+      _ -> Left "expected one of: auto, always, never"
+
+diagnosticFormatReader :: ReadM DiagnosticFormat
+diagnosticFormatReader =
+  eitherReader $ \raw ->
+    case raw of
+      "human" -> Right DiagnosticHuman
+      "short" -> Right DiagnosticShort
+      _ -> Left "expected one of: human, short"
+
+warningPolicyReader :: ReadM WarningPolicy
+warningPolicyReader =
+  eitherReader $ \raw ->
+    case raw of
+      "default" -> Right WarningsDefault
+      "always" -> Right WarningsAlways
+      "never" -> Right WarningsNever
+      "deny" -> Right WarningsDeny
+      _ -> Left "expected one of: default, always, never, deny"
+
+showColorChoice :: ColorChoice -> String
+showColorChoice ColorAuto = "auto"
+showColorChoice ColorAlways = "always"
+showColorChoice ColorNever = "never"
+
+showUnicodeChoice :: UnicodeChoice -> String
+showUnicodeChoice UnicodeAuto = "auto"
+showUnicodeChoice UnicodeAlways = "always"
+showUnicodeChoice UnicodeNever = "never"
+
+showDiagnosticFormat :: DiagnosticFormat -> String
+showDiagnosticFormat DiagnosticHuman = "human"
+showDiagnosticFormat DiagnosticShort = "short"
+
+showWarningPolicy :: WarningPolicy -> String
+showWarningPolicy WarningsDefault = "default"
+showWarningPolicy WarningsAlways = "always"
+showWarningPolicy WarningsNever = "never"
+showWarningPolicy WarningsDeny = "deny"

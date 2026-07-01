@@ -1,4 +1,5 @@
 import std.{*};
+import std.opcodes.{callvalue, calldatasize, calldataload, shr};
 
 export {
   ABIString,
@@ -14,7 +15,7 @@ export {
   Selector,
   SigString,
   do_exec,
-  revert_handler,
+  fallback_default_implementation,
   selector_matches,
   sigStr
 };
@@ -27,7 +28,7 @@ pragma no-bounded-variable-condition ;
 
 // A contract contains a tuple of methods and a single fallback
 // TODO: implement receive()
-data Contract(methods, fallback) = Contract(methods,fallback);
+data Contract(methods, fb) = Contract(methods,fb);
 
 // A method contains an implementation (fn) as well as it's name and type signature
 data Method(name, payability, args, rets, fn) = Method(Proxy(name), Proxy(payability), Proxy(args), Proxy(rets), fn);
@@ -82,11 +83,8 @@ forall name payability args rets fn
 => instance Method(name,payability,args,rets,fn):Selector {
     function compute(prx : Proxy(Method(name,payability,args,rets,fn))) -> bytes4 {
         // let hash : word = keccakLit(sigStr(prx));
-	let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
-	let res : word;
-        assembly { res := shr(224, hash) }
- 	
-        return bytes4(res);
+        let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
+        return bytes4(shr(224, hash));
     }
 }
 
@@ -94,64 +92,72 @@ forall name payability args rets fn
 
 // Describes how to execute a given method / fallback
 forall ty . class ty:ExecMethod {
-  function exec(x: ty);
+  function exec(x: ty) -> ();
 }
 
-// If fn matches the provided args/ret types, then we can execute any method
-forall name payability args rets fn
+// If fn matches the provided args/ret types, then we can execute any non-payable method
+forall name args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
   , rets:ABIAttribs
   , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
   , rets:ABIEncode
-  , payability:MethodLevelCallvalueCheck
-=> instance Method(name,payability,args,rets,fn):ExecMethod {
-  function exec(m : Method(name,payability,args,rets,fn)) -> () {
+=> instance Method(name,NonPayable,args,rets,fn):ExecMethod {
+  function exec(m : Method(name,NonPayable,args,rets,fn)) -> () {
     match m {
       | Method(pnm,ppayability,pargs,prets,fn) =>
-        do_exec(ppayability, pargs, prets, fn);
+        // non-payable methods must reject any callvalue before running
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(NonPayable));
+        do_exec(pargs, prets, fn);
     }
   }
 }
 
-// If fn matches the provided args/ret types, then we can execute any fallback
-forall payability args rets fn
+// If fn matches the provided args/ret types, then we can execute any payable method
+// payable methods skip the callvalue check entirely
+forall name args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
   , rets:ABIAttribs
   , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
   , rets:ABIEncode
+=> instance Method(name,Payable,args,rets,fn):ExecMethod {
+  function exec(m : Method(name,Payable,args,rets,fn)) -> () {
+    match m {
+      | Method(pnm,ppayability,pargs,prets,fn) =>
+        do_exec(pargs, prets, fn);
+    }
+  }
+}
+
+// Fallbacks have no ABI-decoded inputs or outputs, so the instance is
+// specialised to args = rets = () and bypasses the calldata length check
+// and ABI decode/encode entirely.
+forall payability fn
+  . fn:invokable((),())
   , payability:MethodLevelCallvalueCheck
-=> instance Fallback(payability,args,rets,fn):ExecMethod {
-  function exec(fb : Fallback(payability,args,rets,fn)) -> () {
+=> instance Fallback(payability,(),(),fn):ExecMethod {
+  function exec(fb : Fallback(payability,(),(),fn)) -> () {
     match fb {
       | Fallback(ppayability, pargs, prets, fn) =>
-        do_exec(ppayability, pargs, prets, fn);
+        MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(payability));
+        fn(());
+        assembly {
+          stop()
+        }
     }
   }
 }
 
-forall payability args rets fn
+forall args rets fn
   . fn:invokable(args,rets)
   , args:ABIAttribs
   , rets:ABIAttribs
   , ABIDecoder(args,CalldataWordReader):ABIDecode(args)
   , rets:ABIEncode
-  , payability:MethodLevelCallvalueCheck
-=> function do_exec(ppayability : Proxy(payability), pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
-    // check callvalue
-    MethodLevelCallvalueCheck.checkCallvalue(Proxy : Proxy(payability));
-
+=> function do_exec(pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
     // check we have enough calldata for the head of args
-    let hdsz = ABIAttribs.headSize(pargs);
-    let cdsz;
-    assembly {
-      cdsz := calldatasize()
-    }
-    if ((cdsz - 4) < hdsz) {
-      let ABIInputTruncated = Error(0x9d11c942);
-      revertWithError(ABIInputTruncated);
-    }
+    require(calldatasize() >= (ABIAttribs.headSize(pargs) + 4), Error(0x08638556)); // ABIInputTruncated()
 
     // TODO: calldatasize checks for dynamic types
 
@@ -172,11 +178,10 @@ forall payability args rets fn
     // the approach above does not work for dynamically sized types...
     // ...instead we take the size of memory allocated by the encoding
     let start : word = Typedef.rep(ptr);
-    let encStart : word = Typedef.rep(ptr); // cannot be called start - see #252
     let end : word = get_free_memory();
-    let retSz : word = Sub.sub(end, encStart);
+    let retSz : word = end - start;
     assembly {
-        return(encStart, retSz)
+        return(start, retSz)
     }
 }
 
@@ -200,6 +205,11 @@ forall name payability args rets fn
   }
 }
 
+// Base case: a contract with no methods has nothing to dispatch to
+instance ():RunDispatch {
+  function go(methods : ()) -> () { }
+}
+
 // Recursive instance
 forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispatch {
   function go(methods : (n,m)) -> () {
@@ -217,15 +227,8 @@ forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispat
 // Given evidence of a type with a known selector, we can check if it matches the selector in the first four bytes of calldata
 forall ty . ty:Selector => function selector_matches(prx : Proxy(ty)) -> bool {
   let candidate = Typedef.rep(Selector.compute(prx));
-  let res : word;
-  assembly {
-    let sel := shr(224, calldataload(0));
-    res := eq(sel, candidate);
-  }
-  match res {
-    | 0 => return false;
-    | _ => return true;
-  }
+  let selector = shr(224, calldataload(0));
+  return selector == candidate;
 }
 
 // --- Callvalue Checks ---
@@ -234,7 +237,7 @@ data Payable;
 data NonPayable;
 
 forall ty . class ty:MethodLevelCallvalueCheck {
-    function checkCallvalue(pty : Proxy(ty));
+    function checkCallvalue(pty : Proxy(ty)) -> ();
 }
 
 // no callvalue check for Payable methods
@@ -243,15 +246,9 @@ instance Payable:MethodLevelCallvalueCheck {
 }
 // NonPayable methods revert if passed value
 instance NonPayable:MethodLevelCallvalueCheck {
-   function checkCallvalue(prx : Proxy(NonPayable)) -> () {
-       let value: word;
-       assembly {
-         value := callvalue()
-       }
-       if (value > 0) {
-         let NonPayableReceivedValue = Error(0xb5988ea3);
-         revertWithError(NonPayableReceivedValue);
-       }
+    function checkCallvalue(prx : Proxy(NonPayable)) -> () {
+        let NonPayableReceivedValue = Error(0xb5988ea3);
+        require(callvalue() == 0, NonPayableReceivedValue);
    }
 }
 
@@ -263,38 +260,33 @@ forall c . class c:RunContract {
 }
 
 // If we have a dispatch for the contracts methods, and we know how to execute it's fallback, then we can define an entrypoint
-forall methods fallback . methods:RunDispatch, fallback:ExecMethod => instance Contract(methods, fallback):RunContract {
-  function exec(c : Contract(methods, fallback)) -> () {
+forall methods fb . methods:RunDispatch, fb:ExecMethod => instance Contract(methods, fb):RunContract {
+  function exec(c : Contract(methods, fb)) -> () {
     match c {
       | Contract(ms, fb) =>
 
         // TODO: if all methods are non payable then we should life the callvalue check here
 
-        // check that we have at least 4 bytes of calldata
-        let haveSelector : word;
-        assembly {
-          haveSelector := lt(3, calldatasize());
-        }
+        // set free memory pointer to the output of memoryguard
+        // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
+        // TODO: we will need to consider immutables here at some point...
+        assembly { mstore(0x40, memoryguard(128)) }
 
-        match haveSelector {
-          | 0 =>
-            let SelectorTooShort = Error(0x35ffc70e);
-            revertWithError(SelectorTooShort);
-          | _ =>
-            // set free memory pointer to the output of memoryguard
-            // https://docs.soliditylang.org/en/v0.8.30/yul.html#memoryguard
-            // TODO: we will need to consider immutables here at some point...
-            assembly { mstore(0x40, memoryguard(128)); }
-
+        // calldata shorter than 4 bytes can't contain a selector — skip
+        // dispatch and invoke the fallback directly (matches Solidity)
+        if (calldatasize() >= 4) {
             // dispatch to method based on selector
             RunDispatch.go(ms);
-            // run fallback if no methods matched
-            ExecMethod.exec(fb);
         }
+        // fallthrough to fallback -- this will be reached upon short input
+        //                            or no matching selector
+        ExecMethod.exec(fb);
     }
   }
 }
 
-function revert_handler() -> () {
-  assembly { revert(0,0) }
+// This is the default fallback used if none is defined.
+function fallback_default_implementation() -> () {
+  let NoSelectorMatchedWithoutFallback = Error(0x4924aef0);
+  revertWithError(NoSelectorMatchedWithoutFallback);
 }

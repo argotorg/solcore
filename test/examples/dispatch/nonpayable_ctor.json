@@ -1,0 +1,20 @@
+{
+  "NonPayableCtor": {
+    "bytecode": "",
+    "contract": "NonPayableCtor",
+    "tests": [
+      {
+        "input": {
+          "comment": "non-payable constructor rejects incoming value",
+          "calldata": "",
+          "value": "42"
+        },
+        "kind": "constructor",
+        "output": {
+          "returndata": "b5988ea3",
+          "status": "failure"
+        }
+      }
+    ]
+  }
+}

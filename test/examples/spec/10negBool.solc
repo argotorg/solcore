@@ -18,12 +18,12 @@ instance B : Neg {
 
 contract NegBool {
 
-  function fromB(b : B) -> word {
+  public function fromB(b : B) -> word {
     match b  {
     | B.F => return 0;
     | B.T => return 1;
     }
   }
 
-  function main() -> word { return  fromB(Neg.neg(B.F)); }
+  public function main() -> word { return  fromB(Neg.neg(B.F)); }
 }

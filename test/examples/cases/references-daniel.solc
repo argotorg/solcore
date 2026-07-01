@@ -70,7 +70,7 @@ instance word:MemoryType {
     function load(ptr:word) -> word {
         let r:word;
         assembly {
-            r := mload(ptr);
+            r := mload(ptr)
         }
         return r;
     }
@@ -229,7 +229,7 @@ function g() {
 }
 
 contract C {
-    function main() {
+    public function main() {
         f();
         g();
     }

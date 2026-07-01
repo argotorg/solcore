@@ -1,0 +1,42 @@
+import std.{*};
+import std.dispatch.{*};
+
+contract C {
+    constructor() {}
+
+    public function concat_b32_b32(a: bytes32, b: bytes32) -> memory(bytes) {
+        return concat(a, b);
+    }
+
+    public function concat_b32_bytes(a: bytes32, b: memory(bytes)) -> memory(bytes) {
+        return concat(a, b);
+    }
+
+    public function concat_bytes_bytes(a: memory(bytes), b: memory(bytes)) -> memory(bytes) {
+        return concat(a, b);
+    }
+
+    public function to_bytes_b32(a: bytes32) -> memory(bytes) {
+        return to_bytes(a);
+    }
+
+    public function to_bytes_bytes(a: memory(bytes)) -> memory(bytes) {
+        return to_bytes(a);
+    }
+
+    public function empty_area(n: uint256) -> memory(bytes) {
+        return to_bytes(empty(Typedef.rep(n)));
+    }
+
+    public function concat_b32_empty(a: bytes32, n: uint256) -> memory(bytes) {
+        return concat(a, empty(Typedef.rep(n)));
+    }
+
+    public function concat_nested_b32(a: bytes32, b: bytes32, c: bytes32) -> memory(bytes) {
+        return concat(a, concat(b, c));
+    }
+
+    public function concat_nested_empty(a: bytes32, n: uint256, c: bytes32) -> memory(bytes) {
+        return concat(a, concat(empty(Typedef.rep(n)), c));
+    }
+}

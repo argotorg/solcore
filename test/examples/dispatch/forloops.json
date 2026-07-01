@@ -1,0 +1,112 @@
+{
+  "forloops": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "break_sum()(uint256) -> 0+1+2+3+4 = 10",
+          "calldata": "c5d339a8",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000000a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "continue_sum()(uint256) -> 5+6+7+8+9 = 35",
+          "calldata": "e26b41bc",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000023",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "empty_init()(uint256) -> 3+4+5+6 = 18",
+          "calldata": "73c5c5b9",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000012",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "empty_post()(uint256) -> 0+1+2+3 = 6",
+          "calldata": "f2efd0fe",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000006",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "cond_side_effect()(uint256) -> bump() called until it returns 5 -> counter = 5",
+          "calldata": "f837ea36",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000005",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "post_side_effect()(uint256) -> bump() runs once per iteration, 3 iterations -> counter = 3",
+          "calldata": "846ca1fa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000003",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "double_loop()(uint256) -> sum_{i,j in 1..3} i*j = 36",
+          "calldata": "e819651a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000024",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getCounter()(uint256) -> last call was post_side_effect, so counter = 3",
+          "calldata": "8ada066e",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000003",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

@@ -1,7 +1,6 @@
 module Solcore.Frontend.TypeInference.TcSat where
 
 import Control.Monad
-import Control.Monad.Except
 import Data.Maybe
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (gen)
@@ -18,7 +17,7 @@ sat ps =
 
 satI :: Int -> [Pred] -> TcM [Subst]
 satI 0 p =
-  throwError $
+  tcmError $
     unwords
       [ "Could not deduce:",
         pretty p,
@@ -40,13 +39,13 @@ satOne n p = do
   -- rule Inst
   delta <- sats p
   when (null delta) $
-    throwError $
+    tcmError $
       unwords ["There is no instance to satisfy:", pretty p]
   foldM (step n p) [mempty] delta
 
 step :: Int -> Pred -> [Subst] -> (Subst, [Pred]) -> TcM [Subst]
 step 0 p _ _ =
-  throwError $
+  tcmError $
     unwords
       [ "Could not deduce:",
         pretty p,

@@ -18,7 +18,7 @@ forall r : Ref (a,b) . instance XRef(r, PairFst, a) : Ref(a) {}
 forall r : Ref (a,b) . instance XRef(r, PairSnd, b) : Ref(b) {}
 
 contract AssignNested {
-  function main() {
+  public function main() {
     let x : stack( (word, (word, word)) );
     let z : stack( (word, (word, word)) );
 

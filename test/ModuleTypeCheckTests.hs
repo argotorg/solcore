@@ -1,0 +1,138 @@
+module ModuleTypeCheckTests
+  ( moduleTypeCheckTests,
+  )
+where
+
+import Solcore.Diagnostics (CompilerError, compilerErrorText)
+import Solcore.Frontend.Syntax
+import Solcore.Frontend.TypeInference.TcModule
+import Solcore.Pipeline.Options (noDesugarOpt)
+import Test.Tasty
+import Test.Tasty.HUnit
+
+moduleTypeCheckTests :: TestTree
+moduleTypeCheckTests =
+  testGroup
+    "Module typecheck"
+    [ testCase "retagged generated declarations default to local" $ do
+        let generated = singleDecl (retagModuleInferenceDecls [] [funDecl "generated"])
+        assertEqual
+          "generated decl segment"
+          ModuleLocalDecl
+          (moduleInferenceDeclSegment generated),
+      testCase "retagged mixed mutual declarations prefer local segment" $ do
+        let inferenceDecls =
+              [ ModuleInferenceDecl ModuleImportedDecl (funDecl "imported"),
+                ModuleInferenceDecl ModuleLocalDecl (funDecl "local")
+              ]
+            retagged =
+              singleDecl $
+                retagModuleInferenceDecls
+                  inferenceDecls
+                  [TMutualDef [funDecl "imported", funDecl "local"]]
+        assertEqual
+          "mixed mutual segment"
+          ModuleLocalDecl
+          (moduleInferenceDeclSegment retagged),
+      testCase "resolved input derives initial inference segments" $ do
+        let inferenceDecls =
+              [ ModuleInferenceDecl ModuleQualifiedDecl (funDecl "qualified"),
+                ModuleInferenceDecl ModuleLocalDecl (funDecl "local"),
+                ModuleInferenceDecl ModuleImportedDecl (funDecl "imported")
+              ]
+        assertEqual
+          "initial inference segments"
+          (map moduleInferenceDeclSegment inferenceDecls)
+          (map moduleInferenceDeclSegment (moduleInitialInferenceDecls (resolvedModuleInput inferenceDecls))),
+      testCase "type inference trusts imported bodies while checking local bodies" $ do
+        result <-
+          typeInferModuleLocals
+            noDesugarOpt
+            (moduleInput [ModuleInferenceDecl ModuleImportedDecl badImportedFun, ModuleInferenceDecl ModuleLocalDecl usesImportedFun])
+        assertRight "imported body should be trusted" result,
+      testCase "type inference checks local bodies" $ do
+        result <-
+          typeInferModuleLocals
+            noDesugarOpt
+            (moduleInput [ModuleInferenceDecl ModuleLocalDecl badImportedFun])
+        assertLeft "local body should be checked" result
+    ]
+
+assertRight :: String -> Either CompilerError a -> Assertion
+assertRight _ (Right _) = pure ()
+assertRight label (Left err) =
+  assertFailure (label ++ ": unexpected failure:\n" ++ compilerErrorText err)
+
+assertLeft :: String -> Either CompilerError a -> Assertion
+assertLeft _ (Left _) = pure ()
+assertLeft label (Right _) =
+  assertFailure (label ++ ": expected failure")
+
+moduleInput :: [ModuleInferenceDecl] -> ModuleTypeCheckInput
+moduleInput inferenceDecls =
+  withPreparedModuleInferenceDecls (resolvedModuleInput inferenceDecls) inferenceDecls
+
+resolvedModuleInput :: [ModuleInferenceDecl] -> ModuleResolvedTypeCheckInput
+resolvedModuleInput inferenceDecls =
+  ModuleResolvedTypeCheckInput
+    { moduleResolvedInputImports = [],
+      moduleResolvedInputQualifiedDecls = declsInSegment ModuleQualifiedDecl inferenceDecls,
+      moduleResolvedInputLocalDecls = declsInSegment ModuleLocalDecl inferenceDecls,
+      moduleResolvedInputImportedDecls = declsInSegment ModuleImportedDecl inferenceDecls,
+      moduleResolvedInputTrustedInstanceHeads = [],
+      moduleResolvedInputPartialImportedTypes = []
+    }
+
+declsInSegment :: ModuleDeclSegment -> [ModuleInferenceDecl] -> [TopDecl Name]
+declsInSegment segment =
+  map moduleInferenceDeclTopDecl
+    . filter ((== segment) . moduleInferenceDeclSegment)
+
+singleDecl :: [ModuleInferenceDecl] -> ModuleInferenceDecl
+singleDecl [decl] = decl
+singleDecl inferenceDecls =
+  error ("expected exactly one module inference declaration, got " ++ show (length inferenceDecls))
+
+funDecl :: String -> TopDecl Name
+funDecl funName =
+  TFunDef
+    FunDef
+      { funIsPublic = False,
+        funSignature =
+          wordSignature funName,
+        funDefBody = [Return (Lit (IntLit 0))]
+      }
+
+wordTy :: Ty
+wordTy =
+  TyCon (Name "word") []
+
+badImportedFun :: TopDecl Name
+badImportedFun =
+  TFunDef
+    FunDef
+      { funIsPublic = False,
+        funSignature = wordSignature "badImported",
+        funDefBody = [Return (Var (Name "missing"))]
+      }
+
+usesImportedFun :: TopDecl Name
+usesImportedFun =
+  TFunDef
+    FunDef
+      { funIsPublic = False,
+        funSignature = wordSignature "usesImported",
+        funDefBody = [Return (Call Nothing (Name "badImported") [])]
+      }
+
+wordSignature :: String -> Signature Name
+wordSignature funName =
+  Signature
+    { sigVars = [],
+      sigContext = [],
+      sigName = Name funName,
+      sigParams = [],
+      sigRetComptime = False,
+      sigReturn = Just wordTy,
+      sigPayable = False
+    }

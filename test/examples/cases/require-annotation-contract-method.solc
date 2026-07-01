@@ -1,10 +1,10 @@
 // Error: contract method missing return type annotation
 contract Doubler {
-  function double(x : word) {
+  public function double(x : word) {
     return x;
   }
 
-  function main() -> word {
+  public function main() -> word {
     return double(21);
   }
 }

@@ -38,7 +38,7 @@ instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
   function lookup(xi : (storage(mapping(i,a)), i)) -> a {
   /*
     match(xi) {
-      | (x, i) => return StorageType.sload(hash2(Typedef.rep(x), Typedef.rep(i)));
+      | (x, i) => return StorageType.load(hash2(Typedef.rep(x), Typedef.rep(i)));
     }
   */
   return readStorage(LValueIdxAccess.lookup(xi));
@@ -47,7 +47,7 @@ instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
 
 forall a. a:StorageType =>
 function readStorage(x:storage(a)) -> a {
-  return StorageType.sload(Typedef.rep(x));
+  return StorageType.load(Typedef.rep(x));
 }
 
 forall r a. r: RValueIdxAccess(a) =>
@@ -61,7 +61,7 @@ function idx_lval(x:r) -> a {
 }
 
 contract TestTuva {
-  function main() -> word {
+  public function main() -> word {
     let balances : storage(mapping(address, word));
     let allowances : storage(mapping(address, mapping(address, word) ));
     let ref1 : storage(word) = idx_lval( (balances, address(17)) );

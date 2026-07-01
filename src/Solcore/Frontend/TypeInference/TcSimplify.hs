@@ -80,21 +80,30 @@ checkEntails qs rs =
   do
     ctable <- getClassEnv
     itable <- getInstEnv
+    noDesugarCalls <- getNoDesugarCalls
     info [">>! Trying to check the entailment of:", pretty rs, " from:", pretty qs]
     qs' <- nub <$> superPredsM ctable qs
+    let skip q = isInvoke q || (noDesugarCalls && isInt q)
     -- compiler generated instances can introduce invokable constraints
     -- not present in the called function. Since type inference can produce
     -- such constraints, we do not consider them here.
+    -- Int constraints are similarly skipped in noDesugarCalls mode because
+    -- Int.fromInteger calls from literal desugaring can't be resolved when
+    -- lambda closure conversion is skipped.
     info [">>! Simplified given constraints:", pretty qs']
-    filterM (unsolved ctable itable qs') rs
+    filterM (unsolved skip ctable itable qs') rs
   where
-    unsolved ctable itable qs' q = do
+    unsolved skip ctable itable qs' q = do
       entailed <- entailM ctable itable qs' q
-      pure (not (isHnf q) && not (isInvoke q) && not entailed)
+      pure (not (isHnf q) && not (skip q) && not entailed)
 
 isInvoke :: Pred -> Bool
 isInvoke (InCls n _ _) = n == (Name "invokable")
 isInvoke _ = False
+
+isInt :: Pred -> Bool
+isInt (InCls n _ _) = n == Name "Int"
+isInt _ = False
 
 simplify :: [Pred] -> [Pred] -> TcM [Pred]
 simplify qs ps =

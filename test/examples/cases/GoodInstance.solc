@@ -27,5 +27,5 @@ instance Bool : Enum {
 }
 
 contract GoodInstance {
-  function main() -> Word { return fromEnum(Bool.True);}
+  public function main() -> Word { return fromEnum(Bool.True);}
 }

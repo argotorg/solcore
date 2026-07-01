@@ -102,7 +102,7 @@ instance word:MemoryType {
     function load(ptr:word) -> word {
         let r:word;
         assembly {
-            r := mload(ptr);
+            r := mload(ptr)
         }
         return r;
     }
@@ -334,7 +334,7 @@ function readW(w:memory(W)) -> memory(S) {
 }
 
 contract C {
-    function main() {
+    public function main() {
         let s:memory(S) = makeS();
 	let w:memory(W) = makeW(s);
 	let s2:memory(S) = readW(w);

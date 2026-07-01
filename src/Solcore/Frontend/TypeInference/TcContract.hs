@@ -1,7 +1,6 @@
 module Solcore.Frontend.TypeInference.TcContract where
 
 import Control.Monad
-import Control.Monad.Except
 import Control.Monad.State
 import Data.Generics hiding (Constr)
 import Data.List
@@ -9,6 +8,7 @@ import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
 import Data.Set qualified as Set
+import Solcore.Diagnostics (CompilerError)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
@@ -22,33 +22,30 @@ import Solcore.Frontend.TypeInference.TcUnify
 import Solcore.Pipeline.Options
 import Solcore.Primitives.Primitives
 
-typeInfer ::
-  Option ->
-  CompUnit Name ->
-  IO (Either String (CompUnit Id, TcEnv))
-typeInfer opts =
-  typeInferWithTrustedInstanceHeadsAndPartialTypes opts [] [] []
+data TopDeclCheckMode
+  = CheckTopDeclBody
+  | TrustTopDeclBody
+  deriving (Eq, Show)
 
-typeInferWithTrustedInstanceHeads ::
-  Option ->
-  [InstanceHead] ->
-  CompUnit Name ->
-  IO (Either String (CompUnit Id, TcEnv))
-typeInferWithTrustedInstanceHeads opts trustedInstances =
-  typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances [] []
+data TopDeclCheck a
+  = TopDeclCheck
+  { topDeclCheckMode :: TopDeclCheckMode,
+    topDeclCheckDecl :: TopDecl a
+  }
+  deriving (Eq, Show)
 
-typeInferWithTrustedInstanceHeadsAndPartialTypes ::
+typeInferTopDeclChecks ::
   Option ->
+  [Import] ->
   [InstanceHead] ->
-  [TopDeclKey] ->
   [(Name, [Name])] ->
-  CompUnit Name ->
-  IO (Either String (CompUnit Id, TcEnv))
-typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances localDeclKeys partialTypes (CompUnit imps topLevelDecls) =
+  [TopDeclCheck Name] ->
+  IO (Either CompilerError (CompUnit Id, TcEnv))
+typeInferTopDeclChecks opts imps trustedInstances partialTypes topDeclChecks =
   do
     r <-
       runTcM
-        (tcCompUnit localDeclKeys (CompUnit imps topLevelDecls))
+        (tcTopDeclChecks topDeclChecks)
         ( (initTcEnv opts)
             { trustedInstanceHeads = trustedInstances,
               partialDataTypes = Set.fromList (map fst partialTypes),
@@ -61,11 +58,9 @@ typeInferWithTrustedInstanceHeadsAndPartialTypes opts trustedInstances localDecl
         )
     case r of
       Left err1 -> pure $ Left err1
-      Right (CompUnit _ ds, env) -> do
+      Right (ds, env) -> do
         let ds1 = (ds ++ generated env)
         pure (Right (CompUnit imps ds1, env))
-
--- type inference for a compilation unit
 
 -- Build a pure synonym table from parsed synonym declarations
 buildSynTable :: [TySym] -> SynTable
@@ -82,7 +77,7 @@ expandTyM st (TyCon n ts) = do
       | length params == length ts' ->
           expandTyM st (insts (zip params ts') body)
       | otherwise ->
-          throwError $
+          tcmError $
             unlines
               [ "Type synonym arity mismatch for '" ++ pretty n ++ "':",
                 "  expected " ++ show (length params) ++ " argument(s)",
@@ -92,8 +87,8 @@ expandTyM st (TyCon n ts) = do
 expandTyM st (t1 :-> t2) = (:->) <$> expandTyM st t1 <*> expandTyM st t2
 expandTyM _ t = pure t
 
-tcCompUnit :: [TopDeclKey] -> CompUnit Name -> TcM (CompUnit Id)
-tcCompUnit localDeclKeys (CompUnit imps cs) =
+tcTopDeclChecks :: [TopDeclCheck Name] -> TcM [TopDecl Id]
+tcTopDeclChecks topDeclChecks =
   do
     setupPragmas ps
     checkSynonymCycles syns
@@ -101,19 +96,30 @@ tcCompUnit localDeclKeys (CompUnit imps cs) =
     csExpanded <- everywhereM (mkM (expandTyM st)) cs
     mapM_ checkTopDecl (filter isClass csExpanded)
     mapM_ checkTopDecl (filter (not . isClass) csExpanded)
-    typedDecls <- mapM tcTopDeclWithVisibility csExpanded
-    pure (CompUnit imps typedDecls)
+    trustImportedDecls csExpanded
+    catMaybes <$> zipWithM tcTopDeclWithVisibility topDeclChecks csExpanded
   where
+    cs = map topDeclCheckDecl topDeclChecks
     ps = foldr step [] cs
     step (TPragmaDecl p) ac = p : ac
     step _ ac = ac
     isClass (TClassDef _) = True
     isClass _ = False
     syns = [s | TSym s <- cs]
-    localDeclKeySet = Set.fromList localDeclKeys
-    tcTopDeclWithVisibility d
-      | any (`Set.member` localDeclKeySet) (topDeclKeys d) = tcTopDecl' d
-      | otherwise = withPartialDataTypesDisabled (tcTopDecl' d)
+    trustImportedDecls expandedDecls =
+      mapM_
+        (withPartialDataTypesDisabled . trustImportedTopDecl)
+        [ expandedDecl
+          | (topDeclCheck, expandedDecl) <- zip topDeclChecks expandedDecls,
+            topDeclCheckMode topDeclCheck == TrustTopDeclBody
+        ]
+    tcTopDeclWithVisibility topDeclCheck expandedDecl =
+      case topDeclCheckMode topDeclCheck of
+        CheckTopDeclBody ->
+          Just <$> tcTopDecl' expandedDecl
+        TrustTopDeclBody ->
+          withPartialDataTypesDisabled $
+            pure Nothing
     tcTopDecl' d = timeItNamed (shortName d) $ do
       clearSubst
       tcTopDecl d
@@ -156,7 +162,7 @@ findCycle deps = go [] (map fst deps)
 
 recursiveSynonymError :: [Name] -> TcM a
 recursiveSynonymError cyclePath =
-  throwError $
+  tcmError $
     unlines
       [ "Recursive type synonym detected:",
         "  " ++ intercalate " -> " (map pretty cyclePath)
@@ -196,7 +202,7 @@ tcTopDecl (TFunDef fd) =
     fd' <- tcBindGroup [fd]
     case fd' of
       (fd1 : _) -> pure (TFunDef fd1)
-      _ -> throwError "Impossible! Empty binding group!"
+      _ -> tcmError "Impossible! Empty binding group!"
 tcTopDecl (TClassDef c) =
   TClassDef <$> tcClass c
 tcTopDecl (TInstDef is) =
@@ -219,6 +225,28 @@ tcTopDecl (TExportDecl d) =
 tcTopDecl (TPragmaDecl d) =
   pure (TPragmaDecl d)
 
+trustImportedTopDecl :: TopDecl Name -> TcM ()
+trustImportedTopDecl (TFunDef fd) =
+  extImportedFunDefs [fd]
+trustImportedTopDecl (TMutualDef ds) =
+  extImportedFunDefs [fd | TFunDef fd <- ds]
+trustImportedTopDecl _ =
+  pure ()
+
+extImportedFunDefs :: [FunDef Name] -> TcM ()
+extImportedFunDefs fds = do
+  nmschs <- extractSignatures fds
+  mapM_ (uncurry extEnv) nmschs
+  noDesugarCalls <- getNoDesugarCalls
+  unless noDesugarCalls $ do
+    typedFds <- mapM typedImportedFunDef fds
+    generateTopDeclsFor (zip typedFds (map snd nmschs))
+
+typedImportedFunDef :: FunDef Name -> TcM (FunDef Id)
+typedImportedFunDef (FunDef p sig _body) = do
+  params <- mapM tcParam (sigParams sig)
+  pure (FunDef p sig {sigParams = params} [])
+
 checkTopDecl :: TopDecl Name -> TcM ()
 checkTopDecl (TClassDef c) =
   checkClass c
@@ -228,7 +256,7 @@ checkTopDecl (TDataDef dt) =
   checkDataType dt
 checkTopDecl (TSym s) =
   checkSynonym s
-checkTopDecl (TFunDef (FunDef sig _)) =
+checkTopDecl (TFunDef (FunDef _ sig _)) =
   extSignature sig
 checkTopDecl (TExportDecl _) = pure ()
 checkTopDecl _ = pure ()
@@ -255,13 +283,23 @@ tcContract c@(Contract n vs cdecls) =
 -- initializing context for a contract
 
 initializeEnv :: Contract Name -> TcM ()
-initializeEnv (Contract _ _ cdecls) =
+initializeEnv (Contract _ _ cdecls) = do
   mapM_ checkDecl cdecls
+  -- Pre-register annotated function signatures in ctx so that forward references
+  -- (e.g. the dispatch-generated 'main') can resolve user-defined functions
+  -- before their bodies are type-checked.  Only annotated functions are
+  -- pre-registered; unannotated ones would produce a stale fresh type variable
+  -- that could interfere with later inference.
+  let fds =
+        [fd | CFunDecl fd@(FunDef _ sig _) <- cdecls, hasAnn sig]
+          ++ [fd | CMutualDecl ds <- cdecls, CFunDecl fd@(FunDef _ sig _) <- ds, hasAnn sig]
+  nmschs <- extractSignatures fds
+  mapM_ (uncurry extEnv) nmschs
 
 checkDecl :: ContractDecl Name -> TcM ()
 checkDecl (CDataDecl dt) =
   checkDataType dt
-checkDecl (CFunDecl (FunDef sig _)) =
+checkDecl (CFunDecl (FunDef _ sig _)) =
   extSignature sig
 checkDecl (CFieldDecl fd) =
   tcField fd >> return ()
@@ -278,7 +316,7 @@ tcDecl (CFunDecl d) =
     requireAnnotations d
     d' <- tcBindGroup [d]
     case d' of
-      [] -> throwError "Impossible! Empty function binding!"
+      [] -> tcmError "Impossible! Empty function binding!"
       (x : _) -> pure (CFunDecl x)
 tcDecl (CMutualDecl ds) =
   do
@@ -320,7 +358,7 @@ tcField d@(Field n t _) =
 tcClass :: Class Name -> TcM (Class Id)
 tcClass iclass@(Class bvs classCtx n vs v sigs) =
   do
-    let freeInSig (Signature sv _ _ ps mt) = bv (ps, mt) \\ sv
+    let freeInSig (Signature sv _ _ ps _ mt _) = bv (ps, mt) \\ sv
         bvs' = bv classCtx `union` bv (map TyVar (v : vs)) `union` concatMap freeInSig sigs
         ns = map sigName sigs
         qs = map (QualName n . pretty) ns
@@ -336,8 +374,8 @@ tcSig (sig, (Forall _ (_ :=> t))) =
   do
     t1 <- kindCheck t `wrapError` sig
     let (ts, r) = splitTy t1
-        param (Typed n _) t2 = Typed (Id n t2) t2
-        param (Untyped n) t2 = Typed (Id n t2) t2
+        param (Typed c n _) t2 = Typed c (Id n t2) t2
+        param (Untyped c n) t2 = Typed c (Id n t2) t2
         params' = zipWith param (sigParams sig) ts
     pure
       ( Signature
@@ -345,7 +383,9 @@ tcSig (sig, (Forall _ (_ :=> t))) =
           (sigContext sig)
           (sigName sig)
           params'
+          (sigRetComptime sig)
           (Just r)
+          (sigPayable sig)
       )
 
 -- type checking binding groups
@@ -353,7 +393,7 @@ tcSig (sig, (Forall _ (_ :=> t))) =
 extractSignatures :: [FunDef Name] -> TcM [(Name, Scheme)]
 extractSignatures fds = forM fds extractSig
   where
-    extractSig (FunDef sig _)
+    extractSig (FunDef _ sig _)
       | hasAnn sig = do
           scheme <- annotatedScheme [] [] sig
           return (sigName sig, scheme)
@@ -391,15 +431,15 @@ generateTopDeclsFor ps =
 -- type checking contract constructors
 
 tcConstructor :: Constructor Name -> TcM (Constructor Id)
-tcConstructor (Constructor ps bd) =
+tcConstructor (Constructor ps bd payable) =
   do
     -- building parameters for constructors
     ps' <- mapM tcParam ps
-    let f (Typed (Id n t) _) = pure (n, monotype t)
-        f (Untyped (Id n _)) = ((n,) . monotype) <$> freshTyVar
+    let f (Typed _ (Id n t) _) = pure (n, monotype t)
+        f (Untyped _ (Id n _)) = ((n,) . monotype) <$> freshTyVar
     lctx <- mapM f ps'
     (bd', _, _) <- withLocalCtx lctx (tcBody bd)
-    pure (Constructor ps' bd')
+    pure (Constructor ps' bd' payable)
 
 -- checking class definitions and adding them to environment
 
@@ -417,8 +457,9 @@ checkClass icls@(Class bvs ps n vs v sigs) =
     addClassInfo n (length vs) ms' ps p
     mapM_ (checkSignature p) sigs
   where
-    checkSignature p sig@(Signature methodVars _ _ params mt) =
+    checkSignature p sig@(Signature methodVars _ _ params _ mt _) =
       do
+        fullSignature sig `wrapError` icls
         _ <- mapM tyParam params
         _ <- maybe (pure unit) pure mt
         checkAllTypeVarsBound sig (bv sig) (bvs ++ methodVars)
@@ -441,7 +482,7 @@ addClassInfo n ar ms ps p =
       )
 
 addClassMethod :: Pred -> Signature Name -> TcM ()
-addClassMethod p@(InCls c _ _) sig@(Signature _ methodCtx f ps t) =
+addClassMethod p@(InCls c _ _) sig@(Signature _ methodCtx f ps _ t _) =
   do
     tps <- mapM tyParam ps
     t' <- maybe (pure unit) pure t
@@ -454,8 +495,8 @@ addClassMethod p@(InCls c _ _) sig@(Signature _ methodCtx f ps t) =
     unless (isNothing r) (duplicatedClassMethod f `wrapError` sig)
     extEnv qn sch
     pure ()
-addClassMethod p@(_ :~: _) (Signature _ _ n _ _) =
-  throwError $
+addClassMethod p@(_ :~: _) (Signature _ _ n _ _ _ _) =
+  tcmError $
     unlines
       [ "Invalid constraint:",
         pretty p,
@@ -466,9 +507,9 @@ addClassMethod p@(_ :~: _) (Signature _ _ n _ _) =
 -- error for class definitions
 
 signatureError :: Name -> Tyvar -> Signature Name -> Ty -> TcM ()
-signatureError n v (Signature _ methodCtx f _ _) t
+signatureError n v (Signature _ methodCtx f _ _ _ _) t
   | null methodCtx =
-      throwError $
+      tcmError $
         unlines
           [ "Impossible! Class context is empty in function:",
             pretty f,
@@ -476,7 +517,7 @@ signatureError n v (Signature _ methodCtx f _ _) t
             pretty n
           ]
   | v `notElem` fv t =
-      throwError $
+      tcmError $
         unlines
           [ "Main class type variable",
             pretty v,
@@ -491,12 +532,24 @@ signatureError n v (Signature _ methodCtx f _ _) t
 
 duplicatedClassDecl :: Name -> TcM ()
 duplicatedClassDecl n =
-  throwError $ "Duplicated class definition:" ++ pretty n
+  tcDiagnosticErrorAtName
+    "SC0227"
+    ("duplicate class definition: " ++ pretty n)
+    n
+    "duplicate class"
+    []
+    ["rename or remove the duplicate class definition"]
 
 duplicatedClassMethod :: Name -> TcM ()
 duplicatedClassMethod n =
-  throwError $ "Duplicated class method definition:" ++ pretty n
+  tcDiagnosticErrorAtName
+    "SC0228"
+    ("duplicate class method definition: " ++ pretty n)
+    n
+    "duplicate class method"
+    []
+    ["rename or remove the duplicate class method"]
 
 invalidPragmaDecl :: [Pragma] -> TcM ()
 invalidPragmaDecl ps =
-  throwError $ unlines $ ["Invalid pragma definitions:"] ++ map pretty ps
+  tcmError $ unlines $ ["Invalid pragma definitions:"] ++ map pretty ps

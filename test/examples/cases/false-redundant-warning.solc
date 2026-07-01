@@ -9,7 +9,7 @@ function test(x : Bool, y : Bool) -> Bool {
 }
 
 contract FalseRedundantWarning {
-  function main() -> Bool {
+  public function main() -> Bool {
     test(Bool.False, Bool.True)
   }
 }

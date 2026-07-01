@@ -29,7 +29,8 @@ hullTests =
           runHullTestExpectingFailure "07-err-undef-var.hull",
           runHullTestExpectingFailure "08-err-arity.hull",
           runHullTestExpectingFailure "09-err-sum-payload.hull",
-          runHullTestExpectingFailure "10-err-fst-non-pair.hull"
+          runHullTestExpectingFailure "10-err-fst-non-pair.hull",
+          runHullTestExpectingFailure "11-err-asm-sum-return.hull"
         ]
     ]
 

@@ -5,6 +5,7 @@
     "tests": [
       {
         "input": {
+          "comment": "constructor()",
           "calldata": "",
           "value": "0"
         },
@@ -12,6 +13,7 @@
       },
       {
         "input": {
+            "comment": "f()",
           "calldata": "26121ff0",
           "value": "0"
         },

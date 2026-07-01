@@ -2,6 +2,7 @@ module Solcore.Frontend.Syntax.Contract where
 
 import Data.Generics (Data, Typeable)
 import Data.List.NonEmpty
+import Solcore.Frontend.Syntax.Location
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty
@@ -33,6 +34,7 @@ data PragmaType
   = NoCoverageCondition
   | NoPattersonCondition
   | NoBoundVariableCondition
+  | NoGenericInstanceFor
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data PragmaStatus
@@ -96,6 +98,7 @@ data ItemSelector
 data ItemSelectorEntry
   = SelectAllItems
   | SelectItem Name
+  | SelectItemAs Name Name
   deriving (Eq, Ord, Show, Data, Typeable)
 
 -- definition of the contract structure
@@ -140,7 +143,8 @@ data TySym
 data Constructor a
   = Constructor
   { constrParams :: [Param a],
-    constrBody :: (Body a)
+    constrBody :: (Body a),
+    constrPayable :: Bool
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -163,7 +167,9 @@ data Signature a
     sigContext :: [Pred],
     sigName :: Name,
     sigParams :: [Param a],
-    sigReturn :: Maybe Ty
+    sigRetComptime :: Bool,
+    sigReturn :: Maybe Ty,
+    sigPayable :: Bool
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -217,7 +223,8 @@ data Field a
 
 data FunDef a
   = FunDef
-  { funSignature :: Signature a,
+  { funIsPublic :: Bool,
+    funSignature :: Signature a,
     funDefBody :: Body a
   }
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -229,3 +236,124 @@ data ContractDecl a
   | CMutualDecl [ContractDecl a] -- used only after SCC analysis
   | CConstrDecl (Constructor a)
   deriving (Eq, Ord, Show, Data, Typeable)
+
+instance (HasSourceSpan a) => HasSourceSpan (CompUnit a) where
+  sourceSpanOf (CompUnit imps ds) =
+    firstSourceSpan [sourceSpanOf imps, sourceSpanOf ds]
+
+instance (HasSourceSpan a) => HasSourceSpan (TopDecl a) where
+  sourceSpanOf (TContr contractDef) = sourceSpanOf contractDef
+  sourceSpanOf (TFunDef funDef) = sourceSpanOf funDef
+  sourceSpanOf (TClassDef cls) = sourceSpanOf cls
+  sourceSpanOf (TInstDef inst) = sourceSpanOf inst
+  sourceSpanOf (TMutualDef mutualDecls) = sourceSpanOf mutualDecls
+  sourceSpanOf (TDataDef dataTy) = sourceSpanOf dataTy
+  sourceSpanOf (TSym tySym) = sourceSpanOf tySym
+  sourceSpanOf (TExportDecl exportDecl) = sourceSpanOf exportDecl
+  sourceSpanOf (TPragmaDecl pragma) = sourceSpanOf pragma
+
+instance HasSourceSpan Pragma where
+  sourceSpanOf (Pragma _ status) = sourceSpanOf status
+
+instance HasSourceSpan PragmaStatus where
+  sourceSpanOf Enabled = Nothing
+  sourceSpanOf DisableAll = Nothing
+  sourceSpanOf (DisableFor names) = sourceSpanOf (toList names)
+
+instance HasSourceSpan ModulePath where
+  sourceSpanOf (RelativePath n) = sourceSpanOf n
+  sourceSpanOf (LibraryPath n) = sourceSpanOf n
+  sourceSpanOf (ExternalPath libName modName) =
+    combineMaybeSourceSpans (sourceSpanOf libName) (sourceSpanOf modName)
+
+instance HasSourceSpan Export where
+  sourceSpanOf (ExportList specs) = sourceSpanOf specs
+  sourceSpanOf (ExportModule modulePath) = sourceSpanOf modulePath
+  sourceSpanOf (ExportModuleAs modulePath aliasName) =
+    firstSourceSpan [sourceSpanOf modulePath, sourceSpanOf aliasName]
+  sourceSpanOf (ExportItemsFrom modulePath selector) =
+    firstSourceSpan [sourceSpanOf modulePath, sourceSpanOf selector]
+
+instance HasSourceSpan ExportSpec where
+  sourceSpanOf (ExportName n) = sourceSpanOf n
+  sourceSpanOf (ExportNameWithConstructors typeName selector) =
+    firstSourceSpan [sourceSpanOf typeName, sourceSpanOf selector]
+  sourceSpanOf ExportAll = Nothing
+  sourceSpanOf (ExportModuleAll modulePath) = sourceSpanOf modulePath
+
+instance HasSourceSpan ConstructorSelector where
+  sourceSpanOf (SelectConstructors names) = sourceSpanOf names
+  sourceSpanOf SelectAllConstructors = Nothing
+
+instance HasSourceSpan ExportSelector where
+  sourceSpanOf (SelectExportItems items) = sourceSpanOf items
+
+instance HasSourceSpan ExportSelectorEntry where
+  sourceSpanOf SelectExportAllItems = Nothing
+  sourceSpanOf (SelectExportItem n) = sourceSpanOf n
+  sourceSpanOf (SelectExportConstructors typeName selector) =
+    firstSourceSpan [sourceSpanOf typeName, sourceSpanOf selector]
+
+instance HasSourceSpan Import where
+  sourceSpanOf (ImportModule modulePath) = sourceSpanOf modulePath
+  sourceSpanOf (ImportAlias modulePath aliasName) =
+    firstSourceSpan [sourceSpanOf modulePath, sourceSpanOf aliasName]
+  sourceSpanOf (ImportOnly modulePath items) =
+    firstSourceSpan [sourceSpanOf modulePath, sourceSpanOf items]
+
+instance HasSourceSpan ItemSelector where
+  sourceSpanOf (SelectItems items hidden) =
+    firstSourceSpan [sourceSpanOf items, sourceSpanOf hidden]
+
+instance HasSourceSpan ItemSelectorEntry where
+  sourceSpanOf SelectAllItems = Nothing
+  sourceSpanOf (SelectItem n) = sourceSpanOf n
+  sourceSpanOf (SelectItemAs n aliasName) =
+    firstSourceSpan [sourceSpanOf n, sourceSpanOf aliasName]
+
+instance (HasSourceSpan a) => HasSourceSpan (Contract a) where
+  sourceSpanOf (Contract n tyVars contractDecls) =
+    firstSourceSpan [sourceSpanOf n, sourceSpanOf tyVars, sourceSpanOf contractDecls]
+
+instance HasSourceSpan DataTy where
+  sourceSpanOf (DataTy n tyVars constrs) =
+    firstSourceSpan [sourceSpanOf n, sourceSpanOf tyVars, sourceSpanOf constrs]
+
+instance HasSourceSpan Constr where
+  sourceSpanOf (Constr n tys) =
+    firstSourceSpan [sourceSpanOf n, sourceSpanOf tys]
+
+instance HasSourceSpan TySym where
+  sourceSpanOf (TySym n tyVars ty) =
+    firstSourceSpan [sourceSpanOf n, sourceSpanOf tyVars, sourceSpanOf ty]
+
+instance (HasSourceSpan a) => HasSourceSpan (Constructor a) where
+  sourceSpanOf (Constructor params body _) =
+    firstSourceSpan [sourceSpanOf params, sourceSpanOf body]
+
+instance (HasSourceSpan a) => HasSourceSpan (Class a) where
+  sourceSpanOf (Class boundVars context clsName params main signatures') =
+    firstSourceSpan [sourceSpanOf boundVars, sourceSpanOf context, sourceSpanOf clsName, sourceSpanOf params, sourceSpanOf main, sourceSpanOf signatures']
+
+instance (HasSourceSpan a) => HasSourceSpan (Signature a) where
+  sourceSpanOf (Signature vars context sig params _ returnTy _) =
+    firstSourceSpan [sourceSpanOf vars, sourceSpanOf context, sourceSpanOf sig, sourceSpanOf params, sourceSpanOf returnTy]
+
+instance (HasSourceSpan a) => HasSourceSpan (Instance a) where
+  sourceSpanOf (Instance _ vars context clsName params main funs) =
+    firstSourceSpan [sourceSpanOf vars, sourceSpanOf context, sourceSpanOf clsName, sourceSpanOf params, sourceSpanOf main, sourceSpanOf funs]
+
+instance (HasSourceSpan a) => HasSourceSpan (Field a) where
+  sourceSpanOf (Field n ty initExp) =
+    firstSourceSpan [sourceSpanOf n, sourceSpanOf ty, sourceSpanOf initExp]
+
+instance (HasSourceSpan a) => HasSourceSpan (FunDef a) where
+  sourceSpanOf (FunDef _ sig body) =
+    firstSourceSpan [sourceSpanOf sig, sourceSpanOf body]
+
+instance (HasSourceSpan a) => HasSourceSpan (ContractDecl a) where
+  sourceSpanOf (CDataDecl dataTy) = sourceSpanOf dataTy
+  sourceSpanOf (CFieldDecl field) = sourceSpanOf field
+  sourceSpanOf (CFunDecl funDef) = sourceSpanOf funDef
+  sourceSpanOf (CMutualDecl decls') = sourceSpanOf decls'
+  sourceSpanOf (CConstrDecl constructor) = sourceSpanOf constructor

@@ -33,7 +33,36 @@ comptime =
       runTestForFile "fib.solc" comptimeFolder,
       runTestForFile "string-lit-ops.solc" comptimeFolder,
       runTestForFile "string-lit-len.solc" comptimeFolder,
-      runTestForFile "string-lit-keccak.solc" comptimeFolder
+      runTestForFile "string-lit-keccak.solc" comptimeFolder,
+      runTestForFile "comptime_syntax.solc" comptimeFolder,
+      -- comptime verification: positive cases (must compile)
+      runTestForFile "ct_param_ok.solc" comptimeFolder,
+      runTestForFile "ct_chain_ok.solc" comptimeFolder,
+      runTestForFile "ct_let_ok.solc" comptimeFolder,
+      runTestForFile "ct_overloaded_ok.solc" comptimeFolder,
+      runTestForFile "fib.solc" comptimeFolder,
+      runTestForFile "fib2.solc" comptimeFolder,
+      runTestForFile "fib3.solc" comptimeFolder,
+      runTestForFile "ct_asm_mem.solc" comptimeFolder,
+      runTestForFile "integer-basic.solc" comptimeFolder,
+      runTestForFile "integer-fib.solc" comptimeFolder,
+      runTestForFile "integer-from-integer.solc" comptimeFolder,
+      runTestForFile "integer-lit.solc" comptimeFolder,
+      runTestForFile "integer-lit-safe.solc" comptimeFolder,
+      runTestForFile "integer-lit-class.solc" comptimeFolder,
+      -- integer literal coercion: unit tests for each case
+      runTestForFile "integer-lit-word-site.solc" comptimeFolder,
+      runTestForFile "integer-lit-poly.solc" comptimeFolder,
+      runTestForFile "integer-lit-cond.solc" comptimeFolder,
+      runTestForFile "integer-lit-pat.solc" comptimeFolder,
+      runTestForFile "match_labels.solc" comptimeFolder,
+      -- comptime verification: negative cases (must be rejected)
+      runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
+      runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,
+      runTestExpectingFailure "ct_runtime_arg.solc" comptimeFolder,
+      runTestExpectingFailure "ct_let_runtime.solc" comptimeFolder,
+      runTestExpectingFailure "ct_asm_ret.solc" comptimeFolder,
+      runTestExpectingFailure "ct_overloaded_bad.solc" comptimeFolder
     ]
   where
     comptimeFolder = "./test/examples/comptime"
@@ -62,6 +91,7 @@ spec =
       runTestForFile "043fstsnd.solc" specFolder,
       runTestForFile "047rgb.solc" specFolder,
       runTestForFile "048rgb2.solc" specFolder,
+      runTestForFile "049rgb3.solc" specFolder,
       runTestForFile "06comp.solc" specFolder,
       runTestForFile "09not.solc" specFolder,
       runTestForFile "10negBool.solc" specFolder,
@@ -82,9 +112,17 @@ dispatches =
   testGroup
     "Files for dispatch cases"
     [ runDispatchTest "basic.solc",
+      runDispatchTest "assembly.solc",
       runDispatchTest "stringid.solc",
+      runDispatchTest "storage.solc",
       runDispatchTest "miniERC20.solc",
-      runDispatchTest "Revert.solc"
+      runDispatchTest "Revert.solc",
+      runDispatchTest "hashes.solc",
+      runDispatchTest "empty.solc",
+      runDispatchTest "empty_no_constructor.solc",
+      runDispatchTest "generic_product.solc",
+      runDispatchTest "generic_sum.solc",
+      runDispatchTest "specialise_sum_of_product.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -95,6 +133,7 @@ imports =
     "Files for imports cases"
     [ runImportSuccess "booldef.solc",
       runImportSuccess "boolmain.solc",
+      runImportSuccess "unordered_imports_main.solc",
       runImportSuccess "boolalias.solc",
       runImportFailure "alias_hides_original_fail.solc",
       runImportFailure "boolalias_open_fail.solc",
@@ -110,6 +149,11 @@ imports =
       runImportSuccess "selective_unqualified_fun_ok.solc",
       runImportSuccess "transitive_dep_main_module.solc",
       runImportSuccess "transitive_dep_main_select.solc",
+      runImportSuccess "opaque_alias_main.solc",
+      runImportSuccess "opaque_select_alias_main.solc",
+      runImportFailure "opaque_alias_leak_fail.solc",
+      runImportFailure "opaque_alias_qualifier_leak_fail.solc",
+      runImportFailure "opaque_select_direct_leak_fail.solc",
       runImportFailure "module_name_shadow.solc",
       runImportSuccess "wrapper_shadow_success.solc",
       runImportSuccess "ns_cross_ok.solc",
@@ -153,6 +197,8 @@ imports =
       runImportSuccess "type_collision_main.solc",
       runImportSuccess "dot_context_expr.solc",
       runImportSuccess "reexport_items_main.solc",
+      runImportSuccess "reexport_select_main.solc",
+      runImportSuccess "reexport_select_alias_main.solc",
       runImportSuccess "reexport_module_main.solc",
       runImportSuccess "reexport_module_alias_main.solc",
       runImportSuccess "reexport_ctor_pattern.solc",
@@ -169,8 +215,12 @@ imports =
       runImportSuccess "external_lib_main.solc",
       runImportSuccess "external_lib_alias_main.solc",
       runImportSuccess "import_std_minimal.solc",
+      runImportSuccess "select_alias_item_ok.solc",
+      runImportSuccess "select_alias_multi_ok.solc",
+      runImportFailure "select_alias_tail_fail.solc",
       runImportFailure "external_lib_missing_fail.solc",
       runImportFailure "symlink_identity_fail.solc",
+      runImportFailure "private_bad_main.solc",
       runImportFailure "pragma_scope_main.solc",
       runImportSuccess "selfcycle.solc",
       runImportSuccess "cycle_main.solc",
@@ -198,17 +248,34 @@ pragmas =
   where
     pragmaFolder = "./test/examples/pragmas"
 
+opcodes :: TestTree
+opcodes =
+  testGroup
+    "Files for opcodes wrappers"
+    [ runTestForFile "all-shapes.solc" opcodesFolder
+    ]
+  where
+    opcodesFolder = "./test/examples/opcodes"
+
 cases :: TestTree
 cases =
   testGroup
     "Files for folder cases"
-    [ runTestForFile "Ackermann.solc" caseFolder,
+    [ runTestForFile "abigeneric.solc" caseFolder,
+      runTestForFile "Ackermann.solc" caseFolder,
       runTestForFile "Add1.solc" caseFolder,
       runTestExpectingFailure "add-moritz.solc" caseFolder,
       runTestForFile "another-subst.solc" caseFolder,
       runTestForFileWith noDesugarOpt "app.solc" caseFolder,
       runTestForFile "array.solc" caseFolder,
       runTestForFile "assembly.solc" caseFolder,
+      runTestExpectingFailure "asm-assign-no-return.solc" caseFolder,
+      runTestExpectingFailure "asm-assign-non-word.solc" caseFolder,
+      runTestExpectingFailure "asm-let-no-return.solc" caseFolder,
+      runTestForFile "asm-let-uninit.solc" caseFolder,
+      runTestForFile "asm-let-bool-lit.solc" caseFolder,
+      runTestForFile "asm-match-tuple-read.solc" caseFolder,
+      runTestForFile "asm-match-tuple-write-read.solc" caseFolder,
       runTestForFile "bal.solc" caseFolder,
       runTestExpectingFailure "BadInstance.solc" caseFolder,
       runTestForFile "BoolNot.solc" caseFolder,
@@ -227,6 +294,9 @@ cases =
       runTestForFile "compose0.solc" caseFolder,
       runTestForFileWith noDesugarOpt "compose_desugared.solc" caseFolder,
       runTestForFile "comparisons.solc" caseFolder,
+      runTestForFile "bitwise.solc" caseFolder,
+      runTestForFile "match-bitwise.solc" caseFolder,
+      runTestForFile "modulo.solc" caseFolder,
       runTestForFile "CondExp.solc" caseFolder,
       runTestForFile "constrained-instance.solc" caseFolder,
       runTestForFile "constrained-instance-context.solc" caseFolder,
@@ -239,6 +309,11 @@ cases =
       runTestExpectingFailure "default-inst.solc" caseFolder,
       runTestExpectingFailure "default-instance-missing.solc" caseFolder,
       runTestExpectingFailure "default-instance-weak.solc" caseFolder,
+      runTestForFile "derive-generic-sum.solc" caseFolder,
+      runTestForFile "derive-generic-excluded.solc" caseFolder,
+      runTestExpectingFailure "generic-manual-no-pragma.solc" caseFolder,
+      runTestExpectingFailure "generic-sum-no-pragma.solc" caseFolder,
+      runTestExpectingFailure "generic-product-no-pragma.solc" caseFolder,
       runTestForFile "dot-expression-constructor.solc" caseFolder,
       runTestForFile "dot-expression-call-arg-context.solc" caseFolder,
       runTestForFile "dot-expression-match-return.solc" caseFolder,
@@ -249,25 +324,46 @@ cases =
       runTestForFile "dot-pattern-constructor.solc" caseFolder,
       runTestForFile "dot-pattern-nested-constructor.solc" caseFolder,
       runTestForFile "dot-primitive-constructor.solc" caseFolder,
+      runTestForFile "same-name-constructor-qualifier.solc" caseFolder,
       runTestExpectingFailure "duplicated-contract-name.solc" caseFolder,
       runTestExpectingFailure "duplicated-type-name.solc" caseFolder,
       runTestForFile "DuplicateFun.solc" caseFolder,
       runTestExpectingFailure "DupFun.solc" caseFolder,
       runTestForFile "EitherModule.solc" caseFolder,
       runTestForFile "empty-asm.solc" caseFolder,
+      runTestForFile "encoder.solc" caseFolder,
+      runTestForFile "encoder1.solc" caseFolder,
       runTestExpectingFailure "Enum.solc" caseFolder,
       runTestExpectingFailure "Eq.solc" caseFolder,
       runTestForFile "EqQual.solc" caseFolder,
       runTestForFile "EvenOdd.solc" caseFolder,
+      runTestExpectingFailure "fallback-with-args.solc" caseFolder,
+      runTestExpectingFailure "fallback-with-return.solc" caseFolder,
+      runTestExpectingFailure "public-fallback.solc" caseFolder,
+      runTestExpectingFailure "public-constructor.solc" caseFolder,
+      runTestExpectingFailure "public-top-level-function.solc" caseFolder,
+      runTestExpectingFailure "toplevel-fallback.solc" caseFolder,
+      runTestExpectingFailure "toplevel-constructor.solc" caseFolder,
+      runTestExpectingFailure "payable-toplevel-function.solc" caseFolder,
       runTestExpectingFailure "Filter.solc" caseFolder,
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,
+      runTestForFile "for-body-shadow.solc" caseFolder,
+      runTestForFile "for-break.solc" caseFolder,
+      runTestForFile "for-continue.solc" caseFolder,
+      runTestForFile "for-empty-init.solc" caseFolder,
+      runTestForFile "for-inner-block.solc" caseFolder,
+      runTestForFile "for-init-shadow.solc" caseFolder,
+      runTestForFile "for-let.solc" caseFolder,
+      runTestExpectingFailure "for-let-post.solc" caseFolder,
+      runTestForFile "for-loop.solc" caseFolder,
+      runTestForFile "for-multi-init.solc" caseFolder,
+      runTestForFile "for-multi-post.solc" caseFolder,
       runTestExpectingFailure "GetSet.solc" caseFolder,
       runTestExpectingFailure "GoodInstance.solc" caseFolder,
       runTestForFile "Id.solc" caseFolder,
       runTestForFile "if-examples.solc" caseFolder,
       runTestExpectingFailure "index-example.solc" caseFolder,
-      runTestExpectingFailure "IndexLib.solc" caseFolder,
       runTestForFile "import-std.solc" caseFolder,
       runTestForFile "inc-closure.solc" caseFolder,
       runTestExpectingFailure "IncompleteInstDef.solc" caseFolder,
@@ -291,6 +387,14 @@ cases =
       runTestForFile "Memory2.solc" caseFolder,
       runTestExpectingFailure "missing-instance.solc" caseFolder,
       runTestForFile "modifier.solc" caseFolder,
+      runTestForFile "mptc-both-templates.solc" caseFolder,
+      runTestForFile "mptc-chain-phantom.solc" caseFolder,
+      runTestForFile "mptc-guard-extras-concrete.solc" caseFolder,
+      runTestForFile "mptc-multi-instance.solc" caseFolder,
+      runTestForFile "mptc-nop-mainty-free.solc" caseFolder,
+      runTestForFile "mptc-partial-instance.solc" caseFolder,
+      runTestForFile "mptc-template-a-only.solc" caseFolder,
+      runTestForFile "mptc-template-b-only.solc" caseFolder,
       runTestForFile "monomorphic-require.solc" caseFolder,
       runTestForFile "morefun.solc" caseFolder,
       runTestForFile "Mutuals.solc" caseFolder,
@@ -310,6 +414,7 @@ cases =
       runTestExpectingFailure "patterson-bug.solc" caseFolder,
       runTestForFile "Peano.solc" caseFolder,
       runTestForFile "PeanoMatch.solc" caseFolder,
+      runTestForFile "pair-bug.solc" caseFolder,
       runTestForFile "polymatch-error.solc" caseFolder,
       runTestForFile "polymorphic-require.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder,
@@ -353,6 +458,7 @@ cases =
       runTestExpectingFailure "synonym-long-cycle.solc" caseFolder,
       runTestExpectingFailure "synonym-arity-mismatch.solc" caseFolder,
       runTestExpectingFailure "signature.solc" caseFolder,
+      runTestExpectingFailure "spec-fail-ungrounded.solc" caseFolder,
       runTestExpectingFailure "SillyReturn.solc" caseFolder,
       runTestExpectingFailure "SimpleInvoke.solc" caseFolder,
       runTestExpectingFailure "string-const.solc" caseFolder,
@@ -376,13 +482,14 @@ cases =
       runTestForFile "unit.solc" caseFolder,
       runTestExpectingFailure "vartyped.solc" caseFolder,
       runTestExpectingFailure "weirdfoo.solc" caseFolder,
-      runTestExpectingFailure "withdraw.solc" caseFolder,
       runTestForFile "word-match-default.solc" caseFolder,
       runTestForFile "sum-match-default.solc" caseFolder,
       runTestForFile "word-match.solc" caseFolder,
       runTestExpectingFailure "xref.solc" caseFolder,
       runTestForFile "yul-function-typing.solc" caseFolder,
       runTestForFile "yul-return.solc" caseFolder,
+      runTestForFile "yul-multi-return.solc" caseFolder,
+      runTestExpectingFailure "yul-multi-return-arity-fail.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder,
       runTestForFile "single-lambda.solc" caseFolder,
@@ -434,7 +541,13 @@ cases =
         caseFolder,
       runTestForFile
         "multi-stmt-var-leaf.solc"
-        caseFolder
+        caseFolder,
+      runTestForFile "ltimp.solc" caseFolder,
+      runTestExpectingFailure "class-return-type-miss.solc" caseFolder,
+      runTestExpectingFailure "catenable-err.solc" caseFolder,
+      runTestForFile "pars.solc" caseFolder,
+      runTestForFile "bug-rep-name-capture.solc" caseFolder,
+      runTestForFile "bug-import-default-inst-shadow.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

@@ -9,5 +9,5 @@ forall a . default instance a:Fallback {
 }
 
 function main() -> word {
-  return Fallback.tag(0);
+  return Fallback.tag(0:word);
 }

@@ -3,6 +3,7 @@ module MatchCompilerTests where
 import Data.Generics (everything, mkQ)
 import Data.List (sort)
 import Data.Map qualified as Map
+import Data.Maybe (mapMaybe)
 import Solcore.Desugarer.DecisionTreeCompiler
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
@@ -133,11 +134,11 @@ assertLeft label act = do
       assertFailure (label ++ ": expected error but got tree: " ++ show tree)
 
 isNonExh :: Warning -> Bool
-isNonExh (NonExhaustive _ _) = True
+isNonExh (NonExhaustive _ _ _) = True
 isNonExh _ = False
 
 isRedundant :: Warning -> Bool
-isRedundant (RedundantClause _ _ _) = True
+isRedundant (RedundantClause _ _ _ _) = True
 isRedundant _ = False
 
 branchNames :: [(Id, [Pattern], DecisionTree)] -> [String]
@@ -145,8 +146,8 @@ branchNames bs = sort [nameOf (idName k) | (k, _, _) <- bs]
   where
     nameOf n = pretty n
 
-branchLits :: [(Literal, DecisionTree)] -> [Literal]
-branchLits = map fst
+branchLits :: [(AtomicPat, DecisionTree)] -> [Literal]
+branchLits = mapMaybe (either Just (const Nothing) . fst)
 
 tyBool :: Ty
 tyBool = TyCon (Name "Bool") []
@@ -298,7 +299,7 @@ test_redundantVarRow_emitsRedundantClause =
       case tree of
         Leaf _ _ -> pure ()
         _ -> assertFailure ("expected Leaf for all-var first row, got: " ++ show tree)
-      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      let redundantActs = [act | RedundantClause _ _ _ act <- warns]
       assertBool "True clause must be warned as unreachable" (actionB `elem` redundantActs)
       assertBool "False clause must be warned as unreachable" (actionC `elem` redundantActs)
       assertBool "first all-var row must not be warned as redundant" (actionA `notElem` redundantActs)
@@ -404,10 +405,10 @@ test_twoColumn_completeCover_noWarnings =
     assertInnerHasNoDefault t =
       assertFailure ("inner subtree should have no default branch, got: " ++ show t)
 
--- 8. Literal patterns with a variable catch-all → LitSwitch with Leaf default, no warnings
+-- 8. Literal patterns with a variable catch-all → AtomicSwitch with Leaf default, no warnings
 test_litPats_withVarDefault_noWarnings :: TestTree
 test_litPats_withVarDefault_noWarnings =
-  testCase "lit patterns with variable fallback -> LitSwitch with Leaf default, no warnings"
+  testCase "lit patterns with variable fallback -> AtomicSwitch with Leaf default, no warnings"
     $ assertRight
       "lit-default"
       ( runMatrix
@@ -419,7 +420,7 @@ test_litPats_withVarDefault_noWarnings =
       )
     $ \tree warns -> do
       case tree of
-        LitSwitch [0] branches (Just (Leaf _ defAct)) -> do
+        AtomicSwitch [0] branches (Just (Leaf _ defAct)) -> do
           assertBool
             "should have literal 0 branch"
             (IntLit 0 `elem` branchLits branches)
@@ -428,15 +429,15 @@ test_litPats_withVarDefault_noWarnings =
             (IntLit 1 `elem` branchLits branches)
           assertEqual "default leaf should be actionC" actionC defAct
           assertBool "should have no warnings:" (null warns)
-        LitSwitch _ _ Nothing ->
+        AtomicSwitch _ _ Nothing ->
           assertFailure "expected a default branch for the variable catch-all"
         _ ->
-          assertFailure ("expected LitSwitch, got: " ++ show tree)
+          assertFailure ("expected AtomicSwitch, got: " ++ show tree)
 
--- 9. Literal patterns without a catch-all → LitSwitch with Fail default + NonExhaustive
+-- 9. Literal patterns without a catch-all → AtomicSwitch with Fail default + NonExhaustive
 test_litPats_noDefault_nonExhaustive :: TestTree
 test_litPats_noDefault_nonExhaustive =
-  testCase "lit patterns without catch-all -> LitSwitch with Fail default and NonExhaustive"
+  testCase "lit patterns without catch-all -> AtomicSwitch with Fail default and NonExhaustive"
     $ assertRight
       "lit-no-default"
       ( runMatrix
@@ -448,7 +449,7 @@ test_litPats_noDefault_nonExhaustive =
       )
     $ \tree warns -> do
       case tree of
-        LitSwitch [0] branches (Just Fail) -> do
+        AtomicSwitch [0] branches (Just Fail) -> do
           assertBool
             "should have literal 0 branch"
             (IntLit 0 `elem` branchLits branches)
@@ -457,7 +458,7 @@ test_litPats_noDefault_nonExhaustive =
             (IntLit 1 `elem` branchLits branches)
           assertBool "should emit NonExhaustive warning" (any isNonExh warns)
         _ ->
-          assertFailure ("expected LitSwitch … (Just Fail), got: " ++ show tree)
+          assertFailure ("expected AtomicSwitch … (Just Fail), got: " ++ show tree)
 
 -- 10. Constructor absent from the TypeEnv → Left error
 test_unknownConstructor_isError :: TestTree
@@ -583,7 +584,7 @@ test_allVar_first_shadows_nonexhaustive_rest =
       case tree of
         Leaf _ _ -> pure ()
         _ -> assertFailure ("expected Leaf, got: " ++ show tree)
-      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      let redundantActs = [act | RedundantClause _ _ _ act <- warns]
       assertBool "True clause must be warned as unreachable" (actionB `elem` redundantActs)
       assertBool "first all-var row must not be warned" (actionA `notElem` redundantActs)
 
@@ -607,7 +608,7 @@ test_twoCol_noFalsePositive_partialOverlap =
           [actionA, actionB, actionC]
       )
     $ \_ warns -> do
-      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      let redundantActs = [act | RedundantClause _ _ _ act <- warns]
       assertBool "row 1 (w,True) must NOT be warned as redundant" (actionB `notElem` redundantActs)
       assertBool "row 2 (a,b) must NOT be warned as redundant" (actionC `notElem` redundantActs)
       assertBool "no RedundantClause warnings at all" (null redundantActs)
@@ -631,7 +632,7 @@ test_twoCol_genuinelyRedundant_thirdRow =
           [actionA, actionB, actionC]
       )
     $ \_ warns -> do
-      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      let redundantActs = [act | RedundantClause _ _ _ act <- warns]
       assertBool "row 2 (z,True) must be warned as redundant" (actionC `elem` redundantActs)
       assertBool "row 0 must not be warned" (actionA `notElem` redundantActs)
       assertBool "row 1 must not be warned" (actionB `notElem` redundantActs)
@@ -650,7 +651,7 @@ test_singleCol_duplicateRow_warned =
           [actionA, actionB, actionC]
       )
     $ \_ warns -> do
-      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      let redundantActs = [act | RedundantClause _ _ _ act <- warns]
       assertBool "second True must be warned as redundant" (actionB `elem` redundantActs)
       assertBool "False must not be warned as redundant" (actionC `notElem` redundantActs)
       assertBool "first True must not be warned" (actionA `notElem` redundantActs)
@@ -674,7 +675,7 @@ test_twoCol_con_nonExh_witness_has_both_columns =
           [actionA]
       )
     $ \_ warns -> do
-      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      let nonExhPats = [pats | NonExhaustive _ _ pats <- warns]
       case nonExhPats of
         [] -> assertFailure "expected a NonExhaustive warning"
         (pats : _) -> do
@@ -707,7 +708,7 @@ test_twoCol_lit_nonExh_witness_has_both_columns =
           [actionA]
       )
     $ \_ warns -> do
-      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      let nonExhPats = [pats | NonExhaustive _ _ pats <- warns]
       case nonExhPats of
         [] -> assertFailure "expected a NonExhaustive warning"
         (pats : _) ->
@@ -817,7 +818,7 @@ test_nonExh_polyEnv_missingNil_witness_is_Nil =
           [actionA]
       )
     $ \_ warns -> do
-      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      let nonExhPats = [pats | NonExhaustive _ _ pats <- warns]
       case nonExhPats of
         [] -> assertFailure "expected a NonExhaustive warning"
         (pats : _) -> case pats of
@@ -848,7 +849,7 @@ test_nonExh_polyEnv_missingCons_witness_is_Cons =
           [actionA]
       )
     $ \_ warns -> do
-      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      let nonExhPats = [pats | NonExhaustive _ _ pats <- warns]
       case nonExhPats of
         [] -> assertFailure "expected a NonExhaustive warning"
         (pats : _) -> case pats of

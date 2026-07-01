@@ -13,7 +13,7 @@ forall a . function read(x : Foo(a)) -> word {
 
 contract Bla {
 
-  function main () -> word {
+  public function main () -> word {
     return read(Foo(42));
   }
 }

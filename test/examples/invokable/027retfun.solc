@@ -31,13 +31,13 @@ instance Lam1Closure(a) : Invokable(a,Word) {
 
 
 contract InvokeCapLam {
-function foo() {
+public function foo() {
   let y = 42;
   let clos = Lam1Closure(y);
   return clos;
 }
 
-function main() {
+public function main() {
 
   return invoke(foo(), 17);
 }

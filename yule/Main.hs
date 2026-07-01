@@ -9,6 +9,7 @@ import Builtins (yulBuiltins)
 import Common.Pretty
 import Compress
 import Control.Monad (unless, when)
+import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Language.Hull.Parser (parseObject)
 import Language.Hull.TcEnv (emptyHullTcEnv)
 import Language.Hull.TcMonad (runHullTcM)
@@ -24,6 +25,7 @@ import Translate
 
 main :: IO ()
 main = do
+  setLocaleEncoding utf8
   options <- parseOptions
   -- print options
   let filename = Options.input options
@@ -58,7 +60,10 @@ main = do
 wrapInObject :: Bool -> YulObject -> Doc
 wrapInObject deploy yulo@(YulObject name code inners)
   | deploy = ppr (createDeployment yulo)
-  | otherwise = ppr (YulObject name (addRetCode code) inners)
+  | otherwise = ppr (YulObject name (addMemInit (addRetCode code)) inners)
+
+addMemInit :: YulCode -> YulCode
+addMemInit c = YulCode [[yulStmt| mstore(64, memoryguard(128)) |]] <> c
 
 addRetCode :: YulCode -> YulCode
 addRetCode c = c <> retCode

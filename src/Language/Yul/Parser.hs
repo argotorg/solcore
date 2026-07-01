@@ -2,7 +2,7 @@ module Language.Yul.Parser (parseYul, yulBlock, yulStmt, yulExp) where
 
 import Common.LightYear
 import Language.Yul
-import Solcore.Frontend.Syntax.Name (Name (..))
+import Solcore.Frontend.Syntax.Name (Name, pattern Name)
 import Text.Megaparsec.Char.Lexer qualified as L
 
 parseYul :: String -> Yul
@@ -34,7 +34,7 @@ pName :: Parser Name
 pName = Name <$> identifier
 
 integer :: Parser Integer
-integer = lexeme L.decimal
+integer = lexeme (try (string "0x" *> L.hexadecimal) <|> L.decimal)
 
 stringLiteral :: Parser String
 stringLiteral = char '"' *> manyTill L.charLiteral (char '"')

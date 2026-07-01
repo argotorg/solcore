@@ -1,0 +1,31 @@
+{
+  "PayableCtor": {
+    "bytecode": "",
+    "contract": "PayableCtor",
+    "tests": [
+      {
+        "input": {
+          "comment": "payable constructor accepts value",
+          "calldata": "",
+          "value": "42"
+        },
+        "kind": "constructor",
+        "output": {
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "balance()(uint256) -- value sent at deploy was retained",
+          "calldata": "b69ef8a8",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

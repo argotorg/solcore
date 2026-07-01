@@ -13,7 +13,7 @@
       },
       {
         "input": {
-          "comment": "getOwner()(uint256) - should return deployer address",
+          "comment": "getOwner()(address) - should return deployer address",
           "calldata": "893d20e8",
           "value": "0"
         },
@@ -25,8 +25,8 @@
       },
       {
         "input": {
-          "comment": "changeOwner(uint256) to 0xdead - should succeed from owner",
-          "calldata": "924c19f7000000000000000000000000000000000000000000000000000000000000dead",
+          "comment": "changeOwner(address) to 0xdead - should succeed from owner",
+          "calldata": "a6f9dae1000000000000000000000000000000000000000000000000000000000000dead",
           "value": "0"
         },
         "kind": "call",
@@ -37,7 +37,7 @@
       },
       {
         "input": {
-          "comment": "getOwner()(uint256) - should now return 0xdead",
+          "comment": "getOwner()(address) - should now return 0xdead",
           "calldata": "893d20e8",
           "value": "0"
         },
@@ -49,13 +49,13 @@
       },
       {
         "input": {
-          "comment": "changeOwner(uint256) - should fail, caller is no longer owner",
-          "calldata": "924c19f7000000000000000000000000000000000000000000000000000000000000beef",
+          "comment": "changeOwner(address) - should fail, caller is no longer owner",
+          "calldata": "a6f9dae1000000000000000000000000000000000000000000000000000000000000beef",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata": "00000000000000000000000000000000000000000000006e6f74206f776e6572",
+          "returndata": "12b0c500",
           "status": "failure"
         }
       }

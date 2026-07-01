@@ -3,7 +3,7 @@
 module Translate where
 
 import Builtins
-import Common.Pretty
+import Data.List (partition)
 import Data.Map qualified as Map
 import Data.String
 import GHC.Stack
@@ -37,9 +37,9 @@ genExpr (EInl (TSum _ r) e) = do
   (stmts, loc) <- genExpr e
   let loc' = loc `padToSize` sizeOf r
   pure (stmts, LocSeq [LocBool False, loc'])
-genExpr (EInr (TSum _ r) e) = do
+genExpr (EInr (TSum l r) e) = do
   (stmts, loc) <- genExpr e
-  let loc' = loc `paddedTo` r
+  let loc' = loc `padToSize` max (sizeOf l) (sizeOf r)
   pure (stmts, LocSeq [LocBool True, loc'])
 genExpr (EInl (TNamed _ t) e) = genExpr (EInl t e)
 genExpr (EInr (TNamed _ t) e) = genExpr (EInr t e)
@@ -150,9 +150,10 @@ genStmt (SAssembly stmts) = do
     substAsmExp _ e = e
 
     substAsmName env n = case Map.lookup (show n) env of
-      Just (LocStack i) -> stkLoc i
-      Just (LocNamed n') -> fromString n'
-      _ -> n
+      Just loc -> case flattenLhs loc of
+        [n'] -> n'
+        _ -> n -- multi-slot: cannot appear as a single assembly lvalue
+      Nothing -> n
 genStmt (SAlloc name typ) = allocVar name typ
 genStmt (SAssign name expr) = hullAssign name expr
 genStmt (SReturn expr) = do
@@ -165,7 +166,7 @@ genStmt (SReturn expr) = do
       let stmts' = copyLocs resultLoc loc
       pure (stmts ++ stmts' ++ [YLeave])
 genStmt (SBlock stmts) = withLocalEnv do genStmts stmts
-genStmt (SMatch _ e alts) = do
+genStmt (SMatch ty e alts) = do
   (scrutStmts, scrutineeLoc) <- genExpr e
   -- debug ["> SMatch: ", show e , ":", show sty, " @ " , show scrutineeLoc]
   matchStmts <- case normalizeLoc scrutineeLoc of
@@ -177,8 +178,30 @@ genStmt (SMatch _ e alts) = do
   where
     genSwitch :: Location -> Location -> [Alt] -> TM [YulStmt]
     genSwitch tag payload altBranches = do
-      (yulAlts, yulDefault) <- genNAlts payload altBranches
+      (yulAlts, yulDefault) <- genNAlts (stripTypeName ty) payload altBranches
       pure [YSwitch (loadLoc tag) yulAlts yulDefault]
+genStmt (SFor initStmt cond post body) = do
+  initStmts <- genForInit initStmt
+  (condStmts, condLoc) <- genExpr cond
+  -- condStmts must go both in the init stmt and post stmt, with special treatment for allocations
+  let condExp = loadLoc (normalizeLoc condLoc)
+  postStmts <- genStmt post
+  bodyStmts <- genStmt body
+  -- Yul for post block does not allow `let` declarations.
+  -- Hoist all allocs (from cond and post) into the init block so they are
+  -- in scope for the entire loop; only computations go in the post block.
+  let (condAllocs, condCompute) = partition isAlloc condStmts
+  let (postAllocs, postCompute) = partition isAlloc postStmts
+  pure [YFor (initStmts ++ condAllocs ++ postAllocs ++ condCompute) condExp (postCompute ++ condCompute) bodyStmts]
+  where
+    isAlloc (YLet _ Nothing) = True
+    isAlloc _ = False
+
+    -- For-loop init declarations must stay visible while translating
+    -- condition/post/body, so do not run SBlock init under withLocalEnv.
+    genForInit :: Stmt -> TM [YulStmt]
+    genForInit (SBlock stmts) = genStmts stmts
+    genForInit s = genStmt s
 genStmt (SFunction name args ret stmts) = withLocalEnv do
   -- debug ["> SFunction: ", name, " ", show args, " -> ", show ret]
   yulArgs <- placeArgs args
@@ -216,6 +239,8 @@ genStmt (SFunction name args ret stmts) = withLocalEnv do
       insertVar varName loc
       return (flattenLhs loc)
 genStmt (SExpr e) = fst <$> genExpr e
+genStmt SBreak = pure [YBreak]
+genStmt SContinue = pure [YContinue]
 genStmt (SRevert s) = pure (revertStmt s)
 genStmt e = error $ "genStmt unimplemented for: " ++ show e
 
@@ -230,47 +255,65 @@ scanStmt _ = pure ()
 genBody :: Body -> TM [YulStmt]
 genBody stmts = concat <$> mapM genStmt stmts
 
-genBinAlts :: Location -> [Alt] -> TM [(YLiteral, [YulStmt])]
-genBinAlts payload [Alt _ lname lbody, Alt _ rname rbody] = do
-  yulLStmts <- withName lname payload lbody
-  yulRStmts <- withName rname payload rbody
-  pure [(YulFalse, yulLStmts), (YulTrue, yulRStmts)]
+-- Regroup a payload location (flattened by normalizeLoc on the scrutinee) back
+-- into the tree shape of its type. Products must keep their nested LocPair
+-- structure so EFst/ESnd can navigate them; sums and leaves stay flat. This
+-- mirrors buildLoc's layout and drops any trailing padding slots. Without it, a
+-- constructor payload that is a product of arity >= 3 (e.g. Option(Triple))
+-- would be bound as a flat sequence and the inner product match would fail with
+-- "EFst: type mismatch".
+reshapeLoc :: Type -> Location -> Location
+reshapeLoc ty loc = fst (go ty (flattenLoc loc))
   where
-    withName name loc body = withLocalEnv do
-      insertVar name loc
-      genBody body
-genBinAlts _ alts =
-  error
-    ( "genAlts: invalid number of alternatives:\n"
-        ++ unlines (map (render . ppr) alts)
-    )
+    go :: Type -> [Location] -> (Location, [Location])
+    go (TNamed _ t) ss = go t ss
+    go TUnit ss = (LocSeq [], ss)
+    go (TPair a b) ss =
+      let (la, ss1) = go a ss
+          (lb, ss2) = go b ss1
+       in (LocSeq [la, lb], ss2)
+    go t ss =
+      -- words, bools and sums occupy sizeOf t consecutive flat slots
+      let (here, rest) = splitAt (sizeOf t) ss
+          loc' = case here of
+            [l] -> l
+            _ -> LocSeq here
+       in (loc', rest)
 
-genNAlts :: Location -> [Alt] -> TM (YulCases, YulDefault)
-genNAlts payload alts = do
-  results <- mapM (genAlt payload) alts
+-- Payload for each constructor given the scrutinee type, reshaped to its type.
+conPayload :: Type -> Con -> Location -> Location
+conPayload (TSum l _) CInl payload = reshapeLoc l payload
+conPayload (TSum _ r) CInr payload = reshapeLoc r payload
+conPayload (TSumN ts) (CInK k) payload = reshapeLoc (ts !! k) payload
+conPayload (TNamed _ t) con payload = conPayload t con payload
+conPayload _ _ payload = payload
+
+genNAlts :: Type -> Location -> [Alt] -> TM (YulCases, YulDefault)
+genNAlts ty payload alts = do
+  results <- mapM (genAlt ty payload) alts
   return (gather results)
   where
     gather = foldr combine ([], Nothing)
     combine (Left (tag, stmts)) (cases, def) = ((tag, stmts) : cases, def)
     combine (Right stmts) (cases, _) = (cases, Just stmts)
 
-genAlt :: Location -> Alt -> TM (Either YulCase YulBlock)
-genAlt payload (Alt (PCon con) name body) = withLocalEnv do
-  insertVar name payload
+genAlt :: Type -> Location -> Alt -> TM (Either YulCase YulBlock)
+genAlt ty payload (Alt (PCon con) name body) = withLocalEnv do
+  insertVar name (conPayload ty con payload)
   altStmts <- genBody body
   pure (Left (yulCon con, altStmts))
   where
     yulCon CInl = YulFalse
     yulCon CInr = YulTrue
     yulCon (CInK k) = YulNumber (fromIntegral k)
-genAlt _ (Alt (PIntLit k) _ body) = withLocalEnv do
+genAlt _ _ (Alt (PIntLit k) _ body) = withLocalEnv do
   altStmts <- genBody body
   pure (Left (YulNumber (fromIntegral k), altStmts))
-genAlt payload (Alt (PVar name) _ body) = do
+genAlt _ payload (Alt (PVar name) _ body) = do
   insertVar name payload
   altStmts <- genBody body
   pure (Right altStmts)
-genAlt _ alt = error ("genAlt unimplemented for: " ++ show alt)
+genAlt _ _ alt = error ("genAlt unimplemented for: " ++ show alt)
 
 allocVar :: Hull.Name -> Type -> TM [YulStmt]
 allocVar name TWord = do

@@ -47,7 +47,7 @@ forall prev . prev:ToWord => instance Succ(prev) : ToWord {
 
 forall self . class self:MemoryType {
     function load(ptr:word) -> self;
-    function store(ptr:word, value:self);
+    function store(ptr:word, value:self) -> ();
 }
 
 instance word:MemoryType {
@@ -105,7 +105,7 @@ forall size elem . size : ToWord, elem:MemoryType => instance memory(array(size,
 
 contract Array {
 
-    function main() -> word {
+    public function main() -> word {
         let arr : memory(array(Succ(Succ(Succ(Succ(Zero)))), word)) = memory(42);  // = (1,2,3,4,5,6,7,8,9,10);
         IndexAccessible.set(arr, 3, 33);
 

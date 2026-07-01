@@ -3,7 +3,7 @@ data Proxy(t) = Proxy;
 function addWord(l: word, r: word) -> word {
   let rw : word;
   assembly {
-      rw := add(l,r);
+      rw := add(l,r)
   }
   return rw;
 }
@@ -43,7 +43,7 @@ forall a b. a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
 
 
 contract Size {
-  function main() -> word {
+  public function main() -> word {
   return
     StorageSize.size(Proxy:Proxy( (word, (word, ())))); }
 }

@@ -1,5 +1,6 @@
 module Solcore.Desugarer.DecisionTreeCompiler where
 
+import Control.Applicative ((<|>))
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -12,6 +13,7 @@ import Data.Map qualified as Map
 import Data.Maybe
 import Data.Ord (comparing)
 import Language.Yul (YulExp (..))
+import Solcore.Diagnostics qualified as Diag
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.Id
@@ -30,7 +32,7 @@ matchCompiler cunit =
         if null nonExaustive
           then
             pure $ Right (unit', redundant)
-          else pure $ Left $ unlines $ map showWarning nonExaustive
+          else pure $ Left $ unlines $ map (Diag.encodeDiagnostic . warningAsErrorDiagnostic) nonExaustive
 
 -- type class for the defining the pattern matching compilation
 -- over the syntax tree
@@ -63,7 +65,7 @@ instance Compile (TopDecl Id) where
 instance Compile (Contract Id) where
   compile (Contract n vs ds) =
     Contract n vs
-      <$> local (\(te, ctx) -> (Map.union env' te, ctx ++ ["contract " ++ pretty n])) (compile ds)
+      <$> local (\(te, ctx, warnSpan) -> (Map.union env' te, ctx ++ ["contract " ++ pretty n], warnSpan)) (compile ds)
     where
       ds' = [d | (CDataDecl d) <- ds]
       env' = foldr addDataTyInfo Map.empty ds'
@@ -78,18 +80,18 @@ instance Compile (ContractDecl Id) where
   compile d = pure d
 
 instance Compile (Constructor Id) where
-  compile (Constructor ps bd) =
-    Constructor ps <$> compile bd
+  compile (Constructor ps bd payable) =
+    (\bd' -> Constructor ps bd' payable) <$> compile bd
 
 instance Compile (FunDef Id) where
-  compile (FunDef sig bd) =
-    FunDef sig <$> pushCtx ("function " ++ pretty (sigName sig)) (compile bd)
+  compile (FunDef p sig bd) =
+    FunDef p sig <$> pushCtx ("function " ++ pretty (sigName sig)) (compile bd)
 
 instance Compile (Stmt Id) where
   compile (e1 := e2) =
     (:=) <$> compile e1 <*> compile e2
-  compile (Let v mt me) =
-    Let v mt <$> compile me
+  compile (Let c v mt me) =
+    Let c v mt <$> compile me
   compile (Block body) =
     Block <$> compile body
   compile (StmtExp e) =
@@ -98,9 +100,17 @@ instance Compile (Stmt Id) where
     Return <$> compile e
   compile (If e1 bd1 bd2) =
     If <$> compile e1 <*> compile bd1 <*> compile bd2
+  compile (For initStmt cond postStmt body) =
+    For <$> compile initStmt <*> compile cond <*> compile postStmt <*> compile body
   compile s@(Asm _) =
     pure s
-  compile (Match es eqns) = do
+  compile Break =
+    pure Break
+  compile Continue =
+    pure Continue
+  compile EmptyStmt =
+    pure EmptyStmt
+  compile matchStmt@(Match es eqns) = withWarnSpan (sourceSpanOf matchStmt) $ do
     es' <- compile es
     eqns' <- mapM compileEqn eqns
     scrutTys <- mapM scrutineeType es'
@@ -127,7 +137,7 @@ prepareScrutinee :: Exp Id -> Ty -> CompilerM ([Stmt Id], Exp Id)
 prepareScrutinee e@(Var _) _ = pure ([], e)
 prepareScrutinee e ty = do
   v <- freshId ty
-  pure ([Let v (Just ty) (Just e)], Var v)
+  pure ([Let False v (Just ty) (Just e)], Var v)
 
 compileEqn :: Equation Id -> CompilerM (Equation Id)
 compileEqn (pats, stmts) = (pats,) <$> compile stmts
@@ -141,7 +151,9 @@ compileMatrix ::
 compileMatrix tys _ [] _ = do
   pats <- mapM freshPat tys
   ctx <- askWarnCtx
-  unless (null pats) $ tell [NonExhaustive ctx pats]
+  unless (null pats) $ do
+    warnSpan <- askWarnSpan
+    tell [NonExhaustive ctx warnSpan pats]
   pure Fail
 compileMatrix _tys occs (firstRow : _restRows) ((firstBinds, firstAct) : _restBacts)
   | all isVarPat firstRow = do
@@ -156,12 +168,12 @@ compileMatrix tys occs matrix bacts = do
     (testTy : restTys, testOcc : restOccs, _) -> do
       let firstCol = [p | (p : _) <- matrix']
           headCons = nub (mapMaybe patHeadCon firstCol)
-          headLits = nub (mapMaybe patHeadLit firstCol)
-      case (headCons, headLits) of
+          headAtomics = nub (mapMaybe patHeadAtomic firstCol)
+      case (headCons, headAtomics) of
         (c : cs, _) ->
           buildConSwitch testOcc restOccs testTy restTys matrix' bacts (c : cs)
-        ([], ls@(_ : _)) ->
-          buildLitSwitch testOcc restOccs testTy restTys matrix' bacts ls
+        ([], as@(_ : _)) ->
+          buildAtomicSwitch testOcc restOccs testTy restTys matrix' bacts as
         ([], []) ->
           -- All wildcards after reordering: strip column and continue
           compileMatrix restTys restOccs (defaultMatrix matrix') (defaultBoundActs testOcc matrix' bacts)
@@ -231,38 +243,40 @@ buildConSwitch testOcc restOccs _testTy restTys matrix bacts headCons = do
                       pure (PCon k fieldPats : restWit)
                     [] -> mapM freshPat restTys
               ctx <- askWarnCtx
-              tell [NonExhaustive ctx witPats]
+              warnSpan <- askWarnSpan
+              tell [NonExhaustive ctx warnSpan witPats]
               pure (Just Fail)
             else Just <$> compileMatrix restTys restOccs defMat defBacts
 
-buildLitSwitch ::
+buildAtomicSwitch ::
   Occurrence ->
   [Occurrence] ->
   Ty ->
   [Ty] ->
   PatternMatrix ->
   [BoundAction] ->
-  [Literal] ->
+  [AtomicPat] ->
   CompilerM DecisionTree
-buildLitSwitch testOcc restOccs testTy restTys matrix bacts headLits = do
-  branches <- mapM buildBranch headLits
+buildAtomicSwitch testOcc restOccs testTy restTys matrix bacts headAtomics = do
+  branches <- mapM buildBranch headAtomics
   let defMat = defaultMatrix matrix
       defBacts = defaultBoundActs testOcc matrix bacts
   mDefault <-
     if null defMat
       then do
-        litWit <- freshPat testTy
+        wit <- freshPat testTy
         restWit <- mapM freshPat restTys
         ctx <- askWarnCtx
-        tell [NonExhaustive ctx (litWit : restWit)]
+        warnSpan <- askWarnSpan
+        tell [NonExhaustive ctx warnSpan (wit : restWit)]
         pure (Just Fail)
       else Just <$> compileMatrix restTys restOccs defMat defBacts
-  pure (LitSwitch testOcc branches mDefault)
+  pure (AtomicSwitch testOcc branches mDefault)
   where
-    buildBranch lit = do
-      let specMat = specializeLit lit matrix
-          specBacts = litSpecializedBoundActs lit testOcc matrix bacts
-      (lit,) <$> compileMatrix restTys restOccs specMat specBacts
+    buildBranch apat = do
+      let specMat = specializeAtomic apat matrix
+          specBacts = atomicSpecializedBoundActs apat testOcc matrix bacts
+      (apat,) <$> compileMatrix restTys restOccs specMat specBacts
 
 instance Compile (Exp Id) where
   compile v@(Var _) =
@@ -317,9 +331,9 @@ treeToStmt occMap (Switch occ branches mDef) = do
       v <- freshPat ty
       pure [([v], body)]
   pure (Match [scrutinee] (eqns ++ defEqns))
-treeToStmt occMap (LitSwitch occ branches mDef) = do
+treeToStmt occMap (AtomicSwitch occ branches mDef) = do
   scrutinee <- occToExp occMap occ
-  eqns <- mapM (litBranchToEqn occMap) branches
+  eqns <- mapM (atomicBranchToEqn occMap) branches
   defEqns <- case mDef of
     Nothing -> pure []
     Just def -> do
@@ -363,10 +377,13 @@ conBranchToEqn occMap occ (k, srcPats, tree) = do
   body <- treeToBody occMap' tree
   pure ([PCon k srcPats], body)
 
-litBranchToEqn :: OccMap -> (Literal, DecisionTree) -> CompilerM (PatternRow, Action)
-litBranchToEqn occMap (lit, tree) = do
+atomicBranchToEqn :: OccMap -> (AtomicPat, DecisionTree) -> CompilerM (PatternRow, Action)
+atomicBranchToEqn occMap (Left lit, tree) = do
   body <- treeToBody occMap tree
   pure ([PLit lit], body)
+atomicBranchToEqn occMap (Right e, tree) = do
+  body <- treeToBody occMap tree
+  pure ([PExp e], body)
 
 -- definition of a monad
 
@@ -375,24 +392,31 @@ litBranchToEqn occMap (lit, tree) = do
 type WarnCtx = [String]
 
 type CompilerM a =
-  ReaderT (TypeEnv, WarnCtx) (ExceptT String (WriterT [Warning] (StateT Int IO))) a
+  ReaderT (TypeEnv, WarnCtx, Maybe Diag.SourceSpan) (ExceptT String (WriterT [Warning] (StateT Int IO))) a
 
 runCompilerM :: TypeEnv -> CompilerM a -> IO (Either String (a, [Warning]))
 runCompilerM env m =
   do
-    ((r, ws), _) <- runStateT (runWriterT (runExceptT (runReaderT m (env, [])))) 0
+    ((r, ws), _) <- runStateT (runWriterT (runExceptT (runReaderT m (env, [], Nothing)))) 0
     case r of
       Left err -> pure $ Left err
       Right t -> pure $ Right (t, ws)
 
 askTypeEnv :: CompilerM TypeEnv
-askTypeEnv = asks fst
+askTypeEnv = asks (\(typeEnv, _, _) -> typeEnv)
 
 askWarnCtx :: CompilerM WarnCtx
-askWarnCtx = asks snd
+askWarnCtx = asks (\(_, warnCtx, _) -> warnCtx)
+
+askWarnSpan :: CompilerM (Maybe Diag.SourceSpan)
+askWarnSpan = asks (\(_, _, warnSpan) -> warnSpan)
 
 pushCtx :: String -> CompilerM a -> CompilerM a
-pushCtx s = local (\(te, ctx) -> (te, ctx ++ [s]))
+pushCtx s = local (\(te, ctx, warnSpan) -> (te, ctx ++ [s], warnSpan))
+
+withWarnSpan :: Maybe Diag.SourceSpan -> CompilerM a -> CompilerM a
+withWarnSpan sourceSpan =
+  local (\(te, ctx, currentSpan) -> (te, ctx, sourceSpan <|> currentSpan))
 
 lookupConInfo :: Name -> CompilerM ConInfo
 lookupConInfo k = do
@@ -466,8 +490,13 @@ data DecisionTree
   = Leaf [(Id, Occurrence)] Action -- var-occ bindings to substitute before running action
   | Fail
   | Switch Occurrence [(Id, [Pattern], DecisionTree)] (Maybe DecisionTree)
-  | LitSwitch Occurrence [(Literal, DecisionTree)] (Maybe DecisionTree)
+  | AtomicSwitch Occurrence [(AtomicPat, DecisionTree)] (Maybe DecisionTree)
   deriving (Eq, Show)
+
+-- An atomic pattern is a compile-time value used as a match label.
+-- Left  = integer literal (already evaluated)
+-- Right = comptime expression (evaluated post-specialization by MastEval)
+type AtomicPat = Either Literal (Exp Id)
 
 -- data constructor information and environment
 
@@ -550,20 +579,22 @@ specRow k pats (p : rest) =
       | otherwise -> Nothing
     PVar _ -> Just (pats ++ rest)
     PLit _ -> Nothing
+    PExp _ -> Nothing
     _ -> error "PANIC! Found wildcard in specRow"
 
-specializeLit :: Literal -> PatternMatrix -> PatternMatrix
-specializeLit lit = mapMaybe specLitRow
+specializeAtomic :: AtomicPat -> PatternMatrix -> PatternMatrix
+specializeAtomic apat = mapMaybe specAtomicRow
   where
-    specLitRow [] = Nothing
-    specLitRow (p : rest) =
+    specAtomicRow [] = Nothing
+    specAtomicRow (p : rest) =
       case p of
-        PLit l
-          | l == lit -> Just rest
-          | otherwise -> Nothing
+        PLit l | Left l == apat -> Just rest
+        PLit _ -> Nothing
+        PExp e | Right e == apat -> Just rest
+        PExp _ -> Nothing
         PVar _ -> Just rest
         PCon _ _ -> Nothing
-        _ -> error "PANIC! Found wildcard in specializeLit"
+        _ -> error "PANIC! Found wildcard in specializeAtomic"
 
 -- matrix definitions
 
@@ -576,6 +607,7 @@ defaultMatrix = concatMap defaultRow
         PVar _ -> [rest]
         PCon _ _ -> []
         PLit _ -> []
+        PExp _ -> []
         _ -> error "PANIC! Found wildcard in defaultMatrix"
 
 specializedBoundActs :: Id -> Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
@@ -590,6 +622,7 @@ specializedBoundActs k testOcc rows bacts =
       PCon k' _ -> idName k' == idName k
       PVar _ -> True
       PLit _ -> False
+      PExp _ -> False
       PWildcard -> error "PANIC! Found wildcard in specializedBoundActs"
     addVarBinding (PVar v : _) binds = binds ++ [(v, testOcc)]
     addVarBinding _ binds = binds
@@ -606,16 +639,17 @@ defaultBoundActs testOcc rows bacts =
     addVarBinding (PVar v : _) binds = binds ++ [(v, testOcc)]
     addVarBinding _ binds = binds
 
-litSpecializedBoundActs :: Literal -> Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
-litSpecializedBoundActs lit testOcc rows bacts =
+atomicSpecializedBoundActs :: AtomicPat -> Occurrence -> PatternMatrix -> [BoundAction] -> [BoundAction]
+atomicSpecializedBoundActs apat testOcc rows bacts =
   [ (addVarBinding row binds, a)
     | (row, (binds, a)) <- zip rows bacts,
-      rowMatchesLit row
+      rowMatchesAtomic row
   ]
   where
-    rowMatchesLit [] = False
-    rowMatchesLit (p : _) = case p of
-      PLit l -> l == lit
+    rowMatchesAtomic [] = False
+    rowMatchesAtomic (p : _) = case p of
+      PLit l -> Left l == apat
+      PExp e -> Right e == apat
       PVar _ -> True
       _ -> False
     addVarBinding (PVar v : _) binds = binds ++ [(v, testOcc)]
@@ -672,8 +706,8 @@ scrutineeType (Indexed earr _) =
           "scrutineeType: index expression scrutinee has no type annotation"
 
 typeOfParam :: Param Id -> Ty
-typeOfParam (Typed i _t) = idType i
-typeOfParam (Untyped i) = idType i
+typeOfParam (Typed _ i _t) = idType i
+typeOfParam (Untyped _ i) = idType i
 
 isVarPat :: Pattern -> Bool
 isVarPat (PVar _) = True
@@ -683,9 +717,10 @@ patHeadCon :: Pattern -> Maybe Id
 patHeadCon (PCon k _) = Just k
 patHeadCon _ = Nothing
 
-patHeadLit :: Pattern -> Maybe Literal
-patHeadLit (PLit l) = Just l
-patHeadLit _ = Nothing
+patHeadAtomic :: Pattern -> Maybe AtomicPat
+patHeadAtomic (PLit l) = Just (Left l)
+patHeadAtomic (PExp e) = Just (Right e)
+patHeadAtomic _ = Nothing
 
 -- redundancy checking (pre-pass over the original matrix)
 
@@ -697,7 +732,7 @@ checkRedundancy ctx tys matrix bacts = go [] (zip matrix bacts)
     go _ [] = pure ()
     go prefix ((row, (_, act)) : rest) = do
       useful <- isUseful tys prefix row
-      unless useful $ tell [RedundantClause ctx row act]
+      unless useful $ tell [RedundantClause ctx (sourceSpanOf row) row act]
       go (prefix ++ [row]) rest
 
 -- Maranget's U(P, q): returns True iff row q adds new coverage that no
@@ -713,7 +748,9 @@ isUseful tys matrix (q1 : qRest) =
       specMat <- specialize k fieldTys matrix
       isUseful (fieldTys ++ drop 1 tys) specMat (ps ++ qRest)
     PLit l ->
-      isUseful (drop 1 tys) (specializeLit l matrix) qRest
+      isUseful (drop 1 tys) (specializeAtomic (Left l) matrix) qRest
+    PExp _ ->
+      pure True -- conservative: expression labels are always considered useful
     PVar _ ->
       case tys of
         [] -> pure False
@@ -739,10 +776,10 @@ inhabitsM _ [] = pure Nothing
 inhabitsM matrix (ty : restTys) = do
   let firstCol = [p | (p : _) <- matrix]
       headCons = nub (mapMaybe patHeadCon firstCol)
-      headLits = nub (mapMaybe patHeadLit firstCol)
-  case (headCons, headLits) of
+      headAtomics = nub (mapMaybe patHeadAtomic firstCol)
+  case (headCons, headAtomics) of
     (cs@(_ : _), _) -> inhabitsConCol matrix ty restTys cs
-    ([], _ : _) -> inhabitsLitCol matrix ty restTys
+    ([], _ : _) -> inhabitsAtomCol matrix ty restTys
     ([], []) -> do
       r <- inhabitsM (defaultMatrix matrix) restTys
       case r of
@@ -785,8 +822,8 @@ inhabitsConCol matrix _ty restTys headCons =
           let (fieldWit, restWit) = splitAt (length fieldTys) wit
           pure (Just (PCon k fieldWit : restWit))
 
-inhabitsLitCol :: PatternMatrix -> Ty -> [Ty] -> CompilerM (Maybe [Pattern])
-inhabitsLitCol matrix ty restTys = do
+inhabitsAtomCol :: PatternMatrix -> Ty -> [Ty] -> CompilerM (Maybe [Pattern])
+inhabitsAtomCol matrix ty restTys = do
   r <- inhabitsM (defaultMatrix matrix) restTys
   case r of
     Nothing -> pure Nothing
@@ -797,20 +834,20 @@ inhabitsLitCol matrix ty restTys = do
 -- warnings
 
 data Warning
-  = RedundantClause WarnCtx PatternRow Action
-  | NonExhaustive WarnCtx [Pattern]
+  = RedundantClause WarnCtx (Maybe Diag.SourceSpan) PatternRow Action
+  | NonExhaustive WarnCtx (Maybe Diag.SourceSpan) [Pattern]
   deriving (Eq, Show)
 
 isNonExaustive :: Warning -> Bool
-isNonExaustive (NonExhaustive _ _) = True
+isNonExaustive (NonExhaustive _ _ _) = True
 isNonExaustive _ = False
 
 -- Pretty-print a warning
 
 showWarning :: Warning -> String
-showWarning (RedundantClause ctx row blk) =
+showWarning (RedundantClause ctx _ row blk) =
   unwords ["Warning: Clause ", "(", pretty (row, blk), ") is redundant.", showWarnCtx ctx]
-showWarning (NonExhaustive ctx pats) =
+showWarning (NonExhaustive ctx _ pats) =
   unwords ["Non-exhaustive pattern match. Missing case:", showRow $ nub pats, showWarnCtx ctx]
 
 showWarnCtx :: WarnCtx -> String
@@ -819,6 +856,51 @@ showWarnCtx ctx = "\n  in " ++ intercalate "\n  in " (reverse ctx)
 
 showRow :: [Pattern] -> String
 showRow = intercalate ", " . map pretty
+
+warningDiagnostic :: Warning -> Diag.Diagnostic
+warningDiagnostic (RedundantClause ctx sourceSpan row blk) =
+  Diag.Diagnostic
+    { Diag.diagnosticSeverity = Diag.Warning,
+      Diag.diagnosticCode = Just (Diag.DiagnosticCode "SC0301"),
+      Diag.diagnosticMessage = "redundant pattern clause",
+      Diag.diagnosticLabels = warningLabels "redundant clause" sourceSpan,
+      Diag.diagnosticNotes =
+        [ "clause: " ++ pretty (row, blk)
+        ]
+          ++ warningContextNotes ctx,
+      Diag.diagnosticHelp = ["remove this clause or make an earlier pattern more specific"]
+    }
+warningDiagnostic (NonExhaustive ctx sourceSpan pats) =
+  Diag.Diagnostic
+    { Diag.diagnosticSeverity = Diag.Warning,
+      Diag.diagnosticCode = Just (Diag.DiagnosticCode "SC0302"),
+      Diag.diagnosticMessage = "non-exhaustive pattern match",
+      Diag.diagnosticLabels = warningLabels "non-exhaustive match" sourceSpan,
+      Diag.diagnosticNotes =
+        ["missing case: " ++ showRow (nub pats)]
+          ++ warningContextNotes ctx,
+      Diag.diagnosticHelp = ["add a clause that covers the missing case"]
+    }
+
+warningLabels :: String -> Maybe Diag.SourceSpan -> [Diag.Label]
+warningLabels _ Nothing = []
+warningLabels message (Just sourceSpan) =
+  [ Diag.Label
+      { Diag.labelSpan = sourceSpan,
+        Diag.labelStyle = Diag.Primary,
+        Diag.labelMessage = Just message
+      }
+  ]
+
+warningAsErrorDiagnostic :: Warning -> Diag.Diagnostic
+warningAsErrorDiagnostic warning =
+  (warningDiagnostic warning)
+    { Diag.diagnosticSeverity = Diag.Error
+    }
+
+warningContextNotes :: WarnCtx -> [String]
+warningContextNotes =
+  map ("in: " ++) . reverse
 
 -- error messages
 

@@ -29,7 +29,7 @@ function elimBool1(b:Bool) -> word {
 
 
 contract ExpReturn {
-  function main() -> word {
+  public function main() -> word {
     return elimBool1(Bool.False);
     // return elimBool1(Bool.True);
   }

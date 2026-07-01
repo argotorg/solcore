@@ -7,6 +7,7 @@ import Data.List (sort)
 import Data.Map qualified as Map
 import Data.Maybe
 import Data.Set qualified as Set
+import Solcore.Diagnostics (CompilerError)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcEnv
@@ -126,7 +127,7 @@ data TabledSearch
   }
   deriving (Show)
 
-type TabledM a = StateT TabledSearch (StateT TcEnv (ExceptT String IO)) a
+type TabledM a = StateT TabledSearch (StateT TcEnv (ExceptT CompilerError IO)) a
 
 emptyTabledSearch :: TabledSearch
 emptyTabledSearch =
@@ -274,7 +275,7 @@ generateStep = do
 tryInstance :: GeneratorNode -> Inst -> TabledM ()
 tryInstance generator inst = do
   lift $ putSubst (generatorSubst generator)
-  case byInst inst (generatorGoal generator) of
+  case byInstTabled (generatorInstances generator) inst (generatorGoal generator) of
     Nothing -> pure ()
     Just (ps, s, i) -> do
       lift $ info [">>> Found tabled instance for:", pretty (generatorGoal generator), "\n>>> Instance:", pretty i, "\n>>> Subst:", pretty s]
@@ -577,6 +578,12 @@ byInstM ienv p@(InCls _ _ _) =
   msum [byInst it p | it <- ienv]
 byInstM _ p = error ("Internal error: byInstM used on an unsupported constraint" ++ pretty p)
 
+byInstTabled :: [Inst] -> Inst -> Pred -> Maybe ([Pred], Subst, Inst)
+byInstTabled insts inst goal =
+  case byInst inst goal of
+    Just result -> Just result
+    Nothing -> byUniqueGroundInstUnify insts inst goal
+
 byInst :: Inst -> Pred -> Maybe ([Pred], Subst, Inst)
 byInst i@(ps :=> InCls _ t' ts') (InCls _ t ts) =
   -- matching using instance main type
@@ -590,6 +597,41 @@ byInst i@(ps :=> InCls _ t' ts') (InCls _ t ts) =
           let s = u' <> u
            in Just (apply s ps, s, i)
 byInst c p = error ("Internal error: byInst used on unsupported constraints: " ++ pretty c ++ " / " ++ pretty p)
+
+byUniqueGroundInstUnify :: [Inst] -> Inst -> Pred -> Maybe ([Pred], Subst, Inst)
+byUniqueGroundInstUnify insts inst goal
+  | not (isHnf goal) = Nothing
+  | otherwise =
+      case groundUnifiers of
+        [result@(_, _, matchedInst)]
+          | matchedInst == inst -> Just result
+        _ -> Nothing
+  where
+    groundUnifiers =
+      [ result
+        | candidate <- insts,
+          isGroundInstHead candidate,
+          Just result <- [byInstUnify candidate goal]
+      ]
+
+isGroundInstHead :: Inst -> Bool
+isGroundInstHead (_ :=> InCls _ t ts) =
+  null (mv (t : ts)) && null (bv (t : ts))
+isGroundInstHead _ = False
+
+byInstUnify :: Inst -> Pred -> Maybe ([Pred], Subst, Inst)
+byInstUnify i@(ps :=> InCls _ t' ts') (InCls _ t ts) =
+  case solved of
+    Left _ -> Nothing
+    Right r -> Just r
+  where
+    solved :: Either CompilerError ([Pred], Subst, Inst)
+    solved = do
+      u <- mgu t' t
+      u' <- mgu (apply u ts) (apply u ts')
+      let s = u' <> u
+      pure (apply s ps, s, i)
+byInstUnify c p = error ("Internal error: byInstUnify used on unsupported constraints: " ++ pretty c ++ " / " ++ pretty p)
 
 byInstsM :: [Inst] -> Pred -> [([Pred], Subst, Inst)]
 byInstsM ienv p@(InCls _ _ _) =
@@ -861,16 +903,8 @@ undefinedInstance p@(InCls n _ _) =
   do
     insts <- askInstEnv n
     insts' <- mapM fromANF insts
-    tcmError $
-      unlines $
-        [ "Cannot entail:",
-          f (pretty p),
-          "currently defined instances:"
-        ]
-          ++ map (f . pretty) insts'
-  where
-    f s = "   " ++ s
-undefinedInstance p = tcmError $ unwords ["Cannot entail: ", pretty p]
+    cannotEntail p ("currently defined instances:" : map pretty insts')
+undefinedInstance p = cannotEntail p []
 
 unsolvedError :: [Pred] -> TcM ()
 unsolvedError = mapM_ unsolvedPredError
@@ -880,12 +914,5 @@ unsolvedPredError p@(InCls n _ _) =
   do
     insts <- askInstEnv n
     insts' <- mapM fromANF insts
-    let s = unlines (map pretty insts')
-    tcmError $
-      unlines
-        [ "Cannot entail:",
-          pretty p,
-          "using defined instances:",
-          s
-        ]
-unsolvedPredError p = tcmError $ unwords ["Cannot entail:", pretty p]
+    cannotEntail p ("using defined instances:" : map pretty insts')
+unsolvedPredError p = cannotEntail p []
