@@ -68,10 +68,16 @@ else
   cp "$jsexe/all.js" web/site/all.js
 fi
 
+# Precompiled std typecheck cache: run the freshly-built compiler to dump std,
+# so the browser's first-ever compile (empty IndexedDB) starts warm. Uses the
+# same JS build that consumes it, so the content-hash keys match at runtime.
+node web/gen-std-cache.js web/site/all.js web/site/std-cache.bin
+[ "$release" = 1 ] && gzip -9 -kf web/site/std-cache.bin
+
 mode=$([ "$release" = 1 ] && echo "release (-O1, minified)" || echo "dev (-O0)")
 echo "Built: $mode"
-# all.js.gz only exists for release builds; tolerate its absence under pipefail.
-ls -la web/site/all.js web/site/all.js.gz 2>/dev/null | awk '{print "  " $5 "  " $NF}' || true
+# .gz files only exist for release builds; tolerate their absence under pipefail.
+ls -la web/site/all.js web/site/all.js.gz web/site/std-cache.bin web/site/std-cache.bin.gz 2>/dev/null | awk '{print "  " $5 "  " $NF}' || true
 echo "Serve with:  (cd web/site && python3 -m http.server 8000)"
 echo "  React IDE (main):   http://localhost:8000/index.html"
 echo "  simple page:        http://localhost:8000/simple.html"

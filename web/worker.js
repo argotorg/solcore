@@ -16,6 +16,7 @@ const KEY = "blob";
 
 let db = null;
 let cachePersisted = false;
+let seededModules = 0;
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -51,10 +52,28 @@ async function loadPersistedCache() {
     db = await openDb();
     const blob = await idbGet(KEY);
     if (typeof blob === "string" && blob.length > 0) {
-      self.solcoreLoadStdCache(blob);
+      seededModules += self.solcoreLoadStdCache(blob);
     }
   } catch (e) {
     db = null;
+  }
+}
+
+// First-ever load (IndexedDB empty): seed from the std cache blob shipped as a
+// static asset, so even the first compile reuses std. Absent asset / offline
+// degrades silently to a cold first compile. The blob is a Latin-1 byte stream;
+// iso-8859-1 maps each byte back to the matching code point.
+async function loadBundledCache() {
+  try {
+    const resp = await fetch("std-cache.bin");
+    if (!resp.ok) return;
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    const blob = new TextDecoder("iso-8859-1").decode(bytes);
+    if (blob.length > 0) {
+      seededModules += self.solcoreLoadStdCache(blob);
+    }
+  } catch (e) {
+    // No bundled cache available — recompute on first compile.
   }
 }
 
@@ -77,10 +96,13 @@ function whenReady(cb) {
   typeof self.compileSolcore === "function" ? cb() : setTimeout(() => whenReady(cb), 20);
 }
 
-// Seed from IndexedDB before telling the page the compiler is ready, so the
-// first compile can already reuse std.
+// Seed the session cache before telling the page the compiler is ready, so the
+// first compile can already reuse std: prefer the per-session IndexedDB store,
+// falling back to the bundled static blob when it is empty (first ever load).
 whenReady(() => {
-  loadPersistedCache().finally(() => self.postMessage({ type: "ready" }));
+  loadPersistedCache()
+    .then(() => (seededModules > 0 ? undefined : loadBundledCache()))
+    .finally(() => self.postMessage({ type: "ready" }));
 });
 
 self.onmessage = (e) => {
