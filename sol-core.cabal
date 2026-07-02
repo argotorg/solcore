@@ -19,6 +19,7 @@ common common-opts
   build-depends:
       base >= 4.19.0.0
     , mtl
+    , binary
     , bytestring
     , containers
     , algebraic-graphs
@@ -109,6 +110,8 @@ library
       Solcore.Frontend.TypeInference.TcUnify
       Solcore.Pipeline.Options
       Solcore.Pipeline.SolcorePipeline
+      Solcore.Pipeline.TypecheckCache
+      Solcore.Pipeline.TcCacheSerialize
       Solcore.Primitives.Primitives
       Solcore.Std.Bundle
       Solcore.Std.Embed

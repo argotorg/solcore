@@ -75,7 +75,18 @@ compile opts = runExceptT $ do
 -- disk or built in memory from source text) is irrelevant here, so this is the
 -- shared core used by both the file-based CLI and the in-memory API.
 compileGraph :: Option -> ModuleGraph -> ExceptT String IO [Hull.Object]
-compileGraph opts graph = do
+compileGraph opts graph = fst <$> compileGraphWithCache opts graph Map.empty
+
+-- Cache-aware variant of 'compileGraph'. Modules present in the supplied cache
+-- are reused verbatim instead of being re-typechecked; every other module is
+-- typechecked as usual. The full set of checked modules (cached + freshly
+-- checked) is returned alongside the hull so a caller can seed the next run.
+compileGraphWithCache ::
+  Option ->
+  ModuleGraph ->
+  Map Mod.ModuleId CheckedModule ->
+  ExceptT String IO ([Hull.Object], Map Mod.ModuleId CheckedModule)
+compileGraphWithCache opts graph cache = do
   let verbose = optVerbose opts
       noMatchCompiler = optNoMatchCompiler opts
       noIfDesugar = optNoIfDesugar opts
@@ -102,7 +113,7 @@ compileGraph opts graph = do
   checkedModules <-
     ExceptT $
       timeItNamed "Typecheck modules" $
-        runExceptT (typeCheckLoadedModules opts graph)
+        runExceptT (typeCheckLoadedModulesWithCache opts graph cache)
   checkedAssembly <- ExceptT $ pure (assembleCheckedModules graph checkedModules)
   let typed = checkedAssemblyCompUnit checkedAssembly
       tcEnv = checkedAssemblyEnv checkedAssembly
@@ -137,7 +148,7 @@ compileGraph opts graph = do
 
   -- Specialization & Hull Generation
   if optNoSpec opts
-    then pure []
+    then pure ([], checkedModules)
     else do
       specialized <-
         liftIO $
@@ -181,11 +192,26 @@ compileGraph opts graph = do
         putStrLn "> Hull contract(s):"
         forM_ hull (putStrLn . pretty)
 
-      pure hull
+      pure (hull, checkedModules)
 
 typeCheckLoadedModules :: Option -> ModuleGraph -> ExceptT String IO (Map Mod.ModuleId CheckedModule)
 typeCheckLoadedModules opts graph =
-  Map.fromList <$> mapM (typeCheckModuleFromGraph opts graph) (moduleOrder graph)
+  typeCheckLoadedModulesWithCache opts graph Map.empty
+
+-- Typecheck every module in graph order, reusing any module already present in
+-- the cache instead of re-checking it.
+typeCheckLoadedModulesWithCache ::
+  Option ->
+  ModuleGraph ->
+  Map Mod.ModuleId CheckedModule ->
+  ExceptT String IO (Map Mod.ModuleId CheckedModule)
+typeCheckLoadedModulesWithCache opts graph cache =
+  Map.fromList <$> mapM checkOrReuse (moduleOrder graph)
+  where
+    checkOrReuse moduleId =
+      case Map.lookup moduleId cache of
+        Just checkedModule -> pure (moduleId, checkedModule)
+        Nothing -> typeCheckModuleFromGraph opts graph moduleId
 
 typeCheckModuleFromGraph ::
   Option ->
