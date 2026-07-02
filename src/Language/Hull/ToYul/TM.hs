@@ -1,9 +1,9 @@
-module TM
+module Language.Hull.ToYul.TM
   ( TM,
     runTM,
     CEnv (..),
     -- , module RIO
-    module Locus,
+    module Language.Hull.ToYul.Locus,
     FunInfo (..),
     getCounter,
     setCounter,
@@ -25,9 +25,9 @@ import Control.Monad (when)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Language.Hull qualified as Hull
-import Locus
-import Options (Options)
-import Options qualified
+import Language.Hull.ToYul.Locus
+import Language.Hull.ToYul.Options (Options)
+import Language.Hull.ToYul.Options qualified as Options
 
 type VarEnv = Map String Location
 

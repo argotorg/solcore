@@ -1,4 +1,4 @@
-module Compress where
+module Language.Hull.Compress where
 
 import Language.Hull
 

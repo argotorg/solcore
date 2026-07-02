@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Builtins (yulBuiltins, revertStmt) where
+module Language.Yul.Builtins (yulBuiltins, revertStmt) where
 
 import Language.Yul
 
