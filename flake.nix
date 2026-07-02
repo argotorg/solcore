@@ -22,7 +22,11 @@
           inherit system;
           overlays = [ inputs.foundry.overlay ];
         };
-        hspkgs = pkgs.haskell.packages.ghc98;
+        # One GHC version across native and the JS backend on this branch: 9.10.
+        # Keeping the native compiler in step with the GHCJS cross-compiler
+        # avoids base/version divergence (e.g. foldl' in Prelude) and lets
+        # precompiled typecheck-cache dumps round-trip between the two.
+        hspkgs = pkgs.haskell.packages.ghc910;
 
         gitignore = pkgs.nix-gitignore.gitignoreSourcePure [ ./.gitignore ];
         sol-core = pkgs.haskell.lib.overrideCabal
