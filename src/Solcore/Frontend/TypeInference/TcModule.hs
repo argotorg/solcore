@@ -28,7 +28,6 @@ module Solcore.Frontend.TypeInference.TcModule
   )
 where
 
-import Data.List (foldl')
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set qualified as Set

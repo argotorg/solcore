@@ -40,7 +40,6 @@ import Crypto.Hash.Algorithms (Keccak_256)
 import Data.Bits (complement, shiftL, shiftR, xor, (.&.), (.|.))
 import Data.ByteArray qualified as BA
 import Data.ByteString qualified as BS
-import Data.List (foldl')
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T

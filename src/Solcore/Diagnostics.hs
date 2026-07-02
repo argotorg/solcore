@@ -46,7 +46,7 @@ where
 
 import Data.Char (isAlpha, isAlphaNum)
 import Data.Generics (Data, Typeable)
-import Data.List (foldl', isPrefixOf, sortOn, stripPrefix, tails)
+import Data.List (isPrefixOf, sortOn, stripPrefix, tails)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Prettyprinter (Doc, LayoutOptions (..), PageWidth (..), layoutPretty, pretty, vsep)
