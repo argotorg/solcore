@@ -631,7 +631,7 @@ venvToSubst :: VEnv -> Map.Map Name YulExp
 venvToSubst env =
   Map.fromList
     [ (mastIdName k, yulLit l)
-      | (k, MastLit l) <- Map.toList env
+    | (k, MastLit l) <- Map.toList env
     ]
   where
     yulLit (IntLit v) = YLit (YulNumber v)

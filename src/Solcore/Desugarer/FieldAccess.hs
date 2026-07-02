@@ -44,7 +44,7 @@ fieldDesugarTopDecls topdecls = extras <> topdecls'
     existingDataTypes =
       Set.fromList
         [ dataName dt
-          | TDataDef dt <- topdecls
+        | TDataDef dt <- topdecls
         ]
     (extras, topdecls') = mapAccumL go mempty topdecls
     go acc (TContr c) =

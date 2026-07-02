@@ -229,8 +229,8 @@ findTokenSpansInSource source needle
   | null needle = []
   | otherwise =
       [ sourceTokenSpan sourceToken
-        | sourceToken <- sourceTokens source,
-          sourceTokenText sourceToken == needle
+      | sourceToken <- sourceTokens source,
+        sourceTokenText sourceToken == needle
       ]
 
 findTextSpansInSource :: SourceFile -> String -> [SourceSpan]
@@ -238,8 +238,8 @@ findTextSpansInSource source needle
   | null needle = []
   | otherwise =
       [ lineSpan lineNo lineStart column
-        | (lineNo, lineStart, lineText) <- sourceLinesWithOffsets source,
-          column <- findColumns needle lineText
+      | (lineNo, lineStart, lineText) <- sourceLinesWithOffsets source,
+        column <- findColumns needle lineText
       ]
   where
     needleLen = length needle
@@ -566,7 +566,7 @@ computeSourceTokens :: FilePath -> String -> [SourceToken]
 computeSourceTokens path content =
   concat
     [ lineTokens path lineNo lineStart lineText
-      | (lineNo, lineStart, lineText) <- zip3 [1 ..] (computeLineStarts content) (sourceLinesFromText content)
+    | (lineNo, lineStart, lineText) <- zip3 [1 ..] (computeLineStarts content) (sourceLinesFromText content)
     ]
 
 sourceLinesFromText :: String -> [String]

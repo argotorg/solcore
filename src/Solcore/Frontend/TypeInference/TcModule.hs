@@ -127,7 +127,7 @@ mkModuleResolvedTypeCheckInput surface (resolved, resolvedSegments) =
             moduleResolvedInputImportedDecls = resolvedImportedDecls,
             moduleResolvedInputTrustedInstanceHeads =
               [ instanceHeadKey inst
-                | TInstDef inst <- resolvedImportedDecls
+              | TInstDef inst <- resolvedImportedDecls
               ],
             moduleResolvedInputPartialImportedTypes = moduleSurfacePartialImportedTypes surface
           }
@@ -259,8 +259,8 @@ retaggedDeclSegment keySegments topDecl =
   where
     knownSegments =
       [ segment
-        | key <- topDeclKeys topDecl,
-          Just segment <- [Map.lookup key keySegments]
+      | key <- topDeclKeys topDecl,
+        Just segment <- [Map.lookup key keySegments]
       ]
     chooseSegment segments
       | ModuleLocalDecl `elem` segments = ModuleLocalDecl
@@ -389,9 +389,9 @@ importForwardingWrappers graph checkedModules =
                   (Map.lookup targetModuleId checkedModules)
               pure
                 [ TFunDef (typedAliasingWrapper aliasName fd)
-                  | (sourceName, aliasName) <- aliases,
-                    TFunDef fd <- contracts (checkedModuleTyped targetModule),
-                    sigName (funSignature fd) == sourceName
+                | (sourceName, aliasName) <- aliases,
+                  TFunDef fd <- contracts (checkedModuleTyped targetModule),
+                  sigName (funSignature fd) == sourceName
                 ]
 
     wrappersForQualifiers loadedModule importPath qualifiers = do
@@ -407,8 +407,8 @@ importForwardingWrappers graph checkedModules =
           (Map.lookup targetModuleId checkedModules)
       pure
         [ TFunDef (typedForwardingWrapper qualifier fd)
-          | qualifier <- qualifiers,
-            TFunDef fd <- contracts (checkedModuleTyped targetModule)
+        | qualifier <- qualifiers,
+          TFunDef fd <- contracts (checkedModuleTyped targetModule)
         ]
 
 defaultImportQualifiers :: Parsed.ModulePath -> [Name]
