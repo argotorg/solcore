@@ -2,16 +2,16 @@
 
 module Language.Hull.ToYul.Translate where
 
-import Language.Yul.Builtins
 import Data.List (partition)
 import Data.Map qualified as Map
 import Data.String
 import GHC.Stack
 import Language.Hull hiding (Name)
 import Language.Hull qualified as Hull
-import Language.Yul
-import Solcore.Frontend.Syntax.Name
 import Language.Hull.ToYul.TM
+import Language.Yul
+import Language.Yul.Builtins
+import Solcore.Frontend.Syntax.Name
 
 genExpr :: Expr -> TM ([YulStmt], Location)
 genExpr (EWord n) = pure ([], LocWord n)
@@ -246,7 +246,6 @@ genStmt (SRevert s) = pure (revertStmt s)
 -- the standalone yule binary never sees these; drop them here too so the
 -- in-memory backend behaves identically.
 genStmt (SComment _) = pure []
-genStmt e = error $ "genStmt unimplemented for: " ++ show e
 
 -- If the statement is a function definition, record its type
 scanStmt :: Stmt -> TM ()

@@ -5,24 +5,25 @@ module Main where
 
 -- FIXME: move Name to Common
 -- (Doc, Pretty(..), nest, render)
-import Language.Yul.Builtins (yulBuiltins)
+
 import Common.Pretty
-import Language.Hull.Compress
 import Control.Monad (unless, when)
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
+import Language.Hull.Compress
 import Language.Hull.Parser (parseObject)
 import Language.Hull.TcEnv (emptyHullTcEnv)
 import Language.Hull.TcMonad (runHullTcM)
-import Language.Hull.TypeCheck (checkObject)
-import Language.Yul
 import Language.Hull.ToYul.Assemble (wrapInObject)
-import Language.Yul.QuasiQuote
 import Language.Hull.ToYul.Options (parseOptions)
 import Language.Hull.ToYul.Options qualified as Options
-import Solcore.Frontend.Syntax.Name
-import System.Exit (exitFailure)
 import Language.Hull.ToYul.TM
 import Language.Hull.ToYul.Translate
+import Language.Hull.TypeCheck (checkObject)
+import Language.Yul
+import Language.Yul.Builtins (yulBuiltins)
+import Language.Yul.QuasiQuote
+import Solcore.Frontend.Syntax.Name
+import System.Exit (exitFailure)
 
 main :: IO ()
 main = do

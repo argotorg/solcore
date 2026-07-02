@@ -52,7 +52,7 @@ typeInferTopDeclChecks opts imps trustedInstances partialTypes topDeclChecks =
               partialDataTypeConstructors =
                 Map.fromList
                   [ (partialTypeName, Set.fromList constructorNames)
-                    | (partialTypeName, constructorNames) <- partialTypes
+                  | (partialTypeName, constructorNames) <- partialTypes
                   ]
             }
         )
@@ -110,8 +110,8 @@ tcTopDeclChecks topDeclChecks =
       mapM_
         (withPartialDataTypesDisabled . trustImportedTopDecl)
         [ expandedDecl
-          | (topDeclCheck, expandedDecl) <- zip topDeclChecks expandedDecls,
-            topDeclCheckMode topDeclCheck == TrustTopDeclBody
+        | (topDeclCheck, expandedDecl) <- zip topDeclChecks expandedDecls,
+          topDeclCheckMode topDeclCheck == TrustTopDeclBody
         ]
     tcTopDeclWithVisibility topDeclCheck expandedDecl =
       case topDeclCheckMode topDeclCheck of

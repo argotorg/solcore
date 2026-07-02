@@ -30,7 +30,8 @@ inMemoryApiTests =
         compileErrors result @?= []
         assertBool "expected non-empty hull output" (maybe False (not . null) (compileOutput result))
         assertBool "expected non-empty yul output" (maybe False (not . null) (compileYul result))
-        assertBool "yul should be a Yul object"
+        assertBool
+          "yul should be a Yul object"
           (maybe False (\y -> "object" `isInfixOf` y) (compileYul result)),
       -- The canonical dispatch example, fed in as source text (as the UI would)
       -- and compiled with the standard library resolved from the in-memory

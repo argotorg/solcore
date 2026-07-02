@@ -74,24 +74,44 @@ keccakF s0 = L.foldl' applyRound s0 roundConstants
           b =
             A.array
               (0, 24)
-              [(idx y ((2 * x + 3 * y) `mod` 5), rotateL (theta ! idx x y) (rhoOffsets ! idx x y)) | x <- [0 .. 4], y <- [0 .. 4]]
-              :: UArray Int Word64
+              [(idx y ((2 * x + 3 * y) `mod` 5), rotateL (theta ! idx x y) (rhoOffsets ! idx x y)) | x <- [0 .. 4], y <- [0 .. 4]] ::
+              UArray Int Word64
           chi =
             A.array
               (0, 24)
-              [(idx x y, (b ! idx x y) `xor` (complement (b ! idx ((x + 1) `mod` 5) y) .&. (b ! idx ((x + 2) `mod` 5) y))) | x <- [0 .. 4], y <- [0 .. 4]]
-              :: UArray Int Word64
+              [(idx x y, (b ! idx x y) `xor` (complement (b ! idx ((x + 1) `mod` 5) y) .&. (b ! idx ((x + 2) `mod` 5) y))) | x <- [0 .. 4], y <- [0 .. 4]] ::
+              UArray Int Word64
        in chi // [(0, (chi ! 0) `xor` rc)]
 
 rhoOffsets :: UArray Int Int
 rhoOffsets =
   listArray
     (0, 24)
-    [ 0, 1, 62, 28, 27,
-      36, 44, 6, 55, 20,
-      3, 10, 43, 25, 39,
-      41, 45, 15, 21, 8,
-      18, 2, 61, 56, 14
+    [ 0,
+      1,
+      62,
+      28,
+      27,
+      36,
+      44,
+      6,
+      55,
+      20,
+      3,
+      10,
+      43,
+      25,
+      39,
+      41,
+      45,
+      15,
+      21,
+      8,
+      18,
+      2,
+      61,
+      56,
+      14
     ]
 
 roundConstants :: [Word64]

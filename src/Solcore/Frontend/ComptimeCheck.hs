@@ -96,7 +96,7 @@ checkFunDef st ctx fd = checkBody st (sigRetComptime sig) ctx initEnv (funDefBod
     initEnv =
       Map.fromList
         [ (idName (paramName p), if paramComptime p || sigRetComptime sig then CTComptime else CTRuntime)
-          | p <- sigParams sig
+        | p <- sigParams sig
         ]
 
 -- | Check an instance method, including the instance head in error context.

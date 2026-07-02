@@ -152,8 +152,8 @@ ensureNoDuplicateNamesIn ctx ns names =
     counts = Map.fromListWith (+) [(n, 1) | n <- names]
     duplicates =
       [ n
-        | (n, c) <- Map.toList counts,
-          c > 1
+      | (n, c) <- Map.toList counts,
+        c > 1
       ]
 
 -- type class for name resolution

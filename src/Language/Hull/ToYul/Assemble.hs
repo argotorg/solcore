@@ -16,12 +16,12 @@ import Control.Exception (SomeException, evaluate, try)
 import Language.Hull (Object)
 import Language.Hull.TcEnv (emptyHullTcEnv)
 import Language.Hull.TcMonad (runHullTcM)
-import Language.Hull.TypeCheck (checkObject)
-import Language.Yul
-import Language.Yul.QuasiQuote
 import Language.Hull.ToYul.Options (Options (..))
 import Language.Hull.ToYul.TM (runTM)
 import Language.Hull.ToYul.Translate (translateObject)
+import Language.Hull.TypeCheck (checkObject)
+import Language.Yul
+import Language.Yul.QuasiQuote
 
 -- | Options for driving the Yul backend in-process, matching the @yule@ CLI
 -- defaults (deployment code on, type checking on).

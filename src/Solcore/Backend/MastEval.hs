@@ -48,8 +48,8 @@ import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
 import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
-import Solcore.Util.Keccak (keccak256)
 import Solcore.Primitives.Primitives (integerPrimNames)
+import Solcore.Util.Keccak (keccak256)
 
 -----------------------------------------------------------------------
 -- Data structures
@@ -627,7 +627,7 @@ venvToSubst :: VEnv -> Map.Map Name YulExp
 venvToSubst env =
   Map.fromList
     [ (mastIdName k, yulLit l)
-      | (k, MastLit l) <- Map.toList env
+    | (k, MastLit l) <- Map.toList env
     ]
   where
     yulLit (IntLit v) = YLit (YulNumber v)

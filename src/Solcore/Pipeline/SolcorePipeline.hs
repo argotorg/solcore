@@ -306,8 +306,8 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
   liftIO $ when (optEmitAbi opts) $ do
     let localTopDecls =
           [ moduleInferenceDeclTopDecl d
-            | d <- accessed,
-              moduleInferenceDeclSegment d == ModuleLocalDecl
+          | d <- accessed,
+            moduleInferenceDeclSegment d == ModuleLocalDecl
           ]
     writeContractAbis (optOutputDir opts) localTopDecls
 
