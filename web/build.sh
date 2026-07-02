@@ -70,7 +70,8 @@ fi
 
 mode=$([ "$release" = 1 ] && echo "release (-O1, minified)" || echo "dev (-O0)")
 echo "Built: $mode"
-ls -la web/site/all.js web/site/all.js.gz 2>/dev/null | awk '{print "  " $5 "  " $NF}'
+# all.js.gz only exists for release builds; tolerate its absence under pipefail.
+ls -la web/site/all.js web/site/all.js.gz 2>/dev/null | awk '{print "  " $5 "  " $NF}' || true
 echo "Serve with:  (cd web/site && python3 -m http.server 8000)"
 echo "  React IDE (main):   http://localhost:8000/index.html"
 echo "  simple page:        http://localhost:8000/simple.html"

@@ -9,6 +9,7 @@ import MatchCompilerTests
 import ModuleTypeCheckTests
 import ParserTests
 import SpecialiseTests
+import TcCacheTests
 import Test.Tasty
 import YulEvalTests
 
@@ -35,5 +36,6 @@ tests =
       hullTests,
       specialiseTests,
       inMemoryApiTests,
+      tcCacheTests,
       keccakTests
     ]

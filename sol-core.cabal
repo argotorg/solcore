@@ -193,6 +193,7 @@ test-suite sol-core-tests
     MatchCompilerTests
     ModuleTypeCheckTests
     SpecialiseTests
+    TcCacheTests
     YulEvalTests
     ParserTests
 

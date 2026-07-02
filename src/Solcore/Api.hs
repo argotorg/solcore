@@ -10,22 +10,35 @@ module Solcore.Api
   ( CompileResult (..),
     compileSolcore,
     defaultOptions,
+    renderObjects,
+    -- Typecheck-cache persistence (Tier 2). The blob functions are pure and
+    -- testable; the 'IO' wrappers drive the session cache and marshal to a
+    -- Latin-1 string for the JS FFI / IndexedDB.
+    indexCheckedByKey,
+    dumpStdCacheBlob,
+    loadStdCacheBlob,
+    dumpStdCache,
+    loadStdCache,
   )
 where
 
 import Control.Monad.Except (runExceptT)
+import Data.ByteString.Lazy qualified as BL
+import Data.Char (chr, ord)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.List (intercalate)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Language.Hull qualified as Hull
 import Language.Hull.ToYul.Assemble (objectToYul)
+import Solcore.Frontend.Module.Identity (LibraryId (StdLibrary), ModuleId (moduleLibrary))
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraphFromSource)
 import Solcore.Frontend.Pretty.SolcorePretty (pretty)
-import Solcore.Frontend.TypeInference.TcModule (CheckedModule)
+import Solcore.Frontend.TypeInference.TcModule (CheckedModule (..))
 import Solcore.Pipeline.Options (Option, emptyOption)
 import Solcore.Pipeline.SolcorePipeline (compileGraphWithCache)
+import Solcore.Pipeline.TcCacheSerialize (decodeCache, encodeCache, fromCachedModule, toCachedModule)
 import Solcore.Pipeline.TypecheckCache (TcCacheKey, moduleCacheKeys)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -105,14 +118,63 @@ cacheSeed graph keys = do
 -- session cache, so the next compile can reuse the ones whose key is unchanged.
 cacheCheckedModules :: Map Mod.ModuleId TcCacheKey -> Map Mod.ModuleId CheckedModule -> IO ()
 cacheCheckedModules keys checked =
-  modifyIORef' tcCache (Map.union additions)
+  modifyIORef' tcCache (Map.union (indexCheckedByKey keys checked))
+
+-- | Re-key checked modules by their content hash — the session-cache
+-- representation ('TcCacheKey' is content-addressed, so this is what both the
+-- in-memory cache and the persisted blob are keyed by).
+indexCheckedByKey :: Map Mod.ModuleId TcCacheKey -> Map Mod.ModuleId CheckedModule -> Map TcCacheKey CheckedModule
+indexCheckedByKey keys checked =
+  Map.fromList
+    [ (key, cm)
+    | (moduleId, cm) <- Map.toList checked,
+      Just key <- [Map.lookup moduleId keys]
+    ]
+
+-- | Serialize the std-library subset of a session cache to a blob. Only std
+-- modules are persisted: they are the slow part, while the user's own modules
+-- are cheap to recheck and change every keystroke. 'encodeCache' prefixes a
+-- magic + version header, so a stale or foreign blob is rejected as a clean miss
+-- on load rather than misread.
+dumpStdCacheBlob :: Map TcCacheKey CheckedModule -> BL.ByteString
+dumpStdCacheBlob session =
+  encodeCache (Map.map toCachedModule (Map.filter isStd session))
   where
-    additions =
-      Map.fromList
-        [ (key, cm)
-        | (moduleId, cm) <- Map.toList checked,
-          Just key <- [Map.lookup moduleId keys]
-        ]
+    isStd cm = moduleLibrary (checkedModuleId cm) == StdLibrary
+
+-- | Reconstruct session-cache entries from a persisted blob. A blob that fails
+-- the header check decodes to an empty map (clean miss → recompute). The
+-- 'Option' only feeds 'initTcEnv' for the reconstructed env; since a non-entry
+-- module's env is read solely for its @typeTable@, the choice does not affect
+-- results.
+loadStdCacheBlob :: Option -> BL.ByteString -> Map TcCacheKey CheckedModule
+loadStdCacheBlob opts blob =
+  case decodeCache blob of
+    Nothing -> Map.empty
+    Just cached -> Map.map (fromCachedModule opts) cached
+
+-- | Serialize the std subset of the live session cache as a Latin-1 string (one
+-- byte per BMP code point, 0..255) for handing across the JS FFI to IndexedDB.
+dumpStdCache :: IO String
+dumpStdCache = blobToLatin1 . dumpStdCacheBlob <$> readIORef tcCache
+
+-- | Merge a persisted std cache (Latin-1-encoded blob) into the live session
+-- cache, returning the number of modules loaded (0 on a header mismatch or
+-- empty blob). Reconstructs with 'defaultOptions' — see 'loadStdCacheBlob'.
+loadStdCache :: String -> IO Int
+loadStdCache s = do
+  let recovered = loadStdCacheBlob defaultOptions (latin1ToBlob s)
+  modifyIORef' tcCache (Map.union recovered)
+  pure (Map.size recovered)
+
+-- | Byte string ⇄ Latin-1 string: each byte is one code point in 0..255, all
+-- below the surrogate range, so 'toJSString'/'fromJSString' round-trip it
+-- faithfully.
+blobToLatin1 :: BL.ByteString -> String
+blobToLatin1 = map (chr . fromIntegral) . BL.unpack
+
+latin1ToBlob :: String -> BL.ByteString
+latin1ToBlob = BL.pack . map (fromIntegral . ord)
 
 renderObjects :: [Hull.Object] -> String
 renderObjects = unlines . map pretty
