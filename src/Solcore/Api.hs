@@ -48,11 +48,15 @@ import System.IO.Unsafe (unsafePerformIO)
 --   * 'compileYul'    — generated Yul (the backend result), when the frontend
 --     succeeded and Yul translation didn't fail.
 --   * 'compileErrors' — diagnostics from whichever stage failed.
+--   * 'compileCacheStatus' — per module (in dependency order), whether its
+--     typecheck was reused from the session cache (@True@) or recomputed this
+--     compile (@False@). Drives the UI's cache-hit indicator.
 data CompileResult
   = CompileResult
   { compileOutput :: Maybe String,
     compileYul :: Maybe String,
-    compileErrors :: [String]
+    compileErrors :: [String],
+    compileCacheStatus :: [(String, Bool)]
   }
   deriving (Eq, Show)
 
@@ -79,22 +83,26 @@ compileSolcore :: Option -> String -> IO CompileResult
 compileSolcore opts source = do
   graphResult <- loadModuleGraphFromSource source
   case graphResult of
-    Left err -> pure (CompileResult Nothing Nothing [err])
+    Left err -> pure (CompileResult Nothing Nothing [err] [])
     Right graph ->
       case moduleCacheKeys opts graph of
-        Left err -> pure (CompileResult Nothing Nothing [err])
+        Left err -> pure (CompileResult Nothing Nothing [err] [])
         Right keys -> do
           seed <- cacheSeed graph keys
+          let cacheStatus =
+                [ (Mod.moduleIdDisplay moduleId, Map.member moduleId seed)
+                | moduleId <- moduleOrder graph
+                ]
           compiled <- runExceptT (compileGraphWithCache opts graph seed)
           case compiled of
-            Left err -> pure (CompileResult Nothing Nothing [err])
+            Left err -> pure (CompileResult Nothing Nothing [err] cacheStatus)
             Right (objs, checked) -> do
               cacheCheckedModules keys checked
               let hull = renderObjects objs
               yulResult <- objectsToYul objs
               pure $ case yulResult of
-                Left err -> CompileResult (Just hull) Nothing [err]
-                Right yul -> CompileResult (Just hull) (Just yul) []
+                Left err -> CompileResult (Just hull) Nothing [err] cacheStatus
+                Right yul -> CompileResult (Just hull) (Just yul) [] cacheStatus
 
 -- | Build the per-compile reuse map: every module whose current key is already
 -- in the session cache maps to its stored 'CheckedModule'. Modules whose source

@@ -45,5 +45,15 @@ inMemoryApiTests =
       testCase "reports a parse error as a diagnostic" $ do
         result <- compileSolcore defaultOptions "this is not solcore"
         compileOutput result @?= Nothing
-        assertBool "expected diagnostics" (not (null (compileErrors result)))
+        assertBool "expected diagnostics" (not (null (compileErrors result))),
+      testCase "reports every module as a cache hit on identical recompile" $ do
+        source <- readFile "test/examples/dispatch/basic.solc"
+        _ <- compileSolcore defaultOptions source -- warm the session cache
+        again <- compileSolcore defaultOptions source
+        let status = compileCacheStatus again
+        assertBool "expected per-module cache status" (not (null status))
+        assertBool "expected std among reported modules" (any (("std" ==) . fst) status)
+        assertBool
+          "expected all modules reused on identical recompile"
+          (all snd status)
     ]

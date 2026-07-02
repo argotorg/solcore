@@ -107,7 +107,7 @@ function App() {
   const [files, setFiles] = useState(() => collectFiles(seedTree, {}));
   const [tabs, dispatch] = useReducer(tabsReducer, initialTabs);
   const [flags, setFlags] = useState({ noGenDispatch: true });
-  const [result, setResult] = useState({ ok: true, hull: "", yul: "", errors: "" });
+  const [result, setResult] = useState({ ok: true, hull: "", yul: "", errors: "", cache: "" });
   const [ready, setReady] = useState(false);
   const [compiling, setCompiling] = useState(false);
   const [elapsed, setElapsed] = useState(null);   // ms; null before the first compile
@@ -128,8 +128,8 @@ function App() {
         setElapsed(performance.now() - startRef.current);   // freeze final time
         setCompiling(false);
         setResult(msg.ok
-          ? { ok: true, hull: msg.output, yul: msg.yul, errors: "" }
-          : { ok: false, hull: "", yul: "", errors: msg.errors });
+          ? { ok: true, hull: msg.output, yul: msg.yul, errors: "", cache: msg.cache || "" }
+          : { ok: false, hull: "", yul: "", errors: msg.errors, cache: msg.cache || "" });
       }
     };
     return () => worker.terminate();
@@ -168,6 +168,9 @@ function App() {
           ))}
         </div>
         <span className="status">{status}</span>
+        {!compiling && result.cache
+          ? <span className="cache-status" style={{ marginLeft: 12, opacity: 0.75, fontSize: 12 }}>{result.cache}</span>
+          : null}
       </div>
 
       <div className="sidebar">

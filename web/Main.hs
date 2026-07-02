@@ -36,8 +36,8 @@ foreign import javascript "((obj, key) => (obj && obj[key] ? 1 : 0))"
   js_boolField :: JSVal -> JSVal -> IO Int
 
 -- | Build the JS result object returned to the caller.
-foreign import javascript "((ok, output, yul, errors) => ({ ok: ok !== 0, output: output, yul: yul, errors: errors }))"
-  js_result :: Int -> JSVal -> JSVal -> JSVal -> IO JSVal
+foreign import javascript "((ok, output, yul, errors, cache) => ({ ok: ok !== 0, output: output, yul: yul, errors: errors, cache: cache }))"
+  js_result :: Int -> JSVal -> JSVal -> JSVal -> JSVal -> IO JSVal
 
 boolField :: JSVal -> String -> IO Bool
 boolField obj key = (/= 0) <$> js_boolField obj (toJSString key)
@@ -59,15 +59,22 @@ optionsFromFlags flags = do
         optNoDesugarCalls = noDesugarCalls
       }
 
+-- | Render the per-module cache status for the UI, e.g.
+-- @"std: cache hit; std.dispatch: cache miss; Main: cache miss"@.
+renderCacheStatus :: [(String, Bool)] -> String
+renderCacheStatus status =
+  intercalate "; " [name ++ ": " ++ (if hit then "cache hit" else "cache miss") | (name, hit) <- status]
+
 compile :: JSVal -> JSVal -> IO JSVal
 compile sourceVal flagsVal = do
   opts <- optionsFromFlags flagsVal
   result <- compileSolcore opts (fromJSString sourceVal)
+  let cache = toJSString (renderCacheStatus (compileCacheStatus result))
   case result of
-    CompileResult (Just output) yul _ ->
-      js_result 1 (toJSString output) (toJSString (maybe "" id yul)) (toJSString "")
-    CompileResult Nothing _ errors ->
-      js_result 0 (toJSString "") (toJSString "") (toJSString (intercalate "\n\n" errors))
+    CompileResult (Just output) yul _ _ ->
+      js_result 1 (toJSString output) (toJSString (maybe "" id yul)) (toJSString "") cache
+    CompileResult Nothing _ errors _ ->
+      js_result 0 (toJSString "") (toJSString "") (toJSString (intercalate "\n\n" errors)) cache
 
 -- | Dump the persisted (std) typecheck cache as a Latin-1 string.
 dumpCache :: IO JSVal

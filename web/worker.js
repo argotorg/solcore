@@ -109,7 +109,7 @@ self.onmessage = (e) => {
   if (!e.data || e.data.type !== "compile") return;
   whenReady(() => {
     const r = self.compileSolcore(e.data.source, e.data.flags);
-    self.postMessage({ type: "result", ok: r.ok, output: r.output, yul: r.yul, errors: r.errors });
+    self.postMessage({ type: "result", ok: r.ok, output: r.output, yul: r.yul, errors: r.errors, cache: r.cache });
     if (r.ok) persistCache();
   });
 };
