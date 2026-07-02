@@ -87,7 +87,7 @@
             src = gitignore ./.;
           } ''
             cd $src
-            ormolu --mode check $(find app src yule test -name '*.hs')
+            ormolu --mode check $(find app src yule test gen-std-cache -name '*.hs')
             touch $out
           '';
 

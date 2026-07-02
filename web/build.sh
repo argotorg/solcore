@@ -68,10 +68,12 @@ else
   cp "$jsexe/all.js" web/site/all.js
 fi
 
-# Precompiled std typecheck cache: run the freshly-built compiler to dump std,
-# so the browser's first-ever compile (empty IndexedDB) starts warm. Uses the
-# same JS build that consumes it, so the content-hash keys match at runtime.
-node web/gen-std-cache.js web/site/all.js web/site/std-cache.bin
+# Precompiled std typecheck cache, so the browser's first-ever compile (empty
+# IndexedDB) starts warm. Generated with the native toolchain (deterministic,
+# unlike driving the synchronous JS compile under Node); the content-hash keys
+# and serialized AST are toolchain-independent, so the blob is byte-identical to
+# one the JS build would dump. Uses the default (native) cabal project.
+cabal run -v0 exe:gen-std-cache -- web/site/std-cache.bin
 [ "$release" = 1 ] && gzip -9 -kf web/site/std-cache.bin
 
 mode=$([ "$release" = 1 ] && echo "release (-O1, minified)" || echo "dev (-O0)")
