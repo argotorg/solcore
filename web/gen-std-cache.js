@@ -46,8 +46,7 @@ function whenReady(cb, tries) {
   setTimeout(() => whenReady(cb, tries - 1), 20);
 }
 
-whenReady(() => {
-  const r = globalThis.compileSolcore(warmup, {});
+function finish(r) {
   if (!r.ok) {
     console.error("gen-std-cache: warm-up compile failed:", r.errors);
     done(1);
@@ -66,4 +65,21 @@ whenReady(() => {
   fs.writeFileSync(outFile, Buffer.from(blob, "latin1"));
   console.log(`gen-std-cache: wrote ${outFile} (${blob.length} bytes, ${modules} std modules)`);
   done(0);
-}, 500);
+}
+
+// A synchronous compile can return null when the Haskell action blocks: under
+// Node the loader's import resolution dispatches an async fs call, which a
+// synchronous callback cannot wait on (the browser has no such async fs, so it
+// never happens there). The blocked thread continues on the event loop, so we
+// retry on the next tick until a call returns a result.
+function attempt(retries) {
+  const r = globalThis.compileSolcore(warmup, {});
+  if (r) return finish(r);
+  if (retries <= 0) {
+    console.error("gen-std-cache: warm-up compile kept blocking (null result)");
+    done(1);
+  }
+  setTimeout(() => attempt(retries - 1), 50);
+}
+
+whenReady(() => attempt(40), 500);
