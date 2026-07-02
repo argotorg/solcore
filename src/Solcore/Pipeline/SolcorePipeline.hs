@@ -62,18 +62,25 @@ pipeline = do
 -- Version that returns Either for testing
 compile :: Option -> IO (Either String [Hull.Object])
 compile opts = runExceptT $ do
-  let verbose = optVerbose opts
-      noMatchCompiler = optNoMatchCompiler opts
-      noIfDesugar = optNoIfDesugar opts
-      timeItNamed :: String -> IO a -> IO a
-      timeItNamed = optTimeItNamed opts
-      file = fileName opts
+  let file = fileName opts
   mainRoot <- liftIO $ makeAbsolute (optRootDir opts)
   stdRoot <- ExceptT $ pure (parseStdRoot (optImportDirs opts))
   externalLibs <- ExceptT $ pure (parseExternalLibSpecs (optExternalLibs opts))
 
   -- Parsing and import loading
   graph <- ExceptT $ loadModuleGraph mainRoot stdRoot externalLibs file
+  compileGraph opts graph
+
+-- Run the pipeline on an already-loaded module graph. The graph's origin (on
+-- disk or built in memory from source text) is irrelevant here, so this is the
+-- shared core used by both the file-based CLI and the in-memory API.
+compileGraph :: Option -> ModuleGraph -> ExceptT String IO [Hull.Object]
+compileGraph opts graph = do
+  let verbose = optVerbose opts
+      noMatchCompiler = optNoMatchCompiler opts
+      noIfDesugar = optNoIfDesugar opts
+      timeItNamed :: String -> IO a -> IO a
+      timeItNamed = optTimeItNamed opts
 
   -- Validate each module against only its own direct imports.
   forM_ (moduleOrder graph) $ \moduleId -> do

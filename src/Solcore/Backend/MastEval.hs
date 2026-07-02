@@ -35,12 +35,8 @@ where
 
 import Control.Monad.Reader
 import Control.Monad.State
-import Crypto.Hash (Digest, hash)
-import Crypto.Hash.Algorithms (Keccak_256)
 import Data.Bits (complement, shiftL, shiftR, xor, (.&.), (.|.))
-import Data.ByteArray qualified as BA
 import Data.ByteString qualified as BS
-import Data.List (foldl')
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
@@ -51,6 +47,7 @@ import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
 import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
+import Solcore.Util.Keccak (keccak256)
 import Solcore.Primitives.Primitives (integerPrimNames)
 
 -----------------------------------------------------------------------
@@ -449,10 +446,7 @@ evalPrimitive (Name "strlenLit") [MastLit (StrLit s)] =
    in Just (MastLit (IntLit (toInteger (BS.length bs))))
 evalPrimitive (Name "keccakLit") [MastLit (StrLit s)] =
   let bs = TE.encodeUtf8 (T.pack s)
-      digest :: Digest Keccak_256
-      digest = hash bs
-      digestBytes :: BS.ByteString
-      digestBytes = BA.convert digest
+      digestBytes = keccak256 bs
    in Just (MastLit (IntLit (bsToIntegerBE digestBytes)))
 -- Integer (comptime-only, unlimited precision) primitives:
 evalPrimitive (Name "wordToInteger") [MastLit (IntLit n)] =

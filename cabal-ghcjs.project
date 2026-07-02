@@ -1,0 +1,10 @@
+-- Build configuration for the GHC JavaScript backend (browser target).
+-- Use with:  cabal build --project-file=cabal-ghcjs.project --builddir=dist-ghcjs
+packages: . web
+
+with-compiler: javascript-unknown-ghcjs-ghc
+with-hc-pkg:   javascript-unknown-ghcjs-ghc-pkg
+
+-- Faster iteration for the browser build; the compiler output is correctness
+-- driven, not perf sensitive here.
+optimization: 0

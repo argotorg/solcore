@@ -1,0 +1,8 @@
+-- Release build for the GHC JavaScript backend: same as cabal-ghcjs.project
+-- but optimised. Use with --builddir=dist-ghcjs-o1.
+packages: . web
+
+with-compiler: javascript-unknown-ghcjs-ghc
+with-hc-pkg:   javascript-unknown-ghcjs-ghc-pkg
+
+optimization: 1

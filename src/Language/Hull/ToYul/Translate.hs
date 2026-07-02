@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Translate where
+module Language.Hull.ToYul.Translate where
 
-import Builtins
+import Language.Yul.Builtins
 import Data.List (partition)
 import Data.Map qualified as Map
 import Data.String
@@ -11,7 +11,7 @@ import Language.Hull hiding (Name)
 import Language.Hull qualified as Hull
 import Language.Yul
 import Solcore.Frontend.Syntax.Name
-import TM
+import Language.Hull.ToYul.TM
 
 genExpr :: Expr -> TM ([YulStmt], Location)
 genExpr (EWord n) = pure ([], LocWord n)
@@ -242,6 +242,10 @@ genStmt (SExpr e) = fst <$> genExpr e
 genStmt SBreak = pure [YBreak]
 genStmt SContinue = pure [YContinue]
 genStmt (SRevert s) = pure (revertStmt s)
+-- Comments carry no runtime meaning. The hull parser skips block comments, so
+-- the standalone yule binary never sees these; drop them here too so the
+-- in-memory backend behaves identically.
+genStmt (SComment _) = pure []
 genStmt e = error $ "genStmt unimplemented for: " ++ show e
 
 -- If the statement is a function definition, record its type

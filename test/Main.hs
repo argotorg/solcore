@@ -3,6 +3,8 @@ module Main where
 import Cases
 import ContractAbiTests
 import HullCases
+import InMemoryApiTests
+import KeccakTests
 import MatchCompilerTests
 import ModuleTypeCheckTests
 import ParserTests
@@ -31,5 +33,7 @@ tests =
       matchTests,
       yulEvalTests,
       hullTests,
-      specialiseTests
+      specialiseTests,
+      inMemoryApiTests,
+      keccakTests
     ]

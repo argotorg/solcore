@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>solcore — in-browser compiler</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; }
+      h1 { font-size: 1.2rem; }
+      .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+      .col > label { display: block; font-size: 12px; color: #555; margin-bottom: 2px; }
+      textarea {
+        width: 100%; height: 60vh; box-sizing: border-box;
+        font-family: ui-monospace, monospace; font-size: 13px;
+        white-space: pre; overflow: auto;
+      }
+      .flags { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0.5rem 0; }
+      .flags label { font-size: 13px; }
+      button { font-size: 1rem; padding: 0.4rem 1.2rem; cursor: pointer; }
+      #output.error { color: #b00020; }
+      .bar { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+      #status { font-size: 13px; color: #555; }
+    </style>
+  </head>
+  <body>
+    <h1>solcore → Yul, compiled in your browser (GHCJS)</h1>
+
+    <div class="flags">
+      <label><input type="checkbox" id="noGenDispatch" checked /> -g no dispatch generation</label>
+    </div>
+
+    <div class="bar">
+      <button id="compile" disabled>Compile</button>
+      <span id="status">loading compiler…</span>
+    </div>
+
+    <div class="cols">
+      <div class="col">
+        <label>solcore source</label>
+        <textarea id="source" spellcheck="false">contract Answer {
+  public function main() -> word {
+    return 42;
+  }
+}
+</textarea>
+      </div>
+      <div class="col">
+        <label>hull</label>
+        <textarea id="output" readonly placeholder="hull output / diagnostics"></textarea>
+      </div>
+      <div class="col">
+        <label>yul</label>
+        <textarea id="yul" readonly placeholder="yul output"></textarea>
+      </div>
+    </div>
+
+    <script>
+      const flagIds = ['noGenDispatch'];
+      const $ = (id) => document.getElementById(id);
+
+      function readFlags() {
+        const flags = {};
+        for (const id of flagIds) flags[id] = $(id).checked;
+        return flags;
+      }
+
+      function runCompile() {
+        const btn = $('compile');
+        btn.disabled = true;
+        $('status').textContent = 'compiling…';
+        // The compile is synchronous and blocks the thread, so yield twice to let
+        // the browser paint "compiling…" before it runs.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const out = $('output');
+          const yul = $('yul');
+          const t0 = performance.now();
+          try {
+            const result = globalThis.compileSolcore($('source').value, readFlags());
+            const ms = Math.round(performance.now() - t0);
+            if (result.ok) {
+              out.classList.remove('error');
+              out.value = result.output;
+              yul.value = result.yul;
+              $('status').textContent = 'compiled in ' + ms + ' ms';
+            } else {
+              out.classList.add('error');
+              out.value = result.errors;
+              yul.value = '';
+              $('status').textContent = 'failed in ' + ms + ' ms';
+            }
+          } catch (e) {
+            out.classList.add('error');
+            out.value = String(e);
+            yul.value = '';
+            $('status').textContent = 'error after ' + Math.round(performance.now() - t0) + ' ms';
+          }
+          btn.disabled = false;
+        }));
+      }
+
+      // Wait for the GHCJS bundle to register globalThis.compileSolcore.
+      (function waitForCompiler() {
+        if (typeof globalThis.compileSolcore === 'function') {
+          $('compile').disabled = false;
+          $('status').textContent = 'ready';
+          $('compile').addEventListener('click', runCompile);
+        } else {
+          setTimeout(waitForCompiler, 50);
+        }
+      })();
+    </script>
+    <script language="javascript" src="all.js" defer></script>
+  </body>
+</html>

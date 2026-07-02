@@ -54,3 +54,10 @@ opencode.jsonc
 # config dirs
 .vscode/
 .private-journal/
+
+# GHCJS / browser build artifacts
+dist-ghcjs/
+web/site/
+
+# editor backups
+*~
