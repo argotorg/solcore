@@ -37,6 +37,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Data.Bits (complement, shiftL, shiftR, xor, (.&.), (.|.))
 import Data.ByteString qualified as BS
+import Data.List qualified as L
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
@@ -499,7 +500,7 @@ maskWord n = n `mod` wordMod
 -- | Write a 256-bit value to memory at byte address p (big-endian, 32 bytes).
 mstoreBytes :: Integer -> Integer -> Map.Map Integer Word8 -> Map.Map Integer Word8
 mstoreBytes p v mem =
-  foldl'
+  L.foldl'
     (\m i -> Map.insert (p + i) (fromIntegral ((v `shiftR` (8 * (31 - fromIntegral i))) .&. 0xff)) m)
     mem
     [0 .. 31]
@@ -511,7 +512,7 @@ mstoreBytes p v mem =
 -- at slot 64 is set by initialization code before any user function runs).
 mloadWord :: Integer -> Map.Map Integer Word8 -> Maybe Integer
 mloadWord p mem =
-  foldl'
+  L.foldl'
     (\mAcc i -> do acc <- mAcc; b <- Map.lookup (p + i) mem; pure (acc * 256 + fromIntegral b))
     (Just 0)
     [0 .. 31]

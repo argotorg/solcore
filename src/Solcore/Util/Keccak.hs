@@ -16,11 +16,12 @@ import Data.Array.Unboxed qualified as A
 import Data.Bits (complement, rotateL, shiftL, shiftR, xor, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.List qualified as L
 import Data.Word (Word64)
 
 -- | Keccak-256 digest (32 bytes) of a byte string.
 keccak256 :: ByteString -> ByteString
-keccak256 = squeeze . foldl' absorbBlock initialState . chunksOf rateBytes . pad rateBytes
+keccak256 = squeeze . L.foldl' absorbBlock initialState . chunksOf rateBytes . pad rateBytes
 
 rateBytes :: Int
 rateBytes = 136 -- 1088-bit rate for Keccak-256 (17 lanes)
@@ -51,7 +52,7 @@ chunksOf n bs
 -- Read 8 little-endian bytes at byte offset (8*lane) of a rate block.
 laneAt :: ByteString -> Int -> Word64
 laneAt block lane =
-  foldl' (\ !acc k -> acc .|. (fromIntegral (BS.index block (base + k)) `shiftL` (8 * k))) 0 [0 .. 7]
+  L.foldl' (\ !acc k -> acc .|. (fromIntegral (BS.index block (base + k)) `shiftL` (8 * k))) 0 [0 .. 7]
   where
     base = 8 * lane
 
@@ -64,10 +65,10 @@ squeeze st =
     [fromIntegral ((st ! lane) `shiftR` (8 * byte)) | lane <- [0 .. 3], byte <- [0 .. 7]]
 
 keccakF :: State -> State
-keccakF s0 = foldl' applyRound s0 roundConstants
+keccakF s0 = L.foldl' applyRound s0 roundConstants
   where
     applyRound a rc =
-      let cs = listArray (0, 4) [foldl' xor 0 [a ! idx x y | y <- [0 .. 4]] | x <- [0 .. 4]] :: UArray Int Word64
+      let cs = listArray (0, 4) [L.foldl' xor 0 [a ! idx x y | y <- [0 .. 4]] | x <- [0 .. 4]] :: UArray Int Word64
           ds = listArray (0, 4) [(cs ! ((x + 4) `mod` 5)) `xor` rotateL (cs ! ((x + 1) `mod` 5)) 1 | x <- [0 .. 4]] :: UArray Int Word64
           theta = A.array (0, 24) [(idx x y, (a ! idx x y) `xor` (ds ! x)) | x <- [0 .. 4], y <- [0 .. 4]] :: UArray Int Word64
           b =
