@@ -55,6 +55,7 @@ comptime =
       runTestForFile "integer-lit-poly.solc" comptimeFolder,
       runTestForFile "integer-lit-cond.solc" comptimeFolder,
       runTestForFile "integer-lit-pat.solc" comptimeFolder,
+      runTestForFile "uint256-lit.solc" comptimeFolder,
       runTestForFile "match_labels.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
       runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
