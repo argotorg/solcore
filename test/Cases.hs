@@ -582,6 +582,7 @@ tabledResolution =
           runTabledTestForFile "tabled-residual-given.solc" caseFolder,
           runTabledTestForFile "super-class-cycle.solc" caseFolder,
           runTabledTestExpectingFailure "super-class-cycle-fail.solc" caseFolder,
+          runTabledTestForFile "super-class-recursive-arg.solc" caseFolder,
           runTabledTestExpectingFailure "tabled-left-recursive-fail.solc" caseFolder
         ],
       testGroup

@@ -632,7 +632,7 @@ bySuperM :: ClassTable -> Pred -> [Pred]
 bySuperM ctable = go Set.empty
   where
     go visited p@(InCls c _ _)
-      | c `Set.member` visited = []
+      | c `Set.member` visited = [p]
       | otherwise =
           case Map.lookup c ctable of
             Nothing -> [p]
