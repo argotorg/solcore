@@ -190,17 +190,7 @@ newConsumerWithResidual target consumerSubst residualAcc goals0 = do
   goals <- lift $ withCurrentSubst goals1
   case goals of
     [] -> addAnswer target residualAcc
-    (p : ps) ->
-      case p of
-        InCls {} -> newSubgoal target residualAcc p ps
-        t1 :~: t2 -> do
-          lift $ putSubst consumerSubst
-          lift $ info [">>> Unify ", pretty t1, " with ", pretty t2, " (Solved)"]
-          s <- lift $ unify t1 t2
-          lift $ info [">>> Unify ", pretty t1, " with ", pretty t2, " (Solved: ", pretty s, ")"]
-          s' <- lift getSubst
-          ps' <- lift $ withCurrentSubst ps
-          newConsumerWithResidual target s' residualAcc ps'
+    (p : ps) -> newSubgoal target residualAcc p ps
 
 newSubgoal :: ConsumerTarget -> [Pred] -> Pred -> [Pred] -> TabledM ()
 newSubgoal target residualAcc p rest = do
