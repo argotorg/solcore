@@ -30,11 +30,32 @@ if [ ! -f "$stamp" ]; then
   clean=1
 else
   for f in "${metadata[@]}"; do
-    [ "$f" -nt "$stamp" ] && clean=1 && break
+    if [ "$f" -nt "$stamp" ]; then
+      echo "metadata ($f) changed since last build — cleaning $builddir"
+      clean=1
+      break
+    fi
   done
 fi
+
+# Guard against a JS build plan contaminated with a foreign GHC's package-ids.
+# A `cabal update` (or any resolve run without the JS toolchain in scope) can
+# rewrite $builddir/cache/plan.json with the *native* ghc's ids; the JS compiler
+# then fails later with a cryptic `cannot satisfy -package-id base-...`. Compare
+# the base package-id baked into the cached plan against the one this JS
+# toolchain actually provides; on a mismatch the plan is stale and the builddir
+# must be regenerated (deps stay in the global store, so only the local packages
+# recompile).
+plan="$builddir/cache/plan.json"
+if [ "$clean" = 0 ] && [ -f "$plan" ]; then
+  actual_base=$(javascript-unknown-ghcjs-ghc-pkg field base id 2>/dev/null | awk '{print $2}')
+  if [ -n "$actual_base" ] && ! grep -q "\"$actual_base\"" "$plan"; then
+    echo "JS build plan references a foreign base package-id (expected $actual_base) — cleaning $builddir"
+    clean=1
+  fi
+fi
+
 if [ "$clean" = 1 ] && [ -d "$builddir" ]; then
-  echo "metadata changed since last build — cleaning $builddir"
   rm -rf "$builddir"
 fi
 
@@ -51,7 +72,10 @@ cp web/worker.js web/site/worker.js
 cp -r web/vendor web/site/vendor   # local React UMD (no CDN dependency)
 
 # Precompile the IDE's JSX to plain JS with esbuild (no in-browser Babel).
-npx --yes esbuild@0.24.0 web/ide.jsx --jsx=transform --minify --outfile=web/site/ide.js
+# --bundle + the .solc text loader inline the real std sources (single source of
+# truth) into ide.js; React/ReactDOM stay UMD globals (referenced, not imported).
+npx --yes esbuild@0.24.0 web/ide.jsx --bundle --jsx=transform --loader:.solc=text \
+  --minify --outfile=web/site/ide.js
 
 if [ "$release" = 1 ]; then
   # Minify with esbuild (fetched on demand via npx). The win over raw GHCJS
