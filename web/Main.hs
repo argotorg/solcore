@@ -12,6 +12,7 @@
 --     and writes it back after the first successful compile.
 module Main where
 
+import Control.Monad (foldM)
 import Data.List (intercalate)
 import GHC.JS.Foreign.Callback (Callback, syncCallback', syncCallback1', syncCallback2')
 import GHC.JS.Prim (JSVal, fromJSString, toJSString)
@@ -35,9 +36,18 @@ foreign import javascript "((n) => n)"
 foreign import javascript "((obj, key) => (obj && obj[key] ? 1 : 0))"
   js_boolField :: JSVal -> JSVal -> IO Int
 
--- | Build the JS result object returned to the caller.
-foreign import javascript "((ok, output, yul, errors, cache) => ({ ok: ok !== 0, output: output, yul: yul, errors: errors, cache: cache }))"
-  js_result :: Int -> JSVal -> JSVal -> JSVal -> JSVal -> IO JSVal
+-- | Build the JS result object returned to the caller. @abis@ is an object
+-- mapping each contract name to its JSON ABI string.
+foreign import javascript "((ok, output, yul, errors, cache, abis) => ({ ok: ok !== 0, output: output, yul: yul, errors: errors, cache: cache, abis: abis }))"
+  js_result :: Int -> JSVal -> JSVal -> JSVal -> JSVal -> JSVal -> IO JSVal
+
+-- | An empty JS object, and a setter, so we can fold the ABI list into a
+-- @{ contractName: abiJson }@ map without a JSON round-trip.
+foreign import javascript "(() => ({}))"
+  js_newObject :: IO JSVal
+
+foreign import javascript "((obj, key, val) => { obj[key] = val; return obj; })"
+  js_setProp :: JSVal -> JSVal -> JSVal -> IO JSVal
 
 boolField :: JSVal -> String -> IO Bool
 boolField obj key = (/= 0) <$> js_boolField obj (toJSString key)
@@ -65,16 +75,23 @@ renderCacheStatus :: [(String, Bool)] -> String
 renderCacheStatus status =
   intercalate "; " [name ++ ": " ++ (if hit then "cache hit" else "cache miss") | (name, hit) <- status]
 
+-- | Marshal the ABI list into a JS object mapping contract name to ABI JSON.
+abisToJs :: [(String, String)] -> IO JSVal
+abisToJs abis = do
+  obj <- js_newObject
+  foldM (\o (n, j) -> js_setProp o (toJSString n) (toJSString j)) obj abis
+
 compile :: JSVal -> JSVal -> IO JSVal
 compile sourceVal flagsVal = do
   opts <- optionsFromFlags flagsVal
   result <- compileSolcore opts (fromJSString sourceVal)
   let cache = toJSString (renderCacheStatus (compileCacheStatus result))
+  abis <- abisToJs (compileAbis result)
   case result of
-    CompileResult (Just output) yul _ _ ->
-      js_result 1 (toJSString output) (toJSString (maybe "" id yul)) (toJSString "") cache
-    CompileResult Nothing _ errors _ ->
-      js_result 0 (toJSString "") (toJSString "") (toJSString (intercalate "\n\n" errors)) cache
+    CompileResult (Just output) yul _ _ _ ->
+      js_result 1 (toJSString output) (toJSString (maybe "" id yul)) (toJSString "") cache abis
+    CompileResult Nothing _ errors _ _ ->
+      js_result 0 (toJSString "") (toJSString "") (toJSString (intercalate "\n\n" errors)) cache abis
 
 -- | Dump the persisted (std) typecheck cache as a Latin-1 string.
 dumpCache :: IO JSVal

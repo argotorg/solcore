@@ -13,6 +13,7 @@ module Solcore.Desugarer.ContractDispatch
     contractDispatchTopDecls,
     writeContractAbis,
     contractAbiJson,
+    nameStr,
   )
 where
 

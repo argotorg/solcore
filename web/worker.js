@@ -97,11 +97,15 @@ function whenReady(cb) {
 }
 
 // Seed the session cache before telling the page the compiler is ready, so the
-// first compile can already reuse std: prefer the per-session IndexedDB store,
-// falling back to the bundled static blob when it is empty (first ever load).
+// first compile can already reuse std. We seed from BOTH the bundled static blob
+// (authoritative for this build) and any per-session IndexedDB dump. Both are
+// content-addressed, so unioning them is safe; seeding the bundle unconditionally
+// means a stale IndexedDB blob left over from an earlier build (IndexedDB is
+// per-origin, so a local `python -m http.server` accumulates its own) can no
+// longer shadow the fresh bundle — which showed up as every std module missing
+// on the first compile.
 whenReady(() => {
-  loadPersistedCache()
-    .then(() => (seededModules > 0 ? undefined : loadBundledCache()))
+  Promise.allSettled([loadBundledCache(), loadPersistedCache()])
     .finally(() => self.postMessage({ type: "ready" }));
 });
 
@@ -109,7 +113,7 @@ self.onmessage = (e) => {
   if (!e.data || e.data.type !== "compile") return;
   whenReady(() => {
     const r = self.compileSolcore(e.data.source, e.data.flags);
-    self.postMessage({ type: "result", ok: r.ok, output: r.output, yul: r.yul, errors: r.errors, cache: r.cache });
+    self.postMessage({ type: "result", ok: r.ok, output: r.output, yul: r.yul, errors: r.errors, cache: r.cache, abis: r.abis });
     if (r.ok) persistCache();
   });
 };

@@ -33,6 +33,14 @@ inMemoryApiTests =
         assertBool
           "yul should be a Yul object"
           (maybe False (\y -> "object" `isInfixOf` y) (compileYul result)),
+      testCase "emits a JSON ABI for the entry module's contract" $ do
+        result <- compileSolcore noDispatch simpleSource
+        case compileAbis result of
+          [(contractName, abiJson)] -> do
+            contractName @?= "Answer"
+            assertBool "ABI should describe the main function" ("\"main\"" `isInfixOf` abiJson)
+            assertBool "ABI should be a JSON array" ("[" `isInfixOf` abiJson)
+          other -> assertFailure ("expected exactly one contract ABI, got " ++ show (map fst other)),
       -- The canonical dispatch example, fed in as source text (as the UI would)
       -- and compiled with the standard library resolved from the in-memory
       -- bundle. It imports std, std.dispatch and std.opcodes.
@@ -56,4 +64,7 @@ inMemoryApiTests =
         assertBool
           "expected all modules reused on identical recompile"
           (all snd status)
+        -- The ABI is read from the entry module's prepared input; assert it is
+        -- still produced when that module is served from the session cache.
+        assertBool "expected an ABI even on a cache-hit recompile" (not (null (compileAbis again)))
     ]

@@ -9,6 +9,7 @@
 module Solcore.Api
   ( CompileResult (..),
     compileSolcore,
+    entryContractAbis,
     defaultOptions,
     renderObjects,
     -- Typecheck-cache persistence (Tier 2). The blob functions are pure and
@@ -31,11 +32,13 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Language.Hull qualified as Hull
 import Language.Hull.ToYul.Assemble (objectToYul)
+import Solcore.Desugarer.ContractDispatch (contractAbiJson, nameStr)
 import Solcore.Frontend.Module.Identity (LibraryId (StdLibrary), ModuleId (moduleLibrary))
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraphFromSource)
 import Solcore.Frontend.Pretty.SolcorePretty (pretty)
-import Solcore.Frontend.TypeInference.TcModule (CheckedModule (..))
+import Solcore.Frontend.Syntax.Contract (Contract (name), TopDecl (TContr))
+import Solcore.Frontend.TypeInference.TcModule (CheckedModule (..), moduleInferenceLocalDecls)
 import Solcore.Pipeline.Options (Option, emptyOption)
 import Solcore.Pipeline.SolcorePipeline (compileGraphWithCache)
 import Solcore.Pipeline.TcCacheSerialize (decodeCache, encodeCache, fromCachedModule, toCachedModule)
@@ -51,12 +54,16 @@ import System.IO.Unsafe (unsafePerformIO)
 --   * 'compileCacheStatus' — per module (in dependency order), whether its
 --     typecheck was reused from the session cache (@True@) or recomputed this
 --     compile (@False@). Drives the UI's cache-hit indicator.
+--   * 'compileAbis' — the JSON ABI of each contract defined in the entry module,
+--     as @(contractName, abiJson)@. Always produced (the browser IDE emits ABIs
+--     by default), mirroring the CLI's @--abi@ output without touching disk.
 data CompileResult
   = CompileResult
   { compileOutput :: Maybe String,
     compileYul :: Maybe String,
     compileErrors :: [String],
-    compileCacheStatus :: [(String, Bool)]
+    compileCacheStatus :: [(String, Bool)],
+    compileAbis :: [(String, String)]
   }
   deriving (Eq, Show)
 
@@ -83,10 +90,10 @@ compileSolcore :: Option -> String -> IO CompileResult
 compileSolcore opts source = do
   graphResult <- loadModuleGraphFromSource source
   case graphResult of
-    Left err -> pure (CompileResult Nothing Nothing [err] [])
+    Left err -> pure (CompileResult Nothing Nothing [err] [] [])
     Right graph ->
       case moduleCacheKeys opts graph of
-        Left err -> pure (CompileResult Nothing Nothing [err] [])
+        Left err -> pure (CompileResult Nothing Nothing [err] [] [])
         Right keys -> do
           seed <- cacheSeed graph keys
           let cacheStatus =
@@ -95,14 +102,31 @@ compileSolcore opts source = do
                 ]
           compiled <- runExceptT (compileGraphWithCache opts graph seed)
           case compiled of
-            Left err -> pure (CompileResult Nothing Nothing [err] cacheStatus)
+            Left err -> pure (CompileResult Nothing Nothing [err] cacheStatus [])
             Right (objs, checked) -> do
               cacheCheckedModules keys checked
               let hull = renderObjects objs
+                  abis = entryContractAbis graph checked
               yulResult <- objectsToYul objs
               pure $ case yulResult of
-                Left err -> CompileResult (Just hull) Nothing [err] cacheStatus
-                Right yul -> CompileResult (Just hull) (Just yul) [] cacheStatus
+                Left err -> CompileResult (Just hull) Nothing [err] cacheStatus abis
+                Right yul -> CompileResult (Just hull) (Just yul) [] cacheStatus abis
+
+-- | The JSON ABI of every contract defined in the entry module, as
+-- @(contractName, abiJson)@ — the same computation the CLI's @--abi@ performs,
+-- reading the field-desugared local declarations the type checker already
+-- prepared ('checkedModuleInput'). Safe to force even on a cache hit: the entry
+-- module is the user's own source, so it is never one of the std modules served
+-- from the reconstructed persisted cache (whose 'checkedModuleInput' is a thunk);
+-- a session-cached entry stores the genuine 'CheckedModule'.
+entryContractAbis :: ModuleGraph -> Map Mod.ModuleId CheckedModule -> [(String, String)]
+entryContractAbis graph checked =
+  case Map.lookup (entryModule graph) checked of
+    Nothing -> []
+    Just cm ->
+      [ (nameStr (name c), contractAbiJson c)
+      | TContr c <- moduleInferenceLocalDecls (checkedModuleInput cm)
+      ]
 
 -- | Build the per-compile reuse map: every module whose current key is already
 -- in the session cache maps to its stored 'CheckedModule'. Modules whose source
