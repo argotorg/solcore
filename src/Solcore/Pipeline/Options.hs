@@ -3,6 +3,11 @@ module Solcore.Pipeline.Options where
 import Options.Applicative
 import Solcore.Diagnostics
 
+data TypeClassResolutionMode
+  = LegacyResolution
+  | TabledResolution
+  deriving (Eq, Show)
+
 data Option
   = Option
   { fileName :: !FilePath,
@@ -16,6 +21,7 @@ data Option
     optNoMatchCompiler :: !Bool,
     optNoIfDesugar :: !Bool,
     optNoGenDispatch :: !Bool,
+    optTypeClassResolution :: !TypeClassResolutionMode,
     -- Options controlling printing
     optVerbose :: !Bool,
     optDumpAST :: !Bool,
@@ -59,6 +65,7 @@ emptyOption path =
       optNoMatchCompiler = False,
       optNoIfDesugar = False,
       optNoGenDispatch = False,
+      optTypeClassResolution = LegacyResolution,
       -- Options controlling printing
       optVerbose = False,
       optDumpAST = False,
@@ -157,6 +164,14 @@ options =
       ( long "no-gen-dispatch"
           <> short 'g'
           <> help "Skip contract dispatch generation"
+      )
+    <*> option
+      parseTypeClassResolutionMode
+      ( long "type-class-resolution"
+          <> metavar "legacy|tabled"
+          <> value (optTypeClassResolution stdOpt)
+          <> showDefaultWith renderTypeClassResolutionMode
+          <> help "Select the type class resolution strategy"
       )
     -- Options controlling printing
     <*> switch
@@ -261,6 +276,18 @@ argumentsParser = do
               <> header "Solcore - solidity core language"
           )
   execParser opts
+
+parseTypeClassResolutionMode :: ReadM TypeClassResolutionMode
+parseTypeClassResolutionMode =
+  eitherReader $ \s ->
+    case s of
+      "legacy" -> Right LegacyResolution
+      "tabled" -> Right TabledResolution
+      other -> Left ("unknown type class resolution strategy: " ++ other)
+
+renderTypeClassResolutionMode :: TypeClassResolutionMode -> String
+renderTypeClassResolutionMode LegacyResolution = "legacy"
+renderTypeClassResolutionMode TabledResolution = "tabled"
 
 diagnosticRenderOptions :: Option -> DiagnosticRenderOptions
 diagnosticRenderOptions opts =

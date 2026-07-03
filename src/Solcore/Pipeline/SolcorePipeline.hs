@@ -728,9 +728,11 @@ typeCheckModuleFromGraph opts graph moduleId = do
       first (moduleTypeCheckError sourcePath "input") <$> loadModuleLocalTypeCheckInput graph moduleId
   liftIO $ dumpModuleResolvedAST opts sourcePath resolvedInput
   moduleInput <- prepareModuleTypeCheckInput opts resolvedInput
+  let noDesugarTypecheckOpt =
+        noDesugarOpt {optTypeClassResolution = optTypeClassResolution opts}
   (noDesugarChecked, _noDesugarEnv) <-
     ExceptT $
-      first (moduleTypeCheckError sourcePath "no desugaring") <$> typeInferModuleLocals noDesugarOpt moduleInput
+      first (moduleTypeCheckError sourcePath "no desugaring") <$> typeInferModuleLocals noDesugarTypecheckOpt moduleInput
   liftIO $
     when (optVerbose opts) $
       putStrLn ("No type errors found for " ++ sourcePath ++ "!")

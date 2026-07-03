@@ -102,6 +102,7 @@ library
       Solcore.Frontend.TypeInference.Id
       Solcore.Frontend.TypeInference.InvokeGen
       Solcore.Frontend.TypeInference.NameSupply
+      Solcore.Frontend.TypeInference.TcResolution
       Solcore.Frontend.TypeInference.SccAnalysis
       Solcore.Frontend.TypeInference.TcContract
       Solcore.Frontend.TypeInference.TcEnv

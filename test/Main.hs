@@ -22,6 +22,7 @@ tests =
     "Tests"
     [ parserTests,
       cases,
+      tabledResolution,
       comptime,
       opcodes,
       pragmas,
