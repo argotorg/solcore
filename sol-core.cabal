@@ -161,7 +161,7 @@ executable yule
       BlockArguments
       ImportQualifiedPost
     -- Locus, Options, TM, Translate, Builtins, Compress now live in the library.
-    build-depends:    base ^>=4.19.1.0,
+    build-depends:    base >=4.19.1.0,
                       pretty >=  1.1,
                       containers >= 0.6,
                       mtl >= 2.3,

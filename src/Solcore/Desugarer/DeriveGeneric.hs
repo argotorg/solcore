@@ -16,16 +16,16 @@ deriveGenericTopDecls localData allDecls
     hasInst = existingGenericTypes allDecls
     conflicts =
       [ dataName dt
-        | dt <- localData,
-          dataName dt `elem` hasInst,
-          dataName dt `notElem` excluded
+      | dt <- localData,
+        dataName dt `elem` hasInst,
+        dataName dt `notElem` excluded
       ]
     newInsts =
       [ TInstDef (buildInstance dt)
-        | dt <- localData,
-          not (null (dataConstrs dt)),
-          dataName dt `notElem` excluded,
-          dataName dt `notElem` hasInst
+      | dt <- localData,
+        not (null (dataConstrs dt)),
+        dataName dt `notElem` excluded,
+        dataName dt `notElem` hasInst
       ]
     conflictError n =
       "type '"

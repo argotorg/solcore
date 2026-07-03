@@ -850,12 +850,12 @@ findPhantomPredBindings pann pinf = do
 phantomMatchingPreds :: [MetaTv] -> [Pred] -> [Pred] -> [(Pred, Pred)]
 phantomMatchingPreds dom_s0 pann pinf =
   [ (pa, pi_)
-    | pa@(InCls cls mt_a _) <- pann,
-      hasPhantomMeta pa, -- skip annotation preds already fully resolved in s0
-      pi_@(InCls cls' mt_i _) <- pinf,
-      cls == cls',
-      hasPhantomMeta pi_,
-      mt_a == mt_i -- self-types must agree to avoid cross-pairing same-class constraints
+  | pa@(InCls cls mt_a _) <- pann,
+    hasPhantomMeta pa, -- skip annotation preds already fully resolved in s0
+    pi_@(InCls cls' mt_i _) <- pinf,
+    cls == cls',
+    hasPhantomMeta pi_,
+    mt_a == mt_i -- self-types must agree to avoid cross-pairing same-class constraints
   ]
   where
     hasPhantomMeta (InCls _ mt exts) = any (`notElem` dom_s0) (mv mt `union` mv exts)
@@ -1592,7 +1592,7 @@ constructorAcceptsArguments n argTys mExpected = do
             pure ()
           Nothing -> pure ()
         pure True
-      )
+    )
       `catchError` const (pure False)
   putSubst s0
   pure r

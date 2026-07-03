@@ -40,7 +40,6 @@ import Crypto.Hash.Algorithms (Keccak_256)
 import Data.Bits (complement, shiftL, shiftR, xor, (.&.), (.|.))
 import Data.ByteArray qualified as BA
 import Data.ByteString qualified as BS
-import Data.List (foldl')
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
@@ -632,7 +631,7 @@ venvToSubst :: VEnv -> Map.Map Name YulExp
 venvToSubst env =
   Map.fromList
     [ (mastIdName k, yulLit l)
-      | (k, MastLit l) <- Map.toList env
+    | (k, MastLit l) <- Map.toList env
     ]
   where
     yulLit (IntLit v) = YLit (YulNumber v)

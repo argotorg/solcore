@@ -20,7 +20,7 @@ nix develop
 ```
 
 The development shell includes:
-- Haskell tools: GHC 9.8, cabal, HLS
+- Haskell tools: GHC 9.10, cabal, HLS
 - Solidity tools: solc, foundry-bin, hevm
 - C++ tools: cmake, boost (for testrunner)
 - Utilities: jq, go-ethereum, goevmlab

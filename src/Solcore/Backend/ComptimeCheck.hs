@@ -54,8 +54,8 @@ checkFunDef ft pure_ fd =
     initEnv =
       Set.fromList
         [ mastParamName p
-          | p <- mastFunParams fd,
-            mastParamComptime p || mastFunRetComptime fd
+        | p <- mastFunParams fd,
+          mastParamComptime p || mastFunRetComptime fd
         ]
 
 -- | Check a sequence of statements, threading the comptime environment.

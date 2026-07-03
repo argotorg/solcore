@@ -592,13 +592,13 @@ tryResolveMPTC clsName mainTy' extras = do
                 eqSubst =
                   TVSubst
                     [ (v, t)
-                      | (TyVar v :~: t) <- appliedQ,
-                        null (freetv t)
+                    | (TyVar v :~: t) <- appliedQ,
+                      null (freetv t)
                     ]
                     <> TVSubst
                       [ (v, t)
-                        | (t :~: TyVar v) <- appliedQ,
-                          null (freetv t)
+                      | (t :~: TyVar v) <- appliedQ,
+                        null (freetv t)
                       ]
                 phi' = phi <> eqSubst
             debug ["  tryResolve match: phi=", pretty phi, " q=", show q, " appliedQ=", show appliedQ, " eqSubst=", pretty eqSubst, " phi'=", pretty phi', " instExtras=", show instExtras]

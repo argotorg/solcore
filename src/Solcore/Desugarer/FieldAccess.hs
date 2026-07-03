@@ -4,7 +4,7 @@ module Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls, fieldDesugarer) wher
 
 import Control.Monad.Reader (MonadReader (..))
 -- import Data.Generics(Data, mkT, everywhere)
-import Data.List (foldl', mapAccumL)
+import Data.List (mapAccumL)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (isJust)
@@ -44,7 +44,7 @@ fieldDesugarTopDecls topdecls = extras <> topdecls'
     existingDataTypes =
       Set.fromList
         [ dataName dt
-          | TDataDef dt <- topdecls
+        | TDataDef dt <- topdecls
         ]
     (extras, topdecls') = mapAccumL go mempty topdecls
     go acc (TContr c) =

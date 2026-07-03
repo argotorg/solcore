@@ -368,7 +368,7 @@ inferDuplicateLabels sources diagnostic =
       take 2 $
         concat
           [ spansForTerm sources diagnostic term
-            | term <- duplicateSearchTerms diagnostic
+          | term <- duplicateSearchTerms diagnostic
           ]
 
 firstMatchTerm :: SourceMap -> Diagnostic -> [String] -> Maybe String
@@ -842,8 +842,8 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
   liftIO $ when (optEmitAbi opts) $ do
     let localTopDecls =
           [ moduleInferenceDeclTopDecl d
-            | d <- accessed,
-              moduleInferenceDeclSegment d == ModuleLocalDecl
+          | d <- accessed,
+            moduleInferenceDeclSegment d == ModuleLocalDecl
           ]
     writeContractAbis (optOutputDir opts) localTopDecls
 
