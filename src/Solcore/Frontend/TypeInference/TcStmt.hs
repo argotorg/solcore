@@ -420,10 +420,23 @@ tcExpWithExpected' _ (FieldAccess (Just e) n) =
     withCurrentSubst (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExpWithExpected' _ ex@(Call me n args) =
   tcCall me n args `wrapError` ex
-tcExpWithExpected' _ (Lam args bd _) =
+tcExpWithExpected' mExpected (Lam args bd _) =
   do
     (args', schs, ts') <- tcArgs args
     (bd', ps, t') <- withLocalCtx schs (tcBody bd)
+    -- Reconcile the lambda's functional type with an expected function type
+    -- (e.g. an annotated return type) *before* closure conversion.  Closure
+    -- conversion replaces the arrow type with an opaque closure type, which
+    -- would otherwise mask parameter/result type mismatches (this is the
+    -- check the retired no-desugar validation pass provided for free by
+    -- returning the un-converted arrow type; see
+    -- instance-closure-error-invalid-member.solc).
+    case mExpected of
+      Just expected@(_ :-> _) -> do
+        s0 <- getSubst
+        _ <- unify (funtype (apply s0 ts') (apply s0 t')) expected
+        pure ()
+      _ -> pure ()
     s <- getSubst
     let ps1 = apply s ps
         ts1 = apply s ts'

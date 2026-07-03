@@ -66,7 +66,7 @@ diagnosticCliTests =
             "note: in: function main () -> word {",
             "      return true;",
             "      }",
-            "note: module typecheck failed for <cwd>/test/diagnostics/type-mismatch.solc (no desugaring)"
+            "note: module typecheck failed for <cwd>/test/diagnostics/type-mismatch.solc"
           ],
       testCase "missing signature uses signature span" $
         expectFailure
@@ -77,7 +77,7 @@ diagnosticCliTests =
             "1 | function foo() {",
             "  |          ^^^ incomplete signature",
             "note: signature: function foo ()",
-            "note: module typecheck failed for <cwd>/test/diagnostics/missing-signature.solc (no desugaring)",
+            "note: module typecheck failed for <cwd>/test/diagnostics/missing-signature.solc",
             "help: annotate every parameter (name : Type) and provide a return type (-> Type)"
           ],
       testCase "polymorphic type error uses signature span" $
@@ -98,7 +98,7 @@ diagnosticCliTests =
             "      }",
             "      return result;",
             "      }",
-            "note: module typecheck failed for <cwd>/test/diagnostics/not-polymorphic-enough.solc (no desugaring)"
+            "note: module typecheck failed for <cwd>/test/diagnostics/not-polymorphic-enough.solc"
           ],
       testCase "missing instance" $
         expectFailure
@@ -117,7 +117,7 @@ diagnosticCliTests =
             "      return Typedef.abs(MemoryType.load(ptr) : word);",
             "      }",
             "      }",
-            "note: module typecheck failed for <cwd>/test/examples/cases/missing-instance.solc (no desugaring)",
+            "note: module typecheck failed for <cwd>/test/examples/cases/missing-instance.solc",
             "help: add a matching instance or strengthen the surrounding type context"
           ],
       testCase "dot shorthand constructor error" $
@@ -133,7 +133,7 @@ diagnosticCliTests =
             "note: in: function bad () -> Option {",
             "      return .Nope(Int.fromInteger(1));",
             "      }",
-            "note: module typecheck failed for <cwd>/test/examples/cases/dot-expression-unknown-fail.solc (no desugaring)",
+            "note: module typecheck failed for <cwd>/test/examples/cases/dot-expression-unknown-fail.solc",
             "help: use a constructor that is visible for the expected type"
           ],
       testCase "import error" $

@@ -67,7 +67,7 @@ import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.SccAnalysis
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcModule
-import Solcore.Pipeline.Options (Option (..), WarningPolicy (..), argumentsParser, diagnosticRenderOptions, noDesugarOpt)
+import Solcore.Pipeline.Options (Option (..), WarningPolicy (..), argumentsParser, diagnosticRenderOptions)
 import System.Directory (createDirectoryIfMissing, doesFileExist, makeAbsolute)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath ((</>))
@@ -728,24 +728,18 @@ typeCheckModuleFromGraph opts graph moduleId = do
       first (moduleTypeCheckError sourcePath "input") <$> loadModuleLocalTypeCheckInput graph moduleId
   liftIO $ dumpModuleResolvedAST opts sourcePath resolvedInput
   moduleInput <- prepareModuleTypeCheckInput opts resolvedInput
-  let noDesugarTypecheckOpt =
-        noDesugarOpt {optTypeClassResolution = optTypeClassResolution opts}
-  (noDesugarChecked, _noDesugarEnv) <-
+  (typed, tcEnv) <-
     ExceptT $
-      first (moduleTypeCheckError sourcePath "no desugaring") <$> typeInferModuleLocals noDesugarTypecheckOpt moduleInput
+      first (moduleTypeCheckError sourcePath "") <$> typeInferModuleLocals opts moduleInput
   liftIO $
     when (optVerbose opts) $
       putStrLn ("No type errors found for " ++ sourcePath ++ "!")
-  (typed, tcEnv) <-
-    ExceptT $
-      first (moduleTypeCheckError sourcePath "desugaring") <$> typeInferModuleLocals opts moduleInput
   liftIO $ dumpModuleTypeInference opts sourcePath typed tcEnv
   pure
     ( moduleId,
       CheckedModule
         { checkedModuleId = moduleId,
           checkedModuleInput = moduleInput,
-          checkedModuleNoDesugar = noDesugarChecked,
           checkedModuleTyped = typed,
           checkedModuleEnv = tcEnv
         }
@@ -803,8 +797,12 @@ dumpModuleTypeInference opts sourcePath typed tcEnv =
 moduleTypeCheckError :: FilePath -> String -> CompilerError -> CompilerError
 moduleTypeCheckError sourcePath phase err =
   decorateCompilerDiagnosticContext
-    ("module typecheck failed for " ++ sourcePath ++ " (" ++ phase ++ ")")
+    ("module typecheck failed for " ++ sourcePath ++ phaseSuffix)
     err
+  where
+    phaseSuffix
+      | null phase = ""
+      | otherwise = " (" ++ phase ++ ")"
 
 decorateDiagnosticContext :: String -> String -> String
 decorateDiagnosticContext context err =
