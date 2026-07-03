@@ -40,7 +40,7 @@ import Solcore.Frontend.Pretty.SolcorePretty (pretty)
 import Solcore.Frontend.Syntax.Contract (Contract (name), TopDecl (TContr))
 import Solcore.Frontend.TypeInference.TcModule (CheckedModule (..), moduleInferenceLocalDecls)
 import Solcore.Pipeline.Options (Option, emptyOption)
-import Solcore.Pipeline.SolcorePipeline (compileGraphWithCache)
+import Solcore.Pipeline.SolcorePipeline (compileDiagnosticsText, compileGraphWithCache)
 import Solcore.Pipeline.TcCacheSerialize (decodeCache, encodeCache, fromCachedModule, toCachedModule)
 import Solcore.Pipeline.TypecheckCache (TcCacheKey, moduleCacheKeys)
 import System.IO.Unsafe (unsafePerformIO)
@@ -102,7 +102,7 @@ compileSolcore opts source = do
                 ]
           compiled <- runExceptT (compileGraphWithCache opts graph seed)
           case compiled of
-            Left err -> pure (CompileResult Nothing Nothing [err] cacheStatus [])
+            Left diags -> pure (CompileResult Nothing Nothing [compileDiagnosticsText diags] cacheStatus [])
             Right (objs, checked) -> do
               cacheCheckedModules keys checked
               let hull = renderObjects objs

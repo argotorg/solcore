@@ -55,6 +55,7 @@ comptime =
       runTestForFile "integer-lit-poly.solc" comptimeFolder,
       runTestForFile "integer-lit-cond.solc" comptimeFolder,
       runTestForFile "integer-lit-pat.solc" comptimeFolder,
+      runTestForFile "uint256-lit.solc" comptimeFolder,
       runTestForFile "match_labels.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
       runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
@@ -467,6 +468,8 @@ cases =
       runTestExpectingFailure "subject-reduction.solc" caseFolder,
       runTestExpectingFailure "subsumption-test.solc" caseFolder,
       runTestForFile "super-class.solc" caseFolder,
+      runTestForFile "super-class-cycle.solc" caseFolder,
+      runTestExpectingFailure "super-class-cycle-fail.solc" caseFolder,
       runTestForFile "super-class-num.solc" caseFolder,
       runTestForFile "tiamat.solc" caseFolder,
       runTestForFile "tuple-trick.solc" caseFolder,
@@ -550,6 +553,55 @@ cases =
   where
     caseFolder = "./test/examples/cases"
 
+tabledResolution :: TestTree
+tabledResolution =
+  testGroup
+    "Tabled type class resolution"
+    [ testGroup
+        "Cases"
+        [ runTabledTestForFile "constrained-instance.solc" caseFolder,
+          runTabledTestForFile "constrained-instance-context.solc" caseFolder,
+          runTabledTestForFile "constructor-weak-args.solc" caseFolder,
+          runTabledTestForFile "EqQual.solc" caseFolder,
+          runTabledTestForFile "super-class.solc" caseFolder,
+          runTabledTestForFile "super-class-num.solc" caseFolder,
+          runTabledTestForFile "field-helper-cxt-collision.solc" caseFolder,
+          runTabledTestForFile "instance-synonym.solc" caseFolder,
+          runTabledTestForFile "invokable-issue.solc" caseFolder,
+          runTabledTestForFile "td.solc" caseFolder,
+          runTabledTestForFile "tuple-trick.solc" caseFolder,
+          runTabledTestForFile "typedef.solc" caseFolder,
+          runTabledTestForFile "word-match.solc" caseFolder,
+          runTabledTestExpectingFailure "tabled-cycle-fail.solc" caseFolder
+        ],
+      testGroup
+        "Conformance"
+        [ runTabledTestForFile "tabled-answer-reuse.solc" caseFolder,
+          runTabledTestForFile "tabled-default-instance.solc" caseFolder,
+          runTabledTestForFile "tabled-given-order.solc" caseFolder,
+          runTabledTestForFile "tabled-mutual-chain.solc" caseFolder,
+          runTabledTestForFile "tabled-residual-given.solc" caseFolder,
+          runTabledTestForFile "super-class-cycle.solc" caseFolder,
+          runTabledTestExpectingFailure "super-class-cycle-fail.solc" caseFolder,
+          runTabledTestForFile "super-class-recursive-arg.solc" caseFolder,
+          runTabledTestExpectingFailure "tabled-left-recursive-fail.solc" caseFolder
+        ],
+      testGroup
+        "Spec"
+        [ runTabledTestForFile "024arith.solc" specFolder,
+          runTabledTestForFile "031maybe.solc" specFolder,
+          runTabledTestForFile "041pair.solc" specFolder,
+          runTabledTestForFile "047rgb.solc" specFolder
+        ],
+      testGroup
+        "Standard library"
+        [ runTabledTestForFile "std.solc" stdFolder
+        ]
+    ]
+  where
+    caseFolder = "./test/examples/cases"
+    specFolder = "./test/examples/spec"
+
 -- basic infrastructure for tests
 
 type FileName = String
@@ -563,7 +615,31 @@ runTestForFile file folder = runTestForFileWith option file folder
 
 runTestForFileWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestForFileWith opts file folder =
-  testCase file $ do
+  runNamedTestForFile file opts file folder
+
+runTabledTestForFile :: FileName -> BaseFolder -> TestTree
+runTabledTestForFile file folder =
+  runNamedTestForFile (file ++ " (tabled)") option file folder
+  where
+    option =
+      stdOpt
+        { optNoGenDispatch = True,
+          optTypeClassResolution = TabledResolution
+        }
+
+runTabledTestExpectingFailure :: FileName -> BaseFolder -> TestTree
+runTabledTestExpectingFailure file folder =
+  runNamedTestExpectingFailure (file ++ " (tabled)") option file folder
+  where
+    option =
+      stdOpt
+        { optNoGenDispatch = True,
+          optTypeClassResolution = TabledResolution
+        }
+
+runNamedTestForFile :: String -> Option -> FileName -> BaseFolder -> TestTree
+runNamedTestForFile testName opts file folder =
+  testCase testName $ do
     let filePath = folder </> file
     result <- compile (opts {fileName = filePath, optRootDir = folder})
     case result of
@@ -577,7 +653,11 @@ runTestExpectingFailure file folder = runTestExpectingFailureWith option file fo
 
 runTestExpectingFailureWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestExpectingFailureWith opts file folder =
-  testCase file $ do
+  runNamedTestExpectingFailure file opts file folder
+
+runNamedTestExpectingFailure :: String -> Option -> FileName -> BaseFolder -> TestTree
+runNamedTestExpectingFailure testName opts file folder =
+  testCase testName $ do
     let filePath = folder </> file
     outcome <- try (compile opts {fileName = filePath, optRootDir = folder})
     case outcome of

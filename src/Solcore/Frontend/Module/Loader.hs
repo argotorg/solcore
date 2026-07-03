@@ -4,6 +4,7 @@ module Solcore.Frontend.Module.Loader
     ModuleTypeCheckSurface (..),
     loadModuleGraph,
     loadModuleGraphFromSource,
+    moduleSourceMap,
     moduleValidationTopDeclSegments,
     moduleSourcePath,
     moduleLocalTypeCheckSurface,
@@ -20,8 +21,9 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
 import Solcore.Frontend.Module.Identity qualified as Mod
-import Solcore.Frontend.Parser.SolcoreParser (parseCompUnit)
+import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 import Solcore.Std.Bundle (stdSources)
@@ -66,6 +68,7 @@ mapSourceFS files =
 data LoadedModule
   = LoadedModule
   { loadedSourcePath :: FilePath,
+    loadedSource :: SourceFile,
     loadedCompUnit :: CompUnit,
     loadedModuleRefs :: Map ModulePath Mod.ModuleId
   }
@@ -90,6 +93,16 @@ data LoadState
 
 emptyLoadState :: LoadState
 emptyLoadState = LoadState Map.empty Map.empty Map.empty Set.empty []
+
+data ModuleReferenceKind
+  = ImportReference
+  | ExportReference
+  deriving (Eq, Show)
+
+data ModuleReferenceFailure
+  = ModuleReferenceNotFound
+  | ModuleReferenceMissingExternalRoot
+  deriving (Eq, Show)
 
 data ModuleGraph
   = ModuleGraph
@@ -191,11 +204,12 @@ visit cfg moduleId sourcePath = do
   unless (alreadyLoaded || loading) do
     modify (\st -> st {loadingModules = Set.insert moduleId (loadingModules st)})
     content <- either throwError pure =<< liftIO (fsReadFile (loaderFS cfg) sourcePath)
-    parsed <- liftIO (parseCompUnit content)
+    let source = makeSourceFile sourcePath content
+    parsed <- liftIO (parseCompUnitWithPath sourcePath content)
     cunit <- either throwError pure parsed
-    importedModules <- mapM (resolveImportPath cfg moduleId) (imports cunit)
+    importedModules <- mapM (resolveImportPath cfg moduleId sourcePath) (imports cunit)
     exportedModules <-
-      mapM (resolveModuleReference cfg moduleId "export") (exportModulePaths cunit)
+      mapM (resolveModuleReference cfg moduleId sourcePath ExportReference) (exportModulePaths cunit)
     let moduleRefs =
           Map.fromList $
             [(importModule imp, importId) | (imp, (importId, _)) <- zip (imports cunit) importedModules]
@@ -209,7 +223,7 @@ visit cfg moduleId sourcePath = do
     modify
       ( \st ->
           st
-            { loadedModules = Map.insert moduleId (LoadedModule sourcePath cunit moduleRefs) (loadedModules st),
+            { loadedModules = Map.insert moduleId (LoadedModule sourcePath source cunit moduleRefs) (loadedModules st),
               moduleDeps = Map.insert moduleId (map fst importedModules) (moduleDeps st),
               moduleRefDeps = Map.insert moduleId (map fst referencedModules) (moduleRefDeps st),
               loadingModules = Set.delete moduleId (loadingModules st),
@@ -220,29 +234,66 @@ visit cfg moduleId sourcePath = do
 resolveImportPath ::
   LoaderConfig ->
   Mod.ModuleId ->
+  FilePath ->
   Import ->
   StateT LoadState (ExceptT String IO) (Mod.ModuleId, FilePath)
-resolveImportPath cfg currentModule imp =
+resolveImportPath cfg currentModule currentSourcePath imp =
   fmap (\(_, targetId, targetPath) -> (targetId, targetPath)) $
-    resolveModuleReference cfg currentModule "import" (importModule imp)
+    resolveModuleReference cfg currentModule currentSourcePath ImportReference (importModule imp)
 
 resolveModuleReference ::
   LoaderConfig ->
   Mod.ModuleId ->
-  String ->
+  FilePath ->
+  ModuleReferenceKind ->
   ModulePath ->
   StateT LoadState (ExceptT String IO) (ModulePath, Mod.ModuleId, FilePath)
-resolveModuleReference cfg currentModule refKind modulePath = do
-  candidates <- either throwError pure (resolveModuleImportCandidates cfg currentModule modulePath)
+resolveModuleReference cfg currentModule currentSourcePath refKind modulePath = do
+  candidates <-
+    either
+      (throwError . moduleReferenceDiagnostic ModuleReferenceMissingExternalRoot currentSourcePath refKind modulePath)
+      pure
+      (resolveModuleImportCandidates cfg currentModule modulePath)
   resolved <- liftIO $ firstExisting (loaderFS cfg) candidates
   case resolved of
     Just (targetId, targetPath) -> pure (modulePath, targetId, targetPath)
     Nothing ->
       throwError $
-        refKind
-          ++ " "
-          ++ Mod.modulePathDisplay modulePath
-          ++ ": file not found"
+        moduleReferenceDiagnostic
+          ModuleReferenceNotFound
+          currentSourcePath
+          refKind
+          modulePath
+          ( moduleReferenceKindText refKind
+              ++ " "
+              ++ Mod.modulePathDisplay modulePath
+              ++ ": file not found"
+          )
+
+moduleReferenceDiagnostic :: ModuleReferenceFailure -> FilePath -> ModuleReferenceKind -> ModulePath -> String -> String
+moduleReferenceDiagnostic failure sourcePath refKind modulePath message =
+  loaderDiagnosticWithLabels
+    (moduleReferenceDiagnosticCode failure)
+    message
+    (maybe [] pure (primaryModulePathLabel (moduleReferenceLabelMessage failure refKind) modulePath))
+    [sourcePath, moduleReferenceKindText refKind ++ " " ++ Mod.modulePathDisplay modulePath]
+    (moduleReferenceHelp failure)
+
+moduleReferenceDiagnosticCode :: ModuleReferenceFailure -> String
+moduleReferenceDiagnosticCode ModuleReferenceMissingExternalRoot = "SC0118"
+moduleReferenceDiagnosticCode ModuleReferenceNotFound = "SC0109"
+
+moduleReferenceLabelMessage :: ModuleReferenceFailure -> ModuleReferenceKind -> String
+moduleReferenceLabelMessage ModuleReferenceMissingExternalRoot _ = "external library import"
+moduleReferenceLabelMessage ModuleReferenceNotFound _ = "module reference"
+
+moduleReferenceHelp :: ModuleReferenceFailure -> [String]
+moduleReferenceHelp ModuleReferenceMissingExternalRoot = ["pass --external-lib NAME=PATH for external imports"]
+moduleReferenceHelp ModuleReferenceNotFound = ["check the module path or add the missing source file"]
+
+moduleReferenceKindText :: ModuleReferenceKind -> String
+moduleReferenceKindText ImportReference = "import"
+moduleReferenceKindText ExportReference = "export"
 
 toFilePath :: FilePath -> Name -> FilePath
 toFilePath base = (base </>) . Mod.moduleFilePath
@@ -305,17 +356,23 @@ rootForLibrary cfg (Mod.ExternalLibrary libName) =
   case Map.lookup libName (externalRoots cfg) of
     Just root -> Right root
     Nothing ->
-      Left ("external library root is not configured: @" ++ show libName)
+      Left $
+        loaderDiagnostic
+          "SC0118"
+          ("external library root is not configured: @" ++ show libName)
+          []
+          ["pass --external-lib " ++ show libName ++ "=PATH"]
 
 moduleIdForPath :: Mod.LibraryId -> FilePath -> FilePath -> ExceptT String IO Mod.ModuleId
 moduleIdForPath libId root filePath =
   case makeRelativeToRoot root filePath of
     Nothing ->
       throwError $
-        "source file is outside library root:\n  "
-          ++ filePath
-          ++ "\n  root: "
-          ++ root
+        loaderDiagnostic
+          "SC0119"
+          "source file is outside library root"
+          [filePath, "root: " ++ root]
+          ["choose --root so it contains the source file"]
     Just relPath ->
       case splitDirectories (dropExtension relPath) of
         [] ->
@@ -408,6 +465,10 @@ moduleSourcePath graph modulePath =
     (Left ("Internal error: module not loaded: " ++ Mod.moduleIdDisplay modulePath))
     (Right . loadedSourcePath)
     (Map.lookup modulePath (modules graph))
+
+moduleSourceMap :: ModuleGraph -> SourceMap
+moduleSourceMap graph =
+  sourceMapFromFiles (map loadedSource (Map.elems (modules graph)))
 
 moduleImportPairsFor :: ModuleGraph -> Mod.ModuleId -> CompUnit -> [(Import, Mod.ModuleId)]
 moduleImportPairsFor graph modulePath unit =
@@ -579,18 +640,24 @@ ensureImportItemsExist graph importPairs = do
     ([], []) -> Right ()
     (selectedXs, hiddenXs) ->
       Left $
-        unlines
-          ( (if null selectedXs then [] else ["Unknown selected imports:", unlines selectedXs])
-              ++ (if null hiddenXs then [] else ["Unknown hidden imports:", unlines hiddenXs])
+        loaderDiagnosticWithLabels
+          "SC0110"
+          "unknown import item"
+          ( primaryNameLabels "unknown import item" (map snd selectedXs)
+              ++ primaryNameLabels "unknown import item" (map snd hiddenXs)
           )
+          ( (if null selectedXs then [] else "unknown selected imports:" : map (uncurry formatMissing) selectedXs)
+              ++ (if null hiddenXs then [] else "unknown hidden imports:" : map (uncurry formatMissing) hiddenXs)
+          )
+          ["check the imported module's exported names"]
   where
     unknowns (ImportOnly importPath items, modulePath) = do
       available <- importableNamesForModule graph modulePath
       let missingSelected = filter (`notElem` available) (explicitSelectorNames items)
           missingHidden = filter (`notElem` available) (explicitHiddenNames items)
       pure
-        ( [formatMissing importPath n | n <- missingSelected],
-          [formatMissing importPath n | n <- missingHidden]
+        ( [(importPath, n) | n <- missingSelected],
+          [(importPath, n) | n <- missingHidden]
         )
     unknowns _ = pure ([], [])
 
@@ -1078,25 +1145,28 @@ selectRemoteExportRefs sourcePath exportPath (SelectExportItems items) available
         Nothing
           | shouldValidate ->
               Left $
-                unlines
-                  [ "Unknown re-exported constructors:",
-                    "  " ++ sourcePath,
-                    "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName
-                  ]
+                loaderDiagnosticWithLabels
+                  "SC0115"
+                  "unknown re-exported constructor"
+                  (maybe [] pure (primaryNameLabel "unknown re-exported constructor" typeName))
+                  [sourcePath, "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName]
+                  ["re-export constructors provided by the target module"]
           | otherwise ->
               pure []
         Just ref
           | shouldValidate,
             missingVisibleConstructors constructorSelector ref /= [] ->
               Left $
-                unlines
-                  [ "Unknown re-exported constructors:",
-                    "  " ++ sourcePath,
-                    unlines
-                      [ "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName ++ "." ++ show constructorName
-                      | constructorName <- missingVisibleConstructors constructorSelector ref
-                      ]
-                  ]
+                loaderDiagnosticWithLabels
+                  "SC0115"
+                  "unknown re-exported constructor"
+                  (primaryNameLabels "unknown re-exported constructor" (missingVisibleConstructors constructorSelector ref))
+                  ( sourcePath
+                      : [ "  " ++ Mod.modulePathDisplay exportPath ++ "." ++ show typeName ++ "." ++ show constructorName
+                        | constructorName <- missingVisibleConstructors constructorSelector ref
+                        ]
+                  )
+                  ["re-export constructors provided by the target module"]
           | otherwise ->
               pure [ref]
 
@@ -1177,11 +1247,11 @@ ensureNoDuplicateExportedItems modulePath itemRefs =
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Duplicate exported item names:",
-            "  " ++ modulePath,
-            unlines (map (\n -> "  " ++ show n) xs)
-          ]
+        loaderDiagnostic
+          "SC0111"
+          "duplicate exported item names"
+          (("module: " ++ modulePath) : map (\n -> "  " ++ show n) xs)
+          ["export each item name from only one origin"]
   where
     conflicts =
       [ itemName
@@ -1196,11 +1266,11 @@ ensureNoDuplicateExportedModules modulePath moduleBindings =
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Duplicate exported module names:",
-            "  " ++ modulePath,
-            unlines (map (\n -> "  " ++ show n) xs)
-          ]
+        loaderDiagnostic
+          "SC0112"
+          "duplicate exported module names"
+          (("module: " ++ modulePath) : map (\n -> "  " ++ show n) xs)
+          ["export each module name from only one origin"]
   where
     conflicts =
       [ bindingName
@@ -1214,11 +1284,12 @@ ensureLocalConstructorExportExists sourcePath topLevelDecls typeName constructor
   case findLocalDataType typeName topLevelDecls of
     Nothing ->
       Left $
-        unlines
-          [ "Unknown export:",
-            "  " ++ sourcePath,
-            "  " ++ show typeName
-          ]
+        loaderDiagnosticWithLabels
+          "SC0113"
+          "unknown export"
+          (maybe [] pure (primaryNameLabel "unknown export" typeName))
+          [sourcePath, show typeName]
+          ["export a type defined in this module or re-export it from another module"]
     Just (DataTy _ _ constrs) ->
       ensureConstructorSelectorExists sourcePath typeName constructorSelector constrs
 
@@ -1240,11 +1311,12 @@ ensureConstructorSelectorExists sourcePath typeName (SelectConstructors construc
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Unknown exported constructors:",
-            "  " ++ sourcePath,
-            unlines ["  " ++ show typeName ++ "." ++ show constructorName | constructorName <- xs]
-          ]
+        loaderDiagnosticWithLabels
+          "SC0114"
+          "unknown exported constructor"
+          (primaryNameLabels "unknown exported constructor" xs)
+          (sourcePath : ["  " ++ show typeName ++ "." ++ show constructorName | constructorName <- xs])
+          ["select constructors defined by the exported type"]
   where
     availableNames = uniqueNames (map (constructorLeafName . constrName) constrs)
     missing = filter (`notElem` availableNames) constructorNames
@@ -1267,11 +1339,12 @@ ensureRemoteExportsExist sourcePath exportPath names availableNames =
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Unknown re-exported names:",
-            "  " ++ sourcePath,
-            unlines [formatMissing exportPath missingName | missingName <- xs]
-          ]
+        loaderDiagnosticWithLabels
+          "SC0115"
+          "unknown re-exported name"
+          (primaryNameLabels "unknown re-exported name" xs)
+          (sourcePath : [formatMissing exportPath missingName | missingName <- xs])
+          ["re-export a name provided by the target module"]
   where
     missing = filter (`notElem` availableNames) names
 
@@ -1280,8 +1353,8 @@ defaultModuleBindingName =
   moduleLeafName . Mod.modulePathName
 
 moduleLeafName :: Name -> Name
-moduleLeafName (Name n) = Name n
-moduleLeafName (QualName _ n) = Name n
+moduleLeafName n@(Name _) = n
+moduleLeafName q@(QualName _ n) = copyNameSourceSpan q (Name n)
 
 importModuleQualifiers :: ModulePath -> [Name]
 importModuleQualifiers importPath =
@@ -1335,18 +1408,18 @@ qualifiedImportStubDecls graph (imp, modulePath) =
           ++ nestedDecls
 
     stubNestedModule qualifier (ExportedModuleBinding bindingName targetModule) =
-      stubDecls (QualName qualifier (show bindingName)) targetModule
+      stubDecls (qualifyName qualifier bindingName) targetModule
 
 qualifyFunctionSignature :: Name -> FunDef -> FunDef
 qualifyFunctionSignature qualifier (FunDef p sig body) =
   FunDef
     p
-    (sig {sigName = QualName qualifier (show (sigName sig))})
+    (sig {sigName = qualifyName qualifier (sigName sig)})
     body
 
 qualifiedFunctionStubDecls :: Name -> CompUnit -> [TopDecl]
 qualifiedFunctionStubDecls qualifier cunit =
-  [ TFunDef (stubFunction (QualName qualifier (show (sigName (funSignature fd)))))
+  [ TFunDef (stubFunction (qualifyName qualifier (sigName (funSignature fd))))
   | TFunDef fd <- topDeclsFrom cunit
   ]
 
@@ -1355,7 +1428,7 @@ qualifierFromExpVarChain (ExpVar Nothing n) =
   Just n
 qualifierFromExpVarChain (ExpVar (Just e) n) = do
   q <- qualifierFromExpVarChain e
-  pure (QualName q (show n))
+  pure (qualifyName q n)
 qualifierFromExpVarChain _ =
   Nothing
 
@@ -1456,11 +1529,11 @@ renamePatTypeRefs _ p@(PLit _) = p
 renamePatTypeRefs _ p@(PExp _) = p
 
 renamePatNameTypeRefs :: Map Name Name -> Name -> Name
-renamePatNameTypeRefs renameMap (QualName q n) =
-  QualName (renameTypeName renameMap q) n
+renamePatNameTypeRefs renameMap qn@(QualName q n) =
+  copyNameSourceSpan qn (QualName (renameTypeName renameMap q) n)
 renamePatNameTypeRefs renameMap n =
   case Map.lookup n renameMap of
-    Just qn -> QualName qn (show n)
+    Just qn -> qualifyName qn n
     Nothing -> n
 
 renameExpTypeRefs :: Map Name Name -> Exp -> Exp
@@ -1612,8 +1685,8 @@ renameConstrTypeRefs renameMap (Constr n tys) =
   Constr (renameConstrNameTypeRefs renameMap n) (map (renameTyTypeRefs renameMap) tys)
 
 renameConstrNameTypeRefs :: Map Name Name -> Name -> Name
-renameConstrNameTypeRefs renameMap (QualName q n) =
-  QualName (renameTypeName renameMap q) n
+renameConstrNameTypeRefs renameMap qn@(QualName q n) =
+  copyNameSourceSpan qn (QualName (renameTypeName renameMap q) n)
 renameConstrNameTypeRefs _ n = n
 
 renameTySymTypeRefs :: Map Name Name -> TySym -> TySym
@@ -1640,7 +1713,7 @@ renameTypeName renameMap n =
     Just n' -> n'
     Nothing ->
       case n of
-        QualName q x -> QualName (renameTypeName renameMap q) x
+        qn@(QualName q x) -> copyNameSourceSpan qn (QualName (renameTypeName renameMap q) x)
         _ -> n
 
 qualifiedTypeAliasDecls :: Map Name Name -> Name -> CompUnit -> [TopDecl]
@@ -1665,25 +1738,25 @@ qualifiedTypeStubDecls qualifier cunit =
     dataAliases =
       [ TDataDef
           ( DataTy
-              (QualName qualifier (show n))
+              (qualifyName qualifier n)
               []
               [Constr (constructorLeafName (constrName c)) [] | c <- cs]
           )
       | TDataDef (DataTy n _ cs) <- topDeclsFrom cunit
       ]
     symAliases =
-      [ TSym (stubType (QualName qualifier (show n)))
+      [ TSym (stubType (qualifyName qualifier n))
       | TSym (TySym n _ _) <- topDeclsFrom cunit
       ]
 
 constructorLeafName :: Name -> Name
-constructorLeafName (QualName _ n) = Name n
+constructorLeafName q@(QualName _ n) = copyNameSourceSpan q (Name n)
 constructorLeafName n = n
 
 qualifyTyCon :: Name -> Name -> [Ty] -> TySym
 qualifyTyCon qualifier unqualName tyVars =
   TySym
-    { symName = QualName qualifier (show unqualName),
+    { symName = qualifyName qualifier unqualName,
       symVars = tyVars,
       symType = TyCon unqualName tyVars
     }
@@ -1751,7 +1824,7 @@ typeCheckQualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
           ++ nestedDecls
 
     qualifyNestedModule qualifier (ExportedModuleBinding bindingName targetModule) =
-      qualifyDecls (QualName qualifier (show bindingName)) targetModule
+      qualifyDecls (qualifyName qualifier bindingName) targetModule
 
 qualifiedFunctionSignatureDecls :: Map Name Name -> Name -> CompUnit -> [TopDecl]
 qualifiedFunctionSignatureDecls typeRenameMap qualifier cunit =
@@ -1811,7 +1884,7 @@ typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
       pure (localSupportDecls ++ shadowImportedDecls localSupportDecls nestedSupportDecls)
 
     nestedModuleImportDecls qualifier (ExportedModuleBinding bindingName targetModule) =
-      moduleImportDecls (QualName qualifier (show bindingName)) targetModule
+      moduleImportDecls (qualifyName qualifier bindingName) targetModule
 
 typeCheckSupportNonFunctionDecls :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
 typeCheckSupportNonFunctionDecls graph =
@@ -1914,7 +1987,7 @@ fullConstructorNamesForRef graph itemRef = do
 importedTypeRenameMap :: Set Name -> Name -> [TopDecl] -> Map Name Name
 importedTypeRenameMap collidingTypeNames qualifier ds =
   Map.fromList
-    [ (n, QualName qualifier (show n))
+    [ (n, qualifyName qualifier n)
     | d <- ds,
       n <- topDeclImportedTypeNames d,
       n `Set.member` collidingTypeNames
@@ -2143,10 +2216,12 @@ ensureNoAmbiguousSelectedImports graph importPairs = do
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Ambiguous selected imports:",
-            unlines (map formatAmbiguous xs)
-          ]
+        loaderDiagnosticWithLabels
+          "SC0120"
+          "ambiguous selected imports"
+          (primaryNameLabels "ambiguous selected import" (map fst xs))
+          (map formatAmbiguous xs)
+          ["use an explicit module qualifier or narrow the selected imports"]
   where
     selectedFromImport (ImportOnly modName selector, modulePath) = do
       names <- resolveSelectedImportItems graph modName modulePath selector
@@ -2175,10 +2250,12 @@ ensureNoModuleLookupConflicts graph unit importPairs =
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Conflicting unqualified names:",
-            unlines (map (\n -> "  " ++ show n) xs)
-          ]
+        loaderDiagnosticWithLabels
+          "SC0121"
+          "conflicting unqualified names"
+          (primaryNameLabels "conflicting unqualified name" xs)
+          (map (\n -> "  " ++ show n) xs)
+          ["rename the local binding or use an import alias"]
   where
     localTermNames =
       uniqueNames (concatMap topDeclTermNames (topDeclsFrom unit))
@@ -2247,10 +2324,12 @@ ensureNoDuplicateModuleQualifiers (CompUnit imps _) =
     [] -> Right ()
     qs ->
       Left $
-        unlines
-          [ "Duplicate import qualifiers:",
-            unlines (map (\q -> "  " ++ show q) qs)
-          ]
+        loaderDiagnosticWithLabels
+          "SC0116"
+          "duplicate import qualifier"
+          (primaryNameLabels "duplicate import qualifier" qs)
+          (map (\q -> "  " ++ show q) qs)
+          ["use an explicit alias to disambiguate one of the imports"]
   where
     duplicates = duplicateNames (mapMaybe moduleQualifier imps)
 
@@ -2281,22 +2360,74 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
     [] -> Right ()
     xs ->
       Left $
-        unlines
-          [ "Duplicate names in selective import:",
-            unlines xs
-          ]
+        loaderDiagnosticWithLabels
+          "SC0117"
+          "duplicate name in selective import"
+          (primaryNameLabels "duplicate selected import" (map snd xs))
+          (map (("  " ++) . fst) xs)
+          ["list each selected or hidden name only once"]
   where
     duplicateItems (ImportOnly moduleName selector) =
-      [ "  " ++ Mod.modulePathDisplay moduleName ++ "." ++ show item
+      [ (Mod.modulePathDisplay moduleName ++ "." ++ show item, item)
       | item <- duplicateNames (explicitSelectorNames selector)
       ]
-        ++ [ "  " ++ Mod.modulePathDisplay moduleName ++ " as " ++ show item
+        ++ [ (Mod.modulePathDisplay moduleName ++ " as " ++ show item, item)
            | item <- duplicateNames (explicitSelectorLocalNames selector)
            ]
-        ++ [ "  " ++ Mod.modulePathDisplay moduleName ++ " hiding " ++ show item
+        ++ [ (Mod.modulePathDisplay moduleName ++ " hiding " ++ show item, item)
            | item <- duplicateNames (explicitHiddenNames selector)
            ]
     duplicateItems _ = []
+
+loaderDiagnostic :: String -> String -> [String] -> [String] -> String
+loaderDiagnostic code message notes help =
+  loaderDiagnosticWithLabels code message [] notes help
+
+loaderDiagnosticWithLabels :: String -> String -> [Label] -> [String] -> [String] -> String
+loaderDiagnosticWithLabels code message labels notes help =
+  encodeDiagnostic
+    Diagnostic
+      { diagnosticSeverity = Error,
+        diagnosticCode = Just (DiagnosticCode code),
+        diagnosticMessage = message,
+        diagnosticLabels = labels,
+        diagnosticNotes = notes,
+        diagnosticHelp = help
+      }
+
+primaryNameLabel :: String -> Name -> Maybe Label
+primaryNameLabel message identName = do
+  sourceSpan <- nameSourceSpan identName
+  pure
+    Label
+      { labelSpan = sourceSpan,
+        labelStyle = Primary,
+        labelMessage = Just message
+      }
+
+primaryNameLabels :: String -> [Name] -> [Label]
+primaryNameLabels message =
+  mapMaybe (primaryNameLabel message)
+
+primaryModulePathLabel :: String -> ModulePath -> Maybe Label
+primaryModulePathLabel message modulePath = do
+  sourceSpan <- modulePathSourceSpan modulePath
+  pure
+    Label
+      { labelSpan = sourceSpan,
+        labelStyle = Primary,
+        labelMessage = Just message
+      }
+
+modulePathSourceSpan :: ModulePath -> Maybe SourceSpan
+modulePathSourceSpan (ExternalPath libName pathName) =
+  case (nameSourceSpan libName, nameSourceSpan pathName) of
+    (Just left, Just right) -> Just (combineSourceSpans left right)
+    (Just left, Nothing) -> Just left
+    (Nothing, Just right) -> Just right
+    (Nothing, Nothing) -> Nothing
+modulePathSourceSpan modulePath =
+  nameSourceSpan (Mod.modulePathName modulePath)
 
 explicitSelectorNames :: ItemSelector -> [Name]
 explicitSelectorNames (SelectItems items _) =

@@ -216,11 +216,13 @@ transformConstructor contractName cons
     callvalueCheck
       | payable = []
       | otherwise =
-          [ StmtExp $
-              Call
-                Nothing
-                (QualName "MethodLevelCallvalueCheck" "checkCallvalue")
-                [proxyExp (TyCon "NonPayable" [])]
+          [ Asm
+              [yulBlock|{
+                if callvalue() {
+                  mstore(0, 0xb5988ea3)
+                  revert(28, 4)
+                }
+              }|]
           ]
     startBody =
       [ Asm

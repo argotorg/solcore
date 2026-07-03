@@ -31,8 +31,8 @@ module Solcore.Pipeline.TcCacheSerialize
 where
 
 import Data.Binary (Binary, get, put)
-import Data.Binary.Get (runGetOrFail)
-import Data.Binary.Put (runPut)
+import Data.Binary.Get (getWord8, runGetOrFail)
+import Data.Binary.Put (putWord8, runPut)
 import Data.ByteString.Lazy qualified as BL
 import Data.Map (Map)
 import Data.Word (Word32)
@@ -40,6 +40,7 @@ import GHC.Generics (Generic)
 import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
 import Solcore.Frontend.Module.Identity
 import Solcore.Frontend.Syntax.Contract
+import Solcore.Frontend.Syntax.Location (NodeLocation, generatedNode)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty
@@ -50,9 +51,20 @@ import Solcore.Pipeline.Options (Option)
 import Solcore.Pipeline.TypecheckCache (TcCacheKey (..))
 
 -- Names / identifiers -------------------------------------------------------
-deriving stock instance Generic Name
 
-deriving anyclass instance Binary Name
+-- A 'Name' carries an optional source span that its 'Eq'/'Ord' ignore (they
+-- compare only the name segments). Serialize just the segment structure and drop
+-- the span, for the same toolchain-independence reason as 'NodeLocation' below;
+-- reconstruct with the span-less 'Name'/'QualName' patterns.
+instance Binary Name where
+  put (Name s) = putWord8 0 >> put s
+  put (QualName qualifier s) = putWord8 1 >> put qualifier >> put s
+  get = do
+    tag <- getWord8
+    case tag of
+      0 -> Name <$> get
+      1 -> QualName <$> get <*> get
+      _ -> fail ("Binary Name: unknown constructor tag " ++ show tag)
 
 deriving stock instance Generic Id
 
@@ -203,6 +215,19 @@ deriving stock instance Generic PragmaStatus
 deriving anyclass instance Binary PragmaStatus
 
 -- Statements / expressions / patterns --------------------------------------
+
+-- A 'NodeLocation' is diagnostic metadata, not part of a module's typechecked
+-- meaning (its 'Eq'/'Ord' are total), and its source span carries a
+-- build-specific file path. Persisting spans would make the cache blob depend on
+-- where std was compiled, breaking the content-addressed cache's toolchain
+-- independence: the native gen-std-cache blob must be byte-identical to what the
+-- browser would dump. Serialize every location as the generated (span-less) node
+-- so cached ASTs round-trip deterministically; cached modules typecheck cleanly,
+-- so the lost spans never surface in a diagnostic.
+instance Binary NodeLocation where
+  put _ = pure ()
+  get = pure generatedNode
+
 deriving stock instance Generic (Stmt a)
 
 deriving anyclass instance (Binary a) => Binary (Stmt a)

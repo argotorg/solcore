@@ -6,7 +6,7 @@ import Data.Word (Word8)
 import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
 import Solcore.Backend.Mast (MastExp (..), MastId (..), MastTy (..), mastIdName)
 import Solcore.Backend.MastEval
-import Solcore.Frontend.Syntax.Name (Name (..))
+import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
 import Test.Tasty
 import Test.Tasty.HUnit

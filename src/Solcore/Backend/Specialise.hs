@@ -31,7 +31,6 @@ import Solcore.Frontend.Syntax hiding (decls, name)
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv (TcEnv (instEnv, typeTable), TypeInfo (..))
-import Solcore.Frontend.TypeInference.TcUnify (typesDoNotUnify)
 import Solcore.Primitives.Primitives hiding (integer)
 import Solcore.Primitives.Primitives qualified as Prim
 
@@ -389,21 +388,32 @@ comptimeBuiltins = integerPrimNames
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
 specCall i@(Id (Name "revertLit") _) args _ = pure (i, args)
 specCall (Id (QualName (Name "std") "revertLit") ty) args _ = pure (Id (Name "revertLit") ty, args)
--- Int.fromInteger coercion: resolve to the appropriate primitive based on result type.
--- integer -> word    becomes wordFromInteger (handled by MastEval)
--- integer -> integer is identity (handled by MastEval)
-specCall (Id (QualName (Name "Int") "fromInteger") ty) args _ = do
-  args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+-- Int.fromInteger coercion: resolve based on the result type.
+-- integer -> word     becomes wordFromInteger (handled by MastEval)
+-- integer -> integer  is identity (handled by MastEval)
+-- integer -> other    resolves to the type's `Int` instance body, which
+--                     performs any needed truncation via wordFromInteger.
+specCall self@(Id (QualName (Name "Int") "fromInteger") ty) args callTy = do
   s <- getSpSubst
   let resultTy = snd (splitTy (applytv s ty))
   if resultTy == word
-    then pure (Id (Name "wordFromInteger") (Prim.integer :-> word), args')
-    else pure (Id (QualName (Name "Int") "fromInteger") (Prim.integer :-> resultTy), args')
-specCall i args _ty
+    then do
+      args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+      pure (Id (Name "wordFromInteger") (Prim.integer :-> word), args')
+    else
+      if resultTy == Prim.integer
+        then do
+          args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+          pure (Id (QualName (Name "Int") "fromInteger") (Prim.integer :-> resultTy), args')
+        else specCallResolve self args callTy
+specCall i args ty
   | idName i `elem` comptimeBuiltins = do
       args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
       pure (i, args')
-specCall i args ty = do
+  | otherwise = specCallResolve i args ty
+
+specCallResolve :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
+specCallResolve i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
   -- debug ["> specCall: ", pretty i', show args, " : ", pretty ty']
@@ -883,7 +893,7 @@ specmgu (TyCon n ts) (TyCon n' ts')
       specsolve (zip ts ts') mempty
 specmgu (TyVar v) t = varBind v t
 specmgu t (TyVar v) = varBind v t
-specmgu t1 t2 = typesDoNotUnify t1 t2
+specmgu t1 t2 = Left $ "types do not unify: " ++ pretty t1 ++ " and " ++ pretty t2
 
 -- | One-directional matching: find a substitution @phi@ such that
 -- @applytv phi pat == tgt@, binding only variables that appear in @pat@.
@@ -897,7 +907,7 @@ specmatch (TyCon n ts) (TyCon n' ts')
   | n == n' && length ts == length ts' =
       matchsolve (zip ts ts') mempty
 specmatch (TyVar v) t = varBind v t
-specmatch t1 t2 = typesDoNotUnify t1 t2
+specmatch t1 t2 = Left $ "types do not unify: " ++ pretty t1 ++ " and " ++ pretty t2
 
 matchsolve :: [(Ty, Ty)] -> TVSubst -> Either String TVSubst
 matchsolve [] s = pure s

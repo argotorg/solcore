@@ -13,7 +13,7 @@ import Data.ByteString.Lazy qualified as BL
 import Data.Map qualified as Map
 import Solcore.Api (defaultOptions, dumpStdCacheBlob, indexCheckedByKey)
 import Solcore.Frontend.Module.Loader (loadModuleGraphFromSource)
-import Solcore.Pipeline.SolcorePipeline (compileGraphWithCache)
+import Solcore.Pipeline.SolcorePipeline (compileDiagnosticsText, compileGraphWithCache)
 import Solcore.Pipeline.TypecheckCache (moduleCacheKeys)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
@@ -42,7 +42,7 @@ generate out = do
     Right (graph, keys) -> do
       res <- runExceptT (compileGraphWithCache defaultOptions graph Map.empty)
       case res of
-        Left err -> die ("gen-std-cache: warm-up compile failed: " ++ err)
+        Left err -> die ("gen-std-cache: warm-up compile failed: " ++ compileDiagnosticsText err)
         Right (_, checked) -> do
           let blob = dumpStdCacheBlob (indexCheckedByKey keys checked)
           BL.writeFile out blob

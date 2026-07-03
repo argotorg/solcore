@@ -43,6 +43,6 @@ contract FromInt {
 
      let k = fromLit(40);
      return k+2;
-     // return b*b + fromLit(4)*a*c + fromLit(d); 
+     // return b*b + fromLit(4)*a*c + fromLit(d);
    }
 }

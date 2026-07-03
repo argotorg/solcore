@@ -12,7 +12,7 @@ import Control.Monad.Except (runExceptT)
 import Data.Map qualified as Map
 import Solcore.Api (defaultOptions, dumpStdCacheBlob, indexCheckedByKey, loadStdCacheBlob, renderObjects)
 import Solcore.Frontend.Module.Loader (ModuleGraph (..), loadModuleGraphFromSource)
-import Solcore.Pipeline.SolcorePipeline (compileGraphWithCache)
+import Solcore.Pipeline.SolcorePipeline (compileDiagnosticsText, compileGraphWithCache)
 import Solcore.Pipeline.TypecheckCache (moduleCacheKeys)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -33,7 +33,7 @@ tcCacheTests =
         -- Cold compile with an empty seed: every module is typechecked.
         coldE <- runExceptT (compileGraphWithCache defaultOptions graph Map.empty)
         (coldObjs, coldChecked) <- case coldE of
-          Left err -> assertFailure ("cold compile failed: " ++ err)
+          Left err -> assertFailure ("cold compile failed: " ++ compileDiagnosticsText err)
           Right r -> pure r
         -- Persist the std subset and read it back through the blob format.
         let session = indexCheckedByKey keys coldChecked
@@ -51,7 +51,7 @@ tcCacheTests =
         assertBool "expected the seed to cover std modules" (not (Map.null seed))
         warmE <- runExceptT (compileGraphWithCache defaultOptions graph seed)
         warmObjs <- case warmE of
-          Left err -> assertFailure ("warm compile failed: " ++ err)
+          Left err -> assertFailure ("warm compile failed: " ++ compileDiagnosticsText err)
           Right (objs, _) -> pure objs
         renderObjects warmObjs @?= renderObjects coldObjs
     ]

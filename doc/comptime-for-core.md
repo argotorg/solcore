@@ -50,7 +50,7 @@ This example is interesting because:
    }
     ```
 - as defined, evaluating the function requires interpreting Yul assembly; an alternative might be using a builtin primitive for addition `primAddWord`.
-  
+
 ### Method Dispatch (descriptors)
 
 ```
@@ -135,10 +135,10 @@ On the other hand, `comptime` annotation on function result promises that the fu
 
 ```
 function fib2(n : word) -> comptime word {
-   if(n < 2) then n else (fib(n-1) + fib(n-2)) 
+   if(n < 2) then n else (fib(n-1) + fib(n-2))
 }
 ```
-means `fib2` can be called both at comptime and runtime (note no `comptime` annotation on `n` this time). 
+means `fib2` can be called both at comptime and runtime (note no `comptime` annotation on `n` this time).
 
 In many cases this can be inferred, but the annotation make the analysis easier, especially for overloaded functions:
 
@@ -200,7 +200,7 @@ Even before evaluation, we may need to decide whether an expression is evaluated
 - parameters declared as comptime are evaluated in CTC;
 - if a function is declared to have comptime result and is evaluated in CTC, its parameters are evaluated in CTC
 - other function contexts are considered runtime
- 
+
 #### Expressions
 - literals are considered comptime expressions (CTE, meaning their value is known at comptime)
 - the RHS of `let comptime` are CTE
@@ -382,7 +382,7 @@ One of the concerns about comptime memory use is the following scenario:
 2. the pointer is then converted to int, which is included in compiled code
 3. at runtime the int is used as a memory address again which can lead to memory corruption
 
-After some thought, this scenario does not seem as worrying as at the first glance. 
+After some thought, this scenario does not seem as worrying as at the first glance.
 Most importantly, it is step 3 (converting arbitrary int to a pointer) that is dangerous and it has little to do with comptime - it is a prime way of shooting yourself in the foot in other languages as well (notably C).
 
 If we do want to be extra careful, we may separate the integer and pointer types in assembly blocks at comptime and disallow conversions between (perhaps with the exception of literal 0).
@@ -418,9 +418,9 @@ contract StringLitKeccak {
   }
 }
 ```
- 
+
  where `concatLit`, `strlenLit` and `keccakLit` are builtin, comptime-only functions.
- 
+
 ## First implementation
  - literals remain `word`-typed; no desugaring pass yet
  - no comptime pointer protection

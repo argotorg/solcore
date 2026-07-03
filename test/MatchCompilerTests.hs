@@ -134,11 +134,11 @@ assertLeft label act = do
       assertFailure (label ++ ": expected error but got tree: " ++ show tree)
 
 isNonExh :: Warning -> Bool
-isNonExh (NonExhaustive _ _) = True
+isNonExh (NonExhaustive _ _ _) = True
 isNonExh _ = False
 
 isRedundant :: Warning -> Bool
-isRedundant (RedundantClause _ _ _) = True
+isRedundant (RedundantClause _ _ _ _) = True
 isRedundant _ = False
 
 branchNames :: [(Id, [Pattern], DecisionTree)] -> [String]
@@ -299,7 +299,7 @@ test_redundantVarRow_emitsRedundantClause =
       case tree of
         Leaf _ _ -> pure ()
         _ -> assertFailure ("expected Leaf for all-var first row, got: " ++ show tree)
-      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      let redundantActs = [act | RedundantClause _ _ _ act <- warns]
       assertBool "True clause must be warned as unreachable" (actionB `elem` redundantActs)
       assertBool "False clause must be warned as unreachable" (actionC `elem` redundantActs)
       assertBool "first all-var row must not be warned as redundant" (actionA `notElem` redundantActs)
@@ -584,7 +584,7 @@ test_allVar_first_shadows_nonexhaustive_rest =
       case tree of
         Leaf _ _ -> pure ()
         _ -> assertFailure ("expected Leaf, got: " ++ show tree)
-      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      let redundantActs = [act | RedundantClause _ _ _ act <- warns]
       assertBool "True clause must be warned as unreachable" (actionB `elem` redundantActs)
       assertBool "first all-var row must not be warned" (actionA `notElem` redundantActs)
 
@@ -608,7 +608,7 @@ test_twoCol_noFalsePositive_partialOverlap =
           [actionA, actionB, actionC]
       )
     $ \_ warns -> do
-      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      let redundantActs = [act | RedundantClause _ _ _ act <- warns]
       assertBool "row 1 (w,True) must NOT be warned as redundant" (actionB `notElem` redundantActs)
       assertBool "row 2 (a,b) must NOT be warned as redundant" (actionC `notElem` redundantActs)
       assertBool "no RedundantClause warnings at all" (null redundantActs)
@@ -632,7 +632,7 @@ test_twoCol_genuinelyRedundant_thirdRow =
           [actionA, actionB, actionC]
       )
     $ \_ warns -> do
-      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      let redundantActs = [act | RedundantClause _ _ _ act <- warns]
       assertBool "row 2 (z,True) must be warned as redundant" (actionC `elem` redundantActs)
       assertBool "row 0 must not be warned" (actionA `notElem` redundantActs)
       assertBool "row 1 must not be warned" (actionB `notElem` redundantActs)
@@ -651,7 +651,7 @@ test_singleCol_duplicateRow_warned =
           [actionA, actionB, actionC]
       )
     $ \_ warns -> do
-      let redundantActs = [act | RedundantClause _ _ act <- warns]
+      let redundantActs = [act | RedundantClause _ _ _ act <- warns]
       assertBool "second True must be warned as redundant" (actionB `elem` redundantActs)
       assertBool "False must not be warned as redundant" (actionC `notElem` redundantActs)
       assertBool "first True must not be warned" (actionA `notElem` redundantActs)
@@ -675,7 +675,7 @@ test_twoCol_con_nonExh_witness_has_both_columns =
           [actionA]
       )
     $ \_ warns -> do
-      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      let nonExhPats = [pats | NonExhaustive _ _ pats <- warns]
       case nonExhPats of
         [] -> assertFailure "expected a NonExhaustive warning"
         (pats : _) -> do
@@ -708,7 +708,7 @@ test_twoCol_lit_nonExh_witness_has_both_columns =
           [actionA]
       )
     $ \_ warns -> do
-      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      let nonExhPats = [pats | NonExhaustive _ _ pats <- warns]
       case nonExhPats of
         [] -> assertFailure "expected a NonExhaustive warning"
         (pats : _) ->
@@ -818,7 +818,7 @@ test_nonExh_polyEnv_missingNil_witness_is_Nil =
           [actionA]
       )
     $ \_ warns -> do
-      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      let nonExhPats = [pats | NonExhaustive _ _ pats <- warns]
       case nonExhPats of
         [] -> assertFailure "expected a NonExhaustive warning"
         (pats : _) -> case pats of
@@ -849,7 +849,7 @@ test_nonExh_polyEnv_missingCons_witness_is_Cons =
           [actionA]
       )
     $ \_ warns -> do
-      let nonExhPats = [pats | NonExhaustive _ pats <- warns]
+      let nonExhPats = [pats | NonExhaustive _ _ pats <- warns]
       case nonExhPats of
         [] -> assertFailure "expected a NonExhaustive warning"
         (pats : _) -> case pats of
