@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 # Build the in-browser solcore compiler and assemble a servable site in web/site.
-# Run inside the ghcjs `nix develop` shell.
+# Run inside the ghcjs `nix develop` shell, which provides the JS-backend
+# compiler (javascript-unknown-ghcjs-ghc). That toolchain lives in the sibling
+# flake, not this repo's default shell:  nix develop ../ghcjs
 #
 #   ./web/build.sh            dev build   (-O0, fast, unminified)
 #   ./web/build.sh --release  release     (-O1, esbuild-minified, + precompressed .gz)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+# The JS-backend compiler comes from the sibling ghcjs flake, not this repo's
+# default shell. Fail early with a usable hint rather than a cryptic Cabal error.
+hint="perhaps enter the ghcjs nix develop shell first, e.g. nix develop ../ghcjs"
+if ! command -v javascript-unknown-ghcjs-ghc >/dev/null 2>&1; then
+  echo "error: javascript-unknown-ghcjs-ghc not on PATH — $hint" >&2
+  exit 1
+fi
 
 release=0
 [ "${1:-}" = "--release" ] && release=1
