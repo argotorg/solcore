@@ -601,9 +601,9 @@ byUniqueGroundInstUnify insts inst goal
   where
     groundUnifiers =
       [ result
-        | candidate <- insts,
-          isGroundInstHead candidate,
-          Just result <- [byInstUnify candidate goal]
+      | candidate <- insts,
+        isGroundInstHead candidate,
+        Just result <- [byInstUnify candidate goal]
       ]
 
 isGroundInstHead :: Inst -> Bool
@@ -867,7 +867,7 @@ entailBranches itable qs p@(InCls n _ _) =
     Nothing -> []
     Just its ->
       [ EntailBranch (apply s qs) (apply s ps)
-        | (ps, s, _) <- byInstsM its p
+      | (ps, s, _) <- byInstsM its p
       ]
 entailBranches _ _ _ = []
 

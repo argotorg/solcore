@@ -28,7 +28,7 @@ import Solcore.Desugarer.IfDesugarer (desugaredBoolTy)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (decls, name)
-import Solcore.Frontend.Syntax.Traversal (everywhereButSpans, everythingButSpans)
+import Solcore.Frontend.Syntax.Traversal (everythingButSpans, everywhereButSpans)
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv (TcEnv (instEnv, typeTable), TypeInfo (..))

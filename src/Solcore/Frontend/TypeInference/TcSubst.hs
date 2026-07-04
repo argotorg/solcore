@@ -66,6 +66,7 @@ instance (HasType a, HasType b) => HasType (a, b) where
 
 instance (HasType a) => HasType [a] where
   apply s = map (apply s)
+
   -- Single terminal dedup instead of O(n^2) `foldr (union . _) []`; ordNub
   -- preserves first-occurrence order, so quantifier ordering is unchanged.
   fv = ordNub . concatMap fv

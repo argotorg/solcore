@@ -15,7 +15,7 @@ import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
-import Solcore.Frontend.Syntax.Traversal (everywhereButSpans, everythingButSpans)
+import Solcore.Frontend.Syntax.Traversal (everythingButSpans, everywhereButSpans)
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.NameSupply
