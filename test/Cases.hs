@@ -509,6 +509,17 @@ cases =
       runTestExpectingFailure "instance-context-wrong-kind.solc" caseFolder,
       runTestForFile "instance-closure-error.solc" caseFolder,
       runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder,
+      -- functions returning functions: validate that the single type-inference
+      -- pass still catches lambda type errors that closure conversion could mask.
+      runTestForFile "return-fun-adder.solc" caseFolder,
+      runTestForFile "return-fun-const.solc" caseFolder,
+      runTestForFile "return-fun-instance.solc" caseFolder,
+      runTestForFile "return-fun-eq.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-param.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-return.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-arity.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-sig.solc" caseFolder,
+      runTestExpectingFailure "return-fun-not-fun.solc" caseFolder,
       runTestForFile "field-name-error.solc" caseFolder,
       runTestForFile "field-helper-cxt-collision.solc" caseFolder,
       runTestExpectingFailure "field-access.solc" caseFolder,

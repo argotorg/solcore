@@ -345,7 +345,7 @@ answerFingerprint answer =
 
 relevantSubst :: ResolutionAnswer -> Subst
 relevantSubst answer =
-  Subst [(v, t) | v <- relevantMetas, Just t <- [lookup v substItems]]
+  Subst (Map.fromList [(v, t) | v <- relevantMetas, Just t <- [Map.lookup v substItems]])
   where
     substItems = unSubst (answerSubst answer)
     roots = mv (answerGoal answer : answerResidual answer)
@@ -355,13 +355,13 @@ relevantSubst answer =
     close seen (v : vs)
       | v `elem` seen = close seen vs
       | otherwise =
-          case lookup v substItems of
+          case Map.lookup v substItems of
             Nothing -> close (v : seen) vs
             Just t -> close (v : seen) (mv t ++ vs)
 
 substPreds :: Subst -> [Pred]
 substPreds (Subst xs) =
-  [Meta v :~: t | (v, t) <- xs]
+  [Meta v :~: t | (v, t) <- Map.toList xs]
 
 markExhausted :: TableKey -> TabledM ()
 markExhausted key =
@@ -392,7 +392,9 @@ instantiateAnswer answer goal =
 
 instantiateSubst :: Subst -> Subst -> Subst
 instantiateSubst theta (Subst xs) =
-  Subst (mapMaybe instantiateOne xs)
+  -- fromListWith keeping the earlier binding preserves the previous
+  -- list `lookup` (first-wins) semantics when two source keys alias.
+  Subst (Map.fromListWith (\_new old -> old) (mapMaybe instantiateOne (Map.toList xs)))
   where
     instantiateOne (v, t) =
       case apply theta (Meta v) of

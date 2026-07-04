@@ -6,6 +6,7 @@ module Solcore.Frontend.Pretty.SolcorePretty (module Common.Pretty, pretty) wher
 import Common.Pretty
 import Data.List
 import Data.List.NonEmpty qualified as N
+import Data.Map qualified as Map
 import Language.Yul ()
 import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name
@@ -476,7 +477,7 @@ pprTyParams ts =
   parens (commaSep (map ppr ts))
 
 instance Pretty Subst where
-  ppr = braces . commaSep . map go . unSubst
+  ppr = braces . commaSep . map go . Map.toList . unSubst
     where
       go (v, t) = ppr v <+> text "+->" <+> ppr t
 

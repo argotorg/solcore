@@ -28,6 +28,7 @@ import Solcore.Desugarer.IfDesugarer (desugaredBoolTy)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (decls, name)
+import Solcore.Frontend.Syntax.Traversal (everywhereButSpans, everythingButSpans)
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv (TcEnv (instEnv, typeTable), TypeInfo (..))
@@ -114,7 +115,7 @@ flex t = t
 
 -- make all type variables flexible in a syntactic construct
 flexAll :: Data a => a -> a
-flexAll = everywhere (mkT flex)
+flexAll = everywhereButSpans (mkT flex)
 -}
 
 -- | A signature forall tvs . ctx => t is considered ambiguous if a type variable
@@ -970,10 +971,10 @@ instance Pretty TVSubst where
 
 class (Data a) => HasTV a where
   applytv :: TVSubst -> a -> a
-  applytv s = everywhere (mkT (applytv @Ty s))
+  applytv s = everywhereButSpans (mkT (applytv @Ty s))
 
   freetv :: a -> [Tyvar] -- free variables
-  freetv = everything (<>) (mkQ mempty (freetv @Ty))
+  freetv = everythingButSpans (<>) (mkQ mempty (freetv @Ty))
 
   renametv :: a -> SM (a, TVSubst)
   renametv a = pure (a, mempty)
@@ -999,7 +1000,7 @@ instance (HasTV a) => HasTV (Maybe a) where
 
 instance (HasTV a, HasTV b) => HasTV (a, b) -- defaults
 
-instance HasTV Pred -- uses default: freetv = everything (<>) (mkQ mempty (freetv @Ty))
+instance HasTV Pred -- uses default: freetv = everythingButSpans (<>) (mkQ mempty (freetv @Ty))
 
 {-
 instance (HasTV a, HasTV b, HasTV c) => HasTV (a,b,c) where
@@ -1024,8 +1025,8 @@ instance (HasTV a) => HasTV (Stmt a) -- defaults
 instance HasTV (Pat Id)
 
 instance HasTV (Signature Id) where
-  applytv s = everywhere (mkT (applytv @Ty s))
-  freetv sig = (everything (<>) (mkQ mempty (freetv @Ty))) sig \\ sigVars sig
+  applytv s = everywhereButSpans (mkT (applytv @Ty s))
+  freetv sig = (everythingButSpans (<>) (mkQ mempty (freetv @Ty))) sig \\ sigVars sig
   renametv sig = do
     subst <- foldM addRenaming mempty (sigVars sig)
     pure (applytv subst sig, subst)
@@ -1039,7 +1040,7 @@ data FunDef a
 -}
 
 instance HasTV (FunDef Id) where
-  freetv fd = (everything (<>) (mkQ mempty (freetv @Ty))) fd \\ sigVars (funSignature fd)
+  freetv fd = (everythingButSpans (<>) (mkQ mempty (freetv @Ty))) fd \\ sigVars (funSignature fd)
   renametv fd = do
     let sig = funSignature fd
     subst <- foldM addRenaming mempty (sigVars sig)
@@ -1073,7 +1074,7 @@ renameTV :: TVRenaming -> Tyvar -> Tyvar
 renameTV (TVR r) v = fromMaybe v (lookup v r)
 
 renameTy :: TVRenaming -> Ty -> Ty
-renameTy r = everywhere (mkT (renameTV r))
+renameTy r = everywhereButSpans (mkT (renameTV r))
 
 renameSubst :: TVRenaming -> TVSubst -> TVSubst
 renameSubst r = TVSubst . map rename . unTVSubst

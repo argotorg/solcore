@@ -263,10 +263,7 @@ instance Fresh Scheme where
   freshInst sch@(Forall _ qt) =
     do
       let vs = bv sch
-          ns = map tyvarName vs
-      ns' <- gets nameSupply
-      modify (\env -> env {nameSupply = ns' \\ ns})
-      mvs <- mapM (const freshTyVar) ns
+      mvs <- mapM (const freshTyVar) vs
       let qt' = insts (zip vs mvs) qt
       pure qt'
 
@@ -548,7 +545,12 @@ getClassEnv =
 
 askInstEnv :: Name -> TcM [Inst]
 askInstEnv n =
-  maybe [] id . Map.lookup n <$> getInstEnv
+  do
+    -- Only alpha-rename the instances of the queried class, instead of
+    -- renaming the entire instance table (as getInstEnv does) and discarding
+    -- all but this bucket.
+    bucket <- maybe [] id . Map.lookup n <$> gets instEnv
+    mapM freshInst bucket
 
 getInstEnv :: TcM InstTable
 getInstEnv =
