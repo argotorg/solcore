@@ -87,11 +87,14 @@ compile sourceVal flagsVal = do
   result <- compileSolcore opts (fromJSString sourceVal)
   let cache = toJSString (renderCacheStatus (compileCacheStatus result))
   abis <- abisToJs (compileAbis result)
-  case result of
-    CompileResult (Just output) yul _ _ _ ->
-      js_result 1 (toJSString output) (toJSString (maybe "" id yul)) (toJSString "") cache abis
-    CompileResult Nothing _ errors _ _ ->
-      js_result 0 (toJSString "") (toJSString "") (toJSString (intercalate "\n\n" errors)) cache abis
+  -- Any diagnostic is a failure, even when a hull was produced: a Yul
+  -- translation error leaves 'compileOutput' set but 'compileErrors' non-empty,
+  -- and must still surface in the result pane rather than read as success.
+  let ok = if null (compileErrors result) then 1 else 0
+      output = maybe "" id (compileOutput result)
+      yul = maybe "" id (compileYul result)
+      errors = intercalate "\n\n" (compileErrors result)
+  js_result ok (toJSString output) (toJSString yul) (toJSString errors) cache abis
 
 -- | Dump the persisted (std) typecheck cache as a Latin-1 string.
 dumpCache :: IO JSVal
