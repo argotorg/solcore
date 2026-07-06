@@ -90,16 +90,6 @@ emptyOption path =
 stdOpt :: Option
 stdOpt = emptyOption mempty
 
-noDesugarOpt :: Option
-noDesugarOpt =
-  stdOpt
-    { optNoGenDispatch = True,
-      optNoDesugarCalls = True,
-      optNoSpec = True,
-      optNoMatchCompiler = True,
-      optNoIfDesugar = True
-    }
-
 options :: Parser Option
 options =
   Option

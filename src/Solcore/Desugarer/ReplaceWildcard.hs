@@ -7,6 +7,7 @@ where
 import Control.Monad.State
 import Data.Generics
 import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax.Traversal (everywhereMButSpans)
 
 -- replacing wildcards by fresh pattern variables
 
@@ -20,7 +21,7 @@ replaceWildcards :: (Data a) => a -> a
 replaceWildcards c = fst (runState (replace c) 0)
 
 replace :: (Data a) => a -> State Int a
-replace c = everywhereM (mkM replacePat) c
+replace c = everywhereMButSpans (mkM replacePat) c
 
 replacePat :: Pat Name -> State Int (Pat Name)
 replacePat PWildcard =
