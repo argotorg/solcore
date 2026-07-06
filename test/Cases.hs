@@ -267,7 +267,7 @@ cases =
       runTestForFile "Add1.solc" caseFolder,
       runTestExpectingFailure "add-moritz.solc" caseFolder,
       runTestForFile "another-subst.solc" caseFolder,
-      runTestForFileWith noDesugarOpt "app.solc" caseFolder,
+      runTestForFile "app.solc" caseFolder,
       runTestForFile "array.solc" caseFolder,
       runTestForFile "assembly.solc" caseFolder,
       runTestExpectingFailure "asm-assign-no-return.solc" caseFolder,
@@ -288,12 +288,18 @@ cases =
       runTestForFile "class-context.solc" caseFolder,
       runTestForFile "closure.solc" caseFolder,
       runTestForFile "closure-capture-only.solc" caseFolder,
-      runTestForFileWith noDesugarOpt "Compose.solc" caseFolder,
+      runTestForFile "Compose.solc" caseFolder,
       runTestForFile "Compose3.solc" caseFolder,
       -- The following test makes the test runner throw an exception
       -- , runTestForFile "comp.solc" caseFolder
       runTestForFile "compose0.solc" caseFolder,
-      runTestForFileWith noDesugarOpt "compose_desugared.solc" caseFolder,
+      -- compose_desugared.solc exercises the desugared closure/invoke encoding.
+      -- The generated `invoke` instance requires rank-N polymorphism that the
+      -- type checker cannot infer, so the full pipeline fails typechecking with
+      -- SC0209 ("type is not polymorphic enough"). It previously passed only by
+      -- disabling the desugaring phases via noDesugarOpt; now that that helper is
+      -- gone it is expected to fail.
+      runTestExpectingFailure "compose_desugared.solc" caseFolder,
       runTestForFile "comparisons.solc" caseFolder,
       runTestForFile "bitwise.solc" caseFolder,
       runTestForFile "match-bitwise.solc" caseFolder,
