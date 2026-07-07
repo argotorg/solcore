@@ -18,6 +18,22 @@
   const realExit = process.exit.bind(process);
   process.exit = function () {}; // neutralise the RTS's exit-on-main-return
 
+  // Force synchronous stdout/stderr. When isTTY is true, GHCJS writes fd 1/2 via
+  // the async process.stdout.write path, which back-pressures on a terminal and
+  // suspends the Haskell thread mid-compile — so the *synchronous*
+  // compileSolcore callback returns null (its result never materialises) and any
+  // diagnostic the compiler prints (e.g. "Emitting hull for contract ...")
+  // triggers it. Masking isTTY makes GHCJS use the blocking fs.writeSync path,
+  // which never suspends. Only matters when run straight in a terminal; piped or
+  // redirected output already took the sync path.
+  for (const stream of [process.stdout, process.stderr]) {
+    try {
+      Object.defineProperty(stream, "isTTY", { value: false, configurable: true });
+    } catch (e) {
+      /* stream may not allow redefining isTTY; the sync path is best-effort */
+    }
+  }
+
   const file = process.argv[2];
   const iterations = parseInt(process.argv[3] || "0", 10);
   if (!file) {
