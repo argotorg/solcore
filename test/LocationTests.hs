@@ -14,7 +14,7 @@ import Solcore.Frontend.Syntax.NameResolution (nameResolution)
 import Solcore.Frontend.Syntax.SyntaxTree qualified as Parsed
 import Solcore.Frontend.TypeInference.SccAnalysis (sccAnalysis)
 import Solcore.Frontend.TypeInference.TcModule
-import Solcore.Pipeline.Options (noDesugarOpt)
+import Solcore.Pipeline.Options (stdOpt)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -69,7 +69,7 @@ test_typeInferencePreservesSourceLocations = do
   (typedUnit, _) <-
     assertCompilerRight
       "type inference"
-      (typeInferModuleLocals noDesugarOpt (moduleInputFromUnit resolved))
+      (typeInferModuleLocals stdOpt (moduleInputFromUnit resolved))
   assertSpansPreserved "type inference" resolved typedUnit
 
 hasSourceSpan :: (HasSourceSpan a) => a -> Bool

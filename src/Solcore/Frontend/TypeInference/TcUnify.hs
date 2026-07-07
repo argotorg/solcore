@@ -3,6 +3,8 @@ module Solcore.Frontend.TypeInference.TcUnify where
 import Common.Pretty
 import Control.Monad.Except
 import Data.List
+import Data.Map qualified as Map
+import Data.Set qualified as Set
 import Solcore.Diagnostics
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -146,18 +148,18 @@ unifyAllTypes (t : ts) =
 merge :: (MonadError CompilerError m) => Subst -> Subst -> m Subst
 merge s1@(Subst p1) s2@(Subst p2) =
   if agree
-    then pure (Subst $ nub (p1 ++ p2))
+    then pure (Subst (Map.union p1 p2))
     else mergeError disagree
   where
-    disagree = foldr step [] (dom p1 `intersect` dom p2)
+    overlap = Set.toList (Map.keysSet p1 `Set.intersection` Map.keysSet p2)
+    disagree = foldr step [] overlap
     step v ac
       | (apply s1 (Meta v)) == (apply s2 (Meta v)) = ac
       | otherwise = (apply s1 (Meta v), apply s2 (Meta v)) : ac
     agree =
       all
         (\v -> (apply s1 (Meta v)) == (apply s2 (Meta v)))
-        (dom p1 `intersect` dom p2)
-    dom s = map fst s
+        overlap
 
 mergeError :: (MonadError CompilerError m) => [(Ty, Ty)] -> m a
 mergeError ts =

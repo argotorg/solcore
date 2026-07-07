@@ -12,6 +12,7 @@ import Solcore.Diagnostics (CompilerError)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax.Traversal (everywhereButSpans, everywhereMButSpans)
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.TcEnv
@@ -93,7 +94,7 @@ tcTopDeclChecks topDeclChecks =
     setupPragmas ps
     checkSynonymCycles syns
     let st = buildSynTable syns
-    csExpanded <- everywhereM (mkM (expandTyM st)) cs
+    csExpanded <- everywhereMButSpans (mkM (expandTyM st)) cs
     mapM_ checkTopDecl (filter isClass csExpanded)
     mapM_ checkTopDecl (filter (not . isClass) csExpanded)
     trustImportedDecls csExpanded
@@ -278,7 +279,7 @@ tcContract c@(Contract n vs cdecls) =
         clearSubst
         d' <- tcDecl d
         s <- getSubst
-        pure (everywhere (mkT (apply @Id s)) d')
+        pure (everywhereButSpans (mkT (apply @Id s)) d')
 
 -- initializing context for a contract
 
@@ -409,7 +410,7 @@ tcBindGroup binds =
     let names = map (sigName . funSignature) funs'
     mapM_ (uncurry extEnv) (zip names schs)
     noDesugarCalls <- getNoDesugarCalls
-    let funs1 = everywhere (mkT gen) funs'
+    let funs1 = everywhereButSpans (mkT gen) funs'
     unless noDesugarCalls $ generateTopDeclsFor (zip funs1 schs)
     pure funs1
 

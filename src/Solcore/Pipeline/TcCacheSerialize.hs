@@ -289,15 +289,14 @@ toCachedModule cm =
 
 -- | Rebuild a 'CheckedModule' from its cached payload. The env is @initTcEnv@
 -- with the cached @typeTable@ spliced in — the only env field read back from a
--- non-entry module. The two unread fields are loud error thunks.
+-- non-entry module. The one unread field is a loud error thunk.
 fromCachedModule :: Option -> CachedModule -> CheckedModule
 fromCachedModule opts cached =
   CheckedModule
     { checkedModuleId = cachedModuleId cached,
       checkedModuleTyped = cachedTyped cached,
       checkedModuleEnv = (initTcEnv opts) {typeTable = cachedTypeTable cached},
-      checkedModuleInput = error "tc-cache: checkedModuleInput not restored from cache",
-      checkedModuleNoDesugar = error "tc-cache: checkedModuleNoDesugar not restored from cache"
+      checkedModuleInput = error "tc-cache: checkedModuleInput not restored from cache"
     }
 
 -- | Magic number identifying a typecheck-cache blob ("STC" ++ 0x01).

@@ -95,6 +95,7 @@ library
       Solcore.Frontend.Syntax.Contract
       Solcore.Frontend.Syntax.Location
       Solcore.Frontend.Syntax.Name
+      Solcore.Frontend.Syntax.Traversal
       Solcore.Frontend.Syntax.NameResolution
       Solcore.Frontend.Syntax.Stmt
       Solcore.Frontend.Syntax.SyntaxTree

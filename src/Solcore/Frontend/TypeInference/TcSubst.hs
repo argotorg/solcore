@@ -3,35 +3,48 @@
 module Solcore.Frontend.TypeInference.TcSubst where
 
 import Data.List
+import Data.Map (Map)
+import Data.Map qualified as Map
+import Data.Set qualified as Set
 import Solcore.Frontend.Syntax
 
 -- basic substitution infrastructure
 
 newtype Subst
-  = Subst {unSubst :: [(MetaTv, Ty)]}
+  = Subst {unSubst :: Map MetaTv Ty}
   deriving (Eq, Show)
+
+-- O(n log n) order-preserving dedup (keeps first occurrence), used to replace
+-- the O(n^2) Data.List.union accumulation in the list instance of fv/mv/bv.
+ordNub :: (Ord a) => [a] -> [a]
+ordNub = go Set.empty
+  where
+    go _ [] = []
+    go seen (x : xs)
+      | x `Set.member` seen = go seen xs
+      | otherwise = x : go (Set.insert x seen) xs
 
 restrict :: Subst -> [MetaTv] -> Subst
 restrict (Subst s) vs =
-  Subst [(v, t) | (v, t) <- s, v `notElem` vs]
+  Subst (Map.withoutKeys s (Set.fromList vs))
 
 emptySubst :: Subst
-emptySubst = Subst []
+emptySubst = Subst Map.empty
 
 -- composition operators
 
 instance Semigroup Subst where
-  s1 <> s2 = Subst (outer ++ inner)
-    where
-      outer = [(u, apply s1 t) | (u, t) <- unSubst s2]
-      inner = [(v, t) | (v, t) <- unSubst s1, v `notElem` dom2]
-      dom2 = map fst (unSubst s2)
+  s1 <> (Subst s2) =
+    -- Apply s1 across the range of s2, then union with s1's own bindings.
+    -- Map.union is left-biased, so the (updated) s2 keys win over s1 on
+    -- overlap, matching the previous list-based `outer ++ inner` semantics.
+    Subst (Map.map (apply s1) s2 `Map.union` unSubst s1)
 
 instance Monoid Subst where
   mempty = emptySubst
 
 (+->) :: MetaTv -> Ty -> Subst
-u +-> t = Subst [(u, t)]
+u +-> t = Subst (Map.singleton u t)
 
 class (Show a) => HasType a where
   apply :: Subst -> a -> a
@@ -53,9 +66,12 @@ instance (HasType a, HasType b) => HasType (a, b) where
 
 instance (HasType a) => HasType [a] where
   apply s = map (apply s)
-  fv = foldr (union . fv) []
-  mv = foldr (union . mv) []
-  bv = foldr (union . bv) []
+
+  -- Single terminal dedup instead of O(n^2) `foldr (union . _) []`; ordNub
+  -- preserves first-occurrence order, so quantifier ordering is unchanged.
+  fv = ordNub . concatMap fv
+  mv = ordNub . concatMap mv
+  bv = ordNub . concatMap bv
 
 instance (HasType a) => HasType (Maybe a) where
   apply :: (HasType a) => Subst -> Maybe a -> Maybe a
@@ -72,7 +88,7 @@ instance HasType Name where
 
 instance HasType Ty where
   apply (Subst s) t@(Meta v) =
-    maybe t id (lookup v s)
+    Map.findWithDefault t v s
   apply s (TyCon n ts) =
     TyCon n (apply s ts)
   apply _ t = t

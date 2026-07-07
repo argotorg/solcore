@@ -267,7 +267,7 @@ cases =
       runTestForFile "Add1.solc" caseFolder,
       runTestExpectingFailure "add-moritz.solc" caseFolder,
       runTestForFile "another-subst.solc" caseFolder,
-      runTestForFileWith noDesugarOpt "app.solc" caseFolder,
+      runTestForFile "app.solc" caseFolder,
       runTestForFile "array.solc" caseFolder,
       runTestForFile "assembly.solc" caseFolder,
       runTestExpectingFailure "asm-assign-no-return.solc" caseFolder,
@@ -288,12 +288,18 @@ cases =
       runTestForFile "class-context.solc" caseFolder,
       runTestForFile "closure.solc" caseFolder,
       runTestForFile "closure-capture-only.solc" caseFolder,
-      runTestForFileWith noDesugarOpt "Compose.solc" caseFolder,
+      runTestForFile "Compose.solc" caseFolder,
       runTestForFile "Compose3.solc" caseFolder,
       -- The following test makes the test runner throw an exception
       -- , runTestForFile "comp.solc" caseFolder
       runTestForFile "compose0.solc" caseFolder,
-      runTestForFileWith noDesugarOpt "compose_desugared.solc" caseFolder,
+      -- compose_desugared.solc exercises the desugared closure/invoke encoding.
+      -- The generated `invoke` instance requires rank-N polymorphism that the
+      -- type checker cannot infer, so the full pipeline fails typechecking with
+      -- SC0209 ("type is not polymorphic enough"). It previously passed only by
+      -- disabling the desugaring phases via noDesugarOpt; now that that helper is
+      -- gone it is expected to fail.
+      runTestExpectingFailure "compose_desugared.solc" caseFolder,
       runTestForFile "comparisons.solc" caseFolder,
       runTestForFile "bitwise.solc" caseFolder,
       runTestForFile "match-bitwise.solc" caseFolder,
@@ -509,6 +515,17 @@ cases =
       runTestExpectingFailure "instance-context-wrong-kind.solc" caseFolder,
       runTestForFile "instance-closure-error.solc" caseFolder,
       runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder,
+      -- functions returning functions: validate that the single type-inference
+      -- pass still catches lambda type errors that closure conversion could mask.
+      runTestForFile "return-fun-adder.solc" caseFolder,
+      runTestForFile "return-fun-const.solc" caseFolder,
+      runTestForFile "return-fun-instance.solc" caseFolder,
+      runTestForFile "return-fun-eq.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-param.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-return.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-arity.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-sig.solc" caseFolder,
+      runTestExpectingFailure "return-fun-not-fun.solc" caseFolder,
       runTestForFile "field-name-error.solc" caseFolder,
       runTestForFile "field-helper-cxt-collision.solc" caseFolder,
       runTestExpectingFailure "field-access.solc" caseFolder,

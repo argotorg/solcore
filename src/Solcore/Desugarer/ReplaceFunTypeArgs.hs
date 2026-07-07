@@ -3,11 +3,12 @@ module Solcore.Desugarer.ReplaceFunTypeArgs where
 import Control.Monad.State
 import Data.Generics
 import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax.Traversal (everywhereMButSpans)
 import Solcore.Primitives.Primitives
 
 replaceFunParam :: (Data a) => a -> a
 replaceFunParam m =
-  evalState (everywhereM (mkM replaceFunParamM) m) 0
+  evalState (everywhereMButSpans (mkM replaceFunParamM) m) 0
 
 type ReplaceM a = State Int a
 

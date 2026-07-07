@@ -77,7 +77,6 @@ data CheckedModule
   = CheckedModule
   { checkedModuleId :: Mod.ModuleId,
     checkedModuleInput :: ModuleTypeCheckInput,
-    checkedModuleNoDesugar :: CompUnit Id,
     checkedModuleTyped :: CompUnit Id,
     checkedModuleEnv :: TcEnv
   }

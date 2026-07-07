@@ -15,6 +15,7 @@ import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax.Traversal (everythingButSpans, everywhereButSpans)
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.NameSupply
@@ -420,10 +421,23 @@ tcExpWithExpected' _ (FieldAccess (Just e) n) =
     withCurrentSubst (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExpWithExpected' _ ex@(Call me n args) =
   tcCall me n args `wrapError` ex
-tcExpWithExpected' _ (Lam args bd _) =
+tcExpWithExpected' mExpected (Lam args bd _) =
   do
     (args', schs, ts') <- tcArgs args
     (bd', ps, t') <- withLocalCtx schs (tcBody bd)
+    -- Reconcile the lambda's functional type with an expected function type
+    -- (e.g. an annotated return type) *before* closure conversion.  Closure
+    -- conversion replaces the arrow type with an opaque closure type, which
+    -- would otherwise mask parameter/result type mismatches (this is the
+    -- check the retired no-desugar validation pass provided for free by
+    -- returning the un-converted arrow type; see
+    -- instance-closure-error-invalid-member.solc).
+    case mExpected of
+      Just expected@(_ :-> _) -> do
+        s0 <- getSubst
+        _ <- unify (funtype (apply s0 ts') (apply s0 t')) expected
+        pure ()
+      _ -> pure ()
     s <- getSubst
     let ps1 = apply s ps
         ts1 = apply s ts'
@@ -554,7 +568,7 @@ createClosureType ids vs ty =
     s <- getSubst
     let ts = map idType ids
         dn = Name $ "t_closure" ++ show i
-        ts' = everywhere (mkT gen) ts
+        ts' = everywhereButSpans (mkT gen) ts
         ns = map Var $ (apply s ids)
         vs' = nub $ (mv ts) `union` (map (MetaTv . var) vs)
         ty' = TyCon dn (Meta <$> vs')
@@ -576,8 +590,8 @@ createClosureFun fn freeIds cdt args bdy ps ty =
   do
     j <- incCounter
     ct <- closureTyCon cdt
-    let args0 = everywhere (mkT gen) args
-        ps0 = everywhere (mkT gen) ps
+    let args0 = everywhereButSpans (mkT gen) args
+        ps0 = everywhereButSpans (mkT gen) ps
         cName = Name $ "env" ++ show j
         cParam = Typed False (Id cName ct) ct
         args' = cParam : args0
@@ -587,7 +601,7 @@ createClosureFun fn freeIds cdt args bdy ps ty =
         sig = Signature vs' ps0 fn args' False (Just retTy1) False
     bdy' <- createClosureBody cName cdt freeIds bdy
     sch <- generalize (ps0, ty')
-    pure (everywhere (mkT gen) $ FunDef False sig bdy', sch)
+    pure (everywhereButSpans (mkT gen) $ FunDef False sig bdy', sch)
 
 closureTyCon :: DataTy -> TcM Ty
 closureTyCon (DataTy dn vs _) =
@@ -614,7 +628,7 @@ createClosureFreeFun fn args bdy ps ty =
     let (_, retTy1) = splitTy ty
         vs = bv ty `union` bv ps
         sig = Signature vs ps fn args False (Just retTy1) False
-    pure (everywhere (mkT gen) $ FunDef False sig bdy)
+    pure (everywhereButSpans (mkT gen) $ FunDef False sig bdy)
 
 tcArgs :: [Param Name] -> TcM ([Param Id], [(Name, Scheme)], [Ty])
 tcArgs params =
@@ -734,8 +748,8 @@ tcFunDef incl vs' qs d@(FunDef isPub sig@(Signature vs ps n _ _ _ _) _)
       -- instantiate signatures in function definition
       sks <- mapM (const freshTyVar) vars
       let env = zip vars sks
-          FunDef _ sig1@(Signature _ ps1 _ args1 _ rt1 _) bd1 = everywhere (mkT (insts @Ty env)) d
-          qs1 = everywhere (mkT (insts @Ty env)) qs
+          FunDef _ sig1@(Signature _ ps1 _ args1 _ rt1 _) bd1 = everywhereButSpans (mkT (insts @Ty env)) d
+          qs1 = everywhereButSpans (mkT (insts @Ty env)) qs
       -- checking if all constraints have a respective class and are well kinded
       checkConstraints ps `wrapError` d
       info ["## predicates in signature:", pretty (ps1 ++ qs1)]
@@ -793,8 +807,8 @@ elabFunDef ::
   TcM (FunDef Id)
 elabFunDef isPub vs sig bdy (Forall _ (pinf :=> tinf)) ann@(Forall _ (pann :=> tann)) =
   do
-    let tinf' = everywhere (mkT toMeta) tinf
-        tann' = everywhere (mkT toMeta) tann
+    let tinf' = everywhereButSpans (mkT toMeta) tinf
+        tann' = everywhereButSpans (mkT toMeta) tann
     s <- unify tinf' tann'
     -- Find bindings for phantom predicate variables (those appearing only in
     -- predicates, not in the function type).  sig2's context uses annotation
@@ -805,9 +819,9 @@ elabFunDef isPub vs sig bdy (Forall _ (pinf :=> tinf)) ann@(Forall _ (pann :=> t
         substTVPhantom t@(TyVar v) = fromMaybe t (lookup v tvs)
         substTVPhantom t = t
     sig2 <- elabSignature vs sig ann
-    let sig2' = everywhere (mkT substTVPhantom) sig2
-    let fd2 = everywhere (mkT (apply @Ty s)) (FunDef isPub sig2' bdy)
-    pure (everywhere (mkT gen) fd2)
+    let sig2' = everywhereButSpans (mkT substTVPhantom) sig2
+    let fd2 = everywhereButSpans (mkT (apply @Ty s)) (FunDef isPub sig2' bdy)
+    pure (everywhereButSpans (mkT gen) fd2)
 
 -- Unify annotation predicates against inferred predicates locally to discover
 -- mappings for phantom type variables (those absent from the function type).
@@ -834,13 +848,13 @@ findPhantomPredBindings pann pinf = do
   -- substituted to their source-named counterparts (e.g. Meta "a"), matching the
   -- source-named metas in pann.  Phantom extras (e.g. "$94362" for "rep") remain
   -- free in s0 and stay as fresh metas in pinf', making them identifiable.
-  let pann' = apply s0 (everywhere (mkT toMeta) pann)
-      pinf' = apply s0 (everywhere (mkT toMeta) pinf)
-      dom_s0 = map fst (unSubst s0)
+  let pann' = apply s0 (everywhereButSpans (mkT toMeta) pann)
+      pinf' = apply s0 (everywhereButSpans (mkT toMeta) pinf)
+      dom_s0 = Map.keys (unSubst s0)
   forM_ (phantomMatchingPreds dom_s0 pann' pinf') $ \(pa, pi_) ->
     catchError (unifyPredExtras pa pi_) (\_ -> return ())
   s_full <- getSubst
-  let delta = filter (\(v, _) -> v `notElem` dom_s0) (unSubst s_full)
+  let delta = filter (\(v, _) -> v `notElem` dom_s0) (Map.toList (unSubst s_full))
   putSubst s0 -- restore global subst
   return delta
 
@@ -935,7 +949,7 @@ outerTyCon (TyCon n _) = Just n
 outerTyCon _ = Nothing
 
 conResultMetaVars :: (Data a) => a -> [MetaTv]
-conResultMetaVars = nub . everything (++) (mkQ [] collectConMVs)
+conResultMetaVars = nub . everythingButSpans (++) (mkQ [] collectConMVs)
   where
     collectConMVs :: Exp Id -> [MetaTv]
     collectConMVs (Con (Id _ ty) args) = mv (applyConArgs ty args)
@@ -1052,7 +1066,7 @@ tcInstance' idecl@(Instance d vs predCtx n ts t funs) =
     checkCompleteInstDef n (map (sigName . funSignature) funs) `wrapError` idecl
     (funs1, _) <- unzip <$> mapM (tcFunDef False vs predCtx) funs `wrapError` idecl
     instd <- withCurrentSubst (Instance d vs predCtx n ts t funs1)
-    let ind@(Instance _ _ ctx' _ ts' t' funs2) = everywhere (mkT gen) instd
+    let ind@(Instance _ _ ctx' _ ts' t' funs2) = everywhereButSpans (mkT gen) instd
         vs1 = bv ind
         funs3 =
           sortBy
@@ -1455,7 +1469,7 @@ hnfEntails qs ps =
 -- comptime-only type and cannot survive to hull emission regardless of whether
 -- the user wrote `comptime`.  Applied after the full substitution is known.
 markIntegerComptime :: FunDef Id -> FunDef Id
-markIntegerComptime = everywhere (mkT fix)
+markIntegerComptime = everywhereButSpans (mkT fix)
   where
     fix (Let _ i mt me) | idType i == Prim.integer = Let True i mt me
     fix s = s
@@ -1468,7 +1482,7 @@ generalize (ps, t) =
     envVars <- getEnvMetaVars
     (ps1, t1) <- withCurrentSubst (ps, t)
     let vs = map gvar $ mv (ps1, t1) \\ envVars
-        sch = Forall vs (everywhere (mkT gen) $ ps1 :=> t1)
+        sch = Forall vs (everywhereButSpans (mkT gen) $ ps1 :=> t1)
     return sch
 
 tcBody :: Body Name -> TcM (Body Id, [Pred], Ty)
