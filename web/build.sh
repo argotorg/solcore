@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Build the in-browser solcore compiler and assemble a servable site in web/site.
-# Run inside the ghcjs `nix develop` shell, which provides the JS-backend
-# compiler (javascript-unknown-ghcjs-ghc). That toolchain lives in the sibling
-# flake, not this repo's default shell:  nix develop ../ghcjs
+# Needs the JS-backend compiler (javascript-unknown-ghcjs-ghc), which the default
+# dev shell deliberately omits (building it is a from-source GHC cross-compile).
+# Get it from this repo's ghcjs-flake.nix:  cp ghcjs-flake.nix flake.nix && nix develop
+# (the sibling flake, nix develop ../ghcjs, also provides it).
 #
 #   ./web/build.sh            dev build   (-O0, fast, unminified)
 #   ./web/build.sh --release  release     (-O1, esbuild-minified, + precompressed .gz)
@@ -10,9 +11,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# The JS-backend compiler comes from the sibling ghcjs flake, not this repo's
-# default shell. Fail early with a usable hint rather than a cryptic Cabal error.
-hint="perhaps enter the ghcjs nix develop shell first, e.g. nix develop ../ghcjs"
+# The JS-backend compiler is not in the default dev shell. Fail early with a
+# usable hint rather than a cryptic Cabal error.
+hint="enter a shell with it first, e.g. cp ghcjs-flake.nix flake.nix && nix develop (or nix develop ../ghcjs)"
 if ! command -v javascript-unknown-ghcjs-ghc >/dev/null 2>&1; then
   echo "error: javascript-unknown-ghcjs-ghc not on PATH — $hint" >&2
   exit 1
