@@ -110,6 +110,11 @@ fi
 cabal run -v0 exe:gen-std-cache -- web/site/std-cache.bin
 [ "$release" = 1 ] && gzip -9 -kf web/site/std-cache.bin
 
+# Node-runnable CLI for benchmarking/testing the compiler off the browser: the
+# driver waits for the globalThis.compileSolcore that all.js installs, so it is
+# simply prepended to all.js (see web/node-driver.cjs for why not imported).
+cat web/node-driver.cjs web/site/all.js > web/site/solcore-node.cjs
+
 mode=$([ "$release" = 1 ] && echo "release (-O1, minified)" || echo "dev (-O0)")
 echo "Built: $mode"
 # .gz files only exist for release builds; tolerate their absence under pipefail.
@@ -117,3 +122,4 @@ ls -la web/site/all.js web/site/all.js.gz web/site/std-cache.bin web/site/std-ca
 echo "Serve with:  (cd web/site && python3 -m http.server 8000)"
 echo "  React IDE (main):   http://localhost:8000/index.html"
 echo "  simple page:        http://localhost:8000/simple.html"
+echo "Bench with:  node web/site/solcore-node.cjs <file.solc> [iterations]"
