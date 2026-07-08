@@ -1,0 +1,24 @@
+import std.{*};
+import std.transient.{*};
+import std.dispatch.{*};
+
+// Transient-storage counter. EVM transient storage (tload/tstore) is cleared
+// at the end of the transaction, so it cannot back a value that must persist
+// across separate calls. This example instead does a self-contained
+// read-modify-write loop within a single call: it zeroes a transient slot,
+// increments it `n` times, and returns the final count (which equals `n`).
+//
+// Contract fields still desugar to regular `storage`, so the transient slot is
+// addressed explicitly through the `tstorage` pointer API from std.transient.
+contract TransientCounter {
+  public function count(n: uint256) -> uint256 {
+    let slot: tstorage(uint256) = tstorage(0);
+    CanStore.store(slot, uint256(0));
+
+    for (let i = uint256(0); Ord.gt(n, i); i = Num.add(i, uint256(1))) {
+      CanStore.store(slot, Num.add(CanStore.load(slot), uint256(1)));
+    }
+
+    return CanStore.load(slot);
+  }
+}
