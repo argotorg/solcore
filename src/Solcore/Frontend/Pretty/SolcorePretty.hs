@@ -263,8 +263,12 @@ pprFunBlock =
   vcat . map ppr
 
 instance (Pretty a) => Pretty (Field a) where
-  ppr (Field n ty e) =
-    ppr n <+> colon <+> (ppr ty) <+> pprInitOpt e
+  ppr (Field n ty e loc) =
+    ppr n <+> colon <+> locTy <+> pprInitOpt e
+    where
+      locTy = case loc of
+        Storage -> ppr ty
+        Transient -> text "transient" <+> ppr ty
 
 instance (Pretty a) => Pretty (Body a) where
   ppr = vcat . map ppr

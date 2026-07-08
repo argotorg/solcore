@@ -10,6 +10,13 @@ import Solcore.Frontend.Syntax.Name
 
 -- basic typing infrastructure
 
+-- | Storage location of a contract field. Fields default to persistent
+-- 'Storage'; 'Transient' selects EVM transient storage (tload/tstore).
+data StorageLocation
+  = Storage
+  | Transient
+  deriving (Eq, Ord, Show, Data, Typeable)
+
 data Tyvar
   = TVar {var :: Name} -- bound variable
   | Skolem Name -- skolem constant

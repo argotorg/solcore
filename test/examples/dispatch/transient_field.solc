@@ -1,0 +1,21 @@
+import std.{*};
+import std.dispatch.{*};
+
+// Demonstrates the `transient` storage-location keyword on a contract field:
+// `bal : transient uint256` selects EVM transient storage for the field.
+//
+// The syntax parses and resolves; lowering is not yet implemented, so the
+// field-access desugarer currently rejects transient fields. This file is a
+// syntax demonstration and is intentionally NOT registered in the passing test
+// suite.
+contract TransientField {
+  bal : transient uint256;
+
+  public function set(v: uint256) -> () {
+    bal = v;
+  }
+
+  public function get() -> uint256 {
+    return bal;
+  }
+}

@@ -228,7 +228,7 @@ addContractDecl (S.CDataDecl (S.DataTy n _ cons)) =
   do
     addTyCon n
     mapM_ (addDataCon n . S.constrName) cons
-addContractDecl (S.CFieldDecl (S.Field n _ _)) =
+addContractDecl (S.CFieldDecl (S.Field n _ _ _)) =
   addField n
 addContractDecl (S.CFunDecl (S.FunDef _ sig _)) =
   addFunctionName (S.sigName sig)
@@ -260,11 +260,11 @@ instance Resolve S.Constructor where
 instance Resolve S.Field where
   type Result S.Field = Field Name
 
-  resolve f@(S.Field n t me) =
+  resolve f@(S.Field n t me loc) =
     do
       t' <- resolve t `wrapError` f
       me' <- resolve me `wrapError` f
-      pure (Field n t' me')
+      pure (Field n t' me' loc)
 
 instance Resolve S.Class where
   type Result S.Class = Class Name

@@ -76,7 +76,10 @@ extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
         offset = foldr pair unit tys
 
 extraTopDeclsForContractField :: ContractName -> NmField -> Ty -> [NmTopDecl]
-extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, TInstDef sfInstance]
+extraTopDeclsForContractField cname (Field fname fty _minit loc) offset =
+  case loc of
+    Transient -> notImplementedS "transient storage location for contract field" fname
+    Storage -> [selDecl, TInstDef sfInstance]
   where
     -- data b_sel = n_sel
     selName = selectorNameForField cname fname

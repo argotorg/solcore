@@ -6,6 +6,7 @@ import Common.Pretty
 import Data.List.NonEmpty qualified as N
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
+import Solcore.Frontend.Syntax.Ty (StorageLocation (..))
 
 pretty :: (Pretty a) => a -> String
 pretty = render . ppr
@@ -238,8 +239,12 @@ pprFunBlock =
   vcat . map ppr
 
 instance Pretty Field where
-  ppr (Field n ty e) =
-    ppr n <+> colon <+> (ppr ty) <+> pprInitOpt e
+  ppr (Field n ty e loc) =
+    ppr n <+> colon <+> locTy <+> pprInitOpt e
+    where
+      locTy = case loc of
+        Storage -> ppr ty
+        Transient -> text "transient" <+> ppr ty
 
 instance Pretty Body where
   ppr = vcat . map ppr

@@ -73,8 +73,8 @@ instance Desugar (ContractDecl Name) where
   desugar d = pure d
 
 instance Desugar (Field Name) where
-  desugar (Field n t me) =
-    Field n t <$> desugar me
+  desugar (Field n t me loc) =
+    (\me' -> Field n t me' loc) <$> desugar me
 
 instance Desugar (Constructor Name) where
   desugar (Constructor ps bd payable) =

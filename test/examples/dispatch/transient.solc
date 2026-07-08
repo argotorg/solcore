@@ -1,5 +1,5 @@
 import std.{*};
-import std.transient.{*};
+import std.tstorage.{*};
 import std.dispatch.{*};
 
 // Transient-storage counter. EVM transient storage (tload/tstore) is cleared
@@ -9,7 +9,7 @@ import std.dispatch.{*};
 // increments it `n` times, and returns the final count (which equals `n`).
 //
 // Contract fields still desugar to regular `storage`, so the transient slot is
-// addressed explicitly through the `tstorage` pointer API from std.transient.
+// addressed explicitly through the `tstorage` pointer API from std.tstorage.
 contract TransientCounter {
   public function count(n: uint256) -> uint256 {
     let slot: tstorage(uint256) = tstorage(0);

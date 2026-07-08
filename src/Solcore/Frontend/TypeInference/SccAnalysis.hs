@@ -246,7 +246,7 @@ instance Names Pred where
     names [t1, t2]
 
 instance Names (Field Name) where
-  names (Field _ t me) =
+  names (Field _ t me _) =
     names t `union` names me
 
 instance Names TySym where
