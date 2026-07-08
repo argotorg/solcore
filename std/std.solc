@@ -1650,25 +1650,32 @@ function memberAccessBase(x:MemberAccessProxy(a, field, fieldType,  offset)) -> 
 // Contract field access
 // ------------------------------------------------------------------
 
-forall cxt fieldSelector loadType offsetType storageType
-. StructField(ContractStorage(cxt), fieldSelector) :CStructField(storage(storageType), offsetType)
+// These instances are abstract over the reference type `refType` that the
+// field's CStructField maps to (`storage(_)` for a regular field, `tstorage(_)`
+// for a `transient` field). The reference is built from the slot offset via
+// `Typedef.abs`, and loaded/stored via `CanStore`, so the same instance serves
+// both storage locations; FieldAccess picks the location by choosing refType.
+forall cxt fieldSelector loadType offsetType refType
+. StructField(ContractStorage(cxt), fieldSelector) :CStructField(refType, offsetType)
 , offsetType : StorageSize
-, storage(storageType): CanStore(loadType)
-=> instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType) : LVA (storage(storageType)) {
-   function acc (x : MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType)) -> storage(storageType) {
+, refType : Typedef(word)
+, refType : CanStore(loadType)
+=> instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType) : LVA (refType) {
+   function acc (x : MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType)) -> refType {
       let offset : word = StorageSize.size(Proxy : Proxy(offsetType)) ;
-      return storage(offset):storage(storageType);
+      return Typedef.abs(offset):refType;
    }
 }
 
-forall cxt fieldSelector loadType offsetType storageType
-  . StructField(ContractStorage(cxt), fieldSelector):CStructField(storage(storageType), offsetType)
-  , storage(storageType):CanStore(loadType)
+forall cxt fieldSelector loadType offsetType refType
+  . StructField(ContractStorage(cxt), fieldSelector):CStructField(refType, offsetType)
+  , refType : Typedef(word)
+  , refType:CanStore(loadType)
   , offsetType:StorageSize
   => instance MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType):RVA(loadType) {
     function acc(x:MemberAccessProxy(ContractStorage(cxt), fieldSelector, loadType,  offsetType)) -> loadType {
         let offset:word = StorageSize.size(Proxy:Proxy(offsetType));
-        return CanStore.load(storage(offset):storage(storageType)):loadType;
+        return CanStore.load(Typedef.abs(offset):refType):loadType;
     }
 }
 
