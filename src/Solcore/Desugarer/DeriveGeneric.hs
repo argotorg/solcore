@@ -65,8 +65,8 @@ deriveGenericTopDecls localData allDecls
       | abiClassVisible allDecls =
           concat
             [ [TInstDef (buildABIAttribs dt), TInstDef (buildABIDecode dt)]
-              | dt <- derivable,
-                not (isRecursiveData dt)
+            | dt <- derivable,
+              not (isRecursiveData dt)
             ]
       | otherwise = []
     conflictError n =
