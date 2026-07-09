@@ -168,6 +168,22 @@ addDefaultResolution name ty fun = do
   reportAmbiguousVars name (funSignature fun)
   modify $ \s -> s {spResTable = Map.insertWith (\new old -> old ++ new) name [(ty, fun)] (spResTable s)}
 
+-- The if/bool desugarer rewrites `bool` to `sum((), ())` throughout the typed
+-- AST, so every entry of the resolution table is keyed on the desugared type.
+-- A call type reassembled here can still mention `bool`, because part of it is
+-- reconstructed from the type checker's environment, which predates the
+-- desugaring. Normalising before the lookup keeps both sides in the same
+-- vocabulary; without it a `bool` occurring under a type constructor (e.g. the
+-- `storage(bool)` receiver of CanStore.load) never matches its instance.
+normaliseBoolTy :: Ty -> Ty
+normaliseBoolTy = everywhere (mkT go)
+  where
+    go :: Ty -> Ty
+    go t@(TyCon n [])
+      | n == boolName = desugaredBoolTy
+      | otherwise = t
+    go t = t
+
 lookupResolution :: Name -> Ty -> SM (Maybe (TcFunDef, Ty, TVSubst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty
   where
@@ -423,7 +439,7 @@ specCallResolve i args ty = do
   argTypes' <- atCurrentSubst argTypes
   let typedArgs = zip args argTypes'
   args' <- forM typedArgs (uncurry specExp)
-  let funType = foldr (:->) ty' argTypes'
+  let funType = normaliseBoolTy (foldr (:->) ty' argTypes')
   debug ["> specCall: ", show name, " : ", pretty funType]
   mres <- lookupResolution name funType
   case mres of

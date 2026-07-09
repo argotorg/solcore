@@ -1,0 +1,232 @@
+{
+  "storage_adt_enum": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor() (asserts size(Color)=2, size(Shape)=4; sets Red / Nothing)",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "tag() -> 0 (Red, set by the constructor)",
+          "calldata": "51f91066",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "shapeTag() -> 2 (Nothing, the last constructor: inr(inr(())))",
+          "calldata": "99af9df4",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000002",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setGreen() stores inr(inl(())) — the nested-tag branch",
+          "calldata": "c2cc8844",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "tag() -> 1 (Green round-trips through the nested sum)",
+          "calldata": "51f91066",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setBlue() stores inr(inr(()))",
+          "calldata": "75056e81",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "tag() -> 2 (Blue)",
+          "calldata": "51f91066",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000002",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setRed() overwrites Blue with inl(()) — the inner tag slot is now stale",
+          "calldata": "5f210aa8",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "tag() -> 0 (the outer tag alone must decide; stale inner slot ignored)",
+          "calldata": "51f91066",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setSeg(7, 5) stores inr(inl((7,5))) into the second field",
+          "calldata": "bf0bed0900000000000000000000000000000000000000000000000000000000000000070000000000000000000000000000000000000000000000000000000000000005",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "shapeTag() -> 1 (Seg)",
+          "calldata": "99af9df4",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "shapeSum() -> 12",
+          "calldata": "aa8dd570",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000000c",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "tag() -> 0 still (writing `shape` must not disturb `color`'s slots)",
+          "calldata": "51f91066",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setDot(9) overwrites the wider Seg branch with a narrower one",
+          "calldata": "8aea25090000000000000000000000000000000000000000000000000000000000000009",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "shapeTag() -> 0 (Dot)",
+          "calldata": "99af9df4",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "shapeSum() -> 9 (the stale Seg payload in the trailing slots must not leak)",
+          "calldata": "aa8dd570",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000009",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setNothing() stores the zero-slot branch over a payload-carrying one",
+          "calldata": "f488c81e",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "shapeTag() -> 2 (Nothing)",
+          "calldata": "99af9df4",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000002",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "shapeSum() -> 0",
+          "calldata": "aa8dd570",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

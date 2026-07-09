@@ -45,15 +45,29 @@ deriveGenericTopDecls localData allDecls
       | storageClassVisible allDecls =
           concatMap buildStorageInstances [dt | dt <- derivable, not (isRecursiveData dt)]
       | otherwise = []
-    -- When std.ABIGeneric is in scope, derive a per-type ABIDecode instance so
-    -- the contract dispatch can decode ADT-typed method parameters from calldata.
-    -- ABIAttribs / ABIEncode come for free via the default Generic bridges in
-    -- ABIGeneric; only ABIDecode needs a concrete per-type instance (its decode
-    -- returns a result-position type variable a default instance can't
-    -- monomorphize). The instance delegates to the rep's structural ABIDecode.
+    -- When std.ABIGeneric is in scope, derive per-type ABIAttribs and ABIDecode
+    -- instances so the contract dispatch can carry ADT-typed method parameters
+    -- and return values.
+    --
+    -- ABIDecode needs a concrete instance because its decode returns a
+    -- result-position type variable a default instance can't monomorphize.
+    --
+    -- ABIAttribs needs one for a different reason: std declares a catch-all
+    -- `default instance t:ABIAttribs` with headSize 32, which outranks the
+    -- Generic bridge in std.ABIGeneric. An ADT would then report a 32-byte head
+    -- however wide its representation is, truncating returndata to the tag word
+    -- and under-checking calldatasize. A concrete instance wins over both
+    -- defaults and reports the rep's real head size and staticness.
+    --
+    -- ABIEncode still comes for free via the Generic bridge (std declares no
+    -- competing default for it).
     abiInsts
       | abiClassVisible allDecls =
-          [TInstDef (buildABIDecode dt) | dt <- derivable, not (isRecursiveData dt)]
+          concat
+            [ [TInstDef (buildABIAttribs dt), TInstDef (buildABIDecode dt)]
+              | dt <- derivable,
+                not (isRecursiveData dt)
+            ]
       | otherwise = []
     conflictError n =
       "type '"
@@ -372,6 +386,45 @@ buildCanStore dt =
       [ Let False (Name "_x") (Just repT) (Just (methodCall "CanStore" "load" [repSlot])),
         Return (methodCall "Generic" "to" [Var (Name "_x")])
       ]
+
+boolTy :: Ty
+boolTy = TyCon (Name "bool") []
+
+-- instance <ctx> => T(params) : ABIAttribs {
+--   function headSize(ty : Proxy(T(params))) -> word {
+--     return ABIAttribs.headSize(Proxy : Proxy(<rep>));
+--   }
+--   function isStatic(ty : Proxy(T(params))) -> bool {
+--     return ABIAttribs.isStatic(Proxy : Proxy(<rep>));
+--   }
+-- }
+--
+-- Concrete, so it outranks BOTH the catch-all `default instance t:ABIAttribs`
+-- in std (headSize = 32) and the Generic bridge in std.ABIGeneric.
+buildABIAttribs :: DataTy -> Instance Name
+buildABIAttribs dt =
+  Instance
+    { instDefault = False,
+      instVars = dataParams dt,
+      instContext = [InCls (Name "ABIAttribs") (TyVar tv) [] | tv <- dataParams dt],
+      instName = Name "ABIAttribs",
+      paramsTy = [],
+      mainTy = mainTyOf dt,
+      instFunctions = [FunDef False (sig "headSize" wordTy) (body "headSize"), FunDef False (sig "isStatic" boolTy) (body "isStatic")]
+    }
+  where
+    repT = sopRep dt
+    sig method ret =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name method,
+          sigParams = [Typed False (Name "_ty") (proxyTyOf (mainTyOf dt))],
+          sigRetComptime = False,
+          sigReturn = Just ret,
+          sigPayable = False
+        }
+    body method = [Return (methodCall "ABIAttribs" method [proxyExpOf repT])]
 
 -- ABIDecoder(ty, reader)
 abiDecoderTyOf :: Ty -> Ty -> Ty

@@ -125,6 +125,10 @@ dispatches =
       runDispatchTest "generic_sum.solc",
       runDispatchTest "specialise_sum_of_product.solc",
       runDispatchTest "storage_adt_field.solc",
+      runDispatchTest "storage_adt_enum.solc",
+      runDispatchTest "storage_adt_bool.solc",
+      runDispatchTest "storage_adt_mapping.solc",
+      runDispatchTest "storage_adt_abi.solc",
       runDispatchTest "storage_dynamic_field.solc"
     ]
   where
@@ -567,10 +571,17 @@ cases =
       runTestExpectingFailure "catenable-err.solc" caseFolder,
       runTestForFile "pars.solc" caseFolder,
       runTestForFile "bug-rep-name-capture.solc" caseFolder,
-      runTestForFile "bug-import-default-inst-shadow.solc" caseFolder
+      runTestForFile "bug-import-default-inst-shadow.solc" caseFolder,
+      -- Storage derivation for ADTs. These need dispatch generation: without a
+      -- generated `main` the contract constructor is dead code, so the field's
+      -- CanStore obligation is never forced and the negative cases would pass.
+      runTestForFileWith dispatchOpt "storage-adt-recursive-ok.solc" caseFolder,
+      runTestExpectingFailureWith dispatchOpt "storage-adt-recursive-fail.solc" caseFolder,
+      runTestExpectingFailureWith dispatchOpt "storage-adt-mapping-field-fail.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
+    dispatchOpt = emptyOption mempty
 
 tabledResolution :: TestTree
 tabledResolution =
