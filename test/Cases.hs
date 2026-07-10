@@ -592,7 +592,9 @@ cases =
       -- CanStore obligation is never forced and the negative cases would pass.
       runTestForFileWith dispatchOpt "storage-adt-recursive-ok.solc" caseFolder,
       runTestExpectingFailureWith dispatchOpt "storage-adt-recursive-fail.solc" caseFolder,
-      runTestExpectingFailureWith dispatchOpt "storage-adt-mapping-field-fail.solc" caseFolder
+      runTestExpectingFailureWith dispatchOpt "storage-adt-mapping-field-fail.solc" caseFolder,
+      runTestExpectingFailure "array-elem-no-storagecopy.solc" caseFolder,
+      runTestExpectingFailure "array-push-no-canstore.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
