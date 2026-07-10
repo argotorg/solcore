@@ -105,7 +105,11 @@ spec =
       runTestForFile "127microerc20.solc" specFolder,
       runTestForFile "128minierc20.solc" specFolder,
       runTestForFile "129arraystorage.solc" specFolder,
-      runTestForFile "130arrayfield.solc" specFolder
+      runTestForFile "130arrayfield.solc" specFolder,
+      runTestForFile "131localindex.solc" specFolder,
+      runTestForFile "132nestedarray.solc" specFolder,
+      runTestForFile "133arraystring.solc" specFolder,
+      runTestForFile "135aliaspush.solc" specFolder
     ]
   where
     specFolder = "./test/examples/spec"
@@ -132,7 +136,11 @@ dispatches =
       runDispatchTest "storage_adt_mapping.solc",
       runDispatchTest "storage_adt_abi.solc",
       runDispatchTest "storage_dynamic_field.solc",
-      runDispatchTest "storage_array.solc"
+      runDispatchTest "storage_array.solc",
+      runDispatchTest "array_ops.solc",
+      runDispatchTest "array_copy.solc",
+      runDispatchTest "array_string.solc",
+      runDispatchTest "array_nested.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -575,6 +583,8 @@ cases =
       runTestForFile "pars.solc" caseFolder,
       runTestForFile "bug-rep-name-capture.solc" caseFolder,
       runTestForFile "bug-import-default-inst-shadow.solc" caseFolder,
+      runTestExpectingFailure "array-elem-no-storagecopy.solc" caseFolder,
+      runTestExpectingFailure "array-push-no-canstore.solc" caseFolder,
       -- Storage derivation for ADTs. These need dispatch generation: without a
       -- generated `main` the contract constructor is dead code, so the field's
       -- CanStore obligation is never forced and the negative cases would pass.

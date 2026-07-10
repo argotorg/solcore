@@ -22,6 +22,10 @@ bash ./contest.sh test/examples/dispatch/ecrecover.json
 bash ./contest.sh test/examples/dispatch/memory.json
 bash ./contest.sh test/examples/dispatch/storage.json
 bash ./contest.sh test/examples/dispatch/storage_array.json
+bash ./contest.sh test/examples/dispatch/array_ops.json
+bash ./contest.sh test/examples/dispatch/array_copy.json
+bash ./contest.sh test/examples/dispatch/array_string.json
+bash ./contest.sh test/examples/dispatch/array_nested.json
 bash ./contest.sh test/examples/dispatch/generic_sum.json
 bash ./contest.sh test/examples/dispatch/generic_product.json
 bash ./contest.sh test/examples/dispatch/sum_wide_product.json
