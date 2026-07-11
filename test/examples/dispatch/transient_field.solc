@@ -4,7 +4,13 @@ import std.dispatch.{*};
 
 // Demonstrates the `transient` storage-location keyword on a contract field:
 // `bal : transient uint256` selects EVM transient storage for the field, so
-// `set`/`get` lower to tstore/tload instead of sstore/sload.
+// `set`/`get`/`roundtrip` lower to tstore/tload instead of sstore/sload.
+//
+// Runtime behaviour is exercised by transient_field.json:
+//   - roundtrip writes then reads within one call and returns the value;
+//   - a set in one transaction is NOT visible to get in a later transaction,
+//     since transient storage is cleared at the end of each transaction
+//     (EIP-1153). This is the property that distinguishes it from `storage`.
 contract TransientField {
   bal : transient uint256;
 
@@ -13,6 +19,12 @@ contract TransientField {
   }
 
   public function get() -> uint256 {
+    return bal;
+  }
+
+  // Write then read the transient field within a single call/transaction.
+  public function roundtrip(v: uint256) -> uint256 {
+    bal = v;
     return bal;
   }
 }
