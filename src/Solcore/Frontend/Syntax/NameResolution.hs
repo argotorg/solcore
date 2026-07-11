@@ -1134,8 +1134,8 @@ findClassWithMethod m =
     let classes = Map.keys (classEnv env)
         matches =
           [ c
-            | c <- classes,
-              Map.lookup (QualName c (pretty m)) (scopeEnv env) == Just TFunction
+          | c <- classes,
+            Map.lookup (QualName c (pretty m)) (scopeEnv env) == Just TFunction
           ]
     pure $ case matches of
       [c] -> Just c
