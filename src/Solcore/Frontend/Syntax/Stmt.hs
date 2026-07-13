@@ -167,6 +167,7 @@ data Exp a
   | TyExpWithLocation NodeLocation (Exp a) Ty -- type annotated expression
   | CondWithLocation NodeLocation (Exp a) (Exp a) (Exp a) -- conditional expression
   | IndexedWithLocation NodeLocation (Exp a) (Exp a) -- e1[e2]
+  | ArrayLitWithLocation NodeLocation [Exp a] -- [e1, ..., en]
   deriving (Eq, Ord, Show, Data, Typeable)
 
 pattern Var :: a -> Exp a
@@ -214,7 +215,14 @@ pattern Indexed lhs rhs <- IndexedWithLocation _ lhs rhs
   where
     Indexed lhs rhs = IndexedWithLocation unlocatedNode lhs rhs
 
-{-# COMPLETE Var, Con, FieldAccess, Lit, Call, Lam, TyExp, Cond, Indexed #-}
+-- | An array literal.  Survives type checking (so it can be checked against
+-- real array types) and is eliminated afterwards by 'ArrayLitDesugar'.
+pattern ArrayLit :: [Exp a] -> Exp a
+pattern ArrayLit es <- ArrayLitWithLocation _ es
+  where
+    ArrayLit es = ArrayLitWithLocation unlocatedNode es
+
+{-# COMPLETE Var, Con, FieldAccess, Lit, Call, Lam, TyExp, Cond, Indexed, ArrayLit #-}
 
 locatedExp :: SourceSpan -> Exp a -> Exp a
 locatedExp sourceSpan (Var n) = VarWithLocation (locatedNode sourceSpan) n
@@ -226,6 +234,7 @@ locatedExp sourceSpan (Lam ps body ty) = LamWithLocation (locatedNode sourceSpan
 locatedExp sourceSpan (TyExp exp ty) = TyExpWithLocation (locatedNode sourceSpan) exp ty
 locatedExp sourceSpan (Cond cond thenExp elseExp) = CondWithLocation (locatedNode sourceSpan) cond thenExp elseExp
 locatedExp sourceSpan (Indexed lhs rhs) = IndexedWithLocation (locatedNode sourceSpan) lhs rhs
+locatedExp sourceSpan (ArrayLit es) = ArrayLitWithLocation (locatedNode sourceSpan) es
 
 instance (HasSourceSpan a) => HasSourceSpan (Exp a) where
   sourceSpanOf (VarWithLocation location n) =
@@ -246,6 +255,8 @@ instance (HasSourceSpan a) => HasSourceSpan (Exp a) where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf cond, sourceSpanOf thenExp, sourceSpanOf elseExp]
   sourceSpanOf (IndexedWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
+  sourceSpanOf (ArrayLitWithLocation location es) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf es]
 
 -- pattern matching equations
 

@@ -217,8 +217,15 @@ transContractFieldAssignment field rhs = do
   fieldMap <- memberProxyFor field
   let lhs' = lhsAccess fieldMap
   rhs' <- transRhs rhs
-  let assignName = QualName (Name "Assign") "assign"
-  pure $ StmtExp $ Call Nothing assignName [lhs', rhs']
+  -- An array literal on the right is a memory -> storage array copy, which
+  -- cannot be an Assign/CanStore instance: instance overlap is decided by the
+  -- main type alone, so it would clash with the storage-to-storage deep copy.
+  -- Route it to the plain std function instead. Purely syntactic; if the field
+  -- is not a storage array, storeArrayLit simply fails to unify.
+  let fun = case rhs of
+        ArrayLit {} -> Name "storeArrayLit"
+        _ -> QualName (Name "Assign") "assign"
+  pure $ StmtExp $ Call Nothing fun [lhs', rhs']
 
 transRhs :: (HasCallStack) => NmExp -> CEM NmExp
 transRhs expr@(FieldAccess Nothing x) cenv
@@ -239,6 +246,7 @@ transRhs expr cenv = go expr cenv
     go (Lam ps b mty) = Lam ps <$> transBody b <*> pure mty
     go (TyExp e ty) = TyExp <$> transRhs e <*> pure ty
     go (Cond e1 e2 e3) = Cond <$> transRhs e1 <*> transRhs e2 <*> transRhs e3
+    go (ArrayLit es) = ArrayLit <$> mapM transRhs es
     go e@Var {} = pure e
     go e@Con {} = pure e
     go e@Lit {} = pure e

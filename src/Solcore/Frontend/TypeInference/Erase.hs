@@ -84,6 +84,8 @@ instance Erase (Exp Id) where
     Cond (erase e1) (erase e2) (erase e3)
   erase (Indexed e1 e2) =
     Indexed (erase e1) (erase e2)
+  erase (ArrayLit es) =
+    ArrayLit (map erase es)
   erase (Lit l) = Lit l
 
 instance Erase (Param Id) where
