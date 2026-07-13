@@ -1872,41 +1872,38 @@ instance storage(bytes):CanStore(memory(bytes)) {
 // Shamelessly stolen from  function copy_byte_array_to_storage_from_t_bytes_memory_ptr_to_t_bytes_storage
 // TODO: consider wrapping behaviour at end of storage
 function storeBytesFromMemory(slot: word, src: word) -> () {
-  assembly {
-    let newLen := mload(src)
+    let newLen = mload(src);
     // TODO: check old len, cleanup etc
-    let srcOffset := 32
-    switch gt(newLen, 31)
-      case 1 {
-        mstore(0,slot)
-        let dstPtr := keccak256(0,32)
-	let loopEnd := and(newLen, not(0x1f))
-	let i := 0
-	for { } lt(i, loopEnd) { i := add(i, 0x20) } {
-	    sstore(dstPtr, mload(add(src, srcOffset)))
-	    dstPtr := add(dstPtr, 1)
-	    srcOffset := add(srcOffset, 32)
-	}
-	if lt(loopEnd, newLen) {
-	    let lastValue := mload(add(src, srcOffset))
-	    let lastLen := and(newLen, 0x1f)
-	    let mask := not(shr(mul(8, lastLen), not(0)))
-	    let nudata := and(lastValue, mask)  // a Yul variable cannot be called "data". Go figure.
-	    sstore(dstPtr, nudata)
-	}
-	sstore(slot, add(mul(newLen, 2), 1))
-      }
-      default {
-	  let value := 0
-	  if newLen {
-	      value := mload(add(src, srcOffset))
-	  }
-	  let mask := not(shr(mul(8, newLen), not(0)))
-	  let nudata := and(value, mask)
-	  let used := or(nudata, mul(2, newLen))
-	  sstore(slot,used)
-      }
-  }
+    src += 32; // Move to data.
+    match newLen > 31 {
+        | true =>
+            // Long byte array (out-of-place encoding)
+            let dstPtr = hash1(slot);
+            let loopEnd = and_(newLen, not_(0x1f));
+            let trailing = loopEnd < newLen;
+            loopEnd += src;
+            for (; src < loopEnd; src += 32, dstPtr += 1) {
+                sstore(dstPtr, mload(src));
+            }
+            if (trailing) {
+                let lastValue = mload(src);
+                let lastLen = and_(newLen, 0x1f);
+                let mask = not_(shr(8 * lastLen, not_(0)));
+                let data_ = and_(lastValue, mask);
+                sstore(dstPtr, data_);
+            }
+            sstore(slot, (newLen * 2) + 1);
+        | false =>
+            // Short byte array (in-place encoding)
+            let value = 0;
+            if (newLen != 0) {
+                value = mload(src);
+            }
+            let mask = not_(shr(8 * newLen, not_(0)));
+            let data_ = and_(value, mask);
+            let used = or_(data_, 2 * newLen);
+            sstore(slot, used);
+    }
 }
 
 
@@ -1923,13 +1920,13 @@ function loadBytesFromStorage(slot:word, memPtr:word) -> word {
     pos += 32;
     match outOfPlaceEncoding {
         | false =>
-            // Short byte array
+            // Short byte array (in-place encoding)
             mstore(pos, and_(slotValue, not_(0xff)));
             let empty = iszero(length);
             let notzero = iszero(empty);
             return pos + (notzero * 32);
         | true =>
-            // Long byte array
+            // Long byte array (out-of-place encoding)
             let dataPos = hash1(slot);
             let i = 0;
             for (; i < length; i += 32) {
