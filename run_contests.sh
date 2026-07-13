@@ -25,5 +25,11 @@ bash ./contest.sh test/examples/dispatch/generic_sum.json
 bash ./contest.sh test/examples/dispatch/generic_product.json
 bash ./contest.sh test/examples/dispatch/sum_wide_product.json
 bash ./contest.sh test/examples/dispatch/specialise_sum_of_product.json
+bash ./contest.sh test/examples/dispatch/storage_adt_field.json
+bash ./contest.sh test/examples/dispatch/storage_adt_enum.json
+bash ./contest.sh test/examples/dispatch/storage_adt_bool.json
+bash ./contest.sh test/examples/dispatch/storage_adt_mapping.json
+bash ./contest.sh test/examples/dispatch/storage_adt_abi.json
+bash ./contest.sh test/examples/dispatch/storage_dynamic_field.json
 bash ./contest.sh test/examples/dispatch/forloops.json
 bash ./contest.sh test/examples/dispatch/weth9.json

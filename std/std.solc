@@ -1810,6 +1810,17 @@ default instance a:CanStore(a) {
     }
 }
 
+// bool has no StorageType instance (it is a builtin, not a Typedef(word)), but it
+// round-trips through word via frombool / tobool, so it can still be stored.
+instance storage(bool):CanStore(bool) {
+    function store(l:storage(bool), r:bool) -> () {
+      StorageType.store(Typedef.rep(l), frombool(r));
+    }
+    function load(l:storage(bool)) -> bool {
+      return tobool(StorageType.load(Typedef.rep(l)));
+    }
+}
+
 forall k v.
  instance storage(mapping(k,v)):CanStore(storage(mapping(k,v))) {
     function store(l:storage(mapping(k,v)), r:storage(mapping(k,v))) -> () {
@@ -1949,7 +1960,7 @@ instance (storage(mapping(i,a)), i): LValueIdxAccess(storage(a)) {
   }
 }
 
-forall i a . a:StorageType, i:Typedef(word) =>
+forall i a . storage(a):CanStore(a), i:Typedef(word) =>
 instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
   function lookup(xi : (storage(mapping(i,a)), i)) -> a {
   /*
@@ -1961,9 +1972,12 @@ instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
   }
 }
 
-forall a. a:StorageType =>
+// Mapping reads go through CanStore, matching the write side (Assign -> CanStore.store).
+// This lets a mapping hold any value with a CanStore instance — including ADTs whose
+// fields are dynamic (memory(bytes)) — not just the fixed-slot StorageType primitives.
+forall a. storage(a):CanStore(a) =>
 function readStorage(x:storage(a)) -> a {
-  return StorageType.load(Typedef.rep(x));
+  return CanStore.load(x);
 }
 /*
 forall r a. a:StorageType, r: RValueIdxAccess(a) =>
@@ -1982,9 +1996,9 @@ function lidx( m: storage(mapping(i,a)), x:i) -> storage(a) {
   return storage(hash2(Typedef.rep(m), Typedef.rep(x)));
 }
 
-forall i a . i:Typedef(word), a:StorageType  =>
+forall i a . i:Typedef(word), storage(a):CanStore(a) =>
 function ridx( m: storage(mapping(i,a)), x:i) -> a {
-  return StorageType.load(hash2(Typedef.rep(m), Typedef.rep(x)));
+  return CanStore.load(storage(hash2(Typedef.rep(m), Typedef.rep(x))) : storage(a));
 }
 
 // --- Memory Encoding ---

@@ -1,0 +1,244 @@
+{
+  "storage_adt_field": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor() (asserts: Option(uint256)=2, Triple=3, Option(Triple)=4)",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "isSome() -> false (zero-init)",
+          "calldata": "31f68a08",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getValue() reverts on None",
+          "calldata": "20965255",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "comment": "setValue(42)",
+          "calldata": "55241077000000000000000000000000000000000000000000000000000000000000002a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getValue() -> 42",
+          "calldata": "20965255",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "isSome() -> true",
+          "calldata": "31f68a08",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setTriple(10,20,30)",
+          "calldata": "52786e06000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000014000000000000000000000000000000000000000000000000000000000000001e",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "tripleSum() -> 60",
+          "calldata": "7ba60a20",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000003c",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "hasSomeTriple() -> false (zero-init)",
+          "calldata": "9b5e9a9d",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "someTripleSum() reverts on None",
+          "calldata": "9650c3bd",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "comment": "setSomeTriple(7,8,9)",
+          "calldata": "421dfc02000000000000000000000000000000000000000000000000000000000000000700000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000009",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "someTripleSum() -> 24",
+          "calldata": "9650c3bd",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000018",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "hasSomeTriple() -> true",
+          "calldata": "9b5e9a9d",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getValue() -> 42 (unaffected by nested writes)",
+          "calldata": "20965255",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "tripleSum() -> 60 (unaffected)",
+          "calldata": "7ba60a20",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000003c",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "clearSomeTriple()",
+          "calldata": "0f0b502e",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "hasSomeTriple() -> false after clear",
+          "calldata": "9b5e9a9d",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "someTripleSum() reverts after clear",
+          "calldata": "9650c3bd",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "comment": "tripleSum() -> 60 (unaffected by clear)",
+          "calldata": "7ba60a20",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000003c",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getValue() -> 42 (unaffected by clear)",
+          "calldata": "20965255",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

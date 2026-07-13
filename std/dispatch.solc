@@ -1,5 +1,6 @@
 import std.{*};
 import std.opcodes.{callvalue, calldatasize, calldataload, shr};
+import std.Generic.{*};
 
 export {
   ABIString,
@@ -58,6 +59,31 @@ forall a b. a:SigString, b: SigString =>
 instance (a,b):SigString {
   function sigStr(x:Proxy((a,b))) -> string {
     SigString.sigStr( Proxy:Proxy(a) ) +  "," + SigString.sigStr( Proxy:Proxy(b) )
+  }
+}
+
+// A tagged union (the SOP form of an ADT with several constructors). There is no
+// standard ABI type for sums, so this signature is structural: the branch
+// signatures wrapped in a `sum(l,r)` constructor. The explicit `sum(...)` wrapper
+// keeps sums from colliding with the comma-joined product `(a,b)` signature, so
+// `sum(uint256,uint256)` and `(uint256,uint256)` hash to distinct selectors. It
+// makes ADT-typed parameters produce a deterministic selector; refine here if a
+// specific on-the-wire sum convention is needed.
+forall f g. f:SigString, g: SigString =>
+instance sum(f,g):SigString {
+  function sigStr(x:Proxy(sum(f,g))) -> string {
+    "sum(" + SigString.sigStr( Proxy:Proxy(f) ) + "," + SigString.sigStr( Proxy:Proxy(g) ) + ")"
+  }
+}
+
+// Any data type inherits its ABI signature from its Generic representation, the
+// same way ABIAttribs / ABIEncode bridge through Generic in std.ABIGeneric. This
+// lets the dispatch take ADT-typed parameters (e.g. a Signature) without a
+// hand-written SigString instance per type.
+forall a rep. a:Generic(rep), rep:SigString =>
+default instance a:SigString {
+  function sigStr(x:Proxy(a)) -> string {
+    SigString.sigStr( Proxy:Proxy(rep) )
   }
 }
 
