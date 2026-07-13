@@ -298,6 +298,8 @@ instance Compile (Exp Id) where
     Cond <$> compile e1 <*> compile e2 <*> compile e3
   compile (Indexed e1 e2) =
     Indexed <$> compile e1 <*> compile e2
+  compile (ArrayLit es) =
+    ArrayLit <$> compile es
 
 instance Compile (Instance Id) where
   compile (Instance d vs ps n ts t funs) =
@@ -705,6 +707,12 @@ scrutineeType (Indexed earr _) =
       _ ->
         throwError
           "scrutineeType: index expression scrutinee has no type annotation"
+-- The type checker always returns an array literal wrapped in a TyExp carrying
+-- its memory(DynArray(t)) type, so a bare literal here means the annotation was
+-- dropped somewhere upstream.
+scrutineeType (ArrayLit _) =
+  throwError
+    "scrutineeType: array literal scrutinee has no type annotation"
 
 typeOfParam :: Param Id -> Ty
 typeOfParam (Typed _ i _t) = idType i

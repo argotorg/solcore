@@ -109,7 +109,9 @@ spec =
       runTestForFile "131localindex.solc" specFolder,
       runTestForFile "132nestedarray.solc" specFolder,
       runTestForFile "133arraystring.solc" specFolder,
-      runTestForFile "135aliaspush.solc" specFolder
+      runTestForFile "135aliaspush.solc" specFolder,
+      runTestForFile "136arraylit.solc" specFolder,
+      runTestForFile "137arraylitstorage.solc" specFolder
     ]
   where
     specFolder = "./test/examples/spec"
@@ -141,7 +143,8 @@ dispatches =
       runDispatchTest "array_ops.solc",
       runDispatchTest "array_copy.solc",
       runDispatchTest "array_string.solc",
-      runDispatchTest "array_nested.solc"
+      runDispatchTest "array_nested.solc",
+      runDispatchTest "arraylit.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -594,7 +597,9 @@ cases =
       runTestExpectingFailureWith dispatchOpt "storage-adt-recursive-fail.solc" caseFolder,
       runTestExpectingFailureWith dispatchOpt "storage-adt-mapping-field-fail.solc" caseFolder,
       runTestExpectingFailure "array-elem-no-storagecopy.solc" caseFolder,
-      runTestExpectingFailure "array-push-no-canstore.solc" caseFolder
+      runTestExpectingFailure "array-push-no-canstore.solc" caseFolder,
+      runTestExpectingFailure "arraylit-mixed-types.solc" caseFolder,
+      runTestExpectingFailure "arraylit-bad-target.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

@@ -1504,6 +1504,8 @@ renameExpTypeRefs renameMap (TyExp e ty) =
   TyExp (renameExpTypeRefs renameMap e) (renameTyTypeRefs renameMap ty)
 renameExpTypeRefs renameMap (ExpIndexed e1 e2) =
   ExpIndexed (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpArray es) =
+  ExpArray (map (renameExpTypeRefs renameMap) es)
 renameExpTypeRefs renameMap (ExpPlus e1 e2) =
   ExpPlus (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpMinus e1 e2) =

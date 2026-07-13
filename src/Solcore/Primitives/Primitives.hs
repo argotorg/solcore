@@ -183,6 +183,14 @@ unit = TyCon "()" []
 pair :: Ty -> Ty -> Ty
 pair t1 t2 = TyCon "pair" [t1, t2]
 
+-- The type of an array literal: a dynamically sized memory array.  This
+-- mirrors Solidity, where @[e1,...,en]@ is a memory array that converts
+-- implicitly to storage on assignment.  Both type constructors are defined in
+-- std.solc; naming them here is the same hardcoding that @pair@ and @string@
+-- already rely on.
+memoryDynArray :: Ty -> Ty
+memoryDynArray t = TyCon "memory" [TyCon "DynArray" [t]]
+
 epair :: Exp Name -> Exp Name -> Exp Name
 epair e1 e2 = Con (Name "pair") [e1, e2]
 

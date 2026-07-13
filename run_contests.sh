@@ -37,5 +37,6 @@ bash ./contest.sh test/examples/dispatch/storage_adt_bool.json
 bash ./contest.sh test/examples/dispatch/storage_adt_mapping.json
 bash ./contest.sh test/examples/dispatch/storage_adt_abi.json
 bash ./contest.sh test/examples/dispatch/storage_dynamic_field.json
+bash ./contest.sh test/examples/dispatch/arraylit.json
 bash ./contest.sh test/examples/dispatch/forloops.json
 bash ./contest.sh test/examples/dispatch/weth9.json

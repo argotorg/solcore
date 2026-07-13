@@ -593,6 +593,7 @@ data Exp
   | LamWithLocation NodeLocation [Param] Body (Maybe Ty) -- lambda-abstraction
   | TyExpWithLocation NodeLocation Exp Ty -- type annotation expression
   | ExpIndexedWithLocation NodeLocation Exp Exp -- e1[e2]
+  | ExpArrayWithLocation NodeLocation [Exp] -- [e1, ..., en]
   | ExpPlusWithLocation NodeLocation Exp Exp -- e1 + e2
   | ExpMinusWithLocation NodeLocation Exp Exp -- e1 - e2
   | ExpTimesWithLocation NodeLocation Exp Exp -- e1 * e2
@@ -648,6 +649,11 @@ pattern ExpIndexed :: Exp -> Exp -> Exp
 pattern ExpIndexed lhs rhs <- ExpIndexedWithLocation _ lhs rhs
   where
     ExpIndexed lhs rhs = ExpIndexedWithLocation unlocatedNode lhs rhs
+
+pattern ExpArray :: [Exp] -> Exp
+pattern ExpArray es <- ExpArrayWithLocation _ es
+  where
+    ExpArray es = ExpArrayWithLocation unlocatedNode es
 
 pattern ExpPlus :: Exp -> Exp -> Exp
 pattern ExpPlus lhs rhs <- ExpPlusWithLocation _ lhs rhs
@@ -744,7 +750,7 @@ pattern ExpAt ty <- ExpAtWithLocation _ ty
   where
     ExpAt ty = ExpAtWithLocation unlocatedNode ty
 
-{-# COMPLETE Lit, ExpName, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpPlus, ExpMinus, ExpTimes, ExpDivide, ExpModulo, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpCond, ExpAt #-}
+{-# COMPLETE Lit, ExpName, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpArray, ExpPlus, ExpMinus, ExpTimes, ExpDivide, ExpModulo, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpCond, ExpAt #-}
 
 locatedExp :: SourceSpan -> Exp -> Exp
 locatedExp sourceSpan (Lit lit) = LitWithLocation location lit
@@ -756,6 +762,7 @@ locatedExp sourceSpan (ExpDotName n es) = ExpDotNameWithLocation (locatedNode so
 locatedExp sourceSpan (Lam ps body ty) = LamWithLocation (locatedNode sourceSpan) ps body ty
 locatedExp sourceSpan (TyExp exp ty) = TyExpWithLocation (locatedNode sourceSpan) exp ty
 locatedExp sourceSpan (ExpIndexed lhs rhs) = ExpIndexedWithLocation (locatedNode sourceSpan) lhs rhs
+locatedExp sourceSpan (ExpArray es) = ExpArrayWithLocation (locatedNode sourceSpan) es
 locatedExp sourceSpan (ExpPlus lhs rhs) = ExpPlusWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpMinus lhs rhs) = ExpMinusWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpTimes lhs rhs) = ExpTimesWithLocation (locatedNode sourceSpan) lhs rhs
@@ -790,6 +797,8 @@ instance HasSourceSpan Exp where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf exp, sourceSpanOf ty]
   sourceSpanOf (ExpIndexedWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
+  sourceSpanOf (ExpArrayWithLocation location es) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf es]
   sourceSpanOf (ExpPlusWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (ExpMinusWithLocation location lhs rhs) =

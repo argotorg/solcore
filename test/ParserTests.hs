@@ -219,6 +219,17 @@ exprTests =
         parsesAs expP "arr[0]" (ExpIndexed (var "arr") (lit 0)),
       testCase "chained index" $
         parsesAs expP "m[i][j]" (ExpIndexed (ExpIndexed (var "m") (var "i")) (var "j")),
+      testCase "array literal" $
+        parsesAs expP "[1, 2, 3]" (ExpArray [lit 1, lit 2, lit 3]),
+      testCase "empty array literal" $
+        parsesAs expP "[]" (ExpArray []),
+      testCase "nested array literal" $
+        parsesAs expP "[[1], [2]]" (ExpArray [ExpArray [lit 1], ExpArray [lit 2]]),
+      -- A leading '[' starts a literal; a '[' after an atom is still an index.
+      testCase "array literal is indexable" $
+        parsesAs expP "[a, b][0]" (ExpIndexed (ExpArray [var "a", var "b"]) (lit 0)),
+      testCase "indexing still parses after array literal support" $
+        parsesAs expP "xs[0]" (ExpIndexed (var "xs") (lit 0)),
       testCase "unit expression" $
         parsesAs expP "()" (ExpName Nothing "()" []),
       testCase "parenthesized expression" $

@@ -503,6 +503,19 @@ tcExpWithExpected' _ e@(Indexed arrExp idx) =
     tRes <- freshTyVar
     s <- unify tArr (tIdx :-> tRes) `wrapError` e
     withCurrentSubst (Indexed arr' idx', psArr ++ psIdx, apply s tRes)
+-- An array literal is a memory array whose elements all share one type, as in
+-- Solidity.  The result is wrapped in a TyExp so the later ArrayLitDesugar pass
+-- can recover the element type it needs to emit the allocation chain.
+tcExpWithExpected' _ e@(ArrayLit es) =
+  do
+    results <- mapM (\ei -> tcExp ei `wrapError` e) es
+    tElem <- freshTyVar
+    mapM_ (\(_, _, ti) -> unify tElem ti `wrapError` e) results
+    let es' = [ei | (ei, _, _) <- results]
+        ps = concat [psi | (_, psi, _) <- results]
+    tElem' <- withCurrentSubst tElem
+    let tArr = memoryDynArray tElem'
+    withCurrentSubst (TyExp (ArrayLit es') tArr, ps, tArr)
 
 closureConversion ::
   [Tyvar] ->
@@ -1929,6 +1942,7 @@ instance Vars (Exp Id) where
   free (Call (Just e) n es) = free e `union` free n `union` free es
   free (Call Nothing n es) = free n `union` free es
   free (Lam ps bd _) = free bd \\ bound ps
+  free (ArrayLit es) = free es
   free _ = []
 
   bound _ = []
