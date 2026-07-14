@@ -424,11 +424,11 @@ instance (HasType a) => HasType (ContractDecl a) where
   bv _ = []
 
 instance (HasType a) => HasType (Field a) where
-  apply s (Field n t me) =
-    Field n (apply s t) (apply s me)
-  fv (Field _ t me) = fv t `union` fv me
-  mv (Field _ t me) = mv t `union` mv me
-  bv (Field _ t me) = bv t `union` bv me
+  apply s (Field n t me loc) =
+    Field n (apply s t) (apply s me) loc
+  fv (Field _ t me _) = fv t `union` fv me
+  mv (Field _ t me _) = mv t `union` mv me
+  bv (Field _ t me _) = bv t `union` bv me
 
 instance (HasType a) => HasType (Constructor a) where
   apply s (Constructor ps bd payable) =

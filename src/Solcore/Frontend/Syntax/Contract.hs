@@ -215,7 +215,8 @@ data Field a
   = Field
   { fieldName :: Name,
     fieldTy :: Ty,
-    fieldInit :: Maybe (Exp a)
+    fieldInit :: Maybe (Exp a),
+    fieldLoc :: StorageLocation
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -344,7 +345,7 @@ instance (HasSourceSpan a) => HasSourceSpan (Instance a) where
     firstSourceSpan [sourceSpanOf vars, sourceSpanOf context, sourceSpanOf clsName, sourceSpanOf params, sourceSpanOf main, sourceSpanOf funs]
 
 instance (HasSourceSpan a) => HasSourceSpan (Field a) where
-  sourceSpanOf (Field n ty initExp) =
+  sourceSpanOf (Field n ty initExp _) =
     firstSourceSpan [sourceSpanOf n, sourceSpanOf ty, sourceSpanOf initExp]
 
 instance (HasSourceSpan a) => HasSourceSpan (FunDef a) where

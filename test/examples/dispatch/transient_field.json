@@ -1,0 +1,52 @@
+{
+  "transientfield": {
+    "bytecode": "_CODE",
+    "contract": "TransientField",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "roundtrip(77): write then read the transient field in one tx -> 77",
+          "calldata": "33cddcf6000000000000000000000000000000000000000000000000000000000000004d",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000004d",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "set(99): write the transient field in this tx",
+          "calldata": "60fe47b10000000000000000000000000000000000000000000000000000000000000063",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "get(): a later tx sees 0 -- transient storage was cleared after set's tx (EIP-1153)",
+          "calldata": "6d4ce63c",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

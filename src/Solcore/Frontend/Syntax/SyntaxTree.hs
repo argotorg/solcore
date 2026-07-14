@@ -9,6 +9,7 @@ import Language.Yul
 import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Syntax.Location
 import Solcore.Frontend.Syntax.Name
+import Solcore.Frontend.Syntax.Ty (StorageLocation (..))
 import Prelude hiding (exp)
 
 -- compilation unit
@@ -237,7 +238,8 @@ data Field
   = Field
   { fieldName :: Name,
     fieldTy :: Ty,
-    fieldInit :: Maybe Exp
+    fieldInit :: Maybe Exp,
+    fieldLoc :: StorageLocation
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -364,7 +366,7 @@ instance HasSourceSpan Instance where
     firstSourceSpan [sourceSpanOf vars, sourceSpanOf context, sourceSpanOf clsName, sourceSpanOf params, sourceSpanOf main, sourceSpanOf funs]
 
 instance HasSourceSpan Field where
-  sourceSpanOf (Field n ty initExp) =
+  sourceSpanOf (Field n ty initExp _) =
     firstSourceSpan [sourceSpanOf n, sourceSpanOf ty, sourceSpanOf initExp]
 
 instance HasSourceSpan FunDef where

@@ -76,7 +76,7 @@ extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
         offset = foldr pair unit tys
 
 extraTopDeclsForContractField :: ContractName -> NmField -> Ty -> [NmTopDecl]
-extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, TInstDef sfInstance]
+extraTopDeclsForContractField cname (Field fname fty _minit loc) offset = [selDecl, TInstDef sfInstance]
   where
     -- data b_sel = n_sel
     selName = selectorNameForField cname fname
@@ -90,13 +90,16 @@ extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, 
           instVars = [],
           instContext = [],
           instName = "CStructField",
-          paramsTy = [translateFieldType fty, offset],
+          paramsTy = [translateFieldType loc fty, offset],
           mainTy = TyCon "StructField" [ctxTy, selType],
           instFunctions = []
         }
 
-translateFieldType :: Ty -> Ty
-translateFieldType t = TyCon "storage" [t]
+-- A regular field of type `t` is stored in persistent storage as `storage(t)`;
+-- a `transient` field lives in EVM transient storage as `tstorage(t)`.
+translateFieldType :: StorageLocation -> Ty -> Ty
+translateFieldType Storage t = TyCon "storage" [t]
+translateFieldType Transient t = TyCon "tstorage" [t]
 
 --------------------------------
 -- # Contract Desugaring

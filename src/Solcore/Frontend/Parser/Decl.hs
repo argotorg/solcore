@@ -21,6 +21,7 @@ import Solcore.Frontend.Parser.SolcoreTypes
 import Solcore.Frontend.Parser.Stmt (bodyP)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
+import Solcore.Frontend.Syntax.Ty (StorageLocation (..))
 
 -- Top-level entry point
 
@@ -379,10 +380,11 @@ fieldDeclP :: Parser Field
 fieldDeclP = do
   n <- simpleNameP
   _ <- colon
+  loc <- option Storage (Transient <$ keyword "transient")
   ty <- typeP
   me <- optional (equalsP *> expP)
   _ <- semicolon
-  return (Field n ty me)
+  return (Field n ty me loc)
 
 constructorDeclP :: Parser Constructor
 constructorDeclP = do

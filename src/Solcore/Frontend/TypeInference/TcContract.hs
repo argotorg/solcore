@@ -343,18 +343,18 @@ tcConstr (Constr n ts) =
 -- type checking fields
 
 tcField :: Field Name -> TcM (Field Id)
-tcField d@(Field n t (Just e)) =
+tcField d@(Field n t (Just e) loc) =
   do
     (e', _, t') <- tcExp e
     t1 <- kindCheck t `wrapError` d
     _ <- mgu t t' `wrapError` d
     extEnv n (monotype t1)
-    return (Field n t1 (Just e'))
-tcField d@(Field n t _) =
+    return (Field n t1 (Just e') loc)
+tcField d@(Field n t _ loc) =
   do
     t1 <- kindCheck t `wrapError` d
     extEnv n (monotype t1)
-    pure (Field n t1 Nothing)
+    pure (Field n t1 Nothing loc)
 
 tcClass :: Class Name -> TcM (Class Id)
 tcClass iclass@(Class bvs classCtx n vs v sigs) =

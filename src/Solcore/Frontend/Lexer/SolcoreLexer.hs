@@ -65,6 +65,7 @@ reservedWords =
     "fallback",
     "payable",
     "public",
+    "transient",
     "constructor",
     "return",
     "lam",

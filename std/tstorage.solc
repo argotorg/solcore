@@ -1,0 +1,262 @@
+// Transient storage support.
+//
+// This mirrors the regular contract-storage design from std (the parameterised
+// pointer type `storage(a)` and its associated classes), but targets EVM
+// transient storage: the layout is identical (256-bit slots, mapping slots
+// derived by hashing), the only difference being that reads/writes use the
+// tload/tstore opcodes instead of sload/sstore, and the data lives only for the
+// duration of the transaction.
+//
+// The pointer type is named `tstorage` (not `transient`) so that `transient`
+// stays free to become a storage-location keyword.
+//
+// Storage layout metadata is location-independent, so we reuse `StorageSize`
+// (and the generic `CanStore`/`Assign`/`LVA`/`RVA`/`LValueIdxAccess`/
+// `RValueIdxAccess`/`mapping` machinery) from std rather than duplicating it.
+
+import std.{*};
+import std.opcodes.{tload, tstore, mstore, and as and_, not as not_, iszero};
+
+export {
+  tstorage(*),
+  TransientType,
+  loadBytesFromTransient,
+  readTransient,
+  rtidx,
+  ltidx,
+  storeBytesToTransient
+};
+
+// --- Transient pointer ---
+
+data tstorage(t) = tstorage(word);
+forall t . instance tstorage(t) : Typedef(word) {
+    function abs(x: word) -> tstorage(t) {
+        return tstorage(x);
+    }
+
+    function rep(x: tstorage(t)) -> word {
+        match x {
+        | tstorage(w) => return w;
+       }
+    }
+}
+
+// --- TransientType (load/store via tload/tstore) ---
+
+forall self.
+class self:TransientType {
+    function load(ptr:word) -> self;
+    function store(ptr:word, value:self) -> ();
+}
+
+instance word:TransientType {
+    function load(ptr:word) -> word {
+        return tload(ptr);
+    }
+    function store(ptr:word, value:word) -> () {
+        tstore(ptr, value);
+    }
+}
+
+instance uint256:TransientType {
+  function load(ptr:word) -> uint256 { return uint256(TransientType.load(ptr):word); }
+  function store(ptr:word, value:uint256) -> () { TransientType.store(ptr, Typedef.rep(value):word); }
+}
+
+instance bytes32:TransientType {
+  function load(ptr:word) -> bytes32 { return bytes32(TransientType.load(ptr):word); }
+  function store(ptr:word, value:bytes32) -> () { TransientType.store(ptr, Typedef.rep(value):word); }
+}
+
+instance address:TransientType {
+  function load(ptr:word) -> address { return address(TransientType.load(ptr):word); }
+  function store(ptr:word, value:address) -> () { TransientType.store(ptr, Typedef.rep(value):word); }
+}
+
+// --- CanStore for transient value types ---
+
+instance tstorage(word):CanStore(word) {
+    function store(l:tstorage(word), r:word) -> () {
+      TransientType.store(Typedef.rep(l), r);
+    }
+    function load(l:tstorage(word)) -> word {
+      return TransientType.load(Typedef.rep(l));
+    }
+}
+
+instance tstorage(uint256):CanStore(uint256) {
+    function store(l:tstorage(uint256), r:uint256) -> () {
+      TransientType.store(Typedef.rep(l), r);
+    }
+    function load(l:tstorage(uint256)) -> uint256 {
+      return TransientType.load(Typedef.rep(l));
+    }
+}
+
+instance tstorage(bytes32):CanStore(bytes32) {
+    function store(l:tstorage(bytes32), r:bytes32) -> () {
+      TransientType.store(Typedef.rep(l), r);
+    }
+    function load(l:tstorage(bytes32)) -> bytes32 {
+      return TransientType.load(Typedef.rep(l));
+    }
+}
+
+instance tstorage(address):CanStore(address) {
+    function store(l:tstorage(address), r:address) -> () {
+      TransientType.store(Typedef.rep(l), r);
+    }
+    function load(l:tstorage(address)) -> address {
+      return TransientType.load(Typedef.rep(l));
+    }
+}
+
+forall k v.
+ instance tstorage(mapping(k,v)):CanStore(tstorage(mapping(k,v))) {
+    function store(l:tstorage(mapping(k,v)), r:tstorage(mapping(k,v))) -> () {
+      unimplemented();
+    }
+    function load(l:tstorage(mapping(k,v))) -> tstorage(mapping(k,v)) {
+      unimplemented();
+      return l;
+    }
+}
+
+// --- CanStore for transient strings / bytes ---
+
+instance tstorage(string):CanStore(memory(string)) {
+  function store(dst:tstorage(string), src:memory(string)) -> () {
+    let srcPtr : word = Typedef.rep(src);
+    let slot = Typedef.rep(dst);
+    storeBytesToTransient(slot, srcPtr);
+  }
+
+  function load(src:tstorage(string)) -> memory(string) {
+    let srcPtr : word = Typedef.rep(src);
+    let dstPtr : word = get_free_memory();
+    let endPtr = loadBytesFromTransient(srcPtr, dstPtr);
+    set_free_memory(endPtr);
+    return memory(dstPtr);
+  }
+}
+
+// bytes share the same transient layout as string, so the same
+// storeBytesToTransient / loadBytesFromTransient helpers apply.
+instance tstorage(bytes):CanStore(memory(bytes)) {
+  function store(dst:tstorage(bytes), src:memory(bytes)) -> () {
+    let srcPtr : word = Typedef.rep(src);
+    let slot = Typedef.rep(dst);
+    storeBytesToTransient(slot, srcPtr);
+  }
+
+  function load(src:tstorage(bytes)) -> memory(bytes) {
+    let srcPtr : word = Typedef.rep(src);
+    let dstPtr : word = get_free_memory();
+    let endPtr = loadBytesFromTransient(srcPtr, dstPtr);
+    set_free_memory(endPtr);
+    return memory(dstPtr);
+  }
+}
+
+// Transient counterpart of storeBytesFromMemory (sstore -> tstore).
+function storeBytesToTransient(slot: word, src: word) -> () {
+  assembly {
+    let newLen := mload(src)
+    // TODO: check old len, cleanup etc
+    let srcOffset := 32
+    switch gt(newLen, 31)
+      case 1 {
+        mstore(0,slot)
+        let dstPtr := keccak256(0,32)
+	let loopEnd := and(newLen, not(0x1f))
+	let i := 0
+	for { } lt(i, loopEnd) { i := add(i, 0x20) } {
+	    tstore(dstPtr, mload(add(src, srcOffset)))
+	    dstPtr := add(dstPtr, 1)
+	    srcOffset := add(srcOffset, 32)
+	}
+	if lt(loopEnd, newLen) {
+	    let lastValue := mload(add(src, srcOffset))
+	    let lastLen := and(newLen, 0x1f)
+	    let mask := not(shr(mul(8, lastLen), not(0)))
+	    let nudata := and(lastValue, mask)  // a Yul variable cannot be called "data". Go figure.
+	    tstore(dstPtr, nudata)
+	}
+	tstore(slot, add(mul(newLen, 2), 1))
+      }
+      default {
+	  let value := 0
+	  if newLen {
+	      value := mload(add(src, srcOffset))
+	  }
+	  let mask := not(shr(mul(8, newLen), not(0)))
+	  let nudata := and(value, mask)
+	  let used := or(nudata, mul(2, newLen))
+	  tstore(slot,used)
+      }
+  }
+}
+
+// Transient counterpart of loadBytesFromStorage (sload -> tload).
+function loadBytesFromTransient(slot:word, memPtr:word) -> word {
+    let pos = memPtr;
+    let slotValue = tload(slot);
+    let length = slotValue / 2;
+    let outOfPlaceEncoding = tobool(and_(slotValue, 1));
+    if (!outOfPlaceEncoding) {
+        length = and_(length, 0x7f);
+    }
+    mstore(pos, length);
+    pos += 32;
+    match outOfPlaceEncoding {
+        | false =>
+            // Short byte array
+            mstore(pos, and_(slotValue, not_(0xff)));
+            let empty = iszero(length);
+            let notzero = iszero(empty);
+            return pos + (notzero * 32);
+        | true =>
+            // Long byte array
+            let dataPos = hash1(slot);
+            let i = 0;
+            for (; i < length; i += 32) {
+                mstore(pos + i, tload(dataPos));
+                dataPos += 1;
+            }
+            return pos + i;
+    }
+}
+
+// --- Tuple-based indexed access for transient mappings ---
+
+forall i a . i:Typedef(word) =>
+instance (tstorage(mapping(i,a)), i): LValueIdxAccess(tstorage(a)) {
+  function lookup(xi : (tstorage(mapping(i,a)), i)) -> tstorage(a) {
+    match(xi) {
+      | (x, i) => return tstorage(hash2(Typedef.rep(x), Typedef.rep(i)));
+    }
+  }
+}
+
+forall i a . a:TransientType, i:Typedef(word) =>
+instance (tstorage(mapping(i,a)), i): RValueIdxAccess(a) {
+  function lookup(xi : (tstorage(mapping(i,a)), i)) -> a {
+    return readTransient(LValueIdxAccess.lookup(xi));
+  }
+}
+
+forall a. a:TransientType =>
+function readTransient(x:tstorage(a)) -> a {
+  return TransientType.load(Typedef.rep(x));
+}
+
+forall i a . i:Typedef(word) =>
+function ltidx( m: tstorage(mapping(i,a)), x:i) -> tstorage(a) {
+  return tstorage(hash2(Typedef.rep(m), Typedef.rep(x)));
+}
+
+forall i a . i:Typedef(word), a:TransientType  =>
+function rtidx( m: tstorage(mapping(i,a)), x:i) -> a {
+  return TransientType.load(hash2(Typedef.rep(m), Typedef.rep(x)));
+}

@@ -11,6 +11,7 @@ import Solcore.Frontend.Parser.SolcoreTypes (predP, typeP)
 import Solcore.Frontend.Parser.Stmt (bodyP, stmtP)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
+import Solcore.Frontend.Syntax.Ty (StorageLocation (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Megaparsec (eof)
@@ -272,7 +273,7 @@ keywordPrefixTests =
         parsesAs
           topDeclP
           "contract C { datavalue : word; }"
-          (TContr (Contract "C" [] [CFieldDecl (Field "datavalue" word Nothing)]))
+          (TContr (Contract "C" [] [CFieldDecl (Field "datavalue" word Nothing Storage)]))
     ]
 
 stmtTests :: TestTree
@@ -602,12 +603,22 @@ declTests =
         parsesAs
           topDeclP
           "contract C { x : word; }"
-          (TContr (Contract "C" [] [CFieldDecl (Field "x" word Nothing)])),
+          (TContr (Contract "C" [] [CFieldDecl (Field "x" word Nothing Storage)])),
       testCase "contract with initialized field" $
         parsesAs
           topDeclP
           "contract C { x : word = 0; }"
-          (TContr (Contract "C" [] [CFieldDecl (Field "x" word (Just (lit 0)))])),
+          (TContr (Contract "C" [] [CFieldDecl (Field "x" word (Just (lit 0)) Storage)])),
+      testCase "contract with transient field" $
+        parsesAs
+          topDeclP
+          "contract C { x : transient word; }"
+          (TContr (Contract "C" [] [CFieldDecl (Field "x" word Nothing Transient)])),
+      testCase "contract with transient initialized field" $
+        parsesAs
+          topDeclP
+          "contract C { x : transient word = 0; }"
+          (TContr (Contract "C" [] [CFieldDecl (Field "x" word (Just (lit 0)) Transient)])),
       testCase "contract with function" $
         parsesAs
           topDeclP

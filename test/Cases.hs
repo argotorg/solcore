@@ -116,6 +116,8 @@ dispatches =
       runDispatchTest "assembly.solc",
       runDispatchTest "stringid.solc",
       runDispatchTest "storage.solc",
+      runDispatchTest "transient.solc",
+      runDispatchTest "transient_field.solc",
       runDispatchTest "miniERC20.solc",
       runDispatchTest "Revert.solc",
       runDispatchTest "hashes.solc",
