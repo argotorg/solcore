@@ -19,6 +19,7 @@ common common-opts
   build-depends:
       base >= 4.19.0.0
     , mtl
+    , binary
     , bytestring
     , containers
     , cryptonite
@@ -116,6 +117,9 @@ library
       Solcore.Frontend.TypeInference.TcUnify
       Solcore.Pipeline.Options
       Solcore.Pipeline.SolcorePipeline
+      Solcore.Pipeline.TypecheckCache
+      Solcore.Pipeline.TcCacheSerialize
+      Solcore.Util.Keccak
       Solcore.Primitives.Primitives
       Language.Hull
       Language.Hull.Compress
@@ -150,6 +154,16 @@ executable sol-core
   hs-source-dirs:
       app
   build-depends: sol-core
+  ghc-options:
+    -O1 -rtsopts
+
+-- Typecheck-cache PoC harness: demonstrates Merkle cache keys, precise
+-- invalidation, and binary dump + on-disk reuse (see poc/Main.hs).
+executable tc-cache-poc
+  import: common-opts
+  main-is: Main.hs
+  hs-source-dirs: poc
+  build-depends: sol-core, timeit
   ghc-options:
     -O1 -rtsopts
 
@@ -191,6 +205,7 @@ test-suite sol-core-tests
     DiagnosticCliTests
     DiagnosticTests
     HullCases
+    KeccakTests
     LocationTests
     MatchCompilerTests
     ModuleTypeCheckTests
