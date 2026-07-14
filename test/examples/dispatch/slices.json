@@ -416,7 +416,8 @@
         "kind": "call",
         "output": {
           "returndata": "52775448d69df653edbf6877861761433014544bd8871f69c9aed6eed947b46f",
-          "status": "success"
+          "status": "success",
+          "gasUsed": "24584"
         }
       }
     ]

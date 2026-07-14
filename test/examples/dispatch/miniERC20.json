@@ -20,7 +20,8 @@
         "kind": "call",
         "output": {
           "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
-          "status": "success"
+          "status": "success",
+          "gasUsed": "53244"
         }
       },
       {
