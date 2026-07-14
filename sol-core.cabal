@@ -19,10 +19,9 @@ common common-opts
   build-depends:
       base >= 4.19.0.0
     , mtl
+    , binary
     , bytestring
     , containers
-    , cryptonite
-    , memory
     , algebraic-graphs
     , array
     , directory
@@ -60,6 +59,7 @@ library
 
   -- cabal-fmt: expand src
   exposed-modules:
+      Solcore.Api
       Solcore.Backend.ComptimeCheck
       Solcore.Backend.EmitHull
       Solcore.Backend.Mast
@@ -116,7 +116,12 @@ library
       Solcore.Frontend.TypeInference.TcUnify
       Solcore.Pipeline.Options
       Solcore.Pipeline.SolcorePipeline
+      Solcore.Pipeline.TypecheckCache
+      Solcore.Pipeline.TcCacheSerialize
       Solcore.Primitives.Primitives
+      Solcore.Std.Bundle
+      Solcore.Std.Embed
+      Solcore.Util.Keccak
       Language.Hull
       Language.Hull.Compress
       Language.Hull.Parser
@@ -152,6 +157,15 @@ executable sol-core
   build-depends: sol-core
   ghc-options:
     -O1 -rtsopts
+
+-- Build tool: dumps the precompiled std typecheck cache (web/site/std-cache.bin).
+-- Native and deterministic; produces a blob byte-identical to the JS build's.
+executable gen-std-cache
+  import: common-opts
+  main-is: Main.hs
+  hs-source-dirs: gen-std-cache
+  build-depends: sol-core
+  ghc-options: -O0
 
 executable yule
     import: common-opts
@@ -191,10 +205,13 @@ test-suite sol-core-tests
     DiagnosticCliTests
     DiagnosticTests
     HullCases
+    InMemoryApiTests
+    KeccakTests
     LocationTests
     MatchCompilerTests
     ModuleTypeCheckTests
     SpecialiseTests
+    TcCacheTests
     YulEvalTests
     ParserTests
 

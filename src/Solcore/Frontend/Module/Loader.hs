@@ -3,6 +3,7 @@ module Solcore.Frontend.Module.Loader
     LoadedModule (..),
     ModuleTypeCheckSurface (..),
     loadModuleGraph,
+    loadModuleGraphFromSource,
     moduleSourceMap,
     moduleValidationTopDeclSegments,
     moduleSourcePath,
@@ -25,8 +26,44 @@ import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
+import Solcore.Std.Bundle (stdSources)
 import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath
+
+-- | Pluggable source access for the loader. The real compiler backs this with
+-- the file system; the in-memory / browser path backs it with a map of virtual
+-- files. All of the loader's path-resolution logic is pure and works unchanged
+-- over either.
+data SourceFS
+  = SourceFS
+  { fsReadFile :: FilePath -> IO (Either String String),
+    fsDoesFileExist :: FilePath -> IO Bool,
+    fsMakeAbsolute :: FilePath -> IO FilePath
+  }
+
+-- | Source access backed by the real file system.
+realSourceFS :: SourceFS
+realSourceFS =
+  SourceFS
+    { fsReadFile = \path -> Right <$> readFile path,
+      fsDoesFileExist = doesFileExist,
+      fsMakeAbsolute = makeAbsolute
+    }
+
+-- | Source access backed by an in-memory map of @normalised path -> contents@.
+-- Paths are normalised so lookups are insensitive to @.@/@//@ noise.
+mapSourceFS :: Map FilePath String -> SourceFS
+mapSourceFS files =
+  SourceFS
+    { fsReadFile = \path ->
+        pure $
+          maybe
+            (Left ("in-memory source not found: " ++ path))
+            Right
+            (Map.lookup (normalise path) files),
+      fsDoesFileExist = \path -> pure (Map.member (normalise path) files),
+      fsMakeAbsolute = pure . normalise
+    }
 
 data LoadedModule
   = LoadedModule
@@ -41,7 +78,8 @@ data LoaderConfig
   = LoaderConfig
   { mainRoot :: FilePath,
     stdRoot :: Maybe FilePath,
-    externalRoots :: Map Name FilePath
+    externalRoots :: Map Name FilePath,
+    loaderFS :: SourceFS
   }
 
 data LoadState
@@ -89,9 +127,12 @@ data ModuleTypeCheckSurface
   deriving (Eq, Show)
 
 loadModuleGraph :: FilePath -> Maybe FilePath -> [(Name, FilePath)] -> FilePath -> IO (Either String ModuleGraph)
-loadModuleGraph mainRootPath stdRootPath externalLibs entryFile = runExceptT do
-  entryAbsolute <- liftIO $ makeAbsolute entryFile
-  cfg <- liftIO $ mkLoaderConfig mainRootPath stdRootPath externalLibs entryFile
+loadModuleGraph = loadModuleGraphWith realSourceFS
+
+loadModuleGraphWith :: SourceFS -> FilePath -> Maybe FilePath -> [(Name, FilePath)] -> FilePath -> IO (Either String ModuleGraph)
+loadModuleGraphWith fs mainRootPath stdRootPath externalLibs entryFile = runExceptT do
+  entryAbsolute <- liftIO $ fsMakeAbsolute fs entryFile
+  cfg <- liftIO $ mkLoaderConfig fs mainRootPath stdRootPath externalLibs entryFile
   entryId <- moduleIdForPath Mod.MainLibrary (mainRoot cfg) entryAbsolute
   st <- execStateT (visit cfg entryId entryAbsolute) emptyLoadState
   let loaded = loadedModules st
@@ -110,15 +151,37 @@ loadModuleGraph mainRootPath stdRootPath externalLibs entryFile = runExceptT do
   interfaces <- ExceptT $ pure (buildPublicInterfaceCache graph)
   pure graph {publicInterfaceCache = interfaces}
 
-mkLoaderConfig :: FilePath -> Maybe FilePath -> [(Name, FilePath)] -> FilePath -> IO LoaderConfig
-mkLoaderConfig mainRootPath stdRootPath externalLibs _entryFile = do
-  mainRoot' <- makeAbsolute mainRootPath
-  stdRoot' <- traverse makeAbsolute stdRootPath
+-- | Build a module graph from editor source text with no file-system access.
+--
+-- The source is mounted as @/Main.solc@ and the embedded standard library
+-- under @/std@, so @import std;@ and friends resolve against the in-memory
+-- bundle exactly as they would on disk. Simple contracts that don't touch std
+-- (e.g. @00answer.solc@) compile without importing anything.
+inMemoryMainPath :: FilePath
+inMemoryMainPath = "/Main.solc"
+
+loadModuleGraphFromSource :: String -> IO (Either String ModuleGraph)
+loadModuleGraphFromSource content =
+  loadModuleGraphWith fs mainRootPath (Just stdRootPath) [] inMemoryMainPath
+  where
+    mainRootPath = "/"
+    stdRootPath = "/std"
+    fs = mapSourceFS (Map.fromList (mainEntry : bundledStd))
+    mainEntry = (normalise inMemoryMainPath, content)
+    bundledStd =
+      [ (normalise (stdRootPath </> stdFileName), source)
+      | (stdFileName, source) <- stdSources
+      ]
+
+mkLoaderConfig :: SourceFS -> FilePath -> Maybe FilePath -> [(Name, FilePath)] -> FilePath -> IO LoaderConfig
+mkLoaderConfig fs mainRootPath stdRootPath externalLibs _entryFile = do
+  mainRoot' <- fsMakeAbsolute fs mainRootPath
+  stdRoot' <- traverse (fsMakeAbsolute fs) stdRootPath
   externalRoots' <-
     Map.fromList
       <$> mapM
         ( \(libName, libRoot) -> do
-            absRoot <- makeAbsolute libRoot
+            absRoot <- fsMakeAbsolute fs libRoot
             pure (libName, absRoot)
         )
         externalLibs
@@ -126,7 +189,8 @@ mkLoaderConfig mainRootPath stdRootPath externalLibs _entryFile = do
     LoaderConfig
       { mainRoot = mainRoot',
         stdRoot = stdRoot',
-        externalRoots = externalRoots'
+        externalRoots = externalRoots',
+        loaderFS = fs
       }
 
 visit ::
@@ -139,7 +203,7 @@ visit cfg moduleId sourcePath = do
   loading <- gets (Set.member moduleId . loadingModules)
   unless (alreadyLoaded || loading) do
     modify (\st -> st {loadingModules = Set.insert moduleId (loadingModules st)})
-    content <- liftIO (readFile sourcePath)
+    content <- either throwError pure =<< liftIO (fsReadFile (loaderFS cfg) sourcePath)
     let source = makeSourceFile sourcePath content
     parsed <- liftIO (parseCompUnitWithPath sourcePath content)
     cunit <- either throwError pure parsed
@@ -190,7 +254,7 @@ resolveModuleReference cfg currentModule currentSourcePath refKind modulePath = 
       (throwError . moduleReferenceDiagnostic ModuleReferenceMissingExternalRoot currentSourcePath refKind modulePath)
       pure
       (resolveModuleImportCandidates cfg currentModule modulePath)
-  resolved <- liftIO $ firstExisting candidates
+  resolved <- liftIO $ firstExisting (loaderFS cfg) candidates
   case resolved of
     Just (targetId, targetPath) -> pure (modulePath, targetId, targetPath)
     Nothing ->
@@ -266,11 +330,11 @@ resolveModuleImportCandidates cfg currentModule path =
       let stdName = normalizeStdModuleName modName
        in (Mod.ModuleId Mod.StdLibrary stdName, toFilePath root stdName)
 
-firstExisting :: [(Mod.ModuleId, FilePath)] -> IO (Maybe (Mod.ModuleId, FilePath))
-firstExisting [] = pure Nothing
-firstExisting (candidate@(_, path) : rest) = do
-  exists <- doesFileExist path
-  if exists then pure (Just candidate) else firstExisting rest
+firstExisting :: SourceFS -> [(Mod.ModuleId, FilePath)] -> IO (Maybe (Mod.ModuleId, FilePath))
+firstExisting _ [] = pure Nothing
+firstExisting fs (candidate@(_, path) : rest) = do
+  exists <- fsDoesFileExist fs path
+  if exists then pure (Just candidate) else firstExisting fs rest
 
 isStdSpecial :: Name -> Bool
 isStdSpecial (Name "std") = True

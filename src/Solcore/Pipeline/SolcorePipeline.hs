@@ -106,19 +106,37 @@ compile opts =
 
 compileWithDiagnostics :: Option -> IO (Either CompileDiagnostics [Hull.Object])
 compileWithDiagnostics opts = runExceptT $ do
-  let verbose = optVerbose opts
-      noMatchCompiler = optNoMatchCompiler opts
-      noIfDesugar = optNoIfDesugar opts
-      timeItNamed :: String -> IO a -> IO a
-      timeItNamed = optTimeItNamed opts
-      file = fileName opts
+  let file = fileName opts
   mainRoot <- liftIO $ makeAbsolute (optRootDir opts)
   stdRoot <- liftEitherDiagnostic emptySourceMap (parseStdRoot (optImportDirs opts))
   externalLibs <- liftEitherDiagnostic emptySourceMap (parseExternalLibSpecs (optExternalLibs opts))
 
   -- Parsing and import loading
   graph <- liftEitherDiagnosticIO emptySourceMap (loadModuleGraph mainRoot stdRoot externalLibs file)
-  let sources = moduleSourceMap graph
+  compileGraph opts graph
+
+-- Run the pipeline on an already-loaded module graph. The graph's origin (on
+-- disk or built in memory from source text) is irrelevant here, so this is the
+-- shared core used by both the file-based CLI and the in-memory API.
+compileGraph :: Option -> ModuleGraph -> ExceptT CompileDiagnostics IO [Hull.Object]
+compileGraph opts graph = fst <$> compileGraphWithCache opts graph Map.empty
+
+-- Cache-aware variant of 'compileGraph'. Modules present in the supplied cache
+-- are reused verbatim instead of being re-typechecked; every other module is
+-- typechecked as usual. The full set of checked modules (cached + freshly
+-- checked) is returned alongside the hull so a caller can seed the next run.
+compileGraphWithCache ::
+  Option ->
+  ModuleGraph ->
+  Map Mod.ModuleId CheckedModule ->
+  ExceptT CompileDiagnostics IO ([Hull.Object], Map Mod.ModuleId CheckedModule)
+compileGraphWithCache opts graph cache = do
+  let verbose = optVerbose opts
+      noMatchCompiler = optNoMatchCompiler opts
+      noIfDesugar = optNoIfDesugar opts
+      timeItNamed :: String -> IO a -> IO a
+      timeItNamed = optTimeItNamed opts
+      sources = moduleSourceMap graph
 
   -- Validate each module against only its own direct imports.
   forM_ (moduleOrder graph) $ \moduleId -> do
@@ -143,7 +161,7 @@ compileWithDiagnostics opts = runExceptT $ do
     liftCompilerDiagnosticIO
       sources
       ( timeItNamed "Typecheck modules" $
-          runExceptT (typeCheckLoadedModules opts graph)
+          runExceptT (typeCheckLoadedModulesWithCache opts graph cache)
       )
   checkedAssembly <- liftEitherDiagnostic sources (assembleCheckedModules graph checkedModules)
   let typed = checkedAssemblyCompUnit checkedAssembly
@@ -180,7 +198,7 @@ compileWithDiagnostics opts = runExceptT $ do
 
   -- Specialization & Hull Generation
   if optNoSpec opts
-    then pure []
+    then pure ([], checkedModules)
     else do
       specialized <-
         liftIO $
@@ -224,7 +242,7 @@ compileWithDiagnostics opts = runExceptT $ do
         putStrLn "> Hull contract(s):"
         forM_ hull (putStrLn . pretty)
 
-      pure hull
+      pure (hull, checkedModules)
 
 renderCompileDiagnostics :: Option -> CompileDiagnostics -> String
 renderCompileDiagnostics opts diagnostics =
@@ -714,7 +732,22 @@ ensureSourcePath sources path
 
 typeCheckLoadedModules :: Option -> ModuleGraph -> ExceptT CompilerError IO (Map Mod.ModuleId CheckedModule)
 typeCheckLoadedModules opts graph =
-  Map.fromList <$> mapM (typeCheckModuleFromGraph opts graph) (moduleOrder graph)
+  typeCheckLoadedModulesWithCache opts graph Map.empty
+
+-- Typecheck every module in graph order, reusing any module already present in
+-- the cache instead of re-checking it.
+typeCheckLoadedModulesWithCache ::
+  Option ->
+  ModuleGraph ->
+  Map Mod.ModuleId CheckedModule ->
+  ExceptT CompilerError IO (Map Mod.ModuleId CheckedModule)
+typeCheckLoadedModulesWithCache opts graph cache =
+  Map.fromList <$> mapM checkOrReuse (moduleOrder graph)
+  where
+    checkOrReuse moduleId =
+      case Map.lookup moduleId cache of
+        Just checkedModule -> pure (moduleId, checkedModule)
+        Nothing -> typeCheckModuleFromGraph opts graph moduleId
 
 typeCheckModuleFromGraph ::
   Option ->

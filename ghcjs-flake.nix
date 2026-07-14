@@ -28,6 +28,19 @@
         # typecheck-cache dumps round-trip between the two.
         hspkgs = pkgs.haskell.packages.ghc910;
 
+        # The GHC JS backend cross-compiler, exposed on PATH as
+        # `javascript-unknown-ghcjs-ghc` (and `-ghc-pkg`). It is the same GHC
+        # 9.10 retargeted at the ghcjs platform, so it shares base/version with
+        # the native compiler above — a precondition for the browser build's
+        # precompiled typecheck-cache dumps to round-trip. Having it in this
+        # shell lets `web/build.sh` run alongside the native tools (solc,
+        # foundry, evmone) instead of from a separate ghcjs shell.
+        ghc-js = pkgs.haskell.compiler.ghc910.override {
+          stdenv = pkgs.stdenv.override {
+            targetPlatform = pkgs.pkgsCross.ghcjs.stdenv.targetPlatform;
+          };
+        };
+
         gitignore = pkgs.nix-gitignore.gitignoreSourcePure [ ./.gitignore ];
         sol-core = pkgs.haskell.lib.overrideCabal
           (hspkgs.callCabal2nix "sol-core" (gitignore ./.) { })
@@ -153,6 +166,7 @@
             hspkgs.cabal-install
             hspkgs.haskell-language-server
             hspkgs.ormolu
+            ghc-js                    # JS backend cross-compiler for web/build.sh
             pkgs.boost
             pkgs.cmake
             pkgs.foundry-bin

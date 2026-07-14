@@ -1,0 +1,113 @@
+{-# LANGUAGE JavaScriptFFI #-}
+
+-- | GHCJS FFI boundary: exposes the in-memory solcore compiler to JavaScript.
+--
+-- On startup it installs, on @globalThis@:
+--
+--   * @compileSolcore(source, flags)@ — a synchronous compile returning
+--     @{ ok, output, yul, errors }@.
+--   * @solcoreDumpStdCache()@ / @solcoreLoadStdCache(blob)@ — the typecheck
+--     cache's persistence hooks. The blob is a Latin-1 string (one byte per
+--     char) so it stores directly in IndexedDB; @worker.js@ loads it on startup
+--     and writes it back after the first successful compile.
+module Main where
+
+import Control.Monad (foldM)
+import Data.List (intercalate)
+import GHC.JS.Foreign.Callback (Callback, syncCallback', syncCallback1', syncCallback2')
+import GHC.JS.Prim (JSVal, fromJSString, toJSString)
+import Solcore.Api (CompileResult (..), compileSolcore, defaultOptions, dumpStdCache, loadStdCache)
+import Solcore.Pipeline.Options (Option (..))
+
+foreign import javascript "((f) => { globalThis.compileSolcore = f; })"
+  registerCompile :: Callback (JSVal -> JSVal -> IO JSVal) -> IO ()
+
+foreign import javascript "((f) => { globalThis.solcoreDumpStdCache = f; })"
+  registerDumpStdCache :: Callback (IO JSVal) -> IO ()
+
+foreign import javascript "((f) => { globalThis.solcoreLoadStdCache = f; })"
+  registerLoadStdCache :: Callback (JSVal -> IO JSVal) -> IO ()
+
+-- | Marshal a Haskell 'Int' to a JS number (identity across the FFI boundary).
+foreign import javascript "((n) => n)"
+  js_int :: Int -> JSVal
+
+-- | Read a boolean property from a JS object (missing / falsy => False).
+foreign import javascript "((obj, key) => (obj && obj[key] ? 1 : 0))"
+  js_boolField :: JSVal -> JSVal -> IO Int
+
+-- | Build the JS result object returned to the caller. @abis@ is an object
+-- mapping each contract name to its JSON ABI string.
+foreign import javascript "((ok, output, yul, errors, cache, abis) => ({ ok: ok !== 0, output: output, yul: yul, errors: errors, cache: cache, abis: abis }))"
+  js_result :: Int -> JSVal -> JSVal -> JSVal -> JSVal -> JSVal -> IO JSVal
+
+-- | An empty JS object, and a setter, so we can fold the ABI list into a
+-- @{ contractName: abiJson }@ map without a JSON round-trip.
+foreign import javascript "(() => ({}))"
+  js_newObject :: IO JSVal
+
+foreign import javascript "((obj, key, val) => { obj[key] = val; return obj; })"
+  js_setProp :: JSVal -> JSVal -> JSVal -> IO JSVal
+
+boolField :: JSVal -> String -> IO Bool
+boolField obj key = (/= 0) <$> js_boolField obj (toJSString key)
+
+-- | Map the flags object (UI checkboxes) onto compiler options.
+optionsFromFlags :: JSVal -> IO Option
+optionsFromFlags flags = do
+  noGenDispatch <- boolField flags "noGenDispatch"
+  noSpec <- boolField flags "noSpec"
+  noMatchCompiler <- boolField flags "noMatchCompiler"
+  noIfDesugar <- boolField flags "noIfDesugar"
+  noDesugarCalls <- boolField flags "noDesugarCalls"
+  pure
+    defaultOptions
+      { optNoGenDispatch = noGenDispatch,
+        optNoSpec = noSpec,
+        optNoMatchCompiler = noMatchCompiler,
+        optNoIfDesugar = noIfDesugar,
+        optNoDesugarCalls = noDesugarCalls
+      }
+
+-- | Render the per-module cache status for the UI, e.g.
+-- @"std: cache hit; std.dispatch: cache miss; Main: cache miss"@.
+renderCacheStatus :: [(String, Bool)] -> String
+renderCacheStatus status =
+  intercalate "; " [name ++ ": " ++ (if hit then "cache hit" else "cache miss") | (name, hit) <- status]
+
+-- | Marshal the ABI list into a JS object mapping contract name to ABI JSON.
+abisToJs :: [(String, String)] -> IO JSVal
+abisToJs abis = do
+  obj <- js_newObject
+  foldM (\o (n, j) -> js_setProp o (toJSString n) (toJSString j)) obj abis
+
+compile :: JSVal -> JSVal -> IO JSVal
+compile sourceVal flagsVal = do
+  opts <- optionsFromFlags flagsVal
+  result <- compileSolcore opts (fromJSString sourceVal)
+  let cache = toJSString (renderCacheStatus (compileCacheStatus result))
+  abis <- abisToJs (compileAbis result)
+  -- Any diagnostic is a failure, even when a hull was produced: a Yul
+  -- translation error leaves 'compileOutput' set but 'compileErrors' non-empty,
+  -- and must still surface in the result pane rather than read as success.
+  let ok = if null (compileErrors result) then 1 else 0
+      output = maybe "" id (compileOutput result)
+      yul = maybe "" id (compileYul result)
+      errors = intercalate "\n\n" (compileErrors result)
+  js_result ok (toJSString output) (toJSString yul) (toJSString errors) cache abis
+
+-- | Dump the persisted (std) typecheck cache as a Latin-1 string.
+dumpCache :: IO JSVal
+dumpCache = toJSString <$> dumpStdCache
+
+-- | Merge a persisted cache blob into the session, returning the count loaded.
+loadCache :: JSVal -> IO JSVal
+loadCache blob = js_int <$> loadStdCache (fromJSString blob)
+
+main :: IO ()
+main = do
+  -- Register the cache hooks before the compile entry point, so that once
+  -- @compileSolcore@ is visible (what worker.js polls on) all three exist.
+  syncCallback' dumpCache >>= registerDumpStdCache
+  syncCallback1' loadCache >>= registerLoadStdCache
+  syncCallback2' compile >>= registerCompile
