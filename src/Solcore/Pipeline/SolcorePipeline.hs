@@ -22,7 +22,7 @@ import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls, writeContractAbis)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, warningDiagnostic)
 import Solcore.Desugarer.DeriveClasses (deriveClassTopDecls)
-import Solcore.Desugarer.DeriveGeneric (deriveGenericTopDecls)
+import Solcore.Desugarer.DeriveGeneric (collectDataDefs, deriveGenericTopDecls)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
@@ -859,8 +859,14 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Dispatch:"
     putStrLn $ prettyInferenceDecls dispatched
 
-  -- Generic instance derivation (only for locally-defined data types)
-  let localData = [dt | ModuleInferenceDecl ModuleLocalDecl (TDataDef dt) <- dispatched]
+  -- Generic instance derivation (also for data types declared inside contracts:
+  -- collectDataDefs descends into contracts).  The generated instances are
+  -- top-level, but the contract-local type they reference stays inside its
+  -- contract; it is made visible to them by registering it globally during type
+  -- checking (see registerContractDataTypes).
+  let localData =
+        collectDataDefs
+          [d | ModuleInferenceDecl ModuleLocalDecl d <- dispatched]
   derived <-
     ExceptT $
       fmap (first compilerErrorFromString) $
