@@ -155,7 +155,8 @@ dispatches =
       runDispatchTest "array_copy.solc",
       runDispatchTest "array_string.solc",
       runDispatchTest "array_nested.solc",
-      runDispatchTest "derive_ord.solc"
+      runDispatchTest "derive_ord.solc",
+      runDispatchTest "derive_contract_local.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -353,6 +354,11 @@ cases =
       runTestForFile "derive-eq-enum.solc" caseFolder,
       runTestForFile "derive-eq-pair.solc" caseFolder,
       runTestForFile "derive-eq-action.solc" caseFolder,
+      runTestForFile "clone-deriving.solc" caseFolder,
+      runTestForFile "deriving-empty-type.solc" caseFolder,
+      runTestForFile "contract-local-derive.solc" caseFolder,
+      runTestForFile "contract-local-type-same-name.solc" caseFolder,
+      runTestExpectingFailure "contract-local-type-escapes-fail.solc" caseFolder,
       runTestForFile "derive-custom-hash.solc" caseFolder,
       runTestForFile "derive-universe-instances.solc" caseFolder,
       runTestExpectingFailure "derive-unknown-class.solc" caseFolder,

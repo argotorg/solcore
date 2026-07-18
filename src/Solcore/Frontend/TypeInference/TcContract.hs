@@ -255,12 +255,23 @@ checkTopDecl (TInstDef is) =
   checkInstance is
 checkTopDecl (TDataDef dt) =
   checkDataType dt
+checkTopDecl (TContr c) =
+  mapM_ checkDataType (contractDataTypes c)
 checkTopDecl (TSym s) =
   checkSynonym s
 checkTopDecl (TFunDef (FunDef _ sig _)) =
   extSignature sig
 checkTopDecl (TExportDecl _) = pure ()
 checkTopDecl _ = pure ()
+
+-- Data types declared inside a contract, including those grouped in a mutual
+-- block.
+contractDataTypes :: Contract Name -> [DataTy]
+contractDataTypes (Contract _ _ ds) = concatMap go ds
+  where
+    go (CDataDecl dt) = [dt]
+    go (CMutualDecl ds') = concatMap go ds'
+    go _ = []
 
 -- type inference for contracts
 
@@ -298,8 +309,8 @@ initializeEnv (Contract _ _ cdecls) = do
   mapM_ (uncurry extEnv) nmschs
 
 checkDecl :: ContractDecl Name -> TcM ()
-checkDecl (CDataDecl dt) =
-  checkDataType dt
+checkDecl (CDataDecl _) =
+  pure ()
 checkDecl (CFunDecl (FunDef _ sig _)) =
   extSignature sig
 checkDecl (CFieldDecl fd) =

@@ -73,17 +73,18 @@ buildDelegationInstance dt cname cls =
       instName = cname,
       paramsTy = [],
       mainTy = mainT,
-      instFunctions = map (buildMethod cname cls mainT) (signatures cls)
+      instFunctions = map (buildMethod cname cls mainT isEmpty) (signatures cls)
     }
   where
     mainT = TyCon (dataName dt) (map TyVar (dataParams dt))
+    isEmpty = null (dataConstrs dt)
 
-buildMethod :: Name -> Class Name -> Ty -> Signature Name -> FunDef Name
-buildMethod cname cls mainT sig =
+buildMethod :: Name -> Class Name -> Ty -> Bool -> Signature Name -> FunDef Name
+buildMethod cname cls mainT isEmpty sig =
   FunDef
     { funIsPublic = False,
       funSignature = newSig,
-      funDefBody = [Return callExp]
+      funDefBody = [Return body]
     }
   where
     selfVar = mainVar cls
@@ -100,6 +101,24 @@ buildMethod cname cls mainT sig =
         }
     args = map (mkArg selfTy) (sigParams sig)
     callExp = Call Nothing (QualName cname (leafName (sigName sig))) args
+    -- The delegated call returns the Generic representation type.  When the
+    -- method returns the self type, wrap the result in
+    -- Generic.to to convert the representation back to the user type.  This
+    -- mirrors mkArg, which wraps self-typed arguments in Generic.from.
+    returnsSelf = sigReturn sig == Just selfTy
+    delegated
+      | returnsSelf = Call Nothing genericTo [callExp]
+      | otherwise = callExp
+    -- An empty data type has no values, so this method can never be called.
+    -- There is no Generic representation for it (the universe has no empty
+    -- type), so instead of delegating through Generic we return absurd, a
+    -- value of any type that reverts.
+    body
+      | isEmpty = Call Nothing absurdName []
+      | otherwise = delegated
+
+absurdName :: Name
+absurdName = Name "absurd"
 
 -- wrap each argument whose declared type is the class self type in Generic.from
 
@@ -110,6 +129,9 @@ mkArg selfTy p
 
 genericFrom :: Name
 genericFrom = QualName (Name "Generic") "from"
+
+genericTo :: Name
+genericTo = QualName (Name "Generic") "to"
 
 substParamTy :: (Ty -> Ty) -> Param Name -> Param Name
 substParamTy f (Typed c n t) = Typed c n (f t)
