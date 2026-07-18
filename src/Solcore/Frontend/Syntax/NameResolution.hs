@@ -1261,9 +1261,9 @@ resolveQualifiedConstructorName qualifier conName =
                 Just TDataCon -> requalifyConstructor fallback
                 _ -> undefinedName qn
 
--- Rewrite a resolved constructor name when its type is a contract-local type. 
--- The name stays bare in the resolver env (so the lookup above succeeds); 
--- only the emitted name carries the contract qualifier, keeping it consistent 
+-- Rewrite a resolved constructor name when its type is a contract-local type.
+-- The name stays bare in the resolver env (so the lookup above succeeds);
+-- only the emitted name carries the contract qualifier, keeping it consistent
 -- with the qualified type name.
 requalifyConstructor :: Name -> ResolveM Name
 requalifyConstructor n@(QualName tyq con) =
