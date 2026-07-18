@@ -117,7 +117,8 @@ data DataTy
   = DataTy
   { dataName :: Name,
     dataParams :: [Tyvar],
-    dataConstrs :: [Constr]
+    dataConstrs :: [Constr],
+    dataDerivings :: [Name]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -316,7 +317,7 @@ instance (HasSourceSpan a) => HasSourceSpan (Contract a) where
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tyVars, sourceSpanOf contractDecls]
 
 instance HasSourceSpan DataTy where
-  sourceSpanOf (DataTy n tyVars constrs) =
+  sourceSpanOf (DataTy n tyVars constrs _) =
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tyVars, sourceSpanOf constrs]
 
 instance HasSourceSpan Constr where

@@ -103,7 +103,7 @@ validateDuplicateNamespaces ds = do
 
 validateContractDuplicates :: S.Contract -> Either CompilerError ()
 validateContractDuplicates (S.Contract cname _ decls) = do
-  let typeNames = [n | S.CDataDecl (S.DataTy n _ _) <- decls]
+  let typeNames = [n | S.CDataDecl (S.DataTy n _ _ _) <- decls]
       termNames = contractTermNames decls
       context = "contract " ++ pretty cname
   ensureNoDuplicateNamesIn context "type namespace" typeNames
@@ -113,7 +113,7 @@ topLevelTypeNames :: [S.TopDecl] -> [Name]
 topLevelTypeNames = concatMap collect
   where
     collect (S.TContr (S.Contract n _ _)) = [n]
-    collect (S.TDataDef (S.DataTy n _ _)) = [n]
+    collect (S.TDataDef (S.DataTy n _ _ _)) = [n]
     collect (S.TSym (S.TySym n _ _)) = [n]
     collect (S.TClassDef (S.Class _ _ n _ _ _)) = [n]
     collect _ = []
@@ -122,7 +122,7 @@ topLevelTermNames :: [S.TopDecl] -> [Name]
 topLevelTermNames = concatMap collect
   where
     collect (S.TFunDef (S.FunDef _ sig _)) = [S.sigName sig]
-    collect (S.TDataDef (S.DataTy tyCon _ cons)) =
+    collect (S.TDataDef (S.DataTy tyCon _ cons _)) =
       map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
 
@@ -130,7 +130,7 @@ contractTermNames :: [S.ContractDecl] -> [Name]
 contractTermNames = concatMap collect
   where
     collect (S.CFunDecl (S.FunDef _ sig _)) = [S.sigName sig]
-    collect (S.CDataDecl (S.DataTy tyCon _ cons)) =
+    collect (S.CDataDecl (S.DataTy tyCon _ cons _)) =
       map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
 
@@ -219,12 +219,32 @@ instance Resolve S.Contract where
   resolve c@(S.Contract n vs decls) =
     do
       let ns = map tyconName vs
+          locals = [tn | S.CDataDecl (S.DataTy tn _ _ _) <- decls]
+      savedC <- gets currentContract
+      savedL <- gets contractLocalTypes
+      modify (\env -> env {currentContract = Just n, contractLocalTypes = locals})
       mapM_ addTyVar ns
       mapM_ addContractDecl decls
-      Contract n (map TVar ns) <$> resolve decls `wrapError` c
+      result <- Contract n (map TVar ns) <$> resolve decls `wrapError` c
+      modify (\env -> env {currentContract = savedC, contractLocalTypes = savedL})
+      pure result
+
+-- Qualify a bare, contract-local type name by the contract currently being
+-- resolved.  Top-level types, type variables, imported
+-- types and primitives are left untouched, only names declared in the current
+-- contract are rewritten.  Names stay bare in the resolver env; this is applied
+-- only when emitting a resolved name.
+qualifyLocalType :: Name -> ResolveM Name
+qualifyLocalType n =
+  do
+    mc <- gets currentContract
+    locals <- gets contractLocalTypes
+    case mc of
+      Just c | constructorLeafName n `elem` locals -> pure (qualifyName c n)
+      _ -> pure n
 
 addContractDecl :: S.ContractDecl -> ResolveM ()
-addContractDecl (S.CDataDecl (S.DataTy n _ cons)) =
+addContractDecl (S.CDataDecl (S.DataTy n _ cons _)) =
   do
     addTyCon n
     mapM_ (addDataCon n . S.constrName) cons
@@ -878,13 +898,22 @@ instance Resolve S.Pred where
 instance Resolve S.DataTy where
   type Result S.DataTy = DataTy
 
-  resolve d@(S.DataTy n vs cons) =
+  resolve d@(S.DataTy n vs cons ds) =
     withLocalCtx $ do
+      qn <- qualifyLocalType n
       mapM_ addTyVar vs'
       cons' <- resolve cons `wrapError` d
-      pure (DataTy n (map TVar vs') (map (qualifyConstrName n) cons'))
+      ds' <- mapM resolveDerivingClass ds
+      pure (DataTy qn (map TVar vs') (map (qualifyConstrName qn) cons') ds')
     where
       vs' = map tyconName vs
+
+resolveDerivingClass :: Name -> ResolveM Name
+resolveDerivingClass c = do
+  dt <- lookupClass c
+  case dt of
+    Just TClass -> pure c
+    _ -> undefinedClassError c
 
 qualifyConstrName :: Name -> Constr -> Constr
 qualifyConstrName tyCon (Constr conName tys) =
@@ -916,7 +945,9 @@ instance Resolve S.Ty where
     locatedLike tc locatedTy <$> do
       ndt <- lookupType n
       case ndt of
-        Just TTyCon -> TyCon n <$> resolve ts `wrapError` tc
+        Just TTyCon -> do
+          n' <- qualifyLocalType n
+          TyCon n' <$> resolve ts `wrapError` tc
         Just TTyVar -> pure (TyVar (TVar n))
         _ -> undefinedTypeConstructor tc
 
@@ -946,7 +977,15 @@ data Env
     fieldEnv :: Map Name DeclType,
     -- holds names under a specific scope: data constructors, functions
     -- variables and so on.
-    scopeEnv :: Map Name DeclType
+    scopeEnv :: Map Name DeclType,
+    -- name of the contract currently being resolved, if any, together with the
+    -- bare names of the data types it declares.  A reference to one of those
+    -- types is rewritten to Contract.Type on emission, so
+    -- two contracts may each declare a type of the same name and the type stays
+    -- private to its contract.  Names stay bare inside the resolver env, so all
+    -- lookups are unchanged; only the emitted names are qualified.
+    currentContract :: Maybe Name,
+    contractLocalTypes :: [Name]
   }
   deriving (Show)
 
@@ -985,6 +1024,8 @@ emptyEnv =
           (QualName (Name "Int") "fromInteger", TFunction)
         ]
     )
+    Nothing
+    []
 
 globalEnv :: [S.TopDecl] -> Env
 globalEnv = foldr addTopDecl emptyEnv
@@ -1037,7 +1078,7 @@ addTopDecl (S.TClassDef (S.Class _ _ n _ _ sigs)) env =
           { classEnv = Map.insert n TClass (classEnv env),
             scopeEnv = env'
           }
-addTopDecl (S.TDataDef (S.DataTy n _ cons)) env =
+addTopDecl (S.TDataDef (S.DataTy n _ cons _)) env =
   addQualifiedModules n $
     env
       { typeEnv = Map.insert n TTyCon (typeEnv env),
@@ -1211,14 +1252,25 @@ resolveQualifiedConstructorName qualifier conName =
     let qn = qualifyName qualifier conName
     dt <- lookupName qn
     case dt of
-      Just TDataCon -> pure qn
+      Just TDataCon -> requalifyConstructor qn
       _ ->
         let fallback = qualifyName (constructorLeafName qualifier) conName
          in do
               fdt <- lookupName fallback
               case fdt of
-                Just TDataCon -> pure fallback
+                Just TDataCon -> requalifyConstructor fallback
                 _ -> undefinedName qn
+
+-- Rewrite a resolved constructor name when its type is a contract-local type.
+-- The name stays bare in the resolver env (so the lookup above succeeds);
+-- only the emitted name carries the contract qualifier, keeping it consistent
+-- with the qualified type name.
+requalifyConstructor :: Name -> ResolveM Name
+requalifyConstructor n@(QualName tyq con) =
+  do
+    tyq' <- qualifyLocalType tyq
+    pure (if tyq' == tyq then n else copyNameSourceSpan n (QualName tyq' con))
+requalifyConstructor n = pure n
 
 -- error messages
 

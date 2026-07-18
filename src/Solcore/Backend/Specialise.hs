@@ -814,8 +814,10 @@ mangleTy :: Ty -> String
 mangleTy (TyVar (TVar (Name n))) = n
 mangleTy (Meta (MetaTv (Name n))) = n
 mangleTy (TyCon (Name "()") []) = "unit"
-mangleTy (TyCon (Name n) []) = n
-mangleTy (TyCon (Name n) ts) = n ++ "L" ++ intercalate "_" (map mangleTy ts) ++ "J"
+-- Contract-local types carry a contract-qualified name (e.g. A.Color); flatten
+-- the whole qualified name so the mangled identifier stays unique and Yul-safe.
+mangleTy (TyCon n []) = flattenQual n
+mangleTy (TyCon n ts) = flattenQual n ++ "L" ++ intercalate "_" (map mangleTy ts) ++ "J"
 mangleTy ty = error ("mangleTy - unexpected type: " ++ show ty)
 
 prettyId :: Id -> String

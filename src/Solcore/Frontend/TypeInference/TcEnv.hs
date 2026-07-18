@@ -247,13 +247,16 @@ primDataType =
         (Name "t_primAddWord")
         []
         [Constr (Name "t_primAddWord") []]
+        []
     dt2 =
       DataTy
         (Name "t_primEqWord")
         []
         [Constr (Name "t_primEqWord") []]
+        []
     dt3 =
       DataTy
         (Name "t_invokable.invoke")
         []
         [Constr (Name "t_invokable.invoke") []]
+        []

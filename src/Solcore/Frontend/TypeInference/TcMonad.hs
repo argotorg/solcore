@@ -124,7 +124,7 @@ withPartialDataTypesDisabled action = do
       pure result
 
 typeInfoFor :: DataTy -> TypeInfo
-typeInfoFor (DataTy _ vs cons) =
+typeInfoFor (DataTy _ vs cons _) =
   TypeInfo (length vs) (map constrName cons) []
 
 freshTyVar :: TcM Ty
@@ -199,7 +199,7 @@ isDirectCall n =
 -- including contructors on environment
 
 checkDataType :: DataTy -> TcM ()
-checkDataType d@(DataTy n vs constrs) =
+checkDataType d@(DataTy n vs constrs _) =
   do
     -- check if the type is already defined.
     r <- maybeAskTypeInfo n
@@ -985,7 +985,7 @@ dataTyFromInfo n (TypeInfo _ cs _) =
   do
     -- getting data constructor types
     (constrs, vs) <- unzip <$> mapM constrsFromEnv cs
-    pure (DataTy n (concat vs) constrs)
+    pure (DataTy n (concat vs) constrs [])
 
 constrsFromEnv :: Name -> TcM (Constr, [Tyvar])
 constrsFromEnv n =

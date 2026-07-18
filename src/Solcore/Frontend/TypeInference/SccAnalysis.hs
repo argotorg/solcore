@@ -114,7 +114,7 @@ instance Decl Constr where
   decl (Constr n _) = [n]
 
 instance Decl DataTy where
-  decl (DataTy n _ cs) =
+  decl (DataTy n _ cs _) =
     n : decl cs
 
 instance Decl TySym where
@@ -258,7 +258,7 @@ instance Names Constr where
     names ts
 
 instance Names DataTy where
-  names (DataTy _ _ cs) =
+  names (DataTy _ _ cs _) =
     names cs
 
 instance Names (ContractDecl Name) where

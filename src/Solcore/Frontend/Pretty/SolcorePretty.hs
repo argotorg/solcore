@@ -170,8 +170,9 @@ instance (Pretty a) => Pretty (Constructor a) where
       $$ rbrace
 
 instance Pretty DataTy where
-  ppr (DataTy n ps cs) =
-    text "data"
+  ppr (DataTy n ps cs ds) =
+    drv
+      $$ text "data"
       <+> ppr n
       <+> pprTyParams (map TyVar ps)
       <+> rs
@@ -182,6 +183,10 @@ instance Pretty DataTy where
           then empty
           else
             equals <+> hsep (punctuate bar (map ppr cs))
+      drv =
+        if null ds
+          then empty
+          else text "#[derive" <> parens (commaSep (map ppr ds)) <> text "]"
       bar = text " |"
 
 instance Pretty TySym where

@@ -210,12 +210,20 @@ pragmaStatusForP _ = option DisableAll $ do
 
 dataP :: Parser DataTy
 dataP = do
+  ds <- option [] deriveAttrP
   keyword "data"
   n <- simpleNameP
   params <- option [] (parens (typeP `sepBy1` comma))
   cs <- option [] (equalsP *> (constrP `sepBy1` symbol "|"))
   _ <- semicolon
-  return (DataTy n params cs)
+  return (DataTy n params cs ds)
+
+-- Rust-style attribute placed before a data declaration:  #[derive(Eq, Ord)]
+deriveAttrP :: Parser [Name]
+deriveAttrP =
+  symbol "#" *> brackets (deriveKw *> parens (qualifiedName `sepBy1` comma))
+  where
+    deriveKw = lexeme (try (string "derive" <* notFollowedBy (alphaNumChar <|> char '_')))
 
 constrP :: Parser Constr
 constrP = do
