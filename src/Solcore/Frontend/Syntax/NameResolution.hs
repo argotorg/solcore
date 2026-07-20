@@ -546,9 +546,24 @@ unwrapQualifierReceiver (Just (Con (QualName d conName) []))
   | pretty d == conName = Just (Var d)
 unwrapQualifierReceiver me = me
 
--- True for receivers that should trigger UFCS-style method-call rewriting.
--- For now this only covers (unresolved) contract field accesses, so
--- `members.push(addr)` resolves into `Array.push(members, addr)`.
+-- UFCS receiver test.
+--
+-- A receiver is eligible for UFCS method-call rewriting only when it is an
+-- unqualified contract-field access (FieldAccess Nothing _), i.e. a bare
+-- field name like members used as members.push(addr).  Restricting the
+-- rule to that single shape is what keeps UFCS from colliding with the other
+-- meanings of dot syntax:
+--
+--   - Class.method(args) / Module.func(args): the receiver resolves to a
+--     class/module name (Var c), matched by the qualified-name cases in
+--     resolveExp (S.ExpName ...) before the UFCS case is reached.
+--   - Type.Constructor: parsed as S.ExpDotName, a different surface node.
+--   - a plain field read members: no receiver at all.
+--   - a call on a local variable x.m(args): x resolves to Var, not a
+--     field access, so UFCS does not apply.
+--
+-- So UFCS is a strict fallback: it only kicks in for field.method(args) once
+-- every qualified interpretation has been ruled out.
 isUfcsReceiver :: Exp Name -> Bool
 isUfcsReceiver (FieldAccess Nothing _) = True
 isUfcsReceiver _ = False
@@ -754,9 +769,13 @@ resolveExp x@(S.ExpName me n es) =
               Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
               _ -> undefinedName n
           _ -> pure (Call Nothing n es')
-      -- UFCS-style method call on a value receiver:
-      -- `receiver.method(args)` -> `Class.method(receiver, args)` when there
-      -- is a unique class containing a method named `n`.
+      -- UFCS-style method call on a contract-field receiver:
+      -- field.method(args) -> Class.method(field, args) when a unique class
+      -- exposes a method named n.  This is the last case before the error
+      -- fallback, so it only fires once every qualified interpretation has been
+      -- ruled out (see isUfcsReceiver).  Ambiguity across several classes
+      -- makes findClassWithMethod return Nothing and falls through to the
+      -- undefined-name error rather than guessing.
       (Just receiver, _) | isUfcsReceiver receiver -> do
         mClass <- findClassWithMethod n
         case mClass of
