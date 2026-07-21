@@ -1,0 +1,24 @@
+// Exercises storage arrays (array(member)) modeled on storage mappings.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+contract ArrayStorage {
+  reserved : word; // forge uses at least 1 storage slot
+
+  function main() -> uint256 {
+    // A storage array sitting at a fixed slot. The slot itself stores the
+    // length; elements live at keccak256(slot) + i.
+    let arr : storage(array(uint256)) = storage(0x100);
+
+    // push appends and grows the length automatically.
+    ArrayPush.push(arr, uint256(42));
+    ArrayPush.push(arr, uint256(100));
+
+    // `arr[i]` syntax only desugars for contract fields, so use the
+    // explicit ridx helper for this local-variable array. ridx dispatches
+    // through RValueIdxAccess, which bounds-checks against Array.length.
+    return ridx(arr, uint256(0)) + ridx(arr, uint256(1));
+  }
+}

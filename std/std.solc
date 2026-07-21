@@ -1,7 +1,7 @@
 import std.opcodes.{add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, returndatasize, returndatacopy, log1 as log1_, call, staticcall, revert as revert_, invalid};
 
-pragma no-patterson-condition ABIEncode, Num;
-pragma no-coverage-condition ABIDecode, MemoryType;
+pragma no-patterson-condition ABIEncode, Num, Array, ArrayPush;
+pragma no-coverage-condition ABIDecode, MemoryType, Array, ArrayPush, RValueIdxAccess;
 
 export {
   ABIAttribs,
@@ -10,6 +10,8 @@ export {
   ABIEncode,
   ABITuple(*),
   Add,
+  Array,
+  ArrayPush,
   Assign,
   BitAnd,
   BitOr,
@@ -39,6 +41,7 @@ export {
   Proxy(*),
   RVA,
   RValueIdxAccess,
+  StorageCopy,
   StorageSize,
   StorageType,
   StructField(*),
@@ -54,6 +57,7 @@ export {
   allocate_memory,
   allocate_zeroed_memory,
   and,
+  array(*),
   assert,
   byte(*),
   bytes,
@@ -568,6 +572,16 @@ function hash2(x: word, y: word) -> word {
     return keccak256(0, 64);
 }
 
+// Zeroes the storage slots in [start, endSlot). Mirrors solc's
+// clear_storage_range, used when a dynamic array shrinks so that regrowing it
+// cannot resurrect the old elements.
+function clearStorageRange(start: word, endSlot: word) -> () {
+    let i : word = start;
+    for (; i < endSlot; i += 1) {
+        sstore(i, 0);
+    }
+}
+
 // --- Value Types ---
 
 forall t. t:Typedef(word) =>
@@ -800,6 +814,8 @@ forall t . instance returndata(t) : Typedef(word) {
 }
 
 data mapping(member, index) = mapping(word) ;
+
+data array(member) = array(word) ;
 
 // --- Low-level memory ops
 
@@ -1265,6 +1281,33 @@ instance memory(bytes):ABIEncode {
     }
 }
 
+// ABI encoding for a memory dynamic array whose elements fit in a single word.
+// Assumes memory layout `[ length | elem_0 | elem_1 | ... ]`, which matches the
+// on-the-wire tail of `t[]` so the body can be `mcopy`d verbatim.
+// `memory(DynArray(t)):ABIAttribs` is already derivable from the generic
+// `memory(ty):ABIAttribs` + `DynArray(t):ABIAttribs` instances above.
+forall t . t:Typedef(word) =>
+instance memory(DynArray(t)):ABIEncode {
+    function encodeInto(x:memory(DynArray(t)), basePtr:word, offset:word, tail:word) -> word {
+        let srcPtr : word = Typedef.rep(x);
+        let len : word = mload(srcPtr);
+        let totalBytes : word = (len + 1) * 32;
+
+        // head slot: relative pointer from basePtr to tail
+        mstore(basePtr + offset, tail - basePtr);
+
+        // copy length + elements verbatim into the tail
+        let s : word = srcPtr;
+        let t_ : word = tail;
+        let n : word = totalBytes;
+        assembly {
+            mcopy(t_, s, n)
+        }
+
+        return tail + totalBytes;
+    }
+}
+
 instance ():ABIEncode {
     // a unit256 is written directly into the head
     function encodeInto(x:(), basePtr:word, offset:word, tail:word) -> word {
@@ -1605,6 +1648,18 @@ class self:StorageType {
     function store(ptr:word, value:self) -> ();
 }
 
+// How to copy one element of type self from one storage slot to another.
+// Whole-array assignment (a = b) copies element by element through this class,
+// the way solc's copy_array_to_storage calls the element's own copy routine.
+// The constraint lives on the *element* type, so it can gate CanStore.store for
+// storage(array(self)) without also gating CanStore.load, which must stay
+// unconstrained, a field read has to yield the array's storage reference.
+// Instances live below, next to the CanStore instances the dynamic ones rely on.
+forall self.
+class self:StorageCopy {
+    function copySlot(dst:storage(self), src:storage(self)) -> ();
+}
+
 instance word:StorageType {
     function load(ptr:word) -> word {
         return sload(ptr);
@@ -1723,6 +1778,85 @@ instance mapping(index, member):StorageSize {
     }
 }
 
+forall member . instance array(member):Typedef(word) {
+    function rep(x:array(member)) -> word {
+        match x {
+            | array(y) => return y;
+        }
+    }
+    function abs(x:word) -> array(member) {
+        return array(x);
+    }
+}
+
+// cf https://docs.soliditylang.org/en/latest/internals/layout_in_storage.html#mappings-and-dynamic-arrays
+// the slot itself stores the array length; elements live at keccak256(slot) + i
+forall member .
+instance array(member):StorageSize {
+    function size(x:Proxy(array(member))) -> word {
+        return 1;
+    }
+}
+
+// Dynamic storage arrays carry their length at the slot itself (matching the
+// Solidity convention) while elements live at keccak256(slot) + i.
+forall self . class self:Array {
+    function length(arr:self) -> uint256;
+    function setLength(arr:self, n:uint256) -> ();
+    function pop(arr:self) -> ();
+}
+
+// push is split into its own MPTC so its element type only shows up where it
+// actually matters (the value being appended), without forcing `length`/
+// `setLength`/`pop` to drag along an unconstrained `elem` parameter.
+forall self elem . class self:ArrayPush(elem) {
+    function push(arr:self, val:elem) -> ();
+}
+
+forall t .
+instance storage(array(t)):Array {
+    function length(arr:storage(array(t))) -> uint256 {
+        return uint256(sload(Typedef.rep(arr)));
+    }
+    // Shrinking clears the abandoned slots, matching solc's resize_array.
+    // For string/bytes elements this zeroes the inline slot, which makes any
+    // keccak-derived tail unreachable (reads are governed by the length word) but
+    // does not reclaim it.
+    function setLength(arr:storage(array(t)), n:uint256) -> () {
+        let slot : word = Typedef.rep(arr);
+        let oldLen : word = sload(slot);
+        let newLen : word = Typedef.rep(n);
+        if (newLen < oldLen) {
+            let base : word = hash1(slot);
+            clearStorageRange(base + newLen, base + oldLen);
+        }
+        sstore(slot, newLen);
+    }
+    // Zeroes the removed element before decrementing, as solc's array_pop does.
+    function pop(arr:storage(array(t))) -> () {
+        let slot : word = Typedef.rep(arr);
+        let n : word = sload(slot);
+        if (n == 0) { out_of_bounds(); }
+        sstore(hash1(slot) + (n - 1), 0);
+        sstore(slot, n - 1);
+    }
+}
+
+// The value pushed is whatever the element's storage reference can store, rather
+// than the element tag type itself. That is what lets array(string) accept a
+// memory(string), via storage(string):CanStore(memory(string)). For word-sized
+// elements v collapses to the element type and CanStore.store delegates to
+// StorageType.store, so the generated code is unchanged.
+forall t v . storage(t):CanStore(v) =>
+instance storage(array(t)):ArrayPush(v) {
+    function push(arr:storage(array(t)), val:v) -> () {
+        let slot : word = Typedef.rep(arr);
+        let n : word = sload(slot);
+        CanStore.store(storage(hash1(slot) + n):storage(t), val);
+        sstore(slot, n + 1);
+    }
+}
+
 forall self memberRefType.
 class self:LVA(memberRefType) {
     function acc(x:self) -> memberRefType;
@@ -1828,8 +1962,41 @@ forall k v.
       unimplemented();
     }
     function load(l:storage(mapping(k,v))) -> storage(mapping(k,v)) {
-      // return StorageType.load(Typedef.rep(l));
-      unimplemented();
+      // "Loading" a storage mapping field yields its storage reference (the
+      // slot); indexed access / method calls consume that reference directly.
+      return l;
+    }
+}
+
+forall v. v:StorageCopy =>
+ instance storage(array(v)):CanStore(storage(array(v))) {
+    // Whole-array assignment is a deep copy, as in Solidity: a = b resizes a
+    // to b's length and then copies every
+    // element. Assigning an array to itself is a no-op. A *local* bound to an
+    // array field stays an alias, because a let is not an Assign.assign.
+    function store(l:storage(array(v)), r:storage(array(v))) -> () {
+      let dst : word = Typedef.rep(l);
+      let src : word = Typedef.rep(r);
+      if (dst != src) {
+        let oldLen : word = sload(dst);
+        let newLen : word = sload(src);
+        let dstBase : word = hash1(dst);
+        if (newLen < oldLen) {
+          clearStorageRange(dstBase + newLen, dstBase + oldLen);
+        }
+        sstore(dst, newLen);
+        let srcBase : word = hash1(src);
+        let i : word = 0;
+        for (; i < newLen; i += 1) {
+          StorageCopy.copySlot(storage(dstBase + i):storage(v), storage(srcBase + i):storage(v));
+        }
+      }
+    }
+    function load(l:storage(array(v))) -> storage(array(v)) {
+      // "Loading" a storage array field yields its storage reference (the
+      // slot). push / pop / length / arr[i] all consume that reference, so a
+      // field read like `ArrayPush.push(members, x)` must return the slot,
+      // not a copy.
       return l;
     }
 }
@@ -1866,6 +2033,53 @@ instance storage(bytes):CanStore(memory(bytes)) {
     let endPtr = loadBytesFromStorage(srcPtr, dstPtr);
     set_free_memory(endPtr);
     return memory(dstPtr);
+  }
+}
+
+// --- StorageCopy: per-element copy used by whole-array assignment ---
+
+// Word-sized elements are self-contained: the slot is the value.
+instance word:StorageCopy {
+  function copySlot(dst:storage(word), src:storage(word)) -> () {
+    sstore(Typedef.rep(dst), sload(Typedef.rep(src)));
+  }
+}
+instance uint256:StorageCopy {
+  function copySlot(dst:storage(uint256), src:storage(uint256)) -> () {
+    sstore(Typedef.rep(dst), sload(Typedef.rep(src)));
+  }
+}
+instance bytes32:StorageCopy {
+  function copySlot(dst:storage(bytes32), src:storage(bytes32)) -> () {
+    sstore(Typedef.rep(dst), sload(Typedef.rep(src)));
+  }
+}
+instance address:StorageCopy {
+  function copySlot(dst:storage(address), src:storage(address)) -> () {
+    sstore(Typedef.rep(dst), sload(Typedef.rep(src)));
+  }
+}
+
+// Dynamic elements keep their payload at keccak256(elementSlot), so copying the
+// inline slot alone would leave the destination pointing at the *source's* tail.
+// Round-tripping through memory copies the payload too.
+instance string:StorageCopy {
+  function copySlot(dst:storage(string), src:storage(string)) -> () {
+    CanStore.store(dst, CanStore.load(src):memory(string));
+  }
+}
+instance bytes:StorageCopy {
+  function copySlot(dst:storage(bytes), src:storage(bytes)) -> () {
+    CanStore.store(dst, CanStore.load(src):memory(bytes));
+  }
+}
+
+// Nested arrays recurse into the array CanStore instance above. The recursion is
+// on the element type, so it terminates with the type's structure.
+forall t . t:StorageCopy =>
+instance array(t):StorageCopy {
+  function copySlot(dst:storage(array(t)), src:storage(array(t))) -> () {
+    CanStore.store(dst, src);
   }
 }
 
@@ -1972,6 +2186,32 @@ instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
   }
 }
 
+forall a i . i:Typedef(word) =>
+instance (storage(array(a)), i): LValueIdxAccess(storage(a)) {
+  function lookup(xi : (storage(array(a)), i)) -> storage(a) {
+    match(xi) {
+      | (x, i) =>
+          let slot : word = Typedef.rep(x);
+          let idx : word = Typedef.rep(i);
+          // Bounds check: idx must be in [0, length). Length lives at the
+          // slot itself; inlined to avoid an Array(t) dispatch here.
+          if (idx >= sload(slot)) { out_of_bounds(); }
+          return storage(hash1(slot) + idx);
+    }
+  }
+}
+
+// Reading arr[i] yields whatever the element's storage reference loads, rather
+// than the element tag type. For word-sized elements that is the element itself;
+// for array(string) it is a memory(string); for a nested array(array(t)) it
+// is the inner array's handle, which push/pop/length then consume.
+forall a v i . storage(a):CanStore(v), i:Typedef(word) =>
+instance (storage(array(a)), i): RValueIdxAccess(v) {
+  function lookup(xi : (storage(array(a)), i)) -> v {
+    return CanStore.load(LValueIdxAccess.lookup(xi));
+  }
+}
+
 // Mapping reads go through CanStore, matching the write side (Assign -> CanStore.store).
 // This lets a mapping hold any value with a CanStore instance — including ADTs whose
 // fields are dynamic (memory(bytes)) — not just the fixed-slot StorageType primitives.
@@ -1991,14 +2231,18 @@ function lval(x:r) -> a {
 }
 */
 
-forall i a . i:Typedef(word) =>
-function lidx( m: storage(mapping(i,a)), x:i) -> storage(a) {
-  return storage(hash2(Typedef.rep(m), Typedef.rep(x)));
+// lidx/ridx are the generic indexed-access helpers used by the `arr[i]`
+// desugaring. They dispatch through LValueIdxAccess / RValueIdxAccess, so any
+// collection (mapping, array, ...) that provides those instances supports the
+// `arr[i]` syntax.
+forall col idx ref . (col, idx):LValueIdxAccess(ref) =>
+function lidx(c: col, i: idx) -> ref {
+    return LValueIdxAccess.lookup((c, i));
 }
 
-forall i a . i:Typedef(word), storage(a):CanStore(a) =>
-function ridx( m: storage(mapping(i,a)), x:i) -> a {
-  return CanStore.load(storage(hash2(Typedef.rep(m), Typedef.rep(x))) : storage(a));
+forall col idx val . (col, idx):RValueIdxAccess(val) =>
+function ridx(c: col, i: idx) -> val {
+    return RValueIdxAccess.lookup((c, i));
 }
 
 // --- Memory Encoding ---

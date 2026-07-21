@@ -1,0 +1,268 @@
+{
+  "array_nested": {
+    "bytecode": "_CODE",
+    "contract": "NestedArray",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "text-calldata": "growOuter(2)",
+          "calldata": "80eb3cd70000000000000000000000000000000000000000000000000000000000000002",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "innerLen(0) - inner arrays start empty",
+          "calldata": "993adc940000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "pushInner(0,10)",
+          "calldata": "296b078f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "pushInner(0,11)",
+          "calldata": "296b078f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "pushInner(1,20)",
+          "calldata": "296b078f00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000014",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "innerLen(0) - 2",
+          "calldata": "993adc940000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000002",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "innerLen(1) - 1, independent of grid[0]",
+          "calldata": "993adc940000000000000000000000000000000000000000000000000000000000000001",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get2(0,0) - 10",
+          "calldata": "d498d11d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000000a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get2(0,1) - 11",
+          "calldata": "d498d11d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000000b",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get2(1,0) - 20, so the inner arrays do not overlap",
+          "calldata": "d498d11d00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000014",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "set2(0,1,99)",
+          "calldata": "348cf423000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000063",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get2(0,1) - 99",
+          "calldata": "d498d11d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000063",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get2(1,0) - still 20",
+          "calldata": "d498d11d00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000014",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get2(1,1) out of range in grid[1] - reverts",
+          "calldata": "d498d11d00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "b4120f14",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get2(5,0) out of range in grid - reverts",
+          "calldata": "d498d11d00000000000000000000000000000000000000000000000000000000000000050000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "b4120f14",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "flatLen() - 0",
+          "calldata": "7ff0ca49",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "aliasPush(7) - push through a local alias",
+          "calldata": "3ec18ca80000000000000000000000000000000000000000000000000000000000000007",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "flatLen() - 1, the field saw the push",
+          "calldata": "7ff0ca49",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "getFlat(0) - 7",
+          "calldata": "43eefed40000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000007",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "aliasSet(0,42) - write through a local alias",
+          "calldata": "12698f280000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "getFlat(0) - 42, so the local aliases the field",
+          "calldata": "43eefed40000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

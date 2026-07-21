@@ -1,0 +1,33 @@
+import std.{*};
+import std.dispatch.{*};
+
+// Storage-array primitives end to end: push / pop / length / indexed read,
+// the two revert paths (index out of range, pop on empty), and the guarantee
+// that abandoned slots are zeroed -- so regrowing an array never resurrects the
+// values that `pop` or a shrinking `setLength` dropped.
+contract ArrayOps {
+  xs : array(uint256);
+
+  constructor() {}
+
+  // NOTE: not named `add` -- that collides with the Yul builtin of the same name.
+  public function pushVal(v : uint256) -> () {
+    ArrayPush.push(xs, v);
+  }
+
+  public function popArr() -> () {
+    Array.pop(xs);
+  }
+
+  public function len() -> uint256 {
+    return Array.length(xs);
+  }
+
+  public function get(i : uint256) -> uint256 {
+    return xs[i];
+  }
+
+  public function grow(n : uint256) -> () {
+    Array.setLength(xs, n);
+  }
+}

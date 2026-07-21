@@ -257,13 +257,24 @@ indexAccess dir exp@(FieldAccess Nothing name) idx = traces ["iA FA: " ++ pretty
       let arrRef = lhsAccess arrProxy
       idx' <- transRhs idx
       pure $ Call Nothing (indexFun dir) [arrRef, idx']
-    else notImplemented "indexAccess" exp
+    else collectionIndex dir exp idx
 indexAccess dir _exp@(Indexed arr1 idx1) idx2 = traces ["iA II:", pretty arr1, pretty idx1, pretty idx2] $ do
   idx2' <- traces ["transRhs", pretty idx2] $ transRhs idx2
   idx1' <- traces ["transRhs", pretty idx1] $ transRhs idx1
   arr' <- traces ["lhsIndex", pretty arr1, pretty idx1'] $ lhsIndex arr1 idx1'
   pure $ Call Nothing (indexFun dir) [arr', idx2']
-indexAccess _dir exp idx = notImplemented "indexAccess" (Indexed exp idx)
+indexAccess dir exp idx = collectionIndex dir exp idx
+
+-- Index a collection that is already an ordinary value, e.g. a local of type
+-- storage(array(t)) or a function parameter. Unlike a contract field, such a
+-- base needs no LVA.acc to synthesise a storage reference: the value is the
+-- reference that lidx / ridx consume. A base that is not indexable simply
+-- fails to satisfy LValueIdxAccess / RValueIdxAccess during type checking.
+collectionIndex :: (HasCallStack) => Either () () -> NmExp -> NmExp -> CEM (Exp Name)
+collectionIndex dir exp idx = do
+  exp' <- transRhs exp
+  idx' <- transRhs idx
+  pure $ Call Nothing (indexFun dir) [exp', idx']
 
 lhsIndex, rhsIndex :: (HasCallStack) => NmExp -> NmExp -> CEM (Exp Name)
 lhsIndex = indexAccess $ Left ()

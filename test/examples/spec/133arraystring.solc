@@ -1,0 +1,17 @@
+// Storage arrays whose element type is dynamic. Declaring the field and taking
+// its length must work even before `push` accepts dynamic values; the element
+// slot itself is what holds the length / short-string encoding.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+contract ArrayOfDynamic {
+  reserved : word; // forge uses at least 1 storage slot
+  names : array(string);
+  blobs : array(bytes);
+
+  function main() -> uint256 {
+    return Array.length(names) + Array.length(blobs);
+  }
+}

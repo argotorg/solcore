@@ -546,6 +546,28 @@ unwrapQualifierReceiver (Just (Con (QualName d conName) []))
   | pretty d == conName = Just (Var d)
 unwrapQualifierReceiver me = me
 
+-- UFCS receiver test.
+--
+-- A receiver is eligible for UFCS method-call rewriting only when it is an
+-- unqualified contract-field access (FieldAccess Nothing _), i.e. a bare
+-- field name like members used as members.push(addr).  Restricting the
+-- rule to that single shape is what keeps UFCS from colliding with the other
+-- meanings of dot syntax:
+--
+--   - Class.method(args) / Module.func(args): the receiver resolves to a
+--     class/module name (Var c), matched by the qualified-name cases in
+--     resolveExp (S.ExpName ...) before the UFCS case is reached.
+--   - Type.Constructor: parsed as S.ExpDotName, a different surface node.
+--   - a plain field read members: no receiver at all.
+--   - a call on a local variable x.m(args): x resolves to Var, not a
+--     field access, so UFCS does not apply.
+--
+-- So UFCS is a strict fallback: it only kicks in for field.method(args) once
+-- every qualified interpretation has been ruled out.
+isUfcsReceiver :: Exp Name -> Bool
+isUfcsReceiver (FieldAccess Nothing _) = True
+isUfcsReceiver _ = False
+
 instance Resolve S.Exp where
   type Result S.Exp = Exp Name
 
@@ -747,6 +769,18 @@ resolveExp x@(S.ExpName me n es) =
               Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
               _ -> undefinedName n
           _ -> pure (Call Nothing n es')
+      -- UFCS-style method call on a contract-field receiver:
+      -- field.method(args) -> Class.method(field, args) when a unique class
+      -- exposes a method named n.  This is the last case before the error
+      -- fallback, so it only fires once every qualified interpretation has been
+      -- ruled out (see isUfcsReceiver).  Ambiguity across several classes
+      -- makes findClassWithMethod return Nothing and falls through to the
+      -- undefined-name error rather than guessing.
+      (Just receiver, _) | isUfcsReceiver receiver -> do
+        mClass <- findClassWithMethod n
+        case mClass of
+          Just c -> pure (Call Nothing (qualifyName c n) (receiver : es'))
+          Nothing -> undefinedName n
       -- error
       _ -> do
         sameName <- isSameNameConstructor n
@@ -1107,6 +1141,24 @@ lookupName n =
         cdt = Map.lookup n (classEnv env)
         fdt = Map.lookup n (fieldEnv env)
     pure (ldt <|> gdt <|> cdt <|> fdt)
+
+-- For UFCS-style method calls (`value.method(args)`): find a class that has
+-- a method named `m` so we can rewrite the call as `Class.method(value,args)`.
+-- Returns the first match; ambiguity across multiple classes falls back to
+-- the regular undefined-name path.
+findClassWithMethod :: Name -> ResolveM (Maybe Name)
+findClassWithMethod m =
+  do
+    env <- get
+    let classes = Map.keys (classEnv env)
+        matches =
+          [ c
+          | c <- classes,
+            Map.lookup (QualName c (pretty m)) (scopeEnv env) == Just TFunction
+          ]
+    pure $ case matches of
+      [c] -> Just c
+      _ -> Nothing
 
 wrapError :: (Pretty b, Data b) => ResolveM a -> b -> ResolveM a
 wrapError m e =

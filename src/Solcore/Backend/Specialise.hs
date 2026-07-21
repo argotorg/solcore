@@ -328,7 +328,18 @@ addMethodResolution isDefault cname ty fd = do
         Name s -> QualName cname s
   let name' = specName qname [ty]
   let funType = typeOfTcFunDef fd
-  let fd' = FunDef (funIsPublic fd) sig {sigName = name'} (funDefBody fd)
+  -- Quantify the method's free type variables (the enclosing instance's
+  -- variables, e.g. `t` in `instance storage(array(t)):ArrayPush(t)`).
+  -- These are not in `sigVars` because the `forall` sits on the instance,
+  -- not on the individual method. Without quantifying them here, `renametv`
+  -- cannot freshen them when the method is specialised, so a nested
+  -- resolution that happens to reuse the same variable name (e.g. `Typedef`'s
+  -- `storage(t)`) clobbers the binding in the shared specialisation
+  -- substitution — turning `push`'s element `t` from `uint256` into
+  -- `array(uint256)` and breaking `StorageType.store`.
+  let methodVars = sigVars sig `union` freetv fd
+  let sig' = sig {sigName = name', sigVars = methodVars}
+  let fd' = FunDef (funIsPublic fd) sig' (funDefBody fd)
   if isDefault
     then addDefaultResolution qname funType fd'
     else addResolution qname funType fd'
