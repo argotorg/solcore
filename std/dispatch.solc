@@ -76,6 +76,17 @@ instance sum(f,g):SigString {
   }
 }
 
+// A dynamic array signs as `<element>[]`, matching Solidity's `T[]` convention.
+// The element carries its own (structural, for ADTs) signature, so an array of a
+// sum type reads `sum(l,r)[]`. Location is transparent to the ABI, so this keys
+// on the calldata form the dispatch decodes from.
+forall t. t:SigString =>
+instance calldata(array(t)):SigString {
+  function sigStr(x:Proxy(calldata(array(t)))) -> string {
+    SigString.sigStr( Proxy:Proxy(t) ) + "[]"
+  }
+}
+
 // Any data type inherits its ABI signature from its Generic representation, the
 // same way ABIAttribs / ABIEncode bridge through Generic in std.ABIGeneric. This
 // lets the dispatch take ADT-typed parameters (e.g. a Signature) without a

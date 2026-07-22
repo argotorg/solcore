@@ -49,6 +49,8 @@ export {
   Sub,
   Typedef,
   WordReader,
+  abiArrayGet,
+  abiArrayLength,
   abi_decode,
   abi_encode,
   addWord,
@@ -1142,6 +1144,14 @@ forall t . instance DynArray(t):ABIAttribs {
     function headSize(ty : Proxy(DynArray(t))) -> word { return 32; }
     function isStatic(ty : Proxy(DynArray(t))) -> bool { return false; }
 }
+// A dynamic array is encoded head-first as a 32-byte offset into the tail, so
+// its head is one word and it is never static (matching DynArray above). This
+// covers `array(t)` under any location qualifier via the `calldata(ty)` /
+// `memory(ty)` ABIAttribs bridges.
+forall t . instance array(t):ABIAttribs {
+    function headSize(ty : Proxy(array(t))) -> word { return 32; }
+    function isStatic(ty : Proxy(array(t))) -> bool { return false; }
+}
 instance string:ABIAttribs {
     function headSize(ty: Proxy(string)) -> word { return 32; }
     function isStatic(ty : Proxy(string)) -> bool { return false; }
@@ -1545,6 +1555,50 @@ forall baseType baseType_decoded . ABIDecoder(baseType, CalldataWordReader):ABID
           return Typedef.abs(addr);
      }
  }
+
+// ─── Lazy ABI decode of a calldata dynamic array ─────────────────────────────
+// The head slot holds the (args-relative) byte offset to the array data;
+// following it lands on the length word. The decoded value is a calldata handle
+// to that length word, so the elements are left in calldata and decoded on
+// demand (abiArrayLength / abiArrayGet). Because nothing is materialised here,
+// this works for any decodable element type — including multi-word ADTs such as
+// a sum(...) — which the word-per-slot memory(DynArray(...)) path cannot hold.
+forall baseType baseType_decoded .
+     ABIDecoder(baseType, CalldataWordReader):ABIDecode(baseType_decoded) =>
+     instance ABIDecoder(calldata(array(baseType)), CalldataWordReader):ABIDecode(calldata(array(baseType_decoded)))
+ {
+     function decode(ptr:ABIDecoder(calldata(array(baseType)), CalldataWordReader), currentHeadOffset:word) -> calldata(array(baseType_decoded)) {
+          let headRdr = WordReader.advance(ptr, currentHeadOffset);
+          let dataOffset : word = WordReader.read(headRdr);
+          let dataRdr = WordReader.advance(ptr, dataOffset);
+          let rdr : CalldataWordReader = getReader(dataRdr);
+          let addr : word = Typedef.rep(rdr);
+          return Typedef.abs(addr);
+     }
+ }
+
+// Length of a decoded calldata array: the handle points at the length word.
+forall t . function abiArrayLength(a : calldata(array(t))) -> uint256 {
+    let rdr : CalldataWordReader = CalldataWordReader(Typedef.rep(a));
+    return uint256(WordReader.read(rdr));
+}
+
+// Decode element `i` of a calldata array on demand. Elements sit inline after
+// the length word, each occupying `headSize` bytes, so element `i` starts at
+// (handle + 32) + i * headSize. A fresh element decoder is aimed at the first
+// element and the per-element offset is threaded through as the head offset.
+forall t t_decoded .
+    t : ABIAttribs,
+    ABIDecoder(t, CalldataWordReader):ABIDecode(t_decoded) =>
+function abiArrayGet(a : calldata(array(t)), i : uint256) -> t_decoded {
+    let base : word = Typedef.rep(a);
+    let elemRdr : CalldataWordReader = CalldataWordReader(base + 32);
+    let dec : ABIDecoder(t, CalldataWordReader) = ABIDecoder(elemRdr);
+    let prx : Proxy(t);
+    let stride : word = ABIAttribs.headSize(prx);
+    let off : word = Typedef.rep(i) * stride;
+    return ABIDecode.decode(dec, off);
+}
 
 
 // --- Assignment ---
