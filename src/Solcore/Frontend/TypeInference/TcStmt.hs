@@ -419,8 +419,8 @@ tcExpWithExpected' _ (FieldAccess (Just e) n) =
     s <- askField tn n
     (ps' :=> t') <- freshInst s
     withCurrentSubst (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
-tcExpWithExpected' _ ex@(Call me n args) =
-  tcCall me n args `wrapError` ex
+tcExpWithExpected' mExpected ex@(Call me n args) =
+  tcCall mExpected me n args `wrapError` ex
 tcExpWithExpected' mExpected (Lam args bd _) =
   do
     (args', schs, ts') <- tcArgs args
@@ -1502,8 +1502,23 @@ tcBodyWithExpectedReturn mExpectedReturn (s : ss) =
     (bd', ps1, t1) <- tcBodyWithExpectedReturn mExpectedReturn ss
     pure (s' : bd', ps' ++ ps1, t1)
 
-tcCall :: Maybe (Exp Name) -> Name -> [Exp Name] -> TcM (Exp Id, [Pred], Ty)
-tcCall Nothing n args =
+-- | The expected type of a call's result, when known, has to be unified with
+-- the call itself rather than left to the caller.  A method resolved by its
+-- result type has nothing else to determine it, and the statement type that
+-- would otherwise carry the information upwards is discarded for every
+-- statement but the last (see `tcBodyWithExpectedReturn`) — so a call in a
+-- non-tail `return` would keep an unresolved result variable and be rejected
+-- as ambiguous.  Mirrors what the `Con` case of `tcExpWithExpected'` does.
+unifyExpectedResult :: Maybe Ty -> Ty -> TcM ()
+unifyExpectedResult Nothing _ = pure ()
+unifyExpectedResult (Just expectedTy) resultTy =
+  do
+    expectedTy' <- maybeExpandSynonym expectedTy
+    s <- unify resultTy expectedTy'
+    void $ extSubst s
+
+tcCall :: Maybe Ty -> Maybe (Exp Name) -> Name -> [Exp Name] -> TcM (Exp Id, [Pred], Ty)
+tcCall mExpected Nothing n args =
   do
     s <- askEnv n `wrapError` (Call Nothing n args)
     (ps :=> t) <- freshInst s
@@ -1511,6 +1526,7 @@ tcCall Nothing n args =
     expectedArgTys <- mapM (const freshTyVar) args
     s0 <- unify t (funtype expectedArgTys t')
     _ <- extSubst s0
+    unifyExpectedResult mExpected t'
     (es', pss', ts') <-
       unzip3 <$> zipWithM (\e expectedTy -> tcExpWithExpected (Just expectedTy) e) args (apply s0 expectedArgTys)
     s1 <- unify t (funtype ts' t')
@@ -1518,7 +1534,7 @@ tcCall Nothing n args =
     let ps' = foldr union [] (ps : pss')
         t1 = funtype ts' t'
     withCurrentSubst (Call Nothing (Id n t1) es', ps', t')
-tcCall (Just e) n args =
+tcCall mExpected (Just e) n args =
   do
     (e', ps, _) <- tcExp e
     s <- askEnv n `wrapError` (Call (Just e) n args)
@@ -1527,6 +1543,7 @@ tcCall (Just e) n args =
     expectedArgTys <- mapM (const freshTyVar) args
     s0 <- unify (foldr (:->) t' expectedArgTys) t
     _ <- extSubst s0
+    unifyExpectedResult mExpected t'
     (es', pss', ts') <-
       unzip3 <$> zipWithM (\arg expectedTy -> tcExpWithExpected (Just expectedTy) arg) args (apply s0 expectedArgTys)
     s' <- unify (foldr (:->) t' ts') t

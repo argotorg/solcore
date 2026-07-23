@@ -585,6 +585,7 @@ cases =
       runTestForFile "pars.solc" caseFolder,
       runTestForFile "bug-rep-name-capture.solc" caseFolder,
       runTestForFile "bug-import-default-inst-shadow.solc" caseFolder,
+      runTestForFile "bug-call-expected-nontail-return.solc" caseFolder,
       runTestExpectingFailure "array-elem-no-storagecopy.solc" caseFolder,
       runTestExpectingFailure "array-push-no-canstore.solc" caseFolder,
       -- Storage derivation for ADTs. These need dispatch generation: without a
