@@ -55,10 +55,20 @@ buildSigTable (CompUnit _ topDecls) = Map.fromList $ concatMap fromTopDecl topDe
     fromContrDecl _ = []
 
 -----------------------------------------------------------------------
--- Comptime environment: variable name -> Ctness
+-- Comptime environment: variable name -> current classification plus whether
+-- the binding was explicitly declared comptime. Keeping the declaration bit
+-- separate matters for mutable locals: a runtime assignment updates an
+-- ordinary binding, but must be rejected for a comptime binding.
 -----------------------------------------------------------------------
 
-type CtEnv = Map.Map Name Ctness
+data CtBinding
+  = CtBinding
+  { bindingCtness :: Ctness,
+    bindingRequiresComptime :: Bool
+  }
+  deriving (Eq, Show)
+
+type CtEnv = Map.Map Name CtBinding
 
 -----------------------------------------------------------------------
 -- Entry point
@@ -102,7 +112,11 @@ checkFunDef st ctx fd = checkBody st (sigRetComptime sig) ctx initEnv (funDefBod
     -- For other functions, non-comptime params are CTRuntime.
     initEnv =
       Map.fromList
-        [ (idName (paramName p), if paramComptime p || sigRetComptime sig then CTComptime else CTRuntime)
+        [ ( idName (paramName p),
+            CtBinding
+              (if paramComptime p || sigRetComptime sig then CTComptime else CTRuntime)
+              (paramComptime p)
+          )
         | p <- sigParams sig
         ]
 
@@ -134,7 +148,12 @@ checkStmt :: SigTable -> Bool -> String -> CtEnv -> Stmt Id -> Either String CtE
 checkStmt st retCt ctx env stmt = case stmt of
   Let ct x _ mInit -> do
     case mInit of
-      Nothing -> return env
+      Nothing ->
+        return $
+          Map.insert
+            (idName x)
+            (CtBinding (if ct then CTComptime else CTDeferred) ct)
+            env
       Just e -> do
         checkExp st env e
         let ct' = classifyExp st env e
@@ -142,14 +161,30 @@ checkStmt st retCt ctx env stmt = case stmt of
           "comptime let '"
             ++ show (idName x)
             ++ "' is bound to a runtime expression"
-        return $ Map.insert (idName x) (letCtness ct ct') env
+        return $
+          Map.insert
+            (idName x)
+            (CtBinding (letCtness ct ct') ct)
+            env
   LetPattern ct pat _ value -> do
     checkExp st env value
     let valueCtness = classifyExp st env value
     when_ (ct && valueCtness == CTRuntime) $
       "comptime tuple binding is bound to a runtime expression"
-    return (bindPatternCtness (letCtness ct valueCtness) pat env)
-  (_ := e) -> checkExp st env e >> return env
+    return (bindPatternCtness ct (letCtness ct valueCtness) pat env)
+  (lhs := rhs) -> do
+    checkExp st env rhs
+    let rhsCtness = classifyExp st env rhs
+    case assignedVariable lhs >>= \variable -> Map.lookup (idName variable) env of
+      Just binding ->
+        when_
+          (bindingRequiresComptime binding && rhsCtness == CTRuntime)
+          ( "comptime variable '"
+              ++ maybe "<unknown>" (show . idName) (assignedVariable lhs)
+              ++ "' is assigned a runtime expression"
+          )
+      Nothing -> Right ()
+    return (updateAssignedVariable env lhs rhsCtness)
   StmtExp e -> checkExp st env e >> return env
   Return e -> do
     checkExp st env e
@@ -184,25 +219,50 @@ letCtness :: Bool -> Ctness -> Ctness
 letCtness True _ = CTComptime
 letCtness False ct' = ct'
 
+assignedVariable :: Exp Id -> Maybe Id
+assignedVariable (Var variable) = Just variable
+assignedVariable (TyExp expression _) = assignedVariable expression
+assignedVariable _ = Nothing
+
+updateAssignedVariable :: CtEnv -> Exp Id -> Ctness -> CtEnv
+updateAssignedVariable env lhs rhsCtness =
+  case assignedVariable lhs of
+    Nothing -> env
+    Just variable ->
+      Map.adjust
+        ( \binding ->
+            binding
+              { bindingCtness =
+                  letCtness
+                    (bindingRequiresComptime binding)
+                    rhsCtness
+              }
+        )
+        (idName variable)
+        env
+
 checkEq :: SigTable -> Bool -> String -> CtEnv -> [Ctness] -> ([Pat Id], Body Id) -> Either String ()
 checkEq st retCt ctx env scrutineeCtness (pats, body) =
   checkBody st retCt ctx patternEnv body
   where
     patternEnv =
       foldl
-        (\current (pat, ctness) -> bindPatternCtness ctness pat current)
+        (\current (pat, ctness) -> bindPatternCtness False ctness pat current)
         env
         (zip pats scrutineeCtness)
 
-bindPatternCtness :: Ctness -> Pat Id -> CtEnv -> CtEnv
-bindPatternCtness ctness (PVar variable) env =
-  Map.insert (idName variable) ctness env
-bindPatternCtness ctness (PCon _ pats) env =
+bindPatternCtness :: Bool -> Ctness -> Pat Id -> CtEnv -> CtEnv
+bindPatternCtness requiresComptime ctness (PVar variable) env =
+  Map.insert
+    (idName variable)
+    (CtBinding ctness requiresComptime)
+    env
+bindPatternCtness requiresComptime ctness (PCon _ pats) env =
   foldl
-    (\current pat -> bindPatternCtness ctness pat current)
+    (\current pat -> bindPatternCtness requiresComptime ctness pat current)
     env
     pats
-bindPatternCtness _ _ env =
+bindPatternCtness _ _ _ env =
   env
 
 -----------------------------------------------------------------------
@@ -220,7 +280,13 @@ checkExp st env (Lam ps body _) = checkBody st False "lambda" lamEnv body
   where
     lamEnv =
       Map.fromList
-        [(idName (paramName p), if paramComptime p then CTComptime else CTRuntime) | p <- ps]
+        [ ( idName (paramName p),
+            CtBinding
+              (if paramComptime p then CTComptime else CTRuntime)
+              (paramComptime p)
+          )
+        | p <- ps
+        ]
         `Map.union` env
 checkExp _ _ _ = Right ()
 
@@ -260,7 +326,8 @@ hasTypeVar (TyCon _ ts) = any hasTypeVar ts
 
 classifyExp :: SigTable -> CtEnv -> Exp Id -> Ctness
 classifyExp _ _ (Lit _) = CTComptime
-classifyExp _ env (Var x) = Map.findWithDefault CTDeferred (idName x) env
+classifyExp _ env (Var x) =
+  maybe CTDeferred bindingCtness (Map.lookup (idName x) env)
 classifyExp st env (TyExp e _) = classifyExp st env e
 classifyExp st env (Call _ f args) = classifyCall st env f args
 classifyExp st env (Con _ args) = combineCt (map (classifyExp st env) args)

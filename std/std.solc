@@ -1,4 +1,4 @@
-import {add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, returndatasize, returndatacopy, log1 as log1_, call, staticcall, revert as revert_, invalid} from std.opcodes;
+import {add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, returndatasize, returndatacopy, log1 as log1_, call, staticcall, revert_, invalid} from std.opcodes;
 
 pragma solcore noPattersonCondition ABIEncode, Num, Array, ArrayPush;
 pragma solcore noCoverageCondition ABIDecode, MemoryType, Array, ArrayPush, RValueIdxAccess;

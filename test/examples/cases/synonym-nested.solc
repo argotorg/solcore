@@ -1,11 +1,11 @@
 // Deeply nested synonyms (synonym of synonym of synonym)
-type Word1 is word;
-type Word2 is Word1;
-type Word3 is Word2;
+alias Word1 = word;
+alias Word2 = Word1;
+alias Word3 = Word2;
 
-type Pair1 is pair<word, word>;
-type Pair2 is Pair1;
-type Pair3 is Pair2;
+alias Pair1 = pair<word, word>;
+alias Pair2 = Pair1;
+alias Pair3 = Pair2;
 
 function useWord3(x: Word3) returns (word) {
     return x;

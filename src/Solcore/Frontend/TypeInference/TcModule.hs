@@ -28,6 +28,7 @@ module Solcore.Frontend.TypeInference.TcModule
   )
 where
 
+import Data.Generics (everywhere, mkT)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
@@ -324,30 +325,64 @@ assembleCheckedModules graph checkedModules = do
 
 assemblyDecls :: [CheckedModule] -> [TopDecl Id] -> [TopDecl Id]
 assemblyDecls orderedModules extraDecls =
-  moduleDecls ++ dedupeNewFunctionDecls moduleFunctionNames extraDecls
+  moduleDecls
+    ++ missingImportedDataDecls moduleDataNames orderedModules
+    ++ dedupeNewFunctionDecls moduleFunctionKeys extraDecls
   where
     moduleDecls = concatMap (contracts . checkedModuleTyped) orderedModules
-    moduleFunctionNames = concatMap topDeclFunctionNames moduleDecls
+    moduleFunctionKeys = concatMap topDeclFunctionKeys moduleDecls
+    moduleDataNames =
+      Set.fromList
+        [ dataName dataTy
+        | TDataDef dataTy <- moduleDecls
+        ]
 
-dedupeNewFunctionDecls :: [Name] -> [TopDecl Id] -> [TopDecl Id]
-dedupeNewFunctionDecls existingNames =
-  go (Set.fromList existingNames)
+-- A selectively renamed imported data type is nominally visible under its
+-- local name while typechecking the consumer module.  Its local declaration is
+-- trusted rather than emitted by that module, so the assembled program would
+-- otherwise contain selector functions whose patterns mention a constructor
+-- that the match compiler cannot see.  Keep exactly those additional nominal
+-- data declarations whose names are not already supplied by a loaded module.
+missingImportedDataDecls :: Set.Set Name -> [CheckedModule] -> [TopDecl Id]
+missingImportedDataDecls initialNames =
+  snd . foldl addModule (initialNames, [])
+  where
+    addModule (seen, accumulated) checkedModule =
+      foldl addDecl (seen, accumulated) candidates
+      where
+        candidates =
+          [ dataTy
+          | ModuleInferenceDecl segment (TDataDef dataTy) <-
+              moduleInferenceDecls (checkedModuleInput checkedModule),
+            segment == ModuleImportedDecl
+          ]
+    addDecl (seen, accumulated) dataTy
+      | dataName dataTy `Set.member` seen =
+          (seen, accumulated)
+      | otherwise =
+          ( Set.insert (dataName dataTy) seen,
+            accumulated ++ [TDataDef dataTy]
+          )
+
+dedupeNewFunctionDecls :: [(Name, Ty)] -> [TopDecl Id] -> [TopDecl Id]
+dedupeNewFunctionDecls existingKeys =
+  go (Set.fromList existingKeys)
   where
     go _ [] = []
     go seen (decl : rest)
-      | any (`Set.member` seen) names =
+      | any (`Set.member` seen) keys =
           go seen rest
       | otherwise =
-          decl : go (foldr Set.insert seen names) rest
+          decl : go (foldr Set.insert seen keys) rest
       where
-        names = topDeclFunctionNames decl
+        keys = topDeclFunctionKeys decl
 
-topDeclFunctionNames :: TopDecl Id -> [Name]
-topDeclFunctionNames (TFunDef fd) =
-  [sigName (funSignature fd)]
-topDeclFunctionNames (TMutualDef mutualDecls) =
-  concatMap topDeclFunctionNames mutualDecls
-topDeclFunctionNames _ =
+topDeclFunctionKeys :: TopDecl Id -> [(Name, Ty)]
+topDeclFunctionKeys (TFunDef fd) =
+  [(sigName (funSignature fd), typedSignatureType (funSignature fd))]
+topDeclFunctionKeys (TMutualDef mutualDecls) =
+  concatMap topDeclFunctionKeys mutualDecls
+topDeclFunctionKeys _ =
   []
 
 mergeCheckedModuleEnvs :: CheckedModule -> [CheckedModule] -> TcEnv
@@ -371,27 +406,41 @@ importForwardingWrappers graph checkedModules =
       wrappersForQualifiers loadedModule importPath (defaultImportQualifiers importPath)
     wrappersForImport loadedModule (Parsed.ImportAlias importPath qualifier) =
       wrappersForQualifiers loadedModule importPath [qualifier]
-    wrappersForImport loadedModule (Parsed.ImportOnly importPath (Parsed.SelectItems items _)) =
-      let aliases = [(src, alias) | Parsed.SelectItemAs src alias <- items]
-       in if null aliases
-            then pure []
-            else do
-              targetModuleId <-
-                maybe
-                  (Left ("Internal error: import target was not loaded: " ++ Mod.modulePathDisplay importPath))
-                  Right
-                  (Map.lookup importPath (loadedModuleRefs loadedModule))
-              targetModule <-
-                maybe
-                  (Left ("Internal error: import target was not typechecked: " ++ Mod.moduleIdDisplay targetModuleId))
-                  Right
-                  (Map.lookup targetModuleId checkedModules)
-              pure
-                [ TFunDef (typedAliasingWrapper aliasName fd)
-                | (sourceName, aliasName) <- aliases,
-                  TFunDef fd <- contracts (checkedModuleTyped targetModule),
-                  sigName (funSignature fd) == sourceName
-                ]
+    wrappersForImport loadedModule (Parsed.ImportOnly importPath selector) = do
+      targetModuleId <-
+        maybe
+          (Left ("Internal error: import target was not loaded: " ++ Mod.modulePathDisplay importPath))
+          Right
+          (Map.lookup importPath (loadedModuleRefs loadedModule))
+      targetModule <-
+        maybe
+          (Left ("Internal error: import target was not typechecked: " ++ Mod.moduleIdDisplay targetModuleId))
+          Right
+          (Map.lookup targetModuleId checkedModules)
+      bindings <- selectedImportBindingsForModule graph targetModuleId selector
+      let targetDecls = contracts (checkedModuleTyped targetModule)
+          targetDataNames =
+            Set.fromList
+              [ dataName dataTy
+              | TDataDef dataTy <- targetDecls
+              ]
+          typeAliases =
+            Map.fromList
+              [ (sourceName, aliasName)
+              | (sourceName, aliasName) <- bindings,
+                sourceName /= aliasName,
+                sourceName `Set.member` targetDataNames
+              ]
+      pure
+        [ TFunDef (typedImportWrapper typeAliases aliasName fd)
+        | (sourceName, aliasName) <- bindings,
+          TFunDef fd <- targetDecls,
+          sigName (funSignature fd) == sourceName,
+          sourceName /= aliasName
+            || typedSignatureType
+              (renameSignatureTypes typeAliases (funSignature fd))
+              /= typedSignatureType (funSignature fd)
+        ]
 
     wrappersForQualifiers loadedModule importPath qualifiers = do
       targetModuleId <-
@@ -441,9 +490,22 @@ typedForwardingWrapper qualifier (FunDef isPub sig body)
     targetId = Id originalName (typedSignatureType sig)
     args = map (Var . paramName) (sigParams sig)
 
-typedAliasingWrapper :: Name -> FunDef Id -> FunDef Id
-typedAliasingWrapper aliasName (FunDef isPub sig body) =
-  FunDef isPub (sig {sigName = aliasName}) body
+typedImportWrapper :: Map Name Name -> Name -> FunDef Id -> FunDef Id
+typedImportWrapper typeAliases aliasName (FunDef isPub sig body) =
+  FunDef
+    isPub
+    ((renameSignatureTypes typeAliases sig) {sigName = aliasName})
+    body
+
+renameSignatureTypes :: Map Name Name -> Signature Id -> Signature Id
+renameSignatureTypes typeAliases =
+  everywhere (mkT renameTy)
+  where
+    renameTy (TyCon typeName typeArgs) =
+      TyCon
+        (Map.findWithDefault typeName typeName typeAliases)
+        typeArgs
+    renameTy ty = ty
 
 typedSignatureType :: Signature Id -> Ty
 typedSignatureType sig =

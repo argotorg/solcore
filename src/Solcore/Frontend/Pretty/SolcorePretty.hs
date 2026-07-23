@@ -153,12 +153,17 @@ instance Pretty PragmaStatus where
   ppr _ = empty
 
 instance (Pretty a) => Pretty (Contract a) where
-  ppr (Contract n ts ds) =
-    text "contract"
+  ppr (ContractWithKind kind n ts ds) =
+    pprContractKind kind
       <+> (ppr n <> pprTyParams (map TyVar ts))
       <+> lbrace
       $$ nest 3 (vcat (map ppr ds))
       $$ rbrace
+
+pprContractKind :: ContractKind -> Doc
+pprContractKind ContractKind = text "contract"
+pprContractKind InterfaceKind = text "interface"
+pprContractKind LibraryKind = text "library"
 
 instance (Pretty a) => Pretty (ContractDecl a) where
   ppr (CDataDecl dt) =
@@ -183,18 +188,28 @@ instance (Pretty a) => Pretty (Constructor a) where
       $$ rbrace
 
 instance Pretty DataTy where
+  ppr (StructTy n ps fieldNames fieldTypes) =
+    text "struct"
+      <+> (ppr (constructorLeafName n) <> pprTyParams (map TyVar ps))
+      <+> lbrace
+      $$ nest 3 (vcat (zipWith pprStructField fieldNames fieldTypes))
+      $$ rbrace
   ppr (DataTy n ps cs) =
     text "enum"
-      <+> (ppr n <> pprTyParams (map TyVar ps))
+      <+> (ppr (constructorLeafName n) <> pprTyParams (map TyVar ps))
       <+> lbrace
       $$ nest 3 (vcat (punctuate comma (map ppr cs)))
       $$ rbrace
 
+pprStructField :: Name -> Ty -> Doc
+pprStructField fieldName' fieldType =
+  ((ppr fieldName' <> colon) <+> ppr fieldType) <> semi
+
 instance Pretty TySym where
   ppr (TySym n vs t) =
-    ( text "type"
+    ( text "alias"
         <+> (ppr n <> pprTyParams (map TyVar vs))
-        <+> text "is"
+        <+> equals
         <+> ppr t
     )
       <> semi
@@ -266,39 +281,88 @@ instance (Pretty a) => Pretty (FunDef a) where
   ppr (FunDef isPub sig bd) =
     pprSignature isPub sig
       <+> lbrace
-      $$ nest 3 (vcat (map ppr bd))
+      $$ nest 3 (vcat (map ppr (dropResolvedReturnLocals sig bd)))
       $$ rbrace
 
 pprSignature :: (Pretty a) => Bool -> Signature a -> Doc
-pprSignature isPub (Signature vs ctx n ps rc ty pay)
+pprSignature isPub sig@(Signature vs ctx n ps rc ty _)
   | n == Name "fallback" =
       (text "fallback" <> pprParams ps)
-        <+> text "external"
-        <+> pprPayable pay
+        <+> pprResolvedFunctionModifiers (Just VisibilityExternal) sig
   | otherwise =
       text "function"
         <+> (ppr n <> pprTyParams (map TyVar vs) <> pprParams ps)
-        <+> pprFunctionModifiers isPub pay
-        <+> pprRetTy rc ty
+        <+> pprResolvedFunctionModifiers
+          (if isPub then Just VisibilityPublic else Nothing)
+          sig
+        <+> pprResolvedReturns sig rc ty
         <+> pprWhere ctx
 
 pprContractSignature :: (Pretty a) => Bool -> Signature a -> Doc
-pprContractSignature isExternal (Signature vs ctx n ps rc ty pay) =
+pprContractSignature isExternal sig@(Signature vs ctx n ps rc ty _) =
   text "function"
     <+> (ppr n <> pprTyParams (map TyVar vs) <> pprParams ps)
-    <+> hsep
-      ( [text "external" | isExternal]
-          ++ [text "payable" | pay]
-      )
-    <+> pprRetTy rc ty
+    <+> pprResolvedFunctionModifiers
+      (if isExternal then Just VisibilityExternal else Nothing)
+      sig
+    <+> pprResolvedReturns sig rc ty
     <+> pprWhere ctx
 
-pprFunctionModifiers :: Bool -> Bool -> Doc
-pprFunctionModifiers isPub payable =
-  hsep
-    ( [text "public" | isPub]
-        ++ [text "payable" | payable]
-    )
+pprResolvedReturns :: Signature a -> Bool -> Maybe Ty -> Doc
+pprResolvedReturns sig returnComptime returnTy =
+  case sigReturnItems sig of
+    [] -> pprRetTy returnComptime returnTy
+    items ->
+      text "returns"
+        <+> parens (commaSep (map pprResolvedReturnItem items))
+
+pprResolvedReturnItem :: SignatureReturnItem -> Doc
+pprResolvedReturnItem returnItem =
+  pprConst (signatureReturnItemComptime returnItem)
+    <> case signatureReturnItemName returnItem of
+      Nothing -> ppr (signatureReturnItemType returnItem)
+      Just returnName ->
+        (ppr returnName <> colon)
+          <+> ppr (signatureReturnItemType returnItem)
+
+-- Name resolution materializes named return slots as uninitialized leading
+-- lets. They are an internal representation detail; printing them alongside
+-- the restored @returns (name: type)@ clause would create duplicate bindings
+-- when the output is parsed again.
+dropResolvedReturnLocals :: Signature a -> Body a -> Body a
+dropResolvedReturnLocals sig =
+  dropLeadingReturnLocals namedReturnCount
+  where
+    namedReturnCount =
+      length
+        [ ()
+        | returnItem <- sigReturnItems sig,
+          signatureReturnItemName returnItem /= Nothing
+        ]
+
+    dropLeadingReturnLocals 0 body = body
+    dropLeadingReturnLocals count (Let _ _ _ Nothing : body) =
+      dropLeadingReturnLocals (count - 1) body
+    dropLeadingReturnLocals _ body = body
+
+pprResolvedFunctionModifiers :: Maybe FunctionVisibility -> Signature a -> Doc
+pprResolvedFunctionModifiers fallbackVisibility sig =
+  hsep (map pprResolvedFunctionModifier modifiers)
+  where
+    modifiers
+      | Just _ <- sigVisibility sig = sigModifiers sig
+      | Just visibility <- fallbackVisibility =
+          VisibilityModifier visibility : sigModifiers sig
+      | otherwise = sigModifiers sig
+
+pprResolvedFunctionModifier :: FunctionModifier -> Doc
+pprResolvedFunctionModifier (VisibilityModifier VisibilityPublic) = text "public"
+pprResolvedFunctionModifier (VisibilityModifier VisibilityExternal) = text "external"
+pprResolvedFunctionModifier (VisibilityModifier VisibilityInternal) = text "internal"
+pprResolvedFunctionModifier (VisibilityModifier VisibilityPrivate) = text "private"
+pprResolvedFunctionModifier (MutabilityModifier MutabilityPure) = text "pure"
+pprResolvedFunctionModifier (MutabilityModifier MutabilityView) = text "view"
+pprResolvedFunctionModifier (MutabilityModifier MutabilityPayable) = text "payable"
 
 pprPayable :: Bool -> Doc
 pprPayable True = text "payable"
@@ -459,7 +523,9 @@ postfixTypedExpPrec, atomTypedExpPrec :: Int
 lowestTypedExpPrec = 0
 ternaryTypedExpPrec = 10
 castTypedExpPrec = 110
+
 postfixTypedExpPrec = 130
+
 atomTypedExpPrec = 140
 
 pprTypedExpPrec :: (Pretty a) => Int -> Exp a -> Doc
@@ -495,15 +561,15 @@ pprTypedExpNode (Call (Just receiver) n es) =
     <> parens
       (nest 1 $ commaSep $ map (pprTypedExpPrec lowestTypedExpPrec) es)
 pprTypedExpNode (Lam args bd lambdaRetTy) =
-    (text "lam" <> pprParams args)
-      <+> pprRetTy False lambdaRetTy
-      <+> lbrace
-      $$ nest 3 (vcat (map ppr bd))
-      $$ rbrace
+  (text "lam" <> pprParams args)
+    <+> pprRetTy False lambdaRetTy
+    <+> lbrace
+    $$ nest 3 (vcat (map ppr bd))
+    $$ rbrace
 pprTypedExpNode (TyExp e ty) =
   pprTypedExpPrec castTypedExpPrec e <+> text "as" <+> ppr ty
 pprTypedExpNode (FieldAccess Nothing n) =
-  text "this" <> char '.' <> ppr n
+  ppr n
 pprTypedExpNode (FieldAccess (Just receiver) n) =
   pprTypedExpPrec postfixTypedExpPrec receiver <> char '.' <> ppr n
 pprTypedExpNode (Cond condition thenExpression elseExpression) =

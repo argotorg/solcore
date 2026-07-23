@@ -8,6 +8,7 @@ module Solcore.Frontend.Parser.SolcoreTypes
     typeParamsP,
     whereClauseP,
     simpleNameP,
+    booleanNameP,
     locatedP,
     locatedFromSpans,
   )
@@ -32,6 +33,14 @@ qualifiedName = do
 simpleNameP :: Parser Name
 simpleNameP =
   uncurry (\sourceSpan identifierText -> locatedName sourceSpan (Name identifierText)) <$> locatedIdentifierP
+
+booleanNameP :: Parser Name
+booleanNameP =
+  locatedP locatedName $
+    Name "true"
+      <$ keyword "true"
+        <|> Name "false"
+      <$ keyword "false"
 
 locatedIdentifierP :: Parser (SourceSpan, String)
 locatedIdentifierP = do
@@ -99,8 +108,10 @@ functionTypeP = do
   args <- parens (typeP `sepBy` comma)
   visibility <-
     optional
-      ( FunctionTypeInternal <$ keyword "internal"
-          <|> FunctionTypeExternal <$ keyword "external"
+      ( FunctionTypeInternal
+          <$ keyword "internal"
+            <|> FunctionTypeExternal
+          <$ keyword "external"
       )
   results <- optional returnsTypeP
   pure (FunctionTy args visibility results)

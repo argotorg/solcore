@@ -7,6 +7,7 @@ module Solcore.Frontend.Module.Loader
     moduleValidationTopDeclSegments,
     moduleSourcePath,
     moduleLocalTypeCheckSurface,
+    selectedImportBindingsForModule,
   )
 where
 
@@ -620,6 +621,17 @@ selectedImportBindingsFromAvailable available (SelectItems items hidden) =
     expand SelectAllItems = [(itemName, itemName) | itemName <- available]
     expand (SelectItem itemName) = [(itemName, itemName)]
     expand (SelectItemAs itemName aliasName) = [(itemName, aliasName)]
+
+selectedImportBindingsForModule ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  ItemSelector ->
+  Either String [(Name, Name)]
+selectedImportBindingsForModule graph modulePath selector = do
+  publicDecls <- publicTopDeclsForModule graph modulePath
+  selectedImportBindingsFromAvailable
+    (uniqueNames (concatMap topDeclNames publicDecls))
+    selector
 
 uniqueBindingsByLocal :: [(Name, Name)] -> [(Name, Name)]
 uniqueBindingsByLocal =
@@ -1445,6 +1457,7 @@ renameStmtTypeRefs renameMap (StmtExp e) =
   StmtExp (renameExpTypeRefs renameMap e)
 renameStmtTypeRefs renameMap (Return e) =
   Return (renameExpTypeRefs renameMap e)
+renameStmtTypeRefs _ BareReturn = BareReturn
 renameStmtTypeRefs renameMap (Match es eqns) =
   Match
     (map (renameExpTypeRefs renameMap) es)
@@ -1471,6 +1484,7 @@ renameStmtTypeRefs renameMap (For initStmt cond postStmt body) =
     (renameBodyTypeRefs renameMap body)
 renameStmtTypeRefs _ Break = Break
 renameStmtTypeRefs _ Continue = Continue
+renameStmtTypeRefs _ Revert = Revert
 renameStmtTypeRefs _ EmptyStmt = EmptyStmt
 
 renameEquationTypeRefs :: Map Name Name -> Equation -> Equation
@@ -1507,6 +1521,10 @@ renameExpTypeRefs renameMap (ExpName me n es) =
     (renameMemberQualifierTypeRefs renameMap <$> me)
     n
     (map (renameExpTypeRefs renameMap) es)
+renameExpTypeRefs renameMap (ExpApply callee args) =
+  ExpApply
+    (renameExpTypeRefs renameMap callee)
+    (map (renameExpTypeRefs renameMap) args)
 renameExpTypeRefs renameMap (ExpVar Nothing n) =
   ExpVar
     (sameNameConstructorQualifier renameMap n)
@@ -1598,8 +1616,22 @@ renameContractTypeRefs renameMap (ContractShell kind n ts ds) =
   ContractShell
     kind
     n
-    (map (renameTyTypeRefs renameMap) ts)
-    (map (renameContractDeclTypeRefs renameMap) ds)
+    (map (renameTyTypeRefs scopedRenameMap) ts)
+    (map (renameContractDeclTypeRefs scopedRenameMap) ds)
+  where
+    -- A shell-local type shadows a same-spelled imported or top-level type
+    -- throughout the whole shell, including declarations that precede it.
+    scopedRenameMap =
+      foldr
+        Map.delete
+        renameMap
+        ( [ typeParamName
+          | TyCon typeParamName _ <- ts
+          ]
+            ++ [ dataName dataTy
+               | CDataDecl dataTy <- ds
+               ]
+        )
 
 renameContractDeclTypeRefs :: Map Name Name -> ContractDecl -> ContractDecl
 renameContractDeclTypeRefs renameMap (CDataDecl d) =

@@ -182,9 +182,9 @@ pprStructField fieldName' fieldType =
 
 instance Pretty TySym where
   ppr (TySym n vs t) =
-    ( text "type"
+    ( text "alias"
         <+> (ppr n <> pprTyParams vs)
-        <+> text "is"
+        <+> equals
         <+> ppr t
     )
       <> semi
@@ -377,9 +377,8 @@ instance Pretty Stmt where
   ppr (StmtExp e)
     | isBareRevert e = text "revert" <> semi
     | otherwise = ppr e <> semi
-  ppr (Return e)
-    | isUnitExp e = text "return" <> semi
-    | otherwise = text "return" <+> (ppr e <> semi)
+  ppr (Return e) = text "return" <+> (ppr e <> semi)
+  ppr BareReturn = text "return" <> semi
   ppr (Match e eqns) =
     text "match"
       <+> (parens $ commaSep $ map ppr e)
@@ -420,6 +419,7 @@ instance Pretty Stmt where
       $$ rbrace
   ppr Break = text "break" <> semi
   ppr Continue = text "continue" <> semi
+  ppr Revert = text "revert" <> semi
   ppr EmptyStmt = empty
 
 pprForClause :: Stmt -> Doc
@@ -499,18 +499,31 @@ lowestExpPrec = 0
 ternaryExpPrec = 10
 logicalOrExpPrec = 20
 logicalAndExpPrec = 30
+
 equalityExpPrec = 40
+
 relationalExpPrec = 50
+
 bitOrExpPrec = 60
+
 bitXorExpPrec = 70
+
 bitAndExpPrec = 80
+
 shiftExpPrec = 85
+
 additiveExpPrec = 90
+
 multiplicativeExpPrec = 100
+
 powerExpPrec = 105
+
 castExpPrec = 110
+
 unaryExpPrec = 120
+
 postfixExpPrec = 130
+
 atomExpPrec = 140
 
 pprExpPrec :: Int -> Exp -> Doc
@@ -534,6 +547,9 @@ pprExpNode (ExpName (Just receiver) n es) =
     <> char '.'
     <> ppr n
     <> parens (commaSep (map (pprExpPrec lowestExpPrec) es))
+pprExpNode (ExpApply callee args) =
+  pprExpPrec postfixExpPrec callee
+    <> parens (commaSep (map (pprExpPrec lowestExpPrec) args))
 pprExpNode (ExpVar Nothing v) = ppr v
 pprExpNode (ExpVar (Just receiver) v) =
   pprExpPrec postfixExpPrec receiver <> char '.' <> ppr v
@@ -544,11 +560,11 @@ pprExpNode (ExpDotName n es) =
     <> ppr n
     <> parens (commaSep (map (pprExpPrec lowestExpPrec) es))
 pprExpNode (Lam args bd lambdaRetTy) =
-    (text "lam" <> pprParams args)
-      <+> pprRetTy False lambdaRetTy
-      <+> lbrace
-      $$ nest 3 (vcat (map ppr bd))
-      $$ rbrace
+  (text "lam" <> pprParams args)
+    <+> pprRetTy False lambdaRetTy
+    <+> lbrace
+    $$ nest 3 (vcat (map ppr bd))
+    $$ rbrace
 pprExpNode (TyExp e ty) =
   pprExpPrec castExpPrec e <+> text "as" <+> ppr ty
 pprExpNode (ExpIndexed collection index) =
@@ -603,9 +619,9 @@ pprExpNode (ExpCond condition thenExpression elseExpression) =
       pprExpPrec ternaryExpPrec elseExpression
     ]
 pprExpNode (ExpAt t) =
-    text "Proxy"
-      <+> text "as"
-      <+> ppr (TyCon (Name "Proxy") [t])
+  text "Proxy"
+    <+> text "as"
+    <+> ppr (TyCon (Name "Proxy") [t])
 
 pprLeftAssocBinary :: Int -> String -> Exp -> Exp -> Doc
 pprLeftAssocBinary precedence operator left right =
@@ -656,6 +672,7 @@ expPrecedence (TyExp _ _) = castExpPrec
 expPrecedence (ExpAt _) = castExpPrec
 expPrecedence (ExpLNot _) = unaryExpPrec
 expPrecedence (ExpName (Just _) _ _) = postfixExpPrec
+expPrecedence (ExpApply _ _) = postfixExpPrec
 expPrecedence (ExpVar (Just _) _) = postfixExpPrec
 expPrecedence (ExpIndexed _ _) = postfixExpPrec
 expPrecedence _ = atomExpPrec
@@ -761,10 +778,6 @@ pprTyParams ts =
 constructorLeafName :: Name -> Name
 constructorLeafName (QualName _ leaf) = Name leaf
 constructorLeafName n = n
-
-isUnitExp :: Exp -> Bool
-isUnitExp (ExpName Nothing n []) = isUnit n
-isUnitExp _ = False
 
 isBareRevert :: Exp -> Bool
 isBareRevert (ExpName Nothing n []) = n == Name "revert"

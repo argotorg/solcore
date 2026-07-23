@@ -79,7 +79,7 @@ export {
     delegatecall,
     create2,
     staticcall,
-    revert,
+    revert_,
     invalid,
     selfdestruct
 };
@@ -674,7 +674,7 @@ function staticcall(a: word, b: word, c: word, d: word, e: word, f: word) return
     return res;
 }
 
-function revert(a: word, b: word) returns (()) {
+function revert_(a: word, b: word) returns (()) {
     assembly {
         revert(a, b)
     }

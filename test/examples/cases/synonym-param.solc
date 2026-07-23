@@ -1,5 +1,5 @@
-type MyPair<a, b> is pair<a, b>;
-type IntPair is MyPair<word, word>;
+alias MyPair<a, b> = pair<a, b>;
+alias IntPair = MyPair<word, word>;
 
 function makePair(x: word, y: word) returns (MyPair<word, word>) {
     return pair(x, y);

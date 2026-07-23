@@ -14,8 +14,8 @@ import Solcore.Frontend.Parser.SolcoreTypes
   ( paramP,
     qualifiedName,
     simpleNameP,
-    typeParamsP,
     typeP,
+    typeParamsP,
     whereClauseP,
   )
 import Solcore.Frontend.Parser.Stmt (bodyP)
@@ -47,7 +47,7 @@ importP = do
         _ <- semicolon
         pure (ImportAlias path aliasName),
       try $ do
-        entries <- braces (itemEntryP `sepBy` comma)
+        entries <- braces (itemEntryP `sepBy1` comma)
         keyword "from"
         path <- importPathP
         hiddenNames <- option [] hidingP
@@ -58,7 +58,7 @@ importP = do
         ImportModule path <$ semicolon
     ]
   where
-    hidingP = keyword "hiding" *> braces (simpleNameP `sepBy` comma)
+    hidingP = keyword "hiding" *> braces (simpleNameP `sepBy1` comma)
 
 importPathP :: Parser ModulePath
 importPathP = try externalPathP <|> modulePathP
@@ -244,13 +244,21 @@ constrP = do
 
 tySymP :: Parser TySym
 tySymP = do
-  keyword "type"
+  keyword "alias"
   n <- simpleNameP
   params <- typeParamsP
-  keyword "is"
+  equalsP
   t <- typeP
   _ <- semicolon
   return (TySym n params t)
+
+unsupportedUserDefinedValueTypeP :: Parser TopDecl
+unsupportedUserDefinedValueTypeP = do
+  keyword "type"
+  fail
+    ( "user-defined value types declared with `type ... is ...` are not yet "
+        ++ "implemented; use `alias Name = Type;` only for transparent type synonyms"
+    )
 
 functionModifierP :: Parser FunctionModifier
 functionModifierP =
@@ -414,6 +422,12 @@ contractDeclP =
 interfaceDeclP :: Parser ContractDecl
 interfaceDeclP = do
   (isPublic, sig) <- signatureP True
+  let visibility =
+        [ modifierVisibility
+        | VisibilityModifier modifierVisibility <- sigModifiers sig
+        ]
+  when (visibility /= [VisibilityExternal]) $
+    fail "interface functions must declare exactly one `external` visibility modifier"
   _ <- semicolon <?> "';' after interface function signature"
   pure (CSignatureDecl isPublic sig)
 
@@ -453,6 +467,7 @@ topDeclP =
       TDataDef <$> structP,
       TDataDef <$> enumP,
       TSym <$> tySymP,
+      unsupportedUserDefinedValueTypeP,
       TContr <$> (contractP <|> interfaceP <|> libraryP),
       contractOnlyDeclP,
       TFunDef <$> try funDefP,

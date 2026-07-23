@@ -74,11 +74,11 @@ diagnosticCliTests =
           [ "error[SC0220]: top-level function must have complete type annotations",
             "  --> <cwd>/test/diagnostics/missing-signature.solc:1:10",
             "  |",
-            "1 | function foo() {",
+            "1 | function foo(value) {",
             "  |          ^^^ incomplete signature",
-            "note: signature: function foo()",
+            "note: signature: function foo(value) returns (())",
             "note: module typecheck failed for <cwd>/test/diagnostics/missing-signature.solc",
-            "help: annotate every parameter (name: Type) and provide a return type (returns (Type))"
+            "help: annotate every parameter (name: Type); omit returns only for a unit-returning function"
           ],
       testCase "polymorphic type error uses signature span" $
         expectFailure

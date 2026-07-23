@@ -19,7 +19,7 @@ instance HasShortName Name
 instance HasShortName Id
 
 instance (HasShortName a) => HasShortName (Contract a) where
-  shortName (Contract n _ _) = shortName n
+  shortName (ContractWithKind _ n _ _) = shortName n
 
 instance (HasShortName a) => HasShortName (Signature a) where
   shortName sig = shortName (sigName sig)

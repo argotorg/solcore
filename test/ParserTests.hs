@@ -3,17 +3,22 @@
 module ParserTests (parserTests) where
 
 import Common.LightYear (Parser, runParserE)
+import Data.List (isInfixOf)
 import Data.List.NonEmpty (NonEmpty ((:|)))
-import Solcore.Frontend.Lexer.SolcoreLexer (sc)
+import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
+import Solcore.Diagnostics (compilerErrorText)
+import Solcore.Frontend.Lexer.SolcoreLexer (identifier, sc)
 import Solcore.Frontend.Parser.Decl (importP, topDeclP)
 import Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.Patterns (patP)
 import Solcore.Frontend.Parser.SolcoreTypes (predP, typeP)
 import Solcore.Frontend.Parser.Stmt (bodyP, stmtP)
+import Solcore.Frontend.Pretty.SolcorePretty qualified as SolcorePretty
 import Solcore.Frontend.Pretty.TreePretty qualified as TreePretty
 import Solcore.Frontend.Syntax.Contract qualified as Resolved
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.NameResolution (nameResolution)
+import Solcore.Frontend.Syntax.Stmt qualified as ResolvedStmt
 import Solcore.Frontend.Syntax.SyntaxTree
 import Solcore.Frontend.Syntax.Ty qualified as ResolvedTy
 import Test.Tasty
@@ -30,6 +35,15 @@ parseFails :: (Show a) => Parser a -> String -> Assertion
 parseFails p src =
   case runParserE (sc *> p <* eof) "<test>" src of
     Left _ -> return ()
+    Right got -> assertFailure ("Expected failure but parsed: " ++ show got)
+
+parseFailsContaining :: (Show a) => Parser a -> String -> String -> Assertion
+parseFailsContaining p expected src =
+  case runParserE (sc *> p <* eof) "<test>" src of
+    Left err ->
+      assertBool
+        ("Expected parse error containing " ++ show expected ++ ", got:\n" ++ err)
+        (expected `isInfixOf` err)
     Right got -> assertFailure ("Expected failure but parsed: " ++ show got)
 
 nameResolutionFails :: String -> Assertion
@@ -88,6 +102,23 @@ roundTripsStmt src =
             Right reparsed ->
               assertEqual ("round trip: " ++ rendered) parsed reparsed
 
+roundTripsExp :: String -> Assertion
+roundTripsExp src =
+  case runParserE (sc *> expP <* eof) "<test>" src of
+    Left err -> assertFailure ("Initial parse error:\n" ++ err)
+    Right parsed ->
+      let rendered = TreePretty.pretty parsed
+       in case runParserE (sc *> expP <* eof) "<pretty>" rendered of
+            Left err ->
+              assertFailure
+                ( "Pretty-printed expression did not parse:\n"
+                    ++ rendered
+                    ++ "\n"
+                    ++ err
+                )
+            Right reparsed ->
+              assertEqual ("round trip: " ++ rendered) parsed reparsed
+
 roundTripsType :: String -> Assertion
 roundTripsType src =
   case runParserE (sc *> typeP <* eof) "<test>" src of
@@ -112,7 +143,8 @@ parserTests :: TestTree
 parserTests =
   testGroup
     "Parser"
-    [ typeTests,
+    [ identifierTests,
+      typeTests,
       predTests,
       patternTests,
       exprTests,
@@ -130,6 +162,24 @@ word = TyCon "word" []
 
 bool :: Ty
 bool = TyCon "bool" []
+
+identifierTests :: TestTree
+identifierTests =
+  testGroup
+    "Identifiers"
+    [ testCase "leading underscore" $
+        parsesAs identifier "_id" "_id",
+      testCase "multiple leading underscores and digits" $
+        parsesAs identifier "__value2" "__value2",
+      testCase "underscore-prefixed expression name" $
+        parsesAs expP "_value" (var "_value"),
+      testCase "boolean literals cannot be rebound as identifiers" $ do
+        parseFails identifier "true"
+        parseFails identifier "false"
+        parseFails
+          topDeclP
+          "function invalid(true: word, false: word) returns (word) { return true; }"
+    ]
 
 typeTests :: TestTree
 typeTests =
@@ -164,6 +214,21 @@ typeTests =
           typeP
           "word[] storage"
           (TyCon "storage" [TyCon "array" [word]]),
+      testCase "type suffixes may interleave arrays and locations" $
+        parsesAs
+          typeP
+          "word[] memory[] storage"
+          ( TyCon
+              "storage"
+              [TyCon "array" [TyCon "memory" [TyCon "array" [word]]]]
+          ),
+      testCase "repeated data locations remain distinct type wrappers" $
+        parsesAs
+          typeP
+          "word memory storage"
+          (TyCon "storage" [TyCon "memory" [word]]),
+      testCase "interleaved type suffixes survive source pretty-printing" $
+        roundTripsType "word[] memory[] storage",
       testCase "function type" $
         parsesAs
           typeP
@@ -240,10 +305,17 @@ patternTests =
     "Patterns"
     [ testCase "wildcard" $
         parsesAs patP "_" PWildcard,
+      testCase "underscore-prefixed name is not a wildcard" $
+        parsesAs patP "_value" (Pat "_value" []),
+      testCase "wildcard cannot take constructor arguments" $
+        parseFails patP "_(value)",
       testCase "integer literal" $
         parsesAs patP "42" (PLit (IntLit 42)),
       testCase "string literal" $
         parsesAs patP "\"hi\"" (PLit (StrLit "hi")),
+      testCase "boolean literal patterns" $ do
+        parsesAs patP "true" (Pat "true" [])
+        parsesAs patP "false" (Pat "false" []),
       testCase "constructor no args" $
         parsesAs patP "True" (Pat "True" []),
       testCase "constructor with one arg" $
@@ -260,6 +332,8 @@ patternTests =
         parsesAs patP "Some(Pair(x,y))" (Pat "Some" [Pat "Pair" [Pat "x" [], Pat "y" []]]),
       testCase "dot pattern no args" $
         parsesAs patP ".None" (PatDot "None" []),
+      testCase "dot boolean pattern" $
+        parsesAs patP ".true" (PatDot "true" []),
       testCase "dot pattern with args" $
         parsesAs patP ".Some(x)" (PatDot "Some" [Pat "x" []])
     ]
@@ -283,6 +357,11 @@ exprTests =
         parsesAs expP "0" (lit 0),
       testCase "string literal" $
         parsesAs expP "\"hello\"" (Lit (StrLit "hello")),
+      testCase "string literal carriage-return escape" $
+        parsesAs expP "\"line\\rbreak\"" (Lit (StrLit "line\rbreak")),
+      testCase "boolean literals" $ do
+        parsesAs expP "true" (var "true")
+        parsesAs expP "false" (var "false"),
       testCase "variable" $
         parsesAs expP "x" (var "x"),
       testCase "nullary call" $
@@ -291,6 +370,45 @@ exprTests =
         parsesAs expP "f(1)" (ExpName Nothing "f" [lit 1]),
       testCase "binary call" $
         parsesAs expP "f(1, 2)" (ExpName Nothing "f" [lit 1, lit 2]),
+      testCase "parenthesized name call keeps the direct-call source shape" $
+        parsesAs expP "(f)(1)" (ExpName Nothing "f" [lit 1]),
+      testCase "call result can be called again" $
+        parsesAs
+          expP
+          "f(1)(2)"
+          (ExpApply (ExpName Nothing "f" [lit 1]) [lit 2]),
+      testCase "postfix call supports zero and multiple arguments" $ do
+        parsesAs
+          expP
+          "f()()"
+          (ExpApply (ExpName Nothing "f" []) [])
+        parsesAs
+          expP
+          "f(1)(2, 3, 4)"
+          (ExpApply (ExpName Nothing "f" [lit 1]) [lit 2, lit 3, lit 4]),
+      testCase "indexed expression can be called" $
+        parsesAs
+          expP
+          "callbacks[i](x)"
+          (ExpApply (ExpIndexed (var "callbacks") (var "i")) [var "x"]),
+      testCase "conditional expression can be called" $
+        parsesAs
+          expP
+          "(condition ? f : g)(x)"
+          (ExpApply (ExpCond (var "condition") (var "f") (var "g")) [var "x"]),
+      testCase "lambda can be called immediately" $
+        parsesAs
+          expP
+          "(lam(x: word) returns (word) { return x; })(1)"
+          (ExpApply (Lam [Typed False "x" word] [Return (var "x")] (Just word)) [lit 1]),
+      testCase "arbitrary postfix calls survive source pretty-printing" $
+        mapM_
+          roundTripsExp
+          [ "f(1)(2)",
+            "callbacks[i](x)",
+            "(condition ? f : g)(x)",
+            "(lam(x: word) returns (word) { return x; })(1)"
+          ],
       testCase "addition" $
         parsesAs expP "1 + 2" (ExpPlus (lit 1) (lit 2)),
       testCase "subtraction" $
@@ -336,11 +454,25 @@ exprTests =
         parsesAs expP "x == y" (ExpEE (var "x") (var "y")),
       testCase "inequality" $
         parsesAs expP "x != y" (ExpNE (var "x") (var "y")),
+      testCase "relational operators are non-associative" $
+        parseFails expP "a < b < c",
+      testCase "equality operators are non-associative" $
+        parseFails expP "a == b != c",
       testCase "arith tighter than comparison" $
         parsesAs
           expP
           "a + b == c + d"
           (ExpEE (ExpPlus (var "a") (var "b")) (ExpPlus (var "c") (var "d"))),
+      testCase "bitwise and binds tighter than comparison" $
+        parsesAs
+          expP
+          "a & b < c"
+          (ExpLT (ExpBAnd (var "a") (var "b")) (var "c")),
+      testCase "comparison binds tighter than equality" $
+        parsesAs
+          expP
+          "a < b == c"
+          (ExpEE (ExpLT (var "a") (var "b")) (var "c")),
       testCase "logical and" $
         parsesAs expP "x && y" (ExpLAnd (var "x") (var "y")),
       testCase "logical or" $
@@ -411,6 +543,8 @@ exprTests =
           (ExpName Nothing "pair" [var "a", ExpName Nothing "pair" [var "b", var "c"]]),
       testCase "dot name without args" $
         parsesAs expP ".None" (ExpDotName "None" []),
+      testCase "dot boolean name" $
+        parsesAs expP ".true" (ExpDotName "true" []),
       testCase "dot name with args" $
         parsesAs expP ".Some(1)" (ExpDotName "Some" [lit 1]),
       testCase "lambda no params" $
@@ -427,7 +561,60 @@ exprTests =
         parsesAs
           expP
           "lam(x:word) { return x; }"
-          (Lam [Typed False "x" word] [Return (var "x")] Nothing)
+          (Lam [Typed False "x" word] [Return (var "x")] Nothing),
+      testCase "name resolution lowers arbitrary calls and packs their arguments" $
+        case runParserE
+          (sc *> topDeclP <* eof)
+          "<test>"
+          ( "function packing(x: word, y: word, z: word) {"
+              ++ " (lam() returns (word) { return 1; })();"
+              ++ " (lam(a: word) returns (word) { return a; })(x);"
+              ++ " (lam(a: word, b: word, c: word) returns (word) { return a; })(x, y, z);"
+              ++ " }"
+          ) of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Right
+                ( Resolved.CompUnit
+                    _
+                    [ Resolved.TFunDef
+                        ( Resolved.FunDef
+                            _
+                            _
+                            [ ResolvedStmt.StmtExp
+                                (ResolvedStmt.Call Nothing invoke0 [ResolvedStmt.Lam _ _ _, packed0]),
+                              ResolvedStmt.StmtExp
+                                (ResolvedStmt.Call Nothing invoke1 [ResolvedStmt.Lam _ _ _, packed1]),
+                              ResolvedStmt.StmtExp
+                                (ResolvedStmt.Call Nothing invokeMany [ResolvedStmt.Lam _ _ _, packedMany])
+                              ]
+                          )
+                      ]
+                  ) -> do
+                  let expectedInvoke = QualName "invokable" "invoke"
+                  assertEqual "zero-argument invoke target" expectedInvoke invoke0
+                  assertEqual "single-argument invoke target" expectedInvoke invoke1
+                  assertEqual "multi-argument invoke target" expectedInvoke invokeMany
+                  case packed0 of
+                    ResolvedStmt.Con "()" [] -> pure ()
+                    other -> assertFailure ("Unexpected zero-argument packing: " ++ show other)
+                  case packed1 of
+                    ResolvedStmt.Var "x" -> pure ()
+                    other -> assertFailure ("Unexpected single-argument packing: " ++ show other)
+                  case packedMany of
+                    ResolvedStmt.Con
+                      "pair"
+                      [ ResolvedStmt.Var "x",
+                        ResolvedStmt.Con
+                          "pair"
+                          [ResolvedStmt.Var "y", ResolvedStmt.Var "z"]
+                        ] ->
+                        pure ()
+                    other -> assertFailure ("Unexpected multi-argument packing: " ++ show other)
+              Right got -> assertFailure ("Unexpected name-resolution shape: " ++ show got)
+              Left err -> assertFailure ("Name resolution failed: " ++ show err)
     ]
 
 -- | Identifiers that start with a keyword (e.g. `enumValue`, which begins with
@@ -503,6 +690,18 @@ stmtTests =
               Nothing
               (ExpName Nothing "readResult" [])
           ),
+      testCase "tuple destructuring distinguishes a leading-underscore binder from a wildcard" $
+        parsesAs
+          stmtP
+          "let (_value, _) = readResult();"
+          ( LetPattern
+              False
+              (Pat "pair" [Pat "_value" [], PWildcard])
+              Nothing
+              (ExpName Nothing "readResult" [])
+          ),
+      testCase "tuple destructuring rejects duplicate leading-underscore binders" $
+        parseFails stmtP "let (_value, _value) = readResult();",
       testCase "comptime tuple destructuring keeps its binding modifier" $
         parsesAs
           stmtP
@@ -519,8 +718,10 @@ stmtTests =
         parsesAs stmtP "return 0;" (Return (lit 0)),
       testCase "return expression" $
         parsesAs stmtP "return x + 1;" (Return (ExpPlus (var "x") (lit 1))),
-      testCase "bare return produces the unit expression" $
-        parsesAs stmtP "return;" (Return unitExp),
+      testCase "bare return remains distinct from an explicit unit return" $
+        parsesAs stmtP "return;" BareReturn,
+      testCase "explicit unit return remains an expression return" $
+        parsesAs stmtP "return ();" (Return unitExp),
       testCase "assignment" $
         parsesAs stmtP "x = 1;" (Assign (var "x") (lit 1)),
       testCase "plus-assign" $
@@ -558,6 +759,21 @@ stmtTests =
               (Let False "i" Nothing (Just (lit 0)))
               (ExpLT (var "i") (lit 10))
               (Assign (var "i") (ExpPlus (var "i") (lit 1)))
+              []
+          ),
+      testCase "for initializer accepts tuple destructuring let" $
+        parsesAs
+          stmtP
+          "for (let (left, right): (word, bool) = readResult(); keepGoing; ) { }"
+          ( For
+              ( LetPattern
+                  False
+                  (Pat "pair" [Pat "left" [], Pat "right" []])
+                  (Just (TyCon "pair" [word, bool]))
+                  (ExpName Nothing "readResult" [])
+              )
+              (var "keepGoing")
+              EmptyStmt
               []
           ),
       testCase "for loop with empty init and post" $
@@ -604,11 +820,88 @@ stmtTests =
           (Unchecked [Let False "x" Nothing (Just (lit 1))]),
       testCase "unchecked block survives source pretty-printing" $
         roundTripsStmt "unchecked { let x = 1; }",
-      testCase "bare revert lowers to the revert operation" $
+      testCase "bare revert remains distinct in the source AST" $
         parsesAs
           stmtP
           "revert;"
-          (StmtExp (ExpName Nothing "revert" [])),
+          Revert,
+      testCase "revert is reserved for the statement form" $ do
+        parseFails identifier "revert"
+        parseFails patP "revert"
+        parsesAs stmtP "revert;" Revert,
+      testCase "bare revert survives source pretty-printing" $
+        roundTripsStmt "revert;",
+      testCase "Yul control-flow keywords remain statements" $
+        parsesAs
+          stmtP
+          "assembly { break continue leave }"
+          (Asm [YBreak, YContinue, YLeave]),
+      testCase "Yul function declarations preserve arguments and returns" $
+        parsesAs
+          stmtP
+          "assembly { function pair(x, y) -> left, right { left, right := pair(x, y) } }"
+          ( Asm
+              [ YFun
+                  "pair"
+                  ["x", "y"]
+                  (Just ["left", "right"])
+                  [ YAssign
+                      ["left", "right"]
+                      (YCall "pair" [YIdent "x", YIdent "y"])
+                  ]
+              ]
+          ),
+      testCase "Yul control flow accepts booleans and dollar identifiers" $
+        parsesAs
+          stmtP
+          ( "assembly {"
+              ++ " let $flag := true"
+              ++ " if $flag { continue }"
+              ++ " for {} false {} { break }"
+              ++ " switch $flag case true { leave } default {}"
+              ++ " }"
+          )
+          ( Asm
+              [ YLet ["$flag"] (Just (YLit YulTrue)),
+                YIf (YIdent "$flag") [YContinue],
+                YFor [] (YLit YulFalse) [] [YBreak],
+                YSwitch
+                  (YIdent "$flag")
+                  [(YulTrue, [YLeave])]
+                  (Just [])
+              ]
+          ),
+      testCase "Yul keyword prefixes remain ordinary identifiers" $
+        parsesAs
+          stmtP
+          "assembly { let x := trueValue breakFoo() functionFoo() }"
+          ( Asm
+              [ YLet ["x"] (Just (YIdent "trueValue")),
+                YExp (YCall "breakFoo" []),
+                YExp (YCall "functionFoo" [])
+              ]
+          ),
+      testCase "Yul metadata expressions accept backtick and interpolation spellings" $ do
+        parsesAs
+          stmtP
+          "assembly { let first := `backtickHole` let second := ${interpolationHole} }"
+          ( Asm
+              [ YLet ["first"] (Just (YMeta "backtickHole")),
+                YLet ["second"] (Just (YMeta "interpolationHole"))
+              ]
+          ),
+      testCase "Yul let requires at least one name" $
+        parseFails
+          stmtP
+          "assembly { let := 1 }",
+      testCase "Yul assignment requires at least one name" $
+        parseFails
+          stmtP
+          "assembly { := 1 }",
+      testCase "Yul function return arrow requires at least one name" $
+        parseFails
+          stmtP
+          "assembly { function invalid() -> {} }",
       testCase "match one equation" $
         parsesAs
           stmtP
@@ -765,7 +1058,18 @@ declTests =
               ( FunDef
                   False
                   (Signature [] [] "data" [] False (Just (TyCon "()" [])) False)
-                  [Return unitExp]
+                  [BareReturn]
+              )
+          ),
+      testCase "underscore-prefixed function and parameter names parse" $
+        parsesAs
+          topDeclP
+          "function _id(_value: word) returns (word) { return _value; }"
+          ( TFunDef
+              ( FunDef
+                  False
+                  (Signature [] [] "_id" [Typed False "_value" word] False (Just word) False)
+                  [Return (var "_value")]
               )
           ),
       testCase "empty enum" $
@@ -794,15 +1098,21 @@ declTests =
                   [Constr "Some" [TyCon "a" []], Constr "None" []]
               )
           ),
-      testCase "user-defined value type" $
+      testCase "duplicate top-level struct fields fail name resolution" $
+        nameResolutionFails
+          "struct Pair { value: word; value: bool; }",
+      testCase "duplicate nested struct fields fail name resolution" $
+        nameResolutionFails
+          "contract C { struct Pair { value: word; value: bool; } }",
+      testCase "transparent type alias" $
         parsesAs
           topDeclP
-          "type Word is word;"
+          "alias Word = word;"
           (TSym (TySym "Word" [] word)),
-      testCase "generic user-defined value type" $
+      testCase "generic transparent type alias" $
         parsesAs
           topDeclP
-          "type Pair<a, b> is (a, b);"
+          "alias Pair<a, b> = (a, b);"
           ( TSym
               ( TySym
                   "Pair"
@@ -810,6 +1120,15 @@ declTests =
                   (pairTy (TyCon "a" []) (TyCon "b" []))
               )
           ),
+      testCase "alias is reserved as a declaration keyword" $
+        parseFails identifier "alias",
+      testCase "nominal type syntax is not treated as a transparent alias" $
+        parseFailsContaining
+          topDeclP
+          "user-defined value types declared with `type ... is ...` are not yet implemented"
+          "type Word is word;",
+      testCase "transparent aliases survive source pretty-printing" $
+        roundTripsTopDecl "alias Pair<a, b> = (a, b);",
       testCase "trait with one method" $
         parsesAs
           topDeclP
@@ -1022,31 +1341,31 @@ declTests =
                       ( FunDef
                           False
                           (SignatureWithSyntax [] [] "pureFn" [] Nothing [MutabilityModifier MutabilityPure])
-                          [Return unitExp]
+                          [BareReturn]
                       ),
                     CFunDecl
                       ( FunDef
                           False
                           (SignatureWithSyntax [] [] "viewFn" [] Nothing [MutabilityModifier MutabilityView])
-                          [Return unitExp]
+                          [BareReturn]
                       ),
                     CFunDecl
                       ( FunDef
                           False
                           (SignatureWithSyntax [] [] "privateFn" [] Nothing [VisibilityModifier VisibilityPrivate])
-                          [Return unitExp]
+                          [BareReturn]
                       ),
                     CFunDecl
                       ( FunDef
                           False
                           (SignatureWithSyntax [] [] "internalFn" [] Nothing [VisibilityModifier VisibilityInternal])
-                          [Return unitExp]
+                          [BareReturn]
                       ),
                     CFunDecl
                       ( FunDef
                           True
                           (SignatureWithSyntax [] [] "externalFn" [] Nothing [VisibilityModifier VisibilityExternal])
-                          [Return unitExp]
+                          [BareReturn]
                       )
                   ]
               )
@@ -1059,7 +1378,7 @@ declTests =
               ( Contract
                   "C"
                   []
-                  [CConstrDecl (Constructor [Typed False "x" word] [Return unitExp] False)]
+                  [CConstrDecl (Constructor [Typed False "x" word] [BareReturn] False)]
               )
           ),
       testCase "payable modifier follows constructor parameters" $
@@ -1070,7 +1389,7 @@ declTests =
               ( Contract
                   "C"
                   []
-                  [CConstrDecl (Constructor [Typed False "x" word] [Return unitExp] True)]
+                  [CConstrDecl (Constructor [Typed False "x" word] [BareReturn] True)]
               )
           ),
       testCase "external payable fallback" $
@@ -1094,7 +1413,7 @@ declTests =
                                 MutabilityModifier MutabilityPayable
                               ]
                           )
-                          [Return unitExp]
+                          [BareReturn]
                       )
                   ]
               )
@@ -1111,6 +1430,36 @@ declTests =
         parseFails
           topDeclP
           "contract C { function f() pure view { return; } }",
+      testCase "module functions retain pure and view without contract visibility" $ do
+        parsesAs
+          topDeclP
+          "function pureFn() pure { return; }"
+          ( TFunDef
+              ( FunDef
+                  False
+                  (SignatureWithSyntax [] [] "pureFn" [] Nothing [MutabilityModifier MutabilityPure])
+                  [BareReturn]
+              )
+          )
+        parsesAs
+          topDeclP
+          "function viewFn() view { return; }"
+          ( TFunDef
+              ( FunDef
+                  False
+                  (SignatureWithSyntax [] [] "viewFn" [] Nothing [MutabilityModifier MutabilityView])
+                  [BareReturn]
+              )
+          ),
+      testCase "module functions reject contract visibility and payable" $
+        mapM_
+          (parseFails topDeclP)
+          [ "function publicFn() public { return; }",
+            "function externalFn() external { return; }",
+            "function internalFn() internal { return; }",
+            "function privateFn() private { return; }",
+            "function payableFn() payable { return; }"
+          ],
       -- Contract visibility modifiers are not meaningful on impl methods.
       testCase "public instance method fails" $
         parseFails
@@ -1147,7 +1496,11 @@ importTests =
           ( ImportOnly
               (ExternalPath "ext" (QualName "foo" "bar"))
               (SelectItems [SelectItem "foo", SelectItemAs "bar" "baz"] [])
-          )
+          ),
+      testCase "selective import requires at least one item" $
+        parseFails importP "import {} from std;",
+      testCase "hiding clause requires at least one item" $
+        parseFails importP "import {foo} from std hiding {};"
     ]
 
 pragmaTests :: TestTree
@@ -1243,6 +1596,11 @@ declarationShellTests =
           topDeclP
           "struct Pair<a> { left: a; right: word; }"
           (TDataDef (StructTy "Pair" [TyCon "a" []] ["left", "right"] [TyCon "a" [], word])),
+      testCase "underscore-prefixed struct and field names parse" $
+        parsesAs
+          topDeclP
+          "struct _Record { _value: word; }"
+          (TDataDef (StructTy "_Record" [] ["_value"] [word])),
       testCase "contract-local struct is a data declaration" $
         parsesAs
           topDeclP
@@ -1283,6 +1641,64 @@ declarationShellTests =
         parseFails
           topDeclP
           "interface Oracle { function read() external returns (word) { return 0; } }",
+      testCase "interface rejects omitted function visibility" $
+        parseFailsContaining
+          topDeclP
+          "exactly one `external`"
+          "interface Oracle { function read() returns (word); }",
+      testCase "interface rejects public function visibility" $
+        parseFailsContaining
+          topDeclP
+          "exactly one `external`"
+          "interface Oracle { function read() public returns (word); }",
+      testCase "interface rejects private function visibility" $
+        parseFailsContaining
+          topDeclP
+          "exactly one `external`"
+          "interface Oracle { function read() private returns (word); }",
+      testCase "interface rejects internal function visibility" $
+        parseFailsContaining
+          topDeclP
+          "exactly one `external`"
+          "interface Oracle { function read() internal returns (word); }",
+      testCase "interface accepts external pure and payable signatures" $ do
+        case runParserE
+          (sc *> topDeclP <* eof)
+          "<test>"
+          ( "interface Oracle {"
+              ++ " function compute() external pure returns (word);"
+              ++ " function deposit() external payable;"
+              ++ " }"
+          ) of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right
+            ( TContr
+                ( ContractShell
+                    InterfaceKind
+                    _
+                    _
+                    [ CSignatureDecl
+                        True
+                        (SignatureWithSyntax _ _ _ _ _ computeModifiers),
+                      CSignatureDecl
+                        True
+                        (SignatureWithSyntax _ _ _ _ _ depositModifiers)
+                      ]
+                  )
+              ) -> do
+              assertEqual
+                "pure interface signature modifiers"
+                [ VisibilityModifier VisibilityExternal,
+                  MutabilityModifier MutabilityPure
+                ]
+                computeModifiers
+              assertEqual
+                "payable interface signature modifiers"
+                [ VisibilityModifier VisibilityExternal,
+                  MutabilityModifier MutabilityPayable
+                ]
+                depositModifiers
+          Right got -> assertFailure ("Unexpected interface shape: " ++ show got),
       testCase "interface rejects state fields" $
         parseFails topDeclP "interface Oracle { value: word; }",
       testCase "library accepts contract-like fields, structs, and functions" $
@@ -1332,7 +1748,27 @@ declarationShellTests =
       testCase "contract fields and functions with distinct names do not collide" $
         nameResolutionSucceeds
           "contract C { value: word; function read() returns (word) { return value; } }",
-      testCase "name resolution lowers a struct to a one-constructor data type" $
+      testCase "underscore-prefixed function and parameter names resolve" $
+        nameResolutionSucceeds
+          "function _id(_value: word) returns (word) { return _value; }",
+      testCase "underscore-prefixed struct and field names resolve" $
+        nameResolutionSucceeds
+          "struct _Record { _value: word; }",
+      testCase "underscore-prefixed match binders resolve" $
+        nameResolutionSucceeds
+          ( "function select(_input: word) returns (word) {"
+              ++ " match (_input) { case _value { return _value; } }"
+              ++ " return 0;"
+              ++ " }"
+          ),
+      testCase "wildcard patterns do not bind the standalone underscore" $
+        nameResolutionFails
+          ( "function select(_input: word) returns (word) {"
+              ++ " match (_input) { case _ { return _; } }"
+              ++ " return 0;"
+              ++ " }"
+          ),
+      testCase "name resolution preserves struct metadata and semantic pretty syntax" $
         case runParserE (sc *> topDeclP <* eof) "<test>" "struct Box { value: word; }" of
           Left err -> assertFailure ("Parse error:\n" ++ err)
           Right parsed -> do
@@ -1342,12 +1778,239 @@ declarationShellTests =
                 ( Resolved.CompUnit
                     _
                     [ Resolved.TDataDef
-                        (Resolved.DataTy "Box" [] [Resolved.Constr (QualName "Box" "Box") [_]])
+                        dt@( Resolved.DataTyWithKind
+                               (Resolved.StructKind ["value"])
+                               "Box"
+                               []
+                               [Resolved.Constr (QualName "Box" "Box") [ResolvedTy.TyCon "word" []]]
+                             )
                       ]
-                  ) ->
-                    pure ()
+                  ) -> do
+                  let rendered = SolcorePretty.pretty dt
+                  assertBool
+                    ("semantic struct pretty output lost its declaration kind:\n" ++ rendered)
+                    ("struct Box" `isInfixOf` rendered)
+                  assertBool
+                    ("semantic struct pretty output lost its named field:\n" ++ rendered)
+                    ("value: word;" `isInfixOf` rendered)
               Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
               Left err -> assertFailure ("Name resolution failed: " ++ show err),
+      testCase "value member reads retain their receiver with and without name collisions" $
+        case runParserE
+          (sc *> topDeclP <* eof)
+          "<test>"
+          ( "contract C {"
+              ++ " struct Pair { x: word; }"
+              ++ " function collision(p: Pair, x: word) returns (word) { return p.x; }"
+              ++ " function noCollision(p: Pair) returns (word) { return p.x; }"
+              ++ " }"
+          ) of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Right
+                ( Resolved.CompUnit
+                    _
+                    [ Resolved.TContr
+                        ( Resolved.ContractWithKind
+                            _
+                            _
+                            _
+                            [ _,
+                              Resolved.CFunDecl
+                                ( Resolved.FunDef
+                                    _
+                                    _
+                                    [ResolvedStmt.Return (ResolvedStmt.FieldAccess (Just (ResolvedStmt.Var "p")) "x")]
+                                  ),
+                              Resolved.CFunDecl
+                                ( Resolved.FunDef
+                                    _
+                                    _
+                                    [ResolvedStmt.Return (ResolvedStmt.FieldAccess (Just (ResolvedStmt.Var "p")) "x")]
+                                  )
+                              ]
+                          )
+                      ]
+                  ) ->
+                  pure ()
+              Right got ->
+                assertFailure
+                  ("value receiver was dropped during name resolution: " ++ show got)
+              Left err ->
+                assertFailure ("Name resolution failed: " ++ show err),
+      testCase "type qualifiers still win over same-named parameters" $
+        case runParserE
+          (sc *> topDeclP <* eof)
+          "<test>"
+          ( "contract C {"
+              ++ " enum Choice { Left }"
+              ++ " function pick(Left: word) returns (Choice) { return Choice.Left; }"
+              ++ " }"
+          ) of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Right
+                ( Resolved.CompUnit
+                    _
+                    [ Resolved.TContr
+                        ( Resolved.ContractWithKind
+                            _
+                            _
+                            _
+                            [ _,
+                              Resolved.CFunDecl
+                                ( Resolved.FunDef
+                                    _
+                                    _
+                                    [ ResolvedStmt.Return
+                                        ( ResolvedStmt.Con
+                                            (QualName (QualName "C" "Choice") "Left")
+                                            []
+                                          )
+                                      ]
+                                  )
+                              ]
+                          )
+                      ]
+                  ) ->
+                  pure ()
+              Right got ->
+                assertFailure
+                  ("type qualifier was captured by a parameter: " ++ show got)
+              Left err ->
+                assertFailure ("Name resolution failed: " ++ show err),
+      testCase "contract names qualify contract-local constructors" $
+        nameResolutionSucceeds
+          ( "contract C {"
+              ++ " struct S { value: word; }"
+              ++ " function make() returns (S) { return C.S.S(1); }"
+              ++ " }"
+          ),
+      testCase "resolved pretty-printing preserves one named tuple return item" $
+        case runParserE
+          (sc *> topDeclP <* eof)
+          "<test>"
+          ( "function pairResult() returns (result: (word, bool)) {"
+              ++ " result = (1, true);"
+              ++ " return;"
+              ++ " }"
+          ) of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Left err ->
+                assertFailure ("Name resolution failed: " ++ show err)
+              Right (Resolved.CompUnit _ [resolvedDecl]) -> do
+                let rendered = SolcorePretty.pretty resolvedDecl
+                case runParserE (sc *> topDeclP <* eof) "<pretty>" rendered of
+                  Left err ->
+                    assertFailure
+                      ( "Resolved pretty output did not parse:\n"
+                          ++ rendered
+                          ++ "\n"
+                          ++ err
+                      )
+                  Right reparsed -> do
+                    reresolved <- nameResolution (CompUnit [] [reparsed])
+                    case reresolved of
+                      Right
+                        ( Resolved.CompUnit
+                            _
+                            [ Resolved.TFunDef
+                                (Resolved.FunDef _ signature _)
+                              ]
+                          ) ->
+                          assertEqual
+                            "return name and tuple boundary survive semantic pretty-printing"
+                            [ Resolved.SignatureReturnItem
+                                False
+                                (Just "result")
+                                ( ResolvedTy.TyCon
+                                    "pair"
+                                    [ ResolvedTy.TyCon "word" [],
+                                      ResolvedTy.TyCon "bool" []
+                                    ]
+                                )
+                            ]
+                            (Resolved.sigReturnItems signature)
+                      Right got ->
+                        assertFailure
+                          ("Unexpected re-resolved output: " ++ show got)
+                      Left err ->
+                        assertFailure
+                          ( "Resolved pretty output failed name resolution:\n"
+                              ++ rendered
+                              ++ "\n"
+                              ++ show err
+                          )
+              Right got ->
+                assertFailure ("Unexpected resolved output: " ++ show got),
+      testCase "resolved pretty-printing keeps bare contract fields reusable" $
+        case runParserE
+          (sc *> topDeclP <* eof)
+          "<test>"
+          ( "contract C {"
+              ++ " value: word;"
+              ++ " function read() returns (word) { return value; }"
+              ++ " }"
+          ) of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Left err ->
+                assertFailure ("Name resolution failed: " ++ show err)
+              Right (Resolved.CompUnit _ [resolvedDecl]) -> do
+                let rendered = SolcorePretty.pretty resolvedDecl
+                assertBool
+                  ("semantic pretty output invented an undefined receiver:\n" ++ rendered)
+                  (not ("this." `isInfixOf` rendered))
+                case runParserE (sc *> topDeclP <* eof) "<pretty>" rendered of
+                  Left err ->
+                    assertFailure
+                      ( "Resolved pretty output did not parse:\n"
+                          ++ rendered
+                          ++ "\n"
+                          ++ err
+                      )
+                  Right reparsed -> do
+                    reresolved <- nameResolution (CompUnit [] [reparsed])
+                    case reresolved of
+                      Left err ->
+                        assertFailure
+                          ( "Resolved pretty output failed name resolution:\n"
+                              ++ rendered
+                              ++ "\n"
+                              ++ show err
+                          )
+                      Right _ -> pure ()
+              Right got ->
+                assertFailure ("Unexpected resolved output: " ++ show got),
+      testCase "value member calls fail explicitly during name resolution" $
+        case runParserE
+          (sc *> topDeclP <* eof)
+          "<test>"
+          ( "contract C {"
+              ++ " struct Pair { x: word; }"
+              ++ " function bad(p: Pair) returns (word) { return p.x(); }"
+              ++ " }"
+          ) of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Left err ->
+                assertBool
+                  ("expected SC0124, got:\n" ++ compilerErrorText err)
+                  ("SC0124" `isInfixOf` compilerErrorText err)
+              Right got ->
+                assertFailure
+                  ("value member call was silently lowered: " ++ show got),
       testCase "name resolution preserves an interface signature without a body" $
         case runParserE (sc *> topDeclP <* eof) "<test>" "interface I { function f() external; }" of
           Left err -> assertFailure ("Parse error:\n" ++ err)
@@ -1358,70 +2021,157 @@ declarationShellTests =
                 ( Resolved.CompUnit
                     _
                     [ Resolved.TContr
-                        (Resolved.Contract "I" [] [Resolved.CSignatureDecl True _])
+                        ( Resolved.ContractWithKind
+                            Resolved.InterfaceKind
+                            "I"
+                            []
+                            [Resolved.CSignatureDecl True signature]
+                          )
                       ]
                   ) ->
-                    pure ()
+                  assertEqual
+                    "exact interface modifiers survive name resolution"
+                    [ Resolved.VisibilityModifier Resolved.VisibilityExternal
+                    ]
+                    (Resolved.sigModifiers signature)
+              Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
+              Left err -> assertFailure ("Name resolution failed: " ++ show err),
+      testCase "name resolution preserves a library declaration kind" $
+        case runParserE (sc *> topDeclP <* eof) "<test>" "library L { function f() internal { return; } }" of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Right
+                ( Resolved.CompUnit
+                    _
+                    [ Resolved.TContr
+                        ( Resolved.ContractWithKind
+                            Resolved.LibraryKind
+                            "L"
+                            []
+                            [Resolved.CFunDecl _]
+                          )
+                      ]
+                  ) ->
+                  pure ()
               Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
               Left err -> assertFailure ("Name resolution failed: " ++ show err),
       testCase "name resolution lowers source modifiers and named returns" $
-        case
-            runParserE
-              (sc *> topDeclP <* eof)
-              "<test>"
-              "contract C { function pair() external payable returns (left: word, right: bool) { return (1, 0); } }"
-          of
-            Left err -> assertFailure ("Parse error:\n" ++ err)
-            Right parsed -> do
-              resolved <- nameResolution (CompUnit [] [parsed])
-              case resolved of
-                Right
-                  ( Resolved.CompUnit
-                      _
-                      [ Resolved.TContr
-                          (Resolved.Contract "C" [] [Resolved.CFunDecl (Resolved.FunDef isPublic sig _)])
-                        ]
-                    ) -> do
-                      assertBool "external lowers to the semantic public bit" isPublic
-                      assertBool "payable lowers to the semantic payable bit" (Resolved.sigPayable sig)
-                      assertEqual
-                        "return names are discarded only at semantic lowering"
-                        ( Just
-                            ( ResolvedTy.TyCon
-                                "pair"
-                                [ResolvedTy.TyCon "word" [], ResolvedTy.TyCon "bool" []]
-                            )
+        case runParserE
+          (sc *> topDeclP <* eof)
+          "<test>"
+          "contract C { function pair() external payable returns (left: word, right: bool) { return (1, 0); } }" of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Right
+                ( Resolved.CompUnit
+                    _
+                    [ Resolved.TContr
+                        ( Resolved.ContractWithKind
+                            Resolved.ContractKind
+                            "C"
+                            []
+                            [Resolved.CFunDecl (Resolved.FunDef isPublic sig _)]
+                          )
+                      ]
+                  ) -> do
+                  assertBool "external lowers to the semantic public bit" isPublic
+                  assertBool "payable lowers to the semantic payable bit" (Resolved.sigPayable sig)
+                  assertEqual
+                    "return items still aggregate to the backend result type"
+                    ( Just
+                        ( ResolvedTy.TyCon
+                            "pair"
+                            [ResolvedTy.TyCon "word" [], ResolvedTy.TyCon "bool" []]
                         )
-                        (Resolved.sigReturn sig)
-                Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
-                Left err -> assertFailure ("Name resolution failed: " ++ show err),
-      testCase "name resolution lowers a zero-arity function type explicitly" $
-        case
-            runParserE
-              (sc *> topDeclP <* eof)
-              "<test>"
-              "type Callback is function() external returns (word);"
-          of
-            Left err -> assertFailure ("Parse error:\n" ++ err)
-            Right parsed -> do
-              resolved <- nameResolution (CompUnit [] [parsed])
-              case resolved of
-                Right
-                  ( Resolved.CompUnit
-                      _
-                      [Resolved.TSym (Resolved.TySym "Callback" [] callbackTy)]
-                    ) ->
-                      assertEqual
-                        "the existing semantic AST represents a nullary function by its result"
-                        (ResolvedTy.TyCon "word" [])
-                        callbackTy
-                Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
-                Left err -> assertFailure ("Name resolution failed: " ++ show err),
+                    )
+                    (Resolved.sigReturn sig)
+                  assertEqual
+                    "semantic lowering preserves return-item names and comptime modes"
+                    [(Just "left", False), (Just "right", False)]
+                    [ ( Resolved.signatureReturnItemName returnItem,
+                        Resolved.signatureReturnItemComptime returnItem
+                      )
+                    | returnItem <- Resolved.sigReturnItems sig
+                    ]
+              Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
+              Left err -> assertFailure ("Name resolution failed: " ++ show err),
+      testCase "name resolution deliberately lowers supported internal function types" $
+        case runParserE
+          (sc *> topDeclP <* eof)
+          "<test>"
+          "function apply(f: function(word) internal returns (word, bool), x: word) returns (word, bool) { return f(x); }" of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Right
+                ( Resolved.CompUnit
+                    _
+                    [ Resolved.TFunDef
+                        ( Resolved.FunDef
+                            _
+                            signature
+                            _
+                          )
+                      ]
+                  ) -> do
+                  callbackTy <-
+                    case Resolved.sigParams signature of
+                      ResolvedStmt.Typed _ "f" ty : _ -> pure ty
+                      params ->
+                        assertFailure ("Unexpected resolved parameters: " ++ show params)
+                  assertEqual
+                    "supported internal function types lower to the existing arrow representation"
+                    ( ResolvedTy.funtype
+                        [ResolvedTy.TyCon "word" []]
+                        ( ResolvedTy.TyCon
+                            "pair"
+                            [ ResolvedTy.TyCon "word" [],
+                              ResolvedTy.TyCon "bool" []
+                            ]
+                        )
+                    )
+                    callbackTy
+              Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
+              Left err -> assertFailure ("Name resolution failed: " ++ show err),
+      testCase "name resolution rejects external function types instead of treating them as internal" $
+        assertFunctionTypeResolutionError
+          "external function types are not supported"
+          "function bad(f: function(word) external returns (word)) returns (word) { return 0; }",
+      testCase "name resolution rejects nullary function types instead of collapsing them to the result" $
+        assertFunctionTypeResolutionError
+          "zero-parameter function types are not supported"
+          "function bad(f: function() internal returns (word)) returns (word) { return 0; }",
       testCase "new declaration shells survive source pretty-printing" $
         mapM_
           roundTripsTopDecl
           [ "struct Pair { x: word; y: bool; }",
+            "struct _Record { _value: word; }",
+            "function _id(_value: word) returns (word) { return _value; }",
             "interface Oracle { function read(key: word) external view returns (word); }",
             "library Math { function twice(x: word) internal pure returns (word) { return x + x; } }"
           ]
     ]
+
+assertFunctionTypeResolutionError :: String -> String -> Assertion
+assertFunctionTypeResolutionError expectedMessage source =
+  case runParserE (sc *> topDeclP <* eof) "<test>" source of
+    Left err -> assertFailure ("Parse error:\n" ++ err)
+    Right parsed -> do
+      resolved <- nameResolution (CompUnit [] [parsed])
+      case resolved of
+        Left err -> do
+          let rendered = compilerErrorText err
+          assertBool
+            ("Expected SC0122 diagnostic, got:\n" ++ rendered)
+            ("SC0122" `isInfixOf` rendered)
+          assertBool
+            ("Expected diagnostic message " ++ show expectedMessage ++ ", got:\n" ++ rendered)
+            (expectedMessage `isInfixOf` rendered)
+        Right got ->
+          assertFailure
+            ("Expected name-resolution failure but resolved: " ++ show got)

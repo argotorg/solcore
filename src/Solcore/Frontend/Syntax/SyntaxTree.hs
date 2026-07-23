@@ -136,6 +136,7 @@ pattern ContractShell :: ContractKind -> Name -> [Ty] -> [ContractDecl] -> Contr
 pattern ContractShell k n ts ds = ContractWithKind k n ts ds
 
 {-# COMPLETE Contract #-}
+
 {-# COMPLETE ContractShell #-}
 
 -- definition of a algebraic data type
@@ -159,8 +160,8 @@ pattern DataTy n ts cs <- DataTyWithKind _ n ts cs
   where
     DataTy n ts cs = DataTyWithKind EnumKind n ts cs
 
--- Struct fields remain named in the source AST. Name resolution deliberately
--- lowers this shape to a one-constructor algebraic data type.
+-- Structs use the existing one-constructor runtime representation, while name
+-- resolution retains this kind and ordered field metadata in the semantic AST.
 pattern StructTy :: Name -> [Ty] -> [Name] -> [Ty] -> DataTy
 pattern StructTy n ts fieldNames fieldTypes <-
   DataTyWithKind (StructKind fieldNames) n ts [Constr _ fieldTypes]
@@ -397,7 +398,7 @@ legacyReturnItems _ Nothing = Nothing
 legacyReturnItems returnComptime (Just returnTy) =
   Just
     [ ReturnItem returnComptime Nothing itemTy
-      | itemTy <- legacyTupleElements returnTy
+    | itemTy <- legacyTupleElements returnTy
     ]
 
 legacyReturnView :: Maybe [ReturnItem] -> (Bool, Maybe Ty)
@@ -613,6 +614,7 @@ data Stmt
   | BlockWithLocation NodeLocation Body -- lexical block
   | StmtExpWithLocation NodeLocation Exp -- expression level statements
   | ReturnWithLocation NodeLocation Exp -- return statements
+  | BareReturnWithLocation NodeLocation -- return statement with no expression
   | MatchWithLocation NodeLocation [Exp] Equations -- pattern matching
   | AsmWithLocation NodeLocation YulBlock -- Yul block
   | IfWithLocation NodeLocation Exp Body Body -- If statement
@@ -621,6 +623,7 @@ data Stmt
   | ForWithLocation NodeLocation Stmt Exp Stmt Body -- for(init; cond; post) { body }
   | BreakWithLocation NodeLocation -- break out of the innermost enclosing for loop
   | ContinueWithLocation NodeLocation -- continue to the next iteration of the innermost enclosing for loop
+  | RevertWithLocation NodeLocation -- abort execution with empty return data
   | EmptyStmtWithLocation NodeLocation -- empty statement (for empty for init/post)
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -684,6 +687,11 @@ pattern Return exp <- ReturnWithLocation _ exp
   where
     Return exp = ReturnWithLocation unlocatedNode exp
 
+pattern BareReturn :: Stmt
+pattern BareReturn <- BareReturnWithLocation _
+  where
+    BareReturn = BareReturnWithLocation unlocatedNode
+
 pattern Match :: [Exp] -> Equations -> Stmt
 pattern Match exps equations <- MatchWithLocation _ exps equations
   where
@@ -724,12 +732,17 @@ pattern Continue <- ContinueWithLocation _
   where
     Continue = ContinueWithLocation unlocatedNode
 
+pattern Revert :: Stmt
+pattern Revert <- RevertWithLocation _
+  where
+    Revert = RevertWithLocation unlocatedNode
+
 pattern EmptyStmt :: Stmt
 pattern EmptyStmt <- EmptyStmtWithLocation _
   where
     EmptyStmt = EmptyStmtWithLocation unlocatedNode
 
-{-# COMPLETE Assign, StmtPlusEq, StmtMinusEq, StmtBXorEq, StmtBAndEq, StmtBOrEq, StmtModEq, Let, LetPattern, Block, StmtExp, Return, Match, Asm, If, While, Unchecked, For, Break, Continue, EmptyStmt #-}
+{-# COMPLETE Assign, StmtPlusEq, StmtMinusEq, StmtBXorEq, StmtBAndEq, StmtBOrEq, StmtModEq, Let, LetPattern, Block, StmtExp, Return, BareReturn, Match, Asm, If, While, Unchecked, For, Break, Continue, Revert, EmptyStmt #-}
 
 type Body = [Stmt]
 
@@ -763,6 +776,7 @@ locatedStmt sourceSpan (LetPattern ct pat ty value) =
 locatedStmt sourceSpan (Block body) = BlockWithLocation (locatedNode sourceSpan) body
 locatedStmt sourceSpan (StmtExp exp) = StmtExpWithLocation (locatedNode sourceSpan) exp
 locatedStmt sourceSpan (Return exp) = ReturnWithLocation (locatedNode sourceSpan) exp
+locatedStmt sourceSpan BareReturn = BareReturnWithLocation (locatedNode sourceSpan)
 locatedStmt sourceSpan (Match exps equations) = MatchWithLocation (locatedNode sourceSpan) exps equations
 locatedStmt sourceSpan (Asm block) = AsmWithLocation (locatedNode sourceSpan) block
 locatedStmt sourceSpan (If cond thenBody elseBody) = IfWithLocation (locatedNode sourceSpan) cond thenBody elseBody
@@ -771,6 +785,7 @@ locatedStmt sourceSpan (Unchecked body) = UncheckedWithLocation (locatedNode sou
 locatedStmt sourceSpan (For initStmt cond postStmt body) = ForWithLocation (locatedNode sourceSpan) initStmt cond postStmt body
 locatedStmt sourceSpan Break = BreakWithLocation (locatedNode sourceSpan)
 locatedStmt sourceSpan Continue = ContinueWithLocation (locatedNode sourceSpan)
+locatedStmt sourceSpan Revert = RevertWithLocation (locatedNode sourceSpan)
 locatedStmt sourceSpan EmptyStmt = EmptyStmtWithLocation (locatedNode sourceSpan)
 
 instance HasSourceSpan Stmt where
@@ -798,6 +813,8 @@ instance HasSourceSpan Stmt where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf exp]
   sourceSpanOf (ReturnWithLocation location exp) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf exp]
+  sourceSpanOf (BareReturnWithLocation location) =
+    sourceSpanOf location
   sourceSpanOf (MatchWithLocation location exps equations) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf exps, sourceSpanOf equations]
   sourceSpanOf (AsmWithLocation location _) =
@@ -813,6 +830,8 @@ instance HasSourceSpan Stmt where
   sourceSpanOf (BreakWithLocation location) =
     sourceSpanOf location
   sourceSpanOf (ContinueWithLocation location) =
+    sourceSpanOf location
+  sourceSpanOf (RevertWithLocation location) =
     sourceSpanOf location
   sourceSpanOf (EmptyStmtWithLocation location) =
     sourceSpanOf location
@@ -833,6 +852,7 @@ instance HasSourceSpan Param where
 data Exp
   = LitWithLocation NodeLocation Literal -- literal
   | ExpNameWithLocation NodeLocation (Maybe Exp) Name [Exp] -- function call or constructor
+  | ExpApplyWithLocation NodeLocation Exp [Exp] -- arbitrary postfix function application
   | ExpVarWithLocation NodeLocation (Maybe Exp) Name -- variables or field access
   | ExpDotNameWithLocation NodeLocation Name [Exp] -- contextual constructor shorthand, e.g. .Some(1), .None
   | LamWithLocation NodeLocation [Param] Body (Maybe Ty) -- lambda-abstraction
@@ -871,6 +891,11 @@ pattern ExpName :: Maybe Exp -> Name -> [Exp] -> Exp
 pattern ExpName me n es <- ExpNameWithLocation _ me n es
   where
     ExpName me n es = ExpNameWithLocation unlocatedNode me n es
+
+pattern ExpApply :: Exp -> [Exp] -> Exp
+pattern ExpApply callee args <- ExpApplyWithLocation _ callee args
+  where
+    ExpApply callee args = ExpApplyWithLocation unlocatedNode callee args
 
 pattern ExpVar :: Maybe Exp -> Name -> Exp
 pattern ExpVar me n <- ExpVarWithLocation _ me n
@@ -1007,13 +1032,14 @@ pattern ExpAt ty <- ExpAtWithLocation _ ty
   where
     ExpAt ty = ExpAtWithLocation unlocatedNode ty
 
-{-# COMPLETE Lit, ExpName, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpPlus, ExpMinus, ExpPower, ExpTimes, ExpDivide, ExpModulo, ExpShiftL, ExpShiftR, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpCond, ExpAt #-}
+{-# COMPLETE Lit, ExpName, ExpApply, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpPlus, ExpMinus, ExpPower, ExpTimes, ExpDivide, ExpModulo, ExpShiftL, ExpShiftR, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpCond, ExpAt #-}
 
 locatedExp :: SourceSpan -> Exp -> Exp
 locatedExp sourceSpan (Lit lit) = LitWithLocation location lit
   where
     location = locatedNode sourceSpan
 locatedExp sourceSpan (ExpName me n es) = ExpNameWithLocation (locatedNode sourceSpan) me n es
+locatedExp sourceSpan (ExpApply callee args) = ExpApplyWithLocation (locatedNode sourceSpan) callee args
 locatedExp sourceSpan (ExpVar me n) = ExpVarWithLocation (locatedNode sourceSpan) me n
 locatedExp sourceSpan (ExpDotName n es) = ExpDotNameWithLocation (locatedNode sourceSpan) n es
 locatedExp sourceSpan (Lam ps body ty) = LamWithLocation (locatedNode sourceSpan) ps body ty
@@ -1046,6 +1072,8 @@ instance HasSourceSpan Exp where
   sourceSpanOf (LitWithLocation location _) = sourceSpanOf location
   sourceSpanOf (ExpNameWithLocation location me n es) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf me, sourceSpanOf n, sourceSpanOf es]
+  sourceSpanOf (ExpApplyWithLocation location callee args) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf callee, sourceSpanOf args]
   sourceSpanOf (ExpVarWithLocation location me n) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf me, sourceSpanOf n]
   sourceSpanOf (ExpDotNameWithLocation location n es) =

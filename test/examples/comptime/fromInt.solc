@@ -8,7 +8,7 @@ Here we use a bit less ambitious approach: literals of type word and `fromWord` 
 
 import std;
 
-type uint is uint256; // misleads instance solver
+alias uint = uint256; // misleads instance solver
 
 trait Int<i> {
   function fromWord(x:word) returns (comptime i); // meaning result is comptime whenever arg is

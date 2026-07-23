@@ -10,7 +10,7 @@ import Control.Monad (when)
 import Data.Set qualified as Set
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.Expr (exprP)
-import Solcore.Frontend.Parser.SolcoreTypes (locatedP, qualifiedName, simpleNameP)
+import Solcore.Frontend.Parser.SolcoreTypes (booleanNameP, locatedP, qualifiedName, simpleNameP)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 
@@ -55,11 +55,16 @@ bindingNameP = do
 
 wildcardP :: Parser Pat
 wildcardP =
-  PWildcard <$ lexeme (string "_" <* notFollowedBy (alphaNumChar <|> char '_'))
+  PWildcard
+    <$ lexeme
+      (try (string "_" <* notFollowedBy (alphaNumChar <|> char '_')))
 
 litP :: Parser Pat
 litP =
-  PLit . IntLit
+  (\n -> Pat n [])
+    <$> booleanNameP
+      <|> PLit
+      . IntLit
     <$> integer
       <|> PLit
       . StrLit
@@ -69,7 +74,7 @@ dotPatP :: Parser Pat
 dotPatP = do
   _ <- char '.'
   sc
-  n <- simpleNameP
+  n <- booleanNameP <|> simpleNameP
   args <- option [] (parens (patP `sepBy1` comma))
   return (PatDot n args)
 

@@ -80,7 +80,11 @@ reservedWords =
     "view",
     "constructor",
     "return",
+    "revert",
+    "true",
+    "false",
     "lam",
+    "alias",
     "type",
     "pragma",
     "solcore",
@@ -92,7 +96,7 @@ identifier :: Parser String
 identifier = lexeme go <?> "identifier"
   where
     go = do
-      h <- letterChar
+      h <- letterChar <|> char '_'
       t <- many identChar
       let w = h : t
       if w `elem` reservedWords
@@ -115,6 +119,7 @@ stringLit =
       choice
         [ char 'n' *> pure '\n',
           char 't' *> pure '\t',
+          char 'r' *> pure '\r',
           char '"' *> pure '"',
           char '\\' *> pure '\\'
         ]

@@ -24,6 +24,17 @@ data TypeInfo
   }
   deriving (Eq, Ord, Show)
 
+-- Ordered source-struct metadata used to type and lower value member reads.
+-- The field types remain parameterised by 'structParams' until a concrete
+-- receiver type supplies their arguments.
+data StructInfo
+  = StructInfo
+  { structParams :: [Tyvar],
+    structConstructor :: Maybe Name,
+    structFields :: [(Name, Ty)]
+  }
+  deriving (Eq, Show)
+
 -- type synonym information
 data SynInfo
   = SynInfo
@@ -78,6 +89,8 @@ type ClassTable = Table ClassInfo
 
 type TypeTable = Table TypeInfo
 
+type StructTable = Table StructInfo
+
 type SynTable = Table SynInfo
 
 type Inst = Qual Pred
@@ -95,6 +108,7 @@ data TcEnv
     instEnv :: InstTable, -- Instance Environment
     defaultEnv :: DefTable, -- Default instance environment
     typeTable :: TypeTable, -- Type information environment
+    structTable :: StructTable, -- Ordered source-struct metadata
     synTable :: SynTable, -- Type synonym environment
     classTable :: ClassTable, -- Class information table
     contract :: Maybe Name, -- current contract name
@@ -128,6 +142,7 @@ initTcEnv opts =
       instEnv = primInstEnv,
       defaultEnv = Map.empty,
       typeTable = primTypeEnv,
+      structTable = Map.empty,
       synTable = Map.empty,
       classTable = primClassEnv,
       contract = Nothing,

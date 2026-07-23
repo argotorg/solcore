@@ -45,17 +45,21 @@ letP :: Parser Stmt
 letP = locatedP locatedStmt $ do
   keyword "let"
   ct <- option False (True <$ keyword "comptime")
-  stmt <- try (tupleLetRemainder ct) <|> simpleLetRemainder ct
+  stmt <- letRemainderP ct
   _ <- semicolon
   pure stmt
+
+letRemainderP :: Bool -> Parser Stmt
+letRemainderP ct =
+  try tupleLetRemainder <|> simpleLetRemainder
   where
-    simpleLetRemainder ct = do
+    simpleLetRemainder = do
       n <- simpleNameP
       mt <- optional (colon *> typeP)
       me <- optional (equalsP *> expP)
       pure (Let ct n mt me)
 
-    tupleLetRemainder ct = do
+    tupleLetRemainder = do
       pat <- bindingTuplePatP
       mt <- optional (colon *> typeP)
       value <- equalsP *> expP
@@ -64,9 +68,9 @@ letP = locatedP locatedStmt $ do
 returnP :: Parser Stmt
 returnP = locatedP locatedStmt $ do
   keyword "return"
-  value <- option (ExpName Nothing "()" []) expP
+  value <- optional expP
   _ <- semicolon
-  pure (Return value)
+  pure (maybe BareReturn Return value)
 
 ifP :: Parser Stmt
 ifP = locatedP locatedStmt $ do
@@ -112,8 +116,9 @@ uncheckedP =
 
 revertP :: Parser Stmt
 revertP =
-  locatedP locatedStmt
-    (StmtExp (ExpName Nothing "revert" []) <$ (keyword "revert" *> semicolon))
+  locatedP
+    locatedStmt
+    (Revert <$ (keyword "revert" *> semicolon))
 
 blockP :: Parser Stmt
 blockP = locatedP locatedStmt (Block <$> braces bodyP)
@@ -152,10 +157,7 @@ forLetP :: Parser Stmt
 forLetP = locatedP locatedStmt $ do
   keyword "let"
   ct <- option False (True <$ keyword "comptime")
-  n <- simpleNameP
-  mt <- optional (colon *> typeP)
-  me <- optional (equalsP *> expP)
-  return (Let ct n mt me)
+  letRemainderP ct
 
 forAssignP :: Parser Stmt
 forAssignP = locatedP locatedStmt $ do

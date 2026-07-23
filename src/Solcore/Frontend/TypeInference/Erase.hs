@@ -37,8 +37,12 @@ instance Erase (FunDef Id) where
 instance Erase (Signature Id) where
   type EraseRes (Signature Id) = Signature Name
 
-  erase (Signature n ps t args rc rt pay) =
-    Signature n ps t (erase args) rc rt pay
+  erase sig@(Signature n ps t args rc rt pay) =
+    (Signature n ps t (erase args) rc rt pay)
+      { sigReturnNames = sigReturnNames sig,
+        sigReturnItems = sigReturnItems sig,
+        sigModifiers = sigModifiers sig
+      }
 
 instance Erase (Stmt Id) where
   type EraseRes (Stmt Id) = Stmt Name

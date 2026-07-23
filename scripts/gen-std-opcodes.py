@@ -100,7 +100,7 @@ opcodes = [
 # Opcodes whose names clash with solcore keywords get a trailing underscore
 # in the wrapper function name, while the inner assembly call still uses the
 # real EVM mnemonic.
-RESERVED_NAMES = {"return": "return_"}
+RESERVED_NAMES = {"return": "return_", "revert": "revert_"}
 
 
 def wrapper_name(op):

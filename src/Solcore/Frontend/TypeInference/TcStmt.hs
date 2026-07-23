@@ -60,6 +60,8 @@ tcStmtWithExpectedReturn mExpectedReturn stmt =
   locatedInferResult locatedStmt stmt <$> tcStmtWithExpectedReturn' mExpectedReturn stmt
 
 tcStmtWithExpectedReturn' :: Maybe Ty -> Infer Stmt
+tcStmtWithExpectedReturn' _ (FieldAccess (Just _) memberName := _) =
+  unsupportedStructFieldAssignment memberName
 tcStmtWithExpectedReturn' _ e@(lhs := rhs) =
   do
     (lhs1, ps1, t1) <- tcExp lhs
@@ -118,12 +120,19 @@ tcStmtWithExpectedReturn' mExpectedReturn (Match es eqns) =
     ensureVisiblePatternCoverage ts' eqns
     (eqns', pss1, resTy) <- tcEquationsWithExpectedReturn mExpectedReturn ts' eqns
     withCurrentSubst (Match es' eqns', concat (pss1 : pss'), resTy)
-tcStmtWithExpectedReturn' _ (Asm yblk) =
-  withLocalCtx yulPrimOps $ do
-    (newBinds, t) <- tcYulBlock yblk
-    let word' = monotype word
-    mapM_ (flip extEnv word') newBinds
-    pure (Asm yblk, [], t)
+tcStmtWithExpectedReturn' mExpectedReturn stmt@(Asm yblk) = do
+  case validateYulControlFlow yblk of
+    Left err -> tcmError err `wrapError` stmt
+    Right () -> pure ()
+  if isEmptyRevertBlock yblk
+    then do
+      resultTy <- maybe freshTyVar pure mExpectedReturn
+      pure (Asm yblk, [], resultTy)
+    else withLocalCtx yulPrimOps $ do
+      (newBinds, t) <- tcYulBlock yblk
+      let word' = monotype word
+      mapM_ (flip extEnv word') newBinds
+      pure (Asm yblk, [], t)
 tcStmtWithExpectedReturn' mExpectedReturn s@(If e blk1 blk2) =
   do
     (e', ps, t) <- tcExp e
@@ -192,6 +201,14 @@ tcStmtWithExpectedReturn' _ Continue =
   pure (Continue, [], unit)
 tcStmtWithExpectedReturn' _ EmptyStmt =
   pure (EmptyStmt, [], unit)
+
+-- Name resolution lowers source-level @revert;@ to this exact Yul block.
+-- Reversion never falls through, so it inhabits the surrounding function's
+-- result type just like a bottom value instead of forcing the branch to unit.
+isEmptyRevertBlock :: YulBlock -> Bool
+isEmptyRevertBlock
+  [YExp (YCall "revert" [YLit (YulNumber 0), YLit (YulNumber 0)])] = True
+isEmptyRevertBlock _ = False
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations = tcEquationsWithExpectedReturn Nothing
@@ -421,13 +438,19 @@ tcExpWithExpected' _ (FieldAccess (Just e) n) =
   do
     -- inferring expression type
     (e', ps, t) <- tcExpWithExpected Nothing e
-    -- expand synonyms before extracting type name
-    tExp <- maybeExpandSynonym t
-    tn <- typeName tExp
-    -- getting field type
-    s <- askField tn n
-    (ps' :=> t') <- freshInst s
-    withCurrentSubst (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
+    -- Expand aliases and instantiate the ordered source-struct metadata with
+    -- the receiver's actual type arguments.
+    tCurrent <- withCurrentSubst t
+    receiverTy <- maybeExpandSynonym tCurrent
+    (selectorName, memberTy) <- askStructField receiverTy n
+    let selectorTy = funtype [receiverTy] memberTy
+    -- A normal function call gives the receiver ordinary call-by-value
+    -- semantics: even a side-effecting receiver is evaluated exactly once.
+    withCurrentSubst
+      ( Call Nothing (Id selectorName selectorTy) [e'],
+        ps,
+        memberTy
+      )
 tcExpWithExpected' _ ex@(Call me n args) =
   tcCall me n args `wrapError` ex
 tcExpWithExpected' mExpected (Lam args bd _) =
@@ -1007,7 +1030,14 @@ elabSignature vs1 sig (Forall _ (ps :=> t)) =
         -- formal parameters are present in the signature.
         ret = Just $ if null params' then t else (funtype rs t')
         vs' = bv params' `union` bv ret `union` bv ps
-    sig2 <- withCurrentSubst (Signature (vs' \\ vs1) ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig))
+    sig2 <-
+      withCurrentSubst
+        ( (Signature (vs' \\ vs1) ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig))
+            { sigReturnNames = sigReturnNames sig,
+              sigReturnItems = sigReturnItems sig,
+              sigModifiers = sigModifiers sig
+            }
+        )
     pure sig2
 
 elabParam :: Ty -> Param Name -> TcM (Param Id)
@@ -1016,7 +1046,12 @@ elabParam t (Untyped c n) = pure $ Typed c (Id n t) t
 
 annotateSignature :: Scheme -> Signature Name -> TcM (Signature Name)
 annotateSignature (Forall vs (ps :=> t)) sig =
-  pure $ Signature vs ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig)
+  pure $
+    (Signature vs ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig))
+      { sigReturnNames = sigReturnNames sig,
+        sigReturnItems = sigReturnItems sig,
+        sigModifiers = sigModifiers sig
+      }
   where
     (ts, t') = splitTy t
     params' = zipWith annotateParam ts (sigParams sig)
@@ -1191,8 +1226,16 @@ schemeFromSignature sig =
     unwords ["Invalid instance member signature (missing return type):", pretty sig]
 
 updateSignature :: [Tyvar] -> Name -> FunDef Id -> FunDef Id
-updateSignature vs' c (FunDef p (Signature vs ps n args rc rt pay) bd) =
-  FunDef p (Signature (vs \\ vs') ps (qualifyName c n) args rc rt pay) bd
+updateSignature vs' c (FunDef p sig@(Signature vs ps n args rc rt pay) bd) =
+  FunDef
+    p
+    ( (Signature (vs \\ vs') ps (qualifyName c n) args rc rt pay)
+        { sigReturnNames = sigReturnNames sig,
+          sigReturnItems = sigReturnItems sig,
+          sigModifiers = sigModifiers sig
+        }
+    )
+    bd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
 checkDeferedConstraints = mapM_ checkDeferedConstraint

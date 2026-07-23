@@ -1,12 +1,12 @@
   enum Unit { Unit }
-  type Memory<a> is Word;
+  alias Memory<a> = Word;
 
   trait Ref<ref, deref> {
     function load (r : ref) returns (deref) ;
     function store (r : ref, v : deref) ;
   }
 
-  type Stack<a> is a;
+  alias Stack<a> = a;
 
   impl Ref<Stack<a>, Memory<a>> {
     function load (r : Stack<a>) returns (Memory<a>) {}

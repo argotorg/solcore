@@ -13,8 +13,8 @@ import Solcore.Frontend.Syntax qualified as Typed
 import Solcore.Frontend.Syntax.Location
 import Solcore.Frontend.Syntax.NameResolution (nameResolution)
 import Solcore.Frontend.Syntax.SyntaxTree qualified as Parsed
-import Solcore.Frontend.TypeInference.SccAnalysis (sccAnalysis)
 import Solcore.Frontend.TypeInference.Id (Id)
+import Solcore.Frontend.TypeInference.SccAnalysis (sccAnalysis)
 import Solcore.Frontend.TypeInference.TcModule
 import Solcore.Pipeline.Options (stdOpt)
 import Test.Tasty

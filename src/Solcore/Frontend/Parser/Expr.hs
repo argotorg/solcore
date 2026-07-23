@@ -7,7 +7,7 @@ import Common.LightYear
 import Control.Monad.Combinators.Expr
 import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Lexer.SolcoreLexer
-import Solcore.Frontend.Parser.SolcoreTypes (locatedFromSpans, locatedP, paramP, simpleNameP, typeP)
+import Solcore.Frontend.Parser.SolcoreTypes (booleanNameP, locatedFromSpans, locatedP, paramP, simpleNameP, typeP)
 import Solcore.Frontend.Syntax.Location (sourceSpanOf)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
@@ -112,7 +112,7 @@ postfixP bp = do
   return (foldl (\acc f -> f acc) e0 ops)
 
 postfixOp :: BodyP -> Parser (Exp -> Exp)
-postfixOp bp = dotOp bp <|> idxOp bp
+postfixOp bp = dotOp bp <|> idxOp bp <|> callOp bp
 
 dotOp :: BodyP -> Parser (Exp -> Exp)
 dotOp bp = do
@@ -129,13 +129,27 @@ idxOp bp = do
   idx <- brackets (exprP bp)
   return (\e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf idx] (ExpIndexed e idx))
 
+callOp :: BodyP -> Parser (Exp -> Exp)
+callOp bp = do
+  args <- parens (exprP bp `sepBy` comma)
+  pure $ \callee ->
+    locatedExpFrom [sourceSpanOf callee, sourceSpanOf args] $
+      case callee of
+        -- Keep the established source shape for direct and member calls,
+        -- including redundant parentheses such as `(f)(x)`.
+        ExpVar receiver memberName -> ExpName receiver memberName args
+        _ -> ExpApply callee args
+
 atomP :: BodyP -> Parser Exp
 atomP bp = litP <|> try (lamP bp) <|> try (dotNameP bp) <|> parenP bp <|> nameP bp
 
 litP :: Parser Exp
 litP =
   locatedP locatedExp $
-    Lit . IntLit
+    ExpVar Nothing
+      <$> booleanNameP
+        <|> Lit
+        . IntLit
       <$> integer
         <|> Lit
         . StrLit
@@ -159,7 +173,7 @@ dotNameP :: BodyP -> Parser Exp
 dotNameP bp = locatedP locatedExp $ do
   _ <- char '.'
   sc
-  n <- simpleNameP
+  n <- booleanNameP <|> simpleNameP
   args <- option [] (parens (exprP bp `sepBy` comma))
   return (ExpDotName n args)
 

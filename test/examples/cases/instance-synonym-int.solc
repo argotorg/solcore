@@ -1,4 +1,4 @@
-type W is word;
+alias W = word;
 
 trait FromWord<i> {
   function fromWord(x:word) returns (i);

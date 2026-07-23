@@ -1,9 +1,9 @@
 enum Unit { Unit }
 enum Pair<a, b> { Pair(a, b) }
 
-type uint is word;
-type string is word;
-type bool is word;
+alias uint = word;
+alias string = word;
+alias bool = word;
 
 enum Memory<t> { Memory(Word) }
 
@@ -19,12 +19,12 @@ trait Field<self, prevTypes, ty> {}
 //}
 
 // a type abstraction over tuples
-type s is Pair<uint, Pair<string, bool>>;
+alias s = Pair<uint, Pair<string, bool>>;
 
 // unique types identifying each field
-type sf1 is Unit;
-type sf2 is Unit;
-type sf3 is Unit;
+alias sf1 = Unit;
+alias sf2 = Unit;
+alias sf3 = Unit;
 
 // Field instances linking each field to it's position in the underlying tuple
 impl Field<Pair<s, sf1>, Unit, uint> {}

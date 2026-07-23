@@ -1,5 +1,5 @@
-type Uint is word;
-type Point is pair<word, word>;
+alias Uint = word;
+alias Point = pair<word, word>;
 
 function useUint(x: Uint) returns (word) {
     return x;

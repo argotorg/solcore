@@ -255,6 +255,8 @@ checkTopDecl (TInstDef is) =
   checkInstance is
 checkTopDecl (TDataDef dt) =
   checkDataType dt
+checkTopDecl (TContr (ContractWithKind _ _ _ contractDecls)) =
+  mapM_ checkContractDataDecl contractDecls
 checkTopDecl (TSym s) =
   checkSynonym s
 checkTopDecl (TFunDef (FunDef _ sig _)) =
@@ -262,17 +264,29 @@ checkTopDecl (TFunDef (FunDef _ sig _)) =
 checkTopDecl (TExportDecl _) = pure ()
 checkTopDecl _ = pure ()
 
+-- Contract-local data types have collision-free semantic names
+-- (Contract.Type), so keep them in the module type/constructor environment.
+-- Auto-derived Generic/Storage/ABI instances are top-level declarations and
+-- may be checked before the contract body that owns their type.
+checkContractDataDecl :: ContractDecl Name -> TcM ()
+checkContractDataDecl (CDataDecl dt) =
+  checkDataType dt
+checkContractDataDecl (CMutualDecl contractDecls) =
+  mapM_ checkContractDataDecl contractDecls
+checkContractDataDecl _ =
+  pure ()
+
 -- type inference for contracts
 
 tcContract :: Contract Name -> TcM (Contract Id, [(Name, Scheme)])
-tcContract c@(Contract n vs cdecls) =
+tcContract c@(ContractWithKind kind n vs cdecls) =
   withLocalEnv $ withContractName n $ do
     ctx' <- gets ctx
     initializeEnv c
     decls' <- mapM tcDecl' cdecls
     ctx1 <- gets ctx
     let ctx2 = Map.toList $ Map.difference ctx1 ctx'
-    pure (Contract n vs decls', ctx2)
+    pure (ContractWithKind kind n vs decls', ctx2)
   where
     tcDecl' d =
       do
@@ -284,7 +298,7 @@ tcContract c@(Contract n vs cdecls) =
 -- initializing context for a contract
 
 initializeEnv :: Contract Name -> TcM ()
-initializeEnv (Contract _ _ cdecls) = do
+initializeEnv (ContractWithKind _ _ _ cdecls) = do
   mapM_ checkDecl cdecls
   -- Pre-register annotated function signatures in ctx so that forward references
   -- (e.g. the dispatch-generated 'main') can resolve user-defined functions
@@ -302,8 +316,11 @@ initializeEnv (Contract _ _ cdecls) = do
   mapM_ (uncurry extEnv) (nmschs ++ signatureSchemes)
 
 checkDecl :: ContractDecl Name -> TcM ()
-checkDecl (CDataDecl dt) =
-  checkDataType dt
+-- Nested data types are registered by the module-wide checkTopDecl pre-pass so
+-- generated top-level instances can refer to them. Re-registering here would
+-- report the owning declaration as a duplicate.
+checkDecl (CDataDecl _) =
+  pure ()
 checkDecl (CFunDecl (FunDef _ sig _)) =
   extSignature sig
 checkDecl (CSignatureDecl _ sig) =
@@ -347,19 +364,29 @@ tcContractSignature sig@(Signature vars predicates n params retComptime returnTy
   checkConstraints predicates `wrapError` sig
   params' <- mapM tcSignatureParam params
   returnTy' <- traverse kindCheck returnTy `wrapError` sig
-  pure (Signature vars predicates n params' retComptime returnTy' payable)
+  returnItems' <- mapM tcSignatureReturnItem (sigReturnItems sig) `wrapError` sig
+  pure
+    ( (Signature vars predicates n params' retComptime returnTy' payable)
+        { sigReturnNames = sigReturnNames sig,
+          sigReturnItems = returnItems',
+          sigModifiers = sigModifiers sig
+        }
+    )
   where
     tcSignatureParam p@(Typed comptime paramName' ty) = do
       ty' <- kindCheck ty `wrapError` p
       pure (Typed comptime (Id paramName' ty') ty')
     tcSignatureParam (Untyped _ _) =
       tcmError "Interface function parameters must have type annotations"
+    tcSignatureReturnItem returnItem = do
+      returnItemTy <- kindCheck (signatureReturnItemType returnItem)
+      pure returnItem {signatureReturnItemType = returnItemTy}
 
 -- kind check data declarations
 
 tcDataDecl :: DataTy -> TcM DataTy
-tcDataDecl (DataTy n vs cs) =
-  DataTy n vs <$> mapM tcConstr cs
+tcDataDecl (DataTyWithKind kind n vs cs) =
+  DataTyWithKind kind n vs <$> mapM tcConstr cs
 
 tcConstr :: Constr -> TcM Constr
 tcConstr (Constr n ts) =
@@ -399,20 +426,30 @@ tcSig :: (Signature Name, Scheme) -> TcM (Signature Id)
 tcSig (sig, (Forall _ (_ :=> t))) =
   do
     t1 <- kindCheck t `wrapError` sig
+    returnItems' <- mapM tcSignatureReturnItem (sigReturnItems sig) `wrapError` sig
     let (ts, r) = splitTy t1
         param (Typed c n _) t2 = Typed c (Id n t2) t2
         param (Untyped c n) t2 = Typed c (Id n t2) t2
         params' = zipWith param (sigParams sig) ts
     pure
-      ( Signature
-          (sigVars sig)
-          (sigContext sig)
-          (sigName sig)
-          params'
-          (sigRetComptime sig)
-          (Just r)
-          (sigPayable sig)
+      ( ( Signature
+            (sigVars sig)
+            (sigContext sig)
+            (sigName sig)
+            params'
+            (sigRetComptime sig)
+            (Just r)
+            (sigPayable sig)
+        )
+          { sigReturnNames = sigReturnNames sig,
+            sigReturnItems = returnItems',
+            sigModifiers = sigModifiers sig
+          }
       )
+  where
+    tcSignatureReturnItem returnItem = do
+      returnItemTy <- kindCheck (signatureReturnItemType returnItem)
+      pure returnItem {signatureReturnItemType = returnItemTy}
 
 -- type checking binding groups
 
