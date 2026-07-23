@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="80" viewBox="0 0 1179.0 80" width="1179.0">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 30v20m10 -20v20m-10 -10h20" /></g><path d="M40 40h10" /><g>
+<path d="M50 40h0.0" /><path d="M1129.0 40h0.0" /><g>
+<path d="M50.0 40h0.0" /><path d="M169.5 40h0.0" /><path d="M50.0 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M70.0 20h79.5" /></g><path d="M149.5 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M50.0 40h20" /><g class="terminal ">
+<path d="M70.0 40h0.0" /><path d="M149.5 40h0.0" /><rect height="22" rx="10" ry="10" width="79.5" x="70" y="29"></rect><text x="109.75" y="44">default</text></g><path d="M149.5 40h20" /></g><path d="M169.5 40h10" /><g class="terminal ">
+<path d="M179.5 40h0.0" /><path d="M233.5 40h0.0" /><rect height="22" rx="10" ry="10" width="54" x="179.5" y="29"></rect><text x="206.5" y="44">impl</text></g><path d="M233.5 40h10" /><g>
+<path d="M243.5 40h0.0" /><path d="M414.0 40h0.0" /><path d="M243.5 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M263.5 20h130.5" /></g><path d="M394.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M243.5 40h20" /><g class="non-terminal ">
+<path d="M263.5 40h0.0" /><path d="M394.0 40h0.0" /><rect height="22" width="130.5" x="263.5" y="29"></rect><text x="328.75" y="44">GenericParams</text></g><path d="M394.0 40h20" /></g><path d="M414.0 40h10" /><g class="non-terminal ">
+<path d="M424.0 40h0.0" /><path d="M554.5 40h0.0" /><rect height="22" width="130.5" x="424" y="29"></rect><text x="489.25" y="44">QualifiedName</text></g><path d="M554.5 40h10" /><path d="M564.5 40h10" /><g class="non-terminal ">
+<path d="M574.5 40h0.0" /><path d="M730.5 40h0.0" /><rect height="22" width="156" x="574.5" y="29"></rect><text x="652.5" y="44">GenericArguments</text></g><path d="M730.5 40h10" /><g>
+<path d="M740.5 40h0.0" /><path d="M894.0 40h0.0" /><path d="M740.5 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M760.5 20h113.5" /></g><path d="M874.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M740.5 40h20" /><g class="non-terminal ">
+<path d="M760.5 40h0.0" /><path d="M874.0 40h0.0" /><rect height="22" width="113.5" x="760.5" y="29"></rect><text x="817.25" y="44">WhereClause</text></g><path d="M874.0 40h20" /></g><path d="M894.0 40h10" /><g class="terminal ">
+<path d="M904.0 40h0.0" /><path d="M932.5 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="904" y="29"></rect><text x="918.25" y="44">{</text></g><path d="M932.5 40h10" /><g>
+<path d="M942.5 40h0.0" /><path d="M1090.5 40h0.0" /><path d="M942.5 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M962.5 20h108.0" /></g><path d="M1070.5 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M942.5 40h20" /><g>
+<path d="M962.5 40h0.0" /><path d="M1070.5 40h0.0" /><path d="M962.5 40h10" /><g class="non-terminal ">
+<path d="M972.5 40h0.0" /><path d="M1060.5 40h0.0" /><rect height="22" width="88" x="972.5" y="29"></rect><text x="1016.5" y="44">Function</text></g><path d="M1060.5 40h10" /><path d="M972.5 40a10 10 0 0 0 -10 10v0a10 10 0 0 0 10 10" /><g>
+<path d="M972.5 60h88.0" /></g><path d="M1060.5 60a10 10 0 0 0 10 -10v0a10 10 0 0 0 -10 -10" /></g><path d="M1070.5 40h20" /></g><path d="M1090.5 40h10" /><g class="terminal ">
+<path d="M1100.5 40h0.0" /><path d="M1129.0 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="1100.5" y="29"></rect><text x="1114.75" y="44">}</text></g></g><path d="M1129.0 40h10" /><path d="M 1139.0 40 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>

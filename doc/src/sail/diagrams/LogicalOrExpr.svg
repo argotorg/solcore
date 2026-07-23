@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="80" viewBox="0 0 505.0 80" width="505.0">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 30v20m10 -20v20m-10 -10h20" /></g><path d="M40 40h10" /><g>
+<path d="M50 40h0.0" /><path d="M455.0 40h0.0" /><g class="non-terminal ">
+<path d="M50.0 40h0.0" /><path d="M189.0 40h0.0" /><rect height="22" width="139" x="50" y="29"></rect><text x="119.5" y="44">LogicalAndExpr</text></g><path d="M189.0 40h10" /><g>
+<path d="M199.0 40h0.0" /><path d="M455.0 40h0.0" /><path d="M199.0 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M219.0 20h216.0" /></g><path d="M435.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M199.0 40h20" /><g>
+<path d="M219.0 40h0.0" /><path d="M435.0 40h0.0" /><path d="M219.0 40h10" /><g>
+<path d="M229.0 40h0.0" /><path d="M425.0 40h0.0" /><g class="terminal ">
+<path d="M229.0 40h0.0" /><path d="M266.0 40h0.0" /><rect height="22" rx="10" ry="10" width="37" x="229" y="29"></rect><text x="247.5" y="44">||</text></g><path d="M266.0 40h10" /><path d="M276.0 40h10" /><g class="non-terminal ">
+<path d="M286.0 40h0.0" /><path d="M425.0 40h0.0" /><rect height="22" width="139" x="286" y="29"></rect><text x="355.5" y="44">LogicalAndExpr</text></g></g><path d="M425.0 40h10" /><path d="M229.0 40a10 10 0 0 0 -10 10v0a10 10 0 0 0 10 10" /><g>
+<path d="M229.0 60h196.0" /></g><path d="M425.0 60a10 10 0 0 0 10 -10v0a10 10 0 0 0 -10 -10" /></g><path d="M435.0 40h20" /></g></g><path d="M455.0 40h10" /><path d="M 465.0 40 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>

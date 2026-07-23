@@ -36,7 +36,7 @@ TopDecl = Contract
         | ImplDef
         | StructDef
         | EnumDef
-        | TypeDef
+        | AliasDef
         | ExportDecl
 
 
@@ -102,7 +102,9 @@ PragmaTargets = Identifier { "," Identifier }
 
 ## Types
 
-Type = TypeAtom { ArraySuffix } [ DataLocation ]
+Type = TypeAtom { TypeSuffix }
+
+TypeSuffix = ArraySuffix | DataLocation
 
 TypeAtom = QualifiedName [ GenericArguments ]
          | "mapping" "(" Type "=>" Type ")"
@@ -134,7 +136,7 @@ ReturnItem = [ "comptime" ] [ Identifier ":" ] Type
 GenericParams = "<" IdentifierList ">"
 
 
-## Structs, Enums, and User-Defined Types
+## Structs, Enums, and Type Aliases
 
 StructDef = "struct" Identifier [ GenericParams ]
             "{" { StructField } "}"
@@ -146,7 +148,11 @@ EnumDef = "enum" Identifier [ GenericParams ]
 
 EnumVariant = Identifier [ "(" TypeList ")" ]
 
-TypeDef = "type" Identifier [ GenericParams ] "is" Type ";"
+AliasDef = "alias" Identifier [ GenericParams ] "=" Type ";"
+
+# "type" Identifier "is" Type ";" is reserved for nominal user-defined value
+# types.  The current compiler rejects that form until nominal semantics are
+# implemented; it must not be interpreted as a transparent AliasDef.
 
 
 ## Patterns
@@ -172,16 +178,16 @@ LogicalOrExpr = LogicalAndExpr { "||" LogicalAndExpr }
 
 LogicalAndExpr = EqualityExpr { "&&" EqualityExpr }
 
-EqualityExpr = BitwiseOrExpr { ( "==" | "!=" ) BitwiseOrExpr }
+EqualityExpr = RelationalExpr [ ( "==" | "!=" ) RelationalExpr ]
+
+RelationalExpr = BitwiseOrExpr
+                 [ ( "<" | ">" | "<=" | ">=" ) BitwiseOrExpr ]
 
 BitwiseOrExpr = BitwiseXorExpr { "|" BitwiseXorExpr }
 
 BitwiseXorExpr = BitwiseAndExpr { "^" BitwiseAndExpr }
 
-BitwiseAndExpr = RelationalExpr { "&" RelationalExpr }
-
-RelationalExpr = ShiftExpr
-                 { ( "<" | ">" | "<=" | ">=" ) ShiftExpr }
+BitwiseAndExpr = ShiftExpr { "&" ShiftExpr }
 
 ShiftExpr = AdditiveExpr { ( "<<" | ">>" ) AdditiveExpr }
 
@@ -316,6 +322,11 @@ FunctionAttribute = "public"
                   | "view"
                   | "payable"
 
+# Contract and library functions admit at most one visibility attribute and at
+# most one mutability attribute.  Module-level functions, trait signatures, and
+# implementation methods reject visibility and "payable"; "pure" and "view"
+# remain available there.
+
 TraitDef = "trait" Identifier GenericParams
            [ WhereClause ]
            "{" { Signature ";" } "}"
@@ -347,7 +358,21 @@ Constructor = "constructor" "(" [ ParamList ] ")"
 Fallback = "fallback" "(" ")" "external" [ "payable" ] Body
 
 Interface = "interface" Identifier [ GenericParams ]
-            "{" { Signature ";" } "}"
+            "{" { InterfaceSignature ";" } "}"
+
+InterfaceSignature = "function" Identifier [ GenericParams ]
+                     "(" [ ParamList ] ")"
+                     { InterfaceAttribute }
+                     [ "returns" "(" [ ReturnItemList ] ")" ]
+                     [ WhereClause ]
+
+InterfaceAttribute = "external"
+                   | "pure"
+                   | "view"
+                   | "payable"
+
+# An InterfaceSignature contains "external" exactly once and at most one of
+# "pure", "view", and "payable".
 
 Library = "library" Identifier [ GenericParams ]
           "{" { LibraryDecl } "}"
@@ -364,6 +389,8 @@ AsmBlock = "assembly" "{" { YulStmt } "}"
 
 YulStmt = YulNames ":=" YulExpr
         | "let" YulNames [ ":=" YulExpr ]
+        | "function" YulIdentifier "(" [ YulNames ] ")"
+          [ "->" YulNames ] "{" { YulStmt } "}"
         | "if" YulExpr "{" { YulStmt } "}"
         | "switch" YulExpr { YulCase }
           [ "default" "{" { YulStmt } "}" ]
@@ -378,12 +405,19 @@ YulStmt = YulNames ":=" YulExpr
 YulCase = "case" YulLiteral "{" { YulStmt } "}"
 
 YulExpr = YulLiteral
-        | Identifier
-        | Identifier "(" [ YulExprList ] ")"
+        | YulIdentifier
+        | YulIdentifier "(" [ YulExprList ] ")"
+        | YMeta
         | "return" "(" [ YulExprList ] ")"
 
-YulNames = Identifier { "," Identifier }
+YMeta = "`" { char } "`"
+      | "${" { char } "}"
+
+YulNames = YulIdentifier { "," YulIdentifier }
 
 YulExprList = YulExpr { "," YulExpr }
 
-YulLiteral = Integer | StringLiteral
+YulLiteral = Integer | StringLiteral | "true" | "false"
+
+YulIdentifier = ( letter | "_" | "$" )
+                { letter | digit | "_" | "$" }

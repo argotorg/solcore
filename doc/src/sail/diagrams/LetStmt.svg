@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="110" viewBox="0 0 723.5 110" width="723.5">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 30v20m10 -20v20m-10 -10h20" /></g><path d="M40 40h10" /><g>
+<path d="M50 40h0.0" /><path d="M673.5 40h0.0" /><g class="terminal ">
+<path d="M50.0 40h0.0" /><path d="M95.5 40h0.0" /><rect height="22" rx="10" ry="10" width="45.5" x="50" y="29"></rect><text x="72.75" y="44">let</text></g><path d="M95.5 40h10" /><g>
+<path d="M105.5 40h0.0" /><path d="M233.5 40h0.0" /><path d="M105.5 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M125.5 20h88.0" /></g><path d="M213.5 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M105.5 40h20" /><g class="terminal ">
+<path d="M125.5 40h0.0" /><path d="M213.5 40h0.0" /><rect height="22" rx="10" ry="10" width="88" x="125.5" y="29"></rect><text x="169.5" y="44">comptime</text></g><path d="M213.5 40h20" /></g><g>
+<path d="M233.5 40h0.0" /><path d="M673.5 40h0.0" /><path d="M233.5 40h20" /><g>
+<path d="M253.5 40h0.0" /><path d="M653.5 40h0.0" /><g class="non-terminal ">
+<path d="M253.5 40h0.0" /><path d="M358.5 40h0.0" /><rect height="22" width="105" x="253.5" y="29"></rect><text x="306" y="44">Identifier</text></g><path d="M358.5 40h10" /><g>
+<path d="M368.5 40h0.0" /><path d="M511.0 40h0.0" /><path d="M368.5 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M388.5 20h102.5" /></g><path d="M491.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M368.5 40h20" /><g>
+<path d="M388.5 40h0.0" /><path d="M491.0 40h0.0" /><g class="terminal ">
+<path d="M388.5 40h0.0" /><path d="M417.0 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="388.5" y="29"></rect><text x="402.75" y="44">:</text></g><path d="M417.0 40h10" /><path d="M427.0 40h10" /><g class="non-terminal ">
+<path d="M437.0 40h0.0" /><path d="M491.0 40h0.0" /><rect height="22" width="54" x="437" y="29"></rect><text x="464" y="44">Type</text></g></g><path d="M491.0 40h20" /></g><g>
+<path d="M511.0 40h0.0" /><path d="M653.5 40h0.0" /><path d="M511.0 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M531.0 20h102.5" /></g><path d="M633.5 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M511.0 40h20" /><g>
+<path d="M531.0 40h0.0" /><path d="M633.5 40h0.0" /><g class="terminal ">
+<path d="M531.0 40h0.0" /><path d="M559.5 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="531" y="29"></rect><text x="545.25" y="44">=</text></g><path d="M559.5 40h10" /><path d="M569.5 40h10" /><g class="non-terminal ">
+<path d="M579.5 40h0.0" /><path d="M633.5 40h0.0" /><rect height="22" width="54" x="579.5" y="29"></rect><text x="606.5" y="44">Expr</text></g></g><path d="M633.5 40h20" /></g></g><path d="M653.5 40h20" /><path d="M233.5 40a10 10 0 0 1 10 10v19a10 10 0 0 0 10 10" /><g>
+<path d="M253.5 79h6.5" /><path d="M647.0 79h6.5" /><g class="non-terminal ">
+<path d="M260.0 79h0.0" /><path d="M382.0 79h0.0" /><rect height="22" width="122" x="260" y="68"></rect><text x="321" y="83">BindingTuple</text></g><path d="M382.0 79h10" /><g>
+<path d="M392.0 79h0.0" /><path d="M534.5 79h0.0" /><path d="M392.0 79a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M412.0 59h102.5" /></g><path d="M514.5 59a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M392.0 79h20" /><g>
+<path d="M412.0 79h0.0" /><path d="M514.5 79h0.0" /><g class="terminal ">
+<path d="M412.0 79h0.0" /><path d="M440.5 79h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="412" y="68"></rect><text x="426.25" y="83">:</text></g><path d="M440.5 79h10" /><path d="M450.5 79h10" /><g class="non-terminal ">
+<path d="M460.5 79h0.0" /><path d="M514.5 79h0.0" /><rect height="22" width="54" x="460.5" y="68"></rect><text x="487.5" y="83">Type</text></g></g><path d="M514.5 79h20" /></g><path d="M534.5 79h10" /><g class="terminal ">
+<path d="M544.5 79h0.0" /><path d="M573.0 79h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="544.5" y="68"></rect><text x="558.75" y="83">=</text></g><path d="M573.0 79h10" /><path d="M583.0 79h10" /><g class="non-terminal ">
+<path d="M593.0 79h0.0" /><path d="M647.0 79h0.0" /><rect height="22" width="54" x="593" y="68"></rect><text x="620" y="83">Expr</text></g></g><path d="M653.5 79a10 10 0 0 0 10 -10v-19a10 10 0 0 1 10 -10" /></g></g><path d="M673.5 40h10" /><path d="M 683.5 40 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>
