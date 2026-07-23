@@ -7,7 +7,9 @@ The migration is deliberately token-aware:
 * parenthesized calls are changed to angle-bracket type applications only in a
   syntactic type position;
 * only git-tracked ``.solc`` files and the explicitly listed Core ``.sol``
-  sources are eligible for the default corpus migration.
+  sources are eligible for the default corpus migration; in packaged source
+  trees without ``.git`` metadata, the same corpus is discovered below the
+  repository's ``src``, ``std``, and ``test`` source roots.
 
 The unresolved export grammar and contextual ``.Constructor`` shorthand are
 intentionally preserved.  Legacy proxy shorthand is migrated to
@@ -18,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import os
 import pathlib
 import re
 import subprocess
@@ -34,6 +37,8 @@ CORE_SOL_FILES = (
     "blog-post/sum.sol",
     "concept-art/has-field.sol",
 )
+
+PACKAGED_SOLC_ROOTS = ("src", "std", "test")
 
 CLASSIC_SOL_FILES = frozenset(
     {
@@ -814,7 +819,11 @@ def transform_type_declarations(source: str) -> str:
                 continue
             params = parsed
             cursor = close + 1
-        if cursor >= len(tokens) or tokens[cursor].text not in {"=", "is"}:
+        # ``type Name is Type`` is the new nominal user-defined-value-type
+        # spelling.  It must remain untouched even while compiler support is
+        # pending.  Only the legacy transparent ``type Name = Type`` form is
+        # migrated to ``alias``.
+        if cursor >= len(tokens) or tokens[cursor].text != "=":
             index += 1
             continue
         end_index, _ = declaration_end(source, tokens, cursor + 1)
@@ -824,7 +833,7 @@ def transform_type_declarations(source: str) -> str:
             index += 1
             continue
         params_text = f"<{', '.join(params)}>" if params else ""
-        replacement = f"type {name}{params_text} is {parsed_rhs[0]};"
+        replacement = f"alias {name}{params_text} = {parsed_rhs[0]};"
         replacement = (
             preserved_comments(
                 source, tokens[start].start, tokens[end_index].end
@@ -1477,18 +1486,116 @@ def transform_types_in_colon_positions(source: str) -> str:
     return apply_edits(source, edits)
 
 
+def module_path_token_indexes(tokens: Sequence[Token]) -> set[int]:
+    """Return indexes in import/export module-path clauses."""
+
+    protected: set[int] = set()
+    pairs = {"(": ")", "[": "]", "{": "}", "<": ">"}
+    index = 0
+    while index < len(tokens):
+        declaration = tokens[index].text
+        if declaration not in {"import", "export"}:
+            index += 1
+            continue
+
+        stack: list[str] = []
+        end = index + 1
+        while end < len(tokens):
+            text = tokens[end].text
+            if not stack and text == ";":
+                break
+            if text in pairs:
+                stack.append(pairs[text])
+            elif stack and text == stack[-1]:
+                stack.pop()
+            end += 1
+        if end >= len(tokens):
+            index += 1
+            continue
+
+        stack.clear()
+        top_level: list[int] = []
+        for cursor in range(index + 1, end):
+            text = tokens[cursor].text
+            if not stack:
+                top_level.append(cursor)
+            if text in pairs:
+                stack.append(pairs[text])
+            elif stack and text == stack[-1]:
+                stack.pop()
+
+        path_start = index + 1
+        path_end = end
+        if declaration == "import":
+            from_index = next(
+                (
+                    cursor
+                    for cursor in top_level
+                    if tokens[cursor].text == "from"
+                ),
+                None,
+            )
+            if from_index is not None:
+                path_start = from_index + 1
+            path_end = next(
+                (
+                    cursor
+                    for cursor in top_level
+                    if cursor >= path_start
+                    and tokens[cursor].text == "hiding"
+                ),
+                end,
+            )
+        elif path_start < end and tokens[path_start].text == "{":
+            for cursor in range(path_start + 1, end):
+                if tokens[cursor].text != "@":
+                    continue
+                terminal = next(
+                    (
+                        candidate
+                        for candidate in range(cursor + 1, end - 1)
+                        if tokens[candidate].text == "."
+                        and tokens[candidate + 1].text == "*"
+                    ),
+                    None,
+                )
+                if terminal is not None:
+                    protected.update(range(cursor, terminal))
+            index = end + 1
+            continue
+        else:
+            path_end = next(
+                (
+                    cursor
+                    for cursor in top_level
+                    if cursor >= path_start
+                    and (
+                        tokens[cursor].text == "as"
+                        or (
+                            tokens[cursor].text == "."
+                            and cursor + 1 < end
+                            and tokens[cursor + 1].text in {"{", "*"}
+                        )
+                    )
+                ),
+                end,
+            )
+
+        protected.update(range(path_start, path_end))
+        index = end + 1
+
+    return protected
+
+
 def transform_proxy_expressions(source: str) -> str:
     tokens = significant(source)
     parser = TypeParser(tokens)
+    module_paths = module_path_token_indexes(tokens)
     edits: list[Edit] = []
     for index, token in enumerate(tokens):
         if token.text != "@" or index + 1 >= len(tokens):
             continue
-        boundary = declaration_boundary(tokens, index)
-        if any(
-            candidate.text == "import"
-            for candidate in tokens[boundary:index]
-        ):
+        if index in module_paths:
             continue
         parsed = parser.parse(index + 1)
         if parsed is None:
@@ -2154,19 +2261,128 @@ def apply_file_fixups(relative: pathlib.Path, source: str) -> str:
     return fixed
 
 
-def tracked_core_sources() -> list[pathlib.Path]:
-    process = subprocess.run(
-        ["git", "ls-files", "-z", "--", "*.solc"],
-        cwd=REPO_ROOT,
-        check=True,
-        stdout=subprocess.PIPE,
+def symlink_component(relative: pathlib.Path) -> pathlib.Path | None:
+    """Return the first symlink in a repository-relative source path."""
+
+    if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+        raise ValueError(f"refusing unsafe source path: {relative}")
+    current = REPO_ROOT
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            return current
+    return None
+
+
+def require_symlink_free_source(relative: pathlib.Path) -> None:
+    component = symlink_component(relative)
+    if component is None:
+        return
+    try:
+        display_component = component.relative_to(REPO_ROOT)
+    except ValueError:
+        display_component = component
+    raise ValueError(
+        f"refusing to migrate symlink source: {relative} "
+        f"(symlink component: {display_component})"
     )
-    tracked_solc = [
-        path
-        for raw in process.stdout.split(b"\0")
-        if raw
-        for path in [pathlib.Path(raw.decode("utf-8"))]
-    ]
+
+
+def open_source_without_symlinks(relative: pathlib.Path, flags: int) -> int:
+    """Open a source through directory descriptors without following links."""
+
+    require_symlink_free_source(relative)
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory = getattr(os, "O_DIRECTORY", 0)
+    directory_fds: list[int] = []
+    try:
+        current_fd = os.open(
+            REPO_ROOT,
+            os.O_RDONLY | directory | nofollow,
+        )
+        directory_fds.append(current_fd)
+        for part in relative.parts[:-1]:
+            current_fd = os.open(
+                part,
+                os.O_RDONLY | directory | nofollow,
+                dir_fd=current_fd,
+            )
+            directory_fds.append(current_fd)
+        return os.open(
+            relative.parts[-1],
+            flags | nofollow,
+            dir_fd=current_fd,
+        )
+    except OSError as exc:
+        raise ValueError(
+            f"refusing to access source through an unsafe worktree path: "
+            f"{relative}: {exc}"
+        ) from exc
+    finally:
+        for directory_fd in reversed(directory_fds):
+            os.close(directory_fd)
+
+
+def read_worktree_source(relative: pathlib.Path) -> str:
+    descriptor = open_source_without_symlinks(relative, os.O_RDONLY)
+    with os.fdopen(descriptor, encoding="utf-8") as source:
+        return source.read()
+
+
+def write_worktree_source(relative: pathlib.Path, source: str) -> None:
+    descriptor = open_source_without_symlinks(
+        relative,
+        os.O_WRONLY | os.O_TRUNC,
+    )
+    with os.fdopen(descriptor, "w", encoding="utf-8") as destination:
+        destination.write(source)
+
+
+def packaged_solc_sources() -> list[pathlib.Path]:
+    """Discover the Solcore corpus when VCS metadata is unavailable.
+
+    Nix copies the repository into an isolated source tree without ``.git``.
+    Restricting this fallback to the package's source/test roots avoids
+    accidentally treating unrelated root-level or proof-of-concept files as
+    migration inputs.
+    """
+
+    return sorted(
+        path.relative_to(REPO_ROOT)
+        for root_name in PACKAGED_SOLC_ROOTS
+        for path in (REPO_ROOT / root_name).rglob("*.solc")
+        if path.is_file() and not path.is_symlink()
+    )
+
+
+def tracked_core_sources() -> list[pathlib.Path]:
+    tracked_solc: list[pathlib.Path]
+    if not (REPO_ROOT / ".git").exists():
+        tracked_solc = packaged_solc_sources()
+    else:
+        process = subprocess.run(
+            [
+                "git",
+                "-c",
+                f"safe.directory={REPO_ROOT}",
+                "ls-files",
+                "-s",
+                "-z",
+                "--",
+                "*.solc",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        tracked_solc = [
+            pathlib.Path(raw_path.decode("utf-8"))
+            for entry in process.stdout.split(b"\0")
+            if entry
+            for metadata, raw_path in [entry.split(b"\t", 1)]
+            if metadata.split(maxsplit=1)[0] != b"120000"
+        ]
     paths = [*tracked_solc, *(pathlib.Path(path) for path in CORE_SOL_FILES)]
     return sorted(dict.fromkeys(paths))
 
@@ -2174,12 +2390,19 @@ def tracked_core_sources() -> list[pathlib.Path]:
 def eligible_paths(arguments: Sequence[str]) -> list[pathlib.Path]:
     allowed = frozenset(tracked_core_sources())
     if not arguments:
-        return sorted(allowed)
+        result = sorted(allowed)
+        for candidate in result:
+            require_symlink_free_source(candidate)
+        return result
     result: list[pathlib.Path] = []
     for argument in arguments:
         candidate = pathlib.Path(argument)
         if candidate.is_absolute():
-            candidate = candidate.resolve().relative_to(REPO_ROOT)
+            # Keep the lexical path.  Resolving first would turn an untracked
+            # symlink alias into its tracked target and bypass the corpus
+            # allow-list (and, with --write, modify that target).
+            candidate = candidate.relative_to(REPO_ROOT)
+        require_symlink_free_source(candidate)
         if candidate not in allowed:
             raise ValueError(
                 f"refusing to migrate non-Core or untracked source: {candidate}"
@@ -2214,17 +2437,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     changed: list[pathlib.Path] = []
     for relative in paths:
-        path = REPO_ROOT / relative
-        # The import-resolution fixtures contain tracked symlink aliases.  Their
-        # tracked blob is the link target, not Solcore source, and writing via
-        # pathlib would overwrite the target file.  The target itself is also a
-        # tracked eligible source and is migrated independently.
-        if path.is_symlink():
-            continue
-        current = path.read_text()
+        try:
+            current = read_worktree_source(relative)
+        except ValueError as error:
+            parser.error(str(error))
         if args.from_head:
             source = subprocess.run(
-                ["git", "show", f"HEAD:{relative.as_posix()}"],
+                [
+                    "git",
+                    "-c",
+                    f"safe.directory={REPO_ROOT}",
+                    "show",
+                    f"HEAD:{relative.as_posix()}",
+                ],
                 cwd=REPO_ROOT,
                 check=True,
                 stdout=subprocess.PIPE,
@@ -2240,7 +2465,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             continue
         changed.append(relative)
         if args.write:
-            path.write_text(migrated)
+            try:
+                write_worktree_source(relative, migrated)
+            except ValueError as error:
+                parser.error(str(error))
 
     action = "updated" if args.write else "needs migration"
     for path in changed:
