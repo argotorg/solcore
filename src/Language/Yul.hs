@@ -97,6 +97,43 @@ data YulExp
   | YMeta String
   deriving (Eq, Ord, Data, Typeable)
 
+-- | Check the lexical placement rules for Yul control-transfer statements.
+-- A Yul function starts a fresh loop context: @break@/@continue@ cannot target
+-- a loop outside that function, and @leave@ is only meaningful in its body.
+validateYulControlFlow :: YulBlock -> Either String ()
+validateYulControlFlow = validateBlock 0 False
+  where
+    validateBlock :: Int -> Bool -> YulBlock -> Either String ()
+    validateBlock loopDepth inFunction = mapM_ (validateStmt loopDepth inFunction)
+
+    validateStmt :: Int -> Bool -> YulStmt -> Either String ()
+    validateStmt loopDepth inFunction stmt =
+      case stmt of
+        YBlock body ->
+          validateBlock loopDepth inFunction body
+        YFun _ _ _ body ->
+          validateBlock 0 True body
+        YIf _ body ->
+          validateBlock loopDepth inFunction body
+        YSwitch _ cases defaultBody -> do
+          mapM_ (validateBlock loopDepth inFunction . snd) cases
+          mapM_ (validateBlock loopDepth inFunction) defaultBody
+        YFor pre _ post body -> do
+          validateBlock loopDepth inFunction pre
+          validateBlock loopDepth inFunction post
+          validateBlock (loopDepth + 1) inFunction body
+        YBreak
+          | loopDepth == 0 ->
+              Left "Yul break is only valid inside a for-loop body"
+        YContinue
+          | loopDepth == 0 ->
+              Left "Yul continue is only valid inside a for-loop body"
+        YLeave
+          | not inFunction ->
+              Left "Yul leave is only valid inside a Yul function"
+        _ ->
+          Right ()
+
 data YLiteral
   = YulNumber Integer
   | YulString String

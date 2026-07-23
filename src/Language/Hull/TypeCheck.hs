@@ -74,7 +74,10 @@ checkStmt (SBlock stmts) =
   withLocalEnv (checkBody stmts)
 checkStmt (SExpr e) =
   checkExpr e >> pure ()
-checkStmt (SAssembly stmts) =
+checkStmt (SAssembly stmts) = do
+  case validateYulControlFlow stmts of
+    Left err -> hullError err
+    Right () -> pure ()
   withLocalEnv (checkAsmBlock stmts)
 checkStmt (SFor initStmt cond post body) =
   -- Variables declared in the init block are scoped over the entire for loop
