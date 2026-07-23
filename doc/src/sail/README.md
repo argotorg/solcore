@@ -2,9 +2,9 @@
 
 SAIL (Solidity Advanced Intermediate Language) is the source language of the
 Core Solidity compiler. It extends Solidity's surface syntax with a
-statically-typed functional core: parametric polymorphism via `forall`
-quantifiers, type classes for constrained overloading, and algebraic data types
-with exhaustive pattern matching. Every SAIL program is compiled to monomorphic
+statically-typed functional core: angle-bracketed generic parameters, traits for
+constrained overloading, and algebraic data types with exhaustive pattern
+matching. Every SAIL program is compiled to monomorphic
 Core IR, named Hull, through specialization, then translated to Yul and
 assembled into EVM bytecode.
 
@@ -23,9 +23,9 @@ the most foundational concepts to the most advanced:
   function body.
 - **Datatypes** introduces algebraic data type declarations and pattern
   matching.
-- **Parametric Polymorphism** explains `forall` quantifiers, type variable
+- **Parametric Polymorphism** explains generic parameter lists, type variable
   instantiation, and the specialization strategy.
-- **Type Classes** covers class declarations, instance declarations, superclass
+- **Type Classes** covers trait declarations, impl declarations, superclass
   constraints, and the three soundness conditions the compiler enforces.
 - **Modules** describes the import and export system, qualified names, and
   visibility rules.
