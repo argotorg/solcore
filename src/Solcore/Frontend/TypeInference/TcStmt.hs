@@ -1050,8 +1050,12 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
     -- getting matching substitution
     s <- match classc' ih `wrapError` instd
     -- getting method types
+    -- A class info may record its methods either bare or already qualified by
+    -- the class (the primitive classes do the latter), so normalise to the leaf
+    -- name before qualifying, as `checkCompleteInstDef` does.
     let qnames = map qual (methods cinfo)
-        qual v = if v == invoke then v else QualName n (pretty v)
+        qual (QualName _ m) = QualName n m
+        qual v = QualName n (pretty v)
     -- getting most general types and instantiate them
     aqts <-
       mapM

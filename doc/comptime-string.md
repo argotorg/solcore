@@ -93,6 +93,24 @@ intercepts:
 
 `Str` is a reserved primitive class name; user programs cannot redefine it.
 
+### Source instances
+
+Beyond the built-in instances for `string` and `memory(string)`,
+a program may declare its own `Str` instance for
+its own type, and `Str.fromString` at that result type is specialised through the
+ordinary resolution table (`Specialise.specCall` falls through for any ground
+result type that is neither `string` nor `memory(string)`).  What such an
+instance can *do* is limited by the function boundary described under
+[Materialization](#materialization-in-emithull): inside the method body the
+argument is a parameter, not a literal.  An instance whose body consumes the
+string at comptime (`strlenLit`, `keccakLit`, …) folds away and works — see
+`test/examples/comptime/string-user-instance.solc`.  An instance that tries to
+*materialize* — `instance Error : Str { fromString(s) = Error.Msg(Str.fromString(s)) }`,
+which would give `require(cond, "msg")` — does not: it reaches emission with a
+live `string` parameter and is rejected by the `comptimeOnlyMastName` guard.
+Lifting that needs literal-keyed specialisation (substituting comptime-only-typed
+arguments into the specialised body); see gaps.
+
 Note that `memory(string)` is a **compound** instance head
 (`TyCon "memory" [TyCon "string" []]`), unlike the nullary `word`/`integer`
 heads of the `Int` instances; instance selection unifies `a := memory(string)`.
@@ -607,6 +625,7 @@ Already-passing string tests unaffected by the desugaring: `string-lit-ops`,
 | Inline `mstore` materializer code size | Large literals bloat bytecode | `code(string) : Str` data-section path |
 | `code(a)` type constructor | No data-section strategy yet | Future additive instance + `codecopy` conversion |
 | No `string`-taking helper (`toMemory`) | Must apply `Str.fromString` where the literal is in scope | "Always inline" annotation for helpers (own work) |
+| Source `Str` instance cannot materialize | `instance Error : Str` typechecks and specialises but hits the comptime-only guard at emission, so `require(cond, "msg")` still needs `requireStr` | Literal-keyed specialisation: extend the `Resolution` key with comptime-only-typed argument values and substitute them into the specialised body |
 | String literals in constructor/deploy code | Allocators emitted into runtime object only; a deploy-side call would not resolve | Emit allocators into the object that references them, or duplicate |
 | ~~No runtime/ABI value test~~ | ~~correctness of returned bytes unchecked~~ | ✓ `dispatch/stringlit.json` returns `memory(string)`, asserted via evmone |
 | ~~No clean `string` EmitHull guard message~~ | ~~"empty sum string" crash~~ | ✓ `comptimeOnlyMastName` guards on return/param/let (`EmitHull.hs`) |
