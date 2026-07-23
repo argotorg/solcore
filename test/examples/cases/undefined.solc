@@ -1,13 +1,13 @@
-forall any.function undefined() -> any {
+function undefined<any>() returns (any) {
   assembly {
     revert(0,0)
   }
 }
 
-function useWord(w:word) -> () {}
+function useWord(w:word) returns (()) {}
 
 contract Magic {
-  public function main() -> () {
+  function main() public returns (()) {
     useWord(undefined());
   }
 }

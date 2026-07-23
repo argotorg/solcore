@@ -2,6 +2,6 @@ import cycleB;
 export { fromCycleA };
 export cycleB.{fromCycleB};
 
-function fromCycleA() -> word {
+function fromCycleA() returns (word) {
   return cycleB.fromCycleB();
 }

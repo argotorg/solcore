@@ -7,16 +7,16 @@
 // Expected: compiles successfully; `Typedef.rep` resolves to the class method.
 // Actual (before fix): PANIC: no resolution found for invokable.invoke
 
-import std.{*};
-import std.dispatch.{*};
-pragma no-patterson-condition;
-pragma no-coverage-condition;
-pragma no-bounded-variable-condition;
+import {*} from std;
+import {*} from std.dispatch;
+pragma solcore noPattersonCondition;
+pragma solcore noCoverageCondition;
+pragma solcore noBoundVariableCondition;
 
 contract Bug {
     constructor() {}
 
-    function f(a : uint256) -> uint256 {
+    function f(a : uint256) returns (uint256) {
         let rep : uint256 = a;
         let w : word = Typedef.rep(a);
         return Typedef.abs(w);

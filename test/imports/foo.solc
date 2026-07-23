@@ -1,5 +1,5 @@
 export { base };
 
-function base() -> word {
+function base() returns (word) {
   return 3;
 }

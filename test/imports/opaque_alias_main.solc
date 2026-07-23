@@ -1,6 +1,6 @@
-import opaque_alias_mid as M;
+import * as M from opaque_alias_mid;
 
-function main(x: word) -> word {
+function main(x: word) returns (word) {
   let t = M.make(x);
   return x;
 }

@@ -3,9 +3,9 @@
 // is a tagged inl/inr pair) would corrupt that layout, so the type checker
 // must reject this program.
 contract AsmBool {
-  public function main() -> word {
+  function main() public returns (word) {
     let b : bool = false;
     assembly { b := add(1, 1) }
-    if b { return 1; } else { return 0; }
+    if (b ) { return 1; } else { return 0; }
   }
 }

@@ -1,6 +1,6 @@
 // mstore does not return a value, so it cannot be assigned.
 contract Test {
-  public function main() {
+  function main() public {
     let x : word;
     assembly {
       x := mstore(1, 1)

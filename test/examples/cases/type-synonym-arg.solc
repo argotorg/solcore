@@ -1,10 +1,10 @@
-type W = word;
+type W is word;
 
-function f(x:W) -> W { x }
+function f(x:W) returns (W) { return x; }
 
 contract C {
 
-  public function main () -> word {
+  function main () public returns (word) {
     return f(42);
   }
 }

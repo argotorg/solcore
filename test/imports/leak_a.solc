@@ -1,5 +1,5 @@
 export { fromA };
 
-function fromA() -> word {
+function fromA() returns (word) {
   return 1;
 }

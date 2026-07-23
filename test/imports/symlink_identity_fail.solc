@@ -1,6 +1,6 @@
-import vendor.math.api as Vendor;
-import mirror.api as Mirror;
+import * as Vendor from vendor.math.api;
+import * as Mirror from mirror.api;
 
-function bad(x: Vendor.T) -> Mirror.T {
+function bad(x: Vendor.T) returns (Mirror.T) {
   return x;
 }

@@ -12,32 +12,32 @@ contract Id1 {
 }
 */
 
-class self : Invokable(args, ret) {
-    function invoke (s:self,  a:args) -> ret;
+trait Invokable<self, args, ret> {
+    function invoke (s:self,  a:args) returns (ret);
 }
 
 // env might be a tuple, here it is a single Word
-function lam1impl(env: Word, x: c) -> c { return env; }
+function lam1impl(env: Word, x: c) returns (c) { return env; }
 
-data Lam1Closure(a) = Lam1Closure(Word)
+enum Lam1Closure<a> { Lam1Closure(Word) }
 
-instance Lam1Closure(a) : Invokable(a,Word) {
-  function invoke(clos: Lam1Closure(a), arg:a) -> Word {
-  match clos {
-    | Lam1Closure(env) => return lam1impl(env, arg);
-    };
+impl Invokable<Lam1Closure<a>, a, Word> {
+  function invoke(clos: Lam1Closure<a>, arg:a) returns (Word) {
+  match (clos ) {
+    case Lam1Closure(env) { return lam1impl(env, arg);
+    } }
   }
 }
 
 
 contract InvokeCapLam {
-public function foo() {
+function foo() public {
   let y = 42;
   let clos = Lam1Closure(y);
   return clos;
 }
 
-public function main() {
+function main() public {
 
   return invoke(foo(), 17);
 }

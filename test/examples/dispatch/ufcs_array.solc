@@ -1,6 +1,6 @@
-import std.{*};
-import std.dispatch.{*};
-import std.opcodes.{mload, mstore};
+import {*} from std;
+import {*} from std.dispatch;
+import {mload, mstore} from std.opcodes;
 
 // UFCS counterpart of storage_array.solc.
 //
@@ -19,16 +19,16 @@ import std.opcodes.{mload, mstore};
 // the same runtime behaviour.  Indexed access members[i] is unaffecte: it
 // is handled by field-access desugaring, not UFCS.
 contract MemberRegistry {
-  members : array(address);
+  members : address[];
 
   constructor() {}
 
-  public function addMember(addr : address) -> () {
+  function addMember(addr : address) public returns (()) {
     members.push(addr);
   }
 
   // MemberNotFound() selector
-  public function removeMember(addr : address) -> () {
+  function removeMember(addr : address) public returns (()) {
     // foundIdx == length() acts as the "not found" sentinel.
     let foundIdx : uint256 = members.length();
     let i : uint256;
@@ -48,11 +48,11 @@ contract MemberRegistry {
     members.pop();
   }
 
-  public function numberOfMembers() -> uint256 {
+  function numberOfMembers() public returns (uint256) {
     return members.length();
   }
 
-  public function getMembers() -> memory(DynArray(address)) {
+  function getMembers() public returns (DynArray<address> memory) {
     let count : word = Typedef.rep(members.length());
     let totalBytes : word = (count + 1) * 32;
     let ptr : word = allocate_memory(totalBytes);
@@ -63,6 +63,6 @@ contract MemberRegistry {
       let addr : address = members[uint256(i)];
       mstore(ptr + 32 + i * 32, Typedef.rep(addr));
     }
-    return Typedef.abs(ptr) : memory(DynArray(address));
+    return Typedef.abs(ptr) as DynArray<address> memory;
   }
 }

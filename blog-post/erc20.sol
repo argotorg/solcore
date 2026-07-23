@@ -1,6 +1,6 @@
 import assign;
 
-function caller() -> address {
+function caller() returns (address) {
   let res: word;
   assembly {
      res := caller()
@@ -8,7 +8,7 @@ function caller() -> address {
   return address(res);
 }
 
-function myrevert(msg: word) -> () {
+function myrevert(msg: word) returns (()) {
   assembly { mstore(0, msg) revert(0, 32) }
 }
 
@@ -21,21 +21,21 @@ contract MiniERC20 {
   owner : address;
   decimals : uint;
   totalSupply : uint;
-  balances : mapping(address,uint);
-  allowance : mapping(address, mapping(address, uint));
+  balances : mapping(address => uint);
+  allowance : mapping(address => mapping(address => uint));
 
-  function mint(amount:uint) -> () {
+  function mint(amount:uint) returns (()) {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
 
-  function transferFrom(src:address, dst:address, amt:uint) -> bool {
+  function transferFrom(src:address, dst:address, amt:uint) returns (bool) {
     let msg_sender = caller();
     require( balances[src] >= amt /* "token/insufficient-balance" */
            , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
 	         );
 
-    if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint)) {
+    if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal() as uint)) {
        require( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
 	            , 0x746f6b656e2f696e73756666696369656e742d616c6c6f77616e6365
 	            );
@@ -46,18 +46,18 @@ contract MiniERC20 {
     return true;
   }
 
-  function approve(usr: address, amt: uint) -> bool {
+  function approve(usr: address, amt: uint) returns (bool) {
     let msg_sender = caller();
     allowance[msg_sender][usr] = amt;
     return true;
   }
 
-  function init() -> () {
+  function init() returns (()) {
     owner = address(0x123456789abcdef);
     decimals = Num.fromWord(18);
   }
 
-  function main() -> uint {
+  function main() returns (uint) {
     let msg_sender = caller();
     init();
     mint(uint(1000));

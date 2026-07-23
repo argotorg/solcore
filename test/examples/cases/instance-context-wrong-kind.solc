@@ -1,5 +1,5 @@
-forall a b . class a : Foo(b) {}
+trait Foo<a, b> {}
 
-forall a. class a:C {}
+trait C<a> {}
 
-forall t. t:Foo => instance  (word,t):C {}
+impl<t> C<(word, t)> where t: Foo {}

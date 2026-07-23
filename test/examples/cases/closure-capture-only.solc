@@ -1,7 +1,7 @@
-function testApplied(x: word) -> word {
+function testApplied(x: word) returns (word) {
     return x;
 }
 
-function main() -> word {
+function main() returns (word) {
     return testApplied(1);
 }

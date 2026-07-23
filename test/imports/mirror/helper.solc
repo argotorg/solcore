@@ -1,3 +1,3 @@
 export {T};
 
-data T = T;
+enum T { T }

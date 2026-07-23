@@ -1,18 +1,18 @@
-pragma no-patterson-condition Wanted;
+pragma solcore noPattersonCondition Wanted;
 
-forall a . class a:Known {}
-forall a . class a:Wanted {}
+trait Known<a> {}
+trait Wanted<a> {}
 
-forall a . a:Known => instance a:Wanted {}
+impl<a> Wanted<a> where a: Known {}
 
-forall a . a:Wanted => function needsWanted(x:a) -> () {
-  return ();
+function needsWanted<a>(x:a) returns (())  where a: Wanted {
+  return;
 }
 
-forall a . a:Known => function passKnown(x:a) -> () {
+function passKnown<a>(x:a) returns (())  where a: Known {
   return needsWanted(x);
 }
 
-function main() -> () {
-  return ();
+function main() returns (()) {
+  return;
 }

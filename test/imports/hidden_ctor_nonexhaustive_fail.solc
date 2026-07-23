@@ -1,7 +1,7 @@
-import hidden_ctor_lib.{Token, mkOk};
+import {Token, mkOk} from hidden_ctor_lib;
 
-function main() -> word {
-  match mkOk(1) {
-  | Token.Ok(v) => return v;
-  }
+function main() returns (word) {
+  match (mkOk(1) ) {
+  case Token.Ok(v) { return v;
+  } }
 }

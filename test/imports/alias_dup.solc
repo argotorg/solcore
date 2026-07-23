@@ -1,6 +1,6 @@
-import ambA as M;
-import ambB as M;
+import * as M from ambA;
+import * as M from ambB;
 
-function main(x: word) -> word {
+function main(x: word) returns (word) {
   return M.pick(x);
 }

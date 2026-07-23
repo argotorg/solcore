@@ -1,5 +1,5 @@
 import selfcycle;
 
-function main() -> word {
+function main() returns (word) {
   return 0;
 }

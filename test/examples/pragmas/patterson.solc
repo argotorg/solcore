@@ -1,16 +1,16 @@
 
-forall self . class self:A {}
-forall self . class self:B {}
-forall self . class self:C {}
-forall self . class self:D {}
+trait A<self> {}
+trait B<self> {}
+trait C<self> {}
+trait D<self> {}
 
 
-data Uint256 = U;
-data T(x) = T;
-data S(x) = SCons;
+enum Uint256 { U }
+enum T<x> { T }
+enum S<x> { SCons }
 
 // This works.
-forall U . U : A => instance T(U):D {}
+impl<U> D<T<U>> where U: A {}
 
 // This should also work, but reports a violation of the Paterson condition.
-forall U . U : A, U : B, U : C => instance S(U):D {}
+impl<U> D<S<U>> where U: A, U: B, U: C {}

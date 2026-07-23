@@ -1,14 +1,14 @@
 contract SumMatchDefault {
-  data Option(a) = None | Some(a);
+  enum Option<a> { None, Some(a) }
 
-  public function g(s : Option(word)) -> Option(word) {
-    match s {
-      | Option.None => return Option.None;
-      | x => return x;
-    }
+  function g(s : Option<word>) public returns (Option<word>) {
+    match (s ) {
+      case Option.None { return Option.None;
+      } case x { return x;
+    } }
   }
 
-  public function main() -> word {
+  function main() public returns (word) {
     g(Option.None);
     return 42;
   }

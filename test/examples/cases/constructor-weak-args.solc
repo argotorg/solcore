@@ -1,7 +1,7 @@
-forall ref deref . class ref:Loadable (deref) {
-    function load (r : ref) -> deref;
+trait Loadable<ref, deref> {
+    function load (r : ref) returns (deref);
 }
 
-forall t . t : Loadable(word) => function foo(v : t) -> word {
+function foo<t>(v : t) returns (word)  where t: Loadable<word> {
   return Loadable.load(v);
 }

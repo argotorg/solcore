@@ -3,27 +3,25 @@
 // fire.  The specialiser must discover rep=word solely via Template A:
 //   specmgu (Box -> word) (Box -> freshV)  =>  freshV = word  =>  rep = word
 
-data Box = Box(word);
+enum Box { Box(word) }
 
-forall self rep.
-class self:Unbox(rep) {
-    function unbox(x:self) -> rep;
+trait Unbox<self, rep> {
+    function unbox(x:self) returns (rep);
 }
 
-instance Box:Unbox(word) {
-    function unbox(x:Box) -> word {
-        match x { | Box(w) => return w; }
+impl Unbox<Box, word> {
+    function unbox(x:Box) returns (word) {
+        match (x ) { case Box(w) { return w; } }
     }
 }
 
-forall a rep . a:Unbox(rep) =>
-function extract(x:a) -> rep {
+function extract<a, rep>(x:a) returns (rep)  where a: Unbox<rep> {
     return Unbox.unbox(x);
 }
 
 contract C {
     constructor() {}
-    public function main() -> word {
+    function main() public returns (word) {
         return extract(Box(42));
     }
 }

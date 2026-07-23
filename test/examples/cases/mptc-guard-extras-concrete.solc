@@ -3,27 +3,25 @@
 // `word` directly in the constraint, so freetv extras = [] and the function
 // compiles through normal type inference without phantom variable discovery.
 
-data Box = Box(word);
+enum Box { Box(word) }
 
-forall self rep.
-class self:Unbox(rep) {
-    function unbox(x:self) -> rep;
+trait Unbox<self, rep> {
+    function unbox(x:self) returns (rep);
 }
 
-instance Box:Unbox(word) {
-    function unbox(x:Box) -> word {
-        match x { | Box(w) => return w; }
+impl Unbox<Box, word> {
+    function unbox(x:Box) returns (word) {
+        match (x ) { case Box(w) { return w; } }
     }
 }
 
-forall a . a:Unbox(word) =>
-function extractWord(x:a) -> word {
+function extractWord<a>(x:a) returns (word)  where a: Unbox<word> {
     return Unbox.unbox(x);
 }
 
 contract C {
     constructor() {}
-    public function main() -> word {
+    function main() public returns (word) {
         return extractWord(Box(42));
     }
 }

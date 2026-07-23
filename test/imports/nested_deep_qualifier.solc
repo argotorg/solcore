@@ -1,5 +1,5 @@
 import foo.bar.baz;
 
-function main() -> word {
+function main() returns (word) {
   return foo.bar.baz.deep();
 }

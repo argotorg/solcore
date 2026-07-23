@@ -1,7 +1,7 @@
 import provider;
-import lib.rootcheck.provider as RootProvider;
+import * as RootProvider from lib.rootcheck.provider;
 
-function main() -> word {
+function main() returns (word) {
   let rootValue: word = RootProvider.value();
   return provider.value();
 }

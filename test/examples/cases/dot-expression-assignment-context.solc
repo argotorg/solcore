@@ -1,7 +1,7 @@
-data Option(a) = Some(a) | None;
+enum Option<a> { Some(a), None }
 
-function main() -> Option(word) {
-  let x : Option(word);
+function main() returns (Option<word>) {
+  let x : Option<word>;
   x = .None;
   return x;
 }

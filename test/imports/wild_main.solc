@@ -1,5 +1,5 @@
 import wildA;
 
-function main() -> word {
+function main() returns (word) {
   return wildA.fromWildB();
 }

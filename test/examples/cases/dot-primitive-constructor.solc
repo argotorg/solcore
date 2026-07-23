@@ -1,7 +1,7 @@
-function main() -> word {
+function main() returns (word) {
   let b: bool = .true;
-  match b {
-  | .true => return 1;
-  | .false => return 0;
-  }
+  match (b ) {
+  case .true { return 1;
+  } case .false { return 0;
+  } }
 }

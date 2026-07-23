@@ -1,24 +1,24 @@
 
-data memory(t) = memory(word);
+enum memory<t> { memory(word) }
 
-forall t . class t:ValueTy {
-    function rep(x:t) -> word;
+trait ValueTy<t> {
+    function rep(x:t) returns (word);
 }
 
-forall t . instance memory(t) : ValueTy {
-    function rep(x: memory(t)) -> word {
-        match x {
-        | memory(w) => return w;
-       }
+impl<t> ValueTy<t memory> {
+    function rep(x: t memory) returns (word) {
+        match (x ) {
+        case memory(w) { return w;
+       } }
     }
 }
 
-forall ref deref . class ref:Ref(deref) {
-    function store(loc: ref, value: deref) -> ();
+trait Ref<ref, deref> {
+    function store(loc: ref, value: deref) returns (());
 }
 
-forall t . t : ValueTy => instance memory(t) : Ref(t) {
-    function store(loc: memory(t), value: t) -> () {
+impl<t> Ref<t memory, t> where t: ValueTy {
+    function store(loc: t memory, value: t) returns (()) {
         // We don't have a `ValueTy` bound on `t` anywhere, so this should raise a type error...
         let vw = ValueTy.rep(value);
     }

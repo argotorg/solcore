@@ -1,7 +1,7 @@
-import dupqual_a as m1;
-import dupqual_b as m2;
+import * as m1 from dupqual_a;
+import * as m2 from dupqual_b;
 
-function main(x: word) -> word {
+function main(x: word) returns (word) {
   let y = m1.foo(x);
   return m2.foo(y);
 }

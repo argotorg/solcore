@@ -1,12 +1,12 @@
-data Option = None | Some(word);
+enum Option { None, Some(word) }
 
-function fromOption(x: Option) -> word {
-  match x {
-  | .Some(v) => return v;
-  | .None => return 0;
-  }
+function fromOption(x: Option) returns (word) {
+  match (x ) {
+  case .Some(v) { return v;
+  } case .None { return 0;
+  } }
 }
 
-function main() -> word {
+function main() returns (word) {
   return fromOption(Option.Some(3));
 }

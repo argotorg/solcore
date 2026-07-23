@@ -1,17 +1,17 @@
-pragma no-patterson-condition A;
+pragma solcore noPattersonCondition A;
 
-data Wrap(a) = Wrap(a);
+enum Wrap<a> { Wrap(a) }
 
-forall a . Wrap(a):A => class a:A {}
+trait A<a> where Wrap<a>: A {}
 
-forall a . Wrap(a):A => function needsWrappedA(x:a) -> () {
-  return ();
+function needsWrappedA<a>(x:a) returns (())  where Wrap<a>: A {
+  return;
 }
 
-forall a . a:A => function shouldUseSuperclass(x:a) -> () {
+function shouldUseSuperclass<a>(x:a) returns (())  where a: A {
   return needsWrappedA(x);
 }
 
-function main() -> () {
-  return ();
+function main() returns (()) {
+  return;
 }

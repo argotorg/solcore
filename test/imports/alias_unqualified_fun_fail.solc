@@ -1,5 +1,5 @@
-import foo as F;
+import * as F from foo;
 
-function main() -> word {
+function main() returns (word) {
   return base();
 }

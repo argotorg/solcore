@@ -1,13 +1,13 @@
 // test single contract field
 import std;
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
+pragma solcore noPattersonCondition ;
+pragma solcore noCoverageCondition ;
+pragma solcore noBoundVariableCondition ;
 
 contract Counter {
   counter : word;
 
-  public function main() -> word {
+  function main() public returns (word) {
     counter = std.addWord(counter, 1);
     return counter;
   }

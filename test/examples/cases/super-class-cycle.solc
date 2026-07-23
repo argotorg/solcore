@@ -1,14 +1,14 @@
-forall a . a:B => class a:A {}
-forall a . a:A => class a:B {}
+trait A<a> where a: B {}
+trait B<a> where a: A {}
 
-forall a . a:B => function needsB(x:a) -> () {
-  return ();
+function needsB<a>(x:a) returns (())  where a: B {
+  return;
 }
 
-forall a . a:A => function usesSuperCycle(x:a) -> () {
+function usesSuperCycle<a>(x:a) returns (())  where a: A {
   return needsB(x);
 }
 
-function main() -> () {
-  return ();
+function main() returns (()) {
+  return;
 }

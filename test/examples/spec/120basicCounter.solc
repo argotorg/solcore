@@ -1,8 +1,8 @@
-import std.{*};
+import {*} from std;
 contract Counter {
   counter : word;
 
-  public function main() -> word {
+  function main() public returns (word) {
     counter = Num.add(counter, 42);
     return counter;
   }

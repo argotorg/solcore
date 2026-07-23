@@ -1,22 +1,22 @@
 // This code should FAIL, but PASSES!
-data Bool = True | False;
+enum Bool { True, False }
 
-forall a . class a : MyCls {
-  function f(x : a, y : a) -> Bool;
+trait MyCls<a> {
+  function f(x : a, y : a) returns (Bool);
 }
 
-forall a . function the_bug(x : a, y : a) -> Bool {
+function the_bug<a>(x : a, y : a) returns (Bool) {
     return MyCls.f(x, y);
 }
 
 contract Foo {
-    public function x() {
+    function x() public {
         let b1 = Bool.True;
         let b2 = Bool.False;
         the_bug(b1, b2);
     }
 
-    public function main() {
+    function main() public {
         x();
     }
 }

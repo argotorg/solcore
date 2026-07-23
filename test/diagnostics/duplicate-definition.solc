@@ -1,3 +1,3 @@
-function foo() -> word { return 1; }
-function foo() -> word { return 2; }
-function main() -> word { return foo(); }
+function foo() returns (word) { return 1; }
+function foo() returns (word) { return 2; }
+function main() returns (word) { return foo(); }

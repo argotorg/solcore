@@ -1,7 +1,7 @@
-import std.{Num,Add,Sub,Eq,Ord,Bounded,Typedef,le};
+import {Num,Add,Sub,Eq,Ord,Bounded,Typedef,le} from std;
 
 contract C {
-    public function main() -> word {
+    function main() public returns (word) {
         let x : word = 100;
         let i : word = 0;
         let s : word = 0;

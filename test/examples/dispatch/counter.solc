@@ -1,5 +1,5 @@
-import std.{*};
-import std.dispatch.{*};
+import {*} from std;
+import {*} from std.dispatch;
 contract Counter {
   counter : uint256;
   
@@ -7,7 +7,7 @@ contract Counter {
     counter = 41;
   }
   
-  public function test() -> uint256 {
+  function test() public returns (uint256) {
     counter = counter + 1;
     return counter;
   }

@@ -128,7 +128,7 @@ def gen_function(op):
     call_args = ", ".join(args)
     ret_type = "word" if op["output"] == 1 else "()"
 
-    lines = [f"function {fname}({params}) -> {ret_type} {{"]
+    lines = [f"function {fname}({params}) returns ({ret_type}) {{"]
     if op["output"] == 1:
         lines.append("    let res;")
         lines.append("    assembly {")

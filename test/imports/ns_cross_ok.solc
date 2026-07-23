@@ -1,5 +1,5 @@
-data Foo = Foo;
+enum Foo { Foo }
 
-function main() -> Foo {
+function main() returns (Foo) {
   return Foo.Foo;
 }

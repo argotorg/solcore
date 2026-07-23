@@ -1,3 +1,3 @@
-import reexport_select_base.{mstore};
+import {mstore} from reexport_select_base;
 
 export { mstore };

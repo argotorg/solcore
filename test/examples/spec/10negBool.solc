@@ -1,29 +1,29 @@
 
-forall a . class  a : Neg {
-   function neg(x:a) -> a;
+trait Neg<a> {
+   function neg(x:a) returns (a);
 }
 
-data B = F | T;
+enum B { F, T }
 
 
-instance B : Neg {
-  function neg (x : B) -> B {
-    match x {
-    | B.F => return B.T;
-    | B.T => return B.F;
-    }
+impl Neg<B> {
+  function neg (x : B) returns (B) {
+    match (x ) {
+    case B.F { return B.T;
+    } case B.T { return B.F;
+    } }
   }
 }
 
 
 contract NegBool {
 
-  public function fromB(b : B) -> word {
-    match b  {
-    | B.F => return 0;
-    | B.T => return 1;
-    }
+  function fromB(b : B) public returns (word) {
+    match (b  ) {
+    case B.F { return 0;
+    } case B.T { return 1;
+    } }
   }
 
-  public function main() -> word { return  fromB(Neg.neg(B.F)); }
+  function main() public returns (word) { return  fromB(Neg.neg(B.F)); }
 }

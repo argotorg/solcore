@@ -1,17 +1,17 @@
 contract Dwarves {
-  data Dwarf = Doc | Grumpy | Sleepy | Bashful | Happy | Sneezy | Dopey;
+  enum Dwarf { Doc, Grumpy, Sleepy, Bashful, Happy, Sneezy, Dopey }
 
 
-  public function fromEnum(c : Dwarf) -> word {
-    match c {
-      | Dwarf.Doc      => return 1;
-      | Dwarf.Grumpy   => return 2;
-      | Dwarf.Sleepy   => return 3;
-      | Dwarf.Bashful  => return 4;
-      | Dwarf.Happy    => return 5;
-      | _              => return 0;
-    }
+  function fromEnum(c : Dwarf) public returns (word) {
+    match (c ) {
+      case Dwarf.Doc      { return 1;
+      } case Dwarf.Grumpy   { return 2;
+      } case Dwarf.Sleepy   { return 3;
+      } case Dwarf.Bashful  { return 4;
+      } case Dwarf.Happy    { return 5;
+      } default { return 0;
+    } }
   }
 
-  public function main() -> word { return fromEnum(Dwarf.Happy); }
+  function main() public returns (word) { return fromEnum(Dwarf.Happy); }
 }

@@ -1,7 +1,7 @@
-function id (x) -> word {
+function id (x) returns (word) {
   return x;
 }
 
-forall a . function fakeid(x : word) -> a {
+function fakeid<a>(x : word) returns (a) {
   return x ;
 }

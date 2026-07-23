@@ -1,18 +1,18 @@
-import std.{*};
+import {*} from std;
 
 contract PoC {
     field : word;
 
-    public function set_x(b: bool) -> bool {
+    function set_x(b: bool) public returns (bool) {
         field = b;   // BUG: `word` shouldn't be unified with `bool`.
         return b;
     }
 
-    public function init(foo: bool) -> () {
+    function init(foo: bool) public returns (()) {
        field = 2;
     }
 
-    public function main () -> () {
+    function main () public returns (()) {
 
     }
 }

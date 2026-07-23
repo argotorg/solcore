@@ -1,9 +1,9 @@
-data Nat = Zero | Succ(Nat);
+enum Nat { Zero, Succ(Nat) }
 
-function foo(n : Nat) -> Nat {
-  match n {
-  | Nat.Zero => return Nat.Succ(Nat.Zero) ;
-  | Nat.Succ(Nat.Succ(x)) => return x;
-  | x => return Nat.Zero;
-  }
+function foo(n : Nat) returns (Nat) {
+  match (n ) {
+  case Nat.Zero { return Nat.Succ(Nat.Zero) ;
+  } case Nat.Succ(Nat.Succ(x)) { return x;
+  } case x { return Nat.Zero;
+  } }
 }

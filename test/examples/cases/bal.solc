@@ -1,12 +1,12 @@
-data Proxy (a) = Proxy  ;
-data dict(member, index) = dict(word, Proxy(member), Proxy(index)) ;
-data address = address(word) ;
-data storage(a) = storage(word) ;
+enum Proxy<a> { Proxy }
+enum dict<member, index> { dict(word, Proxy<member>, Proxy<index>) }
+enum address { address(word) }
+enum storage<a> { storage(word) }
 
-data IndexAP (m, idx, member) = IndexAP(m, idx, Proxy(member)) ;
+enum IndexAP<m, idx, member> { IndexAP(m, idx, Proxy<member>) }
 
-function wal(ref: storage(dict(address, word)) , src : address, amt: word) -> () {
-  let ip = IndexAP(ref, src, Proxy : Proxy(word));
+function wal(ref: dict<address, word> storage , src : address, amt: word) returns (()) {
+  let ip = IndexAP(ref, src, Proxy as Proxy<word>);
   Assign.assign(LVA.acc(ip), amt);
 }
 
@@ -38,23 +38,20 @@ instance IndexAP(storage(dict(index,member)), index, member):LVA(storage(member)
 b5 +-> e4 should really be b5 ~ e4
 
 */
-forall self memberRefType.
-class self:LVA(memberRefType) {
-    function acc(x:self) -> memberRefType;
+trait LVA<self, memberRefType> {
+    function acc(x:self) returns (memberRefType);
 }
 
-forall index member.
-  instance IndexAP(storage(dict(index,member)), index, member):LVA(storage(member)) {
-    function acc(x:IndexAP(storage(dict(index,member)), index, member)) -> storage(member) {
+impl<index, member> LVA<IndexAP<dict<index, member> storage, index, member>, member storage> {
+    function acc(x:IndexAP<dict<index, member> storage, index, member>) returns (member storage) {
 	    return storage(30);
     }
 }
 
-forall lhs rhs.
-class lhs:Assign(rhs) {
-    function assign(l:lhs, r:rhs) -> ();
+trait Assign<lhs, rhs> {
+    function assign(l:lhs, r:rhs) returns (());
 }
 
-forall a . instance storage(a):Assign(a) {
-    function assign(l:storage(a), y:a) -> () {}
+impl<a> Assign<a storage, a> {
+    function assign(l:a storage, y:a) returns (()) {}
 }

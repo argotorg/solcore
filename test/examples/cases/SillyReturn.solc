@@ -1,9 +1,9 @@
-data Nat = Zero | Succ(Nat);
-data Bool = True | False;
+enum Nat { Zero, Succ(Nat) }
+enum Bool { True, False }
 
-function even (n) -> Bool {
-  match n {
-  | Nat.Zero => return 1; return Bool.True;
-  | Nat.Succ(m) => return 0; return Bool.False;
-  }
+function even (n) returns (Bool) {
+  match (n ) {
+  case Nat.Zero { return 1; return Bool.True;
+  } case Nat.Succ(m) { return 0; return Bool.False;
+  } }
 }

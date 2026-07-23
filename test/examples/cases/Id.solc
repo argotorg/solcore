@@ -1,9 +1,9 @@
-function id (x : word) -> word {
+function id (x : word) returns (word) {
     return x;
 }
 
 contract Id {
-  public function main () -> word {
+  function main () public returns (word) {
     return id(0);
   }
 }

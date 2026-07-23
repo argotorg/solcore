@@ -8,7 +8,7 @@ contract Id1 {
 }
 */
 
-function addW(x: Word, y:Word) -> Word {
+function addW(x: Word, y:Word) returns (Word) {
    let res : Word;
    assembly {
        res := add(x, y)
@@ -16,29 +16,29 @@ function addW(x: Word, y:Word) -> Word {
     return res;
 }
 
-class self : Invokable(args, ret) {
-    function invoke (s:self,  a:args) -> ret;
+trait Invokable<self, args, ret> {
+    function invoke (s:self,  a:args) returns (ret);
 }
 
 // env might be a tuple, here it is a single Word
-function lam1impl(env: Word, x: c) -> c {
+function lam1impl(env: Word, x: c) returns (c) {
    let y = env;
    return addW(x,y);
 }
 
-data Lam1Closure(a) = Lam1Closure(Word)
+enum Lam1Closure<a> { Lam1Closure(Word) }
 
-instance Lam1Closure(a) : Invokable(a,Word) {
-  function invoke(clos: Lam1Closure(a), arg:a) -> Word {
-  match clos {
-    | Lam1Closure(env) => return lam1impl(env, arg);
-    };
+impl Invokable<Lam1Closure<a>, a, Word> {
+  function invoke(clos: Lam1Closure<a>, arg:a) returns (Word) {
+  match (clos ) {
+    case Lam1Closure(env) { return lam1impl(env, arg);
+    } }
   }
 }
 
 
 contract InvokeCapLam {
-public function main() {
+function main() public {
   let y = 42;
   let clos = Lam1Closure(y);
 

@@ -1,4 +1,3 @@
-forall self fieldType offsetType
-. class self:CStructField(fieldType, offsetType) {
-  function offsetSize(s: self) -> word;
+trait CStructField<self, fieldType, offsetType> {
+  function offsetSize(s: self) returns (word);
 }

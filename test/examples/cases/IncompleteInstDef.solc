@@ -1,14 +1,14 @@
-forall a b . class a : Foo(b) {
-  function foo (x : a, y : b) -> b ;
-  function faa (y : a) -> a ;
+trait Foo<a, b> {
+  function foo (x : a, y : b) returns (b) ;
+  function faa (y : a) returns (a) ;
 }
 
-data Bool = False | True;
+enum Bool { False, True }
 
-data Maybe(a) = Nothing | Just(a);
+enum Maybe<a> { Nothing, Just(a) }
 // missing the definition of Foo.foo
-instance Bool : Foo(Bool) {
-  function faa(y : Bool) -> Bool {
+impl Foo<Bool, Bool> {
+  function faa(y : Bool) returns (Bool) {
     return y ;
   }
 }

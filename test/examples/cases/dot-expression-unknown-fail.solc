@@ -1,5 +1,5 @@
-data Option = None | Some(word);
+enum Option { None, Some(word) }
 
-function bad() -> Option {
+function bad() returns (Option) {
   return .Nope(1);
 }

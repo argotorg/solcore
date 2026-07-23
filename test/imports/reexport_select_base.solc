@@ -1,5 +1,5 @@
 export { mstore };
 
-function mstore(x: word) -> word {
+function mstore(x: word) returns (word) {
   return x;
 }

@@ -1,13 +1,13 @@
-forall a . class a:Fallback {
-  function tag(x:a) -> word;
+trait Fallback<a> {
+  function tag(x:a) returns (word);
 }
 
-forall a . default instance a:Fallback {
-  function tag(x:a) -> word {
+default impl<a> Fallback<a> {
+  function tag(x:a) returns (word) {
     return 7;
   }
 }
 
-function main() -> word {
-  return Fallback.tag(0:word);
+function main() returns (word) {
+  return Fallback.tag(0 as word);
 }

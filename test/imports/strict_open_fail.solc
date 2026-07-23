@@ -1,5 +1,5 @@
 import booldef;
 
-function bad(b: Bool) -> Bool {
+function bad(b: Bool) returns (Bool) {
   return not(b);
 }

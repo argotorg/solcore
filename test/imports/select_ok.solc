@@ -1,5 +1,5 @@
-import selectlib.{keep};
+import {keep} from selectlib;
 
-function main(x: word) -> word {
+function main(x: word) returns (word) {
   return keep(x);
 }

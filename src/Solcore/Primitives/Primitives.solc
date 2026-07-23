@@ -1,15 +1,15 @@
-  data Unit = Unit
-  type Memory[a] = Word
+  enum Unit { Unit }
+  type Memory<a> is Word;
 
-  class ref : Ref[deref] {
-    function load (r : ref) -> deref ;
+  trait Ref<ref, deref> {
+    function load (r : ref) returns (deref) ;
     function store (r : ref, v : deref) ;
   }
 
-  type Stack [a] = a
+  type Stack<a> is a;
 
-  instance Stack[a] : Ref [Memory[a]] {
-    function load (r : Stack[a]) -> Memory[a] {}
+  impl Ref<Stack<a>, Memory<a>> {
+    function load (r : Stack<a>) returns (Memory<a>) {}
 
-    function store(r : Stack[a], v : Memory[a]) {}
+    function store(r : Stack<a>, v : Memory<a>) {}
   }

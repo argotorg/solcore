@@ -1,8 +1,8 @@
 contract Mutual {
-   public function main () -> word {
+   function main () public returns (word) {
       return f();
    }
-   public function f () -> word {
+   function f () public returns (word) {
       return 42;
    }
 }

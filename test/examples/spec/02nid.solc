@@ -1,15 +1,15 @@
 contract Id1 {
-  public function id(x : word) -> word {
+  function id(x : word) public returns (word) {
     return x ;
   }
 
-  public function nid(x : word) -> word {
+  function nid(x : word) public returns (word) {
     return id(x);
   }
 
-  public function const(x : word, y : word) -> word { return x; }
+  function const(x : word, y : word) public returns (word) { return x; }
 
-  public function main() -> word {
+  function main() public returns (word) {
     return const(nid(42), id(1));
   }
 }

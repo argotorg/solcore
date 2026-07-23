@@ -1,7 +1,7 @@
-import opaque_dep_base.{T, mkT};
+import {T, mkT} from opaque_dep_base;
 
 export { make };
 
-function make(x: word) -> T {
+function make(x: word) returns (T) {
   return mkT(x);
 }

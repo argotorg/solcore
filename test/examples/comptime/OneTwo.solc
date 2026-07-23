@@ -1,5 +1,5 @@
 // This function should be in stdlib
-function addWord(l: word, r: word) -> word {
+function addWord(l: word, r: word) returns (word) {
   let rw : word;
   assembly {
       rw := add(l,r)
@@ -7,15 +7,15 @@ function addWord(l: word, r: word) -> word {
   return rw;
 }
 
-  function zero () -> word {
+  function zero () returns (word) {
     return 0;
   }
 
-function one() -> word {
+function one() returns (word) {
     return addWord(1, zero()) ;
   }
 
-function two () -> word {
+function two () returns (word) {
   let x = zero();
   x = addWord(x, one());
   x = addWord(x,x);
@@ -23,6 +23,6 @@ function two () -> word {
 }
 
 contract OneTwo {
-  public function main() -> word { return two(); }
+  function main() public returns (word) { return two(); }
 }
 

@@ -1,15 +1,15 @@
-data Unit = Unit
-data Pair(a, b) = Pair(a,b)
+enum Unit { Unit }
+enum Pair<a, b> { Pair(a, b) }
 
-type uint = word
-type string = word
-type bool = word
+type uint is word;
+type string is word;
+type bool is word;
 
-data Memory(t) = Memory(Word)
+enum Memory<t> { Memory(Word) }
 
 // this lets us link a given field in a struct to its position in it's
 // underlying generic representation as a tuple.
-class self:Field(prevTypes, ty) {}
+trait Field<self, prevTypes, ty> {}
 
 // this struct should desugar into the following
 //struct S {
@@ -19,34 +19,34 @@ class self:Field(prevTypes, ty) {}
 //}
 
 // a type abstraction over tuples
-type s = Pair(uint, Pair(string, bool))
+type s is Pair<uint, Pair<string, bool>>;
 
 // unique types identifying each field
-type sf1 = Unit
-type sf2 = Unit
-type sf3 = Unit
+type sf1 is Unit;
+type sf2 is Unit;
+type sf3 is Unit;
 
 // Field instances linking each field to it's position in the underlying tuple
-instance Pair(s, sf1):Field(Unit, uint) {}
-instance Pair(s, sf2):Field(uint, string) {}
-instance Pair(s, sf3):Field(Pair(uint, string), bool) {}
+impl Field<Pair<s, sf1>, Unit, uint> {}
+impl Field<Pair<s, sf2>, uint, string> {}
+impl Field<Pair<s, sf3>, Pair<uint, string>, bool> {}
 
 
 // struct field member access desugars into calls to this class
-class self:HasField(fieldType) {
-  function getField(x:self) -> fieldType;
+trait HasField<self, fieldType> {
+  function getField(x:self) returns (fieldType);
 }
 
 // we instantiate generic instances for references to types that implement Field
-instance (Pair(t, fieldName):Field(prevTypes, fieldType), fieldType:ValueType) => Pair(Memory(t), fieldName):HasField(Memory(fieldType)) {
-  function getField(x : Pair(Memory(T), fieldName)) -> fieldType {
+impl HasField<Pair<Memory<t>, fieldName>, Memory<fieldType>> where Pair<t, fieldName>: Field<prevTypes, fieldType>, fieldType: ValueType {
+  function getField(x : Pair<Memory<T>, fieldName>) returns (fieldType) {
     // TODO: define this function...
-    let x : Proxy(prevTypes) = Proxy;
+    let x : Proxy<prevTypes> = Proxy;
     let sz : Word = getMemorySize(x);
     let ret : fieldType = ValueType.abs(0);
     assembly {
       ret := mload(add(rep(fst(x)), sz))
-    };
+    }
     return ret;
   }
 }

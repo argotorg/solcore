@@ -1,21 +1,21 @@
-forall a b c . c : invokable(a, b) => function app (f : c, x : a) -> b {
+function app<a, b, c> (f : c, x : a) returns (b)  where c: invokable<a, b> {
   return invokable.invoke(f, x);
 }
 
-data t_id = t_id;
+enum t_id { t_id }
 
-instance t_id : invokable(word, word) {
-  function invoke(self : t_id, x : word) -> word {
+impl invokable<t_id, word, word> {
+  function invoke(self : t_id, x : word) returns (word) {
     return x;
   }
 }
 
-function foo() -> word {
+function foo() returns (word) {
   return app(t_id, 0);
 }
 
 contract C {
-  public function main () -> word {
+  function main () public returns (word) {
     return foo();
   }
 }

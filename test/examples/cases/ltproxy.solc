@@ -1,7 +1,7 @@
-import std.{lt};
+import {lt} from std;
 export { ltproxy };
 
-function ltproxy() -> bool {
+function ltproxy() returns (bool) {
     let zero : word = 0;
     return (zero < 42);
 }

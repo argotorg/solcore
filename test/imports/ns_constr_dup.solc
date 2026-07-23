@@ -1,6 +1,6 @@
-data Foo = Same;
-data Bar = Same;
+enum Foo { Same }
+enum Bar { Same }
 
-function main() -> word {
+function main() returns (word) {
   return 0;
 }

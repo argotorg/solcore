@@ -1,17 +1,17 @@
 function lambdaimpl1 (x) {
      return x;
 }
-data LambdaTy0(a) = LambdaTy0;
-class  self : invokable (args, ret) {
-   function invoke (self : self, args : args) -> ret;
+enum LambdaTy0<a> { LambdaTy0 }
+trait invokable<self, args, ret> {
+   function invoke (self : self, args : args) returns (ret);
 }
-instance LambdaTy0(a) : invokable (a, a) {
-   forall a . function invoke (self : LambdaTy0(a), args : a) -> a {
+impl invokable<LambdaTy0<a>, a, a> {
+   function invoke<a> (self : LambdaTy0<a>, args : a) returns (a) {
     return lambdaimpl1(args);
   }
 }
 contract SimpleLambda {
-   public function f () {
+   function f () public {
       let n = LambdaTy0 ;
       return invokable.invoke(n, 0);
    }

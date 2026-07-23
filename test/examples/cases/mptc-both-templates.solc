@@ -2,33 +2,31 @@
 // both directions.  Both should discover the same binding rep=word; the second
 // application is idempotent (extSpSubst with the same binding is a no-op).
 
-data Box = Box(word);
+enum Box { Box(word) }
 
-forall self rep.
-class self:Convert(rep) {
-    function toRep(x:self) -> rep;
-    function fromRep(x:rep) -> self;
+trait Convert<self, rep> {
+    function toRep(x:self) returns (rep);
+    function fromRep(x:rep) returns (self);
 }
 
-instance Box:Convert(word) {
-    function toRep(x:Box) -> word {
-        match x { | Box(w) => return w; }
+impl Convert<Box, word> {
+    function toRep(x:Box) returns (word) {
+        match (x ) { case Box(w) { return w; } }
     }
-    function fromRep(x:word) -> Box {
+    function fromRep(x:word) returns (Box) {
         return Box(x);
     }
 }
 
-forall a rep . a:Convert(rep) =>
-function roundtrip(x:a) -> a {
+function roundtrip<a, rep>(x:a) returns (a)  where a: Convert<rep> {
     let r : rep = Convert.toRep(x);
     return Convert.fromRep(r);
 }
 
 contract C {
     constructor() {}
-    public function main() -> word {
+    function main() public returns (word) {
         let b : Box = roundtrip(Box(99));
-        match b { | Box(w) => return w; }
+        match (b ) { case Box(w) { return w; } }
     }
 }

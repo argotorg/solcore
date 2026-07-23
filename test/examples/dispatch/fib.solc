@@ -1,12 +1,12 @@
-import std.dispatch.{*};
+import {*} from std.dispatch;
 
-function fib(n : word) -> word {
+function fib(n : word) returns (word) {
    if(n < 2) { return n; } else {return fib(n-1) + fib(n-2); }
 }
 
 contract Fib {
   constructor() {}
-  public function test() -> uint256 {
+  function test() public returns (uint256) {
     return uint256(fib(10));
   }
 }

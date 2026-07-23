@@ -1,18 +1,18 @@
 // --- preamble / duplicated std defs ---
 
-data Proxy(a) = Proxy;
+enum Proxy<a> { Proxy }
 
 // dynamic arrays with a runtime size. cannot exist on stack so no data constructor (i.e. should be used in combination with memory / storage pointers).
-data array(a);
+enum array<a> {}
 
 // a typed pointer to a location in memory
-data memory(a) = memory(word);
+enum memory<a> { memory(word) }
 
 // word arithmetc
-forall t . class t:Add { function add(l: t, r: t) -> t; }
-forall t . class t:Mul { function mul(l: t, r: t) -> t; }
-instance word:Add {
-    function add(l: word, r: word) -> word {
+trait Add<t> { function add(l: t, r: t) returns (t); }
+trait Mul<t> { function mul(l: t, r: t) returns (t); }
+impl Add<word> {
+    function add(l: word, r: word) returns (word) {
         let rw : word;
         assembly {
             rw := add(l,r)
@@ -20,8 +20,8 @@ instance word:Add {
         return rw;
     }
 }
-instance word:Mul {
-    function mul(l: word, r: word) -> word {
+impl Mul<word> {
+    function mul(l: word, r: word) returns (word) {
         let rw : word;
         assembly {
             rw := mul(l,r)
@@ -32,101 +32,101 @@ instance word:Mul {
 
 // --- MemoryType ---
 
-forall a . class a:MemoryType {
-  function load(loc : word) -> a;
-  function store(loc: word, val : a) -> ();
-  function size(prx : Proxy(a)) -> word;
+trait MemoryType<a> {
+  function load(loc : word) returns (a);
+  function store(loc: word, val : a) returns (());
+  function size(prx : Proxy<a>) returns (word);
 }
 
-instance word:MemoryType {
-  function load(loc : word) -> word {
+impl MemoryType<word> {
+  function load(loc : word) returns (word) {
     let ret : word;
     assembly { ret := mload(loc) }
     return ret;
   }
 
-  function store(loc : word, val : word) -> () {
+  function store(loc : word, val : word) returns (()) {
     assembly { mstore(loc,val) }
   }
 
-  function size(prx : Proxy(word)) -> word {
+  function size(prx : Proxy<word>) returns (word) {
     return 32;
   }
 }
 
-forall a . instance memory(array(a)):MemoryType {
-  function load(loc: word) -> memory(array(a)) {
+impl<a> MemoryType<a[] memory> {
+  function load(loc: word) returns (a[] memory) {
     let ret : word;
     assembly { ret := mload(loc) }
     return memory(ret);
   }
 
-  function store(loc : word, val : memory(array(a))) -> () {
-    match val {
-      | memory(ptr) => assembly { mstore(loc,ptr) }
-    }
+  function store(loc : word, val : a[] memory) returns (()) {
+    match (val ) {
+      case memory(ptr) { assembly { mstore(loc,ptr) }
+    } }
   }
 
-  function size(prx : Proxy(memory(a))) -> word {
+  function size(prx : Proxy<a memory>) returns (word) {
     return 32;
   }
 }
 
 // --- Assignment ---
 
-forall lhs rhs . class lhs:Assign(rhs) {
-  function assign(l : lhs, r : rhs) -> ();
+trait Assign<lhs, rhs> {
+  function assign(l : lhs, r : rhs) returns (());
 }
 
-instance memory(word):Assign(word) {
-  function assign(ptr : memory(word), val : word) -> () {
-    match ptr {
-      | memory(loc) => assembly {
+impl Assign<word memory, word> {
+  function assign(ptr : word memory, val : word) returns (()) {
+    match (ptr ) {
+      case memory(loc) { assembly {
           mstore(loc, val)
       }
-    }
+    } }
   }
 }
 
 // --- Index Access ---
 
-forall col_idx val . class col_idx:RValueIdxAccess(val) {
-  function lookup(ci : col_idx) -> val;
+trait RValueIdxAccess<col_idx, val> {
+  function lookup(ci : col_idx) returns (val);
 }
 
-forall col_idx val . class col_idx:LValueIdxAccess(val) {
-  function lookup(ci : col_idx) -> val;
+trait LValueIdxAccess<col_idx, val> {
+  function lookup(ci : col_idx) returns (val);
 }
 
-forall a . a:MemoryType => instance (memory(array(a)), word):RValueIdxAccess(a) {
-  function lookup(col_idx : (memory(array(a)), word)) -> a {
-    let sz = MemoryType.size(Proxy : Proxy(a));
-    match col_idx {
-      | (col, idx) => match col {
-        | memory(loc) =>
+impl<a> RValueIdxAccess<(a[] memory, word), a> where a: MemoryType {
+  function lookup(col_idx : (a[] memory, word)) returns (a) {
+    let sz = MemoryType.size(Proxy as Proxy<a>);
+    match (col_idx ) {
+      case (col, idx) { match (col ) {
+        case memory(loc) {
           return MemoryType.load(Add.add(loc, Mul.mul(idx, sz)));
-      }
-    }
+      } }
+    } }
   }
 }
 
-forall a . a:MemoryType => instance (memory(array(a)), word):LValueIdxAccess(memory(a)) {
-  function lookup(col_idx : (memory(array(a)), word)) -> memory(a) {
-    let sz = MemoryType.size(Proxy : Proxy(a));
-    match col_idx {
-      | (col, idx) => match col {
-        | memory(loc) => return memory(Add.add(loc, Mul.mul(idx, sz)));
-      }
-    }
+impl<a> LValueIdxAccess<(a[] memory, word), a memory> where a: MemoryType {
+  function lookup(col_idx : (a[] memory, word)) returns (a memory) {
+    let sz = MemoryType.size(Proxy as Proxy<a>);
+    match (col_idx ) {
+      case (col, idx) { match (col ) {
+        case memory(loc) { return memory(Add.add(loc, Mul.mul(idx, sz)));
+      } }
+    } }
   }
 }
 
 // --- Examples ---
 
-function main() -> () {
-  let x : memory(array(memory(array(word)))) = memory(0);
+function main() returns (()) {
+  let x : word[] memory[] memory = memory(0);
   let y : word = 0;
-  let z : memory(array(word)) = memory(0);
+  let z : word[] memory = memory(0);
 
   let i0 : word = 0;
   let i1 : word = 1;

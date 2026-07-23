@@ -1,23 +1,23 @@
 // Note: this class has no instances!
-forall abs rep . class abs:Typedef(rep) {
-    function rep(x:abs) -> rep;
-    function abs(x:rep) -> abs;
+trait Typedef<abs, rep> {
+    function rep(x:abs) returns (rep);
+    function abs(x:rep) returns (abs);
 }
 
-forall self . class self:MemoryType {
-    function load(ptr:word) -> self;
+trait MemoryType<self> {
+    function load(ptr:word) returns (self);
 }
 
-instance word:MemoryType {
-    function load(ptr:word) -> word {
-        return Typedef.abs(MemoryType.load(ptr) : word);
+impl MemoryType<word> {
+    function load(ptr:word) returns (word) {
+        return Typedef.abs(MemoryType.load(ptr) as word);
 	// `abs` does not make sense here, but it triggers the bug:
 	// the typechecker should complain about  missing instance here
     }
 }
 
 contract C {
-  public function main() -> word {
+  function main() public returns (word) {
       let ptr : word = 0;
       // if we inline the let below into return then another bug occurs: main is typed as forall a. () -> a
       // let w:word = MemoryType.load(0);

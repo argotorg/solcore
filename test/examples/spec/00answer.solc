@@ -1,5 +1,5 @@
 contract Answer {
-  public function main() -> word {
+  function main() public returns (word) {
     return 42;
   }
 }

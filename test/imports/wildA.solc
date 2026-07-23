@@ -1,6 +1,6 @@
 import wildB;
 export {wildB.*, *};
 
-function fromWildA() -> word {
+function fromWildA() returns (word) {
   return wildB.fromWildB();
 }

@@ -1,15 +1,15 @@
-data uint256 = uint256(word);
-data Proxy(a) = Proxy;
-forall self . class self:ABIAttribs {
-    function headSize(ty:Proxy(self)) -> word;
-    function isStatic(ty:Proxy(self)) -> bool;
+enum uint256 { uint256(word) }
+enum Proxy<a> { Proxy }
+trait ABIAttribs<self> {
+    function headSize(ty:Proxy<self>) returns (word);
+    function isStatic(ty:Proxy<self>) returns (bool);
 }
 
-instance ():ABIAttribs {
-    function headSize(ty : Proxy(uint256)) -> word { return 0; }
-    function isStatic(ty : Proxy(uint256)) -> bool { return true; }
+impl ABIAttribs<()> {
+    function headSize(ty : Proxy<uint256>) returns (word) { return 0; }
+    function isStatic(ty : Proxy<uint256>) returns (bool) { return true; }
 }
-instance uint256:ABIAttribs {
-    function headSize(ty : Proxy(uint256)) -> word { return 32; }
-    function isStatic(ty : Proxy(uint256)) -> bool { return true; }
+impl ABIAttribs<uint256> {
+    function headSize(ty : Proxy<uint256>) returns (word) { return 32; }
+    function isStatic(ty : Proxy<uint256>) returns (bool) { return true; }
 }

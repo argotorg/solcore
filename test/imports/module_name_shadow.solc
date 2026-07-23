@@ -1,9 +1,9 @@
-import foo as keep;
+import * as keep from foo;
 
-function keep() -> word {
+function keep() returns (word) {
   return 1;
 }
 
-function main() -> word {
+function main() returns (word) {
   return keep();
 }

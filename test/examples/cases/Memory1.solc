@@ -1,7 +1,7 @@
-data memory(a) = memory(word);
+enum memory<a> { memory(word) }
 
-function g() -> () {
-    let x : memory(memory(word));
-    let y : memory(word) = memory(1);
+function g() returns (()) {
+    let x : word memory memory;
+    let y : word memory = memory(1);
     x = memory(0);
 }

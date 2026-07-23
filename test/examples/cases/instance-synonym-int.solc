@@ -1,17 +1,16 @@
-type W = word;
+type W is word;
 
-forall i.
-class i : FromWord {
-  function fromWord(x:word) ->  i;
+trait FromWord<i> {
+  function fromWord(x:word) returns (i);
 }
 
-instance word : FromWord {
-  function fromWord(x:word) -> word { x }
+impl FromWord<word> {
+  function fromWord(x:word) returns (word) { return x; }
 }
 
 contract C {
 
-  public function main () -> W {
+  function main () public returns (W) {
     let r : W = FromWord.fromWord(42);
     return r;
   }

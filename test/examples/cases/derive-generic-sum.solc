@@ -2,33 +2,33 @@
 // Neither Option nor Tree has an explicit Generic instance; both should be
 // generated automatically by DeriveGeneric.
 
-import std.{*};
-import std.Generic.{*};
+import {*} from std;
+import {*} from std.Generic;
 
-pragma no-patterson-condition;
-pragma no-bounded-variable-condition;
+pragma solcore noPattersonCondition;
+pragma solcore noBoundVariableCondition;
 
-data Option(a) = None | Some(a);
+enum Option<a> { None, Some(a) }
 
-data Tree(a) = Leaf | Node(Tree(a), a, Tree(a));
+enum Tree<a> { Leaf, Node(Tree<a>, a, Tree<a>) }
 
 // Use the auto-derived instances to check that from/to round-trip.
-function roundtripNone() -> bool {
-    let x : Option(word) = Option.None;
-    let r : sum((), word) = Generic.from(x);
-    let x2 : Option(word) = Generic.to(r);
-    match x2 {
-    | Option.None    => return true;
-    | Option.Some(_) => return false;
-    }
+function roundtripNone() returns (bool) {
+    let x : Option<word> = Option.None;
+    let r : sum<(), word> = Generic.from(x);
+    let x2 : Option<word> = Generic.to(r);
+    match (x2 ) {
+    case Option.None    { return true;
+    } case Option.Some(_) { return false;
+    } }
 }
 
-function roundtripSome(v : word) -> bool {
-    let x : Option(word) = Option.Some(v);
-    let r : sum((), word) = Generic.from(x);
-    let x2 : Option(word) = Generic.to(r);
-    match x2 {
-    | Option.None     => return false;
-    | Option.Some(v2) => return eqWord(v, v2);
-    }
+function roundtripSome(v : word) returns (bool) {
+    let x : Option<word> = Option.Some(v);
+    let r : sum<(), word> = Generic.from(x);
+    let x2 : Option<word> = Generic.to(r);
+    match (x2 ) {
+    case Option.None     { return false;
+    } case Option.Some(v2) { return eqWord(v, v2);
+    } }
 }

@@ -1,6 +1,6 @@
-data Pair(a, b) = Pair(a, b);
+enum Pair<a, b> { Pair(a, b) }
 
-forall a . function foo(p: a) -> word {
+function foo<a>(p: a) returns (word) {
     let x: word = p;
     return x;
 }

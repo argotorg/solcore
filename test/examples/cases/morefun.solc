@@ -1,9 +1,9 @@
-data Proxy(a) = Proxy;
+enum Proxy<a> { Proxy }
 
-forall a . class a:C {
-    function fun(p:Proxy(a)) -> word;
+trait C<a> {
+    function fun(p:Proxy<a>) returns (word);
 }
 
-forall t . t : C => function morefun(p:Proxy(t)) -> word {
-    return C.fun(Proxy:Proxy(t));
+function morefun<t>(p:Proxy<t>) returns (word)  where t: C {
+    return C.fun(Proxy as Proxy<t>);
 }

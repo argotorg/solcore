@@ -1,37 +1,35 @@
-data storage(a) = storage(word);
-data storageRef(a) = storageRef(word);
-data Proxy(a) = Proxy;
+enum storage<a> { storage(word) }
+enum storageRef<a> { storageRef(word) }
+enum Proxy<a> { Proxy }
 
-data mapping(member, index) = mapping(word, Proxy(member), Proxy(index));
+enum mapping<member, index> { mapping(word, Proxy<member>, Proxy<index>) }
 
-forall lhs rhs . class lhs:Assign(rhs) {
-    function assign(l:lhs, r:rhs) -> ();
+trait Assign<lhs, rhs> {
+    function assign(l:lhs, r:rhs) returns (());
 }
 
-forall a . instance storageRef(a):Assign(a) {
-    function assign(l:storageRef(a), y:a) {
+impl<a> Assign<storageRef<a>, a> {
+    function assign(l:storageRef<a>, y:a) {
     }
 }
 
-forall self fieldType offsetType . class self:CStructField(fieldType, offsetType) {}
-data StructField(structType, fieldSelector) = StructField(structType);
+trait CStructField<self, fieldType, offsetType> {}
+enum StructField<structType, fieldSelector> { StructField(structType) }
 
 
-data MemberAccessProxy(a, field, offset) = MemberAccessProxy(a, field);
+enum MemberAccessProxy<a, field, offset> { MemberAccessProxy(a, field) }
 
 
-forall self memberRefType . class self:LValueMemberAccess(memberRefType) {
-    function memberAccess(x:self) -> memberRefType;
+trait LValueMemberAccess<self, memberRefType> {
+    function memberAccess(x:self) returns (memberRefType);
 }
 
 // ------------------------------------------------------------------
 // Contract field access
 // ------------------------------------------------------------------
 
-forall cxt fieldSelector fieldType offsetType
-  . StructField(cxt, fieldSelector):CStructField(fieldType, offsetType)
-  => instance MemberAccessProxy(cxt, fieldSelector, offsetType):LValueMemberAccess(storageRef(fieldType)) {
-    function memberAccess(x:MemberAccessProxy(cxt, fieldSelector, offsetType)) -> storageRef(fieldType) {
+impl<cxt, fieldSelector, fieldType, offsetType> LValueMemberAccess<MemberAccessProxy<cxt, fieldSelector, offsetType>, storageRef<fieldType>> where StructField<cxt, fieldSelector>: CStructField<fieldType, offsetType> {
+    function memberAccess(x:MemberAccessProxy<cxt, fieldSelector, offsetType>) returns (storageRef<fieldType>) {
         return storageRef(0x100);
     }
 }
@@ -40,19 +38,18 @@ forall cxt fieldSelector fieldType offsetType
 // Indexed access
 // ------------------------------------------------------------------
 
-data mapping(index, member) = mapping(word);
-data IndexAccessProxy(map, index, member) = IndexAccessProxy(map, index);
+enum mapping<index, member> { mapping(word) }
+enum IndexAccessProxy<map, index, member> { IndexAccessProxy(map, index) }
 
-forall map index member.
- instance IndexAccessProxy(storageRef(map), index, member):LValueMemberAccess(storageRef(member)) {
-    function memberAccess(x:IndexAccessProxy(storageRef(map), index, member)) -> storageRef(member) {
+impl<map, index, member> LValueMemberAccess<IndexAccessProxy<storageRef<map>, index, member>, storageRef<member>> {
+    function memberAccess(x:IndexAccessProxy<storageRef<map>, index, member>) returns (storageRef<member>) {
 	    return storageRef(0);
     }
 }
 
-data MintCtx = MintCtx;
-data balances_sel = balances_sel;
-instance StructField(MintCtx, balances_sel):CStructField(mapping(word,word), ()) {}
+enum MintCtx { MintCtx }
+enum balances_sel { balances_sel }
+impl CStructField<StructField<MintCtx, balances_sel>, mapping(word => word), ()> {}
 
    function mint(amount:word) {
      let bal_prx = MemberAccessProxy(MintCtx, balances_sel);
@@ -71,7 +68,7 @@ instance StructField(MintCtx, balances_sel):CStructField(mapping(word,word), ())
 
    }
 contract Map {
-   public function main () {
+   function main () public {
       mint(1000);
    }
 }

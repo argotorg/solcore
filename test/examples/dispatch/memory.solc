@@ -1,16 +1,16 @@
-import std.{*};
-import std.dispatch.{*};
-import std.opcodes.{mstore};
+import {*} from std;
+import {*} from std.dispatch;
+import {mstore} from std.opcodes;
 
 contract C {
-    public function dirty_allocate() -> memory(bytes) {
+    function dirty_allocate() public returns (bytes memory) {
         mstore(get_free_memory() + 32, 0xdeadc0de);
         let ptr = allocate_memory(32 + 32);
         mstore(ptr, 32);
         return memory(ptr);
     }
 
-    public function clear_allocate() -> memory(bytes) {
+    function clear_allocate() public returns (bytes memory) {
         mstore(get_free_memory() + 32, 0xdeadc0de);
         let ptr = allocate_zeroed_memory(32 + 32);
         mstore(ptr, 32);

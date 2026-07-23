@@ -3,7 +3,7 @@ import @extlib.math.api;
 contract External {
   constructor() {}
 
-  public function main() -> word {
+  function main() public returns (word) {
     return math.api.sum(39);
   }
 }

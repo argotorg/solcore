@@ -3,6 +3,6 @@ function foo(x : word) {
   return bar(x);
 }
 
-function bar(x : word) -> word {
+function bar(x : word) returns (word) {
   return foo(x);
 }

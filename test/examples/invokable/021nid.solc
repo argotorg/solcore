@@ -1,15 +1,15 @@
 contract Id1 {
-  public function id(x) {
+  function id(x) public {
     return x ;
   }
 
-  public function nid() {
+  function nid() public {
     return id;
   }
 
-  public function const(x, y) { return x; }
+  function const(x, y) public { return x; }
 
-  public function main() {
+  function main() public {
     return nid(42);
   }
 }

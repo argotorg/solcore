@@ -3,9 +3,9 @@
 // in branches infer the correct type.
 
 contract CondLit {
-  function main() -> word {
+  function main() returns (word) {
     // Both literal branches should infer type word from the return annotation.
-    let x : word = if (true) then 1 else 2;
+    let x : word = ( (true) ? 1 : 2);
     return x;
   }
 }

@@ -1,9 +1,9 @@
-import std.{*};
-import std.{uint256, address};
-import std.dispatch.{*};
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
+import {*} from std;
+import {uint256, address} from std;
+import {*} from std.dispatch;
+pragma solcore noPattersonCondition ;
+pragma solcore noCoverageCondition ;
+pragma solcore noBoundVariableCondition ;
 contract Counter {
   // some dummy fields to test offset calculation
   fld0 : word;
@@ -18,7 +18,7 @@ contract Counter {
     fld0 = 7;
   }
   
-  public function main() -> word {
+  function main() public returns (word) {
     counter = counter + 1;
     return counter;
   }

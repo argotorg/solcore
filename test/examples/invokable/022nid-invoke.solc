@@ -1,22 +1,22 @@
 
-class self : Invokable(args, ret) {
-    function invoke (s:self,  a:args) -> ret;
+trait Invokable<self, args, ret> {
+    function invoke (s:self,  a:args) returns (ret);
   }
 
   function id(x) {
     return x ;
   }
 
-  data IdToken(a) = IdToken
+  enum IdToken<a> { IdToken }
 
-instance IdToken(a) : Invokable(a,a) {
-  function invoke(token: IdToken(a), arg:a) -> a {
+impl Invokable<IdToken<a>, a, a> {
+  function invoke(token: IdToken<a>, arg:a) returns (a) {
     return id(arg);
   }
 }
 
 contract InvokeId {
-  public function id(x) {
+  function id(x) public {
     return x ;
   }
 
@@ -26,11 +26,11 @@ contract InvokeId {
   }
   */
 
-  public function nidimpl() {
+  function nidimpl() public {
     return IdToken;
   }
 
-  public function main() {
+  function main() public {
     // Instead of: `return nid(42)`
     return invoke(nidimpl(), 42);
   }

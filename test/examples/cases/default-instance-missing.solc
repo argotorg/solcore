@@ -1,17 +1,16 @@
-class self:Test { function f(x:self); }
+trait Test<self> { function f(x:self); }
 
-data memory(a) = memory(word);
-data Proxy(a) = Proxy;
+enum memory<a> { memory(word) }
+enum Proxy<a> { Proxy }
 
-instance memory(memory(word)):Test { function f(x:self) {}}
+impl Test<word memory memory> { function f(x:self) {}}
 
-forall a.
-function f(p:Proxy(a)) {
-    let x:memory(a);
+function f<a>(p:Proxy<a>) {
+    let x:a memory;
     Test.f(x);
 }
 
 function g() {
-    f(Proxy:Proxy(memory(memory(word)))); // needs to choose default instance in Test.f
-    f(Proxy:Proxy(memory(word))); // needs to choose concrete instance
+    f(Proxy as Proxy<word memory memory>); // needs to choose default instance in Test.f
+    f(Proxy as Proxy<word memory>); // needs to choose concrete instance
 }

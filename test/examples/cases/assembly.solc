@@ -1,14 +1,14 @@
-forall a . class a : Mem {
-  function size(x : a) -> word;
+trait Mem<a> {
+  function size(x : a) returns (word);
 }
 
-instance word : Mem {
-  function size(x : word) -> word {
+impl Mem<word> {
+  function size(x : word) returns (word) {
     return 32;
   }
 }
 
-function foo () -> () {
+function foo () returns (()) {
   let ptr : word;
   let arg : word = 0;
   let size = Mem.size(arg);

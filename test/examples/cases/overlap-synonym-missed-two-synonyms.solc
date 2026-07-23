@@ -1,14 +1,14 @@
-type W = word;
-type V = word;
+type W is word;
+type V is word;
 
-forall self . class self:IdTy {
-  function id(x:self) -> self;
+trait IdTy<self> {
+  function id(x:self) returns (self);
 }
 
-instance W:IdTy {
-  function id(x:W) -> W { return x; }
+impl IdTy<W> {
+  function id(x:W) returns (W) { return x; }
 }
 
-instance V:IdTy {
-  function id(x:V) -> V { return 0; }
+impl IdTy<V> {
+  function id(x:V) returns (V) { return 0; }
 }

@@ -1,13 +1,13 @@
-data Bar = Foo(word);
+enum Bar { Foo(word) }
 
-function x(x: Bar) -> Bar {
-  match x {
-  | .Foo(w) => return .Foo(w);
-  }
+function x(x: Bar) returns (Bar) {
+  match (x ) {
+  case .Foo(w) { return .Foo(w);
+  } }
 }
 
-function main() -> word {
-  match x(Bar.Foo(7)) {
-  | Bar.Foo(w) => return w;
-  }
+function main() returns (word) {
+  match (x(Bar.Foo(7)) ) {
+  case Bar.Foo(w) { return w;
+  } }
 }

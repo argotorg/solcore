@@ -1,5 +1,5 @@
 export {*, main};
 
-function main(x: word) -> word {
+function main(x: word) returns (word) {
   return x;
 }

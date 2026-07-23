@@ -1,26 +1,22 @@
 // test complex match example from the blog post
 // simplified to use word instead of uint256
 
-import std.{address, Num, Add, Sub, Div, Bounded, Eq, Ord, Typedef};
+import {address, Num, Add, Sub, Div, Bounded, Eq, Ord, Typedef} from std;
 
-data AuctionState =
-    NotStarted(word)
-  | Active(word, address)
-  | Ended(word, address)
-  | Cancelled(word, address);
+enum AuctionState { NotStarted(word), Active(word, address), Ended(word, address), Cancelled(word, address) }
 
-data Phase = Early | Late;
+enum Phase { Early, Late }
 
-function discount(state : AuctionState, phase : Phase) -> word {
-    match state, phase {
-    | .Active(bid, _), .Early => return bid / 10;
-    | .Active(bid, _), .Late  => return bid / 20;
-    | _, _                  => return 0;
-    }
+function discount(state : AuctionState, phase : Phase) returns (word) {
+    match (state, phase ) {
+    case (.Active(bid, _), .Early ) { return bid / 10;
+    } case (.Active(bid, _), .Late  ) { return bid / 20;
+    } default { return 0;
+    } }
 }
 
 contract Discount {
-  public function main() -> word {
-    discount(.Active(420,.address(0)), .Early)
+  function main() public returns (word) {
+    return discount(.Active(420,.address(0)), .Early);
   }
 }

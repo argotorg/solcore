@@ -1,26 +1,25 @@
-data Bool = False | True;
+enum Bool { False, True }
 
-function fromBool(b:Bool) -> word {
- match b {
-   | Bool.False => return 0;
-   | Bool.True => return 1;
- }
+function fromBool(b:Bool) returns (word) {
+ match (b ) {
+   case Bool.False { return 0;
+   } case Bool.True { return 1;
+ } }
 }
 
-function toBool(x: word) -> Bool {
-  match x {
-    | 0 => return Bool.False;
-    | _ => return Bool.True;
-  }
+function toBool(x: word) returns (Bool) {
+  match (x ) {
+    case 0 { return Bool.False;
+    } default { return Bool.True;
+  } }
 }
 
-forall a.
-class a:Eq {
-  function eq(x:a, y:a) -> Bool;
+trait Eq<a> {
+  function eq(x:a, y:a) returns (Bool);
 }
 
-instance word:Eq {
-  function eq(x:word, y:word) -> Bool {
+impl Eq<word> {
+  function eq(x:word, y:word) returns (Bool) {
     let res : word;
     assembly {
        res := eq(x, y)
@@ -29,42 +28,41 @@ instance word:Eq {
   }
 }
 
-function not (b : Bool) -> Bool {
-  match b {
-  | Bool.True => return Bool.False ;
-  | Bool.False => return Bool.True ;
-  }
+function not (b : Bool) returns (Bool) {
+  match (b ) {
+  case Bool.True { return Bool.False ;
+  } case Bool.False { return Bool.True ;
+  } }
 }
 
-forall a . a:Eq => function ne(x : a, y : a) -> Bool {
+function ne<a>(x : a, y : a) returns (Bool)  where a: Eq {
   return not(Eq.eq(x,y));
 }
 
-forall a. a:Eq =>
-class a:Num {
-  function toWord(x:a) -> word;
-  function fromWord(x:word) -> a;
+trait Num<a> where a: Eq {
+  function toWord(x:a) returns (word);
+  function fromWord(x:word) returns (a);
 }
 
-instance word:Num {
-  function toWord(x:word) -> word { return x; }
-  function fromWord(x:word) -> word { return x; }
-}
-
-
-data uint = uint(word);
-
-instance uint:Eq {
-  function eq(x:uint, y:uint) -> Bool { return Eq.eq(Num.toWord(x), Num.toWord(y)); }
+impl Num<word> {
+  function toWord(x:word) returns (word) { return x; }
+  function fromWord(x:word) returns (word) { return x; }
 }
 
 
-instance uint:Num {
-  function toWord(x:uint) -> word
+enum uint { uint(word) }
+
+impl Eq<uint> {
+  function eq(x:uint, y:uint) returns (Bool) { return Eq.eq(Num.toWord(x), Num.toWord(y)); }
+}
+
+
+impl Num<uint> {
+  function toWord(x:uint) returns (word)
   {
-          match x {
-            | uint(y) => return y;
-        }
+          match (x ) {
+            case uint(y) { return y;
+        } }
   }
-  function fromWord(x:word) -> uint { return uint(x); }
+  function fromWord(x:word) returns (uint) { return uint(x); }
 }

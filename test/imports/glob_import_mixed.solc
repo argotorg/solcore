@@ -1,5 +1,5 @@
-import globlib.{*, idWord};
+import {*, idWord} from globlib;
 
-function main(x: word) -> word {
+function main(x: word) returns (word) {
   return idWord(x);
 }

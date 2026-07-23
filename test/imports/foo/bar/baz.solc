@@ -1,5 +1,5 @@
 export { deep };
 
-function deep() -> word {
+function deep() returns (word) {
   return 9;
 }

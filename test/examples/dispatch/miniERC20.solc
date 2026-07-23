@@ -1,7 +1,7 @@
-import std.{*};
-import std.dispatch.{*};
+import {*} from std;
+import {*} from std.dispatch;
 
-function caller() -> address {
+function caller() returns (address) {
   let res: word;
   assembly {
      res := caller()
@@ -15,10 +15,10 @@ contract MiniERC20 {
   owner : address;
   decimals : uint256; // should be uint8 when we get to it
   totalSupply : uint256;
-  balances : mapping(address,uint256);
-  allowance : mapping(address, mapping(address, uint256));
+  balances : mapping(address => uint256);
+  allowance : mapping(address => mapping(address => uint256));
 
-  constructor(name_ : memory(string), symbol_ : memory(string), totalSupply_:uint256) {
+  constructor(name_ : string memory, symbol_ : string memory, totalSupply_:uint256) {
     name = name_;
     symbol = symbol_;
     owner = caller();
@@ -26,45 +26,45 @@ contract MiniERC20 {
     mint(totalSupply_);
   }
 
-  public function name() -> memory(string) {
+  function name() public returns (string memory) {
     return name;
   }
 
-  public function symbol() -> memory(string) {
+  function symbol() public returns (string memory) {
     return symbol;
   }
 
-  public function decimals() -> uint256 {
+  function decimals() public returns (uint256) {
     return decimals;
   }
 
-  public function allowance(owner_ : address, spender: address) -> uint256 {
+  function allowance(owner_ : address, spender: address) public returns (uint256) {
     return allowance[owner_][spender]; // don't use "owner" here
   }
 
-  public function balanceOf(account : address) -> uint256 {
+  function balanceOf(account : address) public returns (uint256) {
     return balances[account];
   }
 
-  public function totalSupply() -> uint256 {
+  function totalSupply() public returns (uint256) {
     return totalSupply;
   }
 
   // Note that this is not access guarded — the minting always goes to the owner
-  public function mint(amount:uint256) -> () {
+  function mint(amount:uint256) public returns (()) {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
 
-  public function transfer(dst : address, amt : uint256) -> bool {
+  function transfer(dst : address, amt : uint256) public returns (bool) {
       return transferFrom(caller(), dst, amt);
   }
 
-  public function transferFrom(src:address, dst:address, amt:uint256) -> bool {
+  function transferFrom(src:address, dst:address, amt:uint256) public returns (bool) {
      let msg_sender = caller();
      require(balances[src] >= amt, Error(0xf4d678b8)); // InsufficientBalance()
 
-     if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal():uint256)) {
+     if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal() as uint256)) {
         require(allowance[src][msg_sender] >= amt, Error(0x13be252b)); // InsufficientAllowance()
 
         allowance[src][msg_sender] -= amt;
@@ -75,7 +75,7 @@ contract MiniERC20 {
      return true;
   }
 
-  public function approve(usr: address, amt: uint256) -> bool {
+  function approve(usr: address, amt: uint256) public returns (bool) {
       let msg_sender = caller();
       allowance[msg_sender][usr] = amt;
       // emit Approval(msg.sender, usr, amt);
@@ -84,11 +84,11 @@ contract MiniERC20 {
 
 
   // testing
-  public function getMyBalance() -> uint256 {
+  function getMyBalance() public returns (uint256) {
     return balances[caller()];
   }
 
-  public function test() -> uint256 {
+  function test() public returns (uint256) {
       approve(address(0), 10);
       transferFrom(caller(), address(0), 958);
       return getMyBalance();

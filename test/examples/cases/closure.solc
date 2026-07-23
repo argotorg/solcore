@@ -1,4 +1,4 @@
- function foo (z : word, k : (), a : word) -> word {
+ function foo (z : word, k : (), a : word) returns (word) {
   let f = lam (x : word, y : word) {
       k;
       return primAddWord(a,primAddWord(y,z));

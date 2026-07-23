@@ -1,16 +1,15 @@
-forall self.
-class self:C {
-    function size(x:self) -> word;
+trait C<self> {
+    function size(x:self) returns (word);
 }
 
-instance ():C {
-    function size(x:()) -> word {
+impl C<()> {
+    function size(x:()) returns (word) {
         return 0;
     }
 }
 
-instance uint:C {
-    function size(x:uint) -> word {
+impl C<uint> {
+    function size(x:uint) returns (word) {
         return 1;
     }
 }

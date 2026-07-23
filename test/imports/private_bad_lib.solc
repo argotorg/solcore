@@ -1,9 +1,9 @@
 export {ok};
 
-function ok() -> word {
+function ok() returns (word) {
   return 1;
 }
 
-function broken() -> word {
+function broken() returns (word) {
   return true;
 }

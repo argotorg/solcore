@@ -1,9 +1,9 @@
-import selectlib.{keep};
+import {keep} from selectlib;
 
-function keep() -> word {
+function keep() returns (word) {
   return 10;
 }
 
-function main() -> word {
+function main() returns (word) {
   return keep();
 }

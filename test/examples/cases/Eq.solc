@@ -1,20 +1,20 @@
-data Bool = True | False;
+enum Bool { True, False }
 
-class a : Eq {
-  function eq (x : a, y : a) -> Bool;
+trait Eq<a> {
+  function eq (x : a, y : a) returns (Bool);
 }
 
-forall a . a : Eq => class a : Ord {
-  function lt (x : a, y : a) -> Bool ;
+trait Ord<a> where a: Eq {
+  function lt (x : a, y : a) returns (Bool) ;
 }
 
-instance word : Eq {
+impl Eq<word> {
   function eq (x,y) {
-    match primEqWord(x,y) {
-    | 0 =>
+    match (primEqWord(x,y) ) {
+    case 0 {
       return Bool.False;
-    | _ =>
+    } default {
       return Bool.True ;
-    }
+    } }
   }
 }

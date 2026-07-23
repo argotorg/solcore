@@ -1,10 +1,10 @@
-import std.{*};
-import std.dispatch.{*};
+import {*} from std;
+import {*} from std.dispatch;
 
 contract PublicConstructor {
-    public constructor() {}
+    constructor() public {}
 
-    public function answer() -> uint256 {
+    function answer() public returns (uint256) {
         return uint256(42);
     }
 }

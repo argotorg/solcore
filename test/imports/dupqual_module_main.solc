@@ -1,7 +1,7 @@
 import dupqual_a;
 import dupqual_b;
 
-function main(x: word) -> word {
+function main(x: word) returns (word) {
   let y = dupqual_a.foo(x);
   return dupqual_b.foo(y);
 }

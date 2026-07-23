@@ -1,5 +1,3 @@
-forall b.
-class b:IsA {
-  forall a.
-  function ais(p : (a,b)) -> a;
+trait IsA<b> {
+  function ais<a>(p : (a, b)) returns (a);
 }

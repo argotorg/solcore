@@ -1,7 +1,7 @@
-import transitive_dep_base.{g};
+import {g} from transitive_dep_base;
 
 export { f };
 
-function f() -> word {
+function f() returns (word) {
   return g();
 }

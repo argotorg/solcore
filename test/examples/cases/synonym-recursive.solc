@@ -1,8 +1,8 @@
-type A = B;
-type B = A;
+type A is B;
+type B is A;
 
 contract RecursiveTest {
-    public function main() -> word {
+    function main() public returns (word) {
         return 0;
     }
 }

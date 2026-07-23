@@ -1,4 +1,4 @@
-function addW(x: Word, y:Word) -> Word {
+function addW(x: Word, y:Word) returns (Word) {
    let res : Word;
    assembly {
        res := add(x, y)
@@ -6,45 +6,45 @@ function addW(x: Word, y:Word) -> Word {
     return res;
 }
 
-class a:Enum {
-    function fromEnum(x:a) -> Word;
+trait Enum<a> {
+    function fromEnum(x:a) returns (Word);
   }
 
-  data Color = R | G | B
+  enum Color { R, G, B }
 
-instance Color : Enum {
+impl Enum<Color> {
   function fromEnum(c) {
-    match c {
-      | R => return 1;
-      | Color.G => return 2;
-      | Color.B => return 3;
-    };
+    match (c ) {
+      case R { return 1;
+      } case Color.G { return 2;
+      } case Color.B { return 3;
+    } }
   }
 }
 
-data Bool = False | True
+enum Bool { False, True }
 
-instance Bool : Enum {
+impl Enum<Bool> {
   function fromEnum(b) {
-      match b {
-      | False => return 0;
-      | Bool.True => return 1;
-      };
+      match (b ) {
+      case False { return 0;
+      } case Bool.True { return 1;
+      } }
   }
 }
-data FromEnumToken(a) = FromEnumToken
+enum FromEnumToken<a> { FromEnumToken }
 
-class self : Invokable(args, ret) {
-    function invoke (s:self,  a:args) -> ret;
+trait Invokable<self, args, ret> {
+    function invoke (s:self,  a:args) returns (ret);
 }
 
-instance (a:Enum) => FromEnumToken(a) : Invokable(a,Word) {
-   function invoke(fet : FromEnumToken(a), arg) -> Word {
+impl Invokable<FromEnumToken<a>, a, Word> where a: Enum {
+   function invoke(fet : FromEnumToken<a>, arg) returns (Word) {
      return fromEnum(arg);
    }
 }
 contract RGB {
-  public function main() {
+  function main() public {
   /*
   let x = fromEnum(Color.B);
   let y = fromEnum(Bool.True);

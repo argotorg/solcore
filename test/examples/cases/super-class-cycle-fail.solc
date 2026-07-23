@@ -1,15 +1,15 @@
-forall a . a:B => class a:A {}
-forall a . a:A => class a:B {}
-forall a . class a:C {}
+trait A<a> where a: B {}
+trait B<a> where a: A {}
+trait C<a> {}
 
-forall a . a:C => function needsC(x:a) -> () {
-  return ();
+function needsC<a>(x:a) returns (())  where a: C {
+  return;
 }
 
-forall a . a:A => function cannotGetC(x:a) -> () {
+function cannotGetC<a>(x:a) returns (())  where a: A {
   return needsC(x);
 }
 
-function main() -> () {
-  return ();
+function main() returns (()) {
+  return;
 }

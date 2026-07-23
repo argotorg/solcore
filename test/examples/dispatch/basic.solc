@@ -1,99 +1,99 @@
-import std.{*};
-import std.dispatch.{*};
-import std.opcodes.{address as address_};
+import {*} from std;
+import {*} from std.dispatch;
+import {address as address_} from std.opcodes;
 
-function self() -> address {
+function self() returns (address) {
     return address(address_());
 }
 
 contract C {
     constructor() {}
-    public function nothing() -> () {}
+    function nothing() public returns (()) {}
 
     // Re-enters this very contract via raw_call(address(this), ...). The payload
     // is the 4-byte selector of an existing entry point (something(), 0xa7a0d537),
     // built by left-aligning it in a bytes32 and truncating to 4 bytes. The inner
     // call succeeds, so raw_call reports ok == true and returns its returndata
     // (the abi-encoded uint256(1)).
-    public function callSelf() -> (bool, memory(bytes)) {
+    function callSelf() public returns ((bool, bytes memory)) {
         let sel: bytes32 = bytes32(0xa7a0d53700000000000000000000000000000000000000000000000000000000);
         let payload = truncate(to_bytes(sel), 4);
-        match raw_call(self(), uint256(0), payload) {
-            | (ok, ret) => return (ok, ret);
-        }
+        match (raw_call(self(), uint256(0), payload) ) {
+            case (ok, ret) { return (ok, ret);
+        } }
     }
 
     // Same shape, but the selector (0xdeadc0de) matches no entry point, so dispatch
     // reverts (there is no fallback). raw_call swallows the inner revert and reports
     // ok == false; this outer call itself still succeeds and returns the revert
     // returndata (the 4-byte NoFallback error selector).
-    public function callSelfInvalid() -> (bool, memory(bytes)) {
+    function callSelfInvalid() public returns ((bool, bytes memory)) {
         let sel: bytes32 = bytes32(0xdeadc0de00000000000000000000000000000000000000000000000000000000);
         let payload = truncate(to_bytes(sel), 4);
-        match raw_call(self(), uint256(0), payload) {
-            | (ok, ret) => return (ok, ret);
-        }
+        match (raw_call(self(), uint256(0), payload) ) {
+            case (ok, ret) { return (ok, ret);
+        } }
     }
 
-    public function something() -> (uint256) {
+    function something() public returns (uint256) {
         return uint256(1);
     }
 
-    public function add2(x : uint256, y : uint256) -> uint256 {
+    function add2(x : uint256, y : uint256) public returns (uint256) {
         return Add.add(x,y);
     }
 
-    public function add3(x : uint256, y : uint256, z : uint256) -> uint256 {
+    function add3(x : uint256, y : uint256, z : uint256) public returns (uint256) {
         return Add.add(z, Add.add(x,y));
     }
 
-    public function addmod3(x : uint256, y : uint256, k : uint256) -> uint256 {
+    function addmod3(x : uint256, y : uint256, k : uint256) public returns (uint256) {
         return addmod(x, y, k);
     }
 
-    public function mulmod3(x : uint256, y : uint256, k : uint256) -> uint256 {
+    function mulmod3(x : uint256, y : uint256, k : uint256) public returns (uint256) {
         return mulmod(x, y, k);
     }
 
     // Bitwise / modulo via the syntactic sugar only (no explicit class calls):
     //   `^` -> BitXor.bxor, `|` -> BitOr.bor, `&` -> BitAnd.band, `%` -> Mod.mod.
-    public function bxor2(x : uint256, y : uint256) -> uint256 {
+    function bxor2(x : uint256, y : uint256) public returns (uint256) {
         return x ^ y;
     }
 
-    public function bor2(x : uint256, y : uint256) -> uint256 {
+    function bor2(x : uint256, y : uint256) public returns (uint256) {
         return x | y;
     }
 
-    public function band2(x : uint256, y : uint256) -> uint256 {
+    function band2(x : uint256, y : uint256) public returns (uint256) {
         return x & y;
     }
 
-    public function mod2(x : uint256, y : uint256) -> uint256 {
+    function mod2(x : uint256, y : uint256) public returns (uint256) {
         return x % y;
     }
 
-    public function id_bytes(b: memory(bytes)) -> memory(bytes) {
+    function id_bytes(b: bytes memory) public returns (bytes memory) {
         return b;
     }
 
-    public function id_string(b: memory(string)) -> memory(string) {
+    function id_string(b: string memory) public returns (string memory) {
         return b;
     }
 
-    public function id_bytes32(b: bytes32) -> bytes32 {
+    function id_bytes32(b: bytes32) public returns (bytes32) {
         return b;
     }
 
-    public function id_address(a: address) -> address {
+    function id_address(a: address) public returns (address) {
         return a;
     }
 
-    public function id_pair() -> (uint256, uint256) {
+    function id_pair() public returns ((uint256, uint256)) {
         return (uint256(7), uint256(11));
     }
 
-    function hidden() -> (uint256) {
+    function hidden() returns (uint256) {
         return uint256(42);
     }
 }

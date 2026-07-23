@@ -1,21 +1,21 @@
 
-forall self . class self:A {
-  function foo(p : self) -> word;
+trait A<self> {
+  function foo(p : self) returns (word);
 }
 
-forall self . class self:B {
-  function foo(p : self) -> word;
+trait B<self> {
+  function foo(p : self) returns (word);
 }
 
-instance word:B {
-  function foo(x : word) -> word {
+impl B<word> {
+  function foo(x : word) returns (word) {
     return x;
   }
 }
 
 // error: Constraint for A not found in type of foo
-instance word:A {
-  function foo(x : word) -> word {
+impl A<word> {
+  function foo(x : word) returns (word) {
     return x;
   }
 }

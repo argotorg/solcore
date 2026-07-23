@@ -1,26 +1,26 @@
 contract ListModule {
-  data List(a) = Nil | Cons(a,List(a));
-  data Bool = True | False;
+  enum List<a> { Nil, Cons(a, List<a>) }
+  enum Bool { True, False }
 
 
-  forall a b c . public function zipWith (f : (a,b) -> c,xs : List(a),ys : List(b)) -> List(c) {
-    match xs, ys {
-    | List.Nil, List.Nil => return List.Nil ;
-    | List.Cons(x1,xs1), List.Cons(y1,ys1) =>
+  function zipWith<a, b, c> (f : function((a, b)) internal returns (c),xs : List<a>,ys : List<b>) public returns (List<c>) {
+    match (xs, ys ) {
+    case (List.Nil, List.Nil ) { return List.Nil ;
+    } case (List.Cons(x1,xs1), List.Cons(y1,ys1) ) {
       return List.Cons(f(x1,y1), zipWith(f,xs1,ys1)) ;
-    | _, _ => return List.Nil;
-    }
+    } default { return List.Nil;
+    } }
   }
 
-  forall a b . public function foldr(f : (a,b) -> b, v : b, xs : List(a)) -> b {
-    match xs {
-    | List.Nil => return v;
-    | List.Cons(y,ys) =>
+  function foldr<a, b>(f : function((a, b)) internal returns (b), v : b, xs : List<a>) public returns (b) {
+    match (xs ) {
+    case List.Nil { return v;
+    } case List.Cons(y,ys) {
       return f(y, foldr(f,v,ys)) ;
-    }
+    } }
   }
 
-  public function main () -> word {
+  function main () public returns (word) {
     return 0;
   }
 }

@@ -1,5 +1,5 @@
 import booldef;
 
-function fromQualified(b: booldef.Bool) -> booldef.Bool {
+function fromQualified(b: booldef.Bool) returns (booldef.Bool) {
   return booldef.not(b);
 }
