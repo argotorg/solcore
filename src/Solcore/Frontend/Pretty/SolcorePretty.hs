@@ -37,15 +37,19 @@ instance (Pretty a) => Pretty (CompUnit a) where
 
 instance Pretty Import where
   ppr (ImportModule path) =
-    text "import" <+> ppr path <+> semi
+    text "import" <+> (ppr path <> semi)
   ppr (ImportAlias path asName) =
-    hsep [text "import", ppr path, text "as", ppr asName, semi]
-  ppr (ImportOnly path items) =
+    hsep [text "import", text "*", text "as", ppr asName, text "from", ppr path] <> semi
+  ppr (ImportOnly path (SelectItems items hidden)) =
     hsep
-      [ text "import",
-        ppr path <> text ".",
-        pprItemSelector items <> semi
-      ]
+      ( [ text "import",
+          pprItemSelector items,
+          text "from",
+          ppr path
+        ]
+          ++ pprHiding hidden
+      )
+      <> semi
 
 instance Pretty ModulePath where
   ppr (RelativePath path) = ppr path
@@ -105,14 +109,14 @@ instance Pretty ExportSelectorEntry where
   ppr (SelectExportConstructors typeName ctorSelector) =
     ppr typeName <> parens (ppr ctorSelector)
 
-pprItemSelector :: ItemSelector -> Doc
-pprItemSelector (SelectItems items hidden) =
-  base <> pprHiding hidden
-  where
-    base = lbrace <> commaSep (map ppr items) <> rbrace
-    pprHiding [] = empty
-    pprHiding names =
-      space <> (text "hiding" <+> (lbrace <> commaSep (map ppr names) <> rbrace))
+pprItemSelector :: [ItemSelectorEntry] -> Doc
+pprItemSelector items =
+  lbrace <> commaSep (map ppr items) <> rbrace
+
+pprHiding :: [Name] -> [Doc]
+pprHiding [] = []
+pprHiding names =
+  [text "hiding", lbrace <> commaSep (map ppr names) <> rbrace]
 
 instance Pretty ItemSelectorEntry where
   ppr SelectAllItems = text "*"
@@ -125,15 +129,23 @@ exportSelectorIsOnlyWildcard (SelectExportItems [SelectExportAllItems]) = True
 exportSelectorIsOnlyWildcard _ = False
 
 instance Pretty Pragma where
+  ppr (Pragma (SolidityPragma version) Enabled) =
+    hsep [text "pragma", text "solidity", text version] <> semi
+  ppr (Pragma (AbiCoderPragma version) Enabled) =
+    hsep [text "pragma", text "abicoder", text version] <> semi
   ppr (Pragma _ Enabled) = empty
   ppr (Pragma ty st) =
-    hsep [text "pragma", ppr ty, ppr st, semi]
+    hsep [text "pragma", text "solcore", ppr ty, ppr st] <> semi
 
 instance Pretty PragmaType where
-  ppr NoBoundVariableCondition = text "no-bounded-variable-condition"
-  ppr NoCoverageCondition = text "no-coverage-condition"
-  ppr NoPattersonCondition = text "no-patterson-condition"
-  ppr NoGenericInstanceFor = text "no-generic-instance-for"
+  ppr NoBoundVariableCondition = text "noBoundVariableCondition"
+  ppr NoCoverageCondition = text "noCoverageCondition"
+  ppr NoPattersonCondition = text "noPattersonCondition"
+  ppr NoGenericInstanceFor = text "noGenericInstanceFor"
+  ppr (SolidityPragma version) =
+    hsep [text "solidity", text version]
+  ppr (AbiCoderPragma version) =
+    hsep [text "abicoder", text version]
 
 instance Pretty PragmaStatus where
   ppr (DisableFor ns) =
@@ -143,8 +155,7 @@ instance Pretty PragmaStatus where
 instance (Pretty a) => Pretty (Contract a) where
   ppr (Contract n ts ds) =
     text "contract"
-      <+> ppr n
-      <+> pprTyParams (map TyVar ts)
+      <+> (ppr n <> pprTyParams (map TyVar ts))
       <+> lbrace
       $$ nest 3 (vcat (map ppr ds))
       $$ rbrace
@@ -156,6 +167,8 @@ instance (Pretty a) => Pretty (ContractDecl a) where
     ppr fd
   ppr (CFunDecl fd) =
     ppr fd
+  ppr (CSignatureDecl isExternal sig) =
+    pprContractSignature isExternal sig <> semi
   ppr (CMutualDecl ds) =
     vcat (map ppr ds)
   ppr (CConstrDecl c) =
@@ -163,52 +176,43 @@ instance (Pretty a) => Pretty (ContractDecl a) where
 
 instance (Pretty a) => Pretty (Constructor a) where
   ppr (Constructor ps bd payable) =
-    (if payable then text "payable" <+> text "constructor" else text "constructor")
-      <+> pprParams ps
+    (text "constructor" <> pprParams ps)
+      <+> pprPayable payable
       <+> lbrace
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace
 
 instance Pretty DataTy where
   ppr (DataTy n ps cs) =
-    text "data"
-      <+> ppr n
-      <+> pprTyParams (map TyVar ps)
-      <+> rs
-      <+> text ";"
-    where
-      rs =
-        if null cs
-          then empty
-          else
-            equals <+> hsep (punctuate bar (map ppr cs))
-      bar = text " |"
+    text "enum"
+      <+> (ppr n <> pprTyParams (map TyVar ps))
+      <+> lbrace
+      $$ nest 3 (vcat (punctuate comma (map ppr cs)))
+      $$ rbrace
 
 instance Pretty TySym where
   ppr (TySym n vs t) =
-    text "type"
-      <+> ppr n
-      <+> pprTyParams (map TyVar vs)
-      <+> text "="
-      <+> ppr t
+    ( text "type"
+        <+> (ppr n <> pprTyParams (map TyVar vs))
+        <+> text "is"
+        <+> ppr t
+    )
+      <> semi
 
 instance Pretty Constr where
-  ppr (Constr n []) = ppr n <> text " "
+  ppr (Constr n []) = ppr (constructorLeafName n)
   ppr (Constr n ts) =
-    ppr n <> parens (pprConstrArgs ts)
+    ppr (constructorLeafName n) <> parens (pprConstrArgs ts)
 
 pprConstrArgs :: [Ty] -> Doc
 pprConstrArgs [] = empty
 pprConstrArgs ts = commaSep $ map ppr ts
 
 instance (Pretty a) => Pretty (Class a) where
-  ppr (Class bvs ps n vs v sigs) =
-    pprSigPrefix bvs ps
-      <+> text "class "
-      <+> ppr v
-      <+> colon
-      <+> ppr n
-      <+> pprTyParams (TyVar <$> vs)
+  ppr (Class _ ps n vs v sigs) =
+    text "trait"
+      <+> (ppr n <> pprTyParams (TyVar <$> (v : vs)))
+      <+> pprWhere ps
       <+> lbrace
       $$ nest 3 (pprSignatures sigs)
       $$ rbrace
@@ -218,31 +222,15 @@ pprSignatures =
   vcat . map ((<> semi) . ppr)
 
 instance (Pretty a) => Pretty (Signature a) where
-  ppr (Signature vs ctx n ps rc ty pay) =
-    pprSigPrefix vs ctx
-      <+> (if pay then text "payable" else empty)
-      <+> text "function"
-      <+> ppr n
-      <+> pprParams ps
-      <+> pprRetTy rc ty
-
-pprSigPrefix :: [Tyvar] -> [Pred] -> Doc
-pprSigPrefix [] [] = empty
-pprSigPrefix [] ps = pprContext ps
-pprSigPrefix vs [] =
-  text "forall" <+> hsep (map ppr vs) <+> text "."
-pprSigPrefix vs ps =
-  text "forall" <+> hsep (map ppr vs) <+> text "." $$ pprContext ps
+  ppr = pprSignature False
 
 instance (Pretty a) => Pretty (Instance a) where
   ppr (Instance d vs ctx n tys ty funs) =
-    pprSigPrefix vs ctx
-      <+> pprDefault d
-      <> text "instance"
-      <+> ppr ty
-      <+> colon
-      <+> ppr n
-      <+> pprTyParams tys
+    pprDefault d
+      <> text "impl"
+      <> pprTyParams (map TyVar vs)
+      <+> (ppr n <> pprTyParams (ty : tys))
+      <+> pprWhere ctx
       <+> lbrace
       $$ nest 3 (pprFunBlock funs)
       $$ rbrace
@@ -255,6 +243,11 @@ pprContext [] = empty
 pprContext ps =
   (commaSep $ map ppr ps) <+> text "=>"
 
+pprWhere :: [Pred] -> Doc
+pprWhere [] = empty
+pprWhere ps =
+  text "where" <+> commaSep (map ppr ps)
+
 instance Pretty [Pred] where
   ppr = parens . commaSepList
 
@@ -264,21 +257,64 @@ pprFunBlock =
 
 instance (Pretty a) => Pretty (Field a) where
   ppr (Field n ty e) =
-    ppr n <+> colon <+> (ppr ty) <+> pprInitOpt e
+    ((ppr n <> colon) <+> ppr ty) <> pprInitOpt e
 
 instance (Pretty a) => Pretty (Body a) where
   ppr = vcat . map ppr
 
 instance (Pretty a) => Pretty (FunDef a) where
   ppr (FunDef isPub sig bd) =
-    ((if isPub then text "public " else empty) <> ppr sig)
+    pprSignature isPub sig
       <+> lbrace
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace
 
+pprSignature :: (Pretty a) => Bool -> Signature a -> Doc
+pprSignature isPub (Signature vs ctx n ps rc ty pay)
+  | n == Name "fallback" =
+      (text "fallback" <> pprParams ps)
+        <+> text "external"
+        <+> pprPayable pay
+  | otherwise =
+      text "function"
+        <+> (ppr n <> pprTyParams (map TyVar vs) <> pprParams ps)
+        <+> pprFunctionModifiers isPub pay
+        <+> pprRetTy rc ty
+        <+> pprWhere ctx
+
+pprContractSignature :: (Pretty a) => Bool -> Signature a -> Doc
+pprContractSignature isExternal (Signature vs ctx n ps rc ty pay) =
+  text "function"
+    <+> (ppr n <> pprTyParams (map TyVar vs) <> pprParams ps)
+    <+> hsep
+      ( [text "external" | isExternal]
+          ++ [text "payable" | pay]
+      )
+    <+> pprRetTy rc ty
+    <+> pprWhere ctx
+
+pprFunctionModifiers :: Bool -> Bool -> Doc
+pprFunctionModifiers isPub payable =
+  hsep
+    ( [text "public" | isPub]
+        ++ [text "payable" | payable]
+    )
+
+pprPayable :: Bool -> Doc
+pprPayable True = text "payable"
+pprPayable False = empty
+
 pprRetTy :: Bool -> Maybe Ty -> Doc
 pprRetTy _ Nothing = empty
-pprRetTy rc (Just t) = text "->" <+> pprConst rc <> ppr t
+pprRetTy True (Just t) =
+  text "returns" <+> parens (text "comptime" <+> ppr t)
+pprRetTy False (Just t) =
+  text "returns" <+> parens (pprReturnItems t)
+
+pprReturnItems :: Ty -> Doc
+pprReturnItems t@(TyCon n _)
+  | isTuple n = commaSep (map ppr (tupleElements t))
+pprReturnItems t = ppr t
 
 pprParams :: (Pretty a) => [Param a] -> Doc
 pprParams = parens . commaSep . map ppr
@@ -287,30 +323,43 @@ pprConst :: Bool -> Doc
 pprConst True = text "comptime "
 pprConst False = empty
 
+pprComptime :: Bool -> Doc
+pprComptime True = text "comptime"
+pprComptime False = empty
+
 instance (Pretty a) => Pretty (Param a) where
   ppr (Typed c n ty) =
-    pprConst c <> (ppr n <+> colon <+> ppr ty)
+    pprConst c <> ((ppr n <> colon) <+> ppr ty)
   ppr (Untyped c n) =
     pprConst c <> ppr n
 
 instance (Pretty a) => Pretty (Stmt a) where
   ppr (n := e) =
-    ppr n <+> equals <+> ppr e <+> semi
+    ppr n <+> equals <+> (ppr e <> semi)
   ppr (Let c n ty m) =
-    text "let" <+> ppr n <+> pprOptTy c ty <+> pprInitOpt m
+    ( text "let"
+        <+> pprComptime c
+        <+> (ppr n <> pprOptTy ty)
+    )
+      <> pprInitOpt m
+  ppr (LetPattern ct pat ty value) =
+    (text "let" <+> pprComptime ct <+> (ppr pat <> pprOptTy ty))
+      <> pprInitOpt (Just value)
   ppr (Block body) =
     lbrace
       $$ nest 3 (ppr body)
       $$ rbrace
-  ppr (StmtExp e) =
-    ppr e <> semi
-  ppr (Return e) =
-    text "return" <+> ppr e <> semi
+  ppr (StmtExp e)
+    | isBareRevert e = text "revert" <> semi
+    | otherwise = ppr e <> semi
+  ppr (Return e)
+    | isUnitExp e = text "return" <> semi
+    | otherwise = text "return" <+> (ppr e <> semi)
   ppr (Match e eqns) =
     text "match"
       <+> (parens $ commaSep $ map ppr e)
       <+> lbrace
-      $$ vcat (map ppr eqns)
+      $$ nest 3 (vcat (map ppr eqns))
       $$ rbrace
   ppr (Asm yblk) =
     text "assembly"
@@ -339,7 +388,16 @@ instance (Pretty a) => Pretty (Stmt a) where
 
 pprForClause :: (Pretty a) => Stmt a -> Doc
 pprForClause (n := e) = ppr n <+> equals <+> ppr e
-pprForClause (Let ct n ty m) = text "let" <+> ppr n <+> pprOptTy ct ty <+> pprForInitOpt m
+pprForClause (Let ct n ty m) =
+  text "let"
+    <+> pprComptime ct
+    <+> (ppr n <> pprOptTy ty)
+    <+> pprForInitOpt m
+pprForClause (LetPattern ct pat ty value) =
+  text "let"
+    <+> pprComptime ct
+    <+> (ppr pat <> pprOptTy ty)
+    <+> pprForInitOpt (Just value)
 pprForClause (StmtExp e) = ppr e
 pprForClause (Block stmts) = hsep (punctuate comma (map pprForClause stmts))
 pprForClause EmptyStmt = empty
@@ -350,26 +408,35 @@ pprForInitOpt Nothing = empty
 pprForInitOpt (Just e) = equals <+> ppr e
 
 instance (Pretty a) => Pretty (Equation a) where
-  ppr (p, ss) =
-    text "|"
-      <+> commaSep (map ppr p)
-      <+> text "=>"
-      $$ nest 3 (vcat (map ppr ss))
+  ppr (ps, ss)
+    | not (null ps) && all isWildcardPat ps =
+        text "default"
+          <+> lbrace
+          $$ nest 3 (vcat (map ppr ss))
+          $$ rbrace
+    | otherwise =
+        text "case"
+          <+> pprCasePatterns ps
+          <+> lbrace
+          $$ nest 3 (vcat (map ppr ss))
+          $$ rbrace
 
 instance (Pretty a) => Pretty (Equations a) where
   ppr = vcat . map ppr
 
-pprOptTy :: Bool -> Maybe Ty -> Doc
-pprOptTy _ Nothing = empty
-pprOptTy c (Just t)
+pprCasePatterns :: (Pretty a) => [Pat a] -> Doc
+pprCasePatterns [pat] = ppr pat
+pprCasePatterns pats = parens (commaSep (map ppr pats))
+
+isWildcardPat :: Pat a -> Bool
+isWildcardPat PWildcard = True
+isWildcardPat _ = False
+
+pprOptTy :: Maybe Ty -> Doc
+pprOptTy Nothing = empty
+pprOptTy (Just t)
   | isVar t = empty
-  | otherwise = case splitTy t of
-      ([], t') -> text ":" <+> pprConst c <> ppr t'
-      (ts', t') ->
-        text ":"
-          <+> parens (commaSep (map ppr ts'))
-          <+> text "->"
-          <+> ppr t'
+  | otherwise = colon <+> ppr t
 
 isVar :: Ty -> Bool
 isVar (TyVar _) = True
@@ -377,37 +444,103 @@ isVar _ = False
 
 pprInitOpt :: (Pretty a) => Maybe (Exp a) -> Doc
 pprInitOpt Nothing = semi
-pprInitOpt (Just e) = equals <+> ppr e <+> semi
+pprInitOpt (Just e) =
+  space <> (equals <+> ppr e) <> semi
+
+parensWhen :: Bool -> Doc -> Doc
+parensWhen True d = parens d
+parensWhen _ d = d
 
 instance (Pretty a) => Pretty (Exp a) where
-  ppr (Var v) = ppr v
-  ppr (Con n es)
-    | isTuple n = parens $ commaSep (map ppr es)
-    | otherwise =
-        ppr n
-          <> if null es
-            then empty
-            else (parens (nest 1 $ commaSep $ map ppr es))
-  ppr (Lit l) = ppr l
-  ppr (Call e n es) =
-    pprE e <> ppr n <> (parens (nest 1 $ commaSep $ map ppr es))
-  ppr (Lam args bd _) =
-    text "lam"
-      <+> pprParams args
+  ppr = pprTypedExpPrec lowestTypedExpPrec
+
+lowestTypedExpPrec, ternaryTypedExpPrec, castTypedExpPrec :: Int
+postfixTypedExpPrec, atomTypedExpPrec :: Int
+lowestTypedExpPrec = 0
+ternaryTypedExpPrec = 10
+castTypedExpPrec = 110
+postfixTypedExpPrec = 130
+atomTypedExpPrec = 140
+
+pprTypedExpPrec :: (Pretty a) => Int -> Exp a -> Doc
+pprTypedExpPrec context expression =
+  parensWhen
+    (typedExpPrecedence expression < context)
+    (pprTypedExpNode expression)
+
+pprTypedExpNode :: (Pretty a) => Exp a -> Doc
+pprTypedExpNode (Var v) = ppr v
+pprTypedExpNode expression@(Con n [_, _])
+  | isTuple n =
+      parens
+        ( commaSep
+            (map (pprTypedExpPrec lowestTypedExpPrec) (typedTupleExpElements expression))
+        )
+pprTypedExpNode (Con n [])
+  | isUnitConstructorName n = text "()"
+  | otherwise = ppr n
+pprTypedExpNode (Con n es) =
+  ppr n
+    <> parens
+      (nest 1 $ commaSep $ map (pprTypedExpPrec lowestTypedExpPrec) es)
+pprTypedExpNode (Lit l) = ppr l
+pprTypedExpNode (Call Nothing n es) =
+  ppr n
+    <> parens
+      (nest 1 $ commaSep $ map (pprTypedExpPrec lowestTypedExpPrec) es)
+pprTypedExpNode (Call (Just receiver) n es) =
+  pprTypedExpPrec postfixTypedExpPrec receiver
+    <> char '.'
+    <> ppr n
+    <> parens
+      (nest 1 $ commaSep $ map (pprTypedExpPrec lowestTypedExpPrec) es)
+pprTypedExpNode (Lam args bd lambdaRetTy) =
+    (text "lam" <> pprParams args)
+      <+> pprRetTy False lambdaRetTy
       <+> lbrace
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace
-  ppr (TyExp e ty) =
-    ppr e <+> text ":" <+> ppr ty
-  ppr (FieldAccess me n) = maybe (text "this") ppr me <> char '.' <> ppr n
-  ppr (Cond e1 e2 e3) = hsep [text "if", ppr e1, text "then", ppr e2, text "else", ppr e3]
-  ppr (Indexed e1 e2) = ppr e1 <> brackets (ppr e2)
+pprTypedExpNode (TyExp e ty) =
+  pprTypedExpPrec castTypedExpPrec e <+> text "as" <+> ppr ty
+pprTypedExpNode (FieldAccess Nothing n) =
+  text "this" <> char '.' <> ppr n
+pprTypedExpNode (FieldAccess (Just receiver) n) =
+  pprTypedExpPrec postfixTypedExpPrec receiver <> char '.' <> ppr n
+pprTypedExpNode (Cond condition thenExpression elseExpression) =
+  hsep
+    [ pprTypedExpPrec (ternaryTypedExpPrec + 1) condition,
+      text "?",
+      pprTypedExpPrec ternaryTypedExpPrec thenExpression,
+      colon,
+      pprTypedExpPrec ternaryTypedExpPrec elseExpression
+    ]
+pprTypedExpNode (Indexed collection index) =
+  pprTypedExpPrec postfixTypedExpPrec collection
+    <> brackets (pprTypedExpPrec lowestTypedExpPrec index)
 
 -- ppr e = text $ "Pretty.ppr not implemented for\n" ++ show(pShow e)
 
-pprE :: (Pretty a) => Maybe (Exp a) -> Doc
-pprE Nothing = ""
-pprE (Just e) = ppr e <> text "."
+typedExpPrecedence :: Exp a -> Int
+typedExpPrecedence (Cond _ _ _) = ternaryTypedExpPrec
+typedExpPrecedence (TyExp _ _) = castTypedExpPrec
+typedExpPrecedence (Call (Just _) _ _) = postfixTypedExpPrec
+typedExpPrecedence (FieldAccess _ _) = postfixTypedExpPrec
+typedExpPrecedence (Indexed _ _) = postfixTypedExpPrec
+typedExpPrecedence _ = atomTypedExpPrec
+
+typedTupleExpElements :: (Pretty a) => Exp a -> [Exp a]
+typedTupleExpElements (Con n [left, right])
+  | isTuple n = left : typedTupleExpElements right
+typedTupleExpElements expression = [expression]
+
+isUnitConstructorName :: (Pretty a) => a -> Bool
+isUnitConstructorName constructorName =
+  rendered == "()"
+    || rendered == "unit"
+    || "()<" `isPrefixOf` rendered
+    || "unit<" `isPrefixOf` rendered
+  where
+    rendered = pretty constructorName
 
 instance (Pretty a) => Pretty (Pat a) where
   ppr (PVar n) =
@@ -425,7 +558,17 @@ instance (Pretty a) => Pretty (Pat a) where
 
 instance Pretty Literal where
   ppr (IntLit l) = integer (toInteger l)
-  ppr (StrLit l) = quotes (text l)
+  ppr (StrLit l) = pprStringLiteral l
+
+pprStringLiteral :: String -> Doc
+pprStringLiteral = doubleQuotes . text . concatMap escapeStringChar
+
+escapeStringChar :: Char -> String
+escapeStringChar '\\' = "\\\\"
+escapeStringChar '"' = "\\\""
+escapeStringChar '\n' = "\\n"
+escapeStringChar '\t' = "\\t"
+escapeStringChar c = [c]
 
 instance Pretty Tyvar where
   ppr (TVar n) = ppr n
@@ -433,7 +576,7 @@ instance Pretty Tyvar where
 
 instance Pretty Pred where
   ppr (InCls n t ts) =
-    ppr t <+> colon <+> ppr n <+> pprTyParams ts
+    (ppr t <> colon) <+> (ppr n <> pprTyParams ts)
   ppr (t1 :~: t2) =
     ppr t1 <+> text "~" <+> ppr t2
 
@@ -456,25 +599,70 @@ instance Pretty MetaTv where
 instance Pretty Ty where
   ppr (TyVar v) = ppr v
   ppr (Meta v) = ppr v
-  ppr (t1@(_ :-> _) :-> t2) =
-    parens (ppr t1) <+> text "->" <+> ppr t2
-  ppr (t1 :-> t2) =
-    ppr t1 <+> (text "->") <+> ppr t2
-  ppr (TyCon n ts)
-    | isTuple n = parens $ commaSep (map ppr ts)
+  ppr t@(_ :-> _) =
+    let (args, ret) = splitTy t
+     in (text "function" <> parens (commaSep (map ppr args)))
+          <+> text "internal"
+          <+> pprRetTy False (Just ret)
+  ppr (TyCon n [keyTy, valueTy])
+    | n == Name "mapping" =
+        text "mapping"
+          <> parens (ppr keyTy <+> text "=>" <+> ppr valueTy)
+  ppr (TyCon n [elementTy])
+    | n == Name "array" =
+        ppr elementTy <> brackets empty
+  ppr (TyCon n [sizeTy, elementTy])
+    | n == Name "array" =
+        ppr elementTy <> brackets (ppr sizeTy)
+  ppr (TyCon n [t])
+    | isDataLocation n = ppr t <+> ppr n
+  ppr t@(TyCon n _)
+    | isTuple n = parens $ commaSep (map ppr (tupleElements t))
     | isUnit n = text "()"
-    | otherwise = ppr n <> (pprTyParams ts)
+  ppr (TyCon n ts) =
+    ppr n <> pprTyParams ts
 
 isUnit :: Name -> Bool
-isUnit n = pretty n == "unit"
+isUnit n =
+  n == Name "unit" || n == Name "()"
 
 isTuple :: (Pretty a) => a -> Bool
 isTuple s = pretty s == "pair"
 
+isDataLocation :: Name -> Bool
+isDataLocation n =
+  n `elem` [Name "memory", Name "storage", Name "calldata"]
+
+tupleElements :: Ty -> [Ty]
+tupleElements (TyCon n [left, right])
+  | isTuple n = left : tupleElements right
+tupleElements t = [t]
+
 pprTyParams :: [Ty] -> Doc
 pprTyParams [] = empty
 pprTyParams ts =
-  parens (commaSep (map ppr ts))
+  angles (commaSep (map ppr ts))
+
+constructorLeafName :: Name -> Name
+constructorLeafName (QualName _ leaf) = Name leaf
+constructorLeafName n = n
+
+isUnitExp :: (Pretty a) => Exp a -> Bool
+isUnitExp (Con n []) =
+  rendered == "()"
+    || rendered == "unit"
+    || "()<" `isPrefixOf` rendered
+    || "unit<" `isPrefixOf` rendered
+  where
+    rendered = pretty n
+isUnitExp _ = False
+
+isBareRevert :: (Pretty a) => Exp a -> Bool
+isBareRevert (Call Nothing n []) =
+  rendered == "revert" || "revert<" `isPrefixOf` rendered
+  where
+    rendered = pretty n
+isBareRevert _ = False
 
 instance Pretty Subst where
   ppr = braces . commaSep . map go . Map.toList . unSubst

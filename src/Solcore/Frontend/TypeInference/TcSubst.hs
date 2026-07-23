@@ -258,6 +258,12 @@ instance (HasType a) => HasType (Stmt a) where
       (apply s v)
       (apply s <$> mt)
       (apply s <$> me)
+  apply s (LetPattern ct pat mt value) =
+    LetPattern
+      ct
+      (apply s pat)
+      (apply s <$> mt)
+      (apply s value)
   apply s (Block body) =
     Block (apply s body)
   apply s (StmtExp e) =
@@ -292,6 +298,10 @@ instance (HasType a) => HasType (Stmt a) where
     fv v
       `union` (maybe [] fv mt)
       `union` (maybe [] fv me)
+  fv (LetPattern _ pat mt value) =
+    fv pat
+      `union` (maybe [] fv mt)
+      `union` fv value
   fv (Block body) = fv body
   fv (StmtExp e) = fv e
   fv (Return e) = fv e
@@ -311,6 +321,10 @@ instance (HasType a) => HasType (Stmt a) where
     mv v
       `union` (maybe [] mv mt)
       `union` (maybe [] mv me)
+  mv (LetPattern _ pat mt value) =
+    mv pat
+      `union` (maybe [] mv mt)
+      `union` mv value
   mv (Block body) = mv body
   mv (StmtExp e) = mv e
   mv (Return e) = mv e
@@ -330,6 +344,10 @@ instance (HasType a) => HasType (Stmt a) where
     bv v
       `union` (maybe [] bv mt)
       `union` (maybe [] bv me)
+  bv (LetPattern _ pat mt value) =
+    bv pat
+      `union` (maybe [] bv mt)
+      `union` bv value
   bv (Block body) = bv body
   bv (StmtExp e) = bv e
   bv (Return e) = bv e
@@ -399,6 +417,8 @@ instance (HasType a) => HasType (ContractDecl a) where
     CFieldDecl (apply s fd)
   apply s (CFunDecl d) =
     CFunDecl (apply s d)
+  apply s (CSignatureDecl isPublic sig) =
+    CSignatureDecl isPublic (apply s sig)
   apply s (CMutualDecl cs) =
     CMutualDecl (apply s cs)
   apply s (CConstrDecl c) =
@@ -407,18 +427,21 @@ instance (HasType a) => HasType (ContractDecl a) where
 
   fv (CFieldDecl d) = fv d
   fv (CFunDecl d) = fv d
+  fv (CSignatureDecl _ sig) = fv sig
   fv (CMutualDecl ds) = fv ds
   fv (CConstrDecl c) = fv c
   fv _ = []
 
   mv (CFieldDecl d) = mv d
   mv (CFunDecl d) = mv d
+  mv (CSignatureDecl _ sig) = mv sig
   mv (CMutualDecl ds) = mv ds
   mv (CConstrDecl c) = mv c
   mv _ = []
 
   bv (CFieldDecl d) = bv d
   bv (CFunDecl d) = bv d
+  bv (CSignatureDecl _ sig) = bv sig
   bv (CMutualDecl ds) = bv ds
   bv (CConstrDecl c) = bv c
   bv _ = []

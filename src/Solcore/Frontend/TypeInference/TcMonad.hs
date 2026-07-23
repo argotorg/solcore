@@ -3,6 +3,7 @@ module Solcore.Frontend.TypeInference.TcMonad where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Char (isDigit)
 import Data.Generics (Data, everything, extQ, mkQ)
 import Data.List
 import Data.List.NonEmpty qualified as N
@@ -224,7 +225,14 @@ kindCheck (t1 :-> t2) =
 kindCheck t@(TyCon n ts) =
   do
     ti <- askTypeInfo n `wrapError` t
-    unless (n == Name "pair" || arity ti == length ts) $
+    let suppliedArity =
+          case ts of
+            [size, _]
+              | n == Name "array",
+                isNumericArraySize size ->
+                  1
+            _ -> length ts
+    unless (n == Name "pair" || arity ti == suppliedArity) $
       tcmError $
         unlines
           [ "Invalid number of type arguments!",
@@ -236,12 +244,25 @@ kindCheck t@(TyCon n ts) =
             "but, type "
               ++ pretty t
               ++ " has "
-              ++ (show $ length ts)
+              ++ show suppliedArity
               ++ " arguments"
           ]
-    ts' <- mapM kindCheck ts
+    ts' <-
+      case ts of
+        [size, element]
+          | n == Name "array",
+            isNumericArraySize size ->
+              (size :) . (: []) <$> kindCheck element
+        _ ->
+          mapM kindCheck ts
     pure (TyCon n ts')
 kindCheck t = pure t
+
+isNumericArraySize :: Ty -> Bool
+isNumericArraySize (TyCon (Name digits) []) =
+  not (null digits) && all isDigit digits
+isNumericArraySize _ =
+  False
 
 -- Skolemization
 
@@ -926,13 +947,13 @@ topLevelFunctionAnnotationError sig =
     (sigName sig)
     "incomplete signature"
     ["signature: " ++ pretty sig]
-    ["annotate every parameter (name : Type) and provide a return type (-> Type)"]
+    ["annotate every parameter (name: Type) and provide a return type (returns (Type))"]
 
 methodAnnotationError :: Signature Name -> TcM a
 methodAnnotationError sig =
   tcDiagnosticErrorAtName
     "SC0221"
-    "class and instance methods must have complete type signatures"
+    "trait and impl methods must have complete type signatures"
     (sigName sig)
     "incomplete method signature"
     ["signature: " ++ pretty sig]

@@ -5,7 +5,8 @@ module Solcore.Frontend.Parser.SolcoreTypes
     predP,
     predListP,
     paramP,
-    sigPrefixP,
+    typeParamsP,
+    whereClauseP,
     simpleNameP,
     locatedP,
     locatedFromSpans,
@@ -13,7 +14,6 @@ module Solcore.Frontend.Parser.SolcoreTypes
 where
 
 import Common.LightYear
-import Control.Monad.Combinators.Expr
 import Data.Foldable (foldlM)
 import Solcore.Diagnostics (SourceSpan (..))
 import Solcore.Frontend.Lexer.SolcoreLexer
@@ -43,19 +43,38 @@ locatedIdentifierP = do
   pure (sourceSpanBetween startOffset startPos endOffset endPos, identifierText)
 
 typeP :: Parser Ty
-typeP = locatedP locatedTy (makeExprParser atomTypeP [[InfixR (mkArrowTy <$ symbol "->")]])
-  where
-    mkArrowTy t1 t2 =
-      locatedFromSpans locatedTy [sourceSpanOf t1, sourceSpanOf t2] (TyCon "->" [t1, t2])
+typeP = locatedP locatedTy postfixTypeP
 
 atomTypeP :: Parser Ty
-atomTypeP = locatedP locatedTy (proxyTypeP <|> parenTypeP <|> namedTypeP)
+atomTypeP = locatedP locatedTy (mappingTypeP <|> parenTypeP <|> namedTypeP)
 
-proxyTypeP :: Parser Ty
-proxyTypeP = TyCon "Proxy" . (: []) <$> (symbol "@" *> atomTypeP)
+postfixTypeP :: Parser Ty
+postfixTypeP = do
+  base <- functionTypeP <|> atomTypeP
+  suffixes <- many typeSuffixP
+  pure (foldl (flip ($)) base suffixes)
+
+typeSuffixP :: Parser (Ty -> Ty)
+typeSuffixP =
+  choice
+    [ do
+        size <- brackets (optional arraySizeP)
+        pure $ \elementTy ->
+          case size of
+            Nothing -> TyCon "array" [elementTy]
+            Just sizeTy -> TyCon "array" [sizeTy, elementTy],
+      TyCon "memory" . (: []) <$ keyword "memory",
+      TyCon "storage" . (: []) <$ keyword "storage",
+      TyCon "calldata" . (: []) <$ keyword "calldata"
+    ]
+
+arraySizeP :: Parser Ty
+arraySizeP =
+  (do n <- integer; pure (TyCon (Name (show n)) []))
+    <|> typeP
 
 namedTypeP :: Parser Ty
-namedTypeP = TyCon <$> qualifiedName <*> option [] (parens (typeP `sepBy1` comma))
+namedTypeP = TyCon <$> qualifiedName <*> option [] (angles (typeP `sepBy1` comma))
 
 parenTypeP :: Parser Ty
 parenTypeP = parens (mkParenTy <$> (typeP `sepBy` comma))
@@ -64,12 +83,39 @@ parenTypeP = parens (mkParenTy <$> (typeP `sepBy` comma))
     mkParenTy [t] = t
     mkParenTy ts = foldr1 pairTy ts
 
+mappingTypeP :: Parser Ty
+mappingTypeP = do
+  keyword "mapping"
+  (keyTy, valueTy) <- parens $ do
+    keyTy <- typeP
+    _ <- symbol "=>"
+    valueTy <- typeP
+    pure (keyTy, valueTy)
+  pure (TyCon "mapping" [keyTy, valueTy])
+
+functionTypeP :: Parser Ty
+functionTypeP = do
+  keyword "function"
+  args <- parens (typeP `sepBy` comma)
+  visibility <-
+    optional
+      ( FunctionTypeInternal <$ keyword "internal"
+          <|> FunctionTypeExternal <$ keyword "external"
+      )
+  results <- optional returnsTypeP
+  pure (FunctionTy args visibility results)
+
+returnsTypeP :: Parser [Ty]
+returnsTypeP = do
+  keyword "returns"
+  parens (typeP `sepBy` comma)
+
 predP :: Parser Pred
 predP = do
-  subjectTy <- atomTypeP
+  subjectTy <- typeP
   _ <- colon
   cls <- qualifiedName
-  params <- option [] (parens (typeP `sepBy1` comma))
+  params <- option [] (angles (typeP `sepBy1` comma))
   return (InCls cls subjectTy params)
 
 predListP :: Parser [Pred]
@@ -84,15 +130,18 @@ paramP = do
     Just t -> Typed ct n t
     Nothing -> Untyped ct n
 
-sigPrefixP :: Parser ([Ty], [Pred])
-sigPrefixP = do
-  keyword "forall"
-  vars <- some (tyVar <* optional comma)
-  _ <- symbol "."
-  ctx <- option [] $ try (predListP <* symbol "=>")
-  return (vars, ctx)
+typeParamsP :: Parser [Ty]
+typeParamsP =
+  option [] (angles (tyVar `sepBy1` comma))
   where
     tyVar = locatedP locatedTy (flip TyCon [] <$> simpleNameP)
+
+whereClauseP :: Parser [Pred]
+whereClauseP =
+  option [] (keyword "where" *> predListP)
+
+angles :: Parser a -> Parser a
+angles = between (symbol "<") (symbol ">")
 
 locatedP :: (SourceSpan -> a -> a) -> Parser a -> Parser a
 locatedP locate parser = do

@@ -18,6 +18,7 @@ type Equations a = [Equation a]
 data Stmt a
   = AssignWithLocation NodeLocation (Exp a) (Exp a) -- assignment
   | LetWithLocation NodeLocation Bool a (Maybe Ty) (Maybe (Exp a)) -- local variable; Bool is True when 'comptime' modifier is present
+  | LetPatternWithLocation NodeLocation Bool (Pat a) (Maybe Ty) (Exp a) -- irrefutable tuple binding; Bool marks 'comptime'
   | BlockWithLocation NodeLocation (Body a) -- lexical block
   | StmtExpWithLocation NodeLocation (Exp a) -- expression level statements
   | ReturnWithLocation NodeLocation (Exp a) -- return statements
@@ -41,6 +42,11 @@ pattern Let :: Bool -> a -> Maybe Ty -> Maybe (Exp a) -> Stmt a
 pattern Let ct n ty value <- LetWithLocation _ ct n ty value
   where
     Let ct n ty value = LetWithLocation unlocatedNode ct n ty value
+
+pattern LetPattern :: Bool -> Pat a -> Maybe Ty -> Exp a -> Stmt a
+pattern LetPattern ct pat ty value <- LetPatternWithLocation _ ct pat ty value
+  where
+    LetPattern ct pat ty value = LetPatternWithLocation unlocatedNode ct pat ty value
 
 pattern Block :: Body a -> Stmt a
 pattern Block body <- BlockWithLocation _ body
@@ -92,13 +98,15 @@ pattern EmptyStmt <- EmptyStmtWithLocation _
   where
     EmptyStmt = EmptyStmtWithLocation unlocatedNode
 
-{-# COMPLETE (:=), Let, Block, StmtExp, Return, Match, Asm, If, For, Break, Continue, EmptyStmt #-}
+{-# COMPLETE (:=), Let, LetPattern, Block, StmtExp, Return, Match, Asm, If, For, Break, Continue, EmptyStmt #-}
 
 type Body a = [Stmt a]
 
 locatedStmt :: SourceSpan -> Stmt a -> Stmt a
 locatedStmt sourceSpan (lhs := rhs) = AssignWithLocation (locatedNode sourceSpan) lhs rhs
 locatedStmt sourceSpan (Let ct n ty value) = LetWithLocation (locatedNode sourceSpan) ct n ty value
+locatedStmt sourceSpan (LetPattern ct pat ty value) =
+  LetPatternWithLocation (locatedNode sourceSpan) ct pat ty value
 locatedStmt sourceSpan (Block body) = BlockWithLocation (locatedNode sourceSpan) body
 locatedStmt sourceSpan (StmtExp exp) = StmtExpWithLocation (locatedNode sourceSpan) exp
 locatedStmt sourceSpan (Return exp) = ReturnWithLocation (locatedNode sourceSpan) exp
@@ -115,6 +123,8 @@ instance (HasSourceSpan a) => HasSourceSpan (Stmt a) where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (LetWithLocation location _ n ty value) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf n, sourceSpanOf ty, sourceSpanOf value]
+  sourceSpanOf (LetPatternWithLocation location _ pat ty value) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf pat, sourceSpanOf ty, sourceSpanOf value]
   sourceSpanOf (BlockWithLocation location body) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf body]
   sourceSpanOf (StmtExpWithLocation location exp) =
@@ -164,7 +174,7 @@ data Exp a
   | LitWithLocation NodeLocation Literal -- literal
   | CallWithLocation NodeLocation (Maybe (Exp a)) a [Exp a] -- function call
   | LamWithLocation NodeLocation [Param a] (Body a) (Maybe Ty) -- lambda-abstraction
-  | TyExpWithLocation NodeLocation (Exp a) Ty -- type annotated expression
+  | TyExpWithLocation NodeLocation (Exp a) Ty -- explicit type conversion expression
   | CondWithLocation NodeLocation (Exp a) (Exp a) (Exp a) -- conditional expression
   | IndexedWithLocation NodeLocation (Exp a) (Exp a) -- e1[e2]
   deriving (Eq, Ord, Show, Data, Typeable)

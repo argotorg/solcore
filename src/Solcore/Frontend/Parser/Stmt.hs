@@ -5,11 +5,11 @@ module Solcore.Frontend.Parser.Stmt
 where
 
 import Common.LightYear
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Language.Yul.Parser (yulBlock)
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.Expr (exprP)
-import Solcore.Frontend.Parser.Patterns (patListP)
+import Solcore.Frontend.Parser.Patterns (bindingTuplePatP, patP)
 import Solcore.Frontend.Parser.SolcoreTypes (locatedP, simpleNameP, typeP)
 import Solcore.Frontend.Syntax.SyntaxTree
 
@@ -25,10 +25,13 @@ stmtP =
     <|> returnP
     <|> try ifP
     <|> forP
+    <|> whileP
     <|> breakP
     <|> continueP
     <|> matchP
     <|> asmP
+    <|> uncheckedP
+    <|> try revertP
     <|> blockP
     <|> try exprOrAssignP
 
@@ -41,18 +44,29 @@ continueP = locatedP locatedStmt (Continue <$ (keyword "continue" *> semicolon))
 letP :: Parser Stmt
 letP = locatedP locatedStmt $ do
   keyword "let"
-  n <- simpleNameP
-  (ct, mt) <- option (False, Nothing) $ do
-    _ <- colon
-    ct <- option False (True <$ keyword "comptime")
-    t <- typeP
-    return (ct, Just t)
-  me <- optional (equalsP *> expP)
+  ct <- option False (True <$ keyword "comptime")
+  stmt <- try (tupleLetRemainder ct) <|> simpleLetRemainder ct
   _ <- semicolon
-  return (Let ct n mt me)
+  pure stmt
+  where
+    simpleLetRemainder ct = do
+      n <- simpleNameP
+      mt <- optional (colon *> typeP)
+      me <- optional (equalsP *> expP)
+      pure (Let ct n mt me)
+
+    tupleLetRemainder ct = do
+      pat <- bindingTuplePatP
+      mt <- optional (colon *> typeP)
+      value <- equalsP *> expP
+      pure (LetPattern ct pat mt value)
 
 returnP :: Parser Stmt
-returnP = locatedP locatedStmt (Return <$> (keyword "return" *> expP <* semicolon))
+returnP = locatedP locatedStmt $ do
+  keyword "return"
+  value <- option (ExpName Nothing "()" []) expP
+  _ <- semicolon
+  pure (Return value)
 
 ifP :: Parser Stmt
 ifP = locatedP locatedStmt $ do
@@ -75,15 +89,31 @@ forP = locatedP locatedStmt $ do
   body <- braces bodyP
   return (For initS cond postS body)
 
+whileP :: Parser Stmt
+whileP = locatedP locatedStmt $ do
+  keyword "while"
+  cond <- parens expP
+  body <- braces bodyP
+  pure (While cond body)
+
 matchP :: Parser Stmt
 matchP = locatedP locatedStmt $ do
   keyword "match"
-  scrutinees <- expP `sepBy1` comma
-  eqns <- braces (many equationP)
+  scrutinees <- parens (expP `sepBy1` comma)
+  eqns <- braces (many (equationP (length scrutinees)))
   return (Match scrutinees eqns)
 
 asmP :: Parser Stmt
 asmP = locatedP locatedStmt (Asm <$> (keyword "assembly" *> yulBlock)) -- yulBlock includes the surrounding braces
+
+uncheckedP :: Parser Stmt
+uncheckedP =
+  locatedP locatedStmt (Unchecked <$> (keyword "unchecked" *> braces bodyP))
+
+revertP :: Parser Stmt
+revertP =
+  locatedP locatedStmt
+    (StmtExp (ExpName Nothing "revert" []) <$ (keyword "revert" *> semicolon))
 
 blockP :: Parser Stmt
 blockP = locatedP locatedStmt (Block <$> braces bodyP)
@@ -99,7 +129,7 @@ exprOrAssignP = locatedP locatedStmt $ do
       do rhs <- symbol "&=" *> expP; _ <- semicolon; return (StmtBAndEq lhs rhs),
       do rhs <- symbol "|=" *> expP; _ <- semicolon; return (StmtBOrEq lhs rhs),
       do rhs <- symbol "%=" *> expP; _ <- semicolon; return (StmtModEq lhs rhs),
-      StmtExp lhs <$ optional semicolon
+      StmtExp lhs <$ semicolon
     ]
 
 forInitP :: Parser Stmt
@@ -121,12 +151,9 @@ forPostP = locatedP locatedStmt $ do
 forLetP :: Parser Stmt
 forLetP = locatedP locatedStmt $ do
   keyword "let"
+  ct <- option False (True <$ keyword "comptime")
   n <- simpleNameP
-  (ct, mt) <- option (False, Nothing) $ do
-    _ <- colon
-    ct <- option False (True <$ keyword "comptime")
-    t <- typeP
-    return (ct, Just t)
+  mt <- optional (colon *> typeP)
   me <- optional (equalsP *> expP)
   return (Let ct n mt me)
 
@@ -144,8 +171,27 @@ forAssignP = locatedP locatedStmt $ do
       return (StmtExp lhs)
     ]
 
-equationP :: Parser Equation
-equationP = (,) <$> (symbol "|" *> patListP) <*> (symbol "=>" *> bodyP)
+equationP :: Int -> Parser Equation
+equationP arity =
+  caseEquationP arity <|> defaultEquationP arity
+
+caseEquationP :: Int -> Parser Equation
+caseEquationP arity = do
+  keyword "case"
+  pats <-
+    if arity == 1
+      then (: []) <$> patP
+      else parens (patP `sepBy1` comma)
+  when (length pats /= arity) $
+    fail "case pattern count must match the number of match scrutinees"
+  body <- braces bodyP
+  pure (pats, body)
+
+defaultEquationP :: Int -> Parser Equation
+defaultEquationP arity = do
+  keyword "default"
+  body <- braces bodyP
+  pure (replicate arity PWildcard, body)
 
 equalsP :: Parser ()
 equalsP = void $ try (lexeme (char '=' <* notFollowedBy (char '=')))

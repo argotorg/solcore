@@ -35,6 +35,8 @@ data PragmaType
   | NoPattersonCondition
   | NoBoundVariableCondition
   | NoGenericInstanceFor
+  | SolidityPragma String
+  | AbiCoderPragma String
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data PragmaStatus
@@ -233,6 +235,7 @@ data ContractDecl a
   = CDataDecl DataTy
   | CFieldDecl (Field a)
   | CFunDecl (FunDef a)
+  | CSignatureDecl Bool (Signature a)
   | CMutualDecl [ContractDecl a] -- used only after SCC analysis
   | CConstrDecl (Constructor a)
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -355,5 +358,6 @@ instance (HasSourceSpan a) => HasSourceSpan (ContractDecl a) where
   sourceSpanOf (CDataDecl dataTy) = sourceSpanOf dataTy
   sourceSpanOf (CFieldDecl field) = sourceSpanOf field
   sourceSpanOf (CFunDecl funDef) = sourceSpanOf funDef
+  sourceSpanOf (CSignatureDecl _ sig) = sourceSpanOf sig
   sourceSpanOf (CMutualDecl decls') = sourceSpanOf decls'
   sourceSpanOf (CConstrDecl constructor) = sourceSpanOf constructor

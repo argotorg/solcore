@@ -295,12 +295,18 @@ initializeEnv (Contract _ _ cdecls) = do
         [fd | CFunDecl fd@(FunDef _ sig _) <- cdecls, hasAnn sig]
           ++ [fd | CMutualDecl ds <- cdecls, CFunDecl fd@(FunDef _ sig _) <- ds, hasAnn sig]
   nmschs <- extractSignatures fds
-  mapM_ (uncurry extEnv) nmschs
+  signatureSchemes <-
+    forM [sig | CSignatureDecl _ sig <- cdecls] $ \sig -> do
+      scheme <- annotatedScheme [] [] sig
+      pure (sigName sig, scheme)
+  mapM_ (uncurry extEnv) (nmschs ++ signatureSchemes)
 
 checkDecl :: ContractDecl Name -> TcM ()
 checkDecl (CDataDecl dt) =
   checkDataType dt
 checkDecl (CFunDecl (FunDef _ sig _)) =
+  extSignature sig
+checkDecl (CSignatureDecl _ sig) =
   extSignature sig
 checkDecl (CFieldDecl fd) =
   tcField fd >> return ()
@@ -319,6 +325,8 @@ tcDecl (CFunDecl d) =
     case d' of
       [] -> tcmError "Impossible! Empty function binding!"
       (x : _) -> pure (CFunDecl x)
+tcDecl (CSignatureDecl isPublic sig) =
+  CSignatureDecl isPublic <$> tcContractSignature sig
 tcDecl (CMutualDecl ds) =
   do
     let f (CFunDecl fd) = fd
@@ -329,6 +337,23 @@ tcDecl (CMutualDecl ds) =
     pure (CMutualDecl (map CFunDecl ds'))
 tcDecl (CConstrDecl cd) = CConstrDecl <$> tcConstructor cd
 tcDecl (CDataDecl d) = CDataDecl <$> tcDataDecl d
+
+-- Interface declarations contribute a callable, fully checked signature but
+-- deliberately have no body to infer.
+tcContractSignature :: Signature Name -> TcM (Signature Id)
+tcContractSignature sig@(Signature vars predicates n params retComptime returnTy payable) = do
+  unless (isFullyAnnotated sig) (topLevelFunctionAnnotationError sig)
+  checkAllTypeVarsBound sig (bv sig) vars
+  checkConstraints predicates `wrapError` sig
+  params' <- mapM tcSignatureParam params
+  returnTy' <- traverse kindCheck returnTy `wrapError` sig
+  pure (Signature vars predicates n params' retComptime returnTy' payable)
+  where
+    tcSignatureParam p@(Typed comptime paramName' ty) = do
+      ty' <- kindCheck ty `wrapError` p
+      pure (Typed comptime (Id paramName' ty') ty')
+    tcSignatureParam (Untyped _ _) =
+      tcmError "Interface function parameters must have type annotations"
 
 -- kind check data declarations
 

@@ -5,6 +5,7 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Char (isDigit)
 import Data.Generics (Data, everything, extQ, mkQ)
 import Data.List ((\\))
 import Data.Map (Map)
@@ -23,8 +24,10 @@ import Solcore.Frontend.Syntax.Ty
 -- name resolution
 
 nameResolution :: S.CompUnit -> IO (Either CompilerError (CompUnit Name))
-nameResolution (S.CompUnit imps ds) =
-  fmap fst <$> nameResolutionTopDeclSegments imps [ds]
+nameResolution unit@(S.CompUnit imps ds) =
+  case validateDuplicateNamespacesInCompUnit unit of
+    Left err -> pure (Left err)
+    Right () -> fmap fst <$> nameResolutionTopDeclSegments imps [ds]
 
 nameResolutionTopDeclSegments ::
   [S.Import] ->
@@ -104,9 +107,11 @@ validateDuplicateNamespaces ds = do
 validateContractDuplicates :: S.Contract -> Either CompilerError ()
 validateContractDuplicates (S.Contract cname _ decls) = do
   let typeNames = [n | S.CDataDecl (S.DataTy n _ _) <- decls]
+      fieldNames = [n | S.CFieldDecl (S.Field n _ _) <- decls]
       termNames = contractTermNames decls
       context = "contract " ++ pretty cname
   ensureNoDuplicateNamesIn context "type namespace" typeNames
+  ensureNoDuplicateNamesIn context "field namespace" fieldNames
   ensureNoDuplicateNamesIn context "term namespace" termNames
 
 topLevelTypeNames :: [S.TopDecl] -> [Name]
@@ -130,6 +135,7 @@ contractTermNames :: [S.ContractDecl] -> [Name]
 contractTermNames = concatMap collect
   where
     collect (S.CFunDecl (S.FunDef _ sig _)) = [S.sigName sig]
+    collect (S.CSignatureDecl _ sig) = [S.sigName sig]
     collect (S.CDataDecl (S.DataTy tyCon _ cons)) =
       map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
@@ -232,6 +238,8 @@ addContractDecl (S.CFieldDecl (S.Field n _ _)) =
   addField n
 addContractDecl (S.CFunDecl (S.FunDef _ sig _)) =
   addFunctionName (S.sigName sig)
+addContractDecl (S.CSignatureDecl _ sig) =
+  addFunctionName (S.sigName sig)
 addContractDecl _ = pure ()
 
 instance Resolve S.ContractDecl where
@@ -243,6 +251,9 @@ instance Resolve S.ContractDecl where
     CFieldDecl <$> resolve fd `wrapError` d
   resolve d@(S.CFunDecl f) =
     CFunDecl <$> resolve f `wrapError` d
+  resolve d@(S.CSignatureDecl isPublic sig) = do
+    sig' <- resolve sig `wrapError` d
+    pure (CSignatureDecl (isPublic || S.sigIsPublic sig) sig')
   resolve d@(S.CConstrDecl cd) =
     CConstrDecl <$> resolve cd `wrapError` d
 
@@ -289,15 +300,24 @@ instance Resolve S.Class where
 instance Resolve S.Signature where
   type Result S.Signature = Signature Name
 
-  resolve s@(S.Signature vs ctx n ps rc mt pay) =
+  resolve s@(S.SignatureWithSyntax vs ctx n ps _ _) =
     withLocalCtx $ do
       let ns = map tyconName vs
       mapM_ addTyVar ns
       ctx' <- resolve ctx `wrapError` s
       ps' <- resolve ps `wrapError` s
-      mt' <- resolve mt `wrapError` s
+      mt' <- resolve (S.sigReturn s) `wrapError` s
       let vs' = map TVar ns
-      pure (Signature vs' ctx' n ps' rc mt' pay)
+      pure
+        ( Signature
+            vs'
+            ctx'
+            n
+            ps'
+            (S.sigRetComptime s)
+            mt'
+            (S.sigPayable s)
+        )
 
 instance Resolve S.Instance where
   type Result S.Instance = Instance Name
@@ -340,6 +360,10 @@ instance Resolve S.PragmaType where
     pure NoBoundVariableCondition
   resolve S.NoGenericInstanceFor =
     pure NoGenericInstanceFor
+  resolve (S.SolidityPragma version) =
+    pure (SolidityPragma version)
+  resolve (S.AbiCoderPragma version) =
+    pure (AbiCoderPragma version)
 
 instance Resolve S.PragmaStatus where
   type Result S.PragmaStatus = PragmaStatus
@@ -351,20 +375,29 @@ instance Resolve S.PragmaStatus where
 instance Resolve S.FunDef where
   type Result S.FunDef = FunDef Name
 
-  resolve f@(S.FunDef isPub (S.Signature vs ctx n ps rc mt pay) bds) =
+  resolve f@(S.FunDef legacyIsPub sourceSig@(S.SignatureWithSyntax vs ctx n ps _ _) bds) =
     do
       let ns = map tyconName vs
       withLocalCtx $ do
         mapM_ addTyVar ns
         ctx' <- resolve ctx `wrapError` f
         ps' <- resolve ps `wrapError` f
-        mt' <- resolve mt `wrapError` f
+        mt' <- resolve (S.sigReturn sourceSig) `wrapError` f
         let args = map paramName ps'
         mapM_ addParameter args
         bds' <- resolve bds `wrapError` f
         let vs' = map TVar ns
-            sig = Signature vs' ctx' n ps' rc mt' pay
-        pure (FunDef isPub sig bds')
+            sig =
+              Signature
+                vs'
+                ctx'
+                n
+                ps'
+                (S.sigRetComptime sourceSig)
+                mt'
+                (S.sigPayable sourceSig)
+            isPublic = legacyIsPub || S.sigIsPublic sourceSig
+        pure (FunDef isPublic sig bds')
 
 instance Resolve S.Stmt where
   type Result S.Stmt = Stmt Name
@@ -392,6 +425,12 @@ instance Resolve S.Stmt where
       me' <- resolve me `wrapError` s
       addLocalVar n
       pure (Let c n mt' me')
+  resolve s@(S.LetPattern ct pat mt value) =
+    locatedLike s locatedStmt <$> do
+      mt' <- resolve mt `wrapError` s
+      value' <- resolve value `wrapError` s
+      pat' <- resolveBindingPat pat `wrapError` s
+      pure (LetPattern ct pat' mt' value')
   resolve s@(S.Block blk) =
     locatedLike s locatedStmt <$> withLocalCtx (Block <$> resolve blk)
   resolve s@(S.StmtExp e) =
@@ -404,6 +443,10 @@ instance Resolve S.Stmt where
     pure (locatedLike s locatedStmt (Asm blk))
   resolve s@(S.If e blk1 blk2) =
     locatedLike s locatedStmt <$> (If <$> resolve e <*> resolve blk1 <*> resolve blk2)
+  resolve s@(S.While cond body) =
+    locatedLike s locatedStmt <$> (For EmptyStmt <$> resolve cond <*> pure EmptyStmt <*> resolve body)
+  resolve s@(S.Unchecked body) =
+    locatedLike s locatedStmt <$> withLocalCtx (Block <$> resolve body)
   resolve s@(S.For initStmt cond postStmt body) =
     locatedLike s locatedStmt <$> (For <$> resolve initStmt <*> resolve cond <*> resolve postStmt <*> resolve body)
   resolve s@S.Break = pure (locatedLike s locatedStmt Break)
@@ -478,6 +521,22 @@ mkTuplePat ps = foldr1 pairPat ps
 
 pairPat :: Pat Name -> Pat Name -> Pat Name
 pairPat p1 p2 = PCon (Name "pair") [p1, p2]
+
+-- A destructuring let binds names regardless of whether a constructor with the
+-- same spelling is in scope.  Its parser only admits tuple/name/wildcard
+-- shapes, so resolve it separately from refutable match patterns.
+resolveBindingPat :: S.Pat -> ResolveM (Pat Name)
+resolveBindingPat p@(S.Pat n []) = do
+  addLocalVar n
+  pure (locatedLike p locatedPat (PVar n))
+resolveBindingPat p@(S.Pat n ps)
+  | n == Name "pair" = do
+      ps' <- mapM resolveBindingPat ps
+      pure (locatedLike p locatedPat (mkTuplePat ps'))
+resolveBindingPat p@S.PWildcard =
+  pure (locatedLike p locatedPat PWildcard)
+resolveBindingPat p =
+  invalidPatternSyntax p
 
 constructorLeafName :: Name -> Name
 constructorLeafName q@(QualName _ n) = copyNameSourceSpan q (Name n)
@@ -803,6 +862,11 @@ resolveExp c@(S.ExpMinus e1 e2) =
     e2' <- resolve e2 `wrapError` c
     let fun = QualName (Name "Sub") "sub"
     pure $ Call Nothing fun [e1', e2']
+resolveExp c@(S.ExpPower e1 e2) =
+  do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
+    pure $ Call Nothing (Name "exp") [e1', e2']
 resolveExp c@(S.ExpTimes e1 e2) =
   do
     e1' <- resolve e1 `wrapError` c
@@ -821,6 +885,16 @@ resolveExp c@(S.ExpModulo e1 e2) =
     e2' <- resolve e2 `wrapError` c
     let fun = QualName (Name "Mod") "mod"
     pure $ Call Nothing fun [e1', e2']
+resolveExp c@(S.ExpShiftL e1 e2) =
+  do
+    value <- resolve e1 `wrapError` c
+    amount <- resolve e2 `wrapError` c
+    pure $ Call Nothing (Name "shl") [amount, value]
+resolveExp c@(S.ExpShiftR e1 e2) =
+  do
+    value <- resolve e1 `wrapError` c
+    amount <- resolve e2 `wrapError` c
+    pure $ Call Nothing (Name "shr") [amount, value]
 resolveExp c@(S.ExpBXor e1 e2) =
   do
     e1' <- resolve e1 `wrapError` c
@@ -946,13 +1020,48 @@ tyconName (S.TyCon n _) = n
 instance Resolve S.Ty where
   type Result S.Ty = Ty
 
+  resolve functionTy@(S.FunctionTy args _visibility returns) =
+    locatedLike functionTy locatedTy <$> do
+      args' <- resolve args `wrapError` functionTy
+      returns' <- resolveFunctionReturns returns `wrapError` functionTy
+      pure (funtype args' returns')
   resolve tc@(S.TyCon n ts) =
     locatedLike tc locatedTy <$> do
       ndt <- lookupType n
       case ndt of
-        Just TTyCon -> TyCon n <$> resolve ts `wrapError` tc
+        Just TTyCon ->
+          TyCon n <$> resolveTypeArguments n ts `wrapError` tc
         Just TTyVar -> pure (TyVar (TVar n))
         _ -> undefinedTypeConstructor tc
+
+resolveFunctionReturns :: Maybe [S.Ty] -> ResolveM Ty
+resolveFunctionReturns Nothing = pure (TyCon (Name "()") [])
+resolveFunctionReturns (Just returns) = do
+  returns' <- resolve returns
+  pure $ case returns' of
+    [] -> TyCon (Name "()") []
+    [returnTy] -> returnTy
+    _ -> foldr1 (\left right -> TyCon (Name "pair") [left, right]) returns'
+
+resolveTypeArguments :: Name -> [S.Ty] -> ResolveM [Ty]
+resolveTypeArguments n [size, element]
+  | n == Name "array",
+    Just resolvedSize <- numericArraySize size =
+      (resolvedSize :) . (: []) <$> resolve element
+resolveTypeArguments _ ts =
+  resolve ts
+
+-- A fixed-array length is a type-level natural in the existing internal
+-- representation, not a user-defined type constructor. Keep it scoped to the
+-- first argument of the built-in two-argument array shape so a bare numeric
+-- "type" remains invalid everywhere else.
+numericArraySize :: S.Ty -> Maybe Ty
+numericArraySize size@(S.TyCon n@(Name digits) [])
+  | not (null digits),
+    all isDigit digits =
+      Just (locatedLike size locatedTy (TyCon n []))
+numericArraySize _ =
+  Nothing
 
 -- definition of an environment
 

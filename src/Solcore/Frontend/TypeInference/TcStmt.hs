@@ -91,6 +91,15 @@ tcStmtWithExpectedReturn' _ e@(Let ct n mt me) =
     extEnv n (monotype tf)
     let e' = Let ct (Id n tf) (Just tf) me'
     withCurrentSubst (e', psf, unit)
+tcStmtWithExpectedReturn' _ stmt@(LetPattern ct pat mt value) =
+  do
+    (pat', value', ps, valueTy) <- tcLetPattern stmt pat mt value
+    lowered <- lowerLetPattern stmt ct pat' value' valueTy []
+    let loweredStmt =
+          case lowered of
+            [single] -> single
+            stmts -> Block stmts
+    pure (loweredStmt, ps, unit)
 tcStmtWithExpectedReturn' mExpectedReturn (Block body) =
   withLocalCtx [] $ do
     (body', ps, t) <- tcBodyWithExpectedReturn mExpectedReturn body
@@ -1490,6 +1499,12 @@ tcBody = tcBodyWithExpectedReturn Nothing
 
 tcBodyWithExpectedReturn :: Maybe Ty -> Body Name -> TcM (Body Id, [Pred], Ty)
 tcBodyWithExpectedReturn _ [] = pure ([], [], unit)
+tcBodyWithExpectedReturn mExpectedReturn (stmt@(LetPattern ct pat mt value) : rest) =
+  do
+    (pat', value', ps, valueTy) <- tcLetPattern stmt pat mt value
+    (rest', restPreds, resultTy) <- tcBodyWithExpectedReturn mExpectedReturn rest
+    lowered <- lowerLetPattern stmt ct pat' value' valueTy rest'
+    pure (lowered, ps ++ restPreds, resultTy)
 tcBodyWithExpectedReturn mExpectedReturn [s] =
   do
     (s', ps', t') <- tcStmtWithExpectedReturn mExpectedReturn s
@@ -1501,6 +1516,61 @@ tcBodyWithExpectedReturn mExpectedReturn (s : ss) =
     (s', ps', _) <- tcStmtWithExpectedReturn mExpectedReturn s
     (bd', ps1, t1) <- tcBodyWithExpectedReturn mExpectedReturn ss
     pure (s' : bd', ps' ++ ps1, t1)
+
+-- Type a tuple binding before its continuation, then make every bound leaf
+-- available to that continuation.  The body checker lowers the binding to an
+-- irrefutable one-arm match so the existing decision-tree compiler performs
+-- tuple projection without evaluating the initializer more than once.
+tcLetPattern ::
+  Stmt Name ->
+  Pat Name ->
+  Maybe Ty ->
+  Exp Name ->
+  TcM (Pat Id, Exp Id, [Pred], Ty)
+tcLetPattern stmt pat mt value = do
+  (value', preds, valueTy) <-
+    case mt of
+      Just annotatedTy -> do
+        checkedTy <- kindCheck annotatedTy `wrapError` stmt
+        let boundVars = bv checkedTy
+        skolems <- mapM (const freshTyVar) boundVars
+        let expectedTy = insts (zip boundVars skolems) checkedTy
+        (value'', preds', inferredTy) <-
+          tcExpWithExpected (Just expectedTy) value
+        matchedSubst <- tcmMatch inferredTy expectedTy `wrapError` stmt
+        _ <- extSubst matchedSubst
+        withCurrentSubst (value'', preds', expectedTy)
+      Nothing ->
+        tcExp value
+  (pat', _, bindings) <- tcPat valueTy pat `wrapError` stmt
+  bindings' <- withCurrentSubst bindings
+  mapM_ (uncurry extEnv) bindings'
+  (pat'', value'', preds') <- withCurrentSubst (pat', value', preds)
+  valueTy' <- withCurrentSubst valueTy
+  pure (pat'', value'', preds', valueTy')
+
+lowerLetPattern ::
+  Stmt Name ->
+  Bool ->
+  Pat Id ->
+  Exp Id ->
+  Ty ->
+  Body Id ->
+  TcM (Body Id)
+lowerLetPattern source isComptime pat value valueTy continuation = do
+  let matchOn scrutinee =
+        locatedLike source locatedStmt $
+          Match [scrutinee] [([pat], continuation)]
+  if isComptime
+    then do
+      temporaryName <- freshName
+      let temporary = Id temporaryName valueTy
+          bindTemporary =
+            locatedLike source locatedStmt $
+              Let True temporary (Just valueTy) (Just value)
+      pure [bindTemporary, matchOn (Var temporary)]
+    else
+      pure [matchOn value]
 
 tcCall :: Maybe (Exp Name) -> Name -> [Exp Name] -> TcM (Exp Id, [Pred], Ty)
 tcCall Nothing n args =
@@ -1901,6 +1971,7 @@ instance Vars (Stmt Id) where
   free (e1 := e2) = free [e1, e2]
   free (Let _ _ _ (Just e)) = free e
   free (Let _ _ _ _) = []
+  free (LetPattern _ _ _ value) = free value
   free (Block body) = free body
   free (StmtExp e) = free e
   free (Return e) = free e
@@ -1914,6 +1985,7 @@ instance Vars (Stmt Id) where
   free EmptyStmt = []
 
   bound (Let _ n _ _) = [n]
+  bound (LetPattern _ pat _ _) = bound pat
   bound (Block _) = []
   bound _ = []
 

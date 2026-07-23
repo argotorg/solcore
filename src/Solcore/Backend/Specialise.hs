@@ -253,6 +253,11 @@ addInstResolutions :: Instance Id -> SM ()
 addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instDefault inst) (instName inst) (mainTy inst))
 
 specialiseTopDecl :: TopDecl Id -> SM [TopDecl Id]
+specialiseTopDecl (TContr (Contract _ _ decls))
+  | any isSignatureDecl decls = pure []
+  where
+    isSignatureDecl CSignatureDecl {} = True
+    isSignatureDecl _ = False
 specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
   addContractResolutions (Contract name args decls)
   -- Runtime code

@@ -12,8 +12,8 @@ module Solcore.Backend.ComptimeCheck (checkComptime) where
      2. Constraint checking: annotations must be consistent with reality.
         - A parameter annotated 'comptime' must receive a comptime argument
           at every call site.
-        - A 'let x : comptime T = e' binding requires e to be comptime.
-        - A function annotated '-> comptime T' requires every returned
+        - A 'let comptime x: T = e' binding requires e to be comptime.
+        - A function with a 'returns (comptime T)' result requires every returned
           expression to be comptime.
 
    The verifier reports the first violation found as a String error.
@@ -48,7 +48,7 @@ checkFunDef :: FunTable -> Set.Set Name -> MastFunDef -> Either String ()
 checkFunDef ft pure_ fd =
   checkStmts ft pure_ (mastFunRetComptime fd) (mastFunName fd) initEnv (mastFunBody fd)
   where
-    -- For '-> comptime' functions, assume ALL params are comptime when checking
+    -- For functions with a comptime result, assume ALL params are comptime when checking
     -- the body: this verifies "if all args happen to be comptime, is the result?"
     -- For other functions, only explicitly-annotated comptime params are trusted.
     initEnv =
@@ -87,7 +87,7 @@ checkStmt ft pure_ retCt fname env stmt = case stmt of
     checkExp ft pure_ env e
     let ct' = isComptime ft pure_ env e
     when_ (retCt && not ct') $
-      "function '" ++ show fname ++ "' annotated '-> comptime' returns a runtime expression"
+      "function '" ++ show fname ++ "' with a comptime result returns a runtime expression"
     return env
   MastMatch scrut alts -> do
     checkExp ft pure_ env scrut

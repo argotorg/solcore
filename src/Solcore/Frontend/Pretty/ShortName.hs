@@ -29,7 +29,9 @@ instance (HasShortName a) => HasShortName (FunDef a) where
 
 instance (HasShortName a) => HasShortName (Instance a) where
   shortName (Instance _d _vs _ctx n ts t _funs) = do
-    unwords ["instance", pretty (InCls n t ts)]
+    unwords ["impl", pretty n ++ "<" ++ commaSepTypes (t : ts) ++ ">"]
+    where
+      commaSepTypes = foldr1 (\left right -> left ++ ", " ++ right) . map pretty
 
 instance HasShortName Pred where
   shortName p = unwords ["constraint", pretty p]

@@ -93,6 +93,8 @@ instance Compile (Stmt Id) where
     (:=) <$> compile e1 <*> compile e2
   compile (Let c v mt me) =
     Let c v mt <$> compile me
+  compile (LetPattern _ pat _ value) =
+    compile (Match [value] [([pat], [])])
   compile (Block body) =
     Block <$> compile body
   compile (StmtExp e) =
@@ -302,7 +304,9 @@ instance Compile (Exp Id) where
 instance Compile (Instance Id) where
   compile (Instance d vs ps n ts t funs) =
     Instance d vs ps n ts t
-      <$> pushCtx ("instance " ++ pretty t ++ " : " ++ pretty n) (compile funs)
+      <$> pushCtx
+        ("impl " ++ pretty n ++ "<" ++ intercalate ", " (map pretty (t : ts)) ++ ">")
+        (compile funs)
 
 -- compiling a decision tree into a match
 

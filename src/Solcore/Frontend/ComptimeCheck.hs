@@ -5,7 +5,7 @@ module Solcore.Frontend.ComptimeCheck (checkComptimeEarly) where
 
    Classification uses three states:
      CTComptime  — definitely comptime: literal, comptime-bound variable, or
-                   a call to a function annotated '-> comptime' with all
+                   a call to a function with a 'returns (comptime T)' result and all
                    comptime-param arguments classified as CTComptime.
      CTRuntime   — definitely not comptime: a variable bound by a non-comptime
                    function parameter.
@@ -15,7 +15,7 @@ module Solcore.Frontend.ComptimeCheck (checkComptimeEarly) where
 
    Errors are reported only for CTRuntime violations:
      - A parameter annotated 'comptime' receives a CTRuntime argument.
-     - A 'let x : comptime T = e' binding where e classifies as CTRuntime.
+     - A 'let comptime x: T = e' binding where e classifies as CTRuntime.
 
    CTDeferred values are never rejected here; the MAST-level pass handles them.
 -}
@@ -26,6 +26,7 @@ import Solcore.Frontend.Syntax.Name (Name)
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.TypeInference.Id (Id (..))
+import Solcore.Primitives.Primitives (invokableName)
 
 -----------------------------------------------------------------------
 -- Comptime-ness classification
@@ -50,6 +51,7 @@ buildSigTable (CompUnit _ topDecls) = Map.fromList $ concatMap fromTopDecl topDe
     fromTopDecl _ = []
 
     fromContrDecl (CFunDecl fd) = [(sigName (funSignature fd), funSignature fd)]
+    fromContrDecl (CSignatureDecl _ sig) = [(sigName sig, sig)]
     fromContrDecl _ = []
 
 -----------------------------------------------------------------------
@@ -73,6 +75,11 @@ checkTopDecl st (TFunDef fd) = checkFunDef st ctx fd
   where
     ctx = "function '" ++ show (sigName (funSignature fd)) ++ "'"
 checkTopDecl st (TContr c) = mapM_ (checkContrDecl st) (decls c)
+-- Generated invokable adapters package arguments into a runtime tuple and no
+-- longer retain per-element comptime annotations.  Their specialised calls are
+-- validated by the later MAST pass, as they were before pattern ctness tracking.
+checkTopDecl _ (TInstDef inst)
+  | instName inst == invokableName = Right ()
 checkTopDecl st (TInstDef inst) = mapM_ (checkFunDefInst st inst) (instFunctions inst)
 checkTopDecl _ _ = Right ()
 
@@ -90,7 +97,7 @@ checkFunDef :: SigTable -> String -> FunDef Id -> Either String ()
 checkFunDef st ctx fd = checkBody st (sigRetComptime sig) ctx initEnv (funDefBody fd)
   where
     sig = funSignature fd
-    -- For '-> comptime' functions, treat ALL params as CTComptime when checking
+    -- For functions with a comptime result, treat ALL params as CTComptime when checking
     -- the body: this verifies "given comptime args, does the body produce comptime?"
     -- For other functions, non-comptime params are CTRuntime.
     initEnv =
@@ -136,16 +143,23 @@ checkStmt st retCt ctx env stmt = case stmt of
             ++ show (idName x)
             ++ "' is bound to a runtime expression"
         return $ Map.insert (idName x) (letCtness ct ct') env
+  LetPattern ct pat _ value -> do
+    checkExp st env value
+    let valueCtness = classifyExp st env value
+    when_ (ct && valueCtness == CTRuntime) $
+      "comptime tuple binding is bound to a runtime expression"
+    return (bindPatternCtness (letCtness ct valueCtness) pat env)
   (_ := e) -> checkExp st env e >> return env
   StmtExp e -> checkExp st env e >> return env
   Return e -> do
     checkExp st env e
     when_ (retCt && classifyExp st env e == CTRuntime) $
-      ctx ++ ": function annotated '-> comptime' returns a runtime expression"
+      ctx ++ ": function with a comptime result returns a runtime expression"
     return env
   Match es eqs -> do
     mapM_ (checkExp st env) es
-    mapM_ (checkEq st retCt ctx env) eqs
+    let scrutineeCtness = map (classifyExp st env) es
+    mapM_ (checkEq st retCt ctx env scrutineeCtness) eqs
     return env
   If cond t f -> do
     checkExp st env cond
@@ -170,8 +184,26 @@ letCtness :: Bool -> Ctness -> Ctness
 letCtness True _ = CTComptime
 letCtness False ct' = ct'
 
-checkEq :: SigTable -> Bool -> String -> CtEnv -> ([Pat Id], Body Id) -> Either String ()
-checkEq st retCt ctx env (_, body) = checkBody st retCt ctx env body
+checkEq :: SigTable -> Bool -> String -> CtEnv -> [Ctness] -> ([Pat Id], Body Id) -> Either String ()
+checkEq st retCt ctx env scrutineeCtness (pats, body) =
+  checkBody st retCt ctx patternEnv body
+  where
+    patternEnv =
+      foldl
+        (\current (pat, ctness) -> bindPatternCtness ctness pat current)
+        env
+        (zip pats scrutineeCtness)
+
+bindPatternCtness :: Ctness -> Pat Id -> CtEnv -> CtEnv
+bindPatternCtness ctness (PVar variable) env =
+  Map.insert (idName variable) ctness env
+bindPatternCtness ctness (PCon _ pats) env =
+  foldl
+    (\current pat -> bindPatternCtness ctness pat current)
+    env
+    pats
+bindPatternCtness _ _ env =
+  env
 
 -----------------------------------------------------------------------
 -- Expression checking: recurse and enforce comptime-param constraints
@@ -244,8 +276,8 @@ combineCt cts
   | otherwise = CTDeferred
 
 -- | Classify a function call result.
---   CTComptime iff the function is annotated '-> comptime' and ALL arguments
---   are CTComptime.  A non-comptime-annotated param in a '-> comptime' function
+--   CTComptime iff the function has a comptime result and ALL arguments
+--   are CTComptime.  A non-comptime-annotated param in such a function
 --   means "result is comptime when this arg happens to be comptime", so all args
 --   must be checked, not just the comptime-annotated ones.
 --   Never CTRuntime for calls — uncertain cases are deferred to MAST.

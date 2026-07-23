@@ -139,6 +139,10 @@ transStmt :: ContractEnv -> NmStmt -> (ContractEnv, NmStmt)
 transStmt cenv (Let c x mty me) = (cenv {ceLocals = Set.insert x cenv.ceLocals}, Let c x mty me')
   where
     me' = flip transRhs cenv <$> me
+transStmt cenv (LetPattern ct pat mty value) =
+  ( cenv {ceLocals = Set.union (Set.fromList (patternBindings pat)) cenv.ceLocals},
+    LetPattern ct pat mty (transRhs value cenv)
+  )
 transStmt cenv stmt = (cenv, go stmt cenv)
   where
     go :: NmStmt -> CEM NmStmt
@@ -156,10 +160,16 @@ transStmt cenv stmt = (cenv, go stmt cenv)
         body' = transBody body forEnv
     go (Match es eqns) = traces [pretty (r cenv)] r where r = Match <$> mapM transRhs es <*> mapM transEquation eqns
     go Let {} = error "Impossible"
+    go LetPattern {} = error "Impossible"
     go s@Asm {} = pure s
     go Break = pure Break
     go Continue = pure Continue
     go EmptyStmt = pure EmptyStmt
+
+patternBindings :: Pat Name -> [Name]
+patternBindings (PVar n) = [n]
+patternBindings (PCon _ pats) = concatMap patternBindings pats
+patternBindings _ = []
 
 -- go s = pure s
 

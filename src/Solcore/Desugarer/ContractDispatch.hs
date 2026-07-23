@@ -38,6 +38,7 @@ contractDispatchTopDecls topdecls = Set.toList extras <> topdecls'
   where
     (extras, topdecls') = mapAccumL go Set.empty topdecls
     go acc (TContr c)
+      | isInterfaceContract c = (acc, TContr c)
       | "main" `notElem` functionNames c = (Set.union acc (genNameDecls c), TContr (genMainFn True c))
       | otherwise = (acc, TContr (genMainFn False c))
     go acc v = (acc, v)
@@ -60,7 +61,14 @@ functionNames :: Contract a -> [Name]
 functionNames = foldr go [] . decls
   where
     go (CFunDecl fd) = (sigName (funSignature fd) :)
+    go (CSignatureDecl _ sig) = (sigName sig :)
     go _ = id
+
+isInterfaceContract :: Contract a -> Bool
+isInterfaceContract = any isSignature . decls
+  where
+    isSignature CSignatureDecl {} = True
+    isSignature _ = False
 
 -- | Returns the (at most one) user-defined fallback function for a contract.
 findFallback :: Contract a -> Maybe (FunDef a)
@@ -332,6 +340,15 @@ contractAbiEntries = mapMaybe entry . decls
       Just (AbiConstructor (map abiParam (constrParams con)) (stateMutability (constrPayable con)))
     entry (CFunDecl (FunDef isPublic sig _))
       | sigName sig == fallbackName = Just (AbiFallback (stateMutability (sigPayable sig)))
+      | isPublic =
+          Just $
+            AbiFunction
+              (nameStr (sigName sig))
+              (map abiParam (sigParams sig))
+              (abiOutputs (sigReturn sig))
+              (stateMutability (sigPayable sig))
+      | otherwise = Nothing
+    entry (CSignatureDecl isPublic sig)
       | isPublic =
           Just $
             AbiFunction

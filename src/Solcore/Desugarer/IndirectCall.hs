@@ -85,6 +85,8 @@ instance Desugar (Stmt Name) where
     (:=) <$> desugar lhs <*> desugar rhs
   desugar (Let c n mt me) =
     Let c n mt <$> desugar me
+  desugar (LetPattern ct pat mt value) =
+    LetPattern ct pat mt <$> desugar value
   desugar (Block body) =
     Block <$> desugar body
   desugar (StmtExp e) =
@@ -174,6 +176,8 @@ instance Collect (ContractDecl Name) where
   collect (CFieldDecl _) = []
   collect (CFunDecl fd) =
     [sigName (funSignature fd)]
+  collect (CSignatureDecl _ sig) =
+    [sigName sig]
   collect (CMutualDecl ds) = concatMap collect ds
   collect (CConstrDecl _) = []
   collect _ = []

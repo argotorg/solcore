@@ -523,16 +523,20 @@ declarationSearchTerms diagnostic =
   where
     declarationTerms raw =
       case words (stripContextPrefix (trim raw)) of
-        "function" : declName : _ -> [stripTrailingParens declName]
-        "contract" : declName : _ -> [stripTrailingParens declName]
-        "class" : _vars : ":" : declName : _ -> [stripTrailingParens declName]
-        "class" : declName : _ -> [stripTrailingParens declName]
-        "data" : declName : _ -> [stripTrailingParens declName]
-        "type" : declName : _ -> [stripTrailingParens declName]
+        "function" : declName : _ -> [stripDeclarationSuffix declName]
+        "contract" : declName : _ -> [stripDeclarationSuffix declName]
+        "trait" : declName : _ -> [stripDeclarationSuffix declName]
+        "enum" : declName : _ -> [stripDeclarationSuffix declName]
+        "type" : declName : _ -> [stripDeclarationSuffix declName]
         "constructor" : _ -> ["constructor"]
-        "instance" : _mainTy : ":" : instanceClassName : _ -> [stripTrailingParens instanceClassName, "instance"]
-        "instance" : instanceClassName : _ -> [stripTrailingParens instanceClassName, "instance"]
+        implToken : implName : _
+          | "impl" `isPrefixOf` implToken -> [stripDeclarationSuffix implName, "impl"]
+        "default" : implToken : implName : _
+          | "impl" `isPrefixOf` implToken -> [stripDeclarationSuffix implName, "impl"]
         _ -> []
+
+    stripDeclarationSuffix =
+      takeWhile (\c -> c /= '(' && c /= '<' && c /= ',' && c /= ';' && c /= '{')
 
 inContextSearchTerms :: Diagnostic -> [String]
 inContextSearchTerms diagnostic =
@@ -552,10 +556,6 @@ stripContextPrefix raw =
       case stripPrefix "in: " raw of
         Just rest -> trim rest
         Nothing -> raw
-
-stripTrailingParens :: String -> String
-stripTrailingParens =
-  takeWhile (\c -> c /= '(' && c /= ',' && c /= ';' && c /= '{')
 
 prefixedTerms :: [String] -> String -> [String]
 prefixedTerms prefixes body =

@@ -145,6 +145,7 @@ instance Decl (ContractDecl Name) where
   decl (CDataDecl dt) = decl dt
   decl (CFieldDecl fd) = decl fd
   decl (CFunDecl fd) = decl fd
+  decl (CSignatureDecl _ sig) = decl sig
   decl (CMutualDecl ds) =
     concatMap decl ds
   decl (CConstrDecl _) = []
@@ -194,6 +195,8 @@ instance Names (Stmt Name) where
     names [e1, e2]
   names (Let _ _ mt me) =
     names mt `union` names me
+  names (LetPattern _ _ mt value) =
+    names mt `union` names value
   names (Block body) =
     names body
   names (StmtExp e) =
@@ -265,6 +268,7 @@ instance Names (ContractDecl Name) where
   names (CDataDecl dt) = names dt
   names (CFieldDecl fd) = names fd
   names (CFunDecl fd) = names fd
+  names (CSignatureDecl _ sig) = names sig
   names (CMutualDecl cs) = names cs
   names (CConstrDecl cd) = names cd
 

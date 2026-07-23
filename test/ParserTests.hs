@@ -3,14 +3,19 @@
 module ParserTests (parserTests) where
 
 import Common.LightYear (Parser, runParserE)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import Solcore.Frontend.Lexer.SolcoreLexer (sc)
-import Solcore.Frontend.Parser.Decl (topDeclP)
+import Solcore.Frontend.Parser.Decl (importP, topDeclP)
 import Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.Patterns (patP)
 import Solcore.Frontend.Parser.SolcoreTypes (predP, typeP)
 import Solcore.Frontend.Parser.Stmt (bodyP, stmtP)
+import Solcore.Frontend.Pretty.TreePretty qualified as TreePretty
+import Solcore.Frontend.Syntax.Contract qualified as Resolved
 import Solcore.Frontend.Syntax.Name
+import Solcore.Frontend.Syntax.NameResolution (nameResolution)
 import Solcore.Frontend.Syntax.SyntaxTree
+import Solcore.Frontend.Syntax.Ty qualified as ResolvedTy
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Megaparsec (eof)
@@ -27,6 +32,79 @@ parseFails p src =
     Left _ -> return ()
     Right got -> assertFailure ("Expected failure but parsed: " ++ show got)
 
+nameResolutionFails :: String -> Assertion
+nameResolutionFails src =
+  case runParserE (sc *> topDeclP <* eof) "<test>" src of
+    Left err -> assertFailure ("Parse error:\n" ++ err)
+    Right parsed -> do
+      resolved <- nameResolution (CompUnit [] [parsed])
+      case resolved of
+        Left _ -> pure ()
+        Right got ->
+          assertFailure
+            ("Expected name-resolution failure but resolved: " ++ show got)
+
+nameResolutionSucceeds :: String -> Assertion
+nameResolutionSucceeds src =
+  case runParserE (sc *> topDeclP <* eof) "<test>" src of
+    Left err -> assertFailure ("Parse error:\n" ++ err)
+    Right parsed -> do
+      resolved <- nameResolution (CompUnit [] [parsed])
+      case resolved of
+        Left err -> assertFailure ("Name resolution failed: " ++ show err)
+        Right _ -> pure ()
+
+roundTripsTopDecl :: String -> Assertion
+roundTripsTopDecl src =
+  case runParserE (sc *> topDeclP <* eof) "<test>" src of
+    Left err -> assertFailure ("Initial parse error:\n" ++ err)
+    Right parsed ->
+      let rendered = TreePretty.pretty parsed
+       in case runParserE (sc *> topDeclP <* eof) "<pretty>" rendered of
+            Left err ->
+              assertFailure
+                ( "Pretty-printed declaration did not parse:\n"
+                    ++ rendered
+                    ++ "\n"
+                    ++ err
+                )
+            Right reparsed ->
+              assertEqual ("round trip: " ++ rendered) parsed reparsed
+
+roundTripsStmt :: String -> Assertion
+roundTripsStmt src =
+  case runParserE (sc *> stmtP <* eof) "<test>" src of
+    Left err -> assertFailure ("Initial parse error:\n" ++ err)
+    Right parsed ->
+      let rendered = TreePretty.pretty parsed
+       in case runParserE (sc *> stmtP <* eof) "<pretty>" rendered of
+            Left err ->
+              assertFailure
+                ( "Pretty-printed statement did not parse:\n"
+                    ++ rendered
+                    ++ "\n"
+                    ++ err
+                )
+            Right reparsed ->
+              assertEqual ("round trip: " ++ rendered) parsed reparsed
+
+roundTripsType :: String -> Assertion
+roundTripsType src =
+  case runParserE (sc *> typeP <* eof) "<test>" src of
+    Left err -> assertFailure ("Initial parse error:\n" ++ err)
+    Right parsed ->
+      let rendered = TreePretty.pretty parsed
+       in case runParserE (sc *> typeP <* eof) "<pretty>" rendered of
+            Left err ->
+              assertFailure
+                ( "Pretty-printed type did not parse:\n"
+                    ++ rendered
+                    ++ "\n"
+                    ++ err
+                )
+            Right reparsed ->
+              assertEqual ("round trip: " ++ rendered) parsed reparsed
+
 expP :: Parser Exp
 expP = exprP bodyP
 
@@ -40,7 +118,11 @@ parserTests =
       exprTests,
       stmtTests,
       declTests,
-      keywordPrefixTests
+      importTests,
+      pragmaTests,
+      declarationShellTests,
+      keywordPrefixTests,
+      legacySyntaxTests
     ]
 
 word :: Ty
@@ -55,17 +137,70 @@ typeTests =
     "Types"
     [ testCase "simple named type" $
         parsesAs typeP "word" word,
-      testCase "parameterized type" $
-        parsesAs typeP "pair(word, bool)" (TyCon "pair" [word, bool]),
-      testCase "two-parameter type" $
-        parsesAs typeP "map(word, bool)" (TyCon "map" [word, bool]),
-      testCase "arrow type" $
-        parsesAs typeP "word -> bool" (TyCon "->" [word, bool]),
-      testCase "arrow is right-associative" $
+      testCase "generic type" $
+        parsesAs typeP "Option<word>" (TyCon "Option" [word]),
+      testCase "generic type with two arguments" $
+        parsesAs typeP "Result<word, bool>" (TyCon "Result" [word, bool]),
+      testCase "qualified generic type" $
         parsesAs
           typeP
-          "word -> bool -> word"
-          (TyCon "->" [word, TyCon "->" [bool, word]]),
+          "pkg.Result<word, Error>"
+          (TyCon (QualName "pkg" "Result") [word, TyCon "Error" []]),
+      testCase "mapping type" $
+        parsesAs
+          typeP
+          "mapping(address => word)"
+          (TyCon "mapping" [TyCon "address" [], word]),
+      testCase "dynamic array type" $
+        parsesAs typeP "word[]" (TyCon "array" [word]),
+      testCase "nested dynamic array type" $
+        parsesAs typeP "word[][]" (TyCon "array" [TyCon "array" [word]]),
+      testCase "fixed array stores size before element type" $
+        parsesAs typeP "word[4]" (TyCon "array" [TyCon "4" [], word]),
+      testCase "fixed array accepts a type-level size" $
+        parsesAs typeP "word[N]" (TyCon "array" [TyCon "N" [], word]),
+      testCase "data location follows the complete array type" $
+        parsesAs
+          typeP
+          "word[] storage"
+          (TyCon "storage" [TyCon "array" [word]]),
+      testCase "function type" $
+        parsesAs
+          typeP
+          "function(word) internal returns (bool)"
+          (FunctionTy [word] (Just FunctionTypeInternal) (Just [bool])),
+      testCase "multi-parameter function type retains external visibility" $
+        parsesAs
+          typeP
+          "function(word, bool) external returns (word)"
+          (FunctionTy [word, bool] (Just FunctionTypeExternal) (Just [word])),
+      testCase "zero-arity function type remains distinct in the source AST" $
+        parsesAs
+          typeP
+          "function() internal returns (word)"
+          (FunctionTy [] (Just FunctionTypeInternal) (Just [word])),
+      testCase "function type preserves an omitted visibility and returns clause" $
+        parsesAs
+          typeP
+          "function()"
+          (FunctionTy [] Nothing Nothing),
+      testCase "function type preserves multiple return items" $
+        parsesAs
+          typeP
+          "function() external returns (word, bool)"
+          (FunctionTy [] (Just FunctionTypeExternal) (Just [word, bool])),
+      testCase "function type accepts an array suffix" $
+        parsesAs
+          typeP
+          "function(word) internal returns (bool)[]"
+          (TyCon "array" [FunctionTy [word] (Just FunctionTypeInternal) (Just [bool])]),
+      testCase "function type syntax survives source pretty-printing" $
+        mapM_
+          roundTripsType
+          [ "function() internal returns (word)",
+            "function(word, bool) external returns (word, bool)",
+            "function()"
+          ],
       testCase "unit type" $
         parsesAs typeP "()" (TyCon "()" []),
       testCase "parenthesized single type" $
@@ -74,17 +209,13 @@ typeTests =
         parsesAs typeP "(word, bool)" (pairTy word bool),
       testCase "triple type in parens" $
         parsesAs typeP "(word, bool, word)" (pairTy word (pairTy bool word)),
-      testCase "proxy type" $
-        parsesAs typeP "@word" (TyCon "Proxy" [word]),
       testCase "qualified name in type" $
         parsesAs typeP "Foo.Bar" (TyCon (QualName "Foo" "Bar") []),
-      testCase "arrow type in parens disambiguates" $
-        parsesAs typeP "((word -> bool) -> word)" (TyCon "->" [TyCon "->" [word, bool], word]),
       -- Failure cases
-      testCase "bare arrow fails" $
-        parseFails typeP "->",
       testCase "unclosed paren fails" $
-        parseFails typeP "(word"
+        parseFails typeP "(word",
+      testCase "unclosed generic argument list fails" $
+        parseFails typeP "Option<word"
     ]
 
 predTests :: TestTree
@@ -96,9 +227,9 @@ predTests =
       testCase "qualified class name" $
         parsesAs predP "t:Foo.Eq" (InCls (QualName "Foo" "Eq") (TyCon "t" []) []),
       testCase "predicate with one param" $
-        parsesAs predP "t:Functor(word)" (InCls "Functor" (TyCon "t" []) [word]),
+        parsesAs predP "t:Functor<word>" (InCls "Functor" (TyCon "t" []) [word]),
       testCase "predicate with two params" $
-        parsesAs predP "t:Bifunctor(word,bool)" (InCls "Bifunctor" (TyCon "t" []) [word, bool]),
+        parsesAs predP "t:Bifunctor<word,bool>" (InCls "Bifunctor" (TyCon "t" []) [word, bool]),
       testCase "compound main type" $
         parsesAs predP "(word,bool):Pair" (InCls "Pair" (pairTy word bool) [])
     ]
@@ -139,6 +270,9 @@ lit = Lit . IntLit
 var :: String -> Exp
 var n = ExpVar Nothing (Name n)
 
+unitExp :: Exp
+unitExp = ExpName Nothing "()" []
+
 exprTests :: TestTree
 exprTests =
   testGroup
@@ -167,12 +301,29 @@ exprTests =
         parsesAs expP "6 / 2" (ExpDivide (lit 6) (lit 2)),
       testCase "modulo" $
         parsesAs expP "5 % 3" (ExpModulo (lit 5) (lit 3)),
+      testCase "exponentiation is right-associative" $
+        parsesAs
+          expP
+          "2 ** 3 ** 4"
+          (ExpPower (lit 2) (ExpPower (lit 3) (lit 4))),
       testCase "mul binds tighter than add" $
         parsesAs expP "1 + 2 * 3" (ExpPlus (lit 1) (ExpTimes (lit 2) (lit 3))),
       testCase "add then mul" $
         parsesAs expP "1 * 2 + 3" (ExpPlus (ExpTimes (lit 1) (lit 2)) (lit 3)),
       testCase "subtraction is left-associative" $
         parsesAs expP "3 - 2 - 1" (ExpMinus (ExpMinus (lit 3) (lit 2)) (lit 1)),
+      testCase "addition binds tighter than left shift" $
+        parsesAs
+          expP
+          "x + y << n"
+          (ExpShiftL (ExpPlus (var "x") (var "y")) (var "n")),
+      testCase "addition on the right binds tighter than left shift" $
+        parsesAs
+          expP
+          "x << n + 1"
+          (ExpShiftL (var "x") (ExpPlus (var "n") (lit 1))),
+      testCase "right shift" $
+        parsesAs expP "x >> n" (ExpShiftR (var "x") (var "n")),
       testCase "less-than" $
         parsesAs expP "x < y" (ExpLT (var "x") (var "y")),
       testCase "greater-than" $
@@ -205,10 +356,35 @@ exprTests =
           (ExpLAnd (ExpLT (var "a") (var "b")) (ExpGT (var "c") (var "d"))),
       testCase "ternary operator" $
         parsesAs expP "x ? 1 : 2" (ExpCond (var "x") (lit 1) (lit 2)),
-      testCase "if-then-else expression" $
-        parsesAs expP "if x then 1 else 2" (ExpCond (var "x") (lit 1) (lit 2)),
-      testCase "type annotation" $
-        parsesAs expP "x : word" (TyExp (var "x") word),
+      testCase "explicit conversion" $
+        parsesAs expP "x as word" (TyExp (var "x") word),
+      testCase "conversion accepts a qualified generic target" $
+        parsesAs
+          expP
+          "x as pkg.Result<word, bool>"
+          (TyExp (var "x") (TyCon (QualName "pkg" "Result") [word, bool])),
+      testCase "conversion is left-associative" $
+        parsesAs
+          expP
+          "x as word as bool"
+          (TyExp (TyExp (var "x") word) bool),
+      testCase "conversion binds tighter than addition" $
+        parsesAs
+          expP
+          "x as word + y"
+          (ExpPlus (TyExp (var "x") word) (var "y")),
+      testCase "parentheses allow converting a complete addition" $
+        parsesAs
+          expP
+          "(x + y) as word"
+          (TyExp (ExpPlus (var "x") (var "y")) word),
+      testCase "conversion is accepted in both ternary branches" $
+        parsesAs
+          expP
+          "condition ? x as word : y as bool"
+          (ExpCond (var "condition") (TyExp (var "x") word) (TyExp (var "y") bool)),
+      testCase "function-style syntax remains an ordinary call" $
+        parsesAs expP "word(x)" (ExpName Nothing "word" [var "x"]),
       testCase "field access" $
         parsesAs expP "x.foo" (ExpVar (Just (var "x")) "foo"),
       testCase "method call" $
@@ -233,8 +409,6 @@ exprTests =
           expP
           "(a, b, c)"
           (ExpName Nothing "pair" [var "a", ExpName Nothing "pair" [var "b", var "c"]]),
-      testCase "proxy expression" $
-        parsesAs expP "@word" (ExpAt word),
       testCase "dot name without args" $
         parsesAs expP ".None" (ExpDotName "None" []),
       testCase "dot name with args" $
@@ -242,12 +416,12 @@ exprTests =
       testCase "lambda no params" $
         parsesAs
           expP
-          "lam() -> word { return 0; }"
+          "lam() returns (word) { return 0; }"
           (Lam [] [Return (lit 0)] (Just word)),
       testCase "lambda with typed param" $
         parsesAs
           expP
-          "lam(x:word) -> word { return x; }"
+          "lam(x:word) returns (word) { return x; }"
           (Lam [Typed False "x" word] [Return (var "x")] (Just word)),
       testCase "lambda without return type" $
         parsesAs
@@ -256,8 +430,8 @@ exprTests =
           (Lam [Typed False "x" word] [Return (var "x")] Nothing)
     ]
 
--- | Identifiers that start with a keyword (e.g. `datavalue`, which begins with
--- `data`) must not be mistaken for the keyword. The lexer's `keyword` parser is
+-- | Identifiers that start with a keyword (e.g. `enumValue`, which begins with
+-- `enum`) must not be mistaken for the keyword. The lexer's `keyword` parser is
 -- atomic, so a keyword tried as an alternative backtracks instead of consuming
 -- the prefix.
 keywordPrefixTests :: TestTree
@@ -265,14 +439,14 @@ keywordPrefixTests =
   testGroup
     "Keyword prefixes"
     [ testCase "statement-initial assignment to keyword-prefixed name" $
-        parsesAs stmtP "datavalue = 2;" (Assign (var "datavalue") (lit 2)),
+        parsesAs stmtP "enumValue = 2;" (Assign (var "enumValue") (lit 2)),
       testCase "statement-initial expression with keyword-prefixed name" $
-        parsesAs stmtP "datavalue;" (StmtExp (var "datavalue")),
+        parsesAs stmtP "returnsValue;" (StmtExp (var "returnsValue")),
       testCase "contract field with keyword-prefixed name" $
         parsesAs
           topDeclP
-          "contract C { datavalue : word; }"
-          (TContr (Contract "C" [] [CFieldDecl (Field "datavalue" word Nothing)]))
+          "contract C { traitValue : word; }"
+          (TContr (Contract "C" [] [CFieldDecl (Field "traitValue" word Nothing)]))
     ]
 
 stmtTests :: TestTree
@@ -287,10 +461,66 @@ stmtTests =
         parsesAs stmtP "let x = 42;" (Let False "x" Nothing (Just (lit 42))),
       testCase "let with type and init" $
         parsesAs stmtP "let x : word = 42;" (Let False "x" (Just word) (Just (lit 42))),
+      testCase "comptime let binding" $
+        parsesAs stmtP "let comptime x : word = 42;" (Let True "x" (Just word) (Just (lit 42))),
+      testCase "typed tuple destructuring let" $
+        parsesAs
+          stmtP
+          "let (amount, ok): (word, bool) = readResult();"
+          ( LetPattern
+              False
+              (Pat "pair" [Pat "amount" [], Pat "ok" []])
+              (Just (TyCon "pair" [word, bool]))
+              (ExpName Nothing "readResult" [])
+          ),
+      testCase "untyped nested tuple destructuring let" $
+        parsesAs
+          stmtP
+          "let (left, (middle, right)) = readNested();"
+          ( LetPattern
+              False
+              (Pat "pair" [Pat "left" [], Pat "pair" [Pat "middle" [], Pat "right" []]])
+              Nothing
+              (ExpName Nothing "readNested" [])
+          ),
+      testCase "tuple destructuring pretty-prints as new syntax" $
+        roundTripsStmt "let (amount, (ok, fallbackValue)): (word, (bool, word)) = readResult();",
+      testCase "tuple destructuring requires an initializer" $
+        parseFails stmtP "let (left, right);",
+      testCase "tuple destructuring rejects a singleton pattern" $
+        parseFails stmtP "let (only) = readResult();",
+      testCase "tuple destructuring rejects refutable constructor leaves" $
+        parseFails stmtP "let (Some(value), rest) = readResult();",
+      testCase "tuple destructuring rejects duplicate binders recursively" $
+        parseFails stmtP "let (x, (y, x)) = readResult();",
+      testCase "tuple destructuring allows repeated wildcards" $
+        parsesAs
+          stmtP
+          "let (_, (_, x)) = readResult();"
+          ( LetPattern
+              False
+              (Pat "pair" [PWildcard, Pat "pair" [PWildcard, Pat "x" []]])
+              Nothing
+              (ExpName Nothing "readResult" [])
+          ),
+      testCase "comptime tuple destructuring keeps its binding modifier" $
+        parsesAs
+          stmtP
+          "let comptime (left, right) = readResult();"
+          ( LetPattern
+              True
+              (Pat "pair" [Pat "left" [], Pat "right" []])
+              Nothing
+              (ExpName Nothing "readResult" [])
+          ),
+      testCase "comptime tuple destructuring pretty-prints as new syntax" $
+        roundTripsStmt "let comptime (left, right): (word, word) = readResult();",
       testCase "return literal" $
         parsesAs stmtP "return 0;" (Return (lit 0)),
       testCase "return expression" $
         parsesAs stmtP "return x + 1;" (Return (ExpPlus (var "x") (lit 1))),
+      testCase "bare return produces the unit expression" $
+        parsesAs stmtP "return;" (Return unitExp),
       testCase "assignment" $
         parsesAs stmtP "x = 1;" (Assign (var "x") (lit 1)),
       testCase "plus-assign" $
@@ -302,8 +532,8 @@ stmtTests =
           stmtP
           "this.x = 1;"
           (Assign (ExpVar (Just (var "this")) "x") (lit 1)),
-      testCase "call as statement no semicolon" $
-        parsesAs stmtP "f()" (StmtExp (ExpName Nothing "f" [])),
+      testCase "call as statement requires semicolon" $
+        parseFails stmtP "f()",
       testCase "call as statement with semicolon" $
         parsesAs stmtP "f();" (StmtExp (ExpName Nothing "f" [])),
       testCase "if without else" $
@@ -360,29 +590,60 @@ stmtTests =
               EmptyStmt
               []
           ),
+      testCase "while loop remains distinct in the source AST" $
+        parsesAs
+          stmtP
+          "while (condition) { continue; }"
+          (While (var "condition") [Continue]),
+      testCase "while loop survives source pretty-printing" $
+        roundTripsStmt "while (condition) { continue; }",
+      testCase "unchecked block remains distinct in the source AST" $
+        parsesAs
+          stmtP
+          "unchecked { let x = 1; }"
+          (Unchecked [Let False "x" Nothing (Just (lit 1))]),
+      testCase "unchecked block survives source pretty-printing" $
+        roundTripsStmt "unchecked { let x = 1; }",
+      testCase "bare revert lowers to the revert operation" $
+        parsesAs
+          stmtP
+          "revert;"
+          (StmtExp (ExpName Nothing "revert" [])),
       testCase "match one equation" $
         parsesAs
           stmtP
-          "match x { | 0 => return 1; }"
+          "match (x) { case 0 { return 1; } }"
           (Match [var "x"] [([PLit (IntLit 0)], [Return (lit 1)])]),
-      testCase "match wildcard" $
+      testCase "match default arm" $
         parsesAs
           stmtP
-          "match x { | _ => return 0; }"
+          "match (x) { default { return 0; } }"
           (Match [var "x"] [([PWildcard], [Return (lit 0)])]),
       testCase "match constructor pattern" $
         parsesAs
           stmtP
-          "match x { | Some(v) => return v; }"
-          (Match [var "x"] [([Pat "Some" [Pat "v" []]], [Return (var "v")])]),
+          "match (x) { case Option.Some(v) { return v; } }"
+          (Match [var "x"] [([Pat (QualName "Option" "Some") [Pat "v" []]], [Return (var "v")])]),
       testCase "match multiple equations" $
         parsesAs
           stmtP
-          "match x { | 0 => return 0; | _ => return 1; }"
+          "match (x) { case 0 { return 0; } default { return 1; } }"
           ( Match
               [var "x"]
               [ ([PLit (IntLit 0)], [Return (lit 0)]),
                 ([PWildcard], [Return (lit 1)])
+              ]
+          ),
+      testCase "match multiple values" $
+        parsesAs
+          stmtP
+          "match (x, y) { case (Some(a), Some(b)) { return a + b; } default { return 0; } }"
+          ( Match
+              [var "x", var "y"]
+              [ ( [Pat "Some" [Pat "a" []], Pat "Some" [Pat "b" []]],
+                  [Return (ExpPlus (var "a") (var "b"))]
+                ),
+                ([PWildcard, PWildcard], [Return (lit 0)])
               ]
           ),
       testCase "let without semicolon fails" $
@@ -396,7 +657,7 @@ declTests =
     [ testCase "nullary function" $
         parsesAs
           topDeclP
-          "function answer() -> word { return 42; }"
+          "function answer() returns (word) { return 42; }"
           ( TFunDef
               ( FunDef
                   False
@@ -407,7 +668,7 @@ declTests =
       testCase "unary function" $
         parsesAs
           topDeclP
-          "function id(x:word) -> word { return x; }"
+          "function id(x:word) returns (word) { return x; }"
           ( TFunDef
               ( FunDef
                   False
@@ -415,21 +676,53 @@ declTests =
                   [Return (var "x")]
               )
           ),
-      testCase "implicit return (single expr body)" $
+      testCase "named return lowers to its declared type" $
         parsesAs
           topDeclP
-          "function answer() -> word { 42 }"
+          "function namedResult() returns (result: word) { return 1; }"
           ( TFunDef
               ( FunDef
                   False
-                  (Signature [] [] "answer" [] False (Just word) False)
-                  [Return (lit 42)]
+                  ( SignatureWithSyntax
+                      []
+                      []
+                      "namedResult"
+                      []
+                      (Just [ReturnItem False (Just "result") word])
+                      []
+                  )
+                  [Return (lit 1)]
               )
           ),
+      testCase "comptime parameter and return are recorded in the signature" $
+        parsesAs
+          topDeclP
+          "function staged(comptime x:word) returns (comptime word) { return x; }"
+          ( TFunDef
+              ( FunDef
+                  False
+                  (Signature [] [] "staged" [Typed True "x" word] True (Just word) False)
+                  [Return (var "x")]
+              )
+          ),
+      testCase "multiple return types fold into the tuple AST" $
+        parsesAs
+          topDeclP
+          "function pairValue() returns (word, bool) { return (1, true); }"
+          ( TFunDef
+              ( FunDef
+                  False
+                  (Signature [] [] "pairValue" [] False (Just (pairTy word bool)) False)
+                  [Return (ExpName Nothing "pair" [lit 1, var "true"])]
+              )
+          ),
+      testCase "named return items survive source pretty-printing" $
+        roundTripsTopDecl
+          "function namedPair() returns (left: word, comptime right: bool) { return (1, true); }",
       testCase "polymorphic function" $
         parsesAs
           topDeclP
-          "forall a. function id(x:a) -> a { return x; }"
+          "function id<a>(x:a) returns (a) { return x; }"
           ( TFunDef
               ( FunDef
                   False
@@ -448,7 +741,7 @@ declTests =
       testCase "constrained function" $
         parsesAs
           topDeclP
-          "forall a. a:Eq => function eqSelf(x:a) -> bool { return x == x; }"
+          "function eqSelf<a>(x:a) returns (bool) where a:Eq { return x == x; }"
           ( TFunDef
               ( FunDef
                   False
@@ -464,20 +757,36 @@ declTests =
                   [Return (ExpEE (var "x") (var "x"))]
               )
           ),
-      testCase "empty data type" $
+      testCase "legacy declaration word is reusable as an identifier" $
         parsesAs
           topDeclP
-          "data Void;"
+          "function data() returns (()) { return; }"
+          ( TFunDef
+              ( FunDef
+                  False
+                  (Signature [] [] "data" [] False (Just (TyCon "()" [])) False)
+                  [Return unitExp]
+              )
+          ),
+      testCase "empty enum" $
+        parsesAs
+          topDeclP
+          "enum Void { }"
           (TDataDef (DataTy "Void" [] [])),
-      testCase "data type with nullary constructors" $
+      testCase "enum with nullary constructors" $
         parsesAs
           topDeclP
-          "data Bool = True | False;"
+          "enum Bool { True, False }"
           (TDataDef (DataTy "Bool" [] [Constr "True" [], Constr "False" []])),
-      testCase "data type with parameterized constructor" $
+      testCase "data location word remains available as a value constructor name" $
         parsesAs
           topDeclP
-          "data Option(a) = Some(a) | None;"
+          "enum Location { storage }"
+          (TDataDef (DataTy "Location" [] [Constr "storage" []])),
+      testCase "generic enum with payload constructor" $
+        parsesAs
+          topDeclP
+          "enum Option<a> { Some(a), None }"
           ( TDataDef
               ( DataTy
                   "Option"
@@ -485,15 +794,15 @@ declTests =
                   [Constr "Some" [TyCon "a" []], Constr "None" []]
               )
           ),
-      testCase "type synonym no params" $
+      testCase "user-defined value type" $
         parsesAs
           topDeclP
-          "type Word = word;"
+          "type Word is word;"
           (TSym (TySym "Word" [] word)),
-      testCase "type synonym with params" $
+      testCase "generic user-defined value type" $
         parsesAs
           topDeclP
-          "type Pair(a, b) = (a, b);"
+          "type Pair<a, b> is (a, b);"
           ( TSym
               ( TySym
                   "Pair"
@@ -501,10 +810,10 @@ declTests =
                   (pairTy (TyCon "a" []) (TyCon "b" []))
               )
           ),
-      testCase "class with one method" $
+      testCase "trait with one method" $
         parsesAs
           topDeclP
-          "forall a. class a:Eq { function eq(x:a, y:a) -> bool; }"
+          "trait Eq<a> { function eq(x:a, y:a) returns (bool); }"
           ( TClassDef
               ( Class
                   [TyCon "a" []]
@@ -523,10 +832,10 @@ declTests =
                   ]
               )
           ),
-      testCase "class with context" $
+      testCase "trait with where clause" $
         parsesAs
           topDeclP
-          "forall a. a:Eq => class a:Ord { function cmp(x:a, y:a) -> word; }"
+          "trait Ord<a> where a:Eq { function cmp(x:a, y:a) returns (word); }"
           ( TClassDef
               ( Class
                   [TyCon "a" []]
@@ -545,10 +854,10 @@ declTests =
                   ]
               )
           ),
-      testCase "instance with one method" $
+      testCase "impl with one method" $
         parsesAs
           topDeclP
-          "instance word:Eq { function eq(x:word, y:word) -> bool { return x == y; } }"
+          "impl Eq<word> { function eq(x:word, y:word) returns (bool) { return x == y; } }"
           ( TInstDef
               ( Instance
                   False
@@ -564,10 +873,29 @@ declTests =
                   ]
               )
           ),
-      testCase "polymorphic instance" $
+      testCase "default impl records its default status" $
         parsesAs
           topDeclP
-          "forall a. a:Eq => instance pair(a,a):Eq { function eq(x:pair(a,a), y:pair(a,a)) -> bool { return 0; } }"
+          "default impl Eq<word> { function eq(x:word, y:word) returns (bool) { return x == y; } }"
+          ( TInstDef
+              ( Instance
+                  True
+                  []
+                  []
+                  "Eq"
+                  []
+                  word
+                  [ FunDef
+                      False
+                      (Signature [] [] "eq" [Typed False "x" word, Typed False "y" word] False (Just bool) False)
+                      [Return (ExpEE (var "x") (var "y"))]
+                  ]
+              )
+          ),
+      testCase "generic impl with where clause" $
+        parsesAs
+          topDeclP
+          "impl<a> Eq<pair<a,a>> where a:Eq { function eq(x:pair<a,a>, y:pair<a,a>) returns (bool) { return 0; } }"
           ( TInstDef
               ( Instance
                   False
@@ -611,7 +939,7 @@ declTests =
       testCase "contract with function" $
         parsesAs
           topDeclP
-          "contract C { function get() -> word { return x; } }"
+          "contract C { function get() returns (word) { return x; } }"
           ( TContr
               ( Contract
                   "C"
@@ -628,7 +956,7 @@ declTests =
       testCase "contract with public function" $
         parsesAs
           topDeclP
-          "contract C { public function get() -> word { return x; } }"
+          "contract C { function get() public returns (word) { return x; } }"
           ( TContr
               ( Contract
                   "C"
@@ -636,17 +964,464 @@ declTests =
                   [ CFunDecl
                       ( FunDef
                           True
-                          (Signature [] [] "get" [] False (Just word) False)
+                          ( SignatureWithSyntax
+                              []
+                              []
+                              "get"
+                              []
+                              (Just [ReturnItem False Nothing word])
+                              [VisibilityModifier VisibilityPublic]
+                          )
                           [Return (var "x")]
                       )
                   ]
               )
           ),
-      -- `public` is only meaningful inside a contract; reject it elsewhere.
-      testCase "top-level public function fails" $
-        parseFails topDeclP "public function get() -> word { return 0; }",
+      testCase "contract with public payable function" $
+        parsesAs
+          topDeclP
+          "contract C { function pay() public payable returns (word) { return 0; } }"
+          ( TContr
+              ( Contract
+                  "C"
+                  []
+                  [ CFunDecl
+                      ( FunDef
+                          True
+                          ( SignatureWithSyntax
+                              []
+                              []
+                              "pay"
+                              []
+                              (Just [ReturnItem False Nothing word])
+                              [ VisibilityModifier VisibilityPublic,
+                                MutabilityModifier MutabilityPayable
+                              ]
+                          )
+                          [Return (lit 0)]
+                      )
+                  ]
+              )
+          ),
+      testCase "contract functions accept pure, view, private, internal, and external modifiers" $
+        parsesAs
+          topDeclP
+          ( "contract C {"
+              ++ " function pureFn() pure { return; }"
+              ++ " function viewFn() view { return; }"
+              ++ " function privateFn() private { return; }"
+              ++ " function internalFn() internal { return; }"
+              ++ " function externalFn() external { return; }"
+              ++ " }"
+          )
+          ( TContr
+              ( Contract
+                  "C"
+                  []
+                  [ CFunDecl
+                      ( FunDef
+                          False
+                          (SignatureWithSyntax [] [] "pureFn" [] Nothing [MutabilityModifier MutabilityPure])
+                          [Return unitExp]
+                      ),
+                    CFunDecl
+                      ( FunDef
+                          False
+                          (SignatureWithSyntax [] [] "viewFn" [] Nothing [MutabilityModifier MutabilityView])
+                          [Return unitExp]
+                      ),
+                    CFunDecl
+                      ( FunDef
+                          False
+                          (SignatureWithSyntax [] [] "privateFn" [] Nothing [VisibilityModifier VisibilityPrivate])
+                          [Return unitExp]
+                      ),
+                    CFunDecl
+                      ( FunDef
+                          False
+                          (SignatureWithSyntax [] [] "internalFn" [] Nothing [VisibilityModifier VisibilityInternal])
+                          [Return unitExp]
+                      ),
+                    CFunDecl
+                      ( FunDef
+                          True
+                          (SignatureWithSyntax [] [] "externalFn" [] Nothing [VisibilityModifier VisibilityExternal])
+                          [Return unitExp]
+                      )
+                  ]
+              )
+          ),
+      testCase "contract constructor" $
+        parsesAs
+          topDeclP
+          "contract C { constructor(x:word) { return; } }"
+          ( TContr
+              ( Contract
+                  "C"
+                  []
+                  [CConstrDecl (Constructor [Typed False "x" word] [Return unitExp] False)]
+              )
+          ),
+      testCase "payable modifier follows constructor parameters" $
+        parsesAs
+          topDeclP
+          "contract C { constructor(x:word) payable { return; } }"
+          ( TContr
+              ( Contract
+                  "C"
+                  []
+                  [CConstrDecl (Constructor [Typed False "x" word] [Return unitExp] True)]
+              )
+          ),
+      testCase "external payable fallback" $
+        parsesAs
+          topDeclP
+          "contract C { fallback() external payable { return; } }"
+          ( TContr
+              ( Contract
+                  "C"
+                  []
+                  [ CFunDecl
+                      ( FunDef
+                          False
+                          ( SignatureWithSyntax
+                              []
+                              []
+                              "fallback"
+                              []
+                              Nothing
+                              [ VisibilityModifier VisibilityExternal,
+                                MutabilityModifier MutabilityPayable
+                              ]
+                          )
+                          [Return unitExp]
+                      )
+                  ]
+              )
+          ),
+      testCase "fallback without external visibility fails" $
+        parseFails
+          topDeclP
+          "contract C { fallback() { return; } }",
+      testCase "multiple visibility modifiers fail" $
+        parseFails
+          topDeclP
+          "contract C { function f() public external { return; } }",
+      testCase "multiple mutability modifiers fail" $
+        parseFails
+          topDeclP
+          "contract C { function f() pure view { return; } }",
+      -- Contract visibility modifiers are not meaningful on impl methods.
       testCase "public instance method fails" $
         parseFails
           topDeclP
-          "instance word:Eq { public function eq(x:word, y:word) -> bool { return x == y; } }"
+          "impl Eq<word> { function eq(x:word, y:word) public returns (bool) { return x == y; } }"
+    ]
+
+importTests :: TestTree
+importTests =
+  testGroup
+    "Imports"
+    [ testCase "dotted module import" $
+        parsesAs
+          importP
+          "import std.dispatch;"
+          (ImportModule (RelativePath (QualName "std" "dispatch"))),
+      testCase "namespace alias import" $
+        parsesAs
+          importP
+          "import * as dispatch from std.dispatch;"
+          (ImportAlias (RelativePath (QualName "std" "dispatch")) "dispatch"),
+      testCase "selective import" $
+        parsesAs
+          importP
+          "import {address, uint256 as U256} from std;"
+          ( ImportOnly
+              (RelativePath "std")
+              (SelectItems [SelectItem "address", SelectItemAs "uint256" "U256"] [])
+          ),
+      testCase "selective import from external module" $
+        parsesAs
+          importP
+          "import {foo, bar as baz} from @ext.foo.bar;"
+          ( ImportOnly
+              (ExternalPath "ext" (QualName "foo" "bar"))
+              (SelectItems [SelectItem "foo", SelectItemAs "bar" "baz"] [])
+          )
+    ]
+
+pragmaTests :: TestTree
+pragmaTests =
+  testGroup
+    "Pragmas"
+    [ testCase "Solidity compatibility pragma retains its value" $
+        parsesAs
+          topDeclP
+          "pragma solidity ^0.8.23;"
+          (TPragmaDecl (Pragma (SolidityPragma "^0.8.23") Enabled)),
+      testCase "ABI coder pragma retains its value" $
+        parsesAs
+          topDeclP
+          "pragma abicoder v2;"
+          (TPragmaDecl (Pragma (AbiCoderPragma "v2") Enabled)),
+      testCase "disable coverage condition" $
+        parsesAs
+          topDeclP
+          "pragma solcore noCoverageCondition;"
+          (TPragmaDecl (Pragma NoCoverageCondition DisableAll)),
+      testCase "disable Patterson condition" $
+        parsesAs
+          topDeclP
+          "pragma solcore noPattersonCondition;"
+          (TPragmaDecl (Pragma NoPattersonCondition DisableAll)),
+      testCase "disable bound-variable condition" $
+        parsesAs
+          topDeclP
+          "pragma solcore noBoundVariableCondition;"
+          (TPragmaDecl (Pragma NoBoundVariableCondition DisableAll)),
+      testCase "disable generic instance generation for a type" $
+        parsesAs
+          topDeclP
+          "pragma solcore noGenericInstanceFor MyType;"
+          (TPragmaDecl (Pragma NoGenericInstanceFor (DisableFor ("MyType" :| []))))
+    ]
+
+legacySyntaxTests :: TestTree
+legacySyntaxTests =
+  testGroup
+    "Legacy syntax is rejected"
+    [ testCase "parenthesized generic type arguments" $
+        parseFails typeP "pair(word, bool)",
+      testCase "arrow function type" $
+        parseFails typeP "word -> bool",
+      testCase "at-sign proxy type" $
+        parseFails typeP "@word",
+      testCase "at-sign proxy expression" $
+        parseFails expP "@word",
+      testCase "expression colon annotation" $
+        parseFails expP "x : word",
+      testCase "arrow function return" $
+        parseFails topDeclP "function answer() -> word { return 42; }",
+      testCase "forall generic prefix" $
+        parseFails topDeclP "forall a. function id(x:a) returns (a) { return x; }",
+      testCase "data declaration" $
+        parseFails topDeclP "data Bool = True | False;",
+      testCase "class declaration" $
+        parseFails topDeclP "forall a. class a:Eq { function eq(x:a, y:a) -> bool; }",
+      testCase "instance declaration" $
+        parseFails topDeclP "instance word:Eq { function eq(x:word, y:word) -> bool { return x == y; } }",
+      testCase "leading public modifier" $
+        parseFails
+          topDeclP
+          "contract C { public function get() returns (word) { return x; } }",
+      testCase "leading payable constructor modifier" $
+        parseFails
+          topDeclP
+          "contract C { payable constructor(x:word) { return; } }",
+      testCase "pipe match equations" $
+        parseFails stmtP "match x { | 0 => return 1; }",
+      testCase "old selective import ordering" $
+        parseFails importP "import std.{address, uint256 as U256};",
+      testCase "old namespace alias ordering" $
+        parseFails importP "import std.dispatch as dispatch;",
+      testCase "string-path import" $
+        parseFails importP "import \"M/N.sol\";",
+      testCase "hyphenated solcore pragma" $
+        parseFails topDeclP "pragma no-coverage-condition;",
+      testCase "equals type declaration" $
+        parseFails topDeclP "type Word = word;",
+      testCase "lambda arrow return" $
+        parseFails expP "lam() -> word { return 0; }"
+    ]
+
+declarationShellTests :: TestTree
+declarationShellTests =
+  testGroup
+    "Struct, interface, and library declarations"
+    [ testCase "top-level struct retains field names and types" $
+        parsesAs
+          topDeclP
+          "struct Pair<a> { left: a; right: word; }"
+          (TDataDef (StructTy "Pair" [TyCon "a" []] ["left", "right"] [TyCon "a" [], word])),
+      testCase "contract-local struct is a data declaration" $
+        parsesAs
+          topDeclP
+          "contract C { struct Entry { key: word; value: bool; } }"
+          ( TContr
+              ( ContractShell
+                  ContractKind
+                  "C"
+                  []
+                  [CDataDecl (StructTy "Entry" [] ["key", "value"] [word, bool])]
+              )
+          ),
+      testCase "interface contains body-less function signatures" $
+        parsesAs
+          topDeclP
+          "interface Oracle { function read(key: word) external view returns (word); }"
+          ( TContr
+              ( ContractShell
+                  InterfaceKind
+                  "Oracle"
+                  []
+                  [ CSignatureDecl
+                      True
+                      ( SignatureWithSyntax
+                          []
+                          []
+                          "read"
+                          [Typed False "key" word]
+                          (Just [ReturnItem False Nothing word])
+                          [ VisibilityModifier VisibilityExternal,
+                            MutabilityModifier MutabilityView
+                          ]
+                      )
+                  ]
+              )
+          ),
+      testCase "interface rejects a function body" $
+        parseFails
+          topDeclP
+          "interface Oracle { function read() external returns (word) { return 0; } }",
+      testCase "interface rejects state fields" $
+        parseFails topDeclP "interface Oracle { value: word; }",
+      testCase "library accepts contract-like fields, structs, and functions" $
+        parsesAs
+          topDeclP
+          ( "library Math {"
+              ++ " factor: word;"
+              ++ " struct Result { value: word; }"
+              ++ " function twice(x: word) internal pure returns (word) { return x + x; }"
+              ++ " }"
+          )
+          ( TContr
+              ( ContractShell
+                  LibraryKind
+                  "Math"
+                  []
+                  [ CFieldDecl (Field "factor" word Nothing),
+                    CDataDecl (StructTy "Result" [] ["value"] [word]),
+                    CFunDecl
+                      ( FunDef
+                          False
+                          ( SignatureWithSyntax
+                              []
+                              []
+                              "twice"
+                              [Typed False "x" word]
+                              (Just [ReturnItem False Nothing word])
+                              [ VisibilityModifier VisibilityInternal,
+                                MutabilityModifier MutabilityPure
+                              ]
+                          )
+                          [Return (ExpPlus (var "x") (var "x"))]
+                      )
+                  ]
+              )
+          ),
+      testCase "library rejects constructors" $
+        parseFails
+          topDeclP
+          "library Math { constructor() { return; } }",
+      testCase "name resolution rejects duplicate contract fields" $
+        nameResolutionFails
+          "contract C { value: word; value: bool; }",
+      testCase "contract fields and functions retain separate namespaces" $
+        nameResolutionSucceeds
+          "contract C { value: word; function value() returns (word) { return 0; } }",
+      testCase "contract fields and functions with distinct names do not collide" $
+        nameResolutionSucceeds
+          "contract C { value: word; function read() returns (word) { return value; } }",
+      testCase "name resolution lowers a struct to a one-constructor data type" $
+        case runParserE (sc *> topDeclP <* eof) "<test>" "struct Box { value: word; }" of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Right
+                ( Resolved.CompUnit
+                    _
+                    [ Resolved.TDataDef
+                        (Resolved.DataTy "Box" [] [Resolved.Constr (QualName "Box" "Box") [_]])
+                      ]
+                  ) ->
+                    pure ()
+              Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
+              Left err -> assertFailure ("Name resolution failed: " ++ show err),
+      testCase "name resolution preserves an interface signature without a body" $
+        case runParserE (sc *> topDeclP <* eof) "<test>" "interface I { function f() external; }" of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Right
+                ( Resolved.CompUnit
+                    _
+                    [ Resolved.TContr
+                        (Resolved.Contract "I" [] [Resolved.CSignatureDecl True _])
+                      ]
+                  ) ->
+                    pure ()
+              Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
+              Left err -> assertFailure ("Name resolution failed: " ++ show err),
+      testCase "name resolution lowers source modifiers and named returns" $
+        case
+            runParserE
+              (sc *> topDeclP <* eof)
+              "<test>"
+              "contract C { function pair() external payable returns (left: word, right: bool) { return (1, 0); } }"
+          of
+            Left err -> assertFailure ("Parse error:\n" ++ err)
+            Right parsed -> do
+              resolved <- nameResolution (CompUnit [] [parsed])
+              case resolved of
+                Right
+                  ( Resolved.CompUnit
+                      _
+                      [ Resolved.TContr
+                          (Resolved.Contract "C" [] [Resolved.CFunDecl (Resolved.FunDef isPublic sig _)])
+                        ]
+                    ) -> do
+                      assertBool "external lowers to the semantic public bit" isPublic
+                      assertBool "payable lowers to the semantic payable bit" (Resolved.sigPayable sig)
+                      assertEqual
+                        "return names are discarded only at semantic lowering"
+                        ( Just
+                            ( ResolvedTy.TyCon
+                                "pair"
+                                [ResolvedTy.TyCon "word" [], ResolvedTy.TyCon "bool" []]
+                            )
+                        )
+                        (Resolved.sigReturn sig)
+                Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
+                Left err -> assertFailure ("Name resolution failed: " ++ show err),
+      testCase "name resolution lowers a zero-arity function type explicitly" $
+        case
+            runParserE
+              (sc *> topDeclP <* eof)
+              "<test>"
+              "type Callback is function() external returns (word);"
+          of
+            Left err -> assertFailure ("Parse error:\n" ++ err)
+            Right parsed -> do
+              resolved <- nameResolution (CompUnit [] [parsed])
+              case resolved of
+                Right
+                  ( Resolved.CompUnit
+                      _
+                      [Resolved.TSym (Resolved.TySym "Callback" [] callbackTy)]
+                    ) ->
+                      assertEqual
+                        "the existing semantic AST represents a nullary function by its result"
+                        (ResolvedTy.TyCon "word" [])
+                        callbackTy
+                Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
+                Left err -> assertFailure ("Name resolution failed: " ++ show err),
+      testCase "new declaration shells survive source pretty-printing" $
+        mapM_
+          roundTripsTopDecl
+          [ "struct Pair { x: word; y: bool; }",
+            "interface Oracle { function read(key: word) external view returns (word); }",
+            "library Math { function twice(x: word) internal pure returns (word) { return x + x; } }"
+          ]
     ]
