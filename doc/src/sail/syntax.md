@@ -99,7 +99,9 @@ bytes calldata
 ```
 
 Array suffixes and the data locations `memory`, `storage`, and `calldata`
-follow the complete element type. Function types use `function(...)` and
+wrap the complete type to their left. They are regular Core type suffixes, so
+they may be interleaved or repeated when representing nested references, for
+example `word[] memory[] storage`. Function types use `function(...)` and
 `returns (...)`; the former source-level arrow type is not part of the grammar.
 
 Explicit conversion uses `as` with a complete target type:
@@ -130,6 +132,19 @@ struct Pair {
 }
 ```
 
+Named struct fields can be read with postfix member access. Field reads may be
+chained, and the receiver is evaluated exactly once:
+
+```solidity
+function first(p: Pair) returns (word) {
+    return p.x;
+}
+```
+
+Assignment through a struct member is not implemented yet and is rejected with
+a dedicated diagnostic instead of being interpreted as an unrelated variable
+assignment.
+
 Ordinary enums and payload-carrying algebraic data types share one declaration
 form:
 
@@ -153,11 +168,16 @@ Option.Some(1)
 Option.None
 ```
 
-A user-defined type uses `is`:
+A transparent type synonym uses `alias` and `=`:
 
 ```solidity
-type Wad is word;
+alias Word = word;
 ```
+
+The Solidity spelling `type Wad is word;` is reserved for a nominal
+user-defined value type. The current compiler rejects that form until nominal
+wrapping, unwrapping, ABI, and storage semantics are implemented; it is never
+treated as a transparent alias.
 
 ---
 
@@ -232,6 +252,11 @@ library Hashing {
 }
 ```
 
+Every interface function must declare `external` exactly once. It may also
+declare one of `pure`, `view`, or `payable`; omitted, `public`, `internal`, and
+`private` interface visibility are rejected rather than silently omitted from
+the ABI.
+
 ---
 
 ## Functions
@@ -256,6 +281,12 @@ function nop() {
     return;
 }
 ```
+
+Contract and library functions accept at most one visibility modifier
+(`public`, `external`, `internal`, or `private`) and at most one mutability
+modifier (`pure`, `view`, or `payable`). Module-level functions, trait
+signatures, and implementation methods do not have contract visibility and
+cannot be `payable`; they may use `pure` or `view`.
 
 Generic parameters follow the function name. Constraints appear after the
 return clause.
@@ -307,9 +338,10 @@ assembly { ... }
 revert;
 ```
 
-Assignments support `=`, compound assignment operators, field access, and
-indexing. A plain call or other expression used as a statement also ends in
-`;`.
+Assignments support `=` and compound assignment operators for assignable
+variables and indexed values. Struct-member lvalues are the exception noted
+above and are rejected until update lowering is implemented. A plain call or
+other expression used as a statement also ends in `;`.
 
 ---
 
@@ -350,6 +382,8 @@ unary and binary operators, conditional expressions, and conversions:
 
 ```solidity
 f(x, y)
+makeAdder(x)(y)
+callbacks[index](value)
 token.balanceOf(account)
 values[index]
 !ok
@@ -362,10 +396,17 @@ condition ? yes : no
 expression as T
 ```
 
-Power is right-associative. Multiplication and addition, shifts, comparisons,
-equality, bitwise operators, logical operators, and the conditional operator
-then follow in decreasing precedence. Conversion with `as` binds more tightly
-than power and is left-associative.
+Call, member, and indexing suffixes may be repeated on any primary expression.
+Direct and member calls keep their ordinary call representation; calls on
+computed values are checked through the `invokable` abstraction.
+
+Power is right-associative. In decreasing precedence, the remaining binary
+groups are multiplication, addition, shifts, bitwise `&`, bitwise `^`, bitwise
+`|`, comparisons, equality, logical `&&`, and logical `||`; the conditional
+operator is lower still. Conversion with `as` binds more tightly than power and
+is left-associative. Comparison and equality operators are non-associative, so
+chains such as `a < b < c` and `a == b == c` must be written as explicit
+logical combinations.
 
 The compiler retains `lam(...) returns (...) { ... }` for lambda expressions as
 a Core extension.
@@ -375,8 +416,14 @@ a Core extension.
 ## Assembly
 
 An `assembly { ... }` block embeds the Yul sublanguage. Yul declarations,
-assignment, `if`, `switch`, and `for` retain Yul syntax and do not use SAIL
-statement terminators.
+assignment, `if`, `switch`, `for`, `break`, `continue`, and `leave` retain Yul
+syntax and do not use SAIL statement terminators.
+
+Yul function declarations use `function name(args) -> results { ... }`. An
+arrow must be followed by at least one result name. Yul identifiers may begin
+with `_` or `$`, and boolean literals are `true` and `false`. A Yul `let` or
+assignment must name at least one target. Backtick-delimited and `${...}` meta
+expressions remain available as a compiler extension.
 
 ```solidity
 function load(slot: word) returns (word) {

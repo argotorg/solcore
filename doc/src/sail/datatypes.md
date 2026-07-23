@@ -86,8 +86,9 @@ A constructor with fields is applied like a function:
 `TxOutcome.Success(TxStatus.Settled)` produces a value of type `TxOutcome`
 wrapping a value of type `TxStatus`.
 
-Fields are extracted by pattern matching; there is no record-style field access.
-The pattern mirrors the constructor application:
+Enum-constructor payloads are extracted by pattern matching; unlike named
+`struct` fields, positional payloads have no record-style field access. The
+pattern mirrors the constructor application:
 
 ```solcore
 function outcomeCode(x: TxOutcome) returns (word) {
@@ -358,8 +359,8 @@ a compile-time device: the compiler expands them before type checking and they
 leave no trace in the generated code.
 
 ```solcore
-type Int is word;
-type Point is pair<Int, Int>;
+alias Int = word;
+alias Point = pair<Int, Int>;
 
 function makePoint(x: Int, y: Int) returns (Point) {
     return (x, y);
@@ -377,12 +378,12 @@ function getX(p: Point) returns (Int) {
 Like data types, synonyms can have type parameters:
 
 ```solcore
-type Map<k, v> is pair<k, v>;   // toy example
+alias Map<k, v> = pair<k, v>;   // toy example
 ```
 
 > **Warning** Recursive type synonyms are not allowed. A synonym must not refer
-> directly or indirectly to itself. Attempting to define `type A is B` and
-> `type B is A` simultaneously is a compile-time error.
+> directly or indirectly to itself. Attempting to define `alias A = B` and
+> `alias B = A` simultaneously is a compile-time error.
 
 ---
 
