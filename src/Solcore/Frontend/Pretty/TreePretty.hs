@@ -275,6 +275,14 @@ instance Pretty Stmt where
     hsep [ppr e1, text "+=", ppr e2]
   ppr (StmtMinusEq e1 e2) =
     hsep [ppr e1, text "-=", ppr e2]
+  ppr (StmtBXorEq e1 e2) =
+    hsep [ppr e1, text "^=", ppr e2]
+  ppr (StmtBAndEq e1 e2) =
+    hsep [ppr e1, text "&=", ppr e2]
+  ppr (StmtBOrEq e1 e2) =
+    hsep [ppr e1, text "|=", ppr e2]
+  ppr (StmtModEq e1 e2) =
+    hsep [ppr e1, text "%=", ppr e2]
   ppr (Let c n ty m) =
     text "let" <+> ppr n <+> pprOptTy c ty <+> pprInitOpt m
   ppr (Block body) =
@@ -312,12 +320,18 @@ instance Pretty Stmt where
       <+> lbrace
       $$ nest 3 (ppr body)
       $$ rbrace
+  ppr Break = text "break" <> semi
+  ppr Continue = text "continue" <> semi
   ppr EmptyStmt = empty
 
 pprForClause :: Stmt -> Doc
 pprForClause (Assign n e) = ppr n <+> equals <+> ppr e
 pprForClause (StmtPlusEq e1 e2) = hsep [ppr e1, text "+=", ppr e2]
 pprForClause (StmtMinusEq e1 e2) = hsep [ppr e1, text "-=", ppr e2]
+pprForClause (StmtBXorEq e1 e2) = hsep [ppr e1, text "^=", ppr e2]
+pprForClause (StmtBAndEq e1 e2) = hsep [ppr e1, text "&=", ppr e2]
+pprForClause (StmtBOrEq e1 e2) = hsep [ppr e1, text "|=", ppr e2]
+pprForClause (StmtModEq e1 e2) = hsep [ppr e1, text "%=", ppr e2]
 pprForClause (Let ct n ty m) = text "let" <+> ppr n <+> pprOptTy ct ty <+> pprForInitOpt m
 pprForClause (StmtExp e) = ppr e
 pprForClause EmptyStmt = empty
@@ -393,6 +407,12 @@ instance Pretty Exp where
     hsep [ppr e1, text "/", ppr e2]
   ppr (ExpModulo e1 e2) =
     hsep [ppr e1, text "%", ppr e2]
+  ppr (ExpBXor e1 e2) =
+    hsep [ppr e1, text "^", ppr e2]
+  ppr (ExpBAnd e1 e2) =
+    hsep [ppr e1, text "&", ppr e2]
+  ppr (ExpBOr e1 e2) =
+    hsep [ppr e1, text "|", ppr e2]
   ppr (ExpLT e1 e2) =
     hsep [ppr e1, text "<", ppr e2]
   ppr (ExpGT e1 e2) =

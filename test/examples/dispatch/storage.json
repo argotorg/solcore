@@ -1,0 +1,64 @@
+{
+  "storagebytes": {
+    "bytecode": "_CODE",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "set(bytes) 0xdeadbeef -- short, stored in-place",
+          "calldata": "0399321e00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "get() -> (bytes) returns the short value just stored",
+          "calldata": "6d4ce63c",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000004deadbeef00000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "set(bytes) 40-byte value -- long, stored out-of-place",
+          "calldata": "0399321e0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002800112233445566778899aabbccddeeff00112233445566778899aabbccddeeff0011223344556677000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "get() -> (bytes) returns the long value just stored",
+          "calldata": "6d4ce63c",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002800112233445566778899aabbccddeeff00112233445566778899aabbccddeeff0011223344556677000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

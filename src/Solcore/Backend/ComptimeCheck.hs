@@ -54,8 +54,8 @@ checkFunDef ft pure_ fd =
     initEnv =
       Set.fromList
         [ mastParamName p
-          | p <- mastFunParams fd,
-            mastParamComptime p || mastFunRetComptime fd
+        | p <- mastFunParams fd,
+          mastParamComptime p || mastFunRetComptime fd
         ]
 
 -- | Check a sequence of statements, threading the comptime environment.
@@ -100,6 +100,10 @@ checkStmt ft pure_ retCt fname env stmt = case stmt of
     mapM_ (checkStmt ft pure_ retCt fname env) body
     return env
   MastAsm _ ->
+    return env
+  MastBreak ->
+    return env
+  MastContinue ->
     return env
   MastSeq stmts -> do
     checkStmts ft pure_ retCt fname env stmts

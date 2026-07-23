@@ -1,8 +1,5 @@
 import std.{*};
 import std.dispatch.{*};
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
 
 function my_revert() -> word {
   revertLit("regression");

@@ -1,4 +1,4 @@
-module Options where
+module Language.Hull.ToYul.Options where
 
 import Options.Applicative
 

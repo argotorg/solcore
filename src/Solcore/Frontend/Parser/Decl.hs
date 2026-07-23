@@ -15,10 +15,11 @@ import Solcore.Frontend.Parser.SolcoreTypes
     paramP,
     qualifiedName,
     sigPrefixP,
+    simpleNameP,
     typeP,
   )
 import Solcore.Frontend.Parser.Stmt (bodyP)
-import Solcore.Frontend.Syntax.Name (Name (..))
+import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 
 -- Top-level entry point
@@ -52,7 +53,7 @@ importP = do
               return (ImportOnly path (SelectItems entries hids)),
             do
               keyword "as"
-              n <- Name <$> identifier
+              n <- simpleNameP
               _ <- semicolon
               return (ImportAlias path n),
             ImportModule path <$ semicolon
@@ -68,14 +69,14 @@ importP = do
               return (ImportOnly path (SelectItems entries hids)),
             do
               keyword "as"
-              n <- Name <$> identifier
+              n <- simpleNameP
               _ <- semicolon
               return (ImportAlias path n),
             ImportModule path <$ semicolon
           ]
     ]
   where
-    hidingP = keyword "hiding" *> braces (fmap Name identifier `sepBy` comma)
+    hidingP = keyword "hiding" *> braces (simpleNameP `sepBy` comma)
 
 modulePathP :: Parser ModulePath
 modulePathP = do
@@ -108,10 +109,9 @@ itemEntryP :: Parser ItemSelectorEntry
 itemEntryP =
   SelectAllItems
     <$ symbol "*"
-      <|> try (SelectItemAs <$> (Name <$> identifier) <* keyword "as" <*> (Name <$> identifier))
+      <|> try (SelectItemAs <$> simpleNameP <* keyword "as" <*> simpleNameP)
       <|> SelectItem
-      . Name
-    <$> identifier
+    <$> simpleNameP
 
 exportP :: Parser Export
 exportP = do
@@ -126,7 +126,7 @@ exportTailP :: ModulePath -> Parser Export
 exportTailP path =
   choice
     [ symbol "." *> dotExportP,
-      keyword "as" *> (ExportModuleAs path . Name <$> identifier) <* semicolon,
+      keyword "as" *> (ExportModuleAs path <$> simpleNameP) <* semicolon,
       ExportModule path <$ semicolon
     ]
   where
@@ -143,7 +143,7 @@ exportSpecP =
       <|> ExportModuleAll
     <$> try moduleAllPathP
       <|> do
-        n <- Name <$> identifier
+        n <- simpleNameP
         mSel <- optional (parens constrSelectorP)
         return $ case mSel of
           Nothing -> ExportName n
@@ -165,7 +165,7 @@ exportSelEntryP =
   SelectExportAllItems
     <$ symbol "*"
       <|> do
-        n <- Name <$> identifier
+        n <- simpleNameP
         mSel <- optional (parens constrSelectorP)
         return $ case mSel of
           Nothing -> SelectExportItem n
@@ -176,8 +176,7 @@ constrSelectorP =
   SelectAllConstructors
     <$ symbol "*"
       <|> SelectConstructors
-      . map Name
-    <$> (identifier `sepBy1` comma)
+    <$> (simpleNameP `sepBy1` comma)
 
 pragmaP :: Parser Pragma
 pragmaP = do
@@ -203,16 +202,16 @@ pragmaTypeP =
 -- defaults to 'DisableAll'.
 pragmaStatusForP :: PragmaType -> Parser PragmaStatus
 pragmaStatusForP NoGenericInstanceFor = do
-  names <- (Name <$> identifier) `sepBy1` comma
+  names <- simpleNameP `sepBy1` comma
   return (DisableFor (NE.fromList names))
 pragmaStatusForP _ = option DisableAll $ do
-  names <- (Name <$> identifier) `sepBy1` comma
+  names <- simpleNameP `sepBy1` comma
   return (DisableFor (NE.fromList names))
 
 dataP :: Parser DataTy
 dataP = do
   keyword "data"
-  n <- Name <$> identifier
+  n <- simpleNameP
   params <- option [] (parens (typeP `sepBy1` comma))
   cs <- option [] (equalsP *> (constrP `sepBy1` symbol "|"))
   _ <- semicolon
@@ -220,14 +219,14 @@ dataP = do
 
 constrP :: Parser Constr
 constrP = do
-  n <- Name <$> identifier
+  n <- simpleNameP
   args <- option [] (parens (typeP `sepBy1` comma))
   return (Constr n args)
 
 tySymP :: Parser TySym
 tySymP = do
   keyword "type"
-  n <- Name <$> identifier
+  n <- simpleNameP
   params <- option [] (parens (typeP `sepBy1` comma))
   _ <- equalsP
   t <- typeP
@@ -281,7 +280,7 @@ signatureP :: Bool -> [Ty] -> [Pred] -> Parser Signature
 signatureP allowPayable vars ctx = do
   payable <- payableP allowPayable
   keyword "function"
-  n <- Name <$> identifier
+  n <- simpleNameP
   ps <- parens (paramP `sepBy` comma)
   (rc, ret) <- option (False, Nothing) $ do
     _ <- symbol "->"
@@ -345,7 +344,7 @@ instanceAfterPrefix vars ctx = do
 contractP :: Parser Contract
 contractP = do
   keyword "contract"
-  n <- Name <$> identifier
+  n <- simpleNameP
   params <- option [] (parens (typeP `sepBy1` comma))
   ds <- braces (many contractDeclP)
   return (Contract n params ds)
@@ -378,7 +377,7 @@ rejectPublicOnImplicitlyPublicP = do
 
 fieldDeclP :: Parser Field
 fieldDeclP = do
-  n <- Name <$> identifier
+  n <- simpleNameP
   _ <- colon
   ty <- typeP
   me <- optional (equalsP *> expP)

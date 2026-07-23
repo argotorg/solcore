@@ -6,6 +6,7 @@ module Solcore.Frontend.Pretty.SolcorePretty (module Common.Pretty, pretty) wher
 import Common.Pretty
 import Data.List
 import Data.List.NonEmpty qualified as N
+import Data.Map qualified as Map
 import Language.Yul ()
 import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name
@@ -332,6 +333,8 @@ instance (Pretty a) => Pretty (Stmt a) where
       <+> lbrace
       $$ nest 3 (ppr body)
       $$ rbrace
+  ppr Break = text "break" <> semi
+  ppr Continue = text "continue" <> semi
   ppr EmptyStmt = empty
 
 pprForClause :: (Pretty a) => Stmt a -> Doc
@@ -474,7 +477,7 @@ pprTyParams ts =
   parens (commaSep (map ppr ts))
 
 instance Pretty Subst where
-  ppr = braces . commaSep . map go . unSubst
+  ppr = braces . commaSep . map go . Map.toList . unSubst
     where
       go (v, t) = ppr v <+> text "+->" <+> ppr t
 

@@ -1,11 +1,6 @@
 import std.{*};
-import std.{memory, string, Typedef, log1, allocate_memory, uint256};
 import std.dispatch.{*};
 import std.opcodes.{mstore, mload};
-
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
 
 contract C {
     constructor() {}

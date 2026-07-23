@@ -11,10 +11,13 @@
 module Solcore.Desugarer.ContractDispatch
   ( contractDispatchDesugarer,
     contractDispatchTopDecls,
+    writeContractAbis,
+    contractAbiJson,
   )
 where
 
-import Data.List (mapAccumL)
+import Control.Monad (forM_, unless)
+import Data.List (intercalate, mapAccumL)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -23,6 +26,9 @@ import Language.Yul.QuasiQuote
 import Solcore.Backend.Mast
 import Solcore.Frontend.Syntax
 import Solcore.Primitives.Primitives (string, tupleExpFromList, tupleTyFromList, unit, word)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath ((<.>), (</>))
+import Text.Printf (printf)
 
 contractDispatchDesugarer :: CompUnit Name -> CompUnit Name
 contractDispatchDesugarer (CompUnit ims topdecls) = CompUnit ims (contractDispatchTopDecls topdecls)
@@ -169,6 +175,7 @@ transformConstructor contractName cons
             Let False "memoryDataOffset" (Just word) Nothing,
             Asm
               [yulBlock|{
+                 // NOTE: we ensure no truncation in startBody below
                  let programSize := datasize(`deployer`)
                  let argSize := sub(codesize(), programSize)
                  memoryDataOffset := mload(64)
@@ -208,14 +215,25 @@ transformConstructor contractName cons
     callvalueCheck
       | payable = []
       | otherwise =
-          [ StmtExp $
-              Call
-                Nothing
-                (QualName "MethodLevelCallvalueCheck" "checkCallvalue")
-                [proxyExp (TyCon "NonPayable" [])]
+          [ Asm
+              [yulBlock|{
+                if callvalue() {
+                  mstore(0, 0xb5988ea3)
+                  revert(28, 4)
+                }
+              }|]
           ]
     startBody =
-      [ Asm [yulBlock|{ mstore(64, memoryguard(128)) }|]
+      [ Asm
+          [yulBlock|{
+            mstore(64, memoryguard(128))
+            // Guard against truncated deployer (which also covers yulContractName)
+            // A truncated input would cause `copy_arguments_for_constructor`
+            // to underflow and do an impossible memory expansion resulting in OOG.
+            // And such a truncation is unpredictable.
+            // TODO: use require with proper error
+            if lt(codesize(), datasize(`deployer`)) { revert(0, 0) }
+        }|]
       ]
         <> callvalueCheck
         <> [ Let False "conargs" (Just argsTuple) (Just (Call Nothing "copy_arguments_for_constructor" [])),
@@ -224,10 +242,10 @@ transformConstructor contractName cons
              StmtExp $ Call Nothing "fun" [Var "conargs"],
              Asm
                [yulBlock|{
-            let size := datasize(`yulContractName`)
-            codecopy(0, dataoffset(`yulContractName`), datasize(`yulContractName`))
-            return(0, size)
-          }|]
+                 let size := datasize(`yulContractName`)
+                 codecopy(0, dataoffset(`yulContractName`), datasize(`yulContractName`))
+                 return(0, size)
+             }|]
            ]
     startFun = CFunDecl (FunDef False startSig startBody)
 
@@ -273,3 +291,184 @@ nameTypeName cname fname = Name ("DispatchNameTy_" <> nm cname <> "_" <> nm fnam
   where
     nm (Name s) = s
     nm (QualName _ s) = s
+
+nameStr :: Name -> String
+nameStr (Name s) = s
+nameStr (QualName _ s) = s
+
+--- ABI generation ---
+
+-- | Write a JSON ABI file for every contract among the given declarations.
+writeContractAbis :: FilePath -> [TopDecl Name] -> IO ()
+writeContractAbis outDir topdecls = do
+  let cs = [c | TContr c <- topdecls]
+  unless (null cs) (createDirectoryIfMissing True outDir)
+  forM_ cs $ \c ->
+    writeFile (outDir </> nameStr (name c) <.> "abi") (contractAbiJson c)
+
+-- | Render the JSON ABI description of a contract: an array of constructor,
+-- function and fallback descriptors.
+contractAbiJson :: Contract Name -> String
+contractAbiJson c =
+  renderJson (JArr (map abiEntryJson (contractAbiEntries c))) <> "\n"
+
+-- | A single ABI descriptor.
+data AbiEntry
+  = AbiFunction String [AbiParam] [AbiParam] String
+  | AbiConstructor [AbiParam] String
+  | AbiFallback String
+
+-- | An input or output entry. Tuple types carry their (recursive) components.
+data AbiParam = AbiParam
+  { abiParamName :: String,
+    abiParamType :: String,
+    abiParamComponents :: [AbiParam]
+  }
+
+contractAbiEntries :: Contract Name -> [AbiEntry]
+contractAbiEntries = mapMaybe entry . decls
+  where
+    entry (CConstrDecl con) =
+      Just (AbiConstructor (map abiParam (constrParams con)) (stateMutability (constrPayable con)))
+    entry (CFunDecl (FunDef isPublic sig _))
+      | sigName sig == fallbackName = Just (AbiFallback (stateMutability (sigPayable sig)))
+      | isPublic =
+          Just $
+            AbiFunction
+              (nameStr (sigName sig))
+              (map abiParam (sigParams sig))
+              (abiOutputs (sigReturn sig))
+              (stateMutability (sigPayable sig))
+      | otherwise = Nothing
+    entry _ = Nothing
+
+-- | The ABI @stateMutability@ field admits four values: @pure@, @view@,
+-- @nonpayable@ and @payable@. This prototype only tracks payability, not whether
+-- a function reads or writes state, so we can only distinguish @payable@ from
+-- @nonpayable@ and conservatively report the latter for everything else.
+stateMutability :: Bool -> String
+stateMutability payable = if payable then "payable" else "nonpayable"
+
+abiParam :: Param Name -> AbiParam
+abiParam (Typed _ pname t) = mkAbiParam (nameStr pname) t
+abiParam (Untyped _ pname) = AbiParam (nameStr pname) "" []
+
+-- | A comma-separated return list @(a, b, c)@ desugars to nested pairs; the ABI
+-- represents it as one output per element. A unit return has no outputs.
+abiOutputs :: Maybe Ty -> [AbiParam]
+abiOutputs Nothing = []
+abiOutputs (Just t)
+  | t == unit = []
+  | otherwise = map (mkAbiParam "") (flattenTuple t)
+
+-- | Flatten a right-nested @pair@ chain into its element list. Because every
+-- comma-tuple desugars to right-nested pairs, a flat tuple @(a, b, c)@ and a
+-- tuple whose tail is itself a tuple @(a, (b, c))@ share the same
+-- representation, so this cannot tell them apart and always flattens fully.
+-- That ambiguity is inherent to the language's tuple encoding, not specific to
+-- the ABI.
+flattenTuple :: Ty -> [Ty]
+flattenTuple (TyCon (Name "pair") [a, b]) = a : flattenTuple b
+flattenTuple t = [t]
+
+mkAbiParam :: String -> Ty -> AbiParam
+mkAbiParam pname t =
+  let (tyStr, comps) = abiTypeOf t
+   in AbiParam pname tyStr comps
+
+-- | Map a Solcore type to its canonical ABI type name and (for tuples) its
+-- component parameters. Memory/calldata are location qualifiers and are
+-- transparent to the ABI. The native @word@ maps to @uint256@; the remaining
+-- value-type names (uint256, address, bytes32, bool, bytes, string, ...) are
+-- nullary type constructors whose names already match the Solidity ABI
+-- spelling, so they are passed through unchanged.
+abiTypeOf :: Ty -> (String, [AbiParam])
+abiTypeOf (TyCon (Name "memory") [t]) = abiTypeOf t
+abiTypeOf (TyCon (Name "calldata") [t]) = abiTypeOf t
+abiTypeOf t@(TyCon (Name "pair") [_, _]) =
+  ("tuple", map (mkAbiParam "") (flattenTuple t))
+abiTypeOf (TyCon (Name "word") []) = ("uint256", [])
+abiTypeOf (TyCon n []) = (nameStr n, [])
+-- Anything else has no ABI spelling: a type variable, a function type, or a
+-- parameterized type constructor (e.g. @mapping(word, word)@ or a custom
+-- generic) that is not one of the location/tuple cases handled above. Dropping
+-- the type arguments here would emit a bare, invalid ABI string like
+-- @"type":"mapping"@, which downstream ABI consumers (etherscan, ethers,
+-- web3py) would misparse — so fail loudly instead.
+abiTypeOf t = error ("contractAbiJson: cannot represent type in ABI: " <> show t)
+
+abiEntryJson :: AbiEntry -> Json
+abiEntryJson (AbiFunction fname ins outs mut) =
+  JObj
+    [ ("inputs", JArr (map abiParamJson ins)),
+      ("name", JStr fname),
+      ("outputs", JArr (map abiParamJson outs)),
+      ("stateMutability", JStr mut),
+      ("type", JStr "function")
+    ]
+abiEntryJson (AbiConstructor ins mut) =
+  JObj
+    [ ("inputs", JArr (map abiParamJson ins)),
+      ("stateMutability", JStr mut),
+      ("type", JStr "constructor")
+    ]
+abiEntryJson (AbiFallback mut) =
+  JObj
+    [ ("stateMutability", JStr mut),
+      ("type", JStr "fallback")
+    ]
+
+-- | @internalType@ and @type@ coincide for the value, @string@ and @bytes@
+-- types we expose today; solc only diverges them for structs, enums and
+-- contract types, which have no surface here yet.
+abiParamJson :: AbiParam -> Json
+abiParamJson p =
+  JObj $
+    [ ("internalType", JStr (abiParamType p)),
+      ("name", JStr (abiParamName p)),
+      ("type", JStr (abiParamType p))
+    ]
+      <> [("components", JArr (map abiParamJson (abiParamComponents p))) | not (null (abiParamComponents p))]
+
+--- Minimal JSON rendering ---
+
+data Json
+  = JStr String
+  | JArr [Json]
+  | JObj [(String, Json)]
+
+renderJson :: Json -> String
+renderJson = go 0
+  where
+    go _ (JStr s) = jsonString s
+    go _ (JArr []) = "[]"
+    go ind (JArr xs) =
+      "[\n"
+        <> intercalate ",\n" [indent (ind + 1) <> go (ind + 1) x | x <- xs]
+        <> "\n"
+        <> indent ind
+        <> "]"
+    go _ (JObj []) = "{}"
+    go ind (JObj kvs) =
+      "{\n"
+        <> intercalate ",\n" [indent (ind + 1) <> jsonString k <> ": " <> go (ind + 1) v | (k, v) <- kvs]
+        <> "\n"
+        <> indent ind
+        <> "}"
+    indent n = replicate (2 * n) ' '
+
+jsonString :: String -> String
+jsonString s = '"' : concatMap esc s <> "\""
+  where
+    esc '"' = "\\\""
+    esc '\\' = "\\\\"
+    esc '\n' = "\\n"
+    esc '\r' = "\\r"
+    esc '\t' = "\\t"
+    esc '\b' = "\\b"
+    esc '\f' = "\\f"
+    -- JSON requires the remaining control characters (U+0000–U+001F) to be
+    -- escaped as \uXXXX. Printable characters (incl. UTF-8) pass through.
+    esc c
+      | c < '\x20' = printf "\\u%04x" (fromEnum c)
+      | otherwise = [c]

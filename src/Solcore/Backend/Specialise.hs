@@ -28,10 +28,10 @@ import Solcore.Desugarer.IfDesugarer (desugaredBoolTy)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax hiding (decls, name)
+import Solcore.Frontend.Syntax.Traversal (everythingButSpans, everywhereButSpans)
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.NameSupply
 import Solcore.Frontend.TypeInference.TcEnv (TcEnv (instEnv, typeTable), TypeInfo (..))
-import Solcore.Frontend.TypeInference.TcUnify (typesDoNotUnify)
 import Solcore.Primitives.Primitives hiding (integer)
 import Solcore.Primitives.Primitives qualified as Prim
 
@@ -115,7 +115,7 @@ flex t = t
 
 -- make all type variables flexible in a syntactic construct
 flexAll :: Data a => a -> a
-flexAll = everywhere (mkT flex)
+flexAll = everywhereButSpans (mkT flex)
 -}
 
 -- | A signature forall tvs . ctx => t is considered ambiguous if a type variable
@@ -167,6 +167,22 @@ addDefaultResolution :: Name -> Ty -> TcFunDef -> SM ()
 addDefaultResolution name ty fun = do
   reportAmbiguousVars name (funSignature fun)
   modify $ \s -> s {spResTable = Map.insertWith (\new old -> old ++ new) name [(ty, fun)] (spResTable s)}
+
+-- The if/bool desugarer rewrites `bool` to `sum((), ())` throughout the typed
+-- AST, so every entry of the resolution table is keyed on the desugared type.
+-- A call type reassembled here can still mention `bool`, because part of it is
+-- reconstructed from the type checker's environment, which predates the
+-- desugaring. Normalising before the lookup keeps both sides in the same
+-- vocabulary; without it a `bool` occurring under a type constructor (e.g. the
+-- `storage(bool)` receiver of CanStore.load) never matches its instance.
+normaliseBoolTy :: Ty -> Ty
+normaliseBoolTy = everywhere (mkT go)
+  where
+    go :: Ty -> Ty
+    go t@(TyCon n [])
+      | n == boolName = desugaredBoolTy
+      | otherwise = t
+    go t = t
 
 lookupResolution :: Name -> Ty -> SM (Maybe (TcFunDef, Ty, TVSubst))
 lookupResolution name ty = gets (Map.lookup name . spResTable) >>= findMatch ty
@@ -312,7 +328,18 @@ addMethodResolution isDefault cname ty fd = do
         Name s -> QualName cname s
   let name' = specName qname [ty]
   let funType = typeOfTcFunDef fd
-  let fd' = FunDef (funIsPublic fd) sig {sigName = name'} (funDefBody fd)
+  -- Quantify the method's free type variables (the enclosing instance's
+  -- variables, e.g. `t` in `instance storage(array(t)):ArrayPush(t)`).
+  -- These are not in `sigVars` because the `forall` sits on the instance,
+  -- not on the individual method. Without quantifying them here, `renametv`
+  -- cannot freshen them when the method is specialised, so a nested
+  -- resolution that happens to reuse the same variable name (e.g. `Typedef`'s
+  -- `storage(t)`) clobbers the binding in the shared specialisation
+  -- substitution — turning `push`'s element `t` from `uint256` into
+  -- `array(uint256)` and breaking `StorageType.store`.
+  let methodVars = sigVars sig `union` freetv fd
+  let sig' = sig {sigName = name', sigVars = methodVars}
+  let fd' = FunDef (funIsPublic fd) sig' (funDefBody fd)
   if isDefault
     then addDefaultResolution qname funType fd'
     else addResolution qname funType fd'
@@ -389,26 +416,34 @@ comptimeBuiltins = integerPrimNames
 specCall :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
 specCall i@(Id (Name "revertLit") _) args _ = pure (i, args)
 specCall (Id (QualName (Name "std") "revertLit") ty) args _ = pure (Id (Name "revertLit") ty, args)
--- Int.fromInteger coercion: resolve to the appropriate primitive based on result type.
--- integer -> word    becomes wordFromInteger (handled by MastEval)
--- integer -> integer is identity (handled by MastEval)
-specCall (Id (QualName (Name "Int") "fromInteger") ty) args _ = do
-  args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+-- Int.fromInteger coercion: resolve based on the result type.
+-- integer -> word     becomes wordFromInteger (handled by MastEval)
+-- integer -> integer  is identity (handled by MastEval)
+-- integer -> other    resolves to the type's `Int` instance body, which
+--                     performs any needed truncation via wordFromInteger.
+specCall self@(Id (QualName (Name "Int") "fromInteger") ty) args callTy = do
   s <- getSpSubst
   let resultTy = snd (splitTy (applytv s ty))
   if resultTy == word
-    then pure (Id (Name "wordFromInteger") (Prim.integer :-> word), args')
-    else pure (Id (QualName (Name "Int") "fromInteger") (Prim.integer :-> resultTy), args')
--- Str.fromString coercion: resolve based on result type.
+    then do
+      args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+      pure (Id (Name "wordFromInteger") (Prim.integer :-> word), args')
+    else
+      if resultTy == Prim.integer
+        then do
+          args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+          pure (Id (QualName (Name "Int") "fromInteger") (Prim.integer :-> resultTy), args')
+        else specCallResolve self args callTy
+-- Str.fromString coercion: resolve based on the result type.
 -- string -> memory(string) becomes memStringFromLit (lowered per-literal by EmitHull)
 -- string -> string         is identity (folded by MastEval)
 -- Any other concrete result type is a source-level `Str` instance, whose method
 -- has a body to specialise like any other call.
-specCall i@(Id (QualName (Name "Str") "fromString") ty) args callTy = do
+specCall self@(Id (QualName (Name "Str") "fromString") ty) args callTy = do
   s <- getSpSubst
   let resultTy = snd (splitTy (applytv s ty))
   if isSourceStrInstance resultTy
-    then specCallResolved i args callTy
+    then specCallResolve self args callTy
     else do
       args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
       if resultTy == Prim.memString
@@ -421,16 +456,16 @@ specCall i@(Id (QualName (Name "Str") "fromString") ty) args callTy = do
     -- against.
     isSourceStrInstance t =
       null (freetv t) && t /= Prim.string && t /= Prim.memString
-specCall i args _ty
+specCall i args ty
   | idName i `elem` comptimeBuiltins = do
       args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
       pure (i, args')
-specCall i args ty = specCallResolved i args ty
+  | otherwise = specCallResolve i args ty
 
 -- | Specialise a call by looking up a resolution for the callee, the general
 -- path taken by every call that is not a compiler builtin.
-specCallResolved :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
-specCallResolved i args ty = do
+specCallResolve :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
+specCallResolve i args ty = do
   i' <- atCurrentSubst i
   ty' <- atCurrentSubst ty
   -- debug ["> specCall: ", pretty i', show args, " : ", pretty ty']
@@ -439,7 +474,7 @@ specCallResolved i args ty = do
   argTypes' <- atCurrentSubst argTypes
   let typedArgs = zip args argTypes'
   args' <- forM typedArgs (uncurry specExp)
-  let funType = foldr (:->) ty' argTypes'
+  let funType = normaliseBoolTy (foldr (:->) ty' argTypes')
   debug ["> specCall: ", show name, " : ", pretty funType]
   mres <- lookupResolution name funType
   case mres of
@@ -609,13 +644,13 @@ tryResolveMPTC clsName mainTy' extras = do
                 eqSubst =
                   TVSubst
                     [ (v, t)
-                      | (TyVar v :~: t) <- appliedQ,
-                        null (freetv t)
+                    | (TyVar v :~: t) <- appliedQ,
+                      null (freetv t)
                     ]
                     <> TVSubst
                       [ (v, t)
-                        | (t :~: TyVar v) <- appliedQ,
-                          null (freetv t)
+                      | (t :~: TyVar v) <- appliedQ,
+                        null (freetv t)
                       ]
                 phi' = phi <> eqSubst
             debug ["  tryResolve match: phi=", pretty phi, " q=", show q, " appliedQ=", show appliedQ, " eqSubst=", pretty eqSubst, " phi'=", pretty phi', " instExtras=", show instExtras]
@@ -764,6 +799,8 @@ specStmt (For initStmt cond post body) = do
   body' <- specBody body
   return $ For initStmt' cond' post' body'
 specStmt (Asm ys) = pure (Asm ys)
+specStmt Break = pure Break
+specStmt Continue = pure Continue
 specStmt EmptyStmt = pure EmptyStmt
 specStmt stmt = errors ["specStmt not implemented for: ", show stmt]
 
@@ -772,7 +809,11 @@ specMatch exps alts = do
   -- subst <- getSpSubst
   -- debug ["> specMatch, scrutinee: ", pretty exps, " @ ", pretty subst]
   exps' <- specScruts exps
-  alts' <- forM alts specAlt
+  saved <- getSpSubst
+  alts' <- forM alts $ \alt -> do
+    putSpSubst saved
+    specAlt alt
+  putSpSubst saved
   -- debug ["< specMatch, alts': ", show alts']
   return $ Match exps' alts'
   where
@@ -904,7 +945,7 @@ specmgu (TyCon n ts) (TyCon n' ts')
       specsolve (zip ts ts') mempty
 specmgu (TyVar v) t = varBind v t
 specmgu t (TyVar v) = varBind v t
-specmgu t1 t2 = typesDoNotUnify t1 t2
+specmgu t1 t2 = Left $ "types do not unify: " ++ pretty t1 ++ " and " ++ pretty t2
 
 -- | One-directional matching: find a substitution @phi@ such that
 -- @applytv phi pat == tgt@, binding only variables that appear in @pat@.
@@ -918,7 +959,7 @@ specmatch (TyCon n ts) (TyCon n' ts')
   | n == n' && length ts == length ts' =
       matchsolve (zip ts ts') mempty
 specmatch (TyVar v) t = varBind v t
-specmatch t1 t2 = typesDoNotUnify t1 t2
+specmatch t1 t2 = Left $ "types do not unify: " ++ pretty t1 ++ " and " ++ pretty t2
 
 matchsolve :: [(Ty, Ty)] -> TVSubst -> Either String TVSubst
 matchsolve [] s = pure s
@@ -981,10 +1022,10 @@ instance Pretty TVSubst where
 
 class (Data a) => HasTV a where
   applytv :: TVSubst -> a -> a
-  applytv s = everywhere (mkT (applytv @Ty s))
+  applytv s = everywhereButSpans (mkT (applytv @Ty s))
 
   freetv :: a -> [Tyvar] -- free variables
-  freetv = everything (<>) (mkQ mempty (freetv @Ty))
+  freetv = everythingButSpans (<>) (mkQ mempty (freetv @Ty))
 
   renametv :: a -> SM (a, TVSubst)
   renametv a = pure (a, mempty)
@@ -1010,7 +1051,7 @@ instance (HasTV a) => HasTV (Maybe a) where
 
 instance (HasTV a, HasTV b) => HasTV (a, b) -- defaults
 
-instance HasTV Pred -- uses default: freetv = everything (<>) (mkQ mempty (freetv @Ty))
+instance HasTV Pred -- uses default: freetv = everythingButSpans (<>) (mkQ mempty (freetv @Ty))
 
 {-
 instance (HasTV a, HasTV b, HasTV c) => HasTV (a,b,c) where
@@ -1035,8 +1076,8 @@ instance (HasTV a) => HasTV (Stmt a) -- defaults
 instance HasTV (Pat Id)
 
 instance HasTV (Signature Id) where
-  applytv s = everywhere (mkT (applytv @Ty s))
-  freetv sig = (everything (<>) (mkQ mempty (freetv @Ty))) sig \\ sigVars sig
+  applytv s = everywhereButSpans (mkT (applytv @Ty s))
+  freetv sig = (everythingButSpans (<>) (mkQ mempty (freetv @Ty))) sig \\ sigVars sig
   renametv sig = do
     subst <- foldM addRenaming mempty (sigVars sig)
     pure (applytv subst sig, subst)
@@ -1050,7 +1091,7 @@ data FunDef a
 -}
 
 instance HasTV (FunDef Id) where
-  freetv fd = (everything (<>) (mkQ mempty (freetv @Ty))) fd \\ sigVars (funSignature fd)
+  freetv fd = (everythingButSpans (<>) (mkQ mempty (freetv @Ty))) fd \\ sigVars (funSignature fd)
   renametv fd = do
     let sig = funSignature fd
     subst <- foldM addRenaming mempty (sigVars sig)
@@ -1084,7 +1125,7 @@ renameTV :: TVRenaming -> Tyvar -> Tyvar
 renameTV (TVR r) v = fromMaybe v (lookup v r)
 
 renameTy :: TVRenaming -> Ty -> Ty
-renameTy r = everywhere (mkT (renameTV r))
+renameTy r = everywhereButSpans (mkT (renameTV r))
 
 renameSubst :: TVRenaming -> TVSubst -> TVSubst
 renameSubst r = TVSubst . map rename . unTVSubst
@@ -1150,6 +1191,8 @@ toMastStmt (Asm ys) = MastAsm ys
 toMastStmt (For initStmt cond postStmt body) =
   MastFor (toMastStmt initStmt) (toMastExp cond) (toMastStmt postStmt) (toMastBody body)
 toMastStmt (Block body) = MastSeq (toMastBody body)
+toMastStmt Break = MastBreak
+toMastStmt Continue = MastContinue
 toMastStmt EmptyStmt = MastSeq []
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 

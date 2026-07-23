@@ -1,4 +1,6 @@
 import std.{*};
+import std.opcodes.{callvalue, calldatasize, calldataload, shr};
+import std.Generic.{*};
 
 export {
   ABIString,
@@ -60,6 +62,31 @@ instance (a,b):SigString {
   }
 }
 
+// A tagged union (the SOP form of an ADT with several constructors). There is no
+// standard ABI type for sums, so this signature is structural: the branch
+// signatures wrapped in a `sum(l,r)` constructor. The explicit `sum(...)` wrapper
+// keeps sums from colliding with the comma-joined product `(a,b)` signature, so
+// `sum(uint256,uint256)` and `(uint256,uint256)` hash to distinct selectors. It
+// makes ADT-typed parameters produce a deterministic selector; refine here if a
+// specific on-the-wire sum convention is needed.
+forall f g. f:SigString, g: SigString =>
+instance sum(f,g):SigString {
+  function sigStr(x:Proxy(sum(f,g))) -> string {
+    "sum(" + SigString.sigStr( Proxy:Proxy(f) ) + "," + SigString.sigStr( Proxy:Proxy(g) ) + ")"
+  }
+}
+
+// Any data type inherits its ABI signature from its Generic representation, the
+// same way ABIAttribs / ABIEncode bridge through Generic in std.ABIGeneric. This
+// lets the dispatch take ADT-typed parameters (e.g. a Signature) without a
+// hand-written SigString instance per type.
+forall a rep. a:Generic(rep), rep:SigString =>
+default instance a:SigString {
+  function sigStr(x:Proxy(a)) -> string {
+    SigString.sigStr( Proxy:Proxy(rep) )
+  }
+}
+
 forall name f args rets payability. 
   f: invokable(args,rets), name:SigString, args:SigString, rets:SigString =>
 instance Method(name,payability,args,rets,f):SigString {
@@ -83,7 +110,7 @@ forall name payability args rets fn
     function compute(prx : Proxy(Method(name,payability,args,rets,fn))) -> bytes4 {
         // let hash : word = keccakLit(sigStr(prx));
         let hash = keccakLit(sigStr(Proxy:Proxy(name))  + "(" + sigStr(Proxy:Proxy(args)) + ")");
-        return bytes4(bshrWord(224, hash));
+        return bytes4(shr(224, hash));
     }
 }
 
@@ -156,15 +183,7 @@ forall args rets fn
   , rets:ABIEncode
 => function do_exec(pargs : Proxy(args), prets : Proxy(rets), fn : fn) -> () {
     // check we have enough calldata for the head of args
-    let hdsz = ABIAttribs.headSize(pargs);
-    let cdsz;
-    assembly {
-      cdsz := calldatasize()
-    }
-    if (cdsz < (hdsz + 4)) {
-      let ABIInputTruncated = Error(0x08638556);
-      revertWithError(ABIInputTruncated);
-    }
+    require(calldatasize() >= (ABIAttribs.headSize(pargs) + 4), Error(0x08638556)); // ABIInputTruncated()
 
     // TODO: calldatasize checks for dynamic types
 
@@ -234,10 +253,7 @@ forall n m . n:ExecMethod, n:Selector, m:RunDispatch => instance (n,m):RunDispat
 // Given evidence of a type with a known selector, we can check if it matches the selector in the first four bytes of calldata
 forall ty . ty:Selector => function selector_matches(prx : Proxy(ty)) -> bool {
   let candidate = Typedef.rep(Selector.compute(prx));
-  let selector: word;
-  assembly {
-    selector := shr(224, calldataload(0))
-  }
+  let selector = shr(224, calldataload(0));
   return selector == candidate;
 }
 
@@ -256,15 +272,9 @@ instance Payable:MethodLevelCallvalueCheck {
 }
 // NonPayable methods revert if passed value
 instance NonPayable:MethodLevelCallvalueCheck {
-   function checkCallvalue(prx : Proxy(NonPayable)) -> () {
-       let value: word;
-       assembly {
-         value := callvalue()
-       }
-       if (value > 0) {
-         let NonPayableReceivedValue = Error(0xb5988ea3);
-         revertWithError(NonPayableReceivedValue);
-       }
+    function checkCallvalue(prx : Proxy(NonPayable)) -> () {
+        let NonPayableReceivedValue = Error(0xb5988ea3);
+        require(callvalue() == 0, NonPayableReceivedValue);
    }
 }
 
@@ -290,11 +300,8 @@ forall methods fb . methods:RunDispatch, fb:ExecMethod => instance Contract(meth
 
         // calldata shorter than 4 bytes can't contain a selector — skip
         // dispatch and invoke the fallback directly (matches Solidity)
-        let cdsz: word;
-        assembly {
-          cdsz := calldatasize()
-        }
-        if (cdsz >= 4) {
+        if (calldatasize() >= 4) {
+            // dispatch to method based on selector
             RunDispatch.go(ms);
         }
         // fallthrough to fallback -- this will be reached upon short input

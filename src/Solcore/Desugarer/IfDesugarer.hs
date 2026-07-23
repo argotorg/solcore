@@ -2,15 +2,16 @@ module Solcore.Desugarer.IfDesugarer where
 
 import Data.Generics
 import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax.Traversal (everywhereButSpans)
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Primitives.Primitives
 
 ifDesugarer :: CompUnit Id -> CompUnit Id
 ifDesugarer cunit =
-  let c1 = everywhere (mkT desugarTyBool) cunit
-      c2 = everywhere (mkT desugarBoolCons) c1
-      c3 = everywhere (mkT desugarBoolPat) c2
-   in everywhere (mkT desugarStmt) c3
+  let c1 = everywhereButSpans (mkT desugarTyBool) cunit
+      c2 = everywhereButSpans (mkT desugarBoolCons) c1
+      c3 = everywhereButSpans (mkT desugarBoolPat) c2
+   in everywhereButSpans (mkT desugarStmt) c3
 
 -- desugaring if stmts
 
@@ -40,7 +41,7 @@ desugarBoolCons (FieldAccess me v) =
 desugarBoolCons (Call me v es) =
   Call (desugarBoolCons <$> me) v (map desugarBoolCons es)
 desugarBoolCons (Lam ps bdy ty) =
-  Lam ps (everywhere (mkT desugarBoolCons) bdy) ty
+  Lam ps (everywhereButSpans (mkT desugarBoolCons) bdy) ty
 desugarBoolCons (Cond e1 e2 e3) = Cond (d e1) (d e2) (d e3) where d = desugarBoolCons
 desugarBoolCons (TyExp e t) =
   TyExp (desugarBoolCons e) t

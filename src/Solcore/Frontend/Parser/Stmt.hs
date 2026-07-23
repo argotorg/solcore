@@ -10,14 +10,8 @@ import Language.Yul.Parser (yulBlock)
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.Patterns (patListP)
-import Solcore.Frontend.Parser.SolcoreTypes (typeP)
-import Solcore.Frontend.Syntax.Name (Name (..))
+import Solcore.Frontend.Parser.SolcoreTypes (locatedP, simpleNameP, typeP)
 import Solcore.Frontend.Syntax.SyntaxTree
-  ( Body,
-    Equation,
-    Exp (..),
-    Stmt (..),
-  )
 
 bodyP :: Parser Body
 bodyP = many stmtP
@@ -31,15 +25,23 @@ stmtP =
     <|> returnP
     <|> try ifP
     <|> forP
+    <|> breakP
+    <|> continueP
     <|> matchP
     <|> asmP
     <|> blockP
     <|> try exprOrAssignP
 
+breakP :: Parser Stmt
+breakP = locatedP locatedStmt (Break <$ (keyword "break" *> semicolon))
+
+continueP :: Parser Stmt
+continueP = locatedP locatedStmt (Continue <$ (keyword "continue" *> semicolon))
+
 letP :: Parser Stmt
-letP = do
+letP = locatedP locatedStmt $ do
   keyword "let"
-  n <- identifier
+  n <- simpleNameP
   (ct, mt) <- option (False, Nothing) $ do
     _ <- colon
     ct <- option False (True <$ keyword "comptime")
@@ -47,13 +49,13 @@ letP = do
     return (ct, Just t)
   me <- optional (equalsP *> expP)
   _ <- semicolon
-  return (Let ct (Name n) mt me)
+  return (Let ct n mt me)
 
 returnP :: Parser Stmt
-returnP = Return <$> (keyword "return" *> expP <* semicolon)
+returnP = locatedP locatedStmt (Return <$> (keyword "return" *> expP <* semicolon))
 
 ifP :: Parser Stmt
-ifP = do
+ifP = locatedP locatedStmt $ do
   keyword "if"
   cond <- parens expP
   thenBody <- braces bodyP
@@ -61,7 +63,7 @@ ifP = do
   return (If cond thenBody elseBody)
 
 forP :: Parser Stmt
-forP = do
+forP = locatedP locatedStmt $ do
   keyword "for"
   (initS, cond, postS) <- parens $ do
     initS <- forInitP
@@ -74,30 +76,34 @@ forP = do
   return (For initS cond postS body)
 
 matchP :: Parser Stmt
-matchP = do
+matchP = locatedP locatedStmt $ do
   keyword "match"
   scrutinees <- expP `sepBy1` comma
   eqns <- braces (many equationP)
   return (Match scrutinees eqns)
 
 asmP :: Parser Stmt
-asmP = Asm <$> (keyword "assembly" *> yulBlock) -- yulBlock includes the surrounding braces
+asmP = locatedP locatedStmt (Asm <$> (keyword "assembly" *> yulBlock)) -- yulBlock includes the surrounding braces
 
 blockP :: Parser Stmt
-blockP = Block <$> braces bodyP
+blockP = locatedP locatedStmt (Block <$> braces bodyP)
 
 exprOrAssignP :: Parser Stmt
-exprOrAssignP = do
+exprOrAssignP = locatedP locatedStmt $ do
   lhs <- expP
   choice
     [ do rhs <- equalsP *> expP; _ <- semicolon; return (Assign lhs rhs),
       do rhs <- symbol "+=" *> expP; _ <- semicolon; return (StmtPlusEq lhs rhs),
       do rhs <- symbol "-=" *> expP; _ <- semicolon; return (StmtMinusEq lhs rhs),
+      do rhs <- symbol "^=" *> expP; _ <- semicolon; return (StmtBXorEq lhs rhs),
+      do rhs <- symbol "&=" *> expP; _ <- semicolon; return (StmtBAndEq lhs rhs),
+      do rhs <- symbol "|=" *> expP; _ <- semicolon; return (StmtBOrEq lhs rhs),
+      do rhs <- symbol "%=" *> expP; _ <- semicolon; return (StmtModEq lhs rhs),
       StmtExp lhs <$ optional semicolon
     ]
 
 forInitP :: Parser Stmt
-forInitP = do
+forInitP = locatedP locatedStmt $ do
   stmts <- (forLetP <|> forAssignP) `sepBy` comma
   return $ case stmts of
     [] -> EmptyStmt
@@ -105,7 +111,7 @@ forInitP = do
     ss -> Block ss
 
 forPostP :: Parser Stmt
-forPostP = do
+forPostP = locatedP locatedStmt $ do
   stmts <- forAssignP `sepBy` comma
   return $ case stmts of
     [] -> EmptyStmt
@@ -113,24 +119,28 @@ forPostP = do
     ss -> Block ss
 
 forLetP :: Parser Stmt
-forLetP = do
+forLetP = locatedP locatedStmt $ do
   keyword "let"
-  n <- identifier
+  n <- simpleNameP
   (ct, mt) <- option (False, Nothing) $ do
     _ <- colon
     ct <- option False (True <$ keyword "comptime")
     t <- typeP
     return (ct, Just t)
   me <- optional (equalsP *> expP)
-  return (Let ct (Name n) mt me)
+  return (Let ct n mt me)
 
 forAssignP :: Parser Stmt
-forAssignP = do
+forAssignP = locatedP locatedStmt $ do
   lhs <- expP
   choice
     [ do rhs <- equalsP *> expP; return (Assign lhs rhs),
       do rhs <- symbol "+=" *> expP; return (StmtPlusEq lhs rhs),
       do rhs <- symbol "-=" *> expP; return (StmtMinusEq lhs rhs),
+      do rhs <- symbol "^=" *> expP; return (StmtBXorEq lhs rhs),
+      do rhs <- symbol "&=" *> expP; return (StmtBAndEq lhs rhs),
+      do rhs <- symbol "|=" *> expP; return (StmtBOrEq lhs rhs),
+      do rhs <- symbol "%=" *> expP; return (StmtModEq lhs rhs),
       return (StmtExp lhs)
     ]
 

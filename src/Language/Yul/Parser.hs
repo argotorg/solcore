@@ -2,7 +2,7 @@ module Language.Yul.Parser (parseYul, yulBlock, yulStmt, yulExp) where
 
 import Common.LightYear
 import Language.Yul
-import Solcore.Frontend.Syntax.Name (Name (..))
+import Solcore.Frontend.Syntax.Name (Name, pattern Name)
 import Text.Megaparsec.Char.Lexer qualified as L
 
 parseYul :: String -> Yul

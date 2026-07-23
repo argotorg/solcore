@@ -24,7 +24,7 @@ import Data.Map qualified as Map
 import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name (Name)
 import Solcore.Frontend.Syntax.Stmt
-import Solcore.Frontend.Syntax.Ty (Ty (..))
+import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Primitives.Primitives qualified as Prim
 
@@ -98,7 +98,7 @@ checkFunDef st ctx fd = checkBody st (effRetComptime sig) ctx initEnv (funDefBod
     initEnv =
       Map.fromList
         [ (idName (paramName p), if paramComptime p || effRetComptime sig || isComptimeOnlyTy (paramTy p) then CTComptime else CTRuntime)
-          | p <- sigParams sig
+        | p <- sigParams sig
         ]
 
 -- | Check an instance method, including the instance head in error context.
@@ -161,6 +161,8 @@ checkStmt st retCt ctx env stmt = case stmt of
     return env
   Asm _ -> return env
   Block body -> checkBody st retCt ctx env body >> return env
+  Break -> return env
+  Continue -> return env
   EmptyStmt -> return env
 
 -- | Decide the Ctness to assign to a let-bound variable.

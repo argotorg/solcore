@@ -1,0 +1,136 @@
+{
+  "storage_adt_abi": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor() (stored = None)",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "isSome() -> false",
+          "calldata": "31f68a08",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setOpt(Some(42)) : tag word 1 then payload 42",
+          "calldata": "9e0708f20000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "isSome() -> true",
+          "calldata": "31f68a08",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "unwrapOr(7) -> 42",
+          "calldata": "80a275860000000000000000000000000000000000000000000000000000000000000007",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getOpt() -> Some(42) encoded as tag 1 + payload 42",
+          "calldata": "dfbe8f99",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "echo(Some(9)) round-trips without touching storage",
+          "calldata": "f12ca2db00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000009",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000009",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setOpt(None) : tag word 0",
+          "calldata": "9e0708f200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "isSome() -> false",
+          "calldata": "31f68a08",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "unwrapOr(7) -> 7",
+          "calldata": "80a275860000000000000000000000000000000000000000000000000000000000000007",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000007",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getOpt() -> None",
+          "calldata": "dfbe8f99",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

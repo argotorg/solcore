@@ -98,6 +98,8 @@ instance Desugar (Stmt Name) where
     If <$> desugar e <*> desugar blk1 <*> desugar blk2
   desugar (For initStmt cond postStmt body) =
     For <$> desugar initStmt <*> desugar cond <*> desugar postStmt <*> desugar body
+  desugar Break = pure Break
+  desugar Continue = pure Continue
   desugar EmptyStmt = pure EmptyStmt
 
 instance Desugar (Exp Name) where

@@ -1,6 +1,12 @@
 module Solcore.Pipeline.Options where
 
 import Options.Applicative
+import Solcore.Diagnostics
+
+data TypeClassResolutionMode
+  = LegacyResolution
+  | TabledResolution
+  deriving (Eq, Show)
 
 data Option
   = Option
@@ -8,11 +14,14 @@ data Option
     optRootDir :: !FilePath,
     optImportDirs :: !String,
     optExternalLibs :: ![String],
+    optOutputDir :: !FilePath,
+    optEmitAbi :: !Bool,
     optNoSpec :: !Bool,
     optNoDesugarCalls :: !Bool,
     optNoMatchCompiler :: !Bool,
     optNoIfDesugar :: !Bool,
     optNoGenDispatch :: !Bool,
+    optTypeClassResolution :: !TypeClassResolutionMode,
     -- Options controlling printing
     optVerbose :: !Bool,
     optDumpAST :: !Bool,
@@ -25,10 +34,22 @@ data Option
     optDebugSpec :: !Bool,
     optDebugHull :: !Bool,
     optTiming :: !Bool,
+    optDiagnosticColor :: !ColorChoice,
+    optDiagnosticUnicode :: !UnicodeChoice,
+    optDiagnosticWidth :: !Int,
+    optDiagnosticFormat :: !DiagnosticFormat,
+    optWarningPolicy :: !WarningPolicy,
     -- Partial evaluation options
     optPEFuel :: !(Maybe Int)
   }
   deriving (Eq, Show)
+
+data WarningPolicy
+  = WarningsDefault
+  | WarningsAlways
+  | WarningsNever
+  | WarningsDeny
+  deriving (Eq, Ord, Show)
 
 emptyOption :: FilePath -> Option
 emptyOption path =
@@ -37,11 +58,14 @@ emptyOption path =
       optRootDir = ".",
       optImportDirs = "std",
       optExternalLibs = [],
+      optOutputDir = ".",
+      optEmitAbi = False,
       optNoSpec = False,
       optNoDesugarCalls = False,
       optNoMatchCompiler = False,
       optNoIfDesugar = False,
       optNoGenDispatch = False,
+      optTypeClassResolution = LegacyResolution,
       -- Options controlling printing
       optVerbose = False,
       optDumpAST = False,
@@ -54,22 +78,17 @@ emptyOption path =
       optDebugSpec = False,
       optDebugHull = False,
       optTiming = False,
+      optDiagnosticColor = diagnosticColor defaultDiagnosticRenderOptions,
+      optDiagnosticUnicode = diagnosticUnicode defaultDiagnosticRenderOptions,
+      optDiagnosticWidth = diagnosticWidth defaultDiagnosticRenderOptions,
+      optDiagnosticFormat = diagnosticFormat defaultDiagnosticRenderOptions,
+      optWarningPolicy = WarningsDefault,
       -- Partial evaluation options
       optPEFuel = Nothing
     }
 
 stdOpt :: Option
 stdOpt = emptyOption mempty
-
-noDesugarOpt :: Option
-noDesugarOpt =
-  stdOpt
-    { optNoGenDispatch = True,
-      optNoDesugarCalls = True,
-      optNoSpec = True,
-      optNoMatchCompiler = True,
-      optNoIfDesugar = True
-    }
 
 options :: Parser Option
 options =
@@ -100,6 +119,17 @@ options =
               <> help "Register an external library root for @NAME imports."
           )
       )
+    <*> strOption
+      ( long "output-dir"
+          <> short 'o'
+          <> metavar "DIR"
+          <> value (optOutputDir stdOpt)
+          <> help "Directory for generated output files (default: current directory)"
+      )
+    <*> switch
+      ( long "abi"
+          <> help "Emit a JSON ABI file (<ContractName>.abi) for each contract"
+      )
     <*> switch
       ( long "no-specialise"
           <> short 'n'
@@ -124,6 +154,14 @@ options =
       ( long "no-gen-dispatch"
           <> short 'g'
           <> help "Skip contract dispatch generation"
+      )
+    <*> option
+      parseTypeClassResolutionMode
+      ( long "type-class-resolution"
+          <> metavar "legacy|tabled"
+          <> value (optTypeClassResolution stdOpt)
+          <> showDefaultWith renderTypeClassResolutionMode
+          <> help "Select the type class resolution strategy"
       )
     -- Options controlling printing
     <*> switch
@@ -168,6 +206,46 @@ options =
       ( long "timing"
           <> help "Measure time of some phases"
       )
+    <*> option
+      colorChoiceReader
+      ( long "color"
+          <> metavar "auto|always|never"
+          <> value (optDiagnosticColor stdOpt)
+          <> showDefaultWith showColorChoice
+          <> help "Configure diagnostic colors"
+      )
+    <*> option
+      unicodeChoiceReader
+      ( long "unicode"
+          <> metavar "auto|always|never"
+          <> value (optDiagnosticUnicode stdOpt)
+          <> showDefaultWith showUnicodeChoice
+          <> help "Configure diagnostic Unicode output"
+      )
+    <*> option
+      auto
+      ( long "diagnostic-width"
+          <> metavar "N"
+          <> value (optDiagnosticWidth stdOpt)
+          <> showDefault
+          <> help "Set diagnostic output width"
+      )
+    <*> option
+      diagnosticFormatReader
+      ( long "diagnostic-format"
+          <> metavar "human|short"
+          <> value (optDiagnosticFormat stdOpt)
+          <> showDefaultWith showDiagnosticFormat
+          <> help "Configure diagnostic output format"
+      )
+    <*> option
+      warningPolicyReader
+      ( long "warnings"
+          <> metavar "default|always|never|deny"
+          <> value (optWarningPolicy stdOpt)
+          <> showDefaultWith showWarningPolicy
+          <> help "Configure compiler warning diagnostics"
+      )
     -- Partial evaluation options
     <*> optional
       ( option
@@ -188,3 +266,80 @@ argumentsParser = do
               <> header "Solcore - solidity core language"
           )
   execParser opts
+
+parseTypeClassResolutionMode :: ReadM TypeClassResolutionMode
+parseTypeClassResolutionMode =
+  eitherReader $ \s ->
+    case s of
+      "legacy" -> Right LegacyResolution
+      "tabled" -> Right TabledResolution
+      other -> Left ("unknown type class resolution strategy: " ++ other)
+
+renderTypeClassResolutionMode :: TypeClassResolutionMode -> String
+renderTypeClassResolutionMode LegacyResolution = "legacy"
+renderTypeClassResolutionMode TabledResolution = "tabled"
+
+diagnosticRenderOptions :: Option -> DiagnosticRenderOptions
+diagnosticRenderOptions opts =
+  DiagnosticRenderOptions
+    { diagnosticColor = optDiagnosticColor opts,
+      diagnosticUnicode = optDiagnosticUnicode opts,
+      diagnosticWidth = optDiagnosticWidth opts,
+      diagnosticFormat = optDiagnosticFormat opts
+    }
+
+colorChoiceReader :: ReadM ColorChoice
+colorChoiceReader =
+  eitherReader $ \raw ->
+    case raw of
+      "auto" -> Right ColorAuto
+      "always" -> Right ColorAlways
+      "never" -> Right ColorNever
+      _ -> Left "expected one of: auto, always, never"
+
+unicodeChoiceReader :: ReadM UnicodeChoice
+unicodeChoiceReader =
+  eitherReader $ \raw ->
+    case raw of
+      "auto" -> Right UnicodeAuto
+      "always" -> Right UnicodeAlways
+      "never" -> Right UnicodeNever
+      _ -> Left "expected one of: auto, always, never"
+
+diagnosticFormatReader :: ReadM DiagnosticFormat
+diagnosticFormatReader =
+  eitherReader $ \raw ->
+    case raw of
+      "human" -> Right DiagnosticHuman
+      "short" -> Right DiagnosticShort
+      _ -> Left "expected one of: human, short"
+
+warningPolicyReader :: ReadM WarningPolicy
+warningPolicyReader =
+  eitherReader $ \raw ->
+    case raw of
+      "default" -> Right WarningsDefault
+      "always" -> Right WarningsAlways
+      "never" -> Right WarningsNever
+      "deny" -> Right WarningsDeny
+      _ -> Left "expected one of: default, always, never, deny"
+
+showColorChoice :: ColorChoice -> String
+showColorChoice ColorAuto = "auto"
+showColorChoice ColorAlways = "always"
+showColorChoice ColorNever = "never"
+
+showUnicodeChoice :: UnicodeChoice -> String
+showUnicodeChoice UnicodeAuto = "auto"
+showUnicodeChoice UnicodeAlways = "always"
+showUnicodeChoice UnicodeNever = "never"
+
+showDiagnosticFormat :: DiagnosticFormat -> String
+showDiagnosticFormat DiagnosticHuman = "human"
+showDiagnosticFormat DiagnosticShort = "short"
+
+showWarningPolicy :: WarningPolicy -> String
+showWarningPolicy WarningsDefault = "default"
+showWarningPolicy WarningsAlways = "always"
+showWarningPolicy WarningsNever = "never"
+showWarningPolicy WarningsDeny = "deny"

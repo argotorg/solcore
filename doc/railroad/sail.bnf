@@ -1,6 +1,6 @@
 # SAIL Language Grammar
 
-## Lexical Tokens 
+## Lexical Tokens
 
 Identifier = letter { letter | digit | "_" }
 
@@ -9,7 +9,7 @@ Integer = digit { digit }
 
 StringLiteral = '"' { char } '"'
 
-## Names 
+## Names
 
 TypeName = Identifier
          | TypeName "." Identifier

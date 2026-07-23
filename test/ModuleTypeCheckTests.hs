@@ -3,9 +3,10 @@ module ModuleTypeCheckTests
   )
 where
 
+import Solcore.Diagnostics (CompilerError, compilerErrorText)
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.TypeInference.TcModule
-import Solcore.Pipeline.Options (noDesugarOpt)
+import Solcore.Pipeline.Options (stdOpt)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -46,23 +47,23 @@ moduleTypeCheckTests =
       testCase "type inference trusts imported bodies while checking local bodies" $ do
         result <-
           typeInferModuleLocals
-            noDesugarOpt
+            stdOpt
             (moduleInput [ModuleInferenceDecl ModuleImportedDecl badImportedFun, ModuleInferenceDecl ModuleLocalDecl usesImportedFun])
         assertRight "imported body should be trusted" result,
       testCase "type inference checks local bodies" $ do
         result <-
           typeInferModuleLocals
-            noDesugarOpt
+            stdOpt
             (moduleInput [ModuleInferenceDecl ModuleLocalDecl badImportedFun])
         assertLeft "local body should be checked" result
     ]
 
-assertRight :: String -> Either String a -> Assertion
+assertRight :: String -> Either CompilerError a -> Assertion
 assertRight _ (Right _) = pure ()
 assertRight label (Left err) =
-  assertFailure (label ++ ": unexpected failure:\n" ++ err)
+  assertFailure (label ++ ": unexpected failure:\n" ++ compilerErrorText err)
 
-assertLeft :: String -> Either String a -> Assertion
+assertLeft :: String -> Either CompilerError a -> Assertion
 assertLeft _ (Left _) = pure ()
 assertLeft label (Right _) =
   assertFailure (label ++ ": expected failure")

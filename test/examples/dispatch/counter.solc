@@ -1,21 +1,14 @@
 import std.{*};
 import std.dispatch.{*};
 contract Counter {
-  // some dummy fields to test offset calculation
-  fld0 : word;
-  fld1 : uint256;
-  fld2 : address;
   counter : uint256;
   
   constructor() {
-    counter = uint256(41);
-//    fld2 = address(0);
-//     fld1 = uint256(11);
-//     fld0 = 7;
+    counter = 41;
   }
   
   public function test() -> uint256 {
-    counter = counter + uint256(1);
+    counter = counter + 1;
     return counter;
   }
 }

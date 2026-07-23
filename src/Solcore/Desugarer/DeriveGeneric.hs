@@ -10,23 +10,65 @@ deriveGenericTopDecls :: [DataTy] -> [TopDecl Name] -> Either String [TopDecl Na
 deriveGenericTopDecls localData allDecls
   | not (genericClassVisible allDecls) = Right allDecls
   | (n : _) <- conflicts = Left (conflictError n)
-  | otherwise = Right (allDecls ++ newInsts)
+  | otherwise = Right (allDecls ++ newInsts ++ storageInsts ++ abiInsts)
   where
     excluded = pragmaExcluded allDecls
     hasInst = existingGenericTypes allDecls
+    derivable =
+      [ dt
+      | dt <- localData,
+        not (null (dataConstrs dt)),
+        dataName dt `notElem` excluded,
+        dataName dt `notElem` hasInst
+      ]
     conflicts =
       [ dataName dt
-        | dt <- localData,
-          dataName dt `elem` hasInst,
-          dataName dt `notElem` excluded
+      | dt <- localData,
+        dataName dt `elem` hasInst,
+        dataName dt `notElem` excluded
       ]
-    newInsts =
-      [ TInstDef (buildInstance dt)
-        | dt <- localData,
-          not (null (dataConstrs dt)),
-          dataName dt `notElem` excluded,
-          dataName dt `notElem` hasInst
-      ]
+    newInsts = [TInstDef (buildInstance dt) | dt <- derivable]
+    -- When std.StorageGeneric is in scope, also derive the storage type-class
+    -- instances so the data type can live in contract storage: StorageSize (the
+    -- field's slot footprint, for offset arithmetic) and storage(T):CanStore(T)
+    -- (how a field is loaded/stored). Recursive types are skipped — their slot
+    -- footprint is unbounded.
+    --
+    -- Storability is decided by CanStore, not StorageType. The derived CanStore
+    -- decomposes the SOP representation through the structural CanStore instances
+    -- in std.StorageGeneric, so each leaf is stored via its own CanStore — a
+    -- fixed leaf via storage(word)/…, a dynamic leaf (memory(bytes)) via
+    -- storage(bytes). A data type with a dynamic field is therefore genuinely
+    -- storable, and a field whose type has no CanStore instance fails precisely
+    -- at the storage site, not while deriving an instance nobody uses.
+    storageInsts
+      | storageClassVisible allDecls =
+          concatMap buildStorageInstances [dt | dt <- derivable, not (isRecursiveData dt)]
+      | otherwise = []
+    -- When std.ABIGeneric is in scope, derive per-type ABIAttribs and ABIDecode
+    -- instances so the contract dispatch can carry ADT-typed method parameters
+    -- and return values.
+    --
+    -- ABIDecode needs a concrete instance because its decode returns a
+    -- result-position type variable a default instance can't monomorphize.
+    --
+    -- ABIAttribs needs one for a different reason: std declares a catch-all
+    -- `default instance t:ABIAttribs` with headSize 32, which outranks the
+    -- Generic bridge in std.ABIGeneric. An ADT would then report a 32-byte head
+    -- however wide its representation is, truncating returndata to the tag word
+    -- and under-checking calldatasize. A concrete instance wins over both
+    -- defaults and reports the rep's real head size and staticness.
+    --
+    -- ABIEncode still comes for free via the Generic bridge (std declares no
+    -- competing default for it).
+    abiInsts
+      | abiClassVisible allDecls =
+          concat
+            [ [TInstDef (buildABIAttribs dt), TInstDef (buildABIDecode dt)]
+            | dt <- derivable,
+              not (isRecursiveData dt)
+            ]
+      | otherwise = []
     conflictError n =
       "type '"
         ++ show n
@@ -41,6 +83,33 @@ genericClassVisible = any isGenericClass
   where
     isGenericClass (TClassDef cls) = className cls == Name "Generic"
     isGenericClass _ = False
+
+-- The StorageDeriving marker class is declared in std.StorageGeneric; its
+-- presence signals that the storage type classes and their primitive
+-- (sum/pair/unit) instances are in scope, so storage instances can be derived.
+storageClassVisible :: [TopDecl Name] -> Bool
+storageClassVisible = any isMarker
+  where
+    isMarker (TClassDef cls) = className cls == Name "StorageDeriving"
+    isMarker _ = False
+
+-- The ABIDeriving marker class is declared in std.ABIGeneric; its presence
+-- signals that the ABI type classes and their structural instances are in
+-- scope, so a per-type ABIDecode instance can be derived.
+abiClassVisible :: [TopDecl Name] -> Bool
+abiClassVisible = any isMarker
+  where
+    isMarker (TClassDef cls) = className cls == Name "ABIDeriving"
+    isMarker _ = False
+
+-- A data type is recursive if one of its constructor fields mentions the type
+-- itself (directly). Such types have no fixed storage size, so we do not derive
+-- storage instances for them.
+isRecursiveData :: DataTy -> Bool
+isRecursiveData dt =
+  any selfRef (concatMap constrTy (dataConstrs dt))
+  where
+    selfRef t = dataName dt `elem` tyconNames t
 
 collectDataDefs :: [TopDecl Name] -> [DataTy]
 collectDataDefs = concatMap go
@@ -197,3 +266,234 @@ buildInstance dt =
       mainTy = TyCon (dataName dt) (map TyVar (dataParams dt)),
       instFunctions = [buildFrom dt, buildTo dt]
     }
+
+-- Storage instances (StorageSize + CanStore)
+
+mainTyOf :: DataTy -> Ty
+mainTyOf dt = TyCon (dataName dt) (map TyVar (dataParams dt))
+
+wordTy :: Ty
+wordTy = TyCon (Name "word") []
+
+storageTyOf :: Ty -> Ty
+storageTyOf t = TyCon (Name "storage") [t]
+
+proxyTyOf :: Ty -> Ty
+proxyTyOf t = TyCon (Name "Proxy") [t]
+
+proxyExpOf :: Ty -> Exp Name
+proxyExpOf t = TyExp (Con (Name "Proxy") []) (proxyTyOf t)
+
+-- A qualified class-method call, e.g. StorageType.store(...).
+methodCall :: String -> String -> [Exp Name] -> Exp Name
+methodCall cls method args = Call Nothing (QualName (Name cls) method) args
+
+buildStorageInstances :: DataTy -> [TopDecl Name]
+buildStorageInstances dt =
+  [ TInstDef (buildStorageSize dt),
+    TInstDef (buildCanStore dt)
+  ]
+
+-- instance <ctx> => T(params) : StorageSize {
+--   function size(x : Proxy(T(params))) -> word {
+--     return StorageSize.size(Proxy : Proxy(<rep>));
+--   }
+-- }
+buildStorageSize :: DataTy -> Instance Name
+buildStorageSize dt =
+  Instance
+    { instDefault = False,
+      instVars = dataParams dt,
+      instContext = [InCls (Name "StorageSize") (TyVar tv) [] | tv <- dataParams dt],
+      instName = Name "StorageSize",
+      paramsTy = [],
+      mainTy = mainTyOf dt,
+      instFunctions = [FunDef False sig body]
+    }
+  where
+    sig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "size",
+          sigParams = [Typed False (Name "_x") (proxyTyOf (mainTyOf dt))],
+          sigRetComptime = False,
+          sigReturn = Just wordTy,
+          sigPayable = False
+        }
+    body = [Return (methodCall "StorageSize" "size" [proxyExpOf (sopRep dt)])]
+
+-- instance <ctx> => storage(T(params)) : CanStore(T(params)) {
+--   function store(r : storage(T(params)), v : T(params)) -> () {
+--     CanStore.store(storage(Typedef.rep(r)) : storage(<rep>), Generic.from(v));
+--   }
+--   function load(r : storage(T(params))) -> T(params) {
+--     let x : <rep> = CanStore.load(storage(Typedef.rep(r)) : storage(<rep>));
+--     return Generic.to(x);
+--   }
+-- }
+--
+-- Storage is expressed entirely through CanStore: the type's SOP representation
+-- is stored at the slot via the structural CanStore instances (sum/pair/unit) in
+-- std.StorageGeneric, which decompose to each leaf's own CanStore. So a leaf of
+-- type memory(bytes) is stored via storage(bytes), and the type stays storable.
+-- For parametric types the context carries, per parameter, the field obligations
+-- the structural instances need (storage(a):CanStore(a) and a:StorageSize); for a
+-- concrete type the context is empty and everything resolves at the leaves.
+buildCanStore :: DataTy -> Instance Name
+buildCanStore dt =
+  Instance
+    { instDefault = False,
+      instVars = dataParams dt,
+      instContext =
+        [InCls (Name "CanStore") (storageTyOf (TyVar tv)) [TyVar tv] | tv <- dataParams dt]
+          ++ [InCls (Name "StorageSize") (TyVar tv) [] | tv <- dataParams dt],
+      instName = Name "CanStore",
+      paramsTy = [mainT],
+      mainTy = storageTyOf mainT,
+      instFunctions = [FunDef False storeSig storeBody, FunDef False loadSig loadBody]
+    }
+  where
+    mainT = mainTyOf dt
+    repT = sopRep dt
+    -- storage(Typedef.rep(_r)) : storage(<rep>)
+    repSlot = TyExp (Con (Name "storage") [methodCall "Typedef" "rep" [Var (Name "_r")]]) (storageTyOf repT)
+    storeSig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "store",
+          sigParams =
+            [ Typed False (Name "_r") (storageTyOf mainT),
+              Typed False (Name "_v") mainT
+            ],
+          sigRetComptime = False,
+          sigReturn = Just unitTy,
+          sigPayable = False
+        }
+    storeBody = [StmtExp (methodCall "CanStore" "store" [repSlot, methodCall "Generic" "from" [Var (Name "_v")]])]
+    loadSig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "load",
+          sigParams = [Typed False (Name "_r") (storageTyOf mainT)],
+          sigRetComptime = False,
+          sigReturn = Just mainT,
+          sigPayable = False
+        }
+    loadBody =
+      [ Let False (Name "_x") (Just repT) (Just (methodCall "CanStore" "load" [repSlot])),
+        Return (methodCall "Generic" "to" [Var (Name "_x")])
+      ]
+
+boolTy :: Ty
+boolTy = TyCon (Name "bool") []
+
+-- instance <ctx> => T(params) : ABIAttribs {
+--   function headSize(ty : Proxy(T(params))) -> word {
+--     return ABIAttribs.headSize(Proxy : Proxy(<rep>));
+--   }
+--   function isStatic(ty : Proxy(T(params))) -> bool {
+--     return ABIAttribs.isStatic(Proxy : Proxy(<rep>));
+--   }
+-- }
+--
+-- Concrete, so it outranks BOTH the catch-all `default instance t:ABIAttribs`
+-- in std (headSize = 32) and the Generic bridge in std.ABIGeneric.
+buildABIAttribs :: DataTy -> Instance Name
+buildABIAttribs dt =
+  Instance
+    { instDefault = False,
+      instVars = dataParams dt,
+      instContext = [InCls (Name "ABIAttribs") (TyVar tv) [] | tv <- dataParams dt],
+      instName = Name "ABIAttribs",
+      paramsTy = [],
+      mainTy = mainTyOf dt,
+      instFunctions = [FunDef False (sig "headSize" wordTy) (body "headSize"), FunDef False (sig "isStatic" boolTy) (body "isStatic")]
+    }
+  where
+    repT = sopRep dt
+    sig method ret =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name method,
+          sigParams = [Typed False (Name "_ty") (proxyTyOf (mainTyOf dt))],
+          sigRetComptime = False,
+          sigReturn = Just ret,
+          sigPayable = False
+        }
+    body method = [Return (methodCall "ABIAttribs" method [proxyExpOf repT])]
+
+-- ABIDecoder(ty, reader)
+abiDecoderTyOf :: Ty -> Ty -> Ty
+abiDecoderTyOf ty reader = TyCon (Name "ABIDecoder") [ty, reader]
+
+-- instance <ctx> => ABIDecoder(T(params), reader) : ABIDecode(T(params)) {
+--   function decode(ptr : ABIDecoder(T(params), reader), headOffset : word) -> T(params) {
+--     match ptr {
+--     | ABIDecoder(rdr) =>
+--         let rep_ptr : ABIDecoder(<rep>, reader) = ABIDecoder(rdr);
+--         return Generic.to(ABIDecode.decode(rep_ptr, headOffset));
+--     }
+--   }
+-- }
+-- Mirrors std.ABIGeneric's free `decode`, but with the data type fixed in the
+-- instance head so Generic.to is monomorphizable. The reader is left generic
+-- (its WordReader-ness is the only flat obligation); the rep is decoded in the
+-- body through the structural ABIDecode instances.
+buildABIDecode :: DataTy -> Instance Name
+buildABIDecode dt =
+  Instance
+    { instDefault = False,
+      instVars = dataParams dt ++ [readerTv],
+      -- Only the reader and, for parametric types, each parameter's decodability
+      -- are required. The rep's structural ABIDecode is resolved in the body via
+      -- the sum/pair/unit instances (bottoming out at the parameters / concrete
+      -- leaves), so we avoid a rep-sized context that would break Patterson.
+      instContext =
+        InCls (Name "WordReader") readerTy []
+          : [InCls (Name "ABIDecode") (abiDecoderTyOf (TyVar tv) readerTy) [TyVar tv] | tv <- dataParams dt],
+      instName = Name "ABIDecode",
+      paramsTy = [mainT],
+      mainTy = abiDecoderTyOf mainT readerTy,
+      instFunctions = [FunDef False sig body]
+    }
+  where
+    mainT = mainTyOf dt
+    repT = sopRep dt
+    readerTv = TVar (Name "_reader")
+    readerTy = TyVar readerTv
+    sig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "decode",
+          sigParams =
+            [ Typed False (Name "_ptr") (abiDecoderTyOf mainT readerTy),
+              Typed False (Name "_headOffset") wordTy
+            ],
+          sigRetComptime = False,
+          sigReturn = Just mainT,
+          sigPayable = False
+        }
+    body =
+      [ Match
+          [Var (Name "_ptr")]
+          [ ( [PCon (Name "ABIDecoder") [PVar (Name "_rdr")]],
+              [ Let
+                  False
+                  (Name "_rep_ptr")
+                  (Just (abiDecoderTyOf repT readerTy))
+                  (Just (Con (Name "ABIDecoder") [Var (Name "_rdr")])),
+                Return
+                  ( methodCall
+                      "Generic"
+                      "to"
+                      [methodCall "ABIDecode" "decode" [Var (Name "_rep_ptr"), Var (Name "_headOffset")]]
+                  )
+              ]
+            )
+          ]
+      ]

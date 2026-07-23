@@ -2,6 +2,7 @@ module Solcore.Desugarer.StrLiteralDesugar (desugarStrLiterals) where
 
 import Data.Generics
 import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax.Traversal (everywhereButSpans)
 import Solcore.Primitives.Primitives (strClassName)
 
 -- Wrap comptime string values in expression position with a call to
@@ -15,7 +16,7 @@ import Solcore.Primitives.Primitives (strClassName)
 -- and materialize once.  Pattern literals (PLit) are not expressions and are
 -- left untouched.
 desugarStrLiterals :: [TopDecl Name] -> [TopDecl Name]
-desugarStrLiterals = everywhere (mkT desugarExp)
+desugarStrLiterals = everywhereButSpans (mkT desugarExp)
 
 fromStringName :: Name
 fromStringName = QualName strClassName "fromString"

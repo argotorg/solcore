@@ -1,7 +1,6 @@
 module Solcore.Frontend.TypeInference.TcContract where
 
 import Control.Monad
-import Control.Monad.Except
 import Control.Monad.State
 import Data.Generics hiding (Constr)
 import Data.List
@@ -9,9 +8,11 @@ import Data.List.NonEmpty qualified as N
 import Data.Map qualified as Map
 import Data.Maybe
 import Data.Set qualified as Set
+import Solcore.Diagnostics (CompilerError)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax.Traversal (everywhereButSpans, everywhereMButSpans)
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.TcEnv
@@ -40,7 +41,7 @@ typeInferTopDeclChecks ::
   [InstanceHead] ->
   [(Name, [Name])] ->
   [TopDeclCheck Name] ->
-  IO (Either String (CompUnit Id, TcEnv))
+  IO (Either CompilerError (CompUnit Id, TcEnv))
 typeInferTopDeclChecks opts imps trustedInstances partialTypes topDeclChecks =
   do
     r <-
@@ -52,7 +53,7 @@ typeInferTopDeclChecks opts imps trustedInstances partialTypes topDeclChecks =
               partialDataTypeConstructors =
                 Map.fromList
                   [ (partialTypeName, Set.fromList constructorNames)
-                    | (partialTypeName, constructorNames) <- partialTypes
+                  | (partialTypeName, constructorNames) <- partialTypes
                   ]
             }
         )
@@ -77,7 +78,7 @@ expandTyM st (TyCon n ts) = do
       | length params == length ts' ->
           expandTyM st (insts (zip params ts') body)
       | otherwise ->
-          throwError $
+          tcmError $
             unlines
               [ "Type synonym arity mismatch for '" ++ pretty n ++ "':",
                 "  expected " ++ show (length params) ++ " argument(s)",
@@ -93,7 +94,7 @@ tcTopDeclChecks topDeclChecks =
     setupPragmas ps
     checkSynonymCycles syns
     let st = buildSynTable syns
-    csExpanded <- everywhereM (mkM (expandTyM st)) cs
+    csExpanded <- everywhereMButSpans (mkM (expandTyM st)) cs
     mapM_ checkTopDecl (filter isClass csExpanded)
     mapM_ checkTopDecl (filter (not . isClass) csExpanded)
     trustImportedDecls csExpanded
@@ -110,8 +111,8 @@ tcTopDeclChecks topDeclChecks =
       mapM_
         (withPartialDataTypesDisabled . trustImportedTopDecl)
         [ expandedDecl
-          | (topDeclCheck, expandedDecl) <- zip topDeclChecks expandedDecls,
-            topDeclCheckMode topDeclCheck == TrustTopDeclBody
+        | (topDeclCheck, expandedDecl) <- zip topDeclChecks expandedDecls,
+          topDeclCheckMode topDeclCheck == TrustTopDeclBody
         ]
     tcTopDeclWithVisibility topDeclCheck expandedDecl =
       case topDeclCheckMode topDeclCheck of
@@ -162,7 +163,7 @@ findCycle deps = go [] (map fst deps)
 
 recursiveSynonymError :: [Name] -> TcM a
 recursiveSynonymError cyclePath =
-  throwError $
+  tcmError $
     unlines
       [ "Recursive type synonym detected:",
         "  " ++ intercalate " -> " (map pretty cyclePath)
@@ -202,7 +203,7 @@ tcTopDecl (TFunDef fd) =
     fd' <- tcBindGroup [fd]
     case fd' of
       (fd1 : _) -> pure (TFunDef fd1)
-      _ -> throwError "Impossible! Empty binding group!"
+      _ -> tcmError "Impossible! Empty binding group!"
 tcTopDecl (TClassDef c) =
   TClassDef <$> tcClass c
 tcTopDecl (TInstDef is) =
@@ -278,7 +279,7 @@ tcContract c@(Contract n vs cdecls) =
         clearSubst
         d' <- tcDecl d
         s <- getSubst
-        pure (everywhere (mkT (apply @Id s)) d')
+        pure (everywhereButSpans (mkT (apply @Id s)) d')
 
 -- initializing context for a contract
 
@@ -316,7 +317,7 @@ tcDecl (CFunDecl d) =
     requireAnnotations d
     d' <- tcBindGroup [d]
     case d' of
-      [] -> throwError "Impossible! Empty function binding!"
+      [] -> tcmError "Impossible! Empty function binding!"
       (x : _) -> pure (CFunDecl x)
 tcDecl (CMutualDecl ds) =
   do
@@ -409,7 +410,7 @@ tcBindGroup binds =
     let names = map (sigName . funSignature) funs'
     mapM_ (uncurry extEnv) (zip names schs)
     noDesugarCalls <- getNoDesugarCalls
-    let funs1 = everywhere (mkT gen) funs'
+    let funs1 = everywhereButSpans (mkT gen) funs'
     unless noDesugarCalls $ generateTopDeclsFor (zip funs1 schs)
     pure funs1
 
@@ -496,7 +497,7 @@ addClassMethod p@(InCls c _ _) sig@(Signature _ methodCtx f ps _ t _) =
     extEnv qn sch
     pure ()
 addClassMethod p@(_ :~: _) (Signature _ _ n _ _ _ _) =
-  throwError $
+  tcmError $
     unlines
       [ "Invalid constraint:",
         pretty p,
@@ -509,7 +510,7 @@ addClassMethod p@(_ :~: _) (Signature _ _ n _ _ _ _) =
 signatureError :: Name -> Tyvar -> Signature Name -> Ty -> TcM ()
 signatureError n v (Signature _ methodCtx f _ _ _ _) t
   | null methodCtx =
-      throwError $
+      tcmError $
         unlines
           [ "Impossible! Class context is empty in function:",
             pretty f,
@@ -517,7 +518,7 @@ signatureError n v (Signature _ methodCtx f _ _ _ _) t
             pretty n
           ]
   | v `notElem` fv t =
-      throwError $
+      tcmError $
         unlines
           [ "Main class type variable",
             pretty v,
@@ -532,12 +533,24 @@ signatureError n v (Signature _ methodCtx f _ _ _ _) t
 
 duplicatedClassDecl :: Name -> TcM ()
 duplicatedClassDecl n =
-  throwError $ "Duplicated class definition:" ++ pretty n
+  tcDiagnosticErrorAtName
+    "SC0227"
+    ("duplicate class definition: " ++ pretty n)
+    n
+    "duplicate class"
+    []
+    ["rename or remove the duplicate class definition"]
 
 duplicatedClassMethod :: Name -> TcM ()
 duplicatedClassMethod n =
-  throwError $ "Duplicated class method definition:" ++ pretty n
+  tcDiagnosticErrorAtName
+    "SC0228"
+    ("duplicate class method definition: " ++ pretty n)
+    n
+    "duplicate class method"
+    []
+    ["rename or remove the duplicate class method"]
 
 invalidPragmaDecl :: [Pragma] -> TcM ()
 invalidPragmaDecl ps =
-  throwError $ unlines $ ["Invalid pragma definitions:"] ++ map pretty ps
+  tcmError $ unlines $ ["Invalid pragma definitions:"] ++ map pretty ps

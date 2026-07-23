@@ -1,13 +1,39 @@
 import std.{*};
-import std.{uint256, Add};
 import std.dispatch.{*};
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
+import std.opcodes.{address as address_};
+
+function self() -> address {
+    return address(address_());
+}
 
 contract C {
     constructor() {}
     public function nothing() -> () {}
+
+    // Re-enters this very contract via raw_call(address(this), ...). The payload
+    // is the 4-byte selector of an existing entry point (something(), 0xa7a0d537),
+    // built by left-aligning it in a bytes32 and truncating to 4 bytes. The inner
+    // call succeeds, so raw_call reports ok == true and returns its returndata
+    // (the abi-encoded uint256(1)).
+    public function callSelf() -> (bool, memory(bytes)) {
+        let sel: bytes32 = bytes32(0xa7a0d53700000000000000000000000000000000000000000000000000000000);
+        let payload = truncate(to_bytes(sel), 4);
+        match raw_call(self(), uint256(0), payload) {
+            | (ok, ret) => return (ok, ret);
+        }
+    }
+
+    // Same shape, but the selector (0xdeadc0de) matches no entry point, so dispatch
+    // reverts (there is no fallback). raw_call swallows the inner revert and reports
+    // ok == false; this outer call itself still succeeds and returns the revert
+    // returndata (the 4-byte NoFallback error selector).
+    public function callSelfInvalid() -> (bool, memory(bytes)) {
+        let sel: bytes32 = bytes32(0xdeadc0de00000000000000000000000000000000000000000000000000000000);
+        let payload = truncate(to_bytes(sel), 4);
+        match raw_call(self(), uint256(0), payload) {
+            | (ok, ret) => return (ok, ret);
+        }
+    }
 
     public function something() -> (uint256) {
         return uint256(1);
@@ -21,6 +47,32 @@ contract C {
         return Add.add(z, Add.add(x,y));
     }
 
+    public function addmod3(x : uint256, y : uint256, k : uint256) -> uint256 {
+        return addmod(x, y, k);
+    }
+
+    public function mulmod3(x : uint256, y : uint256, k : uint256) -> uint256 {
+        return mulmod(x, y, k);
+    }
+
+    // Bitwise / modulo via the syntactic sugar only (no explicit class calls):
+    //   `^` -> BitXor.bxor, `|` -> BitOr.bor, `&` -> BitAnd.band, `%` -> Mod.mod.
+    public function bxor2(x : uint256, y : uint256) -> uint256 {
+        return x ^ y;
+    }
+
+    public function bor2(x : uint256, y : uint256) -> uint256 {
+        return x | y;
+    }
+
+    public function band2(x : uint256, y : uint256) -> uint256 {
+        return x & y;
+    }
+
+    public function mod2(x : uint256, y : uint256) -> uint256 {
+        return x % y;
+    }
+
     public function id_bytes(b: memory(bytes)) -> memory(bytes) {
         return b;
     }
@@ -31,6 +83,10 @@ contract C {
 
     public function id_bytes32(b: bytes32) -> bytes32 {
         return b;
+    }
+
+    public function id_address(a: address) -> address {
+        return a;
     }
 
     public function id_pair() -> (uint256, uint256) {

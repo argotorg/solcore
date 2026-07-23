@@ -9,7 +9,7 @@ import Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.Patterns (patP)
 import Solcore.Frontend.Parser.SolcoreTypes (predP, typeP)
 import Solcore.Frontend.Parser.Stmt (bodyP, stmtP)
-import Solcore.Frontend.Syntax.Name (Name (..))
+import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -39,7 +39,8 @@ parserTests =
       patternTests,
       exprTests,
       stmtTests,
-      declTests
+      declTests,
+      keywordPrefixTests
     ]
 
 word :: Ty
@@ -253,6 +254,25 @@ exprTests =
           expP
           "lam(x:word) { return x; }"
           (Lam [Typed False "x" word] [Return (var "x")] Nothing)
+    ]
+
+-- | Identifiers that start with a keyword (e.g. `datavalue`, which begins with
+-- `data`) must not be mistaken for the keyword. The lexer's `keyword` parser is
+-- atomic, so a keyword tried as an alternative backtracks instead of consuming
+-- the prefix.
+keywordPrefixTests :: TestTree
+keywordPrefixTests =
+  testGroup
+    "Keyword prefixes"
+    [ testCase "statement-initial assignment to keyword-prefixed name" $
+        parsesAs stmtP "datavalue = 2;" (Assign (var "datavalue") (lit 2)),
+      testCase "statement-initial expression with keyword-prefixed name" $
+        parsesAs stmtP "datavalue;" (StmtExp (var "datavalue")),
+      testCase "contract field with keyword-prefixed name" $
+        parsesAs
+          topDeclP
+          "contract C { datavalue : word; }"
+          (TContr (Contract "C" [] [CFieldDecl (Field "datavalue" word Nothing)]))
     ]
 
 stmtTests :: TestTree

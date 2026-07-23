@@ -28,7 +28,7 @@ where
 {- Partial Evaluator for Mast
    Performs compile-time evaluation where possible:
    - Interprets assembly blocks containing supported Yul arithmetic operations
-   - Folds calls to `subWord`, `gtWord`, `eqWord` with literal arguments
+   - Folds calls to `subWord`, `gtWord`, `bxorWord`, `bandWord`, `borWord`, `eqWord` with literal arguments
    - Propagates known variable values
    - Inlines simple pure functions with literal arguments
 -}
@@ -41,7 +41,6 @@ import Crypto.Hash.Algorithms (Keccak_256)
 import Data.Bits (complement, shiftL, shiftR, xor, (.&.), (.|.))
 import Data.ByteArray qualified as BA
 import Data.ByteString qualified as BS
-import Data.List (foldl')
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -341,6 +340,8 @@ evalStmt tyReg env stmt = case stmt of
       Nothing ->
         pure (Map.empty, [MastAsm yul'])
   MastSeq stmts -> evalStmts tyReg env stmts
+  MastBreak -> pure (env, [MastBreak])
+  MastContinue -> pure (env, [MastContinue])
   MastFor initStmt cond post body -> do
     -- Evaluate loop parts for local simplification, but do not propagate
     -- value bindings across the loop boundary.
@@ -396,6 +397,8 @@ evalLoopStmt env st = case st of
     bodies' <- mapM (fmap snd . evalLoopStmt env) body
     pure (Map.empty, MastFor initStmt' cond' post' bodies')
   MastAsm yul -> pure (Map.empty, MastAsm yul)
+  MastBreak -> pure (env, MastBreak)
+  MastContinue -> pure (env, MastContinue)
   MastSeq stmts -> do
     (env', stmts') <- mapAccumM evalLoopStmt env stmts
     pure (env', MastSeq stmts')
@@ -481,6 +484,12 @@ evalPrimitive (Name "subWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (MastLit (IntLit (maskWord (a - b))))
 evalPrimitive (Name "gtWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just $ mkBool (a > b)
+evalPrimitive (Name "bxorWord") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (maskWord (a `xor` b))))
+evalPrimitive (Name "bandWord") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (maskWord (a .&. b))))
+evalPrimitive (Name "borWord") [MastLit (IntLit a), MastLit (IntLit b)] =
+  Just (MastLit (IntLit (maskWord (a .|. b))))
 evalPrimitive (Name "eqWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just $ mkBool (a == b)
 -- String literal primitives (Solidity/Yul semantics):
@@ -678,7 +687,7 @@ venvToSubst :: VEnv -> Map.Map Name YulExp
 venvToSubst env =
   Map.fromList
     [ (mastIdName k, yulLit l)
-      | (k, MastLit l) <- Map.toList env
+    | (k, MastLit l) <- Map.toList env
     ]
   where
     yulLit (IntLit v) = YLit (YulNumber v)
@@ -763,8 +772,8 @@ tryCloneComptime i args = do
       where
         comptimeParams =
           [ (p, a)
-            | (p, a) <- zip (mastFunParams fd) args,
-              mastParamType p == mastStringTy
+          | (p, a) <- zip (mastFunParams fd) args,
+            mastParamType p == mastStringTy
           ]
         literalOf (p, MastLit l) = Just (p, l)
         literalOf _ = Nothing
@@ -801,7 +810,7 @@ cloneWith fd binds args = do
     env0 =
       Map.fromList
         [ (MastId (mastParamName p) (mastParamType p), MastLit l)
-          | (p, l) <- binds
+        | (p, l) <- binds
         ]
     -- Each new clone costs fuel, permanently.  A recursive callee that derives
     -- a fresh literal on every step would otherwise queue clones forever;
@@ -887,6 +896,8 @@ evalFunBody tyReg env (stmt : rest) = case stmt of
       Just (env', body) -> evalFunBody tyReg env' body
       Nothing -> pure Nothing -- Scrutinee not known, can't select branch
   MastFor {} -> pure Nothing -- Loop execution cannot be folded safely here
+  MastBreak -> pure Nothing -- Control transfer cannot be folded
+  MastContinue -> pure Nothing -- Control transfer cannot be folded
   MastAsm yul -> do
     -- Try to interpret the asm block statically.
     -- If successful, update env and continue inlining; otherwise give up.
@@ -986,6 +997,9 @@ builtinPureFuns =
   Set.fromList $
     [ Name "subWord",
       Name "gtWord",
+      Name "bxorWord",
+      Name "bandWord",
+      Name "borWord",
       Name "eqWord",
       Name "concatLit",
       Name "strlenLit",
@@ -1043,6 +1057,8 @@ stmtIsPure pureFuns (MastFor initStmt cond post body) =
     && expIsPure pureFuns cond
     && stmtIsPure pureFuns post
     && bodyIsPure pureFuns body
+stmtIsPure _ MastBreak = True
+stmtIsPure _ MastContinue = True
 stmtIsPure pureFuns (MastSeq stmts) = bodyIsPure pureFuns stmts
 
 expIsPure :: Set.Set Name -> MastExp -> Bool
@@ -1106,18 +1122,21 @@ eliminateDeadCode cu = cu {mastTopDecls = map elimTopDecl (mastTopDecls cu)}
     elimTopDecl (MastTContr c) = MastTContr (elimContract c)
     elimTopDecl d@(MastTDataDef _) = d
 
-    elimContract c = c {mastContrDecls = filter keepDecl (mastContrDecls c)}
+    elimContract c = c {mastContrDecls = concatMap filterDecl (mastContrDecls c)}
       where
         usedNames = findUsedFunctions c
-        keepDecl (MastCFunDecl fd) = mastFunName fd `Set.member` usedNames
-        keepDecl (MastCMutualDecl ds) =
-          -- Keep mutual block if any function in it is used
-          any isUsedDecl ds
-        keepDecl (MastCDataDecl _) = True
-
-        isUsedDecl (MastCFunDecl fd) = mastFunName fd `Set.member` usedNames
-        isUsedDecl (MastCMutualDecl ds) = any isUsedDecl ds
-        isUsedDecl (MastCDataDecl _) = True
+        -- Drop unreachable functions, recursing into mutual blocks so that
+        -- dead members of a block whose siblings are still reachable are also
+        -- removed (e.g. a helper the deployer only needed before partial
+        -- evaluation folded its call). Data declarations are always kept.
+        filterDecl d@(MastCFunDecl fd)
+          | mastFunName fd `Set.member` usedNames = [d]
+          | otherwise = []
+        filterDecl (MastCMutualDecl ds) =
+          case concatMap filterDecl ds of
+            [] -> []
+            ds' -> [MastCMutualDecl ds']
+        filterDecl d@(MastCDataDecl _) = [d]
 
 -- | Find all functions reachable from root functions
 findUsedFunctions :: MastContract -> Set.Set Name
@@ -1179,6 +1198,8 @@ callsInStmt (MastFor initStmt cond post body) =
     ]
 callsInStmt (MastSeq stmts) = Set.unions (map callsInStmt stmts)
 callsInStmt (MastAsm _) = Set.empty
+callsInStmt MastBreak = Set.empty
+callsInStmt MastContinue = Set.empty
 
 callsInExp :: MastExp -> Set.Set Name
 callsInExp (MastLit _) = Set.empty

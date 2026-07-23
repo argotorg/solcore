@@ -1,7 +1,11 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 module Solcore.Frontend.Syntax.Ty where
 
 import Data.Generics (Data, Typeable)
 import Data.List
+import Solcore.Diagnostics (SourceSpan)
+import Solcore.Frontend.Syntax.Location
 import Solcore.Frontend.Syntax.Name
 
 -- basic typing infrastructure
@@ -21,13 +25,36 @@ isBound _ = False
 
 data Ty
   = TyVar Tyvar -- type variable
-  | TyCon Name [Ty] -- type constructor
+  | TyConWithLocation NodeLocation Name [Ty] -- type constructor
   | Meta MetaTv -- meta type variable
   deriving (Eq, Ord, Show, Data, Typeable)
+
+pattern TyCon :: Name -> [Ty] -> Ty
+pattern TyCon n ts <- TyConWithLocation _ n ts
+  where
+    TyCon n ts = TyConWithLocation unlocatedNode n ts
+
+{-# COMPLETE TyVar, TyCon, Meta #-}
 
 newtype MetaTv
   = MetaTv {metaName :: Name}
   deriving (Eq, Ord, Show, Data, Typeable)
+
+locatedTy :: SourceSpan -> Ty -> Ty
+locatedTy sourceSpan (TyCon n ts) = TyConWithLocation (locatedNode sourceSpan) n ts
+locatedTy _ ty = ty
+
+instance HasSourceSpan Tyvar where
+  sourceSpanOf = sourceSpanOf . tyvarName
+
+instance HasSourceSpan MetaTv where
+  sourceSpanOf = sourceSpanOf . metaName
+
+instance HasSourceSpan Ty where
+  sourceSpanOf (TyVar tyvar) = sourceSpanOf tyvar
+  sourceSpanOf (TyConWithLocation location n ts) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf n, sourceSpanOf ts]
+  sourceSpanOf (Meta metaTv) = sourceSpanOf metaTv
 
 tyconNames :: Ty -> [Name]
 tyconNames (TyCon n ts) =
@@ -110,11 +137,21 @@ data Pred
   | Ty :~: Ty
   deriving (Eq, Ord, Show, Data, Typeable)
 
+instance HasSourceSpan Pred where
+  sourceSpanOf (InCls n t ts) =
+    firstSourceSpan [sourceSpanOf n, sourceSpanOf t, sourceSpanOf ts]
+  sourceSpanOf (left :~: right) =
+    firstSourceSpan [sourceSpanOf left, sourceSpanOf right]
+
 -- qualified types
 
 data Qual t
   = [Pred] :=> t
   deriving (Eq, Ord, Show, Data, Typeable)
+
+instance (HasSourceSpan t) => HasSourceSpan (Qual t) where
+  sourceSpanOf (preds :=> t) =
+    firstSourceSpan [sourceSpanOf preds, sourceSpanOf t]
 
 infix 2 :=>
 
@@ -123,6 +160,10 @@ infix 2 :=>
 data Scheme
   = Forall [Tyvar] (Qual Ty)
   deriving (Eq, Ord, Show, Data, Typeable)
+
+instance HasSourceSpan Scheme where
+  sourceSpanOf (Forall tyvars qualTy) =
+    firstSourceSpan [sourceSpanOf tyvars, sourceSpanOf qualTy]
 
 monotype :: Ty -> Scheme
 monotype t = Forall [] ([] :=> t)

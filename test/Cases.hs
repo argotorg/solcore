@@ -55,6 +55,7 @@ comptime =
       runTestForFile "integer-lit-poly.solc" comptimeFolder,
       runTestForFile "integer-lit-cond.solc" comptimeFolder,
       runTestForFile "integer-lit-pat.solc" comptimeFolder,
+      runTestForFile "uint256-lit.solc" comptimeFolder,
       runTestForFile "match_labels.solc" comptimeFolder,
       -- comptime string materialization into memory(string)
       runTestForFile "string-lit-mem.solc" comptimeFolder,
@@ -109,7 +110,13 @@ spec =
       runTestForFile "121counter.solc" specFolder,
       runTestForFile "126nanoerc20.solc" specFolder,
       runTestForFile "127microerc20.solc" specFolder,
-      runTestForFile "128minierc20.solc" specFolder
+      runTestForFile "128minierc20.solc" specFolder,
+      runTestForFile "129arraystorage.solc" specFolder,
+      runTestForFile "130arrayfield.solc" specFolder,
+      runTestForFile "131localindex.solc" specFolder,
+      runTestForFile "132nestedarray.solc" specFolder,
+      runTestForFile "133arraystring.solc" specFolder,
+      runTestForFile "135aliaspush.solc" specFolder
     ]
   where
     specFolder = "./test/examples/spec"
@@ -119,14 +126,29 @@ dispatches =
   testGroup
     "Files for dispatch cases"
     [ runDispatchTest "basic.solc",
+      runDispatchTest "assembly.solc",
       runDispatchTest "stringid.solc",
+      runDispatchTest "storage.solc",
       runDispatchTest "miniERC20.solc",
       runDispatchTest "Revert.solc",
       runDispatchTest "hashes.solc",
       runDispatchTest "empty.solc",
       runDispatchTest "empty_no_constructor.solc",
       runDispatchTest "generic_product.solc",
-      runDispatchTest "generic_sum.solc"
+      runDispatchTest "generic_sum.solc",
+      runDispatchTest "specialise_sum_of_product.solc",
+      runDispatchTest "storage_adt_field.solc",
+      runDispatchTest "storage_adt_enum.solc",
+      runDispatchTest "storage_adt_bool.solc",
+      runDispatchTest "storage_adt_mapping.solc",
+      runDispatchTest "storage_adt_abi.solc",
+      runDispatchTest "storage_dynamic_field.solc",
+      runDispatchTest "storage_array.solc",
+      runDispatchTest "ufcs_array.solc",
+      runDispatchTest "array_ops.solc",
+      runDispatchTest "array_copy.solc",
+      runDispatchTest "array_string.solc",
+      runDispatchTest "array_nested.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -270,11 +292,14 @@ cases =
       runTestForFile "Add1.solc" caseFolder,
       runTestExpectingFailure "add-moritz.solc" caseFolder,
       runTestForFile "another-subst.solc" caseFolder,
-      runTestForFileWith noDesugarOpt "app.solc" caseFolder,
+      runTestForFile "app.solc" caseFolder,
       runTestForFile "array.solc" caseFolder,
       runTestForFile "assembly.solc" caseFolder,
       runTestExpectingFailure "asm-assign-no-return.solc" caseFolder,
+      runTestExpectingFailure "asm-assign-non-word.solc" caseFolder,
       runTestExpectingFailure "asm-let-no-return.solc" caseFolder,
+      runTestForFile "asm-let-uninit.solc" caseFolder,
+      runTestForFile "asm-let-bool-lit.solc" caseFolder,
       runTestForFile "asm-match-tuple-read.solc" caseFolder,
       runTestForFile "asm-match-tuple-write-read.solc" caseFolder,
       runTestForFile "bal.solc" caseFolder,
@@ -288,13 +313,22 @@ cases =
       runTestForFile "class-context.solc" caseFolder,
       runTestForFile "closure.solc" caseFolder,
       runTestForFile "closure-capture-only.solc" caseFolder,
-      runTestForFileWith noDesugarOpt "Compose.solc" caseFolder,
+      runTestForFile "Compose.solc" caseFolder,
       runTestForFile "Compose3.solc" caseFolder,
       -- The following test makes the test runner throw an exception
       -- , runTestForFile "comp.solc" caseFolder
       runTestForFile "compose0.solc" caseFolder,
-      runTestForFileWith noDesugarOpt "compose_desugared.solc" caseFolder,
+      -- compose_desugared.solc exercises the desugared closure/invoke encoding.
+      -- The generated `invoke` instance requires rank-N polymorphism that the
+      -- type checker cannot infer, so the full pipeline fails typechecking with
+      -- SC0209 ("type is not polymorphic enough"). It previously passed only by
+      -- disabling the desugaring phases via noDesugarOpt; now that that helper is
+      -- gone it is expected to fail.
+      runTestExpectingFailure "compose_desugared.solc" caseFolder,
       runTestForFile "comparisons.solc" caseFolder,
+      runTestForFile "bitwise.solc" caseFolder,
+      runTestForFile "match-bitwise.solc" caseFolder,
+      runTestForFile "modulo.solc" caseFolder,
       runTestForFile "CondExp.solc" caseFolder,
       runTestForFile "constrained-instance.solc" caseFolder,
       runTestForFile "constrained-instance-context.solc" caseFolder,
@@ -347,6 +381,8 @@ cases =
       runTestForFile "foo-class.solc" caseFolder,
       runTestForFile "Foo.solc" caseFolder,
       runTestForFile "for-body-shadow.solc" caseFolder,
+      runTestForFile "for-break.solc" caseFolder,
+      runTestForFile "for-continue.solc" caseFolder,
       runTestForFile "for-empty-init.solc" caseFolder,
       runTestForFile "for-inner-block.solc" caseFolder,
       runTestForFile "for-init-shadow.solc" caseFolder,
@@ -463,6 +499,8 @@ cases =
       runTestExpectingFailure "subject-reduction.solc" caseFolder,
       runTestExpectingFailure "subsumption-test.solc" caseFolder,
       runTestForFile "super-class.solc" caseFolder,
+      runTestForFile "super-class-cycle.solc" caseFolder,
+      runTestExpectingFailure "super-class-cycle-fail.solc" caseFolder,
       runTestForFile "super-class-num.solc" caseFolder,
       runTestForFile "tiamat.solc" caseFolder,
       runTestForFile "tuple-trick.solc" caseFolder,
@@ -473,6 +511,7 @@ cases =
       runTestExpectingFailure "unconstrained-instance.solc" caseFolder,
       runTestForFile "undefined.solc" caseFolder,
       runTestForFile "uintdesugared.solc" caseFolder,
+      runTestForFile "ufcs-no-conflict.solc" caseFolder,
       runTestForFile "unit.solc" caseFolder,
       runTestExpectingFailure "vartyped.solc" caseFolder,
       runTestExpectingFailure "weirdfoo.solc" caseFolder,
@@ -482,6 +521,8 @@ cases =
       runTestExpectingFailure "xref.solc" caseFolder,
       runTestForFile "yul-function-typing.solc" caseFolder,
       runTestForFile "yul-return.solc" caseFolder,
+      runTestForFile "yul-multi-return.solc" caseFolder,
+      runTestExpectingFailure "yul-multi-return-arity-fail.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_patterson.solc" caseFolder,
       runTestExpectingFailure "pragma_merge_fail_coverage.solc" caseFolder,
       runTestForFile "single-lambda.solc" caseFolder,
@@ -500,6 +541,17 @@ cases =
       runTestExpectingFailure "instance-context-wrong-kind.solc" caseFolder,
       runTestForFile "instance-closure-error.solc" caseFolder,
       runTestExpectingFailure "instance-closure-error-invalid-member.solc" caseFolder,
+      -- functions returning functions: validate that the single type-inference
+      -- pass still catches lambda type errors that closure conversion could mask.
+      runTestForFile "return-fun-adder.solc" caseFolder,
+      runTestForFile "return-fun-const.solc" caseFolder,
+      runTestForFile "return-fun-instance.solc" caseFolder,
+      runTestForFile "return-fun-eq.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-param.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-return.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-arity.solc" caseFolder,
+      runTestExpectingFailure "return-fun-bad-sig.solc" caseFolder,
+      runTestExpectingFailure "return-fun-not-fun.solc" caseFolder,
       runTestForFile "field-name-error.solc" caseFolder,
       runTestForFile "field-helper-cxt-collision.solc" caseFolder,
       runTestExpectingFailure "field-access.solc" caseFolder,
@@ -539,10 +591,68 @@ cases =
       runTestExpectingFailure "catenable-err.solc" caseFolder,
       runTestForFile "pars.solc" caseFolder,
       runTestForFile "bug-rep-name-capture.solc" caseFolder,
-      runTestForFile "bug-import-default-inst-shadow.solc" caseFolder
+      runTestForFile "bug-import-default-inst-shadow.solc" caseFolder,
+      runTestExpectingFailure "array-elem-no-storagecopy.solc" caseFolder,
+      runTestExpectingFailure "array-push-no-canstore.solc" caseFolder,
+      -- Storage derivation for ADTs. These need dispatch generation: without a
+      -- generated `main` the contract constructor is dead code, so the field's
+      -- CanStore obligation is never forced and the negative cases would pass.
+      runTestForFileWith dispatchOpt "storage-adt-recursive-ok.solc" caseFolder,
+      runTestExpectingFailureWith dispatchOpt "storage-adt-recursive-fail.solc" caseFolder,
+      runTestExpectingFailureWith dispatchOpt "storage-adt-mapping-field-fail.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"
+    dispatchOpt = emptyOption mempty
+
+tabledResolution :: TestTree
+tabledResolution =
+  testGroup
+    "Tabled type class resolution"
+    [ testGroup
+        "Cases"
+        [ runTabledTestForFile "constrained-instance.solc" caseFolder,
+          runTabledTestForFile "constrained-instance-context.solc" caseFolder,
+          runTabledTestForFile "constructor-weak-args.solc" caseFolder,
+          runTabledTestForFile "EqQual.solc" caseFolder,
+          runTabledTestForFile "super-class.solc" caseFolder,
+          runTabledTestForFile "super-class-num.solc" caseFolder,
+          runTabledTestForFile "field-helper-cxt-collision.solc" caseFolder,
+          runTabledTestForFile "instance-synonym.solc" caseFolder,
+          runTabledTestForFile "invokable-issue.solc" caseFolder,
+          runTabledTestForFile "td.solc" caseFolder,
+          runTabledTestForFile "tuple-trick.solc" caseFolder,
+          runTabledTestForFile "typedef.solc" caseFolder,
+          runTabledTestForFile "word-match.solc" caseFolder,
+          runTabledTestExpectingFailure "tabled-cycle-fail.solc" caseFolder
+        ],
+      testGroup
+        "Conformance"
+        [ runTabledTestForFile "tabled-answer-reuse.solc" caseFolder,
+          runTabledTestForFile "tabled-default-instance.solc" caseFolder,
+          runTabledTestForFile "tabled-given-order.solc" caseFolder,
+          runTabledTestForFile "tabled-mutual-chain.solc" caseFolder,
+          runTabledTestForFile "tabled-residual-given.solc" caseFolder,
+          runTabledTestForFile "super-class-cycle.solc" caseFolder,
+          runTabledTestExpectingFailure "super-class-cycle-fail.solc" caseFolder,
+          runTabledTestForFile "super-class-recursive-arg.solc" caseFolder,
+          runTabledTestExpectingFailure "tabled-left-recursive-fail.solc" caseFolder
+        ],
+      testGroup
+        "Spec"
+        [ runTabledTestForFile "024arith.solc" specFolder,
+          runTabledTestForFile "031maybe.solc" specFolder,
+          runTabledTestForFile "041pair.solc" specFolder,
+          runTabledTestForFile "047rgb.solc" specFolder
+        ],
+      testGroup
+        "Standard library"
+        [ runTabledTestForFile "std.solc" stdFolder
+        ]
+    ]
+  where
+    caseFolder = "./test/examples/cases"
+    specFolder = "./test/examples/spec"
 
 -- basic infrastructure for tests
 
@@ -557,7 +667,31 @@ runTestForFile file folder = runTestForFileWith option file folder
 
 runTestForFileWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestForFileWith opts file folder =
-  testCase file $ do
+  runNamedTestForFile file opts file folder
+
+runTabledTestForFile :: FileName -> BaseFolder -> TestTree
+runTabledTestForFile file folder =
+  runNamedTestForFile (file ++ " (tabled)") option file folder
+  where
+    option =
+      stdOpt
+        { optNoGenDispatch = True,
+          optTypeClassResolution = TabledResolution
+        }
+
+runTabledTestExpectingFailure :: FileName -> BaseFolder -> TestTree
+runTabledTestExpectingFailure file folder =
+  runNamedTestExpectingFailure (file ++ " (tabled)") option file folder
+  where
+    option =
+      stdOpt
+        { optNoGenDispatch = True,
+          optTypeClassResolution = TabledResolution
+        }
+
+runNamedTestForFile :: String -> Option -> FileName -> BaseFolder -> TestTree
+runNamedTestForFile testName opts file folder =
+  testCase testName $ do
     let filePath = folder </> file
     result <- compile (opts {fileName = filePath, optRootDir = folder})
     case result of
@@ -571,7 +705,11 @@ runTestExpectingFailure file folder = runTestExpectingFailureWith option file fo
 
 runTestExpectingFailureWith :: Option -> FileName -> BaseFolder -> TestTree
 runTestExpectingFailureWith opts file folder =
-  testCase file $ do
+  runNamedTestExpectingFailure file opts file folder
+
+runNamedTestExpectingFailure :: String -> Option -> FileName -> BaseFolder -> TestTree
+runNamedTestExpectingFailure testName opts file folder =
+  testCase testName $ do
     let filePath = folder </> file
     outcome <- try (compile opts {fileName = filePath, optRootDir = folder})
     case outcome of

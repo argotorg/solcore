@@ -14,7 +14,7 @@ import Solcore.Frontend.Pretty.SolcorePretty ()
 import Solcore.Frontend.Syntax.Contract (DataTy (..), Import (..))
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
-import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..))
+import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..), pattern TyCon)
 import Solcore.Primitives.Primitives (word)
 
 deployerName :: Name
@@ -124,6 +124,8 @@ data MastStmt
   | MastReturn MastExp
   | MastMatch MastExp [MastAlt]
   | MastFor MastStmt MastExp MastStmt [MastStmt]
+  | MastBreak
+  | MastContinue
   | MastAsm YulBlock
   | MastSeq [MastStmt]
   deriving (Eq, Ord, Show)
@@ -265,6 +267,8 @@ instance Pretty MastStmt where
       <+> lbrace
       $$ nest 3 (vcat (map ppr yblk))
       $$ rbrace
+  ppr MastBreak = text "break" >< semi
+  ppr MastContinue = text "continue" >< semi
   ppr (MastSeq stmts) = hsep (punctuate comma (map ppr stmts))
 
 pprMastAlt :: MastAlt -> Doc

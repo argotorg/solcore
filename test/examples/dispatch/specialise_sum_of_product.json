@@ -1,0 +1,28 @@
+{
+  "SpecialiseSumOfProduct": {
+    "bytecode": "_CODE",
+    "contract": "SpecialiseSumOfProduct",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "probe()(uint256) -> 6 : Total over sum((word,word),word) on inl((1,2)) = (1+1)+(2+2). Regression for the specMatch substitution-leak bug (yule used to reject the hull).",
+          "calldata": "b74af5a9",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000006",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

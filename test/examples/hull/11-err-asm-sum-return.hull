@@ -1,0 +1,18 @@
+// Error: lookup() returns a sum (word + word), which occupies 2 word-sized
+//        slots (tag + payload), but the assignment binds it into the single
+//        word `r`. returnCount must agree with yule's sizeOf here, otherwise
+//        yule lowers a 2-slot Yul return into a 1-slot LHS, which solc rejects.
+object AsmSumReturn {
+  code {
+    function lookup() -> word + word {
+      return inl<word + word> 7
+    }
+    function caller() -> word {
+      let r : word
+      assembly {
+        r := usr$lookup()
+      }
+      return r
+    }
+  }
+}
