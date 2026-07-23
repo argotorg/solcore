@@ -97,25 +97,6 @@ sumDataTy =
 builtinDataInfo :: [(Name, DataTy)]
 builtinDataInfo = [("sum", sumDataTy)]
 
--- | The comptime-only integer type.  Values of this type must be fully
--- eliminated by MastEval before hull emission; reaching here is a bug.
-mastIntegerTy :: MastTy
-mastIntegerTy = MastTyCon (Name "integer") []
-
--- | The comptime-only string type.  A `string` has no runtime representation
--- (it is an empty `data string;`); it must be folded away or materialized into
--- memory(string) via Str.fromString before hull emission.  Reaching here is a
--- bug, and without this guard it would surface as a cryptic "empty sum string".
-mastStringTy :: MastTy
-mastStringTy = MastTyCon (Name "string") []
-
--- | Name of a comptime-only type if the given type is one, for guard messages.
-comptimeOnlyMastName :: MastTy -> Maybe String
-comptimeOnlyMastName t
-  | t == mastIntegerTy = Just "integer"
-  | t == mastStringTy = Just "string"
-  | otherwise = Nothing
-
 type VSubst = Map.Map Name Hull.Expr
 
 emptyVSubst :: VSubst

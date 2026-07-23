@@ -61,6 +61,7 @@ comptime =
       runTestForFile "string-concat-mem.solc" comptimeFolder,
       runTestForFile "string-lit-dedup.solc" comptimeFolder,
       runTestForFile "string-user-instance.solc" comptimeFolder,
+      runTestForFile "string-param-erasure.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
       runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,

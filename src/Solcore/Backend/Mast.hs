@@ -36,6 +36,25 @@ data MastTy = MastTyCon Name [MastTy]
 pattern MastArrow :: MastTy -> MastTy -> MastTy
 pattern MastArrow a b = MastTyCon (Name "->") [a, b]
 
+-- | The comptime-only integer type.  Values of this type must be fully
+-- eliminated by MastEval before hull emission.
+mastIntegerTy :: MastTy
+mastIntegerTy = MastTyCon (Name "integer") []
+
+-- | The comptime-only string type.  A `string` has no runtime representation
+-- (it is an empty `data string;`); it must be folded away, materialized into
+-- memory(string) via Str.fromString, or substituted into a clone by MastEval
+-- before hull emission.
+mastStringTy :: MastTy
+mastStringTy = MastTyCon (Name "string") []
+
+-- | Name of a comptime-only type if the given type is one, for guard messages.
+comptimeOnlyMastName :: MastTy -> Maybe String
+comptimeOnlyMastName t
+  | t == mastIntegerTy = Just "integer"
+  | t == mastStringTy = Just "string"
+  | otherwise = Nothing
+
 -----------------------------------------------------------------------
 -- Identifiers: name + monomorphic type
 -----------------------------------------------------------------------

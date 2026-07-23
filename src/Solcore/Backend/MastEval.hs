@@ -33,6 +33,7 @@ where
    - Inlines simple pure functions with literal arguments
 -}
 
+import Control.Applicative ((<|>))
 import Control.Monad.Reader
 import Control.Monad.State
 import Crypto.Hash (Digest, hash)
@@ -42,6 +43,7 @@ import Data.ByteArray qualified as BA
 import Data.ByteString qualified as BS
 import Data.List (foldl')
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -88,9 +90,21 @@ data EvalEnv = EvalEnv
     envComptimeMode :: Bool -- True while evaluating a comptime let RHS
   }
 
+-- Identifies a clone of a function: the callee, plus the literal bound to each
+-- of its comptime-only parameters.  Two call sites passing the same literals
+-- share one clone.
+type CloneKey = (Name, [(Name, Literal)])
+
 data EvalState = EvalState
   { esFuel :: !Fuel,
-    esMem :: !(Map.Map Integer Word8)
+    esMem :: !(Map.Map Integer Word8),
+    -- clones created so far, for reuse across call sites
+    esCloneNames :: !(Map.Map CloneKey Name),
+    -- clone definitions, by clone name; kept for clone-of-clone lookups
+    esCloneDefs :: !(Map.Map Name MastFunDef),
+    -- clones created but not yet evaluated, with the environment binding their
+    -- erased parameters
+    esPendingClones :: ![(MastFunDef, VEnv)]
   }
 
 -- Reader for constant environment, State for fuel + memory
@@ -98,7 +112,14 @@ type EvalM = ReaderT EvalEnv (State EvalState)
 
 runEvalM :: EvalEnv -> Fuel -> EvalM a -> (a, Fuel)
 runEvalM env fuel m =
-  let initState = EvalState {esFuel = fuel, esMem = Map.empty}
+  let initState =
+        EvalState
+          { esFuel = fuel,
+            esMem = Map.empty,
+            esCloneNames = Map.empty,
+            esCloneDefs = Map.empty,
+            esPendingClones = []
+          }
       (a, finalState) = runState (runReaderT m env) initState
    in (a, esFuel finalState)
 
@@ -198,8 +219,40 @@ evalTopDecl d@(MastTDataDef _) = pure d
 
 evalContract :: MastContract -> EvalM MastContract
 evalContract c = do
+  -- Clones are emitted into the contract that needed them, so a clone from an
+  -- earlier contract must not be reused here: it lives in a different Yul
+  -- object.  Names stay globally unique (esCloneDefs is never reset), so the
+  -- two contracts get distinct copies rather than a dangling call.
+  lift $ modify (\s -> s {esCloneNames = Map.empty})
   decls' <- mapM evalContractDecl (mastContrDecls c)
-  pure $ c {mastContrDecls = decls'}
+  clones <- drainClones
+  pure $ c {mastContrDecls = decls' ++ map MastCFunDecl clones}
+
+-- Evaluate the clones queued while the contract was evaluated, and any queued
+-- in turn by those.  Each clone is emitted into the contract whose code
+-- created it, so it lands in the same Yul object as its caller.
+drainClones :: EvalM [MastFunDef]
+drainClones = go []
+  where
+    go acc = do
+      pending <- lift $ gets esPendingClones
+      if null pending
+        then pure (reverse acc)
+        else do
+          lift $ modify (\s -> s {esPendingClones = []})
+          evaluated <- mapM evalCloneDef (reverse pending)
+          go (reverse evaluated ++ acc)
+
+-- Like `evalFunDef`, but the erased parameters start out bound to their
+-- literals, which is what substitutes them into the body.
+evalCloneDef :: (MastFunDef, VEnv) -> EvalM MastFunDef
+evalCloneDef (fd, env0) = do
+  modifyMem (const Map.empty)
+  let tyReg = buildTypeReg (mastFunParams fd) (mastFunBody fd)
+  (_, body') <- evalStmts tyReg env0 (mastFunBody fd)
+  let fd' = fd {mastFunBody = body'}
+  lift $ modify (\s -> s {esCloneDefs = Map.insert (mastFunName fd) fd' (esCloneDefs s)})
+  pure fd'
 
 evalContractDecl :: MastContractDecl -> EvalM MastContractDecl
 evalContractDecl (MastCFunDecl fd) = MastCFunDecl <$> evalFunDef fd
@@ -402,9 +455,11 @@ evalExp env (MastCall i args) = do
         then do
           result <- tryInline fname args'
           restoreFuel -- Restore fuel: it acts purely as recursion depth limit
-          pure $ case result of
-            Just r -> r
-            Nothing -> MastCall i args'
+          case result of
+            Just r -> pure r
+            -- Not foldable to a value: the call stays, but it may still carry
+            -- comptime-only arguments that have to be erased from the callee.
+            Nothing -> fromMaybe (MastCall i args') <$> tryCloneComptime i args'
         else pure $ MastCall i args'
 evalExp env (MastCon i es) = do
   es' <- mapM (evalExp env) es
@@ -670,6 +725,113 @@ mergeYulStateToVEnv tyReg yulState venv =
       case Map.lookup n tyReg of
         Just mastId -> Map.insert mastId (MastLit (IntLit v)) acc
         Nothing -> acc
+
+-----------------------------------------------------------------------
+-- Comptime-only parameter erasure
+-----------------------------------------------------------------------
+
+-- A `string` parameter has no runtime representation, so a function carrying
+-- one can never be emitted.  Such a function survives specialisation only
+-- because its argument is a comptime value: substituting that value into the
+-- body and dropping the parameter is what makes it emittable.
+--
+-- This is not an optimisation but a requirement, and it is why the pass runs
+-- here rather than in Specialise: by this point the argument has already been
+-- folded, so `f(concatLit("ab", "cd"))` presents the same single literal to
+-- the clone as `f("abcd")` does.
+--
+-- The motivating case is a source instance of the `Str` class, whose method
+-- materializes its argument.  Inside the method body the argument is a
+-- parameter, so the materializer would never see a literal; after cloning it
+-- does, and EmitHull's per-literal intercept fires as usual.
+
+-- Try to specialise a call by substituting literal arguments for the callee's
+-- comptime-only parameters.  Returns a call to the clone, with those arguments
+-- dropped.  Gives up (leaving the original call, and hence EmitHull's guard to
+-- report it) when any such parameter has a non-literal argument.
+tryCloneComptime :: MastId -> [MastExp] -> EvalM (Maybe MastExp)
+tryCloneComptime i args = do
+  mfd <- lookupFunDef (mastIdName i)
+  case mfd of
+    Nothing -> pure Nothing
+    Just fd
+      | length (mastFunParams fd) /= length args -> pure Nothing
+      | null comptimeParams -> pure Nothing
+      | otherwise -> case mapM literalOf comptimeParams of
+          Nothing -> pure Nothing
+          Just binds -> cloneWith fd binds args
+      where
+        comptimeParams =
+          [ (p, a)
+            | (p, a) <- zip (mastFunParams fd) args,
+              mastParamType p == mastStringTy
+          ]
+        literalOf (p, MastLit l) = Just (p, l)
+        literalOf _ = Nothing
+
+-- Clone definitions are not in the (immutable) function table, so a clone
+-- calling another cloneable function must be found in the state as well.
+lookupFunDef :: Name -> EvalM (Maybe MastFunDef)
+lookupFunDef n = do
+  ft <- askFunTable
+  clones <- lift $ gets esCloneDefs
+  pure (Map.lookup n ft <|> Map.lookup n clones)
+
+-- Create (or reuse) the clone of `fd` in which each listed parameter is bound
+-- to its literal, and build the call to it with those arguments dropped.
+--
+-- The substitution itself is left to the evaluator: the clone is queued with a
+-- variable environment binding the erased parameters, and evaluating its body
+-- under that environment both substitutes the literals and folds whatever they
+-- unlock.  This reuses the propagation `evalStmts` already performs rather
+-- than adding a second, parallel substitution traversal.
+cloneWith :: MastFunDef -> [(MastParam, Literal)] -> [MastExp] -> EvalM (Maybe MastExp)
+cloneWith fd binds args = do
+  known <- lift $ gets (Map.lookup key . esCloneNames)
+  mname <- maybe register (pure . Just) known
+  pure (call <$> mname)
+  where
+    call name' = MastCall (MastId name' cloneTy) keptArgs
+    key = (mastFunName fd, [(mastParamName p, l) | (p, l) <- binds])
+    boundNames = map (mastParamName . fst) binds
+    isKept p = mastParamName p `notElem` boundNames
+    keptParams = filter isKept (mastFunParams fd)
+    keptArgs = [a | (p, a) <- zip (mastFunParams fd) args, isKept p]
+    cloneTy = foldr (MastArrow . mastParamType) (mastFunReturn fd) keptParams
+    env0 =
+      Map.fromList
+        [ (MastId (mastParamName p) (mastParamType p), MastLit l)
+          | (p, l) <- binds
+        ]
+    -- Each new clone costs fuel, permanently.  A recursive callee that derives
+    -- a fresh literal on every step would otherwise queue clones forever;
+    -- exhausting the budget stops that and is already reported to the user.
+    register = do
+      hasFuel <- useFuel
+      if not hasFuel
+        then pure Nothing
+        else do
+          n <- freshCloneName (mastFunName fd)
+          let clone = fd {mastFunName = n, mastFunParams = keptParams}
+          lift $
+            modify
+              ( \s ->
+                  s
+                    { esCloneNames = Map.insert key n (esCloneNames s),
+                      esCloneDefs = Map.insert n clone (esCloneDefs s),
+                      esPendingClones = (clone, env0) : esPendingClones s
+                    }
+              )
+          pure (Just n)
+
+freshCloneName :: Name -> EvalM Name
+freshCloneName base = do
+  n <- lift $ gets (Map.size . esCloneDefs)
+  pure (suffixName base ("$ct" ++ show n))
+
+suffixName :: Name -> String -> Name
+suffixName (Name s) suffix = Name (s ++ suffix)
+suffixName (QualName q s) suffix = QualName q (s ++ suffix)
 
 -----------------------------------------------------------------------
 -- Function inlining

@@ -33,9 +33,11 @@ work.
   function returns `memory(string)` is a **type error** — exactly as `integer`
   requires an explicit `wordFromInteger` rather than auto-coercing a variable.
   Write `return Str.fromString(s);`.
-- The conversion's argument must fold to a literal **in the scope where
-  `Str.fromString` is applied** (see [Materialization](#materialization-in-emithull)
-  for why a `string`-taking helper function does not work without inlining).
+- The conversion's argument must fold to a literal, but not necessarily in the
+  scope where `Str.fromString` is applied: a function taking a `string`
+  parameter is cloned per literal argument by
+  [parameter erasure](#comptime-only-parameter-erasure), so helpers and source
+  `Str` instances work.
 
 ### What already exists
 
@@ -100,16 +102,18 @@ a program may declare its own `Str` instance for
 its own type, and `Str.fromString` at that result type is specialised through the
 ordinary resolution table (`Specialise.specCall` falls through for any ground
 result type that is neither `string` nor `memory(string)`).  What such an
-instance can *do* is limited by the function boundary described under
-[Materialization](#materialization-in-emithull): inside the method body the
-argument is a parameter, not a literal.  An instance whose body consumes the
-string at comptime (`strlenLit`, `keccakLit`, …) folds away and works — see
-`test/examples/comptime/string-user-instance.solc`.  An instance that tries to
-*materialize* — `instance Error : Str { fromString(s) = Error.Msg(Str.fromString(s)) }`,
-which would give `require(cond, "msg")` — does not: it reaches emission with a
-live `string` parameter and is rejected by the `comptimeOnlyMastName` guard.
-Lifting that needs literal-keyed specialisation (substituting comptime-only-typed
-arguments into the specialised body); see gaps.
+instance may either consume the string at comptime (`strlenLit`, `keccakLit`, …,
+which simply folds away — see `test/examples/comptime/string-user-instance.solc`)
+or materialize it, which crosses the function boundary described under
+[Materialization](#materialization-in-emithull) and relies on
+[parameter erasure](#comptime-only-parameter-erasure).  `std.solc` uses the
+latter for
+
+```
+instance Error : Str { fromString(s) = Error.Msg(Str.fromString(s)) }
+```
+
+which is what makes `require(cond, "message")` work.
 
 Note that `memory(string)` is a **compound** instance head
 (`TyCon "memory" [TyCon "string" []]`), unlike the nullary `word`/`integer`
@@ -267,14 +271,52 @@ to be a literal *at that point*.  This holds when `Str.fromString` is applied to
 - a local `string` variable whose comptime `let` folds to a literal and is
   substituted by dead-let elimination in the same function scope.
 
-It does **not** hold across a function boundary: a helper
+It does **not** hold across a function boundary on its own: a helper
 `toMemory(s : string) { return Str.fromString(s); }` specializes to
 `memStringFromLit(s_param)` with `s_param` a `MastVar`, never a `StrLit`.
 `memStringFromLit` is impure, so MastEval will not inline the helper (unlike
 pure helpers such as `Num.fromInteger`), and specialization is by type, not by
-literal value.  A readable `toMemory` helper would require an "always inline"
-mechanism, which is out of scope.  For now, apply `Str.fromString` directly
-where the literal is in scope.
+literal value.  [Parameter erasure](#comptime-only-parameter-erasure) is what
+restores the invariant across that boundary.
+
+### Comptime-only parameter erasure
+
+A `string` parameter has no runtime representation, so a function carrying one
+can never be emitted — it survives specialisation only because its argument is a
+comptime value.  `MastEval.tryCloneComptime` therefore treats erasure as a
+requirement rather than an optimisation: at a call whose callee has
+`string`-typed parameters bound to literal arguments, it clones the callee with
+those parameters bound to their literals, **drops them from the clone's
+signature and the arguments from the call site**, and rewrites the call.  Inside
+the clone the materializer once again sees a `StrLit`, so EmitHull's intercept
+fires unchanged — the backend needs no knowledge of this pass.
+
+The hook is the point in `evalExp (MastCall …)` where `tryInline` has already
+declined to fold the call.  Running here rather than in `Specialise` is what
+makes the argument reliable: by this point it has been folded, so
+
+```solidity
+require(cond, "insufficient balance");
+require(cond, concatLit("insufficient", " balance"));
+```
+
+present the *same* literal to the clone, and dedup (keyed on callee plus bound
+literals) gives them **one** clone and one `__strlit_*` allocator between them.
+In `Specialise` the second form would still be an unevaluated `concatLit` call.
+
+Clones are queued rather than substituted eagerly: `evalCloneDef` evaluates each
+one with its erased parameters pre-bound in the variable environment, so the
+existing propagation in `evalStmts` performs the substitution and folds whatever
+it unlocks, and a clone that spawns further clones is handled by the same
+worklist.  `evalContract` drains the queue into the contract whose code created
+it, so a clone lands in the same Yul object as its caller.
+
+When a `string` parameter's argument is *not* a literal even after folding, the
+pass declines and the call is left alone — the value genuinely is not a comptime
+constant, and EmitHull's guard reports it.  Erasure is deliberately restricted
+to `string`: `integer` parameters already disappear through the existing
+`wordFromInteger`/`IntLit` folding, so including them would perturb a
+well-tested path for no gain.
 
 ### Mechanism (inline `mstore`, first cut)
 
@@ -624,8 +666,9 @@ Already-passing string tests unaffected by the desugaring: `string-lit-ops`,
 |---|---|---|
 | Inline `mstore` materializer code size | Large literals bloat bytecode | `code(string) : Str` data-section path |
 | `code(a)` type constructor | No data-section strategy yet | Future additive instance + `codecopy` conversion |
-| No `string`-taking helper (`toMemory`) | Must apply `Str.fromString` where the literal is in scope | "Always inline" annotation for helpers (own work) |
-| Source `Str` instance cannot materialize | `instance Error : Str` typechecks and specialises but hits the comptime-only guard at emission, so `require(cond, "msg")` still needs `requireStr` | Literal-keyed specialisation: extend the `Resolution` key with comptime-only-typed argument values and substitute them into the specialised body |
+| ~~No `string`-taking helper (`toMemory`)~~ | ~~Must apply `Str.fromString` where the literal is in scope~~ | ✓ comptime-only parameter erasure clones the callee per literal (`MastEval.tryCloneComptime`) |
+| ~~Source `Str` instance cannot materialize~~ | ~~`instance Error : Str` hits the comptime-only guard at emission~~ | ✓ same mechanism; `require(cond, "msg")` now works and `requireStr` is gone |
+| `integer` parameters are not erased | A helper taking `integer` still relies on MastEval folding it away entirely | Erasure is deliberately restricted to `string`; extend if the integer path ever needs it |
 | String literals in constructor/deploy code | Allocators emitted into runtime object only; a deploy-side call would not resolve | Emit allocators into the object that references them, or duplicate |
 | ~~No runtime/ABI value test~~ | ~~correctness of returned bytes unchecked~~ | ✓ `dispatch/stringlit.json` returns `memory(string)`, asserted via evmone |
 | ~~No clean `string` EmitHull guard message~~ | ~~"empty sum string" crash~~ | ✓ `comptimeOnlyMastName` guards on return/param/let (`EmitHull.hs`) |
