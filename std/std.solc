@@ -49,8 +49,6 @@ export {
   Sub,
   Typedef,
   WordReader,
-  abiArrayGet,
-  abiArrayLength,
   abi_decode,
   abi_encode,
   addWord,
