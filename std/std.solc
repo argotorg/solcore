@@ -1583,10 +1583,21 @@ forall t . function abiArrayLength(a : calldata(array(t))) -> uint256 {
     return uint256(WordReader.read(rdr));
 }
 
-// Decode element `i` of a calldata array on demand. Elements sit inline after
-// the length word, each occupying `headSize` bytes, so element `i` starts at
-// (handle + 32) + i * headSize. A fresh element decoder is aimed at the first
-// element and the per-element offset is threaded through as the head offset.
+// Decode element `i` of a calldata array on demand. The element region starts
+// one word after the handle (past the length word). Two layouts, per the ABI:
+//
+//   * static element type  -> elements sit inline, each headSize(t) bytes, so
+//     element i starts at (handle + 32) + i * headSize(t). The element decoder
+//     is aimed at the region base and the per-element offset is threaded as the
+//     head offset.
+//
+//   * dynamic element type -> the region holds a table of 32-byte offsets (one
+//     per element, relative to the region base), each pointing at that
+//     element's own encoding. We read offset i, then REBASE a fresh decoder
+//     onto the element's start (handle + 32 + off_i) and decode it at head
+//     offset 0. Rebasing is what makes the element's own inner offsets
+//     (e.g. a memory(bytes) leaf) resolve relative to the element, exactly as
+//     they were encoded.
 forall t t_decoded .
     t : ABIAttribs,
     ABIDecoder(t, CalldataWordReader):ABIDecode(t_decoded) =>
@@ -1595,12 +1606,21 @@ function abiArrayGet(a : calldata(array(t)), i : uint256) -> t_decoded {
     // the last element, so reject i >= length (mirrors the storage-array guard).
     require(i < abiArrayLength(a), Error(0x7f52b2bf)); // ArrayOutOfBounds()
     let base : word = Typedef.rep(a);
-    let elemRdr : CalldataWordReader = CalldataWordReader(base + 32);
-    let dec : ABIDecoder(t, CalldataWordReader) = ABIDecoder(elemRdr);
+    let elemRegion : word = base + 32;
     let prx : Proxy(t);
-    let stride : word = ABIAttribs.headSize(prx);
-    let off : word = Typedef.rep(i) * stride;
-    return ABIDecode.decode(dec, off);
+    let idx : word = Typedef.rep(i);
+    match ABIAttribs.isStatic(prx) {
+    | true =>
+        let elemRdr : CalldataWordReader = CalldataWordReader(elemRegion);
+        let dec : ABIDecoder(t, CalldataWordReader) = ABIDecoder(elemRdr);
+        return ABIDecode.decode(dec, idx * ABIAttribs.headSize(prx));
+    | false =>
+        let offSlot : CalldataWordReader = CalldataWordReader(elemRegion + idx * 32);
+        let elemOff : word = WordReader.read(offSlot);
+        let elemRdr : CalldataWordReader = CalldataWordReader(elemRegion + elemOff);
+        let dec : ABIDecoder(t, CalldataWordReader) = ABIDecoder(elemRdr);
+        return ABIDecode.decode(dec, 0);
+    }
 }
 
 

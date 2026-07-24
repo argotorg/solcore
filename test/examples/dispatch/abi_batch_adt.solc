@@ -15,14 +15,17 @@ import std.ABIGeneric.{*};
 // abiArrayGet, decoding the element on demand into a fully-formed `Batch` to
 // match on — exercising the derived ABIDecode across three nested data types.
 //
-// This is a COMPILE-level test (registered via runDispatchTest, which only
-// compiles the contract — the runtime .json fixture is a separate step). The
-// Queue path is a fully static nested sum-of-product that the fixed-width
-// element codec handles. The Execute path carries a dynamic memory(bytes);
-// materialising that out of a fixed-width inline array element is beyond the
-// current "static sums only" codec (see std.ABIGeneric), so there is no runtime
-// calldata fixture for it yet. The test pins that the types and the extraction
-// logic type-check and lower through the whole pipeline.
+// `Batch` is a *dynamic* element (its Execute branch carries a memory(bytes)),
+// so the array uses the offset-table layout: after the length word comes one
+// 32-byte offset per element (relative to the element region), each pointing at
+// that element's own encoding. abiArrayGet rebases onto the element start, and
+// the element's inner offsets (the memory(bytes) leaf) resolve relative to the
+// element — so both the static Queue path and the dynamic Execute path decode.
+//
+// This is currently registered via runDispatchTest, which compiles the contract
+// through the whole pipeline. A runtime .json fixture (exercising the decode on
+// real calldata) needs the exact solcore-generated selector for the nested-ADT
+// signature, which has to be captured from a local sol-core run.
 
 data Operation = AddSigner(address) | RemoveSigner(address);
 data Signature = ECDSA(bytes32, bytes32) | Contract(address);
