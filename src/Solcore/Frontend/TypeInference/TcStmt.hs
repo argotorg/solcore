@@ -483,13 +483,103 @@ tcExpWithExpected' mExpected (Lam args bd _) =
       else do
         (exp1, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty
         withCurrentSubst (exp1, ps1, t)
-tcExpWithExpected' _ e1@(TyExp e ty) =
-  do
-    ty1 <- kindCheck ty `wrapError` e1
-    (e', ps, ty') <- tcExpWithExpected (Just ty1) e
-    s <- tcmMatch ty' ty1
-    _ <- extSubst s
-    withCurrentSubst (TyExp e' ty1, ps, ty1)
+tcExpWithExpected' _ conversion@(TyExp expression targetTy) = do
+  checkedTargetTy <- kindCheck targetTy `wrapError` conversion
+  (typedExpression, expressionPreds, inferredSourceTy) <- tcExp expression
+  sourceTy <- maybeExpandSynonym =<< withCurrentSubst inferredSourceTy
+  targetTy' <- maybeExpandSynonym =<< withCurrentSubst checkedTargetTy
+  if sourceTy == targetTy'
+    then
+      elaboratedIdentity
+        mempty
+        typedExpression
+        expressionPreds
+        checkedTargetTy
+    else do
+      let typedefClass = Name "Typedef"
+          abstractConversion = InCls typedefClass targetTy' [sourceTy]
+          representationConversion = InCls typedefClass sourceTy [targetTy']
+      givens <- withCurrentSubst =<< getGivenPredicates
+      classEnv <- getClassEnv
+      instanceEnv <- getInstEnv
+      canAbstract <-
+        conversionEntailed
+          typedefClass
+          classEnv
+          instanceEnv
+          givens
+          abstractConversion
+      canExposeRepresentation <-
+        conversionEntailed
+          typedefClass
+          classEnv
+          instanceEnv
+          givens
+          representationConversion
+      case (canAbstract, canExposeRepresentation) of
+        (True, False) ->
+          elaboratedConversion
+            (QualName typedefClass "abs")
+            abstractConversion
+            sourceTy
+            targetTy'
+            typedExpression
+            expressionPreds
+        (False, True) ->
+          elaboratedConversion
+            (QualName typedefClass "rep")
+            representationConversion
+            sourceTy
+            targetTy'
+            typedExpression
+            expressionPreds
+        (True, True) ->
+          tcDiagnosticErrorAtSource
+            "SC0230"
+            ( "ambiguous explicit conversion from "
+                ++ pretty sourceTy
+                ++ " to "
+                ++ pretty targetTy'
+            )
+            conversion
+            "ambiguous conversion"
+            [ "both "
+                ++ pretty targetTy'
+                ++ ": Typedef<"
+                ++ pretty sourceTy
+                ++ "> and "
+                ++ pretty sourceTy
+                ++ ": Typedef<"
+                ++ pretty targetTy'
+                ++ "> are available"
+            ]
+            [ "call Typedef.abs or Typedef.rep explicitly to select the intended direction"
+            ]
+        (False, False) -> do
+          identityMatch <-
+            (Just <$> tcmMatch sourceTy targetTy')
+              `catchError` const (pure Nothing)
+          case identityMatch of
+            Just matchingSubst ->
+              elaboratedIdentity
+                matchingSubst
+                typedExpression
+                expressionPreds
+                checkedTargetTy
+            Nothing ->
+              tcDiagnosticErrorAtSource
+                "SC0230"
+                ( "no explicit conversion from "
+                    ++ pretty sourceTy
+                    ++ " to "
+                    ++ pretty targetTy'
+                )
+                conversion
+                "invalid conversion"
+                [ "`as` accepts identical types or a conversion witnessed by Typedef"
+                ]
+                [ "provide a matching Typedef instance or call a conversion function explicitly"
+                ]
 tcExpWithExpected' mExpected e@(Cond e1 e2 e3) =
   do
     (e1', ps1, t1) <- tcExpWithExpected Nothing e1 `wrapError` e
@@ -535,6 +625,59 @@ tcExpWithExpected' _ e@(Indexed arrExp idx) =
     tRes <- freshTyVar
     s <- unify tArr (tIdx :-> tRes) `wrapError` e
     withCurrentSubst (Indexed arr' idx', psArr ++ psIdx, apply s tRes)
+
+elaboratedIdentity ::
+  Subst ->
+  Exp Id ->
+  [Pred] ->
+  Ty ->
+  TcM (Exp Id, [Pred], Ty)
+elaboratedIdentity matchingSubst expression preds targetTy = do
+  _ <- extSubst matchingSubst
+  withCurrentSubst
+    (TyExp expression targetTy, preds, targetTy)
+
+conversionEntailed ::
+  Name ->
+  ClassTable ->
+  InstTable ->
+  [Pred] ->
+  Pred ->
+  TcM Bool
+conversionEntailed predicateClassName classEnv instanceEnv givens wanted =
+  entailM classEnv consistentInstanceEnv givens wanted
+  where
+    consistentInstanceEnv =
+      Map.adjust
+        (filter (`instanceHeadConsistentWith` wanted))
+        predicateClassName
+        instanceEnv
+
+instanceHeadConsistentWith :: Inst -> Pred -> Bool
+instanceHeadConsistentWith instanceRule@(_ :=> instanceHead) wanted =
+  case byInst instanceRule wanted of
+    Nothing ->
+      False
+    Just (_, matchingSubst, _) ->
+      apply matchingSubst instanceHead == apply matchingSubst wanted
+
+elaboratedConversion ::
+  Name ->
+  Pred ->
+  Ty ->
+  Ty ->
+  Exp Id ->
+  [Pred] ->
+  TcM (Exp Id, [Pred], Ty)
+elaboratedConversion methodName conversionPred sourceTy targetTy expression preds =
+  withCurrentSubst
+    ( Call
+        Nothing
+        (Id methodName (sourceTy :-> targetTy))
+        [expression],
+      preds `union` [conversionPred],
+      targetTy
+    )
 
 closureConversion ::
   [Tyvar] ->
@@ -792,7 +935,12 @@ tcFunDef incl vs' qs d@(FunDef isPub sig@(Signature vs ps n _ _ _ _) _)
       -- building the typing context with new assumptions
       let lctx' = if incl then (n, monotype nt) : lctx else lctx
       -- typing function body
-      (bd1', ps1', t1') <- withLocalCtx lctx' (tcBodyWithExpectedReturn (Just rt1') bd1) `wrapError` d
+      (bd1', ps1', t1') <-
+        ( withLocalCtx lctx' $
+            withGivenPredicates (qs1 `union` ps1) $
+              tcBodyWithExpectedReturn (Just rt1') bd1
+        )
+          `wrapError` d
       -- checking if the type checking have changed the type
       -- due to unique type creation.
       let tynames = tyconNames t1'

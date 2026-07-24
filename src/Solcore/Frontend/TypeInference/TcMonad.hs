@@ -565,6 +565,25 @@ withLocalCtx envPairs m =
     a <- m
     pure a
 
+withGivenPredicates :: [Pred] -> TcM a -> TcM a
+withGivenPredicates predicates action = do
+  savedPredicates <- gets givenPredicates
+  modify
+    ( \env ->
+        env
+          { givenPredicates =
+              predicates `union` savedPredicates
+          }
+    )
+  outcome <-
+    (Right <$> action)
+      `catchError` (pure . Left)
+  modify (\env -> env {givenPredicates = savedPredicates})
+  either throwError pure outcome
+
+getGivenPredicates :: TcM [Pred]
+getGivenPredicates = gets givenPredicates
+
 -- Updating the environment
 
 putEnv :: Env -> TcM ()

@@ -112,6 +112,7 @@ data TcEnv
     synTable :: SynTable, -- Type synonym environment
     classTable :: ClassTable, -- Class information table
     contract :: Maybe Name, -- current contract name
+    givenPredicates :: [Pred], -- constraints assumed while checking the current function body
     -- used to type check calls.
     subst :: Subst, -- Current substitution
     nameSupply :: NameSupply, -- Fresh name supply
@@ -146,6 +147,7 @@ initTcEnv opts =
       synTable = Map.empty,
       classTable = primClassEnv,
       contract = Nothing,
+      givenPredicates = [],
       subst = mempty,
       nameSupply = namePool,
       uniqueTypes = primDataType,
