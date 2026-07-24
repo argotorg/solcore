@@ -359,7 +359,10 @@ traitSignatureP = do
 traitP :: Parser Class
 traitP = do
   keyword "trait"
-  traitName <- qualifiedName
+  -- Qualified names refer to traits imported from another module. A
+  -- declaration introduces a name in the current module and must therefore
+  -- use a source identifier, like functions, contracts, and data types do.
+  traitName <- simpleNameP
   vars <- typeParamsP
   (primaryVar, params) <- case vars of
     [] -> fail "a trait must declare at least one type parameter"

@@ -1469,6 +1469,10 @@ declTests =
                   ]
               )
           ),
+      testCase "trait declarations cannot introduce qualified names" $
+        parseFails
+          topDeclP
+          "trait Imported.Eq<a> { function eq(x:a, y:a) returns (bool); }",
       testCase "trait with where clause" $
         parsesAs
           topDeclP
