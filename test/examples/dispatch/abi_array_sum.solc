@@ -12,9 +12,9 @@ import std.ABIGeneric.{*};
 // instead decoded lazily from calldata: the parameter becomes a
 // `calldata(array(Operation))` handle to the length word, and elements are
 // decoded on demand. Indexing uses the ordinary `ops[i]` sugar (calldata-array
-// RValueIdxAccess); the length comes from the shared Length class via
-// Length.length(ops) (UFCS `ops.length()` needs value-receiver UFCS, which is
-// field-only on the current base).
+// RValueIdxAccess) and `ops.length()` uses the Length-class UFCS — the same
+// surface syntax as storage arrays. `ops` is a parameter, so this relies on
+// value-receiver UFCS (NameResolution), not just the field-receiver form.
 data Operation = Approve(uint256) | Reject(uint256);
 
 contract Batch {
@@ -22,7 +22,7 @@ contract Batch {
 
   // Number of operations in the array.
   public function count(ops : calldata(array(Operation))) -> uint256 {
-    return Length.length(ops);
+    return ops.length();
   }
 
   // Constructor of element i, mapped to a distinct sentinel: 16 for Approve,

@@ -732,7 +732,21 @@ resolveExp x@(S.ExpName me n es) =
             case fdt of
               Just TDataCon ->
                 Con <$> resolveQualifiedConstructorName c n <*> pure es'
-              _ -> undefinedName n
+              _ ->
+                -- UFCS-style method call on a value receiver (local variable or
+                -- function parameter): x.method(args) -> Class.method(x, args)
+                -- when a unique class exposes `method`. Contract-field receivers
+                -- take the isUfcsReceiver path; this extends the same sugar to
+                -- ordinary values (e.g. a calldata-array parameter `ops.length()`).
+                -- Ambiguity across classes makes findClassWithMethod return
+                -- Nothing and falls through to the undefined-name error.
+                case ct of
+                  Just dt' | dt' `elem` [TLocalVar, TParameter] -> do
+                    mClass <- findClassWithMethod n
+                    case mClass of
+                      Just cls -> pure (Call Nothing (qualifyName cls n) (Var c : es'))
+                      Nothing -> undefinedName n
+                  _ -> undefinedName n
       (Just (Var c), Just TTyVar) -> do
         let qn = qualifyName c n
         cf <- gets (Map.lookup qn . scopeEnv)
