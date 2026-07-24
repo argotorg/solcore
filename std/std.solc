@@ -2274,6 +2274,22 @@ instance (storage(array(a)), i): RValueIdxAccess(v) {
   }
 }
 
+// Indexed read of a lazily-decoded calldata array: `arr[i]` desugars to
+// ridx(arr, i), which dispatches here and decodes element i on demand via
+// abiArrayGet. There is deliberately no LValueIdxAccess instance — calldata is
+// immutable, so `arr[i] = …` is (correctly) rejected at compile time.
+forall t t_decoded i .
+    t : ABIAttribs,
+    ABIDecoder(t, CalldataWordReader):ABIDecode(t_decoded),
+    i : Typedef(word) =>
+instance (calldata(array(t)), i): RValueIdxAccess(t_decoded) {
+  function lookup(xi : (calldata(array(t)), i)) -> t_decoded {
+    match(xi) {
+      | (a, idx) => return abiArrayGet(a, uint256(Typedef.rep(idx)));
+    }
+  }
+}
+
 // Mapping reads go through CanStore, matching the write side (Assign -> CanStore.store).
 // This lets a mapping hold any value with a CanStore instance — including ADTs whose
 // fields are dynamic (memory(bytes)) — not just the fixed-slot StorageType primitives.
