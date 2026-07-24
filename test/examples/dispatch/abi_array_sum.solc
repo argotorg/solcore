@@ -11,10 +11,9 @@ import std.ABIGeneric.{*};
 // word-per-slot memory(DynArray(...)) representation cannot hold. The array is
 // instead decoded lazily from calldata: the parameter becomes a
 // `calldata(array(Operation))` handle to the length word, and elements are
-// decoded on demand. Indexing uses the ordinary `ops[i]` sugar, which
-// dispatches through the calldata-array RValueIdxAccess instance in std.solc
-// (abiArrayLength still supplies the length here; the `.length()` sugar lands
-// on a separate branch).
+// decoded on demand. Indexing uses the ordinary `ops[i]` sugar (calldata-array
+// RValueIdxAccess) and `ops.length()` uses the Length-class UFCS — the same
+// surface syntax as storage arrays.
 data Operation = Approve(uint256) | Reject(uint256);
 
 contract Batch {
@@ -22,7 +21,7 @@ contract Batch {
 
   // Number of operations in the array.
   public function count(ops : calldata(array(Operation))) -> uint256 {
-    return abiArrayLength(ops);
+    return ops.length();
   }
 
   // Constructor of element i, mapped to a distinct sentinel: 16 for Approve,

@@ -1881,6 +1881,16 @@ instance storage(array(t)):Length {
     }
 }
 
+// A lazily-decoded calldata array reports its length from the head length-word
+// of its handle (see abiArrayLength), so `arr.length()` resolves through the
+// same Length class / UFCS as storage arrays.
+forall t .
+instance calldata(array(t)):Length {
+    function length(arr:calldata(array(t))) -> uint256 {
+        return abiArrayLength(arr);
+    }
+}
+
 forall t .
 instance storage(array(t)):Array {
     // Shrinking clears the abandoned slots, matching solc's resize_array.
