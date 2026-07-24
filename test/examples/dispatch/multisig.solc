@@ -324,9 +324,9 @@ contract Multisig {
         // TODO: emit log
     }
 
-    // ERC-1271 receiver
+    // ERC-1271 receiver -- external verifiers call this, so it must be dispatched.
     // NOTE: view function.
-    function isValidSignature(hash: bytes32, signature: memory(bytes)) -> bytes4 {
+    public function isValidSignature(hash: bytes32, signature: memory(bytes)) -> bytes4 {
         require(approved_signed_hashes[hash], Error(0x12345678)); // HashNotApproved();
         let signature_ = Typedef.rep(signature);
         require(mload(signature_) == 0, Error(0x12345678)); // EmptySignatureExpected()
