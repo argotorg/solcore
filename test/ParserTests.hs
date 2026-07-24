@@ -910,6 +910,15 @@ stmtTests =
                 YLet ["second"] (Just (YMeta "interpolationHole"))
               ]
           ),
+      testCase "Yul string literals survive source pretty-printing" $
+        mapM_
+          roundTripsStmt
+          [ "assembly { let x := \"a\\\"b\" }",
+            "assembly { let x := \"a\\\\b\" }",
+            "assembly { let x := \"a\\nb\" }",
+            "assembly { let x := \"a\\tb\" }",
+            "assembly { let x := \"a\\rb\" }"
+          ],
       testCase "Yul let requires at least one name" $
         parseFails
           stmtP

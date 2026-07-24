@@ -227,13 +227,16 @@ instance Pretty YulExp where
 
 instance Pretty YLiteral where
   ppr (YulNumber n) = integer n
-  ppr (YulString s) = doubleQuotes (text s)
+  ppr (YulString s) = pprQuotedString s
   ppr YulTrue = text "true"
   ppr YulFalse = text "false"
 
 instance Pretty YulData where
-  ppr (YulData name val) = hsep [text "data", doubleQuotes $ text name, ppr val]
+  ppr (YulData name val) = hsep [text "data", pprQuotedString name, ppr val]
 
 instance Pretty HexOrString where
   ppr (DHex s) = text "hex" <> doubleQuotes (text s)
-  ppr (DString s) = doubleQuotes (text s)
+  ppr (DString s) = pprQuotedString s
+
+pprQuotedString :: String -> Doc
+pprQuotedString = text . show
