@@ -30,6 +30,7 @@ bash ./contest.sh test/examples/dispatch/array_nested.json
 bash ./contest.sh test/examples/dispatch/generic_sum.json
 bash ./contest.sh test/examples/dispatch/abi_array_sum.json
 bash ./contest.sh test/examples/dispatch/abi_bytes_array.json
+bash ./contest.sh test/examples/dispatch/abi_dyn_sum.json
 bash ./contest.sh test/examples/dispatch/abi_batch_adt.json
 bash ./contest.sh test/examples/dispatch/generic_product.json
 bash ./contest.sh test/examples/dispatch/sum_wide_product.json
