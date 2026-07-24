@@ -26,7 +26,7 @@ contract ArrayString {
   }
 
   public function len() -> uint256 {
-    return Array.length(names);
+    return Length.length(names);
   }
 
   // backup = names
@@ -39,6 +39,6 @@ contract ArrayString {
   }
 
   public function lenBackup() -> uint256 {
-    return Array.length(backup);
+    return Length.length(backup);
   }
 }

@@ -14,6 +14,6 @@ contract NoCopy {
   xs : array(Odd);
 
   function main() -> uint256 {
-    return Array.length(xs);
+    return Length.length(xs);
   }
 }

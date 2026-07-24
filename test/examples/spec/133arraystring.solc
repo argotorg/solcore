@@ -12,6 +12,6 @@ contract ArrayOfDynamic {
   blobs : array(bytes);
 
   function main() -> uint256 {
-    return Array.length(names) + Array.length(blobs);
+    return Length.length(names) + Length.length(blobs);
   }
 }
