@@ -33,10 +33,18 @@ function maxWord(a : word, b : word) -> word {
 
 forall f g . f:ABIAttribs, g:ABIAttribs =>
 instance sum(f, g) : ABIAttribs {
+    // Head footprint. A *dynamic* sum occupies a single offset word in the head
+    // (its tag + branch payload live in the tail), exactly like any other
+    // dynamic type. Only a fully *static* sum is laid out inline as
+    // tag + widest branch; there both branches are static, so their headSize is
+    // their full size and 32 + max(...) is the correct inline footprint.
     function headSize(ty : Proxy(sum(f, g))) -> word {
         let pf : Proxy(f);
         let pg : Proxy(g);
-        return 32 + maxWord(ABIAttribs.headSize(pf), ABIAttribs.headSize(pg));
+        match and(ABIAttribs.isStatic(pf), ABIAttribs.isStatic(pg)) {
+        | false => return 32;
+        | true  => return 32 + maxWord(ABIAttribs.headSize(pf), ABIAttribs.headSize(pg));
+        }
     }
     function isStatic(ty : Proxy(sum(f, g))) -> bool {
         let pf : Proxy(f);
