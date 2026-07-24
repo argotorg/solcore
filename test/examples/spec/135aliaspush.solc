@@ -13,6 +13,6 @@ contract AliasPush {
     let p : storage(array(uint256)) = xs;
     ArrayPush.push(p, uint256(1));
     // The push went through the alias, so the field sees it.
-    return Array.length(xs);
+    return Length.length(xs);
   }
 }

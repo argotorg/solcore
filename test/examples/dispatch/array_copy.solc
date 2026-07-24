@@ -37,7 +37,7 @@ contract ArrayCopy {
   }
 
   public function lenA() -> uint256 {
-    return Array.length(a);
+    return Length.length(a);
   }
 
   public function getA(i : uint256) -> uint256 {

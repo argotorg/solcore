@@ -28,6 +28,7 @@ export {
   IndexAccess,
   LVA,
   LValueIdxAccess,
+  Length,
   MemberAccessProxy(*),
   MemoryEncode,
   MemoryPointer,
@@ -1798,10 +1799,13 @@ instance array(member):StorageSize {
     }
 }
 
+forall self . class self:Length {
+    function length(arr:self) -> uint256;
+}
+
 // Dynamic storage arrays carry their length at the slot itself (matching the
 // Solidity convention) while elements live at keccak256(slot) + i.
 forall self . class self:Array {
-    function length(arr:self) -> uint256;
     function setLength(arr:self, n:uint256) -> ();
     function pop(arr:self) -> ();
 }
@@ -1814,10 +1818,14 @@ forall self elem . class self:ArrayPush(elem) {
 }
 
 forall t .
-instance storage(array(t)):Array {
+instance storage(array(t)):Length {
     function length(arr:storage(array(t))) -> uint256 {
         return uint256(sload(Typedef.rep(arr)));
     }
+}
+
+forall t .
+instance storage(array(t)):Array {
     // Shrinking clears the abandoned slots, matching solc's resize_array.
     // For string/bytes elements this zeroes the inline slot, which makes any
     // keccak-derived tail unreachable (reads are governed by the length word) but

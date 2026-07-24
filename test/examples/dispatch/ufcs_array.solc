@@ -11,7 +11,7 @@ import std.opcodes.{mload, mstore};
 // call is rewritten to Class.method(recv, args).  So:
 //
 //   members.push(addr)  ==>  ArrayPush.push(members, addr)
-//   members.length()    ==>  Array.length(members)
+//   members.length()    ==>  Length.length(members)
 //   members.pop()       ==>  Array.pop(members)
 //
 // It runs against the SAME assertions as storage_array.json (see

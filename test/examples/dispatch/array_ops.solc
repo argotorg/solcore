@@ -20,7 +20,7 @@ contract ArrayOps {
   }
 
   public function len() -> uint256 {
-    return Array.length(xs);
+    return Length.length(xs);
   }
 
   public function get(i : uint256) -> uint256 {

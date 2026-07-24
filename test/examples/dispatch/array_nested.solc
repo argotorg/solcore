@@ -25,7 +25,7 @@ contract NestedArray {
   }
 
   public function innerLen(i : uint256) -> uint256 {
-    return Array.length(grid[i]);
+    return Length.length(grid[i]);
   }
 
   public function get2(i : uint256, j : uint256) -> uint256 {
@@ -48,7 +48,7 @@ contract NestedArray {
   }
 
   public function flatLen() -> uint256 {
-    return Array.length(flat);
+    return Length.length(flat);
   }
 
   public function getFlat(i : uint256) -> uint256 {
