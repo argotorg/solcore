@@ -90,6 +90,42 @@ moduleTypeCheckTests =
             stdOpt
             (moduleInput [ModuleInferenceDecl ModuleLocalDecl badImportedFun])
         assertLeft "local body should be checked" result,
+      testCase "break and continue outside loops are rejected with locations" $ do
+        breakResult <-
+          typecheckSource
+            "function badBreak() returns (()) { break; }"
+        continueResult <-
+          typecheckSource
+            "function badContinue() returns (()) { continue; }"
+        assertLocatedLoopControlError "break outside loop" "break" breakResult
+        assertLocatedLoopControlError "continue outside loop" "continue" continueResult,
+      testCase "break and continue remain valid in loop bodies" $ do
+        checked <-
+          typecheckSource $
+            unlines
+              [ "function validLoopControl(flag: bool) returns (()) {",
+                "  while (flag) {",
+                "    break;",
+                "  }",
+                "  for (; flag; ) {",
+                "    continue;",
+                "  }",
+                "  return;",
+                "}"
+              ]
+        assertRight "loop-local control statements" checked,
+      testCase "a lambda cannot control its enclosing loop" $ do
+        checked <-
+          typecheckSource $
+            unlines
+              [ "function badLambdaBreak(flag: bool) returns (()) {",
+                "  while (flag) {",
+                "    let callback = lam() returns (()) { break; };",
+                "  }",
+                "  return;",
+                "}"
+              ]
+        assertLocatedLoopControlError "lambda break boundary" "break" checked,
       testCase "numeric fixed-array size survives resolution and kind checking" $ do
         parsedResult <-
           parseCompUnit $
@@ -916,6 +952,20 @@ assertLocatedFunctionTypeError label expectedMessage (Left err) = do
     (label ++ ": expected a source-located diagnostic")
     (any ((/= Nothing) . diagnosticPrimarySpan) (compilerErrorDiagnostics err))
 assertLocatedFunctionTypeError label _ (Right _) =
+  assertFailure (label ++ ": expected failure")
+
+assertLocatedLoopControlError ::
+  String ->
+  String ->
+  Either CompilerError a ->
+  Assertion
+assertLocatedLoopControlError label keyword (Left err) = do
+  assertLeftContaining label "SC0125" (Left err)
+  assertLeftContaining label (keyword ++ " statement outside of a loop") (Left err)
+  assertBool
+    (label ++ ": expected a source-located diagnostic")
+    (any ((/= Nothing) . diagnosticPrimarySpan) (compilerErrorDiagnostics err))
+assertLocatedLoopControlError label _ (Right _) =
   assertFailure (label ++ ": expected failure")
 
 assertContractKindLifecycle :: String -> ContractKind -> Bool -> String -> Assertion

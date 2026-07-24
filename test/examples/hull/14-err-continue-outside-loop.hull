@@ -1,0 +1,5 @@
+object InvalidContinue {
+  code {
+    continue
+  }
+}

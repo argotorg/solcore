@@ -31,7 +31,10 @@ checkObject (Object _ code inners) = do
 
 -- Type-check a sequence of statements sequentially.
 checkBody :: Body -> HullTcM ()
-checkBody = mapM_ checkStmt
+checkBody = checkBodyAt 0
+
+checkBodyAt :: Int -> Body -> HullTcM ()
+checkBodyAt loopDepth = mapM_ (checkStmtAt loopDepth)
 
 -- Register every SFunction signature in a body without checking their bodies.
 -- Recurses into SBlock so nested scopes are also pre-scanned.
@@ -48,46 +51,49 @@ preScanStmt _ = pure ()
 -- Statements
 
 checkStmt :: Stmt -> HullTcM ()
-checkStmt (SAlloc x t) =
+checkStmt = checkStmtAt 0
+
+checkStmtAt :: Int -> Stmt -> HullTcM ()
+checkStmtAt _ (SAlloc x t) =
   extendVar x t
-checkStmt (SAssign lhs rhs) = do
+checkStmtAt _ (SAssign lhs rhs) = do
   lhsTy <- checkExpr lhs
   rhsTy <- checkExpr rhs
   expectType lhsTy rhsTy
-checkStmt (SReturn e) = do
+checkStmtAt _ (SReturn e) = do
   te <- checkExpr e
   mret <- getRetType
   case mret of
     Nothing -> hullError "return statement outside of a function"
     Just tr -> expectType tr te
-checkStmt (SFunction name args ret body) = do
+checkStmtAt _ (SFunction name args ret body) = do
   let sig = HullFunSig {hsig_args = map argType args, hsig_ret = ret}
   extendFun name sig
   withLocalEnv $ do
     forM_ args $ \(TArg n t) -> extendVar n t
-    withRetType ret (checkBody body)
-checkStmt (SMatch ty e alts) = do
+    withRetType ret (checkBodyAt 0 body)
+checkStmtAt loopDepth (SMatch ty e alts) = do
   te <- checkExpr e
   expectType ty te
-  mapM_ (checkAlt (stripTypeName ty)) alts
-checkStmt (SBlock stmts) =
-  withLocalEnv (checkBody stmts)
-checkStmt (SExpr e) =
+  mapM_ (checkAltAt loopDepth (stripTypeName ty)) alts
+checkStmtAt loopDepth (SBlock stmts) =
+  withLocalEnv (checkBodyAt loopDepth stmts)
+checkStmtAt _ (SExpr e) =
   checkExpr e >> pure ()
-checkStmt (SAssembly stmts) = do
+checkStmtAt _ (SAssembly stmts) = do
   case validateYulControlFlow stmts of
     Left err -> hullError err
     Right () -> pure ()
   withLocalEnv (checkAsmBlock stmts)
-checkStmt (SFor initStmt cond post body) =
+checkStmtAt loopDepth (SFor initStmt cond post body) =
   -- Variables declared in the init block are scoped over the entire for loop
   -- (cond, post, body), matching Yul's for-loop scoping rules.
   withLocalEnv $ do
-    checkBody (blockStmts initStmt)
+    checkBodyAt loopDepth (blockStmts initStmt)
     te <- checkExpr cond
     expectBoolType te
-    checkStmt post
-    checkStmt body
+    checkStmtAt loopDepth post
+    checkStmtAt (loopDepth + 1) body
   where
     blockStmts (SBlock ss) = ss
     blockStmts s = [s]
@@ -95,10 +101,14 @@ checkStmt (SFor initStmt cond post body) =
       TBool -> pure ()
       TSum TUnit TUnit -> pure ()
       _ -> hullError ("for condition must be bool or sum () (), got " ++ show t)
-checkStmt SBreak = pure ()
-checkStmt SContinue = pure ()
-checkStmt (SRevert _) = pure ()
-checkStmt (SComment _) = pure ()
+checkStmtAt loopDepth SBreak
+  | loopDepth > 0 = pure ()
+  | otherwise = hullError "break statement outside of a loop"
+checkStmtAt loopDepth SContinue
+  | loopDepth > 0 = pure ()
+  | otherwise = hullError "continue statement outside of a loop"
+checkStmtAt _ (SRevert _) = pure ()
+checkStmtAt _ (SComment _) = pure ()
 
 argType :: Arg -> Type
 argType (TArg _ t) = t
@@ -177,12 +187,12 @@ checkExpr (ECond ty cond e1 e2) = do
 
 -- Type-check one alternative of a match expression.
 -- The scrutinee type (already stripped of TNamed) is passed in.
-checkAlt :: Type -> Alt -> HullTcM ()
-checkAlt scrutTy (Alt pat bindName body) = do
+checkAltAt :: Int -> Type -> Alt -> HullTcM ()
+checkAltAt loopDepth scrutTy (Alt pat bindName body) = do
   payTy <- payloadType scrutTy pat
   withLocalEnv $ do
     extendVar bindName payTy
-    checkBody body
+    checkBodyAt loopDepth body
 
 -- Compute the type of the payload variable bound in an alternative.
 payloadType :: Type -> Pat -> HullTcM Type

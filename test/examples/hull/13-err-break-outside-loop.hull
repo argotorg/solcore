@@ -1,0 +1,5 @@
+object InvalidBreak {
+  code {
+    break
+  }
+}

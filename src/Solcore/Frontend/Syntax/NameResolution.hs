@@ -665,13 +665,32 @@ instance Resolve S.Stmt where
   resolve s@(S.If e blk1 blk2) =
     locatedLike s locatedStmt <$> (If <$> resolve e <*> resolve blk1 <*> resolve blk2)
   resolve s@(S.While cond body) =
-    locatedLike s locatedStmt <$> (For EmptyStmt <$> resolve cond <*> pure EmptyStmt <*> resolve body)
+    locatedLike s locatedStmt
+      <$> ( For EmptyStmt
+              <$> resolve cond
+              <*> pure EmptyStmt
+              <*> withLoopContext (resolve body)
+          )
   resolve s@(S.Unchecked body) =
     locatedLike s locatedStmt <$> withLocalCtx (Block <$> resolve body)
   resolve s@(S.For initStmt cond postStmt body) =
-    locatedLike s locatedStmt <$> (For <$> resolve initStmt <*> resolve cond <*> resolve postStmt <*> resolve body)
-  resolve s@S.Break = pure (locatedLike s locatedStmt Break)
-  resolve s@S.Continue = pure (locatedLike s locatedStmt Continue)
+    locatedLike s locatedStmt
+      <$> ( For
+              <$> resolve initStmt
+              <*> resolve cond
+              <*> resolve postStmt
+              <*> withLoopContext (resolve body)
+          )
+  resolve s@S.Break = do
+    depth <- gets loopDepth
+    if depth > 0
+      then pure (locatedLike s locatedStmt Break)
+      else loopControlOutsideLoopError s "break"
+  resolve s@S.Continue = do
+    depth <- gets loopDepth
+    if depth > 0
+      then pure (locatedLike s locatedStmt Continue)
+      else loopControlOutsideLoopError s "continue"
   resolve s@S.Revert =
     pure
       ( locatedLike
@@ -874,7 +893,7 @@ resolveExp (S.Lit l) = Lit <$> resolve l
 resolveExp e@(S.ExpDotName n es) =
   Con (dotConstructorMarker n) <$> resolve es `wrapError` e
 resolveExp e@(S.Lam ps bd mt) =
-  withLocalCtx $ do
+  withLocalCtx . withLoopDepth 0 $ do
     ps' <- resolve ps `wrapError` e
     mt' <- resolve mt `wrapError` e
     let args = map paramName ps'
@@ -1401,7 +1420,10 @@ data Env
     canonicalTypeNames :: Map Name Name,
     -- named-return value used when lowering a source-level bare return inside
     -- the current function. Nested lambdas and constructors reset it.
-    functionBareReturnValue :: Maybe (Exp Name)
+    functionBareReturnValue :: Maybe (Exp Name),
+    -- lexical loop nesting used to reject break/continue outside loop bodies.
+    -- Lambdas reset this depth because they cannot control an enclosing loop.
+    loopDepth :: Int
   }
   deriving (Show)
 
@@ -1441,7 +1463,8 @@ emptyEnv =
             (QualName (Name "Int") "fromInteger", TFunction)
           ],
       canonicalTypeNames = Map.empty,
-      functionBareReturnValue = Nothing
+      functionBareReturnValue = Nothing,
+      loopDepth = 0
     }
 
 globalEnv :: [S.TopDecl] -> Env
@@ -1584,6 +1607,19 @@ withBareReturnValue returnValue m = do
   modify (\env -> env {functionBareReturnValue = returnValue})
   result <- m
   modify (\env -> env {functionBareReturnValue = previous})
+  pure result
+
+withLoopContext :: ResolveM a -> ResolveM a
+withLoopContext m = do
+  depth <- gets loopDepth
+  withLoopDepth (depth + 1) m
+
+withLoopDepth :: Int -> ResolveM a -> ResolveM a
+withLoopDepth depth m = do
+  previous <- gets loopDepth
+  modify (\env -> env {loopDepth = depth})
+  result <- m
+  modify (\env -> env {loopDepth = previous})
   pure result
 
 lookupType :: Name -> ResolveM (Maybe DeclType)
@@ -1876,6 +1912,24 @@ unsupportedFunctionTypeError functionTy message label help =
     )
     []
     help
+
+loopControlOutsideLoopError :: S.Stmt -> String -> ResolveM a
+loopControlOutsideLoopError statement keyword =
+  diagnosticErrorWithLabels
+    "SC0125"
+    (keyword ++ " statement outside of a loop")
+    ( case sourceSpanOf statement of
+        Nothing -> []
+        Just sourceSpan ->
+          [ Label
+              { labelSpan = sourceSpan,
+                labelStyle = Primary,
+                labelMessage = Just (keyword ++ " is only valid inside a loop body")
+              }
+          ]
+    )
+    []
+    ["move this statement inside a while or for loop body"]
 
 diagnosticError :: String -> String -> [String] -> [String] -> ResolveM a
 diagnosticError code message notes help =
