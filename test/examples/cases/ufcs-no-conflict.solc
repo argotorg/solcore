@@ -9,10 +9,10 @@ import {*} from std;
 //   * qualified constructor Color.Red                 (dotted constructor)
 //   * plain field read      val
 //
-// UFCS only fires when the receiver is an (unqualified) contract field, so a
-// receiver that resolves to a class/module name (`Combiner.combine(...)`) or a
-// type name (`Color.Red`) is handled by the earlier qualified-name cases and
-// never reaches the UFCS rule.
+// UFCS only fires when the receiver is a runtime value. A receiver that
+// resolves to a class/module name (`Combiner.combine(...)`) or a type name
+// (`Color.Red`) is handled by qualified-name resolution and never reaches the
+// UFCS rule.
 
 trait Combiner<a> {
   function combine(x : a, y : word) returns (word);

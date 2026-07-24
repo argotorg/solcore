@@ -963,28 +963,6 @@ unwrapQualifierReceiver (Just (Con (QualName d conName) []))
   | constructorLeafName d == Name conName = Just (Var d)
 unwrapQualifierReceiver me = me
 
--- UFCS receiver test.
---
--- A receiver is eligible for UFCS method-call rewriting only when it is an
--- unqualified contract-field access (FieldAccess Nothing _), i.e. a bare
--- field name like members used as members.push(addr).  Restricting the
--- rule to that single shape is what keeps UFCS from colliding with the other
--- meanings of dot syntax:
---
---   - Class.method(args) / Module.func(args): the receiver resolves to a
---     class/module name (Var c), matched by the qualified-name cases in
---     resolveExp (S.ExpName ...) before the UFCS case is reached.
---   - Type.Constructor: parsed as S.ExpDotName, a different surface node.
---   - a plain field read members: no receiver at all.
---   - a call on a local variable x.m(args): x resolves to Var, not a
---     field access, so UFCS does not apply.
---
--- So UFCS is a strict fallback: it only kicks in for field.method(args) once
--- every qualified interpretation has been ruled out.
-isUfcsReceiver :: Exp Name -> Bool
-isUfcsReceiver (FieldAccess Nothing _) = True
-isUfcsReceiver _ = False
-
 -- Only declaration-like receivers participate in qualified-name lookup.
 -- Every other expression is a runtime value whose member access must remain
 -- explicit in the semantic AST; otherwise a same-spelled local can capture it.
@@ -1033,12 +1011,21 @@ resolveExp x@(S.ExpName me n es) =
   do
     me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` x)
     es' <- resolve es `wrapError` x
-    forM_ me' $ \receiver ->
-      unless (isUfcsReceiver receiver) $ do
-        valueReceiver <- isValueReceiver receiver
-        when valueReceiver (unsupportedValueMemberCall n)
+    valueReceiver <- maybe (pure False) isValueReceiver me'
     dt <- lookupName n
     case (me', dt) of
+      -- UFCS-style method call on any runtime value:
+      -- value.method(args) -> Class.method(value, args) when a unique class
+      -- exposes a method named n.  Handle this before consulting the member's
+      -- unqualified declaration kind: a same-spelled local or top-level name
+      -- must not steal a member call from its receiver.  Declaration-like
+      -- receivers (Class, Module, Type, Contract/Library) are excluded by
+      -- isValueReceiver and continue through the qualified-name cases below.
+      (Just receiver, _) | valueReceiver -> do
+        mClass <- findClassWithMethod n
+        case mClass of
+          Just c -> pure (Call Nothing (qualifyName c n) (receiver : es'))
+          Nothing -> unresolvedValueMemberCall n
       -- normal function call
       (Nothing, Just TFunction) ->
         pure (Call Nothing n es')
@@ -1144,18 +1131,6 @@ resolveExp x@(S.ExpName me n es) =
               Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
               _ -> undefinedName n
           _ -> pure (Call Nothing n es')
-      -- UFCS-style method call on a contract-field receiver:
-      -- field.method(args) -> Class.method(field, args) when a unique class
-      -- exposes a method named n.  This is the last case before the error
-      -- fallback, so it only fires once every qualified interpretation has been
-      -- ruled out (see isUfcsReceiver).  Ambiguity across several classes
-      -- makes findClassWithMethod return Nothing and falls through to the
-      -- undefined-name error rather than guessing.
-      (Just receiver, _) | isUfcsReceiver receiver -> do
-        mClass <- findClassWithMethod n
-        case mClass of
-          Just c -> pure (Call Nothing (qualifyName c n) (receiver : es'))
-          Nothing -> undefinedName n
       -- error
       _ -> do
         sameName <- isSameNameConstructor n
@@ -1300,7 +1275,7 @@ resolveQualifiedVariableReference qualifier leaf = do
   qualifiedType <- lookupName qualifiedName
   case qualifiedType of
     Just TFunction ->
-      Just . Var <$> canonicalFunctionName qualifiedName
+      pure (Just (Var qualifiedName))
     Just TDataCon -> do
       constructorName <- resolveQualifiedConstructorName qualifier leaf
       pure (Just (Con constructorName []))
@@ -1795,8 +1770,8 @@ lookupName n =
 
 -- For UFCS-style method calls (`value.method(args)`): find a class that has
 -- a method named `m` so we can rewrite the call as `Class.method(value,args)`.
--- Returns the first match; ambiguity across multiple classes falls back to
--- the regular undefined-name path.
+-- Returns the sole match; ambiguity across multiple classes is rejected so
+-- name resolution never guesses which class owns the call.
 findClassWithMethod :: Name -> ResolveM (Maybe Name)
 findClassWithMethod m =
   do
@@ -1853,7 +1828,7 @@ contextLabelMessage diagnostic =
     Just (DiagnosticCode "SC0107") -> "invalid pattern"
     Just (DiagnosticCode "SC0122") -> "unsupported function type"
     Just (DiagnosticCode "SC0123") -> "unsupported mixed return mode"
-    Just (DiagnosticCode "SC0124") -> "unsupported member call"
+    Just (DiagnosticCode "SC0124") -> "unresolved member call"
     _ -> "diagnostic reported here"
 
 contextSourceSpan :: (Data a) => a -> Maybe SourceSpan
@@ -1995,15 +1970,15 @@ undefinedName n =
     []
     []
 
-unsupportedValueMemberCall :: Name -> ResolveM a
-unsupportedValueMemberCall n =
+unresolvedValueMemberCall :: Name -> ResolveM a
+unresolvedValueMemberCall n =
   diagnosticErrorAtName
     "SC0124"
-    ("member calls on value receivers are not supported: " ++ pretty n)
+    ("no unique trait method for value member call: " ++ pretty n)
     n
-    "unsupported member call"
-    ["value-member dispatch has no runtime representation yet"]
-    ["use an explicit function call"]
+    "unresolved member call"
+    ["value-member syntax requires exactly one trait to declare the named method"]
+    ["use an explicit qualified trait call to disambiguate"]
 
 unqualifiedConstructorError :: Name -> ResolveM a
 unqualifiedConstructorError n =

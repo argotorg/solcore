@@ -195,6 +195,7 @@ test-suite sol-core-tests
     MatchCompilerTests
     ModuleTypeCheckTests
     SpecialiseTests
+    UfcsTests
     YulEvalTests
     ParserTests
 

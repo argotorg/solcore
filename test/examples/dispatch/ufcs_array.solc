@@ -7,8 +7,8 @@ import {mload, mstore} from std.opcodes;
 // This contract is byte-for-byte equivalent in behaviour to
 // dispatch/storage_array.solc, but exercises the receiver-style method-call
 // sugar resolved by NameResolution: when the receiver of recv.method(args)
-// is an (unqualified) contract field and a unique class exposes method, the
-// call is rewritten to Class.method(recv, args).  So:
+// is a runtime value and a unique class exposes method, the call is rewritten
+// to Class.method(recv, args). Here each receiver is a contract field, so:
 //
 //   members.push(addr)  ==>  ArrayPush.push(members, addr)
 //   members.length()    ==>  Array.length(members)
