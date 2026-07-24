@@ -148,8 +148,17 @@ def tokenize(source: str) -> list[Token]:
             continue
 
         if source.startswith("/*", i):
-            close = source.find("*/", i + 2)
-            i = n if close < 0 else close + 2
+            depth = 1
+            i += 2
+            while i < n and depth > 0:
+                if source.startswith("/*", i):
+                    depth += 1
+                    i += 2
+                elif source.startswith("*/", i):
+                    depth -= 1
+                    i += 2
+                else:
+                    i += 1
             tokens.append(Token("comment", source[start:i], start, i))
             continue
 

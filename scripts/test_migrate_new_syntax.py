@@ -60,6 +60,12 @@ class NewSyntaxStabilityTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.assert_stable(source)
 
+    def test_nested_block_comments_are_stable(self) -> None:
+        self.assert_stable(
+            "/* outer /* inner */ type Word = word; */\n"
+            "function ok() {}\n"
+        )
+
     def test_transparent_aliases_are_stable(self) -> None:
         cases = (
             "alias Word = uint256;\n",
