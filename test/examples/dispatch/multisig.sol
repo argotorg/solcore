@@ -117,7 +117,7 @@ contract Multisig {
 
     constructor() {
         // The creator becomes the first signer.
-        signers[0] = caller();
+        signers[uint256(0)] = caller();
         signers_count = 1;
         signers_required = 1;
     }
