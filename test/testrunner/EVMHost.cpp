@@ -583,6 +583,32 @@ evmc::Result EVMHost::precompileECRecover(evmc_message const& _message) noexcept
 			{
 				fromHex("000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"),
 				gas_cost
+		},
+		// Vectors for the multisig ...WithSignature dispatch tests. The signing
+		// hash is the multisig's (stubbed) keccak256(bytes32(1)); both recover a
+		// valid, distinct address (one a registered signer, one not).
+		{
+			fromHex(
+				"b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"
+				"000000000000000000000000000000000000000000000000000000000000001c"
+				"a5f2175cf703916c00bc39e47cd6895a40939ca418200fd16f3a6f0e6e946e72"
+				"0d88a02b70b20799677813021b7e5cb4c566a1e2d4eb12f85d38e0a50e3d03af"
+			),
+			{
+				fromHex("000000000000000000000000e05fcc23807536bee418f142d19fa0d21bb0cff7"),
+				gas_cost
+			}
+		},
+		{
+			fromHex(
+				"b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"
+				"000000000000000000000000000000000000000000000000000000000000001c"
+				"cb81aced75b14a861ae712060e0c37ae22a73d87c8f947114bb38f11b61e89cc"
+				"10665fa4084d71f4a9d413062464d475494dafddc08fefeb7857c1f27d699e58"
+			),
+			{
+				fromHex("0000000000000000000000000376aac07ad725e01357b1725b5cec61ae10473c"),
+				gas_cost
 			}
 		}
 	};
