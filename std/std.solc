@@ -1591,6 +1591,9 @@ forall t t_decoded .
     t : ABIAttribs,
     ABIDecoder(t, CalldataWordReader):ABIDecode(t_decoded) =>
 function abiArrayGet(a : calldata(array(t)), i : uint256) -> t_decoded {
+    // Bounds check: valid indices are [0, length); i == length is already past
+    // the last element, so reject i >= length (mirrors the storage-array guard).
+    require(i < abiArrayLength(a), Error(0x7f52b2bf)); // ArrayOutOfBounds()
     let base : word = Typedef.rep(a);
     let elemRdr : CalldataWordReader = CalldataWordReader(base + 32);
     let dec : ABIDecoder(t, CalldataWordReader) = ABIDecoder(elemRdr);
