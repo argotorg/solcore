@@ -173,7 +173,8 @@ primCtx =
       integerMul,
       integerLt,
       integerEq,
-      fromIntegerEntry
+      fromIntegerEntry,
+      fromStringEntry
     ]
 
 -- Primitive constructor schemes only — never overwritten by user function definitions.
@@ -209,6 +210,11 @@ primInstEnv =
         [ [] :=> InCls intClassName word [],
           [] :=> InCls intClassName integer []
         ]
+      ),
+      ( strClassName,
+        [ [] :=> InCls strClassName string [],
+          [] :=> InCls strClassName memString []
+        ]
       )
     ]
 
@@ -216,7 +222,8 @@ primClassEnv :: ClassTable
 primClassEnv =
   Map.fromList
     [ (Name "invokable", invokableInfo),
-      (intClassName, intInfo)
+      (intClassName, intInfo),
+      (strClassName, strInfo)
     ]
   where
     invokableInfo =
@@ -232,6 +239,12 @@ primClassEnv =
         0
         [QualName intClassName "fromInteger"]
         (InCls intClassName (TyVar (TVar (Name "a"))) [])
+        []
+    strInfo =
+      ClassInfo
+        0
+        [QualName strClassName "fromString"]
+        (InCls strClassName (TyVar (TVar (Name "a"))) [])
         []
 
 primDataType :: Map Name DataTy

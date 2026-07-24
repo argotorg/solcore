@@ -200,8 +200,17 @@ function revertEmpty() -> () {
 }
 
 // TODO: use bytes4
-// TODO: add literal version Msg(string)
 data Error = Error(word) | Empty | Msg(memory(string));
+
+// A string literal can be used as an Error: `require(cond, "message")` reverts
+// with the message.  The literal is materialized into memory(string) here; MastEval
+// erases the comptime-only parameter by cloning this method per literal, so
+// the materializer sees a literal rather than a parameter.
+instance Error : Str {
+    function fromString(s: string) -> Error {
+        return Error.Msg(Str.fromString(s));
+    }
+}
 
 // Revert with Error selector.
 function revertWithError(e:Error) -> () {

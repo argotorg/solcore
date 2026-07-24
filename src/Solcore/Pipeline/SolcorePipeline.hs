@@ -28,6 +28,7 @@ import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.IntLiteralDesugar (desugarIntLiterals)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
+import Solcore.Desugarer.StrLiteralDesugar (desugarStrLiterals)
 import Solcore.Diagnostics
   ( CompilerError (..),
     Diagnostic (..),
@@ -913,7 +914,13 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Integer literal desugaring:"
     putStrLn $ prettyInferenceDecls withFromInt
 
-  pure withFromInt
+  -- String literal desugaring: wrap bare string literals in fromString()
+  let withFromStr = mapModuleInferenceTopDecls desugarStrLiterals withFromInt
+  liftIO $ when verbose $ do
+    putStrLn "> String literal desugaring:"
+    putStrLn $ prettyInferenceDecls withFromStr
+
+  pure withFromStr
 
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =

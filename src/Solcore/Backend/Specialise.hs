@@ -434,12 +434,36 @@ specCall self@(Id (QualName (Name "Int") "fromInteger") ty) args callTy = do
           args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
           pure (Id (QualName (Name "Int") "fromInteger") (Prim.integer :-> resultTy), args')
         else specCallResolve self args callTy
+-- Str.fromString coercion: resolve based on the result type.
+-- string -> memory(string) becomes memStringFromLit (lowered per-literal by EmitHull)
+-- string -> string         is identity (folded by MastEval)
+-- Any other concrete result type is a source-level `Str` instance, whose method
+-- has a body to specialise like any other call.
+specCall self@(Id (QualName (Name "Str") "fromString") ty) args callTy = do
+  s <- getSpSubst
+  let resultTy = snd (splitTy (applytv s ty))
+  if isSourceStrInstance resultTy
+    then specCallResolve self args callTy
+    else do
+      args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
+      if resultTy == Prim.memString
+        then pure (Id Prim.memStringFromLitName (Prim.string :-> Prim.memString), args')
+        else pure (Id (QualName (Name "Str") "fromString") (Prim.string :-> resultTy), args')
+  where
+    -- The two primitive instances are bodyless; any other ground result type
+    -- must come from a source instance.  A result type still containing type
+    -- variables keeps the identity treatment, as there is nothing to resolve
+    -- against.
+    isSourceStrInstance t =
+      null (freetv t) && t /= Prim.string && t /= Prim.memString
 specCall i args ty
   | idName i `elem` comptimeBuiltins = do
       args' <- mapM (\a -> specExp a (typeOfTcExp a)) args
       pure (i, args')
   | otherwise = specCallResolve i args ty
 
+-- | Specialise a call by looking up a resolution for the callee, the general
+-- path taken by every call that is not a compiler builtin.
 specCallResolve :: Id -> [TcExp] -> Ty -> SM (Id, [TcExp])
 specCallResolve i args ty = do
   i' <- atCurrentSubst i

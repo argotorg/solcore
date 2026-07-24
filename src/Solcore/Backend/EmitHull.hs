@@ -3,11 +3,14 @@ module Solcore.Backend.EmitHull (emitHull) where
 import Common.Monad
 import Control.Monad (when)
 import Control.Monad.State
+import Data.ByteString qualified as BS
 import Data.List (partition)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.String (fromString)
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import GHC.Stack (HasCallStack)
 import Language.Hull qualified as Hull
 import Language.Yul
@@ -18,6 +21,7 @@ import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
 import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..))
 import Solcore.Frontend.TypeInference.TcMonad (insts)
+import Solcore.Primitives.Primitives (memStringFromLitName)
 import Prelude hiding (product)
 
 emitHull :: Bool -> MastCompUnit -> IO [Hull.Object]
@@ -43,7 +47,10 @@ data EcState = EcState
     ecDebug :: Bool,
     ecContext :: [String],
     ecDeployer :: Maybe Hull.Body,
-    ecFresh :: Int
+    ecFresh :: Int,
+    -- String literals materialized into memory(string), keyed by content for
+    -- dedup; value is the generated allocator's name (__strlit_<n>).
+    ecStrLits :: Map.Map String String
   }
 
 initEcState :: Bool -> EcState
@@ -55,7 +62,8 @@ initEcState debugp =
       ecDebug = debugp,
       ecContext = [],
       ecDeployer = Nothing,
-      ecFresh = 0
+      ecFresh = 0,
+      ecStrLits = Map.empty
     }
 
 -- isolate local changes to nesting level and variable substitution
@@ -88,11 +96,6 @@ sumDataTy =
 
 builtinDataInfo :: [(Name, DataTy)]
 builtinDataInfo = [("sum", sumDataTy)]
-
--- | The comptime-only integer type.  Values of this type must be fully
--- eliminated by MastEval before hull emission; reaching here is a bug.
-mastIntegerTy :: MastTy
-mastIntegerTy = MastTyCon (Name "integer") []
 
 type VSubst = Map.Map Name Hull.Expr
 
@@ -130,13 +133,77 @@ emitContract :: MastContract -> EM Hull.Object
 emitContract c = do
   let cname = show (mastContrName c)
   writes ["Emitting hull for contract ", cname]
-  runtimeBody <- concatMapM emitCDecl (mastContrDecls c)
+  modify (\s -> s {ecStrLits = Map.empty})
+  runtimeBody0 <- concatMapM emitCDecl (mastContrDecls c)
+  -- Prepend the per-literal string allocators referenced by the runtime code.
+  strLits <- gets ecStrLits
+  let strLitFuns = [genStrLitFun fn s | (s, fn) <- Map.toList strLits]
+  let runtimeBody = strLitFuns ++ runtimeBody0
   deployer <- gets ecDeployer
   case deployer of
     Nothing -> pure (Hull.Object cname runtimeBody [])
     Just code ->
       let runtimeObject = Hull.Object cname runtimeBody []
        in pure (Hull.Object (cname ++ "Deploy") code [runtimeObject])
+
+-- | Register a string literal for materialization, deduplicated by content.
+-- Returns the name of the generated allocator function.
+registerStrLit :: String -> EM String
+registerStrLit s = do
+  lits <- gets ecStrLits
+  case Map.lookup s lits of
+    Just fn -> pure fn
+    Nothing -> do
+      let fn = "__strlit_" ++ show (Map.size lits)
+      modify (\st -> st {ecStrLits = Map.insert s fn (ecStrLits st)})
+      pure fn
+
+-- | Generate the allocator for one string literal.  It allocates length +
+-- character slots from the free-memory pointer (0x40), writes the byte length
+-- and the (right-padded) character words, bumps the free pointer, and returns
+-- the pointer (the memory(string) representation).  The block is self-contained
+-- and depends on no other emitted function.
+genStrLitFun :: String -> String -> Hull.Stmt
+genStrLitFun fn s =
+  Hull.SFunction fn [] Hull.TWord $
+    [ Hull.SAlloc "p" Hull.TWord,
+      Hull.SAssembly asm,
+      Hull.SReturn (Hull.EVar "p")
+    ]
+  where
+    (len, charWords, total) = strLitLayout s
+    asm =
+      [YAssign ["p"] (YCall "mload" [YLit (YulNumber 0x40)])]
+        ++ [YExp (YCall "mstore" [YIdent "p", YLit (YulNumber len)])]
+        ++ [ YExp
+               ( YCall
+                   "mstore"
+                   [YCall "add" [YIdent "p", YLit (YulNumber (32 * i))], YLit (YulNumber w)]
+               )
+           | (i, w) <- zip [1 ..] charWords
+           ]
+        ++ [ YExp
+               ( YCall
+                   "mstore"
+                   [YLit (YulNumber 0x40), YCall "add" [YIdent "p", YLit (YulNumber total)]]
+               )
+           ]
+
+-- | Compute the in-memory layout of a string literal:
+-- (byte length, character words right-padded to 32 bytes, total bytes allocated).
+strLitLayout :: String -> (Integer, [Integer], Integer)
+strLitLayout s =
+  (toInteger len, map chunkToWord chunks, toInteger total)
+  where
+    bytes = BS.unpack (TE.encodeUtf8 (T.pack s))
+    len = length bytes
+    chunks = chunk32 bytes
+    total = 32 * (1 + length chunks)
+    chunk32 [] = []
+    chunk32 xs = let (h, t) = splitAt 32 xs in h : chunk32 t
+    -- big-endian word of the 32-byte slot (bytes left-aligned, zero-padded right)
+    chunkToWord chunk =
+      foldl (\acc b -> acc * 256 + toInteger b) 0 (take 32 (chunk ++ replicate 32 0))
 
 emitCDecl :: MastContractDecl -> EM [Hull.Stmt]
 emitCDecl (MastCFunDecl f) = emitFunDef f
@@ -164,8 +231,10 @@ findConstructor = go
 -----------------------------------------------------------------------
 emitFunDef :: (HasCallStack) => MastFunDef -> EM [Hull.Stmt]
 emitFunDef fd = withContext (show (mastFunName fd)) do
-  when (mastFunReturn fd == mastIntegerTy) $
-    errorsEM ["integer-typed return in '", show (mastFunName fd), "': comptime value not eliminated before hull emission"]
+  case comptimeOnlyMastName (mastFunReturn fd) of
+    Just tn ->
+      errorsEM [tn, "-typed return in '", show (mastFunName fd), "': comptime value not eliminated before hull emission"]
+    Nothing -> pure ()
   let name = show (mastFunName fd)
   hullArgs <- mapM translateParam (mastFunParams fd)
   hullTyp <- translateMastType (mastFunReturn fd)
@@ -177,8 +246,8 @@ emitFunDef fd = withContext (show (mastFunName fd)) do
 
 translateParam :: MastParam -> EM Hull.Arg
 translateParam (MastParam n _ct t)
-  | t == mastIntegerTy =
-      errorsEM ["integer-typed parameter '", show n, "': comptime value not eliminated before hull emission"]
+  | Just tn <- comptimeOnlyMastName t =
+      errorsEM [tn, "-typed parameter '", show n, "': comptime value not eliminated before hull emission"]
   | otherwise = Hull.TArg (show n) <$> translateMastType t
 
 -----------------------------------------------------------------------
@@ -283,6 +352,11 @@ emitExp (MastVar x) = do
     Nothing -> pure (Hull.EVar (show (mastIdName x)), [])
 -- special handling of revertLit
 emitExp (MastCall (MastId "revertLit" _) [MastLit (StrLit s)]) = pure (Hull.EUnit, [Hull.SRevert s])
+-- materialize a string literal into memory(string): call its per-literal allocator
+emitExp (MastCall (MastId name _) [MastLit (StrLit s)])
+  | name == memStringFromLitName = do
+      fn <- registerStrLit s
+      pure (Hull.ECall fn [], [])
 emitExp (MastCall f as) = do
   (hullArgs, codes) <- unzip <$> mapM emitExp as
   let call = Hull.ECall (show (mastIdName f)) hullArgs
@@ -309,8 +383,8 @@ emitStmt (MastAssign i e) = do
   let assign = [Hull.SAssign (Hull.EVar (show (mastIdName i))) e']
   return (stmts ++ assign)
 emitStmt (MastLet _ct (MastId name ty) _ mexp)
-  | ty == mastIntegerTy =
-      errorsEM ["integer-typed let '", show name, "': comptime value not eliminated before hull emission"]
+  | Just tn <- comptimeOnlyMastName ty =
+      errorsEM [tn, "-typed let '", show name, "': comptime value not eliminated before hull emission"]
   | otherwise = do
       let hullName = show name
       hullTy <- translateMastType ty
