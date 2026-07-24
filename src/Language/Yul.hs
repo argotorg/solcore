@@ -223,7 +223,9 @@ instance Pretty YulExp where
   ppr (YCall name args) = ppr name >< parens (commaSepList args)
   ppr (YIdent name) = ppr name
   ppr (YLit lit) = ppr lit
-  ppr (YMeta s) = text s
+  ppr (YMeta s)
+    | '`' `elem` s = text "${" <> text s <> char '}'
+    | otherwise = char '`' <> text s <> char '`'
 
 instance Pretty YLiteral where
   ppr (YulNumber n) = integer n

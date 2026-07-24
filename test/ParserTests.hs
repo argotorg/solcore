@@ -910,6 +910,14 @@ stmtTests =
                 YLet ["second"] (Just (YMeta "interpolationHole"))
               ]
           ),
+      testCase "Yul metadata expressions survive source pretty-printing" $
+        mapM_
+          roundTripsStmt
+          [ "assembly { let x := `hole` }",
+            "assembly { let x := ${hole} }",
+            "assembly { let x := `a}b` }",
+            "assembly { let x := ${a`b} }"
+          ],
       testCase "Yul string literals survive source pretty-printing" $
         mapM_
           roundTripsStmt
