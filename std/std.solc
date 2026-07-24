@@ -1156,6 +1156,14 @@ instance string:ABIAttribs {
     function headSize(ty: Proxy(string)) -> word { return 32; }
     function isStatic(ty : Proxy(string)) -> bool { return false; }
 }
+// bytes is dynamic, exactly like string — without this instance it falls to the
+// default (isStatic = true), which wrongly marks memory(bytes) (and any ADT
+// carrying it) static, so calldata arrays/sums take the inline decode path over
+// what is really an offset-referenced value.
+instance bytes:ABIAttribs {
+    function headSize(ty: Proxy(bytes)) -> word { return 32; }
+    function isStatic(ty : Proxy(bytes)) -> bool { return false; }
+}
 
 // computes the attribs for a pair of two types that implement attribs
 forall a b . a:ABIAttribs, b:ABIAttribs => instance (a,b):ABIAttribs {
