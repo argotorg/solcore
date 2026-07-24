@@ -95,29 +95,25 @@ instance ABIDecoder(sum(f, g), reader) : ABIDecode(sum(f, g)) {
         match ptr {
         | ABIDecoder(rdr) =>
             let prx : Proxy(sum(f, g));
+            // Byte offset (relative to rdr) of this sum's own start. A static sum
+            // is inline at headOffset; a dynamic sum's head slot holds a 32-byte
+            // offset to it, which we follow. We then rebase a decoder onto the
+            // sum start and read [tag][branch] inline — so the tag match (and its
+            // inl/inr) has a single, uniform shape regardless of static/dynamic.
+            let sumStartOff : word;
             match ABIAttribs.isStatic(prx) {
-            | true =>
-                let tag = WordReader.read(WordReader.advance(rdr, headOffset));
-                match tag {
-                | 0 =>
-                    let dec_f : ABIDecoder(f, reader) = ABIDecoder(rdr);
-                    return inl(ABIDecode.decode(dec_f, headOffset + 32));
-                | _ =>
-                    let dec_g : ABIDecoder(g, reader) = ABIDecoder(rdr);
-                    return inr(ABIDecode.decode(dec_g, headOffset + 32));
-                }
-            | false =>
-                let sumOff = WordReader.read(WordReader.advance(rdr, headOffset));
-                let sumRdr = WordReader.advance(rdr, sumOff);
-                let tag = WordReader.read(sumRdr);
-                match tag {
-                | 0 =>
-                    let dec_f : ABIDecoder(f, reader) = ABIDecoder(sumRdr);
-                    return inl(ABIDecode.decode(dec_f, 32));
-                | _ =>
-                    let dec_g : ABIDecoder(g, reader) = ABIDecoder(sumRdr);
-                    return inr(ABIDecode.decode(dec_g, 32));
-                }
+            | true  => sumStartOff = headOffset;
+            | false => sumStartOff = WordReader.read(WordReader.advance(rdr, headOffset));
+            }
+            let sumRdr = WordReader.advance(rdr, sumStartOff);
+            let tag = WordReader.read(sumRdr);
+            match tag {
+            | 0 =>
+                let dec_f : ABIDecoder(f, reader) = ABIDecoder(sumRdr);
+                return inl(ABIDecode.decode(dec_f, 32));
+            | _ =>
+                let dec_g : ABIDecoder(g, reader) = ABIDecoder(sumRdr);
+                return inr(ABIDecode.decode(dec_g, 32));
             }
         }
     }
