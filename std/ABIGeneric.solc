@@ -73,25 +73,51 @@ instance sum(f, g) : ABIEncode {
 }
 
 // ─── ABIDecode for sum(f, g) ─────────────────────────────────────────────
-// Reads the tag word at headOffset; dispatches to f or g decoder at headOffset + 32.
+// A STATIC sum is laid out inline: read the tag word at headOffset, dispatch to
+// the branch decoder at headOffset + 32.
+//
+// A DYNAMIC sum (one whose branch carries a dynamic field) is, like any dynamic
+// ABI value, referenced by a 32-byte offset: read that offset at headOffset,
+// rebase a decoder onto the sum's start, then read [tag][branch] inline there.
+// Following the offset here (rather than at the call site) is what lets a
+// dynamic sum be decoded uniformly wherever a dynamic value can appear — as a
+// field, or as a `T[]` element alongside a bare `bytes`/`string` leaf, which
+// follows its offset the same way.
 
 forall f g reader .
     reader : WordReader,
     f : ABIAttribs,
+    g : ABIAttribs,
     ABIDecoder(f, reader) : ABIDecode(f),
     ABIDecoder(g, reader) : ABIDecode(g) =>
 instance ABIDecoder(sum(f, g), reader) : ABIDecode(sum(f, g)) {
     function decode(ptr : ABIDecoder(sum(f, g), reader), headOffset : word) -> sum(f, g) {
         match ptr {
         | ABIDecoder(rdr) =>
-            let tag = WordReader.read(WordReader.advance(rdr, headOffset));
-            match tag {
-            | 0 =>
-                let dec_f : ABIDecoder(f, reader) = ABIDecoder(rdr);
-                return inl(ABIDecode.decode(dec_f, headOffset + 32));
-            | _ =>
-                let dec_g : ABIDecoder(g, reader) = ABIDecoder(rdr);
-                return inr(ABIDecode.decode(dec_g, headOffset + 32));
+            let prx : Proxy(sum(f, g));
+            match ABIAttribs.isStatic(prx) {
+            | true =>
+                let tag = WordReader.read(WordReader.advance(rdr, headOffset));
+                match tag {
+                | 0 =>
+                    let dec_f : ABIDecoder(f, reader) = ABIDecoder(rdr);
+                    return inl(ABIDecode.decode(dec_f, headOffset + 32));
+                | _ =>
+                    let dec_g : ABIDecoder(g, reader) = ABIDecoder(rdr);
+                    return inr(ABIDecode.decode(dec_g, headOffset + 32));
+                }
+            | false =>
+                let sumOff = WordReader.read(WordReader.advance(rdr, headOffset));
+                let sumRdr = WordReader.advance(rdr, sumOff);
+                let tag = WordReader.read(sumRdr);
+                match tag {
+                | 0 =>
+                    let dec_f : ABIDecoder(f, reader) = ABIDecoder(sumRdr);
+                    return inl(ABIDecode.decode(dec_f, 32));
+                | _ =>
+                    let dec_g : ABIDecoder(g, reader) = ABIDecoder(sumRdr);
+                    return inr(ABIDecode.decode(dec_g, 32));
+                }
             }
         }
     }

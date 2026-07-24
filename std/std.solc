@@ -1593,11 +1593,11 @@ forall t . function abiArrayLength(a : calldata(array(t))) -> uint256 {
 //
 //   * dynamic element type -> the region holds a table of 32-byte offsets (one
 //     per element, relative to the region base), each pointing at that
-//     element's own encoding. We read offset i, then REBASE a fresh decoder
-//     onto the element's start (handle + 32 + off_i) and decode it at head
-//     offset 0. Rebasing is what makes the element's own inner offsets
-//     (e.g. a memory(bytes) leaf) resolve relative to the element, exactly as
-//     they were encoded.
+//     element's own encoding (standard-ABI T[] for dynamic T). The element
+//     decoder is aimed at the region base and given element i's slot as its
+//     head offset; the element's own dynamic decoder follows that offset. This
+//     is uniform across element kinds: a dynamic sum follows it and rebases to
+//     the element start, a bare bytes/string leaf follows it to its length word.
 forall t t_decoded .
     t : ABIAttribs,
     ABIDecoder(t, CalldataWordReader):ABIDecode(t_decoded) =>
@@ -1615,11 +1615,14 @@ function abiArrayGet(a : calldata(array(t)), i : uint256) -> t_decoded {
         let dec : ABIDecoder(t, CalldataWordReader) = ABIDecoder(elemRdr);
         return ABIDecode.decode(dec, idx * ABIAttribs.headSize(prx));
     | false =>
-        let offSlot : CalldataWordReader = CalldataWordReader(elemRegion + idx * 32);
-        let elemOff : word = WordReader.read(offSlot);
-        let elemRdr : CalldataWordReader = CalldataWordReader(elemRegion + elemOff);
+        // Dynamic elements: the region is a table of 32-byte offsets (relative
+        // to the region base), one per element. Hand the element decoder the
+        // region base and element i's slot as its head offset; the element's own
+        // (dynamic) decoder follows that offset — uniformly for a dynamic sum
+        // element or a bare bytes/string element (calldata(array(bytes))).
+        let elemRdr : CalldataWordReader = CalldataWordReader(elemRegion);
         let dec : ABIDecoder(t, CalldataWordReader) = ABIDecoder(elemRdr);
-        return ABIDecode.decode(dec, 0);
+        return ABIDecode.decode(dec, idx * 32);
     }
 }
 
