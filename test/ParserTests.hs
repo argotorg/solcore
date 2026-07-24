@@ -505,6 +505,26 @@ exprTests =
           expP
           "x as word + y"
           (ExpPlus (TyExp (var "x") word) (var "y")),
+      testCase "conversion target does not consume relational or shift operators" $ do
+        parsesAs
+          expP
+          "x as word < y"
+          (ExpLT (TyExp (var "x") word) (var "y"))
+        parsesAs
+          expP
+          "x as word <= y"
+          (ExpLE (TyExp (var "x") word) (var "y"))
+        parsesAs
+          expP
+          "x as word << y"
+          (ExpShiftL (TyExp (var "x") word) (var "y")),
+      testCase "converted comparisons and shifts survive source pretty-printing" $
+        mapM_
+          roundTripsExp
+          [ "x as word < y",
+            "x as word <= y",
+            "x as word << y"
+          ],
       testCase "parentheses allow converting a complete addition" $
         parsesAs
           expP

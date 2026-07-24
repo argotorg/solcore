@@ -83,7 +83,10 @@ arraySizeP =
     <|> typeP
 
 namedTypeP :: Parser Ty
-namedTypeP = TyCon <$> qualifiedName <*> option [] (angles (typeP `sepBy1` comma))
+namedTypeP =
+  TyCon
+    <$> qualifiedName
+    <*> option [] (try (angles (typeP `sepBy1` comma)))
 
 parenTypeP :: Parser Ty
 parenTypeP = parens (mkParenTy <$> (typeP `sepBy` comma))
