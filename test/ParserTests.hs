@@ -1970,6 +1970,44 @@ declarationShellTests =
                           )
               Right got ->
                 assertFailure ("Unexpected resolved output: " ++ show got),
+      testCase "resolved pretty-printing does not invent a unit return item" $
+        case runParserE
+          (sc *> topDeclP <* eof)
+          "<test>"
+          "contract C { function nop() public { return; } }" of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Left err ->
+                assertFailure ("Name resolution failed: " ++ show err)
+              Right (Resolved.CompUnit _ [resolvedDecl]) -> do
+                let rendered = SolcorePretty.pretty resolvedDecl
+                assertBool
+                  ("semantic pretty output invented a return clause:\n" ++ rendered)
+                  (not ("returns" `isInfixOf` rendered))
+                nameResolutionSucceeds rendered
+              Right got ->
+                assertFailure ("Unexpected resolved output: " ++ show got),
+      testCase "resolved pretty-printing preserves an explicit unit return item" $
+        case runParserE
+          (sc *> topDeclP <* eof)
+          "<test>"
+          "function unitValue() returns (()) { return (); }" of
+          Left err -> assertFailure ("Parse error:\n" ++ err)
+          Right parsed -> do
+            resolved <- nameResolution (CompUnit [] [parsed])
+            case resolved of
+              Left err ->
+                assertFailure ("Name resolution failed: " ++ show err)
+              Right (Resolved.CompUnit _ [resolvedDecl]) -> do
+                let rendered = SolcorePretty.pretty resolvedDecl
+                assertBool
+                  ("semantic pretty output lost the explicit unit item:\n" ++ rendered)
+                  ("returns (())" `isInfixOf` rendered)
+                nameResolutionSucceeds rendered
+              Right got ->
+                assertFailure ("Unexpected resolved output: " ++ show got),
       testCase "resolved pretty-printing keeps bare contract fields reusable" $
         case runParserE
           (sc *> topDeclP <* eof)

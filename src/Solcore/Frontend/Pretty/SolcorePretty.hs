@@ -311,7 +311,12 @@ pprContractSignature isExternal sig@(Signature vs ctx n ps rc ty _) =
 pprResolvedReturns :: Signature a -> Bool -> Maybe Ty -> Doc
 pprResolvedReturns sig returnComptime returnTy =
   case sigReturnItems sig of
-    [] -> pprRetTy returnComptime returnTy
+    []
+      | not returnComptime,
+        Just (TyCon n []) <- returnTy,
+        isUnit n ->
+          empty
+      | otherwise -> pprRetTy returnComptime returnTy
     items ->
       text "returns"
         <+> parens (commaSep (map pprResolvedReturnItem items))
