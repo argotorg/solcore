@@ -1,0 +1,14 @@
+object AsmLiteralBoundaries {
+  code {
+    function run() -> word {
+      let result : word
+      assembly {
+        let maxWord := 115792089237316195423570985008687907853269984665640564039457584007913129639935
+        let fullWord := "12345678901234567890123456789012"
+        let longObjectName := datasize("this-object-name-is-definitely-longer-than-thirty-two-bytes")
+        result := add(add(maxWord, fullWord), longObjectName)
+      }
+      return result
+    }
+  }
+}

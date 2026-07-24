@@ -5,7 +5,10 @@
 module Language.Yul where
 
 import Common.Pretty
+import Data.ByteString qualified as BS
 import Data.Generics (Data, Typeable)
+import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
 import Solcore.Frontend.Syntax.Name
 
 data YulObject = YulObject String YulCode [YulInner]
@@ -133,6 +136,103 @@ validateYulControlFlow = validateBlock 0 False
               Left "Yul leave is only valid inside a Yul function"
         _ ->
           Right ()
+
+-- | Validate the target-level representation of Yul literals. Ordinary string
+-- literals are word values and therefore contain at most 32 UTF-8 bytes.
+-- Object-name operands are handled specially by Yul and are not word-sized.
+validateYulLiterals :: YulBlock -> Either String ()
+validateYulLiterals = validateBlock
+  where
+    validateBlock :: YulBlock -> Either String ()
+    validateBlock = mapM_ validateStmt
+
+    validateStmt :: YulStmt -> Either String ()
+    validateStmt stmt =
+      case stmt of
+        YBlock body ->
+          validateBlock body
+        YFun _ _ _ body ->
+          validateBlock body
+        YLet _ initializer ->
+          mapM_ validateExp initializer
+        YAssign _ value ->
+          validateExp value
+        YIf condition body -> do
+          validateExp condition
+          validateBlock body
+        YSwitch scrutinee cases defaultBody -> do
+          validateExp scrutinee
+          mapM_ validateCase cases
+          mapM_ validateBlock defaultBody
+        YFor pre condition post body -> do
+          validateBlock pre
+          validateExp condition
+          validateBlock post
+          validateBlock body
+        YExp expression ->
+          validateExp expression
+        YBreak ->
+          pure ()
+        YContinue ->
+          pure ()
+        YLeave ->
+          pure ()
+        YComment _ ->
+          pure ()
+
+    validateCase :: YulCase -> Either String ()
+    validateCase (literal, body) = do
+      validateLiteral False literal
+      validateBlock body
+
+    validateExp :: YulExp -> Either String ()
+    validateExp expression =
+      case expression of
+        YCall function arguments ->
+          mapM_
+            (uncurry (validateArgument function))
+            (zip [0 ..] arguments)
+        YLit literal ->
+          validateLiteral False literal
+        YIdent _ ->
+          pure ()
+        YMeta _ ->
+          pure ()
+
+    validateArgument :: Name -> Int -> YulExp -> Either String ()
+    validateArgument function index expression =
+      case expression of
+        YLit literal@(YulString _)
+          | isYulObjectNameArgument function index ->
+              validateLiteral True literal
+        _ ->
+          validateExp expression
+
+    validateLiteral :: Bool -> YLiteral -> Either String ()
+    validateLiteral _ (YulNumber number)
+      | number < 0 || number >= 2 ^ (256 :: Int) =
+          Left
+            ( "Yul numeric literal is outside the 256-bit word range: "
+                ++ show number
+            )
+    validateLiteral allowLongString (YulString value)
+      | not allowLongString && byteLength > 32 =
+          Left
+            ( "Yul string literal exceeds 32 UTF-8 bytes (got "
+                ++ show byteLength
+                ++ ")"
+            )
+      where
+        byteLength = BS.length (Text.encodeUtf8 (Text.pack value))
+    validateLiteral _ _ =
+      pure ()
+
+-- | Whether an argument is interpreted by Yul as an object or immutable name
+-- rather than as an ordinary word value.
+isYulObjectNameArgument :: Name -> Int -> Bool
+isYulObjectNameArgument function index =
+  (function `elem` ["datasize", "dataoffset", "loadimmutable", "linkersymbol"] && index == 0)
+    || (function == "setimmutable" && index == 1)
 
 data YLiteral
   = YulNumber Integer

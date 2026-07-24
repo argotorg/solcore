@@ -124,6 +124,9 @@ tcStmtWithExpectedReturn' mExpectedReturn stmt@(Asm yblk) = do
   case validateYulControlFlow yblk of
     Left err -> tcmError err `wrapError` stmt
     Right () -> pure ()
+  case validateYulLiterals yblk of
+    Left err -> tcmError err `wrapError` stmt
+    Right () -> pure ()
   if isEmptyRevertBlock yblk
     then do
       resultTy <- maybe freshTyVar pure mExpectedReturn
@@ -2096,15 +2099,29 @@ tcYulExp e@(YCall n es) =
   do
     sch <- askEnv n `wrapError` e
     (_ :=> t) <- freshInst sch
-    ts <- mapM tcYulExp es
+    ts <- zipWithM (tcYulCallArgument n) [0 ..] es
     t' <- freshTyVar
     s <- unify t (funtype ts t') `wrapError` e
     _ <- extSubst s
     withCurrentSubst t'
 tcYulExp (YMeta _) = pure word
 
+tcYulCallArgument :: Name -> Int -> YulExp -> TcM Ty
+tcYulCallArgument function index expression
+  | isYulObjectNameArgument function index =
+      case expression of
+        YLit (YulString _) -> pure string
+        YMeta _ -> pure string
+        _ ->
+          tcmError
+            ( "Yul object-name argument must be a string literal or metadata reference: "
+                ++ pretty expression
+            )
+  | otherwise =
+      tcYulExp expression
+
 tcYLit :: YLiteral -> TcM Ty
-tcYLit (YulString _) = return string
+tcYLit (YulString _) = return word
 tcYLit (YulNumber _) = return word
 -- Yul has no boolean type: 'true'/'false' are word literals (1/0).
 tcYLit YulTrue = return word

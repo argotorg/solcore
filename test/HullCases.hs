@@ -22,7 +22,8 @@ hullTests =
           runHullTest "03-sum.hull",
           runHullTest "04-cond.hull",
           runHullTest "05-forward-ref.hull",
-          runHullTest "15-loop-control.hull"
+          runHullTest "15-loop-control.hull",
+          runHullTest "20-asm-literal-boundaries.hull"
         ],
       testGroup
         "Programs with type errors"
@@ -34,7 +35,10 @@ hullTests =
           runHullTestExpectingFailure "11-err-asm-sum-return.hull",
           runHullTestExpectingFailure "12-err-asm-break-outside-loop.hull",
           runHullTestExpectingFailure "13-err-break-outside-loop.hull",
-          runHullTestExpectingFailure "14-err-continue-outside-loop.hull"
+          runHullTestExpectingFailure "14-err-continue-outside-loop.hull",
+          runHullTestExpectingFailure "21-err-asm-number-range.hull",
+          runHullTestExpectingFailure "22-err-asm-string-size.hull",
+          runHullTestExpectingFailure "23-err-asm-utf8-string-size.hull"
         ]
     ]
 

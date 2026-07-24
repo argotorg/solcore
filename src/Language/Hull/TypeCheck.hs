@@ -84,6 +84,9 @@ checkStmtAt _ (SAssembly stmts) = do
   case validateYulControlFlow stmts of
     Left err -> hullError err
     Right () -> pure ()
+  case validateYulLiterals stmts of
+    Left err -> hullError err
+    Right () -> pure ()
   withLocalEnv (checkAsmBlock stmts)
 checkStmtAt loopDepth (SFor initStmt cond post body) =
   -- Variables declared in the init block are scoped over the entire for loop

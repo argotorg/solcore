@@ -629,6 +629,33 @@ moduleTypeCheckTests =
                 "}"
               ]
         assertRight "well-scoped Yul control transfer" checked,
+      testCase "Yul literals honor word and UTF-8 byte bounds" $ do
+        validBoundaries <-
+          typecheckSource $
+            unlines
+              [ "function validYulLiterals() {",
+                "  assembly {",
+                "    let maxWord := 115792089237316195423570985008687907853269984665640564039457584007913129639935",
+                "    mstore(0, \"12345678901234567890123456789012\")",
+                "    mstore(32, \"éééééééééééééééé\")",
+                "    pop(datasize(\"this-object-name-is-definitely-longer-than-thirty-two-bytes\"))",
+                "  }",
+                "  return;",
+                "}"
+              ]
+        tooLargeNumber <-
+          typecheckSource
+            "function tooLargeNumber() { assembly { let x := 115792089237316195423570985008687907853269984665640564039457584007913129639936 } return; }"
+        tooLongAscii <-
+          typecheckSource
+            "function tooLongAscii() { assembly { mstore(0, \"123456789012345678901234567890123\") } return; }"
+        tooLongUtf8 <-
+          typecheckSource
+            "function tooLongUtf8() { assembly { mstore(0, \"ééééééééééééééééé\") } return; }"
+        assertRight "maximum word and 32-byte strings" validBoundaries
+        assertLeft "number larger than a word" tooLargeNumber
+        assertLeft "33-byte ASCII string" tooLongAscii
+        assertLeft "34-byte UTF-8 string" tooLongUtf8,
       testCase "omitted returns clause is a fully annotated unit return" $ do
         checked <-
           typecheckSource $

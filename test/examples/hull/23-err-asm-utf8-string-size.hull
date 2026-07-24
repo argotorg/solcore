@@ -1,0 +1,10 @@
+object AsmUtf8StringSize {
+  code {
+    function bad() -> unit {
+      assembly {
+        let tooLong := "ééééééééééééééééé"
+      }
+      return ()
+    }
+  }
+}
