@@ -130,6 +130,7 @@ dispatches =
       runDispatchTest "generic_product.solc",
       runDispatchTest "generic_sum.solc",
       runDispatchTest "abi_array_sum.solc",
+      runDispatchTest "abi_batch_adt.solc",
       runDispatchTest "specialise_sum_of_product.solc",
       runDispatchTest "storage_adt_field.solc",
       runDispatchTest "storage_adt_enum.solc",

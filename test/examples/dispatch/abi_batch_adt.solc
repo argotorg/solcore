@@ -1,0 +1,70 @@
+import std.{*};
+import std.dispatch.{*};
+import std.Generic.{*};
+import std.ABIGeneric.{*};
+
+// Complex nested-ADT ABI decode over a calldata dynamic array. The element is a
+// three-level algebraic type built from sums *and* products:
+//
+//   Operation : sum(address, address)                -- static
+//   Signature : sum((bytes32, bytes32), address)     -- static
+//   Batch     : sum( (Operation, Signature)          -- Queue   : static, inline
+//                  , (uint256, memory(bytes)) )       -- Execute : dynamic (carries bytes)
+//
+// `items[i]` dispatches through the calldata-array RValueIdxAccess instance to
+// abiArrayGet, decoding the element on demand into a fully-formed `Batch` to
+// match on — exercising the derived ABIDecode across three nested data types.
+//
+// This is a COMPILE-level test (registered via runDispatchTest, which only
+// compiles the contract — the runtime .json fixture is a separate step). The
+// Queue path is a fully static nested sum-of-product that the fixed-width
+// element codec handles. The Execute path carries a dynamic memory(bytes);
+// materialising that out of a fixed-width inline array element is beyond the
+// current "static sums only" codec (see std.ABIGeneric), so there is no runtime
+// calldata fixture for it yet. The test pins that the types and the extraction
+// logic type-check and lower through the whole pipeline.
+
+data Operation = AddSigner(address) | RemoveSigner(address);
+data Signature = ECDSA(bytes32, bytes32) | Contract(address);
+data Batch = Queue(Operation, Signature) | Execute(uint256, memory(bytes));
+
+// Address added by an AddSigner op (address(0) for a RemoveSigner).
+function addedSigner(op : Operation) -> address {
+    match op {
+      | Operation.AddSigner(a)    => return a;
+      | Operation.RemoveSigner(_) => return address(0);
+    }
+}
+
+// Verifying contract address of a Contract signature (address(0) for ECDSA).
+function contractVerifier(sig : Signature) -> address {
+    match sig {
+      | Signature.Contract(a) => return a;
+      | Signature.ECDSA(_, _) => return address(0);
+    }
+}
+
+contract BatchDecoder {
+  constructor() {}
+
+  // From a Queue(AddSigner(a), Contract(c)) element, return (a, c): the signer
+  // being added and the contract that verifies the queued action.
+  public function queueSigner(items : calldata(array(Batch)), i : uint256) -> (address, address) {
+    let b : Batch = items[i];
+    match b {
+      | Batch.Queue(op, sig) => return (addedSigner(op), contractVerifier(sig));
+      | Batch.Execute(_, _)  => return (address(0), address(0));
+    }
+  }
+
+  // The payload bytes carried by an Execute element.
+  public function execPayload(items : calldata(array(Batch)), i : uint256) -> memory(bytes) {
+    let b : Batch = items[i];
+    let out : memory(bytes);
+    match b {
+      | Batch.Execute(_, data) => out = data;
+      | Batch.Queue(_, _)      => revertEmpty();
+    }
+    return out;
+  }
+}
