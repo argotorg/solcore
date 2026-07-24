@@ -25,12 +25,15 @@ contract Batch {
     return abiArrayLength(ops);
   }
 
-  // Discriminant of element i: 0 for Approve, 1 for Reject.
+  // Constructor of element i, mapped to a distinct sentinel: 16 for Approve,
+  // 32 for Reject. Deliberately not 0/1 — those coincide with the on-wire sum
+  // tag (inl=0, inr=1), so non-trivial values prove the match actually
+  // discriminates the constructor rather than echoing the raw tag word.
   public function tagOf(ops : calldata(array(Operation)), i : uint256) -> uint256 {
     let op : Operation = ops[i];
     match op {
-      | Operation.Approve(_) => return uint256(0);
-      | Operation.Reject(_)  => return uint256(1);
+      | Operation.Approve(_) => return uint256(16);
+      | Operation.Reject(_)  => return uint256(32);
     }
   }
 
