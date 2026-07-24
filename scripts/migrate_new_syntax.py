@@ -394,9 +394,13 @@ class TypeParser:
             returns = self.parse_type_list(index + 2, ret_close)
             if returns is None:
                 return None
-            attr_text = " ".join(attributes or ["internal"])
+            attr_text = (
+                " " + " ".join(attributes)
+                if attributes
+                else ""
+            )
             rendered = (
-                f"function({', '.join(args)}) {attr_text} "
+                f"function({', '.join(args)}){attr_text} "
                 f"returns ({', '.join(returns)})"
             )
             return self.parse_array_suffix(rendered, ret_close + 1)

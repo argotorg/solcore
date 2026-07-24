@@ -66,6 +66,15 @@ class NewSyntaxStabilityTests(unittest.TestCase):
             "function ok() {}\n"
         )
 
+    def test_function_type_visibility_is_stable(self) -> None:
+        for visibility in ("", " internal", " external"):
+            with self.subTest(visibility=visibility):
+                self.assert_stable(
+                    "function apply("
+                    f"callback: function(word){visibility} returns (bool)"
+                    ") {}\n"
+                )
+
     def test_transparent_aliases_are_stable(self) -> None:
         cases = (
             "alias Word = uint256;\n",
