@@ -217,18 +217,17 @@ contract Multisig {
         perform_reject(nonce_, signer);
     }
 
-/*
-    public function batch(operations: array(BatchOperation)) -> () {
-        for (let i = 0; i < operations.length; i += 1) {
+    public function batch(operations: calldata(array(BatchOperation))) -> () {
+        for (let i = uint256(0); i < operations.length(); i += 1) {
             match operations[i] {
-                | Operation.Queue(operation, signature) => queueWithSignature(operation, signature);
-                | Operation.Approve(nonce_, signature) => approveWithSignature(nonce_, signature);
-                | Operation.Reject(nonce_, signature) => rejectWithSignature(nonce_, signature);
-                | Operation.Execute(nonce_, payload) => execute(nonce_, payload);
+                | BatchOperation.Queue(operation, signature) => queueWithSignature(operation, signature);
+                | BatchOperation.Approve(nonce_, signature) => approveWithSignature(nonce_, signature);
+                | BatchOperation.Reject(nonce_, signature) => rejectWithSignature(nonce_, signature);
+                | BatchOperation.Execute(nonce_, payload) => execute(nonce_, payload);
             }
         }
     }
-*/
+
     // Only signers can call this.
     public function reject(nonce_: uint256) -> () {
         require(isSigner(caller()), Error(0x12345678)); // NotASigner()
