@@ -75,6 +75,18 @@ class NewSyntaxStabilityTests(unittest.TestCase):
                     ") {}\n"
                 )
 
+    def test_explicit_unit_returns_are_stable(self) -> None:
+        cases = (
+            "function unitValue() returns (()) { return (); }\n",
+            (
+                "function named() returns (result: word) "
+                "{ result = 1; return (); }\n"
+            ),
+        )
+        for source in cases:
+            with self.subTest(source=source):
+                self.assert_stable(source)
+
     def test_transparent_aliases_are_stable(self) -> None:
         cases = (
             "alias Word = uint256;\n",

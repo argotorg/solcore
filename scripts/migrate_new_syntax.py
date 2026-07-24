@@ -1269,23 +1269,6 @@ def transform_let_comptime(source: str) -> str:
     return apply_edits(source, edits)
 
 
-def transform_return_unit(source: str) -> str:
-    tokens = significant(source)
-    edits: list[Edit] = []
-    for index, token in enumerate(tokens):
-        if (
-            token.text == "return"
-            and index + 3 < len(tokens)
-            and tokens[index + 1].text == "("
-            and tokens[index + 2].text == ")"
-            and tokens[index + 3].text == ";"
-        ):
-            edits.append(
-                Edit(token.end, tokens[index + 2].end, "")
-            )
-    return apply_edits(source, edits)
-
-
 def transform_matches(source: str) -> str:
     tokens = significant(source)
     edits: list[Edit] = []
@@ -2247,7 +2230,6 @@ def migrate_source(source: str) -> str:
         transform_traits_and_impls,
         transform_functions,
         transform_let_comptime,
-        transform_return_unit,
         transform_matches,
         transform_if_expressions,
         parenthesize_control_conditions,
