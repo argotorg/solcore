@@ -65,8 +65,8 @@ contract BatchDecoder {
     let b : Batch = items[i];
     let out : memory(bytes);
     match b {
-      | Batch.Execute(_, data) => out = data;
-      | Batch.Queue(_, _)      => revertEmpty();
+      | Batch.Execute(_, payload) => out = payload;
+      | Batch.Queue(_, _)         => revertEmpty();
     }
     return out;
   }
