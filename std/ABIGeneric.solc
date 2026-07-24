@@ -33,10 +33,18 @@ function maxWord(a : word, b : word) -> word {
 
 forall f g . f:ABIAttribs, g:ABIAttribs =>
 instance sum(f, g) : ABIAttribs {
+    // Head footprint. A *dynamic* sum occupies a single offset word in the head
+    // (its tag + branch payload live in the tail), exactly like any other
+    // dynamic type. Only a fully *static* sum is laid out inline as
+    // tag + widest branch; there both branches are static, so their headSize is
+    // their full size and 32 + max(...) is the correct inline footprint.
     function headSize(ty : Proxy(sum(f, g))) -> word {
         let pf : Proxy(f);
         let pg : Proxy(g);
-        return 32 + maxWord(ABIAttribs.headSize(pf), ABIAttribs.headSize(pg));
+        match and(ABIAttribs.isStatic(pf), ABIAttribs.isStatic(pg)) {
+        | false => return 32;
+        | true  => return 32 + maxWord(ABIAttribs.headSize(pf), ABIAttribs.headSize(pg));
+        }
     }
     function isStatic(ty : Proxy(sum(f, g))) -> bool {
         let pf : Proxy(f);
@@ -65,25 +73,47 @@ instance sum(f, g) : ABIEncode {
 }
 
 // ─── ABIDecode for sum(f, g) ─────────────────────────────────────────────
-// Reads the tag word at headOffset; dispatches to f or g decoder at headOffset + 32.
+// A STATIC sum is laid out inline: read the tag word at headOffset, dispatch to
+// the branch decoder at headOffset + 32.
+//
+// A DYNAMIC sum (one whose branch carries a dynamic field) is, like any dynamic
+// ABI value, referenced by a 32-byte offset: read that offset at headOffset,
+// rebase a decoder onto the sum's start, then read [tag][branch] inline there.
+// Following the offset here (rather than at the call site) is what lets a
+// dynamic sum be decoded uniformly wherever a dynamic value can appear — as a
+// field, or as a `T[]` element alongside a bare `bytes`/`string` leaf, which
+// follows its offset the same way.
 
 forall f g reader .
     reader : WordReader,
     f : ABIAttribs,
+    g : ABIAttribs,
     ABIDecoder(f, reader) : ABIDecode(f),
     ABIDecoder(g, reader) : ABIDecode(g) =>
 instance ABIDecoder(sum(f, g), reader) : ABIDecode(sum(f, g)) {
     function decode(ptr : ABIDecoder(sum(f, g), reader), headOffset : word) -> sum(f, g) {
         match ptr {
         | ABIDecoder(rdr) =>
-            let tag = WordReader.read(WordReader.advance(rdr, headOffset));
+            let prx : Proxy(sum(f, g));
+            // Byte offset (relative to rdr) of this sum's own start. A static sum
+            // is inline at headOffset; a dynamic sum's head slot holds a 32-byte
+            // offset to it, which we follow. We then rebase a decoder onto the
+            // sum start and read [tag][branch] inline — so the tag match (and its
+            // inl/inr) has a single, uniform shape regardless of static/dynamic.
+            let sumStartOff : word;
+            match ABIAttribs.isStatic(prx) {
+            | true  => sumStartOff = headOffset;
+            | false => sumStartOff = WordReader.read(WordReader.advance(rdr, headOffset));
+            }
+            let sumRdr = WordReader.advance(rdr, sumStartOff);
+            let tag = WordReader.read(sumRdr);
             match tag {
             | 0 =>
-                let dec_f : ABIDecoder(f, reader) = ABIDecoder(rdr);
-                return inl(ABIDecode.decode(dec_f, headOffset + 32));
+                let dec_f : ABIDecoder(f, reader) = ABIDecoder(sumRdr);
+                return inl(ABIDecode.decode(dec_f, 32));
             | _ =>
-                let dec_g : ABIDecoder(g, reader) = ABIDecoder(rdr);
-                return inr(ABIDecode.decode(dec_g, headOffset + 32));
+                let dec_g : ABIDecoder(g, reader) = ABIDecoder(sumRdr);
+                return inr(ABIDecode.decode(dec_g, 32));
             }
         }
     }
