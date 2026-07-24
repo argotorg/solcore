@@ -136,6 +136,7 @@ contract Multisig {
                 require(signer != address(address_()), Error(0x12345678)); // CannotAddSelfAsSigner()
             | Operation.ChangeSigRequired(count) =>
                 require(count >= 1, Error(0x12345678)); // ThresholdBelowMinimum()
+            | _ =>
         }
 
         operations[operations_count] = op;
