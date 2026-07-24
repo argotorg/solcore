@@ -87,6 +87,15 @@ class NewSyntaxStabilityTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.assert_stable(source)
 
+    def test_yul_meta_payloads_are_stable(self) -> None:
+        cases = (
+            "function f() { assembly { let x := `foo;bar` } }\n",
+            "function f() { assembly { let x := ${foo;bar} } }\n",
+        )
+        for source in cases:
+            with self.subTest(source=source):
+                self.assert_stable(source)
+
     def test_transparent_aliases_are_stable(self) -> None:
         cases = (
             "alias Word = uint256;\n",

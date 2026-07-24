@@ -3,7 +3,8 @@
 
 The migration is deliberately token-aware:
 
-* comments and string literals are never searched or rewritten as source code;
+* comments, string literals, and Yul meta expressions are never searched or
+  rewritten as source code;
 * parenthesized calls are changed to angle-bracket type applications only in a
   syntactic type position;
 * only git-tracked ``.solc`` files and the explicitly listed Core ``.sol``
@@ -174,6 +175,18 @@ def tokenize(source: str) -> list[Token]:
                 else:
                     i += 1
             tokens.append(Token("string", source[start:i], start, i))
+            continue
+
+        if ch == "`":
+            close = source.find("`", i + 1)
+            i = n if close < 0 else close + 1
+            tokens.append(Token("meta", source[start:i], start, i))
+            continue
+
+        if source.startswith("${", i):
+            close = source.find("}", i + 2)
+            i = n if close < 0 else close + 1
+            tokens.append(Token("meta", source[start:i], start, i))
             continue
 
         if ch.isalpha() or ch == "_":
