@@ -203,6 +203,7 @@ instance (HasType a) => HasType (Exp a) where
     TyExp (apply s e) (apply s ty)
   apply _ (Lit l) = Lit l
   apply s (Indexed e1 e2) = Indexed (apply s e1) (apply s e2)
+  apply s (ArrayLit es) = ArrayLit (apply s es)
 
   fv (Var v) = fv v
   fv (Con n es) =

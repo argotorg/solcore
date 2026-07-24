@@ -397,6 +397,8 @@ instance Pretty Exp where
     ppr e <+> text ":" <+> ppr ty
   ppr (ExpIndexed e1 e2) =
     ppr e1 <> brackets (ppr e2)
+  ppr (ExpArray es) =
+    brackets (commaSep (map ppr es))
   ppr (ExpPlus e1 e2) =
     hsep [ppr e1, text "+", ppr e2]
   ppr (ExpMinus e1 e2) =

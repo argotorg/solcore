@@ -402,6 +402,7 @@ instance (Pretty a) => Pretty (Exp a) where
   ppr (FieldAccess me n) = maybe (text "this") ppr me <> char '.' <> ppr n
   ppr (Cond e1 e2 e3) = hsep [text "if", ppr e1, text "then", ppr e2, text "else", ppr e3]
   ppr (Indexed e1 e2) = ppr e1 <> brackets (ppr e2)
+  ppr (ArrayLit es) = brackets (commaSep (map ppr es))
 
 -- ppr e = text $ "Pretty.ppr not implemented for\n" ++ show(pShow e)
 

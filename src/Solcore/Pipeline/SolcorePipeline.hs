@@ -19,6 +19,7 @@ import Solcore.Backend.EmitHull (emitHull)
 import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
+import Solcore.Desugarer.ArrayLitDesugar (arrayLitDesugarer)
 import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls, writeContractAbis)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, warningDiagnostic)
 import Solcore.Desugarer.DeriveGeneric (deriveGenericTopDecls)
@@ -152,12 +153,17 @@ compileWithDiagnostics opts = runExceptT $ do
   -- SAIL-level comptime verification
   liftEitherDiagnostic sources (checkComptimeEarly typed)
 
+  -- Array literal expansion (needs the array type fixed by the type checker)
+  expanded <-
+    liftIO $
+      timeItNamed "Array literal desugaring" (pure (arrayLitDesugarer typed))
+
   -- If / boolean desugaring
   desugared <-
     liftIO $
       if noIfDesugar
-        then pure typed
-        else timeItNamed "If/Bool desugaring" (pure (ifDesugarer typed))
+        then pure expanded
+        else timeItNamed "If/Bool desugaring" (pure (ifDesugarer expanded))
 
   liftIO $ when verbose $ do
     putStrLn "> If / Bool desugaring:"

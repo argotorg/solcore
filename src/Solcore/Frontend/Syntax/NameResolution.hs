@@ -843,6 +843,8 @@ resolveExp c@(S.ExpIndexed array idx) = do
   arr' <- resolve array `wrapError` c
   idx' <- resolve idx `wrapError` c
   pure $ Indexed arr' idx'
+resolveExp c@(S.ExpArray es) =
+  ArrayLit <$> resolve es `wrapError` c
 resolveExp c@(S.ExpLT e1 e2) = do
   e1' <- resolve e1 `wrapError` c
   e2' <- resolve e2 `wrapError` c

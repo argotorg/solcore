@@ -59,6 +59,8 @@ export {
   allocate_zeroed_memory,
   and,
   array(*),
+  arrayLitInit,
+  arrayLitNew,
   assert,
   byte(*),
   bytes,
@@ -118,6 +120,7 @@ export {
   slice(*),
   slice_,
   storage(*),
+  storeArrayLit,
   storeBytesFromMemory,
   string,
   strlen,
@@ -882,25 +885,39 @@ forall t val . class t:IndexAccess(val) {
 // TODO: storage representation
 data DynArray(t);
 
+// Layout: the length lives at `loc`, so element i lives at `loc + 32 + i*32`.
+// An index is in bounds when i < length.
 forall t . t:Typedef(word) => instance memory(DynArray(t)):IndexAccess(t) {
     function get(ptr : memory(DynArray(t)), i : uint256) -> t {
         let i_: word = Typedef.rep(i);
-        let loc = Typedef.rep(ptr);
-        let res: word;
-        match (i_ > mload(loc)) {
-        | false => res = mload((i_ * 32) + loc);
-        | true => out_of_bounds();
-        }
-        return Typedef.abs(res);
+        let loc : word = Typedef.rep(ptr);
+        if (i_ >= mload(loc)) { out_of_bounds(); }
+        return Typedef.abs(mload(loc + 32 + (i_ * 32)));
     }
     function set(arr : memory(DynArray(t)), i : uint256, val : t) -> () {
         let i_ : word = Typedef.rep(i);
         let loc : word = Typedef.rep(arr);
-        match i_ > mload(loc) {
-        | false => mstore((i_ * 32) + loc, Typedef.rep(val));
-        | true => out_of_bounds();
-        }
+        if (i_ >= mload(loc)) { out_of_bounds(); }
+        mstore(loc + 32 + (i_ * 32), Typedef.rep(val));
     }
+}
+
+// --- Array literals ---
+//
+// `[e1, ..., en]` is desugared, after type checking, into
+//   arrayLitInit(... arrayLitInit(arrayLitNew(n), 0, e1) ..., n-1, en)
+// The chain is a plain expression: each step returns the array it wrote to.
+
+forall t . t:Typedef(word) =>
+function arrayLitNew(n : uint256) -> memory(DynArray(t)) {
+    let prx : Proxy(t);
+    return allocateDynamicArray(prx, Typedef.rep(n));
+}
+
+forall t . t:Typedef(word) =>
+function arrayLitInit(arr : memory(DynArray(t)), i : uint256, v : t) -> memory(DynArray(t)) {
+    IndexAccess.set(arr, i, v);
+    return arr;
 }
 
 forall t . function allocateDynamicArray(prx : Proxy(t), length : word) -> memory(DynArray(t)) {
@@ -2009,6 +2026,28 @@ forall v. v:StorageCopy =>
     }
 }
 
+// Assigning an array literal to a storage array field: `xs = [1,2,3]`.
+//
+// This is Solidity's memory -> storage array copy. It is a plain function, not
+// a CanStore instance, on purpose: instance overlap is decided by the main type
+// alone, so a second CanStore instance for storage(array(t)) would clash with
+// the deep-copy one above. FieldAccess routes `field = <array literal>` here
+// instead of through Assign.assign.
+//
+// Array.setLength resizes and clears the abandoned tail, so old elements never
+// resurrect. The element types differ: `t` is the storage element tag and `v`
+// what a value of it looks like in memory (they coincide for word-sized
+// elements; for array(string), t = string and v = memory(string)).
+forall t v . storage(t):CanStore(v), v:Typedef(word) =>
+function storeArrayLit(dst : storage(array(t)), src : memory(DynArray(v))) -> () {
+    let n : word = mload(Typedef.rep(src));
+    Array.setLength(dst, uint256(n));
+    let base : word = hash1(Typedef.rep(dst));
+    let i : word = 0;
+    for (; i < n; i += 1) {
+        CanStore.store(storage(base + i) : storage(t), IndexAccess.get(src, uint256(i)));
+    }
+}
 
 instance storage(string):CanStore(memory(string)) {
   function store(dst:storage(string), src:memory(string)) -> () {
@@ -2217,6 +2256,17 @@ forall a v i . storage(a):CanStore(v), i:Typedef(word) =>
 instance (storage(array(a)), i): RValueIdxAccess(v) {
   function lookup(xi : (storage(array(a)), i)) -> v {
     return CanStore.load(LValueIdxAccess.lookup(xi));
+  }
+}
+
+// Memory arrays are read-only through `m[i]`: there is no memory cell reference
+// type, so they get an RValue instance but no LValue one.
+forall t i . t:Typedef(word), i:Typedef(word) =>
+instance (memory(DynArray(t)), i): RValueIdxAccess(t) {
+  function lookup(xi : (memory(DynArray(t)), i)) -> t {
+    match xi {
+      | (x, j) => return IndexAccess.get(x, uint256(Typedef.rep(j)));
+    }
   }
 }
 

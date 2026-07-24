@@ -137,7 +137,13 @@ idxOp bp = do
   return (\e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf idx] (ExpIndexed e idx))
 
 atomP :: BodyP -> Parser Exp
-atomP bp = litP <|> try (lamP bp) <|> proxyP <|> try (dotNameP bp) <|> parenP bp <|> nameP bp
+atomP bp = litP <|> try (lamP bp) <|> proxyP <|> try (dotNameP bp) <|> parenP bp <|> arrayLitP bp <|> nameP bp
+
+-- Array literal, e.g. [1, 2, 3].  A leading '[' is unambiguous: postfix
+-- indexing (idxOp) only consumes '[' after an atom has been parsed, so
+-- `arr[0]` still parses as atom+postfix and `[1,2][0]` as literal+postfix.
+arrayLitP :: BodyP -> Parser Exp
+arrayLitP bp = locatedP locatedExp (ExpArray <$> brackets (exprP bp `sepBy` comma))
 
 litP :: Parser Exp
 litP =
