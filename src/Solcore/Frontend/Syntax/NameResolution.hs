@@ -1281,7 +1281,42 @@ resolveExp (S.ExpAt t) = do
     )
 
 resolveVariableReference :: Maybe (Exp Name) -> Name -> ResolveM (Exp Name)
+resolveVariableReference me'@(Just (Var qualifier)) n = do
+  qualified <- resolveQualifiedVariableReference qualifier n
+  maybe (resolveVariableReferenceByLeaf me' n) pure qualified
 resolveVariableReference me' n =
+  resolveVariableReferenceByLeaf me' n
+
+-- Resolve the complete declaration path before consulting the final segment
+-- on its own.  Every receiver reaching this function has already been ruled
+-- out as a runtime value, so a registered @Module.name@, @Class.name@, or
+-- @Type.Constructor@ is the intended declaration even when @name@ is also a
+-- local/top-level binding.  This also preserves intermediate module and
+-- contract-type qualifiers while resolving paths such as @pkg.api.value@ and
+-- @Contract.Type.Constructor@.
+resolveQualifiedVariableReference :: Name -> Name -> ResolveM (Maybe (Exp Name))
+resolveQualifiedVariableReference qualifier leaf = do
+  let qualifiedName = qualifyName qualifier leaf
+  qualifiedType <- lookupName qualifiedName
+  case qualifiedType of
+    Just TFunction ->
+      Just . Var <$> canonicalFunctionName qualifiedName
+    Just TDataCon -> do
+      constructorName <- resolveQualifiedConstructorName qualifier leaf
+      pure (Just (Con constructorName []))
+    Just TTyCon ->
+      Just . Var <$> canonicalTypeName qualifiedName
+    Just TContract ->
+      pure (Just (Var qualifiedName))
+    Just TClass ->
+      pure (Just (Var qualifiedName))
+    Just TModule ->
+      pure (Just (Var qualifiedName))
+    _ ->
+      pure Nothing
+
+resolveVariableReferenceByLeaf :: Maybe (Exp Name) -> Name -> ResolveM (Exp Name)
+resolveVariableReferenceByLeaf me' n =
   do
     dt <- lookupName n
     case (me', dt) of

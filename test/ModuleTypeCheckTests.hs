@@ -222,6 +222,25 @@ moduleTypeCheckTests =
               got ->
                 assertFailure
                   ("struct kind or ordered fields were lost: " ++ show got),
+      testCase "qualified nested type paths beat same-named global declarations" $ do
+        source <- readFile "./test/imports/qualified_nested_type_shadow.solc"
+        CompUnit _ resolvedDecls <- resolvedSourceOrFail source
+        let consumer = findSemanticContract "QualifiedNestedType" resolvedDecls
+            nestedType = QualName (Name "C") "T"
+            constructorName = QualName nestedType "Inner"
+            resolvedBindings =
+              [ (ty, value)
+              | CFunDecl (FunDef _ sig body) <- decls consumer,
+                sigName sig == Name "main",
+                Let _ _ ty (Just value) <- body
+              ]
+        assertEqual
+          "the complete C.T.Inner path remains canonical"
+          [ ( Just (TyCon nestedType []),
+              Con constructorName [Lit (IntLit 7)]
+            )
+          ]
+          resolvedBindings,
       testCase "same-spelled contract-local data types keep distinct canonical identities" $ do
         resolved@(CompUnit _ resolvedDecls) <-
           resolvedSourceOrFail sameNamedLocalTypesSource
