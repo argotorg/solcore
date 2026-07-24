@@ -177,6 +177,10 @@ transEquation :: NmEquation -> CEM NmEquation
 transEquation (pats, body) cenv = (pats, transBody body cenv)
 
 transAssignment :: NmExp -> NmExp -> ContractEnv -> NmStmt
+transAssignment lhs (Call Nothing operator [readLhs, rhs]) cenv
+  | lhs == readLhs,
+    isCompoundOperator operator =
+      transCompoundAssignment lhs operator rhs cenv
 transAssignment lhs@(Var x) rhs cenv
   | isLocal x cenv =
       traces
@@ -210,6 +214,60 @@ transAssignment lhs rhs cenv =
     (lhs := rhs')
   where
     rhs' = transRhs rhs cenv
+
+transCompoundAssignment :: NmExp -> Name -> NmExp -> ContractEnv -> NmStmt
+transCompoundAssignment lhs@(Var x) operator rhs cenv
+  | isLocal x cenv =
+      lhs := Call Nothing operator [lhs, transRhs rhs cenv]
+transCompoundAssignment (FieldAccess Nothing x) operator rhs cenv
+  | isLocal x cenv =
+      Var x := Call Nothing operator [Var x, transRhs rhs cenv]
+  | Just _ <- askFieldTy x cenv =
+      compoundReferenceAssignment
+        (lhsAccess (memberProxyFor x cenv))
+        operator
+        (transRhs rhs cenv)
+transCompoundAssignment (Indexed array index) operator rhs cenv =
+  compoundReferenceAssignment
+    (lhsIndex array index cenv)
+    operator
+    (transRhs rhs cenv)
+transCompoundAssignment lhs operator rhs cenv =
+  lhs := transRhs (Call Nothing operator [lhs, rhs]) cenv
+
+-- Compute an address-like lvalue once, then use that same reference for both
+-- its read and write.  Indexed storage access may perform hashing and bounds
+-- checks, so merely freezing its receiver and index is not enough.
+compoundReferenceAssignment :: NmExp -> Name -> NmExp -> NmStmt
+compoundReferenceAssignment reference operator rhs =
+  Block
+    [ Let False referenceName Nothing (Just reference),
+      StmtExp $
+        Call
+          Nothing
+          (QualName (Name "Assign") "assign")
+          [ Var referenceName,
+            Call
+              Nothing
+              operator
+              [ Call Nothing (QualName (Name "CanStore") "load") [Var referenceName],
+                rhs
+              ]
+          ]
+    ]
+  where
+    referenceName = Name "$compound_lvalue"
+
+isCompoundOperator :: Name -> Bool
+isCompoundOperator operator =
+  operator
+    `elem` [ QualName (Name "Add") "add",
+             QualName (Name "Sub") "sub",
+             QualName (Name "BitXor") "bxor",
+             QualName (Name "BitAnd") "band",
+             QualName (Name "BitOr") "bor",
+             QualName (Name "Mod") "mod"
+           ]
 
 transContractFieldAssignment :: Name -> NmExp -> CEM NmStmt
 transContractFieldAssignment field rhs = do

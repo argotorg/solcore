@@ -6,6 +6,7 @@ import Common.LightYear (Parser, runParserE)
 import Data.List (isInfixOf)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
+import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Diagnostics (compilerErrorText)
 import Solcore.Frontend.Lexer.SolcoreLexer (identifier, sc)
 import Solcore.Frontend.Parser.Decl (importP, topDeclP)
@@ -149,6 +150,7 @@ parserTests =
       patternTests,
       exprTests,
       stmtTests,
+      compoundAssignmentResolutionTests,
       declTests,
       importTests,
       pragmaTests,
@@ -156,6 +158,285 @@ parserTests =
       keywordPrefixTests,
       legacySyntaxTests
     ]
+
+compoundAssignmentResolutionTests :: TestTree
+compoundAssignmentResolutionTests =
+  testGroup
+    "Compound assignment resolution"
+    [ testCase "simple variable keeps direct assignment lowering" $ do
+        body <-
+          resolvedFunctionBody
+            "update"
+            "function update(value: word) { value += 1; }"
+        case body of
+          [ ResolvedStmt.AssignWithLocation
+              _
+              lhs@(ResolvedStmt.Var "value")
+              (ResolvedStmt.Call Nothing (QualName "Add" "add") [readLhs, ResolvedStmt.Lit _])
+            ] ->
+              assertEqual "compound read uses the assigned variable" lhs readLhs
+          other ->
+            assertFailure ("Unexpected simple compound assignment lowering: " ++ show other),
+      testCase "index expression and indexed base are each evaluated once" $ do
+        body <-
+          resolvedFunctionBody
+            "update"
+            ( unlines
+                [ "function collection() returns (word) { return 0; }",
+                  "function index() returns (word) { return 0; }",
+                  "function update() { collection()[index()] += 1; }"
+                ]
+            )
+        case body of
+          [ ResolvedStmt.Block
+              [ ResolvedStmt.Let False baseName Nothing (Just baseValue),
+                ResolvedStmt.Let False indexName Nothing (Just indexValue),
+                ResolvedStmt.AssignWithLocation
+                  _
+                  assignedLhs
+                  (ResolvedStmt.Call Nothing (QualName "Add" "add") [readLhs, ResolvedStmt.Lit _])
+                ]
+            ] -> do
+              assertEqual
+                "base is evaluated once before the index"
+                (ResolvedStmt.Call Nothing "collection" [])
+                baseValue
+              assertEqual
+                "index is evaluated once"
+                (ResolvedStmt.Call Nothing "index" [])
+                indexValue
+              let frozenLhs =
+                    ResolvedStmt.Indexed
+                      (ResolvedStmt.Var baseName)
+                      (ResolvedStmt.Var indexName)
+              assertEqual "write uses frozen address components" frozenLhs assignedLhs
+              assertEqual "read uses the same frozen address components" frozenLhs readLhs
+          other ->
+            assertFailure ("Unexpected indexed compound assignment lowering: " ++ show other),
+      testCase "member receiver is evaluated once" $ do
+        body <-
+          resolvedFunctionBody
+            "update"
+            ( unlines
+                [ "function receiver() returns (word) { return 0; }",
+                  "function update() { receiver().member += 1; }"
+                ]
+            )
+        case body of
+          [ ResolvedStmt.Block
+              [ ResolvedStmt.Let False receiverName Nothing (Just receiverValue),
+                ResolvedStmt.AssignWithLocation
+                  _
+                  assignedLhs
+                  (ResolvedStmt.Call Nothing (QualName "Add" "add") [readLhs, ResolvedStmt.Lit _])
+                ]
+            ] -> do
+              assertEqual
+                "receiver is evaluated once"
+                (ResolvedStmt.Call Nothing "receiver" [])
+                receiverValue
+              let frozenLhs =
+                    ResolvedStmt.FieldAccess
+                      (Just (ResolvedStmt.Var receiverName))
+                      "member"
+              assertEqual "write uses frozen receiver" frozenLhs assignedLhs
+              assertEqual "read uses the same frozen receiver" frozenLhs readLhs
+          other ->
+            assertFailure ("Unexpected member compound assignment lowering: " ++ show other),
+      testCase "field desugaring computes the indexed lvalue reference once" $ do
+        body <-
+          fieldDesugaredContractFunctionBody
+            "Container"
+            "update"
+            ( unlines
+                [ "contract Container {",
+                  "  function index() returns (word) { return 0; }",
+                  "  function update(collection: word) { collection[index()] += 1; }",
+                  "}"
+                ]
+            )
+        case body of
+          [ ResolvedStmt.Block
+              [ ResolvedStmt.Let False _ Nothing (Just indexValue),
+                ResolvedStmt.Block
+                  [ ResolvedStmt.Let False referenceName Nothing (Just referenceValue),
+                    ResolvedStmt.StmtExp
+                      ( ResolvedStmt.Call
+                          Nothing
+                          (QualName "Assign" "assign")
+                          [ writeReference,
+                            ResolvedStmt.Call
+                              Nothing
+                              (QualName "Add" "add")
+                              [readReference, ResolvedStmt.Lit _]
+                            ]
+                        )
+                    ]
+                ]
+            ] -> do
+              assertEqual
+                "index side effect is evaluated once"
+                (ResolvedStmt.Call Nothing "index" [])
+                indexValue
+              case referenceValue of
+                ResolvedStmt.Call
+                  Nothing
+                  "lidx"
+                  [ResolvedStmt.Var "collection", ResolvedStmt.Var _] ->
+                    pure ()
+                other ->
+                  assertFailure ("Expected one lidx address computation, got: " ++ show other)
+              assertEqual
+                "write uses the computed lvalue reference"
+                (ResolvedStmt.Var referenceName)
+                writeReference
+              assertEqual
+                "read loads through the same lvalue reference"
+                ( ResolvedStmt.Call
+                    Nothing
+                    (QualName "CanStore" "load")
+                    [ResolvedStmt.Var referenceName]
+                )
+                readReference
+          other ->
+            assertFailure ("Unexpected field-desugared compound assignment: " ++ show other),
+      testCase "field desugaring computes a contract-field reference once" $ do
+        body <-
+          fieldDesugaredContractFunctionBody
+            "Container"
+            "update"
+            ( unlines
+                [ "contract Container {",
+                  "  value: word;",
+                  "  function update() { value += 1; }",
+                  "}"
+                ]
+            )
+        case body of
+          [ ResolvedStmt.Block
+              [ ResolvedStmt.Let False referenceName Nothing (Just referenceValue),
+                ResolvedStmt.StmtExp
+                  ( ResolvedStmt.Call
+                      Nothing
+                      (QualName "Assign" "assign")
+                      [ writeReference,
+                        ResolvedStmt.Call
+                          Nothing
+                          (QualName "Add" "add")
+                          [readReference, ResolvedStmt.Lit _]
+                        ]
+                    )
+                ]
+            ] -> do
+              case referenceValue of
+                ResolvedStmt.Call Nothing (QualName "LVA" "acc") [_] ->
+                  pure ()
+                other ->
+                  assertFailure ("Expected one LVA.acc address computation, got: " ++ show other)
+              assertEqual
+                "contract-field write uses the computed reference"
+                (ResolvedStmt.Var referenceName)
+                writeReference
+              assertEqual
+                "contract-field read loads through the same reference"
+                ( ResolvedStmt.Call
+                    Nothing
+                    (QualName "CanStore" "load")
+                    [ResolvedStmt.Var referenceName]
+                )
+                readReference
+          other ->
+            assertFailure ("Unexpected contract-field compound assignment: " ++ show other),
+      testCase "all compound operators retain their semantic operation" $ do
+        body <-
+          resolvedFunctionBody
+            "update"
+            ( unlines
+                [ "function update(value: word) {",
+                  "  value += 1;",
+                  "  value -= 1;",
+                  "  value ^= 1;",
+                  "  value &= 1;",
+                  "  value |= 1;",
+                  "  value %= 1;",
+                  "}"
+                ]
+            )
+        assertEqual
+          "resolved compound operator targets"
+          [ QualName "Add" "add",
+            QualName "Sub" "sub",
+            QualName "BitXor" "bxor",
+            QualName "BitAnd" "band",
+            QualName "BitOr" "bor",
+            QualName "Mod" "mod"
+          ]
+          (map compoundOperator body)
+    ]
+
+resolvedFunctionBody :: Name -> String -> IO [ResolvedStmt.Stmt Name]
+resolvedFunctionBody functionName source = do
+  parsedResult <- parseCompUnit source
+  parsed <-
+    case parsedResult of
+      Left err -> assertFailure ("Parse error:\n" ++ err)
+      Right unit -> pure unit
+  resolved <- nameResolution parsed
+  case resolved of
+    Left err -> assertFailure ("Name resolution failed: " ++ show err)
+    Right (Resolved.CompUnit _ topDecls) ->
+      case [ body
+           | Resolved.TFunDef (Resolved.FunDef _ signature body) <- topDecls,
+             Resolved.sigName signature == functionName
+           ] of
+        [body] -> pure body
+        bodies ->
+          assertFailure
+            ( "Expected one resolved function body for "
+                ++ show functionName
+                ++ ", got "
+                ++ show (length bodies)
+            )
+
+compoundOperator :: ResolvedStmt.Stmt Name -> Name
+compoundOperator
+  ( ResolvedStmt.AssignWithLocation
+      _
+      _
+      (ResolvedStmt.Call Nothing operator [_, _])
+    ) = operator
+compoundOperator stmt =
+  error ("Unexpected simple compound assignment lowering: " ++ show stmt)
+
+fieldDesugaredContractFunctionBody ::
+  Name ->
+  Name ->
+  String ->
+  IO [ResolvedStmt.Stmt Name]
+fieldDesugaredContractFunctionBody contractName functionName source = do
+  parsedResult <- parseCompUnit source
+  parsed <-
+    case parsedResult of
+      Left err -> assertFailure ("Parse error:\n" ++ err)
+      Right unit -> pure unit
+  resolved <- nameResolution parsed
+  case resolved of
+    Left err -> assertFailure ("Name resolution failed: " ++ show err)
+    Right (Resolved.CompUnit _ topDecls) ->
+      case [ body
+           | Resolved.TContr contract <- fieldDesugarTopDecls topDecls,
+             Resolved.name contract == contractName,
+             Resolved.CFunDecl (Resolved.FunDef _ signature body) <- Resolved.decls contract,
+             Resolved.sigName signature == functionName
+           ] of
+        [body] -> pure body
+        bodies ->
+          assertFailure
+            ( "Expected one field-desugared function body for "
+                ++ show functionName
+                ++ ", got "
+                ++ show (length bodies)
+            )
 
 word :: Ty
 word = TyCon "word" []

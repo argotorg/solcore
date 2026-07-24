@@ -318,6 +318,7 @@ cases =
       -- disabling the desugaring phases via noDesugarOpt; now that that helper is
       -- gone it is expected to fail.
       runTestExpectingFailure "compose_desugared.solc" caseFolder,
+      runTestForFile "compound-assignment-single-eval.solc" caseFolder,
       runTestForFile "comparisons.solc" caseFolder,
       runTestForFile "bitwise.solc" caseFolder,
       runTestForFile "match-bitwise.solc" caseFolder,

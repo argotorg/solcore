@@ -622,17 +622,23 @@ instance Resolve S.Stmt where
       rhs' <- resolve rhs `wrapError` s
       pure (lhs' := rhs')
   resolve s@(S.StmtPlusEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "Add") "add") lhs rhs
   resolve s@(S.StmtMinusEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "Sub") "sub") lhs rhs
   resolve s@(S.StmtBXorEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBXor lhs rhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "BitXor") "bxor") lhs rhs
   resolve s@(S.StmtBAndEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBAnd lhs rhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "BitAnd") "band") lhs rhs
   resolve s@(S.StmtBOrEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBOr lhs rhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "BitOr") "bor") lhs rhs
   resolve s@(S.StmtModEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpModulo lhs rhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "Mod") "mod") lhs rhs
   resolve s@(S.Let c n mt me) =
     locatedLike s locatedStmt <$> do
       mt' <- resolve mt `wrapError` s
@@ -699,6 +705,111 @@ instance Resolve S.Stmt where
           (Asm [YExp (YCall "revert" [yulInt 0, yulInt 0])])
       )
   resolve s@S.EmptyStmt = pure (locatedLike s locatedStmt EmptyStmt)
+
+-- Compound assignment must evaluate the address-producing parts of its
+-- left-hand side exactly once. Expanding @a[i()] += rhs@ directly to
+-- @a[i()] = Add.add(a[i()], rhs)@ duplicates @i()@, and likewise duplicates a
+-- call used as an indexed base or member receiver. Bind those computations in
+-- a lexical block before constructing the ordinary assignment consumed by the
+-- rest of the pipeline.
+--
+-- The generated names contain '$', which source identifiers cannot contain,
+-- and every compound assignment gets its own lexical block. They therefore
+-- cannot capture, or be captured by, user bindings.
+resolveCompoundAssignment ::
+  S.Stmt ->
+  Name ->
+  S.Exp ->
+  S.Exp ->
+  ResolveM (Stmt Name)
+resolveCompoundAssignment source operator lhs rhs = do
+  lhs' <- resolve lhs `wrapError` source
+  rhs' <- resolve rhs `wrapError` source
+  let (bindings, frozenLhs) = freezeCompoundLhs source lhs'
+      combined =
+        locatedLike
+          source
+          locatedExp
+          (Call Nothing operator [frozenLhs, rhs'])
+      assignment = locatedLike source locatedStmt (frozenLhs := combined)
+  pure $
+    case bindings of
+      [] -> frozenLhs := combined
+      _ -> Block (bindings ++ [assignment])
+
+freezeCompoundLhs :: S.Stmt -> Exp Name -> ([Stmt Name], Exp Name)
+freezeCompoundLhs source lhs =
+  let (bindings, frozen, _) = freezeAddress source 0 lhs
+   in (bindings, frozen)
+
+freezeAddress ::
+  S.Stmt ->
+  Int ->
+  Exp Name ->
+  ([Stmt Name], Exp Name, Int)
+freezeAddress source next (IndexedWithLocation location array index) =
+  let (arrayBindings, frozenArray, afterArray) =
+        freezeIndexedBase source next array
+      (indexBinding, frozenIndex, afterIndex) =
+        bindCompoundTemporary source "index" afterArray index
+   in ( arrayBindings ++ [indexBinding],
+        IndexedWithLocation location frozenArray frozenIndex,
+        afterIndex
+      )
+freezeAddress source next (FieldAccessWithLocation location (Just receiver) memberName)
+  | stableAddressPart receiver =
+      ([], FieldAccessWithLocation location (Just receiver) memberName, next)
+  | otherwise =
+      let (receiverBinding, frozenReceiver, afterReceiver) =
+            bindCompoundTemporary source "receiver" next receiver
+       in ( [receiverBinding],
+            FieldAccessWithLocation location (Just frozenReceiver) memberName,
+            afterReceiver
+          )
+freezeAddress _ next lhs =
+  ([], lhs, next)
+
+freezeIndexedBase ::
+  S.Stmt ->
+  Int ->
+  Exp Name ->
+  ([Stmt Name], Exp Name, Int)
+freezeIndexedBase source next base@Indexed {} =
+  freezeAddress source next base
+freezeIndexedBase source next base@(FieldAccess (Just _) _) =
+  freezeAddress source next base
+freezeIndexedBase _ next base
+  | stableAddressPart base =
+      ([], base, next)
+freezeIndexedBase source next base =
+  let (binding, frozen, afterBase) =
+        bindCompoundTemporary source "base" next base
+   in ([binding], frozen, afterBase)
+
+stableAddressPart :: Exp Name -> Bool
+stableAddressPart Var {} = True
+stableAddressPart (FieldAccess Nothing _) = True
+stableAddressPart _ = False
+
+bindCompoundTemporary ::
+  S.Stmt ->
+  String ->
+  Int ->
+  Exp Name ->
+  (Stmt Name, Exp Name, Int)
+bindCompoundTemporary source role next value =
+  let temporaryName = Name ("$compound_" ++ role ++ show next)
+      binding =
+        locatedLike
+          source
+          locatedStmt
+          (Let False temporaryName Nothing (Just value))
+      temporary =
+        locatedLike
+          source
+          locatedExp
+          (Var temporaryName)
+   in (binding, temporary, next + 1)
 
 instance Resolve S.Equation where
   type Result S.Equation = Equation Name
