@@ -12,6 +12,7 @@ import Solcore.Frontend.Lexer.SolcoreLexer (identifier, sc)
 import Solcore.Frontend.Parser.Decl (importP, topDeclP)
 import Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.Patterns (patP)
+import Solcore.Frontend.Parser.SolcoreParser (parseCompUnit)
 import Solcore.Frontend.Parser.SolcoreTypes (predP, typeP)
 import Solcore.Frontend.Parser.Stmt (bodyP, stmtP)
 import Solcore.Frontend.Pretty.SolcorePretty qualified as SolcorePretty
