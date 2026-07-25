@@ -54,8 +54,8 @@ instance Desugar (TopDecl Name) where
   desugar (TMutualDef ms) = TMutualDef <$> desugar ms
 
 instance Desugar (Contract Name) where
-  desugar (Contract n vs ds) =
-    Contract n vs <$> desugar ds
+  desugar (ContractWithKind kind n vs ds) =
+    ContractWithKind kind n vs <$> desugar ds
 
 instance Desugar (FunDef Name) where
   desugar (FunDef p sig bdy) =

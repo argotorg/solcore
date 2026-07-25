@@ -38,7 +38,7 @@ contractDispatchTopDecls topdecls = Set.toList extras <> topdecls'
   where
     (extras, topdecls') = mapAccumL go Set.empty topdecls
     go acc (TContr c)
-      | isInterfaceContract c = (acc, TContr c)
+      | contractKind c /= ContractKind = (acc, TContr c)
       | "main" `notElem` functionNames c = (Set.union acc (genNameDecls c), TContr (genMainFn True c))
       | otherwise = (acc, TContr (genMainFn False c))
     go acc v = (acc, v)
@@ -64,31 +64,27 @@ functionNames = foldr go [] . decls
     go (CSignatureDecl _ sig) = (sigName sig :)
     go _ = id
 
-isInterfaceContract :: Contract a -> Bool
-isInterfaceContract = any isSignature . decls
-  where
-    isSignature CSignatureDecl {} = True
-    isSignature _ = False
-
 -- | Returns the (at most one) user-defined fallback function for a contract.
 findFallback :: Contract a -> Maybe (FunDef a)
 findFallback c = listToMaybe [fd | CFunDecl fd <- decls c, isFallback fd]
 
 genNameDecls :: Contract Name -> Set (TopDecl Name)
-genNameDecls (Contract cname _ cdecls) = foldl go Set.empty cdecls
+genNameDecls (ContractWithKind ContractKind cname _ cdecls) = foldl go Set.empty cdecls
   where
-    go acc (CFunDecl (FunDef True sig _))
+    go acc (CFunDecl (FunDef legacyVisibility sig _))
+      | not (externallyVisible legacyVisibility sig) = acc
       | sigName sig == fallbackName = acc
       | otherwise =
           let dataTy = mkNameTy cname (sigName sig)
               instDef = mkNameInst dataTy (sigName sig)
            in Set.union (Set.fromList [TDataDef dataTy, TInstDef instDef]) acc
     go acc _ = acc
+genNameDecls _ = Set.empty
 
 genMainFn :: Bool -> Contract Name -> Contract Name
-genMainFn addMain c@(Contract cname tys cdecls)
-  | addMain = Contract cname tys (CFunDecl mainfn : Set.toList cdecls')
-  | otherwise = Contract cname tys (Set.toList cdecls')
+genMainFn addMain c@(ContractWithKind ContractKind cname tys cdecls)
+  | addMain = ContractWithKind ContractKind cname tys (CFunDecl mainfn : Set.toList cdecls')
+  | otherwise = ContractWithKind ContractKind cname tys (Set.toList cdecls')
   where
     cdecls'' = if hasConstructor cdecls then cdecls else cdecls ++ [defaultConstructor]
     cdecls' = Set.unions (map (transformCDecl cname) cdecls'')
@@ -128,7 +124,8 @@ genMainFn addMain c@(Contract cname tys cdecls)
     mkMethod s = error $ "Internal Error: contract methods must be fully typed: " <> show s
 
     -- skip the optional fallback function and non-public methods in the methods tuple
-    unwrapSigs (CFunDecl (FunDef True s _))
+    unwrapSigs (CFunDecl (FunDef legacyVisibility s _))
+      | not (externallyVisible legacyVisibility s) = Nothing
       | sigName s == fallbackName = Nothing
       | otherwise = Just s
     unwrapSigs _ = Nothing
@@ -138,6 +135,16 @@ genMainFn addMain c@(Contract cname tys cdecls)
 
     getTy (Typed _ _ t) = Just t
     getTy (Untyped {}) = Nothing
+genMainFn _ c = c
+
+externallyVisible :: Bool -> Signature a -> Bool
+externallyVisible legacyVisibility sig =
+  case sigVisibility sig of
+    Just VisibilityPublic -> True
+    Just VisibilityExternal -> True
+    Just VisibilityInternal -> False
+    Just VisibilityPrivate -> False
+    Nothing -> legacyVisibility
 
 transformCDecl :: Name -> ContractDecl Name -> Set (ContractDecl Name)
 transformCDecl contractName (CConstrDecl c) = transformConstructor contractName c

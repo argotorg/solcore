@@ -48,9 +48,13 @@ fieldDesugarTopDecls topdecls = extras <> topdecls'
         ]
     (extras, topdecls') = mapAccumL go mempty topdecls
     go acc (TContr c) =
-      let hasSingletonCollision =
-            singletonNameForContract (Contract.name c) `Set.member` existingDataTypes
-       in (acc <> extraTopDeclsForContract (not hasSingletonCollision) c, TContr (transContract c))
+      case Contract.contractKind c of
+        ContractKind ->
+          let hasSingletonCollision =
+                singletonNameForContract (Contract.name c) `Set.member` existingDataTypes
+           in (acc <> extraTopDeclsForContract (not hasSingletonCollision) c, TContr (transContract c))
+        InterfaceKind -> (acc, TContr c)
+        LibraryKind -> (acc, TContr c)
     go acc v = (acc, v)
 
 --------------------------------
@@ -58,7 +62,7 @@ fieldDesugarTopDecls topdecls = extras <> topdecls'
 --------------------------------
 
 extraTopDeclsForContract :: Bool -> NmContract -> [NmTopDecl]
-extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
+extraTopDeclsForContract includeSingleton (ContractWithKind ContractKind cname _ts cdecls) = do
   let singName = singletonNameForContract cname
   let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []]
 
@@ -74,6 +78,7 @@ extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
         tys' = tys ++ [fieldTy field]
         topdecls' = topdecls ++ extraTopDeclsForContractField cname field offset
         offset = foldr pair unit tys
+extraTopDeclsForContract _ _ = []
 
 extraTopDeclsForContractField :: ContractName -> NmField -> Ty -> [NmTopDecl]
 extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, TInstDef sfInstance]

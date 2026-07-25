@@ -64,8 +64,8 @@ instance Compile (TopDecl Id) where
   compile d = pure d
 
 instance Compile (Contract Id) where
-  compile (Contract n vs ds) =
-    Contract n vs
+  compile (ContractWithKind kind n vs ds) =
+    ContractWithKind kind n vs
       <$> local (\(te, ctx, warnSpan) -> (Map.union env' te, ctx ++ ["contract " ++ pretty n], warnSpan)) (compile ds)
     where
       ds' = [d | (CDataDecl d) <- ds]

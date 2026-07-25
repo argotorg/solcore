@@ -253,13 +253,10 @@ addInstResolutions :: Instance Id -> SM ()
 addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instDefault inst) (instName inst) (mainTy inst))
 
 specialiseTopDecl :: TopDecl Id -> SM [TopDecl Id]
-specialiseTopDecl (TContr (Contract _ _ decls))
-  | any isSignatureDecl decls = pure []
-  where
-    isSignatureDecl CSignatureDecl {} = True
-    isSignatureDecl _ = False
-specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
-  addContractResolutions (Contract name args decls)
+specialiseTopDecl (TContr (ContractWithKind InterfaceKind _ _ _)) = pure []
+specialiseTopDecl (TContr (ContractWithKind LibraryKind _ _ _)) = pure []
+specialiseTopDecl (TContr (ContractWithKind ContractKind name args decls)) = withLocalState do
+  addContractResolutions (ContractWithKind ContractKind name args decls)
   -- Runtime code
   runtimeDecls <- withLocalState do
     forM_ entries specEntry
@@ -273,7 +270,7 @@ specialiseTopDecl (TContr (Contract name args decls)) = withLocalState do
       -- use mutual to group constructor with its dependencies
       pure [CMutualDecl depDecls]
     Nothing -> pure []
-  return [TContr (Contract name args (deployDecls ++ runtimeDecls))]
+  return [TContr (ContractWithKind ContractKind name args (deployDecls ++ runtimeDecls))]
   where
     entries = ["main"] -- Eventually all public methods
     getSpecialisedDecls :: SM [ContractDecl Id]
@@ -307,7 +304,7 @@ specEntryOpt name = withLocalState do
     Nothing -> pure Nothing
 
 addContractResolutions :: Contract Id -> SM ()
-addContractResolutions (Contract _name _args cdecls) = do
+addContractResolutions (ContractWithKind _ _name _args cdecls) = do
   forM_ cdecls addCDeclResolution
 
 addCDeclResolution :: ContractDecl Id -> SM ()
@@ -1126,7 +1123,10 @@ toMastTopDecl (TDataDef dt) = MastTDataDef dt
 toMastTopDecl d = error $ "toMastTopDecl: unexpected " ++ show d
 
 toMastContract :: Contract Id -> MastContract
-toMastContract (Contract n _tyParams ds) = MastContract n (map toMastContractDecl ds)
+toMastContract (ContractWithKind ContractKind n _tyParams ds) =
+  MastContract n (map toMastContractDecl ds)
+toMastContract c =
+  error $ "toMastContract: non-runtime declaration kind: " ++ show (contractKind c)
 
 toMastContractDecl :: ContractDecl Id -> MastContractDecl
 toMastContractDecl (CDataDecl dt) = MastCDataDecl dt

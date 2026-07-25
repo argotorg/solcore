@@ -979,8 +979,8 @@ moveData (CompUnit imps decls1) =
     step d ac = d : ac
 
 extractData :: Contract Name -> ([DataTy], Contract Name)
-extractData (Contract n ts ds) =
-  (ds1, Contract n ts ds0)
+extractData (ContractWithKind kind n ts ds) =
+  (ds1, ContractWithKind kind n ts ds0)
   where
     (ds1, ds0) = foldr step ([], []) ds
     step (CDataDecl dt) (dts, cs) = (dt : dts, cs)
