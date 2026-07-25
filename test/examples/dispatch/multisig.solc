@@ -184,10 +184,54 @@ contract Multisig {
     }
 
     function create_signature_hash(kind: OperationKind, operation: Operation) -> bytes32 {
-        // TODO: include domain/chaind information in hash
-//        return keccak256_(concat(abi_encode(kind), abi_encode(operation)));
-        // TODO: abi.encode not working yet
-        return keccak256_(to_bytes(bytes32(1)));
+        // The signing preimage is keccak256 over
+        //   [kind tag][operation constructor tag][operation fields...]
+        // one 32-byte word per scalar field, with a dynamic bytes payload
+        // appended verbatim. Signer and verifier both derive it this way, so the
+        // only requirement is that it be deterministic and injective over
+        // (kind, operation) -- it is never decoded.
+        //
+        // TODO: include domain/chain information (EIP-712).
+        //
+        // TODO: collapse this to keccak256_(abi_encode((kind, operation))) once
+        // std's generic ABIEncode supports *dynamic* sums. Today sum:ABIEncode
+        // in std.ABIGeneric is "static sums only" (it writes [tag][payload]
+        // inline with no offset-into-tail handling), while Operation is a
+        // dynamic sum -- its Call(address, uint256, memory(bytes)) branch drags
+        // a dynamic field in -- so abi_encode(operation) cannot be encoded
+        // correctly yet. The dynamic-sum ABIDecode already exists; the symmetric
+        // encode is the missing half.
+        let kind_word = operation_kind_tag(kind);
+        let pre: memory(bytes);
+        match operation {
+            | Operation.AddSigner(signer) =>
+                pre = concat(concat(kind_word, bytes32(0)), bytes32(Typedef.rep(signer)));
+            | Operation.RemoveSigner(signer) =>
+                pre = concat(concat(kind_word, bytes32(1)), bytes32(Typedef.rep(signer)));
+            | Operation.ChangeSigRequired(count) =>
+                pre = concat(concat(kind_word, bytes32(2)), bytes32(Typedef.rep(count)));
+            | Operation.TransferEth(target, amount) =>
+                pre = concat(concat(concat(kind_word, bytes32(3)), bytes32(Typedef.rep(target))), bytes32(Typedef.rep(amount)));
+            | Operation.TransferToken(target, token, amount) =>
+                pre = concat(concat(concat(concat(kind_word, bytes32(4)), bytes32(Typedef.rep(target))), bytes32(Typedef.rep(token))), bytes32(Typedef.rep(amount)));
+            | Operation.Call(target, value, payload) =>
+                pre = concat(concat(concat(concat(kind_word, bytes32(5)), bytes32(Typedef.rep(target))), bytes32(Typedef.rep(value))), payload);
+            | Operation.UnstoredCall(hash) =>
+                pre = concat(concat(kind_word, bytes32(6)), hash);
+            | Operation.ApproveSignedHash(hash) =>
+                pre = concat(concat(kind_word, bytes32(7)), hash);
+            | Operation.RevokeSignedHash(hash) =>
+                pre = concat(concat(kind_word, bytes32(8)), hash);
+        }
+        return keccak256_(pre);
+    }
+
+    function operation_kind_tag(kind: OperationKind) -> bytes32 {
+        match kind {
+            | OperationKind.Queue   => return bytes32(0);
+            | OperationKind.Approve => return bytes32(1);
+            | OperationKind.Reject  => return bytes32(2);
+        }
     }
 
     // Anyone can call this.
