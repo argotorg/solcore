@@ -200,7 +200,7 @@ pragmaTypeP =
 -- defaults to 'DisableAll'.
 pragmaStatusForP :: PragmaType -> Parser PragmaStatus
 pragmaStatusForP NoGenericInstanceFor = do
-  names <- simpleNameP `sepBy1` comma
+  names <- qualifiedName `sepBy1` comma
   return (DisableFor (NE.fromList names))
 pragmaStatusForP _ = option DisableAll $ do
   names <- simpleNameP `sepBy1` comma

@@ -1858,7 +1858,20 @@ pragmaTests =
         parsesAs
           topDeclP
           "pragma solcore noGenericInstanceFor MyType;"
-          (TPragmaDecl (Pragma NoGenericInstanceFor (DisableFor ("MyType" :| []))))
+          (TPragmaDecl (Pragma NoGenericInstanceFor (DisableFor ("MyType" :| [])))),
+      testCase "disable generic instance generation for a nested type" $ do
+        let source =
+              "pragma solcore noGenericInstanceFor Capsule.Token;"
+        parsesAs
+          topDeclP
+          source
+          ( TPragmaDecl
+              ( Pragma
+                  NoGenericInstanceFor
+                  (DisableFor (QualName "Capsule" "Token" :| []))
+              )
+          )
+        roundTripsTopDecl source
     ]
 
 legacySyntaxTests :: TestTree
