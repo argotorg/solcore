@@ -14,6 +14,6 @@ contract NoCopy {
   xs : Odd[];
 
   function main() returns (uint256) {
-    return Array.length(xs);
+    return Length.length(xs);
   }
 }

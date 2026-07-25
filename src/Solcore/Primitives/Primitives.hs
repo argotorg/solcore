@@ -174,6 +174,49 @@ integerPrimNames =
     QualName intClassName "fromInteger"
   ]
 
+-- Str class: overloaded coercion from string literals
+-- instance string         : Str { fromString = identity }
+-- instance memory(string) : Str { fromString = materialize into memory }
+--
+-- The memory(string) instance is resolved by a dedicated case in
+-- Specialise.specCall to `memStringFromLit`, which EmitHull lowers per literal.
+-- Both instances are registered bodyless in TcEnv.primInstEnv; the rewrite keeps
+-- the original literal argument in place (a real instance body would move the
+-- literal behind a runtime parameter and defeat the EmitHull intercept).
+
+strClassName :: Name
+strClassName = Name "Str"
+
+strVar :: Tyvar
+strVar = aVar
+
+strPred :: Pred
+strPred = InCls strClassName (TyVar strVar) []
+
+-- | Scheme for fromString: forall a. (a:Str) => string -> a
+fromStringScheme :: Scheme
+fromStringScheme = Forall [strVar] ([strPred] :=> (string :-> TyVar strVar))
+
+fromStringEntry :: (Name, Scheme)
+fromStringEntry = (QualName strClassName "fromString", fromStringScheme)
+
+-- | The runtime representation of a string: memory(string).
+memString :: Ty
+memString = TyCon "memory" [string]
+
+-- | Backend marker emitted by Specialise for `Str.fromString @ memory(string)`.
+-- Intercepted by EmitHull; never folded (it emits code, has no comptime value),
+-- so it is deliberately absent from builtinPureFuns / comptimeBuiltins.
+memStringFromLitName :: Name
+memStringFromLitName = Name "memStringFromLit"
+
+-- | String primitive function names that are pure (foldable by MastEval).
+-- Only the identity `Str.fromString` belongs here; `memStringFromLit` does not.
+stringPrimNames :: [Name]
+stringPrimNames =
+  [ QualName strClassName "fromString"
+  ]
+
 stack :: Ty -> Ty
 stack t = TyCon "stack" [t]
 

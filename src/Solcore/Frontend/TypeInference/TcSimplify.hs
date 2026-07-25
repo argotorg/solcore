@@ -83,13 +83,14 @@ checkEntails qs rs =
     noDesugarCalls <- getNoDesugarCalls
     info [">>! Trying to check the entailment of:", pretty rs, " from:", pretty qs]
     qs' <- nub <$> superPredsM ctable qs
-    let skip q = isInvoke q || (noDesugarCalls && isInt q)
+    let skip q = isInvoke q || (noDesugarCalls && (isInt q || isStr q))
     -- compiler generated instances can introduce invokable constraints
     -- not present in the called function. Since type inference can produce
     -- such constraints, we do not consider them here.
-    -- Int constraints are similarly skipped in noDesugarCalls mode because
-    -- Int.fromInteger calls from literal desugaring can't be resolved when
-    -- lambda closure conversion is skipped.
+    -- Int and Str constraints are similarly skipped in noDesugarCalls mode
+    -- because the Int.fromInteger and Str.fromString calls introduced by
+    -- literal desugaring can't be resolved when lambda closure conversion is
+    -- skipped.
     info [">>! Simplified given constraints:", pretty qs']
     filterM (unsolved skip ctable itable qs') rs
   where
@@ -104,6 +105,10 @@ isInvoke _ = False
 isInt :: Pred -> Bool
 isInt (InCls n _ _) = n == Name "Int"
 isInt _ = False
+
+isStr :: Pred -> Bool
+isStr (InCls n _ _) = n == Name "Str"
+isStr _ = False
 
 simplify :: [Pred] -> [Pred] -> TcM [Pred]
 simplify qs ps =

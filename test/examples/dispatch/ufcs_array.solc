@@ -11,7 +11,7 @@ import {mload, mstore} from std.opcodes;
 // to Class.method(recv, args). Here each receiver is a contract field, so:
 //
 //   members.push(addr)  ==>  ArrayPush.push(members, addr)
-//   members.length()    ==>  Array.length(members)
+//   members.length()    ==>  Length.length(members)
 //   members.pop()       ==>  Array.pop(members)
 //
 // It runs against the SAME assertions as storage_array.json (see

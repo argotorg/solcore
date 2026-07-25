@@ -26,7 +26,7 @@ import Solcore.Frontend.Syntax.Name (Name)
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty
 import Solcore.Frontend.TypeInference.Id (Id (..))
-import Solcore.Primitives.Primitives (invokableName)
+import Solcore.Primitives.Primitives qualified as Prim
 
 -----------------------------------------------------------------------
 -- Comptime-ness classification
@@ -89,7 +89,7 @@ checkTopDecl st (TContr c) = mapM_ (checkContrDecl st) (decls c)
 -- longer retain per-element comptime annotations.  Their specialised calls are
 -- validated by the later MAST pass, as they were before pattern ctness tracking.
 checkTopDecl _ (TInstDef inst)
-  | instName inst == invokableName = Right ()
+  | instName inst == Prim.invokableName = Right ()
 checkTopDecl st (TInstDef inst) = mapM_ (checkFunDefInst st inst) (instFunctions inst)
 checkTopDecl _ _ = Right ()
 
@@ -104,17 +104,18 @@ checkContrDecl _ _ = Right ()
 -----------------------------------------------------------------------
 
 checkFunDef :: SigTable -> String -> FunDef Id -> Either String ()
-checkFunDef st ctx fd = checkBody st (sigRetComptime sig) ctx initEnv (funDefBody fd)
+checkFunDef st ctx fd = checkBody st (effRetComptime sig) ctx initEnv (funDefBody fd)
   where
     sig = funSignature fd
     -- For functions with a comptime result, treat ALL params as CTComptime when checking
     -- the body: this verifies "given comptime args, does the body produce comptime?"
-    -- For other functions, non-comptime params are CTRuntime.
+    -- A param of comptime-only type (string/integer) is also implicitly comptime,
+    -- since such values exist only at compile time.  Other params are CTRuntime.
     initEnv =
       Map.fromList
         [ ( idName (paramName p),
             CtBinding
-              (if paramComptime p || sigRetComptime sig then CTComptime else CTRuntime)
+              (if paramComptime p || effRetComptime sig || isComptimeOnlyTy (paramTy p) then CTComptime else CTRuntime)
               (paramComptime p)
           )
         | p <- sigParams sig
@@ -311,8 +312,20 @@ checkCallSite st env f args =
           ++ "' of '"
           ++ show (idName f)
           ++ "'"
-    paramTy (Typed _ _ ty) = ty
-    paramTy (Untyped _ _) = TyCon (error "paramTy: Untyped") []
+
+-- | A value of comptime-only type (string / integer) exists only at compile
+-- time, so it is always comptime regardless of annotation.
+isComptimeOnlyTy :: Ty -> Bool
+isComptimeOnlyTy t = t == Prim.string || t == Prim.integer
+
+-- | A function is effectively '-> comptime' if it is annotated so, or if its
+-- return type is comptime-only.
+effRetComptime :: Signature Id -> Bool
+effRetComptime sig = sigRetComptime sig || maybe False isComptimeOnlyTy (sigReturn sig)
+
+paramTy :: Param Id -> Ty
+paramTy (Typed _ _ ty) = ty
+paramTy (Untyped _ _) = TyCon (error "paramTy: Untyped") []
 
 -- | True if the type contains any type variable or meta variable.
 hasTypeVar :: Ty -> Bool
@@ -353,7 +366,7 @@ classifyCall st env f args =
   case Map.lookup (idName f) st of
     Nothing -> CTDeferred
     Just sig
-      | sigRetComptime sig && allArgsComptime ->
+      | effRetComptime sig && allArgsComptime ->
           CTComptime
       | otherwise ->
           CTDeferred

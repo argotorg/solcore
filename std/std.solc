@@ -28,6 +28,7 @@ export {
   IndexAccess,
   LVA,
   LValueIdxAccess,
+  Length,
   MemberAccessProxy(*),
   MemoryEncode,
   MemoryPointer,
@@ -198,8 +199,17 @@ function revertEmpty() returns (()) {
 }
 
 // TODO: use bytes4
-// TODO: add literal version Msg(string)
 enum Error { Error(word), Empty, Msg(string memory) }
+
+// A string literal can be used as an Error: `require(cond, "message")` reverts
+// with the message.  The literal is materialized into memory(string) here; MastEval
+// erases the comptime-only parameter by cloning this method per literal, so
+// the materializer sees a literal rather than a parameter.
+impl Str<Error> {
+    function fromString(s: string) returns (Error) {
+        return Error.Msg(Str.fromString(s));
+    }
+}
 
 // Revert with Error selector.
 function revertWithError(e:Error) returns (()) {
@@ -1750,10 +1760,13 @@ impl<member> StorageSize<member[]> {
     }
 }
 
+trait Length<self> {
+    function length(arr:self) returns (uint256);
+}
+
 // Dynamic storage arrays carry their length at the slot itself (matching the
 // Solidity convention) while elements live at keccak256(slot) + i.
 trait Array<self> {
-    function length(arr:self) returns (uint256);
     function setLength(arr:self, n:uint256) returns (());
     function pop(arr:self) returns (());
 }
@@ -1765,10 +1778,13 @@ trait ArrayPush<self, elem> {
     function push(arr:self, val:elem) returns (());
 }
 
-impl<t> Array<t[] storage> {
+impl<t> Length<t[] storage> {
     function length(arr:t[] storage) returns (uint256) {
         return uint256(sload(Typedef.rep(arr)));
     }
+}
+
+impl<t> Array<t[] storage> {
     // Shrinking clears the abandoned slots, matching solc's resize_array.
     // For string/bytes elements this zeroes the inline slot, which makes any
     // keccak-derived tail unreachable (reads are governed by the length word) but

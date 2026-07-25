@@ -34,6 +34,18 @@
           "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
           "status": "success"
         }
+      },
+      {
+        "input": {
+          "comment": "transfer(address,uint)(bool)  $ANVIL1  100 -- over balance, reverts with the string literal passed to require",
+          "calldata": "a9059cbb00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c80000000000000000000000000000000000000000000000000000000000000064",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "7472616e7366657246726f6d3a20696e73756666696369656e742062616c616e6365",
+          "status": "failure"
+        }
       }
     ]
   }

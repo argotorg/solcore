@@ -454,8 +454,8 @@ tcExpWithExpected' _ (FieldAccess (Just e) n) =
         ps,
         memberTy
       )
-tcExpWithExpected' _ ex@(Call me n args) =
-  tcCall me n args `wrapError` ex
+tcExpWithExpected' mExpected ex@(Call me n args) =
+  tcCall mExpected me n args `wrapError` ex
 tcExpWithExpected' mExpected (Lam args bd _) =
   do
     (args', schs, ts') <- tcArgs args
@@ -879,7 +879,7 @@ tiFunDef d@(FunDef isPub sig@(Signature _ _ n args _ _ _) bd) =
     -- elaborating the type signature
     sig' <- elabSignature [] sig sch
     (fd', sch') <- withCurrentSubst (FunDef isPub sig' bd1, sch)
-    pure (markIntegerComptime fd', sch')
+    pure (markComptimeOnly fd', sch')
 
 ambiguityCheck :: Scheme -> TcM Bool
 ambiguityCheck (Forall _ (ps :=> ty)) =
@@ -975,7 +975,7 @@ tcFunDef incl vs' qs d@(FunDef isPub sig@(Signature vs ps n _ _ _ _) _)
       let ann' = if changeTy then inf else ann
       fdt <- elabFunDef isPub vs' sig1 bd1' inf ann' `wrapError` d
       (fd', ann'') <- withCurrentSubst (fdt, ann')
-      pure (markIntegerComptime fd', ann'')
+      pure (markComptimeOnly fd', ann'')
   | otherwise = tiFunDef d
 
 -- elaborating function definition
@@ -1298,9 +1298,10 @@ verifySignatures instd@(Instance _ _ ps n ts t funs) =
     s <- match classc' ih `wrapError` instd
     -- getting method types
     let qnames = map qual (methods cinfo)
-        -- Primitive classes (invokable, Int) store their method names already
-        -- qualified; source classes store them unqualified. Only qualify the
-        -- latter, so we don't double-qualify into e.g. Int.Int.fromInteger.
+        -- Primitive classes (invokable, Int, Str) store their method names
+        -- already qualified; source classes store them unqualified. Only
+        -- qualify the latter, so we don't double-qualify into e.g.
+        -- Int.Int.fromInteger.
         qual v = if isQual v then v else qualifyName n v
     -- getting most general types and instantiate them
     aqts <-
@@ -1660,7 +1661,11 @@ hnfEntails qs ps =
     depth <- askMaxRecursionDepth
     noDesugarCalls <- getNoDesugarCalls
     qs' <- nub <$> superPredsM ctable qs
-    let skip p = isInvoke p || (noDesugarCalls && isInt p)
+    -- Int and Str constraints are skipped in noDesugarCalls mode for the same
+    -- reason as in `checkEntails`: the Int.fromInteger and Str.fromString calls
+    -- introduced by literal desugaring can't be resolved when lambda closure
+    -- conversion is skipped.
+    let skip p = isInvoke p || (noDesugarCalls && (isInt p || isStr p))
     needSolving <- filterM (\p -> (not (skip p) &&) . not <$> entailM ctable itable qs' p) ps
     -- For predicates pure entailment couldn't discharge, try the monadic solver
     -- within a local substitution scope so that Skolem bindings don't escape.
@@ -1668,14 +1673,16 @@ hnfEntails qs ps =
       remaining <- toHnfs depth needSolving
       pure (filter (not . skip) remaining)
 
--- Any let binding whose type is `integer` is implicitly comptime: integer is a
--- comptime-only type and cannot survive to hull emission regardless of whether
--- the user wrote `comptime`.  Applied after the full substitution is known.
-markIntegerComptime :: FunDef Id -> FunDef Id
-markIntegerComptime = everywhereButSpans (mkT fix)
+-- Any let binding whose type is comptime-only (`integer` or `string`) is
+-- implicitly comptime: such types have no runtime representation and cannot
+-- survive to hull emission regardless of whether the user wrote `comptime`.
+-- Applied after the full substitution is known.
+markComptimeOnly :: FunDef Id -> FunDef Id
+markComptimeOnly = everywhereButSpans (mkT fix)
   where
-    fix (Let _ i mt me) | idType i == Prim.integer = Let True i mt me
+    fix (Let _ i mt me) | isComptimeOnly (idType i) = Let True i mt me
     fix s = s
+    isComptimeOnly t = t == Prim.integer || t == Prim.string
 
 -- type generalization
 
@@ -1766,8 +1773,23 @@ lowerLetPattern source isComptime pat value valueTy continuation = do
     else
       pure [matchOn value]
 
-tcCall :: Maybe (Exp Name) -> Name -> [Exp Name] -> TcM (Exp Id, [Pred], Ty)
-tcCall Nothing n args =
+-- | The expected type of a call's result, when known, has to be unified with
+-- the call itself rather than left to the caller.  A method resolved by its
+-- result type has nothing else to determine it, and the statement type that
+-- would otherwise carry the information upwards is discarded for every
+-- statement but the last (see `tcBodyWithExpectedReturn`) — so a call in a
+-- non-tail `return` would keep an unresolved result variable and be rejected
+-- as ambiguous.  Mirrors what the `Con` case of `tcExpWithExpected'` does.
+unifyExpectedResult :: Maybe Ty -> Ty -> TcM ()
+unifyExpectedResult Nothing _ = pure ()
+unifyExpectedResult (Just expectedTy) resultTy =
+  do
+    expectedTy' <- maybeExpandSynonym expectedTy
+    s <- unify resultTy expectedTy'
+    void $ extSubst s
+
+tcCall :: Maybe Ty -> Maybe (Exp Name) -> Name -> [Exp Name] -> TcM (Exp Id, [Pred], Ty)
+tcCall mExpected Nothing n args =
   do
     s <- askEnv n `wrapError` (Call Nothing n args)
     (ps :=> t) <- freshInst s
@@ -1775,6 +1797,7 @@ tcCall Nothing n args =
     expectedArgTys <- mapM (const freshTyVar) args
     s0 <- unify t (funtype expectedArgTys t')
     _ <- extSubst s0
+    unifyExpectedResult mExpected t'
     (es', pss', ts') <-
       unzip3 <$> zipWithM (\e expectedTy -> tcExpWithExpected (Just expectedTy) e) args (apply s0 expectedArgTys)
     s1 <- unify t (funtype ts' t')
@@ -1782,7 +1805,7 @@ tcCall Nothing n args =
     let ps' = foldr union [] (ps : pss')
         t1 = funtype ts' t'
     withCurrentSubst (Call Nothing (Id n t1) es', ps', t')
-tcCall (Just e) n args =
+tcCall mExpected (Just e) n args =
   do
     (e', ps, _) <- tcExp e
     s <- askEnv n `wrapError` (Call (Just e) n args)
@@ -1791,6 +1814,7 @@ tcCall (Just e) n args =
     expectedArgTys <- mapM (const freshTyVar) args
     s0 <- unify (foldr (:->) t' expectedArgTys) t
     _ <- extSubst s0
+    unifyExpectedResult mExpected t'
     (es', pss', ts') <-
       unzip3 <$> zipWithM (\arg expectedTy -> tcExpWithExpected (Just expectedTy) arg) args (apply s0 expectedArgTys)
     s' <- unify (foldr (:->) t' ts') t

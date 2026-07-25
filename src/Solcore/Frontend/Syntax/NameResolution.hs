@@ -1561,7 +1561,12 @@ emptyEnv =
             (Name "pair", TTyCon),
             (Name "sum", TTyCon)
           ],
-      classEnv = Map.fromList [(Name "invokable", TClass), (Name "Int", TClass)],
+      classEnv =
+        Map.fromList
+          [ (Name "invokable", TClass),
+            (Name "Int", TClass),
+            (Name "Str", TClass)
+          ],
       fieldEnv = Map.empty,
       scopeEnv =
         Map.fromList
@@ -1581,7 +1586,8 @@ emptyEnv =
             (Name "integerMul", TFunction),
             (Name "integerLt", TFunction),
             (Name "integerEq", TFunction),
-            (QualName (Name "Int") "fromInteger", TFunction)
+            (QualName (Name "Int") "fromInteger", TFunction),
+            (QualName (Name "Str") "fromString", TFunction)
           ],
       canonicalTypeNames = Map.empty,
       functionBareReturnValue = Nothing,

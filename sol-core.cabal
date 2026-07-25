@@ -71,6 +71,7 @@ library
       Solcore.Desugarer.IfDesugarer
       Solcore.Desugarer.IndirectCall
       Solcore.Desugarer.IntLiteralDesugar
+      Solcore.Desugarer.StrLiteralDesugar
       Solcore.Desugarer.ReplaceWildcard
       Solcore.Desugarer.ContractDispatch
       Solcore.Desugarer.ReplaceFunTypeArgs

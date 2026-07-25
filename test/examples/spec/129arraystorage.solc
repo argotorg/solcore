@@ -18,7 +18,7 @@ contract ArrayStorage {
 
     // `arr[i]` syntax only desugars for contract fields, so use the
     // explicit ridx helper for this local-variable array. ridx dispatches
-    // through RValueIdxAccess, which bounds-checks against Array.length.
+    // through RValueIdxAccess, which bounds-checks against Length.length.
     return ridx(arr, uint256(0)) + ridx(arr, uint256(1));
   }
 }
