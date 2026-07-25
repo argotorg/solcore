@@ -299,6 +299,11 @@ transRhs expr@(FieldAccess Nothing x) cenv
           fieldMap = Con "MemberAccessProxy" [cxt, fieldSel]
           result = rhsAccess fieldMap
        in traces ["< transRhs", pretty expr, "~>", pretty result] result
+transRhs (FieldAccessWithLocation location (Just receiver) memberName) cenv =
+  FieldAccessWithLocation
+    location
+    (Just (transRhs receiver cenv))
+    memberName
 transRhs expr@FieldAccess {} _ = notImplemented "transRhs" expr
 transRhs expr cenv = go expr cenv
   where
