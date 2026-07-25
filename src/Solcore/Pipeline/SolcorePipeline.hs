@@ -21,7 +21,7 @@ import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls, writeContractAbis)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, warningDiagnostic)
-import Solcore.Desugarer.DeriveGeneric (deriveGenericTopDecls)
+import Solcore.Desugarer.DeriveGeneric (collectDataDefs, deriveGenericTopDecls)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
@@ -858,8 +858,10 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Dispatch:"
     putStrLn $ prettyInferenceDecls dispatched
 
-  -- Generic instance derivation (only for locally-defined data types)
-  let localData = [dt | ModuleInferenceDecl ModuleLocalDecl (TDataDef dt) <- dispatched]
+  -- Generic/storage/ABI instance derivation (only for locally-defined data
+  -- types). Contract- and library-local declarations remain nested at this
+  -- stage, so collect both top-level TDataDef declarations and CDataDecls.
+  let localData = localDataDefsForDeriving dispatched
   derived <-
     ExceptT $
       fmap (first compilerErrorFromString) $
@@ -914,6 +916,13 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn $ prettyInferenceDecls withFromInt
 
   pure withFromInt
+
+localDataDefsForDeriving :: [ModuleInferenceDecl] -> [DataTy]
+localDataDefsForDeriving inferenceDecls =
+  collectDataDefs
+    [ topDecl
+    | ModuleInferenceDecl ModuleLocalDecl topDecl <- inferenceDecls
+    ]
 
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =
