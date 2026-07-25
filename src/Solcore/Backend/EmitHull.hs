@@ -13,7 +13,7 @@ import Language.Hull qualified as Hull
 import Language.Yul
 import Solcore.Backend.Mast
 import Solcore.Frontend.Pretty.SolcorePretty
-import Solcore.Frontend.Syntax.Contract (Constr (..), DataTy (..))
+import Solcore.Frontend.Syntax.Contract (Constr (..), DataTy (..), DataTyKind (..))
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
 import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..))
@@ -75,8 +75,9 @@ type DataTable = Map.Map Name DataTy
 
 sumDataTy :: DataTy
 sumDataTy =
-  DataTy
-    { dataName = "sum",
+  DataTyWithKind
+    { dataTyKind = EnumKind,
+      dataName = "sum",
       dataParams = [TVar "a", TVar "b"],
       dataConstrs =
         [ Constr "inl" [tyvar "a"],
@@ -198,7 +199,7 @@ translateTCon (Name "pair") tas = translateProductType tas
 translateTCon tycon tas = do
   mti <- gets (Map.lookup tycon . ecDT)
   case mti of
-    Just (DataTy _n tvs cs) -> do
+    Just (DataTyWithKind _ _n tvs cs) -> do
       let subst = zip tvs (map mastToTy tas)
       tys <- mapM (translateDCon subst) cs
       Hull.TNamed (show tycon) <$> buildSumType tys
@@ -228,7 +229,7 @@ emitConApp (MastId n ty) as =
     (MastTyCon tcname tas) -> do
       mti <- gets (Map.lookup tcname . ecDT)
       case mti of
-        Just (DataTy _ _tvs allCons) -> do
+        Just (DataTyWithKind _ _ _tvs allCons) -> do
           (prod, code) <- translateProduct as
           hullTargetType <- translateTCon tcname tas
           let result = encodeCon n allCons hullTargetType prod

@@ -38,14 +38,17 @@ tyCon n = TyCon (Name n) []
 
 sig :: String -> [Param Name] -> Maybe Ty -> Bool -> Signature Name
 sig fname params ret payable =
-  Signature
+  SignatureWithReturnNames
     { sigVars = [],
       sigContext = [],
       sigName = Name fname,
       sigParams = params,
       sigRetComptime = False,
       sigReturn = ret,
-      sigPayable = payable
+      sigPayable = payable,
+      sigReturnNames = [],
+      sigReturnItems = [],
+      sigModifiers = [MutabilityModifier MutabilityPayable | payable]
     }
 
 fun :: Bool -> Signature Name -> ContractDecl Name

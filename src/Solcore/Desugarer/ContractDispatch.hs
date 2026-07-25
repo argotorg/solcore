@@ -153,25 +153,31 @@ transformConstructor contractName cons
     argsTuple = (tupleTyFromList (mapMaybe getTy params))
     initFun = CFunDecl (FunDef False initSig (constrBody cons))
     initSig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = mempty,
           sigContext = mempty,
           sigName = initFunName,
           sigParams = params,
           sigRetComptime = False,
           sigReturn = Just unit,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
 
     copySig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = mempty,
           sigContext = mempty,
           sigName = "copy_arguments_for_constructor",
           sigParams = mempty,
           sigRetComptime = False,
           sigReturn = Just argsTuple,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
     contractString = show contractName
     yulContractName = YLit $ YulString contractString
@@ -207,14 +213,17 @@ transformConstructor contractName cons
     copyArgsFun = CFunDecl (FunDef False copySig copyBody)
 
     startSig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = mempty,
           sigContext = mempty,
           sigName = deployerName,
           sigParams = mempty,
           sigRetComptime = False,
           sigReturn = Just unit,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
     -- A non-payable constructor must reject any incoming value transfer
     -- during deployment. A payable constructor skips this check. This mirrors

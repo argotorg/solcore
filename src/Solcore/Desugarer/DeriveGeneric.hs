@@ -229,14 +229,17 @@ buildFrom dt = FunDef False sig (fromBody dt)
     mainT = TyCon (dataName dt) (map TyVar (dataParams dt))
     repT = sopRep dt
     sig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = [],
           sigContext = [],
           sigName = Name "from",
           sigParams = [Typed False (Name "_x") mainT],
           sigRetComptime = False,
           sigReturn = Just repT,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
 
 buildTo :: DataTy -> FunDef Name
@@ -245,14 +248,17 @@ buildTo dt = FunDef False sig (toBody dt)
     mainT = TyCon (dataName dt) (map TyVar (dataParams dt))
     repT = sopRep dt
     sig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = [],
           sigContext = [],
           sigName = Name "to",
           sigParams = [Typed False (Name "_r") repT],
           sigRetComptime = False,
           sigReturn = Just mainT,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
 
 buildInstance :: DataTy -> Instance Name
@@ -312,14 +318,17 @@ buildStorageSize dt =
     }
   where
     sig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = [],
           sigContext = [],
           sigName = Name "size",
           sigParams = [Typed False (Name "_x") (proxyTyOf (mainTyOf dt))],
           sigRetComptime = False,
           sigReturn = Just wordTy,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
     body = [Return (methodCall "StorageSize" "size" [proxyExpOf (sopRep dt)])]
 
@@ -359,7 +368,7 @@ buildCanStore dt =
     -- storage(Typedef.rep(_r)) : storage(<rep>)
     repSlot = TyExp (Con (Name "storage") [methodCall "Typedef" "rep" [Var (Name "_r")]]) (storageTyOf repT)
     storeSig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = [],
           sigContext = [],
           sigName = Name "store",
@@ -369,18 +378,24 @@ buildCanStore dt =
             ],
           sigRetComptime = False,
           sigReturn = Just unitTy,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
     storeBody = [StmtExp (methodCall "CanStore" "store" [repSlot, methodCall "Generic" "from" [Var (Name "_v")]])]
     loadSig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = [],
           sigContext = [],
           sigName = Name "load",
           sigParams = [Typed False (Name "_r") (storageTyOf mainT)],
           sigRetComptime = False,
           sigReturn = Just mainT,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
     loadBody =
       [ Let False (Name "_x") (Just repT) (Just (methodCall "CanStore" "load" [repSlot])),
@@ -415,14 +430,17 @@ buildABIAttribs dt =
   where
     repT = sopRep dt
     sig method ret =
-      Signature
+      SignatureWithReturnNames
         { sigVars = [],
           sigContext = [],
           sigName = Name method,
           sigParams = [Typed False (Name "_ty") (proxyTyOf (mainTyOf dt))],
           sigRetComptime = False,
           sigReturn = Just ret,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
     body method = [Return (methodCall "ABIAttribs" method [proxyExpOf repT])]
 
@@ -466,7 +484,7 @@ buildABIDecode dt =
     readerTv = TVar (Name "_reader")
     readerTy = TyVar readerTv
     sig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = [],
           sigContext = [],
           sigName = Name "decode",
@@ -476,7 +494,10 @@ buildABIDecode dt =
             ],
           sigRetComptime = False,
           sigReturn = Just mainT,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
     body =
       [ Match
