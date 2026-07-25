@@ -76,7 +76,7 @@ diagnosticCliTests =
             "  |",
             "1 | function foo(value) {",
             "  |          ^^^ incomplete signature",
-            "note: signature: function foo(value) returns (())",
+            "note: signature: function foo(value)",
             "note: module typecheck failed for <cwd>/test/diagnostics/missing-signature.solc",
             "help: annotate every parameter (name: Type); omit returns only for a unit-returning function"
           ],
