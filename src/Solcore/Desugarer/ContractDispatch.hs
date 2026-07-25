@@ -354,24 +354,24 @@ contractAbiEntries = mapMaybe entry . decls
   where
     entry (CConstrDecl con) =
       Just (AbiConstructor (map abiParam (constrParams con)) (stateMutability (constrPayable con)))
-    entry (CFunDecl (FunDef isPublic sig _))
-      | sigName sig == fallbackName = Just (AbiFallback (stateMutability (sigPayable sig)))
-      | isPublic =
+    entry (CFunDecl (FunDef legacyVisibility sig _))
+      | sigName sig == fallbackName = Just (AbiFallback (functionStateMutability sig))
+      | externallyVisible legacyVisibility sig =
           Just $
             AbiFunction
               (nameStr (sigName sig))
               (map abiParam (sigParams sig))
-              (abiOutputs (sigReturn sig))
-              (stateMutability (sigPayable sig))
+              (abiOutputs sig)
+              (functionStateMutability sig)
       | otherwise = Nothing
-    entry (CSignatureDecl isPublic sig)
-      | isPublic =
+    entry (CSignatureDecl legacyVisibility sig)
+      | externallyVisible legacyVisibility sig =
           Just $
             AbiFunction
               (nameStr (sigName sig))
               (map abiParam (sigParams sig))
-              (abiOutputs (sigReturn sig))
-              (stateMutability (sigPayable sig))
+              (abiOutputs sig)
+              (functionStateMutability sig)
       | otherwise = Nothing
     entry _ = Nothing
 
@@ -382,17 +382,36 @@ contractAbiEntries = mapMaybe entry . decls
 stateMutability :: Bool -> String
 stateMutability payable = if payable then "payable" else "nonpayable"
 
+functionStateMutability :: Signature a -> String
+functionStateMutability sig =
+  case sigMutability sig of
+    Just MutabilityPure -> "pure"
+    Just MutabilityView -> "view"
+    Just MutabilityPayable -> "payable"
+    Nothing -> stateMutability (sigPayable sig)
+
 abiParam :: Param Name -> AbiParam
 abiParam (Typed _ pname t) = mkAbiParam (nameStr pname) t
 abiParam (Untyped _ pname) = AbiParam (nameStr pname) "" []
 
--- | A comma-separated return list @(a, b, c)@ desugars to nested pairs; the ABI
--- represents it as one output per element. A unit return has no outputs.
-abiOutputs :: Maybe Ty -> [AbiParam]
-abiOutputs Nothing = []
-abiOutputs (Just t)
-  | t == unit = []
-  | otherwise = map (mkAbiParam "") (flattenTuple t)
+-- | Preserve the source return-item boundary recorded by the rich signature.
+-- Legacy and compiler-generated signatures have no return items, so retain the
+-- historical tuple-flattening fallback for them.
+abiOutputs :: Signature Name -> [AbiParam]
+abiOutputs sig =
+  case sigReturnItems sig of
+    items@(_ : _) -> map itemOutput items
+    [] -> maybe [] legacyOutputs (sigReturn sig)
+  where
+    outputNames = map (maybe "" nameStr) (sigReturnNames sig) ++ repeat ""
+    itemOutput item =
+      mkAbiParam
+        (maybe "" nameStr (signatureReturnItemName item))
+        (signatureReturnItemType item)
+    legacyOutputs t
+      | t == unit = []
+      | [_] <- sigReturnNames sig = zipWith mkAbiParam outputNames [t]
+      | otherwise = zipWith mkAbiParam outputNames (flattenTuple t)
 
 -- | Flatten a right-nested @pair@ chain into its element list. Because every
 -- comma-tuple desugars to right-nested pairs, a flat tuple @(a, b, c)@ and a
