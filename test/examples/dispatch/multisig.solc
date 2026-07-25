@@ -29,7 +29,6 @@
 // The last layer is batching operations.
 //
 // Optional future improvements:
-// - EIP-712 for signing
 // - Operation.ChangeSigner -- batched change to replace a given signer
 // - Operation.DelegateCall -- it is a security surface, and not neccessarily needed
 // - be an EIP-1271 signer
@@ -38,7 +37,8 @@
 
 import std.{*};
 import std.dispatch.{*};
-import std.opcodes.{address as address_, calldatasize, mload, caller as caller_};
+import std.opcodes.{address as address_, calldatasize, mload, caller as caller_, chainid};
+import std.eip712.{eip712Digest, eip712DomainSeparator};
 import std.ABIGeneric.{*};
 import std.StorageGeneric.{*};
 
@@ -69,7 +69,7 @@ data Vote =
     | Rejected;
 
 data Signature =
-      ECDSA(bytes32, bytes32) // EIP-2098-style r/s/v (TODO: add chainid/domain)
+      ECDSA(bytes32, bytes32) // EIP-2098-style r/s/v (over the EIP-712 digest, see create_signature_hash)
     | Contract(address) // If the hash is approved by the contract.
     | EIP1271(address, memory(bytes)); // EIP-1271 signature validation
 
@@ -184,16 +184,24 @@ contract Multisig {
     }
 
     function create_signature_hash(kind: OperationKind, operation: Operation) -> bytes32 {
-        // The signing preimage is keccak256 over
-        //   [kind tag][operation constructor tag][operation fields...]
+        // EIP-712 typed-data signing (https://eips.ethereum.org/EIPS/eip-712).
+        // The wallet signs
+        //   keccak256(0x1901 || domainSeparator || hashStruct(message))
+        // binding the signature to this chain and this contract, so a signature
+        // for one deployment cannot be replayed against another.
+        //
+        // The message type is
+        //   MultisigOperation(uint256 kind,bytes operation)
+        // where `kind` is the operation kind (queue/approve/reject) and
+        // `operation` is a deterministic, injective byte encoding of the
+        // Operation sum
+        //   [constructor tag][operation fields...]
         // one 32-byte word per scalar field, with a dynamic bytes payload
-        // appended verbatim. Signer and verifier both derive it this way, so the
-        // only requirement is that it be deterministic and injective over
-        // (kind, operation) -- it is never decoded.
+        // appended verbatim. Per EIP-712 a dynamic `bytes` member is encoded as
+        // its keccak256, so hashStruct binds the very same information the raw
+        // preimage used to -- now under a domain-separated 0x1901 digest.
         //
-        // TODO: include domain/chain information (EIP-712).
-        //
-        // TODO: collapse this to keccak256_(abi_encode((kind, operation))) once
+        // TODO: collapse the `operation` encoding to abi_encode(operation) once
         // std's generic ABIEncode supports *dynamic* sums. Today sum:ABIEncode
         // in std.ABIGeneric is "static sums only" (it writes [tag][payload]
         // inline with no offset-into-tail handling), while Operation is a
@@ -201,29 +209,43 @@ contract Multisig {
         // a dynamic field in -- so abi_encode(operation) cannot be encoded
         // correctly yet. The dynamic-sum ABIDecode already exists; the symmetric
         // encode is the missing half.
-        let kind_word = operation_kind_tag(kind);
-        let pre: memory(bytes);
+        let op_bytes: memory(bytes);
         match operation {
             | Operation.AddSigner(signer) =>
-                pre = concat(concat(kind_word, bytes32(0)), bytes32(Typedef.rep(signer)));
+                op_bytes = concat(bytes32(0), bytes32(Typedef.rep(signer)));
             | Operation.RemoveSigner(signer) =>
-                pre = concat(concat(kind_word, bytes32(1)), bytes32(Typedef.rep(signer)));
+                op_bytes = concat(bytes32(1), bytes32(Typedef.rep(signer)));
             | Operation.ChangeSigRequired(count) =>
-                pre = concat(concat(kind_word, bytes32(2)), bytes32(Typedef.rep(count)));
+                op_bytes = concat(bytes32(2), bytes32(Typedef.rep(count)));
             | Operation.TransferEth(target, amount) =>
-                pre = concat(concat(concat(kind_word, bytes32(3)), bytes32(Typedef.rep(target))), bytes32(Typedef.rep(amount)));
+                op_bytes = concat(concat(bytes32(3), bytes32(Typedef.rep(target))), bytes32(Typedef.rep(amount)));
             | Operation.TransferToken(target, token, amount) =>
-                pre = concat(concat(concat(concat(kind_word, bytes32(4)), bytes32(Typedef.rep(target))), bytes32(Typedef.rep(token))), bytes32(Typedef.rep(amount)));
+                op_bytes = concat(concat(concat(bytes32(4), bytes32(Typedef.rep(target))), bytes32(Typedef.rep(token))), bytes32(Typedef.rep(amount)));
             | Operation.Call(target, value, payload) =>
-                pre = concat(concat(concat(concat(kind_word, bytes32(5)), bytes32(Typedef.rep(target))), bytes32(Typedef.rep(value))), payload);
+                op_bytes = concat(concat(concat(bytes32(5), bytes32(Typedef.rep(target))), bytes32(Typedef.rep(value))), payload);
             | Operation.UnstoredCall(hash) =>
-                pre = concat(concat(kind_word, bytes32(6)), hash);
+                op_bytes = concat(bytes32(6), hash);
             | Operation.ApproveSignedHash(hash) =>
-                pre = concat(concat(kind_word, bytes32(7)), hash);
+                op_bytes = concat(bytes32(7), hash);
             | Operation.RevokeSignedHash(hash) =>
-                pre = concat(concat(kind_word, bytes32(8)), hash);
+                op_bytes = concat(bytes32(8), hash);
         }
-        return keccak256_(pre);
+
+        // hashStruct(message) = keccak256(typeHash || kind || keccak256(operation))
+        let typeHash = keccakLit("MultisigOperation(uint256 kind,bytes operation)");
+        let structHash = keccak256_(
+            concat(concat(bytes32(typeHash), operation_kind_tag(kind)), keccak256_(op_bytes))
+        );
+
+        // Domain: EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)
+        let domainSeparator = eip712DomainSeparator(
+            bytes32(keccakLit("Multisig")),
+            bytes32(keccakLit("1")),
+            uint256(chainid()),
+            address(address_())
+        );
+
+        return eip712Digest(domainSeparator, structHash);
     }
 
     function operation_kind_tag(kind: OperationKind) -> bytes32 {
