@@ -1,0 +1,96 @@
+import std.{*};
+import std.dispatch.{*};
+
+// Canonical EIP-712 example from the specification
+// (https://eips.ethereum.org/EIPS/eip-712): a `Mail` sent from one `Person` to
+// another. It shows how to build the nested message struct hashes on top of the
+// reusable `eip712DomainSeparator` / `eip712Digest` helpers in std, then recover
+// the signer with `ecrecover`.
+//
+//   struct EIP712Domain { string name; string version; uint256 chainId; address verifyingContract; }
+//   struct Person       { string name; address wallet; }
+//   struct Mail         { Person from; Person to; string contents; }
+//
+// Every value below (domain, message and signature) is a fixed vector published
+// in the EIP, so `verify()` must recover the "Cow" signer
+// 0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826.
+
+// A struct's members are ABI-encoded (each atomic member as its 32-byte word, a
+// dynamic member as the keccak256 of its contents) and prefixed with the struct
+// type hash, then hashed. We build the byte string with `concat` and hash it
+// with `keccak256_`, exactly as in the slices example.
+
+// hashStruct(Person) = keccak256(PERSON_TYPEHASH ‖ keccak256(name) ‖ wallet)
+function hashPerson(nameHash: bytes32, wallet: address) -> bytes32 {
+    let typeHash = bytes32(keccakLit("Person(string name,address wallet)"));
+    return keccak256_(
+        concat(typeHash, concat(nameHash, bytes32(Typedef.rep(wallet))))
+    );
+}
+
+// hashStruct(Mail) = keccak256(MAIL_TYPEHASH ‖ hashStruct(from) ‖ hashStruct(to) ‖ keccak256(contents))
+// The Mail type hash embeds the referenced Person type per the EIP-712 rule for
+// nested structs (referenced types are appended, sorted by name).
+function hashMail(fromHash: bytes32, toHash: bytes32, contentsHash: bytes32) -> bytes32 {
+    let typeHash = bytes32(
+        keccakLit("Mail(Person from,Person to,string contents)Person(string name,address wallet)")
+    );
+    return keccak256_(
+        concat(typeHash, concat(fromHash, concat(toHash, contentsHash)))
+    );
+}
+
+// Domain separator for name "Ether Mail", version "1", chainId 1 and the fixed
+// verifying contract from the spec. Uses the std EIP712Domain helper.
+function mailDomainSeparator() -> bytes32 {
+    return eip712DomainSeparator(
+        bytes32(keccakLit("Ether Mail")),
+        bytes32(keccakLit("1")),
+        uint256(1),
+        address(0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC)
+    );
+}
+
+// hashStruct of the fixed Mail message.
+function mailStructHash() -> bytes32 {
+    let fromHash = hashPerson(
+        bytes32(keccakLit("Cow")),
+        address(0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826)
+    );
+    let toHash = hashPerson(
+        bytes32(keccakLit("Bob")),
+        address(0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB)
+    );
+    let contentsHash = bytes32(keccakLit("Hello, Bob!"));
+    return hashMail(fromHash, toHash, contentsHash);
+}
+
+function mailDigest() -> bytes32 {
+    return eip712Digest(mailDomainSeparator(), mailStructHash());
+}
+
+contract EIP712Mail {
+    constructor() {}
+
+    // Intermediate hashes, exposed so each EIP-712 layer can be asserted.
+    public function domainSeparator() -> bytes32 {
+        return mailDomainSeparator();
+    }
+
+    public function structHash() -> bytes32 {
+        return mailStructHash();
+    }
+
+    public function digest() -> bytes32 {
+        return mailDigest();
+    }
+
+    // Recovers the signer of the fixed Mail message using the published
+    // signature. Returns the "Cow" wallet 0xCD2a3d…D826.
+    public function verify() -> address {
+        let v: uint256 = uint256(28);
+        let r: bytes32 = bytes32(0x4355c47d63924e8a72e509b65029052eb6c299d53a04e167c5775fd466751c9d);
+        let s: bytes32 = bytes32(0x07299936d304c153f6443dfa05f40ff007d72911b6f72307f996231605b91562);
+        return ecrecover(mailDigest(), v, r, s);
+    }
+}

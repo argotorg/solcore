@@ -1,0 +1,64 @@
+{
+  "eip712": {
+    "bytecode": "",
+    "contract": "EIP712Mail",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "domainSeparator()(bytes32)",
+          "calldata": "f698da25",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "f2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "structHash()(bytes32)",
+          "calldata": "220861ea",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "c52c0ee5d84264471806290a3f2c4cecfc5490626bf912d01f240d7a274b371e",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "digest()(bytes32)",
+          "calldata": "52a82b65",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "be609aee343fb3c4b28e1df9e632fca64fcfaede20f02e86244efddf30957bd2",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "verify()(address)",
+          "calldata": "fc735e99",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}
