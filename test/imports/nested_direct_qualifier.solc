@@ -1,5 +1,5 @@
 import foo.bar;
 
-function main() -> word {
+function main() returns (word) {
   return foo.bar.value();
 }

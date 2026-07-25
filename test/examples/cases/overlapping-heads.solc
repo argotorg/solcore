@@ -1,15 +1,15 @@
-forall a b . class a : Foo(b) {
-  function foo (x : a, y : word) -> b;
+trait Foo<a, b> {
+  function foo (x : a, y : word) returns (b);
 }
 
-instance () : Foo (()) {
-  function foo (x : (), y : word) -> () {
-    return ();
+impl Foo<(), ()> {
+  function foo (x : (), y : word) returns (()) {
+    return;
   }
 }
 
-forall a . instance a : Foo (()) {
-  function foo (x : a, y : word) -> () {
-    return ();
+impl<a> Foo<a, ()> {
+  function foo (x : a, y : word) returns (()) {
+    return;
   }
 }

@@ -1,11 +1,11 @@
 export {Token(Ok), mkOk, mkErr};
 
-data Token = Ok(word) | Err(word);
+enum Token { Ok(word), Err(word) }
 
-function mkOk(x: word) -> Token {
+function mkOk(x: word) returns (Token) {
   return Token.Ok(x);
 }
 
-function mkErr(x: word) -> Token {
+function mkErr(x: word) returns (Token) {
   return Token.Err(x);
 }

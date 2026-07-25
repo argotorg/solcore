@@ -6,7 +6,10 @@ constructor describes one way to build a value of that type and may carry zero
 or more _fields_ of arbitrary types.
 
 ```solcore
-data Option(a) = None | Some(a);
+enum Option<A> {
+    None,
+    Some(A)
+}
 ```
 
 Data types may be defined at the top level of a source file or inside a contract
@@ -20,7 +23,11 @@ The simplest kind of algebraic data type has only nullary constructors with no
 fields. Such a type acts as a finite enumeration.
 
 ```solcore
-data TokenStatus = Active | Paused | Deprecated;
+enum TokenStatus {
+    Active,
+    Paused,
+    Deprecated
+}
 ```
 
 Each constructor is a distinct value of the type. Enumerations are commonly used
@@ -28,17 +35,27 @@ wherever Solidity uses `enum`.
 
 ```solcore
 contract Registry {
-    data TokenStatus = Active | Paused | Deprecated;
+    enum TokenStatus {
+        Active,
+        Paused,
+        Deprecated
+    }
 
-    function statusCode(s : TokenStatus) -> word {
-        match s {
-        | TokenStatus.Active     => return 1;
-        | TokenStatus.Paused     => return 2;
-        | TokenStatus.Deprecated => return 0;
+    function statusCode(s: TokenStatus) returns (word) {
+        match (s) {
+            case TokenStatus.Active {
+                return 1;
+            }
+            case TokenStatus.Paused {
+                return 2;
+            }
+            case TokenStatus.Deprecated {
+                return 0;
+            }
         }
     }
 
-    function main() -> word {
+    function main() returns (word) {
         return statusCode(TokenStatus.Active);
     }
 }
@@ -52,23 +69,39 @@ A constructor can carry one or more fields. The field types are listed in
 parentheses, separated by commas.
 
 ```solcore
-data TxStatus  = Pending | Settled | Failed;
-data TxOutcome = Success(TxStatus) | Revert(TxStatus) | Unknown;
+enum TxStatus {
+    Pending,
+    Settled,
+    Failed
+}
+
+enum TxOutcome {
+    Success(TxStatus),
+    Revert(TxStatus),
+    Unknown
+}
 ```
 
 A constructor with fields is applied like a function:
 `TxOutcome.Success(TxStatus.Settled)` produces a value of type `TxOutcome`
 wrapping a value of type `TxStatus`.
 
-Fields are extracted by pattern matching; there is no record-style field access.
-The pattern mirrors the constructor application:
+Enum-constructor payloads are extracted by pattern matching; unlike named
+`struct` fields, positional payloads have no record-style field access. The
+pattern mirrors the constructor application:
 
 ```solcore
-function outcomeCode(x : TxOutcome) -> word {
-    match x {
-    | TxOutcome.Success(TxStatus.Settled) => return 1;
-    | TxOutcome.Revert(TxStatus.Failed)   => return 2;
-    | _                                   => return 0;
+function outcomeCode(x: TxOutcome) returns (word) {
+    match (x) {
+        case TxOutcome.Success(TxStatus.Settled) {
+            return 1;
+        }
+        case TxOutcome.Revert(TxStatus.Failed) {
+            return 2;
+        }
+        default {
+            return 0;
+        }
     }
 }
 ```
@@ -78,33 +111,43 @@ function outcomeCode(x : TxOutcome) -> word {
 ## Parametric Data Types
 
 A data type can be parameterized by one or more _type variables_, making it a
-_generic_ or _parametric_ type. The type variables are listed in parentheses
+_generic_ or _parametric_ type. The type variables are listed in angle brackets
 after the type name.
 
 ```solcore
-data Option(a) = None | Some(a);
+enum Option<A> {
+    None,
+    Some(A)
+}
 ```
 
-Here `a` is a type variable. `Option(word)` is the type of optional words,
-`Option(bool)` is the type of optional booleans, and so on. The type variable
-`a` may appear in the field types of any constructor.
+Here `A` is a type variable. `Option<word>` is the type of optional words,
+`Option<bool>` is the type of optional booleans, and so on. The type variable
+`A` may appear in the field types of any constructor.
 
 ```solcore
 contract Option {
-    data Option(a) = None | Some(a);
+    enum Option<A> {
+        None,
+        Some(A)
+    }
 
-    function just(x : a) -> Option(a) {
+    function just<A>(x: A) returns (Option<A>) {
         return Option.Some(x);
     }
 
-    function maybe(default : word, opt : Option(word)) -> word {
-        match opt {
-        | Option.None    => return default;
-        | Option.Some(x) => return x;
+    function maybe(defaultValue: word, opt: Option<word>) returns (word) {
+        match (opt) {
+            case Option.None {
+                return defaultValue;
+            }
+            case Option.Some(x) {
+                return x;
+            }
         }
     }
 
-    function main() -> word {
+    function main() returns (word) {
         return maybe(0, Option.Some(42));
     }
 }
@@ -122,13 +165,20 @@ Patterns may be nested to arbitrary depth to match inside multiple layers of
 constructors in a single arm.
 
 ```solcore
-data Option(a) = None | Some(a);
+enum Option<A> {
+    None,
+    Some(A)
+}
 
 // Unwrap an approval amount nested in two Option layers.
-function resolveApproval(outer : Option(Option(word))) -> Option(word) {
-    match outer {
-    | Option.Some(Option.Some(x)) => return Option.Some(x);
-    | _                           => return Option.None;
+function resolveApproval(outer: Option<Option<word>>) returns (Option<word>) {
+    match (outer) {
+        case Option.Some(Option.Some(x)) {
+            return Option.Some(x);
+        }
+        default {
+            return Option.None;
+        }
     }
 }
 ```
@@ -145,7 +195,9 @@ _distinct_ type that is represented by an existing type at runtime. This is
 similar to Haskell's `newtype` or Solidity's user-defined value types.
 
 ```solcore
-data uint256 = uint256(word);
+enum uint256 {
+    uint256(word)
+}
 ```
 
 `uint256` is a type distinct from `word` even though it carries exactly one
@@ -156,13 +208,15 @@ occupy exactly one EVM word, just like `word`.
 Wrapping and unwrapping are done explicitly with the constructor and a pattern:
 
 ```solcore
-function wrap(x : word) -> uint256 {
+function wrap(x: word) returns (uint256) {
     return uint256(x);
 }
 
-function unwrap(x : uint256) -> word {
-    match x {
-    | uint256(w) => return w;
+function unwrap(x: uint256) returns (word) {
+    match (x) {
+        case uint256(w) {
+            return w;
+        }
     }
 }
 ```
@@ -179,34 +233,36 @@ _phantom_ type parameter. It carries no runtime information but allows the type
 system to distinguish values that would otherwise be identical.
 
 ```solcore
-// 'a' is a phantom type parameter: the constructor Proxy carries no field of type 'a'.
-data Proxy(a) = Proxy;
+// A is phantom: the constructor Proxy carries no field of type A.
+enum Proxy<A> {
+    Proxy
+}
 ```
 
-`Proxy(word)` and `Proxy(bool)` are distinct types at compile time but produce
+`Proxy<word>` and `Proxy<bool>` are distinct types at compile time but produce
 the same runtime value. Phantom types are useful for passing type information to
 functions without allocating extra memory.
 
 ```solcore
-forall a . class a:MemoryType {
-    function size(prx : Proxy(a)) -> word;
+trait MemoryType<A> {
+    function size(prx: Proxy<A>) returns (word);
 }
 
-instance word:MemoryType {
-    function size(prx : Proxy(word)) -> word {
+impl MemoryType<word> {
+    function size(prx: Proxy<word>) returns (word) {
         return 32;
     }
 }
 ```
 
-The `Proxy(a)` argument lets the caller select which `MemoryType` instance to
-use without passing an actual value of type `a`.
+The `Proxy<A>` argument lets the caller select which `MemoryType` implementation
+to use without passing an actual value of type `A`.
 
 > **Note** Because phantom type parameters leave the constructor's result type
 > partially undetermined, the type checker requires an explicit type annotation
 > whenever a `Proxy` value is constructed in a context where the type cannot be
-> inferred from surrounding expressions. Use the expression annotation form
-> `Proxy : Proxy(word)` to resolve the ambiguity.
+> inferred from surrounding expressions. Use an explicit conversion,
+> `Proxy as Proxy<word>`, to resolve the ambiguity.
 
 ---
 
@@ -217,21 +273,23 @@ as a parenthesised, comma-separated list of component types. Tuple values are
 written the same way.
 
 ```solcore
-function swap(p : (word, bool)) -> (bool, word) {
-    match p {
-    | (x, b) => return (b, x);
+function swap(p: (word, bool)) returns ((bool, word)) {
+    match (p) {
+        case (x, b) {
+            return (b, x);
+        }
     }
 }
 ```
 
 Tuples of more than two elements are right-nested pairs internally. The type
-`(word, bool, word)` is represented as `pair(word, pair(bool, word))`.
+`(word, bool, word)` is represented as `pair<word, pair<bool, word>>`.
 
 The unit type `()` is the zero-element tuple. It carries no information and is
 used as the return type of functions that exist only for their side effects.
 
 ```solcore
-function storeBalance(account : word, amount : word) -> () {
+function storeBalance(account: word, amount: word) {
     assembly { sstore(account, amount) }
 }
 ```
@@ -240,10 +298,12 @@ function storeBalance(account : word, amount : word) -> () {
 > inside constructor patterns:
 >
 > ```solcore
-> forall a b . instance Zero:Nth((a, b), a) {
->     function nth(idx : Proxy(Zero), tup : (a, b)) -> a {
->         match tup {
->         | (x, _) => return x;
+> impl<A, B> Nth<Zero, (A, B), A> {
+>     function nth(idx: Proxy<Zero>, tup: (A, B)) returns (A) {
+>         match (tup) {
+>             case (x, _) {
+>                 return x;
+>             }
 >         }
 >     }
 > }
@@ -258,13 +318,16 @@ omitted from a constructor name by prefixing it with `.`. The compiler resolves
 the constructor to the appropriate type automatically.
 
 ```solcore
-data Option(a) = None | Some(a);
+enum Option<A> {
+    None,
+    Some(A)
+}
 
-function just(x : word) -> Option(word) {
+function just(x: word) returns (Option<word>) {
     return .Some(x);   // equivalent to Option.Some(x)
 }
 
-function nothing() -> Option(word) {
+function nothing() returns (Option<word>) {
     return .None;      // equivalent to Option.None
 }
 ```
@@ -272,10 +335,14 @@ function nothing() -> Option(word) {
 The same shorthand works in patterns:
 
 ```solcore
-function isNone(o : Option(word)) -> bool {
-    match o {
-    | .None    => return true;
-    | .Some(_) => return false;
+function isNone(o: Option<word>) returns (bool) {
+    match (o) {
+        case .None {
+            return true;
+        }
+        case .Some(_) {
+            return false;
+        }
     }
 }
 ```
@@ -292,16 +359,18 @@ a compile-time device: the compiler expands them before type checking and they
 leave no trace in the generated code.
 
 ```solcore
-type Int   = word;
-type Point = pair(Int, Int);
+alias Int = word;
+alias Point = pair<Int, Int>;
 
-function makePoint(x : Int, y : Int) -> Point {
+function makePoint(x: Int, y: Int) returns (Point) {
     return (x, y);
 }
 
-function getX(p : Point) -> Int {
-    match p {
-    | (x, _) => return x;
+function getX(p: Point) returns (Int) {
+    match (p) {
+        case (x, _) {
+            return x;
+        }
     }
 }
 ```
@@ -309,12 +378,12 @@ function getX(p : Point) -> Int {
 Like data types, synonyms can have type parameters:
 
 ```solcore
-type Map(k, v) = pair(k, v);   // toy example
+alias Map<k, v> = pair<k, v>;   // toy example
 ```
 
 > **Warning** Recursive type synonyms are not allowed. A synonym must not refer
-> directly or indirectly to itself. Attempting to define `type A = B` and
-> `type B = A` simultaneously is a compile-time error.
+> directly or indirectly to itself. Attempting to define `alias A = B` and
+> `alias B = A` simultaneously is a compile-time error.
 
 ---
 
@@ -326,7 +395,7 @@ Hull/Yul code.
 **Sum types** (types with more than one constructor) are encoded as nested
 binary sums using `inl` (left injection) and `inr` (right injection). A type
 with _n_ constructors becomes a right-nested binary tree of depth ⌈log₂ n⌉. For
-example, a three-constructor type `data T = A | B | C` is encoded as:
+example, a three-constructor type `enum T { A, B, C }` is encoded as:
 
 ```
 A  →  inl ()
@@ -335,8 +404,8 @@ C  →  inr (inr ())
 ```
 
 **Product types** (constructor fields, tuples) are encoded as right-nested
-pairs. The three-field constructor `data T = T(word, bool, word)` becomes
-`pair(word, pair(bool, word))`.
+pairs. The three-field constructor `enum T { T(word, bool, word) }` becomes
+`pair<word, pair<bool, word>>`.
 
 This uniform encoding is what the `match` compiler and the Hull back-end operate
 on. It is not visible at the SAIL level.

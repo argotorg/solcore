@@ -1,5 +1,5 @@
-import foo.bar as FB;
+import * as FB from foo.bar;
 
-function main() -> word {
+function main() returns (word) {
   return FB.value();
 }

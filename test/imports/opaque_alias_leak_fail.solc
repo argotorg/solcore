@@ -1,5 +1,5 @@
-import opaque_alias_mid as M;
+import * as M from opaque_alias_mid;
 
-function bad(x: word) -> T {
+function bad(x: word) returns (T) {
   return M.make(x);
 }

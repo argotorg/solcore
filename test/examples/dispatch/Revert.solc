@@ -1,7 +1,7 @@
-import std.{*};
-import std.dispatch.{*};
+import {*} from std;
+import {*} from std.dispatch;
 
-function my_revert() -> word {
+function my_revert() returns (word) {
   revertLit("regression");
   return 0;
 }
@@ -9,11 +9,11 @@ function my_revert() -> word {
 contract Foo {
   constructor() {}
 
-  public function noAnswer() -> uint256 {
+  function noAnswer() public returns (uint256) {
     return uint256(my_revert());
   }
 
-  public function answer() -> uint256 {
+  function answer() public returns (uint256) {
     return uint256(42);
   }
 }

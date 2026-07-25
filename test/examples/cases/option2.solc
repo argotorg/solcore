@@ -1,34 +1,34 @@
 contract Option {
-  data Option(a) = None | Some(a);
+  enum Option<a> { None, Some(a) }
 
-  public function just(x : word) -> Option(word) { return Option.Some(x); }
+  function just(x : word) public returns (Option<word>) { return Option.Some(x); }
 
-  public function maybe(n : word, o : Option(word)) -> word {
-    match o {
-      | Option.None => return n;
-      | Option.Some(x) => return x;
-    }
+  function maybe(n : word, o : Option<word>) public returns (word) {
+    match (o ) {
+      case Option.None { return n;
+      } case Option.Some(x) { return x;
+    } }
   }
 
-  public function join(mmx : Option(Option(word))) -> Option(word) {
-    match mmx {
-      | Option.None => return Option.None;
-      | Option.Some(Option.None) => return Option.None;
-      | Option.Some(Option.Some(x)) => return Option.Some(x);
-    }
+  function join(mmx : Option<Option<word>>) public returns (Option<word>) {
+    match (mmx ) {
+      case Option.None { return Option.None;
+      } case Option.Some(Option.None) { return Option.None;
+      } case Option.Some(Option.Some(x)) { return Option.Some(x);
+    } }
   }
 
-  public function join2(mmx : Option(Option(word))) -> Option(word) {
-    match mmx {
-      | Option.Some(m) => match m {
-          | Option.None => return Option.None;
-          | Option.Some(x) => return Option.Some(x);
-      }
-      | _ => return Option.None;
-    }
+  function join2(mmx : Option<Option<word>>) public returns (Option<word>) {
+    match (mmx ) {
+      case Option.Some(m) { match (m ) {
+          case Option.None { return Option.None;
+          } case Option.Some(x) { return Option.Some(x);
+      } }
+      } default { return Option.None;
+    } }
   }
 
-  public function main() -> word {
+  function main() public returns (word) {
    //  return maybe(0, join(Option.Some(Option.Some(42))));
    return 42;
   }

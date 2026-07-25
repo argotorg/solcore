@@ -1,5 +1,5 @@
 import cycleA;
 
-function main() -> word {
+function main() returns (word) {
   return cycleA.fromCycleB();
 }

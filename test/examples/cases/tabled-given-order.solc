@@ -1,23 +1,23 @@
-pragma no-patterson-condition C;
+pragma solcore noPattersonCondition C;
 
-forall a . class a:A {}
-forall a . class a:B {}
-forall a . class a:C {}
+trait A<a> {}
+trait B<a> {}
+trait C<a> {}
 
-forall a . a:A, a:B => instance a:C {}
+impl<a> C<a> where a: A, a: B {}
 
-forall a . a:C => function needsC(x:a) -> () {
-  return ();
+function needsC<a>(x:a) returns (())  where a: C {
+  return;
 }
 
-forall a . a:A, a:B => function fromAB(x:a) -> () {
+function fromAB<a>(x:a) returns (())  where a: A, a: B {
   return needsC(x);
 }
 
-forall a . a:B, a:A => function fromBA(x:a) -> () {
+function fromBA<a>(x:a) returns (())  where a: B, a: A {
   return needsC(x);
 }
 
-function main() -> () {
-  return ();
+function main() returns (()) {
+  return;
 }

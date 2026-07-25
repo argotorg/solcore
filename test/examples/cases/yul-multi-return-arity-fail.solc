@@ -2,7 +2,7 @@
 // values but 3 names are being assigned, so this Yul is invalid and the type
 // checker must report the arity error.
 contract YulMultiRetBad {
-  public function main() -> word {
+  function main() public returns (word) {
     let x : word;
     let y : word;
     let z : word;

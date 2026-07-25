@@ -5,12 +5,12 @@
 */
 import std;
 
-forall a. class a : Scale {
-  function scale(comptime factor : word, comptime x : a) -> comptime a;
+trait Scale<a> {
+  function scale(comptime factor : word, comptime x : a) returns (comptime a);
 }
 
-instance word : Scale {
-  function scale(comptime factor : word, comptime x : word) -> comptime word {
+impl Scale<word> {
+  function scale(comptime factor : word, comptime x : word) returns (comptime word) {
     let base : word;
     assembly {
       base := sload(0)
@@ -20,8 +20,8 @@ instance word : Scale {
 }
 
 contract ComptimeOverloadedBad {
-  function main() -> word {
-    let a : comptime word = Scale.scale(3, 10);
+  function main() returns (word) {
+    let comptime a :  word = Scale.scale(3, 10);
     return a;
   }
 }

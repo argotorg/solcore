@@ -100,7 +100,7 @@ opcodes = [
 # Opcodes whose names clash with solcore keywords get a trailing underscore
 # in the wrapper function name, while the inner assembly call still uses the
 # real EVM mnemonic.
-RESERVED_NAMES = {"return": "return_"}
+RESERVED_NAMES = {"return": "return_", "revert": "revert_"}
 
 
 def wrapper_name(op):
@@ -128,7 +128,7 @@ def gen_function(op):
     call_args = ", ".join(args)
     ret_type = "word" if op["output"] == 1 else "()"
 
-    lines = [f"function {fname}({params}) -> {ret_type} {{"]
+    lines = [f"function {fname}({params}) returns ({ret_type}) {{"]
     if op["output"] == 1:
         lines.append("    let res;")
         lines.append("    assembly {")

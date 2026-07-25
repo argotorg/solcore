@@ -6,65 +6,65 @@ function add(x : word, y : word) {
   return res;
 }
 
-class self:Typedef(underlyingType) {
-    function rep(x:self) -> underlyingType;
-    function abs(x:underlyingType) -> self;
+trait Typedef<self, underlyingType> {
+    function rep(x:self) returns (underlyingType);
+    function abs(x:underlyingType) returns (self);
 }
 
-forall a.class a : Add {
-  function add(x:a, y:a) -> a;
+trait Add<a> {
+  function add(x:a, y:a) returns (a);
 }
 
-data B = F | T;
+enum B { F, T }
 
 
-instance B : Typedef(word) {
-  function rep(x : B) -> word {
-    match x {
-      | B.F => return 0;
-      | B.T => return 1;
-    }
+impl Typedef<B, word> {
+  function rep(x : B) returns (word) {
+    match (x ) {
+      case B.F { return 0;
+      } case B.T { return 1;
+    } }
   }
 
-  function abs(x : word) -> B {
-    match x {
-      | 0 => return B.F;
-      | 1 => return B.T;
-    }
-  }
-}
-
-instance B : Add {
-  function add(x : B, y : B) -> B {
-    match x {
-      | B.F =>
-        match y {
-          | B.F => return B.F;
-          | B.T => return B.T;
-        }
-
-      | B.T =>
-        match y {
-          | B.F => return B.T;
-          | B.T => return B.F;
-        }
-    }
+  function abs(x : word) returns (B) {
+    match (x ) {
+      case 0 { return B.F;
+      } case 1 { return B.T;
+    } }
   }
 }
 
-function fun(a : (B, B), b : (B, B)) -> (B, B) { //  -> c
-  match a, b {
-    | (a1, a2), (b1, b2) => return (Add.add(a1, b1), fun(a2, b2));
+impl Add<B> {
+  function add(x : B, y : B) returns (B) {
+    match (x ) {
+      case B.F {
+        match (y ) {
+          case B.F { return B.F;
+          } case B.T { return B.T;
+        } }
+
+      } case B.T {
+        match (y ) {
+          case B.F { return B.T;
+          } case B.T { return B.F;
+        } }
+    } }
   }
+}
+
+function fun(a : (B, B), b : (B, B)) returns ((B, B)) { //  -> c
+  match (a, b ) {
+    case ((a1, a2), (b1, b2) ) { return (Add.add(a1, b1), fun(a2, b2));
+  } }
 
 }
 
 contract Compose {
 
-  public function main() -> word {
+  function main() public returns (word) {
     let res = fun ((B.T, B.T, B.F), (B.F, B.F, B.T));
-    match res {
-      | (r1, r2, r3) => return Typedef.rep(r1);
-    }
+    match (res ) {
+      case (r1, r2, r3) { return Typedef.rep(r1);
+    } }
   }
 }

@@ -1,4 +1,4 @@
-function inc(x : word) -> word {
+function inc(x : word) returns (word) {
   let f = lam () {
     let res : word ; 
     assembly {
@@ -11,7 +11,7 @@ function inc(x : word) -> word {
 
 contract Foo {
 
-  public function main () -> word {
+  function main () public returns (word) {
     return inc(0);
   }  
 }

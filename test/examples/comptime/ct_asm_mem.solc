@@ -2,7 +2,7 @@
    when its argument is known at compile time.
    The evaluator runs in comptime mode for the RHS of `let x : comptime`.
 */
-function storeLoad(x : word) -> word {
+function storeLoad(x : word) returns (word) {
   let r : word;
   assembly {
     mstore(0, x)
@@ -12,8 +12,8 @@ function storeLoad(x : word) -> word {
 }
 
 contract ComptimeAsmMem {
-  function main() -> word {
-    let res : comptime word = storeLoad(42);
+  function main() returns (word) {
+    let comptime res :  word = storeLoad(42);
     return res;
   }
 }

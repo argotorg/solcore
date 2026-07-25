@@ -1,8 +1,8 @@
 import booldef;
 
-function main(x: booldef.Bool) -> word {
-  match x {
-  | booldef.Bool.True => return 1;
-  | _ => return 0;
-  }
+function main(x: booldef.Bool) returns (word) {
+  match (x ) {
+  case booldef.Bool.True { return 1;
+  } default { return 0;
+  } }
 }

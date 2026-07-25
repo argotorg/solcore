@@ -1,6 +1,6 @@
-data Proxy(t) = Proxy;
+enum Proxy<t> { Proxy }
 
-function addWord(l: word, r: word) -> word {
+function addWord(l: word, r: word) returns (word) {
   let rw: word;
   assembly {
     rw := add(l, r)
@@ -8,41 +8,38 @@ function addWord(l: word, r: word) -> word {
   return rw;
 }
 
-forall self.
-class self:StorageSize {
-  function size(x: Proxy(self)) -> word;
+trait StorageSize<self> {
+  function size(x: Proxy<self>) returns (word);
 }
 
-forall self.
-default instance self:StorageSize {
-  function size(x: Proxy(self)) -> word {
+default impl<self> StorageSize<self> {
+  function size(x: Proxy<self>) returns (word) {
     return 1;
   }
 }
 
-instance ():StorageSize {
-  function size(x: Proxy(())) -> word {
+impl StorageSize<()> {
+  function size(x: Proxy<()>) returns (word) {
     return 0;
   }
 }
 
-instance word:StorageSize {
-  function size(x: Proxy(word)) -> word {
+impl StorageSize<word> {
+  function size(x: Proxy<word>) returns (word) {
     return 1;
   }
 }
 
-forall a b. a:StorageSize, b:StorageSize =>
-instance (a, b):StorageSize {
-  function size(x: Proxy((a, b))) -> word {
-    let a_sz: word = StorageSize.size(Proxy:Proxy(a));
-    let b_sz: word = StorageSize.size(Proxy:Proxy(b));
+impl<a, b> StorageSize<(a, b)> where a: StorageSize, b: StorageSize {
+  function size(x: Proxy<(a, b)>) returns (word) {
+    let a_sz: word = StorageSize.size(Proxy as Proxy<a>);
+    let b_sz: word = StorageSize.size(Proxy as Proxy<b>);
     return addWord(a_sz, b_sz);
   }
 }
 
 contract Size {
-  public function main() -> word {
-    return StorageSize.size(Proxy:Proxy((word, (word, ()))));
+  function main() public returns (word) {
+    return StorageSize.size(Proxy as Proxy<(word, (word, ()))>);
   }
 }

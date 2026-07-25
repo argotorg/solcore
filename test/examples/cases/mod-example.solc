@@ -1,7 +1,7 @@
-import std.{*};
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
-function foo(x: word, y: word) -> word {
+import {*} from std;
+pragma solcore noPattersonCondition ;
+pragma solcore noCoverageCondition ;
+pragma solcore noBoundVariableCondition ;
+function foo(x: word, y: word) returns (word) {
     return x % y;
 }

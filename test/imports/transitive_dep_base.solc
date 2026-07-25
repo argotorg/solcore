@@ -1,5 +1,5 @@
 export { g };
 
-function g() -> word {
+function g() returns (word) {
   return 1;
 }

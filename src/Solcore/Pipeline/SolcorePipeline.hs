@@ -21,7 +21,7 @@ import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls, writeContractAbis)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, warningDiagnostic)
-import Solcore.Desugarer.DeriveGeneric (deriveGenericTopDecls)
+import Solcore.Desugarer.DeriveGeneric (collectDataDefs, deriveGenericTopDecls)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
@@ -524,16 +524,20 @@ declarationSearchTerms diagnostic =
   where
     declarationTerms raw =
       case words (stripContextPrefix (trim raw)) of
-        "function" : declName : _ -> [stripTrailingParens declName]
-        "contract" : declName : _ -> [stripTrailingParens declName]
-        "class" : _vars : ":" : declName : _ -> [stripTrailingParens declName]
-        "class" : declName : _ -> [stripTrailingParens declName]
-        "data" : declName : _ -> [stripTrailingParens declName]
-        "type" : declName : _ -> [stripTrailingParens declName]
+        "function" : declName : _ -> [stripDeclarationSuffix declName]
+        "contract" : declName : _ -> [stripDeclarationSuffix declName]
+        "trait" : declName : _ -> [stripDeclarationSuffix declName]
+        "enum" : declName : _ -> [stripDeclarationSuffix declName]
+        "type" : declName : _ -> [stripDeclarationSuffix declName]
         "constructor" : _ -> ["constructor"]
-        "instance" : _mainTy : ":" : instanceClassName : _ -> [stripTrailingParens instanceClassName, "instance"]
-        "instance" : instanceClassName : _ -> [stripTrailingParens instanceClassName, "instance"]
+        implToken : implName : _
+          | "impl" `isPrefixOf` implToken -> [stripDeclarationSuffix implName, "impl"]
+        "default" : implToken : implName : _
+          | "impl" `isPrefixOf` implToken -> [stripDeclarationSuffix implName, "impl"]
         _ -> []
+
+    stripDeclarationSuffix =
+      takeWhile (\c -> c /= '(' && c /= '<' && c /= ',' && c /= ';' && c /= '{')
 
 inContextSearchTerms :: Diagnostic -> [String]
 inContextSearchTerms diagnostic =
@@ -553,10 +557,6 @@ stripContextPrefix raw =
       case stripPrefix "in: " raw of
         Just rest -> trim rest
         Nothing -> raw
-
-stripTrailingParens :: String -> String
-stripTrailingParens =
-  takeWhile (\c -> c /= '(' && c /= ',' && c /= ';' && c /= '{')
 
 prefixedTerms :: [String] -> String -> [String]
 prefixedTerms prefixes body =
@@ -859,8 +859,10 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Dispatch:"
     putStrLn $ prettyInferenceDecls dispatched
 
-  -- Generic instance derivation (only for locally-defined data types)
-  let localData = [dt | ModuleInferenceDecl ModuleLocalDecl (TDataDef dt) <- dispatched]
+  -- Generic/storage/ABI instance derivation (only for locally-defined data
+  -- types). Contract- and library-local declarations remain nested at this
+  -- stage, so collect both top-level TDataDef declarations and CDataDecls.
+  let localData = localDataDefsForDeriving dispatched
   derived <-
     ExceptT $
       fmap (first compilerErrorFromString) $
@@ -922,6 +924,13 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
 
   pure withFromStr
 
+localDataDefsForDeriving :: [ModuleInferenceDecl] -> [DataTy]
+localDataDefsForDeriving inferenceDecls =
+  collectDataDefs
+    [ topDecl
+    | ModuleInferenceDecl ModuleLocalDecl topDecl <- inferenceDecls
+    ]
+
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =
   fmap reverse . foldM step []
@@ -977,8 +986,8 @@ moveData (CompUnit imps decls1) =
     step d ac = d : ac
 
 extractData :: Contract Name -> ([DataTy], Contract Name)
-extractData (Contract n ts ds) =
-  (ds1, Contract n ts ds0)
+extractData (ContractWithKind kind n ts ds) =
+  (ds1, ContractWithKind kind n ts ds0)
   where
     (ds1, ds0) = foldr step ([], []) ds
     step (CDataDecl dt) (dts, cs) = (dt : dts, cs)

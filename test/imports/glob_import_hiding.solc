@@ -1,8 +1,8 @@
-import globlib.{*} hiding {idWord};
+import {*} from globlib hiding {idWord};
 
-function main(x: word) -> word {
+function main(x: word) returns (word) {
   let y: T = mkT(x);
-  match y {
-  | T.T(v) => return v;
-  }
+  match (y ) {
+  case T.T(v) { return v;
+  } }
 }

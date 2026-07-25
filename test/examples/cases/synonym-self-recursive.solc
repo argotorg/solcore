@@ -1,6 +1,6 @@
 // Self-recursive synonym should be rejected
-type A = A;
+alias A = A;
 
-function main() -> word {
+function main() returns (word) {
     return 0;
 }

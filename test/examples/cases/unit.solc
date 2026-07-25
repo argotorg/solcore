@@ -1,33 +1,33 @@
 contract Unit {
-public function one (x : ()) -> word {
+function one (x : ()) public returns (word) {
   return 1;
 }
 
-public function unitVal() -> () {
-  return ();
+function unitVal() public returns (()) {
+  return;
 }
 
-public function unitMatch (x : ()) -> word {
-  match x {
-  | () => return 1;
-  }
+function unitMatch (x : ()) public returns (word) {
+  match (x ) {
+  case () { return 1;
+  } }
 }
 
-public function foo (x : word) -> () {
-  return ();
+function foo (x : word) public returns (()) {
+  return;
 }
 
-public function main() -> word {
+function main() public returns (word) {
   return unitMatch(foo(one(unitVal())));
 }
 }
 
-forall a . class a : Def {
-  function def () -> a ;
+trait Def<a> {
+  function def () returns (a) ;
 }
 
-instance () : Def {
-  function def() -> () {
-    return ();
+impl Def<()> {
+  function def() returns (()) {
+    return;
   }
 }

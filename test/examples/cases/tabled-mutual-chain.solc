@@ -1,18 +1,18 @@
-data WrapA(a) = WrapA(a);
-data WrapB(a) = WrapB(a);
+enum WrapA<a> { WrapA(a) }
+enum WrapB<a> { WrapB(a) }
 
-forall a . class a:A {}
-forall a . class a:B {}
+trait A<a> {}
+trait B<a> {}
 
-instance word:A {}
+impl A<word> {}
 
-forall a . a:A => instance WrapB(a):B {}
-forall a . a:B => instance WrapA(a):A {}
+impl<a> B<WrapB<a>> where a: A {}
+impl<a> A<WrapA<a>> where a: B {}
 
-forall a . a:A => function needsA(x:a) -> () {
-  return ();
+function needsA<a>(x:a) returns (())  where a: A {
+  return;
 }
 
-function main() -> () {
+function main() returns (()) {
   return needsA(WrapA(WrapB(0)));
 }

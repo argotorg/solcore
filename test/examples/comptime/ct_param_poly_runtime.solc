@@ -6,22 +6,22 @@
 */
 import std;
 
-forall t. class t : Wrap {
-  function unwrap(comptime x : t) -> comptime word;
+trait Wrap<t> {
+  function unwrap(comptime x : t) returns (comptime word);
 }
 
-instance word : Wrap {
-  function unwrap(comptime x : word) -> comptime word {
+impl Wrap<word> {
+  function unwrap(comptime x : word) returns (comptime word) {
     return x;
   }
 }
 
-forall t. t:Wrap => function process(z : t) -> word {
+function process<t>(z : t) returns (word)  where t: Wrap {
   return Wrap.unwrap(z);
 }
 
 contract ComptimeParamPolyRuntime {
-  function main() -> word {
+  function main() returns (word) {
     return process(42);
   }
 }

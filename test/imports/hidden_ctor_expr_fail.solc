@@ -1,5 +1,5 @@
-import hidden_ctor_lib.{Token};
+import {Token} from hidden_ctor_lib;
 
-function main() -> Token {
+function main() returns (Token) {
   return Token.Err(0);
 }

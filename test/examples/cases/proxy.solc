@@ -1,11 +1,10 @@
-data Proxy(a) = Proxy;
+enum Proxy<a> { Proxy }
 
-forall self . class self:BaseMemoryType {
-    function memorySize(x:Proxy(self)) -> word;
+trait BaseMemoryType<self> {
+    function memorySize(x:Proxy<self>) returns (word);
 }
 
 
-forall t . t : BaseMemoryType =>
-function morefun(p:Proxy(t)) -> word {
-  return BaseMemoryType.memorySize(Proxy:Proxy(t));
+function morefun<t>(p:Proxy<t>) returns (word)  where t: BaseMemoryType {
+  return BaseMemoryType.memorySize(Proxy as Proxy<t>);
 }

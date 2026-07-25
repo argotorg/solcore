@@ -1,22 +1,22 @@
-data Proxy(a) = Proxy;
+enum Proxy<a> { Proxy }
 
-class self:BaseMemoryType {
-    function memorySize(x:Proxy(self)) -> word;
+trait BaseMemoryType<self> {
+    function memorySize(x:Proxy<self>) returns (word);
 }
 
 
-instance word:BaseMemoryType {
-    function memorySize(x:Proxy(self)) -> word {
+impl BaseMemoryType<word> {
+    function memorySize(x:Proxy<self>) returns (word) {
       return 32;
     }
 }
 
 
-function morefun(p:Proxy(t)) -> word { return BaseMemoryType.memorySize(Proxy:Proxy(t));
+function morefun(p:Proxy<t>) returns (word) { return BaseMemoryType.memorySize(Proxy as Proxy<t>);
 }
 
 contract TestMemoryType {
-  public function main() -> word {
-    return morefun(Proxy:Proxy(word));
+  function main() public returns (word) {
+    return morefun(Proxy as Proxy<word>);
   }
 }

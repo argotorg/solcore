@@ -1,14 +1,14 @@
-import std.{*};
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
+import {*} from std;
+pragma solcore noPattersonCondition ;
+pragma solcore noCoverageCondition ;
+pragma solcore noBoundVariableCondition ;
 
-data FooCxt = FooCxt;
+enum FooCxt { FooCxt }
 
 contract Foo {
   x: word;
 
-  public function get() -> word {
+  function get() public returns (word) {
     return x;
   }
 }

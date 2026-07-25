@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 module Solcore.Frontend.Syntax.Contract where
 
 import Data.Generics (Data, Typeable)
@@ -35,6 +37,8 @@ data PragmaType
   | NoPattersonCondition
   | NoBoundVariableCondition
   | NoGenericInstanceFor
+  | SolidityPragma String
+  | AbiCoderPragma String
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data PragmaStatus
@@ -103,23 +107,69 @@ data ItemSelectorEntry
 
 -- definition of the contract structure
 
+data ContractKind
+  = ContractKind
+  | InterfaceKind
+  | LibraryKind
+  deriving (Eq, Ord, Show, Data, Typeable)
+
 data Contract a
-  = Contract
-  { name :: Name,
+  = ContractWithKind
+  { contractKind :: ContractKind,
+    name :: Name,
     tyParams :: [Tyvar],
     decls :: [ContractDecl a]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
+-- Keep the historical three-argument semantic-AST constructor available to
+-- external callers. Compiler passes use 'ContractWithKind' explicitly whenever
+-- they reconstruct a declaration, so a preserved interface or library kind
+-- cannot silently become an ordinary contract.
+pattern Contract :: Name -> [Tyvar] -> [ContractDecl a] -> Contract a
+pattern Contract n ts ds <- ContractWithKind _ n ts ds
+  where
+    Contract n ts ds = ContractWithKind ContractKind n ts ds
+
+pattern ContractShell :: ContractKind -> Name -> [Tyvar] -> [ContractDecl a] -> Contract a
+pattern ContractShell k n ts ds = ContractWithKind k n ts ds
+
+{-# COMPLETE Contract #-}
+
+{-# COMPLETE ContractShell #-}
+
 -- definition of a algebraic data type
 
 data DataTy
-  = DataTy
-  { dataName :: Name,
+  = DataTyWithKind
+  { dataTyKind :: DataTyKind,
+    dataName :: Name,
     dataParams :: [Tyvar],
     dataConstrs :: [Constr]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
+
+data DataTyKind
+  = EnumKind
+  | StructKind [Name]
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+-- Keep the historical three-argument constructor available to compiler passes.
+-- Synthetic declarations are enums by default, while declarations originating
+-- from source use 'DataTyWithKind' to retain their exact syntax kind.
+pattern DataTy :: Name -> [Tyvar] -> [Constr] -> DataTy
+pattern DataTy n ts cs <- DataTyWithKind _ n ts cs
+  where
+    DataTy n ts cs = DataTyWithKind EnumKind n ts cs
+
+pattern StructTy :: Name -> [Tyvar] -> [Name] -> [Ty] -> DataTy
+pattern StructTy n ts fieldNames fieldTypes <-
+  DataTyWithKind (StructKind fieldNames) n ts [Constr _ fieldTypes]
+  where
+    StructTy n ts fieldNames fieldTypes =
+      DataTyWithKind (StructKind fieldNames) n ts [Constr n fieldTypes]
+
+{-# COMPLETE DataTy #-}
 
 data Constr
   = Constr
@@ -161,17 +211,122 @@ data Class a
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
+-- | One source-level item in a function's @returns (...)@ clause.
+--
+-- The aggregate 'sigReturn' type deliberately remains available because the
+-- type checker and backend operate on a single result type.  This metadata
+-- preserves the item boundaries that aggregation loses: in particular,
+-- @returns (result: (word, bool))@ is one tuple-valued ABI output, whereas
+-- @returns (word, bool)@ is two outputs.
+data SignatureReturnItem
+  = SignatureReturnItem
+  { signatureReturnItemComptime :: Bool,
+    signatureReturnItemName :: Maybe Name,
+    signatureReturnItemType :: Ty
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+-- | Solidity-style source visibility retained after name resolution.
+--
+-- 'Nothing' in 'sigVisibility' is meaningful: module-level functions and
+-- compiler-generated functions do not carry a contract visibility modifier.
+data FunctionVisibility
+  = VisibilityPublic
+  | VisibilityExternal
+  | VisibilityInternal
+  | VisibilityPrivate
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+-- | Solidity-style state mutability retained after name resolution.
+--
+-- A signature with no mutability modifier is nonpayable. Keeping the source
+-- modifier itself lets ABI generation distinguish @pure@ and @view@ from that
+-- default, instead of collapsing all three to a legacy payability bit.
+data FunctionMutability
+  = MutabilityPure
+  | MutabilityView
+  | MutabilityPayable
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data FunctionModifier
+  = VisibilityModifier FunctionVisibility
+  | MutabilityModifier FunctionMutability
+  deriving (Eq, Ord, Show, Data, Typeable)
+
 data Signature a
-  = Signature
+  = SignatureWithReturnNames
   { sigVars :: [Tyvar],
     sigContext :: [Pred],
     sigName :: Name,
     sigParams :: [Param a],
     sigRetComptime :: Bool,
     sigReturn :: Maybe Ty,
-    sigPayable :: Bool
+    sigPayable :: Bool,
+    -- | Solidity ABI names for return values. An empty list is the compact
+    -- representation used by legacy/compiler-generated signatures whose
+    -- returns are all unnamed.
+    sigReturnNames :: [Maybe Name],
+    -- | Exact source return-item boundaries and per-item comptime metadata.
+    -- Legacy and compiler-generated signatures leave this empty and continue
+    -- to use 'sigReturn', 'sigRetComptime', and 'sigReturnNames'.
+    sigReturnItems :: [SignatureReturnItem],
+    -- | Exact contract visibility and mutability modifiers from the source.
+    -- Legacy/compiler-generated signatures leave this empty.
+    sigModifiers :: [FunctionModifier]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
+
+-- Keep the historical seven-argument constructor available throughout the
+-- compiler. Source name resolution uses the richer constructor for explicit
+-- return clauses, while generated and legacy signatures can stay compact.
+pattern Signature ::
+  [Tyvar] ->
+  [Pred] ->
+  Name ->
+  [Param a] ->
+  Bool ->
+  Maybe Ty ->
+  Bool ->
+  Signature a
+pattern Signature vars context funName params returnComptime returnTy payable <-
+  SignatureWithReturnNames
+    vars
+    context
+    funName
+    params
+    returnComptime
+    returnTy
+    payable
+    _
+    _
+    _
+  where
+    Signature vars context funName params returnComptime returnTy payable =
+      SignatureWithReturnNames
+        vars
+        context
+        funName
+        params
+        returnComptime
+        returnTy
+        payable
+        []
+        []
+        [MutabilityModifier MutabilityPayable | payable]
+
+{-# COMPLETE Signature #-}
+
+sigVisibility :: Signature a -> Maybe FunctionVisibility
+sigVisibility sig =
+  case [visibility | VisibilityModifier visibility <- sigModifiers sig] of
+    visibility : _ -> Just visibility
+    [] -> Nothing
+
+sigMutability :: Signature a -> Maybe FunctionMutability
+sigMutability sig =
+  case [mutability | MutabilityModifier mutability <- sigModifiers sig] of
+    mutability : _ -> Just mutability
+    [] -> Nothing
 
 data Instance a
   = Instance
@@ -233,6 +388,7 @@ data ContractDecl a
   = CDataDecl DataTy
   | CFieldDecl (Field a)
   | CFunDecl (FunDef a)
+  | CSignatureDecl Bool (Signature a)
   | CMutualDecl [ContractDecl a] -- used only after SCC analysis
   | CConstrDecl (Constructor a)
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -312,12 +468,16 @@ instance HasSourceSpan ItemSelectorEntry where
     firstSourceSpan [sourceSpanOf n, sourceSpanOf aliasName]
 
 instance (HasSourceSpan a) => HasSourceSpan (Contract a) where
-  sourceSpanOf (Contract n tyVars contractDecls) =
+  sourceSpanOf (ContractWithKind _ n tyVars contractDecls) =
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tyVars, sourceSpanOf contractDecls]
 
 instance HasSourceSpan DataTy where
-  sourceSpanOf (DataTy n tyVars constrs) =
-    firstSourceSpan [sourceSpanOf n, sourceSpanOf tyVars, sourceSpanOf constrs]
+  sourceSpanOf (DataTyWithKind kind n tyVars constrs) =
+    firstSourceSpan [sourceSpanOf n, sourceSpanOf tyVars, sourceSpanOf kind, sourceSpanOf constrs]
+
+instance HasSourceSpan DataTyKind where
+  sourceSpanOf EnumKind = Nothing
+  sourceSpanOf (StructKind fieldNames) = sourceSpanOf fieldNames
 
 instance HasSourceSpan Constr where
   sourceSpanOf (Constr n tys) =
@@ -355,5 +515,6 @@ instance (HasSourceSpan a) => HasSourceSpan (ContractDecl a) where
   sourceSpanOf (CDataDecl dataTy) = sourceSpanOf dataTy
   sourceSpanOf (CFieldDecl field) = sourceSpanOf field
   sourceSpanOf (CFunDecl funDef) = sourceSpanOf funDef
+  sourceSpanOf (CSignatureDecl _ sig) = sourceSpanOf sig
   sourceSpanOf (CMutualDecl decls') = sourceSpanOf decls'
   sourceSpanOf (CConstrDecl constructor) = sourceSpanOf constructor

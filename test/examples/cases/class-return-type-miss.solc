@@ -1,9 +1,9 @@
-data bytes32 = bytes32(word);
+enum bytes32 { bytes32(word) }
 
-forall t . class t:Memory {
+trait Memory<t> {
     function encodeInto(v: t, target: word);
 }
 
-instance bytes32:Memory {
+impl Memory<bytes32> {
     function encodeInto(v: bytes32, target: word) {}
 }

@@ -1,11 +1,11 @@
-function f(x : word) -> word {
+function f(x : word) returns (word) {
   return x;
 }
 
-function f(x : word) -> word {
+function f(x : word) returns (word) {
   return 10;
 }
 
-function g(x : word) -> word {
+function g(x : word) returns (word) {
   return f(x);
 }

@@ -18,7 +18,8 @@ This document describes the intended Solcore module and namespace system.
   - the main library
   - the std library
   - named external libraries
-- `foo.bar` maps to `foo/bar.solc`.
+- `foo.bar` maps canonically to `foo/bar.sol`. The prototype may temporarily
+  resolve `.solc` files as an implementation detail.
 - Directories are not modules.
 - `foo` and `foo.bar` therefore refer to different files.
 - The source file path is stored separately from module identity.
@@ -30,11 +31,11 @@ Supported forms:
 
 ```solidity
 import M;
-import M as A;
-import M.{X, Y};
-import M.{X as Z};
-import M.{*};
-import M.{*} hiding {X};
+import * as A from M;
+import {X, Y} from M;
+import {X as Z} from M;
+import {*} from M;
+import {*} from M hiding {X};
 import lib.foo.bar;
 import @ext.foo.bar;
 ```
@@ -51,7 +52,8 @@ Import path kinds:
 Current std-specific behavior:
 
 - `import std;` resolves to the std library root from any library.
-- `import std.dispatch;` resolves to `dispatch.solc` under the std root.
+- `import std.dispatch;` resolves canonically to `dispatch.sol` under the std
+  root (the prototype may still use `dispatch.solc`).
 - Bare imports do not fall back to the std root.
 - Imports do not have constructor-specific selector syntax.
   Exported constructors are accessed through qualified constructor paths such as `T.C`, `M.T.C`, or `alias.T.C`.
@@ -59,19 +61,19 @@ Current std-specific behavior:
 ## 4. Import Visibility and Qualification
 
 - `import M;` does not open names into unqualified scope.
-- `import M as A;` binds only `A`.
-- `import M.{X, Y};` imports selected exported names into unqualified scope.
-- `import M.{X as Z};` imports `X` into unqualified scope as `Z`.
-- `as` after a selector block, such as `import M.{X} as Z;`, is rejected.
-- `import M.{*};` imports all exported item names into unqualified scope.
-- `import M.{...} hiding {X, Y};` removes names from the selector result after expansion.
+- `import * as A from M;` binds only `A`.
+- `import {X, Y} from M;` imports selected exported names into unqualified scope.
+- `import {X as Z} from M;` imports `X` into unqualified scope as `Z`.
+- `as` after a selector block, such as `import {X} from M as Z;`, is rejected.
+- `import {*} from M;` imports all exported item names into unqualified scope.
+- `import {...} from M hiding {X, Y};` removes names from the selector result after expansion.
 - Items inside `{...}` may mix simple item names and `*`.
   Dotted item paths are not supported there.
 
 Default module bindings:
 
 - `import foo.bar;` binds `bar`.
-- `import foo.bar as B;` binds `B` and does not bind `bar`.
+- `import * as B from foo.bar;` binds `B` and does not bind `bar`.
 - Non-alias module imports also support full-path qualification, so `import foo.bar;` allows both `bar.x` and `foo.bar.x`.
 - If two imports would bind the same final segment, it is an error.
   For example, `import foo.bar; import baz.bar;` is rejected.
@@ -86,6 +88,10 @@ Validation rules:
 - Ambiguous names introduced by selective or glob imports are rejected.
 
 ## 5. Export Syntax and Public Interfaces
+
+The canonical new syntax deliberately leaves export and re-export spelling
+undecided. The forms below document the current compiler extension; they are
+not a commitment in the language syntax proposal.
 
 Supported forms:
 
@@ -142,10 +148,10 @@ Validation rules:
 - Re-exporting two different module targets under the same public module name is rejected.
 - Repeated exports of the same underlying item are normalized, so forms such as `export {main, *};` are accepted.
 
-Instance behavior:
+Impl behavior:
 
-- Instances are import-visible whenever their defining module is imported.
-- Instances are not named individually in export lists.
+- Implementations are import-visible whenever their defining module is imported.
+- Implementations are not named individually in export lists.
 
 ## 6. Namespaces and Name Resolution
 
@@ -155,7 +161,7 @@ Current duplicate checking is enforced separately for:
   - contracts
   - data types
   - type synonyms
-  - classes
+  - traits
 - the term namespace
   - functions
   - constructors
@@ -164,7 +170,8 @@ Current duplicate checking is enforced separately for:
 Unqualified lookup order:
 
 1. Local lexical scope
-2. Current module top-level declarations and names introduced by `import M.{...}` / `import M.{*}` are treated at the same priority
+2. Current module top-level declarations and names introduced by
+   `import {...} from M` / `import {*} from M` are treated at the same priority
 3. If that combined non-local set contains more than one candidate in the same namespace, validation fails with a hard error
 4. Otherwise unresolved
 
@@ -173,7 +180,8 @@ Current behavior:
 - Local parameters and local variables still shadow non-local names.
 - Current-module top-level names no longer silently shadow selected or glob-imported names.
 - Selected or glob-imported names no longer silently shadow current-module top-level names.
-- Re-importing the same underlying declaration is normalized, so importing `std.{*}` and then `std.{uint256}` does not fail by itself.
+- Re-importing the same underlying declaration is normalized, so importing
+  `{*}` and then `{uint256}` from `std` does not fail by itself.
 
 ## 7. Constructors and Dot Shorthand
 
@@ -197,7 +205,7 @@ Examples of accepted source forms:
 Current behavior:
 
 - Bare constructor names are not resolved by default in the qualified-constructor model.
-- `data Foo = Foo` remains valid because type and term namespaces are separate.
+- `enum Foo { Foo }` remains valid because type and term namespaces are separate.
 - A hidden constructor cannot be named from another module in either expressions or patterns.
 
 Dot shorthand:
@@ -235,7 +243,8 @@ Pattern matching and exhaustiveness:
 ## 10. External Libraries
 
 - External libraries are configured with `--lib NAME=DIR`.
-- Source code imports them with `@NAME.module.path`.
+- Source code imports them with `import @NAME.module.path;` (or another new
+  import form with that dotted path).
 - The external library name is part of module identity.
 - Relative imports inside an external library stay within that external library.
 - `lib.*` inside an external library resolves from that external library's root.

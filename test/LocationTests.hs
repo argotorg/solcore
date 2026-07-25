@@ -7,11 +7,13 @@ import Data.Generics (Data, everything, mkQ)
 import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Solcore.Diagnostics (CompilerError, SourceSpan (..), compilerErrorText)
+import Solcore.Frontend.ComptimeCheck (checkComptimeEarly)
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
 import Solcore.Frontend.Syntax qualified as Typed
 import Solcore.Frontend.Syntax.Location
 import Solcore.Frontend.Syntax.NameResolution (nameResolution)
 import Solcore.Frontend.Syntax.SyntaxTree qualified as Parsed
+import Solcore.Frontend.TypeInference.Id (Id)
 import Solcore.Frontend.TypeInference.SccAnalysis (sccAnalysis)
 import Solcore.Frontend.TypeInference.TcModule
 import Solcore.Pipeline.Options (stdOpt)
@@ -26,7 +28,9 @@ locationTests =
       testCase "generated nodes are explicit" test_generatedNodesAreExplicit,
       testCase "name resolution preserves source locations" test_nameResolutionPreservesSourceLocations,
       testCase "SCC analysis preserves source locations" test_sccAnalysisPreservesSourceLocations,
-      testCase "type inference preserves source locations" test_typeInferencePreservesSourceLocations
+      testCase "type inference preserves source locations" test_typeInferencePreservesSourceLocations,
+      testCase "tuple destructuring binds typed and inferred recursive leaves" test_tupleDestructuringTypeChecks,
+      testCase "comptime tuple destructuring propagates and checks binding ctness" test_comptimeTupleDestructuring
     ]
 
 test_parsedNodesCarrySourceLocations :: Assertion
@@ -71,6 +75,56 @@ test_typeInferencePreservesSourceLocations = do
       "type inference"
       (typeInferModuleLocals stdOpt (moduleInputFromUnit resolved))
   assertSpansPreserved "type inference" resolved typedUnit
+
+test_tupleDestructuringTypeChecks :: Assertion
+test_tupleDestructuringTypeChecks = do
+  parsed <- parseUnit "destructuring-let.solc" destructuringSource
+  resolved <- assertCompilerRight "name resolution" (nameResolution parsed)
+  _ <-
+    assertCompilerRight
+      "tuple destructuring type inference"
+      (typeInferModuleLocals stdOpt (moduleInputFromUnit resolved))
+  badParsed <- parseUnit "destructuring-let-mismatch.solc" badDestructuringSource
+  badResolved <- assertCompilerRight "name resolution" (nameResolution badParsed)
+  badResult <-
+    typeInferModuleLocals stdOpt (moduleInputFromUnit badResolved)
+  case badResult of
+    Left _ -> pure ()
+    Right _ ->
+      assertFailure "a tuple binding annotation must describe the complete initializer type"
+
+test_comptimeTupleDestructuring :: Assertion
+test_comptimeTupleDestructuring = do
+  goodUnit <- inferUnit "comptime-destructuring-good.solc" comptimeDestructuringSource
+  assertEitherRight
+    "comptime tuple bindings should remain comptime in their continuation"
+    (checkComptimeEarly (sourceFunctionsOnly goodUnit))
+  badUnit <- inferUnit "comptime-destructuring-bad.solc" runtimeDestructuringSource
+  case checkComptimeEarly (sourceFunctionsOnly badUnit) of
+    Left _ -> pure ()
+    Right () ->
+      assertFailure "a comptime tuple binding must reject a runtime initializer"
+  propagatedUnit <-
+    inferUnit
+      "runtime-destructuring-propagation.solc"
+      runtimeDestructuringPropagationSource
+  case checkComptimeEarly (sourceFunctionsOnly propagatedUnit) of
+    Left _ -> pure ()
+    Right () ->
+      assertFailure "runtime ctness must propagate through source tuple destructuring"
+
+sourceFunctionsOnly :: Typed.CompUnit Id -> Typed.CompUnit Id
+sourceFunctionsOnly (Typed.CompUnit imps decls) =
+  Typed.CompUnit imps [decl | decl@(Typed.TFunDef _) <- decls]
+
+inferUnit :: FilePath -> String -> IO (Typed.CompUnit Id)
+inferUnit path source = do
+  parsed <- parseUnit path source
+  resolved <- assertCompilerRight "name resolution" (nameResolution parsed)
+  fst
+    <$> assertCompilerRight
+      "type inference"
+      (typeInferModuleLocals stdOpt (moduleInputFromUnit resolved))
 
 hasSourceSpan :: (HasSourceSpan a) => a -> Bool
 hasSourceSpan =
@@ -152,12 +206,16 @@ sampleSpan =
 locatedSource :: String
 locatedSource =
   unlines
-    [ "data Bool = True | False;",
-      "function main(x : word) -> word {",
-      "  let y : word = x + 1;",
-      "  match Bool.True {",
-      "  | Bool.True => return y;",
-      "  | _ => return 0;",
+    [ "enum Bool { True, False }",
+      "function main(x: word) returns (word) {",
+      "  let y: word = x + 1;",
+      "  match (Bool.True) {",
+      "    case Bool.True {",
+      "      return y;",
+      "    }",
+      "    case Bool.False {",
+      "      return 0;",
+      "    }",
       "  }",
       "}"
     ]
@@ -165,10 +223,10 @@ locatedSource =
 transformSource :: String
 transformSource =
   unlines
-    [ "function id(x : word) -> word {",
+    [ "function id(x: word) returns (word) {",
       "  return x;",
       "}",
-      "function passthrough(y : word) -> word {",
+      "function passthrough(y: word) returns (word) {",
       "  return id(y);",
       "}"
     ]
@@ -176,10 +234,65 @@ transformSource =
 mutualSource :: String
 mutualSource =
   unlines
-    [ "function first(x : word) -> word {",
+    [ "function first(x: word) returns (word) {",
       "  return second(x);",
       "}",
-      "function second(x : word) -> word {",
+      "function second(x: word) returns (word) {",
       "  return first(x);",
+      "}"
+    ]
+
+destructuringSource :: String
+destructuringSource =
+  unlines
+    [ "function typed(value: (word, bool)) returns (word) {",
+      "  let (amount, ok): (word, bool) = value;",
+      "  if (ok) { return amount; } else { return amount; }",
+      "}",
+      "function nested(value: (word, (bool, word))) returns (word) {",
+      "  let (amount, (ok, fallbackValue)) = value;",
+      "  if (ok) { return amount; } else { return fallbackValue; }",
+      "}"
+    ]
+
+badDestructuringSource :: String
+badDestructuringSource =
+  unlines
+    [ "function bad(value: (word, word)) returns (word) {",
+      "  let (amount, ok): (word, bool) = value;",
+      "  if (ok) { return amount; } else { return amount; }",
+      "}"
+    ]
+
+comptimeDestructuringSource :: String
+comptimeDestructuringSource =
+  unlines
+    [ "function consume(comptime x: bool) returns (bool) {",
+      "  return x;",
+      "}",
+      "function good() returns (bool) {",
+      "  let comptime (left, right): (bool, bool) = (true, false);",
+      "  return consume(left);",
+      "}"
+    ]
+
+runtimeDestructuringSource :: String
+runtimeDestructuringSource =
+  unlines
+    [ "function bad(value: (word, word)) returns (word) {",
+      "  let comptime (left, right) = value;",
+      "  return left;",
+      "}"
+    ]
+
+runtimeDestructuringPropagationSource :: String
+runtimeDestructuringPropagationSource =
+  unlines
+    [ "function consume(comptime value: word) returns (word) {",
+      "  return value;",
+      "}",
+      "function bad(value: (word, word)) returns (word) {",
+      "  let (left, right) = value;",
+      "  return consume(left);",
       "}"
     ]

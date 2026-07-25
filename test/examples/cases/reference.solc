@@ -1,26 +1,26 @@
-class  ref : Ref(deref) {
-  function load (r:ref) -> deref;
-  function store(r:ref, v:deref) -> unit;
+trait Ref<ref, deref> {
+  function load (r:ref) returns (deref);
+  function store(r:ref, v:deref) returns (unit);
 }
 
-data stack(a) = stack(a);
+enum stack<a> { stack(a) }
 
-instance stack(a) : Ref(a) {
+impl Ref<stack<a>, a> {
 }
 
-data MemberAccess(ty, field) = MemberAccess(ty);
+enum MemberAccess<ty, field> { MemberAccess(ty) }
 
-data PairFst = PairFst;
-data PairSnd = PairSnd;
+enum PairFst { PairFst }
+enum PairSnd { PairSnd }
 
-data XRef(st, field, fieldType) = XRef(st, field);
-forall r : Ref (a,b) . instance XRef(r, PairFst, a) : Ref(a) {}
-forall r : Ref (a,b) . instance XRef(r, PairSnd, b) : Ref(b) {}
+enum XRef<st, field, fieldType> { XRef(st, field) }
+impl<r, a, b> Ref<XRef<r, PairFst, a>, a> where r: Ref<a, b> {}
+impl<r, a, b> Ref<XRef<r, PairSnd, b>, b> where r: Ref<a, b> {}
 
 contract AssignNested {
-  public function main() {
-    let x : stack( (word, (word, word)) );
-    let z : stack( (word, (word, word)) );
+  function main() public {
+    let x : stack<(word, (word, word))>;
+    let z : stack<(word, (word, word))>;
 
     // either of the next lines is fine on their own, but not together
     Ref.store( XRef(z,PairFst), 21);

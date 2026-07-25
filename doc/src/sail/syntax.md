@@ -1,575 +1,439 @@
 # Syntax
 
-This page is a complete grammar reference for SAIL. Every grammar rule appears
-as its own section, followed by a railroad diagram. Rounded boxes denote
-terminal tokens (keywords and punctuation); rectangular boxes denote
-non-terminals and link to the corresponding rule. The notation follows standard
-EBNF conventions: `[ … ]` marks optional elements and `{ … }` marks
-zero-or-more repetition.
+SAIL uses a Solidity-style surface syntax with a statically typed functional
+core. This page summarizes the source grammar. The machine-readable EBNF is in
+[`doc/railroad/sail.bnf`](../../railroad/sail.bnf).
+
+`[ ... ]` marks an optional element and `{ ... }` marks repetition in grammar
+fragments on this page.
 
 ---
 
-## Parser Rules
+## Source Files
 
-### CompilationUnit
+A source file contains imports, pragmas, and top-level declarations in any
+order:
 
-A SAIL source file is a sequence of import declarations and top-level
-declarations in any order. Imports are not required to precede declarations.
+```text
+CompilationUnit = { Import | Pragma | TopDecl }
+```
 
-![CompilationUnit](diagrams/CompilationUnit.svg)
+Both Classic and Core Solidity use the `.sol` extension in the language
+specification. The prototype may temporarily accept `.solc` files.
 
----
-
-### TopDecl
-
-A top-level declaration is one of: a contract, a free function, a type class,
-an instance, an algebraic data type, a type synonym, an export declaration, a
-pragma, or an operator declaration.
-
-![TopDecl](diagrams/TopDecl.svg)
+Identifiers begin with a letter or underscore and may contain letters, decimal
+digits, and underscores. Integer literals may be decimal or `0x`-prefixed
+hexadecimal values. Strings use double quotes.
 
 ---
 
-### Import
+## Imports
 
-An import declaration makes names from another module available in the current
-module. The `@package.` prefix selects an external package; the `lib.` prefix
-selects a standard library module.
+Module paths are dotted names. An external package path begins with
+`@package.`.
 
-![Import](diagrams/Import.svg)
+```solidity
+import std;
+import std.dispatch;
+import * as dispatch from std.dispatch;
+import {address, uint256 as U256} from std;
+import {foo, bar as baz} from @ext.foo.bar;
+```
 
----
+Core rejects string paths and selector-after-module ordering; selective names
+always precede `from`.
 
-### ModulePath
+The current compiler also supports `import {*} from M` and an optional
+`hiding {X, Y}` clause as module-system extensions.
 
-A module path is a dot-separated sequence of identifiers that locates a module
-within a package.
+### Exports
 
-![ModulePath](diagrams/ModulePath.svg)
-
----
-
-### ImportItems
-
-The list of names to import from a module, enclosed in braces.
-
-![ImportItems](diagrams/ImportItems.svg)
-
----
-
-### ImportItem
-
-A single item to import. Four forms are available:
-
-- `*` imports all exported names (wildcard).
-- `Name` imports a single name into the unqualified scope.
-- `Name as Alias` imports a single name under a local alias. The original name is not placed in scope.
-- `(sym)` imports an operator symbol and enables its infix syntax in this file.
-
-![ImportItem](diagrams/ImportItem.svg)
+The canonical new syntax does not yet select an export or re-export spelling.
+The compiler currently retains its existing `export` declarations as an
+implementation extension. See [Modules](modules.md) for those provisional
+forms.
 
 ---
 
-### OperatorSymbol
+## Pragmas
 
-A non-empty sequence of operator characters (`+-*/%<>=!&|^~#?` or Unicode
-mathematical symbols in the range U+2200 to U+23FF), written between
-parentheses in import and export item lists.
+Solidity and ABI-coder pragmas retain their familiar spelling:
 
-![OperatorSymbol](diagrams/OperatorSymbol.svg)
+```solidity
+pragma solidity ^0.8.23;
+pragma abicoder v2;
+```
 
----
+Solcore-specific pragmas use the `solcore` namespace:
 
-### HidingList
-
-A comma-separated list of names to exclude from an import.
-
-![HidingList](diagrams/HidingList.svg)
-
----
-
-### ExportDecl
-
-An export declaration controls which names this module exposes to other modules.
-
-![ExportDecl](diagrams/ExportDecl.svg)
+```solidity
+pragma solcore noCoverageCondition;
+pragma solcore noPattersonCondition;
+pragma solcore noBoundVariableCondition;
+pragma solcore noGenericInstanceFor MyType;
+```
 
 ---
 
-### ExportItems
+## Types
 
-The list of names to export from the current module, enclosed in braces.
+Named and generic types use dotted names and angle brackets:
 
-![ExportItems](diagrams/ExportItems.svg)
+```solidity
+word
+pkg.Option<word>
+collections.Map<address, pkg.Option<word>>
+```
 
----
+Other type forms are:
 
-### ExportItem
+```solidity
+mapping(address => word)
+word[]
+word[4]
+(word, bool)
+()
+function(word) internal returns (bool)
+bytes memory
+bytes calldata
+```
 
-A single export entry. It may be the wildcard `*`, a plain name, a name together
-with its constructors, all names from a module, or an operator symbol in
-parentheses.
+Array suffixes and the data locations `memory`, `storage`, and `calldata`
+wrap the complete type to their left. They are regular Core type suffixes, so
+they may be interleaved or repeated when representing nested references, for
+example `word[] memory[] storage`. Function types use `function(...)` and
+`returns (...)`; the former source-level arrow type is not part of the grammar.
 
-![ExportItem](diagrams/ExportItem.svg)
+Explicit conversion uses `as` with a complete target type:
 
----
+```solidity
+let n = raw as word;
+let callback = value as function(word) internal returns (bool);
+let result = value as pkg.Result<word, Error>;
+```
 
-### ExportConstructors
+There is no general `expression: Type` annotation form. Use a typed binding
+when an expression needs an expected type:
 
-Selects which data constructors to re-export alongside a type name: either all
-constructors (`*`) or an explicit list.
-
-![ExportConstructors](diagrams/ExportConstructors.svg)
-
----
-
-### ExportFromItems
-
-The list of names re-exported from another module.
-
-![ExportFromItems](diagrams/ExportFromItems.svg)
-
----
-
-### ExportFromItem
-
-A single entry in a re-export list: the wildcard `*`, a plain name, or a name
-with explicit constructor re-exports.
-
-![ExportFromItem](diagrams/ExportFromItem.svg)
-
----
-
-### Pragma
-
-A pragma adjusts compiler behaviour for type class constraint checking. Without
-targets the pragma applies to all classes; with a list of identifiers it applies
-only to those specific classes.
-
-![Pragma](diagrams/Pragma.svg)
+```solidity
+let value: T = expression;
+```
 
 ---
 
-### PragmaKind
+## Structs, Enums, and Type Declarations
 
-The three available pragma kinds relax, respectively, the coverage condition,
-the Patterson condition, and the bound-variable condition for type class
-instance resolution.
+Struct fields use name-first declarations:
 
-![PragmaKind](diagrams/PragmaKind.svg)
+```solidity
+struct Pair {
+    x: word;
+    y: word;
+}
+```
 
----
+Named struct fields can be read with postfix member access. Field reads may be
+chained, and the receiver is evaluated exactly once:
 
-### PragmaTargets
+```solidity
+function first(p: Pair) returns (word) {
+    return p.x;
+}
+```
 
-A comma-separated list of class names to which a pragma applies.
+Assignment through a struct member is not implemented yet and is rejected with
+a dedicated diagnostic instead of being interpreted as an unrelated variable
+assignment.
 
-![PragmaTargets](diagrams/PragmaTargets.svg)
+Ordinary enums and payload-carrying algebraic data types share one declaration
+form:
 
----
+```solidity
+enum Status {
+    Pending,
+    Filled,
+    Cancelled
+}
 
-### Type
+enum Option<T> {
+    None,
+    Some(T)
+}
+```
 
-A type is one of: a named type constructor applied to zero or more type
-arguments, a function type of the form `(T₁, …, Tₙ) -> T`, a tuple or unit
-type written as a parenthesised comma-separated list, or a proxy type `@T`.
+Constructors are qualified in expressions and patterns:
 
-![Type](diagrams/Type.svg)
+```solidity
+Option.Some(1)
+Option.None
+```
 
----
+A transparent type synonym uses `alias` and `=`:
 
-### TypeList
+```solidity
+alias Word = word;
+```
 
-A comma-separated (possibly empty) list of types, used as arguments to type
-constructors and as the parameter list of function types.
-
-![TypeList](diagrams/TypeList.svg)
-
----
-
-### TypeVarSeq
-
-A space-separated sequence of type-variable names following a `forall` keyword.
-All listed names are universally quantified over the scope of the accompanying
-signature.
-
-![TypeVarSeq](diagrams/TypeVarSeq.svg)
-
----
-
-### TypeVarParams
-
-A comma-separated list of type-variable names enclosed in parentheses. Used in
-`data`, `type`, and `class` declarations to introduce parametric type
-arguments.
-
-![TypeVarParams](diagrams/TypeVarParams.svg)
-
----
-
-### TypeName
-
-A possibly qualified type name. Simple names are single identifiers; qualified
-names chain module components with `.`.
-
-![TypeName](diagrams/TypeName.svg)
+The Solidity spelling `type Wad is word;` is reserved for a nominal
+user-defined value type. The current compiler rejects that form until nominal
+wrapping, unwrapping, ABI, and storage semantics are implemented; it is never
+treated as a transparent alias.
 
 ---
 
-### DataDef
+## Traits, Implementations, and Generics
 
-An algebraic data type declaration. The optional parameter list introduces
-type variables. The optional body lists the constructors separated by `|`.
+Type classes use `trait`; implementations use `impl`. Generic parameters
+follow the declared name in angle brackets, and constraints follow the head in
+a `where` clause.
 
-![DataDef](diagrams/DataDef.svg)
+```solidity
+trait Eq<T> {
+    function eq(x: T, y: T) returns (bool);
+}
 
----
+impl Eq<word> {
+    function eq(x: word, y: word) returns (bool) {
+        return x == y;
+    }
+}
 
-### DataConstrs
+impl<T> Eq<Option<T>> where T: Eq {
+    function eq(x: Option<T>, y: Option<T>) returns (bool) {
+        return true;
+    }
+}
+```
 
-One or more data constructor definitions separated by `|`.
-
-![DataConstrs](diagrams/DataConstrs.svg)
-
----
-
-### DataConstr
-
-A single data constructor: a name optionally followed by a
-parenthesised, comma-separated list of field types.
-
-![DataConstr](diagrams/DataConstr.svg)
-
----
-
-### TypeSynonym
-
-A type synonym introduces an alias for an existing type. The optional parameter
-list introduces type variables that may appear in the right-hand side.
-
-![TypeSynonym](diagrams/TypeSynonym.svg)
+The compiler also accepts `default impl` as an implementation-selection
+extension. Legacy generic and type-class declaration spellings are not source
+syntax.
 
 ---
 
-### Pattern
+## Contracts and Fields
 
-A pattern appears in `match` equations to deconstruct a value by its
-constructor. The dot-prefix form (`.Name`) is a contextual shorthand: the
-constructor is resolved from the type being matched.
+Contracts, interfaces, and libraries use Solidity-style shells. Every named
+field and parameter places the name before its type.
 
-![Pattern](diagrams/Pattern.svg)
+```solidity
+contract Token {
+    balances: mapping(address => word);
 
----
+    constructor(initialSupply: word) payable {
+        balances[msg.sender] = initialSupply;
+    }
 
-### PatternList
+    function balanceOf(account: address) public returns (word) {
+        return balances[account];
+    }
 
-A comma-separated list of patterns used as the argument list of a constructor
-pattern or as the simultaneous arguments of a `match` equation.
+    fallback() external payable {
+        // Handle unmatched selectors.
+    }
+}
+```
 
-![PatternList](diagrams/PatternList.svg)
+The initial Core surface has one general `fallback` entry point and no separate
+`receive`. A fallback must be `external`; it may also be `payable`.
 
----
+Interfaces contain semicolon-terminated function signatures, while libraries
+contain fields, structs, enums, and function definitions:
 
-### Expr
+```solidity
+interface Hashable {
+    function hash(value: word) external returns (word);
+}
 
-An expression computes a value. Binary operators follow standard precedence:
-arithmetic binds tighter than comparison, which binds tighter than logical. All
-binary operators are left-associative except `if-then-else`, which is
-right-associative.
+library Hashing {
+    function hash(value: word) internal returns (word) {
+        return value;
+    }
+}
+```
 
-![Expr](diagrams/Expr.svg)
-
----
-
-### ExprList
-
-A comma-separated (possibly empty) list of expressions used as function
-arguments.
-
-![ExprList](diagrams/ExprList.svg)
-
----
-
-### Literal
-
-A literal value: a decimal or hexadecimal integer, or a double-quoted string.
-
-![Literal](diagrams/Literal.svg)
-
----
-
-### Stmt
-
-A statement is an executable step inside a function body. Assignment operators
-`=`, `+=`, and `-=` require a terminating `;`. `let` declares a local variable,
-optionally with a type annotation and an initialiser. The `for` statement provides
-a C-style counted loop; its initialisation and post-iteration clauses obey the
-`ForInitStmt` and `ForPostStmt` grammars respectively.
-
-![Stmt](diagrams/Stmt.svg)
+Every interface function must declare `external` exactly once. It may also
+declare one of `pure`, `view`, or `payable`; omitted, `public`, `internal`, and
+`private` interface visibility are rejected rather than silently omitted from
+the ABI.
 
 ---
 
-### Body
+## Functions
 
-A brace-enclosed sequence of zero or more statements forming the body of a
-function, branch, or constructor.
+Function parameters are name-first. Attributes follow the parameter list, and
+results use `returns (...)`.
 
-![Body](diagrams/Body.svg)
+```solidity
+function addOne(x: word) pure returns (word) {
+    return x + 1;
+}
 
----
+function pair() returns (word, word) {
+    return (1, 2);
+}
 
-### ForInitStmt
+function namedResult() returns (result: word) {
+    return 1;
+}
 
-The initialisation clause of a `for` loop. It may be an assignment, a compound
-assignment, a `let` binding (typed or untyped, with or without an initialiser),
-or a plain expression. Unlike a regular statement, there is no trailing `;` — the
-semicolons are written explicitly in the `for(…; …; …)` header.
+function nop() {
+    return;
+}
+```
 
-![ForInitStmt](diagrams/ForInitStmt.svg)
+Contract and library functions accept at most one visibility modifier
+(`public`, `external`, `internal`, or `private`) and at most one mutability
+modifier (`pure`, `view`, or `payable`). Module-level functions, trait
+signatures, and implementation methods do not have contract visibility and
+cannot be `payable`; they may use `pure` or `view`.
 
----
+Generic parameters follow the function name. Constraints appear after the
+return clause.
 
-### ForPostStmt
+```solidity
+function id<T>(x: T) returns (T) {
+    return x;
+}
 
-The post-iteration clause executed after each loop body. It follows the same
-grammar as `ForInitStmt`. A `let` binding introduced here is scoped to the body
-of that single iteration.
+function eqSelf<T>(x: T) returns (bool) where T: Eq {
+    return Eq.eq(x, x);
+}
+```
 
-![ForPostStmt](diagrams/ForPostStmt.svg)
+`comptime` immediately precedes the binding it modifies:
 
----
-
-### MatchArgs
-
-One or more comma-separated expressions forming the scrutinees of a `match`
-statement.
-
-![MatchArgs](diagrams/MatchArgs.svg)
-
----
-
-### Equation
-
-A single match arm: a `|`-prefixed list of patterns followed by `=>` and a
-sequence of statements. The patterns are matched positionally against the
-scrutinee list.
-
-![Equation](diagrams/Equation.svg)
-
----
-
-### Param
-
-A single function parameter: a name with an explicit type annotation, or an
-untyped name whose type will be inferred.
-
-![Param](diagrams/Param.svg)
+```solidity
+function pow(comptime n: word, x: word) returns (word) {
+    let comptime exponent = n;
+    return x ** exponent;
+}
+```
 
 ---
 
-### ParamList
+## Local Bindings and Statements
 
-A comma-separated list of function parameters.
+Local variables use `let`, with or without an explicit type or initializer:
 
-![ParamList](diagrams/ParamList.svg)
+```solidity
+let amount: word = readAmount();
+let owner: address;
+let inferred = computeValue();
+let (left, right): (word, bool) = readResult();
+```
 
----
+Statements use semicolon terminators where shown:
 
-### Function
+```solidity
+return;
+return value;
+if (condition) { ... } else { ... }
+for (let i: word = 0; i < n; i = i + 1) { ... }
+while (condition) { ... }
+break;
+continue;
+unchecked { ... }
+assembly { ... }
+revert;
+```
 
-A function definition. The long form uses a brace-enclosed statement block as
-the body. The short form uses a single expression whose value is returned
-implicitly (Rust-style).
-
-![Function](diagrams/Function.svg)
-
----
-
-### Signature
-
-A function signature declares the function name, its parameter list, and the
-optional return type. It may be preceded by a polymorphism prefix to introduce
-type variables and constraints.
-
-![Signature](diagrams/Signature.svg)
-
----
-
-### SigPrefix
-
-An optional `forall` quantifier that precedes a function or method signature. It
-introduces universally quantified type variables and, optionally, a list of type
-class constraints that callers must satisfy.
-
-![SigPrefix](diagrams/SigPrefix.svg)
+Assignments support `=` and compound assignment operators for assignable
+variables and indexed values. Struct-member lvalues are the exception noted
+above and are rejected until update lowering is implemented. A plain call or
+other expression used as a statement also ends in `;`.
 
 ---
 
-### ConstraintList
+## Pattern Matching
 
-A comma-separated list of type class constraints.
+`match` encloses one or more scrutinees in parentheses. Each arm has its own
+block.
 
-![ConstraintList](diagrams/ConstraintList.svg)
+```solidity
+match (value) {
+    case Option.Some(x) {
+        return x;
+    }
+    case Option.None {
+        return 0;
+    }
+}
 
----
+match (x, y) {
+    case (Option.Some(a), Option.Some(b)) {
+        return a + b;
+    }
+    default {
+        return 0;
+    }
+}
+```
 
-### Constraint
-
-A single type class constraint of the form `Type : ClassName` or
-`Type : ClassName(T₁, …, Tₙ)`. It asserts that the given type is an instance
-of the named class, possibly with additional type parameters.
-
-![Constraint](diagrams/Constraint.svg)
-
----
-
-### ClassDef
-
-A type class declaration. The self-variable (the first identifier after
-`class`) is the main type being constrained. The optional comma-separated list
-in parentheses introduces auxiliary associated type variables. The body lists
-method signatures, each terminated by `;`.
-
-![ClassDef](diagrams/ClassDef.svg)
-
----
-
-### InstDef
-
-An instance declaration provides method implementations for a specific type.
-The optional `default` keyword marks the instance as an overlappable fallback
-when no more specific instance is found.
-
-![InstDef](diagrams/InstDef.svg)
+The compiler extension `.Constructor` is available when an expected type makes
+the constructor family unambiguous.
 
 ---
 
-### Contract
+## Expressions
 
-A contract groups fields, nested data types, methods, and an optional
-constructor. The optional parameter list makes the contract generic over type
-variables.
+Expressions include literals, names, tuples, calls, field access, indexing,
+unary and binary operators, conditional expressions, and conversions:
 
-![Contract](diagrams/Contract.svg)
+```solidity
+f(x, y)
+makeAdder(x)(y)
+callbacks[index](value)
+token.balanceOf(account)
+values[index]
+!ok
+x ** exponent
+x * y + z
+x << bits
+x & mask
+x == y
+condition ? yes : no
+expression as T
+```
 
----
+Call, member, and indexing suffixes may be repeated on any primary expression.
+Direct and member calls keep their ordinary call representation; calls on
+computed values are checked through the `invokable` abstraction.
 
-### ContractDecl
+Power is right-associative. In decreasing precedence, the remaining binary
+groups are multiplication, addition, shifts, bitwise `&`, bitwise `^`, bitwise
+`|`, comparisons, equality, logical `&&`, and logical `||`; the conditional
+operator is lower still. Conversion with `as` binds more tightly than power and
+is left-associative. Comparison and equality operators are non-associative, so
+chains such as `a < b < c` and `a == b == c` must be written as explicit
+logical combinations.
 
-A single declaration inside a contract body: a field, a data type, a function,
-or a constructor.
-
-![ContractDecl](diagrams/ContractDecl.svg)
-
----
-
-### FieldDecl
-
-A contract field declaration. The type annotation is mandatory; the initialiser
-expression is optional.
-
-![FieldDecl](diagrams/FieldDecl.svg)
-
----
-
-### Constructor
-
-A contract constructor is invoked exactly once at deployment time. It has an
-explicit parameter list and a statement block body.
-
-![Constructor](diagrams/Constructor.svg)
-
----
-
-### AsmBlock
-
-An inline assembly block embeds Yul statements directly in SAIL source code,
-giving direct access to EVM opcodes.
-
-![AsmBlock](diagrams/AsmBlock.svg)
+The compiler retains `lam(...) returns (...) { ... }` for lambda expressions as
+a Core extension.
 
 ---
 
-### YulStmt
+## Assembly
 
-A statement in the Yul sublanguage. Yul provides low-level control flow (`if`,
-`switch`, `for`, `break`, `continue`, `leave`) and variable declarations and
-assignments using `:=`.
+An `assembly { ... }` block embeds the Yul sublanguage. Yul declarations,
+assignment, `if`, `switch`, `for`, `break`, `continue`, and `leave` retain Yul
+syntax and do not use SAIL statement terminators.
 
-![YulStmt](diagrams/YulStmt.svg)
+Yul function declarations use `function name(args) -> results { ... }`. An
+arrow must be followed by at least one result name. Yul identifiers may begin
+with `_` or `$`, and boolean literals are `true` and `false`. A Yul `let` or
+assignment must name at least one target. Backtick-delimited and `${...}` meta
+expressions remain available as a compiler extension.
 
----
+```solidity
+function load(slot: word) returns (word) {
+    let value: word;
+    assembly {
+        value := sload(slot)
+    }
+    return value;
+}
+```
 
-### YulCase
-
-A single `case` arm in a Yul `switch` statement: a literal value followed by a
-block of Yul statements.
-
-![YulCase](diagrams/YulCase.svg)
-
----
-
-### YulExpr
-
-A Yul expression: a literal, a variable reference, a function call, or a call
-to the special `return` built-in.
-
-![YulExpr](diagrams/YulExpr.svg)
-
----
-
-### YulNames
-
-A comma-separated list of identifiers used as the left-hand side of a Yul
-multi-assignment or the names in a Yul `let` declaration.
-
-![YulNames](diagrams/YulNames.svg)
-
----
-
-### YulExprList
-
-A comma-separated list of Yul expressions used as arguments to a Yul function
-call.
-
-![YulExprList](diagrams/YulExprList.svg)
-
----
-
-### YulLiteral
-
-A Yul literal value: a decimal or hexadecimal integer, or a string.
-
-![YulLiteral](diagrams/YulLiteral.svg)
-
----
-
-## Lexer Rules
-
-### Identifier
-
-An identifier begins with a letter (upper or lower case) and may contain
-letters, decimal digits, and underscores. Identifiers are used for variable
-names, function names, type names, module components, and constructor names.
-
-![Identifier](diagrams/Identifier.svg)
-
----
-
-### Integer
-
-An integer literal is either a sequence of decimal digits or a hexadecimal
-literal prefixed with `0x`.
-
-![Integer](diagrams/Integer.svg)
-
----
-
-### StringLiteral
-
-A string literal is a sequence of characters enclosed in double quotes.
-Supported escape sequences are `\n` (newline), `\t` (tab), and `\"` (literal
-double quote).
-
-![StringLiteral](diagrams/StringLiteral.svg)
+Only surrounding values represented as `word` may be referenced directly from
+Yul.

@@ -1,8 +1,8 @@
-import hidden_ctor_lib.{Token, mkErr};
+import {Token, mkErr} from hidden_ctor_lib;
 
-function main() -> word {
-  match mkErr(1) {
-  | Token.Err(v) => return v;
-  | _ => return 0;
-  }
+function main() returns (word) {
+  match (mkErr(1) ) {
+  case Token.Err(v) { return v;
+  } default { return 0;
+  } }
 }

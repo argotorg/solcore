@@ -1,42 +1,42 @@
-import std.{*};
-import std.dispatch.{*};
+import {*} from std;
+import {*} from std.dispatch;
 
 contract C {
     constructor() {}
 
-    public function concat_b32_b32(a: bytes32, b: bytes32) -> memory(bytes) {
+    function concat_b32_b32(a: bytes32, b: bytes32) public returns (bytes memory) {
         return concat(a, b);
     }
 
-    public function concat_b32_bytes(a: bytes32, b: memory(bytes)) -> memory(bytes) {
+    function concat_b32_bytes(a: bytes32, b: bytes memory) public returns (bytes memory) {
         return concat(a, b);
     }
 
-    public function concat_bytes_bytes(a: memory(bytes), b: memory(bytes)) -> memory(bytes) {
+    function concat_bytes_bytes(a: bytes memory, b: bytes memory) public returns (bytes memory) {
         return concat(a, b);
     }
 
-    public function to_bytes_b32(a: bytes32) -> memory(bytes) {
+    function to_bytes_b32(a: bytes32) public returns (bytes memory) {
         return to_bytes(a);
     }
 
-    public function to_bytes_bytes(a: memory(bytes)) -> memory(bytes) {
+    function to_bytes_bytes(a: bytes memory) public returns (bytes memory) {
         return to_bytes(a);
     }
 
-    public function empty_area(n: uint256) -> memory(bytes) {
+    function empty_area(n: uint256) public returns (bytes memory) {
         return to_bytes(empty(Typedef.rep(n)));
     }
 
-    public function concat_b32_empty(a: bytes32, n: uint256) -> memory(bytes) {
+    function concat_b32_empty(a: bytes32, n: uint256) public returns (bytes memory) {
         return concat(a, empty(Typedef.rep(n)));
     }
 
-    public function concat_nested_b32(a: bytes32, b: bytes32, c: bytes32) -> memory(bytes) {
+    function concat_nested_b32(a: bytes32, b: bytes32, c: bytes32) public returns (bytes memory) {
         return concat(a, concat(b, c));
     }
 
-    public function concat_nested_empty(a: bytes32, n: uint256, c: bytes32) -> memory(bytes) {
+    function concat_nested_empty(a: bytes32, n: uint256, c: bytes32) public returns (bytes memory) {
         return concat(a, concat(empty(Typedef.rep(n)), c));
     }
 }

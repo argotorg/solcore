@@ -1,5 +1,5 @@
-import booldef as B;
+import * as B from booldef;
 
-function fromAliasType(b: B.Bool) -> B.Bool {
+function fromAliasType(b: B.Bool) returns (B.Bool) {
   return B.not(b);
 }

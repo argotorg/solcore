@@ -1,5 +1,5 @@
-import transitive_dep_mid as M;
+import * as M from transitive_dep_mid;
 
-function main() -> word {
+function main() returns (word) {
   return M.f();
 }

@@ -5,7 +5,7 @@ import pragma_merge_base;
 
 // --- Patterson Violation ---
 
-forall a . class a:TestFailClass {}
+trait TestFailClass<a> {}
 
 // Should fail because TestFailClass doesn't have no-patterson-condition
-forall U . U:TestClassP1, U:TestClassP2, U:TestClassP3 => instance U:TestFailClass {}
+impl<U> TestFailClass<U> where U: TestClassP1, U: TestClassP2, U: TestClassP3 {}

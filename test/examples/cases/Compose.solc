@@ -1,7 +1,7 @@
 contract Compose {
-  public function id(x : word) -> word { return x; }
+  function id(x : word) public returns (word) { return x; }
 
-  public function main() -> word {
+  function main() public returns (word) {
     return id(id(42));
   }
 }

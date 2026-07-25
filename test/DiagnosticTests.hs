@@ -90,9 +90,9 @@ test_nearbyLabelsShareOneSnippet =
       [ "error[SC0108]: duplicate declarations",
         "  --> dup.solc:2:10",
         "  |",
-        "1 | function foo() -> word { return 1; }",
+        "1 | function foo() returns (word) { return 1; }",
         "  |          --- previous definition",
-        "2 | function foo() -> word { return 2; }",
+        "2 | function foo() returns (word) { return 2; }",
         "  |          ^^^ duplicate definition"
       ]
 
@@ -119,7 +119,7 @@ sourceMap =
 
 sourceFile :: SourceFile
 sourceFile =
-  makeSourceFile "main.solc" (unlines ["function main() -> word {", "  return missing;", "}"])
+  makeSourceFile "main.solc" (unlines ["function main() returns (word) {", "  return missing;", "}"])
 
 duplicateSourceMap :: SourceMap
 duplicateSourceMap =
@@ -127,7 +127,7 @@ duplicateSourceMap =
 
 duplicateSourceFile :: SourceFile
 duplicateSourceFile =
-  makeSourceFile "dup.solc" (unlines ["function foo() -> word { return 1; }", "function foo() -> word { return 2; }"])
+  makeSourceFile "dup.solc" (unlines ["function foo() returns (word) { return 1; }", "function foo() returns (word) { return 2; }"])
 
 undefinedNameDiagnostic :: Diagnostic
 undefinedNameDiagnostic =
@@ -140,8 +140,8 @@ undefinedNameDiagnostic =
             { labelSpan =
                 SourceSpan
                   { spanFile = "main.solc",
-                    spanStartByte = 34,
-                    spanEndByte = 41,
+                    spanStartByte = 41,
+                    spanEndByte = 48,
                     spanStartLine = 2,
                     spanStartColumn = 10,
                     spanEndLine = 2,
@@ -180,8 +180,8 @@ duplicateDiagnostic =
             { labelSpan =
                 SourceSpan
                   { spanFile = "dup.solc",
-                    spanStartByte = 47,
-                    spanEndByte = 50,
+                    spanStartByte = 54,
+                    spanEndByte = 57,
                     spanStartLine = 2,
                     spanStartColumn = 10,
                     spanEndLine = 2,

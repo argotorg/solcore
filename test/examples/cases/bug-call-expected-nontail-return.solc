@@ -7,32 +7,31 @@
 // type is discarded, so the expected type has to reach the call itself.
 // Without that, `pick` fails to compile with an ambiguous `a:FromWord`.
 
-data Box(a) = Box(a);
+enum Box<a> { Box(a) }
 
-forall a.
-class a:FromWord {
-  function fromWord(x: word) -> a;
+trait FromWord<a> {
+  function fromWord(x: word) returns (a);
 }
 
-instance Box(word):FromWord {
-  function fromWord(x: word) -> Box(word) {
+impl FromWord<Box<word>> {
+  function fromWord(x: word) returns (Box<word>) {
     return Box(x);
   }
 }
 
-function pick(cond: bool, w: word) -> Box(word) {
+function pick(cond: bool, w: word) returns (Box<word>) {
   if (cond) { return FromWord.fromWord(w); }
   return Box(w);
 }
 
-function unbox(b: Box(word)) -> word {
-  match b {
-    | Box(x) => return x;
-  }
+function unbox(b: Box<word>) returns (word) {
+  match (b ) {
+    case Box(x) { return x;
+  } }
 }
 
 contract CallExpectedNonTailReturn {
-  function main() -> word {
+  function main() returns (word) {
     return unbox(pick(true, 42));
   }
 }

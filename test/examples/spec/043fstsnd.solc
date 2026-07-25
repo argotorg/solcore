@@ -1,21 +1,21 @@
 
 
-data B = F | T;
-data Pair(a,b) = Pair(a,b);
+enum B { F, T }
+enum Pair<a, b> { Pair(a, b) }
 
-forall a b . function fst (p : Pair(a, b)) -> a {
-  match p {
-    | Pair(x,y) => return x;
-  }
+function fst<a, b> (p : Pair<a, b>) returns (a) {
+  match (p ) {
+    case Pair(x,y) { return x;
+  } }
 }
 
-forall a b . function snd(p : Pair(a, b)) -> b {
-  match p {
-    | Pair(x,y) => return y;
-  }
+function snd<a, b>(p : Pair<a, b>) returns (b) {
+  match (p ) {
+    case Pair(x,y) { return y;
+  } }
 }
 
-function add(x : word, y : word) -> word {
+function add(x : word, y : word) returns (word) {
   let res: word;
   assembly {
      res := add(x, y)
@@ -24,10 +24,10 @@ function add(x : word, y : word) -> word {
 }
 
 
-function addPair(p : Pair(word, word)) -> word {
+function addPair(p : Pair<word, word>) returns (word) {
   return add(fst(p), snd(p));
 }
 
 contract FstSnd {
- public function main() -> word { return  addPair(Pair(41,1)); }
+ function main() public returns (word) { return  addPair(Pair(41,1)); }
 }

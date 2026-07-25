@@ -4,10 +4,10 @@
 
 import pragma_merge_base;
 
-data VerifyType(x) = VerifyType;
+enum VerifyType<x> { VerifyType }
 
 // Would fail without imported pragma no-patterson-condition TestClassP3
-forall a . (a,word):TestClassP3(a) => instance a:TestClassP3(word) {}
+impl<a> TestClassP3<a, word> where (a, word): TestClassP3<a> {}
 
 // Would fail without imported pragma no-coverage-condition TestClassC1
-forall p q . instance VerifyType(p):TestClassC1(q) {}
+impl<p, q> TestClassC1<VerifyType<p>, q> {}

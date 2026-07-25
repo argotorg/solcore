@@ -41,15 +41,21 @@ keyword kw = lexeme (try (string kw *> notFollowedBy identChar))
 reservedWords :: [String]
 reservedWords =
   [ "contract",
+    "interface",
+    "library",
     "import",
     "export",
     "hiding",
     "as",
     "let",
-    "data",
-    "forall",
-    "class",
-    "instance",
+    "comptime",
+    "enum",
+    "struct",
+    "trait",
+    "impl",
+    "where",
+    "returns",
+    "is",
     "if",
     "else",
     "for",
@@ -59,24 +65,38 @@ reservedWords =
     "leave",
     "continue",
     "break",
+    "while",
+    "unchecked",
     "assembly",
     "match",
     "function",
     "fallback",
     "payable",
     "public",
+    "external",
+    "internal",
+    "private",
+    "pure",
+    "view",
     "constructor",
     "return",
+    "revert",
+    "true",
+    "false",
     "lam",
+    "alias",
     "type",
-    "pragma"
+    "pragma",
+    "solcore",
+    "solidity",
+    "abicoder"
   ]
 
 identifier :: Parser String
 identifier = lexeme go <?> "identifier"
   where
     go = do
-      h <- letterChar
+      h <- letterChar <|> char '_'
       t <- many identChar
       let w = h : t
       if w `elem` reservedWords
@@ -99,6 +119,7 @@ stringLit =
       choice
         [ char 'n' *> pure '\n',
           char 't' *> pure '\t',
+          char 'r' *> pure '\r',
           char '"' *> pure '"',
           char '\\' *> pure '\\'
         ]

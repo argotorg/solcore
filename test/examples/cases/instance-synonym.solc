@@ -1,17 +1,17 @@
-type W = word;
+alias W = word;
 
-forall self . class self:IdTy {
-  function id(x:self) -> self;
+trait IdTy<self> {
+  function id(x:self) returns (self);
 }
 
-instance W:IdTy {
-  function id(x:W) -> W {
+impl IdTy<W> {
+  function id(x:W) returns (W) {
     return x;
   }
 }
 
 contract C {
-  public function main() -> word {
+  function main() public returns (word) {
     return IdTy.id(42);
   }
 }

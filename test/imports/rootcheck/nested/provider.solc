@@ -1,5 +1,5 @@
 export {value};
 
-function value() -> word {
+function value() returns (word) {
   return 11;
 }

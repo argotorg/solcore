@@ -1,8 +1,8 @@
-data List(a) = Nil | Cons(a,List(a));
-data Bool = False | True;
+enum List<a> { Nil, Cons(a, List<a>) }
+enum Bool { False, True }
 
-forall a . class a : Eq {
-  function eq (x : a, y : a) -> Bool ;
+trait Eq<a> {
+  function eq (x : a, y : a) returns (Bool) ;
 }
 
 function foo () {

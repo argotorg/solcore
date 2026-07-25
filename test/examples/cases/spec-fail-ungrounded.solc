@@ -11,19 +11,17 @@
 //     no constraint, no instance, and no return-type context to fix 'a', so
 //     ensureClosed reports a free type variable and aborts.
 
-forall a.
-function abort_(x:word) -> a {
+function abort_<a>(x:word) returns (a) {
     return abort_(x);
 }
 
-forall b.
-function sink_(y:b) -> word {
+function sink_<b>(y:b) returns (word) {
     return 0;
 }
 
 contract C {
     constructor() {}
-    public function main() -> word {
+    function main() public returns (word) {
         return sink_(abort_(0));
     }
 }

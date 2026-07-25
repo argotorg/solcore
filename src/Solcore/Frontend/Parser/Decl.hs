@@ -11,12 +11,12 @@ import Data.List.NonEmpty qualified as NE
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.SolcoreTypes
-  ( atomTypeP,
-    paramP,
+  ( paramP,
     qualifiedName,
-    sigPrefixP,
     simpleNameP,
     typeP,
+    typeParamsP,
+    whereClauseP,
   )
 import Solcore.Frontend.Parser.Stmt (bodyP)
 import Solcore.Frontend.Syntax.Name
@@ -34,54 +34,39 @@ compUnitP = do
 expP :: Parser Exp
 expP = exprP bodyP
 
-withSigPrefix :: ([Ty] -> [Pred] -> Parser a) -> Parser a
-withSigPrefix k = do
-  (vars, ctx) <- option ([], []) (try sigPrefixP)
-  k vars ctx
-
 importP :: Parser Import
 importP = do
   keyword "import"
   choice
-    [ do
-        path <- externalPathP
-        choice
-          [ do
-              _ <- symbol "."
-              entries <- braces (itemEntryP `sepBy` comma)
-              hids <- option [] hidingP <* semicolon
-              return (ImportOnly path (SelectItems entries hids)),
-            do
-              keyword "as"
-              n <- simpleNameP
-              _ <- semicolon
-              return (ImportAlias path n),
-            ImportModule path <$ semicolon
-          ],
+    [ try $ do
+        _ <- symbol "*"
+        keyword "as"
+        aliasName <- simpleNameP
+        keyword "from"
+        path <- importPathP
+        _ <- semicolon
+        pure (ImportAlias path aliasName),
+      try $ do
+        entries <- braces (itemEntryP `sepBy1` comma)
+        keyword "from"
+        path <- importPathP
+        hiddenNames <- option [] hidingP
+        _ <- semicolon
+        pure (ImportOnly path (SelectItems entries hiddenNames)),
       do
-        path <- modulePathP
-        choice
-          [ do
-              _ <- symbol "."
-              entries <- braces (itemEntryP `sepBy` comma)
-              hids <- option [] hidingP
-              _ <- semicolon
-              return (ImportOnly path (SelectItems entries hids)),
-            do
-              keyword "as"
-              n <- simpleNameP
-              _ <- semicolon
-              return (ImportAlias path n),
-            ImportModule path <$ semicolon
-          ]
+        path <- importPathP
+        ImportModule path <$ semicolon
     ]
   where
-    hidingP = keyword "hiding" *> braces (simpleNameP `sepBy` comma)
+    hidingP = keyword "hiding" *> braces (simpleNameP `sepBy1` comma)
+
+importPathP :: Parser ModulePath
+importPathP = try externalPathP <|> modulePathP
 
 modulePathP :: Parser ModulePath
 modulePathP = do
   h <- identifier
-  ts <- many (try (char '.' *> notFollowedBy (char '{') *> identifier))
+  ts <- many (try (char '.' *> identifier))
   return (classifyModulePath (foldl QualName (Name h) ts))
 
 externalPathP :: Parser ModulePath
@@ -89,7 +74,7 @@ externalPathP = do
   lib <- symbol "@" *> identifier <* char '.'
   sc
   h <- identifier
-  ts <- many (try (char '.' *> notFollowedBy (char '{') *> identifier))
+  ts <- many (try (char '.' *> identifier))
   return (ExternalPath (Name lib) (foldl QualName (Name h) ts))
 
 classifyModulePath :: Name -> ModulePath
@@ -181,41 +166,75 @@ constrSelectorP =
 pragmaP :: Parser Pragma
 pragmaP = do
   keyword "pragma"
-  ty <- pragmaTypeP
-  st <- pragmaStatusForP ty
-  _ <- semicolon
-  return (Pragma ty st)
+  choice
+    [ do
+        keyword "solcore"
+        ty <- pragmaTypeP
+        st <- pragmaStatusForP ty
+        _ <- semicolon
+        pure (Pragma ty st),
+      externalPragmaP "solidity" SolidityPragma,
+      externalPragmaP "abicoder" AbiCoderPragma
+    ]
+
+externalPragmaP :: String -> (String -> PragmaType) -> Parser Pragma
+externalPragmaP namespace pragmaConstructor = do
+  keyword namespace
+  pragmaValue <- unwords . words <$> manyTill anySingle (char ';')
+  sc
+  pure (Pragma (pragmaConstructor pragmaValue) Enabled)
 
 pragmaTypeP :: Parser PragmaType
 pragmaTypeP =
   NoCoverageCondition
-    <$ keyword "no-coverage-condition"
+    <$ keyword "noCoverageCondition"
       <|> NoPattersonCondition
-    <$ keyword "no-patterson-condition"
+    <$ keyword "noPattersonCondition"
       <|> NoBoundVariableCondition
-    <$ keyword "no-bounded-variable-condition"
+    <$ keyword "noBoundVariableCondition"
       <|> NoGenericInstanceFor
-    <$ keyword "no-generic-instance-for"
+    <$ keyword "noGenericInstanceFor"
 
 -- | Parse the pragma status.  For 'NoGenericInstanceFor' a non-empty list of
 -- type names is mandatory; for all other pragma types the list is optional and
 -- defaults to 'DisableAll'.
 pragmaStatusForP :: PragmaType -> Parser PragmaStatus
 pragmaStatusForP NoGenericInstanceFor = do
-  names <- simpleNameP `sepBy1` comma
+  names <- qualifiedName `sepBy1` comma
   return (DisableFor (NE.fromList names))
 pragmaStatusForP _ = option DisableAll $ do
   names <- simpleNameP `sepBy1` comma
   return (DisableFor (NE.fromList names))
 
-dataP :: Parser DataTy
-dataP = do
-  keyword "data"
+enumP :: Parser DataTy
+enumP = do
+  keyword "enum"
   n <- simpleNameP
-  params <- option [] (parens (typeP `sepBy1` comma))
-  cs <- option [] (equalsP *> (constrP `sepBy1` symbol "|"))
-  _ <- semicolon
+  params <- typeParamsP
+  cs <- braces (constrP `sepEndBy` comma)
   return (DataTy n params cs)
+
+structP :: Parser DataTy
+structP = do
+  keyword "struct"
+  n <- simpleNameP
+  params <- typeParamsP
+  fields <- braces (many structFieldP)
+  pure
+    ( StructTy
+        n
+        params
+        (map fst fields)
+        (map snd fields)
+    )
+
+structFieldP :: Parser (Name, Ty)
+structFieldP = do
+  fieldName' <- simpleNameP
+  _ <- colon
+  fieldType <- typeP
+  _ <- semicolon
+  pure (fieldName', fieldType)
 
 constrP :: Parser Constr
 constrP = do
@@ -225,155 +244,204 @@ constrP = do
 
 tySymP :: Parser TySym
 tySymP = do
-  keyword "type"
+  keyword "alias"
   n <- simpleNameP
-  params <- option [] (parens (typeP `sepBy1` comma))
-  _ <- equalsP
+  params <- typeParamsP
+  equalsP
   t <- typeP
   _ <- semicolon
   return (TySym n params t)
 
--- Instance methods live outside a contract, so they may not carry the
--- contract-only modifiers ('public' / 'payable').
+unsupportedUserDefinedValueTypeP :: Parser TopDecl
+unsupportedUserDefinedValueTypeP = do
+  keyword "type"
+  fail
+    ( "user-defined value types declared with `type ... is ...` are not yet "
+        ++ "implemented; use `alias Name = Type;` only for transparent type synonyms"
+    )
+
+functionModifierP :: Parser FunctionModifier
+functionModifierP =
+  choice
+    [ VisibilityModifier VisibilityPublic <$ keyword "public",
+      VisibilityModifier VisibilityExternal <$ keyword "external",
+      VisibilityModifier VisibilityInternal <$ keyword "internal",
+      VisibilityModifier VisibilityPrivate <$ keyword "private",
+      MutabilityModifier MutabilityPure <$ keyword "pure",
+      MutabilityModifier MutabilityView <$ keyword "view",
+      MutabilityModifier MutabilityPayable <$ keyword "payable"
+    ]
+
+parseFunctionModifiers :: Bool -> Parser (Bool, [FunctionModifier])
+parseFunctionModifiers allowContractModifiers = do
+  modifiers <- many functionModifierP
+  let visibility = [v | VisibilityModifier v <- modifiers]
+      mutability = [m | MutabilityModifier m <- modifiers]
+      isPublic =
+        any
+          (`elem` [VisibilityPublic, VisibilityExternal])
+          visibility
+      isPayable = MutabilityPayable `elem` mutability
+  when (length visibility > 1) $
+    fail "a function may declare at most one visibility modifier"
+  when (length mutability > 1) $
+    fail "a function may declare at most one mutability modifier"
+  when (not allowContractModifiers && (not (null visibility) || isPayable)) $
+    fail "visibility and `payable` modifiers are only allowed on contract functions"
+  pure (isPublic, modifiers)
+
 funDefP :: Parser FunDef
-funDefP = try $ withSigPrefix (funDefAfterPrefix False)
+funDefP = funDefWithModifiers False
 
--- | Parse a function definition after its optional signature prefix.
--- 'allowContractModifiers' controls whether the leading `public` and `payable`
--- modifiers are accepted: both are only meaningful inside a `contract { … }`
--- body, so callers outside a contract (top-level functions, instance methods)
--- pass 'False' and an explicit modifier is rejected with a clear error.
-funDefAfterPrefix :: Bool -> [Ty] -> [Pred] -> Parser FunDef
-funDefAfterPrefix allowContractModifiers vars ctx = do
-  isPub <- publicModifierP allowContractModifiers
-  sig <- signatureP allowContractModifiers vars ctx
+funDefWithModifiers :: Bool -> Parser FunDef
+funDefWithModifiers allowContractModifiers = do
+  (isPublic, sig) <- signatureP allowContractModifiers
   body <- braces bodyP
-  return (FunDef isPub sig (implicitReturn body))
+  pure (FunDef isPublic sig body)
 
--- | Parse an optional `public` visibility modifier. When 'allowPublic' is
--- 'False' (anywhere outside a contract body), an explicit `public` is rejected
--- with a clear error rather than being silently accepted.
-publicModifierP :: Bool -> Parser Bool
-publicModifierP allowPublic = do
-  isPub <- option False (True <$ try (keyword "public"))
-  when (isPub && not allowPublic) $
-    fail "'public' is only allowed on functions declared inside a contract"
-  return isPub
-
-implicitReturn :: Body -> Body
-implicitReturn [StmtExp e] = [Return e]
-implicitReturn stmts = stmts
-
--- | Parse an optional @payable@ modifier. @payable@ is only meaningful on a
--- function, the constructor, or the fallback *inside a contract*; callers in
--- any other context pass @allowPayable = False@ so we reject it with a clear
--- error instead of silently accepting it.
-payableP :: Bool -> Parser Bool
-payableP allowPayable =
-  option False $ do
-    keyword "payable"
-    if allowPayable
-      then pure True
-      else fail "`payable` is only allowed on a function, constructor, or fallback inside a contract"
-
-signatureP :: Bool -> [Ty] -> [Pred] -> Parser Signature
-signatureP allowPayable vars ctx = do
-  payable <- payableP allowPayable
+signatureP :: Bool -> Parser (Bool, Signature)
+signatureP allowContractModifiers = do
   keyword "function"
   n <- simpleNameP
+  vars <- typeParamsP
   ps <- parens (paramP `sepBy` comma)
-  (rc, ret) <- option (False, Nothing) $ do
-    _ <- symbol "->"
-    ct <- option False (True <$ keyword "comptime")
-    t <- typeP
-    return (ct, Just t)
-  return (Signature vars ctx n ps rc ret payable)
+  (isPublic, modifiers) <- parseFunctionModifiers allowContractModifiers
+  returnItems <- optional returnsClauseP
+  ctx <- whereClauseP
+  pure
+    ( isPublic,
+      SignatureWithSyntax vars ctx n ps returnItems modifiers
+    )
 
-fallbackDefAfterPrefix :: [Ty] -> [Pred] -> Parser FunDef
-fallbackDefAfterPrefix vars ctx = do
-  sig <- fallbackSignatureP vars ctx
-  body <- braces bodyP
-  return (FunDef False sig (implicitReturn body))
+returnsClauseP :: Parser [ReturnItem]
+returnsClauseP = do
+  keyword "returns"
+  parens (returnItemP `sepBy` comma)
 
-fallbackSignatureP :: [Ty] -> [Pred] -> Parser Signature
-fallbackSignatureP vars ctx = do
-  payable <- payableP True
+returnItemP :: Parser ReturnItem
+returnItemP = do
+  isComptime <- option False (True <$ keyword "comptime")
+  returnName <- optional (try (simpleNameP <* colon))
+  ReturnItem isComptime returnName <$> typeP
+
+fallbackDefP :: Parser FunDef
+fallbackDefP = do
   keyword "fallback"
   ps <- parens (paramP `sepBy` comma)
-  case ps of
-    [] -> pure ()
-    _ -> fail "fallback function must not declare input parameters"
-  ret <- optional (symbol "->" *> typeP)
-  case ret of
-    Nothing -> pure ()
-    Just (TyCon (Name "()") []) -> pure ()
-    Just _ -> fail "fallback function must return unit (`()`)"
-  return (Signature vars ctx (Name "fallback") ps False ret payable)
+  when (not (null ps)) $
+    fail "fallback function must not declare input parameters"
+  modifiers <- many functionModifierP
+  let visibility = [v | VisibilityModifier v <- modifiers]
+      mutability = [m | MutabilityModifier m <- modifiers]
+  when (visibility /= [VisibilityExternal]) $
+    fail "fallback must declare exactly one `external` visibility modifier"
+  when (length mutability > 1 || any (`elem` [MutabilityPure, MutabilityView]) mutability) $
+    fail "fallback only supports the `payable` mutability modifier"
+  body <- braces bodyP
+  let sig =
+        SignatureWithSyntax
+          []
+          []
+          (Name "fallback")
+          []
+          Nothing
+          modifiers
+  pure (FunDef False sig body)
 
--- | One function signature inside a class body.
--- Commits to requiring ';' once the signature is parsed, so a missing
--- semicolon produces "expecting ';' after function signature" rather than
--- the confusing "unexpected 'f', expecting '}'".
-classSigP :: Parser Signature
-classSigP = do
-  sig <- try (withSigPrefix (signatureP False))
+traitSignatureP :: Parser Signature
+traitSignatureP = do
+  (isPublic, sig) <- signatureP False
+  when isPublic $
+    fail "trait methods cannot have contract visibility"
   _ <- semicolon <?> "';' after function signature"
-  return sig
+  pure sig
 
-classAfterPrefix :: [Ty] -> [Pred] -> Parser Class
-classAfterPrefix vars ctx = do
-  keyword "class"
-  mty <- atomTypeP
-  _ <- colon
-  cname <- qualifiedName
-  params <- option [] (parens (typeP `sepBy1` comma))
-  sigs <- braces (many classSigP)
-  return (Class vars ctx cname params mty sigs)
+traitP :: Parser Class
+traitP = do
+  keyword "trait"
+  -- Qualified names refer to traits imported from another module. A
+  -- declaration introduces a name in the current module and must therefore
+  -- use a source identifier, like functions, contracts, and data types do.
+  traitName <- simpleNameP
+  vars <- typeParamsP
+  (primaryVar, params) <- case vars of
+    [] -> fail "a trait must declare at least one type parameter"
+    primaryTy : extraParams -> pure (primaryTy, extraParams)
+  ctx <- whereClauseP
+  sigs <- braces (many traitSignatureP)
+  pure (Class vars ctx traitName params primaryVar sigs)
 
-instanceAfterPrefix :: [Ty] -> [Pred] -> Parser Instance
-instanceAfterPrefix vars ctx = do
+implP :: Parser Instance
+implP = do
   isDefault <- option False (True <$ keyword "default")
-  keyword "instance"
-  mty <- atomTypeP
-  _ <- colon
-  iname <- qualifiedName
-  params <- option [] (parens (typeP `sepBy1` comma))
+  keyword "impl"
+  vars <- typeParamsP
+  implName <- qualifiedName
+  args <- between (symbol "<") (symbol ">") (typeP `sepBy1` comma)
+  (primaryTy, params) <- case args of
+    [] -> fail "an impl must supply at least one trait type argument"
+    mainArg : extraArgs -> pure (mainArg, extraArgs)
+  ctx <- whereClauseP
   funs <- braces (many funDefP)
-  return (Instance isDefault vars ctx iname params mty funs)
+  pure (Instance isDefault vars ctx implName params primaryTy funs)
 
 contractP :: Parser Contract
 contractP = do
   keyword "contract"
   n <- simpleNameP
-  params <- option [] (parens (typeP `sepBy1` comma))
+  params <- typeParamsP
   ds <- braces (many contractDeclP)
-  return (Contract n params ds)
+  return (ContractShell ContractKind n params ds)
+
+interfaceP :: Parser Contract
+interfaceP = do
+  keyword "interface"
+  n <- simpleNameP
+  params <- typeParamsP
+  ds <- braces (many interfaceDeclP)
+  return (ContractShell InterfaceKind n params ds)
+
+libraryP :: Parser Contract
+libraryP = do
+  keyword "library"
+  n <- simpleNameP
+  params <- typeParamsP
+  ds <- braces (many libraryDeclP)
+  return (ContractShell LibraryKind n params ds)
 
 contractDeclP :: Parser ContractDecl
 contractDeclP =
   CDataDecl
-    <$> dataP
+    <$> (try structP <|> enumP)
       <|> CConstrDecl
     <$> try constructorDeclP
-      <|> rejectPublicOnImplicitlyPublicP
-      <|> withSigPrefix
-        ( \vars ctx ->
-            CFunDecl
-              <$> (try (funDefAfterPrefix True vars ctx) <|> fallbackDefAfterPrefix vars ctx)
-        )
+      <|> CFunDecl
+    <$> try fallbackDefP
+      <|> CFunDecl
+    <$> try (funDefWithModifiers True)
       <|> CFieldDecl
     <$> fieldDeclP
 
--- | `fallback` and `constructor` are implicitly public; reject an explicit
--- `public` modifier on them with a clear error rather than a confusing
--- parser failure.
-rejectPublicOnImplicitlyPublicP :: Parser a
-rejectPublicOnImplicitlyPublicP = do
-  kw <- try $ do
-    _ <- keyword "public"
-    _ <- optional (keyword "payable")
-    ("fallback" <$ keyword "fallback") <|> ("constructor" <$ keyword "constructor")
-  fail (kw ++ " is implicitly public; remove the 'public' keyword")
+interfaceDeclP :: Parser ContractDecl
+interfaceDeclP = do
+  (isPublic, sig) <- signatureP True
+  let visibility =
+        [ modifierVisibility
+        | VisibilityModifier modifierVisibility <- sigModifiers sig
+        ]
+  when (visibility /= [VisibilityExternal]) $
+    fail "interface functions must declare exactly one `external` visibility modifier"
+  _ <- semicolon <?> "';' after interface function signature"
+  pure (CSignatureDecl isPublic sig)
+
+libraryDeclP :: Parser ContractDecl
+libraryDeclP =
+  CDataDecl
+    <$> (try structP <|> enumP)
+      <|> CFunDecl
+    <$> try (funDefWithModifiers True)
+      <|> CFieldDecl
+    <$> fieldDeclP
 
 fieldDeclP :: Parser Field
 fieldDeclP = do
@@ -386,29 +454,28 @@ fieldDeclP = do
 
 constructorDeclP :: Parser Constructor
 constructorDeclP = do
-  payable <- option False (True <$ keyword "payable")
   keyword "constructor"
   ps <- parens (paramP `sepBy` comma)
+  modifiers <- many functionModifierP
+  when (any (/= MutabilityModifier MutabilityPayable) modifiers || length modifiers > 1) $
+    fail "constructor only supports the `payable` modifier"
   body <- braces bodyP
-  return (Constructor ps body payable)
+  return (Constructor ps body (MutabilityModifier MutabilityPayable `elem` modifiers))
 
 topDeclP :: Parser TopDecl
 topDeclP =
   choice
     [ TPragmaDecl <$> pragmaP,
       TExportDecl <$> exportP,
-      TDataDef <$> dataP,
+      TDataDef <$> structP,
+      TDataDef <$> enumP,
       TSym <$> tySymP,
-      TContr <$> contractP,
+      unsupportedUserDefinedValueTypeP,
+      TContr <$> (contractP <|> interfaceP <|> libraryP),
       contractOnlyDeclP,
-      withSigPrefix
-        ( \vars ctx ->
-            choice
-              [ TFunDef <$> funDefAfterPrefix False vars ctx,
-                TClassDef <$> classAfterPrefix vars ctx,
-                TInstDef <$> instanceAfterPrefix vars ctx
-              ]
-        )
+      TFunDef <$> try funDefP,
+      TClassDef <$> try traitP,
+      TInstDef <$> implP
     ]
 
 -- | @constructor@ and @fallback@ declarations are only meaningful inside a

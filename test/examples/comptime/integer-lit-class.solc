@@ -2,9 +2,9 @@
 // The type checker infers the literal type from context: the integer:Ord/Add/Sub
 // instances constrain unresolved literals to `integer`.
 
-import std.{Eq,Ord,lt,Add,Sub};
+import {Eq,Ord,lt,Add,Sub} from std;
 
-function fib(comptime n : integer) -> comptime integer {
+function fib(comptime n : integer) returns (comptime integer) {
   if (n < 2) {
     return n;
   } else {
@@ -14,9 +14,9 @@ function fib(comptime n : integer) -> comptime integer {
 }
 
 contract IntegerLit {
-  function main() -> word {
-    let x : comptime integer = 20;
-    let res : comptime word = wordFromInteger(fib(x));
+  function main() returns (word) {
+    let comptime x :  integer = 20;
+    let comptime res :  word = wordFromInteger(fib(x));
     return res;
   }
 }

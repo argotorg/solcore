@@ -1,6 +1,5 @@
-data Foo = MkFoo;
+enum Foo { MkFoo }
 
-forall a.
-class a:Foo {
-  function foo(x:a) -> word;
+trait Foo<a> {
+  function foo(x:a) returns (word);
 }

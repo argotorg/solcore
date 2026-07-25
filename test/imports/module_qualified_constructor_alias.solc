@@ -1,5 +1,5 @@
-import booldef as b;
+import * as b from booldef;
 
-function mk() -> b.Bool {
+function mk() returns (b.Bool) {
   return b.Bool.True;
 }

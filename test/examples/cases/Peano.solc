@@ -1,12 +1,12 @@
-data Nat = Zero | Succ(Nat);
+enum Nat { Zero, Succ(Nat) }
 
-function natInd (step : (Nat, Nat) -> Nat, v : Nat, n : Nat) -> Nat {
-  match n {
-  | Nat.Zero => return v ;
-  | Nat.Succ(m) => return step(m, natInd(step,v,m));
-  }
+function natInd (step : function((Nat, Nat)) internal returns (Nat), v : Nat, n : Nat) returns (Nat) {
+  match (n ) {
+  case Nat.Zero { return v ;
+  } case Nat.Succ(m) { return step(m, natInd(step,v,m));
+  } }
 }
 
-function add(n : Nat, m : Nat) -> Nat {
+function add(n : Nat, m : Nat) returns (Nat) {
   return natInd (lam (x, acc) {return Nat.Succ(acc) ; }, m, n);
 }

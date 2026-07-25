@@ -1,10 +1,10 @@
 // Test only bound variable check, disable Patterson
 
-forall a . class a:TestBound {}
-forall a b . class a:TestHelper(b) {}
+trait TestBound<a> {}
+trait TestHelper<a, b> {}
 
-data TestType(x) = TestType;
+enum TestType<x> { TestType }
 
 // Variable 'bad' appears in context but not in instance head
 // Should fail bound variable check
-forall x . bad:TestHelper(x) => instance TestType(x):TestBound {}
+impl<x> TestBound<TestType<x>> where bad: TestHelper<x> {}

@@ -1,9 +1,9 @@
 export { keep, drop };
 
-function keep(x: word) -> word {
+function keep(x: word) returns (word) {
   return x;
 }
 
-function drop(x: word) -> word {
+function drop(x: word) returns (word) {
   return x;
 }

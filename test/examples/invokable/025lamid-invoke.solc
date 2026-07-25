@@ -7,23 +7,23 @@ contract Id1 {
 }
 */
 
-class self : Invokable(args, ret) {
-    function invoke (s:self,  a:args) -> ret;
+trait Invokable<self, args, ret> {
+    function invoke (s:self,  a:args) returns (ret);
 }
 
-function lam0impl(x: c) -> c { return x; }
+function lam0impl(x: c) returns (c) { return x; }
 
-data Lam0Token(a) = Lam0Token
+enum Lam0Token<a> { Lam0Token }
 
-instance Lam0Token(a) : Invokable(a,a) {
-  function invoke(token: Lam0Token(a), arg:a) -> a {
+impl Invokable<Lam0Token<a>, a, a> {
+  function invoke(token: Lam0Token<a>, arg:a) returns (a) {
     return lam0impl(arg);
   }
 }
 
 
 contract InvokeLam {
-public function main() {
+function main() public {
   let nid = Lam0Token;
   return invoke(nid, 42);
 }

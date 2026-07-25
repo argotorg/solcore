@@ -1,12 +1,12 @@
-function foo(x : word) -> word {
+function foo(x : word) returns (word) {
   return bar(x);
 }
-function bar(x : word) -> word {
+function bar(x : word) returns (word) {
   return foo(x);
 }
 
 contract C {
-  public function main() -> word {
+  function main() public returns (word) {
     return foo(1);
   }
 }

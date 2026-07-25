@@ -7,35 +7,33 @@
 - Assign class
 */
 
-import std.{*} hiding {LValueIdxAccess, RValueIdxAccess, readStorage};
-import std.{Typedef, storage, mapping, address, hash2, StorageType, Assign};
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
+import {*} from std hiding {LValueIdxAccess, RValueIdxAccess, readStorage};
+import {Typedef, storage, mapping, address, hash2, StorageType, Assign} from std;
+pragma solcore noPattersonCondition ;
+pragma solcore noCoverageCondition ;
+pragma solcore noBoundVariableCondition ;
 
 
-forall col_idx val . class col_idx:RValueIdxAccess(val) {
-  function lookup(ci : col_idx) -> val;
+trait RValueIdxAccess<col_idx, val> {
+  function lookup(ci : col_idx) returns (val);
 }
 
-forall col_idx ref . class col_idx:LValueIdxAccess(ref) {
-  function lookup(ci : col_idx) -> ref;
+trait LValueIdxAccess<col_idx, ref> {
+  function lookup(ci : col_idx) returns (ref);
 }
 
-forall i a . i:Typedef(word) =>
-instance (storage(mapping(i,a)), i): LValueIdxAccess(storage(a)) {
-  function lookup(xi : (storage(mapping(i,a)), i)) -> storage(a) {
+impl<i, a> LValueIdxAccess<(mapping(i => a) storage, i), a storage> where i: Typedef<word> {
+  function lookup(xi : (mapping(i => a) storage, i)) returns (a storage) {
     match(xi) {
-      | (x, i) => return storage(hash2(Typedef.rep(x), Typedef.rep(i)));
-    }
+      case (x, i) { return storage(hash2(Typedef.rep(x), Typedef.rep(i)));
+    } }
 
     // return storage(42); // FIXME: hash2(x,i);
   }
 }
 
-forall i a . a:StorageType, i:Typedef(word) =>
-instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
-  function lookup(xi : (storage(mapping(i,a)), i)) -> a {
+impl<i, a> RValueIdxAccess<(mapping(i => a) storage, i), a> where a: StorageType, i: Typedef<word> {
+  function lookup(xi : (mapping(i => a) storage, i)) returns (a) {
   /*
     match(xi) {
       | (x, i) => return StorageType.load(hash2(Typedef.rep(x), Typedef.rep(i)));
@@ -45,26 +43,23 @@ instance (storage(mapping(i,a)), i): RValueIdxAccess(a) {
   }
 }
 
-forall a. a:StorageType =>
-function readStorage(x:storage(a)) -> a {
+function readStorage<a>(x:a storage) returns (a)  where a: StorageType {
   return StorageType.load(Typedef.rep(x));
 }
 
-forall r a. r: RValueIdxAccess(a) =>
-function idx_rval(x:r) -> a {
+function idx_rval<r, a>(x:r) returns (a)  where r: RValueIdxAccess<a> {
   return RValueIdxAccess.lookup(x);
 }
 
-forall r a. r: LValueIdxAccess(a) =>
-function idx_lval(x:r) -> a {
+function idx_lval<r, a>(x:r) returns (a)  where r: LValueIdxAccess<a> {
   return LValueIdxAccess.lookup(x);
 }
 
 contract TestTuva {
-  public function main() -> word {
-    let balances : storage(mapping(address, word));
-    let allowances : storage(mapping(address, mapping(address, word) ));
-    let ref1 : storage(word) = idx_lval( (balances, address(17)) );
+  function main() public returns (word) {
+    let balances : mapping(address => word) storage;
+    let allowances : mapping(address => mapping(address => word)) storage;
+    let ref1 : word storage = idx_lval( (balances, address(17)) );
     Assign.assign(idx_lval( (balances, address(1)) ), 1337);
 
     let ref2a // : storage( mapping(address, word) ) // omitting this type makes instance resolution fail

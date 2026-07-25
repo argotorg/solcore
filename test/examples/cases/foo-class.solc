@@ -1,4 +1,3 @@
-forall b self .
-class self:Foo(b) {
-    function foo(x:self) -> b;
+trait Foo<self, b> {
+    function foo(x:self) returns (b);
 }

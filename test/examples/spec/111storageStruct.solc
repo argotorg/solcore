@@ -10,13 +10,13 @@ function add(x : word, y : word) {
 }
 
 /////// Construction
-class abs:Typedef(rep) {
-    function rep(x:abs) -> rep;
-    function abs(x:rep) -> abs;
+trait Typedef<abs, rep> {
+    function rep(x:abs) returns (rep);
+    function abs(x:rep) returns (abs);
 }
 
 
-data uint = uint(word);
+enum uint { uint(word) }
 
 // this does not work :(
 /*
@@ -27,44 +27,44 @@ forall a
 }
 */
 
-instance uint:Typedef(word) {
-    function rep(x:uint) -> word {
-        match x {
-            | uint(y) => return y;
-        }
+impl Typedef<uint, word> {
+    function rep(x:uint) returns (word) {
+        match (x ) {
+            case uint(y) { return y;
+        } }
     }
-    function abs(x:word) -> uint {
+    function abs(x:word) returns (uint) {
         return uint(x);
     }
 }
 
-data storage(a) = storage(word);
-data storageRef(a) = storageRef(word);
-data Proxy(a) = Proxy;
+enum storage<a> { storage(word) }
+enum storageRef<a> { storageRef(word) }
+enum Proxy<a> { Proxy }
 
-instance storage(a):Typedef(word) {
-    function rep(x:storage(a)) -> word {
-        match x {
-            | storage(y) => return y;
-        }
+impl Typedef<a storage, word> {
+    function rep(x:a storage) returns (word) {
+        match (x ) {
+            case storage(y) { return y;
+        } }
     }
-    function abs(x:word) -> storage(a) {
+    function abs(x:word) returns (a storage) {
         return storage(x);
     }
 }
-instance storageRef(a):Typedef(word) {
-    function rep(x:storageRef(a)) -> word {
-        match x {
-            | storageRef(y) => return y;
-        }
+impl Typedef<storageRef<a>, word> {
+    function rep(x:storageRef<a>) returns (word) {
+        match (x ) {
+            case storageRef(y) { return y;
+        } }
     }
-    function abs(x:word) -> storageRef(a) {
+    function abs(x:word) returns (storageRef<a>) {
         return storageRef(x);
     }
 }
 
-class lhs:Assign(rhs) {
-    function assign(l:lhs, r:rhs) -> ();
+trait Assign<lhs, rhs> {
+    function assign(l:lhs, r:rhs) returns (());
 }
 
 /*
@@ -78,17 +78,17 @@ instance ref(a):Assign(a) {
 }
 */
 
-class self:StorageType {
-    function sload(ptr:word) -> self;
-    function store(ptr:word, value:self) -> ();
+trait StorageType<self> {
+    function sload(ptr:word) returns (self);
+    function store(ptr:word, value:self) returns (());
 }
 
-class self:StorageSize {
-    function size(x:Proxy(self)) -> word;
+trait StorageSize<self> {
+    function size(x:Proxy<self>) returns (word);
 }
 
 
-function sload_(x:word) -> word {
+function sload_(x:word) returns (word) {
     let res: word;
     assembly {
        res := sload(x)
@@ -100,66 +100,61 @@ function sstore_(a:word, v:word) {
     assembly { sstore(a,v) }
 }
 
-instance word:StorageType {
-    function sload(ptr:word) -> word {
+impl StorageType<word> {
+    function sload(ptr:word) returns (word) {
         let r:word;
         assembly {
             r := sload(ptr)
         }
         return r;
     }
-    function store(ptr:word, value:word) -> () {
+    function store(ptr:word, value:word) returns (()) {
         assembly {
             sstore(ptr, value)
         }
     }
 }
 
-instance uint:StorageType {
-    function sload(ptr:word) -> uint {
-        return Typedef.abs(sload_(ptr)):uint; // type annotation needed due to a typechecker bug
+impl StorageType<uint> {
+    function sload(ptr:word) returns (uint) {
+        return Typedef.abs(sload_(ptr)) as uint; // type annotation needed due to a typechecker bug
     }
-    function store(ptr:word, value:uint) -> () {
+    function store(ptr:word, value:uint) returns (()) {
         return sstore_(ptr, Typedef.rep(value));
     }
 }
 
-forall a . a : StorageType => instance storageRef(a):Assign(a) {
-    function assign(l:storageRef(a), y:a) {
+impl<a> Assign<storageRef<a>, a> where a: StorageType {
+    function assign(l:storageRef<a>, y:a) {
         StorageType.store(Typedef.rep(l), y);
     }
 }
 
 
 
-data MemberAccessProxy(a, field, offset) = MemberAccessProxy(a, field);
+enum MemberAccessProxy<a, field, offset> { MemberAccessProxy(a, field) }
 
-forall a field offset .
-function memberAccessD1(x:MemberAccessProxy(a, field, offset)) -> a {
-    match x {
-        | MemberAccessProxy(y,z) => return y;
-    }
+function memberAccessD1<a, field, offset>(x:MemberAccessProxy<a, field, offset>) returns (a) {
+    match (x ) {
+        case MemberAccessProxy(y,z) { return y;
+    } }
 }
 
-class self:LValueMemberAccess(memberRefType) {
-    function memberAccess(x:self) -> memberRefType;
+trait LValueMemberAccess<self, memberRefType> {
+    function memberAccess(x:self) returns (memberRefType);
 }
 
-forall self memberValueType .
-class self:RValueMemberAccess(memberValueType) {
-    function memberAccess(x:self) -> memberValueType;
+trait RValueMemberAccess<self, memberValueType> {
+    function memberAccess(x:self) returns (memberValueType);
 }
 
-class self:CStructField(fieldType, offsetType) {}
-data StructField(structType, fieldSelector) = StructField(structType);
+trait CStructField<self, fieldType, offsetType> {}
+enum StructField<structType, fieldSelector> { StructField(structType) }
 
-forall structType fieldSelector fieldType offsetType
-  . StructField(structType, fieldSelector):CStructField(fieldType, offsetType)
-  , offsetType:StorageSize
-  => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType):LValueMemberAccess(storageRef(fieldType)) {
-    function memberAccess(x:MemberAccessProxy(storage(structType), fieldSelector, offsetType)) -> storageRef(fieldType) {
+impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<MemberAccessProxy<structType storage, fieldSelector, offsetType>, storageRef<fieldType>> where StructField<structType, fieldSelector>: CStructField<fieldType, offsetType>, offsetType: StorageSize {
+    function memberAccess(x:MemberAccessProxy<structType storage, fieldSelector, offsetType>) returns (storageRef<fieldType>) {
         let ptr:word = Typedef.rep(memberAccessD1(x));
-        let size:word = StorageSize.size(Proxy:Proxy(offsetType));
+        let size:word = StorageSize.size(Proxy as Proxy<offsetType>);
         assembly {
             ptr := add(ptr, size)
         }
@@ -167,20 +162,20 @@ forall structType fieldSelector fieldType offsetType
     }
 }
 
-instance ():StorageSize {
-    function size(x:Proxy(())) -> word {
+impl StorageSize<()> {
+    function size(x:Proxy<()>) returns (word) {
         return 0;
     }
 }
 
-instance word:StorageSize {
-    function size(x:Proxy(word)) -> word {
+impl StorageSize<word> {
+    function size(x:Proxy<word>) returns (word) {
         return 1;
     }
 }
 
-instance uint:StorageSize {
-    function size(x:Proxy(uint)) -> word {
+impl StorageSize<uint> {
+    function size(x:Proxy<uint>) returns (word) {
         return 1;
     }
 }
@@ -196,10 +191,10 @@ forall a b . a:Typedef(b), b:StorageSize
 }
 */
 
-forall a b . a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
-    function size(x:Proxy((a,b))) -> word {
-        let a_sz:word = StorageSize.size(Proxy:Proxy(a));
-        let b_sz:word = StorageSize.size(Proxy:Proxy(b));
+impl<a, b> StorageSize<(a, b)> where a: StorageSize, b: StorageSize {
+    function size(x:Proxy<(a, b)>) returns (word) {
+        let a_sz:word = StorageSize.size(Proxy as Proxy<a>);
+        let b_sz:word = StorageSize.size(Proxy as Proxy<b>);
         assembly {
             a_sz := add(a_sz, b_sz)
         }
@@ -207,18 +202,14 @@ forall a b . a:StorageSize, b:StorageSize => instance (a,b):StorageSize {
     }
 }
 
-forall structType fieldSelector fieldType offsetType
-  . StructField(structType, fieldSelector):CStructField(fieldType, offsetType)
-  , fieldType:StorageType
-  , offsetType:StorageSize
-  => instance MemberAccessProxy(storage(structType), fieldSelector, offsetType):RValueMemberAccess(fieldType) {
-    function memberAccess(x:MemberAccessProxy(storage(structType), fieldSelector, offsetType)) -> fieldType {
+impl<structType, fieldSelector, fieldType, offsetType> RValueMemberAccess<MemberAccessProxy<structType storage, fieldSelector, offsetType>, fieldType> where StructField<structType, fieldSelector>: CStructField<fieldType, offsetType>, fieldType: StorageType, offsetType: StorageSize {
+    function memberAccess(x:MemberAccessProxy<structType storage, fieldSelector, offsetType>) returns (fieldType) {
         let ptr:word = Typedef.rep(memberAccessD1(x));
-        let size:word = StorageSize.size(Proxy:Proxy(offsetType));
+        let size:word = StorageSize.size(Proxy as Proxy<offsetType>);
         assembly {
             ptr := add(ptr, size)
         }
-        return StorageType.sload(ptr):fieldType;
+        return StorageType.sload(ptr) as fieldType;
     }
 }
 
@@ -227,30 +218,30 @@ forall structType fieldSelector fieldType offsetType
 ////// Testing
 
 // struct S { fld1:uint; fld2:word; fld3:word }
-data S = S; // (uint, word, word);
-data fld1_sel = fld1_sel;
-data fld2_sel = fld2_sel;
-data fld3_sel = fld3_sel;
+enum S { S } // (uint, word, word);
+enum fld1_sel { fld1_sel }
+enum fld2_sel { fld2_sel }
+enum fld3_sel { fld3_sel }
 
 // form:
 // instance StructField(S, f_sel):CStructField(ftype, preceding)) {}
-instance StructField(S, fld1_sel):CStructField(uint, ()) {}
-instance StructField(S, fld2_sel):CStructField(word, uint) {}
-instance StructField(S, fld3_sel):CStructField(word, (uint, word)) {}
+impl CStructField<StructField<S, fld1_sel>, uint, ()> {}
+impl CStructField<StructField<S, fld2_sel>, word, uint> {}
+impl CStructField<StructField<S, fld3_sel>, word, (uint, word)> {}
 
 
-function g() -> word {
-    let s:storage(S) = Typedef.abs(0x80);
-    let fld1_map : MemberAccessProxy(storage(S), fld1_sel, ()) = MemberAccessProxy(s, fld1_sel);
-    let fld2_map : MemberAccessProxy(storage(S), fld2_sel, uint) = MemberAccessProxy(s, fld2_sel);
+function g() returns (word) {
+    let s:S storage = Typedef.abs(0x80);
+    let fld1_map : MemberAccessProxy<S storage, fld1_sel, ()> = MemberAccessProxy(s, fld1_sel);
+    let fld2_map : MemberAccessProxy<S storage, fld2_sel, uint> = MemberAccessProxy(s, fld2_sel);
     let fld3_map = MemberAccessProxy(s, fld3_sel)
-		 : MemberAccessProxy(storage(S), fld3_sel, (uint,word));
+		  as MemberAccessProxy<S storage, fld3_sel, (uint, word)>;
     // let y:word = 13;
     let z:uint = uint(13);
 
     // s.fld1 = z
 
-    let fld1_lval : storageRef(uint)
+    let fld1_lval : storageRef<uint>
                   = LValueMemberAccess.memberAccess(fld1_map );
     Assign.assign(fld1_lval, z);
 
@@ -274,7 +265,7 @@ function g() -> word {
     let f3 : word;
     f3 = RValueMemberAccess.memberAccess(fld3_map);
 
-    let f12 = add(Typedef.rep(f1) : word, f2);
+    let f12 = add(Typedef.rep(f1) as word, f2);
     let f123 = add(f12, f3);
 
     return f123;
@@ -282,7 +273,7 @@ function g() -> word {
 }
 
 contract C {
-    public function main() {
+    function main() public {
         return g();
     }
 }

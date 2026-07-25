@@ -1,35 +1,33 @@
-data TagA = TagA(word);
-data TagB = TagB(word);
+enum TagA { TagA(word) }
+enum TagB { TagB(word) }
 
-forall self rep.
-class self:Tag(rep) {
-    function getTag(x:self) -> rep;
+trait Tag<self, rep> {
+    function getTag(x:self) returns (rep);
 }
 
-data TypeA = TypeA(word);
-instance TypeA:Tag(TagA) {
-    function getTag(x:TypeA) -> TagA {
-        match x { | TypeA(w) => return TagA(w); }
+enum TypeA { TypeA(word) }
+impl Tag<TypeA, TagA> {
+    function getTag(x:TypeA) returns (TagA) {
+        match (x ) { case TypeA(w) { return TagA(w); } }
     }
 }
 
-data TypeB = TypeB(word);
-instance TypeB:Tag(TagB) {
-    function getTag(x:TypeB) -> TagB {
-        match x { | TypeB(w) => return TagB(w); }
+enum TypeB { TypeB(word) }
+impl Tag<TypeB, TagB> {
+    function getTag(x:TypeB) returns (TagB) {
+        match (x ) { case TypeB(w) { return TagB(w); } }
     }
 }
 
-forall a b rep1 rep2 . a:Tag(rep1), b:Tag(rep2) =>
-function tagFirst(x:a, y:b) -> rep1 {
+function tagFirst<a, b, rep1, rep2>(x:a, y:b) returns (rep1)  where a: Tag<rep1>, b: Tag<rep2> {
     return Tag.getTag(x);
 }
 
 contract C {
     constructor() {}
 
-    public function main() -> word {
+    function main() public returns (word) {
         let r : TagA = tagFirst(TypeA(42), TypeB(7));
-        match r { | TagA(w) => return w; }
+        match (r ) { case TagA(w) { return w; } }
     }
 }

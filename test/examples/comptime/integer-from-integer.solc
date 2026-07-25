@@ -1,9 +1,9 @@
-import std.{*};
+import {*} from std;
 
 // Tests Num.fromInteger for word (Typedef.abs = identity) and uint256 (wraps in uint256(...)).
 // Also tests the full design-doc pattern: comptime integer fib result converted via Num.fromInteger.
 
-function fib(comptime n : integer) -> comptime integer {
+function fib(comptime n : integer) returns (comptime integer) {
   if (integerLt(n, wordToInteger(2))) {
     return n;
   } else {
@@ -20,9 +20,9 @@ function fib(comptime n : integer) -> comptime integer {
 // Returns Typedef.rep(u) = 55, demonstrating the uint256 round-trip.
 // Expected: main() folds to word literal 55.
 contract IntegerFromInteger {
-  function main() -> word {
-    let w : comptime word    = Num.fromInteger(wordToInteger(42));
-    let u : comptime uint256 = Num.fromInteger(fib(wordToInteger(10)));
+  function main() returns (word) {
+    let comptime w :  word    = Num.fromInteger(wordToInteger(42));
+    let comptime u :  uint256 = Num.fromInteger(fib(wordToInteger(10)));
     return Typedef.rep(u);
   }
 }

@@ -1,10 +1,10 @@
-import std.{*};
-import std.dispatch.{*};
+import {*} from std;
+import {*} from std.dispatch;
 
 contract PayableTest {
     constructor() {}
 
-    public payable function deposit() -> uint256 {
+    function deposit() public payable returns (uint256) {
         let value;
         assembly {
             value := callvalue()
@@ -12,7 +12,7 @@ contract PayableTest {
         return uint256(value);
     }
 
-    public function balance() -> uint256 {
+    function balance() public returns (uint256) {
         let value;
         assembly {
             value := selfbalance()
@@ -20,7 +20,7 @@ contract PayableTest {
         return uint256(value);
     }
 
-    payable fallback() -> () {
+    fallback() external payable  {
         let value;
         assembly {
             value := callvalue()

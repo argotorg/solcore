@@ -1,3 +1,3 @@
 contract SimpleIfStmt {
-  public function main() { if (true) {return 1;} else {return 0;} }
+  function main() public { if (true) {return 1;} else {return 0;} }
 }

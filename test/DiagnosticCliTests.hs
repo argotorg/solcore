@@ -16,24 +16,24 @@ diagnosticCliTests =
     [ testCase "parser error" $
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/parse-error.solc", "--no-specialise"]
-          [ "error[SC0001]: parse error: unexpected '-'",
-            "  --> <cwd>/test/diagnostics/parse-error.solc:1:16",
+          [ "error[SC0001]: parse error: unexpected '}'",
+            "  --> <cwd>/test/diagnostics/parse-error.solc:1:26",
             "  |",
-            "1 | function main( -> word { return 0; }",
-            "  |                ^^ unexpected token",
-            "note: expecting \"comptime\", ')', or identifier"
+            "1 | enum Broken { Value(word }",
+            "  |                          ^ unexpected token",
+            "note: expecting \"calldata\", \"memory\", \"storage\", ')', ',', '.', '<', or '['"
           ],
       testCase "undefined name" $
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/undefined-name.solc", "--no-specialise"]
           [ "error[SC0101]: undefined name: missing",
-            "  --> <cwd>/test/diagnostics/undefined-name.solc:1:34",
+            "  --> <cwd>/test/diagnostics/undefined-name.solc:1:41",
             "  |",
-            "1 | function main() -> word { return missing; }",
-            "  |                                  ^^^^^^^ unknown name",
-            "note: in: return missing ;",
-            "note: in: function main () -> word {",
-            "      return missing ;",
+            "1 | function main() returns (word) { return missing; }",
+            "  |                                         ^^^^^^^ unknown name",
+            "note: in: return missing;",
+            "note: in: function main() returns (word) {",
+            "      return missing;",
             "      }",
             "note: module validation failed for <cwd>/test/diagnostics/undefined-name.solc"
           ],
@@ -43,9 +43,9 @@ diagnosticCliTests =
           [ "error[SC0108]: duplicate declarations in term namespace",
             "  --> <cwd>/test/diagnostics/duplicate-definition.solc:2:10",
             "  |",
-            "1 | function foo() -> word { return 1; }",
+            "1 | function foo() returns (word) { return 1; }",
             "  |          --- previous definition",
-            "2 | function foo() -> word { return 2; }",
+            "2 | function foo() returns (word) { return 2; }",
             "  |          ^^^ duplicate definition",
             "note: context: module",
             "note: foo",
@@ -56,14 +56,14 @@ diagnosticCliTests =
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/type-mismatch.solc", "--no-specialise"]
           [ "error[SC0201]: types do not unify: bool and word",
-            "  --> <cwd>/test/diagnostics/type-mismatch.solc:1:34",
+            "  --> <cwd>/test/diagnostics/type-mismatch.solc:1:41",
             "  |",
-            "1 | function main() -> word { return true; }",
-            "  |                                  ^^^^ expression has mismatched type",
+            "1 | function main() returns (word) { return true; }",
+            "  |                                         ^^^^ expression has mismatched type",
             "note: left type: bool",
             "note: right type: word",
             "note: in: true",
-            "note: in: function main () -> word {",
+            "note: in: function main() returns (word) {",
             "      return true;",
             "      }",
             "note: module typecheck failed for <cwd>/test/diagnostics/type-mismatch.solc"
@@ -74,25 +74,25 @@ diagnosticCliTests =
           [ "error[SC0220]: top-level function must have complete type annotations",
             "  --> <cwd>/test/diagnostics/missing-signature.solc:1:10",
             "  |",
-            "1 | function foo() {",
+            "1 | function foo(value) {",
             "  |          ^^^ incomplete signature",
-            "note: signature: function foo ()",
+            "note: signature: function foo(value)",
             "note: module typecheck failed for <cwd>/test/diagnostics/missing-signature.solc",
-            "help: annotate every parameter (name : Type) and provide a return type (-> Type)"
+            "help: annotate every parameter (name: Type); omit returns only for a unit-returning function"
           ],
       testCase "polymorphic type error uses signature span" $
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/not-polymorphic-enough.solc", "--no-specialise"]
           [ "error[SC0209]: type is not polymorphic enough",
-            "  --> <cwd>/test/diagnostics/not-polymorphic-enough.solc:1:21",
+            "  --> <cwd>/test/diagnostics/not-polymorphic-enough.solc:1:10",
             "  |",
-            "1 | forall a . function fromWord(x : word) -> a {",
-            "  |                     ^^^^^^^^ annotated type is not polymorphic enough",
-            "note: annotated type: forall a . word -> a",
-            "note: inferred type: word -> word",
-            "note: in: forall a . function fromWord (x : word) -> a",
-            "note: in: forall a . function fromWord (x : word) -> a {",
-            "      let result ;",
+            "1 | function fromWord<a>(x : word) returns (a) {",
+            "  |          ^^^^^^^^ annotated type is not polymorphic enough",
+            "note: annotated type: forall a . function(word) internal returns (a)",
+            "note: inferred type: function(word) internal returns (word)",
+            "note: in: function fromWord<a>(x: word) returns (a)",
+            "note: in: function fromWord<a>(x: word) returns (a) {",
+            "      let result;",
             "      assembly {",
             "      result := x",
             "      }",
@@ -103,18 +103,18 @@ diagnosticCliTests =
       testCase "missing instance" $
         expectFailure
           ["--root", "test/examples/cases", "--file", "test/examples/cases/missing-instance.solc", "--no-specialise"]
-          [ "error[SC0223]: cannot entail: word : Typedef (word)",
+          [ "error[SC0223]: cannot entail: word: Typedef<word>",
             "  --> <cwd>/test/examples/cases/missing-instance.solc:12:14",
             "   |",
-            "12 |     function load(ptr:word) -> word {",
+            "12 |     function load(ptr:word) returns (word) {",
             "   |              ^^^^ unsolved constraint",
             "note: using defined instances:",
-            "note: in: function load (ptr : word) -> word {",
-            "      return Typedef.abs(MemoryType.load(ptr) : word);",
+            "note: in: function load(ptr: word) returns (word) {",
+            "      return Typedef.abs(MemoryType.load(ptr) as word);",
             "      }",
-            "note: in: instance word : MemoryType {",
-            "      function load (ptr : word) -> word {",
-            "      return Typedef.abs(MemoryType.load(ptr) : word);",
+            "note: in: impl MemoryType<word> {",
+            "      function load(ptr: word) returns (word) {",
+            "      return Typedef.abs(MemoryType.load(ptr) as word);",
             "      }",
             "      }",
             "note: module typecheck failed for <cwd>/test/examples/cases/missing-instance.solc",
@@ -130,7 +130,7 @@ diagnosticCliTests =
             "  |           ^^^^ shorthand constructor",
             "note: constructor: .Nope",
             "note: in: .Nope(Int.fromInteger(1))",
-            "note: in: function bad () -> Option {",
+            "note: in: function bad() returns (Option) {",
             "      return .Nope(Int.fromInteger(1));",
             "      }",
             "note: module typecheck failed for <cwd>/test/examples/cases/dot-expression-unknown-fail.solc",
@@ -140,10 +140,10 @@ diagnosticCliTests =
         expectFailure
           ["--root", "test/imports", "--file", "test/imports/select_unknown.solc", "--no-specialise"]
           [ "error[SC0110]: unknown import item",
-            "  --> <cwd>/test/imports/select_unknown.solc:1:19",
+            "  --> <cwd>/test/imports/select_unknown.solc:1:9",
             "  |",
-            "1 | import selectlib.{missing};",
-            "  |                   ^^^^^^^ unknown import item",
+            "1 | import {missing} from selectlib;",
+            "  |         ^^^^^^^ unknown import item",
             "note: unknown selected imports:",
             "note: selectlib.missing",
             "help: check the imported module's exported names"
@@ -164,10 +164,10 @@ diagnosticCliTests =
         expectFailure
           ["--root", "test/imports", "--file", "test/imports/amb_main.solc", "--no-specialise"]
           [ "error[SC0120]: ambiguous selected imports",
-            "  --> <cwd>/test/imports/amb_main.solc:2:14",
+            "  --> <cwd>/test/imports/amb_main.solc:2:9",
             "  |",
-            "2 | import ambB.{pick};",
-            "  |              ^^^^ ambiguous selected import",
+            "2 | import {pick} from ambB;",
+            "  |         ^^^^ ambiguous selected import",
             "note: pick imported from ambB, ambA",
             "help: use an explicit module qualifier or narrow the selected imports"
           ],
@@ -179,16 +179,16 @@ diagnosticCliTests =
             "  |",
             "4 |   return Token.Err(0);",
             "  |                ^^^ unknown name",
-            "note: in: return Token.Err(0) ;",
-            "note: in: function main () -> Token {",
-            "      return Token.Err(0) ;",
+            "note: in: return Token.Err(0);",
+            "note: in: function main() returns (Token) {",
+            "      return Token.Err(0);",
             "      }",
             "note: module validation failed for <cwd>/test/imports/hidden_ctor_expr_fail.solc"
           ],
       testCase "short output" $
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/undefined-name.solc", "--no-specialise", "--diagnostic-format", "short"]
-          ["<cwd>/test/diagnostics/undefined-name.solc:1:34: error[SC0101]: undefined name: missing"],
+          ["<cwd>/test/diagnostics/undefined-name.solc:1:41: error[SC0101]: undefined name: missing"],
       testCase "warnings always" $
         expectSuccess
           ["--root", "test/examples/cases", "--file", "test/examples/cases/redundant-match.solc", "--no-specialise", "--warnings", "always"]
@@ -253,23 +253,25 @@ maybeToList (Just value) = [value]
 redundantWarningsSnapshot :: [String]
 redundantWarningsSnapshot =
   [ "warning[SC0301]: redundant pattern clause",
-    "  --> <cwd>/test/examples/cases/redundant-match.solc:6:7",
+    "  --> <cwd>/test/examples/cases/redundant-match.solc:6:12",
     "  |",
-    "6 |     | Bool.True  => return Bool.True;",
-    "  |       ^^^^^^^^^^^ redundant clause",
-    "note: clause: | Bool.True<Bool> =>",
+    "6 |     } case Bool.True  { return Bool.True;",
+    "  |            ^^^^^^^^^^^ redundant clause",
+    "note: clause: case Bool.True<Bool> {",
     "      return Bool.True<Bool>;",
+    "      }",
     "note: in: match (x<Bool>)",
     "note: in: function f",
     "help: remove this clause or make an earlier pattern more specific",
     "",
     "warning[SC0301]: redundant pattern clause",
-    "  --> <cwd>/test/examples/cases/redundant-match.solc:7:7",
+    "  --> <cwd>/test/examples/cases/redundant-match.solc:7:12",
     "  |",
-    "7 |     | Bool.False => return Bool.False;",
-    "  |       ^^^^^^^^^^^ redundant clause",
-    "note: clause: | Bool.False<Bool> =>",
+    "7 |     } case Bool.False { return Bool.False;",
+    "  |            ^^^^^^^^^^^ redundant clause",
+    "note: clause: case Bool.False<Bool> {",
     "      return Bool.False<Bool>;",
+    "      }",
     "note: in: match (x<Bool>)",
     "note: in: function f",
     "help: remove this clause or make an earlier pattern more specific"

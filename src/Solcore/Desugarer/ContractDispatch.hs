@@ -38,6 +38,7 @@ contractDispatchTopDecls topdecls = Set.toList extras <> topdecls'
   where
     (extras, topdecls') = mapAccumL go Set.empty topdecls
     go acc (TContr c)
+      | contractKind c /= ContractKind = (acc, TContr c)
       | "main" `notElem` functionNames c = (Set.union acc (genNameDecls c), TContr (genMainFn True c))
       | otherwise = (acc, TContr (genMainFn False c))
     go acc v = (acc, v)
@@ -60,6 +61,7 @@ functionNames :: Contract a -> [Name]
 functionNames = foldr go [] . decls
   where
     go (CFunDecl fd) = (sigName (funSignature fd) :)
+    go (CSignatureDecl _ sig) = (sigName sig :)
     go _ = id
 
 -- | Returns the (at most one) user-defined fallback function for a contract.
@@ -67,20 +69,22 @@ findFallback :: Contract a -> Maybe (FunDef a)
 findFallback c = listToMaybe [fd | CFunDecl fd <- decls c, isFallback fd]
 
 genNameDecls :: Contract Name -> Set (TopDecl Name)
-genNameDecls (Contract cname _ cdecls) = foldl go Set.empty cdecls
+genNameDecls (ContractWithKind ContractKind cname _ cdecls) = foldl go Set.empty cdecls
   where
-    go acc (CFunDecl (FunDef True sig _))
+    go acc (CFunDecl (FunDef legacyVisibility sig _))
+      | not (externallyVisible legacyVisibility sig) = acc
       | sigName sig == fallbackName = acc
       | otherwise =
           let dataTy = mkNameTy cname (sigName sig)
               instDef = mkNameInst dataTy (sigName sig)
            in Set.union (Set.fromList [TDataDef dataTy, TInstDef instDef]) acc
     go acc _ = acc
+genNameDecls _ = Set.empty
 
 genMainFn :: Bool -> Contract Name -> Contract Name
-genMainFn addMain c@(Contract cname tys cdecls)
-  | addMain = Contract cname tys (CFunDecl mainfn : Set.toList cdecls')
-  | otherwise = Contract cname tys (Set.toList cdecls')
+genMainFn addMain c@(ContractWithKind ContractKind cname tys cdecls)
+  | addMain = ContractWithKind ContractKind cname tys (CFunDecl mainfn : Set.toList cdecls')
+  | otherwise = ContractWithKind ContractKind cname tys (Set.toList cdecls')
   where
     cdecls'' = if hasConstructor cdecls then cdecls else cdecls ++ [defaultConstructor]
     cdecls' = Set.unions (map (transformCDecl cname) cdecls'')
@@ -120,7 +124,8 @@ genMainFn addMain c@(Contract cname tys cdecls)
     mkMethod s = error $ "Internal Error: contract methods must be fully typed: " <> show s
 
     -- skip the optional fallback function and non-public methods in the methods tuple
-    unwrapSigs (CFunDecl (FunDef True s _))
+    unwrapSigs (CFunDecl (FunDef legacyVisibility s _))
+      | not (externallyVisible legacyVisibility s) = Nothing
       | sigName s == fallbackName = Nothing
       | otherwise = Just s
     unwrapSigs _ = Nothing
@@ -130,6 +135,16 @@ genMainFn addMain c@(Contract cname tys cdecls)
 
     getTy (Typed _ _ t) = Just t
     getTy (Untyped {}) = Nothing
+genMainFn _ c = c
+
+externallyVisible :: Bool -> Signature a -> Bool
+externallyVisible legacyVisibility sig =
+  case sigVisibility sig of
+    Just VisibilityPublic -> True
+    Just VisibilityExternal -> True
+    Just VisibilityInternal -> False
+    Just VisibilityPrivate -> False
+    Nothing -> legacyVisibility
 
 transformCDecl :: Name -> ContractDecl Name -> Set (ContractDecl Name)
 transformCDecl contractName (CConstrDecl c) = transformConstructor contractName c
@@ -145,25 +160,31 @@ transformConstructor contractName cons
     argsTuple = (tupleTyFromList (mapMaybe getTy params))
     initFun = CFunDecl (FunDef False initSig (constrBody cons))
     initSig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = mempty,
           sigContext = mempty,
           sigName = initFunName,
           sigParams = params,
           sigRetComptime = False,
           sigReturn = Just unit,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
 
     copySig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = mempty,
           sigContext = mempty,
           sigName = "copy_arguments_for_constructor",
           sigParams = mempty,
           sigRetComptime = False,
           sigReturn = Just argsTuple,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
     contractString = show contractName
     yulContractName = YLit $ YulString contractString
@@ -199,14 +220,17 @@ transformConstructor contractName cons
     copyArgsFun = CFunDecl (FunDef False copySig copyBody)
 
     startSig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = mempty,
           sigContext = mempty,
           sigName = deployerName,
           sigParams = mempty,
           sigRetComptime = False,
           sigReturn = Just unit,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
     -- A non-payable constructor must reject any incoming value transfer
     -- during deployment. A payable constructor skips this check. This mirrors
@@ -330,15 +354,24 @@ contractAbiEntries = mapMaybe entry . decls
   where
     entry (CConstrDecl con) =
       Just (AbiConstructor (map abiParam (constrParams con)) (stateMutability (constrPayable con)))
-    entry (CFunDecl (FunDef isPublic sig _))
-      | sigName sig == fallbackName = Just (AbiFallback (stateMutability (sigPayable sig)))
-      | isPublic =
+    entry (CFunDecl (FunDef legacyVisibility sig _))
+      | sigName sig == fallbackName = Just (AbiFallback (functionStateMutability sig))
+      | externallyVisible legacyVisibility sig =
           Just $
             AbiFunction
               (nameStr (sigName sig))
               (map abiParam (sigParams sig))
-              (abiOutputs (sigReturn sig))
-              (stateMutability (sigPayable sig))
+              (abiOutputs sig)
+              (functionStateMutability sig)
+      | otherwise = Nothing
+    entry (CSignatureDecl legacyVisibility sig)
+      | externallyVisible legacyVisibility sig =
+          Just $
+            AbiFunction
+              (nameStr (sigName sig))
+              (map abiParam (sigParams sig))
+              (abiOutputs sig)
+              (functionStateMutability sig)
       | otherwise = Nothing
     entry _ = Nothing
 
@@ -349,17 +382,36 @@ contractAbiEntries = mapMaybe entry . decls
 stateMutability :: Bool -> String
 stateMutability payable = if payable then "payable" else "nonpayable"
 
+functionStateMutability :: Signature a -> String
+functionStateMutability sig =
+  case sigMutability sig of
+    Just MutabilityPure -> "pure"
+    Just MutabilityView -> "view"
+    Just MutabilityPayable -> "payable"
+    Nothing -> stateMutability (sigPayable sig)
+
 abiParam :: Param Name -> AbiParam
 abiParam (Typed _ pname t) = mkAbiParam (nameStr pname) t
 abiParam (Untyped _ pname) = AbiParam (nameStr pname) "" []
 
--- | A comma-separated return list @(a, b, c)@ desugars to nested pairs; the ABI
--- represents it as one output per element. A unit return has no outputs.
-abiOutputs :: Maybe Ty -> [AbiParam]
-abiOutputs Nothing = []
-abiOutputs (Just t)
-  | t == unit = []
-  | otherwise = map (mkAbiParam "") (flattenTuple t)
+-- | Preserve the source return-item boundary recorded by the rich signature.
+-- Legacy and compiler-generated signatures have no return items, so retain the
+-- historical tuple-flattening fallback for them.
+abiOutputs :: Signature Name -> [AbiParam]
+abiOutputs sig =
+  case sigReturnItems sig of
+    items@(_ : _) -> map itemOutput items
+    [] -> maybe [] legacyOutputs (sigReturn sig)
+  where
+    outputNames = map (maybe "" nameStr) (sigReturnNames sig) ++ repeat ""
+    itemOutput item =
+      mkAbiParam
+        (maybe "" nameStr (signatureReturnItemName item))
+        (signatureReturnItemType item)
+    legacyOutputs t
+      | t == unit = []
+      | [_] <- sigReturnNames sig = zipWith mkAbiParam outputNames [t]
+      | otherwise = zipWith mkAbiParam outputNames (flattenTuple t)
 
 -- | Flatten a right-nested @pair@ chain into its element list. Because every
 -- comma-tuple desugars to right-nested pairs, a flat tuple @(a, b, c)@ and a

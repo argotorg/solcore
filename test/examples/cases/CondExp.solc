@@ -1,8 +1,8 @@
 contract CondExp {
-   public function main() -> word {
+   function main() public returns (word) {
      return
-       if if true then false else true
-       then if false then 1 else 2
-       else if true then 42 else 56;
+       ( ( true ? false : true
+       )? ( false ? 1 : 2
+       ): ( true ? 42 : 56));
    }
 }

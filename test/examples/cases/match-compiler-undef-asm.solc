@@ -1,19 +1,19 @@
-data Foo(a) = Foo(word);
+enum Foo<a> { Foo(word) }
 
-forall a . function read(x : Foo(a)) -> word {
+function read<a>(x : Foo<a>) returns (word) {
   let res : word;
   match (x) {
-  | Foo(w) =>
+  case Foo(w) {
     assembly {
       res := w
     }
-  }
+  } }
   return res;
 }
 
 contract Bla {
 
-  public function main () -> word {
+  function main () public returns (word) {
     return read(Foo(42));
   }
 }

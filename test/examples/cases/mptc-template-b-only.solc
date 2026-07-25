@@ -4,28 +4,26 @@
 //   specmgu (word -> Box) (freshV -> Box)  =>  freshV = word  =>  rep = word
 // The `hint:a` argument makes a=Box concrete at the call site.
 
-data Box = Box(word);
+enum Box { Box(word) }
 
-forall self rep.
-class self:Rebox(rep) {
-    function rebox(x:rep) -> self;
+trait Rebox<self, rep> {
+    function rebox(x:rep) returns (self);
 }
 
-instance Box:Rebox(word) {
-    function rebox(x:word) -> Box {
+impl Rebox<Box, word> {
+    function rebox(x:word) returns (Box) {
         return Box(x);
     }
 }
 
-forall a rep . a:Rebox(rep) =>
-function rewrap(val:rep, hint:a) -> a {
+function rewrap<a, rep>(val:rep, hint:a) returns (a)  where a: Rebox<rep> {
     return Rebox.rebox(val);
 }
 
 contract C {
     constructor() {}
-    public function main() -> word {
+    function main() public returns (word) {
         let b : Box = rewrap(7, Box(0));
-        match b { | Box(w) => return w; }
+        match (b ) { case Box(w) { return w; } }
     }
 }

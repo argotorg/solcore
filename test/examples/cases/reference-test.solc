@@ -1,54 +1,53 @@
-data memory(a) = memory(word);
+enum memory<a> { memory(word) }
 
-class abs:Typedef(rep) {
-    function abs(v:rep) -> abs;
-    function rep(v:abs) -> rep;
+trait Typedef<abs, rep> {
+    function abs(v:rep) returns (abs);
+    function rep(v:abs) returns (rep);
 }
 
-instance memory(a):Typedef(word) {
-    function abs(ptr:word) -> memory(a) {
+impl Typedef<a memory, word> {
+    function abs(ptr:word) returns (a memory) {
         return memory(ptr);
     }
-    function rep(v:memory(a)) -> word {
-        match v {
-            | memory(ptr) => return ptr;
-        }
+    function rep(v:a memory) returns (word) {
+        match (v ) {
+            case memory(ptr) { return ptr;
+        } }
     }
 }
 
-class self:Test {
-    function test(x:self) -> word;
+trait Test<self> {
+    function test(x:self) returns (word);
 }
 
-instance word:Test {
-    function test(x:word) -> word {
+impl Test<word> {
+    function test(x:word) returns (word) {
         return x;
     }
 }
 
-data test(a) = test(memory(a));
+enum test<a> { test(a memory) }
 
-instance test(a):Typedef(memory(a)) {
-    function rep(x:test(a)) -> memory(a) {
-        match x {
-            | test(m) => return m;
-        }
+impl Typedef<test<a>, a memory> {
+    function rep(x:test<a>) returns (a memory) {
+        match (x ) {
+            case test(m) { return m;
+        } }
     }
-    function abs(m:memory(a)) -> test(a) {
+    function abs(m:a memory) returns (test<a>) {
         return test(m);
     }
 }
 
-forall abs rep . test(abs):Typedef(rep), rep:Test =>
-  instance test(abs):Test {
-    function test(x:test(abs)) -> word {
+impl<abs, rep> Test<test<abs>> where test<abs>: Typedef<rep>, rep: Test {
+    function test(x:test<abs>) returns (word) {
         return Test.test(Typedef.rep(x));
     }
   }
 
 contract C {
-    public function main() {
-        let x:test(word) = test(memory(42));
+    function main() public {
+        let x:test<word> = test(memory(42));
         let ptr:word = Test.test(x);
     }
 }

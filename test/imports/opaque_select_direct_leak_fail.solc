@@ -1,5 +1,5 @@
-import opaque_select_direct_mid as M;
+import * as M from opaque_select_direct_mid;
 
-function bad(x: word) -> T {
+function bad(x: word) returns (T) {
   return M.make(x);
 }

@@ -1,17 +1,17 @@
 contract EitherModule {
-  data Either(a,b) = Left(a) | Right(b);
-  data List(a) = Nil | Cons(a,List(a));
+  enum Either<a, b> { Left(a), Right(b) }
+  enum List<a> { Nil, Cons(a, List<a>) }
 
-  public function lefts(xs : List(Either(word,word))) -> List(word) {
-    match xs {
-    | List.Nil => return List.Nil ;
-    | List.Cons(y,ys) =>
-      match y {
-      | Either.Left(z) => return List.Cons(z,lefts(ys)) ;
-      | Either.Right(z) => return lefts(ys) ;
-      }
-    }
+  function lefts(xs : List<Either<word, word>>) public returns (List<word>) {
+    match (xs ) {
+    case List.Nil { return List.Nil ;
+    } case List.Cons(y,ys) {
+      match (y ) {
+      case Either.Left(z) { return List.Cons(z,lefts(ys)) ;
+      } case Either.Right(z) { return lefts(ys) ;
+      } }
+    } }
   }
 
-  public function main() -> word { return 0; }
+  function main() public returns (word) { return 0; }
 }

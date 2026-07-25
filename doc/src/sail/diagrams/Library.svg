@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="80" viewBox="0 0 745.5 80" width="745.5">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 30v20m10 -20v20m-10 -10h20" /></g><path d="M40 40h10" /><g>
+<path d="M50 40h0.0" /><path d="M695.5 40h0.0" /><g class="terminal ">
+<path d="M50.0 40h0.0" /><path d="M129.5 40h0.0" /><rect height="22" rx="10" ry="10" width="79.5" x="50" y="29"></rect><text x="89.75" y="44">library</text></g><path d="M129.5 40h10" /><path d="M139.5 40h10" /><g class="non-terminal ">
+<path d="M149.5 40h0.0" /><path d="M254.5 40h0.0" /><rect height="22" width="105" x="149.5" y="29"></rect><text x="202" y="44">Identifier</text></g><path d="M254.5 40h10" /><g>
+<path d="M264.5 40h0.0" /><path d="M435.0 40h0.0" /><path d="M264.5 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M284.5 20h130.5" /></g><path d="M415.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M264.5 40h20" /><g class="non-terminal ">
+<path d="M284.5 40h0.0" /><path d="M415.0 40h0.0" /><rect height="22" width="130.5" x="284.5" y="29"></rect><text x="349.75" y="44">GenericParams</text></g><path d="M415.0 40h20" /></g><path d="M435.0 40h10" /><g class="terminal ">
+<path d="M445.0 40h0.0" /><path d="M473.5 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="445" y="29"></rect><text x="459.25" y="44">{</text></g><path d="M473.5 40h10" /><g>
+<path d="M483.5 40h0.0" /><path d="M657.0 40h0.0" /><path d="M483.5 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M503.5 20h133.5" /></g><path d="M637.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M483.5 40h20" /><g>
+<path d="M503.5 40h0.0" /><path d="M637.0 40h0.0" /><path d="M503.5 40h10" /><g class="non-terminal ">
+<path d="M513.5 40h0.0" /><path d="M627.0 40h0.0" /><rect height="22" width="113.5" x="513.5" y="29"></rect><text x="570.25" y="44">LibraryDecl</text></g><path d="M627.0 40h10" /><path d="M513.5 40a10 10 0 0 0 -10 10v0a10 10 0 0 0 10 10" /><g>
+<path d="M513.5 60h113.5" /></g><path d="M627.0 60a10 10 0 0 0 10 -10v0a10 10 0 0 0 -10 -10" /></g><path d="M637.0 40h20" /></g><path d="M657.0 40h10" /><g class="terminal ">
+<path d="M667.0 40h0.0" /><path d="M695.5 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="667" y="29"></rect><text x="681.25" y="44">}</text></g></g><path d="M695.5 40h10" /><path d="M 705.5 40 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>

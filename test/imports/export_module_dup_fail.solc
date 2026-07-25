@@ -1,6 +1,6 @@
 export foo as M;
 export booldef as M;
 
-function main() -> word {
+function main() returns (word) {
   return 0;
 }

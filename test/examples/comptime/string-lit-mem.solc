@@ -5,10 +5,10 @@
 // Expected: compiles; main() returns a memory(string) for "abcd".
 
 import std;
-import std.{*};
+import {*} from std;
 
 contract StringLitMem {
-  public function main() -> memory(string) {
+  function main() public returns (string memory) {
     return "abcd";
   }
 }

@@ -1,10 +1,10 @@
 // Negative test for pragma merging - should fail
 import pragma_merge_base;
 
-forall a . class a:TestFailClass {}
+trait TestFailClass<a> {}
 
-data FailType(x) = FailType;
+enum FailType<x> { FailType }
 
 // should fail because TestFailCoverage doesn't have no-coverage-condition
-forall a b . class a:TestFailCoverage(b) {}
-forall x y . instance FailType(x):TestFailCoverage(y) {}
+trait TestFailCoverage<a, b> {}
+impl<x, y> TestFailCoverage<FailType<x>, y> {}

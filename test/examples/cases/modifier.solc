@@ -1,5 +1,5 @@
 contract C {
-	public function add(x: word, y:word) -> word {
+	function add(x: word, y:word) public returns (word) {
 		let r : word;
 		assembly {
 			r := add(x, y)
@@ -8,14 +8,14 @@ contract C {
 	}
 
 	// modifier pattern: wrap add with before/after code
-	public function modifiedAdd(x : word, y : word) -> word {
+	function modifiedAdd(x : word, y : word) public returns (word) {
 		// before solidity placeholder
 		let result = add(x, y); // Solidity's placeholder: _;
 		// after solidity placeholder
 		return result;
 	}
 
-	public function main() -> word {
+	function main() public returns (word) {
 		return modifiedAdd(2, 1);
 	}
 }

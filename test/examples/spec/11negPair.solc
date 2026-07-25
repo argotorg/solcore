@@ -1,53 +1,53 @@
 
-forall a . class  a : Neg {
-   function neg(x:a) -> a;
+trait Neg<a> {
+   function neg(x:a) returns (a);
 }
 
-data B = F | T;
+enum B { F, T }
 
-instance B : Neg {
-  function neg (x : B) -> B {
-    match x {
-    | B.F => return B.T;
-    | B.T => return B.F;
-    }
+impl Neg<B> {
+  function neg (x : B) returns (B) {
+    match (x ) {
+    case B.F { return B.T;
+    } case B.T { return B.F;
+    } }
   }
 }
 
-forall a b . function fst (p : (a, b)) -> a {
-  match p {
-  | (x,y) => return x;
-  }
+function fst<a, b> (p : (a, b)) returns (a) {
+  match (p ) {
+  case (x,y) { return x;
+  } }
 }
 
-forall a b . function snd(p : (a, b)) -> b {
-  match p {
-    | (x,y) => return y;
-  }
+function snd<a, b>(p : (a, b)) returns (b) {
+  match (p ) {
+    case (x,y) { return y;
+  } }
 }
 
 
-forall a b . a : Neg, b : Neg => instance (a,b):Neg {
-  function neg(p : (a,b)) -> (a,b) {
+impl<a, b> Neg<(a, b)> where a: Neg, b: Neg {
+  function neg(p : (a, b)) returns ((a, b)) {
     return (Neg.neg (fst(p)), Neg.neg(snd (p)));
   }
 }
 
 contract NegPair {
 
- public function bnot(x : B) -> B {
-   match x {
-     | B.T => return B.F;
-     | B.F => return B.T;
-   }
+ function bnot(x : B) public returns (B) {
+   match (x ) {
+     case B.T { return B.F;
+     } case B.F { return B.T;
+   } }
 }
 
- public function fromB(b : B) -> word {
-  match b  {
-    | B.F => return 0;
-    | B.T => return 1;
-  }
+ function fromB(b : B) public returns (word) {
+  match (b  ) {
+    case B.F { return 0;
+    } case B.T { return 1;
+  } }
 }
 
- public function main() -> word { return  fromB(fst(Neg.neg((B.F,B.T)))); }
+ function main() public returns (word) { return  fromB(fst(Neg.neg((B.F,B.T)))); }
 }

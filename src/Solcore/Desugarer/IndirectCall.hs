@@ -54,8 +54,8 @@ instance Desugar (TopDecl Name) where
   desugar (TMutualDef ms) = TMutualDef <$> desugar ms
 
 instance Desugar (Contract Name) where
-  desugar (Contract n vs ds) =
-    Contract n vs <$> desugar ds
+  desugar (ContractWithKind kind n vs ds) =
+    ContractWithKind kind n vs <$> desugar ds
 
 instance Desugar (FunDef Name) where
   desugar (FunDef p sig bdy) =
@@ -85,6 +85,8 @@ instance Desugar (Stmt Name) where
     (:=) <$> desugar lhs <*> desugar rhs
   desugar (Let c n mt me) =
     Let c n mt <$> desugar me
+  desugar (LetPattern ct pat mt value) =
+    LetPattern ct pat mt <$> desugar value
   desugar (Block body) =
     Block <$> desugar body
   desugar (StmtExp e) =
@@ -174,6 +176,8 @@ instance Collect (ContractDecl Name) where
   collect (CFieldDecl _) = []
   collect (CFunDecl fd) =
     [sigName (funSignature fd)]
+  collect (CSignatureDecl _ sig) =
+    [sigName sig]
   collect (CMutualDecl ds) = concatMap collect ds
   collect (CConstrDecl _) = []
   collect _ = []

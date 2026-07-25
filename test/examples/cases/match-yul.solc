@@ -1,15 +1,15 @@
-data Wrapper = Wrapper(word);
+enum Wrapper { Wrapper(word) }
 contract C {
-    public function main() -> word {
+    function main() public returns (word) {
         return foo(Wrapper(1));
     }
-    public function foo(w:Wrapper) -> word {
+    function foo(w:Wrapper) public returns (word) {
         let result : word;
-        match w {
-            | Wrapper(ptr) =>
+        match (w ) {
+            case Wrapper(ptr) {
                 //let ptr2 : word = ptr;
                 assembly { result := calldataload(ptr) }
-        }
+        } }
         return result;
     }
 }

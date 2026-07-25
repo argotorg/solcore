@@ -1,7 +1,7 @@
 export { T(A), mk };
 
-data T = A;
+enum T { A }
 
-function mk() -> T {
+function mk() returns (T) {
   return T.A;
 }

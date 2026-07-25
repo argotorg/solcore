@@ -1,13 +1,13 @@
-type W = word;
+alias W = word;
 
-forall self . class self:IdTy {
-  function id(x:self) -> self;
+trait IdTy<self> {
+  function id(x:self) returns (self);
 }
 
-instance W:IdTy {
-  function id(x:W) -> W { return x; }
+impl IdTy<W> {
+  function id(x:W) returns (W) { return x; }
 }
 
-instance word:IdTy {
-  function id(x:word) -> word { return 0; }
+impl IdTy<word> {
+  function id(x:word) returns (word) { return 0; }
 }

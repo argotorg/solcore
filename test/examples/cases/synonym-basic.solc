@@ -1,21 +1,21 @@
-type Uint = word;
-type Point = pair(word, word);
+alias Uint = word;
+alias Point = pair<word, word>;
 
-function useUint(x: Uint) -> word {
+function useUint(x: Uint) returns (word) {
     return x;
 }
 
-function makePoint(x: word, y: word) -> Point {
+function makePoint(x: word, y: word) returns (Point) {
     return pair(x, y);
 }
 
-function getX(p: Point) -> word {
-    match p {
-        | pair(x, _) => return x;
-    }
+function getX(p: Point) returns (word) {
+    match (p ) {
+        case pair(x, _) { return x;
+    } }
 }
 
-function main() -> word {
+function main() returns (word) {
     let p: Point = makePoint(10, 20);
     return getX(p);
 }

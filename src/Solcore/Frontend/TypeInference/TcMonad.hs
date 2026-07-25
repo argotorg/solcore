@@ -3,6 +3,7 @@ module Solcore.Frontend.TypeInference.TcMonad where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Char (isDigit)
 import Data.Generics (Data, everything, extQ, mkQ)
 import Data.List
 import Data.List.NonEmpty qualified as N
@@ -124,8 +125,12 @@ withPartialDataTypesDisabled action = do
       pure result
 
 typeInfoFor :: DataTy -> TypeInfo
-typeInfoFor (DataTy _ vs cons) =
-  TypeInfo (length vs) (map constrName cons) []
+typeInfoFor (DataTyWithKind kind _ vs cons) =
+  TypeInfo (length vs) (map constrName cons) (dataTyFieldNames kind)
+
+dataTyFieldNames :: DataTyKind -> [Name]
+dataTyFieldNames EnumKind = []
+dataTyFieldNames (StructKind names) = names
 
 freshTyVar :: TcM Ty
 freshTyVar = Meta <$> freshVar
@@ -199,7 +204,7 @@ isDirectCall n =
 -- including contructors on environment
 
 checkDataType :: DataTy -> TcM ()
-checkDataType d@(DataTy n vs constrs) =
+checkDataType d@(DataTyWithKind kind n vs constrs) =
   do
     -- check if the type is already defined.
     r <- maybeAskTypeInfo n
@@ -210,11 +215,110 @@ checkDataType d@(DataTy n vs constrs) =
     modifyTypeInfo n ti
     -- checking kinds
     mapM_ kindCheck (concatMap constrTy constrs) `wrapError` d
+    registerStructType d
   where
-    ti = TypeInfo (length vs) (map fst vals) []
+    ti = TypeInfo (length vs) (map fst vals) (dataTyFieldNames kind)
     tc = TyCon n (TyVar <$> vs)
     vals = map constrBind constrs
     constrBind c = (constrName c, (funtype (constrTy c) tc))
+
+registerStructType :: DataTy -> TcM ()
+registerStructType
+  ( DataTyWithKind
+      (StructKind memberNames)
+      typeName
+      typeParams
+      [Constr constructorName memberTypes]
+    )
+    | length memberNames == length memberTypes = do
+        let structInfo =
+              StructInfo
+                { structParams = typeParams,
+                  structConstructor = Just constructorName,
+                  structFields = zip memberNames memberTypes
+                }
+        modify
+          ( \env ->
+              env
+                { structTable =
+                    Map.insert typeName structInfo (structTable env)
+                }
+          )
+        mapM_
+          (registerStructFieldSelector typeName structInfo)
+          (zip [0 ..] (structFields structInfo))
+registerStructType
+  (DataTyWithKind (StructKind _) typeName typeParams []) =
+    modify
+      ( \env ->
+          env
+            { structTable =
+                Map.insert
+                  typeName
+                  (StructInfo typeParams Nothing [])
+                  (structTable env)
+            }
+      )
+registerStructType d@(DataTyWithKind (StructKind _) _ _ _) =
+  tcmError ("malformed semantic struct declaration: " ++ pretty d)
+registerStructType _ = pure ()
+
+registerStructFieldSelector ::
+  Name ->
+  StructInfo ->
+  (Int, (Name, Ty)) ->
+  TcM ()
+registerStructFieldSelector typeName structInfo (selectedIndex, (memberName, memberTy)) =
+  case structConstructor structInfo of
+    Nothing ->
+      tcmError
+        ("cannot generate a field selector for opaque struct " ++ pretty typeName)
+    Just constructorName ->
+      registerSelector constructorName
+  where
+    registerSelector constructorName = do
+      let params = structParams structInfo
+          structTy = TyCon typeName (map TyVar params)
+          selectorName = structFieldSelectorName typeName memberName
+          selectorTy = funtype [structTy] memberTy
+          receiverId = Id (Name "$struct") structTy
+          memberIds =
+            [ Id (Name ("$field" ++ show index)) memberFieldTy
+            | (index, (_, memberFieldTy)) <- zip [0 :: Int ..] (structFields structInfo)
+            ]
+          constructorTy =
+            funtype (map idType memberIds) structTy
+          constructorId = Id constructorName constructorTy
+          selectedId =
+            Id
+              (Name ("$field" ++ show selectedIndex))
+              memberTy
+          signature =
+            Signature
+              params
+              []
+              selectorName
+              [Typed False receiverId structTy]
+              False
+              (Just memberTy)
+              False
+          body =
+            [ Match
+                [Var receiverId]
+                [ ( [PCon constructorId (map PVar memberIds)],
+                    [Return (Var selectedId)]
+                  )
+                ]
+            ]
+          selector = FunDef False signature body
+          scheme = Forall params ([] :=> selectorTy)
+      extEnv selectorName scheme
+      addFunctionName selectorName
+      writeFunDef selector
+
+structFieldSelectorName :: Name -> Name -> Name
+structFieldSelectorName typeName memberName =
+  QualName typeName ("$structField$" ++ pretty memberName)
 
 -- kind check
 
@@ -224,7 +328,14 @@ kindCheck (t1 :-> t2) =
 kindCheck t@(TyCon n ts) =
   do
     ti <- askTypeInfo n `wrapError` t
-    unless (n == Name "pair" || arity ti == length ts) $
+    let suppliedArity =
+          case ts of
+            [size, _]
+              | n == Name "array",
+                isNumericArraySize size ->
+                  1
+            _ -> length ts
+    unless (n == Name "pair" || arity ti == suppliedArity) $
       tcmError $
         unlines
           [ "Invalid number of type arguments!",
@@ -236,12 +347,25 @@ kindCheck t@(TyCon n ts) =
             "but, type "
               ++ pretty t
               ++ " has "
-              ++ (show $ length ts)
+              ++ show suppliedArity
               ++ " arguments"
           ]
-    ts' <- mapM kindCheck ts
+    ts' <-
+      case ts of
+        [size, element]
+          | n == Name "array",
+            isNumericArraySize size ->
+              (size :) . (: []) <$> kindCheck element
+        _ ->
+          mapM kindCheck ts
     pure (TyCon n ts')
 kindCheck t = pure t
+
+isNumericArraySize :: Ty -> Bool
+isNumericArraySize (TyCon (Name digits) []) =
+  not (null digits) && all isDigit digits
+isNumericArraySize _ =
+  False
 
 -- Skolemization
 
@@ -376,16 +500,37 @@ askCurrentContract =
       pure
       n
 
--- manipulating contract field information
+-- Looking up and instantiating source-struct fields.
 
-askField :: Name -> Name -> TcM Scheme
-askField cn fn =
-  do
-    ti <- askTypeInfo cn
-    when
-      (fn `notElem` fieldNames ti)
-      (undefinedField cn fn)
-    askEnv fn
+askStructField :: Ty -> Name -> TcM (Name, Ty)
+askStructField (TyCon typeName typeArgs) memberName = do
+  minfo <- gets (Map.lookup typeName . structTable)
+  case minfo of
+    Nothing -> undefinedField typeName memberName
+    Just StructInfo {structConstructor = Nothing} ->
+      inaccessibleStructField typeName memberName
+    Just structInfo ->
+      case lookup memberName (structFields structInfo) of
+        Nothing -> undefinedField typeName memberName
+        Just memberTy -> do
+          unless (length typeArgs == length (structParams structInfo)) $
+            tcmError
+              ( "malformed struct type application: "
+                  ++ pretty (TyCon typeName typeArgs)
+              )
+          let instantiatedTy =
+                insts (zip (structParams structInfo) typeArgs) memberTy
+          pure
+            ( structFieldSelectorName typeName memberName,
+              instantiatedTy
+            )
+askStructField receiverTy memberName =
+  tcmError
+    ( "field access requires a concrete struct receiver, but found "
+        ++ pretty receiverTy
+        ++ "."
+        ++ pretty memberName
+    )
 
 -- manipulating data constructor information
 
@@ -419,6 +564,25 @@ withLocalCtx envPairs m =
     mapM_ (\(n, s) -> extEnv n s) envPairs
     a <- m
     pure a
+
+withGivenPredicates :: [Pred] -> TcM a -> TcM a
+withGivenPredicates predicates action = do
+  savedPredicates <- gets givenPredicates
+  modify
+    ( \env ->
+        env
+          { givenPredicates =
+              predicates `union` savedPredicates
+          }
+    )
+  outcome <-
+    (Right <$> action)
+      `catchError` (pure . Left)
+  modify (\env -> env {givenPredicates = savedPredicates})
+  either throwError pure outcome
+
+getGivenPredicates :: TcM [Pred]
+getGivenPredicates = gets givenPredicates
 
 -- Updating the environment
 
@@ -745,6 +909,8 @@ contextLabelMessage diagnostic =
     Just (DiagnosticCode "SC0227") -> "duplicate class"
     Just (DiagnosticCode "SC0228") -> "duplicate class method"
     Just (DiagnosticCode "SC0229") -> "duplicate type"
+    Just (DiagnosticCode "SC0231") -> "unsupported struct field assignment"
+    Just (DiagnosticCode "SC0232") -> "inaccessible struct field"
     _ -> "diagnostic reported here"
 
 contextSourceSpan :: (Data a) => a -> Maybe SourceSpan
@@ -809,14 +975,34 @@ undefinedType n =
       []
 
 undefinedField :: Name -> Name -> TcM a
-undefinedField n n' =
+undefinedField typeName memberName =
   tcDiagnosticErrorAtName
     "SC0204"
-    ("undefined field: " ++ pretty n)
-    n
+    ("undefined field: " ++ pretty memberName)
+    memberName
     "undefined field"
-    ["in type: " ++ pretty n']
+    ["in type: " ++ pretty typeName]
     []
+
+inaccessibleStructField :: Name -> Name -> TcM a
+inaccessibleStructField typeName memberName =
+  tcDiagnosticErrorAtName
+    "SC0232"
+    ("struct field is not visible: " ++ pretty memberName)
+    memberName
+    "inaccessible struct field"
+    ["type " ++ pretty typeName ++ " was imported without its constructor"]
+    ["export the struct with its constructor to make its fields readable"]
+
+unsupportedStructFieldAssignment :: Name -> TcM a
+unsupportedStructFieldAssignment memberName =
+  tcDiagnosticErrorAtName
+    "SC0231"
+    ("struct field assignment is not implemented: " ++ pretty memberName)
+    memberName
+    "unsupported struct field assignment"
+    ["struct values are immutable in the current lowering"]
+    ["construct an updated struct value and assign it to the whole variable"]
 
 undefinedConstr :: Name -> Name -> TcM a
 undefinedConstr tn cn =
@@ -926,17 +1112,17 @@ topLevelFunctionAnnotationError sig =
     (sigName sig)
     "incomplete signature"
     ["signature: " ++ pretty sig]
-    ["annotate every parameter (name : Type) and provide a return type (-> Type)"]
+    ["annotate every parameter (name: Type); omit returns only for a unit-returning function"]
 
 methodAnnotationError :: Signature Name -> TcM a
 methodAnnotationError sig =
   tcDiagnosticErrorAtName
     "SC0221"
-    "class and instance methods must have complete type signatures"
+    "trait and impl methods must have complete type signatures"
     (sigName sig)
     "incomplete method signature"
     ["signature: " ++ pretty sig]
-    ["annotate every method parameter and provide a return type"]
+    ["annotate every method parameter; omit returns only for a unit-returning method"]
 
 illegalReturnStatement :: Stmt Name -> TcM a
 illegalReturnStatement stmt =
@@ -981,11 +1167,17 @@ typeAlreadyDefinedError d n =
       ["rename or remove the duplicate type definition"]
 
 dataTyFromInfo :: Name -> TypeInfo -> TcM DataTy
-dataTyFromInfo n (TypeInfo _ cs _) =
+dataTyFromInfo n (TypeInfo _ cs memberNames) =
   do
     -- getting data constructor types
     (constrs, vs) <- unzip <$> mapM constrsFromEnv cs
-    pure (DataTy n (concat vs) constrs)
+    pure
+      ( DataTyWithKind
+          (if null memberNames then EnumKind else StructKind memberNames)
+          n
+          (concat vs)
+          constrs
+      )
 
 constrsFromEnv :: Name -> TcM (Constr, [Tyvar])
 constrsFromEnv n =

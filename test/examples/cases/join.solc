@@ -1,26 +1,26 @@
 contract Option {
-  data Option(a) = None | Some(a);
-  data Bool = False | True;
+  enum Option<a> { None, Some(a) }
+  enum Bool { False, True }
 
-  public function maybe(n : word, o : Option(word)) -> word {
-    match o {
-      | Option.None => return n;
-      | Option.Some(x) => return x;
-    }
+  function maybe(n : word, o : Option<word>) public returns (word) {
+    match (o ) {
+      case Option.None { return n;
+      } case Option.Some(x) { return x;
+    } }
   }
 
-  public function join(mmx : Option(Option(word))) -> Option(word) {
+  function join(mmx : Option<Option<word>>) public returns (Option<word>) {
     let result = Option.None;
-    match mmx {
-      | Option.Some(Option.Some(x)) => result = Option.Some(x);
-      | Option.None => result = Option.None;
-      | Option.Some(Option.None) => result = Option.None;
-      | _ => result = Option.None;
-    }
+    match (mmx ) {
+      case Option.Some(Option.Some(x)) { result = Option.Some(x);
+      } case Option.None { result = Option.None;
+      } case Option.Some(Option.None) { result = Option.None;
+      } default { result = Option.None;
+    } }
     return result;
   }
 
-  public function main() -> word {
+  function main() public returns (word) {
     return maybe(0, join(Option.Some(Option.Some(0))));
   }
 }

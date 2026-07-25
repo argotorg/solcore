@@ -1,15 +1,15 @@
 
-forall a . class a:D { function f(x:a); }
-forall a b . class a:F(b) {}
+trait D<a> { function f(x:a); }
+trait F<a, b> {}
 
-data Memory(a) = Memory(word);
+enum Memory<a> { Memory(word) }
 
-forall a . instance Memory(a):F(Memory(Memory(Memory(a)))) {}
-forall a c . instance (c:D,a:F(c)) => Memory(Memory(Memory(a))):D {
-    function f(x:Memory(Memory(Memory(a)))) {}
+impl<a> F<Memory<a>, Memory<Memory<Memory<a>>>> {}
+impl<a, c> D<Memory<Memory<Memory<a>>>> where c: D, a: F<c> {
+    function f(x:Memory<Memory<Memory<a>>>) {}
 }
 
-forall b . function g(y:b) {
-    let x : Memory(Memory(Memory(Memory(b))));
+function g<b>(y:b) {
+    let x : Memory<Memory<Memory<Memory<b>>>>;
     f(x);
 }

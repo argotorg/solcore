@@ -1,20 +1,18 @@
-pragma no-coverage-condition Bar;
+pragma solcore noCoverageCondition Bar;
 
-data Wrap(a) = Wrap(a);
+enum Wrap<a> { Wrap(a) }
 
-forall self rep . class self : Foo(rep) {}
+trait Foo<self, rep> {}
 
-forall self rep . class self : Bar(rep) {}
+trait Bar<self, rep> {}
 
-forall a b . a : Foo(b) => instance Wrap(a) : Bar(b) {}
+impl<a, b> Bar<Wrap<a>, b> where a: Foo<b> {}
 
-forall a rep . Wrap(a) : Bar(rep) =>
-function need_bar(x : Wrap(a)) -> () {
-    return ();
+function need_bar<a, rep>(x : Wrap<a>) returns (())  where Wrap<a>: Bar<rep> {
+    return;
 }
 
-forall a . a : Foo(word) =>
-function use_bar(x : Wrap(a)) -> () {
+function use_bar<a>(x : Wrap<a>) returns (())  where a: Foo<word> {
     need_bar(x);
-    return ();
+    return;
 }

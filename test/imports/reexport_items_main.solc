@@ -1,5 +1,5 @@
-import reexport_items.pkg.api.{unwrap, Wrap};
+import {unwrap, Wrap} from reexport_items.pkg.api;
 
-function main() -> word {
+function main() returns (word) {
   return unwrap(Wrap.Mk(1));
 }

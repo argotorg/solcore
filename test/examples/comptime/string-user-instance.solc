@@ -9,24 +9,24 @@
 // comptime: main returns strlen("abcd") = 4.
 
 import std;
-import std.{*};
+import {*} from std;
 
-data Tag = Tag(word);
+enum Tag { Tag(word) }
 
-instance Tag : Str {
-    function fromString(s: string) -> Tag {
+impl Str<Tag> {
+    function fromString(s: string) returns (Tag) {
         return Tag(strlenLit(s));
     }
 }
 
-function tagLength(t: Tag) -> word {
-    match t {
-      | Tag(n) => return n;
-    }
+function tagLength(t: Tag) returns (word) {
+    match (t ) {
+      case Tag(n) { return n;
+    } }
 }
 
 contract StringUserInstance {
-  function main() -> word {
+  function main() returns (word) {
      let t : Tag = "abcd";
      return tagLength(t);
   }

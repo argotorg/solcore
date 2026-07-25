@@ -3,16 +3,16 @@
 // Runtime correctness of the write->read depends on ecSubst being updated after
 // the assembly block (EmitHull.hs: emitStmt MastAsm, modify ecSubst).
 contract C {
-  function main() -> word {
+  function main() returns (word) {
     let res : word;
-    let foo : (word,word) = (0, 0);
-    match foo {
-      | (v0, v1) => {
+    let foo : (word, word) = (0, 0);
+    match (foo ) {
+      case (v0, v1) { {
         assembly { v1 := 42 }
         let x : word = v1;
         assembly { res := x }
       }
-    }
+    } }
     return res;
   }
 }

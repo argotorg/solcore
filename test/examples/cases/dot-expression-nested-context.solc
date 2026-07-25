@@ -1,5 +1,5 @@
-data Option(a) = Some(a) | None;
+enum Option<a> { Some(a), None }
 
-function main() -> Option(Option(word)) {
+function main() returns (Option<Option<word>>) {
   return .Some(.None);
 }

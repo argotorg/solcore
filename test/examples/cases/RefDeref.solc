@@ -1,12 +1,10 @@
-forall ref deref . class ref:Loadable (deref) {
-    function load (r : ref) -> deref;
+trait Loadable<ref, deref> {
+    function load (r : ref) returns (deref);
 }
 
-forall ref deref . class ref:Storable (deref) {
-    function store (r : ref, d : deref) -> ();
+trait Storable<ref, deref> {
+    function store (r : ref, d : deref) returns (());
 }
 
 // haskell style class constraints
-forall ref deref .
-    ref : Loadable(deref)
-  , ref : Storable(ref) => class ref:Ref (deref) {}
+trait Ref<ref, deref> where ref: Loadable<deref>, ref: Storable<ref> {}

@@ -1,9 +1,9 @@
-import std.{*};
-import std.dispatch.{*};
-import std.opcodes.{mstore};
+import {*} from std;
+import {*} from std.dispatch;
+import {mstore} from std.opcodes;
 
 // Build a memory(bytes) holding the three-byte string "abc".
-function abcBytes() -> memory(bytes) {
+function abcBytes() returns (bytes memory) {
     let p = allocate_memory(64);
     mstore(p, 3);
     mstore(p + 32, 0x6162630000000000000000000000000000000000000000000000000000000000);
@@ -13,19 +13,19 @@ function abcBytes() -> memory(bytes) {
 contract C {
     constructor() {}
 
-    public function keccak() -> bytes32 {
+    function keccak() public returns (bytes32) {
         return keccak256_(abcBytes());
     }
 
-    public function sha() -> bytes32 {
+    function sha() public returns (bytes32) {
         return sha256(abcBytes());
     }
 
-    public function ripemd() -> bytes32 {
+    function ripemd() public returns (bytes32) {
         return ripemd160(abcBytes());
     }
 
-    public function erc7201_(id: memory(bytes)) -> bytes32 {
+    function erc7201_(id: bytes memory) public returns (bytes32) {
         return erc7201(id);
     }
 }

@@ -7,6 +7,7 @@ module Solcore.Frontend.Module.Loader
     moduleValidationTopDeclSegments,
     moduleSourcePath,
     moduleLocalTypeCheckSurface,
+    selectedImportBindingsForModule,
   )
 where
 
@@ -537,8 +538,8 @@ moduleLocalTypeCheckSurface graph modulePath = do
       }
 
 stubTopDeclBody :: TopDecl -> TopDecl
-stubTopDeclBody (TContr (Contract n vs contractDecls)) =
-  TContr (Contract n vs (map stubContractDeclBody contractDecls))
+stubTopDeclBody (TContr (ContractShell kind n vs contractDecls)) =
+  TContr (ContractShell kind n vs (map stubContractDeclBody contractDecls))
 stubTopDeclBody (TFunDef fd) =
   TFunDef (stubFunDefBody fd)
 stubTopDeclBody (TInstDef (Instance d vs predCtx n ts t _funs)) =
@@ -620,6 +621,17 @@ selectedImportBindingsFromAvailable available (SelectItems items hidden) =
     expand SelectAllItems = [(itemName, itemName) | itemName <- available]
     expand (SelectItem itemName) = [(itemName, itemName)]
     expand (SelectItemAs itemName aliasName) = [(itemName, aliasName)]
+
+selectedImportBindingsForModule ::
+  ModuleGraph ->
+  Mod.ModuleId ->
+  ItemSelector ->
+  Either String [(Name, Name)]
+selectedImportBindingsForModule graph modulePath selector = do
+  publicDecls <- publicTopDeclsForModule graph modulePath
+  selectedImportBindingsFromAvailable
+    (uniqueNames (concatMap topDeclNames publicDecls))
+    selector
 
 uniqueBindingsByLocal :: [(Name, Name)] -> [(Name, Name)]
 uniqueBindingsByLocal =
@@ -1396,7 +1408,17 @@ renameSignatureTypeRefs renameMap sig =
     { sigVars = map (renameTyTypeRefs renameMap) (sigVars sig),
       sigContext = map (renamePredTypeRefs renameMap) (sigContext sig),
       sigParams = map (renameParamTypeRefs renameMap) (sigParams sig),
-      sigReturn = renameTyTypeRefs renameMap <$> sigReturn sig
+      sigReturnItems =
+        fmap
+          (map (renameReturnItemTypeRefs renameMap))
+          (sigReturnItems sig)
+    }
+
+renameReturnItemTypeRefs :: Map Name Name -> ReturnItem -> ReturnItem
+renameReturnItemTypeRefs renameMap returnItem =
+  returnItem
+    { returnItemType =
+        renameTyTypeRefs renameMap (returnItemType returnItem)
     }
 
 renameParamTypeRefs :: Map Name Name -> Param -> Param
@@ -1425,10 +1447,17 @@ renameStmtTypeRefs renameMap (StmtModEq e1 e2) =
   StmtModEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameStmtTypeRefs renameMap (Let ct n mt me) =
   Let ct n (renameTyTypeRefs renameMap <$> mt) (renameExpTypeRefs renameMap <$> me)
+renameStmtTypeRefs renameMap (LetPattern ct pat mt value) =
+  LetPattern
+    ct
+    pat
+    (renameTyTypeRefs renameMap <$> mt)
+    (renameExpTypeRefs renameMap value)
 renameStmtTypeRefs renameMap (StmtExp e) =
   StmtExp (renameExpTypeRefs renameMap e)
 renameStmtTypeRefs renameMap (Return e) =
   Return (renameExpTypeRefs renameMap e)
+renameStmtTypeRefs _ BareReturn = BareReturn
 renameStmtTypeRefs renameMap (Match es eqns) =
   Match
     (map (renameExpTypeRefs renameMap) es)
@@ -1441,6 +1470,12 @@ renameStmtTypeRefs renameMap (If e blk1 blk2) =
     (renameExpTypeRefs renameMap e)
     (renameBodyTypeRefs renameMap blk1)
     (renameBodyTypeRefs renameMap blk2)
+renameStmtTypeRefs renameMap (While cond body) =
+  While
+    (renameExpTypeRefs renameMap cond)
+    (renameBodyTypeRefs renameMap body)
+renameStmtTypeRefs renameMap (Unchecked body) =
+  Unchecked (renameBodyTypeRefs renameMap body)
 renameStmtTypeRefs renameMap (For initStmt cond postStmt body) =
   For
     (renameStmtTypeRefs renameMap initStmt)
@@ -1449,6 +1484,7 @@ renameStmtTypeRefs renameMap (For initStmt cond postStmt body) =
     (renameBodyTypeRefs renameMap body)
 renameStmtTypeRefs _ Break = Break
 renameStmtTypeRefs _ Continue = Continue
+renameStmtTypeRefs _ Revert = Revert
 renameStmtTypeRefs _ EmptyStmt = EmptyStmt
 
 renameEquationTypeRefs :: Map Name Name -> Equation -> Equation
@@ -1485,6 +1521,10 @@ renameExpTypeRefs renameMap (ExpName me n es) =
     (renameMemberQualifierTypeRefs renameMap <$> me)
     n
     (map (renameExpTypeRefs renameMap) es)
+renameExpTypeRefs renameMap (ExpApply callee args) =
+  ExpApply
+    (renameExpTypeRefs renameMap callee)
+    (map (renameExpTypeRefs renameMap) args)
 renameExpTypeRefs renameMap (ExpVar Nothing n) =
   ExpVar
     (sameNameConstructorQualifier renameMap n)
@@ -1508,12 +1548,18 @@ renameExpTypeRefs renameMap (ExpPlus e1 e2) =
   ExpPlus (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpMinus e1 e2) =
   ExpMinus (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpPower e1 e2) =
+  ExpPower (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpTimes e1 e2) =
   ExpTimes (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpDivide e1 e2) =
   ExpDivide (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpModulo e1 e2) =
   ExpModulo (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpShiftL e1 e2) =
+  ExpShiftL (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpShiftR e1 e2) =
+  ExpShiftR (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpBXor e1 e2) =
   ExpBXor (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpBAnd e1 e2) =
@@ -1566,11 +1612,26 @@ qualifierNameToExp (QualName q n) =
   ExpVar (Just (qualifierNameToExp q)) (Name n)
 
 renameContractTypeRefs :: Map Name Name -> Contract -> Contract
-renameContractTypeRefs renameMap (Contract n ts ds) =
-  Contract
+renameContractTypeRefs renameMap (ContractShell kind n ts ds) =
+  ContractShell
+    kind
     n
-    (map (renameTyTypeRefs renameMap) ts)
-    (map (renameContractDeclTypeRefs renameMap) ds)
+    (map (renameTyTypeRefs scopedRenameMap) ts)
+    (map (renameContractDeclTypeRefs scopedRenameMap) ds)
+  where
+    -- A shell-local type shadows a same-spelled imported or top-level type
+    -- throughout the whole shell, including declarations that precede it.
+    scopedRenameMap =
+      foldr
+        Map.delete
+        renameMap
+        ( [ typeParamName
+          | TyCon typeParamName _ <- ts
+          ]
+            ++ [ dataName dataTy
+               | CDataDecl dataTy <- ds
+               ]
+        )
 
 renameContractDeclTypeRefs :: Map Name Name -> ContractDecl -> ContractDecl
 renameContractDeclTypeRefs renameMap (CDataDecl d) =
@@ -1580,6 +1641,8 @@ renameContractDeclTypeRefs renameMap (CFieldDecl (Field n ty me)) =
     (Field n (renameTyTypeRefs renameMap ty) (renameExpTypeRefs renameMap <$> me))
 renameContractDeclTypeRefs renameMap (CFunDecl fd) =
   CFunDecl (renameFunDefTypeRefs renameMap fd)
+renameContractDeclTypeRefs renameMap (CSignatureDecl isPublic sig) =
+  CSignatureDecl isPublic (renameSignatureTypeRefs renameMap sig)
 renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body payable)) =
   CConstrDecl
     ( Constructor
@@ -1610,8 +1673,9 @@ renameInstanceTypeRefs renameMap (Instance d vs ctx n pts mt fns) =
     (map (renameFunDefTypeRefs renameMap) fns)
 
 renameDataTyTypeRefs :: Map Name Name -> DataTy -> DataTy
-renameDataTyTypeRefs renameMap (DataTy n vs cs) =
-  DataTy
+renameDataTyTypeRefs renameMap (DataTyWithKind kind n vs cs) =
+  DataTyWithKind
+    kind
     (renameTypeName renameMap n)
     (map (renameTyTypeRefs renameMap) vs)
     (map (renameConstrTypeRefs renameMap) cs)
@@ -1673,12 +1737,12 @@ qualifiedTypeStubDecls qualifier cunit =
   where
     dataAliases =
       [ TDataDef
-          ( DataTy
+          ( validationDataTyStub
               (qualifyName qualifier n)
-              []
-              [Constr (constructorLeafName (constrName c)) [] | c <- cs]
+              kind
+              [Constr (constructorLeafName (constrName c)) (constrTy c) | c <- cs]
           )
-      | TDataDef (DataTy n _ cs) <- topDeclsFrom cunit
+      | TDataDef (DataTyWithKind kind n _ cs) <- topDeclsFrom cunit
       ]
     symAliases =
       [ TSym (stubType (qualifyName qualifier n))
@@ -1731,13 +1795,26 @@ toValidationImportStub (TSym (TySym n _ _)) =
   Just (TSym (stubType n))
 toValidationImportStub d@(TClassDef _) =
   Just d
-toValidationImportStub (TContr (Contract n _ _)) =
-  Just (TContr (Contract n [] []))
-toValidationImportStub (TDataDef (DataTy n _ cs)) =
-  Just (TDataDef (DataTy n [] [Constr (constrName c) [] | c <- cs]))
+toValidationImportStub (TContr (ContractShell kind n _ _)) =
+  Just (TContr (ContractShell kind n [] []))
+toValidationImportStub (TDataDef (DataTyWithKind kind n _ cs)) =
+  Just (TDataDef (validationDataTyStub n kind cs))
 toValidationImportStub (TInstDef _) = Nothing
 toValidationImportStub (TExportDecl _) = Nothing
 toValidationImportStub (TPragmaDecl _) = Nothing
+
+-- Validation stubs intentionally erase user-written field types, since their
+-- dependencies need not be visible in the importing module.  Keep the source
+-- declaration kind and constructor arity, however, so a struct remains a
+-- struct (with all of its field names) throughout loader transformations.
+validationDataTyStub :: Name -> DataTyKind -> [Constr] -> DataTy
+validationDataTyStub n kind cs =
+  DataTyWithKind kind n [] (map stubConstr cs)
+  where
+    stubConstr (Constr constrName' fieldTypes) =
+      Constr
+        constrName'
+        (replicate (length fieldTypes) (TyCon (Name "word") []))
 
 typeCheckQualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 typeCheckQualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
@@ -2014,11 +2091,11 @@ shadowImportedDecls localDecls =
           ( (termNames, n : typeNames, classNames, instDecls),
             Just d
           )
-    filterDecl (termNames, typeNames, classNames, instDecls) (TDataDef (DataTy n ts cs))
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TDataDef (DataTy n _ _))
       | n `elem` typeNames = ((termNames, typeNames, classNames, instDecls), Nothing)
       | otherwise =
           ( (termNames, n : typeNames, classNames, instDecls),
-            Just (TDataDef (DataTy n ts cs))
+            Just d
           )
     filterDecl (termNames, typeNames, classNames, instDecls) d@(TInstDef inst)
       | instName inst `elem` localClassNames = ((termNames, typeNames, classNames, instDecls), Nothing)
@@ -2094,12 +2171,18 @@ renameTopDeclName oldName newName decl
         TClassDef (Class defaults vars n params var sigs)
           | n == oldName ->
               TClassDef (Class defaults vars newName params var sigs)
-        TContr (Contract n params contractDecls)
+        TContr (ContractShell kind n params contractDecls)
           | n == oldName ->
-              TContr (Contract newName params contractDecls)
-        TDataDef (DataTy n params constrs)
+              TContr (ContractShell kind newName params contractDecls)
+        TDataDef (DataTyWithKind kind n params constrs)
           | n == oldName ->
-              TDataDef (DataTy newName params constrs)
+              TDataDef
+                ( DataTyWithKind
+                    kind
+                    newName
+                    params
+                    (renameStructConstructor kind newName constrs)
+                )
         _ ->
           decl
 
@@ -2128,18 +2211,36 @@ selectTopDeclForExportRef itemRef d@(TContr (Contract n _ _))
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
-selectTopDeclForExportRef itemRef (TDataDef (DataTy n ts cs))
+selectTopDeclForExportRef itemRef (TDataDef (DataTyWithKind kind n ts cs))
   | exportedItemSourceName itemRef /= n =
       Nothing
   | otherwise =
       case exportedItemConstructors itemRef of
         Just visibleConstructors ->
-          Just (TDataDef (DataTy (exportedItemName itemRef) ts (filterVisibleConstructors visibleConstructors cs)))
+          Just
+            ( TDataDef
+                ( DataTyWithKind
+                    kind
+                    (exportedItemName itemRef)
+                    ts
+                    ( renameStructConstructor
+                        kind
+                        (exportedItemName itemRef)
+                        (filterVisibleConstructors visibleConstructors cs)
+                    )
+                )
+            )
         Nothing ->
           Nothing
 selectTopDeclForExportRef _ (TInstDef _) = Nothing
 selectTopDeclForExportRef _ (TExportDecl _) = Nothing
 selectTopDeclForExportRef _ (TPragmaDecl _) = Nothing
+
+renameStructConstructor :: DataTyKind -> Name -> [Constr] -> [Constr]
+renameStructConstructor (StructKind _) newName [Constr _ fieldTypes] =
+  [Constr newName fieldTypes]
+renameStructConstructor _ _ constrs =
+  constrs
 
 filterVisibleConstructors :: [Name] -> [Constr] -> [Constr]
 filterVisibleConstructors visibleConstructors =

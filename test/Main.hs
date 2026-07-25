@@ -11,6 +11,7 @@ import ModuleTypeCheckTests
 import ParserTests
 import SpecialiseTests
 import Test.Tasty
+import UfcsTests
 import YulEvalTests
 
 main :: IO ()
@@ -38,5 +39,6 @@ tests =
       matchTests,
       yulEvalTests,
       hullTests,
-      specialiseTests
+      specialiseTests,
+      ufcsTests
     ]

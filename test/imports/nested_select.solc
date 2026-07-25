@@ -1,5 +1,5 @@
-import foo.bar.{value};
+import {value} from foo.bar;
 
-function main() -> word {
+function main() returns (word) {
   return value();
 }

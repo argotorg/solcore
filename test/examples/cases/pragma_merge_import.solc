@@ -6,17 +6,17 @@ import pragma_merge_base;
 
 // Add more pragmas - these should merge with imported ones
 
-forall a b . class a:TestClassC3(b) {}
-forall a . class a:TestClassB4 {}
+trait TestClassC3<a, b> {}
+trait TestClassB4<a> {}
 
 // fails coverage & patterson (pragma set here)
-forall i j . (i,j):TestClassP1 => instance i:TestClassC3(j) {}
+impl<i, j> TestClassC3<i, j> where (i, j): TestClassP1 {}
 
 // fails coverage & patterson (pragma set in base)
-forall i j . (i,j):TestClassP1 => instance i:TestClassP3(j) {}
+impl<i, j> TestClassP3<i, j> where (i, j): TestClassP1 {}
 
 // fails bound var & patterson (pragma set here)
-forall a c . c:TestClassB1(a) => instance TestType1(a):TestClassB4 {}
+impl<a, c> TestClassB4<TestType1<a>> where c: TestClassB1<a> {}
 
 // fails bound var & patterson (pragma set in base)
-forall a c . c:TestClassB1(a) => instance TestType1(a):TestClassB3 {}
+impl<a, c> TestClassB3<TestType1<a>> where c: TestClassB1<a> {}

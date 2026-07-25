@@ -1,11 +1,11 @@
 contract Compose {
-  forall a . public function id(x : a) -> a { return x; }
+  function id<a>(x : a) public returns (a) { return x; }
 
-  public function apply1(f : (word) -> word, a : word) -> word { return f(a); }
+  function apply1(f : function(word) internal returns (word), a : word) public returns (word) { return f(a); }
 
-  public function idThenId(x : word) -> word { return id(id(x)); }
+  function idThenId(x : word) public returns (word) { return id(id(x)); }
 
-  public function main() -> word {
+  function main() public returns (word) {
     return apply1(idThenId, 42);
   }
 }

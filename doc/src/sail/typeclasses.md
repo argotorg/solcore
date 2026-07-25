@@ -8,83 +8,85 @@ that the variable belongs to one or more classes.
 
 ---
 
-## Class Declarations
+## Trait Declarations
 
-A class declaration introduces a class name, a main type variable, and zero or
-more method signatures. The `forall` quantifier is required when the class
-declaration introduces type variables.
+A trait declaration introduces a type-class name, a main type variable, and
+zero or more method signatures. Generic parameters follow the trait name in
+angle brackets.
 
 ```solidity
-forall a . class a:Eq {
-    function eq(x : a, y : a) -> bool;
-    function ne(x : a, y : a) -> bool;
+trait Eq<A> {
+    function eq(x: A, y: A) returns (bool);
+    function ne(x: A, y: A) returns (bool);
 }
 ```
 
-The type variable `a` that appears immediately before the colon is the _main
-type argument_ of the class. Every instance must supply a concrete type for this
-variable.
+The first type variable, `A`, is the _main type argument_ of the type class.
+Every implementation must supply a concrete type for this variable.
 
 A class with no methods defines a pure marker class:
 
 ```solidity
-forall a . class a:Serializable {}
+trait Serializable<A> {}
 ```
 
 ### Superclass Constraints
 
-A class may require that its main type argument already belongs to another
-class. This constraint is called a _superclass constraint_ and is written before
-the `class` keyword with `=>`.
+A trait may require that its main type argument already belongs to another type
+class. This constraint is called a _superclass constraint_ and follows the
+trait head in a `where` clause.
 
 ```solidity
-forall a . a:Eq => class a:Ord {
-    function lt(x : a, y : a) -> bool;
-    function lte(x : a, y : a) -> bool;
+trait Ord<A> where A: Eq {
+    function lt(x: A, y: A) returns (bool);
+    function lte(x: A, y: A) returns (bool);
 }
 ```
 
-Any instance of `Ord` must also be an instance of `Eq`. The compiler verifies
-this at each instance declaration. If a function requires `a:Ord`, the
-constraint `a:Eq` is automatically available without listing it explicitly.
+Any implementation of `Ord` must also satisfy `Eq`. The compiler verifies this
+at each impl declaration. If a function requires `A: Ord`, the constraint
+`A: Eq` is automatically available without listing it explicitly.
 
 ---
 
-## Instance Declarations
+## Impl Declarations
 
-An instance declaration provides implementations for all methods of a class for
-a specific type. The instance head names the class and supplies a concrete type
-for the main type variable.
+An impl declaration provides implementations for all methods of a trait for a
+specific type. The impl head names the trait and supplies a concrete type for
+the main type variable.
 
 ```solidity
-instance word:Eq {
-    function eq(x : word, y : word) -> bool {
-        let res : word;
+impl Eq<word> {
+    function eq(x: word, y: word) returns (bool) {
+        let res: word;
         assembly { res := eq(x, y) }
         return res;
     }
-    function ne(x : word, y : word) -> bool {
-        let res : word;
+    function ne(x: word, y: word) returns (bool) {
+        let res: word;
         assembly { res := iszero(eq(x, y)) }
         return res;
     }
 }
 ```
 
-A polymorphic instance applies to a family of types. The `forall` quantifier
-lists the type variables that appear in the instance head:
+A polymorphic implementation applies to a family of types. Generic parameters
+on `impl` list the type variables that appear in the impl head:
 
 ```solidity
-data Pair(a, b) = Pair(a, b);
+enum Pair<A, B> {
+    Pair(A, B)
+}
 
-forall a b . a:Eq, b:Eq => instance Pair(a, b):Eq {
-    function eq(x : Pair(a, b), y : Pair(a, b)) -> bool {
-        match x, y {
-        | Pair(xa, xb), Pair(ya, yb) =>
-            return Eq.eq(xa, ya);
+impl<A, B> Eq<Pair<A, B>> where A: Eq, B: Eq {
+    function eq(x: Pair<A, B>, y: Pair<A, B>) returns (bool) {
+        match (x, y) {
+            case (Pair(xa, xb), Pair(ya, yb)) {
+                return Eq.eq(xa, ya);
+            }
         }
     }
-    function ne(x : Pair(a, b), y : Pair(a, b)) -> bool {
+    function ne(x: Pair<A, B>, y: Pair<A, B>) returns (bool) {
         return Eq.ne(x, y);
     }
 }
@@ -92,68 +94,78 @@ forall a b . a:Eq, b:Eq => instance Pair(a, b):Eq {
 
 ### Calling Class Methods
 
-Class methods are called with a qualified name of the form `ClassName.method`.
-The compiler resolves the correct instance from the types of the arguments:
+Trait methods are called with a qualified name of the form `TraitName.method`.
+The compiler resolves the correct implementation from the argument types:
 
 ```solidity
-data Option(a) = None | Some(a);
+enum Option<A> {
+    None,
+    Some(A)
+}
 
-forall a . a:Eq => function senderMatches(sender : a, expected : Option(a)) -> bool {
-    match expected {
-    | Option.None    => return false;
-    | Option.Some(e) => return Eq.eq(sender, e);
+function senderMatches<A>(sender: A, expected: Option<A>)
+    returns (bool)
+    where A: Eq
+{
+    match (expected) {
+        case Option.None {
+            return false;
+        }
+        case Option.Some(e) {
+            return Eq.eq(sender, e);
+        }
     }
 }
 ```
 
-### Overlapping Instances
+### Overlapping Implementations
 
-SAIL does not support overlapping instances. Two instances overlap when the same
-type can match both instance heads. The compiler reports an error at the second
+SAIL does not support overlapping implementations. Two impls overlap when the
+same type can match both heads. The compiler reports an error at the second
 declaration:
 
 ```solidity
-data Box(a) = Box(word);
-forall a . class a:C {}
+enum Box<A> {
+    Box(word)
+}
+trait C<A> {}
 
-forall a . instance Box(a):C {}
+impl<A> C<Box<A>> {}
 
-// Error: overlaps with the more general instance above.
-instance Box(word):C {}
+// Error: overlaps with the more general implementation above.
+impl C<Box<word>> {}
 ```
 
 ```
-Overlapping instances are not supported
-instance:
-Box(word) : C
+Overlapping implementations are not supported
+impl C<Box<word>>
 overlaps with:
-Box(?$3) : C
+impl<T> C<Box<T>>
 ```
 
 ---
 
 ## Main and Weak Type Arguments
 
-When a class has more than one type parameter, the parameter immediately before
-the colon in the class head is called the _main type argument_. The remaining
-parameters, listed after the class name in parentheses, are called _weak type
+When a trait has more than one type parameter, the first parameter is called
+the _main type argument_. The remaining parameters are called _weak type
 arguments_.
 
 ```solidity
 //          main ──┐         ┌── weak
-forall a b . class a:Convert(b) {
-    function convert(x : a) -> b;
+trait Convert<A, B> {
+    function convert(x: A) returns (B);
 }
 ```
 
 The distinction matters for instance resolution and for the three soundness
 conditions the compiler enforces.
 
-**Main type argument** (`a` in `a:Convert(b)`): used as the primary key for
+**Main type argument** (`A` in `Convert<A, B>`): used as the primary key for
 instance lookup. The compiler selects an instance by matching the main type
 first. It must be determinable independently of the weak arguments.
 
-**Weak type arguments** (`b` in `a:Convert(b)`): represent additional types
+**Weak type arguments** (`B` in `Convert<A, B>`): represent additional types
 involved in the relationship. They may be determined by the main type argument
 through the coverage condition, but they cannot introduce type variables that
 are unconstrained at the call site.
@@ -165,29 +177,36 @@ type `Ether`. The instance is well formed because the weak type variable is
 replaced by a concrete type:
 
 ```solidity
-forall a b . class a:Convert(b) {
-    function convert(x : a) -> b;
+trait Convert<A, B> {
+    function convert(x: A) returns (B);
 }
 
-data Wei   = Wei(word);
-data Ether = Ether(word);
+enum Wei {
+    Wei(word)
+}
+enum Ether {
+    Ether(word)
+}
 
-instance Wei:Convert(Ether) {
-    function convert(x : Wei) -> Ether {
-        match x {
-        | Wei.Wei(w) =>
-            let e : word;
-            assembly { e := div(w, 1000000000000000000) }
-            return Ether.Ether(e);
+impl Convert<Wei, Ether> {
+    function convert(x: Wei) returns (Ether) {
+        match (x) {
+            case Wei.Wei(w) {
+                let e: word;
+                assembly { e := div(w, 1000000000000000000) }
+                return Ether.Ether(e);
+            }
         }
     }
 }
 
 contract C {
-    function main() -> word {
+    function main() returns (word) {
         let result = Convert.convert(Wei.Wei(2000000000000000000));
-        match result {
-        | Ether.Ether(v) => return v;
+        match (result) {
+            case Ether.Ether(v) {
+                return v;
+            }
         }
     }
 }
@@ -211,29 +230,31 @@ main type must cover all type variables bound by the weak types.
 **Rejected example**
 
 ```solidity
-data Box(a) = Box(word);
-forall a b . class a:MyClass(b) {}
+enum Box<A> {
+    Box(word)
+}
+trait MyClass<A, B> {}
 
-// Error: b appears only in the weak position; Box(a) does not determine b.
-forall a b . instance Box(a):MyClass(b) {}
+// Error: B appears only in the weak position; Box<A> does not determine B.
+impl<A, B> MyClass<Box<A>, B> {}
 ```
 
 ```
 Coverage condition fails for class:
 MyClass
 - the type:
-Box(a)
+Box<A>
 does not determine:
-b
+B
 ```
 
 **Accepted example**
 
-Replacing the unconstrained variable `b` with a concrete type eliminates the
+Replacing the unconstrained variable `B` with a concrete type eliminates the
 violation:
 
 ```solidity
-forall a . instance Box(a):MyClass(word) {}
+impl<A> MyClass<Box<A>, word> {}
 ```
 
 ### Patterson Condition
@@ -250,13 +271,13 @@ same type class is used in both the context and the head.
 **Rejected example**
 
 ```solidity
-forall a . class a:C1 {}
-forall a . class a:C2 {}
+trait C1<A> {}
+trait C2<A> {}
 
 // Context: U:C1 has measure 2, U:C2 has measure 2, total 4.
 // Head:    U:C1 has measure 2.
 // Context measure (4) is not strictly smaller than head measure (2).
-forall U . U:C1, U:C2 => instance U:C1 {}
+impl<U> C1<U> where U: C1, U: C2 {}
 ```
 
 ```
@@ -271,12 +292,14 @@ Wrapping the main type in a constructor increases the head measure so that each
 context constraint is strictly smaller:
 
 ```solidity
-data Wrap(a) = Wrap(a);
+enum Wrap<A> {
+    Wrap(A)
+}
 
 // Context: U:C1 has measure 2.
-// Head:    Wrap(U):C1 has measure 3 (Wrap + U + C1 name).
+// Head:    Wrap<U>: C1 has measure 3 (Wrap + U + C1 name).
 // 2 < 3, so the Patterson condition holds.
-forall U . U:C1 => instance Wrap(U):C1 {}
+impl<U> C1<Wrap<U>> where U: C1 {}
 ```
 
 ### Bound Variable Condition
@@ -288,13 +311,15 @@ from the types at the call site, making instance resolution ambiguous.
 **Rejected example**
 
 ```solidity
-data Box(a) = Box(word);
-forall a . class a:Eq {}
-forall a b . class a:Container(b) {}
+enum Box<A> {
+    Box(word)
+}
+trait Eq<A> {}
+trait Container<A, B> {}
 
-// Error: c appears in the context constraint c:Eq
-//        but not in the instance head Box(a):Container(a).
-forall a c . c:Eq => instance Box(a):Container(a) {}
+// Error: C appears in the context constraint C: Eq
+//        but not in the impl head Container<Box<A>, A>.
+impl<A, C> Container<Box<A>, A> where C: Eq {}
 ```
 
 ```
@@ -307,10 +332,10 @@ Remove the unused variable from the context, or include it in the head:
 
 ```solidity
 // No context needed.
-forall a . instance Box(a):Container(a) {}
+impl<A> Container<Box<A>, A> {}
 
-// Or: bring c into the head through the weak argument.
-forall a c . c:Eq => instance Box(a):Container(c) {}
+// Or: bring C into the head through the weak argument.
+impl<A, C> Container<Box<A>, C> where C: Eq {}
 ```
 
 ---
@@ -325,18 +350,18 @@ There are three pragmas, one per condition:
 
 | Pragma keyword                  | Condition disabled       |
 | ------------------------------- | ------------------------ |
-| `no-coverage-condition`         | Coverage condition       |
-| `no-patterson-condition`        | Patterson condition      |
-| `no-bounded-variable-condition` | Bound variable condition |
+| `pragma solcore noCoverageCondition`      | Coverage condition       |
+| `pragma solcore noPattersonCondition`     | Patterson condition      |
+| `pragma solcore noBoundVariableCondition` | Bound variable condition |
 
 Each pragma has two forms:
 
 ```solidity
 // Disable for a specific list of classes (comma-separated).
-pragma no-coverage-condition ClassName1, ClassName2;
+pragma solcore noCoverageCondition ClassName1, ClassName2;
 
 // Disable globally for all classes in this file.
-pragma no-coverage-condition;
+pragma solcore noCoverageCondition;
 ```
 
 Pragmas apply only to the file in which they appear. Importing a file does not
@@ -348,7 +373,7 @@ declarations.
 > pragmas only when you understand the implications for the specific class and
 > instance involved.
 
-### `pragma no-coverage-condition`
+### `pragma solcore noCoverageCondition`
 
 Disables the coverage check for the listed classes. Use this when a weak type
 argument is deliberately left undetermined by the main type, for example in open
@@ -356,13 +381,15 @@ type-indexed families where the relationship is established by context rather
 than by the instance itself.
 
 ```solidity
-pragma no-coverage-condition MyClass;
+pragma solcore noCoverageCondition MyClass;
 
-data Box(a) = Box(word);
-forall a b . class a:MyClass(b) {}
+enum Box<A> {
+    Box(word)
+}
+trait MyClass<A, B> {}
 
 // Accepted: coverage condition is disabled for MyClass.
-forall a b . instance Box(a):MyClass(b) {}
+impl<A, B> MyClass<Box<A>, B> {}
 ```
 
 Without the pragma, this declaration would produce:
@@ -371,25 +398,25 @@ Without the pragma, this declaration would produce:
 Coverage condition fails for class:
 MyClass
 - the type:
-Box(a)
+Box<A>
 does not determine:
-b
+B
 ```
 
-### `pragma no-patterson-condition`
+### `pragma solcore noPattersonCondition`
 
 Disables the Patterson measure check for the listed classes. Use this for class
 hierarchies where the instance search is known to terminate through structural
 arguments not captured by the simple measure metric.
 
 ```solidity
-pragma no-patterson-condition C1;
+pragma solcore noPattersonCondition C1;
 
-forall a . class a:C1 {}
-forall a . class a:C2 {}
+trait C1<A> {}
+trait C2<A> {}
 
 // Accepted: Patterson condition is disabled for C1.
-forall U . U:C1, U:C2 => instance U:C1 {}
+impl<U> C1<U> where U: C1, U: C2 {}
 ```
 
 Without the pragma, this declaration would produce:
@@ -400,21 +427,23 @@ U : C1
 does not satisfy the Patterson conditions.
 ```
 
-### `pragma no-bounded-variable-condition`
+### `pragma solcore noBoundVariableCondition`
 
 Disables the bound variable check for the listed classes. Use this when a
 context variable is intentionally existential, meaning it is chosen by the
 instance rather than derived from the call site.
 
 ```solidity
-pragma no-bounded-variable-condition Container;
+pragma solcore noBoundVariableCondition Container;
 
-data Box(a) = Box(word);
-forall a . class a:Eq {}
-forall a b . class a:Container(b) {}
+enum Box<A> {
+    Box(word)
+}
+trait Eq<A> {}
+trait Container<A, B> {}
 
 // Accepted: bound variable condition is disabled for Container.
-forall a c . c:Eq => instance Box(a):Container(a) {}
+impl<A, C> Container<Box<A>, A> where C: Eq {}
 ```
 
 Without the pragma, this declaration would produce:
@@ -429,15 +458,17 @@ Multiple pragmas may appear in the same file and may target the same class from
 different directives. All specified conditions are disabled independently:
 
 ```solidity
-pragma no-coverage-condition MyClass;
-pragma no-patterson-condition MyClass;
-pragma no-bounded-variable-condition MyClass;
+pragma solcore noCoverageCondition MyClass;
+pragma solcore noPattersonCondition MyClass;
+pragma solcore noBoundVariableCondition MyClass;
 
-data Box(a) = Box(word);
-forall a . class a:Eq {}
-forall a . class a:C1 {}
-forall a b . class a:MyClass(b) {}
+enum Box<A> {
+    Box(word)
+}
+trait Eq<A> {}
+trait C1<A> {}
+trait MyClass<A, B> {}
 
 // Accepted: all three conditions are disabled for MyClass.
-forall a b c . c:Eq, (a, b):C1 => instance Box(a):MyClass(b) {}
+impl<A, B, C> MyClass<Box<A>, B> where C: Eq, (A, B): C1 {}
 ```

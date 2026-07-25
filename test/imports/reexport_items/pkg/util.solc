@@ -1,19 +1,19 @@
 export {Wrap(*), unwrap, Unbox};
 
-data Wrap = Mk(word);
+enum Wrap { Mk(word) }
 
-forall self . class self:Unbox {
-  function unbox(x:self) -> word;
+trait Unbox<self> {
+  function unbox(x:self) returns (word);
 }
 
-instance Wrap:Unbox {
-  function unbox(x:Wrap) -> word {
-    match x {
-    | Wrap.Mk(w) => return w;
-    }
+impl Unbox<Wrap> {
+  function unbox(x:Wrap) returns (word) {
+    match (x ) {
+    case Wrap.Mk(w) { return w;
+    } }
   }
 }
 
-function unwrap(x:Wrap) -> word {
+function unwrap(x:Wrap) returns (word) {
   return Unbox.unbox(x);
 }

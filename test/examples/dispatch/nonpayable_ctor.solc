@@ -1,5 +1,5 @@
-import std.{*};
-import std.dispatch.{*};
+import {*} from std;
+import {*} from std.dispatch;
 
 // A contract whose constructor is NOT marked `payable`. Deploying it with an
 // incoming value transfer must revert with the NonPayableReceivedValue error
@@ -7,7 +7,7 @@ import std.dispatch.{*};
 contract NonPayableCtor {
     constructor() {}
 
-    public function balance() -> uint256 {
+    function balance() public returns (uint256) {
         let value;
         assembly {
             value := selfbalance()

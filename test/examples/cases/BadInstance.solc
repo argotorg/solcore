@@ -1,17 +1,17 @@
-class a:Enum {
-    function fromEnum(x:a) -> word;
+trait Enum<a> {
+    function fromEnum(x:a) returns (word);
   }
 
-data Color = R | G | B;
+enum Color { R, G, B }
 
-data Bool = False | True;
+enum Bool { False, True }
 
-instance Bool : Enum {
-  function fromEnum(b : Bool) -> word {
-      match b {
-      | Color.R => return 0;
-      | Color.G => return 1;
-      }
+impl Enum<Bool> {
+  function fromEnum(b : Bool) returns (word) {
+      match (b ) {
+      case Color.R { return 0;
+      } case Color.G { return 1;
+      } }
   }
 }
 

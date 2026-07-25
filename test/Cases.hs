@@ -1,6 +1,8 @@
 module Cases where
 
 import Control.Exception (try)
+import Data.List (isInfixOf)
+import Language.Hull qualified as Hull
 import Solcore.Pipeline.Options
 import Solcore.Pipeline.SolcorePipeline
 import System.Exit (ExitCode (..))
@@ -325,6 +327,7 @@ cases =
       -- disabling the desugaring phases via noDesugarOpt; now that that helper is
       -- gone it is expected to fail.
       runTestExpectingFailure "compose_desugared.solc" caseFolder,
+      runTestForFile "compound-assignment-single-eval.solc" caseFolder,
       runTestForFile "comparisons.solc" caseFolder,
       runTestForFile "bitwise.solc" caseFolder,
       runTestForFile "match-bitwise.solc" caseFolder,
@@ -506,6 +509,16 @@ cases =
       runTestForFile "tuple-trick.solc" caseFolder,
       runTestForFile "tuva.solc" caseFolder,
       runTestForFile "tyexp.solc" caseFolder,
+      runAsConversionTest,
+      runAsConversionFailureTest
+        "as-conversion-fail.solc"
+        "no explicit conversion from bool to uint256",
+      runAsConversionFailureTest
+        "as-conversion-ambiguous-fail.solc"
+        "ambiguous explicit conversion from Left to Right",
+      runAsConversionFailureTest
+        "as-conversion-identity-instance-fail.solc"
+        "no explicit conversion from word to Wrapped",
       runTestForFile "typedef.solc" caseFolder,
       runTestForFile "Uncurry.solc" caseFolder,
       runTestExpectingFailure "unconstrained-instance.solc" caseFolder,
@@ -587,7 +600,7 @@ cases =
         "multi-stmt-var-leaf.solc"
         caseFolder,
       runTestForFile "ltimp.solc" caseFolder,
-      runTestExpectingFailure "class-return-type-miss.solc" caseFolder,
+      runTestForFile "class-return-type-miss.solc" caseFolder,
       runTestExpectingFailure "catenable-err.solc" caseFolder,
       runTestForFile "pars.solc" caseFolder,
       runTestForFile "bug-rep-name-capture.solc" caseFolder,
@@ -605,6 +618,75 @@ cases =
   where
     caseFolder = "./test/examples/cases"
     dispatchOpt = emptyOption mempty
+
+runAsConversionTest :: TestTree
+runAsConversionTest =
+  testCase "as-conversion.solc" $ do
+    let folder = "./test/examples/cases"
+        filePath = folder </> "as-conversion.solc"
+        opts =
+          stdOpt
+            { fileName = filePath,
+              optRootDir = folder,
+              optNoGenDispatch = True
+            }
+    result <- compile opts
+    case result of
+      Left err -> assertFailure err
+      Right [object] -> do
+        assertReturnsCall object (== "wrap") "concrete abstraction conversion"
+        assertReturnsCall object (== "unwrap") "concrete representation conversion"
+        assertReturnsCall object ("genericWrap" `isInfixOf`) "generic abstraction conversion"
+        assertReturnsCall object ("genericUnwrap" `isInfixOf`) "generic representation conversion"
+        assertReturnsVariable object (== "identity") "same-type identity conversion"
+      Right objects ->
+        assertFailure ("expected one Hull object, got " ++ show (length objects))
+  where
+    assertReturnsCall object matches label =
+      assertBool
+        (label ++ " was erased instead of calling its Typedef method")
+        (any (functionReturnsCall matches) (Hull.objCode object))
+
+    assertReturnsVariable object matches label =
+      assertBool
+        (label ++ " unexpectedly introduced a conversion call")
+        (any (functionReturnsVariable matches) (Hull.objCode object))
+
+    functionReturnsCall matches (Hull.SFunction name _ _ body) =
+      matches name && any isCallReturn body
+    functionReturnsCall _ _ = False
+
+    functionReturnsVariable matches (Hull.SFunction name _ _ body) =
+      matches name && any isVariableReturn body
+    functionReturnsVariable _ _ = False
+
+    isCallReturn (Hull.SReturn (Hull.ECall _ [_])) = True
+    isCallReturn _ = False
+
+    isVariableReturn (Hull.SReturn (Hull.EVar _)) = True
+    isVariableReturn _ = False
+
+runAsConversionFailureTest :: FilePath -> String -> TestTree
+runAsConversionFailureTest file expectedMessage =
+  testCase file $ do
+    let folder = "./test/examples/cases"
+        filePath = folder </> file
+        opts =
+          stdOpt
+            { fileName = filePath,
+              optRootDir = folder,
+              optNoGenDispatch = True
+            }
+    result <- compile opts
+    case result of
+      Left err ->
+        assertBool
+          ("expected explicit-conversion diagnostic SC0230, got:\n" ++ err)
+          ( "error[SC0230]" `isInfixOf` err
+              && expectedMessage `isInfixOf` err
+          )
+      Right _ ->
+        assertFailure (file ++ " unexpectedly compiled")
 
 tabledResolution :: TestTree
 tabledResolution =

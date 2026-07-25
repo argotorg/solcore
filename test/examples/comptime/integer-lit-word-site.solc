@@ -5,7 +5,7 @@
 //   passing literal to word parameter
 
 contract WordSite {
-  function main() -> word {
+  function main() returns (word) {
     let a : word = 42;
     let b : word = 0;
     return a;

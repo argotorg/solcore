@@ -6,7 +6,7 @@
 //
 // Expected: main() folds to word literal 55 (fib(10)).
 
-function fib(comptime n : integer) -> comptime integer {
+function fib(comptime n : integer) returns (comptime integer) {
   if (integerLt(n, 2)) {
     return n;
   } else {
@@ -18,9 +18,9 @@ function fib(comptime n : integer) -> comptime integer {
 }
 
 contract IntegerLit {
-  function main() -> word {
-    let x : comptime integer = 10;
-    let res : comptime word = wordFromInteger(fib(x));
+  function main() returns (word) {
+    let comptime x :  integer = 10;
+    let comptime res :  word = wordFromInteger(fib(x));
     return res;
   }
 }

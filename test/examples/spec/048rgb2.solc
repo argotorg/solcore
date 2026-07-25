@@ -1,13 +1,13 @@
 contract RGB {
-  data Color = R | G | B;
+  enum Color { R, G, B }
 
-  public function fromEnum(c : Color) -> word {
-    match c {
-      | Color.R => return 4;
-      | Color.G => return 2;
-      | Color.B => return 42;
-    }
+  function fromEnum(c : Color) public returns (word) {
+    match (c ) {
+      case Color.R { return 4;
+      } case Color.G { return 2;
+      } case Color.B { return 42;
+    } }
   }
 
-  public function main() -> word { return fromEnum(Color.B); }
+  function main() public returns (word) { return fromEnum(Color.B); }
 }

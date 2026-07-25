@@ -1,5 +1,5 @@
-import foo.{base};
+import {base} from foo;
 
-function main() -> word {
+function main() returns (word) {
   return base();
 }

@@ -6,8 +6,8 @@ are the primary mechanism for operations that SAIL has no built-in syntax for,
 such as storage reads and writes, event emission, and ABI encoding helpers.
 
 ```solcore
-function loadBalance(account : word) -> word {
-    let bal : word;
+function loadBalance(account: word) returns (word) {
+    let bal: word;
     assembly {
         bal := sload(account)
     }
@@ -63,7 +63,7 @@ An assignment in Yul uses `:=`. The left-hand side must be either a Yul
 variable or a SAIL `word` variable in scope.
 
 ```solcore
-function storeBalance(account : word, amount : word) -> () {
+function storeBalance(account: word, amount: word) {
     assembly {
         sstore(account, amount)   // EVM opcode: write amount to storage slot account
     }
@@ -73,8 +73,8 @@ function storeBalance(account : word, amount : word) -> () {
 Assigning to a SAIL variable communicates a result back to the SAIL scope:
 
 ```solcore
-function getFreeMemPtr() -> word {
-    let ptr : word;
+function getFreeMemPtr() returns (word) {
+    let ptr: word;
     assembly {
         ptr := mload(0x40)
     }
@@ -129,9 +129,9 @@ condition expression, a post-iteration block, and a body block.
 
 ```solcore
 contract ERC20 {
-    function sumSlots(startSlot : word, count : word) -> word {
-        let endSlot : word;
-        let total   : word;
+    function sumSlots(startSlot: word, count: word) returns (word) {
+        let endSlot: word;
+        let total: word;
         assembly {
             endSlot := add(startSlot, count)
         }
@@ -183,8 +183,8 @@ appears inside Yul must resolve to a variable or parameter whose type is
 variables are all subject to this rule.
 
 ```solcore
-function transfer(account : word, amount : word) -> () {
-    let bal : word;
+function transfer(account: word, amount: word) {
+    let bal: word;
     assembly {
         bal    := sload(account)      // account and bal are SAIL word variables
         sstore(account, sub(bal, amount))
@@ -202,7 +202,7 @@ type mismatch because Yul has no boolean type and cannot represent the value.
 
 ```solcore
 // Error: bool is not word.
-function bad(paused : bool) -> () {
+function bad(paused: bool) {
     assembly {
         sstore(0, paused)
     }
@@ -211,7 +211,7 @@ function bad(paused : bool) -> () {
 
 ```
 Types: bool and word do not unify
- - in: function bad (paused : bool) -> () { ... }
+ - in: function bad(paused: bool) { ... }
 ```
 
 To work with a `bool` value inside an assembly block, convert it to a `word`
@@ -219,16 +219,16 @@ first using an explicit conditional in SAIL.
 
 ### Rejected: variable of an algebraic data type
 
-A local variable whose type is a user-defined `data` type is equally
+A local variable whose type is a user-defined algebraic data type is equally
 rejected. Sum and product types are not EVM words and have no direct Yul
 representation.
 
 ```solcore
-data Result = Ok(word) | Err(word);
+enum Result { Ok(word), Err(word) }
 
 // Error: Result is not word.
-function bad(r : Result) -> word {
-    let res : word;
+function bad(r: Result) returns (word) {
+    let res: word;
     assembly {
         res := r
     }
@@ -238,7 +238,7 @@ function bad(r : Result) -> word {
 
 ```
 Types: Result and word do not unify
- - in: function bad (r : Result) -> word { ... }
+ - in: function bad(r: Result) returns (word) { ... }
 ```
 
 To operate on structured values from assembly, extract the relevant `word`

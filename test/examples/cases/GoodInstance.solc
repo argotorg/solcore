@@ -1,31 +1,31 @@
-class a:Enum {
-    function fromEnum(x:a) -> Word;
+trait Enum<a> {
+    function fromEnum(x:a) returns (Word);
 }
 
-  data Color = R | G | B;
+  enum Color { R, G, B }
 
-instance Color : Enum {
-  function fromEnum(c : Color) -> Word {
-    match c {
-      | Color.R => return 1;
-      | Color.G => return 2;
-      | Color.B => return 3;
-    }
+impl Enum<Color> {
+  function fromEnum(c : Color) returns (Word) {
+    match (c ) {
+      case Color.R { return 1;
+      } case Color.G { return 2;
+      } case Color.B { return 3;
+    } }
   }
 }
 
 
-data Bool = False | True;
+enum Bool { False, True }
 
-instance Bool : Enum {
-  function fromEnum(b : Bool) -> Word {
-      match b {
-      | Bool.False => return 0;
-      | Bool.True => return 1;
-      }
+impl Enum<Bool> {
+  function fromEnum(b : Bool) returns (Word) {
+      match (b ) {
+      case Bool.False { return 0;
+      } case Bool.True { return 1;
+      } }
   }
 }
 
 contract GoodInstance {
-  public function main() -> Word { return fromEnum(Bool.True);}
+  function main() public returns (Word) { return fromEnum(Bool.True);}
 }

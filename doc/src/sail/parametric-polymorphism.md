@@ -3,40 +3,44 @@
 A parametric polymorphic function works uniformly over any type. The caller
 does not need to know which concrete type is used; the function behaves
 identically for all instantiations. SAIL supports parametric polymorphism
-through `forall` quantifiers in function signatures.
+through generic parameter lists in function signatures.
 
 ---
 
-## Type Variables and `forall`
+## Type Variables and Generic Parameters
 
 A type variable is a placeholder for any concrete type. To introduce type
-variables in a function signature, place a `forall` quantifier before the
-`function` keyword. The quantifier lists the type variable names separated by
-spaces and terminated by a period.
+variables in a function signature, list their names in angle brackets after the
+function name.
 
 ```solidity
-forall a . function id(x : a) -> a {
+function id<A>(x: A) returns (A) {
     return x;
 }
 ```
 
-The signature `forall a . a -> a` states that `id` accepts one argument of any
-type `a` and returns a value of the same type `a`. The same type variable `a`
+The signature `function id<A>(x: A) returns (A)` states that `id` accepts one
+argument of any type `A` and returns a value of the same type `A`. The same
+type variable `A`
 appears in both the parameter and the return position, so the caller knows that
 the output type equals the input type.
 
-Multiple type variables are listed in the same quantifier:
+Multiple type variables are separated by commas:
 
 ```solidity
-forall a b . function fst(p : (a, b)) -> a {
-    match p {
-    | (x, y) => return x;
+function fst<A, B>(p: (A, B)) returns (A) {
+    match (p) {
+        case (x, y) {
+            return x;
+        }
     }
 }
 
-forall a b . function snd(p : (a, b)) -> b {
-    match p {
-    | (x, y) => return y;
+function snd<A, B>(p: (A, B)) returns (B) {
+    match (p) {
+        case (x, y) {
+            return y;
+        }
     }
 }
 ```
@@ -45,16 +49,23 @@ Type variables may appear in parameter types, the return type, and in
 type arguments to other type constructors:
 
 ```solidity
-data Option(a) = None | Some(a);
+enum Option<A> {
+    None,
+    Some(A)
+}
 
-forall a . function just(x : a) -> Option(a) {
+function just<A>(x: A) returns (Option<A>) {
     return Option.Some(x);
 }
 
-forall a . function fromOption(default : a, opt : Option(a)) -> a {
-    match opt {
-    | Option.None    => return default;
-    | Option.Some(x) => return x;
+function fromOption<A>(defaultValue: A, opt: Option<A>) returns (A) {
+    match (opt) {
+        case Option.None {
+            return defaultValue;
+        }
+        case Option.Some(x) {
+            return x;
+        }
     }
 }
 ```
@@ -68,13 +79,13 @@ variable from the types of the supplied arguments. No explicit type application
 is needed; the inference engine handles instantiation automatically.
 
 ```solidity
-forall a . function id(x : a) -> a {
+function id<A>(x: A) returns (A) {
     return x;
 }
 
 contract C {
-    function main() -> word {
-        return id(42);      // a is instantiated to word
+    function main() returns (word) {
+        return id(42);      // A is instantiated to word
     }
 }
 ```
@@ -93,33 +104,39 @@ matching. The match compiler operates on the inferred type at each call site
 after instantiation.
 
 ```solidity
-data Pair(a, b) = Pair(a, b);
+enum Pair<A, B> {
+    Pair(A, B)
+}
 
-forall a b . function fst(p : Pair(a, b)) -> a {
-    match p {
-    | Pair(x, y) => return x;
+function fst<A, B>(p: Pair<A, B>) returns (A) {
+    match (p) {
+        case Pair(x, y) {
+            return x;
+        }
     }
 }
 
-forall a b . function snd(p : Pair(a, b)) -> b {
-    match p {
-    | Pair(x, y) => return y;
+function snd<A, B>(p: Pair<A, B>) returns (B) {
+    match (p) {
+        case Pair(x, y) {
+            return y;
+        }
     }
 }
 
-function addAmounts(x : word, y : word) -> word {
-    let res : word;
+function addAmounts(x: word, y: word) returns (word) {
+    let res: word;
     assembly { res := add(x, y) }
     return res;
 }
 
 // A transfer record holds (sender address, amount).
-function totalTransferred(p : Pair(word, word)) -> word {
+function totalTransferred(p: Pair<word, word>) returns (word) {
     return addAmounts(fst(p), snd(p));
 }
 
 contract ERC20 {
-    function main() -> word {
+    function main() returns (word) {
         return totalTransferred(Pair(100, 200));
     }
 }
@@ -135,19 +152,32 @@ all functions in a group together. Both functions must be defined in the same
 file.
 
 ```solidity
-data Option(a) = None | Some(a);
+enum Option<A> {
+    None,
+    Some(A)
+}
 
-forall a . function orElse(primary : Option(a), fallback : Option(a)) -> Option(a) {
-    match primary {
-    | Option.Some(v) => return Option.Some(v);
-    | Option.None    => return pickFirst(fallback, primary);
+function orElse<A>(primary: Option<A>, fallbackValue: Option<A>)
+    returns (Option<A>)
+{
+    match (primary) {
+        case Option.Some(v) {
+            return Option.Some(v);
+        }
+        case Option.None {
+            return pickFirst(fallbackValue, primary);
+        }
     }
 }
 
-forall a . function pickFirst(x : Option(a), y : Option(a)) -> Option(a) {
-    match x {
-    | Option.Some(v) => return orElse(x, y);
-    | Option.None    => return y;
+function pickFirst<A>(x: Option<A>, y: Option<A>) returns (Option<A>) {
+    match (x) {
+        case Option.Some(v) {
+            return orElse(x, y);
+        }
+        case Option.None {
+            return y;
+        }
     }
 }
 ```
@@ -156,7 +186,7 @@ forall a . function pickFirst(x : Option(a), y : Option(a)) -> Option(a) {
 
 ## The Subsumption Test
 
-When a function carries a `forall` annotation, the compiler verifies that the
+When a function declares generic parameters, the compiler verifies that the
 body is at least as polymorphic as the declared signature. This check is called
 the _subsumption test_. It prevents signatures that claim more generality than
 the body actually provides.
@@ -178,7 +208,7 @@ type such as `word`.
 
 ```solidity
 // Error: the body always returns word, but the annotation says a.
-forall a . function wrong(x : word) -> a {
+function wrong<A>(x: word) returns (A) {
     return x;
 }
 ```
@@ -189,12 +219,14 @@ forall a . word -> a
 but the infered type is:
 word -> word
 in:
-forall a . function wrong (x : word) -> a
+function wrong<A>(x: word) returns (A)
 ```
 
-The body `return x` has type `word -> word` because `x` is declared as
-`word`. The skolemised declared type requires the result to be a rigid
-variable `a`, which cannot be unified with `word`. The compiler rejects the
+The diagnostic renders inferred type schemes with mathematical `forall` and
+`->` notation; those tokens are not source syntax. The body `return x` has
+scheme `word -> word` because `x` is declared as `word`. The skolemised declared
+type requires the result to be a rigid variable `A`, which cannot be unified
+with `word`. The compiler rejects the
 definition.
 
 ### Error: wrong type variable in the return position
@@ -202,11 +234,13 @@ definition.
 A function that swaps the return type variable is caught by the same test.
 
 ```solidity
-// Error: the body returns the first component (type a),
-//        but the annotation declares the return type as b.
-forall a b . function fst(p : (a, b)) -> b {
-    match p {
-    | (x, y) => return x;
+// Error: the body returns the first component (type A),
+//        but the annotation declares the return type as B.
+function fst<A, B>(p: (A, B)) returns (B) {
+    match (p) {
+        case (x, y) {
+            return x;
+        }
     }
 }
 ```
@@ -217,13 +251,13 @@ forall a b . (a, b) -> b
 but the infered type is:
 forall $t . ($t, $t) -> $t
 in:
-forall a b . function fst (p : (a, b)) -> b
+function fst<A, B>(p: (A, B)) returns (B)
 ```
 
 The body returns `x`, which has the type of the first component. The inferred
 type therefore unifies both components and the return, making them all the
 same variable `$t`. The skolemised declared type requires the return to be the
-rigid variable `b` (the second component), which is distinct from `a`. The
+rigid variable `B` (the second component), which is distinct from `A`. The
 unification fails and the compiler reports the error.
 
 ### Error: type variable forced to `word` by an assembly block
@@ -234,10 +268,10 @@ forces that variable to `word`, making the function monomorphic in the body
 while the annotation still declares a type variable.
 
 ```solidity
-// Error: the assembly block forces a to word,
+// Error: the assembly block forces A to word,
 //        so the body is monomorphic.
-forall a . function double(x : a) -> a {
-    let res : word;
+function double<A>(x: A) returns (A) {
+    let res: word;
     assembly { res := add(x, x) }
     return res;
 }
@@ -249,15 +283,15 @@ forall a . a -> a
 but the infered type is:
 word -> word
 in:
-forall a . function double (x : a) -> a
+function double<A>(x: A) returns (A)
 ```
 
 The correct way to write this function is to restrict the parameter type to
-`word` explicitly and drop the `forall`:
+`word` explicitly and drop the generic parameter:
 
 ```solidity
-function double(x : word) -> word {
-    let res : word;
+function double(x: word) returns (word) {
+    let res: word;
     assembly { res := add(x, x) }
     return res;
 }

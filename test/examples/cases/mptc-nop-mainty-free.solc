@@ -13,27 +13,25 @@
 // interfere with the normal specialisation of `mapEncode` when called
 // from a concrete call site.
 
-data Foo = Foo(word);
+enum Foo { Foo(word) }
 
-forall self rep.
-class self:Encoder(rep) {
-    function encode(x:self, hint:word) -> rep;
+trait Encoder<self, rep> {
+    function encode(x:self, hint:word) returns (rep);
 }
 
-instance Foo:Encoder(word) {
-    function encode(x:Foo, hint:word) -> word {
-        match x { | Foo(v) => return v; }
+impl Encoder<Foo, word> {
+    function encode(x:Foo, hint:word) returns (word) {
+        match (x ) { case Foo(v) { return v; } }
     }
 }
 
-forall a rep. a:Encoder(rep) =>
-function extractVal(x:a) -> rep {
+function extractVal<a, rep>(x:a) returns (rep)  where a: Encoder<rep> {
     return Encoder.encode(x, 0);
 }
 
 contract C {
     constructor() {}
-    public function main() -> word {
+    function main() public returns (word) {
         return extractVal(Foo(7));
     }
 }

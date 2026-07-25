@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="161" viewBox="0 0 498.0 161" width="498.0">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 30v20m10 -20v20m-10 -10h20" /></g><path d="M40 40h10" /><g>
+<path d="M50 40h0.0" /><path d="M448.0 40h0.0" /><g class="non-terminal ">
+<path d="M50.0 40h0.0" /><path d="M180.5 40h0.0" /><rect height="22" width="130.5" x="50" y="29"></rect><text x="115.25" y="44">BitwiseOrExpr</text></g><path d="M180.5 40h10" /><g>
+<path d="M190.5 40h0.0" /><path d="M448.0 40h0.0" /><path d="M190.5 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M210.5 20h217.5" /></g><path d="M428.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M190.5 40h20" /><g>
+<path d="M210.5 40h0.0" /><path d="M428.0 40h0.0" /><g>
+<path d="M210.5 40h0.0" /><path d="M287.5 40h0.0" /><path d="M210.5 40h20" /><g class="terminal ">
+<path d="M230.5 40h4.25" /><path d="M263.25 40h4.25" /><rect height="22" rx="10" ry="10" width="28.5" x="234.75" y="29"></rect><text x="249" y="44">&lt;</text></g><path d="M267.5 40h20" /><path d="M210.5 40a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10" /><g class="terminal ">
+<path d="M230.5 70h4.25" /><path d="M263.25 70h4.25" /><rect height="22" rx="10" ry="10" width="28.5" x="234.75" y="59"></rect><text x="249" y="74">></text></g><path d="M267.5 70a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10" /><path d="M210.5 40a10 10 0 0 1 10 10v40a10 10 0 0 0 10 10" /><g class="terminal ">
+<path d="M230.5 100h0.0" /><path d="M267.5 100h0.0" /><rect height="22" rx="10" ry="10" width="37" x="230.5" y="89"></rect><text x="249" y="104">&lt;=</text></g><path d="M267.5 100a10 10 0 0 0 10 -10v-40a10 10 0 0 1 10 -10" /><path d="M210.5 40a10 10 0 0 1 10 10v70a10 10 0 0 0 10 10" /><g class="terminal ">
+<path d="M230.5 130h0.0" /><path d="M267.5 130h0.0" /><rect height="22" rx="10" ry="10" width="37" x="230.5" y="119"></rect><text x="249" y="134">>=</text></g><path d="M267.5 130a10 10 0 0 0 10 -10v-70a10 10 0 0 1 10 -10" /></g><path d="M287.5 40h10" /><g class="non-terminal ">
+<path d="M297.5 40h0.0" /><path d="M428.0 40h0.0" /><rect height="22" width="130.5" x="297.5" y="29"></rect><text x="362.75" y="44">BitwiseOrExpr</text></g></g><path d="M428.0 40h20" /></g></g><path d="M448.0 40h10" /><path d="M 458.0 40 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>

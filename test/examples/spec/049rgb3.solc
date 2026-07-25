@@ -1,17 +1,17 @@
-data RGB = Red(word) | Green(word) | Blue(word);
+enum RGB { Red(word), Green(word), Blue(word) }
 
 contract RGB3 {
 
-  public function choose(c:RGB) -> word {
+  function choose(c:RGB) public returns (word) {
     let res : word;
-    match c {
-      | .Red(x) => assembly { res := add(x,1) }
-      | .Green(x) => assembly { res := add(x,2) }
-      | .Blue(x) => assembly { res := add(x,3) }
-      }
+    match (c ) {
+      case .Red(x) { assembly { res := add(x,1) }
+      } case .Green(x) { assembly { res := add(x,2) }
+      } case .Blue(x) { assembly { res := add(x,3) }
+      } }
       return res;
   }
-  public function main() -> word {
-    choose(RGB.Green(42))
+  function main() public returns (word) {
+    return choose(RGB.Green(42));
   }
 }

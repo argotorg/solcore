@@ -1,40 +1,38 @@
-import std.{*};
-import std.dispatch.{*};
+import {*} from std;
+import {*} from std.dispatch;
 
-forall a.
-class  a : Neg {
-   function neg(x:a) -> a;
+trait Neg<a> {
+   function neg(x:a) returns (a);
 }
 
-data B = F | T;
-data Pair(a,b) = Pair(a,b);
+enum B { F, T }
+enum Pair<a, b> { Pair(a, b) }
 
-instance B : Neg {
-  function neg (x : B) -> B {
-    match x {
-    | B.F => return B.T;
-    | B.T => return B.F;
-    }
+impl Neg<B> {
+  function neg (x : B) returns (B) {
+    match (x ) {
+    case B.F { return B.T;
+    } case B.T { return B.F;
+    } }
   }
 }
 
 
-forall a b . function pairfst (p : Pair(a,b)) -> a {
-  match p {
-    | Pair(x,y) => return x;
-  }
+function pairfst<a, b> (p : Pair<a, b>) returns (a) {
+  match (p ) {
+    case Pair(x,y) { return x;
+  } }
 }
 
-forall a b . function pairsnd(p : Pair(a,b)) -> b {
-  match p {
-    | Pair(x,y) => return y;
-  }
+function pairsnd<a, b>(p : Pair<a, b>) returns (b) {
+  match (p ) {
+    case Pair(x,y) { return y;
+  } }
 }
 
 
-forall a b.
-a:Neg,b:Neg => instance Pair(a,b):Neg {
-  function neg(p:Pair(a,b)) -> Pair(a,b) {
+impl<a, b> Neg<Pair<a, b>> where a: Neg, b: Neg {
+  function neg(p:Pair<a, b>) returns (Pair<a, b>) {
     return Pair(Neg.neg (pairfst(p)), Neg.neg(pairsnd(p)));
   }
 }
@@ -49,21 +47,21 @@ instance (a:Neg,b:Neg) => Pair(a,b):Neg {
 }
 */
 
- function bnot(x:B) -> B {
-   match x {
-     | B.T => return B.F;
-     | B.F => return B.T;
-   }
+ function bnot(x:B) returns (B) {
+   match (x ) {
+     case B.T { return B.F;
+     } case B.F { return B.T;
+   } }
 }
 
- function fromB(b:B) -> word {
-  match b  {
-    | B.F => return 0;
-    | B.T => return 1;
-  }
+ function fromB(b:B) returns (word) {
+  match (b  ) {
+    case B.F { return 0;
+    } case B.T { return 1;
+  } }
 }
 
 contract NegPair {
  constructor() {}
- public function negPair() -> uint256 { return uint256(fromB(pairfst(Neg.neg(Pair(B.F,B.T))))); }
+ function negPair() public returns (uint256) { return uint256(fromB(pairfst(Neg.neg(Pair(B.F,B.T))))); }
 }

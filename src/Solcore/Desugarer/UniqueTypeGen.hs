@@ -48,6 +48,8 @@ instance UniqueTypeGen (Contract Name) where
 
 instance UniqueTypeGen (ContractDecl Name) where
   uniqueTyGen (CFunDecl fd) = uniqueTyGen fd
+  uniqueTyGen (CSignatureDecl _ sig) =
+    createUniqueType (sigName sig)
   uniqueTyGen _ = pure ()
 
 -- creating a new unique type

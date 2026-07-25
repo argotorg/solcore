@@ -1,7 +1,7 @@
 import foo;
-import foo.bar as Bar;
+import * as Bar from foo.bar;
 
-function main() -> word {
+function main() returns (word) {
   let x: word = foo.base();
   let y: word = Bar.value();
   return y;

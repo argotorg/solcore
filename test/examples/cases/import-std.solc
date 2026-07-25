@@ -1,10 +1,10 @@
 import std;
-pragma no-patterson-condition ;
-pragma no-coverage-condition ;
-pragma no-bounded-variable-condition ;
+pragma solcore noPattersonCondition ;
+pragma solcore noCoverageCondition ;
+pragma solcore noBoundVariableCondition ;
 
 contract Test {
-  public function main() -> word {
+  function main() public returns (word) {
     return std.addWord(21, 21);
   }
 }

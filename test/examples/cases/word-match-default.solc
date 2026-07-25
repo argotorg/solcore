@@ -1,14 +1,14 @@
 contract WordMatchDefault {
-  public function f(n : word) -> word {
+  function f(n : word) public returns (word) {
     let result : word;
-    match n {
-      | 0 => assembly { result := 100 }
-      | x => assembly { result := x }
-    }
+    match (n ) {
+      case 0 { assembly { result := 100 }
+      } case x { assembly { result := x }
+    } }
     return result;
   }
 
-  public function main() -> word {
+  function main() public returns (word) {
     return f(42);
   }
 }

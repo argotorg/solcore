@@ -16,13 +16,13 @@ Five types are built into the language kernel.
 | `word` | 256-bit unsigned integer; the EVM's native machine word |
 | `bool` | Boolean type with constructors `true` and `false` |
 | `()` | Unit type; used as the return type of functions that produce no value |
-| `pair a b` | Generic product type, also written `(a, b)` in tuple syntax |
-| `sum a b` | Generic disjoint union with constructors `inl` and `inr` |
+| `pair<A, B>` | Generic product type, also written `(A, B)` in tuple syntax |
+| `sum<A, B>` | Generic disjoint union with constructors `inl` and `inr` |
 
 `pair` and `sum` are the internal representation of all user-defined algebraic
 data types. A data type with multiple constructors is encoded as a nested `sum`,
 and a constructor with multiple fields is encoded as a nested `pair`. User code
-rarely names `pair` or `sum` directly; they appear implicitly through `data`
+rarely names `pair` or `sum` directly; they appear implicitly through `enum`
 declarations and tuple syntax.
 
 ### `word`
@@ -33,7 +33,7 @@ SAIL has type `word`. There is no numeric overloading: `42`, `0xff`, and
 `word` values.
 
 ```solidity
-function decimals() -> word {
+function decimals() returns (word) {
     return 18;
 }
 ```
@@ -44,10 +44,14 @@ function decimals() -> word {
 always in scope.
 
 ```solidity
-function isActive(paused : bool) -> bool {
-    match paused {
-    | false => return true;
-    | true  => return false;
+function isActive(paused: bool) returns (bool) {
+    match (paused) {
+        case false {
+            return true;
+        }
+        case true {
+            return false;
+        }
     }
 }
 ```
@@ -55,25 +59,29 @@ function isActive(paused : bool) -> bool {
 ### `()` — Unit
 
 The unit type `()` has a single value, also written `()`. Functions that
-perform side effects and return nothing use `()` as their return type.
+perform side effects and return nothing omit the `returns` clause.
 
 ```solidity
-function setOwner(newOwner : word) -> () {
+function setOwner(newOwner: word) {
     assembly { sstore(0, newOwner) }
 }
 ```
 
 ### Tuple Syntax
 
-The syntax `(a, b)` is shorthand for `pair a b`. Tuples with more than two
-elements are right-nested pairs: `(a, b, c)` means `pair a (pair b c)`.
+The syntax `(A, B)` is shorthand for `pair<A, B>`. Tuples with more than two
+elements are right-nested pairs: `(A, B, C)` means `pair<A, pair<B, C>>`.
 
 ```solidity
-data Transfer = Transfer(word, word, word);
+enum Transfer {
+    Transfer(word, word, word)
+}
 
-function unpack(t : Transfer) -> (word, word, word) {
-    match t {
-    | Transfer(from, to, amount) => return (from, to, amount);
+function unpack(t: Transfer) returns ((word, word, word)) {
+    match (t) {
+        case Transfer(from, to, amount) {
+            return (from, to, amount);
+        }
     }
 }
 ```
@@ -86,6 +94,9 @@ SAIL provides eight infix operators as syntactic sugar over ordinary function
 calls. The parser rewrites each operator to the corresponding function call
 before name resolution; the functions themselves must be in scope at the point
 of use.
+
+The table uses `->` only as compact mathematical notation for inferred type
+schemes; source function types use `function(...) ... returns (...)`.
 
 | Operator | Equivalent call | Type |
 | -------- | --------------- | ---- |
@@ -108,28 +119,28 @@ kernel; they must be brought into scope before use.
 > operation is performed.
 
 ```solidity
-import std.{lt, ge, and};
+import {lt, ge, and} from std;
 
-function isValidAmount(amount : word, balance : word) -> bool {
+function isValidAmount(amount: word, balance: word) returns (bool) {
     return amount > 0 && amount <= balance;
 }
 ```
 
 ---
 
-## The `invokable` Class
+## The `invokable` Trait
 
 The kernel defines one built-in type class:
 
 ```solidity
-forall self args ret . class self:invokable(args, ret) {
-    function invoke(self : self, args : args) -> ret;
+trait invokable<Self, Args, Ret> {
+    function invoke(self: Self, args: Args) returns (Ret);
 }
 ```
 
 `invokable` is the compiler's mechanism for encoding higher-order functions.
 When a function-typed value is passed as an argument or stored in a data
-structure, the compiler generates an `invokable` instance that captures the
+structure, the compiler generates an `invokable` implementation that captures the
 closure and implements `invoke`. User code rarely interacts with `invokable`
 directly. A dedicated chapter covers higher-order functions and the
 defunctionalization transformation in detail; see
@@ -145,7 +156,8 @@ primitives. Each opcode is treated as a function that operates exclusively on
 by name inside the block.
 
 The sections below list every available opcode grouped by category, along with
-its Yul type signature.
+its Yul type signature. As in the operator table above, `->` is mathematical
+type-scheme notation in these tables, not SAIL source syntax.
 
 ### Arithmetic
 
@@ -164,9 +176,9 @@ its Yul type signature.
 | `signextend(b, x)` | `word -> word -> word` | Sign-extend from bit b |
 
 ```solidity
-function checkedAdd(x : word, y : word) -> word {
-    let result : word;
-    let overflow : word;
+function checkedAdd(x: word, y: word) returns (word) {
+    let result: word;
+    let overflow: word;
     assembly {
         result   := add(x, y)
         overflow := lt(result, x)
@@ -206,14 +218,14 @@ type is `word`, not `bool`; use `tobool` or a match on the result to convert.
 | `iszero(x)` | `word -> word` | 1 if x = 0 |
 
 ```solidity
-function isOwner(account : word) -> bool {
-    let owner : word;
-    let result : word;
+function isOwner(account: word) returns (bool) {
+    let owner: word;
+    let result: word;
     assembly {
         owner  := sload(0)
         result := eq(account, owner)
     }
-    if (result) {
+    if (result != 0) {
         return true;
     } else {
         return false;
@@ -228,8 +240,8 @@ function isOwner(account : word) -> bool {
 | `keccak256(offset, size)` | `word -> word -> word` | Keccak-256 hash of `size` bytes starting at memory `offset` |
 
 ```solidity
-function storageSlot(account : word) -> word {
-    let slot : word;
+function storageSlot(account: word) returns (word) {
+    let slot: word;
     assembly {
         mstore(0, account)
         slot := keccak256(0, 32)
@@ -257,11 +269,11 @@ function storageSlot(account : word) -> word {
 | `sstore(slot, value)` | `word -> word -> ()` | Store value to storage slot |
 
 ```solidity
-function transfer(to : word, amount : word) -> () {
-    let callerSlot : word;
-    let toSlot : word;
-    let senderBal : word;
-    let recipientBal : word;
+function transfer(to: word, amount: word) {
+    let callerSlot: word;
+    let toSlot: word;
+    let senderBal: word;
+    let recipientBal: word;
     assembly {
         callerSlot   := caller()
         toSlot       := to
@@ -354,8 +366,8 @@ the expected type.
 | `log4(offset, size, topic1, topic2, topic3, topic4)` | `word^6 -> ()` | Emit log with 4 topics |
 
 ```solidity
-function emitTransfer(from : word, to : word, amount : word) -> () {
-    let transferTopic : word;
+function emitTransfer(from: word, to: word, amount: word) {
+    let transferTopic: word;
     assembly {
         transferTopic := 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
         mstore(0x00, amount)
@@ -389,17 +401,17 @@ return `word`.
 | `gaslimit()` | Gas limit of the current block |
 
 ```solidity
-function onlyOwner(ownerSlot : word) -> () {
-    let owner : word;
-    let msgSender : word;
-    let isAuth : word;
+function onlyOwner(ownerSlot: word) {
+    let owner: word;
+    let msgSender: word;
+    let isAuth: word;
     assembly {
         owner     := sload(ownerSlot)
         msgSender := caller()
         isAuth    := eq(msgSender, owner)
     }
-    if (isAuth) {
-        return ();
+    if (isAuth != 0) {
+        return;
     } else {
         assembly { revert(0, 0) }
     }

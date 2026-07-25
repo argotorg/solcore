@@ -1,24 +1,24 @@
 /// Other used stdlib classes and types:
-class self:Ref(deref) {
-    function load(x:self) -> deref;
+trait Ref<self, deref> {
+    function load(x:self) returns (deref);
 }
 
-data Uint256 = Uint256(Word)
-data Bool = True | False
-data Bytes32 = Bytes32(Word)
-data Unit = Unit
+enum Uint256 { Uint256(Word) }
+enum Bool { True, False }
+enum Bytes32 { Bytes32(Word) }
+enum Unit { Unit }
 
-data Proxy(t) = Proxy
-data Memory(x) = Memory(Word)
+enum Proxy<t> { Proxy }
+enum Memory<x> { Memory(Word) }
 
 /// Specific new stdlib classes and types:
 
-class self:StructMember(preceding, memberTy) {}
-data StructMember(structType, fieldType) = StructMember
+trait StructMember<self, preceding, memberTy> {}
+enum StructMember<structType, fieldType> { StructMember }
 
 // "dead" is only here to compensate for non-relaxed coverage condition and
 // incorrectly implemented Paterson condition
-data MemberAccess(ty, field, dead) = MemberAccess(ty)
+enum MemberAccess<ty, field, dead> { MemberAccess(ty) }
 
 
 /// Usage Example / Proof of Concept:
@@ -31,16 +31,16 @@ data MemberAccess(ty, field, dead) = MemberAccess(ty)
     }
 */
 
-data S = S(Pair(Uint256, Pair(Bool, Bytes32)))
+enum S { S(Pair<Uint256, Pair<Bool, Bytes32>>) }
 
-data Field_x = FieldX // Selector type for "x"
-data Field_y = FieldY // Selector type for "y"
-data Field_z = FieldZ // Selector type for "z"
+enum Field_x { FieldX } // Selector type for "x"
+enum Field_y { FieldY } // Selector type for "y"
+enum Field_z { FieldZ } // Selector type for "z"
 
 // StructMember instances for field selectors:
-instance StructMember(S, Field_x):StructMember(Unit, Uint256) {}
-instance StructMember(S, Field_y):StructMember(Uint256, Bool) {}
-instance StructMember(S, Field_z):StructMember(Pair(Uint256, Bool), Bytes32) {}
+impl StructMember<StructMember<S, Field_x>, Unit, Uint256> {}
+impl StructMember<StructMember<S, Field_y>, Uint256, Bool> {}
+impl StructMember<StructMember<S, Field_z>, Pair<Uint256, Bool>, Bytes32> {}
 
 /* Further compiler-internal builtin instances for use on stack (at least the stackref versions cannot be expressed in-language,
  * but none of these rely on any layout other than the compiler-builtin stack layout, so we can handle these purely internally
@@ -57,82 +57,73 @@ instance StructMember(S, Field_z):StructMember(Pair(Uint256, Bool), Bytes32) {}
 
 
 /// Size of a type in memory
-class self:MemorySize {
-    function memorySize(x:Proxy(self)) -> Word;
+trait MemorySize<self> {
+    function memorySize(x:Proxy<self>) returns (Word);
 }
 
 /// Size of the struct member types in memory:
-instance Unit:MemorySize { function memorySize(x : Proxy(Unit)) -> Word { return 0; } }
-instance Uint256:MemorySize { function memorySize(x : Proxy(Uint256)) -> Word { return 32; } }
-instance Bool:MemorySize { function memorySize(x : Proxy(Bool)) -> Word { return 32; } }
-instance Bytes32:MemorySize { function memorySize(x : Proxy(Bytes32)) -> Word { return 32; } }
+impl MemorySize<Unit> { function memorySize(x : Proxy<Unit>) returns (Word) { return 0; } }
+impl MemorySize<Uint256> { function memorySize(x : Proxy<Uint256>) returns (Word) { return 32; } }
+impl MemorySize<Bool> { function memorySize(x : Proxy<Bool>) returns (Word) { return 32; } }
+impl MemorySize<Bytes32> { function memorySize(x : Proxy<Bytes32>) returns (Word) { return 32; } }
 
 /// Memory size of pairs
-instance Pair(a,b):MemorySize {
-    function memorySize(x : Proxy((a,b))) -> Word
+impl MemorySize<Pair<a, b>> {
+    function memorySize(x : Proxy<(a, b)>) returns (Word)
     {
-        let pa:Proxy(a);
-        let pb:Proxy(b);
+        let pa:Proxy<a>;
+        let pb:Proxy<b>;
         let sz = memorySize(pa);
         let szb = memorySize(pb);
-        assembly { sz := add(sz, szb) }; // TODO: bounds check?
+        assembly { sz := add(sz, szb) } // TODO: bounds check?
         return sz;
     }
 
 }
 
 /// Fragments of a generic memory implementation:
-class self:MemoryType {
-    function loadFromMemory(p:Proxy(self), off:Word) -> self;
+trait MemoryType<self> {
+    function loadFromMemory(p:Proxy<self>, off:Word) returns (self);
 }
 
-instance Uint256:MemoryType {
-    function loadFromMemory(p:Proxy(Uint256), off:Word) -> Uint256 {
+impl MemoryType<Uint256> {
+    function loadFromMemory(p:Proxy<Uint256>, off:Word) returns (Uint256) {
         let v;
-        assembly { v := mload(off) };
+        assembly { v := mload(off) }
         return Uint256(v);
     }
 }
 
-instance (a:MemoryType) => Memory(a):Ref(a) {
-    function load(x : Memory(a)) -> a {
-        let p:Proxy(a);
-        match x { | Memory(off) => return loadFromMemory(p, off); };
+impl Ref<Memory<a>, a> where a: MemoryType {
+    function load(x : Memory<a>) returns (a) {
+        let p:Proxy<a>;
+        match (x ) { case Memory(off) { return loadFromMemory(p, off); } }
     }
 }
 
 /// Crucial instance: member access to struct fields in memory:
 
-instance (
-    StructMember(structType, fieldType):StructMember(precedingTuple, ty),
-    precedingTuple:MemorySize,
-    Memory(ty):Ref(ty)
-) => MemberAccess(Memory(structType), fieldType,
-    // Needs ridiculous amounts of constructor applications due to incorrect implementation of the Paterson Condition
-    // Needs to mention "ty" due to non-relaxed Coverage Condition
-    Memory(ty)
-):Ref(ty)
-{
-    function load(x : MemberAccess(Memory(structType), fieldType, Memory(ty))) -> ty {
+// Needs ridiculous amounts of constructor applications due to incorrect implementation of the Paterson Condition
+// Needs to mention "ty" due to non-relaxed Coverage Condition
+impl Ref<MemberAccess<Memory<structType>, fieldType, Memory<ty>>, ty> where StructMember<structType, fieldType>: StructMember<precedingTuple, ty>, precedingTuple: MemorySize, Memory<ty>: Ref<ty> {
+    function load(x : MemberAccess<Memory<structType>, fieldType, Memory<ty>>) returns (ty) {
         let ptr:Word;
-        match x { | MemberAccess(Memory(y)) => ptr = y; };
+        match (x ) { case MemberAccess(Memory(y)) { ptr = y; } }
 
-        let p:Proxy(precedingTuple);
+        let p:Proxy<precedingTuple>;
         let offset = memorySize(p);
 
-        assembly { ptr := add(ptr, offset) };
+        assembly { ptr := add(ptr, offset) }
 
-        let tyPtr:Memory(ty) = Memory(ptr);
+        let tyPtr:Memory<ty> = Memory(ptr);
         return load(tyPtr);
     }
 }
 
-function test() -> ()
+function test() returns (())
 {
-    let x:Memory(S);
-    let memberAccess:MemberAccess(Memory(S), Field_x,
-                                  Memory(Uint256) // will become unnecessary
-    );
+    let x:Memory<S>;
+    let memberAccess:MemberAccess<Memory<S>, Field_x, Memory<Uint256>>;
     memberAccess = MemberAccess(x);
     let result = load(memberAccess);
     /*

@@ -1,16 +1,16 @@
 
-class self : invokable(args, ret) {
-    function invoke (s:self,  a:args) -> ret;
+trait invokable<self, args, ret> {
+    function invoke (s:self,  a:args) returns (ret);
   }
 
-  forall a . function id(x : a) -> a {
+  function id<a>(x : a) returns (a) {
     return x ;
   }
 
-  data IdToken(a) = IdToken;
+  enum IdToken<a> { IdToken }
 
-instance IdToken(a) : invokable(a,a) {
-  function invoke(token: IdToken(a), a) -> a {
+impl invokable<IdToken<a>, a, a> {
+  function invoke(token: IdToken<a>, a) returns (a) {
     return id(a);
   }
 }

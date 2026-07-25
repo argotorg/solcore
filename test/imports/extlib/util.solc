@@ -1,5 +1,5 @@
 export {offset};
 
-function offset() -> word {
+function offset() returns (word) {
   return 2;
 }

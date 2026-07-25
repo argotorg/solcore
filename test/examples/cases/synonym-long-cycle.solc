@@ -1,8 +1,8 @@
 // Longer recursive cycle should be rejected
-type A = B;
-type B = C;
-type C = A;
+alias A = B;
+alias B = C;
+alias C = A;
 
-function main() -> word {
+function main() returns (word) {
     return 0;
 }

@@ -1,5 +1,5 @@
 export {*};
 
-function shared(x: word) -> word {
+function shared(x: word) returns (word) {
   return x;
 }

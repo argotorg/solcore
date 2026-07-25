@@ -1,11 +1,11 @@
 export {*, T(*)};
 
-data T = T(word);
+enum T { T(word) }
 
-function idWord(x: word) -> word {
+function idWord(x: word) returns (word) {
   return x;
 }
 
-function mkT(x: word) -> T {
+function mkT(x: word) returns (T) {
   return T.T(x);
 }

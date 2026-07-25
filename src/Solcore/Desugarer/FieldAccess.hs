@@ -48,9 +48,13 @@ fieldDesugarTopDecls topdecls = extras <> topdecls'
         ]
     (extras, topdecls') = mapAccumL go mempty topdecls
     go acc (TContr c) =
-      let hasSingletonCollision =
-            singletonNameForContract (Contract.name c) `Set.member` existingDataTypes
-       in (acc <> extraTopDeclsForContract (not hasSingletonCollision) c, TContr (transContract c))
+      case Contract.contractKind c of
+        ContractKind ->
+          let hasSingletonCollision =
+                singletonNameForContract (Contract.name c) `Set.member` existingDataTypes
+           in (acc <> extraTopDeclsForContract (not hasSingletonCollision) c, TContr (transContract c))
+        InterfaceKind -> (acc, TContr c)
+        LibraryKind -> (acc, TContr c)
     go acc v = (acc, v)
 
 --------------------------------
@@ -58,7 +62,7 @@ fieldDesugarTopDecls topdecls = extras <> topdecls'
 --------------------------------
 
 extraTopDeclsForContract :: Bool -> NmContract -> [NmTopDecl]
-extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
+extraTopDeclsForContract includeSingleton (ContractWithKind ContractKind cname _ts cdecls) = do
   let singName = singletonNameForContract cname
   let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []]
 
@@ -74,6 +78,7 @@ extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
         tys' = tys ++ [fieldTy field]
         topdecls' = topdecls ++ extraTopDeclsForContractField cname field offset
         offset = foldr pair unit tys
+extraTopDeclsForContract _ _ = []
 
 extraTopDeclsForContractField :: ContractName -> NmField -> Ty -> [NmTopDecl]
 extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, TInstDef sfInstance]
@@ -139,6 +144,10 @@ transStmt :: ContractEnv -> NmStmt -> (ContractEnv, NmStmt)
 transStmt cenv (Let c x mty me) = (cenv {ceLocals = Set.insert x cenv.ceLocals}, Let c x mty me')
   where
     me' = flip transRhs cenv <$> me
+transStmt cenv (LetPattern ct pat mty value) =
+  ( cenv {ceLocals = Set.union (Set.fromList (patternBindings pat)) cenv.ceLocals},
+    LetPattern ct pat mty (transRhs value cenv)
+  )
 transStmt cenv stmt = (cenv, go stmt cenv)
   where
     go :: NmStmt -> CEM NmStmt
@@ -156,10 +165,16 @@ transStmt cenv stmt = (cenv, go stmt cenv)
         body' = transBody body forEnv
     go (Match es eqns) = traces [pretty (r cenv)] r where r = Match <$> mapM transRhs es <*> mapM transEquation eqns
     go Let {} = error "Impossible"
+    go LetPattern {} = error "Impossible"
     go s@Asm {} = pure s
     go Break = pure Break
     go Continue = pure Continue
     go EmptyStmt = pure EmptyStmt
+
+patternBindings :: Pat Name -> [Name]
+patternBindings (PVar n) = [n]
+patternBindings (PCon _ pats) = concatMap patternBindings pats
+patternBindings _ = []
 
 -- go s = pure s
 
@@ -167,6 +182,10 @@ transEquation :: NmEquation -> CEM NmEquation
 transEquation (pats, body) cenv = (pats, transBody body cenv)
 
 transAssignment :: NmExp -> NmExp -> ContractEnv -> NmStmt
+transAssignment lhs (Call Nothing operator [readLhs, rhs]) cenv
+  | lhs == readLhs,
+    isCompoundOperator operator =
+      transCompoundAssignment lhs operator rhs cenv
 transAssignment lhs@(Var x) rhs cenv
   | isLocal x cenv =
       traces
@@ -201,6 +220,60 @@ transAssignment lhs rhs cenv =
   where
     rhs' = transRhs rhs cenv
 
+transCompoundAssignment :: NmExp -> Name -> NmExp -> ContractEnv -> NmStmt
+transCompoundAssignment lhs@(Var x) operator rhs cenv
+  | isLocal x cenv =
+      lhs := Call Nothing operator [lhs, transRhs rhs cenv]
+transCompoundAssignment (FieldAccess Nothing x) operator rhs cenv
+  | isLocal x cenv =
+      Var x := Call Nothing operator [Var x, transRhs rhs cenv]
+  | Just _ <- askFieldTy x cenv =
+      compoundReferenceAssignment
+        (lhsAccess (memberProxyFor x cenv))
+        operator
+        (transRhs rhs cenv)
+transCompoundAssignment (Indexed array index) operator rhs cenv =
+  compoundReferenceAssignment
+    (lhsIndex array index cenv)
+    operator
+    (transRhs rhs cenv)
+transCompoundAssignment lhs operator rhs cenv =
+  lhs := transRhs (Call Nothing operator [lhs, rhs]) cenv
+
+-- Compute an address-like lvalue once, then use that same reference for both
+-- its read and write.  Indexed storage access may perform hashing and bounds
+-- checks, so merely freezing its receiver and index is not enough.
+compoundReferenceAssignment :: NmExp -> Name -> NmExp -> NmStmt
+compoundReferenceAssignment reference operator rhs =
+  Block
+    [ Let False referenceName Nothing (Just reference),
+      StmtExp $
+        Call
+          Nothing
+          (QualName (Name "Assign") "assign")
+          [ Var referenceName,
+            Call
+              Nothing
+              operator
+              [ Call Nothing (QualName (Name "CanStore") "load") [Var referenceName],
+                rhs
+              ]
+          ]
+    ]
+  where
+    referenceName = Name "$compound_lvalue"
+
+isCompoundOperator :: Name -> Bool
+isCompoundOperator operator =
+  operator
+    `elem` [ QualName (Name "Add") "add",
+             QualName (Name "Sub") "sub",
+             QualName (Name "BitXor") "bxor",
+             QualName (Name "BitAnd") "band",
+             QualName (Name "BitOr") "bor",
+             QualName (Name "Mod") "mod"
+           ]
+
 transContractFieldAssignment :: Name -> NmExp -> CEM NmStmt
 transContractFieldAssignment field rhs = do
   {- Desugaring scheme:
@@ -231,6 +304,11 @@ transRhs expr@(FieldAccess Nothing x) cenv
           fieldMap = Con "MemberAccessProxy" [cxt, fieldSel]
           result = rhsAccess fieldMap
        in traces ["< transRhs", pretty expr, "~>", pretty result] result
+transRhs (FieldAccessWithLocation location (Just receiver) memberName) cenv =
+  FieldAccessWithLocation
+    location
+    (Just (transRhs receiver cenv))
+    memberName
 transRhs expr@FieldAccess {} _ = notImplemented "transRhs" expr
 transRhs expr cenv = go expr cenv
   where

@@ -4,7 +4,7 @@
 */
 import std;
 
-function sloadWord() -> word {
+function sloadWord() returns (word) {
   let v : word;
   assembly {
     v := sload(0)
@@ -13,10 +13,10 @@ function sloadWord() -> word {
 }
 
 contract ComptimeRuntimeArg {
-  function double(comptime x : word) -> comptime word {
+  function double(comptime x : word) returns (comptime word) {
     return x + x;
   }
-  function main() -> word {
+  function main() returns (word) {
     return double(sloadWord());
   }
 }

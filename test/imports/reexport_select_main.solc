@@ -1,5 +1,5 @@
-import reexport_select_wrapper.{mstore};
+import {mstore} from reexport_select_wrapper;
 
-function main(x: word) -> word {
+function main(x: word) returns (word) {
   return mstore(x);
 }
