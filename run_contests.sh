@@ -19,6 +19,7 @@ bash ./contest.sh test/examples/dispatch/concat.json
 bash ./contest.sh test/examples/dispatch/slices.json
 bash ./contest.sh test/examples/dispatch/fallback.json
 bash ./contest.sh test/examples/dispatch/ecrecover.json
+bash ./contest.sh test/examples/dispatch/eip712.json
 bash ./contest.sh test/examples/dispatch/memory.json
 bash ./contest.sh test/examples/dispatch/storage.json
 bash ./contest.sh test/examples/dispatch/storage_array.json
