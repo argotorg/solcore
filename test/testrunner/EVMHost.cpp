@@ -567,11 +567,18 @@ evmc::Result EVMHost::precompileECRecover(evmc_message const& _message) noexcept
 				gas_cost
 		},
 		// Vectors for the multisig ...WithSignature dispatch tests. The signing
-		// hash is the multisig's (stubbed) keccak256(bytes32(1)); both recover a
-		// valid, distinct address (one a registered signer, one not).
+		// hash is the multisig's create_signature_hash =
+		//   keccak256([kind tag][constructor tag][fields...]).
+		// Both entries are queueWithSignature (kind tag Queue = 0) of an
+		// AddSigner (constructor tag 0) operation, so the hash is
+		//   keccak256(bytes32(0) || bytes32(0) || bytes32(address)).
+		// They recover a valid, distinct address (one a registered signer, one
+		// not). If create_signature_hash's preimage changes, recompute these two
+		// 32-byte hashes to match.
 		{
+			// queueWithSignature(AddSigner(0x..cafe0003)) -> signer e05f..cff7
 			fromHex(
-				"b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"
+				"444dddbc6a906660d61bb2147c59eee473743c77059eead3c105f48000f8f61f"
 				"000000000000000000000000000000000000000000000000000000000000001c"
 				"a5f2175cf703916c00bc39e47cd6895a40939ca418200fd16f3a6f0e6e946e72"
 				"0d88a02b70b20799677813021b7e5cb4c566a1e2d4eb12f85d38e0a50e3d03af"
@@ -582,8 +589,9 @@ evmc::Result EVMHost::precompileECRecover(evmc_message const& _message) noexcept
 			}
 		},
 		{
+			// queueWithSignature(AddSigner(0x..cafe0004)) -> non-signer 0376..473c
 			fromHex(
-				"b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"
+				"be35e3957efa36a6f142984d815dc159adbffecceaf0e253cc5ed2dc4c20d128"
 				"000000000000000000000000000000000000000000000000000000000000001c"
 				"cb81aced75b14a861ae712060e0c37ae22a73d87c8f947114bb38f11b61e89cc"
 				"10665fa4084d71f4a9d413062464d475494dafddc08fefeb7857c1f27d699e58"
