@@ -1,5 +1,6 @@
 import std.{*};
 import std.dispatch.{*};
+import std.eip712.{*};
 
 // Canonical EIP-712 example from the specification
 // (https://eips.ethereum.org/EIPS/eip-712): a `Mail` sent from one `Person` to
