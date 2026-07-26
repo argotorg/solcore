@@ -607,6 +607,39 @@ evmc::Result EVMHost::precompileECRecover(evmc_message const& _message) noexcept
 				fromHex("0000000000000000000000000376aac07ad725e01357b1725b5cec61ae10473c"),
 				gas_cost
 			}
+		},
+		// Vectors for the batch() lifecycle test, which runs
+		// [Queue(AddSigner(0x..cafe0006)), Approve(op#5), Execute(op#5)] in a
+		// single call. The two ...WithSignature legs sign distinct EIP-712
+		// digests -- the kind word differs (Queue=0 vs Approve=1) while the
+		// operation (AddSigner(0x..cafe0006)) is the same -- so each needs its
+		// own (digest, v, r, s) -> signer mapping. Both recover to the
+		// registered signer e05f..cff7; the v/r/s reuse the signer-K vector.
+		{
+			// batch element 0: queueWithSignature(AddSigner(0x..cafe0006)) [kind Queue]
+			fromHex(
+				"6690978f4de1fd3f6aedb8d49a6ed2adc7372dd9bdb84596e3e71c7ed2e722e5"
+				"000000000000000000000000000000000000000000000000000000000000001c"
+				"a5f2175cf703916c00bc39e47cd6895a40939ca418200fd16f3a6f0e6e946e72"
+				"0d88a02b70b20799677813021b7e5cb4c566a1e2d4eb12f85d38e0a50e3d03af"
+			),
+			{
+				fromHex("000000000000000000000000e05fcc23807536bee418f142d19fa0d21bb0cff7"),
+				gas_cost
+			}
+		},
+		{
+			// batch element 1: approveWithSignature(op#5 = AddSigner(0x..cafe0006)) [kind Approve]
+			fromHex(
+				"80552bfb8d50b1a6b28ffb173aff1c7018d9e219ca7f5ad2cc9a9ebd7c7ac7dd"
+				"000000000000000000000000000000000000000000000000000000000000001c"
+				"a5f2175cf703916c00bc39e47cd6895a40939ca418200fd16f3a6f0e6e946e72"
+				"0d88a02b70b20799677813021b7e5cb4c566a1e2d4eb12f85d38e0a50e3d03af"
+			),
+			{
+				fromHex("000000000000000000000000e05fcc23807536bee418f142d19fa0d21bb0cff7"),
+				gas_cost
+			}
 		}
 	};
 	evmc::Result result = precompileGeneric(_message, inputOutput, true /* _ignoresTrailingInput */);
