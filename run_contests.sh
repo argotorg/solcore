@@ -20,6 +20,7 @@ bash ./contest.sh test/examples/dispatch/stringlit.json
 bash ./contest.sh test/examples/dispatch/slices.json
 bash ./contest.sh test/examples/dispatch/fallback.json
 bash ./contest.sh test/examples/dispatch/ecrecover.json
+bash ./contest.sh test/examples/dispatch/eip712.json
 bash ./contest.sh test/examples/dispatch/memory.json
 bash ./contest.sh test/examples/dispatch/storage.json
 bash ./contest.sh test/examples/dispatch/storage_array.json
@@ -29,6 +30,11 @@ bash ./contest.sh test/examples/dispatch/array_copy.json
 bash ./contest.sh test/examples/dispatch/array_string.json
 bash ./contest.sh test/examples/dispatch/array_nested.json
 bash ./contest.sh test/examples/dispatch/generic_sum.json
+bash ./contest.sh test/examples/dispatch/abi_array_sum.json
+bash ./contest.sh test/examples/dispatch/abi_bytes_array.json
+bash ./contest.sh test/examples/dispatch/abi_address_array.json
+bash ./contest.sh test/examples/dispatch/abi_dyn_sum.json
+bash ./contest.sh test/examples/dispatch/abi_batch_adt.json
 bash ./contest.sh test/examples/dispatch/generic_product.json
 bash ./contest.sh test/examples/dispatch/sum_wide_product.json
 bash ./contest.sh test/examples/dispatch/specialise_sum_of_product.json
@@ -40,3 +46,4 @@ bash ./contest.sh test/examples/dispatch/storage_adt_abi.json
 bash ./contest.sh test/examples/dispatch/storage_dynamic_field.json
 bash ./contest.sh test/examples/dispatch/forloops.json
 bash ./contest.sh test/examples/dispatch/weth9.json
+bash ./contest.sh test/examples/dispatch/multisig.json

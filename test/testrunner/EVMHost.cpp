@@ -553,6 +553,93 @@ evmc::Result EVMHost::precompileECRecover(evmc_message const& _message) noexcept
 				fromHex(""),
 				gas_cost
 			}
+		},
+		{
+			// EIP-712 canonical "Mail" example digest (test/examples/dispatch/eip712).
+			fromHex(
+				"be609aee343fb3c4b28e1df9e632fca64fcfaede20f02e86244efddf30957bd2"
+				"000000000000000000000000000000000000000000000000000000000000001c"
+				"4355c47d63924e8a72e509b65029052eb6c299d53a04e167c5775fd466751c9d"
+				"07299936d304c153f6443dfa05f40ff007d72911b6f72307f996231605b91562"
+			),
+			{
+				fromHex("000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"),
+				gas_cost
+			}
+		},
+		// Vectors for the multisig ...WithSignature dispatch tests. The signing
+		// hash is the multisig's create_signature_hash, now an EIP-712 digest
+		//   keccak256(0x1901 || domainSeparator || hashStruct(MultisigOperation))
+		// bound to chainId 1 and verifyingContract 0xc06a..e79e (the CREATE
+		// address of deployer 0x1212..0012 at nonce 1 -- where the testrunner
+		// deploys the Multisig). Both entries are queueWithSignature (kind
+		// Queue = 0) of an AddSigner operation.
+		//
+		// The ecrecover precompile is mocked, so these map the (digest, v, r, s)
+		// preimage to a fixed recovered address rather than performing a real
+		// recovery: one a registered signer, one not, which is all the dispatch
+		// paths exercise. The v/r/s are the EIP-2098 values the JSON passes in;
+		// only the leading 32-byte digest is recomputed from the EIP-712
+		// encoding. If create_signature_hash (or the domain) changes, recompute
+		// these two digests to match -- see the derivation in multisig.solc.
+		{
+			// queueWithSignature(AddSigner(0x..cafe0003)) -> signer e05f..cff7
+			fromHex(
+				"5ad92c8921886a17148f249897ecb1fff50f65567ee7d37471c681ac29c02833"
+				"000000000000000000000000000000000000000000000000000000000000001c"
+				"a5f2175cf703916c00bc39e47cd6895a40939ca418200fd16f3a6f0e6e946e72"
+				"0d88a02b70b20799677813021b7e5cb4c566a1e2d4eb12f85d38e0a50e3d03af"
+			),
+			{
+				fromHex("000000000000000000000000e05fcc23807536bee418f142d19fa0d21bb0cff7"),
+				gas_cost
+			}
+		},
+		{
+			// queueWithSignature(AddSigner(0x..cafe0004)) -> non-signer 0376..473c
+			fromHex(
+				"9af78d208cb2e8e4540ab23677e17edeb5e54f2dbc3fa2dc9751bb82b6d25d13"
+				"000000000000000000000000000000000000000000000000000000000000001c"
+				"cb81aced75b14a861ae712060e0c37ae22a73d87c8f947114bb38f11b61e89cc"
+				"10665fa4084d71f4a9d413062464d475494dafddc08fefeb7857c1f27d699e58"
+			),
+			{
+				fromHex("0000000000000000000000000376aac07ad725e01357b1725b5cec61ae10473c"),
+				gas_cost
+			}
+		},
+		// Vectors for the batch() lifecycle test, which runs
+		// [Queue(AddSigner(0x..cafe0006)), Approve(op#5), Execute(op#5)] in a
+		// single call. The two ...WithSignature legs sign distinct EIP-712
+		// digests -- the kind word differs (Queue=0 vs Approve=1) while the
+		// operation (AddSigner(0x..cafe0006)) is the same -- so each needs its
+		// own (digest, v, r, s) -> signer mapping. Both recover to the
+		// registered signer e05f..cff7; the v/r/s reuse the signer-K vector.
+		{
+			// batch element 0: queueWithSignature(AddSigner(0x..cafe0006)) [kind Queue]
+			fromHex(
+				"6690978f4de1fd3f6aedb8d49a6ed2adc7372dd9bdb84596e3e71c7ed2e722e5"
+				"000000000000000000000000000000000000000000000000000000000000001c"
+				"a5f2175cf703916c00bc39e47cd6895a40939ca418200fd16f3a6f0e6e946e72"
+				"0d88a02b70b20799677813021b7e5cb4c566a1e2d4eb12f85d38e0a50e3d03af"
+			),
+			{
+				fromHex("000000000000000000000000e05fcc23807536bee418f142d19fa0d21bb0cff7"),
+				gas_cost
+			}
+		},
+		{
+			// batch element 1: approveWithSignature(op#5 = AddSigner(0x..cafe0006)) [kind Approve]
+			fromHex(
+				"80552bfb8d50b1a6b28ffb173aff1c7018d9e219ca7f5ad2cc9a9ebd7c7ac7dd"
+				"000000000000000000000000000000000000000000000000000000000000001c"
+				"a5f2175cf703916c00bc39e47cd6895a40939ca418200fd16f3a6f0e6e946e72"
+				"0d88a02b70b20799677813021b7e5cb4c566a1e2d4eb12f85d38e0a50e3d03af"
+			),
+			{
+				fromHex("000000000000000000000000e05fcc23807536bee418f142d19fa0d21bb0cff7"),
+				gas_cost
+			}
 		}
 	};
 	evmc::Result result = precompileGeneric(_message, inputOutput, true /* _ignoresTrailingInput */);
