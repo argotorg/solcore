@@ -565,6 +565,7 @@ evmc::Result EVMHost::precompileECRecover(evmc_message const& _message) noexcept
 			{
 				fromHex("000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"),
 				gas_cost
+			}
 		},
 		// Vectors for the multisig ...WithSignature dispatch tests. The signing
 		// hash is the multisig's create_signature_hash, now an EIP-712 digest
