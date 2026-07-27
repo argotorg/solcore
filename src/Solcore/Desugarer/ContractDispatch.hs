@@ -388,6 +388,13 @@ abiTypeOf (TyCon (Name "calldata") [t]) = abiTypeOf t
 abiTypeOf t@(TyCon (Name "pair") [_, _]) =
   ("tuple", map (mkAbiParam "") (flattenTuple t))
 abiTypeOf (TyCon (Name "word") []) = ("uint256", [])
+-- A dynamic array @array(t)@ is the ABI element type followed by @[]@, matching
+-- the Solidity spelling (@t[]@). Components (only non-empty when the element is
+-- a tuple) are carried through so an @array(pair(...))@ emits as @tuple[]@ with
+-- its component list intact.
+abiTypeOf (TyCon (Name "array") [t]) =
+  let (elemTy, comps) = abiTypeOf t
+   in (elemTy <> "[]", comps)
 abiTypeOf (TyCon n []) = (nameStr n, [])
 -- Anything else has no ABI spelling: a type variable, a function type, or a
 -- parameterized type constructor (e.g. @mapping(word, word)@ or a custom
