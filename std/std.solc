@@ -1146,6 +1146,10 @@ instance string:ABIAttribs {
     function headSize(ty: Proxy(string)) -> word { return 32; }
     function isStatic(ty : Proxy(string)) -> bool { return false; }
 }
+instance bytes:ABIAttribs {
+    function headSize(ty: Proxy(bytes)) -> word { return 32; }
+    function isStatic(ty : Proxy(bytes)) -> bool { return false; }
+}
 
 // computes the attribs for a pair of two types that implement attribs
 forall a b . a:ABIAttribs, b:ABIAttribs => instance (a,b):ABIAttribs {
