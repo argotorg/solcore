@@ -132,6 +132,7 @@ dispatches =
       runDispatchTest "miniERC20.solc",
       runDispatchTest "Revert.solc",
       runDispatchTest "hashes.solc",
+      runDispatchTest "eip712.solc",
       runDispatchTest "empty.solc",
       runDispatchTest "empty_no_constructor.solc",
       runDispatchTest "generic_product.solc",

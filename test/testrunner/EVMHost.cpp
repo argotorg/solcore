@@ -553,6 +553,19 @@ evmc::Result EVMHost::precompileECRecover(evmc_message const& _message) noexcept
 				fromHex(""),
 				gas_cost
 			}
+		},
+		{
+			// EIP-712 canonical "Mail" example digest (test/examples/dispatch/eip712).
+			fromHex(
+				"be609aee343fb3c4b28e1df9e632fca64fcfaede20f02e86244efddf30957bd2"
+				"000000000000000000000000000000000000000000000000000000000000001c"
+				"4355c47d63924e8a72e509b65029052eb6c299d53a04e167c5775fd466751c9d"
+				"07299936d304c153f6443dfa05f40ff007d72911b6f72307f996231605b91562"
+			),
+			{
+				fromHex("000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"),
+				gas_cost
+			}
 		}
 	};
 	evmc::Result result = precompileGeneric(_message, inputOutput, true /* _ignoresTrailingInput */);
