@@ -1,0 +1,36 @@
+import std.{*};
+import std.dispatch.{*};
+import std.Generic.{*};
+import std.ABIGeneric.{*};
+
+// Regression test: an ADT with a *dynamic* branch (`memory(bytes)`) must not
+// collapse its `ABIAttribs` to the static 32-byte default when returned over
+// the ABI.
+//
+// Before `bytes:ABIAttribs` was added, `memory(bytes)` resolved `ABIAttribs`
+// only through the catch-all `default instance t:ABIAttribs` (headSize 32,
+// isStatic true) — `string` had an instance but `bytes` did not. That default
+// cannot satisfy the `g:ABIAttribs` context of `sum(f,g):ABIAttribs`, so the
+// moment a data type carries one `memory(bytes)` branch its ENTIRE `ABIAttribs`
+// collapsed to static/32. `abi_encode` then reserved a single word and
+// truncated every returned constructor — even the static `A(address)` one — to
+// the sum tag (`0x00` / `0x01`), dropping the payload.
+//
+//   rep(D) = sum(address, memory(bytes))
+//   headSize = 32 (tag) + max(headSize address = 32, headSize memory(bytes) = 32) = 64
+//   isStatic = and(isStatic address = true, isStatic memory(bytes) = false) = false
+data D = A(address) | B(memory(bytes));
+
+contract C {
+    constructor() {
+        // Exactly the two values that were wrong (32 / true) before the fix.
+        assert(ABIAttribs.headSize(Proxy : Proxy(D)) == 64);
+        assert(!ABIAttribs.isStatic(Proxy : Proxy(D)));
+    }
+
+    // Returns the STATIC constructor of a dynamic ADT. Must encode as
+    // tag(0) + address — a full 64-byte return — not a bare `0x00` tag word.
+    public function getA(x : address) -> D {
+        return D.A(x);
+    }
+}

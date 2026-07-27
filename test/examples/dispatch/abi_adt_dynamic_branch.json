@@ -1,0 +1,28 @@
+{
+  "abi_adt_dynamic_branch": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor() asserts headSize(D)==64 and isStatic(D)==false; reverts before the bytes:ABIAttribs fix (was 32 / true)",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "getA(0xaa) -> A(0xaa): tag 0 + address, a full 64-byte return, not a truncated 0x00 tag word",
+          "calldata": "4ed33ace00000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000aa",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}
