@@ -35,6 +35,7 @@ bash ./contest.sh test/examples/dispatch/abi_bytes_array.json
 bash ./contest.sh test/examples/dispatch/abi_address_array.json
 bash ./contest.sh test/examples/dispatch/abi_dyn_sum.json
 bash ./contest.sh test/examples/dispatch/abi_dyn_sum_return.json
+bash ./contest.sh test/examples/dispatch/abi_sum_roundtrip.json
 bash ./contest.sh test/examples/dispatch/abi_batch_adt.json
 bash ./contest.sh test/examples/dispatch/generic_product.json
 bash ./contest.sh test/examples/dispatch/sum_wide_product.json
