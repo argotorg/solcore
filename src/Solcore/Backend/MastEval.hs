@@ -191,22 +191,17 @@ buildFunTable cu = Map.fromList $ concatMap collectFromTopDecl (mastTopDecls cu)
     collectFromDecl (MastCDataDecl _) = []
 
 -----------------------------------------------------------------------
--- Type registry: pre-scan a function body for all declared MastIds
+-- Type registry: start with function parameters and extend at each declaration
 -----------------------------------------------------------------------
 
 -- | Build a registry from variable names to their full MastIds.
--- Covers function parameters and let-declared variables throughout the body.
--- Used to reconstruct VEnv entries after interpreting an asm block, since
--- a no-init 'let' deletes the variable from VEnv before the asm block runs.
+-- Let-declared variables are registered as their statements are evaluated, so
+-- assembly before a shadowing declaration still resolves to the outer binding.
+-- The registry survives no-init let deletion from VEnv.
 buildTypeReg :: [MastParam] -> [MastStmt] -> TypeReg
-buildTypeReg params stmts =
-  Map.fromList $
+buildTypeReg params _ =
+  Map.fromList
     [(mastParamName p, MastId (mastParamName p) (mastParamType p)) | p <- params]
-      ++ concatMap letIds stmts
-  where
-    letIds (MastLet _ i _ _) = [(mastIdName i, i)]
-    letIds (MastMatch _ alts) = concatMap (concatMap letIds . snd) alts
-    letIds _ = []
 
 -----------------------------------------------------------------------
 -- Evaluate top-level declarations
@@ -283,18 +278,34 @@ evalStmts :: TypeReg -> VEnv -> [MastStmt] -> EvalM (VEnv, [MastStmt])
 evalStmts _ env [] = pure (env, [])
 evalStmts tyReg env (s : ss) = do
   (env', s') <- evalStmt tyReg env s
-  (env'', ss') <- evalStmts tyReg env' ss
+  (env'', ss') <- evalStmts (registerDeclaration tyReg s) env' ss
   pure (env'', s' <> ss')
+
+-- Process a lexical block while remembering each shadowed binding at the point
+-- its declaration is reached. This preserves earlier updates to outer
+-- variables and restores only declarations owned by this block.
+evalScopedStmts :: TypeReg -> VEnv -> [MastStmt] -> EvalM (VEnv, [MastStmt])
+evalScopedStmts tyReg env = go tyReg env Map.empty
+  where
+    go _ current saved [] =
+      pure (restoreScopedBindings saved current, [])
+    go currentTyReg current saved (s : ss) = do
+      let saved' = saveShadowedBinding saved current s
+      (current', s') <- evalStmt currentTyReg current s
+      (current'', ss') <-
+        go (registerDeclaration currentTyReg s) current' saved' ss
+      pure (current'', s' <> ss')
 
 evalStmt :: TypeReg -> VEnv -> MastStmt -> EvalM (VEnv, [MastStmt])
 evalStmt tyReg env stmt = case stmt of
   MastLet ct i ty mInit -> do
     mInit' <- traverse (if ct then withComptimeMode . evalExp env else evalExp env) mInit
+    let shadowedEnv = deleteBindingsNamed (mastIdName i) env
     let env' = case mInit' of
-          Just e | isKnownValue e -> Map.insert i e env
-          _ -> Map.delete i env -- Shadow/remove any existing binding
-          -- Comptime lets with known values are dead after evaluation: all uses will be
-          -- substituted from VEnv, and EmitHull cannot handle string-typed variables.
+          Just e | isKnownValue e -> Map.insert i e shadowedEnv
+          _ -> shadowedEnv
+    -- Comptime lets with known values are dead after evaluation: all uses will be
+    -- substituted from VEnv, and EmitHull cannot handle string-typed variables.
     let stmts = case mInit' of
           Just e | ct && isKnownValue e -> []
           _ -> [MastLet ct i ty mInit']
@@ -339,7 +350,9 @@ evalStmt tyReg env stmt = case stmt of
         pure (mergeYulStateToVEnv tyReg yulState' env, [MastAsm yul'])
       Nothing ->
         pure (Map.empty, [MastAsm yul'])
-  MastSeq stmts -> evalStmts tyReg env stmts
+  MastSeq stmts -> do
+    (env', stmts') <- evalScopedStmts tyReg env stmts
+    pure (env', [MastSeq stmts'])
   MastBreak -> pure (env, [MastBreak])
   MastContinue -> pure (env, [MastContinue])
   MastFor initStmt cond post body -> do
@@ -366,9 +379,10 @@ evalLoopStmt :: VEnv -> MastStmt -> EvalM (VEnv, MastStmt)
 evalLoopStmt env st = case st of
   MastLet ct i ty mInit -> do
     mInit' <- traverse (evalExp env) mInit
+    let shadowedEnv = deleteBindingsNamed (mastIdName i) env
     let env' = case mInit' of
-          Just e | isKnownValue e -> Map.insert i e env
-          _ -> Map.delete i env
+          Just e | isKnownValue e -> Map.insert i e shadowedEnv
+          _ -> shadowedEnv
     pure (env', MastLet ct i ty mInit')
   MastAssign i e -> do
     e' <- evalExp env e
@@ -400,8 +414,19 @@ evalLoopStmt env st = case st of
   MastBreak -> pure (env, MastBreak)
   MastContinue -> pure (env, MastContinue)
   MastSeq stmts -> do
-    (env', stmts') <- mapAccumM evalLoopStmt env stmts
+    (env', stmts') <- evalScopedLoopStmts env stmts
     pure (env', MastSeq stmts')
+
+evalScopedLoopStmts :: VEnv -> [MastStmt] -> EvalM (VEnv, [MastStmt])
+evalScopedLoopStmts env = go env Map.empty
+  where
+    go current saved [] =
+      pure (restoreScopedBindings saved current, [])
+    go current saved (s : ss) = do
+      let saved' = saveShadowedBinding saved current s
+      (current', s') <- evalLoopStmt current s
+      (current'', ss') <- go current' saved' ss
+      pure (current'', s' : ss')
 
 evalAlt :: TypeReg -> VEnv -> MastAlt -> EvalM MastAlt
 evalAlt tyReg env (pat, body) = do
@@ -435,6 +460,51 @@ assignedInStmt (MastFor initStmt _ post body) =
     `Set.union` foldMap assignedInStmt body
 assignedInStmt (MastSeq stmts) = foldMap assignedInStmt stmts
 assignedInStmt _ = Set.empty
+
+type ScopedBindings = Map.Map Name VEnv
+
+registerDeclaration :: TypeReg -> MastStmt -> TypeReg
+registerDeclaration registry (MastLet _ mastId _ _) =
+  Map.insert (mastIdName mastId) mastId registry
+registerDeclaration registry _ = registry
+
+deleteBindingsNamed :: Name -> VEnv -> VEnv
+deleteBindingsNamed name =
+  Map.filterWithKey (\mastId _ -> mastIdName mastId /= name)
+
+bindingsNamed :: Name -> VEnv -> VEnv
+bindingsNamed name =
+  Map.filterWithKey (\mastId _ -> mastIdName mastId == name)
+
+-- Save a name only at its first direct declaration in this block. The snapshot
+-- is taken immediately before evaluating that declaration, after any earlier
+-- updates to the outer binding.
+saveShadowedBinding :: ScopedBindings -> VEnv -> MastStmt -> ScopedBindings
+saveShadowedBinding saved env (MastLet _ mastId _ _)
+  | Map.member name saved = saved
+  | otherwise = Map.insert name (bindingsNamed name env) saved
+  where
+    name = mastIdName mastId
+saveShadowedBinding saved _ _ = saved
+
+-- Remove every local identity for each declared name, then restore exactly the
+-- identities and known values visible when that declaration was reached.
+restoreScopedBindings :: ScopedBindings -> VEnv -> VEnv
+restoreScopedBindings saved current =
+  Map.foldlWithKey' restore current saved
+  where
+    restore inner name outer =
+      Map.union outer (deleteBindingsNamed name inner)
+
+-- | A scoped prefix that can be evaluated without losing control-flow or
+-- uninterpreted side effects before continuing with the enclosing body.
+isInlineableScopedPrefix :: [MastStmt] -> Bool
+isInlineableScopedPrefix = all inlineable
+  where
+    inlineable MastLet {} = True
+    inlineable MastAssign {} = True
+    inlineable (MastSeq stmts) = isInlineableScopedPrefix stmts
+    inlineable _ = False
 
 -----------------------------------------------------------------------
 -- Evaluate expressions
@@ -874,10 +944,11 @@ evalFunBody _ _ [] = pure Nothing -- No return statement found
 evalFunBody tyReg env (stmt : rest) = case stmt of
   MastLet _ i _ mInit -> do
     mInit' <- traverse (evalExp env) mInit
+    let shadowedEnv = deleteBindingsNamed (mastIdName i) env
     let env' = case mInit' of
-          Just e | isKnownValue e -> Map.insert i e env
-          _ -> Map.delete i env
-    evalFunBody tyReg env' rest
+          Just e | isKnownValue e -> Map.insert i e shadowedEnv
+          _ -> shadowedEnv
+    evalFunBody (registerDeclaration tyReg stmt) env' rest
   MastAssign i e -> do
     e' <- evalExp env e
     let env' =
@@ -906,7 +977,19 @@ evalFunBody tyReg env (stmt : rest) = case stmt of
     case mYulState' of
       Just yulState' -> evalFunBody tyReg (mergeYulStateToVEnv tyReg yulState' env) rest
       Nothing -> pure Nothing
-  MastSeq stmts -> evalFunBody tyReg env stmts
+  MastSeq stmts
+    | isInlineableScopedPrefix stmts -> do
+        (env', _) <- evalScopedStmts tyReg env stmts
+        evalFunBody tyReg env' rest
+    -- A scoped control-flow body may itself return. Evaluate it speculatively:
+    -- a successful return keeps its effects, while failure restores memory,
+    -- fuel, and queued clones before the caller gives up on inlining.
+    | otherwise -> do
+        savedState <- lift get
+        result <- evalFunBody tyReg env stmts
+        case result of
+          Just {} -> pure result
+          Nothing -> lift (put savedState) >> pure Nothing
 
 -- Try to match a known scrutinee against alternatives.
 -- Returns the extended environment and the body of the matching alternative.

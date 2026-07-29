@@ -1,0 +1,41 @@
+contract BlockShadowing {
+  function main() -> word {
+    let x: word = 1;
+    {
+      let x: word = 2;
+    }
+    let directShadow: word = x;
+    let inlineShadow: word = shadowedValue();
+    let inlineUpdate: word = updatedValue();
+    let updateBeforeShadow: word = updatedBeforeShadow();
+    {
+      x = 3;
+    }
+    return x;
+  }
+}
+
+function shadowedValue() -> word {
+  let x: word = 1;
+  {
+    let x: word = 2;
+  }
+  return x;
+}
+
+function updatedValue() -> word {
+  let x: word = 1;
+  {
+    x = 3;
+  }
+  return x;
+}
+
+function updatedBeforeShadow() -> word {
+  let x: word = 1;
+  {
+    x = 2;
+    let x: word = 3;
+  }
+  return x;
+}

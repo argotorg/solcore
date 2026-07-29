@@ -1185,10 +1185,7 @@ toMastStmt EmptyStmt = MastSeq []
 toMastStmt s = error $ "toMastStmt: unexpected " ++ show s
 
 toMastBody :: [Stmt Id] -> [MastStmt]
-toMastBody = concatMap go
-  where
-    go (Block body) = toMastBody body
-    go stmt = [toMastStmt stmt]
+toMastBody = map toMastStmt
 
 toMastAlt :: ([Pat Id], [Stmt Id]) -> MastAlt
 toMastAlt ([p], body) = (toMastPat p, toMastBody body)

@@ -433,7 +433,9 @@ emitStmt (MastAsm as) = do
     notEVar _ = True
 emitStmt MastBreak = pure [Hull.SBreak]
 emitStmt MastContinue = pure [Hull.SContinue]
-emitStmt (MastSeq stmts) = concat <$> mapM emitStmt stmts
+emitStmt (MastSeq stmts) = withLocalState do
+  body <- concat <$> mapM emitStmt stmts
+  pure [Hull.SBlock body]
 
 emitStmts :: [MastStmt] -> EM [Hull.Stmt]
 emitStmts = concatMapM emitStmt'
