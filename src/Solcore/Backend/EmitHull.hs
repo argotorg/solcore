@@ -15,6 +15,7 @@ import GHC.Stack (HasCallStack)
 import Language.Hull qualified as Hull
 import Language.Yul
 import Solcore.Backend.Mast
+import Solcore.Backend.NameEncoding (encodeBackendName)
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax.Contract (Constr (..), DataTy (..))
 import Solcore.Frontend.Syntax.Name
@@ -271,7 +272,7 @@ translateTCon tycon tas = do
     Just (DataTy _n tvs cs _) -> do
       let subst = zip tvs (map mastToTy tas)
       tys <- mapM (translateDCon subst) cs
-      Hull.TNamed (show tycon) <$> buildSumType tys
+      Hull.TNamed (encodeBackendName tycon) <$> buildSumType tys
     Nothing -> errorsEM ["translateTCon: unknown type ", pretty tycon, "\n", show tycon]
   where
     buildSumType :: [Hull.Type] -> EM Hull.Type
