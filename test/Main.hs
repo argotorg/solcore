@@ -5,6 +5,7 @@ import ContractAbiTests
 import DiagnosticCliTests
 import DiagnosticTests
 import HullCases
+import KeccakTests
 import LocationTests
 import MatchCompilerTests
 import ModuleTypeCheckTests
@@ -38,5 +39,6 @@ tests =
       matchTests,
       yulEvalTests,
       hullTests,
-      specialiseTests
+      specialiseTests,
+      keccakTests
     ]
