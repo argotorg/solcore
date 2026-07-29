@@ -259,10 +259,10 @@ initFunName :: Name
 initFunName = "init_"
 
 mkNameTy :: Name -> Name -> DataTy
-mkNameTy cname fname = DataTy (nameTypeName cname fname) [] []
+mkNameTy cname fname = DataTy (nameTypeName cname fname) [] [] []
 
 mkNameInst :: DataTy -> Name -> Instance Name
-mkNameInst (DataTy dname [] []) fname =
+mkNameInst (DataTy dname [] [] _) fname =
   let nameTy = TyCon dname []
       sig = Signature [] [] "sigStr" [Typed False "p" (proxyTy nameTy)] False (Just string) False
       body = [Return (Lit (StrLit (show fname)))]

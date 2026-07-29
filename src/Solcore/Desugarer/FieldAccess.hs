@@ -60,7 +60,7 @@ fieldDesugarTopDecls topdecls = extras <> topdecls'
 extraTopDeclsForContract :: Bool -> NmContract -> [NmTopDecl]
 extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
   let singName = singletonNameForContract cname
-  let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []]
+  let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []] []
 
   let fields = getFields cdecls
   let (_fieldTypes, extraFieldDecls) = foldl' (flip contractFieldStep) ([], []) fields
@@ -80,7 +80,7 @@ extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, 
   where
     -- data b_sel = n_sel
     selName = selectorNameForField cname fname
-    selDecl = TDataDef $ DataTy selName [] [Constr selName []]
+    selDecl = TDataDef $ DataTy selName [] [Constr selName []] []
     selType = TyCon selName []
     -- instance StructField(ContractStorage(CCtx), fld1_sel):CStructField(uint, ()) {}
     ctxTy = TyCon "ContractStorage" [singletonTypeForContract cname]

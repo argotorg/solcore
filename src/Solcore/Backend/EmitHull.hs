@@ -89,7 +89,8 @@ sumDataTy =
       dataConstrs =
         [ Constr "inl" [tyvar "a"],
           Constr "inr" [tyvar "b"]
-        ]
+        ],
+      dataDerivings = []
     }
   where
     tyvar = TyVar . TVar
@@ -267,7 +268,7 @@ translateTCon (Name "pair") tas = translateProductType tas
 translateTCon tycon tas = do
   mti <- gets (Map.lookup tycon . ecDT)
   case mti of
-    Just (DataTy _n tvs cs) -> do
+    Just (DataTy _n tvs cs _) -> do
       let subst = zip tvs (map mastToTy tas)
       tys <- mapM (translateDCon subst) cs
       Hull.TNamed (show tycon) <$> buildSumType tys
@@ -297,7 +298,7 @@ emitConApp (MastId n ty) as =
     (MastTyCon tcname tas) -> do
       mti <- gets (Map.lookup tcname . ecDT)
       case mti of
-        Just (DataTy _ _tvs allCons) -> do
+        Just (DataTy _ _tvs allCons _) -> do
           (prod, code) <- translateProduct as
           hullTargetType <- translateTCon tcname tas
           let result = encodeCon n allCons hullTargetType prod

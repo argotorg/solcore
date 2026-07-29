@@ -516,7 +516,14 @@ initialTypeEnv (CompUnit _ ds) =
   where
     step (TDataDef dt) ac = addDataTyInfo dt ac
     step (TMutualDef ds1) ac = foldr step ac ds1
+    -- Contract-local data types are also exposed at module scope so that the
+    -- top-level instances derived for them can be compiled (their `match`
+    -- expressions reference the contract-local constructors).
+    step (TContr (Contract _ _ cds)) ac = foldr cstep ac cds
     step _ ac = ac
+    cstep (CDataDecl dt) ac = addDataTyInfo dt ac
+    cstep (CMutualDecl ds1) ac = foldr cstep ac ds1
+    cstep _ ac = ac
 
 primEnv :: TypeEnv
 primEnv =
@@ -554,7 +561,7 @@ falseConInfo :: ConInfo
 falseConInfo = ConInfo [] boolTy
 
 addDataTyInfo :: DataTy -> TypeEnv -> TypeEnv
-addDataTyInfo (DataTy n vs cons) env =
+addDataTyInfo (DataTy n vs cons _) env =
   foldr (addConstructor res) env cons
   where
     res = TyCon n (map TyVar vs)
