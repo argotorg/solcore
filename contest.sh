@@ -25,9 +25,6 @@ test_dir=$(dirname $file)
 build_dir="$root_dir/build"
 base=$(basename "$file" .json)
 src="$test_dir/$base.solc"
-hull="$build_dir/output1.hull"
-hexfile="$build_dir/$base.hex"
-yulfile="$build_dir/$base.yul"
 
 create=true
 # Allow overriding testrunner location (useful for Nix builds)
@@ -87,14 +84,39 @@ suite=$(echo $presuite | tr -d '"')
 echo "Compiling to Hull..."
 # Allow overriding sol-core command (useful for Nix builds)
 : ${SOLCORE_CMD:="cabal run exe:sol-core --"}
-if ! $SOLCORE_CMD -f "$src"; then
+mkdir -p "$build_dir"
+work_root="$build_dir/.contest-work"
+mkdir -p "$work_root"
+work_dir="$(mktemp -d "$work_root/run.XXXXXX")"
+work_marker="$work_dir/.owned-by-contest"
+touch "$work_marker"
+hull="$work_dir/output1.hull"
+yulfile="$work_dir/output.yul"
+hexfile="$work_dir/output.hex"
+runner_input="$work_dir/runner-input.json"
+runner_output="$work_dir/runner-output.json"
+
+cleanup_work_dir() {
+    if [[ -z "${work_dir:-}" ]]; then
+        return
+    fi
+
+    if [[ "$work_dir" != "$work_root"/run.* || ! -f "$work_marker" ]]; then
+        echo "Error: refusing to clean unverified contest work directory '$work_dir'" >&2
+        return 1
+    fi
+
+    rm -rf -- "$work_dir"
+}
+
+trap cleanup_work_dir EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if ! $SOLCORE_CMD -f "$src" -o "$work_dir"; then
     echo "Error: sol-core compilation failed"
     exit 1
-fi
-
-mkdir -p "$build_dir"
-if ls ./output*.hull 1> /dev/null 2>&1; then
-    mv ./output*.hull "$build_dir"/
 fi
 
 if [[ ! -f "$hull" ]]; then
@@ -122,6 +144,6 @@ fi
 
 echo "Hex output: $hexfile"
 
-jq ".$suite.bytecode |= \"$(cat $hexfile)\" " $file > $build_dir/$suite.json
+jq ".$suite.bytecode |= \"$(cat $hexfile)\" " $file > "$runner_input"
 
-"$testrunner_exe" "$evmone" "$build_dir/$suite.json" "$build_dir/$suite-output.json"
+"$testrunner_exe" "$evmone" "$runner_input" "$runner_output"
