@@ -1273,6 +1273,16 @@ instance bytes32:ABIEncode {
     }
 }
 
+instance bytes4:ABIEncode {
+    // bytes4's word rep is right-aligned (e.g. `bytes4(shr(224, h))`),
+    // so it is written directly into the head like bytes32
+    function encodeInto(x:bytes4, basePtr:word, offset:word, tail:word) -> word {
+        let repx : word = Typedef.rep(x);
+        mstore(basePtr + offset, repx);
+        return tail;
+    }
+}
+
 instance bool:ABIEncode {
     function encodeInto(x:bool, basePtr:word, offset:word, tail:word) -> word {
         let repx : word = frombool(x);
