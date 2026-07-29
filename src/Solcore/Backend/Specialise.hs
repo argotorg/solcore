@@ -20,10 +20,11 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Generics
-import Data.List (intercalate, union, (\\))
+import Data.List (union, (\\))
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Solcore.Backend.Mast
+import Solcore.Backend.NameEncoding (encodeSpecialisedName)
 import Solcore.Desugarer.IfDesugarer (desugaredBoolTy)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -838,22 +839,7 @@ specMatch exps alts = do
       return e'
 
 specName :: Name -> [Ty] -> Name
-specName n [] = Name $ flattenQual n
-specName n ts = Name $ flattenQual n ++ "$" ++ intercalate "_" (map mangleTy ts)
-
-flattenQual :: Name -> String
-flattenQual (Name n) = n
-flattenQual (QualName n s) = flattenQual n ++ "_" ++ s
-
-mangleTy :: Ty -> String
-mangleTy (TyVar (TVar (Name n))) = n
-mangleTy (Meta (MetaTv (Name n))) = n
-mangleTy (TyCon (Name "()") []) = "unit"
--- Contract-local types carry a contract-qualified name (e.g. A.Color); flatten
--- the whole qualified name so the mangled identifier stays unique and Yul-safe.
-mangleTy (TyCon n []) = flattenQual n
-mangleTy (TyCon n ts) = flattenQual n ++ "L" ++ intercalate "_" (map mangleTy ts) ++ "J"
-mangleTy ty = error ("mangleTy - unexpected type: " ++ show ty)
+specName = encodeSpecialisedName
 
 prettyId :: Id -> String
 prettyId = render . pprId
