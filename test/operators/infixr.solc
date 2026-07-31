@@ -1,0 +1,20 @@
+// Right-associative operator: a (~>) b (~>) c  parses as  a ~> (b ~> c).
+// (~>) is defined as subtraction to make the associativity observable.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixr 45 (~>) => rsub;
+
+function rsub(x : word, y : word) -> word {
+  return Sub.sub(x, y);
+}
+
+contract InfixR {
+  function main() -> word {
+    // Right-associative: 10 ~> 3 ~> 2 = 10 ~> (3~>2) = 10 ~> 1 = 9
+    let r = 10 ~> 3 ~> 2;
+    return r;
+  }
+}

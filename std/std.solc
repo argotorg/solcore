@@ -3,6 +3,35 @@ import std.opcodes.{add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod
 pragma no-patterson-condition ABIEncode, Num, Array, ArrayPush, Eq, Ord;
 pragma no-coverage-condition ABIDecode, MemoryType, Array, ArrayPush, RValueIdxAccess;
 
+// Built-in operators are defined here, not in the compiler. Each declaration
+// binds an operator symbol to an existing class method or function; a use of
+// the operator is a plain call to that function. Precedences match the values
+// the compiler previously hard-coded, so parsing/associativity is unchanged.
+prefix 90 (!)  => not;
+prefix 90 (~)  => BitNot.bnot;
+
+infixl 50 (*)  => Mul.mul;
+infixl 50 (/)  => Div.div;
+infixl 50 (%)  => Mod.mod;
+
+infixl 45 (+)  => Add.add;
+infixl 45 (-)  => Sub.sub;
+
+infixl 44 (&)  => BitAnd.band;
+infixl 43 (^)  => BitXor.bxor;
+infixl 42 (|)  => BitOr.bor;
+
+infix  35 (<=) => le;
+infix  35 (>=) => ge;
+infix  35 (<)  => lt;
+infix  35 (>)  => Ord.gt;
+
+infix  34 (==) => Eq.eq;
+infix  34 (!=) => ne;
+
+infixl 20 (&&) => and;
+infixl 10 (||) => or;
+
 export {
   ABIAttribs,
   ABIDecode,
@@ -137,7 +166,24 @@ export {
   tobool,
   uint256(*),
   unimplemented,
-  zeroize_memory
+  zeroize_memory,
+  (!),
+  (*),
+  (/),
+  (%),
+  (+),
+  (-),
+  (&),
+  (^),
+  (|),
+  (<=),
+  (>=),
+  (<),
+  (>),
+  (==),
+  (!=),
+  (&&),
+  (||)
 };
 
 /*

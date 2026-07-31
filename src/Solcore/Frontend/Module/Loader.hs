@@ -22,7 +22,8 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
 import Solcore.Frontend.Module.Identity qualified as Mod
-import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
+import Solcore.Frontend.Parser.OperatorScan (scanImports, scanOperators)
+import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithOps)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 import System.Directory (doesFileExist, makeAbsolute)
@@ -141,8 +142,9 @@ visit cfg moduleId sourcePath = do
     modify (\st -> st {loadingModules = Set.insert moduleId (loadingModules st)})
     content <- liftIO (readFile sourcePath)
     let source = makeSourceFile sourcePath content
-    parsed <- liftIO (parseCompUnitWithPath sourcePath content)
-    cunit <- either throwError pure parsed
+    importedOps <- gatherImportedOperators cfg moduleId sourcePath (scanImports content)
+    parsed <- liftIO (parseCompUnitWithOps importedOps sourcePath content)
+    cunit <- stripOperators <$> either throwError pure parsed
     importedModules <- mapM (resolveImportPath cfg moduleId sourcePath) (imports cunit)
     exportedModules <-
       mapM (resolveModuleReference cfg moduleId sourcePath ExportReference) (exportModulePaths cunit)
@@ -176,6 +178,50 @@ resolveImportPath ::
 resolveImportPath cfg currentModule currentSourcePath imp =
   fmap (\(_, targetId, targetPath) -> (targetId, targetPath)) $
     resolveModuleReference cfg currentModule currentSourcePath ImportReference (importModule imp)
+
+gatherImportedOperators ::
+  LoaderConfig ->
+  Mod.ModuleId ->
+  FilePath ->
+  [Import] ->
+  StateT LoadState (ExceptT String IO) [OperatorDecl]
+gatherImportedOperators cfg currentModule currentSourcePath imps =
+  concat <$> mapM fromImport imps
+  where
+    fromImport imp =
+      ( do
+          (_, targetPath) <- resolveImportPath cfg currentModule currentSourcePath imp
+          c <- liftIO (readFile targetPath)
+          pure (selectImportedOperators imp (scanOperators c))
+      )
+        `catchError` const (pure [])
+
+selectImportedOperators :: Import -> [OperatorDecl] -> [OperatorDecl]
+selectImportedOperators _ ops = ops
+
+stripOperators :: CompUnit -> CompUnit
+stripOperators (CompUnit imps ds) =
+  CompUnit (map stripImportOps imps) (concatMap stripTopDeclOps ds)
+  where
+    stripTopDeclOps (TOperatorDecl _) = []
+    stripTopDeclOps (TContr (Contract n ps cds)) =
+      [TContr (Contract n ps (filter (not . isContractOp) cds))]
+    stripTopDeclOps (TExportDecl e) = [TExportDecl (stripExportOps e)]
+    stripTopDeclOps d = [d]
+
+    isContractOp (COperatorDecl _) = True
+    isContractOp _ = False
+
+    stripExportOps (ExportList specs) = ExportList (filter (not . isExportOp) specs)
+    stripExportOps e = e
+    isExportOp (ExportOperator _) = True
+    isExportOp _ = False
+
+    stripImportOps (ImportOnly p (SelectItems es hs)) =
+      ImportOnly p (SelectItems (filter (not . isSelectOp) es) hs)
+    stripImportOps i = i
+    isSelectOp (SelectOperator _) = True
+    isSelectOp _ = False
 
 resolveModuleReference ::
   LoaderConfig ->
@@ -620,6 +666,7 @@ selectedImportBindingsFromAvailable available (SelectItems items hidden) =
     expand SelectAllItems = [(itemName, itemName) | itemName <- available]
     expand (SelectItem itemName) = [(itemName, itemName)]
     expand (SelectItemAs itemName aliasName) = [(itemName, aliasName)]
+    expand (SelectOperator _) = [] -- operator selectors are handled separately; not name imports
 
 uniqueBindingsByLocal :: [(Name, Name)] -> [(Name, Name)]
 uniqueBindingsByLocal =
@@ -845,7 +892,8 @@ validatePublicInterfaces graph groupModules interfaces =
           pure ()
         ExportModuleAll path ->
           ensureRemoteModuleVisible moduleId path
-
+        ExportOperator _ ->
+          pure () -- operator exports carry no name to validate
     ensureRemoteModuleVisible moduleId path = do
       _ <- lookupModuleReference graph moduleId path
       pure ()
@@ -899,6 +947,9 @@ expandExportSpecFixed ::
   CompUnit ->
   ExportSpec ->
   Either String ModulePublicInterface
+expandExportSpecFixed _graph _groupModules _currentInterfaces _currentModule _sourcePath _unit (ExportOperator _) =
+  -- Operator exports contribute no name-level items to the public interface.
+  pure emptyPublicInterface
 expandExportSpecFixed graph groupModules currentInterfaces currentModule sourcePath unit (ExportName itemName) = do
   refs <- visibleExportRefsForNameFixed graph groupModules currentInterfaces currentModule unit itemName
   ensureVisibleExportExists sourcePath itemName refs
@@ -1321,6 +1372,7 @@ topDeclNames (TClassDef (Class _ _ n _ _ _)) = [n]
 topDeclNames (TContr (Contract n _ _)) = [n]
 topDeclNames (TDataDef (DataTy n _ _ _)) = [n]
 topDeclNames (TInstDef _) = []
+topDeclNames (TOperatorDecl _) = []
 topDeclNames (TExportDecl _) = []
 topDeclNames (TPragmaDecl _) = []
 
@@ -1411,24 +1463,6 @@ renameBodyTypeRefs renameMap =
 renameStmtTypeRefs :: Map Name Name -> Stmt -> Stmt
 renameStmtTypeRefs renameMap (Assign lhs rhs) =
   Assign (renameExpTypeRefs renameMap lhs) (renameExpTypeRefs renameMap rhs)
-renameStmtTypeRefs renameMap (StmtPlusEq e1 e2) =
-  StmtPlusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtMinusEq e1 e2) =
-  StmtMinusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtTimesEq e1 e2) =
-  StmtTimesEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtDivideEq e1 e2) =
-  StmtDivideEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtBXorEq e1 e2) =
-  StmtBXorEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtBAndEq e1 e2) =
-  StmtBAndEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtBOrEq e1 e2) =
-  StmtBOrEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtModEq e1 e2) =
-  StmtModEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtBNotEq e1) =
-  StmtBNotEq (renameExpTypeRefs renameMap e1)
 renameStmtTypeRefs renameMap (Let ct n mt me) =
   Let ct n (renameTyTypeRefs renameMap <$> mt) (renameExpTypeRefs renameMap <$> me)
 renameStmtTypeRefs renameMap (StmtExp e) =
@@ -1512,42 +1546,6 @@ renameExpTypeRefs renameMap (ExpIndexed e1 e2) =
   ExpIndexed (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpArray es) =
   ExpArray (map (renameExpTypeRefs renameMap) es)
-renameExpTypeRefs renameMap (ExpPlus e1 e2) =
-  ExpPlus (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpMinus e1 e2) =
-  ExpMinus (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpTimes e1 e2) =
-  ExpTimes (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpDivide e1 e2) =
-  ExpDivide (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpModulo e1 e2) =
-  ExpModulo (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpBXor e1 e2) =
-  ExpBXor (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpBAnd e1 e2) =
-  ExpBAnd (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpBOr e1 e2) =
-  ExpBOr (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpLT e1 e2) =
-  ExpLT (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpGT e1 e2) =
-  ExpGT (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpLE e1 e2) =
-  ExpLE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpGE e1 e2) =
-  ExpGE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpEE e1 e2) =
-  ExpEE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpNE e1 e2) =
-  ExpNE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpLAnd e1 e2) =
-  ExpLAnd (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpLOr e1 e2) =
-  ExpLOr (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpLNot e) =
-  ExpLNot (renameExpTypeRefs renameMap e)
-renameExpTypeRefs renameMap (ExpBNot e) =
-  ExpBNot (renameExpTypeRefs renameMap e)
 renameExpTypeRefs renameMap (ExpCond e1 e2 e3) =
   ExpCond
     (renameExpTypeRefs renameMap e1)
@@ -1597,6 +1595,7 @@ renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body payable))
         (renameBodyTypeRefs renameMap body)
         payable
     )
+renameContractDeclTypeRefs _ d@(COperatorDecl _) = d -- no type refs in an operator declaration
 
 renameClassTypeRefs :: Map Name Name -> Class -> Class
 renameClassTypeRefs renameMap (Class bvs ctx n pvs mv sigs) =
@@ -1750,6 +1749,7 @@ toValidationImportStub (TDataDef (DataTy n _ cs _)) =
 toValidationImportStub (TInstDef _) = Nothing
 toValidationImportStub (TExportDecl _) = Nothing
 toValidationImportStub (TPragmaDecl _) = Nothing
+toValidationImportStub (TOperatorDecl _) = Nothing
 
 typeCheckQualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 typeCheckQualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
@@ -2041,6 +2041,7 @@ shadowImportedDecls localDecls =
           )
     filterDecl seen (TExportDecl _) = (seen, Nothing)
     filterDecl seen (TPragmaDecl _) = (seen, Nothing)
+    filterDecl seen (TOperatorDecl _) = (seen, Nothing)
 
 filterImportedInstanceConflicts :: [TopDecl] -> [TopDecl] -> [TopDecl]
 filterImportedInstanceConflicts localDecls =
@@ -2152,6 +2153,7 @@ selectTopDeclForExportRef itemRef (TDataDef (DataTy n ts cs ds))
 selectTopDeclForExportRef _ (TInstDef _) = Nothing
 selectTopDeclForExportRef _ (TExportDecl _) = Nothing
 selectTopDeclForExportRef _ (TPragmaDecl _) = Nothing
+selectTopDeclForExportRef _ (TOperatorDecl _) = Nothing
 
 filterVisibleConstructors :: [Name] -> [Constr] -> [Constr]
 filterVisibleConstructors visibleConstructors =
@@ -2385,6 +2387,7 @@ explicitSelectorNames (SelectItems items _) =
       SelectItem itemName -> [itemName]
       SelectItemAs itemName _ -> [itemName]
       SelectAllItems -> []
+      SelectOperator _ -> []
   ]
 
 explicitSelectorLocalNames :: ItemSelector -> [Name]
@@ -2395,6 +2398,7 @@ explicitSelectorLocalNames (SelectItems items _) =
       SelectItem itemName -> [itemName]
       SelectItemAs _ aliasName -> [aliasName]
       SelectAllItems -> []
+      SelectOperator _ -> []
   ]
 
 explicitExportSelectorNames :: ExportSelector -> [Name]

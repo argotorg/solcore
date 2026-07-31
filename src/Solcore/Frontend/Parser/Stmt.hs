@@ -13,24 +13,24 @@ import Solcore.Frontend.Parser.Patterns (patListP)
 import Solcore.Frontend.Parser.SolcoreTypes (locatedP, simpleNameP, typeP)
 import Solcore.Frontend.Syntax.SyntaxTree
 
-bodyP :: Parser Body
-bodyP = many stmtP
+bodyP :: [OperatorDecl] -> Parser Body
+bodyP ops = many (stmtP ops)
 
-expP :: Parser Exp
-expP = exprP bodyP
+expP :: [OperatorDecl] -> Parser Exp
+expP ops = exprP ops (bodyP ops)
 
-stmtP :: Parser Stmt
-stmtP =
-  letP
-    <|> returnP
-    <|> try ifP
-    <|> forP
+stmtP :: [OperatorDecl] -> Parser Stmt
+stmtP ops =
+  letP ops
+    <|> returnP ops
+    <|> try (ifP ops)
+    <|> forP ops
     <|> breakP
     <|> continueP
-    <|> matchP
+    <|> matchP ops
     <|> asmP
-    <|> blockP
-    <|> try exprOrAssignP
+    <|> blockP ops
+    <|> try (exprOrAssignP ops)
 
 breakP :: Parser Stmt
 breakP = locatedP locatedStmt (Break <$ (keyword "break" *> semicolon))
@@ -38,8 +38,8 @@ breakP = locatedP locatedStmt (Break <$ (keyword "break" *> semicolon))
 continueP :: Parser Stmt
 continueP = locatedP locatedStmt (Continue <$ (keyword "continue" *> semicolon))
 
-letP :: Parser Stmt
-letP = locatedP locatedStmt $ do
+letP :: [OperatorDecl] -> Parser Stmt
+letP ops = locatedP locatedStmt $ do
   keyword "let"
   n <- simpleNameP
   (ct, mt) <- option (False, Nothing) $ do
@@ -47,82 +47,102 @@ letP = locatedP locatedStmt $ do
     ct <- option False (True <$ keyword "comptime")
     t <- typeP
     return (ct, Just t)
-  me <- optional (equalsP *> expP)
+  me <- optional (equalsP *> expP ops)
   _ <- semicolon
   return (Let ct n mt me)
 
-returnP :: Parser Stmt
-returnP = locatedP locatedStmt (Return <$> (keyword "return" *> expP <* semicolon))
+returnP :: [OperatorDecl] -> Parser Stmt
+returnP ops = locatedP locatedStmt (Return <$> (keyword "return" *> expP ops <* semicolon))
 
-ifP :: Parser Stmt
-ifP = locatedP locatedStmt $ do
+ifP :: [OperatorDecl] -> Parser Stmt
+ifP ops = locatedP locatedStmt $ do
   keyword "if"
-  cond <- parens expP
-  thenBody <- braces bodyP
-  elseBody <- option [] (keyword "else" *> braces bodyP)
+  cond <- parens (expP ops)
+  thenBody <- braces (bodyP ops)
+  elseBody <- option [] (keyword "else" *> braces (bodyP ops))
   return (If cond thenBody elseBody)
 
-forP :: Parser Stmt
-forP = locatedP locatedStmt $ do
+forP :: [OperatorDecl] -> Parser Stmt
+forP ops = locatedP locatedStmt $ do
   keyword "for"
   (initS, cond, postS) <- parens $ do
-    initS <- forInitP
+    initS <- forInitP ops
     _ <- semicolon
-    cond <- expP
+    cond <- expP ops
     _ <- semicolon
-    postS <- forPostP
+    postS <- forPostP ops
     return (initS, cond, postS)
-  body <- braces bodyP
+  body <- braces (bodyP ops)
   return (For initS cond postS body)
 
-matchP :: Parser Stmt
-matchP = locatedP locatedStmt $ do
+matchP :: [OperatorDecl] -> Parser Stmt
+matchP ops = locatedP locatedStmt $ do
   keyword "match"
-  scrutinees <- expP `sepBy1` comma
-  eqns <- braces (many equationP)
+  scrutinees <- expP ops `sepBy1` comma
+  eqns <- braces (many (equationP ops))
   return (Match scrutinees eqns)
 
 asmP :: Parser Stmt
 asmP = locatedP locatedStmt (Asm <$> (keyword "assembly" *> yulBlock)) -- yulBlock includes the surrounding braces
 
-blockP :: Parser Stmt
-blockP = locatedP locatedStmt (Block <$> braces bodyP)
+blockP :: [OperatorDecl] -> Parser Stmt
+blockP ops = locatedP locatedStmt (Block <$> braces (bodyP ops))
 
-exprOrAssignP :: Parser Stmt
-exprOrAssignP = locatedP locatedStmt $ do
-  lhs <- expP
+exprOrAssignP :: [OperatorDecl] -> Parser Stmt
+exprOrAssignP ops = locatedP locatedStmt $ do
+  lhs <- expP ops
   choice
-    [ do rhs <- equalsP *> expP; _ <- semicolon; return (Assign lhs rhs),
-      do rhs <- symbol "+=" *> expP; _ <- semicolon; return (StmtPlusEq lhs rhs),
-      do rhs <- symbol "-=" *> expP; _ <- semicolon; return (StmtMinusEq lhs rhs),
-      do rhs <- symbol "*=" *> expP; _ <- semicolon; return (StmtTimesEq lhs rhs),
-      do rhs <- symbol "/=" *> expP; _ <- semicolon; return (StmtDivideEq lhs rhs),
-      do rhs <- symbol "^=" *> expP; _ <- semicolon; return (StmtBXorEq lhs rhs),
-      do rhs <- symbol "&=" *> expP; _ <- semicolon; return (StmtBAndEq lhs rhs),
-      do rhs <- symbol "|=" *> expP; _ <- semicolon; return (StmtBOrEq lhs rhs),
-      do rhs <- symbol "%=" *> expP; _ <- semicolon; return (StmtModEq lhs rhs),
-      do _ <- symbol "~="; _ <- semicolon; return (StmtBNotEq lhs),
+    [ do rhs <- equalsP *> expP ops; _ <- semicolon; return (Assign lhs rhs),
+      do rhs <- symbol "+=" *> expP ops; _ <- semicolon; compoundAssign ops "+" lhs rhs,
+      do rhs <- symbol "-=" *> expP ops; _ <- semicolon; compoundAssign ops "-" lhs rhs,
+      do rhs <- symbol "*=" *> expP ops; _ <- semicolon; compoundAssign ops "*" lhs rhs,
+      do rhs <- symbol "/=" *> expP ops; _ <- semicolon; compoundAssign ops "/" lhs rhs,
+      do rhs <- symbol "^=" *> expP ops; _ <- semicolon; compoundAssign ops "^" lhs rhs,
+      do rhs <- symbol "&=" *> expP ops; _ <- semicolon; compoundAssign ops "&" lhs rhs,
+      do rhs <- symbol "|=" *> expP ops; _ <- semicolon; compoundAssign ops "|" lhs rhs,
+      do rhs <- symbol "%=" *> expP ops; _ <- semicolon; compoundAssign ops "%" lhs rhs,
+      do _ <- symbol "~="; _ <- semicolon; compoundAssignUnary ops "~" lhs,
       StmtExp lhs <$ optional semicolon
     ]
 
-forInitP :: Parser Stmt
-forInitP = locatedP locatedStmt $ do
-  stmts <- (forLetP <|> forAssignP) `sepBy` comma
+-- A compound assignment lhs <op>= rhs desugars to lhs = <op>(lhs, rhs)
+-- using the operator bound to <op> in scope; there are no built-in operators,
+-- so the base operator must be declared (e.g. imported from the standard
+-- library). lhs is duplicated into both the assignment target and the call.
+compoundAssign :: [OperatorDecl] -> String -> Exp -> Exp -> Parser Stmt
+compoundAssign ops sym lhs rhs =
+  case filter ((== sym) . opSymbol) ops of
+    (od : _) -> pure (Assign lhs (ExpName Nothing (opFunction od) [lhs, rhs]))
+    [] -> fail ("operator (" ++ sym ++ ") must be in scope to use '" ++ sym ++ "='")
+
+-- A unary compound assignment `lhs <op>=` desugars to `lhs = <op>(lhs)` using
+-- the (prefix) operator bound to <op> in scope. Used for `~=`, the in-place
+-- bitwise NOT: `lhs ~=` becomes `lhs = ~lhs`. As with compoundAssign, the base
+-- operator must be declared (there are no built-in operators).
+compoundAssignUnary :: [OperatorDecl] -> String -> Exp -> Parser Stmt
+compoundAssignUnary ops sym lhs =
+  case filter ((== sym) . opSymbol) ops of
+    (od : _) -> pure (Assign lhs (ExpName Nothing (opFunction od) [lhs]))
+    [] -> fail ("operator (" ++ sym ++ ") must be in scope to use '" ++ sym ++ "='")
+
+forInitP :: [OperatorDecl] -> Parser Stmt
+forInitP ops = locatedP locatedStmt $ do
+  stmts <- (forLetP ops <|> forAssignP ops) `sepBy` comma
   return $ case stmts of
     [] -> EmptyStmt
     [s] -> s
     ss -> Block ss
 
-forPostP :: Parser Stmt
-forPostP = locatedP locatedStmt $ do
-  stmts <- forAssignP `sepBy` comma
+forPostP :: [OperatorDecl] -> Parser Stmt
+forPostP ops = locatedP locatedStmt $ do
+  stmts <- forAssignP ops `sepBy` comma
   return $ case stmts of
     [] -> EmptyStmt
     [s] -> s
     ss -> Block ss
 
-forLetP :: Parser Stmt
-forLetP = locatedP locatedStmt $ do
+forLetP :: [OperatorDecl] -> Parser Stmt
+forLetP ops = locatedP locatedStmt $ do
   keyword "let"
   n <- simpleNameP
   (ct, mt) <- option (False, Nothing) $ do
@@ -130,28 +150,28 @@ forLetP = locatedP locatedStmt $ do
     ct <- option False (True <$ keyword "comptime")
     t <- typeP
     return (ct, Just t)
-  me <- optional (equalsP *> expP)
+  me <- optional (equalsP *> expP ops)
   return (Let ct n mt me)
 
-forAssignP :: Parser Stmt
-forAssignP = locatedP locatedStmt $ do
-  lhs <- expP
+forAssignP :: [OperatorDecl] -> Parser Stmt
+forAssignP ops = locatedP locatedStmt $ do
+  lhs <- expP ops
   choice
-    [ do rhs <- equalsP *> expP; return (Assign lhs rhs),
-      do rhs <- symbol "+=" *> expP; return (StmtPlusEq lhs rhs),
-      do rhs <- symbol "-=" *> expP; return (StmtMinusEq lhs rhs),
-      do rhs <- symbol "*=" *> expP; return (StmtTimesEq lhs rhs),
-      do rhs <- symbol "/=" *> expP; return (StmtDivideEq lhs rhs),
-      do rhs <- symbol "^=" *> expP; return (StmtBXorEq lhs rhs),
-      do rhs <- symbol "&=" *> expP; return (StmtBAndEq lhs rhs),
-      do rhs <- symbol "|=" *> expP; return (StmtBOrEq lhs rhs),
-      do rhs <- symbol "%=" *> expP; return (StmtModEq lhs rhs),
-      do _ <- symbol "~="; return (StmtBNotEq lhs),
+    [ do rhs <- equalsP *> expP ops; return (Assign lhs rhs),
+      do rhs <- symbol "+=" *> expP ops; compoundAssign ops "+" lhs rhs,
+      do rhs <- symbol "-=" *> expP ops; compoundAssign ops "-" lhs rhs,
+      do rhs <- symbol "*=" *> expP ops; compoundAssign ops "*" lhs rhs,
+      do rhs <- symbol "/=" *> expP ops; compoundAssign ops "/" lhs rhs,
+      do rhs <- symbol "^=" *> expP ops; compoundAssign ops "^" lhs rhs,
+      do rhs <- symbol "&=" *> expP ops; compoundAssign ops "&" lhs rhs,
+      do rhs <- symbol "|=" *> expP ops; compoundAssign ops "|" lhs rhs,
+      do rhs <- symbol "%=" *> expP ops; compoundAssign ops "%" lhs rhs,
+      do _ <- symbol "~="; compoundAssignUnary ops "~" lhs,
       return (StmtExp lhs)
     ]
 
-equationP :: Parser Equation
-equationP = (,) <$> (symbol "|" *> patListP) <*> (symbol "=>" *> bodyP)
+equationP :: [OperatorDecl] -> Parser Equation
+equationP ops = (,) <$> (symbol "|" *> patListP ops) <*> (symbol "=>" *> bodyP ops)
 
 equalsP :: Parser ()
 equalsP = void $ try (lexeme (char '=' <* notFollowedBy (char '=')))

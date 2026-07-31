@@ -32,9 +32,10 @@ nameResolutionTopDeclSegments ::
   IO (Either CompilerError (CompUnit Name, [[TopDecl Name]]))
 nameResolutionTopDeclSegments imps segments =
   do
-    let ds = concat segments
+    let segments' = map (filter (not . isOperatorTopDecl)) segments
+        ds = concat segments'
         genv = addImportsToEnv imps (globalEnv ds)
-    r <- runResolveM (mapM resolve segments) genv
+    r <- runResolveM (mapM resolve segments') genv
     case r of
       Left err -> pure (Left err)
       Right resolvedSegments ->
@@ -53,7 +54,23 @@ resolveModulePath (S.ExternalPath libName path) = ExternalPath libName path
 
 resolveItemSelector :: S.ItemSelector -> ItemSelector
 resolveItemSelector (S.SelectItems items hidden) =
-  SelectItems (map resolveSelectorEntry items) hidden
+  SelectItems (map resolveSelectorEntry (filter (not . isOperatorSelectorEntry) items)) hidden
+
+isOperatorTopDecl :: S.TopDecl -> Bool
+isOperatorTopDecl (S.TOperatorDecl _) = True
+isOperatorTopDecl _ = False
+
+isOperatorContractDecl :: S.ContractDecl -> Bool
+isOperatorContractDecl (S.COperatorDecl _) = True
+isOperatorContractDecl _ = False
+
+isOperatorSelectorEntry :: S.ItemSelectorEntry -> Bool
+isOperatorSelectorEntry (S.SelectOperator _) = True
+isOperatorSelectorEntry _ = False
+
+isOperatorExportSpec :: S.ExportSpec -> Bool
+isOperatorExportSpec (S.ExportOperator _) = True
+isOperatorExportSpec _ = False
 
 resolveConstructorSelector :: S.ConstructorSelector -> ConstructorSelector
 resolveConstructorSelector (S.SelectConstructors names) =
@@ -205,7 +222,7 @@ instance Resolve S.TopDecl where
 
 resolveExport :: S.Export -> Export
 resolveExport (S.ExportList items) =
-  ExportList (map resolveExportSpec items)
+  ExportList (map resolveExportSpec (filter (not . isOperatorExportSpec) items))
 resolveExport (S.ExportModule path) =
   ExportModule (resolveModulePath path)
 resolveExport (S.ExportModuleAs path asName) =
@@ -220,12 +237,13 @@ instance Resolve S.Contract where
     do
       let ns = map tyconName vs
           locals = [tn | S.CDataDecl (S.DataTy tn _ _ _) <- decls]
+          decls' = filter (not . isOperatorContractDecl) decls
       savedC <- gets currentContract
       savedL <- gets contractLocalTypes
       modify (\env -> env {currentContract = Just n, contractLocalTypes = locals})
       mapM_ addTyVar ns
-      mapM_ addContractDecl decls
-      result <- Contract n (map TVar ns) <$> resolve decls `wrapError` c
+      mapM_ addContractDecl decls'
+      result <- Contract n (map TVar ns) <$> resolve decls' `wrapError` c
       modify (\env -> env {currentContract = savedC, contractLocalTypes = savedL})
       pure result
 
@@ -394,24 +412,6 @@ instance Resolve S.Stmt where
       lhs' <- resolve lhs `wrapError` s
       rhs' <- resolve rhs `wrapError` s
       pure (lhs' := rhs')
-  resolve s@(S.StmtPlusEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs))
-  resolve s@(S.StmtMinusEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs))
-  resolve s@(S.StmtTimesEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpTimes lhs rhs))
-  resolve s@(S.StmtDivideEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpDivide lhs rhs))
-  resolve s@(S.StmtBXorEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBXor lhs rhs))
-  resolve s@(S.StmtBAndEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBAnd lhs rhs))
-  resolve s@(S.StmtBOrEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBOr lhs rhs))
-  resolve s@(S.StmtModEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpModulo lhs rhs))
-  resolve s@(S.StmtBNotEq lhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBNot lhs))
   resolve s@(S.Let c n mt me) =
     locatedLike s locatedStmt <$> do
       mt' <- resolve mt `wrapError` s
@@ -831,102 +831,12 @@ resolveExp x@(S.ExpName me n es) =
             if hasQualified
               then unqualifiedConstructorError n
               else undefinedName n
-resolveExp c@(S.ExpPlus e1 e2) =
-  do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    let fun = QualName (Name "Add") "add"
-    pure $ Call Nothing fun [e1', e2']
-resolveExp c@(S.ExpMinus e1 e2) =
-  do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    let fun = QualName (Name "Sub") "sub"
-    pure $ Call Nothing fun [e1', e2']
-resolveExp c@(S.ExpTimes e1 e2) =
-  do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    let fun = QualName (Name "Mul") "mul"
-    pure $ Call Nothing fun [e1', e2']
-resolveExp c@(S.ExpDivide e1 e2) =
-  do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    let fun = QualName (Name "Div") "div"
-    pure $ Call Nothing fun [e1', e2']
-resolveExp c@(S.ExpModulo e1 e2) =
-  do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    let fun = QualName (Name "Mod") "mod"
-    pure $ Call Nothing fun [e1', e2']
-resolveExp c@(S.ExpBXor e1 e2) =
-  do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    let fun = QualName (Name "BitXor") "bxor"
-    pure $ Call Nothing fun [e1', e2']
-resolveExp c@(S.ExpBAnd e1 e2) =
-  do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    let fun = QualName (Name "BitAnd") "band"
-    pure $ Call Nothing fun [e1', e2']
-resolveExp c@(S.ExpBOr e1 e2) =
-  do
-    e1' <- resolve e1 `wrapError` c
-    e2' <- resolve e2 `wrapError` c
-    let fun = QualName (Name "BitOr") "bor"
-    pure $ Call Nothing fun [e1', e2']
-resolveExp c@(S.ExpBNot e) =
-  do
-    e' <- resolve e `wrapError` c
-    let fun = QualName (Name "BitNot") "bnot"
-    pure $ Call Nothing fun [e']
 resolveExp c@(S.ExpIndexed array idx) = do
   arr' <- resolve array `wrapError` c
   idx' <- resolve idx `wrapError` c
   pure $ Indexed arr' idx'
 resolveExp c@(S.ExpArray es) =
   ArrayLit <$> resolve es `wrapError` c
-resolveExp c@(S.ExpLT e1 e2) = do
-  e1' <- resolve e1 `wrapError` c
-  e2' <- resolve e2 `wrapError` c
-  pure $ Call Nothing (Name "lt") [e1', e2']
-resolveExp c@(S.ExpGT e1 e2) = do
-  e1' <- resolve e1 `wrapError` c
-  e2' <- resolve e2 `wrapError` c
-  let fun = QualName (Name "Ord") "gt"
-  pure $ Call Nothing fun [e1', e2']
-resolveExp c@(S.ExpLE e1 e2) = do
-  e1' <- resolve e1 `wrapError` c
-  e2' <- resolve e2 `wrapError` c
-  pure $ Call Nothing (Name "le") [e1', e2']
-resolveExp c@(S.ExpGE e1 e2) = do
-  e1' <- resolve e1 `wrapError` c
-  e2' <- resolve e2 `wrapError` c
-  pure $ Call Nothing (Name "ge") [e1', e2']
-resolveExp c@(S.ExpEE e1 e2) = do
-  e1' <- resolve e1 `wrapError` c
-  e2' <- resolve e2 `wrapError` c
-  let fun = QualName (Name "Eq") "eq"
-  pure $ Call Nothing fun [e1', e2']
-resolveExp c@(S.ExpNE e1 e2) = do
-  e1' <- resolve e1 `wrapError` c
-  e2' <- resolve e2 `wrapError` c
-  pure $ Call Nothing (Name "ne") [e1', e2']
-resolveExp c@(S.ExpLAnd e1 e2) = do
-  e1' <- resolve e1 `wrapError` c
-  e2' <- resolve e2 `wrapError` c
-  pure $ Call Nothing (Name "and") [e1', e2']
-resolveExp c@(S.ExpLOr e1 e2) = do
-  e1' <- resolve e1 `wrapError` c
-  e2' <- resolve e2 `wrapError` c
-  pure $ Call Nothing (Name "or") [e1', e2']
-resolveExp c@(S.ExpLNot e) = do
-  e' <- resolve e `wrapError` c
-  pure $ Call Nothing (Name "not") [e']
 resolveExp (S.ExpCond e1 e2 e3) =
   Cond <$> resolve e1 <*> resolve e2 <*> resolve e3
 resolveExp (S.ExpAt t) = do

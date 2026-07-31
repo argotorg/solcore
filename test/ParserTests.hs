@@ -28,7 +28,28 @@ parseFails p src =
     Right got -> assertFailure ("Expected failure but parsed: " ++ show got)
 
 expP :: Parser Exp
-expP = exprP bodyP
+expP = exprP [] (bodyP [])
+
+-- A small operator table mirroring the standard-library declarations, for the
+-- few statement/declaration tests whose sample code uses operators. A use of an
+-- operator parses to a plain call of the bound function.
+testOps :: [OperatorDecl]
+testOps =
+  [ OperatorDecl OpInfixL 50 "*" (QualName (Name "Mul") "mul"),
+    OperatorDecl OpInfixL 50 "/" (QualName (Name "Div") "div"),
+    OperatorDecl OpInfixL 45 "+" (QualName (Name "Add") "add"),
+    OperatorDecl OpInfixL 45 "-" (QualName (Name "Sub") "sub"),
+    OperatorDecl OpInfixN 35 "<" (Name "lt"),
+    OperatorDecl OpInfixN 34 "==" (QualName (Name "Eq") "eq"),
+    OperatorDecl OpPrefix 90 "~" (QualName (Name "BitNot") "bnot")
+  ]
+
+stmtPO :: Parser Stmt
+stmtPO = stmtP testOps
+
+-- Expected AST for a binary operator use `a <op> b`: a plain call of `fun`.
+opCall :: Name -> Exp -> Exp -> Exp
+opCall fun a b = ExpName Nothing fun [a, b]
 
 parserTests :: TestTree
 parserTests =
@@ -108,29 +129,29 @@ patternTests =
   testGroup
     "Patterns"
     [ testCase "wildcard" $
-        parsesAs patP "_" PWildcard,
+        parsesAs (patP []) "_" PWildcard,
       testCase "integer literal" $
-        parsesAs patP "42" (PLit (IntLit 42)),
+        parsesAs (patP []) "42" (PLit (IntLit 42)),
       testCase "string literal" $
-        parsesAs patP "\"hi\"" (PLit (StrLit "hi")),
+        parsesAs (patP []) "\"hi\"" (PLit (StrLit "hi")),
       testCase "constructor no args" $
-        parsesAs patP "True" (Pat "True" []),
+        parsesAs (patP []) "True" (Pat "True" []),
       testCase "constructor with one arg" $
-        parsesAs patP "Some(x)" (Pat "Some" [Pat "x" []]),
+        parsesAs (patP []) "Some(x)" (Pat "Some" [Pat "x" []]),
       testCase "constructor with two args" $
-        parsesAs patP "Pair(x,y)" (Pat "Pair" [Pat "x" [], Pat "y" []]),
+        parsesAs (patP []) "Pair(x,y)" (Pat "Pair" [Pat "x" [], Pat "y" []]),
       testCase "unit pattern" $
-        parsesAs patP "()" (Pat "()" []),
+        parsesAs (patP []) "()" (Pat "()" []),
       testCase "parenthesized single pattern" $
-        parsesAs patP "(x)" (Pat "x" []),
+        parsesAs (patP []) "(x)" (Pat "x" []),
       testCase "tuple pattern" $
-        parsesAs patP "(x, y)" (Pat "pair" [Pat "x" [], Pat "y" []]),
+        parsesAs (patP []) "(x, y)" (Pat "pair" [Pat "x" [], Pat "y" []]),
       testCase "nested constructor" $
-        parsesAs patP "Some(Pair(x,y))" (Pat "Some" [Pat "Pair" [Pat "x" [], Pat "y" []]]),
+        parsesAs (patP []) "Some(Pair(x,y))" (Pat "Some" [Pat "Pair" [Pat "x" [], Pat "y" []]]),
       testCase "dot pattern no args" $
-        parsesAs patP ".None" (PatDot "None" []),
+        parsesAs (patP []) ".None" (PatDot "None" []),
       testCase "dot pattern with args" $
-        parsesAs patP ".Some(x)" (PatDot "Some" [Pat "x" []])
+        parsesAs (patP []) ".Some(x)" (PatDot "Some" [Pat "x" []])
     ]
 
 lit :: Integer -> Exp
@@ -157,52 +178,10 @@ exprTests =
         parsesAs expP "f(1)" (ExpName Nothing "f" [lit 1]),
       testCase "binary call" $
         parsesAs expP "f(1, 2)" (ExpName Nothing "f" [lit 1, lit 2]),
-      testCase "addition" $
-        parsesAs expP "1 + 2" (ExpPlus (lit 1) (lit 2)),
-      testCase "subtraction" $
-        parsesAs expP "3 - 1" (ExpMinus (lit 3) (lit 1)),
-      testCase "multiplication" $
-        parsesAs expP "2 * 3" (ExpTimes (lit 2) (lit 3)),
-      testCase "division" $
-        parsesAs expP "6 / 2" (ExpDivide (lit 6) (lit 2)),
-      testCase "modulo" $
-        parsesAs expP "5 % 3" (ExpModulo (lit 5) (lit 3)),
-      testCase "mul binds tighter than add" $
-        parsesAs expP "1 + 2 * 3" (ExpPlus (lit 1) (ExpTimes (lit 2) (lit 3))),
-      testCase "add then mul" $
-        parsesAs expP "1 * 2 + 3" (ExpPlus (ExpTimes (lit 1) (lit 2)) (lit 3)),
-      testCase "subtraction is left-associative" $
-        parsesAs expP "3 - 2 - 1" (ExpMinus (ExpMinus (lit 3) (lit 2)) (lit 1)),
-      testCase "less-than" $
-        parsesAs expP "x < y" (ExpLT (var "x") (var "y")),
-      testCase "greater-than" $
-        parsesAs expP "x > y" (ExpGT (var "x") (var "y")),
-      testCase "less-than-or-equal" $
-        parsesAs expP "x <= y" (ExpLE (var "x") (var "y")),
-      testCase "greater-than-or-equal" $
-        parsesAs expP "x >= y" (ExpGE (var "x") (var "y")),
-      testCase "equality" $
-        parsesAs expP "x == y" (ExpEE (var "x") (var "y")),
-      testCase "inequality" $
-        parsesAs expP "x != y" (ExpNE (var "x") (var "y")),
-      testCase "arith tighter than comparison" $
-        parsesAs
-          expP
-          "a + b == c + d"
-          (ExpEE (ExpPlus (var "a") (var "b")) (ExpPlus (var "c") (var "d"))),
-      testCase "logical and" $
-        parsesAs expP "x && y" (ExpLAnd (var "x") (var "y")),
-      testCase "logical or" $
-        parsesAs expP "x || y" (ExpLOr (var "x") (var "y")),
-      testCase "logical not" $
-        parsesAs expP "!x" (ExpLNot (var "x")),
-      testCase "and binds tighter than or" $
-        parsesAs expP "a || b && c" (ExpLOr (var "a") (ExpLAnd (var "b") (var "c"))),
-      testCase "comparison tighter than and" $
-        parsesAs
-          expP
-          "a < b && c > d"
-          (ExpLAnd (ExpLT (var "a") (var "b")) (ExpGT (var "c") (var "d"))),
+      -- Operators are no longer built into the parser; they are ordinary
+      -- standard-library declarations. Their parsing (precedence, associativity,
+      -- desugaring to calls) is covered by OperatorTests and the test/operators
+      -- compile fixtures, so the built-in-operator unit cases were removed here.
       testCase "ternary operator" $
         parsesAs expP "x ? 1 : 2" (ExpCond (var "x") (lit 1) (lit 2)),
       testCase "if-then-else expression" $
@@ -276,12 +255,12 @@ keywordPrefixTests =
   testGroup
     "Keyword prefixes"
     [ testCase "statement-initial assignment to keyword-prefixed name" $
-        parsesAs stmtP "datavalue = 2;" (Assign (var "datavalue") (lit 2)),
+        parsesAs (stmtP []) "datavalue = 2;" (Assign (var "datavalue") (lit 2)),
       testCase "statement-initial expression with keyword-prefixed name" $
-        parsesAs stmtP "datavalue;" (StmtExp (var "datavalue")),
+        parsesAs (stmtP []) "datavalue;" (StmtExp (var "datavalue")),
       testCase "contract field with keyword-prefixed name" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "contract C { datavalue : word; }"
           (TContr (Contract "C" [] [CFieldDecl (Field "datavalue" word Nothing)]))
     ]
@@ -291,108 +270,110 @@ stmtTests =
   testGroup
     "Statements"
     [ testCase "let no type no init" $
-        parsesAs stmtP "let x;" (Let False "x" Nothing Nothing),
+        parsesAs (stmtP []) "let x;" (Let False "x" Nothing Nothing),
       testCase "let with type" $
-        parsesAs stmtP "let x : word;" (Let False "x" (Just word) Nothing),
+        parsesAs (stmtP []) "let x : word;" (Let False "x" (Just word) Nothing),
       testCase "let with init" $
-        parsesAs stmtP "let x = 42;" (Let False "x" Nothing (Just (lit 42))),
+        parsesAs (stmtP []) "let x = 42;" (Let False "x" Nothing (Just (lit 42))),
       testCase "let with type and init" $
-        parsesAs stmtP "let x : word = 42;" (Let False "x" (Just word) (Just (lit 42))),
+        parsesAs (stmtP []) "let x : word = 42;" (Let False "x" (Just word) (Just (lit 42))),
       testCase "return literal" $
-        parsesAs stmtP "return 0;" (Return (lit 0)),
+        parsesAs (stmtP []) "return 0;" (Return (lit 0)),
       testCase "return expression" $
-        parsesAs stmtP "return x + 1;" (Return (ExpPlus (var "x") (lit 1))),
+        parsesAs stmtPO "return x + 1;" (Return (opCall (QualName (Name "Add") "add") (var "x") (lit 1))),
       testCase "assignment" $
-        parsesAs stmtP "x = 1;" (Assign (var "x") (lit 1)),
-      testCase "plus-assign" $
-        parsesAs stmtP "x += 1;" (StmtPlusEq (var "x") (lit 1)),
-      testCase "minus-assign" $
-        parsesAs stmtP "x -= 1;" (StmtMinusEq (var "x") (lit 1)),
-      testCase "times-assign" $
-        parsesAs stmtP "x *= 2;" (StmtTimesEq (var "x") (lit 2)),
-      testCase "divide-assign" $
-        parsesAs stmtP "x /= 2;" (StmtDivideEq (var "x") (lit 2)),
+        parsesAs (stmtP []) "x = 1;" (Assign (var "x") (lit 1)),
+      testCase "plus-assign desugars via the (+) operator" $
+        parsesAs stmtPO "x += 1;" (Assign (var "x") (opCall (QualName (Name "Add") "add") (var "x") (lit 1))),
+      testCase "minus-assign desugars via the (-) operator" $
+        parsesAs stmtPO "x -= 1;" (Assign (var "x") (opCall (QualName (Name "Sub") "sub") (var "x") (lit 1))),
+      testCase "times-assign desugars via the (*) operator" $
+        parsesAs stmtPO "x *= 2;" (Assign (var "x") (opCall (QualName (Name "Mul") "mul") (var "x") (lit 2))),
+      testCase "divide-assign desugars via the (/) operator" $
+        parsesAs stmtPO "x /= 2;" (Assign (var "x") (opCall (QualName (Name "Div") "div") (var "x") (lit 2))),
+      testCase "bnot-assign desugars via the prefix (~) operator" $
+        parsesAs stmtPO "x ~=;" (Assign (var "x") (ExpName Nothing (QualName (Name "BitNot") "bnot") [var "x"])),
       testCase "field assignment" $
         parsesAs
-          stmtP
+          (stmtP [])
           "this.x = 1;"
           (Assign (ExpVar (Just (var "this")) "x") (lit 1)),
       testCase "call as statement no semicolon" $
-        parsesAs stmtP "f()" (StmtExp (ExpName Nothing "f" [])),
+        parsesAs (stmtP []) "f()" (StmtExp (ExpName Nothing "f" [])),
       testCase "call as statement with semicolon" $
-        parsesAs stmtP "f();" (StmtExp (ExpName Nothing "f" [])),
+        parsesAs (stmtP []) "f();" (StmtExp (ExpName Nothing "f" [])),
       testCase "if without else" $
         parsesAs
-          stmtP
+          (stmtP [])
           "if (x) { return 1; }"
           (If (var "x") [Return (lit 1)] []),
       testCase "if with else" $
         parsesAs
-          stmtP
+          (stmtP [])
           "if (x) { return 1; } else { return 2; }"
           (If (var "x") [Return (lit 1)] [Return (lit 2)]),
       testCase "empty block" $
-        parsesAs stmtP "{}" (Block []),
+        parsesAs (stmtP []) "{}" (Block []),
       testCase "block with statement" $
-        parsesAs stmtP "{ let x = 1; }" (Block [Let False "x" Nothing (Just (lit 1))]),
+        parsesAs (stmtP []) "{ let x = 1; }" (Block [Let False "x" Nothing (Just (lit 1))]),
       testCase "for loop" $
         parsesAs
-          stmtP
+          stmtPO
           "for (let i = 0; i < 10; i = i + 1) { }"
           ( For
               (Let False "i" Nothing (Just (lit 0)))
-              (ExpLT (var "i") (lit 10))
-              (Assign (var "i") (ExpPlus (var "i") (lit 1)))
+              (opCall (Name "lt") (var "i") (lit 10))
+              (Assign (var "i") (opCall (QualName (Name "Add") "add") (var "i") (lit 1)))
               []
           ),
       testCase "for loop with empty init and post" $
         parsesAs
-          stmtP
+          stmtPO
           "for (; i < 10; ) { }"
           ( For
               EmptyStmt
-              (ExpLT (var "i") (lit 10))
+              (opCall (Name "lt") (var "i") (lit 10))
               EmptyStmt
               []
           ),
       testCase "for loop with empty init only" $
         parsesAs
-          stmtP
+          stmtPO
           "for (; i < 10; i = i + 1) { }"
           ( For
               EmptyStmt
-              (ExpLT (var "i") (lit 10))
-              (Assign (var "i") (ExpPlus (var "i") (lit 1)))
+              (opCall (Name "lt") (var "i") (lit 10))
+              (Assign (var "i") (opCall (QualName (Name "Add") "add") (var "i") (lit 1)))
               []
           ),
       testCase "for loop with empty post only" $
         parsesAs
-          stmtP
+          stmtPO
           "for (let i = 0; i < 10; ) { }"
           ( For
               (Let False "i" Nothing (Just (lit 0)))
-              (ExpLT (var "i") (lit 10))
+              (opCall (Name "lt") (var "i") (lit 10))
               EmptyStmt
               []
           ),
       testCase "match one equation" $
         parsesAs
-          stmtP
+          (stmtP [])
           "match x { | 0 => return 1; }"
           (Match [var "x"] [([PLit (IntLit 0)], [Return (lit 1)])]),
       testCase "match wildcard" $
         parsesAs
-          stmtP
+          (stmtP [])
           "match x { | _ => return 0; }"
           (Match [var "x"] [([PWildcard], [Return (lit 0)])]),
       testCase "match constructor pattern" $
         parsesAs
-          stmtP
+          (stmtP [])
           "match x { | Some(v) => return v; }"
           (Match [var "x"] [([Pat "Some" [Pat "v" []]], [Return (var "v")])]),
       testCase "match multiple equations" $
         parsesAs
-          stmtP
+          (stmtP [])
           "match x { | 0 => return 0; | _ => return 1; }"
           ( Match
               [var "x"]
@@ -401,7 +382,7 @@ stmtTests =
               ]
           ),
       testCase "let without semicolon fails" $
-        parseFails stmtP "let x"
+        parseFails (stmtP []) "let x"
     ]
 
 declTests :: TestTree
@@ -410,7 +391,7 @@ declTests =
     "Declarations"
     [ testCase "nullary function" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "function answer() -> word { return 42; }"
           ( TFunDef
               ( FunDef
@@ -421,7 +402,7 @@ declTests =
           ),
       testCase "unary function" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "function id(x:word) -> word { return x; }"
           ( TFunDef
               ( FunDef
@@ -432,7 +413,7 @@ declTests =
           ),
       testCase "implicit return (single expr body)" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "function answer() -> word { 42 }"
           ( TFunDef
               ( FunDef
@@ -443,7 +424,7 @@ declTests =
           ),
       testCase "polymorphic function" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "forall a. function id(x:a) -> a { return x; }"
           ( TFunDef
               ( FunDef
@@ -462,7 +443,7 @@ declTests =
           ),
       testCase "constrained function" $
         parsesAs
-          topDeclP
+          (topDeclP testOps)
           "forall a. a:Eq => function eqSelf(x:a) -> bool { return x == x; }"
           ( TFunDef
               ( FunDef
@@ -476,22 +457,22 @@ declTests =
                       (Just bool)
                       False
                   )
-                  [Return (ExpEE (var "x") (var "x"))]
+                  [Return (opCall (QualName (Name "Eq") "eq") (var "x") (var "x"))]
               )
           ),
       testCase "empty data type" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "data Void;"
           (TDataDef (DataTy "Void" [] [] [])),
       testCase "data type with nullary constructors" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "data Bool = True | False;"
           (TDataDef (DataTy "Bool" [] [Constr "True" [], Constr "False" []] [])),
       testCase "data type with parameterized constructor" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "data Option(a) = Some(a) | None;"
           ( TDataDef
               ( DataTy
@@ -503,7 +484,7 @@ declTests =
           ),
       testCase "data type with derive attribute" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "#[derive(Eq, Ord)] data Color = Red | Green;"
           ( TDataDef
               ( DataTy
@@ -515,12 +496,12 @@ declTests =
           ),
       testCase "type synonym no params" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "type Word = word;"
           (TSym (TySym "Word" [] word)),
       testCase "type synonym with params" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "type Pair(a, b) = (a, b);"
           ( TSym
               ( TySym
@@ -531,7 +512,7 @@ declTests =
           ),
       testCase "class with one method" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "forall a. class a:Eq { function eq(x:a, y:a) -> bool; }"
           ( TClassDef
               ( Class
@@ -553,7 +534,7 @@ declTests =
           ),
       testCase "class with context" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "forall a. a:Eq => class a:Ord { function cmp(x:a, y:a) -> word; }"
           ( TClassDef
               ( Class
@@ -575,7 +556,7 @@ declTests =
           ),
       testCase "instance with one method" $
         parsesAs
-          topDeclP
+          (topDeclP testOps)
           "instance word:Eq { function eq(x:word, y:word) -> bool { return x == y; } }"
           ( TInstDef
               ( Instance
@@ -588,13 +569,13 @@ declTests =
                   [ FunDef
                       False
                       (Signature [] [] "eq" [Typed False "x" word, Typed False "y" word] False (Just bool) False)
-                      [Return (ExpEE (var "x") (var "y"))]
+                      [Return (opCall (QualName (Name "Eq") "eq") (var "x") (var "y"))]
                   ]
               )
           ),
       testCase "polymorphic instance" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "forall a. a:Eq => instance pair(a,a):Eq { function eq(x:pair(a,a), y:pair(a,a)) -> bool { return 0; } }"
           ( TInstDef
               ( Instance
@@ -623,22 +604,22 @@ declTests =
           ),
       testCase "empty contract" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "contract Empty { }"
           (TContr (Contract "Empty" [] [])),
       testCase "contract with field" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "contract C { x : word; }"
           (TContr (Contract "C" [] [CFieldDecl (Field "x" word Nothing)])),
       testCase "contract with initialized field" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "contract C { x : word = 0; }"
           (TContr (Contract "C" [] [CFieldDecl (Field "x" word (Just (lit 0)))])),
       testCase "contract with function" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "contract C { function get() -> word { return x; } }"
           ( TContr
               ( Contract
@@ -655,7 +636,7 @@ declTests =
           ),
       testCase "contract with public function" $
         parsesAs
-          topDeclP
+          (topDeclP [])
           "contract C { public function get() -> word { return x; } }"
           ( TContr
               ( Contract
@@ -672,9 +653,9 @@ declTests =
           ),
       -- `public` is only meaningful inside a contract; reject it elsewhere.
       testCase "top-level public function fails" $
-        parseFails topDeclP "public function get() -> word { return 0; }",
+        parseFails (topDeclP []) "public function get() -> word { return 0; }",
       testCase "public instance method fails" $
         parseFails
-          topDeclP
+          (topDeclP [])
           "instance word:Eq { public function eq(x:word, y:word) -> bool { return x == y; } }"
     ]

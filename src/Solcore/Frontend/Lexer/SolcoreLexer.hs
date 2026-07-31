@@ -13,6 +13,8 @@ module Solcore.Frontend.Lexer.SolcoreLexer
     comma,
     semicolon,
     colon,
+    isOpChar,
+    parenOpP,
   )
 where
 
@@ -69,8 +71,27 @@ reservedWords =
     "return",
     "lam",
     "type",
-    "pragma"
+    "pragma",
+    "infixl",
+    "infixr",
+    "infix",
+    "prefix",
+    "postfix"
   ]
+
+isOpChar :: Char -> Bool
+isOpChar c =
+  c `elem` ("+-*/%<>=!&|^~#?" :: String)
+    || (c >= '\x2200' && c <= '\x23FF')
+
+parenOpP :: Parser String
+parenOpP = lexeme $ do
+  _ <- char '('
+  sc
+  sym <- some (satisfy isOpChar)
+  sc
+  _ <- char ')'
+  pure sym
 
 identifier :: Parser String
 identifier = lexeme go <?> "identifier"

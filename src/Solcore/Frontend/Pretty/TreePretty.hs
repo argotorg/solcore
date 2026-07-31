@@ -41,6 +41,19 @@ instance Pretty TopDecl where
   ppr (TSym s) = ppr s
   ppr (TExportDecl e) = ppr e
   ppr (TPragmaDecl p) = ppr p
+  ppr (TOperatorDecl od) = pprOperatorDecl od
+
+-- Pretty-print a user-defined operator declaration, e.g. `infixl 70 (^^) => pow;`.
+pprOperatorDecl :: OperatorDecl -> Doc
+pprOperatorDecl (OperatorDecl fixity prec sym fun) =
+  hsep [pprFixity fixity, text (show prec), parens (text sym), text "=>", ppr fun] <> semi
+
+pprFixity :: OpFixity -> Doc
+pprFixity OpInfixL = text "infixl"
+pprFixity OpInfixR = text "infixr"
+pprFixity OpInfixN = text "infix"
+pprFixity OpPrefix = text "prefix"
+pprFixity OpPostfix = text "postfix"
 
 instance Pretty Export where
   ppr (ExportList items) =
@@ -67,6 +80,7 @@ instance Pretty ExportSpec where
   ppr (ExportNameWithConstructors typeName ctorSelector) =
     ppr typeName <> parens (ppr ctorSelector)
   ppr (ExportModuleAll path) = ppr path <> text ".*"
+  ppr (ExportOperator sym) = parens (text sym)
 
 instance Pretty ConstructorSelector where
   ppr SelectAllConstructors = text "*"
@@ -96,6 +110,7 @@ instance Pretty ItemSelectorEntry where
   ppr (SelectItem itemName) = ppr itemName
   ppr (SelectItemAs itemName aliasName) =
     hsep [ppr itemName, text "as", ppr aliasName]
+  ppr (SelectOperator sym) = parens (text sym)
 
 exportSelectorIsOnlyWildcard :: ExportSelector -> Bool
 exportSelectorIsOnlyWildcard (SelectExportItems [SelectExportAllItems]) = True
@@ -135,6 +150,7 @@ instance Pretty ContractDecl where
     ppr fd
   ppr (CConstrDecl c) =
     ppr c
+  ppr (COperatorDecl od) = pprOperatorDecl od
 
 instance Pretty Constructor where
   ppr (Constructor ps bd payable) =
@@ -276,24 +292,6 @@ instance Pretty Param where
 instance Pretty Stmt where
   ppr (Assign n e) =
     ppr n <+> equals <+> ppr e <+> semi
-  ppr (StmtPlusEq e1 e2) =
-    hsep [ppr e1, text "+=", ppr e2]
-  ppr (StmtMinusEq e1 e2) =
-    hsep [ppr e1, text "-=", ppr e2]
-  ppr (StmtTimesEq e1 e2) =
-    hsep [ppr e1, text "*=", ppr e2]
-  ppr (StmtDivideEq e1 e2) =
-    hsep [ppr e1, text "/=", ppr e2]
-  ppr (StmtBXorEq e1 e2) =
-    hsep [ppr e1, text "^=", ppr e2]
-  ppr (StmtBAndEq e1 e2) =
-    hsep [ppr e1, text "&=", ppr e2]
-  ppr (StmtBOrEq e1 e2) =
-    hsep [ppr e1, text "|=", ppr e2]
-  ppr (StmtModEq e1 e2) =
-    hsep [ppr e1, text "%=", ppr e2]
-  ppr (StmtBNotEq e1) =
-    hsep [ppr e1, text "~="]
   ppr (Let c n ty m) =
     text "let" <+> ppr n <+> pprOptTy c ty <+> pprInitOpt m
   ppr (Block body) =
@@ -337,15 +335,6 @@ instance Pretty Stmt where
 
 pprForClause :: Stmt -> Doc
 pprForClause (Assign n e) = ppr n <+> equals <+> ppr e
-pprForClause (StmtPlusEq e1 e2) = hsep [ppr e1, text "+=", ppr e2]
-pprForClause (StmtMinusEq e1 e2) = hsep [ppr e1, text "-=", ppr e2]
-pprForClause (StmtTimesEq e1 e2) = hsep [ppr e1, text "*=", ppr e2]
-pprForClause (StmtDivideEq e1 e2) = hsep [ppr e1, text "/=", ppr e2]
-pprForClause (StmtBXorEq e1 e2) = hsep [ppr e1, text "^=", ppr e2]
-pprForClause (StmtBAndEq e1 e2) = hsep [ppr e1, text "&=", ppr e2]
-pprForClause (StmtBOrEq e1 e2) = hsep [ppr e1, text "|=", ppr e2]
-pprForClause (StmtModEq e1 e2) = hsep [ppr e1, text "%=", ppr e2]
-pprForClause (StmtBNotEq e1) = hsep [ppr e1, text "~="]
 pprForClause (Let ct n ty m) = text "let" <+> ppr n <+> pprOptTy ct ty <+> pprForInitOpt m
 pprForClause (StmtExp e) = ppr e
 pprForClause EmptyStmt = empty
@@ -413,42 +402,6 @@ instance Pretty Exp where
     ppr e1 <> brackets (ppr e2)
   ppr (ExpArray es) =
     brackets (commaSep (map ppr es))
-  ppr (ExpPlus e1 e2) =
-    hsep [ppr e1, text "+", ppr e2]
-  ppr (ExpMinus e1 e2) =
-    hsep [ppr e1, text "-", ppr e2]
-  ppr (ExpTimes e1 e2) =
-    hsep [ppr e1, text "*", ppr e2]
-  ppr (ExpDivide e1 e2) =
-    hsep [ppr e1, text "/", ppr e2]
-  ppr (ExpModulo e1 e2) =
-    hsep [ppr e1, text "%", ppr e2]
-  ppr (ExpBXor e1 e2) =
-    hsep [ppr e1, text "^", ppr e2]
-  ppr (ExpBAnd e1 e2) =
-    hsep [ppr e1, text "&", ppr e2]
-  ppr (ExpBOr e1 e2) =
-    hsep [ppr e1, text "|", ppr e2]
-  ppr (ExpLT e1 e2) =
-    hsep [ppr e1, text "<", ppr e2]
-  ppr (ExpGT e1 e2) =
-    hsep [ppr e1, text ">", ppr e2]
-  ppr (ExpLE e1 e2) =
-    hsep [ppr e1, text "<=", ppr e2]
-  ppr (ExpGE e1 e2) =
-    hsep [ppr e1, text ">=", ppr e2]
-  ppr (ExpEE e1 e2) =
-    hsep [ppr e1, text "==", ppr e2]
-  ppr (ExpNE e1 e2) =
-    hsep [ppr e1, text "!=", ppr e2]
-  ppr (ExpLAnd e1 e2) =
-    hsep [ppr e1, text "&&", ppr e2]
-  ppr (ExpLOr e1 e2) =
-    hsep [ppr e1, text "||", ppr e2]
-  ppr (ExpLNot e1) =
-    hsep [text "!", ppr e1]
-  ppr (ExpBNot e1) =
-    hsep [text "~", ppr e1]
   ppr (ExpCond e1 e2 e3) =
     hsep
       [ text "if",

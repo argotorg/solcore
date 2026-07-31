@@ -1,0 +1,11 @@
+// Imports and uses an operator declared in a library module.
+import oplib.{pow, (^^)};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+contract ImportOp {
+  function main() -> word {
+    return 3 ^^ 4;    // 81
+  }
+}

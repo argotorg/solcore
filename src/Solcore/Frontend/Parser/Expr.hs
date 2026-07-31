@@ -5,6 +5,8 @@ where
 
 import Common.LightYear
 import Control.Monad.Combinators.Expr
+import Data.List (groupBy, sortOn)
+import Data.Ord (Down (..))
 import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.Patterns (patListP)
@@ -15,145 +17,118 @@ import Solcore.Frontend.Syntax.SyntaxTree
 
 type BodyP = Parser [Stmt]
 
-exprP :: BodyP -> Parser Exp
-exprP bp = tyAnnP bp
+-- The expression parser is parameterised by the set of user-defined operators
+-- in scope (collected by a pre-scan, see Parser.OperatorScan). They extend the
+-- built-in operator table; a use of a user operator is desugared here to an
+-- ordinary function call so the rest of the pipeline is unaffected.
+exprP :: [OperatorDecl] -> BodyP -> Parser Exp
+exprP ops bp = tyAnnP ops bp
 
-tyAnnP :: BodyP -> Parser Exp
-tyAnnP bp = do
-  e <- ternaryP bp
+tyAnnP :: [OperatorDecl] -> BodyP -> Parser Exp
+tyAnnP ops bp = do
+  e <- ternaryP ops bp
   option e $ do
     t <- colon *> typeP
     pure (locatedExpFrom [sourceSpanOf e, sourceSpanOf t] (TyExp e t))
 
-ternaryP :: BodyP -> Parser Exp
-ternaryP bp =
-  try (ifThenElseP bp) <|> do
-    e1 <- binaryP bp
+ternaryP :: [OperatorDecl] -> BodyP -> Parser Exp
+ternaryP ops bp =
+  try (ifThenElseP ops bp) <|> do
+    e1 <- binaryP ops bp
     option e1 $ do
       _ <- symbol "?"
-      e2 <- ternaryP bp
+      e2 <- ternaryP ops bp
       _ <- symbol ":"
-      e3 <- ternaryP bp
+      e3 <- ternaryP ops bp
       return (locatedExpFrom (map sourceSpanOf [e1, e2, e3]) (ExpCond e1 e2 e3))
 
-ifThenElseP :: BodyP -> Parser Exp
-ifThenElseP bp = locatedP locatedExp $ do
+ifThenElseP :: [OperatorDecl] -> BodyP -> Parser Exp
+ifThenElseP ops bp = locatedP locatedExp $ do
   keyword "if"
-  e1 <- ternaryP bp
+  e1 <- ternaryP ops bp
   keyword "then"
-  e2 <- ternaryP bp
+  e2 <- ternaryP ops bp
   keyword "else"
-  e3 <- ternaryP bp
+  e3 <- ternaryP ops bp
   return (ExpCond e1 e2 e3)
 
-binaryP :: BodyP -> Parser Exp
-binaryP bp = makeExprParser (postfixP bp) opTable
+binaryP :: [OperatorDecl] -> BodyP -> Parser Exp
+binaryP ops bp = makeExprParser (postfixP ops bp) (mergedOpTable ops)
 
-opTable :: [[Operator Parser Exp]]
-opTable =
-  [ [ Prefix
-        ( unaryExp ExpLNot
-            <$ try (lexeme (char '!' <* notFollowedBy (char '=')))
-        ),
-      Prefix
-        ( unaryExp ExpBNot
-            <$ try (lexeme (char '~' <* notFollowedBy (char '=')))
-        )
-    ],
-    [ InfixL
-        ( binaryExp ExpTimes
-            <$ try (lexeme (char '*' <* notFollowedBy (char '=')))
-        ),
-      InfixL
-        ( binaryExp ExpDivide
-            <$ try (lexeme (char '/' <* notFollowedBy (char '=')))
-        ),
-      InfixL
-        ( binaryExp ExpModulo
-            <$ try (lexeme (char '%' <* notFollowedBy (char '=')))
-        )
-    ],
-    [ InfixL
-        ( binaryExp ExpPlus
-            <$ try (lexeme (char '+' <* notFollowedBy (char '=')))
-        ),
-      InfixL
-        ( binaryExp ExpMinus
-            <$ try (lexeme (char '-' <* notFollowedBy (char '=')))
-        )
-    ],
-    [ InfixL
-        ( binaryExp ExpBAnd
-            <$ try (lexeme (char '&' <* notFollowedBy (char '&') <* notFollowedBy (char '=')))
-        )
-    ],
-    [ InfixL
-        ( binaryExp ExpBXor
-            <$ try (lexeme (char '^' <* notFollowedBy (char '=')))
-        )
-    ],
-    [ InfixL
-        ( binaryExp ExpBOr
-            <$ try
-              ( lexeme (char '|' <* notFollowedBy (char '|') <* notFollowedBy (char '='))
-                  -- `|` also separates match arms (`| pat => ...`). Since `=>`
-                  -- never follows a bitwise-or operand, treat `|` as a case
-                  -- separator (not an operator) whenever `pat =>` comes next,
-                  -- leaving it for the match-equation parser to consume.
-                  <* notFollowedBy (try (patListP *> symbol "=>"))
-              )
-        )
-    ],
-    [ InfixN (binaryExp ExpLE <$ try (symbol "<=")),
-      InfixN (binaryExp ExpGE <$ try (symbol ">=")),
-      InfixN
-        ( binaryExp ExpLT
-            <$ try (lexeme (char '<' <* notFollowedBy (char '=')))
-        ),
-      InfixN
-        ( binaryExp ExpGT
-            <$ try (lexeme (char '>' <* notFollowedBy (char '=')))
-        )
-    ],
-    [ InfixN (binaryExp ExpEE <$ try (symbol "==")),
-      InfixN (binaryExp ExpNE <$ try (symbol "!="))
-    ],
-    [InfixL (binaryExp ExpLAnd <$ try (symbol "&&"))],
-    [InfixL (binaryExp ExpLOr <$ try (symbol "||"))]
-  ]
+-- Build the operator table from the user-declared operators in scope (the
+-- built-in operators are now ordinary declarations in the standard library).
+-- Rows are grouped into precedence levels (highest first) so operators
+-- interleave purely by their numeric precedence.
+mergedOpTable :: [OperatorDecl] -> [[Operator Parser Exp]]
+mergedOpTable ops =
+  map (map snd)
+    . groupBy (\a b -> fst a == fst b)
+    . sortOn (Down . fst)
+    $ map userRow ops
 
-postfixP :: BodyP -> Parser Exp
-postfixP bp = do
-  e0 <- atomP bp
-  ops <- many (postfixOp bp)
-  return (foldl (\acc f -> f acc) e0 ops)
+-- Turn a user operator declaration into a table row. A use of the operator is
+-- desugared to a plain call of the bound function, so name resolution and the
+-- rest of the pipeline handle it like any other call.
+userRow :: OperatorDecl -> (Int, Operator Parser Exp)
+userRow od@(OperatorDecl fix prec _ fun) =
+  ( prec,
+    case fix of
+      OpInfixL -> InfixL (mkBin <$ opTok)
+      OpInfixR -> InfixR (mkBin <$ opTok)
+      OpInfixN -> InfixN (mkBin <$ opTok)
+      OpPrefix -> Prefix (mkPre <$ opTok)
+      OpPostfix -> Postfix (mkPre <$ opTok)
+  )
+  where
+    opTok = try (opSymP od)
+    mkBin l r = locatedExpFrom [sourceSpanOf l, sourceSpanOf r] (ExpName Nothing fun [l, r])
+    mkPre e = locatedExpFrom [sourceSpanOf e] (ExpName Nothing fun [e])
 
-postfixOp :: BodyP -> Parser (Exp -> Exp)
-postfixOp bp = dotOp bp <|> idxOp bp
+-- Match an exact operator symbol, ensuring no further operator character
+-- follows (maximal munch: `^^` is matched whole, not as `^` then `^`).
+-- The `|` symbol additionally must not be a match-arm separator (`| pat => …`):
+-- the guard runs after lexeme consumed the trailing space, so patListP
+-- starts on the pattern.
+opSymP :: OperatorDecl -> Parser String
+opSymP (OperatorDecl _ _ sym _) =
+  lexeme (string sym <* notFollowedBy (satisfy isOpChar)) <* matchArmGuard
+  where
+    matchArmGuard
+      | sym == "|" = notFollowedBy (try (patListP [] *> symbol "=>"))
+      | otherwise = pure ()
 
-dotOp :: BodyP -> Parser (Exp -> Exp)
-dotOp bp = do
+postfixP :: [OperatorDecl] -> BodyP -> Parser Exp
+postfixP ops bp = do
+  e0 <- atomP ops bp
+  fs <- many (postfixOp ops bp)
+  return (foldl (\acc f -> f acc) e0 fs)
+
+postfixOp :: [OperatorDecl] -> BodyP -> Parser (Exp -> Exp)
+postfixOp ops bp = dotOp ops bp <|> idxOp ops bp
+
+dotOp :: [OperatorDecl] -> BodyP -> Parser (Exp -> Exp)
+dotOp ops bp = do
   _ <- char '.'
   sc
   n <- simpleNameP
-  mArgs <- optional (parens (exprP bp `sepBy` comma))
+  mArgs <- optional (parens (exprP ops bp `sepBy` comma))
   return $ case mArgs of
     Just args -> \e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf n, sourceSpanOf args] (ExpName (Just e) n args)
     Nothing -> \e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf n] (ExpVar (Just e) n)
 
-idxOp :: BodyP -> Parser (Exp -> Exp)
-idxOp bp = do
-  idx <- brackets (exprP bp)
+idxOp :: [OperatorDecl] -> BodyP -> Parser (Exp -> Exp)
+idxOp ops bp = do
+  idx <- brackets (exprP ops bp)
   return (\e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf idx] (ExpIndexed e idx))
 
-atomP :: BodyP -> Parser Exp
-atomP bp = litP <|> try (lamP bp) <|> proxyP <|> try (dotNameP bp) <|> parenP bp <|> arrayLitP bp <|> nameP bp
+atomP :: [OperatorDecl] -> BodyP -> Parser Exp
+atomP ops bp = litP <|> try (lamP bp) <|> proxyP <|> try (dotNameP ops bp) <|> parenP ops bp <|> arrayLitP ops bp <|> nameP ops bp
 
 -- Array literal, e.g. [1, 2, 3].  A leading '[' is unambiguous: postfix
 -- indexing (idxOp) only consumes '[' after an atom has been parsed, so
 -- `arr[0]` still parses as atom+postfix and `[1,2][0]` as literal+postfix.
-arrayLitP :: BodyP -> Parser Exp
-arrayLitP bp = locatedP locatedExp (ExpArray <$> brackets (exprP bp `sepBy` comma))
+arrayLitP :: [OperatorDecl] -> BodyP -> Parser Exp
+arrayLitP ops bp = locatedP locatedExp (ExpArray <$> brackets (exprP ops bp `sepBy` comma))
 
 litP :: Parser Exp
 litP =
@@ -175,17 +150,17 @@ lamP bp = locatedP locatedExp $ do
 proxyP :: Parser Exp
 proxyP = locatedP locatedExp (ExpAt <$> (symbol "@" *> atomTypeP))
 
-dotNameP :: BodyP -> Parser Exp
-dotNameP bp = locatedP locatedExp $ do
+dotNameP :: [OperatorDecl] -> BodyP -> Parser Exp
+dotNameP ops bp = locatedP locatedExp $ do
   _ <- char '.'
   sc
   n <- simpleNameP
-  args <- option [] (parens (exprP bp `sepBy` comma))
+  args <- option [] (parens (exprP ops bp `sepBy` comma))
   return (ExpDotName n args)
 
-parenP :: BodyP -> Parser Exp
-parenP bp = locatedP locatedExp $ parens $ do
-  es <- exprP bp `sepBy` comma
+parenP :: [OperatorDecl] -> BodyP -> Parser Exp
+parenP ops bp = locatedP locatedExp $ parens $ do
+  es <- exprP ops bp `sepBy` comma
   return $ case es of
     [] -> ExpName Nothing (Name "()") []
     [e] -> e
@@ -193,21 +168,13 @@ parenP bp = locatedP locatedExp $ parens $ do
   where
     pairE e1 e2 = locatedExpFrom [sourceSpanOf e1, sourceSpanOf e2] (ExpName Nothing (Name "pair") [e1, e2])
 
-nameP :: BodyP -> Parser Exp
-nameP bp = locatedP locatedExp $ do
+nameP :: [OperatorDecl] -> BodyP -> Parser Exp
+nameP ops bp = locatedP locatedExp $ do
   n <- simpleNameP
-  mArgs <- optional (parens (exprP bp `sepBy` comma))
+  mArgs <- optional (parens (exprP ops bp `sepBy` comma))
   return $ case mArgs of
     Just args -> ExpName Nothing n args
     Nothing -> ExpVar Nothing n
-
-binaryExp :: (Exp -> Exp -> Exp) -> Exp -> Exp -> Exp
-binaryExp con left right =
-  locatedExpFrom [sourceSpanOf left, sourceSpanOf right] (con left right)
-
-unaryExp :: (Exp -> Exp) -> Exp -> Exp
-unaryExp con operand =
-  locatedExpFrom [sourceSpanOf operand] (con operand)
 
 locatedExpFrom :: [Maybe SourceSpan] -> Exp -> Exp
 locatedExpFrom = locatedFromSpans locatedExp
