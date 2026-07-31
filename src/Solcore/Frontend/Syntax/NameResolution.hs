@@ -94,6 +94,9 @@ resolveSelectorEntry :: S.ItemSelectorEntry -> ItemSelectorEntry
 resolveSelectorEntry S.SelectAllItems = SelectAllItems
 resolveSelectorEntry (S.SelectItem itemName) = SelectItem itemName
 resolveSelectorEntry (S.SelectItemAs itemName aliasName) = SelectItemAs itemName aliasName
+-- Operator selectors are filtered out (isOperatorSelectorEntry) before this is called.
+resolveSelectorEntry (S.SelectOperator _) =
+  error "resolveSelectorEntry: operator selector should have been filtered before name resolution"
 
 resolveExportSpec :: S.ExportSpec -> ExportSpec
 resolveExportSpec S.ExportAll = ExportAll
@@ -101,6 +104,9 @@ resolveExportSpec (S.ExportName itemName) = ExportName itemName
 resolveExportSpec (S.ExportNameWithConstructors typeName ctorSelector) =
   ExportNameWithConstructors typeName (resolveConstructorSelector ctorSelector)
 resolveExportSpec (S.ExportModuleAll path) = ExportModuleAll (resolveModulePath path)
+-- Operator exports are filtered out (isOperatorExportSpec) before this is called.
+resolveExportSpec (S.ExportOperator _) =
+  error "resolveExportSpec: operator export should have been filtered before name resolution"
 
 validateDuplicateNamespacesInCompUnit :: S.CompUnit -> Either CompilerError ()
 validateDuplicateNamespacesInCompUnit (S.CompUnit _ ds) =
@@ -219,6 +225,9 @@ instance Resolve S.TopDecl where
   resolve (S.TExportDecl exportDecl) =
     pure (TExportDecl (resolveExport exportDecl))
   resolve t@(S.TPragmaDecl p) = TPragmaDecl <$> resolve p `wrapError` t
+  -- Operator declarations are filtered out (isOperatorTopDecl) before this is called.
+  resolve (S.TOperatorDecl _) =
+    error "resolve: operator declaration should have been filtered before name resolution"
 
 resolveExport :: S.Export -> Export
 resolveExport (S.ExportList items) =
@@ -283,6 +292,9 @@ instance Resolve S.ContractDecl where
     CFunDecl <$> resolve f `wrapError` d
   resolve d@(S.CConstrDecl cd) =
     CConstrDecl <$> resolve cd `wrapError` d
+  -- Operator declarations are filtered out (isOperatorContractDecl) before this is called.
+  resolve (S.COperatorDecl _) =
+    error "resolve: contract operator declaration should have been filtered before name resolution"
 
 instance Resolve S.Constructor where
   type Result S.Constructor = Constructor Name
