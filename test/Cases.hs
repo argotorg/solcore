@@ -141,6 +141,8 @@ dispatches =
       runDispatchTest "abi_batch_adt.solc",
       runDispatchTest "abi_bytes_array.solc",
       runDispatchTest "abi_dyn_sum.solc",
+      runDispatchTest "abi_dyn_sum_return.solc",
+      runDispatchTest "abi_sum_roundtrip.solc",
       runDispatchTest "abi_address_array.solc",
       runDispatchTest "specialise_sum_of_product.solc",
       runDispatchTest "storage_adt_field.solc",

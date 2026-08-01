@@ -54,20 +54,54 @@ instance sum(f, g) : ABIAttribs {
 }
 
 // ─── ABIEncode for sum(f, g) ─────────────────────────────────────────────
-// Wire layout (static sums only):
+// This is the exact mirror of `ABIDecoder(sum(f, g), reader):ABIDecode` below.
+//
+// A STATIC sum is laid out inline in the head:
 //   [offset +  0 .. offset + 31] : tag word (0 = inl, 1 = inr)
 //   [offset + 32 ..             ] : encoded branch payload
+//
+// A DYNAMIC sum (one whose branch carries a dynamic field) occupies a single
+// offset word in the head, like any other dynamic ABI value; its tag + branch
+// payload live in the tail:
+//   head: [offset .. offset + 31] : relative offset (tail - basePtr) to the body
+//   tail: [tag word][branch head ...][branch tail ...]
+// The tail body is itself an inline [tag][branch] sum, so decode follows the
+// offset and reads it exactly as it reads a static sum.
 
 forall f g . f:ABIAttribs, f:ABIEncode, g:ABIAttribs, g:ABIEncode =>
 instance sum(f, g) : ABIEncode {
     function encodeInto(x : sum(f, g), basePtr : word, offset : word, tail : word) -> word {
-        match x {
-        | inl(v) =>
-            mstore(basePtr + offset, 0);
-            return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
-        | inr(v) =>
-            mstore(basePtr + offset, 1);
-            return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+        let prx : Proxy(sum(f, g));
+        match ABIAttribs.isStatic(prx) {
+        // STATIC sum: inline tag at basePtr+offset, branch at offset + 32.
+        | true =>
+            match x {
+            | inl(v) =>
+                mstore(basePtr + offset, 0);
+                return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+            | inr(v) =>
+                mstore(basePtr + offset, 1);
+                return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+            }
+        // DYNAMIC sum: head slot holds a relative offset to the sum body, which
+        // is laid out inline in the tail. headSize(prx) is 32 here (the offset
+        // word), so the inline head footprint is computed from the branches:
+        // 32 (tag) + max(headSize(f), headSize(g)).
+        | false =>
+            let pf : Proxy(f);
+            let pg : Proxy(g);
+            mstore(basePtr + offset, tail - basePtr);
+            let newBase = tail;
+            let innerHead = 32 + maxWord(ABIAttribs.headSize(pf), ABIAttribs.headSize(pg));
+            let newTail = tail + innerHead;
+            match x {
+            | inl(v) =>
+                mstore(newBase, 0);
+                return ABIEncode.encodeInto(v, newBase, 32, newTail);
+            | inr(v) =>
+                mstore(newBase, 1);
+                return ABIEncode.encodeInto(v, newBase, 32, newTail);
+            }
         }
     }
 }
