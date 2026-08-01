@@ -283,6 +283,8 @@ instance Pretty Stmt where
     hsep [ppr e1, text "|=", ppr e2]
   ppr (StmtModEq e1 e2) =
     hsep [ppr e1, text "%=", ppr e2]
+  ppr (StmtBNotEq e1) =
+    hsep [ppr e1, text "~="]
   ppr (Let c n ty m) =
     text "let" <+> ppr n <+> pprOptTy c ty <+> pprInitOpt m
   ppr (Block body) =
@@ -332,6 +334,7 @@ pprForClause (StmtBXorEq e1 e2) = hsep [ppr e1, text "^=", ppr e2]
 pprForClause (StmtBAndEq e1 e2) = hsep [ppr e1, text "&=", ppr e2]
 pprForClause (StmtBOrEq e1 e2) = hsep [ppr e1, text "|=", ppr e2]
 pprForClause (StmtModEq e1 e2) = hsep [ppr e1, text "%=", ppr e2]
+pprForClause (StmtBNotEq e1) = hsep [ppr e1, text "~="]
 pprForClause (Let ct n ty m) = text "let" <+> ppr n <+> pprOptTy ct ty <+> pprForInitOpt m
 pprForClause (StmtExp e) = ppr e
 pprForClause EmptyStmt = empty
@@ -431,6 +434,8 @@ instance Pretty Exp where
     hsep [ppr e1, text "||", ppr e2]
   ppr (ExpLNot e1) =
     hsep [text "!", ppr e1]
+  ppr (ExpBNot e1) =
+    hsep [text "~", ppr e1]
   ppr (ExpCond e1 e2 e3) =
     hsep
       [ text "if",

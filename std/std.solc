@@ -14,6 +14,7 @@ export {
   ArrayPush,
   Assign,
   BitAnd,
+  BitNot,
   BitOr,
   BitXor,
   Bounded,
@@ -386,6 +387,10 @@ forall t . class t:BitXor {
     function bxor(l: t, r: t) -> t;
 }
 
+forall t . class t:BitNot {
+    function bnot(x: t) -> t;
+}
+
 forall t . class t:Bounded {
   function minVal() -> t;
   function maxVal() -> t;
@@ -532,6 +537,12 @@ instance word:BitXor {
     }
 }
 
+instance word:BitNot {
+    function bnot(x: word) -> word {
+        return bnotWord(x);
+    }
+}
+
 instance integer : Eq {
   function eq(x : integer, y : integer) -> bool {
     return integerEq(x, y);
@@ -654,6 +665,12 @@ instance uint256:BitOr {
 instance uint256:BitXor {
   function bxor(x : uint256, y : uint256) -> uint256 {
     return Typedef.abs(BitXor.bxor(Typedef.rep(x), Typedef.rep(y)));
+  }
+}
+
+instance uint256:BitNot {
+  function bnot(x : uint256) -> uint256 {
+    return Typedef.abs(BitNot.bnot(Typedef.rep(x)));
   }
 }
 

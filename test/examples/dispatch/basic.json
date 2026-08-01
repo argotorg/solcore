@@ -145,6 +145,30 @@
       },
       {
         "input": {
+          "comment": "bnot1(uint256)(uint256) 10 -> ~10 = 2^256-1-10 (sugar: unary ~)",
+          "calldata": "0xf7347a59000000000000000000000000000000000000000000000000000000000000000a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "bnotEq(uint256)(uint256) 10 -> acc=10; acc ~=; == ~10 (sugar: in-place ~=)",
+          "calldata": "0xf384d580000000000000000000000000000000000000000000000000000000000000000a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
           "comment": "mod2(uint256,uint256)(uint256) 252 10 -> 252 % 10 = 2 (sugar: %)",
           "calldata": "0x519f91cd00000000000000000000000000000000000000000000000000000000000000fc000000000000000000000000000000000000000000000000000000000000000a",
           "value": "0"
