@@ -72,7 +72,20 @@ int main(int argc, char** argv)
 		std::cout << filename << std::endl;
 		std::unique_ptr<EVMHost> evmcHost;
 
-		langutil::EVMVersion const evmVersion{};
+		// A suite may opt into a specific EVM version (e.g. "osaka" to reach the
+		// EIP-7951 secp256r1 precompile); otherwise the default version is used.
+		langutil::EVMVersion evmVersion{};
+		if (testdata.contains("evmVersion"))
+		{
+			std::string const versionName = testdata["evmVersion"].get<std::string>();
+			if (auto const parsed = langutil::EVMVersion::fromString(versionName))
+				evmVersion = *parsed;
+			else
+			{
+				std::cerr << "Unknown evmVersion: " << versionName << std::endl;
+				return 1;
+			}
+		}
 		evmcHost = std::make_unique<EVMHost>(evmVersion, vm);
 
 		auto account = [](size_t i) {
