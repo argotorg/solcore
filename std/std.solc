@@ -2338,7 +2338,7 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
         | true =>
             // Long byte array (out-of-place encoding)
             let dstPtr = hash1(slot);
-            let loopEnd = and_(newLen, not_(0x1f));
+            let loopEnd = newLen & ~0x1f;
             let trailing = loopEnd < newLen;
             loopEnd += src;
             for (; src < loopEnd; src += 32, dstPtr += 1) {
@@ -2346,9 +2346,9 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
             }
             if (trailing) {
                 let lastValue = mload(src);
-                let lastLen = and_(newLen, 0x1f);
-                let mask = not_(shr(8 * lastLen, not_(0)));
-                let data_ = and_(lastValue, mask);
+                let lastLen = newLen & 0x1f;
+                let mask = ~shr(8 * lastLen, ~0);
+                let data_ = lastValue & mask;
                 sstore(dstPtr, data_);
             }
             sstore(slot, (newLen * 2) + 1);
@@ -2358,9 +2358,9 @@ function storeBytesFromMemory(slot: word, src: word) -> () {
             if (newLen != 0) {
                 value = mload(src);
             }
-            let mask = not_(shr(8 * newLen, not_(0)));
-            let data_ = and_(value, mask);
-            let used = or_(data_, 2 * newLen);
+            let mask = ~shr(8 * newLen, ~0);
+            let data_ = value & mask;
+            let used = data_ | (2 * newLen);
             sstore(slot, used);
     }
 }
