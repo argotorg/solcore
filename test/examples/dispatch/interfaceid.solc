@@ -16,7 +16,7 @@ contract InterfaceId {
   }
 
   public function bar(a : address) -> uint256 {
-    return uint256(0);
+    return 0;
   }
 
   public function interfaceId() -> bytes4 {
