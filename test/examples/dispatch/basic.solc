@@ -69,20 +69,80 @@ contract C {
         return x & y;
     }
 
-    // Unary bitwise NOT via the sugar only: `~` -> BitNot.bnot, and the
-    // in-place `~=` statement, which desugars to `acc := ~acc`.
+    // Unary bitwise NOT via the sugar only: `~` -> BitNot.bnot.
     public function bnot1(x : uint256) -> uint256 {
         return ~x;
     }
 
-    public function bnotEq(x : uint256) -> uint256 {
+    public function mod2(x : uint256, y : uint256) -> uint256 {
+        return x % y;
+    }
+
+    // `*` -> Mul.mul, `/` -> Div.div (completing the binary-operator sugar
+    // set alongside bxor2 / bor2 / band2 / mod2).
+    public function mul2(x : uint256, y : uint256) -> uint256 {
+        return x * y;
+    }
+
+    public function div2(x : uint256, y : uint256) -> uint256 {
+        return x / y;
+    }
+
+    // Compound assignment statement sugar: each `acc op= y` desugars to
+    // `acc := acc op y`, so these must agree with the binary operators above.
+    public function pluseq(x : uint256, y : uint256) -> uint256 {
         let acc : uint256 = x;
-        acc ~=;
+        acc += y;
         return acc;
     }
 
-    public function mod2(x : uint256, y : uint256) -> uint256 {
-        return x % y;
+    public function minuseq(x : uint256, y : uint256) -> uint256 {
+        let acc : uint256 = x;
+        acc -= y;
+        return acc;
+    }
+
+    public function timeseq(x : uint256, y : uint256) -> uint256 {
+        let acc : uint256 = x;
+        acc *= y;
+        return acc;
+    }
+
+    public function divideeq(x : uint256, y : uint256) -> uint256 {
+        let acc : uint256 = x;
+        acc /= y;
+        return acc;
+    }
+
+    public function modeq(x : uint256, y : uint256) -> uint256 {
+        let acc : uint256 = x;
+        acc %= y;
+        return acc;
+    }
+
+    public function bxoreq(x : uint256, y : uint256) -> uint256 {
+        let acc : uint256 = x;
+        acc ^= y;
+        return acc;
+    }
+
+    public function bandeq(x : uint256, y : uint256) -> uint256 {
+        let acc : uint256 = x;
+        acc &= y;
+        return acc;
+    }
+
+    public function boreq(x : uint256, y : uint256) -> uint256 {
+        let acc : uint256 = x;
+        acc |= y;
+        return acc;
+    }
+
+    // In-place unary bitwise NOT: `acc ~=` desugars to `acc := ~acc`.
+    public function bnoteq(x : uint256) -> uint256 {
+        let acc : uint256 = x;
+        acc ~=;
+        return acc;
     }
 
     public function id_bytes(b: memory(bytes)) -> memory(bytes) {

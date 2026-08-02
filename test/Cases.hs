@@ -339,6 +339,7 @@ cases =
       runTestForFile "bitwise.solc" caseFolder,
       runTestForFile "match-bitwise.solc" caseFolder,
       runTestForFile "modulo.solc" caseFolder,
+      runTestForFile "compound-operators.solc" caseFolder,
       runTestForFile "CondExp.solc" caseFolder,
       runTestForFile "constrained-instance.solc" caseFolder,
       runTestForFile "constrained-instance-context.solc" caseFolder,

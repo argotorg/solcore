@@ -388,6 +388,8 @@ data Stmt
   = AssignWithLocation NodeLocation Exp Exp -- assignment
   | StmtPlusEqWithLocation NodeLocation Exp Exp -- e1 += e2
   | StmtMinusEqWithLocation NodeLocation Exp Exp -- e1 -= e2
+  | StmtTimesEqWithLocation NodeLocation Exp Exp -- e1 *= e2
+  | StmtDivideEqWithLocation NodeLocation Exp Exp -- e1 /= e2
   | StmtBXorEqWithLocation NodeLocation Exp Exp -- e1 ^= e2
   | StmtBAndEqWithLocation NodeLocation Exp Exp -- e1 &= e2
   | StmtBOrEqWithLocation NodeLocation Exp Exp -- e1 |= e2
@@ -420,6 +422,16 @@ pattern StmtMinusEq :: Exp -> Exp -> Stmt
 pattern StmtMinusEq lhs rhs <- StmtMinusEqWithLocation _ lhs rhs
   where
     StmtMinusEq lhs rhs = StmtMinusEqWithLocation unlocatedNode lhs rhs
+
+pattern StmtTimesEq :: Exp -> Exp -> Stmt
+pattern StmtTimesEq lhs rhs <- StmtTimesEqWithLocation _ lhs rhs
+  where
+    StmtTimesEq lhs rhs = StmtTimesEqWithLocation unlocatedNode lhs rhs
+
+pattern StmtDivideEq :: Exp -> Exp -> Stmt
+pattern StmtDivideEq lhs rhs <- StmtDivideEqWithLocation _ lhs rhs
+  where
+    StmtDivideEq lhs rhs = StmtDivideEqWithLocation unlocatedNode lhs rhs
 
 pattern StmtBXorEq :: Exp -> Exp -> Stmt
 pattern StmtBXorEq lhs rhs <- StmtBXorEqWithLocation _ lhs rhs
@@ -501,7 +513,7 @@ pattern EmptyStmt <- EmptyStmtWithLocation _
   where
     EmptyStmt = EmptyStmtWithLocation unlocatedNode
 
-{-# COMPLETE Assign, StmtPlusEq, StmtMinusEq, StmtBXorEq, StmtBAndEq, StmtBOrEq, StmtModEq, StmtBNotEq, Let, Block, StmtExp, Return, Match, Asm, If, For, Break, Continue, EmptyStmt #-}
+{-# COMPLETE Assign, StmtPlusEq, StmtMinusEq, StmtTimesEq, StmtDivideEq, StmtBXorEq, StmtBAndEq, StmtBOrEq, StmtModEq, StmtBNotEq, Let, Block, StmtExp, Return, Match, Asm, If, For, Break, Continue, EmptyStmt #-}
 
 type Body = [Stmt]
 
@@ -513,6 +525,12 @@ locatedStmt sourceSpan (StmtPlusEq lhs rhs) = StmtPlusEqWithLocation location lh
   where
     location = locatedNode sourceSpan
 locatedStmt sourceSpan (StmtMinusEq lhs rhs) = StmtMinusEqWithLocation location lhs rhs
+  where
+    location = locatedNode sourceSpan
+locatedStmt sourceSpan (StmtTimesEq lhs rhs) = StmtTimesEqWithLocation location lhs rhs
+  where
+    location = locatedNode sourceSpan
+locatedStmt sourceSpan (StmtDivideEq lhs rhs) = StmtDivideEqWithLocation location lhs rhs
   where
     location = locatedNode sourceSpan
 locatedStmt sourceSpan (StmtBXorEq lhs rhs) = StmtBXorEqWithLocation location lhs rhs
@@ -550,6 +568,10 @@ instance HasSourceSpan Stmt where
   sourceSpanOf (StmtPlusEqWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (StmtMinusEqWithLocation location lhs rhs) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
+  sourceSpanOf (StmtTimesEqWithLocation location lhs rhs) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
+  sourceSpanOf (StmtDivideEqWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (StmtBXorEqWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]

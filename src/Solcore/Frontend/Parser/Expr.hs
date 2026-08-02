@@ -60,8 +60,14 @@ opTable =
             <$ try (lexeme (char '~' <* notFollowedBy (char '=')))
         )
     ],
-    [ InfixL (binaryExp ExpTimes <$ try (symbol "*")),
-      InfixL (binaryExp ExpDivide <$ try (symbol "/")),
+    [ InfixL
+        ( binaryExp ExpTimes
+            <$ try (lexeme (char '*' <* notFollowedBy (char '=')))
+        ),
+      InfixL
+        ( binaryExp ExpDivide
+            <$ try (lexeme (char '/' <* notFollowedBy (char '=')))
+        ),
       InfixL
         ( binaryExp ExpModulo
             <$ try (lexeme (char '%' <* notFollowedBy (char '=')))
