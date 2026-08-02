@@ -157,6 +157,10 @@ contract C {
         return b;
     }
 
+    public function id_bytes4(b: bytes4) -> bytes4 {
+        return b;
+    }
+
     public function id_address(a: address) -> address {
         return a;
     }

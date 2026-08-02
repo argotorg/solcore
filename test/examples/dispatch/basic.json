@@ -337,6 +337,18 @@
       },
       {
         "input": {
+          "comment": "id_bytes4(bytes4) -> (bytes4) -- left-aligned, right-padded",
+          "calldata": "0x616ab93edeadbeef00000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "deadbeef00000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
           "comment": "id_address(address)(address) clean -- upper 96 bits zero",
           "calldata": "0xd47cfd820000000000000000000000001111111111111111111111111111111111111111",
           "value": "0"
