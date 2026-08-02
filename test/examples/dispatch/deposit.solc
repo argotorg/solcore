@@ -24,13 +24,13 @@ function to_little_endian_64(v: uint256) -> memory(bytes) {
 // No constants are supported yet, using this as a workaround.
 // Defining variables outside of contract/function is not supported.
 function DEPOSIT_CONTRACT_TREE_DEPTH() -> uint256 {
-    return uint256(32);
+    return 32;
 }
 
 function MAX_DEPOSIT_COUNT() -> uint256 {
     // uint constant MAX_DEPOSIT_COUNT = 2**DEPOSIT_CONTRACT_TREE_DEPTH - 1;
-    // Could use Bounded(uint64).maxVal()
-    return uint256(0xFFFFFFFF);
+    // TODO: Could use Bounded(uint32).maxVal()
+    return 0xFFFFFFFF;
 }
 
 contract DepositContract {
@@ -49,8 +49,8 @@ contract DepositContract {
     Array.setLength(zero_hashes, DEPOSIT_CONTRACT_TREE_DEPTH());
 
     // Compute hashes in empty sparse Merkle tree
-    for (let height = uint256(0); height < (DEPOSIT_CONTRACT_TREE_DEPTH() - uint256(1)); height += uint256(1)) {
-        zero_hashes[height + uint256(1)] = sha256(concat(zero_hashes[height], zero_hashes[height]));
+    for (let height = 0; height < (DEPOSIT_CONTRACT_TREE_DEPTH() - 1); height += 1) {
+        zero_hashes[height + 1] = sha256(concat(zero_hashes[height], zero_hashes[height]));
     }
   }
 
@@ -62,13 +62,13 @@ contract DepositContract {
   public function get_deposit_root() -> bytes32 {
     let node: bytes32;
     let size = deposit_count;
-    for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height += uint256(1)) {
-        if ((size & uint256(1)) == uint256(1)) {
+    for (let height = 0; height < DEPOSIT_CONTRACT_TREE_DEPTH(); height += 1) {
+        if ((size & 1) == 1) {
             node = sha256(concat(branch[height], node));
         } else {
             node = sha256(concat(node, zero_hashes[height]));
         }
-        size = size / uint256(2);
+        size /= 2;
     }
     return sha256(concat(
         concat(
@@ -92,7 +92,7 @@ contract DepositContract {
     require(MemorySize.len(signature) == 96, Error(0x4be6321b)); // InvalidSignatureLength()
 
     // Check deposit amount
-    // >= 1ether
+    // >= 1 ether
     require(callvalue() >= 1000000000000000000, Error(0xbdfc7472)); // DepositValueTooLow()
     // % 1 gwei == 0
     require((callvalue() % 1000000000) == 0, Error(0x9c7417e9)); // DepositValueNotMultipleOfOneGwei()
@@ -143,15 +143,15 @@ contract DepositContract {
     require(deposit_count < MAX_DEPOSIT_COUNT(), Error(0xef5ccf66)); // MerkleTreeFull()
 
     // Add deposit data root to Merkle tree (update a single `branch` node)
-    deposit_count += uint256(1);
+    deposit_count += 1;
     let size = deposit_count;
-    for (let height = uint256(0); height < DEPOSIT_CONTRACT_TREE_DEPTH(); height += uint256(1)) {
-        if ((size & uint256(1)) == uint256(1)) {
+    for (let height = 0; height < DEPOSIT_CONTRACT_TREE_DEPTH(); height += 1) {
+        if ((size & 1) == 1) {
             branch[height] = node;
             return ();
         }
         node = sha256(concat(branch[height], node));
-        size = size / uint256(2);
+        size /= 2;
     }
 
     // As the loop should always end prematurely with the `return` statement,
