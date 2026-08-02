@@ -398,6 +398,10 @@ instance Resolve S.Stmt where
     locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs))
   resolve s@(S.StmtMinusEq lhs rhs) =
     locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs))
+  resolve s@(S.StmtTimesEq lhs rhs) =
+    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpTimes lhs rhs))
+  resolve s@(S.StmtDivideEq lhs rhs) =
+    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpDivide lhs rhs))
   resolve s@(S.StmtBXorEq lhs rhs) =
     locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBXor lhs rhs))
   resolve s@(S.StmtBAndEq lhs rhs) =

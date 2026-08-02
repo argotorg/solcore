@@ -280,6 +280,10 @@ instance Pretty Stmt where
     hsep [ppr e1, text "+=", ppr e2]
   ppr (StmtMinusEq e1 e2) =
     hsep [ppr e1, text "-=", ppr e2]
+  ppr (StmtTimesEq e1 e2) =
+    hsep [ppr e1, text "*=", ppr e2]
+  ppr (StmtDivideEq e1 e2) =
+    hsep [ppr e1, text "/=", ppr e2]
   ppr (StmtBXorEq e1 e2) =
     hsep [ppr e1, text "^=", ppr e2]
   ppr (StmtBAndEq e1 e2) =
@@ -335,6 +339,8 @@ pprForClause :: Stmt -> Doc
 pprForClause (Assign n e) = ppr n <+> equals <+> ppr e
 pprForClause (StmtPlusEq e1 e2) = hsep [ppr e1, text "+=", ppr e2]
 pprForClause (StmtMinusEq e1 e2) = hsep [ppr e1, text "-=", ppr e2]
+pprForClause (StmtTimesEq e1 e2) = hsep [ppr e1, text "*=", ppr e2]
+pprForClause (StmtDivideEq e1 e2) = hsep [ppr e1, text "/=", ppr e2]
 pprForClause (StmtBXorEq e1 e2) = hsep [ppr e1, text "^=", ppr e2]
 pprForClause (StmtBAndEq e1 e2) = hsep [ppr e1, text "&=", ppr e2]
 pprForClause (StmtBOrEq e1 e2) = hsep [ppr e1, text "|=", ppr e2]

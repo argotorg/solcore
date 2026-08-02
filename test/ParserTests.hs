@@ -297,6 +297,10 @@ stmtTests =
         parsesAs stmtP "x += 1;" (StmtPlusEq (var "x") (lit 1)),
       testCase "minus-assign" $
         parsesAs stmtP "x -= 1;" (StmtMinusEq (var "x") (lit 1)),
+      testCase "times-assign" $
+        parsesAs stmtP "x *= 2;" (StmtTimesEq (var "x") (lit 2)),
+      testCase "divide-assign" $
+        parsesAs stmtP "x /= 2;" (StmtDivideEq (var "x") (lit 2)),
       testCase "field assignment" $
         parsesAs
           stmtP
