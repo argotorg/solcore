@@ -99,6 +99,7 @@ exprOrAssignP = locatedP locatedStmt $ do
       do rhs <- symbol "&=" *> expP; _ <- semicolon; return (StmtBAndEq lhs rhs),
       do rhs <- symbol "|=" *> expP; _ <- semicolon; return (StmtBOrEq lhs rhs),
       do rhs <- symbol "%=" *> expP; _ <- semicolon; return (StmtModEq lhs rhs),
+      do _ <- symbol "~="; _ <- semicolon; return (StmtBNotEq lhs),
       StmtExp lhs <$ optional semicolon
     ]
 
@@ -141,6 +142,7 @@ forAssignP = locatedP locatedStmt $ do
       do rhs <- symbol "&=" *> expP; return (StmtBAndEq lhs rhs),
       do rhs <- symbol "|=" *> expP; return (StmtBOrEq lhs rhs),
       do rhs <- symbol "%=" *> expP; return (StmtModEq lhs rhs),
+      do _ <- symbol "~="; return (StmtBNotEq lhs),
       return (StmtExp lhs)
     ]
 

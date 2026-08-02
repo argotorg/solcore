@@ -392,6 +392,7 @@ data Stmt
   | StmtBAndEqWithLocation NodeLocation Exp Exp -- e1 &= e2
   | StmtBOrEqWithLocation NodeLocation Exp Exp -- e1 |= e2
   | StmtModEqWithLocation NodeLocation Exp Exp -- e1 %= e2
+  | StmtBNotEqWithLocation NodeLocation Exp -- e ~= (in-place bitwise NOT, i.e. e := ~e)
   | LetWithLocation NodeLocation Bool Name (Maybe Ty) (Maybe Exp) -- local variable; Bool is True when 'comptime' modifier is present
   | BlockWithLocation NodeLocation Body -- lexical block
   | StmtExpWithLocation NodeLocation Exp -- expression level statements
@@ -439,6 +440,11 @@ pattern StmtModEq :: Exp -> Exp -> Stmt
 pattern StmtModEq lhs rhs <- StmtModEqWithLocation _ lhs rhs
   where
     StmtModEq lhs rhs = StmtModEqWithLocation unlocatedNode lhs rhs
+
+pattern StmtBNotEq :: Exp -> Stmt
+pattern StmtBNotEq lhs <- StmtBNotEqWithLocation _ lhs
+  where
+    StmtBNotEq lhs = StmtBNotEqWithLocation unlocatedNode lhs
 
 pattern Let :: Bool -> Name -> Maybe Ty -> Maybe Exp -> Stmt
 pattern Let ct n ty value <- LetWithLocation _ ct n ty value
@@ -495,7 +501,7 @@ pattern EmptyStmt <- EmptyStmtWithLocation _
   where
     EmptyStmt = EmptyStmtWithLocation unlocatedNode
 
-{-# COMPLETE Assign, StmtPlusEq, StmtMinusEq, StmtBXorEq, StmtBAndEq, StmtBOrEq, StmtModEq, Let, Block, StmtExp, Return, Match, Asm, If, For, Break, Continue, EmptyStmt #-}
+{-# COMPLETE Assign, StmtPlusEq, StmtMinusEq, StmtBXorEq, StmtBAndEq, StmtBOrEq, StmtModEq, StmtBNotEq, Let, Block, StmtExp, Return, Match, Asm, If, For, Break, Continue, EmptyStmt #-}
 
 type Body = [Stmt]
 
@@ -519,6 +525,9 @@ locatedStmt sourceSpan (StmtBOrEq lhs rhs) = StmtBOrEqWithLocation location lhs 
   where
     location = locatedNode sourceSpan
 locatedStmt sourceSpan (StmtModEq lhs rhs) = StmtModEqWithLocation location lhs rhs
+  where
+    location = locatedNode sourceSpan
+locatedStmt sourceSpan (StmtBNotEq lhs) = StmtBNotEqWithLocation location lhs
   where
     location = locatedNode sourceSpan
 locatedStmt sourceSpan (Let ct n ty value) = LetWithLocation location ct n ty value
@@ -550,6 +559,8 @@ instance HasSourceSpan Stmt where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (StmtModEqWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
+  sourceSpanOf (StmtBNotEqWithLocation location lhs) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs]
   sourceSpanOf (LetWithLocation location _ n ty value) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf n, sourceSpanOf ty, sourceSpanOf value]
   sourceSpanOf (BlockWithLocation location body) =
@@ -611,6 +622,7 @@ data Exp
   | ExpLAndWithLocation NodeLocation Exp Exp -- e1 && e2
   | ExpLOrWithLocation NodeLocation Exp Exp -- e1 || e2
   | ExpLNotWithLocation NodeLocation Exp -- ! e
+  | ExpBNotWithLocation NodeLocation Exp -- ~ e
   | ExpCondWithLocation NodeLocation Exp Exp Exp -- if e1 then e2 else e3
   | ExpAtWithLocation NodeLocation Ty -- proxy sugar
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -735,6 +747,11 @@ pattern ExpLNot exp <- ExpLNotWithLocation _ exp
   where
     ExpLNot exp = ExpLNotWithLocation unlocatedNode exp
 
+pattern ExpBNot :: Exp -> Exp
+pattern ExpBNot exp <- ExpBNotWithLocation _ exp
+  where
+    ExpBNot exp = ExpBNotWithLocation unlocatedNode exp
+
 pattern ExpCond :: Exp -> Exp -> Exp -> Exp
 pattern ExpCond cond thenExp elseExp <- ExpCondWithLocation _ cond thenExp elseExp
   where
@@ -745,7 +762,7 @@ pattern ExpAt ty <- ExpAtWithLocation _ ty
   where
     ExpAt ty = ExpAtWithLocation unlocatedNode ty
 
-{-# COMPLETE Lit, ExpName, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpPlus, ExpMinus, ExpTimes, ExpDivide, ExpModulo, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpCond, ExpAt #-}
+{-# COMPLETE Lit, ExpName, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpPlus, ExpMinus, ExpTimes, ExpDivide, ExpModulo, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpBNot, ExpCond, ExpAt #-}
 
 locatedExp :: SourceSpan -> Exp -> Exp
 locatedExp sourceSpan (Lit lit) = LitWithLocation location lit
@@ -774,6 +791,7 @@ locatedExp sourceSpan (ExpNE lhs rhs) = ExpNEWithLocation (locatedNode sourceSpa
 locatedExp sourceSpan (ExpLAnd lhs rhs) = ExpLAndWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpLOr lhs rhs) = ExpLOrWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpLNot exp) = ExpLNotWithLocation (locatedNode sourceSpan) exp
+locatedExp sourceSpan (ExpBNot exp) = ExpBNotWithLocation (locatedNode sourceSpan) exp
 locatedExp sourceSpan (ExpCond cond thenExp elseExp) = ExpCondWithLocation (locatedNode sourceSpan) cond thenExp elseExp
 locatedExp sourceSpan (ExpAt ty) = ExpAtWithLocation (locatedNode sourceSpan) ty
 
@@ -824,6 +842,8 @@ instance HasSourceSpan Exp where
   sourceSpanOf (ExpLOrWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (ExpLNotWithLocation location exp) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf exp]
+  sourceSpanOf (ExpBNotWithLocation location exp) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf exp]
   sourceSpanOf (ExpCondWithLocation location cond thenExp elseExp) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf cond, sourceSpanOf thenExp, sourceSpanOf elseExp]

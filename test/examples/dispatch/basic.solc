@@ -69,6 +69,18 @@ contract C {
         return x & y;
     }
 
+    // Unary bitwise NOT via the sugar only: `~` -> BitNot.bnot, and the
+    // in-place `~=` statement, which desugars to `acc := ~acc`.
+    public function bnot1(x : uint256) -> uint256 {
+        return ~x;
+    }
+
+    public function bnotEq(x : uint256) -> uint256 {
+        let acc : uint256 = x;
+        acc ~=;
+        return acc;
+    }
+
     public function mod2(x : uint256, y : uint256) -> uint256 {
         return x % y;
     }

@@ -54,6 +54,10 @@ opTable =
   [ [ Prefix
         ( unaryExp ExpLNot
             <$ try (lexeme (char '!' <* notFollowedBy (char '=')))
+        ),
+      Prefix
+        ( unaryExp ExpBNot
+            <$ try (lexeme (char '~' <* notFollowedBy (char '=')))
         )
     ],
     [ InfixL (binaryExp ExpTimes <$ try (symbol "*")),
