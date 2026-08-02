@@ -696,16 +696,6 @@ function hash2(x: word, y: word) -> word {
     return keccak256(0, 64);
 }
 
-// Zeroes the storage slots in [start, endSlot). Mirrors solc's
-// clear_storage_range, used when a dynamic array shrinks so that regrowing it
-// cannot resurrect the old elements.
-function clearStorageRange(start: word, endSlot: word) -> () {
-    let i : word = start;
-    for (; i < endSlot; i += 1) {
-        sstore(i, 0);
-    }
-}
-
 // --- Value Types ---
 
 forall t. t:Typedef(word) =>
@@ -986,9 +976,8 @@ function zeroize_memory(ptr: word, len: word) -> () {
     let end_ptr = ptr + len;
 
     // Zero out 32-byte words.
-    for (let i = 0; i < len / 32; i += 1) {
+    for (let i = 0; i < len / 32; i += 1, ptr += 32) {
         mstore(ptr, 0)
-        ptr += 32;
     }
 
     // Zero out trailing bytes. We rely on the zero-slot (0x60-0x7f).
@@ -1412,7 +1401,7 @@ instance bool:ABIEncode {
 }
 
 function round_up_to_mul_of_32(value:word) -> word {
-    return and_(value + 31, not_(31));
+    return (value + 31) & ~31;
 }
 
 function encodeIntoFromBytesLike(srcPtr:word, basePtr:word, offset:word, tail:word) -> word {
@@ -1456,10 +1445,7 @@ instance memory(DynArray(t)):ABIEncode {
         let s : word = srcPtr;
         let t_ : word = tail;
         let n : word = totalBytes;
-        assembly {
-            mcopy(t_, s, n)
-        }
-
+        mcopy(t_, s, n);
         return tail + totalBytes;
     }
 }
@@ -1502,7 +1488,7 @@ forall tuple . tuple:ABIEncode, tuple:ABIAttribs => instance ABITuple(tuple):ABI
             // encode the underlying tuple into the tail
             let headSize = ABIAttribs.headSize(Proxy : Proxy(tuple));
             basePtr = tail;
-            tail = tail + headSize;
+            tail += headSize;
             return ABIEncode.encodeInto(Typedef.rep(x), basePtr, 0, tail);
         }
     }
@@ -1702,7 +1688,7 @@ forall baseType baseType_decoded . ABIDecoder(baseType, CalldataWordReader):ABID
  {
      function decode(ptr:ABIDecoder(calldata(DynArray(baseType)), CalldataWordReader), currentHeadOffset:word) -> calldata(DynArray(baseType_decoded)) {
           let newptr = WordReader.advance(ptr, currentHeadOffset);
-	      let reader: CalldataWordReader = getReader(newptr);
+          let reader: CalldataWordReader = getReader(newptr);
           let addr: word = Typedef.rep(reader);
           return Typedef.abs(addr);
      }
@@ -1792,7 +1778,17 @@ function abiArrayGet(a : calldata(array(t)), i : uint256) -> t_decoded {
 pragma no-patterson-condition RVA, Assign;
 pragma no-coverage-condition MemberAccessProxy, LVA, RVA, CStructField, Assign;
 pragma no-bounded-variable-condition LVA, RVA;
-// -- storage
+
+// --- Storage ---
+
+// Zeroes the storage slots in [start, endSlot). Mirrors solc's
+// clear_storage_range, used when a dynamic array shrinks so that regrowing it
+// cannot resurrect the old elements.
+function clearStorageRange(start: word, endSlot: word) -> () {
+    for (; start < endSlot; start += 1) {
+        sstore(start, 0);
+    }
+}
 
 forall self.
 class self:StorageSize {
@@ -2236,8 +2232,7 @@ forall v. v:StorageCopy =>
         }
         sstore(dst, newLen);
         let srcBase : word = hash1(src);
-        let i : word = 0;
-        for (; i < newLen; i += 1) {
+        for (let i = 0; i < newLen; i += 1) {
           StorageCopy.copySlot(storage(dstBase + i):storage(v), storage(srcBase + i):storage(v));
         }
       }
@@ -2379,16 +2374,16 @@ function loadBytesFromStorage(slot:word, memPtr:word) -> word {
     let pos = memPtr;
     let slotValue = sload(slot);
     let length = slotValue / 2;
-    let outOfPlaceEncoding = tobool(and_(slotValue, 1));
+    let outOfPlaceEncoding = tobool(slotValue & 1);
     if (!outOfPlaceEncoding) {
-        length = and_(length, 0x7f);
+        length &= 0x7f;
     }
     mstore(pos, length);
     pos += 32;
     match outOfPlaceEncoding {
         | false =>
             // Short byte array
-            mstore(pos, and_(slotValue, not_(0xff)));
+            mstore(pos, slotValue & ~0xff);
             let empty = iszero(length);
             let notzero = iszero(empty);
             return pos + (notzero * 32);
@@ -2396,9 +2391,8 @@ function loadBytesFromStorage(slot:word, memPtr:word) -> word {
             // Long byte array
             let dataPos = hash1(slot);
             let i = 0;
-            for (; i < length; i += 32) {
+            for (; i < length; i += 32, dataPos += 1) {
                 mstore(pos + i, sload(dataPos));
-                dataPos += 1;
             }
             return pos + i;
     }
@@ -2639,8 +2633,7 @@ function slice_(input: a, start: word) -> memory_ref {
     let len = MemorySize.len(input);
     // TODO: should this allow (it does now) a zero-length slice?
     require(len >= start, Error(0xb4120f14)); // OutOfBounds()
-    let ptr_ = MemoryPointer.ptr(input);
-    return memory_ref(ptr_ + start, len - start);
+    return memory_ref(MemoryPointer.ptr(input) + start, len - start);
 }
 
 forall a . a:MemorySize, a:MemoryPointer =>
@@ -2714,14 +2707,11 @@ function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address
 function erc7201(id: memory(bytes)) -> bytes32 {
 //    return keccak256_(to_bytes(keccak256_(id) - 1)) & ~0xff;
     return Typedef.abs(
-        and_(
-            Typedef.rep(
-                keccak256_(
-                    to_bytes(bytes32(Typedef.rep(keccak256_(id)) - 1))
-                )
-            ),
-            not_(0xff)
-        )
+        Typedef.rep(
+            keccak256_(
+                to_bytes(bytes32(Typedef.rep(keccak256_(id)) - 1))
+            )
+        ) & ~0xff
     );
 }
 
@@ -2738,10 +2728,6 @@ forall a . a:MemorySize, a:MemoryPointer => function raw_call(target: address, v
     let retSize = returndatasize();
     let retData = allocate_memory(32 + retSize);
     mstore(retData, retSize);
-    // TODO: use returndatacopy(retData + 32, 0, retSize);, but it is a parser error
-    // See https://github.com/argotorg/solcore/issues/497
-    assembly {
-        returndatacopy(add(retData, 32), 0, retSize)
-    }
+    returndatacopy(retData + 32, 0, retSize);
     return (tobool(ret), memory(retData));
 }
