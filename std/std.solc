@@ -1560,6 +1560,13 @@ forall reader . reader:WordReader => instance ABIDecoder(bytes32, reader):ABIDec
     }
 }
 
+// ABI Decoding for bytes4
+forall reader . reader:WordReader => instance ABIDecoder(bytes4, reader):ABIDecode(bytes4) {
+    function decode(ptr:ABIDecoder(bytes4, reader), currentHeadOffset:word) -> bytes4 {
+        return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) : bytes4;
+    }
+}
+
 // ABI Decoding for address
 forall reader . reader:WordReader => instance ABIDecoder(address, reader):ABIDecode(address) {
     function decode(ptr:ABIDecoder(address, reader), currentHeadOffset:word) -> address {
