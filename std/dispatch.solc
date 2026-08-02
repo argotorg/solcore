@@ -138,15 +138,6 @@ forall ty . ty:Selector => function calculateSelector(prx : Proxy(ty)) -> bytes4
     return Selector.compute(prx);
 }
 
-// 2-argument bitwise XOR (`^=` in the interface-id fold below).
-function xorWord(a : word, b : word) -> word {
-    let res : word;
-    assembly {
-        res := xor(a, b)
-    }
-    return res;
-}
-
 // `type(C).publicMethods` hands back a `Proxy` over the contract's public
 // methods, encoded as a right-nested tuple terminated by `()`:
 //
@@ -189,7 +180,7 @@ forall name payability args rets fn m
     function interfaceId(p : Proxy((Method(name,payability,args,rets,fn), m))) -> bytes4 {
         let head : bytes4 = Selector.compute(Proxy : Proxy(Method(name,payability,args,rets,fn)));
         let rest : bytes4 = PublicMethods.interfaceId(Proxy : Proxy(m));
-        return bytes4(xorWord(Typedef.rep(head), Typedef.rep(rest)));
+        return bytes4(Typedef.rep(head) ^ Typedef.rep(rest));
     }
 }
 
