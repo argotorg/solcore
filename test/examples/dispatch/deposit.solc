@@ -159,8 +159,8 @@ contract DepositContract {
     assert(false);
   }
 
-  // TODO: use bytes4
-  public function supportsInterface(interfaceId: uint256) -> bool {
+  public function supportsInterface(interfaceId: bytes4) -> bool {
+    unimplemented();
     return false;
   }
 }
