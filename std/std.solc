@@ -696,15 +696,6 @@ function hash2(x: word, y: word) -> word {
     return keccak256(0, 64);
 }
 
-// Zeroes the storage slots in [start, endSlot). Mirrors solc's
-// clear_storage_range, used when a dynamic array shrinks so that regrowing it
-// cannot resurrect the old elements.
-function clearStorageRange(start: word, endSlot: word) -> () {
-    for (; start < endSlot; start += 1) {
-        sstore(start, 0);
-    }
-}
-
 // --- Value Types ---
 
 forall t. t:Typedef(word) =>
@@ -1787,7 +1778,17 @@ function abiArrayGet(a : calldata(array(t)), i : uint256) -> t_decoded {
 pragma no-patterson-condition RVA, Assign;
 pragma no-coverage-condition MemberAccessProxy, LVA, RVA, CStructField, Assign;
 pragma no-bounded-variable-condition LVA, RVA;
-// -- storage
+
+// --- Storage ---
+
+// Zeroes the storage slots in [start, endSlot). Mirrors solc's
+// clear_storage_range, used when a dynamic array shrinks so that regrowing it
+// cannot resurrect the old elements.
+function clearStorageRange(start: word, endSlot: word) -> () {
+    for (; start < endSlot; start += 1) {
+        sstore(start, 0);
+    }
+}
 
 forall self.
 class self:StorageSize {
