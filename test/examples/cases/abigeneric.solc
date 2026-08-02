@@ -11,13 +11,6 @@ import std.{*};
 import std.opcodes.{mstore};
 import std.Generic.{*};
 
-function maxWord(a : word, b : word) -> word {
-    match gtWord(a, b) {
-    | true  => return a;
-    | false => return b;
-    }
-}
-
 // ─── ABIAttribs for the primitive sum(f, g) type ─────────────────────────
 // headSize = 32 (tag word) + max(headSize(f), headSize(g))
 

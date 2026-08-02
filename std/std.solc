@@ -96,9 +96,11 @@ export {
   lt,
   mapping(*),
   maxVal,
+  maxWord,
   memberAccessBase,
   memory(*),
   memory_ref,
+  minWord,
   mulmod,
   ne,
   not,
@@ -536,6 +538,20 @@ function eqWord(x:word, y:word) -> bool {
 
 function gtWord(x:word, y:word) -> bool {
     return tobool(gt_(x, y));
+}
+
+function maxWord(a : word, b : word) -> word {
+    match gtWord(a, b) {
+    | true  => return a;
+    | false => return b;
+    }
+}
+
+function minWord(a : word, b : word) -> word {
+    match gtWord(a, b) {
+    | true  => return b;
+    | false => return a;
+    }
 }
 
 function addWord(l: word, r: word) -> word {
