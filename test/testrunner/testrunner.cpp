@@ -196,6 +196,17 @@ int main(int argc, char** argv)
 							continue;
 						}
 					}
+					if (test["output"].contains("gasUsed"))
+					{
+						auto expectedGasUsed = test["output"]["gasUsed"].get<std::string>();
+						if (u256(expectedGasUsed) != gasUsed)
+						{
+							reportFailure("Expected gasUsed " + expectedGasUsed + " but got " + gasUsed.str());
+							resultRecorder.record(filename, "Expected different constructor gasUsed.", gasUsed.str(), expectedGasUsed, gasUsed, gasUsedForDeposit);
+							hasTestFailure = true;
+							continue;
+						}
+					}
 					resultRecorder.record(filename, "Passed.", toHex(output), test["output"].value("returndata", std::string("")), gasUsed, gasUsedForDeposit);
 				}
 				else
@@ -247,6 +258,17 @@ int main(int argc, char** argv)
 					resultRecorder.record(filename, "Expected different output.", toHex(output), expectedOutput, gasUsed, gasUsedForDeposit);
 					hasTestFailure = true;
 					continue;
+				}
+				if (test["output"].contains("gasUsed"))
+				{
+					auto expectedGasUsed = test["output"]["gasUsed"].get<std::string>();
+					if (u256(expectedGasUsed) != gasUsed)
+					{
+						reportFailure("Expected gasUsed " + expectedGasUsed + " but got " + gasUsed.str());
+						resultRecorder.record(filename, "Expected different gasUsed.", gasUsed.str(), expectedGasUsed, gasUsed, gasUsedForDeposit);
+						hasTestFailure = true;
+						continue;
+					}
 				}
 				resultRecorder.record(filename, "Passed.", toHex(output), expectedOutput, gasUsed, gasUsedForDeposit);
 			}

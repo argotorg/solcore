@@ -141,7 +141,8 @@
         "kind": "call",
         "output": {
             "returndata": "",
-            "status": "success"
+            "status": "success",
+            "gasUsed": "80087"
         }
       },
 
