@@ -13,7 +13,7 @@
       },
       {
         "input": {
-          "comment": "interfaceId()(uint256) - XOR of foo/bar/interfaceId selectors = 0xed9d1481",
+          "comment": "interfaceId()(bytes4) - XOR of foo/bar/interfaceId selectors = 0xed9d1481",
           "calldata": "a64d0cd4",
           "value": "0"
         },
