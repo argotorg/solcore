@@ -165,8 +165,7 @@ forall ty . class ty : PublicMethods {
 // Base case: the `()` tuple terminator — no methods left.
 instance () : PublicMethods {
     function interfaceId(p : Proxy(())) -> bytes4 {
-        let zero : word = 0;
-        return bytes4(zero);
+        return 0;
     }
 }
 
