@@ -191,7 +191,7 @@ function out_of_bounds() -> () {
 // ------------------------------------------------------------------
 // EmitHull has special handling for `revertLit("...")` after MastEval has
 // constant-folded the argument to a string literal.
-function revertLit(s:string) -> () {
+function revertLit(comptime s: string) -> () {
     unimplemented(); // Sanity check if folding ignores it.
     return ();
 }
@@ -1062,17 +1062,17 @@ instance string:Add {
 // These are intended to be folded by MastEval when their arguments are
 // statically known string literals.
 
-function concatLit(a:string, b:string) -> string {
+function concatLit(comptime a: string, comptime b: string) -> string {
   unimplemented(); // Sanity check if folding ignores it.
   return "";
 }
 
-function strlenLit(a:string) -> word {
+function strlenLit(comptime a: string) -> word {
   unimplemented(); // Sanity check if folding ignores it.
   return 0;
 }
 
-function keccakLit(a:string) -> word {
+function keccakLit(comptime a: string) -> word {
   unimplemented(); // Sanity check if folding ignores it.
   return 0;
 }
