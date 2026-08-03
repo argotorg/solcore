@@ -4,7 +4,7 @@ pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
 
-infixl 70 (^^) => pow;
+infixl 70 (**) => pow;
 
 function pow(b : word, e : word) -> word {
   let r : word;
@@ -14,6 +14,6 @@ function pow(b : word, e : word) -> word {
 
 contract Basic {
   function main() -> word {
-    return 2 ^^ 10;    // 1024
+    return 2 ** 10;    // 1024
   }
 }
