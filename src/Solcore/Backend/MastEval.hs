@@ -16,6 +16,7 @@ module Solcore.Backend.MastEval
     evalYulOp,
     evalYulStmt,
     evalYulBlock,
+    substYulBlock,
     asmIsInterpretable,
     maskWord,
     mstoreBytes,
@@ -707,35 +708,137 @@ venvToSubst env =
     yulLit (StrLit s) = YLit (YulString s)
 
 -- | Substitute known literal values into a Yul block.
--- Only replaces YIdent occurrences in expression positions; does not touch
--- variable names on the left-hand side of let/assign or function parameter lists.
+--
+-- The substitution map is inlined into expression positions only (never into
+-- the names on the left of let/assign or into parameter lists), but it is
+-- threaded through the statement sequence so it stays both scope- and
+-- flow-aware:
+--
+--   * An asm-local @let x@ shadows any outer @x@: @x@ is dropped from the map
+--     for the rest of that scope, so later reads resolve to the local binding
+--     instead of the eliminated comptime value (otherwise a @for@ loop that
+--     rebinds its counter would read the stale outer literal forever).
+--   * An assignment @x := …@ makes the pre-block literal of @x@ stale: @x@ is
+--     dropped from the map so subsequent statements read the new runtime value
+--     (otherwise @x := 5; y := add(x, 1)@ would inline the pre-block @x@).
+--   * @let@/parameter/return names introduced by a nested @if@/@for@/@switch@/
+--     function shadow within their own scope only; assignments to outer
+--     variables inside them escape and invalidate the outer literal afterwards.
 substYulBlock :: Map.Map Name YulExp -> [YulStmt] -> [YulStmt]
-substYulBlock subst = map (substYulStmt subst)
+substYulBlock _ [] = []
+substYulBlock subst (s : ss) =
+  let (s', subst') = substYulStmt subst s
+   in s' : substYulBlock subst' ss
 
-substYulStmt :: Map.Map Name YulExp -> YulStmt -> YulStmt
-substYulStmt subst (YAssign names e) = YAssign names (substYulExp subst e)
-substYulStmt subst (YExp e) = YExp (substYulExp subst e)
-substYulStmt subst (YLet names me) = YLet names (fmap (substYulExp subst) me)
-substYulStmt subst (YIf e block) = YIf (substYulExp subst e) (substYulBlock subst block)
-substYulStmt subst (YBlock stmts) = YBlock (substYulBlock subst stmts)
-substYulStmt subst (YFun n as rs body) = YFun n as rs (substYulBlock subst body)
+-- | Substitute into one statement and return the map to use for the statements
+-- that follow it in the same block (with shadowed/reassigned names removed).
+substYulStmt :: Map.Map Name YulExp -> YulStmt -> (YulStmt, Map.Map Name YulExp)
+substYulStmt subst (YAssign names e) =
+  (YAssign names (substYulExp subst e), dropNames names subst)
+substYulStmt subst (YExp e) = (YExp (substYulExp subst e), subst)
+substYulStmt subst (YLet names me) =
+  (YLet names (fmap (substYulExp subst) me), dropNames names subst)
+substYulStmt subst (YIf e block) =
+  ( YIf (substYulExp subst e) (substYulBlock subst block),
+    dropSet (escapingAssignsYulBlock block) subst
+  )
+substYulStmt subst (YBlock stmts) =
+  ( YBlock (substYulBlock subst stmts),
+    dropSet (escapingAssignsYulBlock stmts) subst
+  )
+substYulStmt subst (YFun n as rs body) =
+  -- Parameters and return variables are local to the body; the definition
+  -- itself does not change any binding in the enclosing scope.
+  let inner = dropNames (as ++ concat rs) subst
+   in (YFun n as rs (substYulBlock inner body), subst)
 substYulStmt subst (YFor pre c post b) =
-  YFor
-    (substYulBlock subst pre)
-    (substYulExp subst c)
-    (substYulBlock subst post)
-    (substYulBlock subst b)
+  -- Top-level @pre@ lets scope over the whole loop and shadow outer bindings;
+  -- any variable assigned inside the loop is not loop-invariant, so its
+  -- pre-loop literal must not be inlined into the condition/post/body either.
+  let shadowed = letBoundYulBlock pre
+      escaping =
+        escapingAssignsYulBlock pre
+          `Set.union` escapingAssignsYulBlock post
+          `Set.union` escapingAssignsYulBlock b
+      inner = dropSet (shadowed `Set.union` escaping) subst
+   in ( YFor
+          (substYulBlock inner pre)
+          (substYulExp inner c)
+          (substYulBlock inner post)
+          (substYulBlock inner b),
+        dropSet escaping subst
+      )
 substYulStmt subst (YSwitch e cases def) =
-  YSwitch
-    (substYulExp subst e)
-    (map (\(lit, block) -> (lit, substYulBlock subst block)) cases)
-    (fmap (substYulBlock subst) def)
-substYulStmt _ stmt = stmt -- YBreak, YContinue, YLeave, YComment unchanged
+  let cases' = map (\(lit, block) -> (lit, substYulBlock subst block)) cases
+      def' = fmap (substYulBlock subst) def
+      escaping =
+        foldMap (escapingAssignsYulBlock . snd) cases
+          `Set.union` maybe Set.empty escapingAssignsYulBlock def
+   in ( YSwitch (substYulExp subst e) cases' def',
+        dropSet escaping subst
+      )
+substYulStmt subst stmt = (stmt, subst) -- YBreak, YContinue, YLeave, YComment
+
+dropNames :: [Name] -> Map.Map Name YulExp -> Map.Map Name YulExp
+dropNames names m = foldr Map.delete m names
+
+dropSet :: Set.Set Name -> Map.Map Name YulExp -> Map.Map Name YulExp
+dropSet names m = Set.foldr Map.delete m names
 
 substYulExp :: Map.Map Name YulExp -> YulExp -> YulExp
 substYulExp subst (YIdent n) = Map.findWithDefault (YIdent n) n subst
 substYulExp subst (YCall op args) = YCall op (map (substYulExp subst) args)
 substYulExp _ e = e -- YLit, YMeta unchanged
+
+-- | Names @let@-bound at the top level of a block; these are the only ones a
+-- @for@ pre-block puts in scope for the rest of the loop.
+letBoundYulBlock :: [YulStmt] -> Set.Set Name
+letBoundYulBlock = foldMap letBound
+  where
+    letBound (YLet names _) = Set.fromList names
+    letBound _ = Set.empty
+
+-- | Names assigned inside a block that refer to a variable declared outside it,
+-- i.e. assignments whose effect escapes the block's own scope. A name that is
+-- @let@-bound anywhere within the block is local, so it is excluded — dropping
+-- an outer literal for a purely local reassignment would be both unnecessary
+-- and unsafe (the outer name may be an eliminated comptime value still read
+-- after the block). Yul functions have an isolated scope, so their bodies are
+-- not traversed.
+escapingAssignsYulBlock :: [YulStmt] -> Set.Set Name
+escapingAssignsYulBlock block =
+  assignedYulBlock block `Set.difference` letBoundDeepYulBlock block
+
+assignedYulBlock :: [YulStmt] -> Set.Set Name
+assignedYulBlock = foldMap assignedYulStmt
+
+assignedYulStmt :: YulStmt -> Set.Set Name
+assignedYulStmt (YAssign names _) = Set.fromList names
+assignedYulStmt (YIf _ block) = assignedYulBlock block
+assignedYulStmt (YBlock stmts) = assignedYulBlock stmts
+assignedYulStmt (YFor pre _ post b) =
+  assignedYulBlock pre `Set.union` assignedYulBlock post `Set.union` assignedYulBlock b
+assignedYulStmt (YSwitch _ cases def) =
+  foldMap (assignedYulBlock . snd) cases
+    `Set.union` maybe Set.empty assignedYulBlock def
+assignedYulStmt (YFun {}) = Set.empty -- isolated scope
+assignedYulStmt _ = Set.empty
+
+letBoundDeepYulBlock :: [YulStmt] -> Set.Set Name
+letBoundDeepYulBlock = foldMap go
+  where
+    go (YLet names _) = Set.fromList names
+    go (YIf _ block) = letBoundDeepYulBlock block
+    go (YBlock stmts) = letBoundDeepYulBlock stmts
+    go (YFor pre _ post b) =
+      letBoundDeepYulBlock pre
+        `Set.union` letBoundDeepYulBlock post
+        `Set.union` letBoundDeepYulBlock b
+    go (YSwitch _ cases def) =
+      foldMap (letBoundDeepYulBlock . snd) cases
+        `Set.union` maybe Set.empty letBoundDeepYulBlock def
+    go (YFun {}) = Set.empty -- isolated scope
+    go _ = Set.empty
 
 -- | Merge a YulState back into VEnv, using TypeReg to find the right MastIds.
 -- Only names present in TypeReg are merged; others are silently ignored.
