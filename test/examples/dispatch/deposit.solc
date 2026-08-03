@@ -160,7 +160,11 @@ contract DepositContract {
   }
 
   public function supportsInterface(interfaceId: bytes4) -> bool {
-    unimplemented();
-    return false;
+    // ERC-165: match against this contract's own interface id, computed as the
+    // XOR of every public method selector via the `type(C).publicMethods`
+    // primitive (see std/dispatch.solc `calculateInterfaceId`). bytes4 has no
+    // Eq instance, so compare the underlying word reps like `selector_matches`.
+    let expected: bytes4 = calculateInterfaceId(type(DepositContract).publicMethods);
+    return Typedef.rep(interfaceId) == Typedef.rep(expected);
   }
 }

@@ -852,6 +852,12 @@ instance bytes4:Typedef(word) {
     }
 }
 
+instance bytes4:Int {
+    function fromInteger(x:integer) -> bytes4 {
+        return bytes4(wordFromInteger(x));
+    }
+}
+
 // --- Bytes32 ---
 
 data bytes32 = bytes32(word);
