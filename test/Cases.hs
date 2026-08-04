@@ -603,6 +603,7 @@ cases =
       runTestForFile "simpleDiscount.solc" caseFolder,
       runTestForFile "yul-deposit-example.solc" caseFolder,
       runTestForFile "yul-asm-for-body.solc" caseFolder,
+      runTestForFile "yul-asm-break-continue-leave.solc" caseFolder,
       runTestForFile
         "yul-asm-switch-body.solc"
         caseFolder,
