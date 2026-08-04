@@ -84,15 +84,22 @@ userRow od@(OperatorDecl fix prec _ fun) =
     mkBin l r = locatedExpFrom [sourceSpanOf l, sourceSpanOf r] (ExpName Nothing fun [l, r])
     mkPre e = locatedExpFrom [sourceSpanOf e] (ExpName Nothing fun [e])
 
--- Match an exact operator symbol, ensuring no further operator character
--- follows (maximal munch: `^^` is matched whole, not as `^` then `^`).
+-- Match an exact operator symbol under a maximal-munch guard. A symbolic
+-- operator must not be a prefix of a longer operator (`^^` is matched whole,
+-- not as `^` then `^`), so it must not be followed by another operator
+-- character. An identifier operator (a postfix unit suffix like `ether`) must
+-- not be a prefix of a longer identifier (`ether` must not match inside
+-- `ethereum`), so it must not be followed by an identifier character.
 -- The `|` symbol additionally must not be a match-arm separator (`| pat => …`):
 -- the guard runs after lexeme consumed the trailing space, so patListP
 -- starts on the pattern.
 opSymP :: OperatorDecl -> Parser String
 opSymP (OperatorDecl _ _ sym _) =
-  lexeme (string sym <* notFollowedBy (satisfy isOpChar)) <* matchArmGuard
+  lexeme (string sym <* munchGuard) <* matchArmGuard
   where
+    munchGuard
+      | all isOpChar sym = notFollowedBy (satisfy isOpChar)
+      | otherwise = notFollowedBy (alphaNumChar <|> char '_')
     matchArmGuard
       | sym == "|" = notFollowedBy (try (patListP [] *> symbol "=>"))
       | otherwise = pure ()

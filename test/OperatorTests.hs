@@ -13,6 +13,7 @@ operatorTests =
       associativityTests,
       prefixTests,
       compoundAssignTests,
+      unitTests,
       lambdaTests,
       importTests,
       errorTests
@@ -68,6 +69,13 @@ compoundAssignTests =
   testGroup
     "Compound assignment sugar (*=, /=, ~=)"
     [ runOpSuccess "compound-assign.solc"
+    ]
+
+unitTests :: TestTree
+unitTests =
+  testGroup
+    "Ether and time unit suffixes (2 ether, 5 minutes)"
+    [ runOpSuccess "units.solc"
     ]
 
 lambdaTests :: TestTree

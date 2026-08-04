@@ -88,10 +88,16 @@ parenOpP :: Parser String
 parenOpP = lexeme $ do
   _ <- char '('
   sc
-  sym <- some (satisfy isOpChar)
+  sym <- some (satisfy isOpChar) <|> identSym
   sc
   _ <- char ')'
   pure sym
+  where
+    -- An operator symbol is normally made of operator characters (e.g. `+`,
+    -- `^^`). It may also be an alphabetic identifier, used for postfix unit
+    -- suffixes like `(ether)` or `(minutes)`. The two are disjoint (letters are
+    -- never operator characters), so the choice is unambiguous.
+    identSym = (:) <$> letterChar <*> many identChar
 
 identifier :: Parser String
 identifier = lexeme go <?> "identifier"

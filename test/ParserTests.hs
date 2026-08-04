@@ -41,7 +41,9 @@ testOps =
     OperatorDecl OpInfixL 45 "-" (QualName (Name "Sub") "sub"),
     OperatorDecl OpInfixN 35 "<" (Name "lt"),
     OperatorDecl OpInfixN 34 "==" (QualName (Name "Eq") "eq"),
-    OperatorDecl OpPrefix 90 "~" (QualName (Name "BitNot") "bnot")
+    OperatorDecl OpPrefix 90 "~" (QualName (Name "BitNot") "bnot"),
+    OperatorDecl OpPostfix 100 "ether" (Name "etherUnit"),
+    OperatorDecl OpPostfix 100 "minutes" (Name "minutesUnit")
   ]
 
 stmtPO :: Parser Stmt
@@ -293,6 +295,13 @@ stmtTests =
         parsesAs stmtPO "x /= 2;" (Assign (var "x") (opCall (QualName (Name "Div") "div") (var "x") (lit 2))),
       testCase "bnot-assign desugars via the prefix (~) operator" $
         parsesAs stmtPO "x ~=;" (Assign (var "x") (ExpName Nothing (QualName (Name "BitNot") "bnot") [var "x"])),
+      testCase "postfix unit suffix desugars to a call" $
+        parsesAs stmtPO "return 2 ether;" (Return (ExpName Nothing (Name "etherUnit") [lit 2])),
+      testCase "unit suffix binds tighter than (+)" $
+        parsesAs
+          stmtPO
+          "return 2 ether + 3;"
+          (Return (opCall (QualName (Name "Add") "add") (ExpName Nothing (Name "etherUnit") [lit 2]) (lit 3))),
       testCase "field assignment" $
         parsesAs
           (stmtP [])
