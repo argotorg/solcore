@@ -89,6 +89,7 @@ export {
   hash2,
   keccak256_,
   keccakLit,
+  keccakWordLit,
   le,
   lidx,
   loadBytesFromStorage,
@@ -1072,7 +1073,15 @@ function strlenLit(comptime a: string) -> word {
   return 0;
 }
 
+// Keccak-256 hash of the string-literal as UTF-8 bytes.
 function keccakLit(comptime a: string) -> word {
+  unimplemented(); // Sanity check if folding ignores it.
+  return 0;
+}
+
+// Keccak-256 hash of a word's 32-byte big-endian representation.
+// NOTE: this could be deprecated if we have comptime `to_bytes`.
+function keccakWordLit(comptime a: word) -> word {
   unimplemented(); // Sanity check if folding ignores it.
   return 0;
 }
@@ -2702,17 +2711,11 @@ function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) -> address
     return address(res);
 }
 
-// TODO: use string here
-// TODO: eventually this needs to become comptime
-function erc7201(id: memory(bytes)) -> bytes32 {
-//    return keccak256_(to_bytes(keccak256_(id) - 1)) & ~0xff;
-    return Typedef.abs(
-        Typedef.rep(
-            keccak256_(
-                to_bytes(bytes32(Typedef.rep(keccak256_(id)) - 1))
-            )
-        ) & ~0xff
-    );
+// ERC-7201 namespaced storage slot, computed entirely at compile time from a
+// string-literal namespace `id`:
+//   keccak256(abi.encode(uint256(keccak256(bytes(id))) - 1)) & ~bytes32(uint256(0xff))
+function erc7201(comptime id: string) -> comptime bytes32 {
+    return bytes32(keccakWordLit(keccakLit(id) - 1) & ~0xff);
 }
 
 forall a . a:MemorySize, a:MemoryPointer => function raw_call(target: address, value: uint256, payload: a) -> (bool, memory(bytes)) {

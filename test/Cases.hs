@@ -34,6 +34,7 @@ comptime =
       runTestForFile "string-lit-ops.solc" comptimeFolder,
       runTestForFile "string-lit-len.solc" comptimeFolder,
       runTestForFile "string-lit-keccak.solc" comptimeFolder,
+      runTestForFile "erc7201-lit.solc" comptimeFolder,
       runTestForFile "comptime_syntax.solc" comptimeFolder,
       -- comptime verification: positive cases (must compile)
       runTestForFile "ct_param_ok.solc" comptimeFolder,

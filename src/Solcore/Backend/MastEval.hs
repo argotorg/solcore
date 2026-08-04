@@ -28,7 +28,8 @@ where
 {- Partial Evaluator for Mast
    Performs compile-time evaluation where possible:
    - Interprets assembly blocks containing supported Yul arithmetic operations
-   - Folds calls to `subWord`, `gtWord`, `bxorWord`, `bandWord`, `borWord`, `eqWord` with literal arguments
+   - Folds calls to `subWord`, `gtWord`, `bxorWord`, `bandWord`, `borWord`, `bnotWord`, `eqWord` with literal arguments
+   - Folds the string-literal builtins `concatLit`, `strlenLit`, `keccakLit`, and `keccakWordLit`
    - Propagates known variable values
    - Inlines simple pure functions with literal arguments
 -}
@@ -490,12 +491,15 @@ evalPrimitive (Name "bandWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (MastLit (IntLit (maskWord (a .&. b))))
 evalPrimitive (Name "borWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (MastLit (IntLit (maskWord (a .|. b))))
+evalPrimitive (Name "bnotWord") [MastLit (IntLit a)] =
+  Just (MastLit (IntLit (maskWord (complement a))))
 evalPrimitive (Name "eqWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just $ mkBool (a == b)
 -- String literal primitives (Solidity/Yul semantics):
 -- - treat literals as UTF-8 byte sequences
 -- - strlen returns byte length
 -- - keccak returns the 256-bit big-endian word of keccak256(bytes)
+-- - keccakWord return the 256-bit big-endian word of keccak256(be32(word))
 evalPrimitive (Name "concatLit") [MastLit (StrLit a), MastLit (StrLit b)] =
   Just (MastLit (StrLit (a <> b)))
 evalPrimitive (Name "strlenLit") [MastLit (StrLit s)] =
@@ -503,6 +507,13 @@ evalPrimitive (Name "strlenLit") [MastLit (StrLit s)] =
    in Just (MastLit (IntLit (toInteger (BS.length bs))))
 evalPrimitive (Name "keccakLit") [MastLit (StrLit s)] =
   let bs = TE.encodeUtf8 (T.pack s)
+      digest :: Digest Keccak_256
+      digest = hash bs
+      digestBytes :: BS.ByteString
+      digestBytes = BA.convert digest
+   in Just (MastLit (IntLit (bsToIntegerBE digestBytes)))
+evalPrimitive (Name "keccakWordLit") [MastLit (IntLit n)] =
+  let bs = integerToBE32 n
       digest :: Digest Keccak_256
       digest = hash bs
       digestBytes :: BS.ByteString
@@ -532,6 +543,13 @@ bsToIntegerBE = BS.foldl' step 0
   where
     step :: Integer -> Word8 -> Integer
     step acc w = acc * 256 + fromIntegral w
+
+-- | Encode a 256-bit word as 32 big-endian bytes (EVM word layout).
+integerToBE32 :: Integer -> BS.ByteString
+integerToBE32 n =
+  BS.pack [fromIntegral (m `shiftR` (8 * i)) | i <- [31, 30 .. 0]]
+  where
+    m = maskWord n
 
 -- Construct a boolean value as sum((), ())
 -- true = inr(()), false = inl(())
@@ -1000,10 +1018,12 @@ builtinPureFuns =
       Name "bxorWord",
       Name "bandWord",
       Name "borWord",
+      Name "bnotWord",
       Name "eqWord",
       Name "concatLit",
       Name "strlenLit",
-      Name "keccakLit"
+      Name "keccakLit",
+      Name "keccakWordLit"
     ]
       ++ integerPrimNames
       ++ stringPrimNames

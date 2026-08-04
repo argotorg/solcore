@@ -49,13 +49,49 @@
       },
       {
         "input": {
-          "comment": "erc7201_(bytes)(bytes32) with \"example.main\"",
-          "calldata": "cd9e2a5b0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000c6578616d706c652e6d61696e0000000000000000000000000000000000000000",
+          "comment": "keccakWord()(bytes32) -- comptime keccakWordLit(0) == keccak256(bytes32(0))",
+          "calldata": "6c632152",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "erc7201Example()(bytes32) -- comptime erc7201(\"example.main\")",
+          "calldata": "36663f67",
           "value": "0"
         },
         "kind": "call",
         "output": {
           "returndata": "183a6125c38840424c4a85fa12bab2ab606c4b6d0e7cc73c0c06ba5300eab500",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "erc7201Ownable()(bytes32) -- comptime erc7201(\"openzeppelin.storage.Ownable\")",
+          "calldata": "c4bc0281",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "9016d09d72d40fdae2fd8ceac6b6234c7706214fd39c1cd1e609a0528c199300",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "erc7201Empty()(bytes32) -- comptime erc7201(\"\")",
+          "calldata": "8fdc47eb",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "4318a0031e4d2f411be9017543511db04d79cf580aaff6bae7539a4a49eacc00",
           "status": "success"
         }
       }
