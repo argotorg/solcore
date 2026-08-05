@@ -64,6 +64,7 @@ library
       Solcore.Backend.EmitHull
       Solcore.Backend.Mast
       Solcore.Backend.MastEval
+      Solcore.Backend.NameEncoding
       Solcore.Backend.Specialise
       Solcore.Desugarer.DecisionTreeCompiler
       Solcore.Desugarer.DeriveClasses
@@ -188,6 +189,7 @@ test-suite sol-core-tests
 
   -- cabal-fmt: expand test -Main
   other-modules:
+    BackendNameEncodingTests
     Cases
     ContractAbiTests
     DiagnosticCliTests

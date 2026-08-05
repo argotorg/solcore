@@ -5,6 +5,8 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$root_dir"
 
+bash ./scripts/test_contest_concurrency.sh
+
 bash ./contest.sh test/examples/dispatch/basic.json
 bash ./contest.sh test/examples/dispatch/assembly.json
 bash ./contest.sh test/examples/dispatch/neg.json

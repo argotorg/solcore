@@ -1,5 +1,6 @@
 module Main where
 
+import BackendNameEncodingTests
 import Cases
 import ContractAbiTests
 import DiagnosticCliTests
@@ -20,7 +21,8 @@ tests :: TestTree
 tests =
   testGroup
     "Tests"
-    [ parserTests,
+    [ backendNameEncodingTests,
+      parserTests,
       cases,
       tabledResolution,
       comptime,
