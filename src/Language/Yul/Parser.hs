@@ -103,7 +103,7 @@ yulCase = do
 
 yulFun :: Parser YulStmt
 yulFun = do
-  _ <- symbol "function"
+  _ <- try (pKeyword "function")
   name <- pName
   args <- parens (commaSep pName)
   rets <- optional (symbol "->" *> commaSep pName)
