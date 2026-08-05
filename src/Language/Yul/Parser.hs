@@ -70,8 +70,8 @@ yulLiteral =
     *> choice
       [ YulNumber <$> integer,
         YulString <$> stringLiteral,
-        YulTrue <$ pKeyword "true",
-        YulFalse <$ pKeyword "false"
+        YulTrue <$ try (pKeyword "true"),
+        YulFalse <$ try (pKeyword "false")
       ]
 
 yulStmt :: Parser YulStmt
