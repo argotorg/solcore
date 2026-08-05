@@ -198,6 +198,7 @@ test-suite sol-core-tests
     ModuleTypeCheckTests
     SpecialiseTests
     YulEvalTests
+    YulParserTests
     ParserTests
 
   build-depends:
