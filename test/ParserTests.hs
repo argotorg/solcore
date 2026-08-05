@@ -81,6 +81,11 @@ operatorScanTests =
           "reports the redefined symbol"
           (Just "##")
           (dupSymbol "infixl 50 (##) => binA; infixl 60 (##) => binB;"),
+      testCase "the same symbol redeclared at the same precedence is a duplicate" $
+        assertEqual
+          "reports the redefined symbol"
+          (Just "##")
+          (dupSymbol "infixl 50 (##) => binA; infixl 50 (##) => binB;"),
       testCase "same symbol as infix and postfix is reported as a duplicate" $
         assertEqual
           "reports the conflicting symbol"
