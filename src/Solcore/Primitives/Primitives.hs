@@ -294,7 +294,10 @@ tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 -- Builtins as of Osaka
 yulPrimOps :: [(Name, Scheme)]
 yulPrimOps =
-  [ (Name "stop", monotype unit),
+  [ -- Terminators never return control to their caller, so their result type
+    -- is polymorphic: an 'assembly' block ending in one can stand as the last
+    -- statement of a value-returning function (see 'return'/'revert' below).
+    (Name "stop", Forall [aVar] ([] :=> (TyVar aVar))),
     (Name "add", monotype (word :-> word :-> word)),
     (Name "mul", monotype (word :-> word :-> word)),
     (Name "sub", monotype (word :-> word :-> word)),
@@ -373,8 +376,8 @@ yulPrimOps =
     (Name "create2", monotype (word :-> word :-> word :-> word :-> word)),
     (Name "staticcall", monotype (funtype (words 6) word)),
     (Name "revert", Forall [aVar] ([] :=> (word :-> word :-> (TyVar aVar)))),
-    (Name "invalid", monotype unit),
-    (Name "selfdestruct", monotype (word :-> unit)),
+    (Name "invalid", Forall [aVar] ([] :=> (TyVar aVar))),
+    (Name "selfdestruct", Forall [aVar] ([] :=> (word :-> (TyVar aVar)))),
     -- Yul-specific
     (Name "datasize", monotype (string :-> word)),
     (Name "dataoffset", monotype (string :-> word)),
