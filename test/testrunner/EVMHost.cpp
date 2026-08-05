@@ -555,6 +555,22 @@ evmc::Result EVMHost::precompileECRecover(evmc_message const& _message) noexcept
 			}
 		},
 		{
+			// Same hash/r/s as the recover() success case but with v = 1, which
+			// is not a valid recovery id (only 27 and 28 are). The precompile
+			// succeeds with empty output (test/examples/dispatch/ecrecover
+			// recoverFailBadV()).
+			fromHex(
+				"aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+				"0000000000000000000000000000000000000000000000000000000000000001"
+				"b3ba6dd3757d18f28736e84b1296af85362b7bdf4548710733c6325abf95311d"
+				"3523e7d34da277c59af090e44cebddb10b73be11780f028d02cf5ae5f24109fc"
+			),
+			{
+				fromHex(""),
+				gas_cost
+			}
+		},
+		{
 			// EIP-712 canonical "Mail" example digest (test/examples/dispatch/eip712).
 			fromHex(
 				"be609aee343fb3c4b28e1df9e632fca64fcfaede20f02e86244efddf30957bd2"
