@@ -1553,6 +1553,15 @@ forall reader . reader:WordReader => instance ABIDecoder(bytes4, reader):ABIDeco
     }
 }
 
+// ABI Decoding for bool
+// bool is a builtin (not a Typedef(word)), so it round-trips through word via
+// tobool, mirroring the bool:ABIEncode instance which uses frombool.
+forall reader . reader:WordReader => instance ABIDecoder(bool, reader):ABIDecode(bool) {
+    function decode(ptr:ABIDecoder(bool, reader), currentHeadOffset:word) -> bool {
+        return tobool(WordReader.read(WordReader.advance(ptr, currentHeadOffset)));
+    }
+}
+
 // ABI Decoding for address
 forall reader . reader:WordReader => instance ABIDecoder(address, reader):ABIDecode(address) {
     function decode(ptr:ABIDecoder(address, reader), currentHeadOffset:word) -> address {

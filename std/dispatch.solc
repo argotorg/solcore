@@ -52,6 +52,7 @@ instance uint256 : SigString { function sigStr(x:Proxy(uint256)) -> string { "ui
 instance bytes32 : SigString { function sigStr(x:Proxy(bytes32)) -> string { "bytes32" }}
 instance bytes4 : SigString { function sigStr(x:Proxy(bytes4)) -> string { "bytes4" }}
 instance address : SigString { function sigStr(x:Proxy(address)) -> string { "address" }}
+instance bool : SigString { function sigStr(x:Proxy(bool)) -> string { "bool" }}
 instance memory(string) : SigString { function sigStr(x:Proxy(memory(string))) -> string { "string" }}
 instance memory(bytes) : SigString { function sigStr(x:Proxy(memory(bytes))) -> string { "bytes" }}
 instance ():SigString { function sigStr(x:Proxy(())) -> string { "" } }

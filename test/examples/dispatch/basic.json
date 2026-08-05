@@ -373,6 +373,42 @@
       },
       {
         "input": {
+          "comment": "id_bool(bool)(bool) true -> true",
+          "calldata": "0x664a0de40000000000000000000000000000000000000000000000000000000000000001",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "id_bool(bool)(bool) false -> false",
+          "calldata": "0x664a0de40000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "id_bool(bool)(bool) non-0/1 input 2 -> tobool clamps any nonzero to true -> 1",
+          "calldata": "0x664a0de40000000000000000000000000000000000000000000000000000000000000002",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
           "comment": "id_pair()(uint256,uint256)",
           "calldata": "5880a1a0",
           "value": "0"
