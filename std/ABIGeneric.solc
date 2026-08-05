@@ -21,13 +21,6 @@ import std.Generic.{*};
 // concrete per-type instance is emitted instead — exactly as for storage.
 forall self. class self : ABIDeriving {}
 
-function maxWord(a : word, b : word) -> word {
-    match gtWord(a, b) {
-    | true  => return a;
-    | false => return b;
-    }
-}
-
 // ─── ABIAttribs for the primitive sum(f, g) type ─────────────────────────
 // headSize = 32 (tag word) + max(headSize(f), headSize(g))
 
