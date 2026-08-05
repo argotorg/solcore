@@ -1558,7 +1558,9 @@ forall reader . reader:WordReader => instance ABIDecoder(bytes4, reader):ABIDeco
 // tobool, mirroring the bool:ABIEncode instance which uses frombool.
 forall reader . reader:WordReader => instance ABIDecoder(bool, reader):ABIDecode(bool) {
     function decode(ptr:ABIDecoder(bool, reader), currentHeadOffset:word) -> bool {
-        return tobool(WordReader.read(WordReader.advance(ptr, currentHeadOffset)));
+        let v = WordReader.read(WordReader.advance(ptr, currentHeadOffset));
+        require(v <= 1, Error(0x0557dbbf)); // DirtyHigherBitsForBool()
+        return tobool(v);
     }
 }
 

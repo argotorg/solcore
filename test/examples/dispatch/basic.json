@@ -397,14 +397,14 @@
       },
       {
         "input": {
-          "comment": "id_bool(bool)(bool) non-0/1 input 2 -> tobool clamps any nonzero to true -> 1",
+          "comment": "id_bool(bool)(bool) non-0/1 input 2 -> DirtyHigherBitsForBool()",
           "calldata": "0x664a0de40000000000000000000000000000000000000000000000000000000000000002",
           "value": "0"
         },
         "kind": "call",
         "output": {
-          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
-          "status": "success"
+          "returndata": "0557dbbf",
+          "status": "failure"
         }
       },
       {
