@@ -85,7 +85,7 @@ yulStmt =
         YFor <$> (pKeyword "for" *> yulBlock) <*> yulExp <*> yulBlock <*> yulBlock,
         YSwitch
           <$> (pKeyword "switch" *> yulExp)
-          <*> many yulCase
+          <*> some yulCase
           <*> optional (pKeyword "default" *> yulBlock),
         try (YAssign <$> commaSep pName <*> (symbol ":=" *> yulExp)),
         YExp <$> yulExp
