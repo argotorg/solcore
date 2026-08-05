@@ -96,5 +96,12 @@ errorTests :: TestTree
 errorTests =
   testGroup
     "Error cases"
-    [ runOpFailure "undeclared-fail.solc"
+    [ runOpFailure "undeclared-fail.solc",
+      -- A compound assignment (`+=`) whose base operator is not in scope is a
+      -- parse error, not a silent no-op.
+      runOpFailure "compound-undeclared-fail.solc",
+      -- Declaring an operator symbol twice is a parse error (SC0122): a plain
+      -- redefinition, and a second fixity for the same symbol.
+      runOpFailure "redefined-fail.solc",
+      runOpFailure "infix-postfix-fail.solc"
     ]

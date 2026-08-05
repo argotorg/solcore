@@ -6,6 +6,7 @@ import Common.LightYear (Parser, runParserE)
 import Solcore.Frontend.Lexer.SolcoreLexer (sc)
 import Solcore.Frontend.Parser.Decl (topDeclP)
 import Solcore.Frontend.Parser.Expr (exprP)
+import Solcore.Frontend.Parser.OperatorScan (duplicateOperator, scanOperatorsLocated)
 import Solcore.Frontend.Parser.Patterns (patP)
 import Solcore.Frontend.Parser.SolcoreTypes (predP, typeP)
 import Solcore.Frontend.Parser.Stmt (bodyP, stmtP)
@@ -63,8 +64,36 @@ parserTests =
       exprTests,
       stmtTests,
       declTests,
-      keywordPrefixTests
+      keywordPrefixTests,
+      operatorScanTests
     ]
+
+-- The operator pre-scan rejects a symbol declared more than once within a
+-- module: a redefinition, or a second fixity for the same symbol.
+-- `duplicateOperator` reports the offending symbol; the compiler turns it into a
+-- parse error (SC0122).
+operatorScanTests :: TestTree
+operatorScanTests =
+  testGroup
+    "Operator scanning (duplicate detection)"
+    [ testCase "a redefined operator is reported as a duplicate" $
+        assertEqual
+          "reports the redefined symbol"
+          (Just "##")
+          (dupSymbol "infixl 50 (##) => binA; infixl 60 (##) => binB;"),
+      testCase "same symbol as infix and postfix is reported as a duplicate" $
+        assertEqual
+          "reports the conflicting symbol"
+          (Just "##")
+          (dupSymbol "infixl 50 (##) => binOp; postfix 60 (##) => postOp;"),
+      testCase "distinct operator symbols are not flagged" $
+        assertEqual
+          "no duplicate"
+          Nothing
+          (dupSymbol "infixl 50 (##) => a; infixl 45 (<>) => b;")
+    ]
+  where
+    dupSymbol = fmap snd . duplicateOperator . scanOperatorsLocated
 
 word :: Ty
 word = TyCon "word" []

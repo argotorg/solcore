@@ -1,5 +1,8 @@
 module Solcore.Frontend.Parser.OperatorScan
   ( scanOperators,
+    scanRawOperators,
+    scanOperatorsLocated,
+    duplicateOperator,
     scanImports,
     scanExportModulePaths,
   )
@@ -11,29 +14,32 @@ import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 
--- Lightweight scan of a source file collecting every operator declaration.
--- Tolerates arbitrary content between declarations.
-scanOperators :: String -> [OperatorDecl]
-scanOperators src =
+-- Lightweight scan of a source file collecting every operator declaration
+-- together with the source offset at which it starts. Tolerates arbitrary
+-- content between declarations. Declarations are returned in source order, with
+-- no deduplication (see scanOperators / duplicateOperator).
+scanOperatorsLocated :: String -> [(Int, OperatorDecl)]
+scanOperatorsLocated src =
   case runParser (sc *> scanP) "<scan-ops>" src of
     Left _ -> []
-    Right ops -> nubBy (\a b -> opSymbol a == opSymbol b) ops
+    Right ops -> ops
   where
-    scanP :: Parser [OperatorDecl]
+    scanP :: Parser [(Int, OperatorDecl)]
     scanP = do
       ops <- many (try opDeclP <|> (anySingle *> pure Nothing))
       eof
       pure [op | Just op <- ops]
 
-    opDeclP :: Parser (Maybe OperatorDecl)
+    opDeclP :: Parser (Maybe (Int, OperatorDecl))
     opDeclP = do
+      offset <- getOffset
       fix <- fixityP
       prec <- fromIntegral <$> integer
       sym <- parenOpP
       _ <- symbol "=>"
       fun <- qualFunP
       _ <- optional semicolon
-      pure (Just (OperatorDecl fix prec sym fun))
+      pure (Just (offset, OperatorDecl fix prec sym fun))
 
     qualFunP :: Parser Name
     qualFunP = do
@@ -51,6 +57,29 @@ scanOperators src =
         <|> (OpInfixN <$ keyword "infix")
         <|> (OpPrefix <$ keyword "prefix")
         <|> (OpPostfix <$ keyword "postfix")
+
+-- Raw operator declarations of a source, in order, without deduplication.
+scanRawOperators :: String -> [OperatorDecl]
+scanRawOperators = map snd . scanOperatorsLocated
+
+-- Operator declarations of a source, keeping the first declaration of each
+-- symbol. Used to build the expression operator table. A well-formed module has
+-- no duplicate symbols (they are rejected by duplicateOperator before parsing),
+-- so this coincides with scanRawOperators there.
+scanOperators :: String -> [OperatorDecl]
+scanOperators = nubBy (\a b -> opSymbol a == opSymbol b) . scanRawOperators
+
+-- The first operator symbol declared more than once in a single module: either
+-- a redefinition (same symbol declared twice) or a second fixity for the same
+-- symbol (e.g. infix and postfix). Returns the source offset of the offending
+-- (second) declaration and the symbol; Nothing when every symbol is unique.
+duplicateOperator :: [(Int, OperatorDecl)] -> Maybe (Int, String)
+duplicateOperator = go []
+  where
+    go _ [] = Nothing
+    go seen ((offset, od) : rest)
+      | opSymbol od `elem` seen = Just (offset, opSymbol od)
+      | otherwise = go (opSymbol od : seen) rest
 
 -- Lightweight scan of a source file collecting every import declaration.
 -- Tolerates arbitrary content between imports (skips unknown tokens).
