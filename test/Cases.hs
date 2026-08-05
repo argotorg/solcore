@@ -289,7 +289,8 @@ opcodes :: TestTree
 opcodes =
   testGroup
     "Files for opcodes wrappers"
-    [ runTestForFile "all-shapes.solc" opcodesFolder
+    [ runTestForFile "all-shapes.solc" opcodesFolder,
+      runTestForFile "terminators.solc" opcodesFolder
     ]
   where
     opcodesFolder = "./test/examples/opcodes"
