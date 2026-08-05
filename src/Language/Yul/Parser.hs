@@ -87,6 +87,9 @@ yulStmt =
           <$> (pKeyword "switch" *> yulExp)
           <*> some yulCase
           <*> optional (pKeyword "default" *> yulBlock),
+        YBreak <$ pKeyword "break",
+        YContinue <$ pKeyword "continue",
+        YLeave <$ pKeyword "leave",
         try (YAssign <$> commaSep pName <*> (symbol ":=" *> yulExp)),
         YExp <$> yulExp
       ]
