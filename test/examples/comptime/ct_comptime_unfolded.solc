@@ -1,0 +1,17 @@
+/* Negative: a '-> comptime' function called with known arguments must actually
+   fold.  Here it reads memory it never wrote, so the partial evaluator cannot
+   produce a value and the call survives — the annotation promised a
+   compile-time result that the compiler cannot deliver.
+*/
+import std.{*};
+import std.opcodes.{mload};
+
+function readScratch(a : word) -> comptime word {
+    return mload(a);
+}
+
+contract ComptimeUnfolded {
+  function main() -> word {
+    return readScratch(0);
+  }
+}

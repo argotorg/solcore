@@ -2,8 +2,11 @@
 
 ## Status
 
-The initial Yul arithmetic interpreter is implemented in `src/Solcore/Backend/MastEval.hs`.
-It supports `add` and `mul`, replacing the earlier hardcoded `addWord`/`mulWord` builtins.
+The Yul interpreter lives in `src/Solcore/Backend/MastEval.hs`.  Word arithmetic,
+byte-level memory, `keccak256` and a symbolic free memory pointer are all
+implemented; the sections below record the design in the order it was built, so
+the "extension plan" headings describe work that is now done.  Where the plan and
+the implementation diverged, the later section says so.
 
 ---
 
@@ -12,12 +15,17 @@ It supports `add` and `mul`, replacing the earlier hardcoded `addWord`/`mulWord`
 ### YulState
 
 ```haskell
-type YulState = Map.Map Name Integer  -- variable bindings only (no memory yet)
+type YulState = Map.Map Name YulVal  -- variable bindings; memory lives in EvalM
 ```
+
+(`YulVal` was `Integer` originally; see "Pointers into memory" below.)
 
 ### Supported operations
 
-`evalYulOp` handles: `add`, `mul` (256-bit, wrapping mod 2^256).
+`evalYulOp` handles the 256-bit word ops in `evalWordOp`: `add`, `sub`, `mul`,
+`div`, `mod`, `gt`, `lt`, `eq`, `iszero`, `and`, `or`, `xor`, `not`, `shl`,
+`shr` — plus the memory ops `mload`, `mstore`, `mstore8` and `keccak256`, which
+have their own clauses because they touch `esMem`.
 
 `evalYulStmt` handles: `YAssign [n] e` — single-target assignment.
 
@@ -379,7 +387,7 @@ and the call site is left unevaluated.  In a comptime chain, if `get_free_memory
 called before anything has written to address 64 in `esMem`, `mloadWord` returns
 `Nothing` → inlining fails → the `let x : comptime` binding is not folded.  Correct.
 
-### Future: keccak256 over known memory
+### keccak256 over known memory
 
 The pattern in `hash1`/`hash2` in `std/NumLib.solc`:
 
@@ -389,9 +397,112 @@ result := keccak256(0, 32)
 ```
 
 When `x` is a known comptime value, the 32 bytes at `mem[0..31]` are known, and
-`keccak256` can be evaluated at compile time (the infrastructure already exists
-in `evalPrimitive` for `keccakLit`).  This requires reading a contiguous byte range
-from `esMem` — straightforward with the byte-level representation.
+`keccak256` is evaluated at compile time.  `mloadRange p n` reads a contiguous
+byte range from `esMem` (`Nothing` if any byte is unwritten) and `keccakInteger`
+hashes it — the same helper the `keccakLit` primitive uses.  Like `mload`, the
+op is gated on `envComptimeMode`.
+
+Two further conditions had to hold for the pattern to fold end to end:
+
+- **Statement expressions must be evaluated during inlining.**  `mstore(p, v)`
+  appears as a `MastStmtExp`, which `evalFunBody` used to discard.  Discarding it
+  skipped the memory write, so the following `keccak256` saw empty memory.
+- **`-> comptime` enables comptime mode.**  `withComptimeMode` was only entered
+  for the RHS of a `let x : comptime`.  `tryInline` now also enters it when the
+  callee is annotated `-> comptime`, which is what makes a call like
+  `eip712DomainSeparator(...)` fold at a plain `return`.
+
+### Pointers into memory (`get_free_memory`) — done
+
+Code that borrows scratch space above the free memory pointer —
+
+```
+let ptr = get_free_memory();
+mstore(ptr, ...); mstore(ptr + 32, ...);
+return keccak256(ptr, 160);
+```
+
+— now folds.  `get_free_memory()` is `mload(0x40)`, whose value is not known at
+compile time; seeding `esMem[0x40]` with `0x80` would be unsound, since the free
+pointer depends on the allocations that ran before.  Instead the base is
+**symbolic**: only offsets from it are tracked, never the base itself.
+
+```haskell
+data YulVal   = Concrete Integer | FreeOffset Integer
+data MemRegion = AbsoluteMem | FreeMem
+type MemAddr   = (MemRegion, Integer)
+```
+
+- `mload(0x40)` in comptime mode yields `FreeOffset 0`.
+- `add`/`sub` shift the offset; **every other operation on a `FreeOffset`
+  fails**, so a symbolic address can never become part of a folded word.
+- `esMem` is keyed by `MemAddr`, so `Concrete n` and `FreeOffset k` address
+  distinct regions.
+- Storing a `FreeOffset` *as a value* fails: written to memory it would lose its
+  base and could be read back as a plain word.
+
+Because a `FreeOffset` never materialises as a literal,
+`let p : comptime word = get_free_memory()` is still correctly rejected.
+
+#### The symbolic value crosses the MAST level
+
+The address is produced by a *call* (`get_free_memory()`), not inside a single
+asm block, so it has to survive `evalExp` → `tryInline` → `evalFunBody` and back.
+An interpreter-only change is therefore not enough.  Evaluating a MAST expression
+now yields two channels:
+
+```haskell
+data EvalResult = EvalResult
+  { resExp        :: MastExp          -- what to emit
+  , resFreeOffset :: Maybe Integer    -- what the evaluator additionally knows
+  }
+```
+
+`VEnv` maps variables to `EvalResult`.  Emission always goes through `resExp`, so
+a symbolic address is structurally incapable of leaking into the program: a
+variable bound to one is rebound to *itself* (`MastVar i`), and a call returning
+one keeps the call as its residual expression.  `resIsKnown` (may propagate) and
+`resIsFoldable` (may replace the expression) split apart accordingly.
+
+#### One region per evaluation
+
+`AbsoluteMem` and `FreeMem` may alias at run time — whether `0x80` is above the
+free pointer depends on its value.  Treating them as disjoint would be unsound
+(write `FreeOffset 0`, write `Concrete 128`, read `FreeOffset 0` → stale).  So a
+single comptime evaluation may use only **one** region: `regionUsable` compares
+the requested region against whatever is already in `esMem` and aborts on a mix.
+
+#### The free memory pointer must not move
+
+`FreeOffset` assumes the pointer stays put; reallocation is not modelled.  Any
+write overlapping `[64, 96)` — including `set_free_memory` and any wide `mstore`
+that reaches into the slot — aborts the evaluation (`touchesFreeMemPtr`).
+
+This is why the EIP-712 example writes above the free pointer rather than at
+fixed addresses 0..159: the latter would clobber the pointer slot at 64, in the
+compile-time model as much as at run time.
+
+#### Memory is reset on entering comptime mode
+
+Each comptime evaluation is an independent hypothetical execution and must not
+observe another's writes — otherwise two unrelated folds in one function would
+trip the single-region rule on each other.  `withComptimeMode` clears `esMem`
+when entering from outside, and keeps it on a nested entry (a `-> comptime` call
+inside a comptime let), which is part of the same evaluation.
+
+### Call sites of `-> comptime` functions must fold
+
+`Backend/ComptimeCheck.hs` runs after partial evaluation, so a call to a
+`-> comptime` function whose arguments are all known values (`isKnownValue`)
+should no longer be there.  If it survived, the evaluator could not compute the
+result and the annotation's promise was not kept; `checkCallSite` reports it.
+
+The check is deliberately limited to call sites:
+
+- Not on a `-> comptime` function's own `MastReturn`: inside the definition the
+  parameters are symbolic, so the body legitimately does not fold.
+- Not on `let x : comptime = e`: `evalLoopStmt` never folds comptime lets inside
+  loop bodies, so tightening that path would produce false positives.
 
 ---
 
@@ -469,7 +580,9 @@ Add patterns as described above.  Tests:
 Add `.solc` test in `test/examples/comptime/` with a function wrapping
 `mstore`/`mload` that should be comptime-evaluated.
 
-### Step 8 (later): keccak256 over known memory ranges
+### Step 8: keccak256 over known memory ranges — done
+
+See "keccak256 over known memory" above.
 
 ---
 

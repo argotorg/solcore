@@ -22,7 +22,7 @@ module Solcore.Backend.ComptimeCheck (checkComptime) where
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Solcore.Backend.Mast
-import Solcore.Backend.MastEval (FunTable, buildFunTable, computePureFuns)
+import Solcore.Backend.MastEval (FunTable, buildFunTable, computePureFuns, isKnownValue)
 import Solcore.Frontend.Syntax.Name (Name)
 
 -- | Set of variable names known to be comptime in the current scope.
@@ -125,13 +125,14 @@ checkExp ft pure_ env (MastCond c t e) =
   mapM_ (checkExp ft pure_ env) [c, t, e]
 checkExp _ _ _ _ = Right ()
 
--- | Verify that comptime-annotated parameters receive comptime arguments.
+-- | Verify the annotations of the callee against this call site.
 checkCallSite :: FunTable -> Set.Set Name -> ComptimeEnv -> MastId -> [MastExp] -> Either String ()
 checkCallSite ft pure_ env f args =
   case Map.lookup (mastIdName f) ft of
     Nothing -> Right () -- builtin or unknown; no annotation to check
-    Just fd ->
+    Just fd -> do
       mapM_ checkArg (zip (mastFunParams fd) args)
+      checkFolded fd
   where
     checkArg (param, arg) =
       when_ (mastParamComptime param && not (isComptime ft pure_ env arg)) $
@@ -140,6 +141,18 @@ checkCallSite ft pure_ env f args =
           ++ "' of '"
           ++ show (mastIdName f)
           ++ "'"
+
+    -- Partial evaluation runs before this pass, and it folds a '-> comptime'
+    -- call whose arguments are all known values.  A surviving call means the
+    -- evaluator could not compute the result, so the annotation's promise was
+    -- not kept — most often because the body reads state the compiler cannot
+    -- know, or because it ran out of fuel.
+    checkFolded fd =
+      when_ (mastFunRetComptime fd && all isKnownValue args) $
+        "call to '"
+          ++ show (mastIdName f)
+          ++ "' annotated '-> comptime' was not evaluated at compile time, "
+          ++ "although all its arguments are known"
 
 -- | Classify an expression as comptime (True) or runtime (False).
 --
