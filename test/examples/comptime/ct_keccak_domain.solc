@@ -1,0 +1,49 @@
+/* Positive: the EIP-712 domain separator is a compile-time constant.
+
+   Five words are laid out contiguously above the free memory pointer and
+   hashed.  The pointer's run-time value is unknown, but the evaluator tracks
+   the scratch addresses symbolically as offsets from it, which is enough to
+   know which bytes the hash covers.
+
+   The function is annotated '-> comptime', which lets the partial evaluator
+   run the memory operations at its call sites even though there is no
+   'comptime' let: with literal arguments the whole call folds to the domain
+   separator literal.
+*/
+import std.{*};
+import std.opcodes.{mstore, keccak256};
+
+function eip712DomainSeparator(
+    nameHash: bytes32,
+    versionHash: bytes32,
+    chainId: uint256,
+    verifyingContract: address
+) -> comptime bytes32 {
+    let typeHash = keccakLit("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    // Borrow the area above the free memory pointer as scratch (as `ecrecover`
+    // does): the preimage is consumed immediately by keccak256 and never needs
+    // to persist, so there is no need to bump the free pointer.
+    let ptr = get_free_memory();
+    mstore(ptr,       typeHash);
+    mstore(ptr + 32,  Typedef.rep(nameHash));
+    mstore(ptr + 64,  Typedef.rep(versionHash));
+    mstore(ptr + 96,  Typedef.rep(chainId));
+    mstore(ptr + 128, Typedef.rep(verifyingContract));
+    return bytes32(keccak256(ptr, 160));
+}
+
+// Domain separator for name "Ether Mail", version "1", chainId 1 and the
+// verifying contract from the EIP-712 specification example.  The expected
+// value is 0xf2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f.
+function mailDomainSeparator() -> bytes32 {
+    return eip712DomainSeparator(
+        bytes32(keccakLit("Ether Mail")),
+        bytes32(keccakLit("1")),
+        uint256(1),
+        address(0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC)
+    );
+}
+
+contract EIP712Domain {
+  function main() -> bytes32 { mailDomainSeparator() }
+}

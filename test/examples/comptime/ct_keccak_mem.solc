@@ -1,0 +1,18 @@
+/* Positive: keccak256 over a memory range written in the same comptime
+   evaluation folds to a literal.  Memory ops only run in comptime context,
+   so the hash is computed over bytes this evaluation wrote itself.
+*/
+import std.{*};
+import std.opcodes.{mstore, keccak256};
+
+function hashOne(x : word) -> word {
+    mstore(0, x);
+    return keccak256(0, 32);
+}
+
+contract ComptimeKeccakMem {
+  function main() -> word {
+    let res : comptime word = hashOne(42);
+    return res;
+  }
+}
