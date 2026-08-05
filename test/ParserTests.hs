@@ -6,7 +6,7 @@ import Common.LightYear (Parser, runParserE)
 import Solcore.Frontend.Lexer.SolcoreLexer (sc)
 import Solcore.Frontend.Parser.Decl (topDeclP)
 import Solcore.Frontend.Parser.Expr (exprP)
-import Solcore.Frontend.Parser.OperatorScan (duplicateOperator, scanOperatorsLocated)
+import Solcore.Frontend.Parser.OperatorScan (crossOperatorConflict, duplicateOperator, scanOperatorsLocated)
 import Solcore.Frontend.Parser.Patterns (patP)
 import Solcore.Frontend.Parser.SolcoreTypes (predP, typeP)
 import Solcore.Frontend.Parser.Stmt (bodyP, stmtP)
@@ -90,7 +90,35 @@ operatorScanTests =
         assertEqual
           "no duplicate"
           Nothing
-          (dupSymbol "infixl 50 (##) => a; infixl 45 (<>) => b;")
+          (dupSymbol "infixl 50 (##) => a; infixl 45 (<>) => b;"),
+      testCase "an operator declared incompatibly in two imports is a conflict" $
+        assertEqual
+          "reports the symbol and both provenances"
+          (Just ("<>", "libA", "libB"))
+          ( crossOperatorConflict
+              [ ("libA", OperatorDecl OpInfixL 50 "<>" (Name "joinA")),
+                ("libB", OperatorDecl OpInfixR 60 "<>" (Name "joinB"))
+              ]
+              []
+          ),
+      testCase "the same declaration reaching via two imports (diamond) is not a conflict" $
+        assertEqual
+          "identical declarations do not conflict"
+          Nothing
+          ( crossOperatorConflict
+              [ ("libA", OperatorDecl OpInfixL 50 "<>" (Name "join")),
+                ("libB", OperatorDecl OpInfixL 50 "<>" (Name "join"))
+              ]
+              []
+          ),
+      testCase "a local operator that conflicts with an imported one is a conflict" $
+        assertEqual
+          "imported versus local conflict"
+          (Just ("<>", "libA", "local"))
+          ( crossOperatorConflict
+              [("libA", OperatorDecl OpInfixL 50 "<>" (Name "joinA"))]
+              [("local", OperatorDecl OpInfixR 60 "<>" (Name "joinLocal"))]
+          )
     ]
   where
     dupSymbol = fmap snd . duplicateOperator . scanOperatorsLocated

@@ -103,5 +103,9 @@ errorTests =
       -- Declaring an operator symbol twice is a parse error (SC0122): a plain
       -- redefinition, and a second fixity for the same symbol.
       runOpFailure "redefined-fail.solc",
-      runOpFailure "infix-postfix-fail.solc"
+      runOpFailure "infix-postfix-fail.solc",
+      -- Importing two modules that declare the same operator incompatibly is a
+      -- compile error (SC0123). oplibx.solc and opliby.solc are the two
+      -- conflicting library modules.
+      runOpFailure "import-conflict-fail.solc"
     ]

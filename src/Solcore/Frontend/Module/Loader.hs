@@ -22,7 +22,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
 import Solcore.Frontend.Module.Identity qualified as Mod
-import Solcore.Frontend.Parser.OperatorScan (scanImports, scanOperators)
+import Solcore.Frontend.Parser.OperatorScan (crossOperatorConflict, scanImports, scanOperators, scanRawOperators)
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithOps)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
@@ -142,7 +142,12 @@ visit cfg moduleId sourcePath = do
     modify (\st -> st {loadingModules = Set.insert moduleId (loadingModules st)})
     content <- liftIO (readFile sourcePath)
     let source = makeSourceFile sourcePath content
-    importedOps <- gatherImportedOperators cfg moduleId sourcePath (scanImports content)
+    importedOpsTagged <- gatherImportedOperators cfg moduleId sourcePath (scanImports content)
+    let localTagged = [("the current module", od) | od <- scanRawOperators content]
+    case crossOperatorConflict importedOpsTagged localTagged of
+      Just (sym, l1, l2) -> throwError (operatorImportConflictDiagnostic sym l1 l2)
+      Nothing -> pure ()
+    let importedOps = map snd importedOpsTagged
     parsed <- liftIO (parseCompUnitWithOps importedOps sourcePath content)
     cunit <- stripOperators <$> either throwError pure parsed
     importedModules <- mapM (resolveImportPath cfg moduleId sourcePath) (imports cunit)
@@ -184,7 +189,7 @@ gatherImportedOperators ::
   Mod.ModuleId ->
   FilePath ->
   [Import] ->
-  StateT LoadState (ExceptT String IO) [OperatorDecl]
+  StateT LoadState (ExceptT String IO) [(String, OperatorDecl)]
 gatherImportedOperators cfg currentModule currentSourcePath imps =
   concat <$> mapM fromImport imps
   where
@@ -192,9 +197,22 @@ gatherImportedOperators cfg currentModule currentSourcePath imps =
       ( do
           (_, targetPath) <- resolveImportPath cfg currentModule currentSourcePath imp
           c <- liftIO (readFile targetPath)
-          pure (selectImportedOperators imp (scanOperators c))
+          let label = Mod.modulePathDisplay (importModule imp)
+          pure [(label, od) | od <- selectImportedOperators imp (scanOperators c)]
       )
         `catchError` const (pure [])
+
+-- Diagnostic for an operator symbol declared with different meanings in two
+-- modules reachable from the current one (two imports, or an import and the
+-- current module). Identical declarations reaching via several paths are not a
+-- conflict and are not reported here.
+operatorImportConflictDiagnostic :: String -> String -> String -> String
+operatorImportConflictDiagnostic sym label1 label2 =
+  loaderDiagnostic
+    "SC0123"
+    ("operator (" ++ sym ++ ") is declared incompatibly in more than one module")
+    ["declared in " ++ label1, "and in " ++ label2]
+    ["import only one of the declarations, make them identical, or rename an operator"]
 
 selectImportedOperators :: Import -> [OperatorDecl] -> [OperatorDecl]
 selectImportedOperators _ ops = ops

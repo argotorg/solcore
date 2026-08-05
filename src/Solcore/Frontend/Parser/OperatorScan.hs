@@ -3,13 +3,15 @@ module Solcore.Frontend.Parser.OperatorScan
     scanRawOperators,
     scanOperatorsLocated,
     duplicateOperator,
+    crossOperatorConflict,
     scanImports,
     scanExportModulePaths,
   )
 where
 
 import Common.LightYear
-import Data.List (nubBy)
+import Data.List (nubBy, tails)
+import Data.Maybe (listToMaybe)
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
@@ -80,6 +82,22 @@ duplicateOperator = go []
     go seen ((offset, od) : rest)
       | opSymbol od `elem` seen = Just (offset, opSymbol od)
       | otherwise = go (opSymbol od : seen) rest
+
+-- Detect an operator symbol declared incompatibly across modules. Each list
+-- tags a declaration with a provenance label (e.g. the importing module).
+-- Reports the first symbol that has two structurally-different declarations
+-- where at least one comes from the first (imported) list, returning the symbol
+-- and the two provenance labels. Declarations that are identical (the same
+-- operator reaching via several import paths, a diamond) are not a conflict.
+crossOperatorConflict :: (Eq a) => [(a, OperatorDecl)] -> [(a, OperatorDecl)] -> Maybe (String, a, a)
+crossOperatorConflict imported local =
+  listToMaybe
+    [ (opSymbol o1, l1, l2)
+    | (l1, o1) <- imported,
+      (l2, o2) <- imported ++ local,
+      opSymbol o1 == opSymbol o2,
+      o1 /= o2
+    ]
 
 -- Lightweight scan of a source file collecting every import declaration.
 -- Tolerates arbitrary content between imports (skips unknown tokens).
