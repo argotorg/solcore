@@ -12,6 +12,7 @@ import ParserTests
 import SpecialiseTests
 import Test.Tasty
 import YulEvalTests
+import YulParserTests
 
 main :: IO ()
 main = defaultMain tests
@@ -21,6 +22,7 @@ tests =
   testGroup
     "Tests"
     [ parserTests,
+      yulParserTests,
       cases,
       tabledResolution,
       comptime,
