@@ -94,7 +94,7 @@ operatorScanTests =
       testCase "an operator declared incompatibly in two imports is a conflict" $
         assertEqual
           "reports the symbol and both provenances"
-          (Just ("<>", "libA", "libB"))
+          (Just ("<>", "libA", "libB") :: Maybe (String, String, String))
           ( crossOperatorConflict
               [ ("libA", OperatorDecl OpInfixL 50 "<>" (Name "joinA")),
                 ("libB", OperatorDecl OpInfixR 60 "<>" (Name "joinB"))
@@ -104,7 +104,7 @@ operatorScanTests =
       testCase "the same declaration reaching via two imports (diamond) is not a conflict" $
         assertEqual
           "identical declarations do not conflict"
-          Nothing
+          (Nothing :: Maybe (String, String, String))
           ( crossOperatorConflict
               [ ("libA", OperatorDecl OpInfixL 50 "<>" (Name "join")),
                 ("libB", OperatorDecl OpInfixL 50 "<>" (Name "join"))
@@ -114,7 +114,7 @@ operatorScanTests =
       testCase "a local operator that conflicts with an imported one is a conflict" $
         assertEqual
           "imported versus local conflict"
-          (Just ("<>", "libA", "local"))
+          (Just ("<>", "libA", "local") :: Maybe (String, String, String))
           ( crossOperatorConflict
               [("libA", OperatorDecl OpInfixL 50 "<>" (Name "joinA"))]
               [("local", OperatorDecl OpInfixR 60 "<>" (Name "joinLocal"))]

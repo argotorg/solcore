@@ -10,7 +10,7 @@ module Solcore.Frontend.Parser.OperatorScan
 where
 
 import Common.LightYear
-import Data.List (nubBy, tails)
+import Data.List (nubBy)
 import Data.Maybe (listToMaybe)
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Syntax.Name
