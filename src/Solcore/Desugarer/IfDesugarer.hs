@@ -47,6 +47,8 @@ desugarBoolCons (TyExp e t) =
   TyExp (desugarBoolCons e) t
 desugarBoolCons (Indexed e1 e2) =
   Indexed (desugarBoolCons e1) (desugarBoolCons e2)
+desugarBoolCons (ArrayLit es) =
+  ArrayLit (map desugarBoolCons es)
 desugarBoolCons (Var a) = Var a
 desugarBoolCons (Lit l) = Lit l
 

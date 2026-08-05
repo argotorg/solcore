@@ -117,7 +117,9 @@ spec =
       runTestForFile "131localindex.solc" specFolder,
       runTestForFile "132nestedarray.solc" specFolder,
       runTestForFile "133arraystring.solc" specFolder,
-      runTestForFile "135aliaspush.solc" specFolder
+      runTestForFile "135aliaspush.solc" specFolder,
+      runTestForFile "136arraylit.solc" specFolder,
+      runTestForFile "137arraylitstorage.solc" specFolder
     ]
   where
     specFolder = "./test/examples/spec"
@@ -158,6 +160,7 @@ dispatches =
       runDispatchTest "array_copy.solc",
       runDispatchTest "array_string.solc",
       runDispatchTest "array_nested.solc",
+      runDispatchTest "arraylit.solc",
       runDispatchTest "derive_ord.solc",
       runDispatchTest "derive_contract_local.solc",
       runDispatchTest "deposit.solc"
@@ -626,7 +629,11 @@ cases =
       -- CanStore obligation is never forced and the negative cases would pass.
       runTestForFileWith dispatchOpt "storage-adt-recursive-ok.solc" caseFolder,
       runTestExpectingFailureWith dispatchOpt "storage-adt-recursive-fail.solc" caseFolder,
-      runTestExpectingFailureWith dispatchOpt "storage-adt-mapping-field-fail.solc" caseFolder
+      runTestExpectingFailureWith dispatchOpt "storage-adt-mapping-field-fail.solc" caseFolder,
+      runTestExpectingFailure "array-elem-no-storagecopy.solc" caseFolder,
+      runTestExpectingFailure "array-push-no-canstore.solc" caseFolder,
+      runTestExpectingFailure "arraylit-mixed-types.solc" caseFolder,
+      runTestExpectingFailure "arraylit-bad-target.solc" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

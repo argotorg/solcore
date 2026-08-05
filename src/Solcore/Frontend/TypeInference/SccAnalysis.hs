@@ -181,6 +181,7 @@ instance Names (Exp Name) where
   names (TyExp e t) = names e `union` names t
   names (Cond e1 e2 e3) = names (e1, e2, e3)
   names (Indexed e1 e2) = names e1 `union` names e2
+  names (ArrayLit es) = names es
   names (Var n) = [n]
   names (Lit _) = []
 

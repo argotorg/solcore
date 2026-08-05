@@ -1,0 +1,292 @@
+{
+  "arraylit": {
+    "bytecode": "_CODE",
+    "contract": "ArrayLit",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "text-calldata": "memAt(0) - element 0 is the first element, not the length word",
+          "calldata": "286a5e5e0000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000000b",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "memAt(2) - last element",
+          "calldata": "286a5e5e0000000000000000000000000000000000000000000000000000000000000002",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000021",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "memAt(3) - out of bounds on a 3 element literal",
+          "calldata": "286a5e5e0000000000000000000000000000000000000000000000000000000000000003",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "b4120f14",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "memSum() - 1+2+3+4",
+          "calldata": "f6179f51",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000000a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "nested() - [[1,2],[3,4]][1][0]",
+          "calldata": "4ce2d543",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000003",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "len() - storage array initially empty",
+          "calldata": "56d88e27",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "setThree() - xs = [10,20,30]",
+          "calldata": "0960bf64",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "len() - now 3",
+          "calldata": "56d88e27",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000003",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get(0) - 10",
+          "calldata": "9507d39a0000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000000a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get(2) - 30",
+          "calldata": "9507d39a0000000000000000000000000000000000000000000000000000000000000002",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000001e",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get(3) - out of bounds",
+          "calldata": "9507d39a0000000000000000000000000000000000000000000000000000000000000003",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "b4120f14",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "setFive() - xs = [1,2,3,4,5], overwriting the 3 element array",
+          "calldata": "61125608",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "len() - now 5",
+          "calldata": "56d88e27",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000005",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get(4) - 5",
+          "calldata": "9507d39a0000000000000000000000000000000000000000000000000000000000000004",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000005",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "setTwo() - xs = [7,8]; shrinks from 5 and must clear the tail",
+          "calldata": "65ee9559",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "len() - now 2",
+          "calldata": "56d88e27",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000002",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get(0) - 7",
+          "calldata": "9507d39a0000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000007",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "grow(5) - regrow without writing elements",
+          "calldata": "28531f060000000000000000000000000000000000000000000000000000000000000005",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get(2) - THE tail-clearing test: must be 0, not the 3 left by setFive",
+          "calldata": "9507d39a0000000000000000000000000000000000000000000000000000000000000002",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get(4) - must be 0, not the 5 left by setFive",
+          "calldata": "9507d39a0000000000000000000000000000000000000000000000000000000000000004",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "clear() - xs = []",
+          "calldata": "52efea6e",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "len() - now 0",
+          "calldata": "56d88e27",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "text-calldata": "get(0) - out of bounds on the cleared array",
+          "calldata": "9507d39a0000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "b4120f14",
+          "status": "failure"
+        }
+      }
+    ]
+  }
+}
