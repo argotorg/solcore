@@ -139,6 +139,7 @@ private:
 	template <evmc_revision Revision>
 	static evmc::Result precompileALTBN128PairingProduct(evmc_message const& _message) noexcept;
 	static evmc::Result precompileBlake2f(evmc_message const& _message) noexcept;
+	static evmc::Result precompileP256Verify(evmc_message const& _message) noexcept;
 	/// Generic implementation of a precompile for testing, with hard-coded answers for hard-coded inputs.
 	/// @param _message EVM message to handle.
 	/// @param _inOut Hard-coded inputs and corresponding outputs to be returned.

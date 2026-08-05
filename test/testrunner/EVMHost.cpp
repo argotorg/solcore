@@ -287,6 +287,8 @@ evmc::Result EVMHost::call(evmc_message const& _message) noexcept
 	}
 	else if (_message.recipient == 0x0000000000000000000000000000000000000009_address && m_evmVersion >= langutil::EVMVersion::istanbul())
 		return precompileBlake2f(_message);
+	else if (_message.recipient == 0x0000000000000000000000000000000000000100_address && m_evmVersion >= langutil::EVMVersion::osaka())
+		return precompileP256Verify(_message);
 
 	auto const stateBackup = accounts;
 
@@ -1296,6 +1298,45 @@ evmc::Result EVMHost::precompileBlake2f(evmc_message const&) noexcept
 {
 	// TODO implement
 	return resultWithFailure();
+}
+
+evmc::Result EVMHost::precompileP256Verify(evmc_message const& _message) noexcept
+{
+	// NOTE this is a partial implementation for some inputs.
+	constexpr int64_t gas_cost = 6900;
+
+	static std::map<bytes, EVMPrecompileOutput> const inputOutput{
+		{
+			// Valid signature: verifies against the P-256 public key (qx, qy).
+			fromHex(
+				"abcdef00112233445566778899aabbccddeeff00112233445566778899aabbcc"
+				"a29295460e251beea1bdc9b84b2f3fe8e3a3e4d872baa3c55b78c9e448190ea9"
+				"2d854575b092b3732d3d73c8414bda17f907776894cff2e8e25e733d200f3f5c"
+				"6079df2480f92e4cf526c08e32ab82aed6599fddb777a039612fe7c9ef0247ba"
+				"e2b4793e7c77585508c4780e4e53a36deefbb3548f4380ee6df04863cfc54c2d"
+			),
+			{
+				fromHex("0000000000000000000000000000000000000000000000000000000000000001"),
+				gas_cost
+			}
+		},
+		{
+			// Same signature and key but a tampered hash (last byte flipped):
+			// verification fails, so the precompile returns empty output.
+			fromHex(
+				"abcdef00112233445566778899aabbccddeeff00112233445566778899aabbcd"
+				"a29295460e251beea1bdc9b84b2f3fe8e3a3e4d872baa3c55b78c9e448190ea9"
+				"2d854575b092b3732d3d73c8414bda17f907776894cff2e8e25e733d200f3f5c"
+				"6079df2480f92e4cf526c08e32ab82aed6599fddb777a039612fe7c9ef0247ba"
+				"e2b4793e7c77585508c4780e4e53a36deefbb3548f4380ee6df04863cfc54c2d"
+			),
+			{
+				fromHex(""),
+				gas_cost
+			}
+		}
+	};
+	return precompileGeneric(_message, inputOutput);
 }
 
 evmc::Result EVMHost::precompileGeneric(
