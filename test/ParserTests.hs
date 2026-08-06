@@ -6,7 +6,7 @@ import Common.LightYear (Parser, runParserE)
 import Solcore.Frontend.Lexer.SolcoreLexer (sc)
 import Solcore.Frontend.Parser.Decl (topDeclP)
 import Solcore.Frontend.Parser.Expr (exprP)
-import Solcore.Frontend.Parser.OperatorScan (crossOperatorConflict, duplicateOperator, scanOperatorsLocated)
+import Solcore.Frontend.Parser.OperatorScan (associativityConflict, crossOperatorConflict, duplicateOperator, exportedOperators, scanImports, scanOperatorsLocated)
 import Solcore.Frontend.Parser.Patterns (patP)
 import Solcore.Frontend.Parser.SolcoreTypes (predP, typeP)
 import Solcore.Frontend.Parser.Stmt (bodyP, stmtP)
@@ -65,8 +65,115 @@ parserTests =
       stmtTests,
       declTests,
       keywordPrefixTests,
-      operatorScanTests
+      operatorScanTests,
+      scanLexicalTests,
+      scanTargetTests,
+      operatorAdjacencyTests,
+      exportGatingTests
     ]
+
+-- An operator is visible to importers only if the declaring module exports it.
+-- A module with no export list, or with `export { * }`, exports all operators.
+exportGatingTests :: TestTree
+exportGatingTests =
+  testGroup
+    "Operator export gating"
+    [ testCase "no export list exports all declared operators" $
+        assertEqual
+          "all exported"
+          ["^^"]
+          (opSyms "infixl 70 (^^) => pow;"),
+      testCase "an export list without the operator hides it" $
+        assertEqual
+          "operator gated out"
+          ([] :: [String])
+          (opSyms "infixl 70 (^^) => pow; export { pow };"),
+      testCase "an export list with the operator exports it" $
+        assertEqual
+          "operator exported"
+          ["^^"]
+          (opSyms "infixl 70 (^^) => pow; export { pow, (^^) };"),
+      testCase "export { * } exports all declared operators" $
+        assertEqual
+          "all exported"
+          ["^^"]
+          (opSyms "infixl 70 (^^) => pow; export { * };")
+    ]
+  where
+    opSyms = map opSymbol . exportedOperators
+
+-- The pre-scan collects operator/import declarations without a full parse, so it
+-- must still respect lexical structure: declaration-like text inside a comment
+-- or a string literal must be ignored (regression tests).
+scanLexicalTests :: TestTree
+scanLexicalTests =
+  testGroup
+    "Pre-scan ignores comments and string literals"
+    [ testCase "operator inside a line comment is ignored" $
+        assertEqual
+          "only the real declaration is scanned"
+          ["^^"]
+          (opSyms "// infixl 70 (^^) => pow;\ninfixl 70 (^^) => pow;"),
+      testCase "operator inside a block comment is ignored" $
+        assertEqual
+          "only the real declaration is scanned"
+          ["##"]
+          (opSyms "/* infixl 9 (##) => f; */ infixl 9 (##) => f;"),
+      testCase "operator inside a string literal is ignored" $
+        assertEqual
+          "no declaration is scanned"
+          ([] :: [String])
+          (opSyms "let s = \"infixl 1 (+) => bogus\";"),
+      testCase "a real operator declaration is still scanned" $
+        assertEqual
+          "the declaration is scanned"
+          ["+"]
+          (opSyms "infixl 45 (+) => Add.add;"),
+      testCase "import inside a comment is ignored" $
+        assertEqual
+          "no import is scanned"
+          0
+          (length (scanImports "// import evil.{*};")),
+      testCase "a real import is still scanned" $
+        assertEqual
+          "the import is scanned"
+          1
+          (length (scanImports "import foo.{*};"))
+    ]
+  where
+    opSyms = map (opSymbol . snd) . scanOperatorsLocated
+
+-- The operator target may be a multi-segment qualified name (M.N.f); the
+-- pre-scan must keep every segment, not just the first two. A reserved word is
+-- never accepted as an operator symbol.
+scanTargetTests :: TestTree
+scanTargetTests =
+  testGroup
+    "Operator target and symbol scanning"
+    [ testCase "a fully qualified target keeps every segment" $
+        assertEqual
+          "three-segment qualified name is preserved"
+          [QualName (QualName (Name "a") "b") "c"]
+          (opFuns "infixl 50 (+++) => a.b.c;"),
+      testCase "a single-segment target is a plain name" $
+        assertEqual
+          "unqualified target"
+          [Name "f"]
+          (opFuns "infixl 50 (+++) => f;"),
+      testCase "a reserved word is not accepted as an operator symbol" $
+        assertEqual
+          "the declaration using (if) is skipped"
+          ([] :: [String])
+          (opSyms "infixl 50 (if) => foo;"),
+      testCase "a non-reserved alphabetic operator symbol is accepted" $
+        assertEqual
+          "the unit-style symbol is scanned"
+          ["iff"]
+          (opSyms "infixl 50 (iff) => foo;")
+    ]
+  where
+    opFuns = map (opFunction . snd) . scanOperatorsLocated
+    opSyms = map (opSymbol . snd) . scanOperatorsLocated
 
 -- The operator pre-scan rejects a symbol declared more than once within a
 -- module: a redefinition, or a second fixity for the same symbol.
@@ -123,10 +230,73 @@ operatorScanTests =
           ( crossOperatorConflict
               [("libA", OperatorDecl OpInfixL 50 "<>" (Name "joinA"))]
               [("local", OperatorDecl OpInfixR 60 "<>" (Name "joinLocal"))]
-          )
+          ),
+      testCase "different operators at one precedence with different associativity conflict" $
+        assertEqual
+          "reports the earlier and later declaration"
+          (Just (("libA", odf OpInfixL 50 "<+>"), ("libB", odf OpInfixR 50 "<->")) :: AssocConflict)
+          (associativityConflict [("libA", odf OpInfixL 50 "<+>"), ("libB", odf OpInfixR 50 "<->")]),
+      testCase "operators at one precedence with the same associativity do not conflict" $
+        assertEqual
+          "same associativity is fine"
+          (Nothing :: AssocConflict)
+          (associativityConflict [("libA", odf OpInfixL 50 "<+>"), ("libB", odf OpInfixL 50 "<->")]),
+      testCase "operators at different precedences do not conflict" $
+        assertEqual
+          "different precedence is fine"
+          (Nothing :: AssocConflict)
+          (associativityConflict [("libA", odf OpInfixL 50 "<+>"), ("libB", odf OpInfixR 60 "<->")]),
+      testCase "a prefix operator never conflicts with an infix one at the same precedence" $
+        assertEqual
+          "prefix is unary and does not participate in infix associativity"
+          (Nothing :: AssocConflict)
+          (associativityConflict [("libA", odf OpInfixL 50 "<+>"), ("libB", odf OpPrefix 50 "!!")])
     ]
   where
     dupSymbol = fmap snd . duplicateOperator . scanOperatorsLocated
+    odf fix prec sym = OperatorDecl fix prec sym (Name "fn")
+
+-- The result type of associativityConflict at String provenance labels; named so
+-- the OverloadedStrings labels in the tests above are unambiguously String.
+type AssocConflict = Maybe ((String, OperatorDecl), (String, OperatorDecl))
+
+-- The operator-symbol parser threads the full operator table so that (item 7) an
+-- operator may be immediately followed by an unrelated operator while a longer
+-- declared operator or an assignment token still wins, and (item 6) a match-arm
+-- separator whose next pattern uses operators is not misparsed as bitwise-or.
+operatorAdjacencyTests :: TestTree
+operatorAdjacencyTests =
+  testGroup
+    "Operator adjacency and match-arm separator"
+    [ testCase "an operator may be immediately followed by an unrelated operator" $
+        parsesAs expR "a & ~b" (binR "bitand" (var "a") (unR "bnot" (var "b"))),
+      testCase "maximal munch still prefers the longer declared operator" $
+        parsesAs expR "a && b" (binR "andOp" (var "a") (var "b")),
+      testCase "an operator is still blocked before '=' (compound assignment token)" $
+        parseFails expR "a &= b",
+      testCase "a match-arm separator is not consumed as bitwise-or" $
+        parsesAs
+          stmtR
+          "match n { | _ => x | comptime 1 + 1 => 0 }"
+          ( Match
+              [var "n"]
+              [ ([PWildcard], [StmtExp (var "x")]),
+                ([PExp (binR "add" (lit 1) (lit 1))], [StmtExp (lit 0)])
+              ]
+          )
+    ]
+  where
+    richOps =
+      [ OperatorDecl OpInfixL 45 "+" (Name "add"),
+        OperatorDecl OpInfixL 30 "&" (Name "bitand"),
+        OperatorDecl OpInfixL 30 "&&" (Name "andOp"),
+        OperatorDecl OpInfixL 25 "|" (Name "bitor"),
+        OperatorDecl OpPrefix 90 "~" (Name "bnot")
+      ]
+    expR = exprP richOps (bodyP richOps)
+    stmtR = stmtP richOps
+    binR f a b = ExpName Nothing (Name f) [a, b]
+    unR f a = ExpName Nothing (Name f) [a]
 
 word :: Ty
 word = TyCon "word" []

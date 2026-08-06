@@ -2,6 +2,11 @@ module Solcore.Frontend.Parser.Decl
   ( compUnitP,
     topDeclP,
     importP,
+    -- Import-path parsers, shared with the operator pre-scan (Parser.OperatorScan)
+    -- so both resolve module references identically.
+    modulePathP,
+    externalPathP,
+    itemEntryP,
   )
 where
 

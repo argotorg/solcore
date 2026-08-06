@@ -5,7 +5,9 @@ pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
 
-infixr 45 (~>) => rsub;
+// Precedence 46 is unused by the standard library. Using std's level 45 (where
+// (+) and (-) are infixl) would be a same-level associativity clash (SC0124).
+infixr 46 (~>) => rsub;
 
 function rsub(x : word, y : word) -> word {
   return Sub.sub(x, y);

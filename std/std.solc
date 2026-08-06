@@ -206,7 +206,16 @@ export {
   (==),
   (!=),
   (&&),
-  (||)
+  (||),
+  (~),
+  (wei),
+  (gwei),
+  (ether),
+  (seconds),
+  (minutes),
+  (hours),
+  (days),
+  (weeks)
 };
 
 /*

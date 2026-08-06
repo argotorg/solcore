@@ -96,8 +96,14 @@ parenOpP = lexeme $ do
     -- An operator symbol is normally made of operator characters (e.g. `+`,
     -- `^^`). It may also be an alphabetic identifier, used for postfix unit
     -- suffixes like `(ether)` or `(minutes)`. The two are disjoint (letters are
-    -- never operator characters), so the choice is unambiguous.
-    identSym = (:) <$> letterChar <*> many identChar
+    -- never operator characters), so the choice is unambiguous. A reserved word
+    -- (`if`, `let`, `match`, …) is not accepted as an operator symbol, since it
+    -- would wreck parsing wherever the keyword appears.
+    identSym = do
+      w <- (:) <$> letterChar <*> many identChar
+      if w `elem` reservedWords
+        then fail ("reserved word used as operator symbol: " ++ w)
+        else pure w
 
 identifier :: Parser String
 identifier = lexeme go <?> "identifier"

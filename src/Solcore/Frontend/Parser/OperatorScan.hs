@@ -4,34 +4,45 @@ module Solcore.Frontend.Parser.OperatorScan
     scanOperatorsLocated,
     duplicateOperator,
     crossOperatorConflict,
+    associativityConflict,
+    scanExportedOperators,
+    exportedOperators,
     scanImports,
-    scanExportModulePaths,
   )
 where
 
 import Common.LightYear
+import Control.Monad (void)
 import Data.List (nubBy)
 import Data.Maybe (listToMaybe)
 import Solcore.Frontend.Lexer.SolcoreLexer
+import Solcore.Frontend.Parser.Decl (externalPathP, itemEntryP, modulePathP)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
+
+-- Repeatedly apply `declP` over the whole source, collecting every `Just`
+-- result, while skipping whitespace, comments and string literals between
+-- matches so that text inside a comment or a string literal is never scanned as
+-- a declaration. `sc` runs at the start and after every item, so the choice
+-- point is always at a code position: the fallback consumes a string literal as
+-- a unit (via stringLit, honouring escapes) or a single code character, and
+-- comments are consumed by `sc`, never entered character-by-character.
+scanForDecls :: Parser (Maybe a) -> String -> [a]
+scanForDecls declP src =
+  either (const []) (\xs -> [x | Just x <- xs]) (runParser p "<scan>" src)
+  where
+    p = sc *> many item <* eof
+    item =
+      (try declP <* sc)
+        <|> ((void stringLit <|> void anySingle) *> sc *> pure Nothing)
 
 -- Lightweight scan of a source file collecting every operator declaration
 -- together with the source offset at which it starts. Tolerates arbitrary
 -- content between declarations. Declarations are returned in source order, with
 -- no deduplication (see scanOperators / duplicateOperator).
 scanOperatorsLocated :: String -> [(Int, OperatorDecl)]
-scanOperatorsLocated src =
-  case runParser (sc *> scanP) "<scan-ops>" src of
-    Left _ -> []
-    Right ops -> ops
+scanOperatorsLocated = scanForDecls opDeclP
   where
-    scanP :: Parser [(Int, OperatorDecl)]
-    scanP = do
-      ops <- many (try opDeclP <|> (anySingle *> pure Nothing))
-      eof
-      pure [op | Just op <- ops]
-
     opDeclP :: Parser (Maybe (Int, OperatorDecl))
     opDeclP = do
       offset <- getOffset
@@ -46,11 +57,9 @@ scanOperatorsLocated src =
     qualFunP :: Parser Name
     qualFunP = do
       h <- identifier
-      mt <- optional (char '.' *> identifier)
+      ts <- many (char '.' *> identifier)
       sc
-      pure $ case mt of
-        Nothing -> Name h
-        Just t -> QualName (Name h) t
+      pure (foldl QualName (Name h) ts)
 
     fixityP :: Parser OpFixity
     fixityP =
@@ -99,22 +108,85 @@ crossOperatorConflict imported local =
       o1 /= o2
     ]
 
+-- Detect two infix operators that share a precedence level but disagree on
+-- associativity. `makeExprParser` processes each precedence level with a single
+-- associativity, so a level mixing (for example) infixl and infixr stops
+-- mid-expression and leaves the rest unconsumed. Each declaration is tagged with
+-- a provenance label (its module). Returns the earlier and the later (offending)
+-- declaration; Nothing when every precedence level is internally consistent.
+-- Prefix and postfix operators are unary and do not participate in a level's
+-- infix associativity, so they never conflict here.
+associativityConflict ::
+  [(a, OperatorDecl)] -> Maybe ((a, OperatorDecl), (a, OperatorDecl))
+associativityConflict = go []
+  where
+    go _ [] = Nothing
+    go seen (cur@(_, od) : rest)
+      | isInfixDecl od =
+          case filter (conflictsWith od . snd) seen of
+            (prev : _) -> Just (prev, cur)
+            [] -> go (cur : seen) rest
+      | otherwise = go seen rest
+    conflictsWith a b = opPrec a == opPrec b && opFixity a /= opFixity b
+    isInfixDecl od = opFixity od `elem` [OpInfixL, OpInfixR, OpInfixN]
+
+-- Scan a module's `export { ... }` blocks for its operator-export policy:
+--   Nothing            -- no `export { ... }` block: every declared operator is exported
+--   Just (True,  _)    -- an `export { *, ... }`: every declared operator is exported
+--   Just (False, syms) -- explicit `export { ... }`: only these operator symbols are exported
+-- If the export block cannot be parsed, it is treated as absent (fail open, so a
+-- valid operator is never wrongly hidden).
+scanExportedOperators :: String -> Maybe (Bool, [String])
+scanExportedOperators src =
+  case scanForDecls exportBlockP src of
+    [] -> Nothing
+    blocks -> Just (any fst blocks, concatMap snd blocks)
+  where
+    exportBlockP :: Parser (Maybe (Bool, [String]))
+    exportBlockP = do
+      keyword "export"
+      _ <- symbol "{"
+      items <- exportItemP `sepBy` comma
+      _ <- symbol "}"
+      _ <- optional semicolon
+      pure (Just (or [star | (star, _) <- items], [s | (_, Just s) <- items]))
+
+    -- One export spec, classified into (is it `*` / ExportAll, is it an operator).
+    exportItemP :: Parser (Bool, Maybe String)
+    exportItemP =
+      ((True, Nothing) <$ symbol "*")
+        <|> (((,) False . Just) <$> try parenOpP)
+        <|> ((False, Nothing) <$ otherItem)
+
+    -- Any other spec: a (possibly qualified) name, optional `.*`, optional
+    -- `(constructorSelector)`. Consumed and ignored.
+    otherItem :: Parser ()
+    otherItem = do
+      _ <- identifier
+      _ <- many (try (symbol "." *> identifier))
+      _ <- optional (try (symbol "." *> symbol "*"))
+      _ <- optional (parens (void (many (satisfy (/= ')')))))
+      pure ()
+
+-- Operators of a module that are visible to importers: its declared operators
+-- filtered by its export list. A module with no `export { ... }` block, or with
+-- an `export { * }`, exports all of its operators.
+exportedOperators :: String -> [OperatorDecl]
+exportedOperators src =
+  case scanExportedOperators src of
+    Nothing -> declared
+    Just (True, _) -> declared
+    Just (False, syms) -> filter ((`elem` syms) . opSymbol) declared
+  where
+    declared = scanOperators src
+
 -- Lightweight scan of a source file collecting every import declaration.
 -- Tolerates arbitrary content between imports (skips unknown tokens).
 -- Import syntax uses only identifiers, dots, braces, and keywords — no
 -- operator symbols — so this scan needs no operator table.
 scanImports :: String -> [Import]
-scanImports src =
-  case runParser (sc *> scanP) "<scan-imports>" src of
-    Left _ -> []
-    Right imps -> imps
+scanImports = scanForDecls importDeclP
   where
-    scanP :: Parser [Import]
-    scanP = do
-      imps <- many (try importDeclP <|> (anySingle *> pure Nothing))
-      eof
-      pure [i | Just i <- imps]
-
     importDeclP :: Parser (Maybe Import)
     importDeclP = do
       keyword "import"
@@ -136,7 +208,7 @@ scanImports src =
                   ImportModule path <$ semicolon
                 ],
             do
-              path <- modPathP
+              path <- modulePathP
               choice
                 [ do
                     _ <- symbol "."
@@ -154,100 +226,3 @@ scanImports src =
       pure (Just imp)
       where
         hidingP = keyword "hiding" *> braces (fmap Name identifier `sepBy` comma)
-
-    modPathP :: Parser ModulePath
-    modPathP = do
-      h <- identifier
-      ts <- many (try (char '.' *> notFollowedBy (char '{') *> identifier))
-      pure (classifyModulePath (foldl QualName (Name h) ts))
-
-    externalPathP :: Parser ModulePath
-    externalPathP = do
-      lib <- symbol "@" *> identifier <* char '.'
-      sc
-      h <- identifier
-      ts <- many (try (char '.' *> notFollowedBy (char '{') *> identifier))
-      pure (ExternalPath (Name lib) (foldl QualName (Name h) ts))
-
-    classifyModulePath :: Name -> ModulePath
-    classifyModulePath n = case splitQual n of
-      ("lib" : rest@(_ : _)) -> LibraryPath (mkQualName rest)
-      _ -> RelativePath n
-
-    splitQual :: Name -> [String]
-    splitQual (Name s) = [s]
-    splitQual (QualName n s) = splitQual n ++ [s]
-
-    mkQualName :: [String] -> Name
-    mkQualName [] = error "mkQualName: empty"
-    mkQualName (x : xs) = foldl QualName (Name x) xs
-
-    itemEntryP :: Parser ItemSelectorEntry
-    itemEntryP =
-      SelectAllItems
-        <$ symbol "*"
-          <|> SelectOperator
-        <$> try parenOpP
-          <|> try (SelectItemAs <$> (Name <$> identifier) <* keyword "as" <*> (Name <$> identifier))
-          <|> SelectItem
-          . Name
-        <$> identifier
-
--- Lightweight scan collecting module paths referenced in export declarations.
--- Handles: "export M;", "export M as N;", "export M.{..};", "export M.*;",
--- and the @-prefixed external variants.
--- Needed so the loader can visit export-referenced modules before the full parse.
-scanExportModulePaths :: String -> [ModulePath]
-scanExportModulePaths src =
-  case runParser (sc *> scanP) "<scan-exports>" src of
-    Left _ -> []
-    Right paths -> paths
-  where
-    scanP :: Parser [ModulePath]
-    scanP = do
-      paths <- many (try exportPathP <|> (anySingle *> pure Nothing))
-      eof
-      pure [p | Just p <- paths]
-
-    exportPathP :: Parser (Maybe ModulePath)
-    exportPathP = do
-      keyword "export"
-      -- skip the export body: skip until ';' is found (tolerant)
-      path <- try (Just <$> exportModulePath) <|> pure Nothing
-      _ <- manyTill anySingle (char ';')
-      sc
-      pure path
-
-    -- Parse a module path that follows "export", stopping before
-    -- '{', '*', 'as', or ';'.
-    exportModulePath :: Parser ModulePath
-    exportModulePath =
-      choice
-        [ do
-            lib <- symbol "@" *> identifier <* char '.'
-            sc
-            h <- identifier
-            ts <- many (try (char '.' *> notFollowedBy stopChar *> identifier))
-            pure (ExternalPath (Name lib) (foldl QualName (Name h) ts)),
-          do
-            h <- identifier
-            ts <- many (try (char '.' *> notFollowedBy stopChar *> identifier))
-            let name' = foldl QualName (Name h) ts
-            pure (classifyModulePath name')
-        ]
-
-    stopChar :: Parser ()
-    stopChar = () <$ satisfy (\c -> c == '{' || c == '*' || c == ';')
-
-    classifyModulePath :: Name -> ModulePath
-    classifyModulePath n = case splitQual n of
-      ("lib" : rest@(_ : _)) -> LibraryPath (mkQualName rest)
-      _ -> RelativePath n
-
-    splitQual :: Name -> [String]
-    splitQual (Name s) = [s]
-    splitQual (QualName n s) = splitQual n ++ [s]
-
-    mkQualName :: [String] -> Name
-    mkQualName [] = error "mkQualName: empty"
-    mkQualName (x : xs) = foldl QualName (Name x) xs

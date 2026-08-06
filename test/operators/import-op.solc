@@ -1,5 +1,8 @@
-// Imports and uses an operator declared in a library module.
-import oplib.{pow, (^^)};
+// Imports and uses an operator declared in a library module, WITHOUT importing
+// its target function `pow`: a user-defined operator is self-contained, so
+// selecting only the operator is enough to use it (its target is surfaced
+// automatically).
+import oplib.{(^^)};
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;

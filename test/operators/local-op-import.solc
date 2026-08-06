@@ -1,0 +1,7 @@
+import std.{addWord};
+
+infixl 45 (+)  => addWord;
+
+contract Ops {
+  function main() -> word { 2 + 2 }
+}

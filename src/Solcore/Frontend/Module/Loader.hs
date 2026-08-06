@@ -20,9 +20,9 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
+import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles, sourceText)
 import Solcore.Frontend.Module.Identity qualified as Mod
-import Solcore.Frontend.Parser.OperatorScan (crossOperatorConflict, scanImports, scanOperators, scanRawOperators)
+import Solcore.Frontend.Parser.OperatorScan (associativityConflict, crossOperatorConflict, exportedOperators, scanImports, scanRawOperators)
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithOps)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
@@ -147,6 +147,9 @@ visit cfg moduleId sourcePath = do
     case crossOperatorConflict importedOpsTagged localTagged of
       Just (sym, l1, l2) -> throwError (operatorImportConflictDiagnostic sym l1 l2)
       Nothing -> pure ()
+    case associativityConflict (importedOpsTagged ++ localTagged) of
+      Just ((l1, o1), (l2, o2)) -> throwError (operatorAssociativityConflictDiagnostic o1 l1 o2 l2)
+      Nothing -> pure ()
     let importedOps = map snd importedOpsTagged
     parsed <- liftIO (parseCompUnitWithOps importedOps sourcePath content)
     cunit <- stripOperators <$> either throwError pure parsed
@@ -193,14 +196,18 @@ gatherImportedOperators ::
 gatherImportedOperators cfg currentModule currentSourcePath imps =
   concat <$> mapM fromImport imps
   where
-    fromImport imp =
-      ( do
-          (_, targetPath) <- resolveImportPath cfg currentModule currentSourcePath imp
-          c <- liftIO (readFile targetPath)
-          let label = Mod.modulePathDisplay (importModule imp)
-          pure [(label, od) | od <- selectImportedOperators imp (scanOperators c)]
-      )
-        `catchError` const (pure [])
+    -- A resolution error here (e.g. a mistyped or missing module) is *not*
+    -- swallowed: it must surface as the import diagnostic. Swallowing it would
+    -- leave the imported operators out of scope and turn a clear "module not
+    -- found" into a wall of unknown-operator parse errors during the main parse,
+    -- which happens before the import is re-resolved.
+    fromImport imp = do
+      (_, targetPath) <- resolveImportPath cfg currentModule currentSourcePath imp
+      c <- liftIO (readFile targetPath)
+      let label = Mod.modulePathDisplay (importModule imp)
+      -- Gate by the module's export list first (only exported operators are
+      -- visible), then by this import's selector.
+      pure [(label, od) | od <- selectImportedOperators imp (exportedOperators c)]
 
 -- Diagnostic for an operator symbol declared with different meanings in two
 -- modules reachable from the current one (two imports, or an import and the
@@ -214,8 +221,108 @@ operatorImportConflictDiagnostic sym label1 label2 =
     ["declared in " ++ label1, "and in " ++ label2]
     ["import only one of the declarations, make them identical, or rename an operator"]
 
+-- Diagnostic for two infix operators that share a precedence level but were
+-- declared with different associativities. makeExprParser handles one precedence
+-- level with a single associativity, so such a mix parses inconsistently; it is
+-- rejected here at load time (as Haskell rejects it at declaration time).
+operatorAssociativityConflictDiagnostic :: OperatorDecl -> String -> OperatorDecl -> String -> String
+operatorAssociativityConflictDiagnostic o1 label1 o2 label2 =
+  loaderDiagnostic
+    "SC0124"
+    ( "operators ("
+        ++ opSymbol o1
+        ++ ") and ("
+        ++ opSymbol o2
+        ++ ") share precedence "
+        ++ show (opPrec o1)
+        ++ " but disagree on associativity"
+    )
+    [ "(" ++ opSymbol o1 ++ ") is " ++ fixityKeyword (opFixity o1) ++ ", declared in " ++ label1,
+      "(" ++ opSymbol o2 ++ ") is " ++ fixityKeyword (opFixity o2) ++ ", declared in " ++ label2
+    ]
+    [ "operators sharing a precedence level must all use the same associativity",
+      "give them different precedences, or declare them with the same associativity"
+    ]
+
+fixityKeyword :: OpFixity -> String
+fixityKeyword OpInfixL = "infixl"
+fixityKeyword OpInfixR = "infixr"
+fixityKeyword OpInfixN = "infix"
+fixityKeyword OpPrefix = "prefix"
+fixityKeyword OpPostfix = "postfix"
+
+-- Filter the operators declared by an imported module according to the import's
+-- selector, so an operator is brought into scope only when the import actually
+-- selects it:
+--   import M;            -- all of M's operators
+--   import M.{*};        -- all of M's operators
+--   import M.{(^^), f};  -- only the listed operators (here (^^))
+--   import M.{f};        -- no operators
+--   import M as N;       -- no operators (an operator cannot be qualified)
 selectImportedOperators :: Import -> [OperatorDecl] -> [OperatorDecl]
-selectImportedOperators _ ops = ops
+selectImportedOperators (ImportModule _) ops = ops
+selectImportedOperators (ImportAlias _ _) _ = []
+selectImportedOperators (ImportOnly _ (SelectItems entries _)) ops
+  | any isSelectAll entries = ops
+  | otherwise = filter ((`elem` selectedSyms) . opSymbol) ops
+  where
+    isSelectAll SelectAllItems = True
+    isSelectAll _ = False
+    selectedSyms = [sym | SelectOperator sym <- entries]
+
+-- The name that must be in scope for a use of an operator whose target is
+-- `target` to resolve after desugaring: the target itself when unqualified (a
+-- free function, e.g. `pow`), or the outermost qualifier when qualified (the
+-- class that owns a method target, e.g. `Add` for `Add.add`).
+operatorTargetRoot :: Name -> Name
+operatorTargetRoot (QualName n _) = operatorTargetRoot n
+operatorTargetRoot n = n
+
+-- Identity import bindings for the target functions of the operators an import
+-- brings into scope. A user-defined operator desugars to a call of its target
+-- function (`3 ^^ 4` becomes `pow(3, 4)`), so that target must be importable
+-- whenever the operator is, even when the importer selected only the operator
+-- (`import M.{(^^)}`) or hid the target (`import M.{*} hiding {and}`). These
+-- bindings surface the target independently of the import's item selector, so a
+-- user-defined operator is self-contained: importing it is enough to use it.
+operatorTargetImportBindings :: ModuleGraph -> Import -> Mod.ModuleId -> Either String [(Name, Name)]
+operatorTargetImportBindings graph imp modulePath = do
+  src <- moduleSourceText graph modulePath
+  let targets =
+        uniqueNames
+          (map (operatorTargetRoot . opFunction) (selectImportedOperators imp (exportedOperators src)))
+  pure [(t, t) | t <- targets]
+
+-- Merge selector bindings with the operator-target bindings, keeping a selector
+-- binding when it already covers a target (so an explicitly imported or aliased
+-- target is not doubled or overridden).
+--
+-- The operator-target scan (operatorTargetImportBindings re-scans the imported
+-- module's source) is skipped unless it can add anything: a plain `import M.{*}`
+-- already binds every exported name, so its operator targets are present via the
+-- selector; only an explicit operator selection (`import M.{(^^)}`) or a
+-- wildcard that hides a name (`import M.{*} hiding {and}`) needs the scan.
+withOperatorTargetBindings :: ModuleGraph -> Import -> Mod.ModuleId -> [(Name, Name)] -> Either String [(Name, Name)]
+withOperatorTargetBindings graph imp modulePath bindings
+  | not (importNeedsOperatorTargets imp) = pure bindings
+  | otherwise = do
+      opBindings <- operatorTargetImportBindings graph imp modulePath
+      let existingSources = Set.fromList (map fst bindings)
+      pure (bindings ++ [b | b@(s, _) <- opBindings, s `Set.notMember` existingSources])
+
+importNeedsOperatorTargets :: Import -> Bool
+importNeedsOperatorTargets (ImportOnly _ (SelectItems entries hidden)) =
+  any isSelectOperator entries || (not (null hidden) && any isSelectAll entries)
+  where
+    isSelectOperator (SelectOperator _) = True
+    isSelectOperator _ = False
+    isSelectAll SelectAllItems = True
+    isSelectAll _ = False
+importNeedsOperatorTargets _ = False
+
+moduleSourceText :: ModuleGraph -> Mod.ModuleId -> Either String String
+moduleSourceText graph modulePath =
+  sourceText . loadedSource <$> lookupLoadedModuleEntry graph modulePath
 
 stripOperators :: CompUnit -> CompUnit
 stripOperators (CompUnit imps ds) =
@@ -235,11 +342,12 @@ stripOperators (CompUnit imps ds) =
     isExportOp (ExportOperator _) = True
     isExportOp _ = False
 
-    stripImportOps (ImportOnly p (SelectItems es hs)) =
-      ImportOnly p (SelectItems (filter (not . isSelectOp) es) hs)
+    -- Operator selector entries (`import M.{(^^)}`) are kept: name resolution
+    -- filters them out itself (NameResolution.resolveItemSelector), and the
+    -- loader needs them to surface each imported operator's target function
+    -- (operatorTargetImportBindings). Only top-level, contract, and export
+    -- operator declarations are stripped.
     stripImportOps i = i
-    isSelectOp (SelectOperator _) = True
-    isSelectOp _ = False
 
 resolveModuleReference ::
   LoaderConfig ->
@@ -1746,7 +1854,8 @@ validationImportedDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ selector -> do
       publicDecls <- publicTopDeclsForModule graph modulePath
-      bindings <- selectedImportBindingsFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+      selectorBindings <- selectedImportBindingsFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+      bindings <- withOperatorTargetBindings graph imp modulePath selectorBindings
       pure (mapMaybe toValidationImportStub (mapMaybe (selectImportedTopDecl bindings) publicDecls))
     ImportModule _ ->
       Right []
@@ -1812,7 +1921,8 @@ typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
     importOnlyDecls qualifier selector = do
       publicDecls <- publicTopDeclsForModule graph modulePath
       supportDecls <- typeCheckSupportNonFunctionDecls graph modulePath
-      bindings <- selectedImportBindingsFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+      selectorBindings <- selectedImportBindingsFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+      bindings <- withOperatorTargetBindings graph imp modulePath selectorBindings
       let selectedTypeRenameMap = selectedImportTypeRenameMap publicDecls bindings
       let selectedPublicDecls = mapMaybe (selectImportedTopDecl bindings) publicDecls
           typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls

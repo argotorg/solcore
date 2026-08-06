@@ -5,7 +5,7 @@ where
 
 import Common.LightYear
 import Control.Monad.Combinators.Expr
-import Data.List (groupBy, sortOn)
+import Data.List (groupBy, isPrefixOf, sortOn)
 import Data.Ord (Down (..))
 import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Lexer.SolcoreLexer
@@ -64,13 +64,15 @@ mergedOpTable ops =
   map (map snd)
     . groupBy (\a b -> fst a == fst b)
     . sortOn (Down . fst)
-    $ map userRow ops
+    $ map (userRow ops) ops
 
 -- Turn a user operator declaration into a table row. A use of the operator is
 -- desugared to a plain call of the bound function, so name resolution and the
--- rest of the pipeline handle it like any other call.
-userRow :: OperatorDecl -> (Int, Operator Parser Exp)
-userRow od@(OperatorDecl fix prec _ fun) =
+-- rest of the pipeline handle it like any other call. The full set of operators
+-- in scope is threaded through so the symbol parser can reason about longer
+-- operators and operator-using match patterns.
+userRow :: [OperatorDecl] -> OperatorDecl -> (Int, Operator Parser Exp)
+userRow ops od@(OperatorDecl fix prec _ fun) =
   ( prec,
     case fix of
       OpInfixL -> InfixL (mkBin <$ opTok)
@@ -80,28 +82,43 @@ userRow od@(OperatorDecl fix prec _ fun) =
       OpPostfix -> Postfix (mkPre <$ opTok)
   )
   where
-    opTok = try (opSymP od)
+    opTok = try (opSymP ops od)
     mkBin l r = locatedExpFrom [sourceSpanOf l, sourceSpanOf r] (ExpName Nothing fun [l, r])
     mkPre e = locatedExpFrom [sourceSpanOf e] (ExpName Nothing fun [e])
 
--- Match an exact operator symbol under a maximal-munch guard. A symbolic
--- operator must not be a prefix of a longer operator (`^^` is matched whole,
--- not as `^` then `^`), so it must not be followed by another operator
--- character. An identifier operator (a postfix unit suffix like `ether`) must
--- not be a prefix of a longer identifier (`ether` must not match inside
--- `ethereum`), so it must not be followed by an identifier character.
--- The `|` symbol additionally must not be a match-arm separator (`| pat => …`):
--- the guard runs after lexeme consumed the trailing space, so patListP
--- starts on the pattern.
-opSymP :: OperatorDecl -> Parser String
-opSymP (OperatorDecl _ _ sym _) =
+-- Match an exact operator symbol under a maximal-munch guard, consulting every
+-- operator in scope. A symbolic operator must not be consumed when the following
+-- characters would complete either a longer declared operator (`^^` is matched
+-- whole, not as `^` then `^`, when both are declared) or an assignment token
+-- (`+` before `=` is the compound assignment `+=`, not the operator `+`). It may
+-- still be immediately followed by an unrelated operator: `a & ~b` parses when
+-- no `&~` operator is declared. An identifier operator (a postfix unit suffix
+-- like `ether`) must not be a prefix of a longer identifier (`ether` must not
+-- match inside `ethereum`), so it must not be followed by an identifier
+-- character. The `|` symbol additionally must not be a match-arm separator
+-- (`| pat => …`): the guard parses the arm pattern with the operators in scope,
+-- so operator-using patterns (e.g. `comptime 1 + 1`) are recognised rather than
+-- misparsed as bitwise-or.
+opSymP :: [OperatorDecl] -> OperatorDecl -> Parser String
+opSymP ops (OperatorDecl _ _ sym _) =
   lexeme (string sym <* munchGuard) <* matchArmGuard
   where
     munchGuard
-      | all isOpChar sym = notFollowedBy (satisfy isOpChar)
+      | all isOpChar sym = notFollowedBy longerContinuation
       | otherwise = notFollowedBy (alphaNumChar <|> char '_')
+    -- Continuations that must block this symbol: the '=' of an assignment or
+    -- compound-assignment token, and the tail of any longer symbolic operator
+    -- that has `sym` as a strict prefix.
+    longerContinuation = choice ((() <$ char '=') : map (\suf -> () <$ string suf) longerSuffixes)
+    longerSuffixes =
+      [ drop (length sym) s
+      | OperatorDecl _ _ s _ <- ops,
+        all isOpChar s,
+        s /= sym,
+        sym `isPrefixOf` s
+      ]
     matchArmGuard
-      | sym == "|" = notFollowedBy (try (patListP [] *> symbol "=>"))
+      | sym == "|" = notFollowedBy (try (patListP ops *> symbol "=>"))
       | otherwise = pure ()
 
 postfixP :: [OperatorDecl] -> BodyP -> Parser Exp
