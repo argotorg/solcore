@@ -165,7 +165,7 @@ genStmt (SReturn expr) = do
       resultLoc <- lookupVar "_result"
       let stmts' = copyLocs resultLoc loc
       pure (stmts ++ stmts' ++ [YLeave])
-genStmt (SBlock stmts) = withLocalEnv do genStmts stmts
+genStmt (SBlock stmts) = ((:[]) . YBlock) <$> withLocalEnv do genStmts stmts
 genStmt (SMatch ty e alts) = do
   (scrutStmts, scrutineeLoc) <- genExpr e
   -- debug ["> SMatch: ", show e , ":", show sty, " @ " , show scrutineeLoc]
@@ -320,8 +320,17 @@ genAlt _ _ alt = error ("genAlt unimplemented for: " ++ show alt)
 
 allocVar :: Hull.Name -> Type -> TM [YulStmt]
 allocVar name TWord = do
-  insertVar name (LocNamed name)
-  pure [YulAlloc (yulVarName name)]
+  -- Yul rejects redeclaring a name that is still in an enclosing scope,
+  -- even inside a nested block, so a shadowing declaration needs a fresh
+  -- Yul-level name. References resolve through VarEnv (keyed by the Hull
+  -- name), so this renaming is invisible to the rest of translation.
+  vars <- getVarEnv
+  yname <-
+    if Map.member name vars
+      then (\i -> name ++ "$" ++ show i) <$> freshId
+      else pure name
+  insertVar name (LocNamed yname)
+  pure [YulAlloc (yulVarName yname)]
 allocVar name typ = do
   (stmts, loc) <- hullAlloc typ
   insertVar name loc
