@@ -30,6 +30,13 @@ yExp op args = YExp (YCall (Name op) args)
 st :: [(String, Integer)] -> YulState
 st = Map.fromList . map (\(n, v) -> (Name n, v))
 
+-- A name→literal substitution map, as built from a VEnv before an asm block.
+mkSubst :: [(String, Integer)] -> Map.Map Name YulExp
+mkSubst = Map.fromList . map (\(n, v) -> (Name n, YLit (YulNumber v)))
+
+yLet :: String -> YulExp -> YulStmt
+yLet n e = YLet [Name n] (Just e)
+
 -- Run an EvalM action in non-comptime mode (memory ops inactive).
 runPure :: EvalM a -> a
 runPure m = fst $ runEvalM (EvalEnv Map.empty Set.empty False) defaultFuel m
@@ -56,6 +63,7 @@ yulEvalTests =
       evalYulOpTests,
       evalYulExpTests,
       evalYulBlockTests,
+      substYulBlockTests,
       memoryHelperTests,
       memoryEvalTests,
       asmIsInterpretableTests
@@ -268,6 +276,93 @@ evalYulBlockTests =
       testCase "unknown variable propagates to Nothing" $
         runPure (evalYulBlock Map.empty [yAssign "rw" (yCall "add" [yIdent "x", yNum 1])])
           @?= Nothing
+    ]
+
+-----------------------------------------------------------------------
+-- substYulBlock: scope- and flow-aware inlining of comptime literals
+-----------------------------------------------------------------------
+
+substYulBlockTests :: TestTree
+substYulBlockTests =
+  testGroup
+    "substYulBlock (scope/flow-aware substitution)"
+    [ testCase "an unassigned variable is still inlined" $
+        substYulBlock
+          (mkSubst [("x", 0)])
+          [yAssign "z" (yCall "add" [yIdent "x", yNum 1])]
+          @?= [yAssign "z" (yCall "add" [yNum 0, yNum 1])],
+      -- Flow: after `x := 5`, `x` holds a new runtime value, so the pre-block
+      -- literal must not be inlined into the following `add(x, 1)`.
+      testCase "a reassigned variable is not inlined downstream" $
+        let block =
+              [ yAssign "x" (yNum 5),
+                yAssign "y" (yCall "add" [yIdent "x", yNum 1])
+              ]
+         in substYulBlock (mkSubst [("x", 0), ("y", 0)]) block @?= block,
+      -- Shadowing: the asm-local `let i` owns the name for the rest of the
+      -- block, so `add(i, 1)` must read the local, not the outer literal.
+      testCase "a plain asm-local let shadows the outer literal" $
+        let block =
+              [ yLet "i" (yNum 7),
+                yAssign "r" (yCall "add" [yIdent "i", yNum 1])
+              ]
+         in substYulBlock (mkSubst [("i", 0)]) block @?= block,
+      -- ...but the let's initialiser is still evaluated in the outer scope.
+      testCase "a let initialiser is inlined from the outer scope" $
+        substYulBlock
+          (mkSubst [("x", 9)])
+          [yLet "i" (yIdent "x"), yAssign "r" (yIdent "i")]
+          @?= [yLet "i" (yNum 9), yAssign "r" (yIdent "i")],
+      -- The reported infinite-loop case: the for-counter is `let`-bound in the
+      -- pre-block, so neither the condition nor the body may inline the outer 0.
+      testCase "a for-loop counter shadowed by its pre-let is not inlined" $
+        let block =
+              [ YFor
+                  [yLet "i" (yNum 0)]
+                  (yCall "lt" [yIdent "i", yNum 3])
+                  [yAssign "i" (yCall "add" [yIdent "i", yNum 1])]
+                  [yAssign "r" (yIdent "i")]
+              ]
+         in substYulBlock (mkSubst [("i", 0)]) block @?= block,
+      -- A variable assigned inside the loop is not loop-invariant either.
+      testCase "a variable assigned in a for-body is not inlined into it" $
+        let block =
+              [ YFor
+                  []
+                  (yCall "lt" [yIdent "n", yNum 3])
+                  []
+                  [yAssign "s" (yCall "add" [yIdent "s", yNum 1])]
+              ]
+         in substYulBlock (mkSubst [("s", 0)]) block @?= block,
+      -- Function parameters and returns shadow within the body.
+      testCase "function parameters and returns shadow within the body" $
+        let block =
+              [ YFun
+                  (Name "f")
+                  [Name "a"]
+                  (Just [Name "r"])
+                  [yAssign "r" (yCall "add" [yIdent "a", yNum 1])]
+              ]
+         in substYulBlock (mkSubst [("a", 0), ("r", 0)]) block @?= block,
+      -- ...but a function definition does not disturb the enclosing scope: a
+      -- statement after it still sees the outer binding.
+      testCase "a function definition does not leak its shadowing outward" $
+        substYulBlock
+          (mkSubst [("a", 0)])
+          [ YFun (Name "f") [Name "a"] (Just [Name "r"]) [yAssign "r" (yIdent "a")],
+            yAssign "z" (yIdent "a")
+          ]
+          @?= [ YFun (Name "f") [Name "a"] (Just [Name "r"]) [yAssign "r" (yIdent "a")],
+                yAssign "z" (yNum 0)
+              ],
+      -- An assignment to an outer variable inside a nested block escapes and
+      -- invalidates the literal for statements after the block.
+      testCase "an assignment inside an if escapes the block" $
+        let block =
+              [ YIf (yIdent "flag") [yAssign "x" (yNum 5)],
+                yAssign "y" (yIdent "x")
+              ]
+         in substYulBlock (mkSubst [("x", 0)]) block @?= block
     ]
 
 -----------------------------------------------------------------------
