@@ -69,6 +69,7 @@ parserTests =
       scanLexicalTests,
       scanTargetTests,
       operatorAdjacencyTests,
+      unicodeOperatorTests,
       exportGatingTests
     ]
 
@@ -297,6 +298,40 @@ operatorAdjacencyTests =
     stmtR = stmtP richOps
     binR f a b = ExpName Nothing (Name f) [a, b]
     unR f a = ExpName Nothing (Name f) [a]
+
+-- Operator symbols may be built from Unicode mathematical-operator characters
+-- (U+2200..U+23FF), not only ASCII. They are scanned and parsed like ASCII
+-- symbols, including maximal munch of a multi-glyph symbol.
+unicodeOperatorTests :: TestTree
+unicodeOperatorTests =
+  testGroup
+    "Unicode operator symbols"
+    [ testCase "a single-glyph unicode operator symbol is scanned" $
+        assertEqual
+          "the unicode symbol is preserved"
+          ["⊕"]
+          (opSyms "infixl 60 (⊕) => addWord;"),
+      testCase "a multi-glyph unicode operator is scanned as one symbol" $
+        assertEqual
+          "both glyphs form a single operator"
+          ["∘∘"]
+          (opSyms "infixl 50 (∘∘) => compose2;"),
+      testCase "a unicode binary operator use desugars to a call" $
+        parsesAs expU "a ⊕ b" (binU "addWord" (var "a") (var "b")),
+      testCase "a single-glyph unicode operator parses next to its longer form" $
+        parsesAs expU "a ∘ b" (binU "compose1" (var "a") (var "b")),
+      testCase "maximal munch prefers the longer unicode operator" $
+        parsesAs expU "a ∘∘ b" (binU "compose2" (var "a") (var "b"))
+    ]
+  where
+    uniOps =
+      [ OperatorDecl OpInfixL 60 "⊕" (Name "addWord"),
+        OperatorDecl OpInfixL 50 "∘" (Name "compose1"),
+        OperatorDecl OpInfixL 50 "∘∘" (Name "compose2")
+      ]
+    expU = exprP uniOps (bodyP uniOps)
+    binU f a b = ExpName Nothing (Name f) [a, b]
+    opSyms = map (opSymbol . snd) . scanOperatorsLocated
 
 word :: Ty
 word = TyCon "word" []

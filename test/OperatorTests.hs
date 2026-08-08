@@ -17,6 +17,7 @@ operatorTests =
       lambdaTests,
       importTests,
       commentTests,
+      unicodeTests,
       errorTests
     ]
 
@@ -107,6 +108,14 @@ commentTests =
   testGroup
     "Operators in comments and strings are ignored"
     [ runOpSuccess "comments-and-strings-ok.solc"
+    ]
+
+unicodeTests :: TestTree
+unicodeTests =
+  testGroup
+    "Unicode operator symbols"
+    [ -- Binary (⊕, ⊗) and prefix (√) operators built from Unicode math symbols.
+      runOpSuccess "unicode-ops.solc"
     ]
 
 errorTests :: TestTree
