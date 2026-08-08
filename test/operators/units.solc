@@ -1,0 +1,42 @@
+// Solidity ether and time unit suffixes, implemented as postfix operators in
+// the standard library. `2 ether` desugars to `etherUnit(2)`, etc. The suffix
+// binds tighter than any other operator (precedence 100), so `2 ether + 1 wei`
+// is `(2 ether) + (1 wei)`.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+contract Units {
+  // Ether and time units on `word`.
+  function onWord() -> word {
+    let a : word = 1 ether;      // 1e18
+    let b : word = 3 gwei;       // 3e9
+    let c : word = 5 wei;        // 5
+    let d : word = 2 minutes;    // 120
+    let e : word = 1 hours;      // 3600
+    let f : word = 1 days;       // 86400
+    let g : word = 1 weeks;      // 604800
+    let h : word = 30 seconds;   // 30
+    // The suffix binds to the literal first, before (+).
+    return a + b + c + d + e + f + g + h;
+  }
+
+  // The unit operators are polymorphic, so they also work at `uint256`.
+  function onUint() -> uint256 {
+    let x : uint256 = 2 ether;
+    let y : uint256 = 5 minutes;
+    return x + y;
+  }
+
+  // Maximal munch: `ether` must not be matched inside the identifier
+  // `etherPrice`; it stays a plain variable.
+  function guard() -> word {
+    let etherPrice : word = 42;
+    return etherPrice;
+  }
+
+  function main() -> word {
+    return onWord();
+  }
+}

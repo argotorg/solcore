@@ -8,6 +8,7 @@ import HullCases
 import LocationTests
 import MatchCompilerTests
 import ModuleTypeCheckTests
+import OperatorTests
 import ParserTests
 import SpecialiseTests
 import Test.Tasty
@@ -40,5 +41,6 @@ tests =
       matchTests,
       yulEvalTests,
       hullTests,
-      specialiseTests
+      specialiseTests,
+      operatorTests
     ]

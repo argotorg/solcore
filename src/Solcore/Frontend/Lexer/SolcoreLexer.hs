@@ -13,6 +13,8 @@ module Solcore.Frontend.Lexer.SolcoreLexer
     comma,
     semicolon,
     colon,
+    isOpChar,
+    parenOpP,
   )
 where
 
@@ -69,8 +71,39 @@ reservedWords =
     "return",
     "lam",
     "type",
-    "pragma"
+    "pragma",
+    "infixl",
+    "infixr",
+    "infix",
+    "prefix",
+    "postfix"
   ]
+
+isOpChar :: Char -> Bool
+isOpChar c =
+  c `elem` ("+-*/%<>=!&|^~#?" :: String)
+    || (c >= '\x2200' && c <= '\x23FF')
+
+parenOpP :: Parser String
+parenOpP = lexeme $ do
+  _ <- char '('
+  sc
+  sym <- some (satisfy isOpChar) <|> identSym
+  sc
+  _ <- char ')'
+  pure sym
+  where
+    -- An operator symbol is normally made of operator characters (e.g. `+`,
+    -- `^^`). It may also be an alphabetic identifier, used for postfix unit
+    -- suffixes like `(ether)` or `(minutes)`. The two are disjoint (letters are
+    -- never operator characters), so the choice is unambiguous. A reserved word
+    -- (`if`, `let`, `match`, …) is not accepted as an operator symbol, since it
+    -- would wreck parsing wherever the keyword appears.
+    identSym = do
+      w <- (:) <$> letterChar <*> many identChar
+      if w `elem` reservedWords
+        then fail ("reserved word used as operator symbol: " ++ w)
+        else pure w
 
 identifier :: Parser String
 identifier = lexeme go <?> "identifier"

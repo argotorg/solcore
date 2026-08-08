@@ -85,6 +85,7 @@ library
       Solcore.Frontend.Module.Loader
       Solcore.Frontend.Parser.Decl
       Solcore.Frontend.Parser.Expr
+      Solcore.Frontend.Parser.OperatorScan
       Solcore.Frontend.Parser.Patterns
       Solcore.Frontend.Parser.SolcoreParser
       Solcore.Frontend.Parser.SolcoreTypes
@@ -197,6 +198,7 @@ test-suite sol-core-tests
     LocationTests
     MatchCompilerTests
     ModuleTypeCheckTests
+    OperatorTests
     SpecialiseTests
     YulEvalTests
     YulParserTests

@@ -1,6 +1,6 @@
 // Bare integer literals with integer class instances from std.
 
-import std.{Eq,Ord,lt,Add,Sub};
+import std.{Eq,Ord,lt,Add,Sub, (+), (-), (<)};
 
 function fib(comptime n : integer) -> comptime integer {
   if (n < 2) {

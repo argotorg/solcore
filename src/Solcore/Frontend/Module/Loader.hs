@@ -20,9 +20,10 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
+import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles, sourceText)
 import Solcore.Frontend.Module.Identity qualified as Mod
-import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
+import Solcore.Frontend.Parser.OperatorScan (associativityConflict, crossOperatorConflict, exportedOperators, scanImports, scanRawOperators)
+import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithOps)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 import System.Directory (doesFileExist, makeAbsolute)
@@ -141,8 +142,17 @@ visit cfg moduleId sourcePath = do
     modify (\st -> st {loadingModules = Set.insert moduleId (loadingModules st)})
     content <- liftIO (readFile sourcePath)
     let source = makeSourceFile sourcePath content
-    parsed <- liftIO (parseCompUnitWithPath sourcePath content)
-    cunit <- either throwError pure parsed
+    importedOpsTagged <- gatherImportedOperators cfg moduleId sourcePath (scanImports content)
+    let localTagged = [("the current module", od) | od <- scanRawOperators content]
+    case crossOperatorConflict importedOpsTagged localTagged of
+      Just (sym, l1, l2) -> throwError (operatorImportConflictDiagnostic sym l1 l2)
+      Nothing -> pure ()
+    case associativityConflict (importedOpsTagged ++ localTagged) of
+      Just ((l1, o1), (l2, o2)) -> throwError (operatorAssociativityConflictDiagnostic o1 l1 o2 l2)
+      Nothing -> pure ()
+    let importedOps = map snd importedOpsTagged
+    parsed <- liftIO (parseCompUnitWithOps importedOps sourcePath content)
+    cunit <- stripOperators <$> either throwError pure parsed
     importedModules <- mapM (resolveImportPath cfg moduleId sourcePath) (imports cunit)
     exportedModules <-
       mapM (resolveModuleReference cfg moduleId sourcePath ExportReference) (exportModulePaths cunit)
@@ -176,6 +186,168 @@ resolveImportPath ::
 resolveImportPath cfg currentModule currentSourcePath imp =
   fmap (\(_, targetId, targetPath) -> (targetId, targetPath)) $
     resolveModuleReference cfg currentModule currentSourcePath ImportReference (importModule imp)
+
+gatherImportedOperators ::
+  LoaderConfig ->
+  Mod.ModuleId ->
+  FilePath ->
+  [Import] ->
+  StateT LoadState (ExceptT String IO) [(String, OperatorDecl)]
+gatherImportedOperators cfg currentModule currentSourcePath imps =
+  concat <$> mapM fromImport imps
+  where
+    -- A resolution error here (e.g. a mistyped or missing module) is *not*
+    -- swallowed: it must surface as the import diagnostic. Swallowing it would
+    -- leave the imported operators out of scope and turn a clear "module not
+    -- found" into a wall of unknown-operator parse errors during the main parse,
+    -- which happens before the import is re-resolved.
+    fromImport imp = do
+      (_, targetPath) <- resolveImportPath cfg currentModule currentSourcePath imp
+      c <- liftIO (readFile targetPath)
+      let label = Mod.modulePathDisplay (importModule imp)
+      -- Gate by the module's export list first (only exported operators are
+      -- visible), then by this import's selector.
+      pure [(label, od) | od <- selectImportedOperators imp (exportedOperators c)]
+
+-- Diagnostic for an operator symbol declared with different meanings in two
+-- modules reachable from the current one (two imports, or an import and the
+-- current module). Identical declarations reaching via several paths are not a
+-- conflict and are not reported here.
+operatorImportConflictDiagnostic :: String -> String -> String -> String
+operatorImportConflictDiagnostic sym label1 label2 =
+  loaderDiagnostic
+    "SC0123"
+    ("operator (" ++ sym ++ ") is declared incompatibly in more than one module")
+    ["declared in " ++ label1, "and in " ++ label2]
+    ["import only one of the declarations, make them identical, or rename an operator"]
+
+-- Diagnostic for two infix operators that share a precedence level but were
+-- declared with different associativities. makeExprParser handles one precedence
+-- level with a single associativity, so such a mix parses inconsistently; it is
+-- rejected here at load time (as Haskell rejects it at declaration time).
+operatorAssociativityConflictDiagnostic :: OperatorDecl -> String -> OperatorDecl -> String -> String
+operatorAssociativityConflictDiagnostic o1 label1 o2 label2 =
+  loaderDiagnostic
+    "SC0124"
+    ( "operators ("
+        ++ opSymbol o1
+        ++ ") and ("
+        ++ opSymbol o2
+        ++ ") share precedence "
+        ++ show (opPrec o1)
+        ++ " but disagree on associativity"
+    )
+    [ "(" ++ opSymbol o1 ++ ") is " ++ fixityKeyword (opFixity o1) ++ ", declared in " ++ label1,
+      "(" ++ opSymbol o2 ++ ") is " ++ fixityKeyword (opFixity o2) ++ ", declared in " ++ label2
+    ]
+    [ "operators sharing a precedence level must all use the same associativity",
+      "give them different precedences, or declare them with the same associativity"
+    ]
+
+fixityKeyword :: OpFixity -> String
+fixityKeyword OpInfixL = "infixl"
+fixityKeyword OpInfixR = "infixr"
+fixityKeyword OpInfixN = "infix"
+fixityKeyword OpPrefix = "prefix"
+fixityKeyword OpPostfix = "postfix"
+
+-- Filter the operators declared by an imported module according to the import's
+-- selector, so an operator is brought into scope only when the import actually
+-- selects it:
+--   import M;            -- all of M's operators
+--   import M.{*};        -- all of M's operators
+--   import M.{(^^), f};  -- only the listed operators (here (^^))
+--   import M.{f};        -- no operators
+--   import M as N;       -- no operators (an operator cannot be qualified)
+selectImportedOperators :: Import -> [OperatorDecl] -> [OperatorDecl]
+selectImportedOperators (ImportModule _) ops = ops
+selectImportedOperators (ImportAlias _ _) _ = []
+selectImportedOperators (ImportOnly _ (SelectItems entries _)) ops
+  | any isSelectAll entries = ops
+  | otherwise = filter ((`elem` selectedSyms) . opSymbol) ops
+  where
+    isSelectAll SelectAllItems = True
+    isSelectAll _ = False
+    selectedSyms = [sym | SelectOperator sym <- entries]
+
+-- The name that must be in scope for a use of an operator whose target is
+-- `target` to resolve after desugaring: the target itself when unqualified (a
+-- free function, e.g. `pow`), or the outermost qualifier when qualified (the
+-- class that owns a method target, e.g. `Add` for `Add.add`).
+operatorTargetRoot :: Name -> Name
+operatorTargetRoot (QualName n _) = operatorTargetRoot n
+operatorTargetRoot n = n
+
+-- Identity import bindings for the target functions of the operators an import
+-- brings into scope. A user-defined operator desugars to a call of its target
+-- function (`3 ^^ 4` becomes `pow(3, 4)`), so that target must be importable
+-- whenever the operator is, even when the importer selected only the operator
+-- (`import M.{(^^)}`) or hid the target (`import M.{*} hiding {and}`). These
+-- bindings surface the target independently of the import's item selector, so a
+-- user-defined operator is self-contained: importing it is enough to use it.
+operatorTargetImportBindings :: ModuleGraph -> Import -> Mod.ModuleId -> Either String [(Name, Name)]
+operatorTargetImportBindings graph imp modulePath = do
+  src <- moduleSourceText graph modulePath
+  let targets =
+        uniqueNames
+          (map (operatorTargetRoot . opFunction) (selectImportedOperators imp (exportedOperators src)))
+  pure [(t, t) | t <- targets]
+
+-- Merge selector bindings with the operator-target bindings, keeping a selector
+-- binding when it already covers a target (so an explicitly imported or aliased
+-- target is not doubled or overridden).
+--
+-- The operator-target scan (operatorTargetImportBindings re-scans the imported
+-- module's source) is skipped unless it can add anything: a plain `import M.{*}`
+-- already binds every exported name, so its operator targets are present via the
+-- selector; only an explicit operator selection (`import M.{(^^)}`) or a
+-- wildcard that hides a name (`import M.{*} hiding {and}`) needs the scan.
+withOperatorTargetBindings :: ModuleGraph -> Import -> Mod.ModuleId -> [(Name, Name)] -> Either String [(Name, Name)]
+withOperatorTargetBindings graph imp modulePath bindings
+  | not (importNeedsOperatorTargets imp) = pure bindings
+  | otherwise = do
+      opBindings <- operatorTargetImportBindings graph imp modulePath
+      let existingSources = Set.fromList (map fst bindings)
+      pure (bindings ++ [b | b@(s, _) <- opBindings, s `Set.notMember` existingSources])
+
+importNeedsOperatorTargets :: Import -> Bool
+importNeedsOperatorTargets (ImportOnly _ (SelectItems entries hidden)) =
+  any isSelectOperator entries || (not (null hidden) && any isSelectAll entries)
+  where
+    isSelectOperator (SelectOperator _) = True
+    isSelectOperator _ = False
+    isSelectAll SelectAllItems = True
+    isSelectAll _ = False
+importNeedsOperatorTargets _ = False
+
+moduleSourceText :: ModuleGraph -> Mod.ModuleId -> Either String String
+moduleSourceText graph modulePath =
+  sourceText . loadedSource <$> lookupLoadedModuleEntry graph modulePath
+
+stripOperators :: CompUnit -> CompUnit
+stripOperators (CompUnit imps ds) =
+  CompUnit (map stripImportOps imps) (concatMap stripTopDeclOps ds)
+  where
+    stripTopDeclOps (TOperatorDecl _) = []
+    stripTopDeclOps (TContr (Contract n ps cds)) =
+      [TContr (Contract n ps (filter (not . isContractOp) cds))]
+    stripTopDeclOps (TExportDecl e) = [TExportDecl (stripExportOps e)]
+    stripTopDeclOps d = [d]
+
+    isContractOp (COperatorDecl _) = True
+    isContractOp _ = False
+
+    stripExportOps (ExportList specs) = ExportList (filter (not . isExportOp) specs)
+    stripExportOps e = e
+    isExportOp (ExportOperator _) = True
+    isExportOp _ = False
+
+    -- Operator selector entries (`import M.{(^^)}`) are kept: name resolution
+    -- filters them out itself (NameResolution.resolveItemSelector), and the
+    -- loader needs them to surface each imported operator's target function
+    -- (operatorTargetImportBindings). Only top-level, contract, and export
+    -- operator declarations are stripped.
+    stripImportOps i = i
 
 resolveModuleReference ::
   LoaderConfig ->
@@ -620,6 +792,7 @@ selectedImportBindingsFromAvailable available (SelectItems items hidden) =
     expand SelectAllItems = [(itemName, itemName) | itemName <- available]
     expand (SelectItem itemName) = [(itemName, itemName)]
     expand (SelectItemAs itemName aliasName) = [(itemName, aliasName)]
+    expand (SelectOperator _) = [] -- operator selectors are handled separately; not name imports
 
 uniqueBindingsByLocal :: [(Name, Name)] -> [(Name, Name)]
 uniqueBindingsByLocal =
@@ -845,7 +1018,8 @@ validatePublicInterfaces graph groupModules interfaces =
           pure ()
         ExportModuleAll path ->
           ensureRemoteModuleVisible moduleId path
-
+        ExportOperator _ ->
+          pure () -- operator exports carry no name to validate
     ensureRemoteModuleVisible moduleId path = do
       _ <- lookupModuleReference graph moduleId path
       pure ()
@@ -899,6 +1073,9 @@ expandExportSpecFixed ::
   CompUnit ->
   ExportSpec ->
   Either String ModulePublicInterface
+expandExportSpecFixed _graph _groupModules _currentInterfaces _currentModule _sourcePath _unit (ExportOperator _) =
+  -- Operator exports contribute no name-level items to the public interface.
+  pure emptyPublicInterface
 expandExportSpecFixed graph groupModules currentInterfaces currentModule sourcePath unit (ExportName itemName) = do
   refs <- visibleExportRefsForNameFixed graph groupModules currentInterfaces currentModule unit itemName
   ensureVisibleExportExists sourcePath itemName refs
@@ -1321,6 +1498,7 @@ topDeclNames (TClassDef (Class _ _ n _ _ _)) = [n]
 topDeclNames (TContr (Contract n _ _)) = [n]
 topDeclNames (TDataDef (DataTy n _ _ _)) = [n]
 topDeclNames (TInstDef _) = []
+topDeclNames (TOperatorDecl _) = []
 topDeclNames (TExportDecl _) = []
 topDeclNames (TPragmaDecl _) = []
 
@@ -1411,24 +1589,6 @@ renameBodyTypeRefs renameMap =
 renameStmtTypeRefs :: Map Name Name -> Stmt -> Stmt
 renameStmtTypeRefs renameMap (Assign lhs rhs) =
   Assign (renameExpTypeRefs renameMap lhs) (renameExpTypeRefs renameMap rhs)
-renameStmtTypeRefs renameMap (StmtPlusEq e1 e2) =
-  StmtPlusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtMinusEq e1 e2) =
-  StmtMinusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtTimesEq e1 e2) =
-  StmtTimesEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtDivideEq e1 e2) =
-  StmtDivideEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtBXorEq e1 e2) =
-  StmtBXorEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtBAndEq e1 e2) =
-  StmtBAndEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtBOrEq e1 e2) =
-  StmtBOrEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtModEq e1 e2) =
-  StmtModEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameStmtTypeRefs renameMap (StmtBNotEq e1) =
-  StmtBNotEq (renameExpTypeRefs renameMap e1)
 renameStmtTypeRefs renameMap (Let ct n mt me) =
   Let ct n (renameTyTypeRefs renameMap <$> mt) (renameExpTypeRefs renameMap <$> me)
 renameStmtTypeRefs renameMap (StmtExp e) =
@@ -1512,42 +1672,6 @@ renameExpTypeRefs renameMap (ExpIndexed e1 e2) =
   ExpIndexed (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpArray es) =
   ExpArray (map (renameExpTypeRefs renameMap) es)
-renameExpTypeRefs renameMap (ExpPlus e1 e2) =
-  ExpPlus (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpMinus e1 e2) =
-  ExpMinus (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpTimes e1 e2) =
-  ExpTimes (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpDivide e1 e2) =
-  ExpDivide (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpModulo e1 e2) =
-  ExpModulo (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpBXor e1 e2) =
-  ExpBXor (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpBAnd e1 e2) =
-  ExpBAnd (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpBOr e1 e2) =
-  ExpBOr (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpLT e1 e2) =
-  ExpLT (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpGT e1 e2) =
-  ExpGT (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpLE e1 e2) =
-  ExpLE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpGE e1 e2) =
-  ExpGE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpEE e1 e2) =
-  ExpEE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpNE e1 e2) =
-  ExpNE (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpLAnd e1 e2) =
-  ExpLAnd (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpLOr e1 e2) =
-  ExpLOr (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
-renameExpTypeRefs renameMap (ExpLNot e) =
-  ExpLNot (renameExpTypeRefs renameMap e)
-renameExpTypeRefs renameMap (ExpBNot e) =
-  ExpBNot (renameExpTypeRefs renameMap e)
 renameExpTypeRefs renameMap (ExpCond e1 e2 e3) =
   ExpCond
     (renameExpTypeRefs renameMap e1)
@@ -1597,6 +1721,7 @@ renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body payable))
         (renameBodyTypeRefs renameMap body)
         payable
     )
+renameContractDeclTypeRefs _ d@(COperatorDecl _) = d -- no type refs in an operator declaration
 
 renameClassTypeRefs :: Map Name Name -> Class -> Class
 renameClassTypeRefs renameMap (Class bvs ctx n pvs mv sigs) =
@@ -1729,7 +1854,8 @@ validationImportedDecls graph (imp, modulePath) =
   case imp of
     ImportOnly _ selector -> do
       publicDecls <- publicTopDeclsForModule graph modulePath
-      bindings <- selectedImportBindingsFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+      selectorBindings <- selectedImportBindingsFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+      bindings <- withOperatorTargetBindings graph imp modulePath selectorBindings
       pure (mapMaybe toValidationImportStub (mapMaybe (selectImportedTopDecl bindings) publicDecls))
     ImportModule _ ->
       Right []
@@ -1750,6 +1876,7 @@ toValidationImportStub (TDataDef (DataTy n _ cs _)) =
 toValidationImportStub (TInstDef _) = Nothing
 toValidationImportStub (TExportDecl _) = Nothing
 toValidationImportStub (TPragmaDecl _) = Nothing
+toValidationImportStub (TOperatorDecl _) = Nothing
 
 typeCheckQualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 typeCheckQualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
@@ -1794,7 +1921,8 @@ typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
     importOnlyDecls qualifier selector = do
       publicDecls <- publicTopDeclsForModule graph modulePath
       supportDecls <- typeCheckSupportNonFunctionDecls graph modulePath
-      bindings <- selectedImportBindingsFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+      selectorBindings <- selectedImportBindingsFromAvailable (uniqueNames (concatMap topDeclNames publicDecls)) selector
+      bindings <- withOperatorTargetBindings graph imp modulePath selectorBindings
       let selectedTypeRenameMap = selectedImportTypeRenameMap publicDecls bindings
       let selectedPublicDecls = mapMaybe (selectImportedTopDecl bindings) publicDecls
           typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
@@ -2041,6 +2169,7 @@ shadowImportedDecls localDecls =
           )
     filterDecl seen (TExportDecl _) = (seen, Nothing)
     filterDecl seen (TPragmaDecl _) = (seen, Nothing)
+    filterDecl seen (TOperatorDecl _) = (seen, Nothing)
 
 filterImportedInstanceConflicts :: [TopDecl] -> [TopDecl] -> [TopDecl]
 filterImportedInstanceConflicts localDecls =
@@ -2152,6 +2281,7 @@ selectTopDeclForExportRef itemRef (TDataDef (DataTy n ts cs ds))
 selectTopDeclForExportRef _ (TInstDef _) = Nothing
 selectTopDeclForExportRef _ (TExportDecl _) = Nothing
 selectTopDeclForExportRef _ (TPragmaDecl _) = Nothing
+selectTopDeclForExportRef _ (TOperatorDecl _) = Nothing
 
 filterVisibleConstructors :: [Name] -> [Constr] -> [Constr]
 filterVisibleConstructors visibleConstructors =
@@ -2385,6 +2515,7 @@ explicitSelectorNames (SelectItems items _) =
       SelectItem itemName -> [itemName]
       SelectItemAs itemName _ -> [itemName]
       SelectAllItems -> []
+      SelectOperator _ -> []
   ]
 
 explicitSelectorLocalNames :: ItemSelector -> [Name]
@@ -2395,6 +2526,7 @@ explicitSelectorLocalNames (SelectItems items _) =
       SelectItem itemName -> [itemName]
       SelectItemAs _ aliasName -> [aliasName]
       SelectAllItems -> []
+      SelectOperator _ -> []
   ]
 
 explicitExportSelectorNames :: ExportSelector -> [Name]

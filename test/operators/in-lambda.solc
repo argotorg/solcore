@@ -1,0 +1,20 @@
+// User-defined operator used inside a lambda body.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixl 70 (^^) => pow;
+
+function pow(b : word, e : word) -> word {
+  let r : word;
+  assembly { r := exp(b, e) }
+  return r;
+}
+
+contract InLambda {
+  function main() -> word {
+    let cube = lam(x : word) -> word { return x ^^ 3; };
+    return cube(4);    // 64
+  }
+}

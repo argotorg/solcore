@@ -1,0 +1,20 @@
+// Exercises the compound-assignment sugar that desugars through the operators
+// declared in the standard library: `*=`, `/=` (binary) and `~=` (the unary
+// in-place bitwise NOT, `x ~=` becomes `x = ~x`). The `~` prefix operator is
+// itself a std declaration (prefix 90 (~) => BitNot.bnot), so this also checks
+// the user-defined bnot operator end to end.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+contract CompoundAssign {
+  function main() -> word {
+    let x : word = 6;
+    x *= 4;        // x = x * 4  = 24
+    x /= 2;        // x = x / 2  = 12
+    let y : word = ~ x;   // prefix (~) bitwise NOT
+    y ~=;          // y = ~y, i.e. back to x = 12
+    return y;
+  }
+}

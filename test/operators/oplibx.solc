@@ -1,0 +1,11 @@
+// Library X: declares operator (<>) as infixl 50 => joinX.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixl 50 (<>) => joinX;
+
+export { joinX, (<>) };
+
+function joinX(a : word, b : word) -> word { return a; }

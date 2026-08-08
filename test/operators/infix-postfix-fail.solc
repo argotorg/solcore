@@ -1,0 +1,16 @@
+// Declaring the same symbol with two fixities is a compile error: `##` is
+// declared as both infix and postfix.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixl 50 (##) => binOp;
+postfix 60 (##) => postOp;
+
+function binOp(a : word, b : word) -> word { return a; }
+function postOp(a : word) -> word { return a; }
+
+contract InfixPostfix {
+  function main() -> word { return 3 ## 4; }
+}

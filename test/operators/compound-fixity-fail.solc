@@ -1,0 +1,23 @@
+// The unary compound assignment `x ~=` desugars to `x = ~x`, so its base
+// operator must be prefix/postfix (unary). Here `~` is declared infix, so using
+// it with `~=` would build a one-argument call to a two-argument operator: the
+// parser must reject it rather than emit an ill-formed call.
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixl 50 (~) => andWord;
+
+function andWord(a : word, b : word) -> word {
+  let r : word;
+  assembly { r := and(a, b) }
+  return r;
+}
+
+contract CompoundFixityFail {
+  function main() -> word {
+    let x : word = 6;
+    x ~=;
+    return x;
+  }
+}
