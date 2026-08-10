@@ -1,0 +1,73 @@
+import std.{*};
+import std.dispatch.{*};
+import std.Generic.{*};
+import std.ABIGeneric.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+// Direct tests for `abi_encode` over user-defined algebraic data types (ADTs).
+//
+// An ADT reaches `abi_encode` through its auto-derived `Generic` representation
+// and the ABIGeneric bridges (std/ABIGeneric.solc): a product constructor
+// represents as the primitive tuple of its fields, and a sum represents as the
+// binary `sum(f, g)` type (inl = first constructor, inr = second). Each method
+// encodes an ADT value and returns the `memory(bytes)` result, which the
+// dispatcher then ABI-encodes as `bytes`, so the return data is
+//   [0x20 offset][length][ abi_encode output, padded ]
+// and the inner payload is EXACTLY what `abi_encode` produced for the ADT.
+//
+// The data types are left to auto-derive their instances: this gives them not
+// only a `Generic` instance but a CONCRETE `ABIAttribs` instance reporting the
+// representation's real head size. That concrete instance is what makes
+// `abi_encode` correct here — a manual `Generic` instance (which requires
+// `pragma no-generic-instance-for`) would suppress the derived `ABIAttribs`, so
+// `headSize` would fall back to the catch-all `default instance t:ABIAttribs`
+// (32 bytes) and truncate the encoding to its first word. See DeriveGeneric.hs.
+//
+// Layouts pinned here:
+//   * static product  (uint256, uint256)      -> two head words   (len 0x40)
+//   * static sum       sum(uint256, uint256)   -> [tag][branch]     (len 0x40)
+//   * dynamic sum      sum(uint256, string)    -> a dynamic value: the head slot
+//        holds an offset (0x20) to the sum body [tag][branch...] laid out in the
+//        tail — even the static (Empty) branch keeps that offset wrapper.
+
+// static product
+data Point = Point(uint256, uint256);
+
+// static sum
+data Choice = First(uint256) | Second(uint256);
+
+// dynamic sum (the Text branch carries a dynamic string)
+data StrBox = Empty(uint256) | Text(memory(string));
+
+contract AbiEncodeAdt {
+  constructor() {}
+
+  // Static product: encodes as the tuple (a, b) — two inline head words.
+  public function encPoint(a : uint256, b : uint256) -> memory(bytes) {
+    return abi_encode(Point(a, b));
+  }
+
+  // Static sum, left constructor: [tag = 0][x].
+  public function encFirst(x : uint256) -> memory(bytes) {
+    return abi_encode(Choice.First(x));
+  }
+
+  // Static sum, right constructor: [tag = 1][x].
+  public function encSecond(x : uint256) -> memory(bytes) {
+    return abi_encode(Choice.Second(x));
+  }
+
+  // Dynamic sum, static branch: still offset-wrapped — [0x20] -> [tag = 0][n].
+  public function encEmpty(n : uint256) -> memory(bytes) {
+    return abi_encode(StrBox.Empty(n));
+  }
+
+  // Dynamic sum, dynamic branch: [0x20] -> [tag = 1][branch offset][len][data].
+  public function encText() -> memory(bytes) {
+    let raw : string = "abc";
+    let s : memory(string) = Str.fromString(raw);
+    return abi_encode(StrBox.Text(s));
+  }
+}
