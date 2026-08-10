@@ -454,5 +454,22 @@ asmIsInterpretableTests =
           [ yAssign "a" (yCall "add" [yIdent "x", yIdent "y"]),
             yAssign "b" (yCall "sload" [yNum 0])
           ]
+          @?= False,
+      -- Strict variant (memOk = False), used by the comptime check: memory ops
+      -- are NOT interpretable, but pure arithmetic still is.
+      testCase "strict: mload in assignment → False" $
+        asmIsInterpretableWith False [yAssign "r" (yCall "mload" [yNum 0])]
+          @?= False,
+      testCase "strict: mstore expression stmt → False" $
+        asmIsInterpretableWith False [yExp "mstore" [yNum 0, yIdent "v"]]
+          @?= False,
+      testCase "strict: mstore8 expression stmt → False" $
+        asmIsInterpretableWith False [yExp "mstore8" [yNum 31, yNum 0xff]]
+          @?= False,
+      testCase "strict: add-assign still → True" $
+        asmIsInterpretableWith False [yAssign "rw" (yCall "add" [yIdent "x", yIdent "y"])]
+          @?= True,
+      testCase "strict: nested mload inside arithmetic → False" $
+        asmIsInterpretableWith False [yAssign "r" (yCall "add" [yCall "mload" [yNum 0], yNum 1])]
           @?= False
     ]
