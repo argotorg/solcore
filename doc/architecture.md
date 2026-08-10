@@ -214,7 +214,25 @@ After specialization, Mast goes through a compile-time evaluation stage before H
 **Product types** → Nested pairs:
 - `(A, B, C)` becomes `(A, (B, C))`
 
-This uniform encoding is used from Mast through Hull to Yul.
+This uniform encoding is used *internally* from Mast through Hull to Yul: a sum
+value is a one-word discriminant followed by the (union-sized) branch payload, and
+the discriminant is the positional `inl`/`inr` (`0`/`1`) chain of the nested binary
+sums.
+
+**ABI wire format of a sum** (distinct from the internal encoding). When a
+multi-constructor ADT crosses the ABI boundary (a public method parameter/return,
+via `std.ABIGeneric`), its discriminant is *not* the positional `0`/`1` chain but a
+single `bytes32` **variant tag**: `keccak256("Name(argSigs...)")`, where `Name` is
+the constructor name and `argSigs` are the field types rendered with the same
+`SigString` convention (`std.dispatch`) used for method selectors — a full 32-byte
+hash rather than the 4-byte selector truncation. The surrounding layout is
+otherwise unchanged (static sum: inline `[tag][branch]`; dynamic sum: an offset
+word to an inline `[tag][branch]` body in the tail), since a tag is still one word.
+The variant name only survives to the point where `Solcore.Desugarer.DeriveGeneric`
+emits each type's `ABIEncode`/`ABIDecode` instance, so those concrete instances (not
+the anonymous structural `sum(f,g)` bridge) carry the tag; the helpers
+`variantTag` / `encodeVariant` / `abiSumReader` live in `std.ABIGeneric`. A
+single-constructor ADT is a product/struct with no discriminant and carries no tag.
 
 ## Diagnostics
 

@@ -59,16 +59,30 @@ deriveGenericTopDecls localData allDecls
     -- and under-checking calldatasize. A concrete instance wins over both
     -- defaults and reports the rep's real head size and staticness.
     --
-    -- ABIEncode still comes for free via the Generic bridge (std declares no
-    -- competing default for it).
+    -- For a MULTI-constructor type the wire form is variant-tagged: each variant
+    -- is discriminated on the wire by a single bytes32 keccak256("Name(argSigs)")
+    -- tag (see std.ABIGeneric's encodeVariant / abiSumReader), not
+    -- the positional inl/inr 0/1 chain used internally. That tag is per-variant,
+    -- and the variant name only survives here (the structural sum representation
+    -- has forgotten it), so a concrete, variant-aware ABIEncode AND ABIDecode are
+    -- emitted per type — the encoder cannot be the Generic bridge (it would fall
+    -- back to the anonymous structural sum's 0/1 tag).
+    --
+    -- A SINGLE-constructor type has no discriminant (it is a product/struct), so
+    -- it keeps the plain bridge: the free ABIEncode bridge and the rep-bridging
+    -- ABIDecode, with no tag word added.
     abiInsts
       | abiClassVisible allDecls =
-          concat
-            [ [TInstDef (buildABIAttribs dt), TInstDef (buildABIDecode dt)]
-            | dt <- derivable,
-              not (isRecursiveData dt)
-            ]
+          concatMap abiInstsFor [dt | dt <- derivable, not (isRecursiveData dt)]
       | otherwise = []
+    abiInstsFor dt
+      | length (dataConstrs dt) >= 2 =
+          [ TInstDef (buildABIAttribs dt),
+            TInstDef (buildABIEncode dt),
+            TInstDef (buildABIDecodeSum dt)
+          ]
+      | otherwise =
+          [TInstDef (buildABIAttribs dt), TInstDef (buildABIDecode dt)]
     conflictError n =
       "type '"
         ++ show n
@@ -494,6 +508,224 @@ buildABIDecode dt =
                       [methodCall "ABIDecode" "decode" [Var (Name "_rep_ptr"), Var (Name "_headOffset")]]
                   )
               ]
+            )
+          ]
+      ]
+
+-- Variant-tagged ABI codec (multi-constructor types only)
+--
+-- These emit the on-wire discriminant as a single bytes32 keccak256("Name(args)")
+-- tag per variant (the ABI form), rather than routing through the Generic bridge,
+-- which would fall back to the anonymous structural sum's positional inl/inr 0/1
+-- chain. The tricky static/dynamic framing lives in the std.ABIGeneric helpers
+-- (encodeVariant / abiSumReader); the derived code computes each variant's tag
+-- inline with `tagE` (keccakLit of the name + field SigString, comptime-folded)
+-- and supplies the field product plus the branch injection back into the SOP rep.
+
+-- Bare (unqualified) constructor name — the `Name` part of the on-wire signature.
+baseName :: Name -> String
+baseName (Name s) = s
+baseName (QualName _ s) = s
+
+wordLitE :: Integer -> Exp Name
+wordLitE = Lit . IntLit
+
+strLitE :: String -> Exp Name
+strLitE = Lit . StrLit
+
+-- a + b (also string concat: `Add.add` dispatches on the operand type, so this
+-- serves both the word arithmetic below and the tag-string concatenation), a == b,
+-- maxWord(a, b), ABIAttribs.headSize(Proxy(t)), SigString.sigStr(Proxy(t)).
+addE :: Exp Name -> Exp Name -> Exp Name
+addE a b = Call Nothing (QualName (Name "Add") "add") [a, b]
+
+eqE :: Exp Name -> Exp Name -> Exp Name
+eqE a b = Call Nothing (QualName (Name "Eq") "eq") [a, b]
+
+maxWordE :: Exp Name -> Exp Name -> Exp Name
+maxWordE a b = Call Nothing (Name "maxWord") [a, b]
+
+headSizeE :: Ty -> Exp Name
+headSizeE t = methodCall "ABIAttribs" "headSize" [proxyExpOf t]
+
+-- The free `sigStr` from std.dispatch, matching Selector.compute's exact call so
+-- the tag stays on the same comptime-folded path.
+sigStrE :: Ty -> Exp Name
+sigStrE t = Call Nothing (Name "sigStr") [proxyExpOf t]
+
+-- keccak256("Name(argSigs)") for a variant, built inline exactly like
+-- Selector.compute (std.dispatch): a string-literal constructor name spliced with
+-- the field product's SigString, fed to keccakLit so it folds at comptime to a
+-- constant word. `rep` is the variant's constrRep (the () / leaf / product of its
+-- fields), whose SigString renders "" / the field sig / the comma-joined fields.
+tagE :: Name -> Ty -> Exp Name
+tagE cname rep =
+  Call
+    Nothing
+    (Name "keccakLit")
+    [addE (addE (addE (strLitE (baseName cname)) (strLitE "(")) (sigStrE rep)) (strLitE ")")]
+
+-- instance <ctx> => T(params) : ABIEncode {
+--   function encodeInto(_x, _basePtr, _offset, _tail) -> word {
+--     let _isStatic = ABIAttribs.isStatic(Proxy(T(params)));
+--     let _innerHead = 32 + maxWord(headSize(rep0), maxWord(headSize(rep1), ...));
+--     match _x {
+--       | Ci(vs..) => return encodeVariant(keccakLit("Ci(...)"), (vs..), _isStatic, _innerHead, _basePtr, _offset, _tail);
+--     }
+--   }
+-- }
+-- Concrete, so it outranks the `default instance a:ABIEncode` Generic bridge.
+buildABIEncode :: DataTy -> Instance Name
+buildABIEncode dt =
+  Instance
+    { instDefault = False,
+      instVars = dataParams dt,
+      instContext =
+        concat
+          [ [ InCls (Name "ABIAttribs") (TyVar tv) [],
+              InCls (Name "ABIEncode") (TyVar tv) [],
+              InCls (Name "SigString") (TyVar tv) []
+            ]
+          | tv <- dataParams dt
+          ],
+      instName = Name "ABIEncode",
+      paramsTy = [],
+      mainTy = mainT,
+      instFunctions = [FunDef False sig body]
+    }
+  where
+    mainT = mainTyOf dt
+    constrs = dataConstrs dt
+    reps = map constrRep constrs
+    sig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "encodeInto",
+          sigParams =
+            [ Typed False (Name "_x") mainT,
+              Typed False (Name "_basePtr") wordTy,
+              Typed False (Name "_offset") wordTy,
+              Typed False (Name "_tail") wordTy
+            ],
+          sigRetComptime = False,
+          sigReturn = Just wordTy,
+          sigPayable = False
+        }
+    -- 32 (tag) + widest branch head — the dynamic sum's inline body footprint.
+    innerHeadE = addE (wordLitE 32) (foldr1 maxWordE (map headSizeE reps))
+    body =
+      [ Let False (Name "_isStatic") (Just boolTy) (Just (methodCall "ABIAttribs" "isStatic" [proxyExpOf mainT])),
+        Let False (Name "_innerHead") (Just wordTy) (Just innerHeadE),
+        Match [Var (Name "_x")] (map encClause constrs)
+      ]
+    encClause con@(Constr cname tys) =
+      let vars = freshVarNames (length tys)
+          pat = PCon cname (map PVar vars)
+          prodE = mkProdExp (map Var vars)
+          call =
+            Call
+              Nothing
+              (Name "encodeVariant")
+              [ tagE cname (constrRep con),
+                prodE,
+                Var (Name "_isStatic"),
+                Var (Name "_innerHead"),
+                Var (Name "_basePtr"),
+                Var (Name "_offset"),
+                Var (Name "_tail")
+              ]
+       in ([pat], [Return call])
+
+-- instance <ctx> => ABIDecoder(T(params), reader) : ABIDecode(T(params)) {
+--   function decode(_ptr, _headOffset) -> T(params) {
+--     match _ptr {
+--     | ABIDecoder(_rdr) =>
+--         let _isStatic = ABIAttribs.isStatic(Proxy(T(params)));
+--         let _sumRdr : reader = abiSumReader(_rdr, _headOffset, _isStatic);
+--         let _tag = WordReader.read(_sumRdr);
+--         match (_tag == keccakLit("C0(...)")) {
+--         | true  => let _dec0 : ABIDecoder(rep0, reader) = ABIDecoder(_sumRdr);
+--                    return Generic.to(inl(ABIDecode.decode(_dec0, 32)));
+--         | false => ... (last variant is the default branch, no tag check) ...
+--         }
+--     }
+--   }
+-- }
+buildABIDecodeSum :: DataTy -> Instance Name
+buildABIDecodeSum dt =
+  Instance
+    { instVars = dataParams dt ++ [readerTv],
+      instDefault = False,
+      instContext =
+        InCls (Name "WordReader") readerTy []
+          : concat
+            [ [ InCls (Name "ABIDecode") (abiDecoderTyOf (TyVar tv) readerTy) [TyVar tv],
+                InCls (Name "SigString") (TyVar tv) [],
+                InCls (Name "ABIAttribs") (TyVar tv) []
+              ]
+            | tv <- dataParams dt
+            ],
+      instName = Name "ABIDecode",
+      paramsTy = [mainT],
+      mainTy = abiDecoderTyOf mainT readerTy,
+      instFunctions = [FunDef False sig body]
+    }
+  where
+    mainT = mainTyOf dt
+    readerTv = TVar (Name "_reader")
+    readerTy = TyVar readerTv
+    constrs = dataConstrs dt
+    total = length constrs
+    reps = map constrRep constrs
+    sig =
+      Signature
+        { sigVars = [],
+          sigContext = [],
+          sigName = Name "decode",
+          sigParams =
+            [ Typed False (Name "_ptr") (abiDecoderTyOf mainT readerTy),
+              Typed False (Name "_headOffset") wordTy
+            ],
+          sigRetComptime = False,
+          sigReturn = Just mainT,
+          sigPayable = False
+        }
+    -- Build the value of variant `idx`: rebase a decoder on the sum body, decode
+    -- the branch product at +32, inject it into the SOP rep at the right position
+    -- and map it back to the user type with Generic.to.
+    construct idx rep =
+      let decName = Name ("_dec" ++ show idx)
+       in [ Let False decName (Just (abiDecoderTyOf rep readerTy)) (Just (Con (Name "ABIDecoder") [Var (Name "_sumRdr")])),
+            Return
+              ( methodCall
+                  "Generic"
+                  "to"
+                  [wrapSumExp idx total (methodCall "ABIDecode" "decode" [Var decName, wordLitE 32])]
+              )
+          ]
+    dispatch [(idx, _cname, rep)] = construct idx rep
+    dispatch ((idx, cname, rep) : rest) =
+      [ Match
+          [eqE (Var (Name "_tag")) (tagE cname rep)]
+          [ ([PCon (Name "true") []], construct idx rep),
+            ([PCon (Name "false") []], dispatch rest)
+          ]
+      ]
+    dispatch [] = error "buildABIDecodeSum: no constructors"
+    body =
+      [ Match
+          [Var (Name "_ptr")]
+          [ ( [PCon (Name "ABIDecoder") [PVar (Name "_rdr")]],
+              [ Let False (Name "_isStatic") (Just boolTy) (Just (methodCall "ABIAttribs" "isStatic" [proxyExpOf mainT])),
+                Let
+                  False
+                  (Name "_sumRdr")
+                  (Just readerTy)
+                  (Just (Call Nothing (Name "abiSumReader") [Var (Name "_rdr"), Var (Name "_headOffset"), Var (Name "_isStatic")])),
+                Let False (Name "_tag") (Just wordTy) (Just (methodCall "WordReader" "read" [Var (Name "_sumRdr")]))
+              ]
+                ++ dispatch (zip3 [0 ..] (map constrName constrs) reps)
             )
           ]
       ]

@@ -5,7 +5,9 @@ pragma no-coverage-condition ABIDecode;
 export {
     ABIDeriving,
     encode,
-    decode
+    decode,
+    encodeVariant,
+    abiSumReader
 };
 
 import std.{*};
@@ -146,6 +148,73 @@ instance ABIDecoder(sum(f, g), reader) : ABIDecode(sum(f, g)) {
     }
 }
 
+// ─── Variant-tagged sum wire format ──────────────────────────────────────
+// An ADT crosses the ABI boundary tagged by a single bytes32 discriminant per
+// variant, NOT the positional inl/inr 0/1 chain used internally. The tag is the
+// keccak256 of the variant's signature `Name(argSigs...)`, reusing the SigString
+// convention (std.dispatch) for the argument types — exactly the shape a method
+// selector hashes, but kept as a full 32-byte word rather than truncated to 4.
+//
+// The variant name is only known at derivation time (a value's structural sum
+// representation has forgotten which constructor it came from), so DeriveGeneric
+// computes each variant's tag inline in the per-type ABIEncode / ABIDecode
+// instance it emits — `keccakLit("Name(" + sigStr(Proxy(fields)) + ")")`, the same
+// comptime-folded shape as Selector.compute in std.dispatch — and passes the
+// resulting word here: encode writes `encodeVariant`'s [tag][fields] body, decode
+// reads the tag with `abiSumReader` and compares it against each variant's tag.
+//
+// Layout is otherwise identical to the old structural sum:
+//   static sum : inline [tag word][branch payload] at basePtr + offset
+//   dynamic sum: an offset word in the head pointing at an inline [tag][branch]
+//                body laid out in the tail.
+// Only the tag *value* changed (0/1 → keccak256("Name(argSigs)")), so head sizes
+// and staticness (ABIAttribs) are unaffected — a tag is still one word.
+
+// Frame one variant's field product `v` into an ABI [tag][fields] body, mirroring
+// the static/dynamic layout of the old structural sum encoder. `tag` is the
+// variant's precomputed keccak256("Name(argSigs)") discriminant; `innerHead` is
+// the inline body footprint (32 + widest branch head) the dynamic case reserves in
+// the tail (ignored for static sums).
+forall f . f : ABIAttribs, f : ABIEncode =>
+function encodeVariant(
+    tag : word,
+    v : f,
+    isStaticSum : bool,
+    innerHead : word,
+    basePtr : word,
+    offset : word,
+    tail : word
+) -> word {
+    match isStaticSum {
+    // STATIC sum: inline tag at basePtr+offset, branch at offset + 32.
+    | true =>
+        mstore(basePtr + offset, tag);
+        return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+    // DYNAMIC sum: head slot holds a relative offset to the [tag][branch] body,
+    // which is laid out inline in the tail.
+    | false =>
+        mstore(basePtr + offset, tail - basePtr);
+        let newBase = tail;
+        let newTail = tail + innerHead;
+        mstore(newBase, tag);
+        return ABIEncode.encodeInto(v, newBase, 32, newTail);
+    }
+}
+
+// Resolve a decoder onto the start of a sum body and hand it back so the caller
+// can read the tag word (at +0) and the branch fields (at +32). A static sum is
+// inline at headOffset; a dynamic sum's head slot holds a 32-byte offset to its
+// body, which we follow — the same start resolution the structural decoder used.
+forall reader . reader : WordReader =>
+function abiSumReader(rdr : reader, headOffset : word, isStaticSum : bool) -> reader {
+    let sumStartOff : word;
+    match isStaticSum {
+    | true  => sumStartOff = headOffset;
+    | false => sumStartOff = WordReader.read(WordReader.advance(rdr, headOffset));
+    }
+    return WordReader.advance(rdr, sumStartOff);
+}
+
 // ─── Default bridges: ABIAttribs and ABIEncode via Generic ───────────────
 // Any type 'a' with Generic(rep) inherits its ABI layout from rep.
 
@@ -169,27 +238,25 @@ default instance a : ABIEncode {
 }
 
 // ─── Top-level generic encode function ───────────────────────────────────
-// Serialises any 'a' that has a Generic(rep) instance.
-// Only the Generic instance is required — ABIEncode is resolved via the bridge.
+// Serialises any 'a' that is ABIEncode. This defers to 'a's OWN ABIEncode (not
+// the rep), so a multi-constructor ADT is encoded through its derived per-variant
+// instance (keccak variant tag), while products/other Generic types still reach
+// the structural encoder through the Generic bridge. Routing via Generic.from here
+// would re-introduce the anonymous structural sum's 0/1 tag.
 
-forall a rep . a:Generic(rep), rep:ABIAttribs, rep:ABIEncode =>
+forall a . a : ABIEncode =>
 function encode(x : a, basePtr : word, offset : word, tail : word) -> word {
-    let xrep : rep = Generic.from(x);
-    return ABIEncode.encodeInto(xrep, basePtr, offset, tail);
+    return ABIEncode.encodeInto(x, basePtr, offset, tail);
 }
 
 // ─── Top-level generic decode function ───────────────────────────────────
-// Deserialises any 'a' that has a Generic(rep) instance.
-// Only the Generic instance is required — ABIDecode is resolved via the bridge.
+// Deserialises any 'a' that is ABIDecode. Like `encode`, this defers to 'a's OWN
+// ABIDecode so a multi-constructor ADT decodes its per-variant keccak tag rather
+// than the rep's structural 0/1 tag.
 
-forall a rep reader .
-    a : Generic(rep),
+forall a reader .
     reader : WordReader,
-    ABIDecoder(rep, reader) : ABIDecode(rep) =>
+    ABIDecoder(a, reader) : ABIDecode(a) =>
 function decode(ptr : ABIDecoder(a, reader), headOffset : word) -> a {
-    match ptr {
-    | ABIDecoder(rdr) =>
-        let rep_ptr : ABIDecoder(rep, reader) = ABIDecoder(rdr);
-        return Generic.to(ABIDecode.decode(rep_ptr, headOffset));
-    }
+    return ABIDecode.decode(ptr, headOffset);
 }
