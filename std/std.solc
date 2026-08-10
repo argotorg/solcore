@@ -2632,12 +2632,8 @@ forall a . a:MemoryEncode => function concat(v: a) -> memory(bytes) {
 }
 
 // This is a specialized 1-input version of concat.
-forall a . a:MemorySize, a:MemoryEncode => function to_bytes(x: a) -> memory(bytes) {
-    let len = MemorySize.len(x);
-    let res = allocate_memory(32 + len);
-    mstore(res, len);
-    MemoryEncode.encodeInto(x, res + 32);
-    return memory(res);
+forall a . a:MemorySize, a:MemoryEncode => function to_bytes(v: a) -> memory(bytes) {
+    return concat(v);
 }
 
 instance bytes32:MemorySize {
