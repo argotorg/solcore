@@ -63,6 +63,7 @@ data OperationStatus =
     | Rejected
     | Executed;
 
+#[derive(Eq)]
 data Vote =
       None
     | Approved
@@ -83,25 +84,6 @@ data BatchOperation =
     | Approve(uint256, Signature)
     | Reject(uint256, Signature)
     | Execute(uint256, memory(bytes));
-
-
-instance Vote:Eq {
-  function eq(a: Vote, b: Vote) -> bool {
-    let a_index: word;
-    match a {
-        | Vote.None => a_index = 0;
-        | Vote.Approved => a_index = 1;
-        | Vote.Rejected => a_index = 2;
-    }
-    let b_index: word;
-    match b {
-        | Vote.None => b_index = 0;
-        | Vote.Approved => b_index = 1;
-        | Vote.Rejected => b_index = 2;
-    }
-    return a_index == b_index;
-  }
-}
 
 contract Multisig {
     signers: mapping(uint256, address); // TODO use array()
