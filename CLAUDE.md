@@ -4,9 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Solcore is an experimental implementation of Solidity's new type system. It's a prototype compiler that produces executable EVM code. The compiler implements a sophisticated type system with parametric polymorphism (generics) and type classes (similar to Haskell), which are compiled down to monomorphic code through specialization. This is later translated into lower level language (basically Yul with sums and products), from which Yul code is generated. So far we rely on external tools to translate Yul code to EVM bytecode.
+Solcore is an experimental implementation of Solidity's new type system. It's a prototype compiler
+that produces executable EVM code. The compiler implements a sophisticated type system with
+parametric polymorphism (generics) and type classes (similar to Haskell), which are compiled down
+to monomorphic code through specialization. Specialized code is lowered to **Mast** (a monomorphic,
+first-order abstract syntax tree with no type variables), optionally partially evaluated at compile
+time, and then emitted as **Hull** — a small stack/sum/product-oriented IR that is close to Yul but
+still typed. Hull is translated to Yul by a separate stage, and from there external tools (`solc`,
+`geth`/`hevm`) are relied upon to go from Yul to EVM bytecode.
 
-**Important**: This is a research prototype, not production-ready. It contains bugs and is not optimized for UX.
+The frontend also implements a small multi-file **module system** (imports, namespaces, a std
+library, and named external libraries) and a **structured diagnostics** subsystem (error codes,
+labeled source spans, rendered multi-line reports) used throughout parsing, name resolution, and
+type checking.
+
+**Important**: This is a research prototype, not production-ready. It contains bugs and is not
+optimized for UX.
 
 ## Build & Development Commands
 
@@ -42,10 +55,18 @@ cabal repl
 # Run all tests
 cabal test
 
+# Run the main unit/spec test suite only
+cabal test sol-core-tests
+
 # Run specific test - the test suite uses tasty, individual tests can be filtered
 cabal test --test-options="-p 'pattern'"
 
-# Build C++ testrunner (required for contest integration tests)
+# Run the contract integration test suite via cabal (auto-builds testrunner,
+# auto-detects evmone; fails if deps are missing unless
+# SOLCORE_CONTRACT_TESTS_ALLOW_SKIP=1 is set)
+cabal test sol-core-contract-test
+
+# Build C++ testrunner directly (required for contest integration tests)
 cmake -S . -B build
 cmake --build build --target testrunner
 # Creates: build/test/testrunner/testrunner
@@ -60,21 +81,24 @@ nix flake check
 
 ### Compilation Pipeline
 
-The compiler is split into **two separate binaries**:
+The compiler is split into **two separate binaries**, both built from the same `sol-core` library:
 
-1. **sol-core**: Typechecks, specializes, and lowers to Core IR
-2. **yule**: Translates Core IR to Yul
+1. **sol-core**: Parses, resolves modules/imports, typechecks, desugars, specializes
+   (monomorphizes), partially evaluates, and lowers to Hull IR
+2. **yule**: Translates Hull IR to Yul (the Hull→Yul translator itself lives in the library, under
+   `Language.Hull.ToYul.*`, so it is reusable from tests and other tools; `yule` is a thin CLI
+   wrapper around it)
 
 ```bash
-# Compile .solc source to .core IR
+# Compile .solc source to .hull IR (one file per emitted contract:
+# output1.hull, output2.hull, ...)
 cabal run sol-core -- -f <input.solc>
-# Produces: output1.core
 
-# Translate .core to .yul
-cabal run yule -- output1.core -o output.yul
+# Translate a .hull file to .yul
+cabal run yule -- output1.hull -o output.yul
 
 # Optional: skip deployment code generation
-cabal run yule -- output1.core -o output.yul --nodeploy
+cabal run yule -- output1.hull -o output.yul --nodeploy
 ```
 
 ### Running Contracts
@@ -104,146 +128,35 @@ Use `runsol.sh` for the full pipeline (sol-core → yule → solc → geth):
 
 ## High-Level Architecture
 
-### Compilation Pipeline Flow
-
-```
-Source (.solc) → Parser → AST → Early Desugaring → Type Checker → Late Desugaring → Core IR → Yul
-                          ↑                                                            ↑
-                                          Frontend (sol-core)                    Backend (yule)
-```
-
-The pipeline consists of 13 sequential passes (see `SolcorePipeline.hs:67-168`):
-
-**Phase 1: Parsing & Early Desugaring (Untyped AST)**
-1. **Parsing** → Parse source to untyped AST
-2. **Name Resolution** → Resolve names and build AST (`CompUnit Name`)
-3. **Field Access Desugaring** → Desugar contract field access syntax
-4. **Contract Dispatch Generation** → Generate method dispatch code for contracts
-5. **SCC Analysis** → Analyze strongly connected components for mutual recursion
-6. **Indirect Call Handling** → Defunctionalization (eliminate higher-order functions)
-7. **Wildcard Replacement** → Replace pattern wildcards with fresh variables
-8. **Function Type Argument Elimination** → Remove function-typed parameters
-
-**Phase 2: Type Checking**
-9. **Type Inference** → Constraint-based bidirectional type checking → Typed AST (`CompUnit Id`)
-
-**Phase 3: Late Desugaring & Lowering (Typed AST)**
-10. **If/Bool Desugaring** → Lower if-expressions to pattern matching on sum types
-11. **Match Compilation** → Compile complex patterns to simple case trees (Augustsson's algorithm)
-12. **Specialization** → Monomorphization of polymorphic/overloaded code
-13. **Core Emission** → Translate to Core IR (first-order functional IR)
-
-**Phase 4: Yul Translation (Separate Binary)**
-14. **Yul Translation** (`yule` binary) → Translate Core IR to Yul code (EVM-oriented assembly)
-
-**Key Insight**: Early desugaring (steps 3-8) simplifies contract-specific syntax and higher-order constructs BEFORE type checking. This allows the type checker to work on a simpler, more uniform AST. Late desugaring (steps 10-11) handles constructs that benefit from type information.
-
-### Key Modules
-
-**Pipeline Orchestration**:
-- `src/Solcore/Pipeline/SolcorePipeline.hs` - Main compilation pipeline (orchestrates all 13 passes)
-
-**Phase 1: Parsing & Early Desugaring (Untyped)**:
-- `src/Solcore/Frontend/Parser/` - Lexer and parser
-- `src/Solcore/Frontend/Syntax/` - AST definitions
-- `src/Solcore/Desugarer/FieldAccess.hs` - Field access desugaring
-- `src/Solcore/Desugarer/ContractDispatch.hs` - Contract method dispatch generation
-- `src/Solcore/Frontend/TypeInference/SccAnalysis.hs` - Dependency analysis
-- `src/Solcore/Desugarer/IndirectCall.hs` - Defunctionalization (remove higher-order functions)
-- `src/Solcore/Desugarer/ReplaceWildcard.hs` - Wildcard replacement
-- `src/Solcore/Desugarer/ReplaceFunTypeArgs.hs` - Function type argument elimination
-
-**Phase 2: Type Checking**:
-- `src/Solcore/Frontend/TypeInference/TcContract.hs` - Type checking orchestration
-- `src/Solcore/Frontend/TypeInference/TcMonad.hs` - Type checker monad
-- `src/Solcore/Frontend/TypeInference/TcEnv.hs` - Type environment
-- `src/Solcore/Frontend/TypeInference/TcUnify.hs` - Unification algorithm
-- `src/Solcore/Frontend/TypeInference/TcSat.hs` - Type class constraint solving
-
-**Phase 3: Late Desugaring & Lowering (Typed)**:
-- `src/Solcore/Desugarer/IfDesugarer.hs` - If-expression desugaring (post-typecheck)
-- `src/Solcore/Desugarer/MatchCompiler.hs` - Pattern matching compilation (Augustsson's algorithm)
-- `src/Solcore/Desugarer/Specialise.hs` - Monomorphization of polymorphic/overloaded code
-- `src/Solcore/Desugarer/EmitCore.hs` - Translation to Core IR
-- `src/Language/Core.hs` - Core IR definition
-
-**Phase 4: Yul Backend (Separate Binary)**:
-- `yule/Main.hs` - Yule binary entry point
-- `yule/Translate.hs` - Core IR to Yul translation
-- `yule/TM.hs` - Translation monad
-- `yule/Locus.hs` - Location abstraction (stack/memory tracking)
-
-### Type System
-
-The type system implements **HM(X)** with:
-- **Parametric polymorphism** (generics with type variables)
-- **Type classes** (Haskell-style with multi-parameter type classes)
-- **Constraint-based type inference** (bidirectional checking)
-- **Instance resolution** with overlapping instance checks
-
-Type checking uses:
-- **Inference mode**: Generate constraints from expressions (bottom-up)
-- **Checking mode**: Check against expected types (top-down)
-- **Constraint solving**: Unification + instance resolution + recursive constraint reduction
-
-### Specialization (Monomorphization)
-
-**Critical phase** that eliminates all polymorphism before code generation:
-
-1. Build resolution table: `(function name, concrete type) → specialized definition`
-2. Analyze all call sites to find instantiation types
-3. Create specialized versions with unique names (e.g., `map$word`, `map$bool`)
-4. Resolve type class instances to concrete implementations
-5. Recursively specialize all called functions
-
-**Why necessary**:
-- Yul and EVM have no polymorphism/generics
-- All types must be concrete for memory layout
-- Type class dispatch resolved statically (no virtual dispatch)
-- Whole-program compilation required (must see all call sites)
-
-### Data Type Encoding
-
-**Sum types** → Nested binary sums:
-- `Either A (Either B C)` becomes `inl a | inr (inl b | inr c)`
-
-**Product types** → Nested pairs:
-- `(A, B, C)` becomes `(A, (B, C))`
-
-This uniform encoding allows simple handling at the Core IR level.
-
-### Common Patterns
-
-**Monad Transformers**:
-- `TcM = StateT TcEnv (ExceptT String IO)` for type checking
-- `SM = StateT SpecState IO` for specialization
-- `EM = StateT EcState IO` for Core emission
-
-**Generic Traversals**: Uses Scrap Your Boilerplate (`Data.Generics`):
-```haskell
-everywhere (mkT transform)  -- Apply transformation everywhere
-everything (<>) (mkQ mempty collector)  -- Collect values
-```
-
-**Fresh Name Generation**: Thread-safe unique names via `NameSupply`:
-```haskell
-freshName :: TcM Name
-freshTyVar :: TcM Ty
-```
+See [`doc/architecture.md`](doc/architecture.md) for the full description of the compilation pipeline flow, key modules per phase, the type system, specialization/Mast, comptime evaluation, Hull IR, diagnostics, the module system, and common patterns.
 
 ## Test Organization
 
-Tests are organized in `test/examples/`:
+Tests are organized in `test/`:
 
-- `spec/` - Specification test cases (core language features)
-- `cases/` - General test cases
-- `dispatch/` - Contract method dispatch tests
-- `pragmas/` - Pragma-related tests (bounds checking, coverage, etc.)
-- `imports/` - Module import tests
+- `test/examples/spec/` - Specification test cases (core language features)
+- `test/examples/cases/` - General test cases
+- `test/examples/dispatch/` - Contract method dispatch tests (also drive the C++ testrunner via
+  JSON test specs)
+- `test/examples/pragmas/` - Pragma-related tests (bounds checking, coverage, etc.)
+- `test/examples/comptime/` - Comptime evaluation/annotation tests
+- `test/examples/hull/`, `test/examples/core/`, `test/examples/yule/` - Hull/Yul-level test inputs
+- `test/examples/assembly/`, `test/examples/opcodes/`, `test/examples/invokable/`,
+  `test/examples/attic/` - Additional targeted test cases
+- `test/imports/` - Module/namespace import tests (large suite covering aliasing, hiding,
+  re-exports, external libraries, ambiguity, cycles, etc.)
+- `test/diagnostics/` - Fixtures for diagnostic rendering tests
+- `test/solver/` - Constraint-solver test inputs
 
-Test framework: **Tasty** with HUnit assertions
+Test framework: **Tasty** with HUnit assertions. Test suites (see `sol-core.cabal`):
+- `sol-core-tests` — the main suite (`test/Main.hs`), covering `Cases`, `ContractAbiTests`,
+  `DiagnosticCliTests`, `DiagnosticTests`, `HullCases`, `LocationTests`, `MatchCompilerTests`,
+  `ModuleTypeCheckTests`, `SpecialiseTests`, `YulEvalTests`, `ParserTests`. It builds and uses the
+  `sol-core` and `yule` executables as test tools.
+- `sol-core-contract-test` (`test/ContractMain.hs`) — end-to-end contract execution tests via the
+  C++ testrunner, wrapping `run_contests.sh`.
 
-Test structure in `test/Main.hs` and `test/Cases.hs`:
+Test structure:
 - Each test compiles a `.solc` file through the pipeline
 - Some tests expect failure (`runTestExpectingFailure`)
 - Standard library tests in `std/`
@@ -252,11 +165,13 @@ Test structure in `test/Main.hs` and `test/Cases.hs`:
 
 ### Architecture
 
-The project includes a C++ testrunner (`test/testrunner/`) that executes compiled EVM bytecode using the evmone EVM implementation. This enables end-to-end integration testing of the full compilation pipeline.
+The project includes a C++ testrunner (`test/testrunner/`) that executes compiled EVM bytecode using
+the evmone EVM implementation. This enables end-to-end integration testing of the full compilation
+pipeline.
 
 **Contest test flow:**
 ```
-.solc → sol-core → .core → yule → .yul → solc → .hex → testrunner → results
+.solc → sol-core → .hull → yule → .yul → solc → .hex → testrunner → results
 ```
 
 ### Components
@@ -278,7 +193,8 @@ The project includes a C++ testrunner (`test/testrunner/`) that executes compile
 
 ### Configuration via Environment Variables
 
-The test scripts support configuration through environment variables, allowing them to work both in local development and Nix builds:
+The test scripts support configuration through environment variables, allowing them to work both in
+local development and Nix builds:
 
 - `SOLCORE_CMD` - Command to run sol-core (default: `"cabal exec sol-core --"`)
 - `YULE_CMD` - Command to run yule (default: `"cabal run yule --"`)
@@ -308,6 +224,18 @@ The Nix build system:
 - `nix/intx.nix` - Builds extended precision integer library
 - `nix/blst.nix` - Builds BLS signature library
 
+## Documentation
+
+- `doc/architecture.md` - Full description of Solcore's compilation-pipeline architecture (see
+  "High-Level Architecture" above).
+- `doc/` is an `mdbook` book (`doc/src/SUMMARY.md`); serve locally with `mdbook serve doc` or build
+  with `mdbook build doc`, published at https://argotorg.github.io/solcore/.
+- `doc/module-system.md` - Import/namespace/module-identity specification.
+- `doc/comptime*.md` - Design notes for `comptime` semantics (general, integer, string, assembly).
+- `doc/specialise.md` - Specialization design notes.
+- `spec/` - Pen-and-paper formalization of the type system (LaTeX, built to PDF via CI).
+- `doc/railroad/` - Railroad-diagram BNF grammars for Hull and SAIL.
+
 ## Working with This Codebase
 
 ### When Adding Features
@@ -317,50 +245,83 @@ The Nix build system:
    - Update lexer/parser in `src/Solcore/Frontend/Parser/`
    - Update pretty printer in `src/Solcore/Frontend/Pretty/`
 
-2. **Type system changes**:
+2. **Module system changes**:
+   - Update `src/Solcore/Frontend/Module/Loader.hs` and `Identity.hs`
+   - Update `doc/module-system.md` to keep the spec in sync
+   - Add fixtures under `test/imports/`
+
+3. **Type system changes**:
    - Modify type checking logic in `src/Solcore/Frontend/TypeInference/`
    - Update `TcEnv` if environment changes needed
    - Update unification in `TcUnify.hs` if type structure changes
 
-3. **Desugaring changes**:
+4. **Desugaring changes**:
    - Add new desugaring pass to `src/Solcore/Desugarer/`
    - Decide: Should it run BEFORE or AFTER type checking?
-     - **Early desugaring** (before type checking): Use for syntax simplification that doesn't need type info
-     - **Late desugaring** (after type checking): Use when you need type information to guide transformation
-   - Register in pipeline in `SolcorePipeline.hs` at the appropriate position
+     - **Early desugaring** (before type checking): Use for syntax simplification, instance
+       derivation, or defunctionalization that doesn't need type info
+     - **Late desugaring** (after type checking): Use when you need type information to guide the
+       transformation
+   - Register in the per-module pipeline (`prepareInferenceDeclsForTypeInference`) or the
+     post-typecheck pipeline in `SolcorePipeline.hs`, at the appropriate position
    - Order matters: some passes depend on others (e.g., match compiler needs if-desugaring first)
 
-4. **Core IR changes**:
-   - Update `src/Language/Core.hs`
-   - Update emission in `src/Solcore/Desugarer/EmitCore.hs`
-   - Update Yul translation in `yule/Translate.hs`
+5. **Mast / comptime evaluation changes**:
+   - Update `src/Solcore/Backend/Mast.hs` for the IR itself
+   - Update `src/Solcore/Backend/Specialise.hs` for how Mast is produced
+   - Update `src/Solcore/Backend/MastEval.hs` for partial evaluation/dead-code elimination
+   - Update `src/Solcore/Backend/ComptimeCheck.hs` for comptime annotation checking
+
+6. **Hull IR / Yul backend changes**:
+   - Update `src/Language/Hull.hs` / `Language/Hull/Types.hs` for the IR
+   - Update emission in `src/Solcore/Backend/EmitHull.hs`
+   - Update Yul translation in `src/Language/Hull/ToYul/Translate.hs`
+
+7. **Diagnostics changes**:
+   - Update `src/Solcore/Diagnostics.hs` for new diagnostic codes/rendering
+   - Update the label-inference heuristics in `SolcorePipeline.hs` if a new diagnostic needs a
+     source span attached automatically
 
 ### Important Design Constraints
 
 - **Pipeline order matters**: Each pass expects certain invariants from previous passes
 - **Early vs late desugaring split**:
-  - Early desugaring (pre-typecheck) works on untyped AST (`CompUnit Name`)
-  - Late desugaring (post-typecheck) works on typed AST (`CompUnit Id`)
+  - Early desugaring (pre-typecheck) works on untyped, per-module AST (`CompUnit Name`)
+  - Late desugaring (post-typecheck) works on the assembled typed AST (`CompUnit Id`)
   - Type checking is the boundary between these two phases
-- **Contract syntax desugaring happens early**: Field access and dispatch generation run before type checking
-- **Higher-order elimination happens early**: Defunctionalization occurs before type checking (in early desugaring)
+- **Modules are validated/resolved independently, then assembled**: name resolution only sees a
+  module's own direct imports; the whole-program view only exists after all modules type-check
+- **Contract syntax desugaring happens early**: Field access and dispatch generation run before
+  type checking
+- **Higher-order elimination happens early**: Defunctionalization occurs before type checking (in
+  early desugaring)
 - **Whole-program compilation**: Specialization must see all code at once
-- **No higher-order functions in Core**: Defunctionalization eliminates them before type checking
-- **Monomorphic Core**: All type variables must be eliminated by specialization
-- **Binary sum encoding**: All sum types encoded as nested `inl/inr` pairs
+- **No higher-order functions in Mast**: Defunctionalization eliminates them before type checking
+- **Monomorphic Mast**: All type variables must be eliminated by specialization
+- **Comptime-only types must not survive to Hull**: `integer` and `string` have no runtime
+  representation and must be fully evaluated away by `MastEval` before Hull emission
+- **Binary sum encoding**: All sum types encoded as nested `inl/inr` pairs, from Mast through Hull
+  to Yul
 
 ### Debugging Tips
 
-- Use `ppr` (pretty printer) on AST nodes for readable output
-- Check intermediate `.core` files to debug Core emission
+- Use `ppr` (pretty printer) on AST/Mast/Hull nodes for readable output
+- `sol-core` has many `--dump-*` flags (AST, dispatch, desugaring, specialization, Hull) plus
+  `--verbose` to print intermediate stages; see `src/Solcore/Pipeline/Options.hs`
+- Check intermediate `.hull` files to debug Hull emission
 - Check generated `.yul` files to debug Yul translation
 - Use `--debug-runtime` with `runsol.sh` for EVM trace visualization
 - Type errors come from `TcMonad` - check constraint generation and solving
+- If a partial evaluation result looks wrong, check whether it ran out of fuel (`--pe-fuel N`) or
+  whether the relevant primitive is handled in `Solcore.Backend.MastEval.evalPrimitive`
 
 ### Common Gotchas
 
 - **Name shadowing**: The compiler uses unique IDs (`Id`) not raw names after type checking
 - **Type variable scoping**: Be careful with `Forall` quantification and skolemization
 - **Specialization dependencies**: Recursive specialization can create new specialization work
-- **Sum type tag ordering**: Must match between Core emission and Yul translation
+- **Sum type tag ordering**: Must match between Mast/Hull emission and Yul translation
 - **Memory layout**: Yul translation assumes specific layouts for products and sums
+- **Module identity vs. file path**: two different logical module paths that happen to resolve to
+  the same physical file are still different modules; don't assume file-path equality implies
+  module equality
