@@ -147,6 +147,7 @@ dispatches =
       runDispatchTest "abi_dyn_sum_return.solc",
       runDispatchTest "abi_sum_roundtrip.solc",
       runDispatchTest "abi_address_array.solc",
+      runDispatchTest "abi_encode_types.solc",
       runDispatchTest "specialise_sum_of_product.solc",
       runDispatchTest "storage_adt_field.solc",
       runDispatchTest "storage_adt_enum.solc",
