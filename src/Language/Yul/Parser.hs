@@ -70,8 +70,8 @@ yulLiteral =
     *> choice
       [ YulNumber <$> integer,
         YulString <$> stringLiteral,
-        YulTrue <$ try (pKeyword "true"),
-        YulFalse <$ try (pKeyword "false")
+        YulTrue <$ pKeyword "true",
+        YulFalse <$ pKeyword "false"
       ]
 
 yulStmt :: Parser YulStmt
@@ -106,7 +106,7 @@ yulCase = do
 
 yulFun :: Parser YulStmt
 yulFun = do
-  _ <- try (pKeyword "function")
+  _ <- pKeyword "function"
   name <- pName
   args <- parens (commaSep pName)
   rets <- optional (symbol "->" *> commaSep pName)
