@@ -46,7 +46,7 @@ commaSep :: Parser a -> Parser [a]
 commaSep p = p `sepBy` symbol ","
 
 pKeyword :: String -> Parser String
-pKeyword w = lexeme (string w <* notFollowedBy identChar)
+pKeyword w = try $ lexeme (string w <* notFollowedBy identChar)
 
 pMeta :: Parser String
 pMeta =
