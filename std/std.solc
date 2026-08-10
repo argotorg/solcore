@@ -2606,7 +2606,8 @@ forall t . class t:MemoryPointer {
 
 forall t . class t:MemoryEncode {
     // Serialize the entire contents at a provided memory area.
-    function encodeInto(v: t, target: word) -> ();
+    // Returns the number of written bytes.
+    function encodeInto(v: t, target: word) -> word;
 }
 
 // TODO: support variadic arguments
@@ -2637,8 +2638,9 @@ instance bytes32:MemorySize {
 }
 
 instance bytes32:MemoryEncode {
-    function encodeInto(v: bytes32, target: word) -> () {
+    function encodeInto(v: bytes32, target: word) -> word {
         mstore(target, Typedef.rep(v));
+        return 32;
     }
 }
 
@@ -2649,8 +2651,9 @@ instance uint256:MemorySize {
 }
 
 instance uint256:MemoryEncode {
-    function encodeInto(v: uint256, target: word) -> () {
+    function encodeInto(v: uint256, target: word) -> word {
         mstore(target, Typedef.rep(v));
+        return 32;
     }
 }
 
@@ -2667,9 +2670,11 @@ instance memory(bytes):MemoryPointer {
 }
 
 instance memory(bytes):MemoryEncode {
-    function encodeInto(v: memory(bytes), target: word) -> () {
+    function encodeInto(v: memory(bytes), target: word) -> word {
         let v_ = Typedef.rep(v);
-        mcopy(target, v_ + 32, mload(v_));
+        let len = mload(v_);
+        mcopy(target, v_ + 32, len);
+        return len;
     }
 }
 
@@ -2687,12 +2692,13 @@ instance empty:MemorySize {
 }
 
 instance empty:MemoryEncode {
-    function encodeInto(v: empty, target: word) -> () {
+    function encodeInto(v: empty, target: word) -> word {
         let size;
         match v {
             | empty(size_) => size = size_;
         }
         zeroize_memory(target, size);
+        return size;
     }
 }
 
@@ -2719,9 +2725,11 @@ instance memory_ref:MemoryPointer {
 }
 
 instance memory_ref:MemoryEncode {
-    function encodeInto(v: memory_ref, target: word) -> () {
+    function encodeInto(v: memory_ref, target: word) -> word {
         match v {
-            | memory_ref(ptr, len) => mcopy(target, ptr, len);
+            | memory_ref(ptr, len) =>
+                mcopy(target, ptr, len);
+                return len;
         }
     }
 }
