@@ -2610,15 +2610,24 @@ forall t . class t:MemoryEncode {
     function encodeInto(v: t, target: word) -> word;
 }
 
-// TODO: support variadic arguments
+// Deconstruct tuples (incl. embedded tuples).
+forall a b . a:MemoryEncode, b:MemoryEncode => instance (a,b):MemoryEncode {
+    function encodeInto(v: (a, b), target: word) -> word {
+        match v {
+        | (l, r) =>
+            let l_len = MemoryEncode.encodeInto(l, target);
+            let r_len = MemoryEncode.encodeInto(r, target + l_len);
+            return l_len + r_len;
+        }
+    }
+}
+
 // Allocates new memory and concatenates the inputs into it.
-forall a b . a:MemorySize, a:MemoryEncode, b:MemorySize, b:MemoryEncode => function concat(x: a, y: b) -> memory(bytes) {
-    let x_len = MemorySize.len(x);
-    let y_len = MemorySize.len(y);
-    let res: word = allocate_memory(32 + x_len + y_len);
-    mstore(res, x_len + y_len);
-    MemoryEncode.encodeInto(x, res + 32);
-    MemoryEncode.encodeInto(y, res + 32 + x_len);
+forall a . a:MemoryEncode => function concat(v: a) -> memory(bytes) {
+    let res = get_free_memory();
+    let len = MemoryEncode.encodeInto(v, res + 32);
+    mstore(res, len);
+    set_free_memory(res + 32 + len);
     return memory(res);
 }
 
