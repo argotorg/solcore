@@ -1,5 +1,5 @@
 import std.{*};
-import std.opcodes.{callvalue, calldatasize, calldataload, shr};
+import std.opcodes.{callvalue, calldatasize, calldataload, shr, return_};
 import std.Generic.{*};
 
 export {
@@ -212,16 +212,7 @@ forall args rets fn
 
     // abi encode rets to memory
     let ptr = abi_encode(rets);
-
-    // let retSz : word = ABIAttribs.headSize(prets);
-    // the approach above does not work for dynamically sized types...
-    // ...instead we take the size of memory allocated by the encoding
-    let start : word = Typedef.rep(ptr);
-    let end : word = get_free_memory();
-    let retSz : word = end - start;
-    assembly {
-        return(start, retSz)
-    }
+    return_(MemoryPointer.ptr(ptr), MemorySize.len(ptr));
 }
 
 // --- Method Dispatch ---

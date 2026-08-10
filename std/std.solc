@@ -1383,10 +1383,12 @@ forall ty . ty:ABIAttribs => instance calldata(ty):ABIAttribs {
 // top level encoding function.
 // abi encodes an instance of `ty` and returns a pointer to the result
 forall ty . ty:ABIAttribs, ty:ABIEncode => function abi_encode(val : ty) -> memory(bytes) {
-    let free = get_free_memory();
-    let tail = ABIEncode.encodeInto(val, free, 0, free + ABIAttribs.headSize(Proxy : Proxy(ty)));
+    let ret = get_free_memory();
+    let start = ret + 32;
+    let tail = ABIEncode.encodeInto(val, start, 0, start + ABIAttribs.headSize(Proxy : Proxy(ty)));
+    mstore(ret, tail - start);
     set_free_memory(tail);
-    return memory(free);
+    return memory(ret);
 }
 
 // types that can be abi encoded
