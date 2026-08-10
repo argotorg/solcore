@@ -2642,6 +2642,18 @@ instance bytes32:MemoryEncode {
     }
 }
 
+instance uint256:MemorySize {
+    function len(v: uint256) -> word {
+        return 32;
+    }
+}
+
+instance uint256:MemoryEncode {
+    function encodeInto(v: uint256, target: word) -> () {
+        mstore(target, Typedef.rep(v));
+    }
+}
+
 instance memory(bytes):MemorySize {
     function len(v: memory(bytes)) -> word {
         return mload(Typedef.rep(v));
