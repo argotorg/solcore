@@ -238,25 +238,30 @@ default instance a : ABIEncode {
 }
 
 // ─── Top-level generic encode function ───────────────────────────────────
-// Serialises any 'a' that is ABIEncode. This defers to 'a's OWN ABIEncode (not
-// the rep), so a multi-constructor ADT is encoded through its derived per-variant
-// instance (keccak variant tag), while products/other Generic types still reach
-// the structural encoder through the Generic bridge. Routing via Generic.from here
-// would re-introduce the anonymous structural sum's 0/1 tag.
+// Serialises any 'a' that has a Generic(rep) instance, through its rep. This is
+// the low-level structural path (used e.g. by generic_sum to exercise the raw
+// sum(f,g) coding directly). The ADT *wire* format (per-variant keccak tag) is
+// applied by the type's own derived ABIEncode, which abi_encode and the contract
+// dispatch reach directly — not through this rep bridge.
 
-forall a . a : ABIEncode =>
+forall a rep . a:Generic(rep), rep:ABIAttribs, rep:ABIEncode =>
 function encode(x : a, basePtr : word, offset : word, tail : word) -> word {
-    return ABIEncode.encodeInto(x, basePtr, offset, tail);
+    let xrep : rep = Generic.from(x);
+    return ABIEncode.encodeInto(xrep, basePtr, offset, tail);
 }
 
 // ─── Top-level generic decode function ───────────────────────────────────
-// Deserialises any 'a' that is ABIDecode. Like `encode`, this defers to 'a's OWN
-// ABIDecode so a multi-constructor ADT decodes its per-variant keccak tag rather
-// than the rep's structural 0/1 tag.
+// Deserialises any 'a' that has a Generic(rep) instance, through its rep (the
+// structural counterpart to `encode` above).
 
-forall a reader .
+forall a rep reader .
+    a : Generic(rep),
     reader : WordReader,
-    ABIDecoder(a, reader) : ABIDecode(a) =>
+    ABIDecoder(rep, reader) : ABIDecode(rep) =>
 function decode(ptr : ABIDecoder(a, reader), headOffset : word) -> a {
-    return ABIDecode.decode(ptr, headOffset);
+    match ptr {
+    | ABIDecoder(rdr) =>
+        let rep_ptr : ABIDecoder(rep, reader) = ABIDecoder(rdr);
+        return Generic.to(ABIDecode.decode(rep_ptr, headOffset));
+    }
 }
