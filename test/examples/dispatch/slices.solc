@@ -19,27 +19,27 @@ contract C {
     // --- slice_/truncate over the result of a concat ---
 
     public function slice_of_concat(a: bytes32, b: bytes32, start: uint256) -> memory(bytes) {
-        return to_bytes(slice_(concat(a, b), Typedef.rep(start)));
+        return to_bytes(slice_(concat((a, b)), Typedef.rep(start)));
     }
 
     public function truncate_of_concat(a: bytes32, b: bytes32, end: uint256) -> memory(bytes) {
-        return to_bytes(truncate(concat(a, b), Typedef.rep(end)));
+        return to_bytes(truncate(concat((a, b)), Typedef.rep(end)));
     }
 
     // to_bytes(truncate(slice_(concat(a, b), start), end)) -- the headline nesting:
     // drop `start` bytes, then keep `end` of what remains (re-slicing a memory_slice).
     public function window_of_concat(a: bytes32, b: bytes32, start: uint256, end: uint256) -> memory(bytes) {
-        return to_bytes(truncate(slice_(concat(a, b), Typedef.rep(start)), Typedef.rep(end)));
+        return to_bytes(truncate(slice_(concat((a, b)), Typedef.rep(start)), Typedef.rep(end)));
     }
 
     // --- a slice used as a concat operand ---
 
     public function concat_slice_b32(a: memory(bytes), start: uint256, c: bytes32) -> memory(bytes) {
-        return concat(slice_(a, Typedef.rep(start)), c);
+        return concat((slice_(a, Typedef.rep(start)), c));
     }
 
     public function concat_two_slices(a: memory(bytes), sa: uint256, b: memory(bytes), eb: uint256) -> memory(bytes) {
-        return concat(slice_(a, Typedef.rep(sa)), truncate(b, Typedef.rep(eb)));
+        return concat((slice_(a, Typedef.rep(sa)), truncate(b, Typedef.rep(eb))));
     }
 
     // --- re-slicing a memory_slice ---
@@ -60,6 +60,6 @@ contract C {
 
     // keccak256_(truncate(slice_(concat(a, b), start), end)) -- nested chain, hash endpoint.
     public function keccak_window_concat(a: bytes32, b: bytes32, start: uint256, end: uint256) -> bytes32 {
-        return keccak256_(truncate(slice_(concat(a, b), Typedef.rep(start)), Typedef.rep(end)));
+        return keccak256_(truncate(slice_(concat((a, b)), Typedef.rep(start)), Typedef.rep(end)));
     }
 }
