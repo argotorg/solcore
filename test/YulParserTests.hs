@@ -31,7 +31,8 @@ yulParserTests =
     "Yul parser"
     [ functionKeywordTests,
       boolLiteralTests,
-      switchTests
+      switchTests,
+      statementKeywordTests
     ]
 
 -- Bug 1: yulFun matched the `function` keyword with `symbol "function"`, which
@@ -69,6 +70,40 @@ boolLiteralTests =
       testCase "bare false parses as literal" $
         parsesAs yulExp "false" (YLit YulFalse)
     ]
+
+-- Bug 4: pKeyword ran `string` (consuming input) before the
+-- `notFollowedBy identChar` boundary check, and was not wrapped in `try`. In a
+-- `choice`, a keyword parser that consumed a prefix and then failed the
+-- boundary check aborted the whole choice instead of falling through to a
+-- later alternative -- so a statement whose leading identifier merely starts
+-- with a keyword (e.g. `format` vs `for`) failed to parse. Every
+-- statement-level keyword is affected, including the merged
+-- break/continue/leave.
+statementKeywordTests :: TestTree
+statementKeywordTests =
+  testGroup
+    "statement keyword boundary"
+    ( [ testCase (kw ++ "-prefixed identifier parses as a call statement") $
+          parsesAs yulStmt (kw ++ "ish") (YExp (yIdent (kw ++ "ish")))
+      | kw <- ["let", "if", "for", "switch", "case", "default", "break", "continue", "leave"]
+      ]
+        ++
+        -- The canonical case from the bug report: `format` must not be read as a
+        -- `for` loop.
+        [ testCase "`format` parses as an identifier, not a for loop" $
+            parsesAs yulStmt "format" (YExp (yIdent "format")),
+          -- Regression guards: the bare keyword statements still parse.
+          testCase "bare break parses" $ parsesAs yulStmt "break" YBreak,
+          testCase "bare continue parses" $ parsesAs yulStmt "continue" YContinue,
+          testCase "bare leave parses" $ parsesAs yulStmt "leave" YLeave,
+          testCase "genuine let still parses" $
+            parsesAs yulStmt "let x" (YLet [Name "x"] Nothing),
+          testCase "genuine if still parses" $
+            parsesAs yulStmt "if cond { }" (YIf (yIdent "cond") []),
+          testCase "genuine for still parses" $
+            parsesAs yulStmt "for { } cond { } { }" (YFor [] (yIdent "cond") [] [])
+        ]
+    )
 
 -- Bug 3: YSwitch used `many yulCase`, so a switch with zero `case` clauses
 -- parsed successfully. Yul requires at least one case.
