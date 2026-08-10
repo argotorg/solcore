@@ -25,7 +25,7 @@ import std.eip712.{*};
 function hashPerson(nameHash: bytes32, wallet: address) -> bytes32 {
     let typeHash = bytes32(keccakLit("Person(string name,address wallet)"));
     return keccak256_(
-        concat(typeHash, concat(nameHash, bytes32(Typedef.rep(wallet))))
+        concat((typeHash, (nameHash, bytes32(Typedef.rep(wallet)))))
     );
 }
 
@@ -37,7 +37,7 @@ function hashMail(fromHash: bytes32, toHash: bytes32, contentsHash: bytes32) -> 
         keccakLit("Mail(Person from,Person to,string contents)Person(string name,address wallet)")
     );
     return keccak256_(
-        concat(typeHash, concat(fromHash, concat(toHash, contentsHash)))
+        concat((typeHash, (fromHash, (toHash, contentsHash))))
     );
 }
 

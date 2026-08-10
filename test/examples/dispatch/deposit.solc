@@ -50,7 +50,7 @@ contract DepositContract {
 
     // Compute hashes in empty sparse Merkle tree
     for (let height = 0; height < (DEPOSIT_CONTRACT_TREE_DEPTH() - 1); height += 1) {
-        zero_hashes[height + 1] = sha256(concat(zero_hashes[height], zero_hashes[height]));
+        zero_hashes[height + 1] = sha256(concat((zero_hashes[height], zero_hashes[height])));
     }
   }
 
@@ -64,19 +64,19 @@ contract DepositContract {
     let size = deposit_count;
     for (let height = 0; height < DEPOSIT_CONTRACT_TREE_DEPTH(); height += 1) {
         if ((size & 1) == 1) {
-            node = sha256(concat(branch[height], node));
+            node = sha256(concat((branch[height], node)));
         } else {
-            node = sha256(concat(node, zero_hashes[height]));
+            node = sha256(concat((node, zero_hashes[height])));
         }
         size /= 2;
     }
-    return sha256(concat(
-        concat(
+    return sha256(concat((
+        (
             node,
             to_little_endian_64(deposit_count)
         ),
         empty(24)
-    ));
+    )));
   }
 
   public function get_deposit_count() -> memory(bytes) {
@@ -126,15 +126,15 @@ contract DepositContract {
     }
 
     // Compute deposit data root (`DepositData` hash tree root)
-    let pubkey_root = sha256(concat(pubkey, empty(16)));
-    let signature_root = sha256(concat(
+    let pubkey_root = sha256(concat((pubkey, empty(16))));
+    let signature_root = sha256(concat((
         sha256(truncate(signature, 64)),
-        sha256(concat(slice_(signature, 64), empty(32)))
-    ));
-    let node = sha256(concat(
-        sha256(concat(pubkey_root, withdrawal_credentials)),
-        sha256(concat(concat(amount, empty(24)), signature_root))
-    ));
+        sha256(concat((slice_(signature, 64), empty(32))))
+    )));
+    let node = sha256(concat((
+        sha256(concat((pubkey_root, withdrawal_credentials))),
+        sha256(concat(((amount, empty(24)), signature_root)))
+    )));
 
     // Verify computed and expected deposit data roots match
     require(node == deposit_data_root, Error(0x2ec2f183)); // ReconstructedDepositDataMismatch()
@@ -150,7 +150,7 @@ contract DepositContract {
             branch[height] = node;
             return ();
         }
-        node = sha256(concat(branch[height], node));
+        node = sha256(concat((branch[height], node)));
         size /= 2;
     }
 
