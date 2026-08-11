@@ -1,0 +1,56 @@
+import std.{*};
+import std.dispatch.{*};
+import std.Generic.{*};
+import std.ABIGeneric.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+// End-to-end ABI dispatch test for Solidity-style structs.
+//
+// A `struct` is a single-constructor product, so over the ABI it is EXACTLY the
+// tuple (uint256, uint256): two static head words, no variant tag. This test
+// drives the full pipeline through the C++ testrunner, exercising both
+// directions across the dispatcher:
+//   * ENCODE          — `enc` builds a struct and abi_encode's it.
+//   * DECODE + ENCODE  — `roundtrip` takes a struct parameter (decoded from
+//                        calldata) and returns it (re-encoded).
+//   * DECODE + PROJECT — `getX` decodes a struct and returns a field read via
+//                        dot notation, and `swap` reads both fields and rebuilds
+//                        a struct from them.
+//
+// Because a struct param's signature flattens to its field types, the selector
+// of `roundtrip(Point)` is keccak256("roundtrip(uint256,uint256)") — the same
+// shape a two-argument uint256 function would hash to.
+
+struct Point {
+  uint256 x;
+  uint256 y;
+}
+
+contract StructDispatch {
+  constructor() {}
+
+  // ENCODE: struct value -> abi_encode -> memory(bytes), returned as `bytes`:
+  //   [0x20 offset][len 0x40][x][y]
+  public function enc(a : uint256, b : uint256) -> memory(bytes) {
+    return abi_encode(Point(a, b));
+  }
+
+  // DECODE + ENCODE: the struct parameter is decoded from calldata and the same
+  // value re-encoded as the (static, inline) return — returndata == input words.
+  public function roundtrip(p : Point) -> Point {
+    return p;
+  }
+
+  // DECODE + field projection: dot access on a decoded struct parameter.
+  public function getX(p : Point) -> uint256 {
+    return p.x;
+  }
+
+  // DECODE + two projections + construct + ENCODE: returns Point(y, x), so the
+  // returndata is the input words swapped.
+  public function swap(p : Point) -> Point {
+    return Point(p.y, p.x);
+  }
+}
