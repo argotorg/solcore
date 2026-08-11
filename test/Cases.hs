@@ -130,6 +130,7 @@ dispatches =
     "Files for dispatch cases"
     [ runDispatchTest "basic.solc",
       runDispatchTest "assembly.solc",
+      runDispatchTest "asm_subst.solc",
       runDispatchTest "stringid.solc",
       runDispatchTest "storage.solc",
       runDispatchTest "miniERC20.solc",
