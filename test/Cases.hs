@@ -166,7 +166,8 @@ dispatches =
       runDispatchTest "arraylit.solc",
       runDispatchTest "derive_ord.solc",
       runDispatchTest "derive_contract_local.solc",
-      runDispatchTest "deposit.solc"
+      runDispatchTest "deposit.solc",
+      runDispatchTest "field-access-in-tuple.solc"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"

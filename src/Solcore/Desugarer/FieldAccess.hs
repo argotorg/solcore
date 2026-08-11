@@ -248,7 +248,12 @@ transRhs expr cenv = go expr cenv
     go (Cond e1 e2 e3) = Cond <$> transRhs e1 <*> transRhs e2 <*> transRhs e3
     go (ArrayLit es) = ArrayLit <$> mapM transRhs es
     go e@Var {} = pure e
-    go e@Con {} = pure e
+    -- Recurse into constructor arguments: a field access can sit inside a
+    -- constructor application in r-value position, e.g. a tuple literal
+    -- `(this.branch[i], node)` (which parses to `pair(this.branch[i], node)`).
+    -- Without this, such nested field accesses reach the type checker
+    -- undesugared and fail with "tcExp not implemented for: this.<field>".
+    go (Con n es) = Con n <$> mapM transRhs es
     go e@Lit {} = pure e
     go FieldAccess {} = error "Impossible"
 

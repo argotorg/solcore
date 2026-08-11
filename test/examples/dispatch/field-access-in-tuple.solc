@@ -1,0 +1,43 @@
+import std.{*};
+import std.dispatch.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+// Regression test for the field-access desugarer (transRhs in
+// src/Solcore/Desugarer/FieldAccess.hs).
+//
+// A tuple literal `(x, y)` parses to a `pair(x, y)` constructor application.
+// transRhs used to leave constructor applications untouched (`go Con{} = pure e`),
+// so a contract field access nested inside a tuple in r-value position was never
+// lowered to its storage-access form. The undesugared `this.<field>` then reached
+// the type checker and failed with "tcExp not implemented for: this.<field>".
+//
+// This is the minimal shape of the original deposit.solc failure
+// `concat((branch[height], node))`: a plain field access and an indexed
+// storage-array field access, each nested inside a tuple literal passed as a
+// single argument. `abi_encode` accepts a tuple argument this way (and, unlike
+// `concat`, is available in this PR).
+contract C {
+    a : uint256;
+    b : uint256;
+    xs : array(uint256);
+
+    constructor() {
+        a = 1;
+        b = 2;
+        Array.setLength(xs, 4);
+    }
+
+    // Plain contract field accesses nested inside a tuple literal, passed as a
+    // single argument to abi_encode.
+    public function encFields() -> memory(bytes) {
+        return abi_encode((a, b));
+    }
+
+    // Indexed storage-array field access nested inside a tuple literal -- the
+    // exact shape from the deposit bug.
+    public function encIndexed(i: uint256) -> memory(bytes) {
+        return abi_encode((xs[i], b));
+    }
+}
