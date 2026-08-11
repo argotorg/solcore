@@ -60,7 +60,7 @@ fieldDesugarTopDecls topdecls = extras <> topdecls'
 extraTopDeclsForContract :: Bool -> NmContract -> [NmTopDecl]
 extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
   let singName = singletonNameForContract cname
-  let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []] []
+  let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName [] []] []
 
   let fields = getFields cdecls
   let (_fieldTypes, extraFieldDecls) = foldl' (flip contractFieldStep) ([], []) fields
@@ -80,7 +80,7 @@ extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, 
   where
     -- data b_sel = n_sel
     selName = selectorNameForField cname fname
-    selDecl = TDataDef $ DataTy selName [] [Constr selName []] []
+    selDecl = TDataDef $ DataTy selName [] [Constr selName [] []] []
     selType = TyCon selName []
     -- instance StructField(ContractStorage(CCtx), fld1_sel):CStructField(uint, ()) {}
     ctxTy = TyCon "ContractStorage" [singletonTypeForContract cname]
@@ -238,7 +238,12 @@ transRhs expr@(FieldAccess Nothing x) cenv
           fieldMap = Con "MemberAccessProxy" [cxt, fieldSel]
           result = rhsAccess fieldMap
        in traces ["< transRhs", pretty expr, "~>", pretty result] result
-transRhs expr@FieldAccess {} _ = notImplemented "transRhs" expr
+-- Struct / member field access `e.n` (receiver present) is NOT a contract-field
+-- read: leave the node in place (recursing into the receiver so any contract
+-- field inside it is still desugared) so the type checker can lower it to the
+-- struct field projection. See Desugarer.StructProjection / TcStmt.
+transRhs (FieldAccess (Just e) n) cenv = FieldAccess (Just (transRhs e cenv)) n
+transRhs expr@(FieldAccess Nothing _) _ = notImplemented "transRhs" expr
 transRhs expr cenv = go expr cenv
   where
     go e@(Indexed arr idx) = \env -> let e' = rhsIndex arr idx env in traces ["transRhs", pretty e, "- rhsIndex ->", pretty e'] e' -- FIXME

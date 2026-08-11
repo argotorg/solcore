@@ -111,7 +111,7 @@ instance (Decl a) => Decl (Maybe a) where
   decl (Just x) = decl x
 
 instance Decl Constr where
-  decl (Constr n _) = [n]
+  decl (Constr n _ _) = [n]
 
 instance Decl DataTy where
   decl (DataTy n _ cs _) =
@@ -255,7 +255,7 @@ instance Names TySym where
     names t
 
 instance Names Constr where
-  names (Constr _ ts) =
+  names (Constr _ ts _) =
     names ts
 
 instance Names DataTy where

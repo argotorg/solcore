@@ -106,11 +106,11 @@ instance HasType Ty where
   bv _ = []
 
 instance HasType Constr where
-  apply s (Constr dn ts) =
-    Constr dn (apply s ts)
-  fv (Constr _ ts) = fv ts
-  mv (Constr _ ts) = mv ts
-  bv (Constr _ ts) = bv ts
+  apply s (Constr dn ts fields) =
+    Constr dn (apply s ts) fields
+  fv (Constr _ ts _) = fv ts
+  mv (Constr _ ts _) = mv ts
+  bv (Constr _ ts _) = bv ts
 
 instance HasType Pred where
   apply s (InCls n t ts) = InCls n (apply s t) (apply s ts)

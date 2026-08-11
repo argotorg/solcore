@@ -1,0 +1,57 @@
+// Solidity-style structs: named fields accessed via dot notation.
+//
+// A `struct` is represented internally as a single-constructor product; the
+// field names drive dot access `p.x`, which lowers to a generated positional
+// projection function (see Desugarer.StructProjection). This test exercises
+// construction, single-level and nested field reads, and structs passed to and
+// returned from functions — all through the full pipeline (no execution
+// fixture needed; compiling is the assertion).
+
+struct Point {
+  word x;
+  word y;
+}
+
+struct Line {
+  Point p1;
+  Point p2;
+}
+
+function addw(a : word, b : word) -> word {
+  let r : word;
+  assembly {
+    r := add(a, b)
+  }
+  return r;
+}
+
+// construction + single-level dot access
+function sumPoint(a : word, b : word) -> word {
+  let p : Point = Point(a, b);
+  return addw(p.x, p.y);
+}
+
+// nested struct, chained dot access: l.p1.x, l.p2.y, ...
+function perimeter(ax : word, ay : word, bx : word, by : word) -> word {
+  let l : Line = Line(Point(ax, ay), Point(bx, by));
+  return addw(addw(l.p1.x, l.p1.y), addw(l.p2.x, l.p2.y));
+}
+
+// struct as a parameter and as a return value
+function swap(p : Point) -> Point {
+  return Point(p.y, p.x);
+}
+
+function swapped(a : word, b : word) -> word {
+  let p : Point = swap(Point(a, b));
+  return addw(p.x, p.y);
+}
+
+contract StructFields {
+  public function main() -> word {
+    let s : word = sumPoint(3, 4);
+    let pm : word = perimeter(1, 2, 3, 4);
+    let sw : word = swapped(5, 6);
+    return addw(addw(s, pm), sw);
+  }
+}

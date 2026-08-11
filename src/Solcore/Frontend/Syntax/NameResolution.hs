@@ -248,6 +248,9 @@ addContractDecl (S.CDataDecl (S.DataTy n _ cons _)) =
   do
     addTyCon n
     mapM_ (addDataCon n . S.constrName) cons
+    -- Register struct field labels so `p.field` on a contract-local struct
+    -- resolves to member access (mirrors the top-level handling in addTopDecl).
+    mapM_ addField (concatMap S.constrFields cons)
 addContractDecl (S.CFieldDecl (S.Field n _ _)) =
   addField n
 addContractDecl (S.CFunDecl (S.FunDef _ sig _)) =
@@ -616,8 +619,21 @@ resolveExp (S.TyExp e t) =
 resolveExp c@(S.ExpVar me n) =
   do
     me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` c)
+    -- `recv.field` on a value receiver is struct/member field access: when `n`
+    -- is a known field label and the receiver denotes a value (a local, a
+    -- parameter, or a compound expression like a call or a nested field
+    -- access), resolve to member access. A receiver that is a module / type /
+    -- class qualifier is NOT a value, so it falls through to the qualified-name
+    -- logic below.
+    fieldKind <- gets (Map.lookup n . fieldEnv)
+    valueRecv <- maybe (pure False) isValueReceiver me'
     dt <- lookupName n
     case (me', dt) of
+      -- struct / member field access on a value receiver
+      (Just recv, _)
+        | fieldKind == Just TField,
+          valueRecv ->
+            pure (FieldAccess (Just recv) n)
       -- local variables and function parameters (unqualified only)
       (Nothing, Just TLocalVar) -> pure (Var n)
       (Nothing, Just TParameter) -> pure (Var n)
@@ -937,6 +953,16 @@ resolveExp (S.ExpAt t) = do
         (TyCon (Name "Proxy") [t'])
     )
 
+-- Is the resolved receiver of a `recv.field` a value (so `.field` is member
+-- access) rather than a module / type / class qualifier? A bare variable is a
+-- value only when it is a local or a parameter; any compound expression
+-- (call, nested field access, …) is a value.
+isValueReceiver :: Exp Name -> ResolveM Bool
+isValueReceiver (Var d) = do
+  k <- lookupName d
+  pure (k == Just TLocalVar || k == Just TParameter)
+isValueReceiver _ = pure True
+
 instance Resolve S.Literal where
   type Result S.Literal = Literal
 
@@ -977,13 +1003,15 @@ resolveDerivingClass c = do
     _ -> undefinedClassError c
 
 qualifyConstrName :: Name -> Constr -> Constr
-qualifyConstrName tyCon (Constr conName tys) =
-  Constr (qualifiedConstructorName tyCon conName) tys
+qualifyConstrName tyCon (Constr conName tys fields) =
+  Constr (qualifiedConstructorName tyCon conName) tys fields
 
 instance Resolve S.Constr where
   type Result S.Constr = Constr
 
-  resolve (S.Constr n ts) = Constr n <$> resolve ts
+  -- Field names are plain labels scoped to the struct, not global names, so
+  -- they are carried through unchanged (not resolved/qualified).
+  resolve (S.Constr n ts fields) = (\ts' -> Constr n ts' fields) <$> resolve ts
 
 instance Resolve S.TySym where
   type Result S.TySym = TySym
@@ -1150,7 +1178,14 @@ addTopDecl (S.TDataDef (S.DataTy n _ cons _)) env =
                 Map.insert (qualifiedConstructorName n (S.constrName d)) TDataCon ac
             )
             (scopeEnv env)
-            cons
+            cons,
+        -- Struct field names become known field labels so that `p.field`
+        -- resolves to member access rather than a module-qualified name.
+        fieldEnv =
+          foldr
+            (\fn ac -> Map.insert fn TField ac)
+            (fieldEnv env)
+            (concatMap S.constrFields cons)
       }
 addTopDecl (S.TSym (S.TySym n _ _)) env =
   addQualifiedModules n $

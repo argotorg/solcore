@@ -87,8 +87,8 @@ sumDataTy =
     { dataName = "sum",
       dataParams = [TVar "a", TVar "b"],
       dataConstrs =
-        [ Constr "inl" [tyvar "a"],
-          Constr "inr" [tyvar "b"]
+        [ Constr "inl" [tyvar "a"] [],
+          Constr "inr" [tyvar "b"] []
         ],
       dataDerivings = []
     }
@@ -279,7 +279,7 @@ translateTCon tycon tas = do
     buildSumType ts = pure (foldr1 Hull.TSum ts)
 
 translateDCon :: [(Tyvar, Ty)] -> Constr -> EM Hull.Type
-translateDCon subst (Constr _name tas) = translateProductType (map tyToMast (insts subst tas))
+translateDCon subst (Constr _name tas _) = translateProductType (map tyToMast (insts subst tas))
 
 translateProductType :: [MastTy] -> EM Hull.Type
 translateProductType [] = pure Hull.TUnit

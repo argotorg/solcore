@@ -125,7 +125,12 @@ data DataTy
 data Constr
   = Constr
   { constrName :: Name,
-    constrTy :: [Ty]
+    constrTy :: [Ty],
+    -- Named fields, in positional order, for a Solidity-style `struct`
+    -- (a single-constructor product). Empty for an ordinary `data`
+    -- constructor. When present, its length matches 'constrTy' and the
+    -- names drive dot-notation field access (see Desugarer.StructProjection).
+    constrFields :: [Name]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -321,7 +326,7 @@ instance HasSourceSpan DataTy where
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tyVars, sourceSpanOf constrs]
 
 instance HasSourceSpan Constr where
-  sourceSpanOf (Constr n tys) =
+  sourceSpanOf (Constr n tys _) =
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tys]
 
 instance HasSourceSpan TySym where

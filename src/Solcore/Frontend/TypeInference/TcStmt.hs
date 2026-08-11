@@ -11,6 +11,7 @@ import Data.Maybe
 import Data.Set qualified as Set
 import GHC.Stack
 import Language.Yul
+import Solcore.Desugarer.StructProjection (fieldProjName)
 import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -331,7 +332,7 @@ tcPat' t' (PExp e) =
 -- type inference for expressions
 
 mkCon :: DataTy -> TcM (Exp Id, Ty)
-mkCon (DataTy nt vs ((Constr n _) : _) _) =
+mkCon (DataTy nt vs ((Constr n _ _) : _) _) =
   do
     mvs <- mapM (const freshTyVar) vs
     let t1 = TyCon nt mvs
@@ -408,17 +409,28 @@ tcExpWithExpected' mExpected e@(Con n es) =
 tcExpWithExpected' _ e@(FieldAccess Nothing _) =
   -- = notImplementedS "tcExp" e
   tcmError ("tcExp not implemented for: " ++ pretty e ++ "\n" ++ show e)
-tcExpWithExpected' _ (FieldAccess (Just e) n) =
+tcExpWithExpected' mExpected (FieldAccess (Just e) n) =
   do
     -- inferring expression type
     (e', ps, t) <- tcExpWithExpected Nothing e
-    -- expand synonyms before extracting type name
-    tExp <- maybeExpandSynonym t
+    -- resolve metavariables, then expand synonyms before extracting type name
+    tZonked <- withCurrentSubst t
+    tExp <- maybeExpandSynonym tZonked
     tn <- typeName tExp
-    -- getting field type
-    s <- askField tn n
-    (ps' :=> t') <- freshInst s
-    withCurrentSubst (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
+    mti <- maybeAskTypeInfo tn
+    case mti of
+      -- Struct field access: `e.n` desugars to a call of the generated
+      -- positional projection function for field `n` of struct `tn` (see
+      -- Desugarer.StructProjection). Re-checking `e` here keeps the projection
+      -- call self-contained; `e` is normally a simple variable.
+      Just ti
+        | n `elem` fieldNames ti ->
+            tcExpWithExpected mExpected (Call Nothing (fieldProjName tn n) [e])
+      -- getting field type (legacy contract-field path)
+      _ -> do
+        s <- askField tn n
+        (ps' :=> t') <- freshInst s
+        withCurrentSubst (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
 tcExpWithExpected' mExpected ex@(Call me n args) =
   tcCall mExpected me n args `wrapError` ex
 tcExpWithExpected' mExpected (Lam args bd _) =
@@ -586,7 +598,7 @@ createClosureType ids vs ty =
         vs' = nub $ (mv ts) `union` (map (MetaTv . var) vs)
         ty' = TyCon dn (Meta <$> vs')
         cid = Id dn (funtype ts ty')
-        d = DataTy dn (map gvar vs') [Constr dn ts'] []
+        d = DataTy dn (map gvar vs') [Constr dn ts' []] []
     info [">> Create closure type:", pretty d, " for type :", pretty ty]
     pure (d, Con cid ns, ty')
 
@@ -621,7 +633,7 @@ closureTyCon (DataTy dn vs _ _) =
   pure (TyCon dn (TyVar <$> vs))
 
 createClosureBody :: Name -> DataTy -> [Id] -> Body Id -> TcM (Body Id)
-createClosureBody n cdt@(DataTy _ _ [Constr cn ts] _) ids bdy =
+createClosureBody n cdt@(DataTy _ _ [Constr cn ts _] _) ids bdy =
   do
     ct <- closureTyCon cdt
     let ps = map PVar ids

@@ -42,6 +42,13 @@ Sources (.solc, multi-module) → Module Loader → Parser → Name Resolution
    for data types
 5. **Class instance derivation** (`Solcore.Desugarer.DeriveClasses`) — expand `deriving (...)`
    clauses into forwarding instances via `Generic`
+5b. **Struct field-projection generation** (`Solcore.Desugarer.StructProjection`) — a `struct` is a
+   single-constructor product (`data Foo = Foo(T1, …, Tn)`) whose constructor also carries the
+   field names. This pass emits one positional projection function per field; dot-notation access
+   `s.x` is then rewritten to a projection call during type checking (`TcStmt`, using the same
+   `fieldProjName` mangling). Because a struct is just a tagless product, it inherits the tuple ABI
+   encoding and the SoA/`fst`/`snd` backend lowering unchanged, so no backend work is needed —
+   struct ABI encode/decode is exactly Solidity's tuple wire format.
 6. **SCC Analysis** (`Solcore.Frontend.TypeInference.SccAnalysis`) — analyze strongly connected
    components for mutual recursion
 7. **Indirect Call Handling** (`Solcore.Desugarer.IndirectCall`) — defunctionalization (eliminate

@@ -164,9 +164,9 @@ mkSumOf [t] = t
 mkSumOf (t : ts) = TyCon (Name "sum") [t, mkSumOf ts]
 
 constrRep :: Constr -> Ty
-constrRep (Constr _ []) = unitTy
-constrRep (Constr _ [t]) = t
-constrRep (Constr _ ts) = mkProdOf ts
+constrRep (Constr _ [] _) = unitTy
+constrRep (Constr _ [t] _) = t
+constrRep (Constr _ ts _) = mkProdOf ts
 
 sopRep :: DataTy -> Ty
 sopRep dt = mkSumOf (map constrRep (dataConstrs dt))
@@ -210,7 +210,7 @@ freshVarNames :: Int -> [Name]
 freshVarNames n = [Name ("_gv" ++ show i) | i <- [0 .. n - 1]]
 
 fromClause :: Int -> Int -> Constr -> Equation Name
-fromClause idx total (Constr cname tys) =
+fromClause idx total (Constr cname tys _) =
   let vars = freshVarNames (length tys)
       pat = PCon cname (map PVar vars)
       prodExp = mkProdExp (map Var vars)
@@ -224,7 +224,7 @@ fromBody dt =
    in [Match [Var (Name "_x")] (zipWith (\i c -> fromClause i total c) [0 ..] constrs)]
 
 toClause :: Int -> Int -> Constr -> Equation Name
-toClause idx total (Constr cname tys) =
+toClause idx total (Constr cname tys _) =
   let vars = freshVarNames (length tys)
       prodPat = mkProdPat vars
       sumPat = wrapSumPat idx total prodPat
@@ -619,7 +619,7 @@ buildABIEncode dt =
         Let False (Name "_innerHead") (Just wordTy) (Just innerHeadE),
         Match [Var (Name "_x")] (map encClause constrs)
       ]
-    encClause con@(Constr cname tys) =
+    encClause con@(Constr cname tys _) =
       let vars = freshVarNames (length tys)
           pat = PCon cname (map PVar vars)
           prodE = mkProdExp (map Var vars)

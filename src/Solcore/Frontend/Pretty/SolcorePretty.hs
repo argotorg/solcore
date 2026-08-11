@@ -198,8 +198,8 @@ instance Pretty TySym where
       <+> ppr t
 
 instance Pretty Constr where
-  ppr (Constr n []) = ppr n <> text " "
-  ppr (Constr n ts) =
+  ppr (Constr n [] _) = ppr n <> text " "
+  ppr (Constr n ts _) =
     ppr n <> parens (pprConstrArgs ts)
 
 pprConstrArgs :: [Ty] -> Doc
