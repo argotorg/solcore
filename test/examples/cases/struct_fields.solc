@@ -8,13 +8,13 @@
 // fixture needed; compiling is the assertion).
 
 struct Point {
-  word x;
-  word y;
+  x: word;
+  y: word
 }
 
 struct Line {
-  Point p1;
-  Point p2;
+  p1: Point;
+  p2: Point
 }
 
 function addw(a : word, b : word) -> word {

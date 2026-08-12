@@ -15,8 +15,8 @@ pragma no-coverage-condition;
 pragma no-bounded-variable-condition;
 
 struct Point {
-  uint256 x;
-  uint256 y;
+  x: uint256;
+  y: uint256
 }
 
 contract StructAbi {

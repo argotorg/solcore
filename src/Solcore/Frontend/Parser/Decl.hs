@@ -231,24 +231,26 @@ constrP = do
   args <- option [] (parens (typeP `sepBy1` comma))
   return (Constr n args [])
 
--- Solidity-style struct declaration:
---   struct Point { uint256 x; uint256 y; }
+-- Struct declaration with postfix field types, matching the rest of the
+-- language (`name : type`):
+--   struct Point { x: uint256; y: uint256 }
 -- Desugared to a single-constructor product `data Point = Point(uint256, uint256)`
 -- whose constructor also carries the field names, in order. The field names
 -- enable dot-notation access (`p.x`), lowered by Desugarer.StructProjection.
+-- Fields are separated by `;`, with an optional trailing `;`.
 structP :: Parser DataTy
 structP = do
   ds <- option [] deriveAttrP
   keyword "struct"
   n <- simpleNameP
-  fields <- braces (many structFieldP)
+  fields <- braces (structFieldP `sepEndBy` semicolon)
   let (tys, names) = unzip fields
   return (DataTy n [] [Constr n tys names] ds)
   where
     structFieldP = do
-      ty <- typeP
       fname <- simpleNameP
-      _ <- semicolon
+      _ <- colon
+      ty <- typeP
       return (ty, fname)
 
 tySymP :: Parser TySym
