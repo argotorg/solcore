@@ -100,6 +100,9 @@ type CloneKey = (Name, [(Name, Literal)])
 
 data EvalState = EvalState
   { esFuel :: !Fuel,
+    -- set once the budget is found empty; fuel itself is restored after each
+    -- inlining attempt, so the remaining amount does not record this
+    esFuelExhausted :: !Bool,
     esMem :: !(Map.Map Integer Word8),
     -- clones created so far, for reuse across call sites
     esCloneNames :: !(Map.Map CloneKey Name),
@@ -113,18 +116,20 @@ data EvalState = EvalState
 -- Reader for constant environment, State for fuel + memory
 type EvalM = ReaderT EvalEnv (State EvalState)
 
-runEvalM :: EvalEnv -> Fuel -> EvalM a -> (a, Fuel)
+-- Returns the result and whether the fuel budget was found empty at any point.
+runEvalM :: EvalEnv -> Fuel -> EvalM a -> (a, Bool)
 runEvalM env fuel m =
   let initState =
         EvalState
           { esFuel = fuel,
+            esFuelExhausted = False,
             esMem = Map.empty,
             esCloneNames = Map.empty,
             esCloneDefs = Map.empty,
             esPendingClones = []
           }
       (a, finalState) = runState (runReaderT m env) initState
-   in (a, esFuel finalState)
+   in (a, esFuelExhausted finalState)
 
 askFunTable :: EvalM FunTable
 askFunTable = asks envFunTable
@@ -150,7 +155,9 @@ useFuel = do
     then do
       lift $ modify (\s -> s {esFuel = esFuel s - 1})
       pure True
-    else pure False
+    else do
+      lift $ modify (\s -> s {esFuelExhausted = True})
+      pure False
 
 -- Restore one unit of fuel (called after successful inlining)
 restoreFuel :: EvalM ()
@@ -166,14 +173,14 @@ modifyMem f = lift $ modify (\s -> s {esMem = f (esMem s)})
 -- Main entry point
 -----------------------------------------------------------------------
 
--- Returns the evaluated compilation unit and remaining fuel
-evalCompUnit :: Fuel -> MastCompUnit -> (MastCompUnit, Fuel)
-evalCompUnit fuel cu = (cu {mastTopDecls = decls'}, remainingFuel)
+-- Returns the evaluated compilation unit and whether the fuel budget ran out
+evalCompUnit :: Fuel -> MastCompUnit -> (MastCompUnit, Bool)
+evalCompUnit fuel cu = (cu {mastTopDecls = decls'}, fuelExhausted)
   where
     funTable = buildFunTable cu
     pureFuns = computePureFuns funTable
     env = EvalEnv {envFunTable = funTable, envPureFuns = pureFuns, envComptimeMode = False}
-    (decls', remainingFuel) = runEvalM env fuel (mapM evalTopDecl (mastTopDecls cu))
+    (decls', fuelExhausted) = runEvalM env fuel (mapM evalTopDecl (mastTopDecls cu))
 
 -----------------------------------------------------------------------
 -- Build function table from compilation unit

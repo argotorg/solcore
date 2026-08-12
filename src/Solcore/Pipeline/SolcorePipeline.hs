@@ -201,10 +201,10 @@ compileWithDiagnostics opts = runExceptT $ do
 
       evaluated <- liftIO $ timeItNamed "Comptime eval " $ do
         let peFuel = maybe defaultFuel id (optPEFuel opts)
-            (evalResult, remainingFuel) = evalCompUnit peFuel specialized
+            (evalResult, fuelExhausted) = evalCompUnit peFuel specialized
 
         liftIO $
-          when (remainingFuel <= 0) $
+          when fuelExhausted $
             putStrLn "!! Warning: partial evaluation ran out of fuel (use --pe-fuel N to increase)"
 
         liftIO $ when (optDumpSpec opts) $ do
