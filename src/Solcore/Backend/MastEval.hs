@@ -880,9 +880,10 @@ mergeYulStateToVEnv tyReg yulState venv =
 -- does, and EmitHull's per-literal intercept fires as usual.
 
 -- Try to specialise a call by substituting literal arguments for the callee's
--- comptime-only parameters.  Returns a call to the clone, with those arguments
--- dropped.  Gives up (leaving the original call, and hence EmitHull's guard to
--- report it) when any such parameter has a non-literal argument.
+-- erasable parameters.  Returns a call to the clone, with those arguments
+-- dropped.  A parameter given a non-literal argument is simply not erased: for
+-- a `string` that leaves EmitHull's guard to report it, and for a comptime
+-- parameter the comptime verifier.
 tryCloneComptime :: MastId -> [MastExp] -> EvalM (Maybe MastExp)
 tryCloneComptime i args = do
   mfd <- lookupFunDef (mastIdName i)
@@ -890,18 +891,19 @@ tryCloneComptime i args = do
     Nothing -> pure Nothing
     Just fd
       | length (mastFunParams fd) /= length args -> pure Nothing
-      | null comptimeParams -> pure Nothing
-      | otherwise -> case mapM literalOf comptimeParams of
-          Nothing -> pure Nothing
-          Just binds -> cloneWith fd binds args
+      | null binds -> pure Nothing
+      | otherwise -> cloneWith fd binds args
       where
-        comptimeParams =
-          [ (p, a)
-          | (p, a) <- zip (mastFunParams fd) args,
-            mastParamType p == mastStringTy
+        -- A `string` parameter has to go because it has no runtime
+        -- representation; a comptime one because specialising on its value is
+        -- what the annotation asks for.  Inlining handles most of the latter,
+        -- but not for a callee that cannot be inlined at all.
+        erasable p = mastParamComptime p || mastParamType p == mastStringTy
+        binds =
+          [ (p, l)
+          | (p, MastLit l) <- zip (mastFunParams fd) args,
+            erasable p
           ]
-        literalOf (p, MastLit l) = Just (p, l)
-        literalOf _ = Nothing
 
 -- Clone definitions are not in the (immutable) function table, so a clone
 -- calling another cloneable function must be found in the state as well.

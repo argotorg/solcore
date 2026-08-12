@@ -54,19 +54,27 @@ data FunCtx = FunCtx
   }
 
 -- | Entry point: check all functions in the compilation unit.
+--
+-- The residual-annotation check is a second pass rather than part of the first
+-- so that the more specific diagnostics — naming the offending call site or
+-- binding — are reported in preference to it.
 checkComptime :: MastCompUnit -> Either String ()
-checkComptime cu = mapM_ checkTopDecl (mastTopDecls cu)
+checkComptime cu = do
+  onEveryFunDef (checkFunDef ft pure_) cu
+  onEveryFunDef checkNothingLeftToSubstitute cu
   where
     ft = buildFunTable cu
     pure_ = computeComptimePureFuns ft
 
-    checkTopDecl (MastTContr c) = mapM_ (checkContractDecl ft pure_) (mastContrDecls c)
-    checkTopDecl (MastTDataDef _) = Right ()
-
-checkContractDecl :: FunTable -> Set.Set Name -> MastContractDecl -> Either String ()
-checkContractDecl ft pure_ (MastCFunDecl fd) = checkFunDef ft pure_ fd
-checkContractDecl ft pure_ (MastCMutualDecl ds) = mapM_ (checkContractDecl ft pure_) ds
-checkContractDecl _ _ (MastCDataDecl _) = Right ()
+-- | Apply a check to every function definition in the unit.
+onEveryFunDef :: (MastFunDef -> Either String ()) -> MastCompUnit -> Either String ()
+onEveryFunDef f cu = mapM_ inTopDecl (mastTopDecls cu)
+  where
+    inTopDecl (MastTContr c) = mapM_ inDecl (mastContrDecls c)
+    inTopDecl (MastTDataDef _) = Right ()
+    inDecl (MastCFunDecl fd) = f fd
+    inDecl (MastCMutualDecl ds) = mapM_ inDecl ds
+    inDecl (MastCDataDecl _) = Right ()
 
 -- | Check a single function definition.
 checkFunDef :: FunTable -> Set.Set Name -> MastFunDef -> Either String ()
@@ -91,6 +99,26 @@ checkFunDef ft pure_ fd = checkStmts fc initEnv (mastFunBody fd)
         | p <- mastFunParams fd,
           mastParamComptime p || mastFunRetComptime fd
         ]
+
+-- | Every function reaching this pass is about to be emitted, so no comptime
+-- annotation on it can still be honoured: a comptime parameter means the
+-- argument was never substituted, and a comptime return means a call to it was
+-- never folded. Either way the promise the annotation makes is now unkeepable.
+checkNothingLeftToSubstitute :: MastFunDef -> Either String ()
+checkNothingLeftToSubstitute fd = do
+  case filter mastParamComptime (mastFunParams fd) of
+    [] -> Right ()
+    (p : _) ->
+      Left $
+        "comptime parameter '"
+          ++ show (mastParamName p)
+          ++ "' of '"
+          ++ show (mastFunName fd)
+          ++ "' survived partial evaluation"
+  when_ (mastFunRetComptime fd) $
+    "function '"
+      ++ show (mastFunName fd)
+      ++ "' annotated '-> comptime' survived partial evaluation"
 
 -- | Check a sequence of statements, threading the comptime environment.
 checkStmts :: FunCtx -> ComptimeEnv -> [MastStmt] -> Either String ()
