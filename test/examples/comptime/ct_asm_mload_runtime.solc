@@ -1,0 +1,24 @@
+/* Negative: comptime let bound to a runtime memory read — must fail.
+   readMem reads address 0 without any in-context mstore, so partial
+   evaluation cannot fold it to a literal (mload in comptime mode returns
+   Nothing for unwritten bytes) and the call survives to the comptime check.
+   Memory reads are excluded from the comptime purity notion — they are not
+   statically comptime, since the classifier has none of the runtime gating
+   that makes memory folding sound during partial evaluation — so binding the
+   result with 'let y : comptime word' must be rejected by the verifier.
+*/
+
+function readMem() -> word {
+  let v : word;
+  assembly {
+    v := mload(0)
+  }
+  return v;
+}
+
+contract ComptimeMloadRuntime {
+  function main() -> word {
+    let y : comptime word = readMem();
+    return y;
+  }
+}

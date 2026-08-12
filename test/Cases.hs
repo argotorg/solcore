@@ -69,6 +69,7 @@ comptime =
       runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_runtime_arg.solc" comptimeFolder,
       runTestExpectingFailure "ct_let_runtime.solc" comptimeFolder,
+      runTestExpectingFailure "ct_asm_mload_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_asm_ret.solc" comptimeFolder,
       runTestExpectingFailure "ct_overloaded_bad.solc" comptimeFolder,
       runTestExpectingFailure "string-mem-runtime-fail.solc" comptimeFolder

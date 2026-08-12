@@ -25,15 +25,44 @@ type YulState = Map.Map Name Integer  -- variable bindings only (no memory yet)
 
 ### Purity classification
 
-`asmIsInterpretable :: [YulStmt] -> Bool` is used by `stmtIsPure` to decide whether
-a function whose body contains an asm block belongs in `pureFuns`.  This is load-bearing
-for comptime-check soundness: a function containing `sload` must **not** enter `pureFuns`,
-or `isComptime` in `Backend/ComptimeCheck.hs` would wrongly classify its result as comptime.
+`asmIsInterpretableWith :: Bool -> [YulStmt] -> Bool` is used by `stmtIsPure` to decide
+whether a function whose body contains an asm block belongs in a purity set.  This is
+load-bearing for comptime-check soundness: a function containing `sload` must **not**
+enter any purity set, or `isComptime` in `Backend/ComptimeCheck.hs` would wrongly
+classify its result as comptime.
 
-The rule: `stmtIsPure _ (MastAsm stmts) = asmIsInterpretable stmts`.
+The rule: `stmtIsPure memOk _ (MastAsm stmts) = asmIsInterpretableWith memOk stmts`.
 
 Optimistic treatment (`True` for all asm) breaks negative tests because it lets
-`sloadWord` into `pureFuns`.
+`sloadWord` into the purity set.
+
+### Two purity notions (`memOk`)
+
+There are **two** purity sets, differing only in whether memory ops
+(`mload`/`mstore`/`mstore8`) count as interpretable — the `memOk` flag:
+
+- **`computePureFuns` (`memOk = True`)** — drives partial-evaluation inlining.
+  Memory ops are interpretable here because the Yul interpreter only *executes*
+  them under `envComptimeMode`, and `mload` succeeds only for bytes written
+  earlier in the **same** evaluation context (`mloadWord` returns `Nothing`
+  otherwise). Folding a memory-touching function is therefore gated *dynamically*
+  and stays sound.
+
+- **`computeComptimePureFuns` (`memOk = False`)** — drives the MAST comptime check.
+  `isComptime` classifies expressions *structurally*, with none of that runtime
+  gating. A call to an `mload`-reading function that PE could **not** fold survives
+  to the comptime check; if it were treated as pure, `isComptime` would wrongly
+  label its result comptime even though it depends on runtime memory. So memory-op
+  functions are excluded from this stricter set.
+
+  This is exactly right: a legitimately foldable memory chain (e.g. `mstore` then
+  `mload` of the same address, as in `ct_asm_mem.solc`) is already collapsed to a
+  literal by PE *before* the comptime check runs — so `isComptime` sees a literal,
+  not a call, and the strictness never rejects it. An **unfoldable** memory read
+  (e.g. `mload` of an address never written in context, as in
+  `ct_asm_mload_runtime.solc`) survives as a call and is correctly rejected.
+
+  Storage ops (`sload`, …) are never interpretable, regardless of `memOk`.
 
 ### TypeReg
 
@@ -352,9 +381,11 @@ Note: `mload` is an interpretable *expression* (returns a value), while
 
 ### Memory ops are gated on `envComptimeMode`
 
-`asmIsInterpretable` classifies `mstore`/`mstore8`/`mload` as interpretable (so
-functions using them remain in `pureFuns`), but the evaluator only *executes* them
-when `envComptimeMode = True`:
+`asmIsInterpretable` (i.e. `asmIsInterpretableWith True`) classifies
+`mstore`/`mstore8`/`mload` as interpretable (so functions using them remain in the
+PE `pureFuns`; the stricter comptime set — `asmIsInterpretableWith False` — excludes
+them, see "Two purity notions" above), but the evaluator only *executes* them when
+`envComptimeMode = True`:
 
 - **`mload`** in `evalYulExp`: returns `Nothing` if `envComptimeMode = False`.
 - **`mstore`/`mstore8`** in `evalYulStmt`: return `Nothing` (abort the block) if
