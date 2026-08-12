@@ -47,11 +47,27 @@ function swapped(a : word, b : word) -> word {
   return addw(p.x, p.y);
 }
 
+// `match` on a struct: the constructor destructures all fields positionally
+// (a single, exhaustive arm), an alternative to reading them via dot access.
+function matchPoint(p : Point) -> word {
+  match p {
+    | Point(a, b) => return addw(a, b);
+  }
+}
+
+// nested `match`: destructure a Line, then each Point.
+function matchLine(l : Line) -> word {
+  match l {
+    | Line(p1, p2) => return addw(matchPoint(p1), matchPoint(p2));
+  }
+}
+
 contract StructFields {
   public function main() -> word {
     let s : word = sumPoint(3, 4);
     let pm : word = perimeter(1, 2, 3, 4);
     let sw : word = swapped(5, 6);
-    return addw(addw(s, pm), sw);
+    let m : word = matchLine(Line(Point(1, 2), Point(3, 4)));
+    return addw(addw(addw(s, pm), sw), m);
   }
 }
