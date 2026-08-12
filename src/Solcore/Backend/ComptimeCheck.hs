@@ -4,13 +4,24 @@ module Solcore.Backend.ComptimeCheck (checkComptime) where
    Runs on MastCompUnit after specialization and partial evaluation.
 
    Two independent concerns:
-     1. Classification: is an expression statically comptime?
-        A value is comptime if it is a literal, a comptime-bound variable,
-        or a call to a pure function whose arguments are all comptime.
-        Purity is determined by computeComptimePureFuns (MastEval), the
-        stricter notion that excludes memory-op (mload/mstore) functions: this
-        classifier is structural, without the runtime gating that makes memory
-        folding sound in the partial evaluator.
+     1. Classification: is an expression comptime?
+        This pass runs after partial evaluation, so the question it asks
+        depends on what evaluation still had left to do.
+
+        In a closed context — a function with no comptime parameters and no
+        comptime return — every comptime argument the body could receive has
+        already been substituted, so partial evaluation has had its chance:
+        only a value (a literal, or a constructor applied to values) counts.
+        A residual call is a runtime computation whatever its shape, which is
+        what makes exhausted fuel a rejection rather than silently worse code.
+
+        In an open context the comptime parameters are still parameters, so
+        the most that can be asked is the structural classification: a
+        literal, a comptime-bound variable, or a call to a pure function whose
+        arguments are all comptime.  Purity is determined by
+        computeComptimePureFuns (MastEval), the stricter notion that excludes
+        memory-op (mload/mstore) functions: this classifier has none of the
+        runtime gating that makes memory folding sound in the evaluator.
 
      2. Constraint checking: annotations must be consistent with reality.
         - A parameter annotated 'comptime' must receive a comptime argument
@@ -31,6 +42,17 @@ import Solcore.Frontend.Syntax.Name (Name)
 -- | Set of variable names known to be comptime in the current scope.
 type ComptimeEnv = Set.Set Name
 
+-- | What the checker needs to know about the function it is walking.
+data FunCtx = FunCtx
+  { fcFunTable :: FunTable,
+    fcPure :: Set.Set Name,
+    fcRetComptime :: Bool,
+    fcName :: Name,
+    -- | True when comptime values reach this body as parameters rather than
+    -- as substituted values, so a comptime expression need not be a value yet.
+    fcOpen :: Bool
+  }
+
 -- | Entry point: check all functions in the compilation unit.
 checkComptime :: MastCompUnit -> Either String ()
 checkComptime cu = mapM_ checkTopDecl (mastTopDecls cu)
@@ -48,9 +70,18 @@ checkContractDecl _ _ (MastCDataDecl _) = Right ()
 
 -- | Check a single function definition.
 checkFunDef :: FunTable -> Set.Set Name -> MastFunDef -> Either String ()
-checkFunDef ft pure_ fd =
-  checkStmts ft pure_ (mastFunRetComptime fd) (mastFunName fd) initEnv (mastFunBody fd)
+checkFunDef ft pure_ fd = checkStmts fc initEnv (mastFunBody fd)
   where
+    fc =
+      FunCtx
+        { fcFunTable = ft,
+          fcPure = pure_,
+          fcRetComptime = mastFunRetComptime fd,
+          fcName = mastFunName fd,
+          fcOpen =
+            any mastParamComptime (mastFunParams fd)
+              || mastFunRetComptime fd
+        }
     -- For '-> comptime' functions, assume ALL params are comptime when checking
     -- the body: this verifies "if all args happen to be comptime, is the result?"
     -- For other functions, only explicitly-annotated comptime params are trusted.
@@ -62,45 +93,44 @@ checkFunDef ft pure_ fd =
         ]
 
 -- | Check a sequence of statements, threading the comptime environment.
-checkStmts :: FunTable -> Set.Set Name -> Bool -> Name -> ComptimeEnv -> [MastStmt] -> Either String ()
-checkStmts _ _ _ _ _ [] = Right ()
-checkStmts ft pure_ retCt fname env (s : ss) = do
-  env' <- checkStmt ft pure_ retCt fname env s
-  checkStmts ft pure_ retCt fname env' ss
+checkStmts :: FunCtx -> ComptimeEnv -> [MastStmt] -> Either String ()
+checkStmts _ _ [] = Right ()
+checkStmts fc env (s : ss) = do
+  env' <- checkStmt fc env s
+  checkStmts fc env' ss
 
 -- | Check one statement; returns the updated comptime environment.
-checkStmt :: FunTable -> Set.Set Name -> Bool -> Name -> ComptimeEnv -> MastStmt -> Either String ComptimeEnv
-checkStmt ft pure_ retCt fname env stmt = case stmt of
+checkStmt :: FunCtx -> ComptimeEnv -> MastStmt -> Either String ComptimeEnv
+checkStmt fc env stmt = case stmt of
   MastLet ct i _ mInit -> do
     case mInit of
       Nothing -> return env
       Just e -> do
-        checkExp ft pure_ env e
-        let ct' = isComptime ft pure_ env e
+        checkExp fc env e
+        let ct' = discharged fc env e
         when_ (ct && not ct') $
           "comptime let '" ++ show (mastIdName i) ++ "' is bound to a runtime expression"
         return $ if ct || ct' then Set.insert (mastIdName i) env else env
   MastAssign _ e -> do
-    checkExp ft pure_ env e
+    checkExp fc env e
     return env
   MastStmtExp e -> do
-    checkExp ft pure_ env e
+    checkExp fc env e
     return env
   MastReturn e -> do
-    checkExp ft pure_ env e
-    let ct' = isComptime ft pure_ env e
-    when_ (retCt && not ct') $
-      "function '" ++ show fname ++ "' annotated '-> comptime' returns a runtime expression"
+    checkExp fc env e
+    when_ (fcRetComptime fc && not (discharged fc env e)) $
+      "function '" ++ show (fcName fc) ++ "' annotated '-> comptime' returns a runtime expression"
     return env
   MastMatch scrut alts -> do
-    checkExp ft pure_ env scrut
-    mapM_ (checkAlt ft pure_ retCt fname env) alts
+    checkExp fc env scrut
+    mapM_ (checkAlt fc env) alts
     return env
   MastFor initStmt cond postStmt body -> do
-    _ <- checkStmt ft pure_ retCt fname env initStmt
-    checkExp ft pure_ env cond
-    _ <- checkStmt ft pure_ retCt fname env postStmt
-    mapM_ (checkStmt ft pure_ retCt fname env) body
+    _ <- checkStmt fc env initStmt
+    checkExp fc env cond
+    _ <- checkStmt fc env postStmt
+    mapM_ (checkStmt fc env) body
     return env
   MastAsm _ ->
     return env
@@ -109,40 +139,52 @@ checkStmt ft pure_ retCt fname env stmt = case stmt of
   MastContinue ->
     return env
   MastSeq stmts -> do
-    checkStmts ft pure_ retCt fname env stmts
+    checkStmts fc env stmts
     return env
 
 -- | Check an alternative in a match expression.
-checkAlt :: FunTable -> Set.Set Name -> Bool -> Name -> ComptimeEnv -> MastAlt -> Either String ()
-checkAlt ft pure_ retCt fname env (_, body) =
-  checkStmts ft pure_ retCt fname env body
+checkAlt :: FunCtx -> ComptimeEnv -> MastAlt -> Either String ()
+checkAlt fc env (_, body) = checkStmts fc env body
 
 -- | Check comptime-param constraints inside an expression (recursive).
-checkExp :: FunTable -> Set.Set Name -> ComptimeEnv -> MastExp -> Either String ()
-checkExp ft pure_ env (MastCall f args) = do
-  checkCallSite ft pure_ env f args
-  mapM_ (checkExp ft pure_ env) args
-checkExp ft pure_ env (MastCon _ args) =
-  mapM_ (checkExp ft pure_ env) args
-checkExp ft pure_ env (MastCond c t e) =
-  mapM_ (checkExp ft pure_ env) [c, t, e]
-checkExp _ _ _ _ = Right ()
+checkExp :: FunCtx -> ComptimeEnv -> MastExp -> Either String ()
+checkExp fc env (MastCall f args) = do
+  checkCallSite fc env f args
+  mapM_ (checkExp fc env) args
+checkExp fc env (MastCon _ args) =
+  mapM_ (checkExp fc env) args
+checkExp fc env (MastCond c t e) =
+  mapM_ (checkExp fc env) [c, t, e]
+checkExp _ _ _ = Right ()
 
 -- | Verify that comptime-annotated parameters receive comptime arguments.
-checkCallSite :: FunTable -> Set.Set Name -> ComptimeEnv -> MastId -> [MastExp] -> Either String ()
-checkCallSite ft pure_ env f args =
-  case Map.lookup (mastIdName f) ft of
+checkCallSite :: FunCtx -> ComptimeEnv -> MastId -> [MastExp] -> Either String ()
+checkCallSite fc env f args =
+  case Map.lookup (mastIdName f) (fcFunTable fc) of
     Nothing -> Right () -- builtin or unknown; no annotation to check
     Just fd ->
       mapM_ checkArg (zip (mastFunParams fd) args)
   where
     checkArg (param, arg) =
-      when_ (mastParamComptime param && not (isComptime ft pure_ env arg)) $
+      when_ (mastParamComptime param && not (discharged fc env arg)) $
         "runtime value passed to comptime parameter '"
           ++ show (mastParamName param)
           ++ "' of '"
           ++ show (mastIdName f)
           ++ "'"
+
+-- | Has this expression's comptime obligation actually been met?
+discharged :: FunCtx -> ComptimeEnv -> MastExp -> Bool
+discharged fc env e
+  | fcOpen fc = isComptime (fcFunTable fc) (fcPure fc) env e
+  | otherwise = isValue e
+
+-- | A value: what a discharged comptime expression looks like once partial
+-- evaluation has finished with it.  No computation left to perform.
+isValue :: MastExp -> Bool
+isValue (MastLit _) = True
+isValue (MastCon _ args) = all isValue args
+isValue _ = False
 
 -- | Classify an expression as comptime (True) or runtime (False).
 --

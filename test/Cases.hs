@@ -72,10 +72,19 @@ comptime =
       runTestExpectingFailure "ct_asm_mload_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_asm_ret.solc" comptimeFolder,
       runTestExpectingFailure "ct_overloaded_bad.solc" comptimeFolder,
-      runTestExpectingFailure "string-mem-runtime-fail.solc" comptimeFolder
+      runTestExpectingFailure "string-mem-runtime-fail.solc" comptimeFolder,
+      -- a comptime binding partial evaluation could not discharge is a
+      -- runtime binding, however comptime it looks
+      runNamedTestExpectingFailure
+        "ct_let_ok.solc (starved of fuel)"
+        starvedOpt
+        "ct_let_ok.solc"
+        comptimeFolder
     ]
   where
     comptimeFolder = "./test/examples/comptime"
+    -- as runTestForFile compiles it, but with the fuel budget starved
+    starvedOpt = stdOpt {optNoGenDispatch = True, optPEFuel = Just 1}
 
 spec :: TestTree
 spec =
