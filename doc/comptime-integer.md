@@ -305,7 +305,7 @@ here to make the assumption explicit.
 
 ### MAST-level checker
 
-`isComptime` already returns `True` for `MastLit _` — no change needed.
+`isValue` already returns `True` for `MastLit _` — no change needed.
 
 `integer`-typed parameters and `let`-bindings must carry the `comptime` flag at
 the source level; the existing flag propagation handles them.
