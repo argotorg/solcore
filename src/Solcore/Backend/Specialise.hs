@@ -255,6 +255,15 @@ addInstResolutions inst = forM_ (instFunctions inst) (addMethodResolution (instD
 specialiseTopDecl :: TopDecl Id -> SM [TopDecl Id]
 specialiseTopDecl (TContr (Contract name args _ _ decls)) = withLocalState do
   addContractResolutions (Contract name args [] [] decls)
+  -- Start each contract with a fresh specTable. `withLocalState` deliberately
+  -- persists the specTable across calls (to reuse specialisations), but
+  -- `getSpecialisedDecls` returns the *whole* table, so without this reset one
+  -- contract's specialised functions leak into the next contract's Hull. With
+  -- several contracts compiled together (e.g. a base and a contract that
+  -- inherits it), that leak mixes a contract's deploy machinery (its `_start`
+  -- and its constructor's `invokable_invoke$t_<C>_init` instance) into a sibling
+  -- Hull, leaving that sibling's own init-invoke referenced but undefined.
+  modify (\st -> st {specTable = emptyTable})
   -- Runtime code
   runtimeDecls <- withLocalState do
     forM_ entries specEntry

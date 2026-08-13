@@ -21,6 +21,7 @@ bash ./contest.sh test/examples/dispatch/super_update.json
 bash ./contest.sh test/examples/dispatch/vault_token.json
 bash ./contest.sh test/examples/dispatch/diamond.json
 bash ./contest.sh test/examples/dispatch/vault_multi.json
+bash ./contest.sh test/examples/dispatch/xmod_vault.json
 bash ./contest.sh test/examples/dispatch/hashes.json
 bash ./contest.sh test/examples/dispatch/payable.json
 bash ./contest.sh test/examples/dispatch/payable_ctor.json
