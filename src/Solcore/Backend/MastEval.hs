@@ -6,7 +6,6 @@ module Solcore.Backend.MastEval
     FunTable,
     buildFunTable,
     computePureFuns,
-    computeComptimePureFuns,
     -- Evaluation monad (exported for testing)
     EvalEnv (..),
     EvalState (..),
@@ -20,7 +19,6 @@ module Solcore.Backend.MastEval
     evalYulBlock,
     substYulBlock,
     asmIsInterpretable,
-    asmIsInterpretableWith,
     maskWord,
     mstoreBytes,
     mloadWord,
@@ -1170,29 +1168,7 @@ builtinImpureFuns = Set.fromList [Name "revertLit", memStringFromLitName]
 -- SAME evaluation context (mloadWord returns Nothing otherwise). Folding a
 -- memory-touching function is therefore gated dynamically and stays sound.
 computePureFuns :: FunTable -> Set.Set Name
-computePureFuns = computePureFunsWith True
-
--- | Stricter purity used by the MAST comptime check ('ComptimeCheck').
--- Unlike 'computePureFuns', memory ops (mload/mstore/mstore8) do NOT count as
--- interpretable, so any function whose asm reads or writes memory is excluded.
---
--- Why the two notions must differ: 'isComptime' classifies expressions
--- *structurally*, with none of the dynamic 'envComptimeMode' / in-context-write
--- gating that makes memory folding sound during PE. A call to an mload-reading
--- function that PE could not fold survives to the comptime check; if it were in
--- pureFuns, 'isComptime' would wrongly label its result comptime even though it
--- depends on runtime memory. Excluding memory-op functions keeps the classifier
--- sound: a legitimately foldable memory chain (e.g. mstore then mload of the
--- same address) is already collapsed to a literal by PE before this check runs,
--- while an unfoldable memory read survives as a call and is correctly rejected.
-computeComptimePureFuns :: FunTable -> Set.Set Name
-computeComptimePureFuns = computePureFunsWith False
-
--- | Fixed-point purity computation. @memOk@ selects whether memory ops
--- (mload/mstore/mstore8) count as interpretable: True for PE
--- ('computePureFuns'), False for the comptime check ('computeComptimePureFuns').
-computePureFunsWith :: Bool -> FunTable -> Set.Set Name
-computePureFunsWith memOk ft = go builtinPureFuns
+computePureFuns ft = go builtinPureFuns
   where
     go pureFuns =
       let pureFuns' =
@@ -1202,7 +1178,7 @@ computePureFunsWith memOk ft = go builtinPureFuns
                     || fname `Set.member` builtinImpureFuns
                     then acc
                     else
-                      if bodyIsPure memOk (Set.insert fname acc) (mastFunBody fd)
+                      if bodyIsPure (Set.insert fname acc) (mastFunBody fd)
                         then Set.insert fname acc
                         else acc
               )
@@ -1212,29 +1188,28 @@ computePureFunsWith memOk ft = go builtinPureFuns
             then pureFuns
             else go pureFuns'
 
-bodyIsPure :: Bool -> Set.Set Name -> [MastStmt] -> Bool
-bodyIsPure memOk pureFuns = all (stmtIsPure memOk pureFuns)
+bodyIsPure :: Set.Set Name -> [MastStmt] -> Bool
+bodyIsPure pureFuns = all (stmtIsPure pureFuns)
 
-stmtIsPure :: Bool -> Set.Set Name -> MastStmt -> Bool
+stmtIsPure :: Set.Set Name -> MastStmt -> Bool
 -- Asm blocks are pure only if every statement uses a statically interpretable
--- operation. This keeps storage reads (sload, …) out of pureFuns entirely;
--- memory reads/writes (mload/mstore/mstore8) count only when @memOk@ is True
--- (PE), never for the comptime check — which is load-bearing for its soundness.
-stmtIsPure memOk _ (MastAsm stmts) = asmIsInterpretableWith memOk stmts
-stmtIsPure _ pureFuns (MastLet _ _ _ mInit) = maybe True (expIsPure pureFuns) mInit
-stmtIsPure _ pureFuns (MastAssign _ e) = expIsPure pureFuns e
-stmtIsPure _ pureFuns (MastStmtExp e) = expIsPure pureFuns e
-stmtIsPure _ pureFuns (MastReturn e) = expIsPure pureFuns e
-stmtIsPure memOk pureFuns (MastMatch e alts) =
-  expIsPure pureFuns e && all (bodyIsPure memOk pureFuns . snd) alts
-stmtIsPure memOk pureFuns (MastFor initStmt cond post body) =
-  stmtIsPure memOk pureFuns initStmt
+-- operation. This keeps storage reads (sload, …) out of pureFuns entirely,
+-- while memory reads/writes (mload/mstore/mstore8) count as interpretable.
+stmtIsPure _ (MastAsm stmts) = asmIsInterpretable stmts
+stmtIsPure pureFuns (MastLet _ _ _ mInit) = maybe True (expIsPure pureFuns) mInit
+stmtIsPure pureFuns (MastAssign _ e) = expIsPure pureFuns e
+stmtIsPure pureFuns (MastStmtExp e) = expIsPure pureFuns e
+stmtIsPure pureFuns (MastReturn e) = expIsPure pureFuns e
+stmtIsPure pureFuns (MastMatch e alts) =
+  expIsPure pureFuns e && all (bodyIsPure pureFuns . snd) alts
+stmtIsPure pureFuns (MastFor initStmt cond post body) =
+  stmtIsPure pureFuns initStmt
     && expIsPure pureFuns cond
-    && stmtIsPure memOk pureFuns post
-    && bodyIsPure memOk pureFuns body
-stmtIsPure _ _ MastBreak = True
-stmtIsPure _ _ MastContinue = True
-stmtIsPure memOk pureFuns (MastSeq stmts) = bodyIsPure memOk pureFuns stmts
+    && stmtIsPure pureFuns post
+    && bodyIsPure pureFuns body
+stmtIsPure _ MastBreak = True
+stmtIsPure _ MastContinue = True
+stmtIsPure pureFuns (MastSeq stmts) = bodyIsPure pureFuns stmts
 
 expIsPure :: Set.Set Name -> MastExp -> Bool
 expIsPure _ (MastLit _) = True
@@ -1248,25 +1223,15 @@ expIsPure pureFuns (MastCond e1 e2 e3) =
 -- | True if an asm block contains only statically interpretable statements.
 -- Such blocks can be evaluated at compile time by the Yul interpreter,
 -- and functions containing only such blocks are eligible for PE inlining.
--- Memory ops (mload/mstore/mstore8) are interpretable here; see
--- 'asmIsInterpretableWith' for the stricter variant used by the comptime check.
+-- Memory ops (mload/mstore/mstore8) are interpretable: the interpreter gates
+-- them on 'envComptimeMode' and only folds in-context writes, so this stays
+-- sound.  Storage ops (sload, …) are never interpretable.
 asmIsInterpretable :: [YulStmt] -> Bool
-asmIsInterpretable = asmIsInterpretableWith True
-
--- | Generalisation of 'asmIsInterpretable'. @memOk@ selects whether memory ops
--- (mload/mstore/mstore8) are treated as interpretable:
---
---   * PE ('computePureFuns') passes True — the interpreter gates memory ops on
---     'envComptimeMode' and only folds in-context writes, so this stays sound.
---   * The comptime check ('computeComptimePureFuns') passes False, so
---     memory-touching asm never counts as pure there. Storage ops (sload, …)
---     are never interpretable, regardless of @memOk@.
-asmIsInterpretableWith :: Bool -> [YulStmt] -> Bool
-asmIsInterpretableWith memOk = all interpretableStmt
+asmIsInterpretable = all interpretableStmt
   where
     interpretableStmt (YAssign [_] e) = interpretableExp e
-    interpretableStmt (YExp (YCall (Name "mstore") [p, v])) = memOk && interpretableExp p && interpretableExp v
-    interpretableStmt (YExp (YCall (Name "mstore8") [p, v])) = memOk && interpretableExp p && interpretableExp v
+    interpretableStmt (YExp (YCall (Name "mstore") [p, v])) = interpretableExp p && interpretableExp v
+    interpretableStmt (YExp (YCall (Name "mstore8") [p, v])) = interpretableExp p && interpretableExp v
     interpretableStmt _ = False
 
     -- mload has its own clause (reads memory); general YCall delegates to interpretableOp
@@ -1274,7 +1239,7 @@ asmIsInterpretableWith memOk = all interpretableStmt
     interpretableExp (YLit (YulNumber _)) = True
     interpretableExp (YLit YulTrue) = True
     interpretableExp (YLit YulFalse) = True
-    interpretableExp (YCall (Name "mload") [p]) = memOk && interpretableExp p
+    interpretableExp (YCall (Name "mload") [p]) = interpretableExp p
     interpretableExp (YCall op args) =
       interpretableOp op (length args) && all interpretableExp args
     interpretableExp _ = False
