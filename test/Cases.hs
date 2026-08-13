@@ -83,6 +83,12 @@ comptime =
       runTestExpectingFailure "ct_asm_ret.solc" comptimeFolder,
       runTestExpectingFailure "ct_overloaded_bad.solc" comptimeFolder,
       runTestExpectingFailure "string-mem-runtime-fail.solc" comptimeFolder,
+      -- a comptime builtin's stub body must never be inlined: doing so answers
+      -- with its placeholder instead of letting the call be reported
+      runTestExpectingError
+        "runtime value passed to comptime parameter 'a' of 'std_keccakWordLit'"
+        "ct_builtin_runtime_arg_fail.solc"
+        comptimeFolder,
       -- comptime bindings are immutable, whatever is assigned to them
       runTestExpectingError "cannot assign to comptime binding 'x'" "ct_assign_fail.solc" comptimeFolder,
       runTestExpectingError "cannot assign to comptime binding 'x'" "ct_assign_comptime_rhs_fail.solc" comptimeFolder,

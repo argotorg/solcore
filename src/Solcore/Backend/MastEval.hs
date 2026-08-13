@@ -1118,7 +1118,15 @@ evalFunBody tyReg env (stmt : rest) = case stmt of
             then Map.insert i e' env
             else Map.delete i env
     evalFunBody tyReg env' rest
-  MastStmtExp _ -> evalFunBody tyReg env rest
+  MastStmtExp e -> do
+    -- Inlining puts the body in expression position, where a statement has
+    -- nowhere to leave an effect behind.  Only one that folded away entirely
+    -- can be dropped; anything residual means this body cannot be inlined.
+    -- The comptime builtins depend on it: each is a stub guarded by
+    -- `unimplemented()`, so folding their real meaning is evalPrimitive's job
+    -- and reaching the body at all means it declined.
+    e' <- evalExp env e
+    if isKnownValue e' then evalFunBody tyReg env rest else pure Nothing
   MastReturn e -> do
     e' <- evalExp env e
     pure $ if isKnownValue e' then Just e' else Nothing
