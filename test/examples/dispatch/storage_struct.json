@@ -1,0 +1,64 @@
+{
+  "storage_struct": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor() asserts StorageSize(Point)==2",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "setPoint(3,4): whole-struct store into storage field p",
+          "calldata": "4b5bdd8e00000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000004",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "sumMatch(): match p { Point(a,b) => a+b } -> 7",
+          "calldata": "f680b3a7",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000007",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getX(): dot read p.x (load struct + project) -> 3",
+          "calldata": "5197c7aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000003",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getY(): dot read p.y -> 4",
+          "calldata": "0b7f1665",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000004",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}
