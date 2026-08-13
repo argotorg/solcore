@@ -1,6 +1,7 @@
 module Cases where
 
 import Control.Exception (try)
+import Data.List (isInfixOf)
 import Solcore.Pipeline.Options
 import Solcore.Pipeline.SolcorePipeline
 import System.Exit (ExitCode (..))
@@ -77,14 +78,15 @@ comptime =
       runTestExpectingFailure "ct_overloaded_bad.solc" comptimeFolder,
       runTestExpectingFailure "string-mem-runtime-fail.solc" comptimeFolder,
       -- comptime bindings are immutable, whatever is assigned to them
-      runTestExpectingFailure "ct_assign_fail.solc" comptimeFolder,
-      runTestExpectingFailure "ct_assign_comptime_rhs_fail.solc" comptimeFolder,
-      runTestExpectingFailure "ct_param_assign_fail.solc" comptimeFolder,
+      runTestExpectingError "cannot assign to comptime binding 'x'" "ct_assign_fail.solc" comptimeFolder,
+      runTestExpectingError "cannot assign to comptime binding 'x'" "ct_assign_comptime_rhs_fail.solc" comptimeFolder,
+      runTestExpectingError "cannot assign to comptime binding 'x'" "ct_param_assign_fail.solc" comptimeFolder,
       -- a comptime binding partial evaluation could not discharge is a
       -- runtime binding, however comptime it looks
-      runNamedTestExpectingFailure
+      runNamedTestExpectingError
         "ct_let_ok.solc (starved of fuel)"
         starvedOpt
+        "comptime let 'y' is bound to a runtime expression"
         "ct_let_ok.solc"
         comptimeFolder
     ]
@@ -771,4 +773,26 @@ runNamedTestExpectingFailure testName opts file folder =
       Left (ExitFailure _) -> return () -- Expected failure via exitFailure
       Left ExitSuccess -> assertFailure "Expected compilation to fail, but it exited successfully"
       Right (Left _) -> return () -- Expected failure via Either
+      Right (Right _) -> assertFailure "Expected compilation to fail, but it succeeded"
+
+-- | As 'runTestExpectingFailure', but pinning what the compiler said.  The
+--   expectation is a substring so that it survives changes to the surrounding
+--   diagnostic rendering.
+runTestExpectingError :: String -> FileName -> BaseFolder -> TestTree
+runTestExpectingError expected file folder =
+  runNamedTestExpectingError file (stdOpt {optNoGenDispatch = True}) expected file folder
+
+runNamedTestExpectingError :: String -> Option -> String -> FileName -> BaseFolder -> TestTree
+runNamedTestExpectingError testName opts expected file folder =
+  testCase testName $ do
+    let filePath = folder </> file
+    outcome <- try (compile opts {fileName = filePath, optRootDir = folder})
+    case outcome of
+      Left (code :: ExitCode) ->
+        assertFailure $ "Expected a reported error, but compilation exited with " ++ show code
+      Right (Left err)
+        | expected `isInfixOf` err -> return ()
+        | otherwise ->
+            assertFailure $
+              "Expected an error containing:\n  " ++ expected ++ "\nbut got:\n" ++ err
       Right (Right _) -> assertFailure "Expected compilation to fail, but it succeeded"
