@@ -16,7 +16,7 @@ pragma no-bounded-variable-condition;
 
 struct Point {
   x: uint256;
-  y: uint256
+  y: uint256;
 }
 
 contract StructAbi {

@@ -233,17 +233,17 @@ constrP = do
 
 -- Struct declaration with postfix field types, matching the rest of the
 -- language (`name : type`):
---   struct Point { x: uint256; y: uint256 }
+--   struct Point { x: uint256; y: uint256; }
 -- Desugared to a single-constructor product `data Point = Point(uint256, uint256)`
 -- whose constructor also carries the field names, in order. The field names
 -- enable dot-notation access (`p.x`), lowered by Desugarer.StructProjection.
--- Fields are separated by `;`, with an optional trailing `;`.
+-- Each field is terminated by `;`, exactly like a contract field (fieldDeclP).
 structP :: Parser DataTy
 structP = do
   ds <- option [] deriveAttrP
   keyword "struct"
   n <- simpleNameP
-  fields <- braces (structFieldP `sepEndBy` semicolon)
+  fields <- braces (many structFieldP)
   let (tys, names) = unzip fields
   return (DataTy n [] [Constr n tys names] ds)
   where
@@ -251,6 +251,7 @@ structP = do
       fname <- simpleNameP
       _ <- colon
       ty <- typeP
+      _ <- semicolon
       return (ty, fname)
 
 tySymP :: Parser TySym

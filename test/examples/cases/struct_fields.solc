@@ -9,12 +9,12 @@
 
 struct Point {
   x: word;
-  y: word
+  y: word;
 }
 
 struct Line {
   p1: Point;
-  p2: Point
+  p2: Point;
 }
 
 function addw(a : word, b : word) -> word {

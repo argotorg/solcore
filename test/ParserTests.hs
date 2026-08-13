@@ -516,7 +516,7 @@ declTests =
       testCase "struct desugars to a single-constructor product with field names" $
         parsesAs
           topDeclP
-          "struct Point { x: uint256; y: uint256 }"
+          "struct Point { x: uint256; y: uint256; }"
           ( TDataDef
               ( DataTy
                   "Point"

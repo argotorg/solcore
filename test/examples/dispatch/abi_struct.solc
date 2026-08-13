@@ -37,7 +37,7 @@ data Option(a) = None | Some(a);
 struct Point {
   x: uint256;
   y: uint256;
-  color: Option(Color)
+  color: Option(Color);
 }
 
 contract StructDispatch {
