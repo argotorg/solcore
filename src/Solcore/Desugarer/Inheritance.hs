@@ -41,6 +41,7 @@
 module Solcore.Desugarer.Inheritance (inheritanceDesugarTopDecls) where
 
 import Data.Generics (everywhere, listify, mkT)
+import Data.List (find)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
@@ -114,7 +115,7 @@ c3merge :: [[Name]] -> [Name]
 c3merge lists = case filter (not . null) lists of
   [] -> []
   nonEmpty ->
-    case [h | (h : _) <- nonEmpty, all (h `notElem`) (map (drop 1) nonEmpty)] of
+    case [h | (h : _) <- nonEmpty, all ((h `notElem`) . drop 1) nonEmpty] of
       (cand : _) -> cand : c3merge (map (filter (/= cand)) nonEmpty)
       [] -> error ("inheritance: cannot C3-linearize an inconsistent hierarchy: " ++ show lists)
 
@@ -139,7 +140,7 @@ definesAt :: ChainCtx -> Int -> Name -> Bool
 definesAt ctx i g = Map.member g (ccMethodsAt ctx i)
 
 nearestBelow :: ChainCtx -> Name -> Int -> Maybe Int
-nearestBelow ctx g lvl = listToMaybe (filter (\j -> definesAt ctx j g) [lvl - 1, lvl - 2 .. 0])
+nearestBelow ctx g lvl = find (\j -> definesAt ctx j g) [lvl - 1, lvl - 2 .. 0]
 
 topLevelOf :: ChainCtx -> Name -> Int
 topLevelOf ctx g = case filter (\j -> definesAt ctx j g) [ccArity ctx - 1, ccArity ctx - 2 .. 0] of
