@@ -433,7 +433,19 @@ Rationale:
   violation the frontend classifier deferred is reported against an arbitrary position
   in `std/opcodes.solc` rather than the user's code. The frontend check exists partly to
   keep the common cases away from this path, but it does not cover all of them.
-- **Comptime-only types are not covered by the immutability rule.** `ctDeclared` is
-  false for an `isComptimeOnlyTy` parameter by design, so `function f(s : string) { s =
-  "x"; }` is caught only much later, by EmitHull's "comptime value not eliminated"
-  guard. Whether the frontend rule should extend to them is undecided.
+- **Comptime-only types are not covered by the immutability rule.** `ctDeclared` is set
+  from the `comptime` keyword alone, while a parameter's *classification* also becomes
+  `CTComptime` for an `isComptimeOnlyTy` type. So a `string` parameter is treated as
+  comptime everywhere except by the assignment rule, and `function f(s : string) { s =
+  "x"; }` reaches the backend. What happens next depends on the assignment, and only the
+  first of the three is a decent outcome:
+
+  | Program | Result |
+  |---|---|
+  | `s = "x"`, one literal, foldable | compiles, correct code |
+  | assigned in both arms of a runtime `match`, then passed to `strlenLit` or bound to a `string` let | rejected by the late check — `runtime value passed to comptime parameter 'a' of 'strlenLit'` / `comptime let 'r' is bound to a runtime expression`, at the bogus span above |
+  | same, but the result never reaches a comptime obligation | `EmitHull.translateParam` (`EmitHull.hs:251`) aborts with `string-typed parameter 's': comptime value not eliminated before hull emission` — a panic with a GHC call stack, not a diagnostic |
+
+  Extending the frontend rule to comptime-only types would replace all three with one
+  message at the assignment, but would also reject the first program, which works today.
+  Undecided.
