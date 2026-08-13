@@ -1,6 +1,7 @@
 module Solcore.Backend.MastEval
   ( evalCompUnit,
     defaultFuel,
+    fuelExhaustedDiagnostic,
     eliminateDeadCode,
     FunTable,
     buildFunTable,
@@ -54,6 +55,7 @@ import Data.Traversable (mapAccumM)
 import Data.Word (Word8)
 import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
 import Solcore.Backend.Mast
+import Solcore.Diagnostics qualified as Diag
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
 import Solcore.Primitives.Primitives (integerPrimNames, memStringFromLitName, stringPrimNames)
@@ -82,6 +84,21 @@ type YulState = Map.Map Name Integer
 
 defaultFuel :: Fuel
 defaultFuel = 100
+
+-- | Reported when evaluation stopped because the budget ran out rather than
+-- because there was nothing left to fold.  Carries no label: the evaluator
+-- works on Mast, which has no source locations, and an inferred span would
+-- point at an arbitrary token of an arbitrary file.
+fuelExhaustedDiagnostic :: Diag.Diagnostic
+fuelExhaustedDiagnostic =
+  Diag.Diagnostic
+    { Diag.diagnosticSeverity = Diag.Warning,
+      Diag.diagnosticCode = Just (Diag.DiagnosticCode "SC0401"),
+      Diag.diagnosticMessage = "partial evaluation ran out of fuel",
+      Diag.diagnosticLabels = [],
+      Diag.diagnosticNotes = [],
+      Diag.diagnosticHelp = ["pass --pe-fuel N to raise the budget"]
+    }
 
 -----------------------------------------------------------------------
 -- Evaluation monad
