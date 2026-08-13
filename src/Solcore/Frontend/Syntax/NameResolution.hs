@@ -9,7 +9,7 @@ import Data.Generics (Data, everything, extQ, mkQ)
 import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (isJust, mapMaybe)
 import Data.Monoid (First (..))
 import Solcore.Diagnostics (CompilerError (..), Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, diagnosticCompilerError)
 import Solcore.Frontend.Pretty.TreePretty
@@ -222,11 +222,12 @@ instance Resolve S.Contract where
           locals = [tn | S.CDataDecl (S.DataTy tn _ _ _) <- decls]
       savedC <- gets currentContract
       savedL <- gets contractLocalTypes
-      modify (\env -> env {currentContract = Just n, contractLocalTypes = locals})
+      savedB <- gets currentContractBases
+      modify (\env -> env {currentContract = Just n, contractLocalTypes = locals, currentContractBases = inh})
       mapM_ addTyVar ns
       mapM_ addContractDecl decls
       result <- (\ds -> Contract n (map TVar ns) impls inh ds) <$> resolve decls `wrapError` c
-      modify (\env -> env {currentContract = savedC, contractLocalTypes = savedL})
+      modify (\env -> env {currentContract = savedC, contractLocalTypes = savedL, currentContractBases = savedB})
       pure result
 
 -- Qualify a bare, contract-local type name by the contract currently being
@@ -707,18 +708,31 @@ resolveExp c@(S.ExpVar me n) =
             case fdt of
               Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
               _ -> undefinedName n
-      -- The reified contract receiver: a bare `self` that resolves to nothing
-      -- else, used inside a contract, denotes the current contract's
-      -- `ContractStorage(CCxt)` value. Resolve it to `FieldAccess Nothing "self"`;
-      -- the field-access pass turns that into the storage constant (or, in a
-      -- generated inheritance instance, into the `self` parameter). This is a
-      -- fallback so an actual `self` binding (field/param/function) always wins.
-      (Nothing, Nothing)
-        | n == Name "self" -> do
-            inC <- gets currentContract
-            case inC of
-              Just _ -> pure (FieldAccess Nothing n)
-              Nothing -> undefinedName n
+      -- A bare name that resolves to nothing else, used inside a contract,
+      -- becomes `FieldAccess Nothing n` (handled by the field-access pass) in two
+      -- cases:
+      --   * `self` — the reified contract receiver, denoting the current
+      --     contract's `ContractStorage(CCxt)` value; and
+      --   * any name, when the contract `inherits` a base — it is taken to be an
+      --     inherited member, since the base may be in another module whose
+      --     members this resolver cannot see and which the inheritance desugarer
+      --     flattens in.
+      -- This is a fallback, so an actual binding (field/param/function) always
+      -- wins; a non-inheriting contract still gets a crisp undefined-name error.
+      (Nothing, Nothing) -> do
+        inheriting <- gets (not . null . currentContractBases)
+        inC <- gets currentContract
+        if (n == Name "self" || inheriting) && isJust inC
+          then pure (FieldAccess Nothing n)
+          else do
+            sameName <- isSameNameConstructor n
+            if sameName
+              then Con <$> resolveSameNameConstructorName n <*> pure []
+              else do
+                hasQualified <- hasQualifiedConstructorLeaf n
+                if hasQualified
+                  then unqualifiedConstructorError n
+                  else undefinedName n
       _ -> do
         sameName <- isSameNameConstructor n
         if sameName
@@ -1104,7 +1118,13 @@ data Env
     -- private to its contract.  Names stay bare inside the resolver env, so all
     -- lookups are unchanged; only the emitted names are qualified.
     currentContract :: Maybe Name,
-    contractLocalTypes :: [Name]
+    contractLocalTypes :: [Name],
+    -- The `inherits` bases of the contract currently being resolved. When
+    -- non-empty, an otherwise-unresolved bare name inside the contract is taken
+    -- to be an inherited member (field or method) rather than an error, because
+    -- the parent may live in another module whose fields/methods this resolver
+    -- cannot see; the inheritance desugarer flattens the parent's members in.
+    currentContractBases :: [Name]
   }
   deriving (Show)
 
@@ -1145,6 +1165,7 @@ emptyEnv =
         ]
     )
     Nothing
+    []
     []
 
 globalEnv :: [S.TopDecl] -> Env

@@ -517,16 +517,26 @@ moduleLocalTypeCheckSurface ::
 moduleLocalTypeCheckSurface graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
+  let localDecls = topDeclsFrom unit
+  -- Contracts a local contract `inherits` (transitively) must keep their real
+  -- bodies through import, so the inheritance desugarer can flatten them into
+  -- the child; every other imported contract is body-stubbed as usual. The
+  -- inherited base is dropped from this module's output (it is compiled in its
+  -- own module), so keeping its body here only feeds the flattening.
+  inheritEdges <- concat <$> mapM (importedContractInheritEdges graph) importPairs
+  let inheritGraph =
+        Map.fromList (inheritEdges ++ [(name c, contractInherits c) | TContr c <- localDecls])
+      localBaseSeeds = concat [contractInherits c | TContr c <- localDecls]
+      inheritedBases = transitiveInheritedBases inheritGraph localBaseSeeds
   importedDecls <-
     dedupeImportedInstanceDecls
       . concat
-      <$> mapM (typeCheckImportedDecls collidingTypeNames graph) importPairs
+      <$> mapM (typeCheckImportedDecls inheritedBases collidingTypeNames graph) importPairs
   partialImportedTypes <-
     concat <$> mapM (importedPartialTypes collidingTypeNames graph) importPairs
   qualifiedDecls <-
     concat <$> mapM (typeCheckQualifiedImportDecls collidingTypeNames graph) importPairs
-  let localDecls = topDeclsFrom unit
-      visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
+  let visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
   pure
     ModuleTypeCheckSurface
       { moduleSurfaceImports = imports unit,
@@ -535,6 +545,31 @@ moduleLocalTypeCheckSurface graph modulePath = do
         moduleSurfaceImportedDecls = visibleImportedDecls,
         moduleSurfacePartialImportedTypes = normalizePartialImportedTypes partialImportedTypes
       }
+
+-- Body-stub a top decl, except keep the full body of a contract whose name is
+-- in the keep set (a base that a local contract inherits and the inheritance
+-- desugarer must flatten with real method/constructor bodies).
+stubTopDeclBodyUnless :: Set Name -> TopDecl -> TopDecl
+stubTopDeclBodyUnless keep decl@(TContr (Contract n _ _ _ _))
+  | n `Set.member` keep = decl
+stubTopDeclBodyUnless _ decl = stubTopDeclBody decl
+
+-- Contract-name -> declared bases, read (with full fidelity, pre-stub) from a
+-- directly-imported module's public decls, for computing the inherited-base set.
+importedContractInheritEdges :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [(Name, [Name])]
+importedContractInheritEdges graph (_imp, modulePath) = do
+  publicDecls <- publicTopDeclsForModule graph modulePath
+  pure [(name c, contractInherits c) | TContr c <- publicDecls]
+
+-- Transitive closure of the inherited-base relation, starting from the direct
+-- bases of local contracts and following each base's own declared bases.
+transitiveInheritedBases :: Map Name [Name] -> [Name] -> Set Name
+transitiveInheritedBases edges = go Set.empty
+  where
+    go seen [] = seen
+    go seen (n : ns)
+      | n `Set.member` seen = go seen ns
+      | otherwise = go (Set.insert n seen) (Map.findWithDefault [] n edges ++ ns)
 
 stubTopDeclBody :: TopDecl -> TopDecl
 stubTopDeclBody (TContr (Contract n vs impls inh contractDecls)) =
@@ -1784,8 +1819,8 @@ qualifiedFunctionSignatureDecls typeRenameMap qualifier cunit =
     let fd' = renameFunDefTypeRefs typeRenameMap fd
   ]
 
-typeCheckImportedDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
-typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
+typeCheckImportedDecls :: Set Name -> Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
+typeCheckImportedDecls inheritedBases collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly moduleName selector ->
       importOnlyDecls (Mod.modulePathName moduleName) selector
@@ -1809,7 +1844,7 @@ typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
             | TFunDef fd <- selectedPublicDecls
             ]
           selectedNonFunctionDecls =
-            [ stubTopDeclBody $
+            [ stubTopDeclBodyUnless inheritedBases $
                 renameTopDeclTypeRefs selectedTypeRenameMap $
                   renameTopDeclTypeRefs typeRenameMap decl
             | decl <- selectedPublicDecls,
@@ -1817,7 +1852,7 @@ typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
             ]
           supportNonFunctionDecls =
             map
-              (stubTopDeclBody . renameTopDeclTypeRefs typeRenameMap)
+              (stubTopDeclBodyUnless inheritedBases . renameTopDeclTypeRefs typeRenameMap)
               supportDecls
           selectedDecls = selectedFunctionDecls ++ selectedNonFunctionDecls
       pure (selectedDecls ++ shadowImportedDecls selectedDecls supportNonFunctionDecls)
@@ -1830,7 +1865,7 @@ typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
       let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
           localSupportDecls =
             map
-              (stubTopDeclBody . renameTopDeclTypeRefs typeRenameMap)
+              (stubTopDeclBodyUnless inheritedBases . renameTopDeclTypeRefs typeRenameMap)
               supportDecls
       pure (localSupportDecls ++ shadowImportedDecls localSupportDecls nestedSupportDecls)
 

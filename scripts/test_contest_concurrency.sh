@@ -111,8 +111,16 @@ case "$tool" in
         printf '%s\n' "Binary representation:" "hex-$case_name"
         ;;
     jq)
+        # contest.sh calls `jq -r ".<suite>.contract // empty" file` to pick the
+        # Hull for the requested contract; skip the -r flag and report no
+        # contract for the fake single-Hull cases (falls back to output1.hull).
+        if [[ "$1" == "-r" ]]; then
+            shift
+        fi
         if [[ "$1" == "keys[0]" ]]; then
             printf '%s\n' '"shared"'
+        elif [[ "$1" == *".contract"* ]]; then
+            printf '%s\n' ''
         else
             [[ "$1" == *"hex-$FAKE_CASE"* ]]
             printf '{"shared":{"bytecode":"%s","case":"%s"}}\n' \

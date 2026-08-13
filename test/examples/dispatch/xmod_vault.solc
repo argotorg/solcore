@@ -1,0 +1,27 @@
+import std.{*};
+import std.dispatch.{*};
+import xmod_base.{Ownable};
+
+// Cross-module inheritance: Vault inherits Ownable from another module.
+// The constructor and methods read/write the inherited `owner_` field, and the
+// inherited getOwner/setOwner methods are flattened into Vault's dispatch.
+contract Vault inherits Ownable {
+  balance : uint256;
+
+  constructor() {
+    owner_ = 100; // inherited field, written in the constructor
+    balance = 0;
+  }
+
+  public function getBalance() -> uint256 {
+    return balance;
+  }
+
+  public function deposit(amount : uint256) -> () {
+    balance = balance + amount;
+  }
+
+  public function rotateOwner(newOwner : uint256) -> () {
+    owner_ = newOwner; // inherited field, written in a regular method
+  }
+}

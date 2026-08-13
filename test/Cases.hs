@@ -144,6 +144,7 @@ dispatches =
       runDispatchTest "vault_token.solc",
       runDispatchTest "diamond.solc",
       runDispatchTest "vault_multi.solc",
+      runDispatchTest "xmod_vault.solc",
       runDispatchTest "eip712.solc",
       runDispatchTest "empty.solc",
       runDispatchTest "empty_no_constructor.solc",

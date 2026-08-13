@@ -1,0 +1,18 @@
+import std.{*};
+import std.dispatch.{*};
+
+// A reusable base contract living in its OWN module. `xmod_vault.solc`
+// imports and inherits it across module boundaries.
+export { Ownable };
+
+contract Ownable {
+  owner_ : uint256;
+
+  public function getOwner() -> uint256 {
+    return owner_;
+  }
+
+  public function setOwner(v : uint256) -> () {
+    owner_ = v;
+  }
+}
