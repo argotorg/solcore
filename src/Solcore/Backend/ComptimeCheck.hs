@@ -139,9 +139,11 @@ checkStmt fc env stmt = case stmt of
         when_ (ct && not ct') $
           "comptime let '" ++ show (mastIdName i) ++ "' is bound to a runtime expression"
         return $ if ct || ct' then Set.insert (mastIdName i) env else env
-  MastAssign _ e -> do
+  MastAssign i e -> do
     checkExp fc env e
-    return env
+    -- Whatever the variable held before, it now holds the result of this
+    -- assignment, so it is no longer a known comptime value.
+    return $ Set.delete (mastIdName i) env
   MastStmtExp e -> do
     checkExp fc env e
     return env

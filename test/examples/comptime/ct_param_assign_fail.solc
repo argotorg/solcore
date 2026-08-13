@@ -1,0 +1,15 @@
+/* Negative: assignment to a comptime parameter — must fail.
+   A comptime parameter is substituted away by partial evaluation, so it
+   is immutable for the same reason a comptime let is.
+*/
+import std;
+
+contract ComptimeParamAssign {
+  function double(comptime x : word) -> comptime word {
+    x = 7;
+    return x + x;
+  }
+  function main() -> word {
+    return double(21);
+  }
+}

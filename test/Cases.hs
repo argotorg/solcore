@@ -65,6 +65,8 @@ comptime =
       runTestForFile "string-user-instance.solc" comptimeFolder,
       runTestForFile "string-param-erasure.solc" comptimeFolder,
       runTestForFile "ct_param_erasure_word.solc" comptimeFolder,
+      -- a binding without the comptime modifier stays assignable
+      runTestForFile "ct_assign_plain_ok.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
       runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,
@@ -74,6 +76,10 @@ comptime =
       runTestExpectingFailure "ct_asm_ret.solc" comptimeFolder,
       runTestExpectingFailure "ct_overloaded_bad.solc" comptimeFolder,
       runTestExpectingFailure "string-mem-runtime-fail.solc" comptimeFolder,
+      -- comptime bindings are immutable, whatever is assigned to them
+      runTestExpectingFailure "ct_assign_fail.solc" comptimeFolder,
+      runTestExpectingFailure "ct_assign_comptime_rhs_fail.solc" comptimeFolder,
+      runTestExpectingFailure "ct_param_assign_fail.solc" comptimeFolder,
       -- a comptime binding partial evaluation could not discharge is a
       -- runtime binding, however comptime it looks
       runNamedTestExpectingFailure

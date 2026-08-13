@@ -1,0 +1,18 @@
+/* Negative: assignment to a comptime binding — must fail.
+   A comptime binding is immutable.  Partial evaluation discharges the
+   binding and erases the 'let', so an assignment left behind would refer
+   to a variable that is no longer declared.
+*/
+import std;
+
+contract ComptimeAssign {
+  function main() -> word {
+    let x : comptime word = 5;
+    let v : word;
+    assembly {
+      v := sload(0)
+    }
+    x = v;
+    return x;
+  }
+}
