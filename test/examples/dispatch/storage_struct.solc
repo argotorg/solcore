@@ -11,6 +11,11 @@ import std.StorageGeneric.{*};
 // derived storage(Point):CanStore(Point) instance. The whole struct can be
 // written and read back, destructured with `match`, or read field-by-field via
 // dot notation (a whole-struct load followed by a field projection).
+//
+// A single field can also be *written* through dot notation: `p.x = v`
+// desugars to a whole-struct read-modify-write `p = set_x(p, v)` (the setter is
+// generated per field alongside the projections), reusing the same
+// CanStore.store path.
 
 struct Point {
   x: uint256;
@@ -44,5 +49,14 @@ contract C {
 
   public function getY() -> uint256 {
     return p.y;
+  }
+
+  // write a single field via dot access (read-modify-write the whole struct)
+  public function setX(v : uint256) -> () {
+    p.x = v;
+  }
+
+  public function setY(v : uint256) -> () {
+    p.y = v;
   }
 }

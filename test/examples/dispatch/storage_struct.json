@@ -13,7 +13,7 @@
       },
       {
         "input": {
-          "comment": "setPoint(3,4): whole-struct store into storage field p",
+          "comment": "setPoint(3,4): whole-struct store -> p=(3,4)",
           "calldata": "4b5bdd8e00000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000004",
           "value": "0"
         },
@@ -25,7 +25,7 @@
       },
       {
         "input": {
-          "comment": "sumMatch(): match p { Point(a,b) => a+b } -> 7",
+          "comment": "sumMatch(): match p -> 3+4 = 7",
           "calldata": "f680b3a7",
           "value": "0"
         },
@@ -37,7 +37,7 @@
       },
       {
         "input": {
-          "comment": "getX(): dot read p.x (load struct + project) -> 3",
+          "comment": "getX(): dot read p.x -> 3",
           "calldata": "5197c7aa",
           "value": "0"
         },
@@ -56,6 +56,66 @@
         "kind": "call",
         "output": {
           "returndata": "0000000000000000000000000000000000000000000000000000000000000004",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setX(9): sub-field write p.x=9 (RMW) -> p=(9,4)",
+          "calldata": "4018d9aa0000000000000000000000000000000000000000000000000000000000000009",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getX() -> 9 (updated)",
+          "calldata": "5197c7aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000009",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "getY() -> 4 (other field preserved)",
+          "calldata": "0b7f1665",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000004",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setY(11): sub-field write p.y=11 -> p=(9,11)",
+          "calldata": "68d466b8000000000000000000000000000000000000000000000000000000000000000b",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "sumMatch(): 9+11 = 20",
+          "calldata": "f680b3a7",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000014",
           "status": "success"
         }
       }
