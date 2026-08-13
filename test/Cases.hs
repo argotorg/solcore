@@ -1,7 +1,10 @@
 module Cases where
 
 import Control.Exception (try)
+import Control.Monad (when)
 import Data.List (isInfixOf)
+import HullCases (checkHullObject)
+import Language.Hull qualified as Hull
 import Solcore.Pipeline.Options
 import Solcore.Pipeline.SolcorePipeline
 import System.Exit (ExitCode (..))
@@ -65,7 +68,10 @@ comptime =
       runTestForFile "string-lit-dedup.solc" comptimeFolder,
       runTestForFile "string-user-instance.solc" comptimeFolder,
       runTestForFile "string-param-erasure.solc" comptimeFolder,
-      runTestForFile "ct_param_erasure_word.solc" comptimeFolder,
+      -- an erased parameter has to be gone from the body, not just the
+      -- signature, so these are checked at the Hull level too
+      runTestCheckingHull "ct_param_erasure_word.solc" comptimeFolder,
+      runTestCheckingHull "string-param-clone-erasure.solc" comptimeFolder,
       -- a binding without the comptime modifier stays assignable
       runTestForFile "ct_assign_plain_ok.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
@@ -754,6 +760,27 @@ runNamedTestForFile testName opts file folder =
     case result of
       Left err -> assertFailure err
       Right _ -> return ()
+
+-- | As 'runTestForFile', but type-checking the Hull that came out.  The
+--   pipeline never runs the Hull checker on its own output, so an emission bug
+--   -- a reference to a variable that no longer exists, say -- otherwise
+--   surfaces only in `yule`, well after a green test run.
+runTestCheckingHull :: FileName -> BaseFolder -> TestTree
+runTestCheckingHull file folder = testCase (file ++ " (hull type-checked)") $ do
+  let opts = stdOpt {optNoGenDispatch = True, fileName = folder </> file, optRootDir = folder}
+  result <- compile opts
+  case result of
+    Left err -> assertFailure err
+    Right objs -> do
+      when (null objs) $ assertFailure "compilation emitted no hull"
+      mapM_ assertHullTypeChecks objs
+
+assertHullTypeChecks :: Hull.Object -> Assertion
+assertHullTypeChecks obj = do
+  outcome <- checkHullObject obj
+  case outcome of
+    Left err -> assertFailure (show (Hull.objName obj) ++ ": " ++ err)
+    Right () -> return ()
 
 runTestExpectingFailure :: FileName -> BaseFolder -> TestTree
 runTestExpectingFailure file folder = runTestExpectingFailureWith option file folder

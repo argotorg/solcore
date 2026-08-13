@@ -123,9 +123,9 @@ data EvalState = EvalState
     esCloneNames :: !(Map.Map CloneKey Name),
     -- clone definitions, by clone name; kept for clone-of-clone lookups
     esCloneDefs :: !(Map.Map Name MastFunDef),
-    -- clones created but not yet evaluated, with the environment binding their
-    -- erased parameters
-    esPendingClones :: ![(MastFunDef, VEnv)]
+    -- clones created but not yet evaluated; the erased parameters are already
+    -- substituted into their bodies
+    esPendingClones :: ![MastFunDef]
   }
 
 -- Reader for constant environment, State for fuel + memory
@@ -268,13 +268,13 @@ drainClones = go []
           evaluated <- mapM evalCloneDef (reverse pending)
           go (reverse evaluated ++ acc)
 
--- Like `evalFunDef`, but the erased parameters start out bound to their
--- literals, which is what substitutes them into the body.
-evalCloneDef :: (MastFunDef, VEnv) -> EvalM MastFunDef
-evalCloneDef (fd, env0) = do
+-- Like `evalFunDef`, but recording the result so that a clone of a clone can
+-- find its callee's definition.
+evalCloneDef :: MastFunDef -> EvalM MastFunDef
+evalCloneDef fd = do
   modifyMem (const Map.empty)
   let tyReg = buildTypeReg (mastFunParams fd) (mastFunBody fd)
-  (_, body') <- evalStmts tyReg env0 (mastFunBody fd)
+  (_, body') <- evalStmts tyReg Map.empty (mastFunBody fd)
   let fd' = fd {mastFunBody = body'}
   lift $ modify (\s -> s {esCloneDefs = Map.insert (mastFunName fd) fd' (esCloneDefs s)})
   pure fd'
@@ -723,10 +723,10 @@ venvToYulState env =
 -- remain available to the asm code.
 venvToSubst :: VEnv -> Map.Map Name YulExp
 venvToSubst env =
-  Map.fromList
-    [ (mastIdName k, yulLit l)
-    | (k, MastLit l) <- Map.toList env
-    ]
+  yulLitSubst (Map.fromList [(mastIdName k, l) | (k, MastLit l) <- Map.toList env])
+
+yulLitSubst :: LitSubst -> Map.Map Name YulExp
+yulLitSubst = Map.map yulLit
   where
     yulLit (IntLit v) = YLit (YulNumber v)
     yulLit (StrLit s) = YLit (YulString s)
@@ -914,10 +914,16 @@ tryCloneComptime i args = do
         -- what the annotation asks for.  Inlining handles most of the latter,
         -- but not for a callee that cannot be inlined at all.
         erasable p = mastParamComptime p || mastParamType p == mastStringTy
+        -- A parameter the body reassigns has no single value to substitute, so
+        -- it is left alone; the comptime verifier (or EmitHull, for a `string`)
+        -- then reports the function rather than the clone quietly disagreeing
+        -- with itself about what the parameter holds.
+        mutated = mutatedInStmts (mastFunBody fd)
         binds =
           [ (p, l)
           | (p, MastLit l) <- zip (mastFunParams fd) args,
-            erasable p
+            erasable p,
+            mastParamName p `Set.notMember` mutated
           ]
 
 -- Clone definitions are not in the (immutable) function table, so a clone
@@ -931,11 +937,12 @@ lookupFunDef n = do
 -- Create (or reuse) the clone of `fd` in which each listed parameter is bound
 -- to its literal, and build the call to it with those arguments dropped.
 --
--- The substitution itself is left to the evaluator: the clone is queued with a
--- variable environment binding the erased parameters, and evaluating its body
--- under that environment both substitutes the literals and folds whatever they
--- unlock.  This reuses the propagation `evalStmts` already performs rather
--- than adding a second, parallel substitution traversal.
+-- The literals are substituted into the body up front, before the clone is
+-- queued for evaluation.  Relying on the evaluator to propagate them from a
+-- variable environment instead would be unsound: an opaque asm block or a loop
+-- makes `evalStmts` discard the environment, and after erasure that
+-- environment is the parameter's only definition -- the body would keep
+-- reading a parameter the signature no longer has.
 cloneWith :: MastFunDef -> [(MastParam, Literal)] -> [MastExp] -> EvalM (Maybe MastExp)
 cloneWith fd binds args = do
   known <- lift $ gets (Map.lookup key . esCloneNames)
@@ -949,11 +956,7 @@ cloneWith fd binds args = do
     keptParams = filter isKept (mastFunParams fd)
     keptArgs = [a | (p, a) <- zip (mastFunParams fd) args, isKept p]
     cloneTy = foldr (MastArrow . mastParamType) (mastFunReturn fd) keptParams
-    env0 =
-      Map.fromList
-        [ (MastId (mastParamName p) (mastParamType p), MastLit l)
-        | (p, l) <- binds
-        ]
+    subst = Map.fromList [(mastParamName p, l) | (p, l) <- binds]
     -- Each new clone costs fuel, permanently.  A recursive callee that derives
     -- a fresh literal on every step would otherwise queue clones forever;
     -- exhausting the budget stops that and is already reported to the user.
@@ -963,17 +966,105 @@ cloneWith fd binds args = do
         then pure Nothing
         else do
           n <- freshCloneName (mastFunName fd)
-          let clone = fd {mastFunName = n, mastFunParams = keptParams}
+          let clone =
+                fd
+                  { mastFunName = n,
+                    mastFunParams = keptParams,
+                    mastFunBody = substMastStmts subst (mastFunBody fd)
+                  }
           lift $
             modify
               ( \s ->
                   s
                     { esCloneNames = Map.insert key n (esCloneNames s),
                       esCloneDefs = Map.insert n clone (esCloneDefs s),
-                      esPendingClones = (clone, env0) : esPendingClones s
+                      esPendingClones = clone : esPendingClones s
                     }
               )
           pure (Just n)
+
+-- | Names a body may reassign, counting an asm block's escaping assignments.
+-- Unlike 'assignedInStmts', which serves environment invalidation where an
+-- opaque asm block is handled by clearing the environment wholesale, this has
+-- to see through asm: a parameter mutated only there is still mutated.
+mutatedInStmts :: [MastStmt] -> Set.Set Name
+mutatedInStmts = foldMap mutatedInStmt
+
+mutatedInStmt :: MastStmt -> Set.Set Name
+mutatedInStmt (MastAssign i _) = Set.singleton (mastIdName i)
+mutatedInStmt (MastMatch _ alts) = foldMap (mutatedInStmts . snd) alts
+mutatedInStmt (MastFor initStmt _ post body) =
+  mutatedInStmt initStmt
+    `Set.union` mutatedInStmt post
+    `Set.union` mutatedInStmts body
+mutatedInStmt (MastSeq stmts) = mutatedInStmts stmts
+mutatedInStmt (MastAsm yul) = escapingAssignsYulBlock yul
+mutatedInStmt _ = Set.empty
+
+-- | Literals to substitute for the erased parameters, by parameter name.
+type LitSubst = Map.Map Name Literal
+
+-- | Substitute literals for variable references throughout a statement list.
+--
+-- The map is threaded through the sequence so that it stays scope-aware, in the
+-- same way 'substYulBlock' is: a @let@ or a pattern variable of the same name
+-- shadows the parameter, and from there on the name refers to the new binding.
+-- Reassignment needs no such care -- 'tryCloneComptime' refuses to erase a
+-- parameter the body assigns to.
+substMastStmts :: LitSubst -> [MastStmt] -> [MastStmt]
+substMastStmts _ [] = []
+substMastStmts subst (s : ss) =
+  let (s', subst') = substMastStmt subst s
+   in s' : substMastStmts subst' ss
+
+substMastStmt :: LitSubst -> MastStmt -> (MastStmt, LitSubst)
+substMastStmt subst (MastLet ct i ty mInit) =
+  (MastLet ct i ty (fmap (substMastExp subst) mInit), Map.delete (mastIdName i) subst)
+substMastStmt subst (MastAssign i e) =
+  (MastAssign i (substMastExp subst e), subst)
+substMastStmt subst (MastStmtExp e) = (MastStmtExp (substMastExp subst e), subst)
+substMastStmt subst (MastReturn e) = (MastReturn (substMastExp subst e), subst)
+substMastStmt subst (MastMatch e alts) =
+  (MastMatch (substMastExp subst e) (map (substMastAlt subst) alts), subst)
+substMastStmt subst (MastAsm yul) =
+  (MastAsm (substYulBlock (yulLitSubst subst) yul), subst)
+substMastStmt subst (MastSeq stmts) = (MastSeq (substMastStmts subst stmts), subst)
+substMastStmt subst (MastFor initStmt cond post body) =
+  -- Everything the loop declares is local to it, so the map is restored
+  -- afterwards; within the loop, a name declared by the init or post statement
+  -- shadows throughout.
+  let (initStmt', afterInit) = substMastStmt subst initStmt
+      (post', inner) = substMastStmt afterInit post
+   in ( MastFor initStmt' (substMastExp inner cond) post' (substMastStmts inner body),
+        subst
+      )
+substMastStmt subst s = (s, subst) -- MastBreak, MastContinue
+
+substMastAlt :: LitSubst -> MastAlt -> MastAlt
+substMastAlt subst (pat, body) =
+  (substMastPat inner pat, substMastStmts inner body)
+  where
+    inner = foldr Map.delete subst (Set.toList (patVars pat))
+
+-- | Pattern variables bind within the alternative and shadow an outer name.
+patVars :: MastPat -> Set.Set Name
+patVars (MastPVar i) = Set.singleton (mastIdName i)
+patVars (MastPCon _ ps) = foldMap patVars ps
+patVars _ = Set.empty
+
+substMastPat :: LitSubst -> MastPat -> MastPat
+substMastPat subst (MastPCon i ps) = MastPCon i (map (substMastPat subst) ps)
+substMastPat subst (MastPExp e) = MastPExp (substMastExp subst e)
+substMastPat _ p = p -- MastPVar, MastPWildcard, MastPLit
+
+substMastExp :: LitSubst -> MastExp -> MastExp
+substMastExp subst e@(MastVar i) =
+  maybe e MastLit (Map.lookup (mastIdName i) subst)
+substMastExp subst (MastCon i args) = MastCon i (map (substMastExp subst) args)
+substMastExp subst (MastCall i args) = MastCall i (map (substMastExp subst) args)
+substMastExp subst (MastCond c t f) =
+  MastCond (substMastExp subst c) (substMastExp subst t) (substMastExp subst f)
+substMastExp _ e = e -- MastLit
 
 freshCloneName :: Name -> EvalM Name
 freshCloneName base = do
