@@ -139,7 +139,7 @@ qualifiedConstructorName tyCon conName =
   qualifyName tyCon (constructorLeafName conName)
 
 ensureNoDuplicateNames :: String -> [Name] -> Either CompilerError ()
-ensureNoDuplicateNames ns = ensureNoDuplicateNamesIn "module" ns
+ensureNoDuplicateNames = ensureNoDuplicateNamesIn "module"
 
 ensureNoDuplicateNamesIn :: String -> String -> [Name] -> Either CompilerError ()
 ensureNoDuplicateNamesIn ctx ns names =
@@ -226,7 +226,7 @@ instance Resolve S.Contract where
       modify (\env -> env {currentContract = Just n, contractLocalTypes = locals, currentContractBases = inh})
       mapM_ addTyVar ns
       mapM_ addContractDecl decls
-      result <- (\ds -> Contract n (map TVar ns) impls inh ds) <$> resolve decls `wrapError` c
+      result <- Contract n (map TVar ns) impls inh <$> resolve decls `wrapError` c
       modify (\env -> env {currentContract = savedC, contractLocalTypes = savedL, currentContractBases = savedB})
       pure result
 
@@ -302,9 +302,9 @@ instance Resolve S.Class where
       let ns = map tyconName vs
           nt = tyconName t
           nts = map tyconName ts
-      unless (elem nt ns) $ do
+      unless (nt `elem` ns) $ do
         undefinedTypeVariables [nt]
-      unless (all (flip elem ns) nts) $ do
+      unless (all (`elem` ns) nts) $ do
         undefinedTypeVariables (nts \\ ns)
       mapM_ addTyVar ns
       ps' <- resolve ps `wrapError` d
@@ -429,9 +429,9 @@ instance Resolve S.Stmt where
   resolve s@(S.Block blk) =
     locatedLike s locatedStmt <$> withLocalCtx (Block <$> resolve blk)
   resolve s@(S.StmtExp e) =
-    locatedLike s locatedStmt <$> (StmtExp <$> resolve e `wrapError` s)
+    locatedLike s locatedStmt . StmtExp <$> (resolve e `wrapError` s)
   resolve s@(S.Return e) =
-    locatedLike s locatedStmt <$> (Return <$> resolve e `wrapError` s)
+    locatedLike s locatedStmt . Return <$> (resolve e `wrapError` s)
   resolve s@(S.Match es eqns) =
     locatedLike s locatedStmt <$> (Match <$> resolve es <*> resolve eqns)
   resolve s@(S.Asm blk) =
@@ -455,8 +455,8 @@ instance Resolve S.Pat where
   type Result S.Pat = Pat Name
 
   resolve p@S.PWildcard = pure (locatedLike p locatedPat PWildcard)
-  resolve p@(S.PLit l) = locatedLike p locatedPat <$> (PLit <$> resolve l)
-  resolve p@(S.PExp e) = locatedLike p locatedPat <$> (PExp <$> resolve e)
+  resolve p@(S.PLit l) = locatedLike p locatedPat . PLit <$> resolve l
+  resolve p@(S.PExp e) = locatedLike p locatedPat . PExp <$> resolve e
   resolve p@(S.PatDot n ps) = do
     ps' <- resolve ps `wrapError` p
     pure (locatedLike p locatedPat (PCon (dotConstructorMarker n) ps'))
@@ -1508,12 +1508,12 @@ invalidPatternSyntax p =
     []
 
 diagnosticError :: String -> String -> [String] -> [String] -> ResolveM a
-diagnosticError code message notes help =
-  diagnosticErrorWithLabels code message [] notes help
+diagnosticError code message =
+  diagnosticErrorWithLabels code message []
 
 diagnosticErrorAtName :: String -> String -> Name -> String -> [String] -> [String] -> ResolveM a
-diagnosticErrorAtName code message identName label notes help =
-  diagnosticErrorWithLabels code message (maybe [] pure (primaryNameLabel label identName)) notes help
+diagnosticErrorAtName code message identName label =
+  diagnosticErrorWithLabels code message (maybe [] pure (primaryNameLabel label identName))
 
 diagnosticErrorWithLabels :: String -> String -> [Label] -> [String] -> [String] -> ResolveM a
 diagnosticErrorWithLabels code message labels notes help =

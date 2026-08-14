@@ -13,11 +13,12 @@ where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
+import Data.Either (fromRight)
 import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (find, intercalate, isPrefixOf, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
@@ -154,7 +155,7 @@ visit cfg moduleId sourcePath = do
           uniqueResolvedModules
             (importedModules ++ [(exportId, exportPath) | (_, exportId, exportPath) <- exportedModules])
     mapM_
-      (\(targetId, targetPath) -> visit cfg targetId targetPath)
+      (uncurry (visit cfg))
       referencedModules
     modify
       ( \st ->
@@ -174,8 +175,8 @@ resolveImportPath ::
   Import ->
   StateT LoadState (ExceptT String IO) (Mod.ModuleId, FilePath)
 resolveImportPath cfg currentModule currentSourcePath imp =
-  fmap (\(_, targetId, targetPath) -> (targetId, targetPath)) $
-    resolveModuleReference cfg currentModule currentSourcePath ImportReference (importModule imp)
+  (\(_, targetId, targetPath) -> (targetId, targetPath))
+    <$> resolveModuleReference cfg currentModule currentSourcePath ImportReference (importModule imp)
 
 resolveModuleReference ::
   LoaderConfig ->
@@ -287,7 +288,7 @@ normalizeStdModuleName moduleName = moduleName
 rootForLibrary :: LoaderConfig -> Mod.LibraryId -> Either String FilePath
 rootForLibrary cfg Mod.MainLibrary = Right (mainRoot cfg)
 rootForLibrary cfg Mod.StdLibrary =
-  Right (maybe (mainRoot cfg </> "std") id (stdRoot cfg))
+  Right (fromMaybe (mainRoot cfg </> "std") (stdRoot cfg))
 rootForLibrary cfg (Mod.ExternalLibrary libName) =
   case Map.lookup libName (externalRoots cfg) of
     Just root -> Right root
@@ -606,7 +607,7 @@ moduleValidationTopDeclSegments graph modulePath = do
 
 ensureImportItemsExist :: ModuleGraph -> [(Import, Mod.ModuleId)] -> Either String ()
 ensureImportItemsExist graph importPairs = do
-  (unknownSelectedGroups, unknownHiddenGroups) <- unzip <$> mapM unknowns importPairs
+  (unknownSelectedGroups, unknownHiddenGroups) <- mapAndUnzipM unknowns importPairs
   case (concat unknownSelectedGroups, concat unknownHiddenGroups) of
     ([], []) -> Right ()
     (selectedXs, hiddenXs) ->
@@ -670,8 +671,8 @@ importableNamesForModule graph modulePath = do
   pure (uniqueNames (concatMap topDeclNames publicDecls))
 
 publicItemDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
-publicItemDeclsForModule graph modulePath =
-  publicItemDeclsForModuleSeen graph Set.empty modulePath
+publicItemDeclsForModule graph =
+  publicItemDeclsForModuleSeen graph Set.empty
 
 publicItemDeclsForModuleSeen :: ModuleGraph -> Set ExportedItemRef -> Mod.ModuleId -> Either String [TopDecl]
 publicItemDeclsForModuleSeen graph seen modulePath = do
@@ -1501,7 +1502,7 @@ renamePatTypeRefs renameMap (Pat n ps) =
   Pat (renamePatNameTypeRefs renameMap n) (map (renamePatTypeRefs renameMap) ps)
 renamePatTypeRefs renameMap (PatDot n ps) =
   PatDot n (map (renamePatTypeRefs renameMap) ps)
-renamePatTypeRefs _ p@(PWildcard) = p
+renamePatTypeRefs _ p@PWildcard = p
 renamePatTypeRefs _ p@(PLit _) = p
 renamePatTypeRefs _ p@(PExp _) = p
 
@@ -2156,25 +2157,25 @@ renameTopDeclName oldName newName decl
 selectTopDeclForExportRef :: ExportedItemRef -> TopDecl -> Maybe TopDecl
 selectTopDeclForExportRef itemRef d@(TFunDef (FunDef _ sig _))
   | exportedItemSourceName itemRef == sigName sig,
-    exportedItemConstructors itemRef == Nothing =
+    isNothing (exportedItemConstructors itemRef) =
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
 selectTopDeclForExportRef itemRef d@(TSym (TySym n _ _))
   | exportedItemSourceName itemRef == n,
-    exportedItemConstructors itemRef == Nothing =
+    isNothing (exportedItemConstructors itemRef) =
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
 selectTopDeclForExportRef itemRef d@(TClassDef (Class _ _ n _ _ _))
   | exportedItemSourceName itemRef == n,
-    exportedItemConstructors itemRef == Nothing =
+    isNothing (exportedItemConstructors itemRef) =
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
 selectTopDeclForExportRef itemRef d@(TContr (Contract n _ _ _ _))
   | exportedItemSourceName itemRef == n,
-    exportedItemConstructors itemRef == Nothing =
+    isNothing (exportedItemConstructors itemRef) =
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
@@ -2263,7 +2264,7 @@ ensureNoModuleLookupConflicts graph unit importPairs =
     importTermPair (ImportOnly importPath selector, modulePath) =
       Just
         ( importPath,
-          either (const []) id (resolveSelectedImportTermNames graph modulePath selector)
+          fromRight [] (resolveSelectedImportTermNames graph modulePath selector)
         )
     importTermPair _ =
       Nothing
@@ -2366,8 +2367,8 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
     duplicateItems _ = []
 
 loaderDiagnostic :: String -> String -> [String] -> [String] -> String
-loaderDiagnostic code message notes help =
-  loaderDiagnosticWithLabels code message [] notes help
+loaderDiagnostic code message =
+  loaderDiagnosticWithLabels code message []
 
 loaderDiagnosticWithLabels :: String -> String -> [Label] -> [String] -> [String] -> String
 loaderDiagnosticWithLabels code message labels notes help =

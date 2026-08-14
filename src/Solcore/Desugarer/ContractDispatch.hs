@@ -138,11 +138,11 @@ transformCDecl _ d = Set.singleton d
 transformConstructor :: Name -> Constructor Name -> Set (ContractDecl Name)
 transformConstructor contractName cons
   | all isTyped params = Set.fromList [initFun, copyArgsFun, startFun]
-  | otherwise = error $ "Internal Error: contract constructor must be fully typed"
+  | otherwise = error "Internal Error: contract constructor must be fully typed"
   where
     params = constrParams cons
     payable = constrPayable cons
-    argsTuple = (tupleTyFromList (mapMaybe getTy params))
+    argsTuple = tupleTyFromList (mapMaybe getTy params)
     initFun = CFunDecl (FunDef False initSig (constrBody cons))
     initSig =
       Signature
