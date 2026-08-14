@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Solcore.Backend.Specialise
   ( -- core API
     specialiseCompUnit,
@@ -166,7 +168,7 @@ addResolution name ty fun = do
 addDefaultResolution :: Name -> Ty -> TcFunDef -> SM ()
 addDefaultResolution name ty fun = do
   reportAmbiguousVars name (funSignature fun)
-  modify $ \s -> s {spResTable = Map.insertWith (\new old -> old ++ new) name [(ty, fun)] (spResTable s)}
+  modify $ \s -> s {spResTable = Map.insertWith (flip (++)) name [(ty, fun)] (spResTable s)}
 
 -- The if/bool desugarer rewrites `bool` to `sum((), ())` throughout the typed
 -- AST, so every entry of the resolution table is keyed on the desugared type.
@@ -575,11 +577,11 @@ specBody = mapM specStmt
 resolveMPTCFromPreds :: [Pred] -> SM ()
 resolveMPTCFromPreds preds = do
   subst <- getSpSubst
-  forM_ preds $ \pred' -> case pred' of
+  forM_ preds $ \case
     InCls clsName mainTy1 extras -> do
       let mainTy' = applytv subst mainTy1
           extras' = map (applytv subst) extras
-      when (null (freetv mainTy') && any (not . null . freetv) extras') $
+      when (null (freetv mainTy') && not (all (null . freetv) extras')) $
         tryResolveMPTC clsName mainTy' extras'
     _ -> return ()
 
@@ -630,57 +632,56 @@ tryResolveMPTC clsName mainTy' extras = do
   -- class name to its list of verified instances.
   instTable <- gets (instEnv . spGlobalEnv)
   let clsInsts = fromMaybe [] (Map.lookup clsName instTable)
-  forM_ clsInsts $ \inst ->
-    case inst of
-      -- Only class constraint heads are relevant; skip equality constraints.
-      (q :=> InCls _ instMainTy instExtras) ->
-        -- Match the instance's main type (pattern) against the call-site's
-        -- concrete main type (target).  specmatch binds the instance's
-        -- quantified type variables (TVar) as needed and never touches
-        -- variables on the target side.  Failure means this instance is for
-        -- a different concrete type; skip silently.
-        case specmatch instMainTy mainTy' of
-          Left _ -> return ()
-          Right phi -> do
-            -- anfInstance normalises instances with extras by replacing each
-            -- concrete extra with a fresh variable bound by an equality pred:
-            --   C t [e1,e2]  =>  [v1:~:e1, v2:~:e2] :=> C t [v1,v2]
-            -- After matching instMainTy against mainTy' we must also resolve
-            -- these equality constraints (with phi applied) to recover the
-            -- actual concrete extras; otherwise instExtras still contains
-            -- the fresh TyVars and looks abstract.
-            let appliedQ = map (applytv phi) q
-                eqSubst =
-                  TVSubst
+  forM_ clsInsts $ \case
+    -- Only class constraint heads are relevant; skip equality constraints.
+    (q :=> InCls _ instMainTy instExtras) ->
+      -- Match the instance's main type (pattern) against the call-site's
+      -- concrete main type (target).  specmatch binds the instance's
+      -- quantified type variables (TVar) as needed and never touches
+      -- variables on the target side.  Failure means this instance is for
+      -- a different concrete type; skip silently.
+      case specmatch instMainTy mainTy' of
+        Left _ -> return ()
+        Right phi -> do
+          -- anfInstance normalises instances with extras by replacing each
+          -- concrete extra with a fresh variable bound by an equality pred:
+          --   C t [e1,e2]  =>  [v1:~:e1, v2:~:e2] :=> C t [v1,v2]
+          -- After matching instMainTy against mainTy' we must also resolve
+          -- these equality constraints (with phi applied) to recover the
+          -- actual concrete extras; otherwise instExtras still contains
+          -- the fresh TyVars and looks abstract.
+          let appliedQ = map (applytv phi) q
+              eqSubst =
+                TVSubst
+                  [ (v, t)
+                  | (TyVar v :~: t) <- appliedQ,
+                    null (freetv t)
+                  ]
+                  <> TVSubst
                     [ (v, t)
-                    | (TyVar v :~: t) <- appliedQ,
+                    | (t :~: TyVar v) <- appliedQ,
                       null (freetv t)
                     ]
-                    <> TVSubst
-                      [ (v, t)
-                      | (t :~: TyVar v) <- appliedQ,
-                        null (freetv t)
-                      ]
-                phi' = phi <> eqSubst
-            debug ["  tryResolve match: phi=", pretty phi, " q=", show q, " appliedQ=", show appliedQ, " eqSubst=", pretty eqSubst, " phi'=", pretty phi', " instExtras=", show instExtras]
-            -- Substitute to obtain the concrete extra types for this instance.
-            let concreteExtras = map (applytv phi') instExtras
-            debug ["  concreteExtras=", show concreteExtras, " allClosed=", show (all (null . freetv) concreteExtras)]
-            -- If any extra is still abstract, the instance is parametric in a
-            -- way that mainTy' alone does not determine; skip to stay sound.
-            when (all (null . freetv) concreteExtras) $
-              forM_ (zip extras concreteExtras) $ \(extra, concrete) ->
-                -- Match the call-site free extra (pattern) against the
-                -- instance's concrete extra (target).  If extra is already
-                -- bound to the same type this is a no-op (phi = mempty).
-                -- If bound to a different type specmatch returns Left and the
-                -- earlier authoritative binding is preserved.
-                case specmatch extra concrete of
-                  Left _ -> return ()
-                  Right phi2 -> do
-                    debug ["  extSpSubst phi2=", pretty phi2]
-                    extSpSubst phi2
-      _ -> return ()
+              phi' = phi <> eqSubst
+          debug ["  tryResolve match: phi=", pretty phi, " q=", show q, " appliedQ=", show appliedQ, " eqSubst=", pretty eqSubst, " phi'=", pretty phi', " instExtras=", show instExtras]
+          -- Substitute to obtain the concrete extra types for this instance.
+          let concreteExtras = map (applytv phi') instExtras
+          debug ["  concreteExtras=", show concreteExtras, " allClosed=", show (all (null . freetv) concreteExtras)]
+          -- If any extra is still abstract, the instance is parametric in a
+          -- way that mainTy' alone does not determine; skip to stay sound.
+          when (all (null . freetv) concreteExtras) $
+            forM_ (zip extras concreteExtras) $ \(extra, concrete) ->
+              -- Match the call-site free extra (pattern) against the
+              -- instance's concrete extra (target).  If extra is already
+              -- bound to the same type this is a no-op (phi = mempty).
+              -- If bound to a different type specmatch returns Left and the
+              -- earlier authoritative binding is preserved.
+              case specmatch extra concrete of
+                Left _ -> return ()
+                Right phi2 -> do
+                  debug ["  extSpSubst phi2=", pretty phi2]
+                  extSpSubst phi2
+    _ -> return ()
 
 {-
 ensureSimple ty' stmt subst = case ty' of
@@ -842,9 +843,7 @@ specMatch exps alts = do
     specScruts = mapM specScrut
     specScrut e = do
       ty <- atCurrentSubst (typeOfTcExp e)
-      e' <- specExp e ty
-      -- debug ["specScrut: ", show e, " to ", pretty ty, " ~>", show e']
-      return e'
+      specExp e ty
 
 specName :: Name -> [Ty] -> Name
 specName n [] = Name $ flattenQual n
@@ -926,7 +925,7 @@ typeOfTcSignature sig = funtype (map typeOfTcParam $ sigParams sig) returnType
 schemeOfTcSignature :: Signature Id -> Scheme
 schemeOfTcSignature sig@(Signature vs ps _n args _ (Just rt) _) =
   case mapM getType args of
-    Just ts -> Forall vs (ps :=> (funtype ts rt))
+    Just ts -> Forall vs (ps :=> funtype ts rt)
     Nothing -> error $ unwords ["Invalid instance member signature:", pretty sig]
   where
     getType (Typed _ _ t) = Just t
@@ -1043,7 +1042,7 @@ class (Data a) => HasTV a where
 
 instance HasTV Ty where
   applytv (TVSubst s) t@(TyVar v) =
-    maybe t id (lookup v s)
+    fromMaybe t (lookup v s)
   applytv s (TyCon n ts) =
     TyCon n (applytv s ts)
   applytv _ t = t
@@ -1088,7 +1087,7 @@ instance HasTV (Pat Id)
 
 instance HasTV (Signature Id) where
   applytv s = everywhereButSpans (mkT (applytv @Ty s))
-  freetv sig = (everythingButSpans (<>) (mkQ mempty (freetv @Ty))) sig \\ sigVars sig
+  freetv sig = everythingButSpans (<>) (mkQ mempty (freetv @Ty)) sig \\ sigVars sig
   renametv sig = do
     subst <- foldM addRenaming mempty (sigVars sig)
     pure (applytv subst sig, subst)
@@ -1102,7 +1101,7 @@ data FunDef a
 -}
 
 instance HasTV (FunDef Id) where
-  freetv fd = (everythingButSpans (<>) (mkQ mempty (freetv @Ty))) fd \\ sigVars (funSignature fd)
+  freetv fd = everythingButSpans (<>) (mkQ mempty (freetv @Ty)) fd \\ sigVars (funSignature fd)
   renametv fd = do
     let sig = funSignature fd
     subst <- foldM addRenaming mempty (sigVars sig)
