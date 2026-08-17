@@ -224,8 +224,8 @@ instance Names (FunDef Name) where
     names sig `union` names bdy
 
 instance Names (Constructor Name) where
-  names (Constructor ps bdy _ inits) =
-    names ps `union` names bdy `union` names (concatMap snd inits)
+  names (Constructor ps bdy _ ins) =
+    names ps `union` names bdy `union` names (concatMap snd ins)
 
 instance Names (Class Name) where
   names (Class _ ctx _ _ _ sigs) =

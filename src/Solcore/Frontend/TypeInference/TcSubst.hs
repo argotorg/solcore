@@ -432,11 +432,11 @@ instance (HasType a) => HasType (Field a) where
   bv (Field _ t me) = bv t `union` bv me
 
 instance (HasType a) => HasType (Constructor a) where
-  apply s (Constructor ps bd payable inits) =
-    Constructor (apply s ps) (apply s bd) payable [(b, apply s es) | (b, es) <- inits]
-  fv (Constructor ps bd _ inits) =
-    fv ps `union` fv bd `union` fv (concatMap snd inits)
-  mv (Constructor ps bd _ inits) =
-    mv ps `union` mv bd `union` mv (concatMap snd inits)
-  bv (Constructor ps bd _ inits) =
-    bv ps `union` bv bd `union` bv (concatMap snd inits)
+  apply s (Constructor ps bd payable ins) =
+    Constructor (apply s ps) (apply s bd) payable [(b, apply s es) | (b, es) <- ins]
+  fv (Constructor ps bd _ ins) =
+    fv ps `union` fv bd `union` fv (concatMap snd ins)
+  mv (Constructor ps bd _ ins) =
+    mv ps `union` mv bd `union` mv (concatMap snd ins)
+  bv (Constructor ps bd _ ins) =
+    bv ps `union` bv bd `union` bv (concatMap snd ins)
