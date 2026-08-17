@@ -102,7 +102,7 @@ validateDuplicateNamespaces ds = do
   mapM_ validateContractDuplicates [c | S.TContr c <- ds]
 
 validateContractDuplicates :: S.Contract -> Either CompilerError ()
-validateContractDuplicates (S.Contract cname _ decls) = do
+validateContractDuplicates (S.Contract cname _ _ _ decls) = do
   let typeNames = [n | S.CDataDecl (S.DataTy n _ _ _) <- decls]
       termNames = contractTermNames decls
       context = "contract " ++ pretty cname
@@ -112,7 +112,7 @@ validateContractDuplicates (S.Contract cname _ decls) = do
 topLevelTypeNames :: [S.TopDecl] -> [Name]
 topLevelTypeNames = concatMap collect
   where
-    collect (S.TContr (S.Contract n _ _)) = [n]
+    collect (S.TContr (S.Contract n _ _ _ _)) = [n]
     collect (S.TDataDef (S.DataTy n _ _ _)) = [n]
     collect (S.TSym (S.TySym n _ _)) = [n]
     collect (S.TClassDef (S.Class _ _ n _ _ _)) = [n]
@@ -216,7 +216,7 @@ resolveExport (S.ExportItemsFrom path items) =
 instance Resolve S.Contract where
   type Result S.Contract = Contract Name
 
-  resolve c@(S.Contract n vs decls) =
+  resolve c@(S.Contract n vs impls inh decls) =
     do
       let ns = map tyconName vs
           locals = [tn | S.CDataDecl (S.DataTy tn _ _ _) <- decls]
@@ -225,7 +225,7 @@ instance Resolve S.Contract where
       modify (\env -> env {currentContract = Just n, contractLocalTypes = locals})
       mapM_ addTyVar ns
       mapM_ addContractDecl decls
-      result <- Contract n (map TVar ns) <$> resolve decls `wrapError` c
+      result <- (\ds -> Contract n (map TVar ns) impls inh ds) <$> resolve decls `wrapError` c
       modify (\env -> env {currentContract = savedC, contractLocalTypes = savedL})
       pure result
 
@@ -272,13 +272,17 @@ instance Resolve S.ContractDecl where
 instance Resolve S.Constructor where
   type Result S.Constructor = Constructor Name
 
-  resolve c@(S.Constructor ps bdy payable) =
+  resolve c@(S.Constructor ps bdy payable inits) =
     withLocalCtx $ do
       ps' <- resolve ps `wrapError` c
       let args = map paramName ps'
       mapM_ addParameter args
       bdy' <- resolve bdy `wrapError` c
-      pure (Constructor ps' bdy' payable)
+      -- Base names stay unresolved (matched against ancestor contracts by the
+      -- inheritance desugarer); the argument expressions resolve in the
+      -- constructor's parameter scope.
+      inits' <- mapM (\(b, es) -> (b,) <$> (resolve es `wrapError` c)) inits
+      pure (Constructor ps' bdy' payable inits')
 
 instance Resolve S.Field where
   type Result S.Field = Field Name
@@ -703,6 +707,18 @@ resolveExp c@(S.ExpVar me n) =
             case fdt of
               Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
               _ -> undefinedName n
+      -- The reified contract receiver: a bare `self` that resolves to nothing
+      -- else, used inside a contract, denotes the current contract's
+      -- `ContractStorage(CCxt)` value. Resolve it to `FieldAccess Nothing "self"`;
+      -- the field-access pass turns that into the storage constant (or, in a
+      -- generated inheritance instance, into the `self` parameter). This is a
+      -- fallback so an actual `self` binding (field/param/function) always wins.
+      (Nothing, Nothing)
+        | n == Name "self" -> do
+            inC <- gets currentContract
+            case inC of
+              Just _ -> pure (FieldAccess Nothing n)
+              Nothing -> undefinedName n
       _ -> do
         sameName <- isSameNameConstructor n
         if sameName
@@ -712,6 +728,20 @@ resolveExp c@(S.ExpVar me n) =
             if hasQualified
               then unqualifiedConstructorError n
               else undefinedName n
+-- super.m(args) inside a contract: a call to the overridden (parent)
+-- implementation of m. Resolve it to a call with a distinguished super
+-- receiver marker; the inheritance desugarer rewrites it to a generated
+-- super$m$<level>(self, args) function. Keeping this as a dedicated clause
+-- avoids routing super through UFCS/qualifier resolution (which would try to
+-- treat it as a value or a module qualifier and fail).
+resolveExp x@(S.ExpName (Just (S.ExpVar Nothing (Name "super"))) n es) =
+  do
+    inC <- gets currentContract
+    case inC of
+      Just _ -> do
+        es' <- resolve es `wrapError` x
+        pure (Call (Just (Var (Name "super"))) n es')
+      Nothing -> undefinedName (Name "super")
 resolveExp x@(S.ExpName me n es) =
   do
     me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` x)
@@ -1148,7 +1178,7 @@ moduleLeafName (Name n) = Name n
 moduleLeafName (QualName _ n) = Name n
 
 addTopDecl :: S.TopDecl -> Env -> Env
-addTopDecl (S.TContr (S.Contract n _ _)) env =
+addTopDecl (S.TContr (S.Contract n _ _ _ _)) env =
   addQualifiedModules n $
     env {typeEnv = Map.insert n TContract (typeEnv env)}
 addTopDecl (S.TFunDef (S.FunDef _ sig _)) env =

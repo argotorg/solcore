@@ -537,8 +537,8 @@ moduleLocalTypeCheckSurface graph modulePath = do
       }
 
 stubTopDeclBody :: TopDecl -> TopDecl
-stubTopDeclBody (TContr (Contract n vs contractDecls)) =
-  TContr (Contract n vs (map stubContractDeclBody contractDecls))
+stubTopDeclBody (TContr (Contract n vs impls inh contractDecls)) =
+  TContr (Contract n vs impls inh (map stubContractDeclBody contractDecls))
 stubTopDeclBody (TFunDef fd) =
   TFunDef (stubFunDefBody fd)
 stubTopDeclBody (TInstDef (Instance d vs predCtx n ts t _funs)) =
@@ -551,8 +551,8 @@ stubContractDeclBody (CFieldDecl (Field n ty _initExp)) =
   CFieldDecl (Field n ty Nothing)
 stubContractDeclBody (CFunDecl fd) =
   CFunDecl (stubFunDefBody fd)
-stubContractDeclBody (CConstrDecl (Constructor params _body payable)) =
-  CConstrDecl (Constructor params [] payable)
+stubContractDeclBody (CConstrDecl (Constructor params _body payable inits)) =
+  CConstrDecl (Constructor params [] payable inits)
 stubContractDeclBody decl =
   decl
 
@@ -1318,7 +1318,7 @@ topDeclNames :: TopDecl -> [Name]
 topDeclNames (TFunDef (FunDef _ sig _)) = [sigName sig]
 topDeclNames (TSym (TySym n _ _)) = [n]
 topDeclNames (TClassDef (Class _ _ n _ _ _)) = [n]
-topDeclNames (TContr (Contract n _ _)) = [n]
+topDeclNames (TContr (Contract n _ _ _ _)) = [n]
 topDeclNames (TDataDef (DataTy n _ _ _)) = [n]
 topDeclNames (TInstDef _) = []
 topDeclNames (TExportDecl _) = []
@@ -1576,10 +1576,12 @@ qualifierNameToExp (QualName q n) =
   ExpVar (Just (qualifierNameToExp q)) (Name n)
 
 renameContractTypeRefs :: Map Name Name -> Contract -> Contract
-renameContractTypeRefs renameMap (Contract n ts ds) =
+renameContractTypeRefs renameMap (Contract n ts impls inh ds) =
   Contract
     n
     (map (renameTyTypeRefs renameMap) ts)
+    impls
+    inh
     (map (renameContractDeclTypeRefs renameMap) ds)
 
 renameContractDeclTypeRefs :: Map Name Name -> ContractDecl -> ContractDecl
@@ -1590,12 +1592,13 @@ renameContractDeclTypeRefs renameMap (CFieldDecl (Field n ty me)) =
     (Field n (renameTyTypeRefs renameMap ty) (renameExpTypeRefs renameMap <$> me))
 renameContractDeclTypeRefs renameMap (CFunDecl fd) =
   CFunDecl (renameFunDefTypeRefs renameMap fd)
-renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body payable)) =
+renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body payable inits)) =
   CConstrDecl
     ( Constructor
         (map (renameParamTypeRefs renameMap) ps)
         (renameBodyTypeRefs renameMap body)
         payable
+        inits
     )
 
 renameClassTypeRefs :: Map Name Name -> Class -> Class
@@ -1743,8 +1746,8 @@ toValidationImportStub (TSym (TySym n _ _)) =
   Just (TSym (stubType n))
 toValidationImportStub d@(TClassDef _) =
   Just d
-toValidationImportStub (TContr (Contract n _ _)) =
-  Just (TContr (Contract n [] []))
+toValidationImportStub (TContr (Contract n _ _ _ _)) =
+  Just (TContr (Contract n [] [] [] []))
 toValidationImportStub (TDataDef (DataTy n _ cs _)) =
   Just (TDataDef (DataTy n [] [Constr (constrName c) [] [] | c <- cs] []))
 toValidationImportStub (TInstDef _) = Nothing
@@ -2020,7 +2023,7 @@ shadowImportedDecls localDecls =
           ( (termNames, typeNames, n : classNames, instDecls),
             Just d
           )
-    filterDecl (termNames, typeNames, classNames, instDecls) d@(TContr (Contract n _ _))
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TContr (Contract n _ _ _ _))
       | n `elem` typeNames = ((termNames, typeNames, classNames, instDecls), Nothing)
       | otherwise =
           ( (termNames, n : typeNames, classNames, instDecls),
@@ -2074,7 +2077,7 @@ topDeclTermNames _ = []
 
 topDeclTypeNames :: TopDecl -> [Name]
 topDeclTypeNames (TSym (TySym n _ _)) = [n]
-topDeclTypeNames (TContr (Contract n _ _)) = [n]
+topDeclTypeNames (TContr (Contract n _ _ _ _)) = [n]
 topDeclTypeNames (TDataDef (DataTy n _ _ _)) = [n]
 topDeclTypeNames _ = []
 
@@ -2106,9 +2109,9 @@ renameTopDeclName oldName newName decl
         TClassDef (Class defaults vars n params var sigs)
           | n == oldName ->
               TClassDef (Class defaults vars newName params var sigs)
-        TContr (Contract n params contractDecls)
+        TContr (Contract n params impls inh contractDecls)
           | n == oldName ->
-              TContr (Contract newName params contractDecls)
+              TContr (Contract newName params impls inh contractDecls)
         TDataDef (DataTy n params constrs ds)
           | n == oldName ->
               TDataDef (DataTy newName params constrs ds)
@@ -2134,7 +2137,7 @@ selectTopDeclForExportRef itemRef d@(TClassDef (Class _ _ n _ _ _))
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
-selectTopDeclForExportRef itemRef d@(TContr (Contract n _ _))
+selectTopDeclForExportRef itemRef d@(TContr (Contract n _ _ _ _))
   | exportedItemSourceName itemRef == n,
     exportedItemConstructors itemRef == Nothing =
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
