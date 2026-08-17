@@ -1,0 +1,109 @@
+import std.{*};
+import std.dispatch.{*};
+
+function caller() -> address {
+  let res : word;
+  assembly { res := caller() }
+  return address(res);
+}
+
+// An interface desugars to a type class with a reified `self` receiver.
+interface IOwnable {
+  function owner() -> address;
+}
+
+// A polymorphic, interface-constrained function: exercises `self` reification.
+forall self . self : IOwnable =>
+function ownerOf(s : self) -> address {
+  return s.owner();
+}
+
+// ===== Ownable: owner state + onlyOwner guard (OZ Ownable) =====
+contract Ownable implements IOwnable {
+  owner_ : address;
+
+  constructor() {
+    owner_ = caller();
+  }
+
+  public function owner() -> address {
+    return owner_;
+  }
+
+  public function transferOwnership(newOwner : address) -> () {
+    require(caller() == owner_, Error(0x12b0c500)); // OwnableUnauthorizedAccount
+    owner_ = newOwner;
+  }
+}
+
+// ===== Pausable: paused flag; setPaused is onlyOwner (reuses inherited owner_) =====
+contract Pausable inherits Ownable {
+  paused_ : uint256;
+
+  public function paused() -> uint256 {
+    return paused_;
+  }
+
+  public function setPaused(p : uint256) -> () {
+    require(caller() == owner_, Error(0x12b0c500)); // onlyOwner
+    paused_ = p;
+  }
+}
+
+// ===== ERC20Base: the ledger + the single _update hook =====
+contract ERC20Base inherits Pausable {
+  totalSupply_ : uint256;
+  balances : mapping(address, uint256);
+
+  public function totalSupply() -> uint256 {
+    return totalSupply_;
+  }
+
+  public function balanceOf(a : address) -> uint256 {
+    return balances[a];
+  }
+
+  // The single balance-movement hook every mint/transfer/burn flows through.
+  public function update(from : address, to : address, amount : uint256) -> () {
+    if (from == address(0)) {
+      totalSupply_ = totalSupply_ + amount;
+    } else {
+      balances[from] = balances[from] - amount;
+    }
+    if (to == address(0)) {
+      totalSupply_ = totalSupply_ - amount;
+    } else {
+      balances[to] = balances[to] + amount;
+    }
+  }
+}
+
+// ===== VaultToken: overrides _update with whenNotPaused + super; adds mint/transfer =====
+contract VaultToken inherits ERC20Base {
+  constructor() {
+    owner_ = caller();
+    paused_ = 0;
+    totalSupply_ = 0;
+    update(address(0), caller(), 1000); // initial mint to deployer
+  }
+
+  // override: the whenNotPaused modifier, then delegate to the base via super.
+  public function update(from : address, to : address, amount : uint256) -> () {
+    require(paused_ == 0, Error(0x9e87fac8)); // whenNotPaused / Paused()
+    super.update(from, to, amount);
+  }
+
+  public function mint(to : address, amount : uint256) -> () {
+    require(caller() == owner_, Error(0x12b0c500)); // onlyOwner
+    update(address(0), to, amount);
+  }
+
+  public function transfer(to : address, amount : uint256) -> () {
+    update(caller(), to, amount);
+  }
+
+  // Reaches the owner through the interface instance on `self`.
+  public function whoOwns() -> address {
+    return ownerOf(self);
+  }
+}

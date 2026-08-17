@@ -1,0 +1,39 @@
+import std.{*};
+import std.dispatch.{*};
+
+// Classic C3 diamond. `D inherits B, C`, `B inherits A`, `C inherits A`.
+// Solidity's C3 MRO for D is [D, C, B, A], so a call to f() runs the override
+// bodies in that order, each appending its digit: 4 (D), 3 (C), 2 (B), 1 (A).
+// The shared base A contributes a single `trace` storage slot (diamond dedup).
+contract A {
+  trace : uint256;
+
+  public function f() -> () {
+    trace = trace * 10 + 1;
+  }
+
+  public function getTrace() -> uint256 {
+    return trace;
+  }
+}
+
+contract B inherits A {
+  public function f() -> () {
+    trace = trace * 10 + 2;
+    super.f();
+  }
+}
+
+contract C inherits A {
+  public function f() -> () {
+    trace = trace * 10 + 3;
+    super.f();
+  }
+}
+
+contract D inherits B, C {
+  public function f() -> () {
+    trace = trace * 10 + 4;
+    super.f();
+  }
+}

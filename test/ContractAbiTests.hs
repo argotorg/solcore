@@ -58,6 +58,8 @@ onlyPublicContract =
   Contract
     (Name "Sample")
     []
+    []
+    []
     [ fun True (sig "get" [] (Just (tyCon "uint256")) False),
       fun False (sig "secret" [] (Just (tyCon "uint256")) False)
     ]
@@ -90,7 +92,9 @@ richContract =
   Contract
     (Name "Token")
     []
-    [ CConstrDecl (Constructor [Typed False (Name "amount") word] [] False),
+    []
+    []
+    [ CConstrDecl (Constructor [Typed False (Name "amount") word] [] False []),
       fun
         True
         ( sig
@@ -108,6 +112,8 @@ mappingParamContract :: Contract Name
 mappingParamContract =
   Contract
     (Name "Store")
+    []
+    []
     []
     [ fun
         True

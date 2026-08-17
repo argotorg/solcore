@@ -129,7 +129,7 @@ collectDataDefs :: [TopDecl Name] -> [DataTy]
 collectDataDefs = concatMap go
   where
     go (TDataDef dt) = [dt]
-    go (TContr (Contract _ _ ds)) = [dt | CDataDecl dt <- ds]
+    go (TContr (Contract _ _ _ _ ds)) = [dt | CDataDecl dt <- ds]
     go _ = []
 
 existingGenericTypes :: [TopDecl Name] -> [Name]

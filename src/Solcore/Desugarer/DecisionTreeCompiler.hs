@@ -64,8 +64,8 @@ instance Compile (TopDecl Id) where
   compile d = pure d
 
 instance Compile (Contract Id) where
-  compile (Contract n vs ds) =
-    Contract n vs
+  compile (Contract n vs impls inh ds) =
+    Contract n vs impls inh
       <$> local (\(te, ctx, warnSpan) -> (Map.union env' te, ctx ++ ["contract " ++ pretty n], warnSpan)) (compile ds)
     where
       ds' = [d | (CDataDecl d) <- ds]
@@ -81,8 +81,8 @@ instance Compile (ContractDecl Id) where
   compile d = pure d
 
 instance Compile (Constructor Id) where
-  compile (Constructor ps bd payable) =
-    (\bd' -> Constructor ps bd' payable) <$> compile bd
+  compile (Constructor ps bd payable ins) =
+    (\bd' -> Constructor ps bd' payable ins) <$> compile bd
 
 instance Compile (FunDef Id) where
   compile (FunDef p sig bd) =
@@ -521,7 +521,7 @@ initialTypeEnv (CompUnit _ ds) =
     -- Contract-local data types are also exposed at module scope so that the
     -- top-level instances derived for them can be compiled (their `match`
     -- expressions reference the contract-local constructors).
-    step (TContr (Contract _ _ cds)) ac = foldr cstep ac cds
+    step (TContr (Contract _ _ _ _ cds)) ac = foldr cstep ac cds
     step _ ac = ac
     cstep (CDataDecl dt) ac = addDataTyInfo dt ac
     cstep (CMutualDecl ds1) ac = foldr cstep ac ds1

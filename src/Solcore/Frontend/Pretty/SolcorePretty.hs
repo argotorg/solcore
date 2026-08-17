@@ -141,10 +141,12 @@ instance Pretty PragmaStatus where
   ppr _ = empty
 
 instance (Pretty a) => Pretty (Contract a) where
-  ppr (Contract n ts ds) =
+  ppr (Contract n ts impls inh ds) =
     text "contract"
       <+> ppr n
       <+> pprTyParams (map TyVar ts)
+      <+> (if null inh then empty else text "inherits" <+> commaSep (map ppr inh))
+      <+> (if null impls then empty else text "implements" <+> commaSep (map ppr impls))
       <+> lbrace
       $$ nest 3 (vcat (map ppr ds))
       $$ rbrace
@@ -162,12 +164,17 @@ instance (Pretty a) => Pretty (ContractDecl a) where
     ppr c
 
 instance (Pretty a) => Pretty (Constructor a) where
-  ppr (Constructor ps bd payable) =
+  ppr (Constructor ps bd payable ins) =
     (if payable then text "payable" <+> text "constructor" else text "constructor")
       <+> pprParams ps
+      <+> pprCtorInits ins
       <+> lbrace
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace
+
+pprCtorInits :: (Pretty a) => [(Name, [Exp a])] -> Doc
+pprCtorInits [] = empty
+pprCtorInits ins = text ":" <+> commaSep [ppr b <> parens (commaSep (map ppr es)) | (b, es) <- ins]
 
 instance Pretty DataTy where
   ppr (DataTy n ps cs ds) =

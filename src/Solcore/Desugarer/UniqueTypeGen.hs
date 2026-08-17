@@ -43,7 +43,7 @@ instance UniqueTypeGen (Class Name) where
   uniqueTyGen = uniqueTyGen . signatures
 
 instance UniqueTypeGen (Contract Name) where
-  uniqueTyGen (Contract _ _ ds) =
+  uniqueTyGen (Contract _ _ _ _ ds) =
     uniqueTyGen ds
 
 instance UniqueTypeGen (ContractDecl Name) where

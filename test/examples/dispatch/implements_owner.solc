@@ -1,0 +1,41 @@
+import std.{*};
+import std.dispatch.{*};
+
+// caller() is not in the std library yet.
+function caller() -> address {
+  let res : word;
+  assembly { res := caller() }
+  return address(res);
+}
+
+// An interface desugars to a type class whose methods take a reified `self`
+// receiver; `contract C implements HasOwner` generates the corresponding
+// instance on the contract's storage.
+interface HasOwner {
+  function getOwner() -> address;
+}
+
+// A polymorphic, interface-constrained free function. `checkOwner` calls it by
+// passing the reified contract receiver `self`, exercising field access through
+// the generated instance rather than the contract's own methods.
+forall self . self : HasOwner =>
+function requireOwner(c : self) -> address {
+  return c.getOwner();
+}
+
+contract IOwned implements HasOwner {
+  owner : address;
+
+  constructor() {
+    owner = caller();
+  }
+
+  public function getOwner() -> address {
+    return owner;
+  }
+
+  // Reaches the owner field only via the interface method on `self`.
+  public function checkOwner() -> address {
+    return requireOwner(self);
+  }
+}

@@ -90,7 +90,10 @@ mkdir -p "$work_root"
 work_dir="$(mktemp -d "$work_root/run.XXXXXX")"
 work_marker="$work_dir/.owned-by-contest"
 touch "$work_marker"
-hull="$work_dir/output1.hull"
+# `hull` is selected after compilation: a source may emit several contracts
+# (e.g. a base module and a contract that inherits it across modules), so we
+# pick the Hull whose object matches the test's "contract" field.
+hull=""
 yulfile="$work_dir/output.yul"
 hexfile="$work_dir/output.hex"
 runner_input="$work_dir/runner-input.json"
@@ -114,13 +117,30 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if ! $SOLCORE_CMD -f "$src" -o "$work_dir"; then
+# Compile with --root at the test directory so cross-module imports resolve.
+if ! $SOLCORE_CMD --root "$test_dir" -f "$src" -o "$work_dir"; then
     echo "Error: sol-core compilation failed"
     exit 1
 fi
 
+# Select the Hull whose top-level object matches the requested contract. Falls
+# back to output1.hull for single-contract sources without a "contract" field.
+contract=$(jq -r ".$suite.contract // empty" "$file")
+if [[ -n "$contract" ]]; then
+    for h in "$work_dir"/output*.hull; do
+        [[ -f "$h" ]] || continue
+        if head -1 "$h" | grep -qE "object ${contract}(Deploy)? \{"; then
+            hull="$h"
+            break
+        fi
+    done
+fi
+if [[ -z "$hull" ]]; then
+    hull="$work_dir/output1.hull"
+fi
+
 if [[ ! -f "$hull" ]]; then
-    echo "Error: sol-core did not produce output1.hull"
+    echo "Error: sol-core did not produce a matching Hull for contract '${contract:-?}'"
     exit 1
 fi
 

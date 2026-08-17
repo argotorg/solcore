@@ -110,6 +110,8 @@ data Contract
   = Contract
   { name :: Name,
     tyParams :: [Ty],
+    contractImplements :: [Name],
+    contractInherits :: [Name],
     decls :: [ContractDecl]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -195,7 +197,8 @@ data Constructor
   = Constructor
   { constrParams :: [Param],
     constrBody :: Body,
-    constrPayable :: Bool
+    constrPayable :: Bool,
+    constrInits :: [(Name, [Exp])]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -337,7 +340,7 @@ instance HasSourceSpan ItemSelectorEntry where
     firstSourceSpan [sourceSpanOf n, sourceSpanOf aliasName]
 
 instance HasSourceSpan Contract where
-  sourceSpanOf (Contract n tyParams' contractDecls) =
+  sourceSpanOf (Contract n tyParams' _ _ contractDecls) =
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tyParams', sourceSpanOf contractDecls]
 
 instance HasSourceSpan DataTy where
@@ -353,7 +356,7 @@ instance HasSourceSpan TySym where
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tyParams', sourceSpanOf ty]
 
 instance HasSourceSpan Constructor where
-  sourceSpanOf (Constructor params body _) =
+  sourceSpanOf (Constructor params body _ _) =
     firstSourceSpan [sourceSpanOf params, sourceSpanOf body]
 
 instance HasSourceSpan Class where

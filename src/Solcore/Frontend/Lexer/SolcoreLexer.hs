@@ -70,7 +70,10 @@ reservedWords =
     "return",
     "lam",
     "type",
-    "pragma"
+    "pragma",
+    "interface",
+    "implements",
+    "inherits"
   ]
 
 identifier :: Parser String

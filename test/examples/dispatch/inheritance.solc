@@ -1,0 +1,150 @@
+import std.{*};
+import std.dispatch.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+// Contract inheritance in Core Solidity, represented with type classes,
+// instances and algebraic data types (the approach of composition-2.md, Part 3).
+//
+//   * an interface / abstract contract  ==  a type class (a "capability")
+//   * "contract D is B" (subtyping)      ==  an instance
+//   * an inherited / default method      ==  a function with a class constraint
+//   * inherited state (a product)        ==  fields of an ADT record + Has* classes
+//   * virtual / override                 ==  choosing the most specific function
+//   * super (open recursion)             ==  a derived layer calling the base layer
+//
+// It reproduces three OpenZeppelin patterns on one running example:
+//   Ownable   (owner + the onlyOwner guard),
+//   Pausable  (a paused flag + the whenNotPaused check, reusing the owner),
+//   ERC20     (the single `_update` hook every balance movement flows through,
+//              overridden by the pausable layer which calls `super`).
+
+function caller() -> address { let r : word; assembly { r := caller() } return address(r); }
+function addr0() -> address { return address(0); }
+function notb(b : bool) -> bool { match b { | true => return false; | false => return true; } }
+function fromBool(b : bool) -> uint256 { match b { | true => return uint256(1); | false => return uint256(0); } }
+
+// ===== capability interfaces (each is a type class over the state `self`) =====
+forall self . class self : HasOwner  { function ownerOf(s : self) -> address; }
+forall self . class self : HasPaused { function isPaused(s : self) -> bool; function setPaused(s : self, p : bool) -> self; }
+forall self . class self : HasSupply { function supplyOf(s : self) -> uint256; function setSupply(s : self, v : uint256) -> self; }
+forall self . class self : HasBal    { function balOf(s : self, a : address) -> uint256; function setBal(s : self, a : address, v : uint256) -> self; }
+
+// ===== inherited state as a PRODUCT: owner, paused, totalSupply, and a fixed
+// two-account ledger (acctA, balA, acctB, balB). A real mapping would live in
+// storage; the two slots keep this example self-contained and runnable. =====
+data Vault = Vault(address, bool, uint256, address, uint256, address, uint256);
+
+// ===== each instance "plugs in" a slice of the state (the Has*/lens pattern) =====
+instance Vault : HasOwner {
+  function ownerOf(s : Vault) -> address { match s { | Vault(o, p, t, aa, ba, ab, bb) => return o; } }
+}
+instance Vault : HasPaused {
+  function isPaused(s : Vault) -> bool { match s { | Vault(o, p, t, aa, ba, ab, bb) => return p; } }
+  function setPaused(s : Vault, np : bool) -> Vault { match s { | Vault(o, p, t, aa, ba, ab, bb) => return Vault(o, np, t, aa, ba, ab, bb); } }
+}
+instance Vault : HasSupply {
+  function supplyOf(s : Vault) -> uint256 { match s { | Vault(o, p, t, aa, ba, ab, bb) => return t; } }
+  function setSupply(s : Vault, nv : uint256) -> Vault { match s { | Vault(o, p, t, aa, ba, ab, bb) => return Vault(o, p, nv, aa, ba, ab, bb); } }
+}
+instance Vault : HasBal {
+  function balOf(s : Vault, a : address) -> uint256 {
+    match s { | Vault(o, p, t, aa, ba, ab, bb) => if (Eq.eq(a, aa)) { return ba; } else { return bb; } }
+  }
+  function setBal(s : Vault, a : address, v : uint256) -> Vault {
+    match s { | Vault(o, p, t, aa, ba, ab, bb) => if (Eq.eq(a, aa)) { return Vault(o, p, t, aa, v, ab, bb); } else { return Vault(o, p, t, aa, ba, ab, v); } }
+  }
+}
+
+// ===== Ownable: the reusable onlyOwner guard is a default method, available to
+// ANY state that HasOwner (this is "code reuse from a mixin" without inheritance). =====
+forall self . self : HasOwner =>
+function requireOwner(s : self, who : address) -> () {
+  require(Eq.eq(who, HasOwner.ownerOf(s)), Error(0x12b0c500));   // OwnableUnauthorizedAccount
+}
+
+// ===== ERC20._update, base layer: the single seam every movement flows through. =====
+forall self . self : HasBal, self : HasSupply =>
+function baseUpdate(s : self, from : address, to : address, amount : uint256) -> self {
+  let s1 : self = s;
+  match Eq.eq(from, addr0()) {
+    | true  => s1 = HasSupply.setSupply(s1, Num.add(HasSupply.supplyOf(s1), amount));   // mint
+    | false => s1 = HasBal.setBal(s1, from, Num.sub(HasBal.balOf(s1, from), amount));
+  }
+  match Eq.eq(to, addr0()) {
+    | true  => s1 = HasSupply.setSupply(s1, Num.sub(HasSupply.supplyOf(s1), amount));   // burn
+    | false => s1 = HasBal.setBal(s1, to, Num.add(HasBal.balOf(s1, to), amount));
+  }
+  return s1;
+}
+
+// ===== Pausable "dresses the hook": the derived layer OVERRIDES _update by
+// adding the whenNotPaused check, then calls SUPER (the base layer). =====
+forall self . self : HasBal, self : HasSupply, self : HasPaused =>
+function pausableUpdate(s : self, from : address, to : address, amount : uint256) -> self {
+  require(notb(HasPaused.isPaused(s)), Error(0x9e87fac8));       // Paused()
+  return baseUpdate(s, from, to, amount);                       // <- super.update(...)
+}
+
+contract Inheritance {
+  constructor() {}
+
+  // Fresh scenario state: owner = caller, a second account, empty ledger.
+  // (State is rebuilt per call: this example exercises the inheritance
+  // representation and its logic, not persistent storage.)
+
+  // ERC20 _update through the pausable override + super: mint 100 to caller,
+  // then transfer 30 to the other account. Returns the other's balance (30).
+  public function transferResult() -> uint256 {
+    let me : address = caller();
+    let other : address = address(1);
+    let s0 : Vault = Vault(me, false, uint256(0), me, uint256(0), other, uint256(0));
+    let s1 : Vault = pausableUpdate(s0, addr0(), me, uint256(100));
+    let s2 : Vault = pausableUpdate(s1, me, other, uint256(30));
+    return HasBal.balOf(s2, other);
+  }
+
+  // Minting raises totalSupply through the same seam. Returns 100.
+  public function supplyResult() -> uint256 {
+    let me : address = caller();
+    let s0 : Vault = Vault(me, false, uint256(0), me, uint256(0), address(1), uint256(0));
+    let s1 : Vault = pausableUpdate(s0, addr0(), me, uint256(100));
+    return HasSupply.supplyOf(s1);
+  }
+
+  // Pausable state: setPaused(true) then isPaused. Returns 1.
+  public function pausedFlag() -> uint256 {
+    let me : address = caller();
+    let s0 : Vault = Vault(me, false, uint256(0), me, uint256(0), address(1), uint256(0));
+    let s1 : Vault = HasPaused.setPaused(s0, true);
+    return fromBool(HasPaused.isPaused(s1));
+  }
+
+  // Pausable OVERRIDE blocks the update: paused, so pausableUpdate reverts
+  // Paused() (0x9e87fac8) BEFORE reaching super. Expected: revert.
+  public function pausedBlocks() -> uint256 {
+    let me : address = caller();
+    let s0 : Vault = Vault(me, true, uint256(0), me, uint256(0), address(1), uint256(0));
+    let s1 : Vault = pausableUpdate(s0, addr0(), me, uint256(100));
+    return HasSupply.supplyOf(s1);
+  }
+
+  // Ownable guard passes for the owner. Returns 1.
+  public function ownerGuardPasses() -> uint256 {
+    let me : address = caller();
+    let s0 : Vault = Vault(me, false, uint256(0), me, uint256(0), address(1), uint256(0));
+    requireOwner(s0, me);
+    return uint256(1);
+  }
+
+  // Ownable guard blocks a non-owner: reverts OwnableUnauthorizedAccount
+  // (0x12b0c500). Expected: revert.
+  public function ownerGuardBlocks() -> uint256 {
+    let me : address = caller();
+    let notOwner : address = address(2);
+    let s0 : Vault = Vault(me, false, uint256(0), me, uint256(0), address(1), uint256(0));
+    requireOwner(s0, notOwner);
+    return uint256(1);
+  }
+}

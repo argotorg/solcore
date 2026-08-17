@@ -1,0 +1,256 @@
+{
+  "vault_token": {
+    "bytecode": "",
+    "contract": "VaultToken",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "owner() == deployer",
+          "calldata": "8da5cb5b",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000001212121212121212121212121212120000000012",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "whoOwns() via interface/self == deployer",
+          "calldata": "b1d6bcb4",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000001212121212121212121212121212120000000012",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "totalSupply() == 1000 (minted in ctor via override+super)",
+          "calldata": "18160ddd",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000003e8",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(deployer) == 1000",
+          "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000003e8",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "mint(deployer,500) onlyOwner ok",
+          "calldata": "40c10f19000000000000000000000000121212121212121212121212121212000000001200000000000000000000000000000000000000000000000000000000000001f4",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "totalSupply() == 1500",
+          "calldata": "18160ddd",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000005dc",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(deployer) == 1500",
+          "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000005dc",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "transfer(0xdead,200) ok",
+          "calldata": "a9059cbb000000000000000000000000000000000000000000000000000000000000dead00000000000000000000000000000000000000000000000000000000000000c8",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(deployer) == 1300",
+          "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000514",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(0xdead) == 200",
+          "calldata": "70a08231000000000000000000000000000000000000000000000000000000000000dead",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000c8",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setPaused(1) onlyOwner ok",
+          "calldata": "51789ea20000000000000000000000000000000000000000000000000000000000000001",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "paused() == 1",
+          "calldata": "5c975abb",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "transfer(0xbeef,10) reverts Paused()",
+          "calldata": "a9059cbb000000000000000000000000000000000000000000000000000000000000beef000000000000000000000000000000000000000000000000000000000000000a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "9e87fac8",
+          "status": "failure"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(deployer) still 1300",
+          "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000514",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "setPaused(0) ok",
+          "calldata": "51789ea20000000000000000000000000000000000000000000000000000000000000000",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "transfer(0xbeef,10) now ok",
+          "calldata": "a9059cbb000000000000000000000000000000000000000000000000000000000000beef000000000000000000000000000000000000000000000000000000000000000a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(deployer) == 1290",
+          "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000050a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "transferOwnership(0xdead) ok",
+          "calldata": "f2fde38b000000000000000000000000000000000000000000000000000000000000dead",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "owner() == 0xdead",
+          "calldata": "8da5cb5b",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000dead",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "mint reverts onlyOwner (caller no longer owner)",
+          "calldata": "40c10f1900000000000000000000000012121212121212121212121212121200000000120000000000000000000000000000000000000000000000000000000000000001",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "12b0c500",
+          "status": "failure"
+        }
+      }
+    ]
+  }
+}

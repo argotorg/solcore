@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 
-module Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls, fieldDesugarer) where
+module Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls, fieldDesugarer, rewriteBodyWithSelf) where
 
 import Control.Monad.Reader (MonadReader (..))
 -- import Data.Generics(Data, mkT, everywhere)
@@ -58,7 +58,7 @@ fieldDesugarTopDecls topdecls = extras <> topdecls'
 --------------------------------
 
 extraTopDeclsForContract :: Bool -> NmContract -> [NmTopDecl]
-extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
+extraTopDeclsForContract includeSingleton (Contract cname _ts _ _ cdecls) = do
   let singName = singletonNameForContract cname
   let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName [] []] []
 
@@ -108,7 +108,12 @@ translateFieldType t = TyCon "storage" [t]
 -- - desugar field accesses
 -- lest we inadvertenly mistranslate a LHS as a RHS
 
-data ContractEnv = CEnv {ceName :: Name, ceFields :: Map Name NmField, ceLocals :: Set Name}
+-- `ceSelf` is the base a field access rewrites against: `Nothing` uses the
+-- synthesized `ContractStorage(CCxt)` singleton (a plain contract's implicit
+-- current-contract access), `Just s` uses the parameter `s` (an inheritance
+-- instance method whose receiver is `self : ContractStorage(CCxt)`). The
+-- LVA/RVA accessors ignore the base value, so the two are runtime-identical.
+data ContractEnv = CEnv {ceName :: Name, ceFields :: Map Name NmField, ceLocals :: Set Name, ceSelf :: Maybe Name}
 
 type CEM a = ContractEnv -> a
 
@@ -119,8 +124,24 @@ transContract c = c {decls = concatMap (flip transCDecl cenv) (Contract.decls c)
       CEnv
         { ceName = Contract.name c,
           ceFields = Map.fromList [(fieldName f, f) | f <- getFields (Contract.decls c)],
-          ceLocals = mempty
+          ceLocals = mempty,
+          ceSelf = Nothing
         }
+
+-- Rewrite a contract method body so field accesses go through an explicit
+-- `self` receiver instead of the synthesized current-contract constant. Reused
+-- by the inheritance desugarer to build the bodies of the generated interface /
+-- contract instances on `ContractStorage(CCxt)`.
+rewriteBodyWithSelf :: Name -> [NmField] -> Name -> NmBody -> NmBody
+rewriteBodyWithSelf cname fields selfN body =
+  transBody
+    body
+    CEnv
+      { ceName = cname,
+        ceFields = Map.fromList [(fieldName f, f) | f <- fields],
+        ceLocals = mempty,
+        ceSelf = Just selfN
+      }
 
 transCDecl :: NmContractDecl -> CEM [NmContractDecl]
 transCDecl (CFunDecl fd) = do
@@ -228,6 +249,8 @@ transContractFieldAssignment field rhs = do
   pure $ StmtExp $ Call Nothing fun [lhs', rhs']
 
 transRhs :: (HasCallStack) => NmExp -> CEM NmExp
+transRhs (FieldAccess Nothing x) cenv
+  | x == Name "self" = contractContext cenv
 transRhs expr@(FieldAccess Nothing x) cenv
   | isLocal x cenv = traces ["Local:", pretty x] (Var x)
   | Just _fty <- askFieldTy x cenv =
@@ -336,13 +359,14 @@ singletonTypeForContract cname = TyCon (singletonNameForContract cname) []
 
 contractContext :: CEM NmExp
 contractContext = do
-  cname <- reader ceName
-  let singName = singletonNameForContract cname
-  -- let contractSingTy = TyCon singName []
-  let contractSing = Con singName []
-  -- let cxtTy = TyCon "ContractStorage" [contractSingTy]
-  let cxt = Con "ContractStorage" [contractSing]
-  pure cxt
+  self <- reader ceSelf
+  case self of
+    -- inheritance instance method: the receiver parameter is the base.
+    Just s -> pure (Var s)
+    -- plain contract: the synthesized current-contract singleton.
+    Nothing -> do
+      cname <- reader ceName
+      pure (Con "ContractStorage" [Con (singletonNameForContract cname) []])
 
 memberProxyFor :: Name -> CEM NmExp
 memberProxyFor field = do

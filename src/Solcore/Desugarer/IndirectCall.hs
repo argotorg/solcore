@@ -54,8 +54,8 @@ instance Desugar (TopDecl Name) where
   desugar (TMutualDef ms) = TMutualDef <$> desugar ms
 
 instance Desugar (Contract Name) where
-  desugar (Contract n vs ds) =
-    Contract n vs <$> desugar ds
+  desugar (Contract n vs impls inh ds) =
+    Contract n vs impls inh <$> desugar ds
 
 instance Desugar (FunDef Name) where
   desugar (FunDef p sig bdy) =
@@ -77,8 +77,8 @@ instance Desugar (Field Name) where
     Field n t <$> desugar me
 
 instance Desugar (Constructor Name) where
-  desugar (Constructor ps bd payable) =
-    (\bd' -> Constructor ps bd' payable) <$> desugar bd
+  desugar (Constructor ps bd payable inits) =
+    (\bd' -> Constructor ps bd' payable inits) <$> desugar bd
 
 instance Desugar (Stmt Name) where
   desugar (lhs := rhs) =
@@ -170,7 +170,7 @@ instance Collect (TopDecl Name) where
   collect (TMutualDef ms) = collect ms
 
 instance Collect (Contract Name) where
-  collect (Contract _ _ ds) = collect ds
+  collect (Contract _ _ _ _ ds) = collect ds
 
 instance Collect (ContractDecl Name) where
   collect (CFieldDecl _) = []
