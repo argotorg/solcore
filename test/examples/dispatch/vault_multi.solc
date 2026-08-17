@@ -1,0 +1,109 @@
+import std.{*};
+import std.dispatch.{*};
+
+function caller() -> address {
+  let res : word;
+  assembly { res := caller() }
+  return address(res);
+}
+
+interface IOwnable {
+  function owner() -> address;
+}
+
+forall self . self : IOwnable =>
+function ownerOf(s : self) -> address {
+  return s.owner();
+}
+
+// Three independent mixins combined by TRUE multiple inheritance
+// (`inherits Ownable, Pausable, ERC20Base`), C3-linearized to
+// [Ownable, Pausable, ERC20Base, VaultToken].
+contract Ownable implements IOwnable {
+  owner_ : address;
+
+  constructor() {
+    owner_ = caller();
+  }
+
+  public function owner() -> address {
+    return owner_;
+  }
+
+  public function transferOwnership(newOwner : address) -> () {
+    require(caller() == owner_, Error(0x12b0c500));
+    owner_ = newOwner;
+  }
+}
+
+contract Pausable {
+  paused_ : uint256;
+
+  public function paused() -> uint256 {
+    return paused_;
+  }
+
+  // References owner_ from a sibling base; both are flattened into the leaf.
+  public function setPaused(p : uint256) -> () {
+    require(caller() == owner_, Error(0x12b0c500));
+    paused_ = p;
+  }
+}
+
+// Parameterized base constructor: the initial supply is forwarded by the leaf.
+contract ERC20Base {
+  totalSupply_ : uint256;
+  balances : mapping(address, uint256);
+
+  constructor(initialSupply : uint256) {
+    totalSupply_ = initialSupply;
+    balances[caller()] = initialSupply;
+  }
+
+  public function totalSupply() -> uint256 {
+    return totalSupply_;
+  }
+
+  public function balanceOf(a : address) -> uint256 {
+    return balances[a];
+  }
+
+  public function update(from : address, to : address, amount : uint256) -> () {
+    if (from == address(0)) {
+      totalSupply_ = totalSupply_ + amount;
+    } else {
+      balances[from] = balances[from] - amount;
+    }
+    if (to == address(0)) {
+      totalSupply_ = totalSupply_ - amount;
+    } else {
+      balances[to] = balances[to] + amount;
+    }
+  }
+}
+
+contract VaultToken inherits Ownable, Pausable, ERC20Base {
+  // Forward the initial supply to the parameterized ERC20Base constructor;
+  // Ownable's nullary constructor is auto-invoked in linearized order.
+  constructor() : ERC20Base(1000) {
+  }
+
+  // Override the hook with the whenNotPaused guard, then delegate via super.
+  public function update(from : address, to : address, amount : uint256) -> () {
+    require(paused_ == 0, Error(0x9e87fac8));
+    super.update(from, to, amount);
+  }
+
+  public function mint(to : address, amount : uint256) -> () {
+    require(caller() == owner_, Error(0x12b0c500));
+    update(address(0), to, amount);
+  }
+
+  public function transfer(to : address, amount : uint256) -> () {
+    update(caller(), to, amount);
+  }
+
+  public function whoOwns() -> address {
+    return ownerOf(self);
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "inheritance": {
+    "bytecode": "",
+    "contract": "Inheritance",
+    "tests": [
+      { "input": { "comment": "constructor()", "calldata": "", "value": "0" }, "kind": "constructor" },
+      { "input": { "comment": "transferResult()(uint256) -> 30 (ERC20 _update via override+super)", "calldata": "c94472bc", "value": "0" },
+        "kind": "call", "output": { "returndata": "000000000000000000000000000000000000000000000000000000000000001e", "status": "success" } },
+      { "input": { "comment": "supplyResult()(uint256) -> 100 (mint through the seam)", "calldata": "08c032df", "value": "0" },
+        "kind": "call", "output": { "returndata": "0000000000000000000000000000000000000000000000000000000000000064", "status": "success" } },
+      { "input": { "comment": "pausedFlag()(uint256) -> 1 (Pausable state)", "calldata": "23cac62e", "value": "0" },
+        "kind": "call", "output": { "returndata": "0000000000000000000000000000000000000000000000000000000000000001", "status": "success" } },
+      { "input": { "comment": "pausedBlocks() -> revert Paused() 0x9e87fac8 (override blocks before super)", "calldata": "b1c4f46e", "value": "0" },
+        "kind": "call", "output": { "returndata": "9e87fac8", "status": "failure" } },
+      { "input": { "comment": "ownerGuardPasses()(uint256) -> 1 (onlyOwner passes for owner)", "calldata": "76afcc34", "value": "0" },
+        "kind": "call", "output": { "returndata": "0000000000000000000000000000000000000000000000000000000000000001", "status": "success" } },
+      { "input": { "comment": "ownerGuardBlocks() -> revert OwnableUnauthorized 0x12b0c500", "calldata": "827bb9aa", "value": "0" },
+        "kind": "call", "output": { "returndata": "12b0c500", "status": "failure" } }
+    ]
+  }
+}

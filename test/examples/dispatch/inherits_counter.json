@@ -1,0 +1,47 @@
+{
+  "inherits_counter": {
+    "bytecode": "",
+    "contract": "Counter",
+    "tests": [
+      {
+        "input": { "comment": "constructor()", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": { "comment": "getOwner()(address) - inherited, deployer", "calldata": "893d20e8", "value": "0" },
+        "kind": "call",
+        "output": { "returndata": "0000000000000000000000001212121212121212121212121212120000000012", "status": "success" }
+      },
+      {
+        "input": { "comment": "getCount()(uint256) - starts at 0", "calldata": "a87d942c", "value": "0" },
+        "kind": "call",
+        "output": { "returndata": "0000000000000000000000000000000000000000000000000000000000000000", "status": "success" }
+      },
+      {
+        "input": { "comment": "bump() - guarded by inherited owner, from owner ok", "calldata": "68110b2f", "value": "0" },
+        "kind": "call",
+        "output": { "returndata": "", "status": "success" }
+      },
+      {
+        "input": { "comment": "getCount()(uint256) - now 1", "calldata": "a87d942c", "value": "0" },
+        "kind": "call",
+        "output": { "returndata": "0000000000000000000000000000000000000000000000000000000000000001", "status": "success" }
+      },
+      {
+        "input": { "comment": "changeOwner(address) inherited - to 0xdead", "calldata": "a6f9dae1000000000000000000000000000000000000000000000000000000000000dead", "value": "0" },
+        "kind": "call",
+        "output": { "returndata": "", "status": "success" }
+      },
+      {
+        "input": { "comment": "getOwner()(address) - now 0xdead", "calldata": "893d20e8", "value": "0" },
+        "kind": "call",
+        "output": { "returndata": "000000000000000000000000000000000000000000000000000000000000dead", "status": "success" }
+      },
+      {
+        "input": { "comment": "bump() - caller no longer owner, reverts onlyOwner", "calldata": "68110b2f", "value": "0" },
+        "kind": "call",
+        "output": { "returndata": "12b0c500", "status": "failure" }
+      }
+    ]
+  }
+}
