@@ -56,8 +56,8 @@ sccTopDecls ds =
 -- sort inner contract definitions
 
 sccContract :: TopDecl Name -> SCC (TopDecl Name)
-sccContract (TContr (Contract n vs ds)) =
-  (TContr . Contract n vs) <$> analysis ds
+sccContract (TContr (Contract n vs impls inh ds)) =
+  (TContr . Contract n vs impls inh) <$> analysis ds
 sccContract d = pure d
 
 analysis :: (Ord a, Names a, Decl a, Show a, Groupable a) => [a] -> SCC [a]
@@ -127,7 +127,7 @@ instance Decl (FunDef Name) where
   decl (FunDef _ sig _) = decl sig
 
 instance Decl (Contract Name) where
-  decl (Contract n _ ds) = n : concatMap decl ds
+  decl (Contract n _ _ _ ds) = n : concatMap decl ds
 
 instance Decl (Field Name) where
   decl d = [fieldName d]
@@ -224,8 +224,8 @@ instance Names (FunDef Name) where
     names sig `union` names bdy
 
 instance Names (Constructor Name) where
-  names (Constructor ps bdy _) =
-    names ps `union` names bdy
+  names (Constructor ps bdy _ inits) =
+    names ps `union` names bdy `union` names (concatMap snd inits)
 
 instance Names (Class Name) where
   names (Class _ ctx _ _ _ sigs) =
@@ -270,7 +270,7 @@ instance Names (ContractDecl Name) where
   names (CConstrDecl cd) = names cd
 
 instance Names (Contract Name) where
-  names (Contract _ _ contractDecls) =
+  names (Contract _ _ _ _ contractDecls) =
     names contractDecls
 
 instance Names (TopDecl Name) where

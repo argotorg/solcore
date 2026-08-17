@@ -27,6 +27,7 @@ import Solcore.Desugarer.DeriveGeneric (collectDataDefs, deriveGenericTopDecls)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
+import Solcore.Desugarer.Inheritance (inheritanceDesugarTopDecls)
 import Solcore.Desugarer.IntLiteralDesugar (desugarIntLiterals)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
@@ -840,8 +841,11 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
         | emitOutput = optTimeItNamed opts
         | otherwise = \_ action -> action
 
+  -- contract inheritance desugaring (interface/implements -> classes/instances),
+  -- before field access so the generated instance bodies are field-desugared too.
+  let inherited = mapModuleInferenceTopDecls inheritanceDesugarTopDecls inferenceDecls
   -- contract field access desugaring
-  let accessed = mapModuleInferenceTopDecls fieldDesugarTopDecls inferenceDecls
+  let accessed = mapModuleInferenceTopDecls fieldDesugarTopDecls inherited
   liftIO $ when verbose $ do
     putStrLn "Contract field access desugaring:"
     putStrLn $ prettyInferenceDecls accessed
@@ -1012,8 +1016,8 @@ moveData (CompUnit imps decls1) =
     step d ac = d : ac
 
 extractData :: Contract Name -> ([DataTy], Contract Name)
-extractData (Contract n ts ds) =
-  (ds1, Contract n ts ds0)
+extractData (Contract n ts impls inh ds) =
+  (ds1, Contract n ts impls inh ds0)
   where
     (ds1, ds0) = foldr step ([], []) ds
     step (CDataDecl dt) (dts, cs) = (dt : dts, cs)
