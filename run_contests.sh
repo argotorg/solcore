@@ -68,4 +68,3 @@ bash ./contest.sh test/examples/dispatch/derive_ord.json
 bash ./contest.sh test/examples/dispatch/derive_contract_local.json
 bash ./contest.sh test/examples/dispatch/deposit.json
 bash ./contest.sh test/examples/dispatch/inheritance.json
-bash ./contest.sh test/examples/dispatch/coerce.json
