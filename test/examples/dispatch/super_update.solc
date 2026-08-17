@@ -1,0 +1,41 @@
+import std.{*};
+import std.dispatch.{*};
+
+function caller() -> address {
+  let res : word;
+  assembly { res := caller() }
+  return address(res);
+}
+
+// Base: the single balance-movement hook every transfer flows through.
+contract Ledger {
+  bal : uint256;
+  paused : uint256;
+
+  constructor() {
+    bal = 0;
+    paused = 0;
+  }
+
+  // the "virtual" hook
+  public function update(amount : uint256) -> () {
+    bal = bal + amount;
+  }
+
+  public function getBal() -> uint256 {
+    return bal;
+  }
+}
+
+// Derived: overrides update to add a whenNotPaused guard, then calls super.
+contract PausableLedger inherits Ledger {
+  public function setPaused(p : uint256) -> () {
+    paused = p;
+  }
+
+  // override: guard, then delegate to the base implementation via super.
+  public function update(amount : uint256) -> () {
+    require(paused == 0, Error(0x9e87fac8));  // Paused()
+    super.update(amount);
+  }
+}
