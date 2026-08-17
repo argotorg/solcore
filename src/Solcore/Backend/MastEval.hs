@@ -469,12 +469,23 @@ evalExp env (MastCon i es) = do
   es' <- mapM (evalExp env) es
   pure $ MastCon i es'
 evalExp env (MastCond e1 e2 e3) = do
-  -- Evaluate all branches (conservative approach)
-  -- Could potentially simplify if condition is known literal
   e1' <- evalExp env e1
-  e2' <- evalExp env e2
-  e3' <- evalExp env e3
-  pure $ MastCond e1' e2' e3'
+  case boolValue e1' of
+    -- Condition folds to a known boolean: keep only the taken branch. This is
+    -- the comptime counterpart of the runtime short-circuit — the untaken
+    -- branch (which may revert or have side effects) is dropped entirely.
+    Just True -> evalExp env e2
+    Just False -> evalExp env e3
+    -- Condition not statically known: fold both branches (conservative), so any
+    -- comptime-only arguments are still erased from each side.
+    Nothing -> do
+      e2' <- evalExp env e2
+      e3' <- evalExp env e3
+      pure $ MastCond e1' e2' e3'
+  where
+    boolValue (MastCon (MastId (Name "inr") _) _) = Just True
+    boolValue (MastCon (MastId (Name "inl") _) _) = Just False
+    boolValue _ = Nothing
 
 -----------------------------------------------------------------------
 -- Primitive evaluation (named-function fast paths)

@@ -72,7 +72,7 @@ mergedOpTable ops =
 -- in scope is threaded through so the symbol parser can reason about longer
 -- operators and operator-using match patterns.
 userRow :: [OperatorDecl] -> OperatorDecl -> (Int, Operator Parser Exp)
-userRow ops od@(OperatorDecl fix prec _ fun) =
+userRow ops od@(OperatorDecl fix prec _ _) =
   ( prec,
     case fix of
       OpInfixL -> InfixL (mkBin <$ opTok)
@@ -83,8 +83,10 @@ userRow ops od@(OperatorDecl fix prec _ fun) =
   )
   where
     opTok = try (opSymP ops od)
-    mkBin l r = locatedExpFrom [sourceSpanOf l, sourceSpanOf r] (ExpName Nothing fun [l, r])
-    mkPre e = locatedExpFrom [sourceSpanOf e] (ExpName Nothing fun [e])
+    -- A strict operator desugars to a plain call; a conditional operator to a
+    -- short-circuit `if/then/else` (applyOperator picks per the declaration).
+    mkBin l r = locatedExpFrom [sourceSpanOf l, sourceSpanOf r] (applyOperator od [l, r])
+    mkPre e = locatedExpFrom [sourceSpanOf e] (applyOperator od [e])
 
 -- Match an exact operator symbol under a maximal-munch guard, consulting every
 -- operator in scope. A symbolic operator must not be consumed when the following

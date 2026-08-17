@@ -7,6 +7,10 @@ module Solcore.Frontend.Parser.Decl
     modulePathP,
     externalPathP,
     itemEntryP,
+    -- Operator-target grammar, shared with the operator pre-scan
+    -- (Parser.OperatorScan) so both declaration parsers accept the same
+    -- strict-function and short-circuit-conditional forms.
+    opTargetP,
   )
 where
 
@@ -48,9 +52,9 @@ operatorDeclP = do
   prec <- fromIntegral <$> integer
   sym <- parenOpP
   _ <- symbol "=>"
-  fun <- qualifiedName
+  target <- opTargetP fix qualifiedName
   _ <- semicolon
-  return (OperatorDecl fix prec sym fun)
+  return (OperatorDecl fix prec sym target)
   where
     fixityP =
       (OpInfixL <$ keyword "infixl")
@@ -58,6 +62,51 @@ operatorDeclP = do
         <|> (OpInfixN <$ keyword "infix")
         <|> (OpPrefix <$ keyword "prefix")
         <|> (OpPostfix <$ keyword "postfix")
+
+-- The right-hand side of an operator declaration, after `=>`. Either a
+-- (qualified) function name, giving a strict operator `a op b ~> fun(a, b)`, or
+-- a short-circuit conditional template `if <arg> then <arg> else <arg>`, where
+-- each <arg> is a positional operand placeholder (`$1`, `$2`) or a bool literal
+-- (`true`/`false`). The template desugars a use to an `if/then/else` that
+-- short-circuits at emission (control flow, not lazy evaluation), which is how a
+-- user declares operators like `&&`, `||` or their own short-circuiting ones.
+-- The template is restricted to atomic arguments so the lightweight pre-scan
+-- that builds the operator table needs no operator table of its own. `fix`
+-- bounds the valid placeholders (a prefix/postfix operator only has `$1`); the
+-- function-name parser is passed in so the full parser and the pre-scan can
+-- reuse this grammar with their own name parsers.
+opTargetP :: OpFixity -> Parser Name -> Parser OpTarget
+opTargetP fix funP =
+  condTemplateP <|> (OpFun <$> funP)
+  where
+    arity = case fix of
+      OpPrefix -> 1
+      OpPostfix -> 1
+      _ -> 2
+    condTemplateP = do
+      keyword "if"
+      a <- condArgP
+      keyword "then"
+      b <- condArgP
+      keyword "else"
+      c <- condArgP
+      pure (OpCond a b c)
+    condArgP =
+      operandP
+        <|> (BoolLit True <$ keyword "true")
+        <|> (BoolLit False <$ keyword "false")
+    operandP = lexeme $ do
+      _ <- char '$'
+      ds <- some digitChar
+      let i = read ds :: Int
+      when (i < 1 || i > arity) $
+        fail
+          ( "operand placeholder $"
+              ++ show i
+              ++ " is out of range for this operator (has "
+              ++ (if arity == 1 then "only $1)" else "$1 and $2)")
+          )
+      pure (Operand i)
 
 withSigPrefix :: ([Ty] -> [Pred] -> Parser a) -> Parser a
 withSigPrefix k = do

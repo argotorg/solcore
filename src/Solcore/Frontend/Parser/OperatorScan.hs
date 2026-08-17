@@ -16,7 +16,7 @@ import Control.Monad (void)
 import Data.List (nubBy)
 import Data.Maybe (listToMaybe)
 import Solcore.Frontend.Lexer.SolcoreLexer
-import Solcore.Frontend.Parser.Decl (externalPathP, itemEntryP, modulePathP)
+import Solcore.Frontend.Parser.Decl (externalPathP, itemEntryP, modulePathP, opTargetP)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 
@@ -50,9 +50,9 @@ scanOperatorsLocated = scanForDecls opDeclP
       prec <- fromIntegral <$> integer
       sym <- parenOpP
       _ <- symbol "=>"
-      fun <- qualFunP
+      target <- opTargetP fix qualFunP
       _ <- optional semicolon
-      pure (Just (offset, OperatorDecl fix prec sym fun))
+      pure (Just (offset, OperatorDecl fix prec sym target))
 
     qualFunP :: Parser Name
     qualFunP = do

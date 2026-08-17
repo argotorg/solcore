@@ -1,0 +1,78 @@
+import std.{*};
+import std.dispatch.{*};
+
+// User-declared short-circuit operator: logical implication.
+// `a ==> b` desugars to `if a then b else true`, so when `a` is false the
+// right operand `b` is never evaluated -- the very definition of short circuit,
+// realised here by control flow (a Yul switch), with no lazy evaluation.
+infixr 5 (==>) => if $1 then $2 else true;
+
+// Proves that the short-circuit operators `&&`, `||` (and a user-defined `==>`)
+// evaluate their guarded operand only when the branch is taken. Each method
+// resets a storage counter, runs one operator expression whose right operand is
+// `bump()` (which increments the counter), and returns the counter. A counter
+// of 0 means `bump()` did NOT run (short-circuited); 1 means it did.
+contract SC {
+    counter : uint256;
+
+    constructor() {
+        counter = uint256(0);
+    }
+
+    // Increments the counter and returns true. Used as the *guarded* operand so
+    // that whether it ran is observable in storage.
+    function bump() -> bool {
+        counter = counter + uint256(1);
+        return true;
+    }
+
+    public function getCounter() -> uint256 {
+        return counter;
+    }
+
+    // false && bump() : `&&` short-circuits on a false left operand, so bump()
+    // is NOT evaluated -> counter stays 0.
+    public function and_short() -> uint256 {
+        counter = uint256(0);
+        let b : bool = false && bump();
+        return counter;
+    }
+
+    // true && bump() : left operand true, so bump() IS evaluated -> counter 1.
+    public function and_run() -> uint256 {
+        counter = uint256(0);
+        let b : bool = true && bump();
+        return counter;
+    }
+
+    // true || bump() : `||` short-circuits on a true left operand, so bump() is
+    // NOT evaluated -> counter stays 0.
+    public function or_short() -> uint256 {
+        counter = uint256(0);
+        let b : bool = true || bump();
+        return counter;
+    }
+
+    // false || bump() : left operand false, so bump() IS evaluated -> counter 1.
+    public function or_run() -> uint256 {
+        counter = uint256(0);
+        let b : bool = false || bump();
+        return counter;
+    }
+
+    // false ==> bump() : implication is true when the antecedent is false, so
+    // bump() is NOT evaluated -> counter stays 0.
+    public function impl_short() -> uint256 {
+        counter = uint256(0);
+        let b : bool = false ==> bump();
+        return counter;
+    }
+
+    // true ==> bump() : antecedent true, so the consequent bump() IS evaluated
+    // -> counter 1.
+    public function impl_run() -> uint256 {
+        counter = uint256(0);
+        let b : bool = true ==> bump();
+        return counter;
+    }
+}

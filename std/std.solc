@@ -29,8 +29,13 @@ infix  35 (>)  => Ord.gt;
 infix  34 (==) => Eq.eq;
 infix  34 (!=) => ne;
 
-infixl 20 (&&) => and;
-infixl 10 (||) => or;
+// Short-circuit logical operators: `a && b` desugars to `if a then b else false`
+// and `a || b` to `if a then true else b`. The conditional short-circuits at
+// emission (a Yul switch runs only the taken arm), so the second operand is
+// evaluated only when needed — no lazy evaluation involved. The strict `and`/`or`
+// functions below remain for callers that want a plain call.
+infixl 20 (&&) => if $1 then $2 else false;
+infixl 10 (||) => if $1 then true else $2;
 
 // Unit suffixes (Solidity ether and time units). These are postfix operators
 // applied to a numeric literal: `2 ether`, `5 minutes`. Each multiplies its
@@ -341,7 +346,9 @@ function require(cond: bool, e: Error) -> () {
 
 // --- booleans ---
 
-// TODO: this should short circuit. probably needs some compiler magic to do so.
+// Strict conjunction (both arguments are evaluated, as for any function call).
+// For short-circuit behaviour use the `&&` operator, which desugars to
+// `if x then y else false`.
 function and(x: bool, y: bool) -> bool {
     match x, y {
     | true, y => return y;
@@ -349,7 +356,9 @@ function and(x: bool, y: bool) -> bool {
     }
 }
 
-// TODO: this should short circuit. probably needs some compiler magic to do so.
+// Strict disjunction (both arguments are evaluated, as for any function call).
+// For short-circuit behaviour use the `||` operator, which desugars to
+// `if x then true else y`.
 function or(x: bool, y: bool) -> bool {
     match x, y {
     | true, _ => return true;

@@ -278,6 +278,15 @@ operatorTargetRoot :: Name -> Name
 operatorTargetRoot (QualName n _) = operatorTargetRoot n
 operatorTargetRoot n = n
 
+-- The names that must be surfaced when an operator is imported. A strict
+-- (function) operator needs its target function in scope; a conditional
+-- (short-circuit template) operator desugars to an `if/then/else` over
+-- built-in booleans and the operands only, so it is self-contained and imports
+-- no extra name.
+operatorTargetRoots :: OpTarget -> [Name]
+operatorTargetRoots (OpFun n) = [operatorTargetRoot n]
+operatorTargetRoots (OpCond {}) = []
+
 -- Identity import bindings for the target functions of the operators an import
 -- brings into scope. A user-defined operator desugars to a call of its target
 -- function (`3 ^^ 4` becomes `pow(3, 4)`), so that target must be importable
@@ -290,7 +299,7 @@ operatorTargetImportBindings graph imp modulePath = do
   src <- moduleSourceText graph modulePath
   let targets =
         uniqueNames
-          (map (operatorTargetRoot . opFunction) (selectImportedOperators imp (exportedOperators src)))
+          (concatMap (operatorTargetRoots . opTarget) (selectImportedOperators imp (exportedOperators src)))
   pure [(t, t) | t <- targets]
 
 -- Merge selector bindings with the operator-target bindings, keeping a selector

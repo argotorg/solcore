@@ -36,15 +36,15 @@ expP = exprP [] (bodyP [])
 -- operator parses to a plain call of the bound function.
 testOps :: [OperatorDecl]
 testOps =
-  [ OperatorDecl OpInfixL 50 "*" (QualName (Name "Mul") "mul"),
-    OperatorDecl OpInfixL 50 "/" (QualName (Name "Div") "div"),
-    OperatorDecl OpInfixL 45 "+" (QualName (Name "Add") "add"),
-    OperatorDecl OpInfixL 45 "-" (QualName (Name "Sub") "sub"),
-    OperatorDecl OpInfixN 35 "<" (Name "lt"),
-    OperatorDecl OpInfixN 34 "==" (QualName (Name "Eq") "eq"),
-    OperatorDecl OpPrefix 90 "~" (QualName (Name "BitNot") "bnot"),
-    OperatorDecl OpPostfix 100 "ether" (Name "etherUnit"),
-    OperatorDecl OpPostfix 100 "minutes" (Name "minutesUnit")
+  [ OperatorDecl OpInfixL 50 "*" (OpFun (QualName (Name "Mul") "mul")),
+    OperatorDecl OpInfixL 50 "/" (OpFun (QualName (Name "Div") "div")),
+    OperatorDecl OpInfixL 45 "+" (OpFun (QualName (Name "Add") "add")),
+    OperatorDecl OpInfixL 45 "-" (OpFun (QualName (Name "Sub") "sub")),
+    OperatorDecl OpInfixN 35 "<" (OpFun (Name "lt")),
+    OperatorDecl OpInfixN 34 "==" (OpFun (QualName (Name "Eq") "eq")),
+    OperatorDecl OpPrefix 90 "~" (OpFun (QualName (Name "BitNot") "bnot")),
+    OperatorDecl OpPostfix 100 "ether" (OpFun (Name "etherUnit")),
+    OperatorDecl OpPostfix 100 "minutes" (OpFun (Name "minutesUnit"))
   ]
 
 stmtPO :: Parser Stmt
@@ -170,10 +170,26 @@ scanTargetTests =
         assertEqual
           "the unit-style symbol is scanned"
           ["iff"]
-          (opSyms "infixl 50 (iff) => foo;")
+          (opSyms "infixl 50 (iff) => foo;"),
+      testCase "a conditional template target scans to a short-circuit OpCond" $
+        assertEqual
+          "(&&) => if $1 then $2 else false"
+          [OpCond (Operand 1) (Operand 2) (BoolLit False)]
+          (opTargets "infixl 20 (&&) => if $1 then $2 else false;"),
+      testCase "a conditional template with a true literal is scanned" $
+        assertEqual
+          "(||) => if $1 then true else $2"
+          [OpCond (Operand 1) (BoolLit True) (Operand 2)]
+          (opTargets "infixl 10 (||) => if $1 then true else $2;"),
+      testCase "a prefix operator template may reference $1 only" $
+        assertEqual
+          "an out-of-range placeholder ($2 on a unary op) rejects the declaration"
+          []
+          (opTargets "prefix 90 (!) => if $2 then false else true;")
     ]
   where
-    opFuns = map (opFunction . snd) . scanOperatorsLocated
+    opFuns s = [n | (_, od) <- scanOperatorsLocated s, OpFun n <- [opTarget od]]
+    opTargets s = [opTarget od | (_, od) <- scanOperatorsLocated s]
     opSyms = map (opSymbol . snd) . scanOperatorsLocated
 
 -- The operator pre-scan rejects a symbol declared more than once within a
@@ -209,8 +225,8 @@ operatorScanTests =
           "reports the symbol and both provenances"
           (Just ("<>", "libA", "libB") :: Maybe (String, String, String))
           ( crossOperatorConflict
-              [ ("libA", OperatorDecl OpInfixL 50 "<>" (Name "joinA")),
-                ("libB", OperatorDecl OpInfixR 60 "<>" (Name "joinB"))
+              [ ("libA", OperatorDecl OpInfixL 50 "<>" (OpFun (Name "joinA"))),
+                ("libB", OperatorDecl OpInfixR 60 "<>" (OpFun (Name "joinB")))
               ]
               []
           ),
@@ -219,8 +235,8 @@ operatorScanTests =
           "identical declarations do not conflict"
           (Nothing :: Maybe (String, String, String))
           ( crossOperatorConflict
-              [ ("libA", OperatorDecl OpInfixL 50 "<>" (Name "join")),
-                ("libB", OperatorDecl OpInfixL 50 "<>" (Name "join"))
+              [ ("libA", OperatorDecl OpInfixL 50 "<>" (OpFun (Name "join"))),
+                ("libB", OperatorDecl OpInfixL 50 "<>" (OpFun (Name "join")))
               ]
               []
           ),
@@ -229,8 +245,8 @@ operatorScanTests =
           "imported versus local conflict"
           (Just ("<>", "libA", "local") :: Maybe (String, String, String))
           ( crossOperatorConflict
-              [("libA", OperatorDecl OpInfixL 50 "<>" (Name "joinA"))]
-              [("local", OperatorDecl OpInfixR 60 "<>" (Name "joinLocal"))]
+              [("libA", OperatorDecl OpInfixL 50 "<>" (OpFun (Name "joinA")))]
+              [("local", OperatorDecl OpInfixR 60 "<>" (OpFun (Name "joinLocal")))]
           ),
       testCase "different operators at one precedence with different associativity conflict" $
         assertEqual
@@ -255,7 +271,7 @@ operatorScanTests =
     ]
   where
     dupSymbol = fmap snd . duplicateOperator . scanOperatorsLocated
-    odf fix prec sym = OperatorDecl fix prec sym (Name "fn")
+    odf fix prec sym = OperatorDecl fix prec sym (OpFun (Name "fn"))
 
 -- The result type of associativityConflict at String provenance labels; named so
 -- the OverloadedStrings labels in the tests above are unambiguously String.
@@ -288,11 +304,11 @@ operatorAdjacencyTests =
     ]
   where
     richOps =
-      [ OperatorDecl OpInfixL 45 "+" (Name "add"),
-        OperatorDecl OpInfixL 30 "&" (Name "bitand"),
-        OperatorDecl OpInfixL 30 "&&" (Name "andOp"),
-        OperatorDecl OpInfixL 25 "|" (Name "bitor"),
-        OperatorDecl OpPrefix 90 "~" (Name "bnot")
+      [ OperatorDecl OpInfixL 45 "+" (OpFun (Name "add")),
+        OperatorDecl OpInfixL 30 "&" (OpFun (Name "bitand")),
+        OperatorDecl OpInfixL 30 "&&" (OpFun (Name "andOp")),
+        OperatorDecl OpInfixL 25 "|" (OpFun (Name "bitor")),
+        OperatorDecl OpPrefix 90 "~" (OpFun (Name "bnot"))
       ]
     expR = exprP richOps (bodyP richOps)
     stmtR = stmtP richOps
@@ -325,9 +341,9 @@ unicodeOperatorTests =
     ]
   where
     uniOps =
-      [ OperatorDecl OpInfixL 60 "⊕" (Name "addWord"),
-        OperatorDecl OpInfixL 50 "∘" (Name "compose1"),
-        OperatorDecl OpInfixL 50 "∘∘" (Name "compose2")
+      [ OperatorDecl OpInfixL 60 "⊕" (OpFun (Name "addWord")),
+        OperatorDecl OpInfixL 50 "∘" (OpFun (Name "compose1")),
+        OperatorDecl OpInfixL 50 "∘∘" (OpFun (Name "compose2"))
       ]
     expU = exprP uniOps (bodyP uniOps)
     binU f a b = ExpName Nothing (Name f) [a, b]

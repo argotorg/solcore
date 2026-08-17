@@ -13,7 +13,6 @@ import Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.Patterns (patListP)
 import Solcore.Frontend.Parser.SolcoreTypes (locatedFromSpans, locatedP, simpleNameP, typeP)
 import Solcore.Frontend.Syntax.Location (sourceSpanOf)
-import Solcore.Frontend.Syntax.Name (Name)
 import Solcore.Frontend.Syntax.SyntaxTree
 
 bodyP :: [OperatorDecl] -> Parser Body
@@ -122,7 +121,7 @@ compoundAssign ops sym lhs rhs =
   case filter ((== sym) . opSymbol) ops of
     (od : _)
       | isInfixFixity (opFixity od) ->
-          pure (Assign lhs (opCall (opFunction od) [lhs, rhs]))
+          pure (Assign lhs (opCall od [lhs, rhs]))
       | otherwise ->
           fail ("operator (" ++ sym ++ ") is not infix, so it cannot be used with '" ++ sym ++ "='")
     [] -> fail ("operator (" ++ sym ++ ") must be in scope to use '" ++ sym ++ "='")
@@ -137,15 +136,18 @@ compoundAssignUnary ops sym lhs =
   case filter ((== sym) . opSymbol) ops of
     (od : _)
       | isUnaryFixity (opFixity od) ->
-          pure (Assign lhs (opCall (opFunction od) [lhs]))
+          pure (Assign lhs (opCall od [lhs]))
       | otherwise ->
           fail ("operator (" ++ sym ++ ") is not prefix/postfix, so it cannot be used with '" ++ sym ++ "='")
     [] -> fail ("operator (" ++ sym ++ ") must be in scope to use '" ++ sym ++ "='")
 
--- Build the desugared operator call, keeping the source span of the operands so
--- diagnostics point back at the compound assignment rather than losing location.
-opCall :: Name -> [Exp] -> Exp
-opCall fun args = locatedExpFrom (map sourceSpanOf args) (ExpName Nothing fun args)
+-- Build the desugared operator application, keeping the source span of the
+-- operands so diagnostics point back at the compound assignment rather than
+-- losing location. A strict operator desugars to a plain call; a conditional
+-- operator to a short-circuit if/then/else (applyOperator picks per the
+-- declaration), so e.g. `x &&= f()` short-circuits like `x = x && f()`.
+opCall :: OperatorDecl -> [Exp] -> Exp
+opCall od args = locatedExpFrom (map sourceSpanOf args) (applyOperator od args)
 
 locatedExpFrom :: [Maybe SourceSpan] -> Exp -> Exp
 locatedExpFrom = locatedFromSpans locatedExp

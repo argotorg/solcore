@@ -363,13 +363,27 @@ emitExp (MastCall f as) = do
   let call = Hull.ECall (show (mastIdName f)) hullArgs
   pure (call, concat codes)
 emitExp (MastCon i as) = emitConApp i as
+-- A value-position conditional short-circuits: only the taken branch's code
+-- runs. We lower it to a fresh temp plus a statement-level `SMatch` on the
+-- sum-encoded bool condition, with each branch's side-effecting code *inside*
+-- its arm (rather than hoisted before an eager `ECond`). This is control-flow
+-- short-circuit via the Yul switch `SMatch` compiles to — no lazy evaluation.
+-- The if/bool desugarer encodes bool as sum(unit,unit) with false = inl (),
+-- true = inr (), so the CInl arm is the else-branch and CInr the then-branch.
 emitExp (MastCond e1 e2 e3) = do
-  let ty = typeOfMastExp e3
-  hullTy <- translateMastType ty
+  hullTy <- translateMastType (typeOfMastExp e3)
+  condHullTy <- translateMastType (typeOfMastExp e1)
   (ce1, code1) <- emitExp e1
   (ce2, code2) <- emitExp e2
   (ce3, code3) <- emitExp e3
-  pure (Hull.ECond hullTy ce1 ce2 ce3, code1 <> code2 <> code3)
+  i <- freshInt
+  let tmp = "$cond" ++ show i
+  fv <- freshAltName
+  tv <- freshAltName
+  let falseArm = Hull.ConAlt Hull.CInl fv (code3 ++ [Hull.SAV tmp ce3])
+      trueArm = Hull.ConAlt Hull.CInr tv (code2 ++ [Hull.SAV tmp ce2])
+  let stmts = Hull.SAlloc tmp hullTy : code1 ++ [Hull.SMatch condHullTy ce1 [falseArm, trueArm]]
+  pure (Hull.EVar tmp, stmts)
 
 emitStmt :: MastStmt -> EM [Hull.Stmt]
 emitStmt (MastStmtExp e) = do

@@ -66,8 +66,27 @@ data OperatorDecl = OperatorDecl
   { opFixity :: OpFixity,
     opPrec :: Int,
     opSymbol :: String,
-    opFunction :: Name
+    opTarget :: OpTarget
   }
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+-- What a user-defined operator desugars to. A strict operator maps to a
+-- function call (both operands are arguments, so both are evaluated). A
+-- conditional operator maps to a short-circuit `if/then/else` template, whose
+-- placeholders are filled with the actual operands; short-circuit is realised
+-- later by control flow (a Yul switch that only runs the taken arm), not by
+-- lazy evaluation. This lets a user declare their own short-circuit operators
+-- (e.g. `&&`, `||`, implication) without any laziness in the language.
+data OpTarget
+  = OpFun Name -- strict:  a op b  ~>  fun(a, b)
+  | OpCond CondArg CondArg CondArg -- short:   a op b  ~>  if _ then _ else _
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+-- An argument slot of a conditional operator template: either a positional
+-- operand placeholder (`$1`, `$2`, ...) or a boolean literal (`true`/`false`).
+data CondArg
+  = Operand Int
+  | BoolLit Bool
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data ModulePath
@@ -608,6 +627,32 @@ pattern ExpAt ty <- ExpAtWithLocation _ ty
     ExpAt ty = ExpAtWithLocation unlocatedNode ty
 
 {-# COMPLETE Lit, ExpName, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpArray, ExpCond, ExpAt #-}
+
+-- Desugar an operator application to its target expression, given the operator
+-- declaration and the actual operands (`[l, r]` for infix, `[e]` for
+-- prefix/postfix). A strict operator becomes a function call; a conditional
+-- operator becomes an `if/then/else` with the template placeholders substituted
+-- by the operands. The resulting `ExpCond` short-circuits at emission, so a
+-- guarded operand is evaluated only when its branch is taken.
+applyOperator :: OperatorDecl -> [Exp] -> Exp
+applyOperator od args =
+  case opTarget od of
+    OpFun fun -> ExpName Nothing fun args
+    OpCond a b c -> ExpCond (sub a) (sub b) (sub c)
+  where
+    sub (Operand i)
+      | i >= 1 && i <= Prelude.length args = args Prelude.!! (i - 1)
+      | otherwise =
+          error
+            ( "operator ("
+                ++ opSymbol od
+                ++ ") template references operand $"
+                ++ show i
+                ++ ", but it was applied to "
+                ++ show (Prelude.length args)
+                ++ " operand(s)"
+            )
+    sub (BoolLit v) = ExpVar Nothing (Name (if v then "true" else "false"))
 
 locatedExp :: SourceSpan -> Exp -> Exp
 locatedExp sourceSpan (Lit lit) = LitWithLocation location lit

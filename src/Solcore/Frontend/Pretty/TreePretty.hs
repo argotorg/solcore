@@ -43,10 +43,21 @@ instance Pretty TopDecl where
   ppr (TPragmaDecl p) = ppr p
   ppr (TOperatorDecl od) = pprOperatorDecl od
 
--- Pretty-print a user-defined operator declaration, e.g. `infixl 70 (^^) => pow;`.
+-- Pretty-print a user-defined operator declaration, e.g. `infixl 70 (^^) => pow;`
+-- for a strict operator, or `infixl 20 (&&) => if $1 then $2 else false;` for a
+-- short-circuit conditional operator.
 pprOperatorDecl :: OperatorDecl -> Doc
-pprOperatorDecl (OperatorDecl fixity prec sym fun) =
-  hsep [pprFixity fixity, text (show prec), parens (text sym), text "=>", ppr fun] <> semi
+pprOperatorDecl (OperatorDecl fixity prec sym target) =
+  hsep [pprFixity fixity, text (show prec), parens (text sym), text "=>", pprOpTarget target] <> semi
+
+pprOpTarget :: OpTarget -> Doc
+pprOpTarget (OpFun fun) = ppr fun
+pprOpTarget (OpCond a b c) =
+  hsep [text "if", pprCondArg a, text "then", pprCondArg b, text "else", pprCondArg c]
+
+pprCondArg :: CondArg -> Doc
+pprCondArg (Operand i) = text ('$' : show i)
+pprCondArg (BoolLit b) = text (if b then "true" else "false")
 
 pprFixity :: OpFixity -> Doc
 pprFixity OpInfixL = text "infixl"
