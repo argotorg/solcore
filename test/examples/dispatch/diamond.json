@@ -1,0 +1,16 @@
+{
+  "diamond": {
+    "bytecode": "", "contract": "D",
+    "tests": [
+      { "input": { "comment": "constructor", "calldata": "", "value": "0" }, "kind": "constructor" },
+      { "input": { "comment": "f() runs C3 order D,C,B,A", "calldata": "26121ff0", "value": "0" },
+        "kind": "call", "output": { "returndata": "", "status": "success" } },
+      { "input": { "comment": "getTrace()==4321 proves MRO [D,C,B,A]", "calldata": "cfbd5b06", "value": "0" },
+        "kind": "call", "output": { "returndata": "00000000000000000000000000000000000000000000000000000000000010e1", "status": "success" } },
+      { "input": { "comment": "f() again: 4321 -> 43214321", "calldata": "26121ff0", "value": "0" },
+        "kind": "call", "output": { "returndata": "", "status": "success" } },
+      { "input": { "comment": "getTrace()==43214321 (shared A slot persists)", "calldata": "cfbd5b06", "value": "0" },
+        "kind": "call", "output": { "returndata": "00000000000000000000000000000000000000000000000000000000029365f1", "status": "success" } }
+    ]
+  }
+}
