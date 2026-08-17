@@ -229,7 +229,30 @@ constrP :: Parser Constr
 constrP = do
   n <- simpleNameP
   args <- option [] (parens (typeP `sepBy1` comma))
-  return (Constr n args)
+  return (Constr n args [])
+
+-- Struct declaration with postfix field types, matching the rest of the
+-- language (`name : type`):
+--   struct Point { x: uint256; y: uint256; }
+-- Desugared to a single-constructor product `data Point = Point(uint256, uint256)`
+-- whose constructor also carries the field names, in order. The field names
+-- enable dot-notation access (`p.x`), lowered by Desugarer.StructProjection.
+-- Each field is terminated by `;`, exactly like a contract field (fieldDeclP).
+structP :: Parser DataTy
+structP = do
+  ds <- option [] deriveAttrP
+  keyword "struct"
+  n <- simpleNameP
+  fields <- braces (many structFieldP)
+  let (tys, names) = unzip fields
+  return (DataTy n [] [Constr n tys names] ds)
+  where
+    structFieldP = do
+      fname <- simpleNameP
+      _ <- colon
+      ty <- typeP
+      _ <- semicolon
+      return (ty, fname)
 
 tySymP :: Parser TySym
 tySymP = do
@@ -405,7 +428,8 @@ topDeclP =
   choice
     [ TPragmaDecl <$> pragmaP,
       TExportDecl <$> exportP,
-      TDataDef <$> dataP,
+      TDataDef <$> try dataP,
+      TDataDef <$> structP,
       TSym <$> tySymP,
       TContr <$> contractP,
       contractOnlyDeclP,

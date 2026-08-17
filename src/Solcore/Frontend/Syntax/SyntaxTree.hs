@@ -128,7 +128,11 @@ data DataTy
 data Constr
   = Constr
   { constrName :: Name,
-    constrTy :: [Ty]
+    constrTy :: [Ty],
+    -- Named fields (positional order) for a Solidity-style `struct`; empty for
+    -- an ordinary `data` constructor. Carried through name resolution into the
+    -- resolved AST's Constr.
+    constrFields :: [Name]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -341,7 +345,7 @@ instance HasSourceSpan DataTy where
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tyParams', sourceSpanOf constrs]
 
 instance HasSourceSpan Constr where
-  sourceSpanOf (Constr n tys) =
+  sourceSpanOf (Constr n tys _) =
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tys]
 
 instance HasSourceSpan TySym where

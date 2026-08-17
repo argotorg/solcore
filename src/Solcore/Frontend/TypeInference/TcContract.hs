@@ -97,6 +97,21 @@ tcTopDeclChecks topDeclChecks =
     csExpanded <- everywhereMButSpans (mkM (expandTyM st)) cs
     mapM_ checkTopDecl (filter isClass csExpanded)
     mapM_ checkTopDecl (filter (not . isClass) csExpanded)
+    -- Pre-register annotated top-level function signatures in ctx so that
+    -- forward references introduced during type checking can resolve regardless
+    -- of binding-group order. In particular, struct field access `s.x` is
+    -- rewritten to a call of a generated projection function whose dependency
+    -- edge the SCC pass never saw (the call did not exist yet), so without this
+    -- the projection may be checked after its caller. Mirrors initializeEnv for
+    -- contracts; only annotated, body-checked (local) functions are registered.
+    let topLevelAnnotatedFuns =
+          [ fd
+          | (topDeclCheck, TFunDef fd@(FunDef _ sig _)) <- zip topDeclChecks csExpanded,
+            topDeclCheckMode topDeclCheck == CheckTopDeclBody,
+            hasAnn sig
+          ]
+    localFunSigs <- extractSignatures topLevelAnnotatedFuns
+    mapM_ (uncurry extEnv) localFunSigs
     trustImportedDecls csExpanded
     catMaybes <$> zipWithM tcTopDeclWithVisibility topDeclChecks csExpanded
   where
@@ -348,8 +363,8 @@ tcDataDecl (DataTy n vs cs ds) =
   (\cs' -> DataTy n vs cs' ds) <$> mapM tcConstr cs
 
 tcConstr :: Constr -> TcM Constr
-tcConstr (Constr n ts) =
-  Constr n <$> mapM kindCheck ts
+tcConstr (Constr n ts fields) =
+  (\ts' -> Constr n ts' fields) <$> mapM kindCheck ts
 
 -- type checking fields
 

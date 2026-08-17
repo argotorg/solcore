@@ -96,7 +96,7 @@ isNumericTy ty
       mti <- maybeAskTypeInfo n
       case mti of
         Just (TypeInfo _ [con] _) -> do
-          (Constr _ fields, _) <- constrsFromEnv con
+          (Constr _ fields _, _) <- constrsFromEnv con
           pure (fields == [word])
         _ -> pure False
   | otherwise = pure False
@@ -125,7 +125,7 @@ withPartialDataTypesDisabled action = do
 
 typeInfoFor :: DataTy -> TypeInfo
 typeInfoFor (DataTy _ vs cons _) =
-  TypeInfo (length vs) (map constrName cons) []
+  TypeInfo (length vs) (map constrName cons) (concatMap constrFields cons)
 
 freshTyVar :: TcM Ty
 freshTyVar = Meta <$> freshVar
@@ -211,7 +211,7 @@ checkDataType d@(DataTy n vs constrs _) =
     -- checking kinds
     mapM_ kindCheck (concatMap constrTy constrs) `wrapError` d
   where
-    ti = TypeInfo (length vs) (map fst vals) []
+    ti = TypeInfo (length vs) (map fst vals) (concatMap constrFields constrs)
     tc = TyCon n (TyVar <$> vs)
     vals = map constrBind constrs
     constrBind c = (constrName c, (funtype (constrTy c) tc))
@@ -992,7 +992,7 @@ constrsFromEnv n =
   do
     (Forall vs (_ :=> ty)) <- askEnv n
     let (ts, _) = splitTy ty
-    pure (Constr n ts, vs)
+    pure (Constr n ts [], vs)
 
 writeln :: String -> TcM ()
 writeln = liftIO . putStrLn

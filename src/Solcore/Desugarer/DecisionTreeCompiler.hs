@@ -569,7 +569,7 @@ addDataTyInfo (DataTy n vs cons _) env =
     res = TyCon n (map TyVar vs)
 
 addConstructor :: Ty -> Constr -> TypeEnv -> TypeEnv
-addConstructor ty (Constr n ts) =
+addConstructor ty (Constr n ts _) =
   Map.insert n (ConInfo ts ty)
 
 -- matrix specialization

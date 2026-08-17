@@ -41,6 +41,7 @@ keyword kw = lexeme (try (string kw *> notFollowedBy identChar))
 reservedWords :: [String]
 reservedWords =
   [ "contract",
+    "struct",
     "import",
     "export",
     "hiding",

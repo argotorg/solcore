@@ -1628,8 +1628,8 @@ renameDataTyTypeRefs renameMap (DataTy n vs cs ds) =
     ds
 
 renameConstrTypeRefs :: Map Name Name -> Constr -> Constr
-renameConstrTypeRefs renameMap (Constr n tys) =
-  Constr (renameConstrNameTypeRefs renameMap n) (map (renameTyTypeRefs renameMap) tys)
+renameConstrTypeRefs renameMap (Constr n tys fields) =
+  Constr (renameConstrNameTypeRefs renameMap n) (map (renameTyTypeRefs renameMap) tys) fields
 
 renameConstrNameTypeRefs :: Map Name Name -> Name -> Name
 renameConstrNameTypeRefs renameMap qn@(QualName q n) =
@@ -1687,7 +1687,7 @@ qualifiedTypeStubDecls qualifier cunit =
           ( DataTy
               (qualifyName qualifier n)
               []
-              [Constr (constructorLeafName (constrName c)) [] | c <- cs]
+              [Constr (constructorLeafName (constrName c)) [] [] | c <- cs]
               []
           )
       | TDataDef (DataTy n _ cs _) <- topDeclsFrom cunit
@@ -1746,7 +1746,7 @@ toValidationImportStub d@(TClassDef _) =
 toValidationImportStub (TContr (Contract n _ _)) =
   Just (TContr (Contract n [] []))
 toValidationImportStub (TDataDef (DataTy n _ cs _)) =
-  Just (TDataDef (DataTy n [] [Constr (constrName c) [] | c <- cs] []))
+  Just (TDataDef (DataTy n [] [Constr (constrName c) [] [] | c <- cs] []))
 toValidationImportStub (TInstDef _) = Nothing
 toValidationImportStub (TExportDecl _) = Nothing
 toValidationImportStub (TPragmaDecl _) = Nothing

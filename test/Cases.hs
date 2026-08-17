@@ -364,6 +364,8 @@ cases =
       runTestExpectingFailure "default-instance-missing.solc" caseFolder,
       runTestExpectingFailure "default-instance-weak.solc" caseFolder,
       runTestForFile "derive-generic-sum.solc" caseFolder,
+      runTestForFile "struct_fields.solc" caseFolder,
+      runTestForFile "struct_abi.solc" caseFolder,
       runTestForFile "derive-generic-excluded.solc" caseFolder,
       runTestForFile "derive-eq-enum.solc" caseFolder,
       runTestForFile "derive-eq-pair.solc" caseFolder,

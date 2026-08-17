@@ -488,7 +488,7 @@ declTests =
         parsesAs
           topDeclP
           "data Bool = True | False;"
-          (TDataDef (DataTy "Bool" [] [Constr "True" [], Constr "False" []] [])),
+          (TDataDef (DataTy "Bool" [] [Constr "True" [] [], Constr "False" [] []] [])),
       testCase "data type with parameterized constructor" $
         parsesAs
           topDeclP
@@ -497,7 +497,7 @@ declTests =
               ( DataTy
                   "Option"
                   [TyCon "a" []]
-                  [Constr "Some" [TyCon "a" []], Constr "None" []]
+                  [Constr "Some" [TyCon "a" []] [], Constr "None" [] []]
                   []
               )
           ),
@@ -509,8 +509,20 @@ declTests =
               ( DataTy
                   "Color"
                   []
-                  [Constr "Red" [], Constr "Green" []]
+                  [Constr "Red" [] [], Constr "Green" [] []]
                   ["Eq", "Ord"]
+              )
+          ),
+      testCase "struct desugars to a single-constructor product with field names" $
+        parsesAs
+          topDeclP
+          "struct Point { x: uint256; y: uint256; }"
+          ( TDataDef
+              ( DataTy
+                  "Point"
+                  []
+                  [Constr "Point" [TyCon "uint256" [], TyCon "uint256" []] ["x", "y"]]
+                  []
               )
           ),
       testCase "type synonym no params" $
