@@ -52,6 +52,7 @@ bash ./contest.sh test/examples/dispatch/storage_adt_abi.json
 bash ./contest.sh test/examples/dispatch/storage_dynamic_field.json
 bash ./contest.sh test/examples/dispatch/arraylit.json
 bash ./contest.sh test/examples/dispatch/forloops.json
+bash ./contest.sh test/examples/dispatch/shortcircuit.json
 bash ./contest.sh test/examples/dispatch/weth9.json
 bash ./contest.sh test/examples/dispatch/derive_ord.json
 bash ./contest.sh test/examples/dispatch/derive_contract_local.json
