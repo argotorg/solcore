@@ -1,0 +1,16 @@
+// A library that declares an operator (%%) but exports ONLY its function,
+// not the operator symbol. Importers must therefore not see (%%).
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixl 70 (%%) => ppow;
+
+export { ppow };
+
+function ppow(b : word, e : word) -> word {
+  let r : word;
+  assembly { r := exp(b, e) }
+  return r;
+}

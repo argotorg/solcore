@@ -154,7 +154,7 @@ locatedSource =
   unlines
     [ "data Bool = True | False;",
       "function main(x : word) -> word {",
-      "  let y : word = x + 1;",
+      "  let y : word = inc(x);",
       "  let zs : word = [x, y][0];",
       "  match Bool.True {",
       "  | Bool.True => return y;",

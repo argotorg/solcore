@@ -3,6 +3,55 @@ import std.opcodes.{add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod
 pragma no-patterson-condition ABIEncode, Num, Array, ArrayPush, Eq, Ord;
 pragma no-coverage-condition ABIDecode, MemoryType, Array, ArrayPush, RValueIdxAccess;
 
+// Built-in operators are defined here, not in the compiler. Each declaration
+// binds an operator symbol to an existing class method or function; a use of
+// the operator is a plain call to that function. Precedences match the values
+// the compiler previously hard-coded, so parsing/associativity is unchanged.
+prefix 90 (!)  => not;
+prefix 90 (~)  => BitNot.bnot;
+
+infixl 50 (*)  => Mul.mul;
+infixl 50 (/)  => Div.div;
+infixl 50 (%)  => Mod.mod;
+
+infixl 45 (+)  => Add.add;
+infixl 45 (-)  => Sub.sub;
+
+infixl 44 (&)  => BitAnd.band;
+infixl 43 (^)  => BitXor.bxor;
+infixl 42 (|)  => BitOr.bor;
+
+infix  35 (<=) => le;
+infix  35 (>=) => ge;
+infix  35 (<)  => lt;
+infix  35 (>)  => Ord.gt;
+
+infix  34 (==) => Eq.eq;
+infix  34 (!=) => ne;
+
+// Short-circuit logical operators: `a && b` desugars to `if a then b else false`
+// and `a || b` to `if a then true else b`. The conditional short-circuits at
+// emission (a Yul switch runs only the taken arm), so the second operand is
+// evaluated only when needed — no lazy evaluation involved. The strict `and`/`or`
+// functions below remain for callers that want a plain call.
+infixl 20 (&&) => if $1 then $2 else false;
+infixl 10 (||) => if $1 then true else $2;
+
+// Unit suffixes (Solidity ether and time units). These are postfix operators
+// applied to a numeric literal: `2 ether`, `5 minutes`. Each multiplies its
+// operand by the unit's value in the base unit (wei / seconds). Precedence 100
+// binds tighter than every other operator, so the suffix attaches to the
+// literal first (`2 ether * n` is `(2 ether) * n`).
+postfix 100 (wei)     => weiUnit;
+postfix 100 (gwei)    => gweiUnit;
+postfix 100 (ether)   => etherUnit;
+
+postfix 100 (seconds) => secondsUnit;
+postfix 100 (minutes) => minutesUnit;
+postfix 100 (hours)   => hoursUnit;
+postfix 100 (days)    => daysUnit;
+postfix 100 (weeks)   => weeksUnit;
+
 export {
   ABIAttribs,
   ABIDecode,
@@ -74,6 +123,14 @@ export {
   bnotWord,
   bshlWord,
   bshrWord,
+  weiUnit,
+  gweiUnit,
+  etherUnit,
+  secondsUnit,
+  minutesUnit,
+  hoursUnit,
+  daysUnit,
+  weeksUnit,
   calldata(*),
   concat,
   concatLit,
@@ -137,7 +194,33 @@ export {
   tobool,
   uint256(*),
   unimplemented,
-  zeroize_memory
+  zeroize_memory,
+  (!),
+  (*),
+  (/),
+  (%),
+  (+),
+  (-),
+  (&),
+  (^),
+  (|),
+  (<=),
+  (>=),
+  (<),
+  (>),
+  (==),
+  (!=),
+  (&&),
+  (||),
+  (~),
+  (wei),
+  (gwei),
+  (ether),
+  (seconds),
+  (minutes),
+  (hours),
+  (days),
+  (weeks)
 };
 
 /*
@@ -263,7 +346,9 @@ function require(cond: bool, e: Error) -> () {
 
 // --- booleans ---
 
-// TODO: this should short circuit. probably needs some compiler magic to do so.
+// Strict conjunction (both arguments are evaluated, as for any function call).
+// For short-circuit behaviour use the `&&` operator, which desugars to
+// `if x then y else false`.
 function and(x: bool, y: bool) -> bool {
     match x, y {
     | true, y => return y;
@@ -271,7 +356,9 @@ function and(x: bool, y: bool) -> bool {
     }
 }
 
-// TODO: this should short circuit. probably needs some compiler magic to do so.
+// Strict disjunction (both arguments are evaluated, as for any function call).
+// For short-circuit behaviour use the `||` operator, which desugars to
+// `if x then true else y`.
 function or(x: bool, y: bool) -> bool {
     match x, y {
     | true, _ => return true;
@@ -371,6 +458,50 @@ function ge(x:a, y:a) -> bool {
 forall a. a:Ord =>
 function lt(x:a, y:a) -> bool {
     return Ord.gt(y,x);
+}
+
+// --- Unit suffixes (ether and time units) ---
+// Target functions for the postfix unit operators declared at the top of this
+// module. Each returns its operand scaled to the base unit (wei / seconds).
+// They are polymorphic over any Mul+Num type, so `2 ether` works whether the
+// context wants `word` or `uint256`. `wei` and `seconds` are the identity.
+
+forall a . function weiUnit(x : a) -> a {
+  return x;
+}
+
+forall a . a:Mul, a:Int =>
+function gweiUnit(x : a) -> a {
+  return Mul.mul(x, 1000000000);
+}
+
+forall a . a:Mul, a:Int =>
+function etherUnit(x : a) -> a {
+  return Mul.mul(x, 1000000000000000000);
+}
+
+forall a . function secondsUnit(x : a) -> a {
+  return x;
+}
+
+forall a . a:Mul, a:Int =>
+function minutesUnit(x : a) -> a {
+  return Mul.mul(x, 60);
+}
+
+forall a . a:Mul, a:Int =>
+function hoursUnit(x : a) -> a {
+  return Mul.mul(x, 3600);
+}
+
+forall a . a:Mul, a:Int =>
+function daysUnit(x : a) -> a {
+  return Mul.mul(x, 86400);
+}
+
+forall a . a:Mul, a:Int =>
+function weeksUnit(x : a) -> a {
+  return Mul.mul(x, 604800);
 }
 
 // --- Generic deriving: structural instances over the representation universe ---

@@ -1,0 +1,17 @@
+import std.{*};
+import std.dispatch.{*};
+
+// boom() reverts if ever called; used to observe short-circuit.
+function boom() -> uint256 {
+  assembly { revert(0, 0) }
+  return 0;
+}
+
+contract ScTernary {
+  constructor() {}
+
+  // else-branch (boom) must NOT run when cond is true -> no revert, returns 1.
+  public function pick(cond : bool) -> uint256 {
+    return if cond then 1 else boom();
+  }
+}

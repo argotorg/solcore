@@ -1,0 +1,28 @@
+// Two infix operators declared at the same precedence but with different
+// associativities (infixl vs infixr). makeExprParser handles one precedence
+// level with a single associativity, so this mix parses inconsistently and must
+// be rejected at load time (SC0124), just as Haskell rejects it at declaration.
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixl 60 (<+>) => addL;
+infixr 60 (<->) => addR;
+
+function addL(x : word, y : word) -> word {
+  let r : word;
+  assembly { r := add(x, y) }
+  return r;
+}
+
+function addR(x : word, y : word) -> word {
+  let r : word;
+  assembly { r := add(x, y) }
+  return r;
+}
+
+contract AssocConflict {
+  function main() -> word {
+    return 1 <+> 2 <-> 3;
+  }
+}

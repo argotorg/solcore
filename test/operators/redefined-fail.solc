@@ -1,0 +1,15 @@
+// Redefining an operator symbol is a compile error: `##` is declared twice.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixl 50 (##) => binA;
+infixl 60 (##) => binB;
+
+function binA(a : word, b : word) -> word { return a; }
+function binB(a : word, b : word) -> word { return b; }
+
+contract Redefined {
+  function main() -> word { return 3 ## 4; }
+}

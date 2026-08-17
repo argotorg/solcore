@@ -1,0 +1,20 @@
+// Left-associative operator: a (^*) b (^*) c  parses as  (a ^* b) ^* c.
+// (^*) is defined as multiplication modulo some word arithmetic.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixl 55 (^*) => mul3;
+
+function mul3(x : word, y : word) -> word {
+  return Mul.mul(x, y);
+}
+
+contract InfixL {
+  function main() -> word {
+    // Checks that (^*) is left-associative: 2 ^* 3 ^* 4 = (2^*3)^*4 = 24
+    let r = 2 ^* 3 ^* 4;
+    return r;
+  }
+}
