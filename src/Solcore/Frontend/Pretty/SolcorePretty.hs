@@ -164,17 +164,17 @@ instance (Pretty a) => Pretty (ContractDecl a) where
     ppr c
 
 instance (Pretty a) => Pretty (Constructor a) where
-  ppr (Constructor ps bd payable inits) =
+  ppr (Constructor ps bd payable ins) =
     (if payable then text "payable" <+> text "constructor" else text "constructor")
       <+> pprParams ps
-      <+> pprCtorInits inits
+      <+> pprCtorInits ins
       <+> lbrace
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace
 
 pprCtorInits :: (Pretty a) => [(Name, [Exp a])] -> Doc
 pprCtorInits [] = empty
-pprCtorInits inits = text ":" <+> commaSep [ppr b <> parens (commaSep (map ppr es)) | (b, es) <- inits]
+pprCtorInits ins = text ":" <+> commaSep [ppr b <> parens (commaSep (map ppr es)) | (b, es) <- ins]
 
 instance Pretty DataTy where
   ppr (DataTy n ps cs ds) =

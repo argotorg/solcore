@@ -81,8 +81,8 @@ instance Compile (ContractDecl Id) where
   compile d = pure d
 
 instance Compile (Constructor Id) where
-  compile (Constructor ps bd payable inits) =
-    (\bd' -> Constructor ps bd' payable inits) <$> compile bd
+  compile (Constructor ps bd payable ins) =
+    (\bd' -> Constructor ps bd' payable ins) <$> compile bd
 
 instance Compile (FunDef Id) where
   compile (FunDef p sig bd) =
