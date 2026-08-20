@@ -1,6 +1,10 @@
 module Cases where
 
 import Control.Exception (try)
+import Control.Monad (when)
+import Data.List (isInfixOf)
+import HullCases (checkHullObject)
+import Language.Hull qualified as Hull
 import Solcore.Pipeline.Options
 import Solcore.Pipeline.SolcorePipeline
 import System.Exit (ExitCode (..))
@@ -64,6 +68,12 @@ comptime =
       runTestForFile "string-lit-dedup.solc" comptimeFolder,
       runTestForFile "string-user-instance.solc" comptimeFolder,
       runTestForFile "string-param-erasure.solc" comptimeFolder,
+      -- an erased parameter has to be gone from the body, not just the
+      -- signature, so these are checked at the Hull level too
+      runTestCheckingHull "ct_param_erasure_word.solc" comptimeFolder,
+      runTestCheckingHull "string-param-clone-erasure.solc" comptimeFolder,
+      -- a binding without the comptime modifier stays assignable
+      runTestForFile "ct_assign_plain_ok.solc" comptimeFolder,
       -- comptime verification: negative cases (must be rejected)
       runTestExpectingFailure "ct_param_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_param_poly_runtime.solc" comptimeFolder,
@@ -72,10 +82,30 @@ comptime =
       runTestExpectingFailure "ct_asm_mload_runtime.solc" comptimeFolder,
       runTestExpectingFailure "ct_asm_ret.solc" comptimeFolder,
       runTestExpectingFailure "ct_overloaded_bad.solc" comptimeFolder,
-      runTestExpectingFailure "string-mem-runtime-fail.solc" comptimeFolder
+      runTestExpectingFailure "string-mem-runtime-fail.solc" comptimeFolder,
+      -- a comptime builtin's stub body must never be inlined: doing so answers
+      -- with its placeholder instead of letting the call be reported
+      runTestExpectingError
+        "runtime value passed to comptime parameter 'a' of 'std_keccakWordLit'"
+        "ct_builtin_runtime_arg_fail.solc"
+        comptimeFolder,
+      -- comptime bindings are immutable, whatever is assigned to them
+      runTestExpectingError "cannot assign to comptime binding 'x'" "ct_assign_fail.solc" comptimeFolder,
+      runTestExpectingError "cannot assign to comptime binding 'x'" "ct_assign_comptime_rhs_fail.solc" comptimeFolder,
+      runTestExpectingError "cannot assign to comptime binding 'x'" "ct_param_assign_fail.solc" comptimeFolder,
+      -- a comptime binding partial evaluation could not discharge is a
+      -- runtime binding, however comptime it looks
+      runNamedTestExpectingError
+        "ct_let_ok.solc (starved of fuel)"
+        starvedOpt
+        "comptime let 'y' is bound to a runtime expression"
+        "ct_let_ok.solc"
+        comptimeFolder
     ]
   where
     comptimeFolder = "./test/examples/comptime"
+    -- as runTestForFile compiles it, but with the fuel budget starved
+    starvedOpt = stdOpt {optNoGenDispatch = True, optPEFuel = Just 1}
 
 spec :: TestTree
 spec =
@@ -739,6 +769,27 @@ runNamedTestForFile testName opts file folder =
       Left err -> assertFailure err
       Right _ -> return ()
 
+-- | As 'runTestForFile', but type-checking the Hull that came out.  The
+--   pipeline never runs the Hull checker on its own output, so an emission bug
+--   -- a reference to a variable that no longer exists, say -- otherwise
+--   surfaces only in `yule`, well after a green test run.
+runTestCheckingHull :: FileName -> BaseFolder -> TestTree
+runTestCheckingHull file folder = testCase (file ++ " (hull type-checked)") $ do
+  let opts = stdOpt {optNoGenDispatch = True, fileName = folder </> file, optRootDir = folder}
+  result <- compile opts
+  case result of
+    Left err -> assertFailure err
+    Right objs -> do
+      when (null objs) $ assertFailure "compilation emitted no hull"
+      mapM_ assertHullTypeChecks objs
+
+assertHullTypeChecks :: Hull.Object -> Assertion
+assertHullTypeChecks obj = do
+  outcome <- checkHullObject obj
+  case outcome of
+    Left err -> assertFailure (show (Hull.objName obj) ++ ": " ++ err)
+    Right () -> return ()
+
 runTestExpectingFailure :: FileName -> BaseFolder -> TestTree
 runTestExpectingFailure file folder = runTestExpectingFailureWith option file folder
   where
@@ -757,4 +808,26 @@ runNamedTestExpectingFailure testName opts file folder =
       Left (ExitFailure _) -> return () -- Expected failure via exitFailure
       Left ExitSuccess -> assertFailure "Expected compilation to fail, but it exited successfully"
       Right (Left _) -> return () -- Expected failure via Either
+      Right (Right _) -> assertFailure "Expected compilation to fail, but it succeeded"
+
+-- | As 'runTestExpectingFailure', but pinning what the compiler said.  The
+--   expectation is a substring so that it survives changes to the surrounding
+--   diagnostic rendering.
+runTestExpectingError :: String -> FileName -> BaseFolder -> TestTree
+runTestExpectingError expected file folder =
+  runNamedTestExpectingError file (stdOpt {optNoGenDispatch = True}) expected file folder
+
+runNamedTestExpectingError :: String -> Option -> String -> FileName -> BaseFolder -> TestTree
+runNamedTestExpectingError testName opts expected file folder =
+  testCase testName $ do
+    let filePath = folder </> file
+    outcome <- try (compile opts {fileName = filePath, optRootDir = folder})
+    case outcome of
+      Left (code :: ExitCode) ->
+        assertFailure $ "Expected a reported error, but compilation exited with " ++ show code
+      Right (Left err)
+        | expected `isInfixOf` err -> return ()
+        | otherwise ->
+            assertFailure $
+              "Expected an error containing:\n  " ++ expected ++ "\nbut got:\n" ++ err
       Right (Right _) -> assertFailure "Expected compilation to fail, but it succeeded"

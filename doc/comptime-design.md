@@ -1,5 +1,17 @@
 # Comptime Analysis: Design Options
 
+> **Status: implemented, via Option C (hybrid).**  Both stages are in the tree:
+> the late verifier is `Solcore.Backend.ComptimeCheck` and the early classifier is
+> `Solcore.Frontend.ComptimeCheck`.  Comptime expression match labels, comptime
+> results, comptime `let` bindings, and comptime annotations on class methods all
+> work.  Sections 1–2 describe the shipped design; sections 3–6 are kept as the
+> record of the options weighed, and section 7 records how the open questions were
+> answered.  For the surrounding pipeline see
+> [`architecture.md`](architecture.md); for the comptime-only types and the Yul
+> interpreter see [`comptime-integer.md`](comptime-integer.md),
+> [`comptime-string.md`](comptime-string.md), and
+> [`comptime-asm.md`](comptime-asm.md).
+
 ## 1. Background
 
 ### What comptime means
@@ -11,30 +23,34 @@ also evaluate the expression at compile time.
 ### Current state
 
 The `comptime` keyword is parsed and stored as a `Bool` flag in `Param` constructors
-throughout the typed AST. It is currently ignored by all later phases and lost during
-specialization (the `toMastParam` conversion discards it).
+throughout the typed AST, and preserved through specialization: `toMastParam`
+(`Specialise.hs:1170`) carries it into `MastParam.mastParamComptime`, so both the
+frontend and the backend checkers can see it.
 
 ### Relevant pipeline ordering
 
 ```
- Step  Pass                          AST type         Phase
- ───── ───────────────────────────── ──────────────── ─────────
-  2    Name resolution               CompUnit Name    Untyped
-       (numeric ops → Call Add.add)
-  ...
-  9    Type checking                  CompUnit Id      Typed
- 10    If/Bool desugaring             CompUnit Id      Typed
- 11    Match compilation              CompUnit Id      Typed
- 12    Specialization                 MastCompUnit     Monomorphic
- 13    Partial evaluation (MastEval)  MastCompUnit     Monomorphic
- 14    Dead code elimination          MastCompUnit     Monomorphic
- 15    Hull emission                  HullCompUnit     Lowered
+ Pass                              AST type         Phase
+ ───────────────────────────────── ──────────────── ────────────
+ Name resolution                   CompUnit Name    Untyped
+   (numeric ops → Call Add.add)
+ ...
+ Type checking                     CompUnit Id      Typed
+ Early comptime check              CompUnit Id      Typed
+ Array literal desugaring          CompUnit Id      Typed
+ If/Bool desugaring                CompUnit Id      Typed
+ Match compilation                 CompUnit Id      Typed
+ Specialization                    MastCompUnit     Monomorphic
+ Partial evaluation (MastEval)     MastCompUnit     Monomorphic
+ Dead code elimination             MastCompUnit     Monomorphic
+ Late comptime check               MastCompUnit     Monomorphic
+ Hull emission                     [Hull.Object]    Lowered
 ```
 
-Key fact: **match compilation (step 11) runs before specialization (step 12)**.
+Key fact: **match compilation runs before specialization**.
 
 Numeric operators (`+`, `-`, `*`) are desugared to overloaded function calls
-(`Add.add`, `Sub.sub`, `Mul.mul`) at name resolution (step 2). By the time
+(`Add.add`, `Sub.sub`, `Mul.mul`) at name resolution. By the time
 type checking runs, `2 + 2` is `Call Add.add [Lit 2, Lit 2]` — a call to a
 type-class method.
 
@@ -62,9 +78,18 @@ rather than semantically. The consequences of syntactic-only comparison:
 
 ### Representation
 
-Expression labels need a new pattern variant (e.g., `PExp (Exp Id)`) or an
-extension to `Literal`, since they are fundamentally different from structural
-patterns — they don't bind variables, they compute values.
+Expression labels need a new pattern variant, since they are fundamentally
+different from structural patterns — they don't bind variables, they compute
+values. Implemented as `PExp` in the frontend (`Frontend/Syntax/Stmt.hs`) and
+`MastPExp` in Mast (`Backend/Mast.hs:156`), written with a `comptime` keyword in
+front of the label:
+
+```solc
+match selector {
+  | comptime keccakLit("transfer(address,uint256)") => return 1;
+  | _                                               => return 0;
+}
+```
 
 An important constraint: **expression labels may reference variables from outer
 scope** (e.g., `match x { | y + 1 => ... }` where `y` is a local). Patterns
@@ -74,16 +99,20 @@ be clear in the AST.
 ### When to evaluate
 
 Expression labels pass through match compilation unevaluated, survive through
-specialization into Mast, and are evaluated post-specialization (by MastEval
-or a dedicated comptime evaluator). The Yul backend emits if-else chains
-for expression labels rather than Yul `switch` statements (which require
-literal case values).
+specialization into Mast, and are evaluated post-specialization by MastEval:
+`evalPat` (`MastEval.hs:442`) reduces a `MastPExp` to a `MastPLit`. A label that
+does not reduce to a literal is a hard failure there, and reaching Hull emission
+still wrapped in `MastPExp` is a panic (`EmitHull.hs:503`). Because the reduction
+happens before emission, the backend only ever sees ordinary literal patterns and
+needs no special handling — no if-else chain is required.
 
 ### Scope restriction
 
 Expression labels are restricted to **monomorphic numeric types** (primarily
 `word`, potentially `uint8` etc.). This avoids overloading complications —
-after specialization, all operations are concrete and evaluable.
+after specialization, all operations are concrete and evaluable. The restriction is
+enforced by `tcPat'` (`TcStmt.hs:317`), which unifies the label's type with the
+scrutinee's and then rejects a non-numeric result.
 
 ---
 
@@ -286,7 +315,9 @@ understands instance resolution.
 2. Add expression patterns for switch labels (AST, parser, match compiler)
 3. Comptime classification pass after specialization
 4. MastEval evaluates expression labels and comptime expressions
-5. Yul backend handles expression labels via if-else chains
+5. Yul backend handles expression labels via if-else chains — *not needed in the
+   end: MastEval reduces every label to a literal, so the backend sees ordinary
+   literal patterns (see Section 2)*
 
 **Stage 2 (early classification, added later):**
 6. Add comptime annotations to function result types and class methods
@@ -297,7 +328,9 @@ understands instance resolution.
 
 ## 4. Common implementation elements (all options)
 
-These changes are needed regardless of which option is chosen:
+These changes are needed regardless of which option is chosen. **All seven have
+landed** — items 5–7, listed below as Option A / C-Phase-2 work, came in with the
+early classifier:
 
 1. **Preserve comptime flag into Mast**: `MastParam` gains a `mastParamComptime`
    field; `toMastParam` preserves it from `Param Id`.
@@ -341,7 +374,12 @@ Changes needed for Options A and C (Phase 2) but not Option B alone:
 
 ## 6. Recommended approach
 
-**Option C (Hybrid), starting with the Option B foundation.**
+**Option C (Hybrid), starting with the Option B foundation.** Both stages are now
+implemented: `Solcore.Backend.ComptimeCheck` verifies the monomorphic program after
+partial evaluation, and `Solcore.Frontend.ComptimeCheck` classifies the typed AST
+beforehand (`CTComptime` / `CTRuntime` / `CTDeferred`, deferring to the late check
+whenever it cannot decide) and enforces that a declared-comptime binding is
+immutable — including against assignment from inside an `assembly` block.
 
 Rationale:
 - Start with late analysis: simplest implementation, handles all use cases
@@ -355,24 +393,59 @@ Rationale:
 
 ---
 
-## 7. Open questions
+## 7. Questions, as answered
 
-1. **Syntax for comptime results**: `-> comptime word` or a different notation?
-2. **Syntax for numeric switch**: Reuse `match` with expression labels, or
-   introduce a separate `switch` keyword?
-3. **Comptime let bindings**: `let x = comptime e` or `comptime let x = e` or
-   `let comptime x = e`?
-4. **Should comptime be inferred for function results?** If all inputs are
-   comptime and the function is pure, the result could be automatically comptime.
-   Explicit annotation gives stronger contracts; inference reduces annotation
-   burden.
-5. **Interaction with assembly blocks**: Any expression containing inline
-   assembly is definitionally not comptime. Should this be explicit?
-6. **Recursive comptime functions**: Can a recursive function be comptime?
-   Requires bounded recursion or a fuel limit to guarantee termination.
-   MastEval already uses fuel — same mechanism could apply.
-7. **Expression label collision**: Two expression labels evaluating to the same
-   value at runtime. Options: (a) silently pick first matching branch,
-   (b) emit a compiler warning if detected during evaluation, (c) treat as
-   error. Since labels are comptime, collision can be detected at compile time
-   after evaluation.
+1. **Syntax for comptime results**: `-> comptime word`, as proposed. Class methods
+   take the same annotations on parameters and results
+   (`function fromInteger(comptime x : integer) -> comptime a;`, `std/std.solc:517`).
+2. **Syntax for numeric switch**: `match` is reused. An expression label is written
+   with a leading `comptime` keyword, which keeps it visibly distinct from a
+   variable-binding pattern.
+3. **Comptime let bindings**: the annotation goes on the type —
+   `let x : comptime word = e`.
+4. **Is comptime inferred for function results?** No. A result is comptime only when
+   annotated. The *classifier* infers comptime-ness of expressions, and the frontend
+   yields `CTDeferred` rather than guessing whenever it cannot decide, but a function's
+   contract is always explicit.
+5. **Interaction with assembly blocks**: an assembly block is *not* definitionally
+   runtime. MastEval carries a Yul interpreter (see
+   [`comptime-asm.md`](comptime-asm.md)), so a block it can interpret folds like any
+   other expression; one it cannot — anything touching storage, calldata, or the
+   outside world — makes the enclosing expression runtime. `ct_asm_ret.solc` pins the
+   rejection of `-> comptime word` on a body that does `sload`, and `ct_asm_mem.solc`
+   pins the folding case. Assembly does have one special rule, in the opposite
+   direction: because a Yul block assigns to enclosing variables by name, the frontend
+   check rejects assignments to comptime bindings from inside a block, exactly as it
+   does for SAIL assignments.
+6. **Recursive comptime functions**: yes, bounded by MastEval's fuel (`--pe-fuel N`,
+   `fib3.solc` and `integer-fib.solc`). Exhausting the budget is reported as
+   `warning[SC0401]`, which obeys `--warnings` and escalates under `--warnings deny`;
+   the annotation that consequently failed to discharge is then rejected by the late
+   check.
+7. **Expression label collision**: (a) — the first matching branch wins, silently.
+   Labels reduce to literals during partial evaluation, so a collision *could* be
+   detected there by comparing the reduced literals, but nothing does so today. The
+   worst outcome is a dead branch, not a wrong one.
+
+### Still open
+
+- **MAST-level rejections carry no source span.** Mast has no source locations, so a
+  violation the frontend classifier deferred is reported against an arbitrary position
+  in `std/opcodes.solc` rather than the user's code. The frontend check exists partly to
+  keep the common cases away from this path, but it does not cover all of them.
+- **Comptime-only types are not covered by the immutability rule.** `ctDeclared` is set
+  from the `comptime` keyword alone, while a parameter's *classification* also becomes
+  `CTComptime` for an `isComptimeOnlyTy` type. So a `string` parameter is treated as
+  comptime everywhere except by the assignment rule, and `function f(s : string) { s =
+  "x"; }` reaches the backend. What happens next depends on the assignment, and only the
+  first of the three is a decent outcome:
+
+  | Program | Result |
+  |---|---|
+  | `s = "x"`, one literal, foldable | compiles, correct code |
+  | assigned in both arms of a runtime `match`, then passed to `strlenLit` or bound to a `string` let | rejected by the late check — `runtime value passed to comptime parameter 'a' of 'strlenLit'` / `comptime let 'r' is bound to a runtime expression`, at the bogus span above |
+  | same, but the result never reaches a comptime obligation | `EmitHull.translateParam` (`EmitHull.hs:251`) aborts with `string-typed parameter 's': comptime value not eliminated before hull emission` — a panic with a GHC call stack, not a diagnostic |
+
+  Extending the frontend rule to comptime-only types would replace all three with one
+  message at the assignment, but would also reject the first program, which works today.
+  Undecided.

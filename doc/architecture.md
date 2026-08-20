@@ -247,14 +247,16 @@ single-constructor ADT is a product/struct with no discriminant and carries no t
 module validation, and type checking:
 - `Diagnostic`s carry a `Severity`, an optional `DiagnosticCode` (e.g. `SC0101` unknown name,
   `SC0201` type mismatch, `SC0225`/`SC0227`/`SC0228` duplicate definitions, `SC0301`/`SC0302`
-  match-compiler warnings), labeled `SourceSpan`s (primary/secondary), notes, and help text.
+  match-compiler warnings, `SC0401` partial evaluation out of fuel), labeled `SourceSpan`s
+  (primary/secondary), notes, and help text.
 - `SolcorePipeline` enriches diagnostics after the fact by searching source text/tokens for terms
   implicated by the error message, to attach precise labels even when the originating pass didn't
   compute a span directly.
 - Rendering (`renderDiagnostics`) supports plain-text or JSON output, configurable color and
   unicode usage, and terminal width, controlled via CLI flags in `Solcore.Pipeline.Options`.
-- Warning policy (`--warnings=default|always|never|deny`) controls whether match-compiler
-  exhaustiveness/redundancy warnings are shown or promoted to errors.
+- Warning policy (`--warnings=default|always|never|deny`) controls whether warnings —
+  match-compiler exhaustiveness/redundancy and partial-evaluation fuel exhaustion — are shown or
+  promoted to errors.
 
 ## Module System
 

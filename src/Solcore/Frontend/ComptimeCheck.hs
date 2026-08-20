@@ -18,9 +18,17 @@ module Solcore.Frontend.ComptimeCheck (checkComptimeEarly) where
      - A 'let x : comptime T = e' binding where e classifies as CTRuntime.
 
    CTDeferred values are never rejected here; the MAST-level pass handles them.
+
+   Comptime bindings are also immutable.  Partial evaluation discharges such a
+   binding and erases its declaration, so an assignment to it would be left
+   referring to a variable that no longer exists.  Assignment is therefore
+   rejected here, where there is still a source span to point at, whatever the
+   right-hand side is.
 -}
 
 import Data.Map qualified as Map
+import Data.Set qualified as Set
+import Language.Yul
 import Solcore.Frontend.Syntax.Contract
 import Solcore.Frontend.Syntax.Name (Name)
 import Solcore.Frontend.Syntax.Stmt
@@ -54,10 +62,30 @@ buildSigTable (CompUnit _ topDecls) = Map.fromList $ concatMap fromTopDecl topDe
     fromContrDecl _ = []
 
 -----------------------------------------------------------------------
--- Comptime environment: variable name -> Ctness
+-- Comptime environment: variable name -> what is known about it
 -----------------------------------------------------------------------
 
-type CtEnv = Map.Map Name Ctness
+data CtInfo = CtInfo
+  { ctness :: Ctness,
+    -- | True when the binding was written 'comptime' — a comptime let or a
+    -- comptime parameter.  A binding merely /classified/ comptime is not
+    -- declared comptime, and stays assignable.
+    ctDeclared :: Bool
+  }
+
+type CtEnv = Map.Map Name CtInfo
+
+-- | What the checker needs to know about the function it is walking.
+data FunCtx = FunCtx
+  { fcSigs :: SigTable,
+    fcRetComptime :: Bool,
+    -- | Human-readable description of the enclosing definition, for errors.
+    fcWhere :: String,
+    -- | Names assigned anywhere in the body.  What such a variable holds later
+    -- is not what it was initialised with, so its initialiser cannot make it
+    -- comptime.
+    fcAssigned :: Set.Set Name
+  }
 
 -----------------------------------------------------------------------
 -- Entry point
@@ -88,18 +116,29 @@ checkContrDecl _ _ = Right ()
 -----------------------------------------------------------------------
 
 checkFunDef :: SigTable -> String -> FunDef Id -> Either String ()
-checkFunDef st ctx fd = checkBody st (effRetComptime sig) ctx initEnv (funDefBody fd)
+checkFunDef st ctx fd = checkBody fc initEnv body
   where
     sig = funSignature fd
+    body = funDefBody fd
+    fc =
+      FunCtx
+        { fcSigs = st,
+          fcRetComptime = effRetComptime sig,
+          fcWhere = ctx,
+          fcAssigned = assignedNames body
+        }
     -- For '-> comptime' functions, treat ALL params as CTComptime when checking
     -- the body: this verifies "given comptime args, does the body produce comptime?"
     -- A param of comptime-only type (string/integer) is also implicitly comptime,
     -- since such values exist only at compile time.  Other params are CTRuntime.
     initEnv =
       Map.fromList
-        [ (idName (paramName p), if paramComptime p || effRetComptime sig || isComptimeOnlyTy (paramTy p) then CTComptime else CTRuntime)
+        [ (idName (paramName p), CtInfo (paramCtness p) (paramComptime p))
         | p <- sigParams sig
         ]
+    paramCtness p
+      | paramComptime p || effRetComptime sig || isComptimeOnlyTy (paramTy p) = CTComptime
+      | otherwise = CTRuntime
 
 -- | Check an instance method, including the instance head in error context.
 checkFunDefInst :: SigTable -> Instance Id -> FunDef Id -> Either String ()
@@ -119,78 +158,163 @@ tyHeadName :: Ty -> String
 tyHeadName (TyCon n _) = show n
 tyHeadName t = show t
 
-checkBody :: SigTable -> Bool -> String -> CtEnv -> Body Id -> Either String ()
-checkBody _ _ _ _ [] = Right ()
-checkBody st retCt ctx env (s : ss) = do
-  env' <- checkStmt st retCt ctx env s
-  checkBody st retCt ctx env' ss
+checkBody :: FunCtx -> CtEnv -> Body Id -> Either String ()
+checkBody _ _ [] = Right ()
+checkBody fc env (s : ss) = do
+  env' <- checkStmt fc env s
+  checkBody fc env' ss
 
-checkStmt :: SigTable -> Bool -> String -> CtEnv -> Stmt Id -> Either String CtEnv
-checkStmt st retCt ctx env stmt = case stmt of
+checkStmt :: FunCtx -> CtEnv -> Stmt Id -> Either String CtEnv
+checkStmt fc env stmt = case stmt of
   Let ct x _ mInit -> do
     case mInit of
-      Nothing -> return env
+      Nothing ->
+        -- Recorded even without an initialiser, so that assigning to it is
+        -- still recognised as assigning to a comptime binding.
+        return $ bind x (CtInfo (if ct then CTComptime else CTDeferred) ct) env
       Just e -> do
-        checkExp st env e
-        let ct' = classifyExp st env e
+        checkExp fc env e
+        let ct' = classifyExp fc env e
         when_ (ct && ct' == CTRuntime) $
           "comptime let '"
             ++ show (idName x)
             ++ "' is bound to a runtime expression"
-        return $ Map.insert (idName x) (letCtness ct ct') env
-  (_ := e) -> checkExp st env e >> return env
-  StmtExp e -> checkExp st env e >> return env
+        return $ bind x (CtInfo (letCtness fc ct ct' (idName x)) ct) env
+  (lhs := rhs) -> do
+    checkExp fc env lhs
+    checkExp fc env rhs
+    mapM_ (rejectComptimeTarget env) (assignTarget lhs)
+    return env
+  StmtExp e -> checkExp fc env e >> return env
   Return e -> do
-    checkExp st env e
-    when_ (retCt && classifyExp st env e == CTRuntime) $
-      ctx ++ ": function annotated '-> comptime' returns a runtime expression"
+    checkExp fc env e
+    when_ (fcRetComptime fc && classifyExp fc env e == CTRuntime) $
+      fcWhere fc ++ ": function annotated '-> comptime' returns a runtime expression"
     return env
   Match es eqs -> do
-    mapM_ (checkExp st env) es
-    mapM_ (checkEq st retCt ctx env) eqs
+    mapM_ (checkExp fc env) es
+    mapM_ (checkEq fc env) eqs
     return env
   If cond t f -> do
-    checkExp st env cond
-    checkBody st retCt ctx env t
-    checkBody st retCt ctx env f
+    checkExp fc env cond
+    checkBody fc env t
+    checkBody fc env f
     return env
   For initStmt _ postStmt body -> do
-    _ <- checkStmt st retCt ctx env initStmt
-    checkBody st retCt ctx env body
-    _ <- checkStmt st retCt ctx env postStmt
+    _ <- checkStmt fc env initStmt
+    checkBody fc env body
+    _ <- checkStmt fc env postStmt
     return env
-  Asm _ -> return env
-  Block body -> checkBody st retCt ctx env body >> return env
+  Asm blk -> do
+    -- A Yul block assigns to enclosing variables by name, so it can violate
+    -- comptime immutability exactly as a SAIL assignment can.
+    mapM_ (rejectComptimeTarget env) (Set.toList (yulAssignedNames blk))
+    return env
+  Block body -> checkBody fc env body >> return env
   Break -> return env
   Continue -> return env
   EmptyStmt -> return env
+  where
+    bind x = Map.insert (idName x)
+
+-- | Reject an assignment whose target was declared comptime.
+rejectComptimeTarget :: CtEnv -> Name -> Either String ()
+rejectComptimeTarget env n =
+  when_ (maybe False ctDeclared (Map.lookup n env)) $
+    "cannot assign to comptime binding '" ++ show n ++ "'"
+
+-- | The variable an assignment writes to, if it writes to one directly.
+--   Assignments through a field or index have no single target name.
+assignTarget :: Exp Id -> [Name]
+assignTarget (Var x) = [idName x]
+assignTarget (TyExp e _) = assignTarget e
+assignTarget _ = []
 
 -- | Decide the Ctness to assign to a let-bound variable.
---   If declared comptime, treat as CTComptime (Stage 1 verifies the RHS).
---   Otherwise, inherit the classification of the init expression.
-letCtness :: Bool -> Ctness -> Ctness
-letCtness True _ = CTComptime
-letCtness False ct' = ct'
+--   If declared comptime, treat as CTComptime (the RHS check verifies it).
+--   Otherwise inherit the classification of the init expression — unless the
+--   variable is assigned later, in which case defer to the MAST-level check.
+letCtness :: FunCtx -> Bool -> Ctness -> Name -> Ctness
+letCtness _ True _ _ = CTComptime
+letCtness fc False ct' n
+  | n `Set.member` fcAssigned fc = CTDeferred
+  | otherwise = ct'
 
-checkEq :: SigTable -> Bool -> String -> CtEnv -> ([Pat Id], Body Id) -> Either String ()
-checkEq st retCt ctx env (_, body) = checkBody st retCt ctx env body
+checkEq :: FunCtx -> CtEnv -> ([Pat Id], Body Id) -> Either String ()
+checkEq fc env (_, body) = checkBody fc env body
+
+-----------------------------------------------------------------------
+-- Assigned variables
+-----------------------------------------------------------------------
+
+-- | Names assigned anywhere in a body, by a SAIL assignment or inside a Yul
+--   block.  Over-approximating is safe: it only defers a classification.
+assignedNames :: Body Id -> Set.Set Name
+assignedNames = foldMap inStmt
+  where
+    inStmt stmt = case stmt of
+      (lhs := _) -> Set.fromList (assignTarget lhs)
+      Asm blk -> yulAssignedNames blk
+      Match _ eqs -> foldMap (assignedNames . snd) eqs
+      If _ t f -> assignedNames t <> assignedNames f
+      For initStmt _ postStmt body ->
+        inStmt initStmt <> inStmt postStmt <> assignedNames body
+      Block body -> assignedNames body
+      Let {} -> Set.empty
+      StmtExp _ -> Set.empty
+      Return _ -> Set.empty
+      Break -> Set.empty
+      Continue -> Set.empty
+      EmptyStmt -> Set.empty
+
+-- | Names a Yul block assigns to, excluding the ones it declares itself.
+yulAssignedNames :: YulBlock -> Set.Set Name
+yulAssignedNames blk = assigned blk `Set.difference` declared blk
+  where
+    assigned = foldMap stmtAssigned
+    stmtAssigned stmt = case stmt of
+      YAssign ns _ -> Set.fromList ns
+      YBlock b -> assigned b
+      YFun _ _ _ ss -> assigned ss
+      YIf _ b -> assigned b
+      YSwitch _ cases dflt -> foldMap (assigned . snd) cases <> foldMap assigned dflt
+      YFor pre _ post body -> assigned pre <> assigned post <> assigned body
+      _ -> Set.empty
+
+    declared = foldMap stmtDeclared
+    stmtDeclared stmt = case stmt of
+      YLet ns _ -> Set.fromList ns
+      YBlock b -> declared b
+      YFun _ args _ ss -> Set.fromList args <> declared ss
+      YIf _ b -> declared b
+      YSwitch _ cases dflt -> foldMap (declared . snd) cases <> foldMap declared dflt
+      YFor pre _ post body -> declared pre <> declared post <> declared body
+      _ -> Set.empty
 
 -----------------------------------------------------------------------
 -- Expression checking: recurse and enforce comptime-param constraints
 -----------------------------------------------------------------------
 
-checkExp :: SigTable -> CtEnv -> Exp Id -> Either String ()
-checkExp st env (Call _ f args) = do
-  checkCallSite st env f args
-  mapM_ (checkExp st env) args
-checkExp st env (Con _ args) = mapM_ (checkExp st env) args
-checkExp st env (Cond c t e) = mapM_ (checkExp st env) [c, t, e]
-checkExp st env (TyExp e _) = checkExp st env e
-checkExp st env (Lam ps body _) = checkBody st False "lambda" lamEnv body
+checkExp :: FunCtx -> CtEnv -> Exp Id -> Either String ()
+checkExp fc env (Call _ f args) = do
+  checkCallSite fc env f args
+  mapM_ (checkExp fc env) args
+checkExp fc env (Con _ args) = mapM_ (checkExp fc env) args
+checkExp fc env (Cond c t e) = mapM_ (checkExp fc env) [c, t, e]
+checkExp fc env (TyExp e _) = checkExp fc env e
+checkExp fc env (Lam ps body _) = checkBody lamCtx lamEnv body
   where
+    lamCtx =
+      fc
+        { fcRetComptime = False,
+          fcWhere = "lambda",
+          fcAssigned = assignedNames body
+        }
     lamEnv =
       Map.fromList
-        [(idName (paramName p), if paramComptime p then CTComptime else CTRuntime) | p <- ps]
+        [ (idName (paramName p), CtInfo (if paramComptime p then CTComptime else CTRuntime) (paramComptime p))
+        | p <- ps
+        ]
         `Map.union` env
 checkExp _ _ _ = Right ()
 
@@ -198,9 +322,9 @@ checkExp _ _ _ = Right ()
 --   Skips polymorphic signatures (those whose comptime parameter types contain
 --   type variables): the concrete types are only known after specialisation,
 --   so polymorphic calls are deferred to the MAST-level check.
-checkCallSite :: SigTable -> CtEnv -> Id -> [Exp Id] -> Either String ()
-checkCallSite st env f args =
-  case Map.lookup (idName f) st of
+checkCallSite :: FunCtx -> CtEnv -> Id -> [Exp Id] -> Either String ()
+checkCallSite fc env f args =
+  case Map.lookup (idName f) (fcSigs fc) of
     Nothing -> Right ()
     Just sig
       | any (hasTypeVar . paramTy) (filter paramComptime (sigParams sig)) ->
@@ -209,7 +333,7 @@ checkCallSite st env f args =
           mapM_ checkArg (zip (sigParams sig) args)
   where
     checkArg (param, arg) =
-      when_ (paramComptime param && classifyExp st env arg == CTRuntime) $
+      when_ (paramComptime param && classifyExp fc env arg == CTRuntime) $
         "runtime value passed to comptime parameter '"
           ++ show (idName (paramName param))
           ++ "' of '"
@@ -240,13 +364,13 @@ hasTypeVar (TyCon _ ts) = any hasTypeVar ts
 -- Expression classification
 -----------------------------------------------------------------------
 
-classifyExp :: SigTable -> CtEnv -> Exp Id -> Ctness
+classifyExp :: FunCtx -> CtEnv -> Exp Id -> Ctness
 classifyExp _ _ (Lit _) = CTComptime
-classifyExp _ env (Var x) = Map.findWithDefault CTDeferred (idName x) env
-classifyExp st env (TyExp e _) = classifyExp st env e
-classifyExp st env (Call _ f args) = classifyCall st env f args
-classifyExp st env (Con _ args) = combineCt (map (classifyExp st env) args)
-classifyExp st env (Cond c t e) = combineCt (map (classifyExp st env) [c, t, e])
+classifyExp _ env (Var x) = maybe CTDeferred ctness (Map.lookup (idName x) env)
+classifyExp fc env (TyExp e _) = classifyExp fc env e
+classifyExp fc env (Call _ f args) = classifyCall fc env f args
+classifyExp fc env (Con _ args) = combineCt (map (classifyExp fc env) args)
+classifyExp fc env (Cond c t e) = combineCt (map (classifyExp fc env) [c, t, e])
 classifyExp _ _ _ = CTDeferred
 
 -- | Combine a list of Ctness values: all Comptime → Comptime;
@@ -263,9 +387,9 @@ combineCt cts
 --   means "result is comptime when this arg happens to be comptime", so all args
 --   must be checked, not just the comptime-annotated ones.
 --   Never CTRuntime for calls — uncertain cases are deferred to MAST.
-classifyCall :: SigTable -> CtEnv -> Id -> [Exp Id] -> Ctness
-classifyCall st env f args =
-  case Map.lookup (idName f) st of
+classifyCall :: FunCtx -> CtEnv -> Id -> [Exp Id] -> Ctness
+classifyCall fc env f args =
+  case Map.lookup (idName f) (fcSigs fc) of
     Nothing -> CTDeferred
     Just sig
       | effRetComptime sig && allArgsComptime ->
@@ -273,7 +397,7 @@ classifyCall st env f args =
       | otherwise ->
           CTDeferred
   where
-    allArgsComptime = all (\arg -> classifyExp st env arg == CTComptime) args
+    allArgsComptime = all (\arg -> classifyExp fc env arg == CTComptime) args
 
 -----------------------------------------------------------------------
 -- Helper

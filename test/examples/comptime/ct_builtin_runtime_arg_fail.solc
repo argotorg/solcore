@@ -1,0 +1,20 @@
+/* A comptime builtin given a runtime argument is rejected, not folded.
+
+   `keccakWordLit` is a stub -- `unimplemented(); return 0;` -- because folding
+   it is MastEval's job, and reaching its body means folding did not happen.
+   Inlining that body would answer 0, quietly, so inlining has to decline: the
+   call then survives for the comptime verifier to report.
+*/
+
+import std;
+import std.{*};
+
+contract KeccakWordLitRuntime {
+  function main() -> word {
+    let v : word;
+    assembly {
+      v := sload(0)
+    }
+    return std.keccakWordLit(v);
+  }
+}

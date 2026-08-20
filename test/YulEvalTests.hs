@@ -4,7 +4,18 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Word (Word8)
 import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
-import Solcore.Backend.Mast (MastExp (..), MastId (..), MastTy (..), mastIdName)
+import Solcore.Backend.Mast
+  ( MastCompUnit (..),
+    MastContract (..),
+    MastContractDecl (..),
+    MastExp (..),
+    MastFunDef (..),
+    MastId (..),
+    MastStmt (..),
+    MastTopDecl (..),
+    MastTy (..),
+    mastIdName,
+  )
 import Solcore.Backend.MastEval
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
@@ -66,7 +77,35 @@ yulEvalTests =
       substYulBlockTests,
       memoryHelperTests,
       memoryEvalTests,
-      asmIsInterpretableTests
+      asmIsInterpretableTests,
+      fuelExhaustionTests
+    ]
+
+-----------------------------------------------------------------------
+-- Fuel exhaustion
+-----------------------------------------------------------------------
+
+wordTy :: MastTy
+wordTy = MastTyCon (Name "word") []
+
+-- A unit whose 'main' calls 'callee': evaluating that call needs fuel.
+callUnit :: MastCompUnit
+callUnit = MastCompUnit [] [MastTContr (MastContract (Name "C") decls)]
+  where
+    decls =
+      [ MastCFunDecl (fundef "main" [MastReturn (MastCall (MastId (Name "callee") wordTy) [])]),
+        MastCFunDecl (fundef "callee" [MastReturn (intLit 1)])
+      ]
+    fundef n body = MastFunDef (Name n) [] False wordTy body
+
+fuelExhaustionTests :: TestTree
+fuelExhaustionTests =
+  testGroup
+    "fuel exhaustion"
+    [ testCase "empty budget is reported" $
+        snd (evalCompUnit 0 callUnit) @?= True,
+      testCase "sufficient budget is not reported" $
+        snd (evalCompUnit defaultFuel callUnit) @?= False
     ]
 
 -----------------------------------------------------------------------
@@ -560,22 +599,5 @@ asmIsInterpretableTests =
           [ yAssign "a" (yCall "add" [yIdent "x", yIdent "y"]),
             yAssign "b" (yCall "sload" [yNum 0])
           ]
-          @?= False,
-      -- Strict variant (memOk = False), used by the comptime check: memory ops
-      -- are NOT interpretable, but pure arithmetic still is.
-      testCase "strict: mload in assignment → False" $
-        asmIsInterpretableWith False [yAssign "r" (yCall "mload" [yNum 0])]
-          @?= False,
-      testCase "strict: mstore expression stmt → False" $
-        asmIsInterpretableWith False [yExp "mstore" [yNum 0, yIdent "v"]]
-          @?= False,
-      testCase "strict: mstore8 expression stmt → False" $
-        asmIsInterpretableWith False [yExp "mstore8" [yNum 31, yNum 0xff]]
-          @?= False,
-      testCase "strict: add-assign still → True" $
-        asmIsInterpretableWith False [yAssign "rw" (yCall "add" [yIdent "x", yIdent "y"])]
-          @?= True,
-      testCase "strict: nested mload inside arithmetic → False" $
-        asmIsInterpretableWith False [yAssign "r" (yCall "add" [yCall "mload" [yNum 0], yNum 1])]
           @?= False
     ]

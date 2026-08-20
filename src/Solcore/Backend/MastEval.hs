@@ -1,11 +1,11 @@
 module Solcore.Backend.MastEval
   ( evalCompUnit,
     defaultFuel,
+    fuelExhaustedDiagnostic,
     eliminateDeadCode,
     FunTable,
     buildFunTable,
     computePureFuns,
-    computeComptimePureFuns,
     -- Evaluation monad (exported for testing)
     EvalEnv (..),
     EvalState (..),
@@ -19,7 +19,6 @@ module Solcore.Backend.MastEval
     evalYulBlock,
     substYulBlock,
     asmIsInterpretable,
-    asmIsInterpretableWith,
     maskWord,
     mstoreBytes,
     mloadWord,
@@ -54,6 +53,7 @@ import Data.Traversable (mapAccumM)
 import Data.Word (Word8)
 import Language.Yul (YLiteral (..), YulExp (..), YulStmt (..))
 import Solcore.Backend.Mast
+import Solcore.Diagnostics qualified as Diag
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
 import Solcore.Primitives.Primitives (integerPrimNames, memStringFromLitName, stringPrimNames)
@@ -83,6 +83,21 @@ type YulState = Map.Map Name Integer
 defaultFuel :: Fuel
 defaultFuel = 100
 
+-- | Reported when evaluation stopped because the budget ran out rather than
+-- because there was nothing left to fold.  Carries no label: the evaluator
+-- works on Mast, which has no source locations, and an inferred span would
+-- point at an arbitrary token of an arbitrary file.
+fuelExhaustedDiagnostic :: Diag.Diagnostic
+fuelExhaustedDiagnostic =
+  Diag.Diagnostic
+    { Diag.diagnosticSeverity = Diag.Warning,
+      Diag.diagnosticCode = Just (Diag.DiagnosticCode "SC0401"),
+      Diag.diagnosticMessage = "partial evaluation ran out of fuel",
+      Diag.diagnosticLabels = [],
+      Diag.diagnosticNotes = [],
+      Diag.diagnosticHelp = ["pass --pe-fuel N to raise the budget"]
+    }
+
 -----------------------------------------------------------------------
 -- Evaluation monad
 -----------------------------------------------------------------------
@@ -100,31 +115,36 @@ type CloneKey = (Name, [(Name, Literal)])
 
 data EvalState = EvalState
   { esFuel :: !Fuel,
+    -- set once the budget is found empty; fuel itself is restored after each
+    -- inlining attempt, so the remaining amount does not record this
+    esFuelExhausted :: !Bool,
     esMem :: !(Map.Map Integer Word8),
     -- clones created so far, for reuse across call sites
     esCloneNames :: !(Map.Map CloneKey Name),
     -- clone definitions, by clone name; kept for clone-of-clone lookups
     esCloneDefs :: !(Map.Map Name MastFunDef),
-    -- clones created but not yet evaluated, with the environment binding their
-    -- erased parameters
-    esPendingClones :: ![(MastFunDef, VEnv)]
+    -- clones created but not yet evaluated; the erased parameters are already
+    -- substituted into their bodies
+    esPendingClones :: ![MastFunDef]
   }
 
 -- Reader for constant environment, State for fuel + memory
 type EvalM = ReaderT EvalEnv (State EvalState)
 
-runEvalM :: EvalEnv -> Fuel -> EvalM a -> (a, Fuel)
+-- Returns the result and whether the fuel budget was found empty at any point.
+runEvalM :: EvalEnv -> Fuel -> EvalM a -> (a, Bool)
 runEvalM env fuel m =
   let initState =
         EvalState
           { esFuel = fuel,
+            esFuelExhausted = False,
             esMem = Map.empty,
             esCloneNames = Map.empty,
             esCloneDefs = Map.empty,
             esPendingClones = []
           }
       (a, finalState) = runState (runReaderT m env) initState
-   in (a, esFuel finalState)
+   in (a, esFuelExhausted finalState)
 
 askFunTable :: EvalM FunTable
 askFunTable = asks envFunTable
@@ -150,7 +170,9 @@ useFuel = do
     then do
       lift $ modify (\s -> s {esFuel = esFuel s - 1})
       pure True
-    else pure False
+    else do
+      lift $ modify (\s -> s {esFuelExhausted = True})
+      pure False
 
 -- Restore one unit of fuel (called after successful inlining)
 restoreFuel :: EvalM ()
@@ -166,14 +188,14 @@ modifyMem f = lift $ modify (\s -> s {esMem = f (esMem s)})
 -- Main entry point
 -----------------------------------------------------------------------
 
--- Returns the evaluated compilation unit and remaining fuel
-evalCompUnit :: Fuel -> MastCompUnit -> (MastCompUnit, Fuel)
-evalCompUnit fuel cu = (cu {mastTopDecls = decls'}, remainingFuel)
+-- Returns the evaluated compilation unit and whether the fuel budget ran out
+evalCompUnit :: Fuel -> MastCompUnit -> (MastCompUnit, Bool)
+evalCompUnit fuel cu = (cu {mastTopDecls = decls'}, fuelExhausted)
   where
     funTable = buildFunTable cu
     pureFuns = computePureFuns funTable
     env = EvalEnv {envFunTable = funTable, envPureFuns = pureFuns, envComptimeMode = False}
-    (decls', remainingFuel) = runEvalM env fuel (mapM evalTopDecl (mastTopDecls cu))
+    (decls', fuelExhausted) = runEvalM env fuel (mapM evalTopDecl (mastTopDecls cu))
 
 -----------------------------------------------------------------------
 -- Build function table from compilation unit
@@ -246,13 +268,13 @@ drainClones = go []
           evaluated <- mapM evalCloneDef (reverse pending)
           go (reverse evaluated ++ acc)
 
--- Like `evalFunDef`, but the erased parameters start out bound to their
--- literals, which is what substitutes them into the body.
-evalCloneDef :: (MastFunDef, VEnv) -> EvalM MastFunDef
-evalCloneDef (fd, env0) = do
+-- Like `evalFunDef`, but recording the result so that a clone of a clone can
+-- find its callee's definition.
+evalCloneDef :: MastFunDef -> EvalM MastFunDef
+evalCloneDef fd = do
   modifyMem (const Map.empty)
   let tyReg = buildTypeReg (mastFunParams fd) (mastFunBody fd)
-  (_, body') <- evalStmts tyReg env0 (mastFunBody fd)
+  (_, body') <- evalStmts tyReg Map.empty (mastFunBody fd)
   let fd' = fd {mastFunBody = body'}
   lift $ modify (\s -> s {esCloneDefs = Map.insert (mastFunName fd) fd' (esCloneDefs s)})
   pure fd'
@@ -701,10 +723,10 @@ venvToYulState env =
 -- remain available to the asm code.
 venvToSubst :: VEnv -> Map.Map Name YulExp
 venvToSubst env =
-  Map.fromList
-    [ (mastIdName k, yulLit l)
-    | (k, MastLit l) <- Map.toList env
-    ]
+  yulLitSubst (Map.fromList [(mastIdName k, l) | (k, MastLit l) <- Map.toList env])
+
+yulLitSubst :: LitSubst -> Map.Map Name YulExp
+yulLitSubst = Map.map yulLit
   where
     yulLit (IntLit v) = YLit (YulNumber v)
     yulLit (StrLit s) = YLit (YulString s)
@@ -873,9 +895,10 @@ mergeYulStateToVEnv tyReg yulState venv =
 -- does, and EmitHull's per-literal intercept fires as usual.
 
 -- Try to specialise a call by substituting literal arguments for the callee's
--- comptime-only parameters.  Returns a call to the clone, with those arguments
--- dropped.  Gives up (leaving the original call, and hence EmitHull's guard to
--- report it) when any such parameter has a non-literal argument.
+-- erasable parameters.  Returns a call to the clone, with those arguments
+-- dropped.  A parameter given a non-literal argument is simply not erased: for
+-- a `string` that leaves EmitHull's guard to report it, and for a comptime
+-- parameter the comptime verifier.
 tryCloneComptime :: MastId -> [MastExp] -> EvalM (Maybe MastExp)
 tryCloneComptime i args = do
   mfd <- lookupFunDef (mastIdName i)
@@ -883,18 +906,25 @@ tryCloneComptime i args = do
     Nothing -> pure Nothing
     Just fd
       | length (mastFunParams fd) /= length args -> pure Nothing
-      | null comptimeParams -> pure Nothing
-      | otherwise -> case mapM literalOf comptimeParams of
-          Nothing -> pure Nothing
-          Just binds -> cloneWith fd binds args
+      | null binds -> pure Nothing
+      | otherwise -> cloneWith fd binds args
       where
-        comptimeParams =
-          [ (p, a)
-          | (p, a) <- zip (mastFunParams fd) args,
-            mastParamType p == mastStringTy
+        -- A `string` parameter has to go because it has no runtime
+        -- representation; a comptime one because specialising on its value is
+        -- what the annotation asks for.  Inlining handles most of the latter,
+        -- but not for a callee that cannot be inlined at all.
+        erasable p = mastParamComptime p || mastParamType p == mastStringTy
+        -- A parameter the body reassigns has no single value to substitute, so
+        -- it is left alone; the comptime verifier (or EmitHull, for a `string`)
+        -- then reports the function rather than the clone quietly disagreeing
+        -- with itself about what the parameter holds.
+        mutated = mutatedInStmts (mastFunBody fd)
+        binds =
+          [ (p, l)
+          | (p, MastLit l) <- zip (mastFunParams fd) args,
+            erasable p,
+            mastParamName p `Set.notMember` mutated
           ]
-        literalOf (p, MastLit l) = Just (p, l)
-        literalOf _ = Nothing
 
 -- Clone definitions are not in the (immutable) function table, so a clone
 -- calling another cloneable function must be found in the state as well.
@@ -907,11 +937,12 @@ lookupFunDef n = do
 -- Create (or reuse) the clone of `fd` in which each listed parameter is bound
 -- to its literal, and build the call to it with those arguments dropped.
 --
--- The substitution itself is left to the evaluator: the clone is queued with a
--- variable environment binding the erased parameters, and evaluating its body
--- under that environment both substitutes the literals and folds whatever they
--- unlock.  This reuses the propagation `evalStmts` already performs rather
--- than adding a second, parallel substitution traversal.
+-- The literals are substituted into the body up front, before the clone is
+-- queued for evaluation.  Relying on the evaluator to propagate them from a
+-- variable environment instead would be unsound: an opaque asm block or a loop
+-- makes `evalStmts` discard the environment, and after erasure that
+-- environment is the parameter's only definition -- the body would keep
+-- reading a parameter the signature no longer has.
 cloneWith :: MastFunDef -> [(MastParam, Literal)] -> [MastExp] -> EvalM (Maybe MastExp)
 cloneWith fd binds args = do
   known <- lift $ gets (Map.lookup key . esCloneNames)
@@ -925,11 +956,7 @@ cloneWith fd binds args = do
     keptParams = filter isKept (mastFunParams fd)
     keptArgs = [a | (p, a) <- zip (mastFunParams fd) args, isKept p]
     cloneTy = foldr (MastArrow . mastParamType) (mastFunReturn fd) keptParams
-    env0 =
-      Map.fromList
-        [ (MastId (mastParamName p) (mastParamType p), MastLit l)
-        | (p, l) <- binds
-        ]
+    subst = Map.fromList [(mastParamName p, l) | (p, l) <- binds]
     -- Each new clone costs fuel, permanently.  A recursive callee that derives
     -- a fresh literal on every step would otherwise queue clones forever;
     -- exhausting the budget stops that and is already reported to the user.
@@ -939,17 +966,105 @@ cloneWith fd binds args = do
         then pure Nothing
         else do
           n <- freshCloneName (mastFunName fd)
-          let clone = fd {mastFunName = n, mastFunParams = keptParams}
+          let clone =
+                fd
+                  { mastFunName = n,
+                    mastFunParams = keptParams,
+                    mastFunBody = substMastStmts subst (mastFunBody fd)
+                  }
           lift $
             modify
               ( \s ->
                   s
                     { esCloneNames = Map.insert key n (esCloneNames s),
                       esCloneDefs = Map.insert n clone (esCloneDefs s),
-                      esPendingClones = (clone, env0) : esPendingClones s
+                      esPendingClones = clone : esPendingClones s
                     }
               )
           pure (Just n)
+
+-- | Names a body may reassign, counting an asm block's escaping assignments.
+-- Unlike 'assignedInStmts', which serves environment invalidation where an
+-- opaque asm block is handled by clearing the environment wholesale, this has
+-- to see through asm: a parameter mutated only there is still mutated.
+mutatedInStmts :: [MastStmt] -> Set.Set Name
+mutatedInStmts = foldMap mutatedInStmt
+
+mutatedInStmt :: MastStmt -> Set.Set Name
+mutatedInStmt (MastAssign i _) = Set.singleton (mastIdName i)
+mutatedInStmt (MastMatch _ alts) = foldMap (mutatedInStmts . snd) alts
+mutatedInStmt (MastFor initStmt _ post body) =
+  mutatedInStmt initStmt
+    `Set.union` mutatedInStmt post
+    `Set.union` mutatedInStmts body
+mutatedInStmt (MastSeq stmts) = mutatedInStmts stmts
+mutatedInStmt (MastAsm yul) = escapingAssignsYulBlock yul
+mutatedInStmt _ = Set.empty
+
+-- | Literals to substitute for the erased parameters, by parameter name.
+type LitSubst = Map.Map Name Literal
+
+-- | Substitute literals for variable references throughout a statement list.
+--
+-- The map is threaded through the sequence so that it stays scope-aware, in the
+-- same way 'substYulBlock' is: a @let@ or a pattern variable of the same name
+-- shadows the parameter, and from there on the name refers to the new binding.
+-- Reassignment needs no such care -- 'tryCloneComptime' refuses to erase a
+-- parameter the body assigns to.
+substMastStmts :: LitSubst -> [MastStmt] -> [MastStmt]
+substMastStmts _ [] = []
+substMastStmts subst (s : ss) =
+  let (s', subst') = substMastStmt subst s
+   in s' : substMastStmts subst' ss
+
+substMastStmt :: LitSubst -> MastStmt -> (MastStmt, LitSubst)
+substMastStmt subst (MastLet ct i ty mInit) =
+  (MastLet ct i ty (fmap (substMastExp subst) mInit), Map.delete (mastIdName i) subst)
+substMastStmt subst (MastAssign i e) =
+  (MastAssign i (substMastExp subst e), subst)
+substMastStmt subst (MastStmtExp e) = (MastStmtExp (substMastExp subst e), subst)
+substMastStmt subst (MastReturn e) = (MastReturn (substMastExp subst e), subst)
+substMastStmt subst (MastMatch e alts) =
+  (MastMatch (substMastExp subst e) (map (substMastAlt subst) alts), subst)
+substMastStmt subst (MastAsm yul) =
+  (MastAsm (substYulBlock (yulLitSubst subst) yul), subst)
+substMastStmt subst (MastSeq stmts) = (MastSeq (substMastStmts subst stmts), subst)
+substMastStmt subst (MastFor initStmt cond post body) =
+  -- Everything the loop declares is local to it, so the map is restored
+  -- afterwards; within the loop, a name declared by the init or post statement
+  -- shadows throughout.
+  let (initStmt', afterInit) = substMastStmt subst initStmt
+      (post', inner) = substMastStmt afterInit post
+   in ( MastFor initStmt' (substMastExp inner cond) post' (substMastStmts inner body),
+        subst
+      )
+substMastStmt subst s = (s, subst) -- MastBreak, MastContinue
+
+substMastAlt :: LitSubst -> MastAlt -> MastAlt
+substMastAlt subst (pat, body) =
+  (substMastPat inner pat, substMastStmts inner body)
+  where
+    inner = foldr Map.delete subst (Set.toList (patVars pat))
+
+-- | Pattern variables bind within the alternative and shadow an outer name.
+patVars :: MastPat -> Set.Set Name
+patVars (MastPVar i) = Set.singleton (mastIdName i)
+patVars (MastPCon _ ps) = foldMap patVars ps
+patVars _ = Set.empty
+
+substMastPat :: LitSubst -> MastPat -> MastPat
+substMastPat subst (MastPCon i ps) = MastPCon i (map (substMastPat subst) ps)
+substMastPat subst (MastPExp e) = MastPExp (substMastExp subst e)
+substMastPat _ p = p -- MastPVar, MastPWildcard, MastPLit
+
+substMastExp :: LitSubst -> MastExp -> MastExp
+substMastExp subst e@(MastVar i) =
+  maybe e MastLit (Map.lookup (mastIdName i) subst)
+substMastExp subst (MastCon i args) = MastCon i (map (substMastExp subst) args)
+substMastExp subst (MastCall i args) = MastCall i (map (substMastExp subst) args)
+substMastExp subst (MastCond c t f) =
+  MastCond (substMastExp subst c) (substMastExp subst t) (substMastExp subst f)
+substMastExp _ e = e -- MastLit
 
 freshCloneName :: Name -> EvalM Name
 freshCloneName base = do
@@ -1003,7 +1118,15 @@ evalFunBody tyReg env (stmt : rest) = case stmt of
             then Map.insert i e' env
             else Map.delete i env
     evalFunBody tyReg env' rest
-  MastStmtExp _ -> evalFunBody tyReg env rest
+  MastStmtExp e -> do
+    -- Inlining puts the body in expression position, where a statement has
+    -- nowhere to leave an effect behind.  Only one that folded away entirely
+    -- can be dropped; anything residual means this body cannot be inlined.
+    -- The comptime builtins depend on it: each is a stub guarded by
+    -- `unimplemented()`, so folding their real meaning is evalPrimitive's job
+    -- and reaching the body at all means it declined.
+    e' <- evalExp env e
+    if isKnownValue e' then evalFunBody tyReg env rest else pure Nothing
   MastReturn e -> do
     e' <- evalExp env e
     pure $ if isKnownValue e' then Just e' else Nothing
@@ -1144,29 +1267,7 @@ builtinImpureFuns = Set.fromList [Name "revertLit", memStringFromLitName]
 -- SAME evaluation context (mloadWord returns Nothing otherwise). Folding a
 -- memory-touching function is therefore gated dynamically and stays sound.
 computePureFuns :: FunTable -> Set.Set Name
-computePureFuns = computePureFunsWith True
-
--- | Stricter purity used by the MAST comptime check ('ComptimeCheck').
--- Unlike 'computePureFuns', memory ops (mload/mstore/mstore8) do NOT count as
--- interpretable, so any function whose asm reads or writes memory is excluded.
---
--- Why the two notions must differ: 'isComptime' classifies expressions
--- *structurally*, with none of the dynamic 'envComptimeMode' / in-context-write
--- gating that makes memory folding sound during PE. A call to an mload-reading
--- function that PE could not fold survives to the comptime check; if it were in
--- pureFuns, 'isComptime' would wrongly label its result comptime even though it
--- depends on runtime memory. Excluding memory-op functions keeps the classifier
--- sound: a legitimately foldable memory chain (e.g. mstore then mload of the
--- same address) is already collapsed to a literal by PE before this check runs,
--- while an unfoldable memory read survives as a call and is correctly rejected.
-computeComptimePureFuns :: FunTable -> Set.Set Name
-computeComptimePureFuns = computePureFunsWith False
-
--- | Fixed-point purity computation. @memOk@ selects whether memory ops
--- (mload/mstore/mstore8) count as interpretable: True for PE
--- ('computePureFuns'), False for the comptime check ('computeComptimePureFuns').
-computePureFunsWith :: Bool -> FunTable -> Set.Set Name
-computePureFunsWith memOk ft = go builtinPureFuns
+computePureFuns ft = go builtinPureFuns
   where
     go pureFuns =
       let pureFuns' =
@@ -1176,7 +1277,7 @@ computePureFunsWith memOk ft = go builtinPureFuns
                     || fname `Set.member` builtinImpureFuns
                     then acc
                     else
-                      if bodyIsPure memOk (Set.insert fname acc) (mastFunBody fd)
+                      if bodyIsPure (Set.insert fname acc) (mastFunBody fd)
                         then Set.insert fname acc
                         else acc
               )
@@ -1186,29 +1287,28 @@ computePureFunsWith memOk ft = go builtinPureFuns
             then pureFuns
             else go pureFuns'
 
-bodyIsPure :: Bool -> Set.Set Name -> [MastStmt] -> Bool
-bodyIsPure memOk pureFuns = all (stmtIsPure memOk pureFuns)
+bodyIsPure :: Set.Set Name -> [MastStmt] -> Bool
+bodyIsPure pureFuns = all (stmtIsPure pureFuns)
 
-stmtIsPure :: Bool -> Set.Set Name -> MastStmt -> Bool
+stmtIsPure :: Set.Set Name -> MastStmt -> Bool
 -- Asm blocks are pure only if every statement uses a statically interpretable
--- operation. This keeps storage reads (sload, …) out of pureFuns entirely;
--- memory reads/writes (mload/mstore/mstore8) count only when @memOk@ is True
--- (PE), never for the comptime check — which is load-bearing for its soundness.
-stmtIsPure memOk _ (MastAsm stmts) = asmIsInterpretableWith memOk stmts
-stmtIsPure _ pureFuns (MastLet _ _ _ mInit) = maybe True (expIsPure pureFuns) mInit
-stmtIsPure _ pureFuns (MastAssign _ e) = expIsPure pureFuns e
-stmtIsPure _ pureFuns (MastStmtExp e) = expIsPure pureFuns e
-stmtIsPure _ pureFuns (MastReturn e) = expIsPure pureFuns e
-stmtIsPure memOk pureFuns (MastMatch e alts) =
-  expIsPure pureFuns e && all (bodyIsPure memOk pureFuns . snd) alts
-stmtIsPure memOk pureFuns (MastFor initStmt cond post body) =
-  stmtIsPure memOk pureFuns initStmt
+-- operation. This keeps storage reads (sload, …) out of pureFuns entirely,
+-- while memory reads/writes (mload/mstore/mstore8) count as interpretable.
+stmtIsPure _ (MastAsm stmts) = asmIsInterpretable stmts
+stmtIsPure pureFuns (MastLet _ _ _ mInit) = maybe True (expIsPure pureFuns) mInit
+stmtIsPure pureFuns (MastAssign _ e) = expIsPure pureFuns e
+stmtIsPure pureFuns (MastStmtExp e) = expIsPure pureFuns e
+stmtIsPure pureFuns (MastReturn e) = expIsPure pureFuns e
+stmtIsPure pureFuns (MastMatch e alts) =
+  expIsPure pureFuns e && all (bodyIsPure pureFuns . snd) alts
+stmtIsPure pureFuns (MastFor initStmt cond post body) =
+  stmtIsPure pureFuns initStmt
     && expIsPure pureFuns cond
-    && stmtIsPure memOk pureFuns post
-    && bodyIsPure memOk pureFuns body
-stmtIsPure _ _ MastBreak = True
-stmtIsPure _ _ MastContinue = True
-stmtIsPure memOk pureFuns (MastSeq stmts) = bodyIsPure memOk pureFuns stmts
+    && stmtIsPure pureFuns post
+    && bodyIsPure pureFuns body
+stmtIsPure _ MastBreak = True
+stmtIsPure _ MastContinue = True
+stmtIsPure pureFuns (MastSeq stmts) = bodyIsPure pureFuns stmts
 
 expIsPure :: Set.Set Name -> MastExp -> Bool
 expIsPure _ (MastLit _) = True
@@ -1222,25 +1322,15 @@ expIsPure pureFuns (MastCond e1 e2 e3) =
 -- | True if an asm block contains only statically interpretable statements.
 -- Such blocks can be evaluated at compile time by the Yul interpreter,
 -- and functions containing only such blocks are eligible for PE inlining.
--- Memory ops (mload/mstore/mstore8) are interpretable here; see
--- 'asmIsInterpretableWith' for the stricter variant used by the comptime check.
+-- Memory ops (mload/mstore/mstore8) are interpretable: the interpreter gates
+-- them on 'envComptimeMode' and only folds in-context writes, so this stays
+-- sound.  Storage ops (sload, …) are never interpretable.
 asmIsInterpretable :: [YulStmt] -> Bool
-asmIsInterpretable = asmIsInterpretableWith True
-
--- | Generalisation of 'asmIsInterpretable'. @memOk@ selects whether memory ops
--- (mload/mstore/mstore8) are treated as interpretable:
---
---   * PE ('computePureFuns') passes True — the interpreter gates memory ops on
---     'envComptimeMode' and only folds in-context writes, so this stays sound.
---   * The comptime check ('computeComptimePureFuns') passes False, so
---     memory-touching asm never counts as pure there. Storage ops (sload, …)
---     are never interpretable, regardless of @memOk@.
-asmIsInterpretableWith :: Bool -> [YulStmt] -> Bool
-asmIsInterpretableWith memOk = all interpretableStmt
+asmIsInterpretable = all interpretableStmt
   where
     interpretableStmt (YAssign [_] e) = interpretableExp e
-    interpretableStmt (YExp (YCall (Name "mstore") [p, v])) = memOk && interpretableExp p && interpretableExp v
-    interpretableStmt (YExp (YCall (Name "mstore8") [p, v])) = memOk && interpretableExp p && interpretableExp v
+    interpretableStmt (YExp (YCall (Name "mstore") [p, v])) = interpretableExp p && interpretableExp v
+    interpretableStmt (YExp (YCall (Name "mstore8") [p, v])) = interpretableExp p && interpretableExp v
     interpretableStmt _ = False
 
     -- mload has its own clause (reads memory); general YCall delegates to interpretableOp
@@ -1248,7 +1338,7 @@ asmIsInterpretableWith memOk = all interpretableStmt
     interpretableExp (YLit (YulNumber _)) = True
     interpretableExp (YLit YulTrue) = True
     interpretableExp (YLit YulFalse) = True
-    interpretableExp (YCall (Name "mload") [p]) = memOk && interpretableExp p
+    interpretableExp (YCall (Name "mload") [p]) = interpretableExp p
     interpretableExp (YCall op args) =
       interpretableOp op (length args) && all interpretableExp args
     interpretableExp _ = False

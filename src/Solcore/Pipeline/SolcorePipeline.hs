@@ -17,7 +17,7 @@ import Language.Hull qualified as Hull
 import Solcore.Backend.ComptimeCheck (checkComptime)
 import Solcore.Backend.EmitHull (emitHull)
 import Solcore.Backend.Mast ()
-import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
+import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit, fuelExhaustedDiagnostic)
 import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ArrayLitDesugar (arrayLitDesugarer)
 import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls, writeContractAbis)
@@ -200,19 +200,17 @@ compileWithDiagnostics opts = runExceptT $ do
         putStrLn "> Specialised contract:"
         putStrLn (pretty specialized)
 
-      evaluated <- liftIO $ timeItNamed "Comptime eval " $ do
+      (evaluated, fuelExhausted) <- liftIO $ timeItNamed "Comptime eval " $ do
         let peFuel = maybe defaultFuel id (optPEFuel opts)
-            (evalResult, remainingFuel) = evalCompUnit peFuel specialized
-
-        liftIO $
-          when (remainingFuel <= 0) $
-            putStrLn "!! Warning: partial evaluation ran out of fuel (use --pe-fuel N to increase)"
+            (evalResult, exhausted) = evalCompUnit peFuel specialized
 
         liftIO $ when (optDumpSpec opts) $ do
           putStrLn "> After partial evaluation:"
           putStrLn (pretty evalResult)
 
-        pure evalResult
+        pure (evalResult, exhausted)
+
+      handleWarningDiagnostics opts sources [fuelExhaustedDiagnostic | fuelExhausted]
 
       -- Dead code elimination: remove functions unreachable from 'start'/'main'
       let optimized = eliminateDeadCode evaluated
