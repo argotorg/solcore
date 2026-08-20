@@ -260,7 +260,7 @@ assignedNames = foldMap inStmt
       For initStmt _ postStmt body ->
         inStmt initStmt <> inStmt postStmt <> assignedNames body
       Block body -> assignedNames body
-      Let{} -> Set.empty
+      Let {} -> Set.empty
       StmtExp _ -> Set.empty
       Return _ -> Set.empty
       Break -> Set.empty
