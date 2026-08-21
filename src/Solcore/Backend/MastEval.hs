@@ -1130,7 +1130,21 @@ builtinPureFuns =
 
 -- Functions with dummy pure bodies that are intercepted by EmitHull
 builtinImpureFuns :: Set.Set Name
-builtinImpureFuns = Set.fromList [Name "revertLit", memStringFromLitName]
+builtinImpureFuns =
+  Set.fromList
+    [ Name "revertLit",
+      memStringFromLitName,
+      -- Memory-store wrappers (std.opcodes). Their bodies are `assembly { mstore(..) }`,
+      -- which asmIsInterpretable treats as pure (it whitelists mstore/mstore8 so comptime
+      -- scratch-memory blocks can be folded). But a *call* to these wrappers is a real
+      -- runtime side effect: classifying them pure lets PE fold a caller that stores via
+      -- them and returns a constant (e.g. `encodeInto` returning the byte count) down to
+      -- that constant, silently dropping the store. Marking the wrappers impure keeps such
+      -- callers out of pureFuns so the writes survive. (mcopy/sstore/log* are already
+      -- impure — only mstore/mstore8 are wrongly whitelisted.)
+      Name "mstore",
+      Name "mstore8"
+    ]
 
 -- | Compute the set of pure functions via fixed-point iteration.
 -- Start from builtinPureFuns; each iteration adds functions whose bodies
