@@ -49,6 +49,7 @@ bash ./contest.sh test/examples/dispatch/generic_product.json
 bash ./contest.sh test/examples/dispatch/sum_wide_product.json
 bash ./contest.sh test/examples/dispatch/specialise_sum_of_product.json
 bash ./contest.sh test/examples/dispatch/storage_adt_field.json
+bash ./contest.sh test/examples/dispatch/storage_struct.json
 bash ./contest.sh test/examples/dispatch/storage_adt_enum.json
 bash ./contest.sh test/examples/dispatch/storage_adt_bool.json
 bash ./contest.sh test/examples/dispatch/storage_adt_mapping.json

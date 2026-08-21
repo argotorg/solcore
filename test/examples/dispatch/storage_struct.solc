@@ -1,0 +1,62 @@
+import std.{*};
+import std.dispatch.{*};
+import std.Generic.{*};
+import std.StorageGeneric.{*};
+
+// A Solidity-style struct used directly as a contract storage field.
+//
+// A `struct` is a single-constructor product, so it stores exactly like the
+// `Triple` product in storage_adt_field.solc: each field occupies its own
+// StorageSize-many slots (here 2 uint256 words = 2 slots), reached through the
+// derived storage(Point):CanStore(Point) instance. The whole struct can be
+// written and read back, destructured with `match`, or read field-by-field via
+// dot notation (a whole-struct load followed by a field projection).
+//
+// A single field can also be *written* through dot notation: `p.x = v`
+// desugars to a whole-struct read-modify-write `p = set_x(p, v)` (the setter is
+// generated per field alongside the projections), reusing the same
+// CanStore.store path.
+
+struct Point {
+  x: uint256;
+  y: uint256;
+}
+
+contract C {
+  p : Point;
+
+  constructor() {
+    // product: size uint256 * 2 = 2 slots
+    assert(StorageSize.size(Proxy : Proxy(Point)) == 2);
+  }
+
+  // whole-struct write
+  public function setPoint(a : uint256, b : uint256) -> () {
+    p = Point(a, b);
+  }
+
+  // read back by destructuring with match
+  public function sumMatch() -> uint256 {
+    match p {
+    | Point(a, b) => return a + b;
+    }
+  }
+
+  // read a single field via dot access on the storage struct
+  public function getX() -> uint256 {
+    return p.x;
+  }
+
+  public function getY() -> uint256 {
+    return p.y;
+  }
+
+  // write a single field via dot access (read-modify-write the whole struct)
+  public function setX(v : uint256) -> () {
+    p.x = v;
+  }
+
+  public function setY(v : uint256) -> () {
+    p.y = v;
+  }
+}
