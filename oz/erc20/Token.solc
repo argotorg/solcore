@@ -1,0 +1,30 @@
+//
+//        ERC20
+//     /          \
+// ERC20Pausable  ERC20Capped
+//     \          /
+//        Token   (inherits ERC20Pausable, ERC20Capped)
+//
+// update's C3 linearization is [Token, ERC20Capped, ERC20Pausable, ERC20], so a
+// movement threads Token -> Capped -> Pausable -> ERC20 via super. All bases are
+// nullary, so the leaf constructor writes the inherited metadata/cap fields
+// directly.
+
+import std.{*};
+import std.dispatch.{*};
+import ERC20;
+import ERC20Pausable;
+import ERC20Capped;
+
+contract Token inherits ERC20Pausable, ERC20Capped {
+  constructor(nm : memory(string), sym : memory(string), initCap : uint256) {
+    name_ = nm;
+    symbol_ = sym;
+    require(initCap != 0, Error(0x392e1e27)); // ERC20InvalidCap
+    cap_ = initCap;
+  }
+
+  public function update(from : address, to : address, value : uint256) -> () {
+    super.update(from, to, value);
+  }
+}

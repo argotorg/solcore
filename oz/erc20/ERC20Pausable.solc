@@ -1,0 +1,26 @@
+import std.{*};
+import std.dispatch.{*};
+import ERC20;
+
+export { ERC20Pausable };
+
+contract ERC20Pausable inherits ERC20 {
+  paused_ : uint256;
+
+  public function paused() -> uint256 { 
+    return paused_; 
+  }
+  
+  public function pause() -> () { 
+    paused_ = 1; 
+  }
+  
+  public function unpause() -> () { 
+    paused_ = 0; 
+  }
+
+  public function update(from : address, to : address, value : uint256) -> () {
+    require(paused_ == 0, Error(0xd93c0665)); // EnforcedPause()
+    super.update(from, to, value);
+  }
+}

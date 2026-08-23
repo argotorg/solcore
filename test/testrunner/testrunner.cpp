@@ -106,7 +106,14 @@ int main(int argc, char** argv)
 			evmcHost->newBlock();
 			evmc_message message{};
 			bytes input = fromHex(test["input"]["calldata"].get<std::string>());
-			message.sender = EVMHost::convertToEVMC(sender);
+			// Per-test msg.sender: an optional "sender" hex address lets a test
+			// drive a call from an arbitrary account (e.g. ERC20 transferFrom,
+			// where the spender differs from the token owner). Absent -> the
+			// default account(0), so every existing spec is unaffected.
+			h160 callSender = sender;
+			if (test["input"].contains("sender"))
+				callSender = h160(h256(u256{test["input"]["sender"].get<std::string>()}), h160::AlignRight);
+			message.sender = EVMHost::convertToEVMC(callSender);
 			message.value = EVMHost::convertToEVMC(u256(test["input"]["value"].get<std::string>()));
 			auto kind = test["kind"].get<std::string>();
 

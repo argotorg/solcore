@@ -127,3 +127,17 @@ echo "[sol-core-contract-test] Using testrunner: $testrunner_exe"
 echo "[sol-core-contract-test] Using evmone: $evmone"
 
 bash ./run_contests.sh
+
+# ERC20 differential test: the two Core Solidity translations (oz/ERC20Flat.solc
+# without inheritance and oz/ERC20Inherit.solc with a real C3 hierarchy) and the
+# Classic-Solidity reference (oz/test/OZToken.sol) must produce byte-identical
+# results on the same call sequence. Needs solc (+ git to fetch OZ sources unless
+# OZ_ROOT is set); skipped otherwise, subject to SOLCORE_CONTRACT_TESTS_ALLOW_SKIP.
+if command -v solc >/dev/null 2>&1; then
+    echo "[sol-core-contract-test] Running ERC20 differential (Core flat + inheritance vs Classic Solidity)..."
+    if ! bash "$root_dir/oz/test/differential.sh"; then
+        fail_or_maybe_skip "ERC20 differential test failed (see output above)."
+    fi
+else
+    echo "[sol-core-contract-test] Skipping ERC20 differential: solc not found." >&2
+fi
