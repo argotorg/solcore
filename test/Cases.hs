@@ -309,7 +309,12 @@ cases :: TestTree
 cases =
   testGroup
     "Files for folder cases"
-    [ runTestForFile "abigeneric.solc" caseFolder,
+    [ runTestForFile "coerce_ok.solc" caseFolder,
+      runTestForFile "coerce_sites_ok.solc" caseFolder,
+      runTestExpectingFailure "coerce_ambiguous.solc" caseFolder,
+      runTestExpectingFailure "coerce_ambiguous_arg.solc" caseFolder,
+      runTestExpectingFailure "coerce_ambiguous_ret.solc" caseFolder,
+      runTestForFile "abigeneric.solc" caseFolder,
       runTestForFile "Ackermann.solc" caseFolder,
       runTestForFile "Add1.solc" caseFolder,
       runTestExpectingFailure "add-moritz.solc" caseFolder,

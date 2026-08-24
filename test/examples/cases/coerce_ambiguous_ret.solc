@@ -1,0 +1,57 @@
+import std.{*};
+import std.dispatch.{*};
+import std.coerce.{*};
+
+data A = A1 | A2;
+data B = B1 | B2 | B3;
+
+function cAB(x : A) -> B {
+  match x {
+    | A.A1 => return B.B1;
+    | A.A2 => return B.B2;
+  }
+}
+
+instance Pair(A, Proxy(B)) : Coerce(B) {
+  function coerce(p : Pair(A, Proxy(B))) -> B {
+    match p {
+      | Pair(x, _) => return cAB(x);
+    }
+  }
+}
+
+forall t . class t : Op {
+  function op(x : t, y : t) -> t;
+}
+
+instance A : Op {
+  function op(x : A, y : A) -> A {
+    match x {
+      | A.A1 => return A.A1;
+      | A.A2 => return A.A2;
+    }
+  }
+}
+
+instance B : Op {
+  function op(x : B, y : B) -> B {
+    match x {
+      | B.B1 => return B.B3;
+      | B.B2 => return B.B2;
+      | B.B3 => return B.B1;
+    }
+  }
+}
+
+// Return-position ambivalence: coercing the RESULT of Op.op to B, or coercing
+// its ARGUMENTS to B and resolving Op@B, select different overloads. Rejected.
+function retAmb() -> B {
+  return Op.op(A.A1, A.A2);
+}
+
+contract C {
+  constructor() {}
+  public function test() -> B {
+    return retAmb();
+  }
+}

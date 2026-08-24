@@ -1,0 +1,40 @@
+import std.{*};
+import std.dispatch.{*};
+import std.coerce.{*};
+
+contract C {
+    constructor() {}
+
+    // IMPLICIT coercion at an annotated let: a : uint8 used where uint16 is expected.
+    public function u8_to_u16() -> uint256 {
+        let a : uint8 = uint8(200);
+        let r : uint16 = a;                 // <-- should insert coerce(a)
+        return uint256(Typedef.rep(r));
+    }
+
+    // IMPLICIT across the ladder: uint8 -> uint256 (direct instance in the closure).
+    public function u8_to_u256() -> uint256 {
+        let a : uint8 = uint8(200);
+        let r : uint256 = a;                // <-- should insert coerce(a)
+        return uint256(Typedef.rep(r));
+    }
+
+    // control: no coercion needed (types already agree) must be unchanged.
+    public function same() -> uint256 {
+        let a : uint256 = uint256(7);
+        let r : uint256 = a;
+        return uint256(Typedef.rep(r));
+    }
+
+    // A helper that expects a uint256 argument.
+    function widen(x : uint256) -> uint256 {
+        return x;
+    }
+
+    // IMPLICIT coercion at a function-ARGUMENT position: a : uint8 passed where
+    // widen expects uint256. The argument should be coerced automatically.
+    public function arg_coerce() -> uint256 {
+        let a : uint8 = uint8(200);
+        return uint256(Typedef.rep(widen(a)));
+    }
+}

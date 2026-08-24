@@ -633,6 +633,72 @@ declTests =
                   ]
               )
           ),
+      testCase "coercion keyword desugars to a Coerce instance" $
+        parsesAs
+          topDeclP
+          "coercion small -> big by conv;"
+          ( TInstDef
+              ( Instance
+                  False
+                  []
+                  []
+                  "Coerce"
+                  [TyCon "big" []]
+                  (TyCon "Pair" [TyCon "small" [], TyCon "Proxy" [TyCon "big" []]])
+                  [ FunDef
+                      False
+                      ( Signature
+                          []
+                          []
+                          "coerce"
+                          [Typed False "p" (TyCon "Pair" [TyCon "small" [], TyCon "Proxy" [TyCon "big" []]])]
+                          False
+                          (Just (TyCon "big" []))
+                          False
+                      )
+                      [ Match
+                          [var "p"]
+                          [ ( [Pat "Pair" [Pat "x" [], PWildcard]],
+                              [Return (ExpName Nothing "conv" [var "x"])]
+                            )
+                          ]
+                      ]
+                  ]
+              )
+          ),
+      testCase "coercion keyword with a forall prefix and context" $
+        parsesAs
+          topDeclP
+          "forall a. a:Eq => coercion box(a) -> a by unbox;"
+          ( TInstDef
+              ( Instance
+                  False
+                  [TyCon "a" []]
+                  [InCls "Eq" (TyCon "a" []) []]
+                  "Coerce"
+                  [TyCon "a" []]
+                  (TyCon "Pair" [TyCon "box" [TyCon "a" []], TyCon "Proxy" [TyCon "a" []]])
+                  [ FunDef
+                      False
+                      ( Signature
+                          []
+                          []
+                          "coerce"
+                          [Typed False "p" (TyCon "Pair" [TyCon "box" [TyCon "a" []], TyCon "Proxy" [TyCon "a" []]])]
+                          False
+                          (Just (TyCon "a" []))
+                          False
+                      )
+                      [ Match
+                          [var "p"]
+                          [ ( [Pat "Pair" [Pat "x" [], PWildcard]],
+                              [Return (ExpName Nothing "unbox" [var "x"])]
+                            )
+                          ]
+                      ]
+                  ]
+              )
+          ),
       testCase "empty contract" $
         parsesAs
           topDeclP

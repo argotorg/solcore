@@ -1,0 +1,46 @@
+import std.{*};
+import std.dispatch.{*};
+import std.coerce.{*};
+
+data Box = MkBox(uint256);
+
+function unbox(b : Box) -> uint256 {
+    match b {
+      | Box.MkBox(x) => return x;
+    }
+}
+
+contract C {
+    constructor() {}
+
+    // return-position coercion: a : uint8 returned where uint256 is expected.
+    public function ret_coerce() -> uint256 {
+        let a : uint8 = uint8(200);
+        return uint256(Typedef.rep(a_to_u256(a)));
+    }
+
+    function a_to_u256(a : uint8) -> uint256 {
+        return a;                              // <-- return-site coercion uint8 -> uint256
+    }
+
+    // type-ascription coercion: (a : uint256) where a : uint8.
+    public function ascription_coerce() -> uint256 {
+        let a : uint8 = uint8(200);
+        return uint256(Typedef.rep((a : uint256)));   // <-- TyExp-site coercion
+    }
+
+    // assignment coercion: r starts uint256, assigned a uint8.
+    public function assign_coerce() -> uint256 {
+        let a : uint8 = uint8(200);
+        let r : uint256 = uint256(0);
+        r = a;                                 // <-- assignment-site coercion uint8 -> uint256
+        return uint256(Typedef.rep(r));
+    }
+
+    // constructor-argument coercion: MkBox expects uint256, given a uint8.
+    public function con_coerce() -> uint256 {
+        let a : uint8 = uint8(200);
+        let b : Box = Box.MkBox(a);            // <-- Con-arg-site coercion uint8 -> uint256
+        return uint256(Typedef.rep(unbox(b)));
+    }
+}

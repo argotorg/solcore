@@ -372,6 +372,69 @@ instanceAfterPrefix vars ctx = do
   funs <- braces (many funDefP)
   return (Instance isDefault vars ctx iname params mty funs)
 
+-- forall vs . coercion S -> T by f; the surface syntax for an implicit
+-- coercion. It desugars to the internal Coerce instance encoding, so
+-- the rest of the pipeline treats it exactly like a hand-written instance.
+-- S and T are parsed as atomic types so the -> separator is not mistaken
+-- for a function-type arrow.
+coercionAfterPrefix :: [Ty] -> [Pred] -> Parser Instance
+coercionAfterPrefix vars ctx = do
+  keyword "coercion"
+  src <- atomTypeP
+  _ <- symbol "->"
+  tgt <- atomTypeP
+  keyword "by"
+  witness <- qualifiedName
+  _ <- semicolon
+  return (coercionInstance vars ctx src tgt witness)
+
+-- Build the Coerce instance a coercion S -> T by f declaration desugars to:
+--
+-- > instance [vs .] Pair(S, Proxy(T)) : Coerce(T) {
+-- >   function coerce(p : Pair(S, Proxy(T))) -> T {
+-- >     match p { | Pair(x, _) => return f(x); }
+-- >   }
+-- > }
+--
+-- The @Pair(S, Proxy(T))@ head lets several targets share one source without
+-- tripping the instance-overlap check; coherence is enforced separately by the
+-- coercion graph.
+coercionInstance :: [Ty] -> [Pred] -> Ty -> Ty -> Name -> Instance
+coercionInstance vars ctx src tgt witness =
+  Instance
+    { instDefault = False,
+      instVars = vars,
+      instContext = ctx,
+      instName = Name "Coerce",
+      paramsTy = [tgt],
+      mainTy = headTy,
+      instFunctions = [coerceFun]
+    }
+  where
+    headTy = TyCon (Name "Pair") [src, TyCon (Name "Proxy") [tgt]]
+    coerceFun =
+      FunDef
+        { funIsPublic = False,
+          funSignature =
+            Signature
+              { sigVars = [],
+                sigContext = [],
+                sigName = Name "coerce",
+                sigParams = [Typed False (Name "p") headTy],
+                sigRetComptime = False,
+                sigReturn = Just tgt,
+                sigPayable = False
+              },
+          funDefBody =
+            [ Match
+                [ExpVar Nothing (Name "p")]
+                [ ( [Pat (Name "Pair") [Pat (Name "x") [], PWildcard]],
+                    [Return (ExpName Nothing witness [ExpVar Nothing (Name "x")])]
+                  )
+                ]
+            ]
+        }
+
 contractP :: Parser Contract
 contractP = do
   keyword "contract"
@@ -438,7 +501,8 @@ topDeclP =
             choice
               [ TFunDef <$> funDefAfterPrefix False vars ctx,
                 TClassDef <$> classAfterPrefix vars ctx,
-                TInstDef <$> instanceAfterPrefix vars ctx
+                TInstDef <$> instanceAfterPrefix vars ctx,
+                TInstDef <$> coercionAfterPrefix vars ctx
               ]
         )
     ]

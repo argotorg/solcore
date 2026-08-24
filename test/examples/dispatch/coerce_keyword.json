@@ -1,0 +1,28 @@
+{
+  "coerce_keyword": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "ctor",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "coercion Small -> Big declared with the surface keyword, inserted at a let",
+          "calldata": "0f59f83a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a"
+        }
+      }
+    ]
+  }
+}

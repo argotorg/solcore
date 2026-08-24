@@ -103,6 +103,7 @@ library
       Solcore.Frontend.Syntax.NameResolution
       Solcore.Frontend.Syntax.Stmt
       Solcore.Frontend.Syntax.SyntaxTree
+      Solcore.Frontend.TypeInference.CoercionGraph
       Solcore.Frontend.TypeInference.Erase
       Solcore.Frontend.TypeInference.Id
       Solcore.Frontend.TypeInference.InvokeGen
@@ -191,6 +192,7 @@ test-suite sol-core-tests
   -- cabal-fmt: expand test -Main
   other-modules:
     Cases
+    CoercionGraphTests
     ContractAbiTests
     DiagnosticCliTests
     DiagnosticTests

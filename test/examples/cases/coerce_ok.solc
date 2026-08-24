@@ -1,0 +1,16 @@
+import std.{*};
+import std.dispatch.{*};
+import std.coerce.{*};
+
+// Implicit coercions in checking positions (annotated let). These previously
+// were type errors; the compiler now inserts the library coercion.
+contract C {
+    constructor() {}
+
+    public function widen() -> uint256 {
+        let a : uint8 = uint8(200);
+        let r : uint16 = a;         // implicit uint8 -> uint16
+        let s : uint256 = a;        // implicit uint8 -> uint256 (across the ladder)
+        return uint256(Typedef.rep(r)) + uint256(Typedef.rep(s));
+    }
+}
