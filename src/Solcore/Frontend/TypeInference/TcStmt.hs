@@ -12,15 +12,15 @@ import Data.Set qualified as Set
 import GHC.Stack
 import Language.Yul
 import Solcore.Desugarer.StructProjection (fieldProjName)
-import Solcore.Diagnostics (CompilerError, compilerErrorText, SourceSpan)
+import Solcore.Diagnostics (CompilerError, SourceSpan, compilerErrorText)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.Syntax.Traversal (everythingButSpans, everywhereButSpans)
+import Solcore.Frontend.TypeInference.CoercionGraph
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.NameSupply
-import Solcore.Frontend.TypeInference.CoercionGraph
 import Solcore.Frontend.TypeInference.TcEnv
 import Solcore.Frontend.TypeInference.TcMonad
 import Solcore.Frontend.TypeInference.TcResolution
@@ -1573,9 +1573,9 @@ coercionEdgesInScope =
     itbl <- gets instEnv
     pure
       [ CoercionEdge srcTy tgtTy (Name "")
-        | instList <- Map.elems itbl,
-          (_ :=> InCls cls headTy _) <- instList,
-          Just (srcTy, tgtTy) <- [coercionEdgeOf cls headTy]
+      | instList <- Map.elems itbl,
+        (_ :=> InCls cls headTy _) <- instList,
+        Just (srcTy, tgtTy) <- [coercionEdgeOf cls headTy]
       ]
 
 -- Whether the coercion graph has a path from src to tgt.
@@ -1632,7 +1632,7 @@ tcCheckOrCoerceWith reconcile e expected =
                     (_, _, ti) <- tcExp e
                     ti' <- ((`apply` ti) <$> getSubst) >>= maybeExpandSynonym
                     hasCoercionPath ti' expected'
-                  )
+                )
                   `catchError` \_ -> pure False
               putSubst saved
               if probe
@@ -1685,7 +1685,7 @@ tcReturnOrCoerce (Just rt) e =
                       (_, _, ti) <- tcExp e
                       ti' <- zonkTy ti
                       hasCoercionPath ti' rt'
-                    )
+                  )
                     `catchError` \_ -> pure False
                 putSubst saved
                 if probe
@@ -1807,7 +1807,7 @@ tcCall mExpected Nothing n args =
     (es', pss', ts') <-
       plainArgs `catchError` coerceArgsFallback saved paramTys (\ts'' -> unify t (funtype ts'' t')) args
     -- Resolve any overload from the arguments before the expected result: this
-    -- keeps the expected type from leaking into argument positions 
+    -- keeps the expected type from leaking into argument positions
     -- fixed by its arguments and only its result is reconciled with the context.
     unifyExpectedResult mExpected t'
     let ps' = foldr union [] (ps : pss')

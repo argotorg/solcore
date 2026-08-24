@@ -1,4 +1,4 @@
--- The coercion graph: the mechanism behind implicit coercions 
+-- The coercion graph: the mechanism behind implicit coercions
 -- Coercions are declared as Coerce instances whose head encodes the edge as
 -- Pair(S, Proxy(T)) : Coerce(T). This module reads those
 -- edges, builds a directed graph over coercion-endpoint types, and resolves a
