@@ -2668,7 +2668,7 @@ instance bytes4:MemorySize {
 
 instance bytes4:MemoryEncode {
     function encodeInto(v: bytes4, target: word) -> () {
-        mstore(target, Typedef.rep(v));
+        mstore(target, shl(224, Typedef.rep(v)));
     }
 }
 
@@ -2704,7 +2704,7 @@ instance address:MemorySize {
 
 instance address:MemoryEncode {
     function encodeInto(v: address, target: word) -> () {
-        mstore(target, Typedef.rep(v));
+        mstore(target, shl(96, Typedef.rep(v)));
     }
 }
 
