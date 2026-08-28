@@ -1,7 +1,7 @@
 // test complex match example from the blog post
 // simplified to use word instead of uint256
 
-import std.{address, Num, Add, Sub, Div, Bounded, Eq, Ord, Typedef};
+import std.{address, Num, Add, Sub, Div, Bounded, Eq, Ord, Typedef, (/)};
 
 data AuctionState =
     NotStarted(word)

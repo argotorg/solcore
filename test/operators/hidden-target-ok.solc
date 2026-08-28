@@ -1,0 +1,16 @@
+// The operator (&&) is declared in std and desugars to the function `and`. Here
+// `and` is hidden by the import, yet (&&) must still work: an operator's target
+// is surfaced automatically, independently of the item selector, so `hiding` the
+// bare name does not disable the operator.
+import std.{*} hiding {and};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+contract HiddenTarget {
+  function main() -> word {
+    let x : word = 5;
+    let b : bool = (x == x) && (x == x);
+    if (b) { return 1; } else { return 0; }
+  }
+}

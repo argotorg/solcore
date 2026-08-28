@@ -1,6 +1,7 @@
 module Solcore.Frontend.Parser.SolcoreParser
   ( parseCompUnit,
     parseCompUnitWithPath,
+    parseCompUnitWithOps,
     moduleParser,
   )
 where
@@ -18,7 +19,8 @@ import Solcore.Diagnostics
     encodeDiagnostic,
   )
 import Solcore.Frontend.Parser.Decl (compUnitP)
-import Solcore.Frontend.Syntax.SyntaxTree (CompUnit)
+import Solcore.Frontend.Parser.OperatorScan (duplicateOperator, scanOperators, scanOperatorsLocated)
+import Solcore.Frontend.Syntax.SyntaxTree (CompUnit, OperatorDecl)
 import Text.Megaparsec (ParseErrorBundle, bundleErrors, errorBundlePretty, errorOffset, parse)
 
 parseCompUnit :: String -> IO (Either String CompUnit)
@@ -29,11 +31,63 @@ moduleParser _dirs =
   parseCompUnitWithPath "<input>"
 
 parseCompUnitWithPath :: FilePath -> String -> IO (Either String CompUnit)
-parseCompUnitWithPath sourcePath src =
+parseCompUnitWithPath = parseCompUnitWithOps []
+
+-- Parse with a set of extra operators already in scope (e.g. imported from
+-- other modules), on top of the ones declared in this source. The module
+-- loader supplies the imported operators; see Module.Loader.
+parseCompUnitWithOps :: [OperatorDecl] -> FilePath -> String -> IO (Either String CompUnit)
+parseCompUnitWithOps extraOps sourcePath src =
   pure $
-    case parse compUnitP sourcePath src of
-      Left err -> Left (parseDiagnostic sourcePath src err)
-      Right compUnit -> Right compUnit
+    -- Pre-scan the source for user-defined operator declarations so the
+    -- expression grammar can be extended before the main parse. Each operator
+    -- symbol may be declared at most once in a module; a redefinition or a
+    -- second fixity for the same symbol is rejected here.
+    case duplicateOperator (scanOperatorsLocated src) of
+      Just (offset, sym) -> Left (duplicateOperatorDiagnostic sourcePath src offset sym)
+      Nothing ->
+        let ops = extraOps ++ scanOperators src
+         in case parse (compUnitP ops) sourcePath src of
+              Left err -> Left (parseDiagnostic sourcePath src err)
+              Right compUnit -> Right compUnit
+
+-- Diagnostic for an operator symbol declared more than once in a module.
+duplicateOperatorDiagnostic :: FilePath -> String -> Int -> String -> String
+duplicateOperatorDiagnostic sourcePath src offset sym =
+  encodeDiagnostic
+    Diagnostic
+      { diagnosticSeverity = Error,
+        diagnosticCode = Just (DiagnosticCode "SC0122"),
+        diagnosticMessage = "operator (" ++ sym ++ ") is declared more than once",
+        diagnosticLabels =
+          [ Label
+              { labelSpan = declSpan,
+                labelStyle = Primary,
+                labelMessage = Just "duplicate operator declaration"
+              }
+          ],
+        diagnosticNotes =
+          [ "an operator symbol may be declared at most once per module, including a second fixity for the same symbol"
+          ],
+        diagnosticHelp =
+          [ "remove this declaration, or rename the operator"
+          ]
+      }
+  where
+    lineLength = max 1 (length (takeWhile (/= '\n') (drop offset src)))
+    endOffset = offset + lineLength
+    (startLine, startColumn) = offsetLineColumn src offset
+    (endLine, endColumn) = offsetLineColumn src endOffset
+    declSpan =
+      SourceSpan
+        { spanFile = sourcePath,
+          spanStartByte = offset,
+          spanEndByte = endOffset,
+          spanStartLine = startLine,
+          spanStartColumn = startColumn,
+          spanEndLine = endLine,
+          spanEndColumn = endColumn
+        }
 
 parseDiagnostic :: FilePath -> String -> ParseErrorBundle String Void -> String
 parseDiagnostic sourcePath src err =

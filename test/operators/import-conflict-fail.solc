@@ -1,0 +1,10 @@
+// Importing two modules that declare (<>) incompatibly is a compile error.
+import oplibx.{joinX, (<>)};
+import opliby.{joinY, (<>)};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+contract ImportConflict {
+  function main() -> word { return joinX(1, 2); }
+}

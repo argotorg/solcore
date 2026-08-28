@@ -1,4 +1,4 @@
-import std.{Add};
+import std.{Add, (+)};
 
 export {inc};
 

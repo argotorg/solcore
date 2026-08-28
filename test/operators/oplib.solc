@@ -1,0 +1,15 @@
+// Library that declares and exports a user-defined operator.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixl 70 (^^) => pow;
+
+export { pow, (^^) };
+
+function pow(b : word, e : word) -> word {
+  let r : word;
+  assembly { r := exp(b, e) }
+  return r;
+}

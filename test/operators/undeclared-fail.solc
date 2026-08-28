@@ -1,0 +1,11 @@
+// Using an operator symbol that has not been declared must produce a parse error.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+contract UndeclaredFail {
+  function main() -> word {
+    return 2 ^^ 3;    // (^^) was never declared: parse error expected
+  }
+}

@@ -1,0 +1,30 @@
+// Regression test for the pre-scan reading comments and string literals.
+// Operator declarations written inside a line comment, a block comment, or a
+// string literal must be ignored, so none of the following documentation trips
+// the duplicate (SC0122) or cross-import (SC0123) operator checks.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+// Documentation repeating the real declaration:
+//   infixl 70 (^^) => pow;
+/* and in a block comment: infixl 70 (^^) => pow; */
+// A commented-out declaration that would conflict with std's (-) must be inert:
+// prefix 90 (-) => negate;
+
+infixl 70 (^^) => pow;
+
+function pow(b : word, e : word) -> word {
+  let r : word;
+  assembly { r := exp(b, e) }
+  return r;
+}
+
+contract CommentsAndStrings {
+  function main() -> word {
+    // Declaration-like text inside a string literal must also be ignored.
+    let doc : string = "infixl 70 (^^) => bogus";
+    return 2 ^^ 3;
+  }
+}

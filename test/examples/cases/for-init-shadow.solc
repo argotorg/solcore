@@ -1,4 +1,4 @@
-import std.{Num,Add,Sub,Eq,Ord,Bounded,Typedef,le};
+import std.{Num,Add,Sub,Eq,Ord,Bounded,Typedef,le, (+), (<=)};
 
 contract Prefor {
     public function main() -> word {

@@ -1,0 +1,22 @@
+// Verifies that (^^) at precedence 70 binds tighter than (*) at 50.
+// 2 ^^ 3 * 4  must parse as  (2 ^^ 3) * 4  = 8 * 4 = 32.
+// If precedence were reversed, the expression would be ill-typed or give 2048.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixl 70 (^^) => pow;
+
+function pow(b : word, e : word) -> word {
+  let r : word;
+  assembly { r := exp(b, e) }
+  return r;
+}
+
+contract Precedence {
+  function main() -> word {
+    let r = 2 ^^ 3 * 4;   // (2^^3)*4 = 32
+    return r;
+  }
+}

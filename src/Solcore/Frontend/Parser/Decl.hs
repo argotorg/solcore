@@ -2,6 +2,15 @@ module Solcore.Frontend.Parser.Decl
   ( compUnitP,
     topDeclP,
     importP,
+    -- Import-path parsers, shared with the operator pre-scan (Parser.OperatorScan)
+    -- so both resolve module references identically.
+    modulePathP,
+    externalPathP,
+    itemEntryP,
+    -- Operator-target grammar, shared with the operator pre-scan
+    -- (Parser.OperatorScan) so both declaration parsers accept the same
+    -- strict-function and short-circuit-conditional forms.
+    opTargetP,
   )
 where
 
@@ -24,15 +33,80 @@ import Solcore.Frontend.Syntax.SyntaxTree
 
 -- Top-level entry point
 
-compUnitP :: Parser CompUnit
-compUnitP = do
+-- The compilation-unit parser is parameterised by the user-defined operators
+-- in scope (collected by a pre-scan of the source, see Parser.OperatorScan and
+-- the SolcoreParser entry point). They extend the expression grammar.
+compUnitP :: [OperatorDecl] -> Parser CompUnit
+compUnitP ops = do
   sc
-  items <- many (Left <$> try importP <|> Right <$> topDeclP)
+  items <- many (Left <$> try importP <|> Right <$> topDeclP ops)
   eof
   return $ CompUnit [i | Left i <- items] [d | Right d <- items]
 
-expP :: Parser Exp
-expP = exprP bodyP
+expP :: [OperatorDecl] -> Parser Exp
+expP ops = exprP ops (bodyP ops)
+
+operatorDeclP :: Parser OperatorDecl
+operatorDeclP = do
+  fix <- fixityP
+  prec <- fromIntegral <$> integer
+  sym <- parenOpP
+  _ <- symbol "=>"
+  target <- opTargetP fix qualifiedName
+  _ <- semicolon
+  return (OperatorDecl fix prec sym target)
+  where
+    fixityP =
+      (OpInfixL <$ keyword "infixl")
+        <|> (OpInfixR <$ keyword "infixr")
+        <|> (OpInfixN <$ keyword "infix")
+        <|> (OpPrefix <$ keyword "prefix")
+        <|> (OpPostfix <$ keyword "postfix")
+
+-- The right-hand side of an operator declaration, after `=>`. Either a
+-- (qualified) function name, giving a strict operator `a op b ~> fun(a, b)`, or
+-- a short-circuit conditional template `if <arg> then <arg> else <arg>`, where
+-- each <arg> is a positional operand placeholder (`$1`, `$2`) or a bool literal
+-- (`true`/`false`). The template desugars a use to an `if/then/else` that
+-- short-circuits at emission (control flow, not lazy evaluation), which is how a
+-- user declares operators like `&&`, `||` or their own short-circuiting ones.
+-- The template is restricted to atomic arguments so the lightweight pre-scan
+-- that builds the operator table needs no operator table of its own. `fix`
+-- bounds the valid placeholders (a prefix/postfix operator only has `$1`); the
+-- function-name parser is passed in so the full parser and the pre-scan can
+-- reuse this grammar with their own name parsers.
+opTargetP :: OpFixity -> Parser Name -> Parser OpTarget
+opTargetP fix funP =
+  condTemplateP <|> (OpFun <$> funP)
+  where
+    arity = case fix of
+      OpPrefix -> 1
+      OpPostfix -> 1
+      _ -> 2
+    condTemplateP = do
+      keyword "if"
+      a <- condArgP
+      keyword "then"
+      b <- condArgP
+      keyword "else"
+      c <- condArgP
+      pure (OpCond a b c)
+    condArgP =
+      operandP
+        <|> (BoolLit True <$ keyword "true")
+        <|> (BoolLit False <$ keyword "false")
+    operandP = lexeme $ do
+      _ <- char '$'
+      ds <- some digitChar
+      let i = read ds :: Int
+      when (i < 1 || i > arity) $
+        fail
+          ( "operand placeholder $"
+              ++ show i
+              ++ " is out of range for this operator (has "
+              ++ (if arity == 1 then "only $1)" else "$1 and $2)")
+          )
+      pure (Operand i)
 
 withSigPrefix :: ([Ty] -> [Pred] -> Parser a) -> Parser a
 withSigPrefix k = do
@@ -109,6 +183,8 @@ itemEntryP :: Parser ItemSelectorEntry
 itemEntryP =
   SelectAllItems
     <$ symbol "*"
+      <|> SelectOperator
+    <$> try parenOpP
       <|> try (SelectItemAs <$> simpleNameP <* keyword "as" <*> simpleNameP)
       <|> SelectItem
     <$> simpleNameP
@@ -140,6 +216,8 @@ exportSpecP :: Parser ExportSpec
 exportSpecP =
   ExportAll
     <$ symbol "*"
+      <|> ExportOperator
+    <$> try parenOpP
       <|> ExportModuleAll
     <$> try moduleAllPathP
       <|> do
@@ -266,19 +344,19 @@ tySymP = do
 
 -- Instance methods live outside a contract, so they may not carry the
 -- contract-only modifiers ('public' / 'payable').
-funDefP :: Parser FunDef
-funDefP = try $ withSigPrefix (funDefAfterPrefix False)
+funDefP :: [OperatorDecl] -> Parser FunDef
+funDefP ops = try $ withSigPrefix (funDefAfterPrefix ops False)
 
 -- | Parse a function definition after its optional signature prefix.
 -- 'allowContractModifiers' controls whether the leading `public` and `payable`
 -- modifiers are accepted: both are only meaningful inside a `contract { … }`
 -- body, so callers outside a contract (top-level functions, instance methods)
 -- pass 'False' and an explicit modifier is rejected with a clear error.
-funDefAfterPrefix :: Bool -> [Ty] -> [Pred] -> Parser FunDef
-funDefAfterPrefix allowContractModifiers vars ctx = do
+funDefAfterPrefix :: [OperatorDecl] -> Bool -> [Ty] -> [Pred] -> Parser FunDef
+funDefAfterPrefix ops allowContractModifiers vars ctx = do
   isPub <- publicModifierP allowContractModifiers
   sig <- signatureP allowContractModifiers vars ctx
-  body <- braces bodyP
+  body <- braces (bodyP ops)
   return (FunDef isPub sig (implicitReturn body))
 
 -- | Parse an optional `public` visibility modifier. When 'allowPublic' is
@@ -320,10 +398,10 @@ signatureP allowPayable vars ctx = do
     return (ct, Just t)
   return (Signature vars ctx n ps rc ret payable)
 
-fallbackDefAfterPrefix :: [Ty] -> [Pred] -> Parser FunDef
-fallbackDefAfterPrefix vars ctx = do
+fallbackDefAfterPrefix :: [OperatorDecl] -> [Ty] -> [Pred] -> Parser FunDef
+fallbackDefAfterPrefix ops vars ctx = do
   sig <- fallbackSignatureP vars ctx
-  body <- braces bodyP
+  body <- braces (bodyP ops)
   return (FunDef False sig (implicitReturn body))
 
 fallbackSignatureP :: [Ty] -> [Pred] -> Parser Signature
@@ -361,39 +439,41 @@ classAfterPrefix vars ctx = do
   sigs <- braces (many classSigP)
   return (Class vars ctx cname params mty sigs)
 
-instanceAfterPrefix :: [Ty] -> [Pred] -> Parser Instance
-instanceAfterPrefix vars ctx = do
+instanceAfterPrefix :: [OperatorDecl] -> [Ty] -> [Pred] -> Parser Instance
+instanceAfterPrefix ops vars ctx = do
   isDefault <- option False (True <$ keyword "default")
   keyword "instance"
   mty <- atomTypeP
   _ <- colon
   iname <- qualifiedName
   params <- option [] (parens (typeP `sepBy1` comma))
-  funs <- braces (many funDefP)
+  funs <- braces (many (funDefP ops))
   return (Instance isDefault vars ctx iname params mty funs)
 
-contractP :: Parser Contract
-contractP = do
+contractP :: [OperatorDecl] -> Parser Contract
+contractP ops = do
   keyword "contract"
   n <- simpleNameP
   params <- option [] (parens (typeP `sepBy1` comma))
-  ds <- braces (many contractDeclP)
+  ds <- braces (many (contractDeclP ops))
   return (Contract n params ds)
 
-contractDeclP :: Parser ContractDecl
-contractDeclP =
-  CDataDecl
+contractDeclP :: [OperatorDecl] -> Parser ContractDecl
+contractDeclP ops =
+  COperatorDecl
+    <$> operatorDeclP
+      <|> CDataDecl
     <$> dataP
       <|> CConstrDecl
-    <$> try constructorDeclP
+    <$> try (constructorDeclP ops)
       <|> rejectPublicOnImplicitlyPublicP
       <|> withSigPrefix
         ( \vars ctx ->
             CFunDecl
-              <$> (try (funDefAfterPrefix True vars ctx) <|> fallbackDefAfterPrefix vars ctx)
+              <$> (try (funDefAfterPrefix ops True vars ctx) <|> fallbackDefAfterPrefix ops vars ctx)
         )
       <|> CFieldDecl
-    <$> fieldDeclP
+    <$> fieldDeclP ops
 
 -- | `fallback` and `constructor` are implicitly public; reject an explicit
 -- `public` modifier on them with a clear error rather than a confusing
@@ -406,39 +486,40 @@ rejectPublicOnImplicitlyPublicP = do
     ("fallback" <$ keyword "fallback") <|> ("constructor" <$ keyword "constructor")
   fail (kw ++ " is implicitly public; remove the 'public' keyword")
 
-fieldDeclP :: Parser Field
-fieldDeclP = do
+fieldDeclP :: [OperatorDecl] -> Parser Field
+fieldDeclP ops = do
   n <- simpleNameP
   _ <- colon
   ty <- typeP
-  me <- optional (equalsP *> expP)
+  me <- optional (equalsP *> expP ops)
   _ <- semicolon
   return (Field n ty me)
 
-constructorDeclP :: Parser Constructor
-constructorDeclP = do
+constructorDeclP :: [OperatorDecl] -> Parser Constructor
+constructorDeclP ops = do
   payable <- option False (True <$ keyword "payable")
   keyword "constructor"
   ps <- parens (paramP `sepBy` comma)
-  body <- braces bodyP
+  body <- braces (bodyP ops)
   return (Constructor ps body payable)
 
-topDeclP :: Parser TopDecl
-topDeclP =
+topDeclP :: [OperatorDecl] -> Parser TopDecl
+topDeclP ops =
   choice
-    [ TPragmaDecl <$> pragmaP,
+    [ TOperatorDecl <$> operatorDeclP,
+      TPragmaDecl <$> pragmaP,
       TExportDecl <$> exportP,
       TDataDef <$> try dataP,
       TDataDef <$> structP,
       TSym <$> tySymP,
-      TContr <$> contractP,
+      TContr <$> contractP ops,
       contractOnlyDeclP,
       withSigPrefix
         ( \vars ctx ->
             choice
-              [ TFunDef <$> funDefAfterPrefix False vars ctx,
+              [ TFunDef <$> funDefAfterPrefix ops False vars ctx,
                 TClassDef <$> classAfterPrefix vars ctx,
-                TInstDef <$> instanceAfterPrefix vars ctx
+                TInstDef <$> instanceAfterPrefix ops vars ctx
               ]
         )
     ]

@@ -1,0 +1,11 @@
+// Library Y: declares operator (<>) INCOMPATIBLY (infixr 60 => joinY).
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixr 60 (<>) => joinY;
+
+export { joinY, (<>) };
+
+function joinY(a : word, b : word) -> word { return b; }

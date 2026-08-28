@@ -1,0 +1,12 @@
+// A compound assignment `x += e` desugars to `x = (+)(x, e)`, so the base
+// operator `+` must be in scope. This file deliberately does NOT import std
+// (where `+` is declared as a user-defined operator), so `+` is undeclared and
+// `x += 1;` must be rejected: a compound assignment for an operator that is not
+// in scope is a parse error, not a silent no-op.
+contract CompoundUndeclared {
+  function f() -> word {
+    let x : word = 0;
+    x += 1;
+    return x;
+  }
+}

@@ -1,0 +1,28 @@
+// Multiple user-defined operators at different precedences.
+// (^^) at 70 binds tighter than (#) at 45.
+// a #  b ^^ c  parses as  a # (b ^^ c).
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+infixl 70 (^^) => pow;
+infixl 45 (#)  => addm;
+
+function pow(b : word, e : word) -> word {
+  let r : word;
+  assembly { r := exp(b, e) }
+  return r;
+}
+
+function addm(x : word, y : word) -> word {
+  return Add.add(x, y);
+}
+
+contract MultiOp {
+  function main() -> word {
+    // (#) at 45 < (^^) at 70: 1 # 2 ^^ 3 = 1 # 8 = 9
+    let r = 1 # 2 ^^ 3;
+    return r;
+  }
+}

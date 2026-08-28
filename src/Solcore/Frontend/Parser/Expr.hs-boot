@@ -4,6 +4,6 @@ module Solcore.Frontend.Parser.Expr
 where
 
 import Common.LightYear (Parser)
-import Solcore.Frontend.Syntax.SyntaxTree (Exp, Stmt)
+import Solcore.Frontend.Syntax.SyntaxTree (Exp, OperatorDecl, Stmt)
 
-exprP :: Parser [Stmt] -> Parser Exp
+exprP :: [OperatorDecl] -> Parser [Stmt] -> Parser Exp

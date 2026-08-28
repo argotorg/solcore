@@ -1,0 +1,88 @@
+{
+  "shortcircuit": {
+    "bytecode": "",
+    "contract": "SC",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "and_short()(uint256) -> false && bump() short-circuits, bump not run -> 0",
+          "calldata": "3f2cda6d",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "and_run()(uint256) -> true && bump() runs bump -> 1",
+          "calldata": "416dff07",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "or_short()(uint256) -> true || bump() short-circuits, bump not run -> 0",
+          "calldata": "2e1518e7",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "or_run()(uint256) -> false || bump() runs bump -> 1",
+          "calldata": "105dbc0a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "impl_short()(uint256) -> false ==> bump() short-circuits, bump not run -> 0",
+          "calldata": "9c51a87b",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "impl_run()(uint256) -> true ==> bump() runs bump -> 1",
+          "calldata": "6a824ce9",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

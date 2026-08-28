@@ -1,0 +1,10 @@
+// The operator (%%) is declared by privoplib but not exported by it, so it is
+// not visible here: only exported operators are importable. Using it must fail.
+import privoplib.{(%%), ppow};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+contract UnexportedOp {
+  function main() -> word { return 2 %% 3; }
+}

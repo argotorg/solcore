@@ -1,5 +1,5 @@
 /* Positive: comptime let binding fed from a comptime function call. */
-import std;
+import std.{*};
 
 contract ComptimeLetOk {
   function double(comptime x : word) -> comptime word {

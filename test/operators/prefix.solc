@@ -1,0 +1,20 @@
+// User-defined prefix operator (~~) for bitwise NOT.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+prefix 80 (~~) => bnot;
+
+function bnot(x : word) -> word {
+  let r : word;
+  assembly { r := not(x) }
+  return r;
+}
+
+contract Prefix {
+  function main() -> word {
+    let x : word = 0;
+    return ~~ x;    // bitwise NOT of 0 = max word
+  }
+}

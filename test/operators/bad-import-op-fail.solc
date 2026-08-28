@@ -1,0 +1,15 @@
+// Importing a module that does not exist must surface the import diagnostic
+// (a "module not found" error), not a wall of unknown-operator parse errors.
+// The operator (<+>) this import would bring into scope is used below, so before
+// the fix the missing import was swallowed and the failure showed up only as an
+// unknown-operator parse error.
+import nonexistent_operator_module.{(<+>)};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+contract BadImportOp {
+  function main() -> word {
+    return 2 <+> 3;
+  }
+}

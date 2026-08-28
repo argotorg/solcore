@@ -1,4 +1,4 @@
-import std.{lt};
+import std.{lt, (<)};
 export { ltproxy };
 
 function ltproxy() -> bool {

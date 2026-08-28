@@ -1,0 +1,5 @@
+{ "_sc_ternary": { "bytecode": "", "contract": "ScTernary", "tests": [
+  { "input": { "comment": "ctor", "calldata": "", "value": "0" }, "kind": "constructor" },
+  { "input": { "comment": "pick(true) -> 1, boom() NOT evaluated (no revert)", "calldata": "85ffb95f0000000000000000000000000000000000000000000000000000000000000001", "value": "0" },
+    "kind": "call", "output": { "returndata": "0000000000000000000000000000000000000000000000000000000000000001", "status": "success" } }
+] } }

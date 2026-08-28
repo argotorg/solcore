@@ -11,11 +11,14 @@ import Solcore.Frontend.Parser.SolcoreTypes (locatedP, qualifiedName, simpleName
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 
-patP :: Parser Pat
-patP = locatedP locatedPat (wildcardP <|> litP <|> dotPatP <|> parenPatP <|> try comptimePatP <|> namedPatP)
+-- Patterns are parameterised by the user-defined operators in scope so that a
+-- comptime pattern (which embeds an expression) can use operators.
+patP :: [OperatorDecl] -> Parser Pat
+patP ops =
+  locatedP locatedPat (wildcardP <|> litP <|> dotPatP ops <|> parenPatP ops <|> try (comptimePatP ops) <|> namedPatP ops)
 
-patListP :: Parser [Pat]
-patListP = patP `sepBy1` comma
+patListP :: [OperatorDecl] -> Parser [Pat]
+patListP ops = patP ops `sepBy1` comma
 
 wildcardP :: Parser Pat
 wildcardP =
@@ -29,29 +32,29 @@ litP =
       . StrLit
     <$> stringLit
 
-dotPatP :: Parser Pat
-dotPatP = do
+dotPatP :: [OperatorDecl] -> Parser Pat
+dotPatP ops = do
   _ <- char '.'
   sc
   n <- simpleNameP
-  args <- option [] (parens (patP `sepBy1` comma))
+  args <- option [] (parens (patP ops `sepBy1` comma))
   return (PatDot n args)
 
-parenPatP :: Parser Pat
-parenPatP = parens insideP
+parenPatP :: [OperatorDecl] -> Parser Pat
+parenPatP ops = parens insideP
   where
     insideP = do
-      ps <- patP `sepBy` comma
+      ps <- patP ops `sepBy` comma
       return $ case ps of
         [] -> Pat (Name "()") []
         [p] -> p
         _ -> Pat (Name "pair") ps
 
-namedPatP :: Parser Pat
-namedPatP = do
+namedPatP :: [OperatorDecl] -> Parser Pat
+namedPatP ops = do
   n <- qualifiedName
-  args <- option [] (parens (patP `sepBy1` comma))
+  args <- option [] (parens (patP ops `sepBy1` comma))
   return (Pat n args)
 
-comptimePatP :: Parser Pat
-comptimePatP = PExp <$> (keyword "comptime" *> exprP (return []))
+comptimePatP :: [OperatorDecl] -> Parser Pat
+comptimePatP ops = PExp <$> (keyword "comptime" *> exprP ops (return []))

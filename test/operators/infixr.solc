@@ -1,0 +1,22 @@
+// Right-associative operator: a (~>) b (~>) c  parses as  a ~> (b ~> c).
+// (~>) is defined as subtraction to make the associativity observable.
+import std.{*};
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+
+// Precedence 46 is unused by the standard library. Using std's level 45 (where
+// (+) and (-) are infixl) would be a same-level associativity clash (SC0124).
+infixr 46 (~>) => rsub;
+
+function rsub(x : word, y : word) -> word {
+  return Sub.sub(x, y);
+}
+
+contract InfixR {
+  function main() -> word {
+    // Right-associative: 10 ~> 3 ~> 2 = 10 ~> (3~>2) = 10 ~> 1 = 9
+    let r = 10 ~> 3 ~> 2;
+    return r;
+  }
+}

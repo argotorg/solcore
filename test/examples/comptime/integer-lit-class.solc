@@ -2,7 +2,7 @@
 // The type checker infers the literal type from context: the integer:Ord/Add/Sub
 // instances constrain unresolved literals to `integer`.
 
-import std.{Eq,Ord,lt,Add,Sub};
+import std.{Eq,Ord,lt,Add,Sub, (+), (-), (<)};
 
 function fib(comptime n : integer) -> comptime integer {
   if (n < 2) {
