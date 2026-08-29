@@ -61,3 +61,7 @@ bash ./contest.sh test/examples/dispatch/weth9.json
 bash ./contest.sh test/examples/dispatch/derive_ord.json
 bash ./contest.sh test/examples/dispatch/derive_contract_local.json
 bash ./contest.sh test/examples/dispatch/deposit.json
+bash ./contest.sh test/examples/dispatch/coerce.json
+bash ./contest.sh test/examples/dispatch/coerce_implicit.json
+bash ./contest.sh test/examples/dispatch/coerce_sites.json
+bash ./contest.sh test/examples/dispatch/coerce_keyword.json

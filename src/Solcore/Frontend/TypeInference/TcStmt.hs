@@ -12,11 +12,12 @@ import Data.Set qualified as Set
 import GHC.Stack
 import Language.Yul
 import Solcore.Desugarer.StructProjection (fieldProjName)
-import Solcore.Diagnostics (SourceSpan)
+import Solcore.Diagnostics (CompilerError, SourceSpan, compilerErrorText)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.Syntax.Traversal (everythingButSpans, everywhereButSpans)
+import Solcore.Frontend.TypeInference.CoercionGraph
 import Solcore.Frontend.TypeInference.Id
 import Solcore.Frontend.TypeInference.InvokeGen
 import Solcore.Frontend.TypeInference.NameSupply
@@ -66,10 +67,11 @@ tcStmtWithExpectedReturn' _ e@(lhs := rhs) =
     (lhs1, ps1, t1) <- tcExp lhs
     s0 <- getSubst
     let expectedRhsTy = apply s0 t1
-    (rhs1, ps2, t2) <- tcExpWithExpected (Just expectedRhsTy) rhs
-    s <- unify t1 t2 `wrapError` e
-    _ <- extSubst s
-    pure (lhs1 := rhs1, apply s $ ps1 ++ ps2, unit)
+    -- Reconcile the rhs with the lhs type via bidirectional unify (the lhs type
+    -- may still be a metavariable), inserting an implicit coercion as a last
+    -- resort when the rhs does not fit a concrete lhs type directly.
+    (rhs1, ps2, _) <- tcCheckOrCoerceWith unify rhs expectedRhsTy `wrapError` e
+    withCurrentSubst (lhs1 := rhs1, ps1 ++ ps2, unit)
 tcStmtWithExpectedReturn' _ e@(Let ct n mt me) =
   do
     (me', psf, tf) <- case (mt, me) of
@@ -78,9 +80,7 @@ tcStmtWithExpectedReturn' _ e@(Let ct n mt me) =
         let bvs = bv t2
         sks <- mapM (const freshTyVar) bvs
         let t' = insts (zip bvs sks) t2
-        (e', ps1, t1) <- tcExpWithExpected (Just t') e1
-        s <- tcmMatch t1 t' `wrapError` e
-        _ <- extSubst s
+        (e', ps1) <- tcCheckOrCoerce e1 t' `wrapError` e
         withCurrentSubst (Just e', ps1, t')
       (Just t, Nothing) -> do
         return (Nothing, [], t)
@@ -102,7 +102,7 @@ tcStmtWithExpectedReturn' _ (StmtExp e) =
     pure (StmtExp e', ps', unit)
 tcStmtWithExpectedReturn' mExpectedReturn (Return e) =
   do
-    (e', ps, t) <- tcExpWithExpected mExpectedReturn e
+    (e', ps, t) <- tcReturnOrCoerce mExpectedReturn e
     pure (Return e', ps, t)
 tcStmtWithExpectedReturn' mExpectedReturn (Match es eqns) =
   do
@@ -389,17 +389,23 @@ tcExpWithExpected' mExpected e@(Con n es) =
         pure ()
     expectedArgTys' <- withCurrentSubst expectedArgTys
     -- typing parameters with expected constructor argument types
-    (es', pss, ts) <-
-      unzip3
-        <$> zipWithM
-          (\arg expectedTy -> tcExpWithExpected (Just expectedTy) arg)
-          es
-          expectedArgTys'
-    -- unifying inferred parameter types
-    s <- unify (funtype ts t') t `wrapError` e
-    _ <- extSubst s
+    saved <- getSubst
+    let plainArgs =
+          do
+            (es', pss, ts) <-
+              unzip3
+                <$> zipWithM
+                  (\arg expectedTy -> tcExpWithExpected (Just expectedTy) arg)
+                  es
+                  expectedArgTys'
+            -- unifying inferred parameter types
+            s <- unify (funtype ts t') t `wrapError` e
+            _ <- extSubst s
+            pure (es', pss, ts)
+    (es', pss, _) <-
+      plainArgs `catchError` coerceArgsFallback saved expectedArgTys' (\ts'' -> unify (funtype ts'' t') t) es
     -- expand synonyms before extracting type name
-    t'' <- maybeExpandSynonym (apply s t')
+    t'' <- maybeExpandSynonym =<< withCurrentSubst t'
     tn <- typeName t''
     -- checking if the constructor belongs to type tn
     checkConstr tn n'
@@ -466,9 +472,10 @@ tcExpWithExpected' mExpected (Lam args bd _) =
 tcExpWithExpected' _ e1@(TyExp e ty) =
   do
     ty1 <- kindCheck ty `wrapError` e1
-    (e', ps, ty') <- tcExpWithExpected (Just ty1) e
-    s <- tcmMatch ty' ty1
-    _ <- extSubst s
+    -- A type ascription is a checking-mode position against a fixed annotation
+    -- (one-way match reconcile); coerce as a last resort when @e@ does not have
+    -- the annotated type directly.
+    (e', ps, _) <- tcCheckOrCoerceWith tcmMatch e ty1 `wrapError` e1
     withCurrentSubst (TyExp e' ty1, ps, ty1)
 tcExpWithExpected' mExpected e@(Cond e1 e2 e3) =
   do
@@ -1549,6 +1556,236 @@ unifyExpectedResult (Just expectedTy) resultTy =
     s <- unify resultTy expectedTy'
     void $ extSubst s
 
+-- Implicit coercions: checking-mode insertion.
+-- In a checking position, where the expected type is fully known and concrete,
+-- if an expression's type does not match the expected type but the coercion
+-- graph (built from the Coerce instances in scope) has a path between them, the
+-- expression is wrapped in the library coercion
+-- Coerce.coerce(Pair(e, Proxy : Proxy(T))) and re-checked. Firing only against
+-- a concrete target and only after the plain check has failed keeps this a last
+-- resort that cannot change an already well-typed program.
+
+-- The coercion edges currently in scope, read off the Coerce instances in the
+-- instance environment.
+coercionEdgesInScope :: TcM [CoercionEdge]
+coercionEdgesInScope =
+  do
+    itbl <- gets instEnv
+    pure
+      [ CoercionEdge srcTy tgtTy (Name "")
+      | instList <- Map.elems itbl,
+        (_ :=> InCls cls headTy _) <- instList,
+        Just (srcTy, tgtTy) <- [coercionEdgeOf cls headTy]
+      ]
+
+-- Whether the coercion graph has a path from src to tgt.
+hasCoercionPath :: Ty -> Ty -> TcM Bool
+hasCoercionPath src tgt =
+  do
+    edges <- coercionEdgesInScope
+    pure $ case buildCoercionGraph edges of
+      Left _ -> False
+      Right g -> isJust (canonicalCoercionPath g src tgt)
+
+-- Apply the current substitution and expand any synonym, i.e. the fully
+-- resolved form of a type as currently known.
+zonkTy :: Ty -> TcM Ty
+zonkTy ty = ((`apply` ty) <$> getSubst) >>= maybeExpandSynonym
+
+-- The source-level coercion wrapper Coerce.coerce(Pair(e, Proxy : Proxy(tgt))).
+mkCoerceExp :: Exp Name -> Ty -> Exp Name
+mkCoerceExp e tgt =
+  Call
+    Nothing
+    (QualName (Name "Coerce") "coerce")
+    [Con (Name "Pair") [e, TyExp (Con (Name "Proxy") []) (TyCon (Name "Proxy") [tgt])]]
+
+-- Check e against expected; if the plain check fails but expected is a
+-- fully-determined concrete type reachable from e's inferred type in the
+-- coercion graph, wrap e in the coercion and re-check instead of failing.
+--
+-- The reconcile strategy decides how the plainly-checked type is tied to
+-- expected: an annotated let uses the one-way tcmMatch (the annotation is
+-- fixed), whereas an argument position uses bidirectional unify (the parameter
+-- type may still be a metavariable). Both share the same coercion fallback.
+tcCheckOrCoerceWith ::
+  (Ty -> Ty -> TcM Subst) -> Exp Name -> Ty -> TcM (Exp Id, [Pred], Ty)
+tcCheckOrCoerceWith reconcile e expected =
+  do
+    saved <- getSubst
+    let plain =
+          do
+            (e', ps, t1) <- tcExpWithExpected (Just expected) e
+            s <- reconcile t1 expected
+            _ <- extSubst s
+            pure (e', ps, t1)
+    plain
+      `catchError` \err ->
+        do
+          putSubst saved
+          expected' <- ((`apply` expected) <$> getSubst) >>= maybeExpandSynonym
+          if not (isTyCon expected')
+            then throwError err
+            else do
+              probe <-
+                ( do
+                    (_, _, ti) <- tcExp e
+                    ti' <- ((`apply` ti) <$> getSubst) >>= maybeExpandSynonym
+                    hasCoercionPath ti' expected'
+                )
+                  `catchError` \_ -> pure False
+              putSubst saved
+              if probe
+                then do
+                  checkCoercionAmbiguity e expected'
+                  tcExpWithExpected (Just expected') (mkCoerceExp e expected')
+                else throwError err
+
+-- Checking-mode coercion for an annotated @let@ (one-way match reconcile).
+tcCheckOrCoerce :: Exp Name -> Ty -> TcM (Exp Id, [Pred])
+tcCheckOrCoerce e expected =
+  do
+    (e', ps, _) <- tcCheckOrCoerceWith tcmMatch e expected
+    pure (e', ps)
+
+-- Checking-mode coercion for a function-argument position (bidirectional
+-- unify reconcile, since the parameter type may still be a metavariable).
+tcArgCoerce :: Exp Name -> Ty -> TcM (Exp Id, [Pred], Ty)
+tcArgCoerce = tcCheckOrCoerceWith unify
+
+-- Type-check a return expression against the function's declared result
+-- type, inserting an implicit coercion when the returned value does not fit that
+-- (concrete) type directly.
+-- A return is delicate because its type is normally reconciled with the declared
+-- return type LATER, by the function-level unification, which is unique-type /
+-- closure aware (a defunctionalized lambda gets a fresh unique type that must not
+-- be unified with its arrow type here). So this does NOT eagerly reconcile in the
+-- common case. Two situations lead to a coercion, both last resorts:
+--   * the plain check throws outright, an overloaded call resolved at a type
+--     other than a concrete return type, caught and retried through the graph;
+--   * the plain check succeeds but the value's (non-unique) type would not
+--     reconcile with a concrete return type and a coercion path exists.
+-- Otherwise the value is returned unchanged and the later function-level
+-- unification does its usual (unique-type-aware) job, so well-typed and
+-- higher-order returns are unaffected.
+tcReturnOrCoerce :: Maybe Ty -> Exp Name -> TcM (Exp Id, [Pred], Ty)
+tcReturnOrCoerce Nothing e = tcExp e
+tcReturnOrCoerce (Just rt) e =
+  do
+    saved <- getSubst
+    let coerceFrom err =
+          do
+            putSubst saved
+            rt' <- zonkTy rt
+            if not (isTyCon rt')
+              then throwError err
+              else do
+                probe <-
+                  ( do
+                      (_, _, ti) <- tcExp e
+                      ti' <- zonkTy ti
+                      hasCoercionPath ti' rt'
+                  )
+                    `catchError` \_ -> pure False
+                putSubst saved
+                if probe
+                  then do
+                    checkCoercionAmbiguity e rt'
+                    tcExpWithExpected (Just rt') (mkCoerceExp e rt')
+                  else throwError err
+    mplain <- (Right <$> tcExpWithExpected (Just rt) e) `catchError` (pure . Left)
+    case mplain of
+      Left err -> coerceFrom err
+      Right (e', ps, t) ->
+        do
+          rt' <- zonkTy rt
+          afterPlain <- getSubst
+          reconciles <-
+            (True <$ (unify t rt' >>= extSubst)) `catchError` \_ -> pure False
+          putSubst afterPlain
+          t' <- zonkTy t
+          unique <- or <$> mapM isUniqueTyName (tyconNames t')
+          if reconciles || unique || not (isTyCon rt')
+            then pure (e', ps, t)
+            else do
+              hasPath <- hasCoercionPath t' rt' `catchError` \_ -> pure False
+              if not hasPath
+                then pure (e', ps, t)
+                else do
+                  putSubst saved
+                  checkCoercionAmbiguity e rt'
+                  tcExpWithExpected (Just rt') (mkCoerceExp e rt')
+
+-- Last-resort argument coercion for a call whose plain argument elaboration
+-- failed. Restores the saved substitution, then re-checks each argument against
+-- its parameter type with a coercion fallback (tcArgCoerce). If every argument
+-- checks and the resulting argument types still reconcile with the function type
+-- (via reconcile), returns the (possibly coerced) arguments; otherwise
+-- re-raises the ORIGINAL type error, so enabling coercions never degrades an
+-- existing diagnostic. Because it engages only after the plain elaboration has
+-- already failed, a well-typed call is elaborated exactly as before.
+coerceArgsFallback ::
+  Subst ->
+  [Ty] ->
+  ([Ty] -> TcM Subst) ->
+  [Exp Name] ->
+  CompilerError ->
+  TcM ([Exp Id], [[Pred]], [Ty])
+coerceArgsFallback saved paramTys reconcile args err =
+  do
+    putSubst saved
+    let attempt =
+          do
+            rs <- zipWithM tcArgCoerce args paramTys
+            let (es', pss', ts') = unzip3 rs
+            s <- reconcile ts'
+            _ <- extSubst s
+            pure (es', pss', ts')
+    attempt
+      `catchError` \err2 ->
+        do
+          putSubst saved
+          -- A deliberate coercion-coherence rejection (the ambivalence error) must
+          -- surface; only a genuine "no coercion applies" failure falls back to the
+          -- original type error so an existing diagnostic is never degraded.
+          if coercionAmbiguityMarker `isInfixOf` compilerErrorText err2
+            then throwError err2
+            else throwError err
+
+-- Reject the coercion/overload ambivalence. We are
+-- about to coerce the RESULT of e to tgt. If e is a call whose ARGUMENTS
+-- could instead be coerced to tgt so the call resolves (possibly at a
+-- different overload) directly at tgt, then coercing the result and coercing
+-- the arguments are two competing elaborations with potentially different
+-- meaning, an ambiguity we reject rather than silently pick, asking for an
+-- explicit conversion. The check is speculative and state-isolated, and only
+-- runs when a coercion is already being inserted, so well-typed programs are
+-- unaffected.
+-- A stable phrase identifying the coercion-ambivalence rejection, so that the
+-- argument-coercion fallback can tell a deliberate coherence rejection apart from
+-- an ordinary "no coercion applies" failure and let the former surface.
+coercionAmbiguityMarker :: String
+coercionAmbiguityMarker = "ambiguous implicit coercion around an overloaded call"
+
+checkCoercionAmbiguity :: Exp Name -> Ty -> TcM ()
+checkCoercionAmbiguity e tgt =
+  case e of
+    Call me op args@(_ : _) ->
+      do
+        saved <- getSubst
+        let alt = Call me op (map (`mkCoerceExp` tgt) args)
+        altOk <-
+          (True <$ tcExpWithExpected (Just tgt) alt) `catchError` \_ -> pure False
+        putSubst saved
+        when altOk $
+          tcmError $
+            unlines
+              [ coercionAmbiguityMarker ++ ":",
+                "coercing its result and coercing its arguments select different overloads;",
+                "write the conversion explicitly."
+              ]
+    _ -> pure ()
+
 tcCall :: Maybe Ty -> Maybe (Exp Name) -> Name -> [Exp Name] -> TcM (Exp Id, [Pred], Ty)
 tcCall mExpected Nothing n args =
   do
@@ -1558,11 +1795,21 @@ tcCall mExpected Nothing n args =
     expectedArgTys <- mapM (const freshTyVar) args
     s0 <- unify t (funtype expectedArgTys t')
     _ <- extSubst s0
-    unifyExpectedResult mExpected t'
+    saved <- getSubst
+    let paramTys = apply s0 expectedArgTys
+        plainArgs =
+          do
+            (es', pss', ts') <-
+              unzip3 <$> zipWithM (\e expectedTy -> tcExpWithExpected (Just expectedTy) e) args paramTys
+            s1 <- unify t (funtype ts' t')
+            _ <- extSubst s1
+            pure (es', pss', ts')
     (es', pss', ts') <-
-      unzip3 <$> zipWithM (\e expectedTy -> tcExpWithExpected (Just expectedTy) e) args (apply s0 expectedArgTys)
-    s1 <- unify t (funtype ts' t')
-    _ <- extSubst s1
+      plainArgs `catchError` coerceArgsFallback saved paramTys (\ts'' -> unify t (funtype ts'' t')) args
+    -- Resolve any overload from the arguments before the expected result: this
+    -- keeps the expected type from leaking into argument positions
+    -- fixed by its arguments and only its result is reconciled with the context.
+    unifyExpectedResult mExpected t'
     let ps' = foldr union [] (ps : pss')
         t1 = funtype ts' t'
     withCurrentSubst (Call Nothing (Id n t1) es', ps', t')
@@ -1575,11 +1822,20 @@ tcCall mExpected (Just e) n args =
     expectedArgTys <- mapM (const freshTyVar) args
     s0 <- unify (foldr (:->) t' expectedArgTys) t
     _ <- extSubst s0
+    saved <- getSubst
+    let paramTys = apply s0 expectedArgTys
+        plainArgs =
+          do
+            (es', pss', ts') <-
+              unzip3 <$> zipWithM (\arg expectedTy -> tcExpWithExpected (Just expectedTy) arg) args paramTys
+            s' <- unify (foldr (:->) t' ts') t
+            _ <- extSubst s'
+            pure (es', pss', ts')
+    (es', pss', _) <-
+      plainArgs `catchError` coerceArgsFallback saved paramTys (\ts'' -> unify (foldr (:->) t' ts'') t) args
+    -- See the unqualified branch: resolve the overload from the arguments before
+    -- reconciling the result with the expected type.
     unifyExpectedResult mExpected t'
-    (es', pss', ts') <-
-      unzip3 <$> zipWithM (\arg expectedTy -> tcExpWithExpected (Just expectedTy) arg) args (apply s0 expectedArgTys)
-    s' <- unify (foldr (:->) t' ts') t
-    _ <- extSubst s'
     let ps' = foldr union [] ((ps ++ ps1) : pss')
     withCurrentSubst (Call (Just e') (Id n t') es', ps', t')
 

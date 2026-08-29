@@ -1,0 +1,27 @@
+import std.{*};
+import std.dispatch.{*};
+import std.coerce.{*};
+
+data Small = S(uint256);
+data Big = B(uint256);
+
+function smallToBig(x : Small) -> Big {
+  match x {
+    | Small.S(v) => return Big.B(v);
+  }
+}
+
+// Surface syntax for an implicit coercion, desugared to a Coerce instance.
+coercion Small -> Big by smallToBig;
+
+contract C {
+  constructor() {}
+
+  public function go() -> uint256 {
+    let s : Small = Small.S(42);
+    let b : Big = s;                 // implicit coercion via the declared `coercion`
+    match b {
+      | Big.B(v) => return uint256(Typedef.rep(v));
+    }
+  }
+}

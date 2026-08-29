@@ -1,0 +1,27 @@
+import std.{*};
+import std.dispatch.{*};
+import std.coerce.{*};
+
+data Box = MkBox(uint256);
+
+// return-position: uint8 returned where uint256 is declared.
+function retSite(a : uint8) -> uint256 {
+  return a;
+}
+
+// type-ascription: (a : uint256) where a : uint8.
+function ascriptionSite(a : uint8) -> uint256 {
+  return (a : uint256);
+}
+
+// assignment: r : uint256 assigned a uint8.
+function assignSite(a : uint8) -> uint256 {
+  let r : uint256 = uint256(0);
+  r = a;
+  return r;
+}
+
+// constructor argument: MkBox expects uint256, given a uint8.
+function conSite(a : uint8) -> Box {
+  return Box.MkBox(a);
+}

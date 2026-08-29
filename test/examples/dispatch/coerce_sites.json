@@ -1,0 +1,64 @@
+{
+  "coerce_sites": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "ctor",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "return-position coercion uint8 -> uint256",
+          "calldata": "a84255c1",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000c8"
+        }
+      },
+      {
+        "input": {
+          "comment": "type-ascription coercion uint8 -> uint256",
+          "calldata": "926d1923",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000c8"
+        }
+      },
+      {
+        "input": {
+          "comment": "assignment coercion uint8 -> uint256",
+          "calldata": "05cf3cbf",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000c8"
+        }
+      },
+      {
+        "input": {
+          "comment": "constructor-argument coercion uint8 -> uint256",
+          "calldata": "6708827b",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000c8"
+        }
+      }
+    ]
+  }
+}

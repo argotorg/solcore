@@ -1,0 +1,64 @@
+{
+  "coerce_implicit": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "ctor",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "u8->u16 let",
+          "calldata": "3b54f0b2",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000c8"
+        }
+      },
+      {
+        "input": {
+          "comment": "u8->u256 let",
+          "calldata": "1118781f",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000c8"
+        }
+      },
+      {
+        "input": {
+          "comment": "same",
+          "calldata": "9146a4d5",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000007"
+        }
+      },
+      {
+        "input": {
+          "comment": "u8->u256 at a function-argument position",
+          "calldata": "904fa02a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000c8"
+        }
+      }
+    ]
+  }
+}

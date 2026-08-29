@@ -1,6 +1,7 @@
 module Main where
 
 import Cases
+import CoercionGraphTests
 import ContractAbiTests
 import DiagnosticCliTests
 import DiagnosticTests
@@ -22,6 +23,7 @@ tests =
   testGroup
     "Tests"
     [ parserTests,
+      coercionGraphTests,
       yulParserTests,
       cases,
       tabledResolution,
