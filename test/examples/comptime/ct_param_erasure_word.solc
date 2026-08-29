@@ -1,0 +1,24 @@
+/* A comptime parameter is erased even when the callee cannot be folded away.
+
+   `scaled` reads storage, so it is impure and inlining it is not an option:
+   the call survives into the generated code. Its `comptime n` argument must
+   still be substituted, otherwise the specialisation the annotation asks for
+   never happens and a comptime value is passed at runtime.
+
+   main returns sload(0) * 4.
+*/
+
+import std;
+
+contract ComptimeParamErasureWord {
+  function scaled(comptime n : word) -> word {
+    let v : word;
+    assembly {
+      v := sload(0)
+    }
+    return v * n;
+  }
+  function main() -> word {
+    return scaled(4);
+  }
+}

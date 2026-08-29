@@ -200,8 +200,48 @@ diagnosticCliTests =
       testCase "warnings deny" $
         expectFailure
           ["--root", "test/examples/cases", "--file", "test/examples/cases/redundant-match.solc", "--no-specialise", "--warnings", "deny"]
-          (map denyWarningLine redundantWarningsSnapshot)
+          (map denyWarningLine redundantWarningsSnapshot),
+      testCase "fuel warning always" $
+        expectSuccess
+          (fuelArgs "always")
+          [ "warning[SC0401]: partial evaluation ran out of fuel",
+            "help: pass --pe-fuel N to raise the budget",
+            "Emitting hull for contract Fuel",
+            "Writing to " ++ fuelOutputDir ++ "/output1.hull"
+          ],
+      testCase "fuel warning never" $
+        expectSuccess
+          (fuelArgs "never")
+          [ "Emitting hull for contract Fuel",
+            "Writing to " ++ fuelOutputDir ++ "/output1.hull"
+          ],
+      testCase "fuel warning deny" $
+        expectFailure
+          (fuelArgs "deny")
+          [ "error[SC0401]: partial evaluation ran out of fuel",
+            "help: pass --pe-fuel N to raise the budget",
+            "help: pass --warnings=default, --warnings=always, or --warnings=never to allow this warning"
+          ]
     ]
+
+-- | Starve partial evaluation of fuel so that compiling a trivial contract
+--   still reports exhaustion, and send the emitted hull somewhere disposable.
+fuelArgs :: String -> [String]
+fuelArgs policy =
+  [ "--root",
+    "test/diagnostics",
+    "--file",
+    "test/diagnostics/fuel-exhausted.solc",
+    "--pe-fuel",
+    "1",
+    "--output-dir",
+    fuelOutputDir,
+    "--warnings",
+    policy
+  ]
+
+fuelOutputDir :: FilePath
+fuelOutputDir = "dist-newstyle/fuel-warning"
 
 expectSuccess :: [String] -> [String] -> Assertion
 expectSuccess args expectedLines = do

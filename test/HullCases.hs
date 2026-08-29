@@ -1,5 +1,6 @@
-module HullCases (hullTests) where
+module HullCases (hullTests, checkHullFile, checkHullObject) where
 
+import Language.Hull (Object)
 import Language.Hull.Parser (parseObject)
 import Language.Hull.TcEnv (emptyHullTcEnv)
 import Language.Hull.TcMonad (runHullTcM)
@@ -51,5 +52,7 @@ runHullTestExpectingFailure file = testCase file $ do
 checkHullFile :: FilePath -> IO (Either String ())
 checkHullFile path = do
   src <- readFile path
-  let obj = parseObject path src
-  runHullTcM (checkObject obj) emptyHullTcEnv
+  checkHullObject (parseObject path src)
+
+checkHullObject :: Object -> IO (Either String ())
+checkHullObject obj = runHullTcM (checkObject obj) emptyHullTcEnv

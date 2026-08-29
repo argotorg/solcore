@@ -1,6 +1,7 @@
 module Main where
 
 import Cases
+import ComptimeCheckTests
 import ContractAbiTests
 import DiagnosticCliTests
 import DiagnosticTests
@@ -39,6 +40,7 @@ tests =
       contractAbiTests,
       matchTests,
       yulEvalTests,
+      comptimeCheckTests,
       hullTests,
       specialiseTests
     ]

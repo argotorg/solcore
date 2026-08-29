@@ -1,0 +1,13 @@
+/* Negative: assignment to a comptime binding, even from a literal — must fail.
+   The right-hand side being comptime does not help: the binding is erased
+   once discharged, so the assignment loses its target either way.
+*/
+import std;
+
+contract ComptimeAssignLiteral {
+  function main() -> word {
+    let x : comptime word = 5;
+    x = 6;
+    return x;
+  }
+}

@@ -1,0 +1,31 @@
+/* A `string` parameter is erased even when the callee cannot be folded away.
+
+   `tagged` reads storage, so it is impure and inlining it is not an option:
+   the call survives into the generated code. A `string` has no runtime
+   representation, so the parameter must still go -- MastEval clones the
+   callee with the literal substituted and drops the parameter, while the
+   runtime `word` argument is passed to the clone as usual. A surviving
+   string-typed parameter is a hard error at hull emission.
+
+   main returns sload(0) + sload(1) + strlenLit("abcd") = sload(0) + sload(1) + 4.
+*/
+
+import std;
+import std.{*};
+
+contract StringParamCloneErasure {
+  function tagged(s : string, x : word) -> word {
+    let v : word;
+    assembly {
+      v := sload(0)
+    }
+    return v + x + std.strlenLit(s);
+  }
+  function main() -> word {
+    let r : word;
+    assembly {
+      r := sload(1)
+    }
+    return tagged("abcd", r);
+  }
+}

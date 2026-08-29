@@ -1,0 +1,17 @@
+/* Positive: the same shape without 'comptime' still compiles.
+   Only declared-comptime bindings are immutable; an ordinary local
+   initialised from a literal may still be assigned a runtime value.
+*/
+import std;
+
+contract PlainAssign {
+  function main() -> word {
+    let x : word = 5;
+    let v : word;
+    assembly {
+      v := sload(0)
+    }
+    x = v;
+    return x;
+  }
+}
