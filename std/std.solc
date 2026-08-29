@@ -872,6 +872,18 @@ instance bytes4:Typedef(word) {
     }
 }
 
+instance bytes4:Eq {
+  function eq(x : bytes4, y : bytes4) -> bool {
+    return Eq.eq(Typedef.rep(x), Typedef.rep(y));
+  }
+}
+
+instance bytes4:Int {
+    function fromInteger(x:integer) -> bytes4 {
+        return bytes4(wordFromInteger(x));
+    }
+}
+
 // --- Bytes32 ---
 
 data bytes32 = bytes32(word);
@@ -897,6 +909,12 @@ instance bytes32:Ord {
   function gt(x : bytes32, y : bytes32) -> bool {
     return Ord.gt(Typedef.rep(x), Typedef.rep(y));
   }
+}
+
+instance bytes32:Int {
+    function fromInteger(x:integer) -> bytes32 {
+        return bytes32(wordFromInteger(x));
+    }
 }
 
 // --- Pointers ---
@@ -2642,6 +2660,30 @@ instance bytes32:MemoryEncode {
     }
 }
 
+instance bytes4:MemorySize {
+    function len(v: bytes4) -> word {
+        return 4;
+    }
+}
+
+instance bytes4:MemoryEncode {
+    function encodeInto(v: bytes4, target: word) -> () {
+        mstore(target, shl(224, Typedef.rep(v)));
+    }
+}
+
+instance uint256:MemorySize {
+    function len(v: uint256) -> word {
+        return 32;
+    }
+}
+
+instance uint256:MemoryEncode {
+    function encodeInto(v: uint256, target: word) -> () {
+        mstore(target, Typedef.rep(v));
+    }
+}
+
 instance memory(bytes):MemorySize {
     function len(v: memory(bytes)) -> word {
         return mload(Typedef.rep(v));
@@ -2651,6 +2693,18 @@ instance memory(bytes):MemorySize {
 instance memory(bytes):MemoryPointer {
     function ptr(v: memory(bytes)) -> word {
         return Typedef.rep(v) + 32;
+    }
+}
+
+instance address:MemorySize {
+    function len(v: address) -> word {
+        return 20;
+    }
+}
+
+instance address:MemoryEncode {
+    function encodeInto(v: address, target: word) -> () {
+        mstore(target, shl(96, Typedef.rep(v)));
     }
 }
 
