@@ -1,0 +1,108 @@
+import std.{*};
+import std.dispatch.{*};
+import std.opcodes.{caller};   // EVM opcode functions; caller() -> word
+
+// VaultTokenModifier: the SAME VaultToken contract, but with the `onlyOwner`
+// guard written in the form a modifier would desugar to.
+//
+// The proposed surface syntax (see Valt.md, Section 6) is:
+//
+//   modifier onlyOwner() {
+//     require(address(caller()) == owner_, Error(0x12b0c500));
+//     _;
+//   }
+//   public function transferOwnership(newOwner : address) -> () onlyOwner {
+//     owner_ = newOwner;
+//   }
+//
+// A modifier is the "around" pattern, so it desugars to a higher-order
+// function that takes the modified body as a thunk; `_;` becomes invoking
+// that thunk. The annotated function wraps its body in a `lam` and hands it
+// to the modifier. That is exactly what this file writes by hand, so it
+// compiles on the CURRENT backend: surface `lam` + application is lowered by
+// defunctionalization (the std `Invokable` machinery), see
+// test/examples/invokable/028modifier.solc.
+//
+// The body thunk takes one ignored argument because application here always
+// carries an argument; a real desugaring of `onlyOwner()` would use a unit
+// thunk. The two `uint256` pause accommodations are unchanged from VaultToken.
+contract VaultToken {
+  owner_       : address;
+  paused_      : uint256;       // 0 = not paused, 1 = paused
+  totalSupply_ : uint256;
+  balances     : mapping(address, uint256);
+
+  constructor(initialSupply : uint256) {
+    owner_  = address(caller());
+    paused_ = uint256(0);
+    update(address(0), address(caller()), initialSupply);
+  }
+
+  // ---- the onlyOwner modifier, in desugared higher-order form ----
+  // `body` is the modified function body as a thunk; calling it is `_;`.
+  forall r . function onlyOwner(body : uint256 -> r) -> r {
+    require(address(caller()) == owner_, Error(0x12b0c500)); // OwnableUnauthorizedAccount()
+    return body(uint256(0));
+  }
+
+  // ---- ownership face ----
+  public function owner() -> address {
+    return owner_;
+  }
+
+  // transferOwnership ... onlyOwner { owner_ = newOwner; }
+  public function transferOwnership(newOwner : address) -> () {
+    return onlyOwner(lam(ignore) { owner_ = newOwner; });
+  }
+
+  // ---- pause face ----
+  public function paused() -> bool {
+    return paused_ != uint256(0);
+  }
+
+  // setPaused(flag) ... onlyOwner { paused_ = flag; }
+  public function setPaused(flag : uint256) -> () {
+    return onlyOwner(lam(ignore) { paused_ = flag; });
+  }
+
+  // ---- ERC-20 face ----
+  public function totalSupply() -> uint256 {
+    return totalSupply_;
+  }
+
+  public function balanceOf(account : address) -> uint256 {
+    return balances[account];
+  }
+
+  public function transfer(to : address, amount : uint256) -> bool {
+    update(address(caller()), to, amount);
+    return true;
+  }
+
+  // mint(to, amount) ... onlyOwner { update(address(0), to, amount); }
+  public function mint(to : address, amount : uint256) -> () {
+    return onlyOwner(lam(ignore) { update(address(0), to, amount); });
+  }
+
+  // ---- the single seam every movement flows through ----
+  function update(from : address, to : address, amount : uint256) -> () {
+    require(paused_ == uint256(0), Error(0x9e87fac8)); // whenNotPaused / Paused()
+    if (from != address(0)) {
+      balances[from] = Num.sub(balances[from], amount);
+    } else {
+      totalSupply_ = Num.add(totalSupply_, amount);
+    }
+    if (to != address(0)) {
+      balances[to] = Num.add(balances[to], amount);
+    } else {
+      totalSupply_ = Num.sub(totalSupply_, amount);
+    }
+  }
+
+  // ---- the same self-test as VaultToken: 1000 + 100 - 30 = 1070 ----
+  public function test() -> uint256 {
+    mint(address(caller()), uint256(100));
+    transfer(address(0xBEEF), uint256(30));
+    return balanceOf(address(caller()));
+  }
+}
