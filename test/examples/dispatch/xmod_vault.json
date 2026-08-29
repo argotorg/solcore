@@ -1,0 +1,24 @@
+{
+  "xmod_vault": {
+    "bytecode": "", "contract": "Vault",
+    "tests": [
+      { "input": { "comment": "constructor: owner_=100, balance=0", "calldata": "", "value": "0" }, "kind": "constructor" },
+      { "input": { "comment": "getOwner()==100 (INHERITED method, cross-module)", "calldata": "893d20e8", "value": "0" },
+        "kind": "call", "output": { "returndata": "0000000000000000000000000000000000000000000000000000000000000064", "status": "success" } },
+      { "input": { "comment": "getBalance()==0", "calldata": "12065fe0", "value": "0" },
+        "kind": "call", "output": { "returndata": "0000000000000000000000000000000000000000000000000000000000000000", "status": "success" } },
+      { "input": { "comment": "deposit(50)", "calldata": "b6b55f250000000000000000000000000000000000000000000000000000000000000032", "value": "0" },
+        "kind": "call", "output": { "returndata": "", "status": "success" } },
+      { "input": { "comment": "getBalance()==50", "calldata": "12065fe0", "value": "0" },
+        "kind": "call", "output": { "returndata": "0000000000000000000000000000000000000000000000000000000000000032", "status": "success" } },
+      { "input": { "comment": "rotateOwner(7) writes inherited owner_", "calldata": "6e01dcd50000000000000000000000000000000000000000000000000000000000000007", "value": "0" },
+        "kind": "call", "output": { "returndata": "", "status": "success" } },
+      { "input": { "comment": "getOwner()==7", "calldata": "893d20e8", "value": "0" },
+        "kind": "call", "output": { "returndata": "0000000000000000000000000000000000000000000000000000000000000007", "status": "success" } },
+      { "input": { "comment": "setOwner(42) INHERITED method via dispatch", "calldata": "8041494e000000000000000000000000000000000000000000000000000000000000002a", "value": "0" },
+        "kind": "call", "output": { "returndata": "", "status": "success" } },
+      { "input": { "comment": "getOwner()==42", "calldata": "893d20e8", "value": "0" },
+        "kind": "call", "output": { "returndata": "000000000000000000000000000000000000000000000000000000000000002a", "status": "success" } }
+    ]
+  }
+}

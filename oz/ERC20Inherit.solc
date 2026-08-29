@@ -1,0 +1,210 @@
+// OpenZeppelin ERC20 in Core Solidity — INHERITANCE version.
+//
+// A genuine hierarchy that exercises the compiler's multiple-inheritance (C3):
+//
+//     ERC20            (core logic + the `update` hook)
+//      /  \
+//  ERC20Pausable   ERC20Capped     (each OVERRIDES `update`, calling super.update)
+//      \  /
+//     Token          (the diamond leaf; inherits ERC20Pausable, ERC20Capped)
+//
+// `update`'s MRO is [Token, ERC20Capped, ERC20Pausable, ERC20], so a movement
+// threads Token -> Capped (super) -> Pausable (super) -> ERC20 (super): the pause
+// guard runs before the balance move, the cap check after it — a real C3 super
+// chain across a shared base. This is the sibling of oz/ERC20Flat.solc (identical
+// behavior, no inheritance); oz/test/differential.sh checks both, and the OZ
+// reference, produce byte-identical results.
+//
+// Constraint that shaped the split: a `super`-reached method body may touch only
+// fields, free functions and `super` — not other contract methods. So each
+// override here is exactly `guard/effect + super.update`, and ERC20.update itself
+// calls no contract method (only fields + free `emit*`/`revert*`). The rich
+// internal call graph (transfer -> transferTokens -> update, mint -> mintTokens ->
+// update) all lives inside the ERC20 base as local calls, and the hook virtualizes
+// through C3 flattening.
+
+import std.{*};
+import std.dispatch.{*};
+import std.opcodes as Op;
+
+// --- msg.sender (inline asm: a `caller`-named std fn would self-recurse) ---
+function caller() -> address {
+  let res : word;
+  assembly { res := caller() }
+  return address(res);
+}
+function msgSender() -> address { return caller(); }
+
+// --- events (log3 + compile-time topic0) ---
+function emitTransfer(from: address, to: address, value: uint256) -> () {
+  Op.mstore(0, Typedef.rep(value));
+  Op.log3(0, 32, keccakLit("Transfer(address,address,uint256)"), Typedef.rep(from), Typedef.rep(to));
+}
+function emitApproval(owner: address, spender: address, value: uint256) -> () {
+  Op.mstore(0, Typedef.rep(value));
+  Op.log3(0, 32, keccakLit("Approval(address,address,uint256)"), Typedef.rep(owner), Typedef.rep(spender));
+}
+
+// --- custom errors (full ABI encoding: [selector][args...], revert from off 28) ---
+function revertInsufficientBalance(sender: address, bal: uint256, needed: uint256) -> () {
+  Op.mstore(0, 0xe450d38c); Op.mstore(32, Typedef.rep(sender)); Op.mstore(64, Typedef.rep(bal)); Op.mstore(96, Typedef.rep(needed)); Op.revert(28, 100);
+}
+function revertInsufficientAllowance(spender: address, allowance: uint256, needed: uint256) -> () {
+  Op.mstore(0, 0xfb8f41b2); Op.mstore(32, Typedef.rep(spender)); Op.mstore(64, Typedef.rep(allowance)); Op.mstore(96, Typedef.rep(needed)); Op.revert(28, 100);
+}
+function revertInvalidReceiver(receiver: address) -> () { Op.mstore(0, 0xec442f05); Op.mstore(32, Typedef.rep(receiver)); Op.revert(28, 36); }
+function revertInvalidSender(sender: address) -> () { Op.mstore(0, 0x96c6fd1e); Op.mstore(32, Typedef.rep(sender)); Op.revert(28, 36); }
+function revertInvalidApprover(approver: address) -> () { Op.mstore(0, 0xe602df05); Op.mstore(32, Typedef.rep(approver)); Op.revert(28, 36); }
+function revertInvalidSpender(spender: address) -> () { Op.mstore(0, 0x94280d62); Op.mstore(32, Typedef.rep(spender)); Op.revert(28, 36); }
+function revertInvalidCap(cap: uint256) -> () { Op.mstore(0, 0x392e1e27); Op.mstore(32, Typedef.rep(cap)); Op.revert(28, 36); }
+function revertExceededCap(increasedSupply: uint256, cap: uint256) -> () { Op.mstore(0, 0x9e79f854); Op.mstore(32, Typedef.rep(increasedSupply)); Op.mstore(64, Typedef.rep(cap)); Op.revert(28, 68); }
+function revertOverflow() -> () { Op.mstore(0, 0x4e487b71); Op.mstore(32, 0x11); Op.revert(28, 36); }
+
+// ===========================================================================
+// ERC20 base: all core logic and the `update` hook. Inherited by the extensions,
+// so C3 drops it from codegen; only the leaf `Token` is emitted.
+// ===========================================================================
+contract ERC20 {
+  balances_    : mapping(address, uint256);
+  allowances_  : mapping(address, mapping(address, uint256));
+  totalSupply_ : uint256;
+  name_        : string;
+  symbol_      : string;
+
+  constructor(nm : memory(string), sym : memory(string)) {
+    name_ = nm;
+    symbol_ = sym;
+  }
+
+  public function name() -> memory(string) { return name_; }
+  public function symbol() -> memory(string) { return symbol_; }
+  public function decimals() -> uint256 { return 18; }
+  public function totalSupply() -> uint256 { return totalSupply_; }
+  public function balanceOf(account : address) -> uint256 { return balances_[account]; }
+  public function allowance(owner : address, spender : address) -> uint256 { return allowances_[owner][spender]; }
+
+  public function transfer(to : address, value : uint256) -> bool {
+    transferTokens(msgSender(), to, value);
+    return true;
+  }
+  public function approve(spender : address, value : uint256) -> bool {
+    approveTokens(msgSender(), spender, value);
+    return true;
+  }
+  public function transferFrom(from : address, to : address, value : uint256) -> bool {
+    let spender = msgSender();
+    spendAllowance(from, spender, value);
+    transferTokens(from, to, value);
+    return true;
+  }
+
+  public function mint(to : address, value : uint256) -> () { mintTokens(to, value); }
+  public function burn(value : uint256) -> () { burnTokens(msgSender(), value); }
+  public function burnFrom(account : address, value : uint256) -> () {
+    spendAllowance(account, msgSender(), value);
+    burnTokens(account, value);
+  }
+
+  function transferTokens(from : address, to : address, value : uint256) -> () {
+    if (from == address(0)) { revertInvalidSender(address(0)); }
+    if (to == address(0)) { revertInvalidReceiver(address(0)); }
+    update(from, to, value);
+  }
+  function mintTokens(account : address, value : uint256) -> () {
+    if (account == address(0)) { revertInvalidReceiver(address(0)); }
+    update(address(0), account, value);
+  }
+  function burnTokens(account : address, value : uint256) -> () {
+    if (account == address(0)) { revertInvalidSender(address(0)); }
+    update(account, address(0), value);
+  }
+  function approveTokens(owner : address, spender : address, value : uint256) -> () {
+    if (owner == address(0)) { revertInvalidApprover(address(0)); }
+    if (spender == address(0)) { revertInvalidSpender(address(0)); }
+    allowances_[owner][spender] = value;
+    emitApproval(owner, spender, value);
+  }
+  function spendAllowance(owner : address, spender : address, value : uint256) -> () {
+    let currentAllowance = allowances_[owner][spender];
+    let mx : uint256 = maxVal();
+    if (currentAllowance < mx) {
+      if (currentAllowance < value) { revertInsufficientAllowance(spender, currentAllowance, value); }
+      allowances_[owner][spender] = currentAllowance - value;
+    }
+  }
+
+  // The virtual hook. Body touches only fields + free functions, so it is
+  // reachable by `super` from the overriding extensions below.
+  public function update(from : address, to : address, value : uint256) -> () {
+    if (from == address(0)) {
+      let newSupply = totalSupply_ + value;
+      if (newSupply < totalSupply_) { revertOverflow(); }
+      totalSupply_ = newSupply;
+    } else {
+      let fromBalance = balances_[from];
+      if (fromBalance < value) { revertInsufficientBalance(from, fromBalance, value); }
+      balances_[from] = fromBalance - value;
+    }
+    if (to == address(0)) {
+      totalSupply_ = totalSupply_ - value;
+    } else {
+      balances_[to] = balances_[to] + value;
+    }
+    emitTransfer(from, to, value);
+  }
+}
+
+// ===========================================================================
+// ERC20Pausable: overrides `update` to block movement while paused (OZ's
+// whenNotPaused), then delegates to the next `update` in the MRO via super.
+// ===========================================================================
+contract ERC20Pausable inherits ERC20 {
+  paused_ : uint256;
+
+  public function paused() -> uint256 { return paused_; }
+  public function pause() -> () { paused_ = 1; }
+  public function unpause() -> () { paused_ = 0; }
+
+  public function update(from : address, to : address, value : uint256) -> () {
+    require(paused_ == 0, Error(0xd93c0665)); // EnforcedPause()
+    super.update(from, to, value);
+  }
+}
+
+// ===========================================================================
+// ERC20Capped: overrides `update` to cap the total supply. Delegates first
+// (super.update performs the mint), then rejects if the new supply exceeds cap.
+// ===========================================================================
+contract ERC20Capped inherits ERC20 {
+  cap_ : uint256;
+
+  constructor(capValue : uint256) {
+    if (capValue == 0) { revertInvalidCap(0); }
+    cap_ = capValue;
+  }
+
+  public function cap() -> uint256 { return cap_; }
+
+  public function update(from : address, to : address, value : uint256) -> () {
+    super.update(from, to, value);
+    if (from == address(0)) {
+      if (totalSupply_ > cap_) { revertExceededCap(totalSupply_, cap_); }
+    }
+  }
+}
+
+// ===========================================================================
+// Token: the deployable diamond leaf. Overriding `update` with a bare
+// super.update (as OZ's leaf does with override(...)) makes the whole chain
+// Token -> Capped -> Pausable -> ERC20 explicit. No constructor mint (the cap
+// must be set first); the initial supply is minted by an explicit mint() call.
+// ===========================================================================
+contract Token inherits ERC20Pausable, ERC20Capped {
+  constructor(nm : memory(string), sym : memory(string), initCap : uint256)
+    : ERC20(nm, sym), ERC20Capped(initCap) {
+  }
+
+  public function update(from : address, to : address, value : uint256) -> () {
+    super.update(from, to, value);
+  }
+}

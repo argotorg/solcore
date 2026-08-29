@@ -377,8 +377,10 @@ contractP = do
   keyword "contract"
   n <- simpleNameP
   params <- option [] (parens (typeP `sepBy1` comma))
+  inh <- option [] (keyword "inherits" *> (simpleNameP `sepBy1` comma))
+  impls <- option [] (keyword "implements" *> (simpleNameP `sepBy1` comma))
   ds <- braces (many contractDeclP)
-  return (Contract n params ds)
+  return (Contract n params impls inh ds)
 
 contractDeclP :: Parser ContractDecl
 contractDeclP =
@@ -420,8 +422,32 @@ constructorDeclP = do
   payable <- option False (True <$ keyword "payable")
   keyword "constructor"
   ps <- parens (paramP `sepBy` comma)
+  inits <- option [] (colon *> (baseInitP `sepBy1` comma))
   body <- braces bodyP
-  return (Constructor ps body payable)
+  return (Constructor ps body payable inits)
+
+-- A base-constructor initializer, `Base(arg1, ..., argn)`, in a constructor's
+-- `: Base1(...), Base2(...)` list. The inheritance desugarer forwards the
+-- arguments to the named base's constructor in linearized order.
+baseInitP :: Parser (Name, [Exp])
+baseInitP = do
+  base <- simpleNameP
+  args <- option [] (parens (expP `sepBy` comma))
+  return (base, args)
+
+-- | `interface I { m(args) -> r; ... }` is sugar for a type class over a
+-- reified receiver: `forall self . class self : I { function m(self : self, args) -> r; }`.
+-- Each method signature gains a `self : self` first parameter so the dispatch
+-- variable is a value the inheritance desugarer can thread.
+interfaceP :: Parser TopDecl
+interfaceP = do
+  keyword "interface"
+  iname <- simpleNameP
+  sigs <- braces (many classSigP)
+  let selfTy = TyCon (Name "self") []
+      addSelf (Signature vs ctx n ps rc r pay) =
+        Signature vs ctx n (Typed False (Name "self") selfTy : ps) rc r pay
+  return (TClassDef (Class [selfTy] [] iname [] selfTy (map addSelf sigs)))
 
 topDeclP :: Parser TopDecl
 topDeclP =
@@ -431,6 +457,7 @@ topDeclP =
       TDataDef <$> try dataP,
       TDataDef <$> structP,
       TSym <$> tySymP,
+      interfaceP,
       TContr <$> contractP,
       contractOnlyDeclP,
       withSigPrefix

@@ -1,0 +1,20 @@
+import std.{*};
+import std.dispatch.{*};
+import ERC20;
+
+export { ERC20Capped };
+
+contract ERC20Capped inherits ERC20 {
+  cap_ : uint256;
+
+  public function cap() -> uint256 { 
+    return cap_; 
+  }
+
+  public function update(from : address, to : address, value : uint256) -> () {
+    super.update(from, to, value);
+    if (from == address(0)) {
+      require(totalSupply_ <= cap_, Error(0x9e79f854));
+    }
+  }
+}

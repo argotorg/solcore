@@ -15,6 +15,13 @@ bash ./contest.sh test/examples/dispatch/neg.json
 bash ./contest.sh test/examples/dispatch/miniERC20.json
 bash ./contest.sh test/examples/dispatch/Revert.json
 bash ./contest.sh test/examples/dispatch/ownable.json
+bash ./contest.sh test/examples/dispatch/implements_owner.json
+bash ./contest.sh test/examples/dispatch/inherits_counter.json
+bash ./contest.sh test/examples/dispatch/super_update.json
+bash ./contest.sh test/examples/dispatch/vault_token.json
+bash ./contest.sh test/examples/dispatch/diamond.json
+bash ./contest.sh test/examples/dispatch/vault_multi.json
+bash ./contest.sh test/examples/dispatch/xmod_vault.json
 bash ./contest.sh test/examples/dispatch/hashes.json
 bash ./contest.sh test/examples/dispatch/payable.json
 bash ./contest.sh test/examples/dispatch/payable_ctor.json
@@ -57,7 +64,11 @@ bash ./contest.sh test/examples/dispatch/storage_adt_abi.json
 bash ./contest.sh test/examples/dispatch/storage_dynamic_field.json
 bash ./contest.sh test/examples/dispatch/arraylit.json
 bash ./contest.sh test/examples/dispatch/forloops.json
+bash ./contest.sh oz/ERC20Flat.json
+bash ./contest.sh oz/ERC20Inherit.json
+bash ./contest.sh oz/erc20/Token.json
 bash ./contest.sh test/examples/dispatch/weth9.json
 bash ./contest.sh test/examples/dispatch/derive_ord.json
 bash ./contest.sh test/examples/dispatch/derive_contract_local.json
 bash ./contest.sh test/examples/dispatch/deposit.json
+bash ./contest.sh test/examples/dispatch/inheritance.json

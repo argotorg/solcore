@@ -13,11 +13,12 @@ where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
+import Data.Either (fromRight)
 import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (find, intercalate, isPrefixOf, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
@@ -154,7 +155,7 @@ visit cfg moduleId sourcePath = do
           uniqueResolvedModules
             (importedModules ++ [(exportId, exportPath) | (_, exportId, exportPath) <- exportedModules])
     mapM_
-      (\(targetId, targetPath) -> visit cfg targetId targetPath)
+      (uncurry (visit cfg))
       referencedModules
     modify
       ( \st ->
@@ -174,8 +175,8 @@ resolveImportPath ::
   Import ->
   StateT LoadState (ExceptT String IO) (Mod.ModuleId, FilePath)
 resolveImportPath cfg currentModule currentSourcePath imp =
-  fmap (\(_, targetId, targetPath) -> (targetId, targetPath)) $
-    resolveModuleReference cfg currentModule currentSourcePath ImportReference (importModule imp)
+  (\(_, targetId, targetPath) -> (targetId, targetPath))
+    <$> resolveModuleReference cfg currentModule currentSourcePath ImportReference (importModule imp)
 
 resolveModuleReference ::
   LoaderConfig ->
@@ -287,7 +288,7 @@ normalizeStdModuleName moduleName = moduleName
 rootForLibrary :: LoaderConfig -> Mod.LibraryId -> Either String FilePath
 rootForLibrary cfg Mod.MainLibrary = Right (mainRoot cfg)
 rootForLibrary cfg Mod.StdLibrary =
-  Right (maybe (mainRoot cfg </> "std") id (stdRoot cfg))
+  Right (fromMaybe (mainRoot cfg </> "std") (stdRoot cfg))
 rootForLibrary cfg (Mod.ExternalLibrary libName) =
   case Map.lookup libName (externalRoots cfg) of
     Just root -> Right root
@@ -517,16 +518,26 @@ moduleLocalTypeCheckSurface ::
 moduleLocalTypeCheckSurface graph modulePath = do
   (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
+  let localDecls = topDeclsFrom unit
+  -- Contracts a local contract `inherits` (transitively) must keep their real
+  -- bodies through import, so the inheritance desugarer can flatten them into
+  -- the child; every other imported contract is body-stubbed as usual. The
+  -- inherited base is dropped from this module's output (it is compiled in its
+  -- own module), so keeping its body here only feeds the flattening.
+  inheritEdges <- concat <$> mapM (importedContractInheritEdges graph) importPairs
+  let inheritGraph =
+        Map.fromList (inheritEdges ++ [(name c, contractInherits c) | TContr c <- localDecls])
+      localBaseSeeds = concat [contractInherits c | TContr c <- localDecls]
+      inheritedBases = transitiveInheritedBases inheritGraph localBaseSeeds
   importedDecls <-
     dedupeImportedInstanceDecls
       . concat
-      <$> mapM (typeCheckImportedDecls collidingTypeNames graph) importPairs
+      <$> mapM (typeCheckImportedDecls inheritedBases collidingTypeNames graph) importPairs
   partialImportedTypes <-
     concat <$> mapM (importedPartialTypes collidingTypeNames graph) importPairs
   qualifiedDecls <-
     concat <$> mapM (typeCheckQualifiedImportDecls collidingTypeNames graph) importPairs
-  let localDecls = topDeclsFrom unit
-      visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
+  let visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
   pure
     ModuleTypeCheckSurface
       { moduleSurfaceImports = imports unit,
@@ -536,9 +547,34 @@ moduleLocalTypeCheckSurface graph modulePath = do
         moduleSurfacePartialImportedTypes = normalizePartialImportedTypes partialImportedTypes
       }
 
+-- Body-stub a top decl, except keep the full body of a contract whose name is
+-- in the keep set (a base that a local contract inherits and the inheritance
+-- desugarer must flatten with real method/constructor bodies).
+stubTopDeclBodyUnless :: Set Name -> TopDecl -> TopDecl
+stubTopDeclBodyUnless keep decl@(TContr (Contract n _ _ _ _))
+  | n `Set.member` keep = decl
+stubTopDeclBodyUnless _ decl = stubTopDeclBody decl
+
+-- Contract-name -> declared bases, read (with full fidelity, pre-stub) from a
+-- directly-imported module's public decls, for computing the inherited-base set.
+importedContractInheritEdges :: ModuleGraph -> (Import, Mod.ModuleId) -> Either String [(Name, [Name])]
+importedContractInheritEdges graph (_imp, modulePath) = do
+  publicDecls <- publicTopDeclsForModule graph modulePath
+  pure [(name c, contractInherits c) | TContr c <- publicDecls]
+
+-- Transitive closure of the inherited-base relation, starting from the direct
+-- bases of local contracts and following each base's own declared bases.
+transitiveInheritedBases :: Map Name [Name] -> [Name] -> Set Name
+transitiveInheritedBases edges = go Set.empty
+  where
+    go seen [] = seen
+    go seen (n : ns)
+      | n `Set.member` seen = go seen ns
+      | otherwise = go (Set.insert n seen) (Map.findWithDefault [] n edges ++ ns)
+
 stubTopDeclBody :: TopDecl -> TopDecl
-stubTopDeclBody (TContr (Contract n vs contractDecls)) =
-  TContr (Contract n vs (map stubContractDeclBody contractDecls))
+stubTopDeclBody (TContr (Contract n vs impls inh contractDecls)) =
+  TContr (Contract n vs impls inh (map stubContractDeclBody contractDecls))
 stubTopDeclBody (TFunDef fd) =
   TFunDef (stubFunDefBody fd)
 stubTopDeclBody (TInstDef (Instance d vs predCtx n ts t _funs)) =
@@ -551,8 +587,8 @@ stubContractDeclBody (CFieldDecl (Field n ty _initExp)) =
   CFieldDecl (Field n ty Nothing)
 stubContractDeclBody (CFunDecl fd) =
   CFunDecl (stubFunDefBody fd)
-stubContractDeclBody (CConstrDecl (Constructor params _body payable)) =
-  CConstrDecl (Constructor params [] payable)
+stubContractDeclBody (CConstrDecl (Constructor params _body payable inits)) =
+  CConstrDecl (Constructor params [] payable inits)
 stubContractDeclBody decl =
   decl
 
@@ -571,7 +607,7 @@ moduleValidationTopDeclSegments graph modulePath = do
 
 ensureImportItemsExist :: ModuleGraph -> [(Import, Mod.ModuleId)] -> Either String ()
 ensureImportItemsExist graph importPairs = do
-  (unknownSelectedGroups, unknownHiddenGroups) <- unzip <$> mapM unknowns importPairs
+  (unknownSelectedGroups, unknownHiddenGroups) <- mapAndUnzipM unknowns importPairs
   case (concat unknownSelectedGroups, concat unknownHiddenGroups) of
     ([], []) -> Right ()
     (selectedXs, hiddenXs) ->
@@ -635,8 +671,8 @@ importableNamesForModule graph modulePath = do
   pure (uniqueNames (concatMap topDeclNames publicDecls))
 
 publicItemDeclsForModule :: ModuleGraph -> Mod.ModuleId -> Either String [TopDecl]
-publicItemDeclsForModule graph modulePath =
-  publicItemDeclsForModuleSeen graph Set.empty modulePath
+publicItemDeclsForModule graph =
+  publicItemDeclsForModuleSeen graph Set.empty
 
 publicItemDeclsForModuleSeen :: ModuleGraph -> Set ExportedItemRef -> Mod.ModuleId -> Either String [TopDecl]
 publicItemDeclsForModuleSeen graph seen modulePath = do
@@ -1318,7 +1354,7 @@ topDeclNames :: TopDecl -> [Name]
 topDeclNames (TFunDef (FunDef _ sig _)) = [sigName sig]
 topDeclNames (TSym (TySym n _ _)) = [n]
 topDeclNames (TClassDef (Class _ _ n _ _ _)) = [n]
-topDeclNames (TContr (Contract n _ _)) = [n]
+topDeclNames (TContr (Contract n _ _ _ _)) = [n]
 topDeclNames (TDataDef (DataTy n _ _ _)) = [n]
 topDeclNames (TInstDef _) = []
 topDeclNames (TExportDecl _) = []
@@ -1466,7 +1502,7 @@ renamePatTypeRefs renameMap (Pat n ps) =
   Pat (renamePatNameTypeRefs renameMap n) (map (renamePatTypeRefs renameMap) ps)
 renamePatTypeRefs renameMap (PatDot n ps) =
   PatDot n (map (renamePatTypeRefs renameMap) ps)
-renamePatTypeRefs _ p@(PWildcard) = p
+renamePatTypeRefs _ p@PWildcard = p
 renamePatTypeRefs _ p@(PLit _) = p
 renamePatTypeRefs _ p@(PExp _) = p
 
@@ -1576,10 +1612,12 @@ qualifierNameToExp (QualName q n) =
   ExpVar (Just (qualifierNameToExp q)) (Name n)
 
 renameContractTypeRefs :: Map Name Name -> Contract -> Contract
-renameContractTypeRefs renameMap (Contract n ts ds) =
+renameContractTypeRefs renameMap (Contract n ts impls inh ds) =
   Contract
     n
     (map (renameTyTypeRefs renameMap) ts)
+    impls
+    inh
     (map (renameContractDeclTypeRefs renameMap) ds)
 
 renameContractDeclTypeRefs :: Map Name Name -> ContractDecl -> ContractDecl
@@ -1590,12 +1628,13 @@ renameContractDeclTypeRefs renameMap (CFieldDecl (Field n ty me)) =
     (Field n (renameTyTypeRefs renameMap ty) (renameExpTypeRefs renameMap <$> me))
 renameContractDeclTypeRefs renameMap (CFunDecl fd) =
   CFunDecl (renameFunDefTypeRefs renameMap fd)
-renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body payable)) =
+renameContractDeclTypeRefs renameMap (CConstrDecl (Constructor ps body payable inits)) =
   CConstrDecl
     ( Constructor
         (map (renameParamTypeRefs renameMap) ps)
         (renameBodyTypeRefs renameMap body)
         payable
+        inits
     )
 
 renameClassTypeRefs :: Map Name Name -> Class -> Class
@@ -1743,8 +1782,8 @@ toValidationImportStub (TSym (TySym n _ _)) =
   Just (TSym (stubType n))
 toValidationImportStub d@(TClassDef _) =
   Just d
-toValidationImportStub (TContr (Contract n _ _)) =
-  Just (TContr (Contract n [] []))
+toValidationImportStub (TContr (Contract n _ _ _ _)) =
+  Just (TContr (Contract n [] [] [] []))
 toValidationImportStub (TDataDef (DataTy n _ cs _)) =
   Just (TDataDef (DataTy n [] [Constr (constrName c) [] [] | c <- cs] []))
 toValidationImportStub (TInstDef _) = Nothing
@@ -1781,8 +1820,8 @@ qualifiedFunctionSignatureDecls typeRenameMap qualifier cunit =
     let fd' = renameFunDefTypeRefs typeRenameMap fd
   ]
 
-typeCheckImportedDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
-typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
+typeCheckImportedDecls :: Set Name -> Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
+typeCheckImportedDecls inheritedBases collidingTypeNames graph (imp, modulePath) =
   case imp of
     ImportOnly moduleName selector ->
       importOnlyDecls (Mod.modulePathName moduleName) selector
@@ -1806,7 +1845,7 @@ typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
             | TFunDef fd <- selectedPublicDecls
             ]
           selectedNonFunctionDecls =
-            [ stubTopDeclBody $
+            [ stubTopDeclBodyUnless inheritedBases $
                 renameTopDeclTypeRefs selectedTypeRenameMap $
                   renameTopDeclTypeRefs typeRenameMap decl
             | decl <- selectedPublicDecls,
@@ -1814,7 +1853,7 @@ typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
             ]
           supportNonFunctionDecls =
             map
-              (stubTopDeclBody . renameTopDeclTypeRefs typeRenameMap)
+              (stubTopDeclBodyUnless inheritedBases . renameTopDeclTypeRefs typeRenameMap)
               supportDecls
           selectedDecls = selectedFunctionDecls ++ selectedNonFunctionDecls
       pure (selectedDecls ++ shadowImportedDecls selectedDecls supportNonFunctionDecls)
@@ -1827,7 +1866,7 @@ typeCheckImportedDecls collidingTypeNames graph (imp, modulePath) =
       let typeRenameMap = importedTypeRenameMap collidingTypeNames qualifier publicDecls
           localSupportDecls =
             map
-              (stubTopDeclBody . renameTopDeclTypeRefs typeRenameMap)
+              (stubTopDeclBodyUnless inheritedBases . renameTopDeclTypeRefs typeRenameMap)
               supportDecls
       pure (localSupportDecls ++ shadowImportedDecls localSupportDecls nestedSupportDecls)
 
@@ -2020,7 +2059,7 @@ shadowImportedDecls localDecls =
           ( (termNames, typeNames, n : classNames, instDecls),
             Just d
           )
-    filterDecl (termNames, typeNames, classNames, instDecls) d@(TContr (Contract n _ _))
+    filterDecl (termNames, typeNames, classNames, instDecls) d@(TContr (Contract n _ _ _ _))
       | n `elem` typeNames = ((termNames, typeNames, classNames, instDecls), Nothing)
       | otherwise =
           ( (termNames, n : typeNames, classNames, instDecls),
@@ -2074,7 +2113,7 @@ topDeclTermNames _ = []
 
 topDeclTypeNames :: TopDecl -> [Name]
 topDeclTypeNames (TSym (TySym n _ _)) = [n]
-topDeclTypeNames (TContr (Contract n _ _)) = [n]
+topDeclTypeNames (TContr (Contract n _ _ _ _)) = [n]
 topDeclTypeNames (TDataDef (DataTy n _ _ _)) = [n]
 topDeclTypeNames _ = []
 
@@ -2106,9 +2145,9 @@ renameTopDeclName oldName newName decl
         TClassDef (Class defaults vars n params var sigs)
           | n == oldName ->
               TClassDef (Class defaults vars newName params var sigs)
-        TContr (Contract n params contractDecls)
+        TContr (Contract n params impls inh contractDecls)
           | n == oldName ->
-              TContr (Contract newName params contractDecls)
+              TContr (Contract newName params impls inh contractDecls)
         TDataDef (DataTy n params constrs ds)
           | n == oldName ->
               TDataDef (DataTy newName params constrs ds)
@@ -2118,25 +2157,25 @@ renameTopDeclName oldName newName decl
 selectTopDeclForExportRef :: ExportedItemRef -> TopDecl -> Maybe TopDecl
 selectTopDeclForExportRef itemRef d@(TFunDef (FunDef _ sig _))
   | exportedItemSourceName itemRef == sigName sig,
-    exportedItemConstructors itemRef == Nothing =
+    isNothing (exportedItemConstructors itemRef) =
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
 selectTopDeclForExportRef itemRef d@(TSym (TySym n _ _))
   | exportedItemSourceName itemRef == n,
-    exportedItemConstructors itemRef == Nothing =
+    isNothing (exportedItemConstructors itemRef) =
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
 selectTopDeclForExportRef itemRef d@(TClassDef (Class _ _ n _ _ _))
   | exportedItemSourceName itemRef == n,
-    exportedItemConstructors itemRef == Nothing =
+    isNothing (exportedItemConstructors itemRef) =
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
-selectTopDeclForExportRef itemRef d@(TContr (Contract n _ _))
+selectTopDeclForExportRef itemRef d@(TContr (Contract n _ _ _ _))
   | exportedItemSourceName itemRef == n,
-    exportedItemConstructors itemRef == Nothing =
+    isNothing (exportedItemConstructors itemRef) =
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
@@ -2225,7 +2264,7 @@ ensureNoModuleLookupConflicts graph unit importPairs =
     importTermPair (ImportOnly importPath selector, modulePath) =
       Just
         ( importPath,
-          either (const []) id (resolveSelectedImportTermNames graph modulePath selector)
+          fromRight [] (resolveSelectedImportTermNames graph modulePath selector)
         )
     importTermPair _ =
       Nothing
@@ -2328,8 +2367,8 @@ ensureNoDuplicateSelectedItems (CompUnit imps _) =
     duplicateItems _ = []
 
 loaderDiagnostic :: String -> String -> [String] -> [String] -> String
-loaderDiagnostic code message notes help =
-  loaderDiagnosticWithLabels code message [] notes help
+loaderDiagnostic code message =
+  loaderDiagnosticWithLabels code message []
 
 loaderDiagnosticWithLabels :: String -> String -> [Label] -> [String] -> [String] -> String
 loaderDiagnosticWithLabels code message labels notes help =

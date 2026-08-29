@@ -9,7 +9,7 @@ import Data.Generics (Data, everything, extQ, mkQ)
 import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (isJust, mapMaybe)
 import Data.Monoid (First (..))
 import Solcore.Diagnostics (CompilerError (..), Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, diagnosticCompilerError)
 import Solcore.Frontend.Pretty.TreePretty
@@ -102,7 +102,7 @@ validateDuplicateNamespaces ds = do
   mapM_ validateContractDuplicates [c | S.TContr c <- ds]
 
 validateContractDuplicates :: S.Contract -> Either CompilerError ()
-validateContractDuplicates (S.Contract cname _ decls) = do
+validateContractDuplicates (S.Contract cname _ _ _ decls) = do
   let typeNames = [n | S.CDataDecl (S.DataTy n _ _ _) <- decls]
       termNames = contractTermNames decls
       context = "contract " ++ pretty cname
@@ -112,7 +112,7 @@ validateContractDuplicates (S.Contract cname _ decls) = do
 topLevelTypeNames :: [S.TopDecl] -> [Name]
 topLevelTypeNames = concatMap collect
   where
-    collect (S.TContr (S.Contract n _ _)) = [n]
+    collect (S.TContr (S.Contract n _ _ _ _)) = [n]
     collect (S.TDataDef (S.DataTy n _ _ _)) = [n]
     collect (S.TSym (S.TySym n _ _)) = [n]
     collect (S.TClassDef (S.Class _ _ n _ _ _)) = [n]
@@ -139,7 +139,7 @@ qualifiedConstructorName tyCon conName =
   qualifyName tyCon (constructorLeafName conName)
 
 ensureNoDuplicateNames :: String -> [Name] -> Either CompilerError ()
-ensureNoDuplicateNames ns = ensureNoDuplicateNamesIn "module" ns
+ensureNoDuplicateNames = ensureNoDuplicateNamesIn "module"
 
 ensureNoDuplicateNamesIn :: String -> String -> [Name] -> Either CompilerError ()
 ensureNoDuplicateNamesIn ctx ns names =
@@ -216,17 +216,18 @@ resolveExport (S.ExportItemsFrom path items) =
 instance Resolve S.Contract where
   type Result S.Contract = Contract Name
 
-  resolve c@(S.Contract n vs decls) =
+  resolve c@(S.Contract n vs impls inh decls) =
     do
       let ns = map tyconName vs
           locals = [tn | S.CDataDecl (S.DataTy tn _ _ _) <- decls]
       savedC <- gets currentContract
       savedL <- gets contractLocalTypes
-      modify (\env -> env {currentContract = Just n, contractLocalTypes = locals})
+      savedB <- gets currentContractBases
+      modify (\env -> env {currentContract = Just n, contractLocalTypes = locals, currentContractBases = inh})
       mapM_ addTyVar ns
       mapM_ addContractDecl decls
-      result <- Contract n (map TVar ns) <$> resolve decls `wrapError` c
-      modify (\env -> env {currentContract = savedC, contractLocalTypes = savedL})
+      result <- Contract n (map TVar ns) impls inh <$> resolve decls `wrapError` c
+      modify (\env -> env {currentContract = savedC, contractLocalTypes = savedL, currentContractBases = savedB})
       pure result
 
 -- Qualify a bare, contract-local type name by the contract currently being
@@ -272,13 +273,17 @@ instance Resolve S.ContractDecl where
 instance Resolve S.Constructor where
   type Result S.Constructor = Constructor Name
 
-  resolve c@(S.Constructor ps bdy payable) =
+  resolve c@(S.Constructor ps bdy payable inits) =
     withLocalCtx $ do
       ps' <- resolve ps `wrapError` c
       let args = map paramName ps'
       mapM_ addParameter args
       bdy' <- resolve bdy `wrapError` c
-      pure (Constructor ps' bdy' payable)
+      -- Base names stay unresolved (matched against ancestor contracts by the
+      -- inheritance desugarer); the argument expressions resolve in the
+      -- constructor's parameter scope.
+      inits' <- mapM (\(b, es) -> (b,) <$> (resolve es `wrapError` c)) inits
+      pure (Constructor ps' bdy' payable inits')
 
 instance Resolve S.Field where
   type Result S.Field = Field Name
@@ -297,9 +302,9 @@ instance Resolve S.Class where
       let ns = map tyconName vs
           nt = tyconName t
           nts = map tyconName ts
-      unless (elem nt ns) $ do
+      unless (nt `elem` ns) $ do
         undefinedTypeVariables [nt]
-      unless (all (flip elem ns) nts) $ do
+      unless (all (`elem` ns) nts) $ do
         undefinedTypeVariables (nts \\ ns)
       mapM_ addTyVar ns
       ps' <- resolve ps `wrapError` d
@@ -424,9 +429,9 @@ instance Resolve S.Stmt where
   resolve s@(S.Block blk) =
     locatedLike s locatedStmt <$> withLocalCtx (Block <$> resolve blk)
   resolve s@(S.StmtExp e) =
-    locatedLike s locatedStmt <$> (StmtExp <$> resolve e `wrapError` s)
+    locatedLike s locatedStmt . StmtExp <$> (resolve e `wrapError` s)
   resolve s@(S.Return e) =
-    locatedLike s locatedStmt <$> (Return <$> resolve e `wrapError` s)
+    locatedLike s locatedStmt . Return <$> (resolve e `wrapError` s)
   resolve s@(S.Match es eqns) =
     locatedLike s locatedStmt <$> (Match <$> resolve es <*> resolve eqns)
   resolve s@(S.Asm blk) =
@@ -450,8 +455,8 @@ instance Resolve S.Pat where
   type Result S.Pat = Pat Name
 
   resolve p@S.PWildcard = pure (locatedLike p locatedPat PWildcard)
-  resolve p@(S.PLit l) = locatedLike p locatedPat <$> (PLit <$> resolve l)
-  resolve p@(S.PExp e) = locatedLike p locatedPat <$> (PExp <$> resolve e)
+  resolve p@(S.PLit l) = locatedLike p locatedPat . PLit <$> resolve l
+  resolve p@(S.PExp e) = locatedLike p locatedPat . PExp <$> resolve e
   resolve p@(S.PatDot n ps) = do
     ps' <- resolve ps `wrapError` p
     pure (locatedLike p locatedPat (PCon (dotConstructorMarker n) ps'))
@@ -703,6 +708,31 @@ resolveExp c@(S.ExpVar me n) =
             case fdt of
               Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
               _ -> undefinedName n
+      -- A bare name that resolves to nothing else, used inside a contract,
+      -- becomes `FieldAccess Nothing n` (handled by the field-access pass) in two
+      -- cases:
+      --   * `self` — the reified contract receiver, denoting the current
+      --     contract's `ContractStorage(CCxt)` value; and
+      --   * any name, when the contract `inherits` a base — it is taken to be an
+      --     inherited member, since the base may be in another module whose
+      --     members this resolver cannot see and which the inheritance desugarer
+      --     flattens in.
+      -- This is a fallback, so an actual binding (field/param/function) always
+      -- wins; a non-inheriting contract still gets a crisp undefined-name error.
+      (Nothing, Nothing) -> do
+        inheriting <- gets (not . null . currentContractBases)
+        inC <- gets currentContract
+        if (n == Name "self" || inheriting) && isJust inC
+          then pure (FieldAccess Nothing n)
+          else do
+            sameName <- isSameNameConstructor n
+            if sameName
+              then Con <$> resolveSameNameConstructorName n <*> pure []
+              else do
+                hasQualified <- hasQualifiedConstructorLeaf n
+                if hasQualified
+                  then unqualifiedConstructorError n
+                  else undefinedName n
       _ -> do
         sameName <- isSameNameConstructor n
         if sameName
@@ -712,6 +742,20 @@ resolveExp c@(S.ExpVar me n) =
             if hasQualified
               then unqualifiedConstructorError n
               else undefinedName n
+-- super.m(args) inside a contract: a call to the overridden (parent)
+-- implementation of m. Resolve it to a call with a distinguished super
+-- receiver marker; the inheritance desugarer rewrites it to a generated
+-- super$m$<level>(self, args) function. Keeping this as a dedicated clause
+-- avoids routing super through UFCS/qualifier resolution (which would try to
+-- treat it as a value or a module qualifier and fail).
+resolveExp x@(S.ExpName (Just (S.ExpVar Nothing (Name "super"))) n es) =
+  do
+    inC <- gets currentContract
+    case inC of
+      Just _ -> do
+        es' <- resolve es `wrapError` x
+        pure (Call (Just (Var (Name "super"))) n es')
+      Nothing -> undefinedName (Name "super")
 resolveExp x@(S.ExpName me n es) =
   do
     me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` x)
@@ -1074,7 +1118,13 @@ data Env
     -- private to its contract.  Names stay bare inside the resolver env, so all
     -- lookups are unchanged; only the emitted names are qualified.
     currentContract :: Maybe Name,
-    contractLocalTypes :: [Name]
+    contractLocalTypes :: [Name],
+    -- The `inherits` bases of the contract currently being resolved. When
+    -- non-empty, an otherwise-unresolved bare name inside the contract is taken
+    -- to be an inherited member (field or method) rather than an error, because
+    -- the parent may live in another module whose fields/methods this resolver
+    -- cannot see; the inheritance desugarer flattens the parent's members in.
+    currentContractBases :: [Name]
   }
   deriving (Show)
 
@@ -1116,6 +1166,7 @@ emptyEnv =
     )
     Nothing
     []
+    []
 
 globalEnv :: [S.TopDecl] -> Env
 globalEnv = foldr addTopDecl emptyEnv
@@ -1148,7 +1199,7 @@ moduleLeafName (Name n) = Name n
 moduleLeafName (QualName _ n) = Name n
 
 addTopDecl :: S.TopDecl -> Env -> Env
-addTopDecl (S.TContr (S.Contract n _ _)) env =
+addTopDecl (S.TContr (S.Contract n _ _ _ _)) env =
   addQualifiedModules n $
     env {typeEnv = Map.insert n TContract (typeEnv env)}
 addTopDecl (S.TFunDef (S.FunDef _ sig _)) env =
@@ -1457,12 +1508,12 @@ invalidPatternSyntax p =
     []
 
 diagnosticError :: String -> String -> [String] -> [String] -> ResolveM a
-diagnosticError code message notes help =
-  diagnosticErrorWithLabels code message [] notes help
+diagnosticError code message =
+  diagnosticErrorWithLabels code message []
 
 diagnosticErrorAtName :: String -> String -> Name -> String -> [String] -> [String] -> ResolveM a
-diagnosticErrorAtName code message identName label notes help =
-  diagnosticErrorWithLabels code message (maybe [] pure (primaryNameLabel label identName)) notes help
+diagnosticErrorAtName code message identName label =
+  diagnosticErrorWithLabels code message (maybe [] pure (primaryNameLabel label identName))
 
 diagnosticErrorWithLabels :: String -> String -> [Label] -> [String] -> [String] -> ResolveM a
 diagnosticErrorWithLabels code message labels notes help =

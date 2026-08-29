@@ -1,0 +1,117 @@
+// ERC20 base — one contract per file.
+
+import std.{*};
+import std.dispatch.{*};
+
+export { ERC20 };
+
+contract ERC20 {
+  balances_    : mapping(address, uint256);
+  allowances_  : mapping(address, mapping(address, uint256));
+  totalSupply_ : uint256;
+  name_        : string;
+  symbol_      : string;
+
+  public function name() -> memory(string) { 
+    return name_; 
+  }
+
+  public function symbol() -> memory(string) { 
+    return symbol_; 
+  }
+  
+  public function decimals() -> uint256 { 
+    return 18; 
+  }
+  
+  public function totalSupply() -> uint256 { 
+    return totalSupply_; 
+  }
+  
+  public function balanceOf(account : address) -> uint256 { 
+    return balances_[account]; 
+  }
+  
+  public function allowance(owner : address, spender : address) -> uint256 { 
+    return allowances_[owner][spender]; 
+  }
+
+  public function transfer(to : address, value : uint256) -> bool {
+    transferTokens(msgSender(), to, value);
+    return true;
+  }
+  public function approve(spender : address, value : uint256) -> bool {
+    approveTokens(msgSender(), spender, value);
+    return true;
+  }
+  public function transferFrom(from : address, to : address, value : uint256) -> bool {
+    let spender = msgSender();
+    spendAllowance(from, spender, value);
+    transferTokens(from, to, value);
+    return true;
+  }
+
+  public function mint(to : address, value : uint256) -> () { 
+    mintTokens(to, value); 
+  }
+  
+  public function burn(value : uint256) -> () { 
+    burnTokens(msgSender(), value); 
+  }
+
+  public function burnFrom(account : address, value : uint256) -> () {
+    spendAllowance(account, msgSender(), value);
+    burnTokens(account, value);
+  }
+
+  function transferTokens(from : address, to : address, value : uint256) -> () {
+    require(from != address(0), Error(0x96c6fd1e));
+    require(to != address(0), Error(0xec442f05));
+    update(from, to, value);
+  }
+  function mintTokens(account : address, value : uint256) -> () {
+    require(account != address(0), Error(0xec442f05));
+    update(address(0), account, value);
+  }
+  function burnTokens(account : address, value : uint256) -> () {
+    require(account != address(0), Error(0x96c6fd1e));
+    update(account, address(0), value);
+  }
+  function approveTokens(owner : address, spender : address, value : uint256) -> () {
+    require(owner != address(0), Error(0xe602df05));  
+    require(spender != address(0), Error(0x94280d62));
+    allowances_[owner][spender] = value;
+  }
+  function spendAllowance(owner : address, spender : address, value : uint256) -> () {
+    let currentAllowance = allowances_[owner][spender];
+    let mx : uint256 = maxVal();
+    if (currentAllowance < mx) {
+      require(currentAllowance >= value, Error(0xfb8f41b2));
+      allowances_[owner][spender] = currentAllowance - value;
+    }
+  }
+
+  // The virtual hook. Overridden by ERC20Pausable / ERC20Capped via super.update.
+  public function update(from : address, to : address, value : uint256) -> () {
+    if (from == address(0)) {
+      let newSupply = totalSupply_ + value;
+      require(newSupply >= totalSupply_, Error(0x4e487b71)); // Panic (overflow)
+      totalSupply_ = newSupply;
+    } else {
+      let fromBalance = balances_[from];
+      require(fromBalance >= value, Error(0xe450d38c)); // ERC20InsufficientBalance
+      balances_[from] = fromBalance - value;
+    }
+    if (to == address(0)) {
+      totalSupply_ = totalSupply_ - value;
+    } else {
+      balances_[to] = balances_[to] + value;
+    }
+  }
+
+  function msgSender() -> address {
+    let res : word;
+    assembly { res := caller() }
+    return address(res);
+  }
+}

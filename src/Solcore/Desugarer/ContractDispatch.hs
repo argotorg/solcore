@@ -67,7 +67,7 @@ findFallback :: Contract a -> Maybe (FunDef a)
 findFallback c = listToMaybe [fd | CFunDecl fd <- decls c, isFallback fd]
 
 genNameDecls :: Contract Name -> Set (TopDecl Name)
-genNameDecls (Contract cname _ cdecls) = foldl go Set.empty cdecls
+genNameDecls (Contract cname _ _ _ cdecls) = foldl go Set.empty cdecls
   where
     go acc (CFunDecl (FunDef True sig _))
       | sigName sig == fallbackName = acc
@@ -78,13 +78,13 @@ genNameDecls (Contract cname _ cdecls) = foldl go Set.empty cdecls
     go acc _ = acc
 
 genMainFn :: Bool -> Contract Name -> Contract Name
-genMainFn addMain c@(Contract cname tys cdecls)
-  | addMain = Contract cname tys (CFunDecl mainfn : Set.toList cdecls')
-  | otherwise = Contract cname tys (Set.toList cdecls')
+genMainFn addMain c@(Contract cname tys impls inh cdecls)
+  | addMain = Contract cname tys impls inh (CFunDecl mainfn : Set.toList cdecls')
+  | otherwise = Contract cname tys impls inh (Set.toList cdecls')
   where
     cdecls'' = if hasConstructor cdecls then cdecls else cdecls ++ [defaultConstructor]
     cdecls' = Set.unions (map (transformCDecl cname) cdecls'')
-    defaultConstructor = CConstrDecl (Constructor {constrParams = [], constrBody = [], constrPayable = False})
+    defaultConstructor = CConstrDecl (Constructor {constrParams = [], constrBody = [], constrPayable = False, constrInits = []})
     mainfn = FunDef False (Signature [] [] "main" [] False (Just unit) False) body
     body = [StmtExp (Call Nothing (QualName "RunContract" "exec") [cdata])]
     cdata = Con "Contract" [methods, fallback]
@@ -138,17 +138,17 @@ transformCDecl _ d = Set.singleton d
 transformConstructor :: Name -> Constructor Name -> Set (ContractDecl Name)
 transformConstructor contractName cons
   | all isTyped params = Set.fromList [initFun, copyArgsFun, startFun]
-  | otherwise = error $ "Internal Error: contract constructor must be fully typed"
+  | otherwise = error "Internal Error: contract constructor must be fully typed"
   where
     params = constrParams cons
     payable = constrPayable cons
-    argsTuple = (tupleTyFromList (mapMaybe getTy params))
+    argsTuple = tupleTyFromList (mapMaybe getTy params)
     initFun = CFunDecl (FunDef False initSig (constrBody cons))
     initSig =
       Signature
         { sigVars = mempty,
           sigContext = mempty,
-          sigName = initFunName,
+          sigName = initFunName contractName,
           sigParams = params,
           sigRetComptime = False,
           sigReturn = Just unit,
@@ -238,7 +238,7 @@ transformConstructor contractName cons
         <> callvalueCheck
         <> [ Let False "conargs" (Just argsTuple) (Just (Call Nothing "copy_arguments_for_constructor" [])),
              -- , Match [Var "conargs"] ...
-             Let False "fun" Nothing (Just (Var initFunName)),
+             Let False "fun" Nothing (Just (Var (initFunName contractName))),
              StmtExp $ Call Nothing "fun" [Var "conargs"],
              Asm
                [yulBlock|{
@@ -255,8 +255,15 @@ transformConstructor contractName cons
     getTy (Typed _ _ t) = Just t
     getTy (Untyped {}) = Nothing
 
-initFunName :: Name
-initFunName = "init_"
+-- The constructor's lowered function name. Qualified by the contract so that
+-- distinct contracts' `init` functions do not collide: the deploy code turns
+-- `init` into a first-class value (`Var initFunName` -> defunctionalized invoke),
+-- and a shared name would make two co-emitted contracts (e.g. a base and a
+-- contract that inherits it, across modules) share one `t_init` closure type,
+-- leaving one contract's deploy referencing an invoke instance emitted to the
+-- other's Hull.
+initFunName :: Name -> Name
+initFunName contractName = Name (show contractName ++ "_init_")
 
 mkNameTy :: Name -> Name -> DataTy
 mkNameTy cname fname = DataTy (nameTypeName cname fname) [] [] []

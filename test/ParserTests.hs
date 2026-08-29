@@ -283,7 +283,7 @@ keywordPrefixTests =
         parsesAs
           topDeclP
           "contract C { datavalue : word; }"
-          (TContr (Contract "C" [] [CFieldDecl (Field "datavalue" word Nothing)]))
+          (TContr (Contract "C" [] [] [] [CFieldDecl (Field "datavalue" word Nothing)]))
     ]
 
 stmtTests :: TestTree
@@ -637,17 +637,17 @@ declTests =
         parsesAs
           topDeclP
           "contract Empty { }"
-          (TContr (Contract "Empty" [] [])),
+          (TContr (Contract "Empty" [] [] [] [])),
       testCase "contract with field" $
         parsesAs
           topDeclP
           "contract C { x : word; }"
-          (TContr (Contract "C" [] [CFieldDecl (Field "x" word Nothing)])),
+          (TContr (Contract "C" [] [] [] [CFieldDecl (Field "x" word Nothing)])),
       testCase "contract with initialized field" $
         parsesAs
           topDeclP
           "contract C { x : word = 0; }"
-          (TContr (Contract "C" [] [CFieldDecl (Field "x" word (Just (lit 0)))])),
+          (TContr (Contract "C" [] [] [] [CFieldDecl (Field "x" word (Just (lit 0)))])),
       testCase "contract with function" $
         parsesAs
           topDeclP
@@ -655,6 +655,8 @@ declTests =
           ( TContr
               ( Contract
                   "C"
+                  []
+                  []
                   []
                   [ CFunDecl
                       ( FunDef
@@ -672,6 +674,8 @@ declTests =
           ( TContr
               ( Contract
                   "C"
+                  []
+                  []
                   []
                   [ CFunDecl
                       ( FunDef

@@ -388,12 +388,12 @@ instance (HasType a) => HasType (TopDecl a) where
   bv _ = []
 
 instance (HasType a) => HasType (Contract a) where
-  apply s (Contract n vs ds) =
-    Contract n vs (apply s ds)
+  apply s (Contract n vs impls inh ds) =
+    Contract n vs impls inh (apply s ds)
 
-  fv (Contract _ _ ds) = fv ds
-  mv (Contract _ _ ds) = mv ds
-  bv (Contract _ _ ds) = bv ds
+  fv (Contract _ _ _ _ ds) = fv ds
+  mv (Contract _ _ _ _ ds) = mv ds
+  bv (Contract _ _ _ _ ds) = bv ds
 
 instance (HasType a) => HasType (ContractDecl a) where
   apply s (CFieldDecl fd) =
@@ -432,11 +432,11 @@ instance (HasType a) => HasType (Field a) where
   bv (Field _ t me) = bv t `union` bv me
 
 instance (HasType a) => HasType (Constructor a) where
-  apply s (Constructor ps bd payable) =
-    Constructor (apply s ps) (apply s bd) payable
-  fv (Constructor ps bd _) =
-    fv ps `union` fv bd
-  mv (Constructor ps bd _) =
-    mv ps `union` mv bd
-  bv (Constructor ps bd _) =
-    bv ps `union` bv bd
+  apply s (Constructor ps bd payable ins) =
+    Constructor (apply s ps) (apply s bd) payable [(b, apply s es) | (b, es) <- ins]
+  fv (Constructor ps bd _ ins) =
+    fv ps `union` fv bd `union` fv (concatMap snd ins)
+  mv (Constructor ps bd _ ins) =
+    mv ps `union` mv bd `union` mv (concatMap snd ins)
+  bv (Constructor ps bd _ ins) =
+    bv ps `union` bv bd `union` bv (concatMap snd ins)

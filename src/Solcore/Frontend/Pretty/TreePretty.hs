@@ -118,10 +118,12 @@ instance Pretty PragmaStatus where
   ppr _ = empty
 
 instance Pretty Contract where
-  ppr (Contract n ts ds) =
+  ppr (Contract n ts impls inh ds) =
     text "contract"
       <+> ppr n
       <+> pprTyParams ts
+      <+> (if null inh then empty else text "inherits" <+> commaSep (map ppr inh))
+      <+> (if null impls then empty else text "implements" <+> commaSep (map ppr impls))
       <+> lbrace
       $$ nest 3 (vcat (map ppr ds))
       $$ rbrace
@@ -137,9 +139,13 @@ instance Pretty ContractDecl where
     ppr c
 
 instance Pretty Constructor where
-  ppr (Constructor ps bd payable) =
+  ppr (Constructor ps bd payable inits) =
     (if payable then text "payable" <+> text "constructor" else text "constructor")
       <+> pprParams ps
+      <+> ( if null inits
+              then empty
+              else text ":" <+> commaSep [ppr b <> parens (commaSep (map ppr es)) | (b, es) <- inits]
+          )
       <+> lbrace
       $$ nest 3 (vcat (map ppr bd))
       $$ rbrace

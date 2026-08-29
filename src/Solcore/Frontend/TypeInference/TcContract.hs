@@ -282,7 +282,7 @@ checkTopDecl _ = pure ()
 -- Data types declared inside a contract, including those grouped in a mutual
 -- block.
 contractDataTypes :: Contract Name -> [DataTy]
-contractDataTypes (Contract _ _ ds) = concatMap go ds
+contractDataTypes (Contract _ _ _ _ ds) = concatMap go ds
   where
     go (CDataDecl dt) = [dt]
     go (CMutualDecl ds') = concatMap go ds'
@@ -291,14 +291,14 @@ contractDataTypes (Contract _ _ ds) = concatMap go ds
 -- type inference for contracts
 
 tcContract :: Contract Name -> TcM (Contract Id, [(Name, Scheme)])
-tcContract c@(Contract n vs cdecls) =
+tcContract c@(Contract n vs impls inh cdecls) =
   withLocalEnv $ withContractName n $ do
     ctx' <- gets ctx
     initializeEnv c
     decls' <- mapM tcDecl' cdecls
     ctx1 <- gets ctx
     let ctx2 = Map.toList $ Map.difference ctx1 ctx'
-    pure (Contract n vs decls', ctx2)
+    pure (Contract n vs impls inh decls', ctx2)
   where
     tcDecl' d =
       do
@@ -310,7 +310,7 @@ tcContract c@(Contract n vs cdecls) =
 -- initializing context for a contract
 
 initializeEnv :: Contract Name -> TcM ()
-initializeEnv (Contract _ _ cdecls) = do
+initializeEnv (Contract _ _ _ _ cdecls) = do
   mapM_ checkDecl cdecls
   -- Pre-register annotated function signatures in ctx so that forward references
   -- (e.g. the dispatch-generated 'main') can resolve user-defined functions
@@ -458,7 +458,7 @@ generateTopDeclsFor ps =
 -- type checking contract constructors
 
 tcConstructor :: Constructor Name -> TcM (Constructor Id)
-tcConstructor (Constructor ps bd payable) =
+tcConstructor (Constructor ps bd payable _) =
   do
     -- building parameters for constructors
     ps' <- mapM tcParam ps
@@ -466,7 +466,9 @@ tcConstructor (Constructor ps bd payable) =
         f (Untyped _ (Id n _)) = ((n,) . monotype) <$> freshTyVar
     lctx <- mapM f ps'
     (bd', _, _) <- withLocalCtx lctx (tcBody bd)
-    pure (Constructor ps' bd' payable)
+    -- Base-constructor initializers are consumed by the inheritance desugarer
+    -- (which runs before type checking), so a constructor reaching here has none.
+    pure (Constructor ps' bd' payable [])
 
 -- checking class definitions and adding them to environment
 
