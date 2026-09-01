@@ -1,0 +1,20 @@
+import std.{*};
+import std.dispatch.{*};
+import std.opcodes.{sload, sstore, add};
+
+function counterSlot() -> word {
+  return Typedef.rep(erc7201("diamond.counter.storage"));
+}
+
+contract CounterFacet {
+  constructor() {}
+
+  public function increment() -> () {
+    let s : word = counterSlot();
+    sstore(s, add(sload(s), 1));
+  }
+
+  public function get() -> uint256 {
+    return uint256(sload(counterSlot()));
+  }
+}

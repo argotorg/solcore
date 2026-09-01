@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <map>
 
 using namespace solidity;
 using namespace solidity::test;
@@ -96,16 +97,53 @@ int main(int argc, char** argv)
 			evmcHost->accounts[EVMHost::convertToEVMC(account(i))].balance =
 				EVMHost::convertToEVMC(u256(1) << 100);
 
-		bytes bytecode = fromHex(testdata["bytecode"]);
+		// The default (single-contract) artifact, kept for backwards compatibility.
+		bytes const defaultBytecode = testdata.contains("bytecode") ? fromHex(testdata["bytecode"].get<std::string>()) : bytes{};
+		// Optional named artifacts, for suites that deploy several contracts and
+		// wire them together by address (e.g. a diamond and its facets).
+		std::map<std::string, bytes> artifacts;
+		if (testdata.contains("artifacts"))
+			for (auto& [name, hex]: testdata["artifacts"].items())
+				artifacts[name] = fromHex(hex.get<std::string>());
+
 		h160 sender = account(0);
 		h160 contractAddress;
+		std::map<std::string, h160> deployed;
+
+		// Build calldata from either a "calldata" hex string (legacy) or a
+		// "calldataParts" array whose {"addr": name} parts splice in a deployed
+		// contract's runtime address (left-padded to a 32-byte word), so one
+		// contract can be wired to another by address.
+		auto buildInput = [&](nlohmann::json const& inp) -> bytes {
+			if (inp.contains("calldata"))
+				return fromHex(inp["calldata"].get<std::string>());
+			bytes out;
+			if (inp.contains("calldataParts"))
+				for (auto& part: inp["calldataParts"])
+				{
+					if (part.contains("hex"))
+					{
+						bytes const b = fromHex(part["hex"].get<std::string>());
+						out.insert(out.end(), b.begin(), b.end());
+					}
+					else if (part.contains("addr"))
+					{
+						h160 const a = deployed.at(part["addr"].get<std::string>());
+						out.insert(out.end(), 12, 0); // pad address to 32 bytes
+						bytes const ab = a.asBytes();
+						out.insert(out.end(), ab.begin(), ab.end());
+					}
+				}
+			return out;
+		};
+
 		unsigned i = 0;
 		for (auto& test: testdata["tests"])
 		{
 			++i;
 			evmcHost->newBlock();
 			evmc_message message{};
-			bytes input = fromHex(test["input"]["calldata"].get<std::string>());
+			bytes input = buildInput(test["input"]);
 			message.sender = EVMHost::convertToEVMC(sender);
 			message.value = EVMHost::convertToEVMC(u256(test["input"]["value"].get<std::string>()));
 			auto kind = test["kind"].get<std::string>();
@@ -120,7 +158,8 @@ int main(int argc, char** argv)
 			};
 			if (kind == "constructor")
 			{
-				input = bytecode + input;
+				bytes const& bc = test.contains("artifact") ? artifacts.at(test["artifact"].get<std::string>()) : defaultBytecode;
+				input = bc + input;
 				message.input_data = input.data();
 				message.input_size = input.size();
 
@@ -133,7 +172,8 @@ int main(int argc, char** argv)
 				message.input_data = input.data();
 				message.input_size = input.size();
 				message.kind = EVMC_CALL;
-				message.recipient = EVMHost::convertToEVMC(contractAddress);
+				h160 const target = test.contains("target") ? deployed.at(test["target"].get<std::string>()) : contractAddress;
+				message.recipient = EVMHost::convertToEVMC(target);
 				message.code_address = message.recipient;
 			}
 			else
@@ -157,6 +197,10 @@ int main(int argc, char** argv)
 			if (kind == "constructor")
 			{
 				contractAddress = EVMHost::convertFromEVMC(result.create_address);
+				// Register the created address under its name, so later calls can
+				// target it ("target") or splice it into calldata ("addr").
+				if (test.contains("as"))
+					deployed[test["as"].get<std::string>()] = contractAddress;
 			}
 
 			bool status = result.status_code == EVMC_SUCCESS;

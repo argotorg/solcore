@@ -1,0 +1,70 @@
+{
+  "diamond_e2e": {
+    "contract": "Diamond",
+    "artifacts": { "Diamond": "", "CounterFacet": "" },
+    "artifactSources": { "Diamond": "diamond.solc", "CounterFacet": "counter_facet.solc" },
+    "tests": [
+      {
+        "kind": "constructor",
+        "artifact": "CounterFacet",
+        "as": "facet",
+        "input": { "comment": "deploy CounterFacet -> facet", "calldata": "", "value": "0" }
+      },
+      {
+        "kind": "constructor",
+        "artifact": "Diamond",
+        "as": "diamond",
+        "input": { "comment": "deploy Diamond -> diamond", "calldata": "", "value": "0" }
+      },
+      {
+        "kind": "call",
+        "target": "diamond",
+        "input": {
+          "comment": "diamondAdd(facet, increment selector 0xd09de08a)",
+          "value": "0",
+          "calldataParts": [
+            { "hex": "dda0b64c" },
+            { "addr": "facet" },
+            { "hex": "00000000000000000000000000000000000000000000000000000000d09de08a" }
+          ]
+        },
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "kind": "call",
+        "target": "diamond",
+        "input": {
+          "comment": "diamondAdd(facet, get selector 0x6d4ce63c)",
+          "value": "0",
+          "calldataParts": [
+            { "hex": "dda0b64c" },
+            { "addr": "facet" },
+            { "hex": "000000000000000000000000000000000000000000000000000000006d4ce63c" }
+          ]
+        },
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "kind": "call",
+        "target": "diamond",
+        "input": { "comment": "increment() via diamond -> delegatecall facet", "calldata": "d09de08a", "value": "0" },
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "kind": "call",
+        "target": "diamond",
+        "input": { "comment": "increment() via diamond (again)", "calldata": "d09de08a", "value": "0" },
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "kind": "call",
+        "target": "diamond",
+        "input": { "comment": "get() via diamond -> 2 (state in the diamond's storage)", "calldata": "6d4ce63c", "value": "0" },
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000002"
+        }
+      }
+    ]
+  }
+}

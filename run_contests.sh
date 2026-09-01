@@ -61,3 +61,6 @@ bash ./contest.sh test/examples/dispatch/weth9.json
 bash ./contest.sh test/examples/dispatch/derive_ord.json
 bash ./contest.sh test/examples/dispatch/derive_contract_local.json
 bash ./contest.sh test/examples/dispatch/deposit.json
+bash ./contest.sh test/examples/dispatch/diamond.json
+bash ./contest.sh test/examples/dispatch/counter_facet.json
+bash ./contest.sh test/examples/dispatch/diamond_e2e.json

@@ -1,0 +1,108 @@
+{
+  "diamond": {
+    "bytecode": "",
+    "contract": "Diamond",
+    "tests": [
+      {
+        "input": { "comment": "constructor()", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "diamondAdd(facet=0x11..11, selector=0x11223344)",
+          "calldata": "dda0b64c00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000011223344",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "input": {
+          "comment": "facetAddress(0x11223344) -> facet1",
+          "calldata": "cdffacc60000000000000000000000000000000000000000000000000000000011223344",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000001111111111111111111111111111111111111111"
+        }
+      },
+      {
+        "input": {
+          "comment": "diamondReplace(facet=0x22..22, selector=0x11223344)",
+          "calldata": "24f7604900000000000000000000000022222222222222222222222222222222222222220000000000000000000000000000000000000000000000000000000011223344",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "input": {
+          "comment": "facetAddress(0x11223344) -> facet2 (after replace)",
+          "calldata": "cdffacc60000000000000000000000000000000000000000000000000000000011223344",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000002222222222222222222222222222222222222222"
+        }
+      },
+      {
+        "input": {
+          "comment": "diamondRemove(0x11223344)",
+          "calldata": "5073870a0000000000000000000000000000000000000000000000000000000011223344",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "input": {
+          "comment": "facetAddress(0x11223344) -> 0 (after remove)",
+          "calldata": "cdffacc60000000000000000000000000000000000000000000000000000000011223344",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      {
+        "input": { "comment": "addCode() -> 0", "calldata": "10e6dc1d", "value": "0" },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      {
+        "input": { "comment": "replaceCode() -> 1", "calldata": "a554281a", "value": "0" },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001"
+        }
+      },
+      {
+        "input": { "comment": "removeCode() -> 2", "calldata": "06af7874", "value": "0" },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000002"
+        }
+      },
+      {
+        "input": {
+          "comment": "unregistered selector -> fallback router reverts FunctionNotFound",
+          "calldata": "deadbeef",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "failure", "returndata": "a9ad62f8" }
+      }
+    ]
+  }
+}
