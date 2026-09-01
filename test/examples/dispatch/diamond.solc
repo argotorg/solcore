@@ -1,0 +1,106 @@
+import std.{*};
+import std.dispatch.{*};
+import std.opcodes.{delegatecall, calldatacopy, calldatasize, calldataload, shr, returndatasize, returndatacopy, return_, revert as revert_, gas};
+
+function caller() -> address {
+  let r : word;
+  assembly { r := caller() }
+  return address(r);
+}
+
+function delegateForward(facet : address) -> () {
+  let cds : word = calldatasize();
+  let inPtr : word = allocate_memory(cds);
+  calldatacopy(inPtr, 0, cds);
+  let ok : word = delegatecall(gas(), Typedef.rep(facet), inPtr, cds, 0, 0);
+  let rds : word = returndatasize();
+  let outPtr : word = allocate_memory(rds);
+  returndatacopy(outPtr, 0, rds);
+  if (ok == 0) {
+    revert_(outPtr, rds);
+  }
+  return_(outPtr, rds);
+}
+
+data FacetAction = Add | Replace | Remove;
+
+// Type class + instance over the ADT (value-level; the language showcase)
+// Maps a cut action to its numeric code, mirroring IDiamondCut's enum (0/1/2).
+forall self . class self : ActionCode {
+  function code(x : self) -> uint256;
+}
+instance FacetAction : ActionCode {
+  function code(x : FacetAction) -> uint256 {
+    match x {
+      | FacetAction.Add     => return uint256(0);
+      | FacetAction.Replace => return uint256(1);
+      | FacetAction.Remove  => return uint256(2);
+    }
+  }
+}
+
+// The diamond: a selector -> facet registry with diamondCut
+contract Diamond {
+  owner : address;
+  selectorToFacet : mapping(bytes4, address);
+
+  constructor() {
+    owner = caller();
+  }
+
+  function requireOwner() -> () {
+    require(caller() == owner, Error(0x12b0c500)); // OwnableUnauthorizedAccount()
+  }
+
+  // Shared cut logic, dispatching on the ADT with match.
+  function applyCut(facet : address, action : FacetAction, selector : bytes4) -> () {
+    match action {
+      | FacetAction.Remove  => selectorToFacet[selector] = address(0);
+      | FacetAction.Add     => selectorToFacet[selector] = facet;
+      | FacetAction.Replace => selectorToFacet[selector] = facet;
+    }
+  }
+
+  public function diamondAdd(facet : address, selector : bytes4) -> () {
+    requireOwner();
+    applyCut(facet, .Add, selector);
+  }
+
+  public function diamondReplace(facet : address, selector : bytes4) -> () {
+    requireOwner();
+    applyCut(facet, .Replace, selector);
+  }
+
+  public function diamondRemove(selector : bytes4) -> () {
+    requireOwner();
+    applyCut(address(0), .Remove, selector);
+  }
+
+  // DiamondLoupe (minimal): which facet serves a selector.
+  public function facetAddress(selector : bytes4) -> address {
+    return selectorToFacet[selector];
+  }
+
+  // The diamond router: forward an unmatched call to its registered facet,
+  // running the facet in this diamond's storage context (delegatecall).
+  fallback() -> () {
+    let sel : bytes4 = bytes4(shr(224, calldataload(0)));
+    let facet : address = selectorToFacet[sel];
+    require(Typedef.rep(facet) != 0, Error(0xa9ad62f8)); // function not found
+    delegateForward(facet);
+  }
+
+  // Demonstrate the type-class instance over the ADT.
+  public function addCode() -> uint256 {
+    let a : FacetAction = .Add;
+    return ActionCode.code(a);
+  }
+  public function replaceCode() -> uint256 {
+    let a : FacetAction = .Replace;
+    return ActionCode.code(a);
+  }
+  public function removeCode() -> uint256 {
+    let a : FacetAction = .Remove;
+    return ActionCode.code(a);
+  }
+}

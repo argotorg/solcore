@@ -1,0 +1,30 @@
+{
+  "counter_facet": {
+    "bytecode": "",
+    "contract": "CounterFacet",
+    "tests": [
+      {
+        "input": { "comment": "constructor()", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": { "comment": "increment()", "calldata": "d09de08a", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "input": { "comment": "increment()", "calldata": "d09de08a", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "input": { "comment": "get() -> 2 (state at the ERC-7201 slot)", "calldata": "6d4ce63c", "value": "0" },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000002"
+        }
+      }
+    ]
+  }
+}

@@ -114,36 +114,45 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if ! $SOLCORE_CMD -f "$src" -o "$work_dir"; then
-    echo "Error: sol-core compilation failed"
-    exit 1
-fi
-
-if [[ ! -f "$hull" ]]; then
-    echo "Error: sol-core did not produce output1.hull"
-    exit 1
-fi
-
-echo "Generating Yul..."
 # Allow overriding yule command (useful for Nix builds)
 : ${YULE_CMD:="cabal run exe:yule --"}
-yule_args=("$hull" -o "$yulfile")
-if [[ "$create" == "false" ]]; then
-    yule_args+=(--nodeploy)
-fi
-if ! $YULE_CMD "${yule_args[@]}"; then
-    echo "Error: yule generation failed"
-    exit 1
-fi
 
-echo "Compiling to bytecode..."
-if ! solc --strict-assembly --bin --optimize "$yulfile" | tail -1 | tr -d '\n' > "$hexfile"; then
-    echo "Error: solc compilation failed"
-    exit 1
+# Compile one .solc source into its runtime hex (stdout = hex only; the
+# sol-core/yule chatter goes to stderr so it isn't captured).
+build_hex() {
+    local s="$1" sub="$2"
+    mkdir -p "$sub"
+    if ! $SOLCORE_CMD -f "$s" -o "$sub" >&2; then echo "Error: sol-core failed for $s" >&2; return 1; fi
+    if [[ ! -f "$sub/output1.hull" ]]; then echo "Error: no output1.hull for $s" >&2; return 1; fi
+    local y="$sub/output.yul"
+    local yargs=("$sub/output1.hull" -o "$y")
+    if [[ "$create" == "false" ]]; then yargs+=(--nodeploy); fi
+    if ! $YULE_CMD "${yargs[@]}" >&2; then echo "Error: yule failed for $s" >&2; return 1; fi
+    solc --strict-assembly --bin --optimize "$y" 2>/dev/null | tail -1 | tr -d '\n'
+}
+
+if [[ "$(jq -r ".$suite | has(\"artifactSources\")" "$file")" == "true" ]]; then
+    # Multi-contract suite: compile each named artifact and inject its hex into
+    # the suite's "artifacts" map, so the runner can deploy them and wire them
+    # together by address (e.g. a diamond and its facets).
+    echo "Compiling artifacts..."
+    cp "$file" "$runner_input"
+    for name in $(jq -r ".$suite.artifactSources | keys[]" "$file"); do
+        srcfile=$(jq -r ".$suite.artifactSources[\"$name\"]" "$file")
+        echo "  artifact $name <- $srcfile"
+        hex=$(build_hex "$test_dir/$srcfile" "$work_dir/art_$name") || exit 1
+        tmp="$work_dir/ri_$name.json"
+        jq --arg n "$name" --arg h "$hex" ".${suite}.artifacts[\$n] = \$h" "$runner_input" > "$tmp" && mv "$tmp" "$runner_input"
+    done
+else
+    # Single-contract suite (legacy): compile $src into the "bytecode" field.
+    # Keep the exact `jq <filter> <file>` positional form the concurrency test's
+    # fake jq relies on (test_contest_concurrency.sh).
+    echo "Compiling to Hull..."
+    hex=$(build_hex "$src" "$work_dir") || exit 1
+    printf '%s' "$hex" > "$hexfile"
+    echo "Hex output: $hexfile"
+    jq ".$suite.bytecode |= \"$hex\" " "$file" > "$runner_input"
 fi
-
-echo "Hex output: $hexfile"
-
-jq ".$suite.bytecode |= \"$(cat $hexfile)\" " $file > "$runner_input"
 
 "$testrunner_exe" "$evmone" "$runner_input" "$runner_output"
