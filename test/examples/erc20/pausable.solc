@@ -1,0 +1,25 @@
+// Pausable capability, with its own storage.
+
+import std.{*};
+import std.opcodes.{sload, sstore};
+import store.{*};
+
+export { HasPaused, whenNotPaused };
+
+forall self . class self : HasPaused {
+  function isPaused(s : self) -> uint256;
+  function setPaused(s : self, p : uint256) -> ();
+}
+
+function pausedSlot() -> word { return Typedef.rep(erc7201("mytoken.storage.Pausable")); }
+
+instance AppStore : HasPaused {
+  function isPaused(s : AppStore) -> uint256 { return uint256(sload(pausedSlot())); }
+  function setPaused(s : AppStore, p : uint256) -> () { sstore(pausedSlot(), Typedef.rep(p)); }
+}
+
+// EnforcedPause() selector = 0xd93c0665.
+forall self . self:HasPaused =>
+function whenNotPaused(s : self) -> () {
+  require(HasPaused.isPaused(s) == uint256(0), Error(0xd93c0665));
+}

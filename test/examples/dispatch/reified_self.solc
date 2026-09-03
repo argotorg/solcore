@@ -1,0 +1,64 @@
+import std.{*};
+import std.dispatch.{*};
+
+function caller() -> address {
+  let r : word;
+  assembly { r := caller() }
+  return address(r);
+}
+
+forall self . class self : HasOwner {
+  function getOwner(s : self) -> address;
+  function setOwner(s : self, o : address) -> ();
+}
+
+forall self . class self : HasLedger {
+  function balanceOf(s : self, a : address) -> uint256;
+  function setBalance(s : self, a : address, v : uint256) -> ();
+}
+
+forall self . self:HasOwner =>
+function requireOwner(s : self) -> () {
+  require(caller() == HasOwner.getOwner(s), Error(0x12b0c500));
+}
+
+contract Wallet {
+  owner : address;
+  balances : mapping(address, uint256);
+
+  constructor() {
+    owner = caller();
+  }
+
+  public function owner() -> address {
+    return HasOwner.getOwner(this);
+  }
+
+  public function transferOwnership(o : address) -> () {
+    requireOwner(this);
+    HasOwner.setOwner(this, o);
+  }
+
+  public function balanceOf(a : address) -> uint256 {
+    return HasLedger.balanceOf(this, a);
+  }
+
+  public function credit(a : address, v : uint256) -> () {
+    requireOwner(this);
+    HasLedger.setBalance(this, a, Num.add(HasLedger.balanceOf(this, a), v));
+  }
+}
+
+instance ContractStorage(WalletCxt) : HasOwner {
+  function getOwner(s : ContractStorage(WalletCxt)) -> address { return s.owner; }
+  function setOwner(s : ContractStorage(WalletCxt), o : address) -> () { s.owner = o; }
+}
+
+instance ContractStorage(WalletCxt) : HasLedger {
+  function balanceOf(s : ContractStorage(WalletCxt), a : address) -> uint256 {
+    return s.balances[a];
+  }
+  function setBalance(s : ContractStorage(WalletCxt), a : address, v : uint256) -> () {
+    s.balances[a] = v;
+  }
+}

@@ -1,0 +1,74 @@
+// Votes capability (current voting power), with its own storage.
+//
+// The delegate table and per-delegate voting power live in this module's own
+// ERC-7201 namespace:
+//   root + 0 : delegatee     mapping(address => address)
+//   root + 1 : votingPower   mapping(address => uint256)
+// Provides HasVotes over AppStore plus delegation and the transfer hook.
+//
+// SIMPLIFICATION: no historical checkpoints / getPastVotes (a checkpoint history
+// needs a storage array of a multi-slot struct, which the array element stride,
+// fixed at one slot, does not support today).
+
+import std.{*};
+import std.opcodes.{sload, sstore, log4};
+import store.{*};
+import erc20core.{*};
+
+export { HasVotes, delegateTo, moveVotingPower, votesOnTransfer };
+
+forall self . class self : HasVotes {
+  function getDelegate(s : self, account : address) -> address;
+  function setDelegate(s : self, account : address, d : address) -> ();
+  function votesOf(s : self, account : address) -> uint256;
+  function setVotes(s : self, account : address, v : uint256) -> ();
+}
+
+function votesRoot() -> word { return Typedef.rep(erc7201("mytoken.storage.Votes")); }
+function delegateeSlot(a : address) -> word { return hash2(votesRoot(), Typedef.rep(a)); }
+function votesSlot(a : address) -> word { return hash2(votesRoot() + 1, Typedef.rep(a)); }
+
+instance AppStore : HasVotes {
+  function getDelegate(s : AppStore, account : address) -> address {
+    return address(sload(delegateeSlot(account)));
+  }
+  function setDelegate(s : AppStore, account : address, d : address) -> () {
+    sstore(delegateeSlot(account), Typedef.rep(d));
+  }
+  function votesOf(s : AppStore, account : address) -> uint256 {
+    return uint256(sload(votesSlot(account)));
+  }
+  function setVotes(s : AppStore, account : address, v : uint256) -> () {
+    sstore(votesSlot(account), Typedef.rep(v));
+  }
+}
+
+forall self . self:HasVotes =>
+function moveVotingPower(s : self, fromRep : address, toRep : address, amt : uint256) -> () {
+  if (fromRep != toRep) {
+    if (fromRep != address(0)) {
+      HasVotes.setVotes(s, fromRep, Num.sub(HasVotes.votesOf(s, fromRep), amt));
+    }
+    if (toRep != address(0)) {
+      HasVotes.setVotes(s, toRep, Num.add(HasVotes.votesOf(s, toRep), amt));
+    }
+  }
+}
+
+function emitDelegateChanged(delegator : address, fromD : address, toD : address) -> () {
+  log4(0, 0, keccakLit("DelegateChanged(address,address,address)"),
+       Typedef.rep(delegator), Typedef.rep(fromD), Typedef.rep(toD));
+}
+
+forall self . self:HasVotes, self:HasLedger =>
+function delegateTo(s : self, account : address, delegatee : address) -> () {
+  let old : address = HasVotes.getDelegate(s, account);
+  HasVotes.setDelegate(s, account, delegatee);
+  emitDelegateChanged(account, old, delegatee);
+  moveVotingPower(s, old, delegatee, HasLedger.balanceOf(s, account));
+}
+
+forall self . self:HasVotes =>
+function votesOnTransfer(s : self, from : address, to : address, value : uint256) -> () {
+  moveVotingPower(s, HasVotes.getDelegate(s, from), HasVotes.getDelegate(s, to), value);
+}

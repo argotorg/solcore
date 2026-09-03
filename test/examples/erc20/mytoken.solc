@@ -1,0 +1,117 @@
+// MyToken — the OpenZeppelin Wizard token (ERC20 + Pausable + Ownable + Permit +
+// Votes) in Core Solidity WITHOUT inheritance, with DISTRIBUTED storage.
+
+import std.{*};
+import std.dispatch.{*};
+
+import store.{*};
+import ownable.{*};
+import pausable.{*};
+import erc20core.{*};
+import votes.{*};
+import permit.{*};
+
+function caller() -> address {
+  let r : word;
+  assembly { r := caller() }
+  return address(r);
+}
+function selfAddress() -> address {
+  let a : word;
+  assembly { a := address() }
+  return address(a);
+}
+function chainId() -> uint256 {
+  let c : word;
+  assembly { c := chainid() }
+  return uint256(c);
+}
+function nowTime() -> uint256 {
+  let t : word;
+  assembly { t := timestamp() }
+  return uint256(t);
+}
+
+forall self . self:HasPaused, self:HasLedger, self:HasSupply, self:HasVotes =>
+function tokenUpdate(s : self, from : address, to : address, value : uint256) -> () {
+  whenNotPaused(s);
+  coreUpdate(s, from, to, value);
+  votesOnTransfer(s, from, to, value);
+}
+
+contract MyToken {
+  // No fields: the whole state lives in the capability modules' namespaces.
+
+  constructor(initialOwner : address) {
+    HasOwner.setOwner(appStore(), initialOwner);
+  }
+
+  // --- ERC20 metadata ---
+  public function name() -> memory(string) { return "MyToken"; }
+  public function symbol() -> memory(string) { return "MTK"; }
+  public function decimals() -> uint256 { return uint256(18); }
+
+  // --- ERC20 views ---
+  public function totalSupply() -> uint256 { return HasSupply.totalSupply(appStore()); }
+  public function balanceOf(account : address) -> uint256 { return HasLedger.balanceOf(appStore(), account); }
+  public function allowance(o : address, spender : address) -> uint256 {
+    return HasAllowance.allowanceOf(appStore(), o, spender);
+  }
+
+  // --- ERC20 actions (all movements flow through tokenUpdate) ---
+  public function transfer(to : address, value : uint256) -> bool {
+    tokenUpdate(appStore(), caller(), to, value);
+    return true;
+  }
+  public function transferFrom(from : address, to : address, value : uint256) -> bool {
+    spendAllowance(appStore(), from, caller(), value);
+    tokenUpdate(appStore(), from, to, value);
+    return true;
+  }
+  public function approve(spender : address, value : uint256) -> bool {
+    approveVal(appStore(), caller(), spender, value);
+    return true;
+  }
+
+  // Added for testability (the Wizard omitted Mintable): owner-gated mint.
+  public function mint(to : address, value : uint256) -> () {
+    requireOwner(appStore(), caller());
+    tokenUpdate(appStore(), address(0), to, value);
+  }
+
+  // --- Ownable ---
+  public function owner() -> address { return HasOwner.getOwner(appStore()); }
+  public function transferOwnership(newOwner : address) -> () {
+    requireOwner(appStore(), caller());
+    HasOwner.setOwner(appStore(), newOwner);
+  }
+
+  // --- Pausable (owner-gated) ---
+  public function paused() -> uint256 { return HasPaused.isPaused(appStore()); }
+  public function pause() -> () {
+    requireOwner(appStore(), caller());
+    HasPaused.setPaused(appStore(), uint256(1));
+  }
+  public function unpause() -> () {
+    requireOwner(appStore(), caller());
+    HasPaused.setPaused(appStore(), uint256(0));
+  }
+
+  // --- Votes (current voting power) ---
+  public function delegate(delegatee : address) -> () {
+    delegateTo(appStore(), caller(), delegatee);
+  }
+  public function getVotes(account : address) -> uint256 {
+    return HasVotes.votesOf(appStore(), account);
+  }
+
+  // --- Permit (EIP-2612) ---
+  public function nonces(o : address) -> uint256 { return HasNonces.nonceOf(appStore(), o); }
+  public function DOMAIN_SEPARATOR() -> bytes32 {
+    return permitDomainSeparator(selfAddress(), chainId());
+  }
+  public function permit(o : address, spender : address, value : uint256, deadline : uint256,
+                         v : uint256, r : bytes32, s : bytes32) -> () {
+    runPermit(appStore(), o, spender, value, deadline, nowTime(), chainId(), selfAddress(), v, r, s);
+  }
+}

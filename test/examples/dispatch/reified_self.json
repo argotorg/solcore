@@ -1,0 +1,76 @@
+{
+  "reified_self": {
+    "bytecode": "",
+    "contract": "Wallet",
+    "tests": [
+      {
+        "input": { "comment": "constructor() sets owner = deployer", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": { "comment": "owner() -> deployer, via HasOwner.getOwner(self)", "calldata": "8da5cb5b", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000001212121212121212121212121212120000000012" }
+      },
+      {
+        "input": {
+          "comment": "credit(0xaa, 99) by owner -> writes s.balances[0xaa]",
+          "calldata": "ef6506db00000000000000000000000000000000000000000000000000000000000000aa0000000000000000000000000000000000000000000000000000000000000063",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(0xaa) -> 99, via HasLedger.balanceOf(self) (s.balances[0xaa])",
+          "calldata": "70a0823100000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000063" }
+      },
+      {
+        "input": {
+          "comment": "credit(0xaa, 1) -> read-modify-write via s.balances[0xaa]",
+          "calldata": "ef6506db00000000000000000000000000000000000000000000000000000000000000aa0000000000000000000000000000000000000000000000000000000000000001",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(0xaa) -> 100",
+          "calldata": "70a0823100000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000064" }
+      },
+      {
+        "input": {
+          "comment": "transferOwnership(0xbb) by owner -> writes s.owner = 0xbb",
+          "calldata": "f2fde38b00000000000000000000000000000000000000000000000000000000000000bb",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "" }
+      },
+      {
+        "input": { "comment": "owner() -> 0xbb", "calldata": "8da5cb5b", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "00000000000000000000000000000000000000000000000000000000000000bb" }
+      },
+      {
+        "input": {
+          "comment": "credit by former owner now reverts (requireOwner guard, default method over HasOwner)",
+          "calldata": "ef6506db00000000000000000000000000000000000000000000000000000000000000aa0000000000000000000000000000000000000000000000000000000000000005",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "failure", "returndata": "12b0c500" }
+      }
+    ]
+  }
+}

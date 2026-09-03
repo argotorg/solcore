@@ -584,6 +584,22 @@ evmc::Result EVMHost::precompileECRecover(evmc_message const& _message) noexcept
 				fromHex("000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"),
 				gas_cost
 			}
+		},
+		{
+			// EIP-2612 permit signature for the ERC20 MyToken example
+			// (test/examples/erc20/mytoken): a valid signature over the Permit
+			// digest, recovering the token owner 0xf39F…2266. Regenerate with the
+			// example's signing steps if the deployed address ever changes.
+			fromHex(
+				"c6f99f1b7b4d77fa6583c21b880a33b599217bfc9d2b14395c74531acd7dccb9"
+				"000000000000000000000000000000000000000000000000000000000000001b"
+				"6ba1f3884145de694ba07f97c9373ccac5fa13e4610f8c3db36fc01f1ae8010c"
+				"71478489edf88cd1dda2ba5654a82175cdf6cbfd15c37650eb95ecf82c443f4c"
+			),
+			{
+				fromHex("000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"),
+				gas_cost
+			}
 		}
 	};
 	evmc::Result result = precompileGeneric(_message, inputOutput, true /* _ignoresTrailingInput */);
