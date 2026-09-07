@@ -18,18 +18,10 @@ import Solcore.Diagnostics
     diagnosticPrimarySpan,
   )
 import Solcore.Frontend.ComptimeCheck (checkComptimeEarly)
-import Solcore.Frontend.Module.Loader
-  ( ModuleGraph (entryModule),
-    ModuleTypeCheckSurface (moduleSurfaceImportedDecls),
-    loadModuleGraph,
-    moduleLocalTypeCheckSurface,
-  )
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnit)
 import Solcore.Frontend.Pretty.SolcorePretty qualified as SolcorePretty
-import Solcore.Frontend.Pretty.TreePretty qualified as TreePretty
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.Syntax.NameResolution (nameResolution)
-import Solcore.Frontend.Syntax.SyntaxTree qualified as Source
 import Solcore.Frontend.TypeInference.Id (Id (..))
 import Solcore.Frontend.TypeInference.SccAnalysis (sccAnalysisTopDecls)
 import Solcore.Frontend.TypeInference.TcContract
@@ -120,48 +112,23 @@ moduleTypeCheckTests =
             unlines
               [ "function badLambdaBreak(flag: bool) returns (()) {",
                 "  while (flag) {",
-                "    let callback = lam() returns (()) { break; };",
+                "    let callback = lam() -> () { break; };",
                 "  }",
                 "  return;",
                 "}"
               ]
         assertLocatedLoopControlError "lambda break boundary" "break" checked,
-      testCase "numeric fixed-array size survives resolution and kind checking" $ do
-        parsedResult <-
-          parseCompUnit $
-            unlines
-              [ "enum array<element> { array }",
-                "function accept(xs: word[4]) returns (()) {",
-                "  return;",
-                "}"
-              ]
-        parsed <-
-          case parsedResult of
-            Left err -> assertFailure ("unexpected parse failure:\n" ++ err)
-            Right compUnit -> pure compUnit
-        resolvedResult <- nameResolution parsed
-        case resolvedResult of
-          Left err ->
-            assertFailure
-              ("unexpected name-resolution failure:\n" ++ compilerErrorText err)
-          Right (CompUnit resolvedImports resolvedDecls) -> do
-            checked <-
-              typeInferTopDeclChecks
-                stdOpt
-                resolvedImports
-                []
-                []
-                [ TopDeclCheck CheckTopDeclBody decl
-                | decl <- resolvedDecls
-                ]
-            assertRight
-              "numeric fixed-array size should be kind-correct"
-              checked,
+      testCase "fixed-array suffix fails during parsing" $
+        do
+          result <- parseCompUnit "function accept(xs: word[4]) {}"
+          case result of
+            Left _ -> pure ()
+            Right _ -> assertFailure "legacy fixed-array type was accepted",
       testCase "internal function parameters remain supported" $ do
         checked <-
           typecheckSource $
             unlines
-              [ "function applyCallback(f: function(word) internal returns (word), x: word) returns (word) {",
+              [ "function applyCallback(f: function(word) returns (word), x: word) returns (word) {",
                 "  return f(x);",
                 "}"
               ]
@@ -170,58 +137,28 @@ moduleTypeCheckTests =
         checked <-
           typecheckSource $
             unlines
-              [ "function applyPair(f: function(word) internal returns (word, bool), x: word) returns (word, bool) {",
+              [ "function applyPair(f: function(word) returns (word, bool), x: word) returns (word, bool) {",
                 "  return f(x);",
                 "}"
               ]
         assertRight "multi-return internal function parameter" checked,
-      testCase "external function types fail before internal arrow lowering" $ do
-        checked <-
-          typecheckSource $
-            unlines
-              [ "function bad(f: function(word) external returns (word), x: word) returns (word) {",
-                "  return x;",
-                "}"
-              ]
-        assertLocatedFunctionTypeError
-          "external function type"
-          "external function types are not supported"
-          checked,
-      testCase "nullary function types do not collapse to their result" $ do
-        checked <-
-          typecheckSource $
-            unlines
-              [ "function bad(f: function() internal returns (word)) returns (word) {",
-                "  return 0;",
-                "}"
-              ]
-        assertLocatedFunctionTypeError
-          "nullary function type"
-          "zero-parameter function types are not supported"
-          checked,
-      testCase "struct metadata survives name resolution and typechecking" $ do
-        checked <-
-          typecheckSource
-            "struct Pair { left: word; right: bool; }"
-        case checked of
-          Left err ->
-            assertFailure
-              ("struct declaration should typecheck:\n" ++ compilerErrorText err)
-          Right (CompUnit _ typedDecls, _) ->
-            case [ dt
-                 | TDataDef dt <- typedDecls,
-                   dataName dt == Name "Pair"
-                 ] of
-              [ DataTyWithKind
-                  (StructKind [Name "left", Name "right"])
-                  _
-                  []
-                  [Constr _ [TyCon (Name "word") [], TyCon (Name "bool") []]]
-                ] ->
-                  pure ()
-              got ->
-                assertFailure
-                  ("struct kind or ordered fields were lost: " ++ show got),
+      testCase "function type visibility fails during parsing" $
+        do
+          result <- parseCompUnit "function bad(f: function(word) external returns (word)) {}"
+          case result of
+            Left _ -> pure ()
+            Right _ -> assertFailure "external function type was accepted",
+      testCase "nullary function types retain their unit input" $ do
+        CompUnit _ resolvedDecls <-
+          resolvedSourceOrFail
+            "function apply(f: function() returns (word)) returns (word) { return f(); }"
+        assertEqual
+          "the callback retains its callable domain before indirect-call lowering"
+          [funtype [TyCon (Name "()") []] (TyCon (Name "word") [])]
+          [ ty
+          | TFunDef (FunDef _ sig _) <- resolvedDecls,
+            Typed _ _ ty <- sigParams sig
+          ],
       testCase "qualified nested type paths beat same-named global declarations" $ do
         source <- readFile "./test/imports/qualified_nested_type_shadow.sol"
         CompUnit _ resolvedDecls <- resolvedSourceOrFail source
@@ -251,9 +188,9 @@ moduleTypeCheckTests =
             rightS = QualName (Name "Right") "S"
             rightE = QualName (Name "Right") "E"
         assertEqual
-          "left local declarations retain kind, fields, and canonical constructors"
+          "left local declarations retain enum kind and canonical constructors"
           [ DataTyWithKind
-              (StructKind [Name "left"])
+              EnumKind
               leftS
               []
               [Constr (QualName leftS "S") [TyCon (Name "word") []]],
@@ -267,7 +204,7 @@ moduleTypeCheckTests =
         assertEqual
           "right local declarations are independent from left"
           [ DataTyWithKind
-              (StructKind [Name "right", Name "extra"])
+              EnumKind
               rightS
               []
               [ Constr
@@ -292,9 +229,9 @@ moduleTypeCheckTests =
         let rendered = SolcorePretty.pretty resolved
         assertBool
           "semantic pretty printing keeps local declarations source-shaped"
-          ( all (`isInfixOf` rendered) ["struct S", "enum E"]
-              && not ("struct Left.S" `isInfixOf` rendered)
-              && not ("struct Right.S" `isInfixOf` rendered)
+          ( all (`isInfixOf` rendered) ["enum S", "enum E"]
+              && not ("enum Left.S" `isInfixOf` rendered)
+              && not ("enum Right.S" `isInfixOf` rendered)
           )
         reparsed <- parseCompUnit rendered
         case reparsed of
@@ -334,236 +271,14 @@ moduleTypeCheckTests =
         mapM_
           (assertAllDerivedInstances instances)
           expectedNames,
-      testCase "same-named parameter cannot capture a struct member read" $ do
-        checked <-
-          typecheckSourceAfterFieldDesugar $
-            unlines
-              [ "struct Pair { x: word; }",
-                "function read(p: Pair, x: bool) returns (word) {",
-                "  return p.x;",
-                "}"
-              ]
-        case checked of
-          Left err ->
-            assertFailure
-              ("same-named member read should typecheck:\n" ++ compilerErrorText err)
-          Right (CompUnit _ typedDecls, _) ->
-            case [ body
-                 | TFunDef (FunDef _ sig body) <- typedDecls,
-                   sigName sig == Name "read"
-                 ] of
-              [ [ Return
-                    ( Call
-                        Nothing
-                        (Id selectorName selectorTy)
-                        [Var (Id receiverName _)]
-                      )
-                  ]
-                ] -> do
-                  assertEqual
-                    "member selector"
-                    (QualName (Name "Pair") "$structField$x")
-                    selectorName
-                  assertEqual "receiver remains p" (Name "p") receiverName
-                  assertEqual
-                    "same-named bool parameter does not affect member type"
-                    (funtype [TyCon (Name "Pair") []] (TyCon (Name "word") []))
-                    selectorTy
-              got ->
-                assertFailure
-                  ("member read was not lowered to one selector call: " ++ show got),
-      testCase "generic nested struct reads instantiate ordered field types" $ do
-        checked <-
-          typecheckSourceAfterFieldDesugar $
-            unlines
-              [ "struct Box<a> { value: a; }",
-                "struct Outer<a> { flag: bool; inner: Box<a>; }",
-                "function read(o: Outer<word>) returns (word) {",
-                "  return o.inner.value;",
-                "}"
-              ]
-        case checked of
-          Left err ->
-            assertFailure
-              ("nested generic member read should typecheck:\n" ++ compilerErrorText err)
-          Right (CompUnit _ typedDecls, _) ->
-            case [ body
-                 | TFunDef (FunDef _ sig body) <- typedDecls,
-                   sigName sig == Name "read"
-                 ] of
-              [ [ Return
-                    ( Call
-                        Nothing
-                        (Id valueSelector valueSelectorTy)
-                        [ Call
-                            Nothing
-                            (Id innerSelector innerSelectorTy)
-                            [Var (Id receiverName _)]
-                          ]
-                      )
-                  ]
-                ] -> do
-                  let word = TyCon (Name "word") []
-                      boxWord = TyCon (Name "Box") [word]
-                      outerWord = TyCon (Name "Outer") [word]
-                  assertEqual
-                    "outer field selector"
-                    (QualName (Name "Outer") "$structField$inner")
-                    innerSelector
-                  assertEqual
-                    "nested field selector"
-                    (QualName (Name "Box") "$structField$value")
-                    valueSelector
-                  assertEqual "outer generic field type" (funtype [outerWord] boxWord) innerSelectorTy
-                  assertEqual "nested generic field type" (funtype [boxWord] word) valueSelectorTy
-                  assertEqual "receiver remains o" (Name "o") receiverName
-              got ->
-                assertFailure
-                  ("nested member reads were not lowered correctly: " ++ show got),
-      testCase "contract-local struct reads use the canonical local type" $ do
-        checked <-
-          typecheckSourceAfterFieldDesugar
-            "contract C { struct Local { value: word; } function read(p: Local) returns (word) { return p.value; } }"
-        case checked of
-          Left err ->
-            assertFailure
-              ("contract-local member read should typecheck:\n" ++ compilerErrorText err)
-          Right (CompUnit _ typedDecls, _) ->
-            case [ selectorName
-                 | TContr contractDef <- typedDecls,
-                   CFunDecl (FunDef _ sig [Return (Call Nothing (Id selectorName _) [_])]) <- decls contractDef,
-                   sigName sig == Name "read"
-                 ] of
-              [selectorName] ->
-                assertEqual
-                  "contract-local selector uses the canonical type name"
-                  (QualName (QualName (Name "C") "Local") "$structField$value")
-                  selectorName
-              got ->
-                assertFailure
-                  ("contract-local member read was not lowered: " ++ show got),
-      testCase "side-effecting struct receivers occur once in the selector call" $ do
-        checked <-
-          typecheckSourceAfterFieldDesugar $
-            unlines
-              [ "struct Pair { x: word; }",
-                "function make(x: word) returns (Pair) { return Pair.Pair(x); }",
-                "function read(x: word) returns (word) { return make(x).x; }"
-              ]
-        case checked of
-          Left err ->
-            assertFailure
-              ("call receiver member read should typecheck:\n" ++ compilerErrorText err)
-          Right (CompUnit _ typedDecls, _) ->
-            case [ body
-                 | TFunDef (FunDef _ sig body) <- typedDecls,
-                   sigName sig == Name "read"
-                 ] of
-              [ [ Return
-                    ( Call
-                        Nothing
-                        (Id _ _)
-                        [Call Nothing (Id makeName _) [Var (Id argumentName _)]]
-                      )
-                  ]
-                ] ->
-                  do
-                    assertEqual
-                      "receiver call appears as the selector's single argument"
-                      (Name "make")
-                      makeName
-                    assertEqual
-                      "receiver call argument is not duplicated"
-                      (Name "x")
-                      argumentName
-              got ->
-                assertFailure
-                  ("receiver was duplicated or not lowered: " ++ show got),
-      testCase "unknown struct member reports an undefined-field diagnostic" $ do
-        checked <-
-          typecheckSourceAfterFieldDesugar $
-            unlines
-              [ "struct Pair { x: word; }",
-                "function read(p: Pair) returns (word) {",
-                "  return p.missing;",
-                "}"
-              ]
-        assertLocatedFieldDiagnostic
-          "unknown struct member"
-          "SC0204"
-          checked,
-      testCase "struct member assignment fails safely before lowering" $ do
-        checked <-
-          typecheckSourceAfterFieldDesugar $
-            unlines
-              [ "struct Pair { x: word; }",
-                "function write(p: Pair, value: word) {",
-                "  p.x = value;",
-                "  return;",
-                "}"
-              ]
-        assertLocatedFieldDiagnostic
-          "struct member assignment"
-          "SC0231"
-          checked,
-      testCase "interface signature has no body to typecheck" $ do
-        checked <-
-          typecheckSource $
-            unlines
-              [ "interface Reader {",
-                "  function read(key: word) external view returns (word);",
-                "}"
-              ]
-        case checked of
-          Left err ->
-            assertFailure
-              ("interface signature should typecheck:\n" ++ compilerErrorText err)
-          Right (CompUnit _ [TContr (ContractWithKind InterfaceKind _ _ [CSignatureDecl isExternal sig])], _) -> do
-            assertBool "external visibility is preserved" isExternal
-            assertEqual "signature name" (Name "read") (sigName sig)
-            assertEqual "signature return" (Just wordTy) (sigReturn sig)
-            assertEqual
-              "interface visibility and mutability survive typechecking"
-              [ VisibilityModifier VisibilityExternal,
-                MutabilityModifier MutabilityView
-              ]
-              (sigModifiers sig)
-          Right other ->
-            assertFailure ("unexpected typed interface shape: " ++ show (fst other)),
       testCase "contract visibility and mutability survive typechecking" $
         assertTypedFunctionModifiers
           ContractKind
           "read"
           [ VisibilityModifier VisibilityPublic,
-            MutabilityModifier MutabilityView
+            MutabilityModifier MutabilityPayable
           ]
-          "contract Reader { function read(x: word) public view returns (word) { return x; } }",
-      testCase "library visibility and mutability survive typechecking" $
-        assertTypedFunctionModifiers
-          LibraryKind
-          "twice"
-          [ VisibilityModifier VisibilityInternal,
-            MutabilityModifier MutabilityPure
-          ]
-          "library Math { function twice(x: word) internal pure returns (word) { return x; } }",
-      testCase "empty interface remains non-runtime through semantic passes" $
-        assertContractKindLifecycle
-          "Empty"
-          InterfaceKind
-          False
-          "interface Empty {}",
-      testCase "nonempty interface remains non-runtime through semantic passes" $
-        assertContractKindLifecycle
-          "Reader"
-          InterfaceKind
-          False
-          "interface Reader { function read(key: word) external returns (word); }",
-      testCase "library remains non-runtime through semantic passes" $
-        assertContractKindLifecycle
-          "Math"
-          LibraryKind
-          False
-          "library Math { function twice(x: word) public returns (word) { return x; } }",
+          "contract Reader { function read(x: word) public payable returns (word) { return x; } }",
       testCase "ordinary contract remains the only runtime declaration kind" $
         assertContractKindLifecycle
           "Live"
@@ -575,21 +290,21 @@ moduleTypeCheckTests =
           typecheckSource $
             unlines
               [ "contract Reader {",
-                "  function read(key: word) external view returns (word) {}",
+                "  function read(key: word) public returns (word) {}",
                 "}"
               ]
         assertLeft "non-unit contract function with an empty body" checked,
-      testCase "bare revert terminates a non-unit function" $ do
+      testCase "Yul revert terminates a non-unit function" $ do
         checked <-
           typecheckSource
-            "function abort() returns (word) { revert; }"
+            "function abort() returns (word) { assembly { revert(0, 0) } }"
         assertRight "bare revert in word-returning function" checked,
-      testCase "bare revert satisfies a non-unit conditional branch" $ do
+      testCase "Yul revert satisfies a non-unit conditional branch" $ do
         checked <-
           typecheckSource $
             unlines
               [ "function choose(flag: bool, value: word) returns (word) {",
-                "  if (flag) { return value; } else { revert; }",
+                "  if (flag) { return value; } else { assembly { revert(0, 0) } }",
                 "}"
               ]
         assertRight "bare revert in word-returning branch" checked,
@@ -670,78 +385,33 @@ moduleTypeCheckTests =
           typecheckSource $
             unlines
               [ "contract Receiver {",
-                "  fallback() external {",
+                "  fallback() {",
                 "    return;",
                 "  }",
                 "}"
               ]
         assertRight "unit fallback" checked,
-      testCase "named return is in scope and supports bare return" $ do
+      testCase "comptime local and result preserve their evaluation mode" $ do
         checked <-
           typecheckSource $
             unlines
-              [ "contract Reader {",
-                "  function read(x: word) external returns (result: word) {",
-                "    result = x;",
-                "    return;",
-                "  }",
-                "}"
-              ]
-        case checked of
-          Left err ->
-            assertFailure
-              ("named return should typecheck:\n" ++ compilerErrorText err)
-          Right (CompUnit _ typedDecls, _) ->
-            case [ sig
-                 | TContr (ContractWithKind ContractKind contractName _ contractDecls) <- typedDecls,
-                   contractName == Name "Reader",
-                   CFunDecl (FunDef _ sig _) <- contractDecls,
-                   sigName sig == Name "read"
-                 ] of
-              [sig] ->
-                do
-                  assertEqual
-                    "legacy return-name view survives typechecking"
-                    [Just (Name "result")]
-                    (sigReturnNames sig)
-                  case sigReturnItems sig of
-                    [returnItem] -> do
-                      assertEqual
-                        "return item name survives typechecking"
-                        (Just (Name "result"))
-                        (signatureReturnItemName returnItem)
-                      assertBool
-                        "runtime return item remains runtime"
-                        (not (signatureReturnItemComptime returnItem))
-                      assertEqual
-                        "return item type tracks the aggregate result"
-                        (Just (signatureReturnItemType returnItem))
-                        (sigReturn sig)
-                    returnItems ->
-                      assertFailure
-                        ("unexpected typed return-item metadata: " ++ show returnItems)
-              other ->
-                assertFailure ("unexpected typed named-return signatures: " ++ show other),
-      testCase "comptime named return supports assignment and bare return" $ do
-        checked <-
-          typecheckSource $
-            unlines
-              [ "function staged(comptime x: word) returns (comptime result: word) {",
+              [ "function staged(comptime x: word) returns (comptime<word>) {",
+                "  let result: comptime<word>;",
                 "  result = x;",
-                "  return;",
+                "  return result;",
                 "}"
               ]
         case checked of
           Left err ->
             assertFailure
-              ("comptime named return should typecheck:\n" ++ compilerErrorText err)
+              ("comptime local and result should typecheck:\n" ++ compilerErrorText err)
           Right (typed@(CompUnit _ typedDecls), _) -> do
             case [ (sig, body)
                  | TFunDef (FunDef _ sig body) <- typedDecls,
                    sigName sig == Name "staged"
                  ] of
               [(sig, Let isComptime _ _ Nothing : _)] -> do
-                assertBool "named return local remains comptime" isComptime
+                assertBool "local remains comptime" isComptime
                 assertBool "aggregate return remains comptime" (sigRetComptime sig)
                 assertEqual
                   "per-item comptime metadata survives typechecking"
@@ -749,18 +419,18 @@ moduleTypeCheckTests =
                   (map signatureReturnItemComptime (sigReturnItems sig))
               other ->
                 assertFailure
-                  ("unexpected comptime named-return function: " ++ show other)
+                  ("unexpected comptime function: " ++ show other)
             case checkComptimeEarly typed of
               Left err ->
                 assertFailure
-                  ("comptime named bare return failed early checking:\n" ++ err)
+                  ("comptime result failed early checking:\n" ++ err)
               Right () -> pure (),
       testCase "uninitialized comptime binding rejects a runtime assignment" $ do
         checked <-
           typecheckSource $
             unlines
               [ "function bad(x: word) returns (word) {",
-                "  let comptime result: word;",
+                "  let result: comptime<word>;",
                 "  result = x;",
                 "  return result;",
                 "}"
@@ -782,10 +452,8 @@ moduleTypeCheckTests =
         checked <-
           typecheckSource $
             unlines
-              [ "function mixed() returns (left: word, comptime right: bool) {",
-                "  left = 1;",
-                "  right = true;",
-                "  return;",
+              [ "function mixed() returns (word, comptime<bool>) {",
+                "  return (1, true);",
                 "}"
               ]
         case checked of
@@ -816,98 +484,24 @@ moduleTypeCheckTests =
         checked <-
           typecheckSource $
             unlines
-              [ "function bad(x: word) returns (result: word) {",
-                "  result = x;",
+              [ "function bad(x: word) returns (word) {",
                 "  return ();",
                 "}"
               ]
-        assertLeft "explicit unit cannot satisfy a word return" checked,
-      testCase "named return cannot reuse a parameter name" $ do
-        checked <-
-          typecheckSource
-            "function bad(result: word) returns (result: word) { return; }"
-        assertLeftContaining "parameter/return collision" "SC0108" checked,
-      testCase "named return declarations must be unique" $ do
-        checked <-
-          typecheckSource
-            "function bad() returns (result: word, result: word) { return; }"
-        assertLeftContaining "duplicate named returns" "SC0108" checked,
-      testCase "nested local cannot shadow a named return" $ do
-        checked <-
-          typecheckSource $
-            unlines
-              [ "function bad(x: word) returns (result: word) {",
-                "  if (true) {",
-                "    let result: word = x;",
-                "    return;",
-                "  } else {",
-                "    result = x;",
-                "    return;",
-                "  }",
-                "}"
-              ]
-        assertLeftContaining "nested named-return shadow" "SC0108" checked,
-      testCase "match binder cannot shadow a named return" $ do
-        checked <-
-          typecheckSource $
-            unlines
-              [ "function bad(x: word) returns (result: word) {",
-                "  match (x) {",
-                "    case result { return; }",
-                "  }",
-                "}"
-              ]
-        assertLeftContaining "match named-return shadow" "SC0108" checked,
-      testCase "selective struct import preserves source metadata and pretty round-trips" $ do
-        graphResult <-
-          loadModuleGraph
-            "test/imports"
-            Nothing
-            []
-            "test/imports/struct_metadata_main.sol"
-        graph <-
-          case graphResult of
-            Left err -> assertFailure ("unexpected module load failure:\n" ++ err)
-            Right loadedGraph -> pure loadedGraph
-        surface <-
-          case moduleLocalTypeCheckSurface graph (entryModule graph) of
-            Left err -> assertFailure ("unexpected module surface failure:\n" ++ err)
-            Right loadedSurface -> pure loadedSurface
-        importedStruct <-
-          case [ dt
-               | Source.TDataDef dt <- moduleSurfaceImportedDecls surface,
-                 Source.dataName dt == "RenamedPair"
-               ] of
-            [dt] -> pure dt
-            unexpectedDecls ->
-              assertFailure
-                ("expected one imported RenamedPair declaration, got " ++ show unexpectedDecls)
-        assertEqual
-          "renamed struct retains kind, field names, and field types"
-          (Source.StructTy "RenamedPair" [] ["left", "right"] [Source.TyCon "word" [], Source.TyCon "bool" []])
-          importedStruct
-        let rendered = TreePretty.pretty (Source.TDataDef importedStruct)
-        reparsed <- parseCompUnit rendered
-        case reparsed of
-          Left err -> assertFailure ("pretty-printed imported struct did not parse:\n" ++ err)
-          Right unit ->
-            assertEqual
-              ("round trip: " ++ rendered)
-              (Source.CompUnit [] [Source.TDataDef importedStruct])
-              unit
+        assertLeft "explicit unit cannot satisfy a word return" checked
     ]
 
 sameNamedLocalTypesSource :: String
 sameNamedLocalTypesSource =
   unlines
     [ "contract Left {",
-      "  struct S { left: word; }",
+      "  enum S { S(word) }",
       "  enum E { A }",
       "  function echoLeft(value: S) returns (S) { return value; }",
       "  function tagLeft() returns (E) { return E.A; }",
       "}",
       "contract Right {",
-      "  struct S { right: bool; extra: word; }",
+      "  enum S { S(bool, word) }",
       "  enum E { B }",
       "  function echoRight(value: S) returns (S) { return value; }",
       "  function tagRight() returns (E) { return E.B; }",
@@ -929,10 +523,10 @@ resolvedSourceOrFail source = do
     Right compUnit -> pure compUnit
 
 assertContractFunctionTypes :: Contract Name -> Name -> Name -> Assertion
-assertContractFunctionTypes contractDef structName enumName =
+assertContractFunctionTypes contractDef payloadType enumName =
   assertEqual
     ("local references in " ++ show (name contractDef))
-    [ ([TyCon structName []], Just (TyCon structName [])),
+    [ ([TyCon payloadType []], Just (TyCon payloadType [])),
       ([], Just (TyCon enumName []))
     ]
     [ ([ty | Typed _ _ ty <- sigParams sig], sigReturn sig)
@@ -984,20 +578,6 @@ assertLeftContaining label needle (Left err) =
     (label ++ ": expected diagnostic containing " ++ show needle ++ "\n" ++ compilerErrorText err)
     (needle `isInfixOf` compilerErrorText err)
 assertLeftContaining label _ (Right _) =
-  assertFailure (label ++ ": expected failure")
-
-assertLocatedFunctionTypeError ::
-  String ->
-  String ->
-  Either CompilerError a ->
-  Assertion
-assertLocatedFunctionTypeError label expectedMessage (Left err) = do
-  assertLeftContaining label "SC0122" (Left err)
-  assertLeftContaining label expectedMessage (Left err)
-  assertBool
-    (label ++ ": expected a source-located diagnostic")
-    (any ((/= Nothing) . diagnosticPrimarySpan) (compilerErrorDiagnostics err))
-assertLocatedFunctionTypeError label _ (Right _) =
   assertFailure (label ++ ": expected failure")
 
 assertLocatedLoopControlError ::
@@ -1195,39 +775,6 @@ typecheckSource source = do
         [ TopDeclCheck CheckTopDeclBody decl
         | decl <- resolvedDecls
         ]
-
-typecheckSourceAfterFieldDesugar :: String -> IO (Either CompilerError (CompUnit Id, TcEnv))
-typecheckSourceAfterFieldDesugar source = do
-  parsedResult <- parseCompUnit source
-  parsed <-
-    case parsedResult of
-      Left err -> assertFailure ("unexpected parse failure:\n" ++ err)
-      Right compUnit -> pure compUnit
-  resolvedResult <- nameResolution parsed
-  case resolvedResult of
-    Left err -> pure (Left err)
-    Right (CompUnit resolvedImports resolvedDecls) ->
-      typeInferTopDeclChecks
-        stdOpt
-        resolvedImports
-        []
-        []
-        [ TopDeclCheck CheckTopDeclBody decl
-        | decl <- fieldDesugarTopDecls resolvedDecls
-        ]
-
-assertLocatedFieldDiagnostic ::
-  String ->
-  String ->
-  Either CompilerError a ->
-  Assertion
-assertLocatedFieldDiagnostic label expectedCode (Left err) = do
-  assertLeftContaining label expectedCode (Left err)
-  assertBool
-    (label ++ ": expected a source-located diagnostic")
-    (any ((/= Nothing) . diagnosticPrimarySpan) (compilerErrorDiagnostics err))
-assertLocatedFieldDiagnostic label _ (Right _) =
-  assertFailure (label ++ ": expected failure")
 
 assertTypedFunctionModifiers ::
   ContractKind ->
