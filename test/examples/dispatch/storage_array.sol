@@ -1,9 +1,9 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 import {mload, mstore} from std.opcodes;
 
 contract MemberRegistry {
-  members : address[];
+  members : array<address>;
 
   constructor() {}
 
@@ -36,7 +36,7 @@ contract MemberRegistry {
     return Length.length(members);
   }
 
-  function getMembers() public returns (DynArray<address> memory) {
+  function getMembers() public returns (memory<DynArray<address>>) {
     let count : word = Typedef.rep(Length.length(members));
     let totalBytes : word = (count + 1) * 32;
     let ptr : word = allocate_memory(totalBytes);
@@ -47,6 +47,7 @@ contract MemberRegistry {
       let addr : address = members[uint256(i)];
       mstore(ptr + 32 + i * 32, Typedef.rep(addr));
     }
-    return Typedef.abs(ptr) as DynArray<address> memory;
+    let syntaxValue1: memory<DynArray<address>> = Typedef.abs(ptr);
+    return syntaxValue1;
   }
 }

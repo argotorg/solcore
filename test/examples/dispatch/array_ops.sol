@@ -1,12 +1,12 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 
 // Storage-array primitives end to end: push / pop / length / indexed read,
 // the two revert paths (index out of range, pop on empty), and the guarantee
 // that abandoned slots are zeroed -- so regrowing an array never resurrects the
 // values that `pop` or a shrinking `setLength` dropped.
 contract ArrayOps {
-  xs : uint256[];
+  xs : array<uint256>;
 
   constructor() {}
 

@@ -1,7 +1,7 @@
-import {*} from std;
-import {*} from std.dispatch;
-import {*} from std.Generic;
-import {*} from std.StorageGeneric;
+import * from std;
+import * from std.dispatch;
+import * from std.Generic;
+import * from std.StorageGeneric;
 
 // `bool` in storage, bare and inside an ADT.
 //
@@ -32,11 +32,11 @@ contract C {
         bare = false;
         flags = Flags(false, false);
         toggle = Toggle.Off;
-        assert(StorageSize.size(Proxy as Proxy<bool>) == 1);
+        assert(StorageSize.size(@bool) == 1);
         // product of two bools
-        assert(StorageSize.size(Proxy as Proxy<Flags>) == 2);
+        assert(StorageSize.size(@Flags) == 2);
         // 1 tag + max(size (), size bool)
-        assert(StorageSize.size(Proxy as Proxy<Toggle>) == 2);
+        assert(StorageSize.size(@Toggle) == 2);
     }
 
     function setBare(v : uint256) public returns (()) {

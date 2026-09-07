@@ -1,8 +1,8 @@
-import {*} from std;
-import {*} from std.dispatch;
-import {*} from std.Generic;
-import {*} from std.ABIGeneric;
-import {*} from std.StorageGeneric;
+import * from std;
+import * from std.dispatch;
+import * from std.Generic;
+import * from std.ABIGeneric;
+import * from std.StorageGeneric;
 
 // An ADT crossing the ABI boundary AND living in storage at the same time.
 //
@@ -25,7 +25,7 @@ contract C {
 
     constructor() {
         stored = Option.None;
-        assert(StorageSize.size(Proxy as Proxy<Option<uint256>>) == 2);
+        assert(StorageSize.size(@Option<uint256>) == 2);
     }
 
     // ADT as a parameter: decoded from calldata, then written to storage.

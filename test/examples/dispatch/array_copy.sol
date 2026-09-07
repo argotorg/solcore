@@ -1,12 +1,12 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 
 // Whole-array assignment `a = b` follows Solidity: it is a deep copy, not an
 // alias; assigning an array to itself is a no-op; and a copy that shrinks the
 // destination clears the slots it abandons, so regrowing yields zeros.
 contract ArrayCopy {
-  a : uint256[];
-  b : uint256[];
+  a : array<uint256>;
+  b : array<uint256>;
 
   constructor() {}
 

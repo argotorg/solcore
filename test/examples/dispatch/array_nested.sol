@@ -1,5 +1,5 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 
 // Nested storage arrays and aliasing, on the EVM.
 //
@@ -10,8 +10,8 @@ import {*} from std.dispatch;
 // Binding an array field to a local is an alias (Solidity's `T[] storage p`), not
 // a copy: mutating through the local must be visible through the field.
 contract NestedArray {
-  grid : uint256[][];
-  flat : uint256[];
+  grid : array<array<uint256>>;
+  flat : array<uint256>;
 
   constructor() {}
 
@@ -38,12 +38,12 @@ contract NestedArray {
 
   // Mutate `flat` through a local alias; the field must observe it.
   function aliasPush(v : uint256) public returns (()) {
-    let p : uint256[] storage = flat;
+    let p : storage<array<uint256>> = flat;
     ArrayPush.push(p, v);
   }
 
   function aliasSet(i : uint256, v : uint256) public returns (()) {
-    let p : uint256[] storage = flat;
+    let p : storage<array<uint256>> = flat;
     p[i] = v;
   }
 

@@ -1,5 +1,5 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 
 function caller() returns (address) {
   let res: word;
@@ -18,7 +18,7 @@ contract MiniERC20 {
   balances : mapping(address => uint256);
   allowance : mapping(address => mapping(address => uint256));
 
-  constructor(name_ : string memory, symbol_ : string memory, totalSupply_:uint256) {
+  constructor(name_ : memory<string>, symbol_ : memory<string>, totalSupply_:uint256) {
     name = name_;
     symbol = symbol_;
     owner = caller();
@@ -26,11 +26,11 @@ contract MiniERC20 {
     mint(totalSupply_);
   }
 
-  function name() public returns (string memory) {
+  function name() public returns (memory<string>) {
     return name;
   }
 
-  function symbol() public returns (string memory) {
+  function symbol() public returns (memory<string>) {
     return symbol;
   }
 
@@ -64,7 +64,7 @@ contract MiniERC20 {
      let msg_sender = caller();
      require(balances[src] >= amt, "transferFrom: insufficient balance");
 
-     if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal() as uint256)) {
+     if (src != msg_sender && allowance[src][msg_sender] != ((lam (syntaxValue: uint256) -> uint256 { return syntaxValue; })(Num.maxVal()))) {
         require(allowance[src][msg_sender] >= amt, "transferFrom: insufficient allowance");
         allowance[src][msg_sender] -= amt;
      }

@@ -1,7 +1,7 @@
-import {*} from std;
-import {*} from std.dispatch;
-import {*} from std.Generic;
-import {*} from std.StorageGeneric;
+import * from std;
+import * from std.dispatch;
+import * from std.Generic;
+import * from std.StorageGeneric;
 
 // Algebraic data types used directly as contract storage fields, including a
 // nested ADT (Option(Triple)).
@@ -20,11 +20,11 @@ contract C {
 
     constructor() {
         // sum:            1 tag + max(size (), size uint256) = 1 + 1 = 2
-        assert(StorageSize.size(Proxy as Proxy<Option<uint256>>) == 2);
+        assert(StorageSize.size(@Option<uint256>) == 2);
         // product:        size uint256 * 3                   = 3
-        assert(StorageSize.size(Proxy as Proxy<Triple>) == 3);
+        assert(StorageSize.size(@Triple) == 3);
         // sum of product: 1 tag + max(size (), size Triple)  = 1 + 3 = 4
-        assert(StorageSize.size(Proxy as Proxy<Option<Triple>>) == 4);
+        assert(StorageSize.size(@Option<Triple>) == 4);
     }
 
     function setValue(v : uint256) public returns (()) {

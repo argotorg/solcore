@@ -1,12 +1,12 @@
-import {*} from std;
-import {*} from std.dispatch;
-import {*} from std.Generic;
-import {*} from std.StorageGeneric;
+import * from std;
+import * from std.dispatch;
+import * from std.Generic;
+import * from std.StorageGeneric;
 
 // An ADT used as the VALUE of a storage mapping.
 //
 // This is the path opened by routing mapping reads through CanStore instead of
-// StorageType (std.solc: readStorage / ridx / RValueIdxAccess). The write side
+// StorageType (std.sol: readStorage / ridx / RValueIdxAccess). The write side
 // already went through Assign -> CanStore.store.
 //
 // A multi-slot value in a mapping occupies hash2(slot, key) .. + size(v) - 1,
@@ -24,9 +24,9 @@ contract C {
     optPairs : mapping(uint256 => Option<Pair>);
 
     constructor() {
-        assert(StorageSize.size(Proxy as Proxy<Option<uint256>>) == 2);
-        assert(StorageSize.size(Proxy as Proxy<Pair>) == 2);
-        assert(StorageSize.size(Proxy as Proxy<Option<Pair>>) == 3);
+        assert(StorageSize.size(@Option<uint256>) == 2);
+        assert(StorageSize.size(@Pair) == 2);
+        assert(StorageSize.size(@Option<Pair>) == 3);
     }
 
     function putOpt(k : uint256, v : uint256) public returns (()) {

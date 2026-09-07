@@ -1,6 +1,6 @@
-import {*} from std;
+import * from std;
 import {caller as caller_, callvalue as callvalue_, selfbalance, gas, call} from std.opcodes;
-import {*} from std.dispatch;
+import * from std.dispatch;
 
 // Forward `wad` wei to `dst` via a zero-data CALL and revert on failure.
 function sendValue(dst: address, wad: uint256) returns (()) {
@@ -67,7 +67,7 @@ contract WETH9 {
         let sender = caller();
         require(balances[src] >= wad, Error(0xf4d678b8)); // InsufficientBalance()
 
-        if (src != sender && allowance[src][sender] != (maxVal() as uint256)) {
+        if (src != sender && allowance[src][sender] != ((lam (syntaxValue: uint256) -> uint256 { return syntaxValue; })(maxVal()))) {
             require(allowance[src][sender] >= wad, Error(0x13be252b)); // InsufficientAllowance()
             allowance[src][sender] -= wad;
         }
@@ -77,7 +77,7 @@ contract WETH9 {
     }
 
     // Plain ETH transfers (no calldata, just value) auto-wrap into WETH.
-    fallback() external payable  {
+    fallback()  payable  {
         let sender = caller();
         balances[sender] = balances[sender] + callvalue();
     }

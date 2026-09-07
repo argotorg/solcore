@@ -1,7 +1,7 @@
-import {*} from std;
-import {*} from std.dispatch;
-import {*} from std.Generic;
-import {*} from std.StorageGeneric;
+import * from std;
+import * from std.dispatch;
+import * from std.Generic;
+import * from std.StorageGeneric;
 
 // An enumeration with more than two constructors.
 //
@@ -32,9 +32,9 @@ contract C {
         color = Color.Red;
         shape = Shape.Nothing;
         // 1 tag + max(size (), 1 tag + max(size (), size ())) = 1 + 1 + 0 = 2
-        assert(StorageSize.size(Proxy as Proxy<Color>) == 2);
+        assert(StorageSize.size(@Color) == 2);
         // 1 tag + max(size uint256, 1 tag + max(size (uint256,uint256), size ())) = 1 + 1 + 2 = 4
-        assert(StorageSize.size(Proxy as Proxy<Shape>) == 4);
+        assert(StorageSize.size(@Shape) == 4);
     }
 
     function setRed() public returns (()) {

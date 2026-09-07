@@ -1,5 +1,5 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 
 // Storage arrays of a *dynamic* element type. `push` stores a `memory(string)`
 // through `storage(string):CanStore(memory(string))`, `arr[i]` reads one back,
@@ -8,20 +8,20 @@ import {*} from std.dispatch;
 // Both the short (<32 bytes, inline) and long (>=32 bytes, keccak tail) string
 // encodings are exercised.
 contract ArrayString {
-  names : string[];
-  backup : string[];
+  names : array<string>;
+  backup : array<string>;
 
   constructor() {}
 
-  function pushName(s : string memory) public returns (()) {
+  function pushName(s : memory<string>) public returns (()) {
     ArrayPush.push(names, s);
   }
 
-  function setName(i : uint256, s : string memory) public returns (()) {
+  function setName(i : uint256, s : memory<string>) public returns (()) {
     names[i] = s;
   }
 
-  function getName(i : uint256) public returns (string memory) {
+  function getName(i : uint256) public returns (memory<string>) {
     return names[i];
   }
 
@@ -34,7 +34,7 @@ contract ArrayString {
     backup = names;
   }
 
-  function getBackup(i : uint256) public returns (string memory) {
+  function getBackup(i : uint256) public returns (memory<string>) {
     return backup[i];
   }
 
