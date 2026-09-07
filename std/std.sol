@@ -1065,14 +1065,14 @@ trait HasWordReader<self, reader> {
     function getWordReader(x:self) returns (reader);
 }
 
-impl HasWordReader<bytes memory, MemoryWordReader> {
-    function getWordReader(x:bytes memory) returns (MemoryWordReader) {
+impl HasWordReader<memory<bytes>, MemoryWordReader> {
+    function getWordReader(x:memory<bytes>) returns (MemoryWordReader) {
         return MemoryWordReader(Typedef.rep(x));
     }
 }
 
-impl HasWordReader<bytes calldata, CalldataWordReader> {
-    function getWordReader(x:bytes calldata) returns (CalldataWordReader) {
+impl HasWordReader<calldata<bytes>, CalldataWordReader> {
+    function getWordReader(x:calldata<bytes>) returns (CalldataWordReader) {
         return CalldataWordReader(Typedef.rep(x));
     }
 }
@@ -1208,22 +1208,22 @@ impl<tuple> ABIAttribs<ABITuple<tuple>> where tuple: ABIAttribs {
 }
 
 // for pointer types we fetch the attribs of the pointed to type, not the pointer itself
-impl<ty> ABIAttribs<ty memory> where ty: ABIAttribs {
-    function headSize(p : Proxy<ty memory>) returns (word) {
+impl<ty> ABIAttribs<memory<ty>> where ty: ABIAttribs {
+    function headSize(p : Proxy<memory<ty>>) returns (word) {
         let px : Proxy<ty>;
         return ABIAttribs.headSize(px);
     }
-    function isStatic(p : Proxy<ty memory>) returns (bool) {
+    function isStatic(p : Proxy<memory<ty>>) returns (bool) {
         let px : Proxy<ty>;
         return ABIAttribs.isStatic(px);
     }
 }
-impl<ty> ABIAttribs<ty calldata> where ty: ABIAttribs {
-    function headSize(p : Proxy<ty calldata>) returns (word) {
+impl<ty> ABIAttribs<calldata<ty>> where ty: ABIAttribs {
+    function headSize(p : Proxy<calldata<ty>>) returns (word) {
         let px : Proxy<ty>;
         return ABIAttribs.headSize(px);
     }
-    function isStatic(ty : Proxy<ty calldata>) returns (bool) {
+    function isStatic(ty : Proxy<calldata<ty>>) returns (bool) {
         let px : Proxy<ty>;
         return ABIAttribs.isStatic(px);
     }
@@ -1234,9 +1234,9 @@ impl<ty> ABIAttribs<ty calldata> where ty: ABIAttribs {
 
 // top level encoding function.
 // abi encodes an instance of `ty` and returns a pointer to the result
-function abi_encode<ty>(val : ty) returns (bytes memory)  where ty: ABIAttribs, ty: ABIEncode {
+function abi_encode<ty>(val : ty) returns (memory<bytes>)  where ty: ABIAttribs, ty: ABIEncode {
     let free = get_free_memory();
-    let tail = ABIEncode.encodeInto(val, free, 0, free + ABIAttribs.headSize(Proxy as Proxy<ty>));
+    let tail = ABIEncode.encodeInto(val, free, 0, free + ABIAttribs.headSize(@ty));
     set_free_memory(tail);
     return memory(free);
 }
@@ -1298,14 +1298,14 @@ function encodeIntoFromBytesLike(srcPtr:word, basePtr:word, offset:word, tail:wo
     return tail + rounded;
 }
 
-impl ABIEncode<string memory> {
-    function encodeInto(x:string memory, basePtr:word, offset:word, tail:word) returns (word) {
+impl ABIEncode<memory<string>> {
+    function encodeInto(x:memory<string>, basePtr:word, offset:word, tail:word) returns (word) {
       return encodeIntoFromBytesLike(Typedef.rep(x), basePtr, offset, tail);
     }
 }
 
-impl ABIEncode<bytes memory> {
-    function encodeInto(x:bytes memory, basePtr:word, offset:word, tail:word) returns (word) {
+impl ABIEncode<memory<bytes>> {
+    function encodeInto(x:memory<bytes>, basePtr:word, offset:word, tail:word) returns (word) {
       return encodeIntoFromBytesLike(Typedef.rep(x), basePtr, offset, tail);
     }
 }
@@ -1315,8 +1315,8 @@ impl ABIEncode<bytes memory> {
 // on-the-wire tail of `t[]` so the body can be `mcopy`d verbatim.
 // `memory(DynArray(t)):ABIAttribs` is already derivable from the generic
 // `memory(ty):ABIAttribs` + `DynArray(t):ABIAttribs` instances above.
-impl<t> ABIEncode<DynArray<t> memory> where t: Typedef<word> {
-    function encodeInto(x:DynArray<t> memory, basePtr:word, offset:word, tail:word) returns (word) {
+impl<t> ABIEncode<memory<DynArray<t>>> where t: Typedef<word> {
+    function encodeInto(x:memory<DynArray<t>>, basePtr:word, offset:word, tail:word) returns (word) {
         let srcPtr : word = Typedef.rep(x);
         let len : word = mload(srcPtr);
         let totalBytes : word = (len + 1) * 32;
@@ -1372,7 +1372,7 @@ impl<tuple> ABIEncode<ABITuple<tuple>> where tuple: ABIEncode, tuple: ABIAttribs
             mstore(basePtr, tail - basePtr);
 
             // encode the underlying tuple into the tail
-            let headSize = ABIAttribs.headSize(Proxy as Proxy<tuple>);
+            let headSize = ABIAttribs.headSize(@tuple);
             basePtr = tail;
             tail = tail + headSize;
             return ABIEncode.encodeInto(Typedef.rep(x), basePtr, 0, tail);
@@ -1420,14 +1420,16 @@ impl<ty, reader> WordReader<ABIDecoder<ty, reader>> where reader: WordReader {
 // ABI Decoding for uint256
 impl<reader> ABIDecode<ABIDecoder<uint256, reader>, uint256> where reader: WordReader {
     function decode(ptr:ABIDecoder<uint256, reader>, currentHeadOffset:word) returns (uint256) {
-        return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) as uint256;
+        let syntaxValue1: uint256 = Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset)));
+        return syntaxValue1;
     }
 }
 
 // ABI Decoding for bytes32
 impl<reader> ABIDecode<ABIDecoder<bytes32, reader>, bytes32> where reader: WordReader {
     function decode(ptr:ABIDecoder<bytes32, reader>, currentHeadOffset:word) returns (bytes32) {
-        return Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset))) as bytes32;
+        let syntaxValue2: bytes32 = Typedef.abs(WordReader.read(WordReader.advance(ptr, currentHeadOffset)));
+        return syntaxValue2;
     }
 }
 
@@ -1436,7 +1438,8 @@ impl<reader> ABIDecode<ABIDecoder<address, reader>, address> where reader: WordR
     function decode(ptr:ABIDecoder<address, reader>, currentHeadOffset:word) returns (address) {
         let raw = WordReader.read(WordReader.advance(ptr, currentHeadOffset));
         require(shr(160, raw) == 0, Error(0x7cc04fa7)); // DirtyHigherBitsForAddress()
-        return Typedef.abs(raw) as address;
+        let syntaxValue3: address = Typedef.abs(raw);
+        return syntaxValue3;
     }
 }
 
@@ -1447,7 +1450,7 @@ impl<reader> ABIDecode<ABIDecoder<(), reader>, ()> where reader: WordReader {
 }
 
 // ABI decoding for bytes/strings (only in memory)
-function decodeBytesLike<a, ptrtype, reader>(ptr:ABIDecoder<a memory, reader>, currentHeadOffset:word) returns (a memory)  where reader: WordReader {
+function decodeBytesLike<a, ptrtype, reader>(ptr:ABIDecoder<memory<a>, reader>, currentHeadOffset:word) returns (memory<a>)  where reader: WordReader {
         let tmp:word;
         let headRdr = WordReader.advance(ptr, currentHeadOffset);
         let tailPtr : word = WordReader.read(headRdr);
@@ -1463,15 +1466,15 @@ function decodeBytesLike<a, ptrtype, reader>(ptr:ABIDecoder<a memory, reader>, c
 }
 
 // ABI decoding for strings (only in memory)
-impl<reader> ABIDecode<ABIDecoder<string memory, reader>, string memory> where reader: WordReader {
-    function decode(ptr:ABIDecoder<string memory, reader>, currentHeadOffset:word) returns (string memory) {
+impl<reader> ABIDecode<ABIDecoder<memory<string>, reader>, memory<string>> where reader: WordReader {
+    function decode(ptr:ABIDecoder<memory<string>, reader>, currentHeadOffset:word) returns (memory<string>) {
       return decodeBytesLike(ptr, currentHeadOffset);
     }
 }
 
 // ABI decoding for bytes (only in memory)
-impl<reader> ABIDecode<ABIDecoder<bytes memory, reader>, bytes memory> where reader: WordReader {
-    function decode(ptr:ABIDecoder<bytes memory, reader>, currentHeadOffset:word) returns (bytes memory) {
+impl<reader> ABIDecode<ABIDecoder<memory<bytes>, reader>, memory<bytes>> where reader: WordReader {
+    function decode(ptr:ABIDecoder<memory<bytes>, reader>, currentHeadOffset:word) returns (memory<bytes>) {
       return decodeBytesLike(ptr, currentHeadOffset);
     }
 }
@@ -1505,8 +1508,8 @@ impl<reader, tuple, tuple_decoded> ABIDecode<ABIDecoder<ABITuple<tuple>, reader>
 }
 
 
-impl<reader, tuple, tuple_decoded> ABIDecode<ABIDecoder<ABITuple<tuple> memory, reader>, tuple_decoded memory> where reader: WordReader, tuple: ABIDecode<tuple_decoded>, tuple: ABIAttribs {
-    function decode(ptr:ABIDecoder<ABITuple<tuple> memory, reader>, currentHeadOffset:word) returns (tuple_decoded memory) {
+impl<reader, tuple, tuple_decoded> ABIDecode<ABIDecoder<memory<ABITuple<tuple>>, reader>, memory<tuple_decoded>> where reader: WordReader, tuple: ABIDecode<tuple_decoded>, tuple: ABIAttribs {
+    function decode(ptr:ABIDecoder<memory<ABITuple<tuple>>, reader>, currentHeadOffset:word) returns (memory<tuple_decoded>) {
         let prx : Proxy<tuple>;
         match (ABIAttribs.isStatic(prx) ) {
         case true { return ABIDecode.decode(WordReader.advance(ptr, currentHeadOffset), 0);
@@ -1517,15 +1520,15 @@ impl<reader, tuple, tuple_decoded> ABIDecode<ABIDecoder<ABITuple<tuple> memory, 
     }
 }
 
-impl<reader, baseType, baseType_decoded> ABIDecode<ABIDecoder<DynArray<baseType> memory, reader>, DynArray<baseType_decoded> memory> where baseType: ABIAttribs, reader: WordReader, ABIDecoder<baseType, reader>: ABIDecode<baseType_decoded> {
-    function decode(ptr:ABIDecoder<DynArray<baseType> memory, reader>, currentHeadOffset:word) returns (DynArray<baseType_decoded> memory) {
+impl<reader, baseType, baseType_decoded> ABIDecode<ABIDecoder<memory<DynArray<baseType>>, reader>, memory<DynArray<baseType_decoded>>> where baseType: ABIAttribs, reader: WordReader, ABIDecoder<baseType, reader>: ABIDecode<baseType_decoded> {
+    function decode(ptr:ABIDecoder<memory<DynArray<baseType>>, reader>, currentHeadOffset:word) returns (memory<DynArray<baseType_decoded>>) {
         let arrayPtr = WordReader.advance(ptr, currentHeadOffset);
         let length = WordReader.read(arrayPtr);
         // this trigger a missing typedef constraint
         // let elementPtr:ABIDecoder(baseType, reader) = Typedef.abs(WordReader.advance(arrayPtr, 32));
         arrayPtr = WordReader.advance(arrayPtr, 32);
         let prx : Proxy<baseType_decoded>;
-        let result : DynArray<baseType_decoded> memory = allocateDynamicArray(prx, length);
+        let result : memory<DynArray<baseType_decoded>> = allocateDynamicArray(prx, length);
         let offset : word = 0;
         let prx : Proxy<baseType>;
         let elementHeadSize : word = ABIAttribs.headSize(prx);
@@ -1547,8 +1550,8 @@ function getReader<ty, reader>(d:ABIDecoder<ty, reader>) returns (reader) {
     } }
 }
 
-impl<baseType, baseType_decoded> ABIDecode<ABIDecoder<DynArray<baseType> calldata, CalldataWordReader>, DynArray<baseType_decoded> calldata> where ABIDecoder<baseType, CalldataWordReader>: ABIDecode<baseType_decoded>, baseType: WordReader {
-     function decode(ptr:ABIDecoder<DynArray<baseType> calldata, CalldataWordReader>, currentHeadOffset:word) returns (DynArray<baseType_decoded> calldata) {
+impl<baseType, baseType_decoded> ABIDecode<ABIDecoder<calldata<DynArray<baseType>>, CalldataWordReader>, calldata<DynArray<baseType_decoded>>> where ABIDecoder<baseType, CalldataWordReader>: ABIDecode<baseType_decoded>, baseType: WordReader {
+     function decode(ptr:ABIDecoder<calldata<DynArray<baseType>>, CalldataWordReader>, currentHeadOffset:word) returns (calldata<DynArray<baseType_decoded>>) {
           let newptr = WordReader.advance(ptr, currentHeadOffset);
 	      let reader: CalldataWordReader = getReader(newptr);
           let addr: word = Typedef.rep(reader);
