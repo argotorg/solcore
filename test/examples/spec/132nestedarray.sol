@@ -1,14 +1,14 @@
 // Nested storage arrays: `array(array(uint256))` with `grid[i][j]` used as both
 // an l-value and an r-value. The inner index desugars as an l-value, yielding the
 // `storage(array(uint256))` handle that the outer index then consumes.
-import {*} from std;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+import * from std;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 contract NestedArray {
   reserved : word; // forge uses at least 1 storage slot
-  grid : uint256[][];
+  grid : array<array<uint256>>;
 
   function main() returns (uint256) {
     // Grow the outer array; the inner arrays start empty.

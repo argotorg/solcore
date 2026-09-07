@@ -1,15 +1,15 @@
 // Storage arrays whose element type is dynamic. Declaring the field and taking
 // its length must work even before `push` accepts dynamic values; the element
 // slot itself is what holds the length / short-string encoding.
-import {*} from std;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+import * from std;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 contract ArrayOfDynamic {
   reserved : word; // forge uses at least 1 storage slot
-  names : string[];
-  blobs : bytes[];
+  names : array<string>;
+  blobs : array<bytes>;
 
   function main() returns (uint256) {
     return Length.length(names) + Length.length(blobs);
