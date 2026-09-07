@@ -1,6 +1,6 @@
-import {*} from std;
+import * from std;
 import {callvalue, calldatasize, calldataload, shr} from std.opcodes;
-import {*} from std.Generic;
+import * from std.Generic;
 
 export {
   ABIString,
@@ -21,9 +21,9 @@ export {
   sigStr
 };
 
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 // --- Core Data Types ---
 
@@ -50,13 +50,13 @@ function sigStr<t>(p:Proxy<t>) returns (string)  where t: SigString { return Sig
 impl SigString<uint256> { function sigStr(x:Proxy<uint256>) returns (string) { return "uint256"; }}
 impl SigString<bytes32> { function sigStr(x:Proxy<bytes32>) returns (string) { return "bytes32"; }}
 impl SigString<address> { function sigStr(x:Proxy<address>) returns (string) { return "address"; }}
-impl SigString<string memory> { function sigStr(x:Proxy<string memory>) returns (string) { return "string"; }}
-impl SigString<bytes memory> { function sigStr(x:Proxy<bytes memory>) returns (string) { return "bytes"; }}
+impl SigString<memory<string>> { function sigStr(x:Proxy<memory<string>>) returns (string) { return "string"; }}
+impl SigString<memory<bytes>> { function sigStr(x:Proxy<memory<bytes>>) returns (string) { return "bytes"; }}
 impl SigString<()> { function sigStr(x:Proxy<()>) returns (string) { return ""; } }
 
 impl<a, b> SigString<(a, b)> where a: SigString, b: SigString {
   function sigStr(x:Proxy<(a, b)>) returns (string) {
-    return SigString.sigStr( Proxy as Proxy<a> ) +  "," + SigString.sigStr( Proxy as Proxy<b> );
+    return SigString.sigStr( @a ) +  "," + SigString.sigStr( @b );
   }
 }
 
@@ -69,7 +69,7 @@ impl<a, b> SigString<(a, b)> where a: SigString, b: SigString {
 // specific on-the-wire sum convention is needed.
 impl<f, g> SigString<sum<f, g>> where f: SigString, g: SigString {
   function sigStr(x:Proxy<sum<f, g>>) returns (string) {
-    return "sum(" + SigString.sigStr( Proxy as Proxy<f> ) + "," + SigString.sigStr( Proxy as Proxy<g> ) + ")";
+    return "sum(" + SigString.sigStr( @f ) + "," + SigString.sigStr( @g ) + ")";
   }
 }
 
@@ -79,13 +79,13 @@ impl<f, g> SigString<sum<f, g>> where f: SigString, g: SigString {
 // hand-written SigString instance per type.
 default impl<a, rep> SigString<a> where a: Generic<rep>, rep: SigString {
   function sigStr(x:Proxy<a>) returns (string) {
-    return SigString.sigStr( Proxy as Proxy<rep> );
+    return SigString.sigStr( @rep );
   }
 }
 
 impl<name, f, args, rets, payability> SigString<Method<name, payability, args, rets, f>> where f: invokable<args, rets>, name: SigString, args: SigString, rets: SigString {
   function sigStr(x:Proxy<Method<name, payability, args, rets, f>>) returns (string) {
-    return sigStr(Proxy as Proxy<name>)  + "(" + sigStr(Proxy as Proxy<args>) + ")";
+    return sigStr(@name)  + "(" + sigStr(@args) + ")";
   }
 }
 
@@ -100,7 +100,7 @@ trait Selector<ty> {
 impl<name, payability, args, rets, fn> Selector<Method<name, payability, args, rets, fn>> where name: SigString, args: SigString {
     function compute(prx : Proxy<Method<name, payability, args, rets, fn>>) returns (bytes4) {
         // let hash : word = keccakLit(sigStr(prx));
-        let hash = keccakLit(sigStr(Proxy as Proxy<name>)  + "(" + sigStr(Proxy as Proxy<args>) + ")");
+        let hash = keccakLit(sigStr(@name)  + "(" + sigStr(@args) + ")");
         return bytes4(shr(224, hash));
     }
 }
@@ -118,7 +118,7 @@ impl<name, args, rets, fn> ExecMethod<Method<name, NonPayable, args, rets, fn>> 
     match (m ) {
       case Method(pnm,ppayability,pargs,prets,fn) {
         // non-payable methods must reject any callvalue before running
-        MethodLevelCallvalueCheck.checkCallvalue(Proxy as Proxy<NonPayable>);
+        MethodLevelCallvalueCheck.checkCallvalue(@NonPayable);
         do_exec(pargs, prets, fn);
     } }
   }
@@ -142,7 +142,7 @@ impl<payability, fn> ExecMethod<Fallback<payability, (), (), fn>> where fn: invo
   function exec(fb : Fallback<payability, (), (), fn>) returns (()) {
     match (fb ) {
       case Fallback(ppayability, pargs, prets, fn) {
-        MethodLevelCallvalueCheck.checkCallvalue(Proxy as Proxy<payability>);
+        MethodLevelCallvalueCheck.checkCallvalue(@payability);
         fn(());
         assembly {
           stop()
@@ -158,10 +158,10 @@ function do_exec<args, rets, fn>(pargs : Proxy<args>, prets : Proxy<rets>, fn : 
     // TODO: calldatasize checks for dynamic types
 
     // abi decode args from calldata
-    let ptr : bytes calldata = calldata(4);
+    let ptr : calldata<bytes> = calldata(4);
 
     // TODO: this needs entirely too many type annotations
-    let args : args = abi_decode(ptr, pargs, Proxy as Proxy<CalldataWordReader>);
+    let args : args = abi_decode(ptr, pargs, @CalldataWordReader);
 
     // call fn with args
     // TODO: why are type annotations needed here?
@@ -191,7 +191,7 @@ trait RunDispatch<ty> {
 // We can dispatch to a single executable method with a known selector
 impl<name, payability, args, rets, fn> RunDispatch<Method<name, payability, args, rets, fn>> where Method<name, payability, args, rets, fn>: ExecMethod, Method<name, payability, args, rets, fn>: Selector {
   function go(method : Method<name, payability, args, rets, fn>) returns (()) {
-    match (selector_matches(Proxy as Proxy<Method<name, payability, args, rets, fn>>) ) {
+    match (selector_matches(@Method<name, payability, args, rets, fn>) ) {
       case true { ExecMethod.exec(method);
       } case false { return;
     } }
@@ -208,7 +208,7 @@ impl<n, m> RunDispatch<(n, m)> where n: ExecMethod, n: Selector, m: RunDispatch 
   function go(methods : (n, m)) returns (()) {
     match (methods ) {
       case (method_n, rest) {
-        match (selector_matches(Proxy as Proxy<n>) ) {
+        match (selector_matches(@n) ) {
           case true { ExecMethod.exec(method_n);
           } case false { RunDispatch.go(rest);
         } }

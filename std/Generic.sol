@@ -1,9 +1,9 @@
-pragma solcore noPattersonCondition;
-pragma solcore noBoundVariableCondition;
+pragma no-patterson-condition;
+pragma no-bounded-variable-condition;
 
 export { Generic };
 
-import {*} from std;
+import * from std;
 
 // MPTC: isomorphism between a user type and its SOP representation.
 // The representation 'rep' is built from primitive Solcore types:
