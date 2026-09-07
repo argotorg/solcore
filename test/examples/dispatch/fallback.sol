@@ -1,5 +1,5 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 
 contract WithFallback {
     constructor() {}
@@ -8,7 +8,7 @@ contract WithFallback {
         return uint256(42);
     }
 
-    fallback() external  {
+    fallback()   {
         revertLit("fallback-was-called");
     }
 }

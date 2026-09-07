@@ -1,5 +1,5 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 
 contract EcrecoverTest {
     function recover() public returns (address) {

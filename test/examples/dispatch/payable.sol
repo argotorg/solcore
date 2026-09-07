@@ -1,5 +1,5 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 
 contract PayableTest {
     constructor() {}
@@ -20,7 +20,7 @@ contract PayableTest {
         return uint256(value);
     }
 
-    fallback() external payable  {
+    fallback()  payable  {
         let value;
         assembly {
             value := callvalue()

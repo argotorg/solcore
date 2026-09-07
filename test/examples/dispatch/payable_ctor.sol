@@ -1,5 +1,5 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 
 // A contract whose constructor is explicitly marked `payable`.
 // Deploying it with an incoming value transfer must succeed and the

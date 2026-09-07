@@ -1,5 +1,5 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 
 // Regression test for a yule backend bug, independent of the storage/Generic
 // work: matching a sum constructor whose payload is a product of arity >= 3.

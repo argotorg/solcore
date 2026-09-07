@@ -20,11 +20,11 @@
 // class and its instances are defined locally and exercised directly, so the
 // program must now lower end-to-end and return the expected value.
 
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 
-pragma solcore noPattersonCondition;
-pragma solcore noBoundVariableCondition;
+pragma no-patterson-condition;
+pragma no-bounded-variable-condition;
 
 // total(x, y) sums every leaf word of both arguments.
 trait Total<a> {

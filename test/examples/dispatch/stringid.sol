@@ -1,10 +1,10 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 import {mstore, mload} from std.opcodes;
 
 contract C {
     constructor() {}
-    function id(x:string memory) public returns (string memory) {
+    function id(x:memory<string>) public returns (memory<string>) {
      let ptr : word = Typedef.rep(x);
      let len : word;
      let n1 : word;
@@ -18,14 +18,14 @@ contract C {
      return x;
     }
 
-    function const_a() public returns (string memory) {
+    function const_a() public returns (memory<string>) {
       let resPtr = allocate_memory(64);
       let payload : word = 0x7777777777777777777777777777777777777777777777777777777777777777;
       mstore(resPtr, 3);
       mstore(resPtr+32, payload);
       return memory(resPtr);
     }
-    function mylen(x:string memory) public returns (uint256) {
+    function mylen(x:memory<string>) public returns (uint256) {
      let ptr : word = Typedef.rep(x);
      let l : word;
      let n1 : word;

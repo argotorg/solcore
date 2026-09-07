@@ -1,10 +1,10 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 import {mload, mstore} from std.opcodes;
-import {*} from std.Generic;
-import {*} from std.ABIGeneric;
+import * from std.Generic;
+import * from std.ABIGeneric;
 
-pragma solcore noGenericInstanceFor Point;
+pragma no-generic-instance-for Point;
 
 enum Point { Point(uint256, uint256) }
 

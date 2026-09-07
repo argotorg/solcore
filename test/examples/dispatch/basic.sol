@@ -1,5 +1,5 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 import {address as address_} from std.opcodes;
 
 function self() returns (address) {
@@ -15,7 +15,7 @@ contract C {
     // built by left-aligning it in a bytes32 and truncating to 4 bytes. The inner
     // call succeeds, so raw_call reports ok == true and returns its returndata
     // (the abi-encoded uint256(1)).
-    function callSelf() public returns ((bool, bytes memory)) {
+    function callSelf() public returns ((bool, memory<bytes>)) {
         let sel: bytes32 = bytes32(0xa7a0d53700000000000000000000000000000000000000000000000000000000);
         let payload = truncate(to_bytes(sel), 4);
         match (raw_call(self(), uint256(0), payload) ) {
@@ -27,7 +27,7 @@ contract C {
     // reverts (there is no fallback). raw_call swallows the inner revert and reports
     // ok == false; this outer call itself still succeeds and returns the revert
     // returndata (the 4-byte NoFallback error selector).
-    function callSelfInvalid() public returns ((bool, bytes memory)) {
+    function callSelfInvalid() public returns ((bool, memory<bytes>)) {
         let sel: bytes32 = bytes32(0xdeadc0de00000000000000000000000000000000000000000000000000000000);
         let payload = truncate(to_bytes(sel), 4);
         match (raw_call(self(), uint256(0), payload) ) {
@@ -73,11 +73,11 @@ contract C {
         return x % y;
     }
 
-    function id_bytes(b: bytes memory) public returns (bytes memory) {
+    function id_bytes(b: memory<bytes>) public returns (memory<bytes>) {
         return b;
     }
 
-    function id_string(b: string memory) public returns (string memory) {
+    function id_string(b: memory<string>) public returns (memory<string>) {
         return b;
     }
 

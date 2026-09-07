@@ -1,9 +1,9 @@
-import {*} from std;
-import {*} from std.dispatch;
+import * from std;
+import * from std.dispatch;
 import {mstore} from std.opcodes;
 
 // Build a memory(bytes) holding the three-byte string "abc".
-function abcBytes() returns (bytes memory) {
+function abcBytes() returns (memory<bytes>) {
     let p = allocate_memory(64);
     mstore(p, 3);
     mstore(p + 32, 0x6162630000000000000000000000000000000000000000000000000000000000);
@@ -25,7 +25,7 @@ contract C {
         return ripemd160(abcBytes());
     }
 
-    function erc7201_(id: bytes memory) public returns (bytes32) {
+    function erc7201_(id: memory<bytes>) public returns (bytes32) {
         return erc7201(id);
     }
 }
