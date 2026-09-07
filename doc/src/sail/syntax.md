@@ -1,439 +1,207 @@
-# Syntax
+# Source syntax
 
-SAIL uses a Solidity-style surface syntax with a statically typed functional
-core. This page summarizes the source grammar. The machine-readable EBNF is in
-[`doc/railroad/sail.bnf`](../../railroad/sail.bnf).
+This compiler follows the source grammar implemented by `solcore-rs` on its
+`new-syntax` branch (reference revision
+`59f11626`, including the parser's existing pragma, export, and type-alias
+extensions). Sources and imported modules use `.sol`. A module `a.b` maps to
+`a/b.sol` relative to the importing module's directory.
 
-`[ ... ]` marks an optional element and `{ ... }` marks repetition in grammar
-fragments on this page.
+Older source spellings are not accepted. In particular, there are no `data`,
+`class`, `instance`, or `forall` declarations, postfix type locations or array
+types, `as` expressions, named function results, or destructuring `let`
+bindings. Interface, library, and struct declarations are outside this grammar.
 
----
+## Modules
 
-## Source Files
-
-A source file contains imports, pragmas, and top-level declarations in any
-order:
-
-```text
-CompilationUnit = { Import | Pragma | TopDecl }
-```
-
-Both Classic and Core Solidity use the `.sol` extension in the language
-specification. The prototype may temporarily accept `.sol` files.
-
-Identifiers begin with a letter or underscore and may contain letters, decimal
-digits, and underscores. Integer literals may be decimal or `0x`-prefixed
-hexadecimal values. Strings use double quotes.
-
----
-
-## Imports
-
-Module paths are dotted names. An external package path begins with
-`@package.`.
+Imports and declarations may be interleaved:
 
 ```solidity
 import std;
-import std.dispatch;
-import * as dispatch from std.dispatch;
-import {address, uint256 as U256} from std;
-import {foo, bar as baz} from @ext.foo.bar;
+import * from std;
+import * from std hiding {debug};
+import * as math from @vendor.math;
+import {foo, bar as baz} from lib.helpers;
 ```
 
-Core rejects string paths and selector-after-module ordering; selective names
-always precede `from`.
+Plain imports introduce module qualifiers. Wildcard and selective imports open
+public names and may have a `hiding` clause. A wildcard is written `*`, not
+`{*}`. Selectors and hiding lists may name operators using parentheses, such as
+`(+)`. String-path imports and the former `import M.{item}` spelling are rejected.
 
-The current compiler also supports `import {*} from M` and an optional
-`hiding {X, Y}` clause as module-system extensions.
+The reference parser retains these export forms:
 
-### Exports
-
-The canonical new syntax does not yet select an export or re-export spelling.
-The compiler currently retains its existing `export` declarations as an
-implementation extension. See [Modules](modules.md) for those provisional
-forms.
-
----
+```solidity
+export {foo, Option(*), Result(Ok), (+)};
+export helpers;
+export helpers as publicHelpers;
+export helpers.{foo, Option(*)};
+export helpers.*;
+```
 
 ## Pragmas
 
-Solidity and ABI-coder pragmas retain their familiar spelling:
+The implemented switches use their hyphenated names, with an optional list of
+target identifiers:
 
 ```solidity
-pragma solidity ^0.8.23;
-pragma abicoder v2;
+pragma no-coverage-condition;
+pragma no-patterson-condition Trait;
+pragma no-bounded-variable-condition Trait;
+pragma no-generic-instance-for MyType;
 ```
 
-Solcore-specific pragmas use the `solcore` namespace:
+The pragma parser also preserves unknown identifier directives. It does not
+accept the former `pragma solcore ...` namespace or Solidity version expressions.
 
-```solidity
-pragma solcore noCoverageCondition;
-pragma solcore noPattersonCondition;
-pragma solcore noBoundVariableCondition;
-pragma solcore noGenericInstanceFor MyType;
-```
+## Types and bindings
 
----
-
-## Types
-
-Named and generic types use dotted names and angle brackets:
+Named bindings put their name before a colon and type. Type arguments use
+nonempty angle-bracket lists; tuple and function types may be empty.
 
 ```solidity
 word
-pkg.Option<word>
-collections.Map<address, pkg.Option<word>>
-```
-
-Other type forms are:
-
-```solidity
-mapping(address => word)
-word[]
-word[4]
+Option<word>
+collections.Map<address, Option<word>>
 (word, bool)
-()
-function(word) internal returns (bool)
-bytes memory
-bytes calldata
+mapping(address => word)
+array<word>
+memory<DynArray<word>>
+calldata<array<word>>
+storage<mapping(address => word)>
+function(word, bool) returns (word)
+function(word)
+@word
 ```
 
-Array suffixes and the data locations `memory`, `storage`, and `calldata`
-wrap the complete type to their left. They are regular Core type suffixes, so
-they may be interleaved or repeated when representing nested references, for
-example `word[] memory[] storage`. Function types use `function(...)` and
-`returns (...)`; the former source-level arrow type is not part of the grammar.
-
-Explicit conversion uses `as` with a complete target type:
+`@T` is a type witness in expression position and abbreviates `Proxy<T>` in type
+position. Locations are ordinary unary constructors (`memory<T>`, `storage<T>`,
+`calldata<T>`); there are no `T memory`, `T[]`, or `T[N]` forms.
 
 ```solidity
-let n = raw as word;
-let callback = value as function(word) internal returns (bool);
-let result = value as pkg.Result<word, Error>;
+let count: word = 1;
+let inferred = compute();
+let output: word;
+let witness: @word = @word;
+let values: memory<DynArray<uint256>> = [1, 2, 3];
+let constant: comptime<word> = 42;
 ```
 
-There is no general `expression: Type` annotation form. Use a typed binding
-when an expression needs an expected type:
+Local bindings introduce one identifier. An initializer uses `=`, never `:=`.
+Comptime parameters use `comptime name: Type`; comptime locals and results use
+`comptime<Type>`.
+
+The parser also accepts `comptime<Type>` inside other types. The current compiler
+supports its evaluation mode only on direct local bindings and function results,
+alongside the `comptime` parameter modifier. Nested uses, including enum payloads,
+type arguments, aliases, and function-type inputs or results, produce a diagnostic
+at the unsupported type instead of discarding the compile-time requirement.
+
+Transparent type aliases retain the reference parser's `type` syntax and
+parenthesized binders, including inside contracts:
 
 ```solidity
-let value: T = expression;
+type Word = word;
+type PairOf(a) = (a, a);
 ```
 
----
+## Functions and contracts
 
-## Structs, Enums, and Type Declarations
-
-Struct fields use name-first declarations:
+Named function parameters require types. Omitting `returns` declares a unit
+result. Result entries are positional types; multiple entries form a tuple.
 
 ```solidity
-struct Pair {
-    x: word;
-    y: word;
+function identity<T>(value: T) returns (T) { return value; }
+function pair(x: word) returns (word, word) { return (x, x); }
+function nop() {}
+function increment(x: word) returns (word) { x + 1 }
+function constant(comptime x: word) returns (comptime<word>) { return x; }
+```
+
+Only a named function may end with an implicit result expression without a
+semicolon. Nested blocks, match arms, lambdas, constructors, and fallbacks
+require statement terminators.
+
+```solidity
+contract Counter {
+    value: word;
+    constructor(initial: word) payable { value = initial; }
+    function read() public returns (word) { return value; }
+    function update(next: word) public payable { value = next; }
+    fallback() payable { return; }
 }
 ```
 
-Named struct fields can be read with postfix member access. Field reads may be
-chained, and the receiver is evaluated exactly once:
+Contract functions accept `public`, then `payable`, before `returns` and `where`.
+Constructors and fallbacks are implicitly public and accept only `payable`.
+Top-level functions and trait/impl methods take neither attribute. There are no
+`external`, `internal`, `private`, `pure`, `view`, or `receive` declaration forms.
+
+Lambdas retain `lam`, allow inferred parameters, and use an optional arrow result:
 
 ```solidity
-function first(p: Pair) returns (word) {
-    return p.x;
-}
+let increment = lam (x: word) -> word { return x + 1; };
+let identity = lam (x) { return x; };
 ```
 
-Assignment through a struct member is not implemented yet and is rejected with
-a dedicated diagnostic instead of being interpreted as an unrelated variable
-assignment.
-
-Ordinary enums and payload-carrying algebraic data types share one declaration
-form:
+## Enums, traits, and implementations
 
 ```solidity
-enum Status {
-    Pending,
-    Filled,
-    Cancelled
-}
+enum Option<T> { None, Some(T) }
 
-enum Option<T> {
-    None,
-    Some(T)
-}
-```
-
-Constructors are qualified in expressions and patterns:
-
-```solidity
-Option.Some(1)
-Option.None
-```
-
-A transparent type synonym uses `alias` and `=`:
-
-```solidity
-alias Word = word;
-```
-
-The Solidity spelling `type Wad is word;` is reserved for a nominal
-user-defined value type. The current compiler rejects that form until nominal
-wrapping, unwrapping, ABI, and storage semantics are implemented; it is never
-treated as a transparent alias.
-
----
-
-## Traits, Implementations, and Generics
-
-Type classes use `trait`; implementations use `impl`. Generic parameters
-follow the declared name in angle brackets, and constraints follow the head in
-a `where` clause.
-
-```solidity
 trait Eq<T> {
-    function eq(x: T, y: T) returns (bool);
-}
-
-impl Eq<word> {
-    function eq(x: word, y: word) returns (bool) {
-        return x == y;
-    }
+    function eq(left: T, right: T) returns (bool);
 }
 
 impl<T> Eq<Option<T>> where T: Eq {
-    function eq(x: Option<T>, y: Option<T>) returns (bool) {
-        return true;
+    function eq(left: Option<T>, right: Option<T>) returns (bool) {
+        match ((left, right)) {
+            case (.None, .None) { return true; }
+            case (.Some(x), .Some(y)) { return Eq.eq(x, y); }
+            default { return false; }
+        }
     }
 }
 ```
 
-The compiler also accepts `default impl` as an implementation-selection
-extension. Legacy generic and type-class declaration spellings are not source
-syntax.
+The first trait parameter is the instance-head type. Further parameters are
+trait arguments. `where T: Convert<U>` constrains `Convert<T, U>`; multiple
+constraints are comma-separated and may be enclosed in parentheses.
+`default impl` is supported. An enum may have no variants, and each variant may
+have positional payload types. `#[derive(...)]` accepts a nonempty list of trait
+paths and is supported on top-level and contract-local enums. Explicit derives
+use the Generic representation and the existing trait implementations for its
+components.
 
----
+Constructors use qualified names (`Option.Some(1)`) or expected-type shorthand
+(`.Some(1)`); the same forms appear in patterns. Tuple patterns and `_` are
+supported in matches. Every match has at least one case/default arm, with
+`default` last. A comptime label is written `case comptime expression { ... }`.
 
-## Contracts and Fields
+## Expressions and statements
 
-Contracts, interfaces, and libraries use Solidity-style shells. Every named
-field and parameter places the name before its type.
+Calls, member calls, indexing, tuples, array literals, and ternary expressions
+are supported. Unary operators are `!` and `~`; binary operators are `*`, `/`,
+`%`, `+`, `-`, `&`, `^`, `|`, comparisons, equality, `&&`, and `||`. Precedence
+matches the reference parser; bitwise operators bind more tightly than
+comparisons. Comparison and equality operators do not chain. There are no
+unary `+`/`-`, shifts, exponentiation, increment/decrement, or `as` expressions.
 
-```solidity
-contract Token {
-    balances: mapping(address => word);
+Statements include `let`, assignment, expressions, return, blocks, `if`,
+`while`, `for`, `break`, `continue`, `match`, and `assembly`. Compound assignments
+are `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, and unary `~=`. Address
+expressions in compound assignments are evaluated once. `for` headers may
+contain comma-separated declarations/assignments and omit each header part.
+There are no `unchecked` blocks or bare `revert` statements.
 
-    constructor(initialSupply: word) payable {
-        balances[msg.sender] = initialSupply;
-    }
+Assembly blocks use the reference Yul source grammar. Compiler-internal Yul
+quotation templates are not source-language expressions.
 
-    function balanceOf(account: address) public returns (word) {
-        return balances[account];
-    }
+## Lexical rules
 
-    fallback() external payable {
-        // Handle unmatched selectors.
-    }
-}
-```
-
-The initial Core surface has one general `fallback` entry point and no separate
-`receive`. A fallback must be `external`; it may also be `payable`.
-
-Interfaces contain semicolon-terminated function signatures, while libraries
-contain fields, structs, enums, and function definitions:
-
-```solidity
-interface Hashable {
-    function hash(value: word) external returns (word);
-}
-
-library Hashing {
-    function hash(value: word) internal returns (word) {
-        return value;
-    }
-}
-```
-
-Every interface function must declare `external` exactly once. It may also
-declare one of `pure`, `view`, or `payable`; omitted, `public`, `internal`, and
-`private` interface visibility are rejected rather than silently omitted from
-the ABI.
-
----
-
-## Functions
-
-Function parameters are name-first. Attributes follow the parameter list, and
-results use `returns (...)`.
-
-```solidity
-function addOne(x: word) pure returns (word) {
-    return x + 1;
-}
-
-function pair() returns (word, word) {
-    return (1, 2);
-}
-
-function namedResult() returns (result: word) {
-    return 1;
-}
-
-function nop() {
-    return;
-}
-```
-
-Contract and library functions accept at most one visibility modifier
-(`public`, `external`, `internal`, or `private`) and at most one mutability
-modifier (`pure`, `view`, or `payable`). Module-level functions, trait
-signatures, and implementation methods do not have contract visibility and
-cannot be `payable`; they may use `pure` or `view`.
-
-Generic parameters follow the function name. Constraints appear after the
-return clause.
-
-```solidity
-function id<T>(x: T) returns (T) {
-    return x;
-}
-
-function eqSelf<T>(x: T) returns (bool) where T: Eq {
-    return Eq.eq(x, x);
-}
-```
-
-`comptime` immediately precedes the binding it modifies:
-
-```solidity
-function pow(comptime n: word, x: word) returns (word) {
-    let comptime exponent = n;
-    return x ** exponent;
-}
-```
-
----
-
-## Local Bindings and Statements
-
-Local variables use `let`, with or without an explicit type or initializer:
-
-```solidity
-let amount: word = readAmount();
-let owner: address;
-let inferred = computeValue();
-let (left, right): (word, bool) = readResult();
-```
-
-Statements use semicolon terminators where shown:
-
-```solidity
-return;
-return value;
-if (condition) { ... } else { ... }
-for (let i: word = 0; i < n; i = i + 1) { ... }
-while (condition) { ... }
-break;
-continue;
-unchecked { ... }
-assembly { ... }
-revert;
-```
-
-Assignments support `=` and compound assignment operators for assignable
-variables and indexed values. Struct-member lvalues are the exception noted
-above and are rejected until update lowering is implemented. A plain call or
-other expression used as a statement also ends in `;`.
-
----
-
-## Pattern Matching
-
-`match` encloses one or more scrutinees in parentheses. Each arm has its own
-block.
-
-```solidity
-match (value) {
-    case Option.Some(x) {
-        return x;
-    }
-    case Option.None {
-        return 0;
-    }
-}
-
-match (x, y) {
-    case (Option.Some(a), Option.Some(b)) {
-        return a + b;
-    }
-    default {
-        return 0;
-    }
-}
-```
-
-The compiler extension `.Constructor` is available when an expected type makes
-the constructor family unambiguous.
-
----
-
-## Expressions
-
-Expressions include literals, names, tuples, calls, field access, indexing,
-unary and binary operators, conditional expressions, and conversions:
-
-```solidity
-f(x, y)
-makeAdder(x)(y)
-callbacks[index](value)
-token.balanceOf(account)
-values[index]
-!ok
-x ** exponent
-x * y + z
-x << bits
-x & mask
-x == y
-condition ? yes : no
-expression as T
-```
-
-Call, member, and indexing suffixes may be repeated on any primary expression.
-Direct and member calls keep their ordinary call representation; calls on
-computed values are checked through the `invokable` abstraction.
-
-Power is right-associative. In decreasing precedence, the remaining binary
-groups are multiplication, addition, shifts, bitwise `&`, bitwise `^`, bitwise
-`|`, comparisons, equality, logical `&&`, and logical `||`; the conditional
-operator is lower still. Conversion with `as` binds more tightly than power and
-is left-associative. Comparison and equality operators are non-associative, so
-chains such as `a < b < c` and `a == b == c` must be written as explicit
-logical combinations.
-
-The compiler retains `lam(...) returns (...) { ... }` for lambda expressions as
-a Core extension.
-
----
-
-## Assembly
-
-An `assembly { ... }` block embeds the Yul sublanguage. Yul declarations,
-assignment, `if`, `switch`, `for`, `break`, `continue`, and `leave` retain Yul
-syntax and do not use SAIL statement terminators.
-
-Yul function declarations use `function name(args) -> results { ... }`. An
-arrow must be followed by at least one result name. Yul identifiers may begin
-with `_` or `$`, and boolean literals are `true` and `false`. A Yul `let` or
-assignment must name at least one target. Backtick-delimited and `${...}` meta
-expressions remain available as a compiler extension.
-
-```solidity
-function load(slot: word) returns (word) {
-    let value: word;
-    assembly {
-        value := sload(slot)
-    }
-    return value;
-}
-```
-
-Only surrounding values represented as `word` may be referenced directly from
-Yul.
+Identifiers start with a Unicode letter and continue with Unicode letters,
+numbers, or underscores. `_` is a wildcard, not a binding name. Hyphenated
+identifiers are restricted to pragmas; put spaces around subtraction.
+Nested block comments and line comments are supported. Strings use double
+quotes and the escapes `\n`, `\t`, `\"`, and `\\`. Integers are decimal or
+lowercase-`0x` hexadecimal. List trailing-comma rules follow the reference
+parser; ordinary function calls do not permit a trailing argument comma.

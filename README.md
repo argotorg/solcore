@@ -7,6 +7,8 @@ bugs. You should under no circumstances be using this in a production setting.
 
 ## Documentation
 
+- The implemented source grammar is documented in [Source syntax](doc/src/sail/syntax.md) and follows `solcore-rs`'s `new-syntax` branch.
+
 - A high level overview of the language and it's design can be found in the [Core Solidity Deep
     Dive](https://www.solidity.org/blog/2025/11/14/core-solidity-deep-dive/) post on the Solidity
     blog.
