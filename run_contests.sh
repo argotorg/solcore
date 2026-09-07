@@ -40,3 +40,4 @@ bash ./contest.sh test/examples/dispatch/storage_adt_abi.json
 bash ./contest.sh test/examples/dispatch/storage_dynamic_field.json
 bash ./contest.sh test/examples/dispatch/forloops.json
 bash ./contest.sh test/examples/dispatch/weth9.json
+bash ./contest.sh test/new-syntax/integration/main.json

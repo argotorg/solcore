@@ -13,7 +13,9 @@ import NewSyntaxDeriveTests
 import NewSyntaxExprTests
 import NewSyntaxTypeTests
 import ParserTests
+import ReferenceSyntaxTests
 import SpecialiseTests
+import Test.Tasty
 import UfcsTests
 import YulEvalTests
 
@@ -24,7 +26,8 @@ tests :: TestTree
 tests =
   testGroup
     "Tests"
-    [ newSyntaxTypeTests,
+    [ referenceSyntaxTests,
+      newSyntaxTypeTests,
       newSyntaxExprTests,
       newSyntaxDeclTests,
       newSyntaxDeriveTests,
