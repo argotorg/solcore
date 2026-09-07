@@ -11,7 +11,8 @@ import Data.List.NonEmpty qualified as NE
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.SolcoreTypes
-  ( paramP,
+  ( locatedP,
+    paramP,
     qualifiedName,
     simpleNameP,
     typeP,
@@ -27,9 +28,9 @@ import Solcore.Frontend.Syntax.SyntaxTree
 compUnitP :: Parser CompUnit
 compUnitP = do
   sc
-  items <- many (Left <$> try importP <|> Right <$> topDeclP)
+  items <- many (Left <$> importP <|> Right <$> topDeclP)
   eof
-  return $ CompUnit [i | Left i <- items] [d | Right d <- items]
+  pure $ CompUnit [i | Left i <- items] [d | Right d <- items]
 
 expP :: Parser Exp
 expP = exprP bodyP
@@ -38,44 +39,39 @@ importP :: Parser Import
 importP = do
   keyword "import"
   choice
-    [ try $ do
+    [ do
         _ <- symbol "*"
-        keyword "as"
-        aliasName <- simpleNameP
+        aliasName <- optional (keyword "as" *> simpleNameP)
         keyword "from"
         path <- importPathP
-        _ <- semicolon
-        pure (ImportAlias path aliasName),
-      try $ do
-        entries <- braces (itemEntryP `sepBy1` comma)
+        case aliasName of
+          Just alias -> ImportAlias path alias <$ semicolon
+          Nothing -> do
+            hiddenNames <- option [] hidingP
+            ImportOnly path (SelectItems [SelectAllItems] hiddenNames) <$ semicolon,
+      do
+        entries <- braces (itemEntryP `sepEndBy1` comma)
         keyword "from"
         path <- importPathP
         hiddenNames <- option [] hidingP
-        _ <- semicolon
-        pure (ImportOnly path (SelectItems entries hiddenNames)),
-      do
-        path <- importPathP
-        ImportModule path <$ semicolon
+        ImportOnly path (SelectItems entries hiddenNames) <$ semicolon,
+      ImportModule <$> importPathP <* semicolon
     ]
   where
-    hidingP = keyword "hiding" *> braces (simpleNameP `sepBy1` comma)
+    hidingP = keyword "hiding" *> braces (selectorNameP `sepEndBy1` comma)
 
 importPathP :: Parser ModulePath
-importPathP = try externalPathP <|> modulePathP
+importPathP = externalPathP <|> modulePathP
 
 modulePathP :: Parser ModulePath
-modulePathP = do
-  h <- identifier
-  ts <- many (try (char '.' *> identifier))
-  return (classifyModulePath (foldl QualName (Name h) ts))
+modulePathP = classifyModulePath <$> moduleNameP
 
 externalPathP :: Parser ModulePath
 externalPathP = do
-  lib <- symbol "@" *> identifier <* char '.'
-  sc
-  h <- identifier
-  ts <- many (try (char '.' *> identifier))
-  return (ExternalPath (Name lib) (foldl QualName (Name h) ts))
+  _ <- symbol "@"
+  lib <- simpleNameP
+  rest <- many (try (symbol "." *> identifier))
+  pure (ExternalPath lib (case rest of [] -> Name ""; _ -> mkQualName rest))
 
 classifyModulePath :: Name -> ModulePath
 classifyModulePath n = case splitQual n of
@@ -90,71 +86,110 @@ mkQualName :: [String] -> Name
 mkQualName [] = error "mkQualName: empty list"
 mkQualName (x : xs) = foldl QualName (Name x) xs
 
+moduleNameP :: Parser Name
+moduleNameP = do
+  h <- simpleNameP
+  ts <- many (try (symbol "." *> identifier))
+  pure (foldl QualName h ts)
+
+-- Selectors may name an operator by enclosing its token sequence in parens.
+-- Token boundaries are insignificant, so `( + = )` names the same operator
+-- as `(+=)`, just as in the token-based reference parser.
+selectorNameP :: Parser Name
+selectorNameP = operatorNameP <|> simpleNameP
+
+operatorNameP :: Parser Name
+operatorNameP = locatedP locatedName $ do
+  parts <- parens (some operatorPartP)
+  pure (Name (concat parts))
+  where
+    operatorPartP =
+      choice
+        ( map
+            (try . symbol)
+            [ ":=",
+              "->",
+              "=>",
+              "==",
+              "!=",
+              ">=",
+              "<=",
+              "&&",
+              "||",
+              "+=",
+              "-=",
+              "*=",
+              "/=",
+              "^=",
+              "&=",
+              "|=",
+              "%=",
+              "~=",
+              "+",
+              "-",
+              "*",
+              "/",
+              "%",
+              "!",
+              "~",
+              "<",
+              ">",
+              "=",
+              "|",
+              "&",
+              "^",
+              ":"
+            ]
+        )
+
 itemEntryP :: Parser ItemSelectorEntry
-itemEntryP =
-  SelectAllItems
-    <$ symbol "*"
-      <|> try (SelectItemAs <$> simpleNameP <* keyword "as" <*> simpleNameP)
-      <|> SelectItem
-    <$> simpleNameP
+itemEntryP = do
+  n <- selectorNameP
+  alias <- optional (keyword "as" *> simpleNameP)
+  pure (maybe (SelectItem n) (SelectItemAs n) alias)
 
 exportP :: Parser Export
 exportP = do
   keyword "export"
-  choice
-    [ ExportList <$> braces (exportSpecP `sepBy` comma) <* semicolon,
-      externalPathP >>= exportTailP,
-      modulePathP >>= exportTailP
-    ]
+  (ExportList <$> braces (exportSpecP `sepEndBy` comma) <* semicolon)
+    <|> (modulePathP >>= exportTailP)
 
 exportTailP :: ModulePath -> Parser Export
 exportTailP path =
   choice
-    [ symbol "." *> dotExportP,
+    [ do
+        _ <- symbol "."
+        entries <-
+          [SelectExportAllItems]
+            <$ symbol "*"
+              <|> braces (exportSelEntryP `sepEndBy` comma)
+        ExportItemsFrom path (SelectExportItems entries) <$ semicolon,
       keyword "as" *> (ExportModuleAs path <$> simpleNameP) <* semicolon,
       ExportModule path <$ semicolon
     ]
-  where
-    dotExportP = ExportItemsFrom path . SelectExportItems <$> itemsP <* semicolon
-    itemsP =
-      braces (exportSelEntryP `sepBy` comma)
-        <|> [SelectExportAllItems]
-        <$ symbol "*"
 
 exportSpecP :: Parser ExportSpec
 exportSpecP =
-  ExportAll
-    <$ symbol "*"
-      <|> ExportModuleAll
-    <$> try moduleAllPathP
-      <|> do
+  choice
+    [ ExportAll <$ symbol "*",
+      try (ExportModuleAll <$> modulePathP <* symbol "." <* symbol "*"),
+      ExportName <$> operatorNameP,
+      do
         n <- simpleNameP
-        mSel <- optional (parens constrSelectorP)
-        return $ case mSel of
-          Nothing -> ExportName n
-          Just sel -> ExportNameWithConstructors n sel
-  where
-    moduleAllPathP =
-      (externalPathP <|> classifyModulePath <$> moduleNameP)
-        <* symbol "."
-        <* symbol "*"
-
-moduleNameP :: Parser Name
-moduleNameP = do
-  h <- identifier
-  ts <- many (try (char '.' *> notFollowedBy (char '*' <|> char '{') *> identifier))
-  return (foldl QualName (Name h) ts)
+        constructors <- optional (parens constrSelectorP)
+        pure (maybe (ExportName n) (ExportNameWithConstructors n) constructors)
+    ]
 
 exportSelEntryP :: Parser ExportSelectorEntry
 exportSelEntryP =
-  SelectExportAllItems
-    <$ symbol "*"
-      <|> do
+  choice
+    [ SelectExportAllItems <$ symbol "*",
+      SelectExportItem <$> operatorNameP,
+      do
         n <- simpleNameP
-        mSel <- optional (parens constrSelectorP)
-        return $ case mSel of
-          Nothing -> SelectExportItem n
-          Just sel -> SelectExportConstructors n sel
+        constructors <- optional (parens constrSelectorP)
+        pure (maybe (SelectExportItem n) (SelectExportConstructors n) constructors)
+    ]
 
 constrSelectorP :: Parser ConstructorSelector
 constrSelectorP =
