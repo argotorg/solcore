@@ -201,6 +201,7 @@ test-suite sol-core-tests
     UfcsTests
     YulEvalTests
     ParserTests
+    NewSyntaxTypeTests
 
   build-depends:
     , sol-core
