@@ -9,6 +9,7 @@ import LocationTests
 import MatchCompilerTests
 import ModuleTypeCheckTests
 import NewSyntaxDeclTests
+import NewSyntaxDeriveTests
 import NewSyntaxExprTests
 import NewSyntaxTypeTests
 import ParserTests
@@ -26,6 +27,7 @@ tests =
     [ newSyntaxTypeTests,
       newSyntaxExprTests,
       newSyntaxDeclTests,
+      newSyntaxDeriveTests,
       parserTests,
       cases,
       tabledResolution,
