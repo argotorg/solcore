@@ -359,8 +359,8 @@ a compile-time device: the compiler expands them before type checking and they
 leave no trace in the generated code.
 
 ```solcore
-alias Int = word;
-alias Point = pair<Int, Int>;
+type Int = word;
+type Point = pair<Int, Int>;
 
 function makePoint(x: Int, y: Int) returns (Point) {
     return (x, y);
@@ -375,15 +375,15 @@ function getX(p: Point) returns (Int) {
 }
 ```
 
-Like data types, synonyms can have type parameters:
+Synonyms can have type parameters, written in parentheses after the name:
 
 ```solcore
-alias Map<k, v> = pair<k, v>;   // toy example
+type Map(k, v) = pair<k, v>;   // toy example
 ```
 
 > **Warning** Recursive type synonyms are not allowed. A synonym must not refer
-> directly or indirectly to itself. Attempting to define `alias A = B` and
-> `alias B = A` simultaneously is a compile-time error.
+> directly or indirectly to itself. Attempting to define `type A = B;` and
+> `type B = A;` simultaneously is a compile-time error.
 
 ---
 

@@ -35,7 +35,7 @@ contract MiniERC20 {
            , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
 	         );
 
-    if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal() as uint)) {
+    if (src != msg_sender && allowance[src][msg_sender] != ((lam (syntaxValue: uint) -> uint { return syntaxValue; })(Num.maxVal()))) {
        require( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
 	            , 0x746f6b656e2f696e73756666696369656e742d616c6c6f77616e6365
 	            );

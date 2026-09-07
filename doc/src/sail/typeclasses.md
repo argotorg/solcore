@@ -348,20 +348,20 @@ before any declarations.
 
 There are three pragmas, one per condition:
 
-| Pragma keyword                  | Condition disabled       |
-| ------------------------------- | ------------------------ |
-| `pragma solcore noCoverageCondition`      | Coverage condition       |
-| `pragma solcore noPattersonCondition`     | Patterson condition      |
-| `pragma solcore noBoundVariableCondition` | Bound variable condition |
+| Pragma keyword                         | Condition disabled       |
+| -------------------------------------- | ------------------------ |
+| `pragma no-coverage-condition`          | Coverage condition       |
+| `pragma no-patterson-condition`         | Patterson condition      |
+| `pragma no-bounded-variable-condition`  | Bound variable condition |
 
 Each pragma has two forms:
 
 ```solidity
 // Disable for a specific list of classes (comma-separated).
-pragma solcore noCoverageCondition ClassName1, ClassName2;
+pragma no-coverage-condition ClassName1, ClassName2;
 
 // Disable globally for all classes in this file.
-pragma solcore noCoverageCondition;
+pragma no-coverage-condition;
 ```
 
 Pragmas apply only to the file in which they appear. Importing a file does not
@@ -373,7 +373,7 @@ declarations.
 > pragmas only when you understand the implications for the specific class and
 > instance involved.
 
-### `pragma solcore noCoverageCondition`
+### `pragma no-coverage-condition`
 
 Disables the coverage check for the listed classes. Use this when a weak type
 argument is deliberately left undetermined by the main type, for example in open
@@ -381,7 +381,7 @@ type-indexed families where the relationship is established by context rather
 than by the instance itself.
 
 ```solidity
-pragma solcore noCoverageCondition MyClass;
+pragma no-coverage-condition MyClass;
 
 enum Box<A> {
     Box(word)
@@ -403,14 +403,14 @@ does not determine:
 B
 ```
 
-### `pragma solcore noPattersonCondition`
+### `pragma no-patterson-condition`
 
 Disables the Patterson measure check for the listed classes. Use this for class
 hierarchies where the instance search is known to terminate through structural
 arguments not captured by the simple measure metric.
 
 ```solidity
-pragma solcore noPattersonCondition C1;
+pragma no-patterson-condition C1;
 
 trait C1<A> {}
 trait C2<A> {}
@@ -427,14 +427,14 @@ U : C1
 does not satisfy the Patterson conditions.
 ```
 
-### `pragma solcore noBoundVariableCondition`
+### `pragma no-bounded-variable-condition`
 
 Disables the bound variable check for the listed classes. Use this when a
 context variable is intentionally existential, meaning it is chosen by the
 instance rather than derived from the call site.
 
 ```solidity
-pragma solcore noBoundVariableCondition Container;
+pragma no-bounded-variable-condition Container;
 
 enum Box<A> {
     Box(word)
@@ -458,9 +458,9 @@ Multiple pragmas may appear in the same file and may target the same class from
 different directives. All specified conditions are disabled independently:
 
 ```solidity
-pragma solcore noCoverageCondition MyClass;
-pragma solcore noPattersonCondition MyClass;
-pragma solcore noBoundVariableCondition MyClass;
+pragma no-coverage-condition MyClass;
+pragma no-patterson-condition MyClass;
+pragma no-bounded-variable-condition MyClass;
 
 enum Box<A> {
     Box(word)
