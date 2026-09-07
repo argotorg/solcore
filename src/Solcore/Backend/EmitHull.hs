@@ -16,7 +16,7 @@ import Language.Hull qualified as Hull
 import Language.Yul
 import Solcore.Backend.Mast
 import Solcore.Frontend.Pretty.SolcorePretty
-import Solcore.Frontend.Syntax.Contract (Constr (..), DataTy (..), DataTyKind (..))
+import Solcore.Frontend.Syntax.Contract (Constr (..), DataTy (..), DataTyKind (..), pattern DataTyWithKind)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
 import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..))
@@ -83,8 +83,9 @@ type DataTable = Map.Map Name DataTy
 
 sumDataTy :: DataTy
 sumDataTy =
-  DataTyWithKind
-    { dataTyKind = EnumKind,
+  DataTyWithDerives
+    { dataDerives = [],
+      dataTyKind = EnumKind,
       dataName = "sum",
       dataParams = [TVar "a", TVar "b"],
       dataConstrs =

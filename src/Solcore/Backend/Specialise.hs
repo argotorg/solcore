@@ -1154,6 +1154,7 @@ toMastContract c =
 
 toMastContractDecl :: ContractDecl Id -> MastContractDecl
 toMastContractDecl (CDataDecl dt) = MastCDataDecl dt
+toMastContractDecl (CSymDecl _) = MastCMutualDecl []
 toMastContractDecl (CFunDecl fd) = MastCFunDecl (toMastFunDef fd)
 toMastContractDecl (CMutualDecl ds) = MastCMutualDecl (map toMastContractDecl ds)
 toMastContractDecl d = error $ "toMastContractDecl: unexpected " ++ show d

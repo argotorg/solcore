@@ -143,6 +143,7 @@ instance Decl (TopDecl Name) where
 
 instance Decl (ContractDecl Name) where
   decl (CDataDecl dt) = decl dt
+  decl (CSymDecl alias) = decl alias
   decl (CFieldDecl fd) = decl fd
   decl (CFunDecl fd) = decl fd
   decl (CSignatureDecl _ sig) = decl sig
@@ -266,6 +267,7 @@ instance Names DataTy where
 
 instance Names (ContractDecl Name) where
   names (CDataDecl dt) = names dt
+  names (CSymDecl alias) = names alias
   names (CFieldDecl fd) = names fd
   names (CFunDecl fd) = names fd
   names (CSignatureDecl _ sig) = names sig

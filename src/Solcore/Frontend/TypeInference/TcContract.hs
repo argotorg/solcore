@@ -106,7 +106,14 @@ tcTopDeclChecks topDeclChecks =
     step _ ac = ac
     isClass (TClassDef _) = True
     isClass _ = False
-    syns = [s | TSym s <- cs]
+    syns = concatMap topSynonyms cs
+    topSynonyms (TSym alias) = [alias]
+    topSynonyms (TContr (Contract _ _ members)) = concatMap contractSynonyms members
+    topSynonyms (TMutualDef declarations) = concatMap topSynonyms declarations
+    topSynonyms _ = []
+    contractSynonyms (CSymDecl alias) = [alias]
+    contractSynonyms (CMutualDecl members) = concatMap contractSynonyms members
+    contractSynonyms _ = []
     trustImportedDecls expandedDecls =
       mapM_
         (withPartialDataTypesDisabled . trustImportedTopDecl)
@@ -271,6 +278,8 @@ checkTopDecl _ = pure ()
 checkContractDataDecl :: ContractDecl Name -> TcM ()
 checkContractDataDecl (CDataDecl dt) =
   checkDataType dt
+checkContractDataDecl (CSymDecl alias) =
+  checkSynonym alias
 checkContractDataDecl (CMutualDecl contractDecls) =
   mapM_ checkContractDataDecl contractDecls
 checkContractDataDecl _ =
@@ -354,6 +363,7 @@ tcDecl (CMutualDecl ds) =
     pure (CMutualDecl (map CFunDecl ds'))
 tcDecl (CConstrDecl cd) = CConstrDecl <$> tcConstructor cd
 tcDecl (CDataDecl d) = CDataDecl <$> tcDataDecl d
+tcDecl (CSymDecl alias) = pure (CSymDecl alias)
 
 -- Interface declarations contribute a callable, fully checked signature but
 -- deliberately have no body to infer.

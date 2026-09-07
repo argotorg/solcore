@@ -39,6 +39,7 @@ data PragmaType
   | NoGenericInstanceFor
   | SolidityPragma String
   | AbiCoderPragma String
+  | CustomPragma String
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data PragmaStatus
@@ -141,13 +142,21 @@ pattern ContractShell k n ts ds = ContractWithKind k n ts ds
 -- definition of a algebraic data type
 
 data DataTy
-  = DataTyWithKind
-  { dataTyKind :: DataTyKind,
+  = DataTyWithDerives
+  { dataDerives :: [Name],
+    dataTyKind :: DataTyKind,
     dataName :: Name,
     dataParams :: [Tyvar],
     dataConstrs :: [Constr]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
+
+pattern DataTyWithKind :: DataTyKind -> Name -> [Tyvar] -> [Constr] -> DataTy
+pattern DataTyWithKind kind n ps cs <- DataTyWithDerives _ kind n ps cs
+  where
+    DataTyWithKind kind n ps cs = DataTyWithDerives [] kind n ps cs
+
+{-# COMPLETE DataTyWithKind #-}
 
 data DataTyKind
   = EnumKind
@@ -386,6 +395,7 @@ data FunDef a
 
 data ContractDecl a
   = CDataDecl DataTy
+  | CSymDecl TySym
   | CFieldDecl (Field a)
   | CFunDecl (FunDef a)
   | CSignatureDecl Bool (Signature a)
@@ -513,6 +523,7 @@ instance (HasSourceSpan a) => HasSourceSpan (FunDef a) where
 
 instance (HasSourceSpan a) => HasSourceSpan (ContractDecl a) where
   sourceSpanOf (CDataDecl dataTy) = sourceSpanOf dataTy
+  sourceSpanOf (CSymDecl tySym) = sourceSpanOf tySym
   sourceSpanOf (CFieldDecl field) = sourceSpanOf field
   sourceSpanOf (CFunDecl funDef) = sourceSpanOf funDef
   sourceSpanOf (CSignatureDecl _ sig) = sourceSpanOf sig
