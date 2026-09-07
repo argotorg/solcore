@@ -1,6 +1,6 @@
 export { helper };
 
-pragma solcore noPattersonCondition C;
+pragma no-patterson-condition C;
 
 function helper() returns (word) {
   return 1;

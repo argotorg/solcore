@@ -1,4 +1,4 @@
-import {*} from globlib hiding {idWord};
+import * from globlib hiding {idWord};
 
 function main(x: word) returns (word) {
   let y: T = mkT(x);

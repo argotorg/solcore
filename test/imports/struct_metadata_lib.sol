@@ -1,6 +1,3 @@
 export { Pair(*) };
 
-struct Pair {
-  left: word;
-  right: bool;
-}
+enum Pair { Pair(word, bool) }
