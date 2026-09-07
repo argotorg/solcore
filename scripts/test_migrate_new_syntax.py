@@ -22,122 +22,63 @@ sys.modules[SPEC.name] = migration
 SPEC.loader.exec_module(migration)
 
 
-class NewSyntaxStabilityTests(unittest.TestCase):
-    def assert_stable(self, source: str) -> None:
-        self.assertEqual(migration.migrate_source(source), source)
+class NewSyntaxMigrationTests(unittest.TestCase):
+    def assert_migration(self, source: str, expected: str) -> None:
+        result = migration.migrate_source(source)
+        self.assertEqual(result, expected)
+        self.assertEqual(migration.migrate_source(result), result)
 
-    def test_named_and_comptime_returns_are_stable(self) -> None:
-        self.assert_stable(
-            "function namedPair() returns "
-            "(left: uint256, comptime right: bool) "
-            "{ return (1, true); }\n"
+    def test_types_and_aliases(self) -> None:
+        self.assert_migration(
+            "alias Ref<a> = a storage;\nfunction f(xs: word[] memory) returns (word) {}\n",
+            "type Ref(a) = storage<a>;\nfunction f(xs: memory<array<word>>) returns (word) {}\n",
         )
 
-    def test_recursive_tuple_binding_is_stable(self) -> None:
-        for comptime in ("", "comptime "):
-            with self.subTest(comptime=comptime):
-                self.assert_stable(
-                    "function unpack() { let "
-                    f"{comptime}(a, (b, c)): "
-                    "(uint256, (bool, word)) = readResult(); }\n"
-                )
-
-    def test_data_identifiers_are_stable(self) -> None:
-        cases = (
-            "function f(data: word) returns (word) { return data; }\n",
-            "struct S { data: word; }\n",
-            "contract C { data: word; }\n",
-            "function f() { let data: word = 1; data = data + 1; }\n",
-            "function f(x: S) { x.data; }\n",
-            "function f() { assembly { let data := calldataload(0) } }\n",
-            (
-                "// data Fake = Fake;\n"
-                'function f() returns (string) '
-                '{ return "data Fake = Fake;"; }\n'
-            ),
-        )
-        for source in cases:
-            with self.subTest(source=source):
-                self.assert_stable(source)
-
-    def test_nested_block_comments_are_stable(self) -> None:
-        self.assert_stable(
-            "/* outer /* inner */ type Word = word; */\n"
-            "function ok() {}\n"
+    def test_comptime_parameter_local_and_return(self) -> None:
+        self.assert_migration(
+            "function f(comptime x: word) returns (comptime word) { let comptime y: word = x; return y; }",
+            "function f(comptime x: word) returns (comptime<word>) { let y: comptime<word> = x; return y; }",
         )
 
-    def test_function_type_visibility_is_stable(self) -> None:
-        for visibility in ("", " internal", " external"):
-            with self.subTest(visibility=visibility):
-                self.assert_stable(
-                    "function apply("
-                    f"callback: function(word){visibility} returns (bool)"
-                    ") {}\n"
-                )
-
-    def test_explicit_unit_returns_are_stable(self) -> None:
-        cases = (
-            "function unitValue() returns (()) { return (); }\n",
-            (
-                "function named() returns (result: word) "
-                "{ result = 1; return (); }\n"
-            ),
-        )
-        for source in cases:
-            with self.subTest(source=source):
-                self.assert_stable(source)
-
-    def test_yul_meta_payloads_are_stable(self) -> None:
-        cases = (
-            "function f() { assembly { let x := `foo;bar` } }\n",
-            "function f() { assembly { let x := ${foo;bar} } }\n",
-        )
-        for source in cases:
-            with self.subTest(source=source):
-                self.assert_stable(source)
-
-    def test_transparent_aliases_are_stable(self) -> None:
-        cases = (
-            "alias Word = uint256;\n",
-            "alias Map<key, value> = pair<key, value>;\n",
-        )
-        for source in cases:
-            with self.subTest(source=source):
-                self.assert_stable(source)
-
-    def test_nominal_user_defined_value_type_syntax_is_stable(self) -> None:
-        self.assert_stable("type Wad is uint256;\n")
-
-    def test_external_module_imports_are_stable(self) -> None:
-        cases = (
-            "import @ext.foo.bar;\n",
-            "import * as Foo from @ext.foo.bar;\n",
-        )
-        for source in cases:
-            with self.subTest(source=source):
-                self.assert_stable(source)
-
-    def test_external_selective_import_is_stable(self) -> None:
-        self.assert_stable(
-            "import {foo, bar as baz} from @ext.foo.bar;\n"
+    def test_lambda_result_and_proxy(self) -> None:
+        self.assert_migration(
+            "let f = lam (x: word) returns (word) { return x; }; let p = Proxy as Proxy<option<word>>;",
+            "let f = lam (x: word) -> word { return x; }; let p = @option<word>;",
         )
 
-    def test_external_glob_import_with_hiding_is_stable(self) -> None:
-        self.assert_stable(
-            "import {*} from @ext.foo.bar hiding {bar};\n"
+    def test_annotations_retain_expected_type(self) -> None:
+        self.assert_migration(
+            "function f() { return load(storage(2) as word storage); }",
+            "function f() { let syntaxValue1: storage<word> = storage(2); return load(syntaxValue1); }",
         )
 
-    def test_external_exports_are_stable(self) -> None:
-        cases = (
-            "export @ext.foo.bar;\n",
-            "export @ext.foo.bar as Foo;\n",
-            "export @ext.foo.bar.{foo};\n",
-            "export @ext.foo.bar.*;\n",
-            "export {@ext.foo.bar.*};\n",
-        )
-        for source in cases:
-            with self.subTest(source=source):
-                self.assert_stable(source)
+    def test_lazy_operands_and_previous_calls_keep_evaluation_order(self) -> None:
+        for expression in ("ready && (read() as bool)", "call(first(), read() as word)"):
+            with self.subTest(expression=expression):
+                migrated = migration.migrate_source("function f() { return " + expression + "; }")
+                self.assertNotIn("let syntaxValue1", migrated)
+                self.assertIn("lam (syntaxValue:", migrated)
+                self.assertEqual(migration.migrate_source(migrated), migrated)
+
+    def test_nested_annotations_become_ordered_typed_bindings(self) -> None:
+        migrated = migration.migrate_source("function f<a, b>() { return (load(item as a) as b); }")
+        self.assertNotIn("lam (syntaxValue:", migrated)
+        self.assertLess(migrated.index("= item;"), migrated.index("= load("))
+        self.assertEqual(migration.migrate_source(migrated), migrated)
+
+    def test_new_prefix_types_after_where_are_stable(self) -> None:
+        source = "impl<a> Store<storage<a>> where storage<a>: Store<a> {}"
+        self.assert_migration(source, source)
+
+    def test_import_aliases_comments_and_assembly_are_preserved(self) -> None:
+        source = ("import {foo as bar} from util;\n"
+                  "// let comptime x: word = 1;\n"
+                  "/* outer /* nested */ alias X = word; */\n"
+                  'function f() { assembly { let _x := \"returns (comptime word)\" } }')
+        self.assert_migration(source, source)
+
+    def test_pragma_names(self) -> None:
+        self.assert_migration("pragma solcore noBoundVariableCondition Store;", "pragma  no-bounded-variable-condition Store;")
 
     def test_tracked_symlink_aliases_are_not_counted_as_sources(self) -> None:
         sources = migration.tracked_core_sources()
@@ -146,7 +87,7 @@ class NewSyntaxStabilityTests(unittest.TestCase):
         )
 
     def test_absolute_symlink_alias_cannot_bypass_source_allow_list(self) -> None:
-        alias = migration.REPO_ROOT / "test/imports/mirror/api.solc"
+        alias = migration.REPO_ROOT / "test/imports/mirror/api.sol"
         self.assertTrue(alias.is_symlink())
         for argument in (str(alias.relative_to(migration.REPO_ROOT)), str(alias)):
             with self.subTest(argument=argument):
@@ -168,7 +109,7 @@ class NewSyntaxStabilityTests(unittest.TestCase):
                     check=True,
                 )
 
-                relative = pathlib.Path("src/nested/victim.solc")
+                relative = pathlib.Path("src/nested/victim.sol")
                 tracked = root / relative
                 tracked.parent.mkdir(parents=True)
                 tracked.write_text(legacy_source)
@@ -202,7 +143,7 @@ class NewSyntaxStabilityTests(unittest.TestCase):
                 self.assertTrue(index_entry.startswith("100644 "))
 
                 if layout == "source":
-                    target = temporary_root / "outside.solc"
+                    target = temporary_root / "outside.sol"
                     target.write_text(legacy_source)
                     tracked.unlink()
                     tracked.symlink_to(target)
@@ -278,7 +219,7 @@ class NewSyntaxStabilityTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            relative = pathlib.Path("src/example.solc")
+            relative = pathlib.Path("src/example.sol")
             source = root / relative
             source.parent.mkdir(parents=True)
             source.write_text("function current() {}\n")
@@ -313,6 +254,11 @@ class NewSyntaxStabilityTests(unittest.TestCase):
                     return_value=[relative],
                 ),
                 mock.patch.object(
+                    migration,
+                    "tracked_core_source_origins",
+                    return_value={relative: relative},
+                ),
+                mock.patch.object(
                     migration.subprocess,
                     "run",
                     side_effect=reject_git_show,
@@ -329,92 +275,77 @@ class NewSyntaxStabilityTests(unittest.TestCase):
     def test_packaged_source_fallback_is_scoped_to_core_roots(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            for relative in ("src/a.solc", "std/b.solc", "test/c.solc"):
+            for relative in ("src/a.sol", "std/b.sol", "test/c.sol"):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("function current() {}\n")
-            (root / "scratch.solc").write_text("legacy root scratch\n")
+            (root / "scratch.sol").write_text("legacy root scratch\n")
             (root / "poc").mkdir()
-            (root / "poc/experiment.solc").write_text("legacy experiment\n")
-            (root / "test/link.solc").symlink_to(root / "src/a.solc")
+            (root / "poc/experiment.sol").write_text("legacy experiment\n")
+            (root / "test/link.sol").symlink_to(root / "src/a.sol")
+            classic = root / "test/examples/dispatch/fib.classic.sol"
+            classic.parent.mkdir(parents=True)
+            classic.write_text("pragma solidity ^0.8.0;\n")
 
             with mock.patch.object(migration, "REPO_ROOT", root):
                 self.assertEqual(
                     migration.packaged_solc_sources(),
                     [
-                        pathlib.Path("src/a.solc"),
-                        pathlib.Path("std/b.solc"),
-                        pathlib.Path("test/c.solc"),
+                        pathlib.Path("src/a.sol"),
+                        pathlib.Path("std/b.sol"),
+                        pathlib.Path("test/c.sol"),
                     ],
                 )
 
+    def test_unstaged_extension_rename_keeps_core_head_origin(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            original = pathlib.Path("test/examples/dispatch/fib.solc")
+            renamed = original.with_suffix(".sol")
+            classic = original.with_name("fib.classic.sol")
+            (root / original).parent.mkdir(parents=True)
+            (root / original).write_text("alias Word = word;\n")
+            (root / renamed).write_text("pragma solidity ^0.8.0;\n")
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Migration Test", "-c",
+                 "user.email=migration-test@example.invalid", "commit", "--quiet", "-m", "fixture"],
+                cwd=root, check=True,
+            )
+            with mock.patch.object(migration, "REPO_ROOT", root), mock.patch.object(migration, "CORE_SOL_FILES", ()):
+                # Before the extension change, only the Core .solc is eligible.
+                self.assertEqual(migration.tracked_core_sources(), [original])
+                (root / renamed).rename(root / classic)
+                (root / original).rename(root / renamed)
+                self.assertEqual(migration.tracked_core_source_origins(), {renamed: original})
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(migration.main(["--write", "--from-head", str(renamed)]), 0)
+                self.assertEqual((root / renamed).read_text(), "type Word = word;\n")
+                self.assertEqual((root / classic).read_text(), "pragma solidity ^0.8.0;\n")
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(migration.main(["--check"]), 0)
 
-class LegacyMigrationTests(unittest.TestCase):
-    def test_transparent_type_declarations_become_aliases(self) -> None:
-        cases = (
-            ("type Word = word;\n", "alias Word = word;\n"),
-            (
-                "type Pair(a, b) = pair(a, b);\n",
-                "alias Pair<a, b> = pair<a, b>;\n",
-            ),
-        )
-        for source, expected in cases:
-            with self.subTest(source=source):
-                self.assertEqual(migration.migrate_source(source), expected)
-
-    def test_expression_annotation_still_becomes_conversion(self) -> None:
-        source = (
-            "function convert(x: word) returns (word) "
-            "{ return x : word; }\n"
-        )
-        expected = (
-            "function convert(x: word) returns (word) "
-            "{ return x as word; }\n"
-        )
-        self.assertEqual(migration.migrate_source(source), expected)
-
-    def test_top_level_and_contract_data_declarations_migrate(self) -> None:
-        source = (
-            "data Option(a) = None | Some(a);\n"
-            "contract C {\n"
-            "  data Pair(a, b) = Pair(a, b);\n"
-            "}\n"
-        )
-        expected = (
-            "enum Option<a> { None, Some(a) }\n"
-            "contract C {\n"
-            "  enum Pair<a, b> { Pair(a, b) }\n"
-            "}\n"
-        )
-        self.assertEqual(migration.migrate_source(source), expected)
-
-    def test_external_selective_import_migrates(self) -> None:
-        source = "import @ext.foo.bar.{foo, bar as baz};\n"
-        expected = "import {foo, bar as baz} from @ext.foo.bar;\n"
-        self.assertEqual(migration.migrate_source(source), expected)
-
-    def test_proxy_expression_outside_module_path_still_migrates(self) -> None:
-        source = "function f() { return @Foo.bar; }\n"
-        expected = (
-            "function f() { return Proxy as Proxy<Foo.bar>; }\n"
-        )
-        self.assertEqual(migration.migrate_source(source), expected)
-
-    def test_sum_parameter_fixup_is_reproducible(self) -> None:
-        generated = (
-            "function sum (p1 : (T1, T2), p2 (T1, T2)) "
-            "returns ((T1, T2)) {"
-        )
-        expected = (
-            "function sum (p1 : (T1, T2), p2 : (T1, T2)) "
-            "returns ((T1, T2)) {"
-        )
-        self.assertEqual(
-            migration.apply_file_fixups(
-                pathlib.Path("blog-post/sum.sol"), generated
-            ),
-            expected,
-        )
+    def test_unstaged_extension_rename_cannot_follow_replacement_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory) / "repo"
+            root.mkdir()
+            original = pathlib.Path("src/example.solc")
+            renamed = original.with_suffix(".sol")
+            (root / original).parent.mkdir()
+            (root / original).write_text("alias Word = word;\n")
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            (root / original).unlink()
+            outside = root.parent / "outside.sol"
+            outside.write_text("alias Outside = word;\n")
+            (root / renamed).symlink_to(outside)
+            with mock.patch.object(migration, "REPO_ROOT", root), mock.patch.object(migration, "CORE_SOL_FILES", ()):
+                with self.assertRaisesRegex(ValueError, "symlink source"):
+                    migration.eligible_paths([])
+                with self.assertRaisesRegex(ValueError, "symlink source"):
+                    migration.eligible_paths([str(renamed)])
+            self.assertEqual(outside.read_text(), "alias Outside = word;\n")
 
 
 if __name__ == "__main__":
