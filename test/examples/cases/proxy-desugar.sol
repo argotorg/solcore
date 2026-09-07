@@ -1,12 +1,12 @@
-import {*} from std;
-pragma solcore noPattersonCondition;
-pragma solcore noCoverageCondition;
-pragma solcore noBoundVariableCondition;
+import * from std;
+pragma no-patterson-condition;
+pragma no-coverage-condition;
+pragma no-bounded-variable-condition;
 
 function foo(x : Proxy<word>) returns (word) {
   return 0;
 }
 
 function fuz(y : word) returns (word) {
-  return y + foo(Proxy as Proxy<word>);
+  return y + foo(@word);
 }

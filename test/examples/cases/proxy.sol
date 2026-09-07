@@ -6,5 +6,5 @@ trait BaseMemoryType<self> {
 
 
 function morefun<t>(p:Proxy<t>) returns (word)  where t: BaseMemoryType {
-  return BaseMemoryType.memorySize(Proxy as Proxy<t>);
+  return BaseMemoryType.memorySize(@t);
 }

@@ -27,13 +27,13 @@ enum memory<a> { memory(word) }
 enum memoryRef<a> { memoryRef(word) }
 enum Proxy<a> { Proxy }
 
-impl<a> Typedef<a memory, word> {
-    function rep(x:a memory) returns (word) {
+impl<a> Typedef<memory<a>, word> {
+    function rep(x:memory<a>) returns (word) {
         match (x ) {
             case memory(y) { return y;
         } }
     }
-    function abs(x:word) returns (a memory) {
+    function abs(x:word) returns (memory<a>) {
         return memory(x);
     }
 }
@@ -119,16 +119,16 @@ trait RValueMemberAccess<self, memberValueType> {
 }
 
 // This is *a lot* of pragmas...
-pragma solcore noCoverageCondition CStructField, LValueMemberAccess, RValueMemberAccess;
-pragma solcore noPattersonCondition LValueMemberAccess, RValueMemberAccess;
-pragma solcore noBoundVariableCondition LValueMemberAccess, RValueMemberAccess;
+pragma no-coverage-condition CStructField, LValueMemberAccess, RValueMemberAccess;
+pragma no-patterson-condition LValueMemberAccess, RValueMemberAccess;
+pragma no-bounded-variable-condition LValueMemberAccess, RValueMemberAccess;
 trait CStructField<self, fieldType, offsetType> {}
 enum StructField<structType, fieldSelector> { StructField(structType) }
 
-impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<MemberAccessProxy<structType memory, fieldSelector>, memoryRef<fieldType>> where StructField<structType, fieldSelector>: CStructField<fieldType, offsetType>, offsetType: MemorySize {
-    function memberAccess(x:MemberAccessProxy<structType memory, fieldSelector>) returns (memoryRef<fieldType>) {
+impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<MemberAccessProxy<memory<structType>, fieldSelector>, memoryRef<fieldType>> where StructField<structType, fieldSelector>: CStructField<fieldType, offsetType>, offsetType: MemorySize {
+    function memberAccess(x:MemberAccessProxy<memory<structType>, fieldSelector>) returns (memoryRef<fieldType>) {
         let ptr:word = Typedef.rep(memberAccessD1(x));
-        let size:word = MemorySize.size(Proxy as Proxy<offsetType>);
+        let size:word = MemorySize.size(@offsetType);
         assembly {
             ptr := add(ptr, size)
         }
@@ -157,8 +157,8 @@ impl MemorySize<uint> {
 
 impl<a, b> MemorySize<(a, b)> where a: MemorySize, b: MemorySize {
     function size(x:Proxy<(a, b)>) returns (word) {
-        let a_sz:word = MemorySize.size(Proxy as Proxy<a>);
-        let b_sz:word = MemorySize.size(Proxy as Proxy<b>);
+        let a_sz:word = MemorySize.size(@a);
+        let b_sz:word = MemorySize.size(@b);
         assembly {
             a_sz := add(a_sz, b_sz)
         }
@@ -166,15 +166,16 @@ impl<a, b> MemorySize<(a, b)> where a: MemorySize, b: MemorySize {
     }
 }
 
-impl<structType, fieldSelector, fieldType, offsetType> RValueMemberAccess<MemberAccessProxy<structType memory, fieldSelector>, fieldType> where StructField<structType, fieldSelector>: CStructField<fieldType, offsetType>, fieldType: MemoryType, offsetType: MemorySize {
-    function memberAccess(x:MemberAccessProxy<structType memory, fieldSelector>) returns (fieldType) {
+impl<structType, fieldSelector, fieldType, offsetType> RValueMemberAccess<MemberAccessProxy<memory<structType>, fieldSelector>, fieldType> where StructField<structType, fieldSelector>: CStructField<fieldType, offsetType>, fieldType: MemoryType, offsetType: MemorySize {
+    function memberAccess(x:MemberAccessProxy<memory<structType>, fieldSelector>) returns (fieldType) {
         let ptr:word = Typedef.rep(memberAccessD1(x));
-        let size:word = MemorySize.size(Proxy as Proxy<offsetType>);
+        let size:word = MemorySize.size(@offsetType);
         // BUG: Something wrong here? Complains about ptr not being word...
         assembly {
           ptr := add(ptr, size)
         }
-        return MemoryType.load(Typedef.abs(ptr)) as fieldType;
+        let syntaxValue1: fieldType = MemoryType.load(Typedef.abs(ptr));
+        return syntaxValue1;
     }
 }
 
@@ -196,8 +197,8 @@ impl CStructField<StructField<S, z_sel>, word, word> {}
 
 
 function f() returns (()) {
-    let x:word memory;
-    let y:word memory;
+    let x:memory<word>;
+    let y:memory<word>;
     // x = y
     Assign.assign(ref(x), y);
     /*
@@ -211,7 +212,7 @@ function f() returns (()) {
 }
 
 function g() returns (()) {
-    let s:S memory = Typedef.abs(0x80);
+    let s:memory<S> = Typedef.abs(0x80);
     let y:word = 42;
     let z:uint = uint(42);
     // s.x = y

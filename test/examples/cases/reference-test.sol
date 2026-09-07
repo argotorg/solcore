@@ -5,11 +5,11 @@ trait Typedef<abs, rep> {
     function rep(v:abs) returns (rep);
 }
 
-impl Typedef<a memory, word> {
-    function abs(ptr:word) returns (a memory) {
+impl Typedef<memory<a>, word> {
+    function abs(ptr:word) returns (memory<a>) {
         return memory(ptr);
     }
-    function rep(v:a memory) returns (word) {
+    function rep(v:memory<a>) returns (word) {
         match (v ) {
             case memory(ptr) { return ptr;
         } }
@@ -26,15 +26,15 @@ impl Test<word> {
     }
 }
 
-enum test<a> { test(a memory) }
+enum test<a> { test(memory<a>) }
 
-impl Typedef<test<a>, a memory> {
-    function rep(x:test<a>) returns (a memory) {
+impl Typedef<test<a>, memory<a>> {
+    function rep(x:test<a>) returns (memory<a>) {
         match (x ) {
             case test(m) { return m;
         } }
     }
-    function abs(m:a memory) returns (test<a>) {
+    function abs(m:memory<a>) returns (test<a>) {
         return test(m);
     }
 }

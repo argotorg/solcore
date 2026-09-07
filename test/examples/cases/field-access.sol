@@ -1,4 +1,4 @@
-import {*} from std;
+import * from std;
 
 contract PoC {
     field : word;

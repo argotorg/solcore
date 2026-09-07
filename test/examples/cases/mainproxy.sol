@@ -12,11 +12,11 @@ impl BaseMemoryType<word> {
 }
 
 
-function morefun(p:Proxy<t>) returns (word) { return BaseMemoryType.memorySize(Proxy as Proxy<t>);
+function morefun(p:Proxy<t>) returns (word) { return BaseMemoryType.memorySize(@t);
 }
 
 contract TestMemoryType {
   function main() public returns (word) {
-    return morefun(Proxy as Proxy<word>);
+    return morefun(@word);
   }
 }

@@ -1,4 +1,4 @@
-pragma solcore noCoverageCondition TAdd;
+pragma no-coverage-condition TAdd;
 
 enum Zero {}
 enum Succ<a> {}
@@ -37,7 +37,8 @@ impl ToWord<Zero> {
 
 impl<prev> ToWord<Succ<prev>> where prev: ToWord {
     function toWord(self: Itself<Succ<prev>>) returns (word) {
-        let returnVal : word = ToWord.toWord(Itself.ItselfRuntimeTag as Itself<prev>);
+        let syntaxValue1: Itself<prev> = Itself.ItselfRuntimeTag;
+        let returnVal : word = ToWord.toWord(syntaxValue1);
         assembly {
             returnVal := add(1, returnVal)
         }
@@ -61,9 +62,10 @@ impl MemoryType<word> {
     }
 }
 
-impl<size, elem> IndexAccessible<elem[size] memory, word, elem> where size: ToWord, elem: MemoryType {
-    function at(self : elem[size] memory, index : word) returns (elem) {
-        let sizeValue = ToWord.toWord(Itself.ItselfRuntimeTag as Itself<size>);
+impl<size, elem> IndexAccessible<memory<array<size, elem>>, word, elem> where size: ToWord, elem: MemoryType {
+    function at(self : memory<array<size, elem>>, index : word) returns (elem) {
+        let syntaxValue2: Itself<size> = Itself.ItselfRuntimeTag;
+        let sizeValue = ToWord.toWord(syntaxValue2);
 
         assembly {
             if iszero(lt(index, sizeValue)) {
@@ -81,8 +83,9 @@ impl<size, elem> IndexAccessible<elem[size] memory, word, elem> where size: ToWo
         } }
     }
 
-    function set(self : elem[size] memory, index : word, val : elem) returns (()) {
-        let sizeValue = ToWord.toWord(Itself.ItselfRuntimeTag as Itself<size>);
+    function set(self : memory<array<size, elem>>, index : word, val : elem) returns (()) {
+        let syntaxValue3: Itself<size> = Itself.ItselfRuntimeTag;
+        let sizeValue = ToWord.toWord(syntaxValue3);
 
         assembly {
             if iszero(lt(index, sizeValue)) {
@@ -106,7 +109,7 @@ impl<size, elem> IndexAccessible<elem[size] memory, word, elem> where size: ToWo
 contract Array {
 
     function main() public returns (word) {
-        let arr : word[Succ<Succ<Succ<Succ<Zero>>>>] memory = memory(42);  // = (1,2,3,4,5,6,7,8,9,10);
+        let arr : memory<array<Succ<Succ<Succ<Succ<Zero>>>>, word>> = memory(42);  // = (1,2,3,4,5,6,7,8,9,10);
         IndexAccessible.set(arr, 3, 33);
 
         return IndexAccessible.at(arr, 3);

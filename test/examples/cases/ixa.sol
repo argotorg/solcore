@@ -54,20 +54,20 @@ impl MemoryType<word> {
   }
 }
 
-impl<a> MemoryType<a[] memory> {
-  function load(loc: word) returns (a[] memory) {
+impl<a> MemoryType<memory<array<a>>> {
+  function load(loc: word) returns (memory<array<a>>) {
     let ret : word;
     assembly { ret := mload(loc) }
     return memory(ret);
   }
 
-  function store(loc : word, val : a[] memory) returns (()) {
+  function store(loc : word, val : memory<array<a>>) returns (()) {
     match (val ) {
       case memory(ptr) { assembly { mstore(loc,ptr) }
     } }
   }
 
-  function size(prx : Proxy<a memory>) returns (word) {
+  function size(prx : Proxy<memory<a>>) returns (word) {
     return 32;
   }
 }
@@ -78,8 +78,8 @@ trait Assign<lhs, rhs> {
   function assign(l : lhs, r : rhs) returns (());
 }
 
-impl Assign<word memory, word> {
-  function assign(ptr : word memory, val : word) returns (()) {
+impl Assign<memory<word>, word> {
+  function assign(ptr : memory<word>, val : word) returns (()) {
     match (ptr ) {
       case memory(loc) { assembly {
           mstore(loc, val)
@@ -98,9 +98,9 @@ trait LValueIdxAccess<col_idx, val> {
   function lookup(ci : col_idx) returns (val);
 }
 
-impl<a> RValueIdxAccess<(a[] memory, word), a> where a: MemoryType {
-  function lookup(col_idx : (a[] memory, word)) returns (a) {
-    let sz = MemoryType.size(Proxy as Proxy<a>);
+impl<a> RValueIdxAccess<(memory<array<a>>, word), a> where a: MemoryType {
+  function lookup(col_idx : (memory<array<a>>, word)) returns (a) {
+    let sz = MemoryType.size(@a);
     match (col_idx ) {
       case (col, idx) { match (col ) {
         case memory(loc) {
@@ -110,9 +110,9 @@ impl<a> RValueIdxAccess<(a[] memory, word), a> where a: MemoryType {
   }
 }
 
-impl<a> LValueIdxAccess<(a[] memory, word), a memory> where a: MemoryType {
-  function lookup(col_idx : (a[] memory, word)) returns (a memory) {
-    let sz = MemoryType.size(Proxy as Proxy<a>);
+impl<a> LValueIdxAccess<(memory<array<a>>, word), memory<a>> where a: MemoryType {
+  function lookup(col_idx : (memory<array<a>>, word)) returns (memory<a>) {
+    let sz = MemoryType.size(@a);
     match (col_idx ) {
       case (col, idx) { match (col ) {
         case memory(loc) { return memory(Add.add(loc, Mul.mul(idx, sz)));
@@ -124,9 +124,9 @@ impl<a> LValueIdxAccess<(a[] memory, word), a memory> where a: MemoryType {
 // --- Examples ---
 
 function main() returns (()) {
-  let x : word[] memory[] memory = memory(0);
+  let x : memory<array<memory<array<word>>>> = memory(0);
   let y : word = 0;
-  let z : word[] memory = memory(0);
+  let z : memory<array<word>> = memory(0);
 
   let i0 : word = 0;
   let i1 : word = 1;
