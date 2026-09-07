@@ -1,8 +1,8 @@
-import {*} from std;
+import * from std;
 import {address, uint256, mapping, Num, Add, Sub, Bounded, Eq, Ord, Typedef, ge, ne, not} from std;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 function caller() returns (address) {
   let res: word;
@@ -54,7 +54,7 @@ contract MiniERC20 {
             , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
 	    );
 
-     if (src != msg_sender && allowance[src][msg_sender] != (Num.maxVal() as uint256)) {
+     if (src != msg_sender && allowance[src][msg_sender] != ((lam (syntaxValue: uint256) -> uint256 { return syntaxValue; })(Num.maxVal()))) {
         myrequire( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
 	       , 0x746f6b656e2f696e73756666696369656e742d616c6c6f77616e6365
 	       );

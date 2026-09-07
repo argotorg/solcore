@@ -1,8 +1,8 @@
-import {*} from std;
+import * from std;
 import {address, uint256, mapping, Num, Add, Sub, Bounded, Eq, Ord, Typedef, ge, not} from std;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 function caller() returns (address) {
   let res: word;
@@ -59,11 +59,13 @@ contract Uint {
 
 
   function withdraw(src:address, amt:uint256) public returns (()) {
-    balances[src] = Num.sub(balances[src], amt) as uint256;
+    let syntaxValue1: uint256 = Num.sub(balances[src], amt);
+    balances[src] = syntaxValue1;
   }
   
   function deposit(dst:address, amt:uint256) public returns (()) {
-    balances[dst] = Num.add(balances[dst], amt) as uint256;
+    let syntaxValue2: uint256 = Num.add(balances[dst], amt);
+    balances[dst] = syntaxValue2;
   }
 
   function init() public returns (()) {
@@ -78,6 +80,7 @@ contract Uint {
     let src : address = owner;
     transferFrom(owner, msg_sender, uint256(42));
 
-    return balances[msg_sender] as uint256;
+    let syntaxValue3: uint256 = balances[msg_sender];
+    return syntaxValue3;
   }
 }

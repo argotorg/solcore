@@ -1,8 +1,8 @@
 // Exercises storage arrays (array(member)) modeled on storage mappings.
-import {*} from std;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+import * from std;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 contract ArrayStorage {
   reserved : word; // forge uses at least 1 storage slot
@@ -10,7 +10,7 @@ contract ArrayStorage {
   function main() returns (uint256) {
     // A storage array sitting at a fixed slot. The slot itself stores the
     // length; elements live at keccak256(slot) + i.
-    let arr : uint256[] storage = storage(0x100);
+    let arr : storage<array<uint256>> = storage(0x100);
 
     // push appends and grows the length automatically.
     ArrayPush.push(arr, uint256(42));

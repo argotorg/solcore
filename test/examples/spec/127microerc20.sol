@@ -1,8 +1,8 @@
-import {*} from std;
+import * from std;
 import {address, uint256, mapping, Num, Add, Sub, Bounded, Eq, Ord, Typedef, ge, ne, not} from std;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
  
 function caller() returns (address) {
   let res: word;
@@ -64,7 +64,7 @@ contract Mini {
      require1(ge(balances[src], amt));
 
      match (Eq.eq(src, msg_sender)) {
-       case true { match (ne(allowance[src][msg_sender], Num.maxVal() as uint256) ) {
+       case true { let syntaxValue1: uint256 = Num.maxVal(); match (ne(allowance[src][msg_sender], syntaxValue1) ) {
            case true { require1(false);
 	   } case false { ();
 	   } }
@@ -77,7 +77,8 @@ contract Mini {
      }
 */   
      balances[src] = Num.sub(balances[src], amt);
-     balances[dst] = Num.add(balances[dst], amt) as uint256;
+     let syntaxValue2: uint256 = Num.add(balances[dst], amt);
+     balances[dst] = syntaxValue2;
      return true;
   }
 
@@ -102,6 +103,7 @@ contract Mini {
     allowance[owner][msg_sender] = uint256(10000);
     transferFrom(owner, msg_sender, uint256(42));
 
-    return balances[msg_sender] as uint256;
+    let syntaxValue3: uint256 = balances[msg_sender];
+    return syntaxValue3;
   }
 }
