@@ -4,7 +4,7 @@
 */
 
 contract ComptimeAsmRet {
-  function loadFromStorage() returns (comptime word) {
+  function loadFromStorage() returns (comptime<word>) {
     let v : word;
     assembly {
       v := sload(0)

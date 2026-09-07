@@ -3,7 +3,7 @@
    Covers: keccakLit of a literal, keccakLit of a concatenation, wildcard.
 */
 
-import {*} from std;
+import * from std;
 
 contract MatchLabels {
 
@@ -16,8 +16,8 @@ contract MatchLabels {
   }
 
   function main() returns (word) {
-    let comptime t :  word = keccakLit("transfer(address,uint256)");
-    let comptime b :  word = keccakLit("balanceOf(address)");
+    let t :  comptime<word> = keccakLit("transfer(address,uint256)");
+    let b :  comptime<word> = keccakLit("balanceOf(address)");
     return dispatch(t) + dispatch(b) + dispatch(0);
   }
 }

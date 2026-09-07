@@ -3,13 +3,13 @@
 // generated hull must contain exactly two __strlit_* allocators.
 
 import std;
-import {*} from std;
+import * from std;
 
 contract StringDedup {
   function main() public returns (word) {
-    let x : string memory = "alpha";
-    let y : string memory = "beta";
-    let z : string memory = "alpha";
+    let x : memory<string> = "alpha";
+    let y : memory<string> = "beta";
+    let z : memory<string> = "alpha";
     return strlen(x) + strlen(y) + strlen(z);
   }
 }

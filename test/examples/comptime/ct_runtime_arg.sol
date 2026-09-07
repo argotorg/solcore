@@ -13,7 +13,7 @@ function sloadWord() returns (word) {
 }
 
 contract ComptimeRuntimeArg {
-  function double(comptime x : word) returns (comptime word) {
+  function double(comptime x : word) returns (comptime<word>) {
     return x + x;
   }
   function main() returns (word) {

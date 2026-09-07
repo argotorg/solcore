@@ -7,7 +7,7 @@
 import std;
 
 contract ComptimeParamRuntime {
-  function double(comptime x : word) returns (comptime word) {
+  function double(comptime x : word) returns (comptime<word>) {
     return x + x;
   }
   function process(value : word) returns (word) {

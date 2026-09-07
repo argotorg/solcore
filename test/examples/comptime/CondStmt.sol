@@ -1,7 +1,7 @@
-import {*} from std;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+import * from std;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 function notAnswer(n : word) returns (word) {
    if(n == 42) { return 0; } else {return 42; }

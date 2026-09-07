@@ -1,9 +1,9 @@
-import {*} from std;
+import * from std;
 import {uint256, address} from std;
-import {*} from std.dispatch;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+import * from std.dispatch;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 contract Counter {
   // some dummy fields to test offset calculation
   fld0 : word;

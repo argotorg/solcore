@@ -1,4 +1,4 @@
-import {*} from std;
+import * from std;
 
 // Safety: verify literals pick up the correct type from context, no spurious coercions.
 //
@@ -14,11 +14,11 @@ contract IntegerLitSafe {
     let a : word = addWord(1, 2);
 
     // already-explicit coercions: no double-wrapping of the inner 42
-    let comptime ok :  bool = integerEq(wordToInteger(42), wordToInteger(42));
+    let ok :  comptime<bool> = integerEq(wordToInteger(42), wordToInteger(42));
 
     // wordFromInteger param is integer, but wordToInteger(10) is a Call not a
     // literal, so no double-wrap; b folds to 10
-    let comptime b :  word = wordFromInteger(wordToInteger(10));
+    let b :  comptime<word> = wordFromInteger(wordToInteger(10));
 
     // word-annotated let: annotation is word, not integer -> no coercion
     let z : word = 5;

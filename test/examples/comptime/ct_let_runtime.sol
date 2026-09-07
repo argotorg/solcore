@@ -15,7 +15,7 @@ function sloadWord() returns (word) {
 
 contract ComptimeLetRuntime {
   function main() returns (word) {
-    let comptime y :  word = sloadWord();
+    let y :  comptime<word> = sloadWord();
     return y;
   }
 }

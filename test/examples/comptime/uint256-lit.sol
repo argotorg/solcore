@@ -1,7 +1,7 @@
 // Bare integer literals at uint256-typed sites use `instance uint256 : Int`.
 // The instance's fromInteger wraps `wordFromInteger`, so an out-of-range
 // literal is truncated mod 2^256, matching the `word` site behaviour.
-import {*} from std;
+import * from std;
 
 contract Uint256Lit {
   function main() returns (word) {

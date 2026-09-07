@@ -1,7 +1,7 @@
-import {*} from std;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+import * from std;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 function fib(n : word) returns (word) {
    if(n < 2) { return n; } else {return fib(n-1) + fib(n-2); }

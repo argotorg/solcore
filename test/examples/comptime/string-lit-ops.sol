@@ -1,15 +1,15 @@
 import std;
-import {*} from std;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+import * from std;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 // These functions are intended to be folded by MastEval at compile time.
 
 contract StringLitOps {
   function main() public returns (()) {
     // concatLit folds to a string literal, enabling revertLit("...") lowering
-    let comptime s :  string  = concatLit("ab", "cd");
+    let s :  comptime<string>  = concatLit("ab", "cd");
     std.revertLit(s);
   }
 }

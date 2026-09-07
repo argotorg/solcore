@@ -7,11 +7,11 @@
 import std;
 
 trait Wrap<t> {
-  function unwrap(comptime x : t) returns (comptime word);
+  function unwrap(comptime x : t) returns (comptime<word>);
 }
 
 impl Wrap<word> {
-  function unwrap(comptime x : word) returns (comptime word) {
+  function unwrap(comptime x : word) returns (comptime<word>) {
     return x;
   }
 }

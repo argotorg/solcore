@@ -1,7 +1,7 @@
 contract ComptimeNamedReturn {
-  function staged(comptime x: word) returns (comptime result: word) {
-    result = x;
-    return;
+  function staged(comptime x: word) returns (comptime<word>) {
+    let result: comptime<word> = x;
+    return result;
   }
 
   function main() returns (word) {

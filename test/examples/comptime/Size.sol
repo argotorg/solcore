@@ -33,8 +33,8 @@ impl StorageSize<word> {
 
 impl<a, b> StorageSize<(a, b)> where a: StorageSize, b: StorageSize {
     function size(x:Proxy<(a, b)>) returns (word) {
-        let a_sz:word = StorageSize.size(Proxy as Proxy<a>);
-        let b_sz:word = StorageSize.size(Proxy as Proxy<b>);
+        let a_sz:word = StorageSize.size(@a);
+        let b_sz:word = StorageSize.size(@b);
         return addWord(a_sz, b_sz);
     }
 }
@@ -43,5 +43,5 @@ impl<a, b> StorageSize<(a, b)> where a: StorageSize, b: StorageSize {
 contract Size {
   function main() public returns (word) {
   return
-    StorageSize.size(Proxy as Proxy<(word, (word, ()))>); }
+    StorageSize.size(@(word, (word, ()))); }
 }

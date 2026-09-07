@@ -27,9 +27,9 @@ impl Mul<uint256> {
 
 function main() returns (uint256) {
   let a : uint256 = fromLit(1);
-  let comptime b :  uint256 = fromLit(2 + 2); // CTE
+  let b :  comptime<uint256> = fromLit(2 + 2); // CTE
   let c : uint256 = fromLit(3) + fromLit(3); // RTE
-  let comptime d :  word = fromLit(keccakLit("foo"+"bar")); // CTE
+  let d :  comptime<word> = fromLit(keccakLit("foo"+"bar")); // CTE
 
   return b*b - fromLit(4)*a*c + fromLit(d); // RTE in RTC
 }

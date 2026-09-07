@@ -3,10 +3,10 @@
 // Str.fromString conversion, must be rejected by the type checker.
 
 import std;
-import {*} from std;
+import * from std;
 
 contract StringMemRuntimeFail {
-  function f() public returns (string memory) {
+  function f() public returns (memory<string>) {
     let s : string = "x";
     return s;
   }

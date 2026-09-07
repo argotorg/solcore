@@ -4,7 +4,7 @@
 
 import {Eq,Ord,lt,Add,Sub} from std;
 
-function fib(comptime n : integer) returns (comptime integer) {
+function fib(comptime n : integer) returns (comptime<integer>) {
   if (n < 2) {
     return n;
   } else {
@@ -15,8 +15,8 @@ function fib(comptime n : integer) returns (comptime integer) {
 
 contract IntegerLit {
   function main() returns (word) {
-    let comptime x :  integer = 20;
-    let comptime res :  word = wordFromInteger(fib(x));
+    let x :  comptime<integer> = 20;
+    let res :  comptime<word> = wordFromInteger(fib(x));
     return res;
   }
 }

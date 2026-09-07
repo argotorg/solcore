@@ -2,9 +2,9 @@
 import std;
 
 trait Int<i> {
-  function fromWord(x:word) returns (comptime i); // meaning result is comptime whenever arg is
+  function fromWord(x:word) returns (comptime<i>); // meaning result is comptime whenever arg is
 
-  function toWord(x:i) returns (comptime word);
+  function toWord(x:i) returns (comptime<word>);
 }
 
 impl Int<uint256> {
@@ -22,7 +22,7 @@ impl Int<word> {
   function toWord(y:word) returns (word) { return y; }
 }
 
-function bitAnd(x:word, y:word) returns (comptime word) {
+function bitAnd(x:word, y:word) returns (comptime<word>) {
   let res : word;
   assembly {
     res := and(x,y)

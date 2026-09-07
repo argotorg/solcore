@@ -9,7 +9,7 @@
 // comptime: main returns strlen("abcd") = 4.
 
 import std;
-import {*} from std;
+import * from std;
 
 enum Tag { Tag(word) }
 

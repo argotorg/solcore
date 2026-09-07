@@ -13,7 +13,7 @@ function storeLoad(x : word) returns (word) {
 
 contract ComptimeAsmMem {
   function main() returns (word) {
-    let comptime res :  word = storeLoad(42);
+    let res :  comptime<word> = storeLoad(42);
     return res;
   }
 }

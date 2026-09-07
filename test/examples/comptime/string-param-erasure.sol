@@ -13,9 +13,9 @@
 // main returns strlen("abcd") + strlen("abcd") = 8.
 
 import std;
-import {*} from std;
+import * from std;
 
-enum Wrapped { Wrapped(string memory) }
+enum Wrapped { Wrapped(memory<string>) }
 
 impl Str<Wrapped> {
     function fromString(s: string) returns (Wrapped) {
@@ -23,7 +23,7 @@ impl Str<Wrapped> {
     }
 }
 
-function unwrap(w: Wrapped) returns (string memory) {
+function unwrap(w: Wrapped) returns (memory<string>) {
     match (w ) {
       case Wrapped(m) { return m;
     } }
