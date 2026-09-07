@@ -203,6 +203,7 @@ test-suite sol-core-tests
     ParserTests
     NewSyntaxTypeTests
     NewSyntaxExprTests
+    NewSyntaxDeclTests
 
   build-depends:
     , sol-core
