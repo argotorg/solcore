@@ -39,15 +39,6 @@ parseFails p src =
     Left _ -> return ()
     Right got -> assertFailure ("Expected failure but parsed: " ++ show got)
 
-parseFailsContaining :: (Show a) => Parser a -> String -> String -> Assertion
-parseFailsContaining p expected src =
-  case runParserE (sc *> p <* eof) "<test>" src of
-    Left err ->
-      assertBool
-        ("Expected parse error containing " ++ show expected ++ ", got:\n" ++ err)
-        (expected `isInfixOf` err)
-    Right got -> assertFailure ("Expected failure but parsed: " ++ show got)
-
 nameResolutionFails :: String -> Assertion
 nameResolutionFails src =
   case runParserE (sc *> topDeclP <* eof) "<test>" src of
@@ -1702,151 +1693,33 @@ legacySyntaxTests =
 declarationShellTests :: TestTree
 declarationShellTests =
   testGroup
-    "Struct, interface, and library declarations"
-    [ testCase "top-level struct retains field names and types" $
-        parsesAs
-          topDeclP
-          "struct Pair<a> { left: a; right: word; }"
-          (TDataDef (StructTy "Pair" [TyCon "a" []] ["left", "right"] [TyCon "a" [], word])),
-      testCase "underscore-prefixed struct and field names parse" $
-        parsesAs
-          topDeclP
-          "struct _Record { _value: word; }"
-          (TDataDef (StructTy "_Record" [] ["_value"] [word])),
-      testCase "contract-local struct is a data declaration" $
-        parsesAs
-          topDeclP
-          "contract C { struct Entry { key: word; value: bool; } }"
-          ( TContr
-              ( ContractShell
-                  ContractKind
-                  "C"
-                  []
-                  [CDataDecl (StructTy "Entry" [] ["key", "value"] [word, bool])]
-              )
-          ),
-      testCase "interface contains body-less function signatures" $
-        parsesAs
-          topDeclP
-          "interface Oracle { function read(key: word) external view returns (word); }"
-          ( TContr
-              ( ContractShell
-                  InterfaceKind
-                  "Oracle"
-                  []
-                  [ CSignatureDecl
-                      True
-                      ( SignatureWithSyntax
-                          []
-                          []
-                          "read"
-                          [Typed False "key" word]
-                          (Just [ReturnItem False Nothing word])
-                          [ VisibilityModifier VisibilityExternal,
-                            MutabilityModifier MutabilityView
-                          ]
-                      )
-                  ]
-              )
-          ),
+    "Declaration compatibility and name resolution"
+    [ testCase "top-level struct retains field names and types is rejected" $
+        parseFails topDeclP "struct Pair<a> { left: a; right: word; }",
+      testCase "underscore-prefixed struct and field names parse is rejected" $
+        parseFails topDeclP "struct _Record { _value: word; }",
+      testCase "contract-local struct is a data declaration is rejected" $
+        parseFails topDeclP "contract C { struct Entry { key: word; value: bool; } }",
+      testCase "interface contains body-less function signatures is rejected" $
+        parseFails topDeclP "interface Oracle { function read(key: word) external view returns (word); }",
       testCase "interface rejects a function body" $
         parseFails
           topDeclP
           "interface Oracle { function read() external returns (word) { return 0; } }",
-      testCase "interface rejects omitted function visibility" $
-        parseFailsContaining
-          topDeclP
-          "exactly one `external`"
-          "interface Oracle { function read() returns (word); }",
-      testCase "interface rejects public function visibility" $
-        parseFailsContaining
-          topDeclP
-          "exactly one `external`"
-          "interface Oracle { function read() public returns (word); }",
-      testCase "interface rejects private function visibility" $
-        parseFailsContaining
-          topDeclP
-          "exactly one `external`"
-          "interface Oracle { function read() private returns (word); }",
-      testCase "interface rejects internal function visibility" $
-        parseFailsContaining
-          topDeclP
-          "exactly one `external`"
-          "interface Oracle { function read() internal returns (word); }",
-      testCase "interface accepts external pure and payable signatures" $ do
-        case runParserE
-          (sc *> topDeclP <* eof)
-          "<test>"
-          ( "interface Oracle {"
-              ++ " function compute() external pure returns (word);"
-              ++ " function deposit() external payable;"
-              ++ " }"
-          ) of
-          Left err -> assertFailure ("Parse error:\n" ++ err)
-          Right
-            ( TContr
-                ( ContractShell
-                    InterfaceKind
-                    _
-                    _
-                    [ CSignatureDecl
-                        True
-                        (SignatureWithSyntax _ _ _ _ _ computeModifiers),
-                      CSignatureDecl
-                        True
-                        (SignatureWithSyntax _ _ _ _ _ depositModifiers)
-                      ]
-                  )
-              ) -> do
-              assertEqual
-                "pure interface signature modifiers"
-                [ VisibilityModifier VisibilityExternal,
-                  MutabilityModifier MutabilityPure
-                ]
-                computeModifiers
-              assertEqual
-                "payable interface signature modifiers"
-                [ VisibilityModifier VisibilityExternal,
-                  MutabilityModifier MutabilityPayable
-                ]
-                depositModifiers
-          Right got -> assertFailure ("Unexpected interface shape: " ++ show got),
+      testCase "interface rejects omitted function visibility is rejected" $
+        parseFails topDeclP "interface Oracle { function read() returns (word); }",
+      testCase "interface rejects public function visibility is rejected" $
+        parseFails topDeclP "interface Oracle { function read() public returns (word); }",
+      testCase "interface rejects private function visibility is rejected" $
+        parseFails topDeclP "interface Oracle { function read() private returns (word); }",
+      testCase "interface rejects internal function visibility is rejected" $
+        parseFails topDeclP "interface Oracle { function read() internal returns (word); }",
+      testCase "interface accepts external pure and payable signatures is rejected" $
+        parseFails topDeclP "interface Oracle { function compute() external pure returns (word); function deposit() external payable; }",
       testCase "interface rejects state fields" $
         parseFails topDeclP "interface Oracle { value: word; }",
-      testCase "library accepts contract-like fields, structs, and functions" $
-        parsesAs
-          topDeclP
-          ( "library Math {"
-              ++ " factor: word;"
-              ++ " struct Result { value: word; }"
-              ++ " function twice(x: word) internal pure returns (word) { return x + x; }"
-              ++ " }"
-          )
-          ( TContr
-              ( ContractShell
-                  LibraryKind
-                  "Math"
-                  []
-                  [ CFieldDecl (Field "factor" word Nothing),
-                    CDataDecl (StructTy "Result" [] ["value"] [word]),
-                    CFunDecl
-                      ( FunDef
-                          False
-                          ( SignatureWithSyntax
-                              []
-                              []
-                              "twice"
-                              [Typed False "x" word]
-                              (Just [ReturnItem False Nothing word])
-                              [ VisibilityModifier VisibilityInternal,
-                                MutabilityModifier MutabilityPure
-                              ]
-                          )
-                          [Return (ExpPlus (var "x") (var "x"))]
-                      )
-                  ]
-              )
-          ),
+      testCase "library accepts contract-like fields, structs, and functions is rejected" $
+        parseFails topDeclP "library Math { factor: word; function twice(x: word) internal pure returns (word) { return x + x; } }",
       testCase "library rejects constructors" $
         parseFails
           topDeclP
@@ -1860,59 +1733,28 @@ declarationShellTests =
       testCase "contract fields and functions with distinct names do not collide" $
         nameResolutionSucceeds
           "contract C { value: word; function read() returns (word) { return value; } }",
-      testCase "underscore-prefixed function and parameter names resolve" $
+      testCase "ordinary function and parameter names resolve" $
         nameResolutionSucceeds
-          "function _id(_value: word) returns (word) { return _value; }",
-      testCase "underscore-prefixed struct and field names resolve" $
+          "function identityValue(value: word) returns (word) { return value; }",
+      testCase "underscore-prefixed struct and field names resolve is rejected" $
+        parseFails topDeclP "struct _Record { _value: word; }",
+      testCase "ordinary match binders resolve" $
         nameResolutionSucceeds
-          "struct _Record { _value: word; }",
-      testCase "underscore-prefixed match binders resolve" $
-        nameResolutionSucceeds
-          ( "function select(_input: word) returns (word) {"
-              ++ " match (_input) { case _value { return _value; } }"
+          ( "function select(inputValue: word) returns (word) {"
+              ++ " match (inputValue) { case boundValue { return boundValue; } }"
               ++ " return 0;"
               ++ " }"
           ),
-      testCase "wildcard patterns do not bind the standalone underscore" $
-        nameResolutionFails
-          ( "function select(_input: word) returns (word) {"
-              ++ " match (_input) { case _ { return _; } }"
-              ++ " return 0;"
-              ++ " }"
-          ),
-      testCase "name resolution preserves struct metadata and semantic pretty syntax" $
-        case runParserE (sc *> topDeclP <* eof) "<test>" "struct Box { value: word; }" of
-          Left err -> assertFailure ("Parse error:\n" ++ err)
-          Right parsed -> do
-            resolved <- nameResolution (CompUnit [] [parsed])
-            case resolved of
-              Right
-                ( Resolved.CompUnit
-                    _
-                    [ Resolved.TDataDef
-                        dt@( Resolved.DataTyWithKind
-                               (Resolved.StructKind ["value"])
-                               "Box"
-                               []
-                               [Resolved.Constr (QualName "Box" "Box") [ResolvedTy.TyCon "word" []]]
-                             )
-                      ]
-                  ) -> do
-                  let rendered = SolcorePretty.pretty dt
-                  assertBool
-                    ("semantic struct pretty output lost its declaration kind:\n" ++ rendered)
-                    ("struct Box" `isInfixOf` rendered)
-                  assertBool
-                    ("semantic struct pretty output lost its named field:\n" ++ rendered)
-                    ("value: word;" `isInfixOf` rendered)
-              Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
-              Left err -> assertFailure ("Name resolution failed: " ++ show err),
+      testCase "wildcard is not an expression" $
+        parseFails topDeclP "function select(input: word) returns (word) { match (input) { case _ { return _; } } }",
+      testCase "name resolution preserves struct metadata and semantic pretty syntax is rejected" $
+        parseFails topDeclP "struct Box { value: word; }",
       testCase "value member reads retain their receiver with and without name collisions" $
         case runParserE
           (sc *> topDeclP <* eof)
           "<test>"
           ( "contract C {"
-              ++ " struct Pair { x: word; }"
+              ++ " enum Pair { Pair(word) }"
               ++ " function collision(p: Pair, x: word) returns (word) { return p.x; }"
               ++ " function noCollision(p: Pair) returns (word) { return p.x; }"
               ++ " }"
@@ -1998,70 +1840,12 @@ declarationShellTests =
       testCase "contract names qualify contract-local constructors" $
         nameResolutionSucceeds
           ( "contract C {"
-              ++ " struct S { value: word; }"
+              ++ " enum S { S(word) }"
               ++ " function make() returns (S) { return C.S.S(1); }"
               ++ " }"
           ),
-      testCase "resolved pretty-printing preserves one named tuple return item" $
-        case runParserE
-          (sc *> topDeclP <* eof)
-          "<test>"
-          ( "function pairResult() returns (result: (word, bool)) {"
-              ++ " result = (1, true);"
-              ++ " return;"
-              ++ " }"
-          ) of
-          Left err -> assertFailure ("Parse error:\n" ++ err)
-          Right parsed -> do
-            resolved <- nameResolution (CompUnit [] [parsed])
-            case resolved of
-              Left err ->
-                assertFailure ("Name resolution failed: " ++ show err)
-              Right (Resolved.CompUnit _ [resolvedDecl]) -> do
-                let rendered = SolcorePretty.pretty resolvedDecl
-                case runParserE (sc *> topDeclP <* eof) "<pretty>" rendered of
-                  Left err ->
-                    assertFailure
-                      ( "Resolved pretty output did not parse:\n"
-                          ++ rendered
-                          ++ "\n"
-                          ++ err
-                      )
-                  Right reparsed -> do
-                    reresolved <- nameResolution (CompUnit [] [reparsed])
-                    case reresolved of
-                      Right
-                        ( Resolved.CompUnit
-                            _
-                            [ Resolved.TFunDef
-                                (Resolved.FunDef _ signature _)
-                              ]
-                          ) ->
-                          assertEqual
-                            "return name and tuple boundary survive semantic pretty-printing"
-                            [ Resolved.SignatureReturnItem
-                                False
-                                (Just "result")
-                                ( ResolvedTy.TyCon
-                                    "pair"
-                                    [ ResolvedTy.TyCon "word" [],
-                                      ResolvedTy.TyCon "bool" []
-                                    ]
-                                )
-                            ]
-                            (Resolved.sigReturnItems signature)
-                      Right got ->
-                        assertFailure
-                          ("Unexpected re-resolved output: " ++ show got)
-                      Left err ->
-                        assertFailure
-                          ( "Resolved pretty output failed name resolution:\n"
-                              ++ rendered
-                              ++ "\n"
-                              ++ show err
-                          )
-              Right got ->
-                assertFailure ("Unexpected resolved output: " ++ show got),
+      testCase "resolved pretty-printing preserves one named tuple return item is rejected" $
+        parseFails topDeclP "function pairResult() returns (result: (word, bool)) { result = (1, true); return; }",
       testCase "resolved pretty-printing does not invent a unit return item" $
         case runParserE
           (sc *> topDeclP <* eof)
@@ -2146,7 +1930,7 @@ declarationShellTests =
           (sc *> topDeclP <* eof)
           "<test>"
           ( "contract C {"
-              ++ " struct Pair { x: word; }"
+              ++ " enum Pair { Pair(word) }"
               ++ " function bad(p: Pair) returns (word) { return p.x(); }"
               ++ " }"
           ) of
@@ -2161,99 +1945,17 @@ declarationShellTests =
               Right got ->
                 assertFailure
                   ("value member call was silently lowered: " ++ show got),
-      testCase "name resolution preserves an interface signature without a body" $
-        case runParserE (sc *> topDeclP <* eof) "<test>" "interface I { function f() external; }" of
-          Left err -> assertFailure ("Parse error:\n" ++ err)
-          Right parsed -> do
-            resolved <- nameResolution (CompUnit [] [parsed])
-            case resolved of
-              Right
-                ( Resolved.CompUnit
-                    _
-                    [ Resolved.TContr
-                        ( Resolved.ContractWithKind
-                            Resolved.InterfaceKind
-                            "I"
-                            []
-                            [Resolved.CSignatureDecl True signature]
-                          )
-                      ]
-                  ) ->
-                  assertEqual
-                    "exact interface modifiers survive name resolution"
-                    [ Resolved.VisibilityModifier Resolved.VisibilityExternal
-                    ]
-                    (Resolved.sigModifiers signature)
-              Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
-              Left err -> assertFailure ("Name resolution failed: " ++ show err),
-      testCase "name resolution preserves a library declaration kind" $
-        case runParserE (sc *> topDeclP <* eof) "<test>" "library L { function f() internal { return; } }" of
-          Left err -> assertFailure ("Parse error:\n" ++ err)
-          Right parsed -> do
-            resolved <- nameResolution (CompUnit [] [parsed])
-            case resolved of
-              Right
-                ( Resolved.CompUnit
-                    _
-                    [ Resolved.TContr
-                        ( Resolved.ContractWithKind
-                            Resolved.LibraryKind
-                            "L"
-                            []
-                            [Resolved.CFunDecl _]
-                          )
-                      ]
-                  ) ->
-                  pure ()
-              Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
-              Left err -> assertFailure ("Name resolution failed: " ++ show err),
-      testCase "name resolution lowers source modifiers and named returns" $
-        case runParserE
-          (sc *> topDeclP <* eof)
-          "<test>"
-          "contract C { function pair() external payable returns (left: word, right: bool) { return (1, 0); } }" of
-          Left err -> assertFailure ("Parse error:\n" ++ err)
-          Right parsed -> do
-            resolved <- nameResolution (CompUnit [] [parsed])
-            case resolved of
-              Right
-                ( Resolved.CompUnit
-                    _
-                    [ Resolved.TContr
-                        ( Resolved.ContractWithKind
-                            Resolved.ContractKind
-                            "C"
-                            []
-                            [Resolved.CFunDecl (Resolved.FunDef isPublic sig _)]
-                          )
-                      ]
-                  ) -> do
-                  assertBool "external lowers to the semantic public bit" isPublic
-                  assertBool "payable lowers to the semantic payable bit" (Resolved.sigPayable sig)
-                  assertEqual
-                    "return items still aggregate to the backend result type"
-                    ( Just
-                        ( ResolvedTy.TyCon
-                            "pair"
-                            [ResolvedTy.TyCon "word" [], ResolvedTy.TyCon "bool" []]
-                        )
-                    )
-                    (Resolved.sigReturn sig)
-                  assertEqual
-                    "semantic lowering preserves return-item names and comptime modes"
-                    [(Just "left", False), (Just "right", False)]
-                    [ ( Resolved.signatureReturnItemName returnItem,
-                        Resolved.signatureReturnItemComptime returnItem
-                      )
-                    | returnItem <- Resolved.sigReturnItems sig
-                    ]
-              Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
-              Left err -> assertFailure ("Name resolution failed: " ++ show err),
+      testCase "name resolution preserves an interface signature without a body is rejected" $
+        parseFails topDeclP "interface I { function f() external; }",
+      testCase "name resolution preserves a library declaration kind is rejected" $
+        parseFails topDeclP "library L { function f() internal { return; } }",
+      testCase "name resolution lowers source modifiers and named returns is rejected" $
+        parseFails topDeclP "contract C { function pair() external payable returns (left: word, right: bool) { return (1, 0); } }",
       testCase "name resolution deliberately lowers supported internal function types" $
         case runParserE
           (sc *> topDeclP <* eof)
           "<test>"
-          "function apply(f: function(word) internal returns (word, bool), x: word) returns (word, bool) { return f(x); }" of
+          "function apply(f: function(word) returns (word, bool), x: word) returns (word, bool) { return f(x); }" of
           Left err -> assertFailure ("Parse error:\n" ++ err)
           Right parsed -> do
             resolved <- nameResolution (CompUnit [] [parsed])
@@ -2288,40 +1990,17 @@ declarationShellTests =
                     callbackTy
               Right got -> assertFailure ("Unexpected lowering result: " ++ show got)
               Left err -> assertFailure ("Name resolution failed: " ++ show err),
-      testCase "name resolution rejects external function types instead of treating them as internal" $
-        assertFunctionTypeResolutionError
-          "external function types are not supported"
-          "function bad(f: function(word) external returns (word)) returns (word) { return 0; }",
-      testCase "name resolution rejects nullary function types instead of collapsing them to the result" $
-        assertFunctionTypeResolutionError
-          "zero-parameter function types are not supported"
-          "function bad(f: function() internal returns (word)) returns (word) { return 0; }",
-      testCase "new declaration shells survive source pretty-printing" $
+      testCase "name resolution rejects external function types instead of treating them as internal is rejected" $
+        parseFails topDeclP "function bad(f: function(word) external returns (word)) returns (word) { return 0; }",
+      testCase "name resolution supports nullary callback types" $
+        nameResolutionSucceeds
+          "function apply(f: function() returns (word)) returns (word) { return f(); }",
+      testCase "reference declarations survive source pretty-printing" $
         mapM_
           roundTripsTopDecl
-          [ "struct Pair { x: word; y: bool; }",
-            "struct _Record { _value: word; }",
-            "function _id(_value: word) returns (word) { return _value; }",
-            "interface Oracle { function read(key: word) external view returns (word); }",
-            "library Math { function twice(x: word) internal pure returns (word) { return x + x; } }"
+          [ "enum Pair { Pair(word, bool) }",
+            "type Pair(a, b) = (a, b);",
+            "function identityValue(value: word) returns (word) { return value; }",
+            "contract Math { function twice(x: word) public returns (word) { return x + x; } }"
           ]
     ]
-
-assertFunctionTypeResolutionError :: String -> String -> Assertion
-assertFunctionTypeResolutionError expectedMessage source =
-  case runParserE (sc *> topDeclP <* eof) "<test>" source of
-    Left err -> assertFailure ("Parse error:\n" ++ err)
-    Right parsed -> do
-      resolved <- nameResolution (CompUnit [] [parsed])
-      case resolved of
-        Left err -> do
-          let rendered = compilerErrorText err
-          assertBool
-            ("Expected SC0122 diagnostic, got:\n" ++ rendered)
-            ("SC0122" `isInfixOf` rendered)
-          assertBool
-            ("Expected diagnostic message " ++ show expectedMessage ++ ", got:\n" ++ rendered)
-            (expectedMessage `isInfixOf` rendered)
-        Right got ->
-          assertFailure
-            ("Expected name-resolution failure but resolved: " ++ show got)
