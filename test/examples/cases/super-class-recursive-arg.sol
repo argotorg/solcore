@@ -1,4 +1,4 @@
-pragma solcore noPattersonCondition A;
+pragma no-patterson-condition A;
 
 enum Wrap<a> { Wrap(a) }
 

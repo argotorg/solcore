@@ -1,11 +1,11 @@
-import {*} from std;
-import {*} from std.dispatch;
-import {*} from std.Generic;
-import {*} from std.ABIGeneric;
+import * from std;
+import * from std.dispatch;
+import * from std.Generic;
+import * from std.ABIGeneric;
 
-pragma solcore noPattersonCondition;
-pragma solcore noCoverageCondition;
-pragma solcore noBoundVariableCondition;
+pragma no-patterson-condition;
+pragma no-coverage-condition;
+pragma no-bounded-variable-condition;
 
 enum Point { Point(uint256, uint256) }
 

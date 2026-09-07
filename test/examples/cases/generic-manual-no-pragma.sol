@@ -1,10 +1,10 @@
 // Error case: manual Generic instance without pragma no-generic-instance-for.
 // The compiler must reject this with a conflict error.
 
-import {*} from std.Generic;
+import * from std.Generic;
 
-pragma solcore noPattersonCondition;
-pragma solcore noBoundVariableCondition;
+pragma no-patterson-condition;
+pragma no-bounded-variable-condition;
 
 enum Foo { MkFoo(word) }
 

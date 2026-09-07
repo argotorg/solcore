@@ -1,8 +1,8 @@
 // Same test but with pragma to disable bound variable check
 // This SHOULD PASS
 
-pragma solcore noBoundVariableCondition TestBound;
-pragma solcore noPattersonCondition TestBound; // Also disable Patterson to avoid that error
+pragma no-bounded-variable-condition TestBound;
+pragma no-patterson-condition TestBound; // Also disable Patterson to avoid that error
 
 trait TestBound<a> {}
 trait TestHelper<a, b> {}

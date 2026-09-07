@@ -2,9 +2,9 @@
 // This file contains violations of all three condition types with pragmas to disable checks
 
 // Pragmas to disable checks for specific classes
-pragma solcore noPattersonCondition TestClassP1, TestClassB1, TestClassP3, TestClassB3;
-pragma solcore noCoverageCondition TestClassC1, TestClassP3;
-pragma solcore noBoundVariableCondition TestClassB1, TestClassB3;
+pragma no-patterson-condition TestClassP1, TestClassB1, TestClassP3, TestClassB3;
+pragma no-coverage-condition TestClassC1, TestClassP3;
+pragma no-bounded-variable-condition TestClassB1, TestClassB3;
 
 // --- Test Classes ---
 

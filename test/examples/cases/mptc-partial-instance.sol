@@ -5,7 +5,7 @@
 // resolveMPTCsFromPreds detects this (concreteExtras still has free vars) and skips
 // the instance, letting normal type inference determine the extra type instead.
 
-pragma solcore noCoverageCondition Nth;
+pragma no-coverage-condition Nth;
 
 enum Zero {}
 enum Succ<a> {}
@@ -23,7 +23,7 @@ impl<a, b> Nth<Zero, (a, b), a> {
 
 impl<n, a, b, c> Nth<Succ<n>, (a, b), c> where n: Nth<b, c> {
     function nth(x:Proxy<Succ<n>>, y:(a, b)) returns (c) {
-        match (y ) { case (a, b) { return Nth.nth(Proxy as Proxy<n>, b); } }
+        match (y ) { case (a, b) { return Nth.nth(@n, b); } }
     }
 }
 
@@ -31,7 +31,7 @@ contract C {
     constructor() {}
     function main() public returns (word) {
         let p : (word, word, word) = (1, 2, 3);
-        let x : word = Nth.nth(Proxy as Proxy<Zero>, p);
+        let x : word = Nth.nth(@Zero, p);
         return x;
     }
 }

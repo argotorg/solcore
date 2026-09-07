@@ -1,5 +1,5 @@
-alias A = B;
-alias B = A;
+type A = B;
+type B = A;
 
 contract RecursiveTest {
     function main() public returns (word) {

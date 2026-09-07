@@ -9,5 +9,6 @@ default impl<a> Fallback<a> {
 }
 
 function main() returns (word) {
-  return Fallback.tag(0 as word);
+  let syntaxValue1: word = 0;
+  return Fallback.tag(syntaxValue1);
 }

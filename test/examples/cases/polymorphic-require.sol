@@ -1,7 +1,7 @@
 // This should trigger a warning and an error in the specialiser
 // due to unability to resolve result type of require
 import {uint256,lt,not,Eq,ne,Proxy,bytes4,string} from std;
-import {*} from std.dispatch;
+import * from std.dispatch;
 
 function require<a>(cond: bool) returns (a) {
     if (!cond) {

@@ -13,12 +13,12 @@
 // Expected: compiles successfully.
 // Actual (before fix): PANIC: Type mismatch expected uint256 actual (uint256,uint256)
 
-import {*} from std;
-import {*} from std.dispatch;
-import {*} from std.Generic;
-pragma solcore noPattersonCondition;
-pragma solcore noCoverageCondition;
-pragma solcore noBoundVariableCondition;
+import * from std;
+import * from std.dispatch;
+import * from std.Generic;
+pragma no-patterson-condition;
+pragma no-coverage-condition;
+pragma no-bounded-variable-condition;
 
 enum Pair { MkPair(uint256, uint256) }
 
@@ -36,8 +36,8 @@ contract BugSpecGenericLet {
 
     function roundtrip(a : uint256, b : uint256) returns (uint256) {
         let p : Pair = Pair.MkPair(a, b);
-        let encoded : bytes memory = abi_encode(p);
-        let decoded : (uint256, uint256) = abi_decode(encoded, Proxy as Proxy<(uint256, uint256)>, Proxy as Proxy<MemoryWordReader>);
+        let encoded : memory<bytes> = abi_encode(p);
+        let decoded : (uint256, uint256) = abi_decode(encoded, @(uint256, uint256), @MemoryWordReader);
         match (decoded ) {
         case (x, y) {
             match (and(Eq.eq(x, a), Eq.eq(y, b)) ) {

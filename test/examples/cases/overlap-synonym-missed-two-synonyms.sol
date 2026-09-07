@@ -1,5 +1,5 @@
-alias W = word;
-alias V = word;
+type W = word;
+type V = word;
 
 trait IdTy<self> {
   function id(x:self) returns (self);

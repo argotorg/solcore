@@ -1,12 +1,12 @@
-pragma solcore noPattersonCondition ABIAttribs, ABIEncode;
-pragma solcore noBoundVariableCondition ABIAttribs, ABIEncode;
+pragma no-patterson-condition ABIAttribs, ABIEncode;
+pragma no-bounded-variable-condition ABIAttribs, ABIEncode;
 
-import {*} from std;
-import {*} from std.Generic;
+import * from std;
+import * from std.Generic;
 
 // Minimal reproducer for the "imported-default-instance-stub mis-tagged" bug.
 //
-// std/Generic.solc exports:
+// std/Generic.sol exports:
 //   forall a rep . a:Generic(rep), rep:ABIAttribs, rep:ABIEncode =>
 //   default instance a : ABIEncode { function encodeInto ... }
 //

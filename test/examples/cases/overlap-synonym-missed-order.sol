@@ -1,4 +1,4 @@
-alias W = word;
+type W = word;
 
 trait IdTy<self> {
   function id(x:self) returns (self);

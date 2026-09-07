@@ -3,14 +3,14 @@ trait Test<self> { function f(x:self); }
 enum memory<a> { memory(word) }
 enum Proxy<a> { Proxy }
 
-impl Test<word memory memory> { function f(x:self) {}}
+impl Test<memory<memory<word>>> { function f(x:self) {}}
 
 function f<a>(p:Proxy<a>) {
-    let x:a memory;
+    let x:memory<a>;
     Test.f(x);
 }
 
 function g() {
-    f(Proxy as Proxy<word memory memory>); // needs to choose default instance in Test.f
-    f(Proxy as Proxy<word memory>); // needs to choose concrete instance
+    f(@memory<memory<word>>); // needs to choose default instance in Test.f
+    f(@memory<word>); // needs to choose concrete instance
 }

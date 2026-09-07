@@ -1,5 +1,5 @@
 // Self-recursive synonym should be rejected
-alias A = A;
+type A = A;
 
 function main() returns (word) {
     return 0;

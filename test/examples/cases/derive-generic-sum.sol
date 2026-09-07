@@ -2,11 +2,11 @@
 // Neither Option nor Tree has an explicit Generic instance; both should be
 // generated automatically by DeriveGeneric.
 
-import {*} from std;
-import {*} from std.Generic;
+import * from std;
+import * from std.Generic;
 
-pragma solcore noPattersonCondition;
-pragma solcore noBoundVariableCondition;
+pragma no-patterson-condition;
+pragma no-bounded-variable-condition;
 
 enum Option<a> { None, Some(a) }
 

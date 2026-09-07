@@ -2,12 +2,12 @@
 // listed types.  Pair has its instance suppressed and provided manually;
 // Box gets its instance generated automatically.
 
-import {*} from std;
-import {*} from std.Generic;
+import * from std;
+import * from std.Generic;
 
-pragma solcore noPattersonCondition;
-pragma solcore noBoundVariableCondition;
-pragma solcore noGenericInstanceFor Pair;
+pragma no-patterson-condition;
+pragma no-bounded-variable-condition;
+pragma no-generic-instance-for Pair;
 
 enum Pair<a, b> { MkPair(a, b) }
 

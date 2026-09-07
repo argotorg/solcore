@@ -10,7 +10,8 @@ trait MemoryType<self> {
 
 impl MemoryType<word> {
     function load(ptr:word) returns (word) {
-        return Typedef.abs(MemoryType.load(ptr) as word);
+        let syntaxValue1: word = MemoryType.load(ptr);
+        return Typedef.abs(syntaxValue1);
 	// `abs` does not make sense here, but it triggers the bug:
 	// the typechecker should complain about  missing instance here
     }

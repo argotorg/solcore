@@ -1,15 +1,15 @@
-pragma solcore noPattersonCondition ABIAttribs, ABIEncode, ABIDecode;
-pragma solcore noBoundVariableCondition ABIAttribs, ABIEncode, ABIDecode;
-pragma solcore noCoverageCondition ABIDecode;
+pragma no-patterson-condition ABIAttribs, ABIEncode, ABIDecode;
+pragma no-bounded-variable-condition ABIAttribs, ABIEncode, ABIDecode;
+pragma no-coverage-condition ABIDecode;
 
 export {
     encode,
     decode
 };
 
-import {*} from std;
+import * from std;
 import {mstore} from std.opcodes;
-import {*} from std.Generic;
+import * from std.Generic;
 
 function maxWord(a : word, b : word) returns (word) {
     match (gtWord(a, b) ) {

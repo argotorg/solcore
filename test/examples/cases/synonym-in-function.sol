@@ -1,6 +1,6 @@
 // Synonyms in function parameter and return types
-alias Int = word;
-alias Point = pair<Int, Int>;
+type Int = word;
+type Point = pair<Int, Int>;
 
 function add(a: Int, b: Int) returns (Int) {
     return a;

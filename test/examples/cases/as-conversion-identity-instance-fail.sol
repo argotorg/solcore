@@ -18,5 +18,6 @@ enum Wrapped {
 }
 
 function invalid(value: word) returns (Wrapped) {
-    return value as Wrapped;
+    let syntaxValue1: Wrapped = value;
+    return syntaxValue1;
 }

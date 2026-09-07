@@ -1,4 +1,4 @@
-alias W = word;
+type W = word;
 
 function f(x:W) returns (W) { return x; }
 
