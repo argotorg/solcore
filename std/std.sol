@@ -1,7 +1,7 @@
 import {add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, returndatasize, returndatacopy, log1 as log1_, call, staticcall, revert_, invalid} from std.opcodes;
 
-pragma solcore noPattersonCondition ABIEncode, Num, Array, ArrayPush;
-pragma solcore noCoverageCondition ABIDecode, MemoryType, Array, ArrayPush, RValueIdxAccess;
+pragma no-patterson-condition ABIEncode, Num, Array, ArrayPush;
+pragma no-coverage-condition ABIDecode, MemoryType, Array, ArrayPush, RValueIdxAccess;
 
 export {
   ABIAttribs,
@@ -14,6 +14,7 @@ export {
   ArrayPush,
   Assign,
   BitAnd,
+  BitNot,
   BitOr,
   BitXor,
   Bounded,
@@ -54,6 +55,8 @@ export {
   addWord,
   addmod,
   allocateDynamicArray,
+  arrayLitNew,
+  arrayLitInit,
   address(*),
   allocate_memory,
   allocate_zeroed_memory,
@@ -199,7 +202,7 @@ function revertEmpty() returns (()) {
 }
 
 // TODO: use bytes4
-enum Error { Error(word), Empty, Msg(string memory) }
+enum Error { Error(word), Empty, Msg(memory<string>) }
 
 // A string literal can be used as an Error: `require(cond, "message")` reverts
 // with the message.  The literal is materialized into memory(string) here; MastEval
@@ -377,6 +380,10 @@ trait BitXor<t> {
     function bxor(l: t, r: t) returns (t);
 }
 
+trait BitNot<t> {
+    function bnot(x: t) returns (t);
+}
+
 trait Bounded<t> {
   function minVal() returns (t);
   function maxVal() returns (t);
@@ -389,7 +396,7 @@ trait Num<a> where a: Add, a: Sub, a: Bounded, a: Eq, a: Ord, a: Typedef<word> {
   function maxVal() returns (a);
   function toWord(x:a) returns (word);
   function fromWord(x:word) returns (a);
-  function fromInteger(comptime x:integer) returns (comptime a);
+  function fromInteger(comptime x:integer) returns (comptime<a>);
   function add(x:a, y:a) returns (a);
   function sub(x:a, y:a) returns (a);
   function gt(x:a, y:a) returns (bool);
@@ -399,7 +406,7 @@ default impl<a> Num<a> where a: Add, a: Sub, a: Bounded, a: Eq, a: Ord, a: Typed
   function maxVal() returns (a) { return Bounded.maxVal(); }
   function toWord(x:a) returns (word) { return Typedef.rep(x); }
   function fromWord(x:word) returns (a) { return Typedef.abs(x); }
-  function fromInteger(comptime x:integer) returns (comptime a) { return Typedef.abs(wordFromInteger(x)); }
+  function fromInteger(comptime x:integer) returns (comptime<a>) { return Typedef.abs(wordFromInteger(x)); }
   function add(x:a, y:a) returns (a) { return Add.add(x,y); }
   function sub(x:a, y:a) returns (a) { return Sub.sub(x,y); }
   function gt(x: a, y: a) returns (bool) { return Ord.gt(x, y); }
@@ -517,6 +524,12 @@ impl BitOr<word> {
 impl BitXor<word> {
     function bxor(l: word, r: word) returns (word) {
         return bxorWord(l, r);
+    }
+}
+
+impl BitNot<word> {
+    function bnot(x: word) returns (word) {
+        return bnotWord(x);
     }
 }
 
@@ -644,6 +657,12 @@ impl BitXor<uint256> {
   }
 }
 
+impl BitNot<uint256> {
+  function bnot(x: uint256) returns (uint256) {
+    return Typedef.abs(BitNot.bnot(Typedef.rep(x)));
+  }
+}
+
 impl Eq<uint256> {
   function eq(x : uint256, y : uint256) returns (bool) {
     return Eq.eq(Typedef.rep(x), Typedef.rep(y));
@@ -759,12 +778,12 @@ impl Ord<bytes32> {
 // --- Pointers ---
 
 enum memory<t> { memory(word) }
-impl<t> Typedef<t memory, word> {
-    function abs(x: word) returns (t memory) {
+impl<t> Typedef<memory<t>, word> {
+    function abs(x: word) returns (memory<t>) {
         return memory(x);
     }
 
-    function rep(x: t memory) returns (word) {
+    function rep(x: memory<t>) returns (word) {
         match (x ) {
         case memory(w) { return w;
         } }
@@ -772,12 +791,12 @@ impl<t> Typedef<t memory, word> {
 }
 
 enum storage<t> { storage(word) }
-impl<t> Typedef<t storage, word> {
-    function abs(x: word) returns (t storage) {
+impl<t> Typedef<storage<t>, word> {
+    function abs(x: word) returns (storage<t>) {
         return storage(x);
     }
 
-    function rep(x: t storage) returns (word) {
+    function rep(x: storage<t>) returns (word) {
         match (x ) {
         case storage(w) { return w;
        } }
@@ -785,12 +804,12 @@ impl<t> Typedef<t storage, word> {
 }
 
 enum calldata<t> { calldata(word) }
-impl<t> Typedef<t calldata, word> {
-    function abs(x: word) returns (t calldata) {
+impl<t> Typedef<calldata<t>, word> {
+    function abs(x: word) returns (calldata<t>) {
         return calldata(x);
     }
 
-    function rep(x: t calldata) returns (word) {
+    function rep(x: calldata<t>) returns (word) {
         match (x ) {
         case calldata(w) { return w;
        } }
@@ -816,7 +835,7 @@ enum array<member> { array(word) }
 
 // --- Low-level memory ops
 
-function strlen(s:string memory) returns (word) {
+function strlen(s:memory<string>) returns (word) {
   match (s ) { case memory(a) { return mload(a); } }
 }
 
@@ -878,8 +897,8 @@ trait IndexAccess<t, val> {
 // TODO: storage representation
 enum DynArray<t> {}
 
-impl<t> IndexAccess<DynArray<t> memory, t> where t: Typedef<word> {
-    function get(ptr : DynArray<t> memory, i : uint256) returns (t) {
+impl<t> IndexAccess<memory<DynArray<t>>, t> where t: Typedef<word> {
+    function get(ptr : memory<DynArray<t>>, i : uint256) returns (t) {
         let i_: word = Typedef.rep(i);
         let loc = Typedef.rep(ptr);
         let res: word;
@@ -889,7 +908,7 @@ impl<t> IndexAccess<DynArray<t> memory, t> where t: Typedef<word> {
         } }
         return Typedef.abs(res);
     }
-    function set(arr : DynArray<t> memory, i : uint256, val : t) returns (()) {
+    function set(arr : memory<DynArray<t>>, i : uint256, val : t) returns (()) {
         let i_ : word = Typedef.rep(i);
         let loc : word = Typedef.rep(arr);
         match (i_ > mload(loc) ) {
@@ -899,7 +918,21 @@ impl<t> IndexAccess<DynArray<t> memory, t> where t: Typedef<word> {
     }
 }
 
-function allocateDynamicArray<t>(prx : Proxy<t>, length : word) returns (DynArray<t> memory) {
+// Array literals use zero-based source indices. IndexAccess is the existing
+// raw memory accessor whose indices include the length word at position zero.
+function arrayLitNew<t>(length: uint256) returns (memory<DynArray<t>>) where t: Typedef<word> {
+    let witness: @t = @t;
+    return allocateDynamicArray(witness, Typedef.rep(length));
+}
+
+function arrayLitInit<t>(values: memory<DynArray<t>>, index: uint256, value: t) returns (memory<DynArray<t>>) where t: Typedef<word> {
+    let offset: word = Typedef.rep(index);
+    if (offset >= mload(Typedef.rep(values))) { out_of_bounds(); }
+    IndexAccess.set(values, uint256(offset + 1), value);
+    return values;
+}
+
+function allocateDynamicArray<t>(prx : Proxy<t>, length : word) returns (memory<DynArray<t>>) {
     // size of allocation in bytes
     let sz : word = (length + 1) * 32;
 
@@ -909,7 +942,7 @@ function allocateDynamicArray<t>(prx : Proxy<t>, length : word) returns (DynArra
 
     // write array length and return
     mstore(free, length);
-    let res : DynArray<t> memory = Typedef.abs(free);
+    let res : memory<DynArray<t>> = Typedef.abs(free);
     return res;
 }
 
