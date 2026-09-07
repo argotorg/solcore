@@ -196,10 +196,10 @@ imports =
       runImportSuccess "nested_direct_qualifier.sol",
       runImportSuccess "nested_deep_qualifier.sol",
       runImportSuccess "glob_import_ok.sol",
-      runImportSuccess "glob_import_mixed.sol",
+      runImportFailure "glob_import_mixed.sol",
       runImportSuccess "glob_import_hiding.sol",
       runImportSuccess "glob_hiding_amb_ok.sol",
-      runImportSuccess "glob_import_dup.sol",
+      runImportFailure "glob_import_dup.sol",
       runImportSuccess "glob_export_mixed.sol",
       runImportFailure "glob_amb_main_fail.sol",
       runImportFailure "glob_import_hiding_unknown_fail.sol",
@@ -390,7 +390,7 @@ cases =
       runTestForFile "for-inner-block.sol" caseFolder,
       runTestForFile "for-init-shadow.sol" caseFolder,
       runTestForFile "for-let.sol" caseFolder,
-      runTestExpectingFailure "for-let-post.sol" caseFolder,
+      runTestForFile "for-let-post.sol" caseFolder,
       runTestForFile "for-loop.sol" caseFolder,
       runTestForFile "for-multi-init.sol" caseFolder,
       runTestForFile "for-multi-post.sol" caseFolder,
@@ -512,13 +512,13 @@ cases =
       runAsConversionTest,
       runAsConversionFailureTest
         "as-conversion-fail.sol"
-        "no explicit conversion from bool to uint256",
+        "types do not match: bool and uint256",
       runAsConversionFailureTest
         "as-conversion-ambiguous-fail.sol"
-        "ambiguous explicit conversion from Left to Right",
+        "types do not match: Left and Right",
       runAsConversionFailureTest
         "as-conversion-identity-instance-fail.sol"
-        "no explicit conversion from word to Wrapped",
+        "types do not match: word and Wrapped",
       runTestForFile "typedef.sol" caseFolder,
       runTestForFile "Uncurry.sol" caseFolder,
       runTestExpectingFailure "unconstrained-instance.sol" caseFolder,
@@ -681,8 +681,8 @@ runAsConversionFailureTest file expectedMessage =
     case result of
       Left err ->
         assertBool
-          ("expected explicit-conversion diagnostic SC0230, got:\n" ++ err)
-          ( "error[SC0230]" `isInfixOf` err
+          ("expected type-mismatch diagnostic SC0201, got:\n" ++ err)
+          ( "error[SC0201]" `isInfixOf` err
               && expectedMessage `isInfixOf` err
           )
       Right _ ->

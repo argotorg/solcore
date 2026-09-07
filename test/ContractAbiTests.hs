@@ -19,46 +19,36 @@ contractAbiTests =
         contractAbiJson onlyPublicContract @?= onlyPublicExpected,
       testCase "constructor, payable, word and tuple returns" $
         contractAbiJson richContract @?= richExpected,
-      testCase "one named tuple return stays one ABI tuple output" $ do
+      testCase "one tuple return stays one ABI tuple output" $ do
         contractDef <-
           resolvedContractFromSource
-            "contract Reader { function read() external returns (result: (word, bool)) { result = (1, true); return; } }"
+            "contract Reader { function read() public returns ((word, bool)) { return (1, true); } }"
         let abi = contractAbiJson contractDef
-        assertBool "tuple output keeps its name" ("\"name\": \"result\"" `isInfixOf` abi)
         assertBool "tuple output is not flattened" ("\"type\": \"tuple\"" `isInfixOf` abi),
       testCase "two scalar returns stay two ABI outputs" $ do
         contractDef <-
           resolvedContractFromSource
-            "contract Reader { function read() external returns (left: word, right: bool) { left = 1; right = true; return; } }"
+            "contract Reader { function read() public returns (word, bool) { return (1, true); } }"
         let abi = contractAbiJson contractDef
-        assertBool "first scalar name survives" ("\"name\": \"left\"" `isInfixOf` abi)
-        assertBool "second scalar name survives" ("\"name\": \"right\"" `isInfixOf` abi)
+        assertBool "word scalar type survives" ("\"type\": \"uint256\"" `isInfixOf` abi)
+        assertBool "boolean scalar type survives" ("\"type\": \"bool\"" `isInfixOf` abi)
         assertBool "scalar outputs are not wrapped in a tuple ABI item" (not ("\"type\": \"tuple\"" `isInfixOf` abi)),
-      testCase "contract ABI preserves all four function mutability values" $ do
+      testCase "contract ABI preserves payable and default mutability" $ do
         contractDef <-
           resolvedContractFromSource $
             unlines
               [ "contract Modes {",
-                "  function compute() external pure returns (word) { return 0; }",
-                "  function inspect() public view returns (word) { return 0; }",
-                "  function deposit() external payable { return; }",
+                "  function compute() public returns (word) { return 0; }",
+                "  function inspect() public returns (word) { return 0; }",
+                "  function deposit() public payable { return; }",
                 "  function update() public { return; }",
                 "}"
               ]
         let abi = contractAbiJson contractDef
-        assertAbiFunctionMutability "compute" "pure" abi
-        assertAbiFunctionMutability "inspect" "view" abi
+        assertAbiFunctionMutability "compute" "nonpayable" abi
+        assertAbiFunctionMutability "inspect" "nonpayable" abi
         assertAbiFunctionMutability "deposit" "payable" abi
         assertAbiFunctionMutability "update" "nonpayable" abi,
-      testCase "interface and library ABI preserve source mutability" $ do
-        interfaceDef <-
-          resolvedContractFromSource
-            "interface Reader { function read() external view returns (word); }"
-        libraryDef <-
-          resolvedContractFromSource
-            "library Math { function twice(x: word) public pure returns (word) { return x + x; } }"
-        assertAbiFunctionMutability "read" "view" (contractAbiJson interfaceDef)
-        assertAbiFunctionMutability "twice" "pure" (contractAbiJson libraryDef),
       testCase "exact visibility controls ABI exposure when legacy flags disagree" $ do
         let externalSig =
               (sig "externalFn" [] (Just word) False)

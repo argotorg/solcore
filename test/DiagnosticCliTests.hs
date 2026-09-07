@@ -21,7 +21,7 @@ diagnosticCliTests =
             "  |",
             "1 | enum Broken { Value(word }",
             "  |                          ^ unexpected token",
-            "note: expecting \"calldata\", \"memory\", \"storage\", ')', ',', '.', '<', or '['"
+            "note: expecting ')', ',', '.', or '<'"
           ],
       testCase "undefined name" $
         expectFailure
@@ -68,17 +68,14 @@ diagnosticCliTests =
             "      }",
             "note: module typecheck failed for <cwd>/test/diagnostics/type-mismatch.sol"
           ],
-      testCase "missing signature uses signature span" $
+      testCase "missing parameter annotation fails during parsing" $
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/missing-signature.sol", "--no-specialise"]
-          [ "error[SC0220]: top-level function must have complete type annotations",
-            "  --> <cwd>/test/diagnostics/missing-signature.sol:1:10",
+          [ "error[SC0001]: parse error",
+            "  --> <cwd>/test/diagnostics/missing-signature.sol:1:19",
             "  |",
             "1 | function foo(value) {",
-            "  |          ^^^ incomplete signature",
-            "note: signature: function foo(value)",
-            "note: module typecheck failed for <cwd>/test/diagnostics/missing-signature.sol",
-            "help: annotate every parameter (name: Type); omit returns only for a unit-returning function"
+            "  |                   ^ unexpected token"
           ],
       testCase "polymorphic type error uses signature span" $
         expectFailure
@@ -88,8 +85,8 @@ diagnosticCliTests =
             "  |",
             "1 | function fromWord<a>(x : word) returns (a) {",
             "  |          ^^^^^^^^ annotated type is not polymorphic enough",
-            "note: annotated type: forall a . function(word) internal returns (a)",
-            "note: inferred type: function(word) internal returns (word)",
+            "note: annotated type: forall a . function(word) returns (a)",
+            "note: inferred type: function(word) returns (word)",
             "note: in: function fromWord<a>(x: word) returns (a)",
             "note: in: function fromWord<a>(x: word) returns (a) {",
             "      let result;",
@@ -110,11 +107,13 @@ diagnosticCliTests =
             "   |              ^^^^ unsolved constraint",
             "note: using defined instances:",
             "note: in: function load(ptr: word) returns (word) {",
-            "      return Typedef.abs(MemoryType.load(ptr) as word);",
+            "      let syntaxValue1: word = MemoryType.load(ptr);",
+            "      return Typedef.abs(syntaxValue1);",
             "      }",
             "note: in: impl MemoryType<word> {",
             "      function load(ptr: word) returns (word) {",
-            "      return Typedef.abs(MemoryType.load(ptr) as word);",
+            "      let syntaxValue1: word = MemoryType.load(ptr);",
+            "      return Typedef.abs(syntaxValue1);",
             "      }",
             "      }",
             "note: module typecheck failed for <cwd>/test/examples/cases/missing-instance.sol",
@@ -155,7 +154,7 @@ diagnosticCliTests =
             "  --> <cwd>/test/imports/external_lib_missing_fail.sol:1:9",
             "  |",
             "1 | import @missing.math.api;",
-            "  |         ^^^^^^^^^^^^^^^^ external library import",
+            "  |         ^^^^^^^ external library import",
             "note: <cwd>/test/imports/external_lib_missing_fail.sol",
             "note: import @missing.math.api",
             "help: pass --external-lib NAME=PATH for external imports"

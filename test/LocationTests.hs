@@ -29,8 +29,8 @@ locationTests =
       testCase "name resolution preserves source locations" test_nameResolutionPreservesSourceLocations,
       testCase "SCC analysis preserves source locations" test_sccAnalysisPreservesSourceLocations,
       testCase "type inference preserves source locations" test_typeInferencePreservesSourceLocations,
-      testCase "tuple destructuring binds typed and inferred recursive leaves" test_tupleDestructuringTypeChecks,
-      testCase "comptime tuple destructuring propagates and checks binding ctness" test_comptimeTupleDestructuring
+      testCase "tuple match patterns bind typed and nested leaves" test_tuplePatternTypeChecks,
+      testCase "comptime local bindings preserve and check evaluation mode" test_comptimeLocalBindings
     ]
 
 test_parsedNodesCarrySourceLocations :: Assertion
@@ -76,42 +76,42 @@ test_typeInferencePreservesSourceLocations = do
       (typeInferModuleLocals stdOpt (moduleInputFromUnit resolved))
   assertSpansPreserved "type inference" resolved typedUnit
 
-test_tupleDestructuringTypeChecks :: Assertion
-test_tupleDestructuringTypeChecks = do
-  parsed <- parseUnit "destructuring-let.sol" destructuringSource
+test_tuplePatternTypeChecks :: Assertion
+test_tuplePatternTypeChecks = do
+  parsed <- parseUnit "tuple-pattern.sol" tuplePatternSource
   resolved <- assertCompilerRight "name resolution" (nameResolution parsed)
   _ <-
     assertCompilerRight
-      "tuple destructuring type inference"
+      "tuple pattern type inference"
       (typeInferModuleLocals stdOpt (moduleInputFromUnit resolved))
-  badParsed <- parseUnit "destructuring-let-mismatch.sol" badDestructuringSource
+  badParsed <- parseUnit "tuple-annotation-mismatch.sol" badTupleAnnotationSource
   badResolved <- assertCompilerRight "name resolution" (nameResolution badParsed)
   badResult <-
     typeInferModuleLocals stdOpt (moduleInputFromUnit badResolved)
   case badResult of
     Left _ -> pure ()
     Right _ ->
-      assertFailure "a tuple binding annotation must describe the complete initializer type"
+      assertFailure "a tuple variable annotation must describe the complete initializer type"
 
-test_comptimeTupleDestructuring :: Assertion
-test_comptimeTupleDestructuring = do
-  goodUnit <- inferUnit "comptime-destructuring-good.sol" comptimeDestructuringSource
+test_comptimeLocalBindings :: Assertion
+test_comptimeLocalBindings = do
+  goodUnit <- inferUnit "comptime-local-good.sol" comptimeLocalSource
   assertEitherRight
-    "comptime tuple bindings should remain comptime in their continuation"
+    "comptime local bindings should remain comptime in their continuation"
     (checkComptimeEarly (sourceFunctionsOnly goodUnit))
-  badUnit <- inferUnit "comptime-destructuring-bad.sol" runtimeDestructuringSource
+  badUnit <- inferUnit "comptime-local-bad.sol" runtimeComptimeInitializerSource
   case checkComptimeEarly (sourceFunctionsOnly badUnit) of
     Left _ -> pure ()
     Right () ->
-      assertFailure "a comptime tuple binding must reject a runtime initializer"
+      assertFailure "a comptime local binding must reject a runtime initializer"
   propagatedUnit <-
     inferUnit
-      "runtime-destructuring-propagation.sol"
-      runtimeDestructuringPropagationSource
+      "runtime-pattern-propagation.sol"
+      runtimePatternPropagationSource
   case checkComptimeEarly (sourceFunctionsOnly propagatedUnit) of
     Left _ -> pure ()
     Right () ->
-      assertFailure "runtime ctness must propagate through source tuple destructuring"
+      assertFailure "runtime evaluation mode must propagate through tuple patterns"
 
 sourceFunctionsOnly :: Typed.CompUnit Id -> Typed.CompUnit Id
 sourceFunctionsOnly (Typed.CompUnit imps decls) =
@@ -242,57 +242,61 @@ mutualSource =
       "}"
     ]
 
-destructuringSource :: String
-destructuringSource =
+tuplePatternSource :: String
+tuplePatternSource =
   unlines
     [ "function typed(value: (word, bool)) returns (word) {",
-      "  let (amount, ok): (word, bool) = value;",
-      "  if (ok) { return amount; } else { return amount; }",
+      "  let copy: (word, bool) = value;",
+      "  match (copy) { case (amount, ok) {",
+      "    if (ok) { return amount; } else { return amount; }",
+      "  } }",
       "}",
       "function nested(value: (word, (bool, word))) returns (word) {",
-      "  let (amount, (ok, fallbackValue)) = value;",
-      "  if (ok) { return amount; } else { return fallbackValue; }",
+      "  match (value) { case (amount, (ok, fallbackValue)) {",
+      "    if (ok) { return amount; } else { return fallbackValue; }",
+      "  } }",
       "}"
     ]
 
-badDestructuringSource :: String
-badDestructuringSource =
+badTupleAnnotationSource :: String
+badTupleAnnotationSource =
   unlines
     [ "function bad(value: (word, word)) returns (word) {",
-      "  let (amount, ok): (word, bool) = value;",
-      "  if (ok) { return amount; } else { return amount; }",
+      "  let copy: (word, bool) = value;",
+      "  match (copy) { case (amount, ok) {",
+      "    if (ok) { return amount; } else { return amount; }",
+      "  } }",
       "}"
     ]
 
-comptimeDestructuringSource :: String
-comptimeDestructuringSource =
+comptimeLocalSource :: String
+comptimeLocalSource =
   unlines
     [ "function consume(comptime x: bool) returns (bool) {",
       "  return x;",
       "}",
       "function good() returns (bool) {",
-      "  let comptime (left, right): (bool, bool) = (true, false);",
+      "  let left: comptime<bool> = true;",
       "  return consume(left);",
       "}"
     ]
 
-runtimeDestructuringSource :: String
-runtimeDestructuringSource =
+runtimeComptimeInitializerSource :: String
+runtimeComptimeInitializerSource =
   unlines
-    [ "function bad(value: (word, word)) returns (word) {",
-      "  let comptime (left, right) = value;",
-      "  return left;",
+    [ "function bad(value: (word, word)) returns ((word, word)) {",
+      "  let copy: comptime<(word, word)> = value;",
+      "  return value;",
       "}"
     ]
 
-runtimeDestructuringPropagationSource :: String
-runtimeDestructuringPropagationSource =
+runtimePatternPropagationSource :: String
+runtimePatternPropagationSource =
   unlines
     [ "function consume(comptime value: word) returns (word) {",
       "  return value;",
       "}",
       "function bad(value: (word, word)) returns (word) {",
-      "  let (left, right) = value;",
-      "  return consume(left);",
+      "  match (value) { case (left, right) { return consume(left); } }",
       "}"
     ]
