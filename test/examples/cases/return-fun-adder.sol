@@ -2,8 +2,8 @@
 // Validates the single-pass type checker: closure conversion must not hide
 // that the returned lambda really has type (word) -> word.
 // Uses an assembly block instead of primAddWord so it lowers end-to-end.
-function makeAdder(x : word) returns (function(word) internal returns (word)) {
-  return lam (y : word) returns (word) {
+function makeAdder(x : word) returns (function(word) returns (word)) {
+  return lam (y : word) -> word {
     let res : word;
     assembly {
       res := add(x, y)

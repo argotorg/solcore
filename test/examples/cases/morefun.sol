@@ -5,5 +5,5 @@ trait C<a> {
 }
 
 function morefun<t>(p:Proxy<t>) returns (word)  where t: C {
-    return C.fun(Proxy as Proxy<t>);
+    return C.fun(@t);
 }

@@ -32,5 +32,6 @@ impl Typedef<Right, Left> {
 }
 
 function invalid(value: Left) returns (Right) {
-    return value as Right;
+    let syntaxValue1: Right = value;
+    return syntaxValue1;
 }

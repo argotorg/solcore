@@ -1,3 +1,3 @@
-function foo () returns (function(word) internal returns (bool)) {
-  return lam (x:word) returns (bool) { return true; };
+function foo () returns (function(word) returns (bool)) {
+  return lam (x:word) -> bool { return true; };
 }

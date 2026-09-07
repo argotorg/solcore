@@ -10,8 +10,9 @@ trait Eq<lhs, rhs> {}
 impl<a> Eq<a, a> {}
 
 // this should work but doesnt: forall sizel sizer elem sizeout . (sizel, sizer):TAdd(sizeout)
-function concat<sizel, sizer, elem, sizeout, pairSizelSizer>(lhs:elem[sizel] memory, rhs:elem[sizer] memory) returns (elem[sizeout] memory)  where pairSizelSizer: Eq<(sizel, sizer)>, pairSizelSizer: TAdd<sizeout> {
-    return memory(0) as elem[sizeout] memory; // :D
+function concat<sizel, sizer, elem, sizeout, pairSizelSizer>(lhs:memory<array<sizel, elem>>, rhs:memory<array<sizer, elem>>) returns (memory<array<sizeout, elem>>)  where pairSizelSizer: Eq<(sizel, sizer)>, pairSizelSizer: TAdd<sizeout> {
+    let syntaxValue1: memory<array<sizeout, elem>> = memory(0);
+    return syntaxValue1; // :D
 }
 
 enum Itself<a> { ItselfRuntimeTag }
@@ -34,7 +35,8 @@ impl ToWord<Zero> {
 
 impl<prev> ToWord<Succ<prev>> where prev: ToWord {
     function toWord(self: Itself<Succ<prev>>) {
-        let returnVal : word = ToWord.toWord(Itself.ItselfRuntimeTag as Itself<prev>);
+        let syntaxValue2: Itself<prev> = Itself.ItselfRuntimeTag;
+        let returnVal : word = ToWord.toWord(syntaxValue2);
         assembly {
             returnVal := add(1, returnVal)
         }
@@ -58,9 +60,10 @@ impl MemoryType<word> {
     }
 }
 
-impl<size, elem> IndexAccessible<elem[size] memory, word, elem> where size: ToWord, elem: MemoryType {
+impl<size, elem> IndexAccessible<memory<array<size, elem>>, word, elem> where size: ToWord, elem: MemoryType {
     function at(self, index) returns (elem) {
-        let sizeValue = ToWord.toWord(Itself.ItselfRuntimeTag as Itself<size>);
+        let syntaxValue3: Itself<size> = Itself.ItselfRuntimeTag;
+        let sizeValue = ToWord.toWord(syntaxValue3);
        // this should work but doesn't
         // assembly {
         //    if iszero(lt(index, sizeValue)) {
@@ -79,7 +82,8 @@ impl<size, elem> IndexAccessible<elem[size] memory, word, elem> where size: ToWo
     }
 
     function set(self, index, val) {
-        let sizeValue = ToWord.toWord(Itself.ItselfRuntimeTag as Itself<size>);
+        let syntaxValue4: Itself<size> = Itself.ItselfRuntimeTag;
+        let sizeValue = ToWord.toWord(syntaxValue4);
 
         //assembly {
         //    if iszero(lt(index, sizeValue)) {
@@ -103,7 +107,7 @@ impl<size, elem> IndexAccessible<elem[size] memory, word, elem> where size: ToWo
 contract Array {
 
     function main() public {
-        let arr : word[Succ<Succ<Succ<Succ<Zero>>>>] memory = memory(42);  // = (1,2,3,4,5,6,7,8,9,10);
+        let arr : memory<array<Succ<Succ<Succ<Succ<Zero>>>>, word>> = memory(42);  // = (1,2,3,4,5,6,7,8,9,10);
         IndexAccessible.set(arr, 4, 33);
 
        // this (correctly) typechecks but doesn't specialize

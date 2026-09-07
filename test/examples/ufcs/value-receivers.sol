@@ -1,4 +1,4 @@
-import {*} from std;
+import * from std;
 
 trait ReceiverMethod<a> {
   function project(value: a, salt: word) returns (word);
@@ -15,7 +15,7 @@ function makeValue(value: word) returns (word) {
 }
 
 contract ValueReceivers {
-  values: word[];
+  values: array<word>;
 
   constructor() {}
 

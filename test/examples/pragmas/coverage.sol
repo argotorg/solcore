@@ -1,4 +1,4 @@
-pragma solcore noCoverageCondition ;
+pragma no-coverage-condition ;
 
 enum List<a> { Nil, Cons(a, List<a>) }
 enum Bool { True, False }

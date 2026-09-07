@@ -1,4 +1,4 @@
-import {*} from std;
+import * from std;
 
 function yul_asm_switch_body() returns (()) {
     let result : word = 0;

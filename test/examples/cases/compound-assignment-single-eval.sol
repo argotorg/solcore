@@ -1,4 +1,4 @@
-import {*} from std;
+import * from std;
 
 contract CompoundAssignmentSingleEval {
   values: mapping(word => word);

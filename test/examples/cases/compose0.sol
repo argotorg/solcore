@@ -1,4 +1,4 @@
-function compose<a, b, c> (f : function(b) internal returns (c),g : function(a) internal returns (b)) returns (function(a) internal returns (c)) {
+function compose<a, b, c> (f : function(b) returns (c),g : function(a) returns (b)) returns (function(a) returns (c)) {
   return lam (x) {
       return f(g(x));
     };

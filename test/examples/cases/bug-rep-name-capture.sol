@@ -7,11 +7,11 @@
 // Expected: compiles successfully; `Typedef.rep` resolves to the class method.
 // Actual (before fix): PANIC: no resolution found for invokable.invoke
 
-import {*} from std;
-import {*} from std.dispatch;
-pragma solcore noPattersonCondition;
-pragma solcore noCoverageCondition;
-pragma solcore noBoundVariableCondition;
+import * from std;
+import * from std.dispatch;
+pragma no-patterson-condition;
+pragma no-coverage-condition;
+pragma no-bounded-variable-condition;
 
 contract Bug {
     constructor() {}

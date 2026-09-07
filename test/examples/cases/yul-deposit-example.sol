@@ -1,6 +1,6 @@
-import {*} from std;
+import * from std;
 
-function deposit(pubkey: string memory, withdrawal_credentials: string memory, signature: string memory, deposit_data_root: uint256) returns (()) {
+function deposit(pubkey: memory<string>, withdrawal_credentials: memory<string>, signature: memory<string>, deposit_data_root: uint256) returns (()) {
     let msg_value : word = 0;
     assembly {
         msg_value := callvalue()

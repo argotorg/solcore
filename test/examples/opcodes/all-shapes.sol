@@ -1,4 +1,4 @@
-import {*} from std.opcodes;
+import * from std.opcodes;
 
 // Compilation test for the std/opcodes wrappers.
 // Picks two opcodes from each of the four shape categories so the

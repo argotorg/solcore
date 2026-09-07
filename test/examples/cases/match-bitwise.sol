@@ -1,8 +1,8 @@
-import {*} from std;
+import * from std;
 import {mstore} from std.opcodes;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 // Regression for the `|` ambiguity between the bitwise-or operator and the
 // match-arm separator. Each arm below ends in a *bare* expression statement
