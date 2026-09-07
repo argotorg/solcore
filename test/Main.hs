@@ -8,6 +8,7 @@ import HullCases
 import LocationTests
 import MatchCompilerTests
 import ModuleTypeCheckTests
+import NewSyntaxExprTests
 import NewSyntaxTypeTests
 import ParserTests
 import SpecialiseTests
@@ -22,6 +23,7 @@ tests =
   testGroup
     "Tests"
     [ newSyntaxTypeTests,
+      newSyntaxExprTests,
       parserTests,
       cases,
       tabledResolution,
