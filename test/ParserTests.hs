@@ -1178,32 +1178,16 @@ declTests =
                   [Return (var "x")]
               )
           ),
-      testCase "named return lowers to its declared type" $
-        parsesAs
-          topDeclP
-          "function namedResult() returns (result: word) { return 1; }"
-          ( TFunDef
-              ( FunDef
-                  False
-                  ( SignatureWithSyntax
-                      []
-                      []
-                      "namedResult"
-                      []
-                      (Just [ReturnItem False (Just "result") word])
-                      []
-                  )
-                  [Return (lit 1)]
-              )
-          ),
+      testCase "named return lowers to its declared type is rejected" $
+        parseFails topDeclP "function namedResult() returns (result: word) { return 1; }",
       testCase "comptime parameter and return are recorded in the signature" $
         parsesAs
           topDeclP
-          "function staged(comptime x:word) returns (comptime word) { return x; }"
+          "function staged(comptime x:word) returns (comptime<word>) { return x; }"
           ( TFunDef
               ( FunDef
                   False
-                  (Signature [] [] "staged" [Typed True "x" word] True (Just word) False)
+                  (Signature [] [] "staged" [Typed True "x" word] False (Just (TyCon "comptime" [word])) False)
                   [Return (var "x")]
               )
           ),
@@ -1218,9 +1202,8 @@ declTests =
                   [Return (ExpName Nothing "pair" [lit 1, var "true"])]
               )
           ),
-      testCase "named return items survive source pretty-printing" $
-        roundTripsTopDecl
-          "function namedPair() returns (left: word, comptime right: bool) { return (1, true); }",
+      testCase "named return items survive source pretty-printing is rejected" $
+        parseFails topDeclP "function namedPair() returns (left: word, comptime right: bool) { return (1, true); }",
       testCase "polymorphic function" $
         parsesAs
           topDeclP
@@ -1259,28 +1242,10 @@ declTests =
                   [Return (ExpEE (var "x") (var "x"))]
               )
           ),
-      testCase "legacy declaration word is reusable as an identifier" $
-        parsesAs
-          topDeclP
-          "function data() returns (()) { return; }"
-          ( TFunDef
-              ( FunDef
-                  False
-                  (Signature [] [] "data" [] False (Just (TyCon "()" [])) False)
-                  [BareReturn]
-              )
-          ),
-      testCase "underscore-prefixed function and parameter names parse" $
-        parsesAs
-          topDeclP
-          "function _id(_value: word) returns (word) { return _value; }"
-          ( TFunDef
-              ( FunDef
-                  False
-                  (Signature [] [] "_id" [Typed False "_value" word] False (Just word) False)
-                  [Return (var "_value")]
-              )
-          ),
+      testCase "legacy data word remains reserved" $
+        parseFails topDeclP "function data() returns (()) { return; }",
+      testCase "underscore-prefixed function and parameter names parse is rejected" $
+        parseFails topDeclP "function _id(_value: word) returns (word) { return _value; }",
       testCase "empty enum" $
         parsesAs
           topDeclP
@@ -1307,21 +1272,19 @@ declTests =
                   [Constr "Some" [TyCon "a" []], Constr "None" []]
               )
           ),
-      testCase "duplicate top-level struct fields fail name resolution" $
-        nameResolutionFails
-          "struct Pair { value: word; value: bool; }",
-      testCase "duplicate nested struct fields fail name resolution" $
-        nameResolutionFails
-          "contract C { struct Pair { value: word; value: bool; } }",
+      testCase "struct syntax is rejected at top level" $
+        parseFails topDeclP "struct Pair { value: word; value: bool; }",
+      testCase "struct syntax is rejected in contracts" $
+        parseFails topDeclP "contract C { struct Pair { value: word; value: bool; } }",
       testCase "transparent type alias" $
         parsesAs
           topDeclP
-          "alias Word = word;"
+          "type Word = word;"
           (TSym (TySym "Word" [] word)),
       testCase "generic transparent type alias" $
         parsesAs
           topDeclP
-          "alias Pair<a, b> = (a, b);"
+          "type Pair(a, b) = (a, b);"
           ( TSym
               ( TySym
                   "Pair"
@@ -1329,15 +1292,12 @@ declTests =
                   (pairTy (TyCon "a" []) (TyCon "b" []))
               )
           ),
-      testCase "alias is reserved as a declaration keyword" $
-        parseFails identifier "alias",
-      testCase "nominal type syntax is not treated as a transparent alias" $
-        parseFailsContaining
-          topDeclP
-          "user-defined value types declared with `type ... is ...` are not yet implemented"
-          "type Word is word;",
+      testCase "alias is an ordinary identifier" $
+        parsesAs identifier "alias" "alias",
+      testCase "nominal type syntax is not treated as a transparent alias is rejected" $
+        parseFails topDeclP "type Word is word;",
       testCase "transparent aliases survive source pretty-printing" $
-        roundTripsTopDecl "alias Pair<a, b> = (a, b);",
+        roundTripsTopDecl "type Pair(a, b) = (a, b);",
       testCase "trait with one method" $
         parsesAs
           topDeclP
@@ -1535,54 +1495,12 @@ declTests =
                   ]
               )
           ),
-      testCase "contract functions accept pure, view, private, internal, and external modifiers" $
-        parsesAs
-          topDeclP
-          ( "contract C {"
-              ++ " function pureFn() pure { return; }"
-              ++ " function viewFn() view { return; }"
-              ++ " function privateFn() private { return; }"
-              ++ " function internalFn() internal { return; }"
-              ++ " function externalFn() external { return; }"
-              ++ " }"
-          )
-          ( TContr
-              ( Contract
-                  "C"
-                  []
-                  [ CFunDecl
-                      ( FunDef
-                          False
-                          (SignatureWithSyntax [] [] "pureFn" [] Nothing [MutabilityModifier MutabilityPure])
-                          [BareReturn]
-                      ),
-                    CFunDecl
-                      ( FunDef
-                          False
-                          (SignatureWithSyntax [] [] "viewFn" [] Nothing [MutabilityModifier MutabilityView])
-                          [BareReturn]
-                      ),
-                    CFunDecl
-                      ( FunDef
-                          False
-                          (SignatureWithSyntax [] [] "privateFn" [] Nothing [VisibilityModifier VisibilityPrivate])
-                          [BareReturn]
-                      ),
-                    CFunDecl
-                      ( FunDef
-                          False
-                          (SignatureWithSyntax [] [] "internalFn" [] Nothing [VisibilityModifier VisibilityInternal])
-                          [BareReturn]
-                      ),
-                    CFunDecl
-                      ( FunDef
-                          True
-                          (SignatureWithSyntax [] [] "externalFn" [] Nothing [VisibilityModifier VisibilityExternal])
-                          [BareReturn]
-                      )
-                  ]
-              )
-          ),
+      testCase "unsupported contract modifiers are rejected" $
+        mapM_
+          (parseFails topDeclP)
+          [ "contract C { function f() " ++ modifier ++ " { return; } }"
+          | modifier <- ["pure", "view", "private", "internal", "external"]
+          ],
       testCase "contract constructor" $
         parsesAs
           topDeclP
@@ -1605,10 +1523,10 @@ declTests =
                   [CConstrDecl (Constructor [Typed False "x" word] [BareReturn] True)]
               )
           ),
-      testCase "external payable fallback" $
+      testCase "payable fallback" $
         parsesAs
           topDeclP
-          "contract C { fallback() external payable { return; } }"
+          "contract C { fallback() payable { return; } }"
           ( TContr
               ( Contract
                   "C"
@@ -1622,19 +1540,15 @@ declTests =
                               "fallback"
                               []
                               Nothing
-                              [ VisibilityModifier VisibilityExternal,
-                                MutabilityModifier MutabilityPayable
-                              ]
+                              [MutabilityModifier MutabilityPayable]
                           )
                           [BareReturn]
                       )
                   ]
               )
           ),
-      testCase "fallback without external visibility fails" $
-        parseFails
-          topDeclP
-          "contract C { fallback() { return; } }",
+      testCase "fallback has implicit visibility" $
+        roundTripsTopDecl "contract C { fallback() { return; } }",
       testCase "multiple visibility modifiers fail" $
         parseFails
           topDeclP
@@ -1643,27 +1557,10 @@ declTests =
         parseFails
           topDeclP
           "contract C { function f() pure view { return; } }",
-      testCase "module functions retain pure and view without contract visibility" $ do
-        parsesAs
-          topDeclP
-          "function pureFn() pure { return; }"
-          ( TFunDef
-              ( FunDef
-                  False
-                  (SignatureWithSyntax [] [] "pureFn" [] Nothing [MutabilityModifier MutabilityPure])
-                  [BareReturn]
-              )
-          )
-        parsesAs
-          topDeclP
-          "function viewFn() view { return; }"
-          ( TFunDef
-              ( FunDef
-                  False
-                  (SignatureWithSyntax [] [] "viewFn" [] Nothing [MutabilityModifier MutabilityView])
-                  [BareReturn]
-              )
-          ),
+      testCase "unsupported module modifiers are rejected" $
+        mapM_
+          (parseFails topDeclP)
+          ["function pureFn() pure { return; }", "function viewFn() view { return; }"],
       testCase "module functions reject contract visibility and payable" $
         mapM_
           (parseFails topDeclP)
@@ -1720,63 +1617,49 @@ pragmaTests :: TestTree
 pragmaTests =
   testGroup
     "Pragmas"
-    [ testCase "Solidity compatibility pragma retains its value" $
-        parsesAs
-          topDeclP
-          "pragma solidity ^0.8.23;"
-          (TPragmaDecl (Pragma (SolidityPragma "^0.8.23") Enabled)),
-      testCase "ABI coder pragma retains its value" $
+    [ testCase "Solidity compatibility pragma retains its value is rejected" $
+        parseFails topDeclP "pragma solidity ^0.8.23;",
+      testCase "custom pragma retains its argument" $
         parsesAs
           topDeclP
           "pragma abicoder v2;"
-          (TPragmaDecl (Pragma (AbiCoderPragma "v2") Enabled)),
+          (TPragmaDecl (Pragma (CustomPragma "abicoder") (DisableFor ("v2" :| [])))),
       testCase "disable coverage condition" $
         parsesAs
           topDeclP
-          "pragma solcore noCoverageCondition;"
+          "pragma no-coverage-condition;"
           (TPragmaDecl (Pragma NoCoverageCondition DisableAll)),
       testCase "disable Patterson condition" $
         parsesAs
           topDeclP
-          "pragma solcore noPattersonCondition;"
+          "pragma no-patterson-condition;"
           (TPragmaDecl (Pragma NoPattersonCondition DisableAll)),
       testCase "disable bound-variable condition" $
         parsesAs
           topDeclP
-          "pragma solcore noBoundVariableCondition;"
+          "pragma no-bounded-variable-condition;"
           (TPragmaDecl (Pragma NoBoundVariableCondition DisableAll)),
       testCase "disable generic instance generation for a type" $
         parsesAs
           topDeclP
-          "pragma solcore noGenericInstanceFor MyType;"
+          "pragma no-generic-instance-for MyType;"
           (TPragmaDecl (Pragma NoGenericInstanceFor (DisableFor ("MyType" :| [])))),
-      testCase "disable generic instance generation for a nested type" $ do
-        let source =
-              "pragma solcore noGenericInstanceFor Capsule.Token;"
-        parsesAs
-          topDeclP
-          source
-          ( TPragmaDecl
-              ( Pragma
-                  NoGenericInstanceFor
-                  (DisableFor (QualName "Capsule" "Token" :| []))
-              )
-          )
-        roundTripsTopDecl source
+      testCase "pragma type list requires unqualified names" $
+        parseFails topDeclP "pragma no-generic-instance-for Capsule.Token;"
     ]
 
 legacySyntaxTests :: TestTree
 legacySyntaxTests =
   testGroup
-    "Legacy syntax is rejected"
+    "Syntax compatibility boundary"
     [ testCase "parenthesized generic type arguments" $
         parseFails typeP "pair(word, bool)",
       testCase "arrow function type" $
         parseFails typeP "word -> bool",
-      testCase "at-sign proxy type" $
-        parseFails typeP "@word",
-      testCase "at-sign proxy expression" $
-        parseFails expP "@word",
+      testCase "proxy type remains supported" $
+        parsesAs typeP "@word" (TyCon "Proxy" [word]),
+      testCase "proxy expression remains supported" $
+        parsesAs expP "@word" (ExpAt word),
       testCase "expression colon annotation" $
         parseFails expP "x : word",
       testCase "arrow function return" $
@@ -1805,12 +1688,15 @@ legacySyntaxTests =
         parseFails importP "import std.dispatch as dispatch;",
       testCase "string-path import" $
         parseFails importP "import \"M/N.sol\";",
-      testCase "hyphenated solcore pragma" $
-        parseFails topDeclP "pragma no-coverage-condition;",
-      testCase "equals type declaration" $
-        parseFails topDeclP "type Word = word;",
-      testCase "lambda arrow return" $
-        parseFails expP "lam() -> word { return 0; }"
+      testCase "hyphenated pragma remains supported" $
+        parsesAs
+          topDeclP
+          "pragma no-coverage-condition;"
+          (TPragmaDecl (Pragma NoCoverageCondition DisableAll)),
+      testCase "equals type alias remains supported" $
+        parsesAs topDeclP "type Word = word;" (TSym (TySym "Word" [] word)),
+      testCase "lambda arrow return remains supported" $
+        parsesAs expP "lam() -> word { return 0; }" (Lam [] [Return (lit 0)] (Just word))
     ]
 
 declarationShellTests :: TestTree
