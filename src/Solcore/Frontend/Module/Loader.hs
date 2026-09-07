@@ -538,8 +538,9 @@ moduleLocalTypeCheckSurface graph modulePath = do
     concat <$> mapM (importedPartialTypes collidingTypeNames graph) importPairs
   qualifiedDecls <-
     concat <$> mapM (typeCheckQualifiedImportDecls collidingTypeNames graph) importPairs
+  deriveTargets <- qualifiedDeriveTargetMap graph importPairs
   (arrayLocalDecls, arrayImportedDecls) <- arrayLiteralRuntimeDecls graph modulePath unit
-  let localDecls = topDeclsFrom unit ++ arrayLocalDecls
+  let localDecls = map (renameLocalDeriveTargets deriveTargets) (topDeclsFrom unit) ++ arrayLocalDecls
       allImportedDecls = importedDecls ++ shadowImportedDecls (localDecls ++ importedDecls) arrayImportedDecls
       visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls allImportedDecls)
   pure
@@ -587,6 +588,51 @@ arrayLiteralRuntimeDecls graph modulePath unit
         [FunDef isPublic signature body] ->
           pure (TFunDef (FunDef isPublic (signature {sigName = internalName}) body))
         _ -> Left ("Array literal runtime definition is missing or ambiguous in std: " ++ show sourceName)
+
+-- A namespace import exposes a trait under its source qualifier, while the
+-- inference surface retains the defining trait's canonical name. Resolve
+-- derive attributes against the public import surface rather than guessing
+-- from the last name segment, which would expose private or unrelated traits.
+qualifiedDeriveTargetMap :: ModuleGraph -> [(Import, Mod.ModuleId)] -> Either String (Map Name Name)
+qualifiedDeriveTargetMap graph importPairs =
+  Map.fromList . concat <$> mapM importTargets importPairs
+  where
+    importTargets (ImportOnly _ _, _) = pure []
+    importTargets (ImportModule path, targetModule) =
+      concat <$> mapM (\qualifier -> moduleTargets Set.empty qualifier targetModule) (importModuleQualifiers path)
+    importTargets (ImportAlias _ qualifier, targetModule) =
+      moduleTargets Set.empty qualifier targetModule
+
+    moduleTargets seen qualifier targetModule
+      | targetModule `Set.member` seen = pure []
+      | otherwise = do
+          publicDecls <- publicTopDeclsForModule graph targetModule
+          bindings <- publicModuleBindingsForModule graph targetModule
+          nested <- concat <$> mapM (nestedTargets (Set.insert targetModule seen) qualifier) bindings
+          pure
+            ( [ (qualifyName qualifier cls, cls)
+              | TClassDef (Class _ _ cls _ _ _) <- publicDecls
+              ]
+                ++ nested
+            )
+    nestedTargets seen qualifier (ExportedModuleBinding alias targetModule) =
+      moduleTargets seen (qualifyName qualifier alias) targetModule
+
+renameLocalDeriveTargets :: Map Name Name -> TopDecl -> TopDecl
+renameLocalDeriveTargets targets (TDataDef dt) = TDataDef (renameDataDerives dt)
+  where
+    renameDataDerives datatype =
+      datatype {dataDerives = map renameTarget (dataDerives datatype)}
+    renameTarget target = copyNameSourceSpan target (Map.findWithDefault target target targets)
+renameLocalDeriveTargets targets (TContr contract) =
+  TContr contract {decls = map renameMember (decls contract)}
+  where
+    renameMember (CDataDecl dt) =
+      case renameLocalDeriveTargets targets (TDataDef dt) of
+        TDataDef renamed -> CDataDecl renamed
+        _ -> CDataDecl dt
+    renameMember member = member
+renameLocalDeriveTargets _ declaration = declaration
 
 stubTopDeclBody :: TopDecl -> TopDecl
 stubTopDeclBody (TContr (ContractShell kind n vs contractDecls)) =

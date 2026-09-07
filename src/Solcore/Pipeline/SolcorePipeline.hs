@@ -21,6 +21,7 @@ import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls, writeContractAbis)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, warningDiagnostic)
+import Solcore.Desugarer.DeriveClass (deriveClassTopDecls)
 import Solcore.Desugarer.DeriveGeneric (collectDataDefs, deriveGenericTopDecls)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
@@ -867,7 +868,7 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     ExceptT $
       fmap (first compilerErrorFromString) $
         runExceptT $
-          traverseModuleInferenceTopDecls (ExceptT . pure . deriveGenericTopDecls localData) dispatched
+          traverseModuleInferenceTopDecls (ExceptT . pure . (\ds -> deriveGenericTopDecls localData ds >>= deriveClassTopDecls localData)) dispatched
 
   liftIO $ when verbose $ do
     putStrLn "> Generic instance derivation:"
