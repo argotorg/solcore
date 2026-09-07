@@ -5,6 +5,8 @@ module Solcore.Frontend.Parser.SolcoreTypes
     predP,
     predListP,
     paramP,
+    namedParamP,
+    lambdaParamP,
     typeParamsP,
     whereClauseP,
     simpleNameP,
@@ -25,7 +27,7 @@ import Solcore.Frontend.Syntax.SyntaxTree
 qualifiedName :: Parser Name
 qualifiedName = do
   h <- simpleNameP
-  foldlM segment h =<< many (try (char '.' *> locatedIdentifierP))
+  foldlM segment h =<< many (try (symbol "." *> locatedIdentifierP))
   where
     segment qualifier (sourceSpan, leaf) =
       pure (locatedQualName qualifier sourceSpan leaf)
@@ -52,44 +54,24 @@ locatedIdentifierP = do
   pure (sourceSpanBetween startOffset startPos endOffset endPos, identifierText)
 
 typeP :: Parser Ty
-typeP = locatedP locatedTy postfixTypeP
+typeP =
+  locatedP
+    locatedTy
+    (functionTypeP <|> try comptimeTypeP <|> mappingTypeP <|> proxyTypeP <|> parenTypeP <|> namedTypeP)
 
 atomTypeP :: Parser Ty
-atomTypeP = locatedP locatedTy (mappingTypeP <|> parenTypeP <|> namedTypeP)
-
-postfixTypeP :: Parser Ty
-postfixTypeP = do
-  base <- functionTypeP <|> atomTypeP
-  suffixes <- many typeSuffixP
-  pure (foldl (flip ($)) base suffixes)
-
-typeSuffixP :: Parser (Ty -> Ty)
-typeSuffixP =
-  choice
-    [ do
-        size <- brackets (optional arraySizeP)
-        pure $ \elementTy ->
-          case size of
-            Nothing -> TyCon "array" [elementTy]
-            Just sizeTy -> TyCon "array" [sizeTy, elementTy],
-      TyCon "memory" . (: []) <$ keyword "memory",
-      TyCon "storage" . (: []) <$ keyword "storage",
-      TyCon "calldata" . (: []) <$ keyword "calldata"
-    ]
-
-arraySizeP :: Parser Ty
-arraySizeP =
-  (do n <- integer; pure (TyCon (Name (show n)) []))
-    <|> typeP
+atomTypeP = typeP
 
 namedTypeP :: Parser Ty
-namedTypeP =
-  TyCon
-    <$> qualifiedName
-    <*> option [] (try (angles (typeP `sepBy1` comma)))
+namedTypeP = do
+  name <- qualifiedName
+  args <- option [] (try (angles (typeP `sepEndBy1` comma)))
+  if name == Name "mapping"
+    then fail "the mapping type uses mapping(Key => Value)"
+    else pure (TyCon name args)
 
 parenTypeP :: Parser Ty
-parenTypeP = parens (mkParenTy <$> (typeP `sepBy` comma))
+parenTypeP = parens (mkParenTy <$> (typeP `sepEndBy` comma))
   where
     mkParenTy [] = TyCon "()" []
     mkParenTy [t] = t
@@ -97,7 +79,7 @@ parenTypeP = parens (mkParenTy <$> (typeP `sepBy` comma))
 
 mappingTypeP :: Parser Ty
 mappingTypeP = do
-  keyword "mapping"
+  _ <- try (keyword "mapping" <* lookAhead (symbol "("))
   (keyTy, valueTy) <- parens $ do
     keyTy <- typeP
     _ <- symbol "=>"
@@ -105,48 +87,68 @@ mappingTypeP = do
     pure (keyTy, valueTy)
   pure (TyCon "mapping" [keyTy, valueTy])
 
+comptimeTypeP :: Parser Ty
+comptimeTypeP = do
+  _ <- try (keyword "comptime" <* lookAhead (symbol "<"))
+  inner <- angles typeP
+  pure (TyCon "comptime" [inner])
+
+proxyTypeP :: Parser Ty
+proxyTypeP = TyCon "Proxy" . (: []) <$> (symbol "@" *> typeP)
+
 functionTypeP :: Parser Ty
 functionTypeP = do
   keyword "function"
-  args <- parens (typeP `sepBy` comma)
-  visibility <-
-    optional
-      ( FunctionTypeInternal
-          <$ keyword "internal"
-            <|> FunctionTypeExternal
-          <$ keyword "external"
-      )
+  args <- parens (typeP `sepEndBy` comma)
   results <- optional returnsTypeP
-  pure (FunctionTy args visibility results)
+  pure (FunctionTy args Nothing results)
 
 returnsTypeP :: Parser [Ty]
 returnsTypeP = do
   keyword "returns"
-  parens (typeP `sepBy` comma)
+  parens (typeP `sepEndBy` comma)
 
 predP :: Parser Pred
 predP = do
   subjectTy <- typeP
   _ <- colon
-  cls <- qualifiedName
-  params <- option [] (angles (typeP `sepBy1` comma))
+  cls <- simpleNameP
+  params <- option [] (angles (typeP `sepEndBy1` comma))
   return (InCls cls subjectTy params)
 
 predListP :: Parser [Pred]
-predListP = predP `sepBy1` comma
+predListP = try (parens barePredListP) <|> barePredListP
+  where
+    barePredListP = predP `sepEndBy1` comma
 
 paramP :: Parser Param
 paramP = do
   ct <- option False (True <$ keyword "comptime")
   n <- simpleNameP
   mt <- optional (colon *> typeP)
-  return $ case mt of
-    Just t -> Typed ct n t
-    Nothing -> Untyped ct n
+  case mt of
+    Just (TyCon "comptime" [_]) ->
+      fail "comptime<T> is not a parameter type; write comptime name: T"
+    Just t -> pure (Typed ct n t)
+    Nothing -> pure (Untyped ct n)
+
+namedParamP :: Parser Param
+namedParamP = do
+  parameter <- paramP
+  case parameter of
+    Untyped _ _ -> fail "named function parameter requires an explicit type"
+    _ -> pure parameter
+
+lambdaParamP :: Parser Param
+lambdaParamP = do
+  parameter <- paramP
+  case parameter of
+    Untyped True _ -> fail "comptime parameter requires an explicit type"
+    _ -> pure parameter
 
 typeParamsP :: Parser [Ty]
 typeParamsP =
-  option [] (angles (tyVar `sepBy1` comma))
+  option [] (angles (tyVar `sepEndBy1` comma))
   where
     tyVar = locatedP locatedTy (flip TyCon [] <$> simpleNameP)
 
