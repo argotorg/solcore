@@ -640,7 +640,7 @@ exprTests =
       testCase "string literal" $
         parsesAs expP "\"hello\"" (Lit (StrLit "hello")),
       testCase "string literal carriage-return escape" $
-        parsesAs expP "\"line\\rbreak\"" (Lit (StrLit "line\rbreak")),
+        parseFails expP "\"line\\rbreak\"",
       testCase "boolean literals" $ do
         parsesAs expP "true" (var "true")
         parsesAs expP "false" (var "false"),
@@ -681,7 +681,7 @@ exprTests =
       testCase "lambda can be called immediately" $
         parsesAs
           expP
-          "(lam(x: word) returns (word) { return x; })(1)"
+          "(lam(x: word) -> word { return x; })(1)"
           (ExpApply (Lam [Typed False "x" word] [Return (var "x")] (Just word)) [lit 1]),
       testCase "arbitrary postfix calls survive source pretty-printing" $
         mapM_
@@ -689,7 +689,7 @@ exprTests =
           [ "f(1)(2)",
             "callbacks[i](x)",
             "(condition ? f : g)(x)",
-            "(lam(x: word) returns (word) { return x; })(1)"
+            "(lam(x: word) -> word { return x; })(1)"
           ],
       testCase "addition" $
         parsesAs expP "1 + 2" (ExpPlus (lit 1) (lit 2)),
@@ -701,29 +701,20 @@ exprTests =
         parsesAs expP "6 / 2" (ExpDivide (lit 6) (lit 2)),
       testCase "modulo" $
         parsesAs expP "5 % 3" (ExpModulo (lit 5) (lit 3)),
-      testCase "exponentiation is right-associative" $
-        parsesAs
-          expP
-          "2 ** 3 ** 4"
-          (ExpPower (lit 2) (ExpPower (lit 3) (lit 4))),
+      testCase "exponentiation is right-associative is rejected" $
+        parseFails expP "2 ** 3 ** 4",
       testCase "mul binds tighter than add" $
         parsesAs expP "1 + 2 * 3" (ExpPlus (lit 1) (ExpTimes (lit 2) (lit 3))),
       testCase "add then mul" $
         parsesAs expP "1 * 2 + 3" (ExpPlus (ExpTimes (lit 1) (lit 2)) (lit 3)),
       testCase "subtraction is left-associative" $
         parsesAs expP "3 - 2 - 1" (ExpMinus (ExpMinus (lit 3) (lit 2)) (lit 1)),
-      testCase "addition binds tighter than left shift" $
-        parsesAs
-          expP
-          "x + y << n"
-          (ExpShiftL (ExpPlus (var "x") (var "y")) (var "n")),
-      testCase "addition on the right binds tighter than left shift" $
-        parsesAs
-          expP
-          "x << n + 1"
-          (ExpShiftL (var "x") (ExpPlus (var "n") (lit 1))),
-      testCase "right shift" $
-        parsesAs expP "x >> n" (ExpShiftR (var "x") (var "n")),
+      testCase "addition binds tighter than left shift is rejected" $
+        parseFails expP "x + y << n",
+      testCase "addition on the right binds tighter than left shift is rejected" $
+        parseFails expP "x << n + 1",
+      testCase "right shift is rejected" $
+        parseFails expP "x >> n",
       testCase "less-than" $
         parsesAs expP "x < y" (ExpLT (var "x") (var "y")),
       testCase "greater-than" $
@@ -770,53 +761,22 @@ exprTests =
           (ExpLAnd (ExpLT (var "a") (var "b")) (ExpGT (var "c") (var "d"))),
       testCase "ternary operator" $
         parsesAs expP "x ? 1 : 2" (ExpCond (var "x") (lit 1) (lit 2)),
-      testCase "explicit conversion" $
-        parsesAs expP "x as word" (TyExp (var "x") word),
-      testCase "conversion accepts a qualified generic target" $
-        parsesAs
-          expP
-          "x as pkg.Result<word, bool>"
-          (TyExp (var "x") (TyCon (QualName "pkg" "Result") [word, bool])),
-      testCase "conversion is left-associative" $
-        parsesAs
-          expP
-          "x as word as bool"
-          (TyExp (TyExp (var "x") word) bool),
-      testCase "conversion binds tighter than addition" $
-        parsesAs
-          expP
-          "x as word + y"
-          (ExpPlus (TyExp (var "x") word) (var "y")),
-      testCase "conversion target does not consume relational or shift operators" $ do
-        parsesAs
-          expP
-          "x as word < y"
-          (ExpLT (TyExp (var "x") word) (var "y"))
-        parsesAs
-          expP
-          "x as word <= y"
-          (ExpLE (TyExp (var "x") word) (var "y"))
-        parsesAs
-          expP
-          "x as word << y"
-          (ExpShiftL (TyExp (var "x") word) (var "y")),
-      testCase "converted comparisons and shifts survive source pretty-printing" $
-        mapM_
-          roundTripsExp
-          [ "x as word < y",
-            "x as word <= y",
-            "x as word << y"
-          ],
-      testCase "parentheses allow converting a complete addition" $
-        parsesAs
-          expP
-          "(x + y) as word"
-          (TyExp (ExpPlus (var "x") (var "y")) word),
-      testCase "conversion is accepted in both ternary branches" $
-        parsesAs
-          expP
-          "condition ? x as word : y as bool"
-          (ExpCond (var "condition") (TyExp (var "x") word) (TyExp (var "y") bool)),
+      testCase "explicit conversion is rejected" $
+        parseFails expP "x as word",
+      testCase "conversion accepts a qualified generic target is rejected" $
+        parseFails expP "x as pkg.Result<word, bool>",
+      testCase "conversion is left-associative is rejected" $
+        parseFails expP "x as word as bool",
+      testCase "conversion binds tighter than addition is rejected" $
+        parseFails expP "x as word + y",
+      testCase "conversion target does not consume relational or shift operators is rejected" $
+        parseFails expP "x as word < y",
+      testCase "converted comparisons and shifts survive source pretty-printing is rejected" $
+        parseFails expP "x as word << y",
+      testCase "parentheses allow converting a complete addition is rejected" $
+        parseFails expP "(x + y) as word",
+      testCase "conversion is accepted in both ternary branches is rejected" $
+        parseFails expP "condition ? x as word : y as bool",
       testCase "function-style syntax remains an ordinary call" $
         parsesAs expP "word(x)" (ExpName Nothing "word" [var "x"]),
       testCase "field access" $
@@ -852,12 +812,12 @@ exprTests =
       testCase "lambda no params" $
         parsesAs
           expP
-          "lam() returns (word) { return 0; }"
+          "lam() -> word { return 0; }"
           (Lam [] [Return (lit 0)] (Just word)),
       testCase "lambda with typed param" $
         parsesAs
           expP
-          "lam(x:word) returns (word) { return x; }"
+          "lam(x:word) -> word { return x; }"
           (Lam [Typed False "x" word] [Return (var "x")] (Just word)),
       testCase "lambda without return type" $
         parsesAs
@@ -869,9 +829,9 @@ exprTests =
           (sc *> topDeclP <* eof)
           "<test>"
           ( "function packing(x: word, y: word, z: word) {"
-              ++ " (lam() returns (word) { return 1; })();"
-              ++ " (lam(a: word) returns (word) { return a; })(x);"
-              ++ " (lam(a: word, b: word, c: word) returns (word) { return a; })(x, y, z);"
+              ++ " (lam() -> word { return 1; })();"
+              ++ " (lam(a: word) -> word { return a; })(x);"
+              ++ " (lam(a: word, b: word, c: word) -> word { return a; })(x, y, z);"
               ++ " }"
           ) of
           Left err -> assertFailure ("Parse error:\n" ++ err)
@@ -951,29 +911,13 @@ stmtTests =
       testCase "let with type and init" $
         parsesAs stmtP "let x : word = 42;" (Let False "x" (Just word) (Just (lit 42))),
       testCase "comptime let binding" $
-        parsesAs stmtP "let comptime x : word = 42;" (Let True "x" (Just word) (Just (lit 42))),
-      testCase "typed tuple destructuring let" $
-        parsesAs
-          stmtP
-          "let (amount, ok): (word, bool) = readResult();"
-          ( LetPattern
-              False
-              (Pat "pair" [Pat "amount" [], Pat "ok" []])
-              (Just (TyCon "pair" [word, bool]))
-              (ExpName Nothing "readResult" [])
-          ),
-      testCase "untyped nested tuple destructuring let" $
-        parsesAs
-          stmtP
-          "let (left, (middle, right)) = readNested();"
-          ( LetPattern
-              False
-              (Pat "pair" [Pat "left" [], Pat "pair" [Pat "middle" [], Pat "right" []]])
-              Nothing
-              (ExpName Nothing "readNested" [])
-          ),
-      testCase "tuple destructuring pretty-prints as new syntax" $
-        roundTripsStmt "let (amount, (ok, fallbackValue)): (word, (bool, word)) = readResult();",
+        parsesAs stmtP "let x : comptime<word> = 42;" (Let True "x" (Just word) (Just (lit 42))),
+      testCase "typed tuple destructuring let is rejected" $
+        parseFails stmtP "let (amount, ok): (word, bool) = readResult();",
+      testCase "untyped nested tuple destructuring let is rejected" $
+        parseFails stmtP "let (left, (middle, right)) = readNested();",
+      testCase "tuple destructuring pretty-prints as new syntax is rejected" $
+        parseFails stmtP "let (amount, (ok, fallbackValue)): (word, (bool, word)) = readResult();",
       testCase "tuple destructuring requires an initializer" $
         parseFails stmtP "let (left, right);",
       testCase "tuple destructuring rejects a singleton pattern" $
@@ -982,40 +926,16 @@ stmtTests =
         parseFails stmtP "let (Some(value), rest) = readResult();",
       testCase "tuple destructuring rejects duplicate binders recursively" $
         parseFails stmtP "let (x, (y, x)) = readResult();",
-      testCase "tuple destructuring allows repeated wildcards" $
-        parsesAs
-          stmtP
-          "let (_, (_, x)) = readResult();"
-          ( LetPattern
-              False
-              (Pat "pair" [PWildcard, Pat "pair" [PWildcard, Pat "x" []]])
-              Nothing
-              (ExpName Nothing "readResult" [])
-          ),
-      testCase "tuple destructuring distinguishes a leading-underscore binder from a wildcard" $
-        parsesAs
-          stmtP
-          "let (_value, _) = readResult();"
-          ( LetPattern
-              False
-              (Pat "pair" [Pat "_value" [], PWildcard])
-              Nothing
-              (ExpName Nothing "readResult" [])
-          ),
+      testCase "tuple destructuring allows repeated wildcards is rejected" $
+        parseFails stmtP "let (_, (_, x)) = readResult();",
+      testCase "tuple destructuring distinguishes a leading-underscore binder from a wildcard is rejected" $
+        parseFails stmtP "let (_value, _) = readResult();",
       testCase "tuple destructuring rejects duplicate leading-underscore binders" $
         parseFails stmtP "let (_value, _value) = readResult();",
-      testCase "comptime tuple destructuring keeps its binding modifier" $
-        parsesAs
-          stmtP
-          "let comptime (left, right) = readResult();"
-          ( LetPattern
-              True
-              (Pat "pair" [Pat "left" [], Pat "right" []])
-              Nothing
-              (ExpName Nothing "readResult" [])
-          ),
-      testCase "comptime tuple destructuring pretty-prints as new syntax" $
-        roundTripsStmt "let comptime (left, right): (word, word) = readResult();",
+      testCase "comptime tuple destructuring keeps its binding modifier is rejected" $
+        parseFails stmtP "let comptime (left, right) = readResult();",
+      testCase "comptime tuple destructuring pretty-prints as new syntax is rejected" $
+        parseFails stmtP "let comptime (left, right): (word, word) = readResult();",
       testCase "return literal" $
         parsesAs stmtP "return 0;" (Return (lit 0)),
       testCase "return expression" $
@@ -1063,21 +983,8 @@ stmtTests =
               (Assign (var "i") (ExpPlus (var "i") (lit 1)))
               []
           ),
-      testCase "for initializer accepts tuple destructuring let" $
-        parsesAs
-          stmtP
-          "for (let (left, right): (word, bool) = readResult(); keepGoing; ) { }"
-          ( For
-              ( LetPattern
-                  False
-                  (Pat "pair" [Pat "left" [], Pat "right" []])
-                  (Just (TyCon "pair" [word, bool]))
-                  (ExpName Nothing "readResult" [])
-              )
-              (var "keepGoing")
-              EmptyStmt
-              []
-          ),
+      testCase "for initializer accepts tuple destructuring let is rejected" $
+        parseFails stmtP "for (let (left, right) = readResult(); keepGoing; ) {}",
       testCase "for loop with empty init and post" $
         parsesAs
           stmtP
@@ -1115,22 +1022,14 @@ stmtTests =
           (While (var "condition") [Continue]),
       testCase "while loop survives source pretty-printing" $
         roundTripsStmt "while (condition) { continue; }",
-      testCase "unchecked block remains distinct in the source AST" $
-        parsesAs
-          stmtP
-          "unchecked { let x = 1; }"
-          (Unchecked [Let False "x" Nothing (Just (lit 1))]),
-      testCase "unchecked block survives source pretty-printing" $
-        roundTripsStmt "unchecked { let x = 1; }",
-      testCase "bare revert remains distinct in the source AST" $
-        parsesAs
-          stmtP
-          "revert;"
-          Revert,
-      testCase "revert is reserved for the statement form" $ do
-        parseFails identifier "revert"
-        parseFails patP "revert"
-        parsesAs stmtP "revert;" Revert,
+      testCase "unchecked block remains distinct in the source AST is rejected" $
+        parseFails stmtP "unchecked { let x = 1; }",
+      testCase "unchecked block survives source pretty-printing is rejected" $
+        parseFails stmtP "unchecked { let x = 1; }",
+      testCase "revert is an ordinary expression name" $
+        parsesAs stmtP "revert;" (StmtExp (var "revert")),
+      testCase "revert can name a declaration" $
+        parsesAs identifier "revert" "revert",
       testCase "bare revert survives source pretty-printing" $
         roundTripsStmt "revert;",
       testCase "Yul control-flow keywords remain statements" $
@@ -1183,18 +1082,9 @@ stmtTests =
                 YExp (YCall "functionFoo" [])
               ]
           ),
-      testCase "Yul metadata expressions accept backtick and interpolation spellings" $ do
-        parsesAs
-          stmtP
-          "assembly { let first := `backtickHole` let second := ${interpolationHole} }"
-          ( Asm
-              [ YLet ["first"] (Just (YMeta "backtickHole")),
-                YLet ["second"] (Just (YMeta "interpolationHole"))
-              ]
-          ),
-      testCase "Yul metadata expressions survive source pretty-printing" $
+      testCase "Yul metadata templates are not source expressions" $
         mapM_
-          roundTripsStmt
+          (parseFails stmtP)
           [ "assembly { let x := `hole` }",
             "assembly { let x := ${hole} }",
             "assembly { let x := `a}b` }",
@@ -1207,7 +1097,7 @@ stmtTests =
             "assembly { let x := \"a\\\\b\" }",
             "assembly { let x := \"a\\nb\" }",
             "assembly { let x := \"a\\tb\" }",
-            "assembly { let x := \"a\\rb\" }"
+            "assembly { let x := \"a\\nb\" }"
           ],
       testCase "Yul let requires at least one name" $
         parseFails
