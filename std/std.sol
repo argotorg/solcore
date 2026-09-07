@@ -1570,9 +1570,9 @@ impl<baseType, baseType_decoded> ABIDecode<ABIDecoder<calldata<DynArray<baseType
 */
 
 
-pragma solcore noPattersonCondition RVA, Assign;
-pragma solcore noCoverageCondition MemberAccessProxy, LVA, RVA, CStructField, Assign;
-pragma solcore noBoundVariableCondition LVA, RVA;
+pragma no-patterson-condition RVA, Assign;
+pragma no-coverage-condition MemberAccessProxy, LVA, RVA, CStructField, Assign;
+pragma no-bounded-variable-condition LVA, RVA;
 // -- storage
 
 trait StorageSize<self> {
@@ -1628,8 +1628,8 @@ impl StorageSize<string> {
     }
 }
 
-impl StorageSize<string memory> {
-    function size(x:Proxy<string memory>) returns (word) {
+impl StorageSize<memory<string>> {
+    function size(x:Proxy<memory<string>>) returns (word) {
         return 1;
     }
 }
@@ -1640,16 +1640,16 @@ impl StorageSize<bytes> {
     }
 }
 
-impl StorageSize<bytes memory> {
-    function size(x:Proxy<bytes memory>) returns (word) {
+impl StorageSize<memory<bytes>> {
+    function size(x:Proxy<memory<bytes>>) returns (word) {
         return 1;
     }
 }
 
 impl<a, b> StorageSize<(a, b)> where a: StorageSize, b: StorageSize {
     function size(x:Proxy<(a, b)>) returns (word) {
-        let a_sz:word = StorageSize.size(Proxy as Proxy<a>);
-        let b_sz:word = StorageSize.size(Proxy as Proxy<b>);
+        let a_sz:word = StorageSize.size(@a);
+        let b_sz:word = StorageSize.size(@b);
         return a_sz + b_sz;
     }
 }
@@ -1667,7 +1667,7 @@ trait StorageType<self> {
 // unconstrained, a field read has to yield the array's storage reference.
 // Instances live below, next to the CanStore instances the dynamic ones rely on.
 trait StorageCopy<self> {
-    function copySlot(dst:self storage, src:self storage) returns (());
+    function copySlot(dst:storage<self>, src:storage<self>) returns (());
 }
 
 impl StorageType<word> {
@@ -1680,18 +1680,18 @@ impl StorageType<word> {
 }
 
 impl StorageType<uint256> {
-  function load(ptr:word) returns (uint256) { return uint256(StorageType.load(ptr) as word); }
-  function store(ptr:word, value:uint256) returns (()) { StorageType.store(ptr, Typedef.rep(value) as word); }
+  function load(ptr:word) returns (uint256) { let syntaxValue4: word = StorageType.load(ptr); return uint256(syntaxValue4); }
+  function store(ptr:word, value:uint256) returns (()) { let syntaxValue5: word = Typedef.rep(value); StorageType.store(ptr, syntaxValue5); }
 }
 
 impl StorageType<bytes32> {
-  function load(ptr:word) returns (bytes32) { return bytes32(StorageType.load(ptr) as word); }
-  function store(ptr:word, value:bytes32) returns (()) { StorageType.store(ptr, Typedef.rep(value) as word); }
+  function load(ptr:word) returns (bytes32) { let syntaxValue6: word = StorageType.load(ptr); return bytes32(syntaxValue6); }
+  function store(ptr:word, value:bytes32) returns (()) { let syntaxValue7: word = Typedef.rep(value); StorageType.store(ptr, syntaxValue7); }
 }
 
 impl StorageType<address> {
-  function load(ptr:word) returns (address) { return address(StorageType.load(ptr) as word); }
-  function store(ptr:word, value:address) returns (()) { StorageType.store(ptr, Typedef.rep(value) as word); }
+  function load(ptr:word) returns (address) { let syntaxValue8: word = StorageType.load(ptr); return address(syntaxValue8); }
+  function store(ptr:word, value:address) returns (()) { let syntaxValue9: word = Typedef.rep(value); StorageType.store(ptr, syntaxValue9); }
 }
 
 // -- structure fields (including contract fields)
@@ -1713,17 +1713,20 @@ function memberAccessBase<a, field, fieldType, storageType, offset>(x:MemberAcce
 // Contract field access
 // ------------------------------------------------------------------
 
-impl<cxt, fieldSelector, loadType, offsetType, storageType> LVA<MemberAccessProxy<ContractStorage<cxt>, fieldSelector, loadType, offsetType>, storageType storage> where StructField<ContractStorage<cxt>, fieldSelector>: CStructField<storageType storage, offsetType>, offsetType: StorageSize, storageType storage: CanStore<loadType> {
-   function acc (x : MemberAccessProxy<ContractStorage<cxt>, fieldSelector, loadType, offsetType>) returns (storageType storage) {
-      let offset : word = StorageSize.size(Proxy as Proxy<offsetType>) ;
-      return storage(offset) as storageType storage;
+impl<cxt, fieldSelector, loadType, offsetType, storageType> LVA<MemberAccessProxy<ContractStorage<cxt>, fieldSelector, loadType, offsetType>, storage<storageType>> where StructField<ContractStorage<cxt>, fieldSelector>: CStructField<storage<storageType>, offsetType>, offsetType: StorageSize, storage<storageType>: CanStore<loadType> {
+   function acc (x : MemberAccessProxy<ContractStorage<cxt>, fieldSelector, loadType, offsetType>) returns (storage<storageType>) {
+      let offset : word = StorageSize.size(@offsetType) ;
+      let syntaxValue10: storage<storageType> = storage(offset);
+      return syntaxValue10;
    }
 }
 
-impl<cxt, fieldSelector, loadType, offsetType, storageType> RVA<MemberAccessProxy<ContractStorage<cxt>, fieldSelector, loadType, offsetType>, loadType> where StructField<ContractStorage<cxt>, fieldSelector>: CStructField<storageType storage, offsetType>, storageType storage: CanStore<loadType>, offsetType: StorageSize {
+impl<cxt, fieldSelector, loadType, offsetType, storageType> RVA<MemberAccessProxy<ContractStorage<cxt>, fieldSelector, loadType, offsetType>, loadType> where StructField<ContractStorage<cxt>, fieldSelector>: CStructField<storage<storageType>, offsetType>, storage<storageType>: CanStore<loadType>, offsetType: StorageSize {
     function acc(x:MemberAccessProxy<ContractStorage<cxt>, fieldSelector, loadType, offsetType>) returns (loadType) {
-        let offset:word = StorageSize.size(Proxy as Proxy<offsetType>);
-        return CanStore.load(storage(offset) as storageType storage) as loadType;
+        let offset:word = StorageSize.size(@offsetType);
+        let syntaxValue17: storage<storageType> = storage(offset);
+        let syntaxValue16: loadType = CanStore.load(syntaxValue17);
+        return syntaxValue16;
     }
 }
 
@@ -1777,21 +1780,21 @@ impl<index, member> StorageSize<mapping(index => member)> {
     }
 }
 
-impl<member> Typedef<member[], word> {
-    function rep(x:member[]) returns (word) {
+impl<member> Typedef<array<member>, word> {
+    function rep(x:array<member>) returns (word) {
         match (x ) {
             case array(y) { return y;
         } }
     }
-    function abs(x:word) returns (member[]) {
+    function abs(x:word) returns (array<member>) {
         return array(x);
     }
 }
 
 // cf https://docs.soliditylang.org/en/latest/internals/layout_in_storage.html#mappings-and-dynamic-arrays
 // the slot itself stores the array length; elements live at keccak256(slot) + i
-impl<member> StorageSize<member[]> {
-    function size(x:Proxy<member[]>) returns (word) {
+impl<member> StorageSize<array<member>> {
+    function size(x:Proxy<array<member>>) returns (word) {
         return 1;
     }
 }
@@ -1814,18 +1817,18 @@ trait ArrayPush<self, elem> {
     function push(arr:self, val:elem) returns (());
 }
 
-impl<t> Length<t[] storage> {
-    function length(arr:t[] storage) returns (uint256) {
+impl<t> Length<storage<array<t>>> {
+    function length(arr:storage<array<t>>) returns (uint256) {
         return uint256(sload(Typedef.rep(arr)));
     }
 }
 
-impl<t> Array<t[] storage> {
+impl<t> Array<storage<array<t>>> {
     // Shrinking clears the abandoned slots, matching solc's resize_array.
     // For string/bytes elements this zeroes the inline slot, which makes any
     // keccak-derived tail unreachable (reads are governed by the length word) but
     // does not reclaim it.
-    function setLength(arr:t[] storage, n:uint256) returns (()) {
+    function setLength(arr:storage<array<t>>, n:uint256) returns (()) {
         let slot : word = Typedef.rep(arr);
         let oldLen : word = sload(slot);
         let newLen : word = Typedef.rep(n);
@@ -1836,7 +1839,7 @@ impl<t> Array<t[] storage> {
         sstore(slot, newLen);
     }
     // Zeroes the removed element before decrementing, as solc's array_pop does.
-    function pop(arr:t[] storage) returns (()) {
+    function pop(arr:storage<array<t>>) returns (()) {
         let slot : word = Typedef.rep(arr);
         let n : word = sload(slot);
         if (n == 0) { out_of_bounds(); }
@@ -1850,11 +1853,12 @@ impl<t> Array<t[] storage> {
 // memory(string), via storage(string):CanStore(memory(string)). For word-sized
 // elements v collapses to the element type and CanStore.store delegates to
 // StorageType.store, so the generated code is unchanged.
-impl<t, v> ArrayPush<t[] storage, v> where t storage: CanStore<v> {
-    function push(arr:t[] storage, val:v) returns (()) {
+impl<t, v> ArrayPush<storage<array<t>>, v> where storage<t>: CanStore<v> {
+    function push(arr:storage<array<t>>, val:v) returns (()) {
         let slot : word = Typedef.rep(arr);
         let n : word = sload(slot);
-        CanStore.store(storage(hash1(slot) + n) as t storage, val);
+        let syntaxValue11: storage<t> = storage(hash1(slot) + n);
+        CanStore.store(syntaxValue11, val);
         sstore(slot, n + 1);
     }
 }
@@ -1904,71 +1908,71 @@ default instance a:CanStore(a) {
 }
 */
 
- impl CanStore<word storage, word> {
-    function store(l:word storage, r:word) returns (()) {
+ impl CanStore<storage<word>, word> {
+    function store(l:storage<word>, r:word) returns (()) {
       StorageType.store(Typedef.rep(l), r);
     }
-    function load(l:word storage) returns (word) {
+    function load(l:storage<word>) returns (word) {
       return StorageType.load(Typedef.rep(l));
     }
 }
 
- impl CanStore<uint256 storage, uint256> {
-    function store(l:uint256 storage, r:uint256) returns (()) {
+ impl CanStore<storage<uint256>, uint256> {
+    function store(l:storage<uint256>, r:uint256) returns (()) {
       StorageType.store(Typedef.rep(l), r);
     }
-    function load(l:uint256 storage) returns (uint256) {
+    function load(l:storage<uint256>) returns (uint256) {
       return StorageType.load(Typedef.rep(l));
     }
 }
 
- impl CanStore<bytes32 storage, bytes32> {
-    function store(l:bytes32 storage, r:bytes32) returns (()) {
+ impl CanStore<storage<bytes32>, bytes32> {
+    function store(l:storage<bytes32>, r:bytes32) returns (()) {
       StorageType.store(Typedef.rep(l), r);
     }
-    function load(l:bytes32 storage) returns (bytes32) {
+    function load(l:storage<bytes32>) returns (bytes32) {
       return StorageType.load(Typedef.rep(l));
     }
 }
 
- impl CanStore<address storage, address> {
-    function store(l:address storage, r:address) returns (()) {
+ impl CanStore<storage<address>, address> {
+    function store(l:storage<address>, r:address) returns (()) {
       StorageType.store(Typedef.rep(l), r);
     }
-    function load(l:address storage) returns (address) {
+    function load(l:storage<address>) returns (address) {
       return StorageType.load(Typedef.rep(l));
     }
 }
 
 // bool has no StorageType instance (it is a builtin, not a Typedef(word)), but it
 // round-trips through word via frombool / tobool, so it can still be stored.
-impl CanStore<bool storage, bool> {
-    function store(l:bool storage, r:bool) returns (()) {
+impl CanStore<storage<bool>, bool> {
+    function store(l:storage<bool>, r:bool) returns (()) {
       StorageType.store(Typedef.rep(l), frombool(r));
     }
-    function load(l:bool storage) returns (bool) {
+    function load(l:storage<bool>) returns (bool) {
       return tobool(StorageType.load(Typedef.rep(l)));
     }
 }
 
-impl<k, v> CanStore<mapping(k => v) storage, mapping(k => v) storage> {
-    function store(l:mapping(k => v) storage, r:mapping(k => v) storage) returns (()) {
+impl<k, v> CanStore<storage<mapping(k => v)>, storage<mapping(k => v)>> {
+    function store(l:storage<mapping(k => v)>, r:storage<mapping(k => v)>) returns (()) {
       // StorageType.store(Typedef.rep(l), r);
       unimplemented();
     }
-    function load(l:mapping(k => v) storage) returns (mapping(k => v) storage) {
+    function load(l:storage<mapping(k => v)>) returns (storage<mapping(k => v)>) {
       // "Loading" a storage mapping field yields its storage reference (the
       // slot); indexed access / method calls consume that reference directly.
       return l;
     }
 }
 
-impl<v> CanStore<v[] storage, v[] storage> where v: StorageCopy {
+impl<v> CanStore<storage<array<v>>, storage<array<v>>> where v: StorageCopy {
     // Whole-array assignment is a deep copy, as in Solidity: a = b resizes a
     // to b's length and then copies every
     // element. Assigning an array to itself is a no-op. A *local* bound to an
     // array field stays an alias, because a let is not an Assign.assign.
-    function store(l:v[] storage, r:v[] storage) returns (()) {
+    function store(l:storage<array<v>>, r:storage<array<v>>) returns (()) {
       let dst : word = Typedef.rep(l);
       let src : word = Typedef.rep(r);
       if (dst != src) {
@@ -1982,11 +1986,13 @@ impl<v> CanStore<v[] storage, v[] storage> where v: StorageCopy {
         let srcBase : word = hash1(src);
         let i : word = 0;
         for (; i < newLen; i += 1) {
-          StorageCopy.copySlot(storage(dstBase + i) as v storage, storage(srcBase + i) as v storage);
+          let syntaxValue12: storage<v> = storage(dstBase + i);
+          let syntaxValue13: storage<v> = storage(srcBase + i);
+          StorageCopy.copySlot(syntaxValue12, syntaxValue13);
         }
       }
     }
-    function load(l:v[] storage) returns (v[] storage) {
+    function load(l:storage<array<v>>) returns (storage<array<v>>) {
       // "Loading" a storage array field yields its storage reference (the
       // slot). push / pop / length / arr[i] all consume that reference, so a
       // field read like `ArrayPush.push(members, x)` must return the slot,
@@ -1996,14 +2002,14 @@ impl<v> CanStore<v[] storage, v[] storage> where v: StorageCopy {
 }
 
 
-impl CanStore<string storage, string memory> {
-  function store(dst:string storage, src:string memory) returns (()) {
+impl CanStore<storage<string>, memory<string>> {
+  function store(dst:storage<string>, src:memory<string>) returns (()) {
     let srcPtr : word = Typedef.rep(src);
     let slot = Typedef.rep(dst);
     storeBytesFromMemory(slot, srcPtr);
   }
 
-  function load(src:string storage) returns (string memory) {
+  function load(src:storage<string>) returns (memory<string>) {
     let srcPtr : word = Typedef.rep(src);
     let dstPtr : word = get_free_memory();
     let endPtr = loadBytesFromStorage(srcPtr, dstPtr);
@@ -2014,14 +2020,14 @@ impl CanStore<string storage, string memory> {
 
 // bytes share the same storage layout as string, so the same
 // storeBytesFromMemory / loadBytesFromStorage helpers apply.
-impl CanStore<bytes storage, bytes memory> {
-  function store(dst:bytes storage, src:bytes memory) returns (()) {
+impl CanStore<storage<bytes>, memory<bytes>> {
+  function store(dst:storage<bytes>, src:memory<bytes>) returns (()) {
     let srcPtr : word = Typedef.rep(src);
     let slot = Typedef.rep(dst);
     storeBytesFromMemory(slot, srcPtr);
   }
 
-  function load(src:bytes storage) returns (bytes memory) {
+  function load(src:storage<bytes>) returns (memory<bytes>) {
     let srcPtr : word = Typedef.rep(src);
     let dstPtr : word = get_free_memory();
     let endPtr = loadBytesFromStorage(srcPtr, dstPtr);
@@ -2034,22 +2040,22 @@ impl CanStore<bytes storage, bytes memory> {
 
 // Word-sized elements are self-contained: the slot is the value.
 impl StorageCopy<word> {
-  function copySlot(dst:word storage, src:word storage) returns (()) {
+  function copySlot(dst:storage<word>, src:storage<word>) returns (()) {
     sstore(Typedef.rep(dst), sload(Typedef.rep(src)));
   }
 }
 impl StorageCopy<uint256> {
-  function copySlot(dst:uint256 storage, src:uint256 storage) returns (()) {
+  function copySlot(dst:storage<uint256>, src:storage<uint256>) returns (()) {
     sstore(Typedef.rep(dst), sload(Typedef.rep(src)));
   }
 }
 impl StorageCopy<bytes32> {
-  function copySlot(dst:bytes32 storage, src:bytes32 storage) returns (()) {
+  function copySlot(dst:storage<bytes32>, src:storage<bytes32>) returns (()) {
     sstore(Typedef.rep(dst), sload(Typedef.rep(src)));
   }
 }
 impl StorageCopy<address> {
-  function copySlot(dst:address storage, src:address storage) returns (()) {
+  function copySlot(dst:storage<address>, src:storage<address>) returns (()) {
     sstore(Typedef.rep(dst), sload(Typedef.rep(src)));
   }
 }
@@ -2058,20 +2064,22 @@ impl StorageCopy<address> {
 // inline slot alone would leave the destination pointing at the *source's* tail.
 // Round-tripping through memory copies the payload too.
 impl StorageCopy<string> {
-  function copySlot(dst:string storage, src:string storage) returns (()) {
-    CanStore.store(dst, CanStore.load(src) as string memory);
+  function copySlot(dst:storage<string>, src:storage<string>) returns (()) {
+    let syntaxValue14: memory<string> = CanStore.load(src);
+    CanStore.store(dst, syntaxValue14);
   }
 }
 impl StorageCopy<bytes> {
-  function copySlot(dst:bytes storage, src:bytes storage) returns (()) {
-    CanStore.store(dst, CanStore.load(src) as bytes memory);
+  function copySlot(dst:storage<bytes>, src:storage<bytes>) returns (()) {
+    let syntaxValue15: memory<bytes> = CanStore.load(src);
+    CanStore.store(dst, syntaxValue15);
   }
 }
 
 // Nested arrays recurse into the array CanStore instance above. The recursion is
 // on the element type, so it terminates with the type's structure.
-impl<t> StorageCopy<t[]> where t: StorageCopy {
-  function copySlot(dst:t[] storage, src:t[] storage) returns (()) {
+impl<t> StorageCopy<array<t>> where t: StorageCopy {
+  function copySlot(dst:storage<array<t>>, src:storage<array<t>>) returns (()) {
     CanStore.store(dst, src);
   }
 }
@@ -2158,16 +2166,16 @@ trait LValueIdxAccess<col_idx, ref> {
   function lookup(ci : col_idx) returns (ref);
 }
 
-impl<i, a> LValueIdxAccess<(mapping(i => a) storage, i), a storage> where i: Typedef<word> {
-  function lookup(xi : (mapping(i => a) storage, i)) returns (a storage) {
+impl<i, a> LValueIdxAccess<(storage<mapping(i => a)>, i), storage<a>> where i: Typedef<word> {
+  function lookup(xi : (storage<mapping(i => a)>, i)) returns (storage<a>) {
     match(xi) {
       case (x, i) { return storage(hash2(Typedef.rep(x), Typedef.rep(i)));
     } }
   }
 }
 
-impl<i, a> RValueIdxAccess<(mapping(i => a) storage, i), a> where a storage: CanStore<a>, i: Typedef<word> {
-  function lookup(xi : (mapping(i => a) storage, i)) returns (a) {
+impl<i, a> RValueIdxAccess<(storage<mapping(i => a)>, i), a> where storage<a>: CanStore<a>, i: Typedef<word> {
+  function lookup(xi : (storage<mapping(i => a)>, i)) returns (a) {
   /*
     match(xi) {
       | (x, i) => return StorageType.load(hash2(Typedef.rep(x), Typedef.rep(i)));
@@ -2177,8 +2185,8 @@ impl<i, a> RValueIdxAccess<(mapping(i => a) storage, i), a> where a storage: Can
   }
 }
 
-impl<a, i> LValueIdxAccess<(a[] storage, i), a storage> where i: Typedef<word> {
-  function lookup(xi : (a[] storage, i)) returns (a storage) {
+impl<a, i> LValueIdxAccess<(storage<array<a>>, i), storage<a>> where i: Typedef<word> {
+  function lookup(xi : (storage<array<a>>, i)) returns (storage<a>) {
     match(xi) {
       case (x, i) {
           let slot : word = Typedef.rep(x);
@@ -2195,16 +2203,30 @@ impl<a, i> LValueIdxAccess<(a[] storage, i), a storage> where i: Typedef<word> {
 // than the element tag type. For word-sized elements that is the element itself;
 // for array(string) it is a memory(string); for a nested array(array(t)) it
 // is the inner array's handle, which push/pop/length then consume.
-impl<a, v, i> RValueIdxAccess<(a[] storage, i), v> where a storage: CanStore<v>, i: Typedef<word> {
-  function lookup(xi : (a[] storage, i)) returns (v) {
+impl<a, v, i> RValueIdxAccess<(storage<array<a>>, i), v> where storage<a>: CanStore<v>, i: Typedef<word> {
+  function lookup(xi : (storage<array<a>>, i)) returns (v) {
     return CanStore.load(LValueIdxAccess.lookup(xi));
   }
+}
+
+// Source memory-array indexing is zero-based and read-only, as in solcore-rs.
+// Writes use IndexAccess.set; memory arrays do not expose storage references.
+impl<t, i> RValueIdxAccess<(memory<DynArray<t>>, i), t> where t: Typedef<word>, i: Typedef<word> {
+    function lookup(valuesAndIndex: (memory<DynArray<t>>, i)) returns (t) {
+        match (valuesAndIndex) {
+            case (values, index) {
+                let offset: word = Typedef.rep(index);
+                if (offset >= mload(Typedef.rep(values))) { out_of_bounds(); }
+                return IndexAccess.get(values, uint256(offset + 1));
+            }
+        }
+    }
 }
 
 // Mapping reads go through CanStore, matching the write side (Assign -> CanStore.store).
 // This lets a mapping hold any value with a CanStore instance — including ADTs whose
 // fields are dynamic (memory(bytes)) — not just the fixed-slot StorageType primitives.
-function readStorage<a>(x:a storage) returns (a)  where a storage: CanStore<a> {
+function readStorage<a>(x:storage<a>) returns (a)  where storage<a>: CanStore<a> {
   return CanStore.load(x);
 }
 /*
@@ -2251,7 +2273,7 @@ trait MemoryEncode<t> {
 
 // TODO: support variadic arguments
 // Allocates new memory and concatenates the inputs into it.
-function concat<a, b>(x: a, y: b) returns (bytes memory)  where a: MemorySize, a: MemoryEncode, b: MemorySize, b: MemoryEncode {
+function concat<a, b>(x: a, y: b) returns (memory<bytes>)  where a: MemorySize, a: MemoryEncode, b: MemorySize, b: MemoryEncode {
     let x_len = MemorySize.len(x);
     let y_len = MemorySize.len(y);
     let res: word = allocate_memory(32 + x_len + y_len);
@@ -2262,7 +2284,7 @@ function concat<a, b>(x: a, y: b) returns (bytes memory)  where a: MemorySize, a
 }
 
 // This is a specialized 1-input version of concat.
-function to_bytes<a>(x: a) returns (bytes memory)  where a: MemorySize, a: MemoryEncode {
+function to_bytes<a>(x: a) returns (memory<bytes>)  where a: MemorySize, a: MemoryEncode {
     let len = MemorySize.len(x);
     let res = allocate_memory(32 + len);
     mstore(res, len);
@@ -2282,20 +2304,20 @@ impl MemoryEncode<bytes32> {
     }
 }
 
-impl MemorySize<bytes memory> {
-    function len(v: bytes memory) returns (word) {
+impl MemorySize<memory<bytes>> {
+    function len(v: memory<bytes>) returns (word) {
         return mload(Typedef.rep(v));
     }
 }
 
-impl MemoryPointer<bytes memory> {
-    function ptr(v: bytes memory) returns (word) {
+impl MemoryPointer<memory<bytes>> {
+    function ptr(v: memory<bytes>) returns (word) {
         return Typedef.rep(v) + 32;
     }
 }
 
-impl MemoryEncode<bytes memory> {
-    function encodeInto(v: bytes memory, target: word) returns (()) {
+impl MemoryEncode<memory<bytes>> {
+    function encodeInto(v: memory<bytes>, target: word) returns (()) {
         let v_ = Typedef.rep(v);
         mcopy(target, v_ + 32, mload(v_));
     }
@@ -2429,7 +2451,7 @@ function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) returns (a
 
 // TODO: use string here
 // TODO: eventually this needs to become comptime
-function erc7201(id: bytes memory) returns (bytes32) {
+function erc7201(id: memory<bytes>) returns (bytes32) {
 //    return keccak256_(to_bytes(keccak256_(id) - 1)) & ~0xff;
     return Typedef.abs(
         and_(
@@ -2443,7 +2465,7 @@ function erc7201(id: bytes memory) returns (bytes32) {
     );
 }
 
-function raw_call<a>(target: address, value: uint256, payload: a) returns ((bool, bytes memory))  where a: MemorySize, a: MemoryPointer {
+function raw_call<a>(target: address, value: uint256, payload: a) returns ((bool, memory<bytes>))  where a: MemorySize, a: MemoryPointer {
     let ret = call(
         gas(),
         Typedef.rep(target),
