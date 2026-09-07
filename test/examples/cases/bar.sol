@@ -1,4 +1,4 @@
-pragma solcore noCoverageCondition Bar;
+pragma no-coverage-condition Bar;
 
 enum Wrap<a> { Wrap(a) }
 

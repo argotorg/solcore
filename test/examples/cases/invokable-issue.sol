@@ -9,4 +9,4 @@ impl<t> Typedef<t, t> {
     function rep(x:t) returns (t) { return x; }
 }
 
-function lift1ac<abs, rep, res>(f:function(rep) internal returns (res), x:rep) returns (res)  where abs: Typedef<rep> { return f(Typedef.rep(x)); }
+function lift1ac<abs, rep, res>(f:function(rep) returns (res), x:rep) returns (res)  where abs: Typedef<rep> { return f(Typedef.rep(x)); }

@@ -1,4 +1,4 @@
-pragma solcore noPattersonCondition Derived;
+pragma no-patterson-condition Derived;
 
 trait Seed<a> {}
 trait Derived<a> {}

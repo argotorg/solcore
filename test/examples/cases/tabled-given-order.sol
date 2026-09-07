@@ -1,4 +1,4 @@
-pragma solcore noPattersonCondition C;
+pragma no-patterson-condition C;
 
 trait A<a> {}
 trait B<a> {}

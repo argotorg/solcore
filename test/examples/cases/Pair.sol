@@ -10,7 +10,7 @@
     } }
   }
 
-  function uncurry(f : function((word, word)) internal returns (word), x : (word, word)) returns (word) {
+  function uncurry(f : function((word, word)) returns (word), x : (word, word)) returns (word) {
     match (x ) {
     case (a,b) { return f(a,b);
     } }
@@ -22,6 +22,6 @@
     } }
   }
 
-  function curry(f : function((word, word)) internal returns (word), x : word, y : word) returns (word) {
+  function curry(f : function((word, word)) returns (word), x : word, y : word) returns (word) {
     return f((x,y)) ;
   }

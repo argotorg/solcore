@@ -1,3 +1,3 @@
 contract Pars {
-   function main() public returns (()){  let f:word; 42 as word; (); }
+   function main() public returns (()){  let f:word; let syntaxValue1: word = 42; syntaxValue1; (); }
 }

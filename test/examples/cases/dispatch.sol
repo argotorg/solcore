@@ -27,7 +27,7 @@ trait Selector<nm> {
 // Method has a Selector if its name has a Selector
 impl<name, args, rets, fn> Selector<Method<name, args, rets, fn>> where name: Selector {
   function hash(prx: Proxy<Method<name, args, rets, fn>>) returns (word) {
-    return Selector.hash(Proxy as Proxy<name>);
+    return Selector.hash(@name);
   }
 }
 
@@ -44,7 +44,7 @@ impl<name, args, rets, fn, callvalueCheckStatus> ExecMethod<Method<name, Proxy<a
     match (m ) {
       case Method(nm,args,rets,fn) {
         // check callvalue
-        MethodLevelCallvalueCheck.checkCallvalue(Proxy as Proxy<Method<name, args, rets, fn>>, pstatus);
+        MethodLevelCallvalueCheck.checkCallvalue(@Method<name, args, rets, fn>, pstatus);
 
         // check we have enough calldata for the head of args
         // abi decode args from calldata
@@ -63,7 +63,7 @@ impl<args, rets, fn, callvalueCheckStatus> ExecMethod<Fallback<Proxy<args>, Prox
     match (fb ) {
       case Fallback(args, rets, fn) {
         // check callvalue
-        MethodLevelCallvalueCheck.checkCallvalue(Proxy as Proxy<Fallback<args, rets, fn>>, pstatus);
+        MethodLevelCallvalueCheck.checkCallvalue(@Fallback<args, rets, fn>, pstatus);
 
         // check we have enough calldata for the head of args
         // abi decode args from calldata
@@ -87,7 +87,7 @@ trait RunDispatch<ty> {
 // TODO: do we need this instance?
 impl<m, callvalueCheckStatus> RunDispatch<m> where m: ExecMethod, m: Selector {
   function go(method : m, pstatus : Proxy<callvalueCheckStatus>)  returns (()) {
-    match (selector_matches(Proxy as Proxy<m>) ) {
+    match (selector_matches(@m) ) {
       case Bool.True { ExecMethod.exec(method, pstatus);
       } case Bool.False { return;
     } }
@@ -99,9 +99,9 @@ impl<n, m, callvalueCheckStatus> RunDispatch<(n, m)> where n: ExecMethod, n: Sel
   function go(methods : (n, m), pstatus : Proxy<callvalueCheckStatus>) returns (()) {
     match (methods ) {
       case (method_n, method_m) {
-        match (selector_matches(Proxy as Proxy<n>) ) {
+        match (selector_matches(@n) ) {
           case Bool.True { ExecMethod.exec(method_n);
-          } case Bool.False { match (selector_matches(Proxy as Proxy<m>) ) {
+          } case Bool.False { match (selector_matches(@m) ) {
             case Bool.True { ExecMethod.exec(method_m, pstatus);
             } case Bool.False { return;
           } }
@@ -115,7 +115,7 @@ impl<n, m, callvalueCheckStatus> RunDispatch<(n, m)> where n: ExecMethod, n: Sel
   function go(methods : (n, m), pstatus : Proxy<callvalueCheckStatus>) returns (()) {
     match (methods ) {
       case (method_n, rest) {
-        match (selector_matches(Proxy as Proxy<n>) ) {
+        match (selector_matches(@n) ) {
           case Bool.True { ExecMethod.exec(method_n, pstatus);
           } case Bool.False { RunDispatch.go(rest, pstatus);
         } }
@@ -159,7 +159,7 @@ trait TopLevelCallvalueCheck<ty, ret> {
 }
 
 default impl<methods> TopLevelCallvalueCheck<methods, CallvalueUnchecked> {
-  function checkCallvalue(prx : Proxy<methods>) returns (Proxy<CallvalueUnchecked>) { return Proxy as Proxy<CallvalueUnchecked>; }
+  function checkCallvalue(prx : Proxy<methods>) returns (Proxy<CallvalueUnchecked>) { return @CallvalueUnchecked; }
 }
 
 impl<methods> TopLevelCallvalueCheck<methods, CallvalueChecked> where methods: AllNonPayable {
@@ -170,7 +170,7 @@ impl<methods> TopLevelCallvalueCheck<methods, CallvalueChecked> where methods: A
         revert(0,32)
       }
     }
-    return Proxy as Proxy<CallvalueChecked>;
+    return @CallvalueChecked;
   }
 }
 
@@ -212,7 +212,7 @@ impl<methods, fb> RunContract<Contract<methods, fb>> where methods: RunDispatch,
         // assembly { mstore(0x40, memoryguard(128)) }
 
         // if all methods are non payable then check callvalue
-        let callvalueChecked = TopLevelCallvalueCheck.checkCallvalue(Proxy as Proxy<(fb, methods)>);
+        let callvalueChecked = TopLevelCallvalueCheck.checkCallvalue(@(fb, methods));
 
         // check that we have at least 4 bytes of calldata
         let haveSelector : word;
@@ -261,8 +261,8 @@ contract C {
 
   function main() public returns (word) {
     let c = Contract(
-      Method(C_Add2_Selector, Proxy as Proxy<(word, word)>, Proxy as Proxy<word>, add2),
-      Fallback(Proxy as Proxy<()>,Proxy as Proxy<()>,revert_handler)
+      Method(C_Add2_Selector, @(word, word), @word, add2),
+      Fallback(@(),@(),revert_handler)
     );
 
     RunContract.exec(c);

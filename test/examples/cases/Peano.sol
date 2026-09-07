@@ -1,6 +1,6 @@
 enum Nat { Zero, Succ(Nat) }
 
-function natInd (step : function((Nat, Nat)) internal returns (Nat), v : Nat, n : Nat) returns (Nat) {
+function natInd (step : function((Nat, Nat)) returns (Nat), v : Nat, n : Nat) returns (Nat) {
   match (n ) {
   case Nat.Zero { return v ;
   } case Nat.Succ(m) { return step(m, natInd(step,v,m));

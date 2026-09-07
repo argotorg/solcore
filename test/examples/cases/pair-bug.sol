@@ -1,4 +1,4 @@
-import {*} from std;
+import * from std;
 
 contract TupleRet {
   constructor() {}

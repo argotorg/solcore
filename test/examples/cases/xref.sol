@@ -44,7 +44,7 @@ trait MemoryType<Self> {
 }
 
 function sizeof<Self>(self:Self) returns (word)  where Self: MemoryType {
-      return MemoryType.memorySize(Proxy as Proxy<Self>);
+      return MemoryType.memorySize(@Self);
 }
 
 trait MemoryRef<a, d> { function addr(r:a) returns (word); }
@@ -55,7 +55,7 @@ function asMemRefTo<a, b>(r:M<a>, p:Proxy<b>) returns (M<b>) { return Typedef.ab
 
 function stepStore<a>(aa: word, va: a) returns (word)  where a: MemoryType {
   MemoryType.mstore(aa, va);
-  return add_(aa, MemoryType.memorySize(Proxy as Proxy<a>));
+  return add_(aa, MemoryType.memorySize(@a));
 }
 
 impl<Self, r> Ref<r, Self> where Self: MemoryType, r: MemoryRef<Self> {
@@ -72,7 +72,7 @@ impl MemoryType<word> {
 
 impl<a, b> MemoryType<(a, b)> where a: MemoryType, b: MemoryType {
   function memorySize(p:Proxy<(a, b)>) returns (word) {
-    return add_(MemoryType.memorySize(Proxy as Proxy<a>), MemoryType.memorySize(Proxy as Proxy<a>) );
+    return add_(MemoryType.memorySize(@a), MemoryType.memorySize(@a) );
   }
 
   function mload(aa:word) returns ((a, b))  {
@@ -106,7 +106,7 @@ impl<a, b, r> MemoryRef<XRef<r, PairFst, a>, a> where r: MemoryRef<(a, b)>, a: M
 impl<a, b, r> MemoryRef<XRef<r, PairSnd, b>, b> where r: MemoryRef<(a, b)>, a: MemoryType, b: MemoryType {
   function addr(xr : XRef<r, PairSnd, b>) returns (word) {
     match (xr ) {
-      case XRef(r, _) { return add_(MemoryRef.addr(r), MemoryType.memorySize(Proxy as Proxy<b>));
+      case XRef(r, _) { return add_(MemoryRef.addr(r), MemoryType.memorySize(@b));
     } }
   }
 }

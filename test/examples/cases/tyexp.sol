@@ -1,4 +1,5 @@
 function main () returns (word) {
-  let y = 0 as word ;
+  let syntaxValue1: word = 0;
+  let y = syntaxValue1 ;
   return y;
 }

@@ -1,4 +1,4 @@
-import {*} from std;
+import * from std;
 
 trait Encoder<self, rep> {
     function encode(x:self, hint:word) returns (rep);

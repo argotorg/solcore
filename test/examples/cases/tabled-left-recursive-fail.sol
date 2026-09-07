@@ -1,4 +1,4 @@
-pragma solcore noPattersonCondition Loop;
+pragma no-patterson-condition Loop;
 
 trait Loop<a> {}
 

@@ -169,14 +169,14 @@ enum storageRef<a> { storageRef(word) }
 enum Proxy<a> { Proxy }
 enum mapping<member, index> { mapping(word, Proxy<member>, Proxy<index>) }
 enum mapRef<a> { mapRef(word) }
-impl<a> Typedef<a storage, word> {
-   function rep (x : a storage) returns (word) {
+impl<a> Typedef<storage<a>, word> {
+   function rep (x : storage<a>) returns (word) {
       match (x) {
       case storage(y) {
          return y;
       } }
    }
-   function abs (x : word) returns (a storage) {
+   function abs (x : word) returns (storage<a>) {
       return storage(x);
    }
 }
@@ -231,7 +231,8 @@ impl StorageType<word> {
 }
 impl StorageType<uint> {
    function sload (ptr : word) returns (uint) {
-      return Typedef.abs(sload_(ptr)) as uint;
+      let syntaxValue1: uint = Typedef.abs(sload_(ptr));
+      return syntaxValue1;
    }
    function store (ptr : word, value : uint) returns (()) {
       return sstore_(ptr, Typedef.rep(value));
@@ -239,7 +240,8 @@ impl StorageType<uint> {
 }
 impl StorageType<address> {
    function sload (ptr : word) returns (address) {
-      return Typedef.abs(sload_(ptr)) as address;
+      let syntaxValue2: address = Typedef.abs(sload_(ptr));
+      return syntaxValue2;
    }
    function store (ptr : word, value : address) returns (()) {
       return sstore_(ptr, Typedef.rep(value));
@@ -266,10 +268,10 @@ trait LValueMemberAccess<self, memberRefType> {
 trait RValueMemberAccess<self, memberValueType> {
    function memberAccess (x : self) returns (memberValueType);
 }
-impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<MemberAccessProxy<structType storage, fieldSelector, offsetType>, storageRef<fieldType>> where StructField<structType, fieldSelector>: CStructField<fieldType, offsetType>, offsetType: StorageSize {
-   function memberAccess (x : MemberAccessProxy<structType storage, fieldSelector, offsetType>) returns (storageRef<fieldType>) {
+impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<MemberAccessProxy<storage<structType>, fieldSelector, offsetType>, storageRef<fieldType>> where StructField<structType, fieldSelector>: CStructField<fieldType, offsetType>, offsetType: StorageSize {
+   function memberAccess (x : MemberAccessProxy<storage<structType>, fieldSelector, offsetType>) returns (storageRef<fieldType>) {
       let ptr : word = Typedef.rep(memberAccessD1(x)) ;
-      let size : word = StorageSize.size(Proxy as Proxy<offsetType>) ;
+      let size : word = StorageSize.size(@offsetType) ;
       assembly { ptr := add(ptr, size)
                }
       return storageRef(ptr);
@@ -297,8 +299,8 @@ impl StorageSize<address> {
 }
 impl<a, b> StorageSize<(a, b)> where a: StorageSize, b: StorageSize {
    function size (x : Proxy<(a, b)>) returns (word) {
-      let a_sz : word = StorageSize.size(Proxy as Proxy<a>) ;
-      let b_sz : word = StorageSize.size(Proxy as Proxy<b>) ;
+      let a_sz : word = StorageSize.size(@a) ;
+      let b_sz : word = StorageSize.size(@b) ;
       assembly { a_sz := add(a_sz, b_sz)
                }
       return a_sz;
@@ -307,7 +309,7 @@ impl<a, b> StorageSize<(a, b)> where a: StorageSize, b: StorageSize {
 impl<cxt, fieldSelector, fieldType, offsetType> LValueMemberAccess<MemberAccessProxy<ContractStorage<cxt>, fieldSelector, offsetType>, storageRef<fieldType>> where StructField<ContractStorage<cxt>, fieldSelector>: CStructField<fieldType, offsetType>, offsetType: StorageSize {
    function memberAccess (x : MemberAccessProxy<ContractStorage<cxt>, fieldSelector, offsetType>) returns (storageRef<fieldType>) {
       let ptr : word = 256 ;
-      let offsetSize : word = StorageSize.size(Proxy as Proxy<offsetType>) ;
+      let offsetSize : word = StorageSize.size(@offsetType) ;
       assembly { ptr := add(ptr, offsetSize)
                }
       return storageRef(ptr);
@@ -316,8 +318,9 @@ impl<cxt, fieldSelector, fieldType, offsetType> LValueMemberAccess<MemberAccessP
 impl<cxt, fieldSelector, fieldType, offsetType> RValueMemberAccess<MemberAccessProxy<ContractStorage<cxt>, fieldSelector, offsetType>, fieldType> where StructField<ContractStorage<cxt>, fieldSelector>: CStructField<fieldType, offsetType>, fieldType: StorageType, offsetType: StorageSize {
    function memberAccess (x : MemberAccessProxy<ContractStorage<cxt>, fieldSelector, offsetType>) returns (fieldType) {
       let ptr : word = 256 ;
-      let offsetSize : word = StorageSize.size(Proxy as Proxy<offsetType>) ;
-      return StorageType.sload(addW(ptr, offsetSize)) as fieldType;
+      let offsetSize : word = StorageSize.size(@offsetType) ;
+      let syntaxValue3: fieldType = StorageType.sload(addW(ptr, offsetSize));
+      return syntaxValue3;
    }
 }
 enum mapping<index, member> { mapping(word) }
@@ -416,10 +419,10 @@ contract Uint {
       return Bool.True;
    }
    function withdraw (src : address, amt : uint) public {
-      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), Num.sub(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), amt) as uint);
+      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), (lam (syntaxValue: uint) -> uint { return syntaxValue; })(Num.sub(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), amt)));
    }
    function deposit (dst : address, amt : uint) public {
-      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), dst)), Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), dst)), amt) as uint);
+      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), dst)), (lam (syntaxValue: uint) -> uint { return syntaxValue; })(Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), dst)), amt)));
    }
    function init () public {
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)), address(81985529216486895));
@@ -433,7 +436,9 @@ contract Uint {
       let amt = uint(1) ;
       let src : address = rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)) ;
       transferFrom(rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), msg_sender_sel)), uint(42));
-      require1(Bool.True) as ();
-      return rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), msg_sender_sel)))) as uint;
+      let syntaxValue4: () = require1(Bool.True);
+      syntaxValue4;
+      let syntaxValue5: uint = rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), msg_sender_sel))));
+      return syntaxValue5;
    }
 }

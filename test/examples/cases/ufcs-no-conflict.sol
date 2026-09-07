@@ -1,4 +1,4 @@
-import {*} from std;
+import * from std;
 
 // Regression test: the UFCS (receiver-style) method-call rewriting in
 // NameResolution must coexist with the other uses of dot syntax without

@@ -1,5 +1,5 @@
-pragma solcore noPattersonCondition A;
-pragma solcore noPattersonCondition B;
+pragma no-patterson-condition A;
+pragma no-patterson-condition B;
 
 trait A<a> {}
 trait B<a> {}

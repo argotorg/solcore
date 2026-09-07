@@ -22,7 +22,7 @@ impl Eq<Word> {
 }
 
 
-function filter (f : function(Word) internal returns (Bool), xs : List<Word>) returns (List<Word>) {
+function filter (f : function(Word) returns (Bool), xs : List<Word>) returns (List<Word>) {
   match (xs ) {
   case List.Nil { return List.Nil ;
   } case List.Cons(y,ys) {
@@ -45,7 +45,7 @@ function foo1() returns (List<Word>) {
   return filter((lam (x){ return eq(x,1); }), list1());
 }
 
-function foo2(p : function(Word) internal returns (Bool), q : function(Word) internal returns (Bool)) returns (List<Word>) {
+function foo2(p : function(Word) returns (Bool), q : function(Word) returns (Bool)) returns (List<Word>) {
   return filter(lam (x) { return and(p(x), q(x)) ; }
                 , list1());
 }

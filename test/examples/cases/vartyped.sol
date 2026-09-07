@@ -1,4 +1,4 @@
 function foo () {
-  let f : function(word) internal returns (word) = lam (x) { return x ; } ;
+  let f : function(word) returns (word) = lam (x) { return x ; } ;
   return f(1);
 }

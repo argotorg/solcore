@@ -5,8 +5,8 @@ enum storage<a> { storage(word) }
 
 enum IndexAP<m, idx, member> { IndexAP(m, idx, Proxy<member>) }
 
-function wal(ref: dict<address, word> storage , src : address, amt: word) returns (()) {
-  let ip = IndexAP(ref, src, Proxy as Proxy<word>);
+function wal(ref: storage<dict<address, word>> , src : address, amt: word) returns (()) {
+  let ip = IndexAP(ref, src, @word);
   Assign.assign(LVA.acc(ip), amt);
 }
 
@@ -42,8 +42,8 @@ trait LVA<self, memberRefType> {
     function acc(x:self) returns (memberRefType);
 }
 
-impl<index, member> LVA<IndexAP<dict<index, member> storage, index, member>, member storage> {
-    function acc(x:IndexAP<dict<index, member> storage, index, member>) returns (member storage) {
+impl<index, member> LVA<IndexAP<storage<dict<index, member>>, index, member>, storage<member>> {
+    function acc(x:IndexAP<storage<dict<index, member>>, index, member>) returns (storage<member>) {
 	    return storage(30);
     }
 }
@@ -52,6 +52,6 @@ trait Assign<lhs, rhs> {
     function assign(l:lhs, r:rhs) returns (());
 }
 
-impl<a> Assign<a storage, a> {
-    function assign(l:a storage, y:a) returns (()) {}
+impl<a> Assign<storage<a>, a> {
+    function assign(l:storage<a>, y:a) returns (()) {}
 }

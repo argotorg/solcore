@@ -1,4 +1,4 @@
-pragma solcore noPattersonCondition Wanted;
+pragma no-patterson-condition Wanted;
 
 trait Known<a> {}
 trait Wanted<a> {}

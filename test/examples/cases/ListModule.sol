@@ -3,7 +3,7 @@ contract ListModule {
   enum Bool { True, False }
 
 
-  function zipWith<a, b, c> (f : function((a, b)) internal returns (c),xs : List<a>,ys : List<b>) public returns (List<c>) {
+  function zipWith<a, b, c> (f : function((a, b)) returns (c),xs : List<a>,ys : List<b>) public returns (List<c>) {
     match (xs, ys ) {
     case (List.Nil, List.Nil ) { return List.Nil ;
     } case (List.Cons(x1,xs1), List.Cons(y1,ys1) ) {
@@ -12,7 +12,7 @@ contract ListModule {
     } }
   }
 
-  function foldr<a, b>(f : function((a, b)) internal returns (b), v : b, xs : List<a>) public returns (b) {
+  function foldr<a, b>(f : function((a, b)) returns (b), v : b, xs : List<a>) public returns (b) {
     match (xs ) {
     case List.Nil { return v;
     } case List.Cons(y,ys) {

@@ -1,4 +1,4 @@
-pragma solcore noCoverageCondition Nth;
+pragma no-coverage-condition Nth;
 
 
 enum Zero {}
@@ -21,7 +21,7 @@ impl<a, b> Nth<Zero, (a, b), a> {
 impl<n, a, b, c> Nth<Succ<n>, (a, b), c> where n: Nth<b, c> {
    function nth (x : Proxy<Succ<n>>, y : (a, b)) returns (c) {
       match (y ) {
-      case (a,b) { return Nth.nth(Proxy as Proxy<n>, b);
+      case (a,b) { return Nth.nth(@n, b);
       } }
    }
 }
@@ -32,9 +32,9 @@ contract C {
   }
   function main () public returns (()) {
     let p : (word, word, word, ());
-    let x : word = Nth.nth(Proxy as Proxy<Zero>, p);
-    let y : word = Nth.nth(Proxy as Proxy<Succ<Zero>>, p);
-    let z : word = Nth.nth(Proxy as Proxy<Succ<Succ<Zero>>>, p);
+    let x : word = Nth.nth(@Zero, p);
+    let y : word = Nth.nth(@Succ<Zero>, p);
+    let z : word = Nth.nth(@Succ<Succ<Zero>>, p);
     id(z);
   }
 }

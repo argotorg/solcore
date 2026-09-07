@@ -7,11 +7,11 @@
 - Assign class
 */
 
-import {*} from std hiding {LValueIdxAccess, RValueIdxAccess, readStorage};
+import * from std hiding {LValueIdxAccess, RValueIdxAccess, readStorage};
 import {Typedef, storage, mapping, address, hash2, StorageType, Assign} from std;
-pragma solcore noPattersonCondition ;
-pragma solcore noCoverageCondition ;
-pragma solcore noBoundVariableCondition ;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
 
 
 trait RValueIdxAccess<col_idx, val> {
@@ -22,8 +22,8 @@ trait LValueIdxAccess<col_idx, ref> {
   function lookup(ci : col_idx) returns (ref);
 }
 
-impl<i, a> LValueIdxAccess<(mapping(i => a) storage, i), a storage> where i: Typedef<word> {
-  function lookup(xi : (mapping(i => a) storage, i)) returns (a storage) {
+impl<i, a> LValueIdxAccess<(storage<mapping(i => a)>, i), storage<a>> where i: Typedef<word> {
+  function lookup(xi : (storage<mapping(i => a)>, i)) returns (storage<a>) {
     match(xi) {
       case (x, i) { return storage(hash2(Typedef.rep(x), Typedef.rep(i)));
     } }
@@ -32,8 +32,8 @@ impl<i, a> LValueIdxAccess<(mapping(i => a) storage, i), a storage> where i: Typ
   }
 }
 
-impl<i, a> RValueIdxAccess<(mapping(i => a) storage, i), a> where a: StorageType, i: Typedef<word> {
-  function lookup(xi : (mapping(i => a) storage, i)) returns (a) {
+impl<i, a> RValueIdxAccess<(storage<mapping(i => a)>, i), a> where a: StorageType, i: Typedef<word> {
+  function lookup(xi : (storage<mapping(i => a)>, i)) returns (a) {
   /*
     match(xi) {
       | (x, i) => return StorageType.load(hash2(Typedef.rep(x), Typedef.rep(i)));
@@ -43,7 +43,7 @@ impl<i, a> RValueIdxAccess<(mapping(i => a) storage, i), a> where a: StorageType
   }
 }
 
-function readStorage<a>(x:a storage) returns (a)  where a: StorageType {
+function readStorage<a>(x:storage<a>) returns (a)  where a: StorageType {
   return StorageType.load(Typedef.rep(x));
 }
 
@@ -57,9 +57,9 @@ function idx_lval<r, a>(x:r) returns (a)  where r: LValueIdxAccess<a> {
 
 contract TestTuva {
   function main() public returns (word) {
-    let balances : mapping(address => word) storage;
-    let allowances : mapping(address => mapping(address => word)) storage;
-    let ref1 : word storage = idx_lval( (balances, address(17)) );
+    let balances : storage<mapping(address => word)>;
+    let allowances : storage<mapping(address => mapping(address => word))>;
+    let ref1 : storage<word> = idx_lval( (balances, address(17)) );
     Assign.assign(idx_lval( (balances, address(1)) ), 1337);
 
     let ref2a // : storage( mapping(address, word) ) // omitting this type makes instance resolution fail
