@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate std/opcodes.solc from a declarative list of EVM opcodes."""
+"""Generate std/opcodes.sol from a declarative list of EVM opcodes."""
 
 import os
 from string import ascii_lowercase
@@ -156,7 +156,7 @@ def render(ops):
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    out_path = os.path.join(script_dir, os.pardir, "std", "opcodes.solc")
+    out_path = os.path.join(script_dir, os.pardir, "std", "opcodes.sol")
     with open(out_path, "w") as f:
         f.write(render(opcodes))
 

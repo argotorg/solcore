@@ -646,7 +646,7 @@ sourcePathsFromLine line =
 
 standaloneSourcePaths :: String -> [FilePath]
 standaloneSourcePaths line =
-  [path | let path = trim line, ".solc" `isSuffixOf` path]
+  [path | let path = trim line, ".sol" `isSuffixOf` path]
 
 sourcePathAfterPrefix :: String -> String -> Maybe FilePath
 sourcePathAfterPrefix prefix line = do

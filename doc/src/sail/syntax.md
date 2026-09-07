@@ -19,7 +19,7 @@ CompilationUnit = { Import | Pragma | TopDecl }
 ```
 
 Both Classic and Core Solidity use the `.sol` extension in the language
-specification. The prototype may temporarily accept `.solc` files.
+specification. The prototype may temporarily accept `.sol` files.
 
 Identifiers begin with a letter or underscore and may contain letters, decimal
 digits, and underscores. Integer literals may be decimal or `0x`-prefixed

@@ -58,7 +58,7 @@ ufcsTests =
             assertFailure ("invalid member unexpectedly resolved: " ++ show unit),
       testCase "compiles every value receiver form end to end" $ do
         let folder = "test" </> "examples" </> "ufcs"
-            fixture = folder </> "value-receivers.solc"
+            fixture = folder </> "value-receivers.sol"
             options =
               (emptyOption fixture)
                 { optRootDir = folder,

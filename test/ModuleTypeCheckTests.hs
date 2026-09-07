@@ -223,7 +223,7 @@ moduleTypeCheckTests =
                 assertFailure
                   ("struct kind or ordered fields were lost: " ++ show got),
       testCase "qualified nested type paths beat same-named global declarations" $ do
-        source <- readFile "./test/imports/qualified_nested_type_shadow.solc"
+        source <- readFile "./test/imports/qualified_nested_type_shadow.sol"
         CompUnit _ resolvedDecls <- resolvedSourceOrFail source
         let consumer = findSemanticContract "QualifiedNestedType" resolvedDecls
             nestedType = QualName (Name "C") "T"
@@ -864,7 +864,7 @@ moduleTypeCheckTests =
             "test/imports"
             Nothing
             []
-            "test/imports/struct_metadata_main.solc"
+            "test/imports/struct_metadata_main.sol"
         graph <-
           case graphResult of
             Left err -> assertFailure ("unexpected module load failure:\n" ++ err)

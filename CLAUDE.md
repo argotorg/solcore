@@ -66,8 +66,8 @@ The compiler is split into **two separate binaries**:
 2. **yule**: Translates Core IR to Yul
 
 ```bash
-# Compile .solc source to .core IR
-cabal run sol-core -- -f <input.solc>
+# Compile .sol source to .core IR
+cabal run sol-core -- -f <input.sol>
 # Produces: output1.core
 
 # Translate .core to .yul
@@ -83,23 +83,23 @@ Use `runsol.sh` for the full pipeline (sol-core → yule → solc → geth):
 
 ```bash
 # Basic execution
-./runsol.sh <file.solc>
+./runsol.sh <file.sol>
 
 # With function call
-./runsol.sh <file.solc> --runtime-calldata "transfer(address,uint256)" "0x123..." "100"
+./runsol.sh <file.sol> --runtime-calldata "transfer(address,uint256)" "0x123..." "100"
 
 # With raw calldata
-./runsol.sh <file.solc> --runtime-raw-calldata "0xabcd..."
+./runsol.sh <file.sol> --runtime-raw-calldata "0xabcd..."
 
 # Skip deployment (run runtime code directly)
-./runsol.sh <file.solc> --create false
+./runsol.sh <file.sol> --create false
 
 # Debug with interactive trace viewer
-./runsol.sh <file.solc> --debug-runtime
-./runsol.sh <file.solc> --debug-create
+./runsol.sh <file.sol> --debug-runtime
+./runsol.sh <file.sol> --debug-create
 
 # Pass value (in wei)
-./runsol.sh <file.solc> --runtime-callvalue 1000000000
+./runsol.sh <file.sol> --runtime-callvalue 1000000000
 ```
 
 ## High-Level Architecture
@@ -107,7 +107,7 @@ Use `runsol.sh` for the full pipeline (sol-core → yule → solc → geth):
 ### Compilation Pipeline Flow
 
 ```
-Source (.solc) → Parser → AST → Early Desugaring → Type Checker → Late Desugaring → Core IR → Yul
+Source (.sol) → Parser → AST → Early Desugaring → Type Checker → Late Desugaring → Core IR → Yul
                           ↑                                                            ↑
                                           Frontend (sol-core)                    Backend (yule)
 ```
@@ -244,7 +244,7 @@ Tests are organized in `test/examples/`:
 Test framework: **Tasty** with HUnit assertions
 
 Test structure in `test/Main.hs` and `test/Cases.hs`:
-- Each test compiles a `.solc` file through the pipeline
+- Each test compiles a `.sol` file through the pipeline
 - Some tests expect failure (`runTestExpectingFailure`)
 - Standard library tests in `std/`
 
@@ -256,7 +256,7 @@ The project includes a C++ testrunner (`test/testrunner/`) that executes compile
 
 **Contest test flow:**
 ```
-.solc → sol-core → .core → yule → .yul → solc → .hex → testrunner → results
+.sol → sol-core → .core → yule → .yul → solc → .hex → testrunner → results
 ```
 
 ### Components

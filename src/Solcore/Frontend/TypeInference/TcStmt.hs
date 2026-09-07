@@ -466,7 +466,7 @@ tcExpWithExpected' mExpected (Lam args bd _) =
     -- would otherwise mask parameter/result type mismatches (this is the
     -- check the retired no-desugar validation pass provided for free by
     -- returning the un-converted arrow type; see
-    -- instance-closure-error-invalid-member.solc).
+    -- instance-closure-error-invalid-member.sol).
     case mExpected of
       Just expected@(_ :-> _) -> do
         s0 <- getSubst

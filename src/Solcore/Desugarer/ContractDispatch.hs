@@ -7,7 +7,7 @@
 -- Adds a runtime entrypoint to each contract that dispatches to the defined
 -- contract methods by examining the first four bytes of calldata and comparing it
 -- to the computed function selector for each method. The instances and datatypes
--- used to implement this dispatch can be found in std/dispatch.solc.
+-- used to implement this dispatch can be found in std/dispatch.sol.
 module Solcore.Desugarer.ContractDispatch
   ( contractDispatchDesugarer,
     contractDispatchTopDecls,

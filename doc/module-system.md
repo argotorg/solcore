@@ -19,7 +19,7 @@ This document describes the intended Solcore module and namespace system.
   - the std library
   - named external libraries
 - `foo.bar` maps canonically to `foo/bar.sol`. The prototype may temporarily
-  resolve `.solc` files as an implementation detail.
+  resolve `.sol` files as an implementation detail.
 - Directories are not modules.
 - `foo` and `foo.bar` therefore refer to different files.
 - The source file path is stored separately from module identity.
@@ -53,7 +53,7 @@ Current std-specific behavior:
 
 - `import std;` resolves to the std library root from any library.
 - `import std.dispatch;` resolves canonically to `dispatch.sol` under the std
-  root (the prototype may still use `dispatch.solc`).
+  root (the prototype may still use `dispatch.sol`).
 - Bare imports do not fall back to the std root.
 - Imports do not have constructor-specific selector syntax.
   Exported constructors are accessed through qualified constructor paths such as `T.C`, `M.T.C`, or `alias.T.C`.

@@ -23,7 +23,7 @@ test_humanDiagnosticSnapshot =
   renderDiagnostic defaultDiagnosticRenderOptions sourceMap undefinedNameDiagnostic
     @?= unlinesNoTrailing
       [ "error[SC0101]: undefined name `missing`",
-        "  --> main.solc:2:10",
+        "  --> main.sol:2:10",
         "  |",
         "2 |   return missing;",
         "  |          ^^^^^^^ unknown name",
@@ -37,7 +37,7 @@ test_shortDiagnosticSnapshot =
     defaultDiagnosticRenderOptions {diagnosticFormat = DiagnosticShort}
     sourceMap
     undefinedNameDiagnostic
-    @?= "main.solc:2:10: error[SC0101]: undefined name `missing`"
+    @?= "main.sol:2:10: error[SC0101]: undefined name `missing`"
 
 test_unicodeDiagnosticSnapshot :: Assertion
 test_unicodeDiagnosticSnapshot =
@@ -47,7 +47,7 @@ test_unicodeDiagnosticSnapshot =
     undefinedNameDiagnostic
     @?= unlinesNoTrailing
       [ "error[SC0101]: undefined name `missing`",
-        "  ──> main.solc:2:10",
+        "  ──> main.sol:2:10",
         "  │",
         "2 │   return missing;",
         "  │          ^^^^^^^ unknown name",
@@ -67,7 +67,7 @@ test_diagnosticWidthWrapsNotes =
     )
     @?= unlinesNoTrailing
       [ "error[SC0101]: undefined name `missing`",
-        "  --> main.solc:2:10",
+        "  --> main.sol:2:10",
         "  |",
         "2 |   return missing;",
         "  |          ^^^^^^^ unknown name",
@@ -81,14 +81,14 @@ test_colorAlwaysEmitsAnsi =
     defaultDiagnosticRenderOptions {diagnosticColor = ColorAlways, diagnosticFormat = DiagnosticShort}
     sourceMap
     undefinedNameDiagnostic
-    @?= "main.solc:2:10: \ESC[1;31merror[SC0101]\ESC[0m: undefined name `missing`"
+    @?= "main.sol:2:10: \ESC[1;31merror[SC0101]\ESC[0m: undefined name `missing`"
 
 test_nearbyLabelsShareOneSnippet :: Assertion
 test_nearbyLabelsShareOneSnippet =
   renderDiagnostic defaultDiagnosticRenderOptions duplicateSourceMap duplicateDiagnostic
     @?= unlinesNoTrailing
       [ "error[SC0108]: duplicate declarations",
-        "  --> dup.solc:2:10",
+        "  --> dup.sol:2:10",
         "  |",
         "1 | function foo() returns (word) { return 1; }",
         "  |          --- previous definition",
@@ -111,7 +111,7 @@ test_sourceTokenSpansAreExact =
     @?= [20]
   where
     tokenSourceFile =
-      makeSourceFile "tokens.solc" "let missingValue = missing;"
+      makeSourceFile "tokens.sol" "let missingValue = missing;"
 
 sourceMap :: SourceMap
 sourceMap =
@@ -119,7 +119,7 @@ sourceMap =
 
 sourceFile :: SourceFile
 sourceFile =
-  makeSourceFile "main.solc" (unlines ["function main() returns (word) {", "  return missing;", "}"])
+  makeSourceFile "main.sol" (unlines ["function main() returns (word) {", "  return missing;", "}"])
 
 duplicateSourceMap :: SourceMap
 duplicateSourceMap =
@@ -127,7 +127,7 @@ duplicateSourceMap =
 
 duplicateSourceFile :: SourceFile
 duplicateSourceFile =
-  makeSourceFile "dup.solc" (unlines ["function foo() returns (word) { return 1; }", "function foo() returns (word) { return 2; }"])
+  makeSourceFile "dup.sol" (unlines ["function foo() returns (word) { return 1; }", "function foo() returns (word) { return 2; }"])
 
 undefinedNameDiagnostic :: Diagnostic
 undefinedNameDiagnostic =
@@ -139,7 +139,7 @@ undefinedNameDiagnostic =
         [ Label
             { labelSpan =
                 SourceSpan
-                  { spanFile = "main.solc",
+                  { spanFile = "main.sol",
                     spanStartByte = 41,
                     spanEndByte = 48,
                     spanStartLine = 2,
@@ -165,7 +165,7 @@ duplicateDiagnostic =
         [ Label
             { labelSpan =
                 SourceSpan
-                  { spanFile = "dup.solc",
+                  { spanFile = "dup.sol",
                     spanStartByte = 9,
                     spanEndByte = 12,
                     spanStartLine = 1,
@@ -179,7 +179,7 @@ duplicateDiagnostic =
           Label
             { labelSpan =
                 SourceSpan
-                  { spanFile = "dup.solc",
+                  { spanFile = "dup.sol",
                     spanStartByte = 54,
                     spanEndByte = 57,
                     spanStartLine = 2,

@@ -39,7 +39,7 @@ function hevmsol() {
     echo $*
     file=$1
     echo $file
-    local base=$(basename $1 .solc)
+    local base=$(basename $1 .sol)
     local hull=output1.hull
     local hexfile=$base.hex
     local yulfile=$base.yul
@@ -57,7 +57,7 @@ function hevmsol() {
     echo $*
     file=$1
     echo $file
-    local base=$(basename $1 .solc)
+    local base=$(basename $1 .sol)
     local hull=output1.hull
     local hexfile=$base.hex
     local yulfile=$base.yul
@@ -74,7 +74,7 @@ function solchex() {
     local file=$1
     shift
     echo "Solc: $file"
-    local base=$(basename $file .solc)
+    local base=$(basename $file .sol)
     local hull=output1.hull
     echo "Hull: $hull"
     local yulfile=$base.yul

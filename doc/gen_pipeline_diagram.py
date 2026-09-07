@@ -29,7 +29,7 @@ LABEL_COLOR    = "#666666"
 TEXT_COLOR     = "#222222"
 
 steps = [
-    ("Core Solidity (.solc)",      None,                             False),
+    ("Core Solidity (.sol)",      None,                             False),
     ("Hull",                        None,                             True),
     ("Yul",                         None,                             False),
     ("EVM bytecode",                None,                             False),

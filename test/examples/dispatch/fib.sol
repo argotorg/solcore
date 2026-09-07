@@ -1,18 +1,12 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+import {*} from std.dispatch;
+
+function fib(n : word) returns (word) {
+   if(n < 2) { return n; } else {return fib(n-1) + fib(n-2); }
+}
 
 contract Fib {
-    constructor() {}
-
-    function fib(uint256 n) internal pure returns (uint256) {
-        if (n < 2) {
-            return n;
-        } else {
-            return fib(n - 1) + fib(n - 2);
-        }
-    }
-
-    function test() public pure returns (uint256) {
-        return fib(10);
-    }
+  constructor() {}
+  function test() public returns (uint256) {
+    return uint256(fib(10));
+  }
 }

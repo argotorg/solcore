@@ -68,4 +68,4 @@ appendRelativeModulePath base rel =
 
 moduleFilePath :: Name -> FilePath
 moduleFilePath =
-  (++ ".solc") . intercalate "/" . splitQualifiedName
+  (++ ".sol") . intercalate "/" . splitQualifiedName

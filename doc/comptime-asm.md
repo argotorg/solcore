@@ -381,7 +381,7 @@ called before anything has written to address 64 in `esMem`, `mloadWord` returns
 
 ### Future: keccak256 over known memory
 
-The pattern in `hash1`/`hash2` in `std/NumLib.solc`:
+The pattern in `hash1`/`hash2` in `std/NumLib.sol`:
 
 ```
 mstore(0, x)
@@ -466,7 +466,7 @@ Add patterns as described above.  Tests:
 
 ### Step 7: Integration test
 
-Add `.solc` test in `test/examples/comptime/` with a function wrapping
+Add `.sol` test in `test/examples/comptime/` with a function wrapping
 `mstore`/`mload` that should be comptime-evaluated.
 
 ### Step 8 (later): keccak256 over known memory ranges

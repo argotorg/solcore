@@ -35,7 +35,7 @@ locationTests =
 
 test_parsedNodesCarrySourceLocations :: Assertion
 test_parsedNodesCarrySourceLocations = do
-  parsed <- parseCompUnitWithPath "location-invariant.solc" locatedSource
+  parsed <- parseCompUnitWithPath "location-invariant.sol" locatedSource
   unit <-
     case parsed of
       Left err -> assertFailure err
@@ -52,14 +52,14 @@ test_generatedNodesAreExplicit = do
 
 test_nameResolutionPreservesSourceLocations :: Assertion
 test_nameResolutionPreservesSourceLocations = do
-  parsed <- parseUnit "location-name-resolution.solc" transformSource
+  parsed <- parseUnit "location-name-resolution.sol" transformSource
   resolved <- assertCompilerRight "name resolution" (nameResolution parsed)
   assertSpansPreserved "name resolution" parsed resolved
   assertNoGeneratedNodeLocations "name resolution" resolved
 
 test_sccAnalysisPreservesSourceLocations :: Assertion
 test_sccAnalysisPreservesSourceLocations = do
-  parsed <- parseUnit "location-scc.solc" mutualSource
+  parsed <- parseUnit "location-scc.sol" mutualSource
   resolved <- assertCompilerRight "name resolution" (nameResolution parsed)
   grouped <- assertEitherRight "SCC analysis" =<< sccAnalysis resolved
   assertBool "SCC analysis should create a mutual group" (any isMutualDecl (Typed.contracts grouped))
@@ -68,7 +68,7 @@ test_sccAnalysisPreservesSourceLocations = do
 
 test_typeInferencePreservesSourceLocations :: Assertion
 test_typeInferencePreservesSourceLocations = do
-  parsed <- parseUnit "location-type-inference.solc" transformSource
+  parsed <- parseUnit "location-type-inference.sol" transformSource
   resolved <- assertCompilerRight "name resolution" (nameResolution parsed)
   (typedUnit, _) <-
     assertCompilerRight
@@ -78,13 +78,13 @@ test_typeInferencePreservesSourceLocations = do
 
 test_tupleDestructuringTypeChecks :: Assertion
 test_tupleDestructuringTypeChecks = do
-  parsed <- parseUnit "destructuring-let.solc" destructuringSource
+  parsed <- parseUnit "destructuring-let.sol" destructuringSource
   resolved <- assertCompilerRight "name resolution" (nameResolution parsed)
   _ <-
     assertCompilerRight
       "tuple destructuring type inference"
       (typeInferModuleLocals stdOpt (moduleInputFromUnit resolved))
-  badParsed <- parseUnit "destructuring-let-mismatch.solc" badDestructuringSource
+  badParsed <- parseUnit "destructuring-let-mismatch.sol" badDestructuringSource
   badResolved <- assertCompilerRight "name resolution" (nameResolution badParsed)
   badResult <-
     typeInferModuleLocals stdOpt (moduleInputFromUnit badResolved)
@@ -95,18 +95,18 @@ test_tupleDestructuringTypeChecks = do
 
 test_comptimeTupleDestructuring :: Assertion
 test_comptimeTupleDestructuring = do
-  goodUnit <- inferUnit "comptime-destructuring-good.solc" comptimeDestructuringSource
+  goodUnit <- inferUnit "comptime-destructuring-good.sol" comptimeDestructuringSource
   assertEitherRight
     "comptime tuple bindings should remain comptime in their continuation"
     (checkComptimeEarly (sourceFunctionsOnly goodUnit))
-  badUnit <- inferUnit "comptime-destructuring-bad.solc" runtimeDestructuringSource
+  badUnit <- inferUnit "comptime-destructuring-bad.sol" runtimeDestructuringSource
   case checkComptimeEarly (sourceFunctionsOnly badUnit) of
     Left _ -> pure ()
     Right () ->
       assertFailure "a comptime tuple binding must reject a runtime initializer"
   propagatedUnit <-
     inferUnit
-      "runtime-destructuring-propagation.solc"
+      "runtime-destructuring-propagation.sol"
       runtimeDestructuringPropagationSource
   case checkComptimeEarly (sourceFunctionsOnly propagatedUnit) of
     Left _ -> pure ()
@@ -194,7 +194,7 @@ isMutualDecl _ = False
 sampleSpan :: SourceSpan
 sampleSpan =
   SourceSpan
-    { spanFile = "generated.solc",
+    { spanFile = "generated.sol",
       spanStartByte = 0,
       spanEndByte = 1,
       spanStartLine = 1,

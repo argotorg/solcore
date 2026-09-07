@@ -171,7 +171,7 @@
               pkgs.boost
               pkgs.nlohmann_json
               sol-core
-              pkgs.solc
+              pkgs.sol
               pkgs.jq
               pkgs.coreutils
               pkgs.bash
@@ -189,7 +189,7 @@
 
             checkPhase = ''
               cd ..
-              export PATH=${sol-core}/bin:${pkgs.solc}/bin:${pkgs.jq}/bin:$PATH
+              export PATH=${sol-core}/bin:${pkgs.sol}/bin:${pkgs.jq}/bin:$PATH
 
               # Override commands and paths to use Nix-provided binaries
               export SOLCORE_CMD="sol-core"
@@ -231,7 +231,7 @@
             pkgs.nlohmann_json
             pkgs.python3
             pkgs.python3Packages.railroad-diagrams
-            pkgs.solc
+            pkgs.sol
             evmone-lib
             (hspkgs.hevm.overrideAttrs (old: { patches = []; }))
             texlive

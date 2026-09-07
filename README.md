@@ -127,7 +127,7 @@ Options:
 The project includes a C++ testrunner that executes end-to-end integration tests by running compiled bytecode on the evmone EVM implementation. These tests verify the full compilation pipeline:
 
 ```
-.solc → sol-core → .core → yule → .yul → solc → .hex → testrunner → results
+.sol → sol-core → .core → yule → .yul → solc → .hex → testrunner → results
 ```
 
 ### Building the Testrunner
@@ -178,7 +178,7 @@ The Nix approach automatically:
 ### Test Cases
 
 Integration test cases are located in `test/examples/dispatch/` as JSON files that specify:
-- Input contract (`.solc` file)
+- Input contract (`.sol` file)
 - Test scenarios with input/output expectations
 - Expected EVM execution results
 
