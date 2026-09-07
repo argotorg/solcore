@@ -12,18 +12,16 @@ import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.Expr (exprP)
 import Solcore.Frontend.Parser.SolcoreTypes
   ( locatedP,
-    paramP,
+    namedParamP,
     qualifiedName,
     simpleNameP,
     typeP,
     typeParamsP,
     whereClauseP,
   )
-import Solcore.Frontend.Parser.Stmt (bodyP)
+import Solcore.Frontend.Parser.Stmt (bodyP, namedBodyP)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
-
--- Top-level entry point
 
 compUnitP :: Parser CompUnit
 compUnitP = do
@@ -201,129 +199,62 @@ constrSelectorP =
 pragmaP :: Parser Pragma
 pragmaP = do
   keyword "pragma"
-  choice
-    [ do
-        keyword "solcore"
-        ty <- pragmaTypeP
-        st <- pragmaStatusForP ty
-        _ <- semicolon
-        pure (Pragma ty st),
-      externalPragmaP "solidity" SolidityPragma,
-      externalPragmaP "abicoder" AbiCoderPragma
-    ]
-
-externalPragmaP :: String -> (String -> PragmaType) -> Parser Pragma
-externalPragmaP namespace pragmaConstructor = do
-  keyword namespace
-  pragmaValue <- unwords . words <$> manyTill anySingle (char ';')
-  sc
-  pure (Pragma (pragmaConstructor pragmaValue) Enabled)
-
-pragmaTypeP :: Parser PragmaType
-pragmaTypeP =
-  NoCoverageCondition
-    <$ keyword "noCoverageCondition"
-      <|> NoPattersonCondition
-    <$ keyword "noPattersonCondition"
-      <|> NoBoundVariableCondition
-    <$ keyword "noBoundVariableCondition"
-      <|> NoGenericInstanceFor
-    <$ keyword "noGenericInstanceFor"
-
--- | Parse the pragma status.  For 'NoGenericInstanceFor' a non-empty list of
--- type names is mandatory; for all other pragma types the list is optional and
--- defaults to 'DisableAll'.
-pragmaStatusForP :: PragmaType -> Parser PragmaStatus
-pragmaStatusForP NoGenericInstanceFor = do
-  names <- qualifiedName `sepBy1` comma
-  return (DisableFor (NE.fromList names))
-pragmaStatusForP _ = option DisableAll $ do
-  names <- simpleNameP `sepBy1` comma
-  return (DisableFor (NE.fromList names))
+  pragmaName <- pragmaIdentifier
+  names <- simpleNameP `sepEndBy` comma
+  _ <- semicolon
+  let pragmaTy = case pragmaName of
+        "no-coverage-condition" -> NoCoverageCondition
+        "no-patterson-condition" -> NoPattersonCondition
+        "no-bounded-variable-condition" -> NoBoundVariableCondition
+        "no-generic-instance-for" -> NoGenericInstanceFor
+        other -> CustomPragma other
+      status = maybe DisableAll DisableFor (NE.nonEmpty names)
+  pure (Pragma pragmaTy status)
 
 enumP :: Parser DataTy
 enumP = do
+  derives <- option [] deriveP
   keyword "enum"
   n <- simpleNameP
   params <- typeParamsP
   cs <- braces (constrP `sepEndBy` comma)
-  return (DataTy n params cs)
+  pure (withDataDerives derives (DataTy n params cs))
 
-structP :: Parser DataTy
-structP = do
-  keyword "struct"
-  n <- simpleNameP
-  params <- typeParamsP
-  fields <- braces (many structFieldP)
-  pure
-    ( StructTy
-        n
-        params
-        (map fst fields)
-        (map snd fields)
-    )
-
-structFieldP :: Parser (Name, Ty)
-structFieldP = do
-  fieldName' <- simpleNameP
-  _ <- colon
-  fieldType <- typeP
-  _ <- semicolon
-  pure (fieldName', fieldType)
+deriveP :: Parser [Name]
+deriveP = do
+  _ <- symbol "#"
+  brackets $ do
+    keyword "derive"
+    parens (qualifiedName `sepBy1` comma)
 
 constrP :: Parser Constr
 constrP = do
   n <- simpleNameP
-  args <- option [] (parens (typeP `sepBy1` comma))
-  return (Constr n args)
+  args <- option [] (parens (typeP `sepBy` comma))
+  pure (Constr n args)
 
 tySymP :: Parser TySym
 tySymP = do
-  keyword "alias"
+  keyword "type"
   n <- simpleNameP
-  params <- typeParamsP
+  params <- option [] (parens (tyVarP `sepEndBy` comma))
   equalsP
   t <- typeP
-  _ <- semicolon
-  return (TySym n params t)
-
-unsupportedUserDefinedValueTypeP :: Parser TopDecl
-unsupportedUserDefinedValueTypeP = do
-  keyword "type"
-  fail
-    ( "user-defined value types declared with `type ... is ...` are not yet "
-        ++ "implemented; use `alias Name = Type;` only for transparent type synonyms"
-    )
-
-functionModifierP :: Parser FunctionModifier
-functionModifierP =
-  choice
-    [ VisibilityModifier VisibilityPublic <$ keyword "public",
-      VisibilityModifier VisibilityExternal <$ keyword "external",
-      VisibilityModifier VisibilityInternal <$ keyword "internal",
-      VisibilityModifier VisibilityPrivate <$ keyword "private",
-      MutabilityModifier MutabilityPure <$ keyword "pure",
-      MutabilityModifier MutabilityView <$ keyword "view",
-      MutabilityModifier MutabilityPayable <$ keyword "payable"
-    ]
+  TySym n params t <$ semicolon
+  where
+    tyVarP = locatedP locatedTy (flip TyCon [] <$> simpleNameP)
 
 parseFunctionModifiers :: Bool -> Parser (Bool, [FunctionModifier])
 parseFunctionModifiers allowContractModifiers = do
-  modifiers <- many functionModifierP
-  let visibility = [v | VisibilityModifier v <- modifiers]
-      mutability = [m | MutabilityModifier m <- modifiers]
-      isPublic =
-        any
-          (`elem` [VisibilityPublic, VisibilityExternal])
-          visibility
-      isPayable = MutabilityPayable `elem` mutability
-  when (length visibility > 1) $
-    fail "a function may declare at most one visibility modifier"
-  when (length mutability > 1) $
-    fail "a function may declare at most one mutability modifier"
-  when (not allowContractModifiers && (not (null visibility) || isPayable)) $
-    fail "visibility and `payable` modifiers are only allowed on contract functions"
-  pure (isPublic, modifiers)
+  isPublic <- option False (True <$ keyword "public")
+  isPayable <- option False (True <$ keyword "payable")
+  when (not allowContractModifiers && (isPublic || isPayable)) $
+    fail "`public` and `payable` modifiers are only allowed on contract functions"
+  pure
+    ( isPublic,
+      [VisibilityModifier VisibilityPublic | isPublic]
+        ++ [MutabilityModifier MutabilityPayable | isPayable]
+    )
 
 funDefP :: Parser FunDef
 funDefP = funDefWithModifiers False
@@ -331,7 +262,7 @@ funDefP = funDefWithModifiers False
 funDefWithModifiers :: Bool -> Parser FunDef
 funDefWithModifiers allowContractModifiers = do
   (isPublic, sig) <- signatureP allowContractModifiers
-  body <- braces bodyP
+  body <- braces namedBodyP
   pure (FunDef isPublic sig body)
 
 signatureP :: Bool -> Parser (Bool, Signature)
@@ -339,64 +270,39 @@ signatureP allowContractModifiers = do
   keyword "function"
   n <- simpleNameP
   vars <- typeParamsP
-  ps <- parens (paramP `sepBy` comma)
+  ps <- parens (namedParamP `sepEndBy` comma)
   (isPublic, modifiers) <- parseFunctionModifiers allowContractModifiers
   returnItems <- optional returnsClauseP
   ctx <- whereClauseP
-  pure
-    ( isPublic,
-      SignatureWithSyntax vars ctx n ps returnItems modifiers
-    )
+  pure (isPublic, SignatureWithSyntax vars ctx n ps returnItems modifiers)
 
 returnsClauseP :: Parser [ReturnItem]
 returnsClauseP = do
   keyword "returns"
-  parens (returnItemP `sepBy` comma)
-
-returnItemP :: Parser ReturnItem
-returnItemP = do
-  isComptime <- option False (True <$ keyword "comptime")
-  returnName <- optional (try (simpleNameP <* colon))
-  ReturnItem isComptime returnName <$> typeP
+  parens (returnItemP `sepEndBy` comma)
+  where
+    returnItemP = ReturnItem False Nothing <$> typeP
 
 fallbackDefP :: Parser FunDef
 fallbackDefP = do
   keyword "fallback"
-  ps <- parens (paramP `sepBy` comma)
+  ps <- parens (namedParamP `sepEndBy` comma)
   when (not (null ps)) $
     fail "fallback function must not declare input parameters"
-  modifiers <- many functionModifierP
-  let visibility = [v | VisibilityModifier v <- modifiers]
-      mutability = [m | MutabilityModifier m <- modifiers]
-  when (visibility /= [VisibilityExternal]) $
-    fail "fallback must declare exactly one `external` visibility modifier"
-  when (length mutability > 1 || any (`elem` [MutabilityPure, MutabilityView]) mutability) $
-    fail "fallback only supports the `payable` mutability modifier"
+  isPayable <- option False (True <$ keyword "payable")
   body <- braces bodyP
-  let sig =
-        SignatureWithSyntax
-          []
-          []
-          (Name "fallback")
-          []
-          Nothing
-          modifiers
+  let modifiers = [MutabilityModifier MutabilityPayable | isPayable]
+      sig = SignatureWithSyntax [] [] (Name "fallback") [] Nothing modifiers
   pure (FunDef False sig body)
 
 traitSignatureP :: Parser Signature
 traitSignatureP = do
-  (isPublic, sig) <- signatureP False
-  when isPublic $
-    fail "trait methods cannot have contract visibility"
-  _ <- semicolon <?> "';' after function signature"
-  pure sig
+  (_, sig) <- signatureP False
+  sig <$ (semicolon <?> "';' after function signature")
 
 traitP :: Parser Class
 traitP = do
   keyword "trait"
-  -- Qualified names refer to traits imported from another module. A
-  -- declaration introduces a name in the current module and must therefore
-  -- use a source identifier, like functions, contracts, and data types do.
   traitName <- simpleNameP
   vars <- typeParamsP
   (primaryVar, params) <- case vars of
@@ -411,11 +317,11 @@ implP = do
   isDefault <- option False (True <$ keyword "default")
   keyword "impl"
   vars <- typeParamsP
-  implName <- qualifiedName
-  args <- between (symbol "<") (symbol ">") (typeP `sepBy1` comma)
+  implName <- simpleNameP
+  args <- between (symbol "<") (symbol ">") (typeP `sepEndBy1` comma)
   (primaryTy, params) <- case args of
-    [] -> fail "an impl must supply at least one trait type argument"
     mainArg : extraArgs -> pure (mainArg, extraArgs)
+    [] -> fail "an impl must supply at least one trait type argument"
   ctx <- whereClauseP
   funs <- braces (many funDefP)
   pure (Instance isDefault vars ctx implName params primaryTy funs)
@@ -426,57 +332,18 @@ contractP = do
   n <- simpleNameP
   params <- typeParamsP
   ds <- braces (many contractDeclP)
-  return (ContractShell ContractKind n params ds)
-
-interfaceP :: Parser Contract
-interfaceP = do
-  keyword "interface"
-  n <- simpleNameP
-  params <- typeParamsP
-  ds <- braces (many interfaceDeclP)
-  return (ContractShell InterfaceKind n params ds)
-
-libraryP :: Parser Contract
-libraryP = do
-  keyword "library"
-  n <- simpleNameP
-  params <- typeParamsP
-  ds <- braces (many libraryDeclP)
-  return (ContractShell LibraryKind n params ds)
+  pure (Contract n params ds)
 
 contractDeclP :: Parser ContractDecl
 contractDeclP =
-  CDataDecl
-    <$> (try structP <|> enumP)
-      <|> CConstrDecl
-    <$> try constructorDeclP
-      <|> CFunDecl
-    <$> try fallbackDefP
-      <|> CFunDecl
-    <$> try (funDefWithModifiers True)
-      <|> CFieldDecl
-    <$> fieldDeclP
-
-interfaceDeclP :: Parser ContractDecl
-interfaceDeclP = do
-  (isPublic, sig) <- signatureP True
-  let visibility =
-        [ modifierVisibility
-        | VisibilityModifier modifierVisibility <- sigModifiers sig
-        ]
-  when (visibility /= [VisibilityExternal]) $
-    fail "interface functions must declare exactly one `external` visibility modifier"
-  _ <- semicolon <?> "';' after interface function signature"
-  pure (CSignatureDecl isPublic sig)
-
-libraryDeclP :: Parser ContractDecl
-libraryDeclP =
-  CDataDecl
-    <$> (try structP <|> enumP)
-      <|> CFunDecl
-    <$> try (funDefWithModifiers True)
-      <|> CFieldDecl
-    <$> fieldDeclP
+  choice
+    [ CFieldDecl <$> try fieldDeclP,
+      CDataDecl <$> enumP,
+      CSymDecl <$> tySymP,
+      CConstrDecl <$> constructorDeclP,
+      CFunDecl <$> fallbackDefP,
+      CFunDecl <$> funDefWithModifiers True
+    ]
 
 fieldDeclP :: Parser Field
 fieldDeclP = do
@@ -484,40 +351,30 @@ fieldDeclP = do
   _ <- colon
   ty <- typeP
   me <- optional (equalsP *> expP)
-  _ <- semicolon
-  return (Field n ty me)
+  Field n ty me <$ semicolon
 
 constructorDeclP :: Parser Constructor
 constructorDeclP = do
   keyword "constructor"
-  ps <- parens (paramP `sepBy` comma)
-  modifiers <- many functionModifierP
-  when (any (/= MutabilityModifier MutabilityPayable) modifiers || length modifiers > 1) $
-    fail "constructor only supports the `payable` modifier"
+  ps <- parens (namedParamP `sepEndBy` comma)
+  isPayable <- option False (True <$ keyword "payable")
   body <- braces bodyP
-  return (Constructor ps body (MutabilityModifier MutabilityPayable `elem` modifiers))
+  pure (Constructor ps body isPayable)
 
 topDeclP :: Parser TopDecl
 topDeclP =
   choice
     [ TPragmaDecl <$> pragmaP,
       TExportDecl <$> exportP,
-      TDataDef <$> structP,
       TDataDef <$> enumP,
       TSym <$> tySymP,
-      unsupportedUserDefinedValueTypeP,
-      TContr <$> (contractP <|> interfaceP <|> libraryP),
+      TContr <$> contractP,
       contractOnlyDeclP,
-      TFunDef <$> try funDefP,
-      TClassDef <$> try traitP,
+      TFunDef <$> funDefP,
+      TClassDef <$> traitP,
       TInstDef <$> implP
     ]
 
--- | @constructor@ and @fallback@ declarations are only meaningful inside a
--- @contract@. Catch them at the top level so we report a clear error instead
--- of a confusing generic parse failure. Each branch commits (consumes the
--- keyword) before failing, so the surrounding 'choice' does not fall through
--- to the function/class/instance parser.
 contractOnlyDeclP :: Parser TopDecl
 contractOnlyDeclP =
   keyword "constructor"
