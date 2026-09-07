@@ -14,6 +14,7 @@ where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State.Strict
+import Data.Generics (everything, mkQ)
 import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (find, intercalate, isPrefixOf, sortOn)
 import Data.Map (Map)
@@ -26,6 +27,7 @@ import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
+import Solcore.Primitives.Primitives (arrayLiteralInitName, arrayLiteralNewName)
 import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath
 
@@ -145,6 +147,16 @@ visit cfg moduleId sourcePath = do
     parsed <- liftIO (parseCompUnitWithPath sourcePath content)
     cunit <- either throwError pure parsed
     importedModules <- mapM (resolveImportPath cfg moduleId sourcePath) (imports cunit)
+    arrayRuntimeModules <-
+      if usesArrayLiterals cunit && moduleId /= arrayRuntimeModuleId
+        then do
+          root <- either throwError pure (rootForLibrary cfg Mod.StdLibrary)
+          let runtimePath = toFilePath root (Mod.moduleName arrayRuntimeModuleId)
+          exists <- liftIO (doesFileExist runtimePath)
+          unless exists $
+            throwError ("Array literals require the standard library at " ++ runtimePath)
+          pure [(arrayRuntimeModuleId, runtimePath)]
+        else pure []
     exportedModules <-
       mapM (resolveModuleReference cfg moduleId sourcePath ExportReference) (exportModulePaths cunit)
     let moduleRefs =
@@ -153,7 +165,7 @@ visit cfg moduleId sourcePath = do
               ++ [(path, exportId) | (path, exportId, _) <- exportedModules]
         referencedModules =
           uniqueResolvedModules
-            (importedModules ++ [(exportId, exportPath) | (_, exportId, exportPath) <- exportedModules])
+            (importedModules ++ arrayRuntimeModules ++ [(exportId, exportPath) | (_, exportId, exportPath) <- exportedModules])
     mapM_
       (\(targetId, targetPath) -> visit cfg targetId targetPath)
       referencedModules
@@ -526,8 +538,10 @@ moduleLocalTypeCheckSurface graph modulePath = do
     concat <$> mapM (importedPartialTypes collidingTypeNames graph) importPairs
   qualifiedDecls <-
     concat <$> mapM (typeCheckQualifiedImportDecls collidingTypeNames graph) importPairs
-  let localDecls = topDeclsFrom unit
-      visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls importedDecls)
+  (arrayLocalDecls, arrayImportedDecls) <- arrayLiteralRuntimeDecls graph modulePath unit
+  let localDecls = topDeclsFrom unit ++ arrayLocalDecls
+      allImportedDecls = importedDecls ++ shadowImportedDecls (localDecls ++ importedDecls) arrayImportedDecls
+      visibleImportedDecls = uniqueTopDecls (filterImportedInstanceConflicts localDecls allImportedDecls)
   pure
     ModuleTypeCheckSurface
       { moduleSurfaceImports = imports unit,
@@ -536,6 +550,43 @@ moduleLocalTypeCheckSurface graph modulePath = do
         moduleSurfaceImportedDecls = visibleImportedDecls,
         moduleSurfacePartialImportedTypes = normalizePartialImportedTypes partialImportedTypes
       }
+
+arrayRuntimeModuleId :: Mod.ModuleId
+arrayRuntimeModuleId = Mod.ModuleId Mod.StdLibrary (Name "std")
+
+usesArrayLiterals :: CompUnit -> Bool
+usesArrayLiterals = everything (||) (mkQ False isArray)
+  where
+    isArray :: Exp -> Bool
+    isArray (ExpArray _) = True
+    isArray _ = False
+
+-- Bind compiler-generated calls to the defining standard module rather than
+-- its selected names or namespace aliases. Keep a distinct internal copy of
+-- each implementation: a forwarding call to its public name could still bind
+-- to a same-named source declaration when the checked modules are assembled.
+arrayLiteralRuntimeDecls :: ModuleGraph -> Mod.ModuleId -> CompUnit -> Either String ([TopDecl], [TopDecl])
+arrayLiteralRuntimeDecls graph modulePath unit
+  | modulePath == arrayRuntimeModuleId && graphUsesArrays = do
+      definitions <- runtimeDefinitions
+      pure (definitions, [])
+  | modulePath /= arrayRuntimeModuleId && usesArrayLiterals unit = do
+      definitions <- runtimeDefinitions
+      support <- typeCheckSupportNonFunctionDecls graph arrayRuntimeModuleId
+      pure ([], map stubTopDeclBody (definitions ++ support))
+  | otherwise = pure ([], [])
+  where
+    graphUsesArrays = any (usesArrayLiterals . loadedCompUnit) (Map.elems (modules graph))
+    runtimeDefinitions = do
+      runtime <- lookupLoadedModule graph arrayRuntimeModuleId
+      mapM
+        (runtimeDefinition (topDeclsFrom runtime))
+        [(Name "arrayLitNew", arrayLiteralNewName), (Name "arrayLitInit", arrayLiteralInitName)]
+    runtimeDefinition declarations (sourceName, internalName) =
+      case [fd | TFunDef fd <- declarations, sigName (funSignature fd) == sourceName] of
+        [FunDef isPublic signature body] ->
+          pure (TFunDef (FunDef isPublic (signature {sigName = internalName}) body))
+        _ -> Left ("Array literal runtime definition is missing or ambiguous in std: " ++ show sourceName)
 
 stubTopDeclBody :: TopDecl -> TopDecl
 stubTopDeclBody (TContr (ContractShell kind n vs contractDecls)) =
@@ -1433,6 +1484,12 @@ renameBodyTypeRefs renameMap =
 renameStmtTypeRefs :: Map Name Name -> Stmt -> Stmt
 renameStmtTypeRefs renameMap (Assign lhs rhs) =
   Assign (renameExpTypeRefs renameMap lhs) (renameExpTypeRefs renameMap rhs)
+renameStmtTypeRefs renameMap (StmtTimesEq e1 e2) =
+  StmtTimesEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameStmtTypeRefs renameMap (StmtDivideEq e1 e2) =
+  StmtDivideEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameStmtTypeRefs renameMap (StmtBNotEq e) =
+  StmtBNotEq (renameExpTypeRefs renameMap e)
 renameStmtTypeRefs renameMap (StmtPlusEq e1 e2) =
   StmtPlusEq (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameStmtTypeRefs renameMap (StmtMinusEq e1 e2) =
@@ -1582,6 +1639,10 @@ renameExpTypeRefs renameMap (ExpLAnd e1 e2) =
   ExpLAnd (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
 renameExpTypeRefs renameMap (ExpLOr e1 e2) =
   ExpLOr (renameExpTypeRefs renameMap e1) (renameExpTypeRefs renameMap e2)
+renameExpTypeRefs renameMap (ExpBNot e) =
+  ExpBNot (renameExpTypeRefs renameMap e)
+renameExpTypeRefs renameMap (ExpArray elements) =
+  ExpArray (map (renameExpTypeRefs renameMap) elements)
 renameExpTypeRefs renameMap (ExpLNot e) =
   ExpLNot (renameExpTypeRefs renameMap e)
 renameExpTypeRefs renameMap (ExpCond e1 e2 e3) =
@@ -1631,9 +1692,12 @@ renameContractTypeRefs renameMap (ContractShell kind n ts ds) =
             ++ [ dataName dataTy
                | CDataDecl dataTy <- ds
                ]
+            ++ [symName alias | CSymDecl alias <- ds]
         )
 
 renameContractDeclTypeRefs :: Map Name Name -> ContractDecl -> ContractDecl
+renameContractDeclTypeRefs renameMap (CSymDecl alias) =
+  CSymDecl (renameTySymTypeRefs renameMap alias)
 renameContractDeclTypeRefs renameMap (CDataDecl d) =
   CDataDecl (renameDataTyTypeRefs renameMap d)
 renameContractDeclTypeRefs renameMap (CFieldDecl (Field n ty me)) =
@@ -1673,8 +1737,9 @@ renameInstanceTypeRefs renameMap (Instance d vs ctx n pts mt fns) =
     (map (renameFunDefTypeRefs renameMap) fns)
 
 renameDataTyTypeRefs :: Map Name Name -> DataTy -> DataTy
-renameDataTyTypeRefs renameMap (DataTyWithKind kind n vs cs) =
-  DataTyWithKind
+renameDataTyTypeRefs renameMap (DataTyWithDerives derives kind n vs cs) =
+  DataTyWithDerives
+    (map (renameTypeName renameMap) derives)
     kind
     (renameTypeName renameMap n)
     (map (renameTyTypeRefs renameMap) vs)
@@ -2174,10 +2239,11 @@ renameTopDeclName oldName newName decl
         TContr (ContractShell kind n params contractDecls)
           | n == oldName ->
               TContr (ContractShell kind newName params contractDecls)
-        TDataDef (DataTyWithKind kind n params constrs)
+        TDataDef (DataTyWithDerives derives kind n params constrs)
           | n == oldName ->
               TDataDef
-                ( DataTyWithKind
+                ( DataTyWithDerives
+                    derives
                     kind
                     newName
                     params
@@ -2211,7 +2277,7 @@ selectTopDeclForExportRef itemRef d@(TContr (Contract n _ _))
       Just (renameTopDeclName (exportedItemSourceName itemRef) (exportedItemName itemRef) d)
   | otherwise =
       Nothing
-selectTopDeclForExportRef itemRef (TDataDef (DataTyWithKind kind n ts cs))
+selectTopDeclForExportRef itemRef (TDataDef (DataTyWithDerives derives kind n ts cs))
   | exportedItemSourceName itemRef /= n =
       Nothing
   | otherwise =
@@ -2219,7 +2285,8 @@ selectTopDeclForExportRef itemRef (TDataDef (DataTyWithKind kind n ts cs))
         Just visibleConstructors ->
           Just
             ( TDataDef
-                ( DataTyWithKind
+                ( DataTyWithDerives
+                    derives
                     kind
                     (exportedItemName itemRef)
                     ts

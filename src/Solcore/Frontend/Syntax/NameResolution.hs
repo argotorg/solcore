@@ -16,12 +16,13 @@ import Language.Yul (YulExp (YCall), YulStmt (YExp), yulInt)
 import Solcore.Diagnostics (CompilerError (..), Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, diagnosticCompilerError)
 import Solcore.Frontend.Pretty.TreePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts, decls)
+import Solcore.Frontend.Syntax.Contract qualified as C
 import Solcore.Frontend.Syntax.Location
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.SyntaxTree qualified as S
 import Solcore.Frontend.Syntax.Ty
-import Solcore.Primitives.Primitives (invokableName, tupleExpFromList)
+import Solcore.Primitives.Primitives (arrayLiteralInitName, arrayLiteralNewName, invokableName, tupleExpFromList)
 
 -- name resolution
 
@@ -42,9 +43,21 @@ nameResolutionTopDeclSegments imps segments =
     r <- runResolveM (mapM resolve segments) genv
     case r of
       Left err -> pure (Left err)
-      Right resolvedSegments ->
-        let resolvedImports = map resolveImport imps
+      Right segmentsWithAliases ->
+        let resolvedSegments = map (concatMap hoistContractAliases) segmentsWithAliases
+            resolvedImports = map resolveImport imps
          in pure (Right (CompUnit resolvedImports (concat resolvedSegments), resolvedSegments))
+
+-- Alias declarations are scoped while names are resolved, then made available
+-- to the existing synonym-expansion pass using their qualified type names.
+hoistContractAliases :: TopDecl Name -> [TopDecl Name]
+hoistContractAliases (TContr c@(Contract _ _ ds)) =
+  [TSym alias | CSymDecl alias <- ds]
+    ++ [TContr c {C.decls = [d | d <- ds, not (isAlias d)]}]
+  where
+    isAlias (CSymDecl _) = True
+    isAlias _ = False
+hoistContractAliases d = [d]
 
 resolveImport :: S.Import -> Import
 resolveImport (S.ImportModule qn) = ImportModule (resolveModulePath qn)
@@ -110,7 +123,7 @@ validateDuplicateNamespaces ds = do
 
 validateContractDuplicates :: S.Contract -> Either CompilerError ()
 validateContractDuplicates (S.Contract cname _ decls) = do
-  let typeNames = [n | S.CDataDecl (S.DataTy n _ _) <- decls]
+  let typeNames = [n | S.CDataDecl (S.DataTy n _ _) <- decls] ++ [n | S.CSymDecl (S.TySym n _ _) <- decls]
       fieldNames = [n | S.CFieldDecl (S.Field n _ _) <- decls]
       termNames = contractTermNames decls
       context = "contract " ++ pretty cname
@@ -255,6 +268,8 @@ addContractDecl contractName (S.CDataDecl (S.DataTy n _ cons)) =
     let qualifiedTypeName = qualifyName contractName n
     addTyConAs n qualifiedTypeName
     mapM_ (addDataCon qualifiedTypeName . S.constrName) cons
+addContractDecl contractName (S.CSymDecl (S.TySym n _ _)) =
+  addTyConAs n (qualifyName contractName n)
 addContractDecl _ (S.CFieldDecl (S.Field n _ _)) =
   addField n
 addContractDecl _ (S.CFunDecl (S.FunDef _ sig _)) =
@@ -266,6 +281,8 @@ addContractDecl _ _ = pure ()
 instance Resolve S.ContractDecl where
   type Result S.ContractDecl = ContractDecl Name
 
+  resolve d@(S.CSymDecl alias) =
+    CSymDecl <$> resolve alias `wrapError` d
   resolve d@(S.CDataDecl dt) =
     CDataDecl <$> resolve dt `wrapError` d
   resolve d@(S.CFieldDecl fd) =
@@ -341,7 +358,8 @@ resolveSignatureReturns sig =
             resolvedReturnBindings = [],
             resolvedBareReturnNames = Nothing
           }
-    Just sourceItems -> do
+    Just rawItems -> do
+      let sourceItems = map unwrapComptimeReturn rawItems
       rejectMixedReturnComptime sig sourceItems
       resolvedItems <-
         forM sourceItems $ \(S.ReturnItem isComptime returnName returnTy) -> do
@@ -379,6 +397,11 @@ resolveSignatureReturns sig =
           }
   where
     unitReturnType = TyCon (Name "()") []
+
+unwrapComptimeReturn :: S.ReturnItem -> S.ReturnItem
+unwrapComptimeReturn (S.ReturnItem _ n (S.TyCon (Name "comptime") [ty])) =
+  S.ReturnItem True n ty
+unwrapComptimeReturn item = item
 
 rejectMixedReturnComptime :: S.Signature -> [S.ReturnItem] -> ResolveM ()
 rejectMixedReturnComptime sig returnItems =
@@ -487,6 +510,7 @@ instance Resolve S.PragmaType where
     pure NoGenericInstanceFor
   resolve (S.SolidityPragma version) =
     pure (SolidityPragma version)
+  resolve (S.CustomPragma directive) = pure (CustomPragma directive)
   resolve (S.AbiCoderPragma version) =
     pure (AbiCoderPragma version)
 
@@ -621,6 +645,18 @@ instance Resolve S.Stmt where
       lhs' <- resolve lhs `wrapError` s
       rhs' <- resolve rhs `wrapError` s
       pure (lhs' := rhs')
+  resolve s@(S.StmtTimesEq lhs rhs) =
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "Mul") "mul") lhs rhs
+  resolve s@(S.StmtDivideEq lhs rhs) =
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "Div") "div") lhs rhs
+  resolve s@(S.StmtBNotEq lhs) = do
+    lhs' <- resolve lhs `wrapError` s
+    let (bindings, frozenLhs) = freezeCompoundLhs s lhs'
+        combined = Call Nothing (QualName (Name "BitNot") "bnot") [frozenLhs]
+        assignment = locatedLike s locatedStmt (frozenLhs := combined)
+    pure (case bindings of [] -> assignment; _ -> Block (bindings ++ [assignment]))
   resolve s@(S.StmtPlusEq lhs rhs) =
     locatedLike s locatedStmt
       <$> resolveCompoundAssignment s (QualName (Name "Add") "add") lhs rhs
@@ -1247,6 +1283,17 @@ resolveExp c@(S.ExpLNot e) = do
   pure $ Call Nothing (Name "not") [e']
 resolveExp (S.ExpCond e1 e2 e3) =
   Cond <$> resolve e1 <*> resolve e2 <*> resolve e3
+resolveExp c@(S.ExpBNot e) = do
+  e' <- resolve e `wrapError` c
+  pure (Call Nothing (QualName (Name "BitNot") "bnot") [e'])
+resolveExp c@(S.ExpArray elements) = do
+  elements' <- resolve elements `wrapError` c
+  -- The nested calls allocate once and initialize left to right. Each helper
+  -- returns the same array, so no element or allocation is evaluated twice.
+  let allocation = Call Nothing arrayLiteralNewName [Lit (IntLit (toInteger (length elements)))]
+      initialize array (index, element) =
+        Call Nothing arrayLiteralInitName [array, Lit (IntLit index), element]
+  pure (foldl initialize allocation (zip [0 ..] elements'))
 resolveExp (S.ExpAt t) = do
   t' <- resolve t
   pure
@@ -1412,7 +1459,8 @@ instance Resolve S.DataTy where
       cons' <- resolve cons `wrapError` d
       resolvedName <- canonicalTypeName n
       pure
-        ( DataTyWithKind
+        ( DataTyWithDerives
+            (S.dataDerives d)
             (resolveDataTyKind sourceKind)
             resolvedName
             (map TVar vs')
@@ -1461,14 +1509,19 @@ instance Resolve S.Ty where
     case visibility of
       Just S.FunctionTypeExternal ->
         unsupportedExternalFunctionTypeError functionTy
-      _
-        | null args ->
-            unsupportedNullaryFunctionTypeError functionTy
-        | otherwise ->
-            locatedLike functionTy locatedTy <$> do
-              args' <- resolve args `wrapError` functionTy
-              returns' <- resolveFunctionReturns returns `wrapError` functionTy
-              pure (funtype args' returns')
+      _ ->
+        locatedLike functionTy locatedTy <$> do
+          args' <- resolve args `wrapError` functionTy
+          returns' <- resolveFunctionReturns returns `wrapError` functionTy
+          -- Invokable represents a zero-argument call with the unit tuple.
+          -- Retain that domain so the function type cannot become its result.
+          let domain = if null args' then [TyCon (Name "()") []] else args'
+          pure (funtype domain returns')
+  -- Supported outer declaration/local modes are extracted into their mode
+  -- flags before resolving the underlying type. A wrapper still present here
+  -- needs a mode inside the semantic type, which this backend cannot retain.
+  resolve comptimeTy@(S.TyCon (Name "comptime") [_]) =
+    unsupportedComptimeTypePositionError comptimeTy
   resolve tc@(S.TyCon n ts) =
     locatedLike tc locatedTy <$> do
       ndt <- lookupType n
@@ -1672,6 +1725,9 @@ addTopDecl (S.TExportDecl _) env = env
 addTopDecl _ env = env
 
 addNestedContractType :: Name -> S.ContractDecl -> Env -> Env
+addNestedContractType contractName (S.CSymDecl (S.TySym localName _ _)) env =
+  let qualifiedName = qualifyName contractName localName
+   in env {typeEnv = Map.insert qualifiedName TTyCon (typeEnv env), canonicalTypeNames = Map.insert qualifiedName qualifiedName (canonicalTypeNames env)}
 addNestedContractType contractName (S.CDataDecl (S.DataTy localName _ constructors)) env =
   env
     { typeEnv = Map.insert qualifiedTypeName TTyCon (typeEnv env),
@@ -2014,13 +2070,15 @@ unsupportedExternalFunctionTypeError functionTy =
       "or pass the external call target and selector explicitly"
     ]
 
-unsupportedNullaryFunctionTypeError :: S.Ty -> ResolveM a
-unsupportedNullaryFunctionTypeError functionTy =
+unsupportedComptimeTypePositionError :: S.Ty -> ResolveM a
+unsupportedComptimeTypePositionError comptimeTy =
   unsupportedFunctionTypeError
-    functionTy
-    "zero-parameter function types are not supported"
-    "lowering a nullary function to its result type would change its meaning"
-    ["use an explicit unit parameter: function(()) internal returns (...)"]
+    comptimeTy
+    "comptime<T> is not supported in this type position"
+    "this type position cannot retain a compile-time requirement"
+    [ "use `comptime name: T` for a function parameter",
+      "use `let name: comptime<T>` for a local or `returns (comptime<T>)` for a function result"
+    ]
 
 unsupportedFunctionTypeError :: S.Ty -> String -> String -> [String] -> ResolveM a
 unsupportedFunctionTypeError functionTy message label help =

@@ -6,6 +6,12 @@ import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty
 import Prelude hiding (words)
 
+-- Internal names cannot be written by source programs. The loader binds these
+-- to the actual standard-library definitions used by array literal lowering.
+arrayLiteralNewName, arrayLiteralInitName :: Name
+arrayLiteralNewName = QualName (Name "$std") "arrayLitNew"
+arrayLiteralInitName = QualName (Name "$std") "arrayLitInit"
+
 -- basic type classes
 
 selfVar :: Tyvar
