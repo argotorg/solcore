@@ -449,12 +449,12 @@ identifierTests :: TestTree
 identifierTests =
   testGroup
     "Identifiers"
-    [ testCase "leading underscore" $
-        parsesAs identifier "_id" "_id",
-      testCase "multiple leading underscores and digits" $
-        parsesAs identifier "__value2" "__value2",
-      testCase "underscore-prefixed expression name" $
-        parsesAs expP "_value" (var "_value"),
+    [ testCase "leading underscore is rejected" $
+        parseFails identifier "_id",
+      testCase "multiple leading underscores and digits is rejected" $
+        parseFails identifier "__value2",
+      testCase "underscore-prefixed expression name is rejected" $
+        parseFails expP "_value",
       testCase "boolean literals cannot be rebound as identifiers" $ do
         parseFails identifier "true"
         parseFails identifier "false"
@@ -484,22 +484,22 @@ typeTests =
           "mapping(address => word)"
           (TyCon "mapping" [TyCon "address" [], word]),
       testCase "dynamic array type" $
-        parsesAs typeP "word[]" (TyCon "array" [word]),
+        parsesAs typeP "array<word>" (TyCon "array" [word]),
       testCase "nested dynamic array type" $
-        parsesAs typeP "word[][]" (TyCon "array" [TyCon "array" [word]]),
-      testCase "fixed array stores size before element type" $
-        parsesAs typeP "word[4]" (TyCon "array" [TyCon "4" [], word]),
+        parsesAs typeP "array<array<word>>" (TyCon "array" [TyCon "array" [word]]),
+      testCase "fixed array suffix is rejected" $
+        parseFails typeP "word[4]",
       testCase "fixed array accepts a type-level size" $
-        parsesAs typeP "word[N]" (TyCon "array" [TyCon "N" [], word]),
+        parsesAs typeP "array<N, word>" (TyCon "array" [TyCon "N" [], word]),
       testCase "data location follows the complete array type" $
         parsesAs
           typeP
-          "word[] storage"
+          "storage<array<word>>"
           (TyCon "storage" [TyCon "array" [word]]),
       testCase "type suffixes may interleave arrays and locations" $
         parsesAs
           typeP
-          "word[] memory[] storage"
+          "storage<array<memory<array<word>>>>"
           ( TyCon
               "storage"
               [TyCon "array" [TyCon "memory" [TyCon "array" [word]]]]
@@ -507,25 +507,25 @@ typeTests =
       testCase "repeated data locations remain distinct type wrappers" $
         parsesAs
           typeP
-          "word memory storage"
+          "storage<memory<word>>"
           (TyCon "storage" [TyCon "memory" [word]]),
       testCase "interleaved type suffixes survive source pretty-printing" $
-        roundTripsType "word[] memory[] storage",
+        roundTripsType "storage<array<memory<array<word>>>>",
       testCase "function type" $
         parsesAs
           typeP
-          "function(word) internal returns (bool)"
-          (FunctionTy [word] (Just FunctionTypeInternal) (Just [bool])),
-      testCase "multi-parameter function type retains external visibility" $
+          "function(word) returns (bool)"
+          (FunctionTy [word] Nothing (Just [bool])),
+      testCase "multi-parameter function type" $
         parsesAs
           typeP
-          "function(word, bool) external returns (word)"
-          (FunctionTy [word, bool] (Just FunctionTypeExternal) (Just [word])),
+          "function(word, bool) returns (word)"
+          (FunctionTy [word, bool] Nothing (Just [word])),
       testCase "zero-arity function type remains distinct in the source AST" $
         parsesAs
           typeP
-          "function() internal returns (word)"
-          (FunctionTy [] (Just FunctionTypeInternal) (Just [word])),
+          "function() returns (word)"
+          (FunctionTy [] Nothing (Just [word])),
       testCase "function type preserves an omitted visibility and returns clause" $
         parsesAs
           typeP
@@ -534,18 +534,18 @@ typeTests =
       testCase "function type preserves multiple return items" $
         parsesAs
           typeP
-          "function() external returns (word, bool)"
-          (FunctionTy [] (Just FunctionTypeExternal) (Just [word, bool])),
-      testCase "function type accepts an array suffix" $
+          "function() returns (word, bool)"
+          (FunctionTy [] Nothing (Just [word, bool])),
+      testCase "array accepts a function element type" $
         parsesAs
           typeP
-          "function(word) internal returns (bool)[]"
-          (TyCon "array" [FunctionTy [word] (Just FunctionTypeInternal) (Just [bool])]),
+          "array<function(word) returns (bool)>"
+          (TyCon "array" [FunctionTy [word] Nothing (Just [bool])]),
       testCase "function type syntax survives source pretty-printing" $
         mapM_
           roundTripsType
-          [ "function() internal returns (word)",
-            "function(word, bool) external returns (word, bool)",
+          [ "function() returns (word)",
+            "function(word, bool) returns (word, bool)",
             "function()"
           ],
       testCase "unit type" $
@@ -571,8 +571,8 @@ predTests =
     "Predicates"
     [ testCase "simple predicate" $
         parsesAs predP "t:Eq" (InCls "Eq" (TyCon "t" []) []),
-      testCase "qualified class name" $
-        parsesAs predP "t:Foo.Eq" (InCls (QualName "Foo" "Eq") (TyCon "t" []) []),
+      testCase "qualified class name is rejected" $
+        parseFails predP "t:Foo.Eq",
       testCase "predicate with one param" $
         parsesAs predP "t:Functor<word>" (InCls "Functor" (TyCon "t" []) [word]),
       testCase "predicate with two params" $
@@ -587,8 +587,8 @@ patternTests =
     "Patterns"
     [ testCase "wildcard" $
         parsesAs patP "_" PWildcard,
-      testCase "underscore-prefixed name is not a wildcard" $
-        parsesAs patP "_value" (Pat "_value" []),
+      testCase "underscore-prefixed name is not a wildcard is rejected" $
+        parseFails patP "_value",
       testCase "wildcard cannot take constructor arguments" $
         parseFails patP "_(value)",
       testCase "integer literal" $
