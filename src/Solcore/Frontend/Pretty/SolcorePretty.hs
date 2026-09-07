@@ -55,7 +55,7 @@ instance Pretty ModulePath where
   ppr (RelativePath path) = ppr path
   ppr (LibraryPath path) = text "lib." <> ppr path
   ppr (ExternalPath libName path) =
-    text "@" <> ppr libName <> text "." <> ppr path
+    text "@" <> ppr libName <> if path == Name "" then empty else text "." <> ppr path
 
 instance (Pretty a) => Pretty (TopDecl a) where
   ppr (TContr c) = ppr c
@@ -90,7 +90,7 @@ pprExportSpecs items = lbrace <> commaSep (map ppr items) <> rbrace
 
 instance Pretty ExportSpec where
   ppr ExportAll = text "*"
-  ppr (ExportName itemName) = ppr itemName
+  ppr (ExportName itemName) = pprSelectorName itemName
   ppr (ExportNameWithConstructors typeName ctorSelector) =
     ppr typeName <> parens (ppr ctorSelector)
   ppr (ExportModuleAll path) = ppr path <> text ".*"
@@ -105,24 +105,25 @@ pprExportSelector (SelectExportItems items) =
 
 instance Pretty ExportSelectorEntry where
   ppr SelectExportAllItems = text "*"
-  ppr (SelectExportItem itemName) = ppr itemName
+  ppr (SelectExportItem itemName) = pprSelectorName itemName
   ppr (SelectExportConstructors typeName ctorSelector) =
     ppr typeName <> parens (ppr ctorSelector)
 
 pprItemSelector :: [ItemSelectorEntry] -> Doc
+pprItemSelector [SelectAllItems] = text "*"
 pprItemSelector items =
   lbrace <> commaSep (map ppr items) <> rbrace
 
 pprHiding :: [Name] -> [Doc]
 pprHiding [] = []
 pprHiding names =
-  [text "hiding", lbrace <> commaSep (map ppr names) <> rbrace]
+  [text "hiding", lbrace <> commaSep (map pprSelectorName names) <> rbrace]
 
 instance Pretty ItemSelectorEntry where
   ppr SelectAllItems = text "*"
-  ppr (SelectItem itemName) = ppr itemName
+  ppr (SelectItem itemName) = pprSelectorName itemName
   ppr (SelectItemAs itemName aliasName) =
-    hsep [ppr itemName, text "as", ppr aliasName]
+    hsep [pprSelectorName itemName, text "as", pprSelectorName aliasName]
 
 exportSelectorIsOnlyWildcard :: ExportSelector -> Bool
 exportSelectorIsOnlyWildcard (SelectExportItems [SelectExportAllItems]) = True
@@ -135,13 +136,14 @@ instance Pretty Pragma where
     hsep [text "pragma", text "abicoder", text version] <> semi
   ppr (Pragma _ Enabled) = empty
   ppr (Pragma ty st) =
-    hsep [text "pragma", text "solcore", ppr ty, ppr st] <> semi
+    hsep [text "pragma", ppr ty, ppr st] <> semi
 
 instance Pretty PragmaType where
-  ppr NoBoundVariableCondition = text "noBoundVariableCondition"
-  ppr NoCoverageCondition = text "noCoverageCondition"
-  ppr NoPattersonCondition = text "noPattersonCondition"
-  ppr NoGenericInstanceFor = text "noGenericInstanceFor"
+  ppr (CustomPragma directive) = text directive
+  ppr NoBoundVariableCondition = text "no-bounded-variable-condition"
+  ppr NoCoverageCondition = text "no-coverage-condition"
+  ppr NoPattersonCondition = text "no-patterson-condition"
+  ppr NoGenericInstanceFor = text "no-generic-instance-for"
   ppr (SolidityPragma version) =
     hsep [text "solidity", text version]
   ppr (AbiCoderPragma version) =
@@ -166,6 +168,7 @@ pprContractKind InterfaceKind = text "interface"
 pprContractKind LibraryKind = text "library"
 
 instance (Pretty a) => Pretty (ContractDecl a) where
+  ppr (CSymDecl alias) = ppr alias
   ppr (CDataDecl dt) =
     ppr dt
   ppr (CFieldDecl fd) =
@@ -194,12 +197,17 @@ instance Pretty DataTy where
       <+> lbrace
       $$ nest 3 (vcat (zipWith pprStructField fieldNames fieldTypes))
       $$ rbrace
-  ppr (DataTy n ps cs) =
-    text "enum"
+  ppr dt@(DataTy n ps cs) =
+    pprDerives (dataDerives dt)
+      $$ text "enum"
       <+> (ppr (constructorLeafName n) <> pprTyParams (map TyVar ps))
       <+> lbrace
       $$ nest 3 (vcat (punctuate comma (map ppr cs)))
       $$ rbrace
+
+pprDerives :: [Name] -> Doc
+pprDerives [] = empty
+pprDerives names = text "#[derive" <> parens (commaSep (map ppr names)) <> char ']'
 
 pprStructField :: Name -> Ty -> Doc
 pprStructField fieldName' fieldType =
@@ -207,8 +215,8 @@ pprStructField fieldName' fieldType =
 
 instance Pretty TySym where
   ppr (TySym n vs t) =
-    ( text "alias"
-        <+> (ppr n <> pprTyParams (map TyVar vs))
+    ( text "type"
+        <+> (ppr n <> pprAliasParams (map TyVar vs))
         <+> equals
         <+> ppr t
     )
@@ -323,12 +331,11 @@ pprResolvedReturns sig returnComptime returnTy =
 
 pprResolvedReturnItem :: SignatureReturnItem -> Doc
 pprResolvedReturnItem returnItem =
-  pprConst (signatureReturnItemComptime returnItem)
-    <> case signatureReturnItemName returnItem of
-      Nothing -> ppr (signatureReturnItemType returnItem)
-      Just returnName ->
-        (ppr returnName <> colon)
-          <+> ppr (signatureReturnItemType returnItem)
+  let ty = signatureReturnItemType returnItem
+      resultType = if signatureReturnItemComptime returnItem then TyCon "comptime" [ty] else ty
+   in case signatureReturnItemName returnItem of
+        Nothing -> ppr resultType
+        Just returnName -> (ppr returnName <> colon) <+> ppr resultType
 
 -- Name resolution materializes named return slots as uninitialized leading
 -- lets. They are an internal representation detail; printing them alongside
@@ -376,7 +383,7 @@ pprPayable False = empty
 pprRetTy :: Bool -> Maybe Ty -> Doc
 pprRetTy _ Nothing = empty
 pprRetTy True (Just t) =
-  text "returns" <+> parens (text "comptime" <+> ppr t)
+  text "returns" <+> parens (ppr (TyCon "comptime" [t]))
 pprRetTy False (Just t) =
   text "returns" <+> parens (pprReturnItems t)
 
@@ -407,8 +414,7 @@ instance (Pretty a) => Pretty (Stmt a) where
     ppr n <+> equals <+> (ppr e <> semi)
   ppr (Let c n ty m) =
     ( text "let"
-        <+> pprComptime c
-        <+> (ppr n <> pprOptTy ty)
+        <+> (ppr n <> pprOptTy (if c then fmap (TyCon "comptime" . (: [])) ty else ty))
     )
       <> pprInitOpt m
   ppr (LetPattern ct pat ty value) =
@@ -567,7 +573,7 @@ pprTypedExpNode (Call (Just receiver) n es) =
       (nest 1 $ commaSep $ map (pprTypedExpPrec lowestTypedExpPrec) es)
 pprTypedExpNode (Lam args bd lambdaRetTy) =
   (text "lam" <> pprParams args)
-    <+> pprRetTy False lambdaRetTy
+    <+> maybe empty (\ty -> text "->" <+> ppr ty) lambdaRetTy
     <+> lbrace
     $$ nest 3 (vcat (map ppr bd))
     $$ rbrace
@@ -673,20 +679,11 @@ instance Pretty Ty where
   ppr t@(_ :-> _) =
     let (args, ret) = splitTy t
      in (text "function" <> parens (commaSep (map ppr args)))
-          <+> text "internal"
           <+> pprRetTy False (Just ret)
   ppr (TyCon n [keyTy, valueTy])
     | n == Name "mapping" =
         text "mapping"
           <> parens (ppr keyTy <+> text "=>" <+> ppr valueTy)
-  ppr (TyCon n [elementTy])
-    | n == Name "array" =
-        ppr elementTy <> brackets empty
-  ppr (TyCon n [sizeTy, elementTy])
-    | n == Name "array" =
-        ppr elementTy <> brackets (ppr sizeTy)
-  ppr (TyCon n [t])
-    | isDataLocation n = ppr t <+> ppr n
   ppr t@(TyCon n _)
     | isTuple n = parens $ commaSep (map ppr (tupleElements t))
     | isUnit n = text "()"
@@ -699,10 +696,6 @@ isUnit n =
 
 isTuple :: (Pretty a) => a -> Bool
 isTuple s = pretty s == "pair"
-
-isDataLocation :: Name -> Bool
-isDataLocation n =
-  n `elem` [Name "memory", Name "storage", Name "calldata"]
 
 tupleElements :: Ty -> [Ty]
 tupleElements (TyCon n [left, right])
@@ -742,3 +735,12 @@ instance Pretty Subst where
 
 instance Pretty Id where
   ppr (Id n t) = ppr n <> text "<" <> ppr t <> text ">"
+
+pprAliasParams :: [Ty] -> Doc
+pprAliasParams [] = empty
+pprAliasParams ts = parens (commaSep (map ppr ts))
+
+pprSelectorName :: Name -> Doc
+pprSelectorName n@(Name textName)
+  | not (null textName) && all (`elem` ("+-*/%=!<>&|^~:" :: String)) textName = parens (ppr n)
+pprSelectorName n = ppr n
