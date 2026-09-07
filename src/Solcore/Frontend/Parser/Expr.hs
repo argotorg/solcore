@@ -7,7 +7,7 @@ import Common.LightYear
 import Control.Monad.Combinators.Expr
 import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Lexer.SolcoreLexer
-import Solcore.Frontend.Parser.SolcoreTypes (booleanNameP, locatedFromSpans, locatedP, paramP, simpleNameP, typeP)
+import Solcore.Frontend.Parser.SolcoreTypes (booleanNameP, lambdaParamP, locatedFromSpans, locatedP, simpleNameP, typeP)
 import Solcore.Frontend.Syntax.Location (sourceSpanOf)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
@@ -17,24 +17,16 @@ type BodyP = Parser [Stmt]
 exprP :: BodyP -> Parser Exp
 exprP = ternaryP
 
-castP :: BodyP -> Parser Exp
-castP bp = do
-  e <- unaryP bp
-  targets <- many (keyword "as" *> typeP)
-  pure (foldl cast e targets)
-  where
-    cast value target =
-      locatedExpFrom [sourceSpanOf value, sourceSpanOf target] (TyExp value target)
-
 unaryP :: BodyP -> Parser Exp
 unaryP bp = do
-  operators <- many logicalNotP
+  operators <- many unaryOpP
   operand <- postfixP bp
   pure (foldr ($) operand operators)
   where
-    logicalNotP =
-      unaryExp ExpLNot
-        <$ try (lexeme (char '!' <* notFollowedBy (char '=')))
+    unaryOpP =
+      locatedP locateOperator (ExpLNot <$ symbol "!" <|> ExpBNot <$ symbol "~")
+    locateOperator operatorSpan con operand =
+      locatedExpFrom [Just operatorSpan, sourceSpanOf operand] (con operand)
 
 ternaryP :: BodyP -> Parser Exp
 ternaryP bp = do
@@ -47,12 +39,11 @@ ternaryP bp = do
     return (locatedExpFrom (map sourceSpanOf [e1, e2, e3]) (ExpCond e1 e2 e3))
 
 binaryP :: BodyP -> Parser Exp
-binaryP bp = makeExprParser (castP bp) opTable
+binaryP bp = makeExprParser (unaryP bp) opTable
 
 opTable :: [[Operator Parser Exp]]
 opTable =
-  [ [InfixR (binaryExp ExpPower <$ try (symbol "**"))],
-    [ InfixL (binaryExp ExpTimes <$ try (symbol "*")),
+  [ [ InfixL (binaryExp ExpTimes <$ try (symbol "*")),
       InfixL (binaryExp ExpDivide <$ try (symbol "/")),
       InfixL
         ( binaryExp ExpModulo
@@ -67,9 +58,6 @@ opTable =
         ( binaryExp ExpMinus
             <$ try (lexeme (char '-' <* notFollowedBy (char '=')))
         )
-    ],
-    [ InfixL (binaryExp ExpShiftL <$ try (symbol "<<")),
-      InfixL (binaryExp ExpShiftR <$ try (symbol ">>"))
     ],
     [ InfixL
         ( binaryExp ExpBAnd
@@ -141,7 +129,7 @@ callOp bp = do
         _ -> ExpApply callee args
 
 atomP :: BodyP -> Parser Exp
-atomP bp = litP <|> try (lamP bp) <|> try (dotNameP bp) <|> parenP bp <|> nameP bp
+atomP bp = litP <|> lamP bp <|> dotNameP bp <|> proxyP <|> arrayP bp <|> parenP bp <|> nameP bp
 
 litP :: Parser Exp
 litP =
@@ -158,16 +146,16 @@ litP =
 lamP :: BodyP -> Parser Exp
 lamP bp = locatedP locatedExp $ do
   keyword "lam"
-  ps <- parens (paramP `sepBy` comma)
-  retTy <- optional $ do
-    keyword "returns"
-    ts <- parens (typeP `sepBy` comma)
-    pure $ case ts of
-      [] -> TyCon "()" []
-      [t] -> t
-      _ -> foldr1 pairTy ts
+  ps <- parens (lambdaParamP `sepEndBy` comma)
+  retTy <- optional (symbol "->" *> typeP)
   body <- braces bp
   return (Lam ps body retTy)
+
+proxyP :: Parser Exp
+proxyP = locatedP locatedExp (ExpAt <$> (symbol "@" *> typeP))
+
+arrayP :: BodyP -> Parser Exp
+arrayP bp = locatedP locatedExp (ExpArray <$> brackets (exprP bp `sepBy` comma))
 
 dotNameP :: BodyP -> Parser Exp
 dotNameP bp = locatedP locatedExp $ do
@@ -179,7 +167,7 @@ dotNameP bp = locatedP locatedExp $ do
 
 parenP :: BodyP -> Parser Exp
 parenP bp = locatedP locatedExp $ parens $ do
-  es <- exprP bp `sepBy` comma
+  es <- exprP bp `sepEndBy` comma
   return $ case es of
     [] -> ExpName Nothing (Name "()") []
     [e] -> e
@@ -198,10 +186,6 @@ nameP bp = locatedP locatedExp $ do
 binaryExp :: (Exp -> Exp -> Exp) -> Exp -> Exp -> Exp
 binaryExp con left right =
   locatedExpFrom [sourceSpanOf left, sourceSpanOf right] (con left right)
-
-unaryExp :: (Exp -> Exp) -> Exp -> Exp
-unaryExp con operand =
-  locatedExpFrom [sourceSpanOf operand] (con operand)
 
 locatedExpFrom :: [Maybe SourceSpan] -> Exp -> Exp
 locatedExpFrom = locatedFromSpans locatedExp
