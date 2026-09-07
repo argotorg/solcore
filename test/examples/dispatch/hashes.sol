@@ -25,7 +25,23 @@ contract C {
         return ripemd160(abcBytes());
     }
 
-    function erc7201_(id: memory<bytes>) public returns (bytes32) {
-        return erc7201(id);
+    // keccakWordLit folds keccak256 of a word's 32-byte big-endian form at
+    // compile time; keccakWordLit(0) == keccak256(bytes32(0)).
+    function keccakWord() public returns (bytes32) {
+        return bytes32(keccakWordLit(0));
+    }
+
+    // ERC-7201 namespaced storage slots, folded to constants at compile time
+    // from the string-literal namespace (no runtime keccak of the id).
+    function erc7201Example() public returns (bytes32) {
+        return erc7201("example.main");
+    }
+
+    function erc7201Ownable() public returns (bytes32) {
+        return erc7201("openzeppelin.storage.Ownable");
+    }
+
+    function erc7201Empty() public returns (bytes32) {
+        return erc7201("");
     }
 }

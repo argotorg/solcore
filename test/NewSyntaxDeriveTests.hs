@@ -78,6 +78,17 @@ newSyntaxDeriveTests =
             assertEqual "nominal Self keeps enum parameter" (targetTy dt) selfTy
             assertEqual "result uses method parameter" (Just methodTy) (sigReturn sig)
           other -> assertFailure (show other),
+      testCase "method equality constraints substitute Self and fresh method binders" $ do
+        let dt = derivingData "Choose" "Box" [b] [Constr "Box" [word]]
+            signature = Signature [b] [TyVar b :~: TyVar a] "choose" [Typed False "value" (TyVar b), Typed False "witness" (TyVar a)] False (Just (TyVar b)) False
+            cls = Class [a] [] "Choose" [] a [signature]
+        [inst] <- generated dt [TClassDef cls, TInstDef (genericFor dt word)]
+        let [FunDef _ sig _] = instFunctions inst
+        case sigVars sig of
+          [methodVariable] -> do
+            assertBool "method binder is fresh" (methodVariable /= b)
+            assertEqual "equality is preserved and both sides substituted" [TyVar methodVariable :~: targetTy dt] (sigContext sig)
+          other -> assertFailure (show other),
       testCase "nested Self is diagnosed" $ do
         let dt = derivingData "Nested" "Box" [] [Constr "Box" [word]]
             signature = Signature [] [] "inspect" [Typed False "x" (TyCon "pair" [TyVar a, word])] False (Just bool) False
@@ -89,6 +100,13 @@ newSyntaxDeriveTests =
             cls = Class [a] [] "Clone" [] a [signature]
         [inst] <- generated dt [TClassDef cls]
         assertEqual "unreachable body" [[Match [Var "x"] []]] (map funBody (instFunctions inst)),
+      testCase "empty enum argument uses in-scope absurd before empty match" $ do
+        let dt = derivingData "Clone" "Never" [] []
+            signature = Signature [] [] "clone" [Typed False "x" (TyVar a)] False (Just (TyVar a)) False
+            cls = Class [a] [] "Clone" [] a [signature]
+            absurd = TFunDef (FunDef False (Signature [a] [] "absurd" [] False (Just (TyVar a)) False) [])
+        [inst] <- generated dt [TClassDef cls, absurd]
+        assertEqual "absurd body" [[Return (Call Nothing "absurd" [])]] (map funBody (instFunctions inst)),
       testCase "empty factory can delegate to absurd" $ do
         let dt = derivingData "Make" "Never" [] []
             signature = Signature [] [] "make" [] False (Just (TyVar a)) False

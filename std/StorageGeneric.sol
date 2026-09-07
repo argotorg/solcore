@@ -29,13 +29,6 @@ trait StorageDeriving<self> {}
 // layouts. `Generic` instances are auto-derived for local data types, so
 // no per-type boilerplate is needed at the use site.
 
-function maxWord(a : word, b : word) returns (word) {
-    match (gtWord(a, b) ) {
-    case true  { return a;
-    } case false { return b;
-    } }
-}
-
 // ─── StorageSize for the primitive sum(f, g) type ────────────────────────
 // A tagged union occupies one slot for the tag plus enough slots for the
 // largest branch:  size = 1 + max(size(f), size(g)).

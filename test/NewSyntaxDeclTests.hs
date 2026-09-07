@@ -115,6 +115,12 @@ acceptedDeclarations =
     "type Word() = word;",
     "type Id(a,) = a;",
     "enum Empty {}",
+    "struct S<a> { x: a; }",
+    "struct struct { struct: word; }",
+    "function struct(struct: word) returns (word) { return struct; }",
+    "contract C { struct: word; }",
+    "#[derive(Eq)] struct S {}",
+    "contract C { #[derive(Eq)] struct S {} }",
     "enum Option<a,> { None(), Some(a), }",
     "#[derive(Eq, support.Show)] enum Unit { Unit }",
     "function f(a: word,) returns (word,) {}",
@@ -155,7 +161,6 @@ rejectedDeclarations =
     "type Id<a> = a;",
     "type Word is word;",
     "data E = E;",
-    "struct S { x: word; }",
     "interface I { function f() external; }",
     "library L {}",
     "enum Option<> { None }",
@@ -194,7 +199,7 @@ rejectedDeclarations =
     "contract C { function f() public public {} }",
     "contract C { function f() payable payable {} }",
     "contract C { function f() public; }",
-    "contract C { struct S {} }"
+    "struct S { x: word }"
   ]
 
 assertParses :: (Show a) => Parser a -> String -> Assertion

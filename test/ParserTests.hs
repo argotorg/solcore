@@ -1263,10 +1263,10 @@ declTests =
                   [Constr "Some" [TyCon "a" []], Constr "None" []]
               )
           ),
-      testCase "struct syntax is rejected at top level" $
-        parseFails topDeclP "struct Pair { value: word; value: bool; }",
-      testCase "struct syntax is rejected in contracts" $
-        parseFails topDeclP "contract C { struct Pair { value: word; value: bool; } }",
+      testCase "duplicate top-level struct fields are rejected" $
+        nameResolutionFails "struct Pair { value: word; value: bool; }",
+      testCase "duplicate contract-local struct fields are rejected" $
+        nameResolutionFails "contract C { struct Pair { value: word; value: bool; } }",
       testCase "transparent type alias" $
         parsesAs
           topDeclP
@@ -1694,12 +1694,24 @@ declarationShellTests :: TestTree
 declarationShellTests =
   testGroup
     "Declaration compatibility and name resolution"
-    [ testCase "top-level struct retains field names and types is rejected" $
-        parseFails topDeclP "struct Pair<a> { left: a; right: word; }",
+    [ testCase "top-level struct retains field names and types" $
+        parsesAs topDeclP "struct Pair<a> { left: a; right: word; }" $
+          TDataDef (StructTy "Pair" [TyCon "a" []] ["left", "right"] [TyCon "a" [], word]),
+      testCase "generic derived struct pretty-prints in new syntax" $
+        roundTripsTopDecl "#[derive(Eq, support.Show)] struct Pair<a> { left: a; right: word; }",
+      testCase "empty struct pretty-prints in new syntax" $
+        roundTripsTopDecl "struct Empty {}",
+      testCase "struct rejects old parenthesized generic parameters" $
+        parseFails topDeclP "struct Pair(a) { left: a; }",
+      testCase "struct rejects old postfix field types" $
+        parseFails topDeclP "struct Words { values: word[] memory; }",
+      testCase "struct rejects empty derive list" $
+        parseFails topDeclP "#[derive()] struct Empty {}",
       testCase "underscore-prefixed struct and field names parse is rejected" $
         parseFails topDeclP "struct _Record { _value: word; }",
-      testCase "contract-local struct is a data declaration is rejected" $
-        parseFails topDeclP "contract C { struct Entry { key: word; value: bool; } }",
+      testCase "contract-local struct is a data declaration" $
+        parsesAs topDeclP "contract C { struct Entry { key: word; value: bool; } }" $
+          TContr (Contract "C" [] [CDataDecl (StructTy "Entry" [] ["key", "value"] [word, TyCon "bool" []])]),
       testCase "interface contains body-less function signatures is rejected" $
         parseFails topDeclP "interface Oracle { function read(key: word) external view returns (word); }",
       testCase "interface rejects a function body" $
@@ -1747,8 +1759,18 @@ declarationShellTests =
           ),
       testCase "wildcard is not an expression" $
         parseFails topDeclP "function select(input: word) returns (word) { match (input) { case _ { return _; } } }",
-      testCase "name resolution preserves struct metadata and semantic pretty syntax is rejected" $
-        parseFails topDeclP "struct Box { value: word; }",
+      testCase "name resolution preserves struct metadata and semantic pretty syntax" $ do
+        parsed <- parseCompUnit "struct Box { value: word; }"
+        case parsed of
+          Left err -> assertFailure err
+          Right unit -> do
+            resolved <- nameResolution unit
+            case resolved of
+              Left err -> assertFailure (compilerErrorText err)
+              Right (Resolved.CompUnit _ [Resolved.TDataDef dt]) -> do
+                assertEqual "constructor field labels" [["value"]] (map Resolved.constrFields (Resolved.dataConstrs dt))
+                roundTripsTopDecl (SolcorePretty.pretty dt)
+              Right other -> assertFailure ("unexpected resolved struct: " ++ show other),
       testCase "value member reads retain their receiver with and without name collisions" $
         case runParserE
           (sc *> topDeclP <* eof)

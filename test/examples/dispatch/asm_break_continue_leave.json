@@ -1,0 +1,40 @@
+{
+  "asm_break_continue_leave": {
+    "bytecode": "_CODE",
+    "contract": "C",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "loopSum()(uint256) -> 14 (continue skips 0,1; break stops at 6; 2+3+4+5)",
+          "calldata": "7ae9260b",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000000e",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "clampSum()(uint256) -> 105 (leave early-returns clamp(9)=3; 102+3)",
+          "calldata": "fd339a24",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000069",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

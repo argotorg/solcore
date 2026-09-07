@@ -27,7 +27,7 @@ import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
-import Solcore.Primitives.Primitives (arrayLiteralInitName, arrayLiteralNewName)
+import Solcore.Primitives.Primitives (arrayLiteralInitName, arrayLiteralNewName, storeArrayLiteralName)
 import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath
 
@@ -582,7 +582,10 @@ arrayLiteralRuntimeDecls graph modulePath unit
       runtime <- lookupLoadedModule graph arrayRuntimeModuleId
       mapM
         (runtimeDefinition (topDeclsFrom runtime))
-        [(Name "arrayLitNew", arrayLiteralNewName), (Name "arrayLitInit", arrayLiteralInitName)]
+        [ (Name "arrayLitNew", arrayLiteralNewName),
+          (Name "arrayLitInit", arrayLiteralInitName),
+          (Name "storeArrayLit", storeArrayLiteralName)
+        ]
     runtimeDefinition declarations (sourceName, internalName) =
       case [fd | TFunDef fd <- declarations, sigName (funSignature fd) == sourceName] of
         [FunDef isPublic signature body] ->
@@ -1792,8 +1795,8 @@ renameDataTyTypeRefs renameMap (DataTyWithDerives derives kind n vs cs) =
     (map (renameConstrTypeRefs renameMap) cs)
 
 renameConstrTypeRefs :: Map Name Name -> Constr -> Constr
-renameConstrTypeRefs renameMap (Constr n tys) =
-  Constr (renameConstrNameTypeRefs renameMap n) (map (renameTyTypeRefs renameMap) tys)
+renameConstrTypeRefs renameMap (ConstrWithFields n tys fields) =
+  ConstrWithFields (renameConstrNameTypeRefs renameMap n) (map (renameTyTypeRefs renameMap) tys) fields
 
 renameConstrNameTypeRefs :: Map Name Name -> Name -> Name
 renameConstrNameTypeRefs renameMap qn@(QualName q n) =
@@ -1851,7 +1854,7 @@ qualifiedTypeStubDecls qualifier cunit =
           ( validationDataTyStub
               (qualifyName qualifier n)
               kind
-              [Constr (constructorLeafName (constrName c)) (constrTy c) | c <- cs]
+              [c {constrName = constructorLeafName (constrName c)} | c <- cs]
           )
       | TDataDef (DataTyWithKind kind n _ cs) <- topDeclsFrom cunit
       ]
@@ -1922,10 +1925,8 @@ validationDataTyStub :: Name -> DataTyKind -> [Constr] -> DataTy
 validationDataTyStub n kind cs =
   DataTyWithKind kind n [] (map stubConstr cs)
   where
-    stubConstr (Constr constrName' fieldTypes) =
-      Constr
-        constrName'
-        (replicate (length fieldTypes) (TyCon (Name "word") []))
+    stubConstr c =
+      c {constrTy = replicate (length (constrTy c)) (TyCon (Name "word") [])}
 
 typeCheckQualifiedImportDecls :: Set Name -> ModuleGraph -> (Import, Mod.ModuleId) -> Either String [TopDecl]
 typeCheckQualifiedImportDecls collidingTypeNames graph (imp, modulePath) =
@@ -2350,8 +2351,8 @@ selectTopDeclForExportRef _ (TExportDecl _) = Nothing
 selectTopDeclForExportRef _ (TPragmaDecl _) = Nothing
 
 renameStructConstructor :: DataTyKind -> Name -> [Constr] -> [Constr]
-renameStructConstructor (StructKind _) newName [Constr _ fieldTypes] =
-  [Constr newName fieldTypes]
+renameStructConstructor (StructKind _) newName [constructor] =
+  [constructor {constrName = newName}]
 renameStructConstructor _ _ constrs =
   constrs
 

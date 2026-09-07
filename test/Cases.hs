@@ -36,6 +36,7 @@ comptime =
       runTestForFile "string-lit-ops.sol" comptimeFolder,
       runTestForFile "string-lit-len.sol" comptimeFolder,
       runTestForFile "string-lit-keccak.sol" comptimeFolder,
+      runTestForFile "erc7201-lit.sol" comptimeFolder,
       runTestForFile "comptime_syntax.sol" comptimeFolder,
       -- comptime verification: positive cases (must compile)
       runTestForFile "ct_param_ok.sol" comptimeFolder,
@@ -70,6 +71,7 @@ comptime =
       runTestExpectingFailure "ct_param_poly_runtime.sol" comptimeFolder,
       runTestExpectingFailure "ct_runtime_arg.sol" comptimeFolder,
       runTestExpectingFailure "ct_let_runtime.sol" comptimeFolder,
+      runTestExpectingFailure "ct_asm_mload_runtime.sol" comptimeFolder,
       runTestExpectingFailure "ct_asm_ret.sol" comptimeFolder,
       runTestExpectingFailure "ct_overloaded_bad.sol" comptimeFolder,
       runTestExpectingFailure "string-mem-runtime-fail.sol" comptimeFolder
@@ -118,7 +120,9 @@ spec =
       runTestForFile "131localindex.sol" specFolder,
       runTestForFile "132nestedarray.sol" specFolder,
       runTestForFile "133arraystring.sol" specFolder,
-      runTestForFile "135aliaspush.sol" specFolder
+      runTestForFile "135aliaspush.sol" specFolder,
+      runTestForFile "136arraylit.sol" specFolder,
+      runTestForFile "137arraylitstorage.sol" specFolder
     ]
   where
     specFolder = "./test/examples/spec"
@@ -129,28 +133,45 @@ dispatches =
     "Files for dispatch cases"
     [ runDispatchTest "basic.sol",
       runDispatchTest "assembly.sol",
+      runDispatchTest "asm_subst.sol",
       runDispatchTest "stringid.sol",
       runDispatchTest "storage.sol",
       runDispatchTest "miniERC20.sol",
       runDispatchTest "Revert.sol",
       runDispatchTest "hashes.sol",
+      runDispatchTest "eip712.sol",
       runDispatchTest "empty.sol",
       runDispatchTest "empty_no_constructor.sol",
       runDispatchTest "generic_product.sol",
       runDispatchTest "generic_sum.sol",
+      runDispatchTest "abi_array_sum.sol",
+      runDispatchTest "abi_batch_adt.sol",
+      runDispatchTest "abi_bytes_array.sol",
+      runDispatchTest "abi_dyn_sum.sol",
+      runDispatchTest "abi_dyn_sum_return.sol",
+      runDispatchTest "abi_sum_roundtrip.sol",
+      runDispatchTest "abi_address_array.sol",
+      runDispatchTest "abi_encode_types.sol",
+      runDispatchTest "abi_encode_adt.sol",
       runDispatchTest "specialise_sum_of_product.sol",
       runDispatchTest "storage_adt_field.sol",
       runDispatchTest "storage_adt_enum.sol",
       runDispatchTest "storage_adt_bool.sol",
       runDispatchTest "storage_adt_mapping.sol",
       runDispatchTest "storage_adt_abi.sol",
+      runDispatchTest "storage_struct.sol",
       runDispatchTest "storage_dynamic_field.sol",
       runDispatchTest "storage_array.sol",
       runDispatchTest "ufcs_array.sol",
       runDispatchTest "array_ops.sol",
       runDispatchTest "array_copy.sol",
       runDispatchTest "array_string.sol",
-      runDispatchTest "array_nested.sol"
+      runDispatchTest "array_nested.sol",
+      runDispatchTest "arraylit.sol",
+      runDispatchTest "derive_ord.sol",
+      runDispatchTest "derive_contract_local.sol",
+      runDispatchTest "deposit.sol",
+      runDispatchTest "field-access-in-tuple.sol"
     ]
   where
     runDispatchTest file = runTestForFileWith (emptyOption mempty) file "./test/examples/dispatch"
@@ -280,7 +301,8 @@ opcodes :: TestTree
 opcodes =
   testGroup
     "Files for opcodes wrappers"
-    [ runTestForFile "all-shapes.sol" opcodesFolder
+    [ runTestForFile "all-shapes.sol" opcodesFolder,
+      runTestForFile "terminators.sol" opcodesFolder
     ]
   where
     opcodesFolder = "./test/examples/opcodes"
@@ -332,6 +354,7 @@ cases =
       runTestForFile "bitwise.sol" caseFolder,
       runTestForFile "match-bitwise.sol" caseFolder,
       runTestForFile "modulo.sol" caseFolder,
+      runTestForFile "compound-operators.sol" caseFolder,
       runTestForFile "CondExp.sol" caseFolder,
       runTestForFile "constrained-instance.sol" caseFolder,
       runTestForFile "constrained-instance-context.sol" caseFolder,
@@ -345,7 +368,20 @@ cases =
       runTestExpectingFailure "default-instance-missing.sol" caseFolder,
       runTestExpectingFailure "default-instance-weak.sol" caseFolder,
       runTestForFile "derive-generic-sum.sol" caseFolder,
+      runTestForFile "struct_fields.sol" caseFolder,
+      runTestForFile "struct_abi.sol" caseFolder,
       runTestForFile "derive-generic-excluded.sol" caseFolder,
+      runTestForFile "derive-eq-enum.sol" caseFolder,
+      runTestForFile "derive-eq-pair.sol" caseFolder,
+      runTestForFile "derive-eq-action.sol" caseFolder,
+      runTestForFile "clone-deriving.sol" caseFolder,
+      runTestForFile "deriving-empty-type.sol" caseFolder,
+      runTestForFile "contract-local-derive.sol" caseFolder,
+      runTestForFile "contract-local-type-same-name.sol" caseFolder,
+      runTestExpectingFailure "contract-local-type-escapes-fail.sol" caseFolder,
+      runTestForFile "derive-custom-hash.sol" caseFolder,
+      runTestForFile "derive-universe-instances.sol" caseFolder,
+      runTestExpectingFailure "derive-unknown-class.sol" caseFolder,
       runTestExpectingFailure "generic-manual-no-pragma.sol" caseFolder,
       runTestExpectingFailure "generic-sum-no-pragma.sol" caseFolder,
       runTestExpectingFailure "generic-product-no-pragma.sol" caseFolder,
@@ -593,6 +629,7 @@ cases =
       runTestForFile "simpleDiscount.sol" caseFolder,
       runTestForFile "yul-deposit-example.sol" caseFolder,
       runTestForFile "yul-asm-for-body.sol" caseFolder,
+      runTestForFile "yul-asm-break-continue-leave.sol" caseFolder,
       runTestForFile
         "yul-asm-switch-body.sol"
         caseFolder,
@@ -613,7 +650,11 @@ cases =
       -- CanStore obligation is never forced and the negative cases would pass.
       runTestForFileWith dispatchOpt "storage-adt-recursive-ok.sol" caseFolder,
       runTestExpectingFailureWith dispatchOpt "storage-adt-recursive-fail.sol" caseFolder,
-      runTestExpectingFailureWith dispatchOpt "storage-adt-mapping-field-fail.sol" caseFolder
+      runTestExpectingFailureWith dispatchOpt "storage-adt-mapping-field-fail.sol" caseFolder,
+      runTestExpectingFailure "array-elem-no-storagecopy.sol" caseFolder,
+      runTestExpectingFailure "array-push-no-canstore.sol" caseFolder,
+      runTestExpectingFailure "arraylit-mixed-types.sol" caseFolder,
+      runTestExpectingFailure "arraylit-bad-target.sol" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

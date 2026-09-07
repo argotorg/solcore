@@ -65,10 +65,12 @@ library
       Solcore.Backend.Mast
       Solcore.Backend.MastEval
       Solcore.Backend.Specialise
+      Solcore.Desugarer.ArrayLitDesugar
       Solcore.Desugarer.DecisionTreeCompiler
       Solcore.Desugarer.DeriveClass
       Solcore.Desugarer.DeriveGeneric
       Solcore.Desugarer.FieldAccess
+      Solcore.Desugarer.StructProjection
       Solcore.Desugarer.IfDesugarer
       Solcore.Desugarer.IndirectCall
       Solcore.Desugarer.IntLiteralDesugar
@@ -200,6 +202,7 @@ test-suite sol-core-tests
     SpecialiseTests
     UfcsTests
     YulEvalTests
+    YulParserTests
     ParserTests
     NewSyntaxTypeTests
     NewSyntaxExprTests

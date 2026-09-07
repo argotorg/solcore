@@ -179,14 +179,15 @@ pattern StructTy n ts fieldNames fieldTypes <-
   DataTyWithKind (StructKind fieldNames) n ts [Constr _ fieldTypes]
   where
     StructTy n ts fieldNames fieldTypes =
-      DataTyWithKind (StructKind fieldNames) n ts [Constr n fieldTypes]
+      DataTyWithKind (StructKind fieldNames) n ts [ConstrWithFields n fieldTypes fieldNames]
 
 {-# COMPLETE DataTy #-}
 
 data Constr
-  = Constr
+  = ConstrWithFields
   { constrName :: Name,
-    constrTy :: [Ty]
+    constrTy :: [Ty],
+    constrFields :: [Name]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -291,6 +292,15 @@ tysFrom :: [Pred] -> [Ty]
 tysFrom = foldr go []
   where
     go p ac = (predMain p) : predParams p `union` ac
+
+-- Synthetic and positional constructors have no named fields.  Keep the
+-- existing two-argument pattern available throughout compiler passes.
+pattern Constr :: Name -> [Ty] -> Constr
+pattern Constr n ts <- ConstrWithFields n ts _
+  where
+    Constr n ts = ConstrWithFields n ts []
+
+{-# COMPLETE Constr #-}
 
 -- definition of type synonym
 

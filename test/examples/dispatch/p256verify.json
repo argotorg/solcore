@@ -1,0 +1,41 @@
+{
+  "p256verify": {
+    "bytecode": "",
+    "contract": "P256Test",
+    "evmVersion": "osaka",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "verifyValid()(bool) - valid P-256 signature returns true",
+          "calldata": "d7e8fff9",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "verifyInvalid()(bool) - tampered hash returns false",
+          "calldata": "887dcd86",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

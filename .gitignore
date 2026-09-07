@@ -54,3 +54,7 @@ opencode.jsonc
 # config dirs
 .vscode/
 .private-journal/
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json

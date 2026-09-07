@@ -106,8 +106,8 @@ instance HasType Ty where
   bv _ = []
 
 instance HasType Constr where
-  apply s (Constr dn ts) =
-    Constr dn (apply s ts)
+  apply s (ConstrWithFields dn ts fields) =
+    ConstrWithFields dn (apply s ts) fields
   fv (Constr _ ts) = fv ts
   mv (Constr _ ts) = mv ts
   bv (Constr _ ts) = bv ts
@@ -217,6 +217,7 @@ instance (HasType a) => HasType (Exp a) where
     TyExp (apply s e) (apply s ty)
   apply _ (Lit l) = Lit l
   apply s (Indexed e1 e2) = Indexed (apply s e1) (apply s e2)
+  apply s (ArrayLit es) = ArrayLit (apply s es)
 
   fv (Var v) = fv v
   fv (Con n es) =
@@ -231,6 +232,7 @@ instance (HasType a) => HasType (Exp a) where
   fv (TyExp e ty) =
     fv e `union` fv ty
   fv (Indexed e1 e2) = fv e1 `union` fv e2
+  fv (ArrayLit es) = fv es
   fv _ = []
 
   mv (Var v) = mv v
@@ -246,6 +248,7 @@ instance (HasType a) => HasType (Exp a) where
   mv (TyExp e ty) =
     mv e `union` mv ty
   mv (Indexed e1 e2) = mv e1 `union` mv e2
+  mv (ArrayLit es) = mv es
   mv _ = []
 
   bv (Var v) = bv v
@@ -261,6 +264,7 @@ instance (HasType a) => HasType (Exp a) where
   bv (TyExp e ty) =
     bv e `union` bv ty
   bv (Indexed e1 e2) = bv e1 `union` bv e2
+  bv (ArrayLit es) = bv es
   bv _ = []
 
 instance (HasType a) => HasType (Stmt a) where

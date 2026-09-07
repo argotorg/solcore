@@ -209,6 +209,7 @@ locatedSource =
     [ "enum Bool { True, False }",
       "function main(x: word) returns (word) {",
       "  let y: word = x + 1;",
+      "  let zs: word = [x, y][0];",
       "  match (Bool.True) {",
       "    case Bool.True {",
       "      return y;",

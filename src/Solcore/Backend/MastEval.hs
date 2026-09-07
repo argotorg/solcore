@@ -5,6 +5,7 @@ module Solcore.Backend.MastEval
     FunTable,
     buildFunTable,
     computePureFuns,
+    computeComptimePureFuns,
     -- Evaluation monad (exported for testing)
     EvalEnv (..),
     EvalState (..),
@@ -16,7 +17,9 @@ module Solcore.Backend.MastEval
     evalYulOp,
     evalYulStmt,
     evalYulBlock,
+    substYulBlock,
     asmIsInterpretable,
+    asmIsInterpretableWith,
     maskWord,
     mstoreBytes,
     mloadWord,
@@ -28,7 +31,8 @@ where
 {- Partial Evaluator for Mast
    Performs compile-time evaluation where possible:
    - Interprets assembly blocks containing supported Yul arithmetic operations
-   - Folds calls to `subWord`, `gtWord`, `bxorWord`, `bandWord`, `borWord`, `eqWord` with literal arguments
+   - Folds calls to `subWord`, `gtWord`, `bxorWord`, `bandWord`, `borWord`, `bnotWord`, `eqWord` with literal arguments
+   - Folds the string-literal builtins `concatLit`, `strlenLit`, `keccakLit`, and `keccakWordLit`
    - Propagates known variable values
    - Inlines simple pure functions with literal arguments
 -}
@@ -490,12 +494,15 @@ evalPrimitive (Name "bandWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (MastLit (IntLit (maskWord (a .&. b))))
 evalPrimitive (Name "borWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just (MastLit (IntLit (maskWord (a .|. b))))
+evalPrimitive (Name "bnotWord") [MastLit (IntLit a)] =
+  Just (MastLit (IntLit (maskWord (complement a))))
 evalPrimitive (Name "eqWord") [MastLit (IntLit a), MastLit (IntLit b)] =
   Just $ mkBool (a == b)
 -- String literal primitives (Solidity/Yul semantics):
 -- - treat literals as UTF-8 byte sequences
 -- - strlen returns byte length
 -- - keccak returns the 256-bit big-endian word of keccak256(bytes)
+-- - keccakWord return the 256-bit big-endian word of keccak256(be32(word))
 evalPrimitive (Name "concatLit") [MastLit (StrLit a), MastLit (StrLit b)] =
   Just (MastLit (StrLit (a <> b)))
 evalPrimitive (Name "strlenLit") [MastLit (StrLit s)] =
@@ -503,11 +510,9 @@ evalPrimitive (Name "strlenLit") [MastLit (StrLit s)] =
    in Just (MastLit (IntLit (toInteger (BS.length bs))))
 evalPrimitive (Name "keccakLit") [MastLit (StrLit s)] =
   let bs = TE.encodeUtf8 (T.pack s)
-      digest :: Digest Keccak_256
-      digest = hash bs
-      digestBytes :: BS.ByteString
-      digestBytes = BA.convert digest
-   in Just (MastLit (IntLit (bsToIntegerBE digestBytes)))
+   in Just (MastLit (IntLit (keccak256BE bs)))
+evalPrimitive (Name "keccakWordLit") [MastLit (IntLit n)] =
+  Just (MastLit (IntLit (keccak256BE (integerToBE32 n))))
 -- Integer (comptime-only, unlimited precision) primitives:
 evalPrimitive (Name "wordToInteger") [MastLit (IntLit n)] =
   Just (MastLit (IntLit n)) -- value-level identity
@@ -532,6 +537,17 @@ bsToIntegerBE = BS.foldl' step 0
   where
     step :: Integer -> Word8 -> Integer
     step acc w = acc * 256 + fromIntegral w
+
+-- | Encode a 256-bit word as 32 big-endian bytes (EVM word layout).
+integerToBE32 :: Integer -> BS.ByteString
+integerToBE32 n =
+  BS.pack [fromIntegral (m `shiftR` (8 * i)) | i <- [31, 30 .. 0]]
+  where
+    m = maskWord n
+
+-- | keccak256 of a byte string, returned as a big-endian integer word.
+keccak256BE :: BS.ByteString -> Integer
+keccak256BE bs = bsToIntegerBE (BA.convert (hash bs :: Digest Keccak_256))
 
 -- Construct a boolean value as sum((), ())
 -- true = inr(()), false = inl(())
@@ -694,35 +710,137 @@ venvToSubst env =
     yulLit (StrLit s) = YLit (YulString s)
 
 -- | Substitute known literal values into a Yul block.
--- Only replaces YIdent occurrences in expression positions; does not touch
--- variable names on the left-hand side of let/assign or function parameter lists.
+--
+-- The substitution map is inlined into expression positions only (never into
+-- the names on the left of let/assign or into parameter lists), but it is
+-- threaded through the statement sequence so it stays both scope- and
+-- flow-aware:
+--
+--   * An asm-local @let x@ shadows any outer @x@: @x@ is dropped from the map
+--     for the rest of that scope, so later reads resolve to the local binding
+--     instead of the eliminated comptime value (otherwise a @for@ loop that
+--     rebinds its counter would read the stale outer literal forever).
+--   * An assignment @x := …@ makes the pre-block literal of @x@ stale: @x@ is
+--     dropped from the map so subsequent statements read the new runtime value
+--     (otherwise @x := 5; y := add(x, 1)@ would inline the pre-block @x@).
+--   * @let@/parameter/return names introduced by a nested @if@/@for@/@switch@/
+--     function shadow within their own scope only; assignments to outer
+--     variables inside them escape and invalidate the outer literal afterwards.
 substYulBlock :: Map.Map Name YulExp -> [YulStmt] -> [YulStmt]
-substYulBlock subst = map (substYulStmt subst)
+substYulBlock _ [] = []
+substYulBlock subst (s : ss) =
+  let (s', subst') = substYulStmt subst s
+   in s' : substYulBlock subst' ss
 
-substYulStmt :: Map.Map Name YulExp -> YulStmt -> YulStmt
-substYulStmt subst (YAssign names e) = YAssign names (substYulExp subst e)
-substYulStmt subst (YExp e) = YExp (substYulExp subst e)
-substYulStmt subst (YLet names me) = YLet names (fmap (substYulExp subst) me)
-substYulStmt subst (YIf e block) = YIf (substYulExp subst e) (substYulBlock subst block)
-substYulStmt subst (YBlock stmts) = YBlock (substYulBlock subst stmts)
-substYulStmt subst (YFun n as rs body) = YFun n as rs (substYulBlock subst body)
+-- | Substitute into one statement and return the map to use for the statements
+-- that follow it in the same block (with shadowed/reassigned names removed).
+substYulStmt :: Map.Map Name YulExp -> YulStmt -> (YulStmt, Map.Map Name YulExp)
+substYulStmt subst (YAssign names e) =
+  (YAssign names (substYulExp subst e), dropNames names subst)
+substYulStmt subst (YExp e) = (YExp (substYulExp subst e), subst)
+substYulStmt subst (YLet names me) =
+  (YLet names (fmap (substYulExp subst) me), dropNames names subst)
+substYulStmt subst (YIf e block) =
+  ( YIf (substYulExp subst e) (substYulBlock subst block),
+    dropSet (escapingAssignsYulBlock block) subst
+  )
+substYulStmt subst (YBlock stmts) =
+  ( YBlock (substYulBlock subst stmts),
+    dropSet (escapingAssignsYulBlock stmts) subst
+  )
+substYulStmt subst (YFun n as rs body) =
+  -- Parameters and return variables are local to the body; the definition
+  -- itself does not change any binding in the enclosing scope.
+  let inner = dropNames (as ++ concat rs) subst
+   in (YFun n as rs (substYulBlock inner body), subst)
 substYulStmt subst (YFor pre c post b) =
-  YFor
-    (substYulBlock subst pre)
-    (substYulExp subst c)
-    (substYulBlock subst post)
-    (substYulBlock subst b)
+  -- Top-level @pre@ lets scope over the whole loop and shadow outer bindings;
+  -- any variable assigned inside the loop is not loop-invariant, so its
+  -- pre-loop literal must not be inlined into the condition/post/body either.
+  let shadowed = letBoundYulBlock pre
+      escaping =
+        escapingAssignsYulBlock pre
+          `Set.union` escapingAssignsYulBlock post
+          `Set.union` escapingAssignsYulBlock b
+      inner = dropSet (shadowed `Set.union` escaping) subst
+   in ( YFor
+          (substYulBlock inner pre)
+          (substYulExp inner c)
+          (substYulBlock inner post)
+          (substYulBlock inner b),
+        dropSet escaping subst
+      )
 substYulStmt subst (YSwitch e cases def) =
-  YSwitch
-    (substYulExp subst e)
-    (map (\(lit, block) -> (lit, substYulBlock subst block)) cases)
-    (fmap (substYulBlock subst) def)
-substYulStmt _ stmt = stmt -- YBreak, YContinue, YLeave, YComment unchanged
+  let cases' = map (\(lit, block) -> (lit, substYulBlock subst block)) cases
+      def' = fmap (substYulBlock subst) def
+      escaping =
+        foldMap (escapingAssignsYulBlock . snd) cases
+          `Set.union` maybe Set.empty escapingAssignsYulBlock def
+   in ( YSwitch (substYulExp subst e) cases' def',
+        dropSet escaping subst
+      )
+substYulStmt subst stmt = (stmt, subst) -- YBreak, YContinue, YLeave, YComment
+
+dropNames :: [Name] -> Map.Map Name YulExp -> Map.Map Name YulExp
+dropNames names m = foldr Map.delete m names
+
+dropSet :: Set.Set Name -> Map.Map Name YulExp -> Map.Map Name YulExp
+dropSet names m = Set.foldr Map.delete m names
 
 substYulExp :: Map.Map Name YulExp -> YulExp -> YulExp
 substYulExp subst (YIdent n) = Map.findWithDefault (YIdent n) n subst
 substYulExp subst (YCall op args) = YCall op (map (substYulExp subst) args)
 substYulExp _ e = e -- YLit, YMeta unchanged
+
+-- | Names @let@-bound at the top level of a block; these are the only ones a
+-- @for@ pre-block puts in scope for the rest of the loop.
+letBoundYulBlock :: [YulStmt] -> Set.Set Name
+letBoundYulBlock = foldMap letBound
+  where
+    letBound (YLet names _) = Set.fromList names
+    letBound _ = Set.empty
+
+-- | Names assigned inside a block that refer to a variable declared outside it,
+-- i.e. assignments whose effect escapes the block's own scope. A name that is
+-- @let@-bound anywhere within the block is local, so it is excluded — dropping
+-- an outer literal for a purely local reassignment would be both unnecessary
+-- and unsafe (the outer name may be an eliminated comptime value still read
+-- after the block). Yul functions have an isolated scope, so their bodies are
+-- not traversed.
+escapingAssignsYulBlock :: [YulStmt] -> Set.Set Name
+escapingAssignsYulBlock block =
+  assignedYulBlock block `Set.difference` letBoundDeepYulBlock block
+
+assignedYulBlock :: [YulStmt] -> Set.Set Name
+assignedYulBlock = foldMap assignedYulStmt
+
+assignedYulStmt :: YulStmt -> Set.Set Name
+assignedYulStmt (YAssign names _) = Set.fromList names
+assignedYulStmt (YIf _ block) = assignedYulBlock block
+assignedYulStmt (YBlock stmts) = assignedYulBlock stmts
+assignedYulStmt (YFor pre _ post b) =
+  assignedYulBlock pre `Set.union` assignedYulBlock post `Set.union` assignedYulBlock b
+assignedYulStmt (YSwitch _ cases def) =
+  foldMap (assignedYulBlock . snd) cases
+    `Set.union` maybe Set.empty assignedYulBlock def
+assignedYulStmt (YFun {}) = Set.empty -- isolated scope
+assignedYulStmt _ = Set.empty
+
+letBoundDeepYulBlock :: [YulStmt] -> Set.Set Name
+letBoundDeepYulBlock = foldMap go
+  where
+    go (YLet names _) = Set.fromList names
+    go (YIf _ block) = letBoundDeepYulBlock block
+    go (YBlock stmts) = letBoundDeepYulBlock stmts
+    go (YFor pre _ post b) =
+      letBoundDeepYulBlock pre
+        `Set.union` letBoundDeepYulBlock post
+        `Set.union` letBoundDeepYulBlock b
+    go (YSwitch _ cases def) =
+      foldMap (letBoundDeepYulBlock . snd) cases
+        `Set.union` maybe Set.empty letBoundDeepYulBlock def
+    go (YFun {}) = Set.empty -- isolated scope
+    go _ = Set.empty
 
 -- | Merge a YulState back into VEnv, using TypeReg to find the right MastIds.
 -- Only names present in TypeReg are merged; others are silently ignored.
@@ -1000,10 +1118,12 @@ builtinPureFuns =
       Name "bxorWord",
       Name "bandWord",
       Name "borWord",
+      Name "bnotWord",
       Name "eqWord",
       Name "concatLit",
       Name "strlenLit",
-      Name "keccakLit"
+      Name "keccakLit",
+      Name "keccakWordLit"
     ]
       ++ integerPrimNames
       ++ stringPrimNames
@@ -1017,8 +1137,36 @@ builtinImpureFuns = Set.fromList [Name "revertLit", memStringFromLitName]
 -- contain no asm and whose every call target is already known-pure.
 -- Self-recursive calls are handled by including the candidate function in
 -- the assumed-pure set when checking its own body.
+--
+-- This is the PE notion of purity: memory ops (mload/mstore/mstore8) count as
+-- interpretable, because the Yul interpreter only *executes* them under
+-- 'envComptimeMode' and 'mload' succeeds only for bytes written earlier in the
+-- SAME evaluation context (mloadWord returns Nothing otherwise). Folding a
+-- memory-touching function is therefore gated dynamically and stays sound.
 computePureFuns :: FunTable -> Set.Set Name
-computePureFuns ft = go builtinPureFuns
+computePureFuns = computePureFunsWith True
+
+-- | Stricter purity used by the MAST comptime check ('ComptimeCheck').
+-- Unlike 'computePureFuns', memory ops (mload/mstore/mstore8) do NOT count as
+-- interpretable, so any function whose asm reads or writes memory is excluded.
+--
+-- Why the two notions must differ: 'isComptime' classifies expressions
+-- *structurally*, with none of the dynamic 'envComptimeMode' / in-context-write
+-- gating that makes memory folding sound during PE. A call to an mload-reading
+-- function that PE could not fold survives to the comptime check; if it were in
+-- pureFuns, 'isComptime' would wrongly label its result comptime even though it
+-- depends on runtime memory. Excluding memory-op functions keeps the classifier
+-- sound: a legitimately foldable memory chain (e.g. mstore then mload of the
+-- same address) is already collapsed to a literal by PE before this check runs,
+-- while an unfoldable memory read survives as a call and is correctly rejected.
+computeComptimePureFuns :: FunTable -> Set.Set Name
+computeComptimePureFuns = computePureFunsWith False
+
+-- | Fixed-point purity computation. @memOk@ selects whether memory ops
+-- (mload/mstore/mstore8) count as interpretable: True for PE
+-- ('computePureFuns'), False for the comptime check ('computeComptimePureFuns').
+computePureFunsWith :: Bool -> FunTable -> Set.Set Name
+computePureFunsWith memOk ft = go builtinPureFuns
   where
     go pureFuns =
       let pureFuns' =
@@ -1028,7 +1176,7 @@ computePureFuns ft = go builtinPureFuns
                     || fname `Set.member` builtinImpureFuns
                     then acc
                     else
-                      if bodyIsPure (Set.insert fname acc) (mastFunBody fd)
+                      if bodyIsPure memOk (Set.insert fname acc) (mastFunBody fd)
                         then Set.insert fname acc
                         else acc
               )
@@ -1038,28 +1186,29 @@ computePureFuns ft = go builtinPureFuns
             then pureFuns
             else go pureFuns'
 
-bodyIsPure :: Set.Set Name -> [MastStmt] -> Bool
-bodyIsPure pureFuns = all (stmtIsPure pureFuns)
+bodyIsPure :: Bool -> Set.Set Name -> [MastStmt] -> Bool
+bodyIsPure memOk pureFuns = all (stmtIsPure memOk pureFuns)
 
-stmtIsPure :: Set.Set Name -> MastStmt -> Bool
+stmtIsPure :: Bool -> Set.Set Name -> MastStmt -> Bool
 -- Asm blocks are pure only if every statement uses a statically interpretable
--- operation. This keeps storage/memory reads (sload, mload, …) out of pureFuns,
--- which is load-bearing for the MAST-level comptime check.
-stmtIsPure _ (MastAsm stmts) = asmIsInterpretable stmts
-stmtIsPure pureFuns (MastLet _ _ _ mInit) = maybe True (expIsPure pureFuns) mInit
-stmtIsPure pureFuns (MastAssign _ e) = expIsPure pureFuns e
-stmtIsPure pureFuns (MastStmtExp e) = expIsPure pureFuns e
-stmtIsPure pureFuns (MastReturn e) = expIsPure pureFuns e
-stmtIsPure pureFuns (MastMatch e alts) =
-  expIsPure pureFuns e && all (bodyIsPure pureFuns . snd) alts
-stmtIsPure pureFuns (MastFor initStmt cond post body) =
-  stmtIsPure pureFuns initStmt
+-- operation. This keeps storage reads (sload, …) out of pureFuns entirely;
+-- memory reads/writes (mload/mstore/mstore8) count only when @memOk@ is True
+-- (PE), never for the comptime check — which is load-bearing for its soundness.
+stmtIsPure memOk _ (MastAsm stmts) = asmIsInterpretableWith memOk stmts
+stmtIsPure _ pureFuns (MastLet _ _ _ mInit) = maybe True (expIsPure pureFuns) mInit
+stmtIsPure _ pureFuns (MastAssign _ e) = expIsPure pureFuns e
+stmtIsPure _ pureFuns (MastStmtExp e) = expIsPure pureFuns e
+stmtIsPure _ pureFuns (MastReturn e) = expIsPure pureFuns e
+stmtIsPure memOk pureFuns (MastMatch e alts) =
+  expIsPure pureFuns e && all (bodyIsPure memOk pureFuns . snd) alts
+stmtIsPure memOk pureFuns (MastFor initStmt cond post body) =
+  stmtIsPure memOk pureFuns initStmt
     && expIsPure pureFuns cond
-    && stmtIsPure pureFuns post
-    && bodyIsPure pureFuns body
-stmtIsPure _ MastBreak = True
-stmtIsPure _ MastContinue = True
-stmtIsPure pureFuns (MastSeq stmts) = bodyIsPure pureFuns stmts
+    && stmtIsPure memOk pureFuns post
+    && bodyIsPure memOk pureFuns body
+stmtIsPure _ _ MastBreak = True
+stmtIsPure _ _ MastContinue = True
+stmtIsPure memOk pureFuns (MastSeq stmts) = bodyIsPure memOk pureFuns stmts
 
 expIsPure :: Set.Set Name -> MastExp -> Bool
 expIsPure _ (MastLit _) = True
@@ -1073,14 +1222,25 @@ expIsPure pureFuns (MastCond e1 e2 e3) =
 -- | True if an asm block contains only statically interpretable statements.
 -- Such blocks can be evaluated at compile time by the Yul interpreter,
 -- and functions containing only such blocks are eligible for PE inlining.
--- Operations NOT listed here (sload, …) make the block non-interpretable,
--- which keeps the enclosing function out of pureFuns and preserves comptime-check soundness.
+-- Memory ops (mload/mstore/mstore8) are interpretable here; see
+-- 'asmIsInterpretableWith' for the stricter variant used by the comptime check.
 asmIsInterpretable :: [YulStmt] -> Bool
-asmIsInterpretable = all interpretableStmt
+asmIsInterpretable = asmIsInterpretableWith True
+
+-- | Generalisation of 'asmIsInterpretable'. @memOk@ selects whether memory ops
+-- (mload/mstore/mstore8) are treated as interpretable:
+--
+--   * PE ('computePureFuns') passes True — the interpreter gates memory ops on
+--     'envComptimeMode' and only folds in-context writes, so this stays sound.
+--   * The comptime check ('computeComptimePureFuns') passes False, so
+--     memory-touching asm never counts as pure there. Storage ops (sload, …)
+--     are never interpretable, regardless of @memOk@.
+asmIsInterpretableWith :: Bool -> [YulStmt] -> Bool
+asmIsInterpretableWith memOk = all interpretableStmt
   where
     interpretableStmt (YAssign [_] e) = interpretableExp e
-    interpretableStmt (YExp (YCall (Name "mstore") [p, v])) = interpretableExp p && interpretableExp v
-    interpretableStmt (YExp (YCall (Name "mstore8") [p, v])) = interpretableExp p && interpretableExp v
+    interpretableStmt (YExp (YCall (Name "mstore") [p, v])) = memOk && interpretableExp p && interpretableExp v
+    interpretableStmt (YExp (YCall (Name "mstore8") [p, v])) = memOk && interpretableExp p && interpretableExp v
     interpretableStmt _ = False
 
     -- mload has its own clause (reads memory); general YCall delegates to interpretableOp
@@ -1088,7 +1248,7 @@ asmIsInterpretable = all interpretableStmt
     interpretableExp (YLit (YulNumber _)) = True
     interpretableExp (YLit YulTrue) = True
     interpretableExp (YLit YulFalse) = True
-    interpretableExp (YCall (Name "mload") [p]) = interpretableExp p
+    interpretableExp (YCall (Name "mload") [p]) = memOk && interpretableExp p
     interpretableExp (YCall op args) =
       interpretableOp op (length args) && all interpretableExp args
     interpretableExp _ = False

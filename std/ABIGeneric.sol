@@ -5,7 +5,9 @@ pragma no-coverage-condition ABIDecode;
 export {
     ABIDeriving,
     encode,
-    decode
+    decode,
+    encodeVariant,
+    abiSumReader
 };
 
 import * from std;
@@ -21,21 +23,22 @@ import * from std.Generic;
 // concrete per-type instance is emitted instead — exactly as for storage.
 trait ABIDeriving<self> {}
 
-function maxWord(a : word, b : word) returns (word) {
-    match (gtWord(a, b) ) {
-    case true  { return a;
-    } case false { return b;
-    } }
-}
-
 // ─── ABIAttribs for the primitive sum(f, g) type ─────────────────────────
 // headSize = 32 (tag word) + max(headSize(f), headSize(g))
 
 impl<f, g> ABIAttribs<sum<f, g>> where f: ABIAttribs, g: ABIAttribs {
+    // Head footprint. A *dynamic* sum occupies a single offset word in the head
+    // (its tag + branch payload live in the tail), exactly like any other
+    // dynamic type. Only a fully *static* sum is laid out inline as
+    // tag + widest branch; there both branches are static, so their headSize is
+    // their full size and 32 + max(...) is the correct inline footprint.
     function headSize(ty : Proxy<sum<f, g>>) returns (word) {
         let pf : Proxy<f>;
         let pg : Proxy<g>;
-        return 32 + maxWord(ABIAttribs.headSize(pf), ABIAttribs.headSize(pg));
+        match (and(ABIAttribs.isStatic(pf), ABIAttribs.isStatic(pg)) ) {
+        case false { return 32;
+        } case true  { return 32 + maxWord(ABIAttribs.headSize(pf), ABIAttribs.headSize(pg));
+        } }
     }
     function isStatic(ty : Proxy<sum<f, g>>) returns (bool) {
         let pf : Proxy<f>;
@@ -45,41 +48,161 @@ impl<f, g> ABIAttribs<sum<f, g>> where f: ABIAttribs, g: ABIAttribs {
 }
 
 // ─── ABIEncode for sum(f, g) ─────────────────────────────────────────────
-// Wire layout (static sums only):
+// This is the exact mirror of `ABIDecoder(sum(f, g), reader):ABIDecode` below.
+//
+// A STATIC sum is laid out inline in the head:
 //   [offset +  0 .. offset + 31] : tag word (0 = inl, 1 = inr)
 //   [offset + 32 ..             ] : encoded branch payload
+//
+// A DYNAMIC sum (one whose branch carries a dynamic field) occupies a single
+// offset word in the head, like any other dynamic ABI value; its tag + branch
+// payload live in the tail:
+//   head: [offset .. offset + 31] : relative offset (tail - basePtr) to the body
+//   tail: [tag word][branch head ...][branch tail ...]
+// The tail body is itself an inline [tag][branch] sum, so decode follows the
+// offset and reads it exactly as it reads a static sum.
 
 impl<f, g> ABIEncode<sum<f, g>> where f: ABIAttribs, f: ABIEncode, g: ABIAttribs, g: ABIEncode {
     function encodeInto(x : sum<f, g>, basePtr : word, offset : word, tail : word) returns (word) {
-        match (x ) {
-        case inl(v) {
-            mstore(basePtr + offset, 0);
-            return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
-        } case inr(v) {
-            mstore(basePtr + offset, 1);
-            return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+        let prx : Proxy<sum<f, g>>;
+        match (ABIAttribs.isStatic(prx) ) {
+        // STATIC sum: inline tag at basePtr+offset, branch at offset + 32.
+        case true {
+            match (x ) {
+            case inl(v) {
+                mstore(basePtr + offset, 0);
+                return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+            } case inr(v) {
+                mstore(basePtr + offset, 1);
+                return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+            } }
+        // DYNAMIC sum: head slot holds a relative offset to the sum body, which
+        // is laid out inline in the tail. headSize(prx) is 32 here (the offset
+        // word), so the inline head footprint is computed from the branches:
+        // 32 (tag) + max(headSize(f), headSize(g)).
+        } case false {
+            let pf : Proxy<f>;
+            let pg : Proxy<g>;
+            mstore(basePtr + offset, tail - basePtr);
+            let newBase = tail;
+            let innerHead = 32 + maxWord(ABIAttribs.headSize(pf), ABIAttribs.headSize(pg));
+            let newTail = tail + innerHead;
+            match (x ) {
+            case inl(v) {
+                mstore(newBase, 0);
+                return ABIEncode.encodeInto(v, newBase, 32, newTail);
+            } case inr(v) {
+                mstore(newBase, 1);
+                return ABIEncode.encodeInto(v, newBase, 32, newTail);
+            } }
         } }
     }
 }
 
 // ─── ABIDecode for sum(f, g) ─────────────────────────────────────────────
-// Reads the tag word at headOffset; dispatches to f or g decoder at headOffset + 32.
+// A STATIC sum is laid out inline: read the tag word at headOffset, dispatch to
+// the branch decoder at headOffset + 32.
+//
+// A DYNAMIC sum (one whose branch carries a dynamic field) is, like any dynamic
+// ABI value, referenced by a 32-byte offset: read that offset at headOffset,
+// rebase a decoder onto the sum's start, then read [tag][branch] inline there.
+// Following the offset here (rather than at the call site) is what lets a
+// dynamic sum be decoded uniformly wherever a dynamic value can appear — as a
+// field, or as a `T[]` element alongside a bare `bytes`/`string` leaf, which
+// follows its offset the same way.
 
-impl<f, g, reader> ABIDecode<ABIDecoder<sum<f, g>, reader>, sum<f, g>> where reader: WordReader, f: ABIAttribs, ABIDecoder<f, reader>: ABIDecode<f>, ABIDecoder<g, reader>: ABIDecode<g> {
+impl<f, g, reader> ABIDecode<ABIDecoder<sum<f, g>, reader>, sum<f, g>> where reader: WordReader, f: ABIAttribs, g: ABIAttribs, ABIDecoder<f, reader>: ABIDecode<f>, ABIDecoder<g, reader>: ABIDecode<g> {
     function decode(ptr : ABIDecoder<sum<f, g>, reader>, headOffset : word) returns (sum<f, g>) {
         match (ptr ) {
         case ABIDecoder(rdr) {
-            let tag = WordReader.read(WordReader.advance(rdr, headOffset));
+            let prx : Proxy<sum<f, g>>;
+            // Byte offset (relative to rdr) of this sum's own start. A static sum
+            // is inline at headOffset; a dynamic sum's head slot holds a 32-byte
+            // offset to it, which we follow. We then rebase a decoder onto the
+            // sum start and read [tag][branch] inline — so the tag match (and its
+            // inl/inr) has a single, uniform shape regardless of static/dynamic.
+            let sumStartOff : word;
+            match (ABIAttribs.isStatic(prx) ) {
+            case true  { sumStartOff = headOffset;
+            } case false { sumStartOff = WordReader.read(WordReader.advance(rdr, headOffset));
+            } }
+            let sumRdr = WordReader.advance(rdr, sumStartOff);
+            let tag = WordReader.read(sumRdr);
             match (tag ) {
             case 0 {
-                let dec_f : ABIDecoder<f, reader> = ABIDecoder(rdr);
-                return inl(ABIDecode.decode(dec_f, headOffset + 32));
+                let dec_f : ABIDecoder<f, reader> = ABIDecoder(sumRdr);
+                return inl(ABIDecode.decode(dec_f, 32));
             } default {
-                let dec_g : ABIDecoder<g, reader> = ABIDecoder(rdr);
-                return inr(ABIDecode.decode(dec_g, headOffset + 32));
+                let dec_g : ABIDecoder<g, reader> = ABIDecoder(sumRdr);
+                return inr(ABIDecode.decode(dec_g, 32));
             } }
         } }
     }
+}
+
+// ─── Variant-tagged sum wire format ──────────────────────────────────────
+// An ADT crosses the ABI boundary tagged by a single bytes32 discriminant per
+// variant, NOT the positional inl/inr 0/1 chain used internally. The tag is the
+// keccak256 of the variant's signature `Name(argSigs...)`, reusing the SigString
+// convention (std.dispatch) for the argument types — exactly the shape a method
+// selector hashes, but kept as a full 32-byte word rather than truncated to 4.
+//
+// The variant name is only known at derivation time (a value's structural sum
+// representation has forgotten which constructor it came from), so DeriveGeneric
+// computes each variant's tag inline in the per-type ABIEncode / ABIDecode
+// instance it emits — `keccakLit("Name(" + sigStr(Proxy(fields)) + ")")`, the same
+// comptime-folded shape as Selector.compute in std.dispatch — and passes the
+// resulting word here: encode writes `encodeVariant`'s [tag][fields] body, decode
+// reads the tag with `abiSumReader` and compares it against each variant's tag.
+//
+// Layout is otherwise identical to the old structural sum:
+//   static sum : inline [tag word][branch payload] at basePtr + offset
+//   dynamic sum: an offset word in the head pointing at an inline [tag][branch]
+//                body laid out in the tail.
+// Only the tag *value* changed (0/1 → keccak256("Name(argSigs)")), so head sizes
+// and staticness (ABIAttribs) are unaffected — a tag is still one word.
+
+// Frame one variant's field product `v` into an ABI [tag][fields] body, mirroring
+// the static/dynamic layout of the old structural sum encoder. `tag` is the
+// variant's precomputed keccak256("Name(argSigs)") discriminant; `innerHead` is
+// the inline body footprint (32 + widest branch head) the dynamic case reserves in
+// the tail (ignored for static sums).
+function encodeVariant<f>(
+    tag : word,
+    v : f,
+    isStaticSum : bool,
+    innerHead : word,
+    basePtr : word,
+    offset : word,
+    tail : word
+) returns (word)  where f: ABIAttribs, f: ABIEncode {
+    match (isStaticSum ) {
+    // STATIC sum: inline tag at basePtr+offset, branch at offset + 32.
+    case true {
+        mstore(basePtr + offset, tag);
+        return ABIEncode.encodeInto(v, basePtr, offset + 32, tail);
+    // DYNAMIC sum: head slot holds a relative offset to the [tag][branch] body,
+    // which is laid out inline in the tail.
+    } case false {
+        mstore(basePtr + offset, tail - basePtr);
+        let newBase = tail;
+        let newTail = tail + innerHead;
+        mstore(newBase, tag);
+        return ABIEncode.encodeInto(v, newBase, 32, newTail);
+    } }
+}
+
+// Resolve a decoder onto the start of a sum body and hand it back so the caller
+// can read the tag word (at +0) and the branch fields (at +32). A static sum is
+// inline at headOffset; a dynamic sum's head slot holds a 32-byte offset to its
+// body, which we follow — the same start resolution the structural decoder used.
+function abiSumReader<reader>(rdr : reader, headOffset : word, isStaticSum : bool) returns (reader)  where reader: WordReader {
+    let sumStartOff : word;
+    match (isStaticSum ) {
+    case true  { sumStartOff = headOffset;
+    } case false { sumStartOff = WordReader.read(WordReader.advance(rdr, headOffset));
+    } }
+    return WordReader.advance(rdr, sumStartOff);
 }
 
 // ─── Default bridges: ABIAttribs and ABIEncode via Generic ───────────────
@@ -103,8 +226,11 @@ default impl<a, rep> ABIEncode<a> where a: Generic<rep>, rep: ABIAttribs, rep: A
 }
 
 // ─── Top-level generic encode function ───────────────────────────────────
-// Serialises any 'a' that has a Generic(rep) instance.
-// Only the Generic instance is required — ABIEncode is resolved via the bridge.
+// Serialises any 'a' that has a Generic(rep) instance, through its rep. This is
+// the low-level structural path (used e.g. by generic_sum to exercise the raw
+// sum(f,g) coding directly). The ADT *wire* format (per-variant keccak tag) is
+// applied by the type's own derived ABIEncode, which abi_encode and the contract
+// dispatch reach directly — not through this rep bridge.
 
 function encode<a, rep>(x : a, basePtr : word, offset : word, tail : word) returns (word)  where a: Generic<rep>, rep: ABIAttribs, rep: ABIEncode {
     let xrep : rep = Generic.from(x);
@@ -112,8 +238,8 @@ function encode<a, rep>(x : a, basePtr : word, offset : word, tail : word) retur
 }
 
 // ─── Top-level generic decode function ───────────────────────────────────
-// Deserialises any 'a' that has a Generic(rep) instance.
-// Only the Generic instance is required — ABIDecode is resolved via the bridge.
+// Deserialises any 'a' that has a Generic(rep) instance, through its rep (the
+// structural counterpart to `encode` above).
 
 function decode<a, rep, reader>(ptr : ABIDecoder<a, reader>, headOffset : word) returns (a)  where a: Generic<rep>, reader: WordReader, ABIDecoder<rep, reader>: ABIDecode<rep> {
     match (ptr ) {

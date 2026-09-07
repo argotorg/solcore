@@ -287,6 +287,8 @@ evmc::Result EVMHost::call(evmc_message const& _message) noexcept
 	}
 	else if (_message.recipient == 0x0000000000000000000000000000000000000009_address && m_evmVersion >= langutil::EVMVersion::istanbul())
 		return precompileBlake2f(_message);
+	else if (_message.recipient == 0x0000000000000000000000000000000000000100_address && m_evmVersion >= langutil::EVMVersion::osaka())
+		return precompileP256Verify(_message);
 
 	auto const stateBackup = accounts;
 
@@ -551,6 +553,35 @@ evmc::Result EVMHost::precompileECRecover(evmc_message const& _message) noexcept
 			),
 			{
 				fromHex(""),
+				gas_cost
+			}
+		},
+		{
+			// Same hash/r/s as the recover() success case but with v = 1, which
+			// is not a valid recovery id (only 27 and 28 are). The precompile
+			// succeeds with empty output (test/examples/dispatch/ecrecover
+			// recoverFailBadV()).
+			fromHex(
+				"aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+				"0000000000000000000000000000000000000000000000000000000000000001"
+				"b3ba6dd3757d18f28736e84b1296af85362b7bdf4548710733c6325abf95311d"
+				"3523e7d34da277c59af090e44cebddb10b73be11780f028d02cf5ae5f24109fc"
+			),
+			{
+				fromHex(""),
+				gas_cost
+			}
+		},
+		{
+			// EIP-712 canonical "Mail" example digest (test/examples/dispatch/eip712).
+			fromHex(
+				"be609aee343fb3c4b28e1df9e632fca64fcfaede20f02e86244efddf30957bd2"
+				"000000000000000000000000000000000000000000000000000000000000001c"
+				"4355c47d63924e8a72e509b65029052eb6c299d53a04e167c5775fd466751c9d"
+				"07299936d304c153f6443dfa05f40ff007d72911b6f72307f996231605b91562"
+			),
+			{
+				fromHex("000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"),
 				gas_cost
 			}
 		}
@@ -1283,6 +1314,45 @@ evmc::Result EVMHost::precompileBlake2f(evmc_message const&) noexcept
 {
 	// TODO implement
 	return resultWithFailure();
+}
+
+evmc::Result EVMHost::precompileP256Verify(evmc_message const& _message) noexcept
+{
+	// NOTE this is a partial implementation for some inputs.
+	constexpr int64_t gas_cost = 6900;
+
+	static std::map<bytes, EVMPrecompileOutput> const inputOutput{
+		{
+			// Valid signature: verifies against the P-256 public key (qx, qy).
+			fromHex(
+				"abcdef00112233445566778899aabbccddeeff00112233445566778899aabbcc"
+				"a29295460e251beea1bdc9b84b2f3fe8e3a3e4d872baa3c55b78c9e448190ea9"
+				"2d854575b092b3732d3d73c8414bda17f907776894cff2e8e25e733d200f3f5c"
+				"6079df2480f92e4cf526c08e32ab82aed6599fddb777a039612fe7c9ef0247ba"
+				"e2b4793e7c77585508c4780e4e53a36deefbb3548f4380ee6df04863cfc54c2d"
+			),
+			{
+				fromHex("0000000000000000000000000000000000000000000000000000000000000001"),
+				gas_cost
+			}
+		},
+		{
+			// Same signature and key but a tampered hash (last byte flipped):
+			// verification fails, so the precompile returns empty output.
+			fromHex(
+				"abcdef00112233445566778899aabbccddeeff00112233445566778899aabbcd"
+				"a29295460e251beea1bdc9b84b2f3fe8e3a3e4d872baa3c55b78c9e448190ea9"
+				"2d854575b092b3732d3d73c8414bda17f907776894cff2e8e25e733d200f3f5c"
+				"6079df2480f92e4cf526c08e32ab82aed6599fddb777a039612fe7c9ef0247ba"
+				"e2b4793e7c77585508c4780e4e53a36deefbb3548f4380ee6df04863cfc54c2d"
+			),
+			{
+				fromHex(""),
+				gas_cost
+			}
+		}
+	};
+	return precompileGeneric(_message, inputOutput);
 }
 
 evmc::Result EVMHost::precompileGeneric(

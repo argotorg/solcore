@@ -211,14 +211,35 @@ pragmaP = do
       status = maybe DisableAll DisableFor (NE.nonEmpty names)
   pure (Pragma pragmaTy status)
 
+dataDeclP :: Parser DataTy
+dataDeclP = do
+  derives <- option [] deriveP
+  withDataDerives derives <$> (enumP <|> structP)
+
 enumP :: Parser DataTy
 enumP = do
-  derives <- option [] deriveP
   keyword "enum"
   n <- simpleNameP
   params <- typeParamsP
   cs <- braces (constrP `sepEndBy` comma)
-  pure (withDataDerives derives (DataTy n params cs))
+  pure (DataTy n params cs)
+
+-- Named product fields use the same type parameters and derive attributes as enums.
+structP :: Parser DataTy
+structP = do
+  keyword "struct"
+  n <- simpleNameP
+  params <- typeParamsP
+  fields <- braces (many structFieldP)
+  let (names, tys) = unzip fields
+  pure (StructTy n params names tys)
+  where
+    structFieldP = do
+      n <- simpleNameP
+      _ <- colon
+      ty <- typeP
+      _ <- semicolon
+      pure (n, ty)
 
 deriveP :: Parser [Name]
 deriveP = do
@@ -338,7 +359,7 @@ contractDeclP :: Parser ContractDecl
 contractDeclP =
   choice
     [ CFieldDecl <$> try fieldDeclP,
-      CDataDecl <$> enumP,
+      CDataDecl <$> dataDeclP,
       CSymDecl <$> tySymP,
       CConstrDecl <$> constructorDeclP,
       CFunDecl <$> fallbackDefP,
@@ -366,7 +387,7 @@ topDeclP =
   choice
     [ TPragmaDecl <$> pragmaP,
       TExportDecl <$> exportP,
-      TDataDef <$> enumP,
+      TDataDef <$> dataDeclP,
       TSym <$> tySymP,
       TContr <$> contractP,
       contractOnlyDeclP,

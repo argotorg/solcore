@@ -19,6 +19,7 @@ import Solcore.Backend.EmitHull (emitHull)
 import Solcore.Backend.Mast ()
 import Solcore.Backend.MastEval (defaultFuel, eliminateDeadCode, evalCompUnit)
 import Solcore.Backend.Specialise (specialiseCompUnit)
+import Solcore.Desugarer.ArrayLitDesugar (arrayLitDesugarer)
 import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls, writeContractAbis)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, warningDiagnostic)
 import Solcore.Desugarer.DeriveClass (deriveClassTopDecls)
@@ -30,6 +31,7 @@ import Solcore.Desugarer.IntLiteralDesugar (desugarIntLiterals)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Desugarer.StrLiteralDesugar (desugarStrLiterals)
+import Solcore.Desugarer.StructProjection (structSetterTopDecls)
 import Solcore.Diagnostics
   ( CompilerError (..),
     Diagnostic (..),
@@ -154,12 +156,16 @@ compileWithDiagnostics opts = runExceptT $ do
   -- SAIL-level comptime verification
   liftEitherDiagnostic sources (checkComptimeEarly typed)
 
+  -- Array literals are lowered after type checking fixes their element types.
+  expanded <-
+    liftIO $ timeItNamed "Array literal desugaring" (pure (arrayLitDesugarer typed))
+
   -- If / boolean desugaring
   desugared <-
     liftIO $
       if noIfDesugar
-        then pure typed
-        else timeItNamed "If/Bool desugaring" (pure (ifDesugarer typed))
+        then pure expanded
+        else timeItNamed "If/Bool desugaring" (pure (ifDesugarer expanded))
 
   liftIO $ when verbose $ do
     putStrLn "> If / Bool desugaring:"
@@ -874,13 +880,17 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Generic instance derivation:"
     putStrLn $ prettyInferenceDecls derived
 
+  -- Storage struct writes use generated setters; value reads use the existing
+  -- typed field selectors. Keep only one implementation of each operation.
+  let projected = mapModuleInferenceTopDecls (structSetterTopDecls localData) derived
+
   -- SCC analysis
   connected <-
     ExceptT $
       fmap (first compilerErrorFromString) $
         timeItNamed "SCC           " $
           runExceptT $
-            traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) derived
+            traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) projected
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"

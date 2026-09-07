@@ -88,7 +88,7 @@ yulStmt =
         YFor <$> (pKeyword "for" *> yulBlock) <*> yulExp <*> yulBlock <*> yulBlock,
         YSwitch
           <$> (pKeyword "switch" *> yulExp)
-          <*> many yulCase
+          <*> some yulCase
           <*> optional (pKeyword "default" *> yulBlock),
         YContinue <$ pKeyword "continue",
         YBreak <$ pKeyword "break",

@@ -5,8 +5,12 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$root_dir"
 
+bash ./scripts/test_contest_concurrency.sh
+
 bash ./contest.sh test/examples/dispatch/basic.json
 bash ./contest.sh test/examples/dispatch/assembly.json
+bash ./contest.sh test/examples/dispatch/asm_break_continue_leave.json
+bash ./contest.sh test/examples/dispatch/asm_subst.json
 bash ./contest.sh test/examples/dispatch/neg.json
 bash ./contest.sh test/examples/dispatch/miniERC20.json
 bash ./contest.sh test/examples/dispatch/Revert.json
@@ -20,6 +24,8 @@ bash ./contest.sh test/examples/dispatch/stringlit.json
 bash ./contest.sh test/examples/dispatch/slices.json
 bash ./contest.sh test/examples/dispatch/fallback.json
 bash ./contest.sh test/examples/dispatch/ecrecover.json
+bash ./contest.sh test/examples/dispatch/eip712.json
+bash ./contest.sh test/examples/dispatch/p256verify.json
 bash ./contest.sh test/examples/dispatch/memory.json
 bash ./contest.sh test/examples/dispatch/storage.json
 bash ./contest.sh test/examples/dispatch/storage_array.json
@@ -29,15 +35,31 @@ bash ./contest.sh test/examples/dispatch/array_copy.json
 bash ./contest.sh test/examples/dispatch/array_string.json
 bash ./contest.sh test/examples/dispatch/array_nested.json
 bash ./contest.sh test/examples/dispatch/generic_sum.json
+bash ./contest.sh test/examples/dispatch/abi_array_sum.json
+bash ./contest.sh test/examples/dispatch/abi_bytes_array.json
+bash ./contest.sh test/examples/dispatch/abi_address_array.json
+bash ./contest.sh test/examples/dispatch/abi_dyn_sum.json
+bash ./contest.sh test/examples/dispatch/abi_dyn_sum_return.json
+bash ./contest.sh test/examples/dispatch/abi_sum_roundtrip.json
+bash ./contest.sh test/examples/dispatch/abi_encode_types.json
+bash ./contest.sh test/examples/dispatch/abi_encode_adt.json
+bash ./contest.sh test/examples/dispatch/abi_struct.json
+bash ./contest.sh test/examples/dispatch/abi_batch_adt.json
 bash ./contest.sh test/examples/dispatch/generic_product.json
 bash ./contest.sh test/examples/dispatch/sum_wide_product.json
 bash ./contest.sh test/examples/dispatch/specialise_sum_of_product.json
 bash ./contest.sh test/examples/dispatch/storage_adt_field.json
+bash ./contest.sh test/examples/dispatch/storage_struct.json
 bash ./contest.sh test/examples/dispatch/storage_adt_enum.json
 bash ./contest.sh test/examples/dispatch/storage_adt_bool.json
 bash ./contest.sh test/examples/dispatch/storage_adt_mapping.json
 bash ./contest.sh test/examples/dispatch/storage_adt_abi.json
 bash ./contest.sh test/examples/dispatch/storage_dynamic_field.json
+bash ./contest.sh test/examples/dispatch/arraylit.json
 bash ./contest.sh test/examples/dispatch/forloops.json
 bash ./contest.sh test/examples/dispatch/weth9.json
+bash ./contest.sh test/examples/dispatch/derive_ord.json
+bash ./contest.sh test/examples/dispatch/derive_contract_local.json
+bash ./contest.sh test/examples/dispatch/deposit.json
 bash ./contest.sh test/new-syntax/integration/main.json
+bash ./contest.sh test/new-syntax/struct-storage/main.json

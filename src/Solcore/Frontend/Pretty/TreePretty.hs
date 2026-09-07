@@ -166,8 +166,9 @@ instance Pretty Constructor where
       $$ rbrace
 
 instance Pretty DataTy where
-  ppr (StructTy n ps fieldNames fieldTypes) =
-    text "struct"
+  ppr dt@(StructTy n ps fieldNames fieldTypes) =
+    pprDerives (dataDerives dt)
+      $$ text "struct"
       <+> (ppr n <> pprTyParams ps)
       <+> lbrace
       $$ nest 3 (vcat (zipWith pprStructField fieldNames fieldTypes))

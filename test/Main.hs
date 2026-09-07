@@ -18,6 +18,7 @@ import SpecialiseTests
 import Test.Tasty
 import UfcsTests
 import YulEvalTests
+import YulParserTests
 
 main :: IO ()
 main = defaultMain tests
@@ -32,6 +33,7 @@ tests =
       newSyntaxDeclTests,
       newSyntaxDeriveTests,
       parserTests,
+      yulParserTests,
       cases,
       tabledResolution,
       comptime,

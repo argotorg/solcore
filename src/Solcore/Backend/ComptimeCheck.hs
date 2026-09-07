@@ -7,7 +7,10 @@ module Solcore.Backend.ComptimeCheck (checkComptime) where
      1. Classification: is an expression statically comptime?
         A value is comptime if it is a literal, a comptime-bound variable,
         or a call to a pure function whose arguments are all comptime.
-        Purity is determined by computePureFuns (MastEval).
+        Purity is determined by computeComptimePureFuns (MastEval), the
+        stricter notion that excludes memory-op (mload/mstore) functions: this
+        classifier is structural, without the runtime gating that makes memory
+        folding sound in the partial evaluator.
 
      2. Constraint checking: annotations must be consistent with reality.
         - A parameter annotated 'comptime' must receive a comptime argument
@@ -22,7 +25,7 @@ module Solcore.Backend.ComptimeCheck (checkComptime) where
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Solcore.Backend.Mast
-import Solcore.Backend.MastEval (FunTable, buildFunTable, computePureFuns)
+import Solcore.Backend.MastEval (FunTable, buildFunTable, computeComptimePureFuns)
 import Solcore.Frontend.Syntax.Name (Name)
 
 -- | Set of variable names known to be comptime in the current scope.
@@ -33,7 +36,7 @@ checkComptime :: MastCompUnit -> Either String ()
 checkComptime cu = mapM_ checkTopDecl (mastTopDecls cu)
   where
     ft = buildFunTable cu
-    pure_ = computePureFuns ft
+    pure_ = computeComptimePureFuns ft
 
     checkTopDecl (MastTContr c) = mapM_ (checkContractDecl ft pure_) (mastContrDecls c)
     checkTopDecl (MastTDataDef _) = Right ()

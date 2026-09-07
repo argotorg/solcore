@@ -22,7 +22,7 @@ import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.SyntaxTree qualified as S
 import Solcore.Frontend.Syntax.Ty
-import Solcore.Primitives.Primitives (arrayLiteralInitName, arrayLiteralNewName, invokableName, tupleExpFromList)
+import Solcore.Primitives.Primitives (invokableName, tupleExpFromList)
 
 -- name resolution
 
@@ -1118,7 +1118,13 @@ resolveExp x@(S.ExpName me n es) =
             case fdt of
               Just TDataCon ->
                 Con <$> resolveQualifiedConstructorName c n <*> pure es'
-              _ -> undefinedName n
+              _ -> case ct of
+                Just dt' | dt' `elem` [TLocalVar, TParameter] -> do
+                  mClass <- findClassWithMethod n
+                  case mClass of
+                    Just cls -> pure (Call Nothing (qualifyName cls n) (Var c : es'))
+                    Nothing -> undefinedName n
+                _ -> undefinedName n
       (Just (Var c), Just TTyVar) -> do
         let qn = qualifyName c n
         cf <- gets (Map.lookup qn . scopeEnv)
@@ -1286,14 +1292,8 @@ resolveExp (S.ExpCond e1 e2 e3) =
 resolveExp c@(S.ExpBNot e) = do
   e' <- resolve e `wrapError` c
   pure (Call Nothing (QualName (Name "BitNot") "bnot") [e'])
-resolveExp c@(S.ExpArray elements) = do
-  elements' <- resolve elements `wrapError` c
-  -- The nested calls allocate once and initialize left to right. Each helper
-  -- returns the same array, so no element or allocation is evaluated twice.
-  let allocation = Call Nothing arrayLiteralNewName [Lit (IntLit (toInteger (length elements)))]
-      initialize array (index, element) =
-        Call Nothing arrayLiteralInitName [array, Lit (IntLit index), element]
-  pure (foldl initialize allocation (zip [0 ..] elements'))
+resolveExp c@(S.ExpArray elements) =
+  ArrayLit <$> resolve elements `wrapError` c
 resolveExp (S.ExpAt t) = do
   t' <- resolve t
   pure
@@ -1474,13 +1474,13 @@ resolveDataTyKind S.EnumKind = EnumKind
 resolveDataTyKind (S.StructKind fieldNames) = StructKind fieldNames
 
 qualifyConstrName :: Name -> Constr -> Constr
-qualifyConstrName tyCon (Constr conName tys) =
-  Constr (qualifiedConstructorName tyCon conName) tys
+qualifyConstrName tyCon (ConstrWithFields conName tys fields) =
+  ConstrWithFields (qualifiedConstructorName tyCon conName) tys fields
 
 instance Resolve S.Constr where
   type Result S.Constr = Constr
 
-  resolve (S.Constr n ts) = Constr n <$> resolve ts
+  resolve (S.ConstrWithFields n ts fields) = (\ts' -> ConstrWithFields n ts' fields) <$> resolve ts
 
 instance Resolve S.TySym where
   type Result S.TySym = TySym

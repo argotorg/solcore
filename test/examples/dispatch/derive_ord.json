@@ -1,0 +1,87 @@
+{
+  "derive_ord": {
+    "bytecode": "",
+    "contract": "DeriveOrd",
+    "tests": [
+      {
+        "input": {
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "eqRedRed() -> 1",
+          "calldata": "d69e3995",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "eqRedBlue() -> 0",
+          "calldata": "eac29ce7",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "gtGreenRed() -> 1 (Green > Red)",
+          "calldata": "4dc00b0d",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "gtRedGreen() -> 0 (Red < Green)",
+          "calldata": "43a0cf63",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "eqPointSame() -> 1",
+          "calldata": "ddb51f53",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "gtPointLex() -> 1 (Point(1,100) > Point(1,50))",
+          "calldata": "41410a98",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

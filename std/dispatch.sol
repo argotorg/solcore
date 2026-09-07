@@ -1,5 +1,5 @@
 import * from std;
-import {callvalue, calldatasize, calldataload, shr} from std.opcodes;
+import {callvalue, calldatasize, calldataload, shr, return_} from std.opcodes;
 import * from std.Generic;
 
 export {
@@ -49,7 +49,9 @@ function sigStr<t>(p:Proxy<t>) returns (string)  where t: SigString { return Sig
 
 impl SigString<uint256> { function sigStr(x:Proxy<uint256>) returns (string) { return "uint256"; }}
 impl SigString<bytes32> { function sigStr(x:Proxy<bytes32>) returns (string) { return "bytes32"; }}
+impl SigString<bytes4> { function sigStr(x:Proxy<bytes4>) returns (string) { return "bytes4"; }}
 impl SigString<address> { function sigStr(x:Proxy<address>) returns (string) { return "address"; }}
+impl SigString<bool> { function sigStr(x:Proxy<bool>) returns (string) { return "bool"; }}
 impl SigString<memory<string>> { function sigStr(x:Proxy<memory<string>>) returns (string) { return "string"; }}
 impl SigString<memory<bytes>> { function sigStr(x:Proxy<memory<bytes>>) returns (string) { return "bytes"; }}
 impl SigString<()> { function sigStr(x:Proxy<()>) returns (string) { return ""; } }
@@ -70,6 +72,16 @@ impl<a, b> SigString<(a, b)> where a: SigString, b: SigString {
 impl<f, g> SigString<sum<f, g>> where f: SigString, g: SigString {
   function sigStr(x:Proxy<sum<f, g>>) returns (string) {
     return "sum(" + SigString.sigStr( @f ) + "," + SigString.sigStr( @g ) + ")";
+  }
+}
+
+// A dynamic array signs as `<element>[]`, matching Solidity's `T[]` convention.
+// The element carries its own (structural, for ADTs) signature, so an array of a
+// sum type reads `sum(l,r)[]`. Location is transparent to the ABI, so this keys
+// on the calldata form the dispatch decodes from.
+impl<t> SigString<calldata<array<t>>> where t: SigString {
+  function sigStr(x:Proxy<calldata<array<t>>>) returns (string) {
+    return SigString.sigStr( @t ) + "[]";
   }
 }
 
@@ -169,16 +181,7 @@ function do_exec<args, rets, fn>(pargs : Proxy<args>, prets : Proxy<rets>, fn : 
 
     // abi encode rets to memory
     let ptr = abi_encode(rets);
-
-    // let retSz : word = ABIAttribs.headSize(prets);
-    // the approach above does not work for dynamically sized types...
-    // ...instead we take the size of memory allocated by the encoding
-    let start : word = Typedef.rep(ptr);
-    let end : word = get_free_memory();
-    let retSz : word = end - start;
-    assembly {
-        return(start, retSz)
-    }
+    return_(MemoryPointer.ptr(ptr), MemorySize.len(ptr));
 }
 
 // --- Method Dispatch ---

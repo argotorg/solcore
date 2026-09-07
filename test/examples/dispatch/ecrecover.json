@@ -34,6 +34,18 @@
           "returndata": "4fbfae63",
           "status": "failure"
         }
+      },
+      {
+        "input": {
+          "comment": "recoverFailBadV()(address)",
+          "calldata": "5dc458b7",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "4fbfae63",
+          "status": "failure"
+        }
       }
     ]
   }

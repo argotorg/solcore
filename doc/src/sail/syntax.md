@@ -3,13 +3,14 @@
 This compiler follows the source grammar implemented by `solcore-rs` on its
 `new-syntax` branch (reference revision
 `59f11626`, including the parser's existing pragma, export, and type-alias
-extensions). Sources and imported modules use `.sol`. A module `a.b` maps to
+extensions), with named-field structs carried forward from local `main`.
+Sources and imported modules use `.sol`. A module `a.b` maps to
 `a/b.sol` relative to the importing module's directory.
 
 Older source spellings are not accepted. In particular, there are no `data`,
 `class`, `instance`, or `forall` declarations, postfix type locations or array
 types, `as` expressions, named function results, or destructuring `let`
-bindings. Interface, library, and struct declarations are outside this grammar.
+bindings. Interface and library declarations are outside this grammar.
 
 ## Modules
 
@@ -143,7 +144,7 @@ let increment = lam (x: word) -> word { return x + 1; };
 let identity = lam (x) { return x; };
 ```
 
-## Enums, traits, and implementations
+## Enums, structs, traits, and implementations
 
 ```solidity
 enum Option<T> { None, Some(T) }
@@ -171,6 +172,26 @@ have positional payload types. `#[derive(...)]` accepts a nonempty list of trait
 paths and is supported on top-level and contract-local enums. Explicit derives
 use the Generic representation and the existing trait implementations for its
 components.
+
+Structs extend the reference grammar with named product fields. They accept the
+same angle-bracket type parameters and derive attributes as enums, at top level
+or inside contracts. Each field has a type and ends with a semicolon; field names
+must be unique within the struct. Constructors take values in field order:
+
+```solidity
+#[derive(Eq)]
+struct Pair<T> {
+    left: T;
+    right: T;
+}
+
+function first(value: Pair<word>) returns (word) { return value.left; }
+function pair() returns (Pair<word>) { return Pair.Pair(1, 2); }
+```
+
+A member read evaluates its receiver once. Storage-backed struct fields support
+member updates through the storage API. A contract-local struct's type belongs
+to its declaring contract, so separate contracts can reuse the same type name.
 
 Constructors use qualified names (`Option.Some(1)`) or expected-type shorthand
 (`.Some(1)`); the same forms appear in patterns. Tuple patterns and `_` are

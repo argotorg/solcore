@@ -125,10 +125,10 @@ emptyMethodBody ::
   [Param Name] ->
   Either String (Body Name)
 emptyMethodBody allDecls failure isSelf parameters =
-  case [variable | Typed _ variable ty <- parameters, isSelf ty] of
-    variable : _ -> pure [Match [Var variable] []]
-    [] -> case [sigName sig | TFunDef (FunDef _ sig _) <- allDecls, leafName (sigName sig) == "absurd", null (sigParams sig)] of
-      absurdName : _ -> pure [Return (Call Nothing absurdName [])]
+  case [sigName sig | TFunDef (FunDef _ sig _) <- allDecls, leafName (sigName sig) == "absurd", null (sigParams sig)] of
+    absurdName : _ -> pure [Return (Call Nothing absurdName [])]
+    [] -> case [variable | Typed _ variable ty <- parameters, isSelf ty] of
+      variable : _ -> pure [Match [Var variable] []]
       [] -> failure "an empty enum method without an enum argument requires an in-scope absurd() function"
 
 classCall :: Name -> String -> [Exp Name] -> Exp Name
@@ -151,6 +151,8 @@ replaceTy _ ty@(Meta _) = ty
 replacePred :: Map Tyvar Ty -> Pred -> Pred
 replacePred replacements (InCls cls primary arguments) =
   InCls cls (replaceTy replacements primary) (map (replaceTy replacements) arguments)
+replacePred replacements (left :~: right) =
+  replaceTy replacements left :~: replaceTy replacements right
 
 replaceParam :: (Ty -> Ty) -> Param a -> Param a
 replaceParam replace (Typed comptime variable ty) = Typed comptime variable (replace ty)

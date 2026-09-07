@@ -4,7 +4,7 @@ import Common.Monad
 import Control.Monad (when)
 import Control.Monad.State
 import Data.ByteString qualified as BS
-import Data.List (partition)
+import Data.List (intercalate, partition)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -16,7 +16,7 @@ import Language.Hull qualified as Hull
 import Language.Yul
 import Solcore.Backend.Mast
 import Solcore.Frontend.Pretty.SolcorePretty
-import Solcore.Frontend.Syntax.Contract (Constr (..), DataTy (..), DataTyKind (..), pattern DataTyWithKind)
+import Solcore.Frontend.Syntax.Contract (Constr (..), DataTy (..), DataTyKind (..), pattern Constr, pattern DataTyWithKind)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
 import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..))
@@ -272,7 +272,7 @@ translateTCon tycon tas = do
     Just (DataTyWithKind _ _n tvs cs) -> do
       let subst = zip tvs (map mastToTy tas)
       tys <- mapM (translateDCon subst) cs
-      Hull.TNamed (show tycon) <$> buildSumType tys
+      Hull.TNamed (intercalate "$" (nameSegments tycon)) <$> buildSumType tys
     Nothing -> errorsEM ["translateTCon: unknown type ", pretty tycon, "\n", show tycon]
   where
     buildSumType :: [Hull.Type] -> EM Hull.Type

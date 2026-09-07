@@ -300,6 +300,8 @@ instance Compile (Exp Id) where
     Cond <$> compile e1 <*> compile e2 <*> compile e3
   compile (Indexed e1 e2) =
     Indexed <$> compile e1 <*> compile e2
+  compile (ArrayLit es) =
+    ArrayLit <$> compile es
 
 instance Compile (Instance Id) where
   compile (Instance d vs ps n ts t funs) =
@@ -520,7 +522,14 @@ initialTypeEnv (CompUnit _ ds) =
   where
     step (TDataDef dt) ac = addDataTyInfo dt ac
     step (TMutualDef ds1) ac = foldr step ac ds1
+    -- Contract-local data types are also exposed at module scope so that the
+    -- top-level instances derived for them can be compiled (their `match`
+    -- expressions reference the contract-local constructors).
+    step (TContr (Contract _ _ cds)) ac = foldr cstep ac cds
     step _ ac = ac
+    cstep (CDataDecl dt) ac = addDataTyInfo dt ac
+    cstep (CMutualDecl ds1) ac = foldr cstep ac ds1
+    cstep _ ac = ac
 
 primEnv :: TypeEnv
 primEnv =
@@ -709,6 +718,12 @@ scrutineeType (Indexed earr _) =
       _ ->
         throwError
           "scrutineeType: index expression scrutinee has no type annotation"
+-- The type checker always returns an array literal wrapped in a TyExp carrying
+-- its memory(DynArray(t)) type, so a bare literal here means the annotation was
+-- dropped somewhere upstream.
+scrutineeType (ArrayLit _) =
+  throwError
+    "scrutineeType: array literal scrutinee has no type annotation"
 
 typeOfParam :: Param Id -> Ty
 typeOfParam (Typed _ i _t) = idType i

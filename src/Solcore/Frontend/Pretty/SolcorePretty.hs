@@ -191,8 +191,9 @@ instance (Pretty a) => Pretty (Constructor a) where
       $$ rbrace
 
 instance Pretty DataTy where
-  ppr (StructTy n ps fieldNames fieldTypes) =
-    text "struct"
+  ppr dt@(StructTy n ps fieldNames fieldTypes) =
+    pprDerives (dataDerives dt)
+      $$ text "struct"
       <+> (ppr (constructorLeafName n) <> pprTyParams (map TyVar ps))
       <+> lbrace
       $$ nest 3 (vcat (zipWith pprStructField fieldNames fieldTypes))
@@ -547,6 +548,7 @@ pprTypedExpPrec context expression =
 
 pprTypedExpNode :: (Pretty a) => Exp a -> Doc
 pprTypedExpNode (Var v) = ppr v
+pprTypedExpNode (ArrayLit elements) = brackets (commaSep (map ppr elements))
 pprTypedExpNode expression@(Con n [_, _])
   | isTuple n =
       parens

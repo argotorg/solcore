@@ -8,9 +8,10 @@ import Prelude hiding (words)
 
 -- Internal names cannot be written by source programs. The loader binds these
 -- to the actual standard-library definitions used by array literal lowering.
-arrayLiteralNewName, arrayLiteralInitName :: Name
+arrayLiteralNewName, arrayLiteralInitName, storeArrayLiteralName :: Name
 arrayLiteralNewName = QualName (Name "$std") "arrayLitNew"
 arrayLiteralInitName = QualName (Name "$std") "arrayLitInit"
+storeArrayLiteralName = QualName (Name "$std") "storeArrayLit"
 
 -- basic type classes
 
@@ -232,6 +233,14 @@ unit = TyCon "()" []
 pair :: Ty -> Ty -> Ty
 pair t1 t2 = TyCon "pair" [t1, t2]
 
+-- The type of an array literal: a dynamically sized memory array.  This
+-- mirrors Solidity, where @[e1,...,en]@ is a memory array that converts
+-- implicitly to storage on assignment.  Both type constructors are defined in
+-- std.sol; naming them here is the same hardcoding that @pair@ and @string@
+-- already rely on.
+memoryDynArray :: Ty -> Ty
+memoryDynArray t = TyCon "memory" [TyCon "DynArray" [t]]
+
 epair :: Exp Name -> Exp Name -> Exp Name
 epair e1 e2 = Con (Name "pair") [e1, e2]
 
@@ -300,7 +309,10 @@ tupleTyFromList (t1 : ts) = pair t1 (tupleTyFromList ts)
 -- Builtins as of Osaka
 yulPrimOps :: [(Name, Scheme)]
 yulPrimOps =
-  [ (Name "stop", monotype unit),
+  [ -- Terminators never return control to their caller, so their result type
+    -- is polymorphic: an 'assembly' block ending in one can stand as the last
+    -- statement of a value-returning function (see 'return'/'revert' below).
+    (Name "stop", Forall [aVar] ([] :=> (TyVar aVar))),
     (Name "add", monotype (word :-> word :-> word)),
     (Name "mul", monotype (word :-> word :-> word)),
     (Name "sub", monotype (word :-> word :-> word)),
@@ -379,8 +391,8 @@ yulPrimOps =
     (Name "create2", monotype (word :-> word :-> word :-> word :-> word)),
     (Name "staticcall", monotype (funtype (words 6) word)),
     (Name "revert", Forall [aVar] ([] :=> (word :-> word :-> (TyVar aVar)))),
-    (Name "invalid", monotype unit),
-    (Name "selfdestruct", monotype (word :-> unit)),
+    (Name "invalid", Forall [aVar] ([] :=> (TyVar aVar))),
+    (Name "selfdestruct", Forall [aVar] ([] :=> (word :-> (TyVar aVar)))),
     -- Yul-specific
     (Name "datasize", monotype (string :-> word)),
     (Name "dataoffset", monotype (string :-> word)),
