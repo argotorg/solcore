@@ -1,7 +1,7 @@
-import {*} from std;
-import {*} from std.dispatch;
-import {*} from std.Generic;
-import {*} from std.StorageGeneric;
+import * from std;
+import * from std.dispatch;
+import * from std.Generic;
+import * from std.StorageGeneric;
 
 // A recursive data type has no bounded slot footprint, so DeriveGeneric
 // (isRecursiveData) deliberately skips deriving StorageSize and

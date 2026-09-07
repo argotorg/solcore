@@ -1,7 +1,7 @@
-import {*} from std;
-import {*} from std.dispatch;
-import {*} from std.Generic;
-import {*} from std.StorageGeneric;
+import * from std;
+import * from std.dispatch;
+import * from std.Generic;
+import * from std.StorageGeneric;
 
 // A mapping cannot be a field of a data type. std only provides
 // `storage(mapping(k,v)) : CanStore(storage(mapping(k,v)))` — the slot handle

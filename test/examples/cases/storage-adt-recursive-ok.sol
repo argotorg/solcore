@@ -1,9 +1,9 @@
-import {*} from std;
-import {*} from std.dispatch;
-import {*} from std.Generic;
-import {*} from std.StorageGeneric;
+import * from std;
+import * from std.dispatch;
+import * from std.Generic;
+import * from std.StorageGeneric;
 
-// The counterpart of storage-adt-recursive-fail.solc: skipping storage
+// The counterpart of storage-adt-recursive-fail.sol: skipping storage
 // derivation for a recursive type is a SKIP, not a hard error. The type still
 // gets its Generic instance and remains usable everywhere except storage.
 
@@ -25,6 +25,6 @@ contract C {
 
     constructor() {
         p = Point(uint256(1), uint256(2));
-        assert(StorageSize.size(Proxy as Proxy<Point>) == 2);
+        assert(StorageSize.size(@Point) == 2);
     }
 }
