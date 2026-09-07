@@ -33,16 +33,16 @@ lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc
 
 symbol :: String -> Parser String
-symbol token = lexeme (try (string token <* notFollowedBy longerToken))
+symbol symbolText = lexeme (try (string symbolText <* notFollowedBy longerToken))
   where
     -- Match whole lexer tokens: an assignment must not consume the first
     -- character of an equality or compound assignment, for example.
     longerToken =
       choice
-        [ string (drop (length token) longer)
+        [ string (drop (length symbolText) longer)
         | longer <- multiCharacterTokens,
-          token /= longer,
-          token `isPrefixOf` longer
+          symbolText /= longer,
+          symbolText `isPrefixOf` longer
         ]
 
 multiCharacterTokens :: [String]

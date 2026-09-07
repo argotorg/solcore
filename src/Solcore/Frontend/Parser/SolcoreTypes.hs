@@ -64,11 +64,11 @@ atomTypeP = typeP
 
 namedTypeP :: Parser Ty
 namedTypeP = do
-  name <- qualifiedName
+  qualifiedTypeName <- qualifiedName
   args <- option [] (try (angles (typeP `sepEndBy1` comma)))
-  if name == Name "mapping"
+  if qualifiedTypeName == Name "mapping"
     then fail "the mapping type uses mapping(Key => Value)"
-    else pure (TyCon name args)
+    else pure (TyCon qualifiedTypeName args)
 
 parenTypeP :: Parser Ty
 parenTypeP = parens (mkParenTy <$> (typeP `sepEndBy` comma))

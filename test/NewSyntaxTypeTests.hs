@@ -72,7 +72,7 @@ newSyntaxTypeTests =
           ],
       testCase "contextual keywords remain identifiers" $
         mapM_
-          (\name -> parsesAs identifier name name)
+          (\spelling -> parsesAs identifier spelling spelling)
           [ "enum",
             "trait",
             "impl",

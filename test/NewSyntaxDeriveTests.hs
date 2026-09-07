@@ -52,8 +52,8 @@ newSyntaxDeriveTests =
             cls = Class [a] [] "Clone" [] a [signature]
             generic = genericFor dt word
         [inst] <- generated dt [TClassDef cls, TInstDef generic]
-        let [FunDef _ sig body] = instFunctions inst
-            from = TyExp (method "Generic" "from" [Var "x"]) word
+        [FunDef _ sig body] <- pure (instFunctions inst)
+        let from = TyExp (method "Generic" "from" [Var "x"]) word
             delegated = TyExp (method "Clone" "clone" [from]) word
         assertEqual "nominal input" [Typed False "x" (targetTy dt)] (sigParams sig)
         assertEqual "nominal output" (Just (targetTy dt)) (sigReturn sig)
@@ -63,15 +63,15 @@ newSyntaxDeriveTests =
             signature = Signature [] [] "check" [Typed False "x" (TyVar a), Typed False "flag" bool] False (Just bool) False
             cls = Class [a] [] "Compare" [] a [signature]
         [inst] <- generated dt [TClassDef cls, TInstDef (genericFor dt word)]
-        let [FunDef _ _ body] = instFunctions inst
-            from = TyExp (method "Generic" "from" [Var "x"]) word
+        [FunDef _ _ body] <- pure (instFunctions inst)
+        let from = TyExp (method "Generic" "from" [Var "x"]) word
         assertEqual "bool passes through" [Return (TyExp (method "Compare" "check" [from, Var "flag"]) bool)] body,
       testCase "method binders remain independent of enum binders" $ do
         let dt = derivingData "Choose" "Box" [b] [Constr "Box" [word]]
             signature = Signature [b] [] "choose" [Typed False "value" (TyVar b), Typed False "witness" (TyVar a)] False (Just (TyVar b)) False
             cls = Class [a] [] "Choose" [] a [signature]
         [inst] <- generated dt [TClassDef cls, TInstDef (genericFor dt word)]
-        let [FunDef _ sig _] = instFunctions inst
+        [FunDef _ sig _] <- pure (instFunctions inst)
         case sigParams sig of
           [Typed _ _ methodTy, Typed _ _ selfTy] -> do
             assertBool "method type is fresh" (methodTy /= TyVar b)
@@ -83,7 +83,7 @@ newSyntaxDeriveTests =
             signature = Signature [b] [TyVar b :~: TyVar a] "choose" [Typed False "value" (TyVar b), Typed False "witness" (TyVar a)] False (Just (TyVar b)) False
             cls = Class [a] [] "Choose" [] a [signature]
         [inst] <- generated dt [TClassDef cls, TInstDef (genericFor dt word)]
-        let [FunDef _ sig _] = instFunctions inst
+        [FunDef _ sig _] <- pure (instFunctions inst)
         case sigVars sig of
           [methodVariable] -> do
             assertBool "method binder is fresh" (methodVariable /= b)
