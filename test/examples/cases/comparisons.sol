@@ -1,0 +1,17 @@
+import * from std;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+function f(x: word, y:word) returns (bool) {
+  return (!((x == y)
+          && (x != y)
+          && (x >= y)
+          && (x <= y)
+          || (x >  y)
+          && (x <  y)
+         ));
+}
+
+contract Comparisons {
+  function main() public returns (bool) { return f(0,1); }
+}

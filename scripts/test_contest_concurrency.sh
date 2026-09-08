@@ -31,9 +31,9 @@ mkdir -p \
 cp "$repo_root/contest.sh" "$test_root/contest.sh"
 chmod +x "$test_root/contest.sh"
 
-printf '%s\n' alpha > "$test_root/cases/alpha/shared.solc"
+printf '%s\n' alpha > "$test_root/cases/alpha/shared.sol"
 printf '%s\n' '{"shared": {}}' > "$test_root/cases/alpha/shared.json"
-printf '%s\n' beta > "$test_root/cases/beta/shared.solc"
+printf '%s\n' beta > "$test_root/cases/beta/shared.sol"
 printf '%s\n' '{"shared": {}}' > "$test_root/cases/beta/shared.json"
 printf '%s\n' user-owned-sentinel > "$test_root/output1.hull"
 touch "$test_root/libevmone.so"
@@ -107,7 +107,7 @@ case "$tool" in
         done
         case_name="$(<"$yul")"
         [[ "$case_name" == "$FAKE_CASE" ]]
-        printf '%s\n' "$yul" > "$FAKE_STATE/$case_name.solc-input"
+        printf '%s\n' "$yul" > "$FAKE_STATE/$case_name.sol-input"
         printf '%s\n' "Binary representation:" "hex-$case_name"
         ;;
     jq)
@@ -176,8 +176,8 @@ alpha_work_dir="$(<"$test_root/state/alpha.work-dir")"
 beta_work_dir="$(<"$test_root/state/beta.work-dir")"
 alpha_yul_path="$(<"$test_root/state/alpha.yul-path")"
 beta_yul_path="$(<"$test_root/state/beta.yul-path")"
-alpha_solc_input="$(<"$test_root/state/alpha.solc-input")"
-beta_solc_input="$(<"$test_root/state/beta.solc-input")"
+alpha_solc_input="$(<"$test_root/state/alpha.sol-input")"
+beta_solc_input="$(<"$test_root/state/beta.sol-input")"
 alpha_runner_input="$(<"$test_root/state/alpha.runner-input")"
 beta_runner_input="$(<"$test_root/state/beta.runner-input")"
 alpha_runner_output="$(<"$test_root/state/alpha.runner-output")"

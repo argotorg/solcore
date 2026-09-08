@@ -1,0 +1,25 @@
+import * from std;
+import {uint256, address} from std;
+import * from std.dispatch;
+pragma no-patterson-condition ;
+pragma no-coverage-condition ;
+pragma no-bounded-variable-condition ;
+contract Counter {
+  // some dummy fields to test offset calculation
+  fld0 : word;
+  fld1 : uint256;
+  fld2 : address;
+  counter : word;
+  
+  constructor() {
+    counter = 41;
+    fld2 = address(0);
+    fld1 = uint256(11);
+    fld0 = 7;
+  }
+  
+  function main() public returns (word) {
+    counter = counter + 1;
+    return counter;
+  }
+}

@@ -1,57 +1,82 @@
 module Solcore.Frontend.Parser.Patterns
   ( patP,
+    patWithBodyP,
     patListP,
+    matchPatListP,
   )
 where
 
 import Common.LightYear
 import Solcore.Frontend.Lexer.SolcoreLexer
-import {-# SOURCE #-} Solcore.Frontend.Parser.Expr (exprP)
-import Solcore.Frontend.Parser.SolcoreTypes (locatedP, qualifiedName, simpleNameP)
+import Solcore.Frontend.Parser.Expr (exprP)
+import Solcore.Frontend.Parser.SolcoreTypes (booleanNameP, locatedP, qualifiedName, simpleNameP)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 
 patP :: Parser Pat
-patP = locatedP locatedPat (wildcardP <|> litP <|> dotPatP <|> parenPatP <|> try comptimePatP <|> namedPatP)
+patP = patWithBodyP (pure [])
+
+patWithBodyP :: Parser Body -> Parser Pat
+patWithBodyP body = fst <$> patShapeP body
+
+-- Preserve tuple syntax until a multi-scrutinee case has split its patterns.
+-- A constructor actually named `pair` must remain one pattern.
+patShapeP :: Parser Body -> Parser (Pat, Maybe [Pat])
+patShapeP body =
+  locatedP locateShape $
+    parenPatShapeP body
+      <|> ((,Nothing) <$> (wildcardP <|> litP <|> dotPatP body <|> try (comptimePatP body) <|> namedPatP body))
+  where
+    locateShape sourceSpan (pat, tupleItems) = (locatedPat sourceSpan pat, tupleItems)
+
+matchPatListP :: Parser Body -> Int -> Parser [Pat]
+matchPatListP body arity = do
+  (pat, tupleItems) <- patShapeP body
+  pure $ if arity > 1 then maybe [pat] id tupleItems else [pat]
 
 patListP :: Parser [Pat]
 patListP = patP `sepBy1` comma
 
 wildcardP :: Parser Pat
 wildcardP =
-  PWildcard <$ lexeme (string "_" <* notFollowedBy (alphaNumChar <|> char '_'))
+  PWildcard
+    <$ lexeme
+      (try (string "_" <* notFollowedBy (alphaNumChar <|> char '_')))
 
 litP :: Parser Pat
 litP =
-  PLit . IntLit
+  (\n -> Pat n [])
+    <$> booleanNameP
+      <|> PLit
+      . IntLit
     <$> integer
       <|> PLit
       . StrLit
     <$> stringLit
 
-dotPatP :: Parser Pat
-dotPatP = do
+dotPatP :: Parser Body -> Parser Pat
+dotPatP body = do
   _ <- char '.'
   sc
-  n <- simpleNameP
-  args <- option [] (parens (patP `sepBy1` comma))
+  n <- booleanNameP <|> simpleNameP
+  args <- option [] (parens (patWithBodyP body `sepBy1` comma))
   return (PatDot n args)
 
-parenPatP :: Parser Pat
-parenPatP = parens insideP
+parenPatShapeP :: Parser Body -> Parser (Pat, Maybe [Pat])
+parenPatShapeP body = parens insideP
   where
     insideP = do
-      ps <- patP `sepBy` comma
-      return $ case ps of
-        [] -> Pat (Name "()") []
-        [p] -> p
-        _ -> Pat (Name "pair") ps
+      shapes <- patShapeP body `sepEndBy` comma
+      return $ case shapes of
+        [] -> (Pat (Name "()") [], Just [])
+        [shape] -> shape
+        _ -> let ps = map fst shapes in (Pat (Name "pair") ps, Just ps)
 
-namedPatP :: Parser Pat
-namedPatP = do
+namedPatP :: Parser Body -> Parser Pat
+namedPatP body = do
   n <- qualifiedName
-  args <- option [] (parens (patP `sepBy1` comma))
+  args <- option [] (parens (patWithBodyP body `sepBy1` comma))
   return (Pat n args)
 
-comptimePatP :: Parser Pat
-comptimePatP = PExp <$> (keyword "comptime" *> exprP (return []))
+comptimePatP :: Parser Body -> Parser Pat
+comptimePatP body = PExp <$> (keyword "comptime" *> exprP body)

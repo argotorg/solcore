@@ -3,13 +3,15 @@
 bnf2railroad.py — BNF/EBNF grammar file -> SVG railroad diagrams
 
 Usage
-  python3 bnf2railroad.py GRAMMAR.bnf OUTPUT_DIR/
+  python3 bnf2railroad.py [--clean | --check] GRAMMAR.bnf OUTPUT_DIR/
 """
 
+import filecmp
 import io
 import os
 import re
 import sys
+import tempfile
 
 try:
     import railroad as rr
@@ -35,6 +37,12 @@ svg.railroad-diagram rect.group-box {
     stroke: #aaa; stroke-dasharray: 4 2; fill: none;
 }
 </style>"""
+
+_OUTPUT_MARKER = ".bnf2railroad-output"
+_OUTPUT_MARKER_TEXT = """\
+This directory is owned by doc/railroad/bnf2railroad.py.
+All SVG files in it may be removed by --clean.
+"""
 
 
 def _strip_line_comment(line: str) -> str:
@@ -242,7 +250,7 @@ def _to_rr(node):
 
 
 def _write_svg(diagram, path: str):
-    """Write diagram to path, injecting xmlns and embedded CSS."""
+    """Atomically write a diagram without following an output symlink."""
     buf = io.StringIO()
     diagram.writeSvg(buf.write)
     svg = buf.getvalue()
@@ -250,24 +258,112 @@ def _write_svg(diagram, path: str):
     svg = svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ', 1)
     # Embed CSS so the SVG is self-contained (no external stylesheet needed)
     svg = svg.replace('<g transform=', _STYLE + '\n<g transform=', 1)
-    with open(path, 'w') as fh:
-        fh.write(svg)
+    if os.path.islink(path):
+        sys.exit(f"refusing to replace symlink output {path!r}")
+
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=os.path.dirname(path),
+            prefix=f".{os.path.basename(path)}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_path = temporary.name
+            temporary.write(svg)
+        os.replace(temporary_path, path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            try:
+                os.unlink(temporary_path)
+            except FileNotFoundError:
+                pass
 
 
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv[1:]
-    if len(argv) < 2:
-        print(__doc__)
-        sys.exit(1)
+def _marker_path(output_dir: str) -> str:
+    return os.path.join(output_dir, _OUTPUT_MARKER)
 
-    grammar_file, output_dir = argv[0], argv[1]
-    os.makedirs(output_dir, exist_ok=True)
+
+def mark_generated_output_dir(output_dir: str) -> None:
+    marker_path = _marker_path(output_dir)
+    try:
+        with open(marker_path, "x") as marker:
+            marker.write(_OUTPUT_MARKER_TEXT)
+    except FileExistsError:
+        sys.exit(
+            f"refusing to replace existing output marker {marker_path!r}"
+        )
+
+
+def output_dir_is_owned(output_dir: str) -> bool:
+    marker_path = _marker_path(output_dir)
+    if not os.path.lexists(marker_path):
+        return False
+    try:
+        if os.path.islink(marker_path):
+            raise OSError("marker must not be a symlink")
+        with open(marker_path) as marker:
+            marker_text = marker.read()
+    except (FileNotFoundError, OSError) as exc:
+        sys.exit(
+            f"refusing output directory {output_dir!r}: "
+            f"{exc}"
+        )
+    if marker_text != _OUTPUT_MARKER_TEXT:
+        sys.exit(
+            f"refusing output directory {output_dir!r}: "
+            f"invalid {_OUTPUT_MARKER} marker"
+        )
+    return True
+
+
+def require_owned_output_dir(output_dir: str, operation: str) -> None:
+    if not output_dir_is_owned(output_dir):
+        sys.exit(
+            f"refusing {operation} for unowned output directory {output_dir!r}: "
+            f"missing {_OUTPUT_MARKER} marker"
+        )
+
+
+def prepare_generated_output_dir(output_dir: str) -> None:
+    if not os.path.lexists(output_dir):
+        os.makedirs(output_dir)
+    if os.path.islink(output_dir) or not os.path.isdir(output_dir):
+        sys.exit(
+            f"refusing unsafe output directory {output_dir!r}: "
+            "expected a real directory, not a symlink or file"
+        )
+    if output_dir_is_owned(output_dir):
+        return
+    entries = os.listdir(output_dir)
+    if entries:
+        sys.exit(
+            f"refusing to generate into unowned non-empty output directory "
+            f"{output_dir!r}; initialize a new or empty directory instead"
+        )
+    mark_generated_output_dir(output_dir)
+
+
+def reject_svg_symlinks(output_dir: str, operation: str) -> None:
+    for entry in os.scandir(output_dir):
+        if entry.name.endswith(".svg") and entry.is_symlink():
+            sys.exit(
+                f"refusing {operation} with symlink output "
+                f"{entry.path!r}"
+            )
+
+
+def generate(grammar_file: str, output_dir: str) -> set[str]:
+    prepare_generated_output_dir(output_dir)
+    reject_svg_symlinks(output_dir, "generation")
 
     rules = read_rules(grammar_file)
     print(f"Loaded {len(rules)} rule(s) from {grammar_file!r}")
 
     ok = failed = 0
+    generated: set[str] = set()
     for name, body in rules.items():
         if not body.strip():
             print(f"  skip   {name}  (empty body)")
@@ -277,6 +373,7 @@ def main(argv=None):
             diagram = rr.Diagram(_to_rr(ast))
             out = os.path.join(output_dir, f"{name}.svg")
             _write_svg(diagram, out)
+            generated.add(f"{name}.svg")
             print(f"  wrote  {out}")
             ok += 1
         except Exception as exc:
@@ -286,6 +383,72 @@ def main(argv=None):
     print(f"\n{ok} diagram(s) written, {failed} error(s).")
     if failed:
         sys.exit(1)
+    return generated
+
+
+def svg_names(directory: str) -> set[str]:
+    return {
+        entry.name
+        for entry in os.scandir(directory)
+        if entry.name.endswith(".svg") and entry.is_file(follow_symlinks=False)
+    }
+
+
+def check_generated(grammar_file: str, output_dir: str) -> None:
+    require_owned_output_dir(output_dir, "--check")
+    reject_svg_symlinks(output_dir, "--check")
+    with tempfile.TemporaryDirectory(prefix="sail-railroad-") as expected_dir:
+        expected = generate(grammar_file, expected_dir)
+        actual = svg_names(output_dir)
+        missing = sorted(expected - actual)
+        stale = sorted(actual - expected)
+        changed = sorted(
+            name
+            for name in expected & actual
+            if not filecmp.cmp(
+                os.path.join(expected_dir, name),
+                os.path.join(output_dir, name),
+                shallow=False,
+            )
+        )
+    if missing or stale or changed:
+        for label, names in (
+            ("missing", missing),
+            ("stale", stale),
+            ("out of date", changed),
+        ):
+            for name in names:
+                print(f"  {label}: {name}", file=sys.stderr)
+        sys.exit("railroad diagrams are not synchronized with the grammar")
+    print(f"All {len(expected)} railroad diagram(s) are up to date.")
+
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+
+    check = "--check" in argv
+    clean = "--clean" in argv
+    positional = [arg for arg in argv if arg not in {"--check", "--clean"}]
+    if check and clean:
+        sys.exit("--check and --clean cannot be used together")
+    if len(positional) != 2:
+        print(__doc__)
+        sys.exit(1)
+
+    grammar_file, output_dir = positional
+    if check:
+        check_generated(grammar_file, output_dir)
+        return
+
+    if clean:
+        require_owned_output_dir(output_dir, "--clean")
+    generated = generate(grammar_file, output_dir)
+    if clean:
+        stale = sorted(svg_names(output_dir) - generated)
+        for name in stale:
+            os.remove(os.path.join(output_dir, name))
+            print(f"  removed stale  {os.path.join(output_dir, name)}")
 
 
 if __name__ == '__main__':

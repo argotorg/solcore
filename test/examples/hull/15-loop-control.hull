@@ -1,0 +1,11 @@
+object ValidLoopControl {
+  code {
+    function run(flag : bool) -> unit {
+      for ({}; flag; {}) {
+        continue
+        break
+      }
+      return ()
+    }
+  }
+}

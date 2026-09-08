@@ -1,0 +1,16 @@
+// test multiple contract fields
+import * from std;
+
+contract Counter {
+  counter1 : word;
+  counter2 : uint256;
+  counter3 : word;
+  
+  function main() public returns (word) {
+    let x: word;
+    x = counter1 + 1;
+    counter1 = x;
+    counter3 += 2;
+    return counter1 + counter3;
+  }
+}

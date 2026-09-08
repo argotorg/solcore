@@ -25,15 +25,15 @@ does not insert a default value.
 ### Declaration with a type annotation
 
 ```solcore
-let bal : word;
+let bal: word;
 ```
 
 The type is fixed to `word` at the point of declaration. The variable is still
 uninitialized; it must be assigned before use.
 
 ```solcore
-function loadBalance(account : word) -> word {
-    let bal : word;
+function loadBalance(account: word) returns (word) {
+    let bal: word;
     assembly { bal := sload(account) }
     return bal;
 }
@@ -46,18 +46,21 @@ omitted and will be inferred from the initialiser expression.
 
 ```solcore
 let amount = 100;        // type inferred as word
-let fee : word = 3;      // type annotation and initialiser together
+let fee: word = 3;       // type annotation and initialiser together
 ```
 
 Initialised declarations are useful when the right-hand side is an expression
 whose type would otherwise be ambiguous:
 
 ```solcore
-data Result = Ok(word) | Err(word);
+enum Result {
+    Ok(word),
+    Err(word)
+}
 
-function safeTransfer(from : word, to : word, amount : word) -> Result {
+function safeTransfer(from: word, to: word, amount: word) returns (Result) {
     let result = Result.Err(0);   // type inferred as Result from constructor
-    let bal : word;
+    let bal: word;
     assembly { bal := sload(from) }
     if (gte(bal, amount)) {
         result = Result.Ok(amount);
@@ -84,10 +87,10 @@ The type of `expr` must match the declared type of `x`.
 
 ```solcore
 contract Vault {
-    balance : word;
+    balance: word;
 
-    function deposit(amount : word) -> () {
-        let next : word;
+    function deposit(amount: word) {
+        let next: word;
         next = balance;
         balance = add(next, amount);
     }
@@ -108,10 +111,10 @@ Compound assignment is most commonly used with contract fields:
 
 ```solcore
 contract ERC20 {
-    totalSupply : word;
-    feePool     : word;
+    totalSupply: word;
+    feePool: word;
 
-    function mint(amount : word) -> () {
+    function mint(amount: word) {
         totalSupply += amount;
         feePool     += div(amount, 100);
     }
@@ -128,9 +131,9 @@ and retain their values between calls.
 
 ```solcore
 contract Token {
-    owner   : word;
-    supply  : word;
-    paused  : bool;
+    owner: word;
+    supply: word;
+    paused: bool;
 }
 ```
 
@@ -139,13 +142,13 @@ contract. A field cannot be accessed from a free function.
 
 ```solcore
 contract Token {
-    supply : word;
+    supply: word;
 
-    function mint(amount : word) -> () {
+    function mint(amount: word) {
         supply += amount;
     }
 
-    function totalSupply() -> word {
+    function totalSupply() returns (word) {
         return supply;
     }
 }
@@ -158,7 +161,7 @@ evaluated once when the contract is deployed.
 
 ```solcore
 contract Token {
-    supply : word = 0;
+    supply: word = 0;
 }
 ```
 
@@ -172,10 +175,13 @@ left-hand side, the contextual constructor shorthand `.Constructor` can be
 used on the right-hand side.
 
 ```solcore
-data Result = Ok(word) | Err(word);
+enum Result {
+    Ok(word),
+    Err(word)
+}
 
-function main() -> Result {
-    let r : Result;
+function main() returns (Result) {
+    let r: Result;
     r = .Ok(0);         // equivalent to Result.Ok(0)
     return r;
 }
@@ -200,15 +206,14 @@ if (condition) {
 }
 ```
 
-Both branches must produce the same type if the `if` statement appears in a
-context where a value is expected. When used purely for side effects the
-types need only be consistent:
+`if` is a statement, so use the conditional expression `condition ? yes : no`
+when a value is required:
 
 ```solcore
 contract Token {
-    paused : bool;
+    paused: bool;
 
-    function transfer(to : word, amount : word) -> () {
+    function transfer(to: word, amount: word) {
         if (paused) {
             assembly { revert(0, 0) }
         }
@@ -242,13 +247,13 @@ The init clause runs once before the first iteration. It may:
 
   ```solcore
   for (let i = 0; i < 10; i = i + 1) { ... }
-  for (let i : word; i < 10; i = i + 1) { ... }
+  for (let i: word; i < 10; i = i + 1) { ... }
   ```
 
 * Assign to an already-declared variable:
 
   ```solcore
-  let i : word;
+  let i: word;
   for (i = 0; i < 10; i = i + 1) { ... }
   ```
 
@@ -256,14 +261,16 @@ The init clause runs once before the first iteration. It may:
 
 ### Post-iteration clause
 
-The post clause runs after each iteration, before the condition is re-tested. It
-follows the same grammar as the init clause. A `let` binding introduced here
-creates a fresh variable scoped to the body of **that iteration only**:
+The post clause runs after each iteration, before the condition is re-tested.
+It accepts assignments, compound assignments, and expression statements, but
+does not introduce new bindings:
 
 ```solcore
-for (i = 0; i <= 0; let j = 1) {
-    s = j;    // j is in scope here and rebound on every iteration
-    i = i + 1;
+let i: word;
+let s = 0;
+let j = 1;
+for (i = 0; i <= 0; i = i + 1) {
+    s = j;
 }
 ```
 
@@ -272,10 +279,10 @@ for (i = 0; i <= 0; let j = 1) {
 **Accumulate a sum from 1 to 10:**
 
 ```solcore
-import std.{Num, Add, Sub, Eq, Ord, Bounded, Typedef, le};
+import {Num, Add, Sub, Eq, Ord, Bounded, Typedef, le} from std;
 
 contract Sum {
-    function main() -> word {
+    function main() returns (word) {
         let s = 0;
         for (let i = 1; i <= 10; i = i + 1) { s = s + i; }
         return s;    // 55
@@ -287,8 +294,8 @@ contract Sum {
 
 ```solcore
 contract Sum {
-    function main() -> word {
-        let i : word;
+    function main() returns (word) {
+        let i: word;
         let s = 0;
         for (i = 1; i <= 10; i = i + 1) { s = s + i; }
         return s;
@@ -300,7 +307,7 @@ contract Sum {
 
 ```solcore
 contract Shadow {
-    function main() -> word {
+    function main() returns (word) {
         let i = 100;
         let s = 0;
         for (let i = 1; i <= 10; i = i + 1) { s = s + i; }
@@ -314,7 +321,7 @@ contract Shadow {
 
 ```solcore
 contract ForInner {
-    function main() -> word {
+    function main() returns (word) {
         let result = 0;
         for (let height = 0; height < 7; height = height + 1) {
             if (true) { result = height; } else {}
@@ -328,9 +335,6 @@ contract ForInner {
 
 A variable declared in the **init clause** is in scope for the condition
 expression, the post-iteration clause, and the entire body.
-
-A variable declared in the **post clause** is in scope only for the body of the
-current iteration — it is re-bound at the start of each subsequent one.
 
 The loop body is its own block; declarations inside it do not escape to the
 enclosing function.
@@ -348,14 +352,14 @@ its side effects and the result is discarded. This is the standard way to
 call a function whose return type is `()`.
 
 ```solcore
-function emitTransfer(from : word, to : word, amount : word) -> () {
+function emitTransfer(from: word, to: word, amount: word) {
     assembly {
         mstore(0x00, amount)
         log3(0x00, 0x20, 0xddf252ad, from, to)
     }
 }
 
-function main(to : word, amount : word) -> () {
+function main(to: word, amount: word) {
     emitTransfer(caller(), to, amount);    // expression statement: result () is discarded
 }
 ```
@@ -369,10 +373,10 @@ enclosing block. A variable declared in an inner block shadows an outer
 declaration of the same name for the duration of that block.
 
 ```solcore
-function computeFee(amount : word) -> word {
-    let fee : word = 1;
+function computeFee(amount: word) returns (word) {
+    let fee: word = 1;
     {
-        let fee : word = div(amount, 100);   // shadows outer fee inside this block
+        let fee: word = div(amount, 100);    // shadows outer fee inside this block
     }
     return fee;                              // refers to the outer fee; returns 1
 }

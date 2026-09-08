@@ -29,8 +29,8 @@ mkUniqueType n sch@(Forall vs _) =
     info ["!> Creating unique type for ", pretty n, " :: ", pretty sch]
     i <- incCounter
     let dn = Name $ "t_" ++ pretty n ++ show i
-        c = Constr dn [] []
-        dt = DataTy dn vs [c] []
+        c = Constr dn []
+        dt = DataTy dn vs [c]
     info ["!>>> Result:", pretty dt]
     addUniqueType n dt
     pure dt
@@ -74,7 +74,7 @@ createInstance udt fd sch =
     pure instd
 
 freshPatData :: DataTy -> TcM (Pat Name, [Exp Name])
-freshPatData (DataTy _ _ ((Constr cn ts _) : _) _)
+freshPatData (DataTy _ _ ((Constr cn ts) : _))
   | null ts =
       do
         pure (PCon cn [], [])
@@ -136,7 +136,7 @@ tyParam (Typed _ _ t) = pure t
 tyParam (Untyped _ _) = freshTyVar
 
 tyFromData :: DataTy -> Ty
-tyFromData (DataTy dn vs _ _) =
+tyFromData (DataTy dn vs _) =
   TyCon dn (TyVar <$> vs)
 
 invoke :: Name

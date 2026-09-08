@@ -16,14 +16,14 @@ svg.railroad-diagram rect.group-box {
 <g>
 <path d="M20 30v20m10 -20v20m-10 -10h20" /></g><g>
 <path d="M40 40h0.0" /><path d="M494.0 40h0.0" /><path d="M40.0 40h20" /><g>
-<path d="M60.0 40h32.75" /><path d="M441.25 40h32.75" /><g class="non-terminal ">
-<path d="M92.75 40h0.0" /><path d="M180.75 40h0.0" /><rect height="22" width="88" x="92.75" y="29"></rect><text x="136.75" y="44">TypeName</text></g><path d="M180.75 40h10" /><g>
-<path d="M190.75 40h0.0" /><path d="M441.25 40h0.0" /><path d="M190.75 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
-<path d="M210.75 20h210.5" /></g><path d="M421.25 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M190.75 40h20" /><g>
-<path d="M210.75 40h0.0" /><path d="M421.25 40h0.0" /><g class="terminal ">
-<path d="M210.75 40h0.0" /><path d="M239.25 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="210.75" y="29"></rect><text x="225" y="44">(</text></g><path d="M239.25 40h10" /><path d="M249.25 40h10" /><g class="non-terminal ">
-<path d="M259.25 40h0.0" /><path d="M372.75 40h0.0" /><rect height="22" width="113.5" x="259.25" y="29"></rect><text x="316" y="44">PatternList</text></g><path d="M372.75 40h10" /><path d="M382.75 40h10" /><g class="terminal ">
-<path d="M392.75 40h0.0" /><path d="M421.25 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="392.75" y="29"></rect><text x="407" y="44">)</text></g></g><path d="M421.25 40h20" /></g></g><path d="M474.0 40h20" /><path d="M40.0 40a10 10 0 0 1 10 10v19a10 10 0 0 0 10 10" /><g>
+<path d="M60.0 40h11.5" /><path d="M462.5 40h11.5" /><g class="non-terminal ">
+<path d="M71.5 40h0.0" /><path d="M202.0 40h0.0" /><rect height="22" width="130.5" x="71.5" y="29"></rect><text x="136.75" y="44">QualifiedName</text></g><path d="M202.0 40h10" /><g>
+<path d="M212.0 40h0.0" /><path d="M462.5 40h0.0" /><path d="M212.0 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M232.0 20h210.5" /></g><path d="M442.5 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M212.0 40h20" /><g>
+<path d="M232.0 40h0.0" /><path d="M442.5 40h0.0" /><g class="terminal ">
+<path d="M232.0 40h0.0" /><path d="M260.5 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="232" y="29"></rect><text x="246.25" y="44">(</text></g><path d="M260.5 40h10" /><path d="M270.5 40h10" /><g class="non-terminal ">
+<path d="M280.5 40h0.0" /><path d="M394.0 40h0.0" /><rect height="22" width="113.5" x="280.5" y="29"></rect><text x="337.25" y="44">PatternList</text></g><path d="M394.0 40h10" /><path d="M404.0 40h10" /><g class="terminal ">
+<path d="M414.0 40h0.0" /><path d="M442.5 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="414" y="29"></rect><text x="428.25" y="44">)</text></g></g><path d="M442.5 40h20" /></g></g><path d="M474.0 40h20" /><path d="M40.0 40a10 10 0 0 1 10 10v19a10 10 0 0 0 10 10" /><g>
 <path d="M60.0 79h0.0" /><path d="M474.0 79h0.0" /><g class="terminal ">
 <path d="M60.0 79h0.0" /><path d="M88.5 79h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="60" y="68"></rect><text x="74.25" y="83">.</text></g><path d="M88.5 79h10" /><path d="M98.5 79h10" /><g class="non-terminal ">
 <path d="M108.5 79h0.0" /><path d="M213.5 79h0.0" /><rect height="22" width="105" x="108.5" y="68"></rect><text x="161" y="83">Identifier</text></g><path d="M213.5 79h10" /><g>

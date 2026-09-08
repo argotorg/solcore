@@ -18,14 +18,15 @@ any annotation.
 ## What Requires Annotations
 
 Every top-level function must carry a complete type signature: every parameter
-must be annotated and the return type must be declared. The compiler rejects
-any top-level definition that omits an annotation. This rule applies to free
-functions and to functions defined inside a contract body.
+must be annotated, and a value-producing function must declare its result in a
+`returns (...)` clause. Omitting that clause declares a unit-returning function.
+This rule applies to free functions and to functions defined inside a contract
+body.
 
 ```solidity
-// Required: every parameter and the return type are annotated.
-function transfer(to : word, amount : word) -> () {
-    let bal : word;
+// Required: every parameter is annotated; no returns clause means unit.
+function transfer(to: word, amount: word) {
+    let bal: word;
     assembly { bal := sload(caller()) }
     assembly { sstore(caller(), sub(bal, amount)) }
     assembly { sstore(to, add(sload(to), amount)) }
@@ -65,7 +66,7 @@ When a `let` declaration includes an initialiser, the type is taken from the
 initialiser expression. Integer literals always have type `word`.
 
 ```solidity
-function demo() -> word {
+function demo() returns (word) {
     let amount = 100;     // amount : word, from the integer literal
     let flag   = true;    // flag : bool, from the boolean literal
     return amount;
@@ -78,13 +79,13 @@ When no initialiser is present, the type is inferred from the first use of the
 variable.
 
 ```solidity
-function loadBalance(account : word) -> word {
-    let bal : word;           // annotated; no inference needed
+function loadBalance(account: word) returns (word) {
+    let bal: word;            // annotated; no inference needed
     assembly { bal := sload(account) }
     return bal;
 }
 
-function compute(account : word) -> word {
+function compute(account: word) returns (word) {
     let x;                    // no annotation, no initialiser
     x = sload(account);       // first assignment: x : word
     return x;
@@ -97,9 +98,12 @@ A variable whose type depends on an algebraic data type can have its type fixed
 by the expected return type.
 
 ```solidity
-data Result = Ok(word) | Err(word);
+enum Result {
+    Ok(word),
+    Err(word)
+}
 
-function demo() -> Result {
+function demo() returns (Result) {
     let x = Result.Err(0);     // x : Result, inferred from constructor
     return x;
 }
@@ -118,9 +122,13 @@ compiler uses the context to determine which type the constructor belongs to.
 The declared return type provides the expected type:
 
 ```solidity
-data TxStatus = Pending | Confirmed | Reverted;
+enum TxStatus {
+    Pending,
+    Confirmed,
+    Reverted
+}
 
-function initialStatus() -> TxStatus {
+function initialStatus() returns (TxStatus) {
     return .Pending;    // resolved as TxStatus.Pending from the return type
 }
 ```
@@ -130,10 +138,14 @@ function initialStatus() -> TxStatus {
 The declared type of the left-hand side provides the expected type:
 
 ```solidity
-data TxStatus = Pending | Confirmed | Reverted;
+enum TxStatus {
+    Pending,
+    Confirmed,
+    Reverted
+}
 
-function demo() -> TxStatus {
-    let s : TxStatus;
+function demo() returns (TxStatus) {
+    let s: TxStatus;
     s = .Confirmed;     // resolved as TxStatus.Confirmed from the declared type of s
     return s;
 }
@@ -145,9 +157,13 @@ If no expected type is available, the shorthand cannot be resolved and the
 compiler reports an error:
 
 ```solidity
-data TxStatus = Pending | Confirmed | Reverted;
+enum TxStatus {
+    Pending,
+    Confirmed,
+    Reverted
+}
 
-function bad() -> word {
+function bad() returns (word) {
     let x = .Pending;   // no expected type available for x
     return 0;
 }
@@ -158,7 +174,7 @@ Cannot resolve shorthand constructor expression without expected constructor typ
 .Pending
 ```
 
-The fix is to annotate the variable: `let x : TxStatus = .Pending;`.
+The fix is to annotate the variable: `let x: TxStatus = .Pending;`.
 
 ---
 
@@ -169,7 +185,7 @@ overloading for integer literals in SAIL. Every integer literal that appears
 in source code is a 256-bit EVM word value.
 
 ```solidity
-function demo() -> word {
+function demo() returns (word) {
     let amount   = 1000;
     let decimals = 18;
     let mask     = 0xffffffffffffffffffffffffffffffffffffffff;
@@ -186,12 +202,12 @@ variables from the types of the supplied arguments. No explicit type
 application is needed.
 
 ```solidity
-forall a . function id(x : a) -> a {
+function id<A>(x: A) returns (A) {
     return x;
 }
 
-function demo() -> word {
-    return id(42);    // a instantiated to word at this call site
+function demo() returns (word) {
+    return id(42);    // A instantiated to word at this call site
 }
 ```
 
@@ -199,16 +215,20 @@ For a pair function with two type variables, both are instantiated
 independently:
 
 ```solidity
-data Pair(a, b) = Pair(a, b);
+enum Pair<A, B> {
+    Pair(A, B)
+}
 
-forall a b . function fst(p : Pair(a, b)) -> a {
-    match p {
-    | Pair(x, y) => return x;
+function fst<A, B>(p: Pair<A, B>) returns (A) {
+    match (p) {
+        case Pair(x, y) {
+            return x;
+        }
     }
 }
 
-function demo() -> word {
-    return fst(Pair(42, true));    // a = word, b = bool
+function demo() returns (word) {
+    return fst(Pair(42, true));    // A = word, B = bool
 }
 ```
 
@@ -229,20 +249,20 @@ found, the compiler reports an unsolved constraint error.
 ### Constraint resolved at call site
 
 ```solidity
-forall a . class a:Encodable {
-    function encode(x : a) -> word;
+trait Encodable<A> {
+    function encode(x: A) returns (word);
 }
 
-instance word:Encodable {
-    function encode(x : word) -> word { return x; }
+impl Encodable<word> {
+    function encode(x: word) returns (word) { return x; }
 }
 
-forall a . a:Encodable => function encodeField(x : a) -> word {
+function encodeField<A>(x: A) returns (word) where A: Encodable {
     return Encodable.encode(x);
 }
 
 contract ERC20 {
-    function main() -> word {
+    function main() returns (word) {
         return encodeField(42);    // a = word; word:Encodable resolved
     }
 }
@@ -255,12 +275,12 @@ reports which constraint could not be satisfied and which instances are
 defined:
 
 ```solidity
-forall a . class a:SafeArith {
-    function safeAdd(x : a, y : a) -> a;
+trait SafeArith<A> {
+    function safeAdd(x: A, y: A) returns (A);
 }
 
-// No instance for word is declared.
-function bad(x : word, y : word) -> word {
+// No implementation for word is declared.
+function bad(x: word, y: word) returns (word) {
     return SafeArith.safeAdd(x, y);
 }
 ```
@@ -272,12 +292,12 @@ using defined instances:
 
 ```
 
-The fix is either to declare `instance word:SafeArith { ... }` or to add the
+The fix is either to declare `impl SafeArith<word> { ... }` or to add the
 constraint to the calling function's signature so the obligation is propagated
 to the caller:
 
 ```solidity
-forall a . a:SafeArith => function bad(x : a, y : a) -> a {
+function bad<A>(x: A, y: A) returns (A) where A: SafeArith {
     return SafeArith.safeAdd(x, y);
 }
 ```
@@ -292,9 +312,11 @@ function body and the phantom parameter cannot be determined from the context,
 the compiler reports an ambiguous type variable error.
 
 ```solidity
-data TypedSlot(a) = TypedSlot(word);    // a is phantom: it appears in no field
+enum TypedSlot<A> {
+    TypedSlot(word)    // A is phantom: it appears in no field
+}
 
-function bad() -> word {
+function bad() returns (word) {
     let s = TypedSlot.TypedSlot(0);     // a is unconstrained; no context fixes it
     return 0;
 }
@@ -310,8 +332,8 @@ The fix is to annotate the `let` declaration with the full type, giving the
 phantom parameter a concrete value:
 
 ```solidity
-function good() -> word {
-    let s : TypedSlot(word) = TypedSlot.TypedSlot(0);
+function good() returns (word) {
+    let s: TypedSlot<word> = TypedSlot.TypedSlot(0);
     return 0;
 }
 ```
@@ -327,28 +349,36 @@ triggered the failure.
 ### Return type mismatch
 
 ```solidity
-function bad(amount : word) -> bool {
-    return amount;    // amount : word; expected bool
+function bad(amount: word) returns (bool) {
+    return amount;    // amount: word; expected bool
 }
 ```
 
 ```
 Types: bool and word do not unify
- - in: function bad (amount : word) -> bool { return amount; }
+ - in: function bad(amount: word) returns (bool) { return amount; }
 ```
 
 ### Match arm return type mismatch
 
-All arms of a `match` expression must produce the same type. Returning
+All arms of a `match` statement must agree with the function's declared result.
+Returning
 different types in different arms is a unification error:
 
 ```solidity
-data Result = Ok(word) | Err(word);
+enum Result {
+    Ok(word),
+    Err(word)
+}
 
-function bad(r : Result) -> word {
-    match r {
-    | Result.Ok(v)  => return v;
-    | Result.Err(_) => return false;    // word expected; bool returned
+function bad(r: Result) returns (word) {
+    match (r) {
+        case Result.Ok(v) {
+            return v;
+        }
+        case Result.Err(_) {
+            return false;    // word expected; bool returned
+        }
     }
 }
 ```
@@ -356,7 +386,7 @@ function bad(r : Result) -> word {
 ```
 Types: bool and word do not unify
  - in: false
- - in: function bad (r : Result) -> word { ... }
+ - in: function bad(r: Result) returns (word) { ... }
 ```
 
 ### Algebraic data type vs primitive mismatch
@@ -365,16 +395,19 @@ User-defined types and primitive types such as `word` are never
 interchangeable:
 
 ```solidity
-data TxStatus = Pending | Confirmed;
+enum TxStatus {
+    Pending,
+    Confirmed
+}
 
-function bad(n : word) -> TxStatus {
+function bad(n: word) returns (TxStatus) {
     return n;    // word is not TxStatus
 }
 ```
 
 ```
 Types: TxStatus and word do not unify
- - in: function bad (n : word) -> TxStatus { return n; }
+ - in: function bad(n: word) returns (TxStatus) { return n; }
 ```
 
 ---

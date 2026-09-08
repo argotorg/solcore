@@ -5,7 +5,7 @@ This document describes Solcore's high-level compilation-pipeline architecture: 
 ## Compilation Pipeline Flow
 
 ```
-Sources (.solc, multi-module) → Module Loader → Parser → Name Resolution
+Sources (.sol, multi-module) → Module Loader → Parser → Name Resolution
    → Early Desugaring (untyped) → Type Checker (per module) → Late Desugaring (typed)
    → Specialization → Mast → Comptime Evaluation / Dead-Code Elimination → Comptime Check
    → Hull Emission → Hull IR
@@ -40,15 +40,14 @@ Sources (.solc, multi-module) → Module Loader → Parser → Name Resolution
    dispatch code for contracts
 4. **Generic instance derivation** (`Solcore.Desugarer.DeriveGeneric`) — derive `Generic` instances
    for data types
-5. **Class instance derivation** (`Solcore.Desugarer.DeriveClasses`) — expand `deriving (...)`
-   clauses into forwarding instances via `Generic`
-5b. **Struct field-projection generation** (`Solcore.Desugarer.StructProjection`) — a `struct` is a
-   single-constructor product (`data Foo = Foo(T1, …, Tn)`) whose constructor also carries the
-   field names. This pass emits one positional projection function per field; dot-notation access
-   `s.x` is then rewritten to a projection call during type checking (`TcStmt`, using the same
-   `fieldProjName` mangling). Because a struct is just a tagless product, it inherits the tuple ABI
-   encoding and the SoA/`fst`/`snd` backend lowering unchanged, so no backend work is needed —
-   struct ABI encode/decode is exactly Solidity's tuple wire format.
+5. **Class instance derivation** (`Solcore.Desugarer.DeriveClass`) — expand `#[derive(...)]`
+   attributes into forwarding instances via `Generic`
+5b. **Struct storage-setter generation** (`Solcore.Desugarer.StructProjection`) — a
+   `struct S { field: T; }` is a single-constructor product with named-field metadata.
+   This pass generates setters used for read-modify-write updates of struct-valued
+   storage fields. Value reads use the existing typed field selectors in `TcMonad`
+   and `TcStmt`, which evaluate the receiver once. Structs retain positional product
+   layout and Solidity tuple ABI encoding.
 6. **SCC Analysis** (`Solcore.Frontend.TypeInference.SccAnalysis`) — analyze strongly connected
    components for mutual recursion
 7. **Indirect Call Handling** (`Solcore.Desugarer.IndirectCall`) — defunctionalization (eliminate
@@ -69,6 +68,8 @@ Sources (.solc, multi-module) → Module Loader → Parser → Name Resolution
   AST before late desugaring
 
 **Late Desugaring & Lowering (typed AST → Hull)**:
+Array literals are expanded first by `ArrayLitDesugar`, once their element types
+have been checked. Calls use internal names bound to the defining standard module.
 1. **If/Bool Desugaring** (`Solcore.Desugarer.IfDesugarer`) — lower if-expressions to pattern
    matching on sum types
 2. **Match Compilation** (`Solcore.Desugarer.DecisionTreeCompiler`) — compile complex patterns to
@@ -123,7 +124,7 @@ information: if/pattern compilation, monomorphization, comptime evaluation, and 
 - `src/Solcore/Desugarer/FieldAccess.hs` - Field access desugaring
 - `src/Solcore/Desugarer/ContractDispatch.hs` - Contract method dispatch generation, ABI emission
 - `src/Solcore/Desugarer/DeriveGeneric.hs` - `Generic` instance derivation
-- `src/Solcore/Desugarer/DeriveClasses.hs` - `deriving (...)` clause expansion
+- `src/Solcore/Desugarer/DeriveClass.hs` - `#[derive(...)]` attribute expansion
 - `src/Solcore/Frontend/TypeInference/SccAnalysis.hs` - Dependency analysis
 - `src/Solcore/Desugarer/IndirectCall.hs` - Defunctionalization (remove higher-order functions)
 - `src/Solcore/Desugarer/ReplaceWildcard.hs` - Wildcard replacement
@@ -237,8 +238,8 @@ otherwise unchanged (static sum: inline `[tag][branch]`; dynamic sum: an offset
 word to an inline `[tag][branch]` body in the tail), since a tag is still one word.
 The variant name only survives to the point where `Solcore.Desugarer.DeriveGeneric`
 emits each type's `ABIEncode`/`ABIDecode` instance, so those concrete instances (not
-the anonymous structural `sum(f,g)` bridge) carry the tag; the helpers
-`variantTag` / `encodeVariant` / `abiSumReader` live in `std.ABIGeneric`. A
+the anonymous structural `sum<f, g>` bridge) carry the tag; the helpers
+`encodeVariant` and `abiSumReader` live in `std.ABIGeneric`. A
 single-constructor ADT is a product/struct with no discriminant and carries no tag.
 
 ## Diagnostics
@@ -262,11 +263,12 @@ Solcore compiles multi-file programs via a small logical module system
 (`Solcore.Frontend.Module.Loader`, `Solcore.Frontend.Module.Identity`; specified in
 `doc/module-system.md`):
 - Module identity is `(library, logical module path)`, independent of the physical file path;
-  `foo.bar` maps to `foo/bar.solc`.
+  `foo.bar` maps to `foo/bar.sol`.
 - Libraries are: the main library (`--root`, default `.`), the std library (`--include`, default
   `std`), and named external libraries (`--lib NAME=DIR`, referenced as `import @NAME.path;`).
-- Import forms: `import M;`, `import M as A;`, `import M.{X, Y};`, `import M.{X as Z};`,
-  `import M.{*};`, `import M.{*} hiding {X};`, plus `lib.`- and `@ext.`-qualified paths.
+- Import forms: `import M;`, `import * as A from M;`, `import {X, Y} from M;`,
+  `import {X as Z} from M;`, `import * from M;`, `import * from M hiding {X};`,
+  plus `lib.`- and `@ext.`-qualified paths.
 - Each module is name-resolved against only its own direct imports and then type-checked
   individually before all checked modules are assembled into one compilation unit.
 

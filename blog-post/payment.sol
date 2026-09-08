@@ -1,21 +1,18 @@
-data address = address(word);
+enum address { address(word) }
 
-data tokenid = tokenid(word);
+enum tokenid { tokenid(word) }
 
-data Payment =
-    Native(address, word)
-  | ERC20 (address, address, address, word)  
-  | ERC721(address, address, address, tokenid);
+enum Payment { Native(address, word), ERC20(address, address, address, word), ERC721(address, address, address, tokenid) }
 
 function processPayment(payment : Payment) {
-    match payment {
-    | Native(to, amount) => 
+    match (payment ) {
+    case Native(to, amount) {
       transfer(to, amount);
-    | ERC20(token, from, to, amount) =>
+    } case ERC20(token, from, to, amount) {
       transferFromERC20(from, to, amount);
-    | ERC721(token, from, to, tokenId) =>
+    } case ERC721(token, from, to, tokenId) {
       transferFromERC721(from, to, tokenId);
-    }
+    } }
 }
 
 function transfer (to : address, amount : word) {

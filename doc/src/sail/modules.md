@@ -39,18 +39,18 @@ qualified prefix `modname`. No names are introduced into the unqualified
 scope.
 
 ```solidity
-// token.solc exports: Token, transfer
+// token.sol exports: Token, transfer
 import token;
 
-function doTransfer(t : token.Token, to : word, amount : word) -> () {
-    return token.transfer(t, to, amount);
+function doTransfer(t: token.Token, to: word, amount: word) {
+    token.transfer(t, to, amount);
 }
 ```
 
 ### Module import with alias
 
 ```solidity
-import modname as Alias;
+import * as Alias from modname;
 ```
 
 Same as a full import but assigns a shorter alias to the module. All
@@ -58,10 +58,10 @@ qualified references must use the alias; the original module name is not
 available as a qualifier.
 
 ```solidity
-import token as T;
+import * as T from token;
 
-function doTransfer(t : T.Token, to : word, amount : word) -> () {
-    return T.transfer(t, to, amount);
+function doTransfer(t: T.Token, to: word, amount: word) {
+    T.transfer(t, to, amount);
 }
 ```
 
@@ -71,26 +71,26 @@ is not a known qualifier in this file.
 ### Selective import
 
 ```solidity
-import modname.{Name1, Name2};
+import {Name1, Name2} from modname;
 ```
 
 Loads the listed names directly into the unqualified scope. They can be used
 without any prefix.
 
 ```solidity
-import token.{Token, transfer};
+import {Token, transfer} from token;
 
-function doTransfer(t : Token, to : word, amount : word) -> () {
-    return transfer(t, to, amount);
+function doTransfer(t: Token, to: word, amount: word) {
+    transfer(t, to, amount);
 }
 ```
 
 Each item in the selector list may optionally be renamed with `as`:
 
 ```solidity
-import selectlib.{keep as keep_, drop as drop_};
+import {keep as keep_, drop as drop_} from selectlib;
 
-function main(x : word) -> word {
+function main(x: word) returns (word) {
     return drop_(keep_(x));
 }
 ```
@@ -102,14 +102,14 @@ Constructors of an imported type must still be qualified with the type name
 even when the type itself was selectively imported:
 
 ```solidity
-import token.{Token};
+import {Token} from token;
 
-function makeActive() -> Token {
+function makeActive() returns (Token) {
     return Token.Active;    // correct
 }
 
 // Error: unqualified constructor.
-function makeBad() -> Token {
+function makeBad() returns (Token) {
     return Active;
 }
 ```
@@ -123,19 +123,21 @@ Use Type.Constructor form.
 ### Wildcard selective import
 
 ```solidity
-import modname.{*};
+import {*} from modname;
 ```
 
 Places every exported name from the module into the unqualified scope.
 Individual names may be excluded using `hiding`:
 
 ```solidity
-import globlib.{*} hiding {idWord};
+import {*} from globlib hiding {idWord};
 
-function main(x : word) -> word {
-    let y : T = mkT(x);    // mkT is in scope; idWord is not
-    match y {
-    | T.T(v) => return v;
+function main(x: word) returns (word) {
+    let y: T = mkT(x);    // mkT is in scope; idWord is not
+    match (y) {
+        case T.T(v) {
+            return v;
+        }
     }
 }
 ```
@@ -143,44 +145,12 @@ function main(x : word) -> word {
 The `hiding` clause accepts a comma-separated list of names to suppress:
 
 ```solidity
-import selectlib.{keep, drop} hiding {drop};
+import {keep, drop} from selectlib hiding {drop};
 
-function main(x : word) -> word {
+function main(x: word) returns (word) {
     return keep(x);    // drop is not in scope
 }
 ```
-
-### Importing operator symbols
-
-User-defined operator symbols are exported and imported using parenthesised
-syntax `(sym)`, where `sym` is the operator character sequence. Importing an
-operator brings both its precedence/fixity declaration and its bound function
-into scope.
-
-```solidity
-// math.solc  (declares and exports the operator)
-infixl 70 (^^) => pow;
-export { pow, (^^) };
-
-function pow(b : word, e : word) -> word { ... }
-```
-
-```solidity
-// main.solc  (imports the operator by symbol)
-import math.{pow, (^^)};
-
-contract Main {
-    function main() -> word {
-        return 2 ^^ 10;    // 1024
-    }
-}
-```
-
-Operator symbols may be mixed freely with ordinary names in the same selector
-list. Importing the function name alone (without the symbol) makes the
-implementation callable as a regular function but does not enable infix syntax.
-
----
 
 ## Module Paths
 
@@ -193,8 +163,8 @@ A name without a `lib.` prefix is a _relative path_. The compiler resolves
 it relative to the directory that contains the importing file.
 
 ```solidity
-import foo.bar;          // loads foo/bar.solc
-import foo.bar.baz;      // loads foo/bar/baz.solc
+import foo.bar;          // loads foo/bar.sol
+import foo.bar.baz;      // loads foo/bar/baz.sol
 ```
 
 After a plain `import foo.bar`, the module is accessible under the full
@@ -203,7 +173,7 @@ dotted qualifier:
 ```solidity
 import foo.bar;
 
-function main() -> word {
+function main() returns (word) {
     return foo.bar.value();
 }
 ```
@@ -215,7 +185,7 @@ resolved from the root of the current library rather than the current
 directory.
 
 ```solidity
-export lib.some.module;          // re-exports some/module.solc from the library root
+export lib.some.module;          // re-exports some/module.sol from the library root
 ```
 
 Library paths are mainly used in re-export declarations to expose a module
@@ -233,7 +203,7 @@ time.
 import @extlib.math.api;
 
 contract External {
-    function main() -> word {
+    function main() returns (word) {
         return math.api.sum(39);
     }
 }
@@ -242,9 +212,9 @@ contract External {
 An alias keeps the reference concise:
 
 ```solidity
-import @extlib.math.api as MathApi;
+import * as MathApi from @extlib.math.api;
 
-function main() -> word {
+function main() returns (word) {
     return MathApi.sum(39);
 }
 ```
@@ -258,7 +228,7 @@ user libraries.
 ```solidity
 import std;
 
-function main() -> word {
+function main() returns (word) {
     return std.addWord(21, 21);
 }
 ```
@@ -276,8 +246,8 @@ types, functions, and constructors.
 ```solidity
 import token;
 
-function doTransfer(t : token.Token, to : word, amount : word) -> () {
-    return token.transfer(t, to, amount);
+function doTransfer(t: token.Token, to: word, amount: word) {
+    token.transfer(t, to, amount);
 }
 ```
 
@@ -288,7 +258,7 @@ Constructors are written as `qualifier.TypeName.Constructor`:
 ```solidity
 import token;
 
-function makeActive() -> token.Token {
+function makeActive() returns (token.Token) {
     return token.Token.Active;
 }
 ```
@@ -300,10 +270,14 @@ The same qualified form is used in pattern matching:
 ```solidity
 import token;
 
-function isActive(t : token.Token) -> word {
-    match t {
-    | token.Token.Active => return 1;
-    | token.Token.Paused => return 0;
+function isActive(t: token.Token) returns (word) {
+    match (t) {
+        case token.Token.Active {
+            return 1;
+        }
+        case token.Token.Paused {
+            return 0;
+        }
     }
 }
 ```
@@ -314,9 +288,9 @@ When the import carries an alias, replace the module name with the alias
 in all qualified references:
 
 ```solidity
-import token as T;
+import * as T from token;
 
-function makeActive() -> T.Token {
+function makeActive() returns (T.Token) {
     return T.Token.Active;
 }
 ```
@@ -328,6 +302,11 @@ function makeActive() -> T.Token {
 An export declaration controls which definitions an importing module can see.
 Definitions that are not listed in an export declaration are private to the
 file.
+
+> **Implementation extension** The canonical new syntax deliberately leaves
+> export and re-export syntax undecided. The forms in this section describe the
+> current compiler extension and may change when the interoperability model is
+> finalized.
 
 > **Note** A file without any export declaration exports nothing. All
 > definitions are private unless explicitly exported.
@@ -359,20 +338,6 @@ export { Token(Ok, Err) };      // exports both constructors
 export { Bool(*) };             // exports Bool and all its constructors
 ```
 
-### Exporting operator symbols
-
-Operator symbols are separate exportable entities from the functions they
-implement. To make an operator available to importers as infix syntax, both
-the function name and the operator symbol must appear in the export list:
-
-```solidity
-infixl 70 (^^) => pow;
-export { pow, (^^) };
-```
-
-Exporting only `pow` (without `(^^)`) makes the function callable by name
-but does not grant importers access to the infix `^^` syntax.
-
 ### Wildcard export
 
 ```solidity
@@ -390,7 +355,7 @@ came from the re-exporting module.
 **Re-export a whole module:**
 
 ```solidity
-// api.solc: makes all of util's exports available under api.util.*
+// api.sol: makes all of util's exports available under api.util.*
 export lib.reexport_module.pkg.util;
 ```
 
@@ -400,7 +365,7 @@ chain:
 ```solidity
 import reexport_module.pkg.api;
 
-function main() -> word {
+function main() returns (word) {
     return api.util.unwrap(api.util.Wrap.Mk(1));
 }
 ```
@@ -408,14 +373,14 @@ function main() -> word {
 **Re-export a module under an alias:**
 
 ```solidity
-// api_alias.solc
+// api_alias.sol
 export lib.reexport_module.pkg.util as Utils;
 ```
 
 ```solidity
 import reexport_module.pkg.api_alias;
 
-function main() -> word {
+function main() returns (word) {
     return api_alias.Utils.unwrap(api_alias.Utils.Wrap.Mk(1));
 }
 ```
@@ -440,13 +405,16 @@ create or examine values of an opaque type is through the functions the module
 chooses to export.
 
 ```solidity
-// hidden_ctor_lib.solc
+// hidden_ctor_lib.sol
 export {Token(Ok), mkOk, mkErr};
 
-data Token = Ok(word) | Err(word);
+enum Token {
+    Ok(word),
+    Err(word)
+}
 
-function mkOk(x : word) -> Token { return Token.Ok(x); }
-function mkErr(x : word) -> Token { return Token.Err(x); }
+function mkOk(x: word) returns (Token) { return Token.Ok(x); }
+function mkErr(x: word) returns (Token) { return Token.Err(x); }
 ```
 
 The module exports `Token` with only the `Ok` constructor visible. The `Err`
@@ -455,10 +423,10 @@ constructor is private.
 An importer that selects only the type cannot use the hidden constructor:
 
 ```solidity
-import hidden_ctor_lib.{Token};
+import {Token} from hidden_ctor_lib;
 
 // Error: Err is not exported.
-function bad() -> Token {
+function bad() returns (Token) {
     return .Err(1);
 }
 ```
@@ -471,13 +439,17 @@ No matching constructor for shorthand expression:
 Pattern matching on the hidden constructor is equally rejected:
 
 ```solidity
-import hidden_ctor_lib.{Token, mkErr};
+import {Token, mkErr} from hidden_ctor_lib;
 
 // Error: Token.Err is not in scope.
-function bad(x : word) -> word {
-    match mkErr(x) {
-    | Token.Err(v) => return v;
-    | _ => return 0;
+function bad(x: word) returns (word) {
+    match (mkErr(x)) {
+        case Token.Err(v) {
+            return v;
+        }
+        default {
+            return 0;
+        }
     }
 }
 ```
@@ -496,18 +468,18 @@ sees only the names that `A` chose to export. Names that `B` exported to `A`
 but that `A` did not re-export are not visible in `C`.
 
 ```solidity
-// transitive_dep_base.solc
+// transitive_dep_base.sol
 export { g };
-function g() -> word { return 1; }
+function g() returns (word) { return 1; }
 
-// transitive_dep_mid.solc
-import transitive_dep_base.{g};
+// transitive_dep_mid.sol
+import {g} from transitive_dep_base;
 export { f };
-function f() -> word { return g(); }
+function f() returns (word) { return g(); }
 
-// transitive_dep_main_select.solc
-import transitive_dep_mid.{f};
-function main() -> word { return f(); }    // g is not in scope here
+// transitive_dep_main_select.sol
+import {f} from transitive_dep_mid;
+function main() returns (word) { return f(); }    // g is not in scope here
 ```
 
 ---
@@ -521,22 +493,22 @@ identifier. The imported name remains accessible through its qualified form.
 import token;
 
 // Local 'transfer' shadows token.transfer for unqualified calls.
-function transfer(to : word, amount : word) -> () { return (); }
+function transfer(to: word, amount: word) { return; }
 
-function main(to : word, amount : word) -> () {
-    return token.transfer(to, amount);    // uses the imported transfer, not the local one
+function main(to: word, amount: word) {
+    token.transfer(to, amount);    // uses the imported transfer, not the local one
 }
 ```
 
 A locally defined name also shadows a selectively imported name:
 
 ```solidity
-import erc20lib.{balanceOf};
+import {balanceOf} from erc20lib;
 
 // Local 'balanceOf' shadows the imported one.
-function balanceOf(account : word) -> word { return 0; }
+function balanceOf(account: word) returns (word) { return 0; }
 
-function main(account : word) -> word {
+function main(account: word) returns (word) {
     return balanceOf(account);    // calls the local balanceOf
 }
 ```
@@ -554,8 +526,8 @@ an imported name without the qualifier is an error:
 import token;
 
 // Error: 'transfer' is not in scope unqualified.
-function main(to : word, amount : word) -> () {
-    return transfer(to, amount);
+function main(to: word, amount: word) {
+    transfer(to, amount);
 }
 ```
 
@@ -563,7 +535,7 @@ function main(to : word, amount : word) -> () {
 Undefined name: transfer
 ```
 
-The fix is to qualify the call: `return token.transfer(to, amount);`.
+The fix is to qualify the call: `token.transfer(to, amount);`.
 
 ### Using the original name after aliasing
 
@@ -571,11 +543,11 @@ When an alias replaces the module name, the original name is not a valid
 qualifier:
 
 ```solidity
-import erc20.token as T;
+import * as T from erc20.token;
 
 // Error: erc20 is not a qualifier in this file.
-function main(to : word, amount : word) -> () {
-    return erc20.token.transfer(to, amount);
+function main(to: word, amount: word) {
+    erc20.token.transfer(to, amount);
 }
 ```
 
@@ -583,7 +555,7 @@ function main(to : word, amount : word) -> () {
 Undefined name: erc20
 ```
 
-The fix is to use the alias: `return T.transfer(to, amount);`.
+The fix is to use the alias: `T.transfer(to, amount);`.
 
 ### Using a type without qualifying its constructor
 
@@ -591,10 +563,10 @@ Selectively importing a type name does not bring its constructors into the
 unqualified scope. Constructors must always be written as `TypeName.Constructor`:
 
 ```solidity
-import token.{Token};
+import {Token} from token;
 
 // Error: unqualified constructor.
-function makeActive() -> Token {
+function makeActive() returns (Token) {
     return Active;
 }
 ```
@@ -614,7 +586,7 @@ module qualifier fails:
 import token;
 
 // Error: Token is not in the unqualified scope.
-function bad(t : Token) -> word {
+function bad(t: Token) returns (word) {
     return 0;
 }
 ```

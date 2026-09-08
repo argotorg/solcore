@@ -6,6 +6,13 @@ import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.Ty
 import Prelude hiding (words)
 
+-- Internal names cannot be written by source programs. The loader binds these
+-- to the actual standard-library definitions used by array literal lowering.
+arrayLiteralNewName, arrayLiteralInitName, storeArrayLiteralName :: Name
+arrayLiteralNewName = QualName (Name "$std") "arrayLitNew"
+arrayLiteralInitName = QualName (Name "$std") "arrayLitInit"
+storeArrayLiteralName = QualName (Name "$std") "storeArrayLit"
+
 -- basic type classes
 
 selfVar :: Tyvar
@@ -229,7 +236,7 @@ pair t1 t2 = TyCon "pair" [t1, t2]
 -- The type of an array literal: a dynamically sized memory array.  This
 -- mirrors Solidity, where @[e1,...,en]@ is a memory array that converts
 -- implicitly to storage on assignment.  Both type constructors are defined in
--- std.solc; naming them here is the same hardcoding that @pair@ and @string@
+-- std.sol; naming them here is the same hardcoding that @pair@ and @string@
 -- already rely on.
 memoryDynArray :: Ty -> Ty
 memoryDynArray t = TyCon "memory" [TyCon "DynArray" [t]]

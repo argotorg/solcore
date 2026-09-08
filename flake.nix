@@ -87,6 +87,80 @@
             touch $out
           '';
 
+          syntax-migration = pkgs.runCommand "syntax-migration-check" {
+            nativeBuildInputs = [
+              pkgs.gitMinimal
+              pkgs.python3
+            ];
+            src = gitignore ./.;
+          } ''
+            # Exercise the packaged-source fallback against exactly the files
+            # shipped by the gitignore filter.  The filtered source can retain
+            # Git metadata whose index names intentionally excluded files
+            # (for example test/examples/spec/attic), so it is not itself a
+            # complete Git worktree.
+            cp -R "$src" packaged-source
+            chmod -R u+w packaged-source
+            rm -rf packaged-source/.git
+            cd packaged-source
+            python3 scripts/test_migrate_new_syntax.py
+            python3 scripts/migrate_new_syntax.py --check
+            touch $out
+          '';
+
+          railroad-diagrams = pkgs.runCommand "railroad-diagram-check" {
+            nativeBuildInputs = [
+              pkgs.python3
+              pkgs.python3Packages.railroad-diagrams
+            ];
+            src = gitignore ./.;
+          } ''
+            cd $src
+            python3 doc/railroad/bnf2railroad.py --check \
+              doc/railroad/sail.bnf doc/src/sail/diagrams
+            markerless_dir="$(mktemp -d)"
+            cp doc/src/sail/diagrams/*.svg "$markerless_dir/"
+            if python3 doc/railroad/bnf2railroad.py --check \
+              doc/railroad/sail.bnf "$markerless_dir"; then
+              echo "--check unexpectedly accepted markerless output" >&2
+              exit 1
+            fi
+            unowned_dir="$(mktemp -d)"
+            printf '%s\n' manual > "$unowned_dir/manual.svg"
+            if python3 doc/railroad/bnf2railroad.py \
+              doc/railroad/sail.bnf "$unowned_dir"; then
+              echo "generation unexpectedly adopted a non-empty unowned directory" >&2
+              exit 1
+            fi
+            test ! -e "$unowned_dir/.bnf2railroad-output"
+            if python3 doc/railroad/bnf2railroad.py --clean \
+              doc/railroad/sail.bnf "$unowned_dir"; then
+              echo "--clean unexpectedly accepted an unowned directory" >&2
+              exit 1
+            fi
+            grep -Fxqx manual "$unowned_dir/manual.svg"
+            symlink_dir="$(mktemp -d)"
+            external_svg="$(mktemp)"
+            printf '%s\n' external-sentinel > "$external_svg"
+            cp doc/src/sail/diagrams/.bnf2railroad-output "$symlink_dir/"
+            cp doc/src/sail/diagrams/*.svg "$symlink_dir/"
+            rm "$symlink_dir/Param.svg"
+            ln -s "$external_svg" "$symlink_dir/Param.svg"
+            if python3 doc/railroad/bnf2railroad.py --check \
+              doc/railroad/sail.bnf "$symlink_dir"; then
+              echo "--check unexpectedly accepted a symlink output" >&2
+              exit 1
+            fi
+            grep -Fxqx external-sentinel "$external_svg"
+            if python3 doc/railroad/bnf2railroad.py \
+              doc/railroad/sail.bnf "$symlink_dir"; then
+              echo "generation unexpectedly accepted a symlink output" >&2
+              exit 1
+            fi
+            grep -Fxqx external-sentinel "$external_svg"
+            touch $out
+          '';
+
           contests = pkgs.stdenv.mkDerivation {
             pname = "solcore-contests";
             version = "0.0";
@@ -155,6 +229,8 @@
             pkgs.go-ethereum
             pkgs.jq
             pkgs.nlohmann_json
+            pkgs.python3
+            pkgs.python3Packages.railroad-diagrams
             pkgs.solc
             evmone-lib
             (hspkgs.hevm.overrideAttrs (old: { patches = []; }))

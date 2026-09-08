@@ -49,12 +49,12 @@ work.
   literal cannot reach runtime.  It only survives by being folded away or
   consumed by a special case.
 - Comptime folding already works: `concatLit`/`strlenLit`/`keccakLit` are
-  `std.solc` stubs that MastEval folds when their arguments are concrete
+  `std.sol` stubs that MastEval folds when their arguments are concrete
   `StrLit` (`MastEval.hs:435-446`).  So string ops compose at compile time and
   collapse to a single `StrLit`.
 - The runtime representation `memory(string)` exists: `data memory(t) =
-  memory(word)` (`std.solc:752`), a `Typedef` over a pointer.  `strlen` reads
-  `mload(ptr)` (`std.solc:818`); ABIEncode/ABIDecode/CanStore all operate on
+  memory(word)` (`std.sol:752`), a `Typedef` over a pointer.  `strlen` reads
+  `mload(ptr)` (`std.sol:818`); ABIEncode/ABIDecode/CanStore all operate on
   `memory(string)`.
 - The `revertLit` special case (`EmitHull.hs:285`) already turns
   `MastCall revertLit [StrLit s]` into a Hull `SRevert s` — the precedent the
@@ -103,10 +103,10 @@ its own type, and `Str.fromString` at that result type is specialised through th
 ordinary resolution table (`Specialise.specCall` falls through for any ground
 result type that is neither `string` nor `memory(string)`).  What such an
 instance may either consume the string at comptime (`strlenLit`, `keccakLit`, …,
-which simply folds away — see `test/examples/comptime/string-user-instance.solc`)
+which simply folds away — see `test/examples/comptime/string-user-instance.sol`)
 or materialize it, which crosses the function boundary described under
 [Materialization](#materialization-in-emithull) and relies on
-[parameter erasure](#comptime-only-parameter-erasure).  `std.solc` uses the
+[parameter erasure](#comptime-only-parameter-erasure).  `std.sol` uses the
 latter for
 
 ```
@@ -139,7 +139,7 @@ actual rewrite happens in the dedicated `specCall` case (below), which keeps the
 *original argument expression in place*.
 
 It is tempting to instead write `instance memory(string):Str { function
-fromString(s) { return memStringFromLit(s); } }` in `std.solc`.  **Do not** — it
+fromString(s) { return memStringFromLit(s); } }` in `std.sol`.  **Do not** — it
 reintroduces the function-boundary problem: inside the instance method `s` is a
 runtime parameter, so the body specializes to `memStringFromLit(s_param)` with
 `s_param` a `MastVar`, never a `StrLit`, and EmitHull's intercept (which matches
@@ -221,7 +221,7 @@ MastEval folds them to a single `StrLit`; only the value passed to
 
 ### Worked example: `+` then materialize
 
-`+` on strings uses `instance string:Add` (`std.solc:934`), whose body is
+`+` on strings uses `instance string:Add` (`std.sol:934`), whose body is
 `concatLit` — so this form requires `import std`.
 
 Source (function returns `memory(string)`):
@@ -628,23 +628,23 @@ Source-level (`test/examples/comptime/`, registered in `test/Cases.hs`).  These
 compile through `emitHull` (the test path stops at Hull objects; runtime/ABI
 value checks would need a `dispatch` testrunner case — see gaps).  The canonical
 style is **A1** (apply `Str.fromString` to the comptime expression directly);
-`string-concat-mem.solc` additionally exercises **A2** (`let s : string = …`
+`string-concat-mem.sol` additionally exercises **A2** (`let s : string = …`
 then `Str.fromString(s)`), the `string`-typed-`let` + dead-let-substitution
 path.
 
-- **`string-lit-mem.solc`** (A1) — `main()` returns `"abcd"` as `memory(string)`.
+- **`string-lit-mem.sol`** (A1) — `main()` returns `"abcd"` as `memory(string)`.
   The simplest materialization; the generated `__strlit_0` writes length 4 and
   the packed word.  Verified through `yule` (Hull→Yul typechecks).
-- **`string-concat-mem.solc`** — `main()` computes `strlen` of `"Hello, " +
+- **`string-concat-mem.sol`** — `main()` computes `strlen` of `"Hello, " +
   "world!"` materialized two ways: A1 (`Str.fromString("Hello, " + "world!")`)
   and A2 (a `greetingLet` helper using a `string` `let`).  `+` folds via
   `concatLit` in the `string` domain, so both forms produce the same `StrLit`
   and share **one** `__strlit_*` allocator (len 13) — proving the
   comptime→runtime boundary and dedup across forms.
-- **`string-lit-dedup.solc`** — `main()` materializes `"alpha"`, `"beta"`,
+- **`string-lit-dedup.sol`** — `main()` materializes `"alpha"`, `"beta"`,
   `"alpha"`; exactly **two** `__strlit_*` allocators are emitted (the repeated
   `"alpha"` shares one).
-- **`string-mem-runtime-fail.solc`** (`runTestExpectingFailure`) — returns a
+- **`string-mem-runtime-fail.sol`** (`runTestExpectingFailure`) — returns a
   `string`-typed `let` where `memory(string)` is expected, with no conversion.
   Rejected at type checking ("memory(string) and string do not unify"),
   validating the comptime-only invariant.

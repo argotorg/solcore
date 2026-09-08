@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="railroad-diagram" height="88" viewBox="0 0 1000.5 88" width="1000.5">
+<style>
+svg.railroad-diagram { background: #fafafa; }
+svg.railroad-diagram path { stroke-width: 2; stroke: #333; fill: none; }
+svg.railroad-diagram text {
+    font: bold 14px monospace; fill: #333;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.comment { font: italic 12px monospace; fill: #888; }
+svg.railroad-diagram rect { stroke-width: 2; stroke: #333; fill: #fff; }
+svg.railroad-diagram rect.group-box {
+    stroke: #aaa; stroke-dasharray: 4 2; fill: none;
+}
+</style>
+<g transform="translate(.5 .5)">
+<g>
+<path d="M20 38v20m10 -20v20m-10 -10h20" /></g><path d="M40 48h10" /><g>
+<path d="M50 48h0.0" /><path d="M950.5 48h0.0" /><g class="terminal ">
+<path d="M50.0 48h0.0" /><path d="M104.0 48h0.0" /><rect height="22" rx="10" ry="10" width="54" x="50" y="37"></rect><text x="77" y="52">enum</text></g><path d="M104.0 48h10" /><path d="M114.0 48h10" /><g class="non-terminal ">
+<path d="M124.0 48h0.0" /><path d="M229.0 48h0.0" /><rect height="22" width="105" x="124" y="37"></rect><text x="176.5" y="52">Identifier</text></g><path d="M229.0 48h10" /><g>
+<path d="M239.0 48h0.0" /><path d="M409.5 48h0.0" /><path d="M239.0 48a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M259.0 28h130.5" /></g><path d="M389.5 28a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M239.0 48h20" /><g class="non-terminal ">
+<path d="M259.0 48h0.0" /><path d="M389.5 48h0.0" /><rect height="22" width="130.5" x="259" y="37"></rect><text x="324.25" y="52">GenericParams</text></g><path d="M389.5 48h20" /></g><path d="M409.5 48h10" /><g class="terminal ">
+<path d="M419.5 48h0.0" /><path d="M448.0 48h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="419.5" y="37"></rect><text x="433.75" y="52">{</text></g><path d="M448.0 48h10" /><g>
+<path d="M458.0 48h0.0" /><path d="M912.0 48h0.0" /><path d="M458.0 48a10 10 0 0 0 10 -10v-8a10 10 0 0 1 10 -10" /><g>
+<path d="M478.0 20h414.0" /></g><path d="M892.0 20a10 10 0 0 1 10 10v8a10 10 0 0 0 10 10" /><path d="M458.0 48h20" /><g>
+<path d="M478.0 48h0.0" /><path d="M892.0 48h0.0" /><g class="non-terminal ">
+<path d="M478.0 48h0.0" /><path d="M591.5 48h0.0" /><rect height="22" width="113.5" x="478" y="37"></rect><text x="534.75" y="52">EnumVariant</text></g><path d="M591.5 48h10" /><g>
+<path d="M601.5 48h0.0" /><path d="M823.5 48h0.0" /><path d="M601.5 48a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M621.5 28h182.0" /></g><path d="M803.5 28a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M601.5 48h20" /><g>
+<path d="M621.5 48h0.0" /><path d="M803.5 48h0.0" /><path d="M621.5 48h10" /><g>
+<path d="M631.5 48h0.0" /><path d="M793.5 48h0.0" /><g class="terminal ">
+<path d="M631.5 48h0.0" /><path d="M660.0 48h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="631.5" y="37"></rect><text x="645.75" y="52">,</text></g><path d="M660.0 48h10" /><path d="M670.0 48h10" /><g class="non-terminal ">
+<path d="M680.0 48h0.0" /><path d="M793.5 48h0.0" /><rect height="22" width="113.5" x="680" y="37"></rect><text x="736.75" y="52">EnumVariant</text></g></g><path d="M793.5 48h10" /><path d="M631.5 48a10 10 0 0 0 -10 10v0a10 10 0 0 0 10 10" /><g>
+<path d="M631.5 68h162.0" /></g><path d="M793.5 68a10 10 0 0 0 10 -10v0a10 10 0 0 0 -10 -10" /></g><path d="M803.5 48h20" /></g><g>
+<path d="M823.5 48h0.0" /><path d="M892.0 48h0.0" /><path d="M823.5 48a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
+<path d="M843.5 28h28.5" /></g><path d="M872.0 28a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M823.5 48h20" /><g class="terminal ">
+<path d="M843.5 48h0.0" /><path d="M872.0 48h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="843.5" y="37"></rect><text x="857.75" y="52">,</text></g><path d="M872.0 48h20" /></g></g><path d="M892.0 48h20" /></g><path d="M912.0 48h10" /><g class="terminal ">
+<path d="M922.0 48h0.0" /><path d="M950.5 48h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="922" y="37"></rect><text x="936.25" y="52">}</text></g></g><path d="M950.5 48h10" /><path d="M 960.5 48 h 20 m -10 -10 v 20 m 10 -20 v 20"></path></g></svg>

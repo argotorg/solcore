@@ -56,8 +56,8 @@ sccTopDecls ds =
 -- sort inner contract definitions
 
 sccContract :: TopDecl Name -> SCC (TopDecl Name)
-sccContract (TContr (Contract n vs ds)) =
-  (TContr . Contract n vs) <$> analysis ds
+sccContract (TContr (ContractWithKind kind n vs ds)) =
+  (TContr . ContractWithKind kind n vs) <$> analysis ds
 sccContract d = pure d
 
 analysis :: (Ord a, Names a, Decl a, Show a, Groupable a) => [a] -> SCC [a]
@@ -111,10 +111,10 @@ instance (Decl a) => Decl (Maybe a) where
   decl (Just x) = decl x
 
 instance Decl Constr where
-  decl (Constr n _ _) = [n]
+  decl (Constr n _) = [n]
 
 instance Decl DataTy where
-  decl (DataTy n _ cs _) =
+  decl (DataTy n _ cs) =
     n : decl cs
 
 instance Decl TySym where
@@ -127,7 +127,7 @@ instance Decl (FunDef Name) where
   decl (FunDef _ sig _) = decl sig
 
 instance Decl (Contract Name) where
-  decl (Contract n _ ds) = n : concatMap decl ds
+  decl (ContractWithKind _ n _ ds) = n : concatMap decl ds
 
 instance Decl (Field Name) where
   decl d = [fieldName d]
@@ -143,8 +143,10 @@ instance Decl (TopDecl Name) where
 
 instance Decl (ContractDecl Name) where
   decl (CDataDecl dt) = decl dt
+  decl (CSymDecl alias) = decl alias
   decl (CFieldDecl fd) = decl fd
   decl (CFunDecl fd) = decl fd
+  decl (CSignatureDecl _ sig) = decl sig
   decl (CMutualDecl ds) =
     concatMap decl ds
   decl (CConstrDecl _) = []
@@ -195,6 +197,8 @@ instance Names (Stmt Name) where
     names [e1, e2]
   names (Let _ _ mt me) =
     names mt `union` names me
+  names (LetPattern _ _ mt value) =
+    names mt `union` names value
   names (Block body) =
     names body
   names (StmtExp e) =
@@ -255,22 +259,24 @@ instance Names TySym where
     names t
 
 instance Names Constr where
-  names (Constr _ ts _) =
+  names (Constr _ ts) =
     names ts
 
 instance Names DataTy where
-  names (DataTy _ _ cs _) =
+  names (DataTy _ _ cs) =
     names cs
 
 instance Names (ContractDecl Name) where
   names (CDataDecl dt) = names dt
+  names (CSymDecl alias) = names alias
   names (CFieldDecl fd) = names fd
   names (CFunDecl fd) = names fd
+  names (CSignatureDecl _ sig) = names sig
   names (CMutualDecl cs) = names cs
   names (CConstrDecl cd) = names cd
 
 instance Names (Contract Name) where
-  names (Contract _ _ contractDecls) =
+  names (ContractWithKind _ _ _ contractDecls) =
     names contractDecls
 
 instance Names (TopDecl Name) where

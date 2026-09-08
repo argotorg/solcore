@@ -1,0 +1,46 @@
+import * from std;
+import * from std.dispatch;
+
+// Whole-array assignment `a = b` follows Solidity: it is a deep copy, not an
+// alias; assigning an array to itself is a no-op; and a copy that shrinks the
+// destination clears the slots it abandons, so regrowing yields zeros.
+contract ArrayCopy {
+  a : array<uint256>;
+  b : array<uint256>;
+
+  constructor() {}
+
+  function pushA(v : uint256) public returns (()) {
+    ArrayPush.push(a, v);
+  }
+
+  function pushB(v : uint256) public returns (()) {
+    ArrayPush.push(b, v);
+  }
+
+  // a = b
+  function copyBintoA() public returns (()) {
+    a = b;
+  }
+
+  // a = a  (must be a no-op, not a self-clobbering copy)
+  function copyAintoA() public returns (()) {
+    a = a;
+  }
+
+  function setB(i : uint256, v : uint256) public returns (()) {
+    b[i] = v;
+  }
+
+  function growA(n : uint256) public returns (()) {
+    Array.setLength(a, n);
+  }
+
+  function lenA() public returns (uint256) {
+    return Length.length(a);
+  }
+
+  function getA(i : uint256) public returns (uint256) {
+    return a[i];
+  }
+}

@@ -106,11 +106,11 @@ instance HasType Ty where
   bv _ = []
 
 instance HasType Constr where
-  apply s (Constr dn ts fields) =
-    Constr dn (apply s ts) fields
-  fv (Constr _ ts _) = fv ts
-  mv (Constr _ ts _) = mv ts
-  bv (Constr _ ts _) = bv ts
+  apply s (ConstrWithFields dn ts fields) =
+    ConstrWithFields dn (apply s ts) fields
+  fv (Constr _ ts) = fv ts
+  mv (Constr _ ts) = mv ts
+  bv (Constr _ ts) = bv ts
 
 instance HasType Pred where
   apply s (InCls n t ts) = InCls n (apply s t) (apply s ts)
@@ -141,15 +141,29 @@ instance HasType Scheme where
   bv (Forall vs qt) = vs `union` bv qt
 
 instance (HasType a) => HasType (Signature a) where
-  apply s (Signature _ ctx n p rc r pay) =
+  apply s sig@(Signature _ ctx n p rc r pay) =
     let ctx' = apply s ctx
         p' = apply s p
         r' = apply s r
         vs' = bv ctx' `union` bv p' `union` bv r'
-     in Signature vs' ctx' n p' rc r' pay
+     in (Signature vs' ctx' n p' rc r' pay)
+          { sigReturnNames = sigReturnNames sig,
+            sigReturnItems = apply s (sigReturnItems sig),
+            sigModifiers = sigModifiers sig
+          }
   fv (Signature vs c _ p _ r _) = fv (c, p, r) \\ vs
   mv (Signature _ c _ p _ r _) = mv (c, p, r)
   bv (Signature vs c _ p _ r _) = vs `union` bv (c, p, r)
+
+instance HasType SignatureReturnItem where
+  apply s item =
+    item
+      { signatureReturnItemType =
+          apply s (signatureReturnItemType item)
+      }
+  fv = fv . signatureReturnItemType
+  mv = mv . signatureReturnItemType
+  bv = bv . signatureReturnItemType
 
 instance (HasType a) => HasType (Param a) where
   apply s (Typed c i t) = Typed c (apply s i) (apply s t)
@@ -218,6 +232,7 @@ instance (HasType a) => HasType (Exp a) where
   fv (TyExp e ty) =
     fv e `union` fv ty
   fv (Indexed e1 e2) = fv e1 `union` fv e2
+  fv (ArrayLit es) = fv es
   fv _ = []
 
   mv (Var v) = mv v
@@ -233,6 +248,7 @@ instance (HasType a) => HasType (Exp a) where
   mv (TyExp e ty) =
     mv e `union` mv ty
   mv (Indexed e1 e2) = mv e1 `union` mv e2
+  mv (ArrayLit es) = mv es
   mv _ = []
 
   bv (Var v) = bv v
@@ -248,6 +264,7 @@ instance (HasType a) => HasType (Exp a) where
   bv (TyExp e ty) =
     bv e `union` bv ty
   bv (Indexed e1 e2) = bv e1 `union` bv e2
+  bv (ArrayLit es) = bv es
   bv _ = []
 
 instance (HasType a) => HasType (Stmt a) where
@@ -259,6 +276,12 @@ instance (HasType a) => HasType (Stmt a) where
       (apply s v)
       (apply s <$> mt)
       (apply s <$> me)
+  apply s (LetPattern ct pat mt value) =
+    LetPattern
+      ct
+      (apply s pat)
+      (apply s <$> mt)
+      (apply s value)
   apply s (Block body) =
     Block (apply s body)
   apply s (StmtExp e) =
@@ -293,6 +316,10 @@ instance (HasType a) => HasType (Stmt a) where
     fv v
       `union` (maybe [] fv mt)
       `union` (maybe [] fv me)
+  fv (LetPattern _ pat mt value) =
+    fv pat
+      `union` (maybe [] fv mt)
+      `union` fv value
   fv (Block body) = fv body
   fv (StmtExp e) = fv e
   fv (Return e) = fv e
@@ -312,6 +339,10 @@ instance (HasType a) => HasType (Stmt a) where
     mv v
       `union` (maybe [] mv mt)
       `union` (maybe [] mv me)
+  mv (LetPattern _ pat mt value) =
+    mv pat
+      `union` (maybe [] mv mt)
+      `union` mv value
   mv (Block body) = mv body
   mv (StmtExp e) = mv e
   mv (Return e) = mv e
@@ -331,6 +362,10 @@ instance (HasType a) => HasType (Stmt a) where
     bv v
       `union` (maybe [] bv mt)
       `union` (maybe [] bv me)
+  bv (LetPattern _ pat mt value) =
+    bv pat
+      `union` (maybe [] bv mt)
+      `union` bv value
   bv (Block body) = bv body
   bv (StmtExp e) = bv e
   bv (Return e) = bv e
@@ -388,18 +423,20 @@ instance (HasType a) => HasType (TopDecl a) where
   bv _ = []
 
 instance (HasType a) => HasType (Contract a) where
-  apply s (Contract n vs ds) =
-    Contract n vs (apply s ds)
+  apply s (ContractWithKind kind n vs ds) =
+    ContractWithKind kind n vs (apply s ds)
 
-  fv (Contract _ _ ds) = fv ds
-  mv (Contract _ _ ds) = mv ds
-  bv (Contract _ _ ds) = bv ds
+  fv (ContractWithKind _ _ _ ds) = fv ds
+  mv (ContractWithKind _ _ _ ds) = mv ds
+  bv (ContractWithKind _ _ _ ds) = bv ds
 
 instance (HasType a) => HasType (ContractDecl a) where
   apply s (CFieldDecl fd) =
     CFieldDecl (apply s fd)
   apply s (CFunDecl d) =
     CFunDecl (apply s d)
+  apply s (CSignatureDecl isPublic sig) =
+    CSignatureDecl isPublic (apply s sig)
   apply s (CMutualDecl cs) =
     CMutualDecl (apply s cs)
   apply s (CConstrDecl c) =
@@ -408,18 +445,21 @@ instance (HasType a) => HasType (ContractDecl a) where
 
   fv (CFieldDecl d) = fv d
   fv (CFunDecl d) = fv d
+  fv (CSignatureDecl _ sig) = fv sig
   fv (CMutualDecl ds) = fv ds
   fv (CConstrDecl c) = fv c
   fv _ = []
 
   mv (CFieldDecl d) = mv d
   mv (CFunDecl d) = mv d
+  mv (CSignatureDecl _ sig) = mv sig
   mv (CMutualDecl ds) = mv ds
   mv (CConstrDecl c) = mv c
   mv _ = []
 
   bv (CFieldDecl d) = bv d
   bv (CFunDecl d) = bv d
+  bv (CSignatureDecl _ sig) = bv sig
   bv (CMutualDecl ds) = bv ds
   bv (CConstrDecl c) = bv c
   bv _ = []

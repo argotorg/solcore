@@ -1,0 +1,30 @@
+// Synonyms in function parameter and return types
+type Int = word;
+type Point = pair<Int, Int>;
+
+function add(a: Int, b: Int) returns (Int) {
+    return a;
+}
+
+function makePoint(x: Int, y: Int) returns (Point) {
+    return pair(x, y);
+}
+
+function getX(p: Point) returns (Int) {
+    match (p ) {
+        case pair(x, _) { return x;
+    } }
+}
+
+function getY(p: Point) returns (Int) {
+    match (p ) {
+        case pair(_, y) { return y;
+    } }
+}
+
+function main() returns (word) {
+    let a: Int = 10;
+    let b: Int = 20;
+    let p: Point = makePoint(a, b);
+    return getX(p);
+}

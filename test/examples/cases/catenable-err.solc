@@ -1,3 +1,0 @@
-forall t.class t:Catenable {
-  function cat(x:t) -> memory(bytes)
-}

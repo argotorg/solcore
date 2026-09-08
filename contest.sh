@@ -24,7 +24,7 @@ root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 test_dir=$(dirname $file)
 build_dir="$root_dir/build"
 base=$(basename "$file" .json)
-src="$test_dir/$base.solc"
+src="$test_dir/$base.sol"
 
 create=true
 # Allow overriding testrunner location (useful for Nix builds)

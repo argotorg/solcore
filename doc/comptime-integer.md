@@ -116,12 +116,12 @@ consumers update automatically.
 All seven functions are **pure** and are added to `builtinPureFuns` in MastEval.
 
 `integerLt` and `integerEq` back the `instance integer : Ord` and
-`instance integer : Eq` definitions in `std.solc`.
+`instance integer : Eq` definitions in `std.sol`.
 
 ### Standard library: `fromInteger`
 
 `fromInteger :: integer -> a [Num a]` is the overloaded version defined in
-`std/NumLib.solc` as a separate step after the core PoC:
+`std/NumLib.sol` as a separate step after the core PoC:
 
 - `word:Num` delegates to the builtin `wordFromInteger`
 - `uint256:Num` wraps `wordFromInteger` in `Typedef.abs`
@@ -139,11 +139,11 @@ provides overloaded coercion from `integer` literals to concrete numeric types:
 class a : Int { fromInteger : integer -> a }
 instance word    : Int  -- fromInteger = wordFromInteger (primitive)
 instance integer : Int  -- fromInteger = identity        (primitive)
-instance uint256 : Int  -- fromInteger = uint256(wordFromInteger(x)) (std.solc)
+instance uint256 : Int  -- fromInteger = uint256(wordFromInteger(x)) (std.sol)
 ```
 
 The `word` and `integer` instances are primitive (no source body).  Concrete
-numeric types define their own `Int` instance in `std.solc`; `uint256` wraps
+numeric types define their own `Int` instance in `std.sol`; `uint256` wraps
 `wordFromInteger` in its constructor, so `let x : uint256 = 42` truncates the
 literal mod 2^256 exactly like a `word` site.  `Int.fromInteger` is injected by
 the desugaring pass around every integer literal, but it is also accessible to
@@ -358,7 +358,7 @@ integer primitives pass through via the `comptimeBuiltins` guard unchanged.
 
 ## Standard Library Integration (Step 5)
 
-`fromInteger :: integer -> a [Num a]` in `std/NumLib.solc`:
+`fromInteger :: integer -> a [Num a]` in `std/NumLib.sol`:
 
 ```solidity
 class a : Num {
@@ -422,7 +422,7 @@ Verified by running full test suite (the guard must not fire).
 
 ### Step 4 — Integration tests
 
-**`test/examples/comptime/integer-fib.solc`** — no `import std` needed:
+**`test/examples/comptime/integer-fib.sol`** — no `import std` needed:
 
 ```solidity
 function fib(comptime n : integer) -> comptime integer {
@@ -445,7 +445,7 @@ contract FibInteger {
 
 Expected: `main` folds to a constant returning `55`.
 
-**`test/examples/comptime/integer-basic.solc`** — exercises primitives directly:
+**`test/examples/comptime/integer-basic.sol`** — exercises primitives directly:
 
 ```solidity
 contract IntegerBasic {
@@ -465,10 +465,10 @@ Expected: folds to constant `100`.
 ### Step 5 — `Num.fromInteger` in stdlib ✓
 
 - Added `fromInteger(comptime x: integer) -> comptime a` to the `Num` class
-  and default instance in `std/std.solc`; the default implementation uses
+  and default instance in `std/std.sol`; the default implementation uses
   `Typedef.abs(wordFromInteger(x))` which works for `word` (identity) and
   `uint256` (wrapping constructor)
-- Test: `test/examples/comptime/integer-from-integer.solc` exercises both
+- Test: `test/examples/comptime/integer-from-integer.sol` exercises both
   instances: `Num.fromInteger(wordToInteger(42)) : word = 42` and
   `Num.fromInteger(fib(wordToInteger(10))) : uint256 = uint256(55)`
 
@@ -494,9 +494,9 @@ coercions at known `integer`-typed sites) with a simpler untyped approach:
 
 The old `IntegerLiteralDesugar` module has been deleted.
 
-Tests: `integer-lit.solc`, `integer-lit-safe.solc`, `integer-lit-class.solc`,
-`integer-lit-word-site.solc`, `integer-lit-poly.solc`, `integer-lit-cond.solc`,
-`integer-lit-pat.solc`, `match_labels.solc`.
+Tests: `integer-lit.sol`, `integer-lit-safe.sol`, `integer-lit-class.sol`,
+`integer-lit-word-site.sol`, `integer-lit-poly.sol`, `integer-lit-cond.sol`,
+`integer-lit-pat.sol`, `match_labels.sol`.
 
 ---
 
@@ -508,8 +508,8 @@ Tests: `integer-lit.solc`, `integer-lit-safe.solc`, `integer-lit-class.solc`,
 | ~~`integerAdd(42, 3)` with bare literals~~ | ~~Requires explicit wrappers~~ | ✓ Step 6 |
 | `let x = 3` (unannotated) | Type variable left ambiguous by `Int.fromInteger` | Future: default to `word` |
 | `let x : uint256 = 3` | No `uint256:Int` instance; use `Num.fromInteger(wordToInteger(3))` with std | Add `uint256:Int` instance or extend `Int` to numeric newtypes |
-| ~~`instance integer : Add/Sub/Mul`~~ | ~~Cannot write `n + m` for `integer`~~ | ✓ Added to `std.solc` |
-| ~~`instance integer : Eq/Ord`~~ | ~~Use `integerLt`/`integerEq` in the interim~~ | ✓ Added to `std.solc` |
+| ~~`instance integer : Add/Sub/Mul`~~ | ~~Cannot write `n + m` for `integer`~~ | ✓ Added to `std.sol` |
+| ~~`instance integer : Eq/Ord`~~ | ~~Use `integerLt`/`integerEq` in the interim~~ | ✓ Added to `std.sol` |
 | `integer` binding without `comptime` | EmitHull panic if not folded | Enforce `comptime` in SAIL/MAST checkers |
 | `typeOfMastExp` for `integer` literals | Returns `word` — unreliable | Carry type tag in `MastLit` (AST change) |
 | `isNumericTy` whitelist in `tcPat` | Integer literal patterns rejected for non-`word`-newtype numeric types | Extend `isNumericTy` or use `Int` constraint check instead |

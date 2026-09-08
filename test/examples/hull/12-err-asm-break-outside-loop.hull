@@ -1,0 +1,7 @@
+object InvalidAsmControl {
+  code {
+    assembly {
+      break
+    }
+  }
+}

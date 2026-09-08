@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate std/opcodes.solc from a declarative list of EVM opcodes."""
+"""Generate std/opcodes.sol from a declarative list of EVM opcodes."""
 
 import os
 from string import ascii_lowercase
@@ -100,7 +100,7 @@ opcodes = [
 # Opcodes whose names clash with solcore keywords get a trailing underscore
 # in the wrapper function name, while the inner assembly call still uses the
 # real EVM mnemonic.
-RESERVED_NAMES = {"return": "return_"}
+RESERVED_NAMES = {"return": "return_", "revert": "revert_"}
 
 
 def wrapper_name(op):
@@ -128,7 +128,7 @@ def gen_function(op):
     call_args = ", ".join(args)
     ret_type = "word" if op["output"] == 1 else "()"
 
-    lines = [f"function {fname}({params}) -> {ret_type} {{"]
+    lines = [f"function {fname}({params}) returns ({ret_type}) {{"]
     if op["output"] == 1:
         lines.append("    let res;")
         lines.append("    assembly {")
@@ -156,7 +156,7 @@ def render(ops):
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    out_path = os.path.join(script_dir, os.pardir, "std", "opcodes.solc")
+    out_path = os.path.join(script_dir, os.pardir, "std", "opcodes.sol")
     with open(out_path, "w") as f:
         f.write(render(opcodes))
 

@@ -6,14 +6,16 @@ defined at the top level of a source file, called _free functions_, or inside
 a contract body.
 
 ```solidity
-function name(param1 : Type1, param2 : Type2) -> ReturnType {
+function name(param1: Type1, param2: Type2) returns (ReturnType) {
     // body
 }
 ```
 
 Every top-level function must carry a complete type signature: every parameter
-must be annotated with its type, and the return type must be provided after
-`->`. The compiler rejects any top-level definition that omits an annotation.
+must be annotated with its type, and a value-producing function declares its
+result in a `returns (...)` clause. A function with no `returns` clause has the
+unit result type. The compiler rejects any top-level definition that leaves a
+parameter unannotated.
 
 > **Note** The complete-annotation requirement applies to free functions and
 > contract methods. It does not apply to lambda expressions or to local
@@ -25,11 +27,11 @@ must be annotated with its type, and the return type must be provided after
 ## Parameters
 
 Parameters are declared as a comma-separated list enclosed in parentheses.
-Each parameter has the form `name : Type`.
+Each parameter has the name-first form `name: Type`.
 
 ```solidity
-function transfer(to : word, amount : word) -> () {
-    let bal : word;
+function transfer(to: word, amount: word) {
+    let bal: word;
     assembly { bal := sload(caller()) }
     assembly { sstore(caller(), sub(bal, amount)) }
     assembly { sstore(to, add(sload(to), amount)) }
@@ -39,8 +41,8 @@ function transfer(to : word, amount : word) -> () {
 A function that takes no arguments is written with an empty parameter list:
 
 ```solidity
-function sender() -> word {
-    let s : word;
+function sender() returns (word) {
+    let s: word;
     assembly { s := caller() }
     return s;
 }
@@ -50,13 +52,13 @@ function sender() -> word {
 
 ## Return Type
 
-The return type follows the parameter list after `->`. Every top-level function
-must declare its return type explicitly.
+Return types follow the parameter list in a `returns (...)` clause. Multiple
+result types are separated by commas.
 
-A function that returns no meaningful value uses the unit type `()`:
+A function that returns no meaningful value omits the clause:
 
 ```solidity
-function emitTransfer(from : word, to : word, amount : word) -> () {
+function emitTransfer(from: word, to: word, amount: word) {
     assembly {
         mstore(0x00, amount)
         log3(0x00, 0x20, 0xddf252ad, from, to)
@@ -64,8 +66,9 @@ function emitTransfer(from : word, to : word, amount : word) -> () {
 }
 ```
 
-Every execution path through the body must end with a `return` statement whose
-expression has the declared return type.
+Every execution path through a value-producing body must end with a `return`
+statement whose expression has the declared return type. A bare `return;`
+returns unit.
 
 ---
 
@@ -76,16 +79,16 @@ functions are visible throughout the file in which they are defined and can be
 imported by other modules.
 
 ```solidity
-function isContract(addr : word) -> bool {
-    let size : word;
+function isContract(addr: word) returns (bool) {
+    let size: word;
     assembly { size := extcodesize(addr) }
     return gt(size, 0);
 }
 
 contract Token {
-    function onlyContract(addr : word) -> () {
+    function onlyContract(addr: word) {
         if (isContract(addr)) {
-            return ();
+            return;
         } else {
             assembly { revert(0, 0) }
         }
@@ -98,24 +101,25 @@ contract Token {
 ## Polymorphic Functions
 
 A function that works uniformly over multiple types can be made polymorphic
-with a `forall` quantifier placed before the `function` keyword. The quantifier
-lists the type variables that appear in the signature.
+by listing generic type parameters in angle brackets after the function name.
 
 ```solidity
-forall a . function identity(x : a) -> a {
+function identity<A>(x: A) returns (A) {
     return x;
 }
 
-forall a b . function fst(p : (a, b)) -> a {
-    match p {
-    | (x, y) => return x;
+function fst<A, B>(p: (A, B)) returns (A) {
+    match (p) {
+        case (x, y) {
+            return x;
+        }
     }
 }
 ```
 
-Type variables introduced by `forall` are instantiated at each call site. The
-compiler specializes the function for every concrete type combination that
-appears in the program.
+Generic type parameters are instantiated at each call site. The compiler
+specializes the function for every concrete type combination that appears in
+the program.
 
 > **Note** Polymorphic functions are monomorphized by the specializer before
 > code generation. Each distinct instantiation produces a separate function in
@@ -128,15 +132,18 @@ appears in the program.
 ## Constrained Functions
 
 A function may require that one or more of its type variables satisfy a type
-class constraint. Constraints are written after the type variable list,
-separated from the `function` keyword by `=>`.
+class constraint. Constraints are written after the return clause in a `where`
+clause.
 
 ```solidity
-forall a . class a:Checked {
-    function checkedAdd(x : a, y : a) -> a;
+trait Checked<A> {
+    function checkedAdd(x: A, y: A) returns (A);
 }
 
-forall t . t:Checked => function safeTransfer(from : word, to : word, amount : t) -> t {
+function safeTransfer<T>(from: word, to: word, amount: T)
+    returns (T)
+    where T: Checked
+{
     return Checked.checkedAdd(amount, amount);
 }
 ```
@@ -144,9 +151,14 @@ forall t . t:Checked => function safeTransfer(from : word, to : word, amount : t
 Multiple constraints on different type variables are separated by commas:
 
 ```solidity
-forall a b . a:Eq, b:Eq => function transfersEqual(x : (a, b), y : (a, b)) -> bool {
-    match (x, y) {
-    | ((xa, xb), (ya, yb)) => return Eq.eq(xa, ya);
+function transfersEqual<A, B>(x: (A, B), y: (A, B))
+    returns (bool)
+    where A: Eq, B: Eq
+{
+    match ((x, y)) {
+        case ((xa, xb), (ya, yb)) {
+            return Eq.eq(xa, ya);
+        }
     }
 }
 ```
@@ -162,11 +174,11 @@ A function may call itself recursively. The compiler adds the function name to
 the typing context before checking the body.
 
 ```solidity
-function sumBalances(slot : word, count : word) -> word {
+function sumBalances(slot: word, count: word) returns (word) {
     if (eq(count, 0)) {
         return 0;
     } else {
-        let bal : word;
+        let bal: word;
         assembly { bal := sload(slot) }
         return add(bal, sumBalances(add(slot, 1), sub(count, 1)));
     }
@@ -179,19 +191,30 @@ type-checks the group as a unit. Both functions must be defined in the same
 file.
 
 ```solidity
-data TxStatus = Pending | Confirmed;
+enum TxStatus {
+    Pending,
+    Confirmed
+}
 
-function isPending(s : TxStatus) -> bool {
-    match s {
-    | TxStatus.Pending   => return isNotConfirmed(s);
-    | TxStatus.Confirmed => return false;
+function isPending(s: TxStatus) returns (bool) {
+    match (s) {
+        case TxStatus.Pending {
+            return isNotConfirmed(s);
+        }
+        case TxStatus.Confirmed {
+            return false;
+        }
     }
 }
 
-function isNotConfirmed(s : TxStatus) -> bool {
-    match s {
-    | TxStatus.Confirmed => return isPending(TxStatus.Pending);
-    | TxStatus.Pending   => return true;
+function isNotConfirmed(s: TxStatus) returns (bool) {
+    match (s) {
+        case TxStatus.Confirmed {
+            return isPending(TxStatus.Pending);
+        }
+        case TxStatus.Pending {
+            return true;
+        }
     }
 }
 ```
@@ -205,13 +228,13 @@ variables. They follow the same signature rules as free functions.
 
 ```solidity
 contract ERC20 {
-    totalSupply : word;
+    totalSupply: word;
 
-    function mint(amount : word) -> () {
+    function mint(amount: word) {
         totalSupply = add(totalSupply, amount);
     }
 
-    function getTotalSupply() -> word {
+    function getTotalSupply() returns (word) {
         return totalSupply;
     }
 }
@@ -227,12 +250,19 @@ operate on their parameters and locally declared variables.
 Functions may use `match` statements to deconstruct algebraic data type values.
 
 ```solidity
-data Result = Ok(word) | Err(word);
+enum Result {
+    Ok(word),
+    Err(word)
+}
 
-function unwrapOrZero(r : Result) -> word {
-    match r {
-    | Result.Ok(v)  => return v;
-    | Result.Err(_) => return 0;
+function unwrapOrZero(r: Result) returns (word) {
+    match (r) {
+        case Result.Ok(v) {
+            return v;
+        }
+        case Result.Err(_) {
+            return 0;
+        }
     }
 }
 ```
@@ -251,8 +281,8 @@ an assembly block, Yul syntax is used. Variables declared in the surrounding
 SAIL scope are accessible by name inside the block.
 
 ```solidity
-function loadBalance(account : word) -> word {
-    let bal : word;
+function loadBalance(account: word) returns (word) {
+    let bal: word;
     assembly {
         bal := sload(account)
     }
@@ -273,30 +303,20 @@ enclosing SAIL scope before the block opens. The type of such variables must be
 
 ## Missing Annotation Error
 
-Omitting a parameter type or the return type on a top-level function is a
-compile-time error. The compiler reports the offending signature and explains
-what is missing.
+Omitting a parameter type on a top-level function is a compile-time error. The
+compiler reports the offending signature and explains what is missing.
 
 ```solidity
 // Error: parameter 'x' has no type annotation.
-function bad(x) -> word {
+function bad(x) returns (word) {
     return x;
 }
 ```
 
 ```
 Top-level function must have complete type annotations:
-  bad(x) -> word
-Annotate every parameter (name : Type) and provide a return type (-> Type).
-```
-
-Omitting the return type is equally rejected:
-
-```solidity
-// Error: return type is missing.
-function alsobad(x : word) {
-    return x;
-}
+  function bad(x) returns (word)
+Annotate every parameter (name: Type).
 ```
 
 Type inference remains available inside function bodies for local variables and

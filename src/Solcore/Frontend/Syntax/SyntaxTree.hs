@@ -1,10 +1,11 @@
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Solcore.Frontend.Syntax.SyntaxTree where
 
 import Data.Generics (Data, Typeable)
 import Data.List (union)
-import Data.List.NonEmpty
+import Data.List.NonEmpty (NonEmpty, toList)
 import Language.Yul
 import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Syntax.Location
@@ -38,6 +39,9 @@ data PragmaType
   | NoPattersonCondition
   | NoBoundVariableCondition
   | NoGenericInstanceFor
+  | SolidityPragma String
+  | AbiCoderPragma String
+  | CustomPragma String
   deriving (Eq, Ord, Show, Data, Typeable)
 
 data PragmaStatus
@@ -106,32 +110,83 @@ data ItemSelectorEntry
 
 -- definition of the contract structure
 
+data ContractKind
+  = ContractKind
+  | InterfaceKind
+  | LibraryKind
+  deriving (Eq, Ord, Show, Data, Typeable)
+
 data Contract
-  = Contract
-  { name :: Name,
+  = ContractWithKind
+  { contractKind :: ContractKind,
+    name :: Name,
     tyParams :: [Ty],
     decls :: [ContractDecl]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
+-- Keep the historical three-argument source-AST constructor available to
+-- callers. It builds an ordinary contract, while matching all Solidity-style
+-- declaration shells so existing compiler traversals keep working.
+pattern Contract :: Name -> [Ty] -> [ContractDecl] -> Contract
+pattern Contract n ts ds <- ContractWithKind _ n ts ds
+  where
+    Contract n ts ds = ContractWithKind ContractKind n ts ds
+
+pattern ContractShell :: ContractKind -> Name -> [Ty] -> [ContractDecl] -> Contract
+pattern ContractShell k n ts ds = ContractWithKind k n ts ds
+
+{-# COMPLETE Contract #-}
+
+{-# COMPLETE ContractShell #-}
+
 -- definition of a algebraic data type
 
 data DataTy
-  = DataTy
-  { dataName :: Name,
+  = DataTyWithDerives
+  { dataDerives :: [Name],
+    dataTyKind :: DataTyKind,
+    dataName :: Name,
     dataParams :: [Ty],
-    dataConstrs :: [Constr],
-    dataDerivings :: [Name]
+    dataConstrs :: [Constr]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
+pattern DataTyWithKind :: DataTyKind -> Name -> [Ty] -> [Constr] -> DataTy
+pattern DataTyWithKind kind n ps cs <- DataTyWithDerives _ kind n ps cs
+  where
+    DataTyWithKind kind n ps cs = DataTyWithDerives [] kind n ps cs
+
+{-# COMPLETE DataTyWithKind #-}
+
+withDataDerives :: [Name] -> DataTy -> DataTy
+withDataDerives names dt = dt {dataDerives = names}
+
+data DataTyKind
+  = EnumKind
+  | StructKind [Name]
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+pattern DataTy :: Name -> [Ty] -> [Constr] -> DataTy
+pattern DataTy n ts cs <- DataTyWithKind _ n ts cs
+  where
+    DataTy n ts cs = DataTyWithKind EnumKind n ts cs
+
+-- Structs use the existing one-constructor runtime representation, while name
+-- resolution retains this kind and ordered field metadata in the semantic AST.
+pattern StructTy :: Name -> [Ty] -> [Name] -> [Ty] -> DataTy
+pattern StructTy n ts fieldNames fieldTypes <-
+  DataTyWithKind (StructKind fieldNames) n ts [Constr _ fieldTypes]
+  where
+    StructTy n ts fieldNames fieldTypes =
+      DataTyWithKind (StructKind fieldNames) n ts [ConstrWithFields n fieldTypes fieldNames]
+
+{-# COMPLETE DataTy #-}
+
 data Constr
-  = Constr
+  = ConstrWithFields
   { constrName :: Name,
     constrTy :: [Ty],
-    -- Named fields (positional order) for a Solidity-style `struct`; empty for
-    -- an ordinary `data` constructor. Carried through name resolution into the
-    -- resolved AST's Constr.
     constrFields :: [Name]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -151,6 +206,65 @@ pattern TyCon n ts <- TyConWithLocation _ n ts
 
 pattern (:->) :: Ty -> Ty -> Ty
 pattern (:->) t1 t2 = TyCon (Name "->") [t1, t2]
+
+data FunctionTypeVisibility
+  = FunctionTypeInternal
+  | FunctionTypeExternal
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+-- Function types keep their source-only visibility and list structure until
+-- name resolution.  The private TyCon encoding lets the historical Ty shape
+-- remain compatible with existing traversals while still distinguishing a
+-- zero-argument function from its result type.
+pattern FunctionTy :: [Ty] -> Maybe FunctionTypeVisibility -> Maybe [Ty] -> Ty
+pattern FunctionTy args visibility returns <-
+  (functionTyView -> Just (args, visibility, returns))
+  where
+    FunctionTy args visibility returns =
+      TyCon
+        (Name "$function")
+        [ TyCon (Name "$arguments") args,
+          functionVisibilityMarker visibility,
+          functionReturnsMarker returns
+        ]
+
+functionTyView :: Ty -> Maybe ([Ty], Maybe FunctionTypeVisibility, Maybe [Ty])
+functionTyView
+  ( TyCon
+      (Name "$function")
+      [ TyCon (Name "$arguments") args,
+        visibilityMarker,
+        returnsMarker
+        ]
+    ) = do
+    visibility <- functionVisibilityView visibilityMarker
+    returns <- functionReturnsView returnsMarker
+    pure (args, visibility, returns)
+functionTyView _ = Nothing
+
+functionVisibilityMarker :: Maybe FunctionTypeVisibility -> Ty
+functionVisibilityMarker Nothing = TyCon (Name "$default-visibility") []
+functionVisibilityMarker (Just FunctionTypeInternal) =
+  TyCon (Name "$internal") []
+functionVisibilityMarker (Just FunctionTypeExternal) =
+  TyCon (Name "$external") []
+
+functionVisibilityView :: Ty -> Maybe (Maybe FunctionTypeVisibility)
+functionVisibilityView (TyCon (Name "$default-visibility") []) = Just Nothing
+functionVisibilityView (TyCon (Name "$internal") []) =
+  Just (Just FunctionTypeInternal)
+functionVisibilityView (TyCon (Name "$external") []) =
+  Just (Just FunctionTypeExternal)
+functionVisibilityView _ = Nothing
+
+functionReturnsMarker :: Maybe [Ty] -> Ty
+functionReturnsMarker Nothing = TyCon (Name "$no-returns") []
+functionReturnsMarker (Just returns) = TyCon (Name "$returns") returns
+
+functionReturnsView :: Ty -> Maybe (Maybe [Ty])
+functionReturnsView (TyCon (Name "$no-returns") []) = Just Nothing
+functionReturnsView (TyCon (Name "$returns") returns) = Just (Just returns)
+functionReturnsView _ = Nothing
 
 tyName :: Ty -> Name
 tyName (TyCon n _) = n
@@ -178,6 +292,15 @@ tysFrom :: [Pred] -> [Ty]
 tysFrom = foldr go []
   where
     go p ac = (predMain p) : predParams p `union` ac
+
+-- Synthetic and positional constructors have no named fields.  Keep the
+-- existing two-argument pattern available throughout compiler passes.
+pattern Constr :: Name -> [Ty] -> Constr
+pattern Constr n ts <- ConstrWithFields n ts _
+  where
+    Constr n ts = ConstrWithFields n ts []
+
+{-# COMPLETE Constr #-}
 
 -- definition of type synonym
 
@@ -212,17 +335,119 @@ data Class
   }
   deriving (Eq, Ord, Show, Data, Typeable)
 
+data FunctionVisibility
+  = VisibilityPublic
+  | VisibilityExternal
+  | VisibilityInternal
+  | VisibilityPrivate
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data FunctionMutability
+  = MutabilityPure
+  | MutabilityView
+  | MutabilityPayable
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data FunctionModifier
+  = VisibilityModifier FunctionVisibility
+  | MutabilityModifier FunctionMutability
+  deriving (Eq, Ord, Show, Data, Typeable)
+
+data ReturnItem
+  = ReturnItem
+  { returnItemComptime :: Bool,
+    returnItemName :: Maybe Name,
+    returnItemType :: Ty
+  }
+  deriving (Eq, Ord, Show, Data, Typeable)
+
 data Signature
-  = Signature
+  = SignatureWithSyntax
   { sigVars :: [Ty],
     sigContext :: [Pred],
     sigName :: Name,
     sigParams :: [Param],
-    sigRetComptime :: Bool,
-    sigReturn :: Maybe Ty,
-    sigPayable :: Bool
+    sigReturnItems :: Maybe [ReturnItem],
+    sigModifiers :: [FunctionModifier]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
+
+-- Keep the historical seven-argument constructor available to source-AST
+-- clients.  New parser code uses SignatureWithSyntax so named return items and
+-- exact Solidity modifier spellings survive parse/pretty-print round trips.
+pattern Signature :: [Ty] -> [Pred] -> Name -> [Param] -> Bool -> Maybe Ty -> Bool -> Signature
+pattern Signature vars context funName params returnComptime returnTy payable <-
+  SignatureWithSyntax
+    vars
+    context
+    funName
+    params
+    (legacyReturnView -> (returnComptime, returnTy))
+    (legacyPayableView -> payable)
+  where
+    Signature vars context funName params returnComptime returnTy payable =
+      SignatureWithSyntax
+        vars
+        context
+        funName
+        params
+        (legacyReturnItems returnComptime returnTy)
+        [MutabilityModifier MutabilityPayable | payable]
+
+{-# COMPLETE Signature #-}
+
+sigRetComptime :: Signature -> Bool
+sigRetComptime = fst . legacyReturnView . sigReturnItems
+
+sigReturn :: Signature -> Maybe Ty
+sigReturn = snd . legacyReturnView . sigReturnItems
+
+sigPayable :: Signature -> Bool
+sigPayable = legacyPayableView . sigModifiers
+
+sigIsPublic :: Signature -> Bool
+sigIsPublic =
+  any
+    ( \modifier -> case modifier of
+        VisibilityModifier VisibilityPublic -> True
+        VisibilityModifier VisibilityExternal -> True
+        _ -> False
+    )
+    . sigModifiers
+
+legacyReturnItems :: Bool -> Maybe Ty -> Maybe [ReturnItem]
+legacyReturnItems _ Nothing = Nothing
+legacyReturnItems returnComptime (Just returnTy) =
+  Just
+    [ ReturnItem returnComptime Nothing itemTy
+    | itemTy <- legacyTupleElements returnTy
+    ]
+
+legacyReturnView :: Maybe [ReturnItem] -> (Bool, Maybe Ty)
+legacyReturnView Nothing = (False, Nothing)
+legacyReturnView (Just items) =
+  ( any returnItemComptime items,
+    Just (returnItemsType items)
+  )
+
+returnItemsType :: [ReturnItem] -> Ty
+returnItemsType [] = TyCon (Name "()") []
+returnItemsType [item] = returnItemType item
+returnItemsType items = foldr1 pairTy (map returnItemType items)
+
+legacyTupleElements :: Ty -> [Ty]
+legacyTupleElements t@(TyCon n _)
+  | n == Name "pair" = tupleElementsForLegacy t
+legacyTupleElements t = [t]
+
+tupleElementsForLegacy :: Ty -> [Ty]
+tupleElementsForLegacy (TyCon (Name "pair") [left, right]) =
+  left : tupleElementsForLegacy right
+tupleElementsForLegacy t = [t]
+
+legacyPayableView :: [FunctionModifier] -> Bool
+legacyPayableView =
+  elem (MutabilityModifier MutabilityPayable)
 
 data Instance
   = Instance
@@ -258,8 +483,10 @@ data FunDef
 
 data ContractDecl
   = CDataDecl DataTy
+  | CSymDecl TySym
   | CFieldDecl Field
   | CFunDecl FunDef
+  | CSignatureDecl Bool Signature
   | CConstrDecl Constructor
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -341,11 +568,15 @@ instance HasSourceSpan Contract where
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tyParams', sourceSpanOf contractDecls]
 
 instance HasSourceSpan DataTy where
-  sourceSpanOf (DataTy n tyParams' constrs _) =
-    firstSourceSpan [sourceSpanOf n, sourceSpanOf tyParams', sourceSpanOf constrs]
+  sourceSpanOf (DataTyWithKind kind n tyParams' constrs) =
+    firstSourceSpan [sourceSpanOf n, sourceSpanOf tyParams', sourceSpanOf kind, sourceSpanOf constrs]
+
+instance HasSourceSpan DataTyKind where
+  sourceSpanOf EnumKind = Nothing
+  sourceSpanOf (StructKind fieldNames) = sourceSpanOf fieldNames
 
 instance HasSourceSpan Constr where
-  sourceSpanOf (Constr n tys _) =
+  sourceSpanOf (Constr n tys) =
     firstSourceSpan [sourceSpanOf n, sourceSpanOf tys]
 
 instance HasSourceSpan TySym where
@@ -361,8 +592,12 @@ instance HasSourceSpan Class where
     firstSourceSpan [sourceSpanOf boundVars, sourceSpanOf context, sourceSpanOf clsName, sourceSpanOf params, sourceSpanOf main, sourceSpanOf signatures']
 
 instance HasSourceSpan Signature where
-  sourceSpanOf (Signature vars context sig params _ retTy _) =
-    firstSourceSpan [sourceSpanOf vars, sourceSpanOf context, sourceSpanOf sig, sourceSpanOf params, sourceSpanOf retTy]
+  sourceSpanOf (SignatureWithSyntax vars context sig params returnItems _) =
+    firstSourceSpan [sourceSpanOf vars, sourceSpanOf context, sourceSpanOf sig, sourceSpanOf params, sourceSpanOf returnItems]
+
+instance HasSourceSpan ReturnItem where
+  sourceSpanOf (ReturnItem _ returnName returnTy) =
+    firstSourceSpan [sourceSpanOf returnName, sourceSpanOf returnTy]
 
 instance HasSourceSpan Instance where
   sourceSpanOf (Instance _ vars context clsName params main funs) =
@@ -378,8 +613,10 @@ instance HasSourceSpan FunDef where
 
 instance HasSourceSpan ContractDecl where
   sourceSpanOf (CDataDecl dataTy) = sourceSpanOf dataTy
+  sourceSpanOf (CSymDecl tySym) = sourceSpanOf tySym
   sourceSpanOf (CFieldDecl field) = sourceSpanOf field
   sourceSpanOf (CFunDecl funDef) = sourceSpanOf funDef
+  sourceSpanOf (CSignatureDecl _ sig) = sourceSpanOf sig
   sourceSpanOf (CConstrDecl constructor) = sourceSpanOf constructor
 
 -- definition of statements
@@ -392,23 +629,28 @@ data Stmt
   = AssignWithLocation NodeLocation Exp Exp -- assignment
   | StmtPlusEqWithLocation NodeLocation Exp Exp -- e1 += e2
   | StmtMinusEqWithLocation NodeLocation Exp Exp -- e1 -= e2
-  | StmtTimesEqWithLocation NodeLocation Exp Exp -- e1 *= e2
-  | StmtDivideEqWithLocation NodeLocation Exp Exp -- e1 /= e2
   | StmtBXorEqWithLocation NodeLocation Exp Exp -- e1 ^= e2
   | StmtBAndEqWithLocation NodeLocation Exp Exp -- e1 &= e2
   | StmtBOrEqWithLocation NodeLocation Exp Exp -- e1 |= e2
   | StmtModEqWithLocation NodeLocation Exp Exp -- e1 %= e2
-  | StmtBNotEqWithLocation NodeLocation Exp -- e ~= (in-place bitwise NOT, i.e. e := ~e)
+  | StmtTimesEqWithLocation NodeLocation Exp Exp
+  | StmtDivideEqWithLocation NodeLocation Exp Exp
+  | StmtBNotEqWithLocation NodeLocation Exp
   | LetWithLocation NodeLocation Bool Name (Maybe Ty) (Maybe Exp) -- local variable; Bool is True when 'comptime' modifier is present
+  | LetPatternWithLocation NodeLocation Bool Pat (Maybe Ty) Exp -- irrefutable tuple binding; Bool marks 'comptime'
   | BlockWithLocation NodeLocation Body -- lexical block
   | StmtExpWithLocation NodeLocation Exp -- expression level statements
   | ReturnWithLocation NodeLocation Exp -- return statements
+  | BareReturnWithLocation NodeLocation -- return statement with no expression
   | MatchWithLocation NodeLocation [Exp] Equations -- pattern matching
   | AsmWithLocation NodeLocation YulBlock -- Yul block
   | IfWithLocation NodeLocation Exp Body Body -- If statement
+  | WhileWithLocation NodeLocation Exp Body -- source-level while; lowered during name resolution
+  | UncheckedWithLocation NodeLocation Body -- source-level unchecked block; lowered during name resolution
   | ForWithLocation NodeLocation Stmt Exp Stmt Body -- for(init; cond; post) { body }
   | BreakWithLocation NodeLocation -- break out of the innermost enclosing for loop
   | ContinueWithLocation NodeLocation -- continue to the next iteration of the innermost enclosing for loop
+  | RevertWithLocation NodeLocation -- abort execution with empty return data
   | EmptyStmtWithLocation NodeLocation -- empty statement (for empty for init/post)
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -426,16 +668,6 @@ pattern StmtMinusEq :: Exp -> Exp -> Stmt
 pattern StmtMinusEq lhs rhs <- StmtMinusEqWithLocation _ lhs rhs
   where
     StmtMinusEq lhs rhs = StmtMinusEqWithLocation unlocatedNode lhs rhs
-
-pattern StmtTimesEq :: Exp -> Exp -> Stmt
-pattern StmtTimesEq lhs rhs <- StmtTimesEqWithLocation _ lhs rhs
-  where
-    StmtTimesEq lhs rhs = StmtTimesEqWithLocation unlocatedNode lhs rhs
-
-pattern StmtDivideEq :: Exp -> Exp -> Stmt
-pattern StmtDivideEq lhs rhs <- StmtDivideEqWithLocation _ lhs rhs
-  where
-    StmtDivideEq lhs rhs = StmtDivideEqWithLocation unlocatedNode lhs rhs
 
 pattern StmtBXorEq :: Exp -> Exp -> Stmt
 pattern StmtBXorEq lhs rhs <- StmtBXorEqWithLocation _ lhs rhs
@@ -457,6 +689,16 @@ pattern StmtModEq lhs rhs <- StmtModEqWithLocation _ lhs rhs
   where
     StmtModEq lhs rhs = StmtModEqWithLocation unlocatedNode lhs rhs
 
+pattern StmtTimesEq :: Exp -> Exp -> Stmt
+pattern StmtTimesEq lhs rhs <- StmtTimesEqWithLocation _ lhs rhs
+  where
+    StmtTimesEq lhs rhs = StmtTimesEqWithLocation unlocatedNode lhs rhs
+
+pattern StmtDivideEq :: Exp -> Exp -> Stmt
+pattern StmtDivideEq lhs rhs <- StmtDivideEqWithLocation _ lhs rhs
+  where
+    StmtDivideEq lhs rhs = StmtDivideEqWithLocation unlocatedNode lhs rhs
+
 pattern StmtBNotEq :: Exp -> Stmt
 pattern StmtBNotEq lhs <- StmtBNotEqWithLocation _ lhs
   where
@@ -466,6 +708,11 @@ pattern Let :: Bool -> Name -> Maybe Ty -> Maybe Exp -> Stmt
 pattern Let ct n ty value <- LetWithLocation _ ct n ty value
   where
     Let ct n ty value = LetWithLocation unlocatedNode ct n ty value
+
+pattern LetPattern :: Bool -> Pat -> Maybe Ty -> Exp -> Stmt
+pattern LetPattern ct pat ty value <- LetPatternWithLocation _ ct pat ty value
+  where
+    LetPattern ct pat ty value = LetPatternWithLocation unlocatedNode ct pat ty value
 
 pattern Block :: Body -> Stmt
 pattern Block body <- BlockWithLocation _ body
@@ -482,6 +729,11 @@ pattern Return exp <- ReturnWithLocation _ exp
   where
     Return exp = ReturnWithLocation unlocatedNode exp
 
+pattern BareReturn :: Stmt
+pattern BareReturn <- BareReturnWithLocation _
+  where
+    BareReturn = BareReturnWithLocation unlocatedNode
+
 pattern Match :: [Exp] -> Equations -> Stmt
 pattern Match exps equations <- MatchWithLocation _ exps equations
   where
@@ -496,6 +748,16 @@ pattern If :: Exp -> Body -> Body -> Stmt
 pattern If cond thenBody elseBody <- IfWithLocation _ cond thenBody elseBody
   where
     If cond thenBody elseBody = IfWithLocation unlocatedNode cond thenBody elseBody
+
+pattern While :: Exp -> Body -> Stmt
+pattern While cond body <- WhileWithLocation _ cond body
+  where
+    While cond body = WhileWithLocation unlocatedNode cond body
+
+pattern Unchecked :: Body -> Stmt
+pattern Unchecked body <- UncheckedWithLocation _ body
+  where
+    Unchecked body = UncheckedWithLocation unlocatedNode body
 
 pattern For :: Stmt -> Exp -> Stmt -> Body -> Stmt
 pattern For initStmt cond postStmt body <- ForWithLocation _ initStmt cond postStmt body
@@ -512,12 +774,17 @@ pattern Continue <- ContinueWithLocation _
   where
     Continue = ContinueWithLocation unlocatedNode
 
+pattern Revert :: Stmt
+pattern Revert <- RevertWithLocation _
+  where
+    Revert = RevertWithLocation unlocatedNode
+
 pattern EmptyStmt :: Stmt
 pattern EmptyStmt <- EmptyStmtWithLocation _
   where
     EmptyStmt = EmptyStmtWithLocation unlocatedNode
 
-{-# COMPLETE Assign, StmtPlusEq, StmtMinusEq, StmtTimesEq, StmtDivideEq, StmtBXorEq, StmtBAndEq, StmtBOrEq, StmtModEq, StmtBNotEq, Let, Block, StmtExp, Return, Match, Asm, If, For, Break, Continue, EmptyStmt #-}
+{-# COMPLETE StmtTimesEq, StmtBNotEq, StmtDivideEq, Assign, StmtPlusEq, StmtMinusEq, StmtBXorEq, StmtBAndEq, StmtBOrEq, StmtModEq, Let, LetPattern, Block, StmtExp, Return, BareReturn, Match, Asm, If, While, Unchecked, For, Break, Continue, Revert, EmptyStmt #-}
 
 type Body = [Stmt]
 
@@ -529,12 +796,6 @@ locatedStmt sourceSpan (StmtPlusEq lhs rhs) = StmtPlusEqWithLocation location lh
   where
     location = locatedNode sourceSpan
 locatedStmt sourceSpan (StmtMinusEq lhs rhs) = StmtMinusEqWithLocation location lhs rhs
-  where
-    location = locatedNode sourceSpan
-locatedStmt sourceSpan (StmtTimesEq lhs rhs) = StmtTimesEqWithLocation location lhs rhs
-  where
-    location = locatedNode sourceSpan
-locatedStmt sourceSpan (StmtDivideEq lhs rhs) = StmtDivideEqWithLocation location lhs rhs
   where
     location = locatedNode sourceSpan
 locatedStmt sourceSpan (StmtBXorEq lhs rhs) = StmtBXorEqWithLocation location lhs rhs
@@ -549,21 +810,27 @@ locatedStmt sourceSpan (StmtBOrEq lhs rhs) = StmtBOrEqWithLocation location lhs 
 locatedStmt sourceSpan (StmtModEq lhs rhs) = StmtModEqWithLocation location lhs rhs
   where
     location = locatedNode sourceSpan
-locatedStmt sourceSpan (StmtBNotEq lhs) = StmtBNotEqWithLocation location lhs
-  where
-    location = locatedNode sourceSpan
+locatedStmt sourceSpan (StmtTimesEq lhs rhs) = StmtTimesEqWithLocation (locatedNode sourceSpan) lhs rhs
+locatedStmt sourceSpan (StmtDivideEq lhs rhs) = StmtDivideEqWithLocation (locatedNode sourceSpan) lhs rhs
+locatedStmt sourceSpan (StmtBNotEq lhs) = StmtBNotEqWithLocation (locatedNode sourceSpan) lhs
 locatedStmt sourceSpan (Let ct n ty value) = LetWithLocation location ct n ty value
   where
     location = locatedNode sourceSpan
+locatedStmt sourceSpan (LetPattern ct pat ty value) =
+  LetPatternWithLocation (locatedNode sourceSpan) ct pat ty value
 locatedStmt sourceSpan (Block body) = BlockWithLocation (locatedNode sourceSpan) body
 locatedStmt sourceSpan (StmtExp exp) = StmtExpWithLocation (locatedNode sourceSpan) exp
 locatedStmt sourceSpan (Return exp) = ReturnWithLocation (locatedNode sourceSpan) exp
+locatedStmt sourceSpan BareReturn = BareReturnWithLocation (locatedNode sourceSpan)
 locatedStmt sourceSpan (Match exps equations) = MatchWithLocation (locatedNode sourceSpan) exps equations
 locatedStmt sourceSpan (Asm block) = AsmWithLocation (locatedNode sourceSpan) block
 locatedStmt sourceSpan (If cond thenBody elseBody) = IfWithLocation (locatedNode sourceSpan) cond thenBody elseBody
+locatedStmt sourceSpan (While cond body) = WhileWithLocation (locatedNode sourceSpan) cond body
+locatedStmt sourceSpan (Unchecked body) = UncheckedWithLocation (locatedNode sourceSpan) body
 locatedStmt sourceSpan (For initStmt cond postStmt body) = ForWithLocation (locatedNode sourceSpan) initStmt cond postStmt body
 locatedStmt sourceSpan Break = BreakWithLocation (locatedNode sourceSpan)
 locatedStmt sourceSpan Continue = ContinueWithLocation (locatedNode sourceSpan)
+locatedStmt sourceSpan Revert = RevertWithLocation (locatedNode sourceSpan)
 locatedStmt sourceSpan EmptyStmt = EmptyStmtWithLocation (locatedNode sourceSpan)
 
 instance HasSourceSpan Stmt where
@@ -573,10 +840,6 @@ instance HasSourceSpan Stmt where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (StmtMinusEqWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
-  sourceSpanOf (StmtTimesEqWithLocation location lhs rhs) =
-    firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
-  sourceSpanOf (StmtDivideEqWithLocation location lhs rhs) =
-    firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (StmtBXorEqWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (StmtBAndEqWithLocation location lhs rhs) =
@@ -585,27 +848,41 @@ instance HasSourceSpan Stmt where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (StmtModEqWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
+  sourceSpanOf (StmtTimesEqWithLocation location lhs rhs) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
+  sourceSpanOf (StmtDivideEqWithLocation location lhs rhs) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (StmtBNotEqWithLocation location lhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs]
   sourceSpanOf (LetWithLocation location _ n ty value) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf n, sourceSpanOf ty, sourceSpanOf value]
+  sourceSpanOf (LetPatternWithLocation location _ pat ty value) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf pat, sourceSpanOf ty, sourceSpanOf value]
   sourceSpanOf (BlockWithLocation location body) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf body]
   sourceSpanOf (StmtExpWithLocation location exp) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf exp]
   sourceSpanOf (ReturnWithLocation location exp) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf exp]
+  sourceSpanOf (BareReturnWithLocation location) =
+    sourceSpanOf location
   sourceSpanOf (MatchWithLocation location exps equations) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf exps, sourceSpanOf equations]
   sourceSpanOf (AsmWithLocation location _) =
     sourceSpanOf location
   sourceSpanOf (IfWithLocation location cond thenBody elseBody) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf cond, sourceSpanOf thenBody, sourceSpanOf elseBody]
+  sourceSpanOf (WhileWithLocation location cond body) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf cond, sourceSpanOf body]
+  sourceSpanOf (UncheckedWithLocation location body) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf body]
   sourceSpanOf (ForWithLocation location initStmt cond postStmt body) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf initStmt, sourceSpanOf cond, sourceSpanOf postStmt, sourceSpanOf body]
   sourceSpanOf (BreakWithLocation location) =
     sourceSpanOf location
   sourceSpanOf (ContinueWithLocation location) =
+    sourceSpanOf location
+  sourceSpanOf (RevertWithLocation location) =
     sourceSpanOf location
   sourceSpanOf (EmptyStmtWithLocation location) =
     sourceSpanOf location
@@ -626,17 +903,20 @@ instance HasSourceSpan Param where
 data Exp
   = LitWithLocation NodeLocation Literal -- literal
   | ExpNameWithLocation NodeLocation (Maybe Exp) Name [Exp] -- function call or constructor
+  | ExpApplyWithLocation NodeLocation Exp [Exp] -- arbitrary postfix function application
   | ExpVarWithLocation NodeLocation (Maybe Exp) Name -- variables or field access
   | ExpDotNameWithLocation NodeLocation Name [Exp] -- contextual constructor shorthand, e.g. .Some(1), .None
   | LamWithLocation NodeLocation [Param] Body (Maybe Ty) -- lambda-abstraction
-  | TyExpWithLocation NodeLocation Exp Ty -- type annotation expression
+  | TyExpWithLocation NodeLocation Exp Ty -- explicit type conversion expression
   | ExpIndexedWithLocation NodeLocation Exp Exp -- e1[e2]
-  | ExpArrayWithLocation NodeLocation [Exp] -- [e1, ..., en]
   | ExpPlusWithLocation NodeLocation Exp Exp -- e1 + e2
   | ExpMinusWithLocation NodeLocation Exp Exp -- e1 - e2
+  | ExpPowerWithLocation NodeLocation Exp Exp -- e1 ** e2
   | ExpTimesWithLocation NodeLocation Exp Exp -- e1 * e2
   | ExpDivideWithLocation NodeLocation Exp Exp -- e1 / e2
   | ExpModuloWithLocation NodeLocation Exp Exp -- e1 % e2
+  | ExpShiftLWithLocation NodeLocation Exp Exp -- e1 << e2
+  | ExpShiftRWithLocation NodeLocation Exp Exp -- e1 >> e2
   | ExpBXorWithLocation NodeLocation Exp Exp -- e1 ^ e2
   | ExpBAndWithLocation NodeLocation Exp Exp -- e1 & e2
   | ExpBOrWithLocation NodeLocation Exp Exp -- e1 | e2
@@ -649,8 +929,9 @@ data Exp
   | ExpLAndWithLocation NodeLocation Exp Exp -- e1 && e2
   | ExpLOrWithLocation NodeLocation Exp Exp -- e1 || e2
   | ExpLNotWithLocation NodeLocation Exp -- ! e
-  | ExpBNotWithLocation NodeLocation Exp -- ~ e
   | ExpCondWithLocation NodeLocation Exp Exp Exp -- if e1 then e2 else e3
+  | ExpBNotWithLocation NodeLocation Exp
+  | ExpArrayWithLocation NodeLocation [Exp]
   | ExpAtWithLocation NodeLocation Ty -- proxy sugar
   deriving (Eq, Ord, Show, Data, Typeable)
 
@@ -663,6 +944,11 @@ pattern ExpName :: Maybe Exp -> Name -> [Exp] -> Exp
 pattern ExpName me n es <- ExpNameWithLocation _ me n es
   where
     ExpName me n es = ExpNameWithLocation unlocatedNode me n es
+
+pattern ExpApply :: Exp -> [Exp] -> Exp
+pattern ExpApply callee args <- ExpApplyWithLocation _ callee args
+  where
+    ExpApply callee args = ExpApplyWithLocation unlocatedNode callee args
 
 pattern ExpVar :: Maybe Exp -> Name -> Exp
 pattern ExpVar me n <- ExpVarWithLocation _ me n
@@ -689,11 +975,6 @@ pattern ExpIndexed lhs rhs <- ExpIndexedWithLocation _ lhs rhs
   where
     ExpIndexed lhs rhs = ExpIndexedWithLocation unlocatedNode lhs rhs
 
-pattern ExpArray :: [Exp] -> Exp
-pattern ExpArray es <- ExpArrayWithLocation _ es
-  where
-    ExpArray es = ExpArrayWithLocation unlocatedNode es
-
 pattern ExpPlus :: Exp -> Exp -> Exp
 pattern ExpPlus lhs rhs <- ExpPlusWithLocation _ lhs rhs
   where
@@ -703,6 +984,11 @@ pattern ExpMinus :: Exp -> Exp -> Exp
 pattern ExpMinus lhs rhs <- ExpMinusWithLocation _ lhs rhs
   where
     ExpMinus lhs rhs = ExpMinusWithLocation unlocatedNode lhs rhs
+
+pattern ExpPower :: Exp -> Exp -> Exp
+pattern ExpPower lhs rhs <- ExpPowerWithLocation _ lhs rhs
+  where
+    ExpPower lhs rhs = ExpPowerWithLocation unlocatedNode lhs rhs
 
 pattern ExpTimes :: Exp -> Exp -> Exp
 pattern ExpTimes lhs rhs <- ExpTimesWithLocation _ lhs rhs
@@ -718,6 +1004,16 @@ pattern ExpModulo :: Exp -> Exp -> Exp
 pattern ExpModulo lhs rhs <- ExpModuloWithLocation _ lhs rhs
   where
     ExpModulo lhs rhs = ExpModuloWithLocation unlocatedNode lhs rhs
+
+pattern ExpShiftL :: Exp -> Exp -> Exp
+pattern ExpShiftL lhs rhs <- ExpShiftLWithLocation _ lhs rhs
+  where
+    ExpShiftL lhs rhs = ExpShiftLWithLocation unlocatedNode lhs rhs
+
+pattern ExpShiftR :: Exp -> Exp -> Exp
+pattern ExpShiftR lhs rhs <- ExpShiftRWithLocation _ lhs rhs
+  where
+    ExpShiftR lhs rhs = ExpShiftRWithLocation unlocatedNode lhs rhs
 
 pattern ExpBXor :: Exp -> Exp -> Exp
 pattern ExpBXor lhs rhs <- ExpBXorWithLocation _ lhs rhs
@@ -779,39 +1075,47 @@ pattern ExpLNot exp <- ExpLNotWithLocation _ exp
   where
     ExpLNot exp = ExpLNotWithLocation unlocatedNode exp
 
+pattern ExpCond :: Exp -> Exp -> Exp -> Exp
+pattern ExpCond cond thenExp elseExp <- ExpCondWithLocation _ cond thenExp elseExp
+  where
+    ExpCond cond thenExp elseExp = ExpCondWithLocation unlocatedNode cond thenExp elseExp
+
 pattern ExpBNot :: Exp -> Exp
 pattern ExpBNot exp <- ExpBNotWithLocation _ exp
   where
     ExpBNot exp = ExpBNotWithLocation unlocatedNode exp
 
-pattern ExpCond :: Exp -> Exp -> Exp -> Exp
-pattern ExpCond cond thenExp elseExp <- ExpCondWithLocation _ cond thenExp elseExp
+pattern ExpArray :: [Exp] -> Exp
+pattern ExpArray exps <- ExpArrayWithLocation _ exps
   where
-    ExpCond cond thenExp elseExp = ExpCondWithLocation unlocatedNode cond thenExp elseExp
+    ExpArray exps = ExpArrayWithLocation unlocatedNode exps
 
 pattern ExpAt :: Ty -> Exp
 pattern ExpAt ty <- ExpAtWithLocation _ ty
   where
     ExpAt ty = ExpAtWithLocation unlocatedNode ty
 
-{-# COMPLETE Lit, ExpName, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpArray, ExpPlus, ExpMinus, ExpTimes, ExpDivide, ExpModulo, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpBNot, ExpCond, ExpAt #-}
+{-# COMPLETE Lit, ExpName, ExpApply, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpPlus, ExpMinus, ExpPower, ExpTimes, ExpDivide, ExpModulo, ExpShiftL, ExpShiftR, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpCond, ExpBNot, ExpArray, ExpAt #-}
 
 locatedExp :: SourceSpan -> Exp -> Exp
 locatedExp sourceSpan (Lit lit) = LitWithLocation location lit
   where
     location = locatedNode sourceSpan
 locatedExp sourceSpan (ExpName me n es) = ExpNameWithLocation (locatedNode sourceSpan) me n es
+locatedExp sourceSpan (ExpApply callee args) = ExpApplyWithLocation (locatedNode sourceSpan) callee args
 locatedExp sourceSpan (ExpVar me n) = ExpVarWithLocation (locatedNode sourceSpan) me n
 locatedExp sourceSpan (ExpDotName n es) = ExpDotNameWithLocation (locatedNode sourceSpan) n es
 locatedExp sourceSpan (Lam ps body ty) = LamWithLocation (locatedNode sourceSpan) ps body ty
 locatedExp sourceSpan (TyExp exp ty) = TyExpWithLocation (locatedNode sourceSpan) exp ty
 locatedExp sourceSpan (ExpIndexed lhs rhs) = ExpIndexedWithLocation (locatedNode sourceSpan) lhs rhs
-locatedExp sourceSpan (ExpArray es) = ExpArrayWithLocation (locatedNode sourceSpan) es
 locatedExp sourceSpan (ExpPlus lhs rhs) = ExpPlusWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpMinus lhs rhs) = ExpMinusWithLocation (locatedNode sourceSpan) lhs rhs
+locatedExp sourceSpan (ExpPower lhs rhs) = ExpPowerWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpTimes lhs rhs) = ExpTimesWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpDivide lhs rhs) = ExpDivideWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpModulo lhs rhs) = ExpModuloWithLocation (locatedNode sourceSpan) lhs rhs
+locatedExp sourceSpan (ExpShiftL lhs rhs) = ExpShiftLWithLocation (locatedNode sourceSpan) lhs rhs
+locatedExp sourceSpan (ExpShiftR lhs rhs) = ExpShiftRWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpBXor lhs rhs) = ExpBXorWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpBAnd lhs rhs) = ExpBAndWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpBOr lhs rhs) = ExpBOrWithLocation (locatedNode sourceSpan) lhs rhs
@@ -824,14 +1128,17 @@ locatedExp sourceSpan (ExpNE lhs rhs) = ExpNEWithLocation (locatedNode sourceSpa
 locatedExp sourceSpan (ExpLAnd lhs rhs) = ExpLAndWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpLOr lhs rhs) = ExpLOrWithLocation (locatedNode sourceSpan) lhs rhs
 locatedExp sourceSpan (ExpLNot exp) = ExpLNotWithLocation (locatedNode sourceSpan) exp
-locatedExp sourceSpan (ExpBNot exp) = ExpBNotWithLocation (locatedNode sourceSpan) exp
 locatedExp sourceSpan (ExpCond cond thenExp elseExp) = ExpCondWithLocation (locatedNode sourceSpan) cond thenExp elseExp
+locatedExp sourceSpan (ExpBNot exp) = ExpBNotWithLocation (locatedNode sourceSpan) exp
+locatedExp sourceSpan (ExpArray exps) = ExpArrayWithLocation (locatedNode sourceSpan) exps
 locatedExp sourceSpan (ExpAt ty) = ExpAtWithLocation (locatedNode sourceSpan) ty
 
 instance HasSourceSpan Exp where
   sourceSpanOf (LitWithLocation location _) = sourceSpanOf location
   sourceSpanOf (ExpNameWithLocation location me n es) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf me, sourceSpanOf n, sourceSpanOf es]
+  sourceSpanOf (ExpApplyWithLocation location callee args) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf callee, sourceSpanOf args]
   sourceSpanOf (ExpVarWithLocation location me n) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf me, sourceSpanOf n]
   sourceSpanOf (ExpDotNameWithLocation location n es) =
@@ -842,17 +1149,21 @@ instance HasSourceSpan Exp where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf exp, sourceSpanOf ty]
   sourceSpanOf (ExpIndexedWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
-  sourceSpanOf (ExpArrayWithLocation location es) =
-    firstSourceSpan [sourceSpanOf location, sourceSpanOf es]
   sourceSpanOf (ExpPlusWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (ExpMinusWithLocation location lhs rhs) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
+  sourceSpanOf (ExpPowerWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (ExpTimesWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (ExpDivideWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (ExpModuloWithLocation location lhs rhs) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
+  sourceSpanOf (ExpShiftLWithLocation location lhs rhs) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
+  sourceSpanOf (ExpShiftRWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (ExpBXorWithLocation location lhs rhs) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
@@ -878,10 +1189,12 @@ instance HasSourceSpan Exp where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf lhs, sourceSpanOf rhs]
   sourceSpanOf (ExpLNotWithLocation location exp) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf exp]
-  sourceSpanOf (ExpBNotWithLocation location exp) =
-    firstSourceSpan [sourceSpanOf location, sourceSpanOf exp]
   sourceSpanOf (ExpCondWithLocation location cond thenExp elseExp) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf cond, sourceSpanOf thenExp, sourceSpanOf elseExp]
+  sourceSpanOf (ExpBNotWithLocation location exp) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf exp]
+  sourceSpanOf (ExpArrayWithLocation location exps) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf exps]
   sourceSpanOf (ExpAtWithLocation location ty) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf ty]
 

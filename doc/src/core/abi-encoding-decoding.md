@@ -33,12 +33,13 @@ library already is.
 ## Entry points
 
 The function `abi_encode` serializes a value and returns it as an ordinary
-`memory(bytes)`, that is, a length-prefixed `[length | data]` block like any
+`memory<bytes>`, that is, a length-prefixed `[length | data]` block like any
 other bytes value. It reserves one word for the length, writes the encoded
 region right after it, and stores the region's byte length in that leading word.
 
-```solcore
-forall ty . ty:ABIAttribs, ty:ABIEncode => function abi_encode(val : ty) -> memory(bytes);
+```solidity
+function abi_encode<ty>(val: ty) returns (memory<bytes>)
+    where ty: ABIAttribs, ty: ABIEncode;
 ```
 
 Because the result carries its own length, it composes with the rest of the
@@ -46,8 +47,8 @@ bytes API: the caller can query it with `MemorySize.len` and
 `MemoryPointer.ptr`, concatenate it, hash it, or return it, without tracking the
 encoded size separately.
 
-```solcore
-function encodeAmount(amount : uint256) -> memory(bytes) {
+```solidity
+function encodeAmount(amount: uint256) returns (memory<bytes>) {
     return abi_encode(amount);
 }
 ```
@@ -57,10 +58,11 @@ cannot be inferred from the input alone, the target type and the source reader
 are passed as `Proxy` values (see
 [Phantom Type Parameters](../sail/datatypes.md#phantom-type-parameters)).
 
-```solcore
-forall decodable reader ty decoded
-    . decodable:HasWordReader(reader), ABIDecoder(ty, reader):ABIDecode(decoded)
-=> function abi_decode(decodable : decodable, pty : Proxy(ty), prdr : Proxy(reader)) -> decoded;
+```solidity
+function abi_decode<decodable, reader, ty, decoded>(
+    value: decodable, pty: @ty, prdr: @reader
+) returns (decoded)
+    where decodable: HasWordReader<reader>, ABIDecoder<ty, reader>: ABIDecode<decoded>;
 ```
 
 Most programs never call `abi_decode` directly. The contract dispatcher decodes
@@ -72,23 +74,23 @@ below), so hand-written decoding is only needed for lower-level work.
 Before a value can be laid out, the encoder needs to know two things about its
 type: whether the type is _static_ (its size is fixed and known in advance) or
 _dynamic_ (its size depends on the value), and how many bytes it occupies in the
-_head_ of the encoding. The class `ABIAttribs` records both.
+_head_ of the encoding. The trait `ABIAttribs` records both.
 
-```solcore
-forall self . class self:ABIAttribs {
-    function headSize(ty : Proxy(self)) -> word;
-    function isStatic(ty : Proxy(self)) -> bool;
+```solidity
+trait ABIAttribs<self> {
+    function headSize(ty: @self) returns (word);
+    function isStatic(ty: @self) returns (bool);
 }
 ```
 
-Both methods take a `Proxy(self)` rather than a value, because the answer
+Both methods take a `@self` rather than a value, because the answer
 depends only on the type. A default instance classifies every type as static
 with a 32-byte head, and concrete types override it as needed:
 
-```solcore
-instance uint256:ABIAttribs {
-    function headSize(ty : Proxy(uint256)) -> word { return 32; }
-    function isStatic(ty : Proxy(uint256)) -> bool { return true; }
+```solidity
+impl ABIAttribs<uint256> {
+    function headSize(ty: @uint256) returns (word) { return 32; }
+    function isStatic(ty: @uint256) returns (bool) { return true; }
 }
 ```
 
@@ -124,29 +126,29 @@ building hash preimages, see [Packed Encoding](#packed-encoding).
 A type is encodable when it implements `encodeInto`, which writes a value into a
 memory region and returns the updated tail cursor.
 
-```solcore
-forall self . class self:ABIEncode {
-    // basePtr : start of the encoded region
-    // offset  : bytes from basePtr to the first free head slot
-    // tail    : index of the first free tail byte
-    function encodeInto(x : self, basePtr : word, offset : word, tail : word) -> word /* newTail */;
+```solidity
+trait ABIEncode<self> {
+    // basePtr: start of the encoded region
+    // offset: bytes from basePtr to the first free head slot
+    // tail: index of the first free tail byte
+    function encodeInto(x: self, basePtr: word, offset: word, tail: word) returns (word);
 }
 ```
 
 Static primitives write their word straight into the head slot and leave the
 tail untouched:
 
-```solcore
-instance uint256:ABIEncode {
-    function encodeInto(x : uint256, basePtr : word, offset : word, tail : word) -> word {
-        let repx : word = Typedef.rep(x);
+```solidity
+impl ABIEncode<uint256> {
+    function encodeInto(x: uint256, basePtr: word, offset: word, tail: word) returns (word) {
+        let repx: word = Typedef.rep(x);
         mstore(basePtr + offset, repx);
         return tail;
     }
 }
 ```
 
-Dynamic instances such as `memory(bytes)` and `memory(string)` do more: they
+Dynamic instances such as `memory<bytes>` and `memory<string>` do more: they
 store the relative offset into the head, copy the `[length | data]` block into
 the tail, pad it up to a multiple of 32, and return the advanced tail cursor.
 The standard library provides instances for `uint256`, `address`, `bool`,
@@ -159,11 +161,11 @@ Decoding reverses the process. It must work against two different byte sources,
 memory and calldata, which are read with different opcodes. Core Solidity
 abstracts over the two with the `WordReader` class.
 
-```solcore
-forall ty . class ty:WordReader {
-    function read(reader : ty) -> word;
-    function advance(reader : ty, offset : word) -> ty;
-    function copyToMem(reader : ty, dst : word, cnt : word) -> ();
+```solidity
+trait WordReader<ty> {
+    function read(reader: ty) returns (word);
+    function advance(reader: ty, offset: word) returns (ty);
+    function copyToMem(reader: ty, dst: word, cnt: word) returns (());
 }
 ```
 
@@ -173,9 +175,9 @@ with `calldataload` and `calldatacopy`. Every decoder is written once against
 
 The decoding class itself carries the decoded type in its result position:
 
-```solcore
-forall decoder decoded . class decoder:ABIDecode(decoded) {
-    function decode(ptr : decoder, currentHeadOffset : word) -> decoded;
+```solidity
+trait ABIDecode<decoder, decoded> {
+    function decode(ptr: decoder, currentHeadOffset: word) returns (decoded);
 }
 ```
 
@@ -197,47 +199,54 @@ the ordinary struct-of-fields ABI layout. A separate `ABITuple` wrapper recovers
 the flat-tuple grouping that pairing would otherwise hide, so a multi-argument
 tuple is laid out as one ABI tuple rather than a chain of nested pairs.
 
-Sum types (any data type with more than one constructor) are encoded with a
-leading _tag_ word, `0` for the left injection and `1` for the right, followed
-by the selected branch. A static sum places the tag and branch inline in the
-head; a dynamic sum places a single offset word in the head and the
-`[tag | branch]` block in the tail. This mirrors the uniform `inl` / `inr`
-encoding that all algebraic data types share.
+The primitive `sum<f, g>` is encoded with a leading _tag_ word, `0` for the
+left injection and `1` for the right, followed by the selected branch. A static
+sum places the tag and branch inline in the head; a dynamic sum places a single
+offset word in the head and the `[tag | branch]` block in the tail. User-defined
+enums use the same surrounding layout with a variant-specific tag, as described
+below.
 
 ## User-defined types
 
 Structs and enums encode and decode without any hand-written instances. The
 mechanism reuses the generic-programming bridge:
 
-1. The `Generic(rep)` class establishes an isomorphism between a user type and
+1. The `Generic<rep>` class establishes an isomorphism between a user type and
    its _sums of products_ representation built from the primitives `sum`, pair,
    and unit.
-2. Importing `std.ABIGeneric` brings the marker class `ABIDeriving` into scope,
+2. Importing `std.ABIGeneric` brings the marker trait `ABIDeriving` into scope,
    which signals the compiler to derive the instances.
 
-```solcore
-import std.{*};
-import std.ABIGeneric.{*};
+```solidity
+import * from std;
+import * from std.ABIGeneric;
 
-data Person = Person(address wallet, uint256 balance);
+struct Person {
+    wallet: address;
+    balance: uint256;
+}
 
-function encodePerson(p : Person) -> memory(bytes) {
+function encodePerson(p: Person) returns (memory<bytes>) {
     return abi_encode(p);
 }
 ```
 
-Given the import, the compiler auto-derives a `Generic` instance, a concrete
-`ABIAttribs` instance, and a concrete `ABIDecode` instance for each local data
-type. `ABIEncode` is obtained for free through the generic bridge. The user type
-is then encoded exactly as its structural representation: constructors become
-tagged sums and fields become products, so a struct lays out as its fields in
-order and an enum lays out as a tagged union.
+Given the import, the compiler auto-derives `Generic`, a concrete `ABIAttribs`,
+and a concrete `ABIDecode` implementation for each supported local type. A
+single-constructor enum or struct uses the generic `ABIEncode` bridge and lays
+out its fields in order, without a tag word.
 
-> **Note** `ABIEncode` and `ABIAttribs` are supplied generically, but
-> `ABIDecode` cannot be a default instance: its `decode` returns a
-> result-position type variable that the specializer cannot monomorphize on its
-> own. This is why a concrete `ABIDecode` instance is emitted per type instead
-> of a single generic one.
+An enum with multiple constructors also gets a concrete `ABIEncode`
+implementation. Each variant carries one `bytes32` tag equal to
+`keccak256("Name(argSigs...)")`, where `Name` is the constructor name and its
+field signatures use the `SigString` convention. These tags replace the
+primitive sum's positional `0`/`1` tags at the ABI boundary.
+
+> **Note** `ABIDecode` needs a concrete implementation because its result-position
+> type variable cannot be monomorphized through a default implementation.
+> `ABIAttribs` also needs a concrete implementation to override the standard
+> library's catch-all 32-byte layout. Multi-constructor enums need a concrete
+> encoder so their variant names remain available when forming wire tags.
 
 ## Function selectors
 
@@ -247,10 +256,13 @@ built by the `SigString` class, which maps each type to its ABI name (`uint256`,
 `address`, `bool`, `bytes`, `string`, `T[]`, and comma-joined products), and the
 `Selector` class turns it into the four-byte prefix.
 
-```solcore
-instance Method(name, payability, args, rets, fn):Selector {
-    function compute(prx : Proxy(Method(name, payability, args, rets, fn))) -> bytes4 {
-        let hash = keccakLit(sigStr(Proxy : Proxy(name)) + "(" + sigStr(Proxy : Proxy(args)) + ")");
+```solidity
+impl<name, payability, args, rets, fn> Selector<Method<name, payability, args, rets, fn>>
+    where name: SigString, args: SigString {
+    function compute(prx: @Method<name, payability, args, rets, fn>) returns (bytes4) {
+        let nameProxy: @name = @name;
+        let argsProxy: @args = @args;
+        let hash = keccakLit(sigStr(nameProxy) + "(" + sigStr(argsProxy) + ")");
         return bytes4(shr(224, hash));
     }
 }
@@ -273,7 +285,7 @@ compiler injects automatically (this pass can be turned off with
 4. calls the method,
 5. encodes the result with `abi_encode` and returns it.
 
-Because `abi_encode` yields a well-formed `memory(bytes)`, the last step is
+Because `abi_encode` yields a well-formed `memory<bytes>`, the last step is
 direct: the dispatcher returns the encoded region using its length prefix
 (`MemorySize.len`) and data pointer (`MemoryPointer.ptr`), with no need to
 measure the allocated memory to recover the size.
@@ -295,8 +307,8 @@ return data. A second, tighter layout is available for building hash preimages,
 where every byte matters and offsets would be noise. The `concat` function
 concatenates values with no padding, and `keccak256_` hashes the result:
 
-```solcore
-function commitment(a : bytes32, b : address) -> bytes32 {
+```solidity
+function commitment(a: bytes32, b: address) returns (bytes32) {
     return keccak256_(concat(a, bytes32(Typedef.rep(b))));
 }
 ```

@@ -45,6 +45,9 @@ parens = between (symbol "(") (symbol ")")
 commaSep :: Parser a -> Parser [a]
 commaSep p = p `sepBy` symbol ","
 
+commaSep1 :: Parser a -> Parser [a]
+commaSep1 p = p `sepBy1` symbol ","
+
 pKeyword :: String -> Parser String
 pKeyword w = try $ lexeme (string w <* notFollowedBy identChar)
 
@@ -80,17 +83,17 @@ yulStmt =
     *> choice
       [ YBlock <$> yulBlock,
         yulFun,
-        YLet <$> (pKeyword "let" *> commaSep pName) <*> optional (symbol ":=" *> yulExp),
+        YLet <$> (pKeyword "let" *> commaSep1 pName) <*> optional (symbol ":=" *> yulExp),
         YIf <$> (pKeyword "if" *> yulExp) <*> yulBlock,
         YFor <$> (pKeyword "for" *> yulBlock) <*> yulExp <*> yulBlock <*> yulBlock,
         YSwitch
           <$> (pKeyword "switch" *> yulExp)
           <*> some yulCase
           <*> optional (pKeyword "default" *> yulBlock),
-        YBreak <$ pKeyword "break",
         YContinue <$ pKeyword "continue",
+        YBreak <$ pKeyword "break",
         YLeave <$ pKeyword "leave",
-        try (YAssign <$> commaSep pName <*> (symbol ":=" *> yulExp)),
+        try (YAssign <$> commaSep1 pName <*> (symbol ":=" *> yulExp)),
         YExp <$> yulExp
       ]
 
@@ -109,7 +112,7 @@ yulFun = do
   _ <- pKeyword "function"
   name <- pName
   args <- parens (commaSep pName)
-  rets <- optional (symbol "->" *> commaSep pName)
+  rets <- optional (symbol "->" *> commaSep1 pName)
   YFun name args rets <$> yulBlock
 
 yulProgram :: Parser Yul

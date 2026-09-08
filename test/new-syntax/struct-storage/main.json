@@ -1,0 +1,28 @@
+{
+  "struct_storage_updates": {
+    "bytecode": "",
+    "contract": "StructStorageUpdates",
+    "tests": [
+      {
+        "kind": "constructor",
+        "input": {
+          "calldata": "",
+          "value": "0",
+          "comment": "constructor()"
+        }
+      },
+      {
+        "kind": "call",
+        "input": {
+          "calldata": "d32cb0fe",
+          "value": "0",
+          "comment": "exercise() returns updated x=22, preserved y=7, restored array value=12, and four index evaluations"
+        },
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000000160000000000000000000000000000000000000000000000000000000000000007000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000004",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

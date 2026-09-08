@@ -11,7 +11,6 @@ import Data.Maybe
 import Data.Set qualified as Set
 import GHC.Stack
 import Language.Yul
-import Solcore.Desugarer.StructProjection (fieldProjName)
 import Solcore.Diagnostics (SourceSpan)
 import Solcore.Frontend.Pretty.ShortName
 import Solcore.Frontend.Pretty.SolcorePretty
@@ -61,6 +60,8 @@ tcStmtWithExpectedReturn mExpectedReturn stmt =
   locatedInferResult locatedStmt stmt <$> tcStmtWithExpectedReturn' mExpectedReturn stmt
 
 tcStmtWithExpectedReturn' :: Maybe Ty -> Infer Stmt
+tcStmtWithExpectedReturn' _ (FieldAccess (Just _) memberName := _) =
+  unsupportedStructFieldAssignment memberName
 tcStmtWithExpectedReturn' _ e@(lhs := rhs) =
   do
     (lhs1, ps1, t1) <- tcExp lhs
@@ -92,6 +93,15 @@ tcStmtWithExpectedReturn' _ e@(Let ct n mt me) =
     extEnv n (monotype tf)
     let e' = Let ct (Id n tf) (Just tf) me'
     withCurrentSubst (e', psf, unit)
+tcStmtWithExpectedReturn' _ stmt@(LetPattern ct pat mt value) =
+  do
+    (pat', value', ps, valueTy) <- tcLetPattern stmt pat mt value
+    lowered <- lowerLetPattern stmt ct pat' value' valueTy []
+    let loweredStmt =
+          case lowered of
+            [single] -> single
+            stmts -> Block stmts
+    pure (loweredStmt, ps, unit)
 tcStmtWithExpectedReturn' mExpectedReturn (Block body) =
   withLocalCtx [] $ do
     (body', ps, t) <- tcBodyWithExpectedReturn mExpectedReturn body
@@ -110,12 +120,22 @@ tcStmtWithExpectedReturn' mExpectedReturn (Match es eqns) =
     ensureVisiblePatternCoverage ts' eqns
     (eqns', pss1, resTy) <- tcEquationsWithExpectedReturn mExpectedReturn ts' eqns
     withCurrentSubst (Match es' eqns', concat (pss1 : pss'), resTy)
-tcStmtWithExpectedReturn' _ (Asm yblk) =
-  withLocalCtx yulPrimOps $ do
-    (newBinds, t) <- tcYulBlock yblk
-    let word' = monotype word
-    mapM_ (flip extEnv word') newBinds
-    pure (Asm yblk, [], t)
+tcStmtWithExpectedReturn' mExpectedReturn stmt@(Asm yblk) = do
+  case validateYulControlFlow yblk of
+    Left err -> tcmError err `wrapError` stmt
+    Right () -> pure ()
+  case validateYulLiterals yblk of
+    Left err -> tcmError err `wrapError` stmt
+    Right () -> pure ()
+  if isEmptyRevertBlock yblk
+    then do
+      resultTy <- maybe freshTyVar pure mExpectedReturn
+      pure (Asm yblk, [], resultTy)
+    else withLocalCtx yulPrimOps $ do
+      (newBinds, t) <- tcYulBlock yblk
+      let word' = monotype word
+      mapM_ (flip extEnv word') newBinds
+      pure (Asm yblk, [], t)
 tcStmtWithExpectedReturn' mExpectedReturn s@(If e blk1 blk2) =
   do
     (e', ps, t) <- tcExp e
@@ -184,6 +204,14 @@ tcStmtWithExpectedReturn' _ Continue =
   pure (Continue, [], unit)
 tcStmtWithExpectedReturn' _ EmptyStmt =
   pure (EmptyStmt, [], unit)
+
+-- Name resolution lowers source-level @revert;@ to this exact Yul block.
+-- Reversion never falls through, so it inhabits the surrounding function's
+-- result type just like a bottom value instead of forcing the branch to unit.
+isEmptyRevertBlock :: YulBlock -> Bool
+isEmptyRevertBlock
+  [YExp (YCall "revert" [YLit (YulNumber 0), YLit (YulNumber 0)])] = True
+isEmptyRevertBlock _ = False
 
 tcEquations :: [Ty] -> Equations Name -> TcM (Equations Id, [Pred], Ty)
 tcEquations = tcEquationsWithExpectedReturn Nothing
@@ -332,7 +360,7 @@ tcPat' t' (PExp e) =
 -- type inference for expressions
 
 mkCon :: DataTy -> TcM (Exp Id, Ty)
-mkCon (DataTy nt vs ((Constr n _ _) : _) _) =
+mkCon (DataTy nt vs ((Constr n _) : _)) =
   do
     mvs <- mapM (const freshTyVar) vs
     let t1 = TyCon nt mvs
@@ -409,28 +437,23 @@ tcExpWithExpected' mExpected e@(Con n es) =
 tcExpWithExpected' _ e@(FieldAccess Nothing _) =
   -- = notImplementedS "tcExp" e
   tcmError ("tcExp not implemented for: " ++ pretty e ++ "\n" ++ show e)
-tcExpWithExpected' mExpected (FieldAccess (Just e) n) =
+tcExpWithExpected' _ (FieldAccess (Just e) n) =
   do
     -- inferring expression type
     (e', ps, t) <- tcExpWithExpected Nothing e
-    -- resolve metavariables, then expand synonyms before extracting type name
-    tZonked <- withCurrentSubst t
-    tExp <- maybeExpandSynonym tZonked
-    tn <- typeName tExp
-    mti <- maybeAskTypeInfo tn
-    case mti of
-      -- Struct field access: `e.n` desugars to a call of the generated
-      -- positional projection function for field `n` of struct `tn` (see
-      -- Desugarer.StructProjection). Re-checking `e` here keeps the projection
-      -- call self-contained; `e` is normally a simple variable.
-      Just ti
-        | n `elem` fieldNames ti ->
-            tcExpWithExpected mExpected (Call Nothing (fieldProjName tn n) [e])
-      -- getting field type (legacy contract-field path)
-      _ -> do
-        s <- askField tn n
-        (ps' :=> t') <- freshInst s
-        withCurrentSubst (FieldAccess (Just e') (Id n t'), ps ++ ps', t')
+    -- Expand aliases and instantiate the ordered source-struct metadata with
+    -- the receiver's actual type arguments.
+    tCurrent <- withCurrentSubst t
+    receiverTy <- maybeExpandSynonym tCurrent
+    (selectorName, memberTy) <- askStructField receiverTy n
+    let selectorTy = funtype [receiverTy] memberTy
+    -- A normal function call gives the receiver ordinary call-by-value
+    -- semantics: even a side-effecting receiver is evaluated exactly once.
+    withCurrentSubst
+      ( Call Nothing (Id selectorName selectorTy) [e'],
+        ps,
+        memberTy
+      )
 tcExpWithExpected' mExpected ex@(Call me n args) =
   tcCall mExpected me n args `wrapError` ex
 tcExpWithExpected' mExpected (Lam args bd _) =
@@ -443,7 +466,7 @@ tcExpWithExpected' mExpected (Lam args bd _) =
     -- would otherwise mask parameter/result type mismatches (this is the
     -- check the retired no-desugar validation pass provided for free by
     -- returning the un-converted arrow type; see
-    -- instance-closure-error-invalid-member.solc).
+    -- instance-closure-error-invalid-member.sol).
     case mExpected of
       Just expected@(_ :-> _) -> do
         s0 <- getSubst
@@ -463,13 +486,103 @@ tcExpWithExpected' mExpected (Lam args bd _) =
       else do
         (exp1, t) <- closureConversion vs (apply s args') (apply s bd') ps1 ty
         withCurrentSubst (exp1, ps1, t)
-tcExpWithExpected' _ e1@(TyExp e ty) =
-  do
-    ty1 <- kindCheck ty `wrapError` e1
-    (e', ps, ty') <- tcExpWithExpected (Just ty1) e
-    s <- tcmMatch ty' ty1
-    _ <- extSubst s
-    withCurrentSubst (TyExp e' ty1, ps, ty1)
+tcExpWithExpected' _ conversion@(TyExp expression targetTy) = do
+  checkedTargetTy <- kindCheck targetTy `wrapError` conversion
+  (typedExpression, expressionPreds, inferredSourceTy) <- tcExp expression
+  sourceTy <- maybeExpandSynonym =<< withCurrentSubst inferredSourceTy
+  targetTy' <- maybeExpandSynonym =<< withCurrentSubst checkedTargetTy
+  if sourceTy == targetTy'
+    then
+      elaboratedIdentity
+        mempty
+        typedExpression
+        expressionPreds
+        checkedTargetTy
+    else do
+      let typedefClass = Name "Typedef"
+          abstractConversion = InCls typedefClass targetTy' [sourceTy]
+          representationConversion = InCls typedefClass sourceTy [targetTy']
+      givens <- withCurrentSubst =<< getGivenPredicates
+      classEnv <- getClassEnv
+      instanceEnv <- getInstEnv
+      canAbstract <-
+        conversionEntailed
+          typedefClass
+          classEnv
+          instanceEnv
+          givens
+          abstractConversion
+      canExposeRepresentation <-
+        conversionEntailed
+          typedefClass
+          classEnv
+          instanceEnv
+          givens
+          representationConversion
+      case (canAbstract, canExposeRepresentation) of
+        (True, False) ->
+          elaboratedConversion
+            (QualName typedefClass "abs")
+            abstractConversion
+            sourceTy
+            targetTy'
+            typedExpression
+            expressionPreds
+        (False, True) ->
+          elaboratedConversion
+            (QualName typedefClass "rep")
+            representationConversion
+            sourceTy
+            targetTy'
+            typedExpression
+            expressionPreds
+        (True, True) ->
+          tcDiagnosticErrorAtSource
+            "SC0230"
+            ( "ambiguous explicit conversion from "
+                ++ pretty sourceTy
+                ++ " to "
+                ++ pretty targetTy'
+            )
+            conversion
+            "ambiguous conversion"
+            [ "both "
+                ++ pretty targetTy'
+                ++ ": Typedef<"
+                ++ pretty sourceTy
+                ++ "> and "
+                ++ pretty sourceTy
+                ++ ": Typedef<"
+                ++ pretty targetTy'
+                ++ "> are available"
+            ]
+            [ "call Typedef.abs or Typedef.rep explicitly to select the intended direction"
+            ]
+        (False, False) -> do
+          identityMatch <-
+            (Just <$> tcmMatch sourceTy targetTy')
+              `catchError` const (pure Nothing)
+          case identityMatch of
+            Just matchingSubst ->
+              elaboratedIdentity
+                matchingSubst
+                typedExpression
+                expressionPreds
+                checkedTargetTy
+            Nothing ->
+              tcDiagnosticErrorAtSource
+                "SC0230"
+                ( "no explicit conversion from "
+                    ++ pretty sourceTy
+                    ++ " to "
+                    ++ pretty targetTy'
+                )
+                conversion
+                "invalid conversion"
+                [ "`as` accepts identical types or a conversion witnessed by Typedef"
+                ]
+                [ "provide a matching Typedef instance or call a conversion function explicitly"
+                ]
 tcExpWithExpected' mExpected e@(Cond e1 e2 e3) =
   do
     (e1', ps1, t1) <- tcExpWithExpected Nothing e1 `wrapError` e
@@ -529,6 +642,59 @@ tcExpWithExpected' _ e@(ArrayLit es) =
     let tArr = memoryDynArray tElem'
     withCurrentSubst (TyExp (ArrayLit es') tArr, ps, tArr)
 
+elaboratedIdentity ::
+  Subst ->
+  Exp Id ->
+  [Pred] ->
+  Ty ->
+  TcM (Exp Id, [Pred], Ty)
+elaboratedIdentity matchingSubst expression preds targetTy = do
+  _ <- extSubst matchingSubst
+  withCurrentSubst
+    (TyExp expression targetTy, preds, targetTy)
+
+conversionEntailed ::
+  Name ->
+  ClassTable ->
+  InstTable ->
+  [Pred] ->
+  Pred ->
+  TcM Bool
+conversionEntailed predicateClassName classEnv instanceEnv givens wanted =
+  entailM classEnv consistentInstanceEnv givens wanted
+  where
+    consistentInstanceEnv =
+      Map.adjust
+        (filter (`instanceHeadConsistentWith` wanted))
+        predicateClassName
+        instanceEnv
+
+instanceHeadConsistentWith :: Inst -> Pred -> Bool
+instanceHeadConsistentWith instanceRule@(_ :=> instanceHead) wanted =
+  case byInst instanceRule wanted of
+    Nothing ->
+      False
+    Just (_, matchingSubst, _) ->
+      apply matchingSubst instanceHead == apply matchingSubst wanted
+
+elaboratedConversion ::
+  Name ->
+  Pred ->
+  Ty ->
+  Ty ->
+  Exp Id ->
+  [Pred] ->
+  TcM (Exp Id, [Pred], Ty)
+elaboratedConversion methodName conversionPred sourceTy targetTy expression preds =
+  withCurrentSubst
+    ( Call
+        Nothing
+        (Id methodName (sourceTy :-> targetTy))
+        [expression],
+      preds `union` [conversionPred],
+      targetTy
+    )
+
 closureConversion ::
   [Tyvar] ->
   [Param Id] ->
@@ -555,7 +721,7 @@ closureConversion vs args bdy ps ty =
         info [">> Creating lambda lifted function(free):\n", pretty fun1, show ty]
         sch <- generalize (ps', ty)
         -- creating the invoke instance and unique type def.
-        (udt@(DataTy dn tvs _ _), instd) <- generateDecls (fun1, sch)
+        (udt@(DataTy dn tvs _), instd) <- generateDecls (fun1, sch)
         let t = TyCon dn (map (Meta . MetaTv . tyvarName) tvs)
         -- updating the type inference state
         writeFunDef fun1
@@ -598,7 +764,7 @@ createClosureType ids vs ty =
         vs' = nub $ (mv ts) `union` (map (MetaTv . var) vs)
         ty' = TyCon dn (Meta <$> vs')
         cid = Id dn (funtype ts ty')
-        d = DataTy dn (map gvar vs') [Constr dn ts' []] []
+        d = DataTy dn (map gvar vs') [Constr dn ts']
     info [">> Create closure type:", pretty d, " for type :", pretty ty]
     pure (d, Con cid ns, ty')
 
@@ -629,11 +795,11 @@ createClosureFun fn freeIds cdt args bdy ps ty =
     pure (everywhereButSpans (mkT gen) $ FunDef False sig bdy', sch)
 
 closureTyCon :: DataTy -> TcM Ty
-closureTyCon (DataTy dn vs _ _) =
+closureTyCon (DataTy dn vs _) =
   pure (TyCon dn (TyVar <$> vs))
 
 createClosureBody :: Name -> DataTy -> [Id] -> Body Id -> TcM (Body Id)
-createClosureBody n cdt@(DataTy _ _ [Constr cn ts _] _) ids bdy =
+createClosureBody n cdt@(DataTy _ _ [Constr cn ts]) ids bdy =
   do
     ct <- closureTyCon cdt
     let ps = map PVar ids
@@ -785,7 +951,12 @@ tcFunDef incl vs' qs d@(FunDef isPub sig@(Signature vs ps n _ _ _ _) _)
       -- building the typing context with new assumptions
       let lctx' = if incl then (n, monotype nt) : lctx else lctx
       -- typing function body
-      (bd1', ps1', t1') <- withLocalCtx lctx' (tcBodyWithExpectedReturn (Just rt1') bd1) `wrapError` d
+      (bd1', ps1', t1') <-
+        ( withLocalCtx lctx' $
+            withGivenPredicates (qs1 `union` ps1) $
+              tcBodyWithExpectedReturn (Just rt1') bd1
+        )
+          `wrapError` d
       -- checking if the type checking have changed the type
       -- due to unique type creation.
       let tynames = tyconNames t1'
@@ -1023,7 +1194,14 @@ elabSignature vs1 sig (Forall _ (ps :=> t)) =
         -- formal parameters are present in the signature.
         ret = Just $ if null params' then t else (funtype rs t')
         vs' = bv params' `union` bv ret `union` bv ps
-    sig2 <- withCurrentSubst (Signature (vs' \\ vs1) ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig))
+    sig2 <-
+      withCurrentSubst
+        ( (Signature (vs' \\ vs1) ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig))
+            { sigReturnNames = sigReturnNames sig,
+              sigReturnItems = sigReturnItems sig,
+              sigModifiers = sigModifiers sig
+            }
+        )
     pure sig2
 
 elabParam :: Ty -> Param Name -> TcM (Param Id)
@@ -1032,7 +1210,12 @@ elabParam t (Untyped c n) = pure $ Typed c (Id n t) t
 
 annotateSignature :: Scheme -> Signature Name -> TcM (Signature Name)
 annotateSignature (Forall vs (ps :=> t)) sig =
-  pure $ Signature vs ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig)
+  pure $
+    (Signature vs ps (sigName sig) params' (sigRetComptime sig) ret (sigPayable sig))
+      { sigReturnNames = sigReturnNames sig,
+        sigReturnItems = sigReturnItems sig,
+        sigModifiers = sigModifiers sig
+      }
   where
     (ts, t') = splitTy t
     params' = zipWith annotateParam ts (sigParams sig)
@@ -1208,8 +1391,16 @@ schemeFromSignature sig =
     unwords ["Invalid instance member signature (missing return type):", pretty sig]
 
 updateSignature :: [Tyvar] -> Name -> FunDef Id -> FunDef Id
-updateSignature vs' c (FunDef p (Signature vs ps n args rc rt pay) bd) =
-  FunDef p (Signature (vs \\ vs') ps (qualifyName c n) args rc rt pay) bd
+updateSignature vs' c (FunDef p sig@(Signature vs ps n args rc rt pay) bd) =
+  FunDef
+    p
+    ( (Signature (vs \\ vs') ps (qualifyName c n) args rc rt pay)
+        { sigReturnNames = sigReturnNames sig,
+          sigReturnItems = sigReturnItems sig,
+          sigModifiers = sigModifiers sig
+        }
+    )
+    bd
 
 checkDeferedConstraints :: [(FunDef Id, [Pred])] -> TcM ()
 checkDeferedConstraints = mapM_ checkDeferedConstraint
@@ -1522,6 +1713,12 @@ tcBody = tcBodyWithExpectedReturn Nothing
 
 tcBodyWithExpectedReturn :: Maybe Ty -> Body Name -> TcM (Body Id, [Pred], Ty)
 tcBodyWithExpectedReturn _ [] = pure ([], [], unit)
+tcBodyWithExpectedReturn mExpectedReturn (stmt@(LetPattern ct pat mt value) : rest) =
+  do
+    (pat', value', ps, valueTy) <- tcLetPattern stmt pat mt value
+    (rest', restPreds, resultTy) <- tcBodyWithExpectedReturn mExpectedReturn rest
+    lowered <- lowerLetPattern stmt ct pat' value' valueTy rest'
+    pure (lowered, ps ++ restPreds, resultTy)
 tcBodyWithExpectedReturn mExpectedReturn [s] =
   do
     (s', ps', t') <- tcStmtWithExpectedReturn mExpectedReturn s
@@ -1533,6 +1730,61 @@ tcBodyWithExpectedReturn mExpectedReturn (s : ss) =
     (s', ps', _) <- tcStmtWithExpectedReturn mExpectedReturn s
     (bd', ps1, t1) <- tcBodyWithExpectedReturn mExpectedReturn ss
     pure (s' : bd', ps' ++ ps1, t1)
+
+-- Type a tuple binding before its continuation, then make every bound leaf
+-- available to that continuation.  The body checker lowers the binding to an
+-- irrefutable one-arm match so the existing decision-tree compiler performs
+-- tuple projection without evaluating the initializer more than once.
+tcLetPattern ::
+  Stmt Name ->
+  Pat Name ->
+  Maybe Ty ->
+  Exp Name ->
+  TcM (Pat Id, Exp Id, [Pred], Ty)
+tcLetPattern stmt pat mt value = do
+  (value', preds, valueTy) <-
+    case mt of
+      Just annotatedTy -> do
+        checkedTy <- kindCheck annotatedTy `wrapError` stmt
+        let boundVars = bv checkedTy
+        skolems <- mapM (const freshTyVar) boundVars
+        let expectedTy = insts (zip boundVars skolems) checkedTy
+        (value'', preds', inferredTy) <-
+          tcExpWithExpected (Just expectedTy) value
+        matchedSubst <- tcmMatch inferredTy expectedTy `wrapError` stmt
+        _ <- extSubst matchedSubst
+        withCurrentSubst (value'', preds', expectedTy)
+      Nothing ->
+        tcExp value
+  (pat', _, bindings) <- tcPat valueTy pat `wrapError` stmt
+  bindings' <- withCurrentSubst bindings
+  mapM_ (uncurry extEnv) bindings'
+  (pat'', value'', preds') <- withCurrentSubst (pat', value', preds)
+  valueTy' <- withCurrentSubst valueTy
+  pure (pat'', value'', preds', valueTy')
+
+lowerLetPattern ::
+  Stmt Name ->
+  Bool ->
+  Pat Id ->
+  Exp Id ->
+  Ty ->
+  Body Id ->
+  TcM (Body Id)
+lowerLetPattern source isComptime pat value valueTy continuation = do
+  let matchOn scrutinee =
+        locatedLike source locatedStmt $
+          Match [scrutinee] [([pat], continuation)]
+  if isComptime
+    then do
+      temporaryName <- freshName
+      let temporary = Id temporaryName valueTy
+          bindTemporary =
+            locatedLike source locatedStmt $
+              Let True temporary (Just valueTy) (Just value)
+      pure [bindTemporary, matchOn (Var temporary)]
+    else
+      pure [matchOn value]
 
 -- | The expected type of a call's result, when known, has to be unified with
 -- the call itself rather than left to the caller.  A method resolved by its
@@ -1884,15 +2136,29 @@ tcYulExp e@(YCall n es) =
   do
     sch <- askEnv n `wrapError` e
     (_ :=> t) <- freshInst sch
-    ts <- mapM tcYulExp es
+    ts <- zipWithM (tcYulCallArgument n) [0 ..] es
     t' <- freshTyVar
     s <- unify t (funtype ts t') `wrapError` e
     _ <- extSubst s
     withCurrentSubst t'
 tcYulExp (YMeta _) = pure word
 
+tcYulCallArgument :: Name -> Int -> YulExp -> TcM Ty
+tcYulCallArgument function index expression
+  | isYulObjectNameArgument function index =
+      case expression of
+        YLit (YulString _) -> pure string
+        YMeta _ -> pure string
+        _ ->
+          tcmError
+            ( "Yul object-name argument must be a string literal or metadata reference: "
+                ++ pretty expression
+            )
+  | otherwise =
+      tcYulExp expression
+
 tcYLit :: YLiteral -> TcM Ty
-tcYLit (YulString _) = return string
+tcYLit (YulString _) = return word
 tcYLit (YulNumber _) = return word
 -- Yul has no boolean type: 'true'/'false' are word literals (1/0).
 tcYLit YulTrue = return word
@@ -1950,6 +2216,7 @@ instance Vars (Stmt Id) where
   free (e1 := e2) = free [e1, e2]
   free (Let _ _ _ (Just e)) = free e
   free (Let _ _ _ _) = []
+  free (LetPattern _ _ _ value) = free value
   free (Block body) = free body
   free (StmtExp e) = free e
   free (Return e) = free e
@@ -1963,6 +2230,7 @@ instance Vars (Stmt Id) where
   free EmptyStmt = []
 
   bound (Let _ n _ _) = [n]
+  bound (LetPattern _ pat _ _) = bound pat
   bound (Block _) = []
   bound _ = []
 

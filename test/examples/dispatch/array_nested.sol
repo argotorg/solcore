@@ -1,0 +1,57 @@
+import * from std;
+import * from std.dispatch;
+
+// Nested storage arrays and aliasing, on the EVM.
+//
+// `grid[i]` yields the inner array's storage handle, so it can be pushed to and
+// indexed again. Each inner array lives at its own slot keccak256(outer) + i, and
+// its elements at keccak256(that slot) + j.
+//
+// Binding an array field to a local is an alias (Solidity's `T[] storage p`), not
+// a copy: mutating through the local must be visible through the field.
+contract NestedArray {
+  grid : array<array<uint256>>;
+  flat : array<uint256>;
+
+  constructor() {}
+
+  function growOuter(n : uint256) public returns (()) {
+    Array.setLength(grid, n);
+  }
+
+  // grid[i].push(v) -- the inner handle comes straight out of the index
+  function pushInner(i : uint256, v : uint256) public returns (()) {
+    ArrayPush.push(grid[i], v);
+  }
+
+  function innerLen(i : uint256) public returns (uint256) {
+    return Length.length(grid[i]);
+  }
+
+  function get2(i : uint256, j : uint256) public returns (uint256) {
+    return grid[i][j];
+  }
+
+  function set2(i : uint256, j : uint256, v : uint256) public returns (()) {
+    grid[i][j] = v;
+  }
+
+  // Mutate `flat` through a local alias; the field must observe it.
+  function aliasPush(v : uint256) public returns (()) {
+    let p : storage<array<uint256>> = flat;
+    ArrayPush.push(p, v);
+  }
+
+  function aliasSet(i : uint256, v : uint256) public returns (()) {
+    let p : storage<array<uint256>> = flat;
+    p[i] = v;
+  }
+
+  function flatLen() public returns (uint256) {
+    return Length.length(flat);
+  }
+
+  function getFlat(i : uint256) public returns (uint256) {
+    return flat[i];
+  }
+}

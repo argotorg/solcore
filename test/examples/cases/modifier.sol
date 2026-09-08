@@ -1,0 +1,21 @@
+contract C {
+	function add(x: word, y:word) public returns (word) {
+		let r : word;
+		assembly {
+			r := add(x, y)
+		}
+		return r;
+	}
+
+	// modifier pattern: wrap add with before/after code
+	function modifiedAdd(x : word, y : word) public returns (word) {
+		// before solidity placeholder
+		let result = add(x, y); // Solidity's placeholder: _;
+		// after solidity placeholder
+		return result;
+	}
+
+	function main() public returns (word) {
+		return modifiedAdd(2, 1);
+	}
+}

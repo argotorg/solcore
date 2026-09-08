@@ -1,70 +1,67 @@
 # SAIL Language Grammar
+#
+# This file describes the Solidity-style Core surface.  Export productions,
+# glob/hiding imports, default impls, contextual constructors, and lambdas are
+# current compiler extensions.
 
 ## Lexical Tokens
 
-Identifier = letter { letter | digit | "_" }
+Identifier = ( letter | "_" ) { letter | digit | "_" }
 
 Integer = digit { digit }
         | "0x" hexDigit { hexDigit }
 
-StringLiteral = '"' { char } '"'
+StringLiteral = '"' { char | EscapeSequence } '"'
+
+EscapeSequence = "\" ( "\" | '"' | "n" | "t" | "r" )
+
 
 ## Names
 
-TypeName = Identifier
-         | TypeName "." Identifier
+QualifiedName = Identifier { "." Identifier }
+
+ModulePath = [ "@" Identifier "." ] Identifier { "." Identifier }
 
 
 ## Compilation Unit
 
-# Imports and top-level declarations may be interleaved in any order.
-CompilationUnit = { Import | TopDecl }
+# Imports, pragmas, and top-level declarations may be interleaved.
+CompilationUnit = { Import | Pragma | TopDecl }
 
 TopDecl = Contract
+        | Interface
+        | Library
         | Function
-        | ClassDef
-        | InstDef
-        | DataDef
-        | TypeSynonym
+        | TraitDef
+        | ImplDef
+        | StructDef
+        | EnumDef
+        | AliasDef
         | ExportDecl
-        | Pragma
-        | OperatorDecl
 
 
 ## Module System
 
 Import = "import" ModulePath ";"
-       | "import" ModulePath "as" Identifier ";"
-       | "import" ModulePath "." "{" ImportItems "}" [ "hiding" "{" HidingList "}" ] ";"
-       | "import" "@" Identifier "." ModulePath ";"
-       | "import" "@" Identifier "." ModulePath "as" Identifier ";"
-       | "import" "@" Identifier "." ModulePath "." "{" ImportItems "}" [ "hiding" "{" HidingList "}" ] ";"
-
-ModulePath = Identifier { "." Identifier }
+       | "import" "*" "as" Identifier "from" ModulePath ";"
+       | "import" "{" ImportItems "}" "from" ModulePath
+         [ "hiding" "{" IdentifierList "}" ] ";"
 
 ImportItems = ImportItem { "," ImportItem }
 
 ImportItem = "*"
            | Identifier
            | Identifier "as" Identifier
-           | "(" OperatorSymbol ")"
 
-# OperatorSymbol is a non-empty sequence of operator characters:
-# ASCII: + - * / % < > = ! & | ^ ~ # ?
-# Unicode: U+2200..U+22FF (mathematical operators) and U+2300..U+23FF
-OperatorSymbol = opChar { opChar }
+IdentifierList = Identifier { "," Identifier }
 
-HidingList = Identifier { "," Identifier }
-
+# Export spelling remains an implementation extension pending a final
+# Classic/Core interoperability model.
 ExportDecl = "export" "{" [ ExportItems ] "}" ";"
            | "export" ModulePath ";"
            | "export" ModulePath "as" Identifier ";"
            | "export" ModulePath "." "{" [ ExportFromItems ] "}" ";"
            | "export" ModulePath "." "*" ";"
-           | "export" "@" Identifier "." ModulePath ";"
-           | "export" "@" Identifier "." ModulePath "as" Identifier ";"
-           | "export" "@" Identifier "." ModulePath "." "{" [ ExportFromItems ] "}" ";"
-           | "export" "@" Identifier "." ModulePath "." "*" ";"
 
 ExportItems = ExportItem { "," ExportItem }
 
@@ -72,8 +69,6 @@ ExportItem = "*"
            | Identifier
            | Identifier "(" ExportConstructors ")"
            | ModulePath "." "*"
-           | "@" Identifier "." ModulePath "." "*"
-           | "(" OperatorSymbol ")"
 
 ExportConstructors = "*"
                    | Identifier { "," Identifier }
@@ -87,49 +82,82 @@ ExportFromItem = "*"
 
 ## Pragmas
 
-Pragma = "pragma" PragmaKind [ PragmaTargets ] ";"
+Pragma = "pragma" "solidity" PragmaValue ";"
+       | "pragma" "abicoder" PragmaValue ";"
+       | "pragma" "solcore" SolcorePragma [ PragmaTargets ] ";"
 
-PragmaKind = "no-coverage-condition"
-           | "no-patterson-condition"
-           | "no-bounded-variable-condition"
+# Version ranges and ABI coder versions are preserved as pragma payload text.
+PragmaValue = PragmaToken { PragmaToken }
+
+PragmaToken = Identifier | Integer | "." | "^" | "~"
+            | "<" | ">" | "<=" | ">=" | "=" | "-"
+
+SolcorePragma = "noCoverageCondition"
+              | "noPattersonCondition"
+              | "noBoundVariableCondition"
+              | "noGenericInstanceFor"
 
 PragmaTargets = Identifier { "," Identifier }
 
 
 ## Types
 
-Type = TypeName [ "(" TypeList ")" ]
-     | "(" TypeList ")" "->" Type
-     | "(" TypeList ")"
-     | "@" Type
+Type = TypeAtom { TypeSuffix }
+
+TypeSuffix = ArraySuffix | DataLocation
+
+TypeAtom = QualifiedName [ GenericArguments ]
+         | "mapping" "(" Type "=>" Type ")"
+         | "(" ")"
+         | "(" Type ")"
+         | "(" Type "," TypeList ")"
+         | FunctionType
+
+GenericArguments = "<" TypeList ">"
 
 TypeList = Type { "," Type }
 
-# Space-separated type variable names in forall quantifiers (e.g. "forall a b c .").
-TypeVarSeq = { Identifier }
+ArraySuffix = "[" [ ArraySize ] "]"
 
-# Comma-separated type variable names in parentheses, used in type, data, and
-# class declarations (e.g. "(a, b)").
-TypeVarParams = "(" Identifier { "," Identifier } ")"
+ArraySize = Integer | Type
 
+DataLocation = "memory" | "storage" | "calldata"
 
-# ── Data Types ────────────────────────────────────────────────────────────────
+FunctionType = "function" "(" [ TypeList ] ")"
+               [ FunctionVisibility ]
+               [ "returns" "(" [ TypeList ] ")" ]
 
-DataDef = "data" Identifier [ TypeVarParams ] [ "=" DataConstrs ] ";"
+FunctionVisibility = "internal" | "external"
 
-DataConstrs = DataConstr { "|" DataConstr }
+ReturnItemList = ReturnItem { "," ReturnItem }
 
-DataConstr = Identifier [ "(" TypeList ")" ]
+ReturnItem = [ "comptime" ] [ Identifier ":" ] Type
 
-
-# ── Type Synonyms ─────────────────────────────────────────────────────────────
-
-TypeSynonym = "type" Identifier [ TypeVarParams ] "=" Type ";"
+GenericParams = "<" IdentifierList ">"
 
 
-# ── Patterns ──────────────────────────────────────────────────────────────────
+## Structs, Enums, and Type Aliases
 
-Pattern = TypeName [ "(" PatternList ")" ]
+StructDef = "struct" Identifier [ GenericParams ]
+            "{" { StructField } "}"
+
+StructField = Identifier ":" Type ";"
+
+EnumDef = "enum" Identifier [ GenericParams ]
+          "{" [ EnumVariant { "," EnumVariant } [ "," ] ] "}"
+
+EnumVariant = Identifier [ "(" TypeList ")" ]
+
+AliasDef = "alias" Identifier [ GenericParams ] "=" Type ";"
+
+# "type" Identifier "is" Type ";" is reserved for nominal user-defined value
+# types.  The current compiler rejects that form until nominal semantics are
+# implemented; it must not be interpreted as a transparent AliasDef.
+
+
+## Patterns
+
+Pattern = QualifiedName [ "(" PatternList ")" ]
         | "." Identifier [ "(" PatternList ")" ]
         | "_"
         | Literal
@@ -139,164 +167,235 @@ Pattern = TypeName [ "(" PatternList ")" ]
 PatternList = Pattern { "," Pattern }
 
 
-# ── Expressions ───────────────────────────────────────────────────────────────
+## Expressions
 
-# Operators follow standard precedence: arithmetic > comparison > logical.
-# Associativity: left for binary operators, right for "if-then-else".
+Expr = ConditionalExpr
 
-Expr = Identifier "(" [ ExprList ] ")"
-     | Expr "." Identifier "(" [ ExprList ] ")"
-     | Expr "." Identifier
-     | "." Identifier "(" [ ExprList ] ")"
-     | "." Identifier
-     | Identifier
-     | Literal
-     | "(" Expr ")"
-     | "(" ")"
-     | "(" Expr "," Expr { "," Expr } ")"
-     | "lam" "(" [ ParamList ] ")" [ "->" Type ] Body
-     | Expr ":" Type
-     | Expr "[" Expr "]"
-     | Expr "+" Expr
-     | Expr "-" Expr
-     | Expr "*" Expr
-     | Expr "/" Expr
-     | Expr "%" Expr
-     | Expr "<" Expr
-     | Expr ">" Expr
-     | Expr "<=" Expr
-     | Expr ">=" Expr
-     | Expr "==" Expr
-     | Expr "!=" Expr
-     | Expr "&&" Expr
-     | Expr "||" Expr
-     | "!" Expr
-     | "if" Expr "then" Expr "else" Expr
-     | "@" Type
+ConditionalExpr = LogicalOrExpr
+                  [ "?" Expr ":" ConditionalExpr ]
+
+LogicalOrExpr = LogicalAndExpr { "||" LogicalAndExpr }
+
+LogicalAndExpr = EqualityExpr { "&&" EqualityExpr }
+
+EqualityExpr = RelationalExpr [ ( "==" | "!=" ) RelationalExpr ]
+
+RelationalExpr = BitwiseOrExpr
+                 [ ( "<" | ">" | "<=" | ">=" ) BitwiseOrExpr ]
+
+BitwiseOrExpr = BitwiseXorExpr { "|" BitwiseXorExpr }
+
+BitwiseXorExpr = BitwiseAndExpr { "^" BitwiseAndExpr }
+
+BitwiseAndExpr = ShiftExpr { "&" ShiftExpr }
+
+ShiftExpr = AdditiveExpr { ( "<<" | ">>" ) AdditiveExpr }
+
+AdditiveExpr = MultiplicativeExpr
+               { ( "+" | "-" ) MultiplicativeExpr }
+
+MultiplicativeExpr = PowerExpr
+                     { ( "*" | "/" | "%" ) PowerExpr }
+
+# Power is right-associative.
+PowerExpr = CastExpr [ "**" PowerExpr ]
+
+# Conversion is left-associative and accepts the complete type grammar.
+CastExpr = UnaryExpr { "as" Type }
+
+UnaryExpr = "!" UnaryExpr
+          | PostfixExpr
+
+PostfixExpr = PrimaryExpr { PostfixSuffix }
+
+PostfixSuffix = "(" [ ExprList ] ")"
+              | "." Identifier
+              | "[" Expr "]"
+
+PrimaryExpr = QualifiedName
+            | "." Identifier [ "(" [ ExprList ] ")" ]
+            | Literal
+            | "(" ")"
+            | "(" Expr ")"
+            | "(" Expr "," ExprList ")"
+            | LambdaExpr
 
 ExprList = Expr { "," Expr }
 
-Literal = Integer
-        | StringLiteral
+LambdaExpr = "lam" "(" [ LambdaParamList ] ")"
+             [ "returns" "(" [ TypeList ] ")" ]
+             Body
+
+LambdaParamList = LambdaParam { "," LambdaParam }
+
+LambdaParam = [ "comptime" ] Identifier [ ":" Type ]
+
+Literal = Integer | StringLiteral | "true" | "false"
 
 
-# ── Statements ────────────────────────────────────────────────────────────────
-
-Stmt = Expr "=" Expr ";"
-     | Expr "+=" Expr ";"
-     | Expr "-=" Expr ";"
-     | "let" Identifier ":" Type [ "=" Expr ] ";"
-     | "let" Identifier [ "=" Expr ] ";"
-     | Expr ";"
-     | "return" Expr ";"
-     | "match" MatchArgs "{" { Equation } "}"
-     | AsmBlock
-     | "if" "(" Expr ")" Body [ "else" Body ]
-     | "for" "(" ForInitStmt ";" Expr ";" ForPostStmt ")" Body
+## Statements
 
 Body = "{" { Stmt } "}"
 
-# The initialisation clause of a for-loop.  Unlike a regular statement it
-# has no trailing semicolon; the semicolons are part of the for(…) syntax.
-ForInitStmt = Expr "=" Expr
-            | Expr "+=" Expr
-            | Expr "-=" Expr
-            | "let" Identifier ":" Type [ "=" Expr ]
-            | "let" Identifier [ "=" Expr ]
-            | Expr
+Stmt = SimpleStmt ";"
+     | "return" [ Expr ] ";"
+     | MatchStmt
+     | AsmBlock
+     | "if" "(" Expr ")" Body [ "else" Body ]
+     | "for" "(" [ ForInitClause ] ";" Expr ";"
+       [ ForPostClause ] ")" Body
+     | "while" "(" Expr ")" Body
+     | "unchecked" Body
+     | "break" ";"
+     | "continue" ";"
+     | "revert" ";"
+     | Body
 
-# The post-iteration clause of a for-loop.  Let-bindings are allowed here;
-# a binding introduced in ForPostStmt is in scope for the body of that
-# iteration only.
-ForPostStmt = Expr "=" Expr
-            | Expr "+=" Expr
-            | Expr "-=" Expr
-            | "let" Identifier ":" Type [ "=" Expr ]
-            | "let" Identifier [ "=" Expr ]
-            | Expr
+SimpleStmt = LetStmt
+           | Assignment
+           | Expr
 
-MatchArgs = Expr { "," Expr }
+LetStmt = "let" [ "comptime" ] (
+            Identifier [ ":" Type ] [ "=" Expr ]
+          | BindingTuple [ ":" Type ] "=" Expr
+          )
 
-# A match equation: each arm binds a list of patterns to a list of statements.
-Equation = "|" PatternList "=>" { Stmt }
+BindingTuple = "(" BindingPattern "," BindingPatternList ")"
+
+BindingPattern = Identifier | "_" | BindingTuple
+
+BindingPatternList = BindingPattern { "," BindingPattern }
+
+Assignment = Expr AssignmentOperator Expr
+
+AssignmentOperator = "=" | "+=" | "-=" | "%="
+                   | "&=" | "|=" | "^="
+
+ForInitClause = ForInitItem { "," ForInitItem }
+
+ForInitItem = LetStmt | Assignment | Expr
+
+ForPostClause = ForPostItem { "," ForPostItem }
+
+ForPostItem = Assignment | Expr
+
+MatchStmt = "match" "(" ExprList ")" "{" { MatchArm } "}"
+
+MatchArm = "case" MatchPattern Body
+         | "default" Body
+
+MatchPattern = Pattern
+             | "(" PatternList ")"
 
 
-# ── Parameters ────────────────────────────────────────────────────────────────
+## Parameters and Constraints
 
-Param = Identifier ":" Type
-      | Identifier
+# The parser admits an omitted annotation so semantic analysis can issue a
+# focused diagnostic.  Top-level and contract function parameters must be
+# fully annotated.
+Param = [ "comptime" ] Identifier [ ":" Type ]
 
 ParamList = Param { "," Param }
 
-
-# ── Functions ─────────────────────────────────────────────────────────────────
-
-# Long form uses a statement block; short form uses a single return expression
-# (the expression result is returned implicitly).
-
-Function = Signature Body
-         | Signature "{" Expr "}"
-
-Signature = SigPrefix "function" Identifier "(" [ ParamList ] ")" [ "->" Type ]
-
-# Polymorphic signatures begin with a forall prefix. If there are constraints
-# they are listed before the "=>" arrow.
-
-SigPrefix = "forall" TypeVarSeq "." ConstraintList "=>"
-          | "forall" TypeVarSeq "."
-          |
+WhereClause = "where" ConstraintList
 
 ConstraintList = Constraint { "," Constraint }
 
-# A constraint asserts that a type belongs to a type class, optionally with
-# additional type parameters (e.g. "a : Functor", "n : Nth(b, c)").
-
-Constraint = Type ":" TypeName [ "(" TypeList ")" ]
+Constraint = Type ":" QualifiedName [ GenericArguments ]
 
 
-# ── Type Classes ──────────────────────────────────────────────────────────────
+## Functions, Traits, and Implementations
 
-# A class declaration introduces a new type class named ClassName.
-# The self-variable (e.g. "a") is the main type being constrained.
-# Additional type parameters (e.g. "(b, c)") are auxiliary associated types.
+Function = Signature Body
 
-ClassDef = SigPrefix "class" Identifier ":" Identifier [ TypeVarParams ] "{" { Signature ";" } "}"
+Signature = "function" Identifier [ GenericParams ]
+            "(" [ ParamList ] ")"
+            { FunctionAttribute }
+            [ "returns" "(" [ ReturnItemList ] ")" ]
+            [ WhereClause ]
+
+FunctionAttribute = "public"
+                  | "private"
+                  | "external"
+                  | "internal"
+                  | "pure"
+                  | "view"
+                  | "payable"
+
+# Contract and library functions admit at most one visibility attribute and at
+# most one mutability attribute.  Module-level functions, trait signatures, and
+# implementation methods reject visibility and "payable"; "pure" and "view"
+# remain available there.
+
+TraitDef = "trait" Identifier GenericParams
+           [ WhereClause ]
+           "{" { Signature ";" } "}"
+
+ImplDef = [ "default" ] "impl" [ GenericParams ]
+          QualifiedName GenericArguments
+          [ WhereClause ]
+          "{" { Function } "}"
 
 
-# ── Instances ─────────────────────────────────────────────────────────────────
+## Contracts
 
-# An instance declaration provides implementations of class methods for a
-# specific type. The optional "default" keyword marks overlappable instances.
-
-InstDef = SigPrefix [ "default" ] "instance" Type ":" TypeName [ "(" TypeList ")" ] "{" { Function } "}"
-
-
-# ── Contracts ─────────────────────────────────────────────────────────────────
-
-Contract = "contract" Identifier [ TypeVarParams ] "{" { ContractDecl } "}"
+Contract = "contract" Identifier [ GenericParams ]
+           "{" { ContractDecl } "}"
 
 ContractDecl = FieldDecl
-             | DataDef
+             | StructDef
+             | EnumDef
              | Function
              | Constructor
+             | Fallback
 
 FieldDecl = Identifier ":" Type [ "=" Expr ] ";"
 
-Constructor = "constructor" "(" [ ParamList ] ")" Body
+Constructor = "constructor" "(" [ ParamList ] ")"
+              [ "payable" ] Body
+
+# A fallback has exactly one external attribute.  Payable is optional.
+Fallback = "fallback" "(" ")" "external" [ "payable" ] Body
+
+Interface = "interface" Identifier [ GenericParams ]
+            "{" { InterfaceSignature ";" } "}"
+
+InterfaceSignature = "function" Identifier [ GenericParams ]
+                     "(" [ ParamList ] ")"
+                     { InterfaceAttribute }
+                     [ "returns" "(" [ ReturnItemList ] ")" ]
+                     [ WhereClause ]
+
+InterfaceAttribute = "external"
+                   | "pure"
+                   | "view"
+                   | "payable"
+
+# An InterfaceSignature contains "external" exactly once and at most one of
+# "pure", "view", and "payable".
+
+Library = "library" Identifier [ GenericParams ]
+          "{" { LibraryDecl } "}"
+
+LibraryDecl = FieldDecl
+            | StructDef
+            | EnumDef
+            | Function
 
 
-# ── Assembly Blocks (Yul Sublanguage) ─────────────────────────────────────────
-
-# Assembly blocks embed Yul code directly in SAIL. Yul provides low-level EVM
-# access: storage operations, arithmetic, and control flow.
+## Assembly Blocks (Yul Sublanguage)
 
 AsmBlock = "assembly" "{" { YulStmt } "}"
 
 YulStmt = YulNames ":=" YulExpr
         | "let" YulNames [ ":=" YulExpr ]
+        | "function" YulIdentifier "(" [ YulNames ] ")"
+          [ "->" YulNames ] "{" { YulStmt } "}"
         | "if" YulExpr "{" { YulStmt } "}"
-        | "switch" YulExpr { YulCase } [ "default" "{" { YulStmt } "}" ]
-        | "for" "{" { YulStmt } "}" YulExpr "{" { YulStmt } "}" "{" { YulStmt } "}"
+        | "switch" YulExpr { YulCase }
+          [ "default" "{" { YulStmt } "}" ]
+        | "for" "{" { YulStmt } "}" YulExpr
+          "{" { YulStmt } "}" "{" { YulStmt } "}"
         | "continue"
         | "break"
         | "leave"
@@ -306,13 +405,19 @@ YulStmt = YulNames ":=" YulExpr
 YulCase = "case" YulLiteral "{" { YulStmt } "}"
 
 YulExpr = YulLiteral
-        | Identifier
-        | Identifier "(" [ YulExprList ] ")"
+        | YulIdentifier
+        | YulIdentifier "(" [ YulExprList ] ")"
+        | YMeta
         | "return" "(" [ YulExprList ] ")"
 
-YulNames = Identifier { "," Identifier }
+YMeta = "`" { char } "`"
+      | "${" { char } "}"
+
+YulNames = YulIdentifier { "," YulIdentifier }
 
 YulExprList = YulExpr { "," YulExpr }
 
-YulLiteral = Integer
-           | StringLiteral
+YulLiteral = Integer | StringLiteral | "true" | "false"
+
+YulIdentifier = ( letter | "_" | "$" )
+                { letter | digit | "_" | "$" }

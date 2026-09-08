@@ -1,20 +1,32 @@
 module Solcore.Frontend.Parser.Stmt
   ( stmtP,
     bodyP,
+    namedBodyP,
   )
 where
 
 import Common.LightYear
-import Control.Monad (void)
-import Language.Yul.Parser (yulBlock)
+import Control.Monad (void, when)
 import Solcore.Frontend.Lexer.SolcoreLexer
 import Solcore.Frontend.Parser.Expr (exprP)
-import Solcore.Frontend.Parser.Patterns (patListP)
+import Solcore.Frontend.Parser.Patterns (matchPatListP)
 import Solcore.Frontend.Parser.SolcoreTypes (locatedP, simpleNameP, typeP)
+import Solcore.Frontend.Parser.Yul (sourceYulBlock)
 import Solcore.Frontend.Syntax.SyntaxTree
 
 bodyP :: Parser Body
 bodyP = many stmtP
+
+-- Only a named function's final expression may omit its semicolon. Nested
+-- blocks and lambda, constructor, and fallback bodies use the ordinary body.
+namedBodyP :: Parser Body
+namedBodyP = do
+  stmts <- bodyP
+  tailReturn <- optional $ locatedP locatedStmt $ do
+    value <- expP
+    _ <- lookAhead (symbol "}")
+    pure (Return value)
+  pure (stmts ++ maybe [] (: []) tailReturn)
 
 expP :: Parser Exp
 expP = exprP bodyP
@@ -25,6 +37,7 @@ stmtP =
     <|> returnP
     <|> try ifP
     <|> forP
+    <|> try whileP
     <|> breakP
     <|> continueP
     <|> matchP
@@ -41,18 +54,25 @@ continueP = locatedP locatedStmt (Continue <$ (keyword "continue" *> semicolon))
 letP :: Parser Stmt
 letP = locatedP locatedStmt $ do
   keyword "let"
-  n <- simpleNameP
-  (ct, mt) <- option (False, Nothing) $ do
-    _ <- colon
-    ct <- option False (True <$ keyword "comptime")
-    t <- typeP
-    return (ct, Just t)
-  me <- optional (equalsP *> expP)
+  stmt <- letRemainderP
   _ <- semicolon
-  return (Let ct n mt me)
+  pure stmt
+
+letRemainderP :: Parser Stmt
+letRemainderP = do
+  n <- simpleNameP
+  mt <- optional (colon *> typeP)
+  me <- optional (equalsP *> expP)
+  pure $ case mt of
+    Just (TyCon "comptime" [ty]) -> Let True n (Just ty) me
+    _ -> Let False n mt me
 
 returnP :: Parser Stmt
-returnP = locatedP locatedStmt (Return <$> (keyword "return" *> expP <* semicolon))
+returnP = locatedP locatedStmt $ do
+  keyword "return"
+  value <- optional expP
+  _ <- semicolon
+  pure (maybe BareReturn Return value)
 
 ifP :: Parser Stmt
 ifP = locatedP locatedStmt $ do
@@ -75,35 +95,37 @@ forP = locatedP locatedStmt $ do
   body <- braces bodyP
   return (For initS cond postS body)
 
+whileP :: Parser Stmt
+whileP = locatedP locatedStmt $ do
+  keyword "while"
+  cond <- parens expP
+  body <- braces bodyP
+  pure (While cond body)
+
 matchP :: Parser Stmt
 matchP = locatedP locatedStmt $ do
   keyword "match"
-  scrutinees <- expP `sepBy1` comma
-  eqns <- braces (many equationP)
+  scrutinees <- parens (expP `sepEndBy1` comma)
+  eqns <- braces $ do
+    cases <- many (caseEquationP (length scrutinees))
+    defaultCase <- optional (defaultEquationP (length scrutinees))
+    let eqns = cases ++ maybe [] (: []) defaultCase
+    when (null eqns) $
+      fail "match requires at least one case or default arm"
+    pure eqns
   return (Match scrutinees eqns)
 
 asmP :: Parser Stmt
-asmP = locatedP locatedStmt (Asm <$> (keyword "assembly" *> yulBlock)) -- yulBlock includes the surrounding braces
+asmP = locatedP locatedStmt (Asm <$> (keyword "assembly" *> sourceYulBlock))
 
 blockP :: Parser Stmt
 blockP = locatedP locatedStmt (Block <$> braces bodyP)
 
 exprOrAssignP :: Parser Stmt
 exprOrAssignP = locatedP locatedStmt $ do
-  lhs <- expP
-  choice
-    [ do rhs <- equalsP *> expP; _ <- semicolon; return (Assign lhs rhs),
-      do rhs <- symbol "+=" *> expP; _ <- semicolon; return (StmtPlusEq lhs rhs),
-      do rhs <- symbol "-=" *> expP; _ <- semicolon; return (StmtMinusEq lhs rhs),
-      do rhs <- symbol "*=" *> expP; _ <- semicolon; return (StmtTimesEq lhs rhs),
-      do rhs <- symbol "/=" *> expP; _ <- semicolon; return (StmtDivideEq lhs rhs),
-      do rhs <- symbol "^=" *> expP; _ <- semicolon; return (StmtBXorEq lhs rhs),
-      do rhs <- symbol "&=" *> expP; _ <- semicolon; return (StmtBAndEq lhs rhs),
-      do rhs <- symbol "|=" *> expP; _ <- semicolon; return (StmtBOrEq lhs rhs),
-      do rhs <- symbol "%=" *> expP; _ <- semicolon; return (StmtModEq lhs rhs),
-      do _ <- symbol "~="; _ <- semicolon; return (StmtBNotEq lhs),
-      StmtExp lhs <$ optional semicolon
-    ]
+  stmt <- assignOrExprP
+  _ <- semicolon
+  pure stmt
 
 forInitP :: Parser Stmt
 forInitP = locatedP locatedStmt $ do
@@ -114,27 +136,18 @@ forInitP = locatedP locatedStmt $ do
     ss -> Block ss
 
 forPostP :: Parser Stmt
-forPostP = locatedP locatedStmt $ do
-  stmts <- forAssignP `sepBy` comma
-  return $ case stmts of
-    [] -> EmptyStmt
-    [s] -> s
-    ss -> Block ss
+forPostP = forInitP
 
 forLetP :: Parser Stmt
 forLetP = locatedP locatedStmt $ do
   keyword "let"
-  n <- simpleNameP
-  (ct, mt) <- option (False, Nothing) $ do
-    _ <- colon
-    ct <- option False (True <$ keyword "comptime")
-    t <- typeP
-    return (ct, Just t)
-  me <- optional (equalsP *> expP)
-  return (Let ct n mt me)
+  letRemainderP
 
 forAssignP :: Parser Stmt
-forAssignP = locatedP locatedStmt $ do
+forAssignP = locatedP locatedStmt assignOrExprP
+
+assignOrExprP :: Parser Stmt
+assignOrExprP = do
   lhs <- expP
   choice
     [ do rhs <- equalsP *> expP; return (Assign lhs rhs),
@@ -146,12 +159,24 @@ forAssignP = locatedP locatedStmt $ do
       do rhs <- symbol "&=" *> expP; return (StmtBAndEq lhs rhs),
       do rhs <- symbol "|=" *> expP; return (StmtBOrEq lhs rhs),
       do rhs <- symbol "%=" *> expP; return (StmtModEq lhs rhs),
-      do _ <- symbol "~="; return (StmtBNotEq lhs),
+      StmtBNotEq lhs <$ symbol "~=",
       return (StmtExp lhs)
     ]
 
-equationP :: Parser Equation
-equationP = (,) <$> (symbol "|" *> patListP) <*> (symbol "=>" *> bodyP)
+caseEquationP :: Int -> Parser Equation
+caseEquationP arity = do
+  keyword "case"
+  pats <- matchPatListP bodyP arity
+  when (length pats /= arity) $
+    fail "case pattern count must match the number of match scrutinees"
+  body <- braces bodyP
+  pure (pats, body)
+
+defaultEquationP :: Int -> Parser Equation
+defaultEquationP arity = do
+  keyword "default"
+  body <- braces bodyP
+  pure (replicate arity PWildcard, body)
 
 equalsP :: Parser ()
 equalsP = void $ try (lexeme (char '=' <* notFollowedBy (char '=')))

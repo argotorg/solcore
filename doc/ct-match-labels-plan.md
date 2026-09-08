@@ -296,7 +296,7 @@ emitWordAlt _ (MastPExp _, _) = errorsEM ["PANIC: MastPExp reached EmitHull ..."
 | `Backend/MastEval.hs` | `evalPat`, `evalFunBody` fix *(missed in plan)*, `findLitMatch` + `bindPatterns` guards |
 | `Backend/EmitHull.hs` | Guard for `MastPExp` |
 | `test/MatchCompilerTests.hs` | Update `LitSwitch` → `AtomicSwitch`, `branchLits` |
-| `test/examples/comptime/match_labels.solc` | End-to-end test |
+| `test/examples/comptime/match_labels.sol` | End-to-end test |
 
 ---
 

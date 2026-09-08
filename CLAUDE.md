@@ -90,9 +90,9 @@ The compiler is split into **two separate binaries**, both built from the same `
    wrapper around it)
 
 ```bash
-# Compile .solc source to .hull IR (one file per emitted contract:
+# Compile .sol source to .hull IR (one file per emitted contract:
 # output1.hull, output2.hull, ...)
-cabal run sol-core -- -f <input.solc>
+cabal run sol-core -- -f <input.sol>
 
 # Translate a .hull file to .yul
 cabal run yule -- output1.hull -o output.yul
@@ -107,23 +107,23 @@ Use `runsol.sh` for the full pipeline (sol-core → yule → solc → geth):
 
 ```bash
 # Basic execution
-./runsol.sh <file.solc>
+./runsol.sh <file.sol>
 
 # With function call
-./runsol.sh <file.solc> --runtime-calldata "transfer(address,uint256)" "0x123..." "100"
+./runsol.sh <file.sol> --runtime-calldata "transfer(address,uint256)" "0x123..." "100"
 
 # With raw calldata
-./runsol.sh <file.solc> --runtime-raw-calldata "0xabcd..."
+./runsol.sh <file.sol> --runtime-raw-calldata "0xabcd..."
 
 # Skip deployment (run runtime code directly)
-./runsol.sh <file.solc> --create false
+./runsol.sh <file.sol> --create false
 
 # Debug with interactive trace viewer
-./runsol.sh <file.solc> --debug-runtime
-./runsol.sh <file.solc> --debug-create
+./runsol.sh <file.sol> --debug-runtime
+./runsol.sh <file.sol> --debug-create
 
 # Pass value (in wei)
-./runsol.sh <file.solc> --runtime-callvalue 1000000000
+./runsol.sh <file.sol> --runtime-callvalue 1000000000
 ```
 
 ## High-Level Architecture
@@ -157,7 +157,7 @@ Test framework: **Tasty** with HUnit assertions. Test suites (see `sol-core.caba
   C++ testrunner, wrapping `run_contests.sh`.
 
 Test structure:
-- Each test compiles a `.solc` file through the pipeline
+- Each test compiles a `.sol` file through the pipeline
 - Some tests expect failure (`runTestExpectingFailure`)
 - Standard library tests in `std/`
 
@@ -171,7 +171,7 @@ pipeline.
 
 **Contest test flow:**
 ```
-.solc → sol-core → .hull → yule → .yul → solc → .hex → testrunner → results
+.sol → sol-core → .hull → yule → .yul → solc → .hex → testrunner → results
 ```
 
 ### Components

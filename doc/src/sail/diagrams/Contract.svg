@@ -20,7 +20,7 @@ svg.railroad-diagram rect.group-box {
 <path d="M158.0 40h0.0" /><path d="M263.0 40h0.0" /><rect height="22" width="105" x="158" y="29"></rect><text x="210.5" y="44">Identifier</text></g><path d="M263.0 40h10" /><g>
 <path d="M273.0 40h0.0" /><path d="M443.5 40h0.0" /><path d="M273.0 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
 <path d="M293.0 20h130.5" /></g><path d="M423.5 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M273.0 40h20" /><g class="non-terminal ">
-<path d="M293.0 40h0.0" /><path d="M423.5 40h0.0" /><rect height="22" width="130.5" x="293" y="29"></rect><text x="358.25" y="44">TypeVarParams</text></g><path d="M423.5 40h20" /></g><path d="M443.5 40h10" /><g class="terminal ">
+<path d="M293.0 40h0.0" /><path d="M423.5 40h0.0" /><rect height="22" width="130.5" x="293" y="29"></rect><text x="358.25" y="44">GenericParams</text></g><path d="M423.5 40h20" /></g><path d="M443.5 40h10" /><g class="terminal ">
 <path d="M453.5 40h0.0" /><path d="M482.0 40h0.0" /><rect height="22" rx="10" ry="10" width="28.5" x="453.5" y="29"></rect><text x="467.75" y="44">{</text></g><path d="M482.0 40h10" /><g>
 <path d="M492.0 40h0.0" /><path d="M674.0 40h0.0" /><path d="M492.0 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10" /><g>
 <path d="M512.0 20h142.0" /></g><path d="M654.0 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10" /><path d="M492.0 40h20" /><g>

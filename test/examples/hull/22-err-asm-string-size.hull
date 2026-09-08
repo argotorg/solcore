@@ -1,0 +1,10 @@
+object AsmStringSize {
+  code {
+    function bad() -> unit {
+      assembly {
+        let tooLong := "123456789012345678901234567890123"
+      }
+      return ()
+    }
+  }
+}

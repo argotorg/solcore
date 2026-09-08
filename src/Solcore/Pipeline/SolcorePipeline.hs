@@ -22,7 +22,7 @@ import Solcore.Backend.Specialise (specialiseCompUnit)
 import Solcore.Desugarer.ArrayLitDesugar (arrayLitDesugarer)
 import Solcore.Desugarer.ContractDispatch (contractDispatchTopDecls, writeContractAbis)
 import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, warningDiagnostic)
-import Solcore.Desugarer.DeriveClasses (deriveClassTopDecls)
+import Solcore.Desugarer.DeriveClass (deriveClassTopDecls)
 import Solcore.Desugarer.DeriveGeneric (collectDataDefs, deriveGenericTopDecls)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
@@ -31,7 +31,7 @@ import Solcore.Desugarer.IntLiteralDesugar (desugarIntLiterals)
 import Solcore.Desugarer.ReplaceFunTypeArgs
 import Solcore.Desugarer.ReplaceWildcard (replaceWildcardTopDecls)
 import Solcore.Desugarer.StrLiteralDesugar (desugarStrLiterals)
-import Solcore.Desugarer.StructProjection (structProjectionTopDecls)
+import Solcore.Desugarer.StructProjection (structSetterTopDecls)
 import Solcore.Diagnostics
   ( CompilerError (..),
     Diagnostic (..),
@@ -156,10 +156,9 @@ compileWithDiagnostics opts = runExceptT $ do
   -- SAIL-level comptime verification
   liftEitherDiagnostic sources (checkComptimeEarly typed)
 
-  -- Array literal expansion (needs the array type fixed by the type checker)
+  -- Array literals are lowered after type checking fixes their element types.
   expanded <-
-    liftIO $
-      timeItNamed "Array literal desugaring" (pure (arrayLitDesugarer typed))
+    liftIO $ timeItNamed "Array literal desugaring" (pure (arrayLitDesugarer typed))
 
   -- If / boolean desugaring
   desugared <-
@@ -532,16 +531,20 @@ declarationSearchTerms diagnostic =
   where
     declarationTerms raw =
       case words (stripContextPrefix (trim raw)) of
-        "function" : declName : _ -> [stripTrailingParens declName]
-        "contract" : declName : _ -> [stripTrailingParens declName]
-        "class" : _vars : ":" : declName : _ -> [stripTrailingParens declName]
-        "class" : declName : _ -> [stripTrailingParens declName]
-        "data" : declName : _ -> [stripTrailingParens declName]
-        "type" : declName : _ -> [stripTrailingParens declName]
+        "function" : declName : _ -> [stripDeclarationSuffix declName]
+        "contract" : declName : _ -> [stripDeclarationSuffix declName]
+        "trait" : declName : _ -> [stripDeclarationSuffix declName]
+        "enum" : declName : _ -> [stripDeclarationSuffix declName]
+        "type" : declName : _ -> [stripDeclarationSuffix declName]
         "constructor" : _ -> ["constructor"]
-        "instance" : _mainTy : ":" : instanceClassName : _ -> [stripTrailingParens instanceClassName, "instance"]
-        "instance" : instanceClassName : _ -> [stripTrailingParens instanceClassName, "instance"]
+        implToken : implName : _
+          | "impl" `isPrefixOf` implToken -> [stripDeclarationSuffix implName, "impl"]
+        "default" : implToken : implName : _
+          | "impl" `isPrefixOf` implToken -> [stripDeclarationSuffix implName, "impl"]
         _ -> []
+
+    stripDeclarationSuffix =
+      takeWhile (\c -> c /= '(' && c /= '<' && c /= ',' && c /= ';' && c /= '{')
 
 inContextSearchTerms :: Diagnostic -> [String]
 inContextSearchTerms diagnostic =
@@ -561,10 +564,6 @@ stripContextPrefix raw =
       case stripPrefix "in: " raw of
         Just rest -> trim rest
         Nothing -> raw
-
-stripTrailingParens :: String -> String
-stripTrailingParens =
-  takeWhile (\c -> c /= '(' && c /= ',' && c /= ';' && c /= '{')
 
 prefixedTerms :: [String] -> String -> [String]
 prefixedTerms prefixes body =
@@ -654,7 +653,7 @@ sourcePathsFromLine line =
 
 standaloneSourcePaths :: String -> [FilePath]
 standaloneSourcePaths line =
-  [path | let path = trim line, ".solc" `isSuffixOf` path]
+  [path | let path = trim line, ".sol" `isSuffixOf` path]
 
 sourcePathAfterPrefix :: String -> String -> Maybe FilePath
 sourcePathAfterPrefix prefix line = do
@@ -867,44 +866,23 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn "> Dispatch:"
     putStrLn $ prettyInferenceDecls dispatched
 
-  -- Generic instance derivation (also for data types declared inside contracts:
-  -- collectDataDefs descends into contracts).  The generated instances are
-  -- top-level, but the contract-local type they reference stays inside its
-  -- contract; it is made visible to them by registering it globally during type
-  -- checking (see registerContractDataTypes).
-  let localData =
-        collectDataDefs
-          [d | ModuleInferenceDecl ModuleLocalDecl d <- dispatched]
+  -- Generic/storage/ABI instance derivation (only for locally-defined data
+  -- types). Contract- and library-local declarations remain nested at this
+  -- stage, so collect both top-level TDataDef declarations and CDataDecls.
+  let localData = localDataDefsForDeriving dispatched
   derived <-
     ExceptT $
       fmap (first compilerErrorFromString) $
         runExceptT $
-          traverseModuleInferenceTopDecls (ExceptT . pure . deriveGenericTopDecls localData) dispatched
+          traverseModuleInferenceTopDecls (ExceptT . pure . (\ds -> deriveGenericTopDecls localData ds >>= deriveClassTopDecls localData)) dispatched
 
   liftIO $ when verbose $ do
     putStrLn "> Generic instance derivation:"
     putStrLn $ prettyInferenceDecls derived
 
-  -- Struct field-projection generation: one positional projection function per
-  -- named field of a `struct` (single-constructor product), so dot-notation
-  -- access `s.x` can be lowered to a call during type checking.
-  let projected =
-        mapModuleInferenceTopDecls (structProjectionTopDecls localData) derived
-
-  liftIO $ when verbose $ do
-    putStrLn "> Struct field-projection generation:"
-    putStrLn $ prettyInferenceDecls projected
-
-  -- Class instance derivation from `deriving (...)` clauses
-  derivedClasses <-
-    ExceptT $
-      fmap (first compilerErrorFromString) $
-        runExceptT $
-          traverseModuleInferenceTopDecls (ExceptT . pure . deriveClassTopDecls localData) projected
-
-  liftIO $ when verbose $ do
-    putStrLn "> Class instance derivation:"
-    putStrLn $ prettyInferenceDecls derivedClasses
+  -- Storage struct writes use generated setters; value reads use the existing
+  -- typed field selectors. Keep only one implementation of each operation.
+  let projected = mapModuleInferenceTopDecls (structSetterTopDecls localData) derived
 
   -- SCC analysis
   connected <-
@@ -912,7 +890,7 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
       fmap (first compilerErrorFromString) $
         timeItNamed "SCC           " $
           runExceptT $
-            traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) derivedClasses
+            traverseModuleInferenceTopDecls (ExceptT . sccAnalysisTopDecls) projected
 
   liftIO $ when verbose $ do
     putStrLn "> SCC Analysis:"
@@ -956,6 +934,13 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
     putStrLn $ prettyInferenceDecls withFromStr
 
   pure withFromStr
+
+localDataDefsForDeriving :: [ModuleInferenceDecl] -> [DataTy]
+localDataDefsForDeriving inferenceDecls =
+  collectDataDefs
+    [ topDecl
+    | ModuleInferenceDecl ModuleLocalDecl topDecl <- inferenceDecls
+    ]
 
 parseExternalLibSpecs :: [String] -> Either String [(Name, FilePath)]
 parseExternalLibSpecs =
@@ -1012,8 +997,8 @@ moveData (CompUnit imps decls1) =
     step d ac = d : ac
 
 extractData :: Contract Name -> ([DataTy], Contract Name)
-extractData (Contract n ts ds) =
-  (ds1, Contract n ts ds0)
+extractData (ContractWithKind kind n ts ds) =
+  (ds1, ContractWithKind kind n ts ds0)
   where
     (ds1, ds0) = foldr step ([], []) ds
     step (CDataDecl dt) (dts, cs) = (dt : dts, cs)

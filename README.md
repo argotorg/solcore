@@ -7,6 +7,8 @@ bugs. You should under no circumstances be using this in a production setting.
 
 ## Documentation
 
+- The implemented source grammar is documented in [Source syntax](doc/src/sail/syntax.md) and follows `solcore-rs`'s `new-syntax` branch.
+
 - A high level overview of the language and it's design can be found in the [Core Solidity Deep
     Dive](https://www.solidity.org/blog/2025/11/14/core-solidity-deep-dive/) post on the Solidity
     blog.
@@ -127,7 +129,7 @@ Options:
 The project includes a C++ testrunner that executes end-to-end integration tests by running compiled bytecode on the evmone EVM implementation. These tests verify the full compilation pipeline:
 
 ```
-.solc → sol-core → .core → yule → .yul → solc → .hex → testrunner → results
+.sol → sol-core → .core → yule → .yul → solc → .hex → testrunner → results
 ```
 
 ### Building the Testrunner
@@ -178,7 +180,7 @@ The Nix approach automatically:
 ### Test Cases
 
 Integration test cases are located in `test/examples/dispatch/` as JSON files that specify:
-- Input contract (`.solc` file)
+- Input contract (`.sol` file)
 - Test scenarios with input/output expectations
 - Expected EVM execution results
 

@@ -1,6 +1,6 @@
 -- Expansion of array literals, after type checking.
 --
--- The type checker gives [e1, ..., en] the type memory(DynArray(t)) and
+-- The type checker gives [e1, ..., en] the type memory<DynArray<t>> and
 -- wraps it in a TyExp carrying that type.  This pass turns each literal into
 -- a chain of calls to the std-library builders:
 --
@@ -19,7 +19,7 @@ import Data.Generics
 import Solcore.Frontend.Syntax
 import Solcore.Frontend.Syntax.Traversal (everywhereButSpans)
 import Solcore.Frontend.TypeInference.Id
-import Solcore.Primitives.Primitives (intClassName, integer)
+import Solcore.Primitives.Primitives (arrayLiteralInitName, arrayLiteralNewName, intClassName, integer)
 
 arrayLitDesugarer :: CompUnit Id -> CompUnit Id
 arrayLitDesugarer = everywhereButSpans (mkT desugarExp)
@@ -40,12 +40,12 @@ buildArray arrTy elemTy es =
     emptyArray =
       Call
         Nothing
-        (Id arrayLitNewName (uint256 :-> arrTy))
+        (Id arrayLiteralNewName (uint256 :-> arrTy))
         [uintLit (length es)]
     initElem acc (i, e) =
       Call
         Nothing
-        (Id arrayLitInitName (arrTy :-> uint256 :-> elemTy :-> arrTy))
+        (Id arrayLiteralInitName (arrTy :-> uint256 :-> elemTy :-> arrTy))
         [acc, uintLit i, e]
 
 -- Integer literals reaching this point are still integer; the concrete type
@@ -60,9 +60,3 @@ uintLit n =
 
 uint256 :: Ty
 uint256 = TyCon (Name "uint256") []
-
-arrayLitNewName :: Name
-arrayLitNewName = Name "arrayLitNew"
-
-arrayLitInitName :: Name
-arrayLitInitName = Name "arrayLitInit"

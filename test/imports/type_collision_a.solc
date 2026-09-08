@@ -1,7 +1,0 @@
-export { T(A), mk };
-
-data T = A;
-
-function mk() -> T {
-  return T.A;
-}

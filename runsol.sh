@@ -4,7 +4,7 @@ set -euo pipefail
 
 # Check for input file
 if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 file.solc [options]"
+    echo "Usage: $0 file.sol [options]"
     echo "Options:"
     echo "  --runtime-calldata sig [args...]  Generate calldata using cast calldata"
     echo "  --runtime-raw-calldata hex        Pass raw calldata directly to geth"
@@ -33,7 +33,7 @@ fi
 echo "Processing: $file"
 root_dir="$(cd "$(dirname "$(readlink --canonicalize "${BASH_SOURCE[0]}")")" && pwd)"
 build_dir="$root_dir/build"
-base=$(basename "$file" .solc)
+base=$(basename "$file" .sol)
 hull="$build_dir/output1.hull"
 hexfile="$build_dir/$base.hex"
 yulfile="$build_dir/$base.yul"

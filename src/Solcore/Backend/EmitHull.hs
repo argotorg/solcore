@@ -4,7 +4,7 @@ import Common.Monad
 import Control.Monad (when)
 import Control.Monad.State
 import Data.ByteString qualified as BS
-import Data.List (partition)
+import Data.List (intercalate, partition)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -16,7 +16,7 @@ import Language.Hull qualified as Hull
 import Language.Yul
 import Solcore.Backend.Mast
 import Solcore.Frontend.Pretty.SolcorePretty
-import Solcore.Frontend.Syntax.Contract (Constr (..), DataTy (..))
+import Solcore.Frontend.Syntax.Contract (Constr (..), DataTy (..), DataTyKind (..), pattern Constr, pattern DataTyWithKind)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt (Literal (..))
 import Solcore.Frontend.Syntax.Ty (Ty (..), Tyvar (..))
@@ -83,14 +83,15 @@ type DataTable = Map.Map Name DataTy
 
 sumDataTy :: DataTy
 sumDataTy =
-  DataTy
-    { dataName = "sum",
+  DataTyWithDerives
+    { dataDerives = [],
+      dataTyKind = EnumKind,
+      dataName = "sum",
       dataParams = [TVar "a", TVar "b"],
       dataConstrs =
-        [ Constr "inl" [tyvar "a"] [],
-          Constr "inr" [tyvar "b"] []
-        ],
-      dataDerivings = []
+        [ Constr "inl" [tyvar "a"],
+          Constr "inr" [tyvar "b"]
+        ]
     }
   where
     tyvar = TyVar . TVar
@@ -268,10 +269,10 @@ translateTCon (Name "pair") tas = translateProductType tas
 translateTCon tycon tas = do
   mti <- gets (Map.lookup tycon . ecDT)
   case mti of
-    Just (DataTy _n tvs cs _) -> do
+    Just (DataTyWithKind _ _n tvs cs) -> do
       let subst = zip tvs (map mastToTy tas)
       tys <- mapM (translateDCon subst) cs
-      Hull.TNamed (show tycon) <$> buildSumType tys
+      Hull.TNamed (intercalate "$" (nameSegments tycon)) <$> buildSumType tys
     Nothing -> errorsEM ["translateTCon: unknown type ", pretty tycon, "\n", show tycon]
   where
     buildSumType :: [Hull.Type] -> EM Hull.Type
@@ -279,7 +280,7 @@ translateTCon tycon tas = do
     buildSumType ts = pure (foldr1 Hull.TSum ts)
 
 translateDCon :: [(Tyvar, Ty)] -> Constr -> EM Hull.Type
-translateDCon subst (Constr _name tas _) = translateProductType (map tyToMast (insts subst tas))
+translateDCon subst (Constr _name tas) = translateProductType (map tyToMast (insts subst tas))
 
 translateProductType :: [MastTy] -> EM Hull.Type
 translateProductType [] = pure Hull.TUnit
@@ -298,7 +299,7 @@ emitConApp (MastId n ty) as =
     (MastTyCon tcname tas) -> do
       mti <- gets (Map.lookup tcname . ecDT)
       case mti of
-        Just (DataTy _ _tvs allCons _) -> do
+        Just (DataTyWithKind _ _ _tvs allCons) -> do
           (prod, code) <- translateProduct as
           hullTargetType <- translateTCon tcname tas
           let result = encodeCon n allCons hullTargetType prod

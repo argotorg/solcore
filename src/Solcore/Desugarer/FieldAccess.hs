@@ -49,12 +49,20 @@ fieldDesugarTopDecls topdecls = extras <> topdecls'
         ]
     -- struct type name -> field names, for recognising struct-typed storage
     -- fields when desugaring a sub-field write (f.x = v).
-    structs = Map.fromList (structFieldMap [dt | TDataDef dt <- topdecls])
+    structs = Map.fromList (structFieldMap (concatMap declaredData topdecls))
+    declaredData (TDataDef dt) = [dt]
+    declaredData (TContr c) = [dt | CDataDecl dt <- Contract.decls c]
+    declaredData (TMutualDef declarations) = concatMap declaredData declarations
+    declaredData _ = []
     (extras, topdecls') = mapAccumL go mempty topdecls
     go acc (TContr c) =
-      let hasSingletonCollision =
-            singletonNameForContract (Contract.name c) `Set.member` existingDataTypes
-       in (acc <> extraTopDeclsForContract (not hasSingletonCollision) c, TContr (transContract structs c))
+      case Contract.contractKind c of
+        ContractKind ->
+          let hasSingletonCollision =
+                singletonNameForContract (Contract.name c) `Set.member` existingDataTypes
+           in (acc <> extraTopDeclsForContract (not hasSingletonCollision) c, TContr (transContract structs c))
+        InterfaceKind -> (acc, TContr c)
+        LibraryKind -> (acc, TContr c)
     go acc v = (acc, v)
 
 --------------------------------
@@ -62,9 +70,9 @@ fieldDesugarTopDecls topdecls = extras <> topdecls'
 --------------------------------
 
 extraTopDeclsForContract :: Bool -> NmContract -> [NmTopDecl]
-extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
+extraTopDeclsForContract includeSingleton (ContractWithKind ContractKind cname _ts cdecls) = do
   let singName = singletonNameForContract cname
-  let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName [] []] []
+  let contractSingDecl = TDataDef $ DataTy singName [] [Constr singName []]
 
   let fields = getFields cdecls
   let (_fieldTypes, extraFieldDecls) = foldl' (flip contractFieldStep) ([], []) fields
@@ -78,13 +86,14 @@ extraTopDeclsForContract includeSingleton (Contract cname _ts cdecls) = do
         tys' = tys ++ [fieldTy field]
         topdecls' = topdecls ++ extraTopDeclsForContractField cname field offset
         offset = foldr pair unit tys
+extraTopDeclsForContract _ _ = []
 
 extraTopDeclsForContractField :: ContractName -> NmField -> Ty -> [NmTopDecl]
 extraTopDeclsForContractField cname (Field fname fty _minit) offset = [selDecl, TInstDef sfInstance]
   where
     -- data b_sel = n_sel
     selName = selectorNameForField cname fname
-    selDecl = TDataDef $ DataTy selName [] [Constr selName [] []] []
+    selDecl = TDataDef $ DataTy selName [] [Constr selName []]
     selType = TyCon selName []
     -- instance StructField(ContractStorage(CCtx), fld1_sel):CStructField(uint, ()) {}
     ctxTy = TyCon "ContractStorage" [singletonTypeForContract cname]
@@ -150,6 +159,10 @@ transStmt :: ContractEnv -> NmStmt -> (ContractEnv, NmStmt)
 transStmt cenv (Let c x mty me) = (cenv {ceLocals = Set.insert x cenv.ceLocals}, Let c x mty me')
   where
     me' = flip transRhs cenv <$> me
+transStmt cenv (LetPattern ct pat mty value) =
+  ( cenv {ceLocals = Set.union (Set.fromList (patternBindings pat)) cenv.ceLocals},
+    LetPattern ct pat mty (transRhs value cenv)
+  )
 transStmt cenv stmt = (cenv, go stmt cenv)
   where
     go :: NmStmt -> CEM NmStmt
@@ -167,10 +180,16 @@ transStmt cenv stmt = (cenv, go stmt cenv)
         body' = transBody body forEnv
     go (Match es eqns) = traces [pretty (r cenv)] r where r = Match <$> mapM transRhs es <*> mapM transEquation eqns
     go Let {} = error "Impossible"
+    go LetPattern {} = error "Impossible"
     go s@Asm {} = pure s
     go Break = pure Break
     go Continue = pure Continue
     go EmptyStmt = pure EmptyStmt
+
+patternBindings :: Pat Name -> [Name]
+patternBindings (PVar n) = [n]
+patternBindings (PCon _ pats) = concatMap patternBindings pats
+patternBindings _ = []
 
 -- go s = pure s
 
@@ -178,6 +197,14 @@ transEquation :: NmEquation -> CEM NmEquation
 transEquation (pats, body) cenv = (pats, transBody body cenv)
 
 transAssignment :: NmExp -> NmExp -> ContractEnv -> NmStmt
+transAssignment lhs (Call Nothing operator [readLhs, rhs]) cenv
+  | lhs == readLhs,
+    isCompoundOperator operator =
+      transCompoundAssignment lhs operator [rhs] cenv
+transAssignment lhs (Call Nothing operator [readLhs]) cenv
+  | lhs == readLhs,
+    operator == QualName (Name "BitNot") "bnot" =
+      transCompoundAssignment lhs operator [] cenv
 transAssignment lhs@(Var x) rhs cenv
   | isLocal x cenv =
       traces
@@ -212,7 +239,8 @@ transAssignment (Indexed arr idx) rhs cenv = do
 -- Desugarer.StructProjection). This reuses the existing whole-field storage
 -- write (CanStore.store) with no new storage machinery.
 transAssignment (FieldAccess (Just (FieldAccess Nothing f)) field) rhs cenv
-  | Just fty <- askFieldTy f cenv,
+  | not (isLocal f cenv),
+    Just fty <- askFieldTy f cenv,
     Just structName <- tyConNameOf fty,
     Just fieldNames <- Map.lookup structName (ceStructs cenv),
     field `elem` fieldNames =
@@ -224,6 +252,73 @@ transAssignment lhs rhs cenv =
     (lhs := rhs')
   where
     rhs' = transRhs rhs cenv
+
+transCompoundAssignment :: NmExp -> Name -> [NmExp] -> ContractEnv -> NmStmt
+transCompoundAssignment lhs@(Var x) operator operands cenv
+  | isLocal x cenv =
+      lhs := Call Nothing operator (lhs : map (`transRhs` cenv) operands)
+transCompoundAssignment (FieldAccess Nothing x) operator operands cenv
+  | isLocal x cenv =
+      Var x := Call Nothing operator (Var x : map (`transRhs` cenv) operands)
+  | Just _ <- askFieldTy x cenv =
+      compoundReferenceAssignment
+        (lhsAccess (memberProxyFor x cenv))
+        operator
+        (map (`transRhs` cenv) operands)
+transCompoundAssignment (Indexed array index) operator operands cenv =
+  compoundReferenceAssignment
+    (lhsIndex array index cenv)
+    operator
+    (map (`transRhs` cenv) operands)
+transCompoundAssignment (FieldAccess (Just (FieldAccess Nothing field)) member) operator operands cenv
+  | not (isLocal field cenv),
+    Just fieldType <- askFieldTy field cenv,
+    Just structName <- tyConNameOf fieldType,
+    Just members <- Map.lookup structName (ceStructs cenv),
+    member `elem` members =
+      let saved = Name "$compound_struct"
+          loaded = transRhs (FieldAccess Nothing field) cenv
+          updated = Call Nothing operator (FieldAccess (Just (Var saved)) member : map (`transRhs` cenv) operands)
+          rebuilt = Call Nothing (fieldSetName structName member) [Var saved, updated]
+       in Block
+            [ Let False saved (Just fieldType) (Just loaded),
+              transContractFieldAssignment field rebuilt cenv
+            ]
+transCompoundAssignment lhs operator operands cenv =
+  lhs := transRhs (Call Nothing operator (lhs : operands)) cenv
+
+-- Compute a storage reference once, then use it for both read and write.
+-- This also covers unary bitwise assignment, whose extra operand list is empty.
+compoundReferenceAssignment :: NmExp -> Name -> [NmExp] -> NmStmt
+compoundReferenceAssignment reference operator operands =
+  Block
+    [ Let False referenceName Nothing (Just reference),
+      StmtExp $
+        Call
+          Nothing
+          (QualName (Name "Assign") "assign")
+          [ Var referenceName,
+            Call
+              Nothing
+              operator
+              (Call Nothing (QualName (Name "CanStore") "load") [Var referenceName] : operands)
+          ]
+    ]
+  where
+    referenceName = Name "$compound_lvalue"
+
+isCompoundOperator :: Name -> Bool
+isCompoundOperator operator =
+  operator
+    `elem` [ QualName (Name "Add") "add",
+             QualName (Name "Sub") "sub",
+             QualName (Name "Mul") "mul",
+             QualName (Name "Div") "div",
+             QualName (Name "BitXor") "bxor",
+             QualName (Name "BitAnd") "band",
+             QualName (Name "BitOr") "bor",
+             QualName (Name "Mod") "mod"
+           ]
 
 transContractFieldAssignment :: Name -> NmExp -> CEM NmStmt
 transContractFieldAssignment field rhs = do
@@ -247,7 +342,7 @@ transContractFieldAssignment field rhs = do
   -- Route it to the plain std function instead. Purely syntactic; if the field
   -- is not a storage array, storeArrayLit simply fails to unify.
   let fun = case rhs of
-        ArrayLit {} -> Name "storeArrayLit"
+        ArrayLit {} -> storeArrayLiteralName
         _ -> QualName (Name "Assign") "assign"
   pure $ StmtExp $ Call Nothing fun [lhs', rhs']
 
@@ -262,21 +357,19 @@ transRhs expr@(FieldAccess Nothing x) cenv
           fieldMap = Con "MemberAccessProxy" [cxt, fieldSel]
           result = rhsAccess fieldMap
        in traces ["< transRhs", pretty expr, "~>", pretty result] result
--- Field read on a struct-typed contract (storage) field, e.g. `p.x`: the
--- receiver desugars to `RVA.acc(...)`, a type-class method whose result type is
--- only pinned by constraint solving — too late for the type checker's field
--- projection, which needs the struct type at the access site. Annotate the
--- loaded value with the field's declared type so the receiver type is concrete.
-transRhs (FieldAccess (Just recv@(FieldAccess Nothing p)) n) cenv
-  | not (isLocal p cenv),
-    Just fty <- askFieldTy p cenv =
-      FieldAccess (Just (TyExp (transRhs recv cenv) fty)) n
--- Struct / member field access `e.n` (receiver present) is NOT a contract-field
--- read: leave the node in place (recursing into the receiver so any contract
--- field inside it is still desugared) so the type checker can lower it to the
--- struct field projection. See Desugarer.StructProjection / TcStmt.
-transRhs (FieldAccess (Just e) n) cenv = FieldAccess (Just (transRhs e cenv)) n
-transRhs expr@(FieldAccess Nothing _) _ = notImplemented "transRhs" expr
+-- A storage load gets its type from class constraints. Annotate the declared
+-- product type before projecting a member so the ordinary typed getter can be
+-- selected immediately.
+transRhs (FieldAccessWithLocation location (Just receiver@(FieldAccess Nothing field)) memberName) cenv
+  | not (isLocal field cenv),
+    Just fieldType <- askFieldTy field cenv =
+      FieldAccessWithLocation location (Just (TyExp (transRhs receiver cenv) fieldType)) memberName
+transRhs (FieldAccessWithLocation location (Just receiver) memberName) cenv =
+  FieldAccessWithLocation
+    location
+    (Just (transRhs receiver cenv))
+    memberName
+transRhs expr@FieldAccess {} _ = notImplemented "transRhs" expr
 transRhs expr cenv = go expr cenv
   where
     go e@(Indexed arr idx) = \env -> let e' = rhsIndex arr idx env in traces ["transRhs", pretty e, "- rhsIndex ->", pretty e'] e' -- FIXME

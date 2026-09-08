@@ -3,7 +3,10 @@ module ContractAbiTests where
 import Control.Exception (ErrorCall (..), evaluate, try)
 import Data.List (isInfixOf)
 import Solcore.Desugarer.ContractDispatch (contractAbiJson)
+import Solcore.Diagnostics (compilerErrorText)
+import Solcore.Frontend.Parser.SolcoreParser (parseCompUnit)
 import Solcore.Frontend.Syntax
+import Solcore.Frontend.Syntax.NameResolution (nameResolution)
 import Solcore.Primitives.Primitives (word)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -16,6 +19,59 @@ contractAbiTests =
         contractAbiJson onlyPublicContract @?= onlyPublicExpected,
       testCase "constructor, payable, word and tuple returns" $
         contractAbiJson richContract @?= richExpected,
+      testCase "one tuple return stays one ABI tuple output" $ do
+        contractDef <-
+          resolvedContractFromSource
+            "contract Reader { function read() public returns ((word, bool)) { return (1, true); } }"
+        let abi = contractAbiJson contractDef
+        assertBool "tuple output is not flattened" ("\"type\": \"tuple\"" `isInfixOf` abi),
+      testCase "two scalar returns stay two ABI outputs" $ do
+        contractDef <-
+          resolvedContractFromSource
+            "contract Reader { function read() public returns (word, bool) { return (1, true); } }"
+        let abi = contractAbiJson contractDef
+        assertBool "word scalar type survives" ("\"type\": \"uint256\"" `isInfixOf` abi)
+        assertBool "boolean scalar type survives" ("\"type\": \"bool\"" `isInfixOf` abi)
+        assertBool "scalar outputs are not wrapped in a tuple ABI item" (not ("\"type\": \"tuple\"" `isInfixOf` abi)),
+      testCase "contract ABI preserves payable and default mutability" $ do
+        contractDef <-
+          resolvedContractFromSource $
+            unlines
+              [ "contract Modes {",
+                "  function compute() public returns (word) { return 0; }",
+                "  function inspect() public returns (word) { return 0; }",
+                "  function deposit() public payable { return; }",
+                "  function update() public { return; }",
+                "}"
+              ]
+        let abi = contractAbiJson contractDef
+        assertAbiFunctionMutability "compute" "nonpayable" abi
+        assertAbiFunctionMutability "inspect" "nonpayable" abi
+        assertAbiFunctionMutability "deposit" "payable" abi
+        assertAbiFunctionMutability "update" "nonpayable" abi,
+      testCase "exact visibility controls ABI exposure when legacy flags disagree" $ do
+        let externalSig =
+              (sig "externalFn" [] (Just word) False)
+                { sigModifiers = [VisibilityModifier VisibilityExternal]
+                }
+            privateSig =
+              (sig "privateFn" [] (Just word) False)
+                { sigModifiers = [VisibilityModifier VisibilityPrivate]
+                }
+            abi =
+              contractAbiJson $
+                Contract
+                  (Name "Visibility")
+                  []
+                  [ fun False externalSig,
+                    fun True privateSig
+                  ]
+        assertBool
+          "external metadata exposes a function even if the legacy flag is false"
+          ("\"name\": \"externalFn\"" `isInfixOf` abi)
+        assertBool
+          "private metadata hides a function even if the legacy flag is true"
+          (not ("\"name\": \"privateFn\"" `isInfixOf` abi)),
       testCase "parameterized parameter type fails loudly" $ do
         -- A public function whose parameter is a parameterized type
         -- (e.g. `mapping(word, word)`) has no ABI spelling. Dropping the type
@@ -31,6 +87,47 @@ contractAbiTests =
             assertFailure "expected ABI emission to fail for a parameterized parameter type"
     ]
 
+resolvedContractFromSource :: String -> IO (Contract Name)
+resolvedContractFromSource source = do
+  parsedResult <- parseCompUnit source
+  parsed <-
+    case parsedResult of
+      Left err -> assertFailure ("unexpected parse failure:\n" <> err)
+      Right compUnit -> pure compUnit
+  resolvedResult <- nameResolution parsed
+  case resolvedResult of
+    Left err ->
+      assertFailure
+        ("unexpected name-resolution failure:\n" <> compilerErrorText err)
+    Right (CompUnit _ topDecls) ->
+      case [contractDef | TContr contractDef <- topDecls] of
+        [contractDef] -> pure contractDef
+        _ -> assertFailure ("unexpected resolved shape: " <> show topDecls)
+
+assertAbiFunctionMutability :: String -> String -> String -> Assertion
+assertAbiFunctionMutability functionName expectedMutability abi =
+  case dropWhile (not . isInfixOf nameLine) (lines abi) of
+    [] ->
+      assertFailure
+        ("ABI did not contain function " <> show functionName <> ":\n" <> abi)
+    functionTail ->
+      let functionEntry =
+            takeWhile
+              (not . isInfixOf "\"type\": \"function\"")
+              functionTail
+       in assertBool
+            ( "ABI function "
+                <> show functionName
+                <> " did not have stateMutability "
+                <> show expectedMutability
+                <> ":\n"
+                <> unlines functionEntry
+            )
+            (any (isInfixOf mutabilityLine) functionEntry)
+  where
+    nameLine = "\"name\": \"" <> functionName <> "\""
+    mutabilityLine = "\"stateMutability\": \"" <> expectedMutability <> "\""
+
 -- Helpers for building sample contracts
 
 tyCon :: String -> Ty
@@ -38,14 +135,17 @@ tyCon n = TyCon (Name n) []
 
 sig :: String -> [Param Name] -> Maybe Ty -> Bool -> Signature Name
 sig fname params ret payable =
-  Signature
+  SignatureWithReturnNames
     { sigVars = [],
       sigContext = [],
       sigName = Name fname,
       sigParams = params,
       sigRetComptime = False,
       sigReturn = ret,
-      sigPayable = payable
+      sigPayable = payable,
+      sigReturnNames = [],
+      sigReturnItems = [],
+      sigModifiers = [MutabilityModifier MutabilityPayable | payable]
     }
 
 fun :: Bool -> Signature Name -> ContractDecl Name

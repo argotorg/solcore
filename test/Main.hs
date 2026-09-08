@@ -8,9 +8,15 @@ import HullCases
 import LocationTests
 import MatchCompilerTests
 import ModuleTypeCheckTests
+import NewSyntaxDeclTests
+import NewSyntaxDeriveTests
+import NewSyntaxExprTests
+import NewSyntaxTypeTests
 import ParserTests
+import ReferenceSyntaxTests
 import SpecialiseTests
 import Test.Tasty
+import UfcsTests
 import YulEvalTests
 import YulParserTests
 
@@ -21,7 +27,12 @@ tests :: TestTree
 tests =
   testGroup
     "Tests"
-    [ parserTests,
+    [ referenceSyntaxTests,
+      newSyntaxTypeTests,
+      newSyntaxExprTests,
+      newSyntaxDeclTests,
+      newSyntaxDeriveTests,
+      parserTests,
       yulParserTests,
       cases,
       tabledResolution,
@@ -40,5 +51,6 @@ tests =
       matchTests,
       yulEvalTests,
       hullTests,
-      specialiseTests
+      specialiseTests,
+      ufcsTests
     ]

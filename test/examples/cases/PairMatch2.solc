@@ -1,8 +1,0 @@
-
-forall a . function snd(p: (a, word)) -> a {
-    match p {
-    | (_, w) => return w;
-    }
-}
-
-

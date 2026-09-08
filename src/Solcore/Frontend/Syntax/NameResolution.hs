@@ -5,26 +5,32 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Char (isDigit)
 import Data.Generics (Data, everything, extQ, mkQ)
 import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe)
 import Data.Monoid (First (..))
+import Language.Yul (YulExp (YCall), YulStmt (YExp), yulInt)
 import Solcore.Diagnostics (CompilerError (..), Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceSpan, addDiagnosticNote, diagnosticCompilerError)
 import Solcore.Frontend.Pretty.TreePretty
 import Solcore.Frontend.Syntax.Contract hiding (contracts, decls)
+import Solcore.Frontend.Syntax.Contract qualified as C
 import Solcore.Frontend.Syntax.Location
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.Stmt
 import Solcore.Frontend.Syntax.SyntaxTree qualified as S
 import Solcore.Frontend.Syntax.Ty
+import Solcore.Primitives.Primitives (invokableName, tupleExpFromList)
 
 -- name resolution
 
 nameResolution :: S.CompUnit -> IO (Either CompilerError (CompUnit Name))
-nameResolution (S.CompUnit imps ds) =
-  fmap fst <$> nameResolutionTopDeclSegments imps [ds]
+nameResolution unit@(S.CompUnit imps ds) =
+  case validateDuplicateNamespacesInCompUnit unit of
+    Left err -> pure (Left err)
+    Right () -> fmap fst <$> nameResolutionTopDeclSegments imps [ds]
 
 nameResolutionTopDeclSegments ::
   [S.Import] ->
@@ -37,9 +43,21 @@ nameResolutionTopDeclSegments imps segments =
     r <- runResolveM (mapM resolve segments) genv
     case r of
       Left err -> pure (Left err)
-      Right resolvedSegments ->
-        let resolvedImports = map resolveImport imps
+      Right segmentsWithAliases ->
+        let resolvedSegments = map (concatMap hoistContractAliases) segmentsWithAliases
+            resolvedImports = map resolveImport imps
          in pure (Right (CompUnit resolvedImports (concat resolvedSegments), resolvedSegments))
+
+-- Alias declarations are scoped while names are resolved, then made available
+-- to the existing synonym-expansion pass using their qualified type names.
+hoistContractAliases :: TopDecl Name -> [TopDecl Name]
+hoistContractAliases (TContr c@(Contract _ _ ds)) =
+  [TSym alias | CSymDecl alias <- ds]
+    ++ [TContr c {C.decls = [d | d <- ds, not (isAlias d)]}]
+  where
+    isAlias (CSymDecl _) = True
+    isAlias _ = False
+hoistContractAliases d = [d]
 
 resolveImport :: S.Import -> Import
 resolveImport (S.ImportModule qn) = ImportModule (resolveModulePath qn)
@@ -94,26 +112,39 @@ validateDuplicateNamespacesInTopDeclSegments segments = do
   ensureNoDuplicateNames "type namespace" (concatMap topLevelTypeNames segments)
   ensureNoDuplicateNames "term namespace" (concatMap topLevelTermNames segments)
   mapM_ validateContractDuplicates [c | segment <- segments, S.TContr c <- segment]
+  mapM_ validateDataTyDuplicates [d | segment <- segments, S.TDataDef d <- segment]
 
 validateDuplicateNamespaces :: [S.TopDecl] -> Either CompilerError ()
 validateDuplicateNamespaces ds = do
   ensureNoDuplicateNames "type namespace" (topLevelTypeNames ds)
   ensureNoDuplicateNames "term namespace" (topLevelTermNames ds)
   mapM_ validateContractDuplicates [c | S.TContr c <- ds]
+  mapM_ validateDataTyDuplicates [d | S.TDataDef d <- ds]
 
 validateContractDuplicates :: S.Contract -> Either CompilerError ()
 validateContractDuplicates (S.Contract cname _ decls) = do
-  let typeNames = [n | S.CDataDecl (S.DataTy n _ _ _) <- decls]
+  let typeNames = [n | S.CDataDecl (S.DataTy n _ _) <- decls] ++ [n | S.CSymDecl (S.TySym n _ _) <- decls]
+      fieldNames = [n | S.CFieldDecl (S.Field n _ _) <- decls]
       termNames = contractTermNames decls
       context = "contract " ++ pretty cname
   ensureNoDuplicateNamesIn context "type namespace" typeNames
+  ensureNoDuplicateNamesIn context "field namespace" fieldNames
   ensureNoDuplicateNamesIn context "term namespace" termNames
+  mapM_ validateDataTyDuplicates [d | S.CDataDecl d <- decls]
+
+validateDataTyDuplicates :: S.DataTy -> Either CompilerError ()
+validateDataTyDuplicates (S.DataTyWithKind (S.StructKind fieldNames) typeName _ _) =
+  ensureNoDuplicateNamesIn
+    ("struct " ++ pretty typeName)
+    "field namespace"
+    fieldNames
+validateDataTyDuplicates _ = pure ()
 
 topLevelTypeNames :: [S.TopDecl] -> [Name]
 topLevelTypeNames = concatMap collect
   where
     collect (S.TContr (S.Contract n _ _)) = [n]
-    collect (S.TDataDef (S.DataTy n _ _ _)) = [n]
+    collect (S.TDataDef (S.DataTy n _ _)) = [n]
     collect (S.TSym (S.TySym n _ _)) = [n]
     collect (S.TClassDef (S.Class _ _ n _ _ _)) = [n]
     collect _ = []
@@ -122,7 +153,7 @@ topLevelTermNames :: [S.TopDecl] -> [Name]
 topLevelTermNames = concatMap collect
   where
     collect (S.TFunDef (S.FunDef _ sig _)) = [S.sigName sig]
-    collect (S.TDataDef (S.DataTy tyCon _ cons _)) =
+    collect (S.TDataDef (S.DataTy tyCon _ cons)) =
       map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
 
@@ -130,7 +161,8 @@ contractTermNames :: [S.ContractDecl] -> [Name]
 contractTermNames = concatMap collect
   where
     collect (S.CFunDecl (S.FunDef _ sig _)) = [S.sigName sig]
-    collect (S.CDataDecl (S.DataTy tyCon _ cons _)) =
+    collect (S.CSignatureDecl _ sig) = [S.sigName sig]
+    collect (S.CDataDecl (S.DataTy tyCon _ cons)) =
       map (qualifiedConstructorName tyCon . S.constrName) cons
     collect _ = []
 
@@ -216,56 +248,50 @@ resolveExport (S.ExportItemsFrom path items) =
 instance Resolve S.Contract where
   type Result S.Contract = Contract Name
 
-  resolve c@(S.Contract n vs decls) =
+  resolve c@(S.ContractShell sourceKind n vs decls) =
     do
       let ns = map tyconName vs
-          locals = [tn | S.CDataDecl (S.DataTy tn _ _ _) <- decls]
-      savedC <- gets currentContract
-      savedL <- gets contractLocalTypes
-      modify (\env -> env {currentContract = Just n, contractLocalTypes = locals})
       mapM_ addTyVar ns
-      mapM_ addContractDecl decls
-      result <- Contract n (map TVar ns) <$> resolve decls `wrapError` c
-      modify (\env -> env {currentContract = savedC, contractLocalTypes = savedL})
-      pure result
+      mapM_ (addContractDecl n) decls
+      ContractWithKind (resolveContractKind sourceKind) n (map TVar ns)
+        <$> resolve decls
+          `wrapError` c
 
--- Qualify a bare, contract-local type name by the contract currently being
--- resolved.  Top-level types, type variables, imported
--- types and primitives are left untouched, only names declared in the current
--- contract are rewritten.  Names stay bare in the resolver env; this is applied
--- only when emitting a resolved name.
-qualifyLocalType :: Name -> ResolveM Name
-qualifyLocalType n =
-  do
-    mc <- gets currentContract
-    locals <- gets contractLocalTypes
-    case mc of
-      Just c | constructorLeafName n `elem` locals -> pure (qualifyName c n)
-      _ -> pure n
+resolveContractKind :: S.ContractKind -> ContractKind
+resolveContractKind S.ContractKind = ContractKind
+resolveContractKind S.InterfaceKind = InterfaceKind
+resolveContractKind S.LibraryKind = LibraryKind
 
-addContractDecl :: S.ContractDecl -> ResolveM ()
-addContractDecl (S.CDataDecl (S.DataTy n _ cons _)) =
+addContractDecl :: Name -> S.ContractDecl -> ResolveM ()
+addContractDecl contractName (S.CDataDecl (S.DataTy n _ cons)) =
   do
-    addTyCon n
-    mapM_ (addDataCon n . S.constrName) cons
-    -- Register struct field labels so `p.field` on a contract-local struct
-    -- resolves to member access (mirrors the top-level handling in addTopDecl).
-    mapM_ addField (concatMap S.constrFields cons)
-addContractDecl (S.CFieldDecl (S.Field n _ _)) =
+    let qualifiedTypeName = qualifyName contractName n
+    addTyConAs n qualifiedTypeName
+    mapM_ (addDataCon qualifiedTypeName . S.constrName) cons
+addContractDecl contractName (S.CSymDecl (S.TySym n _ _)) =
+  addTyConAs n (qualifyName contractName n)
+addContractDecl _ (S.CFieldDecl (S.Field n _ _)) =
   addField n
-addContractDecl (S.CFunDecl (S.FunDef _ sig _)) =
+addContractDecl _ (S.CFunDecl (S.FunDef _ sig _)) =
   addFunctionName (S.sigName sig)
-addContractDecl _ = pure ()
+addContractDecl _ (S.CSignatureDecl _ sig) =
+  addFunctionName (S.sigName sig)
+addContractDecl _ _ = pure ()
 
 instance Resolve S.ContractDecl where
   type Result S.ContractDecl = ContractDecl Name
 
+  resolve d@(S.CSymDecl alias) =
+    CSymDecl <$> resolve alias `wrapError` d
   resolve d@(S.CDataDecl dt) =
     CDataDecl <$> resolve dt `wrapError` d
   resolve d@(S.CFieldDecl fd) =
     CFieldDecl <$> resolve fd `wrapError` d
   resolve d@(S.CFunDecl f) =
     CFunDecl <$> resolve f `wrapError` d
+  resolve d@(S.CSignatureDecl isPublic sig) = do
+    sig' <- resolve sig `wrapError` d
+    pure (CSignatureDecl (isPublic || S.sigIsPublic sig) sig')
   resolve d@(S.CConstrDecl cd) =
     CConstrDecl <$> resolve cd `wrapError` d
 
@@ -277,7 +303,7 @@ instance Resolve S.Constructor where
       ps' <- resolve ps `wrapError` c
       let args = map paramName ps'
       mapM_ addParameter args
-      bdy' <- resolve bdy `wrapError` c
+      bdy' <- withBareReturnValue Nothing (resolve bdy) `wrapError` c
       pure (Constructor ps' bdy' payable)
 
 instance Resolve S.Field where
@@ -309,18 +335,137 @@ instance Resolve S.Class where
           ts' = map TVar nts
       pure (Class vs' ps' n ts' t' sigs')
 
+data ResolvedReturns
+  = ResolvedReturns
+  { resolvedReturnType :: Ty,
+    resolvedReturnNames :: [Maybe Name],
+    resolvedReturnItems :: [SignatureReturnItem],
+    resolvedReturnComptime :: Bool,
+    resolvedReturnBindings :: [(Bool, Name, Ty)],
+    resolvedBareReturnNames :: Maybe [Name]
+  }
+
+resolveSignatureReturns :: S.Signature -> ResolveM ResolvedReturns
+resolveSignatureReturns sig =
+  case S.sigReturnItems sig of
+    Nothing ->
+      pure
+        ResolvedReturns
+          { resolvedReturnType = unitReturnType,
+            resolvedReturnNames = [],
+            resolvedReturnItems = [],
+            resolvedReturnComptime = False,
+            resolvedReturnBindings = [],
+            resolvedBareReturnNames = Nothing
+          }
+    Just rawItems -> do
+      let sourceItems = map unwrapComptimeReturn rawItems
+      rejectMixedReturnComptime sig sourceItems
+      resolvedItems <-
+        forM sourceItems $ \(S.ReturnItem isComptime returnName returnTy) -> do
+          returnTy' <- resolve returnTy
+          pure (isComptime, returnName, returnTy')
+      let itemTypes = [returnTy | (_, _, returnTy) <- resolvedItems]
+          itemNames = [returnName | (_, returnName, _) <- resolvedItems]
+          returnNames
+            | any isJust itemNames = itemNames
+            | otherwise = []
+          returnItems =
+            [ SignatureReturnItem isComptime returnName returnTy
+            | (isComptime, returnName, returnTy) <- resolvedItems
+            ]
+          returnComptime =
+            case resolvedItems of
+              (isComptime, _, _) : _ -> isComptime
+              [] -> False
+          bindings =
+            [ (isComptime, returnName, returnTy)
+            | (isComptime, Just returnName, returnTy) <- resolvedItems
+            ]
+          bareReturnNames
+            | not (null itemNames) && all isJust itemNames =
+                Just (catMaybes itemNames)
+            | otherwise = Nothing
+      pure
+        ResolvedReturns
+          { resolvedReturnType = tupleReturnType itemTypes,
+            resolvedReturnNames = returnNames,
+            resolvedReturnItems = returnItems,
+            resolvedReturnComptime = returnComptime,
+            resolvedReturnBindings = bindings,
+            resolvedBareReturnNames = bareReturnNames
+          }
+  where
+    unitReturnType = TyCon (Name "()") []
+
+unwrapComptimeReturn :: S.ReturnItem -> S.ReturnItem
+unwrapComptimeReturn (S.ReturnItem _ n (S.TyCon (Name "comptime") [ty])) =
+  S.ReturnItem True n ty
+unwrapComptimeReturn item = item
+
+rejectMixedReturnComptime :: S.Signature -> [S.ReturnItem] -> ResolveM ()
+rejectMixedReturnComptime sig returnItems =
+  unless (allSame (map S.returnItemComptime returnItems)) $
+    diagnosticErrorAtName
+      "SC0123"
+      "mixed comptime and runtime return items are not supported"
+      (S.sigName sig)
+      "return items must use one comptime mode"
+      [ "the backend currently represents result comptime-ness once per function",
+        "function: " ++ pretty (S.sigName sig)
+      ]
+      ["mark either every return item or no return item as comptime"]
+  where
+    allSame [] = True
+    allSame (x : xs) = all (== x) xs
+
+tupleReturnType :: [Ty] -> Ty
+tupleReturnType [] = TyCon (Name "()") []
+tupleReturnType [returnTy] = returnTy
+tupleReturnType (returnTy : returnTys) =
+  TyCon (Name "pair") [returnTy, tupleReturnType returnTys]
+
 instance Resolve S.Signature where
   type Result S.Signature = Signature Name
 
-  resolve s@(S.Signature vs ctx n ps rc mt pay) =
+  resolve s@(S.SignatureWithSyntax vs ctx n ps _ _) =
     withLocalCtx $ do
       let ns = map tyconName vs
       mapM_ addTyVar ns
       ctx' <- resolve ctx `wrapError` s
       ps' <- resolve ps `wrapError` s
-      mt' <- resolve mt `wrapError` s
+      returns <- resolveSignatureReturns s `wrapError` s
       let vs' = map TVar ns
-      pure (Signature vs' ctx' n ps' rc mt' pay)
+      pure
+        ( SignatureWithReturnNames
+            vs'
+            ctx'
+            n
+            ps'
+            (resolvedReturnComptime returns)
+            (Just (resolvedReturnType returns))
+            (S.sigPayable s)
+            (resolvedReturnNames returns)
+            (resolvedReturnItems returns)
+            (map resolveFunctionModifier (S.sigModifiers s))
+        )
+
+resolveFunctionModifier :: S.FunctionModifier -> FunctionModifier
+resolveFunctionModifier (S.VisibilityModifier visibility) =
+  VisibilityModifier (resolveFunctionVisibility visibility)
+resolveFunctionModifier (S.MutabilityModifier mutability) =
+  MutabilityModifier (resolveFunctionMutability mutability)
+
+resolveFunctionVisibility :: S.FunctionVisibility -> FunctionVisibility
+resolveFunctionVisibility S.VisibilityPublic = VisibilityPublic
+resolveFunctionVisibility S.VisibilityExternal = VisibilityExternal
+resolveFunctionVisibility S.VisibilityInternal = VisibilityInternal
+resolveFunctionVisibility S.VisibilityPrivate = VisibilityPrivate
+
+resolveFunctionMutability :: S.FunctionMutability -> FunctionMutability
+resolveFunctionMutability S.MutabilityPure = MutabilityPure
+resolveFunctionMutability S.MutabilityView = MutabilityView
+resolveFunctionMutability S.MutabilityPayable = MutabilityPayable
 
 instance Resolve S.Instance where
   type Result S.Instance = Instance Name
@@ -363,6 +508,11 @@ instance Resolve S.PragmaType where
     pure NoBoundVariableCondition
   resolve S.NoGenericInstanceFor =
     pure NoGenericInstanceFor
+  resolve (S.SolidityPragma version) =
+    pure (SolidityPragma version)
+  resolve (S.CustomPragma directive) = pure (CustomPragma directive)
+  resolve (S.AbiCoderPragma version) =
+    pure (AbiCoderPragma version)
 
 instance Resolve S.PragmaStatus where
   type Result S.PragmaStatus = PragmaStatus
@@ -374,20 +524,118 @@ instance Resolve S.PragmaStatus where
 instance Resolve S.FunDef where
   type Result S.FunDef = FunDef Name
 
-  resolve f@(S.FunDef isPub (S.Signature vs ctx n ps rc mt pay) bds) =
+  resolve f@(S.FunDef legacyIsPub sourceSig@(S.SignatureWithSyntax vs ctx n ps _ _) bds) =
     do
+      validateNamedReturnBindings sourceSig bds
       let ns = map tyconName vs
       withLocalCtx $ do
         mapM_ addTyVar ns
         ctx' <- resolve ctx `wrapError` f
         ps' <- resolve ps `wrapError` f
-        mt' <- resolve mt `wrapError` f
+        returns <- resolveSignatureReturns sourceSig `wrapError` f
         let args = map paramName ps'
         mapM_ addParameter args
-        bds' <- resolve bds `wrapError` f
+        mapM_ (addLocalVar . namedReturnName) (resolvedReturnBindings returns)
+        resolvedBody <-
+          withBareReturnValue
+            (tupleReturnExp . map Var <$> resolvedBareReturnNames returns)
+            (resolve bds)
+            `wrapError` f
         let vs' = map TVar ns
-            sig = Signature vs' ctx' n ps' rc mt' pay
-        pure (FunDef isPub sig bds')
+            sig =
+              SignatureWithReturnNames
+                vs'
+                ctx'
+                n
+                ps'
+                (resolvedReturnComptime returns)
+                (Just (resolvedReturnType returns))
+                (S.sigPayable sourceSig)
+                (resolvedReturnNames returns)
+                (resolvedReturnItems returns)
+                (map resolveFunctionModifier (S.sigModifiers sourceSig))
+            isPublic = legacyIsPub || S.sigIsPublic sourceSig
+            returnLocals =
+              [ Let isComptime returnName (Just returnTy) Nothing
+              | (isComptime, returnName, returnTy) <- resolvedReturnBindings returns
+              ]
+        pure (FunDef isPublic sig (returnLocals ++ resolvedBody))
+    where
+      namedReturnName (_, returnName, _) = returnName
+
+validateNamedReturnBindings :: S.Signature -> S.Body -> ResolveM ()
+validateNamedReturnBindings sig body =
+  unless (null returnNames) $ do
+    validate
+      "parameter and named return namespace"
+      (parameterNames ++ returnNames)
+    unless (null bodyCollisions) $
+      validate
+        "named return namespace"
+        (returnNames ++ bodyCollisions)
+  where
+    context = "function " ++ pretty (S.sigName sig)
+    returnNames =
+      case S.sigReturnItems sig of
+        Nothing -> []
+        Just items -> mapMaybe S.returnItemName items
+    parameterNames = map sourceParamName (S.sigParams sig)
+    bodyCollisions =
+      [ bindingName
+      | bindingName <- sourceBodyBindingNames body,
+        bindingName `elem` returnNames
+      ]
+    validate namespace names =
+      either
+        throwError
+        pure
+        (ensureNoDuplicateNamesIn context namespace names)
+
+sourceParamName :: S.Param -> Name
+sourceParamName (S.Typed _ n _) = n
+sourceParamName (S.Untyped _ n) = n
+
+sourceBodyBindingNames :: S.Body -> [Name]
+sourceBodyBindingNames = concatMap sourceStmtBindingNames
+
+sourceStmtBindingNames :: S.Stmt -> [Name]
+sourceStmtBindingNames (S.Let _ n _ _) = [n]
+sourceStmtBindingNames (S.LetPattern _ pat _ _) =
+  sourcePatternBindingNames pat
+sourceStmtBindingNames (S.Block body) =
+  sourceBodyBindingNames body
+sourceStmtBindingNames (S.Match _ equations) =
+  concat
+    [ concatMap sourcePatternBindingNames patterns
+        ++ sourceBodyBindingNames equationBody
+    | (patterns, equationBody) <- equations
+    ]
+sourceStmtBindingNames (S.If _ thenBody elseBody) =
+  sourceBodyBindingNames thenBody
+    ++ sourceBodyBindingNames elseBody
+sourceStmtBindingNames (S.While _ body) =
+  sourceBodyBindingNames body
+sourceStmtBindingNames (S.Unchecked body) =
+  sourceBodyBindingNames body
+sourceStmtBindingNames (S.For initStmt _ postStmt body) =
+  sourceStmtBindingNames initStmt
+    ++ sourceStmtBindingNames postStmt
+    ++ sourceBodyBindingNames body
+sourceStmtBindingNames _ = []
+
+sourcePatternBindingNames :: S.Pat -> [Name]
+sourcePatternBindingNames (S.Pat n []) = [n]
+sourcePatternBindingNames (S.Pat _ patterns) =
+  concatMap sourcePatternBindingNames patterns
+sourcePatternBindingNames (S.PatDot _ patterns) =
+  concatMap sourcePatternBindingNames patterns
+sourcePatternBindingNames _ = []
+
+tupleReturnExp :: [Exp Name] -> Exp Name
+tupleReturnExp [] = Con (Name "()") []
+tupleReturnExp [returnExp] = returnExp
+tupleReturnExp (returnExp : returnExps) =
+  Con (Name "pair") [returnExp, tupleReturnExp returnExps]
 
 instance Resolve S.Stmt where
   type Result S.Stmt = Stmt Name
@@ -397,47 +645,207 @@ instance Resolve S.Stmt where
       lhs' <- resolve lhs `wrapError` s
       rhs' <- resolve rhs `wrapError` s
       pure (lhs' := rhs')
-  resolve s@(S.StmtPlusEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpPlus lhs rhs))
-  resolve s@(S.StmtMinusEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpMinus lhs rhs))
   resolve s@(S.StmtTimesEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpTimes lhs rhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "Mul") "mul") lhs rhs
   resolve s@(S.StmtDivideEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpDivide lhs rhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "Div") "div") lhs rhs
+  resolve s@(S.StmtBNotEq lhs) = do
+    lhs' <- resolve lhs `wrapError` s
+    let (bindings, frozenLhs) = freezeCompoundLhs s lhs'
+        combined = Call Nothing (QualName (Name "BitNot") "bnot") [frozenLhs]
+        assignment = locatedLike s locatedStmt (frozenLhs := combined)
+    pure (case bindings of [] -> assignment; _ -> Block (bindings ++ [assignment]))
+  resolve s@(S.StmtPlusEq lhs rhs) =
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "Add") "add") lhs rhs
+  resolve s@(S.StmtMinusEq lhs rhs) =
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "Sub") "sub") lhs rhs
   resolve s@(S.StmtBXorEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBXor lhs rhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "BitXor") "bxor") lhs rhs
   resolve s@(S.StmtBAndEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBAnd lhs rhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "BitAnd") "band") lhs rhs
   resolve s@(S.StmtBOrEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBOr lhs rhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "BitOr") "bor") lhs rhs
   resolve s@(S.StmtModEq lhs rhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpModulo lhs rhs))
-  resolve s@(S.StmtBNotEq lhs) =
-    locatedLike s locatedStmt <$> ((:=) <$> resolve lhs <*> resolve (S.ExpBNot lhs))
+    locatedLike s locatedStmt
+      <$> resolveCompoundAssignment s (QualName (Name "Mod") "mod") lhs rhs
   resolve s@(S.Let c n mt me) =
     locatedLike s locatedStmt <$> do
       mt' <- resolve mt `wrapError` s
       me' <- resolve me `wrapError` s
       addLocalVar n
       pure (Let c n mt' me')
+  resolve s@(S.LetPattern ct pat mt value) =
+    locatedLike s locatedStmt <$> do
+      mt' <- resolve mt `wrapError` s
+      value' <- resolve value `wrapError` s
+      pat' <- resolveBindingPat pat `wrapError` s
+      pure (LetPattern ct pat' mt' value')
   resolve s@(S.Block blk) =
     locatedLike s locatedStmt <$> withLocalCtx (Block <$> resolve blk)
   resolve s@(S.StmtExp e) =
     locatedLike s locatedStmt <$> (StmtExp <$> resolve e `wrapError` s)
   resolve s@(S.Return e) =
     locatedLike s locatedStmt <$> (Return <$> resolve e `wrapError` s)
+  resolve s@S.BareReturn = do
+    returnValue <-
+      gets
+        ( fromMaybe (Con (Name "()") [])
+            . functionBareReturnValue
+        )
+    pure (locatedLike s locatedStmt (Return returnValue))
   resolve s@(S.Match es eqns) =
     locatedLike s locatedStmt <$> (Match <$> resolve es <*> resolve eqns)
   resolve s@(S.Asm blk) =
     pure (locatedLike s locatedStmt (Asm blk))
   resolve s@(S.If e blk1 blk2) =
     locatedLike s locatedStmt <$> (If <$> resolve e <*> resolve blk1 <*> resolve blk2)
+  resolve s@(S.While cond body) =
+    locatedLike s locatedStmt
+      <$> ( For EmptyStmt
+              <$> resolve cond
+              <*> pure EmptyStmt
+              <*> withLoopContext (resolve body)
+          )
+  resolve s@(S.Unchecked body) =
+    locatedLike s locatedStmt <$> withLocalCtx (Block <$> resolve body)
   resolve s@(S.For initStmt cond postStmt body) =
-    locatedLike s locatedStmt <$> (For <$> resolve initStmt <*> resolve cond <*> resolve postStmt <*> resolve body)
-  resolve s@S.Break = pure (locatedLike s locatedStmt Break)
-  resolve s@S.Continue = pure (locatedLike s locatedStmt Continue)
+    locatedLike s locatedStmt
+      <$> ( For
+              <$> resolve initStmt
+              <*> resolve cond
+              <*> resolve postStmt
+              <*> withLoopContext (resolve body)
+          )
+  resolve s@S.Break = do
+    depth <- gets loopDepth
+    if depth > 0
+      then pure (locatedLike s locatedStmt Break)
+      else loopControlOutsideLoopError s "break"
+  resolve s@S.Continue = do
+    depth <- gets loopDepth
+    if depth > 0
+      then pure (locatedLike s locatedStmt Continue)
+      else loopControlOutsideLoopError s "continue"
+  resolve s@S.Revert =
+    pure
+      ( locatedLike
+          s
+          locatedStmt
+          (Asm [YExp (YCall "revert" [yulInt 0, yulInt 0])])
+      )
   resolve s@S.EmptyStmt = pure (locatedLike s locatedStmt EmptyStmt)
+
+-- Compound assignment must evaluate the address-producing parts of its
+-- left-hand side exactly once. Expanding @a[i()] += rhs@ directly to
+-- @a[i()] = Add.add(a[i()], rhs)@ duplicates @i()@, and likewise duplicates a
+-- call used as an indexed base or member receiver. Bind those computations in
+-- a lexical block before constructing the ordinary assignment consumed by the
+-- rest of the pipeline.
+--
+-- The generated names contain '$', which source identifiers cannot contain,
+-- and every compound assignment gets its own lexical block. They therefore
+-- cannot capture, or be captured by, user bindings.
+resolveCompoundAssignment ::
+  S.Stmt ->
+  Name ->
+  S.Exp ->
+  S.Exp ->
+  ResolveM (Stmt Name)
+resolveCompoundAssignment source operator lhs rhs = do
+  lhs' <- resolve lhs `wrapError` source
+  rhs' <- resolve rhs `wrapError` source
+  let (bindings, frozenLhs) = freezeCompoundLhs source lhs'
+      combined =
+        locatedLike
+          source
+          locatedExp
+          (Call Nothing operator [frozenLhs, rhs'])
+      assignment = locatedLike source locatedStmt (frozenLhs := combined)
+  pure $
+    case bindings of
+      [] -> frozenLhs := combined
+      _ -> Block (bindings ++ [assignment])
+
+freezeCompoundLhs :: S.Stmt -> Exp Name -> ([Stmt Name], Exp Name)
+freezeCompoundLhs source lhs =
+  let (bindings, frozen, _) = freezeAddress source 0 lhs
+   in (bindings, frozen)
+
+freezeAddress ::
+  S.Stmt ->
+  Int ->
+  Exp Name ->
+  ([Stmt Name], Exp Name, Int)
+freezeAddress source next (IndexedWithLocation location array index) =
+  let (arrayBindings, frozenArray, afterArray) =
+        freezeIndexedBase source next array
+      (indexBinding, frozenIndex, afterIndex) =
+        bindCompoundTemporary source "index" afterArray index
+   in ( arrayBindings ++ [indexBinding],
+        IndexedWithLocation location frozenArray frozenIndex,
+        afterIndex
+      )
+freezeAddress source next (FieldAccessWithLocation location (Just receiver) memberName)
+  | stableAddressPart receiver =
+      ([], FieldAccessWithLocation location (Just receiver) memberName, next)
+  | otherwise =
+      let (receiverBinding, frozenReceiver, afterReceiver) =
+            bindCompoundTemporary source "receiver" next receiver
+       in ( [receiverBinding],
+            FieldAccessWithLocation location (Just frozenReceiver) memberName,
+            afterReceiver
+          )
+freezeAddress _ next lhs =
+  ([], lhs, next)
+
+freezeIndexedBase ::
+  S.Stmt ->
+  Int ->
+  Exp Name ->
+  ([Stmt Name], Exp Name, Int)
+freezeIndexedBase source next base@Indexed {} =
+  freezeAddress source next base
+freezeIndexedBase source next base@(FieldAccess (Just _) _) =
+  freezeAddress source next base
+freezeIndexedBase _ next base
+  | stableAddressPart base =
+      ([], base, next)
+freezeIndexedBase source next base =
+  let (binding, frozen, afterBase) =
+        bindCompoundTemporary source "base" next base
+   in ([binding], frozen, afterBase)
+
+stableAddressPart :: Exp Name -> Bool
+stableAddressPart Var {} = True
+stableAddressPart (FieldAccess Nothing _) = True
+stableAddressPart _ = False
+
+bindCompoundTemporary ::
+  S.Stmt ->
+  String ->
+  Int ->
+  Exp Name ->
+  (Stmt Name, Exp Name, Int)
+bindCompoundTemporary source role next value =
+  let temporaryName = Name ("$compound_" ++ role ++ show next)
+      binding =
+        locatedLike
+          source
+          locatedStmt
+          (Let False temporaryName Nothing (Just value))
+      temporary =
+        locatedLike
+          source
+          locatedExp
+          (Var temporaryName)
+   in (binding, temporary, next + 1)
 
 instance Resolve S.Equation where
   type Result S.Equation = Equation Name
@@ -508,6 +916,22 @@ mkTuplePat ps = foldr1 pairPat ps
 pairPat :: Pat Name -> Pat Name -> Pat Name
 pairPat p1 p2 = PCon (Name "pair") [p1, p2]
 
+-- A destructuring let binds names regardless of whether a constructor with the
+-- same spelling is in scope.  Its parser only admits tuple/name/wildcard
+-- shapes, so resolve it separately from refutable match patterns.
+resolveBindingPat :: S.Pat -> ResolveM (Pat Name)
+resolveBindingPat p@(S.Pat n []) = do
+  addLocalVar n
+  pure (locatedLike p locatedPat (PVar n))
+resolveBindingPat p@(S.Pat n ps)
+  | n == Name "pair" = do
+      ps' <- mapM resolveBindingPat ps
+      pure (locatedLike p locatedPat (mkTuplePat ps'))
+resolveBindingPat p@S.PWildcard =
+  pure (locatedLike p locatedPat PWildcard)
+resolveBindingPat p =
+  invalidPatternSyntax p
+
 constructorLeafName :: Name -> Name
 constructorLeafName q@(QualName _ n) = copyNameSourceSpan q (Name n)
 constructorLeafName n = n
@@ -549,20 +973,20 @@ hasQualifiedConstructorLeaf _ =
 
 isSameNameConstructor :: Name -> ResolveM Bool
 isSameNameConstructor n = do
-  let leaf = constructorLeafName n
-  dt <- lookupType leaf
+  dt <- lookupType n
   case dt of
     Just TTyCon -> do
-      cdt <- lookupName (qualifiedConstructorName leaf leaf)
+      resolvedTypeName <- canonicalTypeName n
+      let constructorName = constructorLeafName resolvedTypeName
+      cdt <- lookupName (qualifiedConstructorName resolvedTypeName constructorName)
       pure (cdt == Just TDataCon)
     _ ->
       pure False
 
 resolveSameNameConstructorName :: Name -> ResolveM Name
-resolveSameNameConstructorName n =
-  resolveQualifiedConstructorName leaf leaf
-  where
-    leaf = constructorLeafName n
+resolveSameNameConstructorName n = do
+  resolvedTypeName <- canonicalTypeName n
+  resolveQualifiedConstructorName resolvedTypeName (constructorLeafName resolvedTypeName)
 
 -- A receiver like @Error@ in @Error.Empty@ is first parsed as an expression
 -- on its own and resolved before the outer member-access context is known.
@@ -572,30 +996,17 @@ resolveSameNameConstructorName n =
 -- qualifier position so the outer qualifier-handling cases still match.
 unwrapQualifierReceiver :: Maybe (Exp Name) -> Maybe (Exp Name)
 unwrapQualifierReceiver (Just (Con (QualName d conName) []))
-  | pretty d == conName = Just (Var d)
+  | constructorLeafName d == Name conName = Just (Var d)
 unwrapQualifierReceiver me = me
 
--- UFCS receiver test.
---
--- A receiver is eligible for UFCS method-call rewriting only when it is an
--- unqualified contract-field access (FieldAccess Nothing _), i.e. a bare
--- field name like members used as members.push(addr).  Restricting the
--- rule to that single shape is what keeps UFCS from colliding with the other
--- meanings of dot syntax:
---
---   - Class.method(args) / Module.func(args): the receiver resolves to a
---     class/module name (Var c), matched by the qualified-name cases in
---     resolveExp (S.ExpName ...) before the UFCS case is reached.
---   - Type.Constructor: parsed as S.ExpDotName, a different surface node.
---   - a plain field read members: no receiver at all.
---   - a call on a local variable x.m(args): x resolves to Var, not a
---     field access, so UFCS does not apply.
---
--- So UFCS is a strict fallback: it only kicks in for field.method(args) once
--- every qualified interpretation has been ruled out.
-isUfcsReceiver :: Exp Name -> Bool
-isUfcsReceiver (FieldAccess Nothing _) = True
-isUfcsReceiver _ = False
+-- Only declaration-like receivers participate in qualified-name lookup.
+-- Every other expression is a runtime value whose member access must remain
+-- explicit in the semantic AST; otherwise a same-spelled local can capture it.
+isValueReceiver :: Exp Name -> ResolveM Bool
+isValueReceiver (Var receiverName) = do
+  receiverKind <- lookupName receiverName
+  pure (receiverKind `notElem` map Just [TModule, TClass, TTyCon, TContract])
+isValueReceiver _ = pure True
 
 instance Resolve S.Exp where
   type Result S.Exp = Exp Name
@@ -607,117 +1018,50 @@ resolveExp (S.Lit l) = Lit <$> resolve l
 resolveExp e@(S.ExpDotName n es) =
   Con (dotConstructorMarker n) <$> resolve es `wrapError` e
 resolveExp e@(S.Lam ps bd mt) =
-  withLocalCtx $ do
+  withLocalCtx . withLoopDepth 0 $ do
     ps' <- resolve ps `wrapError` e
     mt' <- resolve mt `wrapError` e
     let args = map paramName ps'
     mapM_ addParameter args
-    bd' <- resolve bd `wrapError` e
+    bd' <- withBareReturnValue Nothing (resolve bd) `wrapError` e
     pure (Lam ps' bd' mt')
 resolveExp (S.TyExp e t) =
   TyExp <$> resolve e <*> resolve t
+resolveExp application@(S.ExpApply callee args) = do
+  callee' <- resolve callee `wrapError` application
+  args' <- resolve args `wrapError` application
+  pure
+    ( Call
+        Nothing
+        (QualName invokableName "invoke")
+        [callee', tupleExpFromList args']
+    )
 resolveExp c@(S.ExpVar me n) =
   do
     me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` c)
-    -- `recv.field` on a value receiver is struct/member field access: when `n`
-    -- is a known field label and the receiver denotes a value (a local, a
-    -- parameter, or a compound expression like a call or a nested field
-    -- access), resolve to member access. A receiver that is a module / type /
-    -- class qualifier is NOT a value, so it falls through to the qualified-name
-    -- logic below.
-    fieldKind <- gets (Map.lookup n . fieldEnv)
-    valueRecv <- maybe (pure False) isValueReceiver me'
-    dt <- lookupName n
-    case (me', dt) of
-      -- struct / member field access on a value receiver
-      (Just recv, _)
-        | fieldKind == Just TField,
-          valueRecv ->
-            pure (FieldAccess (Just recv) n)
-      -- local variables and function parameters (unqualified only)
-      (Nothing, Just TLocalVar) -> pure (Var n)
-      (Nothing, Just TParameter) -> pure (Var n)
-      -- qualified access: qualifier takes precedence over local variable/parameter in scope
-      (Just (Var d), Just dt') | dt' `elem` [TLocalVar, TParameter] -> do
-        ct <- lookupName d
-        let qn = qualifyName d n
-        case ct of
-          Just TClass -> pure (Var qn)
-          Just TModule -> do
-            qdt <- lookupName qn
-            case qdt of
-              Just TFunction -> pure (Var qn)
-              Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
-              _ -> undefinedName qn
-          _ -> pure (Var n)
-      -- field access
-      (Nothing, Just TField) ->
-        pure (FieldAccess Nothing n)
-      -- function reference
-      (_, Just TFunction) -> do
-        dt1 <- gets (Map.lookup n . fieldEnv)
-        case dt1 of
-          Just TField -> pure (FieldAccess Nothing n)
-          _ -> pure (Var n)
-      -- data constructor
-      (Nothing, Just TDataCon) -> do
-        if isPrimitiveConstructor n
-          then pure (Con n [])
-          else case splitQualifiedName n of
-            Just (qualifier, conName) ->
-              Con <$> resolveQualifiedConstructorName qualifier conName <*> pure []
-            Nothing -> unqualifiedConstructorError n
-      (Just (Var d), Just TDataCon) ->
-        Con <$> resolveQualifiedConstructorName d n <*> pure []
-      (Just (Var d), Just TTyCon) -> do
-        let qn = qualifyName d n
-        qdt <- lookupName qn
-        case qdt of
-          Just TFunction -> pure (Var qn)
-          Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
-          Just TTyCon -> pure (Var qn)
-          Just TModule -> pure (Var qn)
-          _ -> undefinedName n
-      -- class name
-      (_, Just TClass) -> pure (Var n)
-      -- type constructor used as a constructor qualifier
-      (Nothing, Just TTyCon) -> do
-        sameName <- isSameNameConstructor n
-        if sameName
-          then Con <$> resolveSameNameConstructorName n <*> pure []
-          else pure (Var n)
-      -- imported module qualifier name
-      (_, Just TModule) -> pure (Var n)
-      -- module-qualified function or constructor reference
-      (Just (Var d), Nothing) -> do
-        let qn = qualifyName d n
-        qdt <- lookupName qn
-        case qdt of
-          Just TFunction -> pure (Var qn)
-          Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
-          Just TTyCon -> pure (Var qn)
-          Just TModule -> pure (Var qn)
-          _ -> do
-            let fallback = qualifyName (constructorLeafName d) n
-            fdt <- lookupName fallback
-            case fdt of
-              Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
-              _ -> undefinedName n
-      _ -> do
-        sameName <- isSameNameConstructor n
-        if sameName
-          then Con <$> resolveSameNameConstructorName n <*> pure []
-          else do
-            hasQualified <- hasQualifiedConstructorLeaf n
-            if hasQualified
-              then unqualifiedConstructorError n
-              else undefinedName n
+    valueReceiver <- maybe (pure False) isValueReceiver me'
+    if valueReceiver
+      then pure (FieldAccess me' n)
+      else resolveVariableReference me' n
 resolveExp x@(S.ExpName me n es) =
   do
     me' <- unwrapQualifierReceiver <$> (resolve me `wrapError` x)
     es' <- resolve es `wrapError` x
+    valueReceiver <- maybe (pure False) isValueReceiver me'
     dt <- lookupName n
     case (me', dt) of
+      -- UFCS-style method call on any runtime value:
+      -- value.method(args) -> Class.method(value, args) when a unique class
+      -- exposes a method named n.  Handle this before consulting the member's
+      -- unqualified declaration kind: a same-spelled local or top-level name
+      -- must not steal a member call from its receiver.  Declaration-like
+      -- receivers (Class, Module, Type, Contract/Library) are excluded by
+      -- isValueReceiver and continue through the qualified-name cases below.
+      (Just receiver, _) | valueReceiver -> do
+        mClass <- findClassWithMethod n
+        case mClass of
+          Just c -> pure (Call Nothing (qualifyName c n) (receiver : es'))
+          Nothing -> unresolvedValueMemberCall n
       -- normal function call
       (Nothing, Just TFunction) ->
         pure (Call Nothing n es')
@@ -774,21 +1118,13 @@ resolveExp x@(S.ExpName me n es) =
             case fdt of
               Just TDataCon ->
                 Con <$> resolveQualifiedConstructorName c n <*> pure es'
-              _ ->
-                -- UFCS-style method call on a value receiver (local variable or
-                -- function parameter): x.method(args) -> Class.method(x, args)
-                -- when a unique class exposes `method`. Contract-field receivers
-                -- take the isUfcsReceiver path; this extends the same sugar to
-                -- ordinary values (e.g. a calldata-array parameter `ops.length()`).
-                -- Ambiguity across classes makes findClassWithMethod return
-                -- Nothing and falls through to the undefined-name error.
-                case ct of
-                  Just dt' | dt' `elem` [TLocalVar, TParameter] -> do
-                    mClass <- findClassWithMethod n
-                    case mClass of
-                      Just cls -> pure (Call Nothing (qualifyName cls n) (Var c : es'))
-                      Nothing -> undefinedName n
-                  _ -> undefinedName n
+              _ -> case ct of
+                Just dt' | dt' `elem` [TLocalVar, TParameter] -> do
+                  mClass <- findClassWithMethod n
+                  case mClass of
+                    Just cls -> pure (Call Nothing (qualifyName cls n) (Var c : es'))
+                    Nothing -> undefinedName n
+                _ -> undefinedName n
       (Just (Var c), Just TTyVar) -> do
         let qn = qualifyName c n
         cf <- gets (Map.lookup qn . scopeEnv)
@@ -812,6 +1148,12 @@ resolveExp x@(S.ExpName me n es) =
               Just TFunction -> pure (Call Nothing qn es')
               Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
               _ -> undefinedName n
+          Just TTyCon -> do
+            qdt <- lookupName qn
+            case qdt of
+              Just TFunction -> pure (Call Nothing qn es')
+              Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
+              _ -> undefinedName n
           _ -> pure (Call Nothing n es')
       (Just (Var d), Just TParameter) -> do
         ct <- lookupName d
@@ -824,19 +1166,13 @@ resolveExp x@(S.ExpName me n es) =
               Just TFunction -> pure (Call Nothing qn es')
               Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
               _ -> undefinedName n
+          Just TTyCon -> do
+            qdt <- lookupName qn
+            case qdt of
+              Just TFunction -> pure (Call Nothing qn es')
+              Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure es'
+              _ -> undefinedName n
           _ -> pure (Call Nothing n es')
-      -- UFCS-style method call on a contract-field receiver:
-      -- field.method(args) -> Class.method(field, args) when a unique class
-      -- exposes a method named n.  This is the last case before the error
-      -- fallback, so it only fires once every qualified interpretation has been
-      -- ruled out (see isUfcsReceiver).  Ambiguity across several classes
-      -- makes findClassWithMethod return Nothing and falls through to the
-      -- undefined-name error rather than guessing.
-      (Just receiver, _) | isUfcsReceiver receiver -> do
-        mClass <- findClassWithMethod n
-        case mClass of
-          Just c -> pure (Call Nothing (qualifyName c n) (receiver : es'))
-          Nothing -> undefinedName n
       -- error
       _ -> do
         sameName <- isSameNameConstructor n
@@ -859,6 +1195,11 @@ resolveExp c@(S.ExpMinus e1 e2) =
     e2' <- resolve e2 `wrapError` c
     let fun = QualName (Name "Sub") "sub"
     pure $ Call Nothing fun [e1', e2']
+resolveExp c@(S.ExpPower e1 e2) =
+  do
+    e1' <- resolve e1 `wrapError` c
+    e2' <- resolve e2 `wrapError` c
+    pure $ Call Nothing (Name "exp") [e1', e2']
 resolveExp c@(S.ExpTimes e1 e2) =
   do
     e1' <- resolve e1 `wrapError` c
@@ -877,6 +1218,16 @@ resolveExp c@(S.ExpModulo e1 e2) =
     e2' <- resolve e2 `wrapError` c
     let fun = QualName (Name "Mod") "mod"
     pure $ Call Nothing fun [e1', e2']
+resolveExp c@(S.ExpShiftL e1 e2) =
+  do
+    value <- resolve e1 `wrapError` c
+    amount <- resolve e2 `wrapError` c
+    pure $ Call Nothing (Name "shl") [amount, value]
+resolveExp c@(S.ExpShiftR e1 e2) =
+  do
+    value <- resolve e1 `wrapError` c
+    amount <- resolve e2 `wrapError` c
+    pure $ Call Nothing (Name "shr") [amount, value]
 resolveExp c@(S.ExpBXor e1 e2) =
   do
     e1' <- resolve e1 `wrapError` c
@@ -895,17 +1246,10 @@ resolveExp c@(S.ExpBOr e1 e2) =
     e2' <- resolve e2 `wrapError` c
     let fun = QualName (Name "BitOr") "bor"
     pure $ Call Nothing fun [e1', e2']
-resolveExp c@(S.ExpBNot e) =
-  do
-    e' <- resolve e `wrapError` c
-    let fun = QualName (Name "BitNot") "bnot"
-    pure $ Call Nothing fun [e']
 resolveExp c@(S.ExpIndexed array idx) = do
   arr' <- resolve array `wrapError` c
   idx' <- resolve idx `wrapError` c
   pure $ Indexed arr' idx'
-resolveExp c@(S.ExpArray es) =
-  ArrayLit <$> resolve es `wrapError` c
 resolveExp c@(S.ExpLT e1 e2) = do
   e1' <- resolve e1 `wrapError` c
   e2' <- resolve e2 `wrapError` c
@@ -945,6 +1289,11 @@ resolveExp c@(S.ExpLNot e) = do
   pure $ Call Nothing (Name "not") [e']
 resolveExp (S.ExpCond e1 e2 e3) =
   Cond <$> resolve e1 <*> resolve e2 <*> resolve e3
+resolveExp c@(S.ExpBNot e) = do
+  e' <- resolve e `wrapError` c
+  pure (Call Nothing (QualName (Name "BitNot") "bnot") [e'])
+resolveExp c@(S.ExpArray elements) =
+  ArrayLit <$> resolve elements `wrapError` c
 resolveExp (S.ExpAt t) = do
   t' <- resolve t
   pure
@@ -953,15 +1302,134 @@ resolveExp (S.ExpAt t) = do
         (TyCon (Name "Proxy") [t'])
     )
 
--- Is the resolved receiver of a `recv.field` a value (so `.field` is member
--- access) rather than a module / type / class qualifier? A bare variable is a
--- value only when it is a local or a parameter; any compound expression
--- (call, nested field access, …) is a value.
-isValueReceiver :: Exp Name -> ResolveM Bool
-isValueReceiver (Var d) = do
-  k <- lookupName d
-  pure (k == Just TLocalVar || k == Just TParameter)
-isValueReceiver _ = pure True
+resolveVariableReference :: Maybe (Exp Name) -> Name -> ResolveM (Exp Name)
+resolveVariableReference me'@(Just (Var qualifier)) n = do
+  qualified <- resolveQualifiedVariableReference qualifier n
+  maybe (resolveVariableReferenceByLeaf me' n) pure qualified
+resolveVariableReference me' n =
+  resolveVariableReferenceByLeaf me' n
+
+-- Resolve the complete declaration path before consulting the final segment
+-- on its own.  Every receiver reaching this function has already been ruled
+-- out as a runtime value, so a registered @Module.name@, @Class.name@, or
+-- @Type.Constructor@ is the intended declaration even when @name@ is also a
+-- local/top-level binding.  This also preserves intermediate module and
+-- contract-type qualifiers while resolving paths such as @pkg.api.value@ and
+-- @Contract.Type.Constructor@.
+resolveQualifiedVariableReference :: Name -> Name -> ResolveM (Maybe (Exp Name))
+resolveQualifiedVariableReference qualifier leaf = do
+  let qualifiedName = qualifyName qualifier leaf
+  qualifiedType <- lookupName qualifiedName
+  case qualifiedType of
+    Just TFunction ->
+      pure (Just (Var qualifiedName))
+    Just TDataCon -> do
+      constructorName <- resolveQualifiedConstructorName qualifier leaf
+      pure (Just (Con constructorName []))
+    Just TTyCon ->
+      Just . Var <$> canonicalTypeName qualifiedName
+    Just TContract ->
+      pure (Just (Var qualifiedName))
+    Just TClass ->
+      pure (Just (Var qualifiedName))
+    Just TModule ->
+      pure (Just (Var qualifiedName))
+    _ ->
+      pure Nothing
+
+resolveVariableReferenceByLeaf :: Maybe (Exp Name) -> Name -> ResolveM (Exp Name)
+resolveVariableReferenceByLeaf me' n =
+  do
+    dt <- lookupName n
+    case (me', dt) of
+      -- local variables and function parameters (unqualified only)
+      (Nothing, Just TLocalVar) -> pure (Var n)
+      (Nothing, Just TParameter) -> pure (Var n)
+      -- qualified access: qualifier takes precedence over local variable/parameter in scope
+      (Just (Var d), Just dt') | dt' `elem` [TLocalVar, TParameter] -> do
+        ct <- lookupName d
+        let qn = qualifyName d n
+        case ct of
+          Just TClass -> pure (Var qn)
+          Just TModule -> do
+            qdt <- lookupName qn
+            case qdt of
+              Just TFunction -> pure (Var qn)
+              Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+              _ -> undefinedName qn
+          Just TTyCon -> do
+            qdt <- lookupName qn
+            case qdt of
+              Just TFunction -> pure (Var qn)
+              Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+              Just TTyCon -> pure (Var qn)
+              Just TModule -> pure (Var qn)
+              _ -> undefinedName qn
+          _ -> pure (Var n)
+      -- field access
+      (Nothing, Just TField) ->
+        pure (FieldAccess Nothing n)
+      -- function reference
+      (_, Just TFunction) -> do
+        dt1 <- gets (Map.lookup n . fieldEnv)
+        case dt1 of
+          Just TField -> pure (FieldAccess Nothing n)
+          _ -> pure (Var n)
+      -- data constructor
+      (Nothing, Just TDataCon) -> do
+        if isPrimitiveConstructor n
+          then pure (Con n [])
+          else case splitQualifiedName n of
+            Just (qualifier, conName) ->
+              Con <$> resolveQualifiedConstructorName qualifier conName <*> pure []
+            Nothing -> unqualifiedConstructorError n
+      (Just (Var d), Just TDataCon) ->
+        Con <$> resolveQualifiedConstructorName d n <*> pure []
+      (Just (Var d), Just TTyCon) -> do
+        let qn = qualifyName d n
+        qdt <- lookupName qn
+        case qdt of
+          Just TFunction -> pure (Var qn)
+          Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+          Just TTyCon -> pure (Var qn)
+          Just TModule -> pure (Var qn)
+          _ -> undefinedName n
+      -- class name
+      (_, Just TClass) -> pure (Var n)
+      -- type constructor used as a constructor qualifier
+      (Nothing, Just TTyCon) -> do
+        sameName <- isSameNameConstructor n
+        if sameName
+          then Con <$> resolveSameNameConstructorName n <*> pure []
+          else Var <$> canonicalTypeName n
+      -- contract names can qualify their nested types.
+      (_, Just TContract) -> pure (Var n)
+      -- imported module qualifier name
+      (_, Just TModule) -> pure (Var n)
+      -- module-qualified function or constructor reference
+      (Just (Var d), Nothing) -> do
+        let qn = qualifyName d n
+        qdt <- lookupName qn
+        case qdt of
+          Just TFunction -> pure (Var qn)
+          Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+          Just TTyCon -> pure (Var qn)
+          Just TModule -> pure (Var qn)
+          _ -> do
+            let fallback = qualifyName (constructorLeafName d) n
+            fdt <- lookupName fallback
+            case fdt of
+              Just TDataCon -> Con <$> resolveQualifiedConstructorName d n <*> pure []
+              _ -> undefinedName n
+      _ -> do
+        sameName <- isSameNameConstructor n
+        if sameName
+          then Con <$> resolveSameNameConstructorName n <*> pure []
+          else do
+            hasQualified <- hasQualifiedConstructorLeaf n
+            if hasQualified
+              then unqualifiedConstructorError n
+              else undefinedName n
 
 instance Resolve S.Literal where
   type Result S.Literal = Literal
@@ -985,33 +1453,34 @@ instance Resolve S.Pred where
 instance Resolve S.DataTy where
   type Result S.DataTy = DataTy
 
-  resolve d@(S.DataTy n vs cons ds) =
+  resolve d@(S.DataTyWithKind sourceKind n vs cons) =
     withLocalCtx $ do
-      qn <- qualifyLocalType n
       mapM_ addTyVar vs'
       cons' <- resolve cons `wrapError` d
-      ds' <- mapM resolveDerivingClass ds
-      pure (DataTy qn (map TVar vs') (map (qualifyConstrName qn) cons') ds')
+      resolvedName <- canonicalTypeName n
+      pure
+        ( DataTyWithDerives
+            (S.dataDerives d)
+            (resolveDataTyKind sourceKind)
+            resolvedName
+            (map TVar vs')
+            (map (qualifyConstrName resolvedName) cons')
+        )
     where
       vs' = map tyconName vs
 
-resolveDerivingClass :: Name -> ResolveM Name
-resolveDerivingClass c = do
-  dt <- lookupClass c
-  case dt of
-    Just TClass -> pure c
-    _ -> undefinedClassError c
+resolveDataTyKind :: S.DataTyKind -> DataTyKind
+resolveDataTyKind S.EnumKind = EnumKind
+resolveDataTyKind (S.StructKind fieldNames) = StructKind fieldNames
 
 qualifyConstrName :: Name -> Constr -> Constr
-qualifyConstrName tyCon (Constr conName tys fields) =
-  Constr (qualifiedConstructorName tyCon conName) tys fields
+qualifyConstrName tyCon (ConstrWithFields conName tys fields) =
+  ConstrWithFields (qualifiedConstructorName tyCon conName) tys fields
 
 instance Resolve S.Constr where
   type Result S.Constr = Constr
 
-  -- Field names are plain labels scoped to the struct, not global names, so
-  -- they are carried through unchanged (not resolved/qualified).
-  resolve (S.Constr n ts fields) = (\ts' -> Constr n ts' fields) <$> resolve ts
+  resolve (S.ConstrWithFields n ts fields) = (\ts' -> ConstrWithFields n ts' fields) <$> resolve ts
 
 instance Resolve S.TySym where
   type Result S.TySym = TySym
@@ -1019,10 +1488,11 @@ instance Resolve S.TySym where
   resolve d@(S.TySym n ts t) =
     do
       let ts1 = map tyconName ts
+      resolvedName <- canonicalTypeName n
       t' <- withLocalCtx $ do
         mapM_ addTyVar ts1
         resolve t `wrapError` d
-      pure (TySym n (map TVar ts1) t')
+      pure (TySym resolvedName (map TVar ts1) t')
 
 tyconName :: S.Ty -> Name
 tyconName (S.TyCon n _) = n
@@ -1030,15 +1500,66 @@ tyconName (S.TyCon n _) = n
 instance Resolve S.Ty where
   type Result S.Ty = Ty
 
+  -- Internal function values are represented by arrow types throughout type
+  -- inference and are later rewritten to Invokable constraints by
+  -- ReplaceFunTypeArgs.  Validate the source-only distinctions before that
+  -- intentional lowering: otherwise an external function type is silently
+  -- treated as internal, while a nullary function collapses to its result.
+  resolve functionTy@(S.FunctionTy args visibility returns) =
+    case visibility of
+      Just S.FunctionTypeExternal ->
+        unsupportedExternalFunctionTypeError functionTy
+      _ ->
+        locatedLike functionTy locatedTy <$> do
+          args' <- resolve args `wrapError` functionTy
+          returns' <- resolveFunctionReturns returns `wrapError` functionTy
+          -- Invokable represents a zero-argument call with the unit tuple.
+          -- Retain that domain so the function type cannot become its result.
+          let domain = if null args' then [TyCon (Name "()") []] else args'
+          pure (funtype domain returns')
+  -- Supported outer declaration/local modes are extracted into their mode
+  -- flags before resolving the underlying type. A wrapper still present here
+  -- needs a mode inside the semantic type, which this backend cannot retain.
+  resolve comptimeTy@(S.TyCon (Name "comptime") [_]) =
+    unsupportedComptimeTypePositionError comptimeTy
   resolve tc@(S.TyCon n ts) =
     locatedLike tc locatedTy <$> do
       ndt <- lookupType n
       case ndt of
         Just TTyCon -> do
-          n' <- qualifyLocalType n
-          TyCon n' <$> resolve ts `wrapError` tc
+          resolvedName <- canonicalTypeName n
+          TyCon resolvedName <$> resolveTypeArguments n ts `wrapError` tc
         Just TTyVar -> pure (TyVar (TVar n))
         _ -> undefinedTypeConstructor tc
+
+resolveFunctionReturns :: Maybe [S.Ty] -> ResolveM Ty
+resolveFunctionReturns Nothing = pure (TyCon (Name "()") [])
+resolveFunctionReturns (Just returns) = do
+  returns' <- resolve returns
+  pure $ case returns' of
+    [] -> TyCon (Name "()") []
+    [returnTy] -> returnTy
+    _ -> foldr1 (\left right -> TyCon (Name "pair") [left, right]) returns'
+
+resolveTypeArguments :: Name -> [S.Ty] -> ResolveM [Ty]
+resolveTypeArguments n [size, element]
+  | n == Name "array",
+    Just resolvedSize <- numericArraySize size =
+      (resolvedSize :) . (: []) <$> resolve element
+resolveTypeArguments _ ts =
+  resolve ts
+
+-- A fixed-array length is a type-level natural in the existing internal
+-- representation, not a user-defined type constructor. Keep it scoped to the
+-- first argument of the built-in two-argument array shape so a bare numeric
+-- "type" remains invalid everywhere else.
+numericArraySize :: S.Ty -> Maybe Ty
+numericArraySize size@(S.TyCon n@(Name digits) [])
+  | not (null digits),
+    all isDigit digits =
+      Just (locatedLike size locatedTy (TyCon n []))
+numericArraySize _ =
+  Nothing
 
 -- definition of an environment
 
@@ -1067,55 +1588,64 @@ data Env
     -- holds names under a specific scope: data constructors, functions
     -- variables and so on.
     scopeEnv :: Map Name DeclType,
-    -- name of the contract currently being resolved, if any, together with the
-    -- bare names of the data types it declares.  A reference to one of those
-    -- types is rewritten to Contract.Type on emission, so
-    -- two contracts may each declare a type of the same name and the type stays
-    -- private to its contract.  Names stay bare inside the resolver env, so all
-    -- lookups are unchanged; only the emitted names are qualified.
-    currentContract :: Maybe Name,
-    contractLocalTypes :: [Name]
+    -- maps source-visible type names to their collision-free semantic names.
+    -- Contract-local types are visible by their short name only while their
+    -- shell is being resolved, but are represented as Contract.Type.
+    canonicalTypeNames :: Map Name Name,
+    -- named-return value used when lowering a source-level bare return inside
+    -- the current function. Nested lambdas and constructors reset it.
+    functionBareReturnValue :: Maybe (Exp Name),
+    -- lexical loop nesting used to reject break/continue outside loop bodies.
+    -- Lambdas reset this depth because they cannot control an enclosing loop.
+    loopDepth :: Int
   }
   deriving (Show)
 
 emptyEnv :: Env
 emptyEnv =
   Env
-    ( Map.fromList
-        [ (Name "word", TTyCon),
-          (Name "bool", TTyCon),
-          (Name "integer", TTyCon),
-          (Name "()", TTyCon),
-          (Name "->", TTyCon),
-          (Name "pair", TTyCon),
-          (Name "sum", TTyCon)
-        ]
-    )
-    (Map.fromList [(Name "invokable", TClass), (Name "Int", TClass), (Name "Str", TClass)])
-    Map.empty
-    ( Map.fromList
-        [ (Name "true", TDataCon),
-          (Name "false", TDataCon),
-          (Name "()", TDataCon),
-          (Name "pair", TDataCon),
-          (Name "inl", TDataCon),
-          (Name "inr", TDataCon),
-          (Name "invoke", TFunction),
-          (Name "primAddWord", TFunction),
-          (Name "primEqWord", TFunction),
-          (Name "wordToInteger", TFunction),
-          (Name "wordFromInteger", TFunction),
-          (Name "integerAdd", TFunction),
-          (Name "integerSub", TFunction),
-          (Name "integerMul", TFunction),
-          (Name "integerLt", TFunction),
-          (Name "integerEq", TFunction),
-          (QualName (Name "Int") "fromInteger", TFunction),
-          (QualName (Name "Str") "fromString", TFunction)
-        ]
-    )
-    Nothing
-    []
+    { typeEnv =
+        Map.fromList
+          [ (Name "word", TTyCon),
+            (Name "bool", TTyCon),
+            (Name "integer", TTyCon),
+            (Name "()", TTyCon),
+            (Name "->", TTyCon),
+            (Name "pair", TTyCon),
+            (Name "sum", TTyCon)
+          ],
+      classEnv =
+        Map.fromList
+          [ (Name "invokable", TClass),
+            (Name "Int", TClass),
+            (Name "Str", TClass)
+          ],
+      fieldEnv = Map.empty,
+      scopeEnv =
+        Map.fromList
+          [ (Name "true", TDataCon),
+            (Name "false", TDataCon),
+            (Name "()", TDataCon),
+            (Name "pair", TDataCon),
+            (Name "inl", TDataCon),
+            (Name "inr", TDataCon),
+            (Name "invoke", TFunction),
+            (Name "primAddWord", TFunction),
+            (Name "primEqWord", TFunction),
+            (Name "wordToInteger", TFunction),
+            (Name "wordFromInteger", TFunction),
+            (Name "integerAdd", TFunction),
+            (Name "integerSub", TFunction),
+            (Name "integerMul", TFunction),
+            (Name "integerLt", TFunction),
+            (Name "integerEq", TFunction),
+            (QualName (Name "Int") "fromInteger", TFunction),
+            (QualName (Name "Str") "fromString", TFunction)
+          ],
+      canonicalTypeNames = Map.empty,
+      functionBareReturnValue = Nothing,
+      loopDepth = 0
+    }
 
 globalEnv :: [S.TopDecl] -> Env
 globalEnv = foldr addTopDecl emptyEnv
@@ -1148,9 +1678,13 @@ moduleLeafName (Name n) = Name n
 moduleLeafName (QualName _ n) = Name n
 
 addTopDecl :: S.TopDecl -> Env -> Env
-addTopDecl (S.TContr (S.Contract n _ _)) env =
-  addQualifiedModules n $
-    env {typeEnv = Map.insert n TContract (typeEnv env)}
+addTopDecl (S.TContr (S.Contract n _ decls)) env =
+  foldr
+    (addNestedContractType n)
+    ( addQualifiedModules n $
+        env {typeEnv = Map.insert n TContract (typeEnv env)}
+    )
+    decls
 addTopDecl (S.TFunDef (S.FunDef _ sig _)) env =
   addQualifiedModules (S.sigName sig) $
     env {scopeEnv = Map.insert (S.sigName sig) TFunction (scopeEnv env)}
@@ -1168,30 +1702,51 @@ addTopDecl (S.TClassDef (S.Class _ _ n _ _ sigs)) env =
           { classEnv = Map.insert n TClass (classEnv env),
             scopeEnv = env'
           }
-addTopDecl (S.TDataDef (S.DataTy n _ cons _)) env =
+addTopDecl (S.TDataDef (S.DataTy n _ cons)) env =
   addQualifiedModules n $
     env
       { typeEnv = Map.insert n TTyCon (typeEnv env),
+        canonicalTypeNames = Map.insert n n (canonicalTypeNames env),
         scopeEnv =
           foldr
             ( \d ac ->
                 Map.insert (qualifiedConstructorName n (S.constrName d)) TDataCon ac
             )
             (scopeEnv env)
-            cons,
-        -- Struct field names become known field labels so that `p.field`
-        -- resolves to member access rather than a module-qualified name.
-        fieldEnv =
-          foldr
-            (\fn ac -> Map.insert fn TField ac)
-            (fieldEnv env)
-            (concatMap S.constrFields cons)
+            cons
       }
 addTopDecl (S.TSym (S.TySym n _ _)) env =
   addQualifiedModules n $
-    env {typeEnv = Map.insert n TTyCon (typeEnv env)}
+    env
+      { typeEnv = Map.insert n TTyCon (typeEnv env),
+        canonicalTypeNames = Map.insert n n (canonicalTypeNames env)
+      }
 addTopDecl (S.TExportDecl _) env = env
 addTopDecl _ env = env
+
+addNestedContractType :: Name -> S.ContractDecl -> Env -> Env
+addNestedContractType contractName (S.CSymDecl (S.TySym localName _ _)) env =
+  let qualifiedName = qualifyName contractName localName
+   in env {typeEnv = Map.insert qualifiedName TTyCon (typeEnv env), canonicalTypeNames = Map.insert qualifiedName qualifiedName (canonicalTypeNames env)}
+addNestedContractType contractName (S.CDataDecl (S.DataTy localName _ constructors)) env =
+  env
+    { typeEnv = Map.insert qualifiedTypeName TTyCon (typeEnv env),
+      canonicalTypeNames =
+        Map.insert qualifiedTypeName qualifiedTypeName (canonicalTypeNames env),
+      scopeEnv =
+        foldr
+          ( \constructor acc ->
+              Map.insert
+                (qualifiedConstructorName qualifiedTypeName (S.constrName constructor))
+                TDataCon
+                acc
+          )
+          (scopeEnv env)
+          constructors
+    }
+  where
+    qualifiedTypeName = qualifyName contractName localName
+addNestedContractType _ _ env = env
 
 addModuleName :: Name -> Env -> Env
 addModuleName n env =
@@ -1223,14 +1778,43 @@ withLocalCtx m =
       ( \env1 ->
           env1
             { scopeEnv = scopeEnv env,
-              typeEnv = typeEnv env
+              typeEnv = typeEnv env,
+              canonicalTypeNames = canonicalTypeNames env
             }
       )
     pure r
 
+withBareReturnValue :: Maybe (Exp Name) -> ResolveM a -> ResolveM a
+withBareReturnValue returnValue m = do
+  previous <- gets functionBareReturnValue
+  modify (\env -> env {functionBareReturnValue = returnValue})
+  result <- m
+  modify (\env -> env {functionBareReturnValue = previous})
+  pure result
+
+withLoopContext :: ResolveM a -> ResolveM a
+withLoopContext m = do
+  depth <- gets loopDepth
+  withLoopDepth (depth + 1) m
+
+withLoopDepth :: Int -> ResolveM a -> ResolveM a
+withLoopDepth depth m = do
+  previous <- gets loopDepth
+  modify (\env -> env {loopDepth = depth})
+  result <- m
+  modify (\env -> env {loopDepth = previous})
+  pure result
+
 lookupType :: Name -> ResolveM (Maybe DeclType)
 lookupType n =
   gets (Map.lookup n . typeEnv)
+
+canonicalTypeName :: Name -> ResolveM Name
+canonicalTypeName sourceName = do
+  resolvedName <-
+    gets
+      (Map.findWithDefault sourceName sourceName . canonicalTypeNames)
+  pure (copyNameSourceSpan sourceName resolvedName)
 
 lookupClass :: Name -> ResolveM (Maybe DeclType)
 lookupClass n =
@@ -1248,8 +1832,8 @@ lookupName n =
 
 -- For UFCS-style method calls (`value.method(args)`): find a class that has
 -- a method named `m` so we can rewrite the call as `Class.method(value,args)`.
--- Returns the first match; ambiguity across multiple classes falls back to
--- the regular undefined-name path.
+-- Returns the sole match; ambiguity across multiple classes is rejected so
+-- name resolution never guesses which class owns the call.
 findClassWithMethod :: Name -> ResolveM (Maybe Name)
 findClassWithMethod m =
   do
@@ -1304,6 +1888,9 @@ contextLabelMessage diagnostic =
     Just (DiagnosticCode "SC0105") -> "undefined class"
     Just (DiagnosticCode "SC0106") -> "unqualified constructor"
     Just (DiagnosticCode "SC0107") -> "invalid pattern"
+    Just (DiagnosticCode "SC0122") -> "unsupported function type"
+    Just (DiagnosticCode "SC0123") -> "unsupported mixed return mode"
+    Just (DiagnosticCode "SC0124") -> "unresolved member call"
     _ -> "diagnostic reported here"
 
 contextSourceSpan :: (Data a) => a -> Maybe SourceSpan
@@ -1344,8 +1931,25 @@ addClass n =
   modify (\env -> env {classEnv = Map.insert n TClass (classEnv env)})
 
 addTyCon :: Name -> ResolveM ()
-addTyCon n =
-  modify (\env -> env {typeEnv = Map.insert n TTyCon (typeEnv env)})
+addTyCon n = addTyConAs n n
+
+addTyConAs :: Name -> Name -> ResolveM ()
+addTyConAs sourceName resolvedName =
+  modify
+    ( \env ->
+        env
+          { typeEnv =
+              Map.insert
+                sourceName
+                TTyCon
+                (Map.insert resolvedName TTyCon (typeEnv env)),
+            canonicalTypeNames =
+              Map.insert
+                sourceName
+                resolvedName
+                (Map.insert resolvedName resolvedName (canonicalTypeNames env))
+          }
+    )
 
 addDataCon :: Name -> Name -> ResolveM ()
 addDataCon typeName conName =
@@ -1364,28 +1968,18 @@ addTyVar n =
 resolveQualifiedConstructorName :: Name -> Name -> ResolveM Name
 resolveQualifiedConstructorName qualifier conName =
   do
-    let qn = qualifyName qualifier conName
+    resolvedQualifier <- canonicalTypeName qualifier
+    let qn = qualifiedConstructorName resolvedQualifier conName
     dt <- lookupName qn
     case dt of
-      Just TDataCon -> requalifyConstructor qn
+      Just TDataCon -> pure qn
       _ ->
         let fallback = qualifyName (constructorLeafName qualifier) conName
          in do
               fdt <- lookupName fallback
               case fdt of
-                Just TDataCon -> requalifyConstructor fallback
+                Just TDataCon -> pure fallback
                 _ -> undefinedName qn
-
--- Rewrite a resolved constructor name when its type is a contract-local type.
--- The name stays bare in the resolver env (so the lookup above succeeds);
--- only the emitted name carries the contract qualifier, keeping it consistent
--- with the qualified type name.
-requalifyConstructor :: Name -> ResolveM Name
-requalifyConstructor n@(QualName tyq con) =
-  do
-    tyq' <- qualifyLocalType tyq
-    pure (if tyq' == tyq then n else copyNameSourceSpan n (QualName tyq' con))
-requalifyConstructor n = pure n
 
 -- error messages
 
@@ -1438,6 +2032,16 @@ undefinedName n =
     []
     []
 
+unresolvedValueMemberCall :: Name -> ResolveM a
+unresolvedValueMemberCall n =
+  diagnosticErrorAtName
+    "SC0124"
+    ("no unique trait method for value member call: " ++ pretty n)
+    n
+    "unresolved member call"
+    ["value-member syntax requires exactly one trait to declare the named method"]
+    ["use an explicit qualified trait call to disambiguate"]
+
 unqualifiedConstructorError :: Name -> ResolveM a
 unqualifiedConstructorError n =
   diagnosticErrorAtName
@@ -1455,6 +2059,62 @@ invalidPatternSyntax p =
     ("invalid pattern syntax: " ++ pretty p)
     []
     []
+
+unsupportedExternalFunctionTypeError :: S.Ty -> ResolveM a
+unsupportedExternalFunctionTypeError functionTy =
+  unsupportedFunctionTypeError
+    functionTy
+    "external function types are not supported"
+    "external function values do not yet have a runtime representation"
+    [ "use an internal function type",
+      "or pass the external call target and selector explicitly"
+    ]
+
+unsupportedComptimeTypePositionError :: S.Ty -> ResolveM a
+unsupportedComptimeTypePositionError comptimeTy =
+  unsupportedFunctionTypeError
+    comptimeTy
+    "comptime<T> is not supported in this type position"
+    "this type position cannot retain a compile-time requirement"
+    [ "use `comptime name: T` for a function parameter",
+      "use `let name: comptime<T>` for a local or `returns (comptime<T>)` for a function result"
+    ]
+
+unsupportedFunctionTypeError :: S.Ty -> String -> String -> [String] -> ResolveM a
+unsupportedFunctionTypeError functionTy message label help =
+  diagnosticErrorWithLabels
+    "SC0122"
+    message
+    ( case sourceSpanOf functionTy of
+        Nothing -> []
+        Just sourceSpan ->
+          [ Label
+              { labelSpan = sourceSpan,
+                labelStyle = Primary,
+                labelMessage = Just label
+              }
+          ]
+    )
+    []
+    help
+
+loopControlOutsideLoopError :: S.Stmt -> String -> ResolveM a
+loopControlOutsideLoopError statement keyword =
+  diagnosticErrorWithLabels
+    "SC0125"
+    (keyword ++ " statement outside of a loop")
+    ( case sourceSpanOf statement of
+        Nothing -> []
+        Just sourceSpan ->
+          [ Label
+              { labelSpan = sourceSpan,
+                labelStyle = Primary,
+                labelMessage = Just (keyword ++ " is only valid inside a loop body")
+              }
+          ]
+    )
+    []
+    ["move this statement inside a while or for loop body"]
 
 diagnosticError :: String -> String -> [String] -> [String] -> ResolveM a
 diagnosticError code message notes help =

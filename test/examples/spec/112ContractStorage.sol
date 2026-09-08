@@ -1,0 +1,43 @@
+import StorageLib;
+
+/*
+// Translating contract:
+contract Counter {
+  counter : word;
+
+  function main() -> word {
+    counter = add(counter, 1);
+    return counter;
+  }
+}
+*/
+
+
+
+// form:
+// instance StructField(S, f_sel):CStructField(ftype, preceding)) {}
+enum CounterCxt { CounterCxt }
+enum counter_sel { counter_sel }
+impl CStructField<StructField<ContractStorage<CounterCxt>, counter_sel>, word, ()> {}
+
+contract Counter {
+  // struct CounterCxt { counter:word }
+
+  function main() public returns (word) {
+       let cxt : ContractStorage<CounterCxt> = ContractStorage(CounterCxt);
+       let counter_map : MemberAccessProxy<ContractStorage<CounterCxt>, counter_sel, ()>
+       = MemberAccessProxy(cxt, counter_sel);
+
+       // let c1 = this.counter
+       let c1 : word;
+       c1 = RValueMemberAccess.memberAccess(counter_map);
+
+       // this.counter = c1 + 7
+       let counter_lval // : storageRef(word)
+                  = LValueMemberAccess.memberAccess(counter_map);
+
+       Assign.assign(counter_lval, add(c1, 7));
+
+       return RValueMemberAccess.memberAccess(counter_map);
+    }
+}

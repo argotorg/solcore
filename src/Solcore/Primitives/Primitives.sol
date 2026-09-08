@@ -1,0 +1,15 @@
+  enum Unit { Unit }
+  type Memory(a) = Word;
+
+  trait Ref<ref, deref> {
+    function load (r : ref) returns (deref) ;
+    function store (r : ref, v : deref) ;
+  }
+
+  type Stack(a) = a;
+
+  impl Ref<Stack<a>, Memory<a>> {
+    function load (r : Stack<a>) returns (Memory<a>) {}
+
+    function store(r : Stack<a>, v : Memory<a>) {}
+  }

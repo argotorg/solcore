@@ -1,0 +1,10 @@
+type W = word;
+
+function f(x:W) returns (W) { return x; }
+
+contract C {
+
+  function main () public returns (word) {
+    return f(42);
+  }
+}

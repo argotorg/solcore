@@ -1,5 +1,0 @@
-export { pick };
-
-function pick(x: word) -> word {
-  return x;
-}
