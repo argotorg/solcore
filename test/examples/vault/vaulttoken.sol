@@ -13,11 +13,14 @@ import * from pausable;
 import * from erc20base;
 import * from flashmint;
 
-function caller() returns (address) { return address(opCaller()); }
-function selfAddress() returns (address) { return address(opAddress()); }
+function caller() returns (address) { 
+  return address(opCaller()); 
+}
 
-// The `_update` seam: whenNotPaused then the ERC20Base ledger movement
-// (the Solidity `_update` override plus its `super._update`, made explicit).
+function selfAddress() returns (address) { 
+  return address(opAddress()); 
+}
+
 function vaultUpdate<self>(s : self, from : address, to : address, value : uint256) returns (())
   where self: HasPaused, self: HasLedger, self: HasSupply {
   whenNotPaused(s);
@@ -25,8 +28,6 @@ function vaultUpdate<self>(s : self, from : address, to : address, value : uint2
 }
 
 contract VaultToken {
-  // No fields: the state lives in the capability modules' namespaces.
-
   constructor(initialSupply : uint256) {
     HasOwner.setOwner(appStore(), caller());               // Ownable(): owner = deployer
     vaultUpdate(appStore(), address(0), caller(), initialSupply); // mint to deployer
@@ -47,8 +48,13 @@ contract VaultToken {
   }
 
   // --- ERC20 views ---
-  function totalSupply() public returns (uint256) { return HasSupply.totalSupply(appStore()); }
-  function balanceOf(account : address) public returns (uint256) { return HasLedger.balanceOf(appStore(), account); }
+  function totalSupply() public returns (uint256) { 
+    return HasSupply.totalSupply(appStore()); 
+  }
+  
+  function balanceOf(account : address) public returns (uint256) { 
+    return HasLedger.balanceOf(appStore(), account); 
+  }
 
   // --- ERC20 actions (through the seam) ---
   function transfer(to : address, amount : uint256) public returns (bool) {

@@ -18,22 +18,42 @@ trait HasSupply<self> {
   function totalSupply(s : self) returns (uint256);
 }
 
-function erc20Root() returns (word) { return Typedef.rep(erc7201("vault.storage.ERC20")); }
-function balancesBase() returns (word) { return erc20Root(); }
-function totalSupplySlot() returns (word) { return erc20Root() + 1; }
-function balanceSlot(a : address) returns (word) { return hash2(balancesBase(), Typedef.rep(a)); }
+function erc20Root() returns (word) { 
+  return Typedef.rep(erc7201("vault.storage.ERC20")); 
+}
+
+function balancesBase() returns (word) { 
+  return erc20Root(); 
+}
+
+function totalSupplySlot() returns (word) { 
+  return erc20Root() + 1; 
+}
+
+function balanceSlot(a : address) returns (word) { 
+  return hash2(balancesBase(), Typedef.rep(a)); 
+}
 
 impl HasLedger<AppStore> {
-  function balanceOf(s : AppStore, a : address) returns (uint256) { return uint256(sload(balanceSlot(a))); }
+  function balanceOf(s : AppStore, a : address) returns (uint256) { 
+    return uint256(sload(balanceSlot(a))); 
+  }
 }
 
 impl HasSupply<AppStore> {
-  function totalSupply(s : AppStore) returns (uint256) { return uint256(sload(totalSupplySlot())); }
+  function totalSupply(s : AppStore) returns (uint256) { 
+    return uint256(sload(totalSupplySlot())); 
+  }
 }
 
 // Raw storage writes — module-private (not exported); only coreUpdate calls them.
-function writeBalance(a : address, v : uint256) returns (()) { sstore(balanceSlot(a), Typedef.rep(v)); }
-function writeSupply(v : uint256) returns (()) { sstore(totalSupplySlot(), Typedef.rep(v)); }
+function writeBalance(a : address, v : uint256) returns (()) { 
+  sstore(balanceSlot(a), Typedef.rep(v)); 
+}
+
+function writeSupply(v : uint256) returns (()) { 
+  sstore(totalSupplySlot(), Typedef.rep(v)); 
+}
 
 function emitTransfer(from : address, to : address, value : uint256) returns (()) {
   let p : word = get_free_memory();

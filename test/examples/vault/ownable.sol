@@ -10,11 +10,18 @@ trait HasOwner<self> {
   function setOwner(s : self, o : address) returns (());
 }
 
-function ownerSlot() returns (word) { return Typedef.rep(erc7201("vault.storage.Ownable")); }
+function ownerSlot() returns (word) { 
+  return Typedef.rep(erc7201("vault.storage.Ownable")); 
+}
 
 impl HasOwner<AppStore> {
-  function getOwner(s : AppStore) returns (address) { return address(sload(ownerSlot())); }
-  function setOwner(s : AppStore, o : address) returns (()) { sstore(ownerSlot(), Typedef.rep(o)); }
+  function getOwner(s : AppStore) returns (address) { 
+    return address(sload(ownerSlot())); 
+  }
+  
+  function setOwner(s : AppStore, o : address) returns (()) { 
+    sstore(ownerSlot(), Typedef.rep(o)); 
+  }
 }
 
 function requireOwner<self>(s : self, sender : address) returns (()) where self: HasOwner {

@@ -10,11 +10,18 @@ trait HasPaused<self> {
   function setPaused(s : self, p : uint256) returns (());
 }
 
-function pausedSlot() returns (word) { return Typedef.rep(erc7201("vault.storage.Pausable")); }
+function pausedSlot() returns (word) { 
+  return Typedef.rep(erc7201("vault.storage.Pausable")); 
+}
 
 impl HasPaused<AppStore> {
-  function isPaused(s : AppStore) returns (uint256) { return uint256(sload(pausedSlot())); }
-  function setPaused(s : AppStore, p : uint256) returns (()) { sstore(pausedSlot(), Typedef.rep(p)); }
+  function isPaused(s : AppStore) returns (uint256) { 
+    return uint256(sload(pausedSlot())); 
+  }
+  
+  function setPaused(s : AppStore, p : uint256) returns (()) { 
+    sstore(pausedSlot(), Typedef.rep(p)); 
+  }
 }
 
 function whenNotPaused<self>(s : self) returns (()) where self: HasPaused {
