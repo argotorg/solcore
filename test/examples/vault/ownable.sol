@@ -10,7 +10,7 @@ trait HasOwner<self> {
   function setOwner(s : self, o : address) returns (());
 }
 
-function ownerSlot() returns (word) { return Typedef.rep(erc7201("valt.storage.Ownable")); }
+function ownerSlot() returns (word) { return Typedef.rep(erc7201("vault.storage.Ownable")); }
 
 impl HasOwner<AppStore> {
   function getOwner(s : AppStore) returns (address) { return address(sload(ownerSlot())); }

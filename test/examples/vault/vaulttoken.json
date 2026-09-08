@@ -61,6 +61,15 @@
       },
       {
         "input": {
+          "comment": "transfer(address(0), 1) -> revert ERC20InvalidReceiver (no silent burn)",
+          "calldata": "a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "failure", "returndata": "ec442f05" }
+      },
+      {
+        "input": {
           "comment": "balanceOf(AA) -> 300",
           "calldata": "70a0823100000000000000000000000000000000000000000000000000000000000000aa",
           "value": "0"

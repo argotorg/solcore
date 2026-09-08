@@ -13,9 +13,17 @@ trait HasVotes<self> {
   function setVotes(s : self, account : address, v : uint256) returns (());
 }
 
-function votesRoot() returns (word) { return Typedef.rep(erc7201("mytoken.storage.Votes")); }
-function delegateeSlot(a : address) returns (word) { return hash2(votesRoot(), Typedef.rep(a)); }
-function votesSlot(a : address) returns (word) { return hash2(votesRoot() + 1, Typedef.rep(a)); }
+function votesRoot() returns (word) { 
+  return Typedef.rep(erc7201("mytoken.storage.Votes")); 
+}
+
+function delegateeSlot(a : address) returns (word) { 
+  return hash2(votesRoot(), Typedef.rep(a)); 
+}
+
+function votesSlot(a : address) returns (word) { 
+  return hash2(votesRoot() + 1, Typedef.rep(a)); 
+}
 
 impl HasVotes<AppStore> {
   function getDelegate(s : AppStore, account : address) returns (address) {
@@ -45,8 +53,7 @@ function moveVotingPower<self>(s : self, fromRep : address, toRep : address, amt
 }
 
 function emitDelegateChanged(delegator : address, fromD : address, toD : address) returns (()) {
-  log4(0, 0, keccakLit("DelegateChanged(address,address,address)"),
-       Typedef.rep(delegator), Typedef.rep(fromD), Typedef.rep(toD));
+  log4(0, 0, keccakLit("DelegateChanged(address,address,address)"), Typedef.rep(delegator), Typedef.rep(fromD), Typedef.rep(toD));
 }
 
 function delegateTo<self>(s : self, account : address, delegatee : address) returns (())

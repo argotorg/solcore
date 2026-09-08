@@ -64,4 +64,4 @@ bash ./contest.sh test/examples/dispatch/deposit.json
 bash ./contest.sh test/new-syntax/integration/main.json
 bash ./contest.sh test/new-syntax/struct-storage/main.json
 bash ./contest.sh test/examples/erc20/mytoken.json
-bash ./contest.sh test/examples/valt/vaulttoken.json
+bash ./contest.sh test/examples/vault/vaulttoken.json

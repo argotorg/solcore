@@ -3,6 +3,7 @@
 
 import * from std;
 import * from std.dispatch;
+import {caller as opCaller, address as opAddress, chainid as opChainid, timestamp as opTimestamp} from std.opcodes;
 
 import * from store;
 import * from ownable;
@@ -11,25 +12,20 @@ import * from erc20core;
 import * from votes;
 import * from permit;
 
-function caller() returns (address) {
-  let r : word;
-  assembly { r := caller() }
-  return address(r);
+function caller() returns (address) { 
+  return address(opCaller()); 
 }
-function selfAddress() returns (address) {
-  let a : word;
-  assembly { a := address() }
-  return address(a);
+
+function selfAddress() returns (address) { 
+  return address(opAddress()); 
 }
-function chainId() returns (uint256) {
-  let c : word;
-  assembly { c := chainid() }
-  return uint256(c);
+
+function chainId() returns (uint256) { 
+  return uint256(opChainid()); 
 }
-function nowTime() returns (uint256) {
-  let t : word;
-  assembly { t := timestamp() }
-  return uint256(t);
+
+function nowTime() returns (uint256) { 
+  return uint256(opTimestamp()); 
 }
 
 // The ERC20 `_update` seam, composing Pausable + core ledger + Votes.
@@ -48,23 +44,40 @@ contract MyToken {
   }
 
   // --- ERC20 metadata ---
-  function name() public returns (memory<string>) { return "MyToken"; }
-  function symbol() public returns (memory<string>) { return "MTK"; }
-  function decimals() public returns (uint256) { return uint256(18); }
+  function name() public returns (memory<string>) { 
+    return "MyToken"; 
+  }
+  
+  function symbol() public returns (memory<string>) { 
+    return "MTK"; 
+  }
+  
+  function decimals() public returns (uint256) { 
+    return uint256(18); 
+  }
 
   // --- ERC20 views ---
-  function totalSupply() public returns (uint256) { return HasSupply.totalSupply(appStore()); }
-  function balanceOf(account : address) public returns (uint256) { return HasLedger.balanceOf(appStore(), account); }
+  function totalSupply() public returns (uint256) { 
+    return HasSupply.totalSupply(appStore()); 
+  }
+  
+  function balanceOf(account : address) public returns (uint256) { 
+    return HasLedger.balanceOf(appStore(), account); 
+  }
+  
   function allowance(o : address, spender : address) public returns (uint256) {
     return HasAllowance.allowanceOf(appStore(), o, spender);
   }
 
   // --- ERC20 actions (all movements flow through tokenUpdate) ---
   function transfer(to : address, value : uint256) public returns (bool) {
+    require(to != address(0), Error(0xec442f05));            // ERC20InvalidReceiver
     tokenUpdate(appStore(), caller(), to, value);
     return true;
   }
   function transferFrom(from : address, to : address, value : uint256) public returns (bool) {
+    require(from != address(0), Error(0x96c6fd1e));          // ERC20InvalidSender
+    require(to != address(0), Error(0xec442f05));            // ERC20InvalidReceiver
     spendAllowance(appStore(), from, caller(), value);
     tokenUpdate(appStore(), from, to, value);
     return true;
@@ -77,18 +90,24 @@ contract MyToken {
   // Added for testability (the Wizard omitted Mintable): owner-gated mint.
   function mint(to : address, value : uint256) public returns (()) {
     requireOwner(appStore(), caller());
+    require(to != address(0), Error(0xec442f05));            // ERC20InvalidReceiver
     tokenUpdate(appStore(), address(0), to, value);
   }
 
   // --- Ownable ---
-  function owner() public returns (address) { return HasOwner.getOwner(appStore()); }
+  function owner() public returns (address) { 
+    return HasOwner.getOwner(appStore()); 
+  }
+  
   function transferOwnership(newOwner : address) public returns (()) {
     requireOwner(appStore(), caller());
     HasOwner.setOwner(appStore(), newOwner);
   }
 
   // --- Pausable (owner-gated) ---
-  function paused() public returns (uint256) { return HasPaused.isPaused(appStore()); }
+  function paused() public returns (uint256) { 
+    return HasPaused.isPaused(appStore()); 
+  }
   function pause() public returns (()) {
     requireOwner(appStore(), caller());
     HasPaused.setPaused(appStore(), uint256(1));
@@ -107,7 +126,9 @@ contract MyToken {
   }
 
   // --- Permit (EIP-2612) ---
-  function nonces(o : address) public returns (uint256) { return HasNonces.nonceOf(appStore(), o); }
+  function nonces(o : address) public returns (uint256) { 
+    return HasNonces.nonceOf(appStore(), o); 
+  }
   function DOMAIN_SEPARATOR() public returns (bytes32) {
     return permitDomainSeparator(selfAddress(), chainId());
   }

@@ -4,6 +4,7 @@
 
 import * from std;
 import * from std.dispatch;
+import {caller as opCaller, address as opAddress} from std.opcodes;
 
 import * from store;
 import * from mathlib;
@@ -12,16 +13,8 @@ import * from pausable;
 import * from erc20base;
 import * from flashmint;
 
-function caller() returns (address) {
-  let r : word;
-  assembly { r := caller() }
-  return address(r);
-}
-function selfAddress() returns (address) {
-  let a : word;
-  assembly { a := address() }
-  return address(a);
-}
+function caller() returns (address) { return address(opCaller()); }
+function selfAddress() returns (address) { return address(opAddress()); }
 
 // The `_update` seam: whenNotPaused then the ERC20Base ledger movement
 // (the Solidity `_update` override plus its `super._update`, made explicit).
@@ -59,11 +52,13 @@ contract VaultToken {
 
   // --- ERC20 actions (through the seam) ---
   function transfer(to : address, amount : uint256) public returns (bool) {
+    require(to != address(0), Error(0xec442f05));            // ERC20InvalidReceiver
     vaultUpdate(appStore(), caller(), to, amount);
     return true;
   }
   function mint(to : address, amount : uint256) public returns (()) {
     requireOwner(appStore(), caller());
+    require(to != address(0), Error(0xec442f05));            // ERC20InvalidReceiver
     vaultUpdate(appStore(), address(0), to, amount);
   }
 
