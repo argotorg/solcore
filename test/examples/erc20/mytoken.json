@@ -1,0 +1,361 @@
+{
+  "mytoken": {
+    "bytecode": "",
+    "contract": "MyToken",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor(initialOwner=sender)",
+          "calldata": "0000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "owner() -> sender",
+          "calldata": "8da5cb5b",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000001212121212121212121212121212120000000012"
+        }
+      },
+      {
+        "input": {
+          "comment": "decimals() -> 18",
+          "calldata": "313ce567",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000012"
+        }
+      },
+      {
+        "input": {
+          "comment": "totalSupply() -> 0",
+          "calldata": "18160ddd",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      {
+        "input": {
+          "comment": "mint(sender, 1000) [owner]",
+          "calldata": "40c10f19000000000000000000000000121212121212121212121212121212000000001200000000000000000000000000000000000000000000000000000000000003e8",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": ""
+        }
+      },
+      {
+        "input": {
+          "comment": "totalSupply() -> 1000",
+          "calldata": "18160ddd",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000003e8"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(sender) -> 1000",
+          "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000003e8"
+        }
+      },
+      {
+        "input": {
+          "comment": "transfer(AA, 100) -> true",
+          "calldata": "a9059cbb00000000000000000000000000000000000000000000000000000000000000aa0000000000000000000000000000000000000000000000000000000000000064",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001"
+        }
+      },
+      {
+        "input": {
+          "comment": "transfer(address(0), 1) -> revert ERC20InvalidReceiver (no silent burn)",
+          "calldata": "a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": { "status": "failure", "returndata": "ec442f05" }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(AA) -> 100",
+          "calldata": "70a0823100000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000064"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(sender) -> 900",
+          "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000384"
+        }
+      },
+      {
+        "input": {
+          "comment": "approve(CC, 50) -> true",
+          "calldata": "095ea7b300000000000000000000000000000000000000000000000000000000000000cc0000000000000000000000000000000000000000000000000000000000000032",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001"
+        }
+      },
+      {
+        "input": {
+          "comment": "allowance(sender, CC) -> 50",
+          "calldata": "dd62ed3e000000000000000000000000121212121212121212121212121212000000001200000000000000000000000000000000000000000000000000000000000000cc",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000032"
+        }
+      },
+      {
+        "input": {
+          "comment": "pause() [owner]",
+          "calldata": "8456cb59",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": ""
+        }
+      },
+      {
+        "input": {
+          "comment": "transfer while paused -> revert EnforcedPause",
+          "calldata": "a9059cbb00000000000000000000000000000000000000000000000000000000000000aa000000000000000000000000000000000000000000000000000000000000000a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "failure",
+          "returndata": "d93c0665"
+        }
+      },
+      {
+        "input": {
+          "comment": "unpause() [owner]",
+          "calldata": "3f4ba83a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": ""
+        }
+      },
+      {
+        "input": {
+          "comment": "transfer(AA, 10) -> true",
+          "calldata": "a9059cbb00000000000000000000000000000000000000000000000000000000000000aa000000000000000000000000000000000000000000000000000000000000000a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(AA) -> 110",
+          "calldata": "70a0823100000000000000000000000000000000000000000000000000000000000000aa",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "000000000000000000000000000000000000000000000000000000000000006e"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(sender) -> 890",
+          "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "000000000000000000000000000000000000000000000000000000000000037a"
+        }
+      },
+      {
+        "input": {
+          "comment": "delegate(sender) [caller=sender]",
+          "calldata": "5c19a95c0000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": ""
+        }
+      },
+      {
+        "input": {
+          "comment": "getVotes(sender) -> 890 (== balance after delegation)",
+          "calldata": "9ab24eb00000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "000000000000000000000000000000000000000000000000000000000000037a"
+        }
+      },
+      {
+        "input": {
+          "comment": "transfer(AA, 10) -> true (moves votes off sender's delegate)",
+          "calldata": "a9059cbb00000000000000000000000000000000000000000000000000000000000000aa000000000000000000000000000000000000000000000000000000000000000a",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(sender) -> 880",
+          "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000370"
+        }
+      },
+      {
+        "input": {
+          "comment": "getVotes(sender) -> 880",
+          "calldata": "9ab24eb00000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000370"
+        }
+      },
+      {
+        "input": {
+          "comment": "DOMAIN_SEPARATOR() -> computed",
+          "calldata": "3644e515",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "dad83b5cb4f00368f4af629ba07afb2ea7aaef517ed9956fcee75d8b62831527"
+        }
+      },
+      {
+        "input": {
+          "comment": "nonces(permitOwner) -> 0",
+          "calldata": "7ecebe00000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      {
+        "input": {
+          "comment": "permit expired (deadline=1) -> revert ExpiredSignature",
+          "calldata": "12d7a2bc000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb9226600000000000000000000000000000000000000000000000000000000000000bb00000000000000000000000000000000000000000000000000000000000001f40000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000001b6ba1f3884145de694ba07f97c9373ccac5fa13e4610f8c3db36fc01f1ae8010c71478489edf88cd1dda2ba5654a82175cdf6cbfd15c37650eb95ecf82c443f4c",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "failure",
+          "returndata": "62791302"
+        }
+      },
+      {
+        "input": {
+          "comment": "permit valid -> sets allowance, bumps nonce",
+          "calldata": "12d7a2bc000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb9226600000000000000000000000000000000000000000000000000000000000000bb00000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000ffffffffffffffff000000000000000000000000000000000000000000000000000000000000001b6ba1f3884145de694ba07f97c9373ccac5fa13e4610f8c3db36fc01f1ae8010c71478489edf88cd1dda2ba5654a82175cdf6cbfd15c37650eb95ecf82c443f4c",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": ""
+        }
+      },
+      {
+        "input": {
+          "comment": "allowance(permitOwner, BB) -> 500",
+          "calldata": "dd62ed3e000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb9226600000000000000000000000000000000000000000000000000000000000000bb",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "00000000000000000000000000000000000000000000000000000000000001f4"
+        }
+      },
+      {
+        "input": {
+          "comment": "nonces(permitOwner) -> 1",
+          "calldata": "7ecebe00000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "status": "success",
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000001"
+        }
+      }
+    ]
+  }
+}
