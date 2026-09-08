@@ -1,0 +1,26 @@
+// Ownable capability, with its own storage.
+
+import std.{*};
+import std.opcodes.{sload, sstore};
+import store.{*};
+
+export { HasOwner, requireOwner };
+
+forall self . class self : HasOwner {
+  function getOwner(s : self) -> address;
+  function setOwner(s : self, o : address) -> ();
+}
+
+function ownerSlot() -> word { 
+  return Typedef.rep(erc7201("valt.storage.Ownable")); 
+}
+
+instance AppStore : HasOwner {
+  function getOwner(s : AppStore) -> address { return address(sload(ownerSlot())); }
+  function setOwner(s : AppStore, o : address) -> () { sstore(ownerSlot(), Typedef.rep(o)); }
+}
+
+forall self . self:HasOwner =>
+function requireOwner(s : self, sender : address) -> () {
+  require(sender == HasOwner.getOwner(s), Error(0x118cdaa7));
+}

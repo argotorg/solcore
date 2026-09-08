@@ -1,0 +1,28 @@
+// Style 3: interface + callback (dependency inversion), as its own module.
+//
+// This is the flash-mint's inversion of control: after minting ephemerally, the
+// vault calls back into the borrower's onFlashMint(address,uint256) and requires
+// it to return the IFlashBorrower magic value before burning. The external call is
+// a raw call (via std raw_call) with a hand-built calldata; the magic value is
+// keccak256("IFlashBorrower.onFlashMint"). This module owns no storage.
+
+import std.{*};
+import std.opcodes.{mload};
+
+export { callBorrower, flashOk };
+
+function flashOk() -> word { 
+  return keccakLit("IFlashBorrower.onFlashMint"); 
+}
+
+function callBorrower(borrower : address, initiator : address, amount : uint256) -> () {
+  let sel : bytes32 = bytes32(0x85b2c20a00000000000000000000000000000000000000000000000000000000);
+  let payload = concat(truncate(to_bytes(sel), 4),
+                       concat(bytes32(Typedef.rep(initiator)), bytes32(Typedef.rep(amount))));
+  match raw_call(borrower, uint256(0), payload) {
+    | (ok, ret) => {
+        require(ok, Error(0x58e9a641));
+        require(mload(MemoryPointer.ptr(ret)) == flashOk(), Error(0x003554dd));
+      }
+  }
+}

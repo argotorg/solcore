@@ -1,0 +1,62 @@
+// ERC20Base capability, with its own storage.
+//
+// The minimal ERC-20 ledger of the VaultToken example: per-account balances and a
+// total supply, in this module's own ERC-7201 namespace (balances at root+0,
+// totalSupply at root+1). Provides HasLedger / HasSupply over AppStore and the
+// _update internal (coreUpdate), which uses the checked arithmetic from
+// mathlib and emits Transfer via raw log3 (there is no emit sugar).
+
+import std.{*};
+import std.opcodes.{sload, sstore, log3, mstore};
+import store.{*};
+import mathlib.{*};
+
+export { HasLedger, HasSupply, coreUpdate, emitTransfer };
+
+forall self . class self : HasLedger {
+  function balanceOf(s : self, a : address) -> uint256;
+  function setBalance(s : self, a : address, v : uint256) -> ();
+}
+
+forall self . class self : HasSupply {
+  function totalSupply(s : self) -> uint256;
+  function setTotalSupply(s : self, v : uint256) -> ();
+}
+
+function erc20Root() -> word { return Typedef.rep(erc7201("valt.storage.ERC20")); }
+function balancesBase() -> word { return erc20Root(); }
+function totalSupplySlot() -> word { return erc20Root() + 1; }
+function balanceSlot(a : address) -> word { return hash2(balancesBase(), Typedef.rep(a)); }
+
+instance AppStore : HasLedger {
+  function balanceOf(s : AppStore, a : address) -> uint256 { return uint256(sload(balanceSlot(a))); }
+  function setBalance(s : AppStore, a : address, v : uint256) -> () { sstore(balanceSlot(a), Typedef.rep(v)); }
+}
+
+instance AppStore : HasSupply {
+  function totalSupply(s : AppStore) -> uint256 { return uint256(sload(totalSupplySlot())); }
+  function setTotalSupply(s : AppStore, v : uint256) -> () { sstore(totalSupplySlot(), Typedef.rep(v)); }
+}
+
+function emitTransfer(from : address, to : address, value : uint256) -> () {
+  let p : word = get_free_memory();
+  mstore(p, Typedef.rep(value));
+  log3(p, 32, keccakLit("Transfer(address,address,uint256)"), Typedef.rep(from), Typedef.rep(to));
+}
+
+// The single ERC20Base _update hook: mint (from == 0), burn (to == 0) or move,
+// with over/underflow (and insufficient balance/supply) checked by mathlib.
+forall self . self:HasLedger, self:HasSupply =>
+function coreUpdate(s : self, from : address, to : address, value : uint256) -> () {
+  if (from == address(0)) {
+    HasSupply.setTotalSupply(s, addChecked(HasSupply.totalSupply(s), value));
+  } else {
+    HasLedger.setBalance(s, from, subChecked(HasLedger.balanceOf(s, from), value));
+  }
+  if (to == address(0)) {
+    HasSupply.setTotalSupply(s, subChecked(HasSupply.totalSupply(s), value));
+  } else {
+    HasLedger.setBalance(s, to, addChecked(HasLedger.balanceOf(s, to), value));
+  }
+  emitTransfer(from, to, value);
+}

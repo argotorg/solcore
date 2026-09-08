@@ -1,0 +1,85 @@
+// VaultToken — the Classic Solidity example from valt-verify
+
+import std.{*};
+import std.dispatch.{*};
+
+import store.{*};
+import mathlib.{*};
+import ownable.{*};
+import pausable.{*};
+import erc20base.{*};
+import flashmint.{*};
+
+function caller() -> address {
+  let r : word;
+  assembly { r := caller() }
+  return address(r);
+}
+function selfAddress() -> address {
+  let a : word;
+  assembly { a := address() }
+  return address(a);
+}
+
+forall self . self:HasPaused, self:HasLedger, self:HasSupply =>
+function vaultUpdate(s : self, from : address, to : address, value : uint256) -> () {
+  whenNotPaused(s);
+  coreUpdate(s, from, to, value);
+}
+
+contract VaultToken {
+  // No fields: the state lives in the capability modules' namespaces.
+
+  constructor(initialSupply : uint256) {
+    HasOwner.setOwner(appStore(), caller());               // Ownable(): owner = deployer
+    vaultUpdate(appStore(), address(0), caller(), initialSupply); // mint to deployer
+  }
+
+  // --- Ownable ---
+  public function owner() -> address { return HasOwner.getOwner(appStore()); }
+  public function transferOwnership(to : address) -> () {
+    requireOwner(appStore(), caller());
+    HasOwner.setOwner(appStore(), to);
+  }
+
+  // --- Pausable (owner-gated) ---
+  public function paused() -> uint256 { return HasPaused.isPaused(appStore()); }
+  public function setPaused(p : uint256) -> () {
+    requireOwner(appStore(), caller());
+    HasPaused.setPaused(appStore(), p);
+  }
+
+  // --- ERC20 views ---
+  public function totalSupply() -> uint256 { return HasSupply.totalSupply(appStore()); }
+  public function balanceOf(account : address) -> uint256 { return HasLedger.balanceOf(appStore(), account); }
+
+  // --- ERC20 actions (through the seam) ---
+  public function transfer(to : address, amount : uint256) -> bool {
+    vaultUpdate(appStore(), caller(), to, amount);
+    return true;
+  }
+  public function mint(to : address, amount : uint256) -> () {
+    requireOwner(appStore(), caller());
+    vaultUpdate(appStore(), address(0), to, amount);
+  }
+
+  // --- Style 3: flash-mint with an interface callback ---
+  public function flashMint(borrower : address, amount : uint256) -> () {
+    vaultUpdate(appStore(), address(0), borrower, amount);   // ephemeral mint
+    callBorrower(borrower, caller(), amount);                // callback + magic check
+    vaultUpdate(appStore(), borrower, address(0), amount);   // burn back
+  }
+
+  // The vault plays its own flash borrower in the self-referential execution test:
+  // it returns the IFlashBorrower magic value. A real borrower is a separate
+  // contract implementing this method.
+  public function onFlashMint(initiator : address, amount : uint256) -> bytes32 {
+    return bytes32(flashOk());
+  }
+
+  // Convenience entry point for the self-borrow test (avoids passing the deployed
+  // address in calldata): flash-mint against the vault itself.
+  public function flashMintSelf(amount : uint256) -> () {
+    flashMint(selfAddress(), amount);
+  }
+}
