@@ -1,34 +1,32 @@
 // Permit capability (EIP-2612), with its own storage.
-
-import std.{*};
-import std.opcodes.{sload, sstore};
-import std.eip712.{*};
-import store.{*};
-import erc20core.{*};
+import * from std;
+import {sload, sstore} from std.opcodes;
+import * from std.eip712;
+import * from store;
+import * from erc20core;
 
 export { HasNonces, useNonce, runPermit, permitDomainSeparator };
 
-forall self . class self : HasNonces {
-  function nonceOf(s : self, owner : address) -> uint256;
-  function setNonce(s : self, owner : address, v : uint256) -> ();
+trait HasNonces<self> {
+  function nonceOf(s : self, owner : address) returns (uint256);
+  function setNonce(s : self, owner : address, v : uint256) returns (());
 }
 
-function noncesRoot() -> word { return Typedef.rep(erc7201("mytoken.storage.Permit")); }
-function nonceSlot(owner : address) -> word { return hash2(noncesRoot(), Typedef.rep(owner)); }
+function noncesRoot() returns (word) { return Typedef.rep(erc7201("mytoken.storage.Permit")); }
+function nonceSlot(owner : address) returns (word) { return hash2(noncesRoot(), Typedef.rep(owner)); }
 
-instance AppStore : HasNonces {
-  function nonceOf(s : AppStore, owner : address) -> uint256 { return uint256(sload(nonceSlot(owner))); }
-  function setNonce(s : AppStore, owner : address, v : uint256) -> () { sstore(nonceSlot(owner), Typedef.rep(v)); }
+impl HasNonces<AppStore> {
+  function nonceOf(s : AppStore, owner : address) returns (uint256) { return uint256(sload(nonceSlot(owner))); }
+  function setNonce(s : AppStore, owner : address, v : uint256) returns (()) { sstore(nonceSlot(owner), Typedef.rep(v)); }
 }
 
-forall self . self:HasNonces =>
-function useNonce(s : self, owner : address) -> uint256 {
+function useNonce<self>(s : self, owner : address) returns (uint256) where self: HasNonces {
   let cur : uint256 = HasNonces.nonceOf(s, owner);
   HasNonces.setNonce(s, owner, Num.add(cur, uint256(1)));
   return cur;
 }
 
-function permitDomainSeparator(verifyingContract : address, chainId : uint256) -> bytes32 {
+function permitDomainSeparator(verifyingContract : address, chainId : uint256) returns (bytes32) {
   return eip712DomainSeparator(
     bytes32(keccakLit("MyToken")),
     bytes32(keccakLit("1")),
@@ -37,10 +35,10 @@ function permitDomainSeparator(verifyingContract : address, chainId : uint256) -
   );
 }
 
-forall self . self:HasNonces, self:HasAllowance =>
-function runPermit(s : self, owner : address, spender : address, value : uint256,
+function runPermit<self>(s : self, owner : address, spender : address, value : uint256,
                    deadline : uint256, currentTime : uint256, chainId : uint256,
-                   verifyingContract : address, v : uint256, r : bytes32, sSig : bytes32) -> () {
+                   verifyingContract : address, v : uint256, r : bytes32, sSig : bytes32) returns (())
+  where self: HasNonces, self: HasAllowance {
   require(currentTime <= deadline, Error(0x62791302));   // ERC2612ExpiredSignature
   let nonce : uint256 = useNonce(s, owner);
   let typeHash : bytes32 =
