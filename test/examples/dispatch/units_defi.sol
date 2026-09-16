@@ -64,4 +64,20 @@ contract UnitsDefi {
   function totalShares() public returns (uint256) {
     return amount(shares(100) + shares(25));
   }
+
+  // --- UNIT ERROR (from the Trail of Bits post, ERC-4626 example) ---
+  // The post's bug is `pricePerFullShare = convertToAssets(capTokenDecimals)`:
+  // a *decimals* scaling constant (a dimensionless scalar) is passed where an
+  // amount of shares is expected, silently corrupting the price.
+  //
+  // Here that mistake is a compile error: `capTokenDecimals` is a bare `uint256`,
+  // but `convertToAssets` requires a `Qty<Share>`. Uncommenting the body below is
+  // REJECTED by the type checker with:
+  //
+  //   error[SC0201]: types do not unify: Qty<Share> and uint256
+  //
+  // function pricePerFullShare_BUG() public returns (uint256) {
+  //   let capTokenDecimals : uint256 = 18;                 // decimals: dimensionless
+  //   return amount(convertToAssets(capTokenDecimals, ether(2)));
+  // }
 }
