@@ -49,6 +49,7 @@ comptime =
       runTestForFile "ct_asm_mem.sol" comptimeFolder,
       runTestForFile "integer-basic.sol" comptimeFolder,
       runTestForFile "integer-fib.sol" comptimeFolder,
+      runTestForFile "units-basic.sol" comptimeFolder,
       runTestForFile "integer-from-integer.sol" comptimeFolder,
       runTestForFile "integer-lit.sol" comptimeFolder,
       runTestForFile "integer-lit-safe.sol" comptimeFolder,

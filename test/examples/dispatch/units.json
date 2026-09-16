@@ -1,0 +1,52 @@
+{
+  "units": {
+    "bytecode": "",
+    "contract": "Units",
+    "tests": [
+      {
+        "input": { "comment": "constructor()", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": { "comment": "etherToWei() -> 1e18", "calldata": "e7b9a5f8", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000de0b6b3a7640000" }
+      },
+      {
+        "input": { "comment": "gweiToWei() -> 3e9", "calldata": "ec4e0f50", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "00000000000000000000000000000000000000000000000000000000b2d05e00" }
+      },
+      {
+        "input": { "comment": "etherToGwei() -> 2e9", "calldata": "26d7671e", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000077359400" }
+      },
+      {
+        "input": { "comment": "addEthers() -> 7e18", "calldata": "40d66d7b", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000006124fee993bc0000" }
+      },
+      {
+        "input": { "comment": "plainEther() -> 1e18 + 1e9", "calldata": "e01c80bc", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000de0b6b3e2feca00" }
+      },
+      {
+        "input": { "comment": "mulComposite() -> 12", "calldata": "60755275", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000000c" }
+      },
+      {
+        "input": { "comment": "divComposite() -> 5", "calldata": "ff2bb25d", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000005" }
+      },
+      {
+        "input": { "comment": "weiToEtherTrunc() -> 1", "calldata": "0aaeb8c2", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000001" }
+      }
+    ]
+  }
+}

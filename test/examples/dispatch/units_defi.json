@@ -1,0 +1,27 @@
+{
+  "unitsdefi": {
+    "bytecode": "",
+    "contract": "UnitsDefi",
+    "tests": [
+      {
+        "input": { "comment": "constructor()", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": { "comment": "pricePerShare() = convertToAssets(3 shares, 2e18) = 6", "calldata": "99530b06", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000006" }
+      },
+      {
+        "input": { "comment": "invariant() = 1000 A * 2000 B = 2_000_000", "calldata": "b03a9a05", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "00000000000000000000000000000000000000000000000000000000001e8480" }
+      },
+      {
+        "input": { "comment": "totalShares() = 100 shares + 25 shares = 125", "calldata": "3a98ef39", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000007d" }
+      }
+    ]
+  }
+}
