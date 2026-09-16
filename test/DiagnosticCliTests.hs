@@ -21,7 +21,7 @@ diagnosticCliTests =
             "  |",
             "1 | enum Broken { Value(word }",
             "  |                          ^ unexpected token",
-            "note: expecting ')', ',', '.', or '<'"
+            "note: expecting ')', ',', '.', '<', or '['"
           ],
       testCase "undefined name" $
         expectFailure

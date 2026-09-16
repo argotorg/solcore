@@ -129,7 +129,23 @@ callOp bp = do
         _ -> ExpApply callee args
 
 atomP :: BodyP -> Parser Exp
-atomP bp = litP <|> lamP bp <|> dotNameP bp <|> proxyP <|> arrayP bp <|> parenP bp <|> nameP bp
+atomP bp = litP <|> lamP bp <|> dotNameP bp <|> proxyP <|> newP bp <|> arrayP bp <|> parenP bp <|> nameP bp
+
+-- Solidity new T[](n): allocate a memory dynamic array of runtime length n.
+-- Desugars to newArrayP(@T, n) (the element type T is pinned by the proxy).
+-- new is parsed contextually (not a reserved word), so a try backtracks when
+-- the shape is not new <arrayType>(expr).
+newP :: BodyP -> Parser Exp
+newP bp =
+  locatedP locatedExp $
+    try $ do
+      keyword "new"
+      arrTy <- typeP
+      arg <- parens (exprP bp)
+      case arrTy of
+        TyCon (Name "memory") [TyCon (Name "DynArray") [elemT]] ->
+          pure (ExpName Nothing (Name "newArrayP") [ExpAt elemT, arg])
+        _ -> fail "new expects a dynamic array type, e.g. new T[](n)"
 
 litP :: Parser Exp
 litP =
