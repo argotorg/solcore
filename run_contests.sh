@@ -62,5 +62,6 @@ bash ./contest.sh test/examples/dispatch/derive_ord.json
 bash ./contest.sh test/examples/dispatch/derive_contract_local.json
 bash ./contest.sh test/examples/dispatch/deposit.json
 bash ./contest.sh test/examples/dispatch/units.json
+bash ./contest.sh test/examples/dispatch/units_defi.json
 bash ./contest.sh test/new-syntax/integration/main.json
 bash ./contest.sh test/new-syntax/struct-storage/main.json
