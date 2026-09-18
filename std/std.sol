@@ -103,6 +103,8 @@ export {
   memberAccessBase,
   memory(*),
   memory_ref,
+  newArray,
+  newArrayP,
   minWord,
   mulmod,
   ne,
@@ -1048,6 +1050,24 @@ function allocateDynamicArray<t>(prx : Proxy<t>, length : word) returns (memory<
     mstore(free, length);
     let res : memory<DynArray<t>> = Typedef.abs(free);
     return res;
+}
+
+// Solidity new T[](n): allocate a memory dynamic array of runtime length n,
+// zero-initialised (elements start at the type's default value), matching
+// Solidity semantics. The length is fixed once created (memory arrays are not
+// resizable). Word-sized elements only.
+function newArray<t>(n : uint256) returns (memory<DynArray<t>>)  where t: Typedef<word> {
+    let len : word = Typedef.rep(n);
+    let p : word = allocate_zeroed_memory((len + 1) * 32);
+    mstore(p, len);
+    return Typedef.abs(p);
+}
+
+// Proxy-fixed variant: the element type is pinned by the Proxy<t> argument.
+// This is the target of the new T[](n) surface syntax (new T[](n) desugars
+// to newArrayP(@T, n)), where the element type is written explicitly.
+function newArrayP<t>(prx : Proxy<t>, n : uint256) returns (memory<DynArray<t>>)  where t: Typedef<word> {
+    return newArray(n);
 }
 
 // --- bytes ---
@@ -2062,6 +2082,15 @@ impl<t> Length<calldata<array<t>>> {
     }
 }
 
+// A memory dynamic array keeps its length in the first word (see the layout at
+// IndexAccess<memory<DynArray<t>>, t>), so m.length() reads it directly.
+// Read-only: memory arrays are not resizable (no Array/ArrayPush instance).
+impl<t> Length<memory<DynArray<t>>> {
+    function length(arr:memory<DynArray<t>>) returns (uint256) {
+        return uint256(mload(Typedef.rep(arr)));
+    }
+}
+
 impl<t> Array<storage<array<t>>> {
     // Shrinking clears the abandoned slots, matching solc's resize_array.
     // For string/bytes elements this zeroes the inline slot, which makes any
@@ -2477,13 +2506,37 @@ impl<t, t_decoded, i> RValueIdxAccess<(calldata<array<t>>, i), t_decoded> where 
   }
 }
 
-// Memory arrays are read-only through `m[i]`: there is no memory cell reference
-// type, so they get an RValue instance but no LValue one.
+// Memory m[i]: an RValue read, plus an LValue write m[i] = v whose cell
+// reference is a memory<t> pointer to the element word (store = mstore).
 impl<t, i> RValueIdxAccess<(memory<DynArray<t>>, i), t> where t: Typedef<word>, i: Typedef<word> {
   function lookup(xi : (memory<DynArray<t>>, i)) returns (t) {
     match (xi ) {
       case (x, j) { return IndexAccess.get(x, uint256(Typedef.rep(j)));
     } }
+  }
+}
+
+// A memory element cell is a memory<t> pointer; storing through it is an
+// mstore. This lets m[i] = v desugar to Assign -> CanStore -> mstore.
+impl<t> CanStore<memory<t>, t> where t: Typedef<word> {
+  function store(r : memory<t>, v : t) returns (()) {
+    mstore(Typedef.rep(r), Typedef.rep(v));
+  }
+  function load(r : memory<t>) returns (t) {
+    return Typedef.abs(mload(Typedef.rep(r)));
+  }
+}
+
+impl<t, i> LValueIdxAccess<(memory<DynArray<t>>, i), memory<t>> where t: Typedef<word>, i: Typedef<word> {
+  function lookup(xi : (memory<DynArray<t>>, i)) returns (memory<t>) {
+    match (xi) {
+      case (x, j) {
+        let loc : word = Typedef.rep(x);
+        let idx : word = Typedef.rep(j);
+        if (idx >= mload(loc)) { out_of_bounds(); }   // same bound as IndexAccess.set
+        return Typedef.abs(loc + 32 + (idx * 32));
+      }
+    }
   }
 }
 

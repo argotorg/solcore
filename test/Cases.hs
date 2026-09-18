@@ -168,6 +168,7 @@ dispatches =
       runDispatchTest "array_string.sol",
       runDispatchTest "array_nested.sol",
       runDispatchTest "arraylit.sol",
+      runDispatchTest "mem_array.sol",
       runDispatchTest "derive_ord.sol",
       runDispatchTest "derive_contract_local.sol",
       runDispatchTest "deposit.sol",
