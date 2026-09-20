@@ -122,7 +122,8 @@ spec =
       runTestForFile "133arraystring.sol" specFolder,
       runTestForFile "135aliaspush.sol" specFolder,
       runTestForFile "136arraylit.sol" specFolder,
-      runTestForFile "137arraylitstorage.sol" specFolder
+      runTestForFile "137arraylitstorage.sol" specFolder,
+      runTestForFile "138arrayslice.sol" specFolder
     ]
   where
     specFolder = "./test/examples/spec"
@@ -169,6 +170,8 @@ dispatches =
       runDispatchTest "array_nested.sol",
       runDispatchTest "arraylit.sol",
       runDispatchTest "mem_array.sol",
+      runDispatchTest "array_slice.sol",
+      runDispatchTest "calldata_slice.sol",
       runDispatchTest "derive_ord.sol",
       runDispatchTest "derive_contract_local.sol",
       runDispatchTest "deposit.sol",
@@ -655,7 +658,8 @@ cases =
       runTestExpectingFailure "array-elem-no-storagecopy.sol" caseFolder,
       runTestExpectingFailure "array-push-no-canstore.sol" caseFolder,
       runTestExpectingFailure "arraylit-mixed-types.sol" caseFolder,
-      runTestExpectingFailure "arraylit-bad-target.sol" caseFolder
+      runTestExpectingFailure "arraylit-bad-target.sol" caseFolder,
+      runTestExpectingFailure "array-slice-readonly.sol" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

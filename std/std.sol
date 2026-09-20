@@ -1,6 +1,6 @@
 import {add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, returndatasize, returndatacopy, log1 as log1_, call, staticcall, revert_, invalid} from std.opcodes;
 
-pragma no-patterson-condition ABIEncode, Num, Array, ArrayPush, Eq, Ord;
+pragma no-patterson-condition ABIEncode, Num, Array, ArrayPush, Eq, Ord, RValueIdxAccess;
 pragma no-coverage-condition ABIDecode, MemoryType, Array, ArrayPush, RValueIdxAccess;
 
 export {
@@ -12,6 +12,7 @@ export {
   Add,
   Array,
   ArrayPush,
+  arraySlice(*),
   Assign,
   BitAnd,
   BitNot,
@@ -125,6 +126,10 @@ export {
   set_free_memory,
   sha256,
   slice(*),
+  sliceAll,
+  sliceFrom,
+  sliceRange,
+  sliceTo,
   slice_,
   storage(*),
   storeArrayLit,
@@ -134,6 +139,7 @@ export {
   strlenLit,
   subWord,
   truncate,
+  toArray,
   toWord,
   to_bytes,
   tobool,
@@ -2569,6 +2575,86 @@ function lidx<col, idx, ref>(c: col, i: idx) returns (ref)  where (col, idx): LV
 
 function ridx<col, idx, val>(c: col, i: idx) returns (val)  where (col, idx): RValueIdxAccess<val> {
     return RValueIdxAccess.lookup((c, i));
+}
+
+// --- Array slices ---
+//
+// An array slice x[start:end] is a read-only *view* (base, start, len) over an
+// existing collection. Because Length / RValueIdxAccess just delegate to the
+// underlying collection's length/ridx (re-basing index i -> start+i), a single
+// generic view works over memory, storage and calldata arrays -- and over
+// another slice (re-slicing) -- with no per-location code. Slices are read-only:
+// there is deliberately no LValueIdxAccess instance, so `s[i] = v` is rejected
+// (calldata was already immutable; memory/storage become read-only via a slice).
+enum arraySlice<coll> { arraySlice(coll, uint256, uint256) }
+
+// s.length() returns the slice's element count (the stored len).
+impl<coll> Length<arraySlice<coll>> {
+    function length(s : arraySlice<coll>) returns (uint256) {
+        match (s) {
+            case arraySlice(base, start, len) { return len;
+        } }
+    }
+}
+
+// s[i]: bounds-check i < len, then read element (start+i) from the base via ridx.
+// The `(coll, uint256): RValueIdxAccess<v>` constraint is what makes this generic
+// over the base collection (and lets a slice-of-slice reuse the same instance).
+impl<coll, v> RValueIdxAccess<(arraySlice<coll>, uint256), v> where (coll, uint256): RValueIdxAccess<v> {
+    function lookup(xi : (arraySlice<coll>, uint256)) returns (v) {
+        match (xi) {
+            case (s, idx) {
+                match (s) {
+                    case arraySlice(base, start, len) {
+                        let iw : word = Typedef.rep(idx);
+                        if (iw >= Typedef.rep(len)) { out_of_bounds(); }
+                        return ridx(base, uint256(Typedef.rep(start) + iw));
+                    }
+                }
+            }
+        }
+    }
+}
+
+// x[start:end]: bounds start <= end <= length(base); the view keeps
+// (base, start, end-start). base is passed once, and the defaults for the open
+// forms are filled in the helpers below, so a base expression is never evaluated
+// twice at the use site.
+function sliceRange<coll>(base : coll, start : uint256, end : uint256) returns (arraySlice<coll>)  where coll: Length {
+    let s : word = Typedef.rep(start);
+    let e : word = Typedef.rep(end);
+    let n : word = Typedef.rep(Length.length(base));
+    if (s > e) { out_of_bounds(); }
+    if (e > n) { out_of_bounds(); }
+    return arraySlice(base, start, uint256(e - s));
+}
+
+// x[start:]  -- end defaults to length(base)
+function sliceFrom<coll>(base : coll, start : uint256) returns (arraySlice<coll>)  where coll: Length {
+    return sliceRange(base, start, Length.length(base));
+}
+
+// x[:end]    -- start defaults to 0
+function sliceTo<coll>(base : coll, end : uint256) returns (arraySlice<coll>)  where coll: Length {
+    return sliceRange(base, uint256(0), end);
+}
+
+// x[:]       -- full view
+function sliceAll<coll>(base : coll) returns (arraySlice<coll>)  where coll: Length {
+    return sliceRange(base, uint256(0), Length.length(base));
+}
+
+// Materialise a slice into a fresh, zero-based memory<DynArray<t>> by copying
+// each element through ridx. This turns a slice back into an owned array
+// (Solidity's slice-to-array conversion), for word-sized elements.
+function toArray<coll, t>(s : arraySlice<coll>) returns (memory<DynArray<t>>)  where (coll, uint256): RValueIdxAccess<t>, t: Typedef<word> {
+    let nu : uint256 = Length.length(s);
+    let out : memory<DynArray<t>> = newArray(nu);
+    let n : word = Typedef.rep(nu);
+    for (let i = 0; i < n; i += 1) {
+        IndexAccess.set(out, uint256(i), ridx(s, uint256(i)));
+    }
+    return out;
 }
 
 // --- Memory Encoding ---
