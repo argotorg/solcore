@@ -933,6 +933,7 @@ data Exp
   | ExpBNotWithLocation NodeLocation Exp
   | ExpArrayWithLocation NodeLocation [Exp]
   | ExpAtWithLocation NodeLocation Ty -- proxy sugar
+  | ExpSliceWithLocation NodeLocation Exp (Maybe Exp) (Maybe Exp) -- e[start:end], bounds optional
   deriving (Eq, Ord, Show, Data, Typeable)
 
 pattern Lit :: Literal -> Exp
@@ -1095,7 +1096,12 @@ pattern ExpAt ty <- ExpAtWithLocation _ ty
   where
     ExpAt ty = ExpAtWithLocation unlocatedNode ty
 
-{-# COMPLETE Lit, ExpName, ExpApply, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpPlus, ExpMinus, ExpPower, ExpTimes, ExpDivide, ExpModulo, ExpShiftL, ExpShiftR, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpCond, ExpBNot, ExpArray, ExpAt #-}
+pattern ExpSlice :: Exp -> Maybe Exp -> Maybe Exp -> Exp
+pattern ExpSlice base mstart mend <- ExpSliceWithLocation _ base mstart mend
+  where
+    ExpSlice base mstart mend = ExpSliceWithLocation unlocatedNode base mstart mend
+
+{-# COMPLETE Lit, ExpName, ExpApply, ExpVar, ExpDotName, Lam, TyExp, ExpIndexed, ExpPlus, ExpMinus, ExpPower, ExpTimes, ExpDivide, ExpModulo, ExpShiftL, ExpShiftR, ExpBXor, ExpBAnd, ExpBOr, ExpLT, ExpGT, ExpLE, ExpGE, ExpEE, ExpNE, ExpLAnd, ExpLOr, ExpLNot, ExpCond, ExpBNot, ExpArray, ExpAt, ExpSlice #-}
 
 locatedExp :: SourceSpan -> Exp -> Exp
 locatedExp sourceSpan (Lit lit) = LitWithLocation location lit
@@ -1132,6 +1138,7 @@ locatedExp sourceSpan (ExpCond cond thenExp elseExp) = ExpCondWithLocation (loca
 locatedExp sourceSpan (ExpBNot exp) = ExpBNotWithLocation (locatedNode sourceSpan) exp
 locatedExp sourceSpan (ExpArray exps) = ExpArrayWithLocation (locatedNode sourceSpan) exps
 locatedExp sourceSpan (ExpAt ty) = ExpAtWithLocation (locatedNode sourceSpan) ty
+locatedExp sourceSpan (ExpSlice base ms me) = ExpSliceWithLocation (locatedNode sourceSpan) base ms me
 
 instance HasSourceSpan Exp where
   sourceSpanOf (LitWithLocation location _) = sourceSpanOf location
@@ -1197,6 +1204,8 @@ instance HasSourceSpan Exp where
     firstSourceSpan [sourceSpanOf location, sourceSpanOf exps]
   sourceSpanOf (ExpAtWithLocation location ty) =
     firstSourceSpan [sourceSpanOf location, sourceSpanOf ty]
+  sourceSpanOf (ExpSliceWithLocation location base mstart mend) =
+    firstSourceSpan [sourceSpanOf location, sourceSpanOf base, sourceSpanOf mstart, sourceSpanOf mend]
 
 -- pattern matching equations
 
