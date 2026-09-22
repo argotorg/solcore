@@ -1,0 +1,52 @@
+{
+  "VaultTokenModifier": {
+    "bytecode": "_CODE",
+    "contract": "VaultToken",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor(uint256) initialSupply = 1000",
+          "calldata": "00000000000000000000000000000000000000000000000000000000000003e8",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "totalSupply()(uint256) -> 1000 (constructor minted through the seam)",
+          "calldata": "18160ddd",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000003e8",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "balanceOf(owner)(uint256) -> 1000 (owner is testrunner account(0))",
+          "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "00000000000000000000000000000000000000000000000000000000000003e8",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "test()(uint256) -> 1070 : owner mints 100 (via onlyOwner), transfers 30 away, reports own balance",
+          "calldata": "f8a8fd6d",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000042e",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}
