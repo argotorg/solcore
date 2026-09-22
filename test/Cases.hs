@@ -132,6 +132,9 @@ dispatches =
   testGroup
     "Files for dispatch cases"
     [ runDispatchTest "basic.sol",
+      runDispatchTest "iface_selfcall.sol",
+      runDispatchTest "vault_typed.sol",
+      runDispatchTest "iface_implements.sol",
       runDispatchTest "assembly.sol",
       runDispatchTest "asm_subst.sol",
       runDispatchTest "stringid.sol",
@@ -654,7 +657,8 @@ cases =
       runTestExpectingFailure "array-elem-no-storagecopy.sol" caseFolder,
       runTestExpectingFailure "array-push-no-canstore.sol" caseFolder,
       runTestExpectingFailure "arraylit-mixed-types.sol" caseFolder,
-      runTestExpectingFailure "arraylit-bad-target.sol" caseFolder
+      runTestExpectingFailure "arraylit-bad-target.sol" caseFolder,
+      runTestExpectingFailure "interface-implements-missing-fail.sol" caseFolder
     ]
   where
     caseFolder = "./test/examples/cases"

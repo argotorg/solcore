@@ -1,0 +1,69 @@
+{
+  "token_vault": {
+    "contract": "Vault",
+    "artifacts": { "MiniERC20": "", "Vault": "" },
+    "artifactSources": { "MiniERC20": "miniERC20.sol", "Vault": "vault.sol" },
+    "tests": [
+      {
+        "input": { "comment": "deploy MiniERC20(TKN,TK,1000) -> token (minted to account0)", "calldata": "000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000003e80000000000000000000000000000000000000000000000000000000000000003544b4e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002544b000000000000000000000000000000000000000000000000000000000000", "value": "0" },
+        "kind": "constructor", "artifact": "MiniERC20", "as": "token"
+      },
+      {
+        "input": { "comment": "deploy Vault(token) -> vault", "value": "0", "calldataParts": [ { "addr": "token" } ] },
+        "kind": "constructor", "artifact": "Vault", "as": "vault"
+      },
+      {
+        "input": { "comment": "account0 approves vault for 100 tokens", "value": "0",
+          "calldataParts": [ { "hex": "095ea7b3" }, { "addr": "vault" }, { "hex": "0000000000000000000000000000000000000000000000000000000000000064" } ] },
+        "kind": "call", "target": "token",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000001" }
+      },
+      {
+        "input": { "comment": "vault.deposit(100): vault pulls 100 via token.transferFrom -> true", "calldata": "b6b55f250000000000000000000000000000000000000000000000000000000000000064", "value": "0" },
+        "kind": "call", "target": "vault",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000001" }
+      },
+      {
+        "input": { "comment": "vault.balanceOf(account0) -> 100 (internal ledger)", "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012", "value": "0" },
+        "kind": "call", "target": "vault",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000064" }
+      },
+      {
+        "input": { "comment": "token.balanceOf(vault) -> 100 (tokens really moved to the vault)", "value": "0",
+          "calldataParts": [ { "hex": "70a08231" }, { "addr": "vault" } ] },
+        "kind": "call", "target": "token",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000064" }
+      },
+      {
+        "input": { "comment": "token.balanceOf(account0) -> 900 (1000 - 100 deposited)", "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012", "value": "0" },
+        "kind": "call", "target": "token",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000384" }
+      },
+      {
+        "input": { "comment": "vault.withdraw(40): vault pushes 40 back via token.transfer -> true", "calldata": "2e1a7d4d0000000000000000000000000000000000000000000000000000000000000028", "value": "0" },
+        "kind": "call", "target": "vault",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000001" }
+      },
+      {
+        "input": { "comment": "vault.balanceOf(account0) -> 60 (100 - 40)", "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012", "value": "0" },
+        "kind": "call", "target": "vault",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000003c" }
+      },
+      {
+        "input": { "comment": "token.balanceOf(account0) -> 940 (900 + 40 withdrawn)", "calldata": "70a082310000000000000000000000001212121212121212121212121212120000000012", "value": "0" },
+        "kind": "call", "target": "token",
+        "output": { "status": "success", "returndata": "00000000000000000000000000000000000000000000000000000000000003ac" }
+      },
+      {
+        "input": { "comment": "vault.withdraw(1000) by account0 -> revert (ledger 60 < 1000)", "calldata": "2e1a7d4d00000000000000000000000000000000000000000000000000000000000003e8", "value": "0" },
+        "kind": "call", "target": "vault",
+        "output": { "status": "failure", "returndata": "b4120f14" }
+      },
+      {
+        "input": { "comment": "vault.deposit(50) by an account with no tokens/approval -> revert TransferFailed", "calldata": "b6b55f250000000000000000000000000000000000000000000000000000000000000032", "value": "0", "sender": "0x00000000000000000000000000000000cafe0000" },
+        "kind": "call", "target": "vault",
+        "output": { "status": "failure", "returndata": "90b8ec18" }
+      }
+    ]
+  }
+}
