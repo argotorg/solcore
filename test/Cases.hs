@@ -18,7 +18,9 @@ std =
   testGroup
     "Standard library"
     [ runTestForFile "std.sol" stdFolder,
-      runTestForFile "dispatch.sol" stdFolder
+      runTestForFile "dispatch.sol" stdFolder,
+      runTestForFile "signed.sol" stdFolder,
+      runTestForFile "unsigned.sol" stdFolder
     ]
 
 comptime :: TestTree
@@ -132,6 +134,7 @@ dispatches =
   testGroup
     "Files for dispatch cases"
     [ runDispatchTest "basic.sol",
+      runDispatchTest "int_ops.sol",
       runDispatchTest "assembly.sol",
       runDispatchTest "asm_subst.sol",
       runDispatchTest "stringid.sol",
