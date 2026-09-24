@@ -1,0 +1,57 @@
+{
+  "int_ops": {
+    "bytecode": "",
+    "contract": "IntOps",
+    "tests": [
+      {
+        "input": { "comment": "constructor()", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": { "comment": "mulNeg() -> -25 (signed mul, two's complement word)", "calldata": "b8b1f3d0", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7" }
+      },
+      {
+        "input": { "comment": "addWrap8() -> -56 (int8 100+100=200 wraps, sign-extended)", "calldata": "054f0106", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc8" }
+      },
+      {
+        "input": { "comment": "ltSigned() -> 1 (-5 < 5 signed)", "calldata": "df34e8b6", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000001" }
+      },
+      {
+        "input": { "comment": "divSigned() -> -6 (sdiv -20/3 truncates toward zero)", "calldata": "cbcc13e1", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa" }
+      },
+      {
+        "input": { "comment": "addWrapU8() -> 44 (uint8 200+100=300 & 0xff)", "calldata": "d74aa878", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000002c" }
+      },
+      {
+        "input": { "comment": "negate8(-8) -> 8 (int8 param decode + return encode)", "calldata": "19a419e0fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000008" }
+      },
+      {
+        "input": { "comment": "addI32(2e9,2e9) -> -294967296 (int32 wraps)", "calldata": "11f8b95900000000000000000000000000000000000000000000000000000000773594000000000000000000000000000000000000000000000000000000000077359400", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffee6b2800" }
+      },
+      {
+        "input": { "comment": "setAcc(-1000) -> -1000 (int64 storage field, CanStore)", "calldata": "d5d88a2ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc18", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc18" }
+      },
+      {
+        "input": { "comment": "getAcc() -> -1000 (reads stored int64)", "calldata": "4a2ee8d0", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc18" }
+      }
+    ]
+  }
+}
